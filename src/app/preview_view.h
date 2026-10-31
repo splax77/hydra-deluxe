@@ -288,7 +288,10 @@ struct PreviewScene {
     // Overlay: where each bar banked after the path's last window arrived
     // (Path::trailing_bank_ticks). Empty without a path.
     std::vector<int64_t> trailing_bank_ticks;
-    std::vector<PreviewBeat> beats;    // measure/beat/half lines, tick order
+    // Overlay: the fills the path passed over after its last activation
+    // (Path::trailing_skipped_fill_ticks). Empty without a path.
+    std::vector<int64_t> trailing_skipped_fill_ticks;
+    std::vector<PreviewBeat> beats;   // measure/beat/half lines, tick order
     std::vector<PreviewTempo> tempos;  // tempo changes, tick order
     std::vector<PreviewSection> sections;  // practice sections, tick order
     std::vector<PreviewMeasureSpan> measure_spans;  // one per time signature, tick order
@@ -526,7 +529,8 @@ double sp_meter_bars_at(const SpMeterCurve& curve, double ms);
 // timecode) become the overlay, their ms resolved against the song's own
 // timing so they line up with the notes exactly, and each candidate fill is
 // classified Hidden / Offered / Taken from the activations' stored
-// passed-over fills.
+// passed-over fills and the path's own after its last activation
+// (Path::trailing_skipped_fill_ticks).
 //
 // `sp_cap` is the SP meter's ceiling in bars — the viewed record's own sp_cap,
 // which is 4 for any normal Clone Hero run and differs only on a what-if

@@ -399,6 +399,7 @@ PreviewScene apply_preview_overlay(PreviewScene scene, const Song& song, const P
     scene.activations.clear();
     scene.ghost_fills.clear();
     scene.trailing_bank_ticks.clear();
+    scene.trailing_skipped_fill_ticks.clear();
     for (PreviewFill& f : scene.fills) f.state = PreviewFillState::Hidden;
     scene.score = PreviewScore{};
     scene.sp_meter = SpMeterCurve{};
@@ -430,6 +431,7 @@ PreviewScene apply_preview_overlay(PreviewScene scene, const Song& song, const P
             scene.activations.push_back(pa);
         }
         scene.trailing_bank_ticks = path->trailing_bank_ticks;
+        scene.trailing_skipped_fill_ticks = path->trailing_skipped_fill_ticks;
     }
 
     // Which fills the game would have shown. Without a path we cannot know, so
@@ -438,10 +440,11 @@ PreviewScene apply_preview_overlay(PreviewScene scene, const Song& song, const P
         for (PreviewFill& f : scene.fills) f.state = PreviewFillState::Offered;
     } else {
         // Which fills the game showed is engine truth: each activation lists
-        // the fills its path passed over, and its own fill is the taken one.
-        // Every other fill stays hidden, including those after the last
-        // activation, which the engine records nothing about. Fills and the
-        // stored ticks are both in chart order, so one index walks them.
+        // the fills its path passed over, and its own fill is the taken one;
+        // the path lists the fills it passed over after its last activation
+        // (trailing_skipped_fill_ticks). Every other fill stays hidden. Fills
+        // and the stored ticks are all in chart order, so one index walks
+        // them.
         // A taken fill stays taken: a tied variant's later activation can list
         // a fill the variant activated on, because after the fold it carries
         // its leader's passed-over fills (finding 97). Each activation keeps
@@ -460,6 +463,7 @@ PreviewScene apply_preview_overlay(PreviewScene scene, const Song& song, const P
             for (int64_t t : a.skipped_fill_ticks) mark(t, PreviewFillState::Offered);
             a.taken_fill = mark(a.tick, PreviewFillState::Taken);
         }
+        for (int64_t t : scene.trailing_skipped_fill_ticks) mark(t, PreviewFillState::Offered);
     }
 
     // The ghost path's fills: for each of its activations, the fill it stands
