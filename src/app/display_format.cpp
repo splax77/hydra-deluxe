@@ -43,22 +43,6 @@ int64_t percent_steps(int64_t part, int64_t total, int decimals) {
     return negative ? -steps : steps;
 }
 
-std::string format_points_short(int64_t points) {
-    const int64_t figure = points < 0 ? -points : points;
-    const char* sign = points < 0 ? "-" : "";
-    char buf[64];
-    if (figure < 1000) {
-        std::snprintf(buf, sizeof(buf), "%s%lld", sign, static_cast<long long>(figure));
-    } else {
-        const int64_t tenths = (figure + 50) / 100;  // thousands in tenths, a half up
-        std::snprintf(buf, sizeof(buf), "%s%lld.%lldk", sign, static_cast<long long>(tenths / 10),
-                      static_cast<long long>(tenths % 10));
-    }
-    return buf;
-}
-
-std::string format_cost_short(int64_t cost) { return kCostMinus + format_points_short(cost); }
-
 std::string format_cost(int64_t cost) { return kCostMinus + group_thousands(cost); }
 
 std::string format_percent(int64_t part, int64_t total, int decimals) {

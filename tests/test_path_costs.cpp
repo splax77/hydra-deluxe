@@ -200,7 +200,6 @@ TEST_CASE("end costs: each end against the best of them, in the order given") {
     CHECK(hydra::app::end_costs({}).empty());
     // The end choices write a cost with the minus sign U+2212, in full.
     CHECK(hydra::app::format_cost(1234) == "\xE2\x88\x92" "1,234");
-    CHECK(hydra::app::format_cost_short(13640) == "\xE2\x88\x92" "13.6k");
 }
 
 TEST_CASE("build ladder: a list the target searches refuse is refused before any search") {

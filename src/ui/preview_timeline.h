@@ -188,15 +188,6 @@ struct TimelineFillTint {
     ImU32 col = 0;
 };
 
-// The old cost label. Nothing reads it any more; it stays only until the
-// Path Builder's screen stops filling TimelineInput::labels, and goes with
-// that field.
-struct TimelineFillLabel {
-    int64_t chord_tick = 0;
-    std::string text;
-    ImU32 col = 0;
-};
-
 // What the caller says about its fills, by chord tick. `cant_ticks` are fills
 // drawn as can't although the scene says Offered; `locked_ticks` are fills
 // drawn as locked whatever the scene says (TimelineFillLook says which list
@@ -274,12 +265,11 @@ TimelineHit timeline_hit(const TimelineLayout& layout, float x, float y);
 // What the timeline draws this frame: the scene, the fills' marks (the base),
 // `selected` to outline that activation's band, and `highlighted` to draw that
 // fill (an index into the scene's fills) as hovered, with the selected band's
-// outline. `labels` is read by nothing (see TimelineFillLabel).
+// outline.
 struct TimelineInput : TimelineFillMarks {
     const app::PreviewScene* scene = nullptr;
     double length_ms = 0.0;    // the Preview's playback end
     double position_ms = 0.0;  // the playhead
-    std::vector<TimelineFillLabel> labels;
     std::optional<size_t> selected;
     std::optional<size_t> highlighted;
 };

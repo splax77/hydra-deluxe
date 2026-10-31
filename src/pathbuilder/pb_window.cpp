@@ -12,7 +12,7 @@
 #include "imgui_internal.h"  // ImFontCalcTextSizeEx, CalcWrapWidthForPos, the window's text cursor
 
 #include "app/config.h"          // chartmode_key
-#include "app/display_format.h"  // clock_str, format_cost, format_cost_short, kFactSeparator
+#include "app/display_format.h"  // format_cost, kFactSeparator
 #include "app/path_costs.h"      // end_costs
 #include "app/preview_view.h"    // path_overlay_key, fill_index_on_chord
 #include "app/report.h"          // ChipToken
@@ -22,8 +22,8 @@
 #include "pathbuilder/pb_menu.h"
 #include "pathbuilder/pb_open.h"
 #include "search/graph.h"  // fill_rule_for
-#include "ui/fonts.h"      // px
 #include "ui/preview_controller.h"
+#include "ui/preview_panel.h"
 #include "ui/preview_timeline.h"
 #include "ui/text_role.h"
 #include "ui/theme.h"    // chip_color, kAccentColor, kStarPowerColor
@@ -33,15 +33,25 @@ namespace hydra::pathbuilder {
 
 namespace {
 
-// The highway's width beside the steps panel: the mockup's
-// `.lower{grid-template-columns:600px minmax(0,1fr)}`.
-constexpr float kHighwayW = 600.0f;
-// How wide a score's hint and the hover tooltip may grow before they wrap:
-// `.num .hint{max-width:190px}` and `.tip{max-width:360px}`.
-constexpr float kScoreHintW = 190.0f;
-constexpr float kTooltipW = 360.0f;
-// The space between the legend's items: `.legend{gap:18px}`.
-constexpr float kLegendGap = 18.0f;
+// The second mockup's sizes, each in rem: a multiple of the font size
+// (rem() below), as the user's answer to plan Q1 chose. Each names its line
+// of docs/superpowers/specs/2026-10-31-path-builder-mockup-2/mockup_template.html.
+// The side column beside the Preview and the gap before it: line 91,
+// `.lower{grid-template-columns:minmax(0,1fr) 27rem;gap:.6rem}`.
+constexpr float kSideColumnRem = 27.0f;
+constexpr float kLowerGapRem = 0.6f;
+// How wide the hover tooltip may grow before it wraps: line 87, `.tip{max-width:24rem}`.
+constexpr float kTooltipRem = 24.0f;
+// The space between the legend's items: line 48, `.legend{gap:1.1rem}`.
+constexpr float kLegendGapRem = 1.1f;
+// How tall the list may grow before it scrolls: line 126, `.choices{max-height:21rem}`.
+constexpr float kChoicesMaxRem = 21.0f;
+// A list row's tier dot: line 129, `.ch .dot{width:.7rem}`.
+constexpr float kTierDotRem = 0.7f;
+// A step's numbered disc: line 136, `.step .n{width:1.6rem}`.
+constexpr float kStepDiscRem = 1.6f;
+
+float rem(float n) { return n * ImGui::GetFontSize(); }
 
 // What the window says when the file dialog never appeared: File > Open's,
 // then Open path...'s or Save path...'s (a dropped file opens as a chart, so
@@ -134,21 +144,35 @@ std::optional<std::string> best_fill_name(const app::PreviewScene& scene,
     return fill_name(scene, scene.fills[*i]);
 }
 
-// A cost under a fill or an end choice: "best" when it loses nothing, else
-// the cost written by `format` (format_cost_short or format_cost).
-std::string cost_or_best(int64_t cost, std::string (*format)(int64_t)) {
-    return app::costs_nothing(cost) ? std::string(kBestFillLabel) : format(cost);
+// The cost of a list row, a step or an end choice: "best" when it loses
+// nothing, else the cost in full (format_cost).
+std::string cost_or_best(int64_t cost) {
+    return app::costs_nothing(cost) ? std::string(kBestFillLabel) : app::format_cost(cost);
+}
+
+// `text` at the right edge of the line the cursor is on, which starts at
+// window x `line_x` and is `line_w` wide, in `col`.
+void text_at_right(const std::string& text, float line_x, float line_w, const ImVec4& col) {
+    ImGui::SameLine(line_x + line_w - ImGui::CalcTextSize(text.c_str()).x);
+    ImGui::TextColored(col, "%s", text.c_str());
 }
 
 }  // namespace
 
-PbApp::PbApp(ID3D11Device* device, ID3D11DeviceContext* context) {
+PbApp::PbApp(ID3D11Device* device, ID3D11DeviceContext* context)
+    : volume_pct_(app::Settings{}.preview_volume) {
     if (device && context) preview_ = std::make_unique<ui::PreviewController>(device, context);
 }
 
 PbApp::~PbApp() { close_preview(); }
 
-void PbApp::open(const std::string& notespath) { state.open(notespath); }
+void PbApp::open(const std::string& notespath) {
+    // The one read of the settings file per open: the chart's settings and
+    // the Preview's volume both come from it.
+    const app::Settings settings = app::Settings::load();
+    volume_pct_ = settings.preview_volume;
+    state.open_with(notespath, settings);
+}
 
 bool PbApp::busy() const { return state.busy() || (preview_ && preview_->busy()); }
 
@@ -179,6 +203,7 @@ void PbApp::take_in_chart() {
     pending_select_.reset();
     selected_.reset();
     hovered_fill_.reset();
+    row_hovered_fill_.reset();
     overlay_built_ = false;
 }
 
@@ -335,6 +360,7 @@ bool PbApp::open_preview(const OpenChart& chart, const Path* shown) {
         overlay_built_ = true;
     }
     const app::AnalysisSettings& s = chart.settings;
+    preview_->set_volume(volume_pct_);  // before the audio exists too, as Hydra's tab does
     preview_->open(chart.entry, s.reading(), fill_rule_for(s.legacy_fills), shown, overlay_key_,
                    s.sp_cap, s.rules);
     // Hydra's best path as faint outlines, when the player asks for it; the
@@ -347,17 +373,12 @@ bool PbApp::open_preview(const OpenChart& chart, const Path* shown) {
 }
 
 void PbApp::draw_body(const OpenChart& chart) {
-    {
-        ui::ScopedFont title(ui::TextRole::Title);
-        ImGui::TextWrapped("%s", chart_title_line(chart).c_str());
-    }
-    ImGui::TextDisabled("%s", app::chartmode_key(chart.settings.reading()).c_str());
-
     const Path* shown = shown_path();
     if (!chart.has_star_power()) {
+        draw_head(chart);
         ImGui::TextWrapped("%s", kNothingToBuildText);
         open_preview(chart, shown);
-        draw_highway(chart);
+        draw_preview(chart);
         return;
     }
 
@@ -372,8 +393,8 @@ void PbApp::draw_body(const OpenChart& chart) {
         pending_select_.reset();
     }
 
+    draw_head(chart);
     text_with_star(intro_text(), intro_star_at());
-    draw_scores(chart);
     draw_guide(chart);
     draw_legend(chart);
     draw_timeline(chart);
@@ -381,16 +402,33 @@ void PbApp::draw_body(const OpenChart& chart) {
     if (!ImGui::GetIO().WantTextInput && ImGui::IsKeyPressed(ImGuiKey_Escape, false))
         selected_.reset();
 
-    ImGui::BeginChild("##highway", ImVec2(ui::px(kHighwayW), 0), ImGuiChildFlags_Borders);
-    draw_highway(chart);
+    // Under the timeline: the Preview panel takes the width the side column
+    // leaves (the user's answer 4).
+    const float side_w = rem(kSideColumnRem);
+    const float gap = rem(kLowerGapRem);
+    ImGui::BeginChild("##preview", ImVec2((std::max)(1.0f, ImGui::GetContentRegionAvail().x - side_w - gap), 0));
+    draw_preview(chart);
     ImGui::EndChild();
-    ImGui::SameLine();
+    ImGui::SameLine(0.0f, gap);
+    ImGui::BeginChild("##side", ImVec2(0, 0));
+    draw_choices(chart);
+    ImGui::Spacing();
     ImGui::BeginChild("##steps", ImVec2(0, 0), ImGuiChildFlags_Borders);
     draw_steps(chart);
     ImGui::EndChild();
+    ImGui::EndChild();
 }
 
-void PbApp::draw_scores(const OpenChart& chart) {
+void PbApp::draw_head(const OpenChart& chart) {
+    ImGui::BeginGroup();
+    {
+        ui::ScopedFont title(ui::TextRole::Title);
+        ImGui::TextUnformatted(chart_title_line(chart).c_str());
+    }
+    ImGui::TextDisabled("%s", app::chartmode_key(chart.settings.reading()).c_str());
+    ImGui::EndGroup();
+    if (!chart.has_star_power()) return;
+
     const app::LadderRun* run = state.decisions().run();
     const bool complete = run && run->complete;
     const std::optional<int64_t> mine =
@@ -400,25 +438,34 @@ void PbApp::draw_scores(const OpenChart& chart) {
     const std::optional<int64_t> reach =
         complete ? std::optional<int64_t>(run->ladder.bf.back()) : std::nullopt;
 
-    const char* labels[] = {kYourScoreLabel, kBestPossibleLabel, kBestReachLabel};
-    const char* hints[] = {kYourScoreHint, kBestPossibleHint, kBestReachHint};
-    const std::optional<int64_t> values[] = {mine, best, reach};
+    // The mockup's order, each hint the tooltip on its figure (plan Q9). The
+    // player's own score is the big figure; the two best ones are dim.
+    const char* labels[] = {kYourScoreLabel, kBestReachLabel, kBestPossibleLabel};
+    const char* hints[] = {kYourScoreHint, kBestReachHint, kBestPossibleHint};
+    const std::optional<int64_t> values[] = {mine, reach, best};
     for (size_t i = 0; i < 3; ++i) {
-        if (i > 0) ImGui::SameLine();
+        ImGui::SameLine(0.0f, rem(kLegendGapRem));
         ImGui::BeginGroup();
-        ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + ui::px(kScoreHintW));
         ImGui::TextDisabled("%s", labels[i]);
-        {
+        if (i == 0) {
             ui::ScopedFont figure(ui::TextRole::Figure);
             ImGui::TextUnformatted(figure_or_pending(values[i]).c_str());
+        } else {
+            ImGui::TextDisabled("%s", figure_or_pending(values[i]).c_str());
         }
-        dim_wrapped(hints[i]);
-        ImGui::PopTextWrapPos();
+        if (ImGui::IsItemHovered()) {
+            ImGui::BeginTooltip();
+            ImGui::PushTextWrapPos(rem(kTooltipRem));
+            ImGui::TextUnformatted(hints[i]);
+            ImGui::PopTextWrapPos();
+            ImGui::EndTooltip();
+        }
         ImGui::EndGroup();
     }
 
     PathHistory& h = state.history();
     DecisionList& d = state.decisions();
+    ImGui::SameLine(0.0f, rem(kLegendGapRem));
     ImGui::BeginDisabled(!h.can_undo());
     if (ImGui::Button(kUndoLabel)) {
         pending_guide_.reset();
@@ -442,7 +489,6 @@ void PbApp::draw_scores(const OpenChart& chart) {
     }
     ImGui::EndDisabled();
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", kFinishTooltip);
-    (void)chart;
 }
 
 GuideFacts PbApp::guide_facts(const OpenChart& chart) const {
@@ -496,19 +542,42 @@ void PbApp::draw_guide(const OpenChart& chart) {
 }
 
 void PbApp::draw_legend(const OpenChart& chart) {
-    const std::pair<ui::LegendSwatch, const char*> items[] = {
-        {ui::LegendSwatch::Offered, kLegendCanText},
-        {ui::LegendSwatch::Activation, kLegendMineText},
-        {ui::LegendSwatch::Cant, kLegendCantText},
+    struct Item {
+        ui::LegendSwatch swatch;
+        ImU32 col;
+        const char* text;
     };
-    for (const auto& [swatch, text] : items) {
-        ui::legend_swatch(swatch);
+    const Item items[] = {
+        {ui::LegendSwatch::Tinted, ImGui::GetColorU32(tier_color(app::CostTier::Green)), kLegendBestText},
+        {ui::LegendSwatch::Tinted, ImGui::GetColorU32(tier_color(app::CostTier::Yellow)),
+         kLegendUnderOnePercentText},
+        {ui::LegendSwatch::Tinted, ImGui::GetColorU32(tier_color(app::CostTier::Red)), kLegendCostsMoreText},
+        {ui::LegendSwatch::Offered, 0, kLegendCanText},
+        {ui::LegendSwatch::Activation, 0, kLegendMineText},
+        {ui::LegendSwatch::Cant, 0, kLegendCantText},
+        {ui::LegendSwatch::Locked, 0, kLegendLockedText},
+    };
+    // The entries flow left to right and wrap at the window's edge, as the
+    // mockup's `.legend{flex-wrap:wrap}` does.
+    const float gap = rem(kLegendGapRem);
+    const float swatch_w = ImGui::GetTextLineHeight();
+    bool first = true;
+    const auto next_entry = [&](float w) {
+        if (!first && ui::fits_on_line(w, gap)) ImGui::SameLine(0.0f, gap);
+        first = false;
+    };
+    for (const Item& item : items) {
+        next_entry(swatch_w + ImGui::CalcTextSize(item.text).x);
+        ImGui::BeginGroup();
+        ui::legend_swatch(item.swatch, item.col);
         ImGui::SameLine(0.0f, 0.0f);
-        ImGui::TextDisabled("%s", text);
-        ImGui::SameLine(0.0f, ui::px(kLegendGap));
+        ImGui::TextDisabled("%s", item.text);
+        ImGui::EndGroup();
     }
+    next_entry(ImGui::CalcTextSize(kLegendSeekText).x);
     ImGui::TextDisabled("%s", kLegendSeekText);
-    ImGui::SameLine(0.0f, ui::px(kLegendGap));
+    next_entry(ImGui::GetFrameHeight() + ImGui::GetStyle().ItemInnerSpacing.x +
+               ImGui::CalcTextSize(kShowBestPathLabel).x);
     ImGui::Checkbox(kShowBestPathLabel, &show_best_);
     (void)chart;
 }
@@ -529,30 +598,49 @@ void PbApp::draw_timeline(const OpenChart& chart) {
     in.length_ms = preview_->playback_end_ms();
     in.position_ms = preview_->position_ms();
     in.selected = selected_step();
-    // The screen's left-to-right rule: an offered fill fill_reason refuses
-    // is drawn as can't.
-    for (size_t i = 0; i < scene.fills.size(); ++i)
-        if (scene.fills[i].state == app::PreviewFillState::Offered && !fill_reason(scene, i).empty())
+    // Which look each fill gets is fill_refusal's kind: a fill before the
+    // last activation is locked whatever its state, and an offered fill under
+    // a running window is can't.
+    for (size_t i = 0; i < scene.fills.size(); ++i) {
+        const FillRefusal kind = fill_refusal(scene, i);
+        if (kind == FillRefusal::BeforeLast)
+            in.locked_ticks.push_back(scene.fills[i].chord_tick);
+        else if (kind == FillRefusal::SpRunning && scene.fills[i].state == app::PreviewFillState::Offered)
             in.cant_ticks.push_back(scene.fills[i].chord_tick);
-    for (const app::CandidateCost& c : d.candidates())
-        in.labels.push_back(ui::TimelineFillLabel{
-            c.act_tick, cost_or_best(c.cost, app::format_cost_short),
-            ImGui::GetColorU32(tier_color(c.tier))});
+    }
+    for (const app::CandidateCost& c : d.candidates()) {
+        in.tints.push_back(ui::TimelineFillTint{c.act_tick, ImGui::GetColorU32(tier_color(c.tier))});
+        if (app::costs_nothing(c.cost)) in.best_ticks.push_back(c.act_tick);
+    }
+    in.best_label = kBestFillLabel;
+    const std::optional<size_t> row_hovered = row_hovered_fill_;
+    row_hovered_fill_.reset();
+    if (row_hovered && *row_hovered < scene.fills.size()) in.highlighted = row_hovered;
 
     const ui::TimelineEvents ev = ui::PreviewTimeline{}.draw(in);
 
-    // While the pointer is on a fill the highway shows it, paused, with the
-    // fill's start on the strike line (the user's answer Q4); when the
-    // pointer leaves, the Preview goes back to the time and play state it had.
-    if (ev.hovered_fill && *ev.hovered_fill < scene.fills.size()) {
+    // While the pointer is on a fill, or on its row in the list, the highway
+    // shows it, paused, with the fill's start on the strike line (the user's
+    // answer Q4); when the pointer leaves, the Preview goes back to the time
+    // and play state it had.
+    const std::optional<size_t> hovered =
+        ev.hovered_fill && *ev.hovered_fill < scene.fills.size() ? ev.hovered_fill : in.highlighted;
+    if (hovered) {
         if (!hovered_fill_) {
             hover_return_ms_ = preview_->position_ms();
             hover_return_playing_ = preview_->playing();
             preview_->pause();
         }
-        if (hovered_fill_ != ev.hovered_fill) preview_->seek_ms(scene.fills[*ev.hovered_fill].span.start_ms);
-        hovered_fill_ = ev.hovered_fill;
+        if (hovered_fill_ != hovered) preview_->seek_ms(scene.fills[*hovered].span.start_ms);
+        hovered_fill_ = hovered;
+    } else if (hovered_fill_) {
+        hovered_fill_.reset();
+        preview_->seek_ms(hover_return_ms_);
+        if (hover_return_playing_) preview_->play();
+    }
 
+    // The fill's own tooltip, on the fill only; a list row shows none.
+    if (ev.hovered_fill && *ev.hovered_fill < scene.fills.size()) {
         const size_t i = *ev.hovered_fill;
         std::optional<FillHoverNumbers> numbers;
         const std::vector<app::CandidateCost>& cands = d.candidates();
@@ -570,14 +658,10 @@ void PbApp::draw_timeline(const OpenChart& chart) {
             numbers = n;
         }
         ImGui::BeginTooltip();
-        ImGui::PushTextWrapPos(ui::px(kTooltipW));
+        ImGui::PushTextWrapPos(rem(kTooltipRem));
         ImGui::TextUnformatted(fill_hover_text(scene, i, numbers).c_str());
         ImGui::PopTextWrapPos();
         ImGui::EndTooltip();
-    } else if (hovered_fill_) {
-        hovered_fill_.reset();
-        preview_->seek_ms(hover_return_ms_);
-        if (hover_return_playing_) preview_->play();
     }
 
     if (ev.clicked_fill && *ev.clicked_fill < scene.fills.size()) {
@@ -606,8 +690,13 @@ void PbApp::click_fill(const OpenChart& chart, size_t index) {
         }
         return;
     }
-    const std::string reason = fill_reason(scene, index);
-    if (!reason.empty()) {
+    FillRefusal kind = FillRefusal::None;
+    const std::string reason = fill_reason(scene, index, kind);
+    if (kind == FillRefusal::BeforeLast) {
+        set_guide_message(locked_message(fill_name(scene, f)));
+        return;
+    }
+    if (kind != FillRefusal::None && kind != FillRefusal::Taken) {
         set_guide_message(cant_activate_message(fill_name(scene, f), reason));
         return;
     }
@@ -620,8 +709,10 @@ void PbApp::click_fill(const OpenChart& chart, size_t index) {
                                  f.chord_tick, h.generation());
 }
 
-void PbApp::draw_highway(const OpenChart& chart) {
+void PbApp::draw_preview(const OpenChart& chart) {
     if (!preview_) return;
+    // The panel draws only a loaded controller, so its error is the
+    // builder's to show.
     if (preview_->has_error()) {
         {
             ui::WarnColor warn;
@@ -630,43 +721,83 @@ void PbApp::draw_highway(const OpenChart& chart) {
         ui::error_detail_line(preview_->error_detail());
         return;
     }
+    // Loading shows as the progress bar in draw_timeline.
     if (preview_->loading()) return;
 
-    ImGui::TextUnformatted(kHighwayHeading);
-    ImGui::SameLine();
-    if (ImGui::Button(preview_->playing() ? kPauseLabel : kPlayLabel)) preview_->toggle();
-    ImGui::SameLine();
-    // The mockup's "where" line, the measure and the clock at the highway's
-    // time: the measure is the tick the Preview's time box shows at that time
-    // (display_tick_at_ms), named by measure_label.
-    const double now_ms = preview_->position_ms();
-    std::string where = app::clock_str(now_ms);
-    if (const std::optional<SongTiming>& timing = preview_->scene().timing)
-        where = measure_label(timing->timecode(timing->display_tick_at_ms(now_ms))) + app::kFactSeparator + where;
-    ImGui::TextDisabled("%s", where.c_str());
-    if (!ImGui::GetIO().WantTextInput && ImGui::IsKeyPressed(ImGuiKey_Space, false))
-        preview_->toggle();
-
-    const ImVec2 avail = ImGui::GetContentRegionAvail();
-    const int w = static_cast<int>(avail.x);
-    const int h = static_cast<int>(avail.y);
-    if (w <= 0 || h <= 0) return;
-    // The image is a named item so a click on it, and the GUI test, can find
-    // it; the highway image is drawn at the same place.
-    const ImVec2 img_min = ImGui::GetCursorScreenPos();
-    const ImVec2 img_size(static_cast<float>(w), static_cast<float>(h));
-    ImGui::InvisibleButton("##highway_image", img_size);
-    const bool clicked = ImGui::IsItemClicked(ImGuiMouseButton_Left);
-    if (ID3D11ShaderResourceView* srv = preview_->render(w, h)) {
-        ImGui::SetCursorScreenPos(img_min);
-        ImGui::Image((ImTextureID)(intptr_t)srv, img_size);
+    // Hydra's own Preview panel. The builder keeps the volume for the run and
+    // never writes the settings file (plan Q2), so a let-go slider stores
+    // nothing.
+    ui::PreviewPanelState panel;
+    panel.volume_pct = volume_pct_;
+    ui::draw_preview_panel(*preview_, panel, {});
+    if (panel.volume_changed) {
+        volume_pct_ = app::Settings::clamp(&app::Settings::preview_volume, panel.volume_pct);
+        preview_->set_volume(volume_pct_);
     }
-    if (clicked && chart.has_star_power()) {
-        const ImVec2 m = ImGui::GetIO().MousePos;
-        if (const std::optional<size_t> fill =
-                preview_->fill_at_image(render::ImagePoint{m.x - img_min.x, m.y - img_min.y}, w, h))
+    if (panel.image_click && chart.has_star_power()) {
+        const ui::PreviewImageClick& c = *panel.image_click;
+        if (const std::optional<size_t> fill = preview_->fill_at_image(c.at, c.width, c.height))
             click_fill(chart, *fill);
     }
+}
+
+void PbApp::draw_choices(const OpenChart& chart) {
+    ImGui::TextUnformatted(kChoicesHeading);
+    dim_wrapped(kChoicesHint);
+    if (!preview_ || !preview_->shows_path(overlay_key_)) return;
+    const app::PreviewScene& scene = preview_->scene();
+    const DecisionList& d = state.decisions();
+    const std::vector<app::CandidateCost>& cands = d.candidates();
+    const std::vector<int64_t> order = choice_order(scene.trailing_skipped_fill_ticks, cands);
+    if (order.empty()) {
+        dim_wrapped(state.history().current().windows.empty() ? kNoChoicesText : kNoChoicesFinishedText);
+        return;
+    }
+
+    // The list scrolls once it is taller than the mockup's limit.
+    const float row_h = ImGui::GetTextLineHeightWithSpacing();
+    const float list_h = (std::min)(rem(kChoicesMaxRem), row_h * static_cast<float>(order.size()) +
+                                                              ImGui::GetStyle().WindowPadding.y * 2.0f);
+    ImGui::BeginChild("##choices", ImVec2(0, list_h), ImGuiChildFlags_Borders);
+    for (const int64_t tick : order) {
+        const std::optional<size_t> fill = app::fill_index_on_chord(scene, tick);
+        if (!fill) continue;
+        const auto priced = std::find_if(cands.begin(), cands.end(),
+                                         [&](const app::CandidateCost& c) { return c.act_tick == tick; });
+        const bool landed = priced != cands.end();
+        const Activation* end = landed ? d.candidate_end(static_cast<size_t>(priced - cands.begin())) : nullptr;
+
+        // The row is one selectable; its pieces are drawn over it.
+        const ImVec2 start = ImGui::GetCursorPos();
+        const float row_w = ImGui::GetContentRegionAvail().x;
+        ImGui::SetNextItemAllowOverlap();
+        const std::string id = "##choice_" + std::to_string(tick);
+        if (ImGui::Selectable(id.c_str(), hovered_fill_ == fill)) click_fill(chart, *fill);
+        if (ImGui::IsItemHovered()) row_hovered_fill_ = fill;
+        ImGui::SetCursorPos(start);
+
+        // A priced row wears its tier's dot; a row still being priced wears
+        // the timeline's mark for a fill it can activate on.
+        const float dot_w = rem(kTierDotRem);
+        ImGui::SetCursorPosY(start.y + (ImGui::GetTextLineHeight() - dot_w) * 0.5f);
+        if (landed)
+            ui::dot_item(ImGui::GetColorU32(tier_color(priced->tier)), dot_w);
+        else
+            ui::legend_swatch(ui::LegendSwatch::Offered);
+        ImGui::SameLine();
+        ImGui::SetCursorPosY(start.y);
+        ImGui::TextUnformatted(fill_name(scene, scene.fills[*fill]).c_str());
+        ImGui::SameLine();
+        const std::string cost = landed ? cost_or_best(priced->cost) : std::string(kPendingText);
+        const float cost_w = ImGui::CalcTextSize(cost.c_str()).x;
+        const float middle_w = start.x + row_w - cost_w - ImGui::GetStyle().ItemSpacing.x - ImGui::GetCursorPosX();
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+        ui::text_ellipsized(candidate_row_text(scene, *fill, end).c_str(), (std::max)(0.0f, middle_w));
+        ImGui::PopStyleColor();
+        text_at_right(cost, start.x, row_w,
+                      landed ? tier_color(priced->tier) : ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+    }
+    ImGui::EndChild();
 }
 
 void PbApp::draw_steps(const OpenChart& chart) {
@@ -697,32 +828,53 @@ void PbApp::draw_steps(const OpenChart& chart) {
         if (i < list.rows.size() && list.rows[i].cost && run && run->ladder.bf.size() > i + 1)
             text = step_sentence(chart.song.timing(), acts[i], *list.rows[i].cost, run->ladder.bf[i],
                                  run->ladder.bf[i + 1], chart.settings.ms_filter);
-        const std::string number = std::to_string(i + 1) + ".";
-        // The whole step is one selectable; its text is drawn over it.
+        // The compact row: the step's number in a disc of the path's colour,
+        // where it starts and ends, the phrases it spends, and its cost at
+        // the right. The whole row is one selectable; its pieces are drawn
+        // over it.
+        const std::string number = std::to_string(i + 1);
+        const StepShort brief = step_short(chart.song.timing(), acts[i]);
+        const std::optional<int64_t> cost = i < list.rows.size() ? list.rows[i].cost : std::nullopt;
+        const std::optional<app::CostTier> tier = i < list.rows.size() ? list.rows[i].tier : std::nullopt;
         const ImVec2 start = ImGui::GetCursorPos();
-        const float wrap = ImGui::GetContentRegionAvail().x;
-        float height = ImGui::CalcTextSize(text ? text->sentence.c_str() : kPendingText, nullptr, false, wrap).y;
-        if (text) height += ImGui::CalcTextSize(text->why.c_str(), nullptr, false, wrap).y;
-        if (text && !text->note.empty()) height += ImGui::CalcTextSize(text->note.c_str(), nullptr, false, wrap).y;
+        const float row_w = ImGui::GetContentRegionAvail().x;
+        const float disc_w = rem(kStepDiscRem);
+        const float row_h = (std::max)(disc_w, ImGui::GetTextLineHeight());
         ImGui::SetNextItemAllowOverlap();
-        if (ImGui::Selectable("##step", sel == i, 0, ImVec2(0, height))) {
+        if (ImGui::Selectable("##step", sel == i, 0, ImVec2(0, row_h))) {
             if (sel == i)
                 selected_.reset();
             else
                 select_step(i);
         }
         ImGui::SetCursorPos(start);
-        ImGui::PushTextWrapPos(0.0f);
-        ImGui::TextWrapped("%s %s", number.c_str(), text ? text->sentence.c_str() : kPendingText);
-        if (text) {
-            dim_wrapped(text->why);
-            if (!text->note.empty()) {
-                ImGui::PushStyleColor(ImGuiCol_Text, violet);
-                ImGui::TextWrapped("%s", text->note.c_str());
-                ImGui::PopStyleColor();
+        ui::dot_item(ui::kTimelinePathColor, disc_w, number.c_str());
+        const float text_y = start.y + (row_h - ImGui::GetTextLineHeight()) * 0.5f;
+        ImGui::SameLine();
+        ImGui::SetCursorPosY(text_y);
+        ImGui::TextUnformatted(brief.span.c_str());
+        ImGui::SameLine();
+        ImGui::SetCursorPosY(text_y);
+        ImGui::TextDisabled("%s", brief.saved.c_str());
+        const std::string cost_label = cost ? cost_or_best(*cost) : std::string(kPendingText);
+        text_at_right(cost_label, start.x, row_w,
+                      tier ? tier_color(*tier) : ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+        ImGui::SetCursorPosY(start.y + row_h + ImGui::GetStyle().ItemSpacing.y);
+
+        // The selected step opens to its full sentence.
+        if (sel == i) {
+            ImGui::PushTextWrapPos(0.0f);
+            ImGui::TextWrapped("%s", text ? text->sentence.c_str() : kPendingText);
+            if (text) {
+                dim_wrapped(text->why);
+                if (!text->note.empty()) {
+                    ImGui::PushStyleColor(ImGuiCol_Text, violet);
+                    ImGui::TextWrapped("%s", text->note.c_str());
+                    ImGui::PopStyleColor();
+                }
             }
+            ImGui::PopTextWrapPos();
         }
-        ImGui::PopTextWrapPos();
 
         if (sel == i) {
             if (last && d.selected() == i && d.ends().size() > 1) {
@@ -738,7 +890,7 @@ void PbApp::draw_steps(const OpenChart& chart) {
                     label += app::kFactSeparator;
                     label += c.timing.empty() ? std::string(kNoTimingNeededText) : c.timing;
                     label += app::kFactSeparator;
-                    label += cost_or_best(costs[e], app::format_cost);
+                    label += cost_or_best(costs[e]);
                     ImGui::PushID(static_cast<int>(e));
                     if (ImGui::Button(label.c_str())) {
                         pending_guide_.reset();

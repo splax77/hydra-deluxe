@@ -1,13 +1,14 @@
-// The Path Builder's main window, drawn each frame in the approved mockup's
-// order (docs/superpowers/specs/2026-10-30-path-builder-mockup/
-// mockup_template.html): the title and mode line, the intro, the three
-// scores and the buttons, the guide line, the legend, the Preview's
-// whole-song timeline (ui::PreviewTimeline), then the Preview's highway with
-// the steps panel beside it. Everything drawn about the chart is the
-// Preview's; every sentence is pb_text's. main.cpp and the headless runner
-// (tests/pb_ui) both draw through draw(), so a test sees what the player
-// sees. Plan: docs/superpowers/plans/2026-10-30-path-builder-redesign.md,
-// task PB-5.
+// The Path Builder's main window, drawn each frame in the second mockup's
+// order (docs/superpowers/specs/2026-10-31-path-builder-mockup-2/
+// mockup_template.html, answers.md answer 4): the head row (title and mode,
+// the three scores, Undo, Start over, Finish the rest for me), the intro, the
+// guide line, the legend and the Preview's whole-song timeline
+// (ui::PreviewTimeline), then Hydra's own Preview panel (ui::draw_preview_panel)
+// with a side column beside it holding "Where to activate next" above "Your
+// activations". Everything drawn about the chart is the Preview's; every
+// sentence is pb_text's. main.cpp and the headless runner (tests/pb_ui) both
+// draw through draw(), so a test sees what the player sees. Plan:
+// docs/superpowers/plans/2026-10-31-path-builder-redesign-2.md, task SC-3b.
 
 #ifndef HYDRA_PATHBUILDER_PB_WINDOW_H
 #define HYDRA_PATHBUILDER_PB_WINDOW_H
@@ -40,6 +41,7 @@ inline constexpr const char* kMainWindowName = "Path Builder";
 inline constexpr const char* kYourScoreLabel = "Your score";
 inline constexpr const char* kBestPossibleLabel = "Best possible";
 inline constexpr const char* kBestReachLabel = "Best you can still reach";
+// Each score's hint, shown as the tooltip on its figure (plan Q9).
 inline constexpr const char* kYourScoreHint = "what your activations so far score";
 inline constexpr const char* kBestPossibleHint = "Hydra's best path for this chart";
 inline constexpr const char* kBestReachHint =
@@ -47,23 +49,27 @@ inline constexpr const char* kBestReachHint =
 inline constexpr const char* kUndoLabel = "Undo";
 inline constexpr const char* kFinishTooltip =
     "Keeps your activations and lets Hydra choose the best rest of the path";
+// The legend's tier entries, the mockup's renderLegend words, one per
+// app::CostTier.
+inline constexpr const char* kLegendBestText = "Best place to activate";
+inline constexpr const char* kLegendUnderOnePercentText = "Costs under 1% of the best score";
+inline constexpr const char* kLegendCostsMoreText = "Costs more";
+// A fill whose cost is still being worked out (plan Q3).
 inline constexpr const char* kLegendCanText = "You can activate here";
 inline constexpr const char* kLegendMineText = "Your activation";
 inline constexpr const char* kLegendCantText = "Can't activate here (hover to see why)";
+inline constexpr const char* kLegendLockedText = "Before your last activation";
 inline constexpr const char* kLegendSeekText =
     "Click anywhere on the timeline to move the highway there.";
 inline constexpr const char* kShowBestPathLabel = "Show Hydra's best path";
-inline constexpr const char* kHighwayHeading = "Highway";
-inline constexpr const char* kPlayLabel = "Play";
-inline constexpr const char* kPauseLabel = "Pause";
 // The steps panel's heading is the timeline's name for the same activations.
 inline constexpr const char* kStepsHeading = ui::kTimelineActivationsLabel;
 inline constexpr const char* kRemoveLastLabel = "Remove";
 inline constexpr const char* kRemoveEarlierLabel = "Remove this and later ones";
 inline constexpr const char* kEndItAtLabel = "End it at:";
 inline constexpr const char* kNoTimingNeededText = "no timing needed";
-// The cost under the best next fill on the timeline, and on the best of the
-// last activation's end choices.
+// The word under the best next fills on the timeline, and the cost of a list
+// row, a step or an end choice that loses nothing.
 inline constexpr const char* kBestFillLabel = "best";
 
 // The builder's whole state between frames.
@@ -133,11 +139,17 @@ private:
     std::optional<size_t> pending_select_;
     // "Show Hydra's best path".
     bool show_best_ = false;
-    // While the pointer is on a fill: the fill, and the time and play state
-    // the Preview goes back to when the pointer leaves.
+    // While the pointer is on a fill or its list row: the fill, and the time
+    // and play state the Preview goes back to when the pointer leaves.
     std::optional<size_t> hovered_fill_;
     double hover_return_ms_ = 0.0;
     bool hover_return_playing_ = false;
+    // The fill whose list row the pointer was on last frame; the list is
+    // drawn after the timeline, so the timeline reads it a frame later.
+    std::optional<size_t> row_hovered_fill_;
+    // The Preview's volume for this run: read from the settings file at each
+    // open and never written back (plan Q2).
+    int volume_pct_;
     // The overlay key of the path the highway shows (app::path_overlay_key),
     // and what it was built for, so it is rebuilt only when that changes.
     std::string overlay_key_;
@@ -160,15 +172,17 @@ private:
     // it has no scene to draw from.
     bool open_preview(const OpenChart& chart, const Path* shown);
     void draw_body(const OpenChart& chart);
-    void draw_scores(const OpenChart& chart);
+    void draw_head(const OpenChart& chart);
     void draw_guide(const OpenChart& chart);
     void draw_legend(const OpenChart& chart);
     void draw_timeline(const OpenChart& chart);
-    void draw_highway(const OpenChart& chart);
+    // The Preview panel, or the controller's error in its place.
+    void draw_preview(const OpenChart& chart);
+    void draw_choices(const OpenChart& chart);
     void draw_steps(const OpenChart& chart);
-    // What a click on scene fill `index` does (the timeline or the highway):
-    // an offered fill fill_reason accepts starts a window, a taken one
-    // selects its step, any other puts its reason in the guide line.
+    // What a click on scene fill `index` does (the timeline, the highway or a
+    // list row): an offered fill fill_reason accepts starts a window, a taken
+    // one selects its step, any other puts its reason in the guide line.
     void click_fill(const OpenChart& chart, size_t index);
     // The guide line's facts for the shown path's scene.
     GuideFacts guide_facts(const OpenChart& chart) const;
