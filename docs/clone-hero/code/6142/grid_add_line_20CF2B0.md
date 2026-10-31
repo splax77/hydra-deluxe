@@ -1,6 +1,6 @@
 # grid_add_line_20CF2B0.asm (build 6142, RVA 0x20CF2B0)
 
-Made 2026-10-30 with `tools/ch_mcp/chdis.py` (183 lines). Support listing for the grid builder `0x20DACA0`, which calls it once per line (`grid_restart_20DACA0.asm` line 184). Method `#8265.ʷʿʽʽ...` family; its static arguments are `(grid, chart, tick, kind, out int)`. I read only the parts that decide which list gets what; the tempo walk in lines 36 to 82 was not traced in detail.
+Made 2026-10-30 with `tools/ch_mcp/chdis.py` (183 lines). Support listing for the grid builder `0x20DACA0`, which calls it once per line (`grid_restart_20DACA0.asm` line 184). The record put it in the `#8265` family, but its address is in neither `dump.cs` nor `script.json`, so it has no name to map; its static arguments are `(grid, chart, tick, kind, out int)`. I read only the parts that decide which list gets what; the tempo walk in lines 36 to 82 was not traced in detail.
 
 Plain words: add one line to the grid. Every line adds its time in seconds to the grid's time list (`grid+0x10`) and its kind to the kind list (`grid+0x18`). Only a line of kind 0 (a measure line) also adds its tick to the third list (`grid+0x20`, a `List<long>`), which is the list the fill generator walks.
 

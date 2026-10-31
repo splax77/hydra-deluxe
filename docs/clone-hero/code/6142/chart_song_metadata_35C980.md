@@ -1,4 +1,4 @@
-# chart_song_metadata_35C980.asm  (build 6142, RVA 0x35C980, SongEntry.ʿʳʴʾʽʻʴʽʿʵʽ, scans a .chart's [Song] lines)
+# chart_song_metadata_35C980.asm  (build 6142, RVA 0x35C980, SongEntry.ReadChartSongSection, scans a .chart's [Song] lines)
 Made with chdis.py on 2026-10-30, session b02ab3e6, scout R7. Listing runs to the next method start (0x35DA90); it starts at a method start.
 Lines 8-18, 76-100: prologue. Line 87: r13 = the object at [GlobalVariables.instance + 0x30], the same class-828 song metadata cache that 0x1EFC60 filled. Line 103: xmm8 = 1000.0f (constant at 0x3064904).
 Lines 19-72: first-call string setup (Name, Artist, Album, Genre, Year, Charter, Offset, PreviewStart, ...).

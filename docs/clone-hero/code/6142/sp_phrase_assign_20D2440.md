@@ -1,6 +1,6 @@
 # sp_phrase_assign_20D2440 (build 6142, made 2026-10-30 with tools/ch_mcp/chdis.py)
 
-Function: `#8265.ʸʹʵˁʵʼʾʸʾˀʺ` (obfuscated static method on `#8265`, RVA `0x20D2440`; `script.json` and `dump.cs` line 528339 name it; the first instruction is the function start). It takes the track's note list and the track's Star Power phrase list and marks which notes are in a phrase and which note ends one. Class names: note = `#8597` (`dump.cs` line 548368), phrase = `#8252` (`dump.cs` line 527218). Note tick is the `long` at note+0x40, flags are the `int` at note+0x7c; phrase start is the `long` at phrase+0x10 and phrase length the `long` at phrase+0x18.
+Function: `#8265.AssignStarPowerPhrases` (obfuscated static method on `#8265`, RVA `0x20D2440`; `script.json` and `dump.cs` line 528339 name it; the first instruction is the function start). It takes the track's note list and the track's Star Power phrase list and marks which notes are in a phrase and which note ends one. Class names: note = `#8597` (`dump.cs` line 548368), phrase = `#8252` (`dump.cs` line 527218). Note tick is the `long` at note+0x40, flags are the `int` at note+0x7c; phrase start is the `long` at phrase+0x10 and phrase length the `long` at phrase+0x18.
 
 Lines 1 to 14: prologue and the one-time "first call" setup of generic method pointers. Nothing about phrases.
 

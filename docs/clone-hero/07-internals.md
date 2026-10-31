@@ -344,7 +344,8 @@ Found: 2026-10-30, this plan's wave 2 scouts R8 and R4.
 
 Rule: When the player kind is RemotePlayer, the engine's two score adds return at once and its per-update Star Power method skips the drain step (it still runs the clamp after it); Player, Bot and Replay engines run all of them.
 Label: Proven in the game's code
-Evidence: `code/6142/add_note_score_20F6EB0.asm` lines 13 to 14, `code/6142/add_points_20F5F70.asm` line 1 and `code/6142/sp_update_20F6800.asm` lines 37 to 38 (each compares +0x190 with 1; the first two jump to their return, the third jumps past the drain to the clamp, listing line 69); the enum at `dump.cs` line 546294.Game code (6142): RVA `0x20F6EB0`, RVA `0x20F5F70`, RVA `0x20F6800`; field `#8288+0x190`.
+Evidence: `code/6142/add_note_score_20F6EB0.asm` lines 13 to 14, `code/6142/add_points_20F5F70.asm` line 1 and `code/6142/sp_update_20F6800.asm` lines 37 to 38 (each compares +0x190 with 1; the first two jump to their return, the third jumps past the drain to the clamp, listing line 69); the enum at `dump.cs` line 546294.
+Game code (6142): RVA `0x20F6EB0`, RVA `0x20F5F70`, RVA `0x20F6800`; field `#8288+0x190`.
 Hydra: no owner: Hydra has no network player.
 Ruling: none needed: no Hydra rule reads it.
 Found: 2026-10-30, this plan's wave 2 scout R4.

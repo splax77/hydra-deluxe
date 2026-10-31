@@ -1,6 +1,6 @@
 # fill_deadline_20DDB70.asm (build 6142, RVA `0x20DDB70`)
 
-Made 2026-10-30 with `tools/ch_mcp/chdis.py` (72 lines). Starts at the method's first instruction (`#8255.ʸʸʳʽʲʻʿʸʳʸʽ`, instance method of the drum engine class, parameters `(long amount, bool)`). It is an override: its last instruction (line 69) tail-jumps to the base class method with the same name at `0x20F4FA0`, passing the same amount, `r8b = 1`, `r9d = 0`.
+Made 2026-10-30 with `tools/ch_mcp/chdis.py` (72 lines). Starts at the method's first instruction (`#8255.AddStarPower`, instance method of the drum engine class, parameters `(long amount, bool)`). It is an override: its last instruction (line 69) tail-jumps to the base class method with the same name at `0x20F4FA0`, passing the same amount, `r8b = 1`, `r9d = 0`.
 
 Plain words: just before the engine adds `amount` ticks of Star Power, if that addition would carry the meter from below half to half or more, and Star Power is not already active, then clear every written or generated fill whose start tick is at or before (current tick + four quarter notes). A cleared fill loses its activation flag, so it can no longer be used to activate. After the clean-up the base method does the adding.
 

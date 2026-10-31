@@ -1,6 +1,6 @@
 # first_after_search_2C7CF70.asm (build 6142, RVA 0x2C7CF70)
 
-Made 2026-10-30 with `tools/ch_mcp/chdis.py` with `maxbytes 0x200` (84 lines; 0x2C7CF70 is past the last method address in script.json, `0x2BF4C30`, so the listing stops at the padding the tool finds, not at a next-method address). Support listing for `0x5DE030` and `0x5DDB50`. It is a generic helper (`ʿʲˁʽʹʺʶʳˁʾʼ`-family, shared by every generic instantiation).
+Made 2026-10-30 with `tools/ch_mcp/chdis.py` with `maxbytes 0x200` (84 lines; 0x2C7CF70 is past the last method address in script.json, `0x2BF4C30`, so the listing stops at the padding the tool finds, not at a next-method address). Support listing for `0x5DE030` and `0x5DDB50`. It is a generic helper (`ListRange`-family, shared by every generic instantiation).
 
 Plain words: walk a list forward, starting at index `r8d`, and return the index of the first element whose tick is strictly greater than the target. Return -1 when the list runs out.
 

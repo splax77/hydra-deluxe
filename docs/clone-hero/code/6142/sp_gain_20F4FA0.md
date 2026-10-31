@@ -2,9 +2,9 @@
 
 Listing: `sp_gain_20F4FA0.asm` beside this file, made 2026-10-30 by scout R8 (session b02ab3e6-76ac-4735-8576-04b87f32bb8d)
 with `tools/ch_mcp/chdis.py` from `C:\Clone Hero\1.1 june\Clone Hero\GameAssembly.dll`. The listing starts at the function's
-first instruction (RVA `0x20F4FA0` is in `script.json` as a method start). The game names it `#8288.ʸʸʳʽʲʻʿʸʳʸʽ`
-(class `ʿʶʴˀʴʾʵʵʶʳʲ`, TypeDefIndex 8288, the engine base class that `BasePlayer.engine` holds; `dump.cs` line 529952 is
-the class and the method is the one declared `public virtual void ʸʸʳʽʲʻʿʸʳʸʽ(long ..., bool ... = False)`).
+first instruction (RVA `0x20F4FA0` is in `script.json` as a method start). Our readable name for it is `#8288.AddStarPower`
+(class `BaseEngine`, TypeDefIndex 8288, the engine base class that `BasePlayer.engine` holds; `dump.cs` line 529952 is
+the class and the method is the one declared as a `public virtual void` method, under its scrambled name, with the parameters `(long ..., bool ... = False)`).
 Its only Ghidra caller in the surviving decompile is `FUN_1820ddb70` (the deadline function, `ghidra_decompile_all.txt` lines
 670 to 681, call at line 681).
 

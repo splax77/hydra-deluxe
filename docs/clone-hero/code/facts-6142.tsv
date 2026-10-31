@@ -1,0 +1,299 @@
+# Clone Hero game facts the pages cite; written by tools/ch_mcp/dump_facts.py --tsv
+# version: 1.1.0.6142-final
+# GameAssembly.dll md5: 106e15e5bf799ea62f916e8ceaf38bc6
+build	kind	typedef_index	class	member	rva	offset
+6142	class	1721	Math			
+6142	field	1048	GlobalVariables	currentSongEntry		0x28
+6142	field	1048	GlobalVariables	instance		0x8
+6142	field	1048	GlobalVariables	scoreDisabled		0x7C
+6142	field	176	SongEntry	checksum		0x38
+6142	field	449	GameManager	audioCal		0x6C
+6142	field	449	GameManager	isSongOver		0x91
+6142	field	449	GameManager	practiceSpeed		0xD8
+6142	field	449	GameManager	songLength		0x50
+6142	field	449	GameManager	songTime		0x70
+6142	field	449	GameManager	songTimeVideoTime		0x78
+6142	field	449	GameManager	videoCal		0x68
+6142	field	8255		ʲʳʶʹʶʸʳʾʾʳʶ		0x41
+6142	field	8255		ʲʾʾʸʶʾʺʺʵʳʼ		0x30
+6142	field	8255		ʴʾˁʾʼʹʲʳʾʿʺ		0x120
+6142	field	8255		ʵʼʿˁʷʹˀʵˁʼˀ		0x68
+6142	field	8255		ʷʷʽʹʷʹʼˁʻʴˁ		0x2E0
+6142	field	8255		ʸʶʸʵʵʳʾʺʸʷʼ		0x100
+6142	field	8255		ʹʿʷʾʹʵʴʹʶʹʶ		0x8C
+6142	field	8255		ʺʾʾʿʷʹʳʺʺʽʿ		0x300
+6142	field	8255		ʻʹʸʿʴʻʸʳʴʽˀ		0x130
+6142	field	8255		ʼʼˁʴʿʸʿʲʺʳʵ		0x94
+6142	field	8255		ʽʷʿʴˁˁʺʻʽʴʷ		0x48
+6142	field	8255		ʾʻʳʷʶʵʵʸʿʼʳ		0x20
+6142	field	8255		ʿʹʸʷʸʽʻʿˀʳʴ		0x198
+6142	field	8255		ʿʾʸˁʾˁˀˀʻʻʼ		0x38
+6142	field	8255		ˀʾʾʻʴʵʼʼʼʾʴ		0x1B0
+6142	field	8255		ˁʸʴʵʳʾʽʿʹʷʿ		0x42
+6142	field	8255		ˁʺʺʷʻʼʷʾʽʴʼ		0x2C0
+6142	field	828		ʻʴʲʳʴʽʹʸʵʸʼ		0x24
+6142	field	8288		ʲʲˀʳʵʽʼʵʳʷʴ		0xC4
+6142	field	8288		ʲʾʾʸʶʾʺʺʵʳʼ		0x30
+6142	field	8288		ʴʾˁʾʼʹʲʳʾʿʺ		0x120
+6142	field	8288		ʵʸʹʽʺʾʻʹʲˁˀ		0x190
+6142	field	8288		ʵʼʿˁʷʹˀʵˁʼˀ		0x68
+6142	field	8288		ʵˀʵʶˀʿʾʿʽʶʸ		0x1B8
+6142	field	8288		ʸʶʸʵʵʳʾʺʸʷʼ		0x100
+6142	field	8288		ʹʷʶʾʼʲˁʿʶʺʽ		0xC8
+6142	field	8288		ʹʿʷʾʹʵʴʹʶʹʶ		0x8C
+6142	field	8288		ʻʹʸʿʴʻʸʳʴʽˀ		0x130
+6142	field	8288		ʼʼˁʴʿʸʿʲʺʳʵ		0x94
+6142	field	8288		ʽʷʻʷʶʸʹʻʵʼʹ		0x10
+6142	field	8288		ʽʷʿʴˁˁʺʻʽʴʷ		0x48
+6142	field	8288		ʾʻʳʷʶʵʵʸʿʼʳ		0x20
+6142	field	8288		ʿʹʸʷʸʽʻʿˀʳʴ		0x198
+6142	field	8288		ʿʾʸˁʾˁˀˀʻʻʼ		0x38
+6142	field	8288		ˀʾʾʻʴʵʼʼʼʾʴ		0x1B0
+6142	field	8288		ˁʸʴʵʳʾʽʿʹʷʿ		0x42
+6142	field	8661		<ˀʽʸʽʼʿʼʴʸʿʷ>k__BackingField		0x88
+6142	field	901	BasePlayer	engine		0x120
+6142	method	1037		ʵʲʽʶʲʳʿʸˁʳʲ	0x251A70	
+6142	method	1037		ʼʻʺʾʻʹʸʸʺˁʸ	0x252200	
+6142	method	1037		ʽʻʷʶʸʽʼʽʵˀʵ	0x252630	
+6142	method	1068		.cctor	0x266340	
+6142	method	1169	StarProgress	.ctor	0x2E0990	
+6142	method	1169	StarProgress	ʶʹʿʸʸʼʳˀʻʴʴ	0x2DF200	
+6142	method	1169	StarProgress	ʺʽʸʺʾˀʲʾʹʲʻ	0x2DF7F0	
+6142	method	1169	StarProgress	ʺʿʽʿʶˀʿʹʸˀʼ	0x2DFC20	
+6142	method	1169	StarProgress	ʾʿʺʷʺʿʸʻʼʿˀ	0x2E0150	
+6142	method	1169	StarProgress	ˀʾʲʹˁˁʽʴʿʵʷ	0x2E0540	
+6142	method	123	SoloCounter	Start	0x293A30	
+6142	method	123	SoloCounter	ʳʴʹʻʾˀʵʷʺʸʺ	0x294070	
+6142	method	123	SoloCounter	ʸʲʳʻʾʼʺʵʵʳˀ	0x2946F0	
+6142	method	123	SoloCounter	ʹʼʺʷʻʴʽˁʴʶʵ	0x294880	
+6142	method	123	SoloCounter	ʽʲʽʹʻʼʼʸʽʶʻ	0x295190	
+6142	method	123	SoloCounter	ʿʸʸʶʹʴʻʶʼʺʿ	0x2956C0	
+6142	method	1281	Calibrator	Update	0x2FB0B0	
+6142	method	1302		ʴˁʿʸʷˁʷʳʴʻʷ	0x307B40	
+6142	method	1435		ʳʷʻʿʻʲʿʾʵʷʶ	0x337540	
+6142	method	1435		ˀʶʷʼʻʸʼʽʵʼʹ	0x337D00	
+6142	method	16061	__Il2CppComObject	Finalize	0x2BF4C30	
+6142	method	16062	__Il2CppComDelegate	Finalize	0x2BF4C30	
+6142	method	176	SongEntry	ʷʲʿʾʷʿʽʽʷʴʷ	0x358850	
+6142	method	176	SongEntry	ʿʳʴʾʽʻʴʽʿʵʽ	0x35C980	
+6142	method	182		ʴʵʾˀʾʺˀˁʽʵʹ	0x3738B0	
+6142	method	182		ʴʸʷʵʲʾʺʵˁʹʸ	0x373A40	
+6142	method	182		ʷʽʷʵʽʲʾʶʴʵʷ	0x373F30	
+6142	method	182		ʿʽʾʹʳʼʸʾʳʻʹ	0x374310	
+6142	method	190	BassAudioManager	ʴʴʳʶʺʴʾʲʸʶˀ	0x365F10	
+6142	method	190	BassAudioManager	ʾʳʸʴʻʳʾʴʺˀʺ	0x36B700	
+6142	method	193		ʺʷʻʲʴʺʷʺʺʶʴ	0x374D50	
+6142	method	225	HighwayScroll	Update	0x3818E0	
+6142	method	443		MoveNext	0xD8D80	
+6142	method	449	GameManager	Awake	0xB41A0	
+6142	method	449	GameManager	Update	0xC05A0	
+6142	method	561		ʺʳʾʺʹʶʵʲʾʲʿ	0x112490	
+6142	method	592	ScoreManager	Update	0x1286B0	
+6142	method	617	DrumsNoteRenderer	Update	0x1370A0	
+6142	method	707		.ctor	0x16C9A0	
+6142	method	707		ʵʲʿʾʽʿʹʸʺʻˁ	0x16C480	
+6142	method	707		ʵʴʼʴˀˁʾʴʷʾʾ	0x16C490	
+6142	method	707		ʵˁʶʹʴʾʸˁʾˀʹ	0x16C480	
+6142	method	707		ʷʹʼʵʲʼʾʿʷˁʾ	0x16C480	
+6142	method	707		ʻʽʻʵʷʼʴʼʵʶʷ	0x16C480	
+6142	method	707		ʿʳʶʿʹˁʴʻʺʶʹ	0x16C490	
+6142	method	707		ʿʸʶˁʷˁʼʳʶʴʸ	0x16C650	
+6142	method	711	EndOfSong	Start	0x15DC20	
+6142	method	8246		.cctor	0x2095040	
+6142	method	8251		ʸʴʼʳʸʼʶʵʺʷʼ	0x20E49D0	
+6142	method	8251		ʽˁʵˁʿʸʴʳʶʵʹ	0x20E5E70	
+6142	method	8253		.ctor	0x100E960	
+6142	method	8253		.ctor	0x100EAE0	
+6142	method	8253		ʲʵʸʷʴʵˁʴʹʲʷ	0x100DAB0	
+6142	method	8253		ʲʵʸʷʴʵˁʴʹʲʷ	0x100DAE0	
+6142	method	8253		ʲʵʸʷʴʵˁʴʹʲʷ	0x100DC80	
+6142	method	8253		ʻʺʺʾʹʴʸʳʼʲʳ	0x100E6E0	
+6142	method	8255		.ctor	0x20DF680	
+6142	method	8255		ʳʶˀˁʶʶʽʽʷʼʼ	0x20DCAD0	
+6142	method	8255		ʳʹʼʴʸʵʶʻʺʶʺ	0x20DCC90	
+6142	method	8255		ʵʸʲʴʶʵʶʹˁʿʼ	0x20DD190	
+6142	method	8255		ʷʿʺʴʲʴʷʾʹʳʹ	0x20DD700	
+6142	method	8255		ʸʸʳʽʲʻʿʸʳʸʽ	0x20DDB70	
+6142	method	8255		ʹʹʴˁʹʶʲʺʲʲʿ	0x20DDDA0	
+6142	method	8255		ʹʻʿʻʲʴʷˀʿʽʿ	0x20DDEC0	
+6142	method	8255		ʾʵʵʷʻʳʻʾʶʺʲ	0x20DE5A0	
+6142	method	8255		ʾʼʺʻˀʵʶʸʶʻʳ	0x20DE770	
+6142	method	8255		ʿʶʲʳʲʴʴʵʴʲʷ	0x20DEAA0	
+6142	method	8255		ʿʾʹʲˀʶʷʵʶʶˀ	0x20DEEC0	
+6142	method	8255		ˀʽʶʶʻʹˀʼˁʴʸ	0x20DEFF0	
+6142	method	8257		ʴˀʲʸʷʶˁˀʺʶʲ	0x20DACA0	
+6142	method	8263		.ctor	0x20E8D30	
+6142	method	8265		ʳʷˁʸʵʾʼʷˀʲˁ	0x20CFF60	
+6142	method	8265		ʴˁʽʳʾʿˁʽʼʸʺ	0x20D0330	
+6142	method	8265		ʶʳʶʹʷʻʾʹʾʼʶ	0x20D12C0	
+6142	method	8265		ʷʴʹʷʷʶˁʷʷʿʸ	0x20D18F0	
+6142	method	8265		ʷʾʻʿʵʻʸʵʺʹʺ	0x20D1D20	
+6142	method	8265		ʸʷʲʵʸʾʾʼʿʼʶ	0x20D1ED0	
+6142	method	8265		ʸʹʵˁʵʼʾʸʾˀʺ	0x20D2440	
+6142	method	8265		ʸʺˁʵʳʴʺʸˀʴʴ	0x20D2930	
+6142	method	8265		ʸˀʽʸʽʳʳʸʼʾʿ	0x20D2B30	
+6142	method	8265		ʹʹʾʴʳʶʼʵʳʼʼ	0x20D2EA0	
+6142	method	8265		ʺʷʸˀʷʴʿʲʵʼʾ	0x20D36A0	
+6142	method	8265		ʼʽʾˁʼʻʹʷʺˁʻ	0x20D4440	
+6142	method	8265		ʿʹʿʸʹʽʾʻʸʵʵ	0x20D4BE0	
+6142	method	8265		ˀʶˀʾʴʳʹʶˁʹʹ	0x20D51D0	
+6142	method	8265		ˁʻʲʸʼʾʺʳʷʷʶ	0x20D5310	
+6142	method	8278		ʴʻʷʽʺʹʽʲʲʿʾ	0x20EF450	
+6142	method	8278		ʷʽʶʽˁʸʻʵʲʴʶ	0x20EFEE0	
+6142	method	8278		ʸʸʶʴʲʳʷʻʿʵʿ	0x20EFF60	
+6142	method	8278		ʹˀʵʸʿˁʸʶʴˀʲ	0x20F06A0	
+6142	method	8278		ʾʷʳʷʼʵʴʹˀˁʼ	0x20F0B30	
+6142	method	8278		ʾʿʺʶʼʵʽʽʻʾʹ	0x20F0C30	
+6142	method	8278		ʾˀˁʸʷʹʵʶʳʲʼ	0x20F1250	
+6142	method	8278		ʿʳʲʻʴʷʳˀʳʼʷ	0x20F1420	
+6142	method	8278		ʿʾʲʽʻʹʺʶˀʹʽ	0x20F16E0	
+6142	method	8278		ˁʽʽʿʺʶʿʷʹʹʲ	0x20F1900	
+6142	method	828		ʲʺʾʷʽʻʾʿʳʸʸ	0x1EF1A0	
+6142	method	828		ʺʻʸʽʿʵʴʾʵʴʲ	0x1EFC60	
+6142	method	828		ʺʽʻʸʽˁˀʲʺʻʲ	0x1EFF90	
+6142	method	828		ʽʴʽʷʹʶʷʳʹʺʵ	0x1F0380	
+6142	method	828		ˀˀʶˁʹʶʻʻʲʴʻ	0x1F0830	
+6142	method	8288		.ctor	0x20F79E0	
+6142	method	8288		ʳʻʷʵˁʴʾʻʿʴʺ	0x20F3750	
+6142	method	8288		ʳʼʽʽʸʽʺʲʼʹʻ	0x20F37E0	
+6142	method	8288		ʴʼʶʿʴʲʶʵʼʳˁ	0x20F3A90	
+6142	method	8288		ʵʲʼʾʾʲʼʽʶʵʳ	0x20F3DC0	
+6142	method	8288		ʵʷʾʴʳʲʳʹʸʹˀ	0x20F43A0	
+6142	method	8288		ʵʺʴʻˀʺˀˁʶʻʷ	0x20F4550	
+6142	method	8288		ʶʴˀʴʿʷʵʺʺʽʿ	0x20F4680	
+6142	method	8288		ʶʸʻˁʶˁʹʳʳʻʶ	0x20F4950	
+6142	method	8288		ʸʸʳʽʲʻʿʸʳʸʽ	0x20F4FA0	
+6142	method	8288		ʹʸʾʷʴʼʻʾʶʻˀ	0x20F52E0	
+6142	method	8288		ʹʻʶʾʶʴʿʲʷˀʹ	0x20F5490	
+6142	method	8288		ʹʻʿʻʲʴʷˀʿʽʿ	0x20F5540	
+6142	method	8288		ʹʼʲʷʽʲʲʲʲʾʾ	0x20F5640	
+6142	method	8288		ʹʿʺʺʽʲʿʶˀʸʷ	0x20F57F0	
+6142	method	8288		ʹˀʲʺʹʿʾʾʽʴʷ	0x20F5810	
+6142	method	8288		ʻʴʵʹʷʵˁˀʶˁʽ	0x20F5F70	
+6142	method	8288		ʻʶʴˁʺʿʳʲˁʽʹ	0x20F5FF0	
+6142	method	8288		ʾʵʵʷʻʳʻʾʶʺʲ	0x20F63B0	
+6142	method	8288		ʾʼʺʻˀʵʶʸʶʻʳ	0x20F63F0	
+6142	method	8288		ʾˀʷʶʲʳʸʽʻʵʳ	0x20F6800	
+6142	method	8288		ʿʷʲʿʺʸʷʹʹʸʹ	0x20F6A50	
+6142	method	8288		ʿʾʹʲˀʶʷʵʶʶˀ	0x20F6EB0	
+6142	method	8288		ʿˁʿʶʴʸʵʶʿʲˁ	0x20F6FF0	
+6142	method	8288		ˀʵˁʴʾʶʽʺʼʴʹ	0x20F7210	
+6142	method	8288		ˁʺʸʿʽʼʸʴʺʹˁ	0x20F7610	
+6142	method	8292		ʲʵʺʷʼʾʴʵʻʲʶ	0x20FB9A0	
+6142	method	8292		ʲˀʺʷʲʸʳʶʴʾʳ	0x20FB9A0	
+6142	method	8292		ʵʶʷˁʽʲʼˁʼʽʽ	0x20FB9A0	
+6142	method	8292		ʶʽʴʿʺʲʾʽʾˁʸ	0x20FB9A0	
+6142	method	8292		ʶʾˁʹˀʳʽʹʻʸʸ	0x20FB9A0	
+6142	method	8292		ʷʿʿʿʵʿʲʵʺʴʿ	0x20FB9A0	
+6142	method	8292		ʸʻʷʿʲʴʿʳʷʷʻ	0x20FB9A0	
+6142	method	8292		ʸʼʼʿʺʾʽʺʴʶʿ	0x20FB9A0	
+6142	method	8292		ʹʳʾˁʺʾʹˁʻʹʲ	0x20FB9A0	
+6142	method	8292		ʹʻˀʷˀʿʳʹʴʳˁ	0x20FB9A0	
+6142	method	8292		ʺʷʻʲʴʺʷʺʺʶʴ	0x20FB9A0	
+6142	method	8292		ʺʹʸʸʿʵʶʵʵʽʺ	0x20FB9A0	
+6142	method	8292		ʺʹʻʷʹʸʵˁʻʴʺ	0x20FB9A0	
+6142	method	8292		ʼʹʵˀʸʶʲʹʶʿˁ	0x20FB9A0	
+6142	method	8292		ʾʵʺʼʳʾʴˀʷʷʳ	0x20FB9A0	
+6142	method	8294		ʳʶˁʽˀʶʷʹʺʺˁ	0xFD0660	
+6142	method	8294		ʾʵʺʵʻʾʳʹʴʺʸ	0xFD0660	
+6142	method	8294		ʿʵʷʻʵʻʷʵʶʺʼ	0xFD0660	
+6142	method	8294		ˁʳʻʿʲʶʾʼˁʾʶ	0xFD0660	
+6142	method	8295		ʶˁʸʻʿʺʾˀˁʶʼ	0xFEC570	
+6142	method	8295		ʿʵʷʻʵʻʷʵʶʺʼ	0xFEC570	
+6142	method	8296		ʲʹʲʶʴʴʵʿʺʴʼ	0xFD0660	
+6142	method	8296		ʷʽʸˁʴʵʴʴʵʷʲ	0xFD0660	
+6142	method	8296		ʽʸʴʳʺʻʿʾʷʼʶ	0xFD0660	
+6142	method	8296		ʿʵʷʻʵʻʷʵʶʺʼ	0xFD0660	
+6142	method	8297		ʿʵʷʻʵʻʷʵʶʺʼ	0xFEC570	
+6142	method	8298		ʳʸʿʵˁʶˀʺʴʾʿ<object>	0x5FB640	
+6142	method	8298		ʸʶʼʵʾʺʹʲˁʴˁ<object>	0x5FB640	
+6142	method	8298		ʿʶʻʾʺʴʴʼʹʸʶ<object>	0x5FBC10	
+6142	method	8298		ˁʴʲʿʽʻʸʼˀʹʴ<object>	0x5FBC10	
+6142	method	8300		ʼˁʲʷˁʹʽʸʹʾʵ	0xFEB4C0	
+6142	method	8301		ʳʳʷʹʺʸʶʹʹʶʾ	0x20FC5F0	
+6142	method	8301		ʶʼʵʲʸʳʻʴʴʹʹ	0x20FC5F0	
+6142	method	8301		ʷʸʽʺʻʷʿʸʳʿʿ	0x20FC5F0	
+6142	method	8301		ʾʻʳʹʳʴʺʿʵʳʶ	0x20FC5F0	
+6142	method	8301		ʿʲʳʼʶʶʵʿʾʼʽ	0x20FC5F0	
+6142	method	8301		ʿʲʿʴʾʼʻʼʿʴˁ	0x20FC5F0	
+6142	method	8301		ʿʵʷʻʵʻʷʵʶʺʼ	0x20FC610	
+6142	method	8301		ˁʶʽʲʹʳʹʷʺʿʼ	0x20FC5F0	
+6142	method	8305		ʼʽʸʵʻʺʼʶʶʲʹ	0x20FE510	
+6142	method	8308		.ctor	0x210C470	
+6142	method	8308		ʸʺˀʳˁʽʸʺʲʻˁ	0x210C090	
+6142	method	8308		ʽʺʲʴʼʿˁʼʻˁʴ	0x210C1F0	
+6142	method	8316		ʳʺʾʶʷʻʷʴʴʶˀ	0x210D780	
+6142	method	8316		ʸʴʶʳʻˁʶˀʻʸˀ	0x210D7B0	
+6142	method	8316		ʻˁˁʿʶʷʴˀʵʻʺ	0x210D990	
+6142	method	8316		ʼʴʷʽˀʺʻʹʿʺʲ	0x210D9C0	
+6142	method	8316		ʾʵʺˀʺˀʶʺʵʵʶ	0x210D780	
+6142	method	8333		ʾˁʲʻʹʽʶʹʶʲʹ<object>	0x5FAD90	
+6142	method	8351		ʳʴʽʲʺʹˁʵʼʶʴ	0x210DD00	
+6142	method	8351		ʴʼʺˀˁʹʼʸʵʹʸ	0x210E2A0	
+6142	method	8351		ʷʽʷʺʴˀʽʲʷʷʳ	0x210F140	
+6142	method	8351		ʽʵʲˁʹʶʻʹʷʼʿ	0x21104F0	
+6142	method	8351		ʾʷʵʶʵˁʿʺʷʷˁ	0x2110920	
+6142	method	8354		.ctor	0x2116210	
+6142	method	8501		ʲʺʷʼʴˀʳʴʲʵʾ	0x211BAD0	
+6142	method	8501		ʵʽʼʿʹʹˀʸʻʵʺ	0x211C270	
+6142	method	8501		ʼʴˁʼʻʹʾʹʷʹʿ	0x211E4C0	
+6142	method	8538		ʳʻʵˁʺʾʹʸʻʸʿ	0x212B9C0	
+6142	method	8538		ʴʸˁʳˀʽʼʺʸʾˁ	0x20CFCE0	
+6142	method	8538		ʴˁʹˀʵʲʾʺʴʼʵ	0x212C0B0	
+6142	method	8538		ʶˁʻʷʼʷʶʻʳʳʿ	0x212C7E0	
+6142	method	8538		ʿʼʿʿʵʵʲʿʷˁʻ	0x212E130	
+6142	method	8538		ˁʶʲʾʹʻʿʾˁʾʾ	0x212E310	
+6142	method	8544		ʹʿʾʷʹʸʿʻˁʾʷ	0xFBC950	
+6142	method	8544		ʹʿʾʷʹʸʿʻˁʾʷ	0xFBC9C0	
+6142	method	8559		ʵʺˁʽʿʵʹʳˀʻʹ	0x214F6D0	
+6142	method	8569		ʺʷʻʲʴʺʷʺʺʶʴ	0x214D240	
+6142	method	8597		.ctor	0x214BF10	
+6142	method	8597		ʳʵˁʽʾʶʲʴʵʾʹ	0x214B600	
+6142	method	8597		ʵʶʲʵʹʸʺʼʶʵʷ	0x214B6C0	
+6142	method	8597		ʶʽʳʺʸʳʼʲʲʿʵ	0x214B740	
+6142	method	8597		ʺʸˁʽʹʿˁʶʵʴʽ	0x214B850	
+6142	method	8597		ʾʽʾʾʵʸʳʶʽˀʻ	0x214BB40	
+6142	method	8597		ʾʿʺʺʿʸʶʴʾʺʶ	0x214BB50	
+6142	method	8597		ʾˁʿʵʶˁʻʺˀʸʿ	0x214BB60	
+6142	method	8597		ʿʹʿʽʸʵʽˁʴˀʿ	0x214BBA0	
+6142	method	8597		ʿˀʼʷʲʸʶʾˀʷʹ	0x214BCC0	
+6142	method	8597		ˁʴˀʽʳʴʹʻʾʴʵ	0x214BE10	
+6142	method	8597		ˁʸʷʽʸʸʼʼʲʾʼ	0x214BE30	
+6142	method	8599		ʷʹʴʳʾʹʳʼˁʴʵ	0x214EFD0	
+6142	method	8599		ʹʺʽʲʻˁʺʾˁʸʾ	0x214F0A0	
+6142	method	8611		.cctor	0x214C320	
+6142	method	8615		ʶʽʽʿʻʾʴˁˀʴʹ	0x213CAF0	
+6142	method	8615		ʷʷʴʵʲˀʲˀʶʻʳ	0x213D160	
+6142	method	8615		ʷʷʴʿʿʷʸʺˀʲʾ	0x213D2D0	
+6142	method	8615		ʷʾʵʽʻʿˁʶʼʿʿ	0x213D620	
+6142	method	8615		ʸʾʺʵˁʳʵʵʺʸʹ	0x213DB70	
+6142	method	8615		ʽʾʳʶˁʶʼʼˀʷʻ	0x213E0C0	
+6142	method	8616		ˁʶʿʹʲʶʺʴʴʷʹ	0x215AFE0	
+6142	method	8626		ʲʲʴʹʳʹʸʿʴˀʺ	0x2154180	
+6142	method	8626		ʲʼʵˁˁʲʳʻˁʷʻ	0x21544E0	
+6142	method	8626		ʵʽʳʷʿʾʴʻʸʿʾ	0x2155050	
+6142	method	8626		ʸʳʺʽʸˀʲʴʸʾˁ	0x2155C00	
+6142	method	8626		ʺʴʸʶʼʺˀʶʹʶʾ	0x2156990	
+6142	method	8626		ʿʴʹʻʿʶʻʵˀʷʴ	0x21579B0	
+6142	method	8626		ʿʷʺˁʲʷʴʸʼʽʵ	0x21581E0	
+6142	method	8627		ʵʶʴʷʲʼʷʿʵʿʴ	0x2161A80	
+6142	method	8627		ʽˁʴʾʶˀʿʾʶʿʽ	0x2163170	
+6142	method	8646		ʲʿʿʺʶʻʿʻʵʺʹ	0x21647A0	
+6142	method	8661		ʲʲʲʿʴʴʴʷʲʽʳ	0x215B7C0	
+6142	method	8661		ʲʸˁʽʷʵʼʴˀʶʶ	0x215B8C0	
+6142	method	8661		ʳˁʾʵˀʿʲʲʼʸʽ	0x215BD50	
+6142	method	8661		ʴʺʺʹʴʼʻʲʶʹʴ	0x215C040	
+6142	method	8661		ʴʻʳʶʷʷʽʶʼʽʽ	0x215C320	
+6142	method	8661		ʴʼʻʹʾʲʼʹʷʸʳ	0x215C750	
+6142	method	8661		ʵʲʷʿʺʼˁˀʷʽʵ	0x215CD50	
+6142	method	8661		ʶʹʵʼʶʳʾʸʷʹʵ	0x215DBD0	
+6142	method	8661		ʷʻʻʷʲʺˀʷˁʴʹ	0x215E020	
+6142	method	8661		ʸʸʺʴʻʸʹʺʺʽˁ	0x215E280	
+6142	method	8661		ʻʳʷˀʷʾʵʻˀʷʷ<object, object>	0x5DB320	
+6142	method	8661		ʿʷˁʹʹʴʵˁʴʸʼ	0x215FE80	
+6142	method	8661		ʿʼʿʿʵʵʲʿʷˁʻ	0x215FED0	
+6142	method	8663		ʴʻʲʿʳˀʿʽʼʴʾ	0x2176020	
+6142	method	8670		ʶʲˁʿʹʵˀʺʲˁʿ<object>	0x5DDB50	
+6142	method	8670		ʷʾˀʼˀʵʹˁʻʻʷ<object>	0x5DE030	
+6142	method	901	BasePlayer	Update	0x20A1B0	
+6142	method	901	BasePlayer	ʶʷʶʲʽʼʼʾʿʵʵ	0x208870	

@@ -1,6 +1,6 @@
 # Engine update to a time, RVA 0x20F4550 (`#8288`, not virtual)
 
-Listing: `base_frame_update_20F4550.asm`, build 6142, made 2026-10-30 with `tools/ch_mcp/chdis.py`. Arguments: `rcx` engine, `xmm1` the new time (double), `r8b` a bool kept in the engine at +0x290. Dump entry: dump.cs line 530128 for `ʵʺʴʻˀʺˀˁʶʻʷ(double, bool)`, RVA `0x20F4550`.
+Listing: `base_frame_update_20F4550.asm`, build 6142, made 2026-10-30 with `tools/ch_mcp/chdis.py`. Arguments: `rcx` engine, `xmm1` the new time (double), `r8b` a bool kept in the engine at +0x290. Dump entry: dump.cs line 530128 for `FrameUpdate(double, bool)`, RVA `0x20F4550`.
 
 - Lines 1-13: save registers and first-use setup.
 - Line 14: store the bool at +0x290.

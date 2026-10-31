@@ -1,6 +1,6 @@
 # add_fill_215BD50.asm (build 6142, RVA `0x215BD50`)
 
-Made 2026-10-30 with `tools/ch_mcp/chdis.py` (71 lines). Starts at the method's first instruction (`#8661.ʳˁʾʵˀʿʲʲʼʸʽ`, instance method of the track class, parameters `long`, `long`, `bool`).
+Made 2026-10-30 with `tools/ch_mcp/chdis.py` (71 lines). Starts at the method's first instruction (`#8661.AddFill`, instance method of the track class, parameters `long`, `long`, `bool`).
 
 Plain words: take a fill object from the object pool, fill it with (tick, length, flag) and append it to the track's fill list at `track+0x88`. It makes no decision about fills.
 

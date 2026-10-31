@@ -242,7 +242,7 @@ Found: 2026-10-30, wave 2 scout R2.
 
 Rule: The game's deadline is an exact tick compare with no millisecond allowance. Hydra's early-fill reach, 85 ms on the orange side (Star Power ready after the deadline), and its 60 ms white slack are Hydra's own model of an early hit moving the Star Power ready moment.
 Label: Hydra assumes it, never checked
-Evidence: the game side has no millisecond term (`code/6142/fill_deadline_20DDB70.asm` lines 24 to 51). Hydra: `fill_refuses` refuses when the offset is below `-kHitWindowMs` and `is_e0` reads `kEarlyFillSlackMs = 60.0` (src/core/model.h lines 316, 320 and 135) (wave 1 scouts H4, H4-18 and H4-19; H5b, H5b-37; HB, HB-25). The scouts cited `kEarlyFillReachMs`; it is gone from `src/`, and the reach now reads `kHitWindowMs` (D270 item 8). Whether the game's own hit timing reaches that far is TM-27's question.
+Evidence: the game side has no millisecond term (`code/6142/fill_deadline_20DDB70.asm` lines 24 to 51). Hydra: `fill_refuses` refuses when the offset is below `-kHitWindowMs` and `is_e0` reads `kEarlyFillSlackMs = 60.0` (src/core/model.h lines 316, 320 and 135) (wave 1 scouts H4, H4-18 and H4-19; H5b, H5b-37; HB, HB-25). The reach is `kHitWindowMs` (D270 item 8). Whether the game's own hit timing reaches that far is TM-27's question.
 Game code (6142): RVA `0x20DDB70`; the fill-end grant in FL-31.
 Hydra: `fill_refuses` and `is_e0` in src/core/model.h lines 316 and 320.
 Ruling: D250: the user asked to "change the early fill search to allow orange timing up to 85ms", and on the charts that gained an E fill said "Keep them. The extra E fills in the notation are fine." D270 item 8 then made the reach the one hit window number.

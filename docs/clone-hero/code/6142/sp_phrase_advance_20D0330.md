@@ -1,6 +1,6 @@
 # sp_phrase_advance_20D0330 (build 6142, made 2026-10-30 with tools/ch_mcp/chdis.py)
 
-Function: the compiler-generated cursor step `#8265.ʴˁʽʳʾʿˁʽʼʸʺ(ref #8264)` (`dump.cs` line 528398), RVA `0x20D0330`; the first instruction is the function start. `#8264` is the phrase cursor struct built by `sp_phrase_assign_20D2440`: index at +0x00, phrase list at +0x08, current phrase start at +0x10, current phrase end at +0x18.
+Function: the compiler-generated cursor step `#8265.AdvancePhraseCursor(ref #8264)` (`dump.cs` line 528398), RVA `0x20D0330`; the first instruction is the function start. `#8264` is the phrase cursor struct built by `sp_phrase_assign_20D2440`: index at +0x00, phrase list at +0x08, current phrase start at +0x10, current phrase end at +0x18.
 
 Lines 1 to 10: prologue and the one-time setup of generic method pointers.
 
