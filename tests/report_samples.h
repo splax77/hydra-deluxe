@@ -16,10 +16,7 @@
 
 namespace report_samples {
 
-// The hit window the sample path rows are labeled at.
-inline constexpr double kSampleHitWindowMs = 85.0;
-
-// The six path rows, labeled at kSampleHitWindowMs.
+// The six path rows, labeled on the report's timing tiers.
 std::vector<hydra::app::report::ReportRow> sample_path_rows();
 
 // The library the six path rows are counted against: Song A and Song B with

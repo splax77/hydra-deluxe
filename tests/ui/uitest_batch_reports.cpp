@@ -543,16 +543,25 @@ void test_batch_done_strip(ImGuiTestContext* ctx) {
     IM_CHECK(h.app->path_report.window_open);
     ctx->Yield(2);
     IM_CHECK(window_named("###pathreport") != nullptr);
-    // Closing the window lets the report go (D103 item 28), so the strip
-    // drops its "ready" line and its Open report button; the strip stays.
+    // Closing the window only hides it and the report stays (D271 item 7), so
+    // the strip keeps its "ready" line and its Open report button, and the
+    // button opens the window again at once, with no build.
     h.app->close_path_report();
     ctx->Yield(3);
     IM_CHECK(child_window(ctx, "//Hydra/##batchdone") != nullptr);
-    IM_CHECK(visible_text(h).find("The path report is ready.") == std::string::npos);
+    IM_CHECK(visible_text(h).find("The path report is ready.") != std::string::npos);
     ctx->SetRef(child_window(ctx, "//Hydra/##batchdone"));
-    IM_CHECK(!ctx->ItemExists("Open report"));
+    IM_CHECK(ctx->ItemExists("Open report"));
+    ctx->ItemClick("Open report");
+    IM_CHECK(h.app->path_report.window_open);
+    IM_CHECK(h.app->report_job == nullptr);
+    IM_CHECK(h.app->path_report_build() == hydra::ui::ReportBuild::Ready);
+    h.app->close_path_report();
+    ctx->Yield(3);
+    ctx->SetRef(child_window(ctx, "//Hydra/##batchdone"));
     // "Open automatically" is a setting, and the strip is its only place, so
-    // it stays after the close (item 28's 2026-10-09 answer) and still works.
+    // it stays after the close (D103 item 28's 2026-10-09 answer) and still
+    // works.
     IM_CHECK(ctx->ItemExists("Open automatically"));
     ctx->ItemClick("Open automatically");
     IM_CHECK(h.app->settings.auto_open_report);

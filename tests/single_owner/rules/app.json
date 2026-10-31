@@ -218,28 +218,57 @@
       "pattern": "\\(\\s*beyond_edge_ms\\(",
       "anchor": "beyond_edge_ms(",
       "must_match": [
-        "return std::to_string(static_cast<int64_t>(beyond_edge_ms(hit_window_ms)));",
-        "\"Beyond \" + std::to_string(static_cast<int64_t>(beyond_edge_ms(w))) + \" ms\"",
-        "return format_ms_whole(beyond_edge_ms(w));"
+        "return std::to_string(static_cast<int64_t>(beyond_edge_ms()));",
+        "\"Beyond \" + std::to_string(static_cast<int64_t>(beyond_edge_ms())) + \" ms\"",
+        "return format_ms_whole(beyond_edge_ms());"
       ],
       "must_not_match": [
-        "return \"Beyond \" + report::beyond_edge_text(hit_window_ms) + \" ms\";",
-        "double beyond_edge_ms(double hit_window_ms) {",
+        "return \"Beyond \" + report::beyond_edge_text() + \" ms\";",
+        "double beyond_edge_ms() {",
         "const DATA_EDGE = DATA.beyond_edge_ms;"
       ],
       "owner_lines": [
         {
           "file": "src/app/report.cpp",
-          "line_text": "return std::to_string(static_cast<int64_t>(beyond_edge_ms(hit_window_ms)));",
+          "line_text": "std::string beyond_edge_text() { return whole_ms_text(beyond_edge_ms()); }",
           "why": "beyond_edge_text, the owner"
         }
       ],
       "note": "The Beyond edge handed straight to a cast, a rounding or a formatter is a second way of writing it. format_ms_whole is not a stand-in: the review found the two differ on a fractional edge."
     },
     {
-      "question": "Which timing_tiers entries are the open ones?",
-      "owner": "beyond_tier and none_tier in src/app/report.cpp",
+      "question": "How is the hit window written in ms?",
+      "owner": "hit_window_text in src/app/report.cpp",
       "owner_file": "src/app/report.cpp",
+      "owner_symbol": "hit_window_text",
+      "date": "2026-10-30",
+      "decision": "D278 item 4; D270 call 8",
+      "added_by": "aoa-a1-review",
+      "pattern": "\\b(to_string|format_ms\\w*|whole_ms_text)\\(\\s*(static_cast<[^>]*>\\(\\s*)?(hydra::)?kHitWindowMs\\b",
+      "anchor": "kHitWindowMs",
+      "must_match": [
+        "return std::to_string(static_cast<int64_t>(kHitWindowMs));",
+        "\"the \" + std::to_string(kHitWindowMs) + \" ms hit window\"",
+        "const std::string w = format_ms_whole(kHitWindowMs);"
+      ],
+      "must_not_match": [
+        "return \"the \" + report::hit_window_text() + \" ms hit window\";",
+        "constexpr double kHitWindowMs = 85.0;",
+        "CHECK(*t85[2].cutoff == kHitWindowMs);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/app/report.cpp",
+          "line_text": "std::string hit_window_text() { return whole_ms_text(kHitWindowMs); }",
+          "why": "hit_window_text, the owner"
+        }
+      ],
+      "note": "The hit window handed to a cast or a formatter for the words the reports print (the footer's and the Timing tooltip's \"the N ms hit window\") is a second way of writing it. D278 item 4 words both from the one constant."
+    },
+    {
+      "question": "Which timing_tiers entries are the open ones?",
+      "owner": "beyond_tier and none_tier in src/core/squeeze_rating.cpp",
+      "owner_file": "src/core/squeeze_rating.cpp",
       "owner_symbol": "beyond_tier",
       "date": "2026-10-08",
       "decision": "derive-once review of RW-T3, finding 3 (2026-10-08)",
@@ -252,18 +281,18 @@
         "const TimingTier& none = tiers.back();"
       ],
       "must_not_match": [
-        "if (tier_name == report::beyond_tier(tiers).name)",
-        "if (tier_name == report::none_tier(tiers).name) return \"No squeezes\";",
+        "if (tier_name == beyond_tier(tiers).name)",
+        "if (tier_name == none_tier(tiers).name) return \"No squeezes\";",
         "CHECK(choices[i + 1].tier == std::optional<std::string>(tiers[i].name));"
       ],
       "owner_lines": [
         {
-          "file": "src/app/report.cpp",
+          "file": "src/core/squeeze_rating.cpp",
           "line_text": "return tiers[tiers.size() - 2];",
           "why": "beyond_tier, the owner"
         },
         {
-          "file": "src/app/report.cpp",
+          "file": "src/core/squeeze_rating.cpp",
           "line_text": "const TimingTier& none_tier(const std::vector<TimingTier>& tiers) { return tiers.back(); }",
           "why": "none_tier, the owner"
         }
@@ -547,7 +576,7 @@
       "date": "2026-10-04",
       "decision": "D51",
       "added_by": "SE1",
-      "pattern": "\\b(mslimit_value|backendlimit_value|preview_volume|depth_value|depth_mode|sp_cap|hit_window_ms|volume_pct_)\\s*=\\s*(std::(clamp|max|min)\\(|[^;]*>\\s*100\\s*\\?)|\\b(sp_)?cap\\s*<\\s*1\\b|std::max\\(\\s*1\\s*,[^;]*cap\\b",
+      "pattern": "\\b(mslimit_value|backendlimit_value|preview_volume|depth_value|depth_mode|sp_cap|volume_pct_)\\s*=\\s*(std::(clamp|max|min)\\(|[^;]*>\\s*100\\s*\\?)|\\b(sp_)?cap\\s*<\\s*1\\b|std::max\\(\\s*1\\s*,[^;]*cap\\b",
       "calls_owner": "Settings::clamp\\(",
       "owner_files": [
         "src/app/config.cpp"

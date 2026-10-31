@@ -456,6 +456,69 @@ class LivePlayTest(unittest.TestCase):
         self.assertEqual(self._cap_seen_by_play_chords(cap_s=320.504), 320.504)
         self.assertEqual(self._cap_seen_by_play_chords(), play_chart.RUN_CAP_S)
 
+    def test_a_given_press_is_used_and_no_window_is_looked_up(self):
+        from unittest import mock
+
+        class _FakeEngine:
+            def __init__(self, _proc):
+                pass
+
+            def use_object(self, _ptr):
+                pass
+
+            def song_clock(self):
+                return 0.0
+
+            def score(self):
+                return 0
+
+        seen = []
+
+        def fake_play_chords(chords, clock, read_score, press, **kwargs):
+            seen.append(press)
+            return play_chart.RunResult(stop="done")
+
+        def no_window():
+            raise AssertionError("find_game_window was called on the press route")
+
+        def kit_press(lanes):
+            return {}
+
+        with mock.patch.object(play_chart, "EngineModel", _FakeEngine), \
+                mock.patch.object(play_chart, "find_game_window", no_window), \
+                mock.patch.object(play_chart, "play_chords", fake_play_chords):
+            play_chart.live_play(
+                _load(play_chart.load_dump_chords), open_proc=lambda **kw: _FakeProc(),
+                find_engine=lambda _proc: 0x1000, press=kit_press, out=io.StringIO())
+        self.assertEqual(seen, [kit_press])
+
+
+class PressReplyRowTest(unittest.TestCase):
+    """A press that returns a dict (the kit press) adds the values the press
+    log has columns for to the row; a press that returns keys adds none."""
+
+    def test_a_dict_reply_rides_into_the_row(self):
+        wall = _FakeTime()
+        game = _FakeGame()
+
+        def press(lanes):
+            game.press(lanes)
+            return {"down_frame": 40, "up_frame": 42, "down_ms": 7, "up_ms": 19,
+                    "rewrite": True, "hit": "not this"}
+
+        result = play_chart.play_chords(
+            _load(play_chart.load_dump_chords)[:1], _FakeSongClock(wall, start_s=12.0),
+            game.read_score, press, now=wall.now, sleep=wall.sleep, out=io.StringIO())
+        self.assertEqual(result.rows[0], {
+            "index": 38, "chart_ms": 13043.48, "clock_ms_at_press": result.rows[0]["clock_ms_at_press"],
+            "score_before": 0, "score_after": 100, "hit": 1,
+            "down_frame": 40, "up_frame": 42, "down_ms": 7, "up_ms": 19})
+
+    def test_a_key_press_adds_nothing(self):
+        result, _game, _wall = _run({"start_s": 12.0})
+        self.assertEqual(set(result.rows[0]), {
+            "index", "chart_ms", "clock_ms_at_press", "score_before", "score_after", "hit"})
+
 
 class LivePressTest(unittest.TestCase):
     """live_press focuses through input_driver.focus_window, then presses."""

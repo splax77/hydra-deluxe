@@ -119,7 +119,6 @@ struct ActivationsView {
 // chord rows name their notes in its words (note_label).
 ActivationsView build_activations(const Path& path, const HydraRecord& record,
                                   const SongTiming* timing,
-                                  double hit_window_ms,
                                   std::optional<double> backend_limit_ms = std::nullopt,
                                   const core::Rules& rules = core::default_rules(),
                                   std::optional<double> song_length_ms = std::nullopt,
@@ -279,8 +278,8 @@ public:
     // The selected path's squeezes, activations and score breakdown. A new
     // path or record also resets ui() for it; a display setting does not.
     const Details& details(const Path& path, const HydraRecord& record, int record_generation,
-                           const SongTiming* timing, double hit_window_ms,
-                           std::optional<double> backend_limit_ms, const core::Rules& rules,
+                           const SongTiming* timing, std::optional<double> backend_limit_ms,
+                           const core::Rules& rules,
                            std::optional<double> song_length_ms = std::nullopt,
                            bool pro_drums = true);
     // The path list as buttons, rebuilt when the record or the score range moves.
@@ -300,7 +299,6 @@ public:
 private:
     int details_generation_ = -1;
     const Path* details_path_ = nullptr;
-    double details_hit_window_ms_ = 0.0;
     std::optional<double> details_backend_limit_ms_;
     std::optional<double> details_song_length_ms_;
     bool details_pro_drums_ = true;

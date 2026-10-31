@@ -30,7 +30,7 @@ class ColumnListsTest(unittest.TestCase):
     def test_press_log_columns(self):
         self.assertEqual(overlay_logs.PRESS_LOG_COLUMNS, (
             "index", "chart_ms", "clock_ms_at_press", "score_before",
-            "score_after", "hit"))
+            "score_after", "hit", "down_frame", "up_frame", "down_ms", "up_ms"))
 
 
 if __name__ == "__main__":

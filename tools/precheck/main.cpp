@@ -24,6 +24,7 @@
 #include <string>
 #include <vector>
 
+#include "core/unknown_option.h"
 #include "core/winstr.h"
 #include "precheck/check_rows.h"
 #include "precheck/checks.h"
@@ -74,7 +75,7 @@ Options parse_options(const std::vector<std::string>& args) {
         else if (a == "--list-checks") o.list_checks = true;
         else if (a == "--tests") o.tests = true;
         else if (a == "--help" || a == "-h") o.help = true;
-        else if (!a.empty() && a[0] == '-') throw std::invalid_argument("unknown option " + a);
+        else if (!a.empty() && a[0] == '-') throw std::invalid_argument(hydra::unknown_option_line(a));
         else if (!o.range_given) {
             o.range = a;
             o.range_given = true;

@@ -318,6 +318,7 @@ add_library(hydra_core STATIC
     src/core/error_kind.h
     src/core/little_endian.h
     src/core/sqout_chord.h
+    src/core/unknown_option.h
     src/core/version.h
 )
 target_include_directories(hydra_core PUBLIC src)

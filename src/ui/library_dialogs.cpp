@@ -437,9 +437,8 @@ void render_batch_strip(AppState& app) {
         std::string line = stopping ? "Stopping..." : s.paused ? "Paused" : "Analyzing...";
         line += "  " + group_thousands(s.completed) + " of " + group_thousands(s.total);
         if (!s.current_title.empty() && !s.paused) {
-            // Not kFactSeparator: this one dot has two spaces each side, like
-            // the wide gap before the count, and stays as the strip shows it.
-            line += "  \xC2\xB7  Now: " + s.current_title;
+            line += app::kFactSeparator;
+            line += "Now: " + s.current_title;
             if (!s.current_artist.empty()) line += app::kFactSeparator + s.current_artist;
         }
         text_ellipsized(line.c_str());

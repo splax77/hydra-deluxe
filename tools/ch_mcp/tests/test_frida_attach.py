@@ -1,6 +1,7 @@
 """Tests for frida_attach: the attach runner detaches on every path, the clock
 summary is right, the Frida agents read fields by name and never by raw
-offset, and every game method they call is one menu.ts names.
+offset, and every game method an agent calls is named in that agent's own
+ALLOWED_CALLS list.
 
 No game and no Frida: a fake frida module hands back a fake session whose
 script delivers hand-written messages, and a fake wait returns at once.
@@ -50,11 +51,16 @@ def by_name_only_findings(text: str) -> list[tuple[int, str, str]]:
 
 
 # ---- the allowed-calls check ----------------------------------------------
-# Every game method an agent calls is named in menu.ts's ALLOWED_CALLS, and
-# only menu.ts calls one. CALL_SITES is how many `.invoke(` lines each agent
-# may hold.
+# Every game method an agent calls is named in that file's own ALLOWED_CALLS
+# literal. CALL_SITES is how many `.invoke(` sites each agent holds; a file
+# with no entry holds none. LISTED_AGENTS are the files allowed a list, and
+# each one's list is pinned by a test below: menu.ts's to its names, kit.ts's
+# to KIT_METHODS.
 MENU_AGENT = "menu.ts"
-CALL_SITES = {MENU_AGENT: 1}
+KIT_AGENT = "kit.ts"
+CALL_SITES = {MENU_AGENT: 1, KIT_AGENT: 37}
+LISTED_AGENTS = (MENU_AGENT, KIT_AGENT)
+KIT_METHODS = os.path.join(_REPO_ROOT, "tools", "ch_mcp", "kit_methods.json")
 # A method looked up by name, with an optional type argument; group 2 is the
 # name when it is a string literal.
 _METHOD_LOOKUP = re.compile(r"\.(?:method|tryMethod)\s*(?:<[^>]*>)?\s*\(\s*(?:([\"'])(\w+)\1)?")
@@ -63,22 +69,26 @@ _NATIVE_FUNCTION = re.compile(r"new\s+NativeFunction\b")
 _ALLOWED_LIST = re.compile(r"ALLOWED_CALLS\s*=\s*\[([^\]]*)\]")
 
 
-def allowed_calls(menu_text: str) -> list[str]:
-    """The names in menu.ts's ALLOWED_CALLS literal."""
-    match = _ALLOWED_LIST.search(menu_text)
+def allowed_calls(agent_text: str) -> list[str]:
+    """The names in one agent's ALLOWED_CALLS literal, or [] for none."""
+    match = _ALLOWED_LIST.search(agent_text)
     if match is None:
         return []
     return re.findall(r"[\"'](\w+)[\"']", match.group(1))
 
 
 def call_findings(texts: dict[str, str]) -> list[str]:
-    """Every call in `texts` (agent file name -> its text) that the allowed
-    list does not cover: a method looked up by a name outside ALLOWED_CALLS
-    or by a name that is not a literal, a NativeFunction, or more `.invoke(`
-    lines in a file than CALL_SITES gives it."""
-    allowed = set(allowed_calls(texts.get(MENU_AGENT, "")))
+    """Every call in `texts` (agent file name -> its text) that the file's
+    own allowed list does not cover: a method looked up by a name outside
+    that file's ALLOWED_CALLS or by a name that is not a literal, a
+    NativeFunction, or a count of `.invoke(` sites other than CALL_SITES
+    gives the file."""
     found = []
     for name, text in sorted(texts.items()):
+        allowed = set(allowed_calls(text))
+        if _ALLOWED_LIST.search(text) and name not in LISTED_AGENTS:
+            found.append(f"{name}: holds an ALLOWED_CALLS list, and only "
+                         f"{', '.join(LISTED_AGENTS)} may")
         invokes = 0
         for n, line in enumerate(text.splitlines(), start=1):
             for m in _METHOD_LOOKUP.finditer(line):
@@ -86,7 +96,8 @@ def call_findings(texts: dict[str, str]) -> list[str]:
                     found.append(f"{name}:{n}: a method looked up by a name "
                                  f"that is not a literal: {line.strip()}")
                 elif m.group(2) not in allowed:
-                    found.append(f"{name}:{n}: {m.group(2)} is not in ALLOWED_CALLS")
+                    found.append(f"{name}:{n}: {m.group(2)} is not in "
+                                 f"{name}'s ALLOWED_CALLS")
             if _NATIVE_FUNCTION.search(line):
                 found.append(f"{name}:{n}: calls a game function: {line.strip()}")
             invokes += len(_INVOKE.findall(line))
@@ -94,6 +105,31 @@ def call_findings(texts: dict[str, str]) -> list[str]:
             found.append(f"{name}: {invokes} .invoke( sites, expected "
                          f"{CALL_SITES.get(name, 0)}")
     return found
+
+
+def kit_methods_findings(kit_text: str, data: dict) -> list[str]:
+    """Every difference between kit.ts's ALLOWED_CALLS and the method names
+    in kit_methods.json (`data`), each way, plus any name either one lists
+    twice."""
+    listed = allowed_calls(kit_text)
+    named = [m["name"] for m in data["methods"]]
+    found = []
+    for name in sorted(set(listed) - set(named)):
+        found.append(f"{name} is in {KIT_AGENT}'s ALLOWED_CALLS but not in "
+                     "kit_methods.json")
+    for name in sorted(set(named) - set(listed)):
+        found.append(f"{name} is in kit_methods.json but not in "
+                     f"{KIT_AGENT}'s ALLOWED_CALLS")
+    for what, names in ((f"{KIT_AGENT}'s ALLOWED_CALLS", listed),
+                        ("kit_methods.json", named)):
+        for name in sorted({n for n in names if names.count(n) > 1}):
+            found.append(f"{name} is listed twice in {what}")
+    return found
+
+
+def load_kit_methods() -> dict:
+    with open(KIT_METHODS, encoding="utf-8") as fh:
+        return json.load(fh)
 
 
 def agent_sources() -> list[str]:
@@ -488,6 +524,34 @@ class LiveAgentTest(Workspace):
         # Both still reach the log.
         self.assertEqual(self.written()[-2:], [sent(stale), sent(fresh)])
 
+    def test_request_posts_any_message_with_an_id(self):
+        late = {**STATE, "id": 1}
+        reply = {"switch_was": True, "id": 2}
+        agent, session = self.started([STATE, [sent(late), sent(reply)]])
+        self.assertEqual(agent.request({"type": "setup", "tag": "hydra-kit"}, 10.0),
+                         {"switch_was": True})
+        self.assertEqual(session.script.posted[-1],
+                         {"type": "setup", "tag": "hydra-kit", "id": 2})
+        # The late reply to the first read is logged and dropped.
+        self.assertEqual(self.written()[-2:], [sent(late), sent(reply)])
+
+    def test_a_request_with_no_reply_names_its_type_and_the_cap(self):
+        agent, _ = self.started([STATE, None])
+        with self.assertRaises(FA.ReadFailed) as caught:
+            agent.request({"type": "press"}, 1.0)
+        self.assertEqual(str(caught.exception),
+                         "no reply to the press request within the cap of 1 s")
+        self.assertEqual(caught.exception.reason, FA.END_CAP)
+
+    def test_a_request_that_brings_its_own_id_or_no_type_is_refused(self):
+        agent, session = self.started([STATE])
+        for bad in ({"type": "setup", "id": 7}, {"tag": "hydra-kit"},
+                    {"type": 3}, ["setup"]):
+            with self.subTest(message=bad):
+                with self.assertRaises(ValueError):
+                    agent.request(bad, 1.0)
+        self.assertEqual(len(session.script.posted), 1)
+
     def test_read_after_the_game_closes_names_the_reason(self):
         agent, session = self.started([STATE, STATE])
         session.handlers["detached"]("process-terminated", None)
@@ -726,6 +790,7 @@ class ByNameOnlyTest(unittest.TestCase):
         self.assertIn(os.path.join(AGENT_DIR, "clock.ts"), sources)
         self.assertIn(os.path.join(AGENT_DIR, "state.ts"), sources)
         self.assertIn(os.path.join(AGENT_DIR, MENU_AGENT), sources)
+        self.assertIn(os.path.join(AGENT_DIR, KIT_AGENT), sources)
         for path in sources:
             with self.subTest(agent=os.path.basename(path)):
                 with open(path, encoding="utf-8") as fh:
@@ -736,19 +801,78 @@ class AllowedCallsTest(unittest.TestCase):
     MENU_TEXT = ('export const ALLOWED_CALLS = ["get_activeInHierarchy"];\n'
                  'return o.method<boolean>("get_activeInHierarchy").invoke();\n')
 
-    def test_agent_calls_only_named_methods(self):
+    @staticmethod
+    def real_texts():
         texts = {}
         for path in agent_sources():
             with open(path, encoding="utf-8") as fh:
                 texts[os.path.basename(path)] = fh.read()
+        return texts
+
+    def test_agent_calls_only_named_methods(self):
+        texts = self.real_texts()
         self.assertEqual(allowed_calls(texts[MENU_AGENT]), ["get_activeInHierarchy"])
         self.assertEqual(call_findings(texts), [])
+
+    def test_only_the_listed_agents_hold_a_list(self):
+        held = sorted(name for name, text in self.real_texts().items()
+                      if _ALLOWED_LIST.search(text))
+        self.assertEqual(held, sorted(LISTED_AGENTS))
+        texts = {"other.ts": 'export const ALLOWED_CALLS = ["SetActive"];\n'}
+        self.assertEqual(call_findings(texts), [
+            f"other.ts: holds an ALLOWED_CALLS list, and only "
+            f"{MENU_AGENT}, {KIT_AGENT} may"])
 
     def test_a_method_outside_the_list_fails(self):
         texts = {MENU_AGENT: self.MENU_TEXT,
                  "other.ts": 'go.method("SetActive");\n'}
         self.assertEqual(call_findings(texts),
-                         ["other.ts:1: SetActive is not in ALLOWED_CALLS"])
+                         ["other.ts:1: SetActive is not in other.ts's ALLOWED_CALLS"])
+
+    def test_a_name_on_another_files_list_fails(self):
+        # Each file's list covers that file only.
+        texts = {MENU_AGENT: self.MENU_TEXT,
+                 "other.ts": 'go.method("get_activeInHierarchy");\n'}
+        self.assertEqual(call_findings(texts), [
+            "other.ts:1: get_activeInHierarchy is not in other.ts's ALLOWED_CALLS"])
+
+    def test_kit_calls_match_the_data_file(self):
+        data = load_kit_methods()
+        kit = self.real_texts()[KIT_AGENT]
+        self.assertEqual(kit_methods_findings(kit, data), [])
+        for entry in data["methods"]:
+            with self.subTest(method=entry["name"]):
+                self.assertIsInstance(entry["dump_line"], int)
+                self.assertTrue(entry["image"])
+                self.assertTrue(entry["class"])
+                self.assertIn(f" {entry['name']}(", entry["signature"])
+
+    def test_a_kit_list_that_lacks_a_name_it_calls_fails(self):
+        kit = ('export const ALLOWED_CALLS = ["get_id"];\n'
+               'p.method<number>("get_id");\np.method("get_name");\n')
+        findings = call_findings({KIT_AGENT: kit})
+        self.assertIn(f"{KIT_AGENT}:3: get_name is not in {KIT_AGENT}'s "
+                      "ALLOWED_CALLS", findings)
+
+    def test_a_kit_list_name_the_data_file_lacks_fails(self):
+        data = {"methods": [{"name": "get_id"}]}
+        kit = 'export const ALLOWED_CALLS = ["get_id", "SetActive"];\n'
+        self.assertEqual(kit_methods_findings(kit, data), [
+            f"SetActive is in {KIT_AGENT}'s ALLOWED_CALLS but not in "
+            "kit_methods.json"])
+
+    def test_a_data_file_name_the_kit_list_lacks_fails(self):
+        data = {"methods": [{"name": "get_id"}, {"name": "get_name"}]}
+        kit = 'export const ALLOWED_CALLS = ["get_id"];\n'
+        self.assertEqual(kit_methods_findings(kit, data), [
+            f"get_name is in kit_methods.json but not in {KIT_AGENT}'s "
+            "ALLOWED_CALLS"])
+
+    def test_one_more_invoke_in_kit_ts_fails(self):
+        texts = {KIT_AGENT: self.real_texts()[KIT_AGENT] + "m.invoke();\n"}
+        self.assertEqual(call_findings(texts), [
+            f"{KIT_AGENT}: {CALL_SITES[KIT_AGENT] + 1} .invoke( sites, "
+            f"expected {CALL_SITES[KIT_AGENT]}"])
 
     def test_an_invoke_in_a_second_file_fails(self):
         texts = {MENU_AGENT: self.MENU_TEXT,
@@ -811,8 +935,8 @@ class BuildScriptsTest(unittest.TestCase):
                   encoding="utf-8") as fh:
             scripts = json.load(fh)["scripts"]
         self.assertEqual(sorted(scripts),
-                         ["build:clock", "build:menuhooks", "build:state",
-                          "build:trace"])
+                         ["build:clock", "build:kit", "build:menuhooks",
+                          "build:state", "build:trace"])
         for name, command in scripts.items():
             with self.subTest(script=name):
                 words = command.split()

@@ -411,28 +411,26 @@
       "date": "2026-10-15",
       "decision": "D250",
       "added_by": "EF85",
-      "pattern": "\\bkEarlyFillReachMs\\b",
-      "anchor": "kEarlyFillReachMs",
+      "pattern": "[-+]\\s*(hydra::)?kHitWindowMs\\b",
+      "anchor": "kHitWindowMs",
       "must_match": [
-        "if (e_offset < -kEarlyFillReachMs) return false;",
-        "return d - hydra::kEarlyFillReachMs;"
+        "if (e_offset < -kHitWindowMs) return false;",
+        "return d - hydra::kHitWindowMs;",
+        "return ready_ms <= deadline_ms + kHitWindowMs;"
       ],
       "must_not_match": [
-        "if (fill_refuses(e_offset)) return false;"
+        "if (fill_refuses(e_offset)) return false;",
+        "return budget_for_window(transfer_r, kHitWindowMs);",
+        "const double w = kHitWindowMs;"
       ],
       "owner_lines": [
         {
           "file": "src/core/model.h",
-          "line_text": "constexpr double kEarlyFillReachMs = 85.0;",
-          "why": "the constant itself"
-        },
-        {
-          "file": "src/core/model.h",
-          "line_text": "inline bool fill_refuses(double e_offset) { return e_offset < -kEarlyFillReachMs; }",
+          "line_text": "inline bool fill_refuses(double e_offset) { return e_offset < -kHitWindowMs; }",
           "why": "fill_refuses, the owner of the refusal"
         }
       ],
-      "note": "Split from the one early-fill window row (D35; step-1 derive-once review finding 12, 2026-10-04) when the two sides got their own numbers. Decided by: D250"
+      "note": "Split from the one early-fill window row (D35; step-1 derive-once review finding 12, 2026-10-04) when the two sides got their own numbers. The reach is the hit window, kHitWindowMs, which the squeeze budgets and the report also read, so the row flags the window added to or taken from a deadline or an offset, not every read of it. Decided by: D250; D270 call 8"
     },
     {
       "question": "Who reads the early-fill slack (how little time to spare still marks an activation E-critical)?",
@@ -784,7 +782,7 @@
       "pattern": "\\bsqins\\[\\s*[a-z_]\\w*(\\+\\+)?\\s*\\]",
       "anchor": "sqins[",
       "must_match": [
-        "rate_note(sq.offset_ms, sq.needs_no_timing(), out.scales->sqins[j++], hit_window_ms);",
+        "rate_note(sq.offset_ms, sq.needs_no_timing(), out.scales->sqins[j++]);",
         "if (j >= scales->sqins.size() || differs(scales->sqins[j], *sq.transfer)) {"
       ],
       "must_not_match": [
@@ -929,6 +927,35 @@
       "note": "A timing printed as a whole number of ms: printf's %.0f with or without a space before \"ms\", or a cast, round, lround or llround with \" ms\" after it. Decided by: D48, Q2 (audit findings 4 and 18; phase 3 task O1; M_D review round 2, library finding 6)"
     },
     {
+      "question": "What does a tool print for an option it does not know?",
+      "owner": "unknown_option_line in src/core/unknown_option.h",
+      "owner_file": "src/core/unknown_option.h",
+      "owner_symbol": "unknown_option_line",
+      "date": "2026-10-30",
+      "decision": "D271 item 6, D276 item 5",
+      "added_by": "T6 (aoa-b6)",
+      "pattern": "\"[^\"]*[Uu]nknown option",
+      "calls_owner": "\\bunknown_option_line\\(",
+      "must_match": [
+        "std::fprintf(stderr, \"Unknown option: %s\\n\", arg.c_str());",
+        "else { std::fprintf(stderr, \"unknown option %s\\n\", k.c_str()); usage(); return 2; }",
+        "else if (!a.empty() && a[0] == '-') throw std::invalid_argument(\"unknown option \" + a);"
+      ],
+      "must_not_match": [
+        "std::fprintf(stderr, \"%s\\n\", hydra::unknown_option_line(arg).c_str());",
+        "else if (!a.empty() && a[0] == '-') throw std::invalid_argument(hydra::unknown_option_line(a));",
+        "throw std::runtime_error(\"unknown chart mode \" + mode);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/core/unknown_option.h",
+          "line_text": "return \"Unknown option: \" + option;",
+          "why": "unknown_option_line, the owner"
+        }
+      ],
+      "note": "Every command-line tool in src and tools prints the same line for an option it does not know, from the one helper. The words typed in a string anywhere else are a second copy. Decided by: D271 item 6 (one line, one helper) and D276 item 5 (the wording), plan docs/superpowers/plans/2026-10-30-d271-wording-and-windows.md, T6"
+    },
+    {
       "question": "Which tick does a screen show at a time?",
       "owner": "SongTiming::display_tick_at_ms in src/core/timing.cpp",
       "owner_file": "src/core/timing.cpp",
@@ -998,24 +1025,28 @@
       "date": "2026-10-04",
       "decision": "phase 3 task C4c",
       "added_by": "M_C fix prod",
-      "pattern": "\\b2(\\.0)?\\s*\\*\\s*(w|hit_window\\w*|kDefaultHitWindowMs)\\b|\\b(w|hit_window\\w*|kDefaultHitWindowMs)\\s*\\*\\s*2(\\.0)?\\b|squeeze_budget_ms\\(\\s*(1(\\.0)?|kIdentityScale)\\s*,|\\*\\s*2\\.0\\s*/\\s*\\(1\\.0\\s*\\+",
+      "pattern": "\\b2(\\.0)?\\s*\\*\\s*(w|hit_window\\w*|kHitWindowMs)\\b|\\b(w|hit_window\\w*|kHitWindowMs)\\s*\\*\\s*2(\\.0)?\\b|squeeze_budget_ms\\(\\s*(1(\\.0)?|kIdentityScale)\\s*\\)|budget_for_window\\(\\s*(1(\\.0)?|kIdentityScale)\\s*,\\s*(hydra::)?kHitWindowMs\\b|\\*\\s*2\\.0\\s*/\\s*\\(1\\.0\\s*\\+",
       "must_match": [
         "{\"Insane+\", \"t4\", 2 * w},",
-        "{\"Insane+\", \"t4\", squeeze_budget_ms(1.0, w)},",
-        "const double budget = hit_window_ms * 2;",
+        "{\"Insane+\", \"t4\", squeeze_budget_ms(1.0)},",
+        "{\"Insane+\", \"t4\", budget_for_window(kIdentityScale, kHitWindowMs)},",
+        "const double budget = hit_window * 2;",
+        "const double budget = kHitWindowMs * 2;",
         "return std::abs(offset_ms) * 2.0 / (1.0 + transfer_r);"
       ],
       "must_not_match": [
-        "{\"Insane+\", \"t4\", nominal_budget_ms(w)},"
+        "{\"Insane+\", \"t4\", nominal_budget_ms()},",
+        "return budget_for_window(transfer_r, kHitWindowMs);",
+        "return std::abs(offset_ms) * budget_for_window(kIdentityScale, kUnitWindow) /"
       ],
       "owner_lines": [
         {
           "file": "src/core/squeeze_rating.cpp",
-          "line_text": "return squeeze_budget_ms(kIdentityScale, hit_window_ms);",
+          "line_text": "return squeeze_budget_ms(kIdentityScale);",
           "why": "nominal_budget_ms, the owner"
         }
       ],
-      "note": "The two-hit budget written out as twice the window (either way round), as squeeze_budget_ms at a hand-typed identity scale, or the backend rescale written out as 2 / (1 + r), instead of nominal_budget_ms and squeeze_budget_ms. Decided by: phase 3 task C4c; derive-once review of M_C (6d86f1c), finding 3, and round 2, finding 2 (2026-10-04)"
+      "note": "The two-hit budget written out as twice the window (either way round), as squeeze_budget_ms or budget_for_window at a hand-typed identity scale, or the backend rescale written out as 2 / (1 + r), instead of nominal_budget_ms and squeeze_budget_ms. Decided by: phase 3 task C4c; derive-once review of M_C (6d86f1c), finding 3, and round 2, finding 2 (2026-10-04); D270 call 8 (one window, kHitWindowMs)"
     },
     {
       "question": "How does a ByteSource read its bytes?",
@@ -1845,29 +1876,29 @@
       "note": "---- report pages (phase 7 task RP) ---- Clone Hero's SP cap written as text, where the leaderboard page names it. Decided by: audit finding 170, D51's code-only calls (phase 7 task RP)"
     },
     {
-      "question": "What is the hit window's default?",
-      "owner": "kDefaultHitWindowMs in src/core/model.h",
+      "question": "What is the hit window?",
+      "owner": "kHitWindowMs in src/core/model.h",
       "owner_file": "src/core/model.h",
-      "owner_symbol": "kDefaultHitWindowMs",
+      "owner_symbol": "kHitWindowMs",
       "date": "2026-10-05",
-      "decision": "D51",
+      "decision": "D51; D270 call 8",
       "added_by": "LB1",
-      "pattern": "static_cast<int>\\(\\s*(hydra::)?kDefaultHitWindowMs\\s*\\)",
-      "anchor": "kDefaultHitWindowMs",
+      "pattern": "static_cast<int>\\(\\s*(hydra::)?kHitWindowMs\\s*\\)",
+      "anchor": "kHitWindowMs",
       "must_match": [
-        "int hit_window_ms = static_cast<int>(kDefaultHitWindowMs);",
-        "int hit_window_ms = static_cast<int>(kDefaultHitWindowMs));",
-        "CHECK(s.hit_window_ms == static_cast<int>(hydra::kDefaultHitWindowMs));"
+        "int window = static_cast<int>(kHitWindowMs);",
+        "const int w = static_cast<int>(kHitWindowMs));",
+        "CHECK(w == static_cast<int>(hydra::kHitWindowMs));"
       ],
       "must_not_match": [
-        "double hit_window_ms = kDefaultHitWindowMs;",
-        "bool open_when_done, double hit_window_ms = kDefaultHitWindowMs);"
+        "double window = kHitWindowMs;",
+        "std::string hit_window_text() { return whole_ms_text(kHitWindowMs); }"
       ],
       "scope": [
         "src",
         "tests"
       ],
-      "note": "The hit window's default cut to a whole number. The setting, the report job and the report keep its decimal (D51 call 15). Decided by: audit finding 140; D51 call 15 (phase 7 task LB1)"
+      "note": "The hit window cut to a whole number by hand. The reports print it through report::hit_window_text, and everything else reads kHitWindowMs as it is. Decided by: audit finding 140; D51 call 15 (phase 7 task LB1); D270 call 8 (one fixed window)"
     },
     {
       "question": "What does squeezing out a row cost?",

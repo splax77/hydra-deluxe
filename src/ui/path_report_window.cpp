@@ -90,7 +90,7 @@ void rebuild(PathWindow& w, const std::shared_ptr<const GeneratedReport>& result
     texts.reserve(result->paths.size());
     for (const ReportRow& r : result->paths) texts.push_back(view_rules::path_search_text(r));
     w.view = std::make_unique<TableView<ReportRow>>(
-        result->paths, std::move(texts), view_rules::path_columns(result->hit_window_ms));
+        result->paths, std::move(texts), view_rules::path_columns());
     w.widths = report_frame::measure(*w.view);
     // A kept sort naming a column these rows lack falls back to the first.
     const auto has_column = [&w](const app::report_view::SortSpec& s) {
@@ -100,9 +100,10 @@ void rebuild(PathWindow& w, const std::shared_ptr<const GeneratedReport>& result
     if (w.sort.empty() || !std::all_of(w.sort.begin(), w.sort.end(), has_column))
         w.sort = {view_rules::path_first_sort()};
     w.view->set_sort(w.sort);
-    // The timing kept is an index into the choices. New choices (the hit
-    // window changed) make it mean another tier, so it starts over.
-    w.choices = view_rules::timing_choices(result->hit_window_ms);
+    // The timing kept is an index into the choices. Choices whose labels
+    // differ from the kept ones would make it mean another tier, so it
+    // starts over.
+    w.choices = view_rules::timing_choices();
     std::vector<std::string> labels;
     for (const view_rules::TimingChoice& c : w.choices) labels.push_back(c.label);
     if (labels != w.labels) w.timing = app::report_view::kEveryRowChoice;
@@ -154,8 +155,7 @@ void draw_coverage(PathWindow& w, const GeneratedReport& r) {
 void draw_body(PathWindow& w, const report_frame::Frame& frame, const PathReportInput& input) {
     TableView<ReportRow>& view = *w.view;
     if (w.tiles_dirty) {
-        w.tiles = app::report::path_tiles(view.rows(), view.visible(),
-                                          input.result->hit_window_ms, input.result->library);
+        w.tiles = app::report::path_tiles(view.rows(), view.visible(), input.result->library);
         w.tiles_dirty = false;
     }
     report_frame::tiles(w.tiles);
@@ -234,14 +234,6 @@ void draw_path_report_window(bool* open, const PathReportInput& input) {
         draw_coverage(w, *result);
     }
     report_frame::end(open, frame, w.memory);
-    // Closed this frame: the window's copy of the rows goes with AppState's
-    // (D103 item 28). The search box, dropdown, Optimal paths only and sort stay
-    // for the rows the next opening builds.
-    if (!*open) {
-        drop_rows(w);
-        w.built_from.reset();
-        w.list_open = false;
-    }
 }
 
 PathReportInput path_report_input(AppState& app) {
@@ -270,7 +262,8 @@ PathReportInput path_report_input(AppState& app) {
     in.callbacks.cancel = [&app] { app.cancel_path_report(); };
     in.callbacks.analyze = [&app] { app.start_path_report_batch(); };
     // The window clears window_open itself through its `open` flag; the
-    // close then goes through its one owner.
+    // close then goes through its one owner, which ends a question the
+    // window was asking.
     in.callbacks.close = [&app] { app.close_path_report(); };
     return in;
 }

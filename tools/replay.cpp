@@ -31,6 +31,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cerrno>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -38,6 +39,7 @@
 #include <exception>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -51,6 +53,7 @@
 #include "core/replay.h"
 #include "core/squeeze_rating.h"
 #include "core/strutil.h"
+#include "core/unknown_option.h"
 #include "core/winstr.h"
 #include "replay_json.h"
 #include "corpus_util.h"
@@ -162,17 +165,21 @@ app::Settings settings_from(const Args& a) {
     if (a.difficulty) s.view_difficulty = *a.difficulty;
 
     if (a.cap) {
-        const int cap = std::atoi(a.cap->c_str());
-        // The INI reads a cap below the floor as Clone Hero's cap; a cap typed
-        // on the command line below it is a mistake, so it is refused. A cap
-        // below the floor clamps to the floor, which the message names.
-        const int in_range = Settings::clamp(&Settings::sp_cap, cap);
-        if (in_range != cap)
+        // A whole number out of range lands on its nearest edge in the clamp
+        // below, as the Settings box does (D270 call 1). Text that is not a
+        // whole number is refused. What text is a number: parse_finite_number,
+        // which hydra_rules.ini's whole numbers read through too.
+        const std::optional<double> cap = parse_finite_number(*a.cap);
+        if (!cap || *cap != std::trunc(*cap) || *cap < std::numeric_limits<int>::min() ||
+            *cap > std::numeric_limits<int>::max()) {
+            // The range's bottom, from the clamp that owns it.
+            const int lowest = Settings::clamp(&Settings::sp_cap, std::numeric_limits<int>::min());
             throw std::runtime_error("--cap takes a whole number of bars, " +
-                                     std::to_string(in_range) + " or more (" +
+                                     std::to_string(lowest) + " or more (" +
                                      std::to_string(kCloneHeroSpCap) +
                                      " is Clone Hero's rule), not \"" + *a.cap + "\"");
-        s.sp_cap = cap;
+        }
+        s.sp_cap = static_cast<int>(*cap);
     }
 
     if (a.ms) {
@@ -765,7 +772,7 @@ int main() {
             else if (k == "--difficulty") a.difficulty = next();
             else if (k == "--pretty") a.pretty = true;
             else if (k == app::kLegacyFillsFlag) a.legacy_fills = true;
-            else { std::fprintf(stderr, "unknown option %s\n", k.c_str()); usage(); return 2; }
+            else { std::fprintf(stderr, "%s\n", hydra::unknown_option_line(k).c_str()); usage(); return 2; }
         } catch (const std::exception& e) {
             std::fprintf(stderr, "%s\n", e.what());
             return 2;
@@ -774,8 +781,8 @@ int main() {
 
     if (const int code = app::load_tool_rules(a.rules_path, a.rules)) return code;
 
-    // A bad setting flag (a cap below the floor) is a bad argument: exit 2,
-    // like the others, before any command runs.
+    // A bad setting flag (a --cap that is not a whole number) is a bad argument:
+    // exit 2, like the others, before any command runs.
     app::Settings s;
     try {
         s = settings_from(a);

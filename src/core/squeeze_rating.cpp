@@ -54,29 +54,38 @@ std::optional<ActTransferScales> stored_transfer_scales(const Activation& act) {
     return s;
 }
 
+namespace {
+
+// The combined squeeze budget for a given window: the one formula behind
+// squeeze_budget_ms, and the unit-window ratio in effective_backend_ms.
+double budget_for_window(double transfer_r, double window_ms) {
+    return window_ms * (1.0 + transfer_r);
+}
+
+}  // namespace
+
 double effective_backend_ms(double offset_ms, double transfer_r) {
     // The gap rescaled by the identity budget over the budget at this scale.
     // The window cancels in that ratio, so a unit window is used: it keeps
     // the arithmetic bit-identical to the older written-out form.
     constexpr double kUnitWindow = 1.0;
-    return std::abs(offset_ms) * nominal_budget_ms(kUnitWindow) /
-           squeeze_budget_ms(transfer_r, kUnitWindow);
+    return std::abs(offset_ms) * budget_for_window(kIdentityScale, kUnitWindow) /
+           budget_for_window(transfer_r, kUnitWindow);
 }
 
-double squeeze_budget_ms(double transfer_r, double hit_window_ms) {
-    return hit_window_ms * (1.0 + transfer_r);
+double squeeze_budget_ms(double transfer_r) {
+    return budget_for_window(transfer_r, kHitWindowMs);
 }
 
-double nominal_budget_ms(double hit_window_ms) {
-    return squeeze_budget_ms(kIdentityScale, hit_window_ms);
+double nominal_budget_ms() {
+    return squeeze_budget_ms(kIdentityScale);
 }
 
-NoteRating rate_note(double offset_ms, bool inside, const TransferScale& at_end,
-                     double hit_window_ms) {
+NoteRating rate_note(double offset_ms, bool inside, const TransferScale& at_end) {
     NoteRating n;
     n.early = inside;
     n.scale = inside ? at_end.early : at_end.late;
-    n.budget_ms = squeeze_budget_ms(n.scale, hit_window_ms);
+    n.budget_ms = squeeze_budget_ms(n.scale);
     if (is_scaled(n.scale)) n.effective_ms = effective_backend_ms(offset_ms, n.scale);
     return n;
 }
@@ -96,9 +105,7 @@ bool is_frontend_decided(const BackendRating& row, double backend_leeway_ms) {
             !core::counted_without_squeeze(row.row.offset(), backend_leeway_ms));
 }
 
-ActivationRating rate_activation(const Activation& act,
-                                 double hit_window_ms,
-                                 double backend_leeway_ms) {
+ActivationRating rate_activation(const Activation& act, double backend_leeway_ms) {
     ActivationRating out;
 
     // The scales the search stamped on the record. A stored fact is read,
@@ -123,7 +130,7 @@ ActivationRating rate_activation(const Activation& act,
             const bool inside = row.squeezed_out
                                     ? core::paid_by_sp_walk(o)
                                     : core::counted_without_squeeze(o, backend_leeway_ms);
-            row.note = rate_note(o, inside, out.scales->post, hit_window_ms);
+            row.note = rate_note(o, inside, out.scales->post);
             mark_read(out.post_read, row.note);
             out.scale_governs |= row.note.effective_ms.has_value();
         }
@@ -153,7 +160,7 @@ ActivationRating rate_activation(const Activation& act,
         // built it: one entry per SqIn, in list order.
         const TransferScale& at_end =
             out.scales->sqins[sqin_rank(act.sqinouts.begin(), it, is_sqin_squeeze)];
-        const NoteRating n = rate_note(sq.offset_ms, sq.needs_no_timing(), at_end, hit_window_ms);
+        const NoteRating n = rate_note(sq.offset_ms, sq.needs_no_timing(), at_end);
         mark_read(out.sqins_read.emplace_back(), n);
         out.scale_governs |= n.effective_ms.has_value();
         out.note_effective_ms.push_back(n.effective_ms);
@@ -172,22 +179,42 @@ ActivationRating rate_activation(const Activation& act,
     return out;
 }
 
-std::vector<TimingTier> timing_tiers(double hit_window_ms) {
-    const double w = hit_window_ms;
+std::vector<TimingTier> timing_tiers() {
+    const double w = kHitWindowMs;
     // Normal's edge is the difficult floor past_difficult_floor tests, and
     // it is inclusive: a timing exactly on it (2.0 ms) is Normal (D48 Q3).
     return {
         {"Normal", "t0", kDifficultMs}, {"Hard", "t1", w / 2},
         {"Extreme", "t2", w},           {"Insane", "t3", 3 * w / 2},
-        {"Insane+", "t4", nominal_budget_ms(w)},
+        {"Insane+", "t4", nominal_budget_ms()},
         {"Beyond", "t5", std::nullopt},
         {"None", "tn", std::nullopt},
     };
 }
 
-double beyond_edge_ms(double hit_window_ms) {
+const TimingTier& beyond_tier(const std::vector<TimingTier>& tiers) {
+    return tiers[tiers.size() - 2];
+}
+
+const TimingTier& none_tier(const std::vector<TimingTier>& tiers) { return tiers.back(); }
+
+std::pair<std::string, std::string> tier_for(const std::optional<double>& ms,
+                                             const std::vector<TimingTier>& tiers) {
+    const TimingTier& none = none_tier(tiers);
+    const TimingTier& beyond = beyond_tier(tiers);
+    if (!ms) return {none.name, none.tok};
+    // Each edge belongs to the band below it (D48 Q3). The table's first row
+    // is Normal up to and including the difficult floor, so a timing on the
+    // floor reads Normal (past_difficult_floor's rule), and a timing exactly
+    // on the two-hit budget is Insane+, not Beyond.
+    for (const TimingTier& t : tiers)
+        if (t.cutoff && *ms <= *t.cutoff) return {t.name, t.tok};
+    return {beyond.name, beyond.tok};
+}
+
+double beyond_edge_ms() {
     double edge = 0.0;
-    for (const TimingTier& t : timing_tiers(hit_window_ms))
+    for (const TimingTier& t : timing_tiers())
         if (t.cutoff) edge = std::max(edge, *t.cutoff);
     return edge;
 }

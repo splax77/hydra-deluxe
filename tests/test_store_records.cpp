@@ -602,7 +602,7 @@ TEST_CASE("store: every accepted results stamp reads Ready, others Stale") {
     // earlier 2.1.0 builds' "2.1.0" can miss the all-0 path (D85),
     // "2.1.0+allzero" predates the 2x kick merge (D105), "2.4.0" predates
     // the measure-line fills and Star Power count (D115), "2.8.0" predates
-    // kEarlyFillReachMs (D250), and "2.8.0+efill85" predates 1.0 fills on
+    // kHitWindowMs (D250), and "2.8.0+efill85" predates 1.0 fills on
     // the shared grid, so they read Stale,
     // through lookup and the skip list it backs (ready_song_ids).
     CHECK(kResultsStamp.is_current("2.12.1+ch10grid"));

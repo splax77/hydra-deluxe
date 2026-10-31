@@ -155,16 +155,14 @@ struct Settings {
 
     // The backend tables' display window: when enabled, only backend rows
     // within +/- this many ms are shown (squeezed-out rows always show).
-    // Display-layer only, like hit_window_ms: it never reaches the search,
-    // so changing it never invalidates stored records.
+    // Display-layer only: it never reaches the search, so changing it never
+    // invalidates stored records.
     bool backendlimit_enabled = false;
     int backendlimit_value = 50;
 
-    // The per-side hit window in real ms; feeds the squeeze budgets, the
-    // backend ratings, and the report tiers. Display-layer only: it never
-    // reaches the search, so changing it never invalidates stored records.
-    // A decimal typed in the file is kept (D51 call 15).
-    double hit_window_ms = kDefaultHitWindowMs;
+    // Read from and written to the file, but nothing else reads it: the hit
+    // window is one fixed number, kHitWindowMs (D270 call 8).
+    double hit_window_ms = kHitWindowMs;
 
     // Preview playback volume in percent. A summed multi-stem mix at 100 % is
     // loud and clips, so the default sits well below it.

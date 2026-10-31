@@ -924,7 +924,7 @@ void AppState::launch_path_report(app::BatchRun run, PathReportCause cause) {
         report_job->cancel();
         parked_reports.push_back(std::move(report_job));
     }
-    report_job = std::make_unique<ReportJob>(*store, std::move(run), settings.hit_window_ms);
+    report_job = std::make_unique<ReportJob>(*store, std::move(run));
     path_report_cause_ = cause;
     path_report.out_of_date_during_build = ReportOutOfDate::None;
     report_job->start();
@@ -952,19 +952,16 @@ void AppState::show_path_report() {
 }
 
 void AppState::close_path_report() {
-    // A batch the report waited on keeps running with its strip, and builds
-    // the report when it finishes, as any batch does. A question the window
-    // was asking goes with it, so no popup takes it up in the main window.
-    if (path_report_awaits_confirm()) close_batch_confirm();
+    // Closing only hides the window, as the comparison's close does (D271
+    // item 7). The slot keeps its rows, its outcome and its out-of-date mark,
+    // and a build or a batch wait still running carries on and lands.
+    path_report.window_open = false;
+    // A question the window was asking ends as a "no" that runs nothing
+    // (D276 item 6), so no popup takes it up in the main window, and a
+    // reopen with nothing built asks again.
+    if (!path_report_awaits_confirm()) return;
+    close_batch_confirm();
     report_wait_ = ReportWait::None;
-    // A build still running stops as the window's Cancel stops it. It waits
-    // parked, so neither its rows nor its Cancelled land with the window shut;
-    // one that finished this frame is dropped the same way.
-    cancel_path_report();
-    if (report_job) parked_reports.push_back(std::move(report_job));
-    // The slot starts over as never built: no rows, no outcome, nothing out
-    // of date, so show_path_report builds again.
-    path_report = PathReportSlot{};
 }
 
 bool AppState::path_report_offered() const {

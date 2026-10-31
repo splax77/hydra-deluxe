@@ -549,8 +549,8 @@ An activation timing (the `E` notation) near a fill's spawn deadline. The
 window has two sides, each a fixed number of its own, never the hit-window
 setting, because the search reads them (src/core/model.h).
 On the orange side, Star Power comes ready after the deadline, so you must
-hit early to summon the fill. It reaches 85 ms<!-- default: kEarlyFillReachMs -->
-(`kEarlyFillReachMs`, read by `fill_refuses`): later than that the fill
+hit early to summon the fill. It reaches 85 ms<!-- default: kHitWindowMs -->
+(`kHitWindowMs`, read by `fill_refuses`): later than that the fill
 never spawns, and the search drops the activation.
 On the white side, Star Power comes ready before the deadline with less than
 60 ms<!-- default: kEarlyFillSlackMs --> to spare (`kEarlyFillSlackMs`, read

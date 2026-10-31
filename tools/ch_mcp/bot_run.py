@@ -61,6 +61,10 @@ STOPPED_BY_FLAG_LINE = f"{STOPPED_LINE} (--stop)"
 MANIFEST = "manifest.json"
 PRO_DRUMS_INSTRUMENT = "ProDrums"
 
+# Win32's ShowWindow value for "minimized, not activated"; subprocess names
+# only SW_HIDE.
+SW_SHOWMINNOACTIVE = 7
+
 
 class SongLengthMissing(Exception):
     pass
@@ -89,13 +93,25 @@ class _Process:
         self._p.wait(timeout=EXIT_CHECK_S)
 
 
+def _minimized_no_focus() -> "subprocess.STARTUPINFO":
+    """The start-up info that asks the new process to open its window
+    minimized and not take the focus (SW_SHOWMINNOACTIVE)."""
+    info = subprocess.STARTUPINFO()
+    info.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    info.wShowWindow = SW_SHOWMINNOACTIVE
+    return info
+
+
 def _real_launch(cmd: list[str]) -> Game:
-    """Start the game in its own folder. Its stdin and stdout go nowhere: the
-    MCP server's stdout is its protocol channel and its stdin is where the
-    protocol comes in, and a child that inherited them could write into one
-    or read from the other. Its stderr stays the caller's."""
+    """Start the game in its own folder, minimized and without the focus, so
+    the user's window stays in front (foreground.py checks it did). Its stdin
+    and stdout go nowhere: the MCP server's stdout is its protocol channel
+    and its stdin is where the protocol comes in, and a child that inherited
+    them could write into one or read from the other. Its stderr stays the
+    caller's."""
     return _Process(subprocess.Popen(cmd, cwd=os.path.dirname(cmd[0]),
-                                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL))
+                                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                     startupinfo=_minimized_no_focus()))
 
 
 @dataclass
@@ -110,6 +126,9 @@ class Env:
     sleep: Callable[[float], None] = time.sleep
     stamp: Callable[[], str] = field(default=lambda: time.strftime("%Y%m%d-%H%M%S"))
     out: Callable[[str], None] = print
+    # How the registry key is exported, deleted and imported. None leaves the
+    # key out of the backup, which is what a test on temp folders needs.
+    run_reg: Optional[game_files.RegRunner] = game_files.run_reg
 
 
 def song_length_ms(song_dir: str) -> tuple[int, str]:
@@ -221,11 +240,16 @@ class Run:
 
 def start_run(song_dir: Optional[str], *, player: str = DEFAULT_PLAYER,
               profile: Optional[str] = None, backup_root: str,
-              env: Optional[Env] = None) -> Run:
+              env: Optional[Env] = None,
+              before_launch: Optional[Callable[[], None]] = None) -> Run:
     """Back up the user files, then start the game, and return at once. With
     a song folder the game plays it with a bot; a song with no known length
     raises SongLengthMissing before anything is backed up or started. With
-    song_dir None the game starts at its menu and the run has no stats cap."""
+    song_dir None the game starts at its menu and the run has no stats cap.
+    `before_launch`, when given, runs after the backup and before the launch,
+    so a change it makes to the user files is undone by the restore. When it
+    or the launch raises, the user files are put back before the error goes
+    on, since no run comes back to finish."""
     env = env or Env()
     length_ms = source = cap_s = None
     if song_dir is not None:
@@ -240,13 +264,20 @@ def start_run(song_dir: Optional[str], *, player: str = DEFAULT_PLAYER,
                     f"pass --player {PRO_DRUMS_INSTRUMENT},<difficulty> to play pro drums")
 
     backup_dir = game_files.backup(env.documents_dir, env.locallow_dir, backup_root,
-                                   stamp=env.stamp)
+                                   stamp=env.stamp, run_reg=env.run_reg)
     env.out(f"backup folder: {backup_dir}")
     before = _stats_state(env)
 
     cmd = launch_command(env.exe, song_dir, player, profile)
-    env.out("starting: " + subprocess.list2cmdline(cmd))
-    game = env.launch(cmd)
+    try:
+        if before_launch is not None:
+            before_launch()
+        env.out("starting: " + subprocess.list2cmdline(cmd))
+        game = env.launch(cmd)
+    except BaseException:
+        # No run comes back to finish, so put back what before_launch changed.
+        _restore(backup_dir, env)
+        raise
     launched_at = env.now()
     env.out(f"game process id: {game.pid}")
     return Run(song_dir=song_dir, backup_dir=backup_dir, command=cmd, game=game,
@@ -282,11 +313,12 @@ def exit_check(run: Run, env: Optional[Env] = None) -> None:
 
 
 def _restore(backup_dir: str, env: Env) -> bool:
-    """Put the user files back. On a failure, print the file and the error
-    and return False; the caller then stops."""
+    """Put the user files back, then the registry key when the backup holds
+    it. On a failure, print the file and the error and return False; the
+    caller then stops."""
     env.out(f"restoring the user files from {backup_dir}")
     try:
-        game_files.restore(backup_dir, out=env.out)
+        game_files.restore_all(backup_dir, out=env.out, run_reg=env.run_reg)
     except game_files.RestoreError as e:
         env.out(f"restore failed on {e.name}: {e.error}")
         env.out(f"stopped; the backup is still in {backup_dir}")

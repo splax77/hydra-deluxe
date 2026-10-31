@@ -308,7 +308,7 @@ TEST_CASE("settings: the hit window keeps a decimal, and 0 reads the default") {
     const Settings half = load_ini_text("hitwin1", "hit_window_ms=85.5\n");
     CHECK(half.hit_window_ms == 85.5);
     // 0 has no edge to land on (the file-load form of the old clamp line).
-    CHECK(load_ini_text("hitwin2", "hit_window_ms=0\n").hit_window_ms == hydra::kDefaultHitWindowMs);
+    CHECK(load_ini_text("hitwin2", "hit_window_ms=0\n").hit_window_ms == hydra::kHitWindowMs);
 
     // What save_file writes on the hit_window_ms line: 85.5 as typed, and the
     // default as the whole number today's files hold.

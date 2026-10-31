@@ -89,7 +89,6 @@ std::shared_ptr<GeneratedReport> sample_path_result() {
     auto r = std::make_shared<GeneratedReport>();
     r->paths = report_samples::sample_path_rows();
     r->rows = static_cast<int64_t>(r->paths.size());
-    r->hit_window_ms = report_samples::kSampleHitWindowMs;
     r->subtitle = "sample path subtitle";
     r->footer = "sample path footer";
     return r;
@@ -146,7 +145,7 @@ void note_rule_widths() {
     std::vector<std::string> texts;
     for (const auto& r : report.paths) texts.push_back(view_rules::path_search_text(r));
     const hydra::app::report_view::TableView<hydra::app::report::ReportRow> view(
-        report.paths, std::move(texts), view_rules::path_columns(report.hit_window_ms));
+        report.paths, std::move(texts), view_rules::path_columns());
     const std::vector<hydra::ui::ColumnSpec> specs =
         hydra::ui::report_frame::column_specs(view.columns());
     ImGui::Begin(window->Name);
@@ -553,12 +552,11 @@ void test_chip_label(ImGuiTestContext* ctx) {
     ctx->WindowResize("", ImVec2(900.0f, 600.0f));
     ctx->Yield(3);
     Fixture& f = fixture();
-    const double hit = report_samples::kSampleHitWindowMs;
     const std::vector<hydra::app::report::ReportRow>& rows = f.path.result->paths;
 
     // Every row's Timing chip, Song B's "Beyond" tier among them (171 ms).
     for (const auto& r : rows)
-        IM_CHECK(shows(hydra::app::path_report_view::tier_label(r.tier, hit)));
+        IM_CHECK(shows(hydra::app::path_report_view::tier_label(r.tier)));
 
     ImGuiTable* table = path_table(ctx);
     IM_CHECK_RETV(table != nullptr && table->InnerWindow != nullptr, );
@@ -566,7 +564,7 @@ void test_chip_label(ImGuiTestContext* ctx) {
 
     // Every number column's cells, read at both ends of the sideways scroll
     // (a column scrolled out of view draws nothing).
-    const auto columns = hydra::app::path_report_view::path_columns(hit);
+    const auto columns = hydra::app::path_report_view::path_columns();
     std::vector<bool> read(columns.size(), false);
     for (bool right_end : {false, true}) {
         ImGui::SetScrollX(table->InnerWindow, right_end ? table->InnerWindow->ScrollMax.x : 0.0f);
@@ -635,7 +633,7 @@ void test_cells_left(ImGuiTestContext* ctx) {
     ctx->Yield(3);
     ImGuiTable* table = path_table(ctx);
     IM_CHECK_RETV(table != nullptr && table->InnerWindow != nullptr, );
-    const auto columns = hydra::app::path_report_view::path_columns(report_samples::kSampleHitWindowMs);
+    const auto columns = hydra::app::path_report_view::path_columns();
     int score = -1;
     for (size_t c = 0; c < columns.size(); ++c)
         if (columns[c].title == "Score") score = static_cast<int>(c) + 1;
@@ -986,10 +984,18 @@ void test_open_path(ImGuiTestContext* ctx) {
     IM_CHECK(path_window() == nullptr);
     dismiss_done(ctx);
 
-    // The toolbar's Open path report, its batch declined, so the second
-    // chart below still has no result. The Esc above let the rows go, so this
-    // opening builds them again.
-    open_path_report_declining_batch(ctx);
+    // The toolbar's Open path report. The Esc above only hid the window
+    // (D271 item 7), so it shows the same rows at once, with no build.
+    ctx->SetRef("//Hydra");
+    ctx->ItemClick("**/Open path report");
+    ctx->Yield(2);
+    IM_CHECK_RETV(path_window() != nullptr, );
+    IM_CHECK(h.app->report_job == nullptr);
+    IM_CHECK(h.app->path_report_build() == hydra::ui::ReportBuild::Ready);
+    IM_CHECK(on_screen(h, path_count_tail(h)));
+    // Its Refresh, the batch declined, so the second chart below still has
+    // no result.
+    open_path_report_declining_batch(ctx, /*refresh=*/true);
     IM_CHECK_RETV(path_report_ready(ctx), );
     IM_CHECK(on_screen(h, path_count_tail(h)));
     h.app->close_path_report();  // it covers the toolbar
@@ -1213,6 +1219,20 @@ void test_row_click(ImGuiTestContext* ctx) {
     IM_CHECK(h.app->settings.chartmode_key() == mode_before);
 }
 
+// The path window's count line for the report in memory, "n of M paths", as
+// drawn this frame; empty when it isn't on screen.
+std::string shown_count(Harness& h) {
+    const std::string text = visible_text(h);
+    const std::string tail = path_count_tail(h);
+    const size_t at = text.find(tail);
+    if (at == std::string::npos) return {};
+    size_t start = at;
+    while (start > 0 && (std::isdigit(static_cast<unsigned char>(text[start - 1])) ||
+                         text[start - 1] == ','))
+        --start;
+    return text.substr(start, at + tail.size() - start);
+}
+
 // The first chart batched, its report built while the window is shut, then
 // the window opened on that report. False when a step failed.
 bool open_batch_report(ImGuiTestContext* ctx) {
@@ -1232,41 +1252,30 @@ bool open_batch_report(ImGuiTestContext* ctx) {
 }
 
 // A batch's report, built while the window is shut, shows at once. Esc then
-// closes the window and lets its rows go; opening it again builds the report
-// again behind the building state (D103 item 28).
+// only hides the window and its rows stay (D271 item 7), so opening it again
+// shows the same rows at once, with no build and no building state.
 void test_reopen(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     if (!open_batch_report(ctx)) return;
-    const std::string count = path_count_tail(h);
-    IM_CHECK(on_screen(h, count));
+    const std::string count = shown_count(h);
+    IM_CHECK_RETV(!count.empty(), );
+    const GeneratedReport* rows = h.app->path_report.result.get();
 
     press_escape_on(ctx, path_window());
     IM_CHECK(!h.app->path_report.window_open);
     IM_CHECK(path_window() == nullptr);
-    IM_CHECK(h.app->path_report.result == nullptr);
+    IM_CHECK(h.app->path_report.result != nullptr);
+    IM_CHECK(h.app->path_report.result.get() == rows);
 
-    // Every build held before it reads the store, so the building state
-    // stays up to be read. The corpus's other charts have no result, so the
-    // opening's batch is declined: the rows stay the batch's one chart.
-    ReportHold hold;
-    open_path_report_declining_batch(ctx);
-    held_build_then_rows(ctx, hold);
-    IM_CHECK(path_window() != nullptr);
-    IM_CHECK(on_screen(h, count));  // the same rows as before the close
-}
-
-// The path window's count line for the report in memory, "n of M paths", as
-// drawn this frame; empty when it isn't on screen.
-std::string shown_count(Harness& h) {
-    const std::string text = visible_text(h);
-    const std::string tail = path_count_tail(h);
-    const size_t at = text.find(tail);
-    if (at == std::string::npos) return {};
-    size_t start = at;
-    while (start > 0 && (std::isdigit(static_cast<unsigned char>(text[start - 1])) ||
-                         text[start - 1] == ','))
-        --start;
-    return text.substr(start, at + tail.size() - start);
+    ctx->SetRef("//Hydra");
+    ctx->ItemClick("**/Open path report");
+    ctx->Yield(2);
+    IM_CHECK_RETV(path_window() != nullptr, );
+    IM_CHECK(h.app->report_job == nullptr);
+    IM_CHECK(h.app->path_report_build() == hydra::ui::ReportBuild::Ready);
+    IM_CHECK(!on_screen(h, "Building the report from your library..."));
+    IM_CHECK(h.app->path_report.result.get() == rows);
+    IM_CHECK_STR_EQ(shown_count(h).c_str(), count.c_str());  // the same rows as before
 }
 
 // The path table's sort as ImGui holds it: table column index and direction,
@@ -1290,12 +1299,12 @@ bool best_only_ticked(ImGuiTestContext* ctx) {
 }
 
 // Closing the window and opening it again keeps its search, timing,
-// Optimal paths only and sort, though the rows are built again (the user's
-// answer to D103 item 28's follow-up). Refresh still resets all four.
+// Optimal paths only and sort (the user's answer to D103 item 28's
+// follow-up, kept by D271 item 7). Refresh still resets all four.
 void test_reopen_keeps_filters(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     if (!open_batch_report(ctx)) return;
-    // Read only before the Esc below lets these rows go.
+    // Read only before the Refresh below replaces these rows.
     const GeneratedReport& report = *h.app->path_report.result;
     const std::string default_count = shown_count(h);
     const auto default_sort = table_sort(ctx);
@@ -1327,7 +1336,7 @@ void test_reopen_keeps_filters(ImGuiTestContext* ctx) {
     IM_CHECK(on_screen(h, search_shown));
 
     // A timing tier a path has, so the table stays up to show its sort.
-    const auto choices = hydra::app::path_report_view::timing_choices(report.hit_window_ms);
+    const auto choices = hydra::app::path_report_view::timing_choices();
     std::string label;
     for (size_t i = 1; i < choices.size() && label.empty(); ++i)
         for (const auto& r : report.paths)
@@ -1342,13 +1351,12 @@ void test_reopen_keeps_filters(ImGuiTestContext* ctx) {
     const std::string default_timing = boxed(choices.front().label);
     IM_CHECK(on_screen(h, timing_shown));
 
-    // Esc lets the rows go; opening again builds them, filters kept. The
-    // opening's batch is declined, so the rows are the same chart's.
+    // Esc only hides the window; opening it again shows it as it was left.
     press_escape_on(ctx, path_window());
-    IM_CHECK_RETV(h.app->path_report.result == nullptr, );
-    open_path_report_declining_batch(ctx);
-    IM_CHECK_RETV(path_report_ready(ctx), );
-    ctx->Yield(1);
+    IM_CHECK(path_window() == nullptr);
+    ctx->SetRef("//Hydra");
+    ctx->ItemClick("**/Open path report");
+    ctx->Yield(2);
     IM_CHECK_RETV(path_window() != nullptr, );
     IM_CHECK_STR_EQ(shown_count(h).c_str(), count.c_str());
     IM_CHECK(on_screen(h, search_shown));

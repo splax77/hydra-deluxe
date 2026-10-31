@@ -22,16 +22,16 @@ using report_view::SortSpec;
 // What the count line counts the path report's rows as.
 inline constexpr report_view::CountNoun kNoun{"path", "paths"};
 
-// The fifteen columns, in the page's order. `hit_window_ms` is the window
-// the rows' tiers were labeled under; the Timing chip names its Beyond edge.
-std::vector<Column<ReportRow>> path_columns(double hit_window_ms);
+// The fifteen columns, in the page's order. The Timing chip names the Beyond
+// edge (report::beyond_edge_text).
+std::vector<Column<ReportRow>> path_columns();
 
 // The sort the report opens with.
 SortSpec path_first_sort();
 
 // A timing tier as the Timing chip and dropdown name it, from its name in
-// timing_tiers(hit_window_ms).
-std::string tier_label(const std::string& tier_name, double hit_window_ms);
+// timing_tiers().
+std::string tier_label(const std::string& tier_name);
 
 // One choice in the Timing dropdown. `tier` is the timing_tiers name it
 // keeps, or nullopt for every tier.
@@ -41,8 +41,8 @@ struct TimingChoice {
 };
 
 // The Timing dropdown's choices, in order: the one that keeps every tier, at
-// report_view::kEveryRowChoice, then one for each of timing_tiers(hit_window_ms).
-std::vector<TimingChoice> timing_choices(double hit_window_ms);
+// report_view::kEveryRowChoice, then one for each of timing_tiers().
+std::vector<TimingChoice> timing_choices();
 
 // The rows the path report's controls keep: those labeled `tier` (every
 // tier when nullopt), and only optimal paths when `best_only` is set.

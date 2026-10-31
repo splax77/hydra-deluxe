@@ -657,8 +657,7 @@ void render_path_panel(AppState& app, const Path*& selected_path) {
         // details() first: a new path resets ui() before anything reads it.
         const app::PathsTabCache::Details& d = cache.details(
             *selected_path, record, generation,
-            app.viewed.timing ? &*app.viewed.timing : nullptr,
-            static_cast<double>(app.settings.hit_window_ms), app.settings.backend_limit(),
+            app.viewed.timing ? &*app.viewed.timing : nullptr, app.settings.backend_limit(),
             app.settings.rules, app.viewed.song_length_ms, app.settings.view_prodrums);
         app::PathsTabUi& ui = cache.ui();
         render_activations(d.activations, ui);
