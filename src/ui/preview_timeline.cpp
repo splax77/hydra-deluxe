@@ -144,6 +144,13 @@ void draw_dashed(ImDrawList* dl, const std::vector<ImVec2>& pts, ImU32 col, floa
     }
 }
 
+// The GUI tests read the screen from ImGui's text log, which hears only
+// ImGui's own text calls, so each word the draw list draws is told to it here
+// at the place it was drawn.
+void log_text(ImVec2 at, const char* text) {
+    if (ImGui::GetCurrentContext()->LogEnabled) ImGui::LogRenderedText(&at, text);
+}
+
 // The saved row's label: its name, then the activate line's sample and its
 // words, then the shading's swatch and its words, as one block centred
 // between `y0` and `y1` the way the other rows' names are. Each piece of text
@@ -159,11 +166,6 @@ void draw_saved_caption(ImDrawList* dl, float x, float y0, float y1, float wrap_
     const float enough_h = ImGui::CalcTextSize(kTimelineEnoughLabel, nullptr, false, wrap_w - mark_w).y;
     const float gap = rem(kCaptionGapRem);
     float y = (y0 + y1) * 0.5f - (name_h + gap + needed_h + gap + enough_h) * 0.5f;
-    // The GUI tests read the screen from ImGui's text log, which hears only
-    // ImGui's own text calls, so the caption tells it what the draw list drew.
-    auto log_text = [](ImVec2 at, const char* text) {
-        if (ImGui::GetCurrentContext()->LogEnabled) ImGui::LogRenderedText(&at, text);
-    };
 
     dl->AddText(label_font, 0.0f, ImVec2(x, y), kMutedColor, kTimelineSavedLabel, nullptr, wrap_w);
     log_text(ImVec2(x, y), kTimelineSavedLabel);
@@ -576,6 +578,7 @@ TimelineEvents PreviewTimeline::draw(const TimelineInput& in) const {
         const ImVec2 sz = ImGui::CalcTextSize(names[r], nullptr, false, label_wrap);
         const float y = t0.y + (row.y0 + row.y1) * 0.5f - sz.y * 0.5f;
         dl->AddText(label_font, 0.0f, ImVec2(origin.x, y), kMutedColor, names[r], nullptr, label_wrap);
+        log_text(ImVec2(origin.x, y), names[r]);
     }
 
     // The axis's time labels, where the layout put them.
@@ -700,8 +703,10 @@ TimelineEvents PreviewTimeline::draw(const TimelineInput& in) const {
     // The word under each best fill, where the layout put it.
     {
         ScopedFont font(TextRole::TimelineCost);
-        for (const TimelineBestLabel& b : l.best_labels)
+        for (const TimelineBestLabel& b : l.best_labels) {
             dl->AddText(at(b.rect.x0, b.rect.y0), b.col, in.best_label.c_str());
+            log_text(at(b.rect.x0, b.rect.y0), in.best_label.c_str());
+        }
     }
 
     // The rows' own item: a click off every fill lands on a band or a moment.

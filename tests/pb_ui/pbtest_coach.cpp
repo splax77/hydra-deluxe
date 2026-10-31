@@ -54,22 +54,6 @@ bool paste_best_path(ImGuiTestContext* ctx) {
     return wait_for_edit(ctx);
 }
 
-// Clicks the row of step `index` (from 0) in "Your activations", which opens
-// it to its sentence, and gives the click a frame to land.
-bool click_step(ImGuiTestContext* ctx, size_t index) {
-    Harness& h = harness(ctx);
-    const std::string steps = h.home_ref + "/##side/##steps";
-    ImGuiWindow* window = ctx->WindowInfo(steps.c_str(), ImGuiTestOpFlags_NoError).Window;
-    if (!window) {
-        ctx->LogError("no steps panel at %s", steps.c_str());
-        return false;
-    }
-    ctx->SetRef(window);
-    ctx->ItemClick(("$$" + std::to_string(index) + "/##step").c_str());
-    ctx->Yield(2);
-    return !ctx->IsError();
-}
-
 // The vertical span of the glyphs the steps panel drew last frame in
 // `color`, or nothing when it drew none.
 std::optional<std::pair<float, float>> glyph_span(ImU32 color) {

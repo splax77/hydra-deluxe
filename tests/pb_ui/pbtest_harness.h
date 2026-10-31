@@ -55,6 +55,11 @@ bool wait_for_edit(ImGuiTestContext* ctx);
 // does, and waits for the edit to land (wait_for_edit).
 bool click_fill(ImGuiTestContext* ctx, int64_t act_tick);
 
+// Clicks the row of step `index` (from 0) in "Your activations", which opens
+// it to its sentence, and gives the click a frame to land. It leaves the
+// test's ref on the steps panel.
+bool click_step(ImGuiTestContext* ctx, size_t index);
+
 // The builder's main-window tests (pbtest_window.cpp).
 void register_tests(Harness& h);
 // The decision list's tests (pbtest_coach.cpp).

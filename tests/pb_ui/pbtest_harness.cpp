@@ -112,6 +112,20 @@ bool click_fill(ImGuiTestContext* ctx, int64_t act_tick) {
     return wait_for_edit(ctx);
 }
 
+bool click_step(ImGuiTestContext* ctx, size_t index) {
+    Harness& h = harness(ctx);
+    const std::string steps = h.home_ref + "/##side/##steps";
+    ImGuiWindow* window = ctx->WindowInfo(steps.c_str(), ImGuiTestOpFlags_NoError).Window;
+    if (!window) {
+        ctx->LogError("no steps panel at %s", steps.c_str());
+        return false;
+    }
+    ctx->SetRef(window);
+    ctx->ItemClick(("$$" + std::to_string(index) + "/##step").c_str());
+    ctx->Yield(2);
+    return !ctx->IsError();
+}
+
 bool wait_for_edit(ImGuiTestContext* ctx) {
     if (!wait_idle(ctx)) return false;
     ctx->Yield(2);
