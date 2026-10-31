@@ -3,7 +3,7 @@
 Read-only. Short names used below:
 
 - Cards dir = `docs/sessions/` (`<card>.md`). This scout also read the sessions' condensed transcripts; those were local working files and were not kept, so the lines below say where a detail came only from them.
-- Fix decisions = `docs/audit/2026-10-03-fix-decisions.md`. Plan = `docs/superpowers/plans/2026-09-24-derivation-fixes.md`.
+- Fix decisions = `docs/audit/2026-10-03-fix-decisions.md`. Plan = `docs/superpowers/plans/2026-09-24-derivation-fixes.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-09-24-derivation-fixes.md`).
 - DA = `docs/audit/2026-09-24-derivation-audit.md`. CA = `docs/audit/2026-09-25-codebase-audit.md`.
 
 The user's own typed and chosen words for 2026-09-24 are in ONE card: `docs/sessions/2026-09-24-da599242.md` (session da599242-9b0d-4c40-a47b-88badee1b17f); the full question texts were in that session's condensed transcript and were not kept. The 2026-09-26 audit answers are in `docs/sessions/2026-09-26-4908325e.md`; their full question texts were not kept either. AOA-S missed both because it only read the 2a88c065 card (the run of the plan), not the session that asked the questions.
@@ -58,7 +58,7 @@ All four were asked in chat on 2026-09-26 (session 4908325e-c9c7-4b77-a1a0-de265
 
 - **Splits:** None: a performance and behaviour choice with no two copies of one rule.
 - **How it left:** a question the user answered, and the user chose the other option. CA:181 offered "Number boxes commit when you leave the box"; the user chose "Live, but cheap (Recommended)".
-- **User's words:** Q: "Holding +/- on the score-range, ms-limit or SP-cap boxes rewrites the INI, re-queries the library and decodes the record every frame. How should those boxes behave?" chose "Live, but cheap (Recommended)" (`docs/sessions/2026-09-26-4908325e.md:23`; the full question text was not kept). Plan line 82 of `docs/superpowers/plans/2026-09-26-codebase-audit-fixes.md`: "The score-range, ms-limit and SP-cap boxes stay live exactly as today, but cheap. The INI is saved when you let go..."
+- **User's words:** Q: "Holding +/- on the score-range, ms-limit or SP-cap boxes rewrites the INI, re-queries the library and decodes the record every frame. How should those boxes behave?" chose "Live, but cheap (Recommended)" (`docs/sessions/2026-09-26-4908325e.md:23`; the full question text was not kept). Plan line 82 of `docs/superpowers/plans/2026-09-26-codebase-audit-fixes.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-09-26-codebase-audit-fixes.md`): "The score-range, ms-limit and SP-cap boxes stay live exactly as today, but cheap. The INI is saved when you let go..."
 - **Code today:** a held +/- changes the settings live (`app.edit_settings()`, src/ui/settings_bar.cpp:136,164), and the INI is written once no widget is active (`if (!ImGui::IsAnyItemActive()) app.flush_settings();`, src/ui/app_shell.cpp:474), by reading. Commit ddde90c3 (2026-09-26).
 - **Verdict:** PASS
 - **Why:** the question described what the code did, and the code does the chosen option.
@@ -135,7 +135,7 @@ The rules file: `src/core/rules.h` and `src/core/rules.cpp`, read by `src/app/ru
 
 - **Splits:** "Do two tied paths with different SP-ready times fold into one?": the old group key said yes (no `sp_ready_ms` in it, DA:235) vs the order of fills that each ready time can still reach. Now the key holds the ready-time class.
 - **How it left:** asked and fixed. D35 (Fix decisions:81): "Adopt the cheaper ready-time key (`claude/s1-rk`). Tied paths now fold only when the same upcoming fills fall on the same side of their SP-ready cut-offs, so Hydra no longer keeps a path that misses a fill and drops one that gets it."
-- **User's words:** Q "Adopt the ready-time key? ..." chose "Adopt it (Recommended)" (`cards\2026-10-04-a9a461da.md:20`). The handoff text that defined the question (docs/handoffs/2026-10-04-step1-and-gate-handoff.md:37) says what the old key did: "Tied paths were folded without checking when each one's SP became ready. So Hydra could keep the path that misses a fill's early window, and drop the one that gets it."
+- **User's words:** Q "Adopt the ready-time key? ..." chose "Adopt it (Recommended)" (`cards\2026-10-04-a9a461da.md:20`). The handoff text that defined the question (`docs/handoffs/2026-10-04-step1-and-gate-handoff.md`, line 37; removed, `git show 444631e6:docs/handoffs/2026-10-04-step1-and-gate-handoff.md`) says what the old key did: "Tied paths were folded without checking when each one's SP became ready. So Hydra could keep the path that misses a fill's early window, and drop the one that gets it."
 - **Code today:** `Engine::ready_class` counts, per path, the upcoming fills it refuses and the fills over the ms limit, and the group key holds the result (src/search/engine.cpp:816-838, `return (refused << 16) | over;`). Commit cd179209 (2026-10-04) "Group waiting paths by which upcoming fills their ready time decides". By reading.
 - **Verdict:** GONE
 - **Why:** the key now includes the SP-ready consequences and the user said yes to that exact change.
