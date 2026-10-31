@@ -96,6 +96,15 @@ def run_cap_s(song_folder: Optional[str]) -> float:
     return bot_run.run_cap_s(length_ms)
 
 
+@dataclasses.dataclass(frozen=True)
+class PressResult:
+    """What one press call did. `sent` is True only when the keys went out;
+    a refusal (an unknown key or lane, no game window) leaves it False.
+    `text` is the reply the tool prints either way."""
+    sent: bool
+    text: str
+
+
 @dataclasses.dataclass
 class _PlaySession:
     """One ch_play_chart run. The thread appends to `rows` through on_press;
@@ -363,59 +372,66 @@ class GameTools:
     # -- keys and the auto-player ---------------------------------------------------
 
     def ch_press(self, lanes: Union[str, Sequence[str]]) -> str:
-        """Press one chord: lane names such as "red,kick", parsed through
-        input_driver.Lane and pressed through play_chart.live_press, which
-        focuses the game window first."""
+        """Press one chord: lane names such as "red,kick". press_lanes does
+        the work and this prints its text."""
+        return self.press_lanes(lanes).text
+
+    def press_lanes(self, lanes: Union[str, Sequence[str]]) -> PressResult:
+        """Press one chord of lane names, parsed through input_driver.Lane and
+        pressed through play_chart.live_press, which focuses the game window
+        first. The result says whether anything was sent, for menu_tools."""
         with self._lock:
             names = lanes.split(",") if isinstance(lanes, str) else list(lanes)
             names = [n.strip() for n in names if n.strip()]
             if not names:
-                return f"no lanes given; valid lanes: {_lane_list()}"
+                return PressResult(False, f"no lanes given; valid lanes: {_lane_list()}")
             chord: List[Lane] = []
             for name in names:
                 try:
                     chord.append(Lane[name.upper()])
                 except KeyError:
-                    return f'unknown lane "{name}"; valid lanes: {_lane_list()}'
+                    return PressResult(False, f'unknown lane "{name}"; valid lanes: {_lane_list()}')
             hwnd = self._find_window()
             if not hwnd:
-                return f"no game window found ({_NOT_RUNNING}, or its window is closed)"
+                return PressResult(False, f"no game window found ({_NOT_RUNNING}, or its window is closed)")
             lines = [line for line in (self.ensure_backup(),) if line]
             keys = self._live_press(self._driver, hwnd)(chord)
             lines.append("pressed " + ", ".join(lane.name.lower() for lane in chord)
                          + "; keys sent: " + (", ".join(_key_name(vk) for vk in keys) or "none"))
-            return "\n".join(lines)
+            return PressResult(True, "\n".join(lines))
 
     def ch_key(self, keys: str) -> str:
         """Press menu keys in order: a comma list of input_driver.MENU_KEYS
         names, with an optional last item text:<string> that types the string
         (split_keys says how the list is read). press_keys does the work."""
-        return self.press_keys(split_keys(keys))
+        return self.press_keys(split_keys(keys)).text
 
-    def press_keys(self, items: Sequence[str]) -> str:
+    def press_keys(self, items: Sequence[str]) -> PressResult:
         """Press `items` in order, each a MENU_KEYS name or text:<string>,
         with input_driver.MENU_KEY_GAP_S between two keys and between two
         typed characters. Every item is checked before anything is sent; then
         the backup is taken, the game window is focused once (the focus
-        play_chart.live_press uses) and the keys go out."""
+        play_chart.live_press uses) and the keys go out. The result says
+        whether anything was sent, for menu_tools."""
         with self._lock:
             steps: List[Union[int, str]] = []
             for item in items:
                 if item.startswith(TEXT_PREFIX):
                     text = item[len(TEXT_PREFIX):]
                     if not text:
-                        return f'"{item}" has no text to type; valid keys: {_menu_key_list()}'
+                        return PressResult(False, f'"{item}" has no text to type; '
+                                                  f"valid keys: {_menu_key_list()}")
                     steps.append(text)
                     continue
                 vk = MENU_KEYS.get(item.strip().lower())
                 if vk is None:
-                    return f'unknown key "{item}"; valid keys: {_menu_key_list()}'
+                    return PressResult(False, f'unknown key "{item}"; valid keys: {_menu_key_list()}')
                 steps.append(vk)
             if not steps:
-                return f"no keys given; valid keys: {_menu_key_list()}"
+                return PressResult(False, f"no keys given; valid keys: {_menu_key_list()}")
             hwnd = self._find_window()
             if not hwnd:
-                return f"no game window found ({_NOT_RUNNING}, or its window is closed)"
+                return PressResult(False, f"no game window found ({_NOT_RUNNING}, or its window is closed)")
             lines = [line for line in (self.ensure_backup(),) if line]
             play_chart.focus_window(hwnd)
             sent: List[str] = []
@@ -430,7 +446,7 @@ class GameTools:
                     self._driver.press_key(step, sleep=self._env.sleep)
                     sent.append(next(name for name, vk in MENU_KEYS.items() if vk == step))
             lines.append("keys sent: " + ", ".join(sent))
-            return "\n".join(lines)
+            return PressResult(True, "\n".join(lines))
 
     def ch_play_chart(self, score_json: str, log: Optional[str] = None,
                       song_folder: Optional[str] = None) -> str:
