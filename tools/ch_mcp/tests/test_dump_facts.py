@@ -416,7 +416,9 @@ TINY_VERSION = "1.1.0.6142-final"
 HELLO_MD5 = "5d41402abc4b2a76b9719d911017c592"
 
 
-class FactsTableTests(unittest.TestCase):
+class _TableFixture(unittest.TestCase):
+    """A temp folder with the tiny dump, constants, DLL and a pages folder."""
+
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.tmp = self._tmp.name
@@ -446,17 +448,25 @@ class FactsTableTests(unittest.TestCase):
     def rows(self, text):
         return [line.split("\t") for line in text.splitlines() if not line.startswith("#")][1:]
 
+
+class FactsTableTests(_TableFixture):
+    def test_column_line_ends_with_cited(self):
+        text, _ = self.table()
+        self.assertIn("build\tkind\ttypedef_index\tclass\tmember\trva\toffset\tcited", text.splitlines())
+
     def test_cited_name_is_found(self):
         self.page("# P\n\nThe clock is `GameManager.songTime`.\n")
         text, errors = self.table()
         self.assertEqual(errors, [])
-        self.assertIn(["6142", "field", "449", "GameManager", "songTime", "", "0x70"], self.rows(text))
+        self.assertIn(["6142", "field", "449", "GameManager", "songTime", "", "0x70",
+                       "GameManager.songTime"], self.rows(text))
 
     def test_cited_address_is_found_in_any_class(self):
         self.page("# P\n\nScore is added at `0x20DEEC0`.\n")
         text, errors = self.table()
         self.assertEqual(errors, [])
-        self.assertIn(["6142", "method", "8255", "", ENGINE_SCORE, "0x20DEEC0", ""], self.rows(text))
+        self.assertIn(["6142", "method", "8255", "", ENGINE_SCORE, "0x20DEEC0", "", "0x20DEEC0"],
+                      self.rows(text))
 
     def test_missing_fact_is_an_error_naming_page_line_and_span(self):
         self.page("# P\n\nfine\n`GameManager.songTimer` and `0x20DEEC1`\n")
@@ -477,15 +487,15 @@ class FactsTableTests(unittest.TestCase):
         self.page("# P\n\n`#8255+0x68`\n")
         text, errors = self.table()
         self.assertEqual(errors, [])
-        self.assertIn(["6142", "field", "8255", "", SP_AMOUNT, "", "0x68"], self.rows(text))
+        self.assertIn(["6142", "field", "8255", "", SP_AMOUNT, "", "0x68", "#8255+0x68"], self.rows(text))
 
     def test_constants_give_method_and_offset_rows_and_skip_data_addresses(self):
         text, errors = self.table()
         self.assertEqual(errors, [])
         rows = self.rows(text)
-        self.assertIn(["6142", "method", "8255", "", ".ctor", "0x20DF680", ""], rows)
-        self.assertIn(["6142", "field", "8255", "", SP_AMOUNT, "", "0x68"], rows)
-        self.assertIn(["6142", "method", "9100", "", ".ctor", "0x100E960", ""], rows)
+        self.assertIn(["6142", "method", "8255", "", ".ctor", "0x20DF680", "", "RVA_DRUMS_ENGINE_CTOR"], rows)
+        self.assertIn(["6142", "field", "8255", "", SP_AMOUNT, "", "0x68", "OFF_SP_AMOUNT"], rows)
+        self.assertIn(["6142", "method", "9100", "", ".ctor", "0x100E960", "", "RVA_BASE_ENGINE_CTOR_DRUMS"], rows)
         self.assertEqual(len(rows), 3)
 
     def test_an_address_only_in_a_generic_instantiation_block_is_a_method_row(self):
@@ -494,8 +504,8 @@ class FactsTableTests(unittest.TestCase):
         self.assertEqual(errors, [])
         rows = self.rows(text)
         # An obfuscated class name is blank, as for any other row; the readable one shows.
-        self.assertIn(["6142", "method", "9100", "", "Check", "0x100DAB0", ""], rows)
-        self.assertIn(["6142", "method", "9100", "Box<int>", "Check<object>", "0x100DAE0", ""], rows)
+        self.assertIn(["6142", "method", "9100", "", "Check", "0x100DAB0", "", "0x100DAB0"], rows)
+        self.assertIn(["6142", "method", "9100", "Box<int>", "Check<object>", "0x100DAE0", "", "0x100DAE0"], rows)
 
     def test_instantiations_are_collected_only_when_asked_and_leave_the_classes_alone(self):
         instances = []
@@ -576,8 +586,157 @@ class FactsTableTests(unittest.TestCase):
         self.page("# P\n\n## Build 1.0.0.4045\n\n`GameManager.Update`\n\n## Back\n\n`0x20DEEC0`\n")
         text, errors = D.build_table(path, self.pages, self.dll, constants_path=self.constants)
         self.assertEqual(errors, [])
-        self.assertEqual(self.rows(text), [["4045", "method", "562", "GameManager", "Update", "", ""]])
+        self.assertEqual(self.rows(text), [["4045", "method", "562", "GameManager", "Update", "", "",
+                                            "GameManager.Update"]])
         self.assertIn("# version: v1.0.0.4045-master", text.splitlines())
+
+
+# More of the tiny dump for the names map: a namespaced class, and a readable
+# class with a scrambled field.
+FIRE = "ʸʸʳ"
+MAP_DUMP = TINY_DUMP + """\
+
+// Namespace: System
+public static class Math // TypeDefIndex: 1721
+{
+	// Methods
+
+	// RVA: 0x1000000 Offset: 0x1000000 VA: 0x181000000
+	public static double Floor(double d) { }
+}
+
+// Namespace:
+public class DrumsPlayer // TypeDefIndex: 156
+{
+	// Fields
+	private float ʸʸʳ; // 0x40
+}
+"""
+
+MAP_COLUMNS = "build\ttypedef_index\tclass\tmember\tname\twhat\n"
+GOOD_MAP = (
+    "# Our names for the tiny dump's scrambled names.\n" + MAP_COLUMNS
+    + "6142\t8255\tʺʺʸ\t\tDrumsEngine\tThe drum engine.\n"
+    + f"6142\t8255\tʺʺʸ\t{ENGINE_SCORE}\taddScore\tAdds a note's score.\n"
+    + f"6142\t8288\t{SP_BASE}\t{SP_AMOUNT}\tspAmount\tThe Star Power meter.\n"
+    + f"6142\t156\tDrumsPlayer\t{FIRE}\tfillDeadline\tThe fill deadline.\n"
+)
+
+
+class NamesMapTests(_TableFixture):
+    def setUp(self):
+        super().setUp()
+        with open(self.dump, "w", encoding="utf-8") as f:
+            f.write(MAP_DUMP)
+        os.makedirs(os.path.join(self.pages, "code"))
+
+    def names(self, text, build="6142"):
+        with open(os.path.join(self.pages, "code", f"names-{build}.tsv"), "w", encoding="utf-8") as f:
+            f.write(text)
+
+    def table_and_warnings(self):
+        warnings = []
+        text, errors = D.build_table(self.dump, self.pages, self.dll, version=TINY_VERSION,
+                                     constants_path=self.constants, warnings=warnings)
+        return text, errors, warnings
+
+    def test_our_names_resolve_to_the_dumps_names_one_row_per_span(self):
+        self.names(GOOD_MAP)
+        self.page("# P\n\n`#8255.addScore` `DrumsEngine.addScore` `DrumsPlayer.fillDeadline`\n"
+                  "`#8255.spAmount` `DrumsEngine.spAmount`\n")
+        text, errors, warnings = self.table_and_warnings()
+        self.assertEqual(errors, [])
+        self.assertEqual(warnings, [])
+        rows = self.rows(text)
+        for cited in ("#8255.addScore", "DrumsEngine.addScore"):
+            self.assertIn(["6142", "method", "8255", "", ENGINE_SCORE, "0x20DEEC0", "", cited], rows)
+        self.assertIn(["6142", "field", "156", "DrumsPlayer", FIRE, "", "0x40", "DrumsPlayer.fillDeadline"], rows)
+        # A member of the base class, by our name, through the class or its index.
+        for cited in ("#8255.spAmount", "DrumsEngine.spAmount"):
+            self.assertIn(["6142", "field", "8255", "", SP_AMOUNT, "", "0x68", cited], rows)
+
+    def test_a_namespaced_class_is_its_class_row_cited_as_written(self):
+        self.page("# P\n\n`System.Math` and `Math.Floor`\n")
+        text, errors = self.table()
+        self.assertEqual(errors, [])
+        rows = self.rows(text)
+        self.assertIn(["6142", "class", "1721", "Math", "", "", "", "System.Math"], rows)
+        self.assertIn(["6142", "method", "1721", "Math", "Floor", "0x1000000", "", "Math.Floor"], rows)
+
+    def test_a_scrambled_span_is_an_error_naming_the_line_and_the_map(self):
+        self.page(f"# P\n\nok\n`#8255.{ENGINE_SCORE}` and `{SP_BASE}`\n")
+        _, errors = self.table()
+        self.assertEqual(len(errors), 2, errors)
+        for e in errors:
+            self.assertIn("page.md:4: `", e)
+            self.assertIn("non-ASCII letter", e)
+            self.assertIn("names-6142.tsv instead", e)
+
+    def test_an_uncited_row_is_a_warning_not_an_error(self):
+        self.names(GOOD_MAP)
+        self.page("# P\n\n`DrumsEngine.addScore`\n")
+        _, errors, warnings = self.table_and_warnings()
+        self.assertEqual(errors, [])
+        self.assertEqual(len(warnings), 2, warnings)
+        self.assertTrue(any("`spAmount` is cited by no page" in w for w in warnings), warnings)
+        self.assertTrue(any("`fillDeadline` is cited by no page" in w for w in warnings), warnings)
+
+    def test_map_rows_that_do_not_match_the_dump_are_errors(self):
+        self.names(MAP_COLUMNS
+                   + "6142\t8255\tʻʻ\t\tWrongClass\tNot the class at that index.\n"
+                   + f"6142\t8255\tʺʺʸ\tʻʻʻ\tnoSuch\tA member the class lacks.\n"
+                   + f"6142\t8255\tʺʺʸ\t{ENGINE_SCORE}\t.ctor\tNot an identifier.\n"
+                   + f"6142\t8255\tʺʺʸ\t{SHARED_A}\tUpdate2\tFine on its own.\n"
+                   + f"6142\t8255\tʺʺʸ\t{ENGINE_SCORE}\tUpdate2\tThe same name twice in one class.\n"
+                   + f"6142\t449\tGameManager\tsongTime\tUpdate\tA real member's name.\n"
+                   + "6142\t8288\tʿʶʴ\t\tGameManager\tA real class's name.\n"
+                   + "6142\t\tʿʶʴ\t\tNoIndex\tNo TypeDefIndex in a build keyed by it.\n")
+        _, errors = self.table()
+        joined = "\n".join(errors)
+        self.assertIn("TypeDefIndex 8255 is the class `ʺʺʸ` in the dump, not `ʻʻ`", joined)
+        self.assertIn("has no member `ʻʻʻ`", joined)
+        self.assertIn("the name '.ctor' is not an ASCII identifier", joined)
+        self.assertIn("`Update2` names another member of the class too", joined)
+        self.assertIn("`Update` is a real member name of the class `GameManager`", joined)
+        self.assertIn("`GameManager` is a real class name in the dump", joined)
+        self.assertIn("names a class by its TypeDefIndex", joined)
+        self.assertTrue(all("names-6142.tsv:" in e for e in errors), errors)
+
+    def test_check_exits_1_on_a_map_error(self):
+        self.page("# P\n\n`GameManager.Update`\n")
+        out = os.path.join(self.tmp, "facts-6142.tsv")
+        argv = [self.dump, "--version", TINY_VERSION, "--tsv", self.pages, "--out", out,
+                "--dll", self.dll, "--constants", self.constants]
+        self.assertEqual(D.main(argv), 0)
+        self.assertEqual(D.main(argv + ["--check"]), 0)
+        self.names(MAP_COLUMNS + "6142\t8255\tʺʺʸ\tʻʻʻ\tnoSuch\tA member the class lacks.\n")
+        self.assertEqual(D.main(argv + ["--check"]), 1)
+
+    def test_a_bad_column_line_is_an_error(self):
+        self.names("build\tclass\tname\n")
+        _, errors = self.table()
+        self.assertEqual(len(errors), 1, errors)
+        self.assertIn("not the column line", errors[0])
+
+    def test_a_4045_map_names_its_class_by_name(self):
+        scrambled = "ʶˀʵ"
+        facts = {"game_version": "v1.0.0.4045-master", "classes": [
+            {"name": scrambled, "namespace": "", "kind": "class", "typedef_index": 3,
+             "readable": False, "base": None, "interfaces": [],
+             "fields": [], "methods": [{"name": "ʹʹʾ", "return": "void", "params": [],
+                                        "static": False, "rva": None}]}]}
+        path = os.path.join(self.tmp, "facts.json")
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(facts, f, ensure_ascii=False)
+        self.names(MAP_COLUMNS + f"4045\t\t{scrambled}\t\tFillGenerator\tBuilds the fills.\n"
+                   + f"4045\t\t{scrambled}\tʹʹʾ\tbuild\tBuilds one fill.\n", build="4045")
+        self.page("# P\n\n## Build 1.0.0.4045\n\n`FillGenerator.build`\n")
+        text, errors = D.build_table(path, self.pages, self.dll, constants_path=self.constants)
+        self.assertEqual(errors, [])
+        self.assertEqual(self.rows(text), [["4045", "method", "3", "", "ʹʹʾ", "", "", "FillGenerator.build"]])
+        self.names(MAP_COLUMNS + f"4045\t3\t{scrambled}\t\tFillGenerator\tBuilds the fills.\n", build="4045")
+        _, errors = D.build_table(path, self.pages, self.dll, constants_path=self.constants)
+        self.assertTrue(any("typedef_index stays empty" in e for e in errors), errors)
 
 
 if __name__ == "__main__":

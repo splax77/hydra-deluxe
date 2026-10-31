@@ -9,7 +9,11 @@ its one description, so this file does not repeat it.
 The facts table (`--tsv`) holds one row for each game fact the pages under a
 folder cite, and each fact `tools/ch_probe/constants.py` names, looked up in
 one build's dump. The plan 2026-10-30-clone-hero-reference.md, question 2,
-gives its columns. Which backticked spans count as game facts is decided by
+gives its columns, and TABLE_COLUMNS adds `cited`, the span as the page
+writes it, which is what the C++ test matches a page span by. A page writes a
+scrambled game name by our readable name for it, from that build's names map
+(`names_path`, columns NAMES_COLUMNS); `_lookup` resolves those names, and
+`check_names` checks the map against the dump. Which backticked spans count as game facts is decided by
 `game_fact` alone; the C++ docs test (tests/test_docs_match_code.cpp) applies
 the same forms, so compare the two when either changes. Which build a span
 belongs to is decided by `span_builds`, which mirrors that test's rule too.
@@ -407,7 +411,19 @@ _BLOCK_LEVEL = 3
 _GAME_CODE_RE = re.compile(r"^Game code \((?P<build>\d+)\):")
 _BUILD_HEADING_RE = re.compile(r"\bBuild \d+\.\d+\.\d+\.(?P<build>\d+)\b")
 
-TABLE_COLUMNS = ("build", "kind", "typedef_index", "class", "member", "rva", "offset")
+# `cited` is the span as the page writes it (a constants.py name for a row
+# that file gives), so the C++ test matches a page span by that column alone
+# and resolution stays here.
+TABLE_COLUMNS = ("build", "kind", "typedef_index", "class", "member", "rva", "offset", "cited")
+
+# The names map: our readable names for the game's scrambled classes and
+# members, one file per build beside the facts tables. The pages write these
+# names, never the scrambled ones.
+NAMES_COLUMNS = ("build", "typedef_index", "class", "member", "name", "what")
+# A Mono build's TypeDefIndex restarts in each assembly (tools/ch_mcp/README.md),
+# so that build's map names its classes by name alone.
+_BUILDS_KEYED_BY_NAME = frozenset({"4045"})
+_IDENTIFIER_RE = re.compile(r"^[A-Za-z_]\w*$", re.ASCII)
 
 
 class Fact(NamedTuple):
@@ -425,6 +441,105 @@ class Cited(NamedTuple):
     where: str
     span: str
     fact: Fact
+
+
+class NameRow(NamedTuple):
+    """One row of a names map. `where` is `<file>:<line>`. `typedef_index` is
+    None in a build keyed by name, and `member` is empty on a class row."""
+    where: str
+    typedef_index: int | None
+    cls: str
+    member: str
+    name: str
+    what: str
+
+
+def names_path(pages_dir: str, build: str) -> str:
+    """Where one build's names map sits under the pages folder."""
+    return os.path.join(pages_dir, "code", f"names-{build}.tsv")
+
+
+def load_names(path: str, build: str) -> tuple[list[NameRow], list[str]]:
+    """The rows of one build's names map, and an error for each malformed
+    line. A missing file is an empty map."""
+    if not os.path.isfile(path):
+        return [], []
+    with open(path, encoding="utf-8") as f:
+        lines = f.read().splitlines()
+    shown = _display_path(path)
+    keyed_by_index = build not in _BUILDS_KEYED_BY_NAME
+    rows: list[NameRow] = []
+    errors: list[str] = []
+    columns_seen = False
+    for lineno, line in enumerate(lines, start=1):
+        if not line.strip() or line.startswith("#"):
+            continue
+        where = f"{shown}:{lineno}"
+        if not columns_seen:
+            columns_seen = True
+            if line != "\t".join(NAMES_COLUMNS):
+                errors.append(f"{where}: the first line after the # comments is not the column line")
+            continue
+        cols = line.split("\t")
+        if len(cols) != len(NAMES_COLUMNS):
+            errors.append(f"{where}: {len(cols)} tab-separated columns, not {len(NAMES_COLUMNS)}")
+            continue
+        row_build, idx, cls, member, name, what = cols
+        problems = []
+        if row_build != build:
+            problems.append(f"the build is {row_build!r}, not {build}")
+        if keyed_by_index and not re.fullmatch(r"\d+", idx, re.ASCII):
+            problems.append(f"build {build} names a class by its TypeDefIndex, and {idx!r} is not one")
+        if not keyed_by_index and idx:
+            problems.append(f"build {build} names a class by name alone, so typedef_index stays empty")
+        if not cls:
+            problems.append("the class column is empty")
+        if not _IDENTIFIER_RE.match(name):
+            problems.append(f"the name {name!r} is not an ASCII identifier")
+        if not what.strip():
+            problems.append("the what column is empty")
+        if problems:
+            errors.extend(f"{where}: {p}" for p in problems)
+            continue
+        rows.append(NameRow(where, int(idx) if keyed_by_index else None, cls, member, name, what))
+    return rows, errors
+
+
+class NamesMap:
+    """One build's names map, indexed for resolution. `used` collects the
+    rows a page span resolved through."""
+
+    def __init__(self, rows: list[NameRow], build: str):
+        self.rows = rows
+        self.keyed_by_index = build not in _BUILDS_KEYED_BY_NAME
+        self.class_rows: dict[str, list[NameRow]] = {}
+        self.member_rows: dict[object, dict[str, list[NameRow]]] = {}
+        self.used: set[NameRow] = set()
+        for r in rows:
+            if r.member:
+                self.member_rows.setdefault(self.row_key(r), {}).setdefault(r.name, []).append(r)
+            else:
+                self.class_rows.setdefault(r.name, []).append(r)
+
+    def row_key(self, row: NameRow):
+        return row.typedef_index if self.keyed_by_index else row.cls
+
+    def class_key(self, cls: dict):
+        return cls["typedef_index"] if self.keyed_by_index else cls["name"]
+
+    def dump_classes(self, index: "_Index", row: NameRow) -> list[dict]:
+        """The dump classes a map row's class names."""
+        if self.keyed_by_index:
+            return index.by_index.get(row.typedef_index, [])
+        return index.by_name.get(row.cls, [])
+
+    def renamed_classes(self, index: "_Index", name: str) -> list[tuple[dict, NameRow]]:
+        """The dump classes our class name `name` stands for, each with its row."""
+        return [(c, r) for r in self.class_rows.get(name, []) for c in self.dump_classes(index, r)]
+
+    def member_rows_named(self, cls: dict, name: str) -> list[NameRow]:
+        """The map rows that give a member of `cls` our name `name`."""
+        return self.member_rows.get(self.class_key(cls), {}).get(name, [])
 
 
 def python_modules(tools_dir: str = TOOLS_DIR) -> frozenset[str]:
@@ -518,11 +633,16 @@ def _display_path(path: str) -> str:
     return (full if rel.startswith("..") else rel).replace("\\", "/")
 
 
-def page_facts(pages_dir: str, build: str, modules: frozenset[str] | None = None) -> list[Cited]:
-    """Every game fact the `.md` pages under `pages_dir` cite for `build`."""
+def page_facts(pages_dir: str, build: str,
+               modules: frozenset[str] | None = None) -> tuple[list[Cited], list[str]]:
+    """Every game fact the `.md` pages under `pages_dir` cite for `build`, and
+    an error for each of that build's spans holding a non-ASCII character: the
+    game's scrambled names are written on a page by their names-map name."""
     if modules is None:
         modules = python_modules()
     cited: list[Cited] = []
+    errors: list[str] = []
+    shown_map = _display_path(names_path(pages_dir, build))
     paths = []
     for root, _subdirs, files in os.walk(pages_dir):
         paths.extend(os.path.join(root, f) for f in files if f.endswith(".md"))
@@ -533,10 +653,14 @@ def page_facts(pages_dir: str, build: str, modules: frozenset[str] | None = None
         for lineno, span, span_build in span_builds(lines):
             if span_build != build:
                 continue
+            if not span.isascii():
+                errors.append(f"{shown}:{lineno}: `{span}` holds a non-ASCII letter; write the readable "
+                              f"name from {shown_map} instead")
+                continue
             fact = game_fact(span, modules)
             if fact is not None:
-                cited.append(Cited(f"{shown}:{lineno}", span, fact))
-    return cited
+                cited.append(Cited(f"{shown}:{lineno}", span.strip(), fact))
+    return cited, errors
 
 
 def _is_data_address(name: str) -> bool:
@@ -619,13 +743,26 @@ class _Index:
 
 def _member_matches(index: _Index, cls: dict, test) -> list[tuple[str, dict]]:
     """The nearest class in `cls`'s chain with a member passing `test`, and
-    every such member there: ("field" or "method", member)."""
+    every such member there: ("field" or "method", member). `test` gets the
+    class in the chain, the kind and the member."""
     for c in index.chain(cls):
-        found = [("field", f) for f in c["fields"] if test("field", f)]
-        found += [("method", m) for m in c["methods"] if test("method", m)]
+        found = [("field", f) for f in c["fields"] if test(c, "field", f)]
+        found += [("method", m) for m in c["methods"] if test(c, "method", m)]
         if found:
             return found
     return []
+
+
+def _named(names: NamesMap, member: str, via: list[NameRow]):
+    """A `_member_matches` test for a member a page names: by the dump's name,
+    or by our name for it in the map. A map row it matches through goes in `via`."""
+    def test(c: dict, _kind: str, m: dict) -> bool:
+        if m["name"] == member:
+            return True
+        rows = [r for r in names.member_rows_named(c, member) if r.member == m["name"]]
+        via.extend(rows)
+        return bool(rows)
+    return test
 
 
 def _row(build: str, kind: str, cls: dict, member: str = "", rva=None, offset=None) -> tuple:
@@ -646,55 +783,124 @@ def _member_row(build: str, cls: dict, kind: str, member: dict) -> tuple:
     return _row(build, kind, cls, member["name"], rva=member.get("rva"))
 
 
-def _lookup(index: _Index, build: str, fact: Fact) -> tuple[list[tuple], str]:
-    """The table rows for one fact, or an empty list and the reason."""
+def _lookup(index: _Index, build: str, fact: Fact,
+            names: NamesMap) -> tuple[list[tuple], str, list[NameRow]]:
+    """The table rows for one fact, or an empty list and the reason, and the
+    names-map rows the lookup went through. A class or member part may be the
+    dump's name or our name for it in `names`."""
+    via: list[NameRow] = []
     if fact.form == "rva":
         found = index.by_rva.get(fact.address, [])
         if not found:
-            return [], "matches no method address"
+            return [], "matches no method address", via
         # Two methods can share one address; each gets its row.
-        return [_row(build, "method", c, m["name"], rva=m["rva"]) for c, m in found], ""
+        return [_row(build, "method", c, m["name"], rva=m["rva"]) for c, m in found], "", via
     if fact.form in ("index_offset", "index_member"):
         classes = index.by_index.get(fact.index, [])
         if len(classes) != 1:
-            return [], f"TypeDefIndex {fact.index} matches {len(classes)} classes"
+            return [], f"TypeDefIndex {fact.index} matches {len(classes)} classes", via
         cls = classes[0]
         if fact.form == "index_offset":
-            found = _member_matches(index, cls, lambda kind, m: kind == "field" and not m["static"]
+            found = _member_matches(index, cls, lambda _c, kind, m: kind == "field" and not m["static"]
                                     and m.get("offset") == fact.address)
         else:
-            found = _member_matches(index, cls, lambda kind, m: m["name"] == fact.member)
+            found = _member_matches(index, cls, _named(names, fact.member, via))
         if len(found) != 1:
-            return [], f"matches {len(found)} members of TypeDefIndex {fact.index} and its bases"
-        return [_member_row(build, cls, *found[0])], ""
+            return [], f"matches {len(found)} members of TypeDefIndex {fact.index} and its bases", via
+        return [_member_row(build, cls, *found[0])], "", via
     full = f"{fact.left}.{fact.member}"
     rows = [_row(build, "enum" if c["kind"] == "enum" else "class", c)
             for c in index.by_name.get(full, []) + index.by_full.get(full, [])]
-    owners = index.by_name.get(fact.left, [])
+    owners = list(index.by_name.get(fact.left, []))
+    for c, r in names.renamed_classes(index, fact.left):
+        via.append(r)
+        if not any(c is o for o in owners):
+            owners.append(c)
     if len(owners) > 1:
-        return [], f"class {fact.left} matches {len(owners)} classes"
+        return [], f"class {fact.left} matches {len(owners)} classes", via
     for cls in owners:
         rows += [_member_row(build, cls, kind, m) for kind, m in
-                 _member_matches(index, cls, lambda kind, m: m["name"] == fact.member)]
+                 _member_matches(index, cls, _named(names, fact.member, via))]
     if len(rows) != 1:
-        return [], f"matches {len(rows)} classes and members"
-    return rows, ""
+        return [], f"matches {len(rows)} classes and members", via
+    return rows, "", via
 
 
-def table_rows(classes: list[dict], build: str, cited: list[Cited],
-               instances: list[dict] = ()) -> tuple[list[tuple], list[str]]:
-    """One row per distinct fact, sorted, and an error for each fact that is
-    not exactly one dump entry (an address several methods share excepted)."""
+def table_rows(classes: list[dict], build: str, cited: list[Cited], instances: list[dict] = (),
+               names: NamesMap | None = None) -> tuple[list[tuple], list[str]]:
+    """One row per distinct fact and span, sorted, and an error for each fact
+    that is not exactly one dump entry (an address several methods share
+    excepted). The rows `names` resolved through are added to `names.used`."""
+    if names is None:
+        names = NamesMap([], build)
     index = _Index(classes, instances)
     rows: set[tuple] = set()
     errors: list[str] = []
     for c in cited:
-        found, reason = _lookup(index, build, c.fact)
+        found, reason, via = _lookup(index, build, c.fact, names)
         if found:
-            rows.update(found)
+            rows.update(r + (c.span,) for r in found)
+            names.used.update(via)
         else:
             errors.append(f"{c.where}: `{c.span}` {reason} in build {build}")
     return sorted(rows), errors
+
+
+def check_names(classes: list[dict], names: NamesMap) -> tuple[list[str], list[str]]:
+    """The errors and warnings in a names map, read against the dump.
+
+    Each row's class and member exist in the dump. Our class name is unique
+    and is no class's real name; our member name is unique within its class
+    and is none of that class's real member names; a member has one name. A
+    row no page span resolved through (`names.used`) is a warning.
+    """
+    index = _Index(classes)
+    errors: list[str] = []
+    warnings: list[str] = []
+    class_named: dict[str, NameRow] = {}
+    class_row: dict[object, NameRow] = {}
+    member_named: dict[tuple, NameRow] = {}
+    member_row: dict[tuple, NameRow] = {}
+    for r in names.rows:
+        found = names.dump_classes(index, r)
+        if names.keyed_by_index:
+            if len(found) != 1:
+                errors.append(f"{r.where}: TypeDefIndex {r.typedef_index} matches {len(found)} classes")
+                continue
+            if found[0]["name"] != r.cls:
+                errors.append(f"{r.where}: TypeDefIndex {r.typedef_index} is the class `{found[0]['name']}` "
+                              f"in the dump, not `{r.cls}`")
+                continue
+        elif len(found) != 1:
+            errors.append(f"{r.where}: the class `{r.cls}` matches {len(found)} classes")
+            continue
+        cls = found[0]
+        key = names.class_key(cls)
+        real_members = {m["name"] for m in cls["fields"] + cls["methods"]}
+        if not r.member:
+            if r.name in index.by_name:
+                errors.append(f"{r.where}: `{r.name}` is a real class name in the dump")
+            if r.name in class_named:
+                errors.append(f"{r.where}: `{r.name}` names another class too, at {class_named[r.name].where}")
+            if key in class_row:
+                errors.append(f"{r.where}: the class has another name too, at {class_row[key].where}")
+            class_named.setdefault(r.name, r)
+            class_row.setdefault(key, r)
+        else:
+            if r.member not in real_members:
+                errors.append(f"{r.where}: the class `{r.cls}` has no member `{r.member}`")
+            if r.name in real_members:
+                errors.append(f"{r.where}: `{r.name}` is a real member name of the class `{r.cls}`")
+            if (key, r.name) in member_named:
+                errors.append(f"{r.where}: `{r.name}` names another member of the class too, at "
+                              f"{member_named[(key, r.name)].where}")
+            if (key, r.member) in member_row:
+                errors.append(f"{r.where}: the member has another name too, at {member_row[(key, r.member)].where}")
+            member_named.setdefault((key, r.name), r)
+            member_row.setdefault((key, r.member), r)
+        if r not in names.used:
+            warnings.append(f"{r.where}: `{r.name}` is cited by no page")
+    return errors, warnings
 
 
 def file_md5(path: str) -> str:
@@ -736,8 +942,11 @@ def load_classes(dump_path: str, version: str | None) -> tuple[list[dict], list[
 
 
 def build_table(dump_path: str, pages_dir: str, dll_path: str, version: str | None = None,
-                constants_path: str = CONSTANTS_PATH) -> tuple[str, list[str]]:
-    """The facts table text for one build, and every lookup error."""
+                constants_path: str = CONSTANTS_PATH,
+                warnings: list[str] | None = None) -> tuple[str, list[str]]:
+    """The facts table text for one build, and every error: in the pages, in
+    the lookups and in the build's names map (`names_path`). The map's
+    warnings go in `warnings` when a list is given."""
     from tools.ch_mcp.build_facts import BuildFactsError, build_number
 
     classes, instances, version = load_classes(dump_path, version)
@@ -745,24 +954,33 @@ def build_table(dump_path: str, pages_dir: str, dll_path: str, version: str | No
         build = build_number(version)
     except BuildFactsError as exc:
         raise FactsError(str(exc)) from exc
-    cited = page_facts(pages_dir, build)
-    errors: list[str] = []
+    name_rows, errors = load_names(names_path(pages_dir, build), build)
+    names = NamesMap(name_rows, build)
+    cited, page_errors = page_facts(pages_dir, build)
+    errors += page_errors
     if build == DEFAULT_BUILD:
-        from_constants, errors = constants_facts(constants_path, classes)
+        from_constants, constants_errors = constants_facts(constants_path, classes)
         cited += from_constants
-    rows, lookup_errors = table_rows(classes, build, cited, instances)
-    return render_table(version, dll_path, rows), errors + lookup_errors
+        errors += constants_errors
+    rows, lookup_errors = table_rows(classes, build, cited, instances, names)
+    map_errors, map_warnings = check_names(classes, names)
+    if warnings is not None:
+        warnings.extend(map_warnings)
+    return render_table(version, dll_path, rows), errors + lookup_errors + map_errors
 
 
 def _table_main(args) -> int:
     if not args.out or not args.dll:
         print("dump_facts: --tsv needs --out and --dll", file=sys.stderr)
         return 1
+    warnings: list[str] = []
     try:
-        text, errors = build_table(args.dump_cs, args.tsv, args.dll, args.version, args.constants)
+        text, errors = build_table(args.dump_cs, args.tsv, args.dll, args.version, args.constants, warnings)
     except (FactsError, OSError) as exc:
         print(f"dump_facts: {exc}", file=sys.stderr)
         return 1
+    for w in warnings:
+        print(f"dump_facts: warning: {w}", file=sys.stderr)
     for e in errors:
         print(f"dump_facts: {e}", file=sys.stderr)
     if errors:
