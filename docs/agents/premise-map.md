@@ -1,8 +1,8 @@
 # Premise maps: what a plan's facts stand on
 
-A premise is a fact a plan uses but does not build. "A kit on Player1 makes a drums player" is one. "Window Map has Star Power phrases" is another. Both once sat in a plan as flat sentences, nobody opened their source, and both were false, so live runs were lost to them. A plan already proves every promise it makes in its Promise map. The Premise map is the other half: it proves the facts the plan stands on.
+A premise is a fact a plan uses but does not build. "A kit on Player1 makes a drums player" is one. "Window Map has Star Power phrases" is another. Both once sat in a plan as flat sentences with their source never opened, and both were false. Facts like these cost live runs. A plan already proves every promise it makes in its Promise map (a table that ties each promise to a task and a check). The Premise map is the other half: it proves the facts the plan stands on.
 
-This page is the one home of the map's shape, and of the shape of a live step's call list. The planner's instructions and the plan reviewer's instructions point here, the same way the preamble points at `docs/agents/handoff.md` for a handoff's Claims table.
+This page is the one home of the map's shape, and of the shape of a live step's call list. Other pages point here and do not copy it, the way the preamble points at `docs/agents/handoff.md` for a handoff's Claims table.
 
 ## The rule
 
@@ -10,13 +10,13 @@ A fact either names its source or it is marked `unchecked`. An unchecked premise
 
 ## The shape
 
-A plan ends with one table, under a heading that is exactly `## Premise map`. Every fact the plan depends on gets a row. The table has four columns.
+A plan holds one table, under a heading that is exactly `## Premise map`. Every fact the plan depends on gets a row. The table has four columns.
 
 | Premise | Kind | Source | Status |
 |---|---|---|---|
 | one fact the plan depends on, in one sentence | exactly one of the six Kind words below | the exact place the fact was read, in backticks | `checked` and a date, or for an `unchecked` row the task or question that settles it |
 
-Start each premise with a short id, such as `P1:`, so a task or step can name its row.
+Start each premise with a short id, such as `P1:`. The rule above has a task or step name the row it uses, and the id is how it does.
 
 ## Rules for the table
 
@@ -24,7 +24,7 @@ A row has one Kind. A fact with two sources of two kinds is two rows.
 
 A row is either checked or unchecked. There is no half-checked status. If part of a fact was never opened, that part gets its own `unchecked` row.
 
-**Source.** The Source cell names the exact place: a repo path with a line number or a block id, a game file path, a chart path, or a run's result folder. It holds at least one backticked token, because a cell with none is a shape error. It may hold several backticked tokens, with plain words around them.
+**Source.** The Source cell names the exact place: a repo path with a line number or a block id, a game file path, a chart path, or a run's result folder. It holds at least one backticked token, because a cell with none is a shape error. It may hold several backticked tokens, with plain words around them. An `unchecked` row's Source holds one too: the file that only reports the fact, or the place where the search for a source found nothing.
 
 **Status.** A row of any Kind but `unchecked` has a Status that starts with `checked` and a date, such as `checked 2026-10-31`. Words after the date may say what was opened. An `unchecked` row's Status names how it gets settled: either the id of a task in the plan (one with a `### <id>:` heading), or `question N`, where N is the number of an item under the plan's heading that starts `## Questions`.
 
@@ -43,7 +43,7 @@ Each word says what kind of thing the fact was read from.
 
 A premise about a file's own content is sourced by that file. "The planner's instructions say nothing about premises" is sourced by the planner's instruction file.
 
-A premise about the world (the game, the code, a past run) is sourced by the thing itself. A file that only reports on it does not count. That means a handoff, another plan, a session card, a memory note, or a Clone Hero block with no proof label. A row whose only source is one of those, or nothing, is `unchecked`, and its Status must name a task in the plan or a question number.
+A premise about the world (the game, the code, a past run) is sourced by the thing itself. A file that only reports on it does not count. That means a handoff, another plan, a session card, a memory note, or a Clone Hero block with no proof label. A session card counts only as the place a `ruling`'s quoted words sit. A row whose only source is one of those, or nothing, is `unchecked`, and its Status must name a task in the plan or a question number.
 
 ## The call list of a live step
 
@@ -65,6 +65,6 @@ The planner writes the map and the call lists as it writes the plan.
 
 The plan reviewer checks the facts twice. First it opens each `checked` row's source and confirms the fact is there; a row whose source does not say what the row says is a finding. Then, with the map closed, it reads each live step and each task cold and writes down every fact it depends on. A fact with no row is a finding, fixed by adding the row, as `unchecked` when the reviewer cannot source it.
 
-The docs test, `tests/test_docs_match_code.cpp`, holds a plan to this shape at every merge to `main`; the comment above its Premise map check says which plans count. It checks the shape only. Whether a source says what its row says is the reviewer's job, because a test can tell that a file exists but not what a line in it means.
+A test can tell that a file exists but not what a line in it means, so whether a source says what its row says is the reviewer's job. The shape is also held by the docs test, `tests/test_docs_match_code.cpp`, from the merge that adds its Premise map check to `main`. That check reads the shape only, and the comment above it says which plans count.
 
 Before a live run, the main session shows the user the step's call list. "The shape of a live run" on `docs/agents/clone-hero-mcp.md` says what that go request holds.
