@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import tempfile
 import threading
@@ -329,6 +330,62 @@ MENU_LINES = [
 ]
 
 
+class MenuFieldsTest(unittest.TestCase):
+    """menu_fields.json parses, and each field and enum it names sits at the
+    dump line it gives, in the dump of the build it names. The dump lives
+    outside the repo, so without it the dump check is skipped."""
+
+    def setUp(self):
+        self.data = FT.menu_fields()
+
+    def test_it_parses_with_one_table_per_field(self):
+        keys = [f["key"] for f in self.data["fields"]]
+        self.assertEqual(keys, ["instrument", "difficulty"])
+        for field in self.data["fields"]:
+            with self.subTest(key=field["key"]):
+                self.assertEqual(field["class"], "PlayerSelectionMenu")
+                for number in field["values"]:
+                    int(number)
+
+    def test_each_name_sits_at_its_dump_line(self):
+        dump = os.path.join(B.DUMPS_ROOT, self.data["build"], "dump.cs")
+        if not os.path.isfile(dump):
+            self.skipTest(f"{dump} is not on this machine")
+        wanted = {}
+        for field in self.data["fields"]:
+            wanted[field["class_dump_line"]] = f"class {field['class']} "
+            wanted[field["dump_line"]] = f" {field['field']}; "
+            wanted[field["enum_dump_line"]] = f"public enum {field['enum']} "
+        found = {}
+        with open(dump, encoding="utf-8") as f:
+            for n, line in enumerate(f, start=1):
+                if n in wanted:
+                    found[n] = line
+                if len(found) == len(wanted):
+                    break
+        for n, text in wanted.items():
+            with self.subTest(line=n):
+                self.assertIn(text, found.get(n, ""))
+        for field in self.data["fields"]:
+            # The field's line names the enum type it holds.
+            self.assertIn(f" {field['enum']} {field['field']}; ", found[field["dump_line"]])
+
+    def test_each_enum_word_sits_in_its_enum(self):
+        dump = os.path.join(B.DUMPS_ROOT, self.data["build"], "dump.cs")
+        if not os.path.isfile(dump):
+            self.skipTest(f"{dump} is not on this machine")
+        with open(dump, encoding="utf-8") as f:
+            lines = f.readlines()
+        for field in self.data["fields"]:
+            start = field["enum_dump_line"] - 1
+            end = lines.index("}\n", start)
+            body = "".join(lines[start:end])
+            consts = dict((value, word) for word, value in re.findall(
+                rf"public const {re.escape(field['enum'])} (\w+) = (-?\d+);", body))
+            with self.subTest(key=field["key"]):
+                self.assertEqual(field["values"], consts)
+
+
 class MenuTest(Rig):
     def test_menu_lines_print_the_block_as_sent(self):
         self.assertEqual(FT.menu_lines(MENU_READ), MENU_LINES)
@@ -366,6 +423,27 @@ class MenuTest(Rig):
         reply = {**STATE, "menu": MENU_READ}
         tools = self.tools([STATE, reply], attached=True)
         self.assertEqual(tools.read_state(), reply)
+
+    def test_menu_lines_print_active_and_the_player_screen_words(self):
+        def player(instrument, difficulty):
+            return {**MENU_READ, "classes": {"PlayerSelectionMenu": {
+                "found": True, "live": 1, "destroyed": 0, "active": [True],
+                "fields": {"instrument": [instrument], "difficulty": [difficulty]}}}}
+        self.assertEqual(FT.menu_lines(player(9, 3))[0],
+                         "PlayerSelectionMenu: 1 live, 0 destroyed; active: [true]; "
+                         "instrument: [9 (ProDrums)]; difficulty: [3 (Expert)]")
+        line = FT.menu_lines(player(6, 2))[0]
+        self.assertIn("instrument: [6 (Drums)]", line)
+        self.assertIn("difficulty: [2 (Hard)]", line)
+
+    def test_menu_lines_print_a_field_read_that_is_not_a_known_number_as_sent(self):
+        menu = {**MENU_READ, "classes": {"PlayerSelectionMenu": {
+            "found": True, "live": 2, "destroyed": 0, "active": [None, "error: x"],
+            "fields": {"instrument": [99, "error: boom"], "difficulty": [-1, None]}}}}
+        self.assertEqual(FT.menu_lines(menu)[0],
+                         "PlayerSelectionMenu: 2 live, 0 destroyed; active: [null, \"error: x\"]; "
+                         "instrument: [99 (not in menu_fields.json), error: boom]; "
+                         "difficulty: [-1 (None), null]")
 
     def test_read_state_before_attach_raises_with_the_reason(self):
         with self.assertRaises(FT.StateUnread) as caught:
