@@ -43,7 +43,7 @@ int unscored_rank(store::RecordStatus status) {
 app::RowFacts facts_of(const LibraryRow& row) {
     if (row.status != store::RecordStatus::Ready || !row.summary.has_scored_best_path())
         return app::RowFacts{};
-    return app::RowFacts{row.summary.stars, row.summary.hardest_ms};
+    return app::RowFacts{row.summary.stars, shown_timing(row.summary.hardest_ms)};
 }
 
 }  // namespace

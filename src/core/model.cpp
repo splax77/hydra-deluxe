@@ -501,7 +501,7 @@ std::vector<ActivationTiming> Activation::badge_timings() const {
 }
 
 std::optional<HardestTiming> Activation::hardest() const {
-    // Only timings that need hitting take part (D51 call 4, D13): a squeeze
+    // Only timings that need hitting take part (D51 call 4, D301): a squeeze
     // that needs no timing (SPSqueeze::needs_no_timing) and an early fill with
     // time to spare (early_fill_needs_timing) never name the hardest part.
     const std::vector<ActivationTiming> all = badge_timings();
@@ -529,7 +529,7 @@ std::optional<double> Activation::difficulty() const {
     return h->ms;
 }
 
-// D51 call 4 and D13: hardest() only names a timing that needs hitting, so
+// D51 call 4 and D301: hardest() only names a timing that needs hitting, so
 // difficulty() is empty exactly when there is nothing to time.
 bool Activation::needs_timing() const { return difficulty().has_value(); }
 
