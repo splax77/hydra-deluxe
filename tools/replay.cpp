@@ -51,6 +51,7 @@
 #include "core/replay.h"
 #include "core/squeeze_rating.h"
 #include "core/strutil.h"
+#include "core/unknown_option.h"
 #include "core/winstr.h"
 #include "replay_json.h"
 #include "corpus_util.h"
@@ -765,7 +766,7 @@ int main() {
             else if (k == "--difficulty") a.difficulty = next();
             else if (k == "--pretty") a.pretty = true;
             else if (k == app::kLegacyFillsFlag) a.legacy_fills = true;
-            else { std::fprintf(stderr, "unknown option %s\n", k.c_str()); usage(); return 2; }
+            else { std::fprintf(stderr, "%s\n", hydra::unknown_option_line(k).c_str()); usage(); return 2; }
         } catch (const std::exception& e) {
             std::fprintf(stderr, "%s\n", e.what());
             return 2;
