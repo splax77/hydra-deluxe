@@ -25,7 +25,7 @@ std::vector<report::ReportRow> sample_path_rows() {
         r.acts = 3 + rank;
         r.skip = rank - 1;
         r.ms = ms;
-        auto [tier, tok] = report::tier_for(ms, kSampleHitWindowMs);
+        auto [tier, tok] = report::tier_for(ms);
         r.tier = tier;
         r.tok = tok;
         r.efill = efill;

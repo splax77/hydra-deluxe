@@ -89,7 +89,6 @@ std::shared_ptr<GeneratedReport> sample_path_result() {
     auto r = std::make_shared<GeneratedReport>();
     r->paths = report_samples::sample_path_rows();
     r->rows = static_cast<int64_t>(r->paths.size());
-    r->hit_window_ms = report_samples::kSampleHitWindowMs;
     r->subtitle = "sample path subtitle";
     r->footer = "sample path footer";
     return r;
@@ -146,7 +145,7 @@ void note_rule_widths() {
     std::vector<std::string> texts;
     for (const auto& r : report.paths) texts.push_back(view_rules::path_search_text(r));
     const hydra::app::report_view::TableView<hydra::app::report::ReportRow> view(
-        report.paths, std::move(texts), view_rules::path_columns(report.hit_window_ms));
+        report.paths, std::move(texts), view_rules::path_columns());
     const std::vector<hydra::ui::ColumnSpec> specs =
         hydra::ui::report_frame::column_specs(view.columns());
     ImGui::Begin(window->Name);
@@ -553,12 +552,11 @@ void test_chip_label(ImGuiTestContext* ctx) {
     ctx->WindowResize("", ImVec2(900.0f, 600.0f));
     ctx->Yield(3);
     Fixture& f = fixture();
-    const double hit = report_samples::kSampleHitWindowMs;
     const std::vector<hydra::app::report::ReportRow>& rows = f.path.result->paths;
 
     // Every row's Timing chip, Song B's "Beyond" tier among them (171 ms).
     for (const auto& r : rows)
-        IM_CHECK(shows(hydra::app::path_report_view::tier_label(r.tier, hit)));
+        IM_CHECK(shows(hydra::app::path_report_view::tier_label(r.tier)));
 
     ImGuiTable* table = path_table(ctx);
     IM_CHECK_RETV(table != nullptr && table->InnerWindow != nullptr, );
@@ -566,7 +564,7 @@ void test_chip_label(ImGuiTestContext* ctx) {
 
     // Every number column's cells, read at both ends of the sideways scroll
     // (a column scrolled out of view draws nothing).
-    const auto columns = hydra::app::path_report_view::path_columns(hit);
+    const auto columns = hydra::app::path_report_view::path_columns();
     std::vector<bool> read(columns.size(), false);
     for (bool right_end : {false, true}) {
         ImGui::SetScrollX(table->InnerWindow, right_end ? table->InnerWindow->ScrollMax.x : 0.0f);
@@ -635,7 +633,7 @@ void test_cells_left(ImGuiTestContext* ctx) {
     ctx->Yield(3);
     ImGuiTable* table = path_table(ctx);
     IM_CHECK_RETV(table != nullptr && table->InnerWindow != nullptr, );
-    const auto columns = hydra::app::path_report_view::path_columns(report_samples::kSampleHitWindowMs);
+    const auto columns = hydra::app::path_report_view::path_columns();
     int score = -1;
     for (size_t c = 0; c < columns.size(); ++c)
         if (columns[c].title == "Score") score = static_cast<int>(c) + 1;
@@ -1327,7 +1325,7 @@ void test_reopen_keeps_filters(ImGuiTestContext* ctx) {
     IM_CHECK(on_screen(h, search_shown));
 
     // A timing tier a path has, so the table stays up to show its sort.
-    const auto choices = hydra::app::path_report_view::timing_choices(report.hit_window_ms);
+    const auto choices = hydra::app::path_report_view::timing_choices();
     std::string label;
     for (size_t i = 1; i < choices.size() && label.empty(); ++i)
         for (const auto& r : report.paths)

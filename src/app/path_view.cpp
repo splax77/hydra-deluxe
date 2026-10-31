@@ -81,7 +81,7 @@ std::string longest_activation_badge() {
     // squeeze's figure lies strictly between -kSqueezeWindowMs and
     // +kSqueezeWindowMs. An early fill is named only on an E-critical
     // activation, so its figure is above minus kEarlyFillSlackMs (is_e0),
-    // and at most kEarlyFillReachMs (fill_refuses): inside the squeeze window
+    // and at most kHitWindowMs (fill_refuses): inside the squeeze window
     // too. A squeeze that needs no timing (SPSqueeze::needs_no_timing) has a
     // figure of 0 or less (D80), so the widest figure is the window's, minus
     // sign included.
@@ -199,13 +199,11 @@ const char* const kOverfillHint =
 // the parameter stays so the callers keep their shape.
 ActivationsView build_activations(const Path& path, const HydraRecord& /*record*/,
                                   const SongTiming* timing,
-                                  double hit_window_ms,
                                   std::optional<double> backend_limit_ms,
                                   const core::Rules& rules,
                                   std::optional<double> song_length_ms,
                                   bool pro_drums) {
     ActivationsView view;
-    const double W = hit_window_ms;
 
     const ActivationWalk acts = path.walk_activations();
     for (const Activation& act : acts) {
@@ -233,7 +231,7 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
                              (act.is_E0() ? " (required)" : " (optional)");
         }
 
-        ActivationRating rate = rate_activation(act, W, rules.backend_leeway_ms);
+        ActivationRating rate = rate_activation(act, rules.backend_leeway_ms);
 
         // The line names the sides the activation's rows and squeezes read
         // (rate_activation records them), when they aren't 1, early first:
@@ -333,7 +331,7 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
                 // budget would be with no frontend-timing scale.
                 // Written once and said twice, so both read the same
                 // (D57 item 2: "on the normal 170.5 ms scale ... not 170.5 ms").
-                const std::string normal_budget = format_ms(nominal_budget_ms(W));
+                const std::string normal_budget = format_ms(nominal_budget_ms());
                 row.tooltip = "Effectively " + format_ms(*br.note.effective_ms) +
                               " on the normal " + normal_budget +
                               " scale:\nfrontend timing scales " +
@@ -354,7 +352,7 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
                 core::sqout_position(bsq.timecode.ticks(), act.sqout_tick),
                 rules.backend_leeway_ms);
             row.points = std::to_string(value);
-            row.rating = bsq.summarystr(br.squeezed_out, W, rules.backend_leeway_ms);
+            row.rating = bsq.summarystr(br.squeezed_out, rules.backend_leeway_ms);
             if (br.note.effective_ms)
                 row.rating += eff_suffix(*br.note.effective_ms);
             if (br.squeezed_out) {
@@ -572,20 +570,17 @@ void PathsTabUi::click_row(size_t i) {
 
 const PathsTabCache::Details& PathsTabCache::details(
     const Path& path, const HydraRecord& record, int record_generation,
-    const SongTiming* timing, double hit_window_ms, std::optional<double> backend_limit_ms,
+    const SongTiming* timing, std::optional<double> backend_limit_ms,
     const core::Rules& rules, std::optional<double> song_length_ms, bool pro_drums) {
     const bool new_path = record_generation != details_generation_ || &path != details_path_;
-    if (new_path || hit_window_ms != details_hit_window_ms_ ||
-        backend_limit_ms != details_backend_limit_ms_ ||
+    if (new_path || backend_limit_ms != details_backend_limit_ms_ ||
         song_length_ms != details_song_length_ms_ || pro_drums != details_pro_drums_) {
         details_.squeezes = multsqueeze_views(record, pro_drums);
-        details_.activations = build_activations(path, record, timing, hit_window_ms,
-                                                 backend_limit_ms, rules, song_length_ms,
-                                                 pro_drums);
+        details_.activations = build_activations(path, record, timing, backend_limit_ms, rules,
+                                                 song_length_ms, pro_drums);
         details_.breakdown = build_score_breakdown(path);
         details_generation_ = record_generation;
         details_path_ = &path;
-        details_hit_window_ms_ = hit_window_ms;
         details_backend_limit_ms_ = backend_limit_ms;
         details_song_length_ms_ = song_length_ms;
         details_pro_drums_ = pro_drums;

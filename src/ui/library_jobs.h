@@ -419,17 +419,14 @@ void set_view_analyzer_for_test(app::ChartAnalyzer analyze);
 class ReportJob : public ResultJobBase {
 public:
     // `run` names the profile the report lists (ReportOptions::run, the
-    // run's profile). hit_window_ms feeds the report's timing-tier bands
-    // (settings.hit_window_ms).
-    ReportJob(store::RecordStore& store, app::BatchRun run,
-              double hit_window_ms = kDefaultHitWindowMs);
+    // run's profile).
+    ReportJob(store::RecordStore& store, app::BatchRun run);
     ~ReportJob() { shutdown(); }
 
     void start();
 
     // What the report is built from, as given to the constructor.
     const store::Profile& profile() const { return run_.profile; }
-    double hit_window_ms() const { return hit_window_ms_; }
 
     // Valid once finished() && ok(): the report, shared with AppState's slot
     // rather than copied.
@@ -440,7 +437,6 @@ private:
 
     store::RecordStore& store_;
     app::BatchRun run_;
-    double hit_window_ms_;
     std::function<void()> hold_;  // the test seam's, copied at construction
     std::shared_ptr<const app::report::GeneratedReport> result_;
 };

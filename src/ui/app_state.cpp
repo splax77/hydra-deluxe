@@ -924,7 +924,7 @@ void AppState::launch_path_report(app::BatchRun run, PathReportCause cause) {
         report_job->cancel();
         parked_reports.push_back(std::move(report_job));
     }
-    report_job = std::make_unique<ReportJob>(*store, std::move(run), settings.hit_window_ms);
+    report_job = std::make_unique<ReportJob>(*store, std::move(run));
     path_report_cause_ = cause;
     path_report.out_of_date_during_build = ReportOutOfDate::None;
     report_job->start();

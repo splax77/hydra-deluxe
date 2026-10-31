@@ -88,14 +88,13 @@ inline ChipToken tier_token(const std::string& tok) {
 }
 
 // The path report's five tiles over the rows a window shows: `shown` holds
-// their indices into `rows`. `hit_window_ms` is the window the rows' tiers
-// were labeled with (GeneratedReport::hit_window_ms), which names the Beyond
-// edge in the "Past N ms" tile. `library` counts the Charts shown tile
+// their indices into `rows`. The Beyond edge (beyond_edge_text) names the
+// "Past N ms" tile. `library` counts the Charts shown tile
 // (GeneratedReport::library), which reads "<shown> of <library>": the charts
 // with rows shown, of every chart the library lists, both counted in library
 // rows. Takes over the page script's `stats`.
 std::vector<Tile> path_tiles(const std::vector<ReportRow>& rows,
-                             const std::vector<size_t>& shown, double hit_window_ms,
+                             const std::vector<size_t>& shown,
                              const store::ChartIndex& library);
 
 // The timing_tiers table's two open bands, the one answer to which entries
@@ -112,8 +111,7 @@ const TimingTier& none_tier(const std::vector<TimingTier>& tiers);
 // timing exactly on an edge belongs to the band below it (D48 Q3), so 2.0 ms is
 // Normal and the budget itself is Insane+. At the historical W = 70 this is the
 // original 2/35/70/105/140 ladder.
-std::pair<std::string, std::string> tier_for(const std::optional<double>& ms,
-                                             double hit_window_ms = kDefaultHitWindowMs);
+std::pair<std::string, std::string> tier_for(const std::optional<double>& ms);
 
 // The same label, read from an already-built timing_tiers table, so a caller
 // labeling many rows builds the table once.
@@ -122,7 +120,11 @@ std::pair<std::string, std::string> tier_for(const std::optional<double>& ms,
 
 // The Beyond edge (beyond_edge_ms) as every report prints it, in whole ms:
 // the page's payload, its footer, the Past tile and the Timing chip.
-std::string beyond_edge_text(double hit_window_ms);
+std::string beyond_edge_text();
+
+// The hit window (kHitWindowMs) as the reports print it, in whole ms: the
+// footer's and the timing dropdown's "the N ms hit window" (D278 item 4).
+std::string hit_window_text();
 
 // One library chart whose stored result under the page's profile is a
 // failure (RecordStatus::CantAnalyze), named from the library.
@@ -164,7 +166,6 @@ inline constexpr int64_t kEveryPathSentinel = 1000000000;
 struct ReportOptions {
     // Defaults to every path a record keeps.
     int64_t max_paths = store::kPathsPerRecord;
-    double hit_window_ms = kDefaultHitWindowMs;
     std::string db_path;  // names the footer's source database
     // Set this and generate_report hands back an empty result, with no rows.
     // Closing the app while a report builds goes through here; the CLI never
@@ -188,8 +189,7 @@ struct CollectedRows {
 // The page's rows, read from the store: every Ready record of options.run's
 // profile whose chart the library lists (library_lookup), in the library's
 // scan order, each giving up to options.max_paths rows in its stored rank
-// order. Nothing is analyzed and no chart file is opened. hit_window_ms feeds
-// the tier labels only.
+// order. Nothing is analyzed and no chart file is opened.
 CollectedRows collect_rows(store::RecordStore& store, const ReportOptions& options);
 
 // ---- generate_report -------------------------------------------------------
@@ -288,8 +288,6 @@ struct GeneratedReport {
     // The library the rows were read against. The window recounts its
     // Charts shown tile through it (path_tiles).
     store::ChartIndex library;
-    // The window the rows' tiers were labeled with (ReportOptions::hit_window_ms).
-    double hit_window_ms = kDefaultHitWindowMs;
     // The line under the page's heading and the note at its foot, as the page
     // shows them. Empty when there is no page.
     std::string subtitle;
@@ -307,12 +305,9 @@ GeneratedReport generate_report(store::RecordStore& store, const ReportOptions& 
 // open page outlives a change to them.
 struct PageSettings {
     store::Profile profile;
-    double hit_window_ms = kDefaultHitWindowMs;
 
     static PageSettings of(const Settings& settings);
-    bool operator==(const PageSettings& other) const {
-        return profile == other.profile && hit_window_ms == other.hit_window_ms;
-    }
+    bool operator==(const PageSettings& other) const { return profile == other.profile; }
     bool operator!=(const PageSettings& other) const { return !(*this == other); }
 };
 

@@ -530,11 +530,8 @@ std::function<void()> g_report_hold;
 
 void set_report_hold_for_test(std::function<void()> hold) { g_report_hold = std::move(hold); }
 
-ReportJob::ReportJob(store::RecordStore& store, app::BatchRun run, double hit_window_ms)
-    : store_(store),
-      run_(std::move(run)),
-      hit_window_ms_(hit_window_ms),
-      hold_(g_report_hold) {}
+ReportJob::ReportJob(store::RecordStore& store, app::BatchRun run)
+    : store_(store), run_(std::move(run)), hold_(g_report_hold) {}
 
 void ReportJob::start() {
     spawn([this] { run(); });
@@ -546,7 +543,6 @@ void ReportJob::run() {
         // generate_report.
         app::report::ReportOptions options;
         options.max_paths = store::kPathsPerRecord;
-        options.hit_window_ms = hit_window_ms_;
         options.db_path = app::db_path();
         // Closing Hydra or the window's Cancel sets this.
         options.cancel = &cancel_;
