@@ -440,6 +440,7 @@ One session is kept locally and has no line here.
 - 2026-10-31 b15bb484 MCP kit live steps handoff (2026-10-31) | clone-hero, planning, review, agents, memory | The session ended with the direct-start build merged to main and a handoff written on its own branch, with no live step run yet.
 - 2026-10-31 66400966 Session cards into docs and handoff cleanup (2026-10-31) | docs, transcripts, hooks, review, memory | The session ended with both parts merged to main and main pushed to GitHub, after the user said yes to the push.
 - 2026-10-31 b478542c Audit of audits REST handoff (2026-10-31) | review, agents, tests, report-table, comparison-status, rules-file-error | The session ended with every approved change merged into main (main now at 38d27ba6), nothing pushed, and two open notes waiting for the user's yes to drop them.
+- 2026-10-31 a7d95f1c Investigate unasked visible changes (2026-10-31) | agents, review, docs, planning, memory, release | The session ended with the finding and its rules merged into main (commit 4dbb1563), after every open case was answered or shown to be settled already.
 
 ## Proposed tags
 
