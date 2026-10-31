@@ -28,9 +28,9 @@
     },
     {
       "question": "What does the user read when hydra_rules.ini is bad?",
-      "owner": "kAnalysisOffSentence and rules_file_tool_text in src/app/user_messages.h and .cpp",
+      "owner": "kAnalysisOffSentence and ini_file_tool_text in src/app/user_messages.h and .cpp",
       "owner_file": "src/app/user_messages.cpp",
-      "owner_symbol": "rules_file_tool_text",
+      "owner_symbol": "ini_file_tool_text",
       "date": "2026-10-11",
       "decision": "D114 item 11 (M72)",
       "added_by": "concept-audit-G1",
@@ -43,7 +43,7 @@
       ],
       "must_not_match": [
         "        ImGui::TextColored(kWarningColor, \"%s\", app::kAnalysisOffSentence);",
-        "        std::fprintf(stderr, \"%s\\n\", rules_file_tool_text(e).c_str());"
+        "        std::fprintf(stderr, \"%s\\n\", ini_file_tool_text(kRulesFileName, e).c_str());"
       ],
       "note": "One state, a bad hydra_rules.ini, once had three wordings: the app's (on AppState), a dead kRulesFile sentence, and the tools' raw line. The app's sentence and the tools' lead-in both live in user_messages now. Decided by: D114 item 11, concept audit M72."
     },

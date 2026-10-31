@@ -412,7 +412,7 @@ What a bad hydra_rules.ini does. In the app, analysis stays off, and the
 toolbar, the path report window and the song panel all show
 `kAnalysisOffSentence` (src/app/user_messages.h; D114 items 11 and 13). A
 command-line tool stops instead: `app::load_tool_rules` (src/app/rules_file.h)
-loads the rules for every tool and prints `rules_file_tool_text`, the tools'
+loads the rules for every tool and prints `ini_file_tool_text`, the tools'
 sentence and then the loader's line. Numbers in the file are read through
 `parse_finite_number` (src/core/strutil.h), so "nan", "inf" and hex are
 errors (D114 item 8).
