@@ -811,7 +811,8 @@ class AllowedCallsTest(unittest.TestCase):
 
     def test_agent_calls_only_named_methods(self):
         texts = self.real_texts()
-        self.assertEqual(allowed_calls(texts[MENU_AGENT]), ["get_activeInHierarchy"])
+        self.assertEqual(allowed_calls(texts[MENU_AGENT]),
+                         ["get_activeInHierarchy", "get_gameObject"])
         self.assertEqual(call_findings(texts), [])
 
     def test_only_the_listed_agents_hold_a_list(self):
