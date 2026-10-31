@@ -25,7 +25,8 @@ from tools.hydra_ui_mcp import REPLY_CAP_CHARS  # noqa: E402
 
 # The eighteen tools of the server plan's "The tools" table, then the eleven
 # of the Star Power and song start plan's (task T5), then the five kit tools
-# of the in-game input plan (task K5).
+# of the in-game input plan (task K5). The direct-start plan (task D5) adds
+# arguments to ch_start and ch_kit_setup and no tool.
 TOOL_NAMES = {
     "ch_start", "ch_stop", "ch_status", "ch_install_chart", "ch_wait_stats",
     "ch_stats", "ch_compare", "ch_attach", "ch_detach", "ch_state",
@@ -105,6 +106,33 @@ class ServerTest(unittest.TestCase):
         self.assertEqual(self.helper.kit.ch_kit_setup(),
                          "refused: settings.ini reads pause_on_focus_lost = 1, not 0; "
                          "start the game with ch_start, which sets it for the run")
+
+    def _schema(self, name):
+        tools = {t.name: t for t in asyncio.run(S.build_server(self.helper).list_tools())}
+        return tools[name].input_schema["properties"]
+
+    def test_ch_start_takes_human_and_passes_it_through(self):
+        self.assertEqual(self._schema("ch_start")["human"]["default"], False)
+        seen = []
+        self.helper.game.ch_start = lambda *a, **kw: seen.append((a, kw)) or "started"
+        result = asyncio.run(S.build_server(self.helper).call_tool(
+            "ch_start", {"song_folder": "song", "human": True}))
+        self.assertEqual(result.content[0].text, "started")
+        self.assertEqual(seen, [(("song", bot_run.DEFAULT_PLAYER, None), {"human": True})])
+
+    def test_ch_start_human_with_no_song_folder_is_refused_before_any_launch(self):
+        result = asyncio.run(S.build_server(self.helper).call_tool("ch_start", {"human": True}))
+        self.assertEqual(result.content[0].text, bot_run.HUMAN_NEEDS_SONG)
+        self.assertEqual(self.printed, [])
+
+    def test_ch_kit_setup_takes_player_and_passes_it_through(self):
+        self.assertEqual(self._schema("ch_kit_setup")["player"]["default"], None)
+        seen = []
+        self.helper.kit.ch_kit_setup = lambda player: seen.append(player) or "set up"
+        server = S.build_server(self.helper)
+        asyncio.run(server.call_tool("ch_kit_setup", {}))
+        asyncio.run(server.call_tool("ch_kit_setup", {"player": "System"}))
+        self.assertEqual(seen, [None, "System"])
 
     def test_status_joins_the_game_and_the_frida_lines(self):
         out = self.helper.ch_status().splitlines()
