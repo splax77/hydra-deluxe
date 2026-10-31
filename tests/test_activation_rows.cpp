@@ -723,6 +723,27 @@ TEST_CASE("activation badges: one per timing, the fill first, then each squeeze"
     CHECK(badge_texts(free_in) == Texts{"squeeze in -315.8 ms"});
     CHECK(badge_warns(free_in) == Warns{false});
     CHECK_FALSE(free_in.needs_timing());
+    // A squeeze-in exactly on the SP end is not free: it needs 0.0 ms (D301).
+    // Its badge reads the same, grey, but it is required, and the path button
+    // shows its 0.0 ms.
+    Activation on_end_in = no_timing();
+    on_end_in.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 0.0});
+    CHECK(badge_texts(on_end_in) == Texts{"squeeze in 0.0 ms"});
+    CHECK(badge_warns(on_end_in) == Warns{false});
+    const std::vector<ActivationTiming> on_end_timings = on_end_in.badge_timings();
+    REQUIRE(on_end_timings.size() == 1);
+    CHECK(on_end_timings[0].required);
+    CHECK_FALSE(on_end_timings[0].difficult);
+    CHECK(on_end_in.needs_timing());
+    {
+        Path p;
+        p.activations.push_back(on_end_in);
+        HydraRecord rec;
+        rec.paths.push_back(p);
+        const PathButtonsView v = build_path_buttons(rec, 0, 2);
+        REQUIRE(v.buttons.size() == 1);
+        CHECK(v.buttons[0].timing == "0.0 ms");
+    }
     // A free squeeze-out (already past the SP end) reads the same way.
     Activation free_out = no_timing();
     free_out.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, 40.0});
@@ -954,15 +975,16 @@ TEST_CASE("squeeze sentences: SqIn, SqOut, and what a squeeze-out costs") {
     CHECK(s.warn);
 }
 
-// D13.
-TEST_CASE("squeeze sentences: a SqIn on the SP end is free, like its rating") {
+// D301: a squeeze exactly on the SP end needs 0.0 ms, a squeeze-in the same
+// as a squeeze-out.
+TEST_CASE("squeeze sentences at the SP end: the squeeze-in earns, the squeeze-out earns") {
     HydraRecord rec;
-    auto sentence_at = [&rec](double offset) {
+    auto sentence_at = [&rec](SqueezeKind kind, double offset) {
         Activation act;
         test::set_skips(act, 0);
         act.e_offset = 300.0;  // not e-critical
-        // Only the early (free) side scaled: a figure means the rating read it.
-        act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, offset});
+        // Only the early side scaled: a figure means the rating read that side.
+        act.sqinouts.push_back(SPSqueeze{kind, offset});
         test::set_transfer(act, TransferScale{1.6, 1.0});
         Path p;
         p.activations.push_back(act);
@@ -971,16 +993,21 @@ TEST_CASE("squeeze sentences: a SqIn on the SP end is free, like its rating") {
         REQUIRE(v.acts[0].squeeze_sentences.size() == 1);
         return v.acts[0].squeeze_sentences[0].text;
     };
-    const std::string lands = " so it lands before Star Power ends.";
-    // Exactly on the end: free wording, and the early side's figure.
-    CHECK(sentence_at(0.0).rfind(
-              "Hit the SP phrase's last note no more than 0.0 ms late (eff. 0.0 ms)" + lands, 0) == 0);
-    // Just before the end: free.
-    CHECK(sentence_at(-0.04).rfind(
-              "Hit the SP phrase's last note no more than 0.0 ms late (eff. 0.0 ms)" + lands, 0) == 0);
+    const std::string before = " so it lands before Star Power ends.";
+    // Exactly on the end: the squeeze-in is still to earn. The note sits
+    // inside Star Power, so its eff. figure comes from the early side.
+    CHECK(sentence_at(SqueezeKind::SqIn, 0.0).rfind(
+              "Hit the SP phrase's last note more than 0.0 ms early (eff. 0.0 ms)" + before, 0) == 0);
+    // The squeeze-out on the same note is still to earn too.
+    CHECK(sentence_at(SqueezeKind::SqOut, 0.0) ==
+          "Hit the SP phrase's last note more than 0.0 ms late so it lands after Star Power "
+          "ends. Its SP phrase banks for later.");
+    // Just before the end: the squeeze-in needs no timing.
+    CHECK(sentence_at(SqueezeKind::SqIn, -0.001).rfind(
+              "Hit the SP phrase's last note no more than 0.0 ms late (eff. 0.0 ms)" + before, 0) == 0);
     // Just past the end: still to earn, on the unscaled late side, so no figure.
-    CHECK(sentence_at(0.04).rfind("Hit the SP phrase's last note more than 0.0 ms early" + lands,
-                                  0) == 0);
+    CHECK(sentence_at(SqueezeKind::SqIn, 0.04).rfind(
+              "Hit the SP phrase's last note more than 0.0 ms early" + before, 0) == 0);
 }
 
 namespace {
