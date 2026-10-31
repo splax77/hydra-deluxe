@@ -523,8 +523,8 @@ double sp_meter_bars_at(const SpMeterCurve& curve, double ms);
 // Build the scene from a parsed song. `path` may be null (the chart is not
 // analyzed yet): then `activations` is empty, every candidate fill reads
 // Offered, and everything else is present, so the Preview works for any
-// selected chart. When `path` is given, its activations (those carrying a
-// timecode) become the overlay, their ms resolved against the song's own
+// selected chart. When `path` is given, every one of its activations becomes
+// the overlay, their ms resolved against the song's own
 // timing so they line up with the notes exactly, and each candidate fill is
 // classified Hidden / Offered / Taken from the activations' stored
 // passed-over fills.
