@@ -223,7 +223,7 @@ class TestPointers(Base):
 
     def test_git_show_fallback_that_does_not_open(self):
         h = self.removed_commit(self.repo, "docs/old.md")
-        other = git(self.repo, "rev-parse", "HEAD~2")  # the start commit, before docs/old.md
+        other = git(self.repo, "rev-parse", "HEAD~2")  # the start commit, before the removed file was added
         self.note("`docs/old.md` (removed; `git show %s:docs/old.md`)\n"
                   "`docs/old.md` (removed; `git show %s:docs/other.md`)\n"
                   "`docs/old.md` (removed; `git show %s:docs/old.md`)\n"
