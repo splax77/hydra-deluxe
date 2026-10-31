@@ -140,7 +140,7 @@ void set_update_folder_for_test(std::string folder);
 // returns a check that says whether its process has ended. Throws when the
 // installer could not be started, with Windows' reason as the text. The real
 // one starts it through app::start_program, so the installer raises its own
-// UAC prompt ("Ruling: how Hydra starts the installer" in the plan).
+// UAC prompt ("The ruling on how Hydra starts the installer" in D259).
 using InstallerEnded = std::function<bool()>;
 using InstallerLauncher =
     std::function<InstallerEnded(const std::string& installer, const std::string& log)>;

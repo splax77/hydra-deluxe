@@ -1,5 +1,5 @@
 // Tests for ui/list_scroll: whether a selection change or a change of row
-// height scrolls the list, and how far (the user's ruling, D242).
+// height scrolls the list, and how far (the user's rulings, D242 and D247).
 
 #include "doctest.h"
 

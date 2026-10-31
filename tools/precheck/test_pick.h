@@ -97,8 +97,8 @@ std::optional<WholeSuite> shared_code(Repo& repo, const std::string& rev, const 
 // base (a whole-tree range).
 TestPick pick_tests(Repo& repo, const Range& range, const PickLimits& limits = {});
 
-// The lines `hydra_precheck --tests` prints for `pick`, in the plan's Step 7
-// shape: tests, always, names, callers, common, then the why lines.
+// The lines `hydra_precheck --tests` prints for `pick`, in the shape of
+// docs/development.md, "The merge test picker", step 6: tests, always, names, callers, common, then the why lines.
 std::vector<std::string> pick_lines(const TestPick& pick);
 
 }  // namespace precheck

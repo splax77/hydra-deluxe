@@ -66,7 +66,12 @@ from this command. The helper prints `text` as given, and caps its wait for a
 reply at the last reported `timeout` plus `REPLY_MARGIN_S`. Hydra's first line
 is the hello line,
 `{"ok":true,"hello":{"mode":..., "scratch":..., "pid":..., "timeout":..., "log":..., "crash_dump":...}}`.
-The code that owns each part is in the table above; `live_protocol.h` holds
+`log` is the log file's path, empty for `hydra_uitest`, whose log is stdout,
+which the helper captures itself. `crash_dump` is where a crash dump would be
+written. `timeout <s>` and `wait <s>` take a finite, non-negative number and
+nothing else: `90s`, `abc` and an empty argument fail with a message naming
+what was given. In live mode a `wait` longer than the timeout in force fails,
+so no command outlasts the cap the helper already knows. The code that owns each part is in the table above; `live_protocol.h` holds
 the line shapes.
 
 ## Why

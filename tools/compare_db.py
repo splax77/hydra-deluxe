@@ -11,9 +11,10 @@ Proving identical results (the recipe this script belongs to)
 
 This recipe comes from the speedups plan,
 docs/superpowers/plans/2026-10-06-perf-speedups.md (removed; git show 444631e6:docs/superpowers/plans/2026-10-06-perf-speedups.md),
-section "Proving identical results". Its rules are kept word for word below.
-Two facts changed after the plan was written, and they come first, because
-they override it.
+section "Proving identical results". Its commands and rules follow, minus the
+list of tables (the script reads them itself) and a warning about hash numbers
+in old notes. Two facts changed after the plan was written, and they come
+first, because they override it.
 
 First, one run is the whole correctness check. A fresh-database hydra_batch
 run, compared table by table with this script against the baseline's fresh

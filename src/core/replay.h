@@ -84,7 +84,7 @@ struct SqOutNote {
 // The engine only ever squeezes out its newest phrase at or before D or the
 // first one after D that it did not already squeeze in (core::sqout_chords;
 // w.sqin_ticks, D34; D36); a typed window may mean either. When the nearest
-// one is any other chord this refuses (plan decision 20 of 2026-09-24). Throws
+// one is any other chord this refuses (D274, decision 20: "Refuse with a message"). Throws
 // std::runtime_error, with a message naming both chords, in that case; also
 // when no single chord is nearest (D83), when there is no candidate, or when
 // w has no offset.

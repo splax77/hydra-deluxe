@@ -485,7 +485,7 @@ TEST_CASE("picking a player opens the comparison; Refresh reuses the player") {
         wait_until([&] { return app->dm_fetch_job->finished(); }, "the player list's fetch to finish");
 }
 
-// ---- opening the report analyzes first (plan 2026-10-15, question 8) --------
+// ---- opening the report analyzes first (D249 item 8) --------
 
 namespace {
 

@@ -569,7 +569,7 @@ void ReportJob::run() {
         // database holds no results, and the app's own sentence says so (D97).
         // A page whose charts all can't be analyzed or have no result is a
         // page, not a failure: the window shows its coverage lines with
-        // why_empty as its empty text (plan 2026-10-15, question 5).
+        // why_empty as its empty text (D249 item 5).
         if (report.rows == 0 && report.empty_reason != app::report::EmptyReason::NothingToShow) {
             if (!report.why_empty.empty())
                 throw KindedError(ErrorKind::AlreadyPlain, report.why_empty);

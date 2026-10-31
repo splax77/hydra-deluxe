@@ -436,7 +436,7 @@ TEST_CASE("generate_report hands over its rows, subtitle and footer") {
 }
 
 // ---- coverage: every library chart is shown, can't be analyzed, or has no
-// result (plan 2026-10-15-report-covers-whole-library, question 5) ----------
+// result (D249 item 5) ----------
 
 namespace {
 

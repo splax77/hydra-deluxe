@@ -459,8 +459,10 @@ The full recipe, with the commands for each comparison, is in the header of
 `hydra_precheck --tests <range>` picks the test files a merge must run from
 the range's diff, and prints them as one `tests:` line of `-sf=` filters, plus
 the `always:` line of the three repo-wide checks. It was built so a merge
-never misses a test that reaches changed code only through an enum value, the
-way merge 18a2c64f did (D299). This section keeps the plan's spec,
+never misses a test that reaches changed code only through an enum value. Merge
+18a2c64f rewrote `Song::place_fills_ch10` and its hand-written test list missed
+`tests/test_preview_load_progress.cpp`, which reaches that function only
+through `FillDeadlineRule::Ch10`; CI caught it on two pushes. This section keeps the plan's spec,
 `docs/superpowers/plans/2026-10-25-merge-test-picker.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-10-25-merge-test-picker.md`),
 in short; the code named at each step owns the exact rule.
 
@@ -668,7 +670,11 @@ signature made with the project's private key checks out against the public
 key built into Hydra. GitHub's own SHA-256 digest is checked too, but it guards
 only against a broken download, not a hijacked account. The signature is ECDSA
 on the P-256 curve with SHA-256, checked through Windows' bcrypt, because
-Windows' crypto API has no Ed25519 (D259). The release reading
+Windows' crypto API has no Ed25519 (D259). What is signed is the installer's
+SHA-256 hash. The `.sig` asset is the 64 raw bytes of the signature in the IEEE
+P1363 form (`r` then `s`): `tools/release_sign.ps1` makes it with .NET's
+`SignHash`, and `BCryptVerifySignature` in `src/app/update_verify.cpp` reads it
+unchanged. The public key is 64 bytes, in `src/app/update_key.h`. The release reading
 (`src/app/update_release.h`) refuses a release that lacks exactly one
 installer asset, exactly one `.sig` asset, a `sha256:` digest or a tag that
 parses. The download refuses a body larger than the asset's stated size. The

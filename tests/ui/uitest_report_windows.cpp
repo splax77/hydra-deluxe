@@ -1059,7 +1059,7 @@ void test_open_path(ImGuiTestContext* ctx) {
 }
 
 // Opening the report with nothing analyzed runs a batch over the corpus first
-// (plan 2026-10-15, question 8): the window shows the batch's own count over
+// (D249 item 8): the window shows the batch's own count over
 // its bar, then the rows once the batch's report lands. The batch's workers
 // wait at a gate before each real analysis, so the count is read at 0.
 void test_open_analyzes(ImGuiTestContext* ctx) {
@@ -1120,7 +1120,7 @@ void test_open_analyzes(ImGuiTestContext* ctx) {
 // db the way a batch saves one, as library-cant-analyze does) is named under
 // the coverage line's Show list, beneath its reason. The confirm is declined,
 // so the report lists only what is stored: no rows, the coverage lines, and
-// "Nothing to show" (plan 2026-10-15, question 5).
+// "Nothing to show" (D249 item 5).
 void test_cant_analyze_list(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     reset_app(h);

@@ -459,7 +459,7 @@ TEST_CASE("precheck pick (i): files under tests/single_owner/ are never picked")
     CHECK(picked_files(p) == std::vector<std::string>{"tests/test_k.cpp"});
 }
 
-// Step 5 under the user's ruling (plan, "User decisions", last paragraph): a
+// Step 5 under the user's ruling (D299, last paragraph): a
 // test file counts for a name only if it reaches the header declaring it.
 namespace {
 
@@ -577,7 +577,7 @@ TEST_CASE("precheck pick (j): a selector value whose left part is a namespace is
 }
 
 // A name in a file that builds an exe's main picks the tests that name the
-// exe's constant (plan, "User decisions", last paragraph).
+// exe's constant (D299, last paragraph).
 namespace {
 
 const std::string kToolMain = "int run() {\n    return 1;\n}\nint main() { return run(); }\n";
