@@ -180,7 +180,8 @@ private:
     void draw_steps(const OpenChart& chart);
     // What a click on scene fill `index` does (the timeline, the highway or a
     // list row): an offered fill fill_reason accepts starts a window, a taken
-    // one selects its step, any other puts its reason in the guide line.
+    // one selects its step, any other puts its reason in the guide line. Every
+    // click also parks the Preview's clock on the fill's span start.
     void click_fill(const OpenChart& chart, size_t index);
     // The guide line's facts for the shown path's scene.
     GuideFacts guide_facts(const OpenChart& chart) const;

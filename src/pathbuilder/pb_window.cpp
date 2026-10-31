@@ -168,10 +168,12 @@ void draw_fill_card(const FillHoverCard& card) {
     ImGui::PushTextWrapPos(rem(kTooltipRem));
     ImGui::TextUnformatted(card.heading.c_str());
     if (!card.rows.empty()) {
-        // Without borders a table puts one CellPadding.x on each side of the
-        // gap between its columns.
-        ImGui::PushStyleVar(ImGuiStyleVar_CellPadding,
-                            ImVec2(rem(kCardColumnGapRem) * 0.5f, ImGui::GetStyle().CellPadding.y));
+        // Without borders a table puts one cell padding on each side of the
+        // gap between its columns, so half the gap goes on each side. Only
+        // the sideways padding changes.
+        ImVec2 padding = ImGui::GetStyle().CellPadding;
+        padding.x = rem(kCardColumnGapRem) * 0.5f;
+        ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, padding);
         if (ImGui::BeginTable("##fillcard", 2, ImGuiTableFlags_SizingFixedFit)) {
             const ImVec4 text = ImGui::GetStyleColorVec4(ImGuiCol_Text);
             const ImVec4 dim = ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled);
@@ -701,8 +703,6 @@ void PbApp::draw_timeline(const OpenChart& chart) {
     }
 
     if (ev.clicked_fill && *ev.clicked_fill < scene.fills.size()) {
-        // A click keeps the highway where the hover put it.
-        hover_return_ms_ = scene.fills[*ev.clicked_fill].span.start_ms;
         click_fill(chart, *ev.clicked_fill);
     } else if (ev.clicked_band) {
         select_step(*ev.clicked_band);
@@ -717,6 +717,9 @@ void PbApp::click_fill(const OpenChart& chart, size_t index) {
     const app::PreviewScene& scene = preview_->scene();
     if (index >= scene.fills.size()) return;
     const PreviewFill& f = scene.fills[index];
+    // Whatever the click does, the Preview's clock stays on the fill when the
+    // pointer leaves it (draw_timeline's hover block).
+    hover_return_ms_ = f.span.start_ms;
     if (f.state == app::PreviewFillState::Taken) {
         // The step standing on this fill is the one whose taken_fill is it.
         for (size_t k = 0; k < scene.activations.size(); ++k) {
@@ -808,12 +811,7 @@ void PbApp::draw_choices(const OpenChart& chart) {
         const float row_w = ImGui::GetContentRegionAvail().x;
         ImGui::SetNextItemAllowOverlap();
         const std::string id = "##choice_" + std::to_string(tick);
-        if (ImGui::Selectable(id.c_str(), hovered_fill_ == fill)) {
-            // A row click moves the Preview's clock to the fill, as a click
-            // on the fill does (draw_timeline).
-            hover_return_ms_ = scene.fills[*fill].span.start_ms;
-            click_fill(chart, *fill);
-        }
+        if (ImGui::Selectable(id.c_str(), hovered_fill_ == fill)) click_fill(chart, *fill);
         if (ImGui::IsItemHovered()) row_hovered_fill_ = fill;
         ImGui::SetCursorPos(start);
 
