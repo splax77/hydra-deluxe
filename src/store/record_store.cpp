@@ -1500,10 +1500,10 @@ void RecordStore::set_hardest(const std::string& song_id, int64_t profile_id,
         for (const HardestFigure& f : figures) {
             CachedStmt s = use_write(db_, stmt_cache_,
                 "UPDATE record_paths SET hardest_ms=?"
-                " WHERE profile_id=? AND song_id=? AND rank=? AND hardest_ms IS NULL");
+                " WHERE song_id=? AND profile_id=? AND rank=? AND hardest_ms IS NULL");
             sqlite3_bind_double(s, 1, f.hardest_ms);
-            sqlite3_bind_int64(s, 2, profile_id);
-            bind_text(s, 3, song_id);
+            bind_text(s, 2, song_id);
+            sqlite3_bind_int64(s, 3, profile_id);
             sqlite3_bind_int(s, 4, f.rank);
             step_done(s, "set_hardest");
         }
