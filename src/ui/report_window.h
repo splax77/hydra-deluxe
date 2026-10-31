@@ -105,9 +105,16 @@ using PathReportInput = ReportWindowInput<app::report::GeneratedReport>;
 using DmReportInput = ReportWindowInput<app::dm_report::GeneratedDmReport>;
 
 // Draw each window for one frame while *open; the window clears *open when
-// it closes. Call every frame, open or not.
+// it closes. Call every frame, open or not: a call while closed is how a
+// hidden window lets go of a result a newer one replaced (D280).
 void draw_path_report_window(bool* open, const PathReportInput& input);
 void draw_dm_report_window(bool* open, const DmReportInput& input);
+
+// Test seam. Each window keeps its state in one place for the process, so a
+// uitest that draws a window from its own input turns this on to keep the
+// app's frame (library_view.cpp) from drawing the same window from AppState's
+// input as well. Off, which the app never changes, the app draws both.
+void set_app_skips_report_windows_for_test(bool skip);
 
 // Each window's input as AppState holds its report this frame: the slot's
 // result and out-of-date reason, the job's state and progress, and callbacks
