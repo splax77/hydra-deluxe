@@ -86,6 +86,18 @@ hydra::app::ChartAnalyzer gated_failure(std::atomic<int>& started, std::atomic<b
     };
 }
 
+// A chart that fails once the test has released it: the chart that started
+// n-th (from 0) waits until `released` is above n.
+hydra::app::ChartAnalyzer released_in_turn(std::atomic<int>& released) {
+    auto started = std::make_shared<std::atomic<int>>(0);
+    return [&released, started](const std::string&, const AnalysisSettings&,
+                                const std::function<void(float)>&) -> AnalysisResult {
+        const int me = (*started)++;
+        wait_until([&released, me] { return released.load() > me; }, "the test to release it");
+        throw hydra::KindedError(hydra::ErrorKind::ChartUnreadable, "MD5 hashing failed");
+    };
+}
+
 }  // namespace
 
 TEST_CASE("jobs: the batch clock leaves paused time out") {
@@ -149,17 +161,9 @@ TEST_CASE("jobs: time left shows nothing until 2W charts have finished, then sho
 TEST_CASE("jobs: the batch strip's time left waits for two rounds of its workers") {
     // One worker, so the window is 2 charts. Each chart waits for its turn.
     std::atomic<int> released{0};
-    auto started = std::make_shared<std::atomic<int>>(0);
-    const hydra::app::ChartAnalyzer one_by_one =
-        [&released, started](const std::string&, const AnalysisSettings&,
-                             const std::function<void(float)>&) -> AnalysisResult {
-        const int me = (*started)++;
-        wait_until([&released, me] { return released.load() > me; }, "the test to release it");
-        throw hydra::KindedError(hydra::ErrorKind::ChartUnreadable, "MD5 hashing failed");
-    };
     RecordStore store(":memory:");
     BatchJob job(plan_of(fake_charts(4)), test_run(), store);
-    job.set_analyzer_for_test(one_by_one, /*workers=*/1);
+    job.set_analyzer_for_test(released_in_turn(released), /*workers=*/1);
     job.start();
 
     released = 1;
@@ -172,6 +176,35 @@ TEST_CASE("jobs: the batch strip's time left waits for two rounds of its workers
     released = 4;
     wait_until([&] { return job.snapshot().finished; }, "the batch to finish");
     CHECK_FALSE(job.snapshot().eta_s.has_value());
+}
+
+// Paused time never counts (D283): a chart that finishes during a pause is
+// timed at the pause, and the window after the resume spans only run time.
+TEST_CASE("jobs: time left leaves a pause out of its window") {
+    std::atomic<int> released{0};
+    RecordStore store(":memory:");
+    BatchJob job(plan_of(fake_charts(4)), test_run(), store);
+    job.set_analyzer_for_test(released_in_turn(released), /*workers=*/1);  // a window of 2
+    job.start();
+    wait_until([&] { return job.snapshot().current_title == "fake 0"; }, "the first chart to start");
+
+    job.pause();
+    released = 1;
+    wait_until([&] { return job.snapshot().completed == 1; }, "the chart in flight to finish");
+    CHECK_FALSE(job.snapshot().eta_s.has_value());
+    std::this_thread::sleep_for(1200ms);  // far longer than the run time that follows
+
+    job.resume();
+    released = 2;
+    wait_until([&] { return job.snapshot().completed == 2; }, "the second chart to finish");
+    // Two charts left over a rate of 2 charts in the window's span: the span
+    // in seconds. Counting the pause would make it 1.2 s or more.
+    const std::optional<double> eta = job.snapshot().eta_s;
+    REQUIRE(eta.has_value());
+    CHECK(*eta < 0.6);
+
+    released = 4;
+    wait_until([&] { return job.snapshot().finished; }, "the batch to finish");
 }
 
 TEST_CASE("jobs: pause lets the chart in flight finish and starts no new one") {
