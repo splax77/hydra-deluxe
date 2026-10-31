@@ -12,9 +12,8 @@ other work: it stays attached with one request/response agent loaded
 (agent/state.ts, or agent/kit.ts for the virtual kit) and posts each request
 until it is detached.
 
-The safety rules it follows are in docs/superpowers/plans/2026-10-28-ch-mcp-feasibility-tests.md,
-"Safety rules for every live step", and docs/agents/clone-hero-mcp.md,
-"Safety rules". The agents' by-name and allowed-calls checks live in
+The safety rules it follows are in docs/agents/clone-hero-mcp.md, "Safety
+rules". The agents' by-name and allowed-calls checks live in
 tests/test_frida_attach.py.
 
 Run from the repo root, with the game already playing a song. Do not add `-I`:

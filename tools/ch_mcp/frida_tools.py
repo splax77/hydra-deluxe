@@ -1,9 +1,10 @@
 """The Clone Hero MCP server's Frida tools: attach to the game, read its
 state, and trace the notes the player hits.
 
-Each tool is a thin call into the module that owns the work (the plan
-docs/superpowers/plans/2026-10-28-ch-mcp-server.md, "The tools" and "Who owns
-which question"): frida_attach.LiveAgent for the attach and the reads,
+Each tool is a thin call into the module that owns the work (the server
+plan's "The tools" and "Who owns which question"; the plan is removed, read it
+with git show 444631e6:docs/superpowers/plans/2026-10-28-ch-mcp-server.md):
+frida_attach.LiveAgent for the attach and the reads,
 build_facts for the build check and the hook names, ch_probe.constants for
 the hook addresses, and trace_hits for the trace and its line-up. This module
 adds only the session state between tool calls (the live agent, the trace,

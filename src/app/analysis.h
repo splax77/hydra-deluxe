@@ -222,7 +222,6 @@ struct BatchProgress {
     int analyzed = 0;   // rows whose chart was stored
     int skipped = 0;    // plan_batch's skipped rows, known before the first chart
     int failed = 0;
-    std::string current_title;
 };
 
 // A batch's three counts as the app's strip and hydra_batch's closing line

@@ -64,9 +64,14 @@ enum class LineEnds {
     Crlf,     // a Windows text file, each "\n" written as "\r\n": the settings file
 };
 
-// Writes `bytes` to a "<path>.tmp" sibling first and then renames it over
-// the target, so a reader never sees a half-written file: the previous one
-// stays whole right up until the new one is complete. False when the temp
+// The sibling of `outpath` that write_file_replacing writes first. The name
+// carries this process's id, so two Hydra windows saving one file never share
+// a temp. Owned here so a test asks for the name instead of spelling it.
+std::filesystem::path replacing_temp_path(const std::filesystem::path& outpath);
+
+// Writes `bytes` to replacing_temp_path(outpath) first and then renames it
+// over the target, so a reader never sees a half-written file: the previous
+// one stays whole right up until the new one is complete. False when the temp
 // file won't open or write, or the swap fails; the temp is removed then.
 // The one write-then-rename helper (D114 item 20): the report page and the
 // settings file both save through it, each with its own LineEnds.

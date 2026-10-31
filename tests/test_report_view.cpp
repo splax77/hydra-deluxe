@@ -325,6 +325,24 @@ TEST_CASE("report view sort: first directions, empty values sink, two keys, stab
                        folded_key(std::string("ete"))) == 0);
 }
 
+// D284 item 1.
+TEST_CASE("report view sort: Timing sorts in ladder order, not by name") {
+    // Each row's song is its tier's name, so songs() reads the order back.
+    std::vector<ReportRow> rows;
+    for (const char* tier : {"Beyond", "Extreme", "None", "Insane+", "Hard", "Normal", "Insane"}) {
+        ReportRow r = path_row(tier, "X", "A", "1", 100, std::nullopt, true);
+        r.tier = tier;
+        rows.push_back(std::move(r));
+    }
+    TableView<ReportRow> view = path_view(std::move(rows));
+    view.set_sort({{"tier", view.first_direction("tier")}});
+    CHECK(songs(view) == std::vector<std::string>{"Normal", "Hard", "Extreme", "Insane",
+                                                  "Insane+", "Beyond", "None"});
+    view.set_sort({{"tier", SortDir::Descending}});
+    CHECK(songs(view) == std::vector<std::string>{"None", "Beyond", "Insane+", "Insane",
+                                                  "Extreme", "Hard", "Normal"});
+}
+
 // User-chosen wording: "Hardest ms" (D48 Q7), "hardest squeeze or required early fill" (D51 call 5), definitions as hover text (D103 item 4).
 // The page lists one profile, so it has no Mode column (D115 A2-2).
 TEST_CASE("path report columns: the page's fourteen, in order, word for word") {
@@ -404,10 +422,11 @@ TEST_CASE("path report cells read as the page wrote them") {
     ReportRow far = path_row("Halo", "Beyonce", "Someone", "1", 100, 500.0, false);
     CHECK(cols[8].cell(far) == "Beyond 170 ms");
 
-    // Each column sorts on the number or text the page sorted on.
+    // Each column sorts on the number or text the page sorted on, except
+    // Timing, which sorts on its tier's place in the ladder (D284 item 1).
     CHECK(std::get<double>(cols[4].sort_key(r)) == 1234567.0);
     CHECK(std::get<double>(cols[7].sort_key(r)) == 12.34);
-    CHECK(std::get<std::string>(cols[8].sort_key(r)) == "Hard");
+    CHECK(std::get<double>(cols[8].sort_key(r)) == 1.0);  // Hard, the second tier
     CHECK(std::get<double>(cols[9].sort_key(r)) == 4.0);
     CHECK(std::get<double>(cols[10].sort_key(r)) == 2.5);
     CHECK(std::get<std::string>(cols[3].sort_key(r)) == "2(+) E0 1");

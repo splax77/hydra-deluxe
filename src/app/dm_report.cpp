@@ -144,7 +144,9 @@ std::vector<DmReportRow> collect_dm_rows(store::RecordStore& store,
         } else {
             row.status = library.lists(s.identifier) ? kStatusNoCurrentResult : kStatusNotInLibrary;
         }
-        if (!base) row.status = kStatusOtherSpeed;
+        // A chart the library doesn't list stays "not in library" at any
+        // speed; the speed column still shows its speed (D284 item 2).
+        if (!base && row.status != kStatusNotInLibrary) row.status = kStatusOtherSpeed;
         rows.push_back(std::move(row));
     }
     return rows;

@@ -34,7 +34,11 @@ Before you plan an audit, brief an audit agent, or close any audit finding, read
 
 ### GUI testing
 
-To verify anything in the GUI, run `hydra_uitest` (headless, drives the real UI by widget label, returns text) instead of launching the app and taking screenshots. See `docs/agents/ui-testing.md`. To drive Hydra's GUI one step at a time and read it back as text, use the project's `hydra` MCP server: call `hydra_start` (headless on the test charts, or the real window on a snapshot copy of the user's library), then the other `hydra_*` tools; "Live mode and the MCP server" in `docs/agents/ui-testing.md` explains them.
+Which check a GUI change needs is the first section of `docs/agents/ui-testing.md`. For behaviour and text, run `hydra_uitest` (headless, drives the real UI by widget label, returns text), or drive the GUI one step at a time with the project's `hydra` MCP server; "Live mode and the MCP server" on that page explains it.
+
+### Rulings and this machine
+
+The user's rulings, in their own words, are in `docs/agents/rulings/`, indexed by its `README.md`. This machine's tools and paths are in `docs/agents/this-machine.md`.
 
 ### Public doc style
 

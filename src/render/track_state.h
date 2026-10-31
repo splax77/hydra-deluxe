@@ -301,15 +301,6 @@ TrackState build_track_state(const app::PreviewScene& scene, const TrackStateOpt
 // rebuilt.
 void rebuild_overlay_fields(TrackState& state, const app::PreviewScene& scene);
 
-// Is `note` inside `span` by the track state's own rule: the span's edges as
-// build_track_state places them (its end kSpanEndTicks past its last note,
-// through scene.timing), and on at the note's time the way the highway reads
-// it (toggle_on_after of SpanSweep's state there). So a phrase's last note is
-// inside and a note on the next tick is outside. Throws
-// std::invalid_argument when the scene has no timing, like build_track_state.
-bool note_in_span(const app::PreviewScene& scene, const app::PreviewSpan& span,
-                  const app::PreviewNote& note);
-
 }  // namespace hydra::render
 
 #endif  // HYDRA_RENDER_TRACK_STATE_H

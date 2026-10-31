@@ -1,6 +1,6 @@
 # tools/ch_mcp
 
-This folder holds the code for the Clone Hero MCP feasibility tests. Those tests check whether an MCP server (a tool server an agent can call) can be built on top of a running Clone Hero. The plan `docs/superpowers/plans/2026-10-28-ch-mcp-feasibility-tests.md` is the spec for those tests. The server built on what they proved is described under "The server" at the end of this page.
+This folder holds the code for the Clone Hero MCP feasibility tests. Those tests check whether an MCP server (a tool server an agent can call) can be built on top of a running Clone Hero. The plan `docs/superpowers/plans/2026-10-28-ch-mcp-feasibility-tests.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-10-28-ch-mcp-feasibility-tests.md`) was the spec for those tests, and `docs/research/2026-10-28-clone-hero-mcp-feasibility.md` holds their results. The server built on what they proved is described under "The server" at the end of this page.
 
 ## Making the dump and its facts file
 
@@ -66,7 +66,7 @@ Each run also checks the map against the dump (`check_names` in `dump_facts.py` 
 
 ## The server
 
-`server.py` is an MCP server for Clone Hero: a helper program Claude Code starts, which gives an agent tools to start the game, read it and press its pads and buttons through a virtual drum kit inside the game. The plans are `docs/superpowers/plans/2026-10-28-ch-mcp-server.md`; `docs/superpowers/plans/2026-10-30-ch-mcp-star-power-and-song-start.md` for Star Power and the menus; and `docs/superpowers/plans/2026-10-30-ch-mcp-in-game-input.md` for the virtual kit. The agent's page is `docs/agents/clone-hero-mcp.md`. The list of tools lives in one place, `build_server()` in `server.py`; read it there, with each tool's one-paragraph description.
+`server.py` is an MCP server for Clone Hero: a helper program Claude Code starts, which gives an agent tools to start the game, read it and press its pads and buttons through a virtual drum kit inside the game. The plans are `docs/superpowers/plans/2026-10-28-ch-mcp-server.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-10-28-ch-mcp-server.md`); `docs/superpowers/plans/2026-10-30-ch-mcp-star-power-and-song-start.md` for Star Power and the menus; and `docs/superpowers/plans/2026-10-30-ch-mcp-in-game-input.md` for the virtual kit. The agent's page is `docs/agents/clone-hero-mcp.md`. The list of tools lives in one place, `build_server()` in `server.py`; read it there, with each tool's one-paragraph description.
 
 The tools live in six modules, and `server.py` builds one object of each around a shared lock. The game-side tools are in `game_tools.py`: the launch, the stop, the auto-player and the locked key route. The Frida tools, the menu read included, are in `frida_tools.py`. `sp_tools.py` holds the Star Power watcher; it reads the game through `tools/ch_probe` and never reads memory itself. `kit_tools.py` holds the virtual kit: its setup, presses, status, watch and teardown, and the press it hands to the auto-player. `menu_tools.py` is the menu driver behind `ch_open_song`, and it presses through the kit. `method_watch.py` runs the method watch. Each one calls the module that already owns its work.
 
@@ -82,7 +82,7 @@ The server takes a backup of the user's game files before it touches the game, a
 
 Keep a human run's stats before you stop. `ch_wait_stats` copies the game's new `scorestats.json` only for a song `ch_start` was given a folder for, which the bot plays from the command line. When a person plays the song instead, copy `Documents\Clone Hero\scorestats.json` yourself before `ch_stop`, because `ch_stop` puts the old file back and the new one is lost.
 
-A read is fast. Three `ch_state` calls sent back to back read the song clock 0.087 s and 0.072 s apart, so one read, round trip included, takes under 0.1 s, far inside the 5 s cap, `READ_CAP_S` in `frida_tools.py` (one burst of three on one song; `docs/superpowers/plans/2026-10-28-ch-mcp-server.md` line 302).
+A read is fast. Three `ch_state` calls sent back to back read the song clock 0.087 s and 0.072 s apart, so one read, round trip included, takes under 0.1 s, far inside the 5 s cap, `READ_CAP_S` in `frida_tools.py` (one burst of three on one song, 2026-10-29; `docs/clone-hero/07-internals.md` holds that live result).
 
 Clone Hero's end-user licence forbids reverse-engineering the game. Its License Restrictions (https://clonehero.net/eula) say you agree not to "disassemble, decrypt, reverse compile or reverse engineer any part of the Application". The user chose on 2026-10-28 to build these tools anyway; `docs/research/2026-10-28-clone-hero-mcp-feasibility.md` (its EULA section, line 115) records that choice and what the tools touch. Check any claim about the licence against that page, never against a summary.
 
