@@ -91,6 +91,20 @@ TEST_CASE("timeline view: show moves only when the moment is outside") {
     CHECK_FALSE(ui::in_view(kAtSix, 540001.0));
 }
 
+TEST_CASE("timeline view: ms_at runs fraction backwards") {
+    CHECK(ui::ms_at(kAtSix, 0.0) == 360000.0);
+    CHECK(ui::ms_at(kAtSix, 0.5) == 450000.0);
+    CHECK(ui::ms_at(kAtSix, 1.0) == 540000.0);
+    // Not held to the window: a share outside 0..1 is a moment outside it.
+    CHECK(ui::ms_at(kAtSix, -0.5) == 270000.0);
+    CHECK(ui::ms_at(kAtSix, ui::fraction(kAtSix, 496800.0)) == doctest::Approx(496800.0));
+    // The whole song as one window: a share is that share of the song.
+    const TimelineView whole = ui::whole_song_view(kLongMs);
+    CHECK(whole.start_ms == 0.0);
+    CHECK(whole.span_ms == 2522500.0);
+    CHECK(ui::ms_at(whole, 0.5) == 1261250.0);
+}
+
 TEST_CASE("timeline view: the readout reads start, capped end and length") {
     CHECK(ui::readout(kAtSix, kLongMs) == "6:00 \xE2\x80\x93 9:00 of 42:02");
     CHECK(ui::readout(ui::clamp({9e9, 180000.0}, kLongMs), kLongMs) ==

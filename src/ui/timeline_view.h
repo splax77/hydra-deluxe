@@ -77,6 +77,18 @@ TimelineView show(TimelineView view, double pos_ms, double length_ms);
 // keeps its visible half (fr, line 355). 0 for a window with no length.
 double fraction(TimelineView view, double ms);
 
+// The moment `share` of the way across the window: fraction run backwards, so
+// ms_at(view, fraction(view, ms)) is `ms` again. Not held to the window or the
+// song; a caller that needs a moment inside them clamps. A point on the
+// timeline, on the strip or on the scrollbar becomes a moment through here
+// (the strip and the scrollbar read the whole song as one window,
+// whole_song_view).
+double ms_at(TimelineView view, double share);
+
+// The whole song as one window: from 0, `length_ms` long. The overview strip
+// and the scrollbar lay the song out over their width with it.
+TimelineView whole_song_view(double length_ms);
+
 // Is `ms` inside the window, its ends included (inView, line 358)?
 bool in_view(TimelineView view, double ms);
 

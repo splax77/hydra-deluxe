@@ -536,3 +536,111 @@ TEST_CASE("preview timeline: a huge song length gets labels by the width, not by
     const ui::TimelineLayout huge = *ui::timeline_layout(s, 1e300, whole(1e300), kWidth, m);
     CHECK(huge.axis_ticks.size() <= 20);
 }
+
+TEST_CASE("preview timeline: the strip lays every fill and activation over the whole song and frames the window") {
+    // The scene's three fills (offered and tinted, taken, hidden), an offered
+    // fill with no tint (its cost not landed), and a tinted offered fill the
+    // caller locks. The strip is 1,000 px over the 10 s song, 20 px tall.
+    app::PreviewScene s = scene_with_fills();
+    s.fills.push_back(fill_at(9000.0, PreviewFillState::Offered));
+    s.fills.push_back(fill_at(9500.0, PreviewFillState::Offered));
+    s.sections = {{0, 0.0, "Intro"}, {3000, 3000.0, "Verse"}, {9000, 9000.0, "End"}};
+    ui::TimelineFillMarks marks;
+    marks.tints = {{2000, IM_COL32(1, 2, 3, 255)}, {9500, IM_COL32(4, 5, 6, 255)}};
+    marks.locked_ticks = {9500};
+    ui::StripMetrics m;
+    m.height = 20.0f;
+    m.fill_top = 3.0f;
+    m.fill_h = 9.0f;
+    m.fill_w = 2.0f;
+    m.act_bottom = 1.5f;
+    m.act_h = 5.0f;
+    m.frame_min_w = 4.0f;
+
+    // A 4 s window from 6 s, the playhead at 7 s. Pinned from one run.
+    const std::optional<ui::StripLayout> l =
+        ui::strip_layout(s, kLengthMs, ui::TimelineView{6000.0, 4000.0}, 7000.0, kWidth, m, marks);
+    REQUIRE(l.has_value());
+    CHECK(l->width == doctest::Approx(1000.0f));
+    CHECK(l->height == doctest::Approx(20.0f));
+
+    // Every fill, inside the window or not, as a bar at its end.
+    REQUIRE(l->fills.size() == 5);
+    CHECK(l->fills[0].rect.x0 == doctest::Approx(200.0f));
+    CHECK(l->fills[0].rect.x1 == doctest::Approx(202.0f));
+    CHECK(l->fills[0].rect.y0 == doctest::Approx(3.0f));
+    CHECK(l->fills[0].rect.y1 == doctest::Approx(12.0f));
+    CHECK(l->fills[1].rect.x0 == doctest::Approx(500.0f));
+    CHECK(l->fills[2].rect.x0 == doctest::Approx(800.0f));
+    CHECK(l->fills[3].rect.x0 == doctest::Approx(900.0f));
+    CHECK(l->fills[4].rect.x0 == doctest::Approx(950.0f));
+    // Each fill's colour: its tint, the path's colour for the taken fill,
+    // grey for the hidden one, the untinted one and the locked one.
+    CHECK(l->fills[0].col == IM_COL32(1, 2, 3, 255));
+    CHECK(l->fills[1].col == ui::kTimelinePathColor);
+    CHECK(l->fills[2].col == ui::kStripFillGrey);
+    CHECK(l->fills[3].col == ui::kStripFillGrey);
+    CHECK(l->fills[4].col == ui::kStripFillGrey);
+
+    // The activation, 5,000 to 6,500 ms, along the bottom.
+    REQUIRE(l->bands.size() == 1);
+    CHECK(l->bands[0].activation == 0);
+    CHECK(l->bands[0].rect.x0 == doctest::Approx(500.0f));
+    CHECK(l->bands[0].rect.x1 == doctest::Approx(650.0f));
+    CHECK(l->bands[0].rect.y0 == doctest::Approx(13.5f));
+    CHECK(l->bands[0].rect.y1 == doctest::Approx(18.5f));
+
+    // The sections as the Section row shows them: End is left out, and Verse
+    // runs to where End starts and takes the shade.
+    REQUIRE(l->sections.size() == 2);
+    CHECK(l->sections[0].rect.x1 == doctest::Approx(300.0f));
+    CHECK_FALSE(l->sections[0].shaded);
+    CHECK(l->sections[1].rect.x0 == doctest::Approx(300.0f));
+    CHECK(l->sections[1].rect.x1 == doctest::Approx(900.0f));
+    CHECK(l->sections[1].shaded);
+
+    // The frame covers the window, top to bottom, and the playhead is at 7 s.
+    CHECK(l->frame.x0 == doctest::Approx(600.0f));
+    CHECK(l->frame.x1 == doctest::Approx(1000.0f));
+    CHECK(l->frame.y0 == doctest::Approx(0.0f));
+    CHECK(l->frame.y1 == doctest::Approx(20.0f));
+    CHECK(l->playhead_x == doctest::Approx(700.0f));
+
+    // A window that runs past the song's end is framed to the end; a window
+    // narrower than frame_min_w gets that width.
+    const ui::StripLayout past = *ui::strip_layout(s, kLengthMs, ui::TimelineView{8000.0, 4000.0}, 0.0, kWidth, m);
+    CHECK(past.frame.x0 == doctest::Approx(800.0f));
+    CHECK(past.frame.x1 == doctest::Approx(1000.0f));
+    const ui::StripLayout narrow = *ui::strip_layout(s, kLengthMs, ui::TimelineView{500.0, 10.0}, 0.0, kWidth, m);
+    CHECK(narrow.frame.x0 == doctest::Approx(50.0f));
+    CHECK(narrow.frame.x1 == doctest::Approx(54.0f));
+
+    // No usable song length: no strip.
+    CHECK_FALSE(ui::strip_layout(s, 0.0, ui::TimelineView{0.0, 4000.0}, 0.0, kWidth, m).has_value());
+}
+
+TEST_CASE("preview timeline: the scrollbar's thumb and readout come from the view") {
+    // A 3-minute window six minutes into a 40-minute song, on an 800 px bar
+    // 16 px tall. Pinned from one run.
+    const ui::ScrollbarLayout at_six =
+        ui::scrollbar_layout(ui::TimelineView{360000.0, 180000.0}, 2400000.0, 800.0f, 16.0f, 19.0f, 1.0f);
+    CHECK(at_six.thumb.x0 == doctest::Approx(120.0f));
+    CHECK(at_six.thumb.x1 == doctest::Approx(180.0f));
+    CHECK(at_six.thumb.y0 == doctest::Approx(1.0f));
+    CHECK(at_six.thumb.y1 == doctest::Approx(15.0f));
+    CHECK(at_six.readout == "6:00 \xE2\x80\x93 9:00 of 40:00");
+
+    // A song shorter than the window: the thumb fills the bar.
+    const ui::ScrollbarLayout short_song =
+        ui::scrollbar_layout(ui::open_view(130088.0), 130088.0, 800.0f, 16.0f, 19.0f, 1.0f);
+    CHECK(short_song.thumb.x0 == doctest::Approx(0.0f));
+    CHECK(short_song.thumb.x1 == doctest::Approx(800.0f));
+    CHECK(short_song.readout == "0:00 \xE2\x80\x93 2:10 of 2:10");
+
+    // A thumb narrower than the least width gets that width: 3 minutes of
+    // 42:02 on a 100 px bar is about 7 px.
+    const ui::ScrollbarLayout narrow =
+        ui::scrollbar_layout(ui::TimelineView{0.0, 180000.0}, 2522500.0, 100.0f, 16.0f, 19.0f, 1.0f);
+    CHECK(narrow.thumb.x0 == doctest::Approx(0.0f));
+    CHECK(narrow.thumb.x1 == doctest::Approx(19.0f));
+}

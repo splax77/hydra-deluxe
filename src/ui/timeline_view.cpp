@@ -69,6 +69,10 @@ double fraction(TimelineView view, double ms) {
     return (ms - view.start_ms) / view.span_ms;
 }
 
+double ms_at(TimelineView view, double share) { return view.start_ms + share * view.span_ms; }
+
+TimelineView whole_song_view(double length_ms) { return TimelineView{0.0, length_ms}; }
+
 bool in_view(TimelineView view, double ms) {
     const double f = fraction(view, ms);
     return f >= 0.0 && f <= 1.0;
@@ -87,7 +91,7 @@ std::string readout(TimelineView view, double length_ms) {
 }
 
 TimelineView scrollbar_click(TimelineView view, double share, double length_ms) {
-    const double at_ms = share * length_ms;
+    const double at_ms = ms_at(whole_song_view(length_ms), share);
     const int toward = at_ms > view.start_ms ? 1 : (at_ms < view.start_ms ? -1 : 0);
     return page(view, toward, length_ms);
 }
