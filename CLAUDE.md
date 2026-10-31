@@ -70,3 +70,4 @@ These hold for the main session and every agent it sends out. Each is in short f
 10. After a push, report done and move on. Don't wait for CI or check it unless your change is to CI itself.
 11. A question that changes what Hydra does lists what the user will see: every screen that reads the changed value, with its text before and after from a real chart.
 12. A visible change the user's words did not ask for is a question before merge, never an opt-out line in a report. Silence is not a yes.
+13. A commit or release never holds an edit nobody in the session made or was asked to make; found edits wait for the user.
