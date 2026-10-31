@@ -336,10 +336,9 @@ double BackendSqueeze::offset() const {
     return *offset_ms;
 }
 
-std::string BackendSqueeze::summarystr(bool squeezed_out, double hit_window_ms,
-                                       double leeway_ms) const {
+std::string BackendSqueeze::summarystr(bool squeezed_out, double leeway_ms) const {
     const double off = offset();
-    const double w = hit_window_ms;
+    const double w = kHitWindowMs;
     const double band = kBackendInnerBandMs;
     if (squeezed_out) {
         // A row the engine does not count says so, as the plain rows do

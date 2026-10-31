@@ -67,7 +67,8 @@ struct StampRule {
 // generator places them; Star Power's length follows Clone Hero's continuous
 // measure count; and the beat grid restarts at a time signature change (D115).
 // "2.8.0+efill85": the search takes an activation whose Star Power comes
-// ready up to kEarlyFillReachMs after the fill's deadline (src/core/model.h).
+// ready up to the hit window, kHitWindowMs, after the fill's deadline
+// (fill_refuses, src/core/model.h).
 // D250 accepted that every saved result reads Stale.
 // "2.12.1+ch10grid": Clone Hero 1.0 mode's generated fills count measures on
 // the shared grid (MeasureIndex), so a 1.0 fill whose chord sits on a time

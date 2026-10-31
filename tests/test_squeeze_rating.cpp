@@ -256,8 +256,7 @@ TEST_CASE("field fixture: What's My Age Again? (Sync Chart) SqOut") {
     const double r = scales->post.early;
     CHECK(sqout.difficulty() == doctest::Approx(191.0825).epsilon(1e-5));
     CHECK(effective_backend_ms(sqout.difficulty(), r) == doctest::Approx(192.308).epsilon(1e-4));
-    CHECK(squeeze_budget_ms(r, 85.0) == doctest::Approx(168.92).epsilon(1e-4));
-    CHECK(squeeze_budget_ms(r, 70.0) == doctest::Approx(139.11).epsilon(1e-4));
+    CHECK(squeeze_budget_ms(r) == doctest::Approx(168.92).epsilon(1e-4));
 
     // The failed 130% attempt: real-ms displacements scale by 1.3 into chart
     // ms; the early arm is then discounted by r. 75.4/72.3 misses the gap by
@@ -325,8 +324,6 @@ TEST_CASE("field fixture: Dumpweed SqOut end anchored on the deact node") {
     CHECK(gap == doctest::Approx(143.129).epsilon(1e-4));
     const double r = scales->post.early;
     CHECK(effective_backend_ms(gap, r) == doctest::Approx(147.94).epsilon(1e-3));
-    // The budget at this scale for a 70 ms window, pinned from one run.
-    CHECK(squeeze_budget_ms(r, 70.0) == doctest::Approx(135.458).epsilon(1e-4));
     CHECK(74.1 * r + 75.1 > gap);         // the video's successful split
     CHECK(74.1 * 0.890911 + 75.1 < gap);  // the old scale called it a miss
 
@@ -400,14 +397,14 @@ TEST_CASE("is_scaled: within a thousandth of 1 is no scale (D256)") {
 TEST_CASE("rate_note: the side of the end picks the multiplier") {
     const TransferScale s{0.5, 2.0};
     // Inside SP: an early hit is what moves the end across it.
-    NoteRating in = rate_note(-50.0, true, s, 85.0);
+    NoteRating in = rate_note(-50.0, true, s);
     CHECK(in.early);
     CHECK(in.scale == 0.5);
     CHECK(in.budget_ms == 127.5);
     REQUIRE(in.effective_ms.has_value());
     CHECK(*in.effective_ms == doctest::Approx(66.666666666666667).epsilon(1e-12));
     // Outside: a late hit.
-    NoteRating out = rate_note(50.0, false, s, 85.0);
+    NoteRating out = rate_note(50.0, false, s);
     CHECK_FALSE(out.early);
     CHECK(out.scale == 2.0);
     REQUIRE(out.effective_ms.has_value());
@@ -418,15 +415,15 @@ TEST_CASE("rate_note: a figure whenever the multiplier is not 1, however close")
     // Sinner's Vengeance act 3 shape: 187.5 ms at an early scale just under
     // 1 moves by under 1 ms, which the old 1 ms floor hid. Full precision.
     const double r = 0.9912;
-    NoteRating n = rate_note(-187.5, true, TransferScale{r, 1.0}, 85.0);
+    NoteRating n = rate_note(-187.5, true, TransferScale{r, 1.0});
     REQUIRE(n.effective_ms.has_value());
     CHECK(*n.effective_ms == doctest::Approx(188.32864604258737).epsilon(1e-12));
     // Exactly 1, or float noise around it: no figure.
-    CHECK_FALSE(rate_note(-187.5, true, TransferScale{1.0, 1.0}, 85.0).effective_ms.has_value());
+    CHECK_FALSE(rate_note(-187.5, true, TransferScale{1.0, 1.0}).effective_ms.has_value());
     CHECK_FALSE(
-        rate_note(-187.5, true, TransferScale{1.0 + 1e-12, 1.0}, 85.0).effective_ms.has_value());
+        rate_note(-187.5, true, TransferScale{1.0 + 1e-12, 1.0}).effective_ms.has_value());
     // A note on the end itself keeps its figure when scaled: 0 ms.
-    NoteRating z = rate_note(0.0, true, TransferScale{8.59, 8.76}, 85.0);
+    NoteRating z = rate_note(0.0, true, TransferScale{8.59, 8.76});
     REQUIRE(z.effective_ms.has_value());
     CHECK(*z.effective_ms == 0.0);
 }
@@ -449,7 +446,7 @@ TEST_CASE("rate_activation: every row reads post, by its side of the end") {
     add(1002, 1.5);    // counted inside the leeway: early (decision 6)
     add(1003, 50.0);   // uncounted, past the leeway: late
 
-    ActivationRating r = rate_activation(act, 85.0);
+    ActivationRating r = rate_activation(act);
     REQUIRE(r.backends.size() == 4);
     CHECK(r.backends[0].note.early);
     CHECK(r.backends[1].note.early);
@@ -487,7 +484,7 @@ TEST_CASE("rate_activation: the squeeze-out is rated once, as its row, at post")
     act.backends.push_back(ry);
     act.sqout_tick = 5000;
 
-    ActivationRating r = rate_activation(act, 85.0);
+    ActivationRating r = rate_activation(act);
     REQUIRE(r.backends.size() == 1);
     CHECK(r.backends[0].squeezed_out);
     CHECK(r.backends[0].note.early);
@@ -504,7 +501,7 @@ TEST_CASE("rate_activation: the squeeze-out is rated once, as its row, at post")
     // A free squeeze-out, already past the end, reads post's late side.
     act.backends[0].offset_ms = 40.0;
     act.sqinouts[1] = SPSqueeze{SqueezeKind::SqOut, 40.0};
-    r = rate_activation(act, 85.0);
+    r = rate_activation(act);
     CHECK_FALSE(r.backends[0].note.early);
     CHECK(r.backends[0].note.scale == 0.98);
 }
@@ -523,7 +520,7 @@ TEST_CASE("rate_activation: each SqIn reads its own stored scale") {
     // Every scale is stored or none is read (D4), so the SP end's is stored
     // too, flat.
     act.transfer_post = TransferScale{1.0, 1.0};
-    ActivationRating r = rate_activation(act, 85.0);
+    ActivationRating r = rate_activation(act);
     REQUIRE(r.scales.has_value());
     REQUIRE(r.scales->sqins.size() == 2);
     CHECK(r.scales->sqins[0].early == 1.6);
@@ -543,7 +540,7 @@ TEST_CASE("rate_activation: a SqIn reads its SqIn scale, by its side of the end"
     act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 50.0});    // to earn: late
     // A SqIn never reads the backend rows' scale.
     test::set_transfer(act, TransferScale{1.6, 0.5}, TransferScale{3.0, 4.0});
-    ActivationRating r = rate_activation(act, 85.0);
+    ActivationRating r = rate_activation(act);
     REQUIRE(r.note_effective_ms.size() == 2);
     REQUIRE(r.note_effective_ms[0].has_value());
     REQUIRE(r.note_effective_ms[1].has_value());
@@ -570,7 +567,7 @@ TEST_CASE("rate_activation: a SqIn on the SP end is free, so it reads its SqIn s
         act.e_offset = 300.0;
         act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, offset});
         test::set_transfer(act, sqin_scale, TransferScale{});
-        ActivationRating r = rate_activation(act, 85.0);
+        ActivationRating r = rate_activation(act);
         REQUIRE(r.note_effective_ms.size() == 1);
         return r.note_effective_ms[0];
     };
@@ -599,7 +596,7 @@ TEST_CASE("rate_activation: scale_governs only for a scaled multiplier on a rate
     BackendSqueeze in;
     in.offset_ms = -40.0;
     act.backends.push_back(in);
-    ActivationRating r = rate_activation(act, 85.0);
+    ActivationRating r = rate_activation(act);
     CHECK_FALSE(r.scale_governs);
     CHECK_FALSE(r.backends[0].note.effective_ms.has_value());
 
@@ -607,7 +604,7 @@ TEST_CASE("rate_activation: scale_governs only for a scaled multiplier on a rate
     Activation flat = act;
     test::set_transfer(flat, TransferScale{});
     flat.backends[0].offset_ms = 222.2;
-    CHECK_FALSE(rate_activation(flat, 85.0).scale_governs);
+    CHECK_FALSE(rate_activation(flat).scale_governs);
 }
 
 TEST_CASE("rate_activation: the stored scales are the only scales") {
@@ -624,15 +621,15 @@ TEST_CASE("rate_activation: the stored scales are the only scales") {
     row.offset_ms = 50.0;
     act.backends.push_back(row);
 
-    ActivationRating r = rate_activation(act, 85.0);
+    ActivationRating r = rate_activation(act);
     REQUIRE(r.scales.has_value());
     CHECK(r.scales->post.late == doctest::Approx(0.5));
     CHECK(r.scales->post.early == doctest::Approx(0.5));
     CHECK(r.scale_governs);
 }
 
-TEST_CASE("timing_tiers: the ladder at W=85 and at W=70") {
-    // The default 85 ms window -> a 170 ms two-hit budget: the 2 ms "Normal"
+TEST_CASE("timing_tiers: the ladder at the 85 ms hit window") {
+    // The 85 ms window (kHitWindowMs) -> a 170 ms two-hit budget: the 2 ms "Normal"
     // floor, then quarters of the budget.
     std::vector<TimingTier> t85 = timing_tiers();
     REQUIRE(t85.size() == 7);
@@ -651,6 +648,8 @@ TEST_CASE("timing_tiers: the ladder at W=85 and at W=70") {
     CHECK(std::string(t85[2].tok) == "t2");
     REQUIRE(t85[2].cutoff.has_value());
     CHECK(*t85[2].cutoff == doctest::Approx(85.0));
+    // The Extreme edge is the window itself, read from its one owner.
+    CHECK(*t85[2].cutoff == kHitWindowMs);
 
     CHECK(std::string(t85[3].name) == "Insane");
     CHECK(std::string(t85[3].tok) == "t3");
@@ -663,7 +662,7 @@ TEST_CASE("timing_tiers: the ladder at W=85 and at W=70") {
     CHECK(*t85[4].cutoff == doctest::Approx(170.0));
     // The ladder's top cutoff is the two-hit budget itself, read from its one
     // owner, not twice the window written again.
-    CHECK(*t85[4].cutoff == nominal_budget_ms(kDefaultHitWindowMs));
+    CHECK(*t85[4].cutoff == nominal_budget_ms());
 
     // The two open bands carry no cutoff, and "None" is last.
     CHECK(std::string(t85[5].name) == "Beyond");
@@ -672,21 +671,6 @@ TEST_CASE("timing_tiers: the ladder at W=85 and at W=70") {
     CHECK(std::string(t85[6].name) == "None");
     CHECK(std::string(t85[6].tok) == "tn");
     CHECK_FALSE(t85[6].cutoff.has_value());
-
-    // The historical 70 ms window reproduces the original 2/35/70/105/140
-    // ladder exactly; only the cutoffs move.
-    std::vector<TimingTier> t70 = timing_tiers(70.0);
-    REQUIRE(t70.size() == 7);
-    const double want70[5] = {2.0, 35.0, 70.0, 105.0, 140.0};
-    for (size_t i = 0; i < 5; ++i) {
-        CHECK(std::string(t70[i].name) == std::string(t85[i].name));
-        CHECK(std::string(t70[i].tok) == std::string(t85[i].tok));
-        REQUIRE(t70[i].cutoff.has_value());
-        CHECK(*t70[i].cutoff == doctest::Approx(want70[i]));
-    }
-    CHECK(*t70[4].cutoff == nominal_budget_ms(70.0));
-    CHECK_FALSE(t70[5].cutoff.has_value());
-    CHECK_FALSE(t70[6].cutoff.has_value());
 }
 
 TEST_CASE("display_backends: 500 ms window keeps everything the 500 ms search graph collects") {
@@ -747,7 +731,7 @@ TEST_CASE("rate_activation: cap_clamped flag") {
     Activation clamped_with_squeeze;
     test::set_clamped_window(clamped_with_squeeze, 3072, 6144);
     clamped_with_squeeze.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, -50.0});
-    ActivationRating r1 = rate_activation(clamped_with_squeeze, 85.0);
+    ActivationRating r1 = rate_activation(clamped_with_squeeze);
     CHECK(r1.cap_clamped);
 
     // clamp_tick set, but the only backend row is at -30 ms -- inside the
@@ -758,14 +742,14 @@ TEST_CASE("rate_activation: cap_clamped flag") {
     BackendSqueeze mild_row;
     mild_row.offset_ms = -30.0;
     clamped_no_squeeze.backends.push_back(mild_row);
-    ActivationRating r2 = rate_activation(clamped_no_squeeze, 85.0);
+    ActivationRating r2 = rate_activation(clamped_no_squeeze);
     CHECK_FALSE(r2.cap_clamped);
 
     // A SqOut with no clamp_tick at all -- the window was never cap-clamped,
     // so there's nothing to warn about regardless of the squeeze.
     Activation unclamped_with_squeeze;
     unclamped_with_squeeze.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, -50.0});
-    ActivationRating r3 = rate_activation(unclamped_with_squeeze, 85.0);
+    ActivationRating r3 = rate_activation(unclamped_with_squeeze);
     CHECK_FALSE(r3.cap_clamped);
 }
 
@@ -805,38 +789,36 @@ TEST_CASE("rate_activation: a plain row inside the leeway is not a frontend sque
     row.offset_ms = 2.5;
     act.backends.push_back(row);
 
-    ActivationRating r = rate_activation(act, 85.0);
+    ActivationRating r = rate_activation(act);
     CHECK_FALSE(r.cap_clamped);
     // Counted inside the leeway, so the early side governs it -- x1.00 here.
     CHECK_FALSE(r.scale_governs);
     REQUIRE(r.backends.size() == 1);
     CHECK_FALSE(r.backends[0].note.effective_ms.has_value());
-    CHECK(act.backends[0].summarystr(false, 85.0) == "Standard");
+    CHECK(act.backends[0].summarystr(false) == "Standard");
 
     // At the leeway edge the row is uncounted, so the frontend decides it.
     act.backends[0].offset_ms = 3.0;
-    r = rate_activation(act, 85.0);
+    r = rate_activation(act);
     CHECK(r.cap_clamped);
-    CHECK(act.backends[0].summarystr(false, 85.0) == "Hard (uncounted)");
+    CHECK(act.backends[0].summarystr(false) == "Hard (uncounted)");
 
     // The edge is the user's rule: a 2 ms leeway makes 2.5 ms uncounted.
     const double narrow = 2.0;
     REQUIRE(narrow != core::default_rules().backend_leeway_ms);
     act.backends[0].offset_ms = 2.5;
-    r = rate_activation(act, 85.0, narrow);
+    r = rate_activation(act, narrow);
     CHECK(r.cap_clamped);
-    CHECK(act.backends[0].summarystr(false, 85.0, narrow) == "Hard (uncounted)");
+    CHECK(act.backends[0].summarystr(false, narrow) == "Hard (uncounted)");
 }
 
 TEST_CASE("squeeze_budget_ms: identity scale is twice the hit window") {
     // The backend tooltip's "not %.0fms" figure is this call, not 2.0 * W.
-    CHECK(squeeze_budget_ms(1.0, 85.0) == 170.0);
-    CHECK(squeeze_budget_ms(1.0, 40.0) == 80.0);
+    CHECK(squeeze_budget_ms(1.0) == 170.0);
 }
 
-TEST_CASE("beyond_edge_ms: pinned at W=85 and W=40") {
-    CHECK(beyond_edge_ms(85.0) == 170.0);
-    CHECK(beyond_edge_ms(40.0) == 80.0);
+TEST_CASE("beyond_edge_ms: pinned at the 85 ms hit window") {
+    CHECK(beyond_edge_ms() == 170.0);
 }
 
 TEST_CASE("rate_activation: an unknown scale rates nothing") {
@@ -849,7 +831,7 @@ TEST_CASE("rate_activation: an unknown scale rates nothing") {
     row.offset_ms = 40.0;
     act.backends.push_back(row);
 
-    ActivationRating r = rate_activation(act, 85.0);
+    ActivationRating r = rate_activation(act);
     CHECK_FALSE(r.scales.has_value());
     REQUIRE(r.backends.size() == 1);
     CHECK_FALSE(r.backends[0].note.effective_ms.has_value());

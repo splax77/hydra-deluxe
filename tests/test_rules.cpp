@@ -175,8 +175,8 @@ TEST_CASE("rules: whole_chord takes every note's SP doubling on a squeeze-out") 
 TEST_CASE("rules: the leeway moves the Standard edge of a backend rating") {
     BackendSqueeze b;
     b.offset_ms = 4.0;
-    CHECK(b.summarystr(false, kDefaultHitWindowMs) == "Hard (uncounted)");
-    CHECK(b.summarystr(false, kDefaultHitWindowMs, 5.0) == "Standard");
+    CHECK(b.summarystr(false) == "Hard (uncounted)");
+    CHECK(b.summarystr(false, 5.0) == "Standard");
 }
 
 // Finding 29: the SqOut ladder is for the row the activation squeezed out
@@ -184,11 +184,11 @@ TEST_CASE("rules: the leeway moves the Standard edge of a backend rating") {
 TEST_CASE("BackendSqueeze::summarystr: the SqOut ladder is for the squeezed-out row only") {
     BackendSqueeze b;
     b.offset_ms = -50.0;
-    CHECK(b.summarystr(true, 85.0) == "Hard SqOut");
-    CHECK(b.summarystr(false, 85.0) == "Easy");
+    CHECK(b.summarystr(true) == "Hard SqOut");
+    CHECK(b.summarystr(false) == "Easy");
     b.offset_ms = 150.0;
-    CHECK(b.summarystr(true, 85.0) == "Free SqOut (uncounted)");
-    CHECK(b.summarystr(false, 85.0) == "Insane (uncounted)");
+    CHECK(b.summarystr(true) == "Free SqOut (uncounted)");
+    CHECK(b.summarystr(false) == "Insane (uncounted)");
 }
 
 // Finding 33, D48 Q6: a squeezed-out row the engine does not count says so,
@@ -196,21 +196,21 @@ TEST_CASE("BackendSqueeze::summarystr: the SqOut ladder is for the squeezed-out 
 TEST_CASE("BackendSqueeze::summarystr: an uncounted squeezed-out row carries the tag") {
     BackendSqueeze b;
     b.offset_ms = 150.0;
-    CHECK(b.summarystr(true, 85.0) == "Free SqOut (uncounted)");
+    CHECK(b.summarystr(true) == "Free SqOut (uncounted)");
     b.offset_ms = 50.0;
-    CHECK(b.summarystr(true, 85.0) == "Easy SqOut (uncounted)");
+    CHECK(b.summarystr(true) == "Easy SqOut (uncounted)");
     b.offset_ms = 4.0;
-    CHECK(b.summarystr(true, 85.0) == "Standard SqOut (uncounted)");
-    CHECK(b.summarystr(true, 85.0, 5.0) == "Standard SqOut");
+    CHECK(b.summarystr(true) == "Standard SqOut (uncounted)");
+    CHECK(b.summarystr(true, 5.0) == "Standard SqOut");
     b.offset_ms = -50.0;
-    CHECK(b.summarystr(true, 85.0) == "Hard SqOut");
+    CHECK(b.summarystr(true) == "Hard SqOut");
     // The plain rows read as before.
     b.offset_ms = 150.0;
-    CHECK(b.summarystr(false, 85.0) == "Insane (uncounted)");
+    CHECK(b.summarystr(false) == "Insane (uncounted)");
     b.offset_ms = 50.0;
-    CHECK(b.summarystr(false, 85.0) == "Hard (uncounted)");
+    CHECK(b.summarystr(false) == "Hard (uncounted)");
     b.offset_ms = -50.0;
-    CHECK(b.summarystr(false, 85.0) == "Easy");
+    CHECK(b.summarystr(false) == "Easy");
 }
 
 // Finding 306, D48 Q4: the ladder's inner edges are their own named 10 ms.
@@ -220,17 +220,17 @@ TEST_CASE("kBackendInnerBandMs: the backend ladder's inner edges sit at 10 ms") 
     CHECK(kBackendInnerBandMs == 10.0);
     BackendSqueeze b;
     b.offset_ms = -10.1;
-    CHECK(b.summarystr(true, 85.0) == "Hard SqOut");
-    CHECK(b.summarystr(false, 85.0) == "Easy");
+    CHECK(b.summarystr(true) == "Hard SqOut");
+    CHECK(b.summarystr(false) == "Easy");
     b.offset_ms = -10.0;
-    CHECK(b.summarystr(true, 85.0) == "Standard SqOut");
-    CHECK(b.summarystr(false, 85.0) == "Standard");
+    CHECK(b.summarystr(true) == "Standard SqOut");
+    CHECK(b.summarystr(false) == "Standard");
     b.offset_ms = 9.9;
-    CHECK(b.summarystr(true, 85.0) == "Standard SqOut (uncounted)");
-    CHECK(b.summarystr(false, 85.0) == "Hard (uncounted)");
+    CHECK(b.summarystr(true) == "Standard SqOut (uncounted)");
+    CHECK(b.summarystr(false) == "Hard (uncounted)");
     b.offset_ms = 10.0;
-    CHECK(b.summarystr(true, 85.0) == "Easy SqOut (uncounted)");
-    CHECK(b.summarystr(false, 85.0) == "Hard (uncounted)");
+    CHECK(b.summarystr(true) == "Easy SqOut (uncounted)");
+    CHECK(b.summarystr(false) == "Hard (uncounted)");
 }
 
 TEST_CASE("rules: the leeway changes what the engine counts") {

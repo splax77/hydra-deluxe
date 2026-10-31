@@ -102,10 +102,11 @@ constexpr double kBackendInnerBandMs = 10.0;
 // The backend leeway edge is a user rule now: core::Rules::backend_leeway_ms
 // (hydra_rules.ini), read by the engine and BackendSqueeze::summarystr.
 
-// The default per-side hit window (the registrable Clone Hero Pro Drums
-// window). The *setting* app::Settings::hit_window_ms starts from this; the
-// display-layer defaults below use it so all entry points agree.
-constexpr double kDefaultHitWindowMs = 85.0;
+// The per-side hit window (the registrable Clone Hero Pro Drums window). One
+// fixed number for the search and the display alike: the squeeze budgets,
+// the Rating words, the report's timing tiers and the early-fill reach all
+// read it, and no setting changes it (D270 call 8).
+constexpr double kHitWindowMs = 85.0;
 
 // The squeeze horizon in ms. The search graph only looks this far from the SP
 // end for a reachable squeeze, and backends within it of the deactivation are
@@ -128,13 +129,12 @@ inline bool within_squeeze_window(double offset_from_sp_end_ms) {
 }
 
 // The two sides of the early-fill (E) window, both measured on e_offset.
-// Each is a fixed constant, never the hit_window_ms setting, because the
-// search reads them.
 //
-// The reach: the latest Star Power may come ready after a fill's deadline
-// and still summon it with an early hit. fill_refuses reads it, so it
-// decides which activations the search can find.
-constexpr double kEarlyFillReachMs = 85.0;
+// The reach is the hit window, kHitWindowMs (D270 call 8): the latest Star
+// Power may come ready after a fill's deadline and still summon it with an
+// early hit. fill_refuses reads it, so it decides which activations the
+// search can find.
+//
 // The slack: Star Power ready less than this before a fill's deadline still
 // marks the activation E-critical. is_e0 reads it.
 constexpr double kEarlyFillSlackMs = 60.0;
@@ -299,14 +299,14 @@ inline int64_t fill_start_tick(int64_t chord_tick, int64_t activation_length) {
 
 // ---- the early-fill rule -------------------------------------------------
 // Clone Hero's early-fill rule and the E0, stated once around
-// kEarlyFillReachMs and kEarlyFillSlackMs. A fill spawns only when SP was
-// ready by the fill's deadline, or late by no more than the reach. The
+// kHitWindowMs (the reach) and kEarlyFillSlackMs. A fill spawns only when SP
+// was ready by the fill's deadline, or late by no more than the reach. The
 // e_offset is how long before the deadline SP became ready (negative: after
 // it). The search's branch_activate and its group key (ready_class) ask
 // these; so do Activation's E tests.
 inline double fill_e_offset(double deadline_ms, double ready_ms) { return deadline_ms - ready_ms; }
 // The fill refuses to spawn: SP became ready later than the reach allows.
-inline bool fill_refuses(double e_offset) { return e_offset < -kEarlyFillReachMs; }
+inline bool fill_refuses(double e_offset) { return e_offset < -kHitWindowMs; }
 
 // E0: the early fill has less than the slack to spare and nothing was
 // skipped. is_e0(e_offset, 0) alone is "E-critical".
@@ -414,16 +414,16 @@ struct BackendSqueeze {
     double offset() const;
 
     bool operator==(const BackendSqueeze& o) const;
-    // Rating label. The outer +/-W edges come from the hit window; the inner
-    // edges are kBackendInnerBandMs either side of the SP end, and the plain
-    // ladder's Standard edge is the leeway (none of them is the window).
+    // Rating label. The outer +/-W edges come from the hit window
+    // (kHitWindowMs); the inner edges are kBackendInnerBandMs either side of
+    // the SP end, and the plain ladder's Standard edge is the leeway (none of
+    // them is the window).
     // squeezed_out: this row is the activation's squeezed-out chord
     // (Activation::is_sqout_backend). Only that row reads the SqOut ladder;
     // every other row, phrase chord or not, reads the plain one.
     // leeway_ms: the backend leeway edge (Rules::backend_leeway_ms); a
     // plain row under it rates "Standard".
     std::string summarystr(bool squeezed_out,
-                           double hit_window_ms = kDefaultHitWindowMs,
                            double leeway_ms = core::default_rules().backend_leeway_ms) const;
 };
 

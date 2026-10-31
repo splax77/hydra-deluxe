@@ -168,7 +168,7 @@ TEST_CASE("allzero_activation: no skips, or an E1") {
     CHECK(allzero_activation(500.0, 0));                     // a plain 0
     CHECK(allzero_activation(kEarlyFillSlackMs - 0.1, 0));   // an E0
     CHECK(allzero_activation(kEarlyFillSlackMs - 0.1, 1));   // an E1
-    CHECK(allzero_activation(-kEarlyFillReachMs, 1));        // an E1, as late as a fill spawns
+    CHECK(allzero_activation(-kHitWindowMs, 1));        // an E1, as late as a fill spawns
     CHECK_FALSE(allzero_activation(kEarlyFillSlackMs, 1));   // a plain 1
     CHECK_FALSE(allzero_activation(10.0, 2));                // an E2 skips a real fill
 
@@ -183,14 +183,14 @@ TEST_CASE("allzero_activation: no skips, or an E1") {
 }
 
 // The early-fill window has one owner: model.h states both sides of it, the
-// fill that refuses (fill_refuses, read from kEarlyFillReachMs) and the E0
+// fill that refuses (fill_refuses, read from kHitWindowMs) and the E0
 // (is_e0, read from kEarlyFillSlackMs). That only model.h reads either
 // constant is a row of the single-owner scan
 // (tests/single_owner/rules/core.json); this checks each side's edge.
 TEST_CASE("early-fill window: the refusal and the E0 edges") {
     CHECK(fill_e_offset(10000.0, 10050.0) == -50.0);
-    CHECK_FALSE(fill_refuses(-kEarlyFillReachMs));  // exactly at the reach still spawns
-    CHECK(fill_refuses(-kEarlyFillReachMs - 0.1));
+    CHECK_FALSE(fill_refuses(-kHitWindowMs));  // exactly at the reach still spawns
+    CHECK(fill_refuses(-kHitWindowMs - 0.1));
     Activation a;
     a.e_offset = kEarlyFillSlackMs - 0.1;
     test::set_skips(a, 1);
@@ -835,9 +835,9 @@ TEST_CASE("backend leeway: +2.999 ms is counted, exactly +3.0 ms is not") {
     // rule.
     BackendSqueeze row;
     row.offset_ms = 2.999;
-    CHECK(row.summarystr(false, 85.0, lw) == "Standard");
+    CHECK(row.summarystr(false, lw) == "Standard");
     row.offset_ms = 3.0;
-    CHECK(row.summarystr(false, 85.0, lw) == "Hard (uncounted)");
+    CHECK(row.summarystr(false, lw) == "Hard (uncounted)");
 }
 
 // D13.

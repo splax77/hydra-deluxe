@@ -65,12 +65,11 @@ void place_record(std::vector<ReportRow>& out, const store::RecordRow& record,
 
 }  // namespace
 
-std::pair<std::string, std::string> tier_for(const std::optional<double>& ms,
-                                             double hit_window_ms) {
+std::pair<std::string, std::string> tier_for(const std::optional<double>& ms) {
     // The ladder itself lives in core/squeeze_rating.h (timing_tiers) so
     // these labels and every other reader of the tier table cannot drift
     // apart.
-    return tier_for(ms, timing_tiers(hit_window_ms));
+    return tier_for(ms, timing_tiers());
 }
 
 const TimingTier& beyond_tier(const std::vector<TimingTier>& tiers) {
@@ -93,9 +92,16 @@ std::pair<std::string, std::string> tier_for(const std::optional<double>& ms,
     return {beyond.name, beyond.tok};
 }
 
-std::string beyond_edge_text(double hit_window_ms) {
-    return std::to_string(static_cast<int64_t>(beyond_edge_ms(hit_window_ms)));
-}
+namespace {
+
+// A window edge as the reports print it: whole ms, the fraction dropped.
+std::string whole_ms_text(double ms) { return std::to_string(static_cast<int64_t>(ms)); }
+
+}  // namespace
+
+std::string beyond_edge_text() { return whole_ms_text(beyond_edge_ms()); }
+
+std::string hit_window_text() { return whole_ms_text(kHitWindowMs); }
 
 LibraryLookup library_lookup(store::RecordStore& store, const store::Profile& profile,
                              const store::ChartIndex& library) {
@@ -220,7 +226,7 @@ CollectedRows collect_rows(store::RecordStore& store, const ReportOptions& optio
     out.library = store.chart_index();
     LibraryLookup found = library_lookup(store, options.run->profile, out.library);
     // Built once for the whole report, not once per row.
-    const std::vector<TimingTier> tiers = timing_tiers(options.hit_window_ms);
+    const std::vector<TimingTier> tiers = timing_tiers();
     // The library's scan order, so the page's rows come out the same way
     // every time.
     for (const std::string& id : out.library.song_ids()) {
@@ -234,9 +240,9 @@ CollectedRows collect_rows(store::RecordStore& store, const ReportOptions& optio
 }
 
 std::vector<Tile> path_tiles(const std::vector<ReportRow>& rows,
-                             const std::vector<size_t>& shown, double hit_window_ms,
+                             const std::vector<size_t>& shown,
                              const store::ChartIndex& library) {
-    const std::string beyond = beyond_tier(timing_tiers(hit_window_ms)).name;
+    const std::string beyond = beyond_tier(timing_tiers()).name;
     // The row with the largest Hardest ms, the first of a tie; the tile shows
     // that row's text.
     const ReportRow* hardest = nullptr;
@@ -255,7 +261,7 @@ std::vector<Tile> path_tiles(const std::vector<ReportRow>& rows,
         {"Paths shown", group_thousands(static_cast<int64_t>(shown.size()))},
         // The Hardest ms column's own text (format_ms).
         {"Hardest ms", hardest ? format_ms(*hardest->ms) : std::string(kDash)},
-        {"Past " + beyond_edge_text(hit_window_ms) + " ms", group_thousands(past_edge)},
+        {"Past " + beyond_edge_text() + " ms", group_thousands(past_edge)},
         // Written without thousands separators, as the old page wrote it.
         {"Highest skip", std::to_string(highest_skip)},
     };
@@ -270,8 +276,6 @@ std::string nothing_under_settings(const std::string& chartmode, int cap,
 
 GeneratedReport generate_report(store::RecordStore& store, const ReportOptions& options) {
     GeneratedReport out;
-    const double w = options.hit_window_ms;
-    out.hit_window_ms = w;
     CollectedRows collected = collect_rows(store, options);
     // Cancelled: nothing is built, and the caller that set the flag already
     // knows why.
@@ -338,10 +342,10 @@ GeneratedReport generate_report(store::RecordStore& store, const ReportOptions& 
     // the page's Beyond chip and "Past N ms" tile print it.
     std::string footer = "Generated from " + dbname +
                          ". Timing tiers measure how big each squeeze is, in steps "
-                         "of your hit window. The Paths tab's row labels measure how "
-                         "far a hit lands from the Star Power end, so the two can "
-                         "differ. 'Beyond' means past the " + beyond_edge_text(w) +
-                         " ms window.";
+                         "of the " + hit_window_text() + " ms hit window. The Paths "
+                         "tab's row labels measure how far a hit lands from the Star "
+                         "Power end, so the two can differ. 'Beyond' means past the " +
+                         beyond_edge_text() + " ms window.";
     out.subtitle = std::move(subtitle);
     out.footer = std::move(footer);
     out.paths = std::move(collected.rows);
@@ -349,9 +353,8 @@ GeneratedReport generate_report(store::RecordStore& store, const ReportOptions& 
 }
 
 PageSettings PageSettings::of(const Settings& settings) {
-    // generate_report lists one profile (chart mode, SP cap and lens), and
-    // labels its tiers from the hit window.
-    return PageSettings{settings.profile(), settings.hit_window_ms};
+    // generate_report lists one profile (chart mode, SP cap and lens).
+    return PageSettings{settings.profile()};
 }
 
 bool settings_change_touches(const Settings& before, const Settings& after) {

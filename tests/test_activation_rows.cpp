@@ -44,7 +44,7 @@ TEST_CASE("build_activations: the early fill reads positive = early on both line
     auto view_of = [&rec](const Activation& act) {
         Path p;
         p.activations.push_back(act);
-        ActivationsView v = build_activations(p, rec, nullptr, 85.0);
+        ActivationsView v = build_activations(p, rec, nullptr);
         REQUIRE(v.acts.size() == 1);
         return v.acts[0];
     };
@@ -86,8 +86,7 @@ TEST_CASE("build_activations: rows and backend rows line up") {
     const Path& best = ar.record.best_path();
     const SongTiming& timing = ar.song.timing();
 
-    ActivationsView view = build_activations(best, ar.record, &timing,
-                                             /*hit_window_ms=*/85.0);
+    ActivationsView view = build_activations(best, ar.record, &timing);
     CHECK(view.acts.size() == best.all_activations().size());
 
     std::vector<Activation> acts = best.all_activations();
@@ -111,7 +110,7 @@ TEST_CASE("build_activations: the scale line shows the multipliers its rows read
     auto row_of = [&rec](const Activation& act) {
         Path p;
         p.activations.push_back(act);
-        ActivationsView v = build_activations(p, rec, nullptr, 85.0);
+        ActivationsView v = build_activations(p, rec, nullptr);
         REQUIRE(v.acts.size() == 1);
         return v.acts[0];
     };
@@ -299,13 +298,13 @@ TEST_CASE("build_activations: overfill warning text") {
 
     // With a SongTiming at hand, the warning names the exact measure the
     // clamped note falls on.
-    ActivationsView with_timing = build_activations(path, record, &timing, 85.0);
+    ActivationsView with_timing = build_activations(path, record, &timing);
     REQUIRE(with_timing.acts.size() == 1);
     CHECK(with_timing.acts[0].overfill_warning == "SP overfilled at m2.2.0");
 
     // Without a SongTiming, there is no way to turn the
     // clamped tick into a measure string, so the line drops the position.
-    ActivationsView without_timing = build_activations(path, record, nullptr, 85.0);
+    ActivationsView without_timing = build_activations(path, record, nullptr);
     REQUIRE(without_timing.acts.size() == 1);
     CHECK(without_timing.acts[0].overfill_warning == "SP overfilled");
 
@@ -315,7 +314,7 @@ TEST_CASE("build_activations: overfill warning text") {
     test::set_plain_window(unclamped, 6144);
     Path plain_path;
     plain_path.activations.push_back(unclamped);
-    ActivationsView plain = build_activations(plain_path, record, &timing, 85.0);
+    ActivationsView plain = build_activations(plain_path, record, &timing);
     REQUIRE(plain.acts.size() == 1);
     CHECK(plain.acts[0].overfill_warning.empty());
 }
@@ -346,8 +345,8 @@ TEST_CASE("build_activations: the backend limit hides far rows but never "
     p.activations.push_back(act);
 
     auto view_at = [&](std::optional<double> limit) {
-        ActivationsView v = limit ? build_activations(p, rec, nullptr, 85.0, limit)
-                                  : build_activations(p, rec, nullptr, 85.0);
+        ActivationsView v = limit ? build_activations(p, rec, nullptr, limit)
+                                  : build_activations(p, rec, nullptr);
         REQUIRE(v.acts.size() == 1);
         return v.acts[0];
     };
@@ -400,7 +399,7 @@ TEST_CASE("build_activations: the backend limit says how many rows it hides on e
         }
         Path p;
         p.activations.push_back(act);
-        ActivationsView v = build_activations(p, rec, nullptr, 85.0, limit);
+        ActivationsView v = build_activations(p, rec, nullptr, limit);
         REQUIRE(v.acts.size() == 1);
         return v.acts[0];
     };
@@ -460,7 +459,7 @@ TEST_CASE("build_activations: a squeezed-out row past the leeway is worth 0") {
 
     Path p;
     p.activations.push_back(far);
-    ActivationsView v = build_activations(p, rec, nullptr, 85.0);
+    ActivationsView v = build_activations(p, rec, nullptr);
     REQUIRE(v.acts.size() == 1);
     REQUIRE(v.acts[0].backends.size() == 1);
     CHECK(v.acts[0].backends[0].points == "0");
@@ -475,7 +474,7 @@ TEST_CASE("build_activations: a squeezed-out row past the leeway is worth 0") {
     near.sqinouts[0].offset_ms = -5.0;
     Path q;
     q.activations.push_back(near);
-    v = build_activations(q, rec, nullptr, 85.0);
+    v = build_activations(q, rec, nullptr);
     REQUIRE(v.acts[0].backends.size() == 1);
     CHECK(v.acts[0].backends[0].points == "260");
     CHECK(v.acts[0].backends[0].rating ==
@@ -513,7 +512,7 @@ TEST_CASE("build_activations: plain rows past the leeway show 0") {
 
     Path p;
     p.activations.push_back(act);
-    ActivationsView v = build_activations(p, rec, nullptr, 85.0);
+    ActivationsView v = build_activations(p, rec, nullptr);
     REQUIRE(v.acts.size() == 1);
     const std::vector<BackendRowView>& b = v.acts[0].backends;
     REQUIRE(b.size() == 5);
@@ -550,7 +549,7 @@ TEST_CASE("activation rows: Burnout's three activations") {
     REQUIRE(best.totalscore() == 378315);
     const SongTiming& timing = ar.song.timing();
 
-    ActivationsView view = build_activations(best, rec, &timing, kDefaultHitWindowMs);
+    ActivationsView view = build_activations(best, rec, &timing);
     REQUIRE(view.acts.size() == 3);
     CHECK(view.summary == "3" + kDot + "no SP left over");
 
@@ -604,7 +603,7 @@ TEST_CASE("activation timeline: onset over the song's length, and the end measur
     p.activations.push_back(act);
     HydraRecord rec;
 
-    ActivationsView view = build_activations(p, rec, &timing, 85.0, std::nullopt,
+    ActivationsView view = build_activations(p, rec, &timing, std::nullopt,
                                              core::default_rules(), 10000.0);
     REQUIRE(view.acts.size() == 1);
     REQUIRE(view.acts[0].song_fraction.has_value());
@@ -614,7 +613,7 @@ TEST_CASE("activation timeline: onset over the song's length, and the end measur
     CHECK(view.summary == "1" + kDot + "no SP left over");
 
     // No timing: no fraction, whatever the length.
-    ActivationsView blind = build_activations(p, rec, nullptr, 85.0, std::nullopt,
+    ActivationsView blind = build_activations(p, rec, nullptr, std::nullopt,
                                               core::default_rules(), 10000.0);
     CHECK_FALSE(blind.acts[0].song_fraction.has_value());
     CHECK(blind.timeline_start.empty());
@@ -790,7 +789,7 @@ TEST_CASE("activation badges: the row is difficult exactly when a badge is orang
     for (const Activation& act : badge_fixtures()) {
         Path p;
         p.activations.push_back(act);
-        const ActivationsView v = build_activations(p, rec, nullptr, 85.0);
+        const ActivationsView v = build_activations(p, rec, nullptr);
         REQUIRE(v.acts.size() == 1);
         const ActivationRowView& av = v.acts[0];
         bool any_warn = false;
@@ -879,7 +878,7 @@ TEST_CASE("squeeze sentences: SqIn, SqOut, and what a squeeze-out costs") {
     auto sentence_of = [&rec](const Activation& act) {
         Path p;
         p.activations.push_back(act);
-        ActivationsView v = build_activations(p, rec, nullptr, 85.0);
+        ActivationsView v = build_activations(p, rec, nullptr);
         REQUIRE(v.acts.size() == 1);
         REQUIRE(v.acts[0].squeeze_sentences.size() == 1);
         return v.acts[0].squeeze_sentences[0];
@@ -964,7 +963,7 @@ TEST_CASE("squeeze sentences: a SqIn on the SP end is free, like its rating") {
         test::set_transfer(act, TransferScale{1.6, 1.0});
         Path p;
         p.activations.push_back(act);
-        ActivationsView v = build_activations(p, rec, nullptr, 85.0);
+        ActivationsView v = build_activations(p, rec, nullptr);
         REQUIRE(v.acts.size() == 1);
         REQUIRE(v.acts[0].squeeze_sentences.size() == 1);
         return v.acts[0].squeeze_sentences[0].text;
@@ -1009,7 +1008,7 @@ TEST_CASE("backend table: a counted row inside SP shows its early-scale eff. fig
     HydraRecord rec;
     const Path p = sun_of_nothing_act5();
 
-    ActivationsView v = build_activations(p, rec, nullptr, 85.0);
+    ActivationsView v = build_activations(p, rec, nullptr);
     REQUIRE(v.acts.size() == 1);
     REQUIRE(v.acts[0].backends.size() == 1);
     const BackendRowView& r = v.acts[0].backends[0];
@@ -1034,7 +1033,7 @@ TEST_CASE("build_activations: a near-1 multiplier prints its decimals and its ro
     Path p;
     p.activations.push_back(act);
 
-    ActivationsView v = build_activations(p, rec, nullptr, 85.0);
+    ActivationsView v = build_activations(p, rec, nullptr);
     REQUIRE(v.acts.size() == 1);
     CHECK(v.acts[0].scale_warning == "Frontend timing scales x0.997 (early) at the SP end.");
     CHECK(v.acts[0].scale_warn);
@@ -1058,7 +1057,7 @@ TEST_CASE("build_activations: a near-1 multiplier prints its decimals and its ro
     late_row.offset_ms = 50.0;
     both_near.backends.push_back(late_row);
     p.activations[0] = both_near;
-    v = build_activations(p, rec, nullptr, 85.0);
+    v = build_activations(p, rec, nullptr);
     REQUIRE(v.acts.size() == 1);
     CHECK(v.acts[0].scale_warning ==
           "Frontend timing scales x1.001 (early) / x0.999 (late) at the SP end.");
@@ -1067,14 +1066,14 @@ TEST_CASE("build_activations: a near-1 multiplier prints its decimals and its ro
     // inside SP: the late side is left out.
     act.transfer_post = TransferScale{1.0011, 0.9989};
     p.activations[0] = act;
-    v = build_activations(p, rec, nullptr, 85.0);
+    v = build_activations(p, rec, nullptr);
     REQUIRE(v.acts.size() == 1);
     CHECK(v.acts[0].scale_warning == "Frontend timing scales x1.001 (early) at the SP end.");
 
     // A scale exactly a thousandth from 1 is scaled (D256).
     act.transfer_post = TransferScale{1.001, 1.0};
     p.activations[0] = act;
-    v = build_activations(p, rec, nullptr, 85.0);
+    v = build_activations(p, rec, nullptr);
     REQUIRE(v.acts.size() == 1);
     CHECK(v.acts[0].scale_warning == "Frontend timing scales x1.001 (early) at the SP end.");
 
@@ -1082,28 +1081,12 @@ TEST_CASE("build_activations: a near-1 multiplier prints its decimals and its ro
     // MIDI tempos is no scale: no line and no figure (D256).
     act.transfer_post = TransferScale{1.0, 1.00000175};
     p.activations[0] = act;
-    v = build_activations(p, rec, nullptr, 85.0);
+    v = build_activations(p, rec, nullptr);
     REQUIRE(v.acts.size() == 1);
     CHECK(v.acts[0].scale_warning.empty());
     CHECK_FALSE(v.acts[0].scale_warn);
     REQUIRE(v.acts[0].backends.size() == 1);
     CHECK(v.acts[0].backends[0].rating.find("eff.") == std::string::npos);
-}
-
-TEST_CASE("backend table: the tooltip names the normal budget at one decimal in both places") {
-    // A hit window of 85.25 ms makes the normal budget 170.5 ms. D57 item 2:
-    // the tooltip writes it once, at one decimal, and says it twice, so it
-    // never reads "171 ms" beside "170.5 ms". The path is the x1.60 one above.
-    HydraRecord rec;
-    const Path p = sun_of_nothing_act5();
-
-    ActivationsView v = build_activations(p, rec, nullptr, 85.25);
-    REQUIRE(v.acts.size() == 1);
-    REQUIRE(v.acts[0].backends.size() == 1);
-    const BackendRowView& r = v.acts[0].backends[0];
-    CHECK(r.rating.find(" (eff. 307.7 ms)") != std::string::npos);
-    CHECK(r.tooltip.find("Effectively 307.7 ms on the normal 170.5 ms scale:") == 0);
-    CHECK(r.tooltip.find(", not 170.5 ms.") != std::string::npos);
 }
 
 TEST_CASE("build_activations: an unknown scale says so and shows no eff.") {
@@ -1117,7 +1100,7 @@ TEST_CASE("build_activations: an unknown scale says so and shows no eff.") {
     Path p;
     p.activations.push_back(act);
 
-    ActivationsView v = build_activations(p, rec, nullptr, 85.0);
+    ActivationsView v = build_activations(p, rec, nullptr);
     REQUIRE(v.acts.size() == 1);
     CHECK(v.acts[0].scale_warning == "Transfer scale unknown.");
     CHECK(v.acts[0].scale_warn);  // Q6: orange
@@ -1139,7 +1122,7 @@ TEST_CASE("activation rows: the chord names its notes in the Pro Drums setting's
     HydraRecord rec;
 
     auto chord_of = [&](bool pro_drums) {
-        ActivationsView v = build_activations(p, rec, nullptr, 85.0, std::nullopt,
+        ActivationsView v = build_activations(p, rec, nullptr, std::nullopt,
                                               core::default_rules(), std::nullopt, pro_drums);
         REQUIRE(v.acts.size() == 1);
         return v.acts[0].chord;

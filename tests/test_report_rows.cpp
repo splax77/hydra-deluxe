@@ -287,7 +287,7 @@ TEST_CASE("path report: a batch's records read back as a fresh analysis's rows")
     });
 
     // Field by field, each report row against the fresh path with its key.
-    const std::vector<TimingTier> tiers = timing_tiers(options.hit_window_ms);
+    const std::vector<TimingTier> tiers = timing_tiers();
     const std::vector<report::ReportRow> got = by_key(page.paths);
     REQUIRE(got.size() == fresh.size());
     for (size_t i = 0; i < got.size(); ++i) {
@@ -361,7 +361,7 @@ TEST_CASE("report counts every library copy of a chart, and leaves out a chart t
     }
     // The Charts shown tile asks store::ChartIndex::count too, so one shown
     // row of h0 still counts both copies.
-    CHECK(report::path_tiles(out.paths, {0}, out.hit_window_ms, out.library)[0].value ==
+    CHECK(report::path_tiles(out.paths, {0}, out.library)[0].value ==
           "2 of 2");
 }
 
@@ -382,20 +382,18 @@ TEST_CASE("path report: the Charts shown tile counts what generate_report counts
     REQUIRE(rows_h1 > 0);
     CHECK(static_cast<int64_t>(rows_h0 + rows_h1) == out.rows);
     CHECK(out.library_charts == 5);
-    CHECK(report::path_tiles(out.paths, every_row(out.paths.size()), out.hit_window_ms,
-                             out.library)[0]
+    CHECK(report::path_tiles(out.paths, every_row(out.paths.size()), out.library)[0]
               .value == "5 of 5");
 }
 
-// What a window draws from: the rows, the subtitle and footer the page shows,
-// and the hit window the rows were labeled with. With every row shown, the
-// Charts shown tile reads the subtitle's chart count.
+// What a window draws from: the rows and the subtitle and footer the page
+// shows. With every row shown, the Charts shown tile reads the subtitle's
+// chart count.
 TEST_CASE("generate_report hands over its rows, subtitle and footer") {
     store::RecordStore store(":memory:");
     fill_store_with_copies(store);
 
-    report::ReportOptions options = fixture_options(4);
-    options.hit_window_ms = 85.0;
+    const report::ReportOptions options = fixture_options(4);
     const report::GeneratedReport out = report::generate_report(store, options);
     REQUIRE(out.rows > 0);
     CHECK(static_cast<int64_t>(out.paths.size()) == out.rows);
@@ -405,14 +403,12 @@ TEST_CASE("generate_report hands over its rows, subtitle and footer") {
         CHECK(out.paths[i].hyhash == collected[i].hyhash);
         CHECK(out.paths[i].path == collected[i].path);
     }
-    CHECK(out.hit_window_ms == 85.0);
 
     CHECK(out.subtitle.rfind("5 charts — ", 0) == 0);
     CHECK(out.footer.rfind("Generated from ", 0) == 0);
     CHECK(out.footer.find("'Beyond' means past the 170 ms window.") != std::string::npos);
 
-    CHECK(report::path_tiles(out.paths, every_row(out.paths.size()), out.hit_window_ms,
-                             out.library)[0]
+    CHECK(report::path_tiles(out.paths, every_row(out.paths.size()), out.library)[0]
               .value == "5 of 5");
 }
 
@@ -486,8 +482,7 @@ TEST_CASE("path report coverage: shown + can't analyze + no result is the librar
     CHECK(page.no_result_line == counted(page.no_result_charts, "chart has", "charts have") +
                                      " no result under these settings");
     // The Charts shown tile reads the same two counts, with no filters.
-    CHECK(report::path_tiles(page.paths, every_row(page.paths.size()), page.hit_window_ms,
-                             page.library)[0]
+    CHECK(report::path_tiles(page.paths, every_row(page.paths.size()), page.library)[0]
               .value == std::to_string(page.songs) + " of " + std::to_string(page.library_charts));
 }
 
@@ -518,8 +513,7 @@ TEST_CASE("path report coverage: a chart with a stored failure gets no row and o
     CHECK(group.charts[0].text == expert_no_notes_text());
     CHECK(page.cant_analyze_line == "1 chart has no Expert Pro Drums notes");
     CHECK(page.no_result_line.empty());
-    CHECK(report::path_tiles(page.paths, every_row(page.paths.size()), page.hit_window_ms,
-                             page.library)[0]
+    CHECK(report::path_tiles(page.paths, every_row(page.paths.size()), page.library)[0]
               .value == "1 of 2");
 }
 
@@ -709,7 +703,7 @@ TEST_CASE("fill_rule_for: the legacy_fills flag names one fill rule") {
 TEST_CASE("tier_for: raw-ms bands derived from the two-hit budget") {
     using report::tier_for;
 
-    // Default window 85 -> budget 170: bands 2 / 42.5 / 85 / 127.5 / 170.
+    // The 85 ms window -> budget 170: bands 2 / 42.5 / 85 / 127.5 / 170.
     // Each edge belongs to the band below it (D48 Q3): a timing on the
     // difficult floor is not past it, so 2.0 ms reads Normal, and 170.0 ms is
     // still inside the two-hit budget, so it reads Insane+.
@@ -729,16 +723,6 @@ TEST_CASE("tier_for: raw-ms bands derived from the two-hit budget") {
     CHECK(tier_for(170.0).second == "t4");
     CHECK(tier_for(170.1).first == "Beyond");
     CHECK(tier_for(170.1).second == "t5");
-
-    // At the historical 70 ms window the original 2/35/70/105/140 ladder
-    // reproduces, with the same edge rule.
-    CHECK(tier_for(2.0, 70.0).first == "Normal");
-    CHECK(tier_for(35.0, 70.0).first == "Hard");
-    CHECK(tier_for(35.1, 70.0).first == "Extreme");
-    CHECK(tier_for(70.1, 70.0).first == "Insane");
-    CHECK(tier_for(105.1, 70.0).first == "Insane+");
-    CHECK(tier_for(140.0, 70.0).first == "Insane+");
-    CHECK(tier_for(140.1, 70.0).first == "Beyond");
 }
 
 TEST_CASE("tier_for walks the timing_tiers table edge by edge") {
@@ -746,13 +730,13 @@ TEST_CASE("tier_for walks the timing_tiers table edge by edge") {
     // core/squeeze_rating.h, so every banded entry's cutoff is exactly where
     // the label flips to the next entry's: the cutoff itself still reads the
     // entry's own name (D48 Q3), and just past it reads the next one.
-    std::vector<TimingTier> tiers = timing_tiers(85.0);
+    std::vector<TimingTier> tiers = timing_tiers();
     REQUIRE(tiers.size() >= 2);
     for (size_t i = 0; i + 1 < tiers.size(); ++i) {
         if (!tiers[i].cutoff) continue;
         const double cutoff = *tiers[i].cutoff;
-        CHECK(report::tier_for(cutoff, 85.0).first == tiers[i].name);
-        CHECK(report::tier_for(cutoff + 0.01, 85.0).first == tiers[i + 1].name);
+        CHECK(report::tier_for(cutoff).first == tiers[i].name);
+        CHECK(report::tier_for(cutoff + 0.01).first == tiers[i + 1].name);
     }
 }
 
@@ -785,11 +769,12 @@ TEST_CASE("generate_report: one seam frames the report for every entry point") {
     CHECK(result.empty_reason == report::EmptyReason::None);
     CHECK(result.subtitle == counted(result.songs, "chart", "charts") +
                                  " — top 5 paths per chart — SP cap 4 bars");
-    // D50 item 1. The default 85 ms hit window puts Beyond past 170 ms, the
-    // same number the Beyond chip and the "Past 170 ms" tile print.
+    // D50 item 1. The 85 ms hit window puts Beyond past 170 ms, the same
+    // number the Beyond chip and the "Past 170 ms" tile print. D278 item 4:
+    // the footer names the window's number.
     CHECK(result.footer ==
           "Generated from hydra.db. Timing tiers measure how big each "
-          "squeeze is, in steps of your hit window. The Paths tab's row "
+          "squeeze is, in steps of the 85 ms hit window. The Paths tab's row "
           "labels measure how far a hit lands from the Star Power end, so the "
           "two can differ. 'Beyond' means past the 170 ms window.");
 
@@ -839,10 +824,6 @@ TEST_CASE("generate_report: \"every path\" is the sentinel's, a huge --paths sta
     const std::string subtitle = report::generate_report(store, options).subtitle;
     CHECK(subtitle.find("top 200,000,000 paths per chart") != std::string::npos);
     CHECK(subtitle.find(" — every path") == std::string::npos);
-
-    // 140: the hit window keeps a decimal, starting from the default.
-    CHECK(std::is_same<decltype(report::ReportOptions{}.hit_window_ms), double>::value);
-    CHECK(report::ReportOptions{}.hit_window_ms == kDefaultHitWindowMs);
 }
 
 TEST_CASE("nothing_under_settings frames the chart mode, the cap and the fills") {
@@ -904,12 +885,12 @@ TEST_CASE("a report on results with no chart library says the library is missing
     CHECK(page.why_empty == std::string(report::kNoChartLibrary));
 }
 
-TEST_CASE("tier_for over a built table matches the window form") {
-    const std::vector<TimingTier> tiers = timing_tiers(85.0);
+TEST_CASE("tier_for over a built table matches the one-argument form") {
+    const std::vector<TimingTier> tiers = timing_tiers();
     const std::vector<std::optional<double>> samples = {
         std::nullopt, 0.0, 1.9, 2.0, 42.5, 127.4, 169.9, 170.0, 500.0};
     for (const std::optional<double>& ms : samples)
-        CHECK(report::tier_for(ms, tiers) == report::tier_for(ms, 85.0));
+        CHECK(report::tier_for(ms, tiers) == report::tier_for(ms));
 }
 
 // The page lists the current profile only, so a change of the chart mode
@@ -922,7 +903,6 @@ TEST_CASE("PageSettings::of differs when only the chart mode changes") {
     REQUIRE(mode_only.chartmode_key() != before.chartmode_key());
     REQUIRE(mode_only.sp_cap == before.sp_cap);
     REQUIRE(mode_only.lens() == before.lens());
-    REQUIRE(mode_only.hit_window_ms == before.hit_window_ms);
     CHECK(report::PageSettings::of(mode_only) != report::PageSettings::of(before));
     CHECK(report::settings_change_touches(before, mode_only));
 }
@@ -951,13 +931,4 @@ TEST_CASE("settings_change_touches: the path report reads the SP cap and the len
     app::Settings auto_open = before;
     auto_open.auto_open_report = !before.auto_open_report;
     CHECK_FALSE(app::report::settings_change_touches(before, auto_open));
-}
-
-// The path report labels its timing tiers, its "Past N ms" tile and its
-// footer from the hit window, so a new window makes an open page out of date.
-TEST_CASE("settings_change_touches: the path report reads the hit window") {
-    const app::Settings before;
-    app::Settings window = before;
-    window.hit_window_ms = before.hit_window_ms + 10.0;
-    CHECK(app::report::settings_change_touches(before, window));
 }

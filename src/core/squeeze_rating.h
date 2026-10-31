@@ -71,14 +71,14 @@ constexpr double kIdentityScale = 1.0;
 
 // A backend squeeze's raw ms mapped onto the nominal budget the ratings
 // assume (nominal_budget_ms). With frontend timing scaling by r at the SP
-// end, the real combined squeeze budget is squeeze_budget_ms(r, W) instead,
+// end, the real combined squeeze budget is squeeze_budget_ms(r) instead,
 // so a raw |offset| is rescaled by nominal_budget_ms over squeeze_budget_ms
-// at r. The window W cancels in that ratio.
+// at r. The window (kHitWindowMs) cancels in that ratio.
 double effective_backend_ms(double offset_ms, double transfer_r);
-double squeeze_budget_ms(double transfer_r, double hit_window_ms = kDefaultHitWindowMs);
+double squeeze_budget_ms(double transfer_r);
 // The two-hit budget at the identity scale: squeeze_budget_ms at
 // kIdentityScale. The Insane+ cutoff and the "normal scale" tooltip read it.
-double nominal_budget_ms(double hit_window_ms = kDefaultHitWindowMs);
+double nominal_budget_ms();
 
 // A multiplier counts as no scale when it is less than the tolerance away
 // from 1; at the tolerance or beyond it is scaled. The user chose a
@@ -119,7 +119,7 @@ constexpr int kScaleIdentityDigits = [] {
 struct NoteRating {
     bool early = false;                  // which side of the end's TransferScale governs
     double scale = kIdentityScale;       // that side's stored multiplier, full precision
-    double budget_ms = 0.0;              // squeeze_budget_ms(scale, W)
+    double budget_ms = 0.0;              // squeeze_budget_ms(scale)
     std::optional<double> effective_ms;  // set exactly when is_scaled(scale)
 };
 
@@ -127,8 +127,7 @@ struct NoteRating {
 // inside: whether the note is inside SP on this path, by the counting rule
 // that owns it (core/backend_value.h). at_end: the multipliers stored for
 // the SP end that offset is measured from.
-NoteRating rate_note(double offset_ms, bool inside, const TransferScale& at_end,
-                     double hit_window_ms = kDefaultHitWindowMs);
+NoteRating rate_note(double offset_ms, bool inside, const TransferScale& at_end);
 
 // ---- rate_activation ------------------------------------------------------
 
@@ -193,7 +192,6 @@ struct ActivationRating {
 // past the SP end is counted by the engine, so it is not a late squeeze.
 ActivationRating rate_activation(
     const Activation& act,
-    double hit_window_ms = kDefaultHitWindowMs,
     double backend_leeway_ms = core::default_rules().backend_leeway_ms);
 
 // ---- timing tiers ---------------------------------------------------------
@@ -206,11 +204,11 @@ ActivationRating rate_activation(
 // and a timing exactly on the two-hit budget is Insane+. It is unset for the
 // open "Beyond" band and the "None" (no squeeze) entry.
 struct TimingTier { const char* name; const char* tok; std::optional<double> cutoff; };
-std::vector<TimingTier> timing_tiers(double hit_window_ms = kDefaultHitWindowMs);
+std::vector<TimingTier> timing_tiers();
 
 // Where the report's "Beyond" tier starts: the last finite cutoff of
 // timing_tiers. The footer and the page script both print this number.
-double beyond_edge_ms(double hit_window_ms);
+double beyond_edge_ms();
 
 }  // namespace hydra
 

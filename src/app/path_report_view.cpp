@@ -42,23 +42,23 @@ Column<ReportRow> count_column(std::string id, std::string title, std::string de
 
 }  // namespace
 
-std::string tier_label(const std::string& tier_name, double hit_window_ms) {
-    const std::vector<TimingTier> tiers = timing_tiers(hit_window_ms);
+std::string tier_label(const std::string& tier_name) {
+    const std::vector<TimingTier> tiers = timing_tiers();
     if (tier_name == report::beyond_tier(tiers).name)
-        return "Beyond " + report::beyond_edge_text(hit_window_ms) + " ms";
+        return "Beyond " + report::beyond_edge_text() + " ms";
     if (tier_name == report::none_tier(tiers).name) return "No timing needed";
     return tier_name;
 }
 
-std::vector<TimingChoice> timing_choices(double hit_window_ms) {
+std::vector<TimingChoice> timing_choices() {
     std::vector<TimingChoice> out;
     out.push_back({std::nullopt, "All timing tiers"});
-    for (const TimingTier& t : timing_tiers(hit_window_ms))
-        out.push_back({std::string(t.name), tier_label(t.name, hit_window_ms)});
+    for (const TimingTier& t : timing_tiers())
+        out.push_back({std::string(t.name), tier_label(t.name)});
     return out;
 }
 
-std::vector<Column<ReportRow>> path_columns(double hit_window_ms) {
+std::vector<Column<ReportRow>> path_columns() {
     CellLook trunc;
     trunc.truncate = true;
     CellLook dim_trunc = trunc;
@@ -103,11 +103,10 @@ std::vector<Column<ReportRow>> path_columns(double hit_window_ms) {
         Column<ReportRow> c;
         c.id = "tier";
         c.title = "Timing";
-        c.definition =
-            "How hard Hardest ms is, in bands of your hit window. Beyond means more than "
-            "twice the hit window.";
+        c.definition = "How hard Hardest ms is, in bands of the " + report::hit_window_text() +
+                       " ms hit window. Beyond means more than twice the hit window.";
         c.sort_key = [](const ReportRow& r) { return SortKey{r.tier}; };
-        c.cell = [hit_window_ms](const ReportRow& r) { return tier_label(r.tier, hit_window_ms); };
+        c.cell = [](const ReportRow& r) { return tier_label(r.tier); };
         c.look.chip = true;
         cols.push_back(std::move(c));
     }
