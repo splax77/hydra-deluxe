@@ -119,7 +119,9 @@ def make_library(folder, with_wal=True):
 class TransportLayer(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(prefix="hydra_mcp_test_")
-        self.root = Path(self.tmp.name)
+        # resolve() spells an 8.3 short name in TEMP (C:\Users\RUNNER~1 on CI)
+        # in full, the way git spells the paths the helper reports.
+        self.root = Path(self.tmp.name).resolve()
         self.exe_dir = self.root / "Release"
         self.exe_dir.mkdir()
         for exe in (hm.HEADLESS_EXE, hm.WINDOW_EXE):
