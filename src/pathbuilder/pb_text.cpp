@@ -137,6 +137,8 @@ const char* squeeze_word(const ActivationTiming& t) {
     return t.part == TimingPart::SqueezeOut ? "squeeze-out" : "squeeze-in";
 }
 
+}  // namespace
+
 // "squeeze-out 12.3 ms, squeeze-in, no timing": the mockup's sqShort.
 std::string squeeze_short_text(const Activation& act) {
     std::string out;
@@ -147,8 +149,6 @@ std::string squeeze_short_text(const Activation& act) {
     }
     return out;
 }
-
-}  // namespace
 
 std::string squeeze_end_text(const Activation& act) {
     std::string out;
@@ -174,11 +174,7 @@ std::string candidate_row_text(const PreviewScene& scene, size_t fill_index,
     std::string t = app::clock_str(timing.timecode(fill.chord_tick).ms()) + app::kFactSeparator +
                     counted(bars_saved_at(scene, fill), "phrase", "phrases");
     if (!end) return t + app::kFactSeparator + kPendingText;
-    if (const std::optional<int64_t> d = end->deact_tick()) {
-        t += app::kFactSeparator + std::string("ends ") + measure_at(timing, *d);
-        const std::string sq = squeeze_short_text(*end);
-        if (!sq.empty()) t += app::kFactSeparator + sq;
-    }
+    if (end->deact_tick()) t += app::kFactSeparator + end_choice_text(timing, *end);
     return t;
 }
 
@@ -213,7 +209,16 @@ StepShort step_short(const SongTiming& timing, const Activation& act) {
     if (const std::optional<int64_t> d = act.deact_tick())
         s.span += " \xE2\x86\x92 " + measure_at(timing, *d);  // a right arrow
     s.saved = counted(act.sp_meter(), "phrase", "phrases");
+    s.squeezes = squeeze_short_text(act);
     return s;
+}
+
+std::string end_choice_text(const SongTiming& timing, const Activation& act) {
+    const std::optional<int64_t> d = act.deact_tick();
+    std::string t = d ? "ends " + measure_at(timing, *d) : act.notationstr();
+    const std::string sq = squeeze_short_text(act);
+    if (!sq.empty()) t += app::kFactSeparator + sq;
+    return t;
 }
 
 std::string cost_text(int64_t cost) {

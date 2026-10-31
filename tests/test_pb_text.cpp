@@ -82,19 +82,28 @@ TEST_CASE("candidate row: the clock, phrases, end and squeeze of a priced fill")
     const app::PreviewScene best = scene_for(song, rec.best_path());
     CHECK(candidate_row_text(best, fill_index(best, 272640), &acts[4]) ==
           "3:20.702 · 2 phrases · ends m150");
-    // No corpus chart has a squeeze-in that needs no timing, so a hand-built
-    // activation with the same end carries one of each kind that needs none
+    // A hand-built activation with the same end carries one squeeze of each
+    // kind just inside Star Power, so neither needs timing
     // (SPSqueeze::needs_no_timing): the short form and the long form both
     // say so.
     Activation free_squeezes;
     free_squeezes.sp_end_steps.push_back({0, *ends[3].deact_tick(), SpEndKind::Activation});
-    free_squeezes.sqinouts = {SPSqueeze{SqueezeKind::SqIn, 0.0},
+    free_squeezes.sqinouts = {SPSqueeze{SqueezeKind::SqIn, -0.001},
                               SPSqueeze{SqueezeKind::SqOut, 0.001}};
     CHECK(candidate_row_text(three, idx, &free_squeezes) ==
           "2:51.485 · 2 phrases · ends m136 · squeeze-in, no timing, squeeze-out, no timing");
     CHECK(squeeze_end_text(free_squeezes) ==
           ", ending with a squeeze-in that needs no timing and a squeeze-out that needs no "
           "timing");
+    // A squeeze-in exactly on the SP end needs 0.0 ms, the same as a
+    // squeeze-out there (D301): its figure, not "no timing".
+    Activation on_end;
+    on_end.sp_end_steps.push_back({0, *ends[3].deact_tick(), SpEndKind::Activation});
+    on_end.sqinouts = {SPSqueeze{SqueezeKind::SqIn, 0.0}};
+    CHECK(squeeze_short_text(on_end) == "squeeze-in 0.0 ms");
+    CHECK(candidate_row_text(three, idx, &on_end) ==
+          "2:51.485 · 2 phrases · ends m136 · squeeze-in 0.0 ms");
+    CHECK(squeeze_end_text(on_end) == ", ending with a squeeze-in that needs 0.0 ms");
 }
 
 TEST_CASE("choice order: cheapest first, ties in chart order, pending last") {
@@ -129,6 +138,54 @@ TEST_CASE("step short: start, end and phrases") {
     const StepShort third = step_short(*scene.timing, acts[2]);
     CHECK(third.span == "m108 → m116");
     CHECK(third.saved == "4 phrases");
+}
+
+TEST_CASE("step short: the row carries the squeezes in the short form") {
+    // August Burns Red "White Washed": its best path's fourth window ends
+    // with a squeeze-out (the step sentence test below); the first has none.
+    // Pinned from one run.
+    const std::string name = "August Burns Red - White Washed";
+    const Song& song = song_named(name);
+    const HydraRecord& rec = corpus::analyzed(corpus::chart_named(name), default_cfg());
+    const std::vector<Activation> acts = rec.best_path().all_activations();
+    REQUIRE(acts.size() == 5);
+    const app::PreviewScene scene = scene_for(song, rec.best_path());
+    const StepShort fourth = step_short(*scene.timing, acts[3]);
+    CHECK(fourth.span == "m132 → m136");
+    CHECK(fourth.saved == "2 phrases");
+    CHECK(fourth.squeezes == "squeeze-out 130.4 ms");
+    const StepShort first = step_short(*scene.timing, acts[0]);
+    CHECK(first.span == "m23 → m29");
+    CHECK(first.squeezes.empty());
+}
+
+TEST_CASE("end choice text: the end measure and the short form") {
+    // August Burns Red "White Washed" on its best path, as the step short
+    // test above. Pinned from one run.
+    const std::string name = "August Burns Red - White Washed";
+    const Song& song = song_named(name);
+    const HydraRecord& rec = corpus::analyzed(corpus::chart_named(name), default_cfg());
+    const std::vector<Activation> acts = rec.best_path().all_activations();
+    REQUIRE(acts.size() == 5);
+    const app::PreviewScene scene = scene_for(song, rec.best_path());
+    const SongTiming& timing = *scene.timing;
+    CHECK(end_choice_text(timing, acts[3]) == "ends m136 · squeeze-out 130.4 ms");
+    // No squeeze, no squeeze words.
+    CHECK(end_choice_text(timing, acts[0]) == "ends m29");
+    // A hand-built end on the same deact node with a squeeze-in inside Star
+    // Power, which needs no timing, and one exactly on the SP end, which
+    // needs 0.0 ms (D301).
+    Activation inside;
+    inside.sp_end_steps.push_back({0, *acts[3].deact_tick(), SpEndKind::Activation});
+    inside.sqinouts = {SPSqueeze{SqueezeKind::SqIn, -0.001}};
+    CHECK(end_choice_text(timing, inside) == "ends m136 · squeeze-in, no timing");
+    Activation on_end = inside;
+    on_end.sqinouts = {SPSqueeze{SqueezeKind::SqIn, 0.0}};
+    CHECK(end_choice_text(timing, on_end) == "ends m136 · squeeze-in 0.0 ms");
+    // An end with no deact node names its notation instead of a measure.
+    Activation no_end;
+    no_end.sqinouts = {SPSqueeze{SqueezeKind::SqOut, 0.0}};
+    CHECK(end_choice_text(timing, no_end) == "E0- · squeeze-out 0.0 ms");
 }
 
 TEST_CASE("locked message: the fill's name, no Can't-activate prefix") {

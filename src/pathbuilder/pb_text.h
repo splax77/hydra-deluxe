@@ -9,6 +9,9 @@
 // The fill card follows the third mockup
 // (docs/superpowers/specs/2026-10-31-path-builder-mockup-3/), plan
 // docs/superpowers/plans/2026-10-31-path-builder-redesign-3.md, task TX-3.
+// The step rows and ending lines follow the fourth mockup
+// (docs/superpowers/specs/2026-10-31-path-builder-mockup-4/), plan
+// docs/superpowers/plans/2026-10-31-step-panel-and-d13.md, task B1.
 
 #ifndef HYDRA_PATHBUILDER_PB_TEXT_H
 #define HYDRA_PATHBUILDER_PB_TEXT_H
@@ -91,6 +94,13 @@ FillRefusal fill_refusal(const PreviewScene& scene, size_t fill_index);
 // figure through format_ms. Empty when the activation has no squeeze.
 std::string squeeze_end_text(const Activation& act);
 
+// An activation's squeezes in short form, "squeeze-out 12.3 ms, squeeze-in,
+// no timing", one entry per squeeze in Activation::badge_timings (which
+// decides whether each needs timing), each figure through format_ms. Empty
+// when the activation has no squeeze. The one home of a squeeze's words and
+// figure on the builder's list rows, step rows and ending lines.
+std::string squeeze_short_text(const Activation& act);
+
 // The "Where to activate next" list's words, from the mockup's
 // renderChoices: its heading, the hint under it, and what it says when the
 // engine lists no fill (after the player's last activation, or with none).
@@ -121,13 +131,24 @@ std::vector<int64_t> choice_order(const std::vector<int64_t>& offered,
 
 // A compact step's two pieces: `span` is where the activation starts and
 // where its Star Power ends, "m32 → m36" (measure_label of the activation
-// and of its deact node; the start alone when it has none), and `saved` the
-// phrases it spends, "2 phrases" (Activation::sp_meter, as step_sentence).
+// and of its deact node; the start alone when it has none), `saved` the
+// phrases it spends, "2 phrases" (Activation::sp_meter, as step_sentence),
+// and `squeezes` its squeezes (squeeze_short_text; empty when it has none).
+// The screen joins `squeezes` to `saved` with app::kFactSeparator only when
+// it is not empty (the fourth mockup's step row).
 struct StepShort {
     std::string span;
     std::string saved;
+    std::string squeezes;
 };
 StepShort step_short(const SongTiming& timing, const Activation& act);
+
+// One ending line of an opened step, "ends m89 · squeeze-out 0.0 ms": where
+// `act`'s Star Power ends (measure_label of its deact node; its
+// Activation::notationstr when it has none), then its squeezes
+// (squeeze_short_text), joined by app::kFactSeparator, when it has any. The
+// list row's end (candidate_row_text) reads it too.
+std::string end_choice_text(const SongTiming& timing, const Activation& act);
 
 // "costs nothing" or "costs 1,234 points" (group_thousands).
 std::string cost_text(int64_t cost);
