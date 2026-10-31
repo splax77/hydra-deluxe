@@ -90,6 +90,8 @@ Pass: no Star Power flip inside the window, although Star Power is ready there w
 
 **TM-40 and TM-43.** Question: at song_speed 50 and 200, do the window values and clock+0x38 against the audio position match the 100% run? Bot run with a menu start; no Star Power.
 
+**TM-46.** Question: does pressing the tom key and the cymbal key of one colour for a single gem miss it? Pass: the gem counts as missed and the overhit count rises. Fail: the gem counts as hit. Needs key presses on a song the tools start; a bot run cannot press two keys for one gem.
+
 ## Page 4: fills
 
 FL-27, the Ladies Talk check, is the first entry on this page.
