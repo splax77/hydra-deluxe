@@ -338,6 +338,10 @@ void test_paths_rows(ImGuiTestContext* ctx) {
     IM_CHECK(on_screen(h, "early fill 0 ms"));
 }
 
+// Burnout's activation 1, its squeezed-out row's Rating cell: the word bands
+// the eff. figure on the report's tiers (D269), and the suffix stays raw.
+constexpr const char* kBurnoutSqOutRating = "Insane+ (eff. 163.5 ms) <-- squeezed out (-260)";
+
 // The backend table folds per activation, and the Backend limit moved here.
 void test_paths_backend_timings(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
@@ -348,15 +352,15 @@ void test_paths_backend_timings(ImGuiTestContext* ctx) {
     ctx->Yield(2);
     IM_CHECK(h.app->details_ui.paths_tab.ui().backends_open[0] == 1);
     IM_CHECK(on_screen(h, "3 notes near the SP end"));  // the fold's heading
-    IM_CHECK(on_screen(h, "Insane SqOut"));
+    IM_CHECK(on_screen(h, kBurnoutSqOutRating));
     ctx->ItemClick("**/Backend timings##act1");
     ctx->Yield(2);
     IM_CHECK(h.app->details_ui.paths_tab.ui().backends_open[0] == 0);
-    IM_CHECK(!on_screen(h, "Insane SqOut"));
+    IM_CHECK(!on_screen(h, kBurnoutSqOutRating));
     ctx->ItemClick("**/Backend timings##act1");
     ctx->Yield(2);
     IM_CHECK(h.app->details_ui.paths_tab.ui().backends_open[0] == 1);
-    IM_CHECK(on_screen(h, "Insane SqOut"));
+    IM_CHECK(on_screen(h, kBurnoutSqOutRating));
     ctx->ItemClick("**/Backend timings##act1");
     ctx->Yield(2);
     IM_CHECK(h.app->details_ui.paths_tab.ui().backends_open[0] == 0);
@@ -365,14 +369,14 @@ void test_paths_backend_timings(ImGuiTestContext* ctx) {
     ctx->ItemClick("**/##act1");
     ctx->Yield(2);
     IM_CHECK(h.app->details_ui.paths_tab.ui().backends_open[0] == 0);
-    IM_CHECK(!on_screen(h, "Insane SqOut"));
+    IM_CHECK(!on_screen(h, kBurnoutSqOutRating));
     // The rest of this test reads the table, so it opens again.
     ctx->ItemClick("**/Backend timings##act1");
     ctx->Yield(2);
     IM_CHECK(h.app->details_ui.paths_tab.ui().backends_open[0] == 1);
     // The stored early x0.99... multiplier isn't 1, so the row shows its
     // figure, however small the shift (one-squeeze-rating decision 1).
-    IM_CHECK(on_screen(h, "Insane SqOut (eff. 163.5 ms) <-- squeezed out (-260)"));
+    IM_CHECK(on_screen(h, kBurnoutSqOutRating));
     // The table has no explanation paragraph above it.
     IM_CHECK(!on_screen(h, "Timing is how far each note sits"));
 
@@ -601,7 +605,7 @@ void test_paths_backend_fit(ImGuiTestContext* ctx) {
     if (!narrowest_panel(ctx)) return;
     ctx->ItemClick("**/##act1");  // row 1 alone, so its table is the only one
     ctx->Yield(3);
-    IM_CHECK(on_screen(h, "Insane SqOut (eff. 163.5 ms) <-- squeezed out (-260)"));
+    IM_CHECK(on_screen(h, kBurnoutSqOutRating));
     ImGuiTable* t = backend_table();
     IM_CHECK(t != nullptr);
     if (ctx->IsError()) return;
@@ -613,9 +617,8 @@ void test_paths_backend_fit(ImGuiTestContext* ctx) {
     IM_CHECK_LE(content_max, rating.WorkMaxX + 0.5f);
     // The squeezed-out line is longer than the cell, so it did wrap: the
     // cell is narrower than the line.
-    const float line_w = hydra::ui::text_size(hydra::ui::TextRole::Figure,
-                                              "Insane SqOut (eff. 163.5 ms) <-- squeezed out (-260)")
-                             .x;
+    const float line_w =
+        hydra::ui::text_size(hydra::ui::TextRole::Figure, kBurnoutSqOutRating).x;
     IM_CHECK_LT(rating.WorkMaxX - rating.WorkMinX, line_w);
     // The three fixed columns fit their text: no cell runs past its column.
     for (int c = 0; c < 3; ++c) {

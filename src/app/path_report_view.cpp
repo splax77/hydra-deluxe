@@ -3,7 +3,7 @@
 #include "app/display_format.h"  // format_ms, format_avg_mult, kAverageMultiplierLabel
 #include "app/library_query.h"   // search_field
 #include "core/model.h"          // group_thousands
-#include "core/squeeze_rating.h" // timing_tiers
+#include "core/squeeze_rating.h" // timing_tiers, beyond_tier, none_tier
 
 namespace hydra::app::path_report_view {
 
@@ -44,9 +44,9 @@ Column<ReportRow> count_column(std::string id, std::string title, std::string de
 
 std::string tier_label(const std::string& tier_name) {
     const std::vector<TimingTier> tiers = timing_tiers();
-    if (tier_name == report::beyond_tier(tiers).name)
+    if (tier_name == beyond_tier(tiers).name)
         return "Beyond " + report::beyond_edge_text() + " ms";
-    if (tier_name == report::none_tier(tiers).name) return "No timing needed";
+    if (tier_name == none_tier(tiers).name) return "No timing needed";
     return tier_name;
 }
 

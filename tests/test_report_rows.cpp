@@ -310,7 +310,7 @@ TEST_CASE("path report: a batch's records read back as a fresh analysis's rows")
         CHECK(g.sqin == p.sqin_count);
         CHECK(g.sqout == p.sqout_count);
         CHECK(g.notes == fresh[i].notes);
-        CHECK(std::make_pair(g.tier, g.tok) == report::tier_for(p.hardest_ms, tiers));
+        CHECK(std::make_pair(g.tier, g.tok) == hydra::tier_for(p.hardest_ms, tiers));
     }
     // Ranks match, except that rows tied at one score may swap them.
     CHECK(ranks_by_chart(page.paths) == fresh_ranks);
@@ -890,7 +890,7 @@ TEST_CASE("tier_for over a built table matches the one-argument form") {
     const std::vector<std::optional<double>> samples = {
         std::nullopt, 0.0, 1.9, 2.0, 42.5, 127.4, 169.9, 170.0, 500.0};
     for (const std::optional<double>& ms : samples)
-        CHECK(report::tier_for(ms, tiers) == report::tier_for(ms));
+        CHECK(hydra::tier_for(ms, tiers) == report::tier_for(ms));
 }
 
 // The page lists the current profile only, so a change of the chart mode
