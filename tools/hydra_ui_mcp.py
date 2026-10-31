@@ -13,9 +13,10 @@ The helper only carries messages. Hydra owns every command rule: what a line
 means, which numbers it takes, the wording of a reply, the filters, the
 timeout in force and where it logs. The helper owns the transport (launch,
 the pipe name, stop), the caps on every reply, the reports for a dead or
-silent Hydra, the tool list, the line numbers of a hydra_run script, and the
+silent Hydra, the tool list, the line numbers of a hydra_run script, the
 snapshot of the user's library (snapshot_library, the only code that knows
-that folder's path). What it never does: build anything, or name the library
+that folder's path), and the real-app record a window session leaves
+(realapp_record). What it never does: build anything, or name the library
 folder on a command line.
 """
 
@@ -64,6 +65,14 @@ WINDOW_LOG = "window.log"
 SNAPSHOT_FILES = ("hydra.db", "hydra.db-wal", "hydra.db-shm", "hydra_settings.ini", "hydra_ui.ini")
 CLOSE_HYDRA_FIRST = "Close Hydra first: a database it has open is not a clean copy."
 NO_SESSION = "no session; call hydra_start"
+
+# The file in the repo's git common dir that a window session's record goes
+# to, one JSON line per session. The hooks repo's ref gate reads it, so its
+# field names are a contract (realapp_record writes them).
+REALAPP_FILE = "realapp.jsonl"
+# How a successful screenshot reply starts. Its owner is the screenshot verb
+# in tests/ui/uitest_commands.cpp; the record only counts such replies.
+SHOT_REPLY = "screenshot: "
 
 
 class SnapshotRefused(Exception):
@@ -185,6 +194,40 @@ def snapshot_library(library_dir, dest, processes):
     return copied, "\n".join(lines)
 
 
+def _git(repo, *args):
+    r = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True,
+                       stdin=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW)
+    if r.returncode != 0:
+        raise OSError(f"git {' '.join(args)} failed: {(r.stderr or r.stdout).strip()}")
+    return r.stdout
+
+
+def realapp_record(session, repo):
+    """Append the record of a window session that ended in a plain stop to
+    REALAPP_FILE in `repo`'s git common dir, so every worktree of the repo
+    shares one file and git never tracks it. Returns (file, commit). Raises
+    OSError when git cannot say or the file cannot be written.
+
+    The record names the tree's HEAD, not the build: Hydra.exe carries no
+    commit. `dirty` is true when git status lists anything, untracked files
+    included."""
+    common = Path(_git(repo, "rev-parse", "--path-format=absolute", "--git-common-dir").strip())
+    commit = _git(repo, "rev-parse", "HEAD").strip()
+    dirty = _git(repo, "status", "--porcelain") != ""
+    record = {"kind": "realapp", "commit": commit, "dirty": dirty,
+              "commands": session.commands, "shots": session.shots,
+              "started": session.started, "stopped": now_stamp()}
+    path = common / REALAPP_FILE
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(record) + "\n")
+    return path, commit
+
+
+def now_stamp():
+    """The local time with its UTC offset, to the second."""
+    return datetime.now().astimezone().isoformat(timespec="seconds")
+
+
 # ---------------------------------------------------------------------------
 # Reply shaping: only the cap. The text inside is Hydra's.
 
@@ -263,6 +306,11 @@ class Session:
         self.buf = b""
         self.hello = {}
         self.timeout = None  # seconds; the last value Hydra reported
+        # For the real-app record: when the session started, how many lines
+        # Hydra answered and how many of the answers were a saved screenshot.
+        self.started = now_stamp()
+        self.commands = 0
+        self.shots = 0
 
     def engine_scratch(self):
         s = self.hello.get("scratch")
@@ -279,8 +327,9 @@ class Helper:
 
     def __init__(self, exe_dir=EXE_DIR, launcher=default_launcher, temp_root=None,
                  process_lister=running_processes, reply_margin_s=REPLY_MARGIN_S,
-                 hello_timeout_s=HELLO_TIMEOUT_S):
+                 hello_timeout_s=HELLO_TIMEOUT_S, repo=REPO):
         self.exe_dir = Path(exe_dir)
+        self.repo = Path(repo)  # the tree a window session's record names
         self.launcher = launcher
         self.temp_root = Path(temp_root) if temp_root else Path(tempfile.gettempdir())
         self.process_lister = process_lister
@@ -416,20 +465,41 @@ class Helper:
             # The pipe stays open: the live test ends on disconnect, so the
             # window lives until the user closes it or this helper exits.
             self.detached.append(s)
-            return f"left the window open (pid {s.proc.pid}); its files stay in {s.scratch}"
+            return (f"left the window open (pid {s.proc.pid}); its files stay in {s.scratch}"
+                    + self._record(s))
         try:
             s.pipe.write(b"quit\n")
         except (OSError, ValueError, AttributeError):
             pass
+        clean = False
         try:
             code = s.proc.wait(timeout=self.reply_margin_s)
             msg = f"Hydra exited with code {describe_exit(code)}"
+            clean = code == 0
         except subprocess.TimeoutExpired:
             s.proc.kill()
             s.proc.wait()
             msg = f"Hydra did not exit within {self.reply_margin_s:g} s of quit, so the helper killed it"
         self._close(s)
-        return msg + self._cleanup(s)
+        # A window that crashed on quit, or had to be killed, is not a check.
+        return msg + self._cleanup(s) + (self._record(s) if clean else self._no_record(s))
+
+    def _record(self, s):
+        """Write the real-app record of window session `s` and return the line
+        the reply adds for it; "" for a headless session, or one that never
+        sent its hello line (it ran nothing)."""
+        if s.mode != "window" or not s.hello:
+            return ""
+        try:
+            path, commit = realapp_record(s, self.repo)
+        except OSError as e:
+            return f"\nno real-app record written: {e}"
+        return f"\nreal-app record for commit {commit} added to {path}"
+
+    def _no_record(self, s):
+        if s.mode != "window" or not s.hello:
+            return ""
+        return "\nno real-app record written: the window did not end in a clean exit"
 
     def _close(self, s):
         if s.pipe is not None:
@@ -460,6 +530,11 @@ class Helper:
                     s.proc.wait()
                 self._close(s)
                 self._cleanup(s)
+                # Nobody reads a reply at exit, so the record's line goes to
+                # stderr, which Claude Code keeps in the server's log.
+                note = self._record(s)
+                if note:
+                    print(note.strip(), file=sys.stderr)
 
     # -- talking to Hydra -----------------------------------------------------
 
@@ -508,21 +583,23 @@ class Helper:
             lingered = True
         self._close(s)
         if silent is not None:
-            lines = [f"{silent}, so the helper killed it. The session is stopped; call hydra_start."]
+            lines = [f"{silent}, so the helper killed it. The session is stopped; call hydra_start."
+                     + self._no_record(s)]
         elif lingered:
             lines = [f"Hydra closed its live channel but kept running for {self.reply_margin_s:g} s,"
                      f" so the helper killed it (exit code {describe_exit(code)})."
-                     " The session is stopped; call hydra_start."]
+                     " The session is stopped; call hydra_start." + self._no_record(s)]
         elif code == 0 and s.mode == "window":
             # The helper did not send quit, so a clean exit of the window is
             # the user closing it, or a quit line a tool call passed on: a
             # plain stop, not a crash. The helper does not read the lines it
             # passes on, so the message does not say which.
             lines = ["Hydra's window closed and Hydra exited with code 0: the user closed it,"
-                     " or a quit command was sent. The session is stopped; call hydra_start."]
+                     " or a quit command was sent. The session is stopped; call hydra_start."
+                     + self._record(s)]
         else:
             lines = [f"Hydra exited with code {describe_exit(code)}. The session is stopped;"
-                     " call hydra_start."]
+                     " call hydra_start." + self._no_record(s)]
         tail = self._log_tail(s)
         if tail is None:
             lines.append(f"no log written: {s.log_path} does not exist")
@@ -575,6 +652,7 @@ class Helper:
         reply = self._read_line(s, wait_s)
         if reply is None:
             raise HydraGone(self._kill_report(s, silent=f"Hydra did not answer within {wait_s:g} s"))
+        s.commands += 1
         try:
             msg = json.loads(reply)
             if not isinstance(msg, dict) or not isinstance(msg.get("text"), str):
@@ -585,7 +663,10 @@ class Helper:
         except ValueError:
             return False, f"Hydra sent a line that is not a JSON reply: {reply[:200]!r}", prefix
         s.timeout = timeout
-        return bool(msg.get("ok")), msg["text"], prefix
+        ok = bool(msg.get("ok"))
+        if ok and msg["text"].startswith(SHOT_REPLY):
+            s.shots += 1
+        return ok, msg["text"], prefix
 
     def send(self, line):
         """One command as a tool reply: Hydra's text, capped."""
@@ -680,7 +761,8 @@ def build_server():
     @server.tool()
     def hydra_stop(keep_window: bool = False) -> str:
         """End the session: send quit, wait for exit, kill if needed. In window
-        mode, keep_window=True leaves the window open for the user to look at."""
+        mode, keep_window=True leaves the window open for the user to look at,
+        and the reply names the real-app record written for the session."""
         return HELPER.stop(keep_window)
 
     @server.tool()
