@@ -2,12 +2,13 @@
     "name": "ch-mcp-agent",
     "version": "0.0.0",
     "private": true,
-    "description": "Frida agents that read Clone Hero's state by field name. Reading and tracing only.",
+    "description": "Frida agents that read Clone Hero's state by field name and trace its methods. What they may change in the game is in docs/agents/clone-hero-mcp.md, Safety rules.",
     "type": "module",
     "scripts": {
         "build:clock": "frida-compile -o clock.js clock.ts",
         "build:trace": "frida-compile -o trace.js trace.ts",
-        "build:state": "frida-compile -o state.js state.ts"
+        "build:state": "frida-compile -o state.js state.ts",
+        "build:menuhooks": "frida-compile -o menuhooks.js menuhooks.ts"
     },
     "devDependencies": {
         "@types/frida-gum": "^19.10.0",

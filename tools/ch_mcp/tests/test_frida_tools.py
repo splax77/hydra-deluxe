@@ -242,6 +242,19 @@ class AttachTest(Rig):
         self.assertIn("state: not attached (session detached: process-terminated)", out)
         self.assertNotIn("not running", out)
 
+    def test_is_attached_follows_the_attach_and_a_dropped_session(self):
+        tools = self.tools([STATE])
+        self.assertFalse(tools.is_attached())
+        tools.ch_attach()
+        self.assertTrue(tools.is_attached())
+        tools._agent._on_detached("process-terminated")
+        self.assertFalse(tools.is_attached())
+
+    def test_is_attached_is_false_after_a_detach(self):
+        tools = self.tools([STATE], attached=True)
+        tools.ch_detach()
+        self.assertFalse(tools.is_attached())
+
     def test_attaching_again_after_the_game_dropped_the_session_closes_the_old_log(self):
         tools = self.tools([STATE, STATE], attached=True)
         old = tools._agent

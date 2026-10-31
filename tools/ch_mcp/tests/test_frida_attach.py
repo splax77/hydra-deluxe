@@ -811,7 +811,8 @@ class BuildScriptsTest(unittest.TestCase):
                   encoding="utf-8") as fh:
             scripts = json.load(fh)["scripts"]
         self.assertEqual(sorted(scripts),
-                         ["build:clock", "build:state", "build:trace"])
+                         ["build:clock", "build:menuhooks", "build:state",
+                          "build:trace"])
         for name, command in scripts.items():
             with self.subTest(script=name):
                 words = command.split()
