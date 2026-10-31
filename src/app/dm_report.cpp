@@ -23,7 +23,26 @@ void count_status(DmReportStats& stats, const DmReportRow& r) {
     ++(stats.*status_words(r.status).count);
 }
 
+// why_not_comparable for the profile a page is listed under. Of the gate's
+// four inputs, the cap and the fill rule arrive in `profile`, and the
+// difficulty and Note Shuffle in its chart mode, read back through its owner
+// (which throws for a mode no settings spell).
+std::string why_not_comparable_profile(const store::Profile& profile) {
+    const Settings mode = Settings{}.with_known_chartmode(profile.chartmode);
+    return why_not_comparable(mode.difficulty(), profile.cap.exact,
+                              profile.lens.legacy_fills != 0, mode.view_noteshuffle);
+}
+
 }  // namespace
+
+std::string clone_hero_cap_phrase() {
+    return "SP cap " + std::to_string(kCloneHeroSpCap) + ", Clone Hero's rule";
+}
+
+std::string compare_tooltip() {
+    return "Compare a dmleaderboards player's scores against your library at " +
+           clone_hero_cap_phrase() + ".";
+}
 
 const StatusWords& status_words(const std::string& status) {
     for (const StatusWords& w : kStatusWords)
@@ -36,8 +55,8 @@ std::string why_not_comparable(Difficulty difficulty, int sp_cap, bool legacy_fi
     if (difficulty != Difficulty::Expert)
         return "Needs Expert: the leaderboard only has Expert scores.";
     if (!is_clone_hero_cap(sp_cap))
-        return "Needs SP cap " + std::to_string(kCloneHeroSpCap) +
-               ", Clone Hero's rule: the leaderboard's scores were played under it.";
+        return "Needs " + clone_hero_cap_phrase() +
+               ": the leaderboard's scores were played under it.";
     // The fill rule the board's scores were played under.
     const FillDeadlineRule board_rule = FillDeadlineRule::Ch11;
     if (fill_rule_for(legacy_fills) != board_rule)
@@ -50,19 +69,18 @@ std::string why_not_comparable(Difficulty difficulty, int sp_cap, bool legacy_fi
     return std::string();
 }
 
+std::string why_not_comparable(const Settings& settings) {
+    return why_not_comparable_profile(settings.profile_at_clone_hero_cap());
+}
+
 std::vector<DmReportRow> collect_dm_rows(store::RecordStore& store,
                                          const std::vector<net::DmScore>& scores,
                                          const store::Profile& profile) {
-    // The Clone Hero rules come from why_not_comparable. Of its four inputs,
-    // the cap and the fill rule arrive in `profile`, and the difficulty and
-    // Note Shuffle in its chart mode, read back through its owner. A profile
-    // at another cap is refused: a what-if cap's score would read as "above
-    // optimal" nonsense. The window's rebuild buttons reach here without the
-    // toolbar's check, so this call is the gate for them (D114 item 6).
-    const Settings mode = Settings{}.with_known_chartmode(profile.chartmode);
-    const std::string refused =
-        why_not_comparable(mode.difficulty(), profile.cap.exact, profile.lens.legacy_fills != 0,
-                           mode.view_noteshuffle);
+    // The Clone Hero rules come from why_not_comparable. A profile at another
+    // cap is refused: a what-if cap's score would read as "above optimal"
+    // nonsense. The window's rebuild buttons reach here without the toolbar's
+    // check, so this call is the gate for them (D114 item 6).
+    const std::string refused = why_not_comparable_profile(profile);
     if (!refused.empty()) throw KindedError(ErrorKind::AlreadyPlain, refused);
     // The page compares library charts only, as the path report does (D92).
     if (report::lacks_chart_library(store))
@@ -220,8 +238,8 @@ GeneratedDmReport generate_dm_report(store::RecordStore& store,
 
     // Every score, whatever the filters show; dm_tiles counts the rows that
     // pass them (D103 item 27).
-    std::string subtitle =
-        username + " — " + hydra::counted(out.stats.total, "score", "scores");
+    const std::string scores_count = hydra::counted(out.stats.total, "score", "scores");
+    std::string subtitle = username + " — " + scores_count + " — " + clone_hero_cap_phrase();
     std::string footer =
         "Actual scores from dmleaderboards.com against Hydra's optimal for " + chartmode +
         ". Above-optimal scores are expected — Hydra's optimal excludes several score "

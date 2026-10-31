@@ -95,7 +95,8 @@ TEST_CASE("s2 offspeed: the subtitle counts every score; the Other speed tile co
         testdm::profile(), "TestUser");
     CHECK(report.stats.other_speed == 2);
     // Off-speed scores count in the subtitle like any other (D103 item 27).
-    CHECK(report.subtitle == "TestUser — 3 scores");
+    CHECK(report.subtitle ==
+          "TestUser — 3 scores — " + app::dm_report::clone_hero_cap_phrase());
 
     CHECK(testdm::dm_tile(report.rows, "Other speed") == "2");
 }

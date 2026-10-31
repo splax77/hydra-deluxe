@@ -14,7 +14,7 @@
       ],
       "must_not_match": [
         "const std::string refused = why_not_comparable(mode.difficulty(), kCloneHeroSpCap,",
-        "app::dm_report::why_not_comparable(app.settings.difficulty(), app.settings.sp_cap,"
+        "const std::string refused = app::dm_report::why_not_comparable(app.settings);"
       ],
       "note": "A caller that hands the gate a literal Expert instead of the difficulty it was given. collect_dm_rows did, so the comparison window's Refresh built a Hard page the toolbar refuses."
     },
@@ -87,7 +87,7 @@
       "owner_lines": [
         {
           "file": "src/app/dm_report.cpp",
-          "line_text": "username + \" — \" + hydra::counted(out.stats.total, \"score\", \"scores\");",
+          "line_text": "const std::string scores_count = hydra::counted(out.stats.total, \"score\", \"scores\");",
           "why": "counts a player's leaderboard scores, not a score range"
         },
         {
