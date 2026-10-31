@@ -541,16 +541,16 @@ class RealExeLayer(unittest.TestCase):
     def test_a_bare_bar_clears_the_field(self):
         self.helper.start("headless")
         self.scan()
-        no_match = hm.filtered("text", "No charts")
+        no_match = hm.filtered("text", "Nothing matches")
         self.assertEqual(self.helper.send("type **/##search | zzqx"), "ok")
-        self.assertEqual(self.helper.send(no_match), "No charts match your search.\n")
+        self.assertEqual(self.helper.send(no_match), "Nothing matches.\n")
         # The bar with nothing after it, as a client that trims blanks sends it.
         self.assertEqual(self.helper.send("type **/##search |"), "ok")
-        self.assertEqual(self.helper.send(no_match), '(no line holding "No charts")\n')
+        self.assertEqual(self.helper.send(no_match), '(no line holding "Nothing matches")\n')
         # And the helper's own clear, which keeps the trailing blank.
         self.assertEqual(self.helper.send("type **/##search | zzqx"), "ok")
         self.assertEqual(self.helper.send("type **/##search | "), "ok")
-        self.assertEqual(self.helper.send(no_match), '(no line holding "No charts")\n')
+        self.assertEqual(self.helper.send(no_match), '(no line holding "Nothing matches")\n')
 
     def test_failure_carries_hydras_text_and_the_session_survives(self):
         self.helper.start("headless")

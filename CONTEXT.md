@@ -374,9 +374,10 @@ builds a text column, `optional_key` sorts a value a row may lack, and empty
 values sink to the bottom whichever way a column sorts. `count_line` writes
 the "X of Y" line. Each filter dropdown keeps every row at `kEveryRowChoice`,
 which Clear filters goes back to. The empty table's sentence
-(`kNothingMatches`) and the search box's hint (`kSearchChartsHint`) live in
-src/app/html_page.h, because the fill page, built without the GUI, shows them
-too.
+(`kNothingMatches`) and `search_hint`, which writes every chart search box's
+hint from the fields that box searches, live in src/app/html_page.h, because
+the fill page, built without the GUI, shows them too. The Library reads the
+same sentence and builds its hint with the same function (D276 item 3).
 
 **Text sort order**:
 How a text column sorts, in the library and in every report: on the text the

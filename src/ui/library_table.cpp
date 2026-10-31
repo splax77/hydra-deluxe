@@ -14,6 +14,7 @@
 #include <string>
 #include <vector>
 
+#include "app/html_page.h"  // kNothingMatches, search_hint
 #include "app/library_query.h"
 #include "app/user_messages.h"  // stale_text, stale_chip_text, kNotAnalyzedText, stored_failure_text
 #include "core/model.h"         // group_thousands, counted
@@ -198,11 +199,14 @@ void render_search_box(AppState& app) {
         ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_F))
         ImGui::SetKeyboardFocusHere();
 
+    // What make_searchable folds for each chart (app/library_query.h).
+    static const std::string search_hint =
+        app::html::search_hint({"song", "artist", "album", "charter", "folder"});
     // EscapeClearsAll: the first Escape empties the box, the next leaves it.
     bool edited = false;
     {
         ScopedFont font(TextRole::Control);
-        edited = ImGui::InputTextWithHint("##search", "Search songs", buf, sizeof(buf),
+        edited = ImGui::InputTextWithHint("##search", search_hint.c_str(), buf, sizeof(buf),
                                           ImGuiInputTextFlags_EscapeClearsAll);
     }
     hint("Ctrl+F jumps here. Esc clears it.");
@@ -633,7 +637,7 @@ void render_library(AppState& app) {
     if (app.library_shown_count() == 0) {
         // The chips fall back to All when their group empties, so nothing
         // shown means the search matched nothing.
-        ImGui::TextUnformatted("No charts match your search.");
+        ImGui::TextUnformatted(app::html::kNothingMatches);
         return;
     }
 

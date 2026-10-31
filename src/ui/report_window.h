@@ -301,7 +301,8 @@ bool dropdown(const char* id, const std::vector<std::string>& labels, int& chose
 // The count line, right after the controls row's last item. Call it last on
 // that row.
 void count_line(Memory& memory, const std::string& text);
-// "Nothing matches those filters." and Clear filters. True on a click.
+// The empty state: kNothingMatches (app/html_page.h) and Clear filters. True
+// on a click.
 bool nothing_matches();
 // The height the footer note takes under the table.
 float footer_height(const Frame& frame);

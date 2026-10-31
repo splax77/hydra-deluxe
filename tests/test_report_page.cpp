@@ -186,7 +186,7 @@ TEST_CASE("dm_tiles: the four sample scores") {
 // M07: the page's empty state is the windows' sentence, written in by C++.
 TEST_CASE("page_template writes the windows' empty-state sentence into the script") {
     const std::string page = html::page_template("t", "", "");
-    CHECK(page.find("empty.textContent = \"Nothing matches those filters.\";") !=
+    CHECK(page.find("empty.textContent = \"Nothing matches.\";") !=
           std::string::npos);
     CHECK(page.find("__NOTHING_MATCHES__") == std::string::npos);
 }

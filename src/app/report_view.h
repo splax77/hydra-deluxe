@@ -1,9 +1,10 @@
 // The table both report windows show, as plain C++ with no ImGui, so the
-// tests pin it. A TableView holds a report's rows, each row's search text,
-// the report's column table and a keep-rule from the window's controls. It
-// answers which rows show, in what order, and the count line. Each report's
-// columns and keep-rule live in its own file (app/path_report_view.h,
-// app/dm_report_view.h); the window draws what this hands it.
+// tests pin it. A TableView shares a report's rows (shared_rows), and holds
+// each row's search text, the report's column table and a keep-rule from the
+// window's controls. It answers which rows show, in what order, and the
+// count line. Each report's columns and keep-rule live in its own file
+// (app/path_report_view.h, app/dm_report_view.h); the window draws what this
+// hands it.
 
 #ifndef HYDRA_APP_REPORT_VIEW_H
 #define HYDRA_APP_REPORT_VIEW_H
@@ -11,6 +12,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <functional>
+#include <memory>
 #include <numeric>
 #include <optional>
 #include <stdexcept>
@@ -147,25 +149,38 @@ std::string count_line(size_t shown, size_t total, const CountNoun& noun);
 // text A to Z.
 SortDir first_direction(bool numeric);
 
+// A report result's rows as a TableView takes them: the result's own vector
+// (`field`), held through shared_ptr's aliasing constructor so it shares the
+// result's ownership. Nothing is copied, and the rows stay alive while any
+// view holds them, even after the result's slot replaces or drops it (D280).
+template <class Result, class Row>
+std::shared_ptr<const std::vector<Row>> shared_rows(const std::shared_ptr<const Result>& result,
+                                                    std::vector<Row> Result::*field) {
+    if (!result) throw std::invalid_argument("shared_rows needs a result");
+    return std::shared_ptr<const std::vector<Row>>(result, &((*result).*field));
+}
+
 template <class Row>
 class TableView {
 public:
     using Keep = std::function<bool(const Row&)>;
 
+    // `rows` is shared, never copied: a report's come from shared_rows.
     // `search_texts` holds one entry per row, in row order: the text the
     // search box matches against (each report's *_search_text).
-    TableView(std::vector<Row> rows, std::vector<std::string> search_texts,
+    TableView(std::shared_ptr<const std::vector<Row>> rows, std::vector<std::string> search_texts,
               std::vector<Column<Row>> columns)
         : rows_(std::move(rows)),
           search_texts_(std::move(search_texts)),
           columns_(std::move(columns)) {
-        if (search_texts_.size() != rows_.size())
+        if (!rows_) throw std::invalid_argument("TableView needs rows");
+        if (search_texts_.size() != rows_->size())
             throw std::invalid_argument("TableView needs one search text per row");
-        sorted_.resize(rows_.size());
+        sorted_.resize(rows_->size());
         std::iota(sorted_.begin(), sorted_.end(), size_t{0});
     }
 
-    const std::vector<Row>& rows() const { return rows_; }
+    const std::vector<Row>& rows() const { return *rows_; }
     const std::vector<Column<Row>>& columns() const { return columns_; }
 
     // The column with this id. Throws for an id the table doesn't have.
@@ -218,7 +233,7 @@ public:
 
     // The count line (report_view::count_line) over this table's rows.
     std::string count_line(const CountNoun& noun) const {
-        return report_view::count_line(visible().size(), rows_.size(), noun);
+        return report_view::count_line(visible().size(), rows_->size(), noun);
     }
 
 private:
@@ -231,8 +246,8 @@ private:
         for (const SortSpec& s : sort_) {
             const Column<Row>& c = column(s.column);
             std::vector<SortKey> col_keys;
-            col_keys.reserve(rows_.size());
-            for (const Row& r : rows_) col_keys.push_back(folded_key(c.sort_key(r)));
+            col_keys.reserve(rows_->size());
+            for (const Row& r : *rows_) col_keys.push_back(folded_key(c.sort_key(r)));
             keys.push_back(std::move(col_keys));
             dirs.push_back(s.dir);
         }
@@ -254,14 +269,14 @@ private:
     void refilter() const {
         visible_.clear();
         for (size_t i : sorted_) {
-            if (keep_ && !keep_(rows_[i])) continue;
+            if (keep_ && !keep_((*rows_)[i])) continue;
             if (!search_matches(words_, search_texts_[i])) continue;
             visible_.push_back(i);
         }
         dirty_ = false;
     }
 
-    std::vector<Row> rows_;
+    std::shared_ptr<const std::vector<Row>> rows_;  // never null; sorting reorders sorted_ only
     std::vector<std::string> search_texts_;
     std::vector<Column<Row>> columns_;
     std::string search_;

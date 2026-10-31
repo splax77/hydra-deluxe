@@ -8,7 +8,7 @@
 #include <vector>
 
 #include "app/dm_report_view.h"
-#include "app/html_page.h"  // kSearchChartsHint
+#include "app/html_page.h"  // charts_search_hint
 #include "app/user_messages.h"
 #include "imgui.h"
 #include "ui/app_state.h"  // dm_report_input
@@ -49,10 +49,17 @@ void apply_filters(DmWindow& w) {
     w.tiles_dirty = true;
 }
 
-void rebuild(DmWindow& w, const std::shared_ptr<const GeneratedDmReport>& result) {
-    w.memory.reset();
+// Lets the window's view of the rows go, and the cells fitted from them.
+void drop_rows(DmWindow& w) {
     w.view.reset();
     w.widths = {};
+    w.memory.fitted.clear();
+    w.tiles.clear();
+}
+
+void rebuild(DmWindow& w, const std::shared_ptr<const GeneratedDmReport>& result) {
+    drop_rows(w);
+    w.memory.reset();
     w.status = app::report_view::kEveryRowChoice;
     w.tiles_dirty = true;
     w.built_from = result;
@@ -60,8 +67,9 @@ void rebuild(DmWindow& w, const std::shared_ptr<const GeneratedDmReport>& result
     std::vector<std::string> texts;
     texts.reserve(result->rows.size());
     for (const DmReportRow& r : result->rows) texts.push_back(view_rules::dm_search_text(r));
-    w.view = std::make_unique<TableView<DmReportRow>>(result->rows, std::move(texts),
-                                                      view_rules::dm_columns());
+    w.view = std::make_unique<TableView<DmReportRow>>(
+        app::report_view::shared_rows(result, &GeneratedDmReport::rows), std::move(texts),
+        view_rules::dm_columns());
     w.widths = report_frame::measure(*w.view);
     w.view->set_sort({view_rules::dm_first_sort()});
     w.choices = view_rules::status_choices();
@@ -79,7 +87,8 @@ void draw_body(DmWindow& w, const report_frame::Frame& frame, const DmReportInpu
     }
     report_frame::tiles(w.tiles);
 
-    if (report_frame::search_box(w.memory, app::html::kSearchChartsHint)) apply_filters(w);
+    if (report_frame::search_box(w.memory, app::html::charts_search_hint().c_str()))
+        apply_filters(w);
     if (report_frame::dropdown("##status", w.labels, w.status)) apply_filters(w);
     report_frame::count_line(w.memory, view.count_line(view_rules::kNoun));
 
@@ -110,6 +119,9 @@ void draw_dm_report_window(bool* open, const DmReportInput& input) {
     DmWindow& w = dm_window();
     if (!*open) {
         w.memory.was_open = false;
+        // The view keeps its whole result alive (shared_rows), so a result
+        // that replaced it while hidden lets it go now, not at the reopen.
+        if (!report_frame::same_result(w.built_from, input.result)) drop_rows(w);
         return;
     }
     if (!report_frame::same_result(w.built_from, input.result)) rebuild(w, input.result);
