@@ -30,14 +30,20 @@ std::vector<std::string> ids_of(const std::vector<ReportRow>& rows,
     return ids;
 }
 
-// Puts one stored record on the page: its first max_paths paths in their
+// How many rows one stored record gives the page under max_paths. place_record
+// places that many, and collect_rows sizes the row list by it.
+size_t rows_of(const store::RecordRow& record, int64_t max_paths) {
+    return static_cast<size_t>(
+        std::min<int64_t>(max_paths, static_cast<int64_t>(record.paths.size())));
+}
+
+// Puts one stored record on the page: its first rows_of paths in their
 // stored rank order, named from the library row that names the chart and
 // labeled with their tier. The page's one turn of a record into rows.
 void place_record(std::vector<ReportRow>& out, const store::RecordRow& record,
                   int64_t max_paths, const store::ChartLibraryEntry& naming,
                   const std::vector<TimingTier>& tiers) {
-    const size_t shown = static_cast<size_t>(
-        std::min<int64_t>(max_paths, static_cast<int64_t>(record.paths.size())));
+    const size_t shown = rows_of(record, max_paths);
     for (size_t i = 0; i < shown; ++i) {
         const store::PathRow& p = record.paths[i];
         ReportRow row;
@@ -207,13 +213,21 @@ CollectedRows collect_rows(store::RecordStore& store, const ReportOptions& optio
     LibraryLookup found = library_lookup(store, options.run->profile, out.library);
     // Built once for the whole report, not once per row.
     const std::vector<TimingTier> tiers = timing_tiers();
-    // The library's scan order, so the page's rows come out the same way
-    // every time.
+    // The Ready records the page lists, in the library's scan order, so the
+    // page's rows come out the same way every time.
+    std::vector<const std::pair<const std::string, store::RecordRow>*> listed;
     for (const std::string& id : out.library.song_ids()) {
         const auto it = found.ready.find(id);
-        if (it == found.ready.end()) continue;
-        place_record(out.rows, it->second, options.max_paths, *out.library.naming(id), tiers);
+        if (it != found.ready.end()) listed.push_back(&*it);
     }
+    // The list is sized to its rows before any is placed, so it keeps no
+    // spare room for as long as the report lives (D282).
+    size_t row_count = 0;
+    for (const auto* ready : listed) row_count += rows_of(ready->second, options.max_paths);
+    out.rows.reserve(row_count);
+    for (const auto* ready : listed)
+        place_record(out.rows, ready->second, options.max_paths,
+                     *out.library.naming(ready->first), tiers);
     out.cant_analyze = std::move(found.cant_analyze);
     out.no_result = std::move(found.no_result);
     return out;

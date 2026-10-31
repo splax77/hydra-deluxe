@@ -229,6 +229,24 @@ TEST_CASE("report rows: a tied top-score variant is optimal too") {
 
 TEST_CASE("report rows list every stored record (4 bars)") { check_cap(4); }
 
+// The row list holds no spare room once collect_rows returns, and the report
+// hands that same list over (D282): five charts at one path each, then at
+// every path.
+TEST_CASE("collect_rows: the row list is sized to its rows") {
+    store::RecordStore store(":memory:");
+    REQUIRE(fill_store(store, 4, 5) == 5);
+    for (const int64_t max_paths : {int64_t{1}, report::kEveryPathSentinel}) {
+        INFO("max_paths " << max_paths);
+        report::ReportOptions options = fixture_options(4);
+        options.max_paths = max_paths;
+        const report::CollectedRows collected = report::collect_rows(store, options);
+        REQUIRE_FALSE(collected.rows.empty());
+        CHECK(collected.rows.capacity() == collected.rows.size());
+        const report::GeneratedReport page = report::generate_report(store, options);
+        CHECK(page.paths.capacity() == page.paths.size());
+    }
+}
+
 // The spec's row-by-row test, in its batch-then-read form: a batch saves the
 // charts, the report reads them back, and every row matches the row a fresh
 // analysis of the same chart under the same settings gives.

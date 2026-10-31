@@ -174,7 +174,8 @@ struct CollectedRows {
 // The page's rows, read from the store: every Ready record of options.run's
 // profile whose chart the library lists (library_lookup), in the library's
 // scan order, each giving up to options.max_paths rows in its stored rank
-// order. Nothing is analyzed and no chart file is opened.
+// order. The row list holds exactly its rows, with no spare capacity (D282).
+// Nothing is analyzed and no chart file is opened.
 CollectedRows collect_rows(store::RecordStore& store, const ReportOptions& options);
 
 // ---- generate_report -------------------------------------------------------
