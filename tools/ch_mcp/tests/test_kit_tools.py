@@ -681,6 +681,25 @@ class KitPressTest(Rig):
         self.assertEqual((table[0]["down_frame"], table[0]["up_ms"]), ("1200", "5013"))
         self.assertIsNotNone(tools.kit_press())
 
+    def test_a_faulted_kit_press_carries_the_fault_in_its_error(self):
+        self.set_up([{**SETUP_FAULT, "error": "press failed: Error: access violation accessing 0x58"}])
+        press = self.game.kit_source()
+        with self.assertRaises(K.FA.ReadFailed) as caught:
+            press([Lane.GREEN])
+        lines = str(caught.exception).splitlines()
+        self.assertEqual(lines[0], "the agent sent an error: press failed: "
+                                   "Error: access violation accessing 0x58")
+        self.assertEqual(lines[1], "fault: access-violation at GameAssembly.dll+0x1f557f2 "
+                                   "(0x7ffb21f557f2), read of 0x58")
+        self.assertEqual(caught.exception.reason, K.FA.END_AGENT_ERROR)
+        self.assertEqual(caught.exception.reply["fault"]["type"], "access-violation")
+
+    def test_a_kit_press_error_with_no_fault_is_raised_unchanged(self):
+        self.set_up([{"error": "press failed: boom"}])
+        with self.assertRaises(K.FA.ReadFailed) as caught:
+            self.game.kit_source()([Lane.GREEN])
+        self.assertEqual(str(caught.exception), "the agent sent an error: press failed: boom")
+
     def test_no_kit_press_before_setup(self):
         self.tools()
         self.assertIsNone(self.game.kit_source())

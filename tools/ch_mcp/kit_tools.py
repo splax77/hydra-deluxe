@@ -437,13 +437,21 @@ def kit_press(agent: FA.LiveAgent, *, request_lock: Optional[threading.Lock] = N
     """The auto-player's press on the kit route: a callable that sends one
     chord's lanes to the kit agent and returns its reply, which play_chords
     keeps in the press row. It waits at most KIT_PRESS_CAP_S and raises
-    frida_attach.ReadFailed when no reply comes, which ends the run."""
+    frida_attach.ReadFailed when no reply comes, which ends the run. A reply
+    that carries a native fault puts fault_lines under the error's message,
+    since the run reports only that message."""
     lock = request_lock if request_lock is not None else threading.Lock()
 
     def press(lanes: Sequence[int]) -> dict:
         message = press_message([lane_element(lane) for lane in lanes], hold_frames)
         with lock:
-            return agent.request(message, KIT_PRESS_CAP_S)
+            try:
+                return agent.request(message, KIT_PRESS_CAP_S)
+            except FA.ReadFailed as e:
+                lines = fault_lines(e)
+                if not lines:
+                    raise
+                raise FA.ReadFailed(e.reason, "\n".join([str(e), *lines]), e.reply) from e
     return press
 
 
