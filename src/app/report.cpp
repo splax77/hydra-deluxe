@@ -21,7 +21,7 @@ namespace hydra::app::report {
 
 namespace {
 
-// The song ids of the rows at `shown`, for store::ChartIndex::count.
+// The song ids of the rows at `shown`, for store::count_charts.
 std::vector<std::string> ids_of(const std::vector<ReportRow>& rows,
                                 const std::vector<size_t>& shown) {
     std::vector<std::string> ids;
@@ -38,10 +38,11 @@ size_t rows_of(const store::RecordRow& record, int64_t max_paths) {
 }
 
 // Puts one stored record on the page: its first rows_of paths in their
-// stored rank order, named from the library row that names the chart and
-// labeled with their tier. The page's one turn of a record into rows.
+// stored rank order, named from the library row that names the chart,
+// counted as the chart's library copies and labeled with their tier. The
+// page's one turn of a record into rows.
 void place_record(std::vector<ReportRow>& out, const store::RecordRow& record,
-                  int64_t max_paths, const store::ChartLibraryEntry& naming,
+                  int64_t max_paths, const store::ChartLibraryEntry& naming, int copies,
                   const std::vector<TimingTier>& tiers) {
     const size_t shown = rows_of(record, max_paths);
     for (size_t i = 0; i < shown; ++i) {
@@ -63,6 +64,7 @@ void place_record(std::vector<ReportRow>& out, const store::RecordRow& record,
         row.sqin = p.sqin_count;
         row.sqout = p.sqout_count;
         row.notes = record.notecount;
+        row.copies = copies;
         std::tie(row.tier, row.tok) = hydra::tier_for(row.ms, tiers);
         row.hyhash = record.song_id;
         out.push_back(std::move(row));
@@ -120,7 +122,8 @@ LibraryLookup library_lookup(store::RecordStore& store, const store::Profile& pr
 namespace {
 
 // How many library rows the charts `ids` count as. Every chart count on the
-// page asks store::ChartIndex::count (D76, D77), through ids_of or here.
+// page asks store::count_charts (D76, D77): through ChartIndex::count here and
+// in generate_report, and over the rows' own copies in path_tiles.
 int64_t charts_counted(const store::ChartIndex& index, const std::vector<std::string>& ids) {
     return index.count(ids);
 }
@@ -227,15 +230,20 @@ CollectedRows collect_rows(store::RecordStore& store, const ReportOptions& optio
     out.rows.reserve(row_count);
     for (const auto* ready : listed)
         place_record(out.rows, ready->second, options.max_paths,
-                     *out.library.naming(ready->first), tiers);
+                     *out.library.naming(ready->first), out.library.copies(ready->first),
+                     tiers);
     out.cant_analyze = std::move(found.cant_analyze);
     out.no_result = std::move(found.no_result);
     return out;
 }
 
 std::vector<Tile> path_tiles(const std::vector<ReportRow>& rows,
-                             const std::vector<size_t>& shown,
-                             const store::ChartIndex& library) {
+                             const std::vector<size_t>& shown, int64_t library_charts) {
+    // Each shown chart's copies, read off its rows for store::count_charts.
+    std::unordered_map<std::string, int> copies;
+    for (size_t i : shown) copies[rows[i].hyhash] = rows[i].copies;
+    const int64_t charts_shown = store::count_charts(
+        ids_of(rows, shown), [&copies](const std::string& id) { return copies.at(id); });
     const std::string beyond = beyond_tier(timing_tiers()).name;
     // The row with the largest Hardest ms, the first of a tie; the tile shows
     // that row's text.
@@ -250,8 +258,7 @@ std::vector<Tile> path_tiles(const std::vector<ReportRow>& rows,
         highest_skip = std::max(highest_skip, r.skip);
     }
     return {
-        {"Charts shown", group_thousands(library.count(ids_of(rows, shown))) + " of " +
-                             group_thousands(charts_counted(library, library.song_ids()))},
+        {"Charts shown", group_thousands(charts_shown) + " of " + group_thousands(library_charts)},
         {"Paths shown", group_thousands(static_cast<int64_t>(shown.size()))},
         // The Hardest ms column's own text (format_ms).
         {"Hardest ms", hardest ? format_ms(*hardest->ms) : std::string(kDash)},
@@ -277,7 +284,9 @@ GeneratedReport generate_report(store::RecordStore& store, const ReportOptions& 
         out.empty_reason = EmptyReason::Cancelled;
         return out;
     }
-    out.library = std::move(collected.library);
+    // Counted here and dropped with `collected`: the report keeps no chart
+    // index, only each row's copies (D282).
+    const store::ChartIndex& library = collected.library;
     const std::vector<ReportRow>& rows = collected.rows;
     // collect_rows refused a report with no run, so it is set here.
     const store::Profile& profile = options.run->profile;
@@ -285,10 +294,10 @@ GeneratedReport generate_report(store::RecordStore& store, const ReportOptions& 
     out.rows = static_cast<int64_t>(rows.size());
     // The page's coverage: every library chart is shown, can't be analyzed,
     // or has no result (the user's answer 5, 2026-10-15).
-    out.library_charts = charts_counted(out.library, out.library.song_ids());
-    out.cant_analyze_charts = charts_counted(out.library, ids_of(collected.cant_analyze));
-    out.cant_analyze = group_by_reason(collected.cant_analyze, out.library);
-    out.no_result_charts = charts_counted(out.library, collected.no_result);
+    out.library_charts = charts_counted(library, library.song_ids());
+    out.cant_analyze_charts = charts_counted(library, ids_of(collected.cant_analyze));
+    out.cant_analyze = group_by_reason(collected.cant_analyze, library);
+    out.no_result_charts = charts_counted(library, collected.no_result);
     out.cant_analyze_line = cant_analyze_line(out.cant_analyze, out.cant_analyze_charts);
     out.no_result_line = no_result_line(out.no_result_charts);
     if (rows.empty()) {
@@ -316,7 +325,7 @@ GeneratedReport generate_report(store::RecordStore& store, const ReportOptions& 
     }
     std::vector<size_t> every_row(rows.size());
     std::iota(every_row.begin(), every_row.end(), size_t{0});
-    out.songs = out.library.count(ids_of(rows, every_row));
+    out.songs = library.count(ids_of(rows, every_row));
 
     // Counts read the house rule (hydra::counted, D48 Q12). The cut is per
     // chart.
