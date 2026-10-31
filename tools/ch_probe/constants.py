@@ -1,10 +1,8 @@
 """Reverse-engineering facts for the Clone Hero drum hit-window probe.
 
-Every address here is transcribed from the handoff spec
-(tools/ch_probe/SPEC.md), which in turn
-cross-checked them against Ghidra's decompiles of build 6142, which are kept
-locally outside the repo (docs/clone-hero/code/README.md says where the full
-one lives). This is the ONE
+Every address here is transcribed from the handoff spec (tools/ch_probe/SPEC.md),
+which in turn cross-checked them against Ghidra decompiles kept outside the repo
+(docs/clone-hero/code/README.md says where). This is the ONE
 place the numbers live. Every other module imports from here; nothing else
 hard-codes an address. If a Clone Hero update shifts the binary, this file is
 the only thing that changes.
@@ -63,19 +61,19 @@ RVA_HIT_CHECK = 0x100DAB0
 # misses; what a missed note does to the dynamics method is not known.
 # A third method that ran once per note sits on the engine's generic base
 # class and has no constant here: the dump gives that class's methods no RVA,
-# so the tracer cannot find it by name (plan 2026-10-28-ch-mcp-server,
-# question 6).
+# so the tracer cannot find it by name (docs/clone-hero/07-internals.md,
+# IN-17, names all three).
 
 # Adds a hit's points to the score; its arguments are a note and the base
 # points. It fires once per hit note, and not for a missed note or an overhit
-# (plan 2026-10-28-ch-mcp-server, "Live results (2026-10-29)", L2 run 2).
+# (docs/clone-hero/07-internals.md, IN-19, holds the live run, 2026-10-29).
 RVA_NOTE_SCORE_ADD = 0x20DEEC0
 
 # Handles a hit's accent and ghost flags.
 RVA_NOTE_DYNAMICS = 0x20DE770
 
 # The methods ch_trace_start hooks when it is given none: one call per hit note
-# (plan 2026-10-28-ch-mcp-server, question 6 and "Live results (2026-10-29)").
+# (RVA_NOTE_SCORE_ADD above; docs/clone-hero/07-internals.md, IN-19).
 PER_NOTE_DEFAULT_RVAS = (RVA_NOTE_SCORE_ADD,)
 
 
@@ -102,9 +100,9 @@ OFF_SONG_CLOCK = 0x100
 # Score (u32). Rises only when a note is hit (proven by play_chart.py).
 OFF_SCORE = 0x94
 
-# Hit-time candidate (double, seconds). The code reading says the game copies
-# the song clock here on a hit. NOT yet confirmed live: step 4 of
-# docs/superpowers/plans/2026-09-25-hit-window-testing.md checks it.
+# A double, in seconds. The name is the tools' first guess, and the guess is
+# wrong: it is not a hit time. docs/clone-hero/03-timing.md, TM-14, says what
+# the engine writes here and when.
 OFF_HIT_TIME = 0x2E0
 
 # Star Power fields. From the disassembly, docs/audit/ch-evidence.md answer
