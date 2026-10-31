@@ -85,4 +85,4 @@ Session B had the day's hardest one. At 19:43:56, after the new-work pass showed
 - Timelines: `audit/tl_A.txt`, `audit/tl_B.txt` (from `audit/timeline.py`).
 - Per-agent state split and context sizes: `audit/peragent.py` output, quoted above.
 - Review verdicts from a9a461da: `audit/findings_a9a.txt`.
-- Plans compared: `docs/superpowers/plans/2026-10-03-step1-engine-stores-what-displays-guess.md`, `docs/superpowers/plans/2026-10-03-step2-parser-rules.md`; decisions: `docs/audit/2026-10-03-fix-decisions.md`.
+- Plans compared: `docs/superpowers/plans/2026-10-03-step1-engine-stores-what-displays-guess.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-10-03-step1-engine-stores-what-displays-guess.md`), `docs/superpowers/plans/2026-10-03-step2-parser-rules.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-10-03-step2-parser-rules.md`); decisions: `docs/audit/2026-10-03-fix-decisions.md`.

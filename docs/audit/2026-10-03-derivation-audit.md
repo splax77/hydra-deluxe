@@ -349,7 +349,7 @@ They disagree today on reachable inputs, shown by reading. The settings bar (`sr
 
 On screen, at cap 1 the song panel, the report and hydra_batch say "1 bars" while the batch dialog and activation rows say "1 bar". In score mode with depth 1000, the Paths buttons say "Within 1000 scores" while the batch summary says "1,000 scores". A big library's scan modal mixes "1234" and "1,234" in one dialog. The dmleaderboards picker can say "1 scores".
 
-One `counted()` helper beside `group_thousands` should own the rule, and every label should call it, the SP-cap lines included. `report::counted` is the natural home, with `count_label` folded into it. The has/have case needs a small verb variant, because no noun follows the number. The copies came in on 2026-09-27 (5457d7d, a591bba, a50b3c0, 577ddc2). The hard-coded "bars" lines date from ba0885a (2026-08-22). The only stated convention is the agent-written UI redesign plan (`docs/superpowers/plans/2026-09-27-ui-redesign.md`). No user decision on separate helpers or cap-1 wording was found in CONTEXT.md, docs/adr/ or those commits.
+One `counted()` helper beside `group_thousands` should own the rule, and every label should call it, the SP-cap lines included. `report::counted` is the natural home, with `count_label` folded into it. The has/have case needs a small verb variant, because no noun follows the number. The copies came in on 2026-09-27 (5457d7d, a591bba, a50b3c0, 577ddc2). The hard-coded "bars" lines date from ba0885a (2026-08-22). The only stated convention is the agent-written UI redesign plan (`docs/superpowers/plans/2026-09-27-ui-redesign.md`; removed, `git show 444631e6:docs/superpowers/plans/2026-09-27-ui-redesign.md`). No user decision on separate helpers or cap-1 wording was found in CONTEXT.md, docs/adr/ or those commits.
 
 *Owner proposed: One counted() helper beside group_thousands (report::counted, with count_label folded into it); every label calls it, the SP cap lines included. Candidates: display-16, sweep-tests1-c2, sweep-tests2-c5, sweep-ui1-c11, sweep-ui1-c12.*
 
@@ -425,7 +425,7 @@ They disagree today on any non-integer timing. The verifier showed this by readi
 
 The user sees 12 ms on the badge and 12.4 ms on the button for the same squeeze.
 
-The two looks are approved. The 2026-09-27 UI redesign spec (`docs/superpowers/specs/2026-09-27-ui-redesign-design.md`, lines 35 and 47) and its mockup show exactly "squeeze out 163 ms" and "163.0 ms". That approves the look, not a precision rule. What nobody designed is the badge keeping its own formatter. `display_format` should own both styles. Whether the badge should change precision is the user's call. Introduced in 577ddc2 (2026-09-27).
+The two looks are approved. The 2026-09-27 UI redesign spec (`docs/superpowers/specs/2026-09-27-ui-redesign-design.md`, lines 35 and 47; removed, `git show 444631e6:docs/superpowers/specs/2026-09-27-ui-redesign-design.md`) and its mockup show exactly "squeeze out 163 ms" and "163.0 ms". That approves the look, not a precision rule. What nobody designed is the badge keeping its own formatter. `display_format` should own both styles. Whether the badge should change precision is the user's call. Introduced in 577ddc2 (2026-09-27).
 
 *Owner proposed: display_format (one ms formatter per approved style, e.g. a whole-ms variant beside format_ms_spaced). Candidates: sweep-tests2-c6.*
 
@@ -858,7 +858,7 @@ They disagree today, shown by reading the test in `tests/test_preview_view.cpp` 
 
 On screen, near a tempo change, the box number can be many seconds off from what the guide says it means.
 
-The code rule is the user's own choice. The plan `docs/superpowers/plans/2026-09-27-preview-sp-drain-box.md` (line 482) records "yes do the snap". `SongTiming::sp_end_ms` is not an alternative owner; only tests call it. So the fix is wording: the UserGuide line, or the box label, should say "at the current tempo". Introduced by b6c47ec (2026-09-27).
+The code rule is the user's own choice. The plan `docs/superpowers/plans/2026-09-27-preview-sp-drain-box.md` (line 482; removed, `git show 444631e6:docs/superpowers/plans/2026-09-27-preview-sp-drain-box.md`) records "yes do the snap". `SongTiming::sp_end_ms` is not an alternative owner; only tests call it. So the fix is wording: the UserGuide line, or the box label, should say "at the current tempo". Introduced by b6c47ec (2026-09-27).
 
 *Owner proposed: build_drain_box keeps the user-chosen rule; docs/UserGuide.md (or the box label) should be reworded. Candidates: screenB-4.*
 
@@ -1024,7 +1024,7 @@ The comment above `applies` (lines 336-344) says note i scores at `to_multiplier
 
 `to_multiplier` should own this. `applies` should test `to_multiplier(combo+1) < to_multiplier(combo+n)`. Any 4- or 5-note limit should then be its own named rule. That also makes the comment unnecessary.
 
-The combo list came from 3b69958 (2026-08-15, the C++ port). User decision 22 in `docs/superpowers/plans/2026-09-24-derivation-fixes.md` says the combo set stays fixed. That decision came before the 4/5-note mismatch was found. The agent run in c89596b kept the set and marked its reason "not recorded". The verifier found no ADR, no CONTEXT.md entry and no user quote approving the 4/5-note gap itself.
+The combo list came from 3b69958 (2026-08-15, the C++ port). User decision 22 in `docs/superpowers/plans/2026-09-24-derivation-fixes.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-09-24-derivation-fixes.md`) says the combo set stays fixed. That decision came before the 4/5-note mismatch was found. The agent run in c89596b kept the set and marked its reason "not recorded". The verifier found no ADR, no CONTEXT.md entry and no user quote approving the 4/5-note gap itself.
 
 *Owner proposed: to_multiplier in src/core/timing.cpp (MultSqueeze::applies should ask it). Candidates: score-1, score-3.*
 
@@ -1357,7 +1357,7 @@ This was shown by reading, not by a run. Take two byte-identical notes.mid files
 
 On screen, reports and the dmleaderboards page show such a chart under a name that flips between scans and analyses. A batch also wastes time on the second copy.
 
-The first-copy rule came in with 3e5d634 (2026-09-26). User decision 1 in `docs/superpowers/plans/2026-09-26-codebase-audit-fixes.md` says names follow song.ini. It does not cover which duplicate wins.
+The first-copy rule came in with 3e5d634 (2026-09-26). User decision 1 in `docs/superpowers/plans/2026-09-26-codebase-audit-fixes.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-09-26-codebase-audit-fixes.md`) says names follow song.ini. It does not cover which duplicate wins.
 
 `RecordStore` should own one rule that both functions call. `run_batch` should dedupe by md5.
 
@@ -1390,7 +1390,7 @@ The per-note gate came from 3b69958 (2026-08-15). The chart flag came from ec3ad
 
 The question: if you analyze a song under one set of rules, then change the rules, does the old result survive until you switch back?
 
-The docs say yes. ADR 0014 (around line 38) says such a record "is not deleted" and reads Ready again when the rules are switched back. `docs/UserGuide.md` (line 61) says switching the rules back "brings the result back". User decision 15, in the header of `docs/superpowers/plans/2026-09-24-derivation-fixes.md`, says the same.
+The docs say yes. ADR 0014 (around line 38) says such a record "is not deleted" and reads Ready again when the rules are switched back. `docs/UserGuide.md` (line 61) says switching the rules back "brings the result back". User decision 15, in the header of `docs/superpowers/plans/2026-09-24-derivation-fixes.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-09-24-derivation-fixes.md`), says the same.
 
 The code says no. `RecordStore::write_row` in `src/store/record_store.cpp` deletes old rows twice. Purge 1 (line 937) removes every row of that chart and mode that is not Ready, at any SP cap or lens (the settings bundle a result is filed under). A row made under other rules counts as not Ready. Purge 2 (line 948) removes the row with the same key. The unique key has no rules fingerprint (a hash of the rules file), so an A-rules row and a B-rules row cannot sit side by side.
 
@@ -1661,7 +1661,7 @@ They disagree today. This was shown three ways. Reading the code gives the table
 
 On screen, the probe console prints opposite verdicts for the same song. At the measured cap, the passive probe's "whole window" verdict can never say clamp. The Hydra GUI is untouched.
 
-Nobody has settled which cap the engine really uses. The 171.43 came in with 283e028 (2026-09-26). The 2 x back rule came in with aa3ad89 (same day). The plan `docs/superpowers/plans/2026-09-25-hit-window-testing.md` (lines 52-53) expects 171.43 in its body, not as a user quote. Nothing chooses 2 x back.
+Nobody has settled which cap the engine really uses. The 171.43 came in with 283e028 (2026-09-26). The 2 x back rule came in with aa3ad89 (same day). The plan `docs/superpowers/plans/2026-09-25-hit-window-testing.md` (lines 52-53; removed, `git show 444631e6:docs/superpowers/plans/2026-09-25-hit-window-testing.md`) expects 171.43 in its body, not as a user quote. Nothing chooses 2 x back.
 
 One measured whole-window cap constant and tolerance in `constants.py` should own this, because it is one game fact. constants.py already holds the back-window edges. Both scripts and the tests would read it. `analysis.clamp_verdict` stays the judge of raw against stored.
 
@@ -1890,7 +1890,7 @@ The library uses status. `chip_of` in `src/ui/library_model.cpp` (line 13) puts 
 
 They split on one input: a Ready record with zero paths. `summarize_record` in `src/store/record_store.cpp` (line 498) gives it no score and no stars. This was shown by reading. Tests write such rows, but nobody showed a live analysis producing one.
 
-On screen, such a chart sits under Analyzed, yet `stars:` and `squeeze<=` never match it. The DM page would tell the user to analyze it. The two-layer library design comes from the v1.9.0 UI redesign plan (`docs/superpowers/plans/2026-09-27-ui-redesign.md`, line 1394), which assumed every Ready row has stars. That is a plan, not a user decision. CONTEXT.md lines 36-37 do decide that a Stale record reads as absent in listings; that part is settled. The store's Ready status should own "has a result", with the no-paths case handled explicitly once.
+On screen, such a chart sits under Analyzed, yet `stars:` and `squeeze<=` never match it. The DM page would tell the user to analyze it. The two-layer library design comes from the v1.9.0 UI redesign plan (`docs/superpowers/plans/2026-09-27-ui-redesign.md`, line 1394; removed, `git show 444631e6:docs/superpowers/plans/2026-09-27-ui-redesign.md`), which assumed every Ready row has stars. That is a plan, not a user decision. CONTEXT.md lines 36-37 do decide that a Stale record reads as absent in listings; that part is settled. The store's Ready status should own "has a result", with the no-paths case handled explicitly once.
 
 *Owner proposed: The store's RecordStatus (Ready), plus one explicit 'has a scored best path' flag decided once (for example in facts_of) and read by query_matches, dm_report and fill_report. Candidates: P1-1, P2-3.*
 
@@ -2190,7 +2190,7 @@ The user sees this in the CLI output. A 1.0 record the GUI shows is never dumped
 
 The question is which chart modes the path report lists. A chart mode is the difficulty plus the Pro Drums and 2x Bass options.
 
-The code lists every chart mode stored at the current SP cap and lens. `collect_rows` in `src/app/report.cpp` (line 258) passes `std::nullopt` as the chart mode to `for_each_blob`, which means no filter. That matches user decision 2 in `docs/superpowers/plans/2026-09-26-codebase-audit-fixes.md` (line 81): "The path report gets a Mode column and keeps every row." Two docs still say otherwise. `docs/UserGuide.md` (line 203) says the report "follows the current analysis settings", and the settings bar includes difficulty. `docs/development.md` (lines 37-38) says `hydra_report` reports "at the same chart mode" the app is set to. The other two report pages do filter by chart mode: `collect_dm_rows` in `src/app/dm_report.cpp` (line 157) and `collect_fill_rows` in `src/app/fill_report.cpp` (line 155).
+The code lists every chart mode stored at the current SP cap and lens. `collect_rows` in `src/app/report.cpp` (line 258) passes `std::nullopt` as the chart mode to `for_each_blob`, which means no filter. That matches user decision 2 in `docs/superpowers/plans/2026-09-26-codebase-audit-fixes.md` (line 81; removed, `git show 444631e6:docs/superpowers/plans/2026-09-26-codebase-audit-fixes.md`): "The path report gets a Mode column and keeps every row." Two docs still say otherwise. `docs/UserGuide.md` (line 203) says the report "follows the current analysis settings", and the settings bar includes difficulty. `docs/development.md` (lines 37-38) says `hydra_report` reports "at the same chart mode" the app is set to. The other two report pages do filter by chart mode: `collect_dm_rows` in `src/app/dm_report.cpp` (line 157) and `collect_fill_rows` in `src/app/fill_report.cpp` (line 155).
 
 The subtitle from `generate_report` says "top N paths per chart". The cut is really per record, meaning per chart and mode (`shown = min(max_paths, ...)` at line 271). A chart stored in two modes can show 2N rows.
 
@@ -2484,7 +2484,7 @@ Nothing changes on screen. These are test counters, filters and chart pickers. I
 
 `chart_format_of` should own this. The tests can compare `chart_format_of(path) == ChartFormat::Mid`, and `first_chart_with_suffix` could take a `ChartFormat` instead of a suffix.
 
-`first_chart_with_suffix` came in e80d267 (2026-08-18). The test_song.cpp line 75 check came in 133b52e (2026-08-28). `small_chart` came in 27c6856 (2026-09-26). 682e924 (2026-09-26) moved the helper onto `ends_with` but kept it case-sensitive. Plan Task 16 in `docs/superpowers/plans/2026-09-26-codebase-audit-fixes.md` names the helper but does not decide on case. No user decision on case handling was found in docs/adr/ or CONTEXT.md.
+`first_chart_with_suffix` came in e80d267 (2026-08-18). The test_song.cpp line 75 check came in 133b52e (2026-08-28). `small_chart` came in 27c6856 (2026-09-26). 682e924 (2026-09-26) moved the helper onto `ends_with` but kept it case-sensitive. Plan Task 16 in `docs/superpowers/plans/2026-09-26-codebase-audit-fixes.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-09-26-codebase-audit-fixes.md`) names the helper but does not decide on case. No user decision on case handling was found in docs/adr/ or CONTEXT.md.
 
 *Owner proposed: chart_format_of in src/parse/chart_files.cpp. Candidates: sweep-tests1-c15, sweep-tests3-c5.*
 
@@ -3380,7 +3380,7 @@ The finder for one copy also listed a line in `replay_path` (`src/core/replay.cp
 
 `core/stars` should own the with-solo figure. It already owns the star rule, so the sum and the subtraction would sit in one module. The fix is a with-solo array in `StarCutoffs`, plus a `score_without_solo` helper beside `path_stars` that `avg_mult` can call. Then the tab only draws, and the test reads the core value instead of redoing the sum.
 
-History, from the commits. The `avg_mult` subtraction came from 3b69958 (2026-08-15). `path_stars` came in bc01fa6 and da26438, and the Stars tab column in ce6c9e1, all on 2026-09-27. The user asked for and approved the column. In `docs/superpowers/plans/2026-09-27-stars-tab.md` they picked "Extra column (Recommended)" (lines 49-51), and `docs/UserGuide.md` line 180 describes it. The same plan says the UI must not recompute the base, solo bonus or cutoffs (line 29). Yet its own spec says "The last cell is cutoff + solo bonus" (line 37), and its test step asks the GUI test to check "7-star cutoff + solo bonus" (line 316). So the user's approval covers the column, not where the sum lives. Putting the sum in the UI and the test was the plan author's choice, and it cuts against the plan's own no-recompute rule.
+History, from the commits. The `avg_mult` subtraction came from 3b69958 (2026-08-15). `path_stars` came in bc01fa6 and da26438, and the Stars tab column in ce6c9e1, all on 2026-09-27. The user asked for and approved the column. In `docs/superpowers/plans/2026-09-27-stars-tab.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-09-27-stars-tab.md`) they picked "Extra column (Recommended)" (lines 49-51), and `docs/UserGuide.md` line 180 describes it. The same plan says the UI must not recompute the base, solo bonus or cutoffs (line 29). Yet its own spec says "The last cell is cutoff + solo bonus" (line 37), and its test step asks the GUI test to check "7-star cutoff + solo bonus" (line 316). So the user's approval covers the column, not where the sum lives. Putting the sum in the UI and the test was the plan author's choice, and it cuts against the plan's own no-recompute rule.
 
 *Owner proposed: core/stars: StarCutoffs carries a with-solo array (and a score_without_solo helper beside path_stars), so the tab and its test only read it. Candidates: display-34, score-11, score-12.*
 
@@ -3469,7 +3469,7 @@ They agree today, so no input makes them disagree. Both finders showed this by r
 
 Nothing wrong is visible now. If `kMaxStars` ever changed, the search box would accept one range while its message named another.
 
-`kMaxStars` should own the number, and the message should be built from it. `CONTEXT.md` "Star cutoff" (lines 105-108) records 1 to 7 stars, which covers the value but not the copied text. The 2026-09-27 UI redesign plan (`docs/superpowers/plans/2026-09-27-ui-redesign.md`, lines 1390-1392) supplies the wording and itself names `kMaxStars` as the source of the range. That is plan text, not a user quote. Nothing in docs/adr/ says more. This came in with b89beed (2026-09-27).
+`kMaxStars` should own the number, and the message should be built from it. `CONTEXT.md` "Star cutoff" (lines 105-108) records 1 to 7 stars, which covers the value but not the copied text. The 2026-09-27 UI redesign plan (`docs/superpowers/plans/2026-09-27-ui-redesign.md`, lines 1390-1392; removed, `git show 444631e6:docs/superpowers/plans/2026-09-27-ui-redesign.md`) supplies the wording and itself names `kMaxStars` as the source of the range. That is plan text, not a user quote. Nothing in docs/adr/ says more. This came in with b89beed (2026-09-27).
 
 *Owner proposed: kMaxStars in src/core/stars.h, formatted into the error message. Candidates: score-24, sweep-tests2-c8.*
 
@@ -3523,7 +3523,7 @@ The repo already guards against this elsewhere. `tests/test_play_chart.py` (line
 
 The `OFF_*` constants, read through `EngineModel`, should own the layout, because the layout is one game fact. The literals came in with 283e028 (2026-09-26). Commit 288b07a (same day) set the goal of one name per offset, but did not remove these.
 
-The two members read the plan differently, and the plan text settles it. Task 20 of `docs/superpowers/plans/2026-09-26-codebase-audit-fixes.md` (around line 15219) keeps hit_detect, find_clock3 and poll_windows on purpose, because the newer scripts had not yet run at the game. But it only repoints their imports, renames a private key call, and replaces hit_detect's `0x100` constant. It never decides to keep the other literals. So keeping the scripts was a decision; keeping their raw offsets was not. Task 21 Step 10 asks the user whether to delete three of the old scripts, and that question looks unanswered.
+The two members read the plan differently, and the plan text settles it. Task 20 of `docs/superpowers/plans/2026-09-26-codebase-audit-fixes.md` (around line 15219; removed, `git show 444631e6:docs/superpowers/plans/2026-09-26-codebase-audit-fixes.md`) keeps hit_detect, find_clock3 and poll_windows on purpose, because the newer scripts had not yet run at the game. But it only repoints their imports, renames a private key call, and replaces hit_detect's `0x100` constant. It never decides to keep the other literals. So keeping the scripts was a decision; keeping their raw offsets was not. Task 21 Step 10 asks the user whether to delete three of the old scripts, and that question looks unanswered.
 
 *Owner proposed: tools/ch_probe/constants.py (the OFF_* constants and PRECISION_MODE_BIT), read through engine.EngineModel. Candidates: score-25, sweep-probe1-c1, sweep-probe2-c2.*
 
@@ -4078,7 +4078,7 @@ Two constants answer it, both 2.0 seconds and both in `src/ui/app_state.h`. `kFi
 
 They agree today on every input, including the exact 2.0 edge, shown by reading. Nothing on screen differs. If one interval changed alone, the Analyze button's "file missing" state and the report's "file shown" state would refresh at different speeds after a file is deleted. The tests in `tests/test_app_state.cpp` pin both with literal timestamps rather than the constants, so they would not notice either way.
 
-The two values came in two separate tasks on 2026-09-26: `kFileCheckSeconds` in cb4f28a and `kReportCheckSeconds` in ddde90c. `docs/superpowers/plans/2026-09-26-codebase-audit-fixes.md` says "every two seconds" in two agent-written task bodies, outside its list of approved changes. So the user did not ask for the 2-second figure, as far as was found. Nothing in CONTEXT.md or docs/adr/ says the two must match or may differ.
+The two values came in two separate tasks on 2026-09-26: `kFileCheckSeconds` in cb4f28a and `kReportCheckSeconds` in ddde90c. `docs/superpowers/plans/2026-09-26-codebase-audit-fixes.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-09-26-codebase-audit-fixes.md`) says "every two seconds" in two agent-written task bodies, outside its list of approved changes. So the user did not ask for the 2-second figure, as far as was found. Nothing in CONTEXT.md or docs/adr/ says the two must match or may differ.
 
 `app_state` should own this. One helper that caches a file-exists check for a fixed interval, used by both functions, would remove the twin caching code. The smallest fix is one shared constant. Merging them is a design call, so it should follow only if the user wants one policy.
 
@@ -4202,7 +4202,7 @@ Every copy agrees today: 5000 ms, "5 s", and 5 ticks. The verifier found this by
 
 If someone changed the jump or `kTickStep`, the buttons, tooltips and key bar would still say 5 while the Preview moved a different amount.
 
-The 5-second value is a user decision. `docs/superpowers/plans/2026-09-25-preview-score-and-stepping.md` (line 48) records the chat design accepted with 5 s jumps. That fixes the value, not writing it in seven places. The 5-tick step came from 0be22a1, which quotes no user. The jumps came from 3471d8a and the key bar from f4ade35.
+The 5-second value is a user decision. `docs/superpowers/plans/2026-09-25-preview-score-and-stepping.md` (line 48; removed, `git show 444631e6:docs/superpowers/plans/2026-09-25-preview-score-and-stepping.md`) records the chat design accepted with 5 s jumps. That fixes the value, not writing it in seven places. The 5-tick step came from 0be22a1, which quotes no user. The jumps came from 3471d8a and the key bar from f4ade35.
 
 A `kJumpMs` constant beside `kTickStep` should own the number. Labels, tooltips and `kKeyHints` should be built from both constants.
 
@@ -4730,7 +4730,7 @@ They agree for every chord `MultSqueeze::applies` accepts today (combos 7/8, 17/
 
 Nothing shows on screen today. If `applies()` is widened, the Paths tab's "Hit X last/first." advice would name the wrong end for some 4- and 5-note chords. The "Nx" label would stay right.
 
-Both literals arrived in the C++ port, commit 3b69958. No user decision on direction was found in CONTEXT.md's "Multiplier squeeze" entry, docs/adr or plan headers. Decision 22 in `docs/superpowers/plans/2026-09-24-derivation-fixes.md` covers only the fixed combo set.
+Both literals arrived in the C++ port, commit 3b69958. No user decision on direction was found in CONTEXT.md's "Multiplier squeeze" entry, docs/adr or plan headers. Decision 22 in `docs/superpowers/plans/2026-09-24-derivation-fixes.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-09-24-derivation-fixes.md`) covers only the fixed combo set.
 
 `category_scores` should own this, because it already decides where each note is paid. `direction()` would compare notes paid before the step against notes paid past it. `multiplier()` would read `to_multiplier(combo_ + chord_.count())`.
 
@@ -5195,7 +5195,7 @@ The question is how Preview stems are added together. Production has one owner: 
 
 The two agree on every input checked, shown by reading and by a run. No stems give an empty buffer. Stems of 3 and 2 frames give the sums for two frames, then the longer stem's last frame. A stem with zero channels adds nothing. Both start from 0.0 and add in the same order, so the float bits match. The existing build ran 8 mixer cases and 83 assertions green.
 
-Nothing reaches the screen; this is a test-only oracle. The copy exists on purpose, as a bit-for-bit guard for the one-stem-at-a-time rewrite. `add_into` owns the rule; if the guard stays as a deliberate oracle, nothing needs to move. It came in b868de9 (2026-09-26). Plan Task 8 in `docs/superpowers/plans/2026-09-26-codebase-audit-fixes.md` sets the bit-identical goal and includes `reference_mix`. The plan header says it covers "the seven changes you approved". No ADR or CONTEXT.md entry covers the oracle.
+Nothing reaches the screen; this is a test-only oracle. The copy exists on purpose, as a bit-for-bit guard for the one-stem-at-a-time rewrite. `add_into` owns the rule; if the guard stays as a deliberate oracle, nothing needs to move. It came in b868de9 (2026-09-26). Plan Task 8 in `docs/superpowers/plans/2026-09-26-codebase-audit-fixes.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-09-26-codebase-audit-fixes.md`) sets the bit-identical goal and includes `reference_mix`. The plan header says it covers "the seven changes you approved". No ADR or CONTEXT.md entry covers the oracle.
 
 *Owner proposed: add_into in src/audio/mixer.cpp. Candidates: sweep-tests1-c13.*
 
@@ -5633,7 +5633,7 @@ The question is: does an activation that skips fills get a badge for its optiona
 
 This is a special case, not drift. On screen, a path whose button shows no timing can have an activation row with an uncoloured "early fill 20 ms" badge.
 
-It came in 1eb8063 (2026-09-28, "Early fill: rename calibration fill, and badge E activations that skip fills"). The commit message explains the reason but quotes no user. The approved 2026-09-27 UI-redesign plan had the opposite test: an optional fill is not required, so no badge. The spec (`docs/superpowers/specs/2026-09-27-ui-redesign-design.md`, line 47) says the badge shows when an activation needs a squeeze. The verifier found no ADR or CONTEXT.md line approving the change.
+It came in 1eb8063 (2026-09-28, "Early fill: rename calibration fill, and badge E activations that skip fills"). The commit message explains the reason but quotes no user. The approved 2026-09-27 UI-redesign plan had the opposite test: an optional fill is not required, so no badge. The spec (`docs/superpowers/specs/2026-09-27-ui-redesign-design.md`, line 47; removed, `git show 444631e6:docs/superpowers/specs/2026-09-27-ui-redesign-design.md`) says the badge shows when an activation needs a squeeze. The verifier found no ADR or CONTEXT.md line approving the change.
 
 `Activation` in core/model should own the rule. The user should confirm whether optional fills get a badge.
 
@@ -5788,7 +5788,7 @@ What is undecided is whether Clone Hero counts beats this way in 6/8 or 7/8. Nob
 
 On screen, a 6/8 chart draws three quarter-note beat lines per bar instead of six eighth-note lines. An odd resolution puts the half line half a tick early: resolution 193 gives 96, not 96.5. If Clone Hero counts fill beats differently in compound meters, some fills on those charts would be wrongly offered or refused as activation points.
 
-The user decided part of this. CONTEXT.md (lines 114-116) and ADR 0010 record "a flat 4 beats" and the 250..10000 ms clamp. But CONTEXT.md never defines a beat, and its "Beat line" entry (around line 187) names bars, beats and half-beats without defining them either. The res/16 pad is decision 22 in the header of `docs/superpowers/plans/2026-09-24-derivation-fixes.md`. The Task 18 body of that plan calls it decision 25, so the numbering disagrees. The code comment at `graph.cpp` line 64 credits the pad to ADR 0010, which never mentions it. ADR 0008 says the Preview is a faithful port of Onyx, but Onyx's source is not in the repo, so that could not be checked. No decision on 6/8 or odd resolutions was found.
+The user decided part of this. CONTEXT.md (lines 114-116) and ADR 0010 record "a flat 4 beats" and the 250..10000 ms clamp. But CONTEXT.md never defines a beat, and its "Beat line" entry (around line 187) names bars, beats and half-beats without defining them either. The res/16 pad is decision 22 in the header of `docs/superpowers/plans/2026-09-24-derivation-fixes.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-09-24-derivation-fixes.md`). The Task 18 body of that plan calls it decision 25, so the numbering disagrees. The code comment at `graph.cpp` line 64 credits the pad to ADR 0010, which never mentions it. ADR 0008 says the Preview is a faithful port of Onyx, but Onyx's source is not in the repo, so that could not be checked. No decision on 6/8 or odd resolutions was found.
 
 The members disagree on when the 4-beat literal arrived. Git settles it. The exact line `4 * timing.tick_resolution()` was written in 406d473 (2026-08-31), along with the CH 1.0 pad and clamp. An earlier spelling of the same rule in that file dates to the C++ port, 3b69958 (2026-08-15). The Preview beat-line and half-line rules came in with ba0885a (2026-08-22). The song.cpp and timing.cpp copies date from the C++ port.
 
@@ -5836,7 +5836,7 @@ So a user who hand-edited their ladder in 1.8.4 (say `32,64`) keeps those Auto r
 
 On screen, custom-ladder Auto rows show Stale until that chart is analyzed again, then disappear.
 
-The literal came in with eaf3b73 "Remove Auto" (2026-09-27). The user's header decisions 6 and 7 in `docs/superpowers/plans/2026-09-27-ui-redesign.md` say to drop Auto and delete its results on first start. The custom-ladder scope appears only in that plan's agent-written "Questions settled during planning" section, not as a user quote.
+The literal came in with eaf3b73 "Remove Auto" (2026-09-27). The user's header decisions 6 and 7 in `docs/superpowers/plans/2026-09-27-ui-redesign.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-09-27-ui-redesign.md`) say to drop Auto and delete its results on first start. The custom-ladder scope appears only in that plan's agent-written "Questions settled during planning" section, not as a user quote.
 
 *Owner proposed: Rules::retired_auto_fingerprint in src/core/rules.cpp. Candidates: fills-24.*
 
@@ -5866,7 +5866,7 @@ All three agree today, shown by reading. Every scene built from a Song copies So
 
 On screen, a chart with no tick-0 tempo does not load. A chart with no time signature is analysed and shown as 4/4. An empty Preview shows "BPM 0.000 · 4/4" from the time box's literal. If the Song default ever changed, real charts would follow it but an empty Preview would still say 4/4.
 
-`Song` should own the default, since it is the parser's answer, and it should set it through `apply_timesig`. The time box should read only the scene. The tick defaults came in with 3b69958 (2026-08-15). The time-signature default and the time box fallback came in with 34b2e51 (2026-09-27, "Preview: time signature line in the time box"). The user did not ask for the fallback. The plan `docs/superpowers/plans/2026-09-27-preview-sp-drain-box.md` (line 475) states 4/4 as a planner constraint, and its quoted "User decisions (revision)" list (lines 481-486) covers only the label and its placement. No ADR or CONTEXT.md entry covers either default.
+`Song` should own the default, since it is the parser's answer, and it should set it through `apply_timesig`. The time box should read only the scene. The tick defaults came in with 3b69958 (2026-08-15). The time-signature default and the time box fallback came in with 34b2e51 (2026-09-27, "Preview: time signature line in the time box"). The user did not ask for the fallback. The plan `docs/superpowers/plans/2026-09-27-preview-sp-drain-box.md` (line 475; removed, `git show 444631e6:docs/superpowers/plans/2026-09-27-preview-sp-drain-box.md`) states 4/4 as a planner constraint, and its quoted "User decisions (revision)" list (lines 481-486) covers only the label and its placement. No ADR or CONTEXT.md entry covers either default.
 
 *Owner proposed: Song (src/parse/song.h): the constructor sets the tick-0 default by calling apply_timesig(0, 4, 4); build_time_box reads scene.time_sigs only. Candidates: sweep-tests3-c16, tempo-35.*
 
@@ -5960,7 +5960,7 @@ The question is: what search settings does hydra_bench's corpus mode time?
 
 So the two modes differ today on one setting: the timing limit. The verifier found this by reading. Everything else matches.
 
-Corpus mode never claims to run the GUI default. Its one output line is labelled "cap4 d4". The approved plan `docs/superpowers/plans/2026-09-26-codebase-audit-fixes.md` uses that line as a fixed before/after timing yardstick. Tying it to Settings would make the yardstick move. What the user sees is a benchmark number for a search the app never runs, with a label that omits "no ms limit". The literal 4 also restates `kCloneHeroSpCap`.
+Corpus mode never claims to run the GUI default. Its one output line is labelled "cap4 d4". The approved plan `docs/superpowers/plans/2026-09-26-codebase-audit-fixes.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-09-26-codebase-audit-fixes.md`) uses that line as a fixed before/after timing yardstick. Tying it to Settings would make the yardstick move. What the user sees is a benchmark number for a search the app never runs, with a label that omits "no ms limit". The literal 4 also restates `kCloneHeroSpCap`.
 
 The no-limit setting came in 515bf37 (2026-08-22); the label in ba0885a (2026-08-22). 1b356db (2026-09-25) moved folder mode onto Settings and left corpus mode alone. No ADR or CONTEXT.md entry decides the missing limit. The plan treats "cap4 d4" as a named yardstick but never says why it has no limit. Corpus mode should stay fixed, with a label like "cap4 d4 no-ms".
 
@@ -6138,7 +6138,7 @@ One place answers it. `kSpanEndTicks = 0.5` in `src/render/track_state.cpp` (lin
 
 There is one copy, so nothing can disagree today. The value decides which gems draw with the SP, solo or fill look. On ordinary charts the result matches the old half-millisecond edge. If the value changed, notes at a span's edge could gain or lose the special look.
 
-It came in with 2a573b4 (2026-09-24, "Preview: end spans half a tick past their last note, not half a millisecond"). Task 14 of `docs/superpowers/plans/2026-09-24-derivation-fixes.md` (around line 8914) explains the move from milliseconds to ticks. But the plan's list of user decisions has nothing on span ends, and CONTEXT.md does not define them. The verifier also checked docs/adr/ and the commit message. No user decision was found. `track_state.cpp` is the right owner; the half-tick value needs a recorded choice.
+It came in with 2a573b4 (2026-09-24, "Preview: end spans half a tick past their last note, not half a millisecond"). Task 14 of `docs/superpowers/plans/2026-09-24-derivation-fixes.md` (around line 8914; removed, `git show 444631e6:docs/superpowers/plans/2026-09-24-derivation-fixes.md`) explains the move from milliseconds to ticks. But the plan's list of user decisions has nothing on span ends, and CONTEXT.md does not define them. The verifier also checked docs/adr/ and the commit message. No user decision was found. `track_state.cpp` is the right owner; the half-tick value needs a recorded choice.
 
 *Owner proposed: kSpanEndTicks in src/render/track_state.cpp (single owner). Candidates: tempo-25.*
 
@@ -6150,7 +6150,7 @@ One place answers it. `preview_audio_offset_ms` in `src/app/preview_source.cpp` 
 
 There is one copy, so nothing disagrees today. A wrong sign or precedence would shift the Preview audio against the highway.
 
-This rule is a user decision. The user measured it at the game. It is header decision 9 and the Task 17 user gate in `docs/superpowers/plans/2026-09-24-derivation-fixes.md`, with results in commit 1b7eeb3 (2026-09-25). The .sng/.srb extension came with b868de9 (2026-09-26) under decision 4 of `docs/superpowers/plans/2026-09-26-codebase-audit-fixes.md` ("Yes, same rule"). The code needs no fix. The only gap is that no ADR or CONTEXT.md entry records it. CONTEXT.md "Transport" does not mention the offset. `preview_audio_offset_ms` is already the right owner.
+This rule is a user decision. The user measured it at the game. It is header decision 9 and the Task 17 user gate in `docs/superpowers/plans/2026-09-24-derivation-fixes.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-09-24-derivation-fixes.md`), with results in commit 1b7eeb3 (2026-09-25). The .sng/.srb extension came with b868de9 (2026-09-26) under decision 4 of `docs/superpowers/plans/2026-09-26-codebase-audit-fixes.md` ("Yes, same rule"; removed, `git show 444631e6:docs/superpowers/plans/2026-09-26-codebase-audit-fixes.md`). The code needs no fix. The only gap is that no ADR or CONTEXT.md entry records it. CONTEXT.md "Transport" does not mention the offset. `preview_audio_offset_ms` is already the right owner.
 
 *Owner proposed: preview_audio_offset_ms in src/app/preview_source.cpp (already the single owner). Candidates: tempo-23.*
 
@@ -6305,7 +6305,7 @@ One constant answers it: `kOnActivationMs = 0.5` in `src/app/preview_view.cpp` (
 
 The finder claimed two activations one tick apart could merge. The verifier showed that cannot happen. An activation needs half a meter, and SP drains at two measures per bar (`kMeasuresPerSpBar` in `core/timing.h`, around line 128). So activations sit at least 4 measures apart. That is far more than half a millisecond at any tempo. The slack only absorbs rounding noise when the playhead is parked on an activation. Nothing shows on screen.
 
-It came in with 59a3dd9 (2026-09-27). It also appears as code in the plan `docs/superpowers/plans/2026-09-27-ui-redesign.md` (around line 9326). No user decision was found in docs/adr/, CONTEXT.md, the commit message or that plan. The constant is already the single owner.
+It came in with 59a3dd9 (2026-09-27). It also appears as code in the plan `docs/superpowers/plans/2026-09-27-ui-redesign.md` (around line 9326; removed, `git show 444631e6:docs/superpowers/plans/2026-09-27-ui-redesign.md`). No user decision was found in docs/adr/, CONTEXT.md, the commit message or that plan. The constant is already the single owner.
 
 *Owner proposed: kOnActivationMs in src/app/preview_view.cpp (single owner). Candidates: tempo-24.*
 
@@ -6348,7 +6348,7 @@ One place answers it. `kEtaMinFinished = 3` in `src/ui/library_jobs.h` (line 88)
 
 There is nothing to disagree with, so there is no drift. On screen, the estimate stays hidden until the third chart finishes.
 
-The threshold came in e6d8159 (2026-09-27). The literal first appears in plan commit f1c6a3d, in `docs/superpowers/plans/2026-09-27-ui-redesign.md` (line 4755). Nothing in docs/adr/ or CONTEXT.md covers it, and the commit message has no user quote. The closest thing to a decision is design prose: `docs/superpowers/specs/2026-09-27-ui-redesign-design.md` (line 81) says the estimate appears once three charts have finished. The plan header calls that spec "the design approved on 2026-09-27". So the number traces to an approved design spec, but not to an ADR, a CONTEXT entry or a direct user quote. `batch_eta_s` is already the right owner.
+The threshold came in e6d8159 (2026-09-27). The literal first appears in plan commit f1c6a3d, in `docs/superpowers/plans/2026-09-27-ui-redesign.md` (line 4755; removed, `git show 444631e6:docs/superpowers/plans/2026-09-27-ui-redesign.md`). Nothing in docs/adr/ or CONTEXT.md covers it, and the commit message has no user quote. The closest thing to a decision is design prose: `docs/superpowers/specs/2026-09-27-ui-redesign-design.md` (line 81; removed, `git show 444631e6:docs/superpowers/specs/2026-09-27-ui-redesign-design.md`) says the estimate appears once three charts have finished. The plan header calls that spec "the design approved on 2026-09-27". So the number traces to an approved design spec, but not to an ADR, a CONTEXT entry or a direct user quote. `batch_eta_s` is already the right owner.
 
 *Owner proposed: batch_eta_s / kEtaMinFinished in src/ui/library_jobs (already the single owner). Candidates: sweep-tests2-c14.*
 
@@ -6673,7 +6673,7 @@ There is one new point for the owner. Finding 182 chose an owner in `src/audio` 
 
 The question is how many workers hash the library and analyze charts. The floor of 1 is written in `batch_worker_count` (`src/app/analysis.cpp`, line 489), in `run_work_pool` (`src/app/work_pool.h`, line 52) and in `BatchJob::set_analyzer_for_test` (`src/ui/library_jobs.cpp`, line 155). They agree today. `run_work_pool` guards every caller, so the other two are redundant. This is low priority.
 
-The cap of 8 is your decision. Decision 22 in the header of `docs/superpowers/plans/2026-09-24-derivation-fixes.md` says the 8 batch workers "stay fixed, each with a code comment saying why". Commit c89596b (2026-09-25, plan Task 18) added that comment above `kBatchMaxWorkers` (`analysis.cpp`, lines 481-484). The value itself dates from 3b69958. Three parts of `batch_worker_count` (lines 486-490) are not covered by that decision: "hardware threads minus one", the guess of 1 when Windows reports 0, and the use of the same count for the scan's hashing pool (`discover_charts`, line 386). The decision says only "batch workers". The proposed owner is `batch_worker_count`, with `run_work_pool` and the test seam trusting the count they are given. It was shown by reading and `git log -S`.
+The cap of 8 is your decision. Decision 22 in the header of `docs/superpowers/plans/2026-09-24-derivation-fixes.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-09-24-derivation-fixes.md`) says the 8 batch workers "stay fixed, each with a code comment saying why". Commit c89596b (2026-09-25, plan Task 18) added that comment above `kBatchMaxWorkers` (`analysis.cpp`, lines 481-484). The value itself dates from 3b69958. Three parts of `batch_worker_count` (lines 486-490) are not covered by that decision: "hardware threads minus one", the guess of 1 when Windows reports 0, and the use of the same count for the scan's hashing pool (`discover_charts`, line 386). The decision says only "batch workers". The proposed owner is `batch_worker_count`, with `run_work_pool` and the test seam trusting the count they are given. It was shown by reading and `git log -S`.
 
 *Candidates: R7-A3.*
 
@@ -6751,7 +6751,7 @@ On history, the 10 ms default did not start in the port or in d49c624. It came f
 
 The question is how far the bar moves for each step, and how its numbers are shown. `src/ui/preview_load_job.cpp` answers with `kReadShare = 0.08f`, `kOpenShare = 0.82f` and `kSceneShare = 0.045f` (lines 28-30). `whole_mb` (line 34) rounds to the nearest 10^6 bytes. `ByteRateClock::update` (lines 40-59) publishes seconds left, worked out from the last second's bytes, at most once a second. `Progress::time_left_text` (lines 269-277) switches from seconds to minutes at 59.5 s. The code comment cites two charts: the blink-182 Discography set the numbers, and Kissing the Shadows is a check. All of it came in with ae75ef7 (2026-10-03), whose trailer names agent abfade81c4380659d and whose message quotes no words of yours.
 
-The principles were adopted. The plan's only decision of yours is "make all of those fixes" (`docs/superpowers/plans/2026-10-03-preview-loading-fixes.md`, line 27). The spec it adopted, `docs/handoffs/2026-10-03-preview-loading-audit.md` section 3 (lines 110-133), asks for steps sized by how long they take, real units and a time left, and gives no numbers. The numbers are in the plan's task criteria (lines 411-414), an agent's spec. The three shares, the MB rounding, the one-second pacing and the 59.5 s switch were not decided by you. On a chart whose time splits differently, such as one with many small stems, the bar would race through one step and stall in another. The time-left wording is R7.1. It was shown by reading, with a search of the ADRs, CONTEXT.md, the User Guide, the plan and the handoff. The proposed owner stays `preview_load_job.cpp`, with your decision recorded if you want one.
+The principles were adopted. The plan's only decision of yours is "make all of those fixes" (`docs/superpowers/plans/2026-10-03-preview-loading-fixes.md`, line 27; removed, `git show 444631e6:docs/superpowers/plans/2026-10-03-preview-loading-fixes.md`). The spec it adopted, `docs/handoffs/2026-10-03-preview-loading-audit.md` section 3 (lines 110-133; removed, `git show 444631e6:docs/handoffs/2026-10-03-preview-loading-audit.md`), asks for steps sized by how long they take, real units and a time left, and gives no numbers. The numbers are in the plan's task criteria (lines 411-414), an agent's spec. The three shares, the MB rounding, the one-second pacing and the 59.5 s switch were not decided by you. On a chart whose time splits differently, such as one with many small stems, the bar would race through one step and stall in another. The time-left wording is R7.1. It was shown by reading, with a search of the ADRs, CONTEXT.md, the User Guide, the plan and the handoff. The proposed owner stays `preview_load_job.cpp`, with your decision recorded if you want one.
 
 *Candidates: R7-B-7, N2-12.*
 
@@ -6987,7 +6987,7 @@ Of the 71 surviving completeness finds, four pairs described the same problem tw
 
 This is a proposal, not a plan in motion. Nothing will be edited until you say yes, and each step below would get its own plan first.
 
-**First, let the engine stamp the facts the displays now guess.** This is the ADR 0011 pattern again. Five drifts come from a display or tool rebuilding something only the engine knows. The pre-SqIn SP end is rebuilt by stepping back two measures. The cap-clamp anchor is ignored by the transfer scale. The Preview gauge guesses phrase collection and gets late SqIns wrong. The replay decides on its own which chords Star Power pays. The backend table rates a SqOut on phrase notes the engine never squeezes out. The double rating inside `rate_activation` belongs in this step too. The untracked plan `docs/superpowers/plans/2026-10-03-one-squeeze-rating-rule.md` already covers part of it. These come first because they change numbers you check, and because the stored-field fixes may need a results-stamp bump.
+**First, let the engine stamp the facts the displays now guess.** This is the ADR 0011 pattern again. Five drifts come from a display or tool rebuilding something only the engine knows. The pre-SqIn SP end is rebuilt by stepping back two measures. The cap-clamp anchor is ignored by the transfer scale. The Preview gauge guesses phrase collection and gets late SqIns wrong. The replay decides on its own which chords Star Power pays. The backend table rates a SqOut on phrase notes the engine never squeezes out. The double rating inside `rate_activation` belongs in this step too. The untracked plan `docs/superpowers/plans/2026-10-03-one-squeeze-rating-rule.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-10-03-one-squeeze-rating-rule.md`) already covers part of it. These come first because they change numbers you check, and because the stored-field fixes may need a results-stamp bump.
 
 **Second, fix the parser drifts you can see on the Dynamics tab and in scoring.** At Hard and below, the Dynamics tab reads Expert's 2x kicks, and disco flip follows Expert's markers. The tab also counts 2x kicks in one total and drops them in another, and a late dynamics tag leaves early notes plain while the tab says dynamics are on. The completeness rounds added two more here. The `.chart` and `.mid` parsers disagree on when a Star Power phrase ends, and a `.mid` with a zero-numerator time signature crashes the app. Each has one owner in `src/parse/song.cpp` or `src/app/dynamics_breakdown.cpp`. The disco-flip fix may change analysis results, so it needs your call on Clone Hero's behaviour first.
 
@@ -6997,6 +6997,6 @@ This is a proposal, not a plan in motion. Nothing will be edited until you say y
 
 **Fifth, one decisions round with you on the undecided assumptions.** Each item in that section needs a yes, a different value, or "make it a setting". Examples are the 1 ms impact gate, the 0.005 scale tolerance, the 10 ms rating bands, exactly 3.0 ms counting as uncounted, the exact cap tie, the 60 ms early-fill window, the song length the Preview should use, and which SP colour is right. Once decided, each goes into `hydra_rules.ini`, an ADR or CONTEXT.md, so it stops being undecided.
 
-**Added 2026-10-03, after the audit: one owner for "does the Windows shell take this path".** Today's long-path work (02976c1) promised one place for long paths. The conversion itself does live in one place, `win32_path`. But the separate question "is this path short enough for the shell" is written five times. `shell_path` in `src/core/winstr.cpp` checks it twice, `open_in_browser` and `copy_to_short_temp` in `src/app/report_files.cpp` check it again, and the long-path test recomputes it. All five agree today. The fix is one small function in `core/winstr` that every one of them calls, plus a rule in the single-owner scan test so a sixth copy fails the build. Nothing changes on screen. Round 7 candidates N2-3, R7-A1 and R7-B-3 describe it, and verifier V2 confirmed it (see R7.12). You put this on the fix list on 2026-10-03, and the scan rule comes from the review-gate plan `docs/superpowers/plans/2026-10-03-derive-once-review-gate.md`.
+**Added 2026-10-03, after the audit: one owner for "does the Windows shell take this path".** Today's long-path work (02976c1) promised one place for long paths. The conversion itself does live in one place, `win32_path`. But the separate question "is this path short enough for the shell" is written five times. `shell_path` in `src/core/winstr.cpp` checks it twice, `open_in_browser` and `copy_to_short_temp` in `src/app/report_files.cpp` check it again, and the long-path test recomputes it. All five agree today. The fix is one small function in `core/winstr` that every one of them calls, plus a rule in the single-owner scan test so a sixth copy fails the build. Nothing changes on screen. Round 7 candidates N2-3, R7-A1 and R7-B-3 describe it, and verifier V2 confirmed it (see R7.12). You put this on the fix list on 2026-10-03, and the scan rule comes from the review-gate plan `docs/superpowers/plans/2026-10-03-derive-once-review-gate.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-10-03-derive-once-review-gate.md`).
 
 **Last, fold the duplicates that agree today, module by module.** These change nothing on screen. They stop the next drift. Group them by owner so each change touches one module. Tests that recompute production values become tests that call production code or pin literal values. The `tools/ch_probe` constants move into `constants.py`.

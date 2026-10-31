@@ -2,7 +2,7 @@
 
 ### concept-audit M03 (fill-page claim)
 - **Scout said:** GONE
-- **Checked:** `git show 74f40bd3` exists; html_page.cpp:354-362 (no localeCompare, compares `a[field]` as plain strings); fill_report.cpp:105-115 and 367-379 (`folded_key` per text column); questions.md:39-49 (Q3); fix-decisions.md:553,556 (D114 item 3); card 2026-10-11-ec019463 and its condensed line 578 ("go with recommended" after the "reply recommended to take every recommendation" prompt).
+- **Checked:** `git show 74f40bd3` exists; html_page.cpp:354-362 (no localeCompare, compares `a[field]` as plain strings); fill_report.cpp:105-115 and 367-379 (`folded_key` per text column); questions.md:39-49 (Q3); fix-decisions.md:553,556 (D114 item 3); card `docs/sessions/2026-10-11-ec019463.md`:21 ("go with recommended", 16:25 UTC; the prompt before it was not kept).
 - **Verdict:** GONE
 - **Why:** The fill page now sorts text on the windows' own folded key, so the Etude/Etude and "+"/"-" cases come out as in the windows, and Q3 named both sides. Side-picked claim is true for the text order. Left over and shown in Q3's text: one sort key against the windows' two, and two null cells compare as 1 either way (html_page.cpp:358).
 
@@ -14,7 +14,7 @@
 
 ### concept-audit M06 (posted sink)
 - **Scout said:** PASS
-- **Checked:** dm_report_view.cpp:146-158 (posted empty gives empty key, cell dash); dm_report.cpp:119-121 and report.cpp:52-54 (song, artist, charter go through `display_*`); song.cpp:468-475,554-566 (empty becomes "(unknown)"); fix-decisions.md:471 (D103 item 17); condensed c4589620 lines 140-141 (user chose "Sink like the others (Recommended)"); V1.md:182-203.
+- **Checked:** dm_report_view.cpp:146-158 (posted empty gives empty key, cell dash); dm_report.cpp:119-121 and report.cpp:52-54 (song, artist, charter go through `display_*`); song.cpp:468-475,554-566 (empty becomes "(unknown)"); fix-decisions.md:471 (D103 item 17); card `docs/sessions/2026-10-08-c4589620.md`:21 (user chose "Sink like the others (Recommended)"); V1.md:182-203.
 - **Verdict:** PASS
 - **Why:** One side is an optional date that can be empty, the other is text that is never empty after `display_*`, so they are different questions. The user's chosen option names the Posted side and the old blank-text behaviour.
 
@@ -56,7 +56,7 @@
 
 ### V8 item 3 (M73, junk policy) and the real M72
 - **Scout said:** PASS
-- **Checked:** fix-decisions.md:1058 (D270 call 4); card 2026-10-30-9a82ff65 lines 19 and 22 and its condensed lines 45 and 99 ("Both refuse (Recommended)", "refuse anything bad"); config.cpp:237-240; rules_file.cpp:44-53; user_messages.cpp:161,200-202; user_messages.h:42-44; D114 item 11 (fix-decisions.md:564).
+- **Checked:** fix-decisions.md:1058 (D270 call 4); card `docs/sessions/2026-10-30-9a82ff65.md` lines 19 and 22 ("Both refuse (Recommended)", "refuse anything bad"); config.cpp:237-240; rules_file.cpp:44-53; user_messages.cpp:161,200-202; user_messages.h:42-44; D114 item 11 (fix-decisions.md:564).
 - **Verdict:** PASS
 - **Why:** The user's quoted words, with the question's text naming "junk reads as 0" in settings against refuse in rules, settle the split, and both files refuse in code. M72's wording (tools print "has an error:", one app sentence) is now in `user_messages`. The scout's loose end (no upper bound on rules numbers) is a separate number nobody chose; it is real but outside this closure.
 
@@ -116,7 +116,7 @@
 
 ### D114 item 17 (Q17, M47, scrubber range)
 - **Scout said:** GONE
-- **Checked:** commit d0d91262 exists ("Preview playback ends at the song's length, the one end (D255 answer 5)"); preview_transport.cpp:56-62,74-76; preview_controller.cpp:418-422; preview_tab.cpp:545-556; fix-decisions.md:911 (D255 item 5); card/condensed c433b17f contains the quoted words "we already know how clone hero decides the end of the song"; UserGuide.md:332.
+- **Checked:** commit d0d91262 exists ("Preview playback ends at the song's length, the one end (D255 answer 5)"); preview_transport.cpp:56-62,74-76; preview_controller.cpp:418-422; preview_tab.cpp:545-556; fix-decisions.md:911 (D255 item 5); card `docs/sessions/2026-10-18-c433b17f.md`:25 keeps the first sentence of the quoted words, and fix-decisions.md:911 (D255 item 5) quotes the rest ("we already know how clone hero decides the end of the song"); UserGuide.md:332.
 - **Verdict:** GONE
 - **Why:** The split Q17 asked about (playback end L against the scrubber's edge E) is gone because playback end and scrubber edge are now both the song length. The user's own words in D255 item 5 chose one rule and name D48's playback range as replaced.
 

@@ -2,7 +2,9 @@
 
 For each block whose verdict is PASS, every double-quoted span of 15+ characters on the
 "How it left" and "User's words" lines is searched in the corpus (the repo's markdown and
-source, the session cards, the main checkout's handoffs). Matching ignores whitespace runs,
+source, which holds the session cards in docs/sessions/, and the main checkout's handoffs).
+Condensed transcripts are not read: they are not a reference, so a quote whose only source
+was one shows as MISS. Matching ignores whitespace runs,
 markdown emphasis, backticks and curly quotes. A quote that elides with "..." must have every
 piece present in one file. Output, one line per quote:
   OK        found in a file the line names (by path, basename or the scout's abbreviation)
@@ -14,7 +16,6 @@ import os, re, sys, glob
 REPO, OUT = sys.argv[1], sys.argv[2]
 ROOTS = [
     (REPO, ["docs/**/*.md", "docs/**/*.json", "*.md", "tools/**/*.py", "src/**/*.h", "src/**/*.cpp", "tests/**/*.cpp"]),
-    (r"C:\Users\Patrick\.claude\projects\C--Users-Patrick-Downloads-Hydra-hydra-test\session-cards", ["**/*.md"]),
     (r"C:\Users\Patrick\Downloads\Hydra\hydra-test\docs\handoffs", ["**/*.md"]),
     (r"C:\Users\Patrick\.claude\gates", ["**/*.md", "**/*.py", "**/*.ps1"]),
 ]
