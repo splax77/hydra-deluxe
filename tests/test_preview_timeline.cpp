@@ -109,3 +109,34 @@ TEST_CASE("preview timeline: the saved line has a point at each segment start an
     // kSpActivationBars (2) of 4 is halfway up the row.
     CHECK(l.activate_y == doctest::Approx(35.0f));
 }
+
+TEST_CASE("preview timeline: the insets move the bands, the fills and the saved line, and the axis labels every 30 s") {
+    app::PreviewScene s = scene_with_fills();
+    s.sp_meter.cap = 4;
+    s.sp_meter.segments = {{0.0, 3000.0, 0.0, 4.0}};
+    ui::TimelineMetrics m = metrics();
+    m.band_inset = 2.0f;
+    m.fill_center_y = 6.0f;
+    m.saved_inset = 1.0f;
+    // A 65 s song on the same 1,000 px, so the axis has three labels.
+    const ui::TimelineLayout l = *ui::timeline_layout(s, 65000.0, kWidth, m);
+    // Pinned from one run.
+    REQUIRE(l.axis_ticks.size() == 3);
+    CHECK(l.axis_ticks[0].ms == doctest::Approx(0.0));
+    CHECK(l.axis_ticks[1].ms == doctest::Approx(30000.0));
+    CHECK(l.axis_ticks[2].ms == doctest::Approx(60000.0));
+    CHECK(l.axis_ticks[2].x == doctest::Approx(923.0769f));
+    // The Activations row is 50 to 60 px down; its band stands 2 px in.
+    REQUIRE(l.bands.size() == 1);
+    CHECK(l.bands[0].rect.y0 == doctest::Approx(52.0f));
+    CHECK(l.bands[0].rect.y1 == doctest::Approx(58.0f));
+    // The Fills row starts at 60 px; a fill's 10 px box is centred 6 px down.
+    REQUIRE(l.fills.size() == 3);
+    CHECK(l.fills[0].hit.y0 == doctest::Approx(61.0f));
+    CHECK(l.fills[0].hit.y1 == doctest::Approx(71.0f));
+    // The saved row is 30 to 40 px down: none at 39, the cap at 31.
+    REQUIRE(l.saved_line.size() == 2);
+    CHECK(l.saved_line[0].y == doctest::Approx(39.0f));
+    CHECK(l.saved_line[1].y == doctest::Approx(31.0f));
+    CHECK(l.activate_y == doctest::Approx(35.0f));
+}
