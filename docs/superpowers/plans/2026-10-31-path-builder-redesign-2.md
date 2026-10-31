@@ -219,6 +219,20 @@ Each is answerable in a line. The code's real rule is quoted with it, and each e
 
 Nothing in `answers.md` disagrees with the handoff. One thing in `answers.md` cannot be built exactly as written without an answer: "a column about 27 rem wide" names a unit the builder does not have yet, which is Q1.
 
+## The user's answers (2026-10-31)
+
+The main session put the plan to the user with each question's recommendation in one line and asked "Approve the plan with all nine recommendations?". The user answered "approve all". So the plan is approved as written, with the "Out of scope" list as it stands, and every question takes its recommendation:
+
+- Q1: the second mockup's rem sizes, each a multiple of `ImGui::GetFontSize()` naming its mockup line, replacing PV-3 decisions 2 to 6 and PB-5 decisions 3 to 5.
+- Q2: the builder reads `preview_volume` from the `Settings` it loads at the open, keeps it for the run, and never writes the settings file.
+- Q3: every engine-listed fill has a row from the first frame, "..." until its cost lands; landed rows sort cheapest first (ties in chart order) above the pending ones, which stay in chart order.
+- Q4: `clock_str` everywhere ("0:45.123").
+- Q5: the Report's chip colours through `tier_color`.
+- Q6: a fill highlighted from a list row reuses the selected band's outline (`kSelectedW`, `kSelectedOffset`).
+- Q7: the three timeline roles stay, at size 0.
+- Q8: the audio-warning line is in the shared panel; the chart-changed line stays Hydra's.
+- Q9: the mockup's score order, with no hint lines; each hint becomes a hover tooltip on its figure.
+
 ## Promise map
 
 | Promise | Plan line | Task | Check that proves it |
