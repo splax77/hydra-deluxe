@@ -303,6 +303,36 @@ TEST_CASE("coach remove: a tick with no window changes nothing") {
     CHECK(r.notice.empty());
 }
 
+TEST_CASE("coach finish: Finish the rest for me makes BF(n)'s path the player's path as one edit") {
+    PbState s;
+    open_and_wait(s, corpus::burnout_notes(), scratch_settings());
+    REQUIRE(s.chart() != nullptr);
+    const OpenChart& c = *s.chart();
+    const ActivationWalk best = c.record.best_path().walk_activations();
+    REQUIRE(best.size() >= 2);
+    const ClickResult one = hydra::pathbuilder::start_window(*c.graph, c.settings, {},
+                                                             best[1].timecode.ticks());
+    REQUIRE(one.windows.has_value());
+    REQUIRE(one.path.has_value());
+    hydra::pathbuilder::DecisionList& d = s.decisions();
+    d.show(s.search_graph(), c.settings, &*one.path, "one window");
+    testwait::poll_until_idle(d, "the ladder to land", s);
+    REQUIRE(d.can_finish());
+
+    // Finishing leaves the player's history one edit longer, holding the
+    // path behind BF(1) (the ladder's own answer), and tells the screen to
+    // show the player's path.
+    const LadderRun run = ladder(c, *one.windows);
+    const uint64_t before = s.history().generation();
+    d.finish(s);
+    CHECK(s.history().generation() == before + 1);
+    REQUIRE(s.history().current().path.has_value());
+    CHECK(s.history().current().path->pathstring() == run.best[1].pathstring());
+    CHECK(s.history().current().path->pathstring() == "9 1");
+    CHECK(d.take_player_changed());
+    CHECK(d.message().empty());
+}
+
 TEST_CASE("coach click: a result that arrives after the player's path changed is dropped") {
     PbState s;
     open_and_wait(s, corpus::burnout_notes(), scratch_settings());
@@ -312,14 +342,7 @@ TEST_CASE("coach click: a result that arrives after the player's path changed is
     REQUIRE(best.size() >= 2);
     const int64_t tick = best[1].timecode.ticks();
     hydra::pathbuilder::DecisionList& d = s.decisions();
-    auto settle = [&] {
-        testwait::wait_until(
-            [&] {
-                d.poll(s);
-                return !d.busy();
-            },
-            "the click's search to land");
-    };
+    auto settle = [&] { testwait::poll_until_idle(d, "the click's search to land", s); };
 
     // The forced order: the click starts, the player's path changes (the
     // empty path stands in for an undo, a redo or Finish the rest for me), then the
@@ -356,14 +379,7 @@ TEST_CASE("coach click: a click on a shown path copies it, then applies, as one 
     const std::vector<PinnedWindow> best_windows = hydra::pinned_windows(best);
     REQUIRE(best_windows.size() == 3);
     hydra::pathbuilder::DecisionList& d = s.decisions();
-    auto settle = [&] {
-        testwait::wait_until(
-            [&] {
-                d.poll(s);
-                return !d.busy();
-            },
-            "the click's search to land");
-    };
+    auto settle = [&] { testwait::poll_until_idle(d, "the click's search to land", s); };
 
     // With the player's own path shown the click acts on its windows (none
     // yet); with Best path shown, on Edit a copy's windows of it.
@@ -434,12 +450,7 @@ TEST_CASE("coach worker: a newer request supersedes the older") {
     // The first was still running when the second came, so it was cancelled.
     CHECK(coach.superseded() == 1);
     CHECK(coach.key() == "second");
-    testwait::wait_until(
-        [&] {
-            coach.poll();
-            return !coach.busy();
-        },
-        "the coach's ladders to stop");
+    testwait::poll_until_idle(coach, "the coach's ladders to stop");
     const std::optional<LadderRun> run = coach.run();
     REQUIRE(run.has_value());
     CHECK(run->complete);
@@ -462,15 +473,8 @@ std::vector<PinnedWindow> two_windows(const OpenChart& c) {
 }
 
 void settle_coach(hydra::pathbuilder::Coach& coach) {
-    testwait::wait_until(
-        [&] {
-            coach.poll();
-            return !coach.busy();
-        },
-        "the coach's searches to stop");
+    testwait::poll_until_idle(coach, "the coach's searches to stop");
 }
-
-}  // namespace
 
 // The ticks the candidate tests hand the queue, chosen from a corpus path:
 // every activation of BF(2)'s path after the player's two windows, and the
@@ -486,6 +490,8 @@ std::vector<int64_t> candidate_ticks(const LadderRun& run) {
     }
     return ticks;
 }
+
+}  // namespace
 
 TEST_CASE("candidate costs: the best next fill costs 0 and every other cost is BF(n) minus its best finish") {
     PbState s;
@@ -510,12 +516,7 @@ TEST_CASE("candidate costs: the best next fill costs 0 and every other cost is B
     hydra::pathbuilder::DecisionList& d = s.decisions();
     d.show(s.search_graph(), c.settings, &mine.paths.front(), "two windows");
     d.price_fills(ticks);
-    testwait::wait_until(
-        [&] {
-            d.poll(s);
-            return !d.busy();
-        },
-        "the candidate queue to finish");
+    testwait::poll_until_idle(d, "the candidate queue to finish", s);
     const std::vector<hydra::app::CandidateCost>& got = d.candidates();
     REQUIRE(got.size() == ticks.size());
     // From one run: each fill's BF(2 + f), and its cost against BF(2),
