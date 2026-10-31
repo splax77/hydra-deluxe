@@ -207,10 +207,12 @@ public:
                 &dec_, out + static_cast<std::size_t>(done) * channels_,
                 static_cast<ma_uint64>(frames - done), &got);
             done += static_cast<int64_t>(got);
-            if (r == MA_AT_END || got == 0) {
-                at_end_ = true;
-            } else if (r != MA_SUCCESS) {
+            // The error test comes first, so an error that brings no frames
+            // still counts as one (failed()).
+            if (r != MA_SUCCESS && r != MA_AT_END) {
                 failed_ = true;
+                at_end_ = true;
+            } else if (r == MA_AT_END || got == 0) {
                 at_end_ = true;
             }
         }
@@ -241,7 +243,7 @@ private:
         DecodeStep step;
         step.frames = static_cast<int64_t>(got);
         step.more = r == MA_SUCCESS && got != 0;
-        step.error = r != MA_SUCCESS && r != MA_AT_END && got != 0;
+        step.error = r != MA_SUCCESS && r != MA_AT_END;
         return step;
     }
 
