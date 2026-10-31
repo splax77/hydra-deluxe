@@ -271,11 +271,8 @@ def read_pause_setting(documents_dir: str = game_files.DOCUMENTS_DIR) -> str:
     """The value of settings.ini's pause_on_focus_lost line, through
     game_files' own lookup of a [game] line. Raises
     game_files.SettingNotFound or OSError as that lookup does."""
-    path = os.path.join(documents_dir, game_files.SETTINGS)
-    with open(path, "rb") as f:
-        lines = f.read().splitlines(keepends=True)
-    i = game_files._game_setting_line(lines, game_files.PAUSE_ON_FOCUS_LOST)
-    return game_files._SETTING_LINE.match(lines[i]).group(2).decode("utf-8", "replace")
+    return game_files.get_game_setting(os.path.join(documents_dir, game_files.SETTINGS),
+                                       game_files.PAUSE_ON_FOCUS_LOST)
 
 
 class KitTools:
