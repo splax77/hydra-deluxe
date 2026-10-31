@@ -145,7 +145,8 @@ void note_rule_widths() {
     std::vector<std::string> texts;
     for (const auto& r : report.paths) texts.push_back(view_rules::path_search_text(r));
     const hydra::app::report_view::TableView<hydra::app::report::ReportRow> view(
-        report.paths, std::move(texts), view_rules::path_columns());
+        hydra::app::report_view::shared_rows(f.path.result, &GeneratedReport::paths),
+        std::move(texts), view_rules::path_columns());
     const std::vector<hydra::ui::ColumnSpec> specs =
         hydra::ui::report_frame::column_specs(view.columns());
     ImGui::Begin(window->Name);
@@ -524,6 +525,37 @@ void test_close_button(ImGuiTestContext* ctx) {
     IM_CHECK(!f.dm_open);
     IM_CHECK(dm_window() == nullptr);
     IM_CHECK_EQ(f.closes, 3);
+}
+
+// A new result that lands while a window is hidden frees the old one at
+// once: the hidden window's view must not keep it alive until the reopen.
+void test_hidden_new_result(ImGuiTestContext* ctx) {
+    reset_app(harness(ctx));
+    reset_fixture();
+    Fixture& f = fixture();
+    f.path_open = true;
+    f.dm_open = true;
+    ctx->Yield(3);
+    IM_CHECK(path_window() != nullptr);
+    IM_CHECK(dm_window() != nullptr);
+    f.path_open = false;
+    f.dm_open = false;
+    ctx->Yield(2);
+
+    std::weak_ptr<const GeneratedReport> old_path = f.path.result;
+    std::weak_ptr<const GeneratedDmReport> old_dm = f.dm.result;
+    f.path.result = sample_path_result();
+    f.dm.result = sample_dm_result();
+    ctx->Yield(2);
+    IM_CHECK(old_path.expired());
+    IM_CHECK(old_dm.expired());
+
+    f.path_open = true;
+    f.dm_open = true;
+    ctx->Yield(3);
+    IM_CHECK(path_window() != nullptr);
+    IM_CHECK(dm_window() != nullptr);
+    IM_CHECK(shows("of 6 paths"));
 }
 
 // Both windows open at once.
@@ -1469,6 +1501,7 @@ void register_report_window_tests(Harness& h) {
         {"report-window-sort", test_sort},     {"report-window-filters", test_filters},
         {"report-window-states", test_states}, {"report-window-keys", test_keys},
         {"report-window-close-button", test_close_button},
+        {"report-window-hidden-new-result", test_hidden_new_result},
         {"report-windows-both", test_both},
         {"report-window-chip-label", test_chip_label},
         {"report-window-column-widths", test_column_widths},
