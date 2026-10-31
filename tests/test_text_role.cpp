@@ -45,9 +45,9 @@ const Row kRows[] = {
     {TextRole::HeadlinePath, Face::Mono, 24.0f},
     {TextRole::AppVersion, Face::Default, 20.0f},
     {TextRole::DialogQuestion, Face::Default, 20.0f},
-    {TextRole::TimelineCost, Face::Mono, 10.5f},
-    {TextRole::TimelineSection, Face::Default, 11.5f},
-    {TextRole::TimelineAxis, Face::Mono, 11.0f},
+    {TextRole::TimelineCost, Face::Mono, 0.0f},
+    {TextRole::TimelineSection, Face::Default, 0.0f},
+    {TextRole::TimelineAxis, Face::Mono, 0.0f},
 };
 
 }  // namespace
