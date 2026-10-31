@@ -460,7 +460,7 @@ The full recipe, with the commands for each comparison, is in the header of
 the range's diff, and prints them as one `tests:` line of `-sf=` filters, plus
 the `always:` line of the three repo-wide checks. It was built so a merge
 never misses a test that reaches changed code only through an enum value, the
-way merge 18a2c64f did (D298). This section keeps the plan's spec,
+way merge 18a2c64f did (D299). This section keeps the plan's spec,
 `docs/superpowers/plans/2026-10-25-merge-test-picker.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-10-25-merge-test-picker.md`),
 in short; the code named at each step owns the exact rule.
 
@@ -489,7 +489,7 @@ picks nothing by itself. Q2: more than 40 picked test files runs the whole
 suite. Q3: a changed header with more than 20 direct includers runs the whole
 suite. They live in `tools/precheck/test_pick.h` and nowhere else
 (`kCommonNameLimit` and its two neighbours). Three later rulings narrowed the
-search; D298 holds them word for word. A comment-only change picks the tests
+search; D299 holds them word for word. A comment-only change picks the tests
 that name its function but does not follow callers. A call site counts only
 in the changed function's own file or a file that includes its header. A test
 file counts for a name only if it includes the declaring header, except for a

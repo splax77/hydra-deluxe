@@ -1,7 +1,7 @@
 // The Paths tab's GUI tests, driven on Burnout (Green Day) from the scratch
 // library: the path buttons, the activation rows and their folds, the backend
 // table and its limit, the two folds under the list, and Copy path. Labels are
-// the label contract of the UI redesign (D287; docs/superpowers/plans/2026-09-27-ui-redesign.md (removed; git show 444631e6:docs/superpowers/plans/2026-09-27-ui-redesign.md)).
+// the label contract of the UI redesign (D288; docs/superpowers/plans/2026-09-27-ui-redesign.md (removed; git show 444631e6:docs/superpowers/plans/2026-09-27-ui-redesign.md)).
 
 #include <algorithm>
 #include <cfloat>
