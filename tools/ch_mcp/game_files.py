@@ -67,6 +67,11 @@ GAME_SECTION = "game"
 PAUSE_ON_FOCUS_LOST = "pause_on_focus_lost"
 PAUSE_ON_FOCUS_LOST_RUN_VALUE = "0"
 
+# How long one reg.exe call may take, in seconds (the user's ruling of
+# 2026-10-30: "Cap at 30 s"). A call that passes it fails like one that exits
+# non-zero, so the backup stops the launch and the restore names the file.
+REG_CAP_S = 30.0
+
 # Runs reg.exe with the arguments after the program name; raises OSError
 # when reg.exe fails.
 RegRunner = Callable[[Sequence[str]], None]
@@ -74,9 +79,14 @@ RegRunner = Callable[[Sequence[str]], None]
 
 def run_reg(args: Sequence[str]) -> None:
     """Run reg.exe with `args`, raising OSError with the command and what
-    reg.exe said when it exits non-zero."""
+    reg.exe said when it exits non-zero, and OSError when it has not
+    finished after REG_CAP_S."""
     cmd = ["reg.exe", *args]
-    done = subprocess.run(cmd, stdin=subprocess.DEVNULL, capture_output=True, text=True)
+    try:
+        done = subprocess.run(cmd, stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                              timeout=REG_CAP_S)
+    except subprocess.TimeoutExpired as e:
+        raise OSError(f"{subprocess.list2cmdline(cmd)} did not finish in {REG_CAP_S:.0f} s") from e
     if done.returncode != 0:
         said = (done.stderr or done.stdout or "").strip()
         raise OSError(f"{subprocess.list2cmdline(cmd)} exited {done.returncode}: {said}")
@@ -177,8 +187,8 @@ def restore(backup_dir: str, *, out: Callable[[str], None] = print) -> list[str]
     """Put every file named in `backup_dir`'s manifest back where it came
     from, byte for byte, printing one line per file. Stops at the first file
     that fails, raising RestoreError with its name; the files after it are
-    left as they are. The registry entry is not a file: restore_registry()
-    puts it back."""
+    left as they are. The registry entry is not a file: restore_all() puts
+    it back too, and bot_run's restore is its only caller."""
     lines = []
     for e in _read_manifest(backup_dir):
         try:
@@ -188,6 +198,16 @@ def restore(backup_dir: str, *, out: Callable[[str], None] = print) -> list[str]
         out(line)
         lines.append(line)
     return lines
+
+
+def restore_all(backup_dir: str, *, run_reg: Optional[RegRunner],
+                out: Callable[[str], None] = print) -> list[str]:
+    """restore(), then restore_registry(), for a backup that may hold the
+    key. With the key in the manifest and no `run_reg` this raises
+    RestoreError, so the key is never left out without a word. Stops at the
+    first failure."""
+    lines = restore(backup_dir, out=out)
+    return lines + restore_registry(backup_dir, run_reg=run_reg, out=out)
 
 
 def _restore_key(backup_dir: str, key: str, run_reg: RegRunner) -> str:

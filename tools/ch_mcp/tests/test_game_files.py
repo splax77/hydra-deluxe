@@ -248,6 +248,46 @@ class RegistryTest(unittest.TestCase):
                                  G.DOCUMENTS_FILES + G.LOCALLOW_FILES])
         self.assertEqual(self.reg.verbs(), ["export"])
 
+    def test_restore_all_puts_the_key_back_after_the_files(self):
+        backup = self.backup()
+        lines = G.restore_all(backup, run_reg=self.reg, out=lambda _l: None)
+        self.assertEqual(lines, [f"{name}: unchanged" for name in
+                                 G.DOCUMENTS_FILES + G.LOCALLOW_FILES]
+                         + ["rewired registry: unchanged"])
+        self.assertEqual(self.reg.verbs(), ["export", "export"])
+
+    def test_restore_all_refuses_a_backup_with_the_key_when_given_no_runner(self):
+        backup = self.backup()
+        with self.assertRaises(G.RestoreError) as cm:
+            G.restore_all(backup, run_reg=None, out=lambda _l: None)
+        self.assertEqual(cm.exception.name, "rewired.reg")
+        self.assertEqual(self.reg.verbs(), ["export"])
+
+    def test_reg_exe_gets_the_users_30_second_cap(self):
+        self.assertEqual(G.REG_CAP_S, 30.0)
+        seen = {}
+
+        def fake_run(cmd, **kw):
+            seen.update(kw)
+            raise G.subprocess.TimeoutExpired(cmd, kw["timeout"])
+
+        with mock.patch.object(G.subprocess, "run", fake_run):
+            with self.assertRaises(OSError) as cm:
+                G.run_reg(["export", G.REGISTRY_KEY, "x.reg", "/y"])
+        self.assertEqual(seen["timeout"], 30.0)
+        self.assertIn("did not finish in 30 s", str(cm.exception))
+
+    def test_a_reg_exe_timeout_fails_the_backup_and_the_restore_by_name(self):
+        def timing_out(_args):
+            raise OSError("reg.exe did not finish in 30 s")
+
+        with self.assertRaises(OSError):
+            G.backup(self.f.docs, self.f.low, self.f.root, stamp=lambda: "t", run_reg=timing_out)
+        backup = self.backup()
+        with self.assertRaises(G.RestoreError) as cm:
+            G.restore_all(backup, run_reg=timing_out, out=lambda _l: None)
+        self.assertEqual(cm.exception.name, "rewired.reg")
+
 
 # Shaped like the user's settings.ini: a [game] section holding the line,
 # with sections before and after it and Windows line endings.

@@ -57,12 +57,17 @@ class ForegroundWatch:
         self._game_in_front = False
         self.count = 0
         self.events: List[Tuple[float, int]] = []
+        # The time of each change that put the game in front (one per count),
+        # and the time start() ran; line() prints the first minus the second.
+        self.game_times: List[float] = []
+        self._started_at = 0.0
         # Set when a poll raised; the watch stops there and the line says so.
         self.error: Optional[str] = None
 
     def start(self) -> None:
         """Start polling on a daemon thread. It ends at stop() or when the
         process exits."""
+        self._started_at = self._now()
         self._thread = threading.Thread(target=self._loop, name="ch_foreground_watch",
                                         daemon=True)
         self._thread.start()
@@ -88,20 +93,32 @@ class ForegroundWatch:
         with self._lock:
             if self._stopped.is_set():
                 return
-            if handle != self._last:
-                self._last = handle
-                self.events.append((self._now(), handle))
-            if in_front and not self._game_in_front:
-                self.count += 1
+            came = in_front and not self._game_in_front
+            if handle != self._last or came:
+                at = self._now()
+                if handle != self._last:
+                    self._last = handle
+                    self.events.append((at, handle))
+                if came:
+                    self.count += 1
+                    self.game_times.append(at)
             self._game_in_front = in_front
 
     def line(self) -> str:
         """count_line for this watch, with "so far" while it runs and the
-        error that stopped it, if one did."""
-        text = count_line(self.count)
+        error that stopped it, if one did. When the game came forward, a
+        second line lists each time, in seconds since start()."""
+        with self._lock:
+            count, times = self.count, list(self.game_times)
+        text = count_line(count)
         if self.error is not None:
-            return f"{text} before the watch failed: {self.error}"
-        return text + (" so far" if self.running() else "")
+            text = f"{text} before the watch failed: {self.error}"
+        elif self.running():
+            text += " so far"
+        if times:
+            at = ", ".join(f"{t - self._started_at:.1f} s" for t in times)
+            text += f"\nforeground went to the game at (since the watch started): {at}"
+        return text
 
     def _loop(self) -> None:
         while not self._stopped.is_set():
