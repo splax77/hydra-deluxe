@@ -100,6 +100,23 @@ hydra::app::ChartAnalyzer released_in_turn(std::atomic<int>& released) {
 
 }  // namespace
 
+// AOA-W3 V9-SN1: an exception out of the scan ends the job with the error as
+// its one problem line, instead of ending the process. It writes no library.
+TEST_CASE("jobs: a scan that throws finishes with its error as a problem") {
+    RecordStore store(":memory:");
+    const std::runtime_error broke("scan broke");
+    const ScopedHook hold(hydra::ui::set_scan_hold_for_test, [&broke] { throw broke; });
+    hydra::ui::ScanJob job({corpus::root()}, store);
+    job.start();
+    wait_until([&] { return job.snapshot().finished; }, "the scan to finish");
+    const hydra::ui::ScanProgress p = job.snapshot();
+    REQUIRE(p.errors.size() == 1);
+    CHECK(p.errors[0] == hydra::app::plain_error_line(broke));
+    CHECK(p.phase == hydra::ui::ScanProgress::Phase::Done);
+    CHECK_FALSE(p.cancelled);
+    CHECK(p.charts_found == 0);
+}
+
 TEST_CASE("jobs: the batch clock leaves paused time out") {
     BatchClock clock;
     clock.start(10.0);
