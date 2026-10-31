@@ -985,6 +985,10 @@
         {
           "file": "tests/test_column_widths.cpp",
           "why": "the column-width rule's fake-font column widths, not an activation row"
+        },
+        {
+          "file": "tests/test_preview_timeline.cpp",
+          "why": "the Path Builder timeline's pinned x positions, not an activation row"
         }
       ],
       "must_match": [

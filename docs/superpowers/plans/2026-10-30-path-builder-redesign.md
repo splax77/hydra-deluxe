@@ -243,6 +243,16 @@ The user answered all seven questions in one line: "Yes, as recommended". So:
 - Q6: end choices only on the last activation.
 - Q7: no cap. CO-2 measures and reports the times.
 
+**User decisions (PV-3, 2026-10-30):**
+
+1. While PV-3 was built the user was asked "The new timeline needs sizes and colours that Hydra doesn't have yet. Should it use the ones from the mockup you approved?" and answered "Mockup's (Recommended)". So the timeline's sizes and colours are the mockup's, and each constant in `src/ui/preview_timeline.cpp` names its mockup line. The other row heights, the fill size and the colours come from the same mockup, by the CSS rule each constant's comment cites.
+2. The saved row is 46 px tall (`kSavedRowH`, mockup line 276).
+3. The activations row is 34 px tall (`kActivationsRowH`, mockup line 283).
+4. The label column is 110 px wide (`kLabelColumnW`, `.rlab`, mockup line 40).
+5. An offered fill grows 1.2 times when hovered (`kOfferedHoverScale`, `.fill.use:hover`, mockup line 51).
+6. A cant-activate fill (the third look) is a 13 px ring (`kCantSize`, `.fill.no`, mockup line 53).
+7. The timeline axis puts a time label every step of 30000 ms (`kTimelineAxisStepMs`, `s += 30`, mockup line 264). When a step is narrower than one label, the timeline labels every few steps; the least gap is a label's own width, not a number.
+
 The same message approved the plan with the "Out of scope" list as written, so the highway text labels, the squeeze-out ring and the "lost because the meter was full" note stay out.
 
 ## Promise map
