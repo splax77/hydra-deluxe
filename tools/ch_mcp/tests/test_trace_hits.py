@@ -1,5 +1,5 @@
 """Tests for trace_hits: the once-per-note filter, the line-up with the
-manifest, the 85 ms boundary, the settings the agent receives, the no-writes
+manifest, the 85 ms boundary, the settings the agent receives, the by-name
 check over trace.ts, the two hook RVAs, where a trace's notes come from, and
 the background TraceSession.
 
@@ -231,7 +231,7 @@ class CommandLineTest(unittest.TestCase):
 
 
 class TraceAgentTest(unittest.TestCase):
-    def test_trace_ts_writes_nothing_to_the_game(self):
+    def test_trace_ts_reads_by_name_only(self):
         with open(os.path.join(AGENT_DIR, "trace.ts"), encoding="utf-8") as fh:
             self.assertEqual(by_name_only_findings(fh.read()), [])
 
