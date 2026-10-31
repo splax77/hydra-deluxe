@@ -330,14 +330,14 @@ The Path limit tooltip's words follow D51 call 5 ("hardest squeeze or required e
 4. **What goes away.** The per-difficulty length table, the length read from the chart (`store::song_length_ms` and `SongLengthJob`'s chart parse), and the per-chart overwrite rule finding 62 described.
 Timelines now include the song's outro, so a song with a long tail ends its last activation before the right edge.
 
-**D70 (AL1 and AL2 open questions), 2026-10-05.** The user said to start the audio-length tasks as soon as their briefs were ready, so every open question in `p7-al1.md` and `p7-al2.md` takes its brief's recommendation. The ones that change what is shown or stored:
+**D70 (AL1 and AL2 open questions), 2026-10-05.** The user said to start the audio-length tasks as soon as their briefs were ready, so every open question in `p7-al1.md` and `p7-al2.md` (task briefs, removed; `git show ec91f8d1:docs/superpowers/plans/tasks/p7-al1.md`, and `p7-al2.md` beside it) takes its brief's recommendation. The ones that change what is shown or stored:
 1. **The Preview with no readable audio** still plays and scrubs to its last drawn note, with its marks on that range. That range is the transport's playback rule (D48), not a song length. Only the Paths timeline drops its dots (D69 item 3).
 2. **The length is in chart time:** the audio's end, read through the chart-to-audio sync owner. So the backfill still parses the chart, for its Offset only. No length comes from notes.
 3. **Old last-note lengths are dropped by a new stamp.** They read as not read, and opening the song reads its audio once (the ADR 0018 pattern).
 4. **A chart with no audio is read once.** The stamp records "read, none". A re-analysis reads again, so audio added later shows after the next analysis.
 5. **Every analysis rewrites the song's length.** Audio replaced after analysis keeps the old length until the next analysis.
 
-**D71 (ER1 and ER2 open questions), 2026-10-05.** The user said to start the remaining tasks as soon as their briefs were ready, so every open question in `p7-er1.md` and `p7-er2.md` takes its brief's recommendation. The ones that change what is shown:
+**D71 (ER1 and ER2 open questions), 2026-10-05.** The user said to start the remaining tasks as soon as their briefs were ready, so every open question in `p7-er1.md` and `p7-er2.md` (task briefs, removed; `git show ec91f8d1:docs/superpowers/plans/tasks/p7-er1.md`, and `p7-er2.md` beside it) takes its brief's recommendation. The ones that change what is shown:
 1. **Database writes the old matcher missed** (for example AL2's song-length write) read the database sentence, not "Something went wrong...".
 2. **Preview asset failures** (an undecodable texture, a shader that won't compile, a broken .obj) read the existing "Some of Hydra's Preview files are missing. Reinstall Hydra to restore them." word for word, prefixed "Preview failed: " in the Preview (D51 call 25).
 3. **The Preview error gains a dimmed details line** with the raw text, as its fallback sentence already promises.

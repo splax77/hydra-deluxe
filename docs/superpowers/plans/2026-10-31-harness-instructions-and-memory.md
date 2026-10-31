@@ -84,7 +84,7 @@ Today CLAUDE.md is 2,225 words, and about three quarters of them are procedures:
 
 After T1, CLAUDE.md is under 1,000 words. The arithmetic: the sections T1 leaves alone (the intro, agent skills, Clone Hero reference, the three tracker lines, Past sessions, Audits, GUI testing, Public doc style) add up to 542 words by the same whitespace count. The ten rules in one-line form, the handoff sentence in rule 9 and the Haiku sentence in rule 2 take about 190. The two review sections in short form take about 150. That is about 880. A target of 700 was in the first draft of this plan; it cannot hold while the untouched sections and the "Past sessions" text stay as they are (AC8), so the plan sets 1,000, our own number like the others here. T1 shortens only the two review sections and the agent rules; every other section stays word for word, because their long text has no `docs/agents/` page that T1 owns to move into. Each shortened section is a heading, one to three sentences that say the rule in short, and one pointer to the page that holds the full text. The ten agent rules stay as ten numbered one-line rules (G2) with the pointer `docs/agents/agent-rules.md` for their details. The two review procedures move into the pages that already own them: the orchestrator's steps into `docs/agents/derive-once-review.md` "For the orchestrator", and the doc-review gate rules (what is gated, the small-text pass, the `publish.ps1` rule, the waiver) into a new "What is gated" section at the top of `docs/agents/doc-review.md`.
 
-The "Past sessions" section stays word for word until the session-cards handoff (`docs/handoffs/2026-10-31-session-cards-into-docs-and-handoff-cleanup-handoff.md`) moves the cards. T1 must not change where the cards live.
+The "Past sessions" section stays word for word until the session-cards handoff (`docs/handoffs/2026-10-31-session-cards-into-docs-and-handoff-cleanup-handoff.md`, removed; `git show ec91f8d1:docs/handoffs/2026-10-31-session-cards-into-docs-and-handoff-cleanup-handoff.md`) moves the cards. T1 must not change where the cards live.
 
 ## 5. The memory folder: what is kept, what moves, what goes
 
@@ -304,7 +304,7 @@ Claims that did not hold, or hold only in part:
 - The `src/ui/generation.h` line 5 comment that names a member that no longer exists (a code change; `comments-explain-current-code`).
 - The hooks repo's `gates\README.md` facts T4c hands over, and every hook (HX-P2 plan).
 - Trimming the global `C:\Users\Patrick\.claude\CLAUDE.md`: it is 279 words of the user's own style rules and this plan leaves it alone.
-- The session-cards move into `docs/` and the finished-handoff sweep (`docs/handoffs/2026-10-31-session-cards-into-docs-and-handoff-cleanup-handoff.md`): T1 keeps "Past sessions" pointing at today's folder.
+- The session-cards move into `docs/` and the finished-handoff sweep (`docs/handoffs/2026-10-31-session-cards-into-docs-and-handoff-cleanup-handoff.md`, removed; `git show ec91f8d1:docs/handoffs/2026-10-31-session-cards-into-docs-and-handoff-cleanup-handoff.md`): T1 keeps "Past sessions" pointing at today's folder.
 
 ## 11. Promise map
 
