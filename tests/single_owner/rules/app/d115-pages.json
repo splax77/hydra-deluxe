@@ -24,7 +24,7 @@
         "profile.lens.legacy_fills != 0"
       ],
       "owner_lines": [],
-      "note": "The leaderboard comparison lists the profile at Clone Hero's SP cap, and the fill comparison lists one profile per fill rule. A page that sets the cap or the fill rule on a lens by hand can list other records than the named variants name. Decided by: D115, plan docs/superpowers/plans/2026-10-12-one-record-per-chart.md, task A2-4"
+      "note": "The leaderboard comparison lists the profile at Clone Hero's SP cap, and the fill comparison lists one profile per fill rule. A page that sets the cap or the fill rule on a lens by hand can list other records than the named variants name. Decided by: D115 (ADR 0031)"
     },
     {
       "question": "Which stored records does a page list: those under its profile whose chart the library lists?",

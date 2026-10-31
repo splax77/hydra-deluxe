@@ -58,7 +58,7 @@
       "owner_file": "src/app/config.cpp",
       "owner_symbol": "Settings::load_for_command_line",
       "date": "2026-10-07",
-      "decision": "perf follow-up B (docs/handoffs/2026-10-06-perf-speedups-wave2-handoff.md)",
+      "decision": "perf follow-up B, hydra_bench takes the fills setting through the same owner as hydra_batch (docs/handoffs/2026-10-06-perf-speedups-wave2-handoff.md (removed; git show 444631e6:docs/handoffs/2026-10-06-perf-speedups-wave2-handoff.md))",
       "added_by": "perf-bench-fills",
       "pattern": "\\bSettings::load\\(\\)",
       "anchor": "Settings::load()",
@@ -747,7 +747,7 @@
           "why": "normalize_chart_hash, the owner"
         }
       ],
-      "note": "A call to normalize_chart_hash anywhere but the leaderboard boundary. Hydra's own song ids come lowercase from song_id_read (spec section 2, ADR 0028), so nothing inside Hydra lowercases one again: ids are compared as they are. The scan scopes rows by top folder, so this row reads src and tools; the owner's own tests in tests/ are out of scope. Kept as its own row because a row holds one pattern, and the row above must still read dmbot_client.cpp. Decided by: D115, spec docs/superpowers/specs/2026-10-11-one-record-per-chart-and-profile-design.md section 8; plan part A1, task A1-5."
+      "note": "A call to normalize_chart_hash anywhere but the leaderboard boundary. Hydra's own song ids come lowercase from song_id_read (spec section 2, ADR 0028), so nothing inside Hydra lowercases one again: ids are compared as they are. The scan scopes rows by top folder, so this row reads src and tools; the owner's own tests in tests/ are out of scope. Kept as its own row because a row holds one pattern, and the row above must still read dmbot_client.cpp. Decided by: D115 (ADR 0031)."
     },
     {
       "question": "Which files make up a chart's fingerprint?",

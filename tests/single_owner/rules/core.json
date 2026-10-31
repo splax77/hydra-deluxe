@@ -2624,7 +2624,7 @@
           "why": "named_version, the owner: the version bar's name and every update sentence that names a version call it"
         }
       ],
-      "note": "The app's name and a version are joined in one place, so the bar's name and the update sentences read the same. A name built by hand from HYDRA_APP_NAME and a space, or a literal \"Hydra Deluxe \" before a version, is a second copy. Sentences that name the app without a version (the not-installed line, the window title) are not this question. Decided by: D260, the version bar plan (docs/superpowers/plans/2026-10-23-update-check-on-launch.md, Where the text comes from)"
+      "note": "The app's name and a version are joined in one place, so the bar's name and the update sentences read the same. A name built by hand from HYDRA_APP_NAME and a space, or a literal \"Hydra Deluxe \" before a version, is a second copy. Sentences that name the app without a version (the not-installed line, the window title) are not this question. Decided by: D260"
     }
   ]
 }
