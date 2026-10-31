@@ -1492,8 +1492,8 @@ namespace {
 // ---- check 4: the pictures ------------------------------------------------
 
 // The size limits for one picture and for the whole docs/images folder. The
-// user set them on 2026-10-25 (docs/superpowers/plans/2026-10-25-doc-screenshots.md
-// (never committed; not kept)). tools/doc_shots/shrink.py fails a capture run on the same
+// user set them on 2026-10-25 (D300 in docs/audit/2026-10-03-fix-decisions.md).
+// tools/doc_shots/shrink.py fails a capture run on the same
 // limits, so a bloated picture is caught both when it is taken and at merge.
 constexpr std::uintmax_t kDocImageMaxBytes = 500 * 1024;
 constexpr std::uintmax_t kDocImagesMaxTotalBytes = 4 * 1024 * 1024;
