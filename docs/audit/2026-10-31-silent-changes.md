@@ -126,11 +126,11 @@ Tooling has the same pattern once (the push gate, 2026-10-25 to 10-30). It was d
 
 ## What would catch it
 
-Proposal 1 is now agent rule 11: the user answered "Yes, require it" on 2026-10-31. The other four are not built. Each is a question for the user, below. They aim at the places above, not at restating the rule, since the rule has been in memory since August and the cases kept coming.
+Proposal 1 is now agent rule 11 ("Yes, require it") and proposal 2 is agent rule 12 ("Yes, ban them (Recommended)"), both on 2026-10-31. The other three are not built. Each is a question for the user, below. They aim at the places above, not at restating the rule, since the rule has been in memory since August and the cases kept coming.
 
 **1. Every question that changes a rule lists what the screen will show.** Before the question goes out, the session finds every screen that reads the changed value and writes a "You will see" list into the question: each screen, the text before and the text after, from a real chart. A question with no such list is a question about code only, and says so. This would have caught cases 1, 2, 11 and 12. Approved and written as agent rule 11 in `docs/agents/agent-rules.md`.
 
-**2. No opt-out disclosures.** A visible change the user's words did not cover becomes a blocking question before merge, never a line in a report. "Unless you say otherwise", "say the word", "ride along" and "I recommend leaving it" stop being allowed ways to close one. Nothing merges while one is open. This would have caught cases 4 to 8.
+**2. No opt-out disclosures.** A visible change the user's words did not cover becomes a blocking question before merge, never a line in a report. "Unless you say otherwise", "say the word", "ride along" and "I recommend leaving it" stop being allowed ways to close one. Nothing merges while one is open. This would have caught cases 4 to 8. Approved and written as agent rule 12 in `docs/agents/agent-rules.md`.
 
 **3. A pinned list of on-screen text, diffed at each merge.** A test renders the Paths tab sentences, labels and report lines for every chart in `testdata/input` and keeps them in a file in the repo. Any merge that changes a line shows the change, and each changed line must cite the user's quoted words or a D-record whose question showed that line. This is the only proposal a hook or test can enforce, since it needs no reading of free text. D13's own commit already ran a probe like this ("41 lines change"); the difference is that the result would go to the user as a question instead of into a commit message. It would have caught cases 1, 2, 3, 9 and the "(-N)" suffix. It would not catch layout and behaviour cases such as 10, 12 and 13.
 

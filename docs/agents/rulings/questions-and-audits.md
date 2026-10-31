@@ -2,6 +2,7 @@
 
 How a question goes to the user, what to do when Hydra answers one question two ways, and when an audit finding may close. The line format is in README.md beside this file. Newest first.
 
+- **2026-10-31** "Yes, ban them (Recommended)", to: "Proposal 2. Should opt-out lines be banned? ..." (session a7d95f1c-a1ce-46e9-bf4d-2e7cfbd98d1e; note: no-silent-functionality-changes; backs: docs/agents/agent-rules.md rule 12)
 - **2026-10-31** "Yes, require it", to: "Should every rule question list each screen's before and after text?" (session a7d95f1c-a1ce-46e9-bf4d-2e7cfbd98d1e; note: questions-describe-the-real-rule; backs: docs/agents/agent-rules.md rule 11)
 - **2026-10-29** "when did they diverge and why? did i ever ask for it?" (session 2026-10-29-caca5d75, by date; note: never-keep-a-split-quietly; backs: docs/agents/audit-method.md)
 - **2026-10-29** "why are we even using two different systems? why are you still trying to convince me of more convoluted bullshit?" and ruled "yes everything should use one rule" for the Backend timings rows (M39/306/33). (session 2026-10-29-caca5d75, by date; note: never-keep-a-split-quietly; backs: docs/agents/audit-method.md)
