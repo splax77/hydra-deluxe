@@ -341,8 +341,12 @@ Whether the analysis settings can be held against dmleaderboards scores, which
 are Clone Hero scores. `dm_report::why_not_comparable` in src/app/dm_report.h
 answers it: empty when they can, otherwise the sentence naming the first rule
 they break. The toolbar's button and `collect_dm_rows` (Refresh, Try again,
-"Compare another player...") both ask it with the real difficulty (D114 item
-6). Whether a cap is Clone Hero's is `is_clone_hero_cap` in src/core/model.h.
+"Compare another player...") both ask it about the profile the page lists, at
+Clone Hero's cap whatever the cap setting, so only the difficulty, fill rule
+and Note Shuffle can refuse a click (D114 item 6, D271 item 8). Whether a cap
+is Clone Hero's is `is_clone_hero_cap` in src/core/model.h. The words that name
+that cap on the page, the tooltip and the gate's sentence come from
+`clone_hero_cap_phrase` in the same file.
 
 **Comparison status**:
 What the comparison page says about one leaderboard score: under, at or above
