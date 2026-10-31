@@ -234,14 +234,6 @@ void draw_path_report_window(bool* open, const PathReportInput& input) {
         draw_coverage(w, *result);
     }
     report_frame::end(open, frame, w.memory);
-    // Closed this frame: the window's copy of the rows goes with AppState's
-    // (D103 item 28). The search box, dropdown, Optimal paths only and sort stay
-    // for the rows the next opening builds.
-    if (!*open) {
-        drop_rows(w);
-        w.built_from.reset();
-        w.list_open = false;
-    }
 }
 
 PathReportInput path_report_input(AppState& app) {
@@ -270,7 +262,8 @@ PathReportInput path_report_input(AppState& app) {
     in.callbacks.cancel = [&app] { app.cancel_path_report(); };
     in.callbacks.analyze = [&app] { app.start_path_report_batch(); };
     // The window clears window_open itself through its `open` flag; the
-    // close then goes through its one owner.
+    // close then goes through its one owner, which ends a question the
+    // window was asking.
     in.callbacks.close = [&app] { app.close_path_report(); };
     return in;
 }
