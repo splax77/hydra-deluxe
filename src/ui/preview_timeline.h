@@ -1,6 +1,7 @@
 // The Preview's timeline: one row per kind of thing in a PreviewScene, laid
 // out over one width through a window on the song (TimelineView), each x from
-// the view's fraction (ui/timeline_view.h). The layout and the hit test are
+// the view's fraction (ui/timeline_view.h), with the whole-song overview strip
+// above it and the scrollbar under it. The layouts and the hit test are
 // pure, so they run with no ImGui context; the drawing is thin over them. The
 // scrub bar's gold marks and the score box's star glyph are drawn here too,
 // so one place owns that geometry.
@@ -395,10 +396,11 @@ struct TimelineEvents {
     std::optional<size_t> clicked_fill;
     std::optional<size_t> clicked_band;
     std::optional<double> clicked_ms;  // a click anywhere else on the rows
-    // The window the user asked for this frame, through the strip, the
-    // scrollbar or the wheel over the rows; set whenever they used one, even
-    // when the window could not move. The caller keeps the window; the
-    // timeline only reports.
+    // The window the user asked for this frame through the strip, the
+    // scrollbar or the wheel over the rows: on a press, a button, a wheel
+    // notch, or a frame or thumb drag the pointer moved in, even when the
+    // window could not move. The caller keeps the window; the timeline only
+    // reports.
     std::optional<TimelineView> view;
 };
 
