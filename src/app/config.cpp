@@ -11,11 +11,14 @@
 #include <ctime>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <limits>
 #include <sstream>
 #include <stdexcept>
+#include <string_view>
 #include <variant>
 
+#include "app/ini_errors.h"
 #include "app/report_files.h"  // write_file_replacing
 
 #include "core/model.h"
@@ -98,7 +101,7 @@ std::string db_path() {
 
 std::string ini_path() {
     if (!g_overrides.ini_path.empty()) return g_overrides.ini_path;
-    return join_folder(exe_dir(), "hydra_settings.ini");
+    return join_folder(exe_dir(), std::string(kSettingsFileName));
 }
 
 std::unique_ptr<store::RecordStore> open_store(const std::string& db,
@@ -124,31 +127,20 @@ namespace {
 
 // ---- the key table: every hydra_settings.ini key, once ----------------------
 
-// Where a number outside its range lands.
-enum class Outside {
-    // The nearest edge of the range (D51 Q14).
-    NearestEdge,
-    // The setting's default: the range has no edge to land on.
-    Default,
-    // From the file, a value below the floor reads as the default; anywhere
-    // else (clamp), it lands on the floor. sp_cap only: 0, junk and 1.8.4's
-    // "auto" have always read as Clone Hero's 4 (ui-redesign decision 6).
-    DefaultFromFile,
-};
-
 struct Key {
     const char* name;
-    std::variant<bool Settings::*, int Settings::*, double Settings::*, std::string Settings::*,
+    std::variant<bool Settings::*, int Settings::*, std::string Settings::*,
                  std::vector<std::string> Settings::*>
         member;
-    // Number keys: the allowed range, both edges allowed, and where a value
-    // outside it lands. A double holds every int edge exactly.
-    double lo = 0;
-    double hi = 0;
-    Outside outside = Outside::NearestEdge;
+    // Number keys: the allowed range, both edges allowed. A value outside it
+    // lands on the nearest edge (D51 Q14, D270 calls 1 and 2).
+    int lo = 0;
+    int hi = 0;
     // Text keys: whether a # is part of the value (a folder path, a user id)
     // rather than the start of a comment (D51 Q15).
     bool free_text = false;
+    // Text keys: whether the value is a difficulty name (difficulty_from_name).
+    bool difficulty = false;
 };
 
 constexpr int kNoCeiling = std::numeric_limits<int>::max();
@@ -156,15 +148,13 @@ constexpr int kNoCeiling = std::numeric_limits<int>::max();
 constexpr int kWindowMs = static_cast<int>(kSqueezeWindowMs);
 
 Key on_off(const char* name, bool Settings::* m) { return Key{name, m}; }
-Key number(const char* name, int Settings::* m, int lo, int hi,
-           Outside outside = Outside::NearestEdge) {
-    return Key{name, m, static_cast<double>(lo), static_cast<double>(hi), outside};
-}
-Key number(const char* name, double Settings::* m, double lo, double hi,
-           Outside outside = Outside::NearestEdge) {
-    return Key{name, m, lo, hi, outside};
-}
+Key number(const char* name, int Settings::* m, int lo, int hi) { return Key{name, m, lo, hi}; }
 Key word(const char* name, std::string Settings::* m) { return Key{name, m}; }
+Key difficulty_word(const char* name, std::string Settings::* m) {
+    Key k{name, m};
+    k.difficulty = true;
+    return k;
+}
 Key free_text(const char* name, std::string Settings::* m) {
     Key k{name, m};
     k.free_text = true;
@@ -181,26 +171,22 @@ Key free_text_list(const char* name, std::vector<std::string> Settings::* m) {
 const std::vector<Key>& keys() {
     static const std::vector<Key> k = {
         on_off("is_rescan", &Settings::is_rescan),
-        word("view_difficulty", &Settings::view_difficulty),
+        difficulty_word("view_difficulty", &Settings::view_difficulty),
         on_off("view_prodrums", &Settings::view_prodrums),
         on_off("view_bass2x", &Settings::view_bass2x),
         on_off("view_noteshuffle", &Settings::view_noteshuffle),
         // Below 0 the search crashes (finding 311).
         number("depth_value", &Settings::depth_value, 0, kNoCeiling),
-        // A switch: 0 is scores, 1 is points, and anything else is scores,
-        // as the search has always read it (D51 addendum).
-        number("depth_mode", &Settings::depth_mode, 0, 1, Outside::Default),
+        // A switch: 0 is scores, 1 is points.
+        number("depth_mode", &Settings::depth_mode, 0, 1),
         on_off("mslimit_enabled", &Settings::mslimit_enabled),
         number("mslimit_value", &Settings::mslimit_value, -kWindowMs, kWindowMs),
         on_off("backendlimit_enabled", &Settings::backendlimit_enabled),
         number("backendlimit_value", &Settings::backendlimit_value, 0, kWindowMs),
-        // Below 1 (including 0) has no edge to land on, so it reads the
-        // default. The floor is the 1 ms it was while the setting was whole.
-        number("hit_window_ms", &Settings::hit_window_ms, 1.0, kNoCeiling, Outside::Default),
         number("preview_volume", &Settings::preview_volume, 0, 100),
         // The smallest cap is 1 bar: it can never activate SP, but it stays
         // allowed as a what-if (D51 Q16).
-        number("sp_cap", &Settings::sp_cap, 1, kNoCeiling, Outside::DefaultFromFile),
+        number("sp_cap", &Settings::sp_cap, 1, kNoCeiling),
         on_off("legacy_fills", &Settings::legacy_fills),
         on_off("auto_open_report", &Settings::auto_open_report),
         free_text("dm_last_user", &Settings::dm_last_user),
@@ -211,39 +197,45 @@ const std::vector<Key>& keys() {
     return k;
 }
 
-const Settings& defaults() {
-    static const Settings d;
-    return d;
+// `value` on k's range, at its nearest edge when outside it.
+int pull_into_range(const Key& k, int value) { return std::clamp(value, k.lo, k.hi); }
+
+// The four difficulty names, as a refused view_difficulty line lists them:
+// "Expert, Hard, Medium or Easy".
+std::string difficulty_names() {
+    std::string out;
+    const size_t n = std::size(kAllDifficulties);
+    for (size_t i = 0; i < n; ++i) {
+        if (i > 0) out += i + 1 == n ? " or " : ", ";
+        out += difficulty_name(kAllDifficulties[i]);
+    }
+    return out;
 }
 
-// `value` pulled into k's range; T is the key's number type (int or double).
-// `from_file` is load_file's call.
-template <typename T>
-T pull_into_range(const Key& k, T value, bool from_file) {
-    const T lo = static_cast<T>(k.lo);
-    const T hi = static_cast<T>(k.hi);
-    if (value >= lo && value <= hi) return value;
-    const bool to_default =
-        k.outside == Outside::Default ||
-        (k.outside == Outside::DefaultFromFile && from_file && value < lo);
-    if (to_default) return defaults().*std::get<T Settings::*>(k.member);
-    return std::clamp(value, lo, hi);
-}
-
-// Sets k's field of `s` from one line of the file.
-void read_value(const Key& k, const IniPair& line, Settings& s) {
+// Sets k's field of `s` from one line of the file at `path`, or throws
+// SettingsFileError naming the line.
+void read_value(const std::string& path, const Key& k, const IniPair& line, Settings& s) {
+    auto refuse = [&](std::string_view want) {
+        throw SettingsFileError(ini_bad_value_text(path, line.key, line.value, want));
+    };
     if (auto b = std::get_if<bool Settings::*>(&k.member)) {
-        // Anything but 0 or 1 keeps the setting as it was.
-        if (const std::optional<bool> on = parse_bool(line.value)) s.**b = *on;
+        const std::optional<bool> on = parse_bool(line.value);
+        if (!on) refuse("0 or 1");
+        s.**b = *on;
     } else if (auto n = std::get_if<int Settings::*>(&k.member)) {
-        // Junk reads as 0, as atoi always made it, then takes the range.
-        s.**n = pull_into_range(k, std::atoi(line.value.c_str()), true);
-    } else if (auto d = std::get_if<double Settings::*>(&k.member)) {
-        // A decimal reads through parse_finite_number. Junk reads as 0, as
-        // for a whole number, then takes the range.
-        s.**d = pull_into_range(k, parse_finite_number(line.value).value_or(0.0), true);
+        const std::optional<int> whole = parse_whole_number(line.value);
+        if (!whole) refuse(kWantWholeNumber);
+        s.**n = pull_into_range(k, *whole);
     } else if (auto t = std::get_if<std::string Settings::*>(&k.member)) {
-        s.**t = k.free_text ? line.whole_value : line.value;
+        if (k.difficulty) {
+            // What the app carries is one of the real names, whatever the
+            // file's case.
+            const std::optional<Difficulty> d = difficulty_from_name(line.value);
+            if (!d) refuse(difficulty_names());
+            s.**t = difficulty_name(*d);
+        } else {
+            s.**t = k.free_text ? line.whole_value : line.value;
+        }
     } else {
         auto list = std::get<std::vector<std::string> Settings::*>(k.member);
         (s.*list).push_back(k.free_text ? line.whole_value : line.value);
@@ -259,17 +251,21 @@ Settings Settings::load_file(const std::string& path) {
 
     std::string line;
     while (std::getline(f, line)) {
-        // A blank, comment-only or "="-less line is skipped.
         const std::optional<IniPair> kv = split_ini_line(line);
-        if (!kv) continue;
-        // A key no setting has is skipped: a retired one
-        // (kRetiredSettingsKeys) or any other.
+        if (!kv) {
+            // A blank or comment-only line is fine; any other line needs an =.
+            const std::string_view text = ini_line_text(line);
+            if (text.empty()) continue;
+            throw SettingsFileError(ini_not_key_value_text(path, text));
+        }
+        const Key* key = nullptr;
         for (const Key& k : keys())
-            if (kv->key == k.name) read_value(k, *kv, s);
+            if (kv->key == k.name) key = &k;
+        // A live key wins, so a name brought back is never skipped.
+        if (!key && is_retired_key(kRetiredSettingsKeys, kv->key)) continue;
+        if (!key) throw SettingsFileError(ini_unknown_key_text(path, kv->key));
+        read_value(path, *key, *kv, s);
     }
-    // Normalize the difficulty word: whatever was in the file, what the app
-    // carries is one of the four real names.
-    s.view_difficulty = difficulty_name(s.difficulty());
     return s;
 }
 
@@ -285,10 +281,6 @@ bool Settings::save_file(const std::string& path) const {
             f << k.name << "=" << (this->**b ? 1 : 0) << "\n";
         } else if (auto n = std::get_if<int Settings::*>(&k.member)) {
             f << k.name << "=" << this->**n << "\n";
-        } else if (auto d = std::get_if<double Settings::*>(&k.member)) {
-            // The stream's own form: a whole number writes as one (85), so a
-            // file written before the decimal keeps its bytes.
-            f << k.name << "=" << this->**d << "\n";
         } else if (auto t = std::get_if<std::string Settings::*>(&k.member)) {
             // An empty text is left out, so it loads as its default.
             if (!(this->**t).empty()) f << k.name << "=" << this->**t << "\n";
@@ -303,7 +295,7 @@ bool Settings::save_file(const std::string& path) const {
 int Settings::clamp(int Settings::* field, int value) {
     for (const Key& k : keys()) {
         auto n = std::get_if<int Settings::*>(&k.member);
-        if (n && *n == field) return pull_into_range(k, value, false);
+        if (n && *n == field) return pull_into_range(k, value);
     }
     return value;  // not a number setting: every int field is in the table
 }

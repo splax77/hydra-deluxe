@@ -39,3 +39,33 @@ TEST_CASE("each retired rules key loads silently, whatever it says") {
 TEST_CASE("a key that is neither live nor retired still stops the rules file") {
     CHECK_THROWS_AS(load_rules_text("auto_cap_lader = 4\n"), hydra::app::RulesFileError);
 }
+
+// The mirror of test_config.cpp's "a bad line refuses": the rules file words
+// each bad line in the same shapes, so one helper (app/ini_errors.h) serves
+// both files.
+TEST_CASE("a bad rules line refuses in the settings file's shapes") {
+    const testtemp::ScopedFile file("rules_badline", ".ini");
+    const std::string path = static_cast<std::filesystem::path>(file).u8string();
+    auto load = [&file](const char* line) {
+        {
+            std::ofstream f(static_cast<std::filesystem::path>(file), std::ios::trunc);
+            f << line << "\n";
+        }
+        return hydra::app::load_rules_file(file);
+    };
+    using hydra::app::RulesFileError;
+    CHECK_THROWS_WITH_AS(load("no_equals_sign_here"),
+                         (path + ": \"no_equals_sign_here\" is not key = value").c_str(),
+                         RulesFileError);
+    CHECK_THROWS_WITH_AS(load("unknown_key=whatever"),
+                         (path + ": unknown key \"unknown_key\"").c_str(), RulesFileError);
+    CHECK_THROWS_WITH_AS(load("max_tied_paths=abc"),
+                         (path + ": max_tied_paths = \"abc\" is not a whole number").c_str(),
+                         RulesFileError);
+    CHECK_THROWS_WITH_AS(load("max_tied_paths=2.5"),
+                         (path + ": max_tied_paths = \"2.5\" is not a whole number").c_str(),
+                         RulesFileError);
+    CHECK_THROWS_WITH_AS(load("sqout_rule=middle"),
+                         (path + ": sqout_rule = \"middle\" is not first_note or whole_chord").c_str(),
+                         RulesFileError);
+}
