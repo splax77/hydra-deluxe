@@ -131,6 +131,13 @@ def song_length_ms(song_dir: str) -> tuple[int, str]:
         "the stats wait has no cap, so nothing was started")
 
 
+def run_cap_s(length_ms: int) -> float:
+    """How long a run of a song `length_ms` long may take, in wall seconds:
+    the song plus POLL_CAP_EXTRA_S. The stats wait and the server's other
+    run caps use this one rule."""
+    return C.ms_to_s(length_ms) + POLL_CAP_EXTRA_S
+
+
 def launch_command(exe: str, song_dir: Optional[str], player: str,
                    profile: Optional[str] = None) -> list[str]:
     """The game's whole command line. With no song folder the game starts at
@@ -226,7 +233,7 @@ def start_run(song_dir: Optional[str], *, player: str = DEFAULT_PLAYER,
         # read from there.
         song_dir = os.path.abspath(song_dir)
         length_ms, source = song_length_ms(song_dir)
-        cap_s = C.ms_to_s(length_ms) + POLL_CAP_EXTRA_S
+        cap_s = run_cap_s(length_ms)
         if (game_files.song_ini_pro_drums(song_dir)
                 and player.split(",")[0].strip() != PRO_DRUMS_INSTRUMENT):
             env.out(f"note: song.ini says pro_drums = True but the player is {player}; "
