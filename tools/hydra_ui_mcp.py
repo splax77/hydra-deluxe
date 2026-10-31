@@ -4,8 +4,8 @@ Claude Code starts this helper (see .mcp.json at the repo root) and calls its
 tools. The helper launches a dev build of hydra_uitest.exe (headless) or
 Hydra.exe (the real window), connects to its live channel, sends each tool
 call as one command line and returns the reply's text as Hydra wrote it. The
-design and the wire protocol are in "T8: one owner for every command rule" in
-docs/superpowers/plans/2026-10-14-hydra-mcp-server.md.
+design and the wire protocol are in
+docs/adr/0030-hydra-owns-every-live-command-rule.md.
 
 Run it as:  py -I tools/hydra_ui_mcp.py
 

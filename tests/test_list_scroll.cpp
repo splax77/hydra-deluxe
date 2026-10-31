@@ -1,6 +1,5 @@
 // Tests for ui/list_scroll: whether a selection change or a change of row
-// height scrolls the list, and how far (plan docs/superpowers/plans/2026-10-14-column-shares-scroll-left-align.md,
-// Change 2, the user's answers 4 and 5).
+// height scrolls the list, and how far (the user's rulings, D242 and D247).
 
 #include "doctest.h"
 

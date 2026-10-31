@@ -34,9 +34,9 @@
 ;   * The relaunch runs as the user, not as administrator, only because
 ;     Setup raises its own UAC prompt. So Hydra must start Setup with the
 ;     plain "open" verb, never "runas": an already-elevated Setup would
-;     relaunch Hydra elevated. The ruling is in
-;     docs/superpowers/plans/2026-10-22-auto-updater.md, section "Ruling:
-;     how Hydra starts the installer".
+;     relaunch Hydra elevated. The ruling is in D259 ("The ruling on how
+;     Hydra starts the installer") and docs/development.md, "The version
+;     rule".
 
 #ifndef HYDRA_VERSION
   #error Pass /DHYDRA_VERSION (use installer\build_installer.ps1)

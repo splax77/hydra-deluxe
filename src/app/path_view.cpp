@@ -416,8 +416,8 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
 
 std::vector<std::string> build_score_breakdown(const Path& path) {
     // The labels are written once, here. Every number starts in one column,
-    // two spaces after the longest label, and is not padded (answer 11 of
-    // docs/superpowers/plans/2026-10-14-column-shares-scroll-left-align.md),
+    // two spaces after the longest label, and is not padded (the layout the
+    // user approved in D247),
     // so a renamed label moves the column with it.
     struct Row {
         std::string label;

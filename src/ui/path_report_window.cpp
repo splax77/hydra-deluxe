@@ -113,7 +113,7 @@ void rebuild(PathWindow& w, const std::shared_ptr<const GeneratedReport>& result
     apply_filters(w);
 }
 
-// The coverage lines (plan 2026-10-15, question 5): the can't-analyze line
+// The coverage lines (D249 item 5): the can't-analyze line
 // with its Show list, then the no-result line. The words are the report's
 // own (GeneratedReport); the window only draws them.
 void draw_coverage(PathWindow& w, const GeneratedReport& r) {
@@ -209,8 +209,8 @@ void draw_path_report_window(bool* open, const PathReportInput& input) {
     frame.building_subtitle = "Building the report from your library...";
     if (input.batch) {
         // The batch the build waits on: the strip's words while it prepares,
-        // then its own count over a bar it fills (plan 2026-10-15, question
-        // 8). Both numbers are the snapshot's, as the strip shows them.
+        // then its own count over a bar it fills (D249
+        // item 8). Both numbers are the snapshot's, as the strip shows them.
         const PathReportInput::WaitedBatch& b = *input.batch;
         frame.building_lines = {b.preparing ? std::string(app::kBatchPreparingText)
                                             : "Analyzing " + group_thousands(b.completed) +

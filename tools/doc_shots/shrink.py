@@ -15,8 +15,8 @@ from pathlib import Path
 
 from PIL import Image
 
-# The user's limits (docs/superpowers/plans/2026-10-25-doc-screenshots.md,
-# "User decisions (2026-10-25)").
+# The user's limits, set 2026-10-25 (docs/superpowers/plans/2026-10-25-doc-screenshots.md
+# (never committed; not kept)).
 MAX_FILE_BYTES = 500 * 1024
 MAX_FOLDER_BYTES = 4 * 1024 * 1024
 

@@ -20,8 +20,7 @@
 //    address and field offset in tools/ch_probe/constants.py has a row in the
 //    6142 table, no span on those pages holds a scrambled name, and every rule
 //    block has the page template's shape. The fact forms and the template are
-//    question 2 and "The page template" in
-//    docs/superpowers/plans/2026-10-30-clone-hero-reference.md;
+//    on docs/clone-hero/README.md, section "Page rules";
 //    tools/ch_mcp/dump_facts.py --tsv writes the tables and owns how a span
 //    resolves to a fact (its TABLE_COLUMNS are the columns).
 // 6. No permanent doc (every markdown file git lists, less the folders
@@ -520,8 +519,8 @@ namespace {
 
 // ---- check 5: game facts on the Clone Hero pages ---------------------------
 
-// The kinds of backticked span check 5 reads. The forms are question 2 of
-// docs/superpowers/plans/2026-10-30-clone-hero-reference.md; fact_form below
+// The kinds of backticked span check 5 reads. The forms are on
+// docs/clone-hero/README.md, section "Page rules"; fact_form below
 // is the one place this test tells them apart.
 enum class FactForm {
     None,         // not a game fact
@@ -1296,8 +1295,8 @@ namespace {
 // ---- check 4: the pictures ------------------------------------------------
 
 // The size limits for one picture and for the whole docs/images folder. The
-// user set them on 2026-10-25 (docs/superpowers/plans/2026-10-25-doc-screenshots.md,
-// "User decisions"). tools/doc_shots/shrink.py fails a capture run on the same
+// user set them on 2026-10-25 (docs/superpowers/plans/2026-10-25-doc-screenshots.md
+// (never committed; not kept)). tools/doc_shots/shrink.py fails a capture run on the same
 // limits, so a bloated picture is caught both when it is taken and at merge.
 constexpr std::uintmax_t kDocImageMaxBytes = 500 * 1024;
 constexpr std::uintmax_t kDocImagesMaxTotalBytes = 4 * 1024 * 1024;

@@ -2,10 +2,8 @@
 
 // Whether a list scrolls, and how far: when the selected row changes, and
 // when every row changes height under a selected row. The one owner of that
-// question for every list in the app (plan
-// docs/superpowers/plans/2026-10-14-column-shares-scroll-left-align.md,
-// Change 2, the user's answers 4 and 5). selection_scroll and
-// row_keeps_place decide; scroll_last_row and keep_last_row_in_place are the
+// question for every list in the app (the user's rulings, D242 and D247).
+// selection_scroll and row_keeps_place decide; scroll_last_row and keep_last_row_in_place are the
 // only places that ask ImGui to scroll.
 //
 // A table that moves its view to the selected row calls, right after that

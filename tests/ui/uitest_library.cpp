@@ -1585,7 +1585,7 @@ void test_scan_missing_folder(ImGuiTestContext* ctx) {
 }
 
 // ---- the version bar ----------------------------------------------------------
-// docs/superpowers/plans/2026-10-23-update-check-on-launch.md, task T1b.
+// The bar D260 rules on.
 // Nothing here touches the network: UpdateSeams serves the release reply, the
 // download and the installer start.
 

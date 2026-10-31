@@ -261,7 +261,7 @@ The helper and Hydra talk over a Windows named pipe. The helper picks the pipe's
 
 Hydra's C++ side owns every command rule: what a verb means, how its arguments parse, which numbers it takes, the timeout, line numbers, the reply's wording, the filters, and where the log and crash dump go. The helper only carries messages. It owns launch and stop, the pipe name, the reply caps (worked out only from numbers Hydra reports), the snapshot, the running-Hydra check, the real-app record and the tool list. The stand-in Hydra its tests use, `tools/fake_hydra_live.py`, plays only transport: a hello line, a plain echo, a hang, an exit, a closed pipe and an oversized reply. Every test of what a command does runs on the real headless `hydra_uitest --live` (`RealExeLayer` in `tools/test_hydra_ui_mcp.py`).
 
-So a question about a command is answered in C++, never in Python. The full table is in "T8: one owner for every command rule" in `docs/superpowers/plans/2026-10-14-hydra-mcp-server.md`, and the reasons are in `docs/adr/0030-hydra-owns-every-live-command-rule.md`.
+So a question about a command is answered in C++, never in Python. The full table and the reasons are in `docs/adr/0030-hydra-owns-every-live-command-rule.md`.
 
 ## Adding a C++ test
 

@@ -1,7 +1,6 @@
 // Tests for the updater's state in AppState (ui/update_job.h, ui/app_state.h)
-// and the version bar's status (AppState::version_bar_status). Plan:
-// docs/superpowers/plans/2026-10-23-update-check-on-launch.md, task T1a,
-// criteria A2 to A8 (A1 is in test_config.cpp). Nothing here touches the
+// and the version bar's status (AppState::version_bar_status), as D260 rules.
+// Nothing here touches the
 // network: the release reply, the download and the installer start all go
 // through the test seams.
 

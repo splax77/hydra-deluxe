@@ -2,8 +2,8 @@
 
 It knows no command. It makes the pipe --pipe names, writes a hello line on
 connect, and answers each line by echoing it back in a reply line (the wire
-shape is in "The protocol after T8" in
-docs/superpowers/plans/2026-10-14-hydra-mcp-server.md). Every test of what a
+shape is in "The wire protocol" in
+docs/adr/0030-hydra-owns-every-live-command-rule.md). Every test of what a
 command does runs against the real hydra_uitest --live instead.
 
 Lines that drive the transport failures the real exe cannot be made to show:

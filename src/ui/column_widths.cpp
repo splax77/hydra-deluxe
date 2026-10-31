@@ -1,6 +1,5 @@
 // The one column-width rule. The interface and what each step promises are in
-// column_widths.h; the design is Change 1 of
-// docs/superpowers/plans/2026-10-14-column-shares-scroll-left-align.md.
+// column_widths.h; the user's calls behind it are D243 to D245.
 
 #include "ui/column_widths.h"
 

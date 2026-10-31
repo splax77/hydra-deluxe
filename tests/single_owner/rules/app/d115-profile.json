@@ -40,7 +40,7 @@
           "why": "Settings::profile, the owner: the one place the three parts are put together"
         }
       ],
-      "note": "A profile (chartmode, SP cap and lens) put together by hand instead of through Settings::profile or its two named variants, profile_at_clone_hero_cap and profile_with_fills. A result is filed under (chart, profile), and Settings::record_key is only the chart plus Settings::profile. The row cannot see parts passed as already-named variables, so the type (lookups take a Profile) is the real guard. The scope is src and tools because the scan scopes by top folder or single file. The hand-built ones that stand today are listed in baseline.json until the D115 A2 tasks move them. Decided by: D115, plan docs/superpowers/plans/2026-10-12-one-record-per-chart.md, task A1-4; the earlier chartmode/cap/lens row (concept audit M12, H1) is folded in."
+      "note": "A profile (chartmode, SP cap and lens) put together by hand instead of through Settings::profile or its two named variants, profile_at_clone_hero_cap and profile_with_fills. A result is filed under (chart, profile), and Settings::record_key is only the chart plus Settings::profile. The row cannot see parts passed as already-named variables, so the type (lookups take a Profile) is the real guard. The scope is src and tools because the scan scopes by top folder or single file. The hand-built ones that stand today are listed in baseline.json until the D115 A2 tasks move them. Decided by: D115 (ADR 0031); the earlier chartmode/cap/lens row (concept audit M12, H1) is folded in."
     }
   ]
 }

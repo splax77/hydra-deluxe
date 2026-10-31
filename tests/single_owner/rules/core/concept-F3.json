@@ -27,7 +27,7 @@
       "owner_file": "src/core/strutil.cpp",
       "owner_symbol": "parse_finite_number",
       "date": "2026-10-14",
-      "decision": "plan 2026-10-14-hydra-mcp-server.md, T8: timeout and wait take a finite number and nothing else, read as every Hydra number is (D114 item 8)",
+      "decision": "ADR 0030: timeout and wait take a finite number and nothing else, read as every Hydra number is (D114 item 8)",
       "added_by": "mcp-t8a-review",
       "pattern": "\\bstd::from_chars\\s*\\(",
       "scope": ["tests"],

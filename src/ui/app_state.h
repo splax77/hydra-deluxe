@@ -558,7 +558,7 @@ public:
     ReportBuild dm_report_build() const;
 
     // Builds the path report under the current settings, analyzing first
-    // (plan 2026-10-15, question 8). It plans a batch over every library row;
+    // (D249 item 8). It plans a batch over every library row;
     // when that plan has rows to run, the batch runs (once the report window
     // asks and the user answers Analyze, when there are more than
     // report_confirm_above rows) and the report builds when it finishes, as

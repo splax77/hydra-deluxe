@@ -30,8 +30,7 @@ namespace hydra::app {
 std::string exe_dir();
 
 // Whether the running exe is the one Hydra's installer put in place: the one
-// rule for "is this the installed exe" (decision 14 of
-// docs/superpowers/plans/2026-10-22-auto-updater.md). Only the installed exe
+// rule for "is this the installed exe" (D259 call 14). Only the installed exe
 // checks for updates, so a dev build, a worktree build, the test runner or a
 // copy of the exe elsewhere never does.
 bool installed_by_setup();

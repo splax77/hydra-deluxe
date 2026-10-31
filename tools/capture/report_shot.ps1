@@ -1,8 +1,12 @@
+# Clicks "Open path report", waits for the report window, and captures every
+# window of the process as <Out>-0.png, <Out>-1.png and so on. Setup and -Dir:
+# see tools/capture_window.ps1.
+#
 # ClickFromRight: the "Open path report" button sits at the toolbar's right edge
 # (move_to_right_edge in library_toolbar.cpp), so the click is measured from the
 # client area's right edge. 80 is 2,560 - 2,480 on the user's maximized window.
 param([string]$Dir, [string]$Out, [int]$ClickFromRight = 80, [int]$ClickY = 22)
-. (Join-Path $PSScriptRoot "..\..\..\tools\capture_window.ps1")
+. (Join-Path $PSScriptRoot "..\capture_window.ps1")
 $p = Start-Hydra $Dir 12
 $h = $p.MainWindowHandle
 $cw = Get-ClientWidth $h

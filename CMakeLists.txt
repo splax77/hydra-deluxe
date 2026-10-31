@@ -262,7 +262,7 @@ add_subdirectory(third_party/opus EXCLUDE_FROM_ALL)
 # D88 ships Microsoft's mimalloc as its override DLL: mimalloc.dll replaces
 # malloc/free for the whole process, helped by the prebuilt
 # mimalloc-redirect.dll. These options are the ones the trial measured
-# (docs/handoffs/2026-10-07-mimalloc-trial.md); everything else stays at
+# (docs/development.md, "mimalloc trial numbers"); everything else stays at
 # mimalloc's release defaults. hydra_use_mimalloc (bottom of this file) owns
 # which exes link it and how. HYDRA_MIMALLOC off leaves it out entirely.
 if(HYDRA_MIMALLOC)

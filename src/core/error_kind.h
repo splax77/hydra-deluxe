@@ -51,8 +51,7 @@ enum class ErrorKind {
 //
 // A failure the chart's own content causes fails the same way every time the
 // same file is read, so the store keeps it as the chart's result under its
-// profile (the user's answer 1, 2026-10-15, in
-// docs/superpowers/plans/2026-10-15-report-covers-whole-library.md). Any
+// profile (the user's answer 1, 2026-10-15, recorded in D249). Any
 // other failure can pass on a retry and is never stored.
 
 // One remembered kind and the name the records table stores it under.
