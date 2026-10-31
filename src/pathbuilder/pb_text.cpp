@@ -228,8 +228,7 @@ std::string cost_or_best(int64_t cost) {
 namespace {
 
 // "Hydra would end it at m97, ending with ... ." for the candidate's
-// activation, or nothing when it has no deact node. fill_hover_text and
-// fill_hover_card both say it.
+// activation, or nothing when it has no deact node. fill_hover_card says it.
 std::optional<std::string> hydra_end_sentence(const PreviewScene& scene, const Activation& end) {
     const std::optional<int64_t> d = end.deact_tick();
     if (!d) return std::nullopt;
