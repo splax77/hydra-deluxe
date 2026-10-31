@@ -237,6 +237,35 @@
       "note": "The Beyond edge handed straight to a cast, a rounding or a formatter is a second way of writing it. format_ms_whole is not a stand-in: the review found the two differ on a fractional edge."
     },
     {
+      "question": "How is the hit window written in ms?",
+      "owner": "hit_window_text in src/app/report.cpp",
+      "owner_file": "src/app/report.cpp",
+      "owner_symbol": "hit_window_text",
+      "date": "2026-10-30",
+      "decision": "D278 item 4; D270 call 8",
+      "added_by": "aoa-a1-review",
+      "pattern": "\\b(to_string|format_ms\\w*|whole_ms_text)\\(\\s*(static_cast<[^>]*>\\(\\s*)?(hydra::)?kHitWindowMs\\b",
+      "anchor": "kHitWindowMs",
+      "must_match": [
+        "return std::to_string(static_cast<int64_t>(kHitWindowMs));",
+        "\"the \" + std::to_string(kHitWindowMs) + \" ms hit window\"",
+        "const std::string w = format_ms_whole(kHitWindowMs);"
+      ],
+      "must_not_match": [
+        "return \"the \" + report::hit_window_text() + \" ms hit window\";",
+        "constexpr double kHitWindowMs = 85.0;",
+        "CHECK(*t85[2].cutoff == kHitWindowMs);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/app/report.cpp",
+          "line_text": "std::string hit_window_text() { return whole_ms_text(kHitWindowMs); }",
+          "why": "hit_window_text, the owner"
+        }
+      ],
+      "note": "The hit window handed to a cast or a formatter for the words the reports print (the footer's and the Timing tooltip's \"the N ms hit window\") is a second way of writing it. D278 item 4 words both from the one constant."
+    },
+    {
       "question": "Which timing_tiers entries are the open ones?",
       "owner": "beyond_tier and none_tier in src/core/squeeze_rating.cpp",
       "owner_file": "src/core/squeeze_rating.cpp",

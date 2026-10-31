@@ -102,7 +102,9 @@ TEST_CASE("Skipped fills: under the 1.1 rule a fill exactly at the reach edge is
         REQUIRE(paths.front().activations.front().timecode.ticks() == 19200);
         return paths.front().activations.front().skipped_fill_ticks;
     };
-    const int64_t edge = 7200 + static_cast<int64_t>(kHitWindowMs);
+    // The deadline (7200 ms, checked above) plus the 85 ms hit window, pinned
+    // as a number so a changed window fails here instead of moving the edge.
+    const int64_t edge = 7285;
     CHECK((passed_over(edge) == std::vector<int64_t>{9600}));
     CHECK(passed_over(edge + 1).empty());
 }
