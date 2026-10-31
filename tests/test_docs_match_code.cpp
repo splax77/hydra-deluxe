@@ -1506,10 +1506,12 @@ namespace {
 // live step's call list. This check reads a plan against that page.
 //
 // counts_for_premise_map says which plans count. kPremiseMapSince is the
-// user's cutoff (2026-10-31, "Approve all six"): a plan approved before it
-// keeps the form it was approved in, unless it already carries a map, and then
-// the map is held to the shape. Lines inside a fenced block are an example,
-// not the plan's own map or steps, so the check skips them.
+// cutoff the user chose when asked which plans this check reads ("Approve all
+// six", 2026-10-31): a plan approved before it keeps the form it was approved
+// in, unless it already carries a map, and then the map is held to the shape.
+// Lines inside a fenced block are an example, not the plan's own map or
+// steps, so the check skips them. A Status or a Kind written in backticks, as
+// the page's own examples are, reads the same as one written plain.
 constexpr const char* kPlansDir = "docs/superpowers/plans/";
 constexpr const char* kPremiseMapSince = "2026-11-01";
 constexpr const char* kPremiseMapHeading = "## Premise map";
@@ -1642,7 +1644,7 @@ void check_premise_maps(const std::vector<Doc>& docs, std::vector<std::string>& 
             if (level >= 1 && level <= 2) in_questions = line.rfind(kQuestionsHeading, 0) == 0;
             if (level == 3 && line.find(':') != std::string::npos) {
                 const std::string id = heading_name(line);
-                if (!id.empty() && id.find_first_of(" \t") == std::string::npos) tasks.insert(id);
+                if (!id.empty()) tasks.insert(id);
             }
             std::smatch m;
             if (level == 0 && in_questions && std::regex_search(line, m, question_item))
@@ -1693,7 +1695,10 @@ void check_premise_maps(const std::vector<Doc>& docs, std::vector<std::string>& 
             if (std::find(std::begin(kKindWords), std::end(kKindWords), kind) == std::end(kKindWords))
                 problems.push_back(where + "Kind \"" + cell(1) + "\" is not exactly one of the six Kind words");
             if (inline_spans(cell(2)).empty()) problems.push_back(where + "Source holds no backticked token");
-            const std::string status = cell(3);
+            std::string status;
+            for (const char c : cell(3))
+                if (c != '`') status += c;
+            status = hydra::trim(status);
             if (kind != "unchecked") {
                 if (!std::regex_search(status, checked_status))
                     problems.push_back(where + "Status does not start with checked and a date");
@@ -1835,12 +1840,15 @@ TEST_CASE("docs match code: the premise map check catches each form and reads on
              "```",                                                                            // 35
              "### LS-D9: an example in a fence is not a step",                                 // 36
              "```"}},                                                                          // 37
-        // A plan in the shape, its only row written without outer pipes.
+        // A plan in the shape: a row written without outer pipes, a Status in
+        // backticks, and an unchecked row naming a task whose id holds a space.
         Doc{"docs/superpowers/plans/2026-11-04-good.md",
-            {"## Tasks", "### PM-1: a task", "## The live steps", "### LS-K1 and LS-K2",
+            {"## Tasks", "### PM-1: a task", "### Task 2: another task", "## The live steps", "### LS-K1 and LS-K2",
              "Calls: `ch_start` (seen: LS-K0 run 2), `ch_stop` (never tried)", "## Premise map",
              "Premise | Kind | Source | Status", "---|---|---|---",
-             "P1: a fact | ruling | `docs/agents/rulings/x.md` | checked 2026-11-04"}}};
+             "P1: a fact | ruling | `docs/agents/rulings/x.md` | checked 2026-11-04",
+             "| P2: a fact | `data` | `x.md` | `checked 2026-11-04` |",
+             "| P3: a fact | unchecked | `x.md` | Task 2 checks it |"}}};
     std::vector<std::string> problems;
     check_premise_maps(docs, problems);
     const std::string forms = "docs/superpowers/plans/2026-11-02-forms.md:";
