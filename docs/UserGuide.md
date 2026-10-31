@@ -441,7 +441,7 @@ Both report windows have the same layout. From top to bottom:
 | Table | One row per path or score. Hover a column heading to see what the column means. |
 | Footer | A dim note under the table. |
 
-Click a column heading to sort by it, and click it again to flip the order. Shift+click another heading to add a second sort. Empty values always sink to the bottom. Text columns sort the way the Library does. To hide or show a column, right-click a column heading and pick it from the menu. The row number column always stays. Columns are sized the way the Library's are, and number cells start at the left like the text. A width you drag holds until the report is built again or you change the search.
+Click a column heading to sort by it, and click it again to flip the order. Shift+click another heading to add a second sort. Empty values always sink to the bottom. Text columns sort the way the Library does, apart from the path report's `Timing` column. To hide or show a column, right-click a column heading and pick it from the menu. The row number column always stays. Columns are sized the way the Library's are, and number cells start at the left like the text. A width you drag holds until the report is built again or you change the search.
 
 When no row passes the filters, the window says `Nothing matches.` `Clear filters` then empties the search and sets the dropdown back to its first entry.
 
@@ -501,7 +501,7 @@ The table has one row per path and starts sorted by score, highest first. Its co
 | `Acts` | Activations: how many times the path uses Star Power. |
 | `Max skip` | The most fills any one activation passes over before activating. |
 | `Hardest ms` | The hardest squeeze or required early fill the path needs, in ms: the gap at the SP end, or at the fill deadline. It leaves out the frontend timing scale. A dash means it needs none. |
-| `Timing` | The path's timing tier, the bands the timing dropdown lists. |
+| `Timing` | The path's timing tier, the bands the timing dropdown lists. It sorts in the dropdown's order, from `Normal` to `None`. |
 | `Early fill (ms)` | The hardest early fill on the path (written `E0` in the path): how many ms early you must hit to summon the fill. Negative means slack. A dash means the path has none. |
 | `Average Multiplier` | The score without solo bonuses divided by the base score (every note at 1x). |
 | `SqIn` | SP phrase notes squeezed into an active SP window (`+` in the path). |
@@ -539,10 +539,10 @@ Every row gets one status. The status dropdown shows one status at a time, or `A
 | `Above optimal` | Scores played at 100% speed that are higher than it. |
 | `No current result (in your library)` | Scores for a chart in your library that has no current result for this mode at SP cap 4. |
 | `No paths (analyzed, none kept)` | Scores for a chart that was analyzed, but whose analysis kept no path. |
-| `Not in your library` | Scores for a chart the last scan didn't find. |
-| `Other speed` | Scores played at a speed other than 100%. |
+| `Not in your library` | Scores for a chart the last scan didn't find, at any speed. |
+| `Other speed` | Scores played at a speed other than 100%, for a chart in your library. |
 
-A score played at another speed is always `Other speed`, whatever else is true of it. Hydra Deluxe's optimal is for normal speed. So `Other speed` rows show Hydra Deluxe's numbers when it has them, but aren't compared with its optimal.
+A score played at another speed is `Other speed` whenever its chart is in your library, whatever else is true of it. Hydra Deluxe's optimal is for normal speed. So `Other speed` rows show Hydra Deluxe's numbers when it has them, but aren't compared with its optimal.
 
 Rows above optimal are expected, not errors. Hydra Deluxe's optimal leaves out several score backends on purpose. Many leaderboard scores were also set on older Clone Hero versions, whose fill rules allowed totals that are impossible now.
 
