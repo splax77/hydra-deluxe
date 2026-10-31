@@ -6,6 +6,18 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	field	1048	GlobalVariables	currentSongEntry		0x28	GlobalVariables.currentSongEntry
 6142	field	1048	GlobalVariables	instance		0x8	GlobalVariables.instance
 6142	field	1048	GlobalVariables	scoreDisabled		0x7C	GlobalVariables.scoreDisabled
+6142	field	1429	PlayerSelectionMenu	playerIndex		0x130	PlayerSelectionMenu.playerIndex
+6142	field	1429	PlayerSelectionMenu	ʳʲʿˁʵʴʿˁʺʵʾ		0x246	#1429+0x246
+6142	field	1429	PlayerSelectionMenu	ʴʲʷʲʿʽʷʻʻʽʸ		0x230	#1429+0x230
+6142	field	1429	PlayerSelectionMenu	ʵʽˀˁʿʿʷʿʶˁʺ		0x241	#1429+0x241
+6142	field	1429	PlayerSelectionMenu	ʶʲʿʹʹʽʸʿʴʶʷ		0x1E8	#1429+0x1E8
+6142	field	1429	PlayerSelectionMenu	ʶʹʷʶʹʲʾʾʾʲʵ		0x242	#1429+0x242
+6142	field	1429	PlayerSelectionMenu	ʷʻʺʼʴʶʴʳʽʺʿ		0x240	#1429+0x240
+6142	field	1429	PlayerSelectionMenu	ʸʲˀʶʲʲʻʵʴʸʽ		0x1F0	#1429+0x1F0
+6142	field	1429	PlayerSelectionMenu	ʸʾˁʾʲˀʶˀʵʸʵ		0x218	#1429+0x218
+6142	field	1429	PlayerSelectionMenu	ʾʺʽʵʾˀʷʳʺʴʽ		0x120	#1429+0x120
+6142	field	1429	PlayerSelectionMenu	ˁʳʾʴˀʼʽˁʴˀʼ		0x244	#1429+0x244
+6142	field	1429	PlayerSelectionMenu	ˁʶˁʲʳʾʽʿʸʿˀ		0x228	#1429+0x228
 6142	field	176	SongEntry	checksum		0x38	SongEntry.checksum
 6142	field	449	GameManager	audioCal		0x6C	GameManager.audioCal
 6142	field	449	GameManager	isSongOver		0x91	GameManager.isSongOver
@@ -14,6 +26,9 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	field	449	GameManager	songTime		0x70	GameManager.songTime
 6142	field	449	GameManager	songTimeVideoTime		0x78	GameManager.songTimeVideoTime
 6142	field	449	GameManager	videoCal		0x68	GameManager.videoCal
+6142	field	824	BaseMenu	ʳʿʻʻʵʷʸʾʷʳʳ		0x40	#824+0x40
+6142	field	824	BaseMenu	ʻʳˀʼʿʽʹʲʼʾʷ		0x3C	#824+0x3C
+6142	field	824	BaseMenu	ˀʸʳʷʳʺʻʴʴʿʵ		0x48	#824+0x48
 6142	field	8255		ʲʳʶʹʶʸʳʾʾʳʶ		0x41	#8255+0x41
 6142	field	8255		ʲʾʾʸʶʾʺʺʵʳʼ		0x30	OFF_BACK_WINDOW
 6142	field	8255		ʴʾˁʾʼʹʲʳʾʿʺ		0x120	OFF_SP_END_TIME

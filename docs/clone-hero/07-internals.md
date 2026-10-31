@@ -2,7 +2,7 @@
 
 This page covers the game's classes and fields that the tools read, the per-note hooks, the bot, and how the two builds name things.
 It describes build 1.1 (v1.1.0.6142), and says where 1.0 (v1.0.0.4045) differs.
-Last write-back: 2026-10-30.
+Last write-back: 2026-10-31.
 
 Most rows here are about the game's own layout, which no Hydra rule reads. Their Ruling line says so. The rules these fields feed (timing, Star Power, scoring) live on pages 03, 05 and 06. Paths that start `RUNS` mean `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-10-28\`; `GD` means the surviving Ghidra decompile `C:\Users\Patrick\Downloads\Hydra\hydra-data\scratch_ms\ghidra_decompile_all.txt`; `dump.cs` is `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-dumps\6142\dump.cs`; `overlay-spike` means `tools/ch_probe/experiments/results/overlay-spike/`, whose result files are untracked today.
 
@@ -317,6 +317,58 @@ Game code (6142): class headers only; no method read.
 Hydra: no owner.
 Ruling: none needed: no Hydra rule reads it.
 Found: 2026-10-30, this plan's wave 2 scout R8.
+
+## The player screen
+
+### IN-56 The player screen keeps its page in an enum field at +0x120
+
+Rule: `PlayerSelectionMenu` (TypeDefIndex 1429, a BaseMenu) holds the page it shows at +0x120. The field's type is an enum nested in the class (TypeDefIndex 1427) with five words: Confirm 0, Instrument 1, Difficulty 2, Modifiers 3 and Ready 4.
+Label: Proven in the game's code
+Evidence: `dump.cs` line 72822 (the class header), line 72825 (the field at 0x120) and lines 72794 to 72803 (the enum and its five words). This is dump text, not a listing.
+Game code (6142): `#1429+0x120`; field only, no method.
+Hydra: no owner: Hydra never reads the running game. The tools read the field by name through tools/ch_mcp/menu_fields.json, and `menu_lines` in tools/ch_mcp/frida_tools.py prints it.
+Ruling: none needed: no Hydra rule reads it.
+Found: 2026-10-31, session 5cc1cc07 (task LS-K3-menu-fields), checked in the dump.
+
+### IN-57 The player screen keeps the profile's controller type as a byte enum at +0x1E8
+
+Rule: `PlayerSelectionMenu` holds a controller type at +0x1E8. Its type is a one-byte enum (TypeDefIndex 8309) with four words: Guitar 0, SixFretGuitar 1, Drums 2 and FiveLaneDrums 3.
+Label: Proven in the game's code
+Evidence: `dump.cs` line 72873 (the field at 0x1E8) and lines 532200 to 532208 (the enum, its byte value field and its four words). This is dump text, not a listing.
+Game code (6142): `#1429+0x1E8`; field only, no method.
+Hydra: no owner: Hydra never reads the running game. The tools read it through tools/ch_mcp/menu_fields.json.
+Ruling: none needed: no Hydra rule reads it.
+Found: 2026-10-31, session 5cc1cc07 (task LS-K3-menu-fields), checked in the dump.
+
+### IN-58 The player screen's cursor and scroll live on BaseMenu, and its rows are two arrays
+
+Rule: `BaseMenu` (TypeDefIndex 824), the parent of `PlayerSelectionMenu`, holds three ints the menus share: a scroll at +0x3C, a cursor at +0x40 and a visible-row count at +0x48. `PlayerSelectionMenu` adds its rows: an array of row names (strings) at +0x218, an array of row instrument ids (the instrument enum, TypeDefIndex 8326) at +0x228 and a row count (an int) at +0x230. It also holds the instrument at +0x240 and the difficulty at +0x241, the player index at `PlayerSelectionMenu.playerIndex`, and bools at +0x1F0, +0x242, +0x244 and +0x246.
+Label: Proven in the game's code
+Evidence: `dump.cs` lines 44726 and 44742 to 44745 (BaseMenu and its four ints, the one at 0x44 not read here), lines 72885, 72887 and 72888 (the two arrays and the count), lines 72890 and 72891 (instrument and difficulty), line 72828 (playerIndex) and lines 72875, 72892, 72894 and 72896 (the bools). The dump gives only the layout; what each field means beyond its type is IN-60. This is dump text, not a listing.
+Game code (6142): `#824+0x3C`, `#824+0x40`, `#824+0x48`, `#1429+0x218`, `#1429+0x228`, `#1429+0x230`, `#1429+0x240`, `#1429+0x241`, `PlayerSelectionMenu.playerIndex`, `#1429+0x1F0`, `#1429+0x242`, `#1429+0x244`, `#1429+0x246`; fields only, no method.
+Hydra: no owner: Hydra never reads the running game. The tools read these through tools/ch_mcp/menu_fields.json; which row is highlighted is worked out in `highlighted_row_text` in tools/ch_mcp/frida_tools.py.
+Ruling: none needed: no Hydra rule reads it.
+Found: 2026-10-31, session 5cc1cc07 (task LS-K3-menu-fields), checked in the dump.
+
+### IN-59 The player screen's instrument and difficulty are the profile's saved copy
+
+Rule: The instrument at +0x240 and the difficulty at +0x241 of `PlayerSelectionMenu` are copies of the profile's saved values, made when the screen opens. They do not follow the cursor while the player picks.
+Label: Unknown
+Evidence: a read-only scout's decompile of build 6142 (session 5cc1cc07, 2026-10-31) reported it; no listing of it is committed. The dump shows only the two fields' types and offsets (`dump.cs` lines 72890 and 72891), not who writes them. Live run LS-K3 run 2 (2026-10-31) read Guitar and Expert in these two fields; that one read neither proves nor rules out a saved copy.
+Game code (6142): `#1429+0x240`, `#1429+0x241`; the writer was not read from a listing.
+Hydra: no owner: Hydra never reads the running game.
+Ruling: none needed: no Hydra rule reads it.
+Found: 2026-10-31, session 5cc1cc07, from a decompile of build 6142.
+
+### IN-60 How the player screen moves, from a decompile
+
+Rule: The pad Green confirms the highlighted row and moves to the next page. Yellow and Blue move the cursor, but only when the profile's controller type (IN-57) is Drums or FiveLaneDrums. The highlighted row is row cursor + scroll (IN-58). On the Instrument page, the highlighted row's instrument id is the instrument Green sets; what the ids mean on the other pages was not found. The code also sets the page field (IN-56) to 5, 6 and 7, which the enum does not name. The bool at +0x1F0 looks like a first-time flag, +0x242 like an is-drums flag, +0x244 like a network flag and +0x246 like a lock on going back; those names are guesses from what the code does with them.
+Label: Unknown
+Evidence: a read-only scout's decompile of build 6142 (session 5cc1cc07, 2026-10-31) reported all of it; no listing is committed, and none of it can be checked in the dump, which gives only names, types and offsets.
+Game code (6142): `#1429+0x120`, `#1429+0x1E8`, `#824+0x40`, `#824+0x3C`, `#1429+0x228`, `#1429+0x1F0`, `#1429+0x242`, `#1429+0x244`, `#1429+0x246`; the input methods were not read from a listing.
+Hydra: no owner: Hydra never reads the running game. The tools print these fields with `menu_lines` in tools/ch_mcp/frida_tools.py.
+Ruling: none needed: no Hydra rule reads it.
+Found: 2026-10-31, session 5cc1cc07, from a decompile of build 6142.
 
 ## The bot
 
