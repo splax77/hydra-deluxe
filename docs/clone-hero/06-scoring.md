@@ -415,9 +415,9 @@ Per-player keys. "Unknown" means no code was read that writes the key; a named f
 | combo_score | equals Hydra's Combo with no Star Power | Unknown (the Combo share at #8288+0xC8, SC-08) |
 | notes_hit | gems hit (1,257 on Trippin SP Spike) | Unknown (the hit count at +0x9C, SC-06, is a candidate) |
 | total_notes | gems in the chart | Unknown |
-| max_streak | 1,257 | Unknown (the best streak at +0x98, SC-06) |
-| end_streak | 1,257 | Unknown |
-| excess_hits | 0, or 10 on a run with misses | Unknown |
+| max_streak | the gem count (1,257 on Trippin SP Spike, 142 on Window Map) | Unknown (the best streak at +0x98, SC-06) |
+| end_streak | the gem count, as max_streak | Unknown |
+| excess_hits | 0 in all four runs named above; 10 on one earlier key-press run with misses (wave 1 scout H7a, from card e9b04efc; that run's file sat in a temporary folder and is not kept) | Unknown |
 | sp_phrases_earned | 0 on bots, 11 on run 1 | Unknown |
 | sp_phrases_total | 11 | Unknown |
 | sp_activations | 0 on bots, 4 on run 1 | Unknown (the activation counter at +0xB4, page 5 SP-19) |

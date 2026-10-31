@@ -296,15 +296,15 @@ Hydra: one end point: `offset_from_sp_end` in src/core/model.h line 114; `paid_b
 Ruling: D269 call 4: "there should never be two different answers for where star power ends. ever." (decision log line 1049; card 2026-10-30-61cee421)
 Found: wave 2 scouts R4 and R10; this plan's wave 1 scouts H5a and H5b
 
-### SP-29 Hits are handled before the end check in each frame
+### SP-29 Whether a hit is scored before the end check in each frame
 
-Rule: In every frame the game handles inputs and notes first, then runs the end check, then the drain. So a hit handled in the frame whose clock first reaches the end is still scored with Star Power on, even when its clock is past the end. In the game, the Star Power state is the state at the moment the hit is handled.
-Label: Proven in the game's code
-Evidence: The frame update calls the input and note step `0x20F4950` at line 17, slot 9 at line 21, slot 21 at line 33, slot 15 (the end check) at line 37, slot 18 at line 41 and slot 12 (the drain) at line 45; slot n is at vtable offset 0x138 plus 16 n. Its callers are `0x20A1B0` (three call sites) and `0xFEB4C0` (wave 2 scout R10). Whether a hit can be judged at a clock between two frame clocks is not read (SP-30).
-Game code (6142): RVA `0x20F4550`, `code/6142/base_frame_update_20F4550.asm` lines 17 to 45
+Rule: In each frame the game first advances its events to the new time, then runs the end check, then the drain. If a hit is scored inside that first step, a hit handled in the frame whose clock first reaches the end is still scored with Star Power on, even when its clock is past the end. Whether hits are scored there, or in an input callback outside this function, was not read.
+Label: Unknown
+Evidence: The order of the calls is shown: the frame update calls `0x20F4950` at line 17, slot 9 at line 21, slot 21 at line 33, slot 15 (the end check) at line 37, slot 18 at line 41 and slot 12 (the drain) at line 45; slot n is at vtable offset 0x138 plus 16 n. The reviewer of this page read `0x20F4950` once (tools/ch_mcp/chdis.py on the 6142 DLL, 2026-10-30, no listing committed): it calls the event step (slot 8, SP-28) and `0x20F6FF0` up to three times, then sets the clock; it shows no press handler or score add. Wave 2 scout R10 called it the "input and note step" without a listing. Its callers are `0x20A1B0` (three call sites) and `0xFEB4C0`. Where a press is turned into a hit, and with which clock, is not read (SP-30).
+Game code (6142): RVA `0x20F4550`, `code/6142/base_frame_update_20F4550.asm` lines 17 to 45; `0x20F4950` not listed
 Hydra: no frame model: Hydra pays a note by its chart time against one end (`paid_by_sp_walk` in src/core/backend_value.h line 30)
-Ruling: open split: see questions page Q-50
-Found: wave 2 scout R10
+Ruling: none yet: the game's rule is not settled; questions page Q-50 holds the question that follows if hits are scored before the end check
+Found: wave 2 scout R10; reviewed 2026-10-30
 
 ### SP-30 Whether a hit is judged at a clock between frames
 
@@ -320,7 +320,7 @@ Found: wave 2 scout R10
 
 Rule: On the compared activations, the game's stored end and Hydra's deactivation chord agree within 3 ms, and the flag clears within one poll of the stored end.
 Label: Proven in a live run
-Evidence: Run 1, `run1_cal0_sp_compare.txt`: activation 1 game end 39,488.3 ms against Hydra 39,485.4 ms (+2.9 ms), activation 2 80,099.2 against 80,098.0 ms (+1.2 ms). Activations 3 and 4 were not on Hydra's path. The flag cleared 2.8, 4.8, 0.9 and 2.3 ms after the four stored ends (39,491.1, 80,104.0, 125,203.8 and 170,916.6 ms), with the poller about 3 to 4 ms apart; the multiplier halved in the same row. Summary: 31 PASS, 3 FAIL, the FAILs being which chord the game activated on. One chart, 4/4.
+Evidence: Run 1, `run1_cal0_sp_compare.txt`: activation 1 game end 39,488.3 ms against Hydra 39,485.4 ms (+2.9 ms), activation 2 80,099.2 against 80,098.0 ms (+1.2 ms). Activations 3 and 4 were not on Hydra's path. The flag cleared 2.8, 4.8, 0.9 and 2.3 ms after the four stored ends (at 39,491.1, 80,104.0, 125,203.8 and 170,916.6 ms; the stored ends are 39,488.3, 80,099.2, 125,202.9 and 170,914.3 ms), with the poller about 3 to 4 ms apart; the multiplier halved in the same row. Summary: 31 PASS, 3 FAIL, the FAILs being which chord the game activated on. One chart, 4/4.
 Game code (6142): `#8288+0x120`, `#8288+0x42` and `#8288+0x48` read live
 Hydra: `Activation::deact_tick` in src/core/model.h; `kMeasuresPerSpBar` in src/core/timing.h line 249
 Ruling: none needed: same end
@@ -338,7 +338,7 @@ Found: this plan's wave 1 scouts H5a and HB
 
 ### SP-33 A chord exactly on the end counts inside Star Power
 
-Rule: Hydra pays a chord whose time equals the SP end as inside Star Power. In the game the answer depends on the hit's clock and the frame (SP-28, SP-29): a hit at a clock equal to the end, handled in that frame, is inside.
+Rule: Hydra pays a chord whose time equals the SP end as inside Star Power. In the game the answer depends on the hit's clock and the frame (SP-28, SP-29): the end check turns Star Power off once the clock is at or past the end, and whether a hit at a clock equal to the end is scored before or after that check is not settled.
 Label: Hydra assumes it, never checked
 Evidence: Hydra: `paid_by_sp_walk` (offset at or below 0) and `after_sp_end` (tick strictly after the end) in src/core/backend_value.h lines 30 and 36. D13 (decision log line 31) states the rule as a decision, not in the user's words. No run has placed a hit exactly on an end.
 Game code (6142): RVA `0x20F63B0` and `0x20F4550` (SP-28, SP-29)
