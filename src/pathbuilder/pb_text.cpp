@@ -278,30 +278,6 @@ FillHoverCard fill_hover_card(const PreviewScene& scene, size_t fill_index,
     return card;
 }
 
-std::string fill_hover_text(const PreviewScene& scene, size_t fill_index,
-                            const std::optional<FillHoverNumbers>& numbers) {
-    const PreviewFill& fill = scene.fills.at(fill_index);
-    std::string t = "Fill at " + fill_heading(scene, fill) + "\n";
-    if (fill.state == app::PreviewFillState::Taken) return t + kYourActivationHoverText;
-    const std::string reason = fill_reason(scene, fill_index);
-    if (!reason.empty()) return t + reason;
-    t += "You have " + counted(bars_saved_at(scene, fill), "phrase", "phrases") + " saved.\n";
-    if (!numbers) return t + kPendingText;
-    t += "If you activate here, the best you can still finish with is " +
-         group_thousands(numbers->best_finish) + ".";
-    if (app::costs_nothing(numbers->cost)) {
-        t += std::string("\n") + kBestChoiceNowText;
-    } else {
-        t += "\nYour best choice right now is " + numbers->best_fill + ", which keeps " +
-             group_thousands(numbers->best_now) + ".\nSo activating here " +
-             cost_text(numbers->cost) + ".";
-    }
-    if (numbers->hydra_end)
-        if (const std::optional<std::string> end = hydra_end_sentence(scene, *numbers->hydra_end))
-            t += "\n" + *end;
-    return t;
-}
-
 GuideMessage cant_activate_message(const std::string& fill, const std::string& reason) {
     return {"Can't activate at " + fill + ": " + reason, true};
 }

@@ -295,54 +295,6 @@ TEST_CASE("star place: just after the word phrases, in the intro and the guide")
     CHECK(g.text.substr(0, *g.star_at) == "Your Star Power runs until m40. Save 2 more phrases");
 }
 
-TEST_CASE("fill hover text: the two numbers and the difference agree") {
-    // Allister "Overrated" with no activation: BF(0) is the best finish over
-    // no windows, and a fill's own number is the best finish with it pinned.
-    const Song& song = song_named("Allister - Overrated");
-    const app::PreviewScene empty = scene_for(song, player_path(song, {}));
-    const int64_t bf0 = best_finish(song, default_cfg(), {}).paths.at(0).totalscore();
-    const HydraRecord& rec =
-        corpus::analyzed(corpus::chart_named("Allister - Overrated"), default_cfg());
-    const int64_t best_tick = rec.best_path().all_activations().front().timecode.ticks();
-    const size_t pick = fill_index(empty, 55680);
-    const TargetResult with =
-        best_finish(song, default_cfg(), {PinnedWindow{55680, std::nullopt, false, std::nullopt}});
-    const Path& with_path = with.paths.at(0);
-    const std::vector<Activation> with_acts = with_path.all_activations();
-    FillHoverNumbers n;
-    n.best_finish = with_path.totalscore();
-    n.best_now = bf0;
-    n.cost = bf0 - n.best_finish;  // candidate_costs's subtraction, for the fixture only
-    n.best_fill = fill_name(empty, empty.fills[fill_index(empty, best_tick)]);
-    n.hydra_end = &with_acts.front();
-    // The three figures in the text, pinned from one run: 228,710 less
-    // 226,210 is the 2,500 it says.
-    CHECK(bf0 == 228710);
-    CHECK(n.best_finish == 226210);
-    CHECK(fill_hover_text(empty, pick, n) ==
-          "Fill at m30 · 0:45.789\n"
-          "You have 2 phrases saved.\n"
-          "If you activate here, the best you can still finish with is 226,210.\n"
-          "Your best choice right now is m38, which keeps 228,710.\n"
-          "So activating here costs 2,500 points.\n"
-          "Hydra would end it at m34.");
-    // Before the candidate's search lands, and on a fill under two bars.
-    CHECK(fill_hover_text(empty, pick, std::nullopt) ==
-          "Fill at m30 · 0:45.789\nYou have 2 phrases saved.\n...");
-    CHECK(fill_hover_text(empty, 0, std::nullopt) ==
-          "Fill at m20 · 0:30.000\nYou have 1 phrase saved here. You need 2 to activate.");
-    // The best fill itself costs nothing and says so.
-    FillHoverNumbers b = n;
-    b.best_finish = bf0;
-    b.cost = 0;
-    b.hydra_end = nullptr;
-    CHECK(fill_hover_text(empty, fill_index(empty, best_tick), b) ==
-          "Fill at m38 · 0:58.421\n"
-          "You have 3 phrases saved.\n"
-          "If you activate here, the best you can still finish with is 228,710.\n"
-          "This is the best choice now.");
-}
-
 namespace {
 
 // Allister "Overrated" with no activation, and the candidate numbers for the

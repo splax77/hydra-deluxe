@@ -189,15 +189,6 @@ struct FillHoverCard {
 FillHoverCard fill_hover_card(const PreviewScene& scene, size_t fill_index,
                               const std::optional<FillHoverNumbers>& numbers);
 
-// The hover over scene.fills[fill_index]: its name and clock (clock_str),
-// then its fill_reason, "Your activation" for a Taken fill, or for a fill
-// the player can take the bars saved and the two numbers its cost compares.
-// `numbers` empty means the candidate's search has not landed ("...").
-// Lines are separated by '\n'. The screen's tooltip reads this until it draws
-// fill_hover_card.
-std::string fill_hover_text(const PreviewScene& scene, size_t fill_index,
-                            const std::optional<FillHoverNumbers>& numbers);
-
 // A one-shot message the guide line shows after an action, and whether it is
 // a refusal (drawn red-edged). star_at is the star's place in the text (as
 // intro_star_at), set only on guide_text's "Save 2 more phrases" sentence.

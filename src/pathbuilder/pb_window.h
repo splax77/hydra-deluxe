@@ -137,10 +137,9 @@ private:
     // "Show Hydra's best path".
     bool show_best_ = false;
     // While the pointer is on a fill or its list row: the fill, and the time
-    // and play state the Preview goes back to when the pointer leaves.
+    // the Preview goes back to, still paused, when the pointer leaves.
     std::optional<size_t> hovered_fill_;
     double hover_return_ms_ = 0.0;
-    bool hover_return_playing_ = false;
     // The fill whose list row the pointer was on last frame; the list is
     // drawn after the timeline, so the timeline reads it a frame later.
     std::optional<size_t> row_hovered_fill_;

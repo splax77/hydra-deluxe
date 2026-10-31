@@ -49,6 +49,10 @@ constexpr float kScoresGapRem = 1.6f;
 constexpr float kTooltipRem = 24.0f;
 // The space between the legend's items: line 48, `.legend{gap:1.1rem}`.
 constexpr float kLegendGapRem = 1.1f;
+// The gap between a fill card's labels and its figures:
+// docs/superpowers/specs/2026-10-31-path-builder-mockup-3/mockup_template.html
+// line 90, `.tip .kv{...column-gap:1.4rem}`.
+constexpr float kCardColumnGapRem = 1.4f;
 // How tall the list may grow before it scrolls: line 126, `.choices{max-height:21rem}`.
 constexpr float kChoicesMaxRem = 21.0f;
 // A list row's tier dot: line 129, `.ch .dot{width:.7rem}`.
@@ -154,6 +158,41 @@ std::optional<std::string> best_fill_name(const app::PreviewScene& scene,
 void text_at_right(const std::string& text, float line_x, float line_w, const ImVec4& col) {
     ImGui::SameLine(line_x + line_w - ImGui::CalcTextSize(text.c_str()).x);
     ImGui::TextColored(col, "%s", text.c_str());
+}
+
+// A fill's tooltip, the words fill_hover_card gives: the heading, the rows as
+// a two-column table of dim labels and their figures (the Cost figure in its
+// tier's colour), then the grey lines, all inside kTooltipRem.
+void draw_fill_card(const FillHoverCard& card) {
+    ImGui::BeginTooltip();
+    ImGui::PushTextWrapPos(rem(kTooltipRem));
+    ImGui::TextUnformatted(card.heading.c_str());
+    if (!card.rows.empty()) {
+        // Without borders a table puts one CellPadding.x on each side of the
+        // gap between its columns.
+        ImGui::PushStyleVar(ImGuiStyleVar_CellPadding,
+                            ImVec2(rem(kCardColumnGapRem) * 0.5f, ImGui::GetStyle().CellPadding.y));
+        if (ImGui::BeginTable("##fillcard", 2, ImGuiTableFlags_SizingFixedFit)) {
+            const ImVec4 text = ImGui::GetStyleColorVec4(ImGuiCol_Text);
+            const ImVec4 dim = ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled);
+            for (const CardRow& row : card.rows) {
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                ImGui::TextColored(dim, "%s", row.label.c_str());
+                ImGui::TableNextColumn();
+                const bool tinted = card.cost_tier && row.label == kCostLabel;
+                ui::ScopedBaselineFont figure(ui::TextRole::Figure);
+                ImGui::TextColored(tinted ? tier_color(*card.cost_tier) : text, "%s", row.value.c_str());
+            }
+            ImGui::EndTable();
+        }
+        ImGui::PopStyleVar();
+    }
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+    for (const std::string& line : card.grey) ImGui::TextUnformatted(line.c_str());
+    ImGui::PopStyleColor();
+    ImGui::PopTextWrapPos();
+    ImGui::EndTooltip();
 }
 
 }  // namespace
@@ -623,13 +662,13 @@ void PbApp::draw_timeline(const OpenChart& chart) {
     // While the pointer is on a fill, or on its row in the list, the highway
     // shows it, paused, with the fill's start on the strike line (the user's
     // answer Q4); when the pointer leaves, the Preview goes back to the time
-    // and play state it had.
+    // it had and stays paused, so only Play or Space starts sound (the third
+    // mockup's answers.md, answer 1).
     const std::optional<size_t> hovered =
         ev.hovered_fill && *ev.hovered_fill < scene.fills.size() ? ev.hovered_fill : in.highlighted;
     if (hovered) {
         if (!hovered_fill_) {
             hover_return_ms_ = preview_->position_ms();
-            hover_return_playing_ = preview_->playing();
             preview_->pause();
         }
         if (hovered_fill_ != hovered) preview_->seek_ms(scene.fills[*hovered].span.start_ms);
@@ -637,7 +676,6 @@ void PbApp::draw_timeline(const OpenChart& chart) {
     } else if (hovered_fill_) {
         hovered_fill_.reset();
         preview_->seek_ms(hover_return_ms_);
-        if (hover_return_playing_) preview_->play();
     }
 
     // The fill's own tooltip, on the fill only; a list row shows none.
@@ -654,15 +692,12 @@ void PbApp::draw_timeline(const OpenChart& chart) {
             n.best_finish = mine->best_finish;
             n.best_now = run->ladder.bf.back();
             n.cost = mine->cost;
+            n.tier = mine->tier;
             n.best_fill = best_fill_name(scene, cands).value_or(std::string());
             n.hydra_end = d.candidate_end(static_cast<size_t>(mine - cands.begin()));
             numbers = n;
         }
-        ImGui::BeginTooltip();
-        ImGui::PushTextWrapPos(rem(kTooltipRem));
-        ImGui::TextUnformatted(fill_hover_text(scene, i, numbers).c_str());
-        ImGui::PopTextWrapPos();
-        ImGui::EndTooltip();
+        draw_fill_card(fill_hover_card(scene, i, numbers));
     }
 
     if (ev.clicked_fill && *ev.clicked_fill < scene.fills.size()) {
@@ -773,7 +808,12 @@ void PbApp::draw_choices(const OpenChart& chart) {
         const float row_w = ImGui::GetContentRegionAvail().x;
         ImGui::SetNextItemAllowOverlap();
         const std::string id = "##choice_" + std::to_string(tick);
-        if (ImGui::Selectable(id.c_str(), hovered_fill_ == fill)) click_fill(chart, *fill);
+        if (ImGui::Selectable(id.c_str(), hovered_fill_ == fill)) {
+            // A row click moves the Preview's clock to the fill, as a click
+            // on the fill does (draw_timeline).
+            hover_return_ms_ = scene.fills[*fill].span.start_ms;
+            click_fill(chart, *fill);
+        }
         if (ImGui::IsItemHovered()) row_hovered_fill_ = fill;
         ImGui::SetCursorPos(start);
 
