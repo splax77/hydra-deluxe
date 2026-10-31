@@ -7,7 +7,8 @@ again. Those rows used to be a table of C++ initializers inside
 tests/test_single_owner.cpp. They are now JSON files in
 tests/single_owner/rules/, one file per area. The C++ in tests/single_owner/
 only reads the rows and runs them. The user approved this on 2026-10-10, with
-every recommendation in docs/superpowers/plans/2026-10-10-single-owner-redesign.md.
+every recommendation in the plan
+`docs/superpowers/plans/2026-10-10-single-owner-redesign.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-10-10-single-owner-redesign.md`).
 
 ## Why the rows moved
 

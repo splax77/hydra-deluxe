@@ -21,8 +21,8 @@ older file shrinks, with storage-T5.
 
 ## What the audit found
 
-The storage audit (docs/handoffs/2026-10-06-storage-audit-handoff.md) measured
-a copy of the installed database. It took 338 MB on disk: 292 MB of database
+The storage audit (D87 in docs/audit/2026-10-03-fix-decisions.md, and the
+table below) measured a copy of the installed database. It took 338 MB on disk: 292 MB of database
 and a 46 MB write-ahead log (WAL), SQLite's journal file, which never shrank.
 
 | What | Size | Share |
@@ -180,8 +180,8 @@ shows the startup message box (D72 item 1) with the library-file sentence for
 error, then closes (D100 item 6). A failure to open the new file after the
 swap reads like any failed open (D72 item 2).
 
-Task T0 measured the first, in-place version on a copy of the real database
-(docs/handoffs/2026-10-07-storage-measurements.md). The file went from
+Task T0 measured the first, in-place version on a copy of the real database.
+The file went from
 292,372,480 bytes to 13,033,472 bytes, about 13.0 MB.
 
 Every open also sets SQLite's journal_size_limit (`kJournalSizeLimitBytes`,

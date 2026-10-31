@@ -195,6 +195,4 @@ stamp went to 2.8.0 (ADR 0018) and every saved result read Stale after the
 update. On `testdata/input` (115 charts), the 1.1 score check found two
 charts that changed: one gained 1920 points where two SP phrase ends sat on
 the new deadlines, and one had its 40 fills moved onto the restarted grid. In
-1.0 mode no best score, best path or fill chord changed
-(`docs/handoffs/2026-10-14-d115-build-continue-handoff.md`, "What the score
-check found").
+1.0 mode no best score, best path or fill chord changed.
