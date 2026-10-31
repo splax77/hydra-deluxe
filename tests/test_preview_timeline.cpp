@@ -140,3 +140,20 @@ TEST_CASE("preview timeline: the insets move the bands, the fills and the saved 
     CHECK(l.saved_line[1].y == doctest::Approx(31.0f));
     CHECK(l.activate_y == doctest::Approx(35.0f));
 }
+
+TEST_CASE("preview timeline: a huge song length gets labels by the width, not by the length") {
+    const app::PreviewScene s = scene_with_fills();
+    ui::TimelineMetrics m = metrics();
+    m.axis_label_gap = 50.0f;
+    // A 10-minute song on 1,000 px: 30 s is 50 px, exactly the gap, so every
+    // step is labelled: 20 labels. Pinned from one run.
+    const ui::TimelineLayout normal = *ui::timeline_layout(s, 600000.0, kWidth, m);
+    CHECK(normal.axis_ticks.size() == 20);
+    // Twice the length: 30 s is 25 px, so every second step: 20 labels, 60 s apart.
+    const ui::TimelineLayout longer = *ui::timeline_layout(s, 1200000.0, kWidth, m);
+    REQUIRE(longer.axis_ticks.size() == 20);
+    CHECK(longer.axis_ticks[1].ms == doctest::Approx(60000.0));
+    // A length a corrupt song.ini could state: still a handful of labels.
+    const ui::TimelineLayout huge = *ui::timeline_layout(s, 1e300, kWidth, m);
+    CHECK(huge.axis_ticks.size() <= 20);
+}

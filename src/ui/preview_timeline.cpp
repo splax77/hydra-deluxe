@@ -158,7 +158,19 @@ std::optional<TimelineLayout> timeline_layout(const app::PreviewScene& scene, do
         y += metrics.row_h[r];
     }
 
-    for (double ms = 0.0; ms < length_ms; ms += kTimelineAxisStepMs) out.axis_ticks.push_back({ms, x_of(ms)});
+    // The song's length is a number read from the chart's metadata, so the
+    // label count follows the width: when one step is narrower than the gap
+    // the labels need, take every n-th step. n is infinite for a width of 0.
+    if (width > 0.0f) {
+        const double step_px = kTimelineAxisStepMs / length_ms * static_cast<double>(width);
+        const double every = static_cast<double>(metrics.axis_label_gap) > step_px
+                                 ? std::ceil(static_cast<double>(metrics.axis_label_gap) / step_px)
+                                 : 1.0;
+        for (double k = 0.0; k * kTimelineAxisStepMs < length_ms; k += every) {
+            const double ms = k * kTimelineAxisStepMs;
+            out.axis_ticks.push_back({ms, x_of(ms)});
+        }
+    }
 
     const TimelineRect& sec = out.row(TimelineRow::Sections);
     for (size_t i = 0; i < scene.sections.size(); ++i) {
@@ -244,6 +256,8 @@ TimelineMetrics timeline_metrics() {
     m.fill_center_y = px(kFillCenterY);
     m.band_inset = px(kBandInset);
     m.saved_inset = px(kSavedInset);
+    // A label's own width and a space, in the font the labels draw in.
+    m.axis_label_gap = text_size(TextRole::Figure, "00:00 ").x;
     return m;
 }
 

@@ -48,15 +48,20 @@ inline constexpr size_t kTimelineRowCount = 7;
 
 // Each row's height, the side of a fill's square hit box, how far down the
 // Fills row a fill's centre sits, how far an activation band stands in from
-// its row's top and bottom, and how far the saved line's zero and cap stand
-// in from its row's bottom and top, in pixels. The layout reads them from
-// here; timeline_metrics() gives the screen's.
+// its row's top and bottom, how far the saved line's zero and cap stand in
+// from its row's bottom and top, and the least distance between two axis
+// labels, in pixels. The layout reads them from here; timeline_metrics()
+// gives the screen's. A song so long that every 30 s label would crowd the
+// next gets a label every few steps instead, so the number of labels follows
+// the width, never the song's length; a gap of 0 turns that off, which only
+// a test with a short song should do.
 struct TimelineMetrics {
     float row_h[kTimelineRowCount] = {};
     float fill_size = 0.0f;
     float fill_center_y = 0.0f;
     float band_inset = 0.0f;
     float saved_inset = 0.0f;
+    float axis_label_gap = 0.0f;
 };
 
 // The mockup's sizes at the display's scale (px), for the timeline as
@@ -111,7 +116,9 @@ struct TimelineLayout {
     float width = 0.0f;
     double length_ms = 0.0;
     TimelineRect rows[kTimelineRowCount];
-    std::vector<TimelineTick> axis_ticks;  // every kTimelineAxisStepMs from the start
+    // Every kTimelineAxisStepMs from the start, or every few of them when
+    // TimelineMetrics::axis_label_gap says they would crowd.
+    std::vector<TimelineTick> axis_ticks;
     std::vector<TimelineSection> sections;
     std::vector<float> phrase_x;  // each SP phrase's start
     // The Star Power saved line: each meter segment's start and end, in
