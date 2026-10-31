@@ -81,15 +81,15 @@ void fill_chart(store::RecordStore& store, const AnalysisSettings& settings,
                 const PathReplay& replay,
                 std::vector<MissingHardestRow>::const_iterator first,
                 std::vector<MissingHardestRow>::const_iterator last) {
-    if (!chart_still_there(*first)) return;
     std::vector<ProfileFigures> found;
     try {
+        if (!chart_still_there(*first)) return;
         const Song song = load_songpath(first->notespath, settings.reading(), settings.rules,
                                         fill_rule_for(settings.legacy_fills));
         found = replayed_figures(song, settings, replay, first, last);
     } catch (const std::exception&) {
-        // A chart that no longer reads, or whose replay throws, keeps its rows
-        // empty, as a gone one does. The fault is the song's, not the store's,
+        // A chart whose files can't be checked or read, or whose replay throws,
+        // keeps its rows empty, as a gone one does. The fault is the song's, not the store's,
         // so the fill goes on with the next chart.
         return;
     }
