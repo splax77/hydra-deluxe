@@ -48,6 +48,8 @@ StemConverter stem_converter_config(int in_rate, int in_channels, int out_rate,
 
 // Mix `stems` into one interleaved buffer at `out_rate` Hz and `out_channels`
 // channels. Empty input yields an empty result at the requested format.
+// Throws std::runtime_error if a stem's converter cannot be set up or fails
+// to convert.
 DecodedAudio mix_stems(const std::vector<DecodedAudio>& stems, int out_rate,
                        int out_channels);
 
