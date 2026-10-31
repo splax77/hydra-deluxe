@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import csv
 import dataclasses
+import io
 import os
 import threading
 import time
@@ -50,7 +51,7 @@ NO_READ = "no engine read yet (the watcher is waiting for a moving clock)"
 
 def _ms_text(s: float) -> str:
     """Seconds on the game's clock as ms text."""
-    return f"{C.s_to_ms(s):.1f} ms"
+    return sp_compare.format_ms(C.s_to_ms(s))
 
 
 def _row(snap: Snapshot) -> dict:
@@ -127,6 +128,13 @@ class _Watch:
         return f"csv: {self.csv_path} (not written: the engine was never found)"
 
 
+def _find_engine_quietly(proc) -> int:
+    """LIVE-ONLY: sp_watch's engine search with its progress dots sent to a
+    buffer that is dropped, because the server's stdout is its protocol
+    channel."""
+    return sp_watch.find_engine_live(proc, out=io.StringIO())
+
+
 def _engine_reader(proc, engine_ptr: int) -> Callable[[], Snapshot]:
     """The live engine's snapshot read. LIVE-ONLY: reads the game's memory
     through EngineModel."""
@@ -148,7 +156,7 @@ class SpTools:
 
     def __init__(self, game, lock, *,
                  opener: Callable[..., object] = open_process,
-                 find_engine: Callable[[object], int] = sp_watch.find_engine_live,
+                 find_engine: Callable[[object], int] = _find_engine_quietly,
                  reader: Callable[[object, int], Callable[[], Snapshot]] = _engine_reader,
                  watch: Callable[..., sp_watch.WatchSummary] = sp_watch.watch,
                  now: Callable[[], float] = time.time,
@@ -240,7 +248,7 @@ class SpTools:
             lines.extend(_activation_line(rows, a) for a in acts)
             rises = [r for r in sp_compare.phrase_rises(rows, AMOUNT_COL) if r.ms >= since_ms]
             lines.append(f"rises of {AMOUNT_COL} from {since_ms:g} ms: {len(rises)}")
-            lines.extend(f"  at {r.ms:.1f} ms: +{r.size} ({r.before} -> {r.after})"
+            lines.extend(f"  at {sp_compare.format_ms(r.ms)}: +{r.size} ({r.before} -> {r.after})"
                          for r in rises)
             return "\n".join(lines)
 
@@ -280,7 +288,7 @@ class SpTools:
             if w is None:
                 return NO_WATCH
             rows = list(w.rows)
-            lines = [f"window: {start_ms:.1f} ms to {end_ms:.1f} ms, over {len(rows)} rows "
+            lines = [f"window: {sp_compare.format_ms(start_ms)} to {sp_compare.format_ms(end_ms)}, over {len(rows)} rows "
                      f"(watcher {w.ended_line()})"]
             flips = sp_compare.flips_between(rows, start_ms, end_ms)
             if flips:
@@ -298,7 +306,7 @@ class SpTools:
                 lines.append("no row inside at the ready level with the flag clear")
             else:
                 lines.append(f"first row at the ready level with the flag clear: "
-                             f"{ready.ready_ms:.1f} ms ({AMOUNT_COL} "
+                             f"{sp_compare.format_ms(ready.ready_ms)} ({AMOUNT_COL} "
                              f"{ready.ready_row[AMOUNT_COL]})")
             return "\n".join(lines)
 

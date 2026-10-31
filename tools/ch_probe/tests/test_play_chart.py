@@ -14,6 +14,7 @@ stop, the wall-time cap, and main()'s read-only open and capped engine search.
 
 from __future__ import annotations
 
+import contextlib
 import csv
 import io
 import json
@@ -30,6 +31,7 @@ if _REPO_ROOT not in sys.path:
 from tools.ch_probe import engine_finder  # noqa: E402
 from tools.ch_probe.experiments import live, overlay_logs, play_chart  # noqa: E402
 from tools.ch_probe.input_driver import Lane  # noqa: E402
+from tools.ch_probe.tests import fakes  # noqa: E402
 
 
 # Eight chord blocks copied whole from a real run of
@@ -405,6 +407,19 @@ class LivePlayTest(unittest.TestCase):
         self.assertTrue(proc.verified)
         self.assertTrue(proc.closed)
         self.assertEqual(events, [])
+
+    def test_the_default_engine_search_prints_its_dots_to_out_only(self):
+        # A caller that gives live_play a buffer (the ch MCP server) must get
+        # no stdout from the search: its stdout is the protocol channel.
+        out, stdout = io.StringIO(), io.StringIO()
+        with fakes.searching_for_no_song(engine_finder),                 contextlib.redirect_stdout(stdout):
+            result = play_chart.live_play(
+                _load(play_chart.load_dump_chords),
+                open_proc=lambda **kw: _FakeProc(), driver=_FakeDriver([]),
+                out=out)
+        self.assertEqual(result.stop, play_chart.STOP_NO_ENGINE)
+        self.assertEqual(stdout.getvalue(), "")
+        self.assertIn("....", out.getvalue())
 
     def _cap_seen_by_play_chords(self, **live_kwargs):
         from unittest import mock

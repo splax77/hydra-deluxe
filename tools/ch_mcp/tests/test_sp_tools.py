@@ -10,13 +10,16 @@ millisecond.
 
 from __future__ import annotations
 
+import contextlib
 import csv
 import dataclasses
+import io
 import os
 import sys
 import tempfile
 import threading
 import time
+import types
 import unittest
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -29,6 +32,7 @@ from tools.ch_probe import engine  # noqa: E402
 from tools.ch_probe import engine_finder as F  # noqa: E402
 from tools.ch_probe.experiments import sp_watch  # noqa: E402
 from tools.ch_probe.experiments.overlay_logs import WATCH_COLUMNS  # noqa: E402
+from tools.ch_probe.tests import fakes  # noqa: E402
 
 BACKUP_LINE = "backup folder: X (taken now)"
 ENGINE = 0x2_0000_1000
@@ -191,6 +195,15 @@ class SpToolsTest(unittest.TestCase):
         self.assertIn("sp watch: watcher ended: stopped", said)
         self.assertIn("watcher ended: stopped", tools.ch_sp_watch_status())
         self.assertIsNone(self.game.hooks[0]())
+
+    def test_the_default_engine_search_writes_nothing_to_stdout(self):
+        # The server's stdout is its protocol channel, so the search's
+        # progress dots must not reach it.
+        stdout = io.StringIO()
+        with fakes.searching_for_no_song(F), contextlib.redirect_stdout(stdout):
+            with self.assertRaises(F.EngineSearchTimeout):
+                sp_tools._find_engine_quietly(types.SimpleNamespace(module_base=0x1000))
+        self.assertEqual(stdout.getvalue(), "")
 
     def test_a_finder_timeout_is_the_reason_in_the_status(self):
         def no_song(proc):

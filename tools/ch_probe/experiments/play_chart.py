@@ -280,11 +280,12 @@ def write_press_log(path: str, rows: Sequence[dict]) -> None:
 
 # --- the live script ------------------------------------------------------------
 
-def _find_engine(proc) -> int:
-    """The playing song's engine object, through the capped finder.
+def _find_engine(proc, out: Optional[TextIO] = None) -> int:
+    """The playing song's engine object, through the capped finder. The
+    finder's progress dots go to `out` (stdout when None).
     LIVE-ONLY: scans the game's memory."""
     return engine_finder.find_live_engine_capped(
-        proc, [engine_finder.normal_pattern(proc)])
+        proc, [engine_finder.normal_pattern(proc)], out=out)
 
 
 def live_press(driver: InputDriver, hwnd: int) -> Callable[[List[int]], object]:
@@ -299,7 +300,7 @@ def live_press(driver: InputDriver, hwnd: int) -> Callable[[List[int]], object]:
 
 def live_play(chords: Sequence[Chord], *,
               open_proc: Callable = open_process,
-              find_engine: Callable[[object], int] = _find_engine,
+              find_engine: Optional[Callable[[object], int]] = None,
               driver: Optional[InputDriver] = None,
               on_press: Optional[Callable[[dict], object]] = None,
               should_stop: Optional[Callable[[], bool]] = None,
@@ -312,8 +313,14 @@ def live_play(chords: Sequence[Chord], *,
     inside the finder's cap, the result's `stop` is STOP_NO_ENGINE and its
     `message` is the finder's. `on_press`, `should_stop` and `cap_s` go to
     play_chords. `open_proc` and `find_engine` stand in for open_process and
-    the capped finder in tests."""
+    the capped finder in tests. With no `find_engine` the real search runs
+    and its progress dots go to `out`, so a caller that gives `out` a buffer
+    (the `ch` MCP server, whose stdout is its protocol channel) gets no
+    stdout from the search."""
     out = sys.stdout if out is None else out
+    if find_engine is None:
+        def find_engine(proc) -> int:
+            return _find_engine(proc, out=out)
     print("\nConnecting to Clone Hero...", file=out)
     proc = open_proc(read_only=True)
     try:
@@ -349,7 +356,7 @@ def live_play(chords: Sequence[Chord], *,
 
 def main(argv: Optional[Sequence[str]] = None, *,
          open_proc: Callable = open_process,
-         find_engine: Callable[[object], int] = _find_engine,
+         find_engine: Optional[Callable[[object], int]] = None,
          out: Optional[TextIO] = None) -> int:
     """Play a score JSON against the running game. Returns the exit code.
 
