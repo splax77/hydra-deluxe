@@ -189,7 +189,7 @@ Each tool sends one command line and returns Hydra's reply text, unchanged excep
 | Tool | Sends | Notes |
 |---|---|---|
 | `hydra_start(mode, library_dir=None, keep=False)` | launches the exe | `mode` is `headless` or `window`. Stops any running session first. The reply gives the pid, the engine's scratch folder, the wait cap, the log file and the helper's scratch folder, plus the snapshot list in window mode. `keep=True` keeps the helper's scratch folder after `hydra_stop` |
-| `hydra_stop(keep_window=False)` | `quit` | waits for Hydra to exit, kills it if it does not, and returns the exit code. Then deletes the helper's scratch folder unless `keep` was set |
+| `hydra_stop(keep_window=False)` | `quit` | waits for Hydra to exit, kills it if it does not, and returns the exit code. Then deletes the helper's scratch folder unless `keep` was set. In window mode the reply adds a line naming the real-app record and its commit (see "The real-app record" below), or saying why none was written |
 | `hydra_reset()` | `reset` | a fresh library in the same process |
 | `hydra_open_song(title)` | `open <title>` | the way to open a song. Clicking a row's title with the search box empty is refused (see the first guard above) |
 | `hydra_click(ref)` | `click <ref>` | widgets below the toolbar need `**/`; a bare label that finds nothing is retried as `**/<label>`, unless several widgets carry it |
@@ -207,6 +207,28 @@ Each tool sends one command line and returns Hydra's reply text, unchanged excep
 | `hydra_run(script)` | each line in turn | stops at the first failure with `stopped at line N of M`, counting the script's own lines |
 
 `hydra_run` exists so a known sequence (scan, continue, search, open) costs one tool call instead of five. To open one song, `hydra_open_song` does the search and the click in one call.
+
+### The real-app record
+
+A window session leaves a record that says which commit was checked in the real app. It exists so a gate on merges that change `src/ui/` can tell a real-app check that happened from one that did not. The field names below are that gate's contract, so a change to them is a change to the gate too. Headless sessions write no record.
+
+The helper appends one JSON line per window session to `realapp.jsonl` in the repo's git common dir. That is the `.git` folder of the main checkout (what `git rev-parse --git-common-dir` prints), so every worktree of the repo writes to the same file and git never tracks it. The "repo" here is the checkout the helper's own code sits in: the one whose `build-cpp\Release` exes it runs.
+
+A line has seven fields:
+
+| Field | What it holds |
+|---|---|
+| `kind` | always `"realapp"` |
+| `commit` | the full hash of that checkout's HEAD when the session ended |
+| `dirty` | `true` when `git status --porcelain` printed anything, untracked files included, so the build may hold changes the commit does not |
+| `commands` | how many command lines Hydra answered in the session, screenshots and the `timeout` lines of a one-call timeout included |
+| `shots` | how many of those answers were a saved screenshot |
+| `started` | when the session started, local time with its UTC offset, to the second |
+| `stopped` | when the helper wrote the record, in the same form |
+
+Four endings write the record: `hydra_stop` when Hydra exits with code 0, `hydra_stop(keep_window=True)`, the stop a new `hydra_start` makes first, and the user closing the window (Hydra exits with code 0 and the next tool call notices). The helper's own exit writes one too, for a window session still open then (or one that already exited with code 0). A crash, a nonzero exit, a silent Hydra the helper killed, or a window that would not quit writes nothing, because a session that died is not a check. The reply says "no real-app record written" in those cases, and also when git cannot say what HEAD is. `realapp_record` in `tools/hydra_ui_mcp.py` writes the line; `REALAPP_FILE` there names the file.
+
+The record has three limits. `Hydra.exe` carries no commit of its own, so the record names the tree's HEAD, not the build: a stale exe is recorded under the current commit. The record shows that a window was opened and used on that commit, not what anyone looked at. And when the user checks a copy of the exe by hand, no helper session runs, so no record is written.
 
 ### An open dialog
 
@@ -237,7 +259,7 @@ The helper and Hydra talk over a Windows named pipe. The helper picks the pipe's
 
 ### Who owns what
 
-Hydra's C++ side owns every command rule: what a verb means, how its arguments parse, which numbers it takes, the timeout, line numbers, the reply's wording, the filters, and where the log and crash dump go. The helper only carries messages. It owns launch and stop, the pipe name, the reply caps (worked out only from numbers Hydra reports), the snapshot, the running-Hydra check and the tool list. The stand-in Hydra its tests use, `tools/fake_hydra_live.py`, plays only transport: a hello line, a plain echo, a hang, an exit, a closed pipe and an oversized reply. Every test of what a command does runs on the real headless `hydra_uitest --live` (`RealExeLayer` in `tools/test_hydra_ui_mcp.py`).
+Hydra's C++ side owns every command rule: what a verb means, how its arguments parse, which numbers it takes, the timeout, line numbers, the reply's wording, the filters, and where the log and crash dump go. The helper only carries messages. It owns launch and stop, the pipe name, the reply caps (worked out only from numbers Hydra reports), the snapshot, the running-Hydra check, the real-app record and the tool list. The stand-in Hydra its tests use, `tools/fake_hydra_live.py`, plays only transport: a hello line, a plain echo, a hang, an exit, a closed pipe and an oversized reply. Every test of what a command does runs on the real headless `hydra_uitest --live` (`RealExeLayer` in `tools/test_hydra_ui_mcp.py`).
 
 So a question about a command is answered in C++, never in Python. The full table is in "T8: one owner for every command rule" in `docs/superpowers/plans/2026-10-14-hydra-mcp-server.md`, and the reasons are in `docs/adr/0030-hydra-owns-every-live-command-rule.md`.
 

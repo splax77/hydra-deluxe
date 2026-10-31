@@ -36,7 +36,7 @@ Touch only the files your brief owns, plus your scratch folder. Never delete, mo
 
 ## Tests
 
-Run only the tests your brief names. The merge's own test list is not yours to pick: the main session gets it from `build-cpp\Release\hydra_precheck.exe --tests` on your branch after you commit. Use `-tc=` (test case) or `-sf=` (source file) filters on `build-cpp\Release\hydra_tests.exe`. Put quotes around the whole filter, like `"-sf=*test_x.cpp"`, because PowerShell splits an unquoted one at its first dot and it runs nothing. Give one `-sf=` per command, since doctest keeps only the last one. Never run the whole suite. Never run `hydra_uitest --all`; run only the uitest scripts your brief names. Never run all the hook tests. The main session runs the merge's tests (CLAUDE.md rule 1 says which); a repeat from you buys nothing and slows every other agent on the machine.
+Run only the tests your brief names. The merge's own test list is not yours to pick: the main session gets it from `build-cpp\Release\hydra_precheck.exe --tests` on your branch after you commit. Use `-tc=` (test case) or `-sf=` (source file) filters on `build-cpp\Release\hydra_tests.exe`. Put quotes around the whole filter, like `"-sf=*test_x.cpp"`, because PowerShell splits an unquoted one at its first dot and it runs nothing. Give one `-sf=` per command, since doctest keeps only the last one. Never run the whole suite. Never run `hydra_uitest --all`; run only the uitest scripts your brief names. Never run all the hook tests. The main session runs the merge's tests (`docs/agents/agent-rules.md`, rule 1, says which); a repeat from you buys nothing and slows every other agent on the machine.
 
 Never run a full library test: no `hydra_batch --whole-library`, and no compare or timing run over the user's whole song library. Only the user can allow one, in chat, and a brief that asks for one without naming that permission is wrong; stop and report it. Two guards back this up. `hydra_batch` given no chart folder refuses to run unless it also gets `--whole-library`. A hook then refuses any shell command that holds `--whole-library`, unless the user has sent exactly `allow library run` in this session; each such message lets one command through. Test on the checked-in corpus in `testdata/input` or on the charts your change touches.
 
@@ -81,6 +81,10 @@ No agent is woken up again after its turn ends. Your job ends with your report. 
 ## The code is the source of truth
 
 Never trust another agent's summary, report or leftover comments. The code and the source data are the source of truth. Before you repeat a claim or act on it, check it against them.
+
+A handoff is another agent's summary. Before any new work starts from a handoff, every claim in it is checked against what actually exists: the code is the source of truth, and a handoff claim that does not match the code is wrong.
+
+**Continuing from a handoff.** If your brief points you at a handoff, run the handoff checker on it first: `py -I tools/check_handoff.py <handoff.md>`. Then read every claim against the code, including the rows the checker leaves to you. Before any work starts, report each `MISSING` or `CHANGED SINCE` line, each Claims row not marked `ok` or `manual`, and each claim the code contradicts. `docs/agents/handoff.md` says what a handoff holds and how to check one.
 
 This is about claims of fact. Follow your brief's instructions. Treat a claim in a report or a review as a claim: check it in the code before you act on it.
 
