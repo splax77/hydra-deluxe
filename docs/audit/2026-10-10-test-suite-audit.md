@@ -10,7 +10,7 @@ The real problems sit in a few places. The worst is in the hook suite, not the a
 
 ## How the time is spent
 
-One test takes 43% of the run. "rebuild_overlay_fields: equals a full build on every corpus chart and stored path" ([test_track_state.cpp:871](../../tests/test_track_state.cpp)) took 18.2 of the 42 seconds. The single-owner scan took 4.2 seconds, and the random-overlay rebuild test took 1.5. No other test took more than 0.7 seconds. The source is `--duration=true` output from the one full run (`scratchpad\suite-durations.txt`).
+One test takes 43% of the run. "rebuild_overlay_fields: equals a full build on every corpus chart and stored path" ([test_track_state.cpp:871](../../tests/test_track_state.cpp)) took 18.2 of the 42 seconds. The single-owner scan took 4.2 seconds, and the random-overlay rebuild test took 1.5. No other test took more than 0.7 seconds. The source is `--duration=true` output from the one full run (saved as `suite-durations.txt` in the session's scratch folder, which was not kept).
 
 ## What works and should be kept
 

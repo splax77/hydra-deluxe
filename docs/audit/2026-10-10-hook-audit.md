@@ -8,7 +8,7 @@ The git-side review gate is the strongest part of the setup. Every refusal it ma
 
 ## How this was measured
 
-Eleven read-only Sonnet scouts did the work. Two read the web: Anthropic's own docs and changelog, and write-ups from people running large hook setups. Seven each audited one family of hooks. One scanned the last 14 days of transcripts for denials. One checked CLAUDE.md and the agent briefs against the hook code. Their full notes sit in the session scratchpad (`scratchpad\hook-audit\A.md` to `I.md`, `W1.md`, `W2.md`). I re-checked the claims marked "checked" below against the code myself.
+Eleven read-only Sonnet scouts did the work. Two read the web: Anthropic's own docs and changelog, and write-ups from people running large hook setups. Seven each audited one family of hooks. One scanned the last 14 days of transcripts for denials. One checked CLAUDE.md and the agent briefs against the hook code. Their full notes were written to the session's scratch folder (files `A.md` to `I.md`, `W1.md` and `W2.md`), which was not kept. I re-checked the claims marked "checked" below against the code myself.
 
 Here are the base numbers. Each one names where it comes from.
 
@@ -120,4 +120,4 @@ The cleanup can run alongside any wave: git for `~\.claude`, state pruning, stal
 
 - Anthropic hooks reference and guide, settings and subagent docs, and the Claude Code changelog v2.1.288 to v2.1.296. URLs are in `W1.md`.
 - Community reports: Blake Crosley's 95-hook write-up (blakecrosley.com/en/blog/claude-code-hooks), and anthropics/claude-code issues 29709 (Edit blocked, then written through Bash), 54360 and 55754 (Stop-hook loops), 24757 (lost exit codes on Windows), and 43612 and 27755 (hooks inside subagents). URLs are in `W2.md`.
-- Transcript scan script: `scratchpad\hook-audit\G_scan.py`.
+- Transcript scan script: `G_scan.py`, written to the session's scratch folder and not kept.

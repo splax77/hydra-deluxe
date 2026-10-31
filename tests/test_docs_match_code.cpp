@@ -1208,11 +1208,15 @@ namespace {
 // be held in scratch folders", and "old handoffs and plans can be skipped,
 // they are not permanent documentation." scratch_path_re is what counts as a
 // path into a scratch folder. A line that only says the word, such as "write
-// your review to a file in your scratchpad", names no path and passes.
+// your review to a file in your scratchpad", names no path and passes. A
+// folder name counts as a path when a slash sits on either side of it, so a
+// path that starts with it (`scratchpad\x`) and one that ends with it
+// (`hydra-data\scratch_ms`) both fail.
 // kNotPermanentDirs are the folders the second ruling skips.
 const std::regex& scratch_path_re() {
-    static const std::regex re(R"(AppData[\\/]Local[\\/]Temp|[\\/]scratchpad[\\/]|chref-scratch|scratch_ms[\\/])",
-                               std::regex::icase);
+    static const std::regex re(
+        R"(AppData[\\/]Local[\\/]Temp|chref-scratch|[\\/](scratchpad|scratch_ms)\b|(scratchpad|scratch_ms)[\\/])",
+        std::regex::icase);
     return re;
 }
 constexpr const char* kNotPermanentDirs[] = {"docs/handoffs/", "docs/superpowers/"};
@@ -1253,20 +1257,38 @@ TEST_CASE("docs match code: no committed doc names a path into a scratch folder"
     CHECK(problems.empty());
 }
 
-TEST_CASE("docs match code: the scratch path check catches a Temp path and skips handoffs") {
+TEST_CASE("docs match code: the scratch path check catches each path form and skips only the two folders") {
     const std::vector<Doc> docs = {
         Doc{"docs/x.md",
             {"Raw output is in `C:\\Users\\P\\AppData\\Local\\Temp\\claude\\s\\out.txt`.",
-             "Write your review to a file in your scratchpad.", "See C:/Users/P/AppData/Local/Temp/a.txt"}},
+             "Write your review to a file in your scratchpad.",                 // 2: the word alone passes
+             "See C:/Users/P/AppData/Local/Temp/a.txt",                         // 3: forward slashes
+             "Notes are in `scratchpad\\hook-audit\\A.md`.",                    // 4: path starts at the folder
+             "The folder is C:\\Users\\P\\x\\scratchpad\\",                       // 5: folder ends the path
+             "The folder is C:\\Users\\P\\x\\SCRATCHPAD",                         // 6: any case, no trailing slash
+             "See https://example.com/scratchpad/notes",                        // 7: a URL segment
+             "Made in hydra-data\\scratch_ms)",                                 // 8: scratch_ms ends the path
+             "Made in `scratch_ms/ghidra.txt`",                                 // 9: scratch_ms starts the path
+             "The `scratch_ms` folder was not kept.",                           // 10: the word alone passes
+             "Worktree C:\\w\\chref-scratch\\a",                                // 11
+             "Use a scratch folder, or your scratchpad, for temporary files.",  // 12: words alone pass
+             "The scratch\\ name is not one of the listed folders."}},          // 13: bare scratch passes
         Doc{"docs/handoffs/2026-10-31-x-handoff.md", {"Read `C:\\Users\\P\\AppData\\Local\\Temp\\a.txt`."}},
-        Doc{"docs/superpowers/plans/2026-10-31-x.md", {"Read `x\\scratchpad\\a.txt`."}}};
+        Doc{"docs/superpowers/plans/2026-10-31-x.md", {"Read `x\\scratchpad\\a.txt`."}},
+        Doc{"docs/handoffs-old/x.md", {"Read `x\\scratchpad\\a.txt`."}},   // a longer folder name is not the skip
+        Doc{"tools/docs/handoffs/x.md", {"Read `x\\scratchpad\\a.txt`."}}  // the skip is a prefix, not a substring
+    };
     std::vector<std::string> problems;
     check_scratch_paths(docs, problems);
-    REQUIRE(problems.size() == 2);
+    REQUIRE(problems.size() == 11);
     CHECK(problems[0] ==
           "docs/x.md:1: names a path into a scratch folder (\"AppData\\Local\\Temp\"); say the file was not "
           "kept, or point at a repo copy");
-    CHECK(problems[1].rfind("docs/x.md:3: ", 0) == 0);
+    const int expected_lines[] = {3, 4, 5, 6, 7, 8, 9, 11};
+    for (size_t i = 0; i < 8; ++i)
+        CHECK(problems[i + 1].rfind("docs/x.md:" + std::to_string(expected_lines[i]) + ": ", 0) == 0);
+    CHECK(problems[9].rfind("docs/handoffs-old/x.md:1: ", 0) == 0);
+    CHECK(problems[10].rfind("tools/docs/handoffs/x.md:1: ", 0) == 0);
 }
 
 namespace {
