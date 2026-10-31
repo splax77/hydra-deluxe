@@ -780,8 +780,8 @@ int main() {
 
     if (const int code = app::load_tool_rules(a.rules_path, a.rules)) return code;
 
-    // A bad setting flag (a cap below the floor) is a bad argument: exit 2,
-    // like the others, before any command runs.
+    // A bad setting flag (a --cap that is not a whole number) is a bad argument:
+    // exit 2, like the others, before any command runs.
     app::Settings s;
     try {
         s = settings_from(a);
