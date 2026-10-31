@@ -2,7 +2,15 @@
 
 Hydra's UI is Dear ImGui. The Dear ImGui Test Engine (vendored at `third_party/imgui_test_engine`) can find a widget by its label, click it, type into it, and read what is on screen. `hydra_uitest` runs the whole UI with no window on a software GPU, so an agent can verify a GUI change in about a second and get **plain text** back — not screenshots.
 
-Use this instead of launching `Hydra.exe` and taking screenshots. Reach for a screenshot only when something looks visually wrong.
+## Which check a GUI change needs
+
+One rule covers every GUI check. It has three cases, and each case names what the check is for.
+
+1. **Behaviour and text.** `hydra_uitest`, or the `hydra` MCP server that drives the same engine, answers it. It takes the place of launching `Hydra.exe` and taking screenshots. The user asked for it because "repeatedly taking screenshots is very inefficient".
+2. **What the user sees.** A layout, a width, spacing, alignment, or what the screen does when a song opens or closes. Here the headless check is not enough. Before merge the change is also seen in the real dev app, with the user's `hydra_ui.ini` and a copy of their database, and the captures are shown to the user. A headless run starts from a fresh settings file on the test charts, so it misses saved table state, real text lengths and real DPI. This case comes from the column-width rule of 2026-10-10, which passed every headless test and then squeezed every column of the user's real Library. The user's words: "did you never once do a UI test?". If the user says to merge before this check is done, say plainly that it is still owed.
+3. **How a report or other analysis-backed view draws.** Run the real app on `testdata/input`, never a whole-library analysis. Drawing looks the same with a few rows as with the whole library. A copy of the user's database is for the Library view only, never for starting an analysis. The user's words (2026-10-14): "you dont need a full library run to check the rendering".
+
+"Seeing it in the real app" below says how to set up cases 2 and 3.
 
 ## Build and run
 
@@ -14,7 +22,7 @@ Use this instead of launching `Hydra.exe` and taking screenshots. Reach for a sc
 .\build-cpp\Release\hydra_uitest.exe --all
 ```
 
-Agents do not run `--all`. They run only the tests for their own change, with `--test <name>`; the rule is in `docs/agents/brief-preamble.md`. The main session runs the merge's tests once; CLAUDE.md rule 1 says which.
+Agents do not run `--all`. They run only the tests for their own change, with `--test <name>`; the rule is in `docs/agents/brief-preamble.md`. The main session runs the merge's tests once; `docs/agents/agent-rules.md`, rule 1, says which.
 
 | Command | What it does |
 |---|---|
@@ -284,3 +292,28 @@ Rules of thumb:
 - `tests/ui/uitest_report_windows.cpp` — the report windows' tests; their sample rows are in `tests/report_samples.{h,cpp}`.
 - `tests/ui/uitest_main.cpp` — the CLI and the one-process-per-test runner.
 - `src/ui/app_shell.{h,cpp}` — `run_frame` and Hydra's window placements, shared by `Hydra.exe` and the runner. `src/ui/imgui_setup.{h,cpp}` — `setup_imgui` and the `FrameText` capture that `run_frame` calls around its draw (`begin_frame_text_capture` / `end_frame_text_capture`); `FrameText` holds every string ImGui drew, which is what `text`/`wait-text` read. Callers of `setup_imgui` set `ImGuiSetupOptions::before_ini_load` to `install_placement_handler` (app_shell.h).
+
+## Seeing it in the real app
+
+Cases 2 and 3 of the rule at the top run the real dev `Hydra.exe` from a scratch folder of its own. Hydra reads `hydra.db` and `hydra_settings.ini` from the folder its exe sits in (`exe_dir` in `src/app/config.cpp`). It reads `hydra_ui.ini` from the same folder unless `--ui-ini` names another (`setup_imgui` in `src/ui/imgui_setup.cpp`).
+
+1. Build `-Target Hydra` first. A build of only `hydra_tests` or `hydra_uitest` leaves `Hydra.exe` as it was.
+2. Copy `Hydra.exe`, the two mimalloc DLLs and the `assets` and `resource` folders from `build-cpp\Release` into a fresh scratch folder.
+3. For case 2, copy the user's `hydra.db`, `hydra_settings.ini` and `hydra_ui.ini` from the installed folder, `C:\Program Files\Hydra`, while the installed Hydra is closed. For case 3, copy only `hydra_ui.ini`, and write a `hydra_settings.ini` whose song folder is the repo's `testdata\input`. Then scan, analyze and open the view.
+4. Copy the database and settings files again before each run, because a run saves over them.
+5. Capture with `tools/capture_window.ps1`. Its `Start-Hydra` launches the copy, `Save-WindowShot` draws one window into a PNG with PrintWindow, and `Send-WindowMessage` posts clicks and keys. So the window never has to come to the front.
+
+Window mode of the `hydra` server makes its own copy of the library (see "Live mode and the MCP server"), so use it when Claude drives the check. When the user drives the check themself, use the scratch folder above instead. The live window takes no input from the real mouse (the user, 2026-10-29: "my mouse doesnt work in it").
+
+## Traps
+
+Each trap names the file that owns the behaviour. Read the detail there.
+
+- A third argument to IM_CHECK_FLOAT_EQ_EPS is dropped without an error, because the vendored engine defines that macro as another name for the two-argument IM_CHECK_FLOAT_EQ. Use IM_CHECK_FLOAT_NEAR_EQ for a tolerance (`third_party/imgui_test_engine/imgui_te_context.h`).
+- The vendored test engine carries Hydra's own patches, each marked `// Hydra patch:`, and a refresh of the engine must apply them again. `THIRD_PARTY_NOTICES.txt` lists them. The `engine-wildcard-patches` test fails when either wildcard patch is lost.
+- `hydra_replay` and `hydra_bench` are left out of a plain build (EXCLUDE_FROM_ALL in `CMakeLists.txt`). Build them by `-Target`, or they stay stale.
+- `tools/capture_window.ps1` loads its C# code as the type `HydraCaptureV1`, and the PowerShell host keeps a type once it is loaded. A changed C# body under the same name is never loaded, and the script fails with no error. Change the version in the type's name whenever the C# block changes.
+- The `hydra` server runs the build of the checkout its helper file sits in (`REPO` in `tools/hydra_ui_mcp.py`), so it never sees a branch's build. To check a branch, build it in its worktree and run that worktree's own helper from a small `mcp` stdio client script. Pass `keep=True` to `hydra_start`, or `hydra_stop` deletes the screenshots.
+- A session's `hydra` server keeps the helper it loaded when the session started, so a change to `tools/hydra_ui_mcp.py` does not reach it. Drive the changed helper from your own `mcp` client script, as for a branch, rather than asking the user to reconnect the server. The user's words: "you created the server, you figure it out".
+- Holding Escape in the live window for a moment sets the test engine's abort flag. `clear_abort` in `tests/ui/uitest_engine.cpp` clears it between commands, so it does not end the session. A live window closes on the engine's stop request, which `engine_stopping` in the same file reads.
+- Dear ImGui publishes no accessibility tree, so Windows UI-automation tools cannot read Hydra. Use `hydra_uitest` or the `hydra` server instead.
