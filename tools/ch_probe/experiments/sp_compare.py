@@ -92,6 +92,11 @@ READY_FRACTION = SP_ACTIVATION_BARS / SP_CAP_BARS
 # bytes after it are other flags), so sp_active_u32 would mix them in.
 DEFAULT_WIDTH = 64
 
+
+def column_names(width: int = DEFAULT_WIDTH) -> tuple:
+    """The (amount, maximum) watch-row column names for a width in bits."""
+    return f"sp_amount_u{width}", f"sp_max_u{width}"
+
 # The plan names four phrases as the expected fill of the meter, so a full
 # rise is printed beside sp_max divided by this.
 PHRASES_PER_FULL_METER = 4
@@ -173,7 +178,8 @@ def _chord_label(chord: dict) -> str:
     return f"chord {chord['index']} (tick {chord['tick']}, {_fmt(chord['ms'])})"
 
 
-def _active(row: dict) -> bool:
+def is_active(row: dict) -> bool:
+    """Whether a watch row has the Star Power flag set."""
     return row["sp_active_byte"] != 0
 
 
@@ -182,10 +188,10 @@ def find_activations(rows: list) -> list:
     found = []
     i = 1
     while i < len(rows):
-        if _active(rows[i]) and not _active(rows[i - 1]):
+        if is_active(rows[i]) and not is_active(rows[i - 1]):
             drop = None
             for k in range(i + 1, len(rows)):
-                if not _active(rows[k]):
+                if not is_active(rows[k]):
                     drop = k
                     break
             found.append(_Activation(len(found) + 1, i, drop))
@@ -265,7 +271,7 @@ def ready_between(rows: list, start_ms: float, end_ms: float,
     if not inside:
         return ReadyWindow(0, None, None, None)
     ready = next((r for r in inside
-                  if not _active(r) and at_ready_level(r[amount_col], r[max_col])),
+                  if not is_active(r) and at_ready_level(r[amount_col], r[max_col])),
                  None)
     return ReadyWindow(len(inside), max(r[amount_col] for r in inside),
                        inside[0][max_col], ready)
@@ -301,7 +307,7 @@ def _check_phrase_rises(report: Report, rows: list, chords: list,
         kind = "clamped" if after == rows[step][max_col] else "full"
         if kind == "full":
             full_sizes.append(size)
-        during = ", during Star Power" if _active(rows[step - 1]) else ""
+        during = ", during Star Power" if is_active(rows[step - 1]) else ""
         report.check(True, f"phrase rise after {_chord_label(chord)}: "
                      f"+{size} ({before} -> {after}) at {_fmt(_ms(rows[step]))}, "
                      f"{kind}{during}")
@@ -364,7 +370,7 @@ def _check_activation(report: Report, rows: list, act: _Activation) -> None:
                      f"{seen} within {EVENT_WINDOW_MS:g} ms, expected "
                      f"{base * SP_MULTIPLIER}")
 
-    ahead = next((r for r in window if _active(r) and r["sp_end_s"] > r["clock_s"]), None)
+    ahead = next((r for r in window if is_active(r) and r["sp_end_s"] > r["clock_s"]), None)
     if ahead is not None:
         report.check(True, f"  activation {n} end time ahead of the clock: end "
                      f"{_fmt(ahead['sp_end_s'] * 1000)}, clock {_fmt(_ms(ahead))}")
@@ -515,8 +521,7 @@ def compare(rows: list, score: dict, *, resolution: int | None = None,
             sp_bar_ticks: int | None = None, width: int = DEFAULT_WIDTH) -> Report:
     """Every check over the watcher rows and the score JSON, as a Report.
     With no resolution, Hydra's full meter is left out of the sp_max line."""
-    amount_col = f"sp_amount_u{width}"
-    max_col = f"sp_max_u{width}"
+    amount_col, max_col = column_names(width)
     chords = score["chords"]
     report = Report()
     report.note(f"Star Power comparison: {len(rows)} watcher rows, {len(chords)} "

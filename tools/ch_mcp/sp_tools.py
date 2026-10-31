@@ -40,8 +40,7 @@ from tools.ch_probe.process import open_process
 
 # The amount and maximum columns sp_compare.compare reads at its default
 # width; the server reads the same ones.
-AMOUNT_COL = f"sp_amount_u{sp_compare.DEFAULT_WIDTH}"
-MAX_COL = f"sp_max_u{sp_compare.DEFAULT_WIDTH}"
+AMOUNT_COL, MAX_COL = sp_compare.column_names()
 
 CSV_PREFIX = "sp_watch-"
 
@@ -79,7 +78,7 @@ def sp_lines(snap: Snapshot) -> List[str]:
     else:
         lines.append("share of max: none (max is 0)")
         lines.append("ready: unknown (max is 0)")
-    on = sp_compare._active(row)
+    on = sp_compare.is_active(row)
     lines.append(f"active flag: {row['sp_active_byte']} ({'on' if on else 'off'})")
     lines.append(f"end time: {_ms_text(snap.sp_end_s)}, "
                  f"{_ms_text(snap.sp_end_s - snap.clock_s)} ahead of the clock")

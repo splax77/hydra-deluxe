@@ -312,6 +312,18 @@ class RowChecksTest(unittest.TestCase):
     def test_old_name_is_the_public_finder(self):
         self.assertIs(sp_compare._find_activations, sp_compare.find_activations)
 
+    def test_column_names_follow_the_width(self):
+        self.assertEqual(sp_compare.column_names(), (AMOUNT, MAX))
+        self.assertEqual(sp_compare.column_names(32),
+                         ("sp_amount_u32", "sp_max_u32"))
+
+    def test_is_active_reads_the_flag_byte_only(self):
+        row = _row(1.0, 0, active=1)
+        self.assertTrue(sp_compare.is_active(row))
+        row["sp_active_u32"] = 257
+        row["sp_active_byte"] = 0
+        self.assertFalse(sp_compare.is_active(row))
+
     def test_ready_fraction_is_half_a_meter(self):
         self.assertEqual(sp_compare.READY_FRACTION, 0.5)
 
