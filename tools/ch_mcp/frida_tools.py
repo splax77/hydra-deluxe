@@ -273,6 +273,12 @@ class FridaTools:
             lines.append(f"state: {state_words(snapshot)}")
             return self._reply(lines)
 
+    def is_attached(self) -> bool:
+        """Whether the state agent is attached and its session is alive, for
+        tools that need an attach before they start (method_watch)."""
+        with self._lock:
+            return self._agent is not None and self._agent.alive
+
     def read_state(self) -> dict:
         """One fresh read as the raw dict state.ts sent, menu block included,
         for menu_tools. Raises StateUnread with the reason when no read came

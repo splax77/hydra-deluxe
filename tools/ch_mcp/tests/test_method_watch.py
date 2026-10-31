@@ -49,16 +49,14 @@ class FakeGame:
         self.hooks.append(hook)
 
 
-class FakeLiveAgent:
-    def __init__(self, alive):
-        self.alive = alive
-
-
 class FakeFrida:
-    """FridaTools as the default attach check reads it."""
+    """FridaTools as MethodWatch uses it: its public attach check."""
 
-    def __init__(self, agent=None):
-        self._agent = agent
+    def __init__(self, attached=True):
+        self.attached = attached
+
+    def is_attached(self):
+        return self.attached
 
 
 class ScriptedAgent:
@@ -123,15 +121,11 @@ class WatchTestBase(unittest.TestCase):
         self.game = FakeGame(self.folder, self.events)
         self.watches = []
 
-    def make(self, payloads, *, frida=None, attached=True):
+    def make(self, payloads, *, attached=True):
         agent = ScriptedAgent(payloads, self.events)
-        kw = {}
-        if frida is None:
-            frida = FakeFrida()
-            kw["attached"] = lambda: attached
-        watch = MW.MethodWatch(self.game, frida, threading.RLock(),
+        watch = MW.MethodWatch(self.game, FakeFrida(attached), threading.RLock(),
                                run_agent=agent, wait=quick_wait,
-                               agent_dir=self.agent_dir, **kw)
+                               agent_dir=self.agent_dir)
         self.watches.append(watch)
         self.addCleanup(self.stop_all)
         return watch, agent
@@ -143,18 +137,13 @@ class WatchTestBase(unittest.TestCase):
 
 class StartTest(WatchTestBase):
     def test_the_start_refuses_when_nothing_is_attached(self):
-        watch, agent = self.make([SUMMARY], frida=FakeFrida(agent=None))
+        watch, agent = self.make([SUMMARY], attached=False)
         reply = watch.ch_method_watch_start()
         self.assertEqual(reply, f"{FT.NOT_ATTACHED}; no method watch started")
         self.assertEqual(self.events, [])
 
-    def test_the_start_refuses_a_dropped_attach(self):
-        watch, _ = self.make([SUMMARY], frida=FakeFrida(agent=FakeLiveAgent(alive=False)))
-        self.assertIn(FT.NOT_ATTACHED, watch.ch_method_watch_start())
-        self.assertEqual(self.events, [])
-
-    def test_a_live_attach_lets_the_start_through(self):
-        watch, _ = self.make([SUMMARY], frida=FakeFrida(agent=FakeLiveAgent(alive=True)))
+    def test_an_attach_lets_the_start_through(self):
+        watch, _ = self.make([SUMMARY])
         self.assertIn("hooked: 3 code addresses", watch.ch_method_watch_start())
 
     def test_the_backup_comes_before_the_hooks(self):

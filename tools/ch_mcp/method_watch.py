@@ -329,13 +329,6 @@ class WatchSession:
         return line
 
 
-def _frida_attached(frida) -> bool:
-    """Whether the Frida tools hold a live attach. FridaTools owns the attach
-    and offers no public check for it, so this reads its live agent."""
-    agent = getattr(frida, "_agent", None)
-    return agent is not None and bool(getattr(agent, "alive", False))
-
-
 class MethodWatch:
     """ch_method_watch_start and ch_method_watch_stop, and the one watch
     between them.
@@ -352,8 +345,7 @@ class MethodWatch:
                  frida_mod: Any = None,
                  wait: Callable[[threading.Event, float], bool] = FA._default_wait,
                  agent_dir: str = FT.AGENT_DIR,
-                 candidates_path: str = CANDIDATES_FILE,
-                 attached: Optional[Callable[[], bool]] = None) -> None:
+                 candidates_path: str = CANDIDATES_FILE) -> None:
         self._game = game
         self._frida = frida
         self._lock = lock
@@ -363,8 +355,6 @@ class MethodWatch:
         self._wait = wait
         self._agent_dir = agent_dir
         self._candidates_path = candidates_path
-        self._attached = attached if attached is not None else (
-            lambda: _frida_attached(frida))
         self._session: Optional[WatchSession] = None
         self._scene_classes: set[str] = set()
         self._count = 0
@@ -378,7 +368,7 @@ class MethodWatch:
         with self._lock:
             if self._session is not None and not self._session.ended():
                 return "a method watch is already running; call ch_method_watch_stop first"
-            if not self._attached():
+            if not self._frida.is_attached():
                 return f"{FT.NOT_ATTACHED}; no method watch started"
             if cap_s <= 0:
                 return f"cap_s must be more than 0 seconds, not {cap_s:g}"

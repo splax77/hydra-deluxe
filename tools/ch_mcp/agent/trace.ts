@@ -2,10 +2,10 @@
 // its base class, and counts the calls, so the method that runs once per note
 // can be picked out (plan 2026-10-28, Task D).
 //
-// It reads and traces only. Every hook is an Interceptor.attach with an
-// onEnter that reads its arguments; nothing changes an argument or a return
-// value, writes game memory or calls a game method. The no-writes check in
-// tests/test_frida_attach.py keeps it that way.
+// This agent only reads and traces: every hook is an Interceptor.attach with
+// an onEnter that reads its arguments, and nothing here changes an argument or
+// a return value. What an agent may change in the game, and the checks that
+// hold it to that, are in docs/agents/clone-hero-mcp.md, "Safety rules".
 //
 // frida_attach.run_agent posts the start message. trace_hits.py adds the
 // settings below to it, receives every message this agent sends, and ends the
