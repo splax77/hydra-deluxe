@@ -44,6 +44,8 @@ Every task's "done when" includes two checks: the full `hydra_tests` suite passe
 
 ---
 
+The Clone Hero rules this plan built on now live in the reference pages under docs/clone-hero/, and the addresses quoted in its decisions and task code are a record of what was read then. The rows: disco flip in 02-note-list.md (NL-17, NL-21); 2x kicks in 02-note-list.md (NL-24 to NL-27); phrase edges in 05-star-power.md (SP-01 to SP-03, SP-07); fill placement in 04-fills.md (FL-03 to FL-07); the dynamics tag in 02-note-list.md (NL-11, NL-13); the score's speed term in 06-scoring.md (SC-03) and 03-timing.md (TM-42); the hit window in 03-timing.md (TM-19 to TM-23); and the SP-end extension and the leeway in 05-star-power.md (SP-24, SP-34, SP-42) and 07-internals.md (IN-27).
+
 ## What changes, in plain words
 
 Clone Hero reads each difficulty of a drum chart on its own. Hydra didn't, in two places. Below Expert it applied Expert's disco sections, so it flipped hi-hats that the lower difficulty already wrote on yellow. It also let Expert's 2x kicks leak into the Dynamics tab. Both now follow the difficulty being read.
