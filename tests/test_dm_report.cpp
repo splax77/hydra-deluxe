@@ -226,7 +226,7 @@ TEST_CASE("generate_dm_report: tally and framing behind one seam") {
 
     // The subtitle counts every score and nothing by status: the tiles count
     // the scores that pass the filters (D103 item 27).
-    CHECK(result.subtitle == "TestUser — 5 scores");
+    CHECK(result.subtitle == "TestUser — 5 scores — SP cap 4, Clone Hero's rule");
     CHECK(result.footer.rfind("Actual scores from dmleaderboards.com against Hydra's", 0) == 0);
 
     // No scores: zero stats, no rows.
@@ -253,10 +253,11 @@ TEST_CASE("generate_dm_report hands over its rows, subtitle, footer, player and 
     CHECK(result.rows[1].status == "not in library");
     CHECK(result.username == "TestUser");
     CHECK(result.chartmode == kMode);
-    CHECK(result.subtitle == "TestUser — 2 scores");
+    // The line ends with the cap the comparison runs at (D276 item 7).
+    CHECK(result.subtitle == "TestUser — 2 scores — SP cap 4, Clone Hero's rule");
     // One score reads singular, as the count line writes its noun.
     CHECK(app::dm_report::generate_dm_report(store, {scores[0]}, testdm::profile(), "TestUser")
-              .subtitle == "TestUser — 1 score");
+              .subtitle == "TestUser — 1 score — SP cap 4, Clone Hero's rule");
     CHECK(result.footer.rfind("Actual scores from dmleaderboards.com against Hydra's optimal for " +
                                   std::string(kMode) + ".",
                               0) == 0);
@@ -861,6 +862,37 @@ TEST_CASE("why_not_comparable names the missing Clone Hero rule") {
     CHECK(refused);
 }
 
+// D271 item 8: the toolbar asks the gate about the profile the page is built
+// at, so the cap setting never refuses; the other three rules still do.
+TEST_CASE("why_not_comparable for settings asks about the Clone Hero cap profile") {
+    using app::dm_report::why_not_comparable;
+    for (const int cap : {kCloneHeroSpCap, 6, 8}) {
+        CAPTURE(cap);
+        app::Settings s = testdm::settings(kMode, cap);
+        CHECK(why_not_comparable(s) == "");
+        s.view_difficulty = "Hard";
+        CHECK(why_not_comparable(s) == "Needs Expert: the leaderboard only has Expert scores.");
+        s.view_difficulty = "Expert";
+        s.legacy_fills = true;
+        CHECK(why_not_comparable(s) ==
+              "Needs Clone Hero 1.1 fills: untick \"1.0 fills\". The leaderboard is played on "
+              "current Clone Hero.");
+        s.legacy_fills = false;
+        s.view_noteshuffle = true;
+        CHECK(why_not_comparable(s) ==
+              "dmleaderboards scores don't say whether Note Shuffle was on, so they can't be "
+              "compared with a shuffled path. Untick Note Shuffle to compare.");
+    }
+}
+
+// D276 item 7: the cap words, and the Compare button's tooltip built from them.
+TEST_CASE("clone_hero_cap_phrase and compare_tooltip name SP cap 4") {
+    CHECK(app::dm_report::clone_hero_cap_phrase() == "SP cap 4, Clone Hero's rule");
+    CHECK(app::dm_report::compare_tooltip() ==
+          "Compare a dmleaderboards player's scores against your library at SP cap 4, Clone "
+          "Hero's rule.");
+}
+
 // D104 item 6.
 TEST_CASE("why_not_comparable refuses Note Shuffle, and only Note Shuffle changes") {
     using app::dm_report::why_not_comparable;
@@ -983,7 +1015,7 @@ TEST_CASE("collect_dm_rows reads the Clone Hero cap profile by name") {
     CHECK(rows[0].optimal == optimal);
     CHECK(rows[1].status == "no current result");
 
-    // A profile at another cap is refused with the toolbar's sentence.
+    // A profile at another cap is refused with the gate's cap sentence.
     bool refused = false;
     try {
         app::dm_report::collect_dm_rows(store, {make_score(kHash, 1)}, at8.profile());

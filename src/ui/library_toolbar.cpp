@@ -1,6 +1,6 @@
 #include "ui/library_parts.h"
 
-#include "app/dm_report.h"  // why_not_comparable
+#include "app/dm_report.h"  // why_not_comparable, compare_tooltip
 #include "app/user_messages.h"
 #include "core/model.h"
 #include "imgui.h"
@@ -102,12 +102,10 @@ void render_actions_row(AppState& app) {
     ImGui::SameLine();
 
     // app::dm_report::why_not_comparable says whether these settings can be
-    // compared with the leaderboard. When they can't, the button is off and
-    // its tooltip is the gate's sentence.
-    const std::string refused =
-        app::dm_report::why_not_comparable(app.settings.difficulty(), app.settings.sp_cap,
-                                           app.settings.legacy_fills,
-                                           app.settings.view_noteshuffle);
+    // compared with the leaderboard, asked of the profile the page is built
+    // at. When they can't, the button is off and its tooltip is the gate's
+    // sentence.
+    const std::string refused = app::dm_report::why_not_comparable(app.settings);
     const bool compare_off = !refused.empty();
     begin_disabled_button(compare_off);
     if (ImGui::Button("Compare with dmleaderboards...")) {
@@ -121,7 +119,7 @@ void render_actions_row(AppState& app) {
         if (compare_off)
             ImGui::SetTooltip("%s", refused.c_str());
         else
-            ImGui::SetTooltip("Compare a dmleaderboards player's scores against your library.");
+            ImGui::SetTooltip("%s", app::dm_report::compare_tooltip().c_str());
     }
 
     // The path report, at the right, whenever opening it can build one

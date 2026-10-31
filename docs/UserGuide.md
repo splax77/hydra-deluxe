@@ -80,7 +80,7 @@ Hydra Deluxe reads `notes.mid` or `notes.chart` folders with a `song.ini`, `.sng
 
 `Analyze library...` analyzes many songs at once, in the background. While a search or a chip other than `All` narrows the list, the button reads `Analyze shown (N)...` and analyzes only the N songs the table shows. A filter Hydra Deluxe can't read narrows nothing, so with only `stars:9` typed and the `All` chip on, the button still reads `Analyze library...`. See [Analyzing the whole library](#analyzing-the-whole-library).
 
-`Compare with dmleaderboards...` compares a player's leaderboard scores with your stored results. It works only under Expert, an SP cap of 4, `1.0 fills` off and Note Shuffle off. With any other settings the button is greyed out, and hovering it says which setting is in the way. See [Reports](#reports).
+`Compare with dmleaderboards...` compares a player's leaderboard scores with your stored results at SP cap 4, Clone Hero's rule, whatever your `SP cap` setting says. It works only under Expert, with `1.0 fills` off and Note Shuffle off. With any other settings the button is greyed out, and hovering it says which setting is in the way. See [Reports](#reports).
 
 `Analysis settings: ...` shows the settings your analyses run under, and opens the panel where you change them. See [Analysis settings](#analysis-settings).
 
@@ -520,11 +520,11 @@ Older versions saved the reports as web pages, `hydra_paths.html` and `hydra_dmc
 
 `Compare with dmleaderboards...` compares a [dmleaderboards.com](https://dmleaderboards.com) player's posted scores with your stored optimals. Pick a player from the searchable list in the `Compare dmleaderboards user` box; Hydra Deluxe remembers the last pick. Picking a player closes the box and opens the comparison in its own window, titled `dmleaderboards: <player> — Hydra`. Hydra Deluxe fetches the player's scores and matches them to your analyzed songs by chart hash.
 
-The comparison needs Expert, an SP cap of 4, `1.0 fills` off and Note Shuffle off. The leaderboard only holds Expert scores played under Clone Hero's rules, and its scores don't say whether Note Shuffle was on. Only songs analyzed under the current settings can match, so analyze your library first for a full comparison.
+The comparison needs Expert, `1.0 fills` off and Note Shuffle off. The leaderboard only holds Expert scores played under Clone Hero's rules, and its scores don't say whether Note Shuffle was on. Any `SP cap` setting works, because the comparison always uses SP cap 4, Clone Hero's rule. Only songs analyzed at SP cap 4 under the current settings can match, so analyze your library first for a full comparison.
 
 The first request after a while can take tens of seconds, because the leaderboard's server has to wake up. While the scores load, the window says `Fetching scores and building the report...` and `The leaderboard server can take a moment to wake up.`, over a moving bar. The server gives no count, so the bar only shows that work is happening. `Cancel` closes the window and reopens the player list.
 
-The comparison window has the same layout, keyboard and placement as the path report window (see [Report windows](#report-windows)). Its header reads `Hydra vs dmleaderboards`, and its line gives the player's name and total number of scores. Next to `Refresh`, which fetches the player's scores again and rebuilds the comparison, the header has `Compare another player...`, which reopens the box. There is one comparison window, so comparing another player replaces what it shows. Closing the window doesn't keep the comparison: to see it again, pick the player again, which fetches the scores again.
+The comparison window has the same layout, keyboard and placement as the path report window (see [Report windows](#report-windows)). Its header reads `Hydra vs dmleaderboards`. The line under it reads like `<player> — N scores — SP cap 4, Clone Hero's rule`: the player's name, their total number of scores and the cap the comparison uses. Next to `Refresh`, which fetches the player's scores again and rebuilds the comparison, the header has `Compare another player...`, which reopens the box. There is one comparison window, so comparing another player replaces what it shows. Closing the window doesn't keep the comparison: to see it again, pick the player again, which fetches the scores again.
 
 Every row gets one status. The status dropdown shows one status at a time, or `All charts`. These are its entries:
 
