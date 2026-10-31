@@ -1170,13 +1170,43 @@ On 2026-10-30 the user approved the build ("Yes, build it"). Nothing in Hydra ch
 
 Nothing stored changes, so no stamp moves.
 
-**D274 (session da599242), 2026-09-24 and 09-25, recorded 2026-10-30. The derivation-fixes plan's 28 user decisions.** These calls set the plan `docs/superpowers/plans/2026-09-24-derivation-fixes.md` (its "User decisions" list, 1 to 28), made from the audit `docs/audit/2026-09-24-derivation-audit.md`. Until now they lived only in a session card; the audit of the past audits found no D-record for them. The words below are from the session's condensed transcript. The user's calls in chat, between 23:32 UTC on 2026-09-24 and 00:48 UTC on 2026-09-25:
+**D274 (session da599242), 2026-09-24 and 09-25, recorded 2026-10-30. The derivation-fixes plan's 28 user decisions.** These calls set the plan `docs/superpowers/plans/2026-09-24-derivation-fixes.md` (its "User decisions" list, 1 to 28), made from the audit `docs/audit/2026-09-24-derivation-audit.md`. Until now they lived only in a session card; the audit of the past audits found no D-record for them. The words below were read from the session's transcript, which is not kept. The session's card, `docs/sessions/2026-09-24-da599242.md`, keeps each answer with the start of its question; those questions follow the calls. The user's calls in chat, between 23:32 UTC on 2026-09-24 and 00:48 UTC on 2026-09-25:
 1. **Backend rows and the engine (plan decisions 1, 2, 7, 19, 23).** The squeezed-out row the engine counts as 0: the user chose `0 + "(uncounted)" (Recommended)`. The engine's own search loop calls the shared backend-pricing function: "Engine too (Recommended)". A plain backend row 2 to 3 ms past the SP end: "3 ms everywhere (Recommended)". Every uncounted row shows 0 points: "0 points, no highlight (Recommended)". The speed limits: "5% and 3% are fine (Recommended)".
 2. **What the screen shows (decisions 3, 4, 10, 11, 21).** "Positive = hit early (Recommended)" for the calibration fill sign. "Round (Recommended)" for the average multiplier. `"(unknown)" everywhere (Recommended)` for an empty song name, then "Yes, '(unknown)' for all (Recommended)" for a missing name key and an empty `.srb` name. "Read it from the JSON (Recommended)" for the Preview's time box size. "Delete them and their tests (Recommended)" for the three test-only squeeze_rating helpers.
 3. **Stored records (decisions 5, 12, 15, 27).** "Yes, bump and re-analyze (Recommended)" for the new record format. "Add a stamp (Recommended)" and then "Parser counter (Recommended)" for the Dynamics counts. "Stamp + read Stale (Recommended)" for records made under other rule values. "Name the actual reason (Recommended)" for how `hydra_replay dump` explains a Stale record.
 4. **The rules file (decisions 13, 14, 16, 18).** Asked how to find the reasons for the 3 ms leeway, the squeeze-out first-note rule, the auto-fill constants, the 4-tied-paths limit, the Auto cap ladder and its 120 s budget, the user typed: "these are all arbitrary rules i decided for my purposes. make them configurable in a  config file." Then "New hydra_rules.ini (Recommended)", "first note / whole chord" for the squeeze-out rule's choices, "Yes, configurable" for the authored-fill landing slop, and "Refuse to analyze (Recommended)" for a bad value or an unknown key.
 5. **Tools and the second repo (decisions 6, 17, 20, 26, 28).** "Fix it (Recommended)" for `hydra_replay`'s late multiplier field. "Fix both repos (Recommended)" for hydra_replay and video-tools' fcvideo. "Commit them as-is first (Recommended)" for the six uncommitted video-tools edits. "Refuse with a message (Recommended)" for a typed SqOut offset on a chord the engine would never squeeze out. "Yes, fix it in Task 8 (Recommended)", given twice: for the dynamics pricing at 00:33 UTC and for the ghost and accent wording at 00:48 UTC.
 6. **Small edges (decisions 8, 9, 22, 24, 25).** "Accept any case (Recommended)" for the library scan. "Check the game, then honor (Recommended)" for the Preview's audio delay and Offset. "Explain in code, keep fixed (Recommended)" for the 8 batch workers, the 1.0 fill pad and the combo set. "view_difficulty: any case" and "MIDI: follow mido on broken files", the second then narrowed by "Keep loading them (Recommended)" for a track cut off mid-event.
+
+The questions, as the session's card keeps them. The card holds only the start of each question, so the rest of each question's text was not kept. The questions behind `0 + "(uncounted)" (Recommended)` (23:32 UTC) and `"(unknown)" everywhere (Recommended)` (23:34 UTC) were not kept at all.
+- "Engine too (Recommended)" to "Should the engine's own search loop also call the new shared backend-pricing function ..." (23:32 UTC)
+- "Positive = hit early (Recommended)" to "The calibration fill timing shows as -12.3ms on one line of the details panel ..." (23:32 UTC)
+- "Round (Recommended)" to "Song Details cuts the average multiplier off at 3 decimals ..." (23:32 UTC)
+- "Yes, bump and re-analyze (Recommended)" to "Storing the squeezed-out note's tick and each activation's collected phrases means a new record format ..." (23:33 UTC)
+- "Fix it (Recommended)" to "hydra_replay's JSON reports each chord's multiplier one step behind ..." (23:33 UTC)
+- "3 ms everywhere (Recommended)" to "A plain backend row between 2 and 3 ms past the SP end ..." (23:33 UTC)
+- "Accept any case (Recommended)" to "The library scan only finds loose charts named exactly ..." (23:33 UTC)
+- "Check the game, then honor (Recommended)" to "The Preview plays audio from 0 at chart time 0 ..." (23:34 UTC)
+- "Read it from the JSON (Recommended)" to "The Preview's time box size ..." (23:34 UTC)
+- "Add a stamp (Recommended)" to "The Dynamics tab's saved ghost/accent counts carry no version ..." (23:34 UTC)
+- "New hydra_rules.ini (Recommended)" to "Where should the rule values live?" (23:37 UTC)
+- "Stamp + read Stale (Recommended)" to "When a rule value changes, what happens to records analyzed under the old values?" (23:37 UTC)
+- "first note / whole chord" to "What choices should the setting offer?" (23:37 UTC)
+- "Fix both repos (Recommended)" to "If hydra_replay alone is fixed, fcvideo marks the disc change one chord early ..." (00:04 UTC)
+- "Refuse to analyze (Recommended)" to "If hydra_rules.ini has a bad value or an unknown key, what should the GUI do?" (00:04 UTC)
+- "0 points, no highlight (Recommended)" to "Should they also show 0, and should uncounted rows lose their colour highlight?" (00:04 UTC)
+- "Yes, configurable" to "The 1/32-beat slop that decides which chord an AUTHORED fill lands on ..." (00:04 UTC)
+- "Parser counter (Recommended)" to "The new version stamp on Dynamics counts: what should it track?" (00:05 UTC)
+- "Yes, '(unknown)' for all (Recommended)" to "A song.ini with no name key at all, or a .srb with an empty name ..." (00:05 UTC)
+- "Refuse with a message (Recommended)" to "In hydra_replay --acts, a typed SqOut offset is matched to the nearest phrase chord ..." (00:05 UTC)
+- "Delete them and their tests (Recommended)" to "squeeze_rating.cpp has three helpers ..." (00:05 UTC)
+- "Explain in code, keep fixed (Recommended)" to "Three numbers have no recorded reason and aren't in your rules list ..." (00:07 UTC)
+- "5% and 3% are fine (Recommended)" to "Moving the engine onto the shared backend-pricing function may cost at most 5% search time ..." (00:07 UTC)
+- "view_difficulty: any case" and "MIDI: follow mido on broken files" to "Two small behavior edges came up. ..." (00:07 UTC)
+- "Commit them as-is first (Recommended)" to "The video-tools repo has uncommitted edits in six files. ..." (00:33 UTC)
+- "Keep loading them (Recommended)" to "When a MIDI track ends in the middle of an event, mido refuses the whole file ..." (00:33 UTC)
+- "Name the actual reason (Recommended)" to "After the rules fingerprint lands, a record can also be Stale because hydra_rules.ini changed ..." (00:33 UTC)
+- "Yes, fix it in Task 8 (Recommended)" to "video-tools' analyze.py prices a mis-hit ghost or accent at 50 ..." (00:33 UTC, and the same choice at 00:48 UTC for the ghost and accent label)
 
 Later records replace parts of this; where they differ, the later D-record holds. One matters for the leeway: the 3 ms is DragonDelgar's number from public Hydra, not the user's own choice (D269 call 4), even though the 23:36 answer above lists it among the user's rules. This record is written after the fact, so nothing moves now.
 
@@ -1213,7 +1243,7 @@ The plan's "User decisions" block, copied word for word when the plan left the r
 27. `hydra_replay dump` names the actual reason a record is Stale: a different Hydra build, different rules, or both.
 28. video-tools names each mis-hit ghost or accent from its own note (a per-note `dynamic` field), not from the chord. Only the loss text changes, and only on chords that mix a ghost and an accent.
 
-**D275 (session 4908325e), 2026-09-26, recorded 2026-10-30. The answers to section 5 of the 2026-09-25 codebase audit, and the record format.** Section 5 of `docs/audit/2026-09-25-codebase-audit.md`, "Changes that need your yes (they alter what you see)", lists seven changes. The user asked for them first: "run the decisions that require judgement by me first, then create a plan to address all of this." The answers set the plan `docs/superpowers/plans/2026-09-26-codebase-audit-fixes.md` (its "User decisions" list, 1 to 8). Until now they lived only in a session card. The words below are from the session's condensed transcript. The user's calls in chat on 2026-09-26, 13:31 to 13:33 UTC:
+**D275 (session 4908325e), 2026-09-26, recorded 2026-10-30. The answers to section 5 of the 2026-09-25 codebase audit, and the record format.** Section 5 of `docs/audit/2026-09-25-codebase-audit.md`, "Changes that need your yes (they alter what you see)", lists seven changes. The user asked for them first: "run the decisions that require judgement by me first, then create a plan to address all of this." The answers set the plan `docs/superpowers/plans/2026-09-26-codebase-audit-fixes.md` (its "User decisions" list, 1 to 8). Until now they lived only in a session card. The words below were read from the session's transcript, which is not kept. The session's card, `docs/sessions/2026-09-26-4908325e.md`, keeps each answer with the start of its question; those questions follow the calls. The user's calls in chat on 2026-09-26, 13:31 to 13:33 UTC:
 1. **Song names in reports follow song.ini (section 5 item 1).** The user chose "Follow song.ini (Recommended)".
 2. **The path report gets a Mode column (item 2).** The user chose "Add a Mode column (Recommended)". The subtitle counts the rows shown.
 3. **The number boxes stay live (item 3).** The audit offered saving only when you leave the box. The user chose "Live, but cheap (Recommended)" instead: the INI is saved on release, the decoded record is cached and only the summary query reruns.
@@ -1224,6 +1254,20 @@ The plan's "User decisions" block, copied word for word when the plan left the r
 8. **The record format changes in that plan.** Not in section 5, but asked in the same round: the user chose "Now, in this plan (Recommended)" for dropping unused stored fields and storing the multiplier squeezes once per chart.
 
 The same session's other answers were housekeeping and are in the plan's list as items 9 to 12: "Move out, delete logs (Recommended)", "Commit as-is first (Recommended)", "Fix them" for ch_probe's two runners, and "Restructure (Recommended)" for play_chart.py. Later records replace parts of this; where they differ, the later D-record holds. This record is written after the fact, so nothing moves now.
+
+The questions, as the session's card keeps them. The card holds only the start of each question, so the rest of each question's text was not kept.
+- "Follow song.ini (Recommended)" to "Song names in reports are frozen at a song's first analysis ..." (13:31 UTC)
+- "Add a Mode column (Recommended)" to "The path report mixes chart modes in one table with no label ..." (13:31 UTC)
+- "Live, but cheap (Recommended)" to "Holding +/- on the score-range, ms-limit or SP-cap boxes rewrites the INI ..." (13:31 UTC; the other option was commit on leaving the box)
+- "Yes, same rule (Recommended)" to "The Preview applies the audio delay/Offset rule only to folder charts ..." (13:31 UTC)
+- "Drop them (Recommended)" to "Hydra still carries migrations that upgrade 1.5.x and 1.6.x databases ..." (13:33 UTC)
+- "Retire it (Recommended)" to "... Retire it so the three report pages can share one script and one stylesheet?" (13:33 UTC)
+- "Budget out, ladder Auto-only (Recommended)" to "... So editing either marks every record Stale, including fixed-cap ones they can't affect. What should count?" (13:33 UTC)
+- "Now, in this plan (Recommended)" to "... A new format means every record reads Stale until re-analyzed. When?" (13:33 UTC)
+- "Move out, delete logs (Recommended)" to "About 2.6 GB of untracked data sits in the repo root ..." (13:34 UTC)
+- "Commit as-is first (Recommended)" to "... Commit it as-is before the fleet starts?" (13:34 UTC)
+- "Fix them" to "ch_probe's two tracked runners ..." (13:34 UTC, not the recommended delete)
+- "Restructure (Recommended)" to "play_chart.py works but bypasses ch_probe's designed modules ..." (13:34 UTC)
 
 The plan's "User decisions" block, copied word for word when the plan left the repo (`docs/superpowers/plans/2026-09-26-codebase-audit-fixes.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-09-26-codebase-audit-fixes.md`)):
 
