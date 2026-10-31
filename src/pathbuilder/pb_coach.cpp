@@ -433,7 +433,7 @@ void DecisionList::show(std::shared_ptr<const ScoreGraph> graph, const SearchSet
     candidates_.clear();
     candidate_ends_.clear();
     candidates_landed_ = static_cast<size_t>(-1);
-    shown_ =shown ? std::optional<Path>(*shown) : std::nullopt;
+    shown_ = shown ? std::optional<Path>(*shown) : std::nullopt;
     shown_windows_.clear();
     try {
         if (shown_) shown_windows_ = pinned_windows(*shown_);
