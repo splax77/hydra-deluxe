@@ -109,14 +109,16 @@ def build_server(helper: Optional[Helper] = None):
             "Drive Clone Hero as text, with nobody at the keyboard and the game window"
             " never brought to the front. ch_start backs up the user's files and the"
             " Rewired registry key, then launches the game minimized (with a song folder"
-            " the bot plays it; with none the game opens at its menu); ch_stop closes it"
+            " the bot plays it, or with human=True a human player on the virtual kit;"
+            " with none the game opens at its menu); ch_stop closes it"
             " and puts them back. ch_attach, ch_state, ch_snapshot and ch_menu read the"
             " game through Frida; ch_trace_start, ch_notes and ch_trace_stop trace each"
             " note the player hits. Presses and menus go through the virtual kit inside"
             " the game. ch_kit_setup builds the kit after ch_attach and switches Rewired's"
             " keyboard and mouse off for the run, so the user's own keys and mouse reach"
             " no player. ch_kit_press presses the kit's pads and buttons, ch_open_song"
-            " walks the menus to a song with it, ch_play_chart plays a chart on it,"
+            " walks the menus to a song with it (the route for a day human=True breaks),"
+            " ch_play_chart plays a chart on it,"
             " ch_kit_status and ch_kit_watch read it, and ch_kit_teardown takes it away and"
             " switches the keyboard and mouse back (ch_stop does too). ch_key, ch_press and"
             " ch_play_chart with route keys press keys into the focused window, and a"
@@ -129,15 +131,20 @@ def build_server(helper: Optional[Helper] = None):
 
     @server.tool()
     def ch_start(song_folder: str | None = None, player: str = bot_run.DEFAULT_PLAYER,
-                 profile: str | None = None) -> str:
+                 profile: str | None = None, human: bool = False) -> str:
         """Back up the user's game files and the Rewired registry key, set
         settings.ini's pause_on_focus_lost line for the run, then start Clone
         Hero minimized and watch whether its window ever comes to the front.
         With a song folder the game plays it with a bot from the command line;
-        with none it opens at its menu. A run already open is stopped and
+        with none it opens at its menu. human=True with a song folder starts
+        the song from the command line for a human player instead: the game
+        starts paused, the launch agent changes one byte of the command-line
+        loader in memory when GameAssembly.dll appears
+        (tools/ch_mcp/launch_patch.json), and the game is let go. human=True
+        with no song folder is refused. A run already open is stopped and
         restored first. The reply names the backup folder, the settings line,
         the command line, the pid and the song length."""
-        return capped(h.game.ch_start(song_folder, player, profile))
+        return capped(h.game.ch_start(song_folder, player, profile, human=human))
 
     @server.tool()
     def ch_stop() -> str:
@@ -152,7 +159,9 @@ def build_server(helper: Optional[Helper] = None):
     def ch_status() -> str:
         """The run, the backup folder, how many times the game came to the
         front, the play session, the last stats copy, whether Frida is
-        attached and whether a trace runs."""
+        attached and whether a trace runs. For a human launch it also shows
+        the launch agent's patch status, ending with the line "loader ran
+        after patch:" and yes, no or not yet."""
         return capped(h.ch_status())
 
     @server.tool()
@@ -243,7 +252,7 @@ def build_server(helper: Optional[Helper] = None):
     # -- the virtual kit (kit_tools) ------------------------------------------------------
 
     @server.tool()
-    def ch_kit_setup() -> str:
+    def ch_kit_setup(player: str | None = None) -> str:
         """Build the virtual drum kit inside the game: check that settings.ini
         holds the run's pause_on_focus_lost value (ch_start sets it), take
         the backup, attach the kit agent, let the game listen while it is
@@ -251,10 +260,12 @@ def build_server(helper: Optional[Helper] = None):
         the user's own input reaches no player, take the keyboard and mouse
         from every player, hand the kit to its player with the game's own
         drum map, and check the bindings it reads back against
-        kit_tools.KIT_BINDINGS. A setup that fails, leaves the keyboard or
-        the mouse on, or reads other bindings is torn down again. Needs
-        ch_attach."""
-        return capped(h.kit.ch_kit_setup())
+        kit_tools.KIT_BINDINGS. player names the Rewired player the kit goes
+        to; left out, it goes to kit_tools.KIT_PLAYER, and a given name is
+        sent as is and named in the reply's first line. A setup that fails,
+        leaves the keyboard or the mouse on, or reads other bindings is torn
+        down again. Needs ch_attach."""
+        return capped(h.kit.ch_kit_setup(player))
 
     @server.tool()
     def ch_kit_press(items: str, hold_frames: int | None = None,
@@ -306,8 +317,9 @@ def build_server(helper: Optional[Helper] = None):
         "keys"; left out, the kit is used once ch_kit_setup has built it, and
         the call is refused until then. "keys" presses keys into the focused
         game window, and a hook refuses it unless the user has typed allow
-        key run. Start the song from the menus with ch_open_song: a song
-        launched with a bot is played by the bot. log, when given, is where
+        key run. Start the song with ch_start(song_folder, human=True), or
+        from the menus with ch_open_song: a song launched with a bot is
+        played by the bot. log, when given, is where
         the press log goes. song_folder, when given, sets the run cap from
         the song's length; with none the auto-player keeps its own cap."""
         return capped(h.game.ch_play_chart(score_json, log, song_folder, route))
@@ -351,7 +363,8 @@ def build_server(helper: Optional[Helper] = None):
         menus before every step and refusing while the Online menu may be on
         screen. One line per step, or the step it stopped on with the items
         pressed and the last read. Needs ch_kit_setup on a game open at its
-        menu."""
+        menu. ch_start(song_folder, human=True) starts a song with no menu;
+        this walk is kept for a day that route breaks."""
         return capped(h.menu.ch_open_song(song_folder))
 
     # -- Star Power (sp_tools) ---------------------------------------------------------

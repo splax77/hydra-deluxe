@@ -436,7 +436,7 @@ Per-player keys. "Unknown" means no code was read that writes the key; a named f
 | is_fc | true | Unknown |
 | is_pfc | true | Unknown |
 | versus_winner | true | Unknown |
-| is_bot | true on bots, false on run 1 | Unknown (no code reference to the literal was found) |
+| is_bot | true on bots, false on run 1 | Unknown (a stats writer writes the key from a record byte at +0xB6, page 7 IN-38; where that byte is set was not traced) |
 | failed_in_run_time | -1 | Unknown |
 | section_count | 7, or 10 on Window Map (no [section] events, a game fallback of "0% - 10%" sections) | Unknown |
 | section_stats | a list of section_name, notes_hit and notes_count | Unknown |

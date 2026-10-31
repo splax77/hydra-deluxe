@@ -11,9 +11,11 @@ from __future__ import annotations
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 from contextlib import redirect_stdout
 from unittest import mock
@@ -24,6 +26,7 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 from tools.ch_mcp import bot_run as B  # noqa: E402
+from tools.ch_mcp import frida_attach as FA  # noqa: E402
 from tools.ch_mcp import game_files as G  # noqa: E402
 from tools.ch_mcp import install_chart as I  # noqa: E402
 from tools.ch_mcp.tests.test_game_files import FakeReg  # noqa: E402
@@ -245,7 +248,7 @@ class BotRunTest(unittest.TestCase):
                          f'py tools/ch_mcp/bot_run.py --restore "{r.backup_dir()}"')
         self.assertFalse(any(line.startswith("restoring") for line in r.lines))
 
-        # The step: the game rewrites all five files.
+        # The step: the game rewrites every backed-up file.
         for name in ORIGINAL:
             _write(r.path(name), b"changed by the game")
         restore_lines = []
@@ -515,6 +518,422 @@ class RealLaunchTest(unittest.TestCase):
         # SW_SHOWMINNOACTIVE: minimized, not activated.
         self.assertEqual(info.wShowWindow, 7)
         self.assertEqual(B.SW_SHOWMINNOACTIVE, 7)
+
+
+# launch_patch.json's fields that bot_run reads or names, with the values the
+# direct-start plan's "The launch" gives for build 6142.
+PATCH = {"launch": "suspended", "defer": False,
+         "entry_expect": "40 56 57 41 55 48 81 EC C0 00 00 00",
+         "expect": "BA 01 00 00 00", "write": "BA 00 00 00 00"}
+# How long a test waits on a fake's thread before it fails instead of hanging.
+THREAD_CAP_S = 5.0
+
+
+def status(state, **kw):
+    """A launch.ts status reply."""
+    return {"state": state, **kw}
+
+
+PATCHED = status("patched", before="BA 01 00 00 00", after="BA 00 00 00 00",
+                 entry_before=PATCH["entry_expect"], module={"base": "0x7ff800000000", "size": 1},
+                 loader_runs=0, bytes_at_first_run=None, patched_at_ms=1200, reason=None)
+
+
+class FakeLaunchAgent:
+    """launch.ts behind a LiveAgent: start, arm and status answer from the
+    lists given, recording each call into the rig's `events`. `statuses`
+    replies in turn and repeats its last one."""
+
+    def __init__(self, events, *, statuses=(PATCHED,), arm_reply=None, arm_error=None,
+                 start_error=None, start_block=None):
+        self.events = events
+        self.statuses = list(statuses)
+        self.arm_reply = arm_reply or status("waiting", modules=["Clone Hero.exe", "ntdll.dll"])
+        self.arm_error = arm_error
+        self.start_error = start_error
+        self.start_block = start_block
+        self.armed = False
+        self.requests = []
+        self.start_caps = []
+
+    def start(self, cap_s):
+        self.events.append("load")
+        self.start_caps.append(cap_s)
+        if self.start_block is not None:
+            self.start_block.wait(THREAD_CAP_S)
+        if self.start_error is not None:
+            raise self.start_error
+        return {"state": "idle"}
+
+    def request(self, message, cap_s):
+        self.events.append(message["type"])
+        self.requests.append((message, cap_s))
+        if message["type"] == "arm":
+            if self.arm_error is not None:
+                raise self.arm_error
+            self.armed = True
+            return self.arm_reply
+        reply = self.statuses[0]
+        if len(self.statuses) > 1:
+            self.statuses.pop(0)
+        return reply
+
+    def detach(self):
+        self.events.append("detach")
+        return "detached"
+
+
+def wire_human(r: Rig, agent: FakeLaunchAgent, patch: dict = PATCH) -> list:
+    """Give Rig `r`'s Env the human launch's fakes, a launch_patch.json
+    holding `patch` and a built launch agent, all in temp files. Returns
+    the attach calls (pid, agent path, log path)."""
+    root = os.path.dirname(r.docs)
+    r.env.launch_patch_path = os.path.join(root, "launch_patch.json")
+    _write(r.env.launch_patch_path, json.dumps(patch).encode())
+    r.env.launch_agent_path = os.path.join(root, "launch.js")
+    _write(r.env.launch_agent_path, b"// the built agent")
+    events = agent.events
+    attaches = []
+
+    def start(form):
+        def go(cmd):
+            events.append(form)
+            r.launch.commands.append(cmd)
+            return r.game
+        return go
+
+    def attach(pid, path, log, out):
+        events.append("attach")
+        attaches.append((pid, path, log))
+        return agent
+
+    def resume(name):
+        def go(pid):
+            assert agent.armed, "resumed before the arm reply"
+            events.append(name)
+        return go
+
+    def kill(game):
+        events.append("kill")
+        game.stopped = True
+
+    r.env.start_process = start("start")
+    r.env.spawn_process = start("spawn")
+    r.env.attach_agent = attach
+    r.env.resume_thread = resume("resume")
+    r.env.resume_spawned = resume("resume spawned")
+    r.env.kill = kill
+    return attaches
+
+
+class HumanLaunchTest(unittest.TestCase):
+    """launch_human's order, caps and refusals, on fakes."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = self._tmp.name
+        self.r = Rig(self.tmp, exits_at=None)
+        self.events = []
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def launch(self, agent, patch=PATCH):
+        attaches = wire_human(self.r, agent, patch)
+        log = os.path.join(self.tmp, "launch.jsonl")
+        return B.launch_human(["exe", "--song", "s"], self.r.env, log), attaches
+
+    def fails(self, agent, patch=PATCH) -> str:
+        with self.assertRaises(B.LaunchFailed) as cm:
+            self.launch(agent, patch)
+        return str(cm.exception)
+
+    def test_the_caps_and_the_poll_are_the_users_answers(self):
+        self.assertEqual((B.LAUNCH_ATTACH_CAP_S, B.LAUNCH_ARM_CAP_S, B.LAUNCH_PATCH_CAP_S,
+                          B.LAUNCH_POLL_S), (20.0, 5.0, 30.0, 0.5))
+        self.assertEqual(B.CREATE_SUSPENDED, 4)
+
+    def test_the_paused_start_passes_create_suspended_and_todays_startupinfo(self):
+        FakePopen.calls = []
+        cmd = [os.path.join("games", "ch", "Clone Hero.exe"), "--song", "x"]
+        with mock.patch.object(B.subprocess, "Popen", FakePopen):
+            game = B._real_start_suspended(cmd)
+        self.assertEqual(game.pid, 4321)
+        [(seen_cmd, kw)] = FakePopen.calls
+        info = kw.pop("startupinfo")
+        self.assertTrue(info.dwFlags & subprocess.STARTF_USESHOWWINDOW)
+        self.assertEqual(info.wShowWindow, 7)
+        self.assertEqual((seen_cmd, kw), (cmd, {
+            "cwd": os.path.dirname(cmd[0]), "stdin": subprocess.DEVNULL,
+            "stdout": subprocess.DEVNULL, "creationflags": 4}))
+
+    def test_the_order_is_start_attach_load_arm_resume_status(self):
+        agent = FakeLaunchAgent(self.events)
+        launch, attaches = self.launch(agent)
+        self.assertEqual(self.events, ["start", "attach", "load", "arm", "resume", "status"])
+        self.assertIs(launch.agent, agent)
+        self.assertIs(launch.game, self.r.game)
+        self.assertEqual(launch.form, "suspended")
+        self.assertEqual(attaches, [(4242, self.r.env.launch_agent_path,
+                                     os.path.join(self.tmp, "launch.jsonl"))])
+        self.assertEqual(agent.start_caps, [20.0])
+        # arm carries the data file's contents, with the arm cap.
+        self.assertEqual(agent.requests[0], ({"type": "arm", "patch": PATCH}, 5.0))
+        self.assertIn("armed; modules loaded now (2): Clone Hero.exe, ntdll.dll", self.r.lines)
+        self.assertIn("patched 0.0 s after the resume", self.r.lines)
+        self.assertFalse(self.r.game.stopped)
+
+    def test_waiting_statuses_are_polled_every_half_second_until_patched(self):
+        agent = FakeLaunchAgent(self.events, statuses=[status("waiting")] * 3 + [PATCHED])
+        self.launch(agent)
+        self.assertEqual(self.events, ["start", "attach", "load", "arm", "resume"]
+                         + ["status"] * 4)
+        self.assertEqual(self.r.clock.t, 1.5)
+        self.assertIn("patched 1.5 s after the resume", self.r.lines)
+
+    def test_a_refused_status_kills_the_game_and_names_the_bytes(self):
+        refused = status("refused", before="BA 02 00 00 00", entry_before="CC CC CC CC")
+        agent = FakeLaunchAgent(self.events, statuses=[status("waiting"), refused])
+        said = self.fails(agent)
+        self.assertIn("at the loader's entry it found CC CC CC CC (launch_patch.json expects "
+                      "40 56 57 41 55 48 81 EC C0 00 00 00)", said)
+        self.assertIn("at the patch it found BA 02 00 00 00 (expects BA 01 00 00 00)", said)
+        self.assertIn("the game was killed", said)
+        self.assertEqual(self.events[-2:], ["kill", "detach"])
+        self.assertTrue(self.r.game.stopped)
+
+    def test_an_attach_that_never_returns_ends_at_its_cap_and_kills_the_game(self):
+        block = threading.Event()
+        agent = FakeLaunchAgent(self.events, start_block=block)
+        waited = []
+        self.r.env.wait_thread = lambda thread, cap_s: waited.append(cap_s)
+        try:
+            said = self.fails(agent)
+        finally:
+            block.set()
+        self.assertEqual(waited, [20.0])
+        self.assertIn("had not finished after 20 s (LAUNCH_ATTACH_CAP_S)", said)
+        self.assertIn("kill", self.events)
+        self.assertNotIn("resume", self.events)
+        self.assertNotIn("detach", self.events)  # the start is still running
+        self.assertTrue(self.r.game.stopped)
+
+    def test_an_attach_that_fails_kills_the_game(self):
+        agent = FakeLaunchAgent(self.events, start_error=FA.AttachFailed(
+            FA.END_SCRIPT_ERROR, "script error: loading the agent failed: boom"))
+        said = self.fails(agent)
+        self.assertIn("the attach to process 4242 failed: AttachFailed: script error", said)
+        # A failed LiveAgent.start leaves nothing attached, so nothing is detached.
+        self.assertEqual(self.events, ["start", "attach", "load", "kill"])
+
+    def test_an_arm_reply_that_never_comes_ends_at_its_cap_without_a_resume(self):
+        agent = FakeLaunchAgent(self.events, arm_error=FA.ReadFailed(
+            FA.END_CAP, "no reply to the arm request within the cap of 5 s"))
+        said = self.fails(agent)
+        self.assertEqual(agent.requests[0][1], 5.0)
+        self.assertIn("within the cap of 5 s (LAUNCH_ARM_CAP_S)", said)
+        self.assertEqual(self.events, ["start", "attach", "load", "arm", "kill", "detach"])
+        self.assertTrue(self.r.game.stopped)
+
+    def test_a_refused_arm_reply_kills_the_game_without_a_resume(self):
+        agent = FakeLaunchAgent(self.events, arm_reply=status(
+            "refused", before="00 00 00 00 00", entry_before=PATCH["entry_expect"]))
+        said = self.fails(agent)
+        self.assertIn("at the patch it found 00 00 00 00 00", said)
+        self.assertNotIn("resume", self.events)
+
+    def test_an_idle_arm_reply_is_a_fault_that_kills_the_game_without_a_resume(self):
+        agent = FakeLaunchAgent(self.events, arm_reply=status("idle"))
+        said = self.fails(agent)
+        self.assertIn(B.IDLE_AFTER_ARM, said)
+        self.assertEqual(self.events, ["start", "attach", "load", "arm", "kill", "detach"])
+
+    def test_a_patched_arm_reply_still_resumes_and_reads_the_status(self):
+        agent = FakeLaunchAgent(self.events, arm_reply=status("patched", modules=["x.dll"]))
+        launch, _ = self.launch(agent)
+        self.assertEqual(self.events, ["start", "attach", "load", "arm", "resume", "status"])
+        self.assertIs(launch.agent, agent)
+
+    def test_an_idle_status_after_the_arm_is_a_fault_named_at_once(self):
+        agent = FakeLaunchAgent(self.events, statuses=[status("waiting"), status("idle")])
+        said = self.fails(agent)
+        self.assertIn(B.IDLE_AFTER_ARM, said)
+        self.assertEqual(self.r.clock.t, 0.5)  # one poll, not the patch cap
+        self.assertEqual(self.events[-2:], ["kill", "detach"])
+
+    def test_a_refusal_for_a_failed_read_back_carries_the_agents_reason(self):
+        refused = status("refused", before="BA 01 00 00 00", after="BA 01 00 00 00",
+                         entry_before=PATCH["entry_expect"],
+                         reason="the write did not take: the patch site at 0x396EC5 reads "
+                               "BA 01 00 00 00 after writing BA 00 00 00 00")
+        said = self.fails(FakeLaunchAgent(self.events, statuses=[refused]))
+        self.assertIn("and BA 01 00 00 00 after; the agent says: the write did not take", said)
+        self.assertIn("the game was killed", said)
+
+    def test_a_status_that_stays_waiting_ends_at_the_patch_cap_from_the_resume(self):
+        agent = FakeLaunchAgent(self.events, statuses=[status("waiting")])
+        resumed = []
+        wire_human(self.r, agent)
+        fake_resume = self.r.env.resume_thread
+
+        def resume(pid):
+            fake_resume(pid)
+            resumed.append(self.r.clock.t)
+
+        self.r.env.resume_thread = resume
+        self.r.clock.t = 7.0  # the resume comes later than time 0
+        with self.assertRaises(B.LaunchFailed) as cm:
+            B.launch_human(["exe"], self.r.env, os.path.join(self.tmp, "l.jsonl"))
+        said = str(cm.exception)
+        self.assertIn("still said waiting 30 s after the resume (LAUNCH_PATCH_CAP_S)", said)
+        self.assertEqual(resumed, [7.0])
+        self.assertEqual(self.r.clock.t, 37.0)
+        statuses = [cap for message, cap in agent.requests if message["type"] == "status"]
+        self.assertEqual(len(statuses), 60)
+        self.assertEqual(statuses[0], 30.0)  # each status waits at most what is left
+        self.assertEqual(self.events[-2:], ["kill", "detach"])
+
+    def test_the_spawn_form_takes_the_spawn_seam_and_resumes_through_the_device(self):
+        agent = FakeLaunchAgent(self.events)
+        launch, _ = self.launch(agent, {**PATCH, "launch": "spawn"})
+        self.assertEqual(self.events,
+                         ["spawn", "attach", "load", "arm", "resume spawned", "status"])
+        self.assertEqual(launch.form, "spawn")
+
+    def test_a_bad_launch_form_or_a_missing_agent_starts_nothing(self):
+        agent = FakeLaunchAgent(self.events)
+        said = self.fails(agent, {**PATCH, "launch": "late"})
+        self.assertIn("`launch` is 'late', not one of suspended, spawn; nothing was started", said)
+        wire_human(self.r, agent)
+        os.remove(self.r.env.launch_agent_path)
+        with self.assertRaises(B.LaunchFailed) as cm:
+            B.launch_human(["exe"], self.r.env, os.path.join(self.tmp, "l.jsonl"))
+        self.assertIn("npm run build:launch", str(cm.exception))
+        self.assertEqual(self.events, [])
+
+    def test_the_real_env_uses_the_real_seams_and_files(self):
+        env = B.Env()
+        self.assertIs(env.start_process, B._real_start_suspended)
+        self.assertIs(env.resume_thread, B.resume_main_thread)
+        self.assertEqual(os.path.basename(env.launch_agent_path), "launch.js")
+        self.assertEqual(os.path.basename(env.launch_patch_path), "launch_patch.json")
+
+    def test_the_real_attach_builds_a_live_agent_for_the_pid(self):
+        seen = []
+
+        class FakeLiveAgent:
+            def __init__(self, agent_path, **kw):
+                seen.append((agent_path, kw))
+
+        out = [].append
+        with mock.patch.object(B.FA, "LiveAgent", FakeLiveAgent):
+            B._real_attach_agent(1234, "launch.js", "log.jsonl", out)
+        self.assertEqual(seen, [("launch.js", {"log_path": "log.jsonl", "pid": 1234, "out": out})])
+
+    def test_resume_main_thread_refuses_a_process_with_no_thread(self):
+        # A Toolhelp snapshot only reads; no process id is a multiple of 4
+        # this high.
+        with self.assertRaises(OSError) as cm:
+            B.resume_main_thread(0xFFFFFFF0)
+        self.assertIn("has no thread to resume", str(cm.exception))
+
+    def test_the_toolhelp_and_thread_time_calls_find_this_processs_main_thread(self):
+        # Read-only calls on the test's own process: they check the struct
+        # layouts and argtypes against the real kernel32. ResumeThread itself
+        # needs a suspended process, which only a launch makes (LS-D0).
+        k32 = B._kernel32()
+        mine = B._thread_ids(k32, os.getpid())
+        self.assertIn(threading.get_native_id(), mine)
+        self.assertEqual(B._oldest_thread_id(k32, os.getpid()), threading.main_thread().native_id)
+
+    def test_a_spawned_games_process_handle_reports_a_running_process(self):
+        # Read-only: asks about the test's own process and never stops it.
+        process = B._PidProcess(os.getpid())
+        self.assertEqual(process.pid, os.getpid())
+        self.assertTrue(process.is_running())
+
+    def test_bot_run_never_opens_the_game_exe_for_writing(self):
+        with open(B.__file__, encoding="utf-8") as f:
+            source = f.read().splitlines()
+        write_mode = re.compile(r"""open\([^)]*["'][rbt]*[wax+]""")
+        self.assertEqual([line for line in source if write_mode.search(line)], [])
+        for line in source:
+            if "GAME_EXE" in line:
+                self.assertNotIn("open(", line)
+
+
+class LoaderLineTest(unittest.TestCase):
+    """The three words of ch_status's loader line."""
+
+    def test_the_three_words(self):
+        self.assertEqual((B.LOADER_YES, B.LOADER_NO, B.LOADER_NOT_YET), ("yes", "no", "not yet"))
+        self.assertEqual(B.loader_ran(status("patched", loader_runs=1,
+                                             bytes_at_first_run="BA 00 00 00 00"), PATCH), "yes")
+        self.assertEqual(B.loader_ran(status("patched", loader_runs=2,
+                                             bytes_at_first_run="BA 01 00 00 00"), PATCH), "no")
+        self.assertEqual(B.loader_ran(status("patched", loader_runs=0), PATCH), "not yet")
+        self.assertEqual(B.loader_ran(status("waiting"), PATCH), "not yet")
+
+    def test_a_list_of_numbers_reads_like_the_same_hex_text(self):
+        self.assertEqual(B.loader_ran(status("patched", loader_runs=1,
+                                             bytes_at_first_run=[0xBA, 0, 0, 0, 0]), PATCH), "yes")
+
+
+class HumanStartRunTest(unittest.TestCase):
+    """start_run with human=True."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = self._tmp.name
+        self.r = Rig(self.tmp, exits_at=None)
+        self.events = []
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def start(self, song_dir, agent):
+        wire_human(self.r, agent)
+        return B.start_run(song_dir, player="ProDrums,Expert",
+                           backup_root=os.path.join(self.r.out_dir, "backups"),
+                           env=self.r.env, human=True)
+
+    def test_no_song_folder_is_refused_before_the_backup(self):
+        with self.assertRaises(B.LaunchFailed) as cm:
+            self.start(None, FakeLaunchAgent(self.events))
+        self.assertEqual(str(cm.exception), B.HUMAN_NEEDS_SONG)
+        self.assertIn("runs only with --song", B.HUMAN_NEEDS_SONG)
+        self.assertEqual(B.human_refusal(True, None), B.HUMAN_NEEDS_SONG)
+        self.assertIsNone(B.human_refusal(True, self.r.song))
+        self.assertIsNone(B.human_refusal(False, None))
+        self.assertFalse(os.path.exists(self.r.out_dir))
+        self.assertEqual(self.events, [])
+
+    def test_the_backup_comes_before_the_paused_start_and_the_run_keeps_the_launch(self):
+        agent = FakeLaunchAgent(self.events)
+        seen = []
+        attaches = wire_human(self.r, agent)
+        real_start = self.r.env.start_process
+        self.r.env.start_process = lambda cmd: (seen.append(os.path.isdir(self.r.backup_dir())),
+                                                real_start(cmd))[1]
+        run = B.start_run(self.r.song, player="ProDrums,Expert",
+                          backup_root=os.path.join(self.r.out_dir, "backups"),
+                          env=self.r.env, human=True)
+        self.assertEqual(seen, [True])
+        self.assertIs(run.launch.agent, agent)
+        self.assertIs(run.game, self.r.game)
+        self.assertEqual(run.command, B.launch_command(self.r.env.exe, self.r.song,
+                                                       "ProDrums,Expert"))
+        # The agent's log goes beside the backup folder.
+        self.assertEqual(attaches[0][2], os.path.join(self.r.out_dir, "backups",
+                                                      "launch-20261028-101500.jsonl"))
+        self.assertEqual(self.events[0], "start")
+
+    def test_a_failed_human_launch_restores_the_files(self):
+        agent = FakeLaunchAgent(self.events, statuses=[status("refused")])
+        with self.assertRaises(B.LaunchFailed):
+            self.start(self.r.song, agent)
+        self.assertIn(f"restoring the user files from {self.r.backup_dir()}", self.r.lines)
+        self.r.assert_all_restored(self)
 
 
 class InstallChartTest(unittest.TestCase):

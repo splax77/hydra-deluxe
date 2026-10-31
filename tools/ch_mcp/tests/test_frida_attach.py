@@ -25,6 +25,7 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 from tools.ch_mcp import frida_attach as FA  # noqa: E402
+from tools.ch_mcp.tests import test_launch_core as LC  # noqa: E402
 from tools.ch_probe.constants import PROCESS_NAME  # noqa: E402
 
 AGENT_DIR = os.path.join(_REPO_ROOT, "tools", "ch_mcp", "agent")
@@ -647,6 +648,34 @@ class LiveAgentTest(Workspace):
         session.script.handlers["message"](sent(MENU), None)
         self.assertEqual(self.written(), [sent({**STATE, "id": 1})])
 
+    def test_a_pid_attaches_to_that_process(self):
+        session = ReplySession([STATE])
+        frida = FakeFrida(session)
+        agent = FA.LiveAgent(self.agent, log_path=self.out_path, pid=1234,
+                             frida_mod=frida, wait=instant_wait,
+                             out=self.lines.append)
+        self.addCleanup(agent.detach)
+        self.assertEqual(agent.start(30.0), STATE)
+        self.assertEqual(frida.attached_to, [1234])
+
+    def test_no_pid_attaches_by_the_process_name(self):
+        frida = FakeFrida(ReplySession([STATE]))
+        self.live(frida).start(30.0)
+        self.assertEqual(frida.attached_to, [PROCESS_NAME])
+
+    def test_a_pid_that_is_not_running_names_the_pid(self):
+        frida = FakeFrida(None)
+        agent = FA.LiveAgent(self.agent, log_path=self.out_path, pid=1234,
+                             frida_mod=frida, wait=instant_wait,
+                             out=self.lines.append)
+        with self.assertRaises(FA.AttachFailed) as caught:
+            agent.start(30.0)
+        self.assertEqual(str(caught.exception),
+                         "process 1234 is not running; nothing attached")
+        self.assertEqual(caught.exception.reason, FA.END_NOT_RUNNING)
+        self.assertEqual(frida.attached_to, [1234])
+        self.assertFalse(os.path.exists(self.out_path))
+
     def test_read_before_start_says_nothing_is_attached(self):
         agent = self.live(FakeFrida(ReplySession([STATE])))
         with self.assertRaises(FA.ReadFailed) as caught:
@@ -929,6 +958,149 @@ class DestroyedSkipTest(unittest.TestCase):
         self.assertIn("        destroyed,\n", text)
 
 
+LAUNCH_AGENT = "launch.ts"
+LAUNCH_CORE = "launch_core.ts"
+# A top-level function and its body, up to the first line that is a lone `}`.
+_TOP_FUNCTION = re.compile(r"^(?:async\s+)?function\s+(\w+)\s*\(.*?^\}",
+                           re.MULTILINE | re.DOTALL)
+# A number written in hex, as an address would be.
+_HEX_LITERAL = re.compile(r"\b0x[0-9A-Fa-f]+\b")
+
+
+def top_functions(text: str) -> dict[str, str]:
+    """Each top-level function of an agent file, by name -> its whole text."""
+    return {m.group(1): m.group(0) for m in _TOP_FUNCTION.finditer(text)}
+
+
+def patch_findings(text: str) -> list[str]:
+    """Why `text`, a launch agent, could change the game's code outside the
+    module observer: the observer and the patch must each appear once, the
+    patch must sit in one top-level function, and that function must be
+    called from the observer's callback, from its setImmediate branch, and
+    from nowhere else."""
+    found = []
+    for what in ("Process.attachModuleObserver(", "Memory.patchCode("):
+        n = text.count(what)
+        if n != 1:
+            found.append(f"{n} {what} sites, expected 1")
+    if found:
+        return found
+    holders = [name for name, body in top_functions(text).items()
+               if "Memory.patchCode(" in body]
+    if len(holders) != 1:
+        return [f"Memory.patchCode( sits in {len(holders)} top-level "
+                "functions, expected 1"]
+    patcher = holders[0]
+    observer_at = text.index("Process.attachModuleObserver(")
+    observer = text[observer_at:text.index("\n    });", observer_at)]
+    calls = re.findall(rf"\b{patcher}\(", text)
+    deferred = re.findall(rf"setImmediate\(\(\)\s*=>\s*{patcher}\(", observer)
+    # The definition, the deferred call and the direct call.
+    if len(calls) != 3:
+        found.append(f"{patcher}( appears {len(calls)} times, expected its "
+                     "definition and the observer's two calls")
+    if len(re.findall(rf"\b{patcher}\(", observer)) != 2 or len(deferred) != 1:
+        found.append(f"the observer's callback does not call {patcher} once "
+                     "directly and once through setImmediate")
+    return found
+
+
+class LaunchAgentTest(unittest.TestCase):
+    def read(self, name):
+        with open(os.path.join(AGENT_DIR, name), encoding="utf-8") as fh:
+            return fh.read()
+
+    def test_the_launch_files_are_scanned_with_the_other_agents(self):
+        # The by-name and allowed-calls tests above read every agent_sources
+        # file, so these two get them too, with no .invoke( site allowed.
+        names = [os.path.basename(p) for p in agent_sources()]
+        self.assertIn(LAUNCH_AGENT, names)
+        self.assertIn(LAUNCH_CORE, names)
+        self.assertNotIn(LAUNCH_AGENT, CALL_SITES)
+        self.assertNotIn(LAUNCH_CORE, CALL_SITES)
+
+    def test_the_patch_runs_only_from_the_module_observer(self):
+        text = self.read(LAUNCH_AGENT)
+        self.assertEqual(patch_findings(text), [])
+        self.assertEqual(self.read(LAUNCH_CORE).count("Memory.patchCode("), 0)
+
+    def test_neither_launch_file_holds_an_address(self):
+        # Every RVA arrives in the arm message, from launch_patch.json.
+        for name in (LAUNCH_AGENT, LAUNCH_CORE):
+            with self.subTest(agent=name):
+                self.assertEqual(_HEX_LITERAL.findall(self.read(name)), [])
+
+    def test_the_check_catches_a_patch_outside_the_observer(self):
+        good = self.read(LAUNCH_AGENT)
+        bad = {
+            "a second patch": good + "Memory.patchCode(p, 1, () => {});\n",
+            "a second observer": good + "Process.attachModuleObserver({});\n",
+            "a patch at load": good + "patchModule(armed!, Process.getModuleByName(\"x\"));\n",
+            "no deferred branch": good.replace(
+                "setImmediate(() => patchModule(patch, module));", "return;"),
+        }
+        for what, text in bad.items():
+            with self.subTest(case=what):
+                self.assertNotEqual(patch_findings(text), [])
+
+
+@unittest.skipIf(LC.NODE is None, "node is not on PATH, so launch_core.ts cannot run")
+class LaunchRepliesTest(Workspace):
+    """The statuses launch_core.ts really builds, run through LiveAgent's
+    request path as launch.ts sends them (a copy of the status plus the id).
+    LiveAgent raises on an `error` key, so a status that carried one would
+    fail every poll of bot_run.launch_human."""
+
+    def request_status(self, status):
+        session = ReplySession([{"state": "idle"}, status])
+        agent = FA.LiveAgent(self.agent, log_path=self.out_path,
+                             frida_mod=FakeFrida(session), wait=instant_wait,
+                             out=self.lines.append)
+        self.addCleanup(agent.detach)
+        agent.start(30.0)
+        return agent.request({"type": "status"}, 5.0)
+
+    def test_every_status_the_agent_builds_comes_back_whole(self):
+        statuses = {
+            "waiting": LC.run({"op": "waiting"})["status"],
+            "patched": LC.apply()["status"],
+            "patched, loader ran": LC.apply(loader_runs=2)["status"],
+            "refused, entry differs": LC.apply(
+                {LC.LOADER: [0x48, 0x89, 0x5C], LC.SITE: LC.SITE_BYTES})["status"],
+            "refused, write did not take": LC.apply(write_sticks=False)["status"],
+            "refused, read threw": LC.apply(read_throws=True)["status"],
+        }
+        for what, status in statuses.items():
+            with self.subTest(case=what):
+                self.assertEqual(self.request_status(status), status)
+        self.assertEqual(statuses["refused, entry differs"]["state"], "refused")
+        self.assertIn("nothing was written", statuses["refused, entry differs"]["reason"])
+
+    def test_launch_ts_sends_an_error_key_only_for_a_fault(self):
+        # Its one `error:` site is the catch that answers a message that threw.
+        with open(os.path.join(AGENT_DIR, LAUNCH_AGENT), encoding="utf-8") as fh:
+            code = [line for line in fh.read().splitlines()
+                    if not line.lstrip().startswith("//")]
+        sites = [line.strip() for line in code if re.search(r"\berror\b", line)]
+        self.assertEqual(sites, ["send({ error: `${message.type} failed: ${e}`, id });"])
+        with open(os.path.join(AGENT_DIR, LAUNCH_CORE), encoding="utf-8") as fh:
+            self.assertNotRegex(
+                "\n".join(l for l in fh.read().splitlines()
+                          if not l.lstrip().startswith("//")), r"\berror\s*:")
+
+    def test_an_agent_fault_still_raises_with_its_text(self):
+        session = ReplySession([{"state": "idle"}, {"error": "arm failed: boom"}])
+        agent = FA.LiveAgent(self.agent, log_path=self.out_path,
+                             frida_mod=FakeFrida(session), wait=instant_wait,
+                             out=self.lines.append)
+        self.addCleanup(agent.detach)
+        agent.start(30.0)
+        with self.assertRaises(FA.ReadFailed) as caught:
+            agent.request({"type": "arm", "patch": {}}, 5.0)
+        self.assertEqual(caught.exception.reason, FA.END_AGENT_ERROR)
+        self.assertIn("arm failed: boom", str(caught.exception))
+
+
 class BuildScriptsTest(unittest.TestCase):
     def test_build_scripts_end_by_themselves(self):
         # A watch build never exits, so it would have no cap.
@@ -936,8 +1108,8 @@ class BuildScriptsTest(unittest.TestCase):
                   encoding="utf-8") as fh:
             scripts = json.load(fh)["scripts"]
         self.assertEqual(sorted(scripts),
-                         ["build:clock", "build:kit", "build:menuhooks",
-                          "build:state", "build:trace"])
+                         ["build:clock", "build:kit", "build:launch",
+                          "build:menuhooks", "build:state", "build:trace"])
         for name, command in scripts.items():
             with self.subTest(script=name):
                 words = command.split()

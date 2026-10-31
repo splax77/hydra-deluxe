@@ -28,6 +28,7 @@ import time
 from typing import Callable, List, Optional, Sequence, Union
 
 from tools.ch_mcp import bot_run, compare_scorestats, foreground, game_files, install_chart
+from tools.ch_mcp.frida_tools import READ_CAP_S
 from tools.ch_probe import constants as C
 from tools.ch_probe import engine_finder
 from tools.ch_probe.experiments import play_chart
@@ -56,10 +57,6 @@ NO_ROUTE_NO_KIT = ("refused: no route given and the kit is not set up; "
                    "call ch_kit_setup first")
 
 _NOT_RUNNING = f"{C.PROCESS_NAME} is not running"
-
-
-def _join(thread: threading.Thread, cap_s: float) -> None:
-    thread.join(cap_s)
 
 
 def _key_name(vk: int) -> str:
@@ -163,7 +160,7 @@ class GameTools:
                  install: Callable = install_chart.install,
                  find_window: Callable[[], int] = find_game_window,
                  compare: Callable = compare_scorestats.compare,
-                 wait_thread: Callable[[threading.Thread, float], None] = _join,
+                 wait_thread: Callable[[threading.Thread, float], None] = bot_run.join_thread,
                  set_setting: Callable[[str, str, str], None] = game_files.set_game_setting,
                  make_watch: Optional[Callable[[], foreground.ForegroundWatch]] = None):
         self._env = env
@@ -249,13 +246,19 @@ class GameTools:
     # -- starting, stopping and status --------------------------------------------
 
     def ch_start(self, song_folder: Optional[str] = None, player: str = bot_run.DEFAULT_PLAYER,
-                 profile: Optional[str] = None) -> str:
+                 profile: Optional[str] = None, human: bool = False) -> str:
         """Back up the user files, set settings.ini's pause_on_focus_lost
         line for the run (the backup puts the user's line back), then start
         the game minimized and start the foreground watch: with a song folder
         the bot plays it from the command line; with none the game opens at
-        its menu. An open run is stopped and restored first."""
+        its menu. With `human` and a song folder a human player plays it
+        instead (bot_run.launch_human), and `human` with no song folder is
+        refused before anything runs. An open run is stopped and restored
+        first."""
         with self._lock:
+            refusal = bot_run.human_refusal(human, song_folder)
+            if refusal is not None:
+                return refusal
             lines: List[str] = []
             if self._run is not None or self._adopted_backup is not None:
                 lines.append("a run was open; stopping it first:")
@@ -267,9 +270,13 @@ class GameTools:
             try:
                 run = bot_run.start_run(song_folder, player=player, profile=profile,
                                         backup_root=scratch, env=env,
-                                        before_launch=lambda: lines.append(self._pause_setting()))
+                                        before_launch=lambda: lines.append(self._pause_setting()),
+                                        human=human)
             except bot_run.SongLengthMissing as e:
                 lines.append(str(e))
+                return "\n".join(lines)
+            except bot_run.LaunchFailed as e:
+                lines.append(f"the human launch failed: {e}")
                 return "\n".join(lines)
             except OSError as e:
                 lines.append(f"could not start the game: {e}")
@@ -314,7 +321,8 @@ class GameTools:
         return f"{game_files.SETTINGS}: {key} set to {value} for this run (restored by ch_stop)"
 
     def ch_status(self) -> str:
-        """The game side of the session: the run, the backup folder, the
+        """The game side of the session: the run, the backup folder, a
+        human launch's patch status (bot_run.request_launch_status), the
         scratch folder, the play session and the last stats copy. The Frida
         and trace lines are frida_tools'."""
         with self._lock:
@@ -327,6 +335,9 @@ class GameTools:
                 lines.append("song: " + (run.song_dir if run.song_dir is not None
                                          else "none (started at the menu)"))
                 lines.append(f"backup folder: {run.backup_dir}")
+                if run.launch is not None:
+                    lines.append(f"player: human ({run.launch.form} launch)")
+                    lines.extend(bot_run.request_launch_status(run.launch, READ_CAP_S))
             elif self._adopted_backup is not None:
                 lines.append("game: not started by the server")
                 lines.append(f"backup folder: {self._adopted_backup}")
@@ -619,6 +630,13 @@ class GameTools:
             self._watch.stop()
             lines.append(self._watch.line())
         env = self._env_into(lines)
+        if self._run is not None and self._run.launch is not None:
+            # The launch agent goes before the game does (the direct-start
+            # plan's "The launch").
+            try:
+                lines.append("launch agent: " + self._run.launch.agent.detach())
+            except Exception as e:  # the restore below matters more
+                lines.append(f"detaching the launch agent failed: {type(e).__name__}: {e}")
         if self._run is not None:
             try:
                 ok = bot_run.finish_run(self._run, stop=True, env=env,

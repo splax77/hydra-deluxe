@@ -18,7 +18,7 @@ How a release is built, signed and uploaded is in `docs/development.md`, in its 
 
 ## Ghidra and REA
 
-Ghidra 12.1.3 is at `C:\Users\Patrick\Downloads\ghidra_12.1.3_PUBLIC_20260817\ghidra_12.1.3_PUBLIC`. Its headless runner is `support\analyzeHeadless.bat` inside that folder. Java for it is Eclipse Temurin JDK 25 (25.0.4.1), at `C:\Program Files\Eclipse Adoptium\jdk-25.0.4.101-hotspot\bin\java.exe`. No GHIDRA_INSTALL_DIR variable is set for the machine or the user.
+Ghidra 12.1.3 is at `C:\Users\Patrick\Downloads\ghidra_12.1.3_PUBLIC_20260817\ghidra_12.1.3_PUBLIC`. Its headless runner is `C:\Users\Patrick\Downloads\ghidra_12.1.3_PUBLIC_20260817\ghidra_12.1.3_PUBLIC\support\analyzeHeadless.bat`. Java for it is Eclipse Temurin JDK 25 (25.0.4.1), at `C:\Program Files\Eclipse Adoptium\jdk-25.0.4.101-hotspot\bin\java.exe`. No GHIDRA_INSTALL_DIR variable is set for the machine or the user.
 
 REA is a reverse-engineering toolkit that Claude Code reaches as the MCP server `rea` (an MCP server is a helper program that hands an agent extra tools). It is registered for this project only, at Claude Code's local scope, in `C:\Users\Patrick\.claude.json`. It starts as `npx -y rea-agents@6.5.0 mcp`, with its own GHIDRA_INSTALL_DIR set to the Ghidra folder above. Its skill sits in `C:\Users\Patrick\.claude\skills\reverse-engineer-anything`.
 

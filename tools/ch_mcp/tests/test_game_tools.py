@@ -27,7 +27,9 @@ from tools.ch_mcp import foreground as F  # noqa: E402
 from tools.ch_mcp import game_files as G  # noqa: E402
 from tools.ch_mcp import game_tools as GT  # noqa: E402
 from tools.ch_mcp import install_chart as I  # noqa: E402
-from tools.ch_mcp.tests.test_bot_run import ORIGINAL, Rig, StuckGame, _read, _write  # noqa: E402
+from tools.ch_mcp import frida_attach as FA  # noqa: E402
+from tools.ch_mcp.tests.test_bot_run import (  # noqa: E402
+    ORIGINAL, PATCHED, FakeLaunchAgent, Rig, StuckGame, _read, _write, wire_human)
 from tools.ch_mcp.tests.test_game_files import FakeReg  # noqa: E402
 from tools.ch_probe import probe_songs  # noqa: E402
 from tools.ch_probe import input_driver  # noqa: E402
@@ -795,6 +797,123 @@ class RunWithoutFocusTest(unittest.TestCase):
                 self.assertTrue(os.path.isfile(os.path.join(t.backup_dir(), G.REGISTRY_BACKUP)))
                 reg.text = b"the game changed this"
                 self.assertIn("rewired registry: restored", t.tools.ch_stop().splitlines())
+
+
+class HumanStartTest(unittest.TestCase):
+    """ch_start(human=True), ch_status's loader line and ch_stop's detach,
+    on test_bot_run's launch fakes."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = self._tmp.name
+        self.events = []
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def rig(self, agent=None, folder=""):
+        t = ToolRig(os.path.join(self.tmp, folder))
+        agent = agent or FakeLaunchAgent(self.events)
+        wire_human(t.r, agent)
+        return t, agent
+
+    def test_human_with_no_song_folder_is_refused_naming_the_reason(self):
+        t, _agent = self.rig()
+        reply = t.tools.ch_start(human=True)
+        self.assertEqual(reply, B.HUMAN_NEEDS_SONG)
+        self.assertIn("runs only with --song", reply)
+        self.assertIsNone(t.backup_dir())
+        self.assertEqual(self.events, [])
+        self.assertEqual(t.r.launch.commands, [])
+
+    def test_human_takes_the_backup_before_the_paused_start(self):
+        t, agent = self.rig()
+        seen = []
+        fake_start = t.r.env.start_process
+
+        def start(cmd):
+            seen.append([d for d in os.listdir(t.tools._scratch) if d.startswith(G.BACKUP_PREFIX)])
+            return fake_start(cmd)
+
+        t.r.env.start_process = start
+        lines = t.tools.ch_start(t.r.song, player="ProDrums,Expert", human=True).splitlines()
+        self.assertEqual(seen, [[os.path.basename(t.backup_dir())]])
+        self.assertEqual(self.events, ["start", "attach", "load", "arm", "resume", "status"])
+        self.assertIn("game process id: 4242", lines)
+        self.assertIs(t.tools._run.launch.agent, agent)
+        self.assertEqual(t.watches[0].started, True)
+
+    def test_ch_status_prints_the_loader_line_all_three_ways(self):
+        cases = [(dict(loader_runs=1, bytes_at_first_run="BA 00 00 00 00"), "yes"),
+                 (dict(loader_runs=1, bytes_at_first_run="BA 01 00 00 00"), "no"),
+                 (dict(loader_runs=0), "not yet")]
+        for fields, word in cases:
+            with self.subTest(word=word):
+                self.events.clear()
+                later = {**PATCHED, **fields}
+                t, _agent = self.rig(FakeLaunchAgent(self.events, statuses=[PATCHED, later]),
+                                     folder=word)
+                t.tools.ch_start(t.r.song, human=True)
+                lines = t.tools.ch_status().splitlines()
+                self.assertIn("player: human (suspended launch)", lines)
+                self.assertIn(f"loader ran after patch: {word}", lines)
+                self.assertTrue(any(line.startswith("launch patch: patched; at the patch "
+                                                    "BA 01 00 00 00 before and BA 00 00 00 00 after")
+                                    for line in lines), lines)
+                t.tools.ch_stop()
+
+    def test_ch_status_prints_each_of_the_four_states(self):
+        cases = {
+            "idle": ({"state": "idle"}, "the launch agent holds no arm, so it will never patch"),
+            "waiting": ({"state": "waiting", "loader_runs": 0, "reason": None},
+                        "loader ran after patch: not yet"),
+            "patched": (PATCHED, "patched at: 1200 ms on the agent's own clock (Date.now)"),
+            "refused": ({"state": "refused", "before": "BA 01 00 00 00", "after": None,
+                         "loader_runs": 0, "reason": "patching GameAssembly.dll failed: boom"},
+                        "launch agent reason: patching GameAssembly.dll failed: boom"),
+        }
+        for state, (later, want) in cases.items():
+            with self.subTest(state=state):
+                self.events.clear()
+                t, _agent = self.rig(FakeLaunchAgent(self.events, statuses=[PATCHED, later]),
+                                     folder="state-" + state)
+                t.tools.ch_start(t.r.song, human=True)
+                lines = t.tools.ch_status().splitlines()
+                self.assertTrue(any(line.startswith(f"launch patch: {state};") for line in lines),
+                                lines)
+                self.assertIn(want, lines)
+                t.tools.ch_stop()
+
+    def test_ch_status_names_a_status_that_fails(self):
+        t, agent = self.rig()
+        t.tools.ch_start(t.r.song, human=True)
+
+        def failing(message, cap_s):
+            raise FA.ReadFailed(FA.END_DETACHED, "session detached: process-terminated")
+
+        agent.request = failing
+        self.assertIn("launch agent: status failed: session detached: process-terminated",
+                      t.tools.ch_status().splitlines())
+
+    def test_ch_stop_detaches_the_launch_agent_before_it_stops_the_game(self):
+        t, agent = self.rig()
+        t.tools.ch_start(t.r.song, human=True)
+        agent.detach = lambda: (self.events.append(("detach", t.r.game.stopped)), "detached")[1]
+        lines = t.tools.ch_stop().splitlines()
+        self.assertIn(("detach", False), self.events)
+        self.assertLess(lines.index("launch agent: detached"), lines.index("stopped the game"))
+        self.assertTrue(t.r.game.stopped)
+        t.r.assert_all_restored(self)
+
+    def test_a_failed_human_launch_says_so_and_restores_the_files(self):
+        t, _agent = self.rig(FakeLaunchAgent(self.events, statuses=[{"state": "refused"}]))
+        lines = t.tools.ch_start(t.r.song, human=True).splitlines()
+        self.assertTrue(lines[-1].startswith("the human launch failed: launch.ts refused the patch"),
+                        lines)
+        self.assertIn(f"{G.SETTINGS}: unchanged", lines)
+        self.assertIsNone(t.tools._run)
+        self.assertEqual(t.watches, [])
+        t.r.assert_all_restored(self)
 
 
 if __name__ == "__main__":
