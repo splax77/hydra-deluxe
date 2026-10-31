@@ -1,4 +1,16 @@
 # Clone Hero game facts the pages cite; written by tools/ch_mcp/dump_facts.py --tsv
 # version: v1.0.0.4045-master
 # Assembly-CSharp.dll md5: a5e7064d6c770e010a83b83d56d99c31
-build	kind	typedef_index	class	member	rva	offset
+build	kind	typedef_index	class	member	rva	offset	cited
+4045	field	562	GameManager	ʲʻʺʹʺʲʷʾʻʺʹ			GameManager.songTime
+4045	method	104		ʴˀʲʸʷʶˁˀʺʶʲ			BeatGrid.BuildLines
+4045	method	32		ʶʲˁʿʹʵˀʺʲˁʿ<T>			ChordListSearch.NearestChord
+4045	method	369		ʳʷˁʸʵʾʼʷˀʲˁ			TrackBuilder.PlaceWrittenFills
+4045	method	369		ʶʸʲʷʵʸʻʻʸʹʸ			TrackBuilder.PickActivationNote
+4045	method	369		ʸˀʽʸʽʳʳʸʼʾʿ			TrackBuilder.GenerateFills
+4045	method	369		ʹʹʾʴʳʶʼʵʳʼʼ			TrackBuilder.BuildPlayData
+4045	method	392		ʷʹʾˁʳʸʲʾʴʾʿ			BitMath.HighestSetBit
+4045	method	480	BasePlayer	ʸʸʳʽʲʻʿʸʳʸʽ			BasePlayer.AddStarPower
+4045	method	628	DrumsPlayer	ʸʸʳʽʲʻʿʸʳʸʽ			DrumsPlayer.AddStarPower
+4045	method	628	DrumsPlayer	ʻˀʻʿʷʷʾʿˁʵʽ			DrumsPlayer.CheckFillDeadlines
+4045	method	628	DrumsPlayer	ʿʷʲʻʸʸʹʿˁʶʲ			DrumsPlayer.UnusedFillCheckTwin

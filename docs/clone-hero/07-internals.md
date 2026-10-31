@@ -74,7 +74,7 @@ Rule: The settings loader builds the audio calibration, video calibration and so
 Label: Proven in the game's code
 Evidence: `code/6142/settings_load_374D50.asm` lines 359 to 399 (audio, video) and 2017 to 2035 (song_speed); `code/6142/setting_int_ctor_210C470.asm`; `code/6142/setting_base_ctor_2116210.asm` (the clamp); `code/6142/speed_ratio_210C090.asm` lines 10 to 13.
 Game code (6142): loader RVA `0x374D50`; integer setting constructor RVA `0x210C470`; base constructor RVA `0x2116210`; ratio getter RVA `0x210C090`. All names are scrambled.
-Hydra: no owner: Hydra reads no calibration or speed setting (grep for `calibrat` and `song_speed` in src/).
+Hydra: no owner: Hydra reads no calibration or speed setting (grep for "calibrat" and "song_speed" in src/).
 Ruling: none needed here: the values and their rulings are page 03's.
 Found: 2026-10-28, overlay spike handoff ("What the code says about calibration"); listed by this plan's wave 2 scout R7.
 

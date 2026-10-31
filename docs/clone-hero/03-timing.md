@@ -350,7 +350,7 @@ Rule: Audio and video calibration are whole-millisecond settings in the `[offset
 Label: Proven in the game's code
 Evidence: `code/6142/settings_load_374D50.asm` lines 359 to 399 (audio and video) and 2017 to 2035 (song speed); `code/6142/setting_base_ctor_2116210.asm` for the clamp (wave 2 scout R7, row R7-03). Wave 1 scout H3 (H3-16) had these from the overlay handoff only.
 Game code (6142): the settings loader (scrambled names), RVA `0x374D50`; the int setting constructor `0x210C470`; the base constructor `0x2116210`.
-Hydra: no owner: a grep of `src/` for `calibrat` and `song_speed` finds nothing.
+Hydra: no owner: a grep of `src/` for "calibrat" and "song_speed" finds nothing.
 Ruling: none needed: no Hydra rule depends on it
 Found: 2026-10-28, session f756d547; listed 2026-10-30, wave 2 scout R7.
 
@@ -464,7 +464,7 @@ Rule: A missed lane note is granted a hit when fewer than 2 grants (single lane)
 Label: Proven in the game's code
 Evidence: committed listing `docs/audit/drum-lanes/f20dcad0.asm` lines 22 to 27 (the grant check), 57 (the grant counter increment) and 69 to 73 (clock minus the last lane press against 0.075; line 71 loads the double 0.075) (wave 1 scout H3, H3-27). The limits 2 and 4 themselves were not opened by the scout. The reset is `docs/audit/drum-lanes/play/f20deaa0.asm` lines 131 to 138: the test for the lane bits 0xC000 on the note (line 131), the 8-byte store of a zero register over `+0x2E8` (line 133, with the register zeroed at line 23) and the press-time store (line 138); the same three steps repeat at lines 179 to 186 (0x20DEDC3 to 0x20DEDF4). Read from the listing by the reviewer of this page's move out of the drum-lanes findings; no run has shown it.
 Game code (6142): RVA `0x20DCAD0`, `docs/audit/drum-lanes/f20dcad0.asm` lines 22 to 73; the press handler RVA `0x20DEAA0`, `docs/audit/drum-lanes/play/f20deaa0.asm` lines 131 to 138.
-Hydra: no owner: a grep of `src/` for `0.075`, `lane_press`, `press_window` and `grant` finds nothing; Hydra's paths assume every note is hit.
+Hydra: no owner: a grep of `src/` for "0.075", "lane_press", "press_window" and "grant" finds nothing; Hydra's paths assume every note is hit.
 Ruling: none needed: no Hydra rule depends on it
 Found: drum-lanes FINDINGS-play-time.md.
 
