@@ -25,9 +25,15 @@ namespace hydra::ui {
 namespace {
 
 // Settings plus hydra_rules.ini. A bad file is not fatal: the app still
-// opens so the user can read the error, but analysis stays off.
+// opens so the user can read the error, but analysis stays off. A bad
+// settings file leaves the defaults (D276 item 1).
 StartupSettings load_startup_settings() {
-    StartupSettings start{Settings::load(), {}};
+    StartupSettings start;
+    try {
+        start.settings = Settings::load();
+    } catch (const app::SettingsFileError& e) {
+        start.settings_error = app::plain_error_detail(e);
+    }
     try {
         start.settings.rules = app::load_rules_file(app::default_rules_path());
     } catch (const app::RulesFileError& e) {
@@ -68,7 +74,8 @@ AppState::AppState() : AppState(load_startup_settings()) {}
 // The store opens on its own thread, so the window draws while an old file
 // upgrades. A bad rules file gates the store on RulesStamp::none(), so no row
 // reads Ready under the defaults the settings still hold.
-AppState::AppState(StartupSettings start) : AppState(std::move(start.settings), nullptr) {
+AppState::AppState(StartupSettings start)
+    : AppState(std::move(start.settings), nullptr, std::move(start.settings_error)) {
     rules_error = std::move(start.rules_error);
     store_open_job = std::make_unique<StoreOpenJob>(
         app::db_path(),
@@ -79,8 +86,14 @@ AppState::AppState(StartupSettings start) : AppState(std::move(start.settings), 
 
 AppState::AppState(app::Settings initial_settings,
                    std::unique_ptr<store::RecordStore> initial_store)
+    : AppState(std::move(initial_settings), std::move(initial_store), std::string()) {}
+
+AppState::AppState(app::Settings initial_settings,
+                   std::unique_ptr<store::RecordStore> initial_store,
+                   std::string initial_settings_error)
     : settings(std::move(initial_settings)),
       store(std::move(initial_store)),
+      settings_error(std::move(initial_settings_error)),
       update_public_key(app::kUpdatePublicKey),
       committed_settings_(settings) {
     // No store: the default constructor's open job brings it, and the
@@ -562,7 +575,17 @@ template bool AppState::is_selected_row(const store::ChartLibraryEntry& row) con
 template bool AppState::is_selected_row(const LibraryChart& row) const;
 
 bool AppState::can_scan() const {
-    return !settings.chartfolders.empty() && !scan_job && !batch_running();
+    // A scan rewrites the saved library, so a refused settings file, which
+    // saves nothing, scans nothing either (D276 item 1).
+    return settings_error.empty() && !settings.chartfolders.empty() && !scan_job &&
+           !batch_running();
+}
+
+std::vector<AppState::AnalysisOffLines> AppState::analysis_off_lines() const {
+    std::vector<AnalysisOffLines> lines;
+    if (!settings_error.empty()) lines.push_back({app::kSettingsOffSentence, settings_error});
+    if (!rules_error.empty()) lines.push_back({app::kAnalysisOffSentence, rules_error});
+    return lines;
 }
 
 bool AppState::can_analyze() const { return !analysis_blocked() && !batch_running(); }
@@ -1075,6 +1098,9 @@ void AppState::flush_settings() {
 
 void AppState::save_settings() {
     settings_unsaved_ = false;
+    // A refused file keeps its bytes: saving the defaults over it would lose
+    // the user's settings (D276 item 1).
+    if (!settings_error.empty()) return;
     if (!settings.save())
         set_problem("Settings could not be saved — " + app::ini_path() +
                    " is not writable.");

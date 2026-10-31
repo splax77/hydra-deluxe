@@ -355,6 +355,35 @@ void test_rules_error(ImGuiTestContext* ctx) {
     IM_CHECK(h.app->batch_job == nullptr);
 }
 
+// A bad hydra_settings.ini: the app opens on its defaults, its sentence and
+// the error naming the key stay under the toolbar, Analyze library is
+// disabled, and an edit in the Analysis settings panel leaves the file's bytes
+// as they were (D276 item 1).
+void test_settings_error(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    const std::string bad = "view_prodrums=yes\n";
+    reset_app(h, "", true, bad);
+    IM_CHECK(h.app->analysis_blocked());
+    IM_CHECK(h.app->settings_error.find("view_prodrums") != std::string::npos);
+
+    IM_CHECK(wait_until(ctx, [&] {
+        return visible_text(h).find(hydra::app::kSettingsOffSentence) != std::string::npos;
+    }, 5));
+    IM_CHECK(visible_text(h).find("view_prodrums = \"yes\"") != std::string::npos);
+    IM_CHECK(!h.app->can_analyze());
+    ctx->SetRef("//Hydra");
+    IM_CHECK((ctx->ItemInfo("Analyze library...").ItemFlags & ImGuiItemFlags_Disabled) != 0);
+
+    const bool prodrums_before = h.app->settings.view_prodrums;
+    open_settings_panel(ctx);
+    if (ctx->IsError()) return;
+    ctx->ItemClick("**/##prodrums");
+    IM_CHECK(wait_until(ctx, [&] { return h.app->settings.view_prodrums != prodrums_before; }, 5));
+    close_settings_panel(ctx);
+    h.app->flush_settings();
+    IM_CHECK(hydra::read_file_text(h.ini_path) == bad);
+}
+
 // The library view's own state (the search text, the dmleaderboards filter,
 // the status fade, the folder confirm) belongs to the AppState. When it lived
 // in function statics, the next test's fresh app still showed the last test's
@@ -1951,6 +1980,7 @@ const std::vector<TestEntry>& library_tests() {
         {"engine-wildcard-patches", test_engine_wildcard_patches},
         {"settings-reset", test_settings_reset},
         {"rules-error", test_rules_error},
+        {"settings-error", test_settings_error},
         {"library-state-per-app", test_library_state_per_app},
         {"view-settings", test_view_settings},
         {"library-search", test_library_search},

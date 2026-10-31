@@ -170,9 +170,9 @@ void render_panel_notices(AppState& app) {
     }
     // Without the file's error: the toolbar above already shows it (D114
     // item 13).
-    if (app.analysis_blocked()) {
+    for (const AppState::AnalysisOffLines& off : app.analysis_off_lines()) {
         ImGui::PushTextWrapPos(0.0f);
-        ImGui::TextColored(kWarningColor, "%s", app::kAnalysisOffSentence);
+        ImGui::TextColored(kWarningColor, "%s", off.sentence);
         ImGui::PopTextWrapPos();
     }
 }
