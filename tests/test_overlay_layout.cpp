@@ -14,6 +14,7 @@
 #include "render/highway_draw.h"
 #include "render/overlay_layout.h"
 #include "render/preview_config.h"
+#include "fixed_pitch.h"  // ten_per_char
 #include "preview_config_util.h"
 
 using namespace hydra::render;
@@ -265,17 +266,6 @@ TEST_CASE("overlay_scale: the solo box shrinks the boxes with the rest") {
     }
     CHECK(saw_solo_limit);
 }
-
-namespace {
-// 10 px per character (not per byte), "…" included: a fixed-pitch stand-in
-// for the monospace font the path picker draws with.
-float ten_per_char(const std::string& s) {
-    float w = 0.0f;
-    for (unsigned char c : s)
-        if ((c & 0xC0) != 0x80) w += 10.0f;
-    return w;
-}
-}  // namespace
 
 namespace {
 // A text box of `texts`, each line measured by ten_per_char and 18.75 px tall

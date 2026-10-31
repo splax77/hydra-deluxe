@@ -4,6 +4,7 @@
 #include "doctest.h"
 
 #include "core/timing.h"
+#include "fixed_pitch.h"  // ten_per_char
 #include "preview_scene_fixtures.h"
 #include "ui/preview_timeline.h"
 
@@ -201,14 +202,6 @@ TEST_CASE("preview timeline: the Section row leaves out a section named End") {
 
 namespace {
 
-// A test measure: 10 px for each character, counting a UTF-8 sequence as one.
-float ten_px_each(const std::string& s) {
-    float w = 0.0f;
-    for (unsigned char c : s)
-        if ((c & 0xC0) != 0x80) w += 10.0f;
-    return w;
-}
-
 // Offered fills ending at each of `end_ms`, chord tick = end, each with a
 // four-character label 40 px wide.
 struct LabelledFills {
@@ -231,9 +224,9 @@ ui::TimelineMetrics label_metrics() {
     m.cost_top = 3.0f;
     m.cost_line_h = 5.0f;
     m.section_pad = 4.0f;
-    m.cost_width = ten_px_each;
-    m.section_width = ten_px_each;
-    m.axis_width = ten_px_each;
+    m.cost_width = ten_per_char;
+    m.section_width = ten_per_char;
+    m.axis_width = ten_per_char;
     return m;
 }
 
@@ -271,6 +264,21 @@ TEST_CASE("preview timeline: a cost label that would touch the one before it dro
     REQUIRE(c.cost_labels.size() == 3);
     for (const ui::TimelineCostLabel& lab : c.cost_labels) CHECK(lab.line == 0);
     CHECK(c.height() == doctest::Approx(60.0f));
+}
+
+TEST_CASE("preview timeline: the stagger measures a label where it is kept inside the timeline, not where it would be centred") {
+    // Fills at 950 and 995 px, 40 px labels. Centred, the second would start
+    // at 975 px, clear of the first's end at 970. Kept inside the 1,000 px
+    // timeline it starts at 960 px and touches it, so it drops to line 1.
+    // Pinned from one run.
+    const LabelledFills f = labelled_fills({9500.0, 9950.0});
+    const ui::TimelineLayout l = *ui::timeline_layout(f.scene, kLengthMs, kWidth, label_metrics(), f.labels);
+    REQUIRE(l.cost_labels.size() == 2);
+    CHECK(l.cost_labels[0].rect.x1 == doctest::Approx(970.0f));
+    CHECK(l.cost_labels[1].rect.x0 == doctest::Approx(960.0f));
+    CHECK(l.cost_labels[1].rect.x1 == doctest::Approx(1000.0f));
+    CHECK(l.cost_labels[0].line == 0);
+    CHECK(l.cost_labels[1].line == 1);
 }
 
 TEST_CASE("preview timeline: a cost label that touches the last label on both lines goes where the last one ends first, and is counted") {
