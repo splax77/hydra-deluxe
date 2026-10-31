@@ -1,6 +1,6 @@
 # Changes the user never asked for, and how they slipped through (2026-10-31)
 
-Session a7d95f1c-a1ce-46e9-bf4d-2e7cfbd98d1e, continuing `docs/handoffs/2026-10-31-silent-unasked-changes-investigation-handoff.md`.
+Session a7d95f1c-a1ce-46e9-bf4d-2e7cfbd98d1e, continuing `docs/handoffs/2026-10-31-silent-unasked-changes-investigation-handoff.md` (removed; `git show 38b77b56:docs/handoffs/2026-10-31-silent-unasked-changes-investigation-handoff.md`).
 
 The user asked for this in session 711858a7: "this seems to be a recurring pattern, sessions silently making changes i never asked for and choosing to never mention it. create a handoff for another session to do a deeper investigaton".
 
