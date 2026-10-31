@@ -28,6 +28,7 @@ constexpr float kAxisRowH = 18.0f;
 constexpr float kSectionsRowH = 24.0f;
 constexpr float kPhrasesRowH = 22.0f;
 constexpr float kSavedRowH = 46.0f;
+constexpr float kGhostRowH = 30.0f;  // the "Hydra's best" row, line 279
 constexpr float kActivationsRowH = 34.0f;
 constexpr float kFillsRowH = 50.0f;
 
@@ -152,10 +153,13 @@ std::optional<TimelineLayout> timeline_layout(const app::PreviewScene& scene, do
     // Every x is song_fraction's, which has a value whenever the length is usable.
     auto x_of = [&](double ms) { return static_cast<float>(*app::song_fraction(ms, length_ms)) * width; };
 
+    // The ghost row shows only while the scene has ghost windows to put in it.
     float y = 0.0f;
     for (size_t r = 0; r < kTimelineRowCount; ++r) {
-        out.rows[r] = {0.0f, y, width, y + metrics.row_h[r]};
-        y += metrics.row_h[r];
+        const bool no_ghost = static_cast<TimelineRow>(r) == TimelineRow::Ghost && scene.ghost_windows.empty();
+        const float h = no_ghost ? 0.0f : metrics.row_h[r];
+        out.rows[r] = {0.0f, y, width, y + h};
+        y += h;
     }
 
     // The song's length is a number read from the chart's metadata, so the
@@ -174,6 +178,7 @@ std::optional<TimelineLayout> timeline_layout(const app::PreviewScene& scene, do
 
     const TimelineRect& sec = out.row(TimelineRow::Sections);
     for (size_t i = 0; i < scene.sections.size(); ++i) {
+        if (scene.sections[i].name == kTimelineHiddenSectionName) continue;
         const double end = i + 1 < scene.sections.size() ? scene.sections[i + 1].ms : length_ms;
         out.sections.push_back({scene.sections[i].name,
                                 {x_of(scene.sections[i].ms), sec.y0, x_of(end), sec.y1}});
@@ -193,6 +198,13 @@ std::optional<TimelineLayout> timeline_layout(const app::PreviewScene& scene, do
         out.saved_line.push_back({x_of(s.end_ms), y_of(s.end_bars)});
     }
     out.activate_y = y_of(kSpActivationBars);
+
+    // The ghost bands stand in from their row as the activation bands do
+    // (`.band` sets both).
+    const TimelineRect& ghost = out.row(TimelineRow::Ghost);
+    for (const std::pair<double, double>& w : scene.ghost_windows)
+        out.ghost_bands.push_back({x_of(w.first), ghost.y0 + metrics.band_inset, x_of(w.second),
+                                   ghost.y1 - metrics.band_inset});
 
     const TimelineRect& acts = out.row(TimelineRow::Activations);
     for (size_t i = 0; i < scene.activations.size(); ++i) {
@@ -248,8 +260,7 @@ TimelineMetrics timeline_metrics() {
     m.row_h[static_cast<size_t>(TimelineRow::Sections)] = px(kSectionsRowH);
     m.row_h[static_cast<size_t>(TimelineRow::Phrases)] = px(kPhrasesRowH);
     m.row_h[static_cast<size_t>(TimelineRow::Saved)] = px(kSavedRowH);
-    // The ghost row waits for the ghost path's windows on PreviewScene.
-    m.row_h[static_cast<size_t>(TimelineRow::Ghost)] = 0.0f;
+    m.row_h[static_cast<size_t>(TimelineRow::Ghost)] = px(kGhostRowH);
     m.row_h[static_cast<size_t>(TimelineRow::Activations)] = px(kActivationsRowH);
     m.row_h[static_cast<size_t>(TimelineRow::Fills)] = px(kFillsRowH);
     m.fill_size = px(kFillSize);
@@ -280,7 +291,7 @@ TimelineEvents PreviewTimeline::draw(const TimelineInput& in) const {
                                                   kTimelineSectionsLabel,
                                                   kTimelinePhrasesLabel,
                                                   kTimelineSavedLabel,
-                                                  nullptr,
+                                                  kTimelineGhostLabel,
                                                   kTimelineActivationsLabel,
                                                   kTimelineFillsLabel};
     const float label_wrap = label_w - px(kLabelPadRight);
@@ -355,6 +366,10 @@ TimelineEvents PreviewTimeline::draw(const TimelineInput& in) const {
         if (pts.size() >= 2)
             dl->AddPolyline(pts.data(), static_cast<int>(pts.size()), kStarColor, ImDrawFlags_None, px(kSavedLineW));
     }
+
+    // The ghost bands (l.ghost_bands) are laid out but not drawn: the
+    // mockup's `.band.ghost` border is `1.5px dashed #bdbdbd`, and `dashed`
+    // names no dash length. That size waits on the user.
 
     // The drawn path's activations: numbered bands, the selected one outlined.
     {

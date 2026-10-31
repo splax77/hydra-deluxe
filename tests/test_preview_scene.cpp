@@ -566,6 +566,8 @@ std::string scene_difference(const PreviewScene& a, const PreviewScene& b) {
                                x.measure == y.measure && x.chord == y.chord;
                     }))
         return "activations";
+    if (a.ghost_fills != b.ghost_fills) return "ghost_fills";
+    if (a.ghost_windows != b.ghost_windows) return "ghost_windows";
     if (a.trailing_bank_ticks != b.trailing_bank_ticks) return "trailing_bank_ticks";
     if (a.trailing_skipped_fill_ticks != b.trailing_skipped_fill_ticks)
         return "trailing_skipped_fill_ticks";
@@ -873,6 +875,7 @@ TEST_CASE("build_preview_scene: a ghost path lists its own taken fills and nothi
     // A later overlay with no ghost clears the list.
     const PreviewScene cleared = apply_preview_overlay(with, song, &drawn);
     CHECK(cleared.ghost_fills.empty());
+    CHECK(cleared.ghost_windows.empty());
 }
 
 // On a real chart the ghost path's fills are the ones the same path takes when
@@ -890,6 +893,15 @@ TEST_CASE("build_preview_scene: a corpus best path as the ghost lists its taken 
     for (const PreviewActivation& a : drawn.activations)
         if (a.taken_fill) taken.push_back(*a.taken_fill);
     CHECK(scene.ghost_fills == taken);
+
+    // Its windows are the same path's sp_window()s when it is the drawn path,
+    // and a scene with no ghost has none.
+    std::vector<std::pair<double, double>> windows;
+    for (const PreviewActivation& a : drawn.activations)
+        if (const auto w = a.sp_window()) windows.push_back(*w);
+    REQUIRE_FALSE(windows.empty());
+    CHECK(scene.ghost_windows == windows);
+    CHECK(drawn.ghost_windows.empty());
 }
 
 // The fills after a path's last activation: the engine lists the ones the

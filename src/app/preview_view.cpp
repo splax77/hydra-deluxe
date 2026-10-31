@@ -398,6 +398,7 @@ PreviewScene apply_preview_overlay(PreviewScene scene, const Song& song, const P
     // fresh base holds.
     scene.activations.clear();
     scene.ghost_fills.clear();
+    scene.ghost_windows.clear();
     scene.trailing_bank_ticks.clear();
     scene.trailing_skipped_fill_ticks.clear();
     for (PreviewFill& f : scene.fills) f.state = PreviewFillState::Hidden;
@@ -406,30 +407,36 @@ PreviewScene apply_preview_overlay(PreviewScene scene, const Song& song, const P
     if (song.is_empty()) return scene;
     const SongTiming& timing = song.timing();
 
-    // Overlay: the path's activations, ms resolved against the song's timing.
-    if (path != nullptr) {
-        for (const Activation& a : path->walk_activations()) {
-            PreviewActivation pa;
-            pa.tick = a.timecode.ticks();
-            pa.ms = song.timecode(pa.tick).ms();
-            pa.skipped_fill_ticks = a.skipped_fill_ticks;
-            pa.bank_rise_ticks = a.bank_rise_ticks;
-            for (size_t k = 0; k < a.sp_end_steps.size(); ++k)
-                pa.sp_end_changes.push_back({a.refill_tick(k), a.sp_end_steps[k].end_tick});
-            if (std::optional<int64_t> d = a.deact_tick()) {
-                pa.has_sp_end = true;
-                pa.sp_end_tick = *d;
-                pa.sp_end_ms = timing.ms_index().at(*d);
-            }
-            if (a.chord.count() > 0) {
-                pa.has_lane = true;
-                pa.lane = lane_of(a.chord.activation_note().colortype);
-                pa.chord = a.chord;
-            }
-            pa.measure = format_measure(timing, pa.tick);
-            pa.notation = a.notationstr_verbose();
-            scene.activations.push_back(pa);
+    // One activation as the Preview holds it, ms resolved against the song's
+    // timing. The drawn path's activations and the ghost path's windows are
+    // both built here.
+    auto preview_activation = [&](const Activation& a) {
+        PreviewActivation pa;
+        pa.tick = a.timecode.ticks();
+        pa.ms = song.timecode(pa.tick).ms();
+        pa.skipped_fill_ticks = a.skipped_fill_ticks;
+        pa.bank_rise_ticks = a.bank_rise_ticks;
+        for (size_t k = 0; k < a.sp_end_steps.size(); ++k)
+            pa.sp_end_changes.push_back({a.refill_tick(k), a.sp_end_steps[k].end_tick});
+        if (std::optional<int64_t> d = a.deact_tick()) {
+            pa.has_sp_end = true;
+            pa.sp_end_tick = *d;
+            pa.sp_end_ms = timing.ms_index().at(*d);
         }
+        if (a.chord.count() > 0) {
+            pa.has_lane = true;
+            pa.lane = lane_of(a.chord.activation_note().colortype);
+            pa.chord = a.chord;
+        }
+        pa.measure = format_measure(timing, pa.tick);
+        pa.notation = a.notationstr_verbose();
+        return pa;
+    };
+
+    // Overlay: the path's activations.
+    if (path != nullptr) {
+        for (const Activation& a : path->walk_activations())
+            scene.activations.push_back(preview_activation(a));
         scene.trailing_bank_ticks = path->trailing_bank_ticks;
         scene.trailing_skipped_fill_ticks = path->trailing_skipped_fill_ticks;
     }
@@ -468,13 +475,17 @@ PreviewScene apply_preview_overlay(PreviewScene scene, const Song& song, const P
 
     // The ghost path's fills: for each of its activations, the fill it stands
     // on, named by fill_on_chord as the drawn path's Taken fill is. It sets
-    // no fill state, so the drawn path's strips are untouched.
+    // no fill state, so the drawn path's strips are untouched. Its windows
+    // are the sp_window() of the same activation build the drawn path gets.
     if (ghost_path != nullptr) {
         size_t next_fill = 0;
-        for (const Activation& a : ghost_path->walk_activations())
+        for (const Activation& a : ghost_path->walk_activations()) {
             if (const std::optional<size_t> i =
                     fill_on_chord(scene.fills, a.timecode.ticks(), next_fill))
                 scene.ghost_fills.push_back(*i);
+            if (const std::optional<std::pair<double, double>> w = preview_activation(a).sp_window())
+                scene.ghost_windows.push_back(*w);
+        }
     }
 
     // The SP meter, built last. With a path it reads the record's facts

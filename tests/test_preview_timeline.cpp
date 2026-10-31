@@ -126,19 +126,77 @@ TEST_CASE("preview timeline: the insets move the bands, the fills and the saved 
     CHECK(l.axis_ticks[1].ms == doctest::Approx(30000.0));
     CHECK(l.axis_ticks[2].ms == doctest::Approx(60000.0));
     CHECK(l.axis_ticks[2].x == doctest::Approx(923.0769f));
-    // The Activations row is 50 to 60 px down; its band stands 2 px in.
+    // With no ghost the ghost row is 0 tall, so the Activations row is 40 to
+    // 50 px down; its band stands 2 px in.
     REQUIRE(l.bands.size() == 1);
-    CHECK(l.bands[0].rect.y0 == doctest::Approx(52.0f));
-    CHECK(l.bands[0].rect.y1 == doctest::Approx(58.0f));
-    // The Fills row starts at 60 px; a fill's 10 px box is centred 6 px down.
+    CHECK(l.bands[0].rect.y0 == doctest::Approx(42.0f));
+    CHECK(l.bands[0].rect.y1 == doctest::Approx(48.0f));
+    // The Fills row starts at 50 px; a fill's 10 px box is centred 6 px down.
     REQUIRE(l.fills.size() == 3);
-    CHECK(l.fills[0].hit.y0 == doctest::Approx(61.0f));
-    CHECK(l.fills[0].hit.y1 == doctest::Approx(71.0f));
+    CHECK(l.fills[0].hit.y0 == doctest::Approx(51.0f));
+    CHECK(l.fills[0].hit.y1 == doctest::Approx(61.0f));
     // The saved row is 30 to 40 px down: none at 39, the cap at 31.
     REQUIRE(l.saved_line.size() == 2);
     CHECK(l.saved_line[0].y == doctest::Approx(39.0f));
     CHECK(l.saved_line[1].y == doctest::Approx(31.0f));
     CHECK(l.activate_y == doctest::Approx(35.0f));
+}
+
+TEST_CASE("preview timeline: the ghost path's windows are bands in their own row, which is 0 tall with no ghost") {
+    app::PreviewScene s = scene_with_fills();
+    ui::TimelineMetrics m = metrics();
+    m.band_inset = 2.0f;
+
+    // No ghost: the row has no height and no bands, and the rows below it
+    // move up.
+    const ui::TimelineLayout bare = *ui::timeline_layout(s, kLengthMs, kWidth, m);
+    CHECK(bare.ghost_bands.empty());
+    CHECK(bare.row(ui::TimelineRow::Ghost).y0 == doctest::Approx(40.0f));
+    CHECK(bare.row(ui::TimelineRow::Ghost).y1 == doctest::Approx(40.0f));
+    CHECK(bare.row(ui::TimelineRow::Activations).y0 == doctest::Approx(40.0f));
+    CHECK(bare.height() == doctest::Approx(60.0f));
+
+    // Two ghost windows. Pinned from one run.
+    s.ghost_windows = {{1000.0, 2500.0}, {6000.0, 9000.0}};
+    const ui::TimelineLayout l = *ui::timeline_layout(s, kLengthMs, kWidth, m);
+    const ui::TimelineRect& ghost = l.row(ui::TimelineRow::Ghost);
+    CHECK(ghost.y0 == doctest::Approx(40.0f));
+    CHECK(ghost.y1 == doctest::Approx(50.0f));
+    CHECK(l.row(ui::TimelineRow::Activations).y0 == doctest::Approx(50.0f));
+    CHECK(l.height() == doctest::Approx(70.0f));
+    REQUIRE(l.ghost_bands.size() == 2);
+    CHECK(l.ghost_bands[0].x0 == doctest::Approx(100.0f));
+    CHECK(l.ghost_bands[0].x1 == doctest::Approx(250.0f));
+    CHECK(l.ghost_bands[1].x0 == doctest::Approx(600.0f));
+    CHECK(l.ghost_bands[1].x1 == doctest::Approx(900.0f));
+    CHECK(l.ghost_bands[0].y0 == doctest::Approx(42.0f));
+    CHECK(l.ghost_bands[0].y1 == doctest::Approx(48.0f));
+    // The drawn path's band keeps its own row, now 50 to 60 px down.
+    REQUIRE(l.bands.size() == 1);
+    CHECK(l.bands[0].rect.y0 == doctest::Approx(52.0f));
+
+    // A ghost band takes no click: a point on one names the moment under it.
+    const ui::TimelineHit on_ghost = ui::timeline_hit(l, 700.0f, 45.0f);
+    CHECK(on_ghost.kind == ui::TimelineHit::Kind::Time);
+    CHECK(on_ghost.ms == doctest::Approx(7000.0));
+}
+
+TEST_CASE("preview timeline: the Section row leaves out a section named End") {
+    app::PreviewScene s = fx::timed_scene();
+    s.sections = {{0, 0.0, "Intro"}, {3000, 3000.0, "Verse"}, {9000, 9000.0, "End"},
+                  {9500, 9500.0, "Ending"}, {9800, 9800.0, "end"}};
+    const ui::TimelineLayout l = *ui::timeline_layout(s, kLengthMs, kWidth, metrics());
+    // The section before End still stops where End starts; a name that only
+    // starts with End, or is end in lower case, stays. Pinned from one run.
+    REQUIRE(l.sections.size() == 4);
+    CHECK(l.sections[0].name == "Intro");
+    CHECK(l.sections[1].name == "Verse");
+    CHECK(l.sections[1].rect.x0 == doctest::Approx(300.0f));
+    CHECK(l.sections[1].rect.x1 == doctest::Approx(900.0f));
+    CHECK(l.sections[2].name == "Ending");
+    CHECK(l.sections[2].rect.x0 == doctest::Approx(950.0f));
+    CHECK(l.sections[3].name == "end");
+    CHECK(l.sections[3].rect.x1 == doctest::Approx(1000.0f));
 }
 
 TEST_CASE("preview timeline: a huge song length gets labels by the width, not by the length") {

@@ -35,12 +35,21 @@ inline constexpr double kTimelineAxisStepMs = 30000.0;
 inline constexpr const char* kTimelineSectionsLabel = "Section";
 inline constexpr const char* kTimelinePhrasesLabel = "Star Power phrases";
 inline constexpr const char* kTimelineSavedLabel = "Star Power saved";
+inline constexpr const char* kTimelineGhostLabel = "Hydra's best";
 inline constexpr const char* kTimelineActivationsLabel = "Your activations";
 inline constexpr const char* kTimelineFillsLabel = "Fills";
 inline constexpr const char* kTimelineFillsSubLabel = "and their cost";
 // The activate line's words after its number, kSpActivationBars (drawMeter:
 // "2 phrases: enough to activate").
 inline constexpr const char* kTimelineActivateLabelTail = " phrases: enough to activate";
+
+// The section name the Section row leaves out: the practice section many
+// charts end with. The match is exact, case included, on the name the scene
+// holds (PreviewSection::name), as the mockup's renderRows tests it
+// (`if (s.name === "End") return;`). The section before it still ends where
+// it starts. The user chose to hide it on the timeline only; the Preview tab
+// keeps showing it.
+inline constexpr const char* kTimelineHiddenSectionName = "End";
 
 // The timeline's rows, top to bottom.
 enum class TimelineRow { Axis, Sections, Phrases, Saved, Ghost, Activations, Fills };
@@ -65,8 +74,9 @@ struct TimelineMetrics {
 };
 
 // The mockup's sizes at the display's scale (px), for the timeline as
-// PreviewTimeline draws it. Call it inside a frame. The ghost row is 0 tall:
-// it is not drawn yet.
+// PreviewTimeline draws it. Call it inside a frame. The ghost row's height
+// here is the one it has when a ghost path is set; timeline_layout makes it
+// 0 tall for a scene with no ghost windows.
 TimelineMetrics timeline_metrics();
 
 // A rectangle in the timeline's own pixels: x from its left edge, y from its
@@ -93,7 +103,7 @@ struct TimelineFillItem {
 };
 
 // One section: its name and the stretch until the next section (or the
-// song's end).
+// song's end). A section named kTimelineHiddenSectionName gets none.
 struct TimelineSection {
     std::string name;
     TimelineRect rect;
@@ -125,6 +135,11 @@ struct TimelineLayout {
     // order, so a jump between two segments is a vertical step.
     std::vector<TimelinePoint> saved_line;
     float activate_y = 0.0f;  // the saved row's height at kSpActivationBars
+    // The ghost path's windows (PreviewScene::ghost_windows), one band each
+    // in the Ghost row. The ghost row is 0 tall when there are none. A point
+    // on one lands on the moment under it, as the mockup's ghost bands take
+    // no clicks.
+    std::vector<TimelineRect> ghost_bands;
     std::vector<TimelineBand> bands;
     std::vector<TimelineFillItem> fills;
     float height() const { return rows[kTimelineRowCount - 1].y1; }

@@ -285,6 +285,12 @@ struct PreviewScene {
     // `fills` in chart order. apply_preview_overlay names them by the rule
     // that names the drawn path's Taken fill. Empty with no ghost path.
     std::vector<size_t> ghost_fills;
+    // Overlay: the ghost path's Star Power windows, {start ms, end ms}, in
+    // order. Each is the sp_window() of the PreviewActivation the overlay
+    // builds for one of the ghost's activations, the same build the drawn
+    // path's activations get; an activation with no window adds none. Empty
+    // with no ghost path.
+    std::vector<std::pair<double, double>> ghost_windows;
     // Overlay: where each bar banked after the path's last window arrived
     // (Path::trailing_bank_ticks). Empty without a path.
     std::vector<int64_t> trailing_bank_ticks;
@@ -547,7 +553,7 @@ double sp_meter_bars_at(const SpMeterCurve& curve, double ms);
 // becomes song_length_ms, where the SP meter curve closes.
 //
 // `ghost_path` (may be null) is a second path drawn faintly beside the first:
-// it fills ghost_fills and nothing else. Without one the scene is exactly
+// it fills ghost_fills and ghost_windows and nothing else. Without one the scene is exactly
 // what it was before the ghost existed.
 PreviewScene build_preview_scene(const Song& song, const Path* path,
                                  int sp_cap = kCloneHeroSpCap,
@@ -566,7 +572,7 @@ PreviewScene build_preview_scene(const Song& song, const Path* path,
 // Every fill in a base reads Hidden, the field's default.
 //
 // The overlay owns the rest: activations, every fill's state, ghost_fills,
-// score and sp_meter. Those read the path, the ghost path, the SP cap or the
+// ghost_windows, score and sp_meter. Those read the path, the ghost path, the SP cap or the
 // rules. The SP meter is
 // overlay even without a path: its ceiling is the record's cap and its drain
 // is the path's activations.
