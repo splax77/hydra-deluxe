@@ -30,9 +30,14 @@ verbatim and the numbers in `3d-config.json`; when the look must change, change
 Onyx's inputs (config, assets), not the draw code, and re-capture the golden
 by the steps in `testdata/preview/README.md`.
 
-## Hydra's own Preview numbers (D48, Q33)
+## Hydra's own Preview numbers (D48, Q33; D273)
 
 These numbers are Hydra's, not Onyx's. The user confirmed each one as it is.
+The half-tick span end, the half-millisecond activation check and BPM 0.000
+were confirmed under D48, Q33. The 0.6 overlay floor, the 0.001 flat-edge
+limit, the magenta colour, the loading bar's 8%, 82% and 4.5% shares, its
+once-a-second time-left pacing and its 3 s time-left gate were confirmed
+under D273, after the user saw each value.
 
 An SP phrase, solo or fill span ends half a tick past its last note, so its
 edge clears that note and stops short of the next tick at any resolution and
@@ -59,5 +64,7 @@ src/render/preview_config.cpp).
 The loading bar gives reading the chart 8%, opening the audio 82%, building
 the scene 4.5% and the highway the rest. It counts the audio in whole
 megabytes (10^6 bytes, rounded to nearest). Its time-left estimate changes at
-most once a second, from the last second's bytes, and switches from seconds
-to minutes at 59.5 s (src/ui/preview_load_job.cpp).
+most once a second, from the last second's bytes, and appears only after 3 s
+of loading (src/ui/preview_load_job.cpp). It reads "about m:ss left" at every
+length (h:mm:ss past an hour), in the same words as the batch strip (`time_left_text` in
+src/app/display_format.h).

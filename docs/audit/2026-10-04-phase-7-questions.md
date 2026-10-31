@@ -29,6 +29,8 @@ A free squeeze is a squeeze-in at exactly the SP end; it needs no timing. Today 
 After: no figure for a path with nothing to time. A squeeze-out at exactly 0.0 ms still counts as needing timing (D13 already decided that), and the all-0 list must follow D13 too. Today the all-0 list can keep a path whose only squeeze is a 0.0 ms squeeze-out.
 Recommended: yes. Before merging, I'll show you which charts' all-0 lists change.
 
+*Correction, 2026-10-30 (D273 session).* The question's "D13 already decided that" is wrong. D13 covers only a squeeze-in exactly on the SP end: it is collected for free. It says nothing about a squeeze-out at 0.0 ms. That case was first decided when the user answered "all recommended" to this question (D51 call 4). The code's one answer for both cases is `SPSqueeze::needs_no_timing` in src/core/model.h.
+
 **4b. One duplicate hides the whole "Best all-0 path" section.** (324, from phase 6)
 Today, if one all-0 variant matches a path already listed above it, the Paths tab hides the whole "Best all-0 path" section. Any other all-0 variants that aren't duplicates disappear with it.
 Recommended: hide only the duplicate, and keep the other variants visible.
