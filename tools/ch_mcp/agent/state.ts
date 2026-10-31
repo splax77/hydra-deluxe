@@ -2,8 +2,10 @@
 // field name, and the menu block menu.ts reads. It stays loaded between
 // requests, so a caller can ask again and again on one attach.
 //
-// It reads fields by name; the only game method it calls is the one menu.ts
-// names. The checks in tests/test_frida_attach.py keep it that way.
+// It reads fields by name; the only game methods it calls are the ones
+// menu.ts names. The checks in tests/test_frida_attach.py keep it that way.
+// As it loads, it places menu.ts's one hook, which records the player screens
+// the menu read reports (watchPlayerScreens says why).
 //
 // frida_attach.LiveAgent posts each read with an id and waits for the reply
 // that carries the same id, so a reply that comes after its caller gave up is
@@ -12,7 +14,7 @@
 
 import "frida-il2cpp-bridge";
 import { lookUpGameManager, GAME_MANAGER } from "./gamemanager.js";
-import { readMenu } from "./menu.js";
+import { playerScreenWatchFailed, readMenu, watchPlayerScreens } from "./menu.js";
 
 interface ReadRequest {
     type: "read";
@@ -75,4 +77,7 @@ function listen() {
     });
 }
 
+// The hook is asked for as the agent loads, ahead of every read.
+// A failure shows in every menu read after it, as the player screen's reason.
+Il2Cpp.perform(watchPlayerScreens).catch(playerScreenWatchFailed);
 listen();

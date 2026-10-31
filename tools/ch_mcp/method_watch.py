@@ -14,8 +14,11 @@ call in order.
 Who owns what: start_candidates.json owns which classes and methods are
 watched; menuhooks.ts finds them on the live classes and reads each call's
 arguments; this module turns the file into the agent's settings and the calls
-into reply lines. The build check is the attach's (frida_tools.FridaTools),
-so the watch refuses until something is attached.
+into reply lines. This module also owns which code addresses an "all" class
+leaves unhooked (`shared_rvas`), because it has the dump's facts for every
+class and the live agent sees only the classes it watches. The build check is
+the attach's (frida_tools.FridaTools), so the watch refuses until something is
+attached.
 
 Every tool returns plain text and never prints: an MCP server's stdout is its
 protocol channel.
@@ -29,6 +32,7 @@ import threading
 import time
 from typing import Any, Callable, Iterable, List, Optional
 
+from tools.ch_mcp import build_facts
 from tools.ch_mcp import frida_attach as FA
 from tools.ch_mcp import frida_tools as FT
 from tools.ch_mcp import trace_hits as TH
@@ -95,6 +99,9 @@ def load_candidates(path: str = CANDIDATES_FILE) -> dict:
         if c.get("hook") not in HOOK_KINDS:
             raise CandidatesError(f"{path}: {name} has hook {c.get('hook')!r}, "
                                   f"not one of {', '.join(HOOK_KINDS)}")
+        if "assembly" in c and (not isinstance(c["assembly"], str) or not c["assembly"]):
+            raise CandidatesError(f"{path}: {name} has assembly {c['assembly']!r}, "
+                                  "not an assembly name")
         for m in c.get("methods", []):
             parse_rva(m.get("rva"))
         if c["hook"] == HOOK_LISTED and not c.get("methods"):
@@ -110,11 +117,50 @@ def full_name(entry: dict) -> str:
     return f"{namespace}.{entry['class']}" if namespace else entry["class"]
 
 
-def watch_settings(candidates: dict,
+def shared_rvas(facts: dict) -> frozenset[int]:
+    """The code addresses that methods of more than one class run at, from
+    the dump's facts (build_facts.load_facts). The compiler folds identical
+    bodies into one, so a hook on such an address fires for every class that
+    shares it and buries the watched class's own calls (PlayerSelectionCanvas
+    .ctor at 0x66940 in build 6142, for one). A class is told apart by its
+    TypeDefIndex, so two methods of one class at one address are not shared.
+    The addresses of generic method instantiations are left out, because the
+    facts do not carry them (dump_facts.parse_dump keeps them apart)."""
+    owners: dict[int, set[int]] = {}
+    for cls in facts["classes"]:
+        for m in cls["methods"]:
+            if m["rva"] != -1:  # an abstract method has no code
+                owners.setdefault(m["rva"], set()).add(cls["typedef_index"])
+    return frozenset(rva for rva, held in owners.items() if len(held) > 1)
+
+
+def facts_class(facts: dict, entry: dict) -> dict:
+    """The one class of the facts that a candidate entry names, by name and
+    namespace. Raises CandidatesError when there is not exactly one."""
+    found = [c for c in facts["classes"]
+             if c["name"] == entry["class"]
+             and (c.get("namespace") or "") == (entry.get("namespace") or "")]
+    if len(found) != 1:
+        raise CandidatesError(f"{full_name(entry)} matched {len(found)} classes in the "
+                              "dump's facts")
+    return found[0]
+
+
+def skip_rvas(facts: dict, entry: dict, shared: frozenset[int]) -> List[int]:
+    """The addresses an entry's class leaves unhooked: for an "all" class,
+    each of its own addresses in `shared`. A listed or by_name class names
+    its methods, so none of them is skipped."""
+    if entry["hook"] != HOOK_ALL:
+        return []
+    return sorted({m["rva"] for m in facts_class(facts, entry)["methods"]} & shared)
+
+
+def watch_settings(candidates: dict, facts: dict,
                    classes: Optional[Iterable[str]] = None) -> List[dict]:
     """The class list menuhooks.ts gets in its start message: every class in
-    the file, or only those `classes` names. Raises CandidatesError on a name
-    the file does not hold."""
+    the file, or only those `classes` names, each with the addresses it skips
+    in the dump's `facts`. Raises CandidatesError on a name the file does not
+    hold, or an "all" class the facts do not hold once."""
     entries = candidates["classes"]
     if classes is not None:
         wanted = list(classes)
@@ -124,14 +170,17 @@ def watch_settings(candidates: dict,
             raise CandidatesError(f"not in start_candidates.json: {', '.join(unknown)}; "
                                   f"the classes are {', '.join(known)}")
         entries = [e for e in entries if e["class"] in wanted]
+    shared = shared_rvas(facts)
     return [{
         "label": e["class"],
         "full_name": full_name(e),
+        "assembly": e.get("assembly"),
         "hook": e["hook"],
         "rvas": ([parse_rva(m["rva"]) for m in e.get("methods", [])]
                  if e["hook"] == HOOK_LISTED else []),
         "names": ([n["name"] for n in e.get("names", [])]
                   if e["hook"] == HOOK_BY_NAME else []),
+        "skip_rvas": skip_rvas(facts, e, shared),
     } for e in entries]
 
 
@@ -152,7 +201,8 @@ def call_label(call: dict) -> str:
 
 def start_lines(summary: dict) -> List[str]:
     """The agent's hook summary as reply lines: the count, each class's count,
-    and every class, RVA or name it could not find."""
+    every class, RVA or name it could not find, and every address it left
+    unhooked because other classes share its code."""
     lines = []
     if "error" in summary:
         lines.append(f"nothing hooked: {summary['error']}")
@@ -166,6 +216,9 @@ def start_lines(summary: dict) -> List[str]:
         lines.append(f"no code: {line}")
     for line in summary.get("not_hooked", []):
         lines.append(f"not hooked: {line}")
+    for s in summary.get("skipped", []):
+        lines.append(f"skipped (code shared with other classes): {s['class']} "
+                     f"{' / '.join(s['names'])} {rva_text(s['rva'])}")
     return lines
 
 
@@ -336,8 +389,9 @@ class MethodWatch:
     `game` is the server's game_tools.GameTools (the tests pass a fake): the
     watch takes its backup, writes its logs in its session folder, and stops
     with it through a stop hook. `frida` is the server's FridaTools; the
-    watch refuses until it is attached. Every other seam is an argument the
-    tests swap for a fake."""
+    watch refuses until it is attached. `load_facts` (build_facts') gives the
+    installed build's facts, which shared_rvas reads at each start. Every
+    other seam is an argument the tests swap for a fake."""
 
     def __init__(self, game, frida, lock, *,
                  now: Callable[[], float] = time.monotonic,
@@ -345,10 +399,12 @@ class MethodWatch:
                  frida_mod: Any = None,
                  wait: Callable[[threading.Event, float], bool] = FA._default_wait,
                  agent_dir: str = FT.AGENT_DIR,
-                 candidates_path: str = CANDIDATES_FILE) -> None:
+                 candidates_path: str = CANDIDATES_FILE,
+                 load_facts: Callable[[], dict] = build_facts.load_facts) -> None:
         self._game = game
         self._frida = frida
         self._lock = lock
+        self._load_facts = load_facts
         self._now = now
         self._run_agent = run_agent
         self._frida_mod = frida_mod
@@ -374,8 +430,8 @@ class MethodWatch:
                 return f"cap_s must be more than 0 seconds, not {cap_s:g}"
             try:
                 candidates = load_candidates(self._candidates_path)
-                settings = watch_settings(candidates, classes)
-            except CandidatesError as e:
+                settings = watch_settings(candidates, self._load_facts(), classes)
+            except (CandidatesError, build_facts.BuildFactsError) as e:
                 return f"{e}\nno method watch started"
             agent_path = os.path.join(self._agent_dir, AGENT_FILE)
             if not os.path.isfile(agent_path):
@@ -413,7 +469,8 @@ class MethodWatch:
 
     def ch_method_watch_stop(self) -> str:
         """End the watch, waiting at most READ_CAP_S for it to detach, then
-        list every call in order and name the call before each scene load."""
+        name the call before each scene load and list every call in order.
+        The call list goes last, so a cut reply keeps the scene loads."""
         with self._lock:
             session = self._session
             if session is None:
@@ -430,10 +487,10 @@ class MethodWatch:
         if session.summary is not None:
             lines.extend(start_lines(session.summary))
         calls = session.calls()
-        lines.extend(call_lines(calls))
         lines.extend(scene_load_lines(calls, self._scene_classes))
         lines.append(f"calls log: {session.calls_path}")
         lines.extend(session.lines)
+        lines.extend(call_lines(calls))
         return lines
 
     def _stop_hook(self) -> Optional[str]:

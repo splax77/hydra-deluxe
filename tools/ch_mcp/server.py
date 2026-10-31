@@ -413,8 +413,8 @@ def build_server(helper: Optional[Helper] = None):
 
     @server.tool()
     def ch_method_watch_stop() -> str:
-        """End the method watch, then list every call in order and name the
-        call just before each scene load."""
+        """End the method watch, then name the call just before each scene
+        load and list every call in order, the list last."""
         return capped(h.method_watch.ch_method_watch_stop())
 
     return server

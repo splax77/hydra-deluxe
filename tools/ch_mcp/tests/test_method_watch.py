@@ -1,12 +1,14 @@
 """Tests for method_watch.py and start_candidates.json: the start's refusals
-and backup, the stop reply's call list and scene-load line, the calls log, and
-the candidate file against the dump's facts. A fake run_agent plays the agent:
-no test attaches Frida or starts the game."""
+and backup, the stop reply's call list and scene-load line, the calls log, the
+shared-code addresses an "all" class skips, and the candidate file against the
+dump's facts and image list. A fake run_agent plays the agent: no test
+attaches Frida or starts the game."""
 
 from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import tempfile
 import threading
@@ -23,6 +25,30 @@ from tools.ch_mcp import frida_tools as FT  # noqa: E402
 from tools.ch_mcp import method_watch as MW  # noqa: E402
 
 BACKUP_LINE = "backup: taken"
+
+# Dump facts for the watch's shared-address rule, cut down to what it reads.
+# 0x66940 is a .ctor PlayerSelectionCanvas shares with Other; 0x6D60 a body
+# SongSelect and PlayerSelectionMenu share; 0x235AD0 GlobalVariables' listed
+# method, also run by Other; 0x32CE60 two methods of one class, so not
+# shared; -1 two abstract methods with no code.
+FAKE_FACTS = {"classes": [
+    {"name": "SongSelect", "namespace": "", "typedef_index": 1, "methods": [
+        {"name": "Update", "rva": 0x8EE20}, {"name": "ʺʽʳʼʸʻʸʺʵˀˀ", "rva": 0x6D60}]},
+    {"name": "PlayerSelectionCanvas", "namespace": "", "typedef_index": 2, "methods": [
+        {"name": ".ctor", "rva": 0x66940}, {"name": "Update", "rva": 0xD0E20}]},
+    {"name": "PlayerSelectionMenu", "namespace": "", "typedef_index": 3, "methods": [
+        {"name": "ʺʽʳʼʸʻʸʺʵˀˀ", "rva": 0x6D60}, {"name": "ʳˀʹʵʾʹˀʳʼʸˁ", "rva": 0x32CE60},
+        {"name": "ʿʻʺʻʼˁʼˀʻʿʸ", "rva": 0x32CE60}, {"name": "Abstract", "rva": -1}]},
+    {"name": "GlobalVariables", "namespace": "", "typedef_index": 4, "methods": [
+        {"name": "ʺʵʸʸʽʶʾˀʶʺʺ", "rva": 0x235AD0}]},
+    {"name": "Other", "namespace": "", "typedef_index": 5, "methods": [
+        {"name": ".ctor", "rva": 0x66940}, {"name": "Copy", "rva": 0x235AD0},
+        {"name": "Abstract", "rva": -1}]},
+]}
+
+
+def fake_facts():
+    return FAKE_FACTS
 
 
 def quick_wait(event, timeout_s):
@@ -121,11 +147,11 @@ class WatchTestBase(unittest.TestCase):
         self.game = FakeGame(self.folder, self.events)
         self.watches = []
 
-    def make(self, payloads, *, attached=True):
+    def make(self, payloads, *, attached=True, load_facts=fake_facts):
         agent = ScriptedAgent(payloads, self.events)
         watch = MW.MethodWatch(self.game, FakeFrida(attached), threading.RLock(),
                                run_agent=agent, wait=quick_wait,
-                               agent_dir=self.agent_dir)
+                               agent_dir=self.agent_dir, load_facts=load_facts)
         self.watches.append(watch)
         self.addCleanup(self.stop_all)
         return watch, agent
@@ -194,6 +220,36 @@ class StartTest(WatchTestBase):
         self.assertIn("ended: error; error: no method of the watched classes could be hooked",
                       lines)
 
+    def test_the_start_names_each_address_it_skipped(self):
+        summary = dict(SUMMARY, skipped=[
+            {"class": "PlayerSelectionCanvas", "names": [".ctor"], "rva": "0x66940"},
+            {"class": "SongSelect", "names": ["a", "b"], "rva": "0x6d60"}])
+        watch, _ = self.make([summary])
+        lines = watch.ch_method_watch_start().splitlines()
+        self.assertIn("skipped (code shared with other classes): "
+                      "PlayerSelectionCanvas .ctor 0x66940", lines)
+        self.assertIn("skipped (code shared with other classes): SongSelect a / b 0x6D60",
+                      lines)
+
+    def test_the_start_sends_each_classes_skips_and_assembly(self):
+        watch, agent = self.make([SUMMARY])
+        watch.ch_method_watch_start(classes=["PlayerSelectionCanvas", "SceneManager"])
+        sent = {c["label"]: c for c in agent.start["classes"]}
+        self.assertEqual(sent["PlayerSelectionCanvas"]["skip_rvas"], [0x66940])
+        self.assertIsNone(sent["PlayerSelectionCanvas"]["assembly"])
+        self.assertEqual(sent["SceneManager"]["skip_rvas"], [])
+        self.assertEqual(sent["SceneManager"]["assembly"], "UnityEngine.CoreModule")
+
+    def test_the_start_refuses_without_the_builds_facts(self):
+        def no_facts():
+            raise build_facts.UnknownBuild("v1.1.0.9999", "no facts.json")
+        watch, _ = self.make([SUMMARY], load_facts=no_facts)
+        reply = watch.ch_method_watch_start()
+        self.assertEqual(reply, "unknown build v1.1.0.9999: no facts for it; run "
+                                "dump_build.py and dump_facts.py (no facts.json)\n"
+                                "no method watch started")
+        self.assertEqual(self.events, [])
+
     def test_a_missing_agent_says_how_to_build_it(self):
         watch, _ = self.make([SUMMARY])
         os.remove(os.path.join(self.agent_dir, MW.AGENT_FILE))
@@ -235,6 +291,20 @@ class StopTest(WatchTestBase):
                       "last before it: call 1, PlayerSelectionCanvas ʽʶʼˀʷʺʳʻʶˁʾ (0xD0790), "
                       "args []", lines)
 
+    def test_the_scene_loads_and_the_log_come_before_the_call_list(self):
+        # The server cuts a long reply, and a menu walk logs thousands of
+        # calls; the scene loads must survive the cut.
+        watch, _ = self.make([SUMMARY, M3_CALL, M4_CALL, LOAD_CALL])
+        watch.ch_method_watch_start()
+        lines = watch.ch_method_watch_stop().splitlines()
+        loads = lines.index("scene loads:")
+        log = next(i for i, line in enumerate(lines) if line.startswith("calls log: "))
+        self.assertLess(loads, log)
+        self.assertLess(log, lines.index("calls: 3"))
+        self.assertEqual(lines[-1],
+                         '  3. SceneManager LoadScene (0x289C250) args ["Gameplay"]; '
+                         'songTime null; +300 ms')
+
     def test_no_load_is_said(self):
         watch, _ = self.make([SUMMARY, M4_CALL])
         watch.ch_method_watch_start()
@@ -258,7 +328,8 @@ class StopTest(WatchTestBase):
 
 class SettingsTest(unittest.TestCase):
     def test_listed_classes_send_their_rvas_and_by_name_classes_their_names(self):
-        settings = {s["label"]: s for s in MW.watch_settings(MW.load_candidates())}
+        settings = {s["label"]: s
+                    for s in MW.watch_settings(MW.load_candidates(), FAKE_FACTS)}
         self.assertEqual(settings["GlobalVariables"]["rvas"], [0x235AD0])
         self.assertEqual(settings["CliGameLauncher"]["rvas"], [0x395850, 0x398D30, 0x398180])
         self.assertEqual(settings["SceneManager"]["names"], ["LoadScene", "LoadSceneAsync"])
@@ -268,6 +339,37 @@ class SettingsTest(unittest.TestCase):
             with self.subTest(label=label):
                 self.assertEqual(settings[label]["hook"], "all")
                 self.assertEqual(settings[label]["rvas"], [])
+
+    def test_shared_addresses_are_those_more_than_one_class_runs(self):
+        self.assertEqual(MW.shared_rvas(FAKE_FACTS), frozenset({0x66940, 0x6D60, 0x235AD0}))
+
+    def test_an_all_class_skips_its_shared_addresses_and_a_listed_one_does_not(self):
+        settings = {s["label"]: s
+                    for s in MW.watch_settings(MW.load_candidates(), FAKE_FACTS)}
+        self.assertEqual(settings["SongSelect"]["skip_rvas"], [0x6D60])
+        self.assertEqual(settings["PlayerSelectionCanvas"]["skip_rvas"], [0x66940])
+        self.assertEqual(settings["PlayerSelectionMenu"]["skip_rvas"], [0x6D60])
+        self.assertEqual(settings["GlobalVariables"]["skip_rvas"], [])
+        self.assertEqual(settings["SceneManager"]["skip_rvas"], [])
+
+    def test_only_scene_manager_names_an_assembly(self):
+        settings = MW.watch_settings(MW.load_candidates(), FAKE_FACTS)
+        self.assertEqual({s["label"]: s["assembly"] for s in settings if s["assembly"]},
+                         {"SceneManager": "UnityEngine.CoreModule"})
+
+    def test_an_all_class_the_facts_lack_is_refused(self):
+        facts = {"classes": [c for c in FAKE_FACTS["classes"] if c["name"] != "SongSelect"]}
+        with self.assertRaises(MW.CandidatesError) as caught:
+            MW.watch_settings(MW.load_candidates(), facts)
+        self.assertEqual(str(caught.exception), "SongSelect matched 0 classes in the dump's facts")
+
+    def test_an_empty_assembly_is_refused(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "c.json")
+            with open(path, "w", encoding="utf-8") as fh:
+                json.dump({"classes": [{"class": "X", "hook": "all", "assembly": ""}]}, fh)
+            with self.assertRaises(MW.CandidatesError):
+                MW.load_candidates(path)
 
     def test_only_scene_manager_is_a_scene_loader(self):
         self.assertEqual(MW.scene_load_classes(MW.load_candidates()), {"SceneManager"})
@@ -303,11 +405,7 @@ class CandidatesAgainstFactsTest(unittest.TestCase):
             cls.facts = json.load(fh)
 
     def facts_class(self, entry):
-        found = [c for c in self.facts["classes"]
-                 if c.get("name") == entry["class"]
-                 and (c.get("namespace") or "") == (entry.get("namespace") or "")]
-        self.assertEqual(len(found), 1, entry["class"])
-        return found[0]
+        return MW.facts_class(self.facts, entry)
 
     def test_the_facts_describe_the_files_version(self):
         self.assertTrue(build_facts.same_build(self.facts["game_version"],
@@ -328,6 +426,49 @@ class CandidatesAgainstFactsTest(unittest.TestCase):
             for n in entry.get("names", []):
                 with self.subTest(cls=entry["class"], name=n["name"]):
                     self.assertIn(n["name"], names)
+
+    def test_the_addresses_each_class_skips_in_this_build(self):
+        settings = MW.watch_settings(self.candidates, self.facts)
+        self.assertEqual({s["label"]: s["skip_rvas"] for s in settings}, {
+            "SongSelect": [0x8A8A0],
+            "GlobalVariables": [],
+            "PlayerSelectionCanvas": [0x66940],
+            "PlayerSelectionMenu": [0x6D60],
+            "CliGameLauncher": [],
+            "SceneManager": [],
+        })
+
+    def test_each_named_assembly_holds_its_class_in_the_dump(self):
+        dump = os.path.join(os.path.dirname(build_facts.facts_path(
+            self.candidates["game_version"])), "dump.cs")
+        if not os.path.isfile(dump):
+            self.skipTest(f"{dump} is not on this machine")
+        images = dump_images(dump)
+        for entry in self.candidates["classes"]:
+            if "assembly" not in entry:
+                continue
+            with self.subTest(cls=entry["class"]):
+                index = self.facts_class(entry)["typedef_index"]
+                holder = [name for name, first in images if first <= index][-1]
+                self.assertEqual(holder, entry["assembly"] + ".dll")
+
+
+# A dump.cs header line: the image's file name and the TypeDefIndex of its
+# first class. The images are listed in TypeDefIndex order.
+_IMAGE_LINE = re.compile(r"^// Image \d+: (?P<name>\S+) - (?P<first>\d+)$")
+
+
+def dump_images(path):
+    """The (file name, first TypeDefIndex) of each image dump.cs lists in its
+    header, which ends at the first line that is not an image line."""
+    images = []
+    with open(path, encoding="utf-8") as fh:
+        for line in fh:
+            m = _IMAGE_LINE.match(line.rstrip("\n"))
+            if m is None:
+                break
+            images.append((m.group("name"), int(m.group("first"))))
+    return images
 
 
 if __name__ == "__main__":

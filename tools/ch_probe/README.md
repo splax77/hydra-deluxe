@@ -41,8 +41,8 @@ Two things trip up a new runner:
   cursor ahead to match, and plays from there; a jump back (a restart or a
   seek) moves the cursor to the new clock.
 - The key table has no 2X-kick key. The key map in the user's install (the
-  game's Controller Remap screen, 2026-09-25) binds 2X Kick to O, but `DEFAULT_BINDINGS` sends every kick, normal or 2x, on the kick lane
-  (L).
+  game's Controller Remap screen, 2026-09-25) binds 2X Kick to O, but
+  `DEFAULT_BINDINGS` sends every kick, normal or 2x, on the kick lane (L).
 
 A hit is a score that rose. `experiments/walk_edges.py` and
 `experiments/watch_window.py` (the hit-window plan,
