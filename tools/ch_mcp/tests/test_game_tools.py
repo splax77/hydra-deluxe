@@ -28,6 +28,7 @@ from tools.ch_mcp import game_tools as GT  # noqa: E402
 from tools.ch_mcp import install_chart as I  # noqa: E402
 from tools.ch_mcp.tests.test_bot_run import ORIGINAL, Rig, StuckGame, _read, _write  # noqa: E402
 from tools.ch_probe import probe_songs  # noqa: E402
+from tools.ch_probe import input_driver  # noqa: E402
 from tools.ch_probe.experiments import play_chart  # noqa: E402
 from tools.ch_probe.input_driver import DEFAULT_BINDINGS, InputDriver, Lane  # noqa: E402
 
@@ -367,6 +368,122 @@ class GameToolsTest(unittest.TestCase):
         t.hwnd = 0
         self.assertTrue(t.tools.ch_press("red").startswith("no game window found"))
         self.assertEqual(t.driver.events, [])
+
+    # -- menu keys ------------------------------------------------------------------------
+
+    def _key_rig(self):
+        """A ToolRig whose driver records keys, typed characters and sleeps
+        into one list, beside the backup and the focus."""
+        events = []
+
+        class KeyDriver(InputDriver):
+            def send_key(self, vk, key_up):
+                events.append(("key", vk, key_up))
+
+            def send_unicode(self, unit, key_up):
+                events.append(("char", chr(unit), key_up))
+
+            def send_input(self, event):
+                raise AssertionError("a test reached the real SendInput")
+
+        t = ToolRig(self.tmp, driver=KeyDriver())
+        real_backup = t.tools.ensure_backup
+
+        def backup():
+            events.append(("backup",))
+            return real_backup()
+
+        t.tools.ensure_backup = backup
+        real_sleep = t.r.env.sleep
+        t.r.env.sleep = lambda s: (events.append(("sleep", s)), real_sleep(s))
+        return t, events
+
+    def _ch_key(self, keys):
+        t, events = self._key_rig()
+        with mock.patch.object(play_chart, "focus_window",
+                               lambda hwnd: events.append(("focus", hwnd))):
+            reply = t.tools.ch_key(keys)
+        return t, events, reply
+
+    def test_ch_key_backs_up_focuses_once_then_presses_and_types_in_order(self):
+        song = probe_songs.WINDOW_MAP
+        t, events, reply = self._ch_key(f"enter,down,text:{song}")
+        gap = ("sleep", input_driver.MENU_KEY_GAP_S)  # pinned in test_input_driver
+        hold = ("sleep", input_driver.KEY_HOLD_S)
+        enter, down = input_driver.MENU_KEYS["enter"], input_driver.MENU_KEYS["down"]
+        typed = []
+        for i, char in enumerate(song):
+            if i:
+                typed.append(gap)
+            typed += [("char", char, False), ("char", char, True)]
+        self.assertEqual(events, [("backup",), ("focus", WINDOW),
+                                  ("key", enter, False), hold, ("key", enter, True), gap,
+                                  ("key", down, False), hold, ("key", down, True), gap]
+                         + typed)
+        self.assertEqual(reply.splitlines()[-1],
+                         f'keys sent: enter, down, text "{song}" (10 characters)')
+        self.assertTrue(reply.startswith(f"backup folder: {t.backup_dir()} "))
+
+    def test_ch_key_types_a_comma_inside_the_text(self):
+        _t, events, reply = self._ch_key("text:a,b")
+        self.assertEqual([e[1] for e in events if e[0] == "char" and not e[2]], ["a", ",", "b"])
+        self.assertEqual(reply.splitlines()[-1], 'keys sent: text "a,b" (3 characters)')
+
+    def test_ch_key_refuses_an_unknown_key_with_the_list_and_sends_nothing(self):
+        t, events, reply = self._ch_key("f1")
+        self.assertEqual(reply, 'unknown key "f1"; valid keys: enter, escape, space, backspace, '
+                                "tab, up, down, left, right, and text:<string>")
+        self.assertEqual(events, [])
+        self.assertIsNone(t.backup_dir())
+
+    def test_ch_key_checks_every_key_before_sending_any(self):
+        _t, events, reply = self._ch_key("enter,purple")
+        self.assertTrue(reply.startswith('unknown key "purple"'))
+        self.assertEqual(events, [])
+
+    def test_ch_key_with_no_window_says_so(self):
+        t, events = self._key_rig()
+        t.hwnd = 0
+        self.assertTrue(t.tools.ch_key("enter").startswith("no game window found"))
+        self.assertEqual(events, [])
+
+    def test_press_keys_takes_the_list_already_split(self):
+        t, events = self._key_rig()
+        with mock.patch.object(play_chart, "focus_window", lambda hwnd: None):
+            reply = t.tools.press_keys(["escape", "text:x,y"])
+        self.assertEqual(reply.splitlines()[-1], 'keys sent: escape, text "x,y" (3 characters)')
+
+    def test_split_keys_keeps_the_text_whole(self):
+        self.assertEqual(GT.split_keys("enter, down ,text:Ladies Talk, fill"),
+                         ["enter", "down", "text:Ladies Talk, fill"])
+        self.assertEqual(GT.split_keys(" text: a "), ["text: a "])
+
+    # -- the run cap ----------------------------------------------------------------------
+
+    def test_run_cap_is_the_song_plus_the_extra_minute_else_240_s(self):
+        t = ToolRig(self.tmp)
+        _write(os.path.join(t.r.song, G.SONG_INI), b"[song]\nsong_length = 260504\n")
+        self.assertEqual(GT.run_cap_s(t.r.song), 320.504)
+        self.assertEqual(t.tools.run_cap_s(t.r.song), 320.504)
+        no_length = os.path.join(self.tmp, "no length")
+        os.makedirs(no_length)
+        _write(os.path.join(no_length, G.SONG_INI), b"[song]\nname = x\n")
+        self.assertEqual(GT.run_cap_s(no_length), 240.0)
+        self.assertEqual(GT.run_cap_s(None), 240.0)
+
+    def test_ch_play_chart_with_a_song_folder_passes_the_cap_to_live_play(self):
+        seen = []
+
+        def live_play(chords, **kw):
+            seen.append(kw.get("cap_s"))
+            return play_chart.RunResult(stop="done")
+
+        t = ToolRig(self.tmp, live_play=live_play)
+        _write(os.path.join(t.r.song, G.SONG_INI), b"[song]\nsong_length = 260504\n")
+        reply = t.tools.ch_play_chart(self._score_json(), song_folder=t.r.song)
+        t.tools._play.thread.join(THREAD_CAP_S)
+        self.assertEqual(seen, [320.504])
+        self.assertIn("run cap: 320.504 s", reply.splitlines())
 
     # -- the auto-player ------------------------------------------------------------------
 

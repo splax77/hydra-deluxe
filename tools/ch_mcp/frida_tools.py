@@ -7,7 +7,8 @@ which question"): frida_attach.LiveAgent for the attach and the reads,
 build_facts for the build check and the hook names, ch_probe.constants for
 the hook addresses, and trace_hits for the trace and its line-up. This module
 adds only the session state between tool calls (the live agent, the trace,
-the facts loaded once per build) and the state words, which it owns.
+the facts loaded once per build), the state words, which it owns, and the
+menu lines, which print agent/menu.ts's block as sent.
 
 Every tool returns plain text and never prints: an MCP server's stdout is its
 protocol channel. The server (server.py) hands in the one RLock it shares
@@ -48,6 +49,14 @@ NO_GAME_MANAGER = ("no live GameManager: start the song (pause it if you like), 
 
 NOT_ATTACHED = "not attached; call ch_attach first"
 
+# The key of state.ts's reply that holds menu.ts's block.
+MENU_BLOCK = "menu"
+
+
+class StateUnread(Exception):
+    """FridaTools.read_state found no attached agent or the read failed; the
+    text is the reason, as ch_state would print it."""
+
 
 def state_words(snapshot: Optional[dict], *, running: bool = True) -> str:
     """The one word (or short phrase) for the game's state. `snapshot` is a
@@ -76,12 +85,49 @@ def _value_text(value: Any) -> str:
 
 
 def _field_lines(snapshot: dict) -> List[str]:
-    """Every field the agent sent, in its order, as `name: value`."""
-    return [f"{key}: {_value_text(value)}" for key, value in snapshot.items()]
+    """Every GameManager field the agent sent, in its order, as `name:
+    value`. The menu block is left out: ch_menu prints it."""
+    return [f"{key}: {_value_text(value)}" for key, value in snapshot.items()
+            if key != MENU_BLOCK]
+
+
+def menu_lines(menu: Optional[dict]) -> List[str]:
+    """state.ts's menu block as lines: each menu class with its live and
+    destroyed counts and, for the menus that hold one, each live instance's
+    onlineMenuActive read; then the selected song and GlobalVariables'
+    fields. The agent's values are printed as sent; this names no menu state
+    of its own."""
+    if menu is None:
+        return ["menu: not read (the agent sent no menu block)"]
+    if "error" in menu:
+        return [f"menu: {menu['error']}"]
+    lines: List[str] = []
+    for name, entry in menu.get("classes", {}).items():
+        if not entry.get("found"):
+            lines.append(f"{name}: {entry.get('reason')}")
+            continue
+        line = f"{name}: {entry['live']} live, {entry['destroyed']} destroyed"
+        if "onlineMenuActive" in entry:
+            line += f"; onlineMenuActive: {_value_text(entry['onlineMenuActive'])}"
+        lines.append(line)
+    song = menu.get("selectedSong")
+    if song is None:
+        lines.append("selected song: none")
+    else:
+        lines.append(f"selected song folder: {_value_text(song.get('folderPath'))}")
+        lines.append(f"selected song chartName: {_value_text(song.get('chartName'))}")
+    globals_ = menu.get("globals", {})
+    if not globals_.get("found"):
+        lines.append(f"GlobalVariables: {globals_.get('reason')}")
+    else:
+        for key in ("currentSongFolder", "gameMode", "playerCount"):
+            lines.append(f"GlobalVariables {key}: {_value_text(globals_.get(key))}")
+    return lines
 
 
 class FridaTools:
-    """The seven Frida tools and the session state between them.
+    """The eight Frida tools, read_state for menu_tools, and the session
+    state between them.
 
     `game` is the server's game_tools.GameTools (the tests pass a fake with
     the same five methods); its stop hook, registered here, stops the trace
@@ -214,6 +260,29 @@ class FridaTools:
                 lines.append(f"songTime in ms: {C.s_to_ms(song_time):.1f} (GameManager's clock)")
             lines.extend(self._score_lines())
             return self._reply(lines)
+
+    def ch_menu(self) -> str:
+        """One fresh read, printed as the menu block (menu_lines), then the
+        live-GameManager word from the same read."""
+        with self._lock:
+            lines: List[str] = []
+            snapshot = self._read(lines)
+            if snapshot is None:
+                return self._reply(lines)
+            lines.extend(menu_lines(snapshot.get(MENU_BLOCK)))
+            lines.append(f"state: {state_words(snapshot)}")
+            return self._reply(lines)
+
+    def read_state(self) -> dict:
+        """One fresh read as the raw dict state.ts sent, menu block included,
+        for menu_tools. Raises StateUnread with the reason when no read came
+        back."""
+        with self._lock:
+            lines: List[str] = []
+            snapshot = self._read(lines)
+            if snapshot is None:
+                raise StateUnread(self._reply(lines))
+            return snapshot
 
     # -- the trace ----------------------------------------------------------------------
 

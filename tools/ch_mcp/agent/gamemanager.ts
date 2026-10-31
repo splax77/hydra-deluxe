@@ -2,9 +2,10 @@
 // state.ts calls lookUpGameManager; clock.ts and trace.ts call findGameManager,
 // which is the same lookup with its failure as one line of text.
 //
-// It reads only: it looks the class up by name, asks the garbage collector
-// for the instances it holds, and reads one field of each by name. It writes
-// no game memory and calls no game method.
+// It reads by name: it looks the class up, asks the garbage collector for the
+// instances it holds, and reads one field of each. It also owns isDestroyed,
+// the one test of whether a Unity object is destroyed, which menu.ts calls for
+// the menu classes.
 
 import "frida-il2cpp-bridge";
 
@@ -35,7 +36,7 @@ export interface NoLiveGameManager {
     destroyed: number;
 }
 
-function isDestroyed(obj: Il2Cpp.Object): boolean {
+export function isDestroyed(obj: Il2Cpp.Object): boolean {
     return obj.field<NativePointer>(NATIVE_OBJECT_FIELD).value.isNull();
 }
 

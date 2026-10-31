@@ -1,5 +1,5 @@
 """The Clone Hero MCP server's game-side tools: start and stop the game, read
-its stats files, press drum lanes and run the auto-player.
+its stats files, press drum lanes and menu keys, and run the auto-player.
 
 Each tool is a thin call into the module that owns the work (the plan
 docs/superpowers/plans/2026-10-28-ch-mcp-server.md, "The tools" and "Who owns
@@ -30,7 +30,8 @@ from tools.ch_probe import constants as C
 from tools.ch_probe import engine_finder
 from tools.ch_probe.experiments import play_chart
 from tools.ch_probe.experiments.overlay_logs import PRESS_LOG_COLUMNS
-from tools.ch_probe.input_driver import InputDriver, Lane, find_game_window
+from tools.ch_probe.input_driver import (
+    MENU_KEY_GAP_S, MENU_KEYS, InputDriver, Lane, find_game_window)
 
 # How long ch_install_chart waits for install_chart.install, whose silent
 # audio comes from an ffmpeg call with no timeout of its own (the plan's
@@ -59,6 +60,42 @@ def _value_text(value) -> str:
     return value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
 
 
+# The prefix that marks a key item as text to type rather than a MENU_KEYS name.
+TEXT_PREFIX = "text:"
+
+
+def _menu_key_list() -> str:
+    return ", ".join(MENU_KEYS) + f", and {TEXT_PREFIX}<string>"
+
+
+def split_keys(keys: str) -> List[str]:
+    """ch_key's comma list as press_keys items. A text item runs to the end of
+    the string, so a comma inside it is typed, not split."""
+    items: List[str] = []
+    rest = keys
+    while rest:
+        if rest.lstrip().startswith(TEXT_PREFIX):
+            items.append(rest.lstrip())
+            break
+        head, _sep, rest = rest.partition(",")
+        if head.strip():
+            items.append(head.strip())
+    return items
+
+
+def run_cap_s(song_folder: Optional[str]) -> float:
+    """The wall-time cap for a run of the song in `song_folder`:
+    bot_run.run_cap_s of its length, or play_chart.RUN_CAP_S when no folder
+    is given or the folder has no length (bot_run.song_length_ms)."""
+    if song_folder is None:
+        return play_chart.RUN_CAP_S
+    try:
+        length_ms, _source = bot_run.song_length_ms(song_folder)
+    except bot_run.SongLengthMissing:
+        return play_chart.RUN_CAP_S
+    return bot_run.run_cap_s(length_ms)
+
+
 @dataclasses.dataclass
 class _PlaySession:
     """One ch_play_chart run. The thread appends to `rows` through on_press;
@@ -66,6 +103,8 @@ class _PlaySession:
     score_json: str
     chord_count: int
     log_path: Optional[str]
+    # The run cap handed to live_play; None leaves live_play's own.
+    cap_s: Optional[float] = None
     thread: Optional[threading.Thread] = None
     stop: threading.Event = dataclasses.field(default_factory=threading.Event)
     rows: list = dataclasses.field(default_factory=list)
@@ -78,7 +117,7 @@ class _PlaySession:
 
 
 class GameTools:
-    """The eleven game-side tools and the session state between them.
+    """The twelve game-side tools and the session state between them.
 
     Every outside seam is an argument, so the tests swap each for a fake:
     `env` (bot_run.Env: the exe, the user folders, the launch, the clock and
@@ -142,6 +181,10 @@ class GameTools:
         backups, the stats copies, the play logs and the Frida logs."""
         with self._lock:
             return self._scratch if self._scratch is not None else self._new_scratch()
+
+    def run_cap_s(self, song_folder: Optional[str]) -> float:
+        """The module's run_cap_s, for callers that hold only this object."""
+        return run_cap_s(song_folder)
 
     def add_stop_hook(self, hook: Callable[[], object]) -> None:
         """Run `hook` at the start of ch_stop and shutdown, before the game is
@@ -343,11 +386,59 @@ class GameTools:
                          + "; keys sent: " + (", ".join(_key_name(vk) for vk in keys) or "none"))
             return "\n".join(lines)
 
-    def ch_play_chart(self, score_json: str, log: Optional[str] = None) -> str:
+    def ch_key(self, keys: str) -> str:
+        """Press menu keys in order: a comma list of input_driver.MENU_KEYS
+        names, with an optional last item text:<string> that types the string
+        (split_keys says how the list is read). press_keys does the work."""
+        return self.press_keys(split_keys(keys))
+
+    def press_keys(self, items: Sequence[str]) -> str:
+        """Press `items` in order, each a MENU_KEYS name or text:<string>,
+        with input_driver.MENU_KEY_GAP_S between two keys and between two
+        typed characters. Every item is checked before anything is sent; then
+        the backup is taken, the game window is focused once (the focus
+        play_chart.live_press uses) and the keys go out."""
+        with self._lock:
+            steps: List[Union[int, str]] = []
+            for item in items:
+                if item.startswith(TEXT_PREFIX):
+                    text = item[len(TEXT_PREFIX):]
+                    if not text:
+                        return f'"{item}" has no text to type; valid keys: {_menu_key_list()}'
+                    steps.append(text)
+                    continue
+                vk = MENU_KEYS.get(item.strip().lower())
+                if vk is None:
+                    return f'unknown key "{item}"; valid keys: {_menu_key_list()}'
+                steps.append(vk)
+            if not steps:
+                return f"no keys given; valid keys: {_menu_key_list()}"
+            hwnd = self._find_window()
+            if not hwnd:
+                return f"no game window found ({_NOT_RUNNING}, or its window is closed)"
+            lines = [line for line in (self.ensure_backup(),) if line]
+            play_chart.focus_window(hwnd)
+            sent: List[str] = []
+            for i, step in enumerate(steps):
+                if i:
+                    self._env.sleep(MENU_KEY_GAP_S)
+                if isinstance(step, str):
+                    count = self._driver.type_text(step, gap_s=MENU_KEY_GAP_S,
+                                                   sleep=self._env.sleep)
+                    sent.append(f'text "{step}" ({count} characters)')
+                else:
+                    self._driver.press_key(step, sleep=self._env.sleep)
+                    sent.append(next(name for name, vk in MENU_KEYS.items() if vk == step))
+            lines.append("keys sent: " + ", ".join(sent))
+            return "\n".join(lines)
+
+    def ch_play_chart(self, score_json: str, log: Optional[str] = None,
+                      song_folder: Optional[str] = None) -> str:
         """Start the auto-player (play_chart.live_play) on a hydra_replay score
         JSON in a background thread. `log`, when given, is where the press log
         is written when the run ends; a relative path goes in the session
-        folder."""
+        folder. `song_folder`, when given, sets the run cap through run_cap_s;
+        with none the run keeps live_play's own cap."""
         with self._lock:
             if self._play is not None and self._play.running():
                 return "a play session is already running; call ch_play_stop first"
@@ -361,12 +452,15 @@ class GameTools:
             log_path = None
             if log:
                 log_path = log if os.path.isabs(log) else os.path.join(self.session_dir(), log)
-            play = _PlaySession(score_json=score_json, chord_count=len(chords), log_path=log_path)
+            cap_s = None if song_folder is None else run_cap_s(song_folder)
+            play = _PlaySession(score_json=score_json, chord_count=len(chords), log_path=log_path,
+                                cap_s=cap_s)
             play.thread = threading.Thread(target=self._play_body, args=(play, chords),
                                            name="ch_play_chart", daemon=True)
             self._play = play
             play.thread.start()
             lines.append(f"play session started: {len(chords)} chords from {score_json}")
+            lines.append(f"run cap: {play_chart.RUN_CAP_S if cap_s is None else cap_s:g} s")
             lines.append(f"waiting for a moving clock (cap {engine_finder.ENGINE_SEARCH_CAP_S:.0f} s): "
                          "start the song from the game's menu; a song launched with a bot "
                          "is played by the bot, not by keys")
@@ -450,11 +544,12 @@ class GameTools:
     def _play_body(self, play: _PlaySession, chords) -> None:
         """The play thread: live_play, then the press log. It never takes the
         lock, so a tool holding it never waits on the thread."""
+        cap = {} if play.cap_s is None else {"cap_s": play.cap_s}
         try:
             play.result = self._live_play(chords, driver=self._driver,
                                           on_press=play.rows.append,
                                           should_stop=play.stop.is_set,
-                                          out=io.StringIO())
+                                          out=io.StringIO(), **cap)
         except Exception as e:  # reported by ch_play_status
             play.error = f"{type(e).__name__}: {e}"
         if play.log_path:

@@ -232,6 +232,22 @@ class RunStopsTest(unittest.TestCase):
         self.assertGreaterEqual(wall.t, play_chart.RUN_CAP_S)
         self.assertLess(wall.t, play_chart.RUN_CAP_S + 1.0)
 
+    def test_a_caller_given_cap_ends_the_run_there(self):
+        # The first chord is at 13.04 s on a clock that starts at 12 s, so a
+        # 1 s cap ends the run before any press.
+        wall = _FakeTime()
+        game = _FakeGame()
+        out = io.StringIO()
+        result = play_chart.play_chords(
+            _load(play_chart.load_dump_chords),
+            _FakeSongClock(wall, start_s=12.0), game.read_score, game.press,
+            now=wall.now, sleep=wall.sleep, out=out, cap_s=1)
+        self.assertEqual(result.stop, "cap")
+        self.assertEqual(result.rows, [])
+        self.assertGreaterEqual(wall.t, 1.0)
+        self.assertLess(wall.t, 2.0)
+        self.assertIn("run cap of 1 s reached", out.getvalue())
+
 
 class _FakeProc:
     module_base = 0x10000000
@@ -389,6 +405,41 @@ class LivePlayTest(unittest.TestCase):
         self.assertTrue(proc.verified)
         self.assertTrue(proc.closed)
         self.assertEqual(events, [])
+
+    def _cap_seen_by_play_chords(self, **live_kwargs):
+        from unittest import mock
+
+        class _FakeEngine:
+            def __init__(self, _proc):
+                pass
+
+            def use_object(self, _ptr):
+                pass
+
+            def song_clock(self):
+                return 0.0
+
+            def score(self):
+                return 0
+
+        seen = {}
+
+        def fake_play_chords(*args, **kwargs):
+            seen.update(kwargs)
+            return play_chart.RunResult(stop="done")
+
+        with mock.patch.object(play_chart, "EngineModel", _FakeEngine), \
+                mock.patch.object(play_chart, "find_game_window", lambda: 0), \
+                mock.patch.object(play_chart, "play_chords", fake_play_chords):
+            play_chart.live_play(
+                _load(play_chart.load_dump_chords), open_proc=lambda **kw: _FakeProc(),
+                find_engine=lambda _proc: 0x1000, driver=_FakeDriver([]),
+                out=io.StringIO(), **live_kwargs)
+        return seen["cap_s"]
+
+    def test_the_cap_reaches_play_chords(self):
+        self.assertEqual(self._cap_seen_by_play_chords(cap_s=320.504), 320.504)
+        self.assertEqual(self._cap_seen_by_play_chords(), play_chart.RUN_CAP_S)
 
 
 class LivePressTest(unittest.TestCase):
