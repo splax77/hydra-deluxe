@@ -314,7 +314,7 @@ class _PidProcess:
 
     def stop(self) -> None:
         self._k32.TerminateProcess(self._h, 1)
-        if self._k32.WaitForSingleObject(self._h, int(EXIT_CHECK_S * 1000)) == _WAIT_TIMEOUT:
+        if self._k32.WaitForSingleObject(self._h, int(C.s_to_ms(EXIT_CHECK_S))) == _WAIT_TIMEOUT:
             raise subprocess.TimeoutExpired(C.PROCESS_NAME, EXIT_CHECK_S)
 
 
