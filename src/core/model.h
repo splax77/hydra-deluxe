@@ -793,8 +793,8 @@ struct Path {
     // what Activation::skipped_fill_ticks lists before each activation, for
     // the stretch after the last one. The search's branch_activate decides
     // which fills count as passed over. A path with no activation lists them
-    // for the whole song. A variant's is its own,
-    // as trailing_bank_ticks is, so prepare_variants leaves it alone too.
+    // from the start of the song. A variant's is its own, as
+    // trailing_bank_ticks is, so prepare_variants leaves it alone too.
     std::vector<int64_t> trailing_skipped_fill_ticks;
 
     // Bars left after the last window: one per stored arrival.
