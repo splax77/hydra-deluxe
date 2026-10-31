@@ -881,8 +881,10 @@ struct Path {
 // every squeeze's difficulty() and every E0 fill's e_difficulty() over the
 // activations the path walks, none when it has neither. It does not ask
 // whether a figure needs hitting (timing_needs_hitting), so the library saves
-// it whole and shown_timing applies that rule when the figure is shown. The
-// store's saved summary (path_row_of) is its caller.
+// it whole and shown_timing applies that rule when the figure is shown. It has
+// two callers, so a saved figure is worked out one way: the store's summary of
+// a fresh analysis (path_row_of) and the one-time fill of rows an older build
+// left empty (app::fill_saved_hardest).
 inline std::optional<double> engine_hardest_ms(const Path& path) {
     std::optional<double> best;
     auto take = [&best](double ms) {

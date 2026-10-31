@@ -43,7 +43,7 @@
 #include "store/library_file.h"
 #include "store/record_store.h"
 #include "store/upgrade_files.h"
-#include "store_fixtures.h"  // at_cap, no_paths_at_cap
+#include "store_fixtures.h"  // at_cap, no_paths_at_cap, saved_figures
 #include "temp_util.h"
 #include "testdata_dirs.h"  // testdata_root
 
@@ -1141,16 +1141,6 @@ PreparedRecord hand_record(const std::string& id, const Profile& profile,
     return prepared;
 }
 
-// The figures chart `id`'s Ready record under `profile` holds, in rank order.
-std::vector<std::optional<double>> saved_figures(RecordStore& store, const std::string& id,
-                                                 const Profile& profile) {
-    const RecordLookup found = store.lookup_one(id, profile);
-    REQUIRE(found.status == RecordStatus::Ready);
-    std::vector<std::optional<double>> out;
-    for (const PathRow& p : found.record.paths) out.push_back(p.hardest_ms);
-    return out;
-}
-
 }  // namespace
 
 TEST_CASE("rows missing the hardest figure: a Ready row with an empty figure and a squeeze-in "
@@ -1210,7 +1200,7 @@ TEST_CASE("set_hardest writes one chart's rows together") {
     // record has no rank 9.
     store.set_hardest("a", before[0].profile_id, {{1, 0.0}, {2, -315.8}, {3, 99.0}, {9, 7.0}});
     CHECK(store.rows_missing_hardest(profile).empty());
-    CHECK(saved_figures(store, "a", profile) ==
+    CHECK(hydra::test::saved_figures(store, "a", profile) ==
           std::vector<std::optional<double>>{0.0, -315.8, 12.5});
 }
 

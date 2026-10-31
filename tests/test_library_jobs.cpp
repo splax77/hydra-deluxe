@@ -1,15 +1,18 @@
 // Unit tests for the library and leaderboard jobs: Pause, Stop, the batch
 // clock and time-left estimate, the chart being analyzed, the batch's counts,
-// plain failure lines, and quiet cancels.
-// The analyzer and the network are fakes; only the counts case reads one
-// corpus chart, for a result the store can save.
+// plain failure lines, quiet cancels, and the startup open's step that reads
+// saved paths.
+// The analyzer and the network are fakes; the counts case and the startup
+// open's cases read one corpus chart each, for a result the store can save.
 
 #include "doctest.h"
 
 #include <atomic>
 #include <chrono>
+#include <cstdint>
 #include <filesystem>
 #include <functional>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -22,12 +25,14 @@
 #include "app/report_files.h"
 #include "app/user_messages.h"  // plain_error
 #include "core/error_kind.h"
+#include "core/rules.h"  // RulesStamp
 #include "corpus_util.h"
 #include "db_file_util.h"  // exec_on_file
 #include "display_fixtures.h"  // kTagOnlyTitle, save_batch_record
 #include "net/dmbot_client.h"
 #include "scoped_hook.h"
 #include "store/record_store.h"
+#include "store_fixtures.h"  // save_as_old_build
 #include "temp_util.h"
 #include "ui/dm_jobs.h"
 #include "ui/library_jobs.h"
@@ -375,6 +380,158 @@ TEST_CASE("jobs: an empty report shows generate_report's reason, or the app's ow
     // The sentence the user approved for an empty database (plan question 3).
     CHECK(nothing.message() ==
           "Nothing is analyzed yet. Click a song or run a batch to analyze it.");
+}
+
+// ---- the startup open's fill of old rows' hardest figure ----------------------
+
+namespace {
+
+// What the startup open's gate saw at one report.
+struct OpenReport {
+    hydra::ui::StoreOpenProgress::Step step;
+    std::string label;
+    bool upgrading;
+    uint64_t done;
+    uint64_t total;
+};
+
+// Every report the startup open's gate sees while it lives. Declare it before
+// the job, so the gate is cleared after the job is joined.
+struct OpenRecorder {
+    std::vector<OpenReport> seen;
+    ScopedHook gate{hydra::ui::set_store_open_gate_for_test,
+                    [this](const hydra::ui::StoreOpenProgress& p, const std::function<bool()>&) {
+                        seen.push_back({p.step, p.label(), p.upgrading, p.rows_done, p.rows_total});
+                    }};
+};
+
+// A library file at `db` listing the corpus chart Smash Mouth "I'm A
+// Believer", with its analysis under `settings` saved as an older build left
+// it: rank 1's hardest figure empty. Its best path carries a squeeze-in at
+// exactly 0.0 ms, so the fill has that row to replay.
+void write_old_build_library(const std::string& db, const hydra::app::Settings& settings) {
+    const std::string chart = corpus::chart_named("Smash Mouth - I_m A Believer");
+    REQUIRE_FALSE(chart.empty());
+    RecordStore store(db);
+    hydra::test::save_as_old_build(store, chart, corpus::scanned_entry(chart, "I'm A Believer"),
+                                   settings, {1});
+}
+
+}  // namespace
+
+TEST_CASE("jobs: the startup open reads saved paths with its own words, then the library") {
+    using Step = hydra::ui::StoreOpenProgress::Step;
+    const std::string dir = testtemp::temp_dir("open_fill_words");
+    testtemp::remove_dir(dir);
+    const std::string db = testtemp::temp_dir("open_fill_words") + "\\library.db";
+    const hydra::app::Settings settings;
+    write_old_build_library(db, settings);
+
+    OpenRecorder recorder;
+    std::vector<OpenReport>& seen = recorder.seen;
+    {
+        hydra::ui::StoreOpenJob job(db, hydra::core::RulesStamp::of(settings.rules), settings);
+        job.start();
+        job.wait();
+        REQUIRE(job.ok());
+        CHECK(job.library_problem().empty());
+        // One chart to read: reported before it and once it is done.
+        REQUIRE(seen.size() == 4);
+        CHECK(seen[0].step == Step::Opening);
+        CHECK(seen[1].step == Step::ReadingSavedPaths);
+        CHECK(seen[1].label == "Reading saved paths...");
+        CHECK(seen[1].upgrading);
+        CHECK(seen[1].done == 0);
+        CHECK(seen[1].total == 1);
+        CHECK(seen[2].step == Step::ReadingSavedPaths);
+        CHECK(seen[2].done == 1);
+        CHECK(seen[2].total == 1);
+        CHECK(seen[3].step == Step::LoadingLibrary);
+        CHECK(seen[3].upgrading);
+        const std::unique_ptr<RecordStore> store = job.take_store();
+        CHECK(store->hardest_figure_filled(settings.profile()));
+    }
+
+    // The fill has run for this profile, so the next open goes straight to
+    // the library.
+    seen.clear();
+    {
+        hydra::ui::StoreOpenJob again(db, hydra::core::RulesStamp::of(settings.rules), settings);
+        again.start();
+        again.wait();
+        REQUIRE(again.ok());
+        REQUIRE(seen.size() == 2);
+        CHECK(seen[0].step == Step::Opening);
+        CHECK(seen[1].step == Step::LoadingLibrary);
+        CHECK_FALSE(seen[1].upgrading);
+    }
+    testtemp::remove_dir(dir);
+}
+
+TEST_CASE("jobs: a fill that fails still opens the library and leaves its sentence for the "
+          "status line") {
+    using Step = hydra::ui::StoreOpenProgress::Step;
+    const std::string dir = testtemp::temp_dir("open_fill_fails");
+    testtemp::remove_dir(dir);
+    const std::string db = testtemp::temp_dir("open_fill_fails") + "\\library.db";
+    const hydra::app::Settings settings;
+    write_old_build_library(db, settings);
+    // The file refuses the fill's write, as a full disk would.
+    hydra::test::exec_on_file(db,
+                              "CREATE TRIGGER refuse_fill BEFORE UPDATE ON record_paths"
+                              " BEGIN SELECT RAISE(ABORT, 'refused'); END;");
+
+    OpenRecorder recorder;
+    const std::vector<OpenReport>& seen = recorder.seen;
+    {
+        hydra::ui::StoreOpenJob job(db, hydra::core::RulesStamp::of(settings.rules), settings);
+        job.start();
+        job.wait();
+        REQUIRE(job.ok());
+        CHECK(job.library_problem() ==
+              hydra::app::plain_error(hydra::KindedError(hydra::ErrorKind::DatabaseWrite, "x")));
+        // The library was still read, and the marker stays unset so the next
+        // open tries again.
+        REQUIRE_FALSE(seen.empty());
+        CHECK(seen.back().step == Step::LoadingLibrary);
+        const std::unique_ptr<RecordStore> store = job.take_store();
+        CHECK_FALSE(store->hardest_figure_filled(settings.profile()));
+    }
+    testtemp::remove_dir(dir);
+}
+
+TEST_CASE("jobs: a stop while the startup open reads saved paths ends it as a cancel") {
+    using Step = hydra::ui::StoreOpenProgress::Step;
+    const std::string dir = testtemp::temp_dir("open_fill_stop");
+    testtemp::remove_dir(dir);
+    const std::string db = testtemp::temp_dir("open_fill_stop") + "\\library.db";
+    const hydra::app::Settings settings;
+    write_old_build_library(db, settings);
+
+    hydra::ui::StoreOpenJob* held = nullptr;
+    const ScopedHook gate(
+        hydra::ui::set_store_open_gate_for_test,
+        [&](const hydra::ui::StoreOpenProgress& p, const std::function<bool()>&) {
+            if (p.step == Step::ReadingSavedPaths && held) held->cancel();
+        });
+    {
+        hydra::ui::StoreOpenJob job(db, hydra::core::RulesStamp::of(settings.rules), settings);
+        held = &job;
+        job.start();
+        job.wait();
+        held = nullptr;
+        CHECK(job.outcome() == hydra::ui::JobOutcome::Cancelled);
+        CHECK(job.message().empty());
+        CHECK(job.failure() == nullptr);
+    }
+    // The stop came before the chart was read: the marker is unset and the
+    // row still empty, so the next open fills it.
+    {
+        RecordStore store(db);
+        CHECK_FALSE(store.hardest_figure_filled(settings.profile()));
+        CHECK(store.rows_missing_hardest(settings.profile()).size() == 1);
+    }
+    testtemp::remove_dir(dir);
 }
 
 TEST_CASE("jobs: a cancelled leaderboard fetch is not an error") {

@@ -393,6 +393,7 @@ add_library(hydra_app STATIC
     src/app/report_view.cpp
     src/app/path_report_view.cpp
     src/app/report_files.cpp
+    src/app/saved_figure_fill.cpp
     src/app/user_messages.cpp
     src/app/update_verify.cpp
     src/app/job_base.h
