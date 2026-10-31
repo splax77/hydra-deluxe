@@ -384,7 +384,7 @@ Found: this plan's wave 1 scouts H5a and H5b
 
 Rule: A squeeze-in hits a phrase's last note early so it is collected inside Star Power. A squeeze-out hits it late so Star Power has ended and the phrase stays for a later activation. Hydra's timing budget is the hit window times (1 + r), with r from SP-39.
 Label: Hydra assumes it, never checked
-Evidence: `squeeze_budget_ms` in src/core/squeeze_rating.cpp line 76 and `kHitWindowMs` (85 ms) in src/core/model.h line 104. The memory note sp-squeeze-mechanics checks the meaning against Hydra's code and one FC video, not the game's code. The game side is the frame rule of SP-29.
+Evidence: `squeeze_budget_ms` in src/core/squeeze_rating.cpp line 76 and `kHitWindowMs` (85 ms) in src/core/model.h line 104. The meaning of squeeze-in and squeeze-out was checked only against Hydra's code and full-combo videos, never against the game's code; one such video case is session 93d37c20 (2026-08-29, Enigma Machine, card only). Hydra shows a row's "effective" timing as the offset times 2 / (1 + r), which puts the real budget of 85 x (1 + r) ms onto the plain two-window scale (session f1784fd5, condensed transcript line 309; card 700792ed for the Thick as a Brick case, a free squeeze-out 331.3 ms past the end with late r = 4.45, about 122 ms effective). The game side is the frame rule of SP-29.
 Game code (6142): RVA `0x20F63F0` (SP-36), `0x20F4550` (SP-29)
 Hydra: `squeeze_budget_ms` in src/core/squeeze_rating.cpp line 76; `kHitWindowMs` in src/core/model.h line 104
 Ruling: card c73697df: "the hit window is +/- 85ms, the 70ms is an outdated figure. we can change that." (02:08 UTC; the window's value only)
@@ -404,7 +404,7 @@ Found: this plan's wave 1 scouts H3, H5a, H5b and HB; wave 2 scout R10
 
 Rule: Because Star Power length is counted in measures, a timing error at activation moves the SP end by r times the error, where r is the end measure's length over the activation measure's. Early and late can differ at a tempo or time signature change. The scale's direction follows the sign of the difficulty, not the squeeze kind.
 Label: Hydra assumes it, never checked
-Evidence: `frontend_transfer_scales` in src/core/squeeze_rating.cpp line 22 and `transfer_scale_between` in src/core/squeeze_rating.h line 52; tests/test_squeeze_rating.cpp holds the Tom Sawyer shape and the Dumpweed fixture. The five matches are against DragonDelgar's Discord numbers, listed only in the memory note squeeze-transfer-scale. The game premise is SP-15, which is open.
+Evidence: `frontend_transfer_scales` in src/core/squeeze_rating.cpp line 22 and `transfer_scale_between` in src/core/squeeze_rating.h line 52; tests/test_squeeze_rating.cpp holds the Tom Sawyer shape and the Dumpweed fixture. The scale was checked against five figures by DragonDelgar (public Hydra's developer). The user pasted his Discord messages into session f1784fd5 (2026-08-16); no repo file holds them, and the session's condensed transcript is the only record (lines 27 to 31 and 160 to 180 hold the messages, lines 315 to 323 the check). Hydra reproduced each one: Tom Sawyer at measure 105.2.360, r = 0.5132, so +50.5 ms at the front is +25.9 ms at the end; Beast and the Harlot at measure 196.0, late r = 0.65376, so +22.0 ms becomes +14.38 ms; Bloom at measure 107.0, late r = 0.4444, giving 81.06 ms against his "81.05"; As I Am at measure 81.0, early r = 0.57888 and late r = 0.98485, giving 97.51 ms against his "~97.5" and a 72.53 ms budget against his 72.6; Dumpweed at measure 19.0, a 73.95 ms budget against his "±74". These are Hydra's numbers matching another tool's numbers, so they check Hydra's arithmetic, not the game. The Dumpweed scale was first computed as 0.8909; it was later found to be 0.935114 early and 0.965344 late, because a phrase collected during Star Power moves the real end (SP-34), and the Dumpweed full-combo video's on-screen timings (front -74.1 ms, squeeze-out +75.1 ms, the squeeze succeeded) fit the corrected scale and not the old one (session 9f5a3914, 2026-08-20; video C:\ytdl\Dumpweed Pro Drums FC [eny2KPSHFNg].mkv, outside the repo). The game premise is SP-15, which is open.
 Game code (6142): none (rests on SP-15)
 Hydra: `frontend_transfer_scales` in src/core/squeeze_rating.cpp line 22; `transfer_scale_between` in src/core/squeeze_rating.h line 52; `rate_activation` in src/core/squeeze_rating.cpp
 Ruling: none needed: Hydra's model of a game rule still open in SP-15
@@ -439,7 +439,7 @@ Label: Hydra assumes it, never checked
 Evidence: Public Hydra at 3b49012c, `git show 3b49012c:hydra/hypath.py` line 678: `is_leeway = be.offset_ms > 0 and be.offset_ms < 3`. Hydra: `counted_without_squeeze` in src/core/backend_value.h line 41 (`offset_ms < leeway_ms`, strict). The game has no such rule (SP-43).
 Game code (6142): none (a scoring rule, not a game rule)
 Hydra: `Rules::backend_leeway_ms` in src/core/rules.h line 32; `counted_without_squeeze` in src/core/backend_value.h line 41
-Ruling: D269 call 4, the user's words (memory note sp-end-is-one-point-leeway-is-delgars line 11; decision log line 1049): "there should never be two different answers for where star power ends. ever. the 3ms rule is for whether a backend is included in the optimal score or uncounted. it's an arbitrary number chosen by dragondelgar and i am fine with keeping it so our scores use the same methodology as delgar's hydra". The strict edge at exactly 3.0 ms is D29's record.
+Ruling: D269 call 4, the user's words (decision log line 1049; session 61cee421): "there should never be two different answers for where star power ends. ever. the 3ms rule is for whether a backend is included in the optimal score or uncounted. it's an arbitrary number chosen by dragondelgar and i am fine with keeping it so our scores use the same methodology as delgar's hydra". The strict edge at exactly 3.0 ms is D29's record.
 Found: this plan's wave 1 scouts H5a and H5b; wave 2 scouts R4 and R10; 2026-10-30, session 61cee421
 
 ### SP-43 The game's engine holds no 3 ms constant
@@ -474,9 +474,21 @@ Hydra: no owner: the player is a tool in tools/ch_probe
 Ruling: none needed: a tool fact
 Found: wave 2 scout R10; this plan's wave 1 scout H5b
 
+## On screen
+
+### SP-46 The multiplier disc is the only Star Power sign on the 1.1 screen
+
+Rule: In a Clone Hero 1.1 gameplay video, the one sign of Star Power is the multiplier disc, which shows x8 instead of x4 at a full combo. The purple bar under the score is the song's progress, not a Star Power meter, and no separate meter is drawn.
+Label: Unknown
+Evidence: last stated in the project's video-analysis method notes of August 2026 (step 2 of the method used on the Swim to the Moon video, session e61236dc); no repo file holds it and no game code was read for it. C:\Users\Patrick\Downloads\Hydra\video-tools\README.md lines 235 to 246 (outside the repo) find the disc by its changes at the combo steps, which fits but does not show the claim.
+Game code (6142): none read
+Hydra: no owner: Hydra does not read the game's screen; video-tools is a separate tool
+Ruling: none needed: a fact about the game's screen
+Found: 2026-08-17, session e61236dc
+
 ## Rows waiting on a live run
 
-SP-06, SP-14, SP-15, SP-18, SP-21, SP-24, SP-29, SP-30, SP-31, SP-33, SP-35, SP-36, SP-37. Each is on the live-checks page.
+SP-06, SP-14, SP-15, SP-18, SP-21, SP-24, SP-29, SP-30, SP-31, SP-33, SP-35, SP-36, SP-37, SP-46. Each is on the live-checks page.
 
 ## Open splits
 

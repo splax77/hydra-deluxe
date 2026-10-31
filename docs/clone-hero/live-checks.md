@@ -134,6 +134,8 @@ FL-27, the Ladies Talk check, is the first entry on this page.
 
 **SP-37.** Question: do game and Hydra agree on which early or late hits collect a phrase at the SP end? Pass: the meter rises only on the side Hydra's SqIn or SqOut rule says; fail: otherwise. Needs Star Power activation and a menu start.
 
+**SP-46.** Question: during Star Power, is the multiplier disc the only thing on the 1.1 screen that changes, with no Star Power meter drawn? Pass: a screenshot before and during Star Power differs only at the disc (and the highway's colours); fail: a meter or bar shows the Star Power amount. Needs Star Power activation and a menu start.
+
 ## Page 6: scoring
 
 **SC-07 and SC-08.** Question: on a run that activates Star Power, do sp_score and combo_score equal Hydra's for the same activation path? Pass: equal; fail: they differ. Needs Star Power activation and a menu start (the bot never gains Star Power).

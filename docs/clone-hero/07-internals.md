@@ -382,7 +382,7 @@ Found: 2026-10-29, session e9b04efc.
 
 ### IN-37 A bot run leaves the profile name empty in scorestats.json
 
-Rule: The game writes `scorestats.json` at the end of a command-line bot song, with an empty profile name; the key-press run wrote "Guest". That each song overwrites the file was not tested.
+Rule: The game writes `scorestats.json` at the end of a command-line bot song, with an empty profile name; the key-press run wrote "Guest". Each song replaces the same file: the game's code writes one fixed file name with File.WriteAllText (SC-35 on page 06). No live run looked for an earlier song's file after a later song, so the live side of the overwrite is not shown here.
 Label: Proven in a live run
 Evidence: the three `RUNS\l1\bot\*.json` files (profile name empty) and `overlay-spike/run1_cal0_scorestats.json` ("Guest"), 2026-10-28.
 Game code (6142): writer not found here (page 06 has the scorestats rows).
@@ -565,6 +565,18 @@ Game code (6142): none read; a live run and the tool's own memory scan.
 Hydra: no owner. The tool's finder is `find_live_engine` in tools/ch_probe/engine_finder.py.
 Ruling: none needed: no Hydra rule reads it.
 Found: 2026-09-25, feasibility study line 19; checked by this plan's wave 1 scout H7a.
+
+## Saved score files
+
+### IN-55 scoredata.bin keeps one best score per chart and instrument
+
+Rule: The player's saved score file, `scoredata.bin` in the game's AppData\LocalLow\srylain Inc_\Clone Hero folder (`LOCALLOW_DIR` in tools/ch_mcp/game_files.py line 37), holds one best score per chart per instrument and a play count per song. It stores the chart's hash next to each score, with no song title or artist. A human run changes it (and `scoresext.bin`); the tools restore both after a run.
+Label: Unknown
+Evidence: no reader of the file's format is committed and the game's writer was not read. Session c8856afd (2026-10-10) decoded the user's copy with a scratch script (condensed transcript lines 296 to 307: "stores only the chart hash next to each score, with no title or artist"); session e8435f64 (2026-10-09, condensed line 42) states the one-best-score rule from the dmleaderboards backend, which reads the uploaded file. That a human run changes both files is session 6a549de0 (condensed line 457). No repo file holds any of these.
+Game code (6142): not found: the writer was not looked for.
+Hydra: no owner. The chart hash is Clone Hero's song id (page 01, CR-10); the tools back the file up and restore it in tools/ch_mcp/game_files.py.
+Ruling: none needed: no Hydra rule reads it.
+Found: 2026-10-10, session c8856afd; 2026-10-09, session e8435f64
 
 ## Rows waiting on a live run
 
