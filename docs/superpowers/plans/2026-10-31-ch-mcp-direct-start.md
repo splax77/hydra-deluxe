@@ -125,6 +125,8 @@ Boot takes seconds; LS-D0 measures the time from resume to the engine clock movi
 
 ## Questions for the user
 
+Answered 2026-10-31: shown all six with their recommendations, the user said "approve". So every question below takes its recommended answer, including question 6 (the one-byte patch, in memory only, is allowed), and the build may start.
+
 1. **The three launch caps.** No ruling sets them, and none of the three has been measured; these are guesses LS-D0 then measures. Recommended: `LAUNCH_ATTACH_CAP_S = 20` (Frida's injection into a paused process plus loading the agent), `LAUNCH_ARM_CAP_S = 5` (one call that starts the observer; the same size as the existing `READ_CAP_S`) and `LAUNCH_PATCH_CAP_S = 30`, counted from the resume (the game's start-up until it maps `GameAssembly.dll`, then one read and write). The poll is `LAUNCH_POLL_S = 0.5`. The other side: the existing `READ_CAP_S` (5 s) for all three, but a cold Frida start or a slow game start on a busy machine passes 5 s and the run would fail for nothing.
 2. **If the paused attach fails** (LS-D0), the later runs change one field of `launch_patch.json` at a time: first `"defer": true`, then `"launch": "spawn"`, which gives up the minimized, not-active launch. Recommended: run the spawn form once with the foreground watch as judge, and stop for good if the count is above 0. The other side: skip it and go to the late route (a race, see section 1 above).
 3. **Profiles in the backup.** Recommended: add `profiles.ini` and `profiles.bin` to the backup list now, before D2 says whether the clone is saved. The other side: wait for D2; one more trace before the first human run.
