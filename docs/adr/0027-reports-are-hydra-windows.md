@@ -170,17 +170,18 @@ misbehave.
 **No export.** The windows only show the report (D103 item 2). There is no
 file to keep or send.
 
-**Memory.** Closing the path report window lets its rows go, and reopening it
-builds the report again with the building bar (D103 item 28, 2026-10-08). The
-user chose this after the report memory run measured about 42 MB of rows on
-their library. The rows reopening builds keep the window's search, timing,
-Best path only and sort (the user's call, 2026-10-09); Refresh and a batch's
-new report still start them over. AppState records why each build started,
-and the window reads it from its input. A build still running when the
-window closes stops, as its
-Cancel stops it. A report a batch builds while the window is shut stays until
-the window is opened and closed. The comparison's rows still stay in memory
-after its window closes, so it reopens at once.
+**Memory.** Both report windows keep their rows when they close (D271 item 7,
+2026-10-30). Closing the path report only hides it, as the comparison's close
+always did, so reopening shows the same rows at once. The user accepted the
+memory this holds, about 42 MB of rows on their library, when reversing D103
+item 28, which had let the rows go on close. A build still running when the
+window closes carries on and lands. A report that ended Cancelled or Failed
+stays so after a close, as the comparison's does (D278 item 3). A close while
+the window asks whether to analyze ends the question as a no, and a reopen
+with nothing built asks again (D276 item 6). The window's search, timing,
+Optimal paths only and sort stay across a reopen (the user's call,
+2026-10-09); Refresh and a batch's new report still start them over.
+`AppState::close_path_report` owns what a close does.
 
 ## Rejected
 
