@@ -1,9 +1,8 @@
 // The Path Builder's decision list: one row per window of the path on screen,
 // with what the window cost (EN-3's ladder, app/path_costs.h), the timing it
 // needs and the tight-window note; the end choices of a window and which one
-// it kept; "Finish the
-// rest for me"; and the clicks that start and remove a window. Every number is read from its
-// owner: costs from cost_list and cost_tier, timings from
+// it kept; "Finish the rest for me"; and the clicks that start and remove a
+// window. Every number is read from its owner: costs from cost_list and cost_tier, timings from
 // Activation::difficulty and format_ms, the note from
 // Activation::within_ms_limit. Plan: docs/superpowers/plans/
 // 2026-10-28-path-builder.md, task PB-2a. The candidate queue, which prices
