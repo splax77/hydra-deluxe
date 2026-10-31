@@ -112,10 +112,12 @@ def build_server(helper: Optional[Helper] = None):
             " and puts them back. ch_attach, ch_state, ch_snapshot and ch_menu read the"
             " game through Frida; ch_trace_start, ch_notes and ch_trace_stop trace each"
             " note the player hits. Presses and menus go through the virtual kit inside"
-            " the game: ch_kit_setup builds the kit after ch_attach, ch_kit_press presses"
-            " its pads and buttons, ch_open_song walks the menus to a song with it,"
-            " ch_play_chart plays a chart on it, ch_kit_status and ch_kit_watch read it,"
-            " and ch_kit_teardown takes it away (ch_stop does too). ch_start_song starts"
+            " the game. ch_kit_setup builds the kit after ch_attach and switches Rewired's"
+            " keyboard and mouse off for the run, so the user's own keys and mouse reach"
+            " no player. ch_kit_press presses the kit's pads and buttons, ch_open_song"
+            " walks the menus to a song with it, ch_play_chart plays a chart on it,"
+            " ch_kit_status and ch_kit_watch read it, and ch_kit_teardown takes it away and"
+            " switches the keyboard and mouse back (ch_stop does too). ch_start_song starts"
             " a song by calling the game's start method once LS-M has named it. ch_key,"
             " ch_press and ch_play_chart with route keys press keys into the focused"
             " window, and a hook refuses them unless the user has typed allow key run."
@@ -243,11 +245,13 @@ def build_server(helper: Optional[Helper] = None):
         """Build the virtual drum kit inside the game: check that settings.ini
         holds the run's pause_on_focus_lost value (ch_start sets it), take
         the backup, attach the kit agent, let the game listen while it is
-        not in focus, take the keyboard and mouse from every player and
-        switch off Rewired's keyboard for the run, hand the kit to its player
-        with the game's own drum map, and check the bindings it reads back
-        against kit_tools.KIT_BINDINGS. A setup that fails or reads other
-        bindings is torn down again. Needs ch_attach."""
+        not in focus, take the keyboard and mouse from every player, switch
+        Rewired's keyboard and mouse off for the run so the user's own input
+        reaches no player, hand the kit to its player with the game's own
+        drum map, and check the bindings it reads back against
+        kit_tools.KIT_BINDINGS. A setup that fails, leaves the keyboard or
+        the mouse on, or reads other bindings is torn down again. Needs
+        ch_attach."""
         return capped(h.kit.ch_kit_setup())
 
     @server.tool()
@@ -267,8 +271,9 @@ def build_server(helper: Optional[Helper] = None):
     def ch_kit_status() -> str:
         """The kit agent's status: the frame count and the frame rate,
         whether the game has focus, whether the game listens while it is not
-        in focus, the kit, each player's keyboard and mouse flags, then how
-        many times the game came to the front."""
+        in focus, whether Rewired's keyboard and mouse are switched on, the
+        kit, each player's keyboard and mouse flags, then how many times the
+        game came to the front."""
         return capped(h.kit.ch_kit_status())
 
     @server.tool()
@@ -283,9 +288,10 @@ def build_server(helper: Optional[Helper] = None):
     @server.tool()
     def ch_kit_teardown() -> str:
         """Take the kit away: clear its pads and buttons, remove it, put back
-        every player's keyboard and mouse and the other settings ch_kit_setup
-        changed, print each check, and detach the kit agent. ch_stop runs it
-        too."""
+        every player's keyboard and mouse, switch Rewired's keyboard and
+        mouse back to what ch_kit_setup recorded, put back the other settings
+        it changed, print each check, and detach the kit agent. ch_stop runs
+        it too."""
         return capped(h.kit.ch_kit_teardown())
 
     # -- the auto-player and the key route (game_tools) --------------------------------
