@@ -1,4 +1,4 @@
-// The docs say what the code does. Six checks over the decision records
+// The docs say what the code does. Seven checks over the decision records
 // and the guides:
 //
 // 1. Every backticked code name in them is still a name the code uses (see
@@ -26,6 +26,10 @@
 // 6. No permanent doc (every markdown file git lists, less the folders
 //    kNotPermanentDirs skips) names a path into a scratch folder
 //    (scratch_path_re).
+// 7. No permanent doc, and no comment in the code, names a file or folder
+//    under docs/ that is not in the tree (docs_path_re), unless the line says
+//    how to read it now (is_removed_citation). The session cards keep their
+//    old paths (kSessionCardsDir).
 //
 // It finds the repo and walks the code through tests/source_tree.h, as the
 // scans in tests/single_owner/ do.
@@ -1226,6 +1230,19 @@ bool is_permanent_doc(const std::string& rel) {
     return true;
 }
 
+// Every markdown file git lists, read, in byte order. A tracked file deleted
+// in the work tree is skipped.
+std::vector<Doc> markdown_docs() {
+    const fs::path root = sourcetree::root();
+    std::vector<Doc> all;
+    for (const std::string& rel : sourcetree::markdown_files(root)) {
+        const fs::path p = root / fs::u8path(rel);
+        if (!fs::is_regular_file(p)) continue;
+        all.push_back(Doc{rel, read_lines(p)});
+    }
+    return all;
+}
+
 // Adds one problem per line of a permanent doc that names a path into a
 // scratch folder, with the doc, the line number and the path's text.
 void check_scratch_paths(const std::vector<Doc>& docs, std::vector<std::string>& problems) {
@@ -1243,15 +1260,8 @@ void check_scratch_paths(const std::vector<Doc>& docs, std::vector<std::string>&
 }  // namespace
 
 TEST_CASE("docs match code: no committed doc names a path into a scratch folder") {
-    const fs::path root = sourcetree::root();
-    std::vector<Doc> all;
-    for (const std::string& rel : sourcetree::markdown_files(root)) {
-        const fs::path p = root / fs::u8path(rel);
-        if (!fs::is_regular_file(p)) continue;  // a tracked file deleted in the work tree
-        all.push_back(Doc{rel, read_lines(p)});
-    }
     std::vector<std::string> problems;
-    check_scratch_paths(all, problems);
+    check_scratch_paths(markdown_docs(), problems);
     INFO(report(problems));
     CHECK(problems.empty());
 }
@@ -1288,6 +1298,193 @@ TEST_CASE("docs match code: the scratch path check catches each path form and sk
         CHECK(problems[i + 1].rfind("docs/x.md:" + std::to_string(expected_lines[i]) + ": ", 0) == 0);
     CHECK(problems[9].rfind("docs/handoffs-old/x.md:1: ", 0) == 0);
     CHECK(problems[10].rfind("tools/docs/handoffs/x.md:1: ", 0) == 0);
+}
+
+namespace {
+
+// ---- check 7: no dangling docs paths ----------------------------------------
+
+// A finished plan or handoff leaves the repo in the merge that finishes its
+// work (CLAUDE.md, "Doc review"). This check proves nothing permanent still
+// points at it: a permanent doc, or a comment in the code, that names a file
+// or folder under docs/ which is not in the tree fails with its line.
+//
+// docs_path_re is what counts as a docs path. A line number or an anchor
+// written after the path is not part of it, so the file is checked and the
+// place in it is not. A path written relative to another folder, or into
+// another repo by its full folder, is not read. is_removed_citation is what
+// lets a line name a file that is gone.
+const std::regex& docs_path_re() {
+    static const std::regex re(R"((?:^|[^\w.\-/\\])(docs/(?:[\w.\-]+/)*(?:[\w.\-]+\.md)?)(?![\w\-/]|\.\w))");
+    return re;
+}
+
+// Whether `line` may name `path` although the tree lacks it: the line says
+// where the file can still be read, as `<commit>:<path>` (written out
+// `git show <commit>:<path>`, the commit a short or full hash), or says the
+// file was never committed. The hash and the path are matched as one piece,
+// so a comment wrapped after "git show" still counts.
+bool is_removed_citation(const std::string& line, const std::string& path) {
+    static const std::regex never(R"(never committed)", std::regex::icase);
+    if (std::regex_search(line, never)) return true;
+    static const std::regex shown(R"((?:^|[^0-9a-fA-F])[0-9a-f]{7,40}:)");
+    for (auto it = std::sregex_iterator(line.begin(), line.end(), shown); it != std::sregex_iterator(); ++it) {
+        const std::string rest = line.substr(static_cast<size_t>(it->position() + it->length()));
+        std::smatch m;
+        if (std::regex_search(rest, m, docs_path_re(), std::regex_constants::match_continuous) && m.str(1) == path)
+            return true;
+    }
+    return false;
+}
+
+// A session card records what a past session did, at the time, as a commit
+// message does, so it keeps the paths it named after a plan leaves.
+constexpr const char* kSessionCardsDir = "docs/sessions/";
+
+// The installer's folder. The code walk (sourcetree::source_files) does not
+// visit it, and its scripts cite docs too.
+constexpr const char* kInstallerDir = "installer";
+
+// Whether the docs path `path` is a file in `tree`, or a folder that holds one.
+bool in_tree(const std::set<std::string>& tree, const std::string& path) {
+    if (path.back() != '/') return tree.count(path) > 0;
+    const auto it = tree.lower_bound(path);
+    return it != tree.end() && it->rfind(path, 0) == 0;
+}
+
+// The lines of a code file as this check reads them. In a language codelex
+// reads, only the comments and Python's triple-quoted strings (where a
+// docstring lives) are kept; every other piece is blanked, so the line
+// numbers stay. A string literal elsewhere is data, a test's fixture or a path
+// the program opens, and a fixture names files that do not exist on purpose.
+// A file codelex does not read (a JSON rule file, an installer script) is
+// read whole, since its text is the citation.
+std::vector<std::string> readable_lines(const std::string& text, const std::optional<codelex::Lang>& lang) {
+    std::string kept = text;
+    if (lang) {
+        for (char& c : kept)
+            if (c != '\n') c = ' ';
+        for (const codelex::Piece& p : codelex::split(text, *lang)) {
+            bool read = p.kind == codelex::Kind::Comment;
+            if (p.kind == codelex::Kind::String && *lang == codelex::Lang::Python) {
+                const size_t q = text.find_first_of("'\"", p.begin);
+                read = q < p.end && q + 3 <= p.end && text.compare(q, 3, std::string(3, text[q])) == 0;
+            }
+            if (read) kept.replace(p.begin, p.end - p.begin, text, p.begin, p.end - p.begin);
+        }
+    }
+    std::vector<std::string> out;
+    std::istringstream in(kept);
+    std::string line;
+    while (std::getline(in, line)) {
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        out.push_back(line);
+    }
+    return out;
+}
+
+// Adds one problem per docs path that `tree` lacks, on any line of a doc
+// outside the folders that keep old paths, with the doc, the line and the path.
+void check_docs_paths(const std::vector<Doc>& docs, const std::set<std::string>& tree,
+                      std::vector<std::string>& problems) {
+    for (const Doc& d : docs) {
+        if (!is_permanent_doc(d.rel) || d.rel.rfind(kSessionCardsDir, 0) == 0) continue;
+        for (size_t i = 0; i < d.lines.size(); ++i) {
+            const std::string& line = d.lines[i];
+            for (auto it = std::sregex_iterator(line.begin(), line.end(), docs_path_re());
+                 it != std::sregex_iterator(); ++it) {
+                const std::string path = (*it)[1].str();
+                if (in_tree(tree, path) || is_removed_citation(line, path)) continue;
+                problems.push_back(d.rel + ":" + std::to_string(i + 1) + ": names " + path +
+                                   ", which is not in the tree; point at where it lives now, or say how to "
+                                   "read it (see is_removed_citation)");
+            }
+        }
+    }
+}
+
+}  // namespace
+
+TEST_CASE("docs match code: no permanent doc or code comment names a docs path that is not in the tree") {
+    const fs::path root = sourcetree::root();
+    std::set<std::string> tree;
+    for (const std::string& rel : sourcetree::git_listed(root, "docs"))
+        if (fs::is_regular_file(root / fs::u8path(rel))) tree.insert(rel);
+    REQUIRE(!tree.empty());
+
+    std::vector<Doc> all = markdown_docs();
+    std::vector<std::string> code = sourcetree::source_files(root);
+    for (std::string& rel : sourcetree::git_listed(root, kInstallerDir)) code.push_back(std::move(rel));
+    int code_files = 0;
+    for (const std::string& rel : code) {
+        const fs::path p = root / fs::u8path(rel);
+        if (p.extension() == ".md" || !fs::is_regular_file(p)) continue;  // markdown is read above
+        std::ifstream in(p, std::ios::binary);
+        std::ostringstream ss;
+        ss << in.rdbuf();
+        const std::string text = ss.str();
+        if (text.find('\0') != std::string::npos) continue;  // not text
+        all.push_back(Doc{rel, readable_lines(text, codelex::language_of_extension(p.extension().string()))});
+        ++code_files;
+    }
+    CHECK(code_files > 100);  // the walk found the code
+
+    std::vector<std::string> problems;
+    check_docs_paths(all, tree, problems);
+    INFO(report(problems));
+    CHECK(problems.empty());
+}
+
+TEST_CASE("docs match code: the docs path check reads each path form and skips the removed form") {
+    // The fixtures are string literals, which readable_lines blanks in this
+    // file, so the fake paths below never reach the whole-tree case.
+    const std::set<std::string> tree = {"docs/a.md", "docs/sub/b.md"};
+    const std::string cpp = "int a;  // see docs/gone.md\n"
+                            "const char* s = \"docs/gone.md\";\n"
+                            "/* docs/gone.md */\n";
+    const std::string py = "\"\"\"Header: docs/gone.md.\"\"\"\n"
+                           "x = 'docs/gone.md'\n"
+                           "# docs/gone.md\n";
+    const std::vector<Doc> docs = {
+        Doc{"docs/x.md",
+            {"See docs/a.md and docs/sub/b.md.",                                    // 1: both exist
+             "See docs/gone.md.",                                                   // 2
+             "See `docs/gone.md` (removed; `git show 0123abcd:docs/gone.md`).",     // 3: the removed form
+             "See `docs/gone.md` (removed; `git show 0123abcd:docs/other.md`).",    // 4: names another file
+             "See docs/gone.md (never committed; not kept).",                       // 5
+             "See docs/sub/ and docs/.",                                            // 6: folders that hold files
+             "See docs/none/.",                                                     // 7: a folder with none
+             "See docs/a.md:120 and docs/a.md#part.",                               // 8: a place in a file
+             "See docs/gone.md:12.",                                                // 9
+             "See tools/docs/gone.md, ../docs/gone.md and docs/gone.mdx.",          // 10: not docs paths
+             "See docs/sub/<date>-x.md and docs/sub/*.md.",                         // 11: the folder part
+             "See docs/a.md, docs/gone.md and docs/sub/gone.md",                    // 12: two on a line
+             "Wrapped: git show",                                                   // 13
+             "0123abcd:docs/gone.md was here, and docs/sub/gone.md too."}},         // 14: wrapped removed form
+        Doc{"docs/handoffs/2026-10-31-x-handoff.md", {"See docs/gone.md."}},
+        Doc{"docs/superpowers/plans/2026-10-31-x.md", {"See docs/gone.md."}},
+        Doc{"docs/sessions/2026-10-31-0123abcd.md", {"See docs/gone.md."}},
+        Doc{"docs/sessions-old/x.md", {"See docs/gone.md."}},  // a longer folder name is not the skip
+        Doc{"src/x.cpp", readable_lines(cpp, codelex::Lang::Cpp)},
+        Doc{"tools/x.py", readable_lines(py, codelex::Lang::Python)},
+        Doc{"tests/single_owner/rules/x.json", readable_lines("{\"decision\": \"docs/gone.md\"}", std::nullopt)}};
+    std::vector<std::string> problems;
+    check_docs_paths(docs, tree, problems);
+    const std::vector<std::string> where = {
+        "docs/x.md:2: names docs/gone.md,",  "docs/x.md:4: names docs/gone.md,",
+        "docs/x.md:7: names docs/none/,",    "docs/x.md:9: names docs/gone.md,",
+        "docs/x.md:12: names docs/gone.md,", "docs/x.md:12: names docs/sub/gone.md,",
+        "docs/x.md:14: names docs/sub/gone.md,",
+        "docs/sessions-old/x.md:1: names docs/gone.md,",
+        "src/x.cpp:1: names docs/gone.md,",  "src/x.cpp:3: names docs/gone.md,",
+        "tools/x.py:1: names docs/gone.md,", "tools/x.py:3: names docs/gone.md,",
+        "tests/single_owner/rules/x.json:1: names docs/gone.md,"};
+    INFO(report(problems));
+    REQUIRE(problems.size() == where.size());
+    for (size_t i = 0; i < where.size(); ++i) CHECK(problems[i].rfind(where[i], 0) == 0);
+    CHECK(problems[0] ==
+          "docs/x.md:2: names docs/gone.md, which is not in the tree; point at where it lives now, or say how "
+          "to read it (see is_removed_citation)");
 }
 
 namespace {
