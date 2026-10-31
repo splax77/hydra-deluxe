@@ -740,6 +740,16 @@ Hydra: `apply_note_shuffle` in src/parse/note_shuffle.cpp pins rows from later r
 Ruling: none needed.
 Found: 2026-10-08, session 6c19d0ef.
 
+### NL-72 The previous chord's tick starts at 0, so a first note on tick 0 joins a chord
+
+Rule: the shuffle's "previous tick" starts at 0 and is set to each shuffled note's tick after it, so the first non-kick note reads as part of the same chord when it sits on tick 0.
+Label: Proven in the game's code
+Evidence: docs/audit/note-shuffle/step0/open34/shuffle_20f0c30.asm line 40 zeroes r13, and no line between it and line 209 writes r13. Line 209 compares r13 with the note's tick, the same-chord test. Line 211 reuses r13 for the pattern, and lines 318 and 319 load the note's tick into it for the next note. The reference script docs/audit/note-shuffle/probes/capped/shuffle_ref_capped.py, which an earlier check leaned on, says on line 5 that it was not verified against the game.
+Game code (6142): RVA `0x20F0C30`, the listing above.
+Hydra: `apply_note_shuffle` in src/parse/note_shuffle.cpp lines 140 (starts at 0), 146 (the test) and 179 (set after each note).
+Ruling: none needed: same rule.
+Found: 2026-10-31, session b478542c.
+
 ## Rows waiting on a live run
 
 NL-12, NL-13, NL-14, NL-15, NL-16, NL-19, NL-22, NL-30, NL-32, NL-34, NL-37, NL-38, NL-39, NL-42, NL-57, NL-58, NL-65, NL-69. Each is listed on the live-checks page.
