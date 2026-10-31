@@ -1,13 +1,98 @@
-"""Compare two Hydra databases table by table, for "identical results" proofs.
+r"""Compare two Hydra databases table by table, for "identical results" proofs.
 
-    py tools\\compare_db.py A.db B.db
+    py tools\compare_db.py A.db B.db
 
 Prints one line per table, "<table>: N rows compared, M differ", then the
 first few differing keys under any table that differs. Exits 1 when any
 table differs, 2 on a usage error, 0 when everything matches.
 
-The speedups plan (docs/superpowers/plans/2026-10-06-perf-speedups.md,
-"Proving identical results") is the recipe this belongs to.
+Proving identical results (the recipe this script belongs to)
+-------------------------------------------------------------
+
+This recipe comes from the speedups plan,
+docs/superpowers/plans/2026-10-06-perf-speedups.md (removed; git show 444631e6:docs/superpowers/plans/2026-10-06-perf-speedups.md),
+section "Proving identical results". Its rules are kept word for word below.
+Two facts changed after the plan was written, and they come first, because
+they override it.
+
+First, one run is the whole correctness check. A fresh-database hydra_batch
+run, compared table by table with this script against the baseline's fresh
+database, goes through the scan, the parse, the dynamics count, the engine and
+the writer, so it covers every stored table. Extra engine and parse hashes,
+other-difficulty parses, rescans and real-database re-analyses only re-check
+the same output; below, those are the per-chart hashes, the scan comparison
+and the `--redo` run used as a check. The `--redo` run still times a speedup.
+The user called them "completely unnecessary" (docs/handoffs/2026-10-06-perf-speedups-wave2-handoff.md (removed; git show 444631e6:docs/handoffs/2026-10-06-perf-speedups-wave2-handoff.md),
+"Read this first: how the user wants checks run").
+
+Second, hydra_batch given no chart folder now refuses to run unless it also
+gets --whole-library (src/cli/batch_scope.h owns that rule). A whole-library
+run needs the user's explicit permission in chat first (CLAUDE.md, agent
+rule 8). That covers every run below over the user's library: the
+fresh-database run, the `--redo` run and the hydra_bench runs over
+`C:\Clone Hero`. Each happens only when the user allows it. Without that, run
+the same compare on the checked-in corpus by naming testdata\input as the
+chart folder.
+
+A speedup counts only if the output is identical.
+
+The exes. Two sets: the baseline and the task's. The main session builds the
+baseline once at dispatch, from the exact commit the wave forks from, in a
+detached throwaway worktree through `tools/build_slot.ps1`, and copies
+`hydra_batch.exe` and `hydra_bench.exe` to
+`C:\Users\Patrick\.claude\hooks\state\bench\baseline-<short hash>\`, so five
+agents do not each cold-build a baseline. The task builds its own
+`hydra_batch` and `hydra_bench` by `-Target` in its worktree (`hydra_bench` is
+EXCLUDE_FROM_ALL, so a plain build never rebuilds it).
+
+The settings. `hydra_batch` and `hydra_bench` read `hydra_settings.ini` from
+the folder they run in. Both exe folders get a copy of the installed
+`C:\Program Files\Hydra\hydra_settings.ini` with its `dm_last_user` line
+removed, and the brief has the agent confirm, by reading the ini against the
+key table in `src/app/config.cpp`, that it says Expert, Pro Drums on, 2x Bass
+on, depth 4 scores, Path limit 10 ms, SP cap 4 and the folder `C:\Clone Hero`.
+Never guess a key name.
+
+Fresh-database run. Through the lock, `hydra_batch.exe --db <scratch>\A.db`
+with no folder argument (D79 item 1: with no folder arguments the tool scans
+the ini's folders and saves the library, so the `charts` table is written
+too), once per exe set. Then `py tools\compare_db.py A.db B.db`. It compares
+every content column of every table, leaving out the per-file ids listed
+below; `charts` is compared row by row in insert order, because a scan's
+order is part of its answer (D63: the first-listed copy names a duplicate).
+The expected line for each table is "N rows compared, 0 differ". Any
+difference is a finding to report, never something to fix by loosening the
+comparison.
+
+Per-chart hashes. `hydra_bench --engine "C:\Clone Hero" --out rows.txt`
+prints one hash over every prepared row (structure, nodes, best path,
+summary) and writes a per-chart line; `hydra_bench --parse "C:\Clone Hero"
+--out parse.tsv` does the same for the whole parsed song plus its dynamics
+blob, and records a failure's exception type and message. Both are
+single-threaded. Run baseline and task through the lock and compare the
+printed hash and the per-chart files. Always A against B from the same
+harness build.
+
+Scan comparison. `hydra_bench --scan "C:\Clone Hero" --db <scratch>\scanA.db`
+for each exe set, then `py tools\compare_db.py scanA.db scanB.db`, which
+already compares `charts` in insert order. A second run on the same database
+exercises the rescan cache; compare that too.
+
+Real database with `--redo`. Timing of analysis runs on a copy of the user's
+real GUI database, never only on a fresh one, because a fresh database once
+hid a 69-second slowdown. Hydra is usually running, so the copy is taken
+through SQLite's backup API, which reads a consistent snapshot while the live
+connection keeps writing, and leaves a single-file copy with no `-wal`:
+`py -c "import sqlite3; s = sqlite3.connect(r'file:C:/Program Files/Hydra/hydra.db?mode=ro', uri=True); d = sqlite3.connect(r'<scratch>\real.db'); s.backup(d); d.close(); s.close()"`.
+Keep that copy pristine and copy it again for each run. Then
+`hydra_batch.exe --db <copy> --redo` through the lock.
+
+The lock. `pwsh -NoProfile -File tools\bench_run.ps1 -Label "<task>-<what>"
+-Script <your timing .ps1>`. It waits for the lock and for compilers and other
+Hydra processes to quiet down, runs the script, and logs the run with the
+compilers-busy count. Call it with the PowerShell tool's timeout at 600000 ms
+and keep each timing script under five minutes. Exit code 3 means the lock
+stayed busy: do other work and retry.
 
 What it compares, and what it leaves out on purpose:
 
@@ -26,11 +111,11 @@ What it compares, and what it leaves out on purpose:
 The comparison runs inside SQLite (B is attached to A), so the whole library
 never has to fit in Python's memory.
 
-    py tools\\compare_db.py --summary-only baseline.db new.db
+    py tools\compare_db.py --summary-only baseline.db new.db
 
---summary-only compares only what a summary-only store keeps (the
-summary-only storage plan, docs/superpowers/plans/2026-10-07-summary-only-storage.md),
-so a baseline from before that plan still compares against a newer file.
+--summary-only compares only what a summary-only store keeps (ADR 0026,
+docs/adr/0026-the-store-keeps-summaries-the-engine-gives-details.md), so a
+baseline from before that change still compares against a newer file.
 results is compared on the columns both files share, less SUMMARY_LEFT_OUT,
 with rows matched by its unique key. The other tables in SUMMARY_TABLES are
 compared as above. It prints the tables and results columns it skipped.
