@@ -25,28 +25,22 @@ Hydra shows one length for a song. It drives the Preview's scrub bar, the Paths 
 
 Rime of the Ancient Mariner showed the hole. Its song.ini says 6:17 for a 13:41 song. The 0fd29fa check now gives 13:23.8 (the last drum note), but the chart itself says where it ends: an `[end]` event at 13:35.5. Clone Hero reads that event. Hydra does not read it anywhere today (the only "end" in `src` is the section-name table row).
 
-Clone Hero's rule, from the decompiled game, is:
-
-```
-length = Min(usable end event, Max(audio length, last note end over all tracks)) + 1 s
-```
-
-where the end event is usable only when its tick is at least one beat (the chart's Resolution in ticks) past the last note's end. Hydra never opens audio (D75 item 5), so something has to stand in for "audio length". That is the user's call, asked in section 4.
+Clone Hero's rule, from the decompiled game, now lives in docs/clone-hero/01-reading-a-chart.md (CR-46 for the length, CR-43 for the last note end, CR-41 for when an end event is usable). Hydra never opens audio (D75 item 5), so something has to stand in for "audio length". That is the user's call, asked in section 4.
 
 ## 2. What Clone Hero does, and what I checked
 
 The handoff's scout section is the record. Agent rule 9 says check before repeating, so here is what the decompiled files in the scratchpad (`ch-song-end\out1.c`) let me confirm, and what I could not.
 
-Confirmed in `out1.c` lines 161 to 198: the load coroutine takes the song speed, converts the last-note value (`FUN_18212e130`) through the tempo map, folds it with another value in a two-argument call, then, only when `FUN_18212c7e0` says the end event counts, converts the end event's tick (stored at chart +0x108, offset +0x10) and folds that in with a second two-argument call, then adds the constant at 0x3063DC0 and stores the result as the song length (+0x30). That is the shape `Min(end, Max(a, last note)) + c`. I take from the scout and the main session that the first fold is Max, the second Min and the constant 1.0; the files in the scratchpad do not name them. Line 139 shows the call `FUN_18035c110(song, 0, 0, 1, 0)`, which the second scout says leaves the .chart parse flag at 0, so `end` in a .chart is read in ordinary play.
+Confirmed in `out1.c` lines 161 to 198: the load coroutine takes the song speed, converts the last-note value (`FUN_18212e130`) through the tempo map, folds it with another value in a two-argument call, then, only when `FUN_18212c7e0` says the end event counts, converts the end event's tick (stored at chart +0x108, offset +0x10) and folds that in with a second two-argument call, then adds the constant at 0x3063DC0 and stores the result as the song length (+0x30). That is the shape `Min(end, Max(a, last note)) + c`. I take from the scout and the main session that the first fold is Max, the second Min and the constant 1.0; the files in the scratchpad do not name them. The rule itself now lives in CR-46, CR-43 and CR-41 (docs/clone-hero/01-reading-a-chart.md). One reading has no row on the pages, so it stays here: line 139 shows the call `FUN_18035c110(song, 0, 0, 1, 0)`, which the second scout said leaves the .chart parse flag at 0, so `end` in a .chart is read in ordinary play.
 
 Not checkable from the files: the body of the usability check (`FUN_18212c7e0` is called at line 179 but its decompile is not in the scratchpad), the text handlers and the setter. The second scout settled the two points that were open when this plan was commissioned, and the plan builds them in as settled facts:
 
-1. The .chart flag (`settings+0x2C`) is 0 on the play path. So `end` and `[end]` in a .chart's `[Events]` both count (the reader strips one pair of brackets). Only Clone Hero's library scan and command-line paths set the flag.
-2. The margin is `truncate(Resolution x song_speed / 100)` ticks, compared with `<=`, so a tick exactly on the margin counts. At 100% speed, the speed Hydra works at, that is exactly `Resolution` ticks: one beat.
+1. The .chart flag. The bracket rule it guards now lives in CR-40. The flag itself has no row on the pages, so the scout's reading stays here: the flag at `settings+0x2C` is 0 on the play path, and only Clone Hero's library scan and command-line paths set it.
+2. The margin now lives in CR-41, with the factor behind it in CR-42. At 100% speed, the speed Hydra works at, it is one beat.
 
 Two things the scouts left unknown, and what this plan does with them:
 
-- Whether the `[end]` match is case-sensitive. The corpus cannot settle it: of 66 `notes.mid` files, 50 carry `[end]` on the EVENTS track and none carry any other spelling; of 31 `notes.chart`, 17 carry `E "end"`, none carry `E "[end]"`, and none carry a case variant. Hydra matches the exact spellings Clone Hero's string literals hold (`[end]` in .mid; `end` or `[end]` in .chart). A chart that spells it otherwise gets no end event, which is the conservative reading.
+- Whether the `[end]` match is case-sensitive. It is still open; CR-39 in docs/clone-hero/01-reading-a-chart.md holds it and sends it to docs/clone-hero/questions.md. The corpus cannot settle it: of 66 `notes.mid` files, 50 carry `[end]` on the EVENTS track and none carry any other spelling; of 31 `notes.chart`, 17 carry `E "end"`, none carry `E "[end]"`, and none carry a case variant. Hydra matches the exact spellings Clone Hero's string literals hold (`[end]` in .mid; `end` or `[end]` in .chart). A chart that spells it otherwise gets no end event, which is the conservative reading.
 - How .sng and .srb deliver end events. This one is settled by Hydra's own code, not the game's: a .sng or .srb holds a verbatim `notes.mid` or `notes.chart`, and Hydra's loaders hand that inner file to the same two parsers (`load_songbytes_mid` / `load_songbytes_chart`, called from the container paths in `src/parse/song.cpp` around lines 2200 and 2227). Whatever the two parsers store on `Song` arrives for all four formats with no container code.
 
 Two numbers in the handoff differ from mine, and mine come from a parse rather than a byte search: 50 + 17 = 67 corpus files carry an end event (the handoff's raw search found 52 `[end]` strings). No corpus file carries two end events, so the "first wins" rule from the scout's reading of the setter never bites here; Hydra copies it anyway (first in file order).

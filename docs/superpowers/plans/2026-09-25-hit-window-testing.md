@@ -5,15 +5,10 @@ This plan picks up from the 2026-09-25 live session. **Status, 2026-10-03
 committed `poll_windows.csv`, with no live run. Steps 4-6 are shelved. Hydra
 keeps the fixed 85 ms per side.
 
-The answers. Step 1: the whole window caps at 171.43 ms. Step 2: the floor
-is real, but it reads 96.29 ms, not the 75 this plan expected, because the
-clamp sits on the formula's input, not its output. Step 3: the window uses
-both gaps; each is halved and held between 37.5 and 85 ms, and the two
-halves are summed. The evidence (addresses 0x20F7210 and 0x20DDDA0, the
-formula's constants, and the CSV rows) is in
-`docs/audit/ch-evidence.md`, section 77.
-The values live in `tools/ch_probe/constants.py` (WINDOW_CAP_MS,
-WINDOW_FLOOR_MS), which every probe script reads.
+The answers to steps 1 to 3 (the cap, the floor this plan expected at 75 ms,
+and how the two gaps combine) now live in docs/clone-hero/03-timing.md
+(TM-19 to TM-22). The probe scripts read the values from
+`tools/ch_probe/constants.py` (WINDOW_CAP_MS, WINDOW_FLOOR_MS).
 
 ## The probe songs
 

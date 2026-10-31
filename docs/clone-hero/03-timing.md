@@ -368,7 +368,7 @@ Found: 2026-10-28, session f756d547; listed 2026-10-30, wave 2 scout R7.
 
 Rule: Nothing that judges a hit reads the video time; video calibration moves only what is drawn.
 Label: Unknown
-Evidence: unchecked by the scout: it needs every reader of the getter at `0x16C490` traced. The overlay handoff named two drawing readers, `HighwayScroll.Update` and `DrumsNoteRenderer.Update`; about 30 readers were never all traced (wave 2 scout R7, R7-06; wave 1 scout H3, H3-15). TM-15's bot run shows the engine clock does not move, which is consistent.
+Evidence: unchecked by the scout: it needs every reader of the getter at `0x16C490` traced. The scout behind the overlay handoff found two drawing readers, `HighwayScroll.Update` and `DrumsNoteRenderer.Update` (this row is now their only home); about 30 readers were never all traced (wave 2 scout R7, R7-06; wave 1 scout H3, H3-15). TM-15's bot run shows the engine clock does not move, which is consistent.
 Game code (6142): RVA `0x16C490`, readers not all traced.
 Hydra: no owner
 Ruling: none needed: no Hydra rule depends on it

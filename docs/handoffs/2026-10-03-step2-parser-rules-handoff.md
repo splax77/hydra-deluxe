@@ -30,21 +30,21 @@ Finding numbers are from `docs/audit/2026-10-03-derivation-audit.md`. Read each 
 
 **Score-changing rules the evidence settles.** These change analysis results, so they need the user's yes even though the evidence is clear.
 
-- **Disco flip per difficulty (findings 11 and 250).** Clone Hero applies `[mix N drums...]` only to difficulty N, in both formats. Hydra applies Expert's `mix 3` markers at every difficulty. Hard-and-below Pro Drums results are wrong on charts with disco sections. The fix must keep the dnoflip rule: Hydra treats `drums0dnoflip` as off, and the Clone Hero bug that ignores it must not be copied (memory note `ch-disco-noflip-rule`).
-- **2x kicks below Expert (findings 10, 12 and 255).** Hydra's Dynamics tab reads Expert's 2x kicks at Hard and below. The evidence adds that Clone Hero accepts 2x-kick pitches 59, 71, 83 and 95 at every difficulty. So the audit's proposed fix, an Expert-only gate on pitch 95, may be the wrong shape. Re-read the evidence's "Things that surprised me" section, and decide with the user which pitch each difficulty reads.
-- **SP phrase edges (finding 21).** Clone Hero uses start ≤ tick < end in both formats. A zero-length phrase awards nothing. A phrase running past the last note is awarded on that note. Hydra's `.mid` side matches, but its `.chart` side gets the last two cases wrong. The fix is one phrase-end helper both parsers feed.
-- **Fill landing window (finding 315).** Clone Hero's window is floor(res/32)+1 ticks, one wider than Hydra's floor(res/32). Ties go to the later chord, and a fill with no chord is dropped, and Hydra already matches both. Whether one authored fill stops fill generation is unknown.
+- **Disco flip per difficulty (findings 11 and 250).** Hydra applies Expert's `mix 3` markers at every difficulty, so Hard-and-below Pro Drums results are wrong on charts with disco sections. The game's rule now lives in docs/clone-hero/02-note-list.md (NL-17, and NL-21 for the dnoflip bug). The fix must keep the dnoflip rule: Hydra treats `drums0dnoflip` as off, and the Clone Hero bug that ignores it must not be copied (memory note `ch-disco-noflip-rule`).
+- **2x kicks below Expert (findings 10, 12 and 255).** Hydra's Dynamics tab reads Expert's 2x kicks at Hard and below. What the game reads at each difficulty now lives in docs/clone-hero/02-note-list.md (NL-24 to NL-26). The evidence suggested the audit's proposed fix, an Expert-only gate on pitch 95, may be the wrong shape. Re-read the evidence's "Things that surprised me" section, and decide with the user which pitch each difficulty reads.
+- **SP phrase edges (finding 21).** The game's phrase edges now live in docs/clone-hero/05-star-power.md (SP-01 to SP-03, SP-07). Hydra's `.mid` side matched them, but its `.chart` side got the zero-length and past-the-last-note cases wrong. The fix is one phrase-end helper both parsers feed.
+- **Fill landing window (finding 315).** The game's landing window, its tie rule and what it does with a fill that has no chord now live in docs/clone-hero/04-fills.md (FL-03, FL-05 to FL-07). The evidence said Hydra's window was one tick narrower and that Hydra matched the other two cases. Whether one authored fill stops fill generation is FL-27 and FL-28 on the same page.
 
 **Rules the evidence confirms Hydra already gets right.** These need only a recorded decision (an ADR line or CONTEXT.md), not a code change, unless the finding also names a display problem.
 
-- **Finding 64.** Clone Hero gates dynamics per note, in file order, as Hydra does. What's left is the Dynamics tab saying "dynamics on" while early notes are plain. That's a wording decision.
-- **Finding 141.** A quoted `E "solo"` is not recognised by Clone Hero either. The leftover is section names stripping quotes, which is a separate small owner.
-- **Finding 320.** Clone Hero scores `.chart` ghosts and accents with no enabling tag, as Hydra assumes.
+- **Finding 64.** The evidence confirmed that Hydra's per-note dynamics gate matches the game's (NL-13 in docs/clone-hero/02-note-list.md). What's left is the Dynamics tab saying "dynamics on" while early notes are plain. That's a wording decision.
+- **Finding 141.** The evidence confirmed that Hydra's handling of a quoted `E "solo"` matches the game's (CR-33 in docs/clone-hero/01-reading-a-chart.md). The leftover is section names stripping quotes, which is a separate small owner (the game's rule is CR-32).
+- **Finding 320.** The evidence confirmed Hydra's assumption about `.chart` ghosts and accents with no enabling tag (NL-06 in docs/clone-hero/02-note-list.md).
 
 **Still unknown; need a live check or the user's call.**
 
-- **Findings 53 and 314**: which meter sets a generated fill's length, and whether beats are quarter notes in 6/8 and 7/8. Also the open half of 315. The evidence's cheapest check is one breakpoint on Clone Hero's fill-adding method `0x215BD50` with `tools/ch_probe`, while playing a chart with no authored fills. Running Clone Hero needs the user. Ask before planning a live run, and keep to one CPU-heavy tool at a time.
-- **Finding 222**: Clone Hero's score has no speed factor, and it keeps a separate leaderboard per speed. Whether off-speed runs count as "above optimal" on the leaderboard page is the user's call.
+- **Findings 53 and 314**: which meter sets a generated fill's length, and whether beats are quarter notes in 6/8 and 7/8. Also the open half of 315. What is now known on both lives in docs/clone-hero/04-fills.md (FL-16, FL-20, FL-26). The evidence's cheapest check was one breakpoint on Clone Hero's fill-adding method (FL-02 on the same page) with `tools/ch_probe`, while playing a chart with no authored fills. Running Clone Hero needs the user. Ask before planning a live run, and keep to one CPU-heavy tool at a time.
+- **Finding 222**: the score's lack of a speed factor now lives in docs/clone-hero/06-scoring.md (SC-03) and 03-timing.md (TM-42). One fact here has no row on the pages, so it stays: the evidence said Clone Hero keeps a separate leaderboard per speed. Whether off-speed runs count as "above optimal" on the leaderboard page is the user's call.
 
 **Small parser owners with no Clone Hero question.** These are low-weight. Each needs a recommendation and the user's yes for anything visible.
 
@@ -57,9 +57,9 @@ Finding numbers are from `docs/audit/2026-10-03-derivation-audit.md`. Read each 
 
 **Already done by step 1, Task 3 (D6):** R7.6 (negative tempo) and finding 100 (zero time signature). Don't redo them; check that their tests exist on `claude/s1-t3`.
 
-**Tool-only, no collision:** finding 77. Clone Hero's whole hit-window cap is 171.43 ms, from clamping the formula's input at 170 ms, and `poll_windows.csv` measured the same. The `tools/ch_probe` scripts disagree. This also answers steps 1-3 of `docs/superpowers/plans/2026-09-25-hit-window-testing.md`. Tell the user that, and ask whether that plan's live run is still wanted.
+**Tool-only, no collision:** finding 77. Clone Hero's whole hit-window cap now lives in docs/clone-hero/03-timing.md (TM-22, and TM-23 for the live values); `poll_windows.csv` measured the same, and the `tools/ch_probe` scripts disagreed. This also answers steps 1-3 of `docs/superpowers/plans/2026-09-25-hit-window-testing.md`. Tell the user that, and ask whether that plan's live run is still wanted.
 
-**After step 1 merges:** finding 37 (Clone Hero clamps the SP meter at the cap during SP and recomputes the end, matching `extend_deacts`, not `add_deact_edge`) and finding 304 (the 3 ms leeway edge, Hydra's own rule and the user's call).
+**After step 1 merges:** finding 37 (the game's meter clamp during SP and its end recompute, now SP-24, SP-34 and IN-27 in docs/clone-hero/05-star-power.md and 07-internals.md; the evidence matched them to `extend_deacts`, not `add_deact_edge`) and finding 304 (the 3 ms leeway edge, Hydra's own rule and the user's call; SP-42).
 
 ## How to run it
 

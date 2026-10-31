@@ -14,13 +14,13 @@ Next, the user decides when to start step 0. Step 0 does three things before any
 
 ## The facts the plan rests on
 
-The game's shuffle is deterministic. It's seeded from the chart's first four notes (lane times tick, added up). The generator is xorshift128+. Kicks never move. A chord's first note avoids every colour the previous chord used, and later notes avoid colours already used in their own chord. A chord shaped like an earlier one copies that chord's output: the first note looks two chords back, later notes one back. The full summary is in the memory `ch-note-shuffle-algorithm`.
+The game's shuffle, as later settled, now lives in docs/clone-hero/02-note-list.md (NL-40 to NL-49). This session worked from the memory `ch-note-shuffle-algorithm`.
 
 This session ran four probes against the user's video chart, using the old references. The video can't tell within-chord note orders apart: three different orders all match 22/22. Raw .mid ticks match 22/22, while ticks scaled to 192 match only 11/22. Removing the "first note avoids the previous chord's colours" rule drops the match to 5/22, so that rule is real.
 
-That rule means any chord using all four colours should freeze the game on the next chord, unless the copy rule kicks in. It happened in 1,833 of 2,000 made-up charts. A chart whose first four notes all sit on tick 0 also never finishes. This is the biggest risk in the plan. It needs a game test before anyone writes code. If the game plays such a chart normally, the decode is wrong somewhere, and the work goes back to reading the game code.
+That rule predicted freezes: on made-up charts, the reference hung in 1,833 of 2,000, and on a chart whose first four notes all sit on tick 0. The two freeze cases, later confirmed, are NL-47 in docs/clone-hero/02-note-list.md. This was the biggest risk in the plan, and it needed a game test before anyone wrote code.
 
-One more fact from the old disassembly: the star-base function (0x20F4680) is not called inside the note builder (0x20D2EA0). So whether the star cutoffs include the shuffle is still open (Open 3).
+Whether the star cutoffs include the shuffle was still open here (Open 3). The answer now lives in docs/clone-hero/02-note-list.md (NL-51) and 06-scoring.md (SC-27).
 
 ## Files that only exist outside the repo
 
