@@ -33,10 +33,9 @@ enum class TextRole {
     HeadlinePath,    // the song panel's headline path
     AppVersion,      // the version bar's app name and version
     DialogQuestion,  // the batch dialog's question
-    // The Path Builder timeline's small text, at the sizes of the mockup
-    // (docs/superpowers/specs/2026-10-30-path-builder-mockup/mockup_template.html),
-    // as the user chose (plan 2026-10-30-path-builder-redesign, PV-4).
-    TimelineCost,     // the cost under a fill (`.flab`, tabular figures)
+    // The Path Builder timeline's small text. It follows the user's font size
+    // like the rest of Hydra (plan 2026-10-31-path-builder-redesign-2, Q7).
+    TimelineCost,     // the word under a fill (`.flab`, tabular figures)
     TimelineSection,  // a section's name (`.sec`)
     TimelineAxis,     // a time on the axis (`.axis span`)
 };
@@ -81,9 +80,9 @@ inline FontPick font_for(TextRole role) {
         case TextRole::AppVersion: return {deflt, 20.0f};
         case TextRole::DialogQuestion: return {deflt, 20.0f};
         // Mono, like Figure, keeps the mockup's tabular figures.
-        case TextRole::TimelineCost: return {mono, 10.5f};   // `.flab{font-size:10.5px}`
-        case TextRole::TimelineSection: return {deflt, 11.5f};  // `.sec{font-size:11.5px}`
-        case TextRole::TimelineAxis: return {mono, 11.0f};   // `.axis span{font-size:11px}`
+        case TextRole::TimelineCost: return {mono, 0.0f};
+        case TextRole::TimelineSection: return {deflt, 0.0f};
+        case TextRole::TimelineAxis: return {mono, 0.0f};
     }
     IM_ASSERT(false && "font_for: a value outside TextRole");
     return {deflt, 0.0f};

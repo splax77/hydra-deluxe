@@ -57,11 +57,11 @@ The four fixed-size variants are **SongTitle** (default, 26 px; `details_panel.c
 Roles added since this plan was written, each in `font_for` in `src/ui/text_role.h`:
 
 - **AppVersion** is the version bar's app name and version (default, 20 px).
-- **TimelineCost** is the cost under a fill on the Path Builder's timeline (mono, 10.5 px). Mono, like Figure, because the mockup sets tabular figures on it (`.flab`, line 55 of `docs/superpowers/specs/2026-10-30-path-builder-mockup/mockup_template.html`).
-- **TimelineSection** is a section's name on that timeline (default, 11.5 px; `.sec`, mockup line 42).
-- **TimelineAxis** is a time on that timeline's axis (mono, 11 px; `.axis span`, mockup line 56).
+- **TimelineCost** is the word "best" under a fill on the Path Builder's timeline (mono, size 0: it follows the user's font size). Mono, like Figure, because the mockup sets tabular figures on it (`.flab`, line 55 of `docs/superpowers/specs/2026-10-30-path-builder-mockup/mockup_template.html`).
+- **TimelineSection** is a section's name on that timeline (default, size 0: it follows the user's font size; `.sec`, mockup line 42).
+- **TimelineAxis** is a time on that timeline's axis (mono, size 0: it follows the user's font size; `.axis span`, mockup line 56).
 
-The three timeline roles take the mockup's sizes because the user chose them at the real-app check ("User decisions (PV-4, 2026-10-30)" in `docs/superpowers/plans/2026-10-30-path-builder-redesign.md`).
+The three timeline roles had fixed pixel sizes until the second Path Builder mockup. The user ruled that they follow the user's font size like the rest of Hydra, and that the roles stay (plan `2026-10-31-path-builder-redesign-2.md`, Q7).
 
 ## The owner
 

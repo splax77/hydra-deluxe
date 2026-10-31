@@ -26,14 +26,27 @@ void draw_scrub_marks(const std::vector<double>& marks);
 // when `filled`, else an outline in `col`.
 void draw_star(ImDrawList* dl, ImVec2 min, float size, bool filled, ImU32 col);
 
+// The colour of the drawn path: its activation bands and its taken fills.
+// Exported so a caller's mark for an activation is the bands' colour.
+inline constexpr ImU32 kTimelinePathColor = IM_COL32(0x5e, 0xc8, 0xff, 0xff);  // the mockup's --sp
+
 // The marks the Path Builder's legend explains, one swatch each: a fill the
-// player can activate on, the player's own activation, and a fill they can't.
-enum class LegendSwatch { Offered, Activation, Cant };
+// player can activate on, the player's own activation, a fill they can't, a
+// fill before their last activation, and an offered fill in a caller's
+// colour (Tinted).
+enum class LegendSwatch { Offered, Activation, Cant, Locked, Tinted };
 
 // One legend swatch of `kind`, drawn in the colours the Fills row draws that
-// mark in, as an item one text line tall at the cursor. The legend's words go
-// after it with ImGui::SameLine(0, 0).
-void legend_swatch(LegendSwatch kind);
+// mark in, as an item one text line tall at the cursor. `col` is the colour
+// of a Tinted swatch; the other kinds ignore it. The legend's words go after
+// it with ImGui::SameLine(0, 0).
+void legend_swatch(LegendSwatch kind, ImU32 col = 0);
+
+// A filled circle `diameter` wide in `col`, as an item at the cursor, with
+// `centred_text` (when not null) centred in it in the colour the activation
+// bands write their numbers in. Callers outside ui/ draw their dots through
+// this, so the draw list stays here.
+void dot_item(ImU32 col, float diameter, const char* centred_text = nullptr);
 
 // The axis puts a time label every 30 s, as the mockup does
 // (docs/superpowers/specs/2026-10-30-path-builder-mockup/mockup_template.html,
@@ -41,17 +54,20 @@ void legend_swatch(LegendSwatch kind);
 inline constexpr double kTimelineAxisStepMs = 30000.0;
 
 // The row names in the label column, as the mockup writes them (renderRows'
-// `rlab` cells). The Fills row has a second, dimmer line.
+// `rlab` cells).
 inline constexpr const char* kTimelineSectionsLabel = "Section";
 inline constexpr const char* kTimelinePhrasesLabel = "Star Power phrases";
 inline constexpr const char* kTimelineSavedLabel = "Star Power saved";
 inline constexpr const char* kTimelineGhostLabel = "Hydra's best";
 inline constexpr const char* kTimelineActivationsLabel = "Your activations";
 inline constexpr const char* kTimelineFillsLabel = "Fills";
-inline constexpr const char* kTimelineFillsSubLabel = "and their cost";
-// The activate line's words after its number, kSpActivationBars (drawMeter:
-// "2 phrases: enough to activate").
-inline constexpr const char* kTimelineActivateLabelTail = " phrases: enough to activate";
+// The saved row's caption under its name, as the second mockup writes it
+// (docs/superpowers/specs/2026-10-31-path-builder-mockup-2/mockup_template.html,
+// renderRows): the activate line's words after its number, kSpActivationBars
+// ("2 phrases: needed to activate", line 464), and the shading's words
+// (line 465).
+inline constexpr const char* kTimelineActivateLabelTail = " phrases: needed to activate";
+inline constexpr const char* kTimelineEnoughLabel = "enough to activate";
 
 // The section name the Section row leaves out: the practice section many
 // charts end with. The match is exact, case included, on the name the scene
@@ -79,8 +95,8 @@ using TimelineTextWidth = std::function<float(const std::string&)>;
 // the width, never the song's length; a gap of 0 turns that off, which only
 // a test with a short song should do.
 //
-// The text the layout places: how far down the Fills row a cost label's
-// first line starts and how tall one line is, how far a section's name
+// The text the layout places: how far down the Fills row the word under a
+// fill starts and how tall its line is, how far a section's name
 // stands in from its edges, and a measure for each kind of text in the font
 // it draws in (text_role.h's TimelineCost, TimelineSection and TimelineAxis).
 struct TimelineMetrics {
@@ -98,8 +114,9 @@ struct TimelineMetrics {
     TimelineTextWidth axis_width;
 };
 
-// The mockup's sizes at the display's scale (px), for the timeline as
-// PreviewTimeline draws it. Call it inside a frame. The ghost row's height
+// The mockup's sizes for the timeline as PreviewTimeline draws it, each at
+// the current font size or the display's scale as preview_timeline.cpp's
+// constants say. Call it inside a frame. The ghost row's height
 // here is the one it has when a ghost path is set; timeline_layout makes it
 // 0 tall for a scene with no ghost windows.
 TimelineMetrics timeline_metrics();
@@ -115,14 +132,24 @@ struct TimelinePoint {
     float x = 0.0f, y = 0.0f;
 };
 
+// How a fill is drawn. timeline_layout picks one per fill from the scene's
+// state and the caller's lists (TimelineFillMarks), first match wins: a Taken
+// fill is Taken; a fill in locked_ticks is Locked, whatever its state; an
+// Offered fill not in cant_ticks is Offered; every other fill is Cant.
+enum class TimelineFillLook { Taken, Locked, Offered, Cant };
+
 // One fill: its index in PreviewScene::fills, its chord tick, the ImGui item
-// name a GUI test and the player click (timeline_fill_id), the state it is
-// drawn by, and its hit box in the Fills row, centred on the fill's end.
+// name a GUI test and the player click (timeline_fill_id), the state the
+// scene gives it, the look it is drawn in, the caller's tint for it (none
+// when the caller gave none), and its hit box in the Fills row, centred on
+// the fill's end.
 struct TimelineFillItem {
     size_t fill = 0;
     int64_t chord_tick = 0;
     std::string id;
     app::PreviewFillState state = app::PreviewFillState::Hidden;
+    TimelineFillLook look = TimelineFillLook::Cant;
+    std::optional<ImU32> tint;
     float x = 0.0f;
     TimelineRect hit;
 };
@@ -155,25 +182,40 @@ struct TimelineTick {
     float text_x = 0.0f;
 };
 
-// The text under one fill (its cost), in the colour the caller picked.
+// The colour the caller chose for the fill on `chord_tick`.
+struct TimelineFillTint {
+    int64_t chord_tick = 0;
+    ImU32 col = 0;
+};
+
+// Read by nothing. It stays because the Path Builder's screen still fills
+// TimelineInput::labels with it; the plan task that rebuilds that screen
+// (2026-10-31-path-builder-redesign-2, SC-3b) deletes both.
 struct TimelineFillLabel {
     int64_t chord_tick = 0;
     std::string text;
     ImU32 col = 0;
 };
 
-// A cost label as the layout places it: its fill's index in the scene, its
-// text and colour, the line it sits on (0, or 1 under it), and its box. Each
-// is centred under its fill and kept inside the timeline, as the axis labels
-// are. A label goes on line 0 unless its box would touch the last line-0
-// label's; then it goes on line 1. One that would touch the last label on
-// both lines goes on the line whose last label ends first, and
-// TimelineLayout::cost_clashes counts it.
-struct TimelineCostLabel {
+// What the caller says about its fills, by chord tick. `cant_ticks` are fills
+// drawn as can't although the scene says Offered; `locked_ticks` are fills
+// drawn as locked whatever the scene says (TimelineFillLook says which list
+// wins); `tints` colour offered fills; every fill in `best_ticks` gets
+// `best_label` under it.
+struct TimelineFillMarks {
+    std::vector<int64_t> cant_ticks;
+    std::vector<int64_t> locked_ticks;
+    std::vector<TimelineFillTint> tints;
+    std::vector<int64_t> best_ticks;
+    std::string best_label;
+};
+
+// The word under one fill as the layout places it: its fill's index in the
+// scene, its colour (the fill's tint) and its box, one line tall, centred
+// under the fill and kept inside the timeline, as the axis labels are.
+struct TimelineBestLabel {
     size_t fill = 0;
-    std::string text;
     ImU32 col = 0;
-    int line = 0;
     TimelineRect rect;
 };
 
@@ -190,6 +232,12 @@ struct TimelineLayout {
     // order, so a jump between two segments is a vertical step.
     std::vector<TimelinePoint> saved_line;
     float activate_y = 0.0f;  // the saved row's height at kSpActivationBars
+    // The stretches, each over the saved row's full height, where the player
+    // has enough saved to activate: after the end of the last activation's
+    // band (from the start with none), wherever saved_line is at or above
+    // activate_y. A point exactly on the line counts as enough. Stretches
+    // that touch are one.
+    std::vector<TimelineRect> saved_enough;
     // The ghost path's windows (PreviewScene::ghost_windows), one band each
     // in the Ghost row. The ghost row is 0 tall when there are none. A point
     // on one lands on the moment under it, as the mockup's ghost bands take
@@ -197,10 +245,8 @@ struct TimelineLayout {
     std::vector<TimelineRect> ghost_bands;
     std::vector<TimelineBand> bands;
     std::vector<TimelineFillItem> fills;
-    // In order along the timeline. The Fills row is one cost line taller
-    // when any label is on line 1.
-    std::vector<TimelineCostLabel> cost_labels;
-    size_t cost_clashes = 0;
+    // In the order of the scene's fills.
+    std::vector<TimelineBestLabel> best_labels;
     float height() const { return rows[kTimelineRowCount - 1].y1; }
     const TimelineRect& row(TimelineRow r) const { return rows[static_cast<size_t>(r)]; }
 };
@@ -209,11 +255,11 @@ struct TimelineLayout {
 std::string timeline_fill_id(int64_t chord_tick);
 
 // Lay the scene out `width` pixels wide over `length_ms` (the Preview's
-// playback end), with `labels` under their fills. No value when
+// playback end), each fill in the look `marks` give it. No value when
 // song_fraction has no song length to use.
 std::optional<TimelineLayout> timeline_layout(const app::PreviewScene& scene, double length_ms,
                                               float width, const TimelineMetrics& metrics,
-                                              const std::vector<TimelineFillLabel>& labels = {});
+                                              const TimelineFillMarks& marks = {});
 
 // What a point lands on: a fill's hit box, else an activation band, else,
 // anywhere inside the timeline, the moment under it. Outside, nothing.
@@ -225,17 +271,17 @@ struct TimelineHit {
 };
 TimelineHit timeline_hit(const TimelineLayout& layout, float x, float y);
 
-// What the timeline draws this frame. `cant_ticks` are fills drawn as
-// can't-activate although the scene says Offered (the screen's left-to-right
-// rule); `labels` go under their fills; `selected` outlines that activation's
-// band.
-struct TimelineInput {
+// What the timeline draws this frame: the scene, the fills' marks (the base),
+// `selected` to outline that activation's band, and `highlighted` to draw that
+// fill (an index into the scene's fills) as hovered, with the selected band's
+// outline. `labels` is read by nothing (see TimelineFillLabel).
+struct TimelineInput : TimelineFillMarks {
     const app::PreviewScene* scene = nullptr;
     double length_ms = 0.0;    // the Preview's playback end
     double position_ms = 0.0;  // the playhead
-    std::vector<int64_t> cant_ticks;
     std::vector<TimelineFillLabel> labels;
     std::optional<size_t> selected;
+    std::optional<size_t> highlighted;
 };
 
 // What happened on the timeline this frame. Indexes are into the scene's
