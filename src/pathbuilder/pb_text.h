@@ -6,6 +6,9 @@
 // from its owner, and this file works out no game fact of its own. Plans:
 // docs/superpowers/plans/2026-10-30-path-builder-redesign.md, task CO-1, and
 // docs/superpowers/plans/2026-10-31-path-builder-redesign-2.md, task SC-3a.
+// The fill card follows the third mockup
+// (docs/superpowers/specs/2026-10-31-path-builder-mockup-3/), plan
+// docs/superpowers/plans/2026-10-31-path-builder-redesign-3.md, task TX-3.
 
 #ifndef HYDRA_PATHBUILDER_PB_TEXT_H
 #define HYDRA_PATHBUILDER_PB_TEXT_H
@@ -129,24 +132,69 @@ StepShort step_short(const SongTiming& timing, const Activation& act);
 // "costs nothing" or "costs 1,234 points" (group_thousands).
 std::string cost_text(int64_t cost);
 
+// The word under the best next fills on the timeline, and the cost of a list
+// row, a step, an end choice or a fill card that loses nothing.
+inline constexpr const char* kBestFillLabel = "best";
+
+// The cost of a list row, a step, an end choice or a fill card: kBestFillLabel
+// when it loses nothing (costs_nothing), else the cost in full (format_cost).
+std::string cost_or_best(int64_t cost);
+
 // The candidate's numbers the hover explains, once its search has landed:
 // best_finish is BF(n plus this fill), best_now is BF(n), cost is
-// candidate_costs's difference, best_fill is the name of the fill that keeps
-// BF(n), and hydra_end is the candidate's activation in BF(n plus this fill)'s
-// path (null when the caller has none, which leaves out the end line).
+// candidate_costs's difference and tier its colour (CandidateCost::tier),
+// best_fill is the name of the fill that keeps BF(n), and hydra_end is the
+// candidate's activation in BF(n plus this fill)'s path (null when the caller
+// has none, which leaves out the end line).
 struct FillHoverNumbers {
     int64_t best_finish = 0;
     int64_t best_now = 0;
     int64_t cost = 0;
+    app::CostTier tier = app::CostTier::Green;
     std::string best_fill;
     const Activation* hydra_end = nullptr;
 };
+
+// The labels of a fill card's rows, the mockup's fillTip words.
+inline constexpr const char* kPhrasesSavedLabel = "Phrases saved";
+inline constexpr const char* kBestFinishHereLabel = "Best finish here";
+inline constexpr const char* kCostLabel = "Cost";
+
+// One row of a fill card: a label and its value.
+struct CardRow {
+    std::string label;
+    std::string value;
+};
+
+// A fill's hover as a short card (the third mockup's fillTip, answers.md
+// answer 3): a heading, labelled rows, and grey lines under them. cost_tier
+// is the Cost row's colour, set only once the cost has landed.
+struct FillHoverCard {
+    std::string heading;
+    std::vector<CardRow> rows;
+    std::optional<app::CostTier> cost_tier;
+    std::vector<std::string> grey;
+};
+
+// The card for scene.fills[fill_index]. The heading is the fill's name and
+// its clock (clock_str), joined by app::kFactSeparator. A Taken fill adds one
+// grey line, kYourActivationHoverText; a fill with a fill_reason adds that
+// sentence alone. A fill the player can take gets three rows: the phrases
+// saved (bars_saved_at), the best finish here and the cost (cost_or_best),
+// then a grey line naming the best choice (kBestChoiceNowText when this fill
+// costs nothing) and, when `numbers` has a hydra_end with a deact node, where
+// Hydra would end it (squeeze_end_text). `numbers` empty means the
+// candidate's search has not landed: the last two rows read kPendingText and
+// no grey line follows.
+FillHoverCard fill_hover_card(const PreviewScene& scene, size_t fill_index,
+                              const std::optional<FillHoverNumbers>& numbers);
 
 // The hover over scene.fills[fill_index]: its name and clock (clock_str),
 // then its fill_reason, "Your activation" for a Taken fill, or for a fill
 // the player can take the bars saved and the two numbers its cost compares.
 // `numbers` empty means the candidate's search has not landed ("...").
-// Lines are separated by '\n'.
+// Lines are separated by '\n'. The screen's tooltip reads this until it draws
+// fill_hover_card.
 std::string fill_hover_text(const PreviewScene& scene, size_t fill_index,
                             const std::optional<FillHoverNumbers>& numbers);
 

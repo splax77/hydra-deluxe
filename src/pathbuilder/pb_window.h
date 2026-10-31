@@ -68,9 +68,6 @@ inline constexpr const char* kRemoveLastLabel = "Remove";
 inline constexpr const char* kRemoveEarlierLabel = "Remove this and later ones";
 inline constexpr const char* kEndItAtLabel = "End it at:";
 inline constexpr const char* kNoTimingNeededText = "no timing needed";
-// The word under the best next fills on the timeline, and the cost of a list
-// row, a step or an end choice that loses nothing.
-inline constexpr const char* kBestFillLabel = "best";
 
 // The builder's whole state between frames.
 class PbApp {

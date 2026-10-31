@@ -20,8 +20,8 @@
 
 #include "pathbuilder/pb_coach.h"   // kFinishForMeLabel
 #include "pathbuilder/pb_menu.h"    // kStartOverLabel
-#include "pathbuilder/pb_text.h"    // kNoStepsText, locked_message
-#include "pathbuilder/pb_window.h"  // the score and button labels, kBestFillLabel
+#include "pathbuilder/pb_text.h"    // kNoStepsText, kBestFillLabel, locked_message
+#include "pathbuilder/pb_window.h"  // the score and button labels
 #include "ui/preview_timeline.h"    // timeline_fill_id, kTimelineFillsLabel
 
 namespace pbtest {
