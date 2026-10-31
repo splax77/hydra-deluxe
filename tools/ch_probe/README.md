@@ -46,7 +46,7 @@ Two things trip up a new runner:
 
 A hit is a score that rose. `experiments/walk_edges.py` and
 `experiments/watch_window.py` run on the same pieces. They were written for
-steps 5 and 4 of the hit-window plan:
+the hit-window plan (`walk_edges.py` for step 5, `watch_window.py` for steps 1 to 4):
 `docs/superpowers/plans/2026-09-25-hit-window-testing.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-09-25-hit-window-testing.md`).
 D28 in `docs/audit/2026-10-03-fix-decisions.md` records that the plan's steps 1 to 3
 were answered from the game's code and `poll_windows.csv`, and that steps 4
