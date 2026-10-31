@@ -49,7 +49,7 @@ In the Hydra repo, these name the card folder: `CLAUDE.md` ("Past sessions"), `d
 
 ### What the plan must settle
 
-1. **Which are finished.** A plan or handoff is finished when its work is merged and no session is still working from it. Some are current: for example, sessions on 2026-10-31 were still running the ch MCP kit live steps from `docs/handoffs/2026-10-31-ch-mcp-kit-live-steps-handoff.md`. Those stay until their work ends. Say how each one was judged.
+1. **Which are finished.** A plan or handoff is finished when its work is merged and no session is still working from it. Some are current: for example, sessions on 2026-10-31 were still running the ch MCP kit live steps from `docs/handoffs/2026-10-31-ch-mcp-kit-live-steps-handoff.md` and its `-2` and `-3` follow-ups. Those three sit untracked in the main checkout, as do dozens of other handoffs and plans (`git status` there lists them); the plan says what happens to untracked ones too. Current ones stay until their work ends. Say how each one was judged.
 2. **Move what permanent docs depend on, first.** For each citation in the 49 docs, the fact moves to its permanent home (a reference page, an ADR, the decision log, a doc under `docs/agents/`), or the citation is rewritten. Only then is the plan or handoff removed. Never leave a permanent doc pointing at a removed file.
 3. **The derive-once and doc-review gates** count `docs/` changes, so the removal and the moves are reviewed like any change.
 
