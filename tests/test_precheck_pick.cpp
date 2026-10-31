@@ -1,7 +1,8 @@
 // The merge-test picker (tools/precheck/test_pick.h) on fixture repos: one
 // level of callers with the selector values, deleted names, helper headers,
-// changed test files, the three limits and the shared-code paths. Plan:
-// docs/superpowers/plans/2026-10-25-merge-test-picker.md, Task 3 (a) to (i).
+// changed test files, the three limits and the shared-code paths. The cases
+// are Task 3 (a) to (i) of
+// docs/superpowers/plans/2026-10-25-merge-test-picker.md (removed; git show 444631e6:docs/superpowers/plans/2026-10-25-merge-test-picker.md).
 #include "doctest.h"
 
 #include <algorithm>
