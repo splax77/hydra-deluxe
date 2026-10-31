@@ -297,7 +297,7 @@ void test_preview_controls(ImGuiTestContext* ctx) {
     IM_CHECK_FLOAT_NEAR_EQ(pc.position_ms(), pc.playback_end_ms(), 0.001);
 }
 
-// The overlay's boxes as drawn, found by the names preview_tab gives them: no
+// The overlay's boxes as drawn, found by the names preview_panel gives them: no
 // box overlaps another or the gauge, and the next-activation box stands under
 // the drain box (D111 item 3) with their right edges lined up and the left
 // column's gap between them. A box not on screen is left out. Returns how
