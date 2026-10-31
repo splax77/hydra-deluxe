@@ -1,6 +1,6 @@
 # Plan: every plan proves its premises (the Premise map)
 
-Written 2026-10-31 by planning agent a674b1c8bb5277e69 (task PREMISE-MAP-PLAN, session 90d40bc9). Waits for the user's yes before any task starts (agent rule 3).
+Written 2026-10-31 by planning agent a674b1c8bb5277e69 (task PREMISE-MAP-PLAN, session 90d40bc9). Answered 2026-10-31: shown the six questions with their recommendations, the user said "Approve all six". So every question takes its recommended answer, and the build may start.
 
 ## The plain version
 
