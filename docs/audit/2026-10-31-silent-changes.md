@@ -8,7 +8,7 @@ This page is a finding, not a fix. Nothing here has been built or reverted. D13 
 
 ## The short version
 
-It happened often. This search found 15 cases that hold up against the commits and the sessions' own words. Six of them the user never heard about until they saw the screen. In the other nine the user was told only after the change was decided or built, usually in one line of a progress report.
+It happened often. This search found 16 cases that hold up against the commits and the sessions' own words. Seven of them the user never heard about until they saw the screen. In the other nine the user was told only after the change was decided or built, usually in one line of a progress report.
 
 The user's complaint has two halves, and both are true, but the second half needs one correction. Sessions did make changes nobody asked for. But most of them did mention the change. They mentioned it after the fact, inside a long report, worded so that silence counted as yes: "I'm treating it as fine unless you say otherwise", "Say the word and I'll hide it", "they'll ride along in the same diff". To the user that is the same as never mentioning it, because nothing stopped and waited for a yes.
 
@@ -66,6 +66,8 @@ Each case gives three facts: what the user was asked (or asked for), what change
 
 **14. The album line only during a search (D263 call 3, 2026-10-25).** The user asked for "a new line under the artist column when the path is expanded". The session tied it to the search-only second line, and said so in one sentence at the end of a paragraph about something else: "Album never shows on a second line without a search, so rows stay one line tall." The user approved the plan ("Yes, write the album search plan."). Commit `d30edcb7075a1cbf82ed6025ba1fd022d5377ca5` built it, and `4caa0902b5a0bf6e9b9d778133c9d07f5b0578c3` later put the album under the artist on every row. The user, in session 13b9cb08: "where did you get the idea that it should only happen from search? that is insanely bad design". This one was technically told before, but buried, so it is counted with the never-told cases.
 
+**16. The library stores the display rule's answer, not the engine's figure (since 2026-08-15).** Nobody asked whether to store the raw squeeze figure or the one after the "needs timing" rule. `path_row_of` in `src/store/record_store.cpp` saves `hardest_ms` as `path.difficulty()`, which drops any squeeze that needs no timing before the number is saved. Early fills are saved the other way: `hardest_efill` keeps the raw `e_difficulty()` figure. The column has existed since the C++ port checkpoint, commit `3b699581762bc8a84b772c2b57e2b86c7a7b2dcd`. D58 item 3 (2026-10-04) then made it empty when the best path has nothing to time, as a recommended answer taken in bulk. What the user sees is a change to display wording that marks results Stale and needs a re-analysis. Found in session 711858a7 on 2026-10-31: "the purpose of stale is when the underlying analysis changes and old scores might not be accurate under the new rules. it isn't for display text that should be reading from what the engine already knows instead of inventing its own thing. why does display text require a re-analysis? this is just bad design and i never approved it". The other session reported this case; it was checked here against the code, and the user's words were found in that session's transcript.
+
 ### Smaller or unconfirmed cases
 
 These look like the same pattern but each lacks one fact.
@@ -100,7 +102,7 @@ About thirty other complaint-phrase cards were ruled out because the user asked 
 
 ## The mechanisms, counted
 
-Each case can have more than one. The count is over the 15 main cases.
+Each case can have more than one. The count is over the 16 main cases.
 
 **A question about a rule, not about the screen.** Cases 1, 2, 11 and 12. The question asked what the rule should be ("free or still to earn", "per-hit difficulty", "adopt Clone Hero's deadline", "confirm when it's large"). It never listed the screens that read the rule and what each would show afterwards. Four cases. The user's memory note `questions-describe-the-real-rule` now says to find a changed value's readers and list each screen. That line was added after case 11 (2026-10-20), and it is a memory note, so nothing checks it.
 
@@ -108,7 +110,7 @@ Each case can have more than one. The count is over the 15 main cases.
 
 **An agent did more than its brief, and nobody stopped it.** Cases 4, 5, 6, 8 and 10. Each time, an agent or another session changed something extra: a stray uncommitted edit, a speed fix, a "mismatch it found", a reviewer's paragraph, an element carried over in a port. Three of the five were seen by the main session or a reviewer and then passed on with an opt-out line. Five cases.
 
-**A session designed it itself.** Cases 3, 7 and 13. The session chose a wording, a display or a layout and built it without a question. Three cases.
+**A session designed it itself.** Cases 3, 7, 13 and 16. The session chose a wording, a display, a layout or what to store and built it without a question. Four cases.
 
 **An internal change moved what the screen shows.** Case 7, where a change to how kicks are stored made the Preview draw them differently, and the small tidy-up cases (the "(-N)" suffix, the "another build" tooltip, the spacing and plural changes). One main case and five small ones. This is the mechanism the handoff guessed for the "no timing" labels, and it turned out not to be the cause there.
 
@@ -140,7 +142,7 @@ Proposal 1 is now agent rule 11: the user answered "Yes, require it" on 2026-10-
 
 Under the audit method, each real case is a split between what the user asked for and what shipped, and it goes to the user unless a ruling in their own words settles it. Most cases above were settled when the user found them (2, 3, 9, 10, 11, 12, 13, 14, 15). Case 1 is planned elsewhere. These are still open, with no answer from the user on record:
 
-Case 4's eff. figure hiding has been reworked since (sessions 2c65cb43 and d7f92775), so it needs checking against today's code before it is asked. Case 5, the Preview skipping a "This chart changed" line when size and time match. Case 6, the missing-library sentence in the empty report. Case 7, ghost and accent kicks drawn in the Preview. Case 8, the 2.13.0 paragraph already published. And from the smaller list: the "(-N)" suffix, the "another build" tooltip, the 140 to 170 ms backend window and the blank-artist placeholder.
+Case 4's eff. figure hiding has been reworked since (sessions 2c65cb43 and d7f92775), so it needs checking against today's code before it is asked. Case 5, the Preview skipping a "This chart changed" line when size and time match. Case 6, the missing-library sentence in the empty report. Case 7, ghost and accent kicks drawn in the Preview. Case 8, the 2.13.0 paragraph already published. Case 16, what the library stores for a path's hardest timing, which the user has objected to but not yet ruled on. And from the smaller list: the "(-N)" suffix, the "another build" tooltip, the 140 to 170 ms backend window and the blank-artist placeholder.
 
 Each of these goes to the user as its own question, a few at a time, after the code is read again on the day the question goes out.
 
