@@ -92,6 +92,11 @@ READY_FRACTION = SP_ACTIVATION_BARS / SP_CAP_BARS
 # bytes after it are other flags), so sp_active_u32 would mix them in.
 DEFAULT_WIDTH = 64
 
+
+def column_names(width: int = DEFAULT_WIDTH) -> tuple:
+    """The (amount, maximum) watch-row column names for a width in bits."""
+    return f"sp_amount_u{width}", f"sp_max_u{width}"
+
 # The plan names four phrases as the expected fill of the meter, so a full
 # rise is printed beside sp_max divided by this.
 PHRASES_PER_FULL_METER = 4
@@ -165,15 +170,17 @@ def _ms(row: dict) -> float:
     return row["clock_s"] * 1000.0
 
 
-def _fmt(ms: float) -> str:
+def format_ms(ms: float) -> str:
+    """A time in ms as the report prints it."""
     return f"{ms:.1f} ms"
 
 
 def _chord_label(chord: dict) -> str:
-    return f"chord {chord['index']} (tick {chord['tick']}, {_fmt(chord['ms'])})"
+    return f"chord {chord['index']} (tick {chord['tick']}, {format_ms(chord['ms'])})"
 
 
-def _active(row: dict) -> bool:
+def is_active(row: dict) -> bool:
+    """Whether a watch row has the Star Power flag set."""
     return row["sp_active_byte"] != 0
 
 
@@ -182,10 +189,10 @@ def find_activations(rows: list) -> list:
     found = []
     i = 1
     while i < len(rows):
-        if _active(rows[i]) and not _active(rows[i - 1]):
+        if is_active(rows[i]) and not is_active(rows[i - 1]):
             drop = None
             for k in range(i + 1, len(rows)):
-                if not _active(rows[k]):
+                if not is_active(rows[k]):
                     drop = k
                     break
             found.append(_Activation(len(found) + 1, i, drop))
@@ -265,7 +272,7 @@ def ready_between(rows: list, start_ms: float, end_ms: float,
     if not inside:
         return ReadyWindow(0, None, None, None)
     ready = next((r for r in inside
-                  if not _active(r) and at_ready_level(r[amount_col], r[max_col])),
+                  if not is_active(r) and at_ready_level(r[amount_col], r[max_col])),
                  None)
     return ReadyWindow(len(inside), max(r[amount_col] for r in inside),
                        inside[0][max_col], ready)
@@ -292,7 +299,7 @@ def _check_phrase_rises(report: Report, rows: list, chords: list,
             break
         if step is None:
             report.check(False, f"phrase rise after {_chord_label(chord)}: "
-                         f"missing (no rise from {_fmt(lo)} to {_fmt(hi)})")
+                         f"missing (no rise from {format_ms(lo)} to {format_ms(hi)})")
             continue
         used_steps.add(step)
         before = rows[step - 1][amount_col]
@@ -301,9 +308,9 @@ def _check_phrase_rises(report: Report, rows: list, chords: list,
         kind = "clamped" if after == rows[step][max_col] else "full"
         if kind == "full":
             full_sizes.append(size)
-        during = ", during Star Power" if _active(rows[step - 1]) else ""
+        during = ", during Star Power" if is_active(rows[step - 1]) else ""
         report.check(True, f"phrase rise after {_chord_label(chord)}: "
-                     f"+{size} ({before} -> {after}) at {_fmt(_ms(rows[step]))}, "
+                     f"+{size} ({before} -> {after}) at {format_ms(_ms(rows[step]))}, "
                      f"{kind}{during}")
     sp_max = rows[0][max_col]
     quarter = sp_max / PHRASES_PER_FULL_METER
@@ -357,36 +364,36 @@ def _check_activation(report: Report, rows: list, act: _Activation) -> None:
     doubled = next((r for r in window if r["sp_mult_u32"] == base * SP_MULTIPLIER), None)
     if doubled is not None:
         report.check(True, f"  activation {n} multiplier doubles: {base} -> "
-                     f"{doubled['sp_mult_u32']} at {_fmt(_ms(doubled))}")
+                     f"{doubled['sp_mult_u32']} at {format_ms(_ms(doubled))}")
     else:
         seen = sorted({r["sp_mult_u32"] for r in window})
         report.check(False, f"  activation {n} multiplier doubles: {base} before, "
                      f"{seen} within {EVENT_WINDOW_MS:g} ms, expected "
                      f"{base * SP_MULTIPLIER}")
 
-    ahead = next((r for r in window if _active(r) and r["sp_end_s"] > r["clock_s"]), None)
+    ahead = next((r for r in window if is_active(r) and r["sp_end_s"] > r["clock_s"]), None)
     if ahead is not None:
         report.check(True, f"  activation {n} end time ahead of the clock: end "
-                     f"{_fmt(ahead['sp_end_s'] * 1000)}, clock {_fmt(_ms(ahead))}")
+                     f"{format_ms(ahead['sp_end_s'] * 1000)}, clock {format_ms(_ms(ahead))}")
     else:
         report.check(False, f"  activation {n} end time ahead of the clock: end "
-                     f"{_fmt(flip['sp_end_s'] * 1000)}, clock {_fmt(flip_ms)}")
+                     f"{format_ms(flip['sp_end_s'] * 1000)}, clock {format_ms(flip_ms)}")
 
     if act.drop_row is None:
         last = rows[-1]
         report.check(False, f"  activation {n} flag clears at the end: still set at "
-                     f"the last row ({_fmt(_ms(last))}), end time "
-                     f"{_fmt(last['sp_end_s'] * 1000)}")
+                     f"the last row ({format_ms(_ms(last))}), end time "
+                     f"{format_ms(last['sp_end_s'] * 1000)}")
         return
     last_active = rows[act.drop_row - 1]
     end_ms = last_active["sp_end_s"] * 1000
     if last_active["sp_end_s"] != flip["sp_end_s"]:
         report.note(f"  activation {n} end time moved while active: "
-                    f"{_fmt(flip['sp_end_s'] * 1000)} at the start, {_fmt(end_ms)} at the end")
+                    f"{format_ms(flip['sp_end_s'] * 1000)} at the start, {format_ms(end_ms)} at the end")
     drop_ms = _ms(rows[act.drop_row])
     report.check(abs(drop_ms - end_ms) <= EVENT_WINDOW_MS,
-                 f"  activation {n} flag clears at the end: end {_fmt(end_ms)}, "
-                 f"flag 0 at {_fmt(drop_ms)}")
+                 f"  activation {n} flag clears at the end: end {format_ms(end_ms)}, "
+                 f"flag 0 at {format_ms(drop_ms)}")
 
     held = last_active["sp_mult_u32"]
     near_end = [r for r in rows[act.drop_row - 1:]
@@ -394,7 +401,7 @@ def _check_activation(report: Report, rows: list, act: _Activation) -> None:
     halved = next((r for r in near_end if r["sp_mult_u32"] * SP_MULTIPLIER == held), None)
     if halved is not None:
         report.check(True, f"  activation {n} multiplier halves at the end: {held} -> "
-                     f"{halved['sp_mult_u32']} at {_fmt(_ms(halved))}")
+                     f"{halved['sp_mult_u32']} at {format_ms(_ms(halved))}")
     else:
         seen = sorted({r["sp_mult_u32"] for r in near_end})
         report.check(False, f"  activation {n} multiplier halves at the end: {held} "
@@ -425,7 +432,7 @@ def _check_activations(report: Report, rows: list, score: dict) -> float | None:
 
         act = game[k]
         flip_ms = _ms(rows[act.flip_row])
-        report.note(f"Activation {act.number} at clock {_fmt(flip_ms)}:")
+        report.note(f"Activation {act.number} at clock {format_ms(flip_ms)}:")
         _check_activation(report, rows, act)
 
         landed = _landed_chord(chords, chord_ms, flip_ms)
@@ -436,8 +443,8 @@ def _check_activations(report: Report, rows: list, score: dict) -> float | None:
                     f"{_chord_label(landed)}")
             if act.drop_row is not None and deact is not None:
                 end_ms = rows[act.drop_row - 1]["sp_end_s"] * 1000
-                text += (f"; game end {_fmt(end_ms)}, Hydra deactivation "
-                         f"{_fmt(deact['ms'])} (chord {deact['index']}, tick "
+                text += (f"; game end {format_ms(end_ms)}, Hydra deactivation "
+                         f"{format_ms(deact['ms'])} (chord {deact['index']}, tick "
                          f"{deact['tick']}), difference {end_ms - deact['ms']:+.1f} ms")
             elif deact is None:
                 text += f"; no chord at deact_tick {want['deact_tick']}"
@@ -508,15 +515,14 @@ def _check_multipliers(report: Report, rows: list, chords: list,
                     f"watcher row between them and the next chord")
     if stopped_at is not None:
         report.note(f"Multiplier not compared from chord {stopped_at['index']} on: "
-                    f"the game's activations part from the path at {_fmt(parted_ms)}")
+                    f"the game's activations part from the path at {format_ms(parted_ms)}")
 
 
 def compare(rows: list, score: dict, *, resolution: int | None = None,
             sp_bar_ticks: int | None = None, width: int = DEFAULT_WIDTH) -> Report:
     """Every check over the watcher rows and the score JSON, as a Report.
     With no resolution, Hydra's full meter is left out of the sp_max line."""
-    amount_col = f"sp_amount_u{width}"
-    max_col = f"sp_max_u{width}"
+    amount_col, max_col = column_names(width)
     chords = score["chords"]
     report = Report()
     report.note(f"Star Power comparison: {len(rows)} watcher rows, {len(chords)} "
@@ -527,7 +533,7 @@ def compare(rows: list, score: dict, *, resolution: int | None = None,
     for i in range(1, len(rows)):
         if rows[i]["clock_s"] < rows[i - 1]["clock_s"]:
             report.note(f"Note: the clock went back at row {i + 1} "
-                        f"({_fmt(_ms(rows[i - 1]))} -> {_fmt(_ms(rows[i]))}); "
+                        f"({format_ms(_ms(rows[i - 1]))} -> {format_ms(_ms(rows[i]))}); "
                         f"the checks assume one pass through the song")
             break
 

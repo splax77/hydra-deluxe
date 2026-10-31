@@ -12,7 +12,9 @@ folder on sys.path.
 
 from __future__ import annotations
 
+import contextlib
 import struct
+from unittest import mock
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Sequence, Tuple, Union
 
@@ -79,3 +81,33 @@ def fake_process(
         cells[proc.resolve(rva)] = (
             value if isinstance(value, bytes) else struct.pack("<d", value))
     return proc, seen
+
+
+@contextlib.contextmanager
+def searching_for_no_song(engine_finder):
+    """For a test of the default engine search: inside the block, the capped
+    finder still runs for real, but over a memory scan that finds nothing and
+    a wall clock that moves only when the search sleeps, and the window
+    patterns need no reads. So the default search prints its progress dots and
+    ends with EngineSearchTimeout, with no game and no waiting. The finder's
+    `out` argument is passed through untouched."""
+    real = engine_finder.find_live_engine_capped
+    clock = [0.0]
+
+    def sleep(seconds: float) -> None:
+        clock[0] += seconds
+
+    def finder(proc, patterns, cap_s=engine_finder.ENGINE_SEARCH_CAP_S, *,
+               out=None, **_):
+        return real(proc, patterns, cap_s, scan=lambda *_a: ([], 0, 0),
+                    sleep=sleep, now=lambda: clock[0], out=out)
+
+    patterns = [(b"back", b"front")]
+    with contextlib.ExitStack() as stack:
+        stack.enter_context(mock.patch.object(
+            engine_finder, "find_live_engine_capped", finder))
+        stack.enter_context(mock.patch.object(
+            engine_finder, "all_patterns", lambda proc: patterns))
+        stack.enter_context(mock.patch.object(
+            engine_finder, "normal_pattern", lambda proc: patterns[0]))
+        yield
