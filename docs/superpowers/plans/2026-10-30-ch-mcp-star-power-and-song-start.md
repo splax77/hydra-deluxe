@@ -197,7 +197,9 @@ Owns `tools/ch_mcp/server.py`, `tools/ch_mcp/tests/test_server.py`, `tools/ch_mc
 
 Registers the eleven new tools in `build_server()` (the nine of the table through `ch_open_song`, plus `ch_method_watch_start` and `ch_method_watch_stop`), builds one `SpTools`, one `MenuTools` and one `MethodWatch` in `Helper` sharing the one lock, and updates `TOOL_NAMES` in `test_server.py` to the twenty-nine names (eighteen today plus eleven). The server's `instructions` text changes as "Rule rewrites" says. The agent page's two safety paragraphs change as "Rule rewrites" says, its "When to use it" sentence changes as "Rule rewrites" says (ruling 6), and "The shape of a live run" adds the watcher, `ch_open_song`, the method watch and the LS-M study; the README's server section names the new modules and the three data files (`menu_steps.json`, `start_candidates.json`, `start_method.json`) with their owners. Tests: `build_server()` registers exactly the twenty-nine names; everything else in `test_server.py` passes unedited. Run: `py -m pytest tools/ch_mcp/tests/test_server.py -q`.
 
-### T8: `ch_start_song`, the one-step route (blocked on LS-M's pass; runs after the first merge wave and after the main session commits `start_method.json`)
+### ~~T8: `ch_start_song`, the one-step route (blocked on LS-M's pass; runs after the first merge wave and after the main session commits `start_method.json`)~~ (struck)
+
+Struck on 2026-10-31 by the user's answer to question 4 of `docs/superpowers/plans/2026-10-31-ch-mcp-direct-start.md`: a song now starts from the command line for a human player, so this task is not built, and it stays here only as the design for a day that route breaks.
 
 Owns `tools/ch_mcp/agent/menu.ts`, `tools/ch_mcp/menu_tools.py`, `tools/ch_mcp/tests/test_menu_tools.py`, `tools/ch_mcp/tests/test_frida_attach.py` (the allowed-calls test learns the data file), `tools/ch_mcp/server.py` and `tools/ch_mcp/tests/test_server.py`.
 
