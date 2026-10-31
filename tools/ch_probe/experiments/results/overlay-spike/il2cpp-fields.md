@@ -4,7 +4,7 @@ Task I of `docs/superpowers/plans/2026-10-28-overlay-spike.md`. This file holds 
 
 ## How the dump was made
 
-Il2CppDumper v6.7.46 ran offline on the two game files (the first start failed at once, as item 1 below says, and the second made the dump): `C:\Clone Hero\1.1 june\Clone Hero\GameAssembly.dll` and `...\Clone Hero_Data\il2cpp_data\Metadata\global-metadata.dat`. It ran from its own folder with absolute paths, as the plan says. Output went to a new empty folder in the session scratch area, `scratchpad\il2cpp-dump`, and is not committed.
+Il2CppDumper v6.7.46 ran offline on the two game files (the first start failed at once, as item 1 below says, and the second made the dump): `C:\Clone Hero\1.1 june\Clone Hero\GameAssembly.dll` and `...\Clone Hero_Data\il2cpp_data\Metadata\global-metadata.dat`. It ran from its own folder with absolute paths, as the plan says. Output went to a new empty folder in the session scratch area (folder `il2cpp-dump`, not kept), and is not committed.
 
 Two things needed handling, and neither changed any file:
 

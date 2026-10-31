@@ -2061,7 +2061,7 @@ Two places answer it. The first is the variant row. `Engine::reduce_group` in `s
 | song3e variant, 3072/18432 | 0 1 | 0 E2 |
 | song3 variant | 0 1 | 0 2 |
 
-They disagree today. The verifier re-ran this on a scratch test chart (`scratchpad\r5skips\song3e\notes.chart`) with `hydra_replay dump --cap 2` and `target`. The two agree whenever both paths have the same skip state at the fold.
+They disagree today. The verifier re-ran this on a scratch test chart (a throwaway file in the session's scratch folder, not kept) with `hydra_replay dump --cap 2` and `target`. The two agree whenever both paths have the same skip state at the fold.
 
 On screen, the variant's Paths tab row and its Ctrl+C string read '0 1' for a real '0 E2'. Its early-fill line, badge and difficulty can be wrong too. From reading the code, the Preview would show fill F3 (7788) as Hidden. Scores, SP ends and the leader row are correct.
 

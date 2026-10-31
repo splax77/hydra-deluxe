@@ -41,7 +41,7 @@ The findings fall into four groups: bugs to fix first, dead code, slow spots and
 - `srb_audio_dump/` (169 MB of WAVs)
 - `libvpx_err.txt` (a 50 MB ffmpeg log)
 
-The other loose files are old benchmark logs, and several are empty: the `e*.txt`, `err_*.txt`, `d*.txt`, `fixtureB.json` files and `scratch_ms/`. They should move out of the repo or be deleted, with `.gitignore` guards added.
+The other loose files are old benchmark logs, and several are empty: the `e*.txt`, `err_*.txt`, `d*.txt`, `fixtureB.json` files and the `scratch_ms` folder (not kept; it is no longer in the repo). They should move out of the repo or be deleted, with `.gitignore` guards added.
 
 **`ch_probe` bugs:**
 
