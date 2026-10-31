@@ -14,7 +14,7 @@ A bare `python` reaches a different install. In both shells it runs `C:\Python31
 
 The repo is `splax77/hydra-deluxe`. Text never goes to GitHub through a hand-typed `gh` command. It goes through `C:\Users\Patrick\.claude\gates\publish.ps1`, as the project CLAUDE.md's "Doc review" section says.
 
-How a release is built, signed and uploaded is in `docs/development.md`, in its "Every release" sections. A release's tag and title are both `v` plus the version, such as `v2.14.0`, and it carries two files: the installer and its `.sig` signature.
+How a release is built, signed and uploaded is in `docs/development.md`, in its "Every release" sections. A release's tag and title are both `v` plus the version, such as `v2.14.0`, and it carries two files: the installer and its `.sig` signature. The version number is set in one place, the project line of `CMakeLists.txt`, which reads VERSION 2.14.0 today.
 
 ## Ghidra and REA
 
@@ -56,7 +56,7 @@ Copy the database to your scratch folder and read the copy. The store runs SQLit
 
 Read the copy with `py` and its `sqlite3` module. If Python ever breaks, Windows has its own SQLite in `C:\Windows\System32\winsqlite3.dll`, which PowerShell can call through `Add-Type`. There is no `sqlite3` command-line tool here.
 
-The tables today are `charts`, `meta`, `profiles`, `records` and `record_paths` (read from a copy of the development build's file). Their columns are defined once, in `src/store/record_store.cpp`: the `charts` and `meta` tables in `RecordStore::set_up_schema`, and the result tables in `record_tables_sql()`. Read the columns there, not from an old note. The record layout has changed more than once.
+The tables today are `charts`, `meta`, `profiles`, `records` and `record_paths` (read from a copy of the development build's file). Their columns are defined once, in `src/store/record_store.cpp`: the `charts` and `meta` tables in `RecordStore::set_up_schema`, and the result tables in `record_tables_sql()`. Read the columns there, not from an old note. The record layout has changed more than once. One join has held through it: a result row's `song_id` is the chart's `md5` (the hyhash, the chart's id; `docs/adr/0028-a-chart-id-is-clone-heros-song-id.md`). A join on those two columns works on a copy of the development build's file.
 
 ### Re-analyze one chart without touching the library
 
