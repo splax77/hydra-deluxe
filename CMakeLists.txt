@@ -516,6 +516,7 @@ add_library(hydra_uibase STATIC
     src/ui/icons.cpp
     src/ui/imgui_files.cpp  # ImGui's file functions (imconfig.h)
     src/ui/list_scroll.cpp
+    src/ui/preview_timeline.cpp
     src/ui/theme.cpp
     src/ui/win32_dialogs.cpp
     src/ui/win32_window.cpp

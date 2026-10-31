@@ -11,6 +11,7 @@
 #include "imgui_internal.h"  // SetKeyOwner, owner-aware IsKeyPressed
 #include "render/overlay_layout.h"
 #include "ui/preview_controller.h"
+#include "ui/preview_timeline.h"  // draw_scrub_marks, draw_star
 #include "ui/text_role.h"
 #include "ui/theme.h"
 #include "ui/widgets.h"
@@ -181,25 +182,6 @@ void render_path_picker(AppState& app) {
     });
 }
 
-// Gold ticks over the scrubber just drawn, one per activation, where the
-// grab's centre sits for that time. ImGui keeps 2 px of padding and half a
-// grab at each end of a float slider, so the ticks do too.
-void draw_scrub_marks(const std::vector<double>& marks) {
-    if (marks.empty()) return;
-    const ImVec2 mn = ImGui::GetItemRectMin();
-    const ImVec2 mx = ImGui::GetItemRectMax();
-    const float grab = ImGui::GetStyle().GrabMinSize;
-    const float pad = 2.0f;  // ImGui's slider grab_padding, not scaled
-    const float x0 = mn.x + pad + grab * 0.5f;
-    const float span = (mx.x - mn.x) - 2.0f * pad - grab;
-    ImDrawList* dl = ImGui::GetWindowDrawList();
-    for (double f : marks) {
-        const float x = x0 + static_cast<float>(f) * span;
-        dl->AddRectFilled(ImVec2(x - px(1.5f), mn.y + px(2.0f)), ImVec2(x + px(1.5f), mx.y - px(2.0f)),
-                          ImGui::GetColorU32(kBestPathColor));
-    }
-}
-
 // Names a drawn overlay box as an item, so hydra_uitest can find where it
 // landed by `label` ("**/##next_act_box"). It takes no room, no input and no
 // keyboard focus. The label goes to the test engine the way a widget's does;
@@ -224,36 +206,10 @@ constexpr float kNextActNotationScale = 17.0f / 12.0f;
 
 // The score box's star row: kMaxStars stars, each as tall as a line of text
 // at `size`, with a fifth of that between them. The overlay font has no star
-// glyph, so draw_star draws each one as a shape.
+// glyph, so draw_star (ui/preview_timeline) draws each one as a shape.
 float star_gap(float size) { return size * 0.2f; }
 float star_row_width(float size) {
     return size * static_cast<float>(kMaxStars) + star_gap(size) * (kMaxStars - 1);
-}
-
-// One five-point star `size` tall with its top-left at `min`: filled in `col`
-// when `filled`, else an outline in `col`. The shape is concave, so the fill
-// goes through AddConcavePolyFilled.
-void draw_star(ImDrawList* dl, ImVec2 min, float size, bool filled, ImU32 col) {
-    constexpr int kPoints = 5;
-    // Inner radius over outer, and the outline's width over the star's
-    // height: both as the user's approved mock drew its stars.
-    constexpr float kInner = 0.47f;
-    constexpr float kStroke = 0.07f;
-    const float r = size * 0.5f;
-    const ImVec2 c(min.x + r, min.y + r);
-    ImVec2 pts[kPoints * 2];
-    for (int i = 0; i < kPoints * 2; ++i) {
-        // Start at the top point and go clockwise, outer and inner in turn:
-        // a quarter turn back from the right, then a half turn over kPoints
-        // steps.
-        const float a = IM_PI * (-0.5f + static_cast<float>(i) / kPoints);
-        const float rad = (i % 2 == 0) ? r : r * kInner;
-        pts[i] = ImVec2(c.x + std::cos(a) * rad, c.y + std::sin(a) * rad);
-    }
-    if (filled)
-        dl->AddConcavePolyFilled(pts, kPoints * 2, col);
-    else
-        dl->AddPolyline(pts, kPoints * 2, col, ImDrawFlags_Closed, std::max(1.0f, size * kStroke));
 }
 
 // The one way a text box is drawn (D114 item 27): its panel at `min`, as big
