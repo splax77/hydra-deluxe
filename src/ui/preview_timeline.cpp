@@ -78,15 +78,29 @@ constexpr ImU32 kStarColor = rgba(0xf2, 0xd0, 0x6b, 1.0f);  // --star
 
 // The saved row (the first mockup's drawMeter): the curve 6 px in from the
 // top and bottom (`y = n => H - 6 - n / 4 * (H - 12)`), stroke-width 2; the
-// activate line `stroke="#4a6" stroke-dasharray="4 4" opacity=".7"`; its label at
-// `x = w - 4`, `y = y(2) - 3`, `fill="#7c9"`.
+// activate line `stroke="#4a6" stroke-dasharray="4 4" opacity=".7"`.
 constexpr float kSavedInset = 6.0f;
 constexpr float kSavedLineW = 2.0f;
 constexpr ImU32 kActivateLineColor = rgba(0x44, 0xaa, 0x66, 0.7f);
 constexpr float kActivateDash = 4.0f;
-constexpr ImU32 kActivateLabelColor = rgba(0x77, 0xcc, 0x99, 1.0f);
-constexpr float kActivateLabelRight = 4.0f;
-constexpr float kActivateLabelRise = 3.0f;
+
+// The saved row's caption, in the label column under the row's name (second
+// mockup, renderRows, lines 464 and 465). Each caption line is
+// `.rlab small{color:var(--dim); margin-top:.1rem}` (line 62). The activate
+// line's sample is `.rlab .dash{width:1.4rem; border-top:2px dashed #7c9;
+// vertical-align:.2rem; margin-right:.3rem}` (line 63): its bottom .2 rem
+// above the text's baseline. The shading's swatch is `width:1.4rem;
+// height:.6rem; background:rgba(54,208,214,.28); margin-right:.3rem;
+// vertical-align:-.05rem` (line 465): its bottom .05 rem below the baseline.
+constexpr float kCaptionGapRem = 0.1f;
+constexpr float kCaptionMarkRem = 1.4f;     // the sample's and the swatch's width
+constexpr float kCaptionMarkGapRem = 0.3f;  // between a mark and its words
+constexpr ImU32 kActivateSampleColor = rgba(0x77, 0xcc, 0x99, 1.0f);
+constexpr float kActivateSampleW = 2.0f;
+constexpr float kActivateSampleRiseRem = 0.2f;
+constexpr ImU32 kEnoughSwatchColor = rgba(54, 208, 214, 0.28f);
+constexpr float kEnoughSwatchHRem = 0.6f;
+constexpr float kEnoughSwatchDropRem = 0.05f;
 
 // The ghost bands: `.band.ghost{border:1.5px dashed #bdbdbd}` (line 48). The
 // mockup gives `dashed` no length; the user ruled it the activate line's
@@ -119,6 +133,39 @@ void draw_dashed(ImDrawList* dl, const std::vector<ImVec2>& pts, ImU32 col, floa
             phase = !reaches ? phase + step : (on ? dash : 0.0f);
         }
     }
+}
+
+// The saved row's label: its name, then the activate line's sample and its
+// words, then the shading's swatch and its words, as one block centred
+// between `y0` and `y1` the way the other rows' names are. Each piece of text
+// wraps at `wrap_w` less any mark before it.
+void draw_saved_caption(ImDrawList* dl, float x, float y0, float y1, float wrap_w) {
+    ScopedFont font(TextRole::Label);
+    ImFont* const label_font = font_for(TextRole::Label).font;
+    const float ascent = ImGui::GetFontBaked()->Ascent;
+    const float mark_w = rem(kCaptionMarkRem) + rem(kCaptionMarkGapRem);
+    const std::string needed = std::to_string(kSpActivationBars) + kTimelineActivateLabelTail;
+    const float name_h = ImGui::CalcTextSize(kTimelineSavedLabel, nullptr, false, wrap_w).y;
+    const float needed_h = ImGui::CalcTextSize(needed.c_str(), nullptr, false, wrap_w - mark_w).y;
+    const float enough_h = ImGui::CalcTextSize(kTimelineEnoughLabel, nullptr, false, wrap_w - mark_w).y;
+    const float gap = rem(kCaptionGapRem);
+    float y = (y0 + y1) * 0.5f - (name_h + gap + needed_h + gap + enough_h) * 0.5f;
+
+    dl->AddText(label_font, 0.0f, ImVec2(x, y), kMutedColor, kTimelineSavedLabel, nullptr, wrap_w);
+    y += name_h + gap;
+
+    // The sample's 2 px border is the whole of its box, so its centre line is
+    // half the border above the box's bottom.
+    const float dash_y = y + ascent - rem(kActivateSampleRiseRem) - px(kActivateSampleW) * 0.5f;
+    draw_dashed(dl, {ImVec2(x, dash_y), ImVec2(x + rem(kCaptionMarkRem), dash_y)}, kActivateSampleColor,
+                px(kActivateSampleW));
+    dl->AddText(label_font, 0.0f, ImVec2(x + mark_w, y), kDimColor, needed.c_str(), nullptr, wrap_w - mark_w);
+    y += needed_h + gap;
+
+    const float swatch_y1 = y + ascent + rem(kEnoughSwatchDropRem);
+    dl->AddRectFilled(ImVec2(x, swatch_y1 - rem(kEnoughSwatchHRem)), ImVec2(x + rem(kCaptionMarkRem), swatch_y1),
+                      kEnoughSwatchColor);
+    dl->AddText(label_font, 0.0f, ImVec2(x + mark_w, y), kDimColor, kTimelineEnoughLabel, nullptr, wrap_w - mark_w);
 }
 
 // The drawn path, bands and taken fills: --sp (kTimelinePathColor). The
@@ -461,11 +508,11 @@ TimelineEvents PreviewTimeline::draw(const TimelineInput& in) const {
     auto at = [&](float x, float y) { return ImVec2(t0.x + x, t0.y + y); };
     ImDrawList* dl = ImGui::GetWindowDrawList();
 
-    // Row edges and the label column.
+    // Row edges and the label column. The saved row's label is its caption.
     const char* const names[kTimelineRowCount] = {nullptr,
                                                   kTimelineSectionsLabel,
                                                   kTimelinePhrasesLabel,
-                                                  kTimelineSavedLabel,
+                                                  nullptr,
                                                   kTimelineGhostLabel,
                                                   kTimelineActivationsLabel,
                                                   kTimelineFillsLabel};
@@ -475,6 +522,8 @@ TimelineEvents PreviewTimeline::draw(const TimelineInput& in) const {
         if (!(row.y1 > row.y0)) continue;
         if (r > 0)
             dl->AddRectFilled(ImVec2(origin.x, t0.y + row.y0), at(l.width, row.y0 + px(1.0f)), kRowEdgeColor);
+        if (static_cast<TimelineRow>(r) == TimelineRow::Saved)
+            draw_saved_caption(dl, origin.x, t0.y + row.y0, t0.y + row.y1, label_wrap);
         if (names[r] == nullptr) continue;
         // The label wraps, which only the font-taking AddText does; size 0 is
         // the size ScopedFont pushed.
@@ -516,15 +565,10 @@ TimelineEvents PreviewTimeline::draw(const TimelineInput& in) const {
         for (float x : l.phrase_x) draw_star(dl, at(x - size * 0.5f, y), size, true, kStarColor);
     }
 
-    // Star Power saved: the activate line and its label, then the curve on top.
+    // Star Power saved: the activate line, then the curve on top.
     {
         const float ay = l.activate_y;
         draw_dashed(dl, {at(0.0f, ay), at(l.width, ay)}, kActivateLineColor, px(1.0f));
-        ScopedFont font(TextRole::Label);
-        const std::string label = std::to_string(kSpActivationBars) + kTimelineActivateLabelTail;
-        const ImVec2 sz = ImGui::CalcTextSize(label.c_str());
-        dl->AddText(at(l.width - px(kActivateLabelRight) - sz.x, ay - px(kActivateLabelRise) - sz.y),
-                    kActivateLabelColor, label.c_str());
         std::vector<ImVec2> pts;
         pts.reserve(l.saved_line.size());
         for (const TimelinePoint& p : l.saved_line) pts.push_back(at(p.x, p.y));

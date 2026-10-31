@@ -61,9 +61,13 @@ inline constexpr const char* kTimelineSavedLabel = "Star Power saved";
 inline constexpr const char* kTimelineGhostLabel = "Hydra's best";
 inline constexpr const char* kTimelineActivationsLabel = "Your activations";
 inline constexpr const char* kTimelineFillsLabel = "Fills";
-// The activate line's words after its number, kSpActivationBars (drawMeter:
-// "2 phrases: enough to activate").
-inline constexpr const char* kTimelineActivateLabelTail = " phrases: enough to activate";
+// The saved row's caption under its name, as the second mockup writes it
+// (docs/superpowers/specs/2026-10-31-path-builder-mockup-2/mockup_template.html,
+// renderRows): the activate line's words after its number, kSpActivationBars
+// ("2 phrases: needed to activate", line 464), and the shading's words
+// (line 465).
+inline constexpr const char* kTimelineActivateLabelTail = " phrases: needed to activate";
+inline constexpr const char* kTimelineEnoughLabel = "enough to activate";
 
 // The section name the Section row leaves out: the practice section many
 // charts end with. The match is exact, case included, on the name the scene
