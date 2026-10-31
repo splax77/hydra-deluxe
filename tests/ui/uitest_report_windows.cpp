@@ -145,7 +145,8 @@ void note_rule_widths() {
     std::vector<std::string> texts;
     for (const auto& r : report.paths) texts.push_back(view_rules::path_search_text(r));
     const hydra::app::report_view::TableView<hydra::app::report::ReportRow> view(
-        report.paths, std::move(texts), view_rules::path_columns());
+        hydra::app::report_view::shared_rows(f.path.result, &GeneratedReport::paths),
+        std::move(texts), view_rules::path_columns());
     const std::vector<hydra::ui::ColumnSpec> specs =
         hydra::ui::report_frame::column_specs(view.columns());
     ImGui::Begin(window->Name);

@@ -60,8 +60,9 @@ void rebuild(DmWindow& w, const std::shared_ptr<const GeneratedDmReport>& result
     std::vector<std::string> texts;
     texts.reserve(result->rows.size());
     for (const DmReportRow& r : result->rows) texts.push_back(view_rules::dm_search_text(r));
-    w.view = std::make_unique<TableView<DmReportRow>>(result->rows, std::move(texts),
-                                                      view_rules::dm_columns());
+    w.view = std::make_unique<TableView<DmReportRow>>(
+        app::report_view::shared_rows(result, &GeneratedDmReport::rows), std::move(texts),
+        view_rules::dm_columns());
     w.widths = report_frame::measure(*w.view);
     w.view->set_sort({view_rules::dm_first_sort()});
     w.choices = view_rules::status_choices();

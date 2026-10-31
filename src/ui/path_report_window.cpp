@@ -60,7 +60,7 @@ void apply_filters(PathWindow& w) {
     w.tiles_dirty = true;
 }
 
-// Lets the window's copy of the rows go, and the cells fitted from them,
+// Lets the window's view of the rows go, and the cells fitted from them,
 // keeping the sort they were in.
 void drop_rows(PathWindow& w) {
     if (w.view) w.sort = w.view->sort();
@@ -90,7 +90,8 @@ void rebuild(PathWindow& w, const std::shared_ptr<const GeneratedReport>& result
     texts.reserve(result->paths.size());
     for (const ReportRow& r : result->paths) texts.push_back(view_rules::path_search_text(r));
     w.view = std::make_unique<TableView<ReportRow>>(
-        result->paths, std::move(texts), view_rules::path_columns());
+        app::report_view::shared_rows(result, &GeneratedReport::paths), std::move(texts),
+        view_rules::path_columns());
     w.widths = report_frame::measure(*w.view);
     // A kept sort naming a column these rows lack falls back to the first.
     const auto has_column = [&w](const app::report_view::SortSpec& s) {

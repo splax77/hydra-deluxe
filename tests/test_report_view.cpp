@@ -6,6 +6,7 @@
 #include "doctest.h"
 
 #include <cmath>
+#include <memory>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -65,14 +66,28 @@ std::vector<std::string> dm_texts(const std::vector<DmReportRow>& rows) {
 
 TableView<ReportRow> path_view(std::vector<ReportRow> rows) {
     std::vector<std::string> texts = path_texts(rows);
-    return TableView<ReportRow>(std::move(rows), std::move(texts),
-                                path_report_view::path_columns());
+    return TableView<ReportRow>(std::make_shared<const std::vector<ReportRow>>(std::move(rows)),
+                                std::move(texts), path_report_view::path_columns());
 }
 
 TableView<DmReportRow> dm_view(std::vector<DmReportRow> rows) {
     std::vector<std::string> texts = dm_texts(rows);
-    return TableView<DmReportRow>(std::move(rows), std::move(texts),
-                                  dm_report_view::dm_columns());
+    return TableView<DmReportRow>(
+        std::make_shared<const std::vector<DmReportRow>>(std::move(rows)), std::move(texts),
+        dm_report_view::dm_columns());
+}
+
+// A path report result holding `rows`, as the window is handed one.
+std::shared_ptr<const report::GeneratedReport> path_result(std::vector<ReportRow> rows) {
+    auto result = std::make_shared<report::GeneratedReport>();
+    result->paths = std::move(rows);
+    return result;
+}
+
+// A view built from `result` the way the path window builds one.
+TableView<ReportRow> path_view_of(const std::shared_ptr<const report::GeneratedReport>& result) {
+    return TableView<ReportRow>(report_view::shared_rows(result, &report::GeneratedReport::paths),
+                                path_texts(result->paths), path_report_view::path_columns());
 }
 
 // The visible rows' songs, in order.
@@ -220,6 +235,37 @@ TEST_CASE("report view: search, keep-rule, clear_search and the count line") {
 
     CHECK(report_view::count_line(1234, 56789, path_report_view::kNoun) ==
           "1,234 of 56,789 paths");
+}
+
+// D280: the rows live once, in the result; the view only points at them.
+TEST_CASE("report view shares its result's rows instead of copying them") {
+    const std::shared_ptr<const report::GeneratedReport> result = path_result({
+        path_row("Halo", "Beyonce", "A", "1", 300, 1.0, true),
+        path_row("Toxicity", "System", "B", "1", 400, std::nullopt, true),
+    });
+    CHECK(result.use_count() == 1);
+    const TableView<ReportRow> view = path_view_of(result);
+    CHECK(&view.rows() == &result->paths);
+    CHECK(result.use_count() == 2);
+}
+
+// A Refresh, a new batch's report or a Cancel replaces or drops the slot's
+// result while the window still holds its view.
+TEST_CASE("report view still reads its rows after the result is replaced or dropped") {
+    std::shared_ptr<const report::GeneratedReport> result = path_result({
+        path_row("Halo", "Beyonce", "A", "1", 300, 1.0, true),
+        path_row("Toxicity", "System", "B", "1", 400, std::nullopt, true),
+        path_row("Aerials", "System", "B", "1", 100, 500.0, true),
+    });
+    const std::weak_ptr<const report::GeneratedReport> held = result;
+    TableView<ReportRow> view = path_view_of(result);
+    result = path_result({path_row("Other", "Band", "C", "1", 50, 2.0, true)});
+    CHECK_FALSE(held.expired());
+    result.reset();
+    view.set_sort({SortSpec{"score", SortDir::Descending}});
+    view.set_search("system");
+    CHECK(songs(view) == std::vector<std::string>{"Toxicity", "Aerials"});
+    CHECK(view.count_line(path_report_view::kNoun) == "2 of 3 paths");
 }
 
 // D103 item 18.
