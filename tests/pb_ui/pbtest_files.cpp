@@ -20,7 +20,7 @@ namespace pbtest {
 
 namespace {
 
-// Copies Hydra's best path, pastes it as the player's, then pastes text that
+// Pastes Hydra's best path as the player's, copies it back, then pastes text that
 // names no path on the chart: the refusal shows its sentence and the reason,
 // and the player's path stays as it was.
 void test_paste_refused_keeps_path(ImGuiTestContext* ctx) {
@@ -34,13 +34,9 @@ void test_paste_refused_keeps_path(ImGuiTestContext* ctx) {
     if (!chart) return;
     const hydra::Path& best = chart->record.best_path();
 
+    const std::string best_text = hydra::pathbuilder::copy_text(chart->record, best);
+    ImGui::SetClipboardText(best_text.c_str());
     ctx->SetRef(h.home_ref.c_str());
-    ctx->ItemClick("**/Best path");
-    ctx->MenuClick("Edit/Copy");
-    ctx->Yield(2);
-    IM_CHECK_STR_EQ(ImGui::GetClipboardText(),
-                    hydra::pathbuilder::copy_text(chart->record, best).c_str());
-
     ctx->MenuClick("Edit/Paste");
     IM_CHECK(wait_idle(ctx));
     ctx->Yield(2);
@@ -50,6 +46,12 @@ void test_paste_refused_keeps_path(ImGuiTestContext* ctx) {
     if (!history.current().path) return;
     IM_CHECK_STR_EQ(history.current().path->pathstring().c_str(), best.pathstring().c_str());
     const uint64_t generation = history.generation();
+
+    // Copy writes the pasted path back as the same text.
+    ImGui::SetClipboardText("");
+    ctx->MenuClick("Edit/Copy");
+    ctx->Yield(2);
+    IM_CHECK_STR_EQ(ImGui::GetClipboardText(), best_text.c_str());
 
     ImGui::SetClipboardText("99");
     ctx->MenuClick("Edit/Paste");

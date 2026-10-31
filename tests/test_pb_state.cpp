@@ -1,11 +1,11 @@
 // The Path Builder's open chart and the player's path history
-// (src/pathbuilder/pb_state.h), and the left list built from the record
-// (pb_paths.h). Charts come from the corpus, or are written to a scratch
-// folder when the corpus has no chart of the kind a test needs.
+// (src/pathbuilder/pb_state.h). Charts come from the corpus, or are written
+// to a scratch folder when the corpus has no chart of the kind a test needs.
 
 #include "doctest.h"
 
 #include <string>
+#include <vector>
 
 #include "audio_chart_fixtures.h"  // write_text_file
 #include "chart_text.h"
@@ -14,7 +14,6 @@
 #include "temp_util.h"
 #include "testdata_dirs.h"
 
-#include "pathbuilder/pb_paths.h"
 #include "pathbuilder/pb_state.h"
 
 using hydra::pathbuilder::OpenChart;
@@ -22,7 +21,7 @@ using hydra::pathbuilder::PathHistory;
 using hydra::pathbuilder::PbState;
 using hydra::pathbuilder::PlayerPath;
 
-TEST_CASE("pb state: a corpus chart opens with its record, and the list holds every path") {
+TEST_CASE("pb state: a corpus chart opens with its record and its graph") {
     PbState s;
     open_and_wait(s, corpus::burnout_notes());
     REQUIRE(s.error().empty());
@@ -33,17 +32,29 @@ TEST_CASE("pb state: a corpus chart opens with its record, and the list holds ev
     CHECK(c->graph != nullptr);
     CHECK_FALSE(c->entry.md5.empty());
     CHECK(c->entry.notespath == corpus::burnout_notes());
-
-    const auto rows = hydra::pathbuilder::path_rows(c->record, {});
-    CHECK(rows.size() == 4);  // from one run: the record's paths, then its all-0 paths
-    REQUIRE_FALSE(rows.empty());
-    CHECK(rows.front().label == "Best path");
-    CHECK(rows.front().gap == 0);
-    CHECK(rows.front().total == c->record.best_path().totalscore());
-    CHECK(hydra::pathbuilder::gap_text(rows.front()) == "0");
     // The player's path starts empty, with nothing to undo.
     CHECK(s.history().current().windows.empty());
     CHECK_FALSE(s.history().can_undo());
+}
+
+// "The empty path" in docs/superpowers/plans/2026-10-30-path-builder-redesign.md:
+// the open finds the path with no activation, and the player's own path stays
+// empty (Copy and Save read only that).
+TEST_CASE("pb state: a newly opened chart has its empty path") {
+    PbState s;
+    open_and_wait(s, corpus::burnout_notes());
+    REQUIRE(s.error().empty());
+    const OpenChart* c = s.chart();
+    REQUIRE(c != nullptr);
+    REQUIRE(c->empty_path.has_value());
+    const hydra::Path& empty = *c->empty_path;
+    CHECK(empty.walk_activations().empty());
+    // From one run.
+    CHECK(empty.totalscore() == 313635);
+    CHECK(empty.trailing_skipped_fill_ticks ==
+          std::vector<int64_t>{36480, 44160, 51840, 59520, 67200, 74880, 83040, 90240, 98400,
+                               109440, 117120, 147840, 156000, 167040, 174720});
+    CHECK_FALSE(s.history().current().path.has_value());
 }
 
 TEST_CASE("pb state: a chart with no Star Power phrase opens and says there is nothing to build") {

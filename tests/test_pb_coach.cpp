@@ -200,7 +200,6 @@ TEST_CASE("coach click: a fill that rules out a later window is refused in the l
     CHECK_FALSE(r.path.has_value());
     CHECK(r.message == hydra::pathbuilder::impossible_window_text("activation", false));
     CHECK(r.detail.empty());
-    CHECK(r.notice.empty());
 }
 
 TEST_CASE("coach end: choosing the last window's end pins it") {
@@ -271,7 +270,6 @@ TEST_CASE("coach remove: removing every window leaves the empty path") {
         hydra::pathbuilder::remove_window(*c.graph, c.settings, windows, windows[2].act_tick);
     REQUIRE(two.windows.has_value());
     REQUIRE(two.path.has_value());
-    CHECK(two.notice.empty());
     REQUIRE(two.windows->size() == 2);
     CHECK((*two.windows)[0].deact_tick == windows[0].deact_tick);
     CHECK((*two.windows)[1].deact_tick == windows[1].deact_tick);
@@ -300,7 +298,6 @@ TEST_CASE("coach remove: a tick with no window changes nothing") {
     CHECK_FALSE(r.windows.has_value());
     CHECK_FALSE(r.path.has_value());
     CHECK(r.message.empty());
-    CHECK(r.notice.empty());
 }
 
 TEST_CASE("coach finish: Finish the rest for me makes BF(n)'s path the player's path as one edit") {
@@ -356,7 +353,6 @@ TEST_CASE("coach click: a result that arrives after the player's path changed is
     CHECK(s.history().current().windows.empty());
     CHECK_FALSE(d.take_player_changed());
     CHECK(d.message().empty());
-    CHECK(d.notice().empty());
 
     // The same click made on the path as it now stands is taken in.
     d.click_fill(s.search_graph(), c.settings, s.history().current().windows, tick,
@@ -366,62 +362,6 @@ TEST_CASE("coach click: a result that arrives after the player's path changed is
     REQUIRE(s.history().current().windows.size() == 1);
     CHECK(s.history().current().windows.front().act_tick == tick);
     CHECK(d.take_player_changed());
-}
-
-// The user's ruling, "Copy it, then apply": a click while a left-list row is
-// on screen acts on the copy "Edit a copy" makes, as one edit.
-TEST_CASE("coach click: a click on a shown path copies it, then applies, as one undo step") {
-    PbState s;
-    open_and_wait(s, corpus::burnout_notes(), scratch_settings());
-    REQUIRE(s.chart() != nullptr);
-    const OpenChart& c = *s.chart();
-    const Path& best = c.record.best_path();
-    const std::vector<PinnedWindow> best_windows = hydra::pinned_windows(best);
-    REQUIRE(best_windows.size() == 3);
-    hydra::pathbuilder::DecisionList& d = s.decisions();
-    auto settle = [&] { testwait::poll_until_idle(d, "the click's search to land", s); };
-
-    // With the player's own path shown the click acts on its windows (none
-    // yet); with Best path shown, on Edit a copy's windows of it.
-    auto same = [](const PinnedWindow& a, const PinnedWindow& b) {
-        return a.act_tick == b.act_tick && a.deact_tick == b.deact_tick &&
-               a.check_sqout == b.check_sqout && a.squeezed_out == b.squeezed_out;
-    };
-    CHECK(hydra::pathbuilder::click_windows(s.history(), nullptr).empty());
-    const std::vector<PinnedWindow> copy = hydra::pathbuilder::click_windows(s.history(), &best);
-    const std::vector<PinnedWindow> edit_copy = hydra::pathbuilder::player_copy_of(best).windows;
-    REQUIRE(copy.size() == 3);
-    REQUIRE(edit_copy.size() == 3);
-    for (size_t i = 0; i < copy.size(); ++i) CHECK(same(copy[i], edit_copy[i]));
-
-    // A click on Best path's last window removes it from the copy. From one
-    // run: the first two windows keep their ends.
-    const uint64_t before = s.history().generation();
-    d.click_remove(s.search_graph(), c.settings, copy, best_windows[2].act_tick, before);
-    settle();
-    CHECK(d.message().empty());
-    CHECK(s.history().generation() == before + 1);
-    const hydra::pathbuilder::PlayerPath& mine = s.history().current();
-    REQUIRE(mine.windows.size() == 2);
-    CHECK(same(mine.windows[0], best_windows[0]));
-    CHECK(same(mine.windows[1], best_windows[1]));
-    REQUIRE(mine.path.has_value());
-    CHECK(mine.path->pathstring() == "3- 1");
-    CHECK(mine.path->totalscore() == 358235);
-
-    // One undo puts back the empty path from before the click.
-    REQUIRE(s.history().undo());
-    CHECK(s.history().current().windows.empty());
-    CHECK_FALSE(s.history().current().path.has_value());
-    CHECK_FALSE(s.history().can_undo());
-
-    // With a window of the player's own on screen, the click reads the
-    // player's windows, as before the ruling.
-    REQUIRE(s.history().redo());
-    const std::vector<PinnedWindow> own = hydra::pathbuilder::click_windows(s.history(), nullptr);
-    REQUIRE(own.size() == 2);
-    CHECK(same(own[0], best_windows[0]));
-    CHECK(same(own[1], best_windows[1]));
 }
 
 TEST_CASE("coach rows: a path with no window has no after-your-last-window line") {

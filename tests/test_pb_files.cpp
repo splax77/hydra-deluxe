@@ -18,7 +18,6 @@
 #include "app/user_messages.h"
 #include "pathbuilder/pb_coach.h"
 #include "pathbuilder/pb_files.h"
-#include "pathbuilder/pb_paths.h"
 #include "pathbuilder/pb_state.h"
 
 using hydra::Path;
@@ -48,10 +47,10 @@ void check_same_path(const Path& got, const Path& want) {
 
 }  // namespace
 
-TEST_CASE("pb files: a saved path file opens back as the same path, as a branch and the player's") {
+TEST_CASE("pb files: a saved path file opens back as the same path, as the player's") {
     PbState s;
     const OpenChart& c = open_burnout(s);
-    // A path the left list does not show yet: one window on the fill Hydra's
+    // A path that is not one of Hydra's: one window on the fill Hydra's
     // best path activates second.
     const hydra::ActivationWalk best_acts = c.record.best_path().walk_activations();
     REQUIRE(best_acts.size() >= 2);
@@ -59,8 +58,7 @@ TEST_CASE("pb files: a saved path file opens back as the same path, as a branch 
         *c.graph, c.settings, {}, best_acts[1].timecode.ticks());
     REQUIRE(one.path.has_value());
     const Path& mine = *one.path;
-    for (const hydra::pathbuilder::PathRow& row : hydra::pathbuilder::path_rows(c.record, {}))
-        REQUIRE(path_identity(*row.path) != path_identity(mine));
+    for (const Path& p : c.record.paths) REQUIRE(path_identity(p) != path_identity(mine));
     const std::string file = testtemp::temp_dir("pb_files_save") + "\\path.json";
 
     // The file is hydra_replay's shape: a "paths" array as paths_json writes it.
@@ -69,10 +67,7 @@ TEST_CASE("pb files: a saved path file opens back as the same path, as a branch 
     hydra::pathbuilder::save_path_file(file, mine, c.song);
 
     PathHistory& h = s.history();
-    std::vector<Path> branches;
-    REQUIRE_FALSE(hydra::pathbuilder::open_path_file(h, branches, c, file).has_value());
-    REQUIRE(branches.size() == 1);
-    check_same_path(branches.front(), mine);
+    REQUIRE_FALSE(hydra::pathbuilder::open_path_file(h, c, file).has_value());
     REQUIRE(h.current().path.has_value());
     check_same_path(*h.current().path, mine);
     // Opening is one edit: undo puts the empty path back, redo the opened one.
@@ -83,9 +78,10 @@ TEST_CASE("pb files: a saved path file opens back as the same path, as a branch 
     check_same_path(*h.current().path, mine);
 }
 
-// The user's ruling, "Show each path once": a path the left list already
-// shows is not added again, and the file's first path is still the player's.
-TEST_CASE("pb files: opening a path file twice shows each path once") {
+// The user's answer Q2 (docs/superpowers/plans/
+// 2026-10-30-path-builder-redesign.md): a path file opens its first path as
+// the player's, as one edit, and leaves the rest out.
+TEST_CASE("pb files: a path file's first path becomes the player's") {
     PbState s;
     const OpenChart& c = open_burnout(s);
     const hydra::ActivationWalk best_acts = c.record.best_path().walk_activations();
@@ -93,29 +89,22 @@ TEST_CASE("pb files: opening a path file twice shows each path once") {
     const hydra::pathbuilder::ClickResult one = hydra::pathbuilder::start_window(
         *c.graph, c.settings, {}, best_acts[1].timecode.ticks());
     REQUIRE(one.path.has_value());
-    const std::string dir = testtemp::temp_dir("pb_files_twice");
-    const std::string file = dir + "\\path.json";
-    hydra::pathbuilder::save_path_file(file, *one.path, c.song);
+    const Path& best = c.record.best_path();
+    REQUIRE(path_identity(best) != path_identity(*one.path));
+    // A file of two paths, in hydra_replay's shape: the one-window path first.
+    const std::string file = testtemp::temp_dir("pb_files_first") + "\\two.json";
+    nlohmann::json doc;
+    doc["paths"] = hydra::paths_json({&*one.path, &best}, c.song.timing());
+    audiochart::write_text_file(file, doc.dump());
 
     PathHistory& h = s.history();
-    std::vector<Path> branches;
-    REQUIRE_FALSE(hydra::pathbuilder::open_path_file(h, branches, c, file).has_value());
-    REQUIRE(branches.size() == 1);
-    REQUIRE(h.undo());  // the player's path is empty again
-    REQUIRE_FALSE(hydra::pathbuilder::open_path_file(h, branches, c, file).has_value());
-    CHECK(branches.size() == 1);
+    REQUIRE_FALSE(hydra::pathbuilder::open_path_file(h, c, file).has_value());
     REQUIRE(h.current().path.has_value());
     check_same_path(*h.current().path, *one.path);
-
-    // A file holding Hydra's best path adds no branch, since the list's
-    // "Best path" row is that path, but makes it the player's.
-    const Path& best = c.record.best_path();
-    const std::string best_file = dir + "\\best.json";
-    hydra::pathbuilder::save_path_file(best_file, best, c.song);
-    REQUIRE_FALSE(hydra::pathbuilder::open_path_file(h, branches, c, best_file).has_value());
-    CHECK(branches.size() == 1);
-    REQUIRE(h.current().path.has_value());
-    check_same_path(*h.current().path, best);
+    // One edit: one undo puts the empty path back, and there is no other.
+    REQUIRE(h.undo());
+    CHECK_FALSE(h.current().path.has_value());
+    CHECK_FALSE(h.can_undo());
 }
 
 TEST_CASE("pb files: a path file that cannot be read changes nothing and says why") {
@@ -123,12 +112,10 @@ TEST_CASE("pb files: a path file that cannot be read changes nothing and says wh
     const OpenChart& c = open_burnout(s);
     const std::string file = testtemp::temp_dir("pb_files_missing") + "\\missing.json";
     PathHistory& h = s.history();
-    std::vector<Path> branches;
-    const std::optional<Refusal> refused = hydra::pathbuilder::open_path_file(h, branches, c, file);
+    const std::optional<Refusal> refused = hydra::pathbuilder::open_path_file(h, c, file);
     REQUIRE(refused.has_value());
     CHECK(refused->message == "Hydra couldn't read this path file, so your path stays as it was.");
     CHECK(refused->detail == "cannot read the path file: " + file);
-    CHECK(branches.empty());
     CHECK_FALSE(h.can_undo());
     CHECK_FALSE(h.current().path.has_value());
 }
@@ -138,12 +125,11 @@ TEST_CASE("pb files: a path file that does not fit the chart changes nothing and
     const OpenChart& c = open_burnout(s);
     const std::string dir = testtemp::temp_dir("pb_files_refused");
     PathHistory& h = s.history();
-    std::vector<Path> branches;
 
     // Not JSON at all.
     const std::string not_json = dir + "\\not_json.json";
     audiochart::write_text_file(not_json, "not a path");
-    std::optional<Refusal> refused = hydra::pathbuilder::open_path_file(h, branches, c, not_json);
+    std::optional<Refusal> refused = hydra::pathbuilder::open_path_file(h, c, not_json);
     REQUIRE(refused.has_value());
     CHECK(refused->message ==
           "This file doesn't hold a path for this chart, so your path stays as it was.");
@@ -153,13 +139,12 @@ TEST_CASE("pb files: a path file that does not fit the chart changes nothing and
     const std::string off_chart = dir + "\\off_chart.json";
     audiochart::write_text_file(
         off_chart, R"({"paths": [{"activations": [{"act_tick": 1, "deact_tick": 2}]}]})");
-    refused = hydra::pathbuilder::open_path_file(h, branches, c, off_chart);
+    refused = hydra::pathbuilder::open_path_file(h, c, off_chart);
     REQUIRE(refused.has_value());
     CHECK(refused->message ==
           "This file doesn't hold a path for this chart, so your path stays as it was.");
     CHECK(refused->detail.rfind("path 1 of " + off_chart, 0) == 0);
 
-    CHECK(branches.empty());
     CHECK_FALSE(h.can_undo());
     CHECK_FALSE(h.current().path.has_value());
 }

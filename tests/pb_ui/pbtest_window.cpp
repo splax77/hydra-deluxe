@@ -5,6 +5,8 @@
 // their Yield() macro (uitest_engine.h says why).
 #include "pbtest_harness.h"
 
+#include <algorithm>
+#include <cstdint>
 #include <cstdio>
 #include <string>
 
@@ -13,8 +15,10 @@
 #include "../chart_text.h"
 #include "../testdata_dirs.h"
 
+#include "app/preview_view.h"
 #include "core/winstr.h"
-#include "pathbuilder/pb_paths.h"
+#include "pathbuilder/pb_text.h"
+#include "ui/preview_controller.h"
 
 namespace pbtest {
 
@@ -29,32 +33,47 @@ bool write_file(const std::string& path, const std::string& text) {
     return true;
 }
 
-// Opens the chart from the command line and reads the left list: every row's
-// label, total and gap is on screen.
-void test_open_and_list(ImGuiTestContext* ctx) {
+// Opens the chart from the command line: the screen starts from nothing. The
+// intro, step 1 of the guide and the three scores are on screen, the old
+// decision list is not, and a fill under two saved phrases is drawn as can't
+// while the guide names a later fill as the earliest.
+void test_open_starts_empty(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     h.chart_arg = corpus::burnout_notes();
     reset_app(h);
     IM_CHECK(wait_idle(ctx));
     ctx->Yield(2);
-    IM_CHECK(h.app->state.chart() != nullptr);
-    const auto& rows = h.app->rows();
-    IM_CHECK(!rows.empty());
-    if (rows.empty()) return;
-    for (const hydra::pathbuilder::PathRow& r : rows) {
-        IM_CHECK(on_screen(h, r.label));
-        IM_CHECK(on_screen(h, hydra::pathbuilder::total_text(r) + "  (" +
-                                  hydra::pathbuilder::gap_text(r) + ")"));
-    }
-    // Burnout's best total under the GUI tests' settings, from one run.
-    IM_CHECK(on_screen(h, "378,315  (0)"));
-    // Picking a row and pressing "Edit a copy" makes it the player's path.
-    ctx->SetRef(h.home_ref.c_str());
-    ctx->ItemClick("**/Best path");
-    ctx->ItemClick("**/Edit a copy");
-    ctx->Yield(2);
-    IM_CHECK(h.app->state.history().current().path.has_value());
-    IM_CHECK(h.app->state.history().can_undo());
+    IM_CHECK_RETV(h.app->state.chart() != nullptr, );
+    IM_CHECK(!h.app->state.history().current().path.has_value());
+    IM_CHECK(h.app->shown_path() == &*h.app->state.chart()->empty_path);
+    IM_CHECK(on_screen(h, hydra::pathbuilder::intro_text()));
+    IM_CHECK(on_screen(h, "Step 1."));
+    for (const char* label : {hydra::pathbuilder::kYourScoreLabel,
+                              hydra::pathbuilder::kBestPossibleLabel,
+                              hydra::pathbuilder::kBestReachLabel})
+        IM_CHECK(on_screen(h, label));
+    IM_CHECK(!on_screen(h, "Your decisions"));
+    IM_CHECK(on_screen(h, hydra::pathbuilder::kNoStepsText));
+
+    // From one run: Burnout's second fill comes with one phrase saved, so it
+    // does not glow, and the guide names the fill at tick 36480 (m20) as the
+    // earliest.
+    static constexpr int64_t kUnderTwoTick = 21120;
+    const hydra::app::PreviewScene& scene = h.app->preview()->scene();
+    const auto under_two =
+        std::find_if(scene.fills.begin(), scene.fills.end(),
+                     [](const hydra::app::PreviewFill& f) { return f.chord_tick == kUnderTwoTick; });
+    IM_CHECK_RETV(under_two != scene.fills.end(), );
+    IM_CHECK(under_two->state != hydra::app::PreviewFillState::Offered);
+    IM_CHECK_STR_EQ(
+        hydra::pathbuilder::fill_reason(scene, static_cast<size_t>(under_two - scene.fills.begin()))
+            .c_str(),
+        "You have 1 phrase saved here. You need 2 to activate.");
+    IM_CHECK_STR_EQ(h.app->guide().text.c_str(),
+                    "Step 1. Click a glowing fill to make your first activation. The earliest you "
+                    "can activate is m20 (0:25.123), once you've saved 2 phrases. Hover a fill to "
+                    "see it on the highway.");
+    IM_CHECK(on_screen(h, h.app->guide().text));
 }
 
 // A chart with notes and no Star Power phrase opens and says there is
@@ -94,7 +113,7 @@ void test_file_open_error(ImGuiTestContext* ctx) {
 }  // namespace
 
 void register_tests(Harness& h) {
-    uitest::register_test(h, "open-and-list", test_open_and_list);
+    uitest::register_test(h, "open-starts-empty", test_open_starts_empty);
     uitest::register_test(h, "no-star-power", test_no_star_power);
     uitest::register_test(h, "file-open-error", test_file_open_error);
 }
