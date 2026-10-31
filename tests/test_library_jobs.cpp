@@ -32,6 +32,7 @@
 #include "net/dmbot_client.h"
 #include "scoped_hook.h"
 #include "store/record_store.h"
+#include "store_fixtures.h"  // save_as_old_build
 #include "temp_util.h"
 #include "ui/dm_jobs.h"
 #include "ui/library_jobs.h"
@@ -394,6 +395,16 @@ struct OpenReport {
     uint64_t total;
 };
 
+// Every report the startup open's gate sees while it lives. Declare it before
+// the job, so the gate is cleared after the job is joined.
+struct OpenRecorder {
+    std::vector<OpenReport> seen;
+    ScopedHook gate{hydra::ui::set_store_open_gate_for_test,
+                    [this](const hydra::ui::StoreOpenProgress& p, const std::function<bool()>&) {
+                        seen.push_back({p.step, p.label(), p.upgrading, p.rows_done, p.rows_total});
+                    }};
+};
+
 // A library file at `db` listing the corpus chart Smash Mouth "I'm A
 // Believer", with its analysis under `settings` saved as an older build left
 // it: rank 1's hardest figure empty. Its best path carries a squeeze-in at
@@ -401,13 +412,9 @@ struct OpenReport {
 void write_old_build_library(const std::string& db, const hydra::app::Settings& settings) {
     const std::string chart = corpus::chart_named("Smash Mouth - I_m A Believer");
     REQUIRE_FALSE(chart.empty());
-    const ChartLibraryEntry entry = corpus::scanned_entry(chart, "I'm A Believer");
     RecordStore store(db);
-    store.rebuild_chart_library({entry});
-    hydra::store::PreparedRecord prepared = hydra::store::prepare_record(
-        entry.md5, settings.profile(), corpus::analyzed(chart, settings.to_analysis_settings()));
-    prepared.record.paths.at(0).hardest_ms.reset();
-    store.save(prepared);
+    hydra::test::save_as_old_build(store, chart, corpus::scanned_entry(chart, "I'm A Believer"),
+                                   settings, {1});
 }
 
 }  // namespace
@@ -420,12 +427,8 @@ TEST_CASE("jobs: the startup open reads saved paths with its own words, then the
     const hydra::app::Settings settings;
     write_old_build_library(db, settings);
 
-    std::vector<OpenReport> seen;
-    const ScopedHook gate(
-        hydra::ui::set_store_open_gate_for_test,
-        [&](const hydra::ui::StoreOpenProgress& p, const std::function<bool()>&) {
-            seen.push_back({p.step, p.label(), p.upgrading, p.rows_done, p.rows_total});
-        });
+    OpenRecorder recorder;
+    std::vector<OpenReport>& seen = recorder.seen;
     {
         hydra::ui::StoreOpenJob job(db, hydra::core::RulesStamp::of(settings.rules), settings);
         job.start();
@@ -461,6 +464,38 @@ TEST_CASE("jobs: the startup open reads saved paths with its own words, then the
         CHECK(seen[0].step == Step::Opening);
         CHECK(seen[1].step == Step::LoadingLibrary);
         CHECK_FALSE(seen[1].upgrading);
+    }
+    testtemp::remove_dir(dir);
+}
+
+TEST_CASE("jobs: a fill that fails still opens the library and leaves its sentence for the "
+          "status line") {
+    using Step = hydra::ui::StoreOpenProgress::Step;
+    const std::string dir = testtemp::temp_dir("open_fill_fails");
+    testtemp::remove_dir(dir);
+    const std::string db = testtemp::temp_dir("open_fill_fails") + "\\library.db";
+    const hydra::app::Settings settings;
+    write_old_build_library(db, settings);
+    // The file refuses the fill's write, as a full disk would.
+    hydra::test::exec_on_file(db,
+                              "CREATE TRIGGER refuse_fill BEFORE UPDATE ON record_paths"
+                              " BEGIN SELECT RAISE(ABORT, 'refused'); END;");
+
+    OpenRecorder recorder;
+    const std::vector<OpenReport>& seen = recorder.seen;
+    {
+        hydra::ui::StoreOpenJob job(db, hydra::core::RulesStamp::of(settings.rules), settings);
+        job.start();
+        job.wait();
+        REQUIRE(job.ok());
+        CHECK(job.library_problem() ==
+              hydra::app::plain_error(hydra::KindedError(hydra::ErrorKind::DatabaseWrite, "x")));
+        // The library was still read, and the marker stays unset so the next
+        // open tries again.
+        REQUIRE_FALSE(seen.empty());
+        CHECK(seen.back().step == Step::LoadingLibrary);
+        const std::unique_ptr<RecordStore> store = job.take_store();
+        CHECK_FALSE(store->hardest_figure_filled(settings.profile()));
     }
     testtemp::remove_dir(dir);
 }
