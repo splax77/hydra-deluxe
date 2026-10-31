@@ -19,6 +19,7 @@
 #include "app/preview_view.h"
 #include "core/winstr.h"
 #include "pathbuilder/pb_text.h"
+#include "pathbuilder/pb_window.h"  // the legend's words
 #include "ui/preview_controller.h"
 
 namespace pbtest {
@@ -58,9 +59,25 @@ void test_open_starts_empty(ImGuiTestContext* ctx) {
     IM_CHECK(on_screen(h, intro.substr(0, star) + hydra::pathbuilder::kStarOpen));
     IM_CHECK(on_screen(h, hydra::pathbuilder::kStarClose + intro.substr(star)));
     IM_CHECK(!on_screen(h, intro));
-    // The highway's "where" line at the song's start: the measure, then the clock.
-    IM_CHECK(on_screen(h, std::string("m1") + hydra::app::kFactSeparator + "0:00.000"));
+    // The Preview panel's clock at the song's start, from one run.
+    IM_CHECK(on_screen(h, "0:00.000"));
     IM_CHECK(on_screen(h, "Step 1."));
+    // The list and the legend's new entries; the timeline's caption sits in
+    // the label column; no cost line under the Fills row, and no highway of
+    // the builder's own.
+    for (const char* text : {hydra::pathbuilder::kChoicesHeading, hydra::pathbuilder::kLegendBestText,
+                             hydra::pathbuilder::kLegendUnderOnePercentText,
+                             hydra::pathbuilder::kLegendCostsMoreText, hydra::pathbuilder::kLegendLockedText,
+                             "needed to activate", "enough to activate"})
+        IM_CHECK(on_screen(h, text));
+    IM_CHECK(!on_screen(h, "and their cost"));
+    IM_CHECK(!on_screen(h, "Highway"));
+    // The Preview's "< Act" is on screen and greyed: the empty path has no
+    // activation to jump to.
+    ctx->SetRef(h.home_ref.c_str());
+    const ImGuiTestItemInfo prev_act = ctx->ItemInfo("**/< Act##prevact", ImGuiTestOpFlags_NoError);
+    IM_CHECK(prev_act.ID != 0);
+    IM_CHECK((prev_act.ItemFlags & ImGuiItemFlags_Disabled) != 0);
     for (const char* label : {hydra::pathbuilder::kYourScoreLabel,
                               hydra::pathbuilder::kBestPossibleLabel,
                               hydra::pathbuilder::kBestReachLabel})

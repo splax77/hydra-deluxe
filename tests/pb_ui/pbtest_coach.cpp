@@ -54,6 +54,11 @@ bool paste_best_path(ImGuiTestContext* ctx) {
     return wait_for_edit(ctx);
 }
 
+// The activations of the player's path as it is now.
+hydra::ActivationWalk mine_acts(PbState& s) {
+    return s.history().current().path->walk_activations();
+}
+
 // The vertical span of the glyphs the steps panel drew last frame in
 // `color`, or nothing when it drew none.
 std::optional<std::pair<float, float>> glyph_span(ImU32 color) {
@@ -89,11 +94,14 @@ void test_finish_for_me(ImGuiTestContext* ctx) {
         IM_CHECK(mine.path->pathstring() == "9");
         IM_CHECK_EQ(mine.path->totalscore(), int64_t{349875});
     }
-    // The steps panel's one step and the line after it, from one run.
-    IM_CHECK(on_screen(h, "1. Activate at "));
+    // The steps panel's one step, which the click selected so it is open to
+    // its sentence, and the line after it, from one run.
+    const hydra::ActivationWalk first = mine_acts(s);
+    IM_CHECK_RETV(first.size() == 1, );
+    IM_CHECK(on_screen(h, hydra::pathbuilder::step_short(s.chart()->song.timing(), first[0]).span));
+    IM_CHECK(on_screen(h, "Activate at "));
     IM_CHECK(on_screen(h, "This choice costs 13,640 points."));
     IM_CHECK(on_screen(h, hydra::pathbuilder::leftover_text(14800)));
-    IM_CHECK(!on_screen(h, "2. Activate at "));
 
     ctx->SetRef(h.home_ref.c_str());
     ctx->ItemClick(("**/" + std::string(hydra::pathbuilder::kFinishForMeLabel)).c_str());
@@ -106,7 +114,10 @@ void test_finish_for_me(ImGuiTestContext* ctx) {
     IM_CHECK_EQ(done.windows.size(), size_t{2});
     IM_CHECK(s.history().can_undo());
     IM_CHECK(on_screen(h, hydra::pathbuilder::finished_for_player_message(1).text));
-    IM_CHECK(on_screen(h, "2. Activate at "));
+    // The second step is on screen as its compact row.
+    const hydra::ActivationWalk both = mine_acts(s);
+    IM_CHECK_RETV(both.size() == 2, );
+    IM_CHECK(on_screen(h, hydra::pathbuilder::step_short(s.chart()->song.timing(), both[1]).span));
 }
 
 // A click on a fill under two saved phrases: the guide line says why, in
@@ -131,6 +142,28 @@ void test_cant_activate_reason(ImGuiTestContext* ctx) {
     IM_CHECK(!s.history().can_undo());
 }
 
+// One activation on Burnout, then a click on a fill before it: the guide
+// line says the builder goes left to right, in locked_message's words, and
+// the path stays as it was.
+void test_locked_fill_says_left_to_right(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    IM_CHECK_RETV(open_chart(ctx, corpus::burnout_notes()), );
+    PbState& s = h.app->state;
+    const hydra::ActivationWalk best = s.chart()->record.best_path().walk_activations();
+    IM_CHECK_RETV(best.size() >= 2, );
+    IM_CHECK_RETV(click_fill(ctx, best[1].timecode.ticks()), );
+    const uint64_t generation = s.history().generation();
+    // From one run: Burnout's fill at m12, before that activation.
+    constexpr int64_t kEarlierTick = 21120;
+    ctx->SetRef(h.home_ref.c_str());
+    ctx->ItemClick(("**/" + hydra::ui::timeline_fill_id(kEarlierTick)).c_str());
+    ctx->Yield(2);
+    IM_CHECK(h.app->guide().refuse);
+    IM_CHECK_STR_EQ(h.app->guide().text.c_str(), hydra::pathbuilder::locked_message("m12").text.c_str());
+    IM_CHECK(on_screen(h, h.app->guide().text));
+    IM_CHECK_EQ(s.history().generation(), generation);
+}
+
 // White Washed under the GUI tests' Path limit (10 ms, the app's default):
 // Hydra's best path's fourth window needs more, so its step carries the
 // violet note.
@@ -141,8 +174,12 @@ void test_tight_window_note(ImGuiTestContext* ctx) {
     IM_CHECK(s.chart()->settings.ms_filter == std::optional<double>(10.0));
     IM_CHECK_RETV(paste_best_path(ctx), );
     IM_CHECK_RETV(s.history().current().windows.size() == 5, );
+    // The fifth step opens to its sentence and note when its row is clicked.
     // From one run.
-    IM_CHECK(on_screen(h, "5. Activate at "));
+    ctx->SetRef(h.home_ref.c_str());
+    ctx->ItemClick("**/##steps/$$4/##step");
+    ctx->Yield(2);
+    IM_CHECK(on_screen(h, "Activate at "));
     IM_CHECK(on_screen(h, "needs 130.4 ms, your limit is 10 ms"));
 
     // The note is the only text the panel draws in the violet chip's colour,
@@ -160,6 +197,7 @@ void register_coach_tests(Harness& h) {
     uitest::register_test(h, "finish-for-me", test_finish_for_me);
     uitest::register_test(h, "cant-activate-reason", test_cant_activate_reason);
     uitest::register_test(h, "tight-window-note", test_tight_window_note);
+    uitest::register_test(h, "locked-fill-says-left-to-right", test_locked_fill_says_left_to_right);
 }
 
 }  // namespace pbtest
