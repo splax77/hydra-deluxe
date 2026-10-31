@@ -1,6 +1,6 @@
 # Audit of the past audits: summary (2026-10-29, session 61cee421)
 
-This audit checked how every past Hydra audit closed its findings. The question for each closure was simple: did the user ever rule on exactly this, in words that name both sides? It ran by `docs/agents/audit-method.md` and the handoff `docs/handoffs/2026-10-29-audit-of-audits-handoff.md`.
+This audit checked how every past Hydra audit closed its findings. The question for each closure was simple: did the user ever rule on exactly this, in words that name both sides? It ran by `docs/agents/audit-method.md` and the handoff `docs/handoffs/2026-10-29-audit-of-audits-handoff.md` (removed; `git show 444631e6:docs/handoffs/2026-10-29-audit-of-audits-handoff.md`).
 
 Twelve read-only scouts did the checking, nine in a first wave and three in a second. One planner designed the single Backend timings rating rule the user asked for. Every scout's blocks are in `blocks/`, and the common brief and the two helper scripts are in `briefs/`. The main session checked every PASS quote with `briefs/checkquotes.py`. That script looks for each quoted span in the repo's docs, the code, the session cards and the hooks folder. All of them were found, except three, which the main session settled by hand (see "What the main session changed").
 

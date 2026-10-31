@@ -977,9 +977,9 @@ music as they do in Clone Hero. A nonzero song.ini `delay` replaces the
 .chart `Offset`; a delay of 0 counts as unset. A positive value makes the
 notes come later than the music. `preview_audio_offset_ms` in
 src/app/preview_source.cpp is the one owner. This was decided in
-docs/superpowers/plans/2026-09-24-derivation-fixes.md (decision 9; Task 17's
-gate was measured at the game) and extended to .sng and .srb by
-docs/superpowers/plans/2026-09-26-codebase-audit-fixes.md (decision 4).
+D274 in docs/audit/2026-10-03-fix-decisions.md (the derivation-fixes plan's
+decision 9; Task 17's gate was measured at the game) and extended to .sng and
+.srb by D275 (item 4).
 _Avoid_: player (the whole Preview), scrubber (the UI control only), playhead
 (the audio follower only)
 

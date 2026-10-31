@@ -1,6 +1,6 @@
 # Note Shuffle step 0 findings (2026-10-09)
 The Clone Hero reference (`docs/clone-hero/README.md`, mostly docs/clone-hero/02-note-list.md) owns the rule statements now; this file stays as the record of how they were found.
-This is step 0 of the Note Shuffle plan (`docs/superpowers/plans/2026-10-08-note-shuffle.md`). It covers the code reading for the plan's four open questions, a freeze count over `testdata/input`, and the songs for the user's game tests. Nothing in Hydra's source changed. The user's answers to the plan's seven questions are decision D104 in `docs/audit/2026-10-03-fix-decisions.md`.
+This is step 0 of the Note Shuffle plan (`docs/superpowers/plans/2026-10-08-note-shuffle.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-10-08-note-shuffle.md`)). It covers the code reading for the plan's four open questions, a freeze count over `testdata/input`, and the songs for the user's game tests. Nothing in Hydra's source changed. The user's answers to the plan's seven questions are decision D104 in `docs/audit/2026-10-03-fix-decisions.md`.
 
 ## How it was done
 

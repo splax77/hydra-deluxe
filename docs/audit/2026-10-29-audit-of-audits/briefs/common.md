@@ -6,7 +6,7 @@ Session id: `61cee421-c19b-4c26-979c-a253c696f7f5`. Your task id and your items 
 
 1. `docs/agents/brief-preamble.md`. Its rules bind you: status lines every 5 minutes through `status_append.ps1`, the 100-call / 20-minute wrap-up, Read with offset and limit, no `sed`/`head`/`cat` for reading.
 2. `docs/agents/audit-method.md`, at least "The words this page uses", "The four exits", stage 6 "Check every closure" and "What went wrong before". This is the method you check closures by.
-3. `docs/handoffs/2026-10-29-audit-of-audits-handoff.md`, sections "Why: what went wrong with M39", "The rules every verdict follows" and "What each verdict looks like".
+3. `docs/handoffs/2026-10-29-audit-of-audits-handoff.md` (removed; `git show 444631e6:docs/handoffs/2026-10-29-audit-of-audits-handoff.md`), sections "Why: what went wrong with M39", "The rules every verdict follows" and "What each verdict looks like".
 
 All repo paths are relative to the checkout `C:\Users\Patrick\Downloads\Hydra\hydra-test\.claude\worktrees\fervent-bohr-838562`, which sits on branch `audit-of-audits` at `main` (1fc55723). Read code and docs there. "The code today" means that commit. Use `git log` / `git log -S` / `git show` in that folder to find when something changed.
 

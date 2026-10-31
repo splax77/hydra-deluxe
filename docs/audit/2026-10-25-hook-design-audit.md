@@ -90,4 +90,4 @@ The handoff's narrow fix still makes sense on its own: excuse every reviewer com
 - Bug catalogue (47 rows, commit hashes and card ids): HOOK-AUDIT-A scout report, this session.
 - Design map (every registered hook, its parsers, chains and identity sources): HOOK-AUDIT-B scout report, this session. Three of its claims were checked against the code here: the missing test, the three reviewer checks, and the 110/100/150 numbers.
 - Today's refusals and remarks: `hookmine.py` run over every transcript with activity between 2026-10-24T04:00Z and 2026-10-25T04:00Z, in this session's scratchpad.
-- The two-commit bug: `docs/handoffs/2026-10-24-doc-review-multi-commit-fix-handoff.md`, and the code at `hooks\lib\doc_review_rules.ps1`, lines 388 to 446.
+- The two-commit bug: `docs/handoffs/2026-10-24-doc-review-multi-commit-fix-handoff.md` (never committed; not kept), and the code at `hooks\lib\doc_review_rules.ps1`, lines 388 to 446.
