@@ -183,11 +183,11 @@ Each tool sends one command line and returns Hydra's reply text, unchanged excep
 | `hydra_start(mode, library_dir=None, keep=False)` | launches the exe | `mode` is `headless` or `window`. Stops any running session first. The reply gives the pid, the engine's scratch folder, the wait cap, the log file and the helper's scratch folder, plus the snapshot list in window mode. `keep=True` keeps the helper's scratch folder after `hydra_stop` |
 | `hydra_stop(keep_window=False)` | `quit` | waits for Hydra to exit, kills it if it does not, and returns the exit code. Then deletes the helper's scratch folder unless `keep` was set |
 | `hydra_reset()` | `reset` | a fresh library in the same process |
-| `hydra_open_song(title)` | `open <title>` | the way to open a song. Clicking a row's title with the search box empty is refused (see the two guards above) |
+| `hydra_open_song(title)` | `open <title>` | the way to open a song. Clicking a row's title with the search box empty is refused (see the first guard above) |
 | `hydra_click(ref)` | `click <ref>` | widgets below the toolbar need `**/`; a bare label that finds nothing is retried as `**/<label>`, unless several widgets carry it |
 | `hydra_type(ref, text)` | `type <ref> \| <text>` | an empty `text` clears the field. The library search is `**/##search`; the same retry applies |
 | `hydra_check(ref, on)` | `check <ref>` or `uncheck <ref>` | |
-| `hydra_key(keys)` | `key <keys>` | |
+| `hydra_key(keys)` | `key <keys>` | refuses `PageUp`, `PageDown`, `Home` and `End` while the library has the focus and the search box is empty (the third guard above); `Up` and `Down` go through |
 | `hydra_window(ref)` | `window <ref>` | |
 | `hydra_wait_idle(timeout=None)` | `wait-idle` | a `timeout` applies to this call only: the helper sends `timeout`, the wait, then the old timeout back |
 | `hydra_wait_text(text, timeout=None)` | `wait-text <text>` | the same one-call `timeout` |
