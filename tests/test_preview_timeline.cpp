@@ -27,7 +27,7 @@ ui::TimelineMetrics metrics() {
 
 // A window over the whole of a song `length_ms` long, which lays the song
 // out as the timeline did before it had a window.
-ui::TimelineView whole(double length_ms) { return ui::TimelineView{0.0, length_ms}; }
+ui::TimelineView whole(double length_ms) { return ui::whole_song_view(length_ms); }
 
 app::PreviewScene scene_with_fills() {
     app::PreviewScene s = fx::timed_scene();

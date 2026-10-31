@@ -704,10 +704,20 @@ std::optional<TimelineView> press_or_drag(TimelineView view, double length_ms, f
     return std::nullopt;
 }
 
+// The strip's and the bar's border: kBorderW wide in kLineColor, inside the box
+// from `b0` to `b1` as a CSS border is, so its centre line is half a border in.
+void draw_line_border(ImDrawList* dl, ImVec2 b0, ImVec2 b1, float rounding) {
+    const float border = px(kBorderW);
+    dl->AddRect(ImVec2(b0.x + border * 0.5f, b0.y + border * 0.5f), ImVec2(b1.x - border * 0.5f, b1.y - border * 0.5f),
+                kLineColor, rounding, ImDrawFlags_None, border);
+}
+
 // A label column's words: `first` in `first_col`, then, when given, `second`
 // under it in kDimColor, kCaptionGapRem apart, both in the Label role and
-// wrapping at `wrap_w`, as one block centred between `y0` and `y1`. Returns
-// the block's height; with `y1` below `y0` it only measures.
+// wrapping at `wrap_w`, as one block centred between `y0` and `y1`. The
+// wrapping is the font-taking AddText's; size 0 is the size ScopedFont
+// pushed. Returns the block's height; with `y1` below `y0` it only measures.
+// Every row's name, the strip's and the scrollbar's are drawn through here.
 float label_block(ImDrawList* dl, float x, float y0, float y1, float wrap_w, const char* first, ImU32 first_col,
                   const char* second) {
     ScopedFont font(TextRole::Label);
@@ -760,8 +770,7 @@ float draw_strip_row(const StripLayout& s, ImVec2 top, float label_w, float labe
                 rem(kFrameRoundingRem), ImDrawFlags_None, px(kFrameBorderW));
     dl->AddRectFilled(at(s.playhead_x, 0.0f), at(s.playhead_x + px(kStripPlayheadW), s.height), kStripPlayheadColor);
     dl->PopClipRect();
-    dl->AddRect(ImVec2(b0.x + border * 0.5f, b0.y + border * 0.5f), ImVec2(b1.x - border * 0.5f, b1.y - border * 0.5f),
-                kLineColor, rem(kStripRoundingRem), ImDrawFlags_None, border);
+    draw_line_border(dl, b0, b1, rem(kStripRoundingRem));
 
     // A press on the frame drags it; a press anywhere else centres the
     // window there (lines 718 to 726).
@@ -840,8 +849,7 @@ float draw_scrollbar_row(ImVec2 top, float avail_w, float label_w, float label_w
                                                           }))
             ev.view = v;
         dl->AddRectFilled(b0, b1, kStripColor, rem(kScrollBarRoundingRem));
-        dl->AddRect(ImVec2(b0.x + border * 0.5f, b0.y + border * 0.5f), ImVec2(b1.x - border * 0.5f, b1.y - border * 0.5f),
-                    kLineColor, rem(kScrollBarRoundingRem), ImDrawFlags_None, border);
+        draw_line_border(dl, b0, b1, rem(kScrollBarRoundingRem));
         dl->AddRectFilled(ImVec2(in0.x + sb.thumb.x0, in0.y + sb.thumb.y0), ImVec2(in0.x + sb.thumb.x1, in0.y + sb.thumb.y1),
                           on_thumb || dragging ? kThumbHoverColor : kThumbColor, rem(kThumbRoundingRem));
     }
@@ -971,14 +979,7 @@ TimelineEvents PreviewTimeline::draw(const TimelineInput& in) const {
         if (static_cast<TimelineRow>(r) == TimelineRow::Saved)
             draw_saved_caption(dl, origin.x, t0.y + row.y0, t0.y + row.y1, label_wrap);
         if (names[r] == nullptr) continue;
-        // The label wraps, which only the font-taking AddText does; size 0 is
-        // the size ScopedFont pushed.
-        ScopedFont font(TextRole::Label);
-        ImFont* const label_font = font_for(TextRole::Label).font;
-        const ImVec2 sz = ImGui::CalcTextSize(names[r], nullptr, false, label_wrap);
-        const float y = t0.y + (row.y0 + row.y1) * 0.5f - sz.y * 0.5f;
-        dl->AddText(label_font, 0.0f, ImVec2(origin.x, y), kMutedColor, names[r], nullptr, label_wrap);
-        log_text(ImVec2(origin.x, y), names[r]);
+        label_block(dl, origin.x, t0.y + row.y0, t0.y + row.y1, label_wrap, names[r], kMutedColor, nullptr);
     }
 
     // Everything on the track is clipped to the rows' rectangle, so a mark
