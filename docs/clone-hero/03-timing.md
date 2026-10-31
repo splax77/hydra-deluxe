@@ -50,7 +50,7 @@ Found: 2026-10-30, wave 2 scout R7.
 
 Rule: The clock reads audio position / ratio plus (-delay / ratio), so audio position `delay` is chart time 0. A positive delay makes the notes come later against the music. Delay and Offset change only this mapping, never the chart's own times.
 Label: Proven in the game's code
-Evidence: `code/6142/clock_ctor_16C9A0.asm` lines 22 to 32 (`+0x58` = -(b / c)), `code/6142/clock_tick_16C650.asm` lines 72 to 75, `code/6142/gm_load_coroutine_D8D80.asm` lines 435 to 464 and `code/6142/delay_seconds_1EF1A0.asm` lines 2 to 4 (wave 2 scout R7, row R7-13). The 2026-09-24 recording (`delay = 1016` measured +1018 ms, `Offset = 0.25` measured +248 ms) agrees; its scripts are gone (wave 1 scout H3, H3-19).
+Evidence: `code/6142/clock_ctor_16C9A0.asm` lines 22 to 32 (`+0x58` = -(b / c)), `code/6142/clock_tick_16C650.asm` lines 72 to 75, `code/6142/gm_load_coroutine_D8D80.asm` lines 435 to 464 and `code/6142/delay_seconds_1EF1A0.asm` lines 2 to 4 (wave 2 scout R7, row R7-13). The 2026-09-24 recording (`delay = 1016` measured +1018 ms, `Offset = 0.25` measured +248 ms, and a copy with `Offset = 0.25` and `delay = 500` measured +496 ms, session 2a88c065 condensed line 306) agrees; its scripts are gone (wave 1 scout H3, H3-19).
 Game code (6142): the clock constructor of class #707, RVA `0x16C9A0`; the delay-in-seconds getter of class #828, RVA `0x1EF1A0`.
 Hydra: `kOffsetDirection` in src/app/preview_source.cpp line 139.
 Ruling: D274 item 6: "Check the game, then honor (Recommended)".
