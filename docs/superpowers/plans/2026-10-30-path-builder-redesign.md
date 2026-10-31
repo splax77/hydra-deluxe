@@ -254,6 +254,15 @@ The user answered all seven questions in one line: "Yes, as recommended". So:
 7. The timeline axis puts a time label every step of 30000 ms (`kTimelineAxisStepMs`, `s += 30`, mockup line 264). When a step is narrower than one label, the timeline labels every few steps; the least gap is a label's own width, not a number.
 8. The user was asked "When \"Show Hydra's best path\" is on, its activations show as dashed outlines on the timeline. The mockup never gives a dash length. Which should they use?" and answered "4 px on, 4 px off (Recommended)", the same dash as the timeline's "2 phrases: enough to activate" line. So each ghost band is a dashed rounded outline drawn with `kActivateDash`, in `kGhostColor` (#bdbdbd) at `kGhostW` (1.5 px), both from mockup line 48, with `kBandRounding` corners.
 
+**User decisions (PB-5, 2026-10-30):**
+
+1. While PB-5 was reviewed the user was asked "The builder screen also takes five numbers from the mockup: the highway is 600 px wide, the score hints are 190 px, the fill tooltip is 360 px, the legend swatch is 12 px, and a short cost writes figures under 1,000 whole and larger ones like \"1.2k\". Use the mockup's numbers for these too?" and answered "Mockup's (Recommended)". So the five numbers below are the mockup's.
+2. The highway is 600 px wide beside the steps panel (`kHighwayW` in `src/pathbuilder/pb_window.cpp`, `.lower{grid-template-columns:600px ...}`, mockup line 59).
+3. A score's hint wraps at 190 px (`kScoreHintW`, `.num .hint{max-width:190px}`, mockup line 26).
+4. The fill tooltip wraps at 360 px (`kTooltipW`, `.tip{max-width:360px}`, mockup line 58).
+5. A legend swatch is 12 px across (`kSwatchSize` in `src/ui/preview_timeline.cpp`, `.legend i{width:12px; height:12px}`, mockup line 32).
+6. A short cost writes a figure under 1,000 whole and from 1,000 as thousands to one place with a "k" (the `1000` in `format_points_short`, `src/app/display_format.cpp`, `const short = n => n >= 1000 ? ...`, mockup line 147).
+
 **More answers from the wave 1 merges (2026-10-30), in the user's words:**
 
 - Asked whether a step sentence shows the mockup's "0:45" or Hydra's clock "0:45.789", the user answered "Hydra's 0:45.789 (Recommended)". `step_sentence` writes the time with `clock_str`.
