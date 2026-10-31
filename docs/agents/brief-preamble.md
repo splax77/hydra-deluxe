@@ -86,6 +86,8 @@ This is about claims of fact. Follow your brief's instructions. Treat a claim in
 
 A search that finds nothing proves nothing on its own. Before you write that something does not exist, is never called or is not used, widen the search past the first name you tried, and say where you looked.
 
+When you learn a Clone Hero fact (a game address, field, rule or live result), it belongs on its page under `docs/clone-hero/`, never in a memory note. If your brief owns that page, update it in the same commit as the work that found it. If not, put the fact in your report, so the main session can add it.
+
 ## When blocked
 
 When something stops you, stop and report. Give the exact command and the exact error or hook message. Never wait on a prompt, never retry the same call hoping it passes, and never guess a way around a hook. A hook that blocks you wrongly gets fixed by the main session, not routed around.

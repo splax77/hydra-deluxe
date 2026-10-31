@@ -4,6 +4,10 @@ Ask questions if something is unclear. How to explain things lives in the user's
 
 Clone Hero MCP: to drive Clone Hero as text, use the project's `ch` MCP server; see `docs/agents/clone-hero-mcp.md`.
 
+### Clone Hero reference
+
+Read `docs/clone-hero/README.md` before any Clone Hero question, and before any plan, test or probe that touches the game. A session or agent that learns a Clone Hero fact updates its page in the same commit as the work that found it, never in a memory note.
+
 ### Issue tracker
 
 Issues live as GitHub issues in `splax77/hydra-deluxe`, managed with the `gh` CLI. See `docs/agents/issue-tracker.md`.
@@ -22,7 +26,7 @@ Every past session of this project has a short card: its goal, what went wrong a
 
 Look there when the user mentions an earlier session or a past decision, asks to continue or redo something, or before you propose an approach that may have been tried and dropped. The index is too big to read whole: grep `index.md` and the cards by keyword, tag, D-number or session id, open the matching card, and read its `condensed\<id>.condensed.md` only when you need detail. Memory files end with a `Sessions:` line that names their cards. A card is a pointer, not proof: check what it says against the code before you act on it (agent rule 9).
 
-A start-of-session hook asks the main session to write cards for finished sessions that have none. Do it alongside the user's request, as the hook's message says.
+A start-of-session hook asks the main session to write cards for finished sessions that have none. Do it alongside the user's request, as the hook's message says. A card marked `[write-back]` in `index.md` names a Clone Hero fact its page lacks, and the next main session adds that fact to the page alongside the user's request, the same way it writes missing cards.
 
 ### Audits
 
