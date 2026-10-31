@@ -34,7 +34,11 @@ Each has its recommendation selected; the other options are one click away. The 
 
 ## The user's answers to these questions
 
-(To be filled in after the user clicks through.)
+The user did not answer the bar's questions one by one. On seeing the bar the user said: "this is way too many options. im not going to bother checking different combinations of 50 different boxes". So the main session hid the bar, and the page showed only the recommended option of each question above, with the 3-minute window. The user then said: "your design doesnt include any scroll function. it just ends 3 minutes into the song." The page could only scroll by the wheel (18 seconds a notch) or the thin strip, and showed neither. So the main session added a scrollbar under the timeline: its thumb is the window and can be dragged, a click beside the thumb moves one window, ◀ and ▶ buttons at its ends move one window, and a readout shows "6:00 – 9:00 of 42:02". The wheel now moves a third of the window a notch (one minute), and the strip is taller and labelled "click or drag the white frame".
+
+On that page the user answered "yes this looks good". So each question above takes its recommended option, with the 3-minute window and the scrollbar as drawn, and that approval covers the page as shown, not the options it hid.
+
+In the same message the user set a design requirement, word for word: "important design requirement - the real app should only calculate paths as needed in real time. calculating and storing every possible path combination would be insanely inefficient for long tracks". The mockup's data pipeline (every path prefix priced ahead of time) exists only to make this page; the real app must not do that.
 
 ## The data
 
