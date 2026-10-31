@@ -71,6 +71,10 @@ KIT_REWRITE = True
 # Whether a press runs on the game's main thread. False runs it on Frida's
 # own thread, the plan's first try ("One agent for the kit"); LS-K1 decides.
 KIT_PRESS_ON_MAIN = False
+# The longest watch ch_kit_watch accepts, in seconds (the user's answer to
+# the plan's K7 question, 2026-10-30, "Cap at 60 s (Recommended)"). A longer
+# one is refused, naming this cap.
+KIT_WATCH_MAX_S = 60.0
 # ch_kit_status counts frames over this long to give the frame rate (the
 # plan's "Where the schedule runs").
 KIT_RATE_WINDOW_S = 1.0
@@ -233,15 +237,23 @@ def seen_lines(reply: dict) -> List[str]:
 
 def watch_lines(reply: dict) -> List[str]:
     """The watch reply as lines: what was sampled, then either that no key
-    reached a player or a failure line with each true read listed."""
-    lines = [f"watched {reply.get('seconds')} s: {reply.get('ticks')} ticks, frames "
+    reached a player or a failure line with each true read listed. Only a
+    reply that sampled at least one tick on at least one reader and counted
+    no true read says no key reached a player; a reply that sampled nothing
+    is a failure too, so a watch that read nothing never reads as a pass."""
+    readers = reply.get("readers") or []
+    ticks = reply.get("ticks")
+    lines = [f"watched {reply.get('seconds')} s: {ticks} ticks, frames "
              f"{reply.get('first_frame')} to {reply.get('last_frame')}, readers: "
-             f"{', '.join(reply.get('readers') or [])}"]
+             f"{', '.join(readers)}"]
     count = reply.get("true_count")
-    if count == 0:
-        lines.append("no key reached a player")
-        return lines
     reads = reply.get("reads") or []
+    if count == 0 and not reads:
+        if not readers or not isinstance(ticks, int) or ticks < 1:
+            lines.append("FAILED: the watch sampled nothing, so it proves nothing")
+        else:
+            lines.append("no key reached a player")
+        return lines
     lines.append(f"FAILED: a key reached a player: {count} true reads; "
                  f"the first {len(reads)} that turned true:")
     lines.extend(f"  at {r.get('ms')} ms, frame {r.get('frame')}: {r.get('who')} "
@@ -522,11 +534,15 @@ class KitTools:
         Rewired player and on its controllers, and print whether any read
         came true: a true read means a key or button reached a player. It
         is refused while a play session runs, because the kit's own presses
-        read true; the server's lock keeps a press from running meanwhile."""
+        read true; the server's lock keeps a press from running meanwhile.
+        A `seconds` above KIT_WATCH_MAX_S is refused."""
         with self._lock:
             if (isinstance(seconds, bool) or not isinstance(seconds, (int, float))
                     or not math.isfinite(seconds) or not seconds > 0):
                 return f"seconds is a number above 0, not {seconds!r}"
+            if seconds > KIT_WATCH_MAX_S:
+                return (f"seconds is at most {KIT_WATCH_MAX_S:g} (KIT_WATCH_MAX_S), "
+                        f"not {seconds!r}")
             agent = self._ready_agent()
             if agent is None:
                 return NOT_SET_UP

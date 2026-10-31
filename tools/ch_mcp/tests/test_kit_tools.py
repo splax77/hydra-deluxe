@@ -187,6 +187,7 @@ class ConstantsTest(unittest.TestCase):
         self.assertEqual(K.KIT_SETUP_CAP_S, 10)
         self.assertEqual(K.KIT_PRESS_CAP_S, 1)
         self.assertEqual(K.KIT_AXIS_VALUE, 1.0)
+        self.assertEqual(K.KIT_WATCH_MAX_S, 60.0)
         self.assertEqual(K.KIT_DEFINITION_ID, 6)
         self.assertEqual(K.KIT_TAG, "hydra-kit")
         self.assertEqual(K.KIT_PLAYER, "Player1")
@@ -384,6 +385,32 @@ class WatchTest(Rig):
         for bad in (0, -1, True, "20", float("inf")):
             self.assertEqual(tools.ch_kit_watch(bad), f"seconds is a number above 0, not {bad!r}")
         self.assertEqual(len(self.posted()), sent)
+
+    def test_a_watch_that_sampled_nothing_is_a_failure_not_a_pass(self):
+        for empty in ({**WATCH_QUIET, "ticks": 0}, {**WATCH_QUIET, "readers": []},
+                      {k: v for k, v in WATCH_QUIET.items() if k != "ticks"}):
+            tools = self.set_up([empty])
+            lines = tools.ch_kit_watch(20).splitlines()
+            self.assertEqual(lines[-1], "FAILED: the watch sampled nothing, so it proves nothing")
+
+    def test_a_reply_with_listed_reads_fails_even_if_its_count_says_zero(self):
+        odd = {**WATCH_QUIET, "reads": [{"ms": 5, "frame": 5001, "who": "Player1"}]}
+        tools = self.set_up([odd])
+        lines = tools.ch_kit_watch(20).splitlines()
+        self.assertTrue(lines[1].startswith("FAILED: a key reached a player"))
+
+    def test_a_watch_is_allowed_at_the_cap_and_refused_just_above_it(self):
+        tools = self.set_up([{**WATCH_QUIET, "seconds": 60}])
+        sent = len(self.posted())
+        lines = tools.ch_kit_watch(60).splitlines()
+        self.assertEqual(self.posted()[-1], {"type": "watch", "seconds": 60, "cap_s": 61})
+        self.assertEqual(lines[-1], "no key reached a player")
+        self.assertEqual(len(self.posted()), sent + 1)
+        self.assertEqual(tools.ch_kit_watch(60.001),
+                         "seconds is at most 60 (KIT_WATCH_MAX_S), not 60.001")
+        self.assertEqual(tools.ch_kit_watch(3600),
+                         "seconds is at most 60 (KIT_WATCH_MAX_S), not 3600")
+        self.assertEqual(len(self.posted()), sent + 1)
 
     def test_a_watch_with_no_reply_ends_at_its_cap(self):
         tools = self.set_up([None])
