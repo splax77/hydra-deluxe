@@ -42,9 +42,10 @@ inline constexpr const char* kStatusNoPaths = "no paths";
 // cap, kCloneHeroSpCap, for this mode: never analyzed there, or Stale (D114
 // item 1).
 inline constexpr const char* kStatusNoCurrentResult = "no current result";
-// The last scan never found the chart.
+// The last scan never found the chart, whatever speed the score was played at.
 inline constexpr const char* kStatusNotInLibrary = "not in library";
-// Played at a speed other than net::kBaseSpeedPercent: shown, never compared.
+// Played at a speed other than net::kBaseSpeedPercent on a chart the library
+// lists: shown, never compared. collect_dm_rows decides it (D284 item 2).
 inline constexpr const char* kStatusOtherSpeed = "other speed";
 
 // The decimals every comparison percent is written to: DmReportRow::pct_h,
