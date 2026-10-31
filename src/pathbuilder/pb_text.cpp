@@ -34,8 +34,8 @@ std::string intro_text() {
 size_t intro_star_at() { return intro_before_star().size(); }
 
 const char* const kNoStepsText =
-    "None yet. Each activation you make shows up here: where it starts and ends, any squeeze it "
-    "needs, and what it cost you.";
+    "None yet. Each activation you make shows up here: where it starts and ends, and what it "
+    "cost you.";
 const char* const kActivationRemovedText = "Activation removed.";
 const char* const kStartedOverText =
     "Started over. Click a glowing fill to make your first activation.";
