@@ -264,6 +264,10 @@ struct TimelineLayout {
 // The item name of the fill on `chord_tick`: "##fill_<chord_tick>".
 std::string timeline_fill_id(int64_t chord_tick);
 
+// The moment the timeline puts `fill` at: the end of its span. The Fills row,
+// the strip and a screen that scrolls to a fill all read it here.
+double timeline_fill_ms(const app::PreviewFill& fill);
+
 // Lay the scene of a song `length_ms` long (the Preview's playback end) out
 // `width` pixels wide over the window `view`, each fill in the look `marks`
 // give it. Only the fills inside the window get an item (the third mockup's

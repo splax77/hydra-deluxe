@@ -287,6 +287,8 @@ std::optional<ImU32> fill_tint(const TimelineFillMarks& marks, int64_t chord_tic
 
 }  // namespace
 
+double timeline_fill_ms(const app::PreviewFill& fill) { return fill.span.end_ms; }
+
 // ImGui keeps 2 px of padding and half a grab at each end of a float slider,
 // so the ticks do too: each sits where the grab's centre does for its time.
 void draw_scrub_marks(const std::vector<double>& marks) {
@@ -504,7 +506,7 @@ std::optional<TimelineLayout> timeline_layout(const app::PreviewScene& scene, do
     for (size_t i = 0; i < scene.fills.size(); ++i) {
         const app::PreviewFill& f = scene.fills[i];
         // A fill outside the window gets no item and no word (line 578).
-        if (!in_view(view, f.span.end_ms)) continue;
+        if (!in_view(view, timeline_fill_ms(f))) continue;
         TimelineFillItem item;
         item.fill = i;
         item.chord_tick = f.chord_tick;
@@ -512,7 +514,7 @@ std::optional<TimelineLayout> timeline_layout(const app::PreviewScene& scene, do
         item.state = f.state;
         item.look = fill_look(f, marks);
         item.tint = fill_tint(marks, f.chord_tick);
-        item.x = x_of(f.span.end_ms);
+        item.x = x_of(timeline_fill_ms(f));
         item.y = fr.y0 + metrics.fill_center_y;
         // The hit box's sides are set below, once every fill in view is placed.
         item.hit = {item.x, fr.y0, item.x, fr.y1};
@@ -909,7 +911,7 @@ std::optional<StripLayout> strip_layout(const app::PreviewScene& scene, double l
             col = *tint;
         // The bar's left edge at the fill's end, where the Fills row puts the
         // dot's centre (`.of` is placed by its left, line 685).
-        const float x = x_of(f.span.end_ms);
+        const float x = x_of(timeline_fill_ms(f));
         out.fills.push_back({i, {x, metrics.fill_top, x + metrics.fill_w, metrics.fill_top + metrics.fill_h}, col});
     }
     for (size_t i = 0; i < scene.activations.size(); ++i) {

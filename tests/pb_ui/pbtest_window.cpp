@@ -197,7 +197,8 @@ void test_scroll_the_timeline(ImGuiTestContext* ctx) {
     reset_app(h);
     IM_CHECK(wait_idle(ctx));
     ctx->Yield(2);
-    // The Preview's end for this chart reads 5:59 on screen (from one run).
+    // The Preview's end is app::song_length_ms: the chart's stated 5:58.957
+    // plus the end pad, so the readouts end "of 5:59" (from one run).
     const std::string length = "5:59";
     // Gives the last action two frames, then reads the readout; the whole
     // line it sits in is logged when it is not the one expected.
