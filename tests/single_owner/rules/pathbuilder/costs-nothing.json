@@ -29,7 +29,7 @@
           "why": "costs_nothing, the owner"
         }
       ],
-      "note": "Whether a choice loses nothing is asked once, in costs_nothing; the screen's \"best\" labels, its best-fill lookups and pb_text's \"costs nothing\" sentences all call it. cost_tier's own throw on a negative cost and its test for exactly 0 are the tier rule, not this question, and the pattern does not match them."
+      "note": "Whether a choice loses nothing is asked once, in costs_nothing; the screen's \"best\" labels, its best-fill lookups and pb_text's cost label and fill card line all call it. cost_tier's own throw on a negative cost and its test for exactly 0 are the tier rule, not this question, and the pattern does not match them."
     }
   ]
 }
