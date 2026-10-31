@@ -213,7 +213,7 @@ void test_sort(ImGuiTestContext* ctx) {
     fixture().path_open = true;
     ctx->Yield(3);
     // Optimal paths only starts ticked, and no sample row is optimal.
-    IM_CHECK(shows("Nothing matches those filters."));
+    IM_CHECK(shows("Nothing matches."));
     IM_CHECK(shows("0 of 6 paths"));
     open_path_all_rows(ctx);
     IM_CHECK(shows("6 of 6 paths"));
@@ -234,27 +234,31 @@ void test_sort(ImGuiTestContext* ctx) {
     IM_CHECK_LT(where("3,456"), where("+1,000 over"));
 }
 
-// Filter to nothing, then Clear filters.
+// Each window's search box hint, then filter to nothing, then Clear filters.
 void test_filters(ImGuiTestContext* ctx) {
     reset_app(harness(ctx));
     reset_fixture();
     open_path_all_rows(ctx);
+    IM_CHECK(shows("Search song, artist, charter, or path notation"));
     ctx->ItemInputValue("##search", "zzz");
     ctx->Yield(2);
     IM_CHECK(shows("0 of 6 paths"));
-    IM_CHECK(shows("Nothing matches those filters."));
+    IM_CHECK(shows("Nothing matches."));
+    IM_CHECK(!shows("Nothing matches those filters."));
     ctx->ItemClick("Clear filters");
     ctx->Yield(2);
     // The search is empty again and Optimal paths only stayed unticked.
     IM_CHECK(shows("6 of 6 paths"));
 
     open_dm(ctx);
+    IM_CHECK(shows("Search song, artist, or charter"));
     ctx->ComboClick("##status/Not in your library");
     ctx->Yield(2);
     IM_CHECK(shows("1 of 4 scores"));
     ctx->ItemInputValue("##search", "zzz");
     ctx->Yield(2);
     IM_CHECK(shows("0 of 4 scores"));
+    IM_CHECK(shows("Nothing matches."));
     ctx->ItemClick("Clear filters");
     ctx->Yield(2);
     IM_CHECK(shows("4 of 4 scores"));

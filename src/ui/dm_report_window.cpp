@@ -8,7 +8,7 @@
 #include <vector>
 
 #include "app/dm_report_view.h"
-#include "app/html_page.h"  // kSearchChartsHint
+#include "app/html_page.h"  // charts_search_hint
 #include "app/user_messages.h"
 #include "imgui.h"
 #include "ui/app_state.h"  // dm_report_input
@@ -87,7 +87,8 @@ void draw_body(DmWindow& w, const report_frame::Frame& frame, const DmReportInpu
     }
     report_frame::tiles(w.tiles);
 
-    if (report_frame::search_box(w.memory, app::html::kSearchChartsHint)) apply_filters(w);
+    if (report_frame::search_box(w.memory, app::html::charts_search_hint().c_str()))
+        apply_filters(w);
     if (report_frame::dropdown("##status", w.labels, w.status)) apply_filters(w);
     report_frame::count_line(w.memory, view.count_line(view_rules::kNoun));
 

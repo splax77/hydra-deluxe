@@ -28,30 +28,34 @@
       "note": "The comparison's status words, apart from the table cell (the kStatus* word, app.json's row), live once in kStatusWords. A tile, dropdown, hover or counts word typed elsewhere is a second spelling that can drift from the table. Decided by: D114 items 1 and 2, concept audit M01 and M02."
     },
     {
-      "question": "What does a report say when nothing matches its filters, and what does its chart search box hint?",
-      "owner": "kNothingMatches and kSearchChartsHint in src/app/html_page.h",
+      "question": "What does a chart search (the Library, a report window or the fill page) say when nothing matches, and how is its search box's hint written?",
+      "owner": "kNothingMatches and search_hint in src/app/html_page.h",
       "owner_file": "src/app/html_page.h",
       "owner_symbol": "kNothingMatches",
       "date": "2026-10-11",
-      "decision": "D114 item 22 (M07, code-only)",
+      "decision": "D114 item 22 (M07, code-only); D271 item 3 and D276 item 3 (one sentence and one hint shape)",
       "added_by": "concept-audit-H3",
-      "pattern": "Nothing matches those filters|Search song, artist, or charter",
+      "pattern": "Nothing matches|No charts match|\"Search [a-z]+(, [a-z ]+)+\"",
       "owner_files": [
         "src/app/html_page.h"
       ],
       "must_match": [
-        "    ImGui::TextUnformatted(\"Nothing matches those filters.\");",
-        "  empty.textContent = 'Nothing matches those filters.';",
-        "    if (report_frame::search_box(w.memory, \"Search song, artist, or charter\")) apply_filters(w);"
+        "    ImGui::TextUnformatted(\"Nothing matches.\");",
+        "  empty.textContent = 'Nothing matches.';",
+        "        ImGui::TextUnformatted(\"No charts match your search.\");",
+        "    if (report_frame::search_box(w.memory, \"Search song, artist, or charter\")) apply_filters(w);",
+        "    if (report_frame::search_box(w.memory, \"Search song, artist, charter, or path notation\"))",
+        "        edited = ImGui::InputTextWithHint(\"##search\", \"Search song, artist, album, charter, or folder\", buf,"
       ],
       "must_not_match": [
         "    ImGui::TextUnformatted(app::html::kNothingMatches);",
-        "    if (report_frame::search_box(w.memory, \"Search song, artist, charter, or path notation\"))"
+        "        app::html::search_hint({\"song\", \"artist\", \"charter\", \"path notation\"});",
+        "    static constexpr const char* kLink = \"Search tips##searchtips\";"
       ],
       "scope": [
         "src"
       ],
-      "note": "The report windows and the fill page share these two phrases; the page is built from hydra_app, so the home is html_page.h, not GUI code. A third copy typed elsewhere would drift. Decided by: D114 item 22, concept audit M07."
+      "note": "The Library, the report windows and the fill page share one empty sentence, and every chart search box builds its hint with search_hint, so each names its own fields and none types the shape. The page is built from hydra_app, so the home is html_page.h, not GUI code. A copy typed elsewhere would drift. Decided by: D114 item 22, concept audit M07; D271 item 3 and D276 item 3."
     }
   ]
 }

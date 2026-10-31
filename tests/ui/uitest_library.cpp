@@ -593,7 +593,8 @@ void test_library_search(ImGuiTestContext* ctx) {
     // the box is the one way to clear it by mouse, and it brings it all back.
     ctx->ItemInputValue("**/##search", "zzqx");
     IM_CHECK(wait_until(ctx, [&] { return shown() == 0; }, 5));
-    IM_CHECK(visible_text(h).find("No charts match your search.") != std::string::npos);
+    IM_CHECK(visible_text(h).find("Nothing matches.") != std::string::npos);
+    IM_CHECK(visible_text(h).find("No charts match your search.") == std::string::npos);
     IM_CHECK(!ctx->ItemExists("**/Clear search"));
     ctx->ItemClick("**/X##clearsearch");
     IM_CHECK(wait_until(ctx, [&] { return shown() == 97 && h.app->search.empty(); }, 5));
@@ -1894,7 +1895,7 @@ void test_library_search_tips(ImGuiTestContext* ctx) {
     };
 
     // The empty box shows its placeholder; the old hint line is gone.
-    IM_CHECK(on_screen(h, "Search songs"));
+    IM_CHECK(on_screen(h, "Search song, artist, album, charter, or folder"));
     IM_CHECK(!on_screen(h, "Narrow with"));
     IM_CHECK(on_screen(h, "Type any words, or narrow it down."));
     IM_CHECK(ctx->ItemExists("**/Search tips##searchtips"));
