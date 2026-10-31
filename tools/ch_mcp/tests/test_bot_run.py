@@ -248,7 +248,7 @@ class BotRunTest(unittest.TestCase):
                          f'py tools/ch_mcp/bot_run.py --restore "{r.backup_dir()}"')
         self.assertFalse(any(line.startswith("restoring") for line in r.lines))
 
-        # The step: the game rewrites all five files.
+        # The step: the game rewrites every backed-up file.
         for name in ORIGINAL:
             _write(r.path(name), b"changed by the game")
         restore_lines = []
@@ -887,6 +887,9 @@ class HumanStartRunTest(unittest.TestCase):
             self.start(None, FakeLaunchAgent(self.events))
         self.assertEqual(str(cm.exception), B.HUMAN_NEEDS_SONG)
         self.assertIn("runs only with --song", B.HUMAN_NEEDS_SONG)
+        self.assertEqual(B.human_refusal(True, None), B.HUMAN_NEEDS_SONG)
+        self.assertIsNone(B.human_refusal(True, self.r.song))
+        self.assertIsNone(B.human_refusal(False, None))
         self.assertFalse(os.path.exists(self.r.out_dir))
         self.assertEqual(self.events, [])
 

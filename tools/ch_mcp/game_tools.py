@@ -59,10 +59,6 @@ NO_ROUTE_NO_KIT = ("refused: no route given and the kit is not set up; "
 _NOT_RUNNING = f"{C.PROCESS_NAME} is not running"
 
 
-def _join(thread: threading.Thread, cap_s: float) -> None:
-    thread.join(cap_s)
-
-
 def _key_name(vk: int) -> str:
     """A virtual-key code as the letter on the key when it is one."""
     return chr(vk) if ord("A") <= vk <= ord("Z") else f"0x{vk:02X}"
@@ -164,7 +160,7 @@ class GameTools:
                  install: Callable = install_chart.install,
                  find_window: Callable[[], int] = find_game_window,
                  compare: Callable = compare_scorestats.compare,
-                 wait_thread: Callable[[threading.Thread, float], None] = _join,
+                 wait_thread: Callable[[threading.Thread, float], None] = bot_run.join_thread,
                  set_setting: Callable[[str, str, str], None] = game_files.set_game_setting,
                  make_watch: Optional[Callable[[], foreground.ForegroundWatch]] = None):
         self._env = env
@@ -260,8 +256,9 @@ class GameTools:
         refused before anything runs. An open run is stopped and restored
         first."""
         with self._lock:
-            if human and song_folder is None:
-                return bot_run.HUMAN_NEEDS_SONG
+            refusal = bot_run.human_refusal(human, song_folder)
+            if refusal is not None:
+                return refusal
             lines: List[str] = []
             if self._run is not None or self._adopted_backup is not None:
                 lines.append("a run was open; stopping it first:")

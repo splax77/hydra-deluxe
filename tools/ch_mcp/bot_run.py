@@ -109,6 +109,14 @@ HUMAN_NEEDS_SONG = ("refused: a human launch needs a song folder, because the ga
                     "with --song")
 
 
+def human_refusal(human: bool, song_dir: Optional[str]) -> Optional[str]:
+    """The line that refuses a launch asking for a human player with no song
+    folder, or None when the launch may go on. start_run raises it as
+    LaunchFailed; ch_start asks first, so it refuses before it stops an open
+    run."""
+    return HUMAN_NEEDS_SONG if human and song_dir is None else None
+
+
 class SongLengthMissing(Exception):
     pass
 
@@ -324,7 +332,10 @@ def _kill_game(game: Game) -> None:
     game.stop()
 
 
-def _join(thread: threading.Thread, cap_s: float) -> None:
+def join_thread(thread: threading.Thread, cap_s: float) -> None:
+    """Wait for `thread` for at most `cap_s` seconds. The one real wait on a
+    worker thread: Env.wait_thread and GameTools' wait_thread both default to
+    it, and a test swaps either for a fake."""
     thread.join(cap_s)
 
 
@@ -354,7 +365,7 @@ class Env:
     resume_thread: Callable[[int], None] = resume_main_thread
     resume_spawned: Callable[[int], None] = _real_resume_spawned
     kill: Callable[[Game], None] = _kill_game
-    wait_thread: Callable[[threading.Thread, float], None] = _join
+    wait_thread: Callable[[threading.Thread, float], None] = join_thread
     launch_agent_path: str = LAUNCH_AGENT_FILE
     launch_patch_path: str = LAUNCH_PATCH_FILE
 
@@ -717,8 +728,9 @@ def start_run(song_dir: Optional[str], *, player: str = DEFAULT_PLAYER,
     are put back before the error goes on, since no run comes back to
     finish."""
     env = env or Env()
-    if human and song_dir is None:
-        raise LaunchFailed(HUMAN_NEEDS_SONG)
+    refusal = human_refusal(human, song_dir)
+    if refusal is not None:
+        raise LaunchFailed(refusal)
     length_ms = source = cap_s = None
     if song_dir is not None:
         # The game starts in its own folder, so a relative song path would be
