@@ -50,6 +50,20 @@ A method has a `name`, a `return` type, a `params` list with each parameter's ty
 
 `signatures` holds the short records the feasibility tests look up: `GameManager`, `ScoreManager` and `DrumsPlayer` by name, and `drums_engine` found by its constructor's address. Each has the class's `name`, `typedef_index` and `base`, its `field_count` and `method_count`, and `readable_fields`, which lists the fields whose names are readable in the same shape as above. `drums_engine` also has `ctor_rva`, the address it was found by. A name that matches no class or more than one stops the script with `class <name> matched N classes`.
 
+## The facts tables and the names map
+
+The Clone Hero reference pages under `docs/clone-hero/` cite game facts: method addresses, fields by offset, and classes and members by name. `dump_facts.py --tsv` looks each one up in one build's dump and writes the facts table the C++ docs test reads, `docs/clone-hero/code/facts-<build>.tsv`:
+
+```
+py tools/ch_mcp/dump_facts.py "C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-dumps\6142\dump.cs" --version 1.1.0.6142-final --tsv docs/clone-hero --out docs/clone-hero/code/facts-6142.tsv --dll "C:\Clone Hero\1.1 june\Clone Hero\GameAssembly.dll"
+```
+
+For build 4045, pass that build's `facts.json` instead of a `dump.cs`. Add `--check` to compare the table on disk with the dump without writing it; it exits 1 on any difference. Which spans count as facts, and which build a span belongs to, are decided in `dump_facts.py` (`game_fact` and `span_builds`). The table's columns are `TABLE_COLUMNS` there. Its last column, `cited`, holds the span exactly as a page writes it, one row for each distinct span. The docs test finds a page's span by that column alone, so the tool is the only place a span is resolved.
+
+The game scrambles most of its names, and a page never writes a scrambled name: any backticked span holding a non-ASCII character is an error, from the tool and from the docs test. A page writes our own readable name instead, taken from the build's names map, `docs/clone-hero/code/names-<build>.tsv`. Its lines that start with `#` are comments. Then comes the column line (`NAMES_COLUMNS` in `dump_facts.py`) and one row per name. A class row names a class and leaves `member` empty; a member row names one member of a class. In build 6142 a row finds its class by TypeDefIndex. In build 4045 the TypeDefIndex column stays empty and the class is found by its name, because a Mono build's indexes repeat across assemblies. When the tool resolves a span, a class part or member part that is a name in the map stands for the dump's real name. So `#8255.spAmount`, `DrumsPlayer.spAmount` and a renamed class's member all resolve. A missing map file is an empty map.
+
+Each run also checks the map against the dump (`check_names` in `dump_facts.py` lists what it checks). A map error makes the run exit 1. A map row that no page cites is printed as a warning and does not change the exit code.
+
 ## The server
 
 `server.py` is an MCP server for Clone Hero: a helper program Claude Code starts, which gives an agent tools to start the game, read it and press its pads and buttons through a virtual drum kit inside the game. The plans are `docs/superpowers/plans/2026-10-28-ch-mcp-server.md`; `docs/superpowers/plans/2026-10-30-ch-mcp-star-power-and-song-start.md` for Star Power and the menus; and `docs/superpowers/plans/2026-10-30-ch-mcp-in-game-input.md` for the virtual kit. The agent's page is `docs/agents/clone-hero-mcp.md`. The list of tools lives in one place, `build_server()` in `server.py`; read it there, with each tool's one-paragraph description.

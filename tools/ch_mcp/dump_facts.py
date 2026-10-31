@@ -423,6 +423,9 @@ NAMES_COLUMNS = ("build", "typedef_index", "class", "member", "name", "what")
 # A Mono build's TypeDefIndex restarts in each assembly (tools/ch_mcp/README.md),
 # so that build's map names its classes by name alone.
 _BUILDS_KEYED_BY_NAME = frozenset({"4045"})
+# The builds whose facts.json lists no properties (mono_facts.py reads only
+# fields and methods), so a map row naming a property cannot be checked there.
+_BUILDS_WITHOUT_PROPERTIES = frozenset({"4045"})
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z_]\w*$", re.ASCII)
 
 
@@ -512,6 +515,7 @@ class NamesMap:
     def __init__(self, rows: list[NameRow], build: str):
         self.rows = rows
         self.keyed_by_index = build not in _BUILDS_KEYED_BY_NAME
+        self.has_properties = build not in _BUILDS_WITHOUT_PROPERTIES
         self.class_rows: dict[str, list[NameRow]] = {}
         self.member_rows: dict[object, dict[str, list[NameRow]]] = {}
         self.used: set[NameRow] = set()
@@ -888,7 +892,11 @@ def check_names(classes: list[dict], names: NamesMap) -> tuple[list[str], list[s
             class_row.setdefault(key, r)
         else:
             if r.member not in real_members:
-                errors.append(f"{r.where}: the class `{r.cls}` has no member `{r.member}`")
+                if names.has_properties:
+                    errors.append(f"{r.where}: the class `{r.cls}` has no member `{r.member}`")
+                else:
+                    warnings.append(f"{r.where}: the class `{r.cls}` has no field or method `{r.member}`, "
+                                    "and facts.json has no properties to check it against")
             if r.name in real_members:
                 errors.append(f"{r.where}: `{r.name}` is a real member name of the class `{r.cls}`")
             if (key, r.name) in member_named:

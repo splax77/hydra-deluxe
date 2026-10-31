@@ -737,6 +737,17 @@ class NamesMapTests(_TableFixture):
         self.names(MAP_COLUMNS + f"4045\t3\t{scrambled}\t\tFillGenerator\tBuilds the fills.\n", build="4045")
         _, errors = D.build_table(path, self.pages, self.dll, constants_path=self.constants)
         self.assertTrue(any("typedef_index stays empty" in e for e in errors), errors)
+        # facts.json lists no properties, so a member it lacks is a warning; a missing class stays an error.
+        self.names(MAP_COLUMNS + f"4045\t\t{scrambled}\t\tFillGenerator\tBuilds the fills.\n"
+                   + f"4045\t\t{scrambled}\tʹʹʾ\tbuild\tBuilds one fill.\n"
+                   + f"4045\t\t{scrambled}\tʸʶʳ\tWrittenFills\tA property.\n"
+                   + "4045\t\tʻʻʻ\tʸʶʳ\tLaneMask\tA class the build lacks.\n", build="4045")
+        warnings = []
+        _, errors = D.build_table(path, self.pages, self.dll, constants_path=self.constants, warnings=warnings)
+        self.assertEqual(len(errors), 1, errors)
+        self.assertIn("names-4045.tsv:5: the class `ʻʻʻ` matches 0 classes", errors[0])
+        self.assertTrue(any("names-4045.tsv:4:" in w and "facts.json has no properties to check it against" in w
+                            for w in warnings), warnings)
 
 
 if __name__ == "__main__":
