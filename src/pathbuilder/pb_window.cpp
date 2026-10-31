@@ -166,13 +166,7 @@ PbApp::PbApp(ID3D11Device* device, ID3D11DeviceContext* context)
 
 PbApp::~PbApp() { close_preview(); }
 
-void PbApp::open(const std::string& notespath) {
-    // The one read of the settings file per open: the chart's settings and
-    // the Preview's volume both come from it.
-    const app::Settings settings = app::Settings::load();
-    volume_pct_ = settings.preview_volume;
-    state.open_with(notespath, settings);
-}
+void PbApp::open(const std::string& notespath) { state.open(notespath); }
 
 bool PbApp::busy() const { return state.busy() || (preview_ && preview_->busy()); }
 
