@@ -608,6 +608,10 @@ void AppState::tick(double /*now*/) {
     details_ui.prev_open = show_details;
     update_view_job();
     tick_updates();
+    if (open_report_when_shown_ && path_report_button_shown()) {
+        open_report_when_shown_ = false;
+        show_path_report();
+    }
 }
 
 void AppState::select_chart(const std::string& hyhash, const std::string& chartmode) {
@@ -990,6 +994,16 @@ void AppState::close_path_report() {
 bool AppState::path_report_offered() const {
     return !library.rows().empty() && !analysis_blocked();
 }
+
+bool AppState::path_report_button_shown() const {
+    // store_ready: the toolbar is part of the main window, which run_frame
+    // draws only once the store is ready. The rest is D103's: a build under
+    // way or rows in memory, or path_report_offered.
+    return store_ready() && (path_report_build() == ReportBuild::Building ||
+                             path_report.result || path_report_offered());
+}
+
+void AppState::open_path_report_once_shown() { open_report_when_shown_ = true; }
 
 namespace {
 

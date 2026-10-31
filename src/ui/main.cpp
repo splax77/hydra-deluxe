@@ -191,15 +191,19 @@ int main()
     // arguments. --uitest <what> runs a test or script; --live runs the live
     // channel instead (tests/ui/uitest_live.cpp). --db, --ini, --shots and
     // --pipe mean what they mean to hydra_uitest (tests/ui/uitest_main.cpp).
-    // --ui-ini names the ImGui layout file. Everything else is ignored.
+    // --ui-ini names the ImGui layout file. --open-report, on a launch without
+    // the harness, opens the path report once the library is up
+    // (AppState::open_path_report_once_shown); the harness ignores it.
+    // Everything else is ignored.
     const std::vector<std::string> args = hydra::utf8_argv();
     const int argc = static_cast<int>(args.size());
     std::string uitest_what, uitest_log, seed_db, seed_ini, ui_ini, shots_dir, pipe_name;
-    bool live = false, keep_temp = false;
+    bool live = false, keep_temp = false, open_report = false;
     for (int i = 1; i < argc; ++i) {
         const std::string& a = args[i];
         if (a == "--live") { live = true; continue; }
         if (a == "--keep-temp") { keep_temp = true; continue; }
+        if (a == "--open-report") { open_report = true; continue; }
         if (i + 1 >= argc) break;
         if (a == "--uitest") uitest_what = args[++i];
         else if (a == "--uitest-log") uitest_log = args[++i];
@@ -388,6 +392,9 @@ int main()
         // Hand the GUI's shared D3D11 device to AppState so the Preview tab
         // can build its renderer on it (same pattern as load_icons above).
         own_app->set_render_device(g_pd3dDevice, g_pd3dDeviceContext);
+#ifdef HYDRA_UITEST_ATTACHED
+        if (open_report) own_app->open_path_report_once_shown();
+#endif
     }
 
     bool done = false;
