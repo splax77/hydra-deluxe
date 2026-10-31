@@ -59,7 +59,12 @@ def by_name_only_findings(text: str) -> list[tuple[int, str, str]]:
 # to KIT_METHODS.
 MENU_AGENT = "menu.ts"
 KIT_AGENT = "kit.ts"
-CALL_SITES = {MENU_AGENT: 1, KIT_AGENT: 44}
+CALL_SITES = {MENU_AGENT: 1, KIT_AGENT: 43}
+# How many `new NativeFunction` sites each agent holds; a file with no entry
+# holds none. kit.ts's one is setup's LoadMap, which .invoke cannot call
+# (docs/clone-hero/07-internals.md, IN-76); its method is still looked up by
+# a literal name from ALLOWED_CALLS.
+NATIVE_SITES = {KIT_AGENT: 1}
 LISTED_AGENTS = (MENU_AGENT, KIT_AGENT)
 KIT_METHODS = os.path.join(_REPO_ROOT, "tools", "ch_mcp", "kit_methods.json")
 # A method looked up by name, with an optional type argument; group 2 is the
@@ -82,8 +87,8 @@ def call_findings(texts: dict[str, str]) -> list[str]:
     """Every call in `texts` (agent file name -> its text) that the file's
     own allowed list does not cover: a method looked up by a name outside
     that file's ALLOWED_CALLS or by a name that is not a literal, a
-    NativeFunction, or a count of `.invoke(` sites other than CALL_SITES
-    gives the file."""
+    NativeFunction past the count NATIVE_SITES gives the file, or a count of
+    `.invoke(` sites other than CALL_SITES gives the file."""
     found = []
     for name, text in sorted(texts.items()):
         allowed = set(allowed_calls(text))
@@ -91,6 +96,7 @@ def call_findings(texts: dict[str, str]) -> list[str]:
             found.append(f"{name}: holds an ALLOWED_CALLS list, and only "
                          f"{', '.join(LISTED_AGENTS)} may")
         invokes = 0
+        natives = 0
         for n, line in enumerate(text.splitlines(), start=1):
             for m in _METHOD_LOOKUP.finditer(line):
                 if m.group(2) is None:
@@ -99,8 +105,10 @@ def call_findings(texts: dict[str, str]) -> list[str]:
                 elif m.group(2) not in allowed:
                     found.append(f"{name}:{n}: {m.group(2)} is not in "
                                  f"{name}'s ALLOWED_CALLS")
-            if _NATIVE_FUNCTION.search(line):
-                found.append(f"{name}:{n}: calls a game function: {line.strip()}")
+            for _ in _NATIVE_FUNCTION.finditer(line):
+                natives += 1
+                if natives > NATIVE_SITES.get(name, 0):
+                    found.append(f"{name}:{n}: calls a game function: {line.strip()}")
             invokes += len(_INVOKE.findall(line))
         if invokes != CALL_SITES.get(name, 0):
             found.append(f"{name}: {invokes} .invoke( sites, expected "
@@ -895,6 +903,24 @@ class AllowedCallsTest(unittest.TestCase):
         self.assertNotIn("LoadDefaultMaps", kit)
         self.assertEqual(kit.count('"LoadMap", 5'), 1)
 
+    def test_kit_load_map_passes_the_method_pointer(self):
+        # docs/clone-hero/07-internals.md, IN-76: the LoadMap stub writes the
+        # slot of its hidden method pointer, which the bridge's .invoke does
+        # not pass for a non-generic method. The call is the one NativeFunction
+        # in kit.ts; it ends with the overload's own handle and is no .invoke.
+        kit = self.real_texts()[KIT_AGENT]
+        start = kit.index('.method("LoadMap", 5)')
+        call = kit[start:kit.index(";", start)]
+        self.assertNotIn(".invoke(", call)
+        self.assertEqual(len(_NATIVE_FUNCTION.findall(kit)), 1)
+        self.assertIn('["pointer", ...loadMap.parameters.map((p) => p.type.fridaAlias), '
+                      '"pointer"];', kit)
+        self.assertIn("new NativeFunction(loadMap.virtualAddress,\n"
+                      "        loadMap.returnType.fridaAlias as NativeFunctionReturnType, "
+                      "loadMapTypes)", kit)
+        self.assertIn("loadMapCall(maps.handle,\n", kit)
+        self.assertIn("    loadMap.handle);", kit)
+
     def test_a_kit_list_that_lacks_a_name_it_calls_fails(self):
         kit = ('export const ALLOWED_CALLS = ["get_id"];\n'
                'p.method<number>("get_id");\np.method("get_name");\n')
@@ -942,6 +968,13 @@ class AllowedCallsTest(unittest.TestCase):
         texts = {MENU_AGENT: self.MENU_TEXT,
                  "other.ts": "const f = new NativeFunction(p, 'void', []);\n"}
         self.assertEqual(len(call_findings(texts)), 1)
+
+    def test_a_second_native_function_in_kit_ts_fails(self):
+        line = "const f = new NativeFunction(p, 'void', []);"
+        texts = {KIT_AGENT: self.real_texts()[KIT_AGENT] + line + "\n"}
+        findings = call_findings(texts)
+        self.assertEqual(len(findings), 1)
+        self.assertTrue(findings[0].endswith(f": calls a game function: {line}"))
 
 
 class DestroyedSkipTest(unittest.TestCase):
