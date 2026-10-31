@@ -7,12 +7,26 @@
 
 #include <functional>
 #include <optional>
+#include <string>
 
 #include "render/overlay_layout.h"  // ImagePoint
 
 namespace hydra::ui {
 
 class PreviewController;
+
+// How far one jump moves the playhead (the -Ns/+Ns buttons and the Left and
+// Right keys), in whole seconds so every label prints an integer; and how far
+// one step moves it (the step buttons, comma and period), in whole
+// milliseconds for the same reason. Every label, tooltip and key-bar word in
+// preview_panel.cpp is built from these two. They live here so a test reads
+// the real distance.
+inline constexpr int kJumpSeconds = 5;
+inline constexpr int kStepMs = 10;
+
+// The jump buttons' labels, built from kJumpSeconds: "-5s" and "+5s".
+const std::string& jump_back_label();
+const std::string& jump_forward_label();
 
 // A left click on the highway image: where, in the image's own pixels, and
 // the image's size, which together are what PreviewController::fill_at_image

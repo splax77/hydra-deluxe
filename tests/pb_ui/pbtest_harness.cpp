@@ -143,6 +143,22 @@ bool click_step(ImGuiTestContext* ctx, size_t index) {
     return !ctx->IsError();
 }
 
+bool scroll_side_to(ImGuiTestContext* ctx, const std::string& ref) {
+    Harness& h = harness(ctx);
+    const std::string side_ref = h.home_ref + "/##side";
+    ImGuiWindow* side = ctx->WindowInfo(side_ref.c_str(), ImGuiTestOpFlags_NoError).Window;
+    if (!side) {
+        ctx->LogError("no side panel at %s", side_ref.c_str());
+        return false;
+    }
+    const ImGuiTestItemInfo item = ctx->ItemInfo(ref.c_str());
+    if (item.ID == 0) return false;
+    const float delta = side->InnerClipRect.GetCenter().y - item.RectFull.GetCenter().y;
+    ctx->ScrollToY(side->ID, ImClamp(side->Scroll.y - delta, 0.0f, side->ScrollMax.y));
+    ctx->Yield(2);
+    return !ctx->IsError();
+}
+
 bool wait_for_edit(ImGuiTestContext* ctx) {
     if (!wait_idle(ctx)) return false;
     ctx->Yield(2);

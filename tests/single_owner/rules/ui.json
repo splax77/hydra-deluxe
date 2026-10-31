@@ -1017,8 +1017,8 @@
     },
     {
       "question": "How far does a Preview jump or step move, and what do its controls call it?",
-      "owner": "kJumpSeconds and kStepMs in src/ui/preview_panel.cpp",
-      "owner_file": "src/ui/preview_panel.cpp",
+      "owner": "kJumpSeconds and kStepMs in src/ui/preview_panel.h",
+      "owner_file": "src/ui/preview_panel.h",
       "owner_symbol": "kJumpSeconds",
       "date": "2026-10-05",
       "decision": "D53, D54",
@@ -1038,13 +1038,13 @@
       ],
       "owner_lines": [
         {
-          "file": "src/ui/preview_panel.cpp",
-          "line_text": "constexpr int kJumpSeconds = 5;",
+          "file": "src/ui/preview_panel.h",
+          "line_text": "inline constexpr int kJumpSeconds = 5;",
           "why": "kJumpSeconds, the owner"
         },
         {
-          "file": "src/ui/preview_panel.cpp",
-          "line_text": "constexpr int kStepMs = 10;",
+          "file": "src/ui/preview_panel.h",
+          "line_text": "inline constexpr int kStepMs = 10;",
           "why": "kStepMs, the owner"
         }
       ],

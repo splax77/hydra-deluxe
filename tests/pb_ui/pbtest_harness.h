@@ -84,6 +84,14 @@ void move_off_timeline(ImGuiTestContext* ctx);
 // test's ref on the steps panel.
 bool click_step(ImGuiTestContext* ctx, size_t index);
 
+// Scrolls the side panel (the list over the steps) so the item `ref` inside
+// it sits in the panel's middle, or as near as the panel scrolls. The test
+// engine scrolls only an item's own window, and a list row's window is the
+// list, which the side panel holds; after a new step the panel shows the
+// steps, so the list's rows can be above its top. False when the panel is
+// not drawn or the item is not there.
+bool scroll_side_to(ImGuiTestContext* ctx, const std::string& ref);
+
 // The builder's main-window tests (pbtest_window.cpp).
 void register_tests(Harness& h);
 // The decision list's tests (pbtest_coach.cpp).

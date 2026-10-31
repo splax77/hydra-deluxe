@@ -28,15 +28,19 @@
 
 namespace hydra::ui {
 
+// kJumpSeconds and kStepMs (preview_panel.h) are the one home of the jump and
+// step sizes; every label, tooltip and key-bar word here is built from them.
+const std::string& jump_back_label() {
+    static const std::string s = "-" + std::to_string(kJumpSeconds) + "s";
+    return s;
+}
+const std::string& jump_forward_label() {
+    static const std::string s = "+" + std::to_string(kJumpSeconds) + "s";
+    return s;
+}
+
 namespace {
 
-// How far one jump moves the playhead (the -Ns/+Ns buttons and the Left and
-// Right keys), in whole seconds so every label prints an integer; and how far
-// one step moves it (the step buttons, comma and period), in whole
-// milliseconds for the same reason. Every label, tooltip and key-bar word
-// below is built from these two.
-constexpr int kJumpSeconds = 5;
-constexpr int kStepMs = 10;
 constexpr double kJumpMs = kJumpSeconds * 1000.0;
 
 // The key bar's words and the tooltips' tails, built from kJumpSeconds and
@@ -319,8 +323,8 @@ void draw_preview_panel(PreviewController& controller, PreviewPanelState& state,
     // its digits change.
     // The jump and step buttons' words, built once from kJumpSeconds and
     // kStepMs.
-    static const std::string back_jump = "-" + std::to_string(kJumpSeconds) + "s";
-    static const std::string fwd_jump = "+" + std::to_string(kJumpSeconds) + "s";
+    const std::string& back_jump = jump_back_label();
+    const std::string& fwd_jump = jump_forward_label();
     static const std::string back_step = "< " + step_words();
     static const std::string fwd_step = step_words() + " >";
     static const std::string back_jump_tip = "Back " + jump_words() + " (Left arrow)";

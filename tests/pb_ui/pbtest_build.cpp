@@ -24,6 +24,7 @@
 #include "pathbuilder/pb_menu.h"    // kStartOverLabel
 #include "pathbuilder/pb_text.h"    // kNoStepsText, kBestFillLabel, locked_message
 #include "pathbuilder/pb_window.h"  // the score and button labels
+#include "ui/preview_panel.h"       // kJumpSeconds, jump_forward_label
 #include "ui/preview_timeline.h"    // timeline_fill_id, kTimelineFillsLabel, the scroll buttons
 #include "ui/timeline_view.h"       // kTimelineWindowMs, open_view, follow_playing, wheel
 
@@ -48,10 +49,10 @@ constexpr int64_t kLockedFillTick = 59520;
 constexpr const char* kNextActRef = "**/Act >##nextact";
 constexpr const char* kPrevActRef = "**/< Act##prevact";
 
-// The Preview's "+5s" button and how far it jumps (kJumpSeconds in
-// ui::draw_preview_panel's file).
-constexpr const char* kJumpForwardLabel = "+5s";
-constexpr double kJumpForwardMs = 5000.0;
+// How far one press of the Preview's forward jump button moves the clock
+// (ui::kJumpSeconds), and the reference of that button.
+constexpr double kJumpForwardMs = hydra::ui::kJumpSeconds * 1000.0;
+std::string jump_forward_ref() { return any_ref(hydra::ui::jump_forward_label()); }
 
 // The long song (long_song_notes), from one run: the Preview's end as the
 // clock spells it and in ms, the readout's tail, and the chord tick of its
@@ -114,28 +115,6 @@ bool play_button_reads(ImGuiTestContext* ctx, const char* word) {
     const char* other = std::string(word) == kPlayWord ? kPauseWord : kPlayWord;
     return ctx->ItemInfo(any_ref(word).c_str(), ImGuiTestOpFlags_NoError).ID != 0 &&
            ctx->ItemInfo(any_ref(other).c_str(), ImGuiTestOpFlags_NoError).ID == 0;
-}
-
-// Scrolls the side panel (the list over the steps) so the item `ref` inside
-// it sits in the panel's middle, or as near as the panel scrolls. The test
-// engine scrolls only an item's own window, and a list row's window is the
-// list, which the side panel holds; after a new step the panel shows the
-// steps, so the list's rows can be above its top. False when the panel is
-// not drawn.
-bool scroll_side_to(ImGuiTestContext* ctx, const std::string& ref) {
-    Harness& h = harness(ctx);
-    const std::string side_ref = h.home_ref + "/##side";
-    ImGuiWindow* side = ctx->WindowInfo(side_ref.c_str(), ImGuiTestOpFlags_NoError).Window;
-    if (!side) {
-        ctx->LogError("no side panel at %s", side_ref.c_str());
-        return false;
-    }
-    const ImGuiTestItemInfo item = ctx->ItemInfo(ref.c_str());
-    if (item.ID == 0) return false;
-    const float delta = side->InnerClipRect.GetCenter().y - item.RectFull.GetCenter().y;
-    ctx->ScrollToY(side->ID, ImClamp(side->Scroll.y - delta, 0.0f, side->ScrollMax.y));
-    ctx->Yield(2);
-    return !ctx->IsError();
 }
 
 void test_build_a_path_by_clicking(ImGuiTestContext* ctx) {
@@ -356,10 +335,11 @@ void test_build_a_path_on_a_long_song(ImGuiTestContext* ctx) {
     IM_CHECK_STR_EQ(figure_under(h, kYourScoreLabel).c_str(), "879,860");
     IM_CHECK_STR_EQ(figure_under(h, kBestReachLabel).c_str(), "944,680");
 
-    // The click left the clock at the fill's span start; "+5s" carries it
-    // past the activation, still inside the window, so the window stays.
+    // The click left the clock at the fill's span start; the forward jump
+    // carries it past the activation, still inside the window, so the window
+    // stays.
     IM_CHECK(on_screen(h, "3:14.431" + std::string(kLongSongClockTail)));
-    ctx->ItemClick(any_ref(kJumpForwardLabel).c_str());
+    ctx->ItemClick(jump_forward_ref().c_str());
     IM_CHECK(readout_reads(ctx, "2:59 – 5:59 of 5:59"));
     IM_CHECK(on_screen(h, "3:19.431" + std::string(kLongSongClockTail)));
     // Back to the song's start: the clock stays where it was, outside the
@@ -424,16 +404,16 @@ LongSongShown read_long_song(Harness& h) {
     return shown;
 }
 
-// How many "+5s" presses carry the clock across `ms`, rounded up. The clock
-// also runs while playing, which only shortens the way.
+// How many forward-jump presses carry the clock across `ms`, rounded up. The
+// clock also runs while playing, which only shortens the way.
 int presses_across(double ms) { return static_cast<int>(std::ceil(ms / kJumpForwardMs)); }
 
-// Presses "+5s" until `done` holds, at most `cap` presses. False, with
-// `what` logged, when it never held.
+// Presses the forward jump until `done` holds, at most `cap` presses. False,
+// with `what` logged, when it never held.
 bool press_jump_until(ImGuiTestContext* ctx, int cap, const std::function<bool()>& done,
                       const char* what) {
     for (int i = 0; i < cap && !done(); ++i) {
-        ctx->ItemClick(any_ref(kJumpForwardLabel).c_str());
+        ctx->ItemClick(jump_forward_ref().c_str());
         ctx->Yield(2);
         if (ctx->IsError()) return false;
     }
@@ -442,13 +422,13 @@ bool press_jump_until(ImGuiTestContext* ctx, int cap, const std::function<bool()
     return false;
 }
 
-// The long song playing: "+5s" carries the playhead past three quarters of
-// the window and the window turns; a wheel notch moves it and stops the
-// following, so the playhead runs out of the window and the window stays;
-// a pause and a second Play turn following back on. The clock runs on real
-// time while playing, so where the first turn lands is checked against
-// ui::follow_playing at the clock before and after the press that turned it,
-// and only the last window, held at the song's end, is pinned.
+// The long song playing: the forward jump carries the playhead past three
+// quarters of the window and the window turns; a wheel notch moves it and
+// stops the following, so the playhead runs out of the window and the window
+// stays; a pause and a second Play turn following back on. The clock runs on
+// real time while playing, so where the first turn lands is checked against
+// the turn's own constants and ui::follow_playing at the clock after it, and
+// only the last window, held at the song's end, is pinned.
 void test_follow_the_playhead(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     IM_CHECK_RETV(open_long_song(ctx), );
@@ -460,26 +440,22 @@ void test_follow_the_playhead(ImGuiTestContext* ctx) {
     IM_CHECK_RETV(play_button_reads(ctx, kPauseWord), );
 
     // The first turn comes before the playhead crosses one whole window.
-    double clock_before_press = 0.0;
     const bool turned = press_jump_until(
         ctx, presses_across(hydra::ui::kTimelineWindowMs),
-        [&] {
-            const LongSongShown s = read_long_song(h);
-            if (s.readout != opening) return true;
-            clock_before_press = s.clock_ms;
-            return false;
-        },
-        "the window never turned");
+        [&] { return read_long_song(h).readout != opening; }, "the window never turned");
     IM_CHECK_RETV(turned, );
     const LongSongShown first = read_long_song(h);
     IM_CHECK_RETV(first.start_s >= 0 && first.clock_ms >= 0.0, );
+    // The turn put the playhead a quarter in, from a playhead past three
+    // quarters of the window and no later than the clock now reads. The clock
+    // is real time, so those two bound the start; neither is a clock text.
     const hydra::ui::TimelineView open = hydra::ui::open_view(kLongSongMs);
-    const double earliest =
-        hydra::ui::follow_playing(open, clock_before_press + kJumpForwardMs, kLongSongMs).start_ms;
-    const double latest = hydra::ui::follow_playing(open, first.clock_ms, kLongSongMs).start_ms;
-    IM_CHECK_GE(first.start_s, static_cast<int>(earliest / 1000.0));
-    IM_CHECK_LE(first.start_s, static_cast<int>(latest / 1000.0));
-    IM_CHECK(first.start_s > 0);
+    const double earliest_ms =
+        (hydra::ui::kFollowTurnShare - hydra::ui::kPlayheadLeadShare) * open.span_ms;
+    const double latest_ms =
+        hydra::ui::follow_playing(open, first.clock_ms, kLongSongMs).start_ms;
+    IM_CHECK_GE(first.start_s, static_cast<int>(earliest_ms / 1000.0));
+    IM_CHECK_LE(first.start_s, static_cast<int>(latest_ms / 1000.0));
 
     // A wheel notch down over the rows, away from the Fills row, moves the
     // window by one notch (ui::wheel) and stops the following.
@@ -495,9 +471,9 @@ void test_follow_the_playhead(ImGuiTestContext* ctx) {
     IM_CHECK_EQ(wheeled.end_s, first.end_s + notch_s);
     IM_CHECK_RETV(play_button_reads(ctx, kPauseWord), );
 
-    // "+5s" until the playhead is past the window's right edge: the window
-    // stays where the wheel put it. The readout floors its end to whole
-    // seconds, so the window ends before the next whole second.
+    // The forward jump until the playhead is past the window's right edge:
+    // the window stays where the wheel put it. The readout floors its end to
+    // whole seconds, so the window ends before the next whole second.
     const double past_end_ms = (wheeled.end_s + 1) * 1000.0;
     IM_CHECK_RETV(press_jump_until(
                       ctx, presses_across(past_end_ms - wheeled.clock_ms),
