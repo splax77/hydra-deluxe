@@ -115,6 +115,12 @@ std::shared_ptr<StartedProgram> start_program(const std::wstring& exe, const std
     return std::make_shared<StartedProgram>(info.hProcess);
 }
 
+std::filesystem::path replacing_temp_path(const std::filesystem::path& outpath) {
+    std::filesystem::path tmp = outpath;
+    tmp += L"." + std::to_wstring(GetCurrentProcessId()) + L".tmp";
+    return tmp;
+}
+
 bool write_file_replacing(const std::filesystem::path& outpath, const std::string& bytes,
                           LineEnds ends) {
     // A reader can open the file at any moment, including mid-write. The
@@ -124,9 +130,10 @@ bool write_file_replacing(const std::filesystem::path& outpath, const std::strin
     // file can't risk that, which is why rename_file in
     // store/upgrade_files.cpp never replaces a file. Here it is acceptable,
     // because a report page and the settings are written again on the next
-    // save.
-    std::filesystem::path tmp = outpath;
-    tmp += ".tmp";
+    // save. The temp name carries this process's id, because two Hydra
+    // windows can save one settings file at once, and a shared temp would let
+    // one swap in the other's half-written bytes.
+    const std::filesystem::path tmp = replacing_temp_path(outpath);
     std::error_code ec;
 
     // Text mode is Windows' own "\n" to "\r\n" conversion, the one the

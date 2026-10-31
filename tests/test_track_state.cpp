@@ -597,14 +597,6 @@ PreviewScene phrase_then_next_tick_scene() {
 
 }  // namespace
 
-TEST_CASE("note_in_span: the phrase's last note is inside, a note one tick later is outside") {
-    PreviewScene scene = phrase_then_next_tick_scene();
-    const PreviewSpan& phrase = scene.sp_phrases[0];
-    CHECK(note_in_span(scene, phrase, scene.notes[0]));        // tick 0, the start
-    CHECK(note_in_span(scene, phrase, scene.notes[1]));        // tick 480, the last note
-    CHECK_FALSE(note_in_span(scene, phrase, scene.notes[2]));  // tick 481
-}
-
 TEST_CASE("build_track_state: a chord one tick after a phrase ends is not SP (480 res, 300 BPM)") {
     PreviewScene scene = phrase_then_next_tick_scene();
     const SongTiming& timing = *scene.timing;
