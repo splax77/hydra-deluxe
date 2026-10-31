@@ -10,7 +10,7 @@ build	typedef_index	class	member	name	what
 4045		DrumsPlayer	ʻˀʻʿʷʷʾʿˁʵʽ	CheckFillDeadlines	Turns off every fill that starts too soon after the given time and clears its activation flag; read from fill_deadline.cs lines 17 to 31.
 4045		DrumsPlayer	ʿʷʲʻʸʸʹʿˁʶʲ	UnusedFillCheckTwin	A never-called method shaped like the deadline check, with other literals; read from the note fill_deadline.md (full decompile lines 275 to 289, not copied into fill_deadline.cs).
 4045		GameManager	ʲʻʺʹʺʲʷʾʻʺʹ	songTime	The song clock, in seconds; read from fill_deadline.cs line 11.
-4045		ʳʼʽʼˀʴʽʵʵʳʵ	ˀʵʲʲʻʸʸʽʹʽˁ	UnknownPlayerTest	A static bool test on the player that makes the meter gain skip it; what it tests was not found; read from fill_deadline.cs line 36.
+4045		ʳʼʽʼˀʴʽʵʵʳʵ	ˀʵʲʲʻʸʸʽʹʽˁ	PlayerSkipTest	A static extension method returning bool, called on the same BasePlayer field that line 36 tests isRemotePlayer through; when it is true the meter gain skips the player, as it does for a remote player; what it tests was not found; read from fill_deadline.cs line 36.
 4045		ʶˀʵˁʹʿˀʶʿʲʾ		TrackBuilder	The static class that builds a drum track's play data and its fills; read from fill_generator.cs lines 6 to 141.
 4045		ʶˀʵˁʹʿˀʶʿʲʾ	ʹʹʾʴʳʶʼʵʳʼʼ	BuildPlayData	Builds a drum track's play data and chooses generated or written fills; read from fill_generator.cs lines 6 to 27.
 4045		ʶˀʵˁʹʿˀʶʿʲʾ	ʸˀʽʸʽʳʳʸʼʾʿ	GenerateFills	Generates fills from the measure lines when the track has no written fills; read from fill_generator.cs lines 30 to 77.

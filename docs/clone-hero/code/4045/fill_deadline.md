@@ -43,7 +43,7 @@ is in real time. The length is the fill's own length from `fill_generator.md` (h
 
 ## F8: the meter gain, `BasePlayer.AddStarPower` (lines 34 to 57)
 
-Read only to know what the meter holds. Line 36 skips a remote player and any player for which `UnknownPlayerTest()` is true (what that tests was not found). Line 38
+Read only to know what the meter holds. Line 36 skips a remote player and any player for which `PlayerSkipTest()` is true (what that tests was not found). Line 38
 remembers whether the meter was below one half with no activation. Lines 40 to 49: the gain is added; when the
 call came from a phrase award, the awards counter goes up and the game raises the "Star Power awarded" event; when it
 did not and the meter just passed one half, it raises "Star Power available". Lines 50 to 53: the meter is capped
