@@ -208,6 +208,8 @@ The code-only calls at the end of the sheet are approved as written. They cover 
 3. When two taken fills touch (findings 76 and R7.14), each span carries its own pad, so each fill lights its own lane colour. No library chart reaches the case; the one-fill case is unchanged.
 4. The Preview's xN disc at the Star Power end (finding 1's second half) is left as it is and recorded as a known gap: the disc shows the multiplier the last hit chord earned until the next chord, so it reads doubled for a moment after SP ends while the drain box says idle. Changing it would need a new rule checked against Clone Hero video first.
 
+*Correction, 2026-10-30 (D273 session).* Item 4 was already wrong when it was written. D10 records the check on FC video: in four activations across Divine Inner Tension and Desecration Day, the game's disc drops from x8 to x4 within two frames of Hydra's SP end. Commit 4983e1f1, a day before D53, made the score box follow it: the disc shows the doubled multiplier only while SP is running at the playhead (`running_activation` in src/app/preview_view.cpp), so it no longer reads doubled after SP ends. There is no known gap here.
+
 **D54 (phase 6 code-only calls), 2026-10-04.** Approved with D53: the "Recorded as recommended" list in `docs/superpowers/plans/2026-10-04-phase-6.md`, as written. In short:
 - 220: a `3d-config.json` missing a key is refused with an error naming the key (ADR 0008).
 - 207: the chart-file and report-file checks share one 2-second interval and one caching helper.

@@ -188,17 +188,19 @@ Cheapest way to settle the rest: this part is the user's call, not a game fact. 
 
 ## 304. Does a backend note exactly on the 3 ms leeway edge count?
 
-**Answer: no Clone Hero fact covers it.** The 3 ms leeway is Hydra's own modelling choice. I found no 3 ms (0.003) constant in the 126 engine methods I disassembled; the rest of the game was not searched.
+**Answer: no Clone Hero fact covers it.** The 3 ms leeway is a modelling choice, not a Clone Hero rule. I found no 3 ms (0.003) constant in the 126 engine methods I disassembled; the rest of the game was not searched.
 
 Evidence:
 
-- `docs/differences-from-public-hydra.md` line 74 calls the backend leeway one of "Hydra Deluxe's own choices, not facts read from Clone Hero". The value 3.0 is the user's decision (decisions 7 and 13 in the 2026-09-24 derivation-fixes plan).
+- `docs/differences-from-public-hydra.md` line 74 calls the backend leeway one of "Hydra Deluxe's own choices, not facts read from Clone Hero". The value 3.0 came from the 2026-09-24 derivation-fixes plan (its decisions 7 and 13).
 - No 0.003 constant appears in any of the 126 engine methods I disassembled (`re\engine_all.asm`).
 - In the game, SP ends at a time (`engine+0x120`), checked once per frame. Any real "leeway" comes from frame timing, not from a fixed edge.
 
 Hydra today: the test is strict (`off < leeway`), so +3.0 ms does not count.
 
 Cheapest way to settle it: ask the user, since it is a model setting. A real offset of exactly 3.000 ms almost never happens, so the choice is close to cosmetic.
+
+*Correction, 2026-10-30 (D273 session).* The 3 ms is neither Hydra Deluxe's own choice nor the user's. It is DragonDelgar's number: public Hydra tests `be.offset_ms < 3` in `hydra/hypath.py`, line 678 at his commit 3b49012c. The user said so on 2026-10-30 and keeps it so Hydra Deluxe scores the same way (D269 call 4). It decides only whether a backend is counted or uncounted; Star Power still ends at one point.
 
 ---
 
@@ -214,6 +216,8 @@ Cheapest way to settle it:
 
 - Option A: find the deadline check. Look for the caller that compares the SP-ready time against a fill's start, near the fill-to-activation code `0x20CFF60` or the engine's activation code `0x20F5640`.
 - Option B, if A fails: build a 6/8 probe chart where SP becomes ready between 4 eighth-notes and 4 quarter-notes before a fill, then see whether the fill appears.
+
+*Correction, 2026-10-30 (D273 session).* Option A was done on 2026-10-12, so the answer is now known: quarter notes. The deadline check is at 0x20DDB70. When the meter crosses half and SP is not active, every fill whose start tick is at or below the current tick plus a field at `+0x300` loses its flag (compare at 0x20DDC20, clear at 0x20DDC33). The constructor sets that field to `resolution << 2` (0x20DF7B7), which is 4 quarter notes in every meter. The reading is in `docs/superpowers/plans/2026-10-12-one-record-per-chart/part-B2-timing.md`, "The deadline", from the listings in `hydra-data\ch-fill-evidence-2026-10-11\` (`drums.ann` lines 910 to 937, `ctor.ann` lines 68 and 69). Hydra's `kCh11FillLeadBeats` × resolution matches it. No live 6/8 run has checked it.
 
 ---
 

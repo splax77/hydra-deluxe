@@ -75,8 +75,10 @@ Rules that were already Clone Hero's and are now written down:
   reading of `drumsNeasy`, `drumsNeasynokick` and `drumsd`, which Clone
   Hero's one-character rule reads differently on 5 chart-and-difficulty
   pairs.
-- The backend leeway is Hydra's own rule. No such constant was found in the
-  engine methods read; the 3 ms is Hydra's own setting. A note less than
+- The backend leeway is not a Clone Hero rule. No such constant was found in
+  the engine methods read. The 3 ms is DragonDelgar's number, from public
+  Hydra (`hydra/hypath.py`, line 678 at his commit 3b49012c), kept so Hydra
+  Deluxe scores the same way (decision D269 call 4). A note less than
   `backend_leeway_ms` (3 ms) after the SP end scores under Star Power; a
   note exactly that far after it does not (decision D29).
 - When a fill has a chord on only one side of its end, Clone Hero's
@@ -89,11 +91,6 @@ Rules that were already Clone Hero's and are now written down:
 These keep Hydra's current rule and are written down as unchecked (decision
 D26). A live Clone Hero session could settle them.
 
-- A generated fill's length, when two or more meter changes fall between two
-  chords. Hydra's walk reads the meter one change late there.
-- How many ticks make a beat in compound meters like 6/8. Hydra counts a
-  beat as a quarter note (the chart's resolution) everywhere, including the
-  4-beat fill deadline.
 - Whether one authored fill turns off generated fills for the whole chart.
 - Whether Clone Hero carries its search position from one fill to the
   next (its fill search takes a start index).
@@ -102,6 +99,22 @@ D26). A live Clone Hero session could settle them.
 - How far from its downbeat a generated fill's chord may sit, and the fill's
   length, are cut down to whole ticks (`Song::check_activations`, decision
   D74).
+
+Two items this list used to hold are settled in the code now (noted
+2026-10-30):
+
+- A generated fill's length when two or more meter changes fall between two
+  chords. The walk that read the meter one change late is gone. Both
+  generators read the measure lines of one grid, `MeasureIndex` (commits
+  b57a2155 and 5677f8d3). A Clone Hero 1.1 fill starts on its measure line
+  and runs to its chord (0x20D2B30); a 1.0 fill is half the grid measure in
+  force at its chord (`Song::place_fills_ch10` and `place_fills_ch11` in
+  src/core/song.cpp).
+- How many ticks make a beat in compound meters like 6/8. The beat lines and
+  the position text step by the resolution × 4 ÷ the bottom number, as Clone
+  Hero's grid does (0x20DACA0). The 4-beat fill deadline counts quarter notes
+  in every meter, as Clone Hero's code does (`resolution << 2`, read at
+  0x20DDB70 on 2026-10-12). Neither has been checked in a run of the game.
 
 ## Consequences
 

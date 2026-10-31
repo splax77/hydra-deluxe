@@ -94,7 +94,7 @@ record is missing, Stale or different from the fresh one
 (`AppState::save_view_summary`), and a click that saves marks both open
 reports out of date, as a finished batch does (D115). Its progress bar moves in steps of at least half a percent of the chart
 (src/search/engine.cpp), and the main search owns the first 90% of the bar,
-the all-0 pass the rest (src/search/pather.cpp; D48, Q33).
+the all-0 pass the rest (src/search/pather.cpp; D273).
 
 **Analysis**:
 The engine's full output for one chart under one profile: every kept path
@@ -314,7 +314,7 @@ The download of real scores for the leaderboard report. It comes from the
 DMBot API, the backend behind dmleaderboards.com, not from the site itself. It waits at most 15 s to resolve the host, 20 s to connect, 30 s to
 send and 120 s to receive, because the backend cold-starts after idle; it
 checks Cancel every 50 ms; and it accepts only HTTP status 200
-(src/net/dmbot_client.cpp; D48, Q33).
+(src/net/http.cpp; D273).
 
 ### Reports and messages
 
@@ -689,9 +689,12 @@ How long after the SP end a note still scores under Star Power without a
 squeeze: less than `backend_leeway_ms`
 (3 ms<!-- default: Rules::backend_leeway_ms --> by default). A note exactly
 3.0 ms<!-- default: Rules::backend_leeway_ms --> after the SP end does not
-score under SP. Hydra's own rule: no such constant was found in the Clone
-Hero engine methods read; the 3 ms<!-- default: Rules::backend_leeway_ms -->
-is Hydra's own setting.
+score under SP. The leeway is not a Clone Hero rule: no such constant was
+found in the Clone Hero engine methods read. The 3 ms<!-- default: Rules::backend_leeway_ms -->
+is DragonDelgar's number, from public Hydra (`hydra/hypath.py`, line 678 at
+his commit 3b49012c), and Hydra Deluxe keeps it so its scores use the same
+method (D269 call 4). It only decides whether a backend counts in the
+optimal score or is uncounted. Star Power still ends at one point.
 
 **Difficulty**:
 A path's or activation's hardest squeeze or required early fill, in raw gap
@@ -738,8 +741,13 @@ One step of Clone Hero's grid: the resolution × 4 ÷ the time signature's
 bottom number, cut down to whole ticks, so a quarter note in 4/4 and an eighth note in 6/8. The beat
 lines and the position text's beat number count these, so they always agree.
 Two rules count quarter notes in every meter instead: the fill spawn deadline
-(CH 1.1) and the generated fill's half-beat distance, both as Clone Hero's
-code does.
+(CH 1.1) and the generated fill's half-beat distance. Both come from reading
+Clone Hero 1.1's code, not from a run of the game. The deadline is
+`resolution << 2` ticks before the fill starts (0x20DDB70), and the distance
+is whole ticks of resolution × 0.5, plus one tick (0x20D2B30); the reading is
+in docs/superpowers/plans/2026-10-12-one-record-per-chart/part-B2-timing.md.
+What is still unknown: no run of a 6/8 chart in Clone Hero is on record for
+either rule, so the code reading has not been checked in the game.
 
 **Section**:
 A named part of the song from the chart's section markers, such as "Chorus
