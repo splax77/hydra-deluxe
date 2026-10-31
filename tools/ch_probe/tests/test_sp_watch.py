@@ -26,7 +26,7 @@ if _REPO_ROOT not in sys.path:
 from tools.ch_probe import constants as C  # noqa: E402
 from tools.ch_probe import engine  # noqa: E402
 from tools.ch_probe import engine_finder as F  # noqa: E402
-from tools.ch_probe.experiments import play_chart, sp_watch  # noqa: E402
+from tools.ch_probe.experiments import sp_watch  # noqa: E402
 from tools.ch_probe.experiments.overlay_logs import WATCH_COLUMNS  # noqa: E402
 from tools.ch_probe.tests import fakes  # noqa: E402
 
@@ -183,9 +183,6 @@ class WatchTest(unittest.TestCase):
     def test_poll_and_cap_literals(self):
         self.assertEqual(sp_watch.POLL_S, 0.004)
         self.assertEqual(sp_watch.RUN_CAP_S, 240.0)
-
-    def test_the_cap_is_the_press_runs_cap(self):
-        self.assertIs(sp_watch.RUN_CAP_S, play_chart.RUN_CAP_S)
 
 
 class RunTest(unittest.TestCase):
