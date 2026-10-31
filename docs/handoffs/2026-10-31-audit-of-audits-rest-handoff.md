@@ -1,6 +1,6 @@
 # Audit of audits: what is left (2026-10-31, session e3dd3907)
 
-This continues `docs/handoffs/2026-10-30-audit-of-audits-build-2-handoff.md` and replaces `docs/handoffs/2026-10-30-audit-of-audits-remaining-handoff.md`. The audit's results are in `docs/audit/2026-10-29-audit-of-audits/` (`summary.md`, `questions.md`). Every ruling is in `docs/audit/2026-10-03-fix-decisions.md`.
+This continues `docs/handoffs/2026-10-30-audit-of-audits-build-2-handoff.md` (removed; `git show ec91f8d1:docs/handoffs/2026-10-30-audit-of-audits-build-2-handoff.md`) and replaces `docs/handoffs/2026-10-30-audit-of-audits-remaining-handoff.md` (removed; `git show ec91f8d1:docs/handoffs/2026-10-30-audit-of-audits-remaining-handoff.md`). The audit's results are in `docs/audit/2026-10-29-audit-of-audits/` (`summary.md`, `questions.md`). Every ruling is in `docs/audit/2026-10-03-fix-decisions.md`.
 
 Everything the user ruled on in this audit is built and on `main`. The records the audit found false are corrected. Two kinds of work are left: one live check that belongs to the Clone Hero work, and the list the audit never reached. Nothing below has started, and each piece waits for the user's yes (CLAUDE.md rule 3).
 

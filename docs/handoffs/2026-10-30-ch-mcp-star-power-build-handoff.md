@@ -72,5 +72,5 @@ The chart is installed in the game as `C:\Clone Hero\songs\Hydra Probe\Ladies Ta
 
 ## Related
 
-- The Clone Hero knowledge-base session prompt: `docs/handoffs/2026-10-30-clone-hero-reference-session-prompt.md`. It feeds its list of live checks to this server.
-- The audit work: `docs/handoffs/2026-10-30-audit-of-audits-remaining-handoff.md`.
+- The Clone Hero knowledge-base session prompt: `docs/handoffs/2026-10-30-clone-hero-reference-session-prompt.md` (removed; `git show ec91f8d1:docs/handoffs/2026-10-30-clone-hero-reference-session-prompt.md`). It feeds its list of live checks to this server; the list itself is `docs/clone-hero/live-checks.md`.
+- The audit work: `docs/handoffs/2026-10-30-audit-of-audits-remaining-handoff.md` (removed; `git show ec91f8d1:docs/handoffs/2026-10-30-audit-of-audits-remaining-handoff.md`). What is left of it is `docs/handoffs/2026-10-31-audit-of-audits-rest-handoff.md`.
