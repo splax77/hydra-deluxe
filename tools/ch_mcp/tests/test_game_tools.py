@@ -23,10 +23,12 @@ if _REPO_ROOT not in sys.path:
 
 from tools.ch_mcp import bot_run as B  # noqa: E402
 from tools.ch_mcp import compare_scorestats  # noqa: E402
+from tools.ch_mcp import foreground as F  # noqa: E402
 from tools.ch_mcp import game_files as G  # noqa: E402
 from tools.ch_mcp import game_tools as GT  # noqa: E402
 from tools.ch_mcp import install_chart as I  # noqa: E402
 from tools.ch_mcp.tests.test_bot_run import ORIGINAL, Rig, StuckGame, _read, _write  # noqa: E402
+from tools.ch_mcp.tests.test_game_files import FakeReg  # noqa: E402
 from tools.ch_probe import probe_songs  # noqa: E402
 from tools.ch_probe import input_driver  # noqa: E402
 from tools.ch_probe.experiments import play_chart  # noqa: E402
@@ -79,6 +81,25 @@ class FakeLivePlay:
         return self.result
 
 
+class FakeWatch:
+    """A foreground watch that records start and stop and holds a set count."""
+
+    def __init__(self, events: list, count: int = 0):
+        self._events = events
+        self.count = count
+        self.started = self.stopped = False
+
+    def start(self):
+        self.started = True
+        self._events.append("watch start")
+
+    def stop(self):
+        self.stopped = True
+
+    def line(self):
+        return F.count_line(self.count) + ("" if self.stopped else " so far")
+
+
 class ToolRig:
     """A GameTools wired to test_bot_run's Rig and the fakes above."""
 
@@ -89,8 +110,15 @@ class ToolRig:
         self.hwnd = WINDOW
         self.live_play = FakeLivePlay(play_chart.RunResult(
             sent=2, hit=1, max_streak=1, rows=list(ROWS), stop="stopped"))
+        self.events = []
+        self.watches = []
+
+        def make_watch():
+            self.watches.append(FakeWatch(self.events))
+            return self.watches[-1]
+
         args = dict(driver=self.driver, live_play=self.live_play,
-                    find_window=lambda: self.hwnd)
+                    find_window=lambda: self.hwnd, make_watch=make_watch)
         args.update(tool_args)
         self.tools = GT.GameTools(self.r.env, threading.RLock(), self.scratch_root, **args)
 
@@ -586,6 +614,94 @@ class GameToolsTest(unittest.TestCase):
         self.assertEqual(t.tools.play_snapshot()["stop"], "stopped")
         # The play run took the adopted game's backup, and ch_stop restored it.
         self.assertIn("settings.ini: unchanged", reply)
+
+
+# A settings.ini with the run's line in its [game] section.
+USER_SETTINGS = b"[audio]\r\nvolume = 1\r\n\r\n[game]\r\npause_on_focus_lost = 1\r\nnote_speed = 7\r\n"
+
+
+class RunWithoutFocusTest(unittest.TestCase):
+    """ch_start's settings line and foreground watch, and the registry key
+    riding along with the files."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = self._tmp.name
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_ch_start_sets_the_line_after_the_backup_then_launches_then_watches(self):
+        def set_setting(path, key, value):
+            backups = [d for d in os.listdir(t.tools._scratch) if d.startswith(G.BACKUP_PREFIX)]
+            t.events.append(("setting", path, key, value, len(backups)))
+
+        t = ToolRig(self.tmp, set_setting=set_setting)
+        real_launch = t.r.launch
+
+        def launch(cmd):
+            t.events.append("launch")
+            return real_launch(cmd)
+
+        t.r.env.launch = launch
+        lines = t.tools.ch_start(t.r.song).splitlines()
+        self.assertEqual(t.events, [
+            ("setting", t.r.path(G.SETTINGS), "pause_on_focus_lost", "0", 1),
+            "launch", "watch start"])
+        said = "settings.ini: pause_on_focus_lost set to 0 for this run (restored by ch_stop)"
+        self.assertIn(said, lines)
+        self.assertLess(lines.index(f"backup folder: {t.backup_dir()}"), lines.index(said))
+        starting = [i for i, line in enumerate(lines) if line.startswith("starting: ")]
+        self.assertLess(lines.index(said), starting[0])
+
+    def test_the_users_line_is_set_for_the_run_and_put_back_by_ch_stop(self):
+        t = ToolRig(self.tmp)
+        _write(t.r.path(G.SETTINGS), USER_SETTINGS)
+        t.tools.ch_start(t.r.song)
+        self.assertEqual(_read(t.r.path(G.SETTINGS)),
+                         USER_SETTINGS.replace(b"pause_on_focus_lost = 1", b"pause_on_focus_lost = 0"))
+        lines = t.tools.ch_stop().splitlines()
+        self.assertIn("settings.ini: restored", lines)
+        self.assertEqual(_read(t.r.path(G.SETTINGS)), USER_SETTINGS)
+
+    def test_a_settings_file_without_the_line_is_left_alone_and_named(self):
+        t = ToolRig(self.tmp)
+        reply = t.tools.ch_start(t.r.song)
+        self.assertIn("settings.ini: pause_on_focus_lost not set to 0 (no `pause_on_focus_lost` "
+                      "line in the [game] section); the game may pause while it is not in front",
+                      reply.splitlines())
+        self.assertEqual(_read(t.r.path(G.SETTINGS)), ORIGINAL[G.SETTINGS])
+        self.assertEqual(len(t.r.launch.commands), 1)
+
+    def test_ch_status_says_the_count_so_far_and_ch_stop_the_final_count(self):
+        t = ToolRig(self.tmp)
+        self.assertNotIn("foreground", t.tools.ch_status())
+        t.tools.ch_start(t.r.song)
+        watch = t.watches[0]
+        watch.count = 2
+        self.assertIn("foreground went to the game 2 times so far", t.tools.ch_status().splitlines())
+        lines = t.tools.ch_stop().splitlines()
+        self.assertTrue(watch.stopped)
+        self.assertIn("foreground went to the game 2 times", lines)
+        self.assertLess(lines.index("foreground went to the game 2 times"),
+                        lines.index("stopped the game"))
+        self.assertNotIn("foreground", t.tools.ch_status())
+
+    def test_an_adopted_game_starts_no_watch(self):
+        t = ToolRig(self.tmp)
+        t.tools.ensure_backup()
+        self.assertEqual(t.watches, [])
+        self.assertNotIn("foreground", t.tools.shutdown())
+
+    def test_both_backups_carry_the_registry_key_with_the_envs_runner(self):
+        for start in ("ch_start", "ensure_backup"):
+            with self.subTest(start=start):
+                t = ToolRig(os.path.join(self.tmp, start))
+                t.r.env.run_reg = reg = FakeReg()
+                getattr(t.tools, start)(*([t.r.song] if start == "ch_start" else []))
+                self.assertTrue(os.path.isfile(os.path.join(t.backup_dir(), G.REGISTRY_BACKUP)))
+                reg.text = b"the game changed this"
+                self.assertIn("rewired registry: restored", t.tools.ch_stop().splitlines())
 
 
 if __name__ == "__main__":

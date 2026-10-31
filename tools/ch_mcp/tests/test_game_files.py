@@ -1,10 +1,12 @@
 """Tests for game_files: the user-file backup and restore, and song.ini reads.
 
-Every test runs on temp folders; the real game files are never read.
+Every test runs on temp folders and a fake reg.exe; the real game files and
+the real registry key are never read.
 """
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 import tempfile
@@ -127,6 +129,178 @@ class BackupRestoreTest(unittest.TestCase):
         G.backup(f.docs, f.low, f.root, stamp=lambda: "same")
         with self.assertRaises(FileExistsError):
             G.backup(f.docs, f.low, f.root, stamp=lambda: "same")
+
+
+class FakeReg:
+    """reg.exe on one fake key. export writes the key's text to the file,
+    delete removes the key, import reads a file back into it. With
+    `import_works` False an import leaves the key holding other text."""
+
+    def __init__(self, text: bytes = b"Windows Registry Editor\r\nRewiredSaveData = 1\r\n"):
+        self.text = text
+        self.import_works = True
+        self.calls = []
+
+    def __call__(self, args):
+        args = list(args)
+        self.calls.append(args)
+        verb = args[0]
+        if args[1:2] and verb in ("export", "delete") and args[1] != G.REGISTRY_KEY:
+            raise OSError(f"fake reg: unknown key {args[1]}")
+        if verb == "export":
+            if self.text is None:
+                raise OSError("fake reg: the key does not exist")
+            _write(args[2], self.text)
+        elif verb == "delete":
+            self.text = None
+        elif verb == "import":
+            self.text = _read(args[1]) if self.import_works else b"not what was imported"
+        else:
+            raise OSError(f"fake reg: unknown verb {verb}")
+
+    def verbs(self):
+        return [c[0] for c in self.calls]
+
+
+class RegistryTest(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = self._tmp.name
+        self.f = Folders(self.tmp)
+        self.reg = FakeReg()
+        self.original = self.reg.text
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def backup(self):
+        return G.backup(self.f.docs, self.f.low, self.f.root, stamp=lambda: "s", run_reg=self.reg)
+
+    def test_the_key_is_rewireds_save_key(self):
+        self.assertEqual(G.REGISTRY_KEY, r"HKCU\Software\srylain Inc.\Clone Hero")
+        self.assertEqual(G.REGISTRY_BACKUP, "rewired.reg")
+
+    def test_backup_exports_the_key_beside_the_files_and_records_it(self):
+        backup = self.backup()
+        saved = os.path.join(backup, "rewired.reg")
+        self.assertEqual(_read(saved), self.original)
+        self.assertEqual(self.reg.calls, [["export", G.REGISTRY_KEY, saved, "/y"]])
+        with open(os.path.join(backup, G.BACKUP_MANIFEST), encoding="utf-8") as f:
+            entries = json.load(f)["files"]
+        self.assertEqual(entries[-1], {"name": "rewired.reg", "key": G.REGISTRY_KEY})
+        self.assertEqual(len(entries), 6)
+
+    def test_backup_with_no_runner_leaves_the_key_out(self):
+        backup = G.backup(self.f.docs, self.f.low, self.f.root, stamp=lambda: "s")
+        self.assertFalse(os.path.exists(os.path.join(backup, "rewired.reg")))
+        self.assertEqual(G.restore_registry(backup, run_reg=None, out=lambda _l: None), [])
+
+    def test_an_unchanged_key_is_only_exported_and_compared(self):
+        backup = self.backup()
+        seen = []
+        self.assertEqual(G.restore_registry(backup, run_reg=self.reg, out=seen.append),
+                         ["rewired registry: unchanged"])
+        self.assertEqual(seen, ["rewired registry: unchanged"])
+        self.assertEqual(self.reg.verbs(), ["export", "export"])
+
+    def test_a_changed_key_is_deleted_imported_and_checked(self):
+        backup = self.backup()
+        self.reg.text = b"the game changed this"
+        lines = G.restore_registry(backup, run_reg=self.reg, out=lambda _l: None)
+        self.assertEqual(lines, ["rewired registry: restored"])
+        saved = os.path.join(backup, "rewired.reg")
+        self.assertEqual(self.reg.calls[1:], [
+            ["export", G.REGISTRY_KEY, saved + G.AFTER_RUN_SUFFIX, "/y"],
+            ["delete", G.REGISTRY_KEY, "/f"],
+            ["import", saved],
+            ["export", G.REGISTRY_KEY, saved + G.REGISTRY_CHECK_SUFFIX, "/y"],
+        ])
+        self.assertEqual(self.reg.text, self.original)
+        # The game's version stays in the backup folder.
+        self.assertEqual(_read(saved + G.AFTER_RUN_SUFFIX), b"the game changed this")
+
+    def test_a_key_that_still_differs_after_the_import_raises(self):
+        backup = self.backup()
+        self.reg.text = b"the game changed this"
+        self.reg.import_works = False
+        with self.assertRaises(G.RestoreError) as cm:
+            G.restore_registry(backup, run_reg=self.reg, out=lambda _l: None)
+        self.assertEqual(cm.exception.name, "rewired.reg")
+        self.assertIn("still differs", str(cm.exception))
+
+    def test_a_failing_reg_exe_raises_with_the_name(self):
+        backup = self.backup()
+        self.reg.text = None  # the key is gone, so the export fails
+        with self.assertRaises(G.RestoreError) as cm:
+            G.restore_registry(backup, run_reg=self.reg, out=lambda _l: None)
+        self.assertEqual(cm.exception.name, "rewired.reg")
+
+    def test_a_backup_with_the_key_and_no_runner_refuses(self):
+        backup = self.backup()
+        with self.assertRaises(G.RestoreError) as cm:
+            G.restore_registry(backup, run_reg=None, out=lambda _l: None)
+        self.assertEqual(cm.exception.name, "rewired.reg")
+
+    def test_the_file_restore_leaves_the_registry_entry_alone(self):
+        backup = self.backup()
+        lines = G.restore(backup, out=lambda _l: None)
+        self.assertEqual(lines, [f"{name}: unchanged" for name in
+                                 G.DOCUMENTS_FILES + G.LOCALLOW_FILES])
+        self.assertEqual(self.reg.verbs(), ["export"])
+
+
+# Shaped like the user's settings.ini: a [game] section holding the line,
+# with sections before and after it and Windows line endings.
+SETTINGS_FIXTURE = (b"[audio]\r\nmaster_volume = 0.8\r\npause_on_focus_lost = 1\r\n\r\n"
+                    b"[game]\r\nnote_speed = 7\r\npause_on_focus_lost = 1\r\n"
+                    b"highway_length = 1\r\n\r\n[video]\r\nfps = 0\r\n")
+
+
+class SetGameSettingTest(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.path = os.path.join(self._tmp.name, "settings.ini")
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_the_run_line_is_pause_on_focus_lost_0_in_game(self):
+        self.assertEqual((G.GAME_SECTION, G.PAUSE_ON_FOCUS_LOST, G.PAUSE_ON_FOCUS_LOST_RUN_VALUE),
+                         ("game", "pause_on_focus_lost", "0"))
+
+    def test_changes_exactly_the_line_in_the_game_section(self):
+        _write(self.path, SETTINGS_FIXTURE)
+        G.set_game_setting(self.path, "pause_on_focus_lost", "0")
+        self.assertEqual(_read(self.path), SETTINGS_FIXTURE.replace(
+            b"note_speed = 7\r\npause_on_focus_lost = 1\r\n",
+            b"note_speed = 7\r\npause_on_focus_lost = 0\r\n"))
+
+    def test_keeps_the_lines_own_spacing_and_a_missing_last_newline(self):
+        _write(self.path, b"\xef\xbb\xbf[Game]\nPause_On_Focus_Lost=1")
+        G.set_game_setting(self.path, "pause_on_focus_lost", "0")
+        self.assertEqual(_read(self.path), b"\xef\xbb\xbf[Game]\nPause_On_Focus_Lost=0")
+
+    def test_refuses_when_the_key_is_absent(self):
+        before = SETTINGS_FIXTURE.replace(b"note_speed = 7\r\npause_on_focus_lost = 1\r\n",
+                                          b"note_speed = 7\r\n")
+        _write(self.path, before)
+        with self.assertRaises(G.SettingNotFound):
+            G.set_game_setting(self.path, "pause_on_focus_lost", "0")
+        self.assertEqual(_read(self.path), before)
+
+    def test_refuses_when_the_key_sits_only_in_another_section(self):
+        before = b"[audio]\r\npause_on_focus_lost = 1\r\n[game]\r\nnote_speed = 7\r\n"
+        _write(self.path, before)
+        with self.assertRaises(G.SettingNotFound):
+            G.set_game_setting(self.path, "pause_on_focus_lost", "0")
+        self.assertEqual(_read(self.path), before)
+
+    def test_refuses_two_lines_for_the_key(self):
+        before = b"[game]\npause_on_focus_lost = 1\npause_on_focus_lost = 1\n"
+        _write(self.path, before)
+        with self.assertRaises(G.SettingNotFound):
+            G.set_game_setting(self.path, "pause_on_focus_lost", "0")
+        self.assertEqual(_read(self.path), before)
 
 
 class SongIniTest(unittest.TestCase):

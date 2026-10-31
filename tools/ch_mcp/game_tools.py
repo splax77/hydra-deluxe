@@ -23,9 +23,10 @@ import json
 import os
 import tempfile
 import threading
+import time
 from typing import Callable, List, Optional, Sequence, Union
 
-from tools.ch_mcp import bot_run, compare_scorestats, game_files, install_chart
+from tools.ch_mcp import bot_run, compare_scorestats, foreground, game_files, install_chart
 from tools.ch_probe import constants as C
 from tools.ch_probe import engine_finder
 from tools.ch_probe.experiments import play_chart
@@ -133,8 +134,11 @@ class GameTools:
     the stamp), `driver` (the input driver), `live_play` and `live_press`
     (play_chart's), `install` (install_chart's), `find_window` (input_driver's),
     `compare` (compare_scorestats'), `wait_thread` (how ch_install_chart waits
-    on its worker) and `scratch_root` (the temp root the session folders go
-    under). `lock` is the server's one RLock; this class never makes its own."""
+    on its worker), `set_setting` (game_files.set_game_setting),
+    `make_watch` (builds the foreground.ForegroundWatch ch_start starts; None
+    builds the real one on `find_window`) and `scratch_root` (the temp root
+    the session folders go under). `lock` is the server's one RLock; this
+    class never makes its own."""
 
     def __init__(self, env: bot_run.Env, lock, scratch_root: Optional[str] = None, *,
                  driver: Optional[InputDriver] = None,
@@ -143,7 +147,9 @@ class GameTools:
                  install: Callable = install_chart.install,
                  find_window: Callable[[], int] = find_game_window,
                  compare: Callable = compare_scorestats.compare,
-                 wait_thread: Callable[[threading.Thread, float], None] = _join):
+                 wait_thread: Callable[[threading.Thread, float], None] = _join,
+                 set_setting: Callable[[str, str, str], None] = game_files.set_game_setting,
+                 make_watch: Optional[Callable[[], foreground.ForegroundWatch]] = None):
         self._env = env
         self._lock = lock
         self._scratch_root = scratch_root or tempfile.gettempdir()
@@ -154,8 +160,13 @@ class GameTools:
         self._find_window = find_window
         self._compare = compare
         self._wait_thread = wait_thread
+        self._set_setting = set_setting
+        self._make_watch = make_watch or (lambda: foreground.ForegroundWatch(
+            self._find_window, foreground.foreground_window, time.monotonic, time.sleep))
 
         self._run: Optional[bot_run.Run] = None
+        # The foreground watch of the run the server started; None otherwise.
+        self._watch: Optional[foreground.ForegroundWatch] = None
         # The backup taken for a game the server did not start (question 2).
         self._adopted_backup: Optional[str] = None
         self._scratch: Optional[str] = None
@@ -175,7 +186,8 @@ class GameTools:
                 return ""
             scratch = self._new_scratch()
             self._adopted_backup = game_files.backup(
-                self._env.documents_dir, self._env.locallow_dir, scratch, stamp=self._env.stamp)
+                self._env.documents_dir, self._env.locallow_dir, scratch, stamp=self._env.stamp,
+                run_reg=self._env.run_reg)
             return (f"backup folder: {self._adopted_backup} (taken now, because the server "
                     "did not start this game; ch_stop restores it)")
 
@@ -219,9 +231,11 @@ class GameTools:
 
     def ch_start(self, song_folder: Optional[str] = None, player: str = bot_run.DEFAULT_PLAYER,
                  profile: Optional[str] = None) -> str:
-        """Back up the user files, then start the game: with a song folder the
-        bot plays it from the command line; with none the game opens at its
-        menu. An open run is stopped and restored first."""
+        """Back up the user files, set settings.ini's pause_on_focus_lost
+        line for the run (the backup puts the user's line back), then start
+        the game minimized and start the foreground watch: with a song folder
+        the bot plays it from the command line; with none the game opens at
+        its menu. An open run is stopped and restored first."""
         with self._lock:
             lines: List[str] = []
             if self._run is not None or self._adopted_backup is not None:
@@ -233,7 +247,8 @@ class GameTools:
             env = self._env_into(lines)
             try:
                 run = bot_run.start_run(song_folder, player=player, profile=profile,
-                                        backup_root=scratch, env=env)
+                                        backup_root=scratch, env=env,
+                                        before_launch=lambda: lines.append(self._pause_setting()))
             except bot_run.SongLengthMissing as e:
                 lines.append(str(e))
                 return "\n".join(lines)
@@ -241,6 +256,8 @@ class GameTools:
                 lines.append(f"could not start the game: {e}")
                 return "\n".join(lines)
             self._run = run
+            self._watch = self._make_watch()
+            self._watch.start()
             if run.length_ms is None:
                 lines.append("song length: none (no song on the command line; pick one in "
                              "the game's menu)")
@@ -264,6 +281,19 @@ class GameTools:
         game it did not start, the files are restored and the game stays."""
         return self.ch_stop()
 
+    def _pause_setting(self) -> str:
+        """Set settings.ini's pause_on_focus_lost line to its run value and
+        say so. A file without the line is left as it is, and the line says
+        the game may pause while it is not in front."""
+        path = os.path.join(self._env.documents_dir, game_files.SETTINGS)
+        key, value = game_files.PAUSE_ON_FOCUS_LOST, game_files.PAUSE_ON_FOCUS_LOST_RUN_VALUE
+        try:
+            self._set_setting(path, key, value)
+        except (game_files.SettingNotFound, OSError) as e:
+            return (f"{game_files.SETTINGS}: {key} not set to {value} ({e}); the game may "
+                    "pause while it is not in front")
+        return f"{game_files.SETTINGS}: {key} set to {value} for this run (restored by ch_stop)"
+
     def ch_status(self) -> str:
         """The game side of the session: the run, the backup folder, the
         scratch folder, the play session and the last stats copy. The Frida
@@ -283,6 +313,8 @@ class GameTools:
                 lines.append(f"backup folder: {self._adopted_backup}")
             else:
                 lines.append("game: no run open, and no backup taken")
+            if self._watch is not None:
+                lines.append(self._watch.line())
             if self._scratch is not None:
                 lines.append(f"scratch folder: {self._scratch}")
             play = self._play
@@ -518,9 +550,10 @@ class GameTools:
         return dataclasses.replace(self._env, out=lines.append)
 
     def _stop_all(self, lines: List[str]) -> bool:
-        """The stop hooks, the play stop, then the game and the restore.
-        Returns False when the restore failed or the stop raised; the run
-        stays open then, so a later ch_stop tries the restore again."""
+        """The stop hooks, the play stop, the foreground watch's stop and its
+        count, then the game and the restore. Returns False when the restore
+        failed or the stop raised; the run stays open then, so a later
+        ch_stop tries the restore again."""
         for hook in list(self._stop_hooks):
             try:
                 said = hook()
@@ -533,6 +566,9 @@ class GameTools:
         if play is not None and play.running():
             play.stop.set()
             lines.append("play session told to stop")
+        if self._watch is not None:
+            self._watch.stop()
+            lines.append(self._watch.line())
         env = self._env_into(lines)
         if self._run is not None:
             try:
@@ -545,6 +581,7 @@ class GameTools:
             if not ok:
                 return False
             self._run = None
+            self._watch = None
             return True
         if self._adopted_backup is not None:
             lines.append("the server did not start the game, so it does not close it")

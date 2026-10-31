@@ -1,7 +1,9 @@
 """Tests for bot_run (the bot launcher) and install_chart.
 
-No game and no real user files: the launch, the clock and the process check
-are the fakes below, and the user folders are temp folders.
+No game, no real user files and no real registry key: the launch, the clock
+and the process check are the fakes below, the user folders are temp
+folders, and Rig's Env has no reg.exe runner unless a test hands it
+test_game_files' FakeReg.
 """
 
 from __future__ import annotations
@@ -24,6 +26,7 @@ if _REPO_ROOT not in sys.path:
 from tools.ch_mcp import bot_run as B  # noqa: E402
 from tools.ch_mcp import game_files as G  # noqa: E402
 from tools.ch_mcp import install_chart as I  # noqa: E402
+from tools.ch_mcp.tests.test_game_files import FakeReg  # noqa: E402
 from tools.ch_probe import probe_songs  # noqa: E402
 from tools.ch_probe.constants import PROCESS_NAME  # noqa: E402
 
@@ -108,7 +111,7 @@ class Rig:
         self.env = B.Env(exe=r"C:\fake\Clone Hero.exe", documents_dir=self.docs,
                          locallow_dir=self.low, launch=self.launch, now=self.clock.now,
                          sleep=self.clock.sleep, stamp=lambda: "20261028-101500",
-                         out=self.lines.append)
+                         out=self.lines.append, run_reg=None)
 
     def path(self, name: str) -> str:
         return os.path.join(self.docs if name in G.DOCUMENTS_FILES else self.low, name)
@@ -413,6 +416,72 @@ class RunStepsTest(unittest.TestCase):
         self.assertEqual(r.lines[-1], f"stopped; the backup is still in {r.backup_dir()}")
 
 
+class LaunchStepsTest(unittest.TestCase):
+    """What start_run does between the backup and the launch, and the
+    registry key riding along with the files."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = self._tmp.name
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def start(self, r: Rig, **kw) -> B.Run:
+        return B.start_run(r.song, backup_root=os.path.join(r.out_dir, "backups"), env=r.env, **kw)
+
+    def test_the_servers_env_backs_up_the_key_with_reg_exe(self):
+        self.assertIs(B.Env().run_reg, G.run_reg)
+
+    def test_before_launch_runs_after_the_backup_and_before_the_launch(self):
+        r = Rig(self.tmp)
+        seen = []
+        real_launch = r.launch
+
+        def launch(cmd):
+            seen.append("launch")
+            return real_launch(cmd)
+
+        r.env.launch = launch
+        self.start(r, before_launch=lambda: seen.append(
+            ("before_launch", os.path.isdir(r.backup_dir()))))
+        self.assertEqual(seen, [("before_launch", True), "launch"])
+
+    def test_a_launch_that_raises_puts_back_what_before_launch_changed(self):
+        r = Rig(self.tmp)
+
+        def launch(cmd):
+            raise OSError("no such file")
+
+        r.env.launch = launch
+        with self.assertRaises(OSError):
+            self.start(r, before_launch=lambda: _write(r.path(G.SETTINGS), b"changed"))
+        r.assert_all_restored(self)
+        self.assertIn(f"{G.SETTINGS}: restored", r.lines)
+
+    def test_the_key_is_backed_up_and_restored_with_the_envs_runner(self):
+        r = Rig(self.tmp)
+        r.env.run_reg = reg = FakeReg()
+        original = reg.text
+        run = self.start(r)
+        self.assertTrue(os.path.isfile(os.path.join(run.backup_dir, G.REGISTRY_BACKUP)))
+        reg.text = b"the game changed this"
+        self.assertTrue(B.finish_run(run, stop=True, env=r.env))
+        self.assertEqual(r.lines[-1], "rewired registry: restored")
+        self.assertEqual(reg.text, original)
+
+    def test_a_registry_restore_failure_stops_like_a_file_one(self):
+        r = Rig(self.tmp)
+        r.env.run_reg = reg = FakeReg()
+        run = self.start(r)
+        reg.text = b"the game changed this"
+        reg.import_works = False
+        self.assertFalse(B.finish_run(run, stop=True, env=r.env))
+        self.assertTrue(any(line.startswith("restore failed on rewired.reg: ")
+                            for line in r.lines), r.lines)
+        self.assertEqual(r.lines[-1], f"stopped; the backup is still in {r.backup_dir()}")
+
+
 class FakePopen:
     """Records how subprocess.Popen was called."""
     calls: list = []
@@ -429,10 +498,23 @@ class RealLaunchTest(unittest.TestCase):
         with mock.patch.object(B.subprocess, "Popen", FakePopen):
             game = B._real_launch(cmd)
         self.assertEqual(game.pid, 4321)
-        self.assertEqual(FakePopen.calls, [(cmd, {
+        [(seen_cmd, kw)] = FakePopen.calls
+        kw = dict(kw)
+        kw.pop("startupinfo")  # test_the_game_opens_minimized_without_the_focus checks it
+        self.assertEqual([(seen_cmd, kw)], [(cmd, {
             "cwd": os.path.dirname(cmd[0]),
             "stdin": subprocess.DEVNULL,
             "stdout": subprocess.DEVNULL})])
+
+    def test_the_game_opens_minimized_without_the_focus(self):
+        FakePopen.calls = []
+        with mock.patch.object(B.subprocess, "Popen", FakePopen):
+            B._real_launch([os.path.join("games", "ch", "Clone Hero.exe")])
+        info = FakePopen.calls[0][1]["startupinfo"]
+        self.assertTrue(info.dwFlags & subprocess.STARTF_USESHOWWINDOW)
+        # SW_SHOWMINNOACTIVE: minimized, not activated.
+        self.assertEqual(info.wShowWindow, 7)
+        self.assertEqual(B.SW_SHOWMINNOACTIVE, 7)
 
 
 class InstallChartTest(unittest.TestCase):
