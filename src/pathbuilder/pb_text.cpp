@@ -35,25 +35,20 @@ const char* const kPendingText = "...";
 
 namespace {
 
-// "1 phrase", "2 phrases".
-std::string counted(int64_t n, const char* word) {
-    return std::to_string(n) + " " + word + (n == 1 ? "" : "s");
-}
-
 const SongTiming& scene_timing(const PreviewScene& scene) {
     if (!scene.timing) throw std::logic_error("pb_text: a scene with no song timing");
     return *scene.timing;
 }
 
-// The measure an activation's Star Power ends in: its deact node's measure.
-std::string end_measure(const SongTiming& timing, int64_t end_tick) {
-    return measure_label(timing.timecode(end_tick));
+// The measure a tick falls in, as the screen names it (measure_label).
+std::string measure_at(const SongTiming& timing, int64_t tick) {
+    return measure_label(timing.timecode(tick));
 }
 
 }  // namespace
 
 std::string fill_name(const PreviewScene& scene, const PreviewFill& fill) {
-    return measure_label(scene_timing(scene).timecode(fill.chord_tick));
+    return measure_at(scene_timing(scene), fill.chord_tick);
 }
 
 int bars_saved_at(const PreviewScene& scene, const PreviewFill& fill) {
@@ -68,14 +63,14 @@ std::string fill_reason(const PreviewScene& scene, size_t fill_index) {
         const app::PreviewActivation& a = scene.activations[i];
         if (a.sp_running_at(fill.span.end_ms))
             return "Star Power is already on here. Activation " + std::to_string(i + 1) +
-                   " runs until " + end_measure(timing, a.sp_end_tick) + ".";
+                   " runs until " + measure_at(timing, a.sp_end_tick) + ".";
     }
     if (!scene.activations.empty() && fill.chord_tick < scene.activations.back().tick)
         return kBeforeLastActivationText;
     if (fill.state == app::PreviewFillState::Offered) return {};
     const int bars = bars_saved_at(scene, fill);
     if (bars < kSpActivationBars)
-        return "You have " + counted(bars, "phrase") + " saved here. You need " +
+        return "You have " + counted(bars, "phrase", "phrases") + " saved here. You need " +
                std::to_string(kSpActivationBars) + " to activate.";
     return kGameHidesFillText;
 }
@@ -104,7 +99,7 @@ std::string fill_hover_text(const PreviewScene& scene, size_t fill_index,
     if (fill.state == app::PreviewFillState::Taken) return t + kYourActivationHoverText;
     const std::string reason = fill_reason(scene, fill_index);
     if (!reason.empty()) return t + reason;
-    t += "You have " + counted(bars_saved_at(scene, fill), "phrase") + " saved.\n";
+    t += "You have " + counted(bars_saved_at(scene, fill), "phrase", "phrases") + " saved.\n";
     if (!numbers) return t + kPendingText;
     t += "If you activate here, the best you can still finish with is " +
          group_thousands(numbers->best_finish) + ".";
@@ -117,7 +112,7 @@ std::string fill_hover_text(const PreviewScene& scene, size_t fill_index,
     }
     if (numbers->hydra_end) {
         if (const std::optional<int64_t> d = numbers->hydra_end->deact_tick())
-            t += "\nHydra would end it at " + end_measure(scene_timing(scene), *d) +
+            t += "\nHydra would end it at " + measure_at(scene_timing(scene), *d) +
                  squeeze_end_text(*numbers->hydra_end) + ".";
     }
     return t;
@@ -137,7 +132,7 @@ GuideMessage started_over_message() { return {kStartedOverText, false}; }
 
 GuideMessage finished_for_player_message(size_t kept) {
     if (kept == 0) return {kBuiltWholePathText, false};
-    return {"Hydra kept your " + counted(static_cast<int64_t>(kept), "activation") +
+    return {"Hydra kept your " + counted(static_cast<int64_t>(kept), "activation", "activations") +
                 " and added the best rest of the path. Undo takes it back.",
             false};
 }
@@ -171,9 +166,9 @@ StepText step_sentence(const SongTiming& timing, const Activation& act, int64_t 
     StepText s;
     s.sentence = "Activate at " + measure_label(act.timecode) + " (" +
                  app::clock_str(act.timecode.ms()) + ") with " +
-                 counted(act.sp_meter(), "phrase") + " saved.";
+                 counted(act.sp_meter(), "phrase", "phrases") + " saved.";
     if (const std::optional<int64_t> d = act.deact_tick())
-        s.sentence += " Star Power runs until " + end_measure(timing, *d) +
+        s.sentence += " Star Power runs until " + measure_at(timing, *d) +
                       squeeze_end_text(act) + ".";
     s.sentence += " This choice " + cost_text(cost) + ".";
     s.why = cost > 0 ? "Before it, the best you could still finish with was " +
