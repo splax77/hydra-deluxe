@@ -508,14 +508,16 @@ target_include_directories(hydra_dm PRIVATE third_party/json)
 # ---- hydra_uibase: the GUI base -------------------------------------------
 # What any of Hydra's GUI programs needs without Hydra's own window: ImGui's
 # set-up and shutdown, the UI scale, the theme, the fonts, the shared widgets,
-# the icons, the file and folder dialogs and the main window's Win32 and
-# Direct3D pieces (win32_window.h). Nothing here reads AppState.
+# the icons, the file and folder dialogs, the Preview panel both GUI programs
+# draw (preview_panel.h) and the main window's Win32 and Direct3D pieces
+# (win32_window.h). Nothing here reads AppState.
 add_library(hydra_uibase STATIC
     src/ui/imgui_setup.cpp
     src/ui/column_widths.cpp
     src/ui/icons.cpp
     src/ui/imgui_files.cpp  # ImGui's file functions (imconfig.h)
     src/ui/list_scroll.cpp
+    src/ui/preview_panel.cpp
     src/ui/preview_timeline.cpp
     src/ui/theme.cpp
     src/ui/win32_dialogs.cpp
@@ -526,14 +528,17 @@ add_library(hydra_uibase STATIC
     src/ui/fonts.h
     src/ui/generation.h
     src/ui/label_layout.h
+    src/ui/preview_panel.h
     src/ui/text_role.h
     src/ui/widgets.h
 )
 # imgui_test_engine goes wherever imgui does: imconfig.h turns the engine's
 # hooks on for every ImGui build (see the imgui_test_engine block above).
 # hydra_render: widgets.h's ellipsize. hydra_audio: the fonts are read through
-# a file map. d3d11 is PUBLIC because icons.h hands out ID3D11 types.
-target_link_libraries(hydra_uibase PUBLIC imgui imgui_test_engine hydra_render hydra_audio d3d11)
+# a file map. hydra_preview: the Preview panel draws a PreviewController.
+# d3d11 is PUBLIC because icons.h hands out ID3D11 types.
+target_link_libraries(hydra_uibase PUBLIC
+    imgui imgui_test_engine hydra_render hydra_audio hydra_preview d3d11)
 # ole32: the folder-picker dialog (COM's IFileOpenDialog). shell32 is not
 # needed here: hydra_app links it for report_files.cpp's ShellExecuteW.
 # hydra_image: icons.cpp decodes its PNGs through the shared stb TU.
