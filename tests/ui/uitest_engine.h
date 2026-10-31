@@ -48,8 +48,13 @@ struct EngineHooks {
     // True when finding a widget labelled `label` by a wildcard lookup would
     // scroll a long list to reach it (in Hydra: the search box is empty and
     // the label is a library row's title). The item verbs refuse such a
-    // lookup. Empty: never.
+    // lookup, and an absolute ref to such a label too. Empty: never.
     std::function<bool(const std::string& label)> is_library_row_title;
+    // True when the library list shows every row, so a key that pages it or
+    // jumps to an end can scroll it whole (in Hydra: the search box is
+    // empty). The key verb refuses such a key while that list is focused.
+    // Empty: never.
+    std::function<bool()> library_unfiltered;
     // The open verb: open the song titled `title`, waiting at most
     // `settle_seconds` for it to settle. Returns the plain reason it could
     // not, or "" when it opened (or an engine action failed instead, its

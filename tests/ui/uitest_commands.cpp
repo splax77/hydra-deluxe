@@ -6,6 +6,7 @@
 #include "uitest_engine.h"
 #include "uitest_commands.h"
 
+#include <algorithm>
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
@@ -68,6 +69,16 @@ ImGuiKey key_named(const std::string& name) {
     }
     return ImGuiKey_None;
 }
+
+// The keys that page a focused list or jump to its end, whatever modifiers
+// come with them. The key verb checks them against the library
+// (library_key_refusal); a key that moves one row is not one of them.
+constexpr ImGuiKey kPageKeys[] = {ImGuiKey_PageUp, ImGuiKey_PageDown, ImGuiKey_Home,
+                                  ImGuiKey_End};
+
+// What every window the library draws holds in its name: its own child and
+// the table's scrolling child inside it (library_table.cpp).
+constexpr const char* kLibraryWindow = "##library";
 
 // A key or chord written as names joined by '+': "Escape", "Ctrl+W",
 // "Ctrl+Shift+Tab". The modifiers are Ctrl, Shift and Alt; the last name is
@@ -172,30 +183,51 @@ std::string named(const std::vector<ImGuiTestItemInfo>& items) {
 // A wildcard lookup of a library row's title scrolls the whole library when
 // the row is not drawn, which with a full library takes minutes. So such a
 // lookup is refused while the search box is empty; the program says which
-// labels those are (EngineHooks::is_library_row_title). A widget of that
-// label drawn outside the library (a button that shares a song's title) is
-// found without any scrolling, so it goes ahead; `searches_here` says the ref
-// searches under the current window, where drawn_items_labelled looks.
-// Empty when the lookup may go ahead.
+// labels those are (EngineHooks::is_library_row_title). An absolute ref whose
+// last label is such a title is refused the same way, so no ref to a row gets
+// past the guard by its form. A widget of that label drawn outside the
+// library (a button that shares a song's title) is found without any
+// scrolling, so it goes ahead; `searches_here` says the ref searches under
+// the current window, where drawn_items_labelled looks. Empty when the lookup
+// may go ahead.
 std::string library_scroll_refusal(ImGuiTestContext* ctx, Engine& e, const std::string& label,
                                    bool searches_here) {
     if (!e.hooks.is_library_row_title || !e.hooks.is_library_row_title(label)) return "";
     if (searches_here)
         for (const ImGuiTestItemInfo& it : drawn_items_labelled(ctx, label))
-            if (std::strstr(it.Window->Name, "##library") == nullptr) return "";
+            if (std::strstr(it.Window->Name, kLibraryWindow) == nullptr) return "";
     return message("refused: \"%s\" is a library row's title and the search box is "
                    "empty, so finding it would scroll the whole library; use "
                    "\"open %s\", or type into **/##search first",
                    label.c_str(), label.c_str());
 }
 
+// A key that pages the focused list or jumps to its end (kPageKeys) scrolls
+// the whole library when the library is focused and unfiltered
+// (EngineHooks::library_unfiltered), so the key verb refuses it then. The
+// focused window decides, not the key alone: the same key in another window,
+// or on a filtered library, goes ahead. `keys` is the chord as written.
+// Empty when the key may go ahead.
+std::string library_key_refusal(ImGuiTestContext* ctx, Engine& e, ImGuiKeyChord chord,
+                                const std::string& keys) {
+    const ImGuiKey key = static_cast<ImGuiKey>(chord & ~ImGuiMod_Mask_);
+    if (std::find(std::begin(kPageKeys), std::end(kPageKeys), key) == std::end(kPageKeys))
+        return "";
+    const ImGuiWindow* focused = ctx->UiContext->NavWindow;
+    if (focused == nullptr || std::strstr(focused->Name, kLibraryWindow) == nullptr) return "";
+    if (!e.hooks.library_unfiltered || !e.hooks.library_unfiltered()) return "";
+    return message("refused: %s would scroll the whole library and the search box is empty; "
+                   "type into **/##search first, or ask the user",
+                   keys.c_str());
+}
+
 // The ref an item verb (click, check, uncheck, type) acts on. A ref that
 // neither starts with '/' nor holds "**/" and finds no item relative to the
 // current window is tried once more as "**/<ref>", and that is used when it
 // finds one; retried says so. The retry is refused when two or more drawn
-// widgets under the current window carry the label. A ref that would go
-// through a wildcard lookup passes library_scroll_refusal first. refusal holds
-// the reason of either.
+// widgets under the current window carry the label. A ref that starts with
+// '/', or would go through a wildcard lookup, passes library_scroll_refusal
+// first. refusal holds the reason of either.
 struct ItemRef {
     std::string ref;
     std::string refusal;
@@ -204,18 +236,18 @@ struct ItemRef {
 
 ItemRef item_ref(ImGuiTestContext* ctx, Engine& h, const std::string& ref) {
     const bool wildcard = ref.find("**/") != std::string::npos;
-    if (!wildcard && !ref.empty() && ref[0] == '/') return {ref};
-    if (!wildcard) {
+    const bool absolute = !wildcard && !ref.empty() && ref[0] == '/';
+    if (!wildcard && !absolute) {
         if (ctx->ItemInfo(ref.c_str(), ImGuiTestOpFlags_NoError).ID != 0) return {ref};
     }
     // Only a ref with no prefix (bare, or starting "**/") searches under the
     // current window, which is where drawn_items_labelled looks.
     size_t segments = 1;
     const std::string label = last_label(ref, segments);
-    const bool searches_here = !wildcard || ref.compare(0, 3, "**/") == 0;
+    const bool searches_here = !absolute && (!wildcard || ref.compare(0, 3, "**/") == 0);
     if (std::string why = library_scroll_refusal(ctx, h, label, searches_here); !why.empty())
         return {"", why};
-    if (wildcard) return {ref};
+    if (wildcard || absolute) return {ref};
     // The engine keeps the last item a wildcard lookup matched and counts no
     // others, so the drawn widgets are counted here. A ref of several labels
     // is matched on its whole path by the engine, which this count does not do.
@@ -295,6 +327,8 @@ CommandResult run_command(ImGuiTestContext* ctx, CommandSession& session, const 
     } else if (verb == "key") {
         ImGuiKeyChord chord = 0;
         if (!parse_chord(rest, chord)) return refuse(message("unknown key \"%s\"", rest.c_str()));
+        if (std::string why = library_key_refusal(ctx, h, chord, rest); !why.empty())
+            return refuse(why);
         ctx->KeyPress(chord);
     } else if (verb == "wait" || verb == "timeout") {
         double seconds = 0;
