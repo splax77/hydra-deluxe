@@ -42,7 +42,7 @@ Checked first: card 2026-10-11-8eb32145 covers only five other side notes (Playh
 
 - **Splits:** None: dead production code kept alive by one test.
 - **How it left:** nothing at all (V6.md:190 "(M56)").
-- **Code today:** `note_in_span` is defined at src/render/track_state.cpp:373 and declared at src/render/track_state.h:310. The only caller is tests/test_track_state.cpp:600-605 (grep over src, tests, tools). The golden dump that used it was removed by commit 9fec86d2 (2026-10-10, "Test suite: drop dead weight found by the 2026-10-10 audit"). The plan that added it (docs/superpowers/plans/tasks/p6-j1-3.md:43) says it served "the golden dump's two hand compares". By reading.
+- **Code today:** `note_in_span` is defined at src/render/track_state.cpp:373 and declared at src/render/track_state.h:310. The only caller is tests/test_track_state.cpp:600-605 (grep over src, tests, tools). The golden dump that used it was removed by commit 9fec86d2 (2026-10-10, "Test suite: drop dead weight found by the 2026-10-10 audit"). The plan that added it (docs/superpowers/plans/tasks/p6-j1-3.md:43, removed; `git show ec91f8d1:docs/superpowers/plans/tasks/p6-j1-3.md`) says it served "the golden dump's two hand compares". By reading.
 - **Verdict:** REOPEN
 - **Why:** The reason it was exported is gone, and the span rule it pins is also pinned by `build_track_state` tests.
 - **Code-only fix:** delete `note_in_span` and its test case, or move it into the test file. Nothing the user sees changes.

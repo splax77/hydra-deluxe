@@ -45,7 +45,7 @@
         "const std::unordered_map<std::string, store::RecordRow> by_id = report::library_lookup(store, profile, library).ready;"
       ],
       "owner_lines": [],
-      "note": "The two comparison pages each filtered ready_records by hand to the charts the library lists. A page that does so itself can disagree with the other about which results it shows. The path report joins this rule in task A2-2. Since REPORT-ALL-T4 the owner reads one RecordStore::lookup over the library's charts, so no source line calls ready_records. Decided by: D87 item 4, D92, D115 (task A2-4); plan 2026-10-15-report-covers-whole-library (T4)"
+      "note": "The two comparison pages each filtered ready_records by hand to the charts the library lists. A page that does so itself can disagree with the other about which results it shows. The path report joins this rule in task A2-2. Since REPORT-ALL-T4 the owner reads one RecordStore::lookup over the library's charts, so no source line calls ready_records. Decided by: D87 item 4, D92, D115 (task A2-4); plan 2026-10-15-report-covers-whole-library (T4; removed, git show ec91f8d1:docs/superpowers/plans/2026-10-15-report-covers-whole-library.md)"
     }
   ]
 }

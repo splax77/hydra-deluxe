@@ -45,7 +45,8 @@ export function isDestroyed(obj: Il2Cpp.Object): boolean {
 // Call it inside Il2Cpp.perform. Each call walks the whole heap (the choose
 // call), so it is not cheap. clock.ts and trace.ts call it once per run;
 // state.ts calls it on every read, and live step L1 of the plan
-// 2026-10-28-ch-mcp-server.md timed that read.
+// 2026-10-28-ch-mcp-server.md timed that read (removed; git show
+// ec91f8d1:docs/superpowers/plans/2026-10-28-ch-mcp-server.md).
 export function lookUpGameManager(): LiveGameManager | NoLiveGameManager {
     const assembly = Il2Cpp.domain.tryAssembly(ASSEMBLY_NAME);
     if (assembly === null) {

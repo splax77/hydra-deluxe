@@ -5788,7 +5788,7 @@
 "fix_group": "tests-recompute-production",
 "owner": "src/ui/preview_tab.cpp draw_scrub_marks (single owner; add a GUI test against the real grab rect)",
 "status_at_head": "closed",
-"status_evidence": "Phase 6 plan (2026-10-04-phase-6.md): closed as not a fold. The scrubber pad copies an ImGui internal ImGui does not expose, so there is one Hydra copy.",
+"status_evidence": "Phase 6 plan (docs/superpowers/plans/2026-10-04-phase-6.md, removed; git show ec91f8d1:docs/superpowers/plans/2026-10-04-phase-6.md): closed as not a fold. The scrubber pad copies an ImGui internal ImGui does not expose, so there is one Hydra copy.",
 "squeeze_plan": "no",
 "decision": "",
 "decision_weight": "",

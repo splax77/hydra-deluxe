@@ -1,6 +1,6 @@
 # Audit of audits: what is left (2026-10-31, session e3dd3907)
 
-This continues `docs/handoffs/2026-10-30-audit-of-audits-build-2-handoff.md` and replaces `docs/handoffs/2026-10-30-audit-of-audits-remaining-handoff.md`. The audit's results are in `docs/audit/2026-10-29-audit-of-audits/` (`summary.md`, `questions.md`). Every ruling is in `docs/audit/2026-10-03-fix-decisions.md`.
+This continues `docs/handoffs/2026-10-30-audit-of-audits-build-2-handoff.md` (removed; `git show ec91f8d1:docs/handoffs/2026-10-30-audit-of-audits-build-2-handoff.md`) and replaces `docs/handoffs/2026-10-30-audit-of-audits-remaining-handoff.md` (removed; `git show ec91f8d1:docs/handoffs/2026-10-30-audit-of-audits-remaining-handoff.md`). The audit's results are in `docs/audit/2026-10-29-audit-of-audits/` (`summary.md`, `questions.md`). Every ruling is in `docs/audit/2026-10-03-fix-decisions.md`.
 
 Everything the user ruled on in this audit is built and on `main`. The records the audit found false are corrected. Two kinds of work are left: one live check that belongs to the Clone Hero work, and the list the audit never reached. Nothing below has started, and each piece waits for the user's yes (CLAUDE.md rule 3).
 
@@ -36,7 +36,7 @@ A third wave would be read-only scouts on Sonnet, a few jobs each, briefed with 
 
 ## 3. Lessons from this session
 
-How the user wants questions asked is in the remaining handoff and still holds: lead with a real case, name every number's source, and mark made-up examples as made up.
+How the user wants questions asked is in the remaining handoff (removed; `git show ec91f8d1:docs/handoffs/2026-10-30-audit-of-audits-remaining-handoff.md`) and still holds: lead with a real case, name every number's source, and mark made-up examples as made up.
 
 A memory figure measured through the hydra MCP's window mode includes the harness. For a plain number, copy the build next to snapshot copies of `hydra.db` and `hydra_settings.ini` (plain Hydra ignores `--db` and `--ini` and reads them beside the exe), launch with `--open-report`, and close the report with `WM_CLOSE`. Read Private Bytes 90 s after the close, against a no-report run on the same files. Never move the user's cursor or raise a window over their screen to make a click land.
 

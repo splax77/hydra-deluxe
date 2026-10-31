@@ -417,7 +417,8 @@ void showValue(const ReplayWindow& w, std::ostream& os) {
 }  // namespace hydra
 
 // The case above as a RapidCheck property, the trial of plan
-// 2026-10-10-ci-test-tooling (task 7). The same three checks run on made-up
+// 2026-10-10-ci-test-tooling (task 7; removed, read it with git show
+// ec91f8d1:docs/superpowers/plans/2026-10-10-ci-test-tooling.md). The same three checks run on made-up
 // windows over the same chart, one leeway variant per test, and a failure is
 // shrunk to the fewest, smallest windows that still break a check. The seed
 // is fixed so the suite runs the same tests every time (decision 7); a

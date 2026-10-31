@@ -2,8 +2,10 @@
 to name an engine method from its address in those facts.
 
 This module is the one home of those three questions (the plan
-2026-10-28-ch-mcp-server.md, task T2 and question 4). Every Frida tool asks
-it before it attaches, and refuses on its answer: a build with no facts file,
+2026-10-28-ch-mcp-server.md, task T2 and question 4; removed, read it with
+git show ec91f8d1:docs/superpowers/plans/2026-10-28-ch-mcp-server.md).
+Every Frida tool asks it before it attaches, and refuses on its answer: a
+build with no facts file,
 or one whose facts describe another version, is unknown, and the first
 version of the server only stops there.
 

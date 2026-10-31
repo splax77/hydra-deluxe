@@ -62,4 +62,4 @@ The task worktrees `chsp-t1` to `chsp-t7` and `ch-sp-plan` under `.claude\worktr
 
 - The build handoff this one follows: `docs/handoffs/2026-10-30-ch-mcp-star-power-build-handoff.md`.
 - The memory note `ch-mcp-server-2026-10`.
-- The Clone Hero reference session, which feeds its list of live checks to this server: `docs/handoffs/2026-10-30-clone-hero-reference-session-prompt.md`.
+- The Clone Hero reference session, which feeds its list of live checks to this server: `docs/handoffs/2026-10-30-clone-hero-reference-session-prompt.md` (removed; `git show ec91f8d1:docs/handoffs/2026-10-30-clone-hero-reference-session-prompt.md`). The list itself is `docs/clone-hero/live-checks.md`.

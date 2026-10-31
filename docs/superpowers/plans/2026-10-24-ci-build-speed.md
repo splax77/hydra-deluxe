@@ -1,6 +1,6 @@
 # Faster CI runs
 
-Plan written 2026-10-24 by Claude Code session 66725311 (started from session 94686408). Its starting point is `docs/handoffs/2026-10-24-ci-build-speed-handoff.md`. Nothing here is built yet. Every task waits for the user's yes (CLAUDE.md rule 3), and two policy questions at the end need the user's answer first.
+Plan written 2026-10-24 by Claude Code session 66725311 (started from session 94686408). Its starting point is `docs/handoffs/2026-10-24-ci-build-speed-handoff.md` (removed; `git show ec91f8d1:docs/handoffs/2026-10-24-ci-build-speed-handoff.md`). Nothing here is built yet. Every task waits for the user's yes (CLAUDE.md rule 3), and two policy questions at the end need the user's answer first.
 
 ## The short version
 
