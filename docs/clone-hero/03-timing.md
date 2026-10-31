@@ -300,7 +300,7 @@ Hydra: `kHitWindowMs` in src/core/model.h line 104.
 Ruling: D270 item 8: the user asked "why are there two different numbers for hit window? who approved that? did you ever tell me you were using two different numbers?", then "yes it should use one nuimbers eerywhere", and chose "Fixed 85, no setting (Recommended)".
 Found: 2026-10-30, session 9a82ff65.
 
-### TM-30 The constant at 0x31406E8 as a hit-grade fraction
+### TM-30 The 0.75 constant that constants.py calls the hit threshold, as a hit-grade fraction
 
 Rule: The `.rdata` value read as 0.75 and called "hit threshold" in constants.py is a hit-grade fraction.
 Label: Unknown
