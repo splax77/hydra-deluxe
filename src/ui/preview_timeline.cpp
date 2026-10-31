@@ -50,18 +50,19 @@ constexpr float kActivationsRowRem = 2.2f;  // line 473
 constexpr float kFillsRowRem = 2.9f;        // line 476
 
 // The label column: `.rlab{width:12.5rem; padding-right:.5rem}` (second
-// mockup, line 61), with the first mockup's `color:var(--muted)`.
+// mockup, line 61), in its `color:var(--muted)`. --muted and --dim are the
+// second mockup's (line 11).
 constexpr float kLabelColumnRem = 12.5f;
 constexpr float kLabelPadRightRem = 0.5f;
-constexpr ImU32 kMutedColor = rgba(0xa3, 0xa9, 0xb0, 1.0f);  // --muted
-constexpr ImU32 kDimColor = rgba(0x6c, 0x71, 0x7a, 1.0f);    // --dim
+constexpr ImU32 kMutedColor = rgba(0xa7, 0xad, 0xb4, 1.0f);  // --muted
+constexpr ImU32 kDimColor = rgba(0x70, 0x75, 0x7e, 1.0f);    // --dim
 
 // A row's top edge: `.row{border-top:1px solid #2d2f34}` (second mockup,
 // line 59), none on the first (line 60).
 constexpr ImU32 kRowEdgeColor = rgba(0x2d, 0x2f, 0x34, 1.0f);
 
-// The axis labels: `.axis span{top:.1rem}` (second mockup, line 85), with the
-// first mockup's `color:var(--dim)`.
+// The axis labels: `.axis span{top:.1rem; color:var(--dim)}` (second mockup,
+// line 85).
 constexpr float kAxisLabelTopRem = 0.1f;
 
 // Sections: `.sec{padding:.2rem .25rem}` (second mockup, line 65), .2 rem
@@ -74,10 +75,10 @@ constexpr ImU32 kSectionEdge = rgba(0x3a, 0x3d, 0x44, 1.0f);
 constexpr float kSectionPadTopRem = 0.2f;
 constexpr float kSectionPadSideRem = 0.25f;
 
-// The phrase stars: the first mockup's `.star{color:var(--star)}`, and the
-// second mockup's `.star{font-size:.85rem}` (line 67), the star's height. The
-// saved line is drawn in the same --star.
-constexpr ImU32 kStarColor = rgba(0xf2, 0xd0, 0x6b, 1.0f);  // --star
+// The phrase stars: the second mockup's `.star{color:var(--star);
+// font-size:.85rem}` (line 67, --star on line 13), the font size being the
+// star's height. The saved line is drawn in the same --star.
+constexpr ImU32 kStarColor = rgba(0xf2, 0xc9, 0x4c, 1.0f);  // --star
 constexpr float kStarRem = 0.85f;
 
 // The saved row (the second mockup's drawMeter): the curve 5 px in from the
