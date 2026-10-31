@@ -228,4 +228,94 @@ The first column is the function start, read from the listing's own first line. 
 
 ## New listings
 
-This section is filled when the reference pages merge.
+The 81 listings below were made for the reference on 2026-10-30 by the wave 2 scouts. There are 79 `.asm` files under `code/6142/` and 2 `.cs` files under `code/4045/`, and each has a `.md` beside it that explains its branches in plain words.
+
+The `.asm` files are from build 1.1.0.6142 (`GameAssembly.dll`), made with tools/ch_mcp/chdis.py. The start is the RVA in the file name, and for every file it matches the address on the listing's first line (or the `; function` line some listings open with). The role is the scout's file name with the RVA taken off.
+
+The `.cs` files are from build 1.0.0.4045 (`Assembly-CSharp.dll`), decompiled with `ilspycmd`. That build's dump has no addresses, so their start column names the file's first method and its lines in the full ilspycmd output instead.
+
+The table was generated from the files, not typed. One more file, `code/6142/drum_lanes_sp_lines.md`, has no listing of its own: it annotates the Star Power lines of the committed drum-lane listings under `docs/audit/drum-lanes/`.
+
+| Start | Role | File | Build | Tool |
+|---|---|---|---|---|
+| 0x215BD50 | add fill | [code/6142/add_fill_215BD50.asm](6142/add_fill_215BD50.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x215B7C0 | add fill twin | [code/6142/add_fill_twin_215B7C0.asm](6142/add_fill_twin_215B7C0.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x20F6EB0 | add note score | [code/6142/add_note_score_20F6EB0.asm](6142/add_note_score_20F6EB0.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x20F5F70 | add points | [code/6142/add_points_20F5F70.asm](6142/add_points_20F5F70.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x20F6A50 | advance events | [code/6142/advance_events_20F6A50.asm](6142/advance_events_20F6A50.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x215AFE0 | aes key build | [code/6142/aes_key_build_215AFE0.asm](6142/aes_key_build_215AFE0.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x2C7CE00 | back search | [code/6142/back_search_2C7CE00.asm](6142/back_search_2C7CE00.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x20F4550 | base frame update | [code/6142/base_frame_update_20F4550.asm](6142/base_frame_update_20F4550.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x210C1F0 | cal ms to s | [code/6142/cal_ms_to_s_210C1F0.asm](6142/cal_ms_to_s_210C1F0.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x213CAF0 | chart e handler | [code/6142/chart_e_handler_213CAF0.asm](6142/chart_e_handler_213CAF0.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x212E130 | chart length | [code/6142/chart_length_212E130.asm](6142/chart_length_212E130.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x213D160 | chart modifier decode | [code/6142/chart_modifier_decode_213D160.asm](6142/chart_modifier_decode_213D160.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x213D620 | chart n handler | [code/6142/chart_n_handler_213D620.asm](6142/chart_n_handler_213D620.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x35C980 | chart song metadata | [code/6142/chart_song_metadata_35C980.asm](6142/chart_song_metadata_35C980.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x16C9A0 | clock ctor | [code/6142/clock_ctor_16C9A0.asm](6142/clock_ctor_16C9A0.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x16C480 | clock raw minus audio | [code/6142/clock_raw_minus_audio_16C480.asm](6142/clock_raw_minus_audio_16C480.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x16C490 | clock raw plus video | [code/6142/clock_raw_plus_video_16C490.asm](6142/clock_raw_plus_video_16C490.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x16C650 | clock tick | [code/6142/clock_tick_16C650.asm](6142/clock_tick_16C650.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x1EF1A0 | delay seconds | [code/6142/delay_seconds_1EF1A0.asm](6142/delay_seconds_1EF1A0.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x215CD50 | disco apply | [code/6142/disco_apply_215CD50.asm](6142/disco_apply_215CD50.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x214B850 | double kick test | [code/6142/double_kick_test_214B850.asm](6142/double_kick_test_214B850.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x212C7E0 | end event usable | [code/6142/end_event_usable_212C7E0.asm](6142/end_event_usable_212C7E0.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x20DF680 | engine ctor | [code/6142/engine_ctor_20DF680.asm](6142/engine_ctor_20DF680.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x20F79E0 | engine ctor | [code/6142/engine_ctor_20F79E0.asm](6142/engine_ctor_20F79E0.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x20E49D0 | fill cache caller | [code/6142/fill_cache_caller_20E49D0.asm](6142/fill_cache_caller_20E49D0.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x20DDB70 | fill deadline | [code/6142/fill_deadline_20DDB70.asm](6142/fill_deadline_20DDB70.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x20D2B30 | fill generator | [code/6142/fill_generator_20D2B30.asm](6142/fill_generator_20D2B30.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x20CFF60 | fill to activation | [code/6142/fill_to_activation_20CFF60.asm](6142/fill_to_activation_20CFF60.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x2C7CF70 | first after search | [code/6142/first_after_search_2C7CF70.asm](6142/first_after_search_2C7CF70.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x20F16E0 | fold | [code/6142/fold_20F16E0.asm](6142/fold_20F16E0.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0xB41A0 | gm awake | [code/6142/gm_awake_B41A0.asm](6142/gm_awake_B41A0.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0xD8D80 | gm load coroutine | [code/6142/gm_load_coroutine_D8D80.asm](6142/gm_load_coroutine_D8D80.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x20CF2B0 | grid add line | [code/6142/grid_add_line_20CF2B0.asm](6142/grid_add_line_20CF2B0.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x20DACA0 | grid restart | [code/6142/grid_restart_20DACA0.asm](6142/grid_restart_20DACA0.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x20F7210 | half gap clamp | [code/6142/half_gap_clamp_20F7210.asm](6142/half_gap_clamp_20F7210.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x214EFD0 | header decode | [code/6142/header_decode_214EFD0.asm](6142/header_decode_214EFD0.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x214F0A0 | header encode | [code/6142/header_encode_214F0A0.asm](6142/header_encode_214F0A0.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x20DDDA0 | hit window formula | [code/6142/hit_window_formula_20DDDA0.asm](6142/hit_window_formula_20DDDA0.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x21647A0 | ini int getter | [code/6142/ini_int_getter_21647A0.asm](6142/ini_int_getter_21647A0.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x1EFC60 | ini song reader | [code/6142/ini_song_reader_1EFC60.asm](6142/ini_song_reader_1EFC60.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x215B8C0 | kick merge | [code/6142/kick_merge_215B8C0.asm](6142/kick_merge_215B8C0.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x2155050 | mid drum reader | [code/6142/mid_drum_reader_2155050.asm](6142/mid_drum_reader_2155050.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x20CEDC0 | mid fill reader | [code/6142/mid_fill_reader_20CEDC0.asm](6142/mid_fill_reader_20CEDC0.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x210D990 | mix digit map | [code/6142/mix_digit_map_210D990.asm](6142/mix_digit_map_210D990.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x215C750 | mix parser | [code/6142/mix_parser_215C750.asm](6142/mix_parser_215C750.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x20F52E0 | multiplier from streak | [code/6142/multiplier_from_streak_20F52E0.asm](6142/multiplier_from_streak_20F52E0.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x5DE030 | nearest chord | [code/6142/nearest_chord_5DE030.asm](6142/nearest_chord_5DE030.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x5DDB50 | nearest chord loop | [code/6142/nearest_chord_loop_5DDB50.asm](6142/nearest_chord_loop_5DDB50.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x20D2EA0 | note builder | [code/6142/note_builder_20D2EA0.asm](6142/note_builder_20D2EA0.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x20DE770 | note hit dynamics | [code/6142/note_hit_dynamics_20DE770.asm](6142/note_hit_dynamics_20DE770.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x214BB50 | note is activation | [code/6142/note_is_activation_214BB50.asm](6142/note_is_activation_214BB50.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x20DEEC0 | note score add | [code/6142/note_score_add_20DEEC0.asm](6142/note_score_add_20DEEC0.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x20F3A90 | note window | [code/6142/note_window_20F3A90.asm](6142/note_window_20F3A90.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x210D9C0 | pitch difficulty map | [code/6142/pitch_difficulty_map_210D9C0.asm](6142/pitch_difficulty_map_210D9C0.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x20EFEE0 | plain drums | [code/6142/plain_drums_20EFEE0.asm](6142/plain_drums_20EFEE0.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x252630 | scorestats json | [code/6142/scorestats_json_252630.asm](6142/scorestats_json_252630.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x15DC20 | scorestats writer | [code/6142/scorestats_writer_15DC20.asm](6142/scorestats_writer_15DC20.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x2116210 | setting base ctor | [code/6142/setting_base_ctor_2116210.asm](6142/setting_base_ctor_2116210.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x210C470 | setting int ctor | [code/6142/setting_int_ctor_210C470.asm](6142/setting_int_ctor_210C470.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x374D50 | settings load | [code/6142/settings_load_374D50.asm](6142/settings_load_374D50.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x20D18F0 | solo flags | [code/6142/solo_flags_20D18F0.asm](6142/solo_flags_20D18F0.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x358850 | song ini loader | [code/6142/song_ini_loader_358850.asm](6142/song_ini_loader_358850.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x20F5640 | sp activate | [code/6142/sp_activate_20F5640.asm](6142/sp_activate_20F5640.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x20F3750 | sp current tick | [code/6142/sp_current_tick_20F3750.asm](6142/sp_current_tick_20F3750.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x20F5490 | sp deactivate | [code/6142/sp_deactivate_20F5490.asm](6142/sp_deactivate_20F5490.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x20F63B0 | sp end check | [code/6142/sp_end_check_20F63B0.asm](6142/sp_end_check_20F63B0.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x20F37E0 | sp end time | [code/6142/sp_end_time_20F37E0.asm](6142/sp_end_time_20F37E0.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x20F4FA0 | sp gain | [code/6142/sp_gain_20F4FA0.asm](6142/sp_gain_20F4FA0.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x20D0330 | sp phrase advance | [code/6142/sp_phrase_advance_20D0330.asm](6142/sp_phrase_advance_20D0330.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x20D2440 | sp phrase assign | [code/6142/sp_phrase_assign_20D2440.asm](6142/sp_phrase_assign_20D2440.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x20F6800 | sp update | [code/6142/sp_update_20F6800.asm](6142/sp_update_20F6800.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x210C090 | speed ratio | [code/6142/speed_ratio_210C090.asm](6142/speed_ratio_210C090.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x20F4680 | star base | [code/6142/star_base_20F4680.asm](6142/star_base_20F4680.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x210DD00 | star count | [code/6142/star_count_210DD00.asm](6142/star_count_210DD00.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x2DF7F0 | star progress update | [code/6142/star_progress_update_2DF7F0.asm](6142/star_progress_update_2DF7F0.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x214C320 | star table cctor | [code/6142/star_table_cctor_214C320.asm](6142/star_table_cctor_214C320.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x20CFD40 | track lookup | [code/6142/track_lookup_20CFD40.asm](6142/track_lookup_20CFD40.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x20EFF60 | two x kick drop | [code/6142/two_x_kick_drop_20EFF60.asm](6142/two_x_kick_drop_20EFF60.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x20F0320 | listed by mistake (its note says it is the five-lane lane remap, not the 2x-kick drop); no row cites it | [code/6142/two_x_kick_drop_20F0320.asm](6142/two_x_kick_drop_20F0320.asm) | 6142 | tools/ch_mcp/chdis.py |
+| first method: the fill generator's caller, lines 823 to 833 of its class's file in the ilspycmd output | the 1.0 fill generator and where written fills land (eight methods) | [code/4045/fill_generator.cs](4045/fill_generator.cs) | 4045 | ilspycmd |
+| first method: the Star Power half-meter trigger, lines 870 to 877 of DrumsPlayer.cs in the ilspycmd output | the 1.0 fill deadline, when a fill is thrown away (three methods) | [code/4045/fill_deadline.cs](4045/fill_deadline.cs) | 4045 | ilspycmd |

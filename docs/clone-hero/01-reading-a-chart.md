@@ -2,7 +2,7 @@
 
 This page covers how Clone Hero finds and reads a chart: the notes file, the song id, tracks, song.ini keys, sections, solos and the song end.
 It describes build 1.1 (v1.1.0.6142).
-Last write-back: 2026-10-30.
+Last write-back: 2026-10-31.
 
 ## Finding the notes file
 
@@ -400,15 +400,15 @@ Hydra: `is_end_event` in src/parse/song.cpp line 46 (`kEndEventBody` line 41); t
 Ruling: none needed: same rule.
 Found: 2026-10-18, session c433b17f; re-read by wave 1 scout H1 and wave 2 scout R3.
 
-### CR-39 Whether the .mid [end] test is exact, a prefix test, or ignores case
+### CR-39 The .mid [end] test is exact and case-sensitive, after the game trims the text
 
-Rule: the game compares the text with `[end]` through a string function that the .chart handler also uses for its `[mix` starts-with test, so `[end] x` or `[END]` might count in the game; Hydra counts only the exact text.
-Label: Unknown
-Evidence: the compare is FUN_182c61990 in the decompile (lines 41940 to 41990, and 24549 for the `[mix` use); that function is not in the decompile and has no name in script.json, so its meaning is unread.
-Game code (6142): RVA `0x21544E0`; the compare function at 0x2C61990 was not read.
-Hydra: `is_end_event` in src/parse/song.cpp line 46; its comment at line 43 calls the game's compare exact and case-sensitive.
+Rule: the game trims the white space off both ends of a .mid events-track text, then tests it for equality with `[end]`, character by character. So `[END]`, `[end] x` and `[endx]` are not end events, and `[end]` with spaces or tabs round it is. Hydra's .mid pass trims nothing, so the padded form is the one difference.
+Label: Proven in the game's code
+Evidence: docs/audit/note-shuffle/step0/open1/midi_events_track_21544E0.asm line 98 trims the text (the MemoryExtensions Trim call) into registers rbx, r15d and edi (lines 99 to 101). Line 218 loads the `[end]` literal; lines 234 to 243 pass the SequenceEqual metamethod to the compare shim at 0x182C61850 and, when it returns true, jump to line 319 and the end setter of CR-38. The two tests before it, at lines 100 to 126 and 191 to 214, are the starts-with tests for `[section` and `[prc`; those use the StartsWith metamethod (0x3D09CF0) with the shim at 0x182C61990. The decompile has the same order: lines 41924 and 41953 are those two starts-with tests, and line 41981 is the `[end]` equality test (FUN_182c61850 with DAT_183d09b78 and the literal DAT_183d008e8). SequenceEqual on two character spans is an ordinal compare, which is .NET's definition of it; the shim's own body was not read.
+Game code (6142): the events reader, RVA `0x21544E0`, the listing above; the end setter, RVA `0x212E310`.
+Hydra: `is_end_event` in src/parse/song.cpp line 46 needs the bracket body to equal "end"; the .mid pass at lines 1126 to 1135 first requires the whole text to start with "[" and end with "]", with no trim.
 Ruling: open split: see questions page Q-75.
-Found: 2026-10-30, wave 1 scout H1 and wave 2 scout R3.
+Found: 2026-10-30, wave 1 scout H1 and wave 2 scout R3; the compare re-read in the decompile and the listing by the review of this page on 2026-10-31.
 
 ### CR-40 A .chart end event strips one pair of brackets
 
@@ -522,7 +522,7 @@ Found: 2026-10-03, session cebf3006.
 
 ## Rows waiting on a live run
 
-CR-01, CR-02, CR-08, CR-16, CR-23, CR-24, CR-29, CR-31, CR-34, CR-39, CR-44, CR-46, CR-47. Each is listed on the live-checks page.
+CR-01, CR-02, CR-08, CR-16, CR-23, CR-24, CR-29, CR-31, CR-34, CR-44, CR-46, CR-47. Each is listed on the live-checks page.
 
 ## Open splits
 
