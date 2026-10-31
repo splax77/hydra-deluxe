@@ -1,0 +1,88 @@
+{
+    "about": "The methods the method watch hooks to find which one starts a song. Each entry is the table 'The start method: candidates from the dump' of docs/superpowers/plans/2026-10-30-ch-mcp-star-power-and-song-start.md, with the dump.cs line it came from. Every candidate is a guess until live step LS-M sees it fire. method_watch.py loads this file; agent/menuhooks.ts hooks what it names.",
+    "game_version": "1.1.0.6142-final",
+    "dump": "dump.cs in this version's dump folder, the one build_facts.facts_path names",
+    "hook_kinds": {
+        "all": "every method of the class; the listed methods are the ones the plan names, kept for the record and the facts check",
+        "listed": "only the methods at the listed RVAs",
+        "by_name": "every overload with one of the listed names, its RVA found on the live class"
+    },
+    "scene_load": "a class marked scene_load loads scenes: the stop reply names each of its calls with its scene argument and the call before it",
+    "classes": [
+        {
+            "class": "SongSelect",
+            "namespace": "",
+            "dump_line": 20595,
+            "hook": "all",
+            "methods": [
+                {"id": "M1", "name": "ʼˁˀʾʽʽʲʻʹʹʿ", "rva": "0x8D090", "dump_line": 20766},
+                {"id": "M2", "name": "ʺʹʳʴʴʼˀˁʶʼʶ", "rva": "0x8C920", "dump_line": 20811}
+            ]
+        },
+        {
+            "class": "GlobalVariables",
+            "namespace": "",
+            "dump_line": 55801,
+            "hook": "listed",
+            "methods": [
+                {"id": "M3", "name": "ʺʵʸʸʽʶʾˀʶʺʺ", "rva": "0x235AD0", "dump_line": 55970}
+            ]
+        },
+        {
+            "class": "PlayerSelectionCanvas",
+            "namespace": "",
+            "dump_line": 25710,
+            "hook": "all",
+            "methods": [
+                {"id": "M4", "name": "ʸʺʺʲʲʻˀʸʾʲʹ", "rva": "0xCF9B0", "dump_line": 25730},
+                {"id": "M4", "name": "ʽʶʼˀʷʺʳʻʶˁʾ", "rva": "0xD0790", "dump_line": 25739},
+                {"id": "M4", "name": "ʿʼˀʹʼʳʽˁʶʿʸ", "rva": "0xD0960", "dump_line": 25742},
+                {"id": "M4", "name": "ʹʶʸʵʻʿʷʼˀʴʻ", "rva": "0xCFCC0", "dump_line": 25751},
+                {"id": "M4", "name": "ʼʺʿʹʳʵʴʶʴʻʽ", "rva": "0xD06E0", "dump_line": 25757},
+                {"id": "M4", "name": "ˁʲʶʶʴˀʻʺʶʴʽ", "rva": "0xD0D70", "dump_line": 25760},
+                {"id": "M4", "name": "ʽʼʺʵʴʻʻʳʳʷʵ", "rva": "0xD0820", "dump_line": 25763},
+                {"id": "M4", "name": "ʵʳʸˀʺʸʻʿʴˀʳ", "rva": "0xCF900", "dump_line": 25769},
+                {"id": "M4", "name": "ˀʽʿʵʸʷʲʵʶʸʳ", "rva": "0xD0CC0", "dump_line": 25772},
+                {"id": "M4", "name": "ʴʹʽʸʹʳʷʴʷʶʺ", "rva": "0xCF870", "dump_line": 25778},
+                {"id": "M4", "name": "ˀʵʹʺʳˁʼʸʻʼʶ", "rva": "0xD09F0", "dump_line": 25781},
+                {"id": "M4", "name": "ʿʶʶʷʹʺʲʵʷʻʽ", "rva": "0xD08D0", "dump_line": 25784}
+            ]
+        },
+        {
+            "class": "PlayerSelectionMenu",
+            "namespace": "",
+            "dump_line": 72822,
+            "hook": "all",
+            "methods": [
+                {"id": "M5", "name": "ʿʷʿʿʴʲʿʷʺʺʲ", "rva": "0x3309E0", "dump_line": 73004, "slot": 7},
+                {"id": "M5", "name": "ʷʺˀʸʾʺʽʴʻʳʶ", "rva": "0x32E710", "dump_line": 72911, "slot": 10},
+                {"id": "M5", "name": "ˁʳʼʶʽʶʿʷʻʵʻ", "rva": "0x330F30", "dump_line": 72995, "slot": 21},
+                {"id": "M5", "name": "ʵˁʺʻʲʹˁʻʹʺʳ", "rva": "0x32E190", "dump_line": 72944, "slot": 31},
+                {"id": "M5", "name": "ʺʽʽˁʼʴʲʾʶʽʵ", "rva": "0x3301C0", "dump_line": 72959},
+                {"id": "M5", "name": "ʺʵˁʴʲˁʼʲʾʷʴ", "rva": "0x3300A0", "dump_line": 72941}
+            ]
+        },
+        {
+            "class": "CliGameLauncher",
+            "namespace": "",
+            "dump_line": 17909,
+            "hook": "listed",
+            "methods": [
+                {"id": "M6a", "name": "ʲʲʲʼˁʹˀʷˁʺʵ", "rva": "0x395850", "dump_line": 17956},
+                {"id": "M6b", "name": "ʾʾʴʸʾʺʴʴʺʾʷ", "rva": "0x398D30", "dump_line": 17953},
+                {"id": "M6c", "name": "ʹʻʿʳʷʵˁʿˀʶˁ", "rva": "0x398180", "dump_line": 17968}
+            ]
+        },
+        {
+            "class": "SceneManager",
+            "namespace": "UnityEngine.SceneManagement",
+            "dump_line": 699684,
+            "hook": "by_name",
+            "scene_load": true,
+            "names": [
+                {"id": "M7", "name": "LoadScene", "dump_lines": [699743, 699746]},
+                {"id": "M7", "name": "LoadSceneAsync", "dump_lines": [699750, 699753]}
+            ]
+        }
+    ]
+}
