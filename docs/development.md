@@ -191,11 +191,48 @@ on every open (`record_store.cpp`). The store also caps the write-ahead log
 Every exe runs on Microsoft's mimalloc memory allocator instead of the
 Windows heap, the tests and benchmarks included (decision D88). It cut Hydra's
 own CPU work about 10% on a whole-library run, at the cost of more peak
-memory; `docs/handoffs/2026-10-07-mimalloc-trial.md` has the numbers. It
+memory; "mimalloc trial numbers" below has the numbers. It
 comes as two DLLs, `mimalloc.dll` and `mimalloc-redirect.dll`, and an exe
 won't start without both beside it. `hydra_use_mimalloc` at the bottom of
 `CMakeLists.txt` owns which exes link it and how, and puts both DLLs in the
 build folder; the install rules stage them beside the shipped exes.
+
+### mimalloc trial numbers
+
+These are the measurements behind D88, copied as written from the trial's
+report, `docs/handoffs/2026-10-07-mimalloc-trial.md` (removed; `git show 444631e6:docs/handoffs/2026-10-07-mimalloc-trial.md`).
+The trial linked mimalloc v3.5.3 into `hydra_batch` only, built both exes from
+commit c2fdb43 so only the allocator differed, and ran each through the
+benchmark lock on a fresh copy of the real database.
+
+| `hydra_batch --redo` on a fresh copy of the real database | Wall time | Peak working set | Peak private memory |
+|---|---|---|---|
+| Without mimalloc (segment heap) | 9.7 s | 412 MB | 448 MB |
+| With mimalloc v3.5.3 | 9.6 s | 735 MB | 838 MB |
+
+A second pair of runs also recorded the CPU time the process used:
+
+| `--redo`, 16 cores | Wall time | CPU time (user + kernel) | Peak working set |
+|---|---|---|---|
+| Without mimalloc | 10.4 s | 17.2 s + 9.6 s | 425 MB |
+| With mimalloc | 9.6 s | 15.5 s + 9.2 s | 745 MB |
+| With mimalloc, `MIMALLOC_PURGE_DELAY=0` | 13.1 s | 18.8 s + 14.9 s | 333 MB |
+
+The report read them this way. mimalloc cut the program's own CPU work by
+about 10% (17.2 s to 15.5 s), but the wall time did not move. The machine has
+16 cores, so a 10-second run has 160 core-seconds to spend, and Hydra used only
+about 27 of them. The run spends most of its time waiting, not computing. The
+0.1 to 0.8 s differences between these pairs are within run-to-run noise.
+`MIMALLOC_PURGE_DELAY=0` hands freed memory back to Windows at once; it brought
+the peak below the segment heap's but made the run slower, so no setting gave
+both less memory and the CPU gain.
+
+mimalloc changed nothing stored. A fresh-database run with it, compared with
+`tools/compare_db.py` against the baseline, matched in every table: results
+18,811 rows, paths 90,674, path_refs 90,674, songmeta 18,811, dynamics 18,811,
+charts 19,436, meta 3, with 0 rows different. That run took 11.3 s with a peak
+of 811 MB. The report recommended not shipping it; the user chose to ship it
+anyway (D88).
 
 Four speed flags stay out on purpose. `/fp:fast` and `/fp:contract` let the
 compiler reorder or fuse floating-point math, which can move a computed timing
@@ -414,9 +451,50 @@ a result fails that test.
 whole-library runs never share the machine. A caller that finds the lock
 busy for too long gets exit code 3 and should retry later.
 
-The full recipe, with the commands for a whole-library run, is the
-"Proving identical results" section of
-`docs\superpowers\plans\2026-10-06-perf-speedups.md`.
+The full recipe, with the commands for each comparison, is in the header of
+`tools\compare_db.py`.
+
+## The merge test picker
+
+`hydra_precheck --tests <range>` picks the test files a merge must run from
+the range's diff, and prints them as one `tests:` line of `-sf=` filters, plus
+the `always:` line of the three repo-wide checks. It was built so a merge
+never misses a test that reaches changed code only through an enum value, the
+way merge 18a2c64f did (D298). This section keeps the plan's spec,
+`docs/superpowers/plans/2026-10-25-merge-test-picker.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-10-25-merge-test-picker.md`),
+in short; the code named at each step owns the exact rule.
+
+1. It reads the range's added and deleted lines (`ChangedLines` from
+   `parse_diff` in `tools/precheck/range.h`). A merge commit is read as
+   first parent to second parent, the range that was reviewed.
+2. It decides first whether the whole suite runs: a build file, a test-harness
+   file or a header with too many direct includers sends it there
+   (`shared_code` in `tools/precheck/test_pick.h`).
+3. It takes the names each changed line defines or sits inside: functions,
+   types, constants and enum values (`changed_names` in
+   `tools/precheck/changed_names.h`). A changed comment counts as a change to
+   the declaration below it.
+4. It follows one level of callers in `src/`, adding the calling function and
+   any `A::B` value on the call line or on the nearest `if`, `else if` or
+   `case` line above it.
+5. It finds the test files that name any of those keys. A key in a test helper
+   header picks every test that includes the header, and a test file the
+   range changes is always picked.
+6. It applies the two size rules, then prints (`pick_lines`).
+
+The user set the three limits on 2026-10-25, in their words: "Approved with
+the recommended answers: Q1 30, Q2 40, Q3 20, Q4 one level with selector
+values, Q5 C++ only now." Q1: a name mentioned by more than 30 test files
+picks nothing by itself. Q2: more than 40 picked test files runs the whole
+suite. Q3: a changed header with more than 20 direct includers runs the whole
+suite. They live in `tools/precheck/test_pick.h` and nowhere else
+(`kCommonNameLimit` and its two neighbours). Three later rulings narrowed the
+search; D298 holds them word for word. A comment-only change picks the tests
+that name its function but does not follow callers. A call site counts only
+in the changed function's own file or a file that includes its header. A test
+file counts for a name only if it includes the declaring header, except for a
+name in an exe's main file, which picks the tests that name that exe's
+`HYDRA_<TARGET>_EXE` constant.
 
 ## Mutation probe
 
@@ -570,6 +648,47 @@ Hydra's updater only runs an installer that was signed with the project's
 private key. The check is `app::verify_update` in `src/app/update_verify.cpp`,
 against the public key in `src/app/update_key.h`. So every release is built,
 signed, uploaded as a draft and then published, in that order.
+
+### The version rule
+
+This section keeps the updater's design rules from its plan,
+`docs/superpowers/plans/2026-10-22-auto-updater.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-10-22-auto-updater.md`),
+and the user's ruling on the installer. The calls the user approved are D259
+and D260; "Update check" in CONTEXT.md names the owner of each question.
+
+Which version is newer. A version is three whole numbers, with a leading `v`
+allowed; anything else is no version. `parse_version` in
+`src/core/app_version.h` reads both the release's tag and `HYDRA_VERSION`, so
+the two are read the same way. "Newer" means strictly greater, so an equal or
+older release is never offered, which rules out a rollback. That header is the
+only place two versions are compared.
+
+When an update is refused. Hydra never runs a downloaded installer unless a
+signature made with the project's private key checks out against the public
+key built into Hydra. GitHub's own SHA-256 digest is checked too, but it guards
+only against a broken download, not a hijacked account. The signature is ECDSA
+on the P-256 curve with SHA-256, checked through Windows' bcrypt, because
+Windows' crypto API has no Ed25519 (D259). The release reading
+(`src/app/update_release.h`) refuses a release that lacks exactly one
+installer asset, exactly one `.sig` asset, a `sha256:` digest or a tag that
+parses. The download refuses a body larger than the asset's stated size. The
+verifier (`verify_update` in `src/app/update_verify.h`) refuses a digest that
+does not match or a signature that does not verify. Every refusal is one error
+kind, `UpdateUnverified`, shows one sentence (D259 call 9) and deletes the
+download. Hydra never installs anyway.
+
+How Hydra starts the installer. Inno Setup relaunches Hydra as the original
+user only when Setup raised its own permission prompt; started already
+elevated, it would relaunch Hydra as administrator. The user ruled on
+2026-10-22: "Use the recommended fix: start the installer normally, Inno asks
+for admin, Hydra stays open until the installer closes it, and a declined
+prompt keeps Hydra running with decision 10's message." So Hydra starts the
+installer with the plain open verb, never `runas`, keeps its process handle,
+and lets the installer close it through Windows Restart Manager. If the
+installer's process ends while Hydra still runs, the update did not happen.
+The launch line in `installer/hydra.iss` has no `skipifsilent`, so a silent
+install relaunches Hydra too; that file's design notes say why the verb must
+stay open.
 
 ### Once: make the signing key
 
