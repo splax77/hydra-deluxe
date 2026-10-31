@@ -1,5 +1,7 @@
+# Runs Hydra's main window through a list of steps and captures it after each,
+# as <Prefix>-<step>.png. Setup and -Dir: see tools/capture_window.ps1.
 param([string]$Dir, [string]$Prefix, [string[]]$Steps = @("start","min","restore","max"))
-. (Join-Path $PSScriptRoot "..\..\..\tools\capture_window.ps1")
+. (Join-Path $PSScriptRoot "..\capture_window.ps1")
 $codes = @{ min = 6; restore = 9; max = 3 }
 # An unknown step would make ShowWindow's code null, which is 0 = SW_HIDE.
 foreach ($s in $Steps) { if ($s -ne "start" -and $s -ne "esc" -and $s -notmatch '^click\d+x\d+$' -and -not $codes.ContainsKey($s)) { throw "unknown step '$s' (use start, min, restore, max, esc, click<x>x<y>)" } }
