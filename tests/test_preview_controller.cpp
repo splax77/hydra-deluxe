@@ -69,12 +69,7 @@ void wait_loaded(PreviewController& pc) {
 
 // Polls until every Preview thread is done (busy(), finding 109).
 void settle(PreviewController& pc) {
-    wait_until(
-        [&] {
-            pc.poll();
-            return !pc.busy();
-        },
-        "every Preview thread to finish");
+    testwait::poll_until_idle(pc, "every Preview thread to finish");
 }
 
 // Polls until the overlay drawn is `path_key`'s (shows_path), or a failed

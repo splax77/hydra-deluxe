@@ -1,7 +1,9 @@
 #include "pathbuilder/pb_coach.h"
 
+#include <algorithm>
 #include <exception>
 #include <set>
+#include <stdexcept>
 #include <utility>
 
 #include "imgui.h"
@@ -79,11 +81,6 @@ std::string impossible_window_text(const std::string& failed_reason, bool at_cli
     return app::kSomethingWentWrong;
 }
 
-std::string removal_impossible_text() {
-    return "Removing this window makes one of your later windows impossible, so the path stays "
-           "as it was.";
-}
-
 std::vector<EndChoice> end_choices(const ScoreGraph& graph, const SearchSettings& settings,
                                    const std::vector<PinnedWindow>& before, int64_t act_tick) {
     std::vector<PinnedWindow> pins = before;
@@ -128,88 +125,39 @@ std::vector<PinnedWindow> windows_before(const std::vector<PinnedWindow>& window
 }
 
 // The player's windows changed at `tick`: the windows before it as they are,
-// `at` (none puts nothing in), and the ones after it whole (`keep_later`) or
-// by their activation only. `replace` drops a window already on `tick`.
+// then `at`, then the ones after it by their activation alone. `replace`
+// drops a window already on `tick`.
 std::vector<PinnedWindow> pins_around(const std::vector<PinnedWindow>& windows, int64_t tick,
-                                      const std::optional<PinnedWindow>& at, bool replace,
-                                      bool keep_later) {
+                                      const PinnedWindow& at, bool replace) {
     std::vector<PinnedWindow> pins = windows_before(windows, tick);
-    if (at) pins.push_back(*at);
+    pins.push_back(at);
     for (const PinnedWindow& w : windows)
         if (w.act_tick > tick || (w.act_tick == tick && !replace))
-            pins.push_back(keep_later ? w
-                                      : PinnedWindow{w.act_tick, std::nullopt, false, std::nullopt});
+            pins.push_back(PinnedWindow{w.act_tick, std::nullopt, false, std::nullopt});
     return pins;
 }
 
-// Whether a window after `act_tick` in `before` ends differently in `after`.
-bool later_end_changed(const std::vector<PinnedWindow>& before,
-                       const std::vector<PinnedWindow>& after, int64_t act_tick) {
-    for (const PinnedWindow& w : before) {
-        if (w.act_tick <= act_tick) continue;
-        for (const PinnedWindow& n : after)
-            if (n.act_tick == w.act_tick &&
-                (n.deact_tick != w.deact_tick || n.squeezed_out != w.squeezed_out))
-                return true;
-    }
-    return false;
-}
-
-// best_finish for `windows` changed at `act_tick` with the windows after it
-// pinned whole (pins_around). sort_and_check_windows refuses a window with no
-// end before windows that pin theirs, so a new window (`at` with no end) with
-// later windows is tried with each end end_choices finds for it, and the end
-// whose best finish scores highest among those that work wins. Empty paths
-// when no end works.
-TargetResult best_finish_keeping_later(const ScoreGraph& graph, const SearchSettings& settings,
-                                       const std::vector<PinnedWindow>& windows, int64_t act_tick,
-                                       const std::optional<PinnedWindow>& at, bool replace) {
-    bool has_later = false;
-    for (const PinnedWindow& w : windows) has_later = has_later || w.act_tick > act_tick;
-    if (!at || at->deact_tick || !has_later)
-        return best_finish(graph, settings, pins_around(windows, act_tick, at, replace, true));
-
-    TargetResult best;
-    for (const EndChoice& choice :
-         end_choices(graph, settings, windows_before(windows, act_tick), act_tick)) {
-        TargetResult tried = best_finish(
-            graph, settings, pins_around(windows, act_tick, choice.window, replace, true));
-        if (tried.paths.empty()) continue;
-        if (best.paths.empty() || tried.paths.front().totalscore() > best.paths.front().totalscore())
-            best = std::move(tried);
-    }
-    return best;
-}
-
-// `windows` changed at `act_tick` (pins_around). The windows after it keep
-// the ends the player chose while best_finish can still reach them
-// (best_finish_keeping_later); when it cannot, they are pinned by their
-// activation alone and take the ends the best finish chooses, and the result
-// says so. Then search_target for the player's own path. No window left: no
-// path.
+// best_finish over `pins`, keeping the ends it chose, then search_target over
+// those windows for the player's own path. `clicked` is the window the click
+// put in; a failure says, in impossible_window_text, whether it broke there.
+// A removal (`clicked` empty) keeps only windows the player's path already
+// realized, so a failure there is a bug and throws. No pin left: no window
+// and no path.
 ClickResult repin(const ScoreGraph& graph, const SearchSettings& settings,
-                  const std::vector<PinnedWindow>& windows, int64_t act_tick,
-                  const std::optional<PinnedWindow>& at, bool replace) {
+                  const std::vector<PinnedWindow>& pins, std::optional<int64_t> clicked) {
     ClickResult out;
     try {
-        std::vector<PinnedWindow> pins = pins_around(windows, act_tick, at, replace, true);
         if (pins.empty()) {
             out.windows.emplace();
             return out;
         }
-        TargetResult bf = best_finish_keeping_later(graph, settings, windows, act_tick, at, replace);
-        bool repicked = false;
-        if (bf.paths.empty()) {
-            pins = pins_around(windows, act_tick, at, replace, false);
-            bf = best_finish(graph, settings, pins);
-            repicked = true;
-        }
-        // A removal puts no window on `act_tick`, so what breaks is always a
-        // later window and it has its own sentence.
         auto refusal = [&](const TargetResult& failed) {
-            return at ? impossible_window_text(failed.failed_reason, failed.failed_tick == act_tick)
-                      : removal_impossible_text();
+            if (!clicked)
+                throw std::logic_error("remove_window: the windows before the removed one no "
+                                       "longer realize (" + failed.failed_reason + ")");
+            return impossible_window_text(failed.failed_reason, failed.failed_tick == clicked);
         };
+        TargetResult bf = best_finish(graph, settings, pins);
         if (bf.paths.empty()) {
             out.message = refusal(bf);
             return out;
@@ -221,7 +169,6 @@ ClickResult repin(const ScoreGraph& graph, const SearchSettings& settings,
             out.message = refusal(own);
             return out;
         }
-        if (repicked && later_end_changed(windows, mine, act_tick)) out.notice = kLaterEndRepickedText;
         out.windows = std::move(mine);
         out.path = std::move(own.paths.front());
     } catch (const std::exception& e) {
@@ -235,13 +182,16 @@ ClickResult repin(const ScoreGraph& graph, const SearchSettings& settings,
 
 ClickResult start_window(const ScoreGraph& graph, const SearchSettings& settings,
                          const std::vector<PinnedWindow>& windows, int64_t act_tick) {
-    return repin(graph, settings, windows, act_tick,
-                 PinnedWindow{act_tick, std::nullopt, false, std::nullopt}, false);
+    return repin(graph, settings,
+                 pins_around(windows, act_tick,
+                             PinnedWindow{act_tick, std::nullopt, false, std::nullopt}, false),
+                 act_tick);
 }
 
 ClickResult choose_end(const ScoreGraph& graph, const SearchSettings& settings,
                        const std::vector<PinnedWindow>& windows, const PinnedWindow& chosen) {
-    return repin(graph, settings, windows, chosen.act_tick, chosen, true);
+    return repin(graph, settings, pins_around(windows, chosen.act_tick, chosen, true),
+                 chosen.act_tick);
 }
 
 ClickResult remove_window(const ScoreGraph& graph, const SearchSettings& settings,
@@ -249,7 +199,7 @@ ClickResult remove_window(const ScoreGraph& graph, const SearchSettings& setting
     bool found = false;
     for (const PinnedWindow& w : windows) found = found || w.act_tick == act_tick;
     if (!found) return {};
-    return repin(graph, settings, windows, act_tick, std::nullopt, true);
+    return repin(graph, settings, windows_before(windows, act_tick), std::nullopt);
 }
 
 std::optional<Path> finish_for_me(const app::LadderRun& run, size_t window_count) {
@@ -293,6 +243,61 @@ app::LadderRun LadderJob::snapshot() const {
     return run_;
 }
 
+std::vector<app::CandidateFinish> candidate_finishes(const ScoreGraph& graph,
+                                                     const SearchSettings& settings,
+                                                     const std::vector<PinnedWindow>& windows,
+                                                     std::vector<int64_t> ticks,
+                                                     const CandidateProgress& progress) {
+    std::sort(ticks.begin(), ticks.end());
+    std::vector<app::CandidateFinish> out;
+    out.reserve(ticks.size());
+    for (const int64_t tick : ticks) {
+        std::vector<PinnedWindow> pins = windows;
+        pins.push_back(PinnedWindow{tick, std::nullopt, false, std::nullopt});
+        TargetResult bf = best_finish(graph, settings, std::move(pins));
+        if (bf.paths.empty())
+            throw std::logic_error("candidate_finishes: no path activates at tick " +
+                                   std::to_string(tick) + " (" + bf.failed_reason + ")");
+        out.push_back(app::CandidateFinish{tick, bf.paths.front().totalscore()});
+        if (progress) progress(out.back());
+    }
+    return out;
+}
+
+CandidateJob::CandidateJob(std::shared_ptr<const ScoreGraph> graph, SearchSettings settings,
+                           std::vector<PinnedWindow> windows, std::vector<int64_t> ticks)
+    : graph_(std::move(graph)),
+      settings_(std::move(settings)),
+      windows_(std::move(windows)),
+      ticks_(std::move(ticks)) {
+    try {
+        spawn([this] {
+            run_guarded([this] {
+                throw_if_cancelled();
+                candidate_finishes(*graph_, settings_, windows_, ticks_,
+                                   [this](const app::CandidateFinish& landed) {
+                                       {
+                                           const std::lock_guard<std::mutex> lock(mu_);
+                                           done_.push_back(landed);
+                                       }
+                                       ++landed_;
+                                       throw_if_cancelled();  // a newer request superseded this one
+                                   });
+                return true;
+            });
+        });
+    } catch (const std::exception& e) {
+        fail(e);  // the thread could not start
+    }
+}
+
+CandidateJob::~CandidateJob() { shutdown(); }
+
+std::vector<app::CandidateFinish> CandidateJob::snapshot() const {
+    const std::lock_guard<std::mutex> lock(mu_);
+    return done_;
+}
+
 void Coach::request(std::shared_ptr<const ScoreGraph> graph, const SearchSettings& settings,
                     std::vector<PinnedWindow> windows, const std::string& key) {
     if (job_ && key == key_) return;
@@ -303,15 +308,64 @@ void Coach::request(std::shared_ptr<const ScoreGraph> graph, const SearchSetting
         }
         retired_.push_back(std::move(job_));
     }
+    retire_candidates();
+    candidate_ticks_.reset();
     key_ = key;
+    graph_ = graph;
+    settings_ = settings;
+    windows_ = windows;
     job_ = std::make_unique<LadderJob>(std::move(graph), settings, std::move(windows));
+}
+
+bool Coach::request_candidates(std::vector<int64_t> ticks) {
+    if (candidate_ticks_ && *candidate_ticks_ == ticks) return false;
+    retire_candidates();
+    candidate_ticks_ = std::move(ticks);
+    start_candidates();
+    return true;
+}
+
+void Coach::retire_candidates() {
+    candidates_started_ = false;
+    if (!candidate_job_) return;
+    if (!candidate_job_->finished()) {
+        candidate_job_->cancel();
+        ++candidates_superseded_;
+    }
+    retired_candidates_.push_back(std::move(candidate_job_));
+}
+
+void Coach::start_candidates() {
+    if (!candidate_ticks_ || candidates_started_ || !job_ || !job_->finished()) return;
+    candidates_started_ = true;
+    // Only a complete ladder has BF(n) to price against.
+    if (!job_->ok() || !job_->snapshot().complete) return;
+    candidate_job_ = std::make_unique<CandidateJob>(graph_, settings_, windows_, *candidate_ticks_);
 }
 
 void Coach::poll() {
     ui::drop_finished_jobs(retired_);
+    ui::drop_finished_jobs(retired_candidates_);
+    start_candidates();
 }
 
-bool Coach::busy() const { return (job_ && !job_->finished()) || !retired_.empty(); }
+bool Coach::busy() const {
+    // A queue still waiting on its ladder counts, so a reader that polls
+    // until idle sees it start.
+    const bool waiting = candidate_ticks_ && !candidates_started_ && job_;
+    return (job_ && !job_->finished()) || !retired_.empty() || waiting ||
+           (candidate_job_ && !candidate_job_->finished()) || !retired_candidates_.empty();
+}
+
+std::vector<app::CandidateFinish> Coach::candidates() const {
+    if (!candidate_job_) return {};
+    return candidate_job_->snapshot();
+}
+
+size_t Coach::candidates_landed() const {
+    if (!candidate_job_) return 0;
+    return candidate_job_->landed() + (candidate_job_->finished() ? 1 : 0);
+}
 
 std::optional<app::LadderRun> Coach::run() const {
     if (!job_) return std::nullopt;
@@ -324,11 +378,17 @@ size_t Coach::landed() const {
 }
 
 std::string Coach::error() const {
-    return job_ && job_->finished() && !job_->ok() ? job_->message() : std::string();
+    if (job_ && job_->finished() && !job_->ok()) return job_->message();
+    if (candidate_job_ && candidate_job_->finished() && !candidate_job_->ok())
+        return candidate_job_->message();
+    return {};
 }
 
 std::string Coach::error_detail() const {
-    return job_ && job_->finished() && !job_->ok() ? job_->error() : std::string();
+    if (job_ && job_->finished() && !job_->ok()) return job_->error();
+    if (candidate_job_ && candidate_job_->finished() && !candidate_job_->ok())
+        return candidate_job_->error();
+    return {};
 }
 
 void Coach::clear() {
@@ -336,7 +396,15 @@ void Coach::clear() {
         job_->cancel();
         retired_.push_back(std::move(job_));
     }
+    if (candidate_job_) {
+        candidate_job_->cancel();
+        retired_candidates_.push_back(std::move(candidate_job_));
+    }
+    candidate_ticks_.reset();
+    candidates_started_ = false;
     key_.clear();
+    graph_.reset();
+    windows_.clear();
 }
 
 // ---- the right column -------------------------------------------------------
@@ -371,6 +439,8 @@ void DecisionList::show(std::shared_ptr<const ScoreGraph> graph, const SearchSet
     ends_.clear();
     if (ends_job_) retired_ends_.push_back(std::move(ends_job_));
     error_.clear();
+    candidates_.clear();
+    candidates_landed_ = static_cast<size_t>(-1);
     shown_ = shown ? std::optional<Path>(*shown) : std::nullopt;
     shown_windows_.clear();
     try {
@@ -398,11 +468,33 @@ void DecisionList::refresh_list() {
     finish_ = run_ ? finish_for_me(*run_, shown_windows_.size()) : std::nullopt;
 }
 
+void DecisionList::price_fills(std::vector<int64_t> ticks) {
+    // A shown path pinned_windows refused has no ladder to price against.
+    if (!error_.empty() || !graph_) return;
+    if (!coach_.request_candidates(std::move(ticks))) return;
+    candidates_.clear();
+    candidates_landed_ = static_cast<size_t>(-1);
+}
+
+void DecisionList::refresh_candidates() {
+    const size_t landed = coach_.candidates_landed();
+    if (landed == candidates_landed_) return;
+    candidates_landed_ = landed;
+    candidates_.clear();
+    // The queue starts only after a complete ladder, so run_ (refreshed
+    // first) holds BF(0) and BF(n) by the time a candidate lands.
+    const std::vector<app::CandidateFinish> landed_finishes = coach_.candidates();
+    if (landed_finishes.empty() || !run_ || !run_->complete) return;
+    candidates_ = app::candidate_costs(run_->ladder.bf.front(), run_->ladder.bf.back(),
+                                       landed_finishes);
+}
+
 void DecisionList::poll(PbState& state) {
     coach_.poll();
     ui::drop_finished_jobs(retired_ends_);
     ui::drop_finished_jobs(retired_clicks_);
     refresh_list();
+    refresh_candidates();
     if (ends_job_ && ends_job_->finished()) {
         if (ends_job_->ok()) ends_ = std::move(ends_job_->result());
         ends_job_.reset();
@@ -410,7 +502,7 @@ void DecisionList::poll(PbState& state) {
     if (click_job_ && click_job_->finished()) {
         if (state.history().generation() != click_generation_) {
             // The player's path changed while the search ran (undo, redo,
-            // Finish for me, another edit), so its answer is for a path that
+            // Finish the rest for me, another edit), so its answer is for a path that
             // is gone. The player clicks again if they still want it.
         } else if (!click_job_->ok()) {
             message_ = click_job_->message();
@@ -447,6 +539,8 @@ void DecisionList::clear() {
     run_.reset();
     finish_.reset();
     list_landed_ = static_cast<size_t>(-1);
+    candidates_.clear();
+    candidates_landed_ = static_cast<size_t>(-1);
     error_.clear();
     selected_.reset();
     ends_.clear();
@@ -494,6 +588,29 @@ void DecisionList::click_remove(std::shared_ptr<const ScoreGraph> graph,
             return remove_window(*graph, settings, windows, act_tick);
         },
         generation);
+}
+
+void DecisionList::choose_end(const PinnedWindow& chosen, uint64_t generation) {
+    if (!graph_) return;
+    std::shared_ptr<const ScoreGraph> graph = graph_;
+    const SearchSettings settings = settings_;
+    const std::vector<PinnedWindow> windows = shown_windows_;
+    start_edit(
+        [graph, settings, windows, chosen] {
+            return pathbuilder::choose_end(*graph, settings, windows, chosen);
+        },
+        generation);
+}
+
+void DecisionList::finish(PbState& state) {
+    if (!finish_) return;
+    try {
+        state.history().edit(player_copy_of(*finish_));
+        player_changed_ = true;
+    } catch (const std::exception& e) {
+        message_ = app::plain_error(e);
+        detail_ = app::plain_error_detail(e);
+    }
 }
 
 void DecisionList::select(size_t row) {
@@ -578,32 +695,14 @@ void DecisionList::draw(PbState& state, ui::PreviewController* preview) {
             if (!c.timing.empty()) label += "  " + c.timing;
             label += "  best finish " + group_thousands(c.best_finish);
             ImGui::PushID(static_cast<int>(1000 + e));
-            if (ImGui::Selectable(label.c_str()) && graph_) {
-                std::shared_ptr<const ScoreGraph> graph = graph_;
-                const SearchSettings settings = settings_;
-                const std::vector<PinnedWindow> windows = shown_windows_;
-                const PinnedWindow chosen = c.window;
-                start_edit(
-                    [graph, settings, windows, chosen] {
-                        return choose_end(*graph, settings, windows, chosen);
-                    },
-                    state.history().generation());
-            }
+            if (ImGui::Selectable(label.c_str())) choose_end(c.window, state.history().generation());
             ImGui::PopID();
         }
     }
 
     ImGui::Spacing();
-    ImGui::BeginDisabled(!finish_.has_value());
-    if (ImGui::Button(kFinishForMeLabel) && finish_) {
-        try {
-            state.history().edit(player_copy_of(*finish_));
-            player_changed_ = true;
-        } catch (const std::exception& e) {
-            message_ = app::plain_error(e);
-            detail_ = app::plain_error_detail(e);
-        }
-    }
+    ImGui::BeginDisabled(!can_finish());
+    if (ImGui::Button(kFinishForMeLabel)) finish(state);
     ImGui::EndDisabled();
 }
 

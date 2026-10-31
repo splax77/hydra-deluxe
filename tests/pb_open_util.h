@@ -16,12 +16,7 @@
 inline void open_and_wait(hydra::pathbuilder::PbState& s, const std::string& path,
                           const hydra::app::Settings& settings = scratch_settings()) {
     s.open_with(path, settings);
-    testwait::wait_until(
-        [&] {
-            s.poll();
-            return !s.busy();
-        },
-        "the Path Builder's open to finish");
+    testwait::poll_until_idle(s, "the Path Builder's open to finish");
 }
 
 #endif  // HYDRA_TESTS_PB_OPEN_UTIL_H

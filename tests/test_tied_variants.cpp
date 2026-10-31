@@ -444,6 +444,17 @@ TEST_CASE("tied variants: a variant that finished the song keeps its own bank") 
     check_banks(all);
 }
 
+// The chart the two tests below read: two tied first windows that the search
+// folds together between windows, at the fill at 9984.
+static Song fold_between_windows_song() {
+    return build_tail_song({{0, true, false}, {768, true, false},
+                            {2304, false, true}, {3072, false, true},
+                            {5760, true, false}, {8448, true, false},
+                            {9216, true, false}, {9984, false, true},
+                            {10752, false, true},
+                            {11520}, {12288}, {16128}});
+}
+
 TEST_CASE("tied variants: a variant folded between windows keeps its own banked bars") {
     // Cap 2. '0' activates at 2304 (SP to 5376), then banks 5760 and 8448;
     // the phrase at 9216 finds the meter full. '1' activates at 3072 (SP to
@@ -456,12 +467,7 @@ TEST_CASE("tied variants: a variant folded between windows keeps its own banked 
     // The plan's draft had no fill at 9984. Without it the two windows meet
     // only on the SP node after both activate at 10752, a fold mid-SP, so the
     // draft's case passed before the fix and tested nothing new.
-    const Song song = build_tail_song({{0, true, false}, {768, true, false},
-                                       {2304, false, true}, {3072, false, true},
-                                       {5760, true, false}, {8448, true, false},
-                                       {9216, true, false}, {9984, false, true},
-                                       {10752, false, true},
-                                       {11520}, {12288}, {16128}});
+    const Song song = fold_between_windows_song();
     ScoreGraph graph(song, 2);
     const std::vector<Path> roots = run_search(graph, EngineOptions{DepthMode::Scores, 10});
 
@@ -496,6 +502,52 @@ TEST_CASE("tied variants: a variant folded between windows keeps its own banked 
         }
         variants += p->var_point.has_value() ? 1 : 0;
         CHECK(replay_stored_path(song, *p).faithful());
+    }
+    CHECK(again == 2);
+    CHECK(never == 2);
+    CHECK(variants == 2);  // each pair is one root and its variant
+}
+
+// The chart above, read for the fills each path passed over after its last
+// activation (Path::trailing_skipped_fill_ticks). '0' passed the fill at
+// 9984 before the fold, where '1' was refused; both passed 10752 after it.
+// So in the pair that never activates again, '0' lists 9984 and 10752 and
+// '1' lists 10752, whichever of the two is the variant. In the pair that
+// activates at 10752 there is nothing after it to pass. A search pricing
+// each path alone lists the same.
+TEST_CASE("tied variants: a variant's trailing fills are its own") {
+    const Song song = fold_between_windows_song();
+    ScoreGraph graph(song, 2);
+    const std::vector<Path> roots = run_search(graph, EngineOptions{DepthMode::Scores, 10});
+
+    int again = 0, never = 0, variants = 0;
+    for (const Path* p : flatten_paths(roots)) {
+        const ActivationWalk acts = p->walk_activations();
+        if (acts.empty()) continue;
+        const int64_t first = acts[0].timecode.ticks();
+        if (first != 2304 && first != 3072) continue;
+        CAPTURE(p->pathstring());
+        CAPTURE(first);
+        if (p->totalscore() == 1100) {
+            ++again;
+            CHECK(p->trailing_skipped_fill_ticks.empty());
+        } else if (p->totalscore() == 850) {
+            ++never;
+            CHECK(p->trailing_skipped_fill_ticks ==
+                  (first == 2304 ? std::vector<int64_t>{9984, 10752} : std::vector<int64_t>{10752}));
+            // Priced alone, the path that activates only at `first`.
+            const TargetResult alone = search_target(graph, activation_pins({first}));
+            bool matched = false;
+            for (const Path& q : alone.paths)
+                if (q.pathstring() == p->pathstring() && q.totalscore() == p->totalscore()) {
+                    matched = true;
+                    CHECK(q.trailing_skipped_fill_ticks == p->trailing_skipped_fill_ticks);
+                }
+            CHECK(matched);
+        } else {
+            continue;
+        }
+        variants += p->var_point.has_value() ? 1 : 0;
     }
     CHECK(again == 2);
     CHECK(never == 2);
