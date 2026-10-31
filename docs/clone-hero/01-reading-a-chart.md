@@ -363,7 +363,7 @@ Found: 2026-10-30, session b02ab3e6 (the reference build).
 Rule: whether a note on the `soloend` tick is inside the solo, and whether the plus-1 length is the whole reason, is not known from the .chart side.
 Label: Unknown
 Evidence: not checked: it would need the solo list's readers in the score code read. CR-37 reads the note-list side of the same list.
-Game code (6142): not found: looked only in the reader functions behind CR-17 to CR-22, CR-33 and CR-34.
+Game code (6142): not found: looked only in the chart readers whose listings this page cites (CR-17 to CR-22, CR-33 and CR-34); the solo list's readers in the score code were not opened.
 Hydra: `E soloend` is applied after the tick's notes (src/parse/song.cpp line 1647).
 Ruling: none found.
 Found: 2026-10-30, session b02ab3e6 (the reference build).
@@ -475,7 +475,7 @@ Found: 2026-10-18, session b71e9156.
 Rule: the load coroutine builds the song length as the earlier of the end event and the later of the audio length and the last note end, plus 1 second; an unusable end event drops the Min.
 Label: Unknown
 Evidence: the 1 second is the double 1.0 at RVA 0x3063DC0 in the DLL's read-only data (a constant, not a method; it has no `constants.py` name yet); `code/6142/gm_load_coroutine_D8D80.asm` line 388 adds it to the length. That listing was not re-read for the Min and Max in this pass, the Min and Max helpers were not opened, and the 2026-10-18 disassembly survives only as about ten lines quoted in docs/handoffs/2026-10-18-song-length-end-event-handoff.md lines 164 to 186.
-Game code (6142): load coroutine RVA `0xD8D80`; listing lost; read 2026-10-18 in session b71e9156.
+Game code (6142): load coroutine RVA `0xD8D80`; listing `code/6142/gm_load_coroutine_D8D80.asm`; first read 2026-10-18 in session b71e9156.
 Hydra: `app::song_length_ms` in src/app/song_length.cpp line 28; `kSongEndPadMs` in src/app/song_length.h line 37.
 Ruling: D255 item 2: "Copy the pad (Recommended)".
 Found: 2026-10-18, session b71e9156.
