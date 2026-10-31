@@ -71,7 +71,16 @@ int fillcompare_main() {
         }
     }
 
-    hydra::app::Settings settings = hydra::app::Settings::load();
+    // A bad settings file stops the run before the store opens, as a bad
+    // rules file does (D270 call 4).
+    hydra::app::Settings settings;
+    try {
+        settings = hydra::app::Settings::load();
+    } catch (const hydra::app::SettingsFileError& e) {
+        std::fprintf(stderr, "%s\n",
+                     hydra::app::ini_file_tool_text(hydra::app::kSettingsFileName, e).c_str());
+        return 2;
+    }
     if (const int code = hydra::app::load_tool_rules(rulespath, settings.rules)) return code;
     const std::string db = dbpath ? *dbpath : hydra::app::db_path();
 
