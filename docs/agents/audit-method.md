@@ -92,6 +92,7 @@ Before a checker calls something "no ruling found", it searches the session card
 
 Write each question so the user can rule on exactly what the code does:
 
+- List what the user will see (agent rule 11): every screen that reads the changed value, before and after, from a real chart.
 - Name both sides and their real values, as the code has them. Quote the predicate, the code's actual test, not a paraphrase.
 - Give one example from each end, and one from the gap where the two sides disagree. Use game terms: a note 5 ms after the Star Power end reads "Hard (uncounted)" on one row and "Standard SqOut (uncounted)" on the other.
 - Name the options without leaning. Then give a recommendation and the strongest case against it.
