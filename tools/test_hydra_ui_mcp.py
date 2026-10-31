@@ -59,6 +59,24 @@ def fake_launcher(exe, args):
     return [sys.executable, "-I", str(FAKE), "--as", exe.name] + list(args)
 
 
+_real_realapp_record = hm.realapp_record
+
+
+def _refuse_the_real_repo(session, repo):
+    # A Helper built without repo= would name this checkout and so write the
+    # real repo's record file; that fails the test instead.
+    assert Path(repo).resolve() != hm.REPO, "a test let a record reach the real repo's file"
+    return _real_realapp_record(session, repo)
+
+
+def setUpModule():
+    hm.realapp_record = _refuse_the_real_repo
+
+
+def tearDownModule():
+    hm.realapp_record = _real_realapp_record
+
+
 def git(repo, *args):
     return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True,
                           check=True).stdout.strip()
@@ -505,6 +523,20 @@ class TransportLayer(unittest.TestCase):
         self.helper.shutdown()
         [rec] = realapp_lines(self.repo)
         self.assertEqual(rec["commands"], 1)
+
+    def test_helper_exit_after_a_crash_writes_no_record(self):
+        s = self.start_window()
+        self.helper.send("state")
+        # The window died with a nonzero code and no tool call has noticed.
+        s.proc.kill()
+        s.proc.wait()
+        self.helper.shutdown()
+        self.assertEqual(realapp_lines(self.repo), [])
+
+    def test_a_record_for_the_real_repo_is_refused(self):
+        # The guard raises before the real writer runs, so nothing is written.
+        with self.assertRaises(AssertionError):
+            hm.realapp_record(object(), hm.REPO)
 
     def test_stop_reply_names_record(self):
         self.start_window()

@@ -73,6 +73,9 @@ REALAPP_FILE = "realapp.jsonl"
 # How a successful screenshot reply starts. Its owner is the screenshot verb
 # in tests/ui/uitest_commands.cpp; the record only counts such replies.
 SHOT_REPLY = "screenshot: "
+# The longest one git call for the record may take. A record that cannot be
+# written in time is reported as not written; the stop still finishes.
+GIT_TIMEOUT_S = 60
 
 
 class SnapshotRefused(Exception):
@@ -195,8 +198,12 @@ def snapshot_library(library_dir, dest, processes):
 
 
 def _git(repo, *args):
-    r = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True,
-                       stdin=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW)
+    try:
+        r = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True,
+                           stdin=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW,
+                           timeout=GIT_TIMEOUT_S)
+    except subprocess.TimeoutExpired:
+        raise OSError(f"git {' '.join(args)} did not finish within {GIT_TIMEOUT_S} s") from None
     if r.returncode != 0:
         raise OSError(f"git {' '.join(args)} failed: {(r.stderr or r.stdout).strip()}")
     return r.stdout
@@ -525,14 +532,18 @@ class Helper:
             if self.session is not None:
                 s = self.session
                 self.session = None
-                if s.proc.poll() is None:
+                # A window still open when the helper exits was in use; one
+                # that already died with a nonzero code is not a check.
+                code = s.proc.poll()
+                clean = code in (None, 0)
+                if code is None:
                     s.proc.kill()
                     s.proc.wait()
                 self._close(s)
                 self._cleanup(s)
                 # Nobody reads a reply at exit, so the record's line goes to
                 # stderr, which Claude Code keeps in the server's log.
-                note = self._record(s)
+                note = self._record(s) if clean else self._no_record(s)
                 if note:
                     print(note.strip(), file=sys.stderr)
 
