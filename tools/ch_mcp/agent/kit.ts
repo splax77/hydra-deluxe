@@ -264,7 +264,10 @@ function needInteger(m: Message, key: string): number {
 // the named player and loads the one map the message names by category and
 // layout, enabled. It loads that map by name rather than the player's default
 // maps, because the System player lists no default map for a custom
-// controller (docs/clone-hero/07-internals.md, IN-76).
+// controller (docs/clone-hero/07-internals.md, IN-76). The record goes in
+// `recorded` before the first change, and the kit and its player go in it as
+// soon as each is known, so a teardown after a setup that threw part-way
+// still puts everything back.
 function setup(m: Message) {
     const tag = needString(m, "tag");
     const definitionId = needInteger(m, "definition_id");
@@ -407,7 +410,7 @@ async function press(m: Message) {
     }
     const rewrite = m.rewrite === true;
     const onMain = m.on_main === true;
-    const where = onMain ? "main" : undefined;
+    const where: "main" | undefined = onMain ? "main" : undefined;
     const names = readNames(m);
     const reader = names.length === 0 ? null : (rec.target === null ? null : rec.target.player);
     if (names.length > 0 && reader === null) {
@@ -433,7 +436,7 @@ async function press(m: Message) {
     // The down write sits inside the try too: a write that fails half-way has
     // already put some elements down, and the release below clears them all.
     try {
-        downFrame = await Il2Cpp.perform(() => {
+        downFrame = await settled(() => {
             write(kit, elements, false);
             const f = frameCount();
             look(f);
@@ -448,7 +451,7 @@ async function press(m: Message) {
                 break;
             }
             await sleep(TICK_MS);
-            frame = await Il2Cpp.perform(() => {
+            frame = await settled(() => {
                 if (rewrite) {
                     write(kit, elements, false);
                 }
@@ -463,7 +466,7 @@ async function press(m: Message) {
     // The release runs on every path: after the hold, after a failed wait and
     // at the cap. Its read is the last one the reply carries.
     try {
-        upFrame = await Il2Cpp.perform(() => {
+        upFrame = await settled(() => {
             write(kit, elements, true);
             const f = frameCount();
             look(f);
@@ -666,17 +669,78 @@ function teardown(m: Message) {
     return { checks, all_ok: checks.every((c) => c.ok) };
 }
 
+type Outcome<T> = { ok: true; value: T } | { ok: false; error: unknown };
+
+// Runs `fn` through Il2Cpp.perform and settles with its result or its throw.
+// The throw is caught inside the scheduled callback itself: the bridge's
+// main-thread schedule (Il2Cpp.Thread.schedule) resolves only when its
+// callback returns, so a throw there would leave the promise unsettled and
+// the agent listening no more.
+function settled<T>(fn: () => T, where?: "main"): Promise<T> {
+    return Il2Cpp.perform((): Outcome<T> => {
+        try {
+            return { ok: true, value: fn() };
+        } catch (error) {
+            return { ok: false, error };
+        }
+    }, where).then((r) => (r.ok ? r.value : Promise.reject(r.error)));
+}
+
+// A pointer as hex digits, with no prefix; kit_tools.py adds it.
+function hex(p: NativePointer): string {
+    return p.toString(16).replace(/^0x/, "");
+}
+
+// The details a native exception (a fault inside the game's own code) leaves
+// on the error Frida throws for it: gumjs puts the exception's type, address,
+// memory and CPU context on that error (_gum_quick_exception_details_new in
+// frida-gum's bindings/gumjs/gumquickvalue.c). Null for any other error.
+// kit_tools.py's fault_lines prints it.
+function faultOf(e: unknown): object | null {
+    if (!(e instanceof Error)) {
+        return null;
+    }
+    const d = e as Error & Partial<ExceptionDetails>;
+    if (typeof d.type !== "string" || !(d.address instanceof NativePointer)) {
+        return null;
+    }
+    const module = Process.findModuleByAddress(d.address);
+    const registers: { [name: string]: string } = {};
+    if (d.context !== undefined) {
+        const ctx = d.context as unknown as { [name: string]: unknown };
+        for (let o = Object.getPrototypeOf(ctx); o !== null && o !== Object.prototype;
+             o = Object.getPrototypeOf(o)) {
+            for (const name of Object.getOwnPropertyNames(o)) {
+                const v = name in registers ? null : ctx[name];
+                if (v instanceof NativePointer) {
+                    registers[name] = hex(v);
+                }
+            }
+        }
+    }
+    return {
+        type: d.type,
+        address: hex(d.address),
+        module: module === null ? null : module.name,
+        offset: module === null ? null : hex(d.address.sub(module.base)),
+        operation: d.memory === undefined ? null : d.memory.operation,
+        memory_address: d.memory === undefined ? null : hex(d.memory.address),
+        registers,
+        stack: typeof e.stack === "string" ? e.stack.split("\n") : [],
+    };
+}
+
 // The first message LiveAgent.start posts is a read; the kit answers it with
 // its status.
 function answer(m: Message): Promise<object> {
     switch (m.type) {
         case "read":
         case "status":
-            return Il2Cpp.perform(() => status(m), "main");
+            return settled(() => status(m), "main");
         case "setup":
-            return Il2Cpp.perform(() => setup(m), "main");
+            return settled(() => setup(m), "main");
         case "teardown":
-            return Il2Cpp.perform(() => teardown(m), "main");
+            return settled(() => teardown(m), "main");
         case "press":
             return press(m);
         case "watch":
@@ -701,7 +765,9 @@ function listen() {
         reply.then((r) => {
             send({ ...r, id });
         }, (e) => {
-            send({ error: `${message.type} failed: ${e}`, id });
+            const fault = faultOf(e);
+            send(fault === null ? { error: `${message.type} failed: ${e}`, id }
+                : { error: `${message.type} failed: ${e}`, fault, id });
         }).finally(listen);
     });
 }
