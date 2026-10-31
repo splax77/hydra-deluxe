@@ -24,9 +24,13 @@ It prints one PASS or FAIL line per check, with the numbers:
 The plan behind every check is "Task S" in
 docs/superpowers/plans/2026-10-28-overlay-spike.md.
 
+It also owns the row questions the `ch` MCP server asks of a watch in
+progress: find_activations, phrase_rises, flips_between, ready_between and
+at_ready_level. The server prints their answers and asks nothing itself.
+
 Usage:
     py tools\\ch_probe\\experiments\\sp_compare.py <watch.csv> <score.json>
-        --resolution 192 [--sp-bar-ticks 14400] [--width 64|32]
+        [--resolution 192] [--sp-bar-ticks 14400] [--width 64|32]
 
 Exit code 0 when every check passed, 1 when any printed FAIL.
 """
@@ -40,6 +44,7 @@ import json
 import os
 import sys
 from dataclasses import dataclass, field
+from typing import NamedTuple
 
 _REPO_ROOT = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..", "..", "..")
@@ -67,13 +72,18 @@ EARLY_CREDIT_MS = PRESS_LEAD_MS
 
 # Hydra's own constants, copied because this script cannot read C++. The
 # owners are kStarPowerMultiplier in src/core/timing.h, kMeasuresPerSpBar in
-# src/core/timing.h and kCloneHeroSpCap in src/core/model.h. The meter is
-# counted in measures; QUARTERS_PER_MEASURE is the 4/4 measure the plan's
-# tick figure assumes.
+# src/core/timing.h, kCloneHeroSpCap in src/core/model.h and
+# kSpActivationBars in src/core/timing.h. The meter is counted in measures;
+# QUARTERS_PER_MEASURE is the 4/4 measure the plan's tick figure assumes.
 SP_MULTIPLIER = 2
 MEASURES_PER_SP_BAR = 2
 SP_CAP_BARS = 4
+SP_ACTIVATION_BARS = 2
 QUARTERS_PER_MEASURE = 4
+
+# The share of a full meter an activation needs, from the two copies above.
+# at_ready_level is the one place that compares an amount with it.
+READY_FRACTION = SP_ACTIVATION_BARS / SP_CAP_BARS
 
 # Which sp_amount and sp_max columns to read by default. The amount and the
 # maximum are 64-bit by docs/audit/ch-evidence.md ("Things that surprised me",
@@ -167,7 +177,7 @@ def _active(row: dict) -> bool:
     return row["sp_active_byte"] != 0
 
 
-def _find_activations(rows: list) -> list:
+def find_activations(rows: list) -> list:
     """Each run of rows with the flag set, entered from a row with it clear."""
     found = []
     i = 1
@@ -183,6 +193,74 @@ def _find_activations(rows: list) -> list:
         else:
             i += 1
     return found
+
+
+# The name the comparison used before find_activations was public.
+_find_activations = find_activations
+
+
+class Rise(NamedTuple):
+    """One rise of the Star Power amount between two consecutive rows."""
+    ms: float      # the clock of the row the new amount shows on
+    before: int
+    after: int
+
+    @property
+    def size(self) -> int:
+        return self.after - self.before
+
+
+def phrase_rises(rows: list, amount_col: str) -> list:
+    """Every step up of the amount from one row to the next, as Rise tuples."""
+    return [Rise(_ms(rows[i]), rows[i - 1][amount_col], rows[i][amount_col])
+            for i in range(1, len(rows))
+            if rows[i][amount_col] > rows[i - 1][amount_col]]
+
+
+def _inside(row: dict, start_ms: float, end_ms: float) -> bool:
+    """Whether a row's clock lies in the window, both ends included."""
+    return start_ms <= _ms(row) <= end_ms
+
+
+def flips_between(rows: list, start_ms: float, end_ms: float) -> list:
+    """The activations (find_activations) whose flip row's clock lies in the
+    window."""
+    return [a for a in find_activations(rows)
+            if _inside(rows[a.flip_row], start_ms, end_ms)]
+
+
+def at_ready_level(amount, sp_max) -> bool:
+    """Whether an amount is enough for an activation on a meter of sp_max."""
+    return amount >= READY_FRACTION * sp_max
+
+
+@dataclass
+class ReadyWindow:
+    """What ready_between read inside one window."""
+    rows: int                  # how many rows lie in the window
+    highest: int | None        # the highest amount read there
+    sp_max: int | None         # the maximum read on the window's first row
+    ready_row: dict | None     # the first ready row with the flag clear
+
+    @property
+    def ready_ms(self) -> float | None:
+        return _ms(self.ready_row) if self.ready_row is not None else None
+
+
+def ready_between(rows: list, start_ms: float, end_ms: float,
+                  amount_col: str, max_col: str) -> ReadyWindow:
+    """The highest amount inside the window, and the first row inside it whose
+    amount is at the ready level (at_ready_level, against that row's own
+    maximum) while the flag is clear. The flag matters because the game
+    offers no fill while Star Power is already on."""
+    inside = [r for r in rows if _inside(r, start_ms, end_ms)]
+    if not inside:
+        return ReadyWindow(0, None, None, None)
+    ready = next((r for r in inside
+                  if not _active(r) and at_ready_level(r[amount_col], r[max_col])),
+                 None)
+    return ReadyWindow(len(inside), max(r[amount_col] for r in inside),
+                       inside[0][max_col], ready)
 
 
 def _check_phrase_rises(report: Report, rows: list, chords: list,
@@ -233,13 +311,16 @@ def _check_phrase_rises(report: Report, rows: list, chords: list,
 
 
 def _check_sp_max(report: Report, rows: list, max_col: str,
-                  resolution: int, sp_bar_ticks) -> None:
+                  resolution: int | None, sp_bar_ticks) -> None:
     values = []
     for r in rows:
         if r[max_col] not in values:
             values.append(r[max_col])
-    meter = hydra_full_meter_ticks(resolution)
-    beside = f"Hydra full meter {meter} (resolution {resolution} x 32)"
+    if resolution is None:
+        beside = "Hydra full meter: not computed (no resolution given)"
+    else:
+        meter = hydra_full_meter_ticks(resolution)
+        beside = f"Hydra full meter {meter} (resolution {resolution} x 32)"
     if sp_bar_ticks is not None:
         beside += f"; sp_bar_ticks {sp_bar_ticks}"
     if len(values) == 1:
@@ -319,7 +400,7 @@ def _check_activations(report: Report, rows: list, score: dict) -> float | None:
     chord_ms = [c["ms"] for c in chords]
     by_tick = {c["tick"]: c for c in chords}
     path = score["activations"]
-    game = _find_activations(rows)
+    game = find_activations(rows)
 
     parted_ms = None
     for k in range(max(len(game), len(path))):
@@ -422,9 +503,10 @@ def _check_multipliers(report: Report, rows: list, chords: list,
                     f"the game's activations part from the path at {_fmt(parted_ms)}")
 
 
-def compare(rows: list, score: dict, *, resolution: int,
+def compare(rows: list, score: dict, *, resolution: int | None = None,
             sp_bar_ticks: int | None = None, width: int = DEFAULT_WIDTH) -> Report:
-    """Every check over the watcher rows and the score JSON, as a Report."""
+    """Every check over the watcher rows and the score JSON, as a Report.
+    With no resolution, Hydra's full meter is left out of the sp_max line."""
     amount_col = f"sp_amount_u{width}"
     max_col = f"sp_max_u{width}"
     chords = score["chords"]
@@ -453,8 +535,9 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("watch_csv", help="the sp_watch.py CSV")
     ap.add_argument("score_json", help="hydra_replay score --path JSON of the reference path")
-    ap.add_argument("--resolution", type=int, required=True,
-                    help="the chart's Resolution from its [Song] section")
+    ap.add_argument("--resolution", type=int, default=None,
+                    help="the chart's Resolution from its [Song] section; "
+                         "without it Hydra's full meter is not computed")
     ap.add_argument("--sp-bar-ticks", type=int, default=None,
                     help="sp_bar_ticks from the game's scorestats.json")
     ap.add_argument("--width", type=int, choices=(32, 64), default=DEFAULT_WIDTH,

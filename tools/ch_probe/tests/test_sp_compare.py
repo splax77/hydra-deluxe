@@ -269,6 +269,109 @@ class FilesTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 sp_compare.load_watch_rows(path)
 
+    def test_main_runs_with_no_resolution(self):
+        with tempfile.TemporaryDirectory() as folder:
+            csv_path, json_path = self._write(folder, build_rows())
+            code, text = self._main([csv_path, json_path])
+        self.assertEqual(code, 0)
+        self.assertIn("PASS sp_max constant: 6144; Hydra full meter: not computed "
+                      "(no resolution given)\n", text)
+
+
+NO_RESOLUTION_LINE = ("PASS sp_max constant: 6144; Hydra full meter: not computed "
+                      "(no resolution given); sp_bar_ticks 14400")
+RESOLUTION_LINE = ("PASS sp_max constant: 6144; Hydra full meter 6144 (resolution "
+                   "192 x 32); sp_bar_ticks 14400")
+
+
+class NoResolutionTest(unittest.TestCase):
+    def test_sp_max_line_says_not_computed_and_the_rest_is_unchanged(self):
+        report = run(build_rows(), resolution=None, sp_bar_ticks=14400)
+        self.assertEqual(report.text(),
+                         MATCHING_REPORT.replace(RESOLUTION_LINE, NO_RESOLUTION_LINE))
+        self.assertEqual(report.fails, 0)
+
+
+def _row(clock_s, amount, *, active=0, sp_max=6144):
+    """One hand-written watcher row; only the fields the row checks read vary."""
+    return {
+        "wall_s": 100.0 + clock_s, "clock_s": clock_s, "score": 0,
+        "sp_amount_u32": amount, "sp_amount_u64": amount,
+        "sp_max_u32": sp_max, "sp_max_u64": sp_max,
+        "sp_active_byte": active, "sp_active_u32": active,
+        "sp_mult_byte": 1, "sp_mult_u32": 1,
+        "sp_end_s": 0.0, "sp_overflow_u32": 0, "hit_time_s": 0.0,
+    }
+
+
+AMOUNT = "sp_amount_u64"
+MAX = "sp_max_u64"
+
+
+class RowChecksTest(unittest.TestCase):
+    def test_old_name_is_the_public_finder(self):
+        self.assertIs(sp_compare._find_activations, sp_compare.find_activations)
+
+    def test_ready_fraction_is_half_a_meter(self):
+        self.assertEqual(sp_compare.READY_FRACTION, 0.5)
+
+    def test_phrase_rises_gives_each_step_up(self):
+        rows = [_row(1.0, 0), _row(1.5, 1536), _row(2.0, 1536), _row(2.5, 3072),
+                _row(3.0, 0, active=1), _row(3.5, 1536, active=1)]
+        rises = sp_compare.phrase_rises(rows, AMOUNT)
+        self.assertEqual(rises, [(1500.0, 0, 1536), (2500.0, 1536, 3072),
+                                 (3500.0, 0, 1536)])
+        self.assertEqual([r.size for r in rises], [1536, 1536, 1536])
+
+    def test_phrase_rises_on_three_sizes(self):
+        rows = [_row(1.0, 0), _row(1.5, 1536), _row(2.0, 4608), _row(2.5, 6144)]
+        sizes = [r.size for r in sp_compare.phrase_rises(rows, AMOUNT)]
+        self.assertEqual(sizes, [1536, 3072, 1536])
+
+    def test_flips_between_keeps_only_the_flip_inside(self):
+        rows = [_row(1.0, 3072), _row(2.0, 0, active=1), _row(2.5, 0),
+                _row(4.0, 3072), _row(5.0, 0, active=1), _row(6.0, 0)]
+        flips = sp_compare.flips_between(rows, 1500.0, 3000.0)
+        self.assertEqual([(a.number, a.flip_row, a.drop_row) for a in flips],
+                         [(1, 1, 2)])
+        self.assertEqual(sp_compare.flips_between(rows, 2500.0, 4500.0), [])
+
+    def test_flips_between_includes_both_ends(self):
+        rows = [_row(1.0, 3072), _row(2.0, 0, active=1), _row(2.5, 0)]
+        self.assertEqual(len(sp_compare.flips_between(rows, 2000.0, 2000.0)), 1)
+
+    def test_ready_between_finds_a_row_at_exactly_half(self):
+        rows = [_row(1.0, 1536), _row(2.0, 3072), _row(3.0, 4608)]
+        got = sp_compare.ready_between(rows, 1500.0, 3500.0, AMOUNT, MAX)
+        self.assertEqual(got.ready_ms, 2000.0)
+        self.assertEqual(got.highest, 4608)
+        self.assertEqual(got.sp_max, 6144)
+        self.assertEqual(got.rows, 2)
+
+    def test_ready_between_finds_none_one_unit_below_half(self):
+        rows = [_row(1.0, 1536), _row(2.0, 3071)]
+        got = sp_compare.ready_between(rows, 500.0, 2500.0, AMOUNT, MAX)
+        self.assertIsNone(got.ready_row)
+        self.assertIsNone(got.ready_ms)
+        self.assertEqual(got.highest, 3071)
+
+    def test_ready_between_finds_none_at_half_with_the_flag_set(self):
+        rows = [_row(1.0, 1536), _row(2.0, 3072, active=1)]
+        got = sp_compare.ready_between(rows, 500.0, 2500.0, AMOUNT, MAX)
+        self.assertIsNone(got.ready_row)
+        self.assertEqual(got.highest, 3072)
+
+    def test_ready_between_ignores_rows_outside_the_window(self):
+        rows = [_row(1.0, 6144), _row(2.0, 1536), _row(3.0, 6144)]
+        got = sp_compare.ready_between(rows, 1500.0, 2500.0, AMOUNT, MAX)
+        self.assertIsNone(got.ready_row)
+        self.assertEqual(got.highest, 1536)
+
+    def test_ready_between_on_an_empty_window(self):
+        got = sp_compare.ready_between([_row(1.0, 3072)], 2000.0, 3000.0, AMOUNT, MAX)
+        self.assertEqual((got.rows, got.highest, got.sp_max, got.ready_row),
+                         (0, None, None, None))
+
 
 if __name__ == "__main__":
     unittest.main()
