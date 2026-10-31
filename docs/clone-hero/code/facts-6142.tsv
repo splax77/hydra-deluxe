@@ -80,7 +80,10 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	field	8611		ʼʲʺʹʹʽʹʽˁʴʽ		0x0	#8611.starThresholds
 6142	field	8661		<ˀʽʸʽʼʿʼʴʸʿʷ>k__BackingField		0x88	#8661+0x88
 6142	field	901	BasePlayer	engine		0x120	BasePlayer.engine
+6142	field	901	BasePlayer	isRemotePlayerPlaying		0x111	BasePlayer.isRemotePlayerPlaying
 6142	field	901	BasePlayer	player		0x88	#901.player
+6142	method	10152	TMP_InputField	get_onValidateInput	0x20F4F90		0x20F4F90
+6142	method	10210	TMP_Text	get_styleSheet	0x20F4F90		0x20F4F90
 6142	method	1037		ʵʲʽʶʲʳʿʸˁʳʲ	0x251A70		0x251A70
 6142	method	1037		ʼʻʺʾʻʹʸʸʺˁʸ	0x252200		0x252200
 6142	method	1037		ʽʻʷʶʸʽʼʽʵˀʵ	0x252630		0x252630
@@ -137,6 +140,7 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	method	561		ʽʻʷʶʸʽʼʽʵˀʵ	0x1144C0		0x1144C0
 6142	method	592	ScoreManager	Update	0x1286B0		0x1286B0
 6142	method	592	ScoreManager	Update	0x1286B0		ScoreManager.Update
+6142	method	6054	BaseRuntimePanel	get_screenToPanelSpace	0x20F4F90		0x20F4F90
 6142	method	612		ˀʵʲʲʻʸʸʽʹʽˁ	0x13F8B0		0x13F8B0
 6142	method	612		ˀʾʻʷʿʿʶʵʻʲʷ	0x13F8E0		0x13F8E0
 6142	method	617	DrumsNoteRenderer	Update	0x1370A0		DrumsNoteRenderer.Update
@@ -237,6 +241,7 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	method	8288		ʶʴˀʴʿʷʵʺʺʽʿ	0x20F4680		0x20F4680
 6142	method	8288		ʶʸʻˁʶˁʹʳʳʻʶ	0x20F4950		0x20F4950
 6142	method	8288		ʶʹʼˀʶʾʴʺʼʻˁ	0x20F4B60		0x20F4B60
+6142	method	8288		ʸʲʾʵʸʹʻʿʽʸʲ	0x20F4F90		0x20F4F90
 6142	method	8288		ʸʸʳʽʲʻʿʸʳʸʽ	0x20F4FA0		#8288.AddStarPower
 6142	method	8288		ʸʸʳʽʲʻʿʸʳʸʽ	0x20F4FA0		0x20F4FA0
 6142	method	8288		ʹʸʾʷʴʼʻʾʶʻˀ	0x20F52E0		0x20F52E0
