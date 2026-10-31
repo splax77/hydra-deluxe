@@ -789,6 +789,13 @@ struct Path {
     // variant's is its own: the engine stores it and the record keeps it per
     // variant (D3, finding 89), so prepare_variants leaves it alone.
     std::vector<int64_t> trailing_bank_ticks;
+    // The fills passed over after the path's last activation, in chart order:
+    // what Activation::skipped_fill_ticks lists before each activation, for
+    // the stretch after the last one. The search's branch_activate decides
+    // which fills count as passed over. A path with no activation lists them
+    // for the whole song. A variant's is its own,
+    // as trailing_bank_ticks is, so prepare_variants leaves it alone too.
+    std::vector<int64_t> trailing_skipped_fill_ticks;
 
     // Bars left after the last window: one per stored arrival.
     int leftover_sp() const { return static_cast<int>(trailing_bank_ticks.size()); }

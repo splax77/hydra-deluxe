@@ -567,6 +567,8 @@ std::string scene_difference(const PreviewScene& a, const PreviewScene& b) {
                     }))
         return "activations";
     if (a.trailing_bank_ticks != b.trailing_bank_ticks) return "trailing_bank_ticks";
+    if (a.trailing_skipped_fill_ticks != b.trailing_skipped_fill_ticks)
+        return "trailing_skipped_fill_ticks";
     if (!std::equal(a.beats.begin(), a.beats.end(), b.beats.begin(), b.beats.end(),
                     [](const PreviewBeat& x, const PreviewBeat& y) {
                         return x.tick == y.tick && x.ms == y.ms && x.kind == y.kind;
@@ -888,6 +890,47 @@ TEST_CASE("build_preview_scene: a corpus best path as the ghost lists its taken 
     for (const PreviewActivation& a : drawn.activations)
         if (a.taken_fill) taken.push_back(*a.taken_fill);
     CHECK(scene.ghost_fills == taken);
+}
+
+// The fills after a path's last activation: the engine lists the ones the
+// path passed over (Path::trailing_skipped_fill_ticks), and the overlay
+// lights exactly those. On "Missed Injections" at the top 40 scores, cap 4,
+// the path "3" activates once, at 123838, and lists 244800 and 281759.
+TEST_CASE("preview scene: fills after the last activation read Offered when the engine lists them, Hidden otherwise") {
+    const AnalysisSettings cfg = test::scores_settings(4);
+    const std::string chart = corpus::chart_named("Hail The Sun - Missed Injections");
+    REQUIRE_FALSE(chart.empty());
+    const Song& song = corpus::song(chart, cfg.reading(), cfg.rules);
+    const Path* path = nullptr;
+    for (const Path* p : corpus::analyzed(chart, cfg).all_paths())
+        if (p->pathstring() == "3") {
+            path = p;
+            break;
+        }
+    REQUIRE(path != nullptr);
+    REQUIRE(path->trailing_skipped_fill_ticks == std::vector<int64_t>{244800, 281759});
+
+    const PreviewScene scene = build_preview_scene(song, path, cfg.sp_cap, cfg.rules);
+    CHECK(scene.trailing_skipped_fill_ticks == path->trailing_skipped_fill_ticks);
+    // Each fill after the activation and its state, pinned from one run.
+    std::string after;
+    for (const PreviewFill& f : scene.fills) {
+        if (f.chord_tick <= 123838) continue;
+        after += std::to_string(f.chord_tick) + ":" +
+                 (f.state == PreviewFillState::Offered  ? "O"
+                  : f.state == PreviewFillState::Taken ? "T"
+                                                       : "H") +
+                 " ";
+    }
+    CHECK(after == "157922:H 180960:H 244800:O 281759:O ");
+
+    // The same path without its list draws those fills hidden, as the
+    // Preview did before the engine wrote them down.
+    Path bare = *path;
+    bare.trailing_skipped_fill_ticks.clear();
+    const PreviewScene without = build_preview_scene(song, &bare, cfg.sp_cap, cfg.rules);
+    for (const PreviewFill& f : without.fills)
+        if (f.chord_tick > 123838) CHECK(f.state == PreviewFillState::Hidden);
 }
 
 // The Preview lights a stored passed-over fill by matching its tick to a fill

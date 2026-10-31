@@ -662,7 +662,8 @@ void Path::prepare_variants() {
         v.score_ghosts = score_ghosts;
         v.notecount = notecount;
         // trailing_bank_ticks is the variant's own: the engine stores it and
-        // the record keeps it per variant (D3, finding 89).
+        // the record keeps it per variant (D3, finding 89). So is
+        // trailing_skipped_fill_ticks, which the engine emits beside it.
         v.prepare_variants();
     }
 }

@@ -502,6 +502,57 @@ TEST_CASE("tied variants: a variant folded between windows keeps its own banked 
     CHECK(variants == 2);  // each pair is one root and its variant
 }
 
+// The chart above, read for the fills each path passed over after its last
+// activation (Path::trailing_skipped_fill_ticks). '0' passed the fill at
+// 9984 before the fold, where '1' was refused; both passed 10752 after it.
+// So in the pair that never activates again, '0' lists 9984 and 10752 and
+// '1' lists 10752, whichever of the two is the variant. In the pair that
+// activates at 10752 there is nothing after it to pass. A search pricing
+// each path alone lists the same.
+TEST_CASE("tied variants: a variant's trailing fills are its own") {
+    const Song song = build_tail_song({{0, true, false}, {768, true, false},
+                                       {2304, false, true}, {3072, false, true},
+                                       {5760, true, false}, {8448, true, false},
+                                       {9216, true, false}, {9984, false, true},
+                                       {10752, false, true},
+                                       {11520}, {12288}, {16128}});
+    ScoreGraph graph(song, 2);
+    const std::vector<Path> roots = run_search(graph, EngineOptions{DepthMode::Scores, 10});
+
+    int again = 0, never = 0, variants = 0;
+    for (const Path* p : flatten_paths(roots)) {
+        const ActivationWalk acts = p->walk_activations();
+        if (acts.empty()) continue;
+        const int64_t first = acts[0].timecode.ticks();
+        if (first != 2304 && first != 3072) continue;
+        CAPTURE(p->pathstring());
+        CAPTURE(first);
+        if (p->totalscore() == 1100) {
+            ++again;
+            CHECK(p->trailing_skipped_fill_ticks.empty());
+        } else if (p->totalscore() == 850) {
+            ++never;
+            CHECK(p->trailing_skipped_fill_ticks ==
+                  (first == 2304 ? std::vector<int64_t>{9984, 10752} : std::vector<int64_t>{10752}));
+            // Priced alone, the path that activates only at `first`.
+            const TargetResult alone = search_target(graph, activation_pins({first}));
+            bool matched = false;
+            for (const Path& q : alone.paths)
+                if (q.pathstring() == p->pathstring() && q.totalscore() == p->totalscore()) {
+                    matched = true;
+                    CHECK(q.trailing_skipped_fill_ticks == p->trailing_skipped_fill_ticks);
+                }
+            CHECK(matched);
+        } else {
+            continue;
+        }
+        variants += p->var_point.has_value() ? 1 : 0;
+    }
+    CHECK(again == 2);
+    CHECK(never == 2);
+    CHECK(variants == 2);  // each pair is one root and its variant
+}
+
 // D38: a variant folded between windows keeps its own early-fill facts for
 // the activation its leader takes next. The case above with the last phrase
 // moved from 9216 to 9619 (25,049.5 ms). Fills end 6 beats (3,000 ms) after
