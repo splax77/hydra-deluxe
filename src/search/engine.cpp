@@ -161,7 +161,7 @@ Enum enumerate(const ScoreGraph& graph) {
 
     en.node_views.reserve(en.nodes.size());
     for (const ScoreGraphNode* o : en.nodes) {
-        NodeView v;
+        NodeView v{};
         v.tick = o->timecode.ticks();
         v.adv_edge = edge_of(o->adv_edge);
         v.branch_edge = edge_of(o->branch_edge);
