@@ -52,6 +52,31 @@ enum class CostTier { Green, Yellow, Red };
 // is a bug upstream and throws std::logic_error rather than getting a colour.
 CostTier cost_tier(int64_t cost, int64_t bf0);
 
+// One fill the player could activate on next, priced: best_finish is
+// BF(n + f), best_finish's total with the player's n windows pinned whole and
+// this fill pinned by its activation alone. Plan:
+// docs/superpowers/plans/2026-10-30-path-builder-redesign.md, task CO-2.
+struct CandidateFinish {
+    int64_t act_tick = 0;
+    int64_t best_finish = 0;
+};
+
+// A candidate fill's cost, BF(n) - BF(n + f): what activating there next
+// loses against the best next choice. The best next fill costs 0.
+struct CandidateCost {
+    int64_t act_tick = 0;
+    int64_t best_finish = 0;
+    int64_t cost = 0;
+    CostTier tier = CostTier::Green;
+};
+
+// The costs of `candidates` against `bf_n`, BF(n) for the player's n windows,
+// in the order given; each tier is cost_tier against `bf0`, BF(0). The one
+// place a candidate's cost is worked out. A negative cost throws as cost_tier
+// does: pinning one more activation never raises the best finish.
+std::vector<CandidateCost> candidate_costs(int64_t bf0, int64_t bf_n,
+                                           const std::vector<CandidateFinish>& candidates);
+
 // One ladder run as it stands. The ladder's bf holds the values landed so
 // far, best[k] is the path behind bf[k] (best_finish's paths.front()), and
 // player_path is the path behind player_total (search_target's

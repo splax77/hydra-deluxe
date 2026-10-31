@@ -24,6 +24,21 @@ CostTier cost_tier(int64_t cost, int64_t bf0) {
     return CostTier::Yellow;
 }
 
+std::vector<CandidateCost> candidate_costs(int64_t bf0, int64_t bf_n,
+                                           const std::vector<CandidateFinish>& candidates) {
+    std::vector<CandidateCost> out;
+    out.reserve(candidates.size());
+    for (const CandidateFinish& c : candidates) {
+        CandidateCost priced;
+        priced.act_tick = c.act_tick;
+        priced.best_finish = c.best_finish;
+        priced.cost = bf_n - c.best_finish;
+        priced.tier = cost_tier(priced.cost, bf0);
+        out.push_back(priced);
+    }
+    return out;
+}
+
 LadderRun build_ladder(const ScoreGraph& graph, const SearchSettings& settings,
                        std::vector<PinnedWindow> windows, const LadderProgress& progress) {
     // A prefix is the first k windows in the order the target searches take

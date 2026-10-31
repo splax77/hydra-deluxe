@@ -183,6 +183,21 @@ TEST_CASE("cost tier: a negative cost is a bug") {
     CHECK_THROWS_AS(cost_tier(-1, 1000), std::logic_error);
 }
 
+TEST_CASE("candidate costs: a negative cost is a bug") {
+    // A candidate whose best finish beats BF(n): pinning one more activation
+    // can never do that, so the cost does not get a colour.
+    const std::vector<hydra::app::CandidateFinish> beats = {{100, 1001}};
+    CHECK_THROWS_AS(hydra::app::candidate_costs(1000, 1000, beats), std::logic_error);
+    // Level with BF(n) it is the best next fill.
+    const std::vector<hydra::app::CandidateCost> level =
+        hydra::app::candidate_costs(1000, 1000, {{100, 1000}});
+    REQUIRE(level.size() == 1);
+    CHECK(level[0].act_tick == 100);
+    CHECK(level[0].best_finish == 1000);
+    CHECK(level[0].cost == 0);
+    CHECK(level[0].tier == CostTier::Green);
+}
+
 TEST_CASE("build ladder: a list the target searches refuse is refused before any search") {
     const Song& song = song_named("Mutemath - Allies");
     const ScoreGraph graph = search_graph(song, default_cfg());
