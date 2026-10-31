@@ -66,8 +66,9 @@ TEST_CASE("batch text: the confirm lists the settings a batch runs with") {
     CHECK(d.score_range == "2,000 points");
     CHECK(d.path_limit == "off");
 
-    // A hand-edited depth_mode=2 searches by scores, so it reads scores
-    // (Settings::search_depth_mode, D51 addendum).
+    // A depth_mode set in memory to anything but 1 searches by scores, so it
+    // reads scores (Settings::search_depth_mode). The file never holds one:
+    // load_file lands a stray number on 0 or 1.
     s.depth_mode = 2;
     s.depth_value = 4;
     d = batch_settings_summary(s);

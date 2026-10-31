@@ -295,6 +295,8 @@ TEST_CASE("settings: a value outside its range loads at the nearest edge") {
     CHECK(back.backendlimit_value == 0);
     REQUIRE(back.backend_limit().has_value());
     CHECK(*back.backend_limit() == 0.0);
+    CHECK(load_ini_text("range4b", "backendlimit_value=900\n").backendlimit_value ==
+          static_cast<int>(hydra::kSqueezeWindowMs));
     // Volume is 0 to 100 percent.
     CHECK(load_ini_text("range5", "preview_volume=150\n").preview_volume == 100);
     CHECK(load_ini_text("range6", "preview_volume=-5\n").preview_volume == 0);
@@ -636,6 +638,39 @@ TEST_CASE("each retired settings key loads silently and is never written back") 
         CHECK(saved.find(std::string(r.name) + "=") == std::string::npos);
         std::remove(path.c_str());
     }
+}
+
+// Every settings file Hydra wrote since the hit window was added holds this
+// line (D270 call 7, D276), so it is named here and not left to the list loop.
+TEST_CASE("hit_window_ms in an older file is skipped, whatever it says, and dropped on save") {
+    for (const char* value : {"85", "85.5", "banana"}) {
+        CAPTURE(value);
+        const Settings s = load_ini_text("hitwin_retired", std::string("hit_window_ms=") + value +
+                                                              "\nsp_cap=8\n");
+        // The live line beside it still reads.
+        CHECK(s.sp_cap == 8);
+    }
+    const std::string path = testtemp::temp_path("hitwin_dropped", ".ini");
+    {
+        std::ofstream f(path, std::ios::trunc);
+        f << "hit_window_ms=85\n";
+    }
+    REQUIRE(Settings::load_file(path).save_file(path));
+    std::ifstream in(path);
+    const std::string saved{std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
+    in.close();
+    CHECK(saved.find("hit_window_ms") == std::string::npos);
+    std::remove(path.c_str());
+}
+
+// The whole-number test is app::parse_whole_number's, the one the rules file
+// reads through (D270 call 4): a whole value spelled as a decimal reads, one
+// too big for an int refuses.
+TEST_CASE("settings: a whole-number key reads a whole decimal and refuses a number too big") {
+    CHECK(load_ini_text("whole1", "sp_cap=8.0\n").sp_cap == 8);
+    CHECK(load_ini_text("whole2", "preview_volume=1e1\n").preview_volume == 10);
+    CHECK_THROWS_AS(load_ini_text("whole3", "sp_cap=99999999999\n"),
+                    hydra::app::SettingsFileError);
 }
 
 TEST_CASE("legacy_fills_for reads fill_rule_for backwards") {

@@ -65,7 +65,7 @@ bool ends_with_ci(std::string_view s, std::string_view suffix);
 std::string relative_slash_path(std::string_view path, std::string_view root);
 
 // The number a hand-written text file spells, read one way for every such
-// number (chart and song files, and hydra_rules.ini): spaces at either end are allowed,
+// number (chart and song files, and the INI files): spaces at either end are allowed,
 // then an optional '+', then one finite decimal number and nothing else.
 // Anything else ("500ms", "0.25s", "nan", "inf", "", "0x1F4") is absent.
 // Locale-independent.
@@ -93,13 +93,13 @@ struct IniPair {
 
 // The key and value of an INI line, or nothing for a blank line, a
 // comment-only line, or a line with no = before its comment. Each reader
-// decides what a line with no = means: hydra_settings.ini skips it,
-// hydra_rules.ini refuses it.
+// decides what a line with no = means; both INI files' answer is in
+// app/ini_errors.h.
 std::optional<IniPair> split_ini_line(std::string_view line);
 
 // What text means on or off in an INI file: exactly "1" is on and exactly
 // "0" is off. Anything else ("true", "yes", "", " 1") is absent, and the
-// caller keeps what it had.
+// caller decides what that means.
 std::optional<bool> parse_bool(std::string_view text);
 
 }  // namespace hydra
