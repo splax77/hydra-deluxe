@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "app/display_format.h"
+#include "app/path_costs.h"  // costs_nothing
 #include "core/backend_value.h"    // after_sp_end
 #include "pathbuilder/pb_coach.h"  // tight_window_note
 
@@ -103,7 +104,7 @@ std::string squeeze_end_text(const Activation& act) {
 }
 
 std::string cost_text(int64_t cost) {
-    if (cost <= 0) return "costs nothing";
+    if (app::costs_nothing(cost)) return "costs nothing";
     return "costs " + group_thousands(cost) + " points";
 }
 
@@ -119,7 +120,7 @@ std::string fill_hover_text(const PreviewScene& scene, size_t fill_index,
     if (!numbers) return t + kPendingText;
     t += "If you activate here, the best you can still finish with is " +
          group_thousands(numbers->best_finish) + ".";
-    if (numbers->cost <= 0) {
+    if (app::costs_nothing(numbers->cost)) {
         t += std::string("\n") + kBestChoiceNowText;
     } else {
         t += "\nYour best choice right now is " + numbers->best_fill + ", which keeps " +
@@ -189,11 +190,10 @@ StepText step_sentence(const SongTiming& timing, const Activation& act, int64_t 
         s.sentence += " Star Power runs until " + measure_at(timing, *d) +
                       squeeze_end_text(act) + ".";
     s.sentence += " This choice " + cost_text(cost) + ".";
-    s.why = cost > 0 ? "Before it, the best you could still finish with was " +
-                           group_thousands(before) + ". After it, " + group_thousands(after) +
-                           "."
-                     : "The best you can still finish with stays at " + group_thousands(after) +
-                           ".";
+    s.why = !app::costs_nothing(cost)
+                ? "Before it, the best you could still finish with was " + group_thousands(before) +
+                      ". After it, " + group_thousands(after) + "."
+                : "The best you can still finish with stays at " + group_thousands(after) + ".";
     s.note = tight_window_note(act, limit_ms);
     return s;
 }

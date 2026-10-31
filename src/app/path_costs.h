@@ -52,6 +52,11 @@ enum class CostTier { Green, Yellow, Red };
 // is a bug upstream and throws std::logic_error rather than getting a colour.
 CostTier cost_tier(int64_t cost, int64_t bf0);
 
+// Whether `cost` is a best choice's: it loses nothing. The one test for the
+// fill or end the screen calls "best" and for the sentences that say a choice
+// costs nothing.
+bool costs_nothing(int64_t cost);
+
 // One fill the player could activate on next, priced: best_finish is
 // BF(n + f), best_finish's total with the player's n windows pinned whole and
 // this fill pinned by its activation alone. Plan:

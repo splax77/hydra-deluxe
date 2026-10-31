@@ -123,6 +123,30 @@ std::optional<size_t> fill_on(const app::PreviewScene& scene, int64_t tick) {
     return std::nullopt;
 }
 
+// The first candidate that costs nothing: the best next fill (candidate_costs
+// gives the best one cost 0), or null while none has landed.
+const app::CandidateCost* best_candidate(const std::vector<app::CandidateCost>& candidates) {
+    for (const app::CandidateCost& c : candidates)
+        if (app::costs_nothing(c.cost)) return &c;
+    return nullptr;
+}
+
+// The name of the best next fill, once it has landed and the scene has it.
+std::optional<std::string> best_fill_name(const app::PreviewScene& scene,
+                                          const std::vector<app::CandidateCost>& candidates) {
+    const app::CandidateCost* best = best_candidate(candidates);
+    if (!best) return std::nullopt;
+    const std::optional<size_t> i = fill_on(scene, best->act_tick);
+    if (!i) return std::nullopt;
+    return fill_name(scene, scene.fills[*i]);
+}
+
+// A cost under a fill or an end choice: "best" when it loses nothing, else
+// the cost written by `format` (format_cost_short or format_cost).
+std::string cost_or_best(int64_t cost, std::string (*format)(int64_t)) {
+    return app::costs_nothing(cost) ? std::string(kBestFillLabel) : format(cost);
+}
+
 }  // namespace
 
 PbApp::PbApp(ID3D11Device* device, ID3D11DeviceContext* context) {
@@ -451,12 +475,7 @@ GuideFacts PbApp::guide_facts(const OpenChart& chart) const {
         f.earliest_ms = scene.timing->timecode(fill.chord_tick).ms();
         break;
     }
-    for (const app::CandidateCost& c : d.candidates()) {
-        if (c.cost > 0) continue;
-        if (const std::optional<size_t> i = fill_on(scene, c.act_tick))
-            f.best_fill = fill_name(scene, scene.fills[*i]);
-        break;
-    }
+    f.best_fill = best_fill_name(scene, d.candidates());
     return f;
 }
 
@@ -524,7 +543,7 @@ void PbApp::draw_timeline(const OpenChart& chart) {
             in.cant_ticks.push_back(scene.fills[i].chord_tick);
     for (const app::CandidateCost& c : d.candidates())
         in.labels.push_back(ui::TimelineFillLabel{
-            c.act_tick, c.cost <= 0 ? std::string(kBestFillLabel) : app::format_cost_short(c.cost),
+            c.act_tick, cost_or_best(c.cost, app::format_cost_short),
             ImGui::GetColorU32(tier_color(c.tier))});
 
     const ui::TimelineEvents ev = ui::PreviewTimeline{}.draw(in);
@@ -548,15 +567,12 @@ void PbApp::draw_timeline(const OpenChart& chart) {
         const auto mine = std::find_if(cands.begin(), cands.end(), [&](const app::CandidateCost& c) {
             return c.act_tick == scene.fills[i].chord_tick;
         });
-        const auto best = std::find_if(cands.begin(), cands.end(),
-                                       [](const app::CandidateCost& c) { return c.cost <= 0; });
-        if (mine != cands.end() && best != cands.end() && run && run->complete) {
+        if (mine != cands.end() && best_candidate(cands) && run && run->complete) {
             FillHoverNumbers n;
             n.best_finish = mine->best_finish;
             n.best_now = run->ladder.bf.back();
             n.cost = mine->cost;
-            if (const std::optional<size_t> b = fill_on(scene, best->act_tick))
-                n.best_fill = fill_name(scene, scene.fills[*b]);
+            n.best_fill = best_fill_name(scene, cands).value_or(std::string());
             n.hydra_end = d.candidate_end(static_cast<size_t>(mine - cands.begin()));
             numbers = n;
         }
@@ -725,7 +741,7 @@ void PbApp::draw_steps(const OpenChart& chart) {
                     label += app::kFactSeparator;
                     label += c.timing.empty() ? std::string(kNoTimingNeededText) : c.timing;
                     label += app::kFactSeparator;
-                    label += costs[e] <= 0 ? std::string(kBestFillLabel) : app::format_cost(costs[e]);
+                    label += cost_or_best(costs[e], app::format_cost);
                     ImGui::PushID(static_cast<int>(e));
                     if (ImGui::Button(label.c_str())) {
                         pending_guide_.reset();

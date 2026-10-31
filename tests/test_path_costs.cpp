@@ -246,3 +246,9 @@ TEST_CASE("build ladder: stops at the first impossible prefix and names it") {
     CHECK(run.failed_reason == "activation");
     CHECK(heard == std::vector<size_t>{1, 2});
 }
+
+TEST_CASE("costs nothing: only a cost of zero is a best choice's") {
+    CHECK(hydra::app::costs_nothing(0));
+    CHECK_FALSE(hydra::app::costs_nothing(1));
+    CHECK_FALSE(hydra::app::costs_nothing(14640));
+}

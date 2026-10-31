@@ -15,6 +15,8 @@ CostList cost_list(const BestFinishLadder& ladder) {
     return out;
 }
 
+bool costs_nothing(int64_t cost) { return cost <= 0; }
+
 CostTier cost_tier(int64_t cost, int64_t bf0) {
     if (cost < 0)
         throw std::logic_error("cost_tier: cost " + std::to_string(cost) +
