@@ -1,6 +1,7 @@
 // The Path Builder's sentences (pathbuilder/pb_text.h; plan
 // docs/superpowers/plans/2026-10-30-path-builder-redesign.md, task CO-1, and
-// docs/superpowers/plans/2026-10-31-path-builder-redesign-2.md, task SC-3a).
+// docs/superpowers/plans/2026-10-31-path-builder-redesign-2.md, task SC-3a,
+// and docs/superpowers/plans/2026-10-31-path-builder-redesign-3.md, task TX-3).
 // The corpus cases run at the GUI's default settings, whose Path limit is
 // 10 ms; every sentence is pinned from one run.
 
@@ -339,5 +340,116 @@ TEST_CASE("fill hover text: the two numbers and the difference agree") {
           "Fill at m38 · 0:58.421\n"
           "You have 3 phrases saved.\n"
           "If you activate here, the best you can still finish with is 228,710.\n"
-          "That is the best choice right now.");
+          "This is the best choice now.");
+}
+
+namespace {
+
+// Allister "Overrated" with no activation, and the candidate numbers for the
+// fill at `tick` as the screen gathers them: its best finish with the fill
+// pinned, BF(0) as best now, candidate_costs's cost and tier, the name of the
+// fill Hydra's best path starts on, and the candidate's activation.
+struct OverratedCard {
+    const Song& song = song_named("Allister - Overrated");
+    app::PreviewScene empty = scene_for(song, player_path(song, {}));
+    int64_t bf0 = best_finish(song, default_cfg(), {}).paths.at(0).totalscore();
+    int64_t best_tick = corpus::analyzed(corpus::chart_named("Allister - Overrated"), default_cfg())
+                            .best_path()
+                            .all_activations()
+                            .front()
+                            .timecode.ticks();
+    std::vector<Activation> with_acts;
+
+    FillHoverNumbers numbers_at(int64_t tick) {
+        const TargetResult with = best_finish(
+            song, default_cfg(), {PinnedWindow{tick, std::nullopt, false, std::nullopt}});
+        with_acts = with.paths.at(0).all_activations();
+        const std::vector<app::CandidateCost> costs =
+            app::candidate_costs(bf0, bf0, {{tick, with.paths.at(0).totalscore()}});
+        FillHoverNumbers n;
+        n.best_finish = costs.at(0).best_finish;
+        n.best_now = bf0;
+        n.cost = costs.at(0).cost;
+        n.tier = costs.at(0).tier;
+        n.best_fill = fill_name(empty, empty.fills[fill_index(empty, best_tick)]);
+        n.hydra_end = &with_acts.front();
+        return n;
+    }
+};
+
+std::vector<std::string> row_texts(const FillHoverCard& card) {
+    std::vector<std::string> out;
+    for (const CardRow& r : card.rows) out.push_back(r.label + "=" + r.value);
+    return out;
+}
+
+}  // namespace
+
+TEST_CASE("fill card: an offered fill reads the heading, three rows and two grey lines") {
+    OverratedCard c;
+    const FillHoverCard card =
+        fill_hover_card(c.empty, fill_index(c.empty, 55680), c.numbers_at(55680));
+    // Pinned from one run: BF(0) 228,710 less this fill's 226,210 is the
+    // 2,500 the Cost row reads, and m38 is where the best path starts.
+    CHECK(card.heading == "m30 · 0:45.789");
+    CHECK(row_texts(card) == std::vector<std::string>{"Phrases saved=2",
+                                                      "Best finish here=226,210",
+                                                      "Cost=\xE2\x88\x92" "2,500"});
+    CHECK(card.cost_tier == app::CostTier::Red);
+    CHECK(card.grey ==
+          std::vector<std::string>{"Best choice now is m38 (228,710).", "Hydra would end it at m34."});
+}
+
+TEST_CASE("fill card: a costless fill reads best and \"This is the best choice now.\"") {
+    OverratedCard c;
+    const FillHoverCard card =
+        fill_hover_card(c.empty, fill_index(c.empty, c.best_tick), c.numbers_at(c.best_tick));
+    CHECK(card.heading == "m38 · 0:58.421");
+    CHECK(row_texts(card) == std::vector<std::string>{"Phrases saved=3",
+                                                      "Best finish here=228,710", "Cost=best"});
+    CHECK(card.cost_tier == app::CostTier::Green);
+    REQUIRE(card.grey.size() == 2);
+    CHECK(card.grey[0] == "This is the best choice now.");
+    CHECK(card.grey[1] == "Hydra would end it at m44.");
+}
+
+TEST_CASE("fill card: taken, locked, refused and pending fills read the heading and their one "
+          "line") {
+    // Trivium "Feast of Fire" on Hydra's best path: fill 4 is the first
+    // activation, fill 3 is before the last one, and fill 5 is under the
+    // first window's Star Power (the fill refusal test above).
+    const Song& song = song_named("Trivium - Feast of Fire");
+    const HydraRecord& rec =
+        corpus::analyzed(corpus::chart_named("Trivium - Feast of Fire"), default_cfg());
+    const app::PreviewScene best = scene_for(song, rec.best_path());
+    REQUIRE(best.fills.size() > 5);
+    const FillHoverCard taken = fill_hover_card(best, 4, std::nullopt);
+    CHECK(taken.heading == "m34 · 0:45.435");
+    CHECK(taken.rows.empty());
+    CHECK_FALSE(taken.cost_tier);
+    CHECK(taken.grey == std::vector<std::string>{kYourActivationHoverText});
+    const FillHoverCard locked = fill_hover_card(best, 3, std::nullopt);
+    CHECK(locked.heading == "m30 · 0:40.041");
+    CHECK(locked.rows.empty());
+    CHECK(locked.grey == std::vector<std::string>{kBeforeLastActivationText});
+    const FillHoverCard running = fill_hover_card(best, 5, std::nullopt);
+    CHECK(running.heading == "m38 · 0:50.828");
+    CHECK(running.rows.empty());
+    CHECK(running.grey ==
+          std::vector<std::string>{"Star Power is already on here. Activation 1 runs until m40."});
+
+    // Allister "Overrated" with no activation: the first fill comes with one
+    // phrase, and the m30 fill's search has not landed.
+    OverratedCard c;
+    const FillHoverCard under = fill_hover_card(c.empty, 0, std::nullopt);
+    CHECK(under.heading == "m20 · 0:30.000");
+    CHECK(under.rows.empty());
+    CHECK(under.grey ==
+          std::vector<std::string>{"You have 1 phrase saved here. You need 2 to activate."});
+    const FillHoverCard pending = fill_hover_card(c.empty, fill_index(c.empty, 55680), std::nullopt);
+    CHECK(pending.heading == "m30 · 0:45.789");
+    CHECK(row_texts(pending) == std::vector<std::string>{"Phrases saved=2",
+                                                         "Best finish here=...", "Cost=..."});
+    CHECK_FALSE(pending.cost_tier);
+    CHECK(pending.grey.empty());
 }

@@ -149,12 +149,6 @@ std::optional<std::string> best_fill_name(const app::PreviewScene& scene,
     return fill_name(scene, scene.fills[*i]);
 }
 
-// The cost of a list row, a step or an end choice: "best" when it loses
-// nothing, else the cost in full (format_cost).
-std::string cost_or_best(int64_t cost) {
-    return app::costs_nothing(cost) ? std::string(kBestFillLabel) : app::format_cost(cost);
-}
-
 // `text` at the right edge of the line the cursor is on, which starts at
 // window x `line_x` and is `line_w` wide, in `col`.
 void text_at_right(const std::string& text, float line_x, float line_w, const ImVec4& col) {
