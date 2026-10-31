@@ -117,10 +117,9 @@ def build_server(helper: Optional[Helper] = None):
             " no player. ch_kit_press presses the kit's pads and buttons, ch_open_song"
             " walks the menus to a song with it, ch_play_chart plays a chart on it,"
             " ch_kit_status and ch_kit_watch read it, and ch_kit_teardown takes it away and"
-            " switches the keyboard and mouse back (ch_stop does too). ch_start_song starts"
-            " a song by calling the game's start method once LS-M has named it. ch_key,"
-            " ch_press and ch_play_chart with route keys press keys into the focused"
-            " window, and a hook refuses them unless the user has typed allow key run."
+            " switches the keyboard and mouse back (ch_stop does too). ch_key, ch_press and"
+            " ch_play_chart with route keys press keys into the focused window, and a"
+            " hook refuses them unless the user has typed allow key run."
             " ch_sp and the ch_sp_watch tools read Star Power."
             " See docs/agents/clone-hero-mcp.md."),
     )
@@ -150,8 +149,9 @@ def build_server(helper: Optional[Helper] = None):
 
     @server.tool()
     def ch_status() -> str:
-        """The run, the backup folder, the play session, the last stats copy,
-        whether Frida is attached and whether a trace runs."""
+        """The run, the backup folder, how many times the game came to the
+        front, the play session, the last stats copy, whether Frida is
+        attached and whether a trace runs."""
         return capped(h.ch_status())
 
     @server.tool()
@@ -245,9 +245,9 @@ def build_server(helper: Optional[Helper] = None):
         """Build the virtual drum kit inside the game: check that settings.ini
         holds the run's pause_on_focus_lost value (ch_start sets it), take
         the backup, attach the kit agent, let the game listen while it is
-        not in focus, take the keyboard and mouse from every player, switch
-        Rewired's keyboard and mouse off for the run so the user's own input
-        reaches no player, hand the kit to its player with the game's own
+        not in focus, switch Rewired's keyboard and mouse off for the run so
+        the user's own input reaches no player, take the keyboard and mouse
+        from every player, hand the kit to its player with the game's own
         drum map, and check the bindings it reads back against
         kit_tools.KIT_BINDINGS. A setup that fails, leaves the keyboard or
         the mouse on, or reads other bindings is torn down again. Needs
