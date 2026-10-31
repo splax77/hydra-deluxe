@@ -252,10 +252,10 @@ std::vector<app::CandidateFinish> candidate_finishes(const ScoreGraph& graph,
         if (bf.paths.empty())
             throw std::logic_error("candidate_finishes: no path activates at tick " +
                                    std::to_string(tick) + " (" + bf.failed_reason + ")");
-        const Path& best = bf.paths.front();
-        out.push_back(app::CandidateFinish{tick, best.totalscore()});
+        const Path& finish = bf.paths.front();
+        out.push_back(app::CandidateFinish{tick, finish.totalscore()});
         // The candidate is the activation after the player's windows.
-        const ActivationWalk acts = best.walk_activations();
+        const ActivationWalk acts = finish.walk_activations();
         const std::optional<Activation> act =
             windows.size() < acts.size() ? std::optional<Activation>(acts[windows.size()]) : std::nullopt;
         if (progress) progress(out.back(), act);

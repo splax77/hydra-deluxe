@@ -1,0 +1,54 @@
+{
+  "rules": [
+    {
+      "question": "On the Path Builder's screen, has the player saved enough Star Power phrases to activate at a fill?",
+      "owner": "fill_reason in src/pathbuilder/pb_text.cpp, which reads the Preview's meter at the fill (bars_saved_at) against kSpActivationBars once, to say why a fill cannot be activated",
+      "owner_file": "src/pathbuilder/pb_text.cpp",
+      "owner_symbol": "fill_reason",
+      "date": "2026-10-30",
+      "decision": "docs/superpowers/plans/2026-10-30-path-builder-redesign.md, PB-5 \"Scan rows\" and \"Engine truth, not mockup shortcuts\", approved by the user on 2026-10-30 (\"Yes, as recommended\")",
+      "added_by": "PB-5b",
+      "anchor": "kSpActivationBars",
+      "pattern": "(?:[<>]=?|[!=]=)\\s*(?:hydra::)?kSpActivationBars\\b|\\bkSpActivationBars\\s*(?:[<>]=?|[!=]=)",
+      "must_match": [
+        "if (bars_saved_at(scene, fill) >= kSpActivationBars) offered.push_back(fill.chord_tick);",
+        "const bool can = kSpActivationBars <= app::sp_meter_bars_at(scene.sp_meter, ms);",
+        "if (saved == hydra::kSpActivationBars) return kLegendCanText;",
+        "return bars < kSpActivationBars ? kCantColor : kGlowColor;"
+      ],
+      "must_not_match": [
+        "\"Power there. You need at least \" + std::to_string(kSpActivationBars) +",
+        "out.activate_y = y_of(kSpActivationBars);",
+        "const std::string label = std::to_string(kSpActivationBars) + kTimelineActivateLabelTail;",
+        "if (fill.state != app::PreviewFillState::Offered || !fill_reason(scene, i).empty()) continue;"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/pathbuilder/pb_text.cpp",
+          "line_text": "if (bars < kSpActivationBars)",
+          "why": "fill_reason, the owner: a fill the engine did not offer, under two saved phrases"
+        }
+      ],
+      "scope": [
+        "src/pathbuilder/main.cpp",
+        "src/pathbuilder/pb_coach.cpp",
+        "src/pathbuilder/pb_coach.h",
+        "src/pathbuilder/pb_files.cpp",
+        "src/pathbuilder/pb_files.h",
+        "src/pathbuilder/pb_menu.cpp",
+        "src/pathbuilder/pb_menu.h",
+        "src/pathbuilder/pb_open.cpp",
+        "src/pathbuilder/pb_open.h",
+        "src/pathbuilder/pb_resource.h",
+        "src/pathbuilder/pb_state.cpp",
+        "src/pathbuilder/pb_state.h",
+        "src/pathbuilder/pb_text.cpp",
+        "src/pathbuilder/pb_text.h",
+        "src/pathbuilder/pb_window.cpp",
+        "src/pathbuilder/pb_window.h",
+        "src/ui/preview_timeline.cpp"
+      ],
+      "note": "Whether the player could activate at a fill is the engine's answer (branch_activate, read through the fill's PreviewFillState), never the screen's count of phrases; the mockup's shortcut of counting phrases is what the plan forbids. The builder and the timeline may write kSpActivationBars as a figure (the intro's \"2\", the timeline's activate line and its label) but compare it only in fill_reason, which reads the meter to say why an unoffered fill cannot be taken. The pattern flags a comparison operator on either side of the constant. A scope names a top folder or a single file (OwnerRule::scope), so the row lists each file under src/pathbuilder; a new file there joins the list. Decided by: the PB-5 scan rows in the plan."
+    }
+  ]
+}

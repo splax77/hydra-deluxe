@@ -1,0 +1,46 @@
+{
+  "rules": [
+    {
+      "question": "Where on the Path Builder's screen is a moment of the song drawn, and how are the timeline's marks drawn?",
+      "owner": "ui::PreviewTimeline in src/ui/preview_timeline.h, the Preview's whole-song timeline, which places every mark by song_fraction and draws its star glyph with ui::draw_star",
+      "owner_file": "src/ui/preview_timeline.h",
+      "owner_symbol": "PreviewTimeline",
+      "date": "2026-10-30",
+      "decision": "docs/superpowers/plans/2026-10-30-path-builder-redesign.md, PB-5 \"Scan rows\", approved by the user on 2026-10-30 (\"Yes, as recommended\")",
+      "added_by": "PB-5b",
+      "pattern": "(?:->|\\.)\\s*Add(?:Line|Rect|RectFilled|RectFilledMultiColor|Quad|QuadFilled|Triangle|TriangleFilled|Circle|CircleFilled|Ngon|NgonFilled|Ellipse|EllipseFilled|Text|Polyline|ConvexPolyFilled|ConcavePolyFilled|BezierCubic|BezierQuadratic|Image|ImageQuad|ImageRounded)\\s*\\(|\\bsong_fraction\\s*\\(|\\bGet(?:Window|Foreground|Background)DrawList\\s*\\(",
+      "calls_owner": "\\bui::draw_star\\s*\\(",
+      "must_match": [
+        "dl->AddLine(ImVec2(x, y0), ImVec2(x, y1), ImGui::GetColorU32(ui::kAccentColor), ui::px(1.0f));",
+        "dl->AddCircleFilled(centre, radius, ImGui::GetColorU32(ui::kStarPowerColor));",
+        "const double f = app::song_fraction(fill.span.end_ms, preview_->playback_end_ms()).value_or(0.0);",
+        "ImDrawList* dl = ImGui::GetWindowDrawList();"
+      ],
+      "must_not_match": [
+        "ui::draw_star(ImGui::GetWindowDrawList(), at, size, true, ImGui::GetColorU32(ui::kStarPowerColor));",
+        "const ui::TimelineEvents ev = ui::PreviewTimeline{}.draw(in);",
+        "ImGui::Image((ImTextureID)(intptr_t)srv, img_size);",
+        "row.song_fraction = fraction;"
+      ],
+      "scope": [
+        "src/pathbuilder/main.cpp",
+        "src/pathbuilder/pb_coach.cpp",
+        "src/pathbuilder/pb_coach.h",
+        "src/pathbuilder/pb_files.cpp",
+        "src/pathbuilder/pb_files.h",
+        "src/pathbuilder/pb_menu.cpp",
+        "src/pathbuilder/pb_menu.h",
+        "src/pathbuilder/pb_open.cpp",
+        "src/pathbuilder/pb_open.h",
+        "src/pathbuilder/pb_resource.h",
+        "src/pathbuilder/pb_state.cpp",
+        "src/pathbuilder/pb_state.h",
+        "src/pathbuilder/pb_text.cpp",
+        "src/pathbuilder/pb_text.h",
+        "src/pathbuilder/pb_window.cpp",
+        "src/pathbuilder/pb_window.h"
+      ],
+      "note": "The Path Builder's timeline is the Preview's (ui::PreviewTimeline, task PV-3), so the builder's own files place nothing by song time and paint nothing on a draw list: a draw-list call or a song_fraction call under src/pathbuilder is a second timeline. The one exception is the star glyph the screen draws beside the sentences that count saved phrases, as the user chose on 2026-10-30: it calls ui::draw_star, which lives with the timeline, so a line calling it passes even though it reaches the window's draw list to hand it over. The highway's ImGui::Image is not a draw-list call and is not flagged. A scope names a top folder or a single file (OwnerRule::scope), so the row lists each file under src/pathbuilder; a new file there joins the list. Decided by: the PB-5 scan rows in the plan."
+    }
+  ]
+}
