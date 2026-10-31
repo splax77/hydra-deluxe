@@ -107,6 +107,18 @@ button.plain:hover{border-color:var(--glow)}
 .ov .oa{bottom:.15rem;height:.4rem;background:var(--sp)}
 .ov .frame{top:0;bottom:0;border:2px solid #fff;border-radius:.15rem;background:rgba(255,255,255,.07);cursor:grab;min-width:4px}
 .ov .oph{top:0;bottom:0;width:1px;background:#fff;opacity:.75;pointer-events:none}
+.ov{height:2.2rem}
+.ov .of{top:.3rem;height:.9rem}
+.ov .oa{height:.5rem}
+/* The scrollbar under the timeline: the thumb is the window, the track the whole song. */
+.sbrow{display:flex;align-items:center;gap:.3rem;margin-top:.3rem}
+.sbrow .rlab{color:var(--dim);font-size:.8rem}
+.sbbtn{background:#30333a;border:1px solid var(--line);color:var(--text);border-radius:.2rem;width:1.8rem;height:1.3rem;cursor:pointer;padding:0;font-size:.8rem}
+.sbbtn:hover{background:#3a3e46}
+.sb{position:relative;flex:1;height:1.1rem;background:#1e2024;border:1px solid var(--line);border-radius:.55rem;cursor:pointer}
+.sb .thumb{position:absolute;top:1px;bottom:1px;background:#5a5f69;border-radius:.5rem;cursor:grab;min-width:1.2rem}
+.sb .thumb:hover{background:#7a808b}
+.sbtime{color:var(--muted);font-size:.8rem;white-space:nowrap;min-width:9.5rem;text-align:right;font-family:var(--mono)}
 .rlab small.short1{white-space:nowrap}
 .ok{color:var(--green)}.warn{color:var(--yellow)}.bad{color:var(--red)}.vio{color:var(--violet)}
 
@@ -232,8 +244,9 @@ details.gloss summary{cursor:pointer;color:var(--muted)}
 
   <div class="panel">
     <div class="legend" id="legend"></div>
-    <div class="ovrow"><div class="rlab">Whole song</div><div class="ov" id="strip"></div></div>
+    <div class="ovrow"><div class="rlab">Whole song<small>click or drag the white frame</small></div><div class="ov" id="strip"></div></div>
     <div id="rows"></div>
+    <div class="sbrow"><div class="rlab">Scroll (or mouse wheel)</div><button class="sbbtn" id="sbPrev" title="Back one window">&#9664;</button><div class="sb" id="sb"><i class="thumb" id="sbThumb"></i></div><button class="sbbtn" id="sbNext" title="Forward one window">&#9654;</button><span class="sbtime" id="sbTime"></span></div>
   </div>
 
   <div class="lower" id="lower">
@@ -675,8 +688,30 @@ function renderStrip() {
   const a = msOfU(vu0), b = Math.min(L, msOfU(vu0 + uSpan()));
   h += `<i class="frame" id="oframe" style="left:${P(a)};width:${P(b - a)}" title="The part of the song the timeline shows"></i><i class="oph" id="oph"></i>`;
   $("strip").innerHTML = h;
+  renderScrollbar();
   placePlayhead();
 }
+// The scrollbar: thumb width is the window's share of the song, its left edge the window's start.
+function renderScrollbar() {
+  const mx = U(D.lengthMs), t = $("sbThumb");
+  t.style.left = (vu0 / mx * 100).toFixed(3) + "%";
+  t.style.width = (Math.min(1, uSpan() / mx) * 100).toFixed(3) + "%";
+  $("sbTime").textContent = `${clockShort(msOfU(vu0))} – ${clockShort(Math.min(D.lengthMs, msOfU(vu0 + uSpan())))} of ${clockShort(D.lengthMs)}`;
+}
+$("sb").addEventListener("mousedown", e => {
+  const r = $("sb").getBoundingClientRect(), mx = U(D.lengthMs), uAt = x => (x - r.left) / r.width * mx;
+  e.preventDefault(); hideTip();
+  if (e.target.id === "sbThumb") {
+    const grab = uAt(e.clientX) - vu0;
+    const mv = ev => setView(uAt(ev.clientX) - grab, true);
+    const up = () => { removeEventListener("mousemove", mv); removeEventListener("mouseup", up); };
+    addEventListener("mousemove", mv); addEventListener("mouseup", up);
+    return;
+  }
+  setView(vu0 + Math.sign(uAt(e.clientX) - vu0) * uSpan(), true);
+});
+$("sbPrev").onclick = () => { hideTip(); setView(vu0 - uSpan(), true); };
+$("sbNext").onclick = () => { hideTip(); setView(vu0 + uSpan(), true); };
 $("strip").addEventListener("mousedown", e => {
   const r = $("strip").getBoundingClientRect(), msAt = x => Math.max(0, Math.min(D.lengthMs, (x - r.left) / r.width * D.lengthMs));
   e.preventDefault();
@@ -696,7 +731,7 @@ $("rows").addEventListener("wheel", e => {
   e.preventDefault();
   const d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
   hideTip();
-  setView(vu0 + Math.sign(d) * uSpan() * 0.1, true);
+  setView(vu0 + Math.sign(d) * uSpan() / 3, true);
 }, { passive: false });
 
 function renderChoices() {
