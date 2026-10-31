@@ -674,8 +674,9 @@ struct Activation {
     // deadline). So is a squeeze that needs no timing
     // (SPSqueeze::needs_no_timing), as 2.0 showed it (D80); its figure is
     // below 0 (timing_needs_hitting, D301; "squeeze in -315.8 ms": the note
-    // already lands 315.8 ms inside SP). hardest() picks from this list, leaving those two out. The Paths
-    // tab's row shows one badge per entry; empty means no badge.
+    // already lands 315.8 ms inside SP). hardest() picks from this list,
+    // leaving those two out. The Paths tab's row shows one badge per entry;
+    // empty means no badge.
     std::vector<ActivationTiming> badge_timings() const;
     // hardest()'s ms when it is a squeeze or a required fill; empty for an
     // optional early fill, so the search, filter and warning colors never
