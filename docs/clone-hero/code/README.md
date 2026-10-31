@@ -11,7 +11,7 @@ The 210 listings below were committed before the reference existed, by the Note 
 
 Every one is from build 1.1.0.6142 (`GameAssembly.dll`). They were made with a capstone wrapper (capstone is a disassembler library) whose first copy was not kept. The same wrapper is now committed as tools/ch_mcp/chdis.py, and it reproduces them: run on 0x20F0B30, it printed the 69 lines of `lanedraw_20f0b30.asm` exactly (checked 2026-10-30). The date is the day git first added the file.
 
-The first column is the function start, read from the listing's own first line. A file that holds several functions lists each start, in the order the file holds them. The role is the name the scout gave the file; where the file name carries no role, the folder's README or FINDINGS says what the function does. Several functions were listed twice, once by the scout that read them and once by the scout that tried to refute the reading (the `-refute` folders), so one address can have two or three rows. The table was generated from the files, not typed, and its 210 rows match the 210 `.asm` files in the two folders.
+The first column is the function start, read from the listing's own first line. A file that holds several functions lists each start, in the order the file holds them. The role is the name the file was given when it was made; where the file name carries no role, the folder's README or FINDINGS says what the function does. Several functions were listed twice, once by a reading and once by a second pass that tried to refute it (the `-refute` folders), so one address can have two or three rows. The table was generated from the files, not typed, and its 210 rows match the 210 `.asm` files in the two folders.
 
 | Start | Role | File | Build | Date |
 |---|---|---|---|---|

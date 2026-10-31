@@ -8,7 +8,7 @@ Lines 36-47: read the instrument byte; instrument 9 (ProDrums) is mapped to 6 (D
 
 Lines 48-62: ask 0x20CFD40 for the track of this instrument and difficulty (`rbp`). Then `0x20D4BE0` builds the note list (`rdi`).
 
-Lines 63-130: make a new measure-grid object (`r13`, later `[rsp+0xb8]`), give it three empty lists, then `0x20DACA0` fills it (the grid restart at a meter change; scout R2's row).
+Lines 63-130: make a new measure-grid object (`r13`, later `[rsp+0xb8]`), give it three empty lists, then `0x20DACA0` fills it (the grid restart at a meter change; see FL-26 on page 4).
 
 Lines 131-146: stop if the note list is empty (line 137-138); set `r13d` to 0 (line 134). Nothing writes `r13` again before line 285.
 
@@ -20,7 +20,7 @@ Lines 228-277: the drum path: its own modifier calls (lines 228-277, including t
 
 Lines 278-282: the fill test begins. Null track or a null fills list (`[track+0x88]`) ends in the exception stub at line 436.
 
-Lines 283-289: compare the fills list's Count (`[rax+0x18]`) with `r13d`, which is 0. If Count is not 0, call `0x20CFF60(notes, chart, track)` (written fills to activation notes; the landing rule is scout R2's) and store its list in `r13` and `[rsp+0xc0]`; then jump to line 189/190.
+Lines 283-289: compare the fills list's Count (`[rax+0x18]`) with `r13d`, which is 0. If Count is not 0, call `0x20CFF60(notes, chart, track)` (written fills to activation notes; the landing rule is FL-03 to FL-07 on page 4) and store its list in `r13` and `[rsp+0xc0]`; then jump to line 189/190.
 
 Lines 293-299: Count is 0: call the generator `0x20D2B30(notes, track, grid)` and store its list in `r13` and `[rsp+0xc0]`; jump to line 190.
 

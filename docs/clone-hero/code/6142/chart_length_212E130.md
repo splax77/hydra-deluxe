@@ -18,6 +18,6 @@ Lines 77 to 84: the maximum is stored in the `Nullable<long>` at chart+0x120 (th
 
 Lines 85 to 87: the cached value is read.
 
-Lines 88 to 91: when `addMargin` is true, the double at chart+0xB0 is truncated to an integer (`cvttsd2si`) and added to the result. Chart+0xB0 is written by `0x212C0B0` (decompile lines 14459 to 14471) as a value times the float at (chart+0xC8)+0x14, and its caller at decompile line 42845 passes the ushort at (header+0xF0)+0x12. Earlier scouts read those as the chart resolution (ticks per beat) and the song speed; this scout did not trace what those two fields are, so the identity is unchecked.
+Lines 88 to 91: when `addMargin` is true, the double at chart+0xB0 is truncated to an integer (`cvttsd2si`) and added to the result. Chart+0xB0 is written by `0x212C0B0` (decompile lines 14459 to 14471) as a value times the float at (chart+0xC8)+0x14, and its caller at decompile line 42845 passes the ushort at (header+0xF0)+0x12. Earlier readings took those as the chart resolution (ticks per beat) and the song speed; what those two fields are was not traced for this note, so the identity is unchecked.
 
 Lines 92 to 97: epilogue. Lines 98 to 102: throws.

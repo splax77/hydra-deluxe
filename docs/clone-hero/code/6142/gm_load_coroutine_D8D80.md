@@ -1,5 +1,5 @@
 # gm_load_coroutine_D8D80.asm  (build 6142, RVA 0xD8D80, GameManager.LoadSongCoroutine.MoveNext, the song-load coroutine)
-Made with chdis.py over the whole method (the next method starts at 0xD99E0), 2026-10-30, session b02ab3e6, scout R7. rsi = the coroutine state object, rdi = the GameManager.
+Made with chdis.py over the whole method (the next method starts at 0xD99E0), 2026-10-30, session b02ab3e6. rsi = the coroutine state object, rdi = the GameManager.
 Lines 20-85: first-call string setup and state dispatch. Lines 101-260: earlier states (network checks, log lines, audio length 0x36B700). Not read line by line.
 Lines 272-282: call #828.LoadSongIni (0x1F0160) with the GlobalVariables song metadata object and the SongEntry. That method reads the song.ini file and runs the [song] reader 0x1EFC60, so the delay lands at +0x24 first.
 Lines 284-291: then call SongEntry.LoadChart (0x35C110), which loads the chart and calls the [Song] scanner 0x35C980 (call at 0x35C484). So the chart's Offset is applied second, and only when +0x24 is still 0.

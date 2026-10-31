@@ -1,2 +1,2 @@
 # setting_int_ctor_210C470.asm  (build 6142, RVA 0x210C470, the int-setting constructor)
-Made with chdis.py, 2026-10-30, session b02ab3e6, scout R7. Lines 2-14: copy the three stack arguments and the name and forward them to the base constructor 0x2116210 (see setting_base_ctor_2116210.md). The settings loader calls it as (name, default in r9d, min at [rsp+0x20], max at [rsp+0x28], kind at [rsp+0x30]).
+Made with chdis.py, 2026-10-30, session b02ab3e6. Lines 2-14: copy the three stack arguments and the name and forward them to the base constructor 0x2116210 (see setting_base_ctor_2116210.md). The settings loader calls it as (name, default in r9d, min at [rsp+0x20], max at [rsp+0x28], kind at [rsp+0x30]).
