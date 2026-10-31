@@ -325,8 +325,9 @@ class GameTools:
                 lines.append(f"backup folder: {self._adopted_backup}")
             else:
                 lines.append("game: no run open, and no backup taken")
-            if self._watch is not None:
-                lines.append(self._watch.line())
+            watch_line = self.foreground_line()
+            if watch_line is not None:
+                lines.append(watch_line)
             if self._scratch is not None:
                 lines.append(f"scratch folder: {self._scratch}")
             play = self._play
