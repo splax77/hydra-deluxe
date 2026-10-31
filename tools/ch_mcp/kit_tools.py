@@ -2,8 +2,8 @@
 
 The kit agent (agent/kit.ts, built to kit.js) builds one Rewired custom
 controller from the game's own drum definition, hands it to a player with the
-game's default map, presses its pads and buttons on request and takes it away
-again. It sends no key presses and never touches the window, so the game can
+game's drum map (KIT_MAP_CATEGORY_ID, KIT_MAP_LAYOUT_ID), presses its pads
+and buttons on request and takes it away again. It sends no key presses and never touches the window, so the game can
 stay minimized and unfocused; while the kit is set up, the Rewired devices in
 KIT_DEVICES are switched off so the user's own keys and mouse reach no player
 (the plan
@@ -48,6 +48,11 @@ KIT_AGENT_FILE = f"{KIT_AGENT_NAME}.js"
 # The Rewired controller definition the kit is built from, "SLInputDrums"
 # (the probe's q4_out.json and the plan's probe facts).
 KIT_DEFINITION_ID = 6
+# The map setup loads onto the kit's player, by its map category ("Gameplay")
+# and layout ("Drums") in the game's Rewired setup. The fact's home is block
+# IN-76 of docs/clone-hero/07-internals.md.
+KIT_MAP_CATEGORY_ID = 1
+KIT_MAP_LAYOUT_ID = 2
 # The tag the kit is created with and found by (the plan's owner table).
 KIT_TAG = "hydra-kit"
 # The Rewired player the kit is handed to when ch_kit_setup names none (the
@@ -122,7 +127,7 @@ KIT_ELEMENTS: Dict[str, KitElement] = {
     "kick": KitElement(22, "Kick", True),
 }
 
-# The bindings the game's default map must give the kit: element id to the
+# The bindings the game's drum map must give the kit: element id to the
 # game action's id and name. The action ids are the game's action table
 # (q4_out.json, "actions"); the agent sends each binding's action id, and the
 # check compares those. The names are for the reply only.
@@ -179,11 +184,13 @@ def parse_items(items: Union[str, Sequence[str]]) -> List[str]:
 
 
 def setup_message(player: Any) -> dict:
-    """The setup message, handing the kit to `player`. The name goes to the
-    agent as given: the agent knows the game's players and refuses a name
-    none of them has."""
+    """The setup message, handing the kit to `player` with the map at
+    KIT_MAP_CATEGORY_ID and KIT_MAP_LAYOUT_ID. The name goes to the agent as
+    given: the agent knows the game's players and refuses a name none of
+    them has."""
     return {"type": "setup", "tag": KIT_TAG, "definition_id": KIT_DEFINITION_ID,
-            "player": player}
+            "player": player, "category_id": KIT_MAP_CATEGORY_ID,
+            "layout_id": KIT_MAP_LAYOUT_ID}
 
 
 def given_player_line(player: Any) -> str:
@@ -280,6 +287,24 @@ def watch_lines(reply: dict) -> List[str]:
     lines.extend(f"  at {r.get('ms')} ms, frame {r.get('frame')}: {r.get('who')} "
                  "GetAnyButton true" for r in reads)
     return lines
+
+
+def map_problems(maps: Any) -> List[str]:
+    """Why the setup reply's maps do not hold exactly one enabled map at
+    KIT_MAP_CATEGORY_ID and KIT_MAP_LAYOUT_ID: a line naming the ids, then
+    one line per map that came back. Empty when they do."""
+    want = (f"expected one enabled map at category {KIT_MAP_CATEGORY_ID}, "
+            f"layout {KIT_MAP_LAYOUT_ID}")
+    if not isinstance(maps, list) or not maps:
+        return [f"{want}; the setup reply holds no map for the kit"]
+    hits = [m for m in maps if m.get("enabled") is True
+            and m.get("category_id") == KIT_MAP_CATEGORY_ID
+            and m.get("layout_id") == KIT_MAP_LAYOUT_ID]
+    if len(hits) == 1:
+        return []
+    return [f"{want}; the setup reply holds {len(hits)} such maps among {len(maps)}:"] + [
+        f"  map: category {m.get('category_id')}, layout {m.get('layout_id')}, "
+        f"{'enabled' if m.get('enabled') else 'disabled'}" for m in maps]
 
 
 def binding_problems(maps: Any) -> List[str]:
@@ -446,9 +471,11 @@ class KitTools:
     def ch_kit_setup(self, player: Optional[str] = None) -> str:
         """Check the attach and settings.ini, take the backup, attach the kit
         agent, send setup, check with devices_problem that the Rewired
-        devices read off, and check the bindings it read back against
-        KIT_BINDINGS. A setup that fails, leaves a device on or reads other
-        bindings is torn down again, so nothing is left half done.
+        devices read off, check with map_problems that the map it read back
+        is the one setup_message names, and check that map's bindings against
+        KIT_BINDINGS. A setup that fails, leaves a device on, reads another
+        map or reads other bindings is torn down again, so nothing is left
+        half done.
 
         `player` names the Rewired player the kit is handed to; None hands
         it to KIT_PLAYER. A given name is sent as is, and the reply's first
@@ -509,6 +536,13 @@ class KitTools:
             devices = devices_problem(reply)
             if devices is not None:
                 lines.append(devices)
+                lines.extend(self._teardown_and_detach())
+                return self._reply(lines)
+            map_wrong = map_problems(reply.get("maps"))
+            if map_wrong:
+                lines.append(f"refused: the kit's map is not the one at category "
+                             f"{KIT_MAP_CATEGORY_ID}, layout {KIT_MAP_LAYOUT_ID}:")
+                lines.extend(f"  {p}" for p in map_wrong)
                 lines.extend(self._teardown_and_detach())
                 return self._reply(lines)
             problems = binding_problems(reply.get("maps"))
