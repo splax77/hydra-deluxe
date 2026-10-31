@@ -48,6 +48,15 @@ class DecodeHelpersTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             process.decode_double(b"\x00\x00\x00\x00")
 
+    def test_decode_f32_known_pattern(self):
+        # 100.0 as a little-endian IEEE float is 00 00 c8 42.
+        self.assertEqual(process.decode_f32(bytes([0x00, 0x00, 0xC8, 0x42])), 100.0)
+        self.assertNotEqual(process.decode_f32(bytes([0x42, 0xC8, 0x00, 0x00])), 100.0)
+
+    def test_decode_f32_wrong_length(self):
+        with self.assertRaises(ValueError):
+            process.decode_f32(bytes(8))
+
     def test_decode_u32_known_pattern(self):
         self.assertEqual(process.decode_u32(b"\x00\x10\x00\x00"), 0x1000)
         self.assertEqual(process.decode_u32(b"\xff\xff\xff\xff"), 0xFFFFFFFF)
