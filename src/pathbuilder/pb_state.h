@@ -65,6 +65,13 @@ std::unique_ptr<OpenChart> load_open_chart(const std::string& notespath,
                                            const app::Settings& settings,
                                            const std::atomic<bool>* cancel = nullptr);
 
+// The window's title line for an open chart, as the mockup's title line
+// reads (docs/superpowers/specs/2026-10-30-path-builder-mockup/
+// mockup_template.html): the song's name, a dash and its artist, each as
+// display_title and display_artist show them. A chart with no usable name
+// (display_title's kUnknownTitle) shows its file path instead.
+std::string chart_title_line(const OpenChart& chart);
+
 // load_open_chart on a worker thread. Its message() and error() are the plain
 // sentence and details line of a failed open (app::plain_error and
 // app::plain_error_detail, through ResultJobBase).

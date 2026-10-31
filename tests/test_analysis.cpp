@@ -1107,6 +1107,58 @@ TEST_CASE("discover_charts reads the album from song.ini, a .sng and an .srb, tr
                                                                {"Name", "Test Album"}});
 }
 
+// The Path Builder reads one chart's names through read_chart_meta; it must
+// read what the scan reads for each of the three kinds of chart.
+TEST_CASE("read_chart_meta reads the names the scan reads from song.ini, a .sng and an .srb") {
+    namespace fs = std::filesystem;
+    const std::string chart = corpus::first_chart_with_suffix(".chart");
+    REQUIRE(!chart.empty());
+    const std::vector<uint8_t> notes = hydra::read_file_bytes(chart);
+    const fs::path root = hydra::os_path(testtemp::temp_dir("read_chart_meta"));
+    fs::remove_all(root);
+
+    fs::create_directories(root / "ini");
+    fs::copy_file(fs::u8path(chart), root / "ini" / "notes.chart");
+    {
+        std::ofstream ini(root / "ini" / "song.ini", std::ios::binary);
+        ini << "[song]\nname = Ini Song\nartist = Ini Artist\ncharter = Ini Charter\n"
+               "album = Ini Album\nsong_length = 120000\n";
+    }
+    const auto write_file = [&](const char* name, const std::vector<uint8_t>& bytes) {
+        std::ofstream f(root / name, std::ios::binary);
+        f.write(reinterpret_cast<const char*>(bytes.data()),
+                static_cast<std::streamsize>(bytes.size()));
+    };
+    write_file("named.sng", testsng::make_sng({{"name", "Sng Song"},
+                                               {"artist", "Sng Artist"},
+                                               {"charter", "Sng Charter"},
+                                               {"album", "Sng Album"}},
+                                              {{"notes.chart", notes}}));
+    write_file("bundle.srb",
+               testsrb::make_srb(testsrb::make_metadata_with_length("notes.chart", 196905),
+                                 notes));
+
+    auto [items, errors] = discover_charts({root.u8string()});
+    CHECK(errors.empty());
+    REQUIRE(items.size() == 3);
+    std::vector<std::string> titles;
+    for (const ScanItem& it : items) {
+        CAPTURE(it.notespath);
+        const hydra::app::ChartMeta meta = hydra::app::read_chart_meta(it.notespath);
+        CHECK(meta.title == it.title);
+        CHECK(meta.artist == it.artist);
+        CHECK(meta.charter == it.charter);
+        CHECK(meta.album == it.album);
+        REQUIRE(it.timing.has_value());
+        CHECK(meta.timing == *it.timing);
+        titles.push_back(meta.title);
+    }
+    fs::remove_all(root);
+    std::sort(titles.begin(), titles.end());
+    // srb_util.h's metadata block names its song "Name".
+    CHECK(titles == std::vector<std::string>{"Ini Song", "Name", "Sng Song"});
+}
+
 namespace {
 
 // This process's scratch folder for one scan fixture (testtemp::temp_dir).

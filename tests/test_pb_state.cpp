@@ -32,6 +32,10 @@ TEST_CASE("pb state: a corpus chart opens with its record and its graph") {
     CHECK(c->graph != nullptr);
     CHECK_FALSE(c->entry.md5.empty());
     CHECK(c->entry.notespath == corpus::burnout_notes());
+    // The song.ini's name and artist, and the title line they make. From one run.
+    CHECK(c->entry.title == "Burnout");
+    CHECK(c->entry.artist == "Green Day");
+    CHECK(hydra::pathbuilder::chart_title_line(*c) == "Burnout — Green Day");
     // The player's path starts empty, with nothing to undo.
     CHECK(s.history().current().windows.empty());
     CHECK_FALSE(s.history().can_undo());
@@ -69,6 +73,9 @@ TEST_CASE("pb state: a chart with no Star Power phrase opens and says there is n
     REQUIRE(s.error().empty());
     REQUIRE(s.chart() != nullptr);
     CHECK_FALSE(s.chart()->has_star_power());
+    // No song.ini, so no name: the title line is the file path.
+    CHECK(s.chart()->entry.title.empty());
+    CHECK(hydra::pathbuilder::chart_title_line(*s.chart()) == notes);
     CHECK(std::string(hydra::pathbuilder::kNothingToBuildText) ==
           "This chart has no Star Power phrases, so there is no path to build.");
 }

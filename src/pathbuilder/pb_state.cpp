@@ -30,8 +30,19 @@ std::unique_ptr<OpenChart> load_open_chart(const std::string& notespath,
 
     c.entry.notespath = notespath;
     c.entry.md5 = app::hash_chart_file(notespath);
-    c.entry.timing = app::chart_timing_meta(std::nullopt, notespath);
+    // One read of the chart's metadata for its names and its timing, as the
+    // file states them; chart_title_line decides what the screen shows.
+    app::ChartMeta meta = app::read_chart_meta(notespath);
+    c.entry.title = std::move(meta.title);
+    c.entry.artist = std::move(meta.artist);
+    c.entry.timing = meta.timing;
     return chart;
+}
+
+std::string chart_title_line(const OpenChart& chart) {
+    const std::string title = display_title(chart.entry.title);
+    if (title == kUnknownTitle) return chart.chart_path;
+    return title + " — " + display_artist(chart.entry.artist);
 }
 
 OpenJob::OpenJob(std::string notespath, app::Settings settings)

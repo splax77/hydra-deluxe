@@ -47,6 +47,10 @@ void test_open_starts_empty(ImGuiTestContext* ctx) {
     IM_CHECK_RETV(h.app->state.chart() != nullptr, );
     IM_CHECK(!h.app->state.history().current().path.has_value());
     IM_CHECK(h.app->shown_path() == &*h.app->state.chart()->empty_path);
+    // The title line is the song.ini's name and artist, not the file path.
+    // From one run.
+    IM_CHECK(on_screen(h, "Burnout — Green Day"));
+    IM_CHECK(!on_screen(h, h.chart_arg));
     // The intro is drawn with the star inside it, so its two sides are on
     // screen and the joined sentence is not.
     const std::string intro = hydra::pathbuilder::intro_text();
@@ -100,6 +104,8 @@ void test_no_star_power(ImGuiTestContext* ctx) {
     ctx->Yield(2);
     IM_CHECK(h.app->state.chart() != nullptr);
     IM_CHECK(on_screen(h, hydra::pathbuilder::kNothingToBuildText));
+    // No song.ini, so no name: the title line is the file path.
+    IM_CHECK(on_screen(h, notes));
 }
 
 // A chart that cannot be read shows the plain sentence for it and its details

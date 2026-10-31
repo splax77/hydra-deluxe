@@ -332,7 +332,7 @@ bool PbApp::open_preview(const OpenChart& chart, const Path* shown) {
 void PbApp::draw_body(const OpenChart& chart) {
     {
         ui::ScopedFont title(ui::TextRole::Title);
-        ImGui::TextWrapped("%s", chart.chart_path.c_str());
+        ImGui::TextWrapped("%s", chart_title_line(chart).c_str());
     }
     ImGui::TextDisabled("%s", app::chartmode_key(chart.settings.reading()).c_str());
 

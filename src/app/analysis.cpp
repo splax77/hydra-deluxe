@@ -122,18 +122,6 @@ std::string stream_md5(BCRYPT_ALG_HANDLE alg, const std::string& path) {
     return hash.hex();
 }
 
-// What the scan reads from one chart's metadata. The names are empty when
-// missing or blank; discover_charts applies the one fallback for each
-// (title_or_unknown, artist_or_unknown, charter_or_unknown). The album has
-// no fallback: blank stays blank.
-struct ChartMeta {
-    std::string title;
-    std::string artist;
-    std::string charter;
-    std::string album;
-    store::ChartTimingMeta timing;
-};
-
 // ---- song.ini metadata, mirroring ScanItem.get_metadata_ini --------------
 //
 // The name, artist, charter, album, song_length and delay keys, read through
@@ -183,7 +171,8 @@ ChartMeta parse_sng_metadata(const std::vector<uint8_t>& buf) {
 // Clone Hero's bundled songs (see parse/srb.h for the reverse-engineered
 // container layout). srb_read_metadata reads the metadata block; the scan
 // reads it once for the song's id and its names (song_id_read), and
-// read_chart_timing_meta for the stated length. A .srb states no delay.
+// read_chart_meta for one chart's names and stated length. A .srb states no
+// delay.
 
 ChartMeta srb_chart_meta(const SrbMetadataRead& read) {
     ChartMeta out;
@@ -198,7 +187,7 @@ ChartMeta srb_chart_meta(const SrbMetadataRead& read) {
     return out;
 }
 
-// For read_chart_timing_meta: any parse failure leaves the fields empty,
+// For read_chart_meta: any parse failure leaves the fields empty,
 // matching the .sng path.
 ChartMeta parse_srb_metadata(const ByteSource& src) {
     try {
@@ -428,16 +417,19 @@ store::ChartLibraryCache load_scan_cache(store::RecordStore& store) {
     }
 }
 
-store::ChartTimingMeta read_chart_timing_meta(const std::string& notespath) {
+ChartMeta read_chart_meta(const std::string& notespath) {
     switch (chart_kind_of(notespath)) {
-        case ChartKind::Sng:
-            return parse_sng_metadata(sng_read_head(file_byte_source(notespath))).timing;
-        case ChartKind::Srb: return parse_srb_metadata(file_byte_source(notespath)).timing;
+        case ChartKind::Sng: return parse_sng_metadata(sng_read_head(file_byte_source(notespath)));
+        case ChartKind::Srb: return parse_srb_metadata(file_byte_source(notespath));
         case ChartKind::Folder: break;
     }
     const std::string ini = find_song_ini(parent_folder(notespath));
     if (ini.empty()) return {};
-    return read_metadata_ini(ini).timing;
+    return read_metadata_ini(ini);
+}
+
+store::ChartTimingMeta read_chart_timing_meta(const std::string& notespath) {
+    return read_chart_meta(notespath).timing;
 }
 
 store::ChartTimingMeta chart_timing_meta(const std::optional<store::ChartTimingMeta>& scanned,
