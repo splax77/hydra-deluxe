@@ -592,9 +592,16 @@ TEST_CASE("corpus: squeeze-ins at exactly 0 and what they change") {
     int saved_rows = 0;
     std::vector<std::string> shown_differs;  // shown_timing(saved) != difficulty()
     int saved_negative = 0;         // a figure below 0: saved, shown as none
-    int fill_candidates = 0;        // sqin_count > 0 and difficulty() empty
-    // The all-0 list, measured before the squeeze-in change (8383eaa7) and
-    // pinned so a change to it shows.
+    // sqin_count > 0 and difficulty() empty: the rows a fresh analysis leaves
+    // with nothing to time (every squeeze-in inside Star Power). This is not
+    // the count the refill's query takes from an old library. That query
+    // (hardest_ms IS NULL AND sqin_count > 0) also takes the old rows whose
+    // only timing is a squeeze-in at exactly 0.0, which were empty then and
+    // show 0.0 now; counting those needs the old rule, which no longer exists
+    // in the code, so this number is lower than what the query would take.
+    int still_empty_with_sqin = 0;
+    // The all-0 list, as it was on the code before the squeeze-in at 0.0 became
+    // a timing; pinned so a change to it shows.
     int allzero_charts = 0, allzero_paths = 0;
 
     for (const std::string& chart : corpus::chart_paths()) {
@@ -634,11 +641,15 @@ TEST_CASE("corpus: squeeze-ins at exactly 0 and what they change") {
         for (size_t i = 0; i < row.paths.size(); ++i) {
             const store::PathRow& saved = row.paths[i];
             const Path& path = *ranked[i];
+            // record_of keeps all_paths() in order; a row paired with another
+            // path would make the comparison below meaningless.
+            REQUIRE(saved.path == path.pathstring());
+            REQUIRE(saved.score == path.totalscore());
             ++saved_rows;
             if (shown_timing(saved.hardest_ms) != path.difficulty())
                 shown_differs.push_back(chart + " " + saved.path);
             if (saved.hardest_ms && *saved.hardest_ms < 0.0) ++saved_negative;
-            if (saved.sqin_count > 0 && !path.difficulty()) ++fill_candidates;
+            if (saved.sqin_count > 0 && !path.difficulty()) ++still_empty_with_sqin;
         }
     }
 
@@ -652,7 +663,7 @@ TEST_CASE("corpus: squeeze-ins at exactly 0 and what they change") {
     // the engine's figure changed nothing on screen.
     CHECK(shown_differs.size() == 0);
     CHECK(saved_negative == 86);
-    CHECK(fill_candidates == 75);
+    CHECK(still_empty_with_sqin == 75);
     CHECK(allzero_charts == 68);
     CHECK(allzero_paths == 69);
 }
