@@ -875,6 +875,63 @@ TEST_CASE("early_fill_needs_timing: zero slack needs timing, time to spare does 
     CHECK_FALSE(early_fill_needs_timing(0.001));
 }
 
+TEST_CASE("shown_timing: a saved figure shows when it needs hitting") {
+    CHECK_FALSE(shown_timing(std::nullopt).has_value());
+    CHECK_FALSE(shown_timing(-0.001).has_value());
+    CHECK_FALSE(shown_timing(-315.8).has_value());
+    CHECK(shown_timing(0.0) == std::optional<double>(0.0));
+    CHECK(shown_timing(163.0) == std::optional<double>(163.0));
+}
+
+TEST_CASE("engine_hardest_ms: the largest figure, sign included") {
+    auto plain = [] {
+        Activation a;
+        test::set_skips(a, 0);
+        a.e_offset = 300.0;  // not e-critical
+        return a;
+    };
+    auto path_of = [](std::vector<Activation> acts) {
+        Path p;
+        p.activations = std::move(acts);
+        return p;
+    };
+
+    Activation inside_in = plain();
+    inside_in.sqinouts = {SPSqueeze{SqueezeKind::SqIn, -315.8}};
+    Activation late_out = plain();
+    late_out.sqinouts = {SPSqueeze{SqueezeKind::SqOut, -130.4}};  // needs 130.4 ms
+    Activation on_end_in = plain();
+    on_end_in.sqinouts = {SPSqueeze{SqueezeKind::SqIn, 0.0}};
+    Activation slack_fill = plain();
+    slack_fill.e_offset = 20.0;
+    REQUIRE(slack_fill.is_E0());
+    Activation optional_fill = plain();
+    test::set_skips(optional_fill, 1);
+    test::set_sp_meter(optional_fill, 2);
+    optional_fill.e_offset = -30.0;
+    REQUIRE(optional_fill.is_e_critical());
+    REQUIRE_FALSE(optional_fill.is_E0());
+
+    const Path inside_only = path_of({inside_in});
+    const Path with_out = path_of({inside_in, late_out});
+    const Path at_zero = path_of({on_end_in});
+    const Path nothing = path_of({plain()});
+    const Path slack_only = path_of({slack_fill});
+    const Path optional_only = path_of({optional_fill});
+
+    CHECK(engine_hardest_ms(inside_only) == std::optional<double>(-315.8));
+    CHECK(engine_hardest_ms(with_out) == std::optional<double>(130.4));
+    CHECK(engine_hardest_ms(at_zero) == std::optional<double>(0.0));
+    CHECK_FALSE(engine_hardest_ms(nothing).has_value());
+    CHECK(engine_hardest_ms(slack_only) == std::optional<double>(-20.0));
+    CHECK_FALSE(engine_hardest_ms(optional_only).has_value());
+
+    // Through shown_timing, the saved figure shows what Path::difficulty()
+    // shows on the live path, so a fresh row reads as it did.
+    for (const Path* p : {&inside_only, &with_out, &at_zero, &nothing, &slack_only, &optional_only})
+        CHECK(shown_timing(engine_hardest_ms(*p)) == p->difficulty());
+}
+
 TEST_CASE("difficulty names: one list, one spelling") {
     // The dropdown indexes this list by the enum's value, so order matters.
     REQUIRE(std::size(kAllDifficulties) == 4);

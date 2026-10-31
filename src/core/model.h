@@ -322,6 +322,18 @@ inline double early_fill_difficulty(double e_offset) { return -e_offset + 0.0; }
 // (D301). early_fill_needs_timing and SPSqueeze::needs_no_timing ask it.
 inline bool timing_needs_hitting(double difficulty_ms) { return difficulty_ms >= 0.0; }
 
+// The timing a screen shows for a saved figure (engine_hardest_ms, kept as
+// the library saved it): the figure when it needs hitting
+// (timing_needs_hitting), else none. This is the one place a stored figure
+// becomes a shown timing; Path::difficulty() is the same rule on a live
+// path. The library saves the engine's own figure and applies this when it
+// shows it, so a change to this rule is a display change, not a re-analysis
+// (the user's ruling of 2026-10-31).
+inline std::optional<double> shown_timing(std::optional<double> saved) {
+    if (saved && timing_needs_hitting(*saved)) return saved;
+    return std::nullopt;
+}
+
 // Does an early fill need timing (timing_needs_hitting)? A fill with time to
 // spare spawns however the player hits the activation. Activation::hardest
 // and the engine's limit check ask it.
@@ -864,6 +876,24 @@ struct Path {
     // of dividing by zero.
     double avg_mult() const;
 };
+
+// The engine's own hardest figure for a path, sign included: the largest of
+// every squeeze's difficulty() and every E0 fill's e_difficulty() over the
+// activations the path walks, none when it has neither. It does not ask
+// whether a figure needs hitting (timing_needs_hitting), so the library saves
+// it whole and shown_timing applies that rule when the figure is shown. The store's saved
+// summary and the replay that fills old rows both call it.
+inline std::optional<double> engine_hardest_ms(const Path& path) {
+    std::optional<double> best;
+    auto take = [&best](double ms) {
+        if (!best || ms > *best) best = ms;
+    };
+    for (const Activation& act : path.walk_activations()) {
+        for (const SPSqueeze& sq : act.sqinouts) take(sq.difficulty());
+        if (const std::optional<double> e = act.e_difficulty()) take(*e);
+    }
+    return best;
+}
 
 // Which path this is, as a string. It names the path by its score and, for
 // every activation the path walks (walk_activations, the variant tail

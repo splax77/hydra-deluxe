@@ -62,6 +62,8 @@ struct PathSummary {
     std::optional<int64_t> score;
     std::optional<int> actcount;
     std::optional<int> maxskip;
+    // The engine's figure, sign included (path_row_of); shown_timing applies
+    // the needs-timing rule.
     std::optional<double> hardest_ms;
     std::optional<double> avgmult;
     std::optional<int> notecount;
@@ -191,7 +193,9 @@ struct PathRow {
     int64_t score = 0;
     int actcount = 0;
     int maxskip = 0;
-    std::optional<double> hardest_ms;     // Path::difficulty()
+    // The engine's figure, sign included (path_row_of); shown_timing applies
+    // the needs-timing rule.
+    std::optional<double> hardest_ms;
     std::optional<double> hardest_efill;  // the path's hardest early fill
     double avgmult = 0.0;  // unrounded; format_avg_mult rounds it for display
     int sqin_count = 0;

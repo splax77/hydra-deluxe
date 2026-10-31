@@ -581,7 +581,9 @@ PathRow path_row_of(const Path& path, int rank) {
         if (efill && (!row.hardest_efill || *efill > *row.hardest_efill))
             row.hardest_efill = efill;
     }
-    row.hardest_ms = path.difficulty();  // the path's own hardest squeeze or required fill
+    // The engine's own figure, sign included; shown_timing turns it into what
+    // a screen shows.
+    row.hardest_ms = engine_hardest_ms(path);
     row.avgmult = path.avg_mult();
     return row;
 }
