@@ -2,7 +2,7 @@
 
 Class `#8288`. Listing: `advance_events_20F6A50.asm`, lines 1 to 243 (chdis printed on into the next function; lines after 243 were cut). Decompiled lines: `ghidra_decompile_all.txt` 53581 to 53712. Signature from script.json: `(this, double time, bool = True)`.
 
-This is not a score adder. The decompile shows no write to the score (+0x94) or to any score bucket. `docs/audit/ch-evidence.md` question 222 (line 177) and il2cpp-fields.md line 26 group it with the adders; the code does not support that.
+This is not a score adder. The decompile shows no write to the score (+0x94) or to any score bucket. `docs/audit/ch-evidence.md` question 222 (line 177 at commit 5fbe71ae) and il2cpp-fields.md line 26 group it with the adders; the code does not support that.
 
 In plain words: it moves the engine's event clock forward to `time`. For every kind of timed event whose time falls between the old clock (+0x100) and the new time, it calls the same virtual method (vtable offset 0x238, `call qword ptr [rax + 0x238]`) with that event's time. The kinds are the note windows, the next items in the engine's lists, and, last of all, the Star Power end.
 

@@ -460,10 +460,10 @@ Found: 2026-10-03, D25.
 
 ### TM-45 A missed lane note is granted after a recent lane press
 
-Rule: A missed lane note is granted a hit when fewer than 2 grants (single lane) or 4 (double lane) have happened since the last lane press, or when a lane pad was pressed in the last 0.075 s of engine time. The grant lands at the window's end, to within a rounding step, so lanes open no new squeeze timing.
+Rule: A missed lane note is granted a hit when fewer than 2 grants (single lane) or 4 (double lane) have happened since the last lane press, or when a lane pad was pressed in the last 0.075 s of engine time. The grant lands at the window's end, to within a rounding step, so lanes open no new squeeze timing. Every press of a note that carries a lane flag zeroes both grant counters (at `+0x2E8` and `+0x2EC`) with one 8-byte write at 0x20DECF3 and stores the press time at `+0x2D0`, so during a roll a few dropped notes are still credited.
 Label: Proven in the game's code
-Evidence: committed listing `docs/audit/drum-lanes/f20dcad0.asm` lines 22 to 27 (the grant check), 57 (the grant counter increment) and 69 to 73 (clock minus the last lane press against 0.075) (wave 1 scout H3, H3-27). The limits 2 and 4 themselves were not opened by the scout.
-Game code (6142): RVA `0x20DCAD0`, `docs/audit/drum-lanes/f20dcad0.asm` lines 22 to 73.
+Evidence: committed listing `docs/audit/drum-lanes/f20dcad0.asm` lines 22 to 27 (the grant check), 57 (the grant counter increment) and 69 to 73 (clock minus the last lane press against 0.075) (wave 1 scout H3, H3-27). The limits 2 and 4 themselves were not opened by the scout. The reset is `docs/audit/drum-lanes/play/f20deaa0.asm` lines 131 to 138: the test for the lane bits 0xC000 on the note (line 131), the 8-byte store of a zero register over `+0x2E8` (line 133, with the register zeroed at line 23) and the press-time store (line 138); the same three steps repeat at lines 179 to 186 (0x20DEDC3 to 0x20DEDF4). Read from the listing by the reviewer of this page's move out of the drum-lanes findings; no run has shown it.
+Game code (6142): RVA `0x20DCAD0`, `docs/audit/drum-lanes/f20dcad0.asm` lines 22 to 73; the press handler RVA `0x20DEAA0`, `docs/audit/drum-lanes/play/f20deaa0.asm` lines 131 to 138.
 Hydra: no owner: a grep of `src/` for `0.075`, `lane_press`, `press_window` and `grant` finds nothing; Hydra's paths assume every note is hit.
 Ruling: none needed: no Hydra rule depends on it
 Found: drum-lanes FINDINGS-play-time.md.

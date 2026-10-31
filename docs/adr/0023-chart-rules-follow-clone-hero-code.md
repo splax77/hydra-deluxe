@@ -88,7 +88,11 @@ Rules that were already Clone Hero's and are now written down:
 
 ## Not verified against Clone Hero
 
-The fill rules this section listed as unchecked (decision D26), and the two it recorded as settled, now live in docs/clone-hero/04-fills.md (FL-04, FL-14 to FL-16, FL-20 and FL-26 to FL-28); the ones still open, and the live checks that could settle them, are in docs/clone-hero/questions.md and docs/clone-hero/live-checks.md.
+The fill rules this section listed as unchecked (decision D26), and the two it
+recorded as settled, now live in docs/clone-hero/04-fills.md (FL-04, FL-14 to
+FL-16, FL-20 and FL-26 to FL-28). The ones still open, and the live checks that
+could settle them, are in docs/clone-hero/questions.md and
+docs/clone-hero/live-checks.md.
 
 ## Consequences
 

@@ -142,7 +142,7 @@ Found: 2026-10-12, session 28fad19c.
 
 Rule: A generated fill's chord must be within trunc(resolution x 0.5) + 1 ticks of its measure line, on either side, edge included.
 Label: Proven in the game's code
-Evidence: `code/6142/fill_generator_20D2B30.asm` lines 66 and 67 (the resolution times 0.5, decoded in the listing's comment), 70 to 72 (the truncating convert and `inc rax`) and 116 to 126 (a distance over the limit skips, so equal stays) (wave 2 scout R2, R2-17). This settles wave 1 scout H4's Unknown on the 0.5 (H4-12) and its unchecked edge (H4-13).
+Evidence: `code/6142/fill_generator_20D2B30.asm` lines 66 and 67 (the resolution times 0.5, decoded in the listing's comment), 70 to 72 (the truncating convert and `inc rax`) and 116 to 126 (a distance over the limit skips, so equal stays) (wave 2 scout R2, R2-17). This settles wave 1 scout H4's Unknown on the 0.5 (H4-12) and its unchecked edge (H4-13). The 0.5 has no meter term, so the limit is half a quarter note in every meter; no 6/8 or 7/8 run exists for it either.
 Game code (6142): RVA `0x20D2B30`, `code/6142/fill_generator_20D2B30.asm` lines 64 to 126.
 Hydra: `Song::place_fills_ch11` in src/core/song.cpp lines 183, 184 and 210, with the default `fill_max_distance_beats` of 0.5 in src/core/rules.h line 45.
 Ruling: D234: chose "Copy Clone Hero (Recommended)" to "Clone Hero can place a generated fill on a chord just before its measure line ...".

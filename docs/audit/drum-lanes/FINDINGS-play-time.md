@@ -16,7 +16,7 @@ The lane bits on a note's flag word, and who sets them, now live in docs/clone-h
 
 The builder only flags notes whose pad is in the lane's pad mask (the test at 0x20D168F). A note on an unlit pad inside the lane gets no flag and is an ordinary note.
 
-Which code reads those bits, and the limit of the scan that found it (`play/flagscan_dword.py`, `play/flagscan_byte.py`), is in docs/clone-hero/02-note-list.md (NL-56). The scan covered the whole code section: only the lane builder and the drum engine (0x20DC000 to 0x20DF700) use the bits, and the base hit routine (0x20F63F0), the score function (0x20DEEC0), the Star Power code and the star-base code never read them.
+I scanned the whole code section for instructions that test or set those bits on a note's flag word. Only the lane builder and the drum engine (0x20DC000 to 0x20DF700) use them. The base hit routine (0x20F63F0), the score function (0x20DEEC0), the Star Power code and the star-base code never read them. The scan sees instructions with the bits written into them (`play/flagscan_dword.py`, `play/flagscan_byte.py`). It cannot see a flag word loaded into a register and masked later, so "only these" is strong but not proven. The rule as the reference states it is docs/clone-hero/02-note-list.md (NL-56).
 
 ## What the engine keeps for a lane
 
@@ -39,7 +39,7 @@ The drum engine overrides that slot at 0x20DCAD0 (`f20dcad0.asm`). A normal miss
 - **The grant budget is not used up.** This rule now lives in docs/clone-hero/03-timing.md (TM-45).
 - **A lane pad was pressed a moment ago.** This rule now lives in docs/clone-hero/03-timing.md (TM-45). This path does not spend the budget.
 
-The grant limits and the 0.075 s test are in docs/clone-hero/03-timing.md (TM-45). Every press on a lane pad zeroes both counters at +0x2E8 and +0x2EC with one 8-byte write (0x20DECF3), so during a roll you can drop a couple of notes and the game still credits them. TM-45 does not hold that reset.
+The grant limits and the 0.075 s test are in docs/clone-hero/03-timing.md (TM-45). Every press on a lane pad zeroes both counters at +0x2E8 and +0x2EC with one 8-byte write (0x20DECF3), so during a roll you can drop a couple of notes and the game still credits them. TM-45 holds that reset too.
 
 A missed note on a double lane that is on a pad not yet in the mask joins the mask and is granted as well (0x20DCB3F to 0x20DCBF1). A real miss on a non-kick note that fails both tests clears the lane (0x20DCC46 to 0x20DCC6A).
 
