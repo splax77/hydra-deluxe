@@ -36,7 +36,7 @@ Write every hash in full, all 40 characters. Never abbreviate one: a short hash 
 
 Name no scratch path. A scratch folder is cleaned up and is not in the repo, so the next session cannot check a claim that points there. Put what matters into the handoff itself, or into a committed file it names. (The docs test's scratch-path check skips `docs/handoffs/`, so this rule holds by instruction there, not by a test.)
 
-The checker does not judge the Claim column, nor the `test`, `ruling` and `state` rows. The session reads those against the code and runs the tests itself.
+The checker does not judge the Claim column, and it leaves the `test`, `ruling` and `state` rows to the session (it marks them `manual`). The session reads those against the code and runs the tests itself.
 
 ## The handoff checker
 
@@ -44,20 +44,24 @@ The checker is a script in Hydra's `tools/` folder. The command is:
 
 `py -I tools/check_handoff.py <handoff.md> [--repo <root>] [--since <YYYY-MM-DD>]`
 
-The repo defaults to the one that holds the script. The date defaults to the date in the handoff's file name.
+The repo defaults to the one that holds the script. Pass `--repo <root>` to check commits and paths in another repo, such as the hooks repo. The checker has two modes, chosen by whether the file has a `## Claims` heading. `--since` matters only in scrape mode.
 
-It reads every token in backticks, plus bare hex words and bare paths, and sorts each by its shape. A hex word is a commit. A branch name git knows is a branch. A token with a path separator or a known extension is a path. A token shaped like `<name>()` or `<Class>::<method>` is a function. A token of none of these shapes is ignored, so prose in backticks never fails the check. A line that names the hooks repo's root folder is also checked in that repo.
+**Table mode** is for a handoff with a `## Claims` table, which every new handoff has. The checker reads only the rows under that heading, and it takes each row's kind from the Kind column. It covers all seven kinds:
 
-It has two modes, chosen by whether the file has a `## Claims` heading.
+- A `commit` row is `ok`, `missing` (git does not know the hash, or it is not the full 40 characters), `not-on-main` (the commit is not on `main`) or `not-pushed` (it is on `main` but not on `origin/main`).
+- A `branch` row is `ok` when git knows the branch, else `missing`.
+- A `path` row is `ok` when the file exists, else `missing`.
+- A `function` row is `ok` when `git grep` finds the name in the tree, else `missing`.
+- A `test`, `ruling` or `state` row is `manual`: the checker cannot judge it, so the session does.
 
-**Table mode** is for a handoff with a `## Claims` table, which every new handoff has. The checker reads the table row by row. Each row prints one status word: `ok`, `missing`, `not-on-main`, `not-pushed` or `manual`. The run exits 0 only when every `commit` and `path` row is `ok`.
+Each row prints one line: its status word, then its kind, value and claim. The last line is one summary line. The run exits 0 only when every row the checker judges (every row but `manual`) is `ok`; it exits 1 otherwise and 2 on a bad argument. A `not-on-main` or `not-pushed` commit is not an error in the handoff when its Claim says so, but the run still exits 1, so read the status words and not only the exit code.
 
-**Scrape mode** is for an older handoff with no table. The checker scrapes the whole file for tokens, as described above. It prints three sections, `EXISTS`, `MISSING` and `CHANGED SINCE <date>`, then one summary line: `checked N claims: E exist, M missing, C changed since <date>`. It exits 0 when nothing is missing, 1 when anything is, and 2 on a bad argument.
+**Scrape mode** is for an older handoff with no table. The date defaults to the date in the handoff's file name; `--since` overrides it. The checker reads every token in backticks, plus bare hex words and bare paths, and sorts each by its shape. A hex word is a commit. A branch name git knows is a branch. A token with a path separator or a known extension is a path. A token shaped like `<name>()` or `<Class>::<method>` is a function. A token of none of these shapes is ignored, so prose in backticks never fails the check. A line that names the hooks repo's root folder is also checked in that repo. The checker prints three sections, `EXISTS`, `MISSING` and `CHANGED SINCE <date>`, then one summary line: `checked N claims: E exist, M missing, C changed since <date>`. It exits 0 when nothing is missing, 1 when anything is, and 2 on a bad argument.
 
 The checker proves that a name exists. Whether the handoff's sentence about that name is true is still the session's job, by reading the code.
 
 ## Who runs the checker, and when
 
-The `/handoff` command runs it right after writing a handoff, fixes every `missing` row it finds, and pastes the output under `## Checker output`.
+The `/handoff` command runs it right after writing a handoff, fixes every `missing` row it finds, and pastes what it printed under `## Checker output`: in table mode the row lines and the summary line.
 
-The session that continues a handoff runs it again before any work starts, because the repo may have moved since. It reports each `MISSING` or `CHANGED SINCE` line, and each Claims row not marked `ok` or `manual`, before it builds anything. Then it reads every claim against the code, including the rows the checker leaves to it. The preamble's "Continuing from a handoff" paragraph gives an agent the same steps.
+The session that continues a handoff runs it again before any work starts, because the repo may have moved since. It reports each `MISSING` or `CHANGED SINCE` line (scrape mode), and each Claims row not marked `ok` or `manual` (table mode), before it builds anything. Then it reads every claim against the code, including the rows the checker leaves to it. The preamble's "Continuing from a handoff" paragraph gives an agent the same steps.
