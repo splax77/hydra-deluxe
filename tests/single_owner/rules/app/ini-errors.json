@@ -1,0 +1,43 @@
+{
+  "rules": [
+    {
+      "question": "How does an INI loader word a line it refuses (no =, unknown key, bad value)?",
+      "owner": "ini_not_key_value_text, ini_unknown_key_text and ini_bad_value_text in src/app/ini_errors.h",
+      "owner_file": "src/app/ini_errors.h",
+      "owner_symbol": "ini_bad_value_text",
+      "date": "2026-10-30",
+      "decision": "D270 call 4",
+      "added_by": "aoa-a3a-review",
+      "pattern": "is not key = value|unknown key \\\\\"\" \\+|\\\\\" is not \" \\+",
+      "owner_files": ["src/app/ini_errors.h"],
+      "must_match": [
+        "    return path + \": unknown key \\\"\" + key + \"\\\"\";",
+        "    throw RulesFileError(where + \": \\\"\" + text + \"\\\" is not key = value\");",
+        "    throw RulesFileError(path + \": \" + key + \" = \\\"\" + value + \"\\\" is not \" + want);"
+      ],
+      "must_not_match": [
+        "        if (!field) throw RulesFileError(ini_unknown_key_text(where, kv->key));",
+        "    if (!i) bad(path, key, v, kWantWholeNumber);"
+      ],
+      "note": "hydra_rules.ini and hydra_settings.ini once each built these three error lines; both call the helper now, so a third loader that builds them by hand is flagged. Decided by: D270 call 4."
+    },
+    {
+      "question": "Is this text a whole number that fits an int?",
+      "owner": "parse_whole_number in src/app/ini_errors.h",
+      "owner_file": "src/app/ini_errors.h",
+      "owner_symbol": "parse_whole_number",
+      "date": "2026-10-30",
+      "decision": "D270 call 4",
+      "added_by": "aoa-a3a-review",
+      "pattern": "!=\\s*std::trunc\\(",
+      "owner_files": ["src/app/ini_errors.h"],
+      "must_match": [
+        "    if (!d || *d != std::trunc(*d) || *d < std::numeric_limits<int>::min() ||"
+      ],
+      "must_not_match": [
+        "    const std::optional<int> i = parse_whole_number(v);"
+      ],
+      "note": "The rules file, the settings file and hydra_replay's --cap each had their own copy of the test (a finite number with no fraction that fits an int); all three call parse_whole_number now. Decided by: D270 call 4."
+    }
+  ]
+}
