@@ -112,8 +112,15 @@ def online_refusal(state: dict) -> Optional[str]:
     if "error" in menu:
         return (f"the menu read failed ({menu['error']}), so it cannot show the Online "
                 "menu is closed")
-    for name, entry in (menu.get("classes") or {}).items():
-        for i, value in enumerate((entry or {}).get("onlineMenuActive") or []):
+    classes = menu.get("classes")
+    if not isinstance(classes, dict):
+        return "the menu block has no classes, so it cannot show the Online menu is closed"
+    for name, entry in classes.items():
+        reads = (entry or {}).get("onlineMenuActive") or []
+        if not isinstance(reads, list):
+            return (f"{name}'s Online read is {json.dumps(reads)}, not a list, so it cannot "
+                    "show the Online menu is closed")
+        for i, value in enumerate(reads):
             if value is True:
                 return f"the Online menu is on screen ({name} object {i} reads onlineMenuActive true)"
             if value is not None and value is not False:

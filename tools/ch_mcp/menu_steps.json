@@ -26,14 +26,14 @@
       "keys": ["lane:green"],
       "expect": "player_screen_live",
       "unproven": true,
-      "manual": "How to Play: \"Once you select a song, you are then prompted to select your instrument, the difficulty, and apply modifiers.\" Keyboard and Gamepads: \"then use Green to confirm your selection.\"",
-      "guess": "Green on the selected song opens the player screen. Whether a live PlayerSelectionMenu object means that screen is on screen is unproven."
+      "manual": "How to Play: \"Once you select a song, you are then prompted to select your instrument, the difficulty, and apply modifiers.\" Keyboard and Gamepads says \"press Green to select the option\" and \"then use Green to confirm your selection\" in its settings paragraph, not about songs.",
+      "guess": "Green on the selected song opens the player screen, carried over from the settings paragraph; the manual does not say it for songs. Whether a live PlayerSelectionMenu object means that screen is on screen is unproven."
     },
     {
       "name": "ready",
       "keys": ["lane:green"],
       "expect": "game_manager_live",
-      "manual": "Keyboard and Gamepads: \"then use Green to confirm your selection.\"",
+      "manual": "How to Play: \"Once you select a song, you are then prompted to select your instrument, the difficulty, and apply modifiers.\" Neither page names the Ready press.",
       "guess": "The manual does not say what the Ready press is. Green is guessed, with the player screen's default instrument and difficulty."
     },
     {

@@ -227,6 +227,10 @@ class OpenSongTest(MenuToolsCase):
         broken = {"found": False, "menu": {"error": "reading the menus failed: x"}}
         self.assertIn("the menu read failed", MT.online_refusal(broken))
         self.assertIn("no menu block", MT.online_refusal({"found": False}))
+        self.assertIn("no classes", MT.online_refusal({"menu": {"selectedSong": None}}))
+        odd = state()
+        odd["menu"]["classes"]["MainMenu"]["onlineMenuActive"] = True
+        self.assertIn("not a list", MT.online_refusal(odd))
 
     def test_online_open_before_step_3_stops_there_with_the_earlier_keys(self):
         inner = self.screens()
