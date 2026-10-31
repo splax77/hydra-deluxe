@@ -1,6 +1,6 @@
 # plain_drums_20EFEE0.asm (build 6142, RVA `0x20EFEE0`)
 
-Made 2026-10-30 with `tools/ch_mcp/chdis.py` (class `Image`, whole function, 35 lines). The listing starts at the function's first instruction (script.json says `0x20efee0` is a method start: `#8278.ʷʽʶʽˁʸʻʵʲʴʶ`, static, parameters `List<note>` and an `int8`).
+Made 2026-10-30 with `tools/ch_mcp/chdis.py` (class `Image`, whole function, 35 lines). The listing starts at the function's first instruction (script.json says `0x20efee0` is a method start: `#8278.MakePlainDrums`, static, parameters `List<note>` and an `int8`).
 
 Plain words: for every note in the list it clears two flag bits. Nothing is added, removed or moved.
 

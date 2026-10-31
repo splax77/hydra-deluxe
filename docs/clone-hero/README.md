@@ -55,6 +55,10 @@ These counts were taken from the pages on 2026-10-31, by counting their `###` he
 
 Eleven of page 4's blocks describe build 1.0. The questions page holds 24 open questions, and the live-checks page holds 72 checks covering 82 rows.
 
+## Names in obfuscated code
+
+The game scrambles most of its class, field and method names. Where a page or listing note names such a member, the name is our own, chosen from what the code does; `code/names-6142.tsv` and `code/names-4045.tsv` map each one to the dump's name, so you can find it in a listing.
+
 ## Row ids
 
 A block's id is its page's prefix, a dash and two digits, such as `TM-04`. The seven prefixes are CR, NL, TM, FL, SP, SC and IN, in page order. A question's id is `Q-` and two digits.

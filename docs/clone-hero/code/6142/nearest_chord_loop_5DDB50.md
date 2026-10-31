@@ -1,6 +1,6 @@
 # nearest_chord_loop_5DDB50.asm (build 6142, RVA `0x5DDB50`)
 
-Made 2026-10-30 with `tools/ch_mcp/chdis.py` (104 lines). Support listing: the generator `0x20D2B30` calls it (line 103 of that listing). Starts at the method's first instruction (a generic helper on `ʽʹʽʽˁʹʷʺˀʺˁ`, name `ʶʲˁʿʹʵˀʺʲˁʿ<object>`, static: `(List<chord> list, long target, int startIndex, MethodInfo)`, returns an index).
+Made 2026-10-30 with `tools/ch_mcp/chdis.py` (104 lines). Support listing: the generator `0x20D2B30` calls it (line 103 of that listing). Starts at the method's first instruction (a generic helper on `ChordListSearch`, name `NearestChord<object>`, static: `(List<chord> list, long target, int startIndex, MethodInfo)`, returns an index).
 
 Plain words: the same nearest-chord search as `0x5DE030` but with no window and returning an index. A is the first chord strictly after the target, searched forward from `startIndex`. B is the nearest chord at or before the target, searched backward from A (or from `startIndex` when there is no A). If only one exists it wins. If both exist, B wins only when the target is strictly nearer to B than to A, so a tie goes to A, the later chord.
 

@@ -1,6 +1,6 @@
 # fill_to_activation_20CFF60.asm (build 6142, RVA `0x20CFF60`)
 
-Made 2026-10-30 with `tools/ch_mcp/chdis.py` (180 lines). Starts at the method's first instruction (`#8265.ʳʷˁʸʵʾʼʷˀʲˁ`, static: `(List<chord> notes, #8538 chart, #8661 track)`, returns `List<wrapper>`). 0x20D0061 to 0x20D008D (the slop stretch) is inside it: lines 55 to 62.
+Made 2026-10-30 with `tools/ch_mcp/chdis.py` (180 lines). Starts at the method's first instruction (`#8265.PlaceWrittenFills`, static: `(List<chord> notes, #8538 chart, #8661 track)`, returns `List<wrapper>`). 0x20D0061 to 0x20D008D (the slop stretch) is inside it: lines 55 to 62.
 
 Plain words: for every written fill on the track that is not marked "skip", find the chord the fill ends on (using `0x5DE030`), put the activation flag `0x800` on that chord's note, and record a small wrapper object (fill start tick, the chord, an "active" byte). It returns the list of wrappers. The deadline method `0x20DDB70` later clears wrappers and flags that are too close.
 

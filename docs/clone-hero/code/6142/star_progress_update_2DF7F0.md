@@ -1,4 +1,4 @@
-Listing: `star_progress_update_2DF7F0.asm`, build 6142, made 2026-10-30 with `tools/ch_mcp/chdis.py`. Function: `StarProgress` (#1169) method `ʺʽʸʺʾˀʲʾʹʲʻ`, RVA `0x2DF7F0`. It is the per-frame update of the HUD star bar; the argument is the current score. `ScoreManager.Update` (RVA `0x1286B0`) calls it at 0x128837. Four near-copies exist (`0x2DF200`, `0x2DFC20`, `0x2E0150`, `0x2E0540`); this is the only one with a direct caller found, and two of the others start at slot 1.
+Listing: `star_progress_update_2DF7F0.asm`, build 6142, made 2026-10-30 with `tools/ch_mcp/chdis.py`. Function: `StarProgress` (#1169) method `UpdateStarBar`, RVA `0x2DF7F0`. It is the per-frame update of the HUD star bar; the argument is the current score. `ScoreManager.Update` (RVA `0x1286B0`) calls it at 0x128837. Four near-copies exist (`0x2DF200`, `0x2DFC20`, `0x2E0150`, `0x2E0540`); this is the only one with a direct caller found, and two of the others start at slot 1.
 
 Lines 1 to 10: prologue and one-time setup.
 Line 11: if the "needs rebuild" byte at `+0x88` is clear, jump to line 122 (skip the rebuild).

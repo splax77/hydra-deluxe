@@ -1,6 +1,6 @@
 # fold_20F16E0.asm (build 6142, RVA `0x20F16E0`)
 
-Made 2026-10-30 with `tools/ch_mcp/chdis.py` (45 lines). Starts at the method's first instruction (`#8278.ʿʾʲʽʻʹʺʶˀʹʽ`, static, one `List<note>` parameter).
+Made 2026-10-30 with `tools/ch_mcp/chdis.py` (45 lines). Starts at the method's first instruction (`#8278.FoldCymbalsToToms`, static, one `List<note>` parameter).
 
 Plain words: for every note whose "colour" word has any of the three top bits of its low byte set, shift the whole 16-bit word right by 3. The shift moves the cymbal bits down onto the tom bits, so a cymbal becomes the tom of the same lane. Notes with none of those bits are left alone.
 

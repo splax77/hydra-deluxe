@@ -1,6 +1,6 @@
 # fill_generator_20D2B30.asm (build 6142, RVA `0x20D2B30`)
 
-Made 2026-10-30 with `tools/ch_mcp/chdis.py` (195 lines). Starts at the method's first instruction (`#8265.ʸˀʽʸʽʳʳʸʼʾʿ`, static: `(List<chord> notes, #8661 track, #8257 grid)`, returns `List<wrapper>`). 0x20D2D9D (the activation flag write) is line 135.
+Made 2026-10-30 with `tools/ch_mcp/chdis.py` (195 lines). Starts at the method's first instruction (`#8265.GenerateFills`, static: `(List<chord> notes, #8661 track, #8257 grid)`, returns `List<wrapper>`). 0x20D2D9D (the activation flag write) is line 135.
 
 Plain words: when a track has no written fills, walk the measure lines of the grid. For each measure line, look for the chord nearest that line. If that chord is within one half beat plus one tick of the line, put the activation flag on it and record a fill that starts ON the line and ends at the chord. After a fill, jump four lines on; after a miss, step one line.
 

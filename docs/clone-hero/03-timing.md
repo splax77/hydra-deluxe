@@ -294,7 +294,7 @@ Found: 2026-09-25, session 28e6f29d.
 
 Rule: Hydra judges every note at a fixed 85 ms a side, and the badges, Rating words, the report's timing tiers and the early-fill reach all read that one constant.
 Label: Hydra assumes it, never checked
-Evidence: `kHitWindowMs = 85.0` at src/core/model.h line 104; `fill_refuses` at line 316 reads it as the reach; `timing_tiers` and `squeeze_budget_ms` in src/core/squeeze_rating.cpp. Wave 1 scout H3 (H3-12, H3-33) cited the older names `kDefaultHitWindowMs` and `kEarlyFillReachMs`; neither is in `src/` today, and the single `kHitWindowMs` is what D270 item 8 asked for.
+Evidence: `kHitWindowMs = 85.0` at src/core/model.h line 104; `fill_refuses` at line 316 reads it as the reach; `timing_tiers` and `squeeze_budget_ms` in src/core/squeeze_rating.cpp. The single `kHitWindowMs` is what D270 item 8 asked for (wave 1 scout H3, H3-12 and H3-33).
 Game code (6142): see TM-22.
 Hydra: `kHitWindowMs` in src/core/model.h line 104.
 Ruling: D270 item 8: the user asked "why are there two different numbers for hit window? who approved that? did you ever tell me you were using two different numbers?", then "yes it should use one nuimbers eerywhere", and chose "Fixed 85, no setting (Recommended)".

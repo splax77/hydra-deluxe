@@ -1,6 +1,6 @@
 # half_gap_clamp_20F7210 (build 6142, made 2026-10-30 with tools/ch_mcp/chdis.py)
 
-Function: `#8288.ˀʵˁʴʾʶʽʺʼʴʹ(noteA, noteB, double min, double max)`, protected method of the base engine class `#8288` (`dump.cs` line 530311), RVA `0x20F7210`; the first instruction is the function start. Decompiled at `hydra-data\scratch_ms\ghidra_decompile_all.txt` lines 53871 to 53907. It returns half the time gap from noteA to noteB, held between `min` and `max` (seconds). Note time is the `double` at note+0x28. The fifth call argument (the max) is on the stack at [rsp+0x80] inside the function (line 40).
+Function: `#8288.ClampedHalfGap(noteA, noteB, double min, double max)`, protected method of the base engine class `#8288` (`dump.cs` line 530311), RVA `0x20F7210`; the first instruction is the function start. Decompiled at `hydra-data\scratch_ms\ghidra_decompile_all.txt` lines 53871 to 53907. It returns half the time gap from noteA to noteB, held between `min` and `max` (seconds). Note time is the `double` at note+0x28. The fifth call argument (the max) is on the stack at [rsp+0x80] inside the function (line 40).
 
 Lines 1 to 12: prologue; `min` (xmm3) is kept in xmm8; one-time `System.Math` class init.
 

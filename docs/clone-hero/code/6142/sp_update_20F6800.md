@@ -1,6 +1,6 @@
 # Star Power per-update step, RVA 0x20F6800 (build 6142), vtable slot 12
 
-Class `#8288`. Listing: `sp_update_20F6800.asm` (chdis, 2026-10-30). Decompiled lines: `ghidra_decompile_all.txt` 53491 to 53577. Fields (dump.cs lines 529952 to 530047): +0x42 SP active flag, +0x68 the meter, +0x80 a running long, +0x110 activation time (double), +0x118 activation tick, +0x120 SP end time (double), +0x130 "meter was clamped" flag, +0x138 and +0x140 ticks since activation (previous and now), +0x190 the player kind (enum `ʳʴʾʷʸʼʷʹʴˁˀ`, dump.cs line 546294: Player 0, RemotePlayer 1, Bot 2, Replay 3), +0x1A0 listener, +0x1B0 the full bar.
+Class `#8288`. Listing: `sp_update_20F6800.asm` (chdis, 2026-10-30). Decompiled lines: `ghidra_decompile_all.txt` 53491 to 53577. Fields (dump.cs lines 529952 to 530047): +0x42 SP active flag, +0x68 the meter, +0x80 a running long, +0x110 activation time (double), +0x118 activation tick, +0x120 SP end time (double), +0x130 "meter was clamped" flag, +0x138 and +0x140 ticks since activation (previous and now), +0x190 the player kind (enum `PlayerKind`, dump.cs line 546294: Player 0, RemotePlayer 1, Bot 2, Replay 3), +0x1A0 listener, +0x1B0 the full bar.
 
 In plain words: once per update the game does one of two things. If Star Power is off, it only makes sure the meter is not above a full bar. If Star Power is on, it drains the meter by the ticks that have passed since the last update, caps the meter at a full bar, and, only when the meter was capped, works the end time out again.
 

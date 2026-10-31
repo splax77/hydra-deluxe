@@ -1,4 +1,4 @@
-# Note builder, `#8265.ʹʹʾʴʳʶʼʵʳʼʼ`, RVA `0x20D2EA0` (build 6142)
+# Note builder, `#8265.BuildPlayData`, RVA `0x20D2EA0` (build 6142)
 
 Listing: `note_builder_20D2EA0.asm`, 440 lines, starts at the function's first instruction. Made with `tools/ch_mcp/chdis.py`, 2026-10-30. This is the function that builds a player's note list and decides how fills are made. Its arguments: the player settings (`rdx`, instrument byte at +0, difficulty byte at +1, modifier bits at +4), the chart (`r15`), and a flag.
 

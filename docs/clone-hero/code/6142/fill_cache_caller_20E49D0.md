@@ -1,6 +1,6 @@
-# Fills reader that calls the twin, `#8251.ʸʴʼʳʸʼʶʵʺʷʼ`, RVA `0x20E49D0` (build 6142)
+# Fills reader that calls the twin, `#8251.ReadFills`, RVA `0x20E49D0` (build 6142)
 
-Listing: `fill_cache_caller_20E49D0.asm`, 126 lines, starts at the first instruction (`script.json` names it `ʿˀʻʳʺʻʼʲʷʻʷ$$ʸʴʼʳʸʼʶʵʺʷʼ`, class `#8251`). Made with `tools/ch_mcp/chdis.py`, 2026-10-30. Arguments: the reader object (`rcx`, its stream at `[reader+0x10]`) and the track (`rdx`, kept in `r15`).
+Listing: `fill_cache_caller_20E49D0.asm`, 126 lines, starts at the first instruction (`script.json` lists it as `ChartStreamReader$$ReadFills`, in our readable names, class `#8251`). Made with `tools/ch_mcp/chdis.py`, 2026-10-30. Arguments: the reader object (`rcx`, its stream at `[reader+0x10]`) and the track (`rdx`, kept in `r15`).
 
 Lines 1-14: call 0x20CF940 on the stream to read a count into `r12d`. If the count is 1 or less (line 13-14) the function returns at once.
 

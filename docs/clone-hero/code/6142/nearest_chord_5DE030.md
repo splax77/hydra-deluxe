@@ -1,6 +1,6 @@
 # nearest_chord_5DE030.asm (build 6142, RVA `0x5DE030`)
 
-Made 2026-10-30 with `tools/ch_mcp/chdis.py` (122 lines). Starts at the method's first instruction (script.json: a generic method on `#8597`-family helper class `ʽʹʽʽˁʹʷʺˀʺˁ`, name `ʷʾˀʼˀʵʹˁʻʻʷ<object>`; static, `(List<chord> list, long target, long low, long high, int startIndex, MethodInfo)`).
+Made 2026-10-30 with `tools/ch_mcp/chdis.py` (122 lines). Starts at the method's first instruction (script.json: a generic method on `#8597`-family helper class `ChordListSearch`, name `NearestChordInRange<object>`; static, `(List<chord> list, long target, long low, long high, int startIndex, MethodInfo)`).
 
 Plain words: given a sorted chord list, a target tick, a lower bound and an upper bound, return the chord that is nearest the target, or null. The "after" candidate is the first chord strictly after the target. The "before" candidate is the nearest chord at or before the target. A candidate outside [low, high] is thrown away, and when both survive the nearer wins, with a tie going to the "after" chord.
 

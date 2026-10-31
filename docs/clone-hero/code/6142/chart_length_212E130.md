@@ -1,6 +1,6 @@
 # chart_length_212E130 (build 6142, made 2026-10-30 with tools/ch_mcp/chdis.py)
 
-Function: `#8538.ʿʼʿʿʵʵʲʿʷˁʻ(bool addMargin = True)`, the chart class's "last gem end" method (`dump.cs` line 543562), RVA `0x212E130`; the first instruction is the function start. Decompiled at `hydra-data\scratch_ms\ghidra_decompile_all.txt` lines 15776 to 15838 (named `FUN_18212e130`). Fields on the chart: +0xD0 the `List<Track>` (`#8661`), +0x120 a `Nullable<long>` cache (flag byte at +0x120, value at +0x128), +0xB0 a `double` margin in ticks. The listing's second argument (dl) is the `addMargin` bool.
+Function: `#8538.LastGemEndTick(bool addMargin = True)`, the chart class's "last gem end" method (`dump.cs` line 543562), RVA `0x212E130`; the first instruction is the function start. Decompiled at `hydra-data\scratch_ms\ghidra_decompile_all.txt` lines 15776 to 15838 (named `FUN_18212e130`). Fields on the chart: +0xD0 the `List<Track>` (`#8661`), +0x120 a `Nullable<long>` cache (flag byte at +0x120, value at +0x128), +0xB0 a `double` margin in ticks. The listing's second argument (dl) is the `addMargin` bool.
 
 Lines 1 to 26: prologue and one-time generic setup.
 

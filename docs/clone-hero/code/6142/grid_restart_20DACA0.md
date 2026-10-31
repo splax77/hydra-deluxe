@@ -1,11 +1,11 @@
 # grid_restart_20DACA0.asm (build 6142, RVA `0x20DACA0`)
 
-Made 2026-10-30 with `tools/ch_mcp/chdis.py` (226 lines). Starts at the method's first instruction (`#8257.ʴˀʲʸʷʶˁˀʺʶʲ`, instance method of the grid class, parameter `#8538` chart). The name "restart" is the record's; the code builds the whole grid of lines in one pass.
+Made 2026-10-30 with `tools/ch_mcp/chdis.py` (226 lines). Starts at the method's first instruction (`#8257.BuildLines`, instance method of the grid class, parameter `#8538` chart). The name "restart" is the record's; the code builds the whole grid of lines in one pass.
 
 Plain words: walk the chart from tick 0 to the song's end, one beat at a time. At each beat, look up the time signature in force. Whenever the numerator or the denominator differs from the previous beat's signature, begin a new measure on this very beat (the counters go back to zero). Each beat becomes a "line" with a kind: 0 is a measure line, 1 a beat, 2 a sub-beat marker. The step to the next beat is `trunc(resolution * 4.0 / denominator)` ticks. Only kind-0 lines are kept in the list the fill generator reads.
 
 - Lines 1 to 19 (not shown above in the walkthrough) and 20 to 23: stack set-up; `r15` is the grid (this), `r13` the chart.
-- Lines 24 to 29: `rax = 0x212E130(chart, 1, 0)`, the song end tick (the same function the song-end work calls, `#8538.ʿʼʿʿʵʵʲʿʷˁʻ`); stored at `[rsp+0xa8]`. Line 33: a negative end jumps to the final clean-up.
+- Lines 24 to 29: `rax = 0x212E130(chart, 1, 0)`, the song end tick (the same function the song-end work calls, `#8538.LastGemEndTick`); stored at `[rsp+0xa8]`. Line 33: a negative end jumps to the final clean-up.
 - Line 34: `xmm6 = 4.0` (a `.rdata` constant, no `constants.py` name). Lines 35 to 38: `rbp` (current tick) = 0, `rdi` (previous signature) = null, `r14d` (beat counter in measure) = 0, `r12d` (counter since restart) = 0.
 - Lines 48 to 65: `rsi = [chart+0xe8]` is the time signature list; read its span; an empty list jumps to the exit (line 64).
 - Lines 66 to 101: pick the signature for tick `rbp`. At tick 0 (lines 102 to 106) take the first entry. Otherwise a binary search (lines 68 to 98) finds the last entry whose tick (`[sig+0x10]`) is at or before `rbp`.

@@ -1,0 +1,41 @@
+# These readable names are ours, not the game's: the obfuscator scrambles them, and this file maps each one to the name in the dump (hydra-data\ch-dumps\4045\facts.json, and the excerpts in code\4045\*.cs).
+# Columns are tab-separated. typedef_index is empty for this build. A row with an empty member names a class. "what" ends with the .cs file and lines it was read from.
+build	typedef_index	class	member	name	what
+4045		BasePlayer	ˀʹʳʴʸʺʳʴʷʵʽ	gameManager	The player's link to the GameManager, through which it reads the song time; read from fill_deadline.cs line 11.
+4045		BasePlayer	ʹˀʼʵʳˀʻʼʵʿʵ	starPowerAmount	The Star Power meter, from 0 to 1; read from fill_deadline.cs lines 34 to 57.
+4045		BasePlayer	ˁʸʴʵʳʾʽʿʹʷʿ	starPowerActive	True while Star Power is active; read from fill_deadline.cs lines 9 and 38.
+4045		BasePlayer	ʲʻʳʸʵʲˀʿʺʴʼ	fills	The track's list of fills in time order; read from fill_deadline.cs lines 17 to 31.
+4045		BasePlayer	ʸʸʳʽʲʻʿʸʳʸʽ	AddStarPower	Adds an amount to the Star Power meter, caps it at 1 and raises the awarded or available event; read from fill_deadline.cs lines 34 to 57.
+4045		DrumsPlayer	ʸʸʳʽʲʻʿʸʳʸʽ	AddStarPower	The drums override: runs the fill deadline check when the meter first crosses one half, then calls the base method; read from fill_deadline.cs lines 7 to 14.
+4045		DrumsPlayer	ʻˀʻʿʷʷʾʿˁʵʽ	CheckFillDeadlines	Turns off every fill that starts too soon after the given time and clears its activation flag; read from fill_deadline.cs lines 17 to 31.
+4045		DrumsPlayer	ʿʷʲʻʸʸʹʿˁʶʲ	UnusedFillCheckTwin	A never-called method shaped like the deadline check, with other literals; read from the note fill_deadline.md (full decompile lines 275 to 289, not copied into fill_deadline.cs).
+4045		GameManager	ʲʻʺʹʺʲʷʾʻʺʹ	songTime	The song clock, in seconds; read from fill_deadline.cs line 11.
+4045		ʳʼʽʼˀʴʽʵʵʳʵ	ˀʵʲʲʻʸʸʽʹʽˁ	UnknownPlayerTest	A static bool test on the player that makes the meter gain skip it; what it tests was not found; read from fill_deadline.cs line 36.
+4045		ʶˀʵˁʹʿˀʶʿʲʾ		TrackBuilder	The static class that builds a drum track's play data and its fills; read from fill_generator.cs lines 6 to 141.
+4045		ʶˀʵˁʹʿˀʶʿʲʾ	ʹʹʾʴʳʶʼʵʳʼʼ	BuildPlayData	Builds a drum track's play data and chooses generated or written fills; read from fill_generator.cs lines 6 to 27.
+4045		ʶˀʵˁʹʿˀʶʿʲʾ	ʸˀʽʸʽʳʳʸʼʾʿ	GenerateFills	Generates fills from the measure lines when the track has no written fills; read from fill_generator.cs lines 30 to 77.
+4045		ʶˀʵˁʹʿˀʶʿʲʾ	ʳʷˁʸʵʾʼʷˀʲˁ	PlaceWrittenFills	Places the fills the chart file names; read from fill_generator.cs lines 80 to 113.
+4045		ʶˀʵˁʹʿˀʶʿʲʾ	ʶʸʲʷʵʸʻʻʸʹʸ	PickActivationNote	Picks the note of a chord that carries the fill's activation; read from fill_generator.cs lines 117 to 141.
+4045		ˀʺʷʺʵʾʼʿʹʼʸ		TrackData	The per-track data the builder reads; read from fill_generator.cs lines 6 to 27.
+4045		ˀʺʷʺʵʾʼʿʹʼʸ	ʸʶʳʸʸʲʶʺʼʽʳ	WrittenFills	The fills the chart file names for this track (a property, so facts.json does not list it); read from fill_generator.cs lines 20 and 83 to 86.
+4045		ʼˀˀʸʸʶʳʼʳʸʶ		Chord	One chord of a drum track's chord list; read from fill_generator.cs lines 117 to 141.
+4045		ʼˀˀʸʸʶʳʼʳʸʶ	ʵʹʴʸʽʷʺʳʵʿʳ	LaneMask	The chord's lane bits (pads in the low 7, kicks in 0x180; a property, so facts.json does not list it); read from fill_generator.cs line 119.
+4045		ʲʺʲʴʶʴʶʻʺʷʴ		DrumFill	A fill: start time, length in seconds, start tick, length in ticks and a still-on flag; read from fill_generator.cs lines 58 to 74.
+4045		ʳʹʺˁʲʵʳˀʸʿʶ		WrittenFill	A fill the chart file names: start tick and length in ticks; read from fill_generator.cs lines 86 to 94.
+4045		ʷʽʻʻʿʵˀˁʽʳʶ		Chart	The parsed chart; read from fill_generator.cs lines 80 to 113.
+4045		ʾʹʷˀʼʼˁʽʼʽʾ		Coda	The object made from a chart event named "coda"; read from fill_generator.cs line 88.
+4045		ʵʷʽʴʹʽʳʹʷʴʷ	ˀˀʽʵʶʸʸʿʷʾʲ	standardResolution	The static resolution 192 that tick lengths are scaled from; read from fill_generator.cs lines 39 and 84 to 85.
+4045		ʵʹˁˀʷʽʾʲˁʲʶ		BeatGrid	The list of measure and beat lines built from the time signatures; read from fill_generator.cs lines 196 to 255.
+4045		ʵʹˁˀʷʽʾʲˁʲʶ	ˁʹʾʲʸʿʲʷʻˁʽ	measureLines	The times in seconds of the measure lines, which the generator walks; read from fill_generator.cs lines 40 and 196 to 255.
+4045		ʵʹˁˀʷʽʾʲˁʲʶ	ʴˀʲʸʷʶˁˀʺʶʲ	BuildLines	Walks the chart beat by beat and stores each beat as MEASURE, BEAT_STRONG or BEAT_WEAK; read from fill_generator.cs lines 196 to 255.
+4045		ʵʹˁˀʷʽʾʲˁʲʶ	ʼʺʾʼˁʼʹˁˁʷʻ	AddLine	Adds one line to the grid, and a MEASURE also to the measure-line list; its body is in the full decompile, not in fill_generator.cs; called from fill_generator.cs lines 196 to 255.
+4045		ˀʸʼʹʽʺʸˀʷʽʵ	ʶʶˁʿʷʾʹʸʴʷʲ	numerator	The time signature's numerator, read from how the beat step uses it; read from fill_generator.cs lines 209 to 221.
+4045		ˀʸʼʹʽʺʸˀʷʽʵ	ʲʲˀʵʼʿʳʸʾʾʴ	denominator	The time signature's denominator, read from how the beat step uses it; read from fill_generator.cs lines 208 and 251.
+4045		ʴʻˁʷʸʶʶʶʿʳʹ		ChordListSearch	The static helper class that searches a chord list by tick; read from fill_generator.cs lines 143 to 193.
+4045		ʴʻˁʷʸʶʶʶʿʳʹ	ʶʲˁʿʹʵˀʺʲˁʿ<T>	NearestChord	Returns the index of the chord nearest a target tick, a tie going to the later chord; read from fill_generator.cs lines 144 to 166.
+4045		ʴʻˁʷʸʶʶʶʿʳʹ	ʼʿˀʹʵˁˁʹʽʸʹ<T>	FirstAfter	Returns the index of the first chord strictly after a tick, or 0; read from fill_generator.cs lines 170 to 180.
+4045		ʴʻˁʷʸʶʶʶʿʳʹ	ʴʶʾˀˁʾʵʼʾʺʽ<T>	LastAtOrBefore	Returns the index of the last chord at or before a tick, or -1; read from fill_generator.cs lines 184 to 193.
+4045		ʴʻˁʷʸʶʶʶʿʳʹ	ʷʾˀʼˀʵʹˁʻʻʷ<T>	NearestChordInRange	Returns the chord nearest a target tick between a low and a high tick, or nothing; called at fill_generator.cs line 93.
+4045		ʵʼʴʿʼʷʷˀʶˁʷ		BitMath	A static class of bit helpers; read from fill_generator.cs lines 125 and 129.
+4045		ʵʼʴʿʼʷʷˀʶˁʷ	ʷʹʾˁʳʸʲʾʴʾʿ	HighestSetBit	Returns the highest set bit of a value; called at fill_generator.cs line 125.
+4045		ʵʼʴʿʼʷʷˀʶˁʷ	ʴʽʸʿʼʸˁʷʿʹʸ	LowestSetBit	Returns the lowest set bit of a value, x & ~(x - 1); called at fill_generator.cs line 129.

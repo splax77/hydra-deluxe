@@ -3,26 +3,27 @@
 Source: `fill_deadline.cs` beside this file: three methods copied unchanged from `ilspycmd` output of
 `C:\Clone Hero\1.0 old\Clone Hero\Clone Hero_Data\Managed\Assembly-CSharp.dll` (decompiled 2026-10-30, session
 b02ab3e6-76ac-4735-8576-04b87f32bb8d, scout R8). Build 4045 has no addresses; cite a rule as
-`Game code (4045): Class.Method`. Names are the game's scrambled names. Line numbers are lines of
+`Game code (4045): Class.Method`. The game's names are scrambled, so the names on this page are our own;
+`../names-4045.tsv` maps each one to the scrambled name that `fill_deadline.cs` uses. Line numbers are lines of
 `fill_deadline.cs`.
 
 The fill objects are those `fill_generator.md` describes: each has a start time in seconds, a length in seconds,
-the note it ends on, and an "on" flag. The song clock is the static field `ˀʹʳʴʸʺʳʴʷʵʽ.ʲʻʺʹʺʲʷʾʻʺʹ`, seconds.
+the note it ends on, and an "on" flag. The song clock is the field `gameManager.songTime`, seconds.
 
-## F6: when the check runs, `DrumsPlayer.ʸʸʳʽʲʻʿʸʳʸʽ` (lines 7 to 14)
+## F6: when the check runs, `DrumsPlayer.AddStarPower` (lines 7 to 14)
 
 This is the drums player's version of the method that adds Star Power meter (the base version is F8). The meter
-`ʹˀʼʵʳˀʻʼʵʿʵ` runs from 0 to 1. Line 9: when the meter is below one half now, would be at or above one half after this
-gain, and Star Power is not already active (`ˁʸʴʵʳʾʽʿʹʷʿ`), the game calls the deadline check, F7, with the current song
+`starPowerAmount` runs from 0 to 1. Line 9: when the meter is below one half now, would be at or above one half after this
+gain, and Star Power is not already active (`starPowerActive`), the game calls the deadline check, F7, with the current song
 time (line 11). Line 13: then it adds the gain through the base method, with the "award" flag set to true.
 
 So the deadline is decided once, at the moment the meter first crosses one half on the way up. It is not re-run on
 later frames while the meter stays above one half. Each time the meter drops below one half and climbs back over
 (after an activation, for example) the check runs again.
 
-## F7: the check, `DrumsPlayer.ʻˀʻʿʷʷʾʿˁʵʽ` (lines 17 to 31)
+## F7: the check, `DrumsPlayer.CheckFillDeadlines` (lines 17 to 31)
 
-`ʲʻʳʸʵʲˀʿʺʴʼ` is the track's list of fills, in time order. For each fill, with `now` the argument:
+`fills` is the track's list of fills, in time order. For each fill, with `now` the argument:
 
 Lines 21 to 24: if the fill starts more than 10 seconds after now, stop. That fill and every later one are left
 untouched (they stay available).
@@ -40,9 +41,9 @@ is in real time. The length is the fill's own length from `fill_generator.md` (h
 64th note for generated fills; the written start to the activation note plus one 64th note for written fills), so the
 `1/64 note` in the memory note `fill-spawn-comparison` is part of the length, not a separate term.
 
-## F8: the meter gain, `BasePlayer.ʸʸʳʽʲʻʿʸʳʸʽ` (lines 34 to 57)
+## F8: the meter gain, `BasePlayer.AddStarPower` (lines 34 to 57)
 
-Read only to know what the meter holds. Line 36 skips a remote player and any player for which `ˀʵʲʲʻʸʸʽʹʽˁ()` is true (what that tests was not found). Line 38
+Read only to know what the meter holds. Line 36 skips a remote player and any player for which `UnknownPlayerTest()` is true (what that tests was not found). Line 38
 remembers whether the meter was below one half with no activation. Lines 40 to 49: the gain is added; when the
 call came from a phrase award, the awards counter goes up and the game raises the "Star Power awarded" event; when it
 did not and the meter just passed one half, it raises "Star Power available". Lines 50 to 53: the meter is capped
@@ -51,7 +52,7 @@ drums the "available" branch at line 46 never runs.
 
 ## Not part of the rule
 
-`DrumsPlayer.ʿʷʲʻʸʸʹʿˁʶʲ` (full decompile lines 275 to 289) has the same shape with the literals 491, 1618 and 1219 and
+`DrumsPlayer.UnusedFillCheckTwin` (full decompile lines 275 to 289) has the same shape with the literals 491, 1618 and 1219 and
 clears chord flags rather than the activation flag. No call to it exists in any of the four decompiled assemblies
 (Assembly-CSharp, Assembly-CSharp-firstpass, StrikeCore and CHNet.Core were decompiled and searched by name), so it is dead code and I did not
 treat its numbers as a rule.

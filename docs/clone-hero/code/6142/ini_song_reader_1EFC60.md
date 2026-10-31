@@ -1,4 +1,4 @@
-# ini_song_reader_1EFC60.asm  (build 6142, RVA 0x1EFC60, #828.ʺʻʸʽʿʵʴʾʵʴʲ, the song.ini [song] reader)
+# ini_song_reader_1EFC60.asm  (build 6142, RVA 0x1EFC60, #828.ReadIniSongSection, the song.ini [song] reader)
 Made with tools/ch_mcp/chdis.py (capstone) on 2026-10-30, session b02ab3e6, scout R7. The function starts at 0x1EFC60 (script.json names it; it is a method start).
 Lines 2-10: prologue. rdi = the ini object (second argument), rsi = the metadata object (class 828, "song metadata cache"). Lines 7-10 test a once-only flag.
 Lines 11-35: first call only: touch every key-name string literal (video_start_time, delay, ..., hopo_frequency) so the runtime loads them. No rule here.
