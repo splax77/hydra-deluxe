@@ -68,7 +68,7 @@ def setup_reply(bindings=BINDINGS):
 
 
 PRESS_REPLY = {"down_frame": 1200, "up_frame": 1202, "down_ms": 5000, "up_ms": 5013,
-               "hold_frames": 2, "rewrite": True, "on_main": False}
+               "hold_frames": 2, "rewrite": False, "on_main": False}
 
 TEARDOWN_OK = {"checks": [
     {"what": "elements cleared", "ok": True, "detail": "2 cleared"},
@@ -352,7 +352,7 @@ class PressTest(Rig):
         reply = tools.ch_kit_press("green,kick")
         self.assertEqual(self.posted()[-1], {
             "type": "press", "elements": [{"id": 3, "value": 1.0}, {"id": 22, "value": True}],
-            "hold_frames": 2, "cap_s": 1, "rewrite": True, "on_main": False})
+            "hold_frames": 2, "cap_s": 1, "rewrite": False, "on_main": False})
         self.assertEqual(reply, "pressed green, kick (elements 3, 22) for 2 frames: down at frame "
                                 "1200, up at frame 1202 (2 frames apart, 13 ms by the agent's clock)")
 
@@ -389,7 +389,7 @@ class PressOptionsTest(Rig):
         lines = tools.ch_kit_press("green", read="Green").splitlines()
         self.assertEqual(self.posted()[-1], {
             "type": "press", "elements": [{"id": 3, "value": 1.0}], "hold_frames": 2,
-            "cap_s": 1, "rewrite": True, "on_main": False, "read": ["Green"]})
+            "cap_s": 1, "rewrite": False, "on_main": False, "read": ["Green"]})
         self.assertEqual(lines[1:], [
             "read back on the kit's player: Green",
             "  frame 1200: Green off",
@@ -406,17 +406,17 @@ class PressOptionsTest(Rig):
                          "read takes game action names, not 3")
 
     def test_none_sends_the_constants_and_a_given_value_overrides_them(self):
-        tools = self.set_up([PRESS_REPLY, {**PRESS_REPLY, "rewrite": False, "on_main": True}])
+        tools = self.set_up([PRESS_REPLY, {**PRESS_REPLY, "rewrite": True, "on_main": True}])
         reply = tools.ch_kit_press("green")
         self.assertEqual((self.posted()[-1]["rewrite"], self.posted()[-1]["on_main"]),
                          (K.KIT_REWRITE, K.KIT_PRESS_ON_MAIN))
         self.assertNotIn("read", self.posted()[-1])
         self.assertEqual(len(reply.splitlines()), 1)
-        lines = tools.ch_kit_press("green", hold_frames=1, rewrite=False,
+        lines = tools.ch_kit_press("green", hold_frames=1, rewrite=True,
                                    on_main=True).splitlines()
         self.assertEqual((self.posted()[-1]["rewrite"], self.posted()[-1]["on_main"],
-                          self.posted()[-1]["hold_frames"]), (False, True, 1))
-        self.assertEqual(lines[1], "rewrite off, main thread on (as the agent ran it)")
+                          self.posted()[-1]["hold_frames"]), (True, True, 1))
+        self.assertEqual(lines[1], "rewrite on, main thread on (as the agent ran it)")
 
     def test_rewrite_and_on_main_take_only_true_or_false(self):
         tools = self.set_up()

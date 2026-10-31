@@ -66,12 +66,14 @@ KIT_PRESS_CAP_S = 1
 # The value a pad press writes to its axis: the probe's value (q8_pad.js).
 # LS-K4's compare says whether the game grades it as a velocity.
 KIT_AXIS_VALUE = 1.0
-# Whether a press writes its values again on every tick of its hold. True is
-# the probe's way, the one that has worked at the game (q7_press.js); live
-# step LS-K1 decides, and this line then quotes its reply.
-KIT_REWRITE = True
-# Whether a press runs on the game's main thread. False runs it on Frida's
-# own thread, the plan's first try ("One agent for the kit"); LS-K1 decides.
+# Whether a press writes its values again on every tick of its hold. One
+# write is enough: at live step LS-K1, presses of green held 1, 2 and 3
+# frames with rewrite off each read "Green on" from the frame after the down
+# write until the up frame (hold 2: "frame 3220: Green off", "frame 3221:
+# Green on", up at frame 3222).
+KIT_REWRITE = False
+# Whether a press runs on the game's main thread. Frida's own thread is
+# enough: LS-K1's three presses above ran with "main thread off".
 KIT_PRESS_ON_MAIN = False
 # The longest watch ch_kit_watch accepts, in seconds (the user's answer to
 # the plan's K7 question, 2026-10-30, "Cap at 60 s (Recommended)"). A longer

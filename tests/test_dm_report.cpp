@@ -263,10 +263,11 @@ TEST_CASE("generate_dm_report hands over its rows, subtitle, footer, player and 
     CHECK(result.footer.rfind("Actual scores from dmleaderboards.com against Hydra's optimal for " +
                                   std::string(kMode) + ".",
                               0) == 0);
-    // The last sentence, in the "no current result" words (D114 item 1).
+    // The last sentence, in the "no current result" words (D114 item 1), telling
+    // the player to set the cap the comparison reads (D281).
     const std::string last_sentence =
         " Charts with no current result are in your library without a result for this mode at "
-        "SP cap 4: analyze them, then compare again.";
+        "SP cap 4: set SP cap to 4, analyze them, then compare again.";
     REQUIRE(result.footer.size() > last_sentence.size());
     CHECK(result.footer.substr(result.footer.size() - last_sentence.size()) == last_sentence);
 
