@@ -218,19 +218,19 @@
       "pattern": "\\(\\s*beyond_edge_ms\\(",
       "anchor": "beyond_edge_ms(",
       "must_match": [
-        "return std::to_string(static_cast<int64_t>(beyond_edge_ms(hit_window_ms)));",
-        "\"Beyond \" + std::to_string(static_cast<int64_t>(beyond_edge_ms(w))) + \" ms\"",
-        "return format_ms_whole(beyond_edge_ms(w));"
+        "return std::to_string(static_cast<int64_t>(beyond_edge_ms()));",
+        "\"Beyond \" + std::to_string(static_cast<int64_t>(beyond_edge_ms())) + \" ms\"",
+        "return format_ms_whole(beyond_edge_ms());"
       ],
       "must_not_match": [
-        "return \"Beyond \" + report::beyond_edge_text(hit_window_ms) + \" ms\";",
-        "double beyond_edge_ms(double hit_window_ms) {",
+        "return \"Beyond \" + report::beyond_edge_text() + \" ms\";",
+        "double beyond_edge_ms() {",
         "const DATA_EDGE = DATA.beyond_edge_ms;"
       ],
       "owner_lines": [
         {
           "file": "src/app/report.cpp",
-          "line_text": "return std::to_string(static_cast<int64_t>(beyond_edge_ms(hit_window_ms)));",
+          "line_text": "std::string beyond_edge_text() { return whole_ms_text(beyond_edge_ms()); }",
           "why": "beyond_edge_text, the owner"
         }
       ],
@@ -547,7 +547,7 @@
       "date": "2026-10-04",
       "decision": "D51",
       "added_by": "SE1",
-      "pattern": "\\b(mslimit_value|backendlimit_value|preview_volume|depth_value|depth_mode|sp_cap|hit_window_ms|volume_pct_)\\s*=\\s*(std::(clamp|max|min)\\(|[^;]*>\\s*100\\s*\\?)|\\b(sp_)?cap\\s*<\\s*1\\b|std::max\\(\\s*1\\s*,[^;]*cap\\b",
+      "pattern": "\\b(mslimit_value|backendlimit_value|preview_volume|depth_value|depth_mode|sp_cap|volume_pct_)\\s*=\\s*(std::(clamp|max|min)\\(|[^;]*>\\s*100\\s*\\?)|\\b(sp_)?cap\\s*<\\s*1\\b|std::max\\(\\s*1\\s*,[^;]*cap\\b",
       "calls_owner": "Settings::clamp\\(",
       "owner_files": [
         "src/app/config.cpp"
