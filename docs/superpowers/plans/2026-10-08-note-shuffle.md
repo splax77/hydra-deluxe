@@ -48,7 +48,7 @@ The pass has to turn Hydra's chords into the game's note list and back. Hydra ke
 
 Two things have to be confirmed during the build. First, Hydra's fill, solo and Star Power passes run inside the parsers before this point ([song.cpp:1022](src/parse/song.cpp:1022) to 1044 for .mid, 1670 to 1686 for .chart). They must not read pad colours, so running after them changes nothing. The executor checks with a search, and the batch diff below proves it. Second, the order of notes inside a chord. Hydra throws away the file's order and always walks lanes kick, red, yellow, blue, green ([model.h:215](src/core/model.h:215)). Whether that matches the game is open question 2.
 
-Clone Hero also has a second modifier that runs right after the shuffle (modifier bit 0x20, function 0x20F1900, called at 0x20D3329). Hydra models no other modifiers, so combining them is out of scope.
+The modifier steps the game runs right after the shuffle now live in docs/clone-hero/02-note-list.md (NL-68, NL-69). Hydra models no other modifiers, so combining them is out of scope.
 
 ## Part 2: how the result is stored
 

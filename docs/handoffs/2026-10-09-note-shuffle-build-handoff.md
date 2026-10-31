@@ -12,19 +12,13 @@ The next step is the build. Don't start it until the user says go.
 
 D104 in `docs/audit/2026-10-03-fix-decisions.md` holds the user's answers to the plan's seven questions. They took the recommended option every time. In short: a "Note Shuffle" checkbox beside "2x Bass", and a mode string that ends in ", Note Shuffle" only when the switch is on. Pro Drums off still stores its own row, and there's one results stamp. A chart the game freezes on gets no path and a sentence. dmleaderboards Compare is greyed out while the switch is on. And the feature waits until the order of notes inside a chord is settled. It now is: by a game test for .mid, and by code reading alone for .chart (see "One gap is left" below).
 
-D105 is new from step 0 and doesn't depend on the shuffle. When a 2x kick and a normal kick share a tick, the game merges them into one kick that carries the 2x mark. With 2x Bass off, it then removes that kick, so the tick has no kick at all. Hydra can differ in both cases. With 2x Bass off, Hydra never reads the 2x kick, so it keeps the normal kick. With 2x Bass on, it keeps whichever kick comes first in the file. Songs F1 and F2 confirmed the game's behaviour on video. So Hydra changes to match, and that change bumps the results stamp. Every saved row will then read Stale until it's re-analyzed.
+D105 is new from step 0 and doesn't depend on the shuffle. It is about a 2x kick and a normal kick on one tick; what the game does with them now lives in docs/clone-hero/02-note-list.md (NL-27 to NL-30). Hydra can differ in both cases. With 2x Bass off, Hydra never reads the 2x kick, so it keeps the normal kick. With 2x Bass on, it keeps whichever kick comes first in the file. Songs F1 and F2 confirmed the game's behaviour on video. So Hydra changes to match, and that change bumps the results stamp. Every saved row will then read Stale until it's re-analyzed.
 
 ## What step 0 found
 
-The game uses each file's own ticks for the seed, as Hydra already does. The seed needs unsigned 64-bit wraparound.
+What step 0 found about the game now lives in docs/clone-hero/: the seed in 02-note-list.md (NL-40) and 01-reading-a-chart.md (CR-25); the order inside a chord in 02-note-list.md (NL-33, NL-34); flams in NL-37; the star base in NL-51 and 06-scoring.md (SC-27); the freezes in NL-47; and the filmed test runs in NL-52. What that meant for Hydra: the .mid and .chart parsers don't need to remember file order, Hydra's flam rule gives the same pads, no second star base is stored, and D104's "no path, with a sentence" outcome is needed.
 
-The game sorts each chord kick, red, yellow, blue, green, and a cymbal sorts into its pad's slot. That's the order Hydra already walks, so the .mid and .chart parsers don't need to remember file order. Kicks and flam copies count toward the four-note seed. Hydra's flam rule gives the same pads as the game.
-
-The star base is taken after the shuffle, so cymbals the shuffle adds raise the cutoffs. Hydra's plan already works that way, so no second base is stored. Song E confirmed it: a full combo scored 19,925 points with 5 stars.
-
-Both freezes are real. A chord using all four colours, followed by a chord whose first note can't copy, hangs the game. So do four notes on tick 0. Songs C1 and D1 both left the game at "Clone Hero (Not Responding)" while loading. So D104's "no path, with a sentence" outcome is needed.
-
-One gap is left. Song B tested the note order inside a chord for .mid only. For .chart, the order rests on the code reading, which found both readers ending in the same sort.
+One gap is left. Song B tested the note order inside a chord for .mid only. For .chart, the order rests on the code reading (NL-34).
 
 ## Notes for whoever plans the build
 
@@ -34,7 +28,7 @@ First, build the shuffle from the capped reference's code, `docs/audit/note-shuf
 
 Second, Hydra has to recognise a freeze. D104 chose "no path" and passed over the capped-loop option, a loop that carries on after the cap. A cap used only to recognise a freeze isn't covered by D104, and it would be a new number.
 
-Here's how a freeze arises. For each note, the game first checks its copy rule. If the chord has the same pad shape as an earlier chord (two back for its first note, one back for later notes), the note copies that chord's pad and nothing is drawn, so nothing can hang. Otherwise the game redraws: it keeps drawing a random pad until it lands on a colour that isn't blocked. A redraw can't finish in two cases: when every pad the setting can draw is blocked, or when the seed is zero and red is blocked. A zero seed makes every draw land on red. It may be possible to detect exactly those two cases, after the copy rule has had its chance, instead of counting draws. That rests on the generator reaching every pad from any non-zero state, which nobody has checked yet. The only evidence so far is the corpus run: 1,288 runs finished, but no chord there has more than two pads. Check it first. If it holds, no new number is needed. If it doesn't, the cap is a new number, and that goes to the user first.
+How a freeze arises now lives in docs/clone-hero/02-note-list.md (NL-45 to NL-47). It may be possible to detect exactly the two freeze cases, after the copy rule has had its chance, instead of counting draws. That rests on the generator reaching every pad from any non-zero state, which nobody had checked at this handoff; NL-48 holds what was found later. The only evidence then was the corpus run: 1,288 runs finished, but no chord there has more than two pads. Check it first. If it holds, no new number is needed. If it doesn't, the cap is a new number, and that goes to the user first.
 
 D105 needs an owner. It touches the kick handling in `src/parse/song.cpp` (lines 836 and 1509) and `Chord::add_note` in `src/core/model.cpp` (line 243). T1 and T2 also edit `song.cpp`, so give D105 to one of them, or run it first as its own small task. Two writers should never touch the same file. The results stamp bump belongs to whoever builds D105. `testdata/input` has no chart with a shared-tick 2x kick, so its test needs a fixture modelled on song F1.
 
