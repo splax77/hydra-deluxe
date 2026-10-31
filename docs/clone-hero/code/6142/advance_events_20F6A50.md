@@ -16,6 +16,6 @@ Lines 219 to 230 (the Star Power end): if the active flag (+0x42, line 219) is s
 Lines 231 to 241: restore registers and return.
 Lines 242 to 243: null-reference throw.
 
-Not proven here: that the virtual method at offset 0x238 turns Star Power off. It is implemented in the derived classes (the drums engine is class 8255 per il2cpp-fields.md line 51), which this scout did not read.
+Not proven here: that the virtual method at offset 0x238 turns Star Power off. It is implemented in the derived classes (the drums engine is class 8255 per il2cpp-fields.md line 51), which was not read for this note.
 
 Reviewer note, 2026-10-30: the handler at vtable offset 0x238 (slot 16) is RVA 0x20F43A0 in the base class. It adds the time to a list of doubles at +0x180 and never touches +0x42, so this call does not end Star Power. See page 5, SP-28.

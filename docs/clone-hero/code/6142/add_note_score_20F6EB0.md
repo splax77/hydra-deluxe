@@ -1,6 +1,6 @@
 # Add one note's score, RVA 0x20F6EB0 (build 6142), vtable slot 6
 
-Class `#8288`. Listing: `add_note_score_20F6EB0.asm` (chdis, 2026-10-30). Decompiled lines: `ghidra_decompile_all.txt` 53716 to 53771. The drums engine's score function 0x20DEEC0 ends in `jmp 0x1820f6eb0` (committed: `docs/audit/drum-lanes/play/f20deec0.asm` line 31). Fields: +0x42 SP active, +0x48 multiplier (int), +0x94 score, +0xC0 raw points, +0xC8 multiplier share, +0xCC Star Power share, +0xD0 a fourth running int whose meaning this scout did not settle, +0x190 player kind.
+Class `#8288`. Listing: `add_note_score_20F6EB0.asm` (chdis, 2026-10-30). Decompiled lines: `ghidra_decompile_all.txt` 53716 to 53771. The drums engine's score function 0x20DEEC0 ends in `jmp 0x1820f6eb0` (committed: `docs/audit/drum-lanes/play/f20deec0.asm` line 31). Fields: +0x42 SP active, +0x48 multiplier (int), +0x94 score, +0xC0 raw points, +0xC8 multiplier share, +0xCC Star Power share, +0xD0 a fourth running int whose meaning is not settled, +0x190 player kind.
 
 In plain words: this is where a note's points go into the score. The caller passes the note and a base value (the drums override passes 50, plus 15 for a cymbal, doubled for a ghost or accent, as session 1bae448b read it on 2026-10-11 (pages 06 SC-01, SC-02 and SC-12); the override is committed as `f20deec0.asm` lines 13 to 25). The function multiplies by the number of gems in the note, adds the plain points to a "raw" total, adds points times the multiplier to the score, and splits the multiplier's extra into two buckets: the combo multiplier outside Star Power, and, inside Star Power, half the multiplier goes to the Star Power bucket.
 
@@ -20,4 +20,4 @@ Lines 71 to 73 (on): +0xCC gets half times points. So inside Star Power the Star
 Lines 74 to 80 (on): call the note's flag test 0x18214B600 (bit 0x10 of the dword at +0x84); if set, +0xD0 gains half times points; return.
 Line 81 to 82: null-reference throw.
 
-Unsettled: what +0xD0 and the two note flags mean. This scout did not read the readers of +0xD0.
+Unsettled: what +0xD0 and the two note flags mean. The readers of +0xD0 were not read.

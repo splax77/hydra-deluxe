@@ -1,6 +1,6 @@
 # chart_length_212E130 (build 6142, made 2026-10-30 with tools/ch_mcp/chdis.py)
 
-Function: `#8538.LastGemEndTick(bool addMargin = True)`, the chart class's "last gem end" method (`dump.cs` line 543562), RVA `0x212E130`; the first instruction is the function start. Decompiled at `hydra-data\scratch_ms\ghidra_decompile_all.txt` lines 15776 to 15838 (named `FUN_18212e130`). Fields on the chart: +0xD0 the `List<Track>` (`#8661`), +0x120 a `Nullable<long>` cache (flag byte at +0x120, value at +0x128), +0xB0 a `double` margin in ticks. The listing's second argument (dl) is the `addMargin` bool.
+Function: `#8538.LastGemEndTick(bool addMargin = True)`, the chart class's "last gem end" method (`dump.cs` line 543562), RVA `0x212E130`; the first instruction is the function start. The decompile (see `code/README.md`; not kept) has it at lines 15776 to 15838 (named `FUN_18212e130`). Fields on the chart: +0xD0 the `List<Track>` (`#8661`), +0x120 a `Nullable<long>` cache (flag byte at +0x120, value at +0x128), +0xB0 a `double` margin in ticks. The listing's second argument (dl) is the `addMargin` bool.
 
 Lines 1 to 26: prologue and one-time generic setup.
 
@@ -18,6 +18,6 @@ Lines 77 to 84: the maximum is stored in the `Nullable<long>` at chart+0x120 (th
 
 Lines 85 to 87: the cached value is read.
 
-Lines 88 to 91: when `addMargin` is true, the double at chart+0xB0 is truncated to an integer (`cvttsd2si`) and added to the result. Chart+0xB0 is written by `0x212C0B0` (decompile lines 14459 to 14471) as a value times the float at (chart+0xC8)+0x14, and its caller at decompile line 42845 passes the ushort at (header+0xF0)+0x12. Earlier scouts read those as the chart resolution (ticks per beat) and the song speed; this scout did not trace what those two fields are, so the identity is unchecked.
+Lines 88 to 91: when `addMargin` is true, the double at chart+0xB0 is truncated to an integer (`cvttsd2si`) and added to the result. Chart+0xB0 is written by `0x212C0B0` (decompile lines 14459 to 14471) as a value times the float at (chart+0xC8)+0x14, and its caller at decompile line 42845 passes the ushort at (header+0xF0)+0x12. Earlier readings took those as the chart resolution (ticks per beat) and the song speed; what those two fields are was not traced for this note, so the identity is unchecked.
 
 Lines 92 to 97: epilogue. Lines 98 to 102: throws.

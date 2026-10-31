@@ -4,7 +4,7 @@ This page covers Star Power phrases, the meter, activation, drain, the Star Powe
 It describes build 1.1 (v1.1.0.6142).
 Last write-back: 2026-10-30.
 
-The live-run files named below (`run1_cal0_*` under tools/ch_probe/experiments/results/overlay-spike/) were untracked in git on 2026-10-30; only `il2cpp-fields.md` in that folder is tracked. "Run 1" is the key-press auto-player run on the probe chart Trippin SP Spike (resolution 192), stamped 2026-10-29 00:39 UTC. The engine fields are those of the base engine class #8288, which the drum engine #8255 inherits.
+The live-run files named below (`run1_cal0_*` under tools/ch_probe/experiments/results/overlay-spike/) were untracked in git on 2026-10-30; only `il2cpp-fields.md` in that folder is tracked. "Run 1" is the key-press auto-player run on the probe chart Trippin SP Spike (resolution 192), stamped 2026-10-29 00:39 UTC. The engine fields are those of the base engine class #8288, which the drum engine #8255 inherits. `ghidra_decompile_all.txt` and "the decompile" mean Ghidra's full decompile of build 6142, which `code/README.md` describes; it is not in the repo.
 
 ## Phrase membership
 
@@ -12,68 +12,68 @@ The live-run files named below (`run1_cal0_*` under tools/ch_probe/experiments/r
 
 Rule: A note belongs to a Star Power phrase when the phrase start is at or before the note's tick and the note's tick is before start plus length. A note exactly on the end tick is outside the phrase.
 Label: Proven in the game's code
-Evidence: The start test is at lines 72 to 74 and the end test at lines 93 to 97 of the listing; the end is start plus length at lines 54 to 57 (wave 2 scout R3). The 2026-10-03 reading of the same function (ch-evidence.md question 21, lines 41 to 66 at commit 5fbe71ae) said the same; its listing was lost.
+Evidence: The start test is at lines 72 to 74 and the end test at lines 93 to 97 of the listing; the end is start plus length at lines 54 to 57. The 2026-10-03 reading of the same function (ch-evidence.md question 21, lines 41 to 66 at commit 5fbe71ae) said the same; its listing was lost.
 Game code (6142): RVA `0x20D2440` (class #8265, scrambled name), `code/6142/sp_phrase_assign_20D2440.asm` lines 54 to 57, 72 to 74 and 93 to 97
 Hydra: `close_sp_phrase` in src/parse/song.cpp line 401 (both parsers call it, lines 805 and 1414)
 Ruling: D21. The user chose "Yes, one helper (Recommended)" to "SP phrase edges: should .chart use Clone Hero's rule ..." (card 2026-10-04-bbf41dc4, 01:53 UTC). Hydra and the game agree.
-Found: this plan's wave 1 scouts H5a, H5b and HB; wave 2 scout R3
+Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 ### SP-02 A zero-length phrase pays nothing
 
 Rule: A phrase of length 0 marks no note, so it awards nothing, even with a chord on its tick.
 Label: Proven in the game's code
-Evidence: With length 0 the start test (lines 72 to 74) and the end test (lines 93 to 97) can never both pass (wave 2 scout R3).
+Evidence: With length 0 the start test (lines 72 to 74) and the end test (lines 93 to 97) can never both pass.
 Game code (6142): RVA `0x20D2440`, `code/6142/sp_phrase_assign_20D2440.asm` lines 72 to 74 and 93 to 97
 Hydra: `close_sp_phrase` in src/parse/song.cpp line 401 (its test is never true at length 0)
 Ruling: none needed: same rule (D21, as in SP-01)
-Found: wave 2 scout R3; 2026-10-03, session cebf3006 (first reading)
+Found: 2026-10-03, session cebf3006 (first reading); 2026-10-30, session b02ab3e6 (the reference build)
 
 ### SP-03 A phrase that runs past the last note pays on the last note
 
 Rule: When a note inside a phrase has no next note, it counts as the phrase's last note, so a phrase that runs past the end of the chart still awards on the chart's last chord.
 Label: Proven in the game's code
-Evidence: Lines 75 to 84 leave the next note empty on the last note; lines 99 to 100 skip the "next note is still inside" exit when it is empty; lines 104 to 133 mark the last chord (wave 2 scout R3).
+Evidence: Lines 75 to 84 leave the next note empty on the last note; lines 99 to 100 skip the "next note is still inside" exit when it is empty; lines 104 to 133 mark the last chord.
 Game code (6142): RVA `0x20D2440`, `code/6142/sp_phrase_assign_20D2440.asm` lines 75 to 84 and 99 to 103
 Hydra: `close_sp_phrase` in src/parse/song.cpp line 401, called once more after the last tick
 Ruling: none needed: same rule (D21, as in SP-01)
-Found: wave 2 scout R3
+Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 ### SP-04 The phrase's last chord carries the award flag
 
 Rule: Every note inside a phrase gets flag 0x80. Every note of the phrase's last chord also gets flag 0x100, which is the award. The last chord is the last note whose next note starts at or after the phrase end.
 Label: Proven in the game's code
-Evidence: Line 98 sets 0x80; lines 99 to 103 are the "not last" exit; lines 104 to 133 walk the chord and set 0x100 on each member at line 128 (wave 2 scout R3).
+Evidence: Line 98 sets 0x80; lines 99 to 103 are the "not last" exit; lines 104 to 133 walk the chord and set 0x100 on each member at line 128.
 Game code (6142): RVA `0x20D2440`, `code/6142/sp_phrase_assign_20D2440.asm` lines 98 to 133
 Hydra: `close_sp_phrase` in src/parse/song.cpp line 401 marks the last chord's timestamp
 Ruling: none needed: same rule
-Found: wave 2 scout R3
+Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 ### SP-05 The phrase cursor steps forward one phrase per note
 
 Rule: The game walks the notes and the phrases together. When a note sits at or past the current phrase's end, the cursor moves forward by exactly one phrase (an if, not a loop). Past the last phrase it keeps the last phrase's start and end.
 Label: Proven in the game's code
-Evidence: One increment and one call to the advance helper, then one re-test, at lines 85 to 97; the helper leaves the cursor alone past the last phrase at its lines 14 to 17 and 24 to 27 (wave 2 scout R3).
+Evidence: One increment and one call to the advance helper, then one re-test, at lines 85 to 97; the helper leaves the cursor alone past the last phrase at its lines 14 to 17 and 24 to 27.
 Game code (6142): RVA `0x20D2440` lines 85 to 97; helper RVA `0x20D0330`, `code/6142/sp_phrase_advance_20D0330.asm` lines 14 to 27
 Hydra: no owner: `close_sp_phrase` (src/parse/song.cpp line 401) closes each phrase on its own and keeps no cursor
 Ruling: none needed: no chart is shown to differ (see SP-06)
-Found: wave 2 scout R3
+Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 ### SP-06 Nested or overlapping phrases may never award in the game
 
 Rule: Because the cursor steps one phrase per note (SP-05), a phrase that sits inside another, or starts before the previous one ends, may never be reached in the game and so may award nothing. Hydra awards every phrase.
 Label: Unknown
-Evidence: unchecked by the scout: it needs the sort order of the track's phrase list, which the loader and the clean-up at `0x5DB320` would show; neither was opened.
+Evidence: not checked: it needs the sort order of the track's phrase list, which the loader and the clean-up at `0x5DB320` would show; neither was opened.
 Game code (6142): RVA `0x20D2440` (the step, SP-05); the sort order: not found
 Hydra: `close_sp_phrase` in src/parse/song.cpp line 401 (awards every phrase independently)
 Ruling: none yet: the game's rule is not settled, so no difference is shown
-Found: wave 2 scout R3
+Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 ### SP-07 .chart and .mid read a phrase the same way
 
 Rule: A .chart phrase (`S 2 <len>`) and a .mid phrase (note 116 on and off, length = off minus on) are stored the same way and go through the same membership rule.
 Label: Unknown
-Evidence: listing lost; read 2026-10-03 at `0x213E0C0` (.chart) and `0x2155050` (.mid), session cebf3006 (ch-evidence.md lines 55 to 58 at commit 5fbe71ae). Neither reader was re-listed for this row in wave 2.
-Game code (6142): not found: looked in the committed listings and the wave 2 folders for a phrase read in `0x213E0C0` and `0x2155050`
+Evidence: listing lost; read 2026-10-03 at `0x213E0C0` (.chart) and `0x2155050` (.mid), session cebf3006 (ch-evidence.md lines 55 to 58 at commit 5fbe71ae). Neither reader was listed again for this row.
+Game code (6142): not found: looked in the committed listings for a phrase read in `0x213E0C0` and `0x2155050`; the reference build's working listings were not kept
 Hydra: `close_sp_phrase` in src/parse/song.cpp line 401, called by the .mid reader (line 805) and the .chart reader (line 1414)
 Ruling: none needed: D21 put both parsers on one helper (SP-01)
 Found: 2026-10-03, session cebf3006
@@ -98,7 +98,7 @@ Evidence: dump.cs lines 529974 and 530037 declare both fields of class #8288 (Ty
 Game code (6142): `#8288+0x68` (meter), `#8288+0x1B0` (full bar); RVA `0x20F6800`, `code/6142/sp_update_20F6800.asm` lines 9 to 15
 Hydra: Hydra counts bars, not units: `kCloneHeroSpCap` (4 bars) in src/core/model.h line 36
 Ruling: none needed: same rule in different units (SP-11)
-Found: wave 2 scout R4; this plan's wave 1 scout H5b
+Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 ### SP-10 A quarter bar is 7.5 times the chart's tick base
 
@@ -108,7 +108,7 @@ Evidence: Line 158 loads the chart double, line 162 multiplies by the constant 7
 Game code (6142): RVA `0x20F79E0` (the base engine constructor), `code/6142/engine_ctor_20F79E0.asm` lines 157 to 170
 Hydra: no owner for a unit meter: looked in src/ for 7.5, bar_ticks and sp_bar; Hydra's bar is `kMeasuresPerSpBar` (2 measures) in src/core/timing.h line 249
 Ruling: none needed: no score depends on the unit (SP-11)
-Found: wave 2 scout R4; this plan's wave 1 scouts H5a and H5b
+Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 ### SP-11 The full bar is 30 times the resolution; Hydra's is 32 in 4/4
 
@@ -118,47 +118,47 @@ Evidence: Run 1: `run1_cal0_sp_compare.txt` ("PASS sp_max constant: 5760; Hydra 
 Game code (6142): `#8288+0x1B0`, set at RVA `0x20F79E0` (SP-10)
 Hydra: `kCloneHeroSpCap` in src/core/model.h line 36 and `kMeasuresPerSpBar` in src/core/timing.h line 249
 Ruling: none needed: the units differ but the end times agree on the run (SP-31); the case where they could differ is SP-15
-Found: this plan's wave 1 scouts H5a, H5b, H6, H7a and H7b; wave 2 scout R4
+Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 ### SP-12 A phrase adds a quarter bar to the meter
 
 Rule: Collecting a phrase adds one quarter of the full bar to the meter (1,440 at resolution 192), so four phrases fill it. The gain method adds the amount to the meter and to a running total, and sets a "meter changed" byte.
 Label: Proven in the game's code
-Evidence: The gain method adds the amount to +0x68 and +0x80 at lines 19 to 22 and sets +0x130 at lines 44 to 57 (wave 2 scout R8). Live: run 1's `run1_cal0_sp_compare.txt` shows 11 of 11 phrase rises of 1,440 (1,438 or 1,439 for the three collected during Star Power, where drain overlaps the poll). Which call passes the quarter on a phrase hit was not traced (see SP-35).
+Evidence: The gain method adds the amount to +0x68 and +0x80 at lines 19 to 22 and sets +0x130 at lines 44 to 57. Live: run 1's `run1_cal0_sp_compare.txt` shows 11 of 11 phrase rises of 1,440 (1,438 or 1,439 for the three collected during Star Power, where drain overlaps the poll). Which call passes the quarter on a phrase hit was not traced (see SP-35).
 Game code (6142): RVA `0x20F4FA0`, `code/6142/sp_gain_20F4FA0.asm` lines 19 to 22 and 44 to 57
 Hydra: `kMeasuresPerSpBar` in src/core/timing.h line 249 (one phrase is one bar of two measures)
 Ruling: none needed: same rule
-Found: wave 2 scouts R4 and R8; this plan's wave 1 scouts H5a and H5b
+Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 ### SP-13 The "meter changed" byte stays set until Star Power uses it
 
 Rule: The byte at +0x130 means "the meter changed, work the end time out again". Every gain sets it. Only the update that runs while Star Power is on clears it, after it has worked the end out again. So it stays set while Star Power is off and the meter holds phrases.
 Label: Proven in the game's code
-Evidence: Set at `code/6142/sp_gain_20F4FA0.asm` lines 44 to 57; read at `code/6142/sp_update_20F6800.asm` lines 77 and 78 and cleared at line 105, on the active path only. Live: in `run1_cal0_sp_watch.csv` the byte is 1 in 22,890 rows, every one with Star Power off and 1,440 or 2,880 in the meter, and 0 whenever Star Power is on or the meter is empty (wave 1 scout H7b). This settles H7b's question about why the byte is set with no overfill. tools/ch_probe/constants.py names it `OFF_SP_OVERFLOW`, which is the old reading.
+Evidence: Set at `code/6142/sp_gain_20F4FA0.asm` lines 44 to 57; read at `code/6142/sp_update_20F6800.asm` lines 77 and 78 and cleared at line 105, on the active path only. Live: in `run1_cal0_sp_watch.csv` the byte is 1 in 22,890 rows, every one with Star Power off and 1,440 or 2,880 in the meter, and 0 whenever Star Power is on or the meter is empty. This explains why the byte is set with no overfill. tools/ch_probe/constants.py names it `OFF_SP_OVERFLOW`, which is the old reading.
 Game code (6142): RVA `0x20F4FA0` lines 44 to 57; RVA `0x20F6800`, `code/6142/sp_update_20F6800.asm` lines 69 to 106
 Hydra: no owner: Hydra works out each end directly, not per frame
 Ruling: none needed: an internal flag
-Found: this plan's wave 1 scout H7b; wave 2 scouts R4 and R8 (the two listings read together by writer W3)
+Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 ### SP-14 One unexplained tick at activation 1
 
 Rule: Run 1's first activation started from a meter of 2,879, not 2,880, and its game end sat 2.9 ms after Hydra's. The cause is not known.
 Label: Unknown
-Evidence: `run1_cal0_sp_watch.csv`, first active row (meter 2879; later activations 2880); `run1_cal0_sp_compare.txt`: game end 39,488.3 ms against Hydra's 39,485.4 ms (wave 2 scout R10, wave 1 scout H5a). Decision log D15 accepts up to one tick of drain difference in the Preview gauge, not in the end time. Looked in the activation and update listings for the cause; not found.
+Evidence: `run1_cal0_sp_watch.csv`, first active row (meter 2879; later activations 2880); `run1_cal0_sp_compare.txt`: game end 39,488.3 ms against Hydra's 39,485.4 ms. Decision log D15 accepts up to one tick of drain difference in the Preview gauge, not in the end time. Looked in the activation and update listings for the cause; not found.
 Game code (6142): RVA `0x20F5640` (SP-19) uses the meter as it is, not whole bars
 Hydra: `activation_initial_end_times` in src/search/graph.h line 167 (whole bars from `kSpActivationBars` to the cap)
 Ruling: none needed: no rule is shown to differ
-Found: wave 2 scout R10; this plan's wave 1 scout H5a
+Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 ### SP-15 Whether Star Power length follows the time signature
 
 Rule: Hydra makes one bar last two measures, counted continuously across a time signature change (a part measure counts as its share of the old measure). Whether the game's drain follows the time signature is not settled by the code read so far.
 Label: Unknown
-Evidence: Two readings. The end-time listing converts the meter to time through the tempo segments only, with no time-signature list (R4, R10), but its tick formula at `0x20D1D20` reads two segment fields, +0x30 and +0x40, whose meaning was not read, so a time signature could hide there. The 2026-10-12 session read a measure-based clock at `0x20D2930` with constants 4.0, 8.0 and 30.0 (listing lost; read 2026-10-12 at `0x20D2930`, session 28fad19c; part-B2-timing.md line 23 says "Neither function is in the evidence folder"). The 30 times resolution full bar (SP-11) fits 8 measures of 3.75 times resolution. Run 1 is 4/4 under both compared activations. Hydra's own figure for a 36/4 section at 126 BPM (34.3 s per bar, card 18665965) is arithmetic on Hydra's rule.
+Evidence: Two readings. The end-time listing converts the meter to time through the tempo segments only, with no time-signature list, but its tick formula at `0x20D1D20` reads two segment fields, +0x30 and +0x40, whose meaning was not read, so a time signature could hide there. The 2026-10-12 session read a measure-based clock at `0x20D2930` with constants 4.0, 8.0 and 30.0 (listing lost; read 2026-10-12 at `0x20D2930`, session 28fad19c; part-B2-timing.md line 23 says "Neither function is in the evidence folder"). The 30 times resolution full bar (SP-11) fits 8 measures of 3.75 times resolution. Run 1 is 4/4 under both compared activations. Hydra's own figure for a 36/4 section at 126 BPM (34.3 s per bar, card 18665965) is arithmetic on Hydra's rule.
 Game code (6142): RVA `0x20F37E0`, `code/6142/sp_end_time_20F37E0.asm` lines 15 to 93; tick formula `0x20D1D20` read, not listed; `0x20D2930` listing lost
 Hydra: `MeasureCount` in src/core/timing.h line 180; `SongTiming::plusmeasure` in src/core/timing.cpp line 321; `sp_bars_to_measures` in src/core/timing.h line 250
 Ruling: D231: the user chose "Adopt CH's rule (Recommended)" to "Clone Hero measures Star Power's length continuously ..." (decision log line 823, card 2026-10-12-28fad19c, 03:14 UTC)
-Found: wave 2 scouts R4 and R10; this plan's wave 1 scouts H5a, H5b and HB
+Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 ## Activation on drums
 
@@ -166,31 +166,31 @@ Found: wave 2 scouts R4 and R10; this plan's wave 1 scouts H5a, H5b and HB
 
 Rule: The player can activate only when Star Power is off and the meter holds at least half the full bar (two quarters). Hydra's 2 bars out of 4 is the same ratio.
 Label: Proven in the game's code
-Evidence: The can-activate test returns false when +0x42 is set and otherwise tests that +0x1B8 is not above the meter (ghidra_decompile_all.txt lines 52809 to 52819, the 2026-09-17 decompile in hydra-data\scratch_ms); +0x1B8 is half the bar at `code/6142/engine_ctor_20F79E0.asm` line 168. No listing of the test was made.
+Evidence: The can-activate test returns false when +0x42 is set and otherwise tests that +0x1B8 is not above the meter (ghidra_decompile_all.txt lines 52809 to 52819, Ghidra's 2026-09-17 decompile, not in the repo); +0x1B8 is half the bar at `code/6142/engine_ctor_20F79E0.asm` line 168. No listing of the test was made.
 Game code (6142): RVA `0x20F57F0` (decompile lines 52809 to 52819); constructor RVA `0x20F79E0` line 168
 Hydra: `kSpActivationBars` in src/core/timing.h line 51
 Ruling: none needed: same rule
-Found: wave 2 scout R10; this plan's wave 1 scouts H5a and H5b
+Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 ### SP-17 Drums activate only by hitting a fill's activation note
 
 Rule: On drums, Star Power activates only inside a hit. Five hit handlers each test that the player kind is not a remote player, that Star Power can activate, and that the hit note carries flag 0x800; then they call the activation. Flag 0x800 is the one the fill code puts on a fill's activation note.
 Label: Proven in the game's code
-Evidence: The flag test is lines 1 to 3 of the listing (test of note +0x7C against 0x800). The five call sites were found by a search for the activation's virtual slot and read in the decompile at lines 149 to 154, 347 to 352, 568 to 573, 1343 to 1348 and 1566 to 1571 (wave 2 scout R10). The committed press handler docs/audit/drum-lanes/play/f20deaa0.asm lines 112 to 130 shows the same order.
+Evidence: The flag test is lines 1 to 3 of the listing (test of note +0x7C against 0x800). The five call sites were found by a search for the activation's virtual slot and read in the decompile at lines 149 to 154, 347 to 352, 568 to 573, 1343 to 1348 and 1566 to 1571. The committed press handler docs/audit/drum-lanes/play/f20deaa0.asm lines 112 to 130 shows the same order.
 Game code (6142): handlers RVA `0x20DCC90`, `0x20DD190`, `0x20DD700`, `0x20DEAA0` and `0x20DEFF0`; flag test RVA `0x214BB50`, `code/6142/note_is_activation_214BB50.asm` lines 1 to 3
 Hydra: `Song::check_activations` in src/core/song.cpp line 105 places the fills; the search picks the activation chord
 Ruling: none needed: same rule
-Found: wave 2 scout R10; this plan's wave 1 scouts H5a and H5b
+Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 ### SP-18 No other way to activate on drums
 
 Rule: Drums have no activation button or tilt; the fill note is the only route.
 Label: Unknown
-Evidence: unchecked by the scout: it found only the five sites of SP-17 inside the engine's address range, three direct calls to the activation in the guitar family, and no drum counterpart to the guitar's button activators `0xFBC950` and `0xFBC9C0`; about 100 other call sites of the same virtual slot in other classes were not triaged. dump.cs searched by name only for an input enum (wave 1 scout H5a).
+Evidence: not checked: a search found only the five sites of SP-17 inside the engine's address range, three direct calls to the activation in the guitar family, and no drum counterpart to the guitar's button activators `0xFBC950` and `0xFBC9C0`; about 100 other call sites of the same virtual slot in other classes were not triaged. dump.cs was searched by name only for an input enum.
 Game code (6142): RVA `0x20F5640` (slot 14); guitar activators `0xFBC950` and `0xFBC9C0`
 Hydra: no owner: Hydra places activation on a fill's note and has no button model
 Ruling: none yet: the game's rule is not settled
-Found: wave 2 scout R10; this plan's wave 1 scouts H5a and H5b
+Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 ### SP-19 What activation does
 
@@ -200,27 +200,27 @@ Evidence: Lines 10 and 12 (flag +0x42, start time +0x110), 15 to 33 (start tick 
 Game code (6142): RVA `0x20F5640`, `code/6142/sp_activate_20F5640.asm` lines 9 to 40
 Hydra: `kStarPowerMultiplier` in src/core/timing.h line 48; `activation_initial_end_times` in src/search/graph.h line 167
 Ruling: none needed: same rule
-Found: wave 2 scouts R4 and R10; this plan's wave 1 scouts H5a, H5b and H7b
+Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 ### SP-20 A missed activation note is hit for the player
 
 Rule: When Star Power can activate, a missed fill-end note is hit automatically (the first branch of the miss handler).
 Label: Proven in the game's code
-Evidence: The committed listing calls the can-activate test at line 7, the flag test `0x214BB50` at line 14 and branches at line 16 (wave 1 scout H5b). docs/audit/drum-lanes/FINDINGS-play-time.md line 181 says whether Hydra matches was not checked.
+Evidence: The committed listing calls the can-activate test at line 7, the flag test `0x214BB50` at line 14 and branches at line 16. docs/audit/drum-lanes/FINDINGS-play-time.md line 181 says whether Hydra matches was not checked.
 Game code (6142): RVA `0x20DCAD0`, docs/audit/drum-lanes/f20dcad0.asm lines 7 to 16
 Hydra: no owner found: looked in src/ for fill_end and lenient; page 4 owns the fill rows
 Ruling: none needed: no difference is shown
-Found: this plan's wave 1 scout H5b
+Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 ### SP-21 Whether the activating note scores doubled
 
 Rule: The note that activates Star Power may itself be scored with the doubled multiplier, since activation runs before the hit handler.
 Label: Unknown
-Evidence: unchecked by the scout: the activation (decompile line 153) runs before the hit handler (line 168), but where the score add for that same note runs relative to activation was not read. Run 1's `run1_cal0_sp_watch.csv` holds score and multiplier columns around chord 162 and was not read for this.
+Evidence: not checked: the activation (decompile line 153) runs before the hit handler (line 168), but where the score add for that same note runs relative to activation was not read. Run 1's `run1_cal0_sp_watch.csv` holds score and multiplier columns around chord 162 and was not read for this.
 Game code (6142): RVA `0x20DCC90` (order); score add RVA `0x20DEEC0`
 Hydra: no owner searched
 Ruling: none yet: the game's rule is not settled
-Found: wave 2 scout R10
+Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 ## Drain
 
@@ -232,17 +232,17 @@ Evidence: Lines 24 to 30 save the previous total and work out the new one (curre
 Game code (6142): RVA `0x20F6800`, `code/6142/sp_update_20F6800.asm` lines 24 to 56; tick helper RVA `0x20F3750`, `code/6142/sp_current_tick_20F3750.asm` lines 5 to 30
 Hydra: no per-frame owner: `ScoreGraph::extend_deacts` in src/search/graph.cpp and `ScoreGraph::add_deact_edge` work out one end per activation
 Ruling: none needed: same end, computed differently
-Found: wave 2 scouts R4 and R10; this plan's wave 1 scouts H5a and H5b
+Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 ### SP-23 A remote player's engine does not drain
 
 Rule: The drain is skipped when the engine's player kind is RemotePlayer (value 1). Player, Bot and Replay engines drain.
 Label: Proven in the game's code
-Evidence: Lines 37 and 38 compare the 4-byte field at +0x190 with 1 and skip the drain. The field's enum is Player 0, RemotePlayer 1, Bot 2, Replay 3 (dump.cs lines 546294 to 546302). Wave 2 scout R10 left the value's meaning open; R4 and R8 read the enum.
+Evidence: Lines 37 and 38 compare the 4-byte field at +0x190 with 1 and skip the drain. The field's enum is Player 0, RemotePlayer 1, Bot 2, Replay 3 (dump.cs lines 546294 to 546302).
 Game code (6142): `#8288+0x190`; RVA `0x20F6800`, `code/6142/sp_update_20F6800.asm` lines 37 and 38
 Hydra: no owner: Hydra has no network player
 Ruling: none needed: outside Hydra's scope
-Found: wave 2 scouts R4, R8 and R10
+Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 ### SP-24 A phrase that overfills the meter is cut to a full bar
 
@@ -252,7 +252,7 @@ Evidence: Lines 9 to 15 cut the meter while off; lines 69 to 76 cut it while on 
 Game code (6142): RVA `0x20F6800`, `code/6142/sp_update_20F6800.asm` lines 9 to 15 and 69 to 86
 Hydra: `ScoreGraph::extend_deacts` in src/search/graph.cpp (the ceiling is the collecting note plus the cap, from `sp_meter_cap_`). The game's cap is always one full bar; a Hydra cap other than 4 bars is a what-if setting with no game equivalent
 Ruling: none needed: same rule (D29 records that `extend_deacts` stops at a full meter as the game does)
-Found: wave 2 scouts R4 and R10; this plan's wave 1 scouts H5a, H5b and HB
+Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 ### SP-25 What deactivation does
 
@@ -262,17 +262,17 @@ Evidence: Lines 9 to 26 of the listing (flag +0x42, multiplier +0x48 halved, met
 Game code (6142): RVA `0x20F5490` (slot 23), `code/6142/sp_deactivate_20F5490.asm` lines 9 to 26
 Hydra: `ScoreGraph::add_deact_edge` in src/search/graph.cpp
 Ruling: none needed: same rule
-Found: wave 2 scouts R4 and R10; this plan's wave 1 scouts H5a and H5b
+Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 ### SP-26 The Preview gauge drains to the stored end
 
 Rule: Hydra's Preview gauge fills one bar per phrase, drains to the stored deactivation tick, and uses the record's cap as full scale. This is Hydra's display, not a game rule.
 Label: Hydra assumes it, never checked
-Evidence: `build_sp_meter_curve` in src/app/preview_view.cpp line 125 (wave 1 scout H5b). No game check exists.
+Evidence: `build_sp_meter_curve` in src/app/preview_view.cpp line 125. No game check exists.
 Game code (6142): none (a display)
 Hydra: `build_sp_meter_curve` in src/app/preview_view.cpp
 Ruling: none needed: a display that reads the engine's end (cards 13441c5f and a28ef5f2 hold the user's derive-from-the-engine rule)
-Found: this plan's wave 1 scout H5b
+Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 ## The Star Power end
 
@@ -284,7 +284,7 @@ Evidence: Lines 15 to 45 find the start segment and add the meter in ticks; line
 Game code (6142): RVA `0x20F37E0`, `code/6142/sp_end_time_20F37E0.asm` lines 15 to 93
 Hydra: `SongTiming::sp_end_ms` in src/core/timing.cpp line 341; `activation_initial_end_times` in src/search/graph.h line 167
 Ruling: none needed: one end in both
-Found: wave 2 scouts R4 and R10
+Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 ### SP-28 Star Power ends in the first frame whose clock reaches the end
 
@@ -294,27 +294,27 @@ Evidence: The end check compares clock with end at lines 1 to 3, tests the flag 
 Game code (6142): RVA `0x20F63B0` (slot 15), `code/6142/sp_end_check_20F63B0.asm` lines 1 to 8; drum override RVA `0x20DE5A0`; event step RVA `0x20F6A50` lines 219 to 230; its handler RVA `0x20F43A0` (slot 16), not listed
 Hydra: one end point: `offset_from_sp_end` in src/core/model.h line 114; `paid_by_sp_walk` in src/core/backend_value.h line 30
 Ruling: D269 call 4: "there should never be two different answers for where star power ends. ever." (decision log line 1049; card 2026-10-30-61cee421)
-Found: wave 2 scouts R4 and R10; this plan's wave 1 scouts H5a and H5b
+Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 ### SP-29 Whether a hit is scored before the end check in each frame
 
 Rule: In each frame the game first advances its events to the new time, then runs the end check, then the drain. If a hit is scored inside that first step, a hit handled in the frame whose clock first reaches the end is still scored with Star Power on, even when its clock is past the end. Whether hits are scored there, or in an input callback outside this function, was not read.
 Label: Unknown
-Evidence: The order of the calls is shown: the frame update calls `0x20F4950` at line 17, slot 9 at line 21, slot 21 at line 33, slot 15 (the end check) at line 37, slot 18 at line 41 and slot 12 (the drain) at line 45; slot n is at vtable offset 0x138 plus 16 n. The reviewer of this page read `0x20F4950` once (tools/ch_mcp/chdis.py on the 6142 DLL, 2026-10-30, no listing committed): it calls the event step (slot 8, SP-28) and `0x20F6FF0` up to three times, then sets the clock; it shows no press handler or score add. Wave 2 scout R10 called it the "input and note step" without a listing. Its callers are `0x20A1B0` (three call sites) and `0xFEB4C0`. Where a press is turned into a hit, and with which clock, is not read (SP-30).
+Evidence: The order of the calls is shown: the frame update calls `0x20F4950` at line 17, slot 9 at line 21, slot 21 at line 33, slot 15 (the end check) at line 37, slot 18 at line 41 and slot 12 (the drain) at line 45; slot n is at vtable offset 0x138 plus 16 n. The reviewer of this page read `0x20F4950` once (tools/ch_mcp/chdis.py on the 6142 DLL, 2026-10-30, no listing committed): it calls the event step (slot 8, SP-28) and `0x20F6FF0` up to three times, then sets the clock; it shows no press handler or score add. Its callers are `0x20A1B0` (three call sites) and `0xFEB4C0`. Where a press is turned into a hit, and with which clock, is not read (SP-30).
 Game code (6142): RVA `0x20F4550`, `code/6142/base_frame_update_20F4550.asm` lines 17 to 45; `0x20F4950` not listed
 Hydra: no frame model: Hydra pays a note by its chart time against one end (`paid_by_sp_walk` in src/core/backend_value.h line 30)
 Ruling: none yet: the game's rule is not settled; questions page Q-50 holds the question that follows if hits are scored before the end check
-Found: wave 2 scout R10; reviewed 2026-10-30
+Found: 2026-10-30, session b02ab3e6 (the reference build); reviewed 2026-10-30
 
 ### SP-30 Whether a hit is judged at a clock between frames
 
 Rule: The clock a hit is judged at may be the frame clock or one of up to three sub-step clocks between frames.
 Label: Unknown
-Evidence: unchecked by the scout: `0x20F4950` sets the clock field up to three times from the result of `0x20F6FF0` before the final set to the frame time; what `0x20F6FF0` returns was not read. Neither function is listed.
+Evidence: not checked: `0x20F4950` sets the clock field up to three times from the result of `0x20F6FF0` before the final set to the frame time; what `0x20F6FF0` returns was not read. Neither function is listed.
 Game code (6142): RVA `0x20F4950` and `0x20F6FF0`, not listed
 Hydra: no owner
 Ruling: none yet: the game's rule is not settled
-Found: wave 2 scout R10
+Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 ### SP-31 Hydra's end lands within 3 ms of the game's
 
@@ -324,17 +324,17 @@ Evidence: Run 1, `run1_cal0_sp_compare.txt`: activation 1 game end 39,488.3 ms a
 Game code (6142): `#8288+0x120`, `#8288+0x42` and `#8288+0x48` read live
 Hydra: `Activation::deact_tick` in src/core/model.h; `kMeasuresPerSpBar` in src/core/timing.h line 249
 Ruling: none needed: same end
-Found: wave 2 scouts R4 and R10; this plan's wave 1 scouts H5a, H5b and H7b
+Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 ### SP-32 Hydra puts the end on a whole tick
 
 Rule: Hydra adds whole measures in ticks and rounds down, so its SP end sits on a whole tick. The game stores the end as a decimal time. A public Hydra rounding bug gave -2.7 ms on Shop Theme; Hydra Deluxe shows 0 ms.
 Label: Hydra assumes it, never checked
-Evidence: `SongTiming::plusmeasure` in src/core/timing.cpp line 321 and ADR 0014 line 162 ("plusmeasure rounds down"). The Shop Theme reading is in card 2026-10-29-07074f3d; the public source it read was in a scratch folder that is gone. The game side is the decimal store in SP-27. One tick is about 1.7 ms at resolution 192 and 186 BPM.
+Evidence: `SongTiming::plusmeasure` in src/core/timing.cpp line 321 and ADR 0014 line 162 ("plusmeasure rounds down"). The Shop Theme reading is in card 2026-10-29-07074f3d; the copy of the public source it read was not kept. The game side is the decimal store in SP-27. One tick is about 1.7 ms at resolution 192 and 186 BPM.
 Game code (6142): RVA `0x20F37E0` returns a decimal time (SP-27)
 Hydra: `SongTiming::plusmeasure` in src/core/timing.cpp line 321
-Ruling: none needed: c0e1259d's choice "Exact count in both modes (Recommended)" covers Hydra's whole-tick count (wave 1 scout HB)
-Found: this plan's wave 1 scouts H5a and HB
+Ruling: none needed: c0e1259d's choice "Exact count in both modes (Recommended)" covers Hydra's whole-tick count
+Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 ### SP-33 A chord exactly on the end counts inside Star Power
 
@@ -344,7 +344,7 @@ Evidence: Hydra: `paid_by_sp_walk` (offset at or below 0) and `after_sp_end` (ti
 Game code (6142): RVA `0x20F63B0` and `0x20F4550` (SP-28, SP-29)
 Hydra: `paid_by_sp_walk` in src/core/backend_value.h line 30; `after_sp_end` line 36
 Ruling: none needed: no difference is shown
-Found: wave 2 scout R10; this plan's wave 1 scout H5a
+Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 ## Phrases collected during Star Power
 
@@ -356,17 +356,17 @@ Evidence: The gain at `code/6142/sp_gain_20F4FA0.asm` lines 19 to 22 and 44 to 5
 Game code (6142): RVA `0x20F4FA0` lines 19 to 57; RVA `0x20F6800` lines 77 to 86
 Hydra: `ScoreGraph::extend_deacts` in src/search/graph.cpp; `kMeasuresPerSpBar` in src/core/timing.h line 249
 Ruling: none needed: same rule
-Found: wave 2 scouts R4, R8 and R10; this plan's wave 1 scouts H5a, H5b and H7b
+Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 ### SP-35 Which call credits a phrase on a hit
 
 Rule: A phrase is credited when its last chord is hit, using that hit's own Star Power state. The call that passes the quarter bar to the gain method on a phrase hit has not been read.
 Label: Unknown
-Evidence: The only decompiled caller of the gain method is the fill deadline `0x20DDB70` (ghidra_decompile_all.txt line 681). The label "Star Power phrase: 0x20F6719 to 0x20F6738" in docs/audit/drum-lanes/FINDINGS-play-time.md line 87 is unproven: the callee there, `0x20F7610`, writes +0xA0 from a hit ratio and never writes the meter in the 67 lines read (wave 1 scout H5b). A virtual call with the engine's quarter bar after the 0x100 flag is cleared, in docs/audit/drum-lanes/play/f20f63f0_base_hit.asm lines 206 to 216, is the likely route (wave 1 scout H5a); its target was not read.
+Evidence: The only decompiled caller of the gain method is the fill deadline `0x20DDB70` (ghidra_decompile_all.txt line 681). The label "Star Power phrase: 0x20F6719 to 0x20F6738" in docs/audit/drum-lanes/FINDINGS-play-time.md line 87 is unproven: the callee there, `0x20F7610`, writes +0xA0 from a hit ratio and never writes the meter in the 67 lines read. A virtual call with the engine's quarter bar after the 0x100 flag is cleared, in docs/audit/drum-lanes/play/f20f63f0_base_hit.asm lines 206 to 216, is the likely route; its target was not read.
 Game code (6142): gain RVA `0x20F4FA0`; the crediting call: not found (looked in the base hit listing and the decompile)
 Hydra: `close_sp_phrase` in src/parse/song.cpp line 401 marks the crediting chord
 Ruling: none yet: the game's rule is not settled
-Found: this plan's wave 1 scouts H5a and H5b
+Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 ## Squeezes
 
@@ -378,7 +378,7 @@ Evidence: docs/audit/drum-lanes/play/f20f63f0_base_hit.asm lines 78 to 90 (activ
 Game code (6142): RVA `0x20F63F0` (the base hit routine), docs/audit/drum-lanes/play/f20f63f0_base_hit.asm lines 78 to 119
 Hydra: `within_squeeze_window` in src/core/model.h line 122; `sqout_chords` in src/core/sqout_chord.h
 Ruling: none needed: these are counters; the SP end itself is SP-28
-Found: this plan's wave 1 scouts H5a and H5b
+Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 ### SP-37 Squeeze-in and squeeze-out, and their timing budget
 
@@ -388,7 +388,7 @@ Evidence: `squeeze_budget_ms` in src/core/squeeze_rating.cpp line 76 and `kHitWi
 Game code (6142): RVA `0x20F63F0` (SP-36), `0x20F4550` (SP-29)
 Hydra: `squeeze_budget_ms` in src/core/squeeze_rating.cpp line 76; `kHitWindowMs` in src/core/model.h line 104
 Ruling: card c73697df: "the hit window is +/- 85ms, the 70ms is an outdated figure. we can change that." (02:08 UTC; the window's value only)
-Found: this plan's wave 1 scouts H5a and H5b
+Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 ### SP-38 Hydra looks for squeezes only within 500 ms of the end
 
@@ -398,7 +398,7 @@ Evidence: `kSqueezeWindowMs = 500.0` in src/core/model.h line 110 and `within_sq
 Game code (6142): none (a search horizon, not a game rule)
 Hydra: `kSqueezeWindowMs` in src/core/model.h line 110; `within_squeeze_window` line 122
 Ruling: card 6e7764db: "timing and backend limit should not be limited to 200ms. they should reach the full 500 ms hydra supports" (2026-08-29 02:45 UTC)
-Found: this plan's wave 1 scouts H3, H5a, H5b and HB; wave 2 scout R10
+Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 ### SP-39 An early or late activation moves the end by r times the error
 
@@ -408,7 +408,7 @@ Evidence: `frontend_transfer_scales` in src/core/squeeze_rating.cpp line 22 and 
 Game code (6142): none (rests on SP-15)
 Hydra: `frontend_transfer_scales` in src/core/squeeze_rating.cpp line 22; `transfer_scale_between` in src/core/squeeze_rating.h line 52; `rate_activation` in src/core/squeeze_rating.cpp
 Ruling: none needed: Hydra's model of a game rule still open in SP-15
-Found: this plan's wave 1 scout H5a
+Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 ### SP-40 When the cap clamps, the scale is measured from the collecting note
 
@@ -418,7 +418,7 @@ Evidence: The game's anchor is `code/6142/sp_update_20F6800.asm` lines 69 to 86 
 Game code (6142): RVA `0x20F6800` lines 69 to 86
 Hydra: `SpExtension` in src/search/graph.h line 103 (the stored clamp tick)
 Ruling: D1: card cebf3006 holds the user's pick "Yes, collecting note (Recommended)" (decision log line 7)
-Found: this plan's wave 1 scouts H3 and HB
+Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 ### SP-41 No backends after a squeezed-out note
 
@@ -428,7 +428,7 @@ Evidence: cards 99e42ceb and 135630ac name the engine rebuild in src/search/engi
 Game code (6142): none (a Hydra record rule)
 Hydra: src/search/engine.cpp (per the cards; not re-opened)
 Ruling: card 99e42ceb: "hydra should not display any backends beyond a squeeze out, that doesnt make any sense. do not just change the display, find where the engine calculates these records and fix it there" (03:55 UTC)
-Found: this plan's wave 1 scout HB
+Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 ## The 3 ms leeway
 
@@ -440,17 +440,17 @@ Evidence: Public Hydra at 3b49012c, `git show 3b49012c:hydra/hypath.py` line 678
 Game code (6142): none (a scoring rule, not a game rule)
 Hydra: `Rules::backend_leeway_ms` in src/core/rules.h line 32; `counted_without_squeeze` in src/core/backend_value.h line 41
 Ruling: D269 call 4, the user's words (decision log line 1049; session 61cee421): "there should never be two different answers for where star power ends. ever. the 3ms rule is for whether a backend is included in the optimal score or uncounted. it's an arbitrary number chosen by dragondelgar and i am fine with keeping it so our scores use the same methodology as delgar's hydra". The strict edge at exactly 3.0 ms is D29's record.
-Found: this plan's wave 1 scouts H5a and H5b; wave 2 scouts R4 and R10; 2026-10-30, session 61cee421
+Found: 2026-10-30, session 61cee421
 
 ### SP-43 The game's engine holds no 3 ms constant
 
 Rule: No 3 ms (0.003 s) constant is used by the drum engine or its base classes.
 Label: Unknown
-Evidence: A byte search of `GameAssembly.dll` found the double and the float 0.003 once each in .rdata; a scan of every instruction for references to them found six, in static methods of class #182 (`0x3738B0`, `0x373A40`, `0x373F30`, `0x374310`) and two compares in class #707 at `0x16C650`, none in #8288, #8253, #8255 or #8544. A scan of 18,340 operands in the engine address ranges for values near 0.003, or exactly 3.0 or 3000.0, found only scale factors. Constants held as immediate operands were not searched, so the absence is not shown (wave 2 scout R10). The 2026-10-03 claim over 126 engine methods rests on a lost listing.
+Evidence: A byte search of `GameAssembly.dll` found the double and the float 0.003 once each in .rdata; a scan of every instruction for references to them found six, in static methods of class #182 (`0x3738B0`, `0x373A40`, `0x373F30`, `0x374310`) and two compares in class #707 at `0x16C650`, none in #8288, #8253, #8255 or #8544. A scan of 18,340 operands in the engine address ranges for values near 0.003, or exactly 3.0 or 3000.0, found only scale factors. Constants held as immediate operands were not searched, so the absence is not shown. The 2026-10-03 claim over 126 engine methods rests on a lost listing.
 Game code (6142): not found: looked as described in the Evidence line
 Hydra: `Rules::backend_leeway_ms` in src/core/rules.h line 32 (Hydra's own rule, SP-42)
 Ruling: none needed: SP-42's ruling covers the leeway
-Found: wave 2 scout R10; this plan's wave 1 scouts H5a and H5b
+Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 ## The bot
 
@@ -458,11 +458,11 @@ Found: wave 2 scout R10; this plan's wave 1 scouts H5a and H5b
 
 Rule: The game's bot never gains Star Power meter, so it never collects a phrase and never activates. The engine's gain method returns before adding anything when the player kind is Bot (or RemotePlayer).
 Label: Proven in the game's code
-Evidence: Lines 13 and 14 compare the player kind at +0x190 with 2 (Bot), lines 15 and 16 with 1 (RemotePlayer), each jumping to the return (wave 2 scout R8). Which caller sets kind 2 for a bot was not followed. Live: both Trippin SP Spike bot runs (Drums and ProDrums, 2026-10-28) have is_bot true, sp_phrases_earned 0 of 11, sp_activations 0 and time_in_sp 0 (C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-10-28\l1\bot\); docs/research/2026-10-28-clone-hero-mcp-feasibility.md (Test 1) says bot runs tell nothing about Star Power paths. Wave 2 scout R10 wrote "the bot can use Star Power" from run 1, but run 1 was the key-press auto-player (is_bot false in `run1_cal0_scorestats.json`), so it says nothing about the bot (SP-45).
+Evidence: Lines 13 and 14 compare the player kind at +0x190 with 2 (Bot), lines 15 and 16 with 1 (RemotePlayer), each jumping to the return. Which caller sets kind 2 for a bot was not followed. Live: both Trippin SP Spike bot runs (Drums and ProDrums, 2026-10-28) have is_bot true, sp_phrases_earned 0 of 11, sp_activations 0 and time_in_sp 0 (C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-10-28\l1\bot\); docs/research/2026-10-28-clone-hero-mcp-feasibility.md (Test 1) says bot runs tell nothing about Star Power paths. Run 1, which does use Star Power, was the key-press auto-player (is_bot false in `run1_cal0_scorestats.json`), so it says nothing about the bot (SP-45).
 Game code (6142): RVA `0x20F4FA0`, `code/6142/sp_gain_20F4FA0.asm` lines 13 to 16; `#8288+0x190`
 Hydra: no owner: Hydra has no bot model
 Ruling: none needed: a fact about the game's bot
-Found: wave 2 scout R8; this plan's wave 1 scouts H5a, H5b, H6 and H7a
+Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 ### SP-45 The key-press auto-player does activate Star Power
 
@@ -472,7 +472,7 @@ Evidence: Run 1, `run1_cal0_scorestats.json`: is_bot false, sp_phrases_earned 11
 Game code (6142): `#8288+0x42` read live
 Hydra: no owner: the player is a tool in tools/ch_probe
 Ruling: none needed: a tool fact
-Found: wave 2 scout R10; this plan's wave 1 scout H5b
+Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 ## On screen
 

@@ -1,5 +1,5 @@
 # clock_ctor_16C9A0.asm  (build 6142, RVA 0x16C9A0, #707 .ctor, the song clock)
-Made with chdis.py, 2026-10-30, session b02ab3e6, scout R7. Method start per script.json. Arguments: xmm1 = length a (double), xmm2 = lead-in b (double), xmm3 = speed ratio c (float), then two floats on the stack, d (audio calibration) and e (video minus audio).
+Made with chdis.py, 2026-10-30, session b02ab3e6. Method start per script.json. Arguments: xmm1 = length a (double), xmm2 = lead-in b (double), xmm3 = speed ratio c (float), then two floats on the stack, d (audio calibration) and e (video minus audio).
 Lines 2-14: prologue; the flag at +0x28 is set to 1 (line 11) and the float at +0x30 to 1.0f (0x3F800000, line 13); line 14 calls the base object constructor.
 Lines 15-20: +0x48 = (double) d (line 20, the audio calibration in seconds); c is widened to double.
 Lines 21-24: xmm8 = b / c, xmm6 = a / c (two divides).

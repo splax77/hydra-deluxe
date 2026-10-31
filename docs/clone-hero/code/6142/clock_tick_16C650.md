@@ -1,5 +1,5 @@
 # clock_tick_16C650.asm  (build 6142, RVA 0x16C650, #707 per-frame update, called by GameManager.Update at 0xC0839)
-Made with chdis.py, 2026-10-30, session b02ab3e6, scout R7. Method start per script.json.
+Made with chdis.py, 2026-10-30, session b02ab3e6. Method start per script.json.
 Lines 2-18: prologue, once-only setup.
 Lines 19-26: step = deltaTime x (+0x30 / +0x2C), where +0x30 is the practice speed copy and +0x2C the song speed ratio; +0x40 += step (line 26).
 Lines 27-32: +0x38 (the raw clock) += the same step. Between audio reads the raw clock runs on the frame timer.

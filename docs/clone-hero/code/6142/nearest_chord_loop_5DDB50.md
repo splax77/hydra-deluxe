@@ -13,4 +13,4 @@ Plain words: the same nearest-chord search as `0x5DE030` but with no window and 
 - Lines 53 to 78: fetch both chords and their ticks (virtual call 0x182C44210, lines 71 and 78).
 - Lines 79 to 84: `(tick(A) - target) > (target - tick(B))` returns B (line 93), else A (line 84).
 
-Note for the claims table: the backward search starts at `startIndex` when there is no A, so with no chord after the target it returns the chord at or below `startIndex`, which is not necessarily the last chord of the song.
+Note (see FL-07 on page 4): the backward search starts at `startIndex` when there is no A, so with no chord after the target it returns the chord at or below `startIndex`, which is not necessarily the last chord of the song.

@@ -4,7 +4,7 @@ This page covers the game's classes and fields that the tools read, the per-note
 It describes build 1.1 (v1.1.0.6142), and says where 1.0 (v1.0.0.4045) differs.
 Last write-back: 2026-10-31.
 
-Most rows here are about the game's own layout, which no Hydra rule reads. Their Ruling line says so. The rules these fields feed (timing, Star Power, scoring) live on pages 03, 05 and 06. Paths that start `RUNS` mean `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-10-28\`; `GD` means the surviving Ghidra decompile `C:\Users\Patrick\Downloads\Hydra\hydra-data\scratch_ms\ghidra_decompile_all.txt`; `dump.cs` is `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-dumps\6142\dump.cs`; `overlay-spike` means `tools/ch_probe/experiments/results/overlay-spike/`, whose result files are untracked today.
+Most rows here are about the game's own layout, which no Hydra rule reads. Their Ruling line says so. The rules these fields feed (timing, Star Power, scoring) live on pages 03, 05 and 06. Paths that start `RUNS` mean `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-10-28\`; `GD` means Ghidra's full decompile `ghidra_decompile_all.txt`, which `code/README.md` describes (it is not in the repo); `dump.cs` is `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-dumps\6142\dump.cs`; `overlay-spike` means `tools/ch_probe/experiments/results/overlay-spike/`, whose result files are untracked today.
 
 ## The game manager
 
@@ -12,11 +12,11 @@ Most rows here are about the game's own layout, which no Hydra rule reads. Their
 
 Rule: `GameManager` (TypeDefIndex 449, in CloneHero.dll) has 60 fields, and 40 of them keep plain names, among them the song time, song length, song-over flag and practice speed.
 Label: Proven in the game's code
-Evidence: `dump.cs` line 25284 (the class header) and the field lines after it: songLength at +0x50, songTime at +0x70, isSongOver at +0x91, practiceSpeed at +0xD8. Wave 1 scout H7a counted 60 fields, 40 with plain names. This is dump text, not a listing.
+Evidence: `dump.cs` line 25284 (the class header) and the field lines after it: songLength at +0x50, songTime at +0x70, isSongOver at +0x91, practiceSpeed at +0xD8. The count of 60 fields, 40 with plain names, is `RUNS\l4\compare-4045-6142.txt` line 13803 (20 scrambled and 40 readable, IN-49). This is dump text, not a listing.
 Game code (6142): `GameManager.songTime`, `GameManager.songLength`, `GameManager.isSongOver`, `GameManager.practiceSpeed`; fields only, no method.
 Hydra: no owner: Hydra never reads the running game. The tools read the class by name in tools/ch_mcp/agent/gamemanager.ts.
 Ruling: none needed: no Hydra rule reads it.
-Found: 2026-10-28, feasibility study (`docs/research/2026-10-28-clone-hero-mcp-feasibility.md` line 54); recounted by this plan's wave 1 scout H7a.
+Found: 2026-10-28, feasibility study (`docs/research/2026-10-28-clone-hero-mcp-feasibility.md` line 54); recounted 2026-10-30, session b02ab3e6 (the reference build).
 
 ### IN-02 The game manager's fields can be read by name while a song plays
 
@@ -26,7 +26,7 @@ Evidence: `RUNS\l2\clock.jsonl` (2026-10-28): 371 samples, songTime from 3.0683 
 Game code (6142): `GameManager.songTime`, `GameManager.isSongOver`; read by field name, no method.
 Hydra: no owner: Hydra never reads the running game. The tool readers are tools/ch_mcp/agent/state.ts and clock.ts.
 Ruling: none needed: no Hydra rule reads it.
-Found: 2026-10-28, feasibility study line 137; checked by this plan's wave 1 scout H7a.
+Found: 2026-10-28, feasibility study line 137; checked 2026-10-30, session b02ab3e6 (the reference build).
 
 ### IN-03 A finished song's game manager stays in memory, marked by a null native pointer
 
@@ -46,7 +46,7 @@ Evidence: `code/6142/gm_awake_B41A0.asm` lines 147 to 165 and the millisecond-to
 Game code (6142): `GameManager.Awake`, RVA `0xB41A0`; helper RVA `0x210C1F0`; the load coroutine's MoveNext (a scrambled nested class of GameManager), RVA `0xD8D80`.
 Hydra: no owner: Hydra has no calibration and no practice-speed model (a grep for `calibrat` in src/ finds nothing).
 Ruling: none needed here: the timing rules and their rulings are page 03's.
-Found: 2026-10-28, overlay spike handoff (`docs/handoffs/2026-10-28-overlay-spike-sitting-handoff.md`); listed by this plan's wave 2 scout R7.
+Found: 2026-10-28, overlay spike handoff (`docs/handoffs/2026-10-28-overlay-spike-sitting-handoff.md`); listed 2026-10-30, session b02ab3e6 (the reference build).
 
 ### IN-05 The song clock is its own class with two getters
 
@@ -56,7 +56,7 @@ Evidence: `code/6142/clock_ctor_16C9A0.asm` lines 22 to 38; `code/6142/clock_tic
 Game code (6142): class #707 (scrambled methods): constructor RVA `0x16C9A0`, tick RVA `0x16C650`, judged-time getter RVA `0x16C480`, drawn-time getter RVA `0x16C490`.
 Hydra: no owner of a game clock. The delay sign Hydra's Preview uses is `kOffsetDirection` in src/app/preview_source.cpp line 139.
 Ruling: none needed here: the clock rules and their rulings are page 03's.
-Found: 2026-10-28, overlay spike handoff ("The clock"); listed by this plan's wave 2 scout R7.
+Found: 2026-10-28, overlay spike handoff ("The clock"); listed 2026-10-30, session b02ab3e6 (the reference build).
 
 ### IN-06 The song metadata object holds the delay in whole milliseconds at +0x24
 
@@ -66,7 +66,7 @@ Evidence: `code/6142/ini_song_reader_1EFC60.asm` lines 38 to 47; `code/6142/ini_
 Game code (6142): class #828 reader RVA `0x1EFC60`, seconds getter RVA `0x1EF1A0`; ini getter RVA `0x21647A0`; chart metadata reader (a scrambled SongEntry method) RVA `0x35C980`.
 Hydra: `preview_audio_offset_ms` in src/app/preview_source.cpp line 311 and `parse_delay_ms` at line 113 hold Hydra's side of the rule.
 Ruling: none needed here: the delay and Offset rules, and their open splits, are page 03's.
-Found: 2026-10-30, this plan's wave 2 scout R7.
+Found: 2026-10-30, session b02ab3e6 (the reference build).
 
 ### IN-07 The settings loader builds the calibration and speed settings
 
@@ -76,7 +76,7 @@ Evidence: `code/6142/settings_load_374D50.asm` lines 359 to 399 (audio, video) a
 Game code (6142): loader RVA `0x374D50`; integer setting constructor RVA `0x210C470`; base constructor RVA `0x2116210`; ratio getter RVA `0x210C090`. All names are scrambled.
 Hydra: no owner: Hydra reads no calibration or speed setting (grep for "calibrat" and "song_speed" in src/).
 Ruling: none needed here: the values and their rulings are page 03's.
-Found: 2026-10-28, overlay spike handoff ("What the code says about calibration"); listed by this plan's wave 2 scout R7.
+Found: 2026-10-28, overlay spike handoff ("What the code says about calibration"); listed 2026-10-30, session b02ab3e6 (the reference build).
 
 ### IN-08 CalibrationWindow is a joystick screen, not the audio and video calibration
 
@@ -86,7 +86,7 @@ Evidence: `dump.cs` lines 62144 to 62270 (namespace Rewired.UI.ControlMapper, th
 Game code (6142): `CalibrationWindow` (no method read); `Calibrator.Update`, RVA `0x2FB0B0`, not read.
 Hydra: no owner (grep for `calibrat` in src/ finds nothing).
 Ruling: none needed: no Hydra rule reads it.
-Found: 2026-10-30, this plan's wave 2 scout R7.
+Found: 2026-10-30, session b02ab3e6 (the reference build).
 
 ## The drum engine
 
@@ -98,7 +98,7 @@ Evidence: `dump.cs` line 527421 (#8255 and its base) and lines 527421 to 527452 
 Game code (6142): `#8288+0x20`, `#8288+0x30`, `#8288+0x38`, `#8288+0x42`, `#8288+0x48`, `#8288+0x68`, `#8288+0x94`, `#8288+0x120`, `#8288+0x130`, `#8288+0x1B0`, `#8255+0x2E0`; dump text, no listing.
 Hydra: no owner. The tool's names for these offsets are the `OFF_` constants in tools/ch_probe/constants.py lines 87 to 147 (for example `OFF_TOTAL_WINDOW`, `OFF_SCORE`).
 Ruling: none needed: no Hydra rule reads it.
-Found: this plan's wave 1 scout H7a (from `tools/ch_probe/constants.py` and the overlay spike).
+Found: 2026-10-30, session b02ab3e6 (the reference build), from `tools/ch_probe/constants.py` and the overlay spike.
 
 ### IN-10 The engine constructor writes the window constants into the engine
 
@@ -108,7 +108,7 @@ Evidence: `code/6142/engine_ctor_20DF680.asm` lines 80 to 87 (the four loads and
 Game code (6142): #8255 constructor, RVA `0x20DF680`; flags field `#8288+0x198`.
 Hydra: no owner here: Hydra's fixed window and its difference from the game are on page 03.
 Ruling: none needed here: the hit-window rulings and splits are page 03's.
-Found: 2026-09-25, session 8157f2dc (milestone 1 run); re-read by this plan's wave 1 scouts H7b and wave 2 scout R7.
+Found: 2026-09-25, session 8157f2dc (milestone 1 run); re-read 2026-10-30, session b02ab3e6 (the reference build).
 
 ### IN-11 The song clock sits at +0x100 and the score at +0x94
 
@@ -118,7 +118,7 @@ Evidence: `overlay-spike/run1_cal0_sp_watch.csv` (2026-10-28): 40,922 rows, cloc
 Game code (6142): `#8288+0x100`, `#8288+0x94`; data fields, no method.
 Hydra: no owner: Hydra's score is its own sum. The tool's names are `OFF_SONG_CLOCK` and `OFF_SCORE` in tools/ch_probe/constants.py lines 98 and 101.
 Ruling: none needed: no Hydra rule reads it.
-Found: 2026-09-25, session 8157f2dc; checked by this plan's wave 1 scouts H7a and H7b.
+Found: 2026-09-25, session 8157f2dc; checked 2026-10-30, session b02ab3e6 (the reference build).
 
 ### IN-12 The double at +0x2E0 is the start of a double lane's round, not a hit time
 
@@ -128,13 +128,13 @@ Evidence: `docs/audit/drum-lanes/play/f20deaa0.asm` has two copies of the code. 
 Game code (6142): `#8255+0x2E0`; writer in the engine method at RVA `0x20DEAA0`, `docs/audit/drum-lanes/play/f20deaa0.asm` lines 140 and 188.
 Hydra: no owner. The tool calls it `OFF_HIT_TIME` in tools/ch_probe/constants.py line 106, which is the wrong name.
 Ruling: none needed: no Hydra rule reads it; the tool's name is Q-78
-Found: 2026-09-25, session 8157f2dc; this plan's wave 1 scouts H7a and H7b.
+Found: 2026-09-25, session 8157f2dc; 2026-10-30, session b02ab3e6 (the reference build).
 
 ### IN-13 The combo count and the window note count have no result file
 
 Rule: Session 8157f2dc read +0xB0 as the combo count (it resets on a miss) and +0x8C as the count of notes inside the active window (it goes up and down). No result file holds either field.
 Label: Unknown
-Evidence: unchecked by the scout: the only record is the session's printout; no sp_watch file has either column, and the dump names neither field (`overlay-spike/il2cpp-fields.md` line 164 lists both as unnamed ints). Looked in the results folders and the committed listings.
+Evidence: not checked: the only record is the session's printout; no sp_watch file has either column, and the dump names neither field (`overlay-spike/il2cpp-fields.md` line 164 lists both as unnamed ints). Looked in the results folders and the committed listings.
 Game code (6142): `#8288+0x8C` and the int at +0xB0; no writer read.
 Hydra: no owner. The tool calls +0x8C `OFF_NOTE_COUNT` (tools/ch_probe/constants.py line 147).
 Ruling: none needed: no Hydra rule reads it.
@@ -164,11 +164,11 @@ Found: 2026-09-25, session 8157f2dc.
 
 Rule: The window formula's normal branch (flags bit 0x1000 clear) reads the four constants that tools/ch_probe/constants.py files under `RVA_FORMULA_PRECISION`, and the precision branch reads the four filed under `RVA_FORMULA_NORMAL`. So the tool's normal-mode prediction runs on the precision constants.
 Label: Proven in the game's code
-Evidence: GD lines 767 to 781, read again for this page: the bit-clear branch (lines 772 to 774) multiplies by the addresses listed at constants.py lines 175 to 180, and the bit-set branch (lines 779 to 781) by those at lines 166 to 171. Wave 1 scout H7b checked the arithmetic: with the bit-clear constants the formula gives 171.43126 ms at an input of 170 and 96.29316 ms at 75, the two ends of `tools/ch_probe/experiments/results/poll_windows.csv`; the other table gives -242 and -78.
+Evidence: GD lines 767 to 781, read again for this page: the bit-clear branch (lines 772 to 774) multiplies by the addresses listed at constants.py lines 175 to 180, and the bit-set branch (lines 779 to 781) by those at lines 166 to 171. The arithmetic fits the live run: with the bit-clear constants' values, as session 8157f2dc printed them (condensed transcript lines 215 to 219), the formula gives 171.43126 ms at an input of 170 and 96.29316 ms at 75, and `tools/ch_probe/experiments/results/poll_windows.csv` holds 171.431308 and 96.293167 as its largest and smallest totals; the other table gives -242 and -78.
 Game code (6142): window formula, RVA `0x20DDDA0`; flags field `#8288+0x198`.
 Hydra: no owner in src/; the two tables are `RVA_FORMULA_NORMAL` (constants.py line 166) and `RVA_FORMULA_PRECISION` (line 175), and the tool's normal-window prediction (`predicted_window_normal` in tools/ch_probe/experiments/analysis.py, fed by `normal_formula_constants` at lines 312 to 316) reads the first.
 Ruling: open split: see questions page Q-76
-Found: 2026-10-30, this plan's wave 1 scout H7b.
+Found: 2026-10-30, session b02ab3e6 (the reference build).
 
 ## The per-note hooks
 
@@ -196,7 +196,7 @@ Found: 2026-10-28, sessions 6a549de0 and 12d82c30 (feasibility study lines 154 t
 
 Rule: The plan records that `0x20DEEC0` fired 77 times on a run where the game counted 77 hit notes of 142 and 10 overhits, with every section equal, so it would fire only for hit notes. The trace half of that record is not on disk.
 Label: Unknown
-Evidence: unchecked by the scout: it needs the run's trace log. The game's side exists only in a temporary scratch folder (`l2-run2-scorestats.json` of session e9b04efc: 77 hit, 142 total, 10 excess, section hits 2, 8, 12, 15, 11, 10, 5, 8, 3, 3); the 77 calls are text in `docs/superpowers/plans/2026-10-28-ch-mcp-server.md` line 312.
+Evidence: not checked: it needs the run's trace log. The game's side was the file `l2-run2-scorestats.json` of session e9b04efc, which was not kept (77 hit, 142 total, 10 excess, section hits 2, 8, 12, 15, 11, 10, 5, 8, 3, 3); the 77 calls are text in `docs/superpowers/plans/2026-10-28-ch-mcp-server.md` line 312.
 Game code (6142): #8255 method RVA `0x20DEEC0`.
 Hydra: no owner. The tool comment is at tools/ch_probe/constants.py lines 67 to 69.
 Ruling: none needed: no Hydra rule reads it.
@@ -210,7 +210,7 @@ Evidence: looked in `RUNS\l3` (counts only for clean runs and one key run with 3
 Game code (6142): #8255 method RVA `0x20DE770`.
 Hydra: no owner.
 Ruling: none needed: no Hydra rule reads it.
-Found: this plan's wave 1 scout H7a.
+Found: 2026-10-30, session b02ab3e6 (the reference build).
 
 ### IN-21 The dynamics method compares a per-lane byte with a threshold
 
@@ -220,7 +220,7 @@ Evidence: GD lines 1137 to 1162 (the lane byte chosen by the note's lane mask) a
 Game code (6142): #8255 method RVA `0x20DE770`.
 Hydra: no owner: Hydra reads accents and ghosts from the chart, not from an input value (page 06).
 Ruling: none needed: the dynamics scoring rule and its ruling are page 06's.
-Found: 2026-10-28, session 6a549de0 (feasibility study line 131); read by this plan's wave 1 scout H7a.
+Found: 2026-10-28, session 6a549de0 (feasibility study line 131); read 2026-10-30, session b02ab3e6 (the reference build).
 
 ### IN-22 The address the tools call the hit check belongs to the other instantiation
 
@@ -230,7 +230,7 @@ Evidence: `dump.cs` lines 527331 to 527338 (the slot 25 instantiation list: `0x1
 Game code (6142): #8253 slot 25, RVA `0x100DAB0` (on #8533) and RVA `0x100DAE0` (on #8663); callee RVA `0x2176020`.
 Hydra: no owner in src/. The tool names `0x100DAB0` `RVA_HIT_CHECK` (tools/ch_probe/constants.py line 55, comment lines 52 to 54), and tools/ch_probe/experiments/active_probe.py line 215 sets a breakpoint there.
 Ruling: open split: see questions page Q-72
-Found: 2026-10-28, session 6a549de0 (feasibility tests handoff line 41); dump checked by this plan's wave 1 scouts H7a and H7b.
+Found: 2026-10-28, session 6a549de0 (feasibility tests handoff line 41); dump checked 2026-10-30, session b02ab3e6 (the reference build).
 
 ### IN-23 The tool's drums base-constructor address is the other instantiation's
 
@@ -240,7 +240,7 @@ Evidence: `dump.cs` lines 527295 to 527306 and `script.json` rows for both addre
 Game code (6142): #8253 constructor RVA `0x100EAE0` (on #8663) and RVA `0x100E960` (on #8533 and #8332).
 Hydra: no owner in src/. The tool's `RVA_BASE_ENGINE_CTOR_DRUMS` (tools/ch_probe/constants.py line 46) holds `0x100E960`; nothing uses it but a test fixture copy.
 Ruling: open split: see questions page Q-77
-Found: this plan's wave 1 scout H7a.
+Found: 2026-10-30, session b02ab3e6 (the reference build).
 
 ### IN-24 A breakpoint written into the game's code crashed it once
 
@@ -262,7 +262,7 @@ Evidence: `overlay-spike/run1_cal0_sp_compare.txt` (2026-10-28): +0x68 rising by
 Game code (6142): `#8288+0x68`, `#8288+0x1B0`, `#8288+0x42`, `#8288+0x48`, `#8288+0x120`.
 Hydra: no owner here. The tool's names are `OFF_SP_AMOUNT`, `OFF_SP_MAX`, `OFF_SP_ACTIVE`, `OFF_SP_MULTIPLIER` and `OFF_SP_END_TIME` in tools/ch_probe/constants.py lines 119 to 135.
 Ruling: none needed here: the Star Power rules and their splits are page 05's.
-Found: 2026-10-28, overlay spike handoff lines 45 to 49; this plan's wave 1 scouts H5b and H7b.
+Found: 2026-10-28, overlay spike handoff lines 45 to 49; 2026-10-30, session b02ab3e6 (the reference build).
 
 ### IN-26 The gain method adds to the meter and a running total, and tests the half mark
 
@@ -272,7 +272,7 @@ Evidence: `code/6142/sp_gain_20F4FA0.asm` lines 19 to 22 (the two adds), 23 to 2
 Game code (6142): #8288 gain method (scrambled name), RVA `0x20F4FA0`; fields `#8288+0x68`, `#8288+0x1B8`.
 Hydra: no owner here: page 05 holds Hydra's Star Power model.
 Ruling: none needed here: the Star Power rules are page 05's.
-Found: 2026-10-30, this plan's wave 2 scout R8.
+Found: 2026-10-30, session b02ab3e6 (the reference build).
 
 ### IN-27 The flag at +0x130 is set on every gain, not only on an overflow
 
@@ -282,7 +282,7 @@ Evidence: `code/6142/sp_gain_20F4FA0.asm` lines 44 to 57 (sets +0x130, then send
 Game code (6142): `#8288+0x130`; gain method RVA `0x20F4FA0`; per-update method RVA `0x20F6800`.
 Hydra: no owner in src/. The tool calls it `OFF_SP_OVERFLOW` (tools/ch_probe/constants.py line 140) and its comment at lines 137 to 140 says it is set only on an overfill.
 Ruling: open split: see questions page Q-79
-Found: 2026-10-30, this plan's wave 1 scout H7b (live data) and wave 2 scout R8 (gain listing); the clamp write from session cebf3006 via wave 1 scout HB.
+Found: 2026-10-30, session b02ab3e6 (the reference build); the clamp write first read 2026-10-03, session cebf3006.
 
 ## Song entries and the checksum
 
@@ -294,7 +294,7 @@ Evidence: `dump.cs` line 11073 (the class) and its checksum field at 0x38; `dump
 Game code (6142): `SongEntry.checksum`, `GlobalVariables.currentSongEntry`, `GlobalVariables.instance`; dump text, no listing.
 Hydra: no owner of the route. Hydra's own chart id is `hash_chart_file` in src/app/analysis.h line 88; whether it equals this checksum is page 01's song-id row.
 Ruling: none needed: no Hydra rule reads it.
-Found: this plan's wave 1 scout H7a (docs survey line 191).
+Found: 2026-10-30, session b02ab3e6 (the reference build), from the docs survey line 191.
 
 ### IN-29 Whether the current song entry is the song being played
 
@@ -304,7 +304,7 @@ Evidence: looked in `dump.cs` (layout only) and `overlay-spike/il2cpp-fields.md`
 Game code (6142): `GlobalVariables.currentSongEntry`; no writer read.
 Hydra: no owner.
 Ruling: none needed: no Hydra rule reads it.
-Found: this plan's wave 1 scout H7a.
+Found: 2026-10-30, session b02ab3e6 (the reference build).
 
 ## The song-select menu
 
@@ -312,11 +312,11 @@ Found: this plan's wave 1 scout H7a.
 
 Rule: The song-select screen's classes are `SongSelect` (TypeDefIndex 347, a BaseMenu), `SongSelectSearch` (237) and `SongSelectPanel` (144). None of their methods was read.
 Label: Unknown
-Evidence: unchecked by the scout: it needs a reading of the classes' methods. The class lines are `dump.cs` 20595, 15170 and 9120, checked for this page.
+Evidence: not checked: it needs a reading of the classes' methods. The class lines are `dump.cs` 20595, 15170 and 9120, checked for this page.
 Game code (6142): class headers only; no method read.
 Hydra: no owner.
 Ruling: none needed: no Hydra rule reads it.
-Found: 2026-10-30, this plan's wave 2 scout R8.
+Found: 2026-10-30, session b02ab3e6 (the reference build).
 
 ## The player screen
 
@@ -380,7 +380,7 @@ Evidence: `code/6142/sp_gain_20F4FA0.asm` lines 13 to 16 (the player kind at +0x
 Game code (6142): #8288 gain method, RVA `0x20F4FA0`; field `#8288+0x190`.
 Hydra: no owner: Hydra has no bot model (no "is_bot" in src/).
 Ruling: none needed: no Hydra rule reads it.
-Found: 2026-10-28, session 6a549de0 (feasibility study line 129); code by this plan's wave 2 scout R8.
+Found: 2026-10-28, session 6a549de0 (feasibility study line 129); code read 2026-10-30, session b02ab3e6 (the reference build).
 
 ### IN-32 The engine's player kind is set once by its constructor
 
@@ -390,7 +390,7 @@ Evidence: enum #8553 at `dump.cs` lines 546294 to 546301; the field at `dump.cs`
 Game code (6142): `#8288+0x190`; base engine constructor RVA `0x20F79E0`.
 Hydra: no owner.
 Ruling: none needed: no Hydra rule reads it.
-Found: 2026-10-30, this plan's wave 2 scouts R8 and R4.
+Found: 2026-10-30, session b02ab3e6 (the reference build).
 
 ### IN-33 A remote player's engine adds no score and drains no Star Power
 
@@ -400,7 +400,7 @@ Evidence: `code/6142/add_note_score_20F6EB0.asm` lines 13 to 14, `code/6142/add_
 Game code (6142): RVA `0x20F6EB0`, RVA `0x20F5F70`, RVA `0x20F6800`; field `#8288+0x190`.
 Hydra: no owner: Hydra has no network player.
 Ruling: none needed: no Hydra rule reads it.
-Found: 2026-10-30, this plan's wave 2 scout R4.
+Found: 2026-10-30, session b02ab3e6 (the reference build).
 
 ### IN-34 A bot run's total matches Hydra's
 
@@ -446,31 +446,31 @@ Found: 2026-10-28, feasibility study lines 31 and 119.
 
 Rule: The "is_bot" key of `scorestats.json` seems to come from a serializer reading a field name, because no code refers to the string.
 Label: Unknown
-Evidence: unchecked by the scout: a scan of 838,088 direct calls and data references found no reference to the "is_bot" string's slot in `stringliteral.json`, while the same scan found the "combo: {0}" references, but a reference through a table the scan does not follow would also look like this.
+Evidence: not checked: a scan of 838,088 direct calls and data references found no reference to the "is_bot" string's slot in `stringliteral.json`, while the same scan found the "combo: {0}" references, but a reference through a table the scan does not follow would also look like this. The scan's script and output were not kept.
 Game code (6142): not found.
 Hydra: no owner.
 Ruling: none needed: no Hydra rule reads it.
-Found: 2026-10-30, this plan's wave 2 scout R8.
+Found: 2026-10-30, session b02ab3e6 (the reference build).
 
 ### IN-39 Why scores are switched off is kept in GlobalVariables
 
 Rule: `GlobalVariables.scoreDisabled` (+0x7C) is an enum (#727) with the values None 0, Modifier 1, Bot 2, Pause 3; who writes Bot in 1.1 was not traced.
 Label: Unknown
-Evidence: unchecked by the scout: the enum and field are `dump.cs` lines 39726 to 39733 and 55827 (metadata only); in 1.0 the writes are in the 4045 decompile's GameManager.cs lines 465 and 2252 and EndOfSong.cs line 386, not copied.
+Evidence: not checked: the enum and field are `dump.cs` lines 39726 to 39733 and 55827 (metadata only); in 1.0 the writes are in the 4045 decompile's GameManager.cs lines 465 and 2252 and EndOfSong.cs line 386, not copied.
 Game code (6142): `GlobalVariables.scoreDisabled`; no writer read.
 Hydra: no owner.
 Ruling: none needed: no Hydra rule reads it.
-Found: 2026-10-30, this plan's wave 2 scout R8.
+Found: 2026-10-30, session b02ab3e6 (the reference build).
 
 ### IN-40 Whether the 1.0 bot earns Star Power
 
 Rule: In 1.0 the gain method skips a remote player and any player for which a scrambled test method returns true; what that method tests was not found, so whether the 1.0 bot earns Star Power is not known.
 Label: Unknown
-Evidence: unchecked by the scout: the test method is called at the 4045 decompile's BasePlayer.cs lines 636, 755 and 1104 and GameManager.cs line 355, and its body was not located.
+Evidence: not checked: the test method is called at the 4045 decompile's BasePlayer.cs lines 636, 755 and 1104 and GameManager.cs line 355, and its body was not located.
 Game code (4045): the BasePlayer gain method, `code/4045/fill_deadline.cs` lines 34 to 57 (line 36 is the skip).
 Hydra: no owner.
 Ruling: none needed: no Hydra rule reads it.
-Found: 2026-10-30, this plan's wave 2 scout R8.
+Found: 2026-10-30, session b02ab3e6 (the reference build).
 
 ## Input and logs
 
@@ -478,7 +478,7 @@ Found: 2026-10-30, this plan's wave 2 scout R8.
 
 Rule: Keys sent with SendInput reach Clone Hero for all eight drum keys, and a pad flash lasts about one video frame at 60 fps.
 Label: Unknown
-Evidence: unchecked by the scout: the Notepad test and the 60 fps measurement are in session 8157f2dc's transcript only, and the video was not opened. Later key-press runs hit every chord with the same keys (`overlay-spike/run1_cal0_play_chart.txt`, not re-opened for this page).
+Evidence: not checked: the Notepad test and the 60 fps measurement are in session 8157f2dc's transcript only, and the video was not opened. Later key-press runs hit every chord with the same keys (`overlay-spike/run1_cal0_play_chart.txt`, not re-opened for this page).
 Game code (6142): none (input arrives through the game's Rewired input system).
 Hydra: no owner. The tool's key map is `DEFAULT_BINDINGS` (tools/ch_probe/experiments/key_delivery_test.py and the ch_mcp tests).
 Ruling: none needed: no Hydra rule reads it.
@@ -488,7 +488,7 @@ Found: 2026-09-25, session 8157f2dc.
 
 Rule: The tools press the kick key for both kicks and assume it scores a 2x kick gem.
 Label: Unknown
-Evidence: unchecked by the scout: `overlay-spike/run1_cal0_scorestats.json` shows the DoubleKick modifier and 1,257 of 1,257 notes hit, but whether that chart holds any 2x kick gem was not checked.
+Evidence: not checked: `overlay-spike/run1_cal0_scorestats.json` shows the DoubleKick modifier and 1,257 of 1,257 notes hit, but whether that chart holds any 2x kick gem was not checked.
 Game code (6142): not found.
 Hydra: the 2x kick read is page 02's.
 Ruling: none needed: no Hydra rule reads it.
@@ -498,7 +498,7 @@ Found: 2026-09-25, session 8157f2dc.
 
 Rule: A song started from the command line writes only its "Loading Song" line to the session log at first, so waiting for "OnCountdownStart" never works; the tools attach about 5 s after launch.
 Label: Unknown
-Evidence: unchecked by the scout: no session-log file was kept; the record is the study's Test 2 text and the plan's L1 text (`docs/superpowers/plans/2026-10-28-ch-mcp-server.md` line 300).
+Evidence: not checked: no session-log file was kept; the record is the study's Test 2 text and the plan's L1 text (`docs/superpowers/plans/2026-10-28-ch-mcp-server.md` line 300).
 Game code (6142): not found.
 Hydra: no owner. The tool's delay is `ATTACH_DELAY_S` (tools/ch_mcp/frida_tools.py).
 Ruling: none needed: no Hydra rule reads it.
@@ -518,7 +518,7 @@ Found: 2026-10-28, feasibility study lines 33 and 109.
 
 Rule: The game's 23,972 text strings are not encrypted, the metadata lists 776 source file paths, and the "combo: {0}" string is used by a static BasePlayer method at 0x1168290 for drum inputs.
 Label: Unknown
-Evidence: unchecked by the scout: the counts were not redone and the method was not read. Wave 2 scout R8's reference scan did find code references to the "combo: {0}" string at that method.
+Evidence: not checked: the counts were not redone and the method was not read. The reference scan of IN-38 did find code references to the "combo: {0}" string at that method.
 Game code (6142): not read.
 Hydra: no owner.
 Ruling: none needed: no Hydra rule reads it.
@@ -530,17 +530,17 @@ Found: 2026-10-28, feasibility study lines 56 and 158.
 
 Rule: Only four of the game's assemblies have scrambled names: CloneHero.dll (985 of 1,451 types), StrikeCore.dll (427 of 449), CHNet.Core.dll (167 of 176) and CHNet.Server.dll (15 of 22). Each holds the marker class `__BB_OBFUSCATOR_VERSION_3_13_0`, so the scrambler is Beebyte Obfuscator 3.13.0.
 Label: Proven in the game's code
-Evidence: wave 1 scout H7a counted the type names with non-ASCII letters per image in `dump.cs` (image list in lines 1 to 100): 985, 427, 167 and 15. The marker class is at `dump.cs` lines 74148, 553588, 813701 and 879625 (TypeDefIndex 1450, 8690, 13587 and 15020), checked for this page.
+Evidence: the type counts per assembly are the table in `docs/research/2026-10-28-clone-hero-mcp-feasibility.md` lines 45 to 50, a count of the type names with non-ASCII letters per image in `dump.cs` (image list in lines 1 to 100). The marker class is at `dump.cs` lines 74148, 553588, 813701 and 879625 (TypeDefIndex 1450, 8690, 13587 and 15020), checked for this page.
 Game code (6142): class metadata only.
 Hydra: no owner.
 Ruling: none needed: no Hydra rule reads it.
-Found: 2026-10-28, feasibility study lines 41 to 50; recounted by this plan's wave 1 scout H7a.
+Found: 2026-10-28, feasibility study lines 41 to 50; recounted 2026-10-30, session b02ab3e6 (the reference build).
 
 ### IN-47 The scrambled method counts per assembly were not recounted
 
 Rule: The study gives scrambled method counts of 7,941 of 11,926, 3,095 of 3,577, 1,426 of 1,614 and 288 of 303 for the four assemblies.
 Label: Unknown
-Evidence: unchecked by the scout: it needs a recount of the method lines per image in `dump.cs`.
+Evidence: not checked: it needs a recount of the method lines per image in `dump.cs`.
 Game code (6142): method metadata, not counted.
 Hydra: no owner.
 Ruling: none needed: no Hydra rule reads it.
@@ -570,7 +570,7 @@ Found: 2026-10-28, feasibility study line 164.
 
 Rule: The study says 1.1's drum engine name does not appear in 1.0 at all, and that only 13 GameManager field names appear in both builds.
 Label: Unknown
-Evidence: unchecked by the scout: it needs a search of the 4045 `facts.json` for the 1.1 engine name and a field-by-field compare of the two GameManager classes. The compare file's line 5 count of 13 is about classes that appear more than once in a file, not about these fields.
+Evidence: not checked: it needs a search of the 4045 `facts.json` for the 1.1 engine name and a field-by-field compare of the two GameManager classes. The compare file's line 5 count of 13 is about classes that appear more than once in a file, not about these fields.
 Game code (6142): not checked.
 Hydra: no owner.
 Ruling: none needed: no Hydra rule reads it.
@@ -580,7 +580,7 @@ Found: 2026-10-28, feasibility study line 164.
 
 Rule: 1.0 (v1.0.0.4045) is a Mono build: it has no `GameAssembly.dll`, its code is the .NET assembly `Assembly-CSharp.dll`, which ilspycmd turns back into C#, and its `facts.json` has no addresses.
 Label: Proven in the game's code
-Evidence: the 1.0 install folder holds `MonoBleedingEdge` and no `GameAssembly.dll` (listed for this page); the two decompiles under `code/4045/` were made from `Assembly-CSharp.dll` with ilspycmd by wave 2 scout R8. The all-null addresses in `facts.json` are the plan's count (question 6); the Unity version was not checked.
+Evidence: the 1.0 install folder holds `MonoBleedingEdge` and no `GameAssembly.dll` (listed for this page); the two decompiles under `code/4045/` were made from `Assembly-CSharp.dll` with ilspycmd on 2026-10-30, in session b02ab3e6 (the reference build). The all-null addresses in `facts.json` are the plan's count (question 6); the Unity version was not checked.
 Game code (4045): `code/4045/fill_generator.cs` and `code/4045/fill_deadline.cs` (decompiled C#).
 Hydra: no owner.
 Ruling: none needed: no Hydra rule reads it.
@@ -594,7 +594,7 @@ Evidence: 6142 `script.json` (the generator's name at `0x20D2B30`) and `dump.cs`
 Game code (6142): generator RVA `0x20D2B30`; gain method RVA `0x20F4FA0`.
 Hydra: no owner.
 Ruling: none needed: no Hydra rule reads it.
-Found: 2026-10-30, this plan's wave 2 scout R8.
+Found: 2026-10-30, session b02ab3e6 (the reference build).
 
 ## The earlier probe and the launch line
 
@@ -602,7 +602,7 @@ Found: 2026-10-30, this plan's wave 2 scout R8.
 
 Rule: The game's manual lists the flags `--song <folder>`, `--player <Instrument>,<Difficulty>`, `--profile`, `-i` and `-v`, and a song started with `--song` and `--player` plays with a bot. After the bot song ended, the game was still running 30 s later, on a menu or the results screen.
 Label: Unknown
-Evidence: unchecked by the scout: the manual page was not opened and the "still running 30 s later" check is one observation recorded only in the feasibility study (lines 29 and 119). What the tools send is `launch_command` in tools/ch_mcp/bot_run.py (lines 160 to 169): `--song`, `--player`, and `--profile` when a profile is given; the three bot runs behind IN-37 show that launch does play a song to its end.
+Evidence: not checked: the manual page was not opened and the "still running 30 s later" check is one observation recorded only in the feasibility study (lines 29 and 119). What the tools send is `launch_command` in tools/ch_mcp/bot_run.py (lines 160 to 169): `--song`, `--player`, and `--profile` when a profile is given; the three bot runs behind IN-37 show that launch does play a song to its end.
 Game code (6142): not found: the command-line parser was not read.
 Hydra: no owner. The tool's command line is `launch_command` in tools/ch_mcp/bot_run.py.
 Ruling: none needed: no Hydra rule reads it.
@@ -616,15 +616,15 @@ Evidence: `tools/ch_probe/experiments/results/hit_detect.csv` (2026-09-25 run, t
 Game code (6142): none read; a live run and the tool's own memory scan.
 Hydra: no owner. The tool's finder is `find_live_engine` in tools/ch_probe/engine_finder.py.
 Ruling: none needed: no Hydra rule reads it.
-Found: 2026-09-25, feasibility study line 19; checked by this plan's wave 1 scout H7a.
+Found: 2026-09-25, feasibility study line 19; checked 2026-10-30, session b02ab3e6 (the reference build).
 
 ## Saved score files
 
 ### IN-55 scoredata.bin keeps one best score per chart and instrument
 
-Rule: The player's saved score file, `scoredata.bin` in the game's AppData\LocalLow\srylain Inc_\Clone Hero folder (`LOCALLOW_DIR` in tools/ch_mcp/game_files.py line 37), holds one best score per chart per instrument and a play count per song. It stores the chart's hash next to each score, with no song title or artist. A human run changes it (and `scoresext.bin`); the tools restore both after a run.
+Rule: The player's saved score file, `scoredata.bin` in the game's LocalLow\srylain Inc_\Clone Hero folder (`LOCALLOW_DIR` in tools/ch_mcp/game_files.py line 37), holds one best score per chart per instrument and a play count per song. It stores the chart's hash next to each score, with no song title or artist. A human run changes it (and `scoresext.bin`); the tools restore both after a run.
 Label: Unknown
-Evidence: no reader of the file's format is committed and the game's writer was not read. Session c8856afd (2026-10-10) decoded the user's copy with a scratch script (condensed transcript lines 296 to 307: "stores only the chart hash next to each score, with no title or artist"); session e8435f64 (2026-10-09, condensed line 42) states the one-best-score rule from the dmleaderboards backend, which reads the uploaded file. That a human run changes both files is session 6a549de0 (condensed line 457). No repo file holds any of these.
+Evidence: no reader of the file's format is committed and the game's writer was not read. Session c8856afd (2026-10-10) decoded the user's copy with a one-off script that was not kept (condensed transcript lines 296 to 307: "stores only the chart hash next to each score, with no title or artist"); session e8435f64 (2026-10-09, condensed line 42) states the one-best-score rule from the dmleaderboards backend, which reads the uploaded file. That a human run changes both files is session 6a549de0 (condensed line 457). No repo file holds any of these.
 Game code (6142): not found: the writer was not looked for.
 Hydra: no owner. The chart hash is Clone Hero's song id (page 01, CR-10); the tools back the file up and restore it in tools/ch_mcp/game_files.py.
 Ruling: none needed: no Hydra rule reads it.

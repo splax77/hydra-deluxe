@@ -12,7 +12,7 @@ Plain words: given a sorted chord list, a target tick, a lower bound and an uppe
 - Lines 40 to 43: if B is -1 and A is also -1, return null (line 118). If B is -1 and A is not, fall to lines 44 to 60.
 - Lines 44 to 60: B is -1, A is not: return the chord at A with no window check at all. So a fill that has no chord at or before its end takes the first chord after it however far away (this is the "unbounded" fallback in ADR 0023 line 84 to 87).
 - Lines 61 to 67: B is not -1: fetch the chord at B.
-- Lines 68 to 69: if A is -1, return the chord at B with no window check (line 69 `je` to the return at line 51). Note that in that case B was searched backward from `startIndex`, not from the end of the list, so it is the nearest chord at or below `startIndex`, which is chord 0 when `startIndex` is 0 (see the claims table, row R2-13).
+- Lines 68 to 69: if A is -1, return the chord at B with no window check (line 69 `je` to the return at line 51). Note that in that case B was searched backward from `startIndex`, not from the end of the list, so it is the nearest chord at or below `startIndex`, which is chord 0 when `startIndex` is 0 (see FL-07 on page 4).
 - Lines 70 to 89: both exist: fetch both chords and read their ticks with the virtual call at 0x182C44210 (lines 82 and 89).
 - Lines 90 to 95: `high < tick(A)` (A is past the upper bound) and `low > tick(B)` (B is before the lower bound): if both, return null (line 118).
 - Lines 96 to 97: B is before `low`: return A (line 116). A is not checked against `high` here because the previous test already ruled out "both bad".

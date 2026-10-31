@@ -1,3 +1,3 @@
 # setting_base_ctor_2116210.asm  (build 6142, RVA 0x2116210, base int-setting constructor)
-Made with chdis.py, 2026-10-30, session b02ab3e6, scout R7. Method start per script.json (listing runs to the next method start).
+Made with chdis.py, 2026-10-30, session b02ab3e6. Method start per script.json (listing runs to the next method start).
 Lines 2-24: prologue and first-call setup. Lines 25-30: store the name. Lines 31-50: with value = default (stack [rsp+0x68]), min ([rsp+0x70]) and max ([rsp+0x78]): if value.CompareTo(min) < 0 the value becomes min; otherwise if value.CompareTo(max) <= 0 it stays, else it becomes max (cmovle at the line after the second CompareTo). Lines after 50: store the clamped value at this+0x1C and this+0x10, the two copies the getters read. Only the constructor is read; whether the setter clamps the same way is not read.

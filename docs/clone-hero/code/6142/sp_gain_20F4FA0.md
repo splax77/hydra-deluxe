@@ -1,6 +1,6 @@
 # sp_gain_20F4FA0: the drum engine's Star Power gain, and why a bot never earns any (build 6142)
 
-Listing: `sp_gain_20F4FA0.asm` beside this file, made 2026-10-30 by scout R8 (session b02ab3e6-76ac-4735-8576-04b87f32bb8d)
+Listing: `sp_gain_20F4FA0.asm` beside this file, made 2026-10-30 (session b02ab3e6-76ac-4735-8576-04b87f32bb8d)
 with `tools/ch_mcp/chdis.py` from `C:\Clone Hero\1.1 june\Clone Hero\GameAssembly.dll`. The listing starts at the function's
 first instruction (RVA `0x20F4FA0` is in `script.json` as a method start). Our readable name for it is `#8288.AddStarPower`
 (class `BaseEngine`, TypeDefIndex 8288, the engine base class that `BasePlayer.engine` holds; `dump.cs` line 529952 is

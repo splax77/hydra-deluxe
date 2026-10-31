@@ -2,7 +2,7 @@
 
 Source: `fill_generator.cs` beside this file. It holds eight methods copied unchanged from
 `ilspycmd` output of `C:\Clone Hero\1.0 old\Clone Hero\Clone Hero_Data\Managed\Assembly-CSharp.dll`
-(decompiled 2026-10-30, session b02ab3e6-76ac-4735-8576-04b87f32bb8d, scout R8). Build 4045 is a Mono
+(decompiled 2026-10-30, session b02ab3e6-76ac-4735-8576-04b87f32bb8d). Build 4045 is a Mono
 build, so there are no addresses; a rule is cited as `Game code (4045): Class.Method`. The game's names
 are scrambled, so every name below is our own readable name; `../names-4045.tsv` maps each one to the
 scrambled name that `fill_generator.cs` uses. Line numbers are lines of `fill_generator.cs`. A banner comment
