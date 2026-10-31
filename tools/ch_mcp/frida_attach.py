@@ -243,15 +243,19 @@ class LiveAgent:
 
     `alive` is False once the session has dropped or been detached, and
     `gone_reason` then says why. One LiveAgent attaches once; attach again
-    with a new one. `frida_mod` and `wait` are injectable so the tests run
-    without Frida and without sleeping."""
+    with a new one. With `pid` it attaches to that process id, the game
+    bot_run started paused; without one, to the game by its process name.
+    `frida_mod` and `wait` are injectable so the tests run without Frida and
+    without sleeping."""
 
     def __init__(self, agent_path: str, *, log_path: str,
+                 pid: int | None = None,
                  frida_mod: Any = None,
                  wait: Callable[[threading.Event, float], bool] | None = None,
                  out: Callable[[str], None] = print) -> None:
         self.agent_path = agent_path
         self.log_path = log_path
+        self.pid = pid
         self._frida_mod = frida_mod
         self._wait = wait if wait is not None else _default_wait
         self._out = out
@@ -278,12 +282,15 @@ class LiveAgent:
             frida_mod = _import_frida()
         with open(self.agent_path, encoding="utf-8") as fh:
             source = fh.read()
+        target = PROCESS_NAME if self.pid is None else self.pid
         try:
-            session = frida_mod.attach(PROCESS_NAME)
+            session = frida_mod.attach(target)
         except frida_mod.ProcessNotFoundError:
+            what = (PROCESS_NAME if self.pid is None
+                    else f"process {self.pid}")
             raise AttachFailed(
                 END_NOT_RUNNING,
-                f"{PROCESS_NAME} is not running; nothing attached") from None
+                f"{what} is not running; nothing attached") from None
         self._session = session
         started = False
         try:

@@ -9,7 +9,8 @@
         "build:trace": "frida-compile -o trace.js trace.ts",
         "build:state": "frida-compile -o state.js state.ts",
         "build:menuhooks": "frida-compile -o menuhooks.js menuhooks.ts",
-        "build:kit": "frida-compile -o kit.js kit.ts"
+        "build:kit": "frida-compile -o kit.js kit.ts",
+        "build:launch": "frida-compile -o launch.js launch.ts"
     },
     "devDependencies": {
         "@types/frida-gum": "^19.10.0",
