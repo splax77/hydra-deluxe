@@ -185,9 +185,11 @@ Owns `tools/ch_mcp/agent/kit.ts`, `tools/ch_mcp/kit_methods.json`, `tools/ch_mcp
 
 Tests on the fake agent: a press with `read` sends the names and prints `seen`; an argument of `None` sends the constant and a given one overrides it; `ch_kit_watch(20)` sends `watch` with 20 and prints a reply with no true reads as "no key reached a player", and one with a true read as a failure naming the frame and the reader; `watch` while a play session runs is refused; the fixture tests of `test_frida_attach` pass with the three new names. Run: `py -m pytest tools/ch_mcp/tests/test_kit_tools.py tools/ch_mcp/tests/test_frida_attach.py -q`.
 
-### T8: `ch_start_song` (the old plan's task, unchanged; after LS-M)
+### ~~T8: `ch_start_song` (the old plan's task, unchanged; after LS-M)~~ (struck)
 
-As the old plan says, with one change: it is called after the kit walk reaches the main menu, and LS-K3 is its first use.
+Struck on 2026-10-31 with the old plan's T8, by the user's answer to question 4 of `docs/superpowers/plans/2026-10-31-ch-mcp-direct-start.md`: this task only pointed at that one, and LS-K3, its first use, is struck too.
+
+As the old plan said, with one change: it was to be called after the kit walk reaches the main menu, and LS-K3 was to be its first use.
 
 ### Order
 
