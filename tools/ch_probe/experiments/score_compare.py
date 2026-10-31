@@ -18,9 +18,7 @@ press carries no strike velocity, so the difference may change on a chord with
 a ghost or accent note; it may also change on the chord right after a ghost or
 accent chord whose read lagged, because that is where the change shows. Any
 other change is a FAIL, and the new difference becomes the one later chords
-are held to, so one fault is reported once. Why ghost and accent chords are
-exempt is in docs/superpowers/plans/2026-10-28-overlay-spike.md, "How Star
-Power starts on drums".
+are held to, so one fault is reported once.
 
 The report prints the running difference after every ghost or accent chord
 (and after the chord where a lagged one showed), the first FAIL with the two
