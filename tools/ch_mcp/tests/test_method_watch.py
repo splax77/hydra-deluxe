@@ -291,6 +291,20 @@ class StopTest(WatchTestBase):
                       "last before it: call 1, PlayerSelectionCanvas ʽʶʼˀʷʺʳʻʶˁʾ (0xD0790), "
                       "args []", lines)
 
+    def test_the_scene_loads_and_the_log_come_before_the_call_list(self):
+        # The server cuts a long reply, and a menu walk logs thousands of
+        # calls; the scene loads must survive the cut.
+        watch, _ = self.make([SUMMARY, M3_CALL, M4_CALL, LOAD_CALL])
+        watch.ch_method_watch_start()
+        lines = watch.ch_method_watch_stop().splitlines()
+        loads = lines.index("scene loads:")
+        log = next(i for i, line in enumerate(lines) if line.startswith("calls log: "))
+        self.assertLess(loads, log)
+        self.assertLess(log, lines.index("calls: 3"))
+        self.assertEqual(lines[-1],
+                         '  3. SceneManager LoadScene (0x289C250) args ["Gameplay"]; '
+                         'songTime null; +300 ms')
+
     def test_no_load_is_said(self):
         watch, _ = self.make([SUMMARY, M4_CALL])
         watch.ch_method_watch_start()

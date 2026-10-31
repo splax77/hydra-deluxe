@@ -469,7 +469,8 @@ class MethodWatch:
 
     def ch_method_watch_stop(self) -> str:
         """End the watch, waiting at most READ_CAP_S for it to detach, then
-        list every call in order and name the call before each scene load."""
+        name the call before each scene load and list every call in order.
+        The call list goes last, so a cut reply keeps the scene loads."""
         with self._lock:
             session = self._session
             if session is None:
@@ -486,10 +487,10 @@ class MethodWatch:
         if session.summary is not None:
             lines.extend(start_lines(session.summary))
         calls = session.calls()
-        lines.extend(call_lines(calls))
         lines.extend(scene_load_lines(calls, self._scene_classes))
         lines.append(f"calls log: {session.calls_path}")
         lines.extend(session.lines)
+        lines.extend(call_lines(calls))
         return lines
 
     def _stop_hook(self) -> Optional[str]:
