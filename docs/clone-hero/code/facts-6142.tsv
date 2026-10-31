@@ -30,6 +30,8 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	field	449	GameManager	songTime		0x70	GameManager.songTime
 6142	field	449	GameManager	songTimeVideoTime		0x78	GameManager.songTimeVideoTime
 6142	field	449	GameManager	videoCal		0x68	GameManager.videoCal
+6142	field	792		ʹʸʸʻʲʸʽʴʴʽʼ		0x10	#792+0x10
+6142	field	792		ʼˁʻʵʶˀʷʶˀˀʶ		0x18	#792+0x18
 6142	field	824	BaseMenu	ʳʿʻʻʵʷʸʾʷʳʳ		0x40	#824+0x40
 6142	field	824	BaseMenu	ʻʳˀʼʿʽʹʲʼʾʷ		0x3C	#824+0x3C
 6142	field	824	BaseMenu	ˀʸʳʷʳʺʻʴʴʿʵ		0x48	#824+0x48
@@ -82,7 +84,9 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	method	1037		ʵʲʽʶʲʳʿʸˁʳʲ	0x251A70		0x251A70
 6142	method	1037		ʼʻʺʾʻʹʸʸʺˁʸ	0x252200		0x252200
 6142	method	1037		ʽʻʷʶʸʽʼʽʵˀʵ	0x252630		0x252630
+6142	method	1037		ˁʺʾʾʵʲʲʻˀʿʵ	0x253EF0		0x253EF0
 6142	method	1068		.cctor	0x266340		0x266340
+6142	method	1136		ʺʹʵˀʵʹʷʶˀˀˁ	0x285AD0		0x285AD0
 6142	method	1169	StarProgress	.ctor	0x2E0990		0x2E0990
 6142	method	1169	StarProgress	ʶʹʿʸʸʼʳˀʻʴʴ	0x2DF200		0x2DF200
 6142	method	1169	StarProgress	ʺʽʸʺʾˀʲʾʹʲʻ	0x2DF7F0		0x2DF7F0
@@ -104,6 +108,7 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	method	1435		ʴˁʽˁˀʺʵʷʸʳʹ	0x337720		0x337720
 6142	method	1435		ʿʹʲʸʻʻʼʵʸʵˀ	0x337720		0x337720
 6142	method	1435		ˀʶʷʼʻʸʼʽʵʼʹ	0x337D00		0x337D00
+6142	method	156	DrumsPlayer	ʶʻʻʸʿˀʽˀʾʿʻ	0x33A880		0x33A880
 6142	method	156	DrumsPlayer	ˀʿʸʺʿʲʻʹʼʳʿ	0x33C560		0x33C560
 6142	method	16061	__Il2CppComObject	Finalize	0x2BF4C30		0x2BF4C30
 6142	method	16062	__Il2CppComDelegate	Finalize	0x2BF4C30		0x2BF4C30
@@ -119,11 +124,15 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	method	225	HighwayScroll	Update	0x3818E0		HighwayScroll.Update
 6142	method	282	CliGameLauncher	ʴʾʹʶʺˁʼʳʼʾʹ	0x396110		0x396110
 6142	method	282	CliGameLauncher	ʶʷʶʲʽʼʼʾʿʵʵ	0x3968D0		0x3968D0
+6142	method	3711	Player	GetButton	0x1F3B730		0x1F3B730
+6142	method	3711	Player	GetButtonDown	0x1F39540		0x1F39540
 6142	method	443		MoveNext	0xD8D80		0xD8D80
 6142	method	449	GameManager	Awake	0xB41A0		0xB41A0
 6142	method	449	GameManager	Awake	0xB41A0		GameManager.Awake
 6142	method	449	GameManager	Update	0xC05A0		0xC05A0
 6142	method	449	GameManager	Update	0xC05A0		GameManager.Update
+6142	method	451		.ctor	0xD8A90		0xD8A90
+6142	method	451		ʽʲʾʸʿʷʲʶʲʻˁ	0xD8470		0xD8470
 6142	method	561		ʺʳʾʺʹʶʵʲʾʲʿ	0x112490		0x112490
 6142	method	561		ʽʻʷʶʸʽʼʽʵˀʵ	0x1144C0		0x1144C0
 6142	method	592	ScoreManager	Update	0x1286B0		0x1286B0
@@ -141,6 +150,10 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	method	707		ʿʸʶˁʷˁʼʳʶʴʸ	0x16C650		0x16C650
 6142	method	711	EndOfSong	Start	0x15DC20		0x15DC20
 6142	method	711	EndOfSong	Start	0x15DC20		EndOfSong.Start
+6142	method	711	EndOfSong	ˀʾʲʾˀʵʳʷʲʸʵ	0x161C70		0x161C70
+6142	method	792		.ctor	0x1CB350		0x1CB350
+6142	method	792		ʸʶʷʲʶʳʶʽʼʸˀ	0x1C9CA0		0x1C9CA0
+6142	method	792		ˁʹʸʻʸʲʶʲʶˁʳ	0x1CB070		0x1CB070
 6142	method	8246		.cctor	0x2095040		0x2095040
 6142	method	8251		ʸʴʼʳʸʼʶʵʺʷʼ	0x20E49D0		#8251.ReadFills
 6142	method	8251		ʸʴʼʳʸʼʶʵʺʷʼ	0x20E49D0		0x20E49D0
@@ -303,6 +316,13 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	method	8501		ʲʺʷʼʴˀʳʴʲʵʾ	0x211BAD0		0x211BAD0
 6142	method	8501		ʵʽʼʿʹʹˀʸʻʵʺ	0x211C270		0x211C270
 6142	method	8501		ʼʴˁʼʻʹʾʹʷʹʿ	0x211E4C0		0x211E4C0
+6142	method	8513		ʴˀʺʳʲʺʴʴʽʷʳ	0x2112BF0		0x2112BF0
+6142	method	8513		ʷʶʿʲʾʽʷʺʳʲʵ	0x2112DB0		0x2112DB0
+6142	method	8513		ʹʹʹʽʲʸʸʿʸʴʴ	0x2113710		0x2113710
+6142	method	8513		ʺʴʶʲʳʷʺʻʷʺʹ	0x2113C60		0x2113C60
+6142	method	8513		ˀʷʳʵʸʼˀʷʵʷʶ	0x2114A80		0x2114A80
+6142	method	8513		ˀˁʷʶʶʴʾʴʽʵʶ	0x21150E0		0x21150E0
+6142	method	8513		ˁˀʽʵʶʾʻʸʷʽʾ	0x2115820		0x2115820
 6142	method	8526		.ctor	0x2123890		0x2123890
 6142	method	8526		ʼʾˁʺʴʻʵʳʾʲʺ	0x2123320		0x2123320
 6142	method	8538		ʳʻʵˁʺʾʹʸʻʸʿ	0x212B9C0		0x212B9C0
@@ -367,5 +387,7 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	method	8670		ʶʲˁʿʹʵˀʺʲˁʿ<object>	0x5DDB50		0x5DDB50
 6142	method	8670		ʷʾˀʼˀʵʹˁʻʻʷ<object>	0x5DE030		0x5DE030
 6142	method	901	BasePlayer	Update	0x20A1B0		0x20A1B0
+6142	method	901	BasePlayer	Update	0x20A1B0		BasePlayer.Update
 6142	method	901	BasePlayer	ʶʷʶʲʽʼʼʾʿʵʵ	0x208870		0x208870
+6142	method	901	BasePlayer	ʸʾʶʹʲʽʵʿʹʺʽ	0x208F50		0x208F50
 6142	method	996		ʷʺʲʿʲʼʽʵʹʳʴ	0x11676A0		0x11676A0

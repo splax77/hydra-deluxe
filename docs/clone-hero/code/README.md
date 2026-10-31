@@ -228,9 +228,9 @@ The first column is the function start, read from the listing's own first line. 
 
 ## New listings
 
-The 83 listings below were made for the reference on 2026-10-30, in session b02ab3e6 (the reference build), except two: the cli loader and the player kind were added on 2026-10-31, in session b15bb484. There are 81 `.asm` files under `code/6142/` and 2 `.cs` files under `code/4045/`, and each has a `.md` beside it that explains its branches in plain words.
+The 86 listings below were made for the reference on 2026-10-30, in session b02ab3e6 (the reference build), except five: the cli loader, the player kind, the drums input source, the profile save and the score submit were added on 2026-10-31, in session b15bb484. There are 84 `.asm` files under `code/6142/` and 2 `.cs` files under `code/4045/`, and each has a `.md` beside it that explains its branches in plain words.
 
-The `.asm` files are from build 1.1.0.6142 (`GameAssembly.dll`), made with tools/ch_mcp/chdis.py. The start is the RVA in the file name, and for every file it matches the address on the listing's first line (or the `; function` line some listings open with). The role is the file name with the RVA taken off.
+The `.asm` files are from build 1.1.0.6142 (`GameAssembly.dll`), made with tools/ch_mcp/chdis.py. The start is the RVA in the file name, and for every file it matches the address on the listing's first line (or the `; function` line some listings open with). The role is the file name with the RVA taken off. Three file names carry no RVA (the drums input source, the profile save and the score submit, each named for the question it answers); for those the start is the address on the first line.
 
 The `.cs` files are from build 1.0.0.4045 (`Assembly-CSharp.dll`), decompiled with `ilspycmd`. That build's dump has no addresses, so their start column names the file's first method and its lines in the full ilspycmd output instead.
 
@@ -262,6 +262,7 @@ The table was generated from the files, not typed. One more file, `code/6142/dru
 | 0x1EF1A0 | delay seconds | [code/6142/delay_seconds_1EF1A0.asm](6142/delay_seconds_1EF1A0.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x215CD50 | disco apply | [code/6142/disco_apply_215CD50.asm](6142/disco_apply_215CD50.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x214B850 | double kick test | [code/6142/double_kick_test_214B850.asm](6142/double_kick_test_214B850.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x33A880 | drums input source | [code/6142/drums_input_source.asm](6142/drums_input_source.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x212C7E0 | end event usable | [code/6142/end_event_usable_212C7E0.asm](6142/end_event_usable_212C7E0.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x20DF680 | engine ctor | [code/6142/engine_ctor_20DF680.asm](6142/engine_ctor_20DF680.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x20F79E0 | engine ctor | [code/6142/engine_ctor_20F79E0.asm](6142/engine_ctor_20F79E0.asm) | 6142 | tools/ch_mcp/chdis.py |
@@ -297,6 +298,8 @@ The table was generated from the files, not typed. One more file, `code/6142/dru
 | 0x210D9C0 | pitch difficulty map | [code/6142/pitch_difficulty_map_210D9C0.asm](6142/pitch_difficulty_map_210D9C0.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x20EFEE0 | plain drums | [code/6142/plain_drums_20EFEE0.asm](6142/plain_drums_20EFEE0.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x11676A0 | player kind | [code/6142/player_kind_11676A0.asm](6142/player_kind_11676A0.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x1C9CA0 | profile save | [code/6142/profile_save.asm](6142/profile_save.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x1144C0 | score submit | [code/6142/score_submit.asm](6142/score_submit.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x252630 | scorestats json | [code/6142/scorestats_json_252630.asm](6142/scorestats_json_252630.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x15DC20 | scorestats writer | [code/6142/scorestats_writer_15DC20.asm](6142/scorestats_writer_15DC20.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x2116210 | setting base ctor | [code/6142/setting_base_ctor_2116210.asm](6142/setting_base_ctor_2116210.asm) | 6142 | tools/ch_mcp/chdis.py |

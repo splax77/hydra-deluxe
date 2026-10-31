@@ -446,7 +446,7 @@ Found: 2026-10-28, feasibility study lines 31 and 119.
 
 Rule: The "is_bot" key is written by code, not by a serializer reading a field name. A JSON stats writer passes the "is_bot" string to the JSON writer's bool call, with the bool from its record's +0xB6. The profile constructor uses the same string to name its "is_bot" setting (IN-65). An earlier scan that found no reference to the string was wrong.
 Label: Proven in the game's code
-Evidence: read with tools/ch_mcp/chdis.py on 2026-10-31 in `0x1144C0` (`dump.cs` line 30475, a method of class #561 taking a `Utf8JsonWriter`); no listing of it is committed. At 0x114703 the method's one-time set-up loads the "is_bot" string slot (`lea rcx, [rip + 0x3ba677e]`, the slot at 0x3CBAE88). At 0x114CC9 it loads the same slot as the property name (`mov rdx, qword ptr [rip + 0x3ba61b8]`), after reading the value byte at 0x114CC1 (`movzx r8d, byte ptr [r14 + 0xb6]`), and calls the JSON writer's WriteBoolean at 0x114CD3; the keys around it are "is_fc", "versus_winner" and "is_pfc". The profile constructor loads the same slot at 0x2123CE3. Whether this writer makes `scorestats.json` or another file was not traced. The earlier scan's script and output were not kept.
+Evidence: read with tools/ch_mcp/chdis.py on 2026-10-31 in `0x1144C0` (`dump.cs` line 30475, a method of class #561 taking a `Utf8JsonWriter`); its listing is `code/6142/score_submit.asm` (lines 101 and 407 to 410). At 0x114703 the method's one-time set-up loads the "is_bot" string slot (`lea rcx, [rip + 0x3ba677e]`, the slot at 0x3CBAE88). At 0x114CC9 it loads the same slot as the property name (`mov rdx, qword ptr [rip + 0x3ba61b8]`), after reading the value byte at 0x114CC1 (`movzx r8d, byte ptr [r14 + 0xb6]`), and calls the JSON writer's WriteBoolean at 0x114CD3; the keys around it are "is_fc", "versus_winner" and "is_pfc". The profile constructor loads the same slot at 0x2123CE3. The writer's text goes into `scorestats.json` (IN-72). The earlier scan's script and output were not kept.
 Game code (6142): stats writer RVA `0x1144C0`; profile constructor RVA `0x2123890`.
 Hydra: no owner.
 Ruling: none needed: no Hydra rule reads it.
@@ -636,7 +636,7 @@ Rule: In the no-replay branch the loader first sets the profile's modifiers to N
 Label: Proven in the game's code
 Evidence: `code/6142/cli_loader_3968D0.asm` line 330 (modifiers 1), lines 331 to 334 (compare with 6 and 9, both jumping to line 350), lines 350 to 357 (the setter with 2 on +0x60, then 2 to +0x14), lines 335 to 349 with lines 406 and 407 (the mask `0x4C30` and the setter with 1 or 0). The enums are `dump.cs` lines 533194 and 533197 (Drums 6, ProDrums 9), lines 532200 to 532208 (controller type, Drums 2) and lines 547680 and 547703 (None 1, DoubleKick 2; AllStrums shares the value 2). The bot runs' DoubleKick modifier (IN-42) fits this branch.
 Game code (6142): RVA `0x3968D0`; the profile fields `#8526+0x14` and `#8526+0x60`.
-Hydra: no owner: Hydra never reads the running game. The tools send `ProDrums,Expert` from `launch_command` in tools/ch_mcp/bot_run.py.
+Hydra: no owner: Hydra never reads the running game. The tools' `launch_command` in tools/ch_mcp/bot_run.py sends the player it is given, and its default is `DEFAULT_PLAYER`, "Drums,Expert".
 Ruling: none needed: no Hydra rule reads it.
 Found: 2026-10-31, session b15bb484 (task D1), from the disassembly.
 
@@ -672,7 +672,7 @@ Found: 2026-10-31, session b15bb484 (task D1), from the dump and the disassembly
 
 ### IN-66 The loader gives the slot the Rewired System Player
 
-Rule: The loader stores a Rewired player in the slot's player field. It is the System Player, fetched with GetSystemPlayer, unless a bool of the launcher is set; then it takes an entry of Rewired's player list instead. Whether the drums input reads this field, and what sets the bool, was not traced.
+Rule: The loader stores a Rewired player in the slot's player field. It is the System Player, fetched with GetSystemPlayer, unless a bool of the launcher is set; then it takes an entry of Rewired's player list instead. The drums input reads this field at each button read (IN-68). What sets the bool was not traced.
 Label: Proven in the game's code
 Evidence: `code/6142/cli_loader_3968D0.asm` lines 195 to 213 (the slot from `GlobalVariables.playerList` and its index written to +0x28), line 215 (the launcher's bool at +0x58), line 244 (the GetSystemPlayer call, `dump.cs` line 310436), lines 217 to 233 (the other route, through a helper at 0x2C421D0 that was not read) and line 246 (the store to the slot's +0x18, whose type is Rewired's `Player`, `dump.cs` line 73341).
 Game code (6142): RVA `0x3968D0`; the slot field `#1435+0x18`; the launcher's bool `#282+0x58`.
@@ -689,6 +689,66 @@ Game code (6142): `PlayerProfileMenu` method RVA `0x1E68D0`; the profile fields 
 Hydra: no owner: Hydra never reads the running game.
 Ruling: none needed: no Hydra rule reads it.
 Found: 2026-10-31, session b15bb484 (task D1), from the disassembly.
+
+### IN-68 The drums input reads the slot's Rewired player again at each button read
+
+Rule: The drums player's input method asks the Rewired player held in its slot (the field the loader fills, IN-66) which buttons are down. It loads the slot and that Rewired player afresh before nearly every button read, so it uses whatever player the slot holds at that moment; it keeps no copy from when the player was built. It reads nothing when the slot's profile is marked remote.
+Label: Proven in the game's code
+Evidence: `code/6142/drums_input_source.asm` lines 19 to 26 (the slot from +0x88, its profile from +0x10, the remote byte +0xB1 jumping to the return at line 204), lines 27 to 32 (the slot's +0x18 and the call to Rewired's GetButtonDown with action 4), lines 33 to 37 (the slot and +0x18 loaded again for the next read), and the same pattern to line 292: 17 calls into Rewired's `Player` (`dump.cs` lines 306991 and 306997) and 16 loads of the slot. `code/6142/drums_input_source.md` explains the lines. Not checked: how often the method runs, because it is an override with no direct caller, and whether Rewired reads a controller added to the System Player (the direct-start plan's live step LS-D1).
+Game code (6142): `DrumsPlayer` input method RVA `0x33A880` (`dump.cs` line 10158); Rewired reads RVA `0x1F39540` and RVA `0x1F3B730`; the slot field `#901.player`; the slot's Rewired player `#1435+0x18`.
+Hydra: no owner: Hydra never reads the running game. The kit's player is `KIT_PLAYER` in tools/ch_mcp/kit_tools.py.
+Ruling: none needed: no Hydra rule reads it.
+Found: 2026-10-31, session b15bb484 (task D2), from the disassembly.
+
+### IN-69 A bot or remote player is fed the chart's notes as input, and is_bot is read again on every call
+
+Rule: In its input loop, `BasePlayer.Update` calls a method that asks, each time, whether the slot is remote or a bot. For a bot (its profile's "is_bot" read through the bot test of IN-64) or a remote slot, it hands back the next chart note whose time has come, and the loop passes that note's time to the engine's per-frame update as a hit. For a player that is neither, it hands back nothing. So turning "is_bot" off before a song stops the chart from playing itself, whenever it is turned off.
+Label: Proven in the game's code
+Evidence: read with tools/ch_mcp/chdis.py on 2026-10-31; no listing of it is committed. In `0x208F50` (`dump.cs` line 48922): the remote test `0x337720` at 0x208FD0, the bot test `0x13F8B0` on the slot at 0x209013, and, when both are false, the jump to the "nothing" return at 0x209035. When either is true it reads the player's note list at +0x120 and its index at +0x128 (0x20905F to 0x2090DB), compares the time with the note's +0x28 (0x2090EC), and on a due note stores the time in the out value and returns true (0x2090F7 to 0x209116). In `BasePlayer.Update` (`0x20A1B0`, `dump.cs` line 48872) the call is at 0x20A400 inside a loop, and a true answer leads to the call of the engine's update `0x20F4550` at 0x20A425 with that time. That the list at +0x120 holds the chart's notes rests on the compare with a time at +0x28; its type was not looked up. The dump's name for the getter it calls (0x20F4F90) is a shared name and was not used.
+Game code (6142): RVA `0x208F50`; `BasePlayer.Update` RVA `0x20A1B0`; tests RVA `0x337720` and RVA `0x13F8B0`; engine update RVA `0x20F4550`.
+Hydra: no owner: Hydra has no bot model.
+Ruling: none needed: no Hydra rule reads it.
+Found: 2026-10-31, session b15bb484 (task D2), from the disassembly; the direct-start plan (docs/superpowers/plans/2026-10-31-ch-mcp-direct-start.md) named the method as a lead.
+
+### IN-70 profiles.ini lives in Documents\Clone Hero; the LocalLow copy is only read once, to move it
+
+Rule: The game keeps `profiles.ini` and `profiles.bin` in its Documents folder (`Documents\Clone Hero` on Windows, the folder that also holds `settings.ini` and `scorestats.json`). When a static `GlobalVariables` switch is on, it uses a "PlayerData" folder beside the game instead. The older place, Unity's data folder (LocalLow\srylain Inc_\Clone Hero), is only a source: when the Documents file is missing, the load copies the old file across, and it never writes or deletes the old one. When both new files exist, the load deletes `profiles.bin`. A profile numbered -1 is built during the load and dropped, never added to the list.
+Label: Proven in the game's code
+Evidence: the folder method `0x307B40` returns .NET's Environment GetFolderPath with folder 5, joined with "Clone Hero" (0x307BC1 to 0x307BFB), or, when the static bool tested at 0x307BBB is set, the parent of Unity's Application dataPath joined with "PlayerData" (0x307C17 to 0x307C6D). Folder 5 is .NET's SpecialFolder Personal, the user's Documents folder; on this machine that is `C:\Users\Patrick\Documents`, read from Windows on 2026-10-31, and the game folder holds no "PlayerData" folder. The profile list's constructor `0x1CB350` joins that folder with "profiles.bin" into +0x10 and "profiles.ini" into +0x18 (0x1CB3D6 to 0x1CB432) and registers the ini name "profiles" with that path (`0x2112BF0`, at 0x1CB46E). The load is `code/6142/profile_save.asm`: lines 51 to 67 (the old paths from Unity's Application persistentDataPath), lines 71 to 109 (the delete and the two copies), lines 190 to 207 (the -1 test and the add). `code/6142/profile_save.md` explains the lines. That persistentDataPath is the LocalLow folder is Unity's documented place, not read in code. On 2026-10-31 neither folder held a `profiles.ini` or a `profiles.bin`. What sets the static bool was not traced.
+Game code (6142): folder method RVA `0x307B40`; profile list constructor RVA `0x1CB350`; load RVA `0x1C9CA0`; ini register RVA `0x2112BF0`; the paths `#792+0x10` and `#792+0x18`.
+Hydra: no owner: Hydra never reads the running game. The tools back the two files up from `LOCALLOW_DIR` (`LOCALLOW_FILES` in tools/ch_mcp/game_files.py); by this rule the game's copies are in `DOCUMENTS_DIR`.
+Ruling: none needed: no Hydra rule reads it.
+Found: 2026-10-31, session b15bb484 (task D2), from the disassembly.
+
+### IN-71 Whether the loader's profile clone is ever saved to profiles.ini
+
+Rule: Not settled. The command-line loader works on a clone of the profile (IN-61), and the clone is built with the number -1 and an empty ini name, where a loaded profile gets the ini name "profiles". Whether a profile with an empty ini name is ever written to `profiles.ini` was not traced.
+Label: Unknown
+Evidence: the clone `0xD8470`, called at line 253 of `code/6142/cli_loader_3968D0.asm`, builds its profile with `mov r8` holding the empty string and `mov edx, 0xffffffff` (0xD84C9 to 0xD84DE) through the profile constructor `0xD8A90`, which keeps the ini name and the section "profile{0}" in the profile's +0xC0 (0xD8BE5 to 0xD8C1C, through `0x2115820`). The load passes "profiles", or "" for -1 (`code/6142/profile_save.asm` lines 190 and 191). Looked for the writer and did not read it through: the ini class #8513 has two methods that call File.WriteAllText, `0x2113710` and `0x2113C60`, and a save method `0x2112DB0` that walks a dictionary and compares names. Where we looked is in `code/6142/profile_save.md`.
+Game code (6142): clone RVA `0xD8470`; profile constructor RVA `0xD8A90`; ini key RVA `0x2115820`; ini writers RVA `0x2113710`, RVA `0x2113C60` and RVA `0x2112DB0`.
+Hydra: no owner: Hydra never reads the running game. The tools back up `profiles.ini` in `LOCALLOW_FILES` in tools/ch_mcp/game_files.py.
+Ruling: none needed: no Hydra rule reads it.
+Found: 2026-10-31, session b15bb484 (task D2), from the disassembly.
+
+### IN-72 A player's stats record goes into scorestats.json on disk, with is_bot as one of its values
+
+Rule: The stats writer of IN-38 writes one player's block of JSON, and its text is written to a local file. Its first caller builds `scorestats.json`, which `EndOfSong.Start` writes in `Documents\Clone Hero` (IN-70's folder). Its second caller builds another JSON text that another `EndOfSong` method writes to a file in the same folder, whose name is not known. "is_bot" is a value written into the block; the writer does not skip a bot.
+Label: Proven in the game's code
+Evidence: `code/6142/score_submit.asm` lines 407 to 410 (the byte at +0xB6 written as "is_bot"). A scan of the DLL's code for direct calls found two callers. The first is `0x252630` (line 230 of `code/6142/scorestats_json_252630.asm`), whose only direct caller is `EndOfSong.Start` (line 266 of `code/6142/scorestats_writer_15DC20.asm`), which joins the folder from `0x307B40` with "scorestats.json" (lines 246 to 260) and writes the text with File.WriteAllText (line 270). The second is `0x253EF0`, whose only direct caller is the `EndOfSong` method `0x161C70` (call at 0x1621B1, File.WriteAllText at 0x1621BF); the string labels in those two methods do not fit the code, so that file's name is not given. That `EndOfSong.Start` skips the file for a bot was not looked for; it picks the "botnosave" text when `GlobalVariables.instance` +0x7C is 2 (`code/6142/scorestats_writer_15DC20.asm` lines 1046 to 1071), and what that value means was not traced. `code/6142/score_submit.md` explains the lines.
+Game code (6142): stats writer RVA `0x1144C0`; text writers RVA `0x252630` and RVA `0x253EF0`; `EndOfSong.Start` RVA `0x15DC20`; `EndOfSong` method RVA `0x161C70`.
+Hydra: no owner. The tools back `scorestats.json` up in `DOCUMENTS_FILES` in tools/ch_mcp/game_files.py.
+Ruling: none needed: no Hydra rule reads it.
+Found: 2026-10-31, session b15bb484 (task D2), from the disassembly.
+
+### IN-73 Whether a finished song posts anything online when nobody is logged in
+
+Rule: Not settled. The stats record reaches only local files through the direct calls found (IN-72). Whether the game also sends a score or stats online after a song, with or without a login, and whether "is_bot" decides it, was not traced.
+Label: Unknown
+Evidence: looked at the callers of the stats writer `0x1144C0` and of its text writers by a scan for direct calls only; calls through method tables, delegates and tasks were not followed, and no network code was read. The DLL does hold an online service: the text "Making session request to gateway: https://gateway-service.clonehero.net/api/session/request" is loaded in the method `0x285AD0`, which has no direct caller. The game's log showing "Unauthorized" for analytics in bot runs is one observation recorded in the direct-start plan (docs/superpowers/plans/2026-10-31-ch-mcp-direct-start.md, section 3), not a code fact. See `code/6142/score_submit.md`.
+Game code (6142): not found: looked from RVA `0x1144C0` through RVA `0x252630`, RVA `0x253EF0`, RVA `0x15DC20` and RVA `0x161C70`, and at RVA `0x285AD0`.
+Hydra: no owner: Hydra never reads the running game.
+Ruling: none needed: no Hydra rule reads it.
+Found: 2026-10-31, session b15bb484 (task D2), from the disassembly.
 
 ## Saved score files
 
