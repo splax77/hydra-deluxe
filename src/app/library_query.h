@@ -103,7 +103,8 @@ bool term_applies_to(QueryField term_field, QueryField column);
 // ui/library_model.cpp).
 struct RowFacts {
     std::optional<int> stars;
-    // nullopt = the path needs no timing (Path::needs_timing).
+    // The best path's shown timing (shown_timing, core/model.h): nullopt = the
+    // path needs no timing (Path::needs_timing).
     std::optional<double> hardest_ms;
 };
 

@@ -328,7 +328,7 @@ inline bool timing_needs_hitting(double difficulty_ms) { return difficulty_ms >=
 // becomes a shown timing; Path::difficulty() is the same rule on a live
 // path. The library saves the engine's own figure and applies this when it
 // shows it, so a change to this rule is a display change, not a re-analysis
-// (the user's ruling of 2026-10-31).
+// (see the analysis version in store/stored_versions.h).
 inline std::optional<double> shown_timing(std::optional<double> saved) {
     if (saved && timing_needs_hitting(*saved)) return saved;
     return std::nullopt;
@@ -881,8 +881,8 @@ struct Path {
 // every squeeze's difficulty() and every E0 fill's e_difficulty() over the
 // activations the path walks, none when it has neither. It does not ask
 // whether a figure needs hitting (timing_needs_hitting), so the library saves
-// it whole and shown_timing applies that rule when the figure is shown. The store's saved
-// summary and the replay that fills old rows both call it.
+// it whole and shown_timing applies that rule when the figure is shown. The
+// store's saved summary (path_row_of) is its caller.
 inline std::optional<double> engine_hardest_ms(const Path& path) {
     std::optional<double> best;
     auto take = [&best](double ms) {

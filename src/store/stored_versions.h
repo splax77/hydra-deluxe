@@ -48,10 +48,9 @@ struct StampRule {
 // re-analysis. Changes that ship in the same release share one bump (decision
 // D23, 2026-10-03). A change to how a saved figure is shown is not a bump:
 // Stale is for a change in the analysis, and display text reads what the
-// engine already saved (the user's ruling, 2026-10-31). So is a stored figure
-// this build can fill back in from the saved path. hardest_ms is the example:
-// the store saves the engine's own figure (engine_hardest_ms, core/model.h)
-// and the screens apply shown_timing when they show it.
+// engine already saved (the user's ruling, 2026-10-31). hardest_ms is the
+// example: the store saves the engine's own figure (engine_hardest_ms,
+// core/model.h) and the screens apply shown_timing when they show it.
 //
 // "2.1.0": the engine now stores each activation's SP-end history and
 // re-anchors the transfer scales on it (ADR 0021), and each tied variant
