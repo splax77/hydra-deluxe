@@ -739,11 +739,12 @@ public:
     // persisted when they weren't) and then refresh whatever the change
     // invalidated.
     //
-    // This is the single place that knows which settings change a record's
-    // identity — the chart mode, the SP cap, and the lens (the ms limit and
-    // the score range a result ran under). Every widget just mutates
-    // `settings` and calls this, so none of them can forget a refresh. That
-    // forgetting is exactly the bug class here: the 1.5.1 SP-cap crash came
+    // It decides nothing itself: Settings::profile() says which settings name
+    // a chart's record, and each report's settings_change_touches says which
+    // changes reach that report; this compares and asks them. Every widget
+    // just mutates `settings` and calls this, so none of them can forget a
+    // refresh. That forgetting is exactly the bug class here: the 1.5.1 SP-cap
+    // crash came
     // from this path, and the Pro Drums / 2x Bass checkboxes used to refresh
     // the library page while leaving `viewed` pointing at the old record.
     void commit_settings();
