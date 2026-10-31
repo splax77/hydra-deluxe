@@ -231,6 +231,20 @@ Each one is answerable in a line. The code's real rule is quoted with it.
 
 **Q7. The candidate searches.** Each tick in the engine's list after the last window costs one `best_finish`. CO-2 reports the time on the largest corpus chart. Do you want a cap, and if so what happens past it?
 
+## The user's answers (2026-10-30)
+
+The user answered all seven questions in one line: "Yes, as recommended". So:
+
+- Q1: left to right. CO-2 deletes `repin`'s keep-later branch, `best_finish_keeping_later`, `later_end_changed`, `kLaterEndRepickedText`, `removal_impossible_text` and their tests.
+- Q2: the left list and "Edit a copy" go. Open path and Paste replace the player's path as one undo step; a path file opens its first path.
+- Q3: the mockup's sentences replace the PB-2a wording.
+- Q4: hovering a fill seeks so the fill's span start (`PreviewFill::span.start_ms`) is on the strike line. No new number.
+- Q5: Hydra's Preview tab does not show the timeline rows.
+- Q6: end choices only on the last activation.
+- Q7: no cap. CO-2 measures and reports the times.
+
+The same message approved the plan with the "Out of scope" list as written, so the highway text labels, the squeeze-out ring and the "lost because the meter was full" note stay out.
+
 ## Promise map
 
 | Promise | Plan line | Task | Check that proves it |
