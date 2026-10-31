@@ -78,8 +78,6 @@ Pass: no Star Power flip inside the window, although Star Power is ready there w
 
 **TM-03.** Question: does `Offset = 0.2504` read as 251 ms? Pass: 251 at `+0x24`. Bot run.
 
-**TM-14.** Question: does anything write engine+0x2E0 at a hit? Pass: it changes once per hit to within a few ms of the clock. Key-played stretch (the bot run read 0.0 throughout).
-
 **TM-22 and TM-27.** Question: where is the hit/miss boundary on notes with gaps of 75, 120 and 170 ms? Pass: at half the stored window (48.1, about 60, 85.7 ms). Fail: 85 ms for all. Bot run with a custom press offset is enough; no Star Power.
 
 **TM-26.** Question: are the early and late sides of a note's window the same? Pass: an early and a late press at the same offset get the same verdict. Bot run with custom offsets.

@@ -44,14 +44,14 @@ These counts were taken from the pages on 2026-10-31, by counting their `###` he
 
 | Page | Blocks | Proven in the game's code | Proven in a live run | Hydra assumes it, never checked | Unknown |
 |---|---|---|---|---|---|
-| 01 reading a chart | 50 | 23 | 2 | 9 | 16 |
-| 02 note list | 69 | 37 | 4 | 4 | 24 |
-| 03 timing | 45 | 24 | 3 | 5 | 13 |
+| 01 reading a chart | 53 | 23 | 4 | 9 | 17 |
+| 02 note list | 71 | 38 | 4 | 4 | 25 |
+| 03 timing | 46 | 25 | 3 | 5 | 13 |
 | 04 fills | 45 | 32 | 2 | 4 | 7 |
-| 05 Star Power | 45 | 22 | 3 | 9 | 11 |
+| 05 Star Power | 46 | 22 | 3 | 9 | 12 |
 | 06 scoring | 37 | 17 | 7 | 3 | 10 |
-| 07 internals | 54 | 23 | 11 | 0 | 20 |
-| All pages | 345 | 178 | 32 | 34 | 101 |
+| 07 internals | 55 | 25 | 11 | 0 | 19 |
+| All pages | 353 | 182 | 34 | 34 | 103 |
 
 Eleven of page 4's blocks describe build 1.0. The questions page holds 24 open questions, and the live-checks page holds 72 checks covering 82 rows.
 

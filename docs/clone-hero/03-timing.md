@@ -138,12 +138,12 @@ Hydra: no owner in `src/`; the tool name is `OFF_SONG_CLOCK` in tools/ch_probe/c
 Ruling: none needed: no Hydra rule depends on it
 Found: 2026-09-25, session 8157f2dc.
 
-### TM-14 The double at engine+0x2E0 as the hit time
+### TM-14 The double at engine+0x2E0 is not a hit time
 
-Rule: The engine is said to copy the song clock into `#8255+0x2E0` when a note is hit.
-Label: Unknown
-Evidence: unchecked by the scout: it needs the instruction that writes the field. `constants.py` lines 103 to 106 say "NOT yet confirmed live"; the field read 0.0 in all 40,922 rows of the bot run `run1_cal0_sp_watch.csv` (wave 1 scouts H3, H3-31; H7a, H7a-07; H7b, H7b-10). Two writes of the field are now known, and neither is a hit time: the press handler stores the clock there when a press completes a lane's round of pads, at lines 140 and 188 of `docs/audit/drum-lanes/play/f20deaa0.asm`, and the lane update reads it as the round's start (NL-59). That fits the 0.0 on a chart with no lane.
-Game code (6142): field `#8255+0x2E0` (`dump.cs` lines 527435 to 527436); the writer was not read.
+Rule: The engine does not copy the song clock into `#8255+0x2E0` at each hit, as the tools assumed. It writes the clock there only when a hit completes a double lane's round of pads, so the field is the round's start. Page 07's IN-12 holds the rule and its evidence.
+Label: Proven in the game's code
+Evidence: the only two writes are at lines 140 and 188 of `docs/audit/drum-lanes/play/f20deaa0.asm`, each behind the double-lane flag test 0xC000 (lines 131 and 179), and the lane update reads the field as the round's start (NL-59, IN-15). The field read 0.0 in all 40,922 rows of the bot run `run1_cal0_sp_watch.csv`, which fits a chart with no double lane (wave 1 scouts H3, H3-31; H7a, H7a-07; H7b, H7b-10).
+Game code (6142): field `#8255+0x2E0` (`dump.cs` lines 527435 to 527436); writer in the engine method at RVA `0x20DEAA0`, `docs/audit/drum-lanes/play/f20deaa0.asm` lines 140 and 188.
 Hydra: no owner in `src/`; the tool name is `OFF_HIT_TIME` in tools/ch_probe/constants.py line 106.
 Ruling: none needed: no Hydra rule depends on it
 Found: this plan's wave 1 scout H7b.
@@ -482,7 +482,7 @@ Found: 2026-09-25, session 8157f2dc.
 
 ## Rows waiting on a live run
 
-TM-02, TM-03, TM-14, TM-22, TM-26, TM-27, TM-32, TM-36, TM-40, TM-43, TM-46. See `live-checks.md`.
+TM-02, TM-03, TM-22, TM-26, TM-27, TM-32, TM-36, TM-40, TM-43, TM-46. See `live-checks.md`.
 
 ## Open splits
 
