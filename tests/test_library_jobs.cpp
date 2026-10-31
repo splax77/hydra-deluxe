@@ -10,6 +10,7 @@
 #include <chrono>
 #include <filesystem>
 #include <functional>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -20,6 +21,7 @@
 #include "app/config.h"  // Settings::batch_run
 #include "app/report.h"  // kNoChartLibrary
 #include "app/report_files.h"
+#include "app/time_left.h"
 #include "app/user_messages.h"  // plain_error
 #include "core/error_kind.h"
 #include "corpus_util.h"
@@ -104,12 +106,43 @@ TEST_CASE("jobs: the batch clock leaves paused time out") {
     CHECK_FALSE(stopped_while_paused.paused());
 }
 
-TEST_CASE("jobs: time left needs three finished charts") {
-    CHECK_FALSE(hydra::ui::batch_eta_s(30.0, 2, 10).has_value());
-    REQUIRE(hydra::ui::batch_eta_s(30.0, 3, 10).has_value());
-    CHECK(*hydra::ui::batch_eta_s(30.0, 3, 10) == doctest::Approx(70.0));
-    CHECK(*hydra::ui::batch_eta_s(30.0, 10, 10) == doctest::Approx(0.0));
-    CHECK_FALSE(hydra::ui::batch_eta_s(30.0, 3, 0).has_value());
+// The batch strip's window is the last 2W finished charts (D283). These cases
+// use W = 4, so the window is 8 charts, and a batch of 40. Charts arrive in
+// save groups, so several share one finish time, as the strip sees them.
+TEST_CASE("jobs: time left is the rate over the last 2W finished charts") {
+    hydra::app::TimeLeftClock clock = hydra::app::TimeLeftClock::over_last_units(
+        hydra::ui::kTimeLeftWorkerRounds * 4);
+    clock.record(1.0, 8);    // 8 charts that had a quick answer, in one group
+    clock.record(11.0, 12);  // then 4 slow ones
+    clock.record(21.0, 16);  // and 4 more
+    // The mean since the start would say 25 s over 16 charts for 24 to go:
+    // 37.5 s, "about 0:38 left". The last 8 finished from 11.0 s on.
+    const std::optional<double> first = clock.read(25.0, 40);
+    REQUIRE(first.has_value());
+    CHECK(*first == doctest::Approx(42.0));
+    CHECK(hydra::app::time_left_text(*first) == "about 0:42 left");
+
+    // A second reading inside the same second returns the first, however
+    // many charts landed in between.
+    clock.record(25.5, 20);
+    const std::optional<double> held = clock.read(25.9, 40);
+    REQUIRE(held.has_value());
+    CHECK(*held == doctest::Approx(42.0));
+    // A second on, the window has moved to the last 8.
+    const std::optional<double> next = clock.read(26.0, 40);
+    REQUIRE(next.has_value());
+    CHECK(*next == doctest::Approx(12.5));
+}
+
+TEST_CASE("jobs: time left shows nothing until 2W charts have finished, then shows") {
+    hydra::app::TimeLeftClock clock = hydra::app::TimeLeftClock::over_last_units(
+        hydra::ui::kTimeLeftWorkerRounds * 4);
+    clock.record(1.0, 7);
+    CHECK_FALSE(clock.read(2.0, 40).has_value());  // 7 of the 8 the window needs
+    clock.record(3.0, 8);
+    const std::optional<double> at_window = clock.read(4.0, 40);
+    REQUIRE(at_window.has_value());
+    CHECK(*at_window == doctest::Approx(12.0));
 }
 
 TEST_CASE("jobs: pause lets the chart in flight finish and starts no new one") {

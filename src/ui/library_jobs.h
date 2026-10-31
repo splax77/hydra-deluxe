@@ -215,6 +215,11 @@ private:
     double paused_total_ = 0.0;
 };
 
+// The batch's time-left window is this many rounds of its workers: the last
+// kTimeLeftWorkerRounds * W finished charts, W being the run's worker count
+// (D283). app::TimeLeftClock does the rest.
+inline constexpr int kTimeLeftWorkerRounds = 2;
+
 // How many charts must finish before a time-left estimate shows.
 inline constexpr int kEtaMinFinished = 3;
 
