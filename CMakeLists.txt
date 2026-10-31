@@ -399,6 +399,7 @@ add_library(hydra_app STATIC
     src/app/ini_errors.h
     src/app/job_base.h
     src/app/preview_clock.h
+    src/app/time_left.h
     src/app/update_key.h
     src/app/work_pool.h
 )
