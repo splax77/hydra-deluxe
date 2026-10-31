@@ -210,9 +210,10 @@ def build_server(helper: Optional[Helper] = None):
     def ch_menu() -> str:
         """One fresh read of the menus: how many objects of each menu class
         are live, whether each one's Online menu is on screen
-        (onlineMenuActive), the selected song's folder and name, the game
-        mode, the player count, and the live-GameManager word. Needs
-        ch_attach."""
+        (onlineMenuActive), each player screen's page, cursor, highlighted
+        row, controller type and the other fields menu_fields.json names,
+        the selected song's folder and name, the game mode, the player
+        count, and the live-GameManager word. Needs ch_attach."""
         return capped(h.frida.ch_menu())
 
     @server.tool()

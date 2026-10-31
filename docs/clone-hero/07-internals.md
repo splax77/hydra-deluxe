@@ -632,7 +632,7 @@ Found: 2026-10-10, session c8856afd; 2026-10-09, session e8435f64
 
 ## Rows waiting on a live run
 
-IN-19, IN-20, IN-21, IN-27, IN-29, IN-36, IN-40, IN-44. See `live-checks.md`.
+IN-19, IN-20, IN-21, IN-27, IN-29, IN-36, IN-40, IN-44, IN-59, IN-60. See `live-checks.md`.
 
 ## Open splits
 
