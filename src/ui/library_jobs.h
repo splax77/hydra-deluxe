@@ -39,22 +39,28 @@ namespace hydra::ui {
 
 // ---- StoreOpenJob ---------------------------------------------------------
 
+// The line the startup screen shows while the open fills in old rows' hardest
+// figure (StoreOpenProgress::Step::ReadingSavedPaths).
+inline constexpr const char* kReadingSavedPathsLabel = "Reading saved paths...";
+
 // Where the startup open of the library file is, for the startup screen. The
-// steps before LoadingLibrary are the store's own (store::OpenStep; it
-// reports them while it opens and, for a convertible file, converts it); LoadingLibrary
-// is the job's read of the chart list and its summaries once the store is
-// open.
+// first two steps are the store's own (store::OpenStep; it reports them while
+// it opens and, for a convertible file, converts it). ReadingSavedPaths is the
+// job's one-time fill of old rows' hardest figure (app::fill_saved_hardest),
+// reported only when the fill has charts to read. LoadingLibrary is the job's
+// read of the chart list and its summaries once the store is open.
 struct StoreOpenProgress {
-    enum class Step { Opening, ConvertingRecords, LoadingLibrary };
+    enum class Step { Opening, ConvertingRecords, ReadingSavedPaths, LoadingLibrary };
     Step step = Step::Opening;
-    // Rows converted so far, out of the rows the conversion converts, both as
-    // the store counted them (store::OpenProgress). 0 of 0 until the
-    // conversion begins, and on a file that needs none.
+    // The current step's counts: rows converted out of the rows the
+    // conversion converts, as the store counted them (store::OpenProgress),
+    // or charts read out of the charts the fill reads. 0 of 0 until the first
+    // counted step begins, and on a file that needs none.
     uint64_t rows_done = 0;
     uint64_t rows_total = 0;
-    // Whether this open has converted the file at any step so far. It stays
-    // set through LoadingLibrary, so the screen keeps its upgrade heading and
-    // full bar until the library appears.
+    // Whether this open has converted the file or filled old rows at any step
+    // so far. It stays set through LoadingLibrary, so the screen keeps its
+    // upgrade heading and full bar until the library appears.
     bool upgrading = false;
     // Seconds since the job started.
     double elapsed_s = 0.0;
@@ -82,7 +88,8 @@ void read_library_summaries(store::RecordStore& store, const app::Settings& sett
 using StoreOpenGate =
     std::function<void(const StoreOpenProgress& progress, const std::function<bool()>& cancelled)>;
 
-// Opens the library file off the UI thread at startup, then reads the
+// Opens the library file off the UI thread at startup, fills in old rows'
+// hardest figure once per profile (app::fill_saved_hardest), then reads the
 // library the way AppState::reload_library does, into a model of its own.
 // AppState::tick collects it: the store and the model move into AppState, and
 // a failed read of the library becomes the status line's problem, as it does
@@ -110,8 +117,9 @@ public:
     // Valid once finished() && ok(); each moves its part out (call once).
     std::unique_ptr<store::RecordStore> take_store() { return std::move(store_); }
     LibraryModel take_library() { return std::move(library_); }
-    // The plain sentence of a library read that failed after the store
-    // opened, or "" when the read worked.
+    // The plain sentence of a library read, or a fill of old rows' hardest
+    // figure, that failed after the store opened, or "" when both worked.
+    // The read's problem is the one kept when both failed.
     const std::string& library_problem() const { return library_problem_; }
     // The sentence to show once when the open set the old library file aside
     // (store::RecordStore::set_aside_path), or "" when it set nothing aside.
