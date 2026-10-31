@@ -27,6 +27,7 @@ _GIT_ENV_DROP = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR",
                  "GIT_REPLACE_REF_BASE")
 _FULL_HASH = re.compile(r"^[0-9a-fA-F]{40}$")
 _DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
+_IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 CLAIMS_HEADING = "## Claims"
 MANUAL_KINDS = ("test", "ruling", "state")
 TABLE_STATUSES = ("ok", "missing", "not-on-main", "not-pushed", "manual")
@@ -90,7 +91,7 @@ class Repo:
         """(file, line, matched text) of every whole-word hit of name in tracked text files.
         Docs are searched only when docs is set, because a doc that mentions a function is
         no proof the function exists."""
-        args = (["grep", "-n", "-I", "-o", "--full-name"] + (["-F"] if fixed else ["-w"])
+        args = (["grep", "-n", "-I", "-o", "--full-name", "-w"] + (["-F"] if fixed else [])
                 + (["-i"] if ignore_case else []) + ["-e", name])
         if not docs:
             args += ["--", ".", ":(exclude)*.md", ":(exclude)docs/"]
@@ -102,8 +103,26 @@ class Repo:
         return hits
 
     def changes_since(self, rel, since):
-        out = git(self.root, ["log", "--since=%s 00:00:00" % since, "--format=%s", "--", rel])[1]
+        """Subjects of the commits touching rel since midnight at the start of the date, on
+        this checkout and on main (a checkout that has fallen behind main would miss them)."""
+        revs = ["HEAD"]
+        if git(self.root, ["rev-parse", "--verify", "--quiet", "refs/heads/main"])[0] == 0:
+            revs.append("refs/heads/main")
+        out = git(self.root, ["log", "--since=%s 00:00:00" % since, "--format=%s", *revs, "--", rel])[1]
         return [s for s in out.splitlines() if s.strip()]
+
+    def exact_case(self, rel):
+        """Whether rel is spelled in the case the folder holds. On Windows a file opens under
+        any case, so a wrong-case path would pass here and fail on another machine."""
+        cur = self.root
+        for part in rel.split("/"):
+            try:
+                if part not in os.listdir(cur):
+                    return False
+            except OSError:
+                return False
+            cur = os.path.join(cur, part)
+        return True
 
     def relative(self, absolute):
         """absolute as a path inside this repo, or None when it is outside."""
@@ -154,10 +173,21 @@ def find_branch(repo, t):
 
 def find_function(repo, t):
     """Where the function is: the qualified name as written when the code holds it, else the
-    bare name, so a function moved to another class or file still shows its new home."""
+    bare name, so a function moved to another file still shows its new home. A method
+    written in its class (a definition inside the class body is not written qualified)
+    is accepted only in a file that names the class, so a common method name does not
+    pass on an unrelated hit."""
+    name = doc_tokens.function_name(t) or (t if _IDENT.match(t) else None)
+    if not name:
+        return None
     qualified = t.split("(", 1)[0]
     hits = repo.grep(qualified, fixed=True) if "::" in qualified else []
-    hits = hits or repo.grep(doc_tokens.function_name(t))
+    if not hits:
+        hits = repo.grep(name)
+        if "::" in qualified:
+            owner = qualified.split("::")[-2]
+            owner_files = {h[0] for h in repo.grep(owner)}
+            hits = [h for h in hits if h[0] in owner_files]
     if not hits:
         return None
     f, line, _ = hits[0]
@@ -173,18 +203,14 @@ def find_path(repo, t, absolute):
             return None
         rel = repo.relative(full)
         return "%s %s" % ("folder" if os.path.isdir(full) else "file", full), rel
-    if os.path.exists(os.path.join(repo.root, p)):
-        return "%s%s %s" % (repo.label, "folder" if os.path.isdir(os.path.join(repo.root, p)) else "file",
-                            p.replace("\\", "/")), p.replace("\\", "/")
-    # A name written relative to a folder the prose named ("summary.md", "briefs/x.py") is
-    # found by its tail among the tracked files.
-    tail = p.replace("\\", "/").strip("/")
-    if tail and not tail.startswith(".."):
-        same = [f for f in repo.files() if f == tail or f.endswith("/" + tail)]
-        if same:
-            more = " and %d more" % (len(same) - 1) if len(same) > 1 else ""
-            return "%sfile found at %s%s" % (repo.label, same[0], more), same[0]
-    return None
+    # Only the path as written counts. A name that matches the tail of some other path
+    # ("summary.md" under another folder) is a different file, so it is shown as the
+    # nearest name of a missing path and never as found.
+    full = os.path.join(repo.root, p.replace("\\", "/"))
+    rel = repo.relative(full)
+    if rel in (None, ".") or not os.path.exists(full) or not repo.exact_case(rel):
+        return None
+    return "%s%s %s" % (repo.label, "folder" if os.path.isdir(full) else "file", rel), rel
 
 
 def nearest(repo, kind, t):
@@ -203,7 +229,14 @@ def nearest(repo, kind, t):
         files = repo.files()
         if not doc_tokens.has_separator(p):
             return _near_name(p, files, lambda f: f, key=lambda f: f.rsplit("/", 1)[-1])
-        return _near_name(p, files, lambda f: f)
+        near = _near_name(p, files, lambda f: f)
+        if near:
+            return near
+        tail = [f for f in files if f.endswith("/" + p.strip("/"))]
+        if tail:
+            return "a different file ends the same way: %s%s" % (
+                tail[0], " and %d more" % (len(tail) - 1) if len(tail) > 1 else "")
+        return ""
     else:
         near = []
     return near[0] if near else ""
@@ -306,7 +339,9 @@ def claims_rows(text):
         if line.startswith("#"):
             inside = line.rstrip() == CLAIMS_HEADING
             continue
-        if inside and line.lstrip().startswith("|"):
+        # A row written without its outer pipes still counts: dropping it would be a claim
+        # that is never checked.
+        if inside and (line.lstrip().startswith("|") or line.count("|") >= 2):
             cells = split_row(line)
             if cells[0].lower() == "kind" or all(re.fullmatch(r":?-+:?", c) for c in cells if c):
                 continue
@@ -328,7 +363,7 @@ def row_status(kind, value, repos):
                 return "ok" if repo.contains("refs/remotes/origin/main", full) else "not-pushed"
         return "missing"
     if kind in ("path", "branch", "function"):
-        return "ok" if look_up(kind, value, repos) else "missing"
+        return "ok" if value and look_up(kind, value, repos) else "missing"
     return "unknown"
 
 
@@ -336,7 +371,8 @@ def table(text, main):
     by_line = other_repos(text, main)
     rows = claims_rows(text)
     if not rows:
-        print("warning: the %s table has no rows" % CLAIMS_HEADING, file=sys.stderr)
+        # A table nobody could read must not pass as "nothing to check".
+        print("error: no rows under the %s heading" % CLAIMS_HEADING, file=sys.stderr)
     counts = {s: 0 for s in TABLE_STATUSES}
     for n, cells in rows:
         kind = cells[0].lower()
@@ -351,6 +387,8 @@ def table(text, main):
     if counts.get("unknown"):
         parts.append("%d unknown" % counts["unknown"])
     print("checked %d rows: %s" % (len(rows), ", ".join(parts)))
+    if not rows:
+        return 1
     return 0 if all(c == 0 for s, c in counts.items() if s not in ("ok", "manual")) else 1
 
 
@@ -376,7 +414,11 @@ def handoff_date(path):
 
 def main(argv):
     here = os.path.dirname(os.path.abspath(__file__))
-    ap = argparse.ArgumentParser(prog="check_handoff.py", description=__doc__.split("\n\n")[0])
+    # A commit subject or claim with a character the console cannot show must not crash a
+    # run half way through its output.
+    for stream in (sys.stdout, sys.stderr):
+        stream.reconfigure(errors="replace")
+    ap =argparse.ArgumentParser(prog="check_handoff.py", description=__doc__.split("\n\n")[0])
     ap.add_argument("handoff")
     ap.add_argument("--repo", default=None, help="repo to check against (default: the one holding this script)")
     ap.add_argument("--since", default=None, help="YYYY-MM-DD (default: the handoff's date)")

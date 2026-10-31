@@ -188,11 +188,35 @@ class ScrapeMode(Base):
         self.assertTrue(any(l.startswith("Playhead::read_frames") and "src/player.cpp:2" in l
                             for l in section(out, "EXISTS")), out)
 
-    def test_path_found_by_its_tail(self):
-        code, out, _ = self.scrape("In `src/` see `thing.cpp`, and `app/thing.cpp` is wrong.\n")
+    def test_path_matching_only_by_its_tail_is_missing(self):
+        code, out, _ = self.scrape("In the source folder see `thing.cpp`, and `app/thing.cpp` is wrong.\n")
+        self.assertEqual(section(out, "EXISTS"), [], out)
+        missing = section(out, "MISSING")
+        self.assertTrue(any(l.startswith("thing.cpp") and "src/thing.cpp" in l for l in missing), out)
+        self.assertTrue(any(l.startswith("app/thing.cpp") for l in missing), out)
+        self.assertEqual(code, 1)
+        commit(self.repo, {"deep/src/other.cpp": "x\n"}, "another file")
+        _, out, _ = self.scrape("See `src/other.cpp`.\n")
+        self.assertTrue(any(l.startswith("src/other.cpp") and "a different file ends the same way" in l
+                            for l in section(out, "MISSING")), out)
+
+    def test_path_outside_the_repo_or_in_the_wrong_case_is_missing(self):
+        with open(os.path.join(self.tmp, "outside.txt"), "w") as f:
+            f.write("x\n")
+        _, out, _ = self.scrape("See `SRC/Thing.cpp`, `../outside.txt` and `/README.md`.\n")
+        self.assertEqual(section(out, "EXISTS"), [], out)
+        self.assertIn("checked 3 claims: 0 exist, 3 missing", out)
+
+    def test_qualified_method_needs_its_class_in_the_file(self):
+        commit(self.repo, {"src/other.cpp": "int compute_total(int);\nint Widget::draw() { return 0; }\n",
+                           "src/widget.h": "struct Gadget { int draw() { return 1; } };\n"}, "more")
+        code, out, _ = self.scrape("`Gadget::draw` and `Widget::run` and `Gadget::compute_total()`.\n")
         exists = section(out, "EXISTS")
-        self.assertTrue(any(l.startswith("thing.cpp") and "found at src/thing.cpp" in l for l in exists), out)
-        self.assertTrue(any(l.startswith("app/thing.cpp") for l in section(out, "MISSING")), out)
+        self.assertTrue(any(l.startswith("Gadget::draw") and "src/widget.h:1" in l for l in exists), out)
+        missing = section(out, "MISSING")
+        self.assertTrue(any(l.startswith("Widget::run") for l in missing), out)
+        self.assertTrue(any(l.startswith("Gadget::compute_total()") for l in missing), out)
+        self.assertEqual(code, 1)
 
     def test_session_id_is_not_a_commit(self):
         _, out, _ = self.scrape("Written in session e3dd3907, id 6777b546-e751-41ab-bb22-ba066e7b1412.\n")
@@ -249,6 +273,36 @@ class TableMode(Base):
         code, _, _ = self.scrape(TABLE_HEAD + row("commit", self.c_side))
         self.assertEqual(code, 1)
         code, _, _ = self.scrape(TABLE_HEAD + row("branch", "claude/nope"))
+        self.assertEqual(code, 1)
+
+    def test_claims_rows_that_must_not_pass(self):
+        text = TABLE_HEAD + "".join([
+            "| path | | empty value | x |\n",
+            row("path", "."),
+            row("path", "../outside.txt", "a real file outside the repo"),
+            row("path", "thing.cpp", "only its tail"),
+            row("path", "SRC/thing.cpp", "wrong case"),
+            row("function", "not a function", "prose"),
+            row("function", "compute_total", "bare name"),
+            row("function", "Gadget::compute_total()", "wrong class"),
+            row("fn", "compute_total()", "kind the guide does not have"),
+        ])
+        with open(os.path.join(self.tmp, "outside.txt"), "w") as f:
+            f.write("x\n")
+        code, out, _ = self.scrape(text)
+        got = [l.split(" | ")[0] for l in out.splitlines()[:-1]]
+        self.assertEqual(got, ["missing"] * 6 + ["ok", "missing", "unknown"], out)
+        self.assertEqual(code, 1)
+
+    def test_claims_table_with_no_readable_row_fails(self):
+        code, out, err = self.scrape("## Claims\n\nnothing here\n")
+        self.assertEqual(code, 1)
+        self.assertIn("error", err)
+        self.assertIn("checked 0 rows", out)
+
+    def test_row_without_outer_pipes_is_read(self):
+        code, out, _ = self.scrape(TABLE_HEAD + "path | `src/nope.cpp` | no pipes | x\n")
+        self.assertTrue(out.startswith("missing | path | src/nope.cpp"), out)
         self.assertEqual(code, 1)
 
 
