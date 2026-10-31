@@ -169,6 +169,19 @@ export function playerScreenWatchFailed(e: unknown): void {
     playerScreenHook = `placing the player-screen hook failed: ${e}`;
 }
 
+// Whether a recorded address still holds a live PlayerSelectionMenu. The
+// check reads the object's class word first and its native-object field only
+// when the word names PlayerSelectionMenu, so freed and reused memory is read
+// once, one word, and never as a menu. Memory the process has given back
+// throws; that counts as gone.
+function isLivePlayerScreen(klass: Il2Cpp.Class, obj: Il2Cpp.Object): boolean {
+    try {
+        return obj.class.handle.equals(klass.handle) && !isDestroyed(obj);
+    } catch {
+        return false;
+    }
+}
+
 // The recorded player screens that are still alive, and how many were not.
 // One that is destroyed, or whose memory no longer holds a PlayerSelectionMenu
 // (the collector freed it and reused the space), is counted as destroyed and
@@ -181,7 +194,7 @@ function seenPlayerScreens(klass: Il2Cpp.Class): Instances | string {
     let destroyed = 0;
     for (const [key, p] of playerScreens) {
         const obj = new Il2Cpp.Object(p);
-        if (obj.class.handle.equals(klass.handle) && !isDestroyed(obj)) {
+        if (isLivePlayerScreen(klass, obj)) {
             alive.push(obj);
         } else {
             playerScreens.delete(key);
