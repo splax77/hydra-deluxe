@@ -26,7 +26,7 @@ Counts: PASS 19, GONE 3 (106, R7.2, 133 tentative), REOPEN 0, not reached 0 (133
 
 - **Splits:** Where does a tied variant's last activation end: its own fold-time snapshot vs the leader's closed activation. Today `Engine::close_folded_act` (`src/search/engine.cpp:1563`) copies the leader's `deact_edge`, `sqout_phrase`, `final_sp_end` (engine.cpp:1569-1572) to the variant.
 - **How it left:** a question to the user in chat (call 3 of the step-1 walk-through).
-- **User's words:** Q "Call 3 (finding 90): how should a tied path folded mid-Star-Power get its SP end?" with options "Give the variant the leader's closed activation (recommended)" and "Stop folding while SP is running", user chose "Use leader's activation (Recommended)" (condensed/cebf3006...condensed.md:187-198). Recorded as D3: "A tied variant folded into its leader while SP is still running takes the leader's closed activation from the fold point: its SP end, clamp note, collected phrases and backend rows." (DEC:11).
+- **User's words:** Q "Call 3 (finding 90): how should a tied path folded mid-Star-Power get its SP end?" with options "Give the variant the leader's closed activation (recommended)" and "Stop folding while SP is running", user chose "Use leader's activation (Recommended)" (card `docs/sessions/2026-10-03-cebf3006.md`:21 keeps the question and the chosen label; the option text was not kept). Recorded as D3: "A tied variant folded into its leader while SP is still running takes the leader's closed activation from the fold point: its SP end, clamp note, collected phrases and backend rows." (DEC:11).
 - **Code today:** engine.cpp:1700-1704 calls `close_folded_act` for `var.open_sp`, by reading.
 - **Verdict:** PASS
 - **Why:** Both options were written out in the question and the user picked one; code does the picked one.
@@ -80,10 +80,10 @@ Counts: PASS 19, GONE 3 (106, R7.2, 133 tentative), REOPEN 0, not reached 0 (133
 
 - **Splits:** A time signature with top number 0: .chart skipped it vs .mid crashed. Today `apply_timesig` (`src/core/song.cpp:58-59`) `if (numerator == 0) return;` for both formats.
 - **How it left:** question in chat (step-1 plan Q1), recorded D6.
-- **User's words:** Chat Q "Q1: A chart whose timing makes a measure or beat last zero, negative or infinite time (e.g. a negative .chart tempo). Refuse the chart, or ignore the bad line?" chose "Refuse with error (Recommended)" (condensed/cebf3006...condensed.md:334-335). The written plan Q1 Recommended: "refuse the chart with a plain error naming the tick. The one exception is a time signature with a top number of 0, which is ignored in both formats, as `.chart` already does." (docs/superpowers/plans/2026-10-03-step1-engine-stores-what-displays-guess.md:66). D6: "A time signature with a top number of 0 is ignored in both formats, as `.chart` already does." (DEC:17).
+- **User's words:** Chat Q "Q1: A chart whose timing makes a measure or beat last zero, negative or infinite time (e.g. a negative .chart tempo). Refuse the chart, or ignore the bad line?" chose "Refuse with error (Recommended)" (card `docs/sessions/2026-10-03-cebf3006.md`:25 keeps the question's start and the chosen label; the rest of the question text was not kept). The written plan Q1 Recommended: "refuse the chart with a plain error naming the tick. The one exception is a time signature with a top number of 0, which is ignored in both formats, as `.chart` already does." (docs/superpowers/plans/2026-10-03-step1-engine-stores-what-displays-guess.md:66). D6: "A time signature with a top number of 0 is ignored in both formats, as `.chart` already does." (DEC:17).
 - **Code today:** song.cpp:58-59, by reading.
 - **Verdict:** PASS
-- **Why:** The Recommended line names both formats. Caveat for the main session: the condensed card keeps only the chat question's first sentence, so I could not confirm the user saw the zero-numerator exception inside the option text itself; the written plan's Q1 holds it.
+- **Why:** The Recommended line names both formats. Caveat for the main session: the session's record (now card `docs/sessions/2026-10-03-cebf3006.md`:25) keeps only the chat question's first sentence, and the option text was not kept, so I could not confirm the user saw the zero-numerator exception inside the option text itself; the written plan's Q1 holds it.
 
 ### 2026-10-03 101: .sng preview clip in the mix
 
@@ -164,7 +164,7 @@ Counts: PASS 19, GONE 3 (106, R7.2, 133 tentative), REOPEN 0, not reached 0 (133
 
 - **Splits:** `.chart` Offset text "500ms" read as 500 s and "nan" accepted vs song.ini/.sng delay dropped. Today both use `parse_finite_number` (`src/core/strutil.cpp:80-92`, whole text must be a number): `src/parse/song.cpp:1825` and `src/app/preview_source.cpp:113-114`.
 - **How it left:** approved in a small-items batch in chat (D27).
-- **User's words:** "**Offset and delay numbers (R7.5).** Today `"500ms"` is read as 500 seconds, and `nan` is accepted. One strict number helper would read both. No library file is affected." (condensed/bbf41dc4...condensed.md:321); Q "Approve the small-items batch as recommended (60, 61, 258/319, 331, R7.5, R7.7, 77 fixes; 141 and 320 recorded only)?" chose "Approve all (Recommended)" (same file :338-339). D27: "one strict number helper for `.chart` Offset and song.ini delay (R7.5)" (DEC:65).
+- **User's words:** "**Offset and delay numbers (R7.5).** Today `"500ms"` is read as 500 seconds, and `nan` is accepted. One strict number helper would read both. No library file is affected." (the batch text was not kept); Q "Approve the small-items batch as recommended (60, 61, 258/319, 331, R7.5, R7.7, 77 fixes; 141 and 320 recorded only)?" chose "Approve all (Recommended)" (card `docs/sessions/2026-10-04-bbf41dc4.md`:27). D27: "one strict number helper for `.chart` Offset and song.ini delay (R7.5)" (DEC:65).
 - **Code today:** by reading.
 - **Verdict:** PASS
 - **Why:** Wording is thin (it names the .chart misreading, not that a unit on a delay was already dropped) but the rule asked, one strict reader for both, is what the code does. A unit-suffixed `.chart` Offset now counts as absent (song.cpp:1820-1822).
@@ -173,7 +173,7 @@ Counts: PASS 19, GONE 3 (106, R7.2, 133 tentative), REOPEN 0, not reached 0 (133
 
 - **Splits:** Lookups assume ms never falls as ticks rise vs a `.chart` tempo of 0 or below. Today `check_timing_maps` refuses it: `src/core/song.cpp:44-46` `if (!std::isfinite(bpm) || bpm <= 0.0) throw ... "is not above 0 BPM"`.
 - **How it left:** question in chat, D6.
-- **User's words:** "Q1: A chart whose timing makes a measure or beat last zero, negative or infinite time (e.g. a negative .chart tempo). Refuse the chart, or ignore the bad line?" chose "Refuse with error (Recommended)" (condensed/cebf3006...:334-335). D6 (DEC:17): "Timing that makes a measure or beat last zero, negative or infinite time refuses the chart with a plain error naming the tick." Also D4's condition: "there should never be a situation when the scale cant be computed" (DEC:13).
+- **User's words:** "Q1: A chart whose timing makes a measure or beat last zero, negative or infinite time (e.g. a negative .chart tempo). Refuse the chart, or ignore the bad line?" chose "Refuse with error (Recommended)" (card `docs/sessions/2026-10-03-cebf3006.md`:25; the rest of the question text was not kept). D6 (DEC:17): "Timing that makes a measure or beat last zero, negative or infinite time refuses the chart with a plain error naming the tick." Also D4's condition: "there should never be a situation when the scale cant be computed" (DEC:13).
 - **Code today:** by reading.
 - **Verdict:** PASS
 - **Why:** The question named the negative tempo and both options; code refuses. The option "clamp" from the audit was not offered, but "ignore the bad line" was the alternative put to the user.
@@ -200,7 +200,7 @@ Counts: PASS 19, GONE 3 (106, R7.2, 133 tentative), REOPEN 0, not reached 0 (133
 
 - **Splits:** Tail backend rows measured from the song's last note (graph) vs from the SP end (display). Today the engine measures each tail row against `final_sp_end` and filters with `within_squeeze_window` (`src/search/engine.cpp:1985-1990`).
 - **How it left:** question in chat (call 5), D5.
-- **User's words:** Q "Call 5 (R7.10): for SP that outlasts the song, measure the 500 ms backend window from where?" chose "From the SP end (Recommended)" (condensed/cebf3006...:229-230), options written at :221-223 ("Measure from the SP end (recommended)" / "Measure from the last note."). D5: "the 500 ms backend window is measured from the SP end, the same as every other activation." (DEC:15).
+- **User's words:** Q "Call 5 (R7.10): for SP that outlasts the song, measure the 500 ms backend window from where?" chose "From the SP end (Recommended)" (card `docs/sessions/2026-10-03-cebf3006.md`:23), options as written in the session ("Measure from the SP end (recommended)" / "Measure from the last note."; the option text was not kept). D5: "the 500 ms backend window is measured from the SP end, the same as every other activation." (DEC:15).
 - **Code today:** by reading engine.cpp:1980-1993.
 - **Verdict:** PASS
 - **Why:** Both anchors were in the options and the code uses the chosen one.
