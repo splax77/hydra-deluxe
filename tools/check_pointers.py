@@ -33,8 +33,9 @@ SESSIONS_LINE = "Sessions:"
 
 
 def documents(repo_root, memory):
-    """(name to show, full path) of every document read. The memory folder is read at its top
-    only: its archive subfolder holds retired notes, which name retired things on purpose."""
+    """(name to show, full path) of every document read. A memory note shows as its folder's
+    name and its own, which keeps the lines short. The memory folder is read at its top only:
+    its archive subfolder holds retired notes, which name retired things on purpose."""
     docs = [("CLAUDE.md", os.path.join(repo_root, "CLAUDE.md"))]
     agents = os.path.join(repo_root, "docs", "agents")
     for folder, subs, files in os.walk(agents):
@@ -46,7 +47,7 @@ def documents(repo_root, memory):
     for f in sorted(os.listdir(memory)):
         full = os.path.join(memory, f)
         if f.endswith(".md") and os.path.isfile(full):
-            docs.append((full, full))
+            docs.append((os.path.join(os.path.basename(os.path.normpath(memory)), f), full))
     return [d for d in docs if os.path.isfile(d[1])]
 
 
@@ -57,6 +58,15 @@ def is_hook_name(p):
 def _inside(folder, full):
     rel = os.path.relpath(full, folder)
     return rel != "." and rel != ".." and not rel.startswith(".." + os.sep)
+
+
+def _is_alternatives(parts):
+    """Whether the segments of a path are a shorthand list rather than folders: a file name
+    before the last segment (a path cannot run on past a file), or only bare extensions."""
+    parts = [s for s in parts if s]
+    if any(os.path.splitext(s)[1][1:2].isalpha() for s in parts[:-1]):
+        return True
+    return len(parts) > 1 and all(s.startswith(".") and "." not in s[1:] for s in parts)
 
 
 class Pointers:
@@ -73,14 +83,17 @@ class Pointers:
         """Whether a token names a file: the tokeniser's path shape, minus the names that only
         look like one. Those are a name with a colon past the drive (a registry key), one that
         starts with a slash (a slash command, a widget id, a compiler flag or a URL's path; no
-        doc here names a file that way on Windows), one with an elided "..." part, a git ref,
-        and a remote repo's owner/name as a remote URL of either repo spells it."""
+        doc here names a file that way on Windows), one with an elided "..." part, a widget id
+        with "##", a bracketed counter, a file inside .git (it exists only mid-merge), a list
+        of alternatives written with slashes ("a.cpp/b.cpp", ".db/.ini"), a git ref, and a
+        remote repo's owner/name as a remote URL of either repo spells it."""
         if doc_tokens.shape(t) != "path":
             return False
         p = doc_tokens.strip_line_ref(t)
-        if ":" in (p[2:] if doc_tokens.is_absolute(p) else p) or p.startswith(("/", "\\")):
+        if ":" in (p[2:] if doc_tokens.is_absolute(p) else p) or p.startswith(("/", "\\", "[")):
             return False
-        if "..." in p.replace("\\", "/").split("/"):
+        parts = p.replace("\\", "/").split("/")
+        if "..." in parts or "##" in p or parts[0] == ".git" or _is_alternatives(parts):
             return False
         if self._refs is None:
             hooks = check_handoff.Repo(self.hooks_root)
@@ -222,7 +235,8 @@ def main(argv):
             return 0
         if broken:
             context = ("Broken file pointers in the agent docs and memory notes "
-                       "(tools/check_pointers.py). Fix them alongside the user's request:\n"
+                       "(tools/check_pointers.py; the memory notes are in %s). "
+                       "Fix them alongside the user's request:\n" % args.memory
                        + "\n".join(broken) + "\n" + summary(broken, checked))
             print(json.dumps({"hookSpecificOutput": {"hookEventName": "SessionStart",
                                                      "additionalContext": context}}))

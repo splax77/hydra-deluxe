@@ -17,6 +17,7 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCRIPT = os.path.join(HERE, "check_pointers.py")
+SHOWN = os.path.join("memory", "note.md")  # how note.md in the temp memory folder is named in a line
 
 
 def git(repo, *args):
@@ -93,7 +94,7 @@ class TestPointers(Base):
         self.note("`%s`\n`%s`\n" % (real, gone))
         code, out, err = self.run_check()
         lines = self.broken(out)
-        self.assertEqual(lines, [os.path.join(self.memory, "note.md") + ":2: %s (missing)" % gone], out + err)
+        self.assertEqual(lines, [SHOWN + ":2: %s (missing)" % gone], out + err)
 
     def test_sessions_line_skipped(self):
         self.note("`src/gone.cpp`\nSessions: `x/2026-10-25-13b9cb08.md`, `y/other.md`\n")
@@ -138,7 +139,7 @@ class TestPointers(Base):
     def test_wrong_case_is_broken(self):
         self.note("`SRC/Real.cpp`\n")
         code, out, err = self.run_check()
-        self.assertEqual(self.broken(out), [os.path.join(self.memory, "note.md") + ":1: SRC/Real.cpp (found at src/real.cpp)"],
+        self.assertEqual(self.broken(out), [SHOWN + ":1: SRC/Real.cpp (found at src/real.cpp)"],
                          out + err)
 
     def test_tail_match_is_never_found(self):
@@ -166,7 +167,7 @@ class TestPointers(Base):
         # the hooks repo's root, both lead somewhere as written.
         self.note("```\nrun src/gone_fenced.cpp now\n```\n`MEMORY.md`\n`gates/good_gate.py`\n")
         code, out, err = self.run_check()
-        self.assertEqual(self.broken(out), [os.path.join(self.memory, "note.md") + ":2: src/gone_fenced.cpp (missing)"],
+        self.assertEqual(self.broken(out), [SHOWN + ":2: src/gone_fenced.cpp (missing)"],
                          out + err)
 
     def test_not_file_names_are_ignored(self):
@@ -176,6 +177,23 @@ class TestPointers(Base):
                   "`/handoff` `//Hydra/Label` `C:\\Users\\...` `owner/proj`\n")
         code, out, err = self.run_check()
         self.assertIn("pointers: 0 checked, 0 broken", out, out + err)
+
+    def test_shorthand_names_are_ignored(self):
+        # Shorthand that names no single file: a widget id, a counter, a file inside .git, and
+        # lists of alternatives written with slashes. A real missing path beside them still shows.
+        self.note("`Hydra/##panel_AB12` `[N/97]` `.git/MERGE_HEAD` `.sng/.srb`\n"
+                  "`src/real.h/.cpp` `a.cpp/b.cpp/c.cpp` `.db/_x.ini/_y.ini` `Edition.A/Edition.B`\n"
+                  "`src/gone.cpp`\n")
+        code, out, err = self.run_check()
+        self.assertEqual(self.broken(out), [SHOWN + ":3: src/gone.cpp (missing)"], out + err)
+        self.assertIn("pointers: 1 checked, 1 broken", out)
+
+    def test_memory_note_shown_by_short_name(self):
+        self.note("`src/gone.cpp`\n")
+        code, out, err = self.run_check("--session-start")
+        context = json.loads(out)["hookSpecificOutput"]["additionalContext"]
+        self.assertIn(self.memory, context)  # said once, at the top
+        self.assertNotIn(self.memory + os.sep, context.split("\n", 1)[1])  # not on every line
 
     def test_bad_argument(self):
         r = subprocess.run([sys.executable, "-I", SCRIPT, "--memory", os.path.join(self.tmp, "no-such")],
