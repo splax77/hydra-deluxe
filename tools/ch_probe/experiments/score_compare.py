@@ -57,7 +57,8 @@ _REPO_ROOT = os.path.abspath(
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from tools.ch_probe.experiments.overlay_logs import PRESS_LOG_COLUMNS
+from tools.ch_probe.experiments.overlay_logs import (
+    KEYS_PRESS_COLUMNS, KIT_PRESS_COLUMNS, PRESS_LOG_COLUMNS)
 
 # A run that hits fewer than this percent of its presses is a FAIL (the
 # overlay spike plan, Task B step 3).
@@ -67,11 +68,9 @@ MIN_HIT_PERCENT = 98
 # accent; dynamic_str in src/core/model.cpp owns them.
 _DYNAMIC_WORDS = ("ghost", "accent")
 
-# Press logs written before the kit press existed have only the first six
-# columns of PRESS_LOG_COLUMNS. load_press_log reads them too, with the
-# remaining (kit) columns blank.
-_KEYS_ONLY_COLUMNS = PRESS_LOG_COLUMNS[:6]
-_KIT_COLUMNS = PRESS_LOG_COLUMNS[len(_KEYS_ONLY_COLUMNS):]
+# Press logs written before the kit press existed hold only
+# KEYS_PRESS_COLUMNS. load_press_log reads them too, with the kit columns
+# blank.
 
 
 @dataclass(frozen=True)
@@ -101,16 +100,17 @@ class HydraChord:
 
 def load_press_log(path: str) -> List[Press]:
     """The press log's rows. Raises ValueError when the header is neither
-    PRESS_LOG_COLUMNS nor _KEYS_ONLY_COLUMNS."""
+    PRESS_LOG_COLUMNS nor KEYS_PRESS_COLUMNS."""
     with open(path, encoding="utf-8", newline="") as f:
         reader = csv.DictReader(f)
-        if tuple(reader.fieldnames or ()) not in (PRESS_LOG_COLUMNS, _KEYS_ONLY_COLUMNS):
+        if tuple(reader.fieldnames or ()) not in (PRESS_LOG_COLUMNS, KEYS_PRESS_COLUMNS):
             raise ValueError(
-                f"{path}: header {reader.fieldnames} is not {list(PRESS_LOG_COLUMNS)}")
+                f"{path}: header {reader.fieldnames} is not {list(PRESS_LOG_COLUMNS)}"
+                f" or {list(KEYS_PRESS_COLUMNS)}")
         return [Press(int(row["index"]), float(row["chart_ms"]),
                       float(row["clock_ms_at_press"]), int(row["score_before"]),
                       int(row["score_after"]), row["hit"] == "1",
-                      **{c: row.get(c) or "" for c in _KIT_COLUMNS})
+                      **{c: row.get(c) or "" for c in KIT_PRESS_COLUMNS})
                 for row in reader]
 
 

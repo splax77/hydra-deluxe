@@ -8,6 +8,7 @@ follows is score_compare's; these tests pin its answers on these literals.
 
 from __future__ import annotations
 
+import dataclasses
 import io
 import os
 import sys
@@ -20,7 +21,7 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 from tools.ch_probe.engine import pressed_input_hit  # noqa: E402
-from tools.ch_probe.experiments import play_chart, score_compare  # noqa: E402
+from tools.ch_probe.experiments import overlay_logs, play_chart, score_compare  # noqa: E402
 
 
 def _note(dynamic="none"):
@@ -316,6 +317,11 @@ class PressLogHeaderTest(unittest.TestCase):
                                 "812", "813", "1998.25", "2014.75"),
             score_compare.Press(3, 2500.0, 2501.0, 280, 380, True, "", "", "", ""),
         ])
+
+    def test_press_has_a_field_for_every_log_column(self):
+        self.assertEqual(
+            tuple(f.name for f in dataclasses.fields(score_compare.Press)),
+            overlay_logs.PRESS_LOG_COLUMNS)
 
     def test_other_headers_are_refused(self):
         for header in (
