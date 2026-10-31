@@ -1,6 +1,7 @@
 // The kit agent: a virtual drum kit inside the game. It builds one Rewired
 // custom controller from the game's own drum definition, hands it to one
-// player with the game's default map, presses its pads and buttons on
+// player with one of the game's maps loaded by category and layout, presses
+// its pads and buttons on
 // request, and takes it away again. It sends no key presses and never touches
 // the window, so the game can stay minimized and unfocused. While the kit is
 // set up, Rewired's keyboard and mouse devices are switched off, so the user's
@@ -15,7 +16,7 @@
 // tests/test_frida_attach.py checks both. It reads fields by name.
 //
 // It holds none of the kit's numbers. The definition id, the tag, the player,
-// the element ids and values, the hold in frames, the rewrite flag, the
+// the map's category and layout, the element ids and values, the hold in frames, the rewrite flag, the
 // thread and the press cap all come in the messages; tools/ch_mcp/kit_tools.py
 // owns them and checks the map this agent reads back.
 //
@@ -35,7 +36,7 @@ export const ALLOWED_CALLS = [
     "get_AllPlayers", "get_id", "get_name",
     "get_hasKeyboard", "set_hasKeyboard", "get_hasMouse", "set_hasMouse",
     "AddController", "RemoveController",
-    "LoadDefaultMaps", "GetMaps",
+    "LoadMap", "GetMaps",
     "get_categoryId", "get_layoutId", "get_enabled", "get_AllMaps",
     "get_actionId", "get_actionDescriptiveName", "get_elementIdentifierId",
     "get_elementIdentifierName", "get_elementType", "get_axisContribution",
@@ -261,11 +262,16 @@ function needInteger(m: Message, key: string): number {
 // devices and every player's keyboard and mouse flags before it changes
 // anything, then turns the switch off, switches both devices off, takes the
 // keyboard and mouse from every player, finds or builds the kit, gives it to
-// the named player and loads the default maps.
+// the named player and loads the one map the message names by category and
+// layout, enabled. It loads that map by name rather than the player's default
+// maps, because the System player lists no default map for a custom
+// controller (docs/clone-hero/07-internals.md, IN-76).
 function setup(m: Message) {
     const tag = needString(m, "tag");
     const definitionId = needInteger(m, "definition_id");
     const playerName = needString(m, "player");
+    const categoryId = needInteger(m, "category_id");
+    const layoutId = needInteger(m, "layout_id");
     const cfg = config();
     const players = allPlayers();
     // A second setup keeps the first one's record: by then the flags read are
@@ -299,8 +305,12 @@ function setup(m: Message) {
     rec.target = target;
     target.helper.method("AddController", 2)
         .overload("Rewired.Controller", "System.Boolean").invoke(kit, true);
+    // startEnabled is true: kit_tools.py's checks count enabled maps only.
     target.helper.field<Il2Cpp.Object>("maps").value
-        .method("LoadDefaultMaps", 1).invoke(customType());
+        .method("LoadMap", 5)
+        .overload("Rewired.ControllerType", "System.Int32", "System.Int32", "System.Int32",
+                  "System.Boolean")
+        .invoke(customType(), kitId(kit), categoryId, layoutId, true);
     return {
         first_setup: first,
         switch_was: rec.switchWas,

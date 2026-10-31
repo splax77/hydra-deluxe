@@ -205,6 +205,16 @@ class ConstantsTest(unittest.TestCase):
         self.assertEqual(K.KIT_TAG, "hydra-kit")
         self.assertEqual(K.KIT_PLAYER, "Player1")
 
+    def test_the_drum_maps_category_and_layout_are_pinned(self):
+        # Page 07, IN-76: category 1 ("Gameplay"), layout 2 ("Drums").
+        self.assertEqual(K.KIT_MAP_CATEGORY_ID, 1)
+        self.assertEqual(K.KIT_MAP_LAYOUT_ID, 2)
+
+    def test_the_setup_message_carries_the_maps_ids(self):
+        self.assertEqual(K.setup_message("System"), {
+            "type": "setup", "tag": K.KIT_TAG, "definition_id": 6, "player": "System",
+            "category_id": 1, "layout_id": 2})
+
     def test_every_auto_player_lane_has_a_kit_element(self):
         self.assertEqual({lane: K.lane_element(lane).id for lane in Lane}, {
             Lane.GREEN: 3, Lane.RED: 0, Lane.YELLOW: 1, Lane.BLUE: 2, Lane.KICK: 22,
@@ -243,7 +253,8 @@ class SetupTest(Rig):
         self.assertEqual(self.events, ["backup", "attach"])
         self.assertEqual(self.posted(), [
             {"type": "read"},
-            {"type": "setup", "tag": "hydra-kit", "definition_id": 6, "player": "Player1"}])
+            {"type": "setup", "tag": "hydra-kit", "definition_id": 6, "player": "Player1",
+             "category_id": 1, "layout_id": 2}])
         self.assertEqual(lines[0], BACKUP_LINE)
         self.assertIn("ignoreInputWhenAppNotInFocus: was on, now off", lines)
         self.assertIn("Keyboard.enabled: was on, now off", lines)
@@ -346,6 +357,54 @@ class SetupTest(Rig):
         self.assertEqual(lines[-1], "kit agent: detached")
 
 
+class MapProblemsTest(Rig):
+    def drum_map(self, **changes):
+        return {**setup_reply()["maps"][0], **changes}
+
+    def test_no_map_names_the_ids(self):
+        # LS-D1 run 1's reply on System: "maps": [].
+        self.assertEqual(K.map_problems([]), [
+            "expected one enabled map at category 1, layout 2; "
+            "the setup reply holds no map for the kit"])
+
+    def test_a_map_at_layout_0_is_refused_naming_both(self):
+        self.assertEqual(K.map_problems([self.drum_map(layout_id=0)]), [
+            "expected one enabled map at category 1, layout 2; "
+            "the setup reply holds 0 such maps among 1:",
+            "  map: category 1, layout 0, enabled"])
+
+    def test_the_right_map_disabled_is_refused(self):
+        self.assertEqual(K.map_problems([self.drum_map(enabled=False)]), [
+            "expected one enabled map at category 1, layout 2; "
+            "the setup reply holds 0 such maps among 1:",
+            "  map: category 1, layout 2, disabled"])
+
+    def test_two_enabled_maps_at_the_ids_are_refused(self):
+        self.assertEqual(K.map_problems([self.drum_map(), self.drum_map()]), [
+            "expected one enabled map at category 1, layout 2; "
+            "the setup reply holds 2 such maps among 2:",
+            "  map: category 1, layout 2, enabled",
+            "  map: category 1, layout 2, enabled"])
+
+    def test_the_drum_map_passes(self):
+        self.assertEqual(K.map_problems(setup_reply()["maps"]), [])
+
+    def test_setup_on_system_with_no_map_is_refused_and_torn_down(self):
+        reply = setup_reply()
+        reply["kit"] = {**reply["kit"], "player": "System"}
+        reply["maps"] = []
+        tools = self.tools([STATUS, reply, TEARDOWN_OK])
+        lines = tools.ch_kit_setup(player="System").splitlines()
+        at = lines.index("refused: the kit's map is not the one at category 1, layout 2:")
+        self.assertEqual(lines[at + 1], "  expected one enabled map at category 1, layout 2; "
+                                        "the setup reply holds no map for the kit")
+        self.assertNotIn("refused: the kit's bindings differ from KIT_BINDINGS:", lines)
+        self.assertEqual(self.posted()[-1], {"type": "teardown", "tag": "hydra-kit"})
+        self.assertIn("kit teardown: all checks ok", lines)
+        self.assertEqual(lines[-1], "kit agent: detached")
+        self.assertIsNone(self.game.kit_source())
+
+
 class SetupPlayerTest(Rig):
     def setup_posted(self):
         return [m for m in self.posted() if m["type"] == "setup"]
@@ -354,7 +413,8 @@ class SetupPlayerTest(Rig):
         tools = self.tools([STATUS, setup_reply()])
         lines = tools.ch_kit_setup().splitlines()
         self.assertEqual(self.setup_posted(), [
-            {"type": "setup", "tag": "hydra-kit", "definition_id": 6, "player": "Player1"}])
+            {"type": "setup", "tag": "hydra-kit", "definition_id": 6, "player": "Player1",
+             "category_id": 1, "layout_id": 2}])
         self.assertEqual(lines[0], BACKUP_LINE)
 
     def test_a_given_player_is_sent_as_is_and_named_first(self):
@@ -363,7 +423,8 @@ class SetupPlayerTest(Rig):
         tools = self.tools([STATUS, reply])
         lines = tools.ch_kit_setup(player="System").splitlines()
         self.assertEqual(self.setup_posted(), [
-            {"type": "setup", "tag": "hydra-kit", "definition_id": 6, "player": "System"}])
+            {"type": "setup", "tag": "hydra-kit", "definition_id": 6, "player": "System",
+             "category_id": 1, "layout_id": 2}])
         self.assertEqual(lines[0], 'kit player: "System" as given (KIT_PLAYER is Player1)')
         self.assertEqual(lines[1], BACKUP_LINE)
         self.assertIn("kit: controller 7, tag hydra-kit, created, on System", lines)

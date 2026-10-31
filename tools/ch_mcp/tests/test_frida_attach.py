@@ -877,6 +877,13 @@ class AllowedCallsTest(unittest.TestCase):
                 self.assertTrue(entry["class"])
                 self.assertIn(f" {entry['name']}(", entry["signature"])
 
+    def test_kit_loads_the_map_by_category_and_layout(self):
+        # The plan docs/superpowers/plans/2026-10-31-ch-mcp-kit-map-and-network-block.md,
+        # task M1: LoadMap's five-argument form replaces LoadDefaultMaps.
+        kit = self.real_texts()[KIT_AGENT]
+        self.assertNotIn("LoadDefaultMaps", kit)
+        self.assertEqual(kit.count('"LoadMap", 5'), 1)
+
     def test_a_kit_list_that_lacks_a_name_it_calls_fails(self):
         kit = ('export const ALLOWED_CALLS = ["get_id"];\n'
                'p.method<number>("get_id");\np.method("get_name");\n')
