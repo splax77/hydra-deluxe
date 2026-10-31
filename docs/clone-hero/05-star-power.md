@@ -12,7 +12,7 @@ The live-run files named below (`run1_cal0_*` under tools/ch_probe/experiments/r
 
 Rule: A note belongs to a Star Power phrase when the phrase start is at or before the note's tick and the note's tick is before start plus length. A note exactly on the end tick is outside the phrase.
 Label: Proven in the game's code
-Evidence: The start test is at lines 72 to 74 and the end test at lines 93 to 97 of the listing; the end is start plus length at lines 54 to 57 (wave 2 scout R3). The 2026-10-03 reading of the same function (ch-evidence.md lines 41 to 66) said the same; its listing was lost.
+Evidence: The start test is at lines 72 to 74 and the end test at lines 93 to 97 of the listing; the end is start plus length at lines 54 to 57 (wave 2 scout R3). The 2026-10-03 reading of the same function (ch-evidence.md question 21, lines 41 to 66 at commit 5fbe71ae) said the same; its listing was lost.
 Game code (6142): RVA `0x20D2440` (class #8265, scrambled name), `code/6142/sp_phrase_assign_20D2440.asm` lines 54 to 57, 72 to 74 and 93 to 97
 Hydra: `close_sp_phrase` in src/parse/song.cpp line 401 (both parsers call it, lines 805 and 1414)
 Ruling: D21. The user chose "Yes, one helper (Recommended)" to "SP phrase edges: should .chart use Clone Hero's rule ..." (card 2026-10-04-bbf41dc4, 01:53 UTC). Hydra and the game agree.
@@ -72,7 +72,7 @@ Found: wave 2 scout R3
 
 Rule: A .chart phrase (`S 2 <len>`) and a .mid phrase (note 116 on and off, length = off minus on) are stored the same way and go through the same membership rule.
 Label: Unknown
-Evidence: listing lost; read 2026-10-03 at `0x213E0C0` (.chart) and `0x2155050` (.mid), session cebf3006 (ch-evidence.md lines 55 to 58). Neither reader was re-listed for this row in wave 2.
+Evidence: listing lost; read 2026-10-03 at `0x213E0C0` (.chart) and `0x2155050` (.mid), session cebf3006 (ch-evidence.md lines 55 to 58 at commit 5fbe71ae). Neither reader was re-listed for this row in wave 2.
 Game code (6142): not found: looked in the committed listings and the wave 2 folders for a phrase read in `0x213E0C0` and `0x2155050`
 Hydra: `close_sp_phrase` in src/parse/song.cpp line 401, called by the .mid reader (line 805) and the .chart reader (line 1414)
 Ruling: none needed: D21 put both parsers on one helper (SP-01)
@@ -82,7 +82,7 @@ Found: 2026-10-03, session cebf3006
 
 Rule: A clean-up deletes phrases with no note in [start, start + length - 1] (or [start, start] at length 0). A zero-length phrase on a note survives it but still awards nothing (SP-02), so the step changes no score.
 Label: Unknown
-Evidence: listing lost; read 2026-10-03, session cebf3006 (ch-evidence.md line 64). The caller `0x215C320` calls `0x5DB320` on three lists (ghidra_decompile_all.txt lines 47834 to 47839); the body of `0x5DB320` is in no surviving file.
+Evidence: listing lost; read 2026-10-03, session cebf3006 (ch-evidence.md line 64 at commit 5fbe71ae). The caller `0x215C320` calls `0x5DB320` on three lists (ghidra_decompile_all.txt lines 47834 to 47839); the body of `0x5DB320` is in no surviving file.
 Game code (6142): `0x5DB320`, called from `0x215C320`; body not found
 Hydra: no owner: Hydra never keeps a phrase with no note (looked in src/parse/song.cpp)
 Ruling: none needed: no score effect
@@ -228,7 +228,7 @@ Found: wave 2 scout R10
 
 Rule: While Star Power is on, each update takes the ticks that passed since the activation tick, subtracts the previous total, and takes that difference off the meter, never going below zero. The drain is whole units of the game's tick scale; tempo only turns ticks into seconds.
 Label: Proven in the game's code
-Evidence: Lines 24 to 30 save the previous total and work out the new one (current tick minus the start tick), lines 39 to 56 subtract the difference, clamped to the meter. The current tick comes from the clock through the tempo segment at lines 5 to 30 of the tick helper. ch-evidence.md lines 76 to 81 said the same from a lost listing.
+Evidence: Lines 24 to 30 save the previous total and work out the new one (current tick minus the start tick), lines 39 to 56 subtract the difference, clamped to the meter. The current tick comes from the clock through the tempo segment at lines 5 to 30 of the tick helper. ch-evidence.md lines 76 to 81 at commit 5fbe71ae said the same from a lost listing.
 Game code (6142): RVA `0x20F6800`, `code/6142/sp_update_20F6800.asm` lines 24 to 56; tick helper RVA `0x20F3750`, `code/6142/sp_current_tick_20F3750.asm` lines 5 to 30
 Hydra: no per-frame owner: `ScoreGraph::extend_deacts` in src/search/graph.cpp and `ScoreGraph::add_deact_edge` work out one end per activation
 Ruling: none needed: same end, computed differently
@@ -248,9 +248,9 @@ Found: wave 2 scouts R4, R8 and R10
 
 Rule: When a phrase pushes the meter above the full bar, the meter is cut to the full bar and the overflow is thrown away. During Star Power the end time is then worked out again from the ticks already drained plus the full bar, which puts the end one full bar after the collecting moment. The same cut runs when Star Power is off.
 Label: Proven in the game's code
-Evidence: Lines 9 to 15 cut the meter while off; lines 69 to 76 cut it while on and set +0x130; lines 77 to 86 work out the new end time from drained plus meter. ch-evidence.md question 37 said the same from a lost listing. Live: no run has overfilled during Star Power (run 1's in-SP rises reached 2,158, 3,600 and 2,161, all under 5,760).
+Evidence: Lines 9 to 15 cut the meter while off; lines 69 to 76 cut it while on and set +0x130; lines 77 to 86 work out the new end time from drained plus meter. ch-evidence.md question 37 (lines 70 to 88 at commit 5fbe71ae) said the same from a lost listing, and added that CHOpt (another tool that copies the game's rules) agrees: its `add_phrase` keeps the meter at the smaller of the sum and a full bar. Live: no run has overfilled during Star Power (run 1's in-SP rises reached 2,158, 3,600 and 2,161, all under 5,760).
 Game code (6142): RVA `0x20F6800`, `code/6142/sp_update_20F6800.asm` lines 9 to 15 and 69 to 86
-Hydra: `ScoreGraph::extend_deacts` in src/search/graph.cpp (the ceiling is the collecting note plus the cap, from `sp_meter_cap_`)
+Hydra: `ScoreGraph::extend_deacts` in src/search/graph.cpp (the ceiling is the collecting note plus the cap, from `sp_meter_cap_`). The game's cap is always one full bar; a Hydra cap other than 4 bars is a what-if setting with no game equivalent
 Ruling: none needed: same rule (D29 records that `extend_deacts` stops at a full meter as the game does)
 Found: wave 2 scouts R4 and R10; this plan's wave 1 scouts H5a, H5b and HB
 

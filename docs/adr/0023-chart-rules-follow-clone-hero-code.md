@@ -88,35 +88,11 @@ Rules that were already Clone Hero's and are now written down:
 
 ## Not verified against Clone Hero
 
-These keep Hydra's current rule and are written down as unchecked (decision
-D26). A live Clone Hero session could settle them.
-
-- Whether one authored fill turns off generated fills for the whole chart.
-- Whether Clone Hero carries its search position from one fill to the
-  next (its fill search takes a start index).
-- When two chords sit equally near a downbeat, a generated fill goes on the
-  later one (`Song::check_activations`, decision D74).
-- How far from its downbeat a generated fill's chord may sit, and the fill's
-  length, are cut down to whole ticks (`Song::check_activations`, decision
-  D74).
-
-Two items this list used to hold are settled in the code now (noted
-2026-10-30):
-
-- A generated fill's length when two or more meter changes fall between two
-  chords. The walk that read the meter one change late is gone. Both
-  generators read the measure lines of one grid, `MeasureIndex` (commits
-  b57a2155 and 5677f8d3). A Clone Hero 1.1 fill starts on its measure line
-  and runs to its chord (0x20D2B30); a 1.0 fill is half the grid measure in
-  force at its chord (`Song::place_fills_ch10` and `place_fills_ch11` in
-  src/core/song.cpp).
-- How many ticks make a beat in compound meters like 6/8. The beat lines and
-  the position text step by the resolution × 4 ÷ the bottom number, as Clone
-  Hero's grid does (0x20DACA0). The 4-beat fill deadline counts quarter notes
-  in every meter, as Clone Hero's code does (`resolution << 2`, read at
-  0x20DDB70 on 2026-10-12). Both are code readings; the grid's step constant
-  4.0 was read from the game file's data. Neither has been checked in a run of
-  the game.
+The fill rules this section listed as unchecked (decision D26), and the two it
+recorded as settled, now live in docs/clone-hero/04-fills.md (FL-04, FL-14 to
+FL-16, FL-20 and FL-26 to FL-28). The ones still open, and the live checks that
+could settle them, are in docs/clone-hero/questions.md and
+docs/clone-hero/live-checks.md.
 
 ## Consequences
 

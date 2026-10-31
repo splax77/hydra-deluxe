@@ -22,21 +22,10 @@ library scan and `hash_chart_file` both call it.
 
 ## The evidence
 
-Clone Hero writes every song's id into its song cache
-(`AppData\LocalLow\srylain Inc_\Clone Hero\songcache.bin`). The checks below
-were run on 2026-10-09 and 2026-10-10. Each one looks for a chart's 16 id bytes
-anywhere in the cache, not in a decoded id field.
-
-- The cache listed 54 `.sng` songs. For all 54, the MD5 of the notes file
-  inside was in the cache. The whole-file MD5 was in it for none of them.
-- The game ships 30 `.srb` files. For all 30, the stored checksum was in the
-  cache. The whole-file MD5 was in it for none of them.
-- For a sample of 300 folder charts (the first 300 the probe met when walking
-  the user's song folder), the MD5 of the notes file was in the cache for all
-  300.
-- The stored checksum equals the MD5 of the notes stream in 26 of the 30. The
-  other four (Good Grief Retreat, No Known Suspects, Stigma and Troopers of
-  the Stars) differ. That is why an `.srb`'s id is read, not recomputed.
+The song-cache checks behind this rule, run on 2026-10-09 and 2026-10-10 and
+partly re-run on 2026-10-30, now live in docs/clone-hero/01-reading-a-chart.md
+(CR-10 to CR-12), which also says why an `.srb`'s id is read, not recomputed.
+This section's full earlier text is this file at commit 5fbe71ae.
 
 dmleaderboards uses the same ids. A one-off check on 2026-10-10 scanned copies
 of No Known Suspects (`c87b09d0…`) and Galaxies in Harmony (`416daca3…`) into

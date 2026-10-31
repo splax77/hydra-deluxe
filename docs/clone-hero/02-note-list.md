@@ -60,7 +60,7 @@ Found: 2026-10-03, session cebf3006; listed by wave 2 scout R1.
 
 Rule: the .chart finish step applies the cymbal, tom, flam, ghost and accent modifiers with no condition, so a .chart always has dynamics on.
 Label: Proven in the game's code
-Evidence: docs/audit/note-shuffle/step0/open2/f215e280.asm lines 23 to 45: five unconditional calls to the apply routine with kinds 7, 6, 8, 10 and 9. That the apply routine itself, docs/audit/note-shuffle/step0/open2/f215dbd0.asm, reads no dynamics flag was read on 2026-10-03 and not re-read since.
+Evidence: docs/audit/note-shuffle/step0/open2/f215e280.asm lines 23 to 45: five unconditional calls to the apply routine with kinds 7, 6, 8, 10 and 9. That the apply routine itself, docs/audit/note-shuffle/step0/open2/f215dbd0.asm, reads no dynamics flag was read on 2026-10-03 and not re-read since. Three other functions hold the string `ENABLE_CHART_DYNAMICS` (`0x211BAD0`, `0x211C270` and `0x211E4C0`); they take a whole string and look like a writer, not the .chart reader, and nobody has opened them (ch-evidence.md question 320 at commit 5fbe71ae).
 Game code (6142): RVA `0x215E280` calling `0x215DBD0`, the listings above.
 Hydra: the ghost and accent cases of `ChartParser::note_optype` in src/parse/song.cpp lines 1700 to 1707, and the comment at lines 1889 to 1892.
 Ruling: none needed: same rule.
@@ -574,9 +574,9 @@ Found: 2026-10-10, D112.
 
 ### NL-56 Only the lane builder and the drum engine read the lane flags
 
-Rule: the flag bits 0x4000 (in a lane), 0x8000 (double) and 0x10000 (last note) are set by the lane builder and read only by the drum engine.
+Rule: the flag bits 0x4000 (in a lane), 0x8000 (double) and 0x10000 (last note) are set by the lane builder and read only by the drum engine. A note in a double lane carries 0xC000, because 0x8000 is added to 0x4000.
 Label: Unknown
-Evidence: docs/audit/drum-lanes/FINDINGS-play-time.md line 15 says its instruction scan "cannot see a flag word loaded into a register and masked later, so 'only these' is strong but not proven".
+Evidence: docs/audit/drum-lanes/FINDINGS-play-time.md line 19 says its instruction scan "cannot see a flag word loaded into a register and masked later, so 'only these' is strong but not proven".
 Game code (6142): RVA `0x20D12C0` sets them; exclusivity not proven.
 Hydra: none: Hydra reads no lane flag in scoring.
 Ruling: "lanes only affect how lenient the engine is, it doesnt change the underlying notes." (card 2026-10-11-27bb17bc, 03:52 UTC).

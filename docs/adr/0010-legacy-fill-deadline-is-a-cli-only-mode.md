@@ -167,26 +167,23 @@ rule only through `fill_rule_for`, and `legacy_fills_for` reads it back
 ## Note, 2026-10-15: generated fills follow Clone Hero's generator
 
 D115 read Clone Hero 1.1.0.6142's own code for generated fills and the fill
-deadline, and the user chose to follow it (2026-10-11 and 2026-10-12):
+deadline, and the user chose to follow it (2026-10-11 and 2026-10-12). The
+game rules this note listed now live in docs/clone-hero/04-fills.md: the
+deadline in FL-19 and FL-20, the generator in FL-13 to FL-17, and the grid
+restart in FL-26. What Hydra did with them:
 
-- The deadline. The game drops a fill whose start tick is at or before the
-  current tick plus resolution × 4 when the SP meter crosses half (0x20DDB70,
-  with `[+0x300] = resolution << 2` at 0x20DF7B7). So the 4 beats are 4
-  quarter notes in every meter, and only the fill's start counts. Hydra's
-  rule already said this; the "not verified" note on it is gone.
-- Generated fills under 1.1. The generator (0x20D2B30) picks the chord nearest
-  each measure line within half a beat plus one tick (the `+1` at 0x20D2C91)
-  and starts the fill on the line, so a fill's length is only the chord's
-  distance past the line, and may be 0 or less. Its first candidate is the
-  second measure line. Hydra used to start a generated fill half a measure
-  before its chord, so its deadline was half a measure too early and it
-  refused fills the game shows.
-- Clone Hero's measure grid starts again at the first beat at or after a time
-  signature change (0x20DACA0). `MeasureIndex` is that grid, and the measure
-  lines, the generated fills and the position text read it.
-- Star Power's length follows Clone Hero's continuous measure count, so a part
-  measure before a mid-measure change counts as its share of the old measure
-  (`MeasureCount`). The user chose an exact whole-number walk, in both modes.
+- The deadline. Hydra's rule already said this; the "not verified" note on
+  it is gone.
+- Generated fills under 1.1 follow the game's generator. Hydra used to start
+  a generated fill half a measure before its chord, so its deadline was half
+  a measure too early and it refused fills the game shows.
+- `MeasureIndex` is the game's grid, and the measure lines, the generated
+  fills and the position text read it.
+- Hydra counts Star Power's length continuously across a time signature
+  change, so a part measure before a mid-measure change counts as its share
+  of the old measure (`MeasureCount`). Whether the game's drain does the same
+  is docs/clone-hero/05-star-power.md (SP-15). The user chose an exact
+  whole-number walk, in both modes.
 - Clone Hero 1.0 mode keeps the generator Hydra had before, exactly: the old
   chord choice and the half-measure length (user decision, 2026-10-14). The
   rules file's `fill_length_measures` key is retired, read and ignored.

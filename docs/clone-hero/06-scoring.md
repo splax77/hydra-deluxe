@@ -352,7 +352,7 @@ Found: this plan's wave 1 scout H6
 
 Rule: Hydra's optimum is for normal speed only, and a score above it is labelled "above optimal", never "impossible", because Hydra's optimum leaves out many backends and the old fill-spawn logic.
 Label: Hydra assumes it, never checked
-Evidence: src/app/dm_report.cpp lines 107 to 122. A dmleaderboards note (memory dmleaderboards-comparison) says the site ranks every speed on one board per chart; that rests on the public DMBot source and a user screenshot, neither committed.
+Evidence: src/app/dm_report.cpp lines 107 to 122. A dmleaderboards note (memory dmleaderboards-comparison) says the site ranks every speed on one board per chart; that rests on the public DMBot source and a user screenshot, neither committed. The Clone Hero v1.1 leaderboard announcement (https://clonehero.net/2024/11/10/clonehero-leaderboards.html) says the game's own leaderboards show only scores for the selected modifiers and speed (ch-evidence.md question 222 at commit 5fbe71ae; not re-read for this page).
 Game code (6142): none (outside the game)
 Hydra: `is_base_speed` in src/net/dmbot_client.h line 36
 Ruling: card e3a57d11: "do not label above optimal as impossible." and "just note them as above optimal." (02:24 UTC)

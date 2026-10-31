@@ -88,7 +88,7 @@ Recommendation: (a). It costs one small read per file at Preview open and makes 
 
 ### Q7. Keep Hydra's rule that one authored fill turns off all generated fills, until a live Clone Hero check?
 
-Hydra's rule: `for (const SongTimestamp& ts : sequence) if (ts.has_activation()) return;  // chart already has fills.` (`src/core/song.cpp:106-107`). It runs before either generator is chosen (:112-115). Clone Hero's rule is unknown: "One authored fill stops fill generation | **Unknown**: generator not found | none" (`docs/audit/ch-evidence.md:229`). ADR 0023 lists it as not verified.
+Hydra's rule: `for (const SongTimestamp& ts : sequence) if (ts.has_activation()) return;  // chart already has fills.` (`src/core/song.cpp:106-107`). It runs before either generator is chosen (:112-115). Clone Hero's rule, unknown when this question was written, now lives in docs/clone-hero/04-fills.md (FL-27 and FL-28).
 
 Examples. A chart with no authored fills gets generated ones at measure lines. A chart with fills on every phrase gets none, which nobody questions. The gap: a chart with one authored fill in the last chorus and none earlier gets exactly that one activation point; if the game generates fills around authored ones, the game would offer more. The other way round, a chart whose only authored fill lands on no chord is treated as having none and gets generated fills everywhere.
 

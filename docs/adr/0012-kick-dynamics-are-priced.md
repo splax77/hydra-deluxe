@@ -24,10 +24,11 @@ multiplier compounds the difference. Ghost kicks are proven by video on this
 chart.
 
 Accent kicks are **assumed**, not proven. Nobody has produced a video of a
-chart with velocity-127 kicks. The symmetric rule is what Clone Hero's source
-does for every other lane, so we apply it to the kick too; if it ever turns out
-the game special-cases the kick's top velocity, this is the assumption to
-revisit.
+chart with velocity-127 kicks. What the game does with a kick's velocity now
+lives in docs/clone-hero/02-note-list.md (NL-10 and NL-15) and
+docs/clone-hero/06-scoring.md (SC-19). We apply the pads' rule to the kick too;
+if it ever turns out the game special-cases the kick's top velocity, this is
+the assumption to revisit.
 
 ## The decision
 

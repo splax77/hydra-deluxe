@@ -474,24 +474,25 @@ src/core/replay.h holds the same six (`kReplayScoreFields` names each), and
 **Activation**:
 One use of banked Star Power, written in path notation with its skip count and
 squeeze symbols (e.g. `E2+-`). An activation needs
-2<!-- default: kSpActivationBars --> banked bars of Star Power, a Clone Hero
-rule. `kSpActivationBars` in src/core/timing.h owns that number (D54).
+2<!-- default: kSpActivationBars --> banked bars of Star Power.
+`kSpActivationBars` in src/core/timing.h owns that number (D54). The game's
+rule is docs/clone-hero/05-star-power.md (SP-16).
 
 **Skip**:
 A fill an activation deliberately passes over before activating.
 
 **Authored fill**:
 A fill written in the chart. Each one is placed on its own once every chord
-is read: on the last chord at or before its end but not before its start, or
-on the first chord after its end within the landing window
-(`fill_land_slop_beats`, plus one tick). The closer wins, a tie goes to the
-later chord, and a fill with neither is dropped (docs/adr/0023).
+is read, on a chord near its end within the landing window
+(`fill_land_slop_beats`, plus one tick), by `place_authored_fills`. The
+game's rule it copies is docs/clone-hero/04-fills.md (FL-03 to FL-07), and
+the one side where Hydra differs is in docs/adr/0023.
 
 **SP phrase**:
-A chart section that awards a bar of Star Power when hit fully. It covers
-the chords with start <= tick < end, and pays on the last of them; a phrase
-of length zero pays nothing, and one that runs past the last note pays on
-that note (Clone Hero's rule, docs/adr/0023).
+A chart section that awards a bar of Star Power when hit fully. Which
+chords it covers and which one pays is the game's rule, in
+docs/clone-hero/05-star-power.md (SP-01 to SP-04); `close_sp_phrase` is
+Hydra's one owner of it.
 _Avoid_: star power section
 
 **All-0 path**:
@@ -565,29 +566,26 @@ The latest your SP meter can fill up and still have a fill appear. Clone Hero
 `fill_rule_description` writes it into the sentence the "1.0 fills" tooltip
 and the fill comparison page show. A
 beat here is a quarter note (the chart's resolution) in every meter, 6/8
-included: Clone Hero 1.1.0.6142's code sets the deadline at resolution × 4
-ticks before the fill's start (0x20DF7B7), and only the fill's start tick
-counts (D115; docs/adr/0010, note of 2026-10-15).
+included. The game's rule is docs/clone-hero/04-fills.md (FL-19 and FL-20);
+Hydra adopted it in D115 (docs/adr/0010, note of 2026-10-15).
 
 **Fill spawn deadline (CH 1.0)**:
 The older rule: roughly one fill-length of lead time before the fill, clamped
 to 250..10000 ms. Short fills got stricter in 1.1 and long fills got looser.
 The "1.0 fills" analysis setting, or `hydra_batch --legacy-fills`. Part of a
 record's profile, so a chart's 1.0 and 1.1 records sit side by side in one
-database; `hydra_fillcompare` diffs the two. See docs/adr/0010.
+database; `hydra_fillcompare` diffs the two. See docs/adr/0010. The 1.0
+game's own deadline is docs/clone-hero/04-fills.md (FL-41 and FL-42).
 
 **Generated fill**:
 A fill Hydra places itself on a chart with no authored fills. The "1.0 fills"
 setting picks which game version's generator runs, in one place:
 `Song::check_activations`.
 
-Clone Hero 1.1 (the default) follows the game's own generator (0x20D2B30 in
-1.1.0.6142). It puts the fill on the chord nearest a measure line, if one sits
-within half a beat plus one tick of the line; the fill starts on the line, so
-its length is the chord's distance past the line (0, or negative, when the
-chord sits on or before it). The next line it tries is 4 lines on
-(hydra_rules.ini can change the 4 and the half beat). When two chords sit
-equally near the line, the later one gets the fill.
+Clone Hero 1.1 (the default) follows the game's own generator, whose rules
+are docs/clone-hero/04-fills.md (FL-13 to FL-18). hydra_rules.ini can change
+its 4-line step and its half-beat distance (`fill_cooldown_measures` and
+`fill_max_distance_beats`).
 
 Clone Hero 1.0 mode keeps Hydra's own model of 1.0's fill rule (the user's
 call, 2026-10-14; docs/adr/0023), and counts measures on the same grid as 1.1
@@ -598,7 +596,8 @@ measure long at the chord (`kCh10FillLengthMeasures`, fixed; the old
 the last one. When two chords sit equally near the line, the later one gets
 the fill. The distance and the length are cut down to whole ticks.
 `Song::place_fills_ch10` holds it, and `Song::place_fills_ch11` the 1.1
-generator.
+generator. How the game's own 1.0 generator differs is
+docs/clone-hero/04-fills.md (FL-36).
 
 `Song::generated_fills` records which generator ran (empty for authored
 fills): the one answer to "was this fill generated". The Preview reads it to
@@ -737,19 +736,15 @@ counts measures and beats from 1 and the tick from 0.
 _Avoid_: bar (for a measure)
 
 **Beat**:
-One step of Clone Hero's grid: the resolution × 4 ÷ the time signature's
-bottom number, cut down to whole ticks, so a quarter note in 4/4 and an eighth note in 6/8. The beat
-lines and the position text's beat number count these, so they always agree.
+One step of Clone Hero's grid, so a quarter note in 4/4 and an eighth note in
+6/8. The beat lines and the position text's beat number count these, so they
+always agree. The game's grid step and where the grid restarts are
+docs/clone-hero/04-fills.md (FL-26).
 Two rules count quarter notes in every meter instead: the fill spawn deadline
-(CH 1.1) and the generated fill's half-beat distance. The grid step and both
-rules come from reading Clone Hero 1.1's code (the grid at 0x20DACA0, its 4.0
-read from the game file's data), not from a run of the game. The deadline is
-`resolution << 2` ticks before the fill starts (0x20DDB70), and the distance
-is whole ticks of resolution × 0.5 (that 0.5 also read from the game file),
-plus one tick (0x20D2B30); the reading is
-in docs/superpowers/plans/2026-10-12-one-record-per-chart/part-B2-timing.md.
-What is still unknown: no run of a 6/8 chart in Clone Hero is on record for
-either rule, so the code reading has not been checked in the game.
+(CH 1.1) and the generated fill's half-beat distance. The game's side of both
+is docs/clone-hero/04-fills.md (FL-19 and FL-20 for the deadline, FL-14 for
+the distance). No run of a 6/8 chart in Clone Hero is on record for either
+rule (FL-20 says so for the deadline).
 
 **Section**:
 A named part of the song from the chart's section markers, such as "Chorus

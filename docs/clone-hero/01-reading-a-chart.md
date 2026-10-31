@@ -102,7 +102,7 @@ Found: this plan's wave 1 scout H1 and wave 2 scout R9.
 
 Rule: Clone Hero's song id (the key of the player's saved scores) is the MD5 of the notes file for a folder chart, the MD5 of the unmasked notes file for a .sng, and the 16-byte checksum stored in the .srb's song info for a .srb; a revised chart gets a new id.
 Label: Proven in a live run
-Evidence: on 2026-10-30 the game's own `songcache.bin` (8,221,087 bytes, written 2026-10-28 20:35 by the game) held the stored checksum of 30 of 30 bundles and the whole-file MD5 of none of them. The .sng half (54 of 54) and the folder half rest on ADR 0028 lines 12 to 45 and were not re-run (CR-12).
+Evidence: on 2026-10-30 the game's own `songcache.bin` (8,221,087 bytes, written 2026-10-28 20:35 by the game) held the stored checksum of 30 of 30 bundles and the whole-file MD5 of none of them. The .sng half (54 of 54) and the folder half rest on the 2026-10-09 and 2026-10-10 checks written out in CR-12 and were not re-run.
 Game code (6142): not found: the checksum route through `SongEntry` is page 7's; no listing.
 Hydra: `song_id_read` in src/app/analysis.cpp line 285; `hash_chart_file` in src/app/analysis.h line 83.
 Ruling: D170: "yes, go ahead, let the 84 results drop" (session bc0144a4, 03:59 UTC).
@@ -112,7 +112,7 @@ Found: 2026-10-10, session bc0144a4; re-checked by this plan's wave 1 scouts H1 
 
 Rule: for 26 of the 30 shipped bundles the stored checksum equals the MD5 of the chart stream; Good Grief Retreat, No Known Suspects, Stigma and Troopers of the Stars differ, for a reason nobody has found.
 Label: Proven in a live run
-Evidence: re-run on 2026-10-30 over the 30 real files against the game's `songcache.bin`; the four names match ADR 0028 lines 41 to 45. Card 7c71d4dd ruled out line endings, byte-order marks and dropped MIDI tracks as the cause.
+Evidence: re-run on 2026-10-30 over the 30 real files against the game's `songcache.bin`; the four names match the 2026-10-10 record (ADR 0028 as it stood at commit 5fbe71ae, lines 41 to 45). Card 7c71d4dd ruled out line endings, byte-order marks and dropped MIDI tracks as the cause.
 Game code (6142): not found: data, not code.
 Hydra: `song_id_read` in src/app/analysis.cpp line 285 reads the stored checksum and never recomputes it.
 Ruling: D170 (as CR-10).
@@ -120,9 +120,9 @@ Found: 2026-09-29, session 7c71d4dd; re-run by this plan's wave 1 scout H1.
 
 ### CR-12 The .sng and folder halves of the id rule
 
-Rule: ADR 0028 says the .sng id matched for 54 of 54 songs and the folder id for a 300-chart sample.
+Rule: the checks of 2026-10-09 and 2026-10-10 looked for a chart's 16 id bytes anywhere in the game's song cache, not in a decoded id field. The cache listed 54 .sng songs: the MD5 of the notes file inside was in the cache for all 54, and the whole-file MD5 for none of them. For a sample of 300 folder charts (the first 300 the probe met when walking the user's song folder), the MD5 of the notes file was in the cache for all 300.
 Label: Unknown
-Evidence: unchecked by the scout: it would need the two checks re-run; no tool or result file for either is in the repo (a grep of tools/ for `songcache` finds nothing).
+Evidence: this is the record in ADR 0028 as it stood at commit 5fbe71ae, lines 12 to 45, now cut down to a pointer here. Unchecked by the scout: it would need the two checks re-run; no tool or result file for either is in the repo (a grep of tools/ for `songcache` finds nothing).
 Game code (6142): not found: data, not code.
 Hydra: `song_id_read` in src/app/analysis.cpp line 285.
 Ruling: D170 (as CR-10).
