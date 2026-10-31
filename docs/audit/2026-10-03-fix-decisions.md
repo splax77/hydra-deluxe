@@ -138,6 +138,12 @@ D36 addendum, 2026-10-04 (measured, user said land it): one rule in `core::offer
 
 None of these changes a score, a path or a stored record. The results stamp stays "2.1.0".
 
+The phase 3-5 plan's "Test limits" block, copied word for word when the plan left the repo (`docs/superpowers/plans/2026-10-04-phases-3-5.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-10-04-phases-3-5.md`)). Its heading is set in bold so it stays under this record:
+
+**Test limits**
+
+No task may add a floor, seed, depth, deadline or band to a test unless it is listed here. Every pinned number in phase 3 is an input from the questions, not a limit: 12.4, 12.6 and 12.25 ms; 2.0 and 170.0 ms; 59,999.6 ms; 198,010 of 198,020; 12 of 453; caps 1 and 1000. If a task needs a limit, it stops and reports. It doesn't pick one.
+
 **D49 (developer-tool tuning numbers, M0 review), 2026-10-04.** The user chose to record these as they are. They control only how two developer tools behave; none touches a score, a display or a record.
 - `tools/new_worktree.ps1` and its shared build-slot script: at most 3 cold builds at once (the approved phase 3-5 plan's "Cold builds start at most three at a time"), a free-slot check every 15 s, and a "still waiting" line every 60 s.
 - `tools/derive_once_precheck.ps1`: helper bodies under 30 tokens are matched by name only, not by body; a C++ statement split over up to 4 lines is read as one; a typed 500 counts only within 2 lines of a squeeze, window, SqIn/SqOut, leeway, deact or fabs( word, and the same 2-line reach applies to a typed 2.0 beside a hit window (the 500 rule later moved into a scan row, leaving the 2.0 rule as the reach's only user); and a decision cited on the line or the 3 lines above it is the one the number must appear in.
@@ -193,6 +199,17 @@ The calls in short:
 
 The code-only calls at the end of the sheet are approved as written. They cover findings 38, 59, 68, 78 to 85, 86, 98, 103, 108, 109, 170, 174, 198 and 202. In particular, the six old probe scripts are deleted.
 
+The phase 7 plan's "Test limits" block, copied word for word when the plan left the repo (`docs/superpowers/plans/2026-10-04-phase-7.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-10-04-phase-7.md`)). Its heading is set in bold so it stays under this record:
+
+**Test limits**
+
+No task may add a floor, seed, depth, deadline or band to a test unless it's listed here. These numbers are already decided:
+- The pinned inputs from the questions: +15 and +30 points; the 78.9 ms tied path; 60 ms; caps 1 and 4.
+- The setting ranges the boxes already enforce.
+- The probe's 5 s stall, 150 ms start lead, 2 ms play_chart lead, and the 1e-6 ms window tolerance.
+
+A task that needs any other limit stops and reports.
+
 **D51 addendum (phase 7 wave 1 launch), 2026-10-04.** The wave 1 brief writers raised open questions that D51 didn't spell out. The user answered "go with recommended answers to everything". Each brief's "Decided at launch" section holds the full text.
 - **ST1 (65), stored layout.** The results table's unique key gains the rules fingerprint. Schema 4 rebuilds the table the way `add_fill_rule_column` does: a `rules_fp` column filled from `substr(structure,5,8)` joins the key. Every row, result id and blob is kept, so nothing is re-analyzed. This is what lets a rules-A row and a rules-B row sit side by side.
 - **SE1, `depth_mode` in a hand-edited file.** Any value other than 1 reads as scores. A 2 has always searched by scores, so it keeps doing that. The nearest-edge rule from call 14 covers the ranged number fields, not this switch.
@@ -222,6 +239,12 @@ The code-only calls at the end of the sheet are approved as written. They cover 
 - `kSpActivationBars = 2` (finding 334) and `kDefaultDepthValue = 4` (finding 181) get a name and a CONTEXT.md sentence, written by the M6-J4 merge.
 - Two dev-tool wordings change: `hydra_bench`'s header adopts `describe_settings`' words (206), and `MidiFile::from_file`'s raw error becomes winstr's "cannot open file:" (R7.11).
 - 75: `widest_word` takes `wrap_words`' answer.
+
+The phase 6 plan's "Test limits" block, copied word for word when the plan left the repo (`docs/superpowers/plans/2026-10-04-phase-6.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-10-04-phase-6.md`)). Its heading is set in bold so it stays under this record:
+
+**Test limits**
+
+No task adds a floor, seed, depth, deadline or band. Every pinned number in phase 6 is a literal from one run or a value that already exists: the 170.0 and 80.0 ms edges (264); the frame pair at 48000 and 44100 (182); the 137,950 cross-check on chart "87" and the per-note values at combos 0, 9 and 29 (J2-7); the DM fixtures' 3,456 and 97.2 (265); 85.0 ms and the 8-byte gap as guards (J3-7); `widest_digits(6)` measured once (112); `parent_folder`'s four rows (251); `settings_key`'s text for `SearchSettings{}` (275); and the cap-4 bytes case already in `test_search.cpp`. A task that needs any other limit stops and reports.
 
 **D55 (phase 7 wave 1 follow-ups), 2026-10-04.** Four choices came up while wave 1 was built. The user took the recommended answer to each.
 1. **E2, the how-to line when both ends matter.** Some chords need a note held before the step and another note pushed past it, for example kick, yellow cymbal, blue cymbal and an accented red at combo 7. For those, the line names both ends: "Hit [Kick] first and [Red (Accent)] last." This needs a chord of 4 or more notes with an accent or ghost, so no real chart shows it.
@@ -387,6 +410,19 @@ On the 97 test charts, 68 have an all-0 path again, up from 61 on main, and ever
 6. **The user times a first-ever scan after their next reboot.** Another session read every song.ini in 44 s the first time and 0.9 s the second. The user runs one timed scan into a scratch database after a reboot, before opening Hydra, so the scan work knows whether first opens dominate.
 7. **hydra_batch's per-chart lines come in bursts.** Under group commit, a chart's line prints only after its group is saved, so up to 16 lines can appear at once, about every 8 ms. Each line's text is unchanged. The user accepted this, because a line must never name a chart that isn't on disk yet.
 
+The plan's "User decisions" block, copied word for word when the plan left the repo (`docs/superpowers/plans/2026-10-06-perf-speedups.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-10-06-perf-speedups.md`)):
+
+**User decisions (D86, `docs/audit/2026-10-03-fix-decisions.md`, 2026-10-06).** Quoted in full, because every number below comes from them:
+
+1. "A failed group COMMIT retries each chart alone. The batch writer saves up to 16 charts in one transaction, each in its own savepoint. If the group's COMMIT fails, the writer rolls the group back and saves each of its charts again in its own transaction. Only a chart whose own save fails is marked failed, so D71 item 6 holds exactly as before."
+2. "A group holds at most 16 charts. 16 and 64 measured the same (11.5 s against 11.7 s for a full run), because a group also closes whenever the writer catches up with the workers; groups average 10 to 13 charts. At about 0.5 ms per chart, 16 keeps the store lock and the progress lag near 8 ms, under one screen refresh."
+3. "The WAL checkpoint moves to 10,000 pages only while a batch runs. At batch end one checkpoint forces every result to disk and truncates `hydra.db-wal` to zero, and the setting goes back to SQLite's 1,000 pages. 10,000 pages of 4,096 bytes plus a 24-byte frame header each is 41.2 MB of log at most. The installed Hydra's log already stood at 45.6 MB (11,074 pages) that day, because SQLite reuses the log file without shrinking it."
+4. "mimalloc gets a measured trial later, not a ship decision. After the other speed changes land, an agent may download the mimalloc source release from github.com/microsoft/mimalloc into a throwaway worktree and measure it. Shipping it, a new third-party dependency, comes back to the user with numbers. The Windows segment heap (one manifest line) ships in the meantime."
+5. "`build_cpp.ps1` builds with `--parallel`, uncapped. Two cold builds took 83 s without it and 60 s with it, one run each. It changes build speed only."
+6. "The user times a first-ever scan after their next reboot. Another session read every song.ini in 44 s the first time and 0.9 s the second. The user runs one timed scan into a scratch database after a reboot, before opening Hydra, so the scan work knows whether first opens dominate."
+
+Also binding: D71 item 6 (a failed save during a batch fails that chart alone and the batch goes on), D72 (a database that fails at startup or at a batch's start says so) and D73 (every store read throws instead of answering empty).
+
 **D87 (hydra.db stores summaries only; details come from the engine when a song opens), 2026-10-07.** The storage audit (`docs/handoffs/2026-10-06-storage-audit-handoff.md`) found that 338 MB of the installed database is almost all saved copies of engine output, and that the engine re-analyzes a chart in 1.8 ms typical, 12.8 ms at the 99th percentile and 294 ms at worst (Nirvana's "Endless, Nameless Setlist"). A 74-chart re-analysis reproduced the stored rows exactly. The user took the recommended answer to every question:
 1. **Analyze on click.** hydra.db keeps the chart library, one summary row per chart and settings, and `meta`. Path nodes, path links, structure blobs, tempo maps, song names and lengths (`songmeta`) and kick dynamics are no longer stored. A click runs the engine's normal analysis on a worker thread. The library list, its sorting, filters and stars, the DM report and the fill comparison read the summary rows as before. `hydra_replay dump --no-analyze` and `hydra_batch --reindex` go away. Expected size: about 20 MB.
 2. **A click saves the summary.** When a click's analysis finishes and the song's row is missing, Stale or different, the summary row is saved, so the library row and the Paths tab always show the same numbers.
@@ -399,6 +435,21 @@ On the 97 test charts, 68 have an all-0 path again, up from 61 on main, and ever
 9. **Broken rules show today's warning.** With hydra_rules.ini broken, a click shows "Analysis is off until hydra_rules.ini is fixed and Hydra is restarted." and no paths. The library still shows every stored score and best path.
 10. **No "Done!" flash after a click's analysis.** The progress box goes away and the paths appear.
 11. **Cancel shows "Analysis cancelled." with a "Try again" button.** Nothing is saved for the cancelled song, and clicking another song starts that song's analysis.
+
+The plan's "User decisions" block, copied word for word when the plan left the repo (`docs/superpowers/plans/2026-10-07-summary-only-storage.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-10-07-summary-only-storage.md`)):
+
+**User decisions (already made), D87, 2026-10-07:**
+1. Analyze on click; store only the library, summary rows and `meta`.
+2. A click saves the summary when the row is missing, Stale or different.
+3. An edited chart is re-hashed on click, its library row is updated, and then it's analyzed.
+4. Rows of charts that left the library are deleted at each scan. Other chart modes of a library chart are kept.
+5. The path report analyzes the library on all cores and reuses the batch's charts. It reads exactly as before.
+6. The Analyze / Re-analyze button is removed. The progress box appears only after 0.15 s. The Stale tooltip ends "Click the song or run a batch to refresh it."
+7. Upgrade in place, no backup copy.
+8. The hydra_replay card runs as a parallel track.
+9. With broken rules, a click shows today's "Analysis is off..." warning and no paths.
+10. No "Done!" flash after a click's analysis.
+11. Cancel shows "Analysis cancelled." with a "Try again" button.
 
 **D88 (mimalloc ships), 2026-10-07.** The mimalloc trial (`docs/handoffs/2026-10-07-mimalloc-trial.md`) found mimalloc v3.5.3 cut Hydra's own CPU work about 10% on a whole-library re-analysis, with no change in wall time and peak memory up from about 412 MB to 735 MB. The recommendation was not to ship it. The user decided to ship it anyway, because the CPU saving is real, and approved downloading the same source file again (`mimalloc-v3.5.3-source.tar.gz`, 1,458,292 bytes). Its source is vendored in `third_party/mimalloc`. Every shipped exe links its override DLL, and `mimalloc.dll` and `mimalloc-redirect.dll` install beside them. mimalloc's MIT licence ships with Hydra.
 
@@ -481,6 +532,10 @@ D95 addendum, 2026-10-08 (code-only, under call 1): the path report build analyz
 27. **The comparison's tiles count the rows that pass the filters, and its subtitle stops counting by status** (2026-10-08, asked after the hands-on check showed "1,147 scores: 20 under optimal ... 1,096 not in your library" above tiles reading "Scores 1" and "Not in library 0" with "apex" searched). The subtitle reads "<player> — N scores". The first tile reads "Scores shown", like the path report's "Charts shown". Avg % of optimal and Points left keep describing the rows on screen. The count line ("X of Y scores") is unchanged. The user did not approve the real-library memory check (the plan's join step 4). The question put to them never said "full library run" or how long it would take, and the agent's 40-minute cap was never shown to them. The run went ahead anyway, on a copy of their hydra.db, and built the report twice. The user's words afterwards: "I did not approve a full library test and I did not approve a 40 minute test." Later the same day the user chose to act on its numbers anyway; see the D95 addendum and item 28.
 28. **Closing the path report window frees its rows, and closing it mid-build cancels the build** (2026-10-08, asked after the report memory run measured about 42 MB of rows, 68,037 of them, on the user's library). Until now the window's X, Esc or Ctrl+W only hid it and the rows stayed, so reopening was instant. Now closing lets the rows go, and reopening builds the report again with the building bar (about 3 s warm, about 19 s cold on that library). A build still running when the window closes stops, as its Cancel button stops it, so nothing lands in memory with the window shut. A report built after a batch while the window is closed stays until the window is opened and closed. The user picked both answers from two options each; keeping the rows and letting the build finish were the others. The comparison window is unchanged. Two follow-up answers (2026-10-09, asked after the build showed both effects). Reopening after a close keeps the window's search, timing dropdown, "Best path only" and sort, while Refresh and a batch's newly landed report still reset them to defaults; resetting on reopen too was the other option. After a close, the batch's finished strip drops "The path report is ready." and its "Open report" button, because the rows are gone; the toolbar's "Open path report" still reopens the report. Keeping that line and button, with the button rebuilding, was the other option. The strip's "Open automatically" checkbox stays after a close, because it is a setting and the strip is the only place to change it; it still hides while the report builds or after a failed build (2026-10-09). Hiding it with the line was the other option. It also shows after a cancelled build, by the window's Cancel or by closing the window mid-build, and after a "Try again" or Refresh that ends Ready; the rule is "this batch started its report, and no report is building or failed" (2026-10-09, asked after review found a successful Try again left the box hidden). Hiding it after a cancel was the other option.
 
+The plan's "User decisions" block, copied word for word when the plan left the repo (`docs/superpowers/plans/2026-10-08-path-report-window.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-10-08-path-report-window.md`)):
+
+**User decisions:** D103, items 1 to 13 in the spec, all made on 2026-10-08.
+
 **D104 (Clone Hero 1.1's Note Shuffle modifier), 2026-10-09.** The design is `docs/superpowers/plans/2026-10-08-note-shuffle.md`. Each question quoted the rule as the plan states it, and the user took the recommended answer every time. The plan's four open questions (tick scale, note order inside a chord, when the star base is taken, and the two freeze cases) are still being settled by step 0, so nothing is built yet.
 1. **The switch.** A "Note Shuffle" checkbox beside "2x Bass", off by default, saved in `hydra.ini` as `view_noteshuffle`. With it on, analysis, the Preview, the Stars and Dynamics tabs and batches all use the shuffled chart for the current difficulty, Pro Drums and 2x Bass. Its tooltip: "Score the chart as Clone Hero 1.1's Note Shuffle modifier rearranges it. The rearrangement is the same every time for a given chart and drum setting."
 2. **The mode name.** With the switch on, the mode string gains ", Note Shuffle" at the end, as in "Easy Drums, 1x Bass, Note Shuffle". With it off the string is unchanged, so every saved row keeps its key.
@@ -549,6 +604,28 @@ The routine that draws a lane was not read. The claim that the drawn strip follo
 6. **Kind F.** The derive-once review gains a sixth kind letter, F, for a second home of an idea that already has one, and a step 8 that checks every new type, enum, status word set and helper family against `CONTEXT.md`.
 7. **Status words first.** The user-visible status words of the library, the DM page and the fill page are decided as one batch of questions before the fix wave, so the fix wave is code-only.
 8. **The clue thresholds.** A repeated string counts at 12 or more characters. A struct counts at 3 or more fields, and two structs match at 4 or more shared field names. On 2026-10-11 these gave 48 clues over `src/` (the plan's phase 1 counts). The first real run of check 5 may tune them, as a reviewed change.
+
+The plan's "User decisions" block, copied word for word when the plan left the repo (`docs/superpowers/plans/2026-10-11-concept-duplication-audit.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-10-11-concept-duplication-audit.md`)). Its heading is set in bold so it stays under this record:
+
+**User decisions needed before this starts**
+
+**Approved 2026-10-11.** The user read a summary of this plan and replied "go with recommendations". Every recommendation below is the decision, recorded as D113 in `docs/audit/2026-10-03-fix-decisions.md`.
+
+1. **Scope.** `src/` only, all eleven folders, no pilot. Recommendation: yes, as asked. `tools/` and `tests/` wait.
+
+2. **Scout waves.** Sixteen group scouts and two inventory scouts as two waves (ten, then eight fed the first wave's candidates), or one wave of eighteen. Recommendation: two waves, for the dedupe; the cost is about twenty minutes of wall time.
+
+3. **Where the lead script lives.** Saved beside the audit as a record (`leads.ps1`), with its probes folded into the precheck as check 5 in phase 7; or added under `tools/` now as its own script. Recommendation: the record plus check 5, so there is one precheck and not a second scanner.
+
+4. **Fix the K1 findings that agree today, or only record them.** The line-level audit's "duplicates that agree today" were its largest group (166 of 352), and each is a future split. Recommendation: fix every K1 in `src/`, in waves the user can stop between.
+
+5. **Where decisions are written.** Continue the D-numbers in `docs/audit/2026-10-03-fix-decisions.md`, or start a file in the audit folder. Recommendation: continue, because the precheck reads `docs/audit/*decisions*.md` and the file is where D107 and D112 already are.
+
+6. **Kind F.** Add a sixth kind letter to the review page and the precheck, or fold module-level homes into kind A. Recommendation: kind F, so a reviewer's finding says which of the two it is and the precheck's line can be told from a row hit.
+
+7. **K2 words up front.** Decide the user-visible status words (the library's, the DM page's, the fill page's) as one batch of questions before the fix wave, so the fix wave is code-only. Recommendation: yes; the questions are written from the verified predicates in phase 5.
+
+8. **The probe thresholds.** A string of 12 or more characters, a struct with 3 or more fields, 4 or more shared field names. These shaped this session's lead counts and would shape check 5. Recommendation: keep them, recorded as a D-record, with the counts above as the reason; the first run of check 5 on a real range may tune them, as a reviewed change.
 
 **D114 (the concept audit's answers and the fix wave), 2026-10-11.** The user read the 21 questions in `docs/audit/2026-10-11-concept-audit/questions.md` and replied "go with recommended". Every question's recommendation is the decision, and the reply is the yes to the fix wave (D113 item 4: in waves the user can stop between). Each item names its question and finding; the question holds the predicates, examples and the case against.
 1. **Q1 (M01).** The comparison page's "not analyzed" becomes "no current result", its own definition in `dm_report.h`. The bucket and its count stay whole; a Stale chart is counted there as today.
@@ -1103,6 +1180,39 @@ Nothing stored changes, so no stamp moves.
 
 Later records replace parts of this; where they differ, the later D-record holds. One matters for the leeway: the 3 ms is DragonDelgar's number from public Hydra, not the user's own choice (D269 call 4), even though the 23:36 answer above lists it among the user's rules. This record is written after the fact, so nothing moves now.
 
+The plan's "User decisions" block, copied word for word when the plan left the repo (`docs/superpowers/plans/2026-09-24-derivation-fixes.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-09-24-derivation-fixes.md`)):
+
+**User decisions (already made):**
+
+1. The squeezed-out row the engine counts as 0 shows 0 in Points with the tag "squeezed out (uncounted)".
+2. The engine's own search loop also calls the shared backend-pricing function, proven by an identical hydra_batch diff and a timing check.
+3. Calibration fill sign: positive means hit early, everywhere.
+4. The average multiplier is rounded (py_round3) everywhere, so Song Details changes.
+5. Storing the squeezed-out tick and collected phrases is a new record format. Old records read Stale until re-analyzed, with no guessing fallback.
+6. hydra_replay's JSON reports the multiplier category_scores actually applied: a per-note multiplier, and a `multiplier_after` on each chord.
+7. For 2-3 ms plain backend rows the 3 ms leeway wins everywhere, in the rating and the cap_clamped flag too.
+8. The library scan accepts any case for notes.mid, notes.chart and song.ini, through one helper shared with the parser.
+9. Preview audio delay and Offset: first a live check at the game, then the Preview honors them.
+10. A song with no usable name shows "(unknown)" everywhere: an empty `name =`, a missing name key, and an empty .srb or .sng name.
+11. The Preview time box size is read from assets/preview/3d-config.json. Hydra keeps its own font for it.
+12. Dynamics count rows get a stamp, a hand-bumped parser counter constant, so older counts are recomputed on next view.
+13. The 3 ms leeway, the squeeze-out rule, the fill constants (including the 1/32-beat landing slop), 4 tied paths, the Auto cap ladder and its 120 s budget are your own choices and become configurable in hydra_rules.ini.
+14. The file is a new hydra_rules.ini next to the exe, read by the GUI and every CLI tool through `--rules`.
+15. Records store the rules fingerprint. A mismatch reads Stale until re-analyzed, and records come back when the rules are switched back.
+16. The squeeze-out rule offers `first_note` (today) and `whole_chord` (every note in the chord loses its SP doubling).
+17. Fix both repos: hydra_replay and video-tools' fcvideo (multiplier_steps, dynamics pricing), with check_refs staying green. The six uncommitted video-tools edits are committed as-is first.
+18. A bad value or unknown key in hydra_rules.ini: the CLIs exit with code 2. The GUI opens, shows the error, and keeps Analyze disabled until the file is fixed.
+19. Every backend row the engine does not count shows 0 points and no highlight, including plain "Hard (uncounted)" and "Insane (uncounted)". The label text stays.
+20. A typed SqOut offset landing on a chord the engine would never squeeze out is refused, with a message naming that chord and the one the engine would pick.
+21. The three test-only squeeze_rating helpers (sp_end_shift_ms, required_frontend_ms, exact_even_split_ms) and their tests are deleted.
+22. The 8 batch workers, the Ch10 1/16-beat pad and the combo set 7/8/17/18/27/28 stay fixed, each with a code comment saying why (the combo set's reason is checked against to_multiplier first).
+23. Speed limits: 5% for the backend function, 3% for the phrase bookkeeping. Past either, stop and report.
+24. `view_difficulty` in the settings INI matches any case.
+25. The MIDI reader follows mido on an over-long meta message, but keeps loading a track that is cut off mid-event, as it does today.
+26. video-tools' dynamics pricing is fixed too: a mis-hit ghost or accent costs its own note's real bonus, from a new per-note field in the replay JSON.
+27. `hydra_replay dump` names the actual reason a record is Stale: a different Hydra build, different rules, or both.
+28. video-tools names each mis-hit ghost or accent from its own note (a per-note `dynamic` field), not from the chord. Only the loss text changes, and only on chords that mix a ghost and an accent.
+
 **D275 (session 4908325e), 2026-09-26, recorded 2026-10-30. The answers to section 5 of the 2026-09-25 codebase audit, and the record format.** Section 5 of `docs/audit/2026-09-25-codebase-audit.md`, "Changes that need your yes (they alter what you see)", lists seven changes. The user asked for them first: "run the decisions that require judgement by me first, then create a plan to address all of this." The answers set the plan `docs/superpowers/plans/2026-09-26-codebase-audit-fixes.md` (its "User decisions" list, 1 to 8). Until now they lived only in a session card. The words below are from the session's condensed transcript. The user's calls in chat on 2026-09-26, 13:31 to 13:33 UTC:
 1. **Song names in reports follow song.ini (section 5 item 1).** The user chose "Follow song.ini (Recommended)".
 2. **The path report gets a Mode column (item 2).** The user chose "Add a Mode column (Recommended)". The subtitle counts the rows shown.
@@ -1114,6 +1224,23 @@ Later records replace parts of this; where they differ, the later D-record holds
 8. **The record format changes in that plan.** Not in section 5, but asked in the same round: the user chose "Now, in this plan (Recommended)" for dropping unused stored fields and storing the multiplier squeezes once per chart.
 
 The same session's other answers were housekeeping and are in the plan's list as items 9 to 12: "Move out, delete logs (Recommended)", "Commit as-is first (Recommended)", "Fix them" for ch_probe's two runners, and "Restructure (Recommended)" for play_chart.py. Later records replace parts of this; where they differ, the later D-record holds. This record is written after the fact, so nothing moves now.
+
+The plan's "User decisions" block, copied word for word when the plan left the repo (`docs/superpowers/plans/2026-09-26-codebase-audit-fixes.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-09-26-codebase-audit-fixes.md`)):
+
+**User decisions (already made, 2026-09-26):**
+
+1. Report song names follow song.ini: the stored name is updated on the next scan or analysis ("Follow song.ini").
+2. The path report gets a Mode column and keeps every row. Its subtitle counts the rows shown ("Add a Mode column").
+3. The score-range, ms-limit and SP-cap boxes stay live exactly as today, but cheap. The INI is saved when you let go, the decoded record is cached, and only the small summary query reruns ("Live, but cheap").
+4. The Preview's delay/Offset rule applies to .sng (its metadata delay, else the chart's Offset) and .srb (the chart's Offset) ("Yes, same rule").
+5. The pre-1.7 database migrations are dropped. A 1.5 or 1.6 database shows "Not analyzed" instead of "Stale" ("Drop them").
+6. ADR 0002 is retired. The three report pages share one script and one stylesheet, and look and behave the same ("Retire it").
+7. The Auto time budget leaves the rules fingerprint, and the Auto ladder marks only Auto records Stale ("Budget out, ladder Auto-only").
+8. The record-format bump happens now. It drops unused stored fields and stores the multiplier squeezes once per chart. You re-analyze once, and the shown numbers stay identical ("Now, in this plan").
+9. The loose data moves to C:\Users\Patrick\Downloads\Hydra\hydra-data\, and the logs are deleted ("Move out, delete logs").
+10. Your pending work is committed as-is before the fleet starts ("Commit as-is first").
+11. ch_probe's passive_probe.py and active_probe.py are fixed so they attach and run ("Fix them").
+12. ch_probe is restructured. The working pieces of play_chart.py move into tested modules, superseded experiments are deleted, and behaviour at the game stays the same ("Restructure").
 
 **D276 (session adbda2b2), 2026-10-30. The open questions in the D269/D270 and D271 build plans.** From `docs/superpowers/plans/2026-10-30-d269-d270-ratings-and-settings.md` and `docs/superpowers/plans/2026-10-30-d271-wording-and-windows.md`. Before the questions went out, the main session checked the user's real `hydra_settings.ini`: every key in it is one Hydra knows, every value is clean, and its `hit_window_ms=85` line is skipped under D270 call 7, so nothing in it refuses. The user's calls in chat:
 1. **A refused `hydra_settings.ini` opens Hydra on its defaults (D270).** The user chose "Open on defaults (Recommended)": the error shows in orange under the toolbar where a bad `hydra_rules.ini` already shows, naming the file, key and value; analysis stays off and nothing is saved, so the file is never touched. No start-up dialog.
@@ -1162,3 +1289,218 @@ The re-measure on a copy of the user's library: with the rows shared, Private By
 The re-measure after the trims (merged as 27c9be8d), same snapshot and script: two plain runs with no report read 139.9 and 139.9 MB at 90 s, and two runs that opened and closed the report read 172.5 and 172.5 MB 90 s after the close. So a plain Hydra now holds 32.6 MiB after a close, down from 56.8; with the report open it reads about 180 MB, down from 204.2. mimalloc's exit stats agree (112.6 against 136.6 MiB committed after a report run). The Charts shown and Paths shown tiles still read "19,467 of 19,525" and "21,347".
 
 **D283 (session e3dd3907), 2026-10-31. The batch strip's time left uses the last 2W finished charts (D271 item 4, D278 item 1).** The one run D278 item 1 allowed went over `C:\Clone Hero` into a scratch database with the user's settings: 19,557 charts found in 10.6 s, then 19,499 analyzed and 58 failed in 2.8 s. The strip shows whole seconds, so every candidate read "about 0:00 left" or "about 0:01 left" and B never showed. In fractions of a second against the real time left, E (the last 2W finished charts, W = `batch_worker_count`, 8 here) was best on all three measures: mean error 0.78 s against about 1.00 s for A, C, D and F, worst error 2.05 s against 2.59 to 2.66 s, biggest jump 0.74 s against 1.01 to 1.28 s. Results reach the strip in save groups of up to 16, and 2W equals 16 on this machine only. The user chose "E: last 2W charts": the strip's time left is the rate over the last 2W finished charts, shown once 2W have finished, computed the way the measurement computed it (2W divided by the time since the 2W-th last finish), and changes at most once a second (D276 item 8). The Preview and startup screen keep their 1 s byte window and 3 s gate. Nothing stored changes, so no stamp moves.
+
+## Plan decision blocks kept when the plans left the repo
+
+On 2026-10-31 the finished plans left the repo. A plan's "User decisions" or "Test limits" block held rulings and numbers that the precheck's check 3 accepts a new number from. The blocks that no earlier record held are copied below, word for word, one record per plan, so they stay readable after the plan is gone. A block's heading is set in bold so the block stays under its record. Blocks that an earlier record already held are copied under that record instead: D48, D51, D54, D86, D87, D103, D113, D274 and D275.
+
+**D284 (plan block), 2026-09-25, recorded 2026-10-31. The Preview score box and stepping plan's user decisions.** Copied word for word when the plan left the repo, from its "User decisions" block (`docs/superpowers/plans/2026-09-25-preview-score-and-stepping.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-09-25-preview-score-and-stepping.md`)):
+
+**User decisions (already made):**
+- The tick step is exactly one chart tick ("Chart tick (as asked)").
+- The score box shows score, multiplier and combo ("Score + multiplier + combo").
+- The solo bonus counts like the game: the whole bonus lands on the solo's last note ("Like the game").
+- With no analyzed path, the score box is hidden ("Hide the box").
+- The design in chat was accepted as shown: box under the time box, same translucent style, "Score unavailable" on a mismatch, button labels `-5s` `< Tick` `Play` `Tick >` `+5s` with tooltips naming the key, 5 s jumps keep the play state, tick steps pause first.
+
+**D285 (plan block), 2026-09-27, recorded 2026-10-31. The Preview SP drain box plan's user decisions.** Copied word for word when the plan left the repo, from its two "User decisions" blocks (`docs/superpowers/plans/2026-09-27-preview-sp-drain-box.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-09-27-preview-sp-drain-box.md`)):
+
+**User decisions (already made):**
+- "show rate if activated" — when SP isn't running, the box stays visible in grey as "SP drain (if activated)".
+- "just the drain box" — no drain-speed strip on the scrubber.
+- "verify that this new module will only pull information from existing code instead re-deriving starpower" — the sources listed above.
+- Spec approved 2026-09-27, including "full meter" that follows upcoming tempo changes, and "empties in" replacing "full meter" while active.
+
+**User decisions (revision):**
+- "yes do the snap" — "full meter" jumps with the section.
+- "go with the recommended fix" — the boxes stop shrinking at the readable minimum and overlap below it.
+- "go with recommended" — the drain box moves top-right and scales with the others.
+- "make it say time signature" — the label is "Time signature:".
+- "add time signature as a new line under BPM".
+
+Task 4 and Task 5 can run in parallel. Task 6 starts from Task 5's branch, because it redraws the time box that Task 5 adds a line to. Task 7 is the user's.
+
+**D286 (plan block), 2026-09-27, recorded 2026-10-31. The Stars tab plan's user decisions.** Copied word for word when the plan left the repo, from its "User decisions" block (`docs/superpowers/plans/2026-09-27-stars-tab.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-09-27-stars-tab.md`)):
+
+**User decisions (already made):**
+- "add a new tab after Dynamics called Stars that shows the exact star cutoffs for each song. for songs with solos, show the total solo bonus separately"
+- Solo bonus layout: "Extra column (Recommended)". The solo total sits on its own line above the table, and each row adds a "With full solo bonus" column.
+- Design approved 2026-09-27 ("that looks good"). The numbers come from the analyzed record, the math lives in a new `src/core/stars.{h,cpp}`, the math is unit-tested, and the tab is checked with `hydra_uitest` on a song with a solo and one without.
+
+**D287 (plan block), 2026-09-27, recorded 2026-10-31. The UI redesign plan's user decisions.** Copied word for word when the plan left the repo, from its "User decisions" block (`docs/superpowers/plans/2026-09-27-ui-redesign.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-09-27-ui-redesign.md`)):
+
+**User decisions (already made, 2026-09-27):**
+
+1. "i like your idea" — the song details become a panel docked beside the library, drawn first as a mockup ("create a mock design before changing anything").
+2. Batch analysis runs in the background with a progress strip ("yes").
+3. All analysis parameters move to the main screen ("wouldnt it make sense to move all the parameters to the screen before analysis?", then "this all looks good now").
+4. Reports save to Documents\Hydra instead of the program folder ("yes").
+5. Screen 1 was "very cramped and dense"; the less dense revision with the activation list and the new search was approved ("this all looks good now"). Screens 2 to 5 were approved as drawn ("looks good").
+6. "just drop auto completely, it's unnecessary and confusing. leave the default as 4."
+7. Results already saved under Auto are deleted on the first start after the update ("Delete them (Recommended)").
+8. Go ahead with the activation list, the search upgrades and the rest of the recommendations ("go ahead with the other recommendations").
+9. The plan runs as a workflow: agents in parallel, their changes merged by the main session ("design the plan around a workflow, agents running in parallel with their changes merged by the main session").
+10. `stars:N` means exactly N stars ("why would stars 6 not mean 6 stars?").
+11. An old path report next to `hydra.db` is left where it is; the next batch writes a new one in Documents\Hydra ("we'll be generating a new path report anyway so it doesnt matter").
+12. The calls listed below were accepted ("the rest sounds good").
+
+**D288 (plan block), 2026-10-03, recorded 2026-10-31. The derive-once review gate plan's user decisions.** The gate's three calls are also D125 to D127, and its git-side hook is D131. Copied word for word when the plan left the repo, from its "User decisions" block (`docs/superpowers/plans/2026-10-03-derive-once-review-gate.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-10-03-derive-once-review-gate.md`)):
+
+**User decisions (already made):**
+- "add both to the fix list, write the review gate plan" (2026-10-03). The shell path-length fold is on the audit's fix list. It is not part of this plan. This plan only adds its scan rule, with today's copies in the baseline.
+- Gate scope: "Merges + commits on main" (2026-10-03, decision 1 below).
+- Findings: "Block until fixed or waived" (2026-10-03, decision 2 below).
+- Old findings: "Don't block, list it" (2026-10-03, decision 3 below).
+- Gated paths widened at install (2026-10-03, session ade9655b): `third_party/`, `installer/`, `CMakePresets.json` and `build_cpp.ps1` are gated too, as is the marker file itself. The one owner of the list is `Test-DeriveOnceGatedPath` in `hooks\lib\derive_once_rules.ps1`; the marker and CLAUDE.md point at it rather than restating it.
+- Execution: "Subagent-Driven (this session)" (2026-10-03).
+
+**D289 (plan block), 2026-10-03, recorded 2026-10-31. The one squeeze rating rule plan's user decisions.** The user's words behind it are also D116 to D118. Copied word for word when the plan left the repo, from its "User decisions" block (`docs/superpowers/plans/2026-10-03-one-squeeze-rating-rule.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-10-03-one-squeeze-rating-rule.md`)):
+
+**User decisions (already made):**
+1. "if a multiplier exists there should be a corresponding display": the 1 ms cutoff goes.
+2. "keep it in the table row only": a squeeze-out's figure stays on its table row, not in its sentence. The SqIn sentence keeps its figure (asked for on 2026-09-29).
+3. "it should be calculate as the exact figure, not based on a rounded 0.99".
+4. "make sure all of this is only derived once".
+5. Flat x1.00: the figure shows only when the stored multiplier isn't exactly 1. The scale line uses the same test and prints extra decimals when two would read x1.00.
+6. Counted rows at the SP end or inside the leeway get the early multiplier like every other counted row.
+7. Orange means "a multiplier shown on the line governs at least one row or SqIn on this activation". No threshold.
+
+**D290 (plan block), 2026-10-03, recorded 2026-10-31. The Preview loading fixes plan's user decisions.** Copied word for word when the plan left the repo, from its "User decisions" block (`docs/superpowers/plans/2026-10-03-preview-loading-fixes.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-10-03-preview-loading-fixes.md`)):
+
+**User decisions (already made):**
+- "make all of those fixes" (2026-10-03): streaming audio, cancel inside the load, honest progress bar, linear timeline off the UI thread with path-only rebuilds, the smaller algorithm fixes, and the correctness bugs from the audit.
+- Opus header gain gets applied as the Opus spec requires. No ask needed: a scan of the library found 0 of 3,722 Opus files with a non-zero gain, so nothing audible changes today.
+
+**D291 (plan block), 2026-10-03, recorded 2026-10-31. The step-1 plan's user decisions (the engine stores what the display used to guess).** Each call is also its own record, D1 to D10. Copied word for word when the plan left the repo, from its "User decisions" block (`docs/superpowers/plans/2026-10-03-step1-engine-stores-what-displays-guess.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-10-03-step1-engine-stores-what-displays-guess.md`)):
+
+**User decisions (already made, 2026-10-03):**
+- D1 (finding 28): "When the SP cap clamps a window, the transfer scale is measured from the collecting note, not the activation." Finding 27 is fixed in the same change, under one stamp bump.
+- D2 (finding 32): "The replay keeps its own chord-by-chord walk as a cross-check", asks the shared rule whether SP paid a chord, and the xN disc doubles only when SP actually paid something for it.
+- D3 (findings 90, 89): a tied variant folded while SP runs takes the leader's closed activation from the fold point and keeps its own activation note. The search does not change. Each variant stores its own leftover SP.
+- D4 (finding 332): the record may hold "unknown" for a transfer scale, but "there should never be a situation when the scale cant be computed". Every way of reaching it is closed at its source, and a test proves no fresh record stores it.
+- D5 (R7.10, finding 30): the 500 ms backend window is measured from the SP end for every activation, through one shared check.
+- The existing plan's seven decisions (its header) stand.
+- Q1 (2026-10-03): timing that makes a measure or beat last zero, negative or infinite time refuses the chart with a plain error naming the tick. A time signature with a top number of 0 is ignored in both formats.
+- Q2 (2026-10-03): a tied variant that takes its leader's closed activation also takes the closing SqIn or SqOut. Its path string may gain the + or −. This is the plan's only allowed path-string change.
+- Q3 (2026-10-03): finding 97 is out of this plan. It gets its own plan after a corpus count.
+- Q4 (2026-10-03): on a late squeeze-in the SP gauge refills at the old SP end.
+- Q5-Q10: the recommended answers below apply unless the user overrides them before execution.
+
+**D292 (plan block), 2026-10-03, recorded 2026-10-31. The step-2 plan's user decisions (parser rules).** Each call is also its own record, D19 to D31. Copied word for word when the plan left the repo, from its "User decisions" block (`docs/superpowers/plans/2026-10-03-step2-parser-rules.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-10-03-step2-parser-rules.md`)):
+
+**User decisions this plan implements (all 2026-10-03):**
+
+- **D19 (findings 11, 250):** "Disco flip is per difficulty: each difficulty reads only its own `[mix N drums...]` markers, in both formats, as Clone Hero does." `drums0dnoflip` stays off. Clone Hero's one-letter on/off rule (A+) is not adopted. The "flip only with Pro Drums" gate moves to one place. Tasks T0, T1.
+- **D20 (findings 10, 12, 255):** "Each difficulty reads its own 2x kick: MIDI 59 Easy, 71 Medium, 83 Hard, 95 Expert, and `.chart` N 32 in its own section." The 2x Bass box works at every difficulty. The Dynamics tab shows one kick total in both "All kicks" and Totals. No record-key fallback. Tasks T0, T2.
+- **D21 (finding 21):** one phrase-end helper for both parsers, with Clone Hero's rule: start <= tick < end; a zero-length phrase pays nothing; a phrase running past the last note pays on that note. Task T3.
+- **D22 (finding 315, the +1):** "The fill landing window is floor(resolution x slop) + 1 ticks", also on top of a user's `hydra_rules.ini` slop. Task T4.
+- **D23 (finding 344):** "The written `kResultsStamp` rule names `src/parse`." Step 2 reuses step 1 Task 22's value and does not bump twice. Task T9.
+- **D24 (finding 64):** the dynamics tag counts only as `ENABLE_CHART_DYNAMICS` or `[ENABLE_CHART_DYNAMICS]`, and at a shared tick file order decides. A late tag gets the "from <time> on (N earlier markings ignored by Clone Hero)" line. Tasks T5 (code), T9 (stamps).
+- **D25 (finding 222):** off-speed leaderboard scores get their own "other speed" status and leave Matched, Above optimal and Points left on table. Task T7.
+- **D26 (findings 53, 314, open half of 315):** no live Clone Hero check now. Generated-fill length and 6/8 beats keep today's rule, written down as unverified. Task T9 (record only).
+- **D27 (small owners):** 60, 61, 258/319, 331, R7.5, R7.7, 77 as recommended; 141 and 320 recorded only. Tasks T6, T8, T9.
+- **D28 (hit-window plan):** steps 1-3 answered from Clone Hero's code and `poll_windows.csv`; steps 4-6 shelved. Task T8.
+- **D29 (findings 37, 304, after step 1 merges):** 37: "the SP-end extension during Star Power comes only from `extend_deacts`, which stops at a full meter, as Clone Hero does"; counted after the merge. 304: "a backend note at exactly +3.0 ms stays uncounted (strict); record it and pin it with a test." Tasks T10, T11, T9 (record).
+- **D30 (finding 315, Fill B):** "Authored fills are placed one by one after the whole chord list is read, as Clone Hero does (0x20CFF60 calling 0x5DE030). Each fill takes the last chord at or before its end, but not before its start, or the first chord after its end within the slop. A tie goes to the later chord, and a fill with no chord in bounds is dropped." Clone Hero's unbounded one-side fallback (B2) is not adopted. Task T4, in the same task as the +1, since both own fill placement.
+- **D31 (step-2 plan wording, Q1-Q5 and the review):** "Approved as the plan proposes." It settles the 2x Bass tooltip at every difficulty, the UserGuide's 2x lines, the "2x kicks: X of Y" line, the late tag stored in milliseconds, the singular, T7's "Other speed" filter, stat row, status-help sentence, dimmed Points-left cell, ", N at other speeds" clause and UserGuide sentence, and T4's `fill_land_slop_beats` UserGuide line. Tasks T2, T4, T5, T7.
+
+The Clone Hero rules this plan built on now live in the reference pages under docs/clone-hero/, and the addresses quoted in its decisions and task code are a record of what was read then. The rows: disco flip in 02-note-list.md (NL-17, NL-21); 2x kicks in 02-note-list.md (NL-24 to NL-27); phrase edges in 05-star-power.md (SP-01 to SP-03, SP-07); fill placement in 04-fills.md (FL-03 to FL-07); the dynamics tag in 02-note-list.md (NL-11, NL-13); the score's speed term in 06-scoring.md (SC-03) and 03-timing.md (TM-42); the hit window in 03-timing.md (TM-19 to TM-23); and the SP-end extension and the leeway in 05-star-power.md (SP-24, SP-34, SP-42) and 07-internals.md (IN-27).
+
+**D293 (plan block), 2026-10-10, recorded 2026-10-31. The CI test tooling plan's questions.** Its "User decisions" section holds the questions and recommendations put to the user; the plan did not record the answers in it. Copied word for word when the plan left the repo (`docs/superpowers/plans/2026-10-10-ci-test-tooling.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-10-10-ci-test-tooling.md`)):
+
+**User decisions**
+
+**1. Tool tests: full history for the precheck self-test?** Its Part 2 checks two real commit ranges and skips without them. Options: `fetch-depth: 0` (full clone, a bit slower, Part 2 runs) or the default shallow clone (Part 2 skipped in CI). Recommendation: `fetch-depth: 0` on the `tool-tests` job only; measure the checkout time on the first run and drop back if it is over a minute.
+
+**2. How many shards?** Options: 4, 6 or 8. From the durations: today 4 and 8 give the same 19.7 s (one file bounds it); after the 18-second case is trimmed, 4 gives about 7.4 s and 6 or more about 5.9 s. Recommendation: 4, matching the runner's cores and `--jobs 4`; revisit when the single-owner scan gets faster.
+
+**3. GUI suite: one mode, and what the doc says.** Options for the default job count when `--all` runs: 1 (strictly serial, slowest, simplest) or 4 (what CI uses). Options for the doc: keep a count and refresh it to 88, or drop the standing count and keep only the `hydra_uitest --list` pointer. Recommendation: default 4; drop the count and the two stale timings, and write one fresh timing with its date and run count instead.
+
+**4. ASan on every push and PR, or nightly?** Recommendation: every push and PR. Minutes are free on this public repo, the job runs beside the existing one so wall time does not change, and a memory bug is cheapest to find in the PR that adds it. Fall back to nightly only if it proves flaky.
+
+**5. Coverage: where does the report go, and how often?** Options: a workflow artifact plus the job summary (no account, no secret); Codecov as well (needs a Codecov account for the repo and a `CODECOV_TOKEN` secret, gives PR comments and trend graphs). And: pushes to main only, or PRs too. Recommendation: artifact plus summary first, main only; add Codecov later if you find yourself wanting the graphs. No threshold either way.
+
+**6. Fuzzing: time box and schedule, and where crashes live.** Options for the time box: 5, 10 or 30 minutes per target per run. Schedule: weekly or nightly. Crash files: checked into `testdata/fuzz/` (recommended; that is the regression mechanism) or kept only as artifacts. Recommendation: weekly, 10 minutes per target (six targets in parallel, so about 12 minutes of wall time a week), crash files checked in. A long local run on your machine whenever a parser changes is the better use of fuzzing time than more CI minutes.
+
+**7. RapidCheck: vendor it, and fix the seed?** Options: vendor it (one more third-party dependency and licence notice; it lives only in the test exe) or skip the trial. Seed: fixed (deterministic suite, same as today's LCG) or random per run (finds more, but a red run is not reproducible without the printed seed). Recommendation: vendor it for the trial and decide after seeing one shrunk counterexample; fixed seed.
+
+**8. The runner label (outside this plan's scope, but it affects every new job).** CI pins `windows-2025-vs2026`. GitHub's changelog says that label was a pre-migration test label and that `windows-2025` and `windows-latest` moved to Visual Studio 2026 by 15 June 2026 (https://github.blog/changelog/2026-05-14-github-actions-upcoming-image-migrations). I could not confirm the label's current status. Recommendation: a one-line follow-up that tries `windows-2025` on a branch; if it builds, switch, so the workflow does not depend on a label GitHub called temporary.
+
+**D294 (plan block), 2026-10-10, recorded 2026-10-31. The hook test hygiene plan's questions.** Its "User decisions" section holds the questions and recommendations put to the user; the plan did not record the answers in it. Copied word for word when the plan left the repo (`docs/superpowers/plans/2026-10-10-hook-test-hygiene.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-10-10-hook-test-hygiene.md`)):
+
+**User decisions**
+
+**Q1. The 193 backup and 2 retired files.** Options: (A) move them into `hooks\_archive\`, nothing reads them, 2.7 MB stays on disk; (B) delete them; (C) put `~/.claude/hooks` under git and delete them, so hook edits get real history. Recommendation: A now. C is the better long-term answer, but it changes how every executor edits hooks and deserves its own decision.
+
+**Q2. Retention for the state folder.** Options: 7 days (1,589 files go today), 14 days (759), 30 days (256). Recommendation: 14 days. The oldest agent any gate still reads is this session's; a two-week window is far past any resumed work.
+
+**Q3. Do the derive-once and doc-review records get pruned?** They are review evidence the merge gate consults for a range; an old one is dead once its range is merged, but I have not traced every reader. Options: exclude them (recommended), or include them at 30 days.
+
+**Q4. The watchdog kills any `ffmpeg` older than 15 minutes, whoever started it.** The fcvideo workflow runs ffmpeg by hand. Options: keep the rule and only test it (recommended, cheapest; the test uses a stand-in name and never touches real ffmpeg), or narrow the kill to ffmpeg whose parent is an agent's shell, which needs a parent-process walk and its own cases. If you run ffmpeg by hand while a fleet is up, pick the narrow one.
+
+**Q5. What `no_recursive_delegation_gate` is meant to read.** It takes the model from `transcript_path`, and the memory note (unverified by me, verified live by the author on 2026-09-04) says that path is the parent session's transcript for a subagent call. So the gate denies when the parent is Sonnet, not when the subagent is. If the intent is "a Sonnet subagent may not dispatch", the gate needs a different source for the model and the test pins that instead. Please say which.
+
+**Q6. Pester.** Recommendation above: no. Say so if you want it anyway, and the harness becomes a Pester shim instead.
+
+**D295 (plan block), 2026-10-10, recorded 2026-10-31. The test dedup, naming and gaps plan's questions.** Its "User decisions" section holds the questions and recommendations put to the user; the plan did not record the answers in it. Copied word for word when the plan left the repo (`docs/superpowers/plans/2026-10-10-test-dedup-naming-gaps.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-10-10-test-dedup-naming-gaps.md`)):
+
+**User decisions**
+
+**Q1. Decision tags in test names.** Options: (a) every tag ("finding 37", "(331)", "(R7.5)", "D105", "(D20)", "(D104)", "(D51 Q11)") moves to a comment and the name says the behaviour; (b) only the finding and review numbers move, D-numbers stay in names. Recommended: (a). A reader of a failing test name should know what broke without opening the audit docs; the comment keeps the trail.
+
+**Q2. Tooltip word-for-word pins.** Options: (a) keep them as they are, add a comment naming the decisions; (b) pin only the sentences a decision fixed and check the rest for "not empty". Recommended: (a). The user's rule is that UI text changes are deliberate; the pin makes a reword a deliberate act.
+
+**Q3. JS and CSS source pins.** Options: (a) keep the absence checks and loosen the exact-expression pins to the fact they stand for; (b) keep everything as is; (c) drop all source-text pins and rely on the hand-run browser check. Recommended: (a). It keeps every user decision guarded and stops a harmless rewrite from failing the suite.
+
+**Q4. Capacity pins.** Options: (a) keep both, rename the Song one to say "sized once"; (b) replace both with an allocation-count check. Recommended: (a).
+
+**Q5. When the renames and splits of the eight single-owner-coupled files run.** Options: (a) after the single-owner redesign lands, so the baseline rows are edited once in their new form; (b) now, with each move commit also editing the C++ rows. Recommended: (a) for the eight coupled files (`test_song`, `test_app_state`, `test_search`, `test_preview_view`, `test_replay`, `test_report`, `test_store`, `test_path_view`); the s2 renames, the grab bag, `test_model` and the helper moves are free and can go now.
+
+**Q6. `test_search.cpp`.** Options: (a) split into four topic files as in Task 2.4; (b) one rename to `test_engine_search.cpp`. Recommended: (a); a 2,000-line file under a better name is still 2,000 lines.
+
+**Q7. Icons.** Options: (a) add the four-PNG decode test; (b) nothing. Recommended: (a); it is twenty lines and catches the one silent failure that file has.
+
+**Q8. The database sentences.** Options: (a) export the two sentences as constants from `user_messages.h` and compare against them in the other four files; (b) drop the sentence checks in the non-owner files and keep only the `kind()` checks. Recommended: (a). The non-owner files are proving the sentence reaches the user through that path, which (b) would stop proving.
+
+**D296 (plan block), 2026-10-10, recorded 2026-10-31. The test fidelity fixes plan's user decisions.** Its "User decisions" section holds the questions put to the user, with the answers written in where the user gave them (items 3, 4a and 8a). The golden-image answers are also D197 and D198, and the sound device message is D109. Copied word for word when the plan left the repo (`docs/superpowers/plans/2026-10-10-test-fidelity-fixes.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-10-10-test-fidelity-fixes.md`)):
+
+**User decisions**
+
+1. **Which old releases become fixtures (Task 1).** Options: (A) v1.8.4, v1.8.4 `--legacy-fills`, v2.0.0, v2.1.0 (recommended; one per schema, plus the one file-level fill stamp the upgrade reads); (B) v1.8.4 and v2.1.0 only; (C) also v1.6.2 to pin "a pre-schema-2 file opens empty and is left alone" (`test_store.cpp` line 712 does this synthetically today).
+2. **Fixture size limit (Task 1).** Three charts per file. Old layouts stored about 15 KB per chart (D87: 292 MB for 18.8k charts), so each file should be well under 256 KB after `VACUUM INTO`. Recommended cap: 256 KB per file, 1 MB for the set; if a file comes out bigger, drop to two charts.
+3. **Golden thresholds (Task 2).** Decided after the measurement step reports the current worst tile and delta percentiles. The shape I recommend: per-pixel delta D (Gold's channel-delta knob), worst-tile budget P percent, whole-frame budget F percent, and the mean tightened from 10 to the measured 5.69 plus a margin (7 would give 23 percent headroom). Option C: correct the capture's gamma first and then set a tighter mean near 2 (bigger change, nicer numbers).
+   **Decided by the user on 2026-10-10:** D = 32 (a pixel is over when its largest channel delta, at half resolution, exceeds 32/255); worst 16 by 16 half-res tile at most 9.4 percent over; whole frame at most 0.08 percent over; mean tolerance tightened from 10 to 7. Evidence (TF-T2a measurement at 2c8ea2c7): today's render worst tile 6.25 percent, frame 0.0525 percent, mean 5.688; the pro=false render worst tile 32.8 percent, frame 0.125 percent, mean 5.727. The limits are today's numbers plus 50 percent, rounded.
+4a. **Recapture steps:** the user does not remember the Onyx window size or how the pause landed on 0:36.913 (2026-10-10); the README marks both "to confirm at the next recapture".
+8a. **A failed `ma_device_start`:** the user said yes, show it (2026-10-10); a separate follow-up session designs the message.
+4. **Recapture steps (Task 2).** Do you remember the Onyx window size and how the pause landed on 0:36.913? If yes, they go in the README now; if not, the README says "confirm at the next recapture".
+5. **Which settings to pin the engine digest at (Task 5).** Recommended three above. Option: add cap 8 or points depth as a fourth. Each pin adds about 0.1 s to the suite.
+6. **Timing tests (Task 6).** (A) counts replace both 20 ms checks and the ratio test is deleted (recommended); (B) same, but the ratio check moves into `hydra_bench` as a printed line.
+7. **Device test (Task 7).** (A) keep and strengthen with a wait cap of 2 s for the first callback (recommended; a WASAPI device calls back within tens of ms, so 2 s is a hang detector, not a timing test); (B) delete it.
+8. **Surface a failed `ma_device_start` to the user?** Not in this plan; yes or no decides a follow-up.
+
+**D297 (plan block), 2026-10-24, recorded 2026-10-31. The precheck in C++ plan's user decisions.** Copied word for word when the plan left the repo, from its "User decisions" section (`docs/superpowers/plans/2026-10-24-precheck-in-cpp.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-10-24-precheck-in-cpp.md`)):
+
+**User decisions (2026-10-24)**
+
+The user approved the plan with these answers, in their words: "Yes, build it with your recommended answers: four-input parity bar, mutation probe uses a hydra_precheck --code-mask mode, keep the real ranges, keep the old wording."
+
+1. The parity bar is the four inputs (the fixture, both real ranges with the rules at HEAD, the whole tree at HEAD), every difference named in task 8's commit. No wider corpus run.
+2. Option (b). Task 1 adds `hydra_precheck --code-mask <file>`: it prints the file with comments and string contents blanked, newlines kept, using codelex, and a test in `tests/test_precheck_git.cpp` pins it on a small C++ file. Task 8 switches `tools/mutation_probe.ps1` and `tools/test_mutation_probe.ps1` to call it instead of loading the precheck's PowerShell lexer, so codelex is the repo's only lexer. The mutation probe self-test then needs a built `hydra_precheck.exe`, so task 8 also moves its CI step from "Tool tests" (which builds no C++) to "Build and test", after `hydra_tests` is built.
+3. The two real ranges stay, with `fetch-depth: 0` on the "Build and test" checkout.
+4. Every printed line keeps today's wording, including the "derive_once_precheck:" prefix.
+
+**D298 (plan block), 2026-10-25, recorded 2026-10-31. The merge test picker plan's user decisions.** The picker's spec and its user-set numbers also live in `docs/development.md`, "The merge test picker". Copied word for word when the plan left the repo, from its "User decisions" section (`docs/superpowers/plans/2026-10-25-merge-test-picker.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-10-25-merge-test-picker.md`)):
+
+**User decisions**
+
+The user's words: "Approved with the recommended answers: Q1 30, Q2 40, Q3 20, Q4 one level with selector values, Q5 C++ only now. Build it, and hold Task 5 until the hooks build's doc edits are on main."
+
+Q1: a name mentioned by more than 30 test files picks nothing by itself. Q2: more than 40 picked test files runs the whole suite. Q3: a changed header with more than 20 direct includers runs the whole suite. Q4: one level of callers, plus the `A::B` selector values on the call line or its nearest `if`, `else if` or `case` line. Q5: C++ tests only in this build; the Python follow-up is not approved. Task 5 starts only after the hooks-from-scratch build's doc edits (its task T11) are on main.
+
+Later ruling, after TESTPICK-3's review found the plan's Step 3 and worked example disagree, in the user's words: "Keep it: a comment-only change picks the tests that name that function, but doesn't follow its callers." This overrides Step 4 for comment-only changes.
+
+Later ruling, after the tool picked 58 files for its own merge because every function named `run` in src/ matched, in the user's words: "a call site counts only if it's in the same file as the changed function or in a file that includes the header declaring it." This narrows Step 4's caller search.
+
+Later ruling on Step 5's search of test files, the user answering "go with recommend" to this option: "A test file counts for a changed name only if it includes the header that declares it, directly or through a chain. Exception: a name in a file that builds an exe's main (like tools/precheck/main.cpp) keeps today's plain-name search, since tests reach those by running the exe."
+
+Later ruling, the user answering "go with recommended": a changed name in a file that builds an exe's main picks only test files that name that exe's `HYDRA_<TARGET>_EXE` constant, directly or through a test helper header. An exe that no test names that way keeps the plain-name search. In the same answer, the main session changes the posture line in `C:\Users\Patrick\.claude\model-postures.md` in a worktree of that repo with a fresh reviewer, after checking with the hooks session that it is not editing that file.
