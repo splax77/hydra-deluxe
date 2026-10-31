@@ -1126,3 +1126,25 @@ The same session's other answers were housekeeping and are in the plan's list as
 8. **The batch strip's time left changes at most once a second (D271 item 4).** The user chose "Once a second (Recommended)", the Preview's rule, from one owner.
 
 Two plan questions were not asked, because the rulings already answer them. A decimal in a whole-number key (`preview_volume=40.5`) refuses under D270 call 4 ("a number that is not a clean number"). The error keeps the rules loader's approved shape, with no line number. Nothing stored changes, so no stamp moves.
+
+**D277 (session 3d58c2ba), 2026-10-30, recorded by session b02ab3e6. The Clone Hero reference plan's ten questions.** From `docs/superpowers/plans/2026-10-30-clone-hero-reference.md`, "Open questions for the user". The user answered "yes all ten", so each recommendation is the decision:
+1. **Four writers in parallel (question 1).** One fresh reviewer per writer branch and per pointer branch, so each review fits the agent budget.
+2. **One home for game facts (question 2).** A committed extract, `docs/clone-hero/code/facts-6142.tsv` and `facts-4045.tsv`, written by `tools/ch_mcp/dump_facts.py` from the dumps. The docs test checks every page against it at every merge. The extract is checked against the dumps only when someone runs `dump_facts.py --check` by hand.
+3. **The memory list is approved as written (question 3),** including the nine rows marked `*`. The edits wait until the pages exist, and the main session makes them, one note at a time.
+4. **A known address with no committed listing is "Unknown" (question 4),** with the old address and date, until a scout lists it again.
+5. **The existing listings stay where they are (question 5).** `docs/clone-hero/code/README.md` indexes them.
+6. **One scout decompiles the 1.0 fill generator and fill deadline (question 6)** from 1.0's `Assembly-CSharp.dll`.
+7. **No saved Ghidra project (question 7).** Each scout decompiles only its own functions.
+8. **The untracked evidence is committed (question 8)** before the pages cite it.
+9. **`docs/audit/ch-evidence.md` becomes a pointer (question 9)** plus a map from its question numbers to the new row ids.
+10. **The Ladies Talk tick difference goes to the Star Power plan's LS3 owner (question 10),** not settled in this plan.
+
+The 1.0 facts are checked by name only; the user asked for no stricter check.
+
+**D278 (session adbda2b2), 2026-10-30. What the plan reviews and the time-left measurement turned up.** The user's calls in chat:
+1. **The time-left window is picked from one run over the user's library (D271 item 4).** The measurement on the 97 checked-in test charts could not separate the windows: the main session's own re-run took 1.7 s in all, and Hydra reported 0.4 s of analysis, so every window read "about 0:00 left" (`docs/handoffs/2026-10-30-d271-eta-window-measurements.md`). The library holds 19,562 chart files. The user chose "Allow one library run (Recommended)": one timed batch over the library into a scratch database, never `hydra.db`, then the user picks from the real table. The run waits for the user's exact "allow library run" message (CLAUDE.md rule 8).
+2. **The media guard keeps asking on a relative yt-dlp `-o` (D273 item 3).** The guard's reviewer found that `yt-dlp -P C:\ytdl -o "%(title)s.%(ext)s" URL` asks in the main session, where the old guard let it pass, and a fix would go past the hooks' 3,100-line budget. No yt-dlp call was made in the 14 days the replay read. The user chose "Leave it asking (Recommended)". The budget stays.
+3. **A Cancelled or Failed path report stays so after a close (D271 item 7).** The user chose "Like the comparison (Recommended)": reopening shows "Report cancelled." or the failure with Try again, as the comparison window already does.
+4. **The path report says "the 85 ms hit window" (D270 call 8).** The footer note (`src/app/report.cpp`) and the timing dropdown's tooltip (`src/app/path_report_view.cpp`) said "your hit window". The user chose "Say \"the 85 ms hit window\" (Recommended)".
+
+Nothing stored changes, so no stamp moves.
