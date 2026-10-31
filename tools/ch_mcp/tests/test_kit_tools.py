@@ -346,6 +346,48 @@ class SetupTest(Rig):
         self.assertEqual(lines[-1], "kit agent: detached")
 
 
+class SetupPlayerTest(Rig):
+    def setup_posted(self):
+        return [m for m in self.posted() if m["type"] == "setup"]
+
+    def test_no_player_sends_player1(self):
+        tools = self.tools([STATUS, setup_reply()])
+        lines = tools.ch_kit_setup().splitlines()
+        self.assertEqual(self.setup_posted(), [
+            {"type": "setup", "tag": "hydra-kit", "definition_id": 6, "player": "Player1"}])
+        self.assertEqual(lines[0], BACKUP_LINE)
+
+    def test_a_given_player_is_sent_as_is_and_named_first(self):
+        reply = setup_reply()
+        reply["kit"] = {**reply["kit"], "player": "System"}
+        tools = self.tools([STATUS, reply])
+        lines = tools.ch_kit_setup(player="System").splitlines()
+        self.assertEqual(self.setup_posted(), [
+            {"type": "setup", "tag": "hydra-kit", "definition_id": 6, "player": "System"}])
+        self.assertEqual(lines[0], 'kit player: "System" as given (KIT_PLAYER is Player1)')
+        self.assertEqual(lines[1], BACKUP_LINE)
+        self.assertIn("kit: controller 7, tag hydra-kit, created, on System", lines)
+        self.assertEqual(lines[-1], "bindings: all 10 match KIT_BINDINGS")
+
+    def test_a_name_no_player_has_is_printed_as_the_agents_refusal(self):
+        error = {"error": "setup failed: Error: no player named Player9; players: System, Player1"}
+        tools = self.tools([STATUS, error, TEARDOWN_OK])
+        lines = tools.ch_kit_setup(player="Player9").splitlines()
+        self.assertEqual(self.setup_posted()[0]["player"], "Player9")
+        self.assertEqual(lines[0], 'kit player: "Player9" as given (KIT_PLAYER is Player1)')
+        self.assertIn("setup failed: the agent sent an error: setup failed: Error: no player "
+                      "named Player9; players: System, Player1", lines)
+        self.assertEqual(self.posted()[-1], {"type": "teardown", "tag": "hydra-kit"})
+        self.assertEqual(lines[-1], "kit agent: detached")
+        self.assertIsNone(self.game.kit_source())
+
+    def test_a_refusal_before_the_attach_still_names_the_given_player(self):
+        tools = self.tools(attached=False)
+        self.assertEqual(tools.ch_kit_setup(player="System"),
+                         f'kit player: "System" as given (KIT_PLAYER is Player1)\n{FT.NOT_ATTACHED}')
+        self.assertEqual(self.events, [])
+
+
 class PressTest(Rig):
     def test_green_and_kick_send_elements_3_and_22_with_the_hold(self):
         tools = self.set_up([PRESS_REPLY])

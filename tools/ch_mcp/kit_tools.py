@@ -50,8 +50,10 @@ KIT_AGENT_FILE = f"{KIT_AGENT_NAME}.js"
 KIT_DEFINITION_ID = 6
 # The tag the kit is created with and found by (the plan's owner table).
 KIT_TAG = "hydra-kit"
-# The Rewired player the kit is handed to (the probe: Players are Player1 to
-# Player4).
+# The Rewired player the kit is handed to when ch_kit_setup names none (the
+# probe: Players are Player1 to Player4). Live step LS-D1 of the plan
+# docs/superpowers/plans/2026-10-31-ch-mcp-direct-start.md decides whether it
+# becomes the System player.
 KIT_PLAYER = "Player1"
 
 # How long a press holds, counted in the game's frames (the user's answer to
@@ -176,9 +178,18 @@ def parse_items(items: Union[str, Sequence[str]]) -> List[str]:
     return names
 
 
-def setup_message() -> dict:
+def setup_message(player: Any) -> dict:
+    """The setup message, handing the kit to `player`. The name goes to the
+    agent as given: the agent knows the game's players and refuses a name
+    none of them has."""
     return {"type": "setup", "tag": KIT_TAG, "definition_id": KIT_DEFINITION_ID,
-            "player": KIT_PLAYER}
+            "player": player}
+
+
+def given_player_line(player: Any) -> str:
+    """The first line of ch_kit_setup's reply when the caller named the
+    player."""
+    return f'kit player: "{player}" as given (KIT_PLAYER is {KIT_PLAYER})'
 
 
 def press_message(elements: Sequence[KitElement], hold_frames: int = KIT_HOLD_FRAMES, *,
@@ -432,12 +443,23 @@ class KitTools:
 
     # -- the tools ------------------------------------------------------------------
 
-    def ch_kit_setup(self) -> str:
+    def ch_kit_setup(self, player: Optional[str] = None) -> str:
         """Check the attach and settings.ini, take the backup, attach the kit
         agent, send setup, check with devices_problem that the Rewired
         devices read off, and check the bindings it read back against
         KIT_BINDINGS. A setup that fails, leaves a device on or reads other
-        bindings is torn down again, so nothing is left half done."""
+        bindings is torn down again, so nothing is left half done.
+
+        `player` names the Rewired player the kit is handed to; None hands
+        it to KIT_PLAYER. A given name is sent as is, and the reply's first
+        line is given_player_line."""
+        text = self._setup(KIT_PLAYER if player is None else player)
+        if player is None:
+            return text
+        return f"{given_player_line(player)}\n{text}"
+
+    def _setup(self, player: Any) -> str:
+        """ch_kit_setup's work, handing the kit to `player`."""
         with self._lock:
             if not self._frida.is_attached():
                 return NOT_ATTACHED
@@ -478,7 +500,7 @@ class KitTools:
             lines.append(f"kit agent attached; log: {log}")
             try:
                 with self._request_lock:
-                    reply = agent.request(setup_message(), KIT_SETUP_CAP_S)
+                    reply = agent.request(setup_message(player), KIT_SETUP_CAP_S)
             except FA.ReadFailed as e:
                 lines.append(f"setup failed: {e}{self._cap_note(e, 'KIT_SETUP_CAP_S')}")
                 lines.extend(self._teardown_and_detach())
