@@ -118,7 +118,6 @@ struct TimelineLayout {
     // order, so a jump between two segments is a vertical step.
     std::vector<TimelinePoint> saved_line;
     float activate_y = 0.0f;  // the saved row's height at kSpActivationBars
-    std::vector<float> ghost_x;  // each ghost fill's end (PreviewScene::ghost_fills)
     std::vector<TimelineBand> bands;
     std::vector<TimelineFillItem> fills;
     float height() const { return rows[kTimelineRowCount - 1].y1; }

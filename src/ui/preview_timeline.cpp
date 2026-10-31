@@ -182,9 +182,6 @@ std::optional<TimelineLayout> timeline_layout(const app::PreviewScene& scene, do
     }
     out.activate_y = y_of(kSpActivationBars);
 
-    for (size_t i : scene.ghost_fills)
-        if (i < scene.fills.size()) out.ghost_x.push_back(x_of(scene.fills[i].span.end_ms));
-
     const TimelineRect& acts = out.row(TimelineRow::Activations);
     for (size_t i = 0; i < scene.activations.size(); ++i) {
         const std::optional<std::pair<double, double>> w = scene.activations[i].sp_window();
