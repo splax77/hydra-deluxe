@@ -9,8 +9,8 @@ clamp the number is reached through a function pointer the decompiler can't
 follow. So the only way to know is to watch the running game.
 
 This tool does that, in Python, off to the side of Hydra's C++ build. The full
-design and every reverse-engineering fact is in
-[`docs/superpowers/specs/2026-09-17-ch-dynamic-input-probe.md`](../../docs/superpowers/specs/2026-09-17-ch-dynamic-input-probe.md).
+design and every reverse-engineering fact is in [`SPEC.md`](SPEC.md) beside
+this page.
 
 ## The one idea it rests on
 

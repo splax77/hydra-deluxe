@@ -1,8 +1,10 @@
 """Reverse-engineering facts for the Clone Hero drum hit-window probe.
 
 Every address here is transcribed from the handoff spec
-(docs/superpowers/specs/2026-09-17-ch-dynamic-input-probe.md), which in turn
-cross-checked them against the Ghidra dumps in ../hydra-data/scratch_ms/. This is the ONE
+(tools/ch_probe/SPEC.md), which in turn
+cross-checked them against Ghidra's decompiles of build 6142, which are kept
+locally outside the repo (docs/clone-hero/code/README.md says where the full
+one lives). This is the ONE
 place the numbers live. Every other module imports from here; nothing else
 hard-codes an address. If a Clone Hero update shifts the binary, this file is
 the only thing that changes.
