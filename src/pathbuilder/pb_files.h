@@ -34,8 +34,8 @@ struct Refusal {
 };
 
 // Reads `text` (the long or the short form) on the open chart and makes the
-// path it names the player's, as one edit of `history` (player_copy_of, as
-// "Edit a copy" makes it), so undo puts the old path back. When the text does
+// path it names the player's, as one edit of `history` (player_copy_of), so
+// undo puts the old path back. When the text does
 // not fit the chart, `history` is left as it was and the refusal says why:
 // the reader's refusal reaches plain_error as ErrorKind::PathTextRefused.
 std::optional<Refusal> paste_path(PathHistory& history, const OpenChart& chart,
@@ -57,15 +57,14 @@ void save_path_file(const std::string& file, const Path& path, const Song& song)
 // entry's windows do not fit the chart; the text names the file and the entry.
 std::vector<Path> read_path_file(const std::string& file, const OpenChart& chart);
 
-// Opens a path file: every path read_path_file finds is added to `branches`
-// (the left list's saved branches) unless the left list (path_rows) already
-// shows it, judged by path_identity, so each path shows once (the user's
-// ruling, "Show each path once"). The first path becomes the player's path
-// either way, as one edit of `history`, so undo puts the old path back. When
-// the file cannot be read or does not fit the chart, nothing changes and the
-// refusal says why.
-std::optional<Refusal> open_path_file(PathHistory& history, std::vector<Path>& branches,
-                                      const OpenChart& chart, const std::string& file);
+// Opens a path file: the first path read_path_file finds becomes the player's
+// path, as one edit of `history`, so undo puts the old path back; the file's
+// other paths are read (so a bad one refuses the file) and left out (the
+// user's answer Q2 in docs/superpowers/plans/2026-10-30-path-builder-redesign.md).
+// When the file cannot be read or does not fit the chart, nothing changes and
+// the refusal says why.
+std::optional<Refusal> open_path_file(PathHistory& history, const OpenChart& chart,
+                                      const std::string& file);
 
 }  // namespace hydra::pathbuilder
 

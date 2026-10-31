@@ -39,6 +39,14 @@ std::string format_percent(int64_t part, int64_t total, int decimals);
 // numbers so it rounds nothing in floating point.
 int64_t percent_steps(int64_t part, int64_t total, int decimals);
 
+// A points figure in the few characters under a fill on the Path Builder's
+// timeline, the approved mockup's `short` rule
+// (docs/superpowers/specs/2026-10-30-path-builder-mockup/mockup_template.html):
+// under 1,000 it is written whole ("640"), from 1,000 as thousands to one
+// place with a "k" ("1.2k", "13.6k"). The tenth rounds to the nearest, a half
+// away from zero.
+std::string format_points_short(int64_t points);
+
 // A song time as the Preview's clock shows it, "m:ss.mmm" ("1:04.000"). The
 // time rounds to the nearest whole ms first (a half rounds away from zero),
 // then splits into minutes and seconds, so 59,999.6 ms reads "1:00.000".

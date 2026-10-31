@@ -100,9 +100,6 @@ struct ClickResult {
     // a click the window checks refuse; empty when the click worked.
     std::string message;
     std::string detail;
-    // A note for the screen to show once about a click that worked. None of
-    // start_window, choose_end and remove_window sets one.
-    std::string notice;
 };
 
 // Starts a window at `act_tick`: pins only that activation, runs
@@ -177,8 +174,11 @@ private:
     std::atomic<size_t> landed_{0};
 };
 
-// Called with each candidate's finish as it lands.
-using CandidateProgress = std::function<void(const app::CandidateFinish&)>;
+// Called with each candidate's finish as it lands, and the candidate's
+// activation in that finish's path (none when the path has no activation
+// after the player's windows).
+using CandidateProgress =
+    std::function<void(const app::CandidateFinish&, const std::optional<Activation>&)>;
 
 // The candidate queue's searches: for each tick of `ticks`, in chart order,
 // best_finish with `windows` pinned as they are and a window on the tick
@@ -201,6 +201,9 @@ public:
     ~CandidateJob();
     // The finishes landed so far, in chart order.
     std::vector<app::CandidateFinish> snapshot() const;
+    // Each landed finish's candidate activation (CandidateProgress), in the
+    // same order.
+    std::vector<std::optional<Activation>> activations() const;
     // How many finishes have landed.
     size_t landed() const { return landed_.load(); }
 
@@ -211,6 +214,7 @@ private:
     std::vector<int64_t> ticks_;
     mutable std::mutex mu_;
     std::vector<app::CandidateFinish> done_;
+    std::vector<std::optional<Activation>> acts_;
     std::atomic<size_t> landed_{0};
 };
 
@@ -239,6 +243,8 @@ public:
     size_t landed() const;
     // The newest candidate queue's finishes as far as it has got.
     std::vector<app::CandidateFinish> candidates() const;
+    // CandidateJob::activations of the newest queue.
+    std::vector<std::optional<Activation>> candidate_activations() const;
     // CandidateJob::landed of the newest queue, plus one once it has finished.
     size_t candidates_landed() const;
     // The plain sentence and details line of a ladder that threw, or else of
@@ -275,30 +281,20 @@ private:
 
 class PbState;
 
-}  // namespace hydra::pathbuilder
-
-namespace hydra::ui {
-class PreviewController;
-}
-
-namespace hydra::pathbuilder {
-
 // What the "Finish the rest for me" button says.
 inline constexpr const char* kFinishForMeLabel = "Finish the rest for me";
-// The heading over the decision list.
-inline constexpr const char* kDecisionsHeading = "Your decisions";
 
-// The right column: the decision list for the path on screen, its end
+// What the screen reads for the path on screen: its ladder and rows, its end
 // choices, "Finish the rest for me", the candidate costs, and the clicks
-// that change the player's path.
+// that change the player's path. pb_window.cpp draws all of it.
 // Its searches run on worker threads (Coach, WorkJob); poll takes their
 // answers in.
 class DecisionList {
 public:
-    // The path on screen and a key that names it: a left-list row, or the
-    // player's own path at a PathHistory::generation. A new key starts its
-    // ladder and clears the selected row. `graph` is PbState::search_graph
-    // and `settings` the open chart's.
+    // The path on screen and a key that names it: the player's own path at
+    // a PathHistory::generation. A new key starts its ladder and clears the
+    // selected row. `graph` is PbState::search_graph and `settings` the open
+    // chart's.
     void show(std::shared_ptr<const ScoreGraph> graph, const SearchSettings& settings,
               const Path* shown, const std::string& key);
     // Takes in a finished click or end choice (an edit of the player's path
@@ -310,8 +306,8 @@ public:
 
     // Starts a window at `act_tick` on `windows` (start_window), on a
     // worker; the answer becomes the player's path as one edit. `windows`
-    // are the ones click_windows (pb_state.h) names. An impossible click
-    // leaves the path and sets message().
+    // are the player's own. An impossible click leaves the path and sets
+    // message().
     // `generation` is PathHistory::generation() at the click: the answer is
     // thrown away if the player's path changed since (undo, redo, Finish the
     // rest for me, another edit), and the player clicks again if they still
@@ -348,11 +344,17 @@ public:
     // against BF(n) (app::candidate_costs); empty until the ladder is
     // complete.
     const std::vector<app::CandidateCost>& candidates() const { return candidates_; }
+    // candidates()[i]'s activation in its best finish's path (the hover's
+    // "Hydra would end it at" line), or null when that path has none.
+    const Activation* candidate_end(size_t i) const;
     // The click's or end choice's failure: plain sentence and details line.
     const std::string& message() const { return message_; }
     const std::string& detail() const { return detail_; }
-    // The last click's or end choice's ClickResult::notice.
-    const std::string& notice() const { return notice_; }
+    // Why the path on screen has no ladder: pinned_windows refused it, or
+    // the ladder or the candidate queue threw (Coach::error). Plain sentence
+    // and details line; empty when nothing failed.
+    std::string error() const;
+    std::string error_detail() const;
     // True once after poll made an edit of the player's path, so the
     // window shows the player's path again.
     bool take_player_changed();
@@ -362,12 +364,8 @@ public:
     std::optional<size_t> selected() const { return selected_; }
     const std::vector<EndChoice>& ends() const { return ends_; }
     // The ladder for the path on screen as far as it has got, as the rows
-    // read it; null before its first request. The strip's step line reads it.
+    // read it; null before its first request. The three scores read it.
     const app::LadderRun* run() const { return run_ ? &*run_ : nullptr; }
-
-    // Draws the column. `preview` (may be null) is sought to a row's
-    // activation when the row is clicked.
-    void draw(PbState& state, ui::PreviewController* preview);
 
 private:
     Coach coach_;
@@ -396,10 +394,10 @@ private:
     std::vector<std::unique_ptr<WorkJob<ClickResult>>> retired_clicks_;
     std::string message_;
     std::string detail_;
-    std::string notice_;
     bool player_changed_ = false;
 
     std::vector<app::CandidateCost> candidates_;
+    std::vector<std::optional<Activation>> candidate_ends_;  // parallel to candidates_
     size_t candidates_landed_ = static_cast<size_t>(-1);
 
     void start_edit(std::function<ClickResult()> fn, uint64_t generation);

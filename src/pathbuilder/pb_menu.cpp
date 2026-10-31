@@ -19,6 +19,8 @@ MenuChoice draw_menu(const MenuFlags& f) {
         if (ImGui::BeginMenu("Edit")) {
             if (ImGui::MenuItem("Undo", "Ctrl+Z", false, f.can_undo)) choice = MenuChoice::Undo;
             if (ImGui::MenuItem("Redo", "Ctrl+Y", false, f.can_redo)) choice = MenuChoice::Redo;
+            if (ImGui::MenuItem(kStartOverLabel, nullptr, false, f.can_start_over))
+                choice = MenuChoice::StartOver;
             ImGui::Separator();
             if (ImGui::MenuItem("Copy", "Ctrl+C", false, f.can_copy)) choice = MenuChoice::Copy;
             if (ImGui::MenuItem("Paste", "Ctrl+V", false, f.can_paste)) choice = MenuChoice::Paste;

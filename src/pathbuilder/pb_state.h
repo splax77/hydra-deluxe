@@ -41,6 +41,13 @@ struct OpenChart {
     std::shared_ptr<const ScoreGraph> graph;
     // What PreviewController::open reads for this chart, filled from the file.
     store::ChartLibraryEntry entry;
+    // The path with no activation: search_target over no windows, found once
+    // at the open. The screen shows it while the player has no window, so
+    // the empty start has a scene, a meter curve and a score from a path
+    // ("The empty path" in docs/superpowers/plans/
+    // 2026-10-30-path-builder-redesign.md). Empty only when the search found
+    // no path at all.
+    std::optional<Path> empty_path;
 
     // Whether the chart has a Star Power phrase. Without one there is no
     // path to build (the record then has no activation to offer).
@@ -50,7 +57,8 @@ struct OpenChart {
 // Opens the chart at `notespath` under `settings`, on the calling thread:
 // parses it as the Preview parses it (app::resolve_preview_song with the
 // settings' reading, rules and fill rule), checks it has notes (require_notes,
-// whose error the user sees), builds the graph and runs analyze_chart over it.
+// whose error the user sees), builds the graph, runs analyze_chart over it and
+// finds the empty path.
 // Throws what those throw. Setting *cancel stops the search, by
 // app::stop_on_cancel's rule.
 std::unique_ptr<OpenChart> load_open_chart(const std::string& notespath,
@@ -82,19 +90,9 @@ struct PlayerPath {
 };
 
 // The player's path as a copy of `path`, every window pinned in full
-// (pinned_windows), as "Edit a copy" makes it.
+// (pinned_windows), as Paste, Open path... and "Finish the rest for me" make
+// it.
 PlayerPath player_copy_of(const Path& path);
-
-class PathHistory;
-
-// The windows a click on a fill (the highway or the strip) acts on. While a
-// left-list row is on screen (`shown_row`, null when the player's own path
-// is) they are the windows of the copy "Edit a copy" makes of it
-// (player_copy_of), so the click's one edit makes the copy and applies the
-// click, and one undo puts back the path from before the click (the user's
-// ruling, "Copy it, then apply"). Otherwise they are the player's own.
-// Throws what player_copy_of throws.
-std::vector<PinnedWindow> click_windows(const PathHistory& history, const Path* shown_row);
 
 // Undo and redo over the player's path: every state the path has been in,
 // with no cap, and which one is current.
@@ -159,7 +157,7 @@ public:
     PathHistory& history() { return history_; }
     const PathHistory& history() const { return history_; }
 
-    // The right column's decision list (pb_coach.h). poll() takes its
+    // The decision list the screen reads (pb_coach.h). poll() takes its
     // answers in; a newly opened chart clears it.
     DecisionList& decisions() { return decisions_; }
     const DecisionList& decisions() const { return decisions_; }

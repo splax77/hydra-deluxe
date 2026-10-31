@@ -59,8 +59,8 @@ bool click_fill(ImGuiTestContext* ctx, int64_t act_tick);
 void register_tests(Harness& h);
 // The decision list's tests (pbtest_coach.cpp).
 void register_coach_tests(Harness& h);
-// The clicks on the highway and the strip (pbtest_strip.cpp).
-void register_strip_tests(Harness& h);
+// The whole path built by clicking (pbtest_build.cpp).
+void register_build_tests(Harness& h);
 // Copy, paste and the path files' tests (pbtest_files.cpp).
 void register_file_tests(Harness& h);
 

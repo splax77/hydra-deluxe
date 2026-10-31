@@ -25,6 +25,8 @@ std::unique_ptr<OpenChart> load_open_chart(const std::string& notespath,
     require_notes(c.song, c.settings.difficulty, c.settings.prodrums);
     c.graph = std::make_shared<const ScoreGraph>(search_graph(c.song, c.settings));
     c.record = analyze_chart(c.song, c.settings, app::stop_on_cancel(cancel));
+    TargetResult none = search_target(*c.graph, {});
+    if (!none.paths.empty()) c.empty_path = std::move(none.paths.front());
 
     c.entry.notespath = notespath;
     c.entry.md5 = app::hash_chart_file(notespath);
@@ -63,11 +65,6 @@ PlayerPath player_copy_of(const Path& path) {
     p.windows = pinned_windows(path);
     p.path = path;
     return p;
-}
-
-std::vector<PinnedWindow> click_windows(const PathHistory& history, const Path* shown_row) {
-    if (shown_row) return player_copy_of(*shown_row).windows;
-    return history.current().windows;
 }
 
 void PathHistory::reset(PlayerPath start) {

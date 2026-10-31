@@ -6,14 +6,8 @@
 #include <stdexcept>
 #include <utility>
 
-#include "imgui.h"
-
-#include "app/report.h"  // ChipToken
 #include "app/user_messages.h"
 #include "pathbuilder/pb_state.h"
-#include "ui/preview_controller.h"
-#include "ui/theme.h"    // chip_color
-#include "ui/widgets.h"  // WarnColor, error_detail_line
 
 namespace hydra::pathbuilder {
 
@@ -258,8 +252,13 @@ std::vector<app::CandidateFinish> candidate_finishes(const ScoreGraph& graph,
         if (bf.paths.empty())
             throw std::logic_error("candidate_finishes: no path activates at tick " +
                                    std::to_string(tick) + " (" + bf.failed_reason + ")");
-        out.push_back(app::CandidateFinish{tick, bf.paths.front().totalscore()});
-        if (progress) progress(out.back());
+        const Path& best = bf.paths.front();
+        out.push_back(app::CandidateFinish{tick, best.totalscore()});
+        // The candidate is the activation after the player's windows.
+        const ActivationWalk acts = best.walk_activations();
+        const std::optional<Activation> act =
+            windows.size() < acts.size() ? std::optional<Activation>(acts[windows.size()]) : std::nullopt;
+        if (progress) progress(out.back(), act);
     }
     return out;
 }
@@ -275,10 +274,12 @@ CandidateJob::CandidateJob(std::shared_ptr<const ScoreGraph> graph, SearchSettin
             run_guarded([this] {
                 throw_if_cancelled();
                 candidate_finishes(*graph_, settings_, windows_, ticks_,
-                                   [this](const app::CandidateFinish& landed) {
+                                   [this](const app::CandidateFinish& landed,
+                                          const std::optional<Activation>& act) {
                                        {
                                            const std::lock_guard<std::mutex> lock(mu_);
                                            done_.push_back(landed);
+                                           acts_.push_back(act);
                                        }
                                        ++landed_;
                                        throw_if_cancelled();  // a newer request superseded this one
@@ -296,6 +297,11 @@ CandidateJob::~CandidateJob() { shutdown(); }
 std::vector<app::CandidateFinish> CandidateJob::snapshot() const {
     const std::lock_guard<std::mutex> lock(mu_);
     return done_;
+}
+
+std::vector<std::optional<Activation>> CandidateJob::activations() const {
+    const std::lock_guard<std::mutex> lock(mu_);
+    return acts_;
 }
 
 void Coach::request(std::shared_ptr<const ScoreGraph> graph, const SearchSettings& settings,
@@ -362,6 +368,11 @@ std::vector<app::CandidateFinish> Coach::candidates() const {
     return candidate_job_->snapshot();
 }
 
+std::vector<std::optional<Activation>> Coach::candidate_activations() const {
+    if (!candidate_job_) return {};
+    return candidate_job_->activations();
+}
+
 size_t Coach::candidates_landed() const {
     if (!candidate_job_) return 0;
     return candidate_job_->landed() + (candidate_job_->finished() ? 1 : 0);
@@ -407,27 +418,7 @@ void Coach::clear() {
     windows_.clear();
 }
 
-// ---- the right column -------------------------------------------------------
-
-namespace {
-
-// The report chips the cost tiers wear (spec decision 3, plan Q1).
-ImVec4 tier_color(app::CostTier tier) {
-    using app::report::ChipToken;
-    switch (tier) {
-        case app::CostTier::Green: return ui::chip_color(ChipToken::t0);
-        case app::CostTier::Yellow: return ui::chip_color(ChipToken::t1);
-        case app::CostTier::Red: return ui::chip_color(ChipToken::t3);
-    }
-    return ui::chip_color(ChipToken::muted);
-}
-
-// A cost as the row writes it: "0", or the points lost, "-13,640".
-std::string cost_text(int64_t cost) {
-    return cost == 0 ? std::string("0") : "-" + group_thousands(cost);
-}
-
-}  // namespace
+// ---- the decision list ------------------------------------------------------
 
 void DecisionList::show(std::shared_ptr<const ScoreGraph> graph, const SearchSettings& settings,
                         const Path* shown, const std::string& key) {
@@ -440,8 +431,9 @@ void DecisionList::show(std::shared_ptr<const ScoreGraph> graph, const SearchSet
     if (ends_job_) retired_ends_.push_back(std::move(ends_job_));
     error_.clear();
     candidates_.clear();
+    candidate_ends_.clear();
     candidates_landed_ = static_cast<size_t>(-1);
-    shown_ = shown ? std::optional<Path>(*shown) : std::nullopt;
+    shown_ =shown ? std::optional<Path>(*shown) : std::nullopt;
     shown_windows_.clear();
     try {
         if (shown_) shown_windows_ = pinned_windows(*shown_);
@@ -473,6 +465,7 @@ void DecisionList::price_fills(std::vector<int64_t> ticks) {
     if (!error_.empty() || !graph_) return;
     if (!coach_.request_candidates(std::move(ticks))) return;
     candidates_.clear();
+    candidate_ends_.clear();
     candidates_landed_ = static_cast<size_t>(-1);
 }
 
@@ -481,12 +474,31 @@ void DecisionList::refresh_candidates() {
     if (landed == candidates_landed_) return;
     candidates_landed_ = landed;
     candidates_.clear();
+    candidate_ends_.clear();
     // The queue starts only after a complete ladder, so run_ (refreshed
     // first) holds BF(0) and BF(n) by the time a candidate lands.
     const std::vector<app::CandidateFinish> landed_finishes = coach_.candidates();
     if (landed_finishes.empty() || !run_ || !run_->complete) return;
     candidates_ = app::candidate_costs(run_->ladder.bf.front(), run_->ladder.bf.back(),
                                        landed_finishes);
+    // Read after the finishes, so it holds at least as many.
+    candidate_ends_ = coach_.candidate_activations();
+    candidate_ends_.resize(candidates_.size());
+}
+
+const Activation* DecisionList::candidate_end(size_t i) const {
+    if (i >= candidate_ends_.size() || !candidate_ends_[i]) return nullptr;
+    return &*candidate_ends_[i];
+}
+
+std::string DecisionList::error() const {
+    if (!error_.empty()) return error_;
+    return coach_.error();
+}
+
+std::string DecisionList::error_detail() const {
+    if (!error_.empty()) return {};
+    return coach_.error_detail();
 }
 
 void DecisionList::poll(PbState& state) {
@@ -511,7 +523,6 @@ void DecisionList::poll(PbState& state) {
             ClickResult& r = click_job_->result();
             message_ = std::move(r.message);
             detail_ = std::move(r.detail);
-            notice_ = std::move(r.notice);
             if (r.windows) {
                 PlayerPath next;
                 next.windows = std::move(*r.windows);
@@ -540,6 +551,7 @@ void DecisionList::clear() {
     finish_.reset();
     list_landed_ = static_cast<size_t>(-1);
     candidates_.clear();
+    candidate_ends_.clear();
     candidates_landed_ = static_cast<size_t>(-1);
     error_.clear();
     selected_.reset();
@@ -548,7 +560,6 @@ void DecisionList::clear() {
     if (click_job_) retired_clicks_.push_back(std::move(click_job_));
     message_.clear();
     detail_.clear();
-    notice_.clear();
 }
 
 bool DecisionList::take_player_changed() {
@@ -561,7 +572,6 @@ void DecisionList::start_edit(std::function<ClickResult()> fn, uint64_t generati
     if (click_job_) retired_clicks_.push_back(std::move(click_job_));
     message_.clear();
     detail_.clear();
-    notice_.clear();
     click_generation_ = generation;
     click_job_ = std::make_unique<WorkJob<ClickResult>>(std::move(fn));
 }
@@ -626,84 +636,6 @@ void DecisionList::select(size_t row) {
     ends_job_ = std::make_unique<WorkJob<std::vector<EndChoice>>>([graph, settings, before, act_tick] {
         return end_choices(*graph, settings, before, act_tick);
     });
-}
-
-void DecisionList::draw(PbState& state, ui::PreviewController* preview) {
-    ImGui::TextUnformatted(kDecisionsHeading);
-    ImGui::Separator();
-    if (!error_.empty()) {
-        ui::WarnColor warn;
-        ImGui::TextWrapped("%s", error_.c_str());
-    }
-    if (!message_.empty()) {
-        {
-            ui::WarnColor warn;
-            ImGui::TextWrapped("%s", message_.c_str());
-        }
-        ui::error_detail_line(detail_);
-    }
-    if (!notice_.empty()) ImGui::TextWrapped("%s", notice_.c_str());
-    const std::string ladder_error = coach_.error();
-    if (!ladder_error.empty()) {
-        {
-            ui::WarnColor warn;
-            ImGui::TextWrapped("%s", ladder_error.c_str());
-        }
-        ui::error_detail_line(coach_.error_detail());
-    }
-
-    if (list_.rows.empty()) ImGui::TextDisabled("No windows yet.");
-    for (size_t i = 0; i < list_.rows.size(); ++i) {
-        const CoachRow& r = list_.rows[i];
-        ImGui::PushID(static_cast<int>(i));
-        if (ImGui::Selectable(r.token.c_str(), selected_ == i)) {
-            select(i);
-            if (preview) preview->seek_activation(i);
-        }
-        ImGui::Indent();
-        if (r.cost && r.tier)
-            ImGui::TextColored(tier_color(*r.tier), "%s", cost_text(*r.cost).c_str());
-        else
-            ImGui::TextDisabled("...");
-        if (!r.timing.empty()) {
-            ImGui::SameLine();
-            ImGui::TextDisabled("%s", r.timing.c_str());
-        }
-        if (!r.note.empty())
-            ImGui::TextColored(ui::chip_color(app::report::ChipToken::t5), "%s", r.note.c_str());
-        ImGui::Unindent();
-        ImGui::PopID();
-    }
-    if (list_.after_last) {
-        ImGui::TextUnformatted("After your last window");
-        ImGui::SameLine();
-        ImGui::TextColored(tier_color(*list_.after_last_tier), "%s",
-                           cost_text(*list_.after_last).c_str());
-    }
-    if (!list_.failure.empty()) {
-        ui::WarnColor warn;
-        ImGui::TextWrapped("%s", list_.failure.c_str());
-    }
-
-    if (selected_) {
-        ImGui::Spacing();
-        ImGui::TextDisabled("Ends for this window");
-        if (ends_job_) ImGui::TextDisabled("...");
-        for (size_t e = 0; e < ends_.size(); ++e) {
-            const EndChoice& c = ends_[e];
-            std::string label = c.token;
-            if (!c.timing.empty()) label += "  " + c.timing;
-            label += "  best finish " + group_thousands(c.best_finish);
-            ImGui::PushID(static_cast<int>(1000 + e));
-            if (ImGui::Selectable(label.c_str())) choose_end(c.window, state.history().generation());
-            ImGui::PopID();
-        }
-    }
-
-    ImGui::Spacing();
-    ImGui::BeginDisabled(!can_finish());
-    if (ImGui::Button(kFinishForMeLabel)) finish(state);
-    ImGui::EndDisabled();
 }
 
 }  // namespace hydra::pathbuilder

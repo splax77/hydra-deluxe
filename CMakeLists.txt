@@ -665,12 +665,10 @@ endif()
 add_library(hydra_pathbuilder STATIC
     src/pathbuilder/pb_state.cpp
     src/pathbuilder/pb_coach.cpp
-    src/pathbuilder/pb_paths.cpp
     src/pathbuilder/pb_open.cpp
     src/pathbuilder/pb_menu.cpp
     src/pathbuilder/pb_window.cpp
     src/pathbuilder/pb_resource.h
-    src/pathbuilder/pb_strip.cpp
     src/pathbuilder/pb_files.cpp
     src/pathbuilder/pb_text.cpp
 )
@@ -703,7 +701,7 @@ add_executable(hydra_pathbuilder_uitest
     tests/pb_ui/pbtest_harness.cpp
     tests/pb_ui/pbtest_window.cpp
     tests/pb_ui/pbtest_coach.cpp
-    tests/pb_ui/pbtest_strip.cpp
+    tests/pb_ui/pbtest_build.cpp
     tests/pb_ui/pbtest_files.cpp
 )
 target_link_libraries(hydra_pathbuilder_uitest PRIVATE

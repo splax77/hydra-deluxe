@@ -3,8 +3,6 @@
 #include <exception>
 #include <filesystem>
 #include <fstream>
-#include <iterator>
-#include <set>
 #include <stdexcept>
 
 #include "replay_json.h"
@@ -13,7 +11,6 @@
 #include "app/user_messages.h"
 #include "core/error_kind.h"
 #include "core/winstr.h"  // os_path
-#include "pathbuilder/pb_paths.h"
 #include "search/pather.h"
 #include "search/pathstring_read.h"
 
@@ -97,22 +94,13 @@ std::vector<Path> read_path_file(const std::string& file, const OpenChart& chart
     return out;
 }
 
-std::optional<Refusal> open_path_file(PathHistory& history, std::vector<Path>& branches,
-                                      const OpenChart& chart, const std::string& file) {
+std::optional<Refusal> open_path_file(PathHistory& history, const OpenChart& chart,
+                                      const std::string& file) {
     try {
-        std::vector<Path> read = read_path_file(file, chart);
-        // Built before anything changes, so a refusal leaves both alone.
+        const std::vector<Path> read = read_path_file(file, chart);
+        // Built before the edit, so a refusal leaves the history alone.
         PlayerPath next = player_copy_of(read.front());
-        // "The same path" is path_identity; the list is path_rows.
-        std::set<std::string> listed;
-        for (const PathRow& row : path_rows(chart.record, branches))
-            listed.insert(path_identity(*row.path));
-        std::vector<Path> added;
-        for (Path& p : read)
-            if (listed.insert(path_identity(p)).second) added.push_back(std::move(p));
         history.edit(std::move(next));
-        branches.insert(branches.end(), std::make_move_iterator(added.begin()),
-                        std::make_move_iterator(added.end()));
     } catch (const std::exception& e) {
         return refusal_for(e);
     }
