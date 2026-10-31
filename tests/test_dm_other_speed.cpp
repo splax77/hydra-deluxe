@@ -33,15 +33,17 @@ TEST_CASE("s2 offspeed: one base speed, read everywhere") {
     CHECK(DmReportRow{}.speed == net::kBaseSpeedPercent);
 }
 
-TEST_CASE("s2 offspeed: an off-speed score is 'other speed', with or without a result") {
+TEST_CASE("s2 offspeed: an off-speed score on a listed chart is 'other speed'; on an unlisted one, 'not in library'") {
     store::RecordStore store(":memory:");
     const int64_t optimal = fill_store(store);
     REQUIRE(optimal > 0);
 
+    // fill_store lists kHash only, so the third hash is a chart the library
+    // doesn't list.
     const std::vector<net::DmScore> scores = {
         score_at(kHash, optimal + 5, 150),     // would read "above optimal"
         score_at(kHash, optimal - 1000, 75),   // would read "under optimal"
-        score_at("00ff00ff00ff00ff00ff00ff00ff00ff", 123, 150),  // no result at all
+        score_at("00ff00ff00ff00ff00ff00ff00ff00ff", 123, 150),  // not listed (D284 item 2)
         score_at(kHash, optimal - 1000, 100),  // base speed: under optimal
     };
     const std::vector<DmReportRow> rows =
@@ -51,7 +53,8 @@ TEST_CASE("s2 offspeed: an off-speed score is 'other speed', with or without a r
     // These strings are load-bearing: the window's Status filter and chips key on them.
     CHECK(rows[0].status == "other speed");
     CHECK(rows[1].status == "other speed");
-    CHECK(rows[2].status == "other speed");
+    CHECK(rows[2].status == "not in library");
+    CHECK(rows[2].speed == 150);  // the speed column still shows it
     CHECK(rows[3].status == "under optimal");
 
     // The numbers still show; only the comparison is withheld.
@@ -66,8 +69,8 @@ TEST_CASE("s2 offspeed: an off-speed score is 'other speed', with or without a r
     CHECK(stats.under_optimal == 1);
     CHECK(stats.at_optimal == 0);
     CHECK(stats.above_optimal == 0);
-    CHECK(stats.other_speed == 3);
-    CHECK(stats.not_in_library == 0);
+    CHECK(stats.other_speed == 2);
+    CHECK(stats.not_in_library == 1);
 }
 
 TEST_CASE("s2 offspeed: the counts sentence names other speeds only when there are some") {
