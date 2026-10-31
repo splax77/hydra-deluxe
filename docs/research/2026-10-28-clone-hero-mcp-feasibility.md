@@ -116,52 +116,29 @@ The tools are in `tools/ch_mcp/`, built and reviewed from the plan `docs/superpo
 
 ### Test 1: the bot launch (layer A)
 
-Passed. `"Clone Hero.exe" --song <folder> --player Drums,Expert` plays the chart with a bot and writes `scorestats.json` when the song ends. The game then does not exit: the launcher found it still running 30 s later (on a menu or the results screen; it cannot tell which) and closed it with `--stop`. In the three bot runs the stats file names no profile (`profile_name` is empty), where the plan expected "Guest".
+Passed. The launcher played Window Map and Trippin SP Spike with the bot from the command line, on ProDrums and on plain Drums, and closed the game with `--stop` afterwards. The game numbers came from its `scorestats.json`, and the Hydra numbers from `hydra_replay score` on the same `notes.chart`, with `--prodrums 0` for the plain Drums run. One key-press run on the same chart, kept at `tools/ch_probe/experiments/results/overlay-spike/run1_cal0_scorestats.json`, was compared with them.
 
-| Chart | Game total_notes | Hydra gems / chords | Game sp_phrases_total | Hydra SP phrase ends | Game score | Hydra score |
-|---|---|---|---|---|---|---|
-| Window Map (all kicks) | 142 | 142 / 142 | 0 | 0 | 25,550 | 25,550 |
-| Trippin SP Spike, bot on ProDrums | 1,257 | 1,257 / 857 | 11 | 11 | 290,975 | 290,975 |
-| Trippin SP Spike, bot on Drums | 1,257 | 1,257 / 857 | 11 | 11 | 248,550 | 257,150 |
+The findings this test listed now live in docs/clone-hero/07-internals.md (IN-34 and IN-35 for the scores and the dynamics, IN-37 for the stats file, IN-53 for the game staying open, IN-31 and IN-21), 05-star-power.md (SP-44), 06-scoring.md (SC-14, SC-15, SC-37) and 02-note-list.md (NL-61 to NL-65, NL-67).
 
-The game numbers come from its `scorestats.json`. The Hydra numbers come from `hydra_replay score` on the same `notes.chart`, with `--prodrums 0` for the Drums row. The game's `total_notes` counts gems, not chords.
-
-The bot never uses Star Power. In both Trippin runs (11 phrases) it earned 0 phrases, with 0 activations and 0 time in Star Power. So bot runs can check how Hydra reads a chart, and its score with no Star Power, but nothing about Star Power paths.
-
-The bot does play dynamics. On ProDrums it hit all 9 accents and all 34 ghosts. Keyboard input did not: one earlier key-press run on the same chart and ProDrums (`tools/ch_probe/experiments/results/overlay-spike/run1_cal0_scorestats.json`) hit 0 of 9 and 0 of 34. That is one run; the user's ruling is that keyboard input never registers dynamics. The decompile of handler `0x20DE770` fits this: it checks an accent or ghost note against a per-lane velocity value and a threshold, and a key press probably carries no such value. That reading of the code is not tested.
-
-**Plain Drums drops dynamics.** The Drums row differs by 8,600 points. That is the chart's 9 accents and 34 ghosts (43 notes), at 50 points each, times the 4× multiplier they all sit at (43 × 50 × 4 = 8,600). The game counted 0 accents and 0 ghosts in that run. The cause is in its chart builder `0x20D2EA0`. At `0x20D32E5` it compares the instrument with ProDrums (value 9). For any other instrument it calls `0x20F16E0`, which folds cymbal lanes onto toms, and then `0x20EFEE0`. At `0x20EFF3B` that function runs `and [note+0x7c], 0xfff3ffff`, which clears the accent and ghost bits on every note. MIDI dynamics go through the same note builder, so `.mid` charts lose them too; that is read from the code, not run. The user ruled this a Clone Hero bug. Hydra keeps scoring dynamics in its normal-drums mode. So a normal-drums comparison of a chart with dynamics will differ by exactly the dynamics points, and charts with dynamics should be compared as ProDrums.
+Two rulings came out of this test. The user ruled that keyboard input never registers dynamics. The user also ruled the plain-Drums loss of dynamics a Clone Hero bug, so Hydra keeps scoring dynamics in its normal-drums mode, and charts with dynamics are compared as ProDrums. The test settled that bot runs can check how Hydra reads a chart, and its score with no Star Power, but nothing about Star Power paths.
 
 ### Test 2: the Frida attach (layer C's foundation)
 
-Passed. `frida-il2cpp-bridge` 0.14.0 runs on this build's metadata version 31. The agent found `GameManager` by name in the `CloneHero` image and read its fields by name, with no offsets. Over one Window Map run it took 371 samples. `songTime` rose from 3.07 s to 62.96 s before the song ended, advancing 59.894 s over 59.898 s of wall time. `isSongOver` turned true at the next sample (`songTime` 63.21 s), and the clock then froze at 63.56 s for the rest of the run. There was one live `GameManager` throughout and no errors came.
+Passed. The agent found `GameManager` by name and read its fields over one Window Map run, with no errors. The plan's step waited for `OnCountdownStart` in the session log before attaching, which did not work, so the working run attached 8 s after launch instead. The findings now live in docs/clone-hero/07-internals.md (IN-02, IN-43).
 
-The plan's step waited for `OnCountdownStart` in the session log before attaching. That does not work: a song started from the command line writes only its `Loading Song` line until later. The working run attached 8 s after launch instead.
+Two readings from that run have no row on the pages yet, so they stay here. `songTime` advanced 59.894 s over 59.898 s of wall time before the song ended. After `isSongOver` turned true (at `songTime` 63.21 s), the clock froze at 63.56 s for the rest of the run.
 
 ### Test 3: the hit method (layer C's per-note layer)
 
-Passed. In both bot runs, three methods ran exactly once per note, and no other method came within one of the note count (the next lowest was 2,402 and 2,627 calls):
-- `0x20DEEC0` on the drum engine, which adds a hit's points to the score; its arguments are a note and the base points (50).
-- `0x20DE770` on the drum engine, which handles a hit's accent and ghost flags (the decompile also shows it doing other work).
-- `0x100E6E0` on the engine's generic base class.
+Passed for the two bot runs (Window Map, 142 notes, and Edge Walk, 120 notes). The key-press run on Window Map (`play_chart.py`) counted 139 of 142, so the "once per note" test did not pass there: the trace ended on its cap (song length plus 30 s, the tracer's `ended: done (agent: cap)` line) while the song sat paused. `play_chart.py` itself hit all 142 notes and read 25,550 from the game after the last note, the same as Hydra's score. A second bot run logged each call with the game clock, which showed where the hook fires but not how a late or early hit looks. Reading the hit's result and offset from the note object was the next piece of work.
 
-| Run | Notes | Count of each of the three |
-|---|---|---|
-| Bot, Window Map | 142 | 142 |
-| Bot, Edge Walk | 120 | 120 |
-| Key presses (`play_chart.py`), Window Map | 142 | 139 |
-
-The key-press run went through the same three methods, but its count of 139 is three short, so the "once per note" test did not pass there. The trace ended on its cap (song length plus 30 s, the tracer's `ended: done (agent: cap)` line). The song had sat paused before play, so the cap ran out before the last three notes (at 58.86 s, 58.99 s and 59.08 s; the trace's last counted note was at 55.86 s). The pause as the cause is inferred from `play_chart.py` waiting for the song to start. `play_chart.py` itself hit all 142 notes, and the score it read from the game after the last note was 25,550, the same as Hydra's.
-
-A second bot run logged each call of the two engine methods with the game clock. All 284 calls on Window Map landed within 3.0 ms after their nearest note (the tool's own limit is 85 ms, and the median was 1.75 ms). A bot hits on time, so this shows where the hook fires, not how a late or early hit looks. So these methods are the per-note hook. Reading the hit's result and offset from the note object is the next piece of work.
-
-The "combo: {0}" string is used by a static method of `BasePlayer` for the drum inputs (`0x1168290`), not by the engine. That was found by a byte scan for references, not a disassembly.
+The findings now live in docs/clone-hero/07-internals.md (IN-17 for the three per-note methods, IN-18 for when they fire and the 139-of-142 trace, IN-45 for the "combo: {0}" string).
 
 ### Test 4: a second build
 
-The user had v1.0.0.4045 at `C:\Clone Hero\1.0 old\`. It is a Mono build (Unity 2021.3.45f2) with plain .NET assemblies, so it was read with .NET's metadata reader instead of Il2CppDumper. Both builds' class lists are in `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-dumps\` (`4045` and `6142`).
+The user had v1.0.0.4045 at `C:\Clone Hero\1.0 old\`. It was read with .NET's metadata reader instead of Il2CppDumper, and `compare_dumps.py` compared the two builds. Both builds' class lists are in `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-dumps\` (`4045` and `6142`). The findings now live in docs/clone-hero/07-internals.md (IN-48 to IN-51). One fact has no row on the pages yet, so it stays here: the study read 1.0 as built with Unity 2021.3.45f2.
 
-The names were reshuffled. `compare_dumps.py` found 539 scrambled class names in 1.0. Only 164 come back in 1.1 with the same name and shape, and 189 more keep the name but changed shape. The drum engine's 1.1 name is not in 1.0 at all. 1.0's `GameManager` has 63 fields, all scrambled. 1.1's has 60, of which 40 are readable, and only 13 field names appear in both (a one-off check; `compare_dumps.py` prints the 63 to 20 scrambled and 0 to 40 readable counts). So the MCP must find scrambled classes again by shape after an update. A small patch might keep more names; 1.0 to 1.1 also changed the Unity version and the scripting backend, so this test cannot say.
+The test's conclusion for the tools: the MCP must find scrambled classes again by shape after an update. Whether a small patch keeps more names, this test cannot say, because 1.0 to 1.1 also changed the Unity version and the scripting backend.
 
 ### What to fix in the tools
 
