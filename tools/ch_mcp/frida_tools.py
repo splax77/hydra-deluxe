@@ -2,8 +2,9 @@
 state, and trace the notes the player hits.
 
 Each tool is a thin call into the module that owns the work (the plan
-docs/superpowers/plans/2026-10-28-ch-mcp-server.md, "The tools" and "Who owns
-which question"): frida_attach.LiveAgent for the attach and the reads,
+docs/superpowers/plans/2026-10-28-ch-mcp-server.md (removed; git show
+444631e6:docs/superpowers/plans/2026-10-28-ch-mcp-server.md), "The tools" and
+"Who owns which question"): frida_attach.LiveAgent for the attach and the reads,
 build_facts for the build check and the hook names, ch_probe.constants for
 the hook addresses, and trace_hits for the trace and its line-up. This module
 adds only the session state between tool calls (the live agent, the trace,

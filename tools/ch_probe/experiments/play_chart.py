@@ -13,8 +13,7 @@ kick notes are in it follows the run's own settings (--bass2x).
 
 The auto-player presses each chord's own pads and nothing else. It has no
 Star Power key: on drums the game activates from a press on a fill's last
-note (docs/superpowers/plans/2026-10-28-overlay-spike.md, "How Star Power
-starts on drums").
+note (docs/clone-hero/05-star-power.md, SP-17).
 
 While the song plays, live.wait_until polls the game's song clock and fires
 each chord PRESS_LEAD_MS early; it also notices the song stopping (clock frozen

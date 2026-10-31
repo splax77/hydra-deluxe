@@ -1,7 +1,10 @@
 """Compare the facts files of two Clone Hero builds.
 
-This is test 4 of the feasibility plan
-(docs/superpowers/plans/2026-10-28-ch-mcp-feasibility-tests.md, Task E). It
+This is test 4 of the feasibility study
+(docs/research/2026-10-28-clone-hero-mcp-feasibility.md, "Test 4: a second
+build", has its result), built as Task E of the plan
+docs/superpowers/plans/2026-10-28-ch-mcp-feasibility-tests.md (removed; git
+show 444631e6:docs/superpowers/plans/2026-10-28-ch-mcp-feasibility-tests.md). It
 says whether the obfuscator's scrambled names survive from one build to the
 next, and which readable classes moved a field.
 

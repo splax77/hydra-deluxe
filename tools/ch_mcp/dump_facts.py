@@ -8,8 +8,8 @@ its one description, so this file does not repeat it.
 
 The facts table (`--tsv`) holds one row for each game fact the pages under a
 folder cite, and each fact `tools/ch_probe/constants.py` names, looked up in
-one build's dump. The plan 2026-10-30-clone-hero-reference.md, question 2,
-gives its columns, and TABLE_COLUMNS adds `cited`, the span as the page
+one build's dump. docs/clone-hero/README.md, section "Page rules", gives its
+columns, and TABLE_COLUMNS adds `cited`, the span as the page
 writes it, which is what the C++ test matches a page span by. A page writes a
 scrambled game name by our readable name for it, from that build's names map
 (`names_path`, columns NAMES_COLUMNS); `_lookup` resolves those names, and
@@ -375,7 +375,9 @@ def write_facts(dump_path: str, game_version: str, engine_ctor_rva: int) -> tupl
 # ---- the facts table (--tsv) -------------------------------------------------
 
 # The build a page fact belongs to when nothing on the page names another
-# (the plan 2026-10-30-clone-hero-reference.md, task K5a). constants.py
+# (task K5a of docs/superpowers/plans/2026-10-30-clone-hero-reference.md
+# (removed; git show
+# 444631e6:docs/superpowers/plans/2026-10-30-clone-hero-reference.md)). constants.py
 # describes this build too (its docstring), so its facts are this build's.
 DEFAULT_BUILD = "6142"
 
@@ -383,7 +385,8 @@ CONSTANTS_PATH = os.path.join(_REPO_ROOT, "tools", "ch_probe", "constants.py")
 TOOLS_DIR = os.path.join(_REPO_ROOT, "tools")
 
 # The `RVA_*` names in constants.py that are .rdata data addresses, not
-# methods, so no dump line names them (the plan's question 2).
+# methods, so no dump line names them (docs/clone-hero/README.md, "Page
+# rules").
 _DATA_ADDRESS_PREFIXES = ("RVA_CONST_", "RVA_FORMULA_")
 _DATA_ADDRESS_NAMES = frozenset({"RVA_HITCHECK_THRESHOLD"})
 # The constant that names the drum engine, whose object every OFF_* is in.

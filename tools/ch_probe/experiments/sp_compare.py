@@ -22,7 +22,8 @@ It prints one PASS or FAIL line per check, with the numbers:
   activation that parts from the path.
 
 The plan behind every check is "Task S" in
-docs/superpowers/plans/2026-10-28-overlay-spike.md.
+docs/superpowers/plans/2026-10-28-overlay-spike.md (removed; git show
+444631e6:docs/superpowers/plans/2026-10-28-overlay-spike.md).
 
 It also owns the row questions the `ch` MCP server asks of a watch in
 progress: find_activations, phrase_rises, flips_between, ready_between and
