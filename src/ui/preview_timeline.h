@@ -110,8 +110,9 @@ struct TimelineMetrics {
     TimelineTextWidth axis_width;
 };
 
-// The mockup's sizes at the display's scale (px), for the timeline as
-// PreviewTimeline draws it. Call it inside a frame. The ghost row's height
+// The mockup's sizes for the timeline as PreviewTimeline draws it, each at
+// the current font size or the display's scale as preview_timeline.cpp's
+// constants say. Call it inside a frame. The ghost row's height
 // here is the one it has when a ghost path is set; timeline_layout makes it
 // 0 tall for a scene with no ghost windows.
 TimelineMetrics timeline_metrics();
