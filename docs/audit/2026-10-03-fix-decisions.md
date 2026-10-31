@@ -1081,7 +1081,7 @@ Nothing stored changes, so no stamp moves. Items 3 to 8 change what the app show
 3. **The menu numbers.** The user chose "Use them (Recommended)": 10 s per menu step, 0.25 s between keys, at most 10 Down presses in the search, a menu read every 0.5 s, and a run cap of the song length plus 60 s (else 240 s).
 4. **The first key sequence.** The user chose "Data file, fixed live (Recommended)": the sequence starts from the manual in a data file marked unverified, and the first live run corrects it.
 5. **Memory writes.** The user chose "Allow writes too": agents may set game fields where a feature needs it. Only the rule that agents read fields by name, never by raw offset, stays in the test.
-6. **Nobody at the keyboard.** The user chose "No one needed (Rec.)". The user says in chat when a run may start; the run holds the window focus, and the server's backup and restore put the files back.
+6. **Nobody at the keyboard.** The user chose "No one needed (Rec.)". The user says in chat when a run may start; the run holds the window focus, and the server's backup and restore put the files back. Later on 2026-10-30 ruling 1 of `docs/superpowers/plans/2026-10-30-ch-mcp-in-game-input.md` overruled the focus part of this item: the user said "yes we need to do autonomous runs. that waws the whole point of this", so a run never focuses or shows the game window and feeds its input from inside the game.
 
 On 2026-10-30 the user approved the build ("Yes, build it"). Nothing in Hydra changes, so no stamp moves.
 

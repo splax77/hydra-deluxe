@@ -24,7 +24,8 @@ from tools.ch_mcp import server as S  # noqa: E402
 from tools.hydra_ui_mcp import REPLY_CAP_CHARS  # noqa: E402
 
 # The eighteen tools of the server plan's "The tools" table, then the eleven
-# of the Star Power and song start plan's (task T5).
+# of the Star Power and song start plan's (task T5), then the five kit tools
+# of the in-game input plan (task K5).
 TOOL_NAMES = {
     "ch_start", "ch_stop", "ch_status", "ch_install_chart", "ch_wait_stats",
     "ch_stats", "ch_compare", "ch_attach", "ch_detach", "ch_state",
@@ -33,6 +34,7 @@ TOOL_NAMES = {
     "ch_sp_watch_start", "ch_sp", "ch_sp_watch_status", "ch_sp_watch_stop",
     "ch_sp_compare", "ch_sp_between", "ch_key", "ch_menu", "ch_open_song",
     "ch_method_watch_start", "ch_method_watch_stop",
+    "ch_kit_setup", "ch_kit_press", "ch_kit_status", "ch_kit_watch", "ch_kit_teardown",
 }
 
 
@@ -52,7 +54,7 @@ class ServerTest(unittest.TestCase):
         self.helper = S.Helper(env=env, scratch_root=tmp.name,
                                game_kw={"driver": object()})
 
-    def test_build_server_registers_the_twenty_nine_tools(self):
+    def test_build_server_registers_the_thirty_four_tools(self):
         tools = asyncio.run(S.build_server(self.helper).list_tools())
         self.assertEqual({t.name for t in tools}, TOOL_NAMES)
 
@@ -79,6 +81,30 @@ class ServerTest(unittest.TestCase):
             with self.subTest(text=name):
                 self.assertIn("each note the player hits", text)
                 self.assertNotIn("processes", text)
+
+    def test_the_kit_is_wired_into_the_menu_driver_and_the_auto_player(self):
+        self.assertIs(self.helper.menu._kit, self.helper.kit)
+        # ch_play_chart's route reaches GameTools, and with no kit set up the
+        # kit press GameTools asks KitTools for is None.
+        server = S.build_server(self.helper)
+        result = asyncio.run(server.call_tool("ch_play_chart",
+                                              {"score_json": "x.json", "route": "pads"}))
+        self.assertEqual(result.content[0].text, 'unknown route "pads"; routes: kit, keys')
+        result = asyncio.run(server.call_tool("ch_play_chart",
+                                              {"score_json": "x.json", "route": "kit"}))
+        self.assertEqual(result.content[0].text,
+                         'route kit: the kit is not set up; call ch_kit_setup first, '
+                         'or pass route="keys"')
+
+    def test_the_kit_reads_the_pause_setting_in_the_env_documents_folder(self):
+        docs = self.helper.env.documents_dir
+        os.makedirs(docs)
+        with open(os.path.join(docs, "settings.ini"), "w", encoding="utf-8") as f:
+            f.write("[game]\npause_on_focus_lost = 1\n")
+        self.helper.frida.is_attached = lambda: True
+        self.assertEqual(self.helper.kit.ch_kit_setup(),
+                         "refused: settings.ini reads pause_on_focus_lost = 1, not 0; "
+                         "start the game with ch_start, which sets it for the run")
 
     def test_status_joins_the_game_and_the_frida_lines(self):
         out = self.helper.ch_status().splitlines()

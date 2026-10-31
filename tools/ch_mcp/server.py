@@ -2,12 +2,14 @@
 
 Claude Code starts this server (see .mcp.json at the repo root) and calls its
 tools. The plans are docs/superpowers/plans/2026-10-28-ch-mcp-server.md and
-docs/superpowers/plans/2026-10-30-ch-mcp-star-power-and-song-start.md. The
-game-side tools live in game_tools.py, the Frida tools in frida_tools.py, the
-Star Power tools in sp_tools.py, the menu driver in menu_tools.py and the
-method watch in method_watch.py; this file only builds them around one shared
-lock, registers the tools, cuts each reply and puts the user's files back at
-exit. build_server() is the one list of the tools.
+docs/superpowers/plans/2026-10-30-ch-mcp-star-power-and-song-start.md, and
+docs/superpowers/plans/2026-10-30-ch-mcp-in-game-input.md for the virtual kit.
+The game-side tools live in game_tools.py, the Frida tools in frida_tools.py,
+the Star Power tools in sp_tools.py, the virtual kit in kit_tools.py, the menu
+driver in menu_tools.py and the method watch in method_watch.py; this file only
+builds them around one shared lock, registers the tools, cuts each reply and
+puts the user's files back at exit. build_server() is the one list of the
+tools.
 
 Run it as:  py tools/ch_mcp/server.py
 
@@ -32,6 +34,7 @@ if _REPO_ROOT not in sys.path:
 from tools.ch_mcp import bot_run  # noqa: E402
 from tools.ch_mcp.frida_tools import FridaTools  # noqa: E402
 from tools.ch_mcp.game_tools import GameTools  # noqa: E402
+from tools.ch_mcp.kit_tools import KitTools, read_pause_setting  # noqa: E402
 from tools.ch_mcp.menu_tools import MenuTools  # noqa: E402
 from tools.ch_mcp.method_watch import METHOD_WATCH_CAP_S, MethodWatch  # noqa: E402
 from tools.ch_mcp.sp_tools import SpTools  # noqa: E402
@@ -53,14 +56,15 @@ def _to_stderr(line: str) -> None:
 
 class Helper:
     """The one lock and every tool object sharing it: the game-side tools,
-    the Frida tools, the Star Power tools, the menu driver and the method
-    watch. `env` and the keyword dicts pass the tests' fakes through."""
+    the Frida tools, the Star Power tools, the virtual kit, the menu driver
+    and the method watch. `env` and the keyword dicts pass the tests' fakes
+    through."""
 
     def __init__(self, env: Optional[bot_run.Env] = None,
                  scratch_root: Optional[str] = None,
                  game_kw: Optional[dict] = None, frida_kw: Optional[dict] = None,
-                 sp_kw: Optional[dict] = None, menu_kw: Optional[dict] = None,
-                 watch_kw: Optional[dict] = None):
+                 sp_kw: Optional[dict] = None, kit_kw: Optional[dict] = None,
+                 menu_kw: Optional[dict] = None, watch_kw: Optional[dict] = None):
         self.lock = threading.RLock()
         self.env = env if env is not None else bot_run.Env(out=_to_stderr)
         self.game = GameTools(self.env, self.lock, scratch_root, **(game_kw or {}))
@@ -70,8 +74,16 @@ class Helper:
         # the clock sp_watch's docstring names, not on env's.
         sp_kw = {"sleep": self.env.sleep, **(sp_kw or {})}
         self.sp = SpTools(self.game, self.lock, **sp_kw)
+        # KitTools hands its press to GameTools itself (use_kit_press). It
+        # reads the pause setting in env's documents folder, the same
+        # settings.ini ch_start writes the run's value into.
+        documents_dir = self.env.documents_dir
+        kit_kw = {"now": self.env.now, "sleep": self.env.sleep,
+                  "read_settings": lambda: read_pause_setting(documents_dir),
+                  **(kit_kw or {})}
+        self.kit = KitTools(self.game, self.frida, self.lock, **kit_kw)
         menu_kw = {"now": self.env.now, "sleep": self.env.sleep, **(menu_kw or {})}
-        self.menu = MenuTools(self.game, self.frida, self.lock, **menu_kw)
+        self.menu = MenuTools(self.game, self.frida, self.lock, kit=self.kit, **menu_kw)
         watch_kw = {"now": self.env.now, **(watch_kw or {})}
         self.method_watch = MethodWatch(self.game, self.frida, self.lock, **watch_kw)
 
@@ -93,14 +105,21 @@ def build_server(helper: Optional[Helper] = None):
     server = MCPServer(
         "ch",
         instructions=(
-            "Drive Clone Hero as text. ch_start launches the game (with a song folder the"
-            " bot plays it; with none the game opens at its menu) after backing up the"
-            " user's files; ch_stop closes it and puts them back. ch_attach, ch_state and"
-            " ch_snapshot read the game through Frida; ch_trace_start, ch_notes and"
-            " ch_trace_stop trace each note the player hits. ch_open_song starts a song by"
-            " driving the menus with key presses, ch_start_song starts one by calling the"
-            " game's start method once LS-M has named it, ch_press and ch_play_chart press"
-            " drum lanes on it, and ch_sp and the ch_sp_watch tools read Star Power."
+            "Drive Clone Hero as text, with nobody at the keyboard and the game window"
+            " never brought to the front. ch_start backs up the user's files and the"
+            " Rewired registry key, then launches the game minimized (with a song folder"
+            " the bot plays it; with none the game opens at its menu); ch_stop closes it"
+            " and puts them back. ch_attach, ch_state, ch_snapshot and ch_menu read the"
+            " game through Frida; ch_trace_start, ch_notes and ch_trace_stop trace each"
+            " note the player hits. Presses and menus go through the virtual kit inside"
+            " the game: ch_kit_setup builds the kit after ch_attach, ch_kit_press presses"
+            " its pads and buttons, ch_open_song walks the menus to a song with it,"
+            " ch_play_chart plays a chart on it, ch_kit_status and ch_kit_watch read it,"
+            " and ch_kit_teardown takes it away (ch_stop does too). ch_start_song starts"
+            " a song by calling the game's start method once LS-M has named it. ch_key,"
+            " ch_press and ch_play_chart with route keys press keys into the focused"
+            " window, and a hook refuses them unless the user has typed allow key run."
+            " ch_sp and the ch_sp_watch tools read Star Power."
             " See docs/agents/clone-hero-mcp.md."),
     )
 
@@ -109,18 +128,22 @@ def build_server(helper: Optional[Helper] = None):
     @server.tool()
     def ch_start(song_folder: str | None = None, player: str = bot_run.DEFAULT_PLAYER,
                  profile: str | None = None) -> str:
-        """Back up the user's game files, then start Clone Hero. With a song
-        folder the game plays it with a bot from the command line; with none
-        it opens at its menu. A run already open is stopped and restored
-        first. The reply names the backup folder, the command line, the pid
-        and the song length."""
+        """Back up the user's game files and the Rewired registry key, set
+        settings.ini's pause_on_focus_lost line for the run, then start Clone
+        Hero minimized and watch whether its window ever comes to the front.
+        With a song folder the game plays it with a bot from the command line;
+        with none it opens at its menu. A run already open is stopped and
+        restored first. The reply names the backup folder, the settings line,
+        the command line, the pid and the song length."""
         return capped(h.game.ch_start(song_folder, player, profile))
 
     @server.tool()
     def ch_stop() -> str:
-        """Stop any trace, Frida session and play session, then close the game
-        the server started and restore the user's files, one line per file.
-        A game the server did not start stays open; its files are restored."""
+        """Stop any trace, Frida session, kit and play session, then close the
+        game the server started and restore the user's files and the registry
+        key, one line each, after the kit teardown's checks and the count of
+        times the game came to the front. A game the server did not start
+        stays open; its files are restored."""
         return capped(h.game.ch_stop())
 
     @server.tool()
@@ -213,33 +236,92 @@ def build_server(helper: Optional[Helper] = None):
         """Stop the trace and show how it ended and how many calls it saw."""
         return capped(h.frida.ch_trace_stop())
 
-    # -- keys and the auto-player (game_tools) ----------------------------------------
+    # -- the virtual kit (kit_tools) ------------------------------------------------------
+
+    @server.tool()
+    def ch_kit_setup() -> str:
+        """Build the virtual drum kit inside the game: check that settings.ini
+        holds the run's pause_on_focus_lost value (ch_start sets it), take
+        the backup, attach the kit agent, let the game listen while it is
+        not in focus, take the keyboard and mouse from every player and
+        switch off Rewired's keyboard for the run, hand the kit to its player
+        with the game's own drum map, and check the bindings it reads back
+        against kit_tools.KIT_BINDINGS. A setup that fails or reads other
+        bindings is torn down again. Needs ch_attach."""
+        return capped(h.kit.ch_kit_setup())
+
+    @server.tool()
+    def ch_kit_press(items: str, hold_frames: int | None = None,
+                     rewrite: bool | None = None, on_main: bool | None = None,
+                     read: str | None = None) -> str:
+        """Press one chord of kit items, such as "green,kick" or "start",
+        with or without the kit: prefix, and print the frames it went down
+        and came up on. hold_frames, rewrite and on_main override the kit's
+        hold, rewrite and thread for this press; left out, the kit's own
+        values apply. read names game actions, such as "Green", to read back
+        on the kit's player during the hold. An unknown name is refused with
+        the list of kit items. Needs ch_kit_setup."""
+        return capped(h.kit.ch_kit_press(items, hold_frames, rewrite, on_main, read))
+
+    @server.tool()
+    def ch_kit_status() -> str:
+        """The kit agent's status: the frame count and the frame rate,
+        whether the game has focus, whether the game listens while it is not
+        in focus, the kit, each player's keyboard and mouse flags, then how
+        many times the game came to the front."""
+        return capped(h.kit.ch_kit_status())
+
+    @server.tool()
+    def ch_kit_watch(seconds: float) -> str:
+        """For seconds, read every Rewired player and the controllers for any
+        button held, and say whether any key or button reached a player; a
+        true read is printed as a failure with its frame and reader. A watch
+        longer than kit_tools.KIT_WATCH_MAX_S is refused, and so is one while
+        a play session runs. Needs ch_kit_setup."""
+        return capped(h.kit.ch_kit_watch(seconds))
+
+    @server.tool()
+    def ch_kit_teardown() -> str:
+        """Take the kit away: clear its pads and buttons, remove it, put back
+        every player's keyboard and mouse and the other settings ch_kit_setup
+        changed, print each check, and detach the kit agent. ch_stop runs it
+        too."""
+        return capped(h.kit.ch_kit_teardown())
+
+    # -- the auto-player and the key route (game_tools) --------------------------------
+
+    @server.tool()
+    def ch_play_chart(score_json: str, log: str | None = None,
+                      song_folder: str | None = None, route: str | None = None) -> str:
+        """Play a hydra_replay score JSON in the background, pressing each
+        chord through the virtual kit inside the game. route is "kit" or
+        "keys"; left out, the kit is used once ch_kit_setup has built it, and
+        the call is refused until then. "keys" presses keys into the focused
+        game window, and a hook refuses it unless the user has typed allow
+        key run. Start the song from the menus with ch_open_song: a song
+        launched with a bot is played by the bot. log, when given, is where
+        the press log goes. song_folder, when given, sets the run cap from
+        the song's length; with none the auto-player keeps its own cap."""
+        return capped(h.game.ch_play_chart(score_json, log, song_folder, route))
 
     @server.tool()
     def ch_press(lanes: str) -> str:
-        """Press one chord of drum lanes, such as "red,kick", after bringing
-        the game window to the front. An unknown name is refused with the
-        list of lanes."""
+        """The key route: press one chord of drum lanes, such as "red,kick",
+        as keys after bringing the game window to the front. A hook refuses
+        it unless the user has typed allow key run; ch_kit_press is the
+        route that needs no window. An unknown name is refused with the list
+        of lanes."""
         return capped(h.game.ch_press(lanes))
 
     @server.tool()
     def ch_key(keys: str) -> str:
-        """Press menu keys in order after bringing the game window to the
-        front: a comma list of key names such as "enter,down", with an
-        optional last item text:<string> that types the string (a comma in
-        it is typed, not split). An unknown name is refused with the list of
+        """The key route: press menu keys in order after bringing the game
+        window to the front: a comma list of key names such as "enter,down",
+        with an optional last item text:<string> that types the string (a
+        comma in it is typed, not split). A hook refuses it unless the user
+        has typed allow key run. An unknown name is refused with the list of
         keys."""
         return capped(h.game.ch_key(keys))
-
-    @server.tool()
-    def ch_play_chart(score_json: str, log: str | None = None,
-                      song_folder: str | None = None) -> str:
-        """Play a hydra_replay score JSON with key presses in the background.
-        Start the song from the game's menu or with ch_open_song: a song
-        launched with a bot is played by the bot. log, when given, is where
-        the press log goes. song_folder, when given, sets the run cap from
-        the song's length; with none the auto-player keeps its own cap."""
-        return capped(h.game.ch_play_chart(score_json, log, song_folder))
 
     @server.tool()
     def ch_play_status() -> str:
@@ -256,11 +338,12 @@ def build_server(helper: Optional[Helper] = None):
 
     @server.tool()
     def ch_open_song(song_folder: str) -> str:
-        """Start the song in song_folder by pressing the menu keys
-        menu_steps.json lists, reading the menus before every step and
-        refusing while the Online menu may be on screen. One line per step,
-        or the step it stopped on with the keys sent and the last read.
-        Needs ch_attach on a game open at its menu."""
+        """Start the song in song_folder by pressing, through the virtual kit
+        inside the game, the kit items menu_steps.json lists, reading the
+        menus before every step and refusing while the Online menu may be on
+        screen. One line per step, or the step it stopped on with the items
+        pressed and the last read. Needs ch_kit_setup on a game open at its
+        menu."""
         return capped(h.menu.ch_open_song(song_folder))
 
     # -- Star Power (sp_tools) ---------------------------------------------------------
