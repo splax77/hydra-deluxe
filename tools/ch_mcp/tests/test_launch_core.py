@@ -121,7 +121,7 @@ class ApplyPatchTest(unittest.TestCase):
         self.assertEqual(status["after"], "BA 00 00 00 00")
         self.assertEqual(status["module"], MODULE)
         self.assertEqual(status["patched_at_ms"], NOW)
-        self.assertIsNone(status["error"])
+        self.assertIsNone(status["reason"])
         self.assertEqual(status["loader_runs"], 0)
         self.assertIsNone(status["bytes_at_first_run"])
         self.assertEqual(out["calls"], [
@@ -140,9 +140,9 @@ class ApplyPatchTest(unittest.TestCase):
         self.assertEqual(status["entry_before"], "48 89 5C")
         self.assertEqual(status["before"], "BA 01 00 00 00")
         self.assertIsNone(status["after"])
-        self.assertIn("48 89 5C", status["error"])
-        self.assertIn("BA 01 00 00 00", status["error"])
-        self.assertIn("nothing was written", status["error"])
+        self.assertIn("48 89 5C", status["reason"])
+        self.assertIn("BA 01 00 00 00", status["reason"])
+        self.assertIn("nothing was written", status["reason"])
 
     def test_a_differing_patch_site_writes_nothing_and_hooks_nothing(self):
         out = apply({LOADER: ENTRY, SITE: [0xB9, 0x01, 0x00, 0x00, 0x00]})
@@ -151,8 +151,8 @@ class ApplyPatchTest(unittest.TestCase):
         self.assertEqual(kinds(out["calls"]), ["read", "read"])
         self.assertEqual(status["entry_before"], "40 56 57")
         self.assertEqual(status["before"], "B9 01 00 00 00")
-        self.assertIn("40 56 57", status["error"])
-        self.assertIn("B9 01 00 00 00", status["error"])
+        self.assertIn("40 56 57", status["reason"])
+        self.assertIn("B9 01 00 00 00", status["reason"])
 
     def test_a_short_read_is_a_difference(self):
         out = apply({LOADER: ENTRY[:2], SITE: SITE_BYTES})
@@ -171,8 +171,25 @@ class ApplyPatchTest(unittest.TestCase):
         out = apply(read_throws=True)
         status = out["status"]
         self.assertEqual(status["state"], "refused")
-        self.assertIn("read refused", status["error"])
+        self.assertIn("read refused", status["reason"])
         self.assertEqual(kinds(out["calls"]), ["read"])
+
+    def test_no_status_carries_an_error_key(self):
+        # frida_attach.LiveAgent raises on a reply with an `error` key, so a
+        # status (launch.ts replies with a copy of it) names its reason as
+        # `reason` in every state. test_frida_attach feeds these through
+        # LiveAgent itself.
+        cases = {
+            "patched": apply(),
+            "refused entry": apply({LOADER: [0x48, 0x89, 0x5C], SITE: SITE_BYTES}),
+            "refused write": apply(write_sticks=False),
+            "refused read": apply(read_throws=True),
+        }
+        for what, out in cases.items():
+            with self.subTest(case=what):
+                self.assertNotIn("error", out["status"])
+                self.assertIn("reason", out["status"])
+        self.assertNotIn("error", run({"op": "waiting"})["status"])
 
     def test_the_loader_runs_are_counted_and_the_first_reads_the_site(self):
         out = apply(loader_runs=2)
@@ -191,7 +208,7 @@ class StatusAndPatchTest(unittest.TestCase):
         self.assertEqual(run({"op": "waiting"})["status"], {
             "state": "waiting", "before": None, "after": None,
             "entry_before": None, "module": None, "loader_runs": 0,
-            "bytes_at_first_run": None, "patched_at_ms": None, "error": None})
+            "bytes_at_first_run": None, "patched_at_ms": None, "reason": None})
 
     def test_a_missing_field_is_named(self):
         for key in ("module", "loader_rva", "entry_expect", "patch_rva",

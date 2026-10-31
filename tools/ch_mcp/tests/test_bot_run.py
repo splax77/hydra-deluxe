@@ -536,7 +536,7 @@ def status(state, **kw):
 
 PATCHED = status("patched", before="BA 01 00 00 00", after="BA 00 00 00 00",
                  entry_before=PATCH["entry_expect"], module={"base": "0x7ff800000000", "size": 1},
-                 loader_runs=0, bytes_at_first_run=None, patched_at_ms=1200, error=None)
+                 loader_runs=0, bytes_at_first_run=None, patched_at_ms=1200, reason=None)
 
 
 class FakeLaunchAgent:
@@ -764,7 +764,7 @@ class HumanLaunchTest(unittest.TestCase):
     def test_a_refusal_for_a_failed_read_back_carries_the_agents_reason(self):
         refused = status("refused", before="BA 01 00 00 00", after="BA 01 00 00 00",
                          entry_before=PATCH["entry_expect"],
-                         error="the write did not take: the patch site at 0x396EC5 reads "
+                         reason="the write did not take: the patch site at 0x396EC5 reads "
                                "BA 01 00 00 00 after writing BA 00 00 00 00")
         said = self.fails(FakeLaunchAgent(self.events, statuses=[refused]))
         self.assertIn("and BA 01 00 00 00 after; the agent says: the write did not take", said)

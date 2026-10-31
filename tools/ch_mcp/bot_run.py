@@ -556,8 +556,8 @@ def launch_status_lines(status: dict, patch: dict) -> List[str]:
                      "(Date.now)")
     lines.append(f"loader runs since the patch: {status.get('loader_runs')}; bytes at its first "
                  f"run: {_bytes_text(status.get('bytes_at_first_run'))}")
-    if status.get("error"):
-        lines.append(f"launch agent error: {status.get('error')}")
+    if status.get("reason"):
+        lines.append(f"launch agent reason: {status.get('reason')}")
     lines.append(LOADER_LINE + loader_ran(status, patch))
     return lines
 
@@ -581,7 +581,7 @@ def _refused_text(status: dict, patch: dict) -> str:
             f"{_bytes_text(patch.get('entry_expect'))}), and at the patch it found "
             f"{_bytes_text(status.get('before'))} (expects {_bytes_text(patch.get('expect'))}) "
             f"and {_bytes_text(status.get('after'))} after; the agent says: "
-            f"{status.get('error') or 'no reason given'}")
+            f"{status.get('reason') or 'no reason given'}")
 
 
 # What launch_human says when the agent answers idle after its arm reply.
@@ -695,7 +695,7 @@ def launch_human(cmd: list[str], env: Env, log_path: str) -> HumanLaunch:
             raise fail(IDLE_AFTER_ARM)
         if state != STATE_WAITING:
             raise fail(f"the status reply's state is {state!r}"
-                       + (f": {status.get('error')}" if status.get("error") else ""))
+                       + (f": {status.get('reason')}" if status.get("reason") else ""))
         env.sleep(LAUNCH_POLL_S)
 
 

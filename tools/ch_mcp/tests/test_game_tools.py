@@ -865,12 +865,12 @@ class HumanStartTest(unittest.TestCase):
     def test_ch_status_prints_each_of_the_four_states(self):
         cases = {
             "idle": ({"state": "idle"}, "the launch agent holds no arm, so it will never patch"),
-            "waiting": ({"state": "waiting", "loader_runs": 0, "error": None},
+            "waiting": ({"state": "waiting", "loader_runs": 0, "reason": None},
                         "loader ran after patch: not yet"),
             "patched": (PATCHED, "patched at: 1200 ms on the agent's own clock (Date.now)"),
             "refused": ({"state": "refused", "before": "BA 01 00 00 00", "after": None,
-                         "loader_runs": 0, "error": "patching GameAssembly.dll failed: boom"},
-                        "launch agent error: patching GameAssembly.dll failed: boom"),
+                         "loader_runs": 0, "reason": "patching GameAssembly.dll failed: boom"},
+                        "launch agent reason: patching GameAssembly.dll failed: boom"),
         }
         for state, (later, want) in cases.items():
             with self.subTest(state=state):

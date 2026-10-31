@@ -17,6 +17,10 @@
 // frida_attach.LiveAgent posts each message with an id and takes only the
 // reply carrying the same id. Every message gets exactly one reply: its
 // answer, or an error. The agent never sends a message unasked.
+//
+// An `error` key marks an agent fault: LiveAgent raises on it, as on every
+// other agent's. So a status never carries one; a refusal is a normal reply
+// with `state: "refused"` and its `reason` (launch_core.ts).
 
 import { applyPatch, readPatch, waitingStatus } from "./launch_core.js";
 import type { Io, Patch, Status } from "./launch_core.js";
