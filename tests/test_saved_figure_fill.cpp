@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <functional>
 #include <optional>
+#include <set>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -201,6 +202,79 @@ TEST_CASE("a chart whose replay throws keeps its rows empty, and the fill goes o
     CHECK_FALSE(skipped[1].has_value());
     CHECK(figures_of(store, kept.entry.md5)[0] == std::optional<double>(0.0));
     CHECK(store.hardest_figure_filled(fill_settings().profile()));
+}
+
+TEST_CASE("the fill on several workers writes the same figures as on one") {
+    // The first corpus charts, each its own chart, that have a row for the
+    // fill to read once every rank's figure is emptied (the store's own
+    // answer, rows_missing_hardest), saved that way in one library.
+    const size_t want = 6;
+    const hydra::app::AnalysisSettings analysis = fill_settings().to_analysis_settings();
+    std::vector<ChartLibraryEntry> entries;
+    std::vector<PreparedRecord> saved;
+    std::set<std::string> ids;
+    for (const std::string& file : corpus::chart_paths()) {
+        if (saved.size() == want) break;
+        try {
+            const hydra::HydraRecord& record = corpus::analyzed(file, analysis);
+            if (record.paths.empty()) continue;
+            ChartLibraryEntry entry = corpus::scanned_entry(file, file);
+            if (!ids.insert(entry.md5).second) continue;
+            PreparedRecord prepared =
+                hydra::store::prepare_record(entry.md5, fill_settings().profile(), record);
+            for (auto& path : prepared.record.paths) path.hardest_ms.reset();
+            RecordStore probe(":memory:");
+            probe.rebuild_chart_library({entry});
+            probe.save(prepared);
+            if (probe.rows_missing_hardest(fill_settings().profile()).empty()) continue;
+            entries.push_back(std::move(entry));
+            saved.push_back(std::move(prepared));
+        } catch (const std::exception&) {
+            continue;
+        }
+    }
+    REQUIRE(saved.size() == want);
+
+    // Every chart's figures, in `entries` order, after a fill on `workers`
+    // threads of a fresh store holding the charts above. `stopped`, when set,
+    // runs first on the same store and answers stop part-way.
+    const auto filled_on = [&](int workers, Counter& counter, Counter* stopped = nullptr) {
+        RecordStore store(":memory:");
+        store.rebuild_chart_library(entries);
+        for (const PreparedRecord& p : saved) store.save(p);
+        if (stopped) {
+            CHECK_FALSE(hydra::app::fill_saved_hardest(store, fill_settings(), stopped->fn(),
+                                                       hydra::paths_from_pathstring, workers));
+            CHECK_FALSE(store.hardest_figure_filled(fill_settings().profile()));
+        }
+        CHECK(hydra::app::fill_saved_hardest(store, fill_settings(), counter.fn(),
+                                             hydra::paths_from_pathstring, workers));
+        CHECK(store.hardest_figure_filled(fill_settings().profile()));
+        std::vector<std::vector<std::optional<double>>> out;
+        for (const ChartLibraryEntry& e : entries) out.push_back(figures_of(store, e.md5));
+        return out;
+    };
+    Counter one_counter;
+    const auto one = filled_on(1, one_counter);
+    Counter four_counter;
+    const auto four = filled_on(4, four_counter);
+    // A stop after the first chart is written, and the next run finishes.
+    Counter stopped;
+    stopped.stop_at = 2;
+    Counter resumed;
+    CHECK(filled_on(4, resumed, &stopped) == one);
+    CHECK(stopped.calls == 2);
+
+    // Some rank got its figure back, so the comparison is not of empty rows.
+    size_t figures = 0;
+    for (const auto& chart : one)
+        for (const std::optional<double>& f : chart) figures += f.has_value() ? 1 : 0;
+    CHECK(figures > 0);
+    CHECK(four == one);
+    // Before the first chart, after each, and once more after the last.
+    CHECK(one_counter.calls == static_cast<int>(want) + 1);
+    CHECK(four_counter.calls == static_cast<int>(want) + 1);
+    CHECK(four_counter.charts_total == want);
 }
 
 TEST_CASE("an inside-Star-Power squeeze-in fills a negative figure that shows as none") {

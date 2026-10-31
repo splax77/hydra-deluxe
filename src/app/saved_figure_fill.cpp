@@ -1,13 +1,14 @@
 #include "app/saved_figure_fill.h"
 
+#include <atomic>
 #include <cstddef>
-#include <exception>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "app/analysis.h"  // chart_changed_since, AnalysisSettings
+#include "app/work_pool.h"
 #include "core/error_kind.h"
 #include "core/model.h"  // engine_hardest_ms
 #include "parse/song.h"
@@ -74,34 +75,41 @@ std::vector<ProfileFigures> replayed_figures(const Song& song, const AnalysisSet
     return out;
 }
 
-// The figures for one chart's rows, `first` to `last`, written profile row by
-// profile row. The chart is read and every row replayed before anything is
-// written, so a chart that throws there leaves all its rows as they are.
-void fill_chart(store::RecordStore& store, const AnalysisSettings& settings,
-                const PathReplay& replay,
-                std::vector<MissingHardestRow>::const_iterator first,
-                std::vector<MissingHardestRow>::const_iterator last) {
+// One chart's figures, found on a worker: the chart's place in the fill's
+// list, and its figures profile row by profile row. A skipped chart has none.
+struct ChartFigures {
+    size_t chart = 0;
     std::vector<ProfileFigures> found;
+};
+
+// The figures for one chart's rows, `first` to `last`. Runs on a pool worker,
+// so it never throws (run_work_pool). The chart is read and every row
+// replayed before any figure is kept, so a chart that throws there keeps all
+// its rows as they are.
+ChartFigures chart_figures(size_t chart, const AnalysisSettings& settings,
+                           const PathReplay& replay,
+                           std::vector<MissingHardestRow>::const_iterator first,
+                           std::vector<MissingHardestRow>::const_iterator last) {
+    ChartFigures out;
+    out.chart = chart;
     try {
-        if (!chart_still_there(*first)) return;
+        if (!chart_still_there(*first)) return out;
         const Song song = load_songpath(first->notespath, settings.reading(), settings.rules,
                                         fill_rule_for(settings.legacy_fills));
-        found = replayed_figures(song, settings, replay, first, last);
-    } catch (const std::exception&) {
+        out.found = replayed_figures(song, settings, replay, first, last);
+    } catch (...) {
         // A chart whose files can't be checked or read, or whose replay throws,
-        // keeps its rows empty, as a gone one does. The fault is the song's, not the store's,
-        // so the fill goes on with the next chart.
-        return;
+        // keeps its rows empty, as a gone one does. The fault is the song's,
+        // not the store's, so the fill goes on with the other charts.
     }
-    // A failed write is the store's fault, not the song's: it throws on.
-    for (const ProfileFigures& p : found)
-        if (!p.figures.empty()) store.set_hardest(first->song_id, p.profile_id, p.figures);
+    return out;
 }
 
 }  // namespace
 
 bool fill_saved_hardest(store::RecordStore& store, const Settings& settings,
-                        const SavedFigureProgress& progress, const PathReplay& replay) {
+                        const SavedFigureProgress& progress, const PathReplay& replay,
+                        int worker_count) {
     const store::Profile profile = settings.profile();
     if (store.hardest_figure_filled(profile)) return true;
 
@@ -111,14 +119,33 @@ bool fill_saved_hardest(store::RecordStore& store, const Settings& settings,
     for (size_t i = 0; i < rows.size(); ++i)
         if (i == 0 || rows[i].song_id != rows[i - 1].song_id) starts.push_back(i);
     starts.push_back(rows.size());
+    const auto row_at = [&](size_t i) { return rows.begin() + static_cast<std::ptrdiff_t>(i); };
 
     const AnalysisSettings analysis = settings.to_analysis_settings();
     const uint64_t charts = starts.size() - 1;
-    for (uint64_t c = 0; c < charts; ++c) {
-        if (progress && !progress(c, charts)) return false;
-        fill_chart(store, analysis, replay, rows.begin() + static_cast<std::ptrdiff_t>(starts[c]),
-                   rows.begin() + static_cast<std::ptrdiff_t>(starts[c + 1]));
-    }
+    if (charts > 0 && progress && !progress(0, charts)) return false;
+
+    // What runs on the workers, what runs here, and what a stop leaves: the
+    // header, fill_saved_hardest.
+    std::atomic<bool> stop{false};
+    uint64_t done = 0;
+    run_work_pool<ChartFigures>(
+        static_cast<size_t>(charts), worker_count, &stop,
+        [&](size_t c) {
+            return chart_figures(c, analysis, replay, row_at(starts[c]), row_at(starts[c + 1]));
+        },
+        [&](ChartFigures&& chart) {
+            if (stop.load()) return;
+            // A failed write is the store's fault, not the song's: it throws on,
+            // out of the fill.
+            const std::string& song_id = rows[starts[chart.chart]].song_id;
+            for (const ProfileFigures& p : chart.found)
+                if (!p.figures.empty()) store.set_hardest(song_id, p.profile_id, p.figures);
+            ++done;
+            // The last chart's count goes out after the marker, below.
+            if (done < charts && progress && !progress(done, charts)) stop.store(true);
+        });
+    if (done < charts) return false;
     store.mark_hardest_figure_filled(profile);
     // Every chart is done, so the answer has nothing left to stop.
     if (progress && charts > 0) progress(charts, charts);
