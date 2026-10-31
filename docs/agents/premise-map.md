@@ -57,6 +57,8 @@ Calls: `ch_start` (seen: LS-D0 run 1), `ch_attach` (seen: LS-D0 run 1), `ch_kit_
 
 "Seen" means the call ran on this exact target before: the same player, the same route and the same chart. The run id names the step and run that showed it, such as `LS-D0 run 1`. Any call that has not run on this exact target is "never tried".
 
+Two looser readings also count as seen, because read to the letter no step could start a new chart. First, a call that takes no chart or player word counts as seen when it ran on the same kind of launch with the same kit player, even on another chart: `ch_attach` seen on one chart's human direct start is seen on the next chart's. Second, a call that an earlier step of the same plan will prove is marked with that step's passing run, such as `(seen: LS-D1a's passing run)`. That later step does not start until the earlier run's folder exists, and its go request names the folder. The user accepted both readings on 2026-10-31 ("Take all five", question 10 of `docs/superpowers/plans/2026-10-31-ch-mcp-direct-start.md`).
+
 A step holds at most one `(never tried)` call. A step with two or more is a shape error, and its author splits it into steps of one new piece each. That way a failed run names the one piece that failed, instead of leaving a chain of suspects.
 
 ## Who checks a map
