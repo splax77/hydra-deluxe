@@ -4,8 +4,9 @@ The kit agent (agent/kit.ts, built to kit.js) builds one Rewired custom
 controller from the game's own drum definition, hands it to a player with the
 game's default map, presses its pads and buttons on request and takes it away
 again. It sends no key presses and never touches the window, so the game can
-stay minimized and unfocused; while the kit is set up, Rewired's keyboard is
-switched off so the user's own keys reach no player (the plan
+stay minimized and unfocused; while the kit is set up, the Rewired devices in
+KIT_DEVICES are switched off so the user's own keys and mouse reach no player
+(the plan
 docs/superpowers/plans/2026-10-30-ch-mcp-in-game-input.md, "One agent for the
 kit" and "The tools").
 
@@ -79,6 +80,12 @@ KIT_WATCH_MAX_S = 60.0
 # ch_kit_status counts frames over this long to give the frame rate (the
 # plan's "Where the schedule runs").
 KIT_RATE_WINDOW_S = 1.0
+
+# The Rewired devices kit.ts switches off for the run, by the name its setup
+# and status replies key each one's read-back with (the user's rulings of
+# 2026-10-30: the keyboard, "Switch it off (Recommended)", and the mouse,
+# "Switch it off too (Recommended)").
+KIT_DEVICES = ("keyboard", "mouse")
 
 # The prefix a menu step names a kit item with (menu_steps.json's kit: items).
 KIT_PREFIX = "kit:"
@@ -293,25 +300,32 @@ def _flag_text(value: Any) -> str:
     return "on" if value is True else "off" if value is False else str(value)
 
 
-def keyboard_problem(reply: dict) -> Optional[str]:
-    """Why the setup reply does not show Rewired's keyboard switched off, or
-    None when it does. Only a read-back of false passes, so a reply with no
-    read-back is refused too."""
-    now = reply.get("keyboard_now")
-    if now is False:
+def device_label(device: str) -> str:
+    """The Rewired property a KIT_DEVICES device is read and set through, as
+    the lines print it."""
+    return f"{device.capitalize()}.enabled"
+
+
+def devices_problem(reply: dict) -> Optional[str]:
+    """Why the setup reply does not show every KIT_DEVICES device switched
+    off, or None when it does. Only a read-back of false passes, so a reply
+    with no read-back is refused too."""
+    on = [f"Rewired's {d} ({device_label(d)}) reads {_flag_text(reply.get(f'{d}_now'))}"
+          for d in KIT_DEVICES if reply.get(f"{d}_now") is not False]
+    if not on:
         return None
-    return (f"refused: Rewired's keyboard (keyboardEnabled) reads {_flag_text(now)} after "
-            "setup, not off, so the user's keys would still reach the game")
+    return (f"refused: {' and '.join(on)} after setup, not off, so the user's own "
+            "input would still reach the game")
 
 
 def setup_lines(reply: dict) -> List[str]:
-    """The setup reply as lines: the switch, Rewired's keyboard, each
+    """The setup reply as lines: the switch, each KIT_DEVICES device, each
     player's keyboard and mouse flags before and now, the kit, and each map
     with its bindings."""
     lines = [f"ignoreInputWhenAppNotInFocus: was {_flag_text(reply.get('switch_was'))}, "
-             f"now {_flag_text(reply.get('switch_now'))}",
-             f"keyboardEnabled: was {_flag_text(reply.get('keyboard_was'))}, "
-             f"now {_flag_text(reply.get('keyboard_now'))}"]
+             f"now {_flag_text(reply.get('switch_now'))}"]
+    lines.extend(f"{device_label(d)}: was {_flag_text(reply.get(f'{d}_was'))}, "
+                 f"now {_flag_text(reply.get(f'{d}_now'))}" for d in KIT_DEVICES)
     now = {p.get("id"): p for p in reply.get("players_now") or []}
     for p in reply.get("players_was") or []:
         n = now.get(p.get("id"), {})
@@ -418,10 +432,10 @@ class KitTools:
 
     def ch_kit_setup(self) -> str:
         """Check the attach and settings.ini, take the backup, attach the kit
-        agent, send setup, check that Rewired's keyboard reads off, and check
-        the bindings it read back against KIT_BINDINGS. A setup that fails,
-        leaves the keyboard on or reads other bindings is torn down again, so
-        nothing is left half done."""
+        agent, send setup, check with devices_problem that the Rewired
+        devices read off, and check the bindings it read back against
+        KIT_BINDINGS. A setup that fails, leaves a device on or reads other
+        bindings is torn down again, so nothing is left half done."""
         with self._lock:
             if not self._frida.is_attached():
                 return NOT_ATTACHED
@@ -468,9 +482,9 @@ class KitTools:
                 lines.extend(self._teardown_and_detach())
                 return self._reply(lines)
             lines.extend(setup_lines(reply))
-            keyboard = keyboard_problem(reply)
-            if keyboard is not None:
-                lines.append(keyboard)
+            devices = devices_problem(reply)
+            if devices is not None:
+                lines.append(devices)
                 lines.extend(self._teardown_and_detach())
                 return self._reply(lines)
             problems = binding_problems(reply.get("maps"))
@@ -580,9 +594,9 @@ class KitTools:
 
     def ch_kit_status(self) -> str:
         """The kit agent's status: the frame count, the frame rate over
-        KIT_RATE_WINDOW_S, whether the game has focus, the switch, Rewired's
-        keyboard, the kit, each player's keyboard and mouse flags, then the
-        foreground count."""
+        KIT_RATE_WINDOW_S, whether the game has focus, the switch, each
+        KIT_DEVICES device, the kit, each player's keyboard and mouse flags,
+        then the foreground count."""
         with self._lock:
             lines: List[str] = []
             agent = self._agent
@@ -604,7 +618,7 @@ class KitTools:
 
     def ch_kit_teardown(self) -> str:
         """Clear the kit's elements, remove the kit, give every player back
-        the keyboard and mouse flags setup recorded, put Rewired's keyboard
+        the keyboard and mouse flags setup recorded, put the Rewired devices
         and the switch back, print each check, and detach the kit agent."""
         with self._lock:
             if self._play_running():
@@ -648,7 +662,8 @@ class KitTools:
             lines.append("frame rate: not known (no two frame counts)")
         lines.append(f"game focused: {_flag_text(second.get('focused'))}")
         lines.append(f"ignoreInputWhenAppNotInFocus: {_flag_text(second.get('switch_now'))}")
-        lines.append(f"keyboardEnabled: {_flag_text(second.get('keyboard_now'))}")
+        lines.extend(f"{device_label(d)}: {_flag_text(second.get(f'{d}_now'))}"
+                     for d in KIT_DEVICES)
         if second.get("kit_exists"):
             lines.append(f"kit: controller {second.get('kit_id')}, tag {second.get('kit_tag')}")
         else:
