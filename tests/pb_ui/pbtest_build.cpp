@@ -127,8 +127,8 @@ bool open_step_remove_reads(ImGuiTestContext* ctx, const char* remove) {
            ctx->ItemInfo(any_ref(other).c_str(), ImGuiTestOpFlags_NoError).ID == 0;
 }
 
-// The words of the opened step's old sentence ("Activate at m20 ..."), which
-// the step panel no longer draws.
+// The first words of a step sentence ("Activate at m20 ..."). The step panel
+// draws no such sentence, so these words must not be on screen.
 constexpr const char* kOldSentenceStart = "Activate at";
 
 void test_build_a_path_by_clicking(ImGuiTestContext* ctx) {
