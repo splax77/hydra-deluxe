@@ -153,7 +153,9 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
     """Press every chord from where the song clock is now, and log each press.
 
     `clock` reads the song clock (live.ReadsSongClock), `read_score` reads the
-    engine's score and `press` sends one chord's keys. The live script passes
+    engine's score and `press` sends one chord's keys. When `press` returns a
+    dict (the kit press of tools/ch_mcp/kit_tools.py), the row also keeps its
+    values that PRESS_LOG_COLUMNS names. The live script passes
     the game's; the tests pass fakes. `now` and `sleep` are the wall clock the
     stop checks and the waits use. `on_press`, when given, gets each press-log
     row as it is added; `should_stop`, when given, is asked with the run cap
@@ -212,7 +214,7 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
                     return result
                 continue
 
-            press(chord.lanes)
+            pressed = press(chord.lanes)
 
             # Check hit through engine.pressed_input_hit.
             sleep(SCORE_READ_DELAY_S)
@@ -234,6 +236,11 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
                 "score_after": score_after,
                 "hit": int(hit),
             }
+            if isinstance(pressed, dict):
+                # A kit press replies with what the game's frames did; the
+                # row keeps the parts the press log has columns for.
+                row.update((k, pressed[k]) for k in PRESS_LOG_COLUMNS
+                           if k in pressed and k not in row)
             result.rows.append(row)
             if on_press is not None:
                 on_press(row)
@@ -302,14 +309,17 @@ def live_play(chords: Sequence[Chord], *,
               open_proc: Callable = open_process,
               find_engine: Optional[Callable[[object], int]] = None,
               driver: Optional[InputDriver] = None,
+              press: Optional[Callable[[List[int]], object]] = None,
               on_press: Optional[Callable[[dict], object]] = None,
               should_stop: Optional[Callable[[], bool]] = None,
               out: Optional[TextIO] = None,
               cap_s: float = RUN_CAP_S) -> RunResult:
     """Play `chords` against the running game and return what the run did.
 
-    LIVE-ONLY: opens the game read-only, finds its engine and sends keys
-    through `driver` (a new InputDriver when None). When no song starts
+    LIVE-ONLY: opens the game read-only, finds its engine and presses each
+    chord through `press` when one is given (the kit press, which needs no
+    window, so none is looked up), else sends keys through `driver` (a new
+    InputDriver when None) to the game window. When no song starts
     inside the finder's cap, the result's `stop` is STOP_NO_ENGINE and its
     `message` is the finder's. `on_press`, `should_stop` and `cap_s` go to
     play_chords. `open_proc` and `find_engine` stand in for open_process and
@@ -336,18 +346,19 @@ def live_play(chords: Sequence[Chord], *,
         print(f"  Engine at {engine_ptr:#x}, song clock = {engine.song_clock():.2f}s",
               file=out)
 
-        ch_hwnd = find_game_window()
-        if ch_hwnd:
-            print(f"  Clone Hero window handle: {ch_hwnd:#x}", file=out)
-        else:
-            print("  WARNING: could not find Clone Hero window", file=out)
+        if press is None:
+            ch_hwnd = find_game_window()
+            if ch_hwnd:
+                print(f"  Clone Hero window handle: {ch_hwnd:#x}", file=out)
+            else:
+                print("  WARNING: could not find Clone Hero window", file=out)
+            driver = InputDriver() if driver is None else driver
+            press = live_press(driver, ch_hwnd)
 
         # No fill-in between frames: the estimate is the raw clock, which is
         # what play_chart has always fired on.
         clock = SongClock(engine.song_clock, max_fill_s=0.0)
-        driver = InputDriver() if driver is None else driver
-        return play_chords(chords, clock, engine.score,
-                           live_press(driver, ch_hwnd),
+        return play_chords(chords, clock, engine.score, press,
                            on_press=on_press, should_stop=should_stop, out=out,
                            cap_s=cap_s)
     finally:

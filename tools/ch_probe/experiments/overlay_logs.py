@@ -39,4 +39,8 @@ PRESS_LOG_COLUMNS = (
     "score_before",
     "score_after",
     "hit",
+    "down_frame",
+    "up_frame",
+    "down_ms",
+    "up_ms",
 )
