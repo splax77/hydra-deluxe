@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Step Panel Mockup</title>
+<style>
+:root {
+  --bg: #1b1d21; --panel: #24262b; --line: #3a3d44; --text: #e6e8eb; --muted: #a7adb4; --dim: #70757e;
+  --sel: #1f4b4a; --teal: #127f80; --teal-h: #179a9b; --blue: #5ac8fa; --best: #3ccf8e; --yellow: #f2c94c; --red: #f0625f;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 "Segoe UI", system-ui, sans-serif; }
+.wrap { display: flex; gap: 24px; padding: 20px; flex-wrap: wrap; align-items: flex-start; }
+.panel { width: 520px; max-width: 100%; background: var(--panel); border: 1px solid var(--line); padding: 10px 12px 14px; }
+.panel h3 { margin: 0 0 6px; font-size: 15px; font-weight: 400; }
+.row { display: flex; align-items: center; gap: 8px; padding: 4px 6px; cursor: pointer; border-top: 1px solid var(--line); }
+.row:hover { background: #2c2f35; }
+.row.open { background: var(--sel); }
+.disc { width: 24px; height: 24px; border-radius: 50%; background: var(--blue); color: #10202a; display: grid; place-items: center; font-size: 13px; flex: none; }
+.span { white-space: nowrap; }
+.saved { color: var(--muted); white-space: nowrap; }
+.cost { margin-left: auto; white-space: nowrap; }
+.body { padding: 6px 6px 10px 38px; }
+.dim { color: var(--muted); margin: 0 0 4px; }
+.end { display: flex; align-items: center; gap: 8px; padding: 3px 6px; margin: 2px 0; border: 1px solid transparent; }
+.end.live { cursor: pointer; }
+.end.live:hover { border-color: var(--line); }
+.end.on { border-color: var(--teal); background: #173836; }
+.end.fixed:not(.on) { opacity: 0.45; }
+.radio { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--muted); flex: none; }
+.end.on .radio { border-color: var(--teal-h); background: radial-gradient(var(--teal-h) 40%, transparent 45%); }
+button { background: var(--teal); color: #fff; border: 0; padding: 3px 9px; font: inherit; font-size: 14px; cursor: pointer; margin-top: 6px; }
+button:hover { background: var(--teal-h); }
+button:disabled { background: #3a3d44; color: var(--dim); cursor: default; }
+.side { max-width: 420px; }
+.side p { margin: 0 0 10px; color: var(--muted); }
+.side .act { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.best { color: var(--best); } .yel { color: var(--yellow); } .red { color: var(--red); }
+@media (max-width: 560px) { .wrap { padding: 16px; } .body { padding-left: 8px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="panel">
+    <h3>Your activations</h3>
+    <div id="steps"></div>
+  </div>
+  <div class="side">
+    <p>Data: (Don't Fear) The Reaper (Rh), Expert Pro Drums, 2x kick. Step 2's two endings are the engine's own ("2-" and "2+" from hydra_replay target), written the way the builder's list rows already write squeezes.</p>
+    <p>Try: open step 2 and switch its ending. Then activate at m103 and open step 2 again.</p>
+    <div class="act">
+      <button id="next">Activate at m103 (the next fill)</button>
+      <span id="nextNote" class="dim"></span>
+      <button id="reset">Start over</button>
+    </div>
+  </div>
+</div>
+<script>
+// Step 2's endings from the engine: SqOut 0.0 ms ending at m89, and SqIn
+// ending at m91 (the build's button said "no timing needed" for it, so the
+// list row's short form reads "squeeze-in, no timing"). m91 finishes 10,380
+// below m89, so step 2 then costs 2,060 + 10,380 = 12,440.
+const ENDS = [
+  { at: "m89", sq: "squeeze-out 0.0 ms", cost: -2060, rel: 0 },
+  { at: "m91", sq: "squeeze-in 0.0 ms", cost: -12440, rel: -10380 },
+];
+const END_IT_AT = "End it at:";
+let state;
+function reset() { state = { endIdx: 0, steps: 2, open: 1 }; render(); }
+const fmt = n => (n < 0 ? "−" : "") + Math.abs(n).toLocaleString("en-US");
+const costCls = n => n === 0 ? "best" : (n > -9081 ? "yel" : "red"); // 1% of 908,085 is 9,081
+const costTxt = n => n === 0 ? "best" : fmt(n);
+function steps() {
+  const e = ENDS[state.endIdx];
+  return [
+    { n: 1, from: "m48", to: "m57", phrases: 4, sq: "", cost: -3080, ends: null },
+    { n: 2, from: "m83", to: e.at, phrases: 3, sq: e.sq, cost: e.cost, ends: ENDS },
+    { n: 3, from: "m103", to: "m109", phrases: 2, sq: "", cost: -1760, ends: null },
+  ].slice(0, state.steps);
+}
+function render() {
+  const list = steps();
+  const host = document.getElementById("steps");
+  host.innerHTML = "";
+  list.forEach((s, i) => {
+    const last = i === list.length - 1;
+    const row = document.createElement("div");
+    row.className = "row" + (state.open === i ? " open" : "");
+    row.innerHTML = `<span class="disc">${s.n}</span><span class="span">${s.from} → ${s.to}</span>` +
+      `<span class="saved">${s.phrases} phrases${s.sq ? " · " + s.sq : ""}</span>` +
+      `<span class="cost ${costCls(s.cost)}">${costTxt(s.cost)}</span>`;
+    row.onclick = () => { state.open = state.open === i ? null : i; render(); };
+    host.appendChild(row);
+    if (state.open !== i) return;
+    const body = document.createElement("div");
+    body.className = "body";
+    let html = "";
+    if (s.ends) {
+      html += `<p class="dim">${END_IT_AT}</p>`;
+      s.ends.forEach((x, k) => {
+        const cls = "end" + (k === state.endIdx ? " on" : "") + (last ? " live" : " fixed");
+        html += `<div class="${cls}" data-k="${k}"><span class="radio"></span>` +
+          `<span>ends ${x.at} · ${x.sq}</span><span class="cost ${costCls(x.rel)}">${costTxt(x.rel)}</span></div>`;
+      });
+    }
+    html += `<button class="rm">Remove</button>`;
+    body.innerHTML = html;
+    if (last) body.querySelectorAll(".end").forEach(el => el.onclick = () => { state.endIdx = +el.dataset.k; render(); });
+    body.querySelector(".rm").onclick = () => {
+      state.steps = i; state.open = i > 0 ? i - 1 : null;
+      if (i <= 1) state.endIdx = 0;
+      render();
+    };
+    host.appendChild(body);
+  });
+  if (list.length === 0) host.insertAdjacentHTML("beforeend", `<p class="dim">None yet.</p>`);
+  const next = document.getElementById("next");
+  next.disabled = state.steps !== 2 || state.endIdx !== 0;
+  document.getElementById("nextNote").textContent = state.steps === 2 && state.endIdx !== 0
+    ? "This mock only has data for the path that ends step 2 at m89." : "";
+}
+document.getElementById("next").onclick = () => { state.steps = 3; state.open = 2; render(); };
+document.getElementById("reset").onclick = reset;
+reset();
+</script>
+</body>
+</html>
