@@ -1,11 +1,13 @@
 """The MCP server that lets an agent drive Clone Hero as text.
 
 Claude Code starts this server (see .mcp.json at the repo root) and calls its
-tools. The plan is docs/superpowers/plans/2026-10-28-ch-mcp-server.md. The
-game-side tools live in game_tools.py and the Frida tools in frida_tools.py;
-this file only builds them around one shared lock, registers the tools, cuts
-each reply and puts the user's files back at exit. build_server() is the one
-list of the tools.
+tools. The plans are docs/superpowers/plans/2026-10-28-ch-mcp-server.md and
+docs/superpowers/plans/2026-10-30-ch-mcp-star-power-and-song-start.md. The
+game-side tools live in game_tools.py, the Frida tools in frida_tools.py, the
+Star Power tools in sp_tools.py, the menu driver in menu_tools.py and the
+method watch in method_watch.py; this file only builds them around one shared
+lock, registers the tools, cuts each reply and puts the user's files back at
+exit. build_server() is the one list of the tools.
 
 Run it as:  py tools/ch_mcp/server.py
 
@@ -30,6 +32,10 @@ if _REPO_ROOT not in sys.path:
 from tools.ch_mcp import bot_run  # noqa: E402
 from tools.ch_mcp.frida_tools import FridaTools  # noqa: E402
 from tools.ch_mcp.game_tools import GameTools  # noqa: E402
+from tools.ch_mcp.menu_tools import MenuTools  # noqa: E402
+from tools.ch_mcp.method_watch import METHOD_WATCH_CAP_S, MethodWatch  # noqa: E402
+from tools.ch_mcp.sp_tools import SpTools  # noqa: E402
+from tools.ch_probe.experiments import sp_compare  # noqa: E402
 from tools.hydra_ui_mcp import REPLY_CAP_CHARS, cap_reply  # noqa: E402
 
 # The closing line of a cut reply: how to ask for the rest.
@@ -46,17 +52,28 @@ def _to_stderr(line: str) -> None:
 
 
 class Helper:
-    """The one lock, the game-side tools and the Frida tools, sharing it.
-    `env` and the two keyword dicts pass the tests' fakes through."""
+    """The one lock and every tool object sharing it: the game-side tools,
+    the Frida tools, the Star Power tools, the menu driver and the method
+    watch. `env` and the keyword dicts pass the tests' fakes through."""
 
     def __init__(self, env: Optional[bot_run.Env] = None,
                  scratch_root: Optional[str] = None,
-                 game_kw: Optional[dict] = None, frida_kw: Optional[dict] = None):
+                 game_kw: Optional[dict] = None, frida_kw: Optional[dict] = None,
+                 sp_kw: Optional[dict] = None, menu_kw: Optional[dict] = None,
+                 watch_kw: Optional[dict] = None):
         self.lock = threading.RLock()
         self.env = env if env is not None else bot_run.Env(out=_to_stderr)
         self.game = GameTools(self.env, self.lock, scratch_root, **(game_kw or {}))
         frida_kw = {"now": self.env.now, "sleep": self.env.sleep, **(frida_kw or {})}
         self.frida = FridaTools(self.game, self.lock, **frida_kw)
+        # SpTools keeps its own `now`, because its CSV's wall_s column is on
+        # the clock sp_watch's docstring names, not on env's.
+        sp_kw = {"sleep": self.env.sleep, **(sp_kw or {})}
+        self.sp = SpTools(self.game, self.lock, **sp_kw)
+        menu_kw = {"now": self.env.now, "sleep": self.env.sleep, **(menu_kw or {})}
+        self.menu = MenuTools(self.game, self.frida, self.lock, **menu_kw)
+        watch_kw = {"now": self.env.now, **(watch_kw or {})}
+        self.method_watch = MethodWatch(self.game, self.frida, self.lock, **watch_kw)
 
     def ch_status(self) -> str:
         with self.lock:
@@ -80,8 +97,10 @@ def build_server(helper: Optional[Helper] = None):
             " bot plays it; with none the game opens at its menu) after backing up the"
             " user's files; ch_stop closes it and puts them back. ch_attach, ch_state and"
             " ch_snapshot read the game through Frida; ch_trace_start, ch_notes and"
-            " ch_trace_stop trace each note the player hits. ch_press and ch_play_chart press"
-            " drum lanes on a song the user started from the menu."
+            " ch_trace_stop trace each note the player hits. ch_open_song starts a song by"
+            " driving the menus with key presses, ch_start_song starts one by calling the"
+            " game's start method once LS-M has named it, ch_press and ch_play_chart press"
+            " drum lanes on it, and ch_sp and the ch_sp_watch tools read Star Power."
             " See docs/agents/clone-hero-mcp.md."),
     )
 
@@ -163,6 +182,15 @@ def build_server(helper: Optional[Helper] = None):
         return capped(h.frida.ch_snapshot())
 
     @server.tool()
+    def ch_menu() -> str:
+        """One fresh read of the menus: how many objects of each menu class
+        are live, whether each one's Online menu is on screen
+        (onlineMenuActive), the selected song's folder and name, the game
+        mode, the player count, and the live-GameManager word. Needs
+        ch_attach."""
+        return capped(h.frida.ch_menu())
+
+    @server.tool()
     def ch_trace_start(song_folder: str, score_json: str | None = None,
                        with_dynamics: bool = False) -> str:
         """Start tracing, in the background, each note the player hits: the
@@ -195,11 +223,23 @@ def build_server(helper: Optional[Helper] = None):
         return capped(h.game.ch_press(lanes))
 
     @server.tool()
-    def ch_play_chart(score_json: str, log: str | None = None) -> str:
+    def ch_key(keys: str) -> str:
+        """Press menu keys in order after bringing the game window to the
+        front: a comma list of key names such as "enter,down", with an
+        optional last item text:<string> that types the string (a comma in
+        it is typed, not split). An unknown name is refused with the list of
+        keys."""
+        return capped(h.game.ch_key(keys))
+
+    @server.tool()
+    def ch_play_chart(score_json: str, log: str | None = None,
+                      song_folder: str | None = None) -> str:
         """Play a hydra_replay score JSON with key presses in the background.
-        Start the song from the game's menu: a song launched with a bot is
-        played by the bot. log, when given, is where the press log goes."""
-        return capped(h.game.ch_play_chart(score_json, log))
+        Start the song from the game's menu or with ch_open_song: a song
+        launched with a bot is played by the bot. log, when given, is where
+        the press log goes. song_folder, when given, sets the run cap from
+        the song's length; with none the auto-player keeps its own cap."""
+        return capped(h.game.ch_play_chart(score_json, log, song_folder))
 
     @server.tool()
     def ch_play_status() -> str:
@@ -211,6 +251,82 @@ def build_server(helper: Optional[Helper] = None):
     def ch_play_stop() -> str:
         """Tell the play session to stop and show the result so far."""
         return capped(h.game.ch_play_stop())
+
+    # -- starting a song from the menus (menu_tools) ----------------------------------
+
+    @server.tool()
+    def ch_open_song(song_folder: str) -> str:
+        """Start the song in song_folder by pressing the menu keys
+        menu_steps.json lists, reading the menus before every step and
+        refusing while the Online menu may be on screen. One line per step,
+        or the step it stopped on with the keys sent and the last read.
+        Needs ch_attach on a game open at its menu."""
+        return capped(h.menu.ch_open_song(song_folder))
+
+    # -- Star Power (sp_tools) ---------------------------------------------------------
+
+    @server.tool()
+    def ch_sp_watch_start(song_folder: str | None = None, out: str | None = None) -> str:
+        """Back up the user's files, then watch the engine's Star Power fields
+        in the background: wait for a moving clock, then log every change to
+        a CSV until the song stops, the run cap or ch_sp_watch_stop.
+        song_folder, when given, sets the run cap from the song's length. out
+        is the CSV; none means a new file in the session folder."""
+        return capped(h.sp.ch_sp_watch_start(song_folder, out))
+
+    @server.tool()
+    def ch_sp() -> str:
+        """The latest Star Power read the watcher made: the engine clock, the
+        amount and its maximum, whether the amount is at the ready level,
+        the active flag, the end time, the multiplier and the overflow flag.
+        It never reads the game itself."""
+        return capped(h.sp.ch_sp())
+
+    @server.tool()
+    def ch_sp_watch_status(since_ms: float = 0) -> str:
+        """The watch's rows so far, every activation and every rise of the
+        amount from since_ms on, the engine's address, and how the watch
+        ended."""
+        return capped(h.sp.ch_sp_watch_status(since_ms))
+
+    @server.tool()
+    def ch_sp_watch_stop() -> str:
+        """Tell the Star Power watch to stop, then show how it ended and the
+        CSV."""
+        return capped(h.sp.ch_sp_watch_stop())
+
+    @server.tool()
+    def ch_sp_compare(watch_csv: str, score_json: str, resolution: int | None = None,
+                      sp_bar_ticks: int | None = None,
+                      width: int = sp_compare.DEFAULT_WIDTH) -> str:
+        """Compare a watcher CSV with a hydra_replay score JSON and print
+        sp_compare's report, one PASS or FAIL line per check. resolution,
+        when given, also prints Hydra's full meter beside the game's."""
+        return capped(h.sp.ch_sp_compare(watch_csv, score_json, resolution,
+                                         sp_bar_ticks, width))
+
+    @server.tool()
+    def ch_sp_between(start_ms: float, end_ms: float) -> str:
+        """Over the watch's rows: each activation whose flip lies between
+        start_ms and end_ms, the highest amount read there, and the first
+        read there at the ready level with the flag clear."""
+        return capped(h.sp.ch_sp_between(start_ms, end_ms))
+
+    # -- the method watch (method_watch) ------------------------------------------------
+
+    @server.tool()
+    def ch_method_watch_start(classes: list[str] | None = None,
+                              cap_s: float = METHOD_WATCH_CAP_S) -> str:
+        """Hook the menu and song-start methods start_candidates.json names
+        (or only those of the named classes) for at most cap_s seconds, and
+        say what was hooked and what could not be found. Needs ch_attach."""
+        return capped(h.method_watch.ch_method_watch_start(classes, cap_s))
+
+    @server.tool()
+    def ch_method_watch_stop() -> str:
+        """End the method watch, then list every call in order and name the
+        call just before each scene load."""
+        return capped(h.method_watch.ch_method_watch_stop())
 
     return server
 
