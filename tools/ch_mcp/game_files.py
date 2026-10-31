@@ -278,6 +278,17 @@ def _game_setting_line(lines: list[bytes], key: str) -> int:
 _SETTING_LINE = re.compile(rb"\A([^=]*=[ \t]*)(.*?)([ \t]*\r?\n?)\Z", re.S)
 
 
+def get_game_setting(path: str, key: str) -> str:
+    """The value of the one `key = value` line in the [GAME_SECTION] section
+    of the settings.ini at `path`, without the spacing around it. Raises
+    SettingNotFound when the section has no such line, or more than one, and
+    OSError when the file cannot be read."""
+    with open(path, "rb") as f:
+        lines = f.read().splitlines(keepends=True)
+    m = _SETTING_LINE.match(lines[_game_setting_line(lines, key)])
+    return m.group(2).decode("utf-8", "replace")
+
+
 def set_game_setting(path: str, key: str, value: str) -> None:
     """Rewrite the value of the one `key = value` line in the [GAME_SECTION]
     section of the settings.ini at `path`. Every other byte of the file
