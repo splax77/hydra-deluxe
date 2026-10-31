@@ -124,6 +124,23 @@ function enumNumber(v: unknown): number | string {
     return String(v);
 }
 
+// One argument as the bridge's .invoke would hand it to native code: the
+// bridge's own Il2Cpp.toFridaValue, which its index.d.ts leaves out as
+// internal. For a call this agent makes by hand (setup's LoadMap).
+const bridgeToNative = (Il2Cpp as unknown as {
+    toFridaValue?: (v: unknown) => NativeFunctionArgumentValue;
+}).toFridaValue;
+
+// A game function called by hand, its argument list built at run time.
+type ByHandCall = (...args: NativeFunctionArgumentValue[]) => NativeFunctionReturnValue;
+
+function bridgeValue(v: unknown): NativeFunctionArgumentValue {
+    if (typeof bridgeToNative !== "function") {
+        throw new Error("frida-il2cpp-bridge has no Il2Cpp.toFridaValue to marshal a by-hand call");
+    }
+    return bridgeToNative(v);
+}
+
 // The list's items, through the list's own count and indexer.
 function items(list: Il2Cpp.Object): Il2Cpp.Object[] {
     const out: Il2Cpp.Object[] = [];
@@ -308,11 +325,26 @@ function setup(m: Message) {
     target.helper.method("AddController", 2)
         .overload("Rewired.Controller", "System.Boolean").invoke(kit, true);
     // startEnabled is true: kit_tools.py's checks count enabled maps only.
-    target.helper.field<Il2Cpp.Object>("maps").value
-        .method("LoadMap", 5)
+    const maps = target.helper.field<Il2Cpp.Object>("maps").value;
+    const loadMap = maps.method("LoadMap", 5)
         .overload("Rewired.ControllerType", "System.Int32", "System.Int32", "System.Int32",
-                  "System.Boolean")
-        .invoke(customType(), kitId(kit), categoryId, layoutId, true);
+                  "System.Boolean");
+    // Called by hand, not through .invoke: this call must also pass the
+    // method's own pointer as its last argument, which .invoke leaves out
+    // here and the game's stub then overwrites past the arguments
+    // (docs/clone-hero/07-internals.md, IN-76). Everything else is the
+    // bridge's own: its types for each parameter and its marshalling of
+    // each value.
+    if (loadMap.virtualAddress.isNull()) {
+        throw new Error("LoadMap has no code address");
+    }
+    const loadMapTypes: NativeFunctionArgumentType[] =
+        ["pointer", ...loadMap.parameters.map((p) => p.type.fridaAlias), "pointer"];
+    const loadMapCall = new NativeFunction(loadMap.virtualAddress,
+        loadMap.returnType.fridaAlias as NativeFunctionReturnType, loadMapTypes) as unknown as ByHandCall;
+    loadMapCall(maps.handle,
+        ...[customType(), kitId(kit), categoryId, layoutId, true].map(bridgeValue),
+        loadMap.handle);
     return {
         first_setup: first,
         switch_was: rec.switchWas,
