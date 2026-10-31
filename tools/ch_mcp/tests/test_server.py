@@ -23,12 +23,16 @@ from tools.ch_mcp import bot_run  # noqa: E402
 from tools.ch_mcp import server as S  # noqa: E402
 from tools.hydra_ui_mcp import REPLY_CAP_CHARS  # noqa: E402
 
-# The eighteen tools of the plan's "The tools" table.
+# The eighteen tools of the server plan's "The tools" table, then the eleven
+# of the Star Power and song start plan's (task T5).
 TOOL_NAMES = {
     "ch_start", "ch_stop", "ch_status", "ch_install_chart", "ch_wait_stats",
     "ch_stats", "ch_compare", "ch_attach", "ch_detach", "ch_state",
     "ch_snapshot", "ch_trace_start", "ch_notes", "ch_trace_stop", "ch_press",
     "ch_play_chart", "ch_play_status", "ch_play_stop",
+    "ch_sp_watch_start", "ch_sp", "ch_sp_watch_status", "ch_sp_watch_stop",
+    "ch_sp_compare", "ch_sp_between", "ch_key", "ch_menu", "ch_open_song",
+    "ch_method_watch_start", "ch_method_watch_stop",
 }
 
 
@@ -48,7 +52,7 @@ class ServerTest(unittest.TestCase):
         self.helper = S.Helper(env=env, scratch_root=tmp.name,
                                game_kw={"driver": object()})
 
-    def test_build_server_registers_the_eighteen_tools(self):
+    def test_build_server_registers_the_twenty_nine_tools(self):
         tools = asyncio.run(S.build_server(self.helper).list_tools())
         self.assertEqual({t.name for t in tools}, TOOL_NAMES)
 
