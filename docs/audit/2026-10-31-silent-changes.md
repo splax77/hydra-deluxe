@@ -138,13 +138,19 @@ Proposal 1 is now agent rule 11: the user answered "Yes, require it" on 2026-10-
 
 **5. No stray edits ride along.** A commit or release never includes an edit the session did not make or was not asked to make. Uncommitted work found in the tree is reported and left out until the user says what it is. This targets case 4 and the "in-flight sources" lead.
 
-## The open cases need the user's answer too
+## How each case left
 
-Under the audit method, each real case is a split between what the user asked for and what shipped, and it goes to the user unless a ruling in their own words settles it. Most cases above were settled when the user found them (2, 3, 9, 10, 11, 12, 13, 14, 15). Case 1 is planned elsewhere. These are still open, with no answer from the user on record:
+Under the audit method, each real case is a split between what the user asked for and what shipped, and it goes to the user unless a ruling in their own words settles it.
 
-Case 4's eff. figure hiding has been reworked since (sessions 2c65cb43 and d7f92775), so it needs checking against today's code before it is asked. Case 5, the Preview skipping a "This chart changed" line when size and time match. Case 6, the missing-library sentence in the empty report. Case 7, ghost and accent kicks drawn in the Preview. Case 8, the 2.13.0 paragraph already published. Case 16, what the library stores for a path's hardest timing, which the user has objected to but not yet ruled on. And from the smaller list: the "(-N)" suffix, the "another build" tooltip, the 140 to 170 ms backend window and the blank-artist placeholder.
+Settled when the user found them: cases 2, 3, 9, 10, 11, 12, 13, 14 and 15. Case 1 (D13) is planned in session 711858a7's Path Builder plan.
 
-Each of these goes to the user as its own question, a few at a time, after the code is read again on the day the question goes out.
+Put to the user on 2026-10-31, after the code on `main` was read again that day, and recorded as D301: cases 5, 6, 7 and 8 (all kept), case 16 (the library saves the engine's figure, built with the D13 work), and four small ones (the all-0 heading's gap stays removed, the damaged-row Stale cause stays "another Hydra version", "1 of 1 kick note" stays, and the .mid detail stays "cannot open file:").
+
+Settled by an earlier ruling, found when the code was read again: case 4's eff. figure, by D116 ("if a multiplier exists there should be a corresponding display") and D256's 0.001 threshold; the blank-artist placeholder, by D56 item 2 and D50 item 5, which make a missing artist and title read "(unknown)".
+
+Gone: the 140 to 170 ms backend display window. That constant no longer exists; the backend window is D5's 500 ms.
+
+Still open: none from the main or smaller lists. The spacing in "85 ms" was settled by D57. The 80d47962 colour and font lead was never traced.
 
 ## Sources
 
