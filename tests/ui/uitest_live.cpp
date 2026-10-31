@@ -1,8 +1,7 @@
 // The live channel: `hydra_uitest --live` runs one "live" test that takes
 // command lines from a named pipe while the app keeps drawing, and answers
 // each with one JSON line (live_protocol.h). What a line does is
-// run_command's (uitest_commands.cpp). Design: "The live channel" in
-// docs/superpowers/plans/2026-10-14-hydra-mcp-server.md.
+// run_command's (uitest_commands.cpp). Design: ADR 0030.
 
 // The harness first: its Windows headers define a Yield() macro that the
 // test engine's header, included after them, undefines.
