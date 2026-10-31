@@ -54,9 +54,20 @@ bool paste_best_path(ImGuiTestContext* ctx) {
     return wait_for_edit(ctx);
 }
 
-// The activations of the player's path as it is now.
-hydra::ActivationWalk mine_acts(PbState& s) {
-    return s.history().current().path->walk_activations();
+// Clicks the row of step `index` (from 0) in "Your activations", which opens
+// it to its sentence, and gives the click a frame to land.
+bool click_step(ImGuiTestContext* ctx, size_t index) {
+    Harness& h = harness(ctx);
+    const std::string steps = h.home_ref + "/##side/##steps";
+    ImGuiWindow* window = ctx->WindowInfo(steps.c_str(), ImGuiTestOpFlags_NoError).Window;
+    if (!window) {
+        ctx->LogError("no steps panel at %s", steps.c_str());
+        return false;
+    }
+    ctx->SetRef(window);
+    ctx->ItemClick(("$$" + std::to_string(index) + "/##step").c_str());
+    ctx->Yield(2);
+    return !ctx->IsError();
 }
 
 // The vertical span of the glyphs the steps panel drew last frame in
@@ -94,13 +105,12 @@ void test_finish_for_me(ImGuiTestContext* ctx) {
         IM_CHECK(mine.path->pathstring() == "9");
         IM_CHECK_EQ(mine.path->totalscore(), int64_t{349875});
     }
-    // The steps panel's one step, which the click selected so it is open to
-    // its sentence, and the line after it, from one run.
-    const hydra::ActivationWalk first = mine_acts(s);
-    IM_CHECK_RETV(first.size() == 1, );
-    IM_CHECK(on_screen(h, hydra::pathbuilder::step_short(s.chart()->song.timing(), first[0]).span));
-    IM_CHECK(on_screen(h, "Activate at "));
-    IM_CHECK(on_screen(h, "This choice costs 13,640 points."));
+    // The steps panel's one step as its compact row; its row opens it to its
+    // sentence. Then the line after the steps. From one run.
+    IM_CHECK(on_screen(h, "m58 → m68 4 phrases −13,640"));
+    IM_CHECK_RETV(click_step(ctx, 0), );
+    IM_CHECK(on_screen(h, "Activate at m58 (1:15.166) with 4 phrases saved. Star Power runs until m68. "
+                          "This choice costs 13,640 points."));
     IM_CHECK(on_screen(h, hydra::pathbuilder::leftover_text(14800)));
 
     ctx->SetRef(h.home_ref.c_str());
@@ -114,10 +124,8 @@ void test_finish_for_me(ImGuiTestContext* ctx) {
     IM_CHECK_EQ(done.windows.size(), size_t{2});
     IM_CHECK(s.history().can_undo());
     IM_CHECK(on_screen(h, hydra::pathbuilder::finished_for_player_message(1).text));
-    // The second step is on screen as its compact row.
-    const hydra::ActivationWalk both = mine_acts(s);
-    IM_CHECK_RETV(both.size() == 2, );
-    IM_CHECK(on_screen(h, hydra::pathbuilder::step_short(s.chart()->song.timing(), both[1]).span));
+    // The second step is on screen as its compact row. From one run.
+    IM_CHECK(on_screen(h, "m88 → m92 2 phrases best"));
 }
 
 // A click on a fill under two saved phrases: the guide line says why, in
@@ -152,16 +160,19 @@ void test_locked_fill_says_left_to_right(ImGuiTestContext* ctx) {
     const hydra::ActivationWalk best = s.chart()->record.best_path().walk_activations();
     IM_CHECK_RETV(best.size() >= 2, );
     IM_CHECK_RETV(click_fill(ctx, best[1].timecode.ticks()), );
-    const uint64_t generation = s.history().generation();
-    // From one run: Burnout's fill at m12, before that activation.
+    // From one run: Burnout's fill at m12, before that activation, and the
+    // one step's compact row.
     constexpr int64_t kEarlierTick = 21120;
+    const char* const step_row = "m58 → m68 4 phrases −13,640";
+    IM_CHECK_RETV(on_screen(h, step_row), );
     ctx->SetRef(h.home_ref.c_str());
     ctx->ItemClick(("**/" + hydra::ui::timeline_fill_id(kEarlierTick)).c_str());
     ctx->Yield(2);
     IM_CHECK(h.app->guide().refuse);
-    IM_CHECK_STR_EQ(h.app->guide().text.c_str(), hydra::pathbuilder::locked_message("m12").text.c_str());
-    IM_CHECK(on_screen(h, h.app->guide().text));
-    IM_CHECK_EQ(s.history().generation(), generation);
+    IM_CHECK(on_screen(h, hydra::pathbuilder::locked_message("m12").text));
+    // The path is as it was: the one step, and none at m12.
+    IM_CHECK(on_screen(h, step_row));
+    IM_CHECK(!on_screen(h, "m12 →"));
 }
 
 // White Washed under the GUI tests' Path limit (10 ms, the app's default):
@@ -174,12 +185,10 @@ void test_tight_window_note(ImGuiTestContext* ctx) {
     IM_CHECK(s.chart()->settings.ms_filter == std::optional<double>(10.0));
     IM_CHECK_RETV(paste_best_path(ctx), );
     IM_CHECK_RETV(s.history().current().windows.size() == 5, );
-    // The fifth step opens to its sentence and note when its row is clicked.
+    // The fourth step opens to its sentence and note when its row is clicked.
     // From one run.
-    ctx->SetRef(h.home_ref.c_str());
-    ctx->ItemClick("**/##steps/$$4/##step");
-    ctx->Yield(2);
-    IM_CHECK(on_screen(h, "Activate at "));
+    IM_CHECK_RETV(click_step(ctx, 3), );
+    IM_CHECK(on_screen(h, "Activate at m132 (2:51.485) with 2 phrases saved."));
     IM_CHECK(on_screen(h, "needs 130.4 ms, your limit is 10 ms"));
 
     // The note is the only text the panel draws in the violet chip's colour,

@@ -20,6 +20,9 @@
 #include "core/winstr.h"
 #include "pathbuilder/pb_text.h"
 #include "pathbuilder/pb_window.h"  // the legend's words
+#include "render/highway_draw.h"      // far_time, time_to_z
+#include "render/overlay_layout.h"    // project_to_image
+#include "render/preview_renderer.h"  // kPlaybackSpeed
 #include "ui/preview_controller.h"
 
 namespace pbtest {
@@ -38,13 +41,23 @@ bool write_file(const std::string& path, const std::string& text) {
 // Opens the chart from the command line: the screen starts from nothing. The
 // intro, step 1 of the guide and the three scores are on screen, the old
 // decision list is not, and a fill under two saved phrases is drawn as can't
-// while the guide names a later fill as the earliest.
+// while the guide names a later fill as the earliest. Then a click on the
+// highway at that earliest fill activates there.
 void test_open_starts_empty(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     h.chart_arg = corpus::burnout_notes();
     reset_app(h);
+    // Before the costs land, every fill the engine lists has a row whose end
+    // and cost read kPendingText (plan Q3); once nothing is running, no
+    // figure on screen does. From one run: the first fill's row, which the
+    // first frame with the highway loaded shows. The wait is wait_idle's.
+    const std::string pending_row = std::string("m20 0:25.123 · 2 phrases · ") +
+                                    hydra::pathbuilder::kPendingText + " " +
+                                    hydra::pathbuilder::kPendingText;
+    IM_CHECK(uitest::wait_until(ctx, [&] { return on_screen(h, pending_row); }, 60.0));
     IM_CHECK(wait_idle(ctx));
     ctx->Yield(2);
+    IM_CHECK(!on_screen(h, hydra::pathbuilder::kPendingText));
     IM_CHECK_RETV(h.app->state.chart() != nullptr, );
     IM_CHECK(!h.app->state.history().current().path.has_value());
     IM_CHECK(h.app->shown_path() == &*h.app->state.chart()->empty_path);
@@ -104,6 +117,39 @@ void test_open_starts_empty(ImGuiTestContext* ctx) {
                     "can activate is m20 (0:25.123), once you've saved 2 phrases. Hover a fill to "
                     "see it on the highway.");
     IM_CHECK(on_screen(h, h.app->guide().text));
+
+    // A click on the highway at that fill activates there, as a click on it
+    // in the timeline does. The highway is moved so the fill starts on the
+    // strike line, and the click lands on the floor halfway up the part of
+    // the fill the highway shows (project_to_image, the renderer's camera).
+    static constexpr int64_t kEarliestTick = 36480;
+    hydra::ui::PreviewController& pc = *h.app->preview();
+    const auto earliest =
+        std::find_if(scene.fills.begin(), scene.fills.end(),
+                     [](const hydra::app::PreviewFill& f) { return f.chord_tick == kEarliestTick; });
+    IM_CHECK_RETV(earliest != scene.fills.end(), );
+    pc.seek_ms(earliest->span.start_ms);
+    ctx->Yield(2);
+    ctx->SetRef(h.home_ref.c_str());
+    const ImRect img = ctx->ItemInfo("**/##highway_image").RectFull;
+    IM_CHECK_RETV(img.GetWidth() > 0.0f && img.GetHeight() > 0.0f, );
+    const hydra::render::PreviewConfig& cfg = pc.preview_config();
+    const double now_s = pc.position_ms() / 1000.0;
+    const double shown_end_s = (std::min)(earliest->span.end_ms / 1000.0,
+                                          hydra::render::far_time(cfg, now_s, hydra::render::kPlaybackSpeed));
+    const double at_s = (now_s + shown_end_s) * 0.5;
+    const hydra::render::ImagePoint p = hydra::render::project_to_image(
+        cfg, static_cast<int>(img.GetWidth()), static_cast<int>(img.GetHeight()),
+        {0.0f, cfg.track.y,
+         static_cast<float>(hydra::render::time_to_z(cfg, now_s, at_s, hydra::render::kPlaybackSpeed))});
+    ctx->MouseMoveToPos(ImVec2(img.Min.x + p.x, img.Min.y + p.y));
+    ctx->MouseClick(ImGuiMouseButton_Left);
+    IM_CHECK_RETV(wait_for_edit(ctx), );
+    // From one run: the step's compact row, and its sentence, open because
+    // the click selected the step it made.
+    IM_CHECK(on_screen(h, "m20 → m24 2 phrases −140"));
+    IM_CHECK(on_screen(h, "Activate at m20 (0:25.123) with 2 phrases saved. Star Power runs until m24. "
+                          "This choice costs 140 points."));
 }
 
 // A chart with notes and no Star Power phrase opens and says there is
