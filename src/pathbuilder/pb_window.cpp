@@ -166,7 +166,15 @@ PbApp::PbApp(ID3D11Device* device, ID3D11DeviceContext* context)
 
 PbApp::~PbApp() { close_preview(); }
 
-void PbApp::open(const std::string& notespath) { state.open(notespath); }
+void PbApp::open(const std::string& notespath) {
+    state.open(notespath);
+    // The first open's settings give the run its volume; after that the
+    // player's slider is the only thing that moves it (plan Q2).
+    if (!volume_from_file_ && state.preview_volume()) {
+        volume_pct_ = *state.preview_volume();
+        volume_from_file_ = true;
+    }
+}
 
 bool PbApp::busy() const { return state.busy() || (preview_ && preview_->busy()); }
 

@@ -111,6 +111,7 @@ void PbState::open(const std::string& notespath) {
 
 void PbState::open_with(const std::string& notespath, const app::Settings& settings) {
     requested_ = notespath;
+    preview_volume_ = settings.preview_volume;
     if (job_) {
         job_->cancel();
         retired_.push_back(std::move(job_));

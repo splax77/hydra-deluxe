@@ -152,8 +152,14 @@ void draw_saved_caption(ImDrawList* dl, float x, float y0, float y1, float wrap_
     const float enough_h = ImGui::CalcTextSize(kTimelineEnoughLabel, nullptr, false, wrap_w - mark_w).y;
     const float gap = rem(kCaptionGapRem);
     float y = (y0 + y1) * 0.5f - (name_h + gap + needed_h + gap + enough_h) * 0.5f;
+    // The GUI tests read the screen from ImGui's text log, which hears only
+    // ImGui's own text calls, so the caption tells it what the draw list drew.
+    auto log_text = [](ImVec2 at, const char* text) {
+        if (ImGui::GetCurrentContext()->LogEnabled) ImGui::LogRenderedText(&at, text);
+    };
 
     dl->AddText(label_font, 0.0f, ImVec2(x, y), kMutedColor, kTimelineSavedLabel, nullptr, wrap_w);
+    log_text(ImVec2(x, y), kTimelineSavedLabel);
     y += name_h + gap;
 
     // The sample's 2 px border is the whole of its box, so its centre line is
@@ -162,12 +168,14 @@ void draw_saved_caption(ImDrawList* dl, float x, float y0, float y1, float wrap_
     draw_dashed(dl, {ImVec2(x, dash_y), ImVec2(x + rem(kCaptionMarkRem), dash_y)}, kActivateSampleColor,
                 px(kActivateSampleW));
     dl->AddText(label_font, 0.0f, ImVec2(x + mark_w, y), kDimColor, needed.c_str(), nullptr, wrap_w - mark_w);
+    log_text(ImVec2(x + mark_w, y), needed.c_str());
     y += needed_h + gap;
 
     const float swatch_y1 = y + ascent + rem(kEnoughSwatchDropRem);
     dl->AddRectFilled(ImVec2(x, swatch_y1 - rem(kEnoughSwatchHRem)), ImVec2(x + rem(kCaptionMarkRem), swatch_y1),
                       kEnoughSwatchColor);
     dl->AddText(label_font, 0.0f, ImVec2(x + mark_w, y), kDimColor, kTimelineEnoughLabel, nullptr, wrap_w - mark_w);
+    log_text(ImVec2(x + mark_w, y), kTimelineEnoughLabel);
 }
 
 // The drawn path, bands and taken fills: --sp (kTimelinePathColor). The

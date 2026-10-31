@@ -147,9 +147,11 @@ private:
     // The fill whose list row the pointer was on last frame; the list is
     // drawn after the timeline, so the timeline reads it a frame later.
     std::optional<size_t> row_hovered_fill_;
-    // The Preview's volume for this run: read from the settings file at each
-    // open and never written back (plan Q2).
+    // The Preview's volume for this run: the settings file's at the first
+    // open (PbState::preview_volume), then the player's slider; never
+    // written back (plan Q2).
     int volume_pct_;
+    bool volume_from_file_ = false;
     // The overlay key of the path the highway shows (app::path_overlay_key),
     // and what it was built for, so it is rebuilt only when that changes.
     std::string overlay_key_;

@@ -146,6 +146,9 @@ public:
     bool opening() const { return job_ != nullptr; }
     // The chart being opened, or the one last asked for.
     const std::string& requested_path() const { return requested_; }
+    // The Preview's volume in the settings the last open() read; none before
+    // the first. The builder never writes it back (plan Q2).
+    std::optional<int> preview_volume() const { return preview_volume_; }
 
     const OpenChart* chart() const { return chart_.get(); }
     // The open chart's search graph, for a search on a worker: the pointer
@@ -172,6 +175,7 @@ public:
 private:
     DecisionList decisions_;
     std::string requested_;
+    std::optional<int> preview_volume_;
     std::unique_ptr<OpenJob> job_;
     // Opens a newer open replaced, cancelled and still stopping. poll() drops
     // each once it has finished, so the window never waits on one.
