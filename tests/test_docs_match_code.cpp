@@ -1,5 +1,5 @@
-// The docs say what the code does. Seven checks over the decision records
-// and the guides:
+// The docs say what the code does. Eight checks over the decision records,
+// the guides and the plans:
 //
 // 1. Every backticked code name in them is still a name the code uses (see
 //    code_words for which words count). A name that left the code fails with
@@ -31,6 +31,9 @@
 //    folder under docs/ that is not in the tree (docs_path_re), unless the
 //    line says how to read it now (is_removed_citation). The session cards
 //    keep their old paths (kSessionCardsDir).
+// 8. Every plan that counts (counts_for_premise_map) holds a Premise map, and
+//    a call list under each live step, in the shape docs/agents/premise-map.md
+//    owns.
 //
 // It finds the repo and walks the code through tests/source_tree.h, as the
 // scans in tests/single_owner/ do.
@@ -1493,6 +1496,385 @@ TEST_CASE("docs match code: the docs path check reads each path form and skips t
     CHECK(problems[0] ==
           "docs/x.md:2: names docs/gone.md, which is not in the tree; point at where it lives now, or say how "
           "to read it (see is_removed_citation)");
+}
+
+namespace {
+
+// ---- check 8: premise maps --------------------------------------------------
+
+// docs/agents/premise-map.md owns the shape of a plan's Premise map and of a
+// live step's call list. This check reads a plan against that page.
+//
+// counts_for_premise_map says which plans count. kPremiseMapSince is the
+// cutoff the user chose when asked which plans this check reads ("Approve all
+// six", 2026-10-31): a plan approved before it keeps the form it was approved
+// in, unless it already carries a map, and then the map is held to the shape.
+// Lines inside a fenced block are an example, not the plan's own map or
+// steps, so the check skips them. A Status or a Kind written in backticks, as
+// the page's own examples are, reads the same as one written plain.
+constexpr const char* kPlansDir = "docs/superpowers/plans/";
+constexpr const char* kPremiseMapSince = "2026-11-01";
+constexpr const char* kPremiseMapHeading = "## Premise map";
+constexpr const char* kQuestionsHeading = "## Questions";
+constexpr const char* kLiveStepsHeading = "## The live steps";
+constexpr const char* kKindWords[] = {"code", "data", "chart", "run", "ruling", "unchecked"};
+
+bool is_premise_map_heading(const std::string& line) {
+    return line.rfind(kPremiseMapHeading, 0) == 0 && hydra::trim(line) == kPremiseMapHeading;
+}
+
+bool counts_for_premise_map(const Doc& d) {
+    if (d.rel.rfind(kPlansDir, 0) != 0) return false;
+    bool fenced = false;
+    for (const std::string& line : d.lines) {
+        if (is_fence(line)) fenced = !fenced;
+        if (!fenced && is_premise_map_heading(line)) return true;
+    }
+    const std::string name = d.rel.substr(d.rel.rfind('/') + 1);
+    static const std::regex dated(R"(^\d{4}-\d{2}-\d{2})");
+    return std::regex_search(name, dated) && name.substr(0, 10) >= kPremiseMapSince;
+}
+
+// The cells of one table row, its outer pipes dropped. A pipe inside
+// backticks stays in its cell, as split_row in tools/check_handoff.py reads it.
+std::vector<std::string> table_cells(const std::string& line) {
+    std::string body = hydra::trim(line);
+    while (!body.empty() && body.front() == '|') body.erase(0, 1);
+    while (!body.empty() && body.back() == '|') body.pop_back();
+    std::vector<std::string> cells;
+    std::string cell;
+    bool ticks = false;
+    for (const char c : body) {
+        if (c == '`') ticks = !ticks;
+        if (c == '|' && !ticks) {
+            cells.push_back(hydra::trim(cell));
+            cell.clear();
+        } else {
+            cell += c;
+        }
+    }
+    cells.push_back(hydra::trim(cell));
+    return cells;
+}
+
+// Whether a line is a table row; a row written without its outer pipes still
+// counts, as claims_rows in tools/check_handoff.py reads it.
+bool is_table_row(const std::string& line) {
+    return hydra::trim(line).rfind('|', 0) == 0 || std::count(line.begin(), line.end(), '|') >= 2;
+}
+
+// Whether `text` holds `word` with no letter, digit, '-' or '_' touching it.
+bool names_word(const std::string& text, const std::string& word) {
+    const auto part = [](char c) { return std::isalnum(static_cast<unsigned char>(c)) || c == '-' || c == '_'; };
+    for (size_t at = text.find(word); at != std::string::npos; at = text.find(word, at + 1)) {
+        const size_t end = at + word.size();
+        if ((at == 0 || !part(text[at - 1])) && (end >= text.size() || !part(text[end]))) return true;
+    }
+    return false;
+}
+
+// A heading's text, less its hashes, cut at its first colon: "PM-2" for
+// "### PM-2: the test", "LS-K4 and LS-K5" for "### LS-K4 and LS-K5".
+std::string heading_name(const std::string& line) {
+    std::string text = hydra::trim(line.substr(static_cast<size_t>(heading_level(line))));
+    const size_t colon = text.find(':');
+    return colon == std::string::npos ? text : hydra::trim(text.substr(0, colon));
+}
+
+bool is_live_step_heading(const std::string& line) {
+    return heading_level(line) == 3 && line.rfind("### LS", 0) == 0 && line.size() > 6 &&
+           (line[6] == '-' || std::isdigit(static_cast<unsigned char>(line[6])));
+}
+
+// The entries of a Calls: line, split at the commas outside backticks and
+// parentheses, so a call written with its arguments stays one entry.
+std::vector<std::string> call_entries(const std::string& list) {
+    std::vector<std::string> out;
+    std::string entry;
+    bool ticks = false;
+    int depth = 0;
+    for (const char c : list) {
+        if (c == '`') ticks = !ticks;
+        if (!ticks && c == '(') ++depth;
+        if (!ticks && c == ')' && depth > 0) --depth;
+        if (c == ',' && !ticks && depth == 0) {
+            out.push_back(hydra::trim(entry));
+            entry.clear();
+        } else {
+            entry += c;
+        }
+    }
+    out.push_back(hydra::trim(entry));
+    return out;
+}
+
+// One entry's text with its backticked spans dropped, so a marker is read
+// only where the entry's words are, never inside the call it names.
+std::string outside_backticks(const std::string& entry) {
+    std::string out;
+    bool ticks = false;
+    for (const char c : entry) {
+        if (c == '`') ticks = !ticks;
+        else if (!ticks) out += c;
+    }
+    return out;
+}
+
+// Adds one problem per break in the shape, on every plan that counts, with the
+// doc, the line and the row or step it is about.
+void check_premise_maps(const std::vector<Doc>& docs, std::vector<std::string>& problems) {
+    static const std::regex question_item(R"(^(\d+)\.\s)");
+    static const std::regex question_ref(R"(\bquestion (\d+)\b)");
+    static const std::regex checked_status(R"(^checked\s+\d{4}-\d{2}-\d{2}(?!\d))");
+    static const std::regex separator(R"(:?-+:?)");
+    static const std::regex seen_marker(R"(\(seen:\s*[^)\s][^)]*\))");
+    for (const Doc& d : docs) {
+        if (!counts_for_premise_map(d)) continue;
+        const auto at = [&](size_t i) { return d.rel + ":" + std::to_string(i + 1) + ": "; };
+
+        // The plan's task ids (each "### <id>:" heading) and its question numbers.
+        std::set<std::string> tasks;
+        std::set<int> questions;
+        bool fenced = false;
+        bool in_questions = false;
+        for (const std::string& line : d.lines) {
+            if (is_fence(line)) fenced = !fenced;
+            if (fenced || is_fence(line)) continue;
+            const int level = heading_level(line);
+            if (level >= 1 && level <= 2) in_questions = line.rfind(kQuestionsHeading, 0) == 0;
+            if (level == 3 && line.find(':') != std::string::npos) {
+                const std::string id = heading_name(line);
+                if (!id.empty()) tasks.insert(id);
+            }
+            std::smatch m;
+            if (level == 0 && in_questions && std::regex_search(line, m, question_item))
+                questions.insert(std::stoi(m.str(1)));
+        }
+
+        // The Premise map's rows.
+        bool has_map = false;
+        bool in_map = false;
+        size_t map_line = 0;
+        int rows = 0;
+        const auto close_map = [&]() {
+            if (in_map && rows == 0) problems.push_back(at(map_line) + "the Premise map has no rows");
+            in_map = false;
+        };
+        fenced = false;
+        for (size_t i = 0; i < d.lines.size(); ++i) {
+            const std::string& line = d.lines[i];
+            if (is_fence(line)) fenced = !fenced;
+            if (fenced || is_fence(line)) continue;
+            if (heading_level(line) > 0) {
+                close_map();
+                if (is_premise_map_heading(line)) {
+                    has_map = in_map = true;
+                    map_line = i;
+                    rows = 0;
+                }
+                continue;
+            }
+            if (!in_map || !is_table_row(line)) continue;
+            const std::vector<std::string> cells = table_cells(line);
+            const bool rule = std::all_of(cells.begin(), cells.end(), [](const std::string& c) {
+                return c.empty() || std::regex_match(c, separator);
+            });
+            std::string first = cells[0];
+            std::transform(first.begin(), first.end(), first.begin(),
+                           [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            if (rule || first == "premise") continue;  // the header and the rule under it
+            ++rows;
+            const auto cell = [&](size_t n) { return n < cells.size() ? cells[n] : std::string(); };
+            std::string name = heading_name("# " + cells[0]);
+            if (name.size() > 40) name = name.substr(0, 40) + "...";
+            const std::string where = at(i) + "Premise map row \"" + name + "\": ";
+            std::string kind;
+            for (const char c : cell(1))
+                if (c != '`') kind += c;
+            kind = hydra::trim(kind);
+            if (std::find(std::begin(kKindWords), std::end(kKindWords), kind) == std::end(kKindWords))
+                problems.push_back(where + "Kind \"" + cell(1) + "\" is not exactly one of the six Kind words");
+            if (inline_spans(cell(2)).empty()) problems.push_back(where + "Source holds no backticked token");
+            std::string status;
+            for (const char c : cell(3))
+                if (c != '`') status += c;
+            status = hydra::trim(status);
+            if (kind != "unchecked") {
+                if (!std::regex_search(status, checked_status))
+                    problems.push_back(where + "Status does not start with checked and a date");
+                continue;
+            }
+            bool bad_question = false;
+            bool names_question = false;
+            for (auto it = std::sregex_iterator(status.begin(), status.end(), question_ref);
+                 it != std::sregex_iterator(); ++it) {
+                names_question = true;
+                const int n = std::stoi((*it)[1].str());
+                if (questions.count(n)) continue;
+                bad_question = true;
+                problems.push_back(where + "Status names question " + std::to_string(n) +
+                                   ", but no item " + std::to_string(n) + " sits under a heading that starts " +
+                                   kQuestionsHeading);
+            }
+            const bool names_task = std::any_of(tasks.begin(), tasks.end(),
+                                                [&](const std::string& id) { return names_word(status, id); });
+            if (!bad_question && !names_question && !names_task)
+                problems.push_back(where + "an unchecked row's Status names neither a task in the plan nor a "
+                                           "question N");
+        }
+        close_map();
+        if (!has_map)
+            problems.push_back(at(0) + "has no " + kPremiseMapHeading + " heading; a plan dated on or after " +
+                               kPremiseMapSince + " needs one (see docs/agents/premise-map.md)");
+
+        // The live steps' call lists.
+        bool in_live = false;
+        size_t step_line = 0;
+        std::string step;
+        bool has_calls = false;
+        int never_tried = 0;
+        const auto close_step = [&]() {
+            if (step.empty()) return;
+            const std::string where = at(step_line) + "live step " + step + " ";
+            if (!has_calls) problems.push_back(where + "has no Calls: line");
+            if (never_tried >= 2)
+                problems.push_back(where + "has " + std::to_string(never_tried) +
+                                   " (never tried) calls; split it so each step tries one new piece");
+            step.clear();
+        };
+        fenced = false;
+        for (size_t i = 0; i < d.lines.size(); ++i) {
+            const std::string& line = d.lines[i];
+            if (is_fence(line)) fenced = !fenced;
+            if (fenced || is_fence(line)) continue;
+            if (const int level = heading_level(line)) {
+                close_step();
+                if (level <= 2) in_live = line.rfind(kLiveStepsHeading, 0) == 0;
+                if (in_live && is_live_step_heading(line)) {
+                    step = heading_name(line);
+                    step_line = i;
+                    has_calls = false;
+                    never_tried = 0;
+                }
+                continue;
+            }
+            if (step.empty() || line.rfind("Calls:", 0) != 0) continue;
+            has_calls = true;
+            for (const std::string& entry : call_entries(line.substr(std::string("Calls:").size()))) {
+                const std::string words = outside_backticks(entry);
+                if (words.find("(never tried)") != std::string::npos)
+                    ++never_tried;
+                else if (!std::regex_search(words, seen_marker))
+                    problems.push_back(at(i) + "live step " + step + ": the Calls: entry \"" + entry +
+                                       "\" has neither (seen: <run id>) nor (never tried)");
+            }
+        }
+        close_step();
+    }
+}
+
+}  // namespace
+
+TEST_CASE("docs match code: every plan that counts holds a Premise map in the shape") {
+    std::vector<std::string> problems;
+    check_premise_maps(markdown_docs(), problems);
+    INFO(report(problems));
+    CHECK(problems.empty());
+}
+
+TEST_CASE("docs match code: the premise map check catches each form and reads only the plans that count") {
+    const std::vector<Doc> docs = {
+        // Dated before the cutoff, no map: left alone, live steps and all.
+        Doc{"docs/superpowers/plans/2026-10-30-old.md", {"# Old", "## The live steps", "### LS-K0", "Run it."}},
+        // Dated before the cutoff, with a map: held to the shape.
+        Doc{"docs/superpowers/plans/2026-10-30-old-map.md",
+            {"## Premise map", "| P1: x | code | src/a.cpp | checked 2026-10-30 |"}},
+        // Dated on the cutoff, no map.
+        Doc{"docs/superpowers/plans/2026-11-01-new.md", {"# New", "## Tasks"}},
+        // No date in the name, no map; and plans outside the folder.
+        Doc{"docs/superpowers/plans/notes.md", {"# Notes"}},
+        Doc{"docs/superpowers/specs/2026-11-05-x.md", {"# Spec"}},
+        Doc{"docs/handoffs/2026-11-05-x-handoff.md", {"# Handoff"}},
+        Doc{"docs/superpowers/plans-old/2026-11-05-x.md", {"# A longer folder name is not the folder"}},
+        Doc{"tools/docs/superpowers/plans/2026-11-05-x.md", {"# The folder is a prefix, not a substring"}},
+        // A heading with an empty table.
+        Doc{"docs/superpowers/plans/2026-11-03-empty.md",
+            {"## Premise map", "| Premise | Kind | Source | Status |", "|---|---|---|---|", "## Prior art"}},
+        // Every row and step form.
+        Doc{"docs/superpowers/plans/2026-11-02-forms.md",
+            {"# Plan",                                                                         // 1
+             "## Questions for the user",                                                      // 2
+             "1. **First.** Which one?",                                                       // 3
+             "2. **Second.** Which other?",                                                    // 4
+             "## Tasks",                                                                       // 5
+             "### PM-9: a task",                                                               // 6
+             "## Premise map",                                                                 // 7
+             "| Premise | Kind | Source | Status |",                                          // 8
+             "|---|---|---|---|",                                                              // 9
+             "| P1: fine | `code` | `src/a.cpp` line 3 | checked 2026-11-02 (read whole) |",   // 10: passes
+             "P2: no outer pipes | guess | `src/b.cpp` | checked 2026-11-02",                  // 11: read as a row
+             "| P3: bad kind | guess | `src/c.cpp` | checked 2026-11-02 |",                    // 12
+             "| P4: two kinds | `code`, `data` | `src/d.cpp` | checked 2026-11-02 |",          // 13
+             "| P5: empty source | code |  | checked 2026-11-02 |",                           // 14
+             "| P6: plain source | code | src/e.cpp line 4 | checked 2026-11-02 |",            // 15
+             "| P7: no date | code | `src/f.cpp` | checked |",                                 // 16
+             "| P8: done | run | `runs/x/` | done 2026-11-02 |",                               // 17
+             "| P9: nothing | unchecked | `docs/handoffs/x.md` | open |",                      // 18
+             "| P10: no item | unchecked | `x.md` | question 3 |",                             // 19
+             "| P11: task | unchecked | `x.md` | PM-9 checks it |",                           // 20: passes
+             "| P12: question | unchecked | `x.md` | question 2 (the user decides) |",         // 21: passes
+             "## The live steps (run in order)",                                               // 22
+             "### LS-D1: no calls",                                                            // 23
+             "Run it.",                                                                        // 24
+             "### LS0",                                                                        // 25
+             "Run it.",                                                                        // 26
+             "### ~~LS-K3: struck~~",                                                          // 27: not a step
+             "Run it.",                                                                        // 28
+             "### LS-D2: no marker",                                                           // 29
+             "Calls: `ch_start` (seen: LS-D0 run 1), `ch_attach`",                             // 30
+             "### LS-D3: two new",                                                             // 31
+             "Calls: `ch_start` (seen: LS-D0 run 1), `ch_kit_setup(player=\"P\", x=1)` (never tried), "
+             "`ch_notes` (never tried)",                                                       // 32
+             "### LS-D4: one new",                                                             // 33: passes
+             "Calls: `ch_start(human=True)` (seen: LS-D0 run 1, LS-D1 run 1), `ch_kit_press` (never tried)",
+             "```",                                                                            // 35
+             "### LS-D9: an example in a fence is not a step",                                 // 36
+             "```"}},                                                                          // 37
+        // A plan in the shape: a row written without outer pipes, a Status in
+        // backticks, and an unchecked row naming a task whose id holds a space.
+        Doc{"docs/superpowers/plans/2026-11-04-good.md",
+            {"## Tasks", "### PM-1: a task", "### Task 2: another task", "## The live steps", "### LS-K1 and LS-K2",
+             "Calls: `ch_start` (seen: LS-K0 run 2), `ch_stop` (never tried)", "## Premise map",
+             "Premise | Kind | Source | Status", "---|---|---|---",
+             "P1: a fact | ruling | `docs/agents/rulings/x.md` | checked 2026-11-04",
+             "| P2: a fact | `data` | `x.md` | `checked 2026-11-04` |",
+             "| P3: a fact | unchecked | `x.md` | Task 2 checks it |"}}};
+    std::vector<std::string> problems;
+    check_premise_maps(docs, problems);
+    const std::string forms = "docs/superpowers/plans/2026-11-02-forms.md:";
+    const std::vector<std::string> where = {
+        "docs/superpowers/plans/2026-10-30-old-map.md:2: Premise map row \"P1\": Source holds",
+        "docs/superpowers/plans/2026-11-01-new.md:1: has no ## Premise map heading",
+        "docs/superpowers/plans/2026-11-03-empty.md:1: the Premise map has no rows",
+        forms + "11: Premise map row \"P2\": Kind \"guess\"",
+        forms + "12: Premise map row \"P3\": Kind \"guess\"",
+        forms + "13: Premise map row \"P4\": Kind \"`code`, `data`\"",
+        forms + "14: Premise map row \"P5\": Source holds",
+        forms + "15: Premise map row \"P6\": Source holds",
+        forms + "16: Premise map row \"P7\": Status does not start",
+        forms + "17: Premise map row \"P8\": Status does not start",
+        forms + "18: Premise map row \"P9\": an unchecked row's Status names neither",
+        forms + "19: Premise map row \"P10\": Status names question 3,",
+        forms + "23: live step LS-D1 has no Calls: line",
+        forms + "25: live step LS0 has no Calls: line",
+        forms + "30: live step LS-D2: the Calls: entry \"`ch_attach`\" has neither",
+        forms + "31: live step LS-D3 has 2 (never tried) calls"};
+    INFO(report(problems));
+    REQUIRE(problems.size() == where.size());
+    for (size_t i = 0; i < where.size(); ++i) CHECK(problems[i].rfind(where[i], 0) == 0);
+    CHECK(problems[1] ==
+          "docs/superpowers/plans/2026-11-01-new.md:1: has no ## Premise map heading; a plan dated on or after "
+          "2026-11-01 needs one (see docs/agents/premise-map.md)");
 }
 
 namespace {
