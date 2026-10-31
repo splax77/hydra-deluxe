@@ -180,7 +180,7 @@ public:
         // Generous receive timeout: the render.com backend cold-starts after
         // idle and the first response can take tens of seconds, and a
         // download that moves no bytes for this long fails (the user's
-        // decision 7 in docs/superpowers/plans/2026-10-22-auto-updater.md).
+        // call 7 in D259).
         // (resolve, connect, send, receive) in ms.
         WinHttpSetTimeouts(session_.h, 15000, 20000, 30000, 120000);
 

@@ -50,8 +50,8 @@ inline constexpr const char* kSettingsOffSentence =
     "hydra_settings.ini has an error, so Hydra is running on its default settings and "
     "saving nothing until the file is fixed and Hydra is restarted.";
 
-// What a refused update reads as (ErrorKind::UpdateUnverified, decision 9 of
-// docs/superpowers/plans/2026-10-22-auto-updater.md). The version bar shows
+// What a refused update reads as (ErrorKind::UpdateUnverified, D259 call 9).
+// The version bar shows
 // it for every refusal; the details line under it names the check.
 inline constexpr const char* kUpdateUnverifiedSentence =
     "Hydra couldn't verify the update it downloaded, so it was not installed. Try again "

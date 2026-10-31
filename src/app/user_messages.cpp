@@ -35,8 +35,8 @@ constexpr const char* kSearchBroken =
     "The analysis failed on this chart because of a bug in Hydra. Please report it with "
     "the song's name.";
 // The network failure sentences for one server (KindedError::service). The
-// GitHub row is the user's ruling during T3a of
-// docs/superpowers/plans/2026-10-22-auto-updater.md.
+// GitHub row is the user's ruling during the updater's build (D259, "Six
+// rulings during the build", ruling 1).
 struct NetSentences {
     const char* server;  // the server's name in the HTTP status sentence
     const char* unreachable;

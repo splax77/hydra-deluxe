@@ -2,8 +2,8 @@
 
 // The check a downloaded installer has to pass before Hydra runs it. The
 // signature scheme (what is signed, with which curve, and in which byte form)
-// is written up in docs/superpowers/plans/2026-10-22-auto-updater.md under
-// "The signature scheme"; tools/release_sign.ps1 is the side that signs.
+// is written up in docs/development.md under "The version rule" (D259);
+// tools/release_sign.ps1 is the side that signs.
 
 #include <array>
 #include <cstdint>

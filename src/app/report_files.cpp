@@ -103,7 +103,7 @@ std::shared_ptr<StartedProgram> start_program(const std::wstring& exe, const std
     info.fMask = SEE_MASK_NOCLOSEPROCESS | SEE_MASK_FLAG_NO_UI;
     // Never "runas": a program that needs administrator rights asks for them
     // itself, so it can start Hydra again as the user afterwards (the
-    // installer ruling in docs/superpowers/plans/2026-10-22-auto-updater.md).
+    // installer ruling in D259; docs/development.md, "The version rule").
     info.lpVerb = L"open";
     info.lpFile = file.c_str();
     info.lpParameters = params.c_str();
