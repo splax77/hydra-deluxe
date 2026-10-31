@@ -327,6 +327,17 @@ class RunStepsTest(unittest.TestCase):
         self.assertEqual(r.lines[2], "game process id: 4242")
         self.assertFalse(any(line.startswith("restoring") for line in r.lines))
 
+    def test_run_cap_is_the_song_plus_the_extra_minute(self):
+        # The Senri fill-check chart's song_length (ruling 3 of the 2026-10-30
+        # ch_mcp Star Power plan).
+        self.assertEqual(B.run_cap_s(260504), 320.504)
+
+    def test_start_runs_cap_is_run_cap_s_of_the_song_length(self):
+        r = Rig(self.tmp, exits_at=None, song_ini="[song]\nsong_length = 260504\n")
+        run = self.start(r, r.song)
+        self.assertEqual(run.cap_s, 320.504)
+        self.assertEqual(run.cap_s, B.run_cap_s(run.length_ms))
+
     def test_start_run_with_no_song_launches_the_bare_exe_after_a_backup(self):
         r = Rig(self.tmp, exits_at=None)
         run = self.start(r, None)

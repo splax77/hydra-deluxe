@@ -361,6 +361,12 @@ class RowChecksTest(unittest.TestCase):
         self.assertIsNone(got.ready_row)
         self.assertEqual(got.highest, 3072)
 
+    def test_ready_between_never_calls_an_empty_meter_ready(self):
+        rows = [_row(1.0, 0, sp_max=0), _row(2.0, 0, sp_max=0)]
+        got = sp_compare.ready_between(rows, 500.0, 2500.0, AMOUNT, MAX)
+        self.assertIsNone(got.ready_row)
+        self.assertEqual((got.rows, got.highest, got.sp_max), (2, 0, 0))
+
     def test_ready_between_ignores_rows_outside_the_window(self):
         rows = [_row(1.0, 6144), _row(2.0, 1536), _row(3.0, 6144)]
         got = sp_compare.ready_between(rows, 1500.0, 2500.0, AMOUNT, MAX)
