@@ -9,11 +9,16 @@
 // method calls on 2026-10-30 (ruling 2 of the plan
 // 2026-10-30-ch-mcp-star-power-and-song-start.md);
 // test_agent_calls_only_named_methods in tests/test_frida_attach.py checks
-// that every call in every agent is named in that agent's list.
+// that every call written in an agent's own source is named in that agent's
+// list. It does not see inside the bridge: arrayValues says the one call the
+// bridge makes on its own when an array is read.
 //
 // The player screen's fields are private and their names obfuscated, so they
 // come from tools/ch_mcp/menu_fields.json, bundled in at build time; that file
-// names each field, its class and its dump line, and holds the enum words.
+// names each field, its class, its dump line and how it is read (its kind),
+// and holds the enum words. This file sends each field's raw value and
+// derives nothing from them: which row is highlighted is worked out in
+// frida_tools.highlighted_row_text, its one home.
 //
 // The player screen is found a different way from the other menus. The
 // bridge's Il2Cpp.gc.choose asks il2cpp's liveness walk for the objects of a
@@ -107,10 +112,58 @@ function onlineMenuActive(menu: Il2Cpp.Object): boolean | null | string {
     return activeInHierarchy(menu.field<Il2Cpp.Object>("onlineMenu").value);
 }
 
-// One enum field's number on one menu, or the error text when the read failed.
-function enumField(menu: Il2Cpp.Object, name: string): number | string {
+// One entry of menu_fields.json, as this file uses it. menu_fields.json's
+// "about" says what each kind means; an entry with no kind is an enum.
+interface MenuField {
+    key: string;
+    class: string;
+    field: string;
+    kind?: string;
+}
+const FIELDS = MENU_FIELDS.fields as MenuField[];
+const ENUM_KIND = "enum";
+
+// An enum value's number.
+function enumNumber(value: Il2Cpp.ValueType): number {
+    return value.field<number>(ENUM_VALUE_FIELD).value;
+}
+
+// An array's elements, each turned into a plain value by `each`, or null for
+// a null array. Reading the elements goes through the bridge's Il2Cpp.Array,
+// which on its first use in this process finds where elements start by
+// building a string of its own and calling System.String.ToCharArray on it.
+// That call touches no game object, and it is the bridge's, not this file's.
+function arrayValues<T extends Il2Cpp.Field.Type, R>(array: Il2Cpp.Array<T>, each: (element: T) => R): R[] | null {
+    if (array.isNull()) {
+        return null;
+    }
+    const values: R[] = [];
+    for (const element of array) {
+        values.push(each(element));
+    }
+    return values;
+}
+
+// One field's raw value on one menu, read the way its kind says, or the error
+// text when the read failed. Il2Cpp.Object.field looks a name up through the
+// class and its parents (il2cpp_class_get_field_from_name walks the parent
+// chain), so a field declared on BaseMenu is found on a PlayerSelectionMenu
+// by the same call.
+function readField(menu: Il2Cpp.Object, f: MenuField): unknown {
     try {
-        return menu.field<Il2Cpp.ValueType>(name).value.field<number>(ENUM_VALUE_FIELD).value;
+        switch (f.kind ?? ENUM_KIND) {
+            case ENUM_KIND:
+                return enumNumber(menu.field<Il2Cpp.ValueType>(f.field).value);
+            case "int":
+            case "bool":
+                return menu.field<number | boolean>(f.field).value;
+            case "string_array":
+                return arrayValues(menu.field<Il2Cpp.Array<Il2Cpp.String>>(f.field).value, text);
+            case "enum_array":
+                return arrayValues(menu.field<Il2Cpp.Array<Il2Cpp.ValueType>>(f.field).value, enumNumber);
+            default:
+                return `menu.ts reads no kind named ${f.kind}`;
+        }
     } catch (e) {
         return `error: ${e}`;
     }
@@ -248,9 +301,9 @@ function readClass(image: Il2Cpp.Image, name: string, live: Map<string, Il2Cpp.O
         entry.onlineMenuActive = alive.map(onlineMenuActive);
     }
     const fields: { [key: string]: unknown } = {};
-    for (const f of MENU_FIELDS.fields) {
+    for (const f of FIELDS) {
         if (f.class === name) {
-            fields[f.key] = alive.map((obj) => enumField(obj, f.field));
+            fields[f.key] = alive.map((obj) => readField(obj, f));
         }
     }
     if (Object.keys(fields).length > 0) {

@@ -1,7 +1,58 @@
 {
-    "about": "The menu fields agent/menu.ts reads by name, for every live instance of the class each one names, and the enum table frida_tools.menu_lines prints each value's word from. Each entry gives the line of the Il2CppDumper dump of the build below that the field and its enum type were read from; tests/test_frida_tools.py checks those lines when the dump is on this machine. The two player-screen fields are private and have obfuscated names, so a new build needs this file read again from its dump. The plan is docs/superpowers/plans/2026-10-30-ch-mcp-in-game-input.md, \"Menus without seeing\" and task K4.",
+    "about": "The menu fields agent/menu.ts reads by name, for every live instance of the class each one names, and how frida_tools.menu_lines prints them. Each entry's kind says how the field is read: an entry with no kind is an enum and carries its word table; int and bool are plain values; string_array and enum_array are arrays, and an enum_array takes its words from the entry its words_from names. A field declared on a parent class names that class in declared_in. Each entry gives the line of the Il2CppDumper dump of the build below that the field, its class and its enum type were read from; tests/test_frida_tools.py checks those lines, and that each kind matches the type the dump gives, when the dump is on this machine. menu_lines prints the fields in the order listed here. The player-screen fields are private and have obfuscated names, so a new build needs this file read again from its dump. The dump gives each field's type and offset only: what the keys cursor, scroll, rowNames, rowInstruments, rowCount, visibleRows, firstTime, isDrums, networkFlag and backLock mean comes from a scout's decompile, set down as unconfirmed in docs/clone-hero/07-internals.md (IN-58 to IN-60). The plan is docs/superpowers/plans/2026-10-30-ch-mcp-in-game-input.md, \"Menus without seeing\" and task K4.",
     "build": "6142",
     "fields": [
+        {
+            "key": "page",
+            "class": "PlayerSelectionMenu",
+            "class_dump_line": 72822,
+            "field": "ʾʺʽʵʾˀʷʳʺʴʽ",
+            "dump_line": 72825,
+            "enum": "PlayerSelectionMenu.ˁˁʷʽʼʷˀʳʾʷʻ",
+            "enum_dump_line": 72794,
+            "values": {
+                "0": "Confirm",
+                "1": "Instrument",
+                "2": "Difficulty",
+                "3": "Modifiers",
+                "4": "Ready"
+            }
+        },
+        {
+            "key": "cursor",
+            "kind": "int",
+            "class": "PlayerSelectionMenu",
+            "class_dump_line": 72822,
+            "declared_in": "BaseMenu",
+            "declared_in_dump_line": 44726,
+            "field": "ʳʿʻʻʵʷʸʾʷʳʳ",
+            "dump_line": 44743
+        },
+        {
+            "key": "scroll",
+            "kind": "int",
+            "class": "PlayerSelectionMenu",
+            "class_dump_line": 72822,
+            "declared_in": "BaseMenu",
+            "declared_in_dump_line": 44726,
+            "field": "ʻʳˀʼʿʽʹʲʼʾʷ",
+            "dump_line": 44742
+        },
+        {
+            "key": "controllerType",
+            "class": "PlayerSelectionMenu",
+            "class_dump_line": 72822,
+            "field": "ʶʲʿʹʹʽʸʿʴʶʷ",
+            "dump_line": 72873,
+            "enum": "ʸʽʼʲʲʿʽˁʳˀʽ",
+            "enum_dump_line": 532200,
+            "values": {
+                "0": "Guitar",
+                "1": "SixFretGuitar",
+                "2": "Drums",
+                "3": "FiveLaneDrums"
+            }
+        },
         {
             "key": "instrument",
             "class": "PlayerSelectionMenu",
@@ -46,6 +97,81 @@
                 "3": "Expert",
                 "4": "Count"
             }
+        },
+        {
+            "key": "playerIndex",
+            "kind": "int",
+            "class": "PlayerSelectionMenu",
+            "class_dump_line": 72822,
+            "field": "playerIndex",
+            "dump_line": 72828
+        },
+        {
+            "key": "firstTime",
+            "kind": "bool",
+            "class": "PlayerSelectionMenu",
+            "class_dump_line": 72822,
+            "field": "ʸʲˀʶʲʲʻʵʴʸʽ",
+            "dump_line": 72875
+        },
+        {
+            "key": "rowCount",
+            "kind": "int",
+            "class": "PlayerSelectionMenu",
+            "class_dump_line": 72822,
+            "field": "ʴʲʷʲʿʽʷʻʻʽʸ",
+            "dump_line": 72888
+        },
+        {
+            "key": "visibleRows",
+            "kind": "int",
+            "class": "PlayerSelectionMenu",
+            "class_dump_line": 72822,
+            "declared_in": "BaseMenu",
+            "declared_in_dump_line": 44726,
+            "field": "ˀʸʳʷʳʺʻʴʴʿʵ",
+            "dump_line": 44745
+        },
+        {
+            "key": "isDrums",
+            "kind": "bool",
+            "class": "PlayerSelectionMenu",
+            "class_dump_line": 72822,
+            "field": "ʶʹʷʶʹʲʾʾʾʲʵ",
+            "dump_line": 72892
+        },
+        {
+            "key": "networkFlag",
+            "kind": "bool",
+            "class": "PlayerSelectionMenu",
+            "class_dump_line": 72822,
+            "field": "ˁʳʾʴˀʼʽˁʴˀʼ",
+            "dump_line": 72894
+        },
+        {
+            "key": "backLock",
+            "kind": "bool",
+            "class": "PlayerSelectionMenu",
+            "class_dump_line": 72822,
+            "field": "ʳʲʿˁʵʴʿˁʺʵʾ",
+            "dump_line": 72896
+        },
+        {
+            "key": "rowNames",
+            "kind": "string_array",
+            "class": "PlayerSelectionMenu",
+            "class_dump_line": 72822,
+            "field": "ʸʾˁʾʲˀʶˀʵʸʵ",
+            "dump_line": 72885
+        },
+        {
+            "key": "rowInstruments",
+            "kind": "enum_array",
+            "words_from": "instrument",
+            "class": "PlayerSelectionMenu",
+            "class_dump_line": 72822,
+            "field": "ˁʶˁʲʳʾʽʿʸʿˀ",
+            "dump_line": 72887
         }
     ]
 }

@@ -173,3 +173,7 @@ FL-27, the Ladies Talk check, is the first entry on this page.
 **IN-40.** Question: does the 1.0 bot earn Star Power? Pass: after a 1.0 (build 4045) bot run on a chart with phrases, scorestats or the meter shows phrases earned. Fail: 0 earned. Needs a 1.0 run; a command-line bot start works in 1.0; no activation needed.
 
 **IN-44.** Question: is there a setting or flag that fills the HitDetection logs? Pass: a song writes lines into `HitDetection-Standard.log` or `HitDetection-Validation.log`. Fail: none found. A bot run is enough once the setting is known; no Star Power.
+
+**IN-59.** Question: are the player screen's instrument and difficulty fields the profile's saved copy, unchanged while the cursor moves? Pass: on the Instrument page, `ch_menu` shows the cursor move while the instrument field stays put, and the field changes only after Green confirms a row. Fail: the field follows the cursor. Needs a menu-started run with the kit (LS-K3); no Star Power.
+
+**IN-60.** Question: do Green, Yellow and Blue move the player screen the way the decompile says? Pass: with a Drums or FiveLaneDrums controller type, Blue and Yellow change the cursor by one, and Green on the Instrument page sets the highlighted row's instrument and moves to the next page. Fail: any press does something else. Needs a menu-started run with the kit (LS-K3); no Star Power.

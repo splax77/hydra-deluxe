@@ -103,35 +103,141 @@ def menu_fields() -> dict:
         return json.load(f)
 
 
-def _enum_words(key: str) -> Optional[Dict[str, str]]:
+# menu_fields.json's kinds that this file prints differently; an entry with no
+# kind is an enum (menu_fields.json's "about" says what each kind means).
+ENUM_KIND = "enum"
+ARRAY_KINDS = ("string_array", "enum_array")
+# The keys the highlighted row is worked out from: the BaseMenu cursor and
+# scroll, and the two row arrays it indexes. highlighted_row_text is the one
+# home of that rule; the agent sends only the raw values.
+CURSOR_KEY = "cursor"
+SCROLL_KEY = "scroll"
+ROW_NAMES_KEY = "rowNames"
+ROW_IDS_KEY = "rowInstruments"
+
+
+def _entry(key: str) -> Optional[dict]:
     for field in menu_fields()["fields"]:
         if field["key"] == key:
-            return field["values"]
+            return field
     return None
 
 
-def _field_text(key: str, values: Any) -> str:
-    """One menu field's values, one per live instance, each number with its
-    word from menu_fields.json's table; anything else as sent."""
-    if not isinstance(values, list):
-        return _value_text(values)
+def _kind(key: str) -> str:
+    entry = _entry(key)
+    return ENUM_KIND if entry is None else entry.get("kind", ENUM_KIND)
+
+
+def _enum_words(key: str) -> Optional[Dict[str, str]]:
+    """The word table for an enum entry, or for an enum_array the table of
+    the entry its words_from names."""
+    entry = _entry(key)
+    if entry is None:
+        return None
+    if "words_from" in entry:
+        return _enum_words(entry["words_from"])
+    return entry.get("values")
+
+
+def _is_number(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _number_text(key: str, value: Any) -> str:
+    """One enum number with its word from menu_fields.json's table; anything
+    else as sent."""
+    if not _is_number(value):
+        return _value_text(value)
     words = _enum_words(key) or {}
-    parts = []
-    for value in values:
-        if isinstance(value, int) and not isinstance(value, bool):
-            parts.append(f"{value} ({words.get(str(value), 'not in menu_fields.json')})")
-        else:
-            parts.append(_value_text(value))
-    return "[" + ", ".join(parts) + "]"
+    return f"{value} ({words.get(str(value), 'not in menu_fields.json')})"
+
+
+def _one_value_text(key: str, value: Any) -> str:
+    """One instance's value of one field, the way its kind prints."""
+    kind = _kind(key)
+    if kind in ARRAY_KINDS:
+        if value is None:
+            return "null (no array)"
+        if not isinstance(value, list):
+            return _value_text(value)
+        if kind == "string_array":
+            return _value_text(value)
+        return "[" + ", ".join(_number_text(key, v) for v in value) + "]"
+    if kind == ENUM_KIND:
+        return _number_text(key, value)
+    return _value_text(value)
+
+
+def _row_text(key: str, rows: Any, index: int) -> str:
+    """One row array's element at `index`, or plain text saying why there is
+    none."""
+    if rows is None:
+        return f"none ({key} is null)"
+    if not isinstance(rows, list):
+        return _value_text(rows)
+    if not 0 <= index < len(rows):
+        return f"none (index {index} is outside the {len(rows)} {key})"
+    value = rows[index]
+    if _kind(key) == "string_array":
+        # Quoted, so a row name never reads as one of these messages.
+        return json.dumps(value, ensure_ascii=False)
+    return _number_text(key, value)
+
+
+def highlighted_row_text(values: Dict[str, Any]) -> str:
+    """The highlighted row of one player screen, from one instance's raw
+    values by key: its index is cursor + scroll, then that row's name and
+    instrument id. The one home of which row is highlighted."""
+    cursor, scroll = values.get(CURSOR_KEY), values.get(SCROLL_KEY)
+    if not (_is_number(cursor) and _is_number(scroll)):
+        return "not known (cursor or scroll was not read)"
+    index = cursor + scroll
+    return (f"{index}, name {_row_text(ROW_NAMES_KEY, values.get(ROW_NAMES_KEY), index)}, "
+            f"id {_row_text(ROW_IDS_KEY, values.get(ROW_IDS_KEY), index)}")
+
+
+def _nth(values: Any, i: int) -> Any:
+    """Instance i's value of one field: the agent sends a list with one value
+    per live instance. Anything that is not a list is printed as sent for
+    every instance."""
+    if not isinstance(values, list):
+        return values
+    return values[i] if i < len(values) else "not sent"
+
+
+def _instance_lines(name: str, fields: dict, count: int) -> List[str]:
+    """One menu class's fields as lines, per live instance: the plain fields
+    on one line in menu_fields.json's order with the highlighted row right
+    after scroll, then the arrays on a `rows` line. Fields the agent sent that
+    menu_fields.json does not name come last, as sent."""
+    listed = [f["key"] for f in menu_fields()["fields"] if f["key"] in fields]
+    keys = listed + [k for k in fields if k not in listed]
+    lines = []
+    for i in range(count):
+        values = {k: _nth(fields[k], i) for k in keys}
+        plain, rows = [], []
+        for key in keys:
+            text = f"{key}: {_one_value_text(key, values[key])}"
+            if _kind(key) in ARRAY_KINDS:
+                rows.append(text)
+                continue
+            plain.append(text)
+            if key == SCROLL_KEY:
+                plain.append(f"highlighted row: {highlighted_row_text(values)}")
+        lines.append(f"{name}[{i}]: " + "; ".join(plain))
+        if rows:
+            lines.append(f"{name}[{i}] rows: " + "; ".join(rows))
+    return lines
 
 
 def menu_lines(menu: Optional[dict]) -> List[str]:
     """state.ts's menu block as lines: each menu class with its live and
-    destroyed counts, each live instance's active read, for the menus that
-    hold one each live instance's onlineMenuActive read, and the fields
-    menu_fields.json names with their enum words; then the selected song and
-    GlobalVariables' fields. The agent's values are printed as sent; this
-    names no menu state of its own."""
+    destroyed counts, each live instance's active read, and for the menus that
+    hold one each live instance's onlineMenuActive read; then, for a class
+    with fields, each live instance's fields (_instance_lines); then the
+    selected song and GlobalVariables' fields. The agent's values are printed
+    as sent, plus the highlighted row (highlighted_row_text); this names no
+    menu state of its own."""
     if menu is None:
         return ["menu: not read (the agent sent no menu block)"]
     if "error" in menu:
@@ -146,11 +252,10 @@ def menu_lines(menu: Optional[dict]) -> List[str]:
             line += f"; active: {_value_text(entry['active'])}"
         if "onlineMenuActive" in entry:
             line += f"; onlineMenuActive: {_value_text(entry['onlineMenuActive'])}"
+        lines.append(line)
         fields = entry.get("fields")
         if isinstance(fields, dict):
-            for key, values in fields.items():
-                line += f"; {key}: {_field_text(key, values)}"
-        lines.append(line)
+            lines.extend(_instance_lines(name, fields, entry["live"]))
     song = menu.get("selectedSong")
     if song is None:
         lines.append("selected song: none")
