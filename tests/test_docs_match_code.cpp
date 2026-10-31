@@ -1,4 +1,4 @@
-// The docs say what the code does. Four checks over the decision records
+// The docs say what the code does. Six checks over the decision records
 // and the guides:
 //
 // 1. Every backticked code name in them is still a name the code uses (see
@@ -24,6 +24,9 @@
 //    docs/superpowers/plans/2026-10-30-clone-hero-reference.md;
 //    tools/ch_mcp/dump_facts.py --tsv writes the tables and owns how a span
 //    resolves to a fact (its TABLE_COLUMNS are the columns).
+// 6. No permanent doc (every markdown file git lists, less the folders
+//    kNotPermanentDirs skips) names a path into a scratch folder
+//    (scratch_path_re).
 //
 // It finds the repo and walks the code through tests/source_tree.h, as the
 // scans in tests/single_owner/ do.
@@ -1195,6 +1198,75 @@ TEST_CASE("docs match code: every game fact on a Clone Hero page has a home") {
         }
     INFO(report(result.problems));
     CHECK(result.problems.empty());
+}
+
+namespace {
+
+// ---- check 6: no scratch paths ---------------------------------------------
+
+// The user's rulings (2026-10-31): "permanent docs should never reference or
+// be held in scratch folders", and "old handoffs and plans can be skipped,
+// they are not permanent documentation." scratch_path_re is what counts as a
+// path into a scratch folder. A line that only says the word, such as "write
+// your review to a file in your scratchpad", names no path and passes.
+// kNotPermanentDirs are the folders the second ruling skips.
+const std::regex& scratch_path_re() {
+    static const std::regex re(R"(AppData[\\/]Local[\\/]Temp|[\\/]scratchpad[\\/]|chref-scratch|scratch_ms[\\/])",
+                               std::regex::icase);
+    return re;
+}
+constexpr const char* kNotPermanentDirs[] = {"docs/handoffs/", "docs/superpowers/"};
+
+bool is_permanent_doc(const std::string& rel) {
+    for (const char* dir : kNotPermanentDirs)
+        if (rel.rfind(dir, 0) == 0) return false;
+    return true;
+}
+
+// Adds one problem per line of a permanent doc that names a path into a
+// scratch folder, with the doc, the line number and the path's text.
+void check_scratch_paths(const std::vector<Doc>& docs, std::vector<std::string>& problems) {
+    for (const Doc& d : docs) {
+        if (!is_permanent_doc(d.rel)) continue;
+        for (size_t i = 0; i < d.lines.size(); ++i) {
+            std::smatch m;
+            if (!std::regex_search(d.lines[i], m, scratch_path_re())) continue;
+            problems.push_back(d.rel + ":" + std::to_string(i + 1) + ": names a path into a scratch folder (\"" +
+                               m.str() + "\"); say the file was not kept, or point at a repo copy");
+        }
+    }
+}
+
+}  // namespace
+
+TEST_CASE("docs match code: no committed doc names a path into a scratch folder") {
+    const fs::path root = sourcetree::root();
+    std::vector<Doc> all;
+    for (const std::string& rel : sourcetree::markdown_files(root)) {
+        const fs::path p = root / fs::u8path(rel);
+        if (!fs::is_regular_file(p)) continue;  // a tracked file deleted in the work tree
+        all.push_back(Doc{rel, read_lines(p)});
+    }
+    std::vector<std::string> problems;
+    check_scratch_paths(all, problems);
+    INFO(report(problems));
+    CHECK(problems.empty());
+}
+
+TEST_CASE("docs match code: the scratch path check catches a Temp path and skips handoffs") {
+    const std::vector<Doc> docs = {
+        Doc{"docs/x.md",
+            {"Raw output is in `C:\\Users\\P\\AppData\\Local\\Temp\\claude\\s\\out.txt`.",
+             "Write your review to a file in your scratchpad.", "See C:/Users/P/AppData/Local/Temp/a.txt"}},
+        Doc{"docs/handoffs/2026-10-31-x-handoff.md", {"Read `C:\\Users\\P\\AppData\\Local\\Temp\\a.txt`."}},
+        Doc{"docs/superpowers/plans/2026-10-31-x.md", {"Read `x\\scratchpad\\a.txt`."}}};
+    std::vector<std::string> problems;
+    check_scratch_paths(docs, problems);
+    REQUIRE(problems.size() == 2);
+    CHECK(problems[0] ==
+          "docs/x.md:1: names a path into a scratch folder (\"AppData\\Local\\Temp\"); say the file was not "
+          "kept, or point at a repo copy");
+    CHECK(problems[1].rfind("docs/x.md:3: ", 0) == 0);
 }
 
 namespace {

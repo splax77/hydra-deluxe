@@ -31,7 +31,7 @@ Your items' packets (where you have one) are verbatim extracts the main session'
 
 ## Output
 
-Write your blocks to `C:\Users\Patrick\AppData\Local\Temp\claude\C--Users-Patrick-Downloads-Hydra-hydra-test--claude-worktrees-fervent-bohr-838562\61cee421-c19b-4c26-979c-a253c696f7f5\scratchpad\aoa\out\<your task id>.md`. Create it with Write at the start, with a heading and the line `<!-- next -->`. After each item, use Edit to replace `<!-- next -->` with your new block followed by `<!-- next -->`. So a stop at any point leaves every finished block on disk.
+Write your blocks to `<your task id>.md` in the session's scratch folder. That folder was not kept; each scout's finished blocks were copied to `docs/audit/2026-10-29-audit-of-audits/blocks/`. Create it with Write at the start, with a heading and the line `<!-- next -->`. After each item, use Edit to replace `<!-- next -->` with your new block followed by `<!-- next -->`. So a stop at any point leaves every finished block on disk.
 
 One block per item, in this form:
 
