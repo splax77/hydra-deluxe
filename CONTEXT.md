@@ -272,11 +272,14 @@ Search tips popup draws that list.
 
 **Batch time left**:
 The batch strip's estimate of how long the rest of a batch will take: the
-average time per finished chart so far, times the charts still to go. It
-shows only once three charts have finished (`kEtaMinFinished` in
-src/ui/library_jobs.h). Decided in the approved
-docs/superpowers/specs/2026-09-27-ui-redesign-design.md ("The estimate appears
-once three charts have finished").
+charts still to go over the rate across the last 2W finished charts, W being
+the run's worker count (`kTimeLeftWorkerRounds` in src/ui/library_jobs.h). It
+shows nothing until that many have finished, and changes at most once a
+second. Paused time never counts inside the window, because the finishes are
+timed on the batch clock, which leaves pauses out. The rate, the window and
+the hold are `app::TimeLeftClock`'s (src/app/time_left.h), which the Song
+Preview's loading bar reads too, over its own last second of bytes (D271
+item 4, D276 item 8, D283).
 
 **Batch counts**:
 A batch's three counts: analyzed, failed, and skipped (rows that already had a
@@ -303,9 +306,11 @@ fast chart shows its paths with no box and no "Done!" (D87 items 6 and 10).
 Opening the library file at startup waits the same 0.15 s, through the same
 constant (`kViewProgressDelaySeconds` in src/ui/app_state.h): a fast open
 draws an empty window, and the startup screen appears only once the open has
-run that long (D100 item 2). The startup screen's time-left line follows the
-Song Preview's rule (`gated_time_left_text` in src/ui/preview_load_job.h, D100 item 4).
-The "Copied!" flash after Copy path
+run that long (D100 item 2). The startup screen shows no time left; its
+time-left line went with the copy upgrade (D115 task A1-6a). The Song
+Preview's loading bar waits before it shows its time left
+(`kTimeLeftAfterSeconds` in src/ui/preview_load_job.h, checked by
+`app::time_left_line`). The "Copied!" flash after Copy path
 lasts 2 seconds, the library search refilters at most every 0.15 s while
 typing, and a running batch refreshes the library at most once a second
 (src/ui/app_state.cpp, src/ui/paths_tab.cpp, src/ui/library_table.cpp;

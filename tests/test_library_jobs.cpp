@@ -10,6 +10,8 @@
 #include <chrono>
 #include <filesystem>
 #include <functional>
+#include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -20,6 +22,7 @@
 #include "app/config.h"  // Settings::batch_run
 #include "app/report.h"  // kNoChartLibrary
 #include "app/report_files.h"
+#include "app/time_left.h"
 #include "app/user_messages.h"  // plain_error
 #include "core/error_kind.h"
 #include "corpus_util.h"
@@ -83,6 +86,18 @@ hydra::app::ChartAnalyzer gated_failure(std::atomic<int>& started, std::atomic<b
     };
 }
 
+// A chart that fails once the test has released it: the chart that started
+// n-th (from 0) waits until `released` is above n.
+hydra::app::ChartAnalyzer released_in_turn(std::atomic<int>& released) {
+    auto started = std::make_shared<std::atomic<int>>(0);
+    return [&released, started](const std::string&, const AnalysisSettings&,
+                                const std::function<void(float)>&) -> AnalysisResult {
+        const int me = (*started)++;
+        wait_until([&released, me] { return released.load() > me; }, "the test to release it");
+        throw hydra::KindedError(hydra::ErrorKind::ChartUnreadable, "MD5 hashing failed");
+    };
+}
+
 }  // namespace
 
 TEST_CASE("jobs: the batch clock leaves paused time out") {
@@ -104,12 +119,93 @@ TEST_CASE("jobs: the batch clock leaves paused time out") {
     CHECK_FALSE(stopped_while_paused.paused());
 }
 
-TEST_CASE("jobs: time left needs three finished charts") {
-    CHECK_FALSE(hydra::ui::batch_eta_s(30.0, 2, 10).has_value());
-    REQUIRE(hydra::ui::batch_eta_s(30.0, 3, 10).has_value());
-    CHECK(*hydra::ui::batch_eta_s(30.0, 3, 10) == doctest::Approx(70.0));
-    CHECK(*hydra::ui::batch_eta_s(30.0, 10, 10) == doctest::Approx(0.0));
-    CHECK_FALSE(hydra::ui::batch_eta_s(30.0, 3, 0).has_value());
+// The batch strip's window is the last 2W finished charts (D283). These cases
+// use W = 4, so the window is 8 charts, and a batch of 40. Charts arrive in
+// save groups, so several share one finish time, as the strip sees them.
+TEST_CASE("jobs: time left is the rate over the last 2W finished charts") {
+    hydra::app::TimeLeftClock clock = hydra::app::TimeLeftClock::over_last_units(
+        hydra::ui::kTimeLeftWorkerRounds * 4);
+    clock.record(1.0, 8);    // 8 charts that had a quick answer, in one group
+    clock.record(11.0, 12);  // then 4 slow ones
+    clock.record(21.0, 16);  // and 4 more
+    // The mean since the start would say 25 s over 16 charts for 24 to go:
+    // 37.5 s, "about 0:38 left". The last 8 finished from 11.0 s on.
+    const std::optional<double> first = clock.read(25.0, 40);
+    REQUIRE(first.has_value());
+    CHECK(*first == doctest::Approx(42.0));
+    CHECK(hydra::app::time_left_text(*first) == "about 0:42 left");
+
+    // A second reading inside the same second returns the first, however
+    // many charts landed in between.
+    clock.record(25.5, 20);
+    const std::optional<double> held = clock.read(25.9, 40);
+    REQUIRE(held.has_value());
+    CHECK(*held == doctest::Approx(42.0));
+    // A second on, the window has moved to the last 8.
+    const std::optional<double> next = clock.read(26.0, 40);
+    REQUIRE(next.has_value());
+    CHECK(*next == doctest::Approx(12.5));
+}
+
+TEST_CASE("jobs: time left shows nothing until 2W charts have finished, then shows") {
+    hydra::app::TimeLeftClock clock = hydra::app::TimeLeftClock::over_last_units(
+        hydra::ui::kTimeLeftWorkerRounds * 4);
+    clock.record(1.0, 7);
+    CHECK_FALSE(clock.read(2.0, 40).has_value());  // 7 of the 8 the window needs
+    clock.record(3.0, 8);
+    const std::optional<double> at_window = clock.read(4.0, 40);
+    REQUIRE(at_window.has_value());
+    CHECK(*at_window == doctest::Approx(12.0));
+}
+
+TEST_CASE("jobs: the batch strip's time left waits for two rounds of its workers") {
+    // One worker, so the window is 2 charts. Each chart waits for its turn.
+    std::atomic<int> released{0};
+    RecordStore store(":memory:");
+    BatchJob job(plan_of(fake_charts(4)), test_run(), store);
+    job.set_analyzer_for_test(released_in_turn(released), /*workers=*/1);
+    job.start();
+
+    released = 1;
+    wait_until([&] { return job.snapshot().completed == 1; }, "the first chart to finish");
+    CHECK_FALSE(job.snapshot().eta_s.has_value());
+    released = 2;
+    wait_until([&] { return job.snapshot().completed == 2; }, "the second chart to finish");
+    CHECK(job.snapshot().eta_s.has_value());
+
+    released = 4;
+    wait_until([&] { return job.snapshot().finished; }, "the batch to finish");
+    CHECK_FALSE(job.snapshot().eta_s.has_value());
+}
+
+// Paused time never counts (D283): a chart that finishes during a pause is
+// timed at the pause, and the window after the resume spans only run time.
+TEST_CASE("jobs: time left leaves a pause out of its window") {
+    std::atomic<int> released{0};
+    RecordStore store(":memory:");
+    BatchJob job(plan_of(fake_charts(4)), test_run(), store);
+    job.set_analyzer_for_test(released_in_turn(released), /*workers=*/1);  // a window of 2
+    job.start();
+    wait_until([&] { return job.snapshot().current_title == "fake 0"; }, "the first chart to start");
+
+    job.pause();
+    released = 1;
+    wait_until([&] { return job.snapshot().completed == 1; }, "the chart in flight to finish");
+    CHECK_FALSE(job.snapshot().eta_s.has_value());
+    constexpr auto kPause = 1200ms;  // far longer than the run time that follows
+    std::this_thread::sleep_for(kPause);
+
+    job.resume();
+    released = 2;
+    wait_until([&] { return job.snapshot().completed == 2; }, "the second chart to finish");
+    // Two charts left over a rate of 2 charts in the window's span: the span
+    // in seconds. Counting the pause would make it kPause or more.
+    const std::optional<double> eta = job.snapshot().eta_s;
+    REQUIRE(eta.has_value());
+    CHECK(*eta < std::chrono::duration<double>(kPause).count() / 2);
+
+    released = 4;
+    wait_until([&] { return job.snapshot().finished; }, "the batch to finish");
 }
 
 TEST_CASE("jobs: pause lets the chart in flight finish and starts no new one") {
