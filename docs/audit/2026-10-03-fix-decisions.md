@@ -1141,7 +1141,7 @@ Two plan questions were not asked, because the rulings already answer them. A de
 
 The 1.0 facts are checked by name only; the user asked for no stricter check.
 
-**D277 (session adbda2b2), 2026-10-30. What the plan reviews and the time-left measurement turned up.** The user's calls in chat:
+**D278 (session adbda2b2), 2026-10-30. What the plan reviews and the time-left measurement turned up.** The user's calls in chat:
 1. **The time-left window is picked from one run over the user's library (D271 item 4).** The measurement on the 97 checked-in test charts could not separate the windows: the main session's own re-run took 1.7 s in all, and Hydra reported 0.4 s of analysis, so every window read "about 0:00 left" (`docs/handoffs/2026-10-30-d271-eta-window-measurements.md`). The library holds 19,562 chart files. The user chose "Allow one library run (Recommended)": one timed batch over the library into a scratch database, never `hydra.db`, then the user picks from the real table. The run waits for the user's exact "allow library run" message (CLAUDE.md rule 8).
 2. **The media guard keeps asking on a relative yt-dlp `-o` (D273 item 3).** The guard's reviewer found that `yt-dlp -P C:\ytdl -o "%(title)s.%(ext)s" URL` asks in the main session, where the old guard let it pass, and a fix would go past the hooks' 3,100-line budget. No yt-dlp call was made in the 14 days the replay read. The user chose "Leave it asking (Recommended)". The budget stays.
 3. **A Cancelled or Failed path report stays so after a close (D271 item 7).** The user chose "Like the comparison (Recommended)": reopening shows "Report cancelled." or the failure with Try again, as the comparison window already does.
