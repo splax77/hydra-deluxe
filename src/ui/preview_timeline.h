@@ -223,8 +223,9 @@ struct TimelineLayout {
     float width = 0.0f;
     double length_ms = 0.0;
     TimelineRect rows[kTimelineRowCount];
-    // Every kTimelineAxisStepMs from the start, or every few of them when
-    // TimelineMetrics::axis_label_gap says they would crowd.
+    // Every kTimelineAxisStepMs after the start (the start itself gets no
+    // label), or every few of them when TimelineMetrics::axis_label_gap says
+    // they would crowd.
     std::vector<TimelineTick> axis_ticks;
     std::vector<TimelineSection> sections;
     std::vector<float> phrase_x;  // each SP phrase's start
