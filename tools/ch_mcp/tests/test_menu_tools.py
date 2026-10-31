@@ -24,6 +24,7 @@ if _REPO_ROOT not in sys.path:
 from tools.ch_mcp import game_files  # noqa: E402
 from tools.ch_mcp import menu_tools as MT  # noqa: E402
 from tools.ch_mcp.frida_tools import StateUnread  # noqa: E402
+from tools.ch_mcp.game_tools import PressResult  # noqa: E402
 from tools.ch_probe import input_driver  # noqa: E402
 from tools.ch_probe import probe_songs  # noqa: E402
 
@@ -54,22 +55,29 @@ def state(*, song_select=0, player=0, selected=None, found=False, loaded=False,
 
 class FakeGame:
     """GameTools' three methods MenuTools calls. `events` holds the backup and
-    every item pressed, in order."""
+    every item pressed, in order. An item in `refuse` is not sent: the call
+    returns the refusal GameTools would give, with sent False."""
 
-    def __init__(self):
+    def __init__(self, refuse=()):
         self.events = []
+        self.refuse = set(refuse)
 
     def ensure_backup(self):
         self.events.append(BACKUP)
         return "backup folder: X"
 
     def press_keys(self, items):
+        refused = [i for i in items if i in self.refuse]
+        if refused:
+            return PressResult(False, f'unknown key "{refused[0]}"; valid keys: enter, ...')
         self.events.extend(items)
-        return "keys sent: " + ", ".join(items)
+        return PressResult(True, "keys sent: " + ", ".join(items))
 
-    def ch_press(self, lanes):
+    def press_lanes(self, lanes):
+        if MT.LANE_PREFIX + lanes in self.refuse:
+            return PressResult(False, "no game window found (Clone Hero is not running)")
         self.events.append(MT.LANE_PREFIX + lanes)
-        return f"pressed {lanes}"
+        return PressResult(True, f"pressed {lanes}")
 
     def keys(self):
         return [e for e in self.events if e != BACKUP]
@@ -277,6 +285,33 @@ class OpenSongTest(MenuToolsCase):
         self.assertIn("presses space, which no step may press (FORBIDDEN_KEYS)", reply)
         self.assertEqual(self.game.events, [])
 
+    def test_a_refused_key_press_stops_at_once_naming_the_refusal(self):
+        self.game.refuse.add("enter")
+        tools = self.tools(lambda keys, reads: state(), STEPS)
+        reply = tools.ch_open_song(self.folder)
+        self.assertIn("stopped at step 1 (song list): the game refused the press of enter, "
+                      'so nothing was sent: unknown key "enter"', reply)
+        self.assertIn("keys sent so far: none", reply)
+        self.assertIn("last read:\n  MainMenu:", reply)
+        self.assertEqual(self.frida.reads, 1)
+        self.assertLess(self.clock.t, MT.MENU_STEP_CAP_S)
+
+    def test_a_refused_lane_press_stops_at_once_naming_the_refusal(self):
+        self.game.refuse.add(MT.LANE_PREFIX + "blue")
+        tools = self.tools(self.screens(), STEPS)
+        reply = tools.ch_open_song(self.folder)
+        self.assertIn("stopped at step 2 (search): the game refused the press of blue, so "
+                      "nothing was sent: no game window found", reply)
+        self.assertIn("keys sent so far: enter", reply)
+        self.assertNotIn(f"text:{SONG_NAME}", self.game.keys())
+
+    def test_a_refused_down_press_in_the_search_stops_at_once(self):
+        self.game.refuse.add(MT.SEARCH_NEXT_KEY)
+        tools = self.tools(self.screens(target_after_downs=2), STEPS)
+        reply = tools.ch_open_song(self.folder)
+        self.assertIn("stopped at step 2 (search): the game refused the press of down", reply)
+        self.assertEqual(self.game.keys().count(MT.SEARCH_NEXT_KEY), 0)
+
     def test_presses_after_the_first_wait_the_key_gap(self):
         tools = self.tools(self.screens(), STEPS)
         self.loaded_after = 0
@@ -320,6 +355,29 @@ class StepsFileTest(unittest.TestCase):
         for step in self.steps:
             for key in step["keys"]:
                 self.assertNotIn(key.lower(), MT.FORBIDDEN_KEYS, step["name"])
+
+    def test_every_key_item_passes_the_item_check(self):
+        for step in self.steps:
+            for key in step["keys"]:
+                self.assertIsNone(MT.key_item_problem(key), key)
+
+    def test_the_item_check_refuses_what_a_step_may_not_list(self):
+        for bad in ("f1", "lane:purple", "lane:green,kick", "lane:", "{name}",
+                    "lane:{name}", "Enter,space"):
+            self.assertIsNotNone(MT.key_item_problem(bad), bad)
+        for good in ("enter", "Down", "lane:Green", "lane: kick", "text:{name}", "text:x,y"):
+            self.assertIsNone(MT.key_item_problem(good), good)
+
+    def test_a_file_with_an_unpressable_item_is_refused_whole(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "steps.json")
+            for bad in ("lane:green,kick", "f1"):
+                with open(path, "w", encoding="utf-8") as f:
+                    json.dump({"steps": [{"name": "x", "keys": [bad],
+                                          "expect": "song_loaded"}]}, f)
+                with self.assertRaises(MT.StepsInvalid) as ctx:
+                    MT.load_steps(path)
+                self.assertIn("lists a key that cannot be pressed", str(ctx.exception))
 
     def test_the_object_reads_are_marked_unproven(self):
         for step in self.steps:

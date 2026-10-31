@@ -450,8 +450,40 @@ class GameToolsTest(unittest.TestCase):
     def test_press_keys_takes_the_list_already_split(self):
         t, events = self._key_rig()
         with mock.patch.object(play_chart, "focus_window", lambda hwnd: None):
-            reply = t.tools.press_keys(["escape", "text:x,y"])
-        self.assertEqual(reply.splitlines()[-1], 'keys sent: escape, text "x,y" (3 characters)')
+            result = t.tools.press_keys(["escape", "text:x,y"])
+        self.assertTrue(result.sent)
+        self.assertEqual(result.text.splitlines()[-1],
+                         'keys sent: escape, text "x,y" (3 characters)')
+
+    def test_press_keys_says_sent_false_for_each_refusal(self):
+        t, events = self._key_rig()
+        unknown = t.tools.press_keys(["enter", "purple"])
+        self.assertFalse(unknown.sent)
+        self.assertTrue(unknown.text.startswith('unknown key "purple"'))
+        self.assertFalse(t.tools.press_keys(["text:"]).sent)
+        self.assertFalse(t.tools.press_keys([]).sent)
+        t.hwnd = 0
+        no_window = t.tools.press_keys(["enter"])
+        self.assertFalse(no_window.sent)
+        self.assertTrue(no_window.text.startswith("no game window found"))
+        self.assertEqual(events, [])
+
+    def test_press_lanes_says_sent_false_for_each_refusal(self):
+        t = ToolRig(self.tmp)
+        unknown = t.tools.press_lanes("purple")
+        self.assertFalse(unknown.sent)
+        self.assertTrue(unknown.text.startswith('unknown lane "purple"'))
+        self.assertFalse(t.tools.press_lanes("").sent)
+        t.hwnd = 0
+        self.assertFalse(t.tools.press_lanes("red").sent)
+
+    def test_press_lanes_says_sent_true_and_ch_press_prints_the_same_text(self):
+        t = ToolRig(self.tmp)
+        with mock.patch.object(play_chart, "focus_window", lambda hwnd: None):
+            result = t.tools.press_lanes("red")
+            self.assertTrue(result.sent)
+            self.assertEqual(t.tools.ch_press("red").splitlines()[-1],
+                             result.text.splitlines()[-1])
 
     def test_split_keys_keeps_the_text_whole(self):
         self.assertEqual(GT.split_keys("enter, down ,text:Ladies Talk, fill"),

@@ -26,7 +26,8 @@ from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 from tools.ch_mcp import game_files
 from tools.ch_mcp.frida_tools import MENU_BLOCK, StateUnread, menu_lines, state_words
-from tools.ch_probe.input_driver import MENU_KEY_GAP_S
+from tools.ch_mcp.game_tools import TEXT_PREFIX
+from tools.ch_probe.input_driver import MENU_KEY_GAP_S, MENU_KEYS, Lane
 
 # The user's ruling 3 in the plan above, 2026-10-30.
 # How long a step waits, after its last key, for its expect word to hold.
@@ -121,10 +122,29 @@ def online_refusal(state: dict) -> Optional[str]:
     return None
 
 
+def key_item_problem(item: str) -> Optional[str]:
+    """Why `item` is not a key a step may list, or None when it is. A step
+    lists a MENU_KEYS name, `text:<string>`, or `lane:<name>` with exactly one
+    Lane name. Only a text item may hold NAME_FIELD, so the song's name is
+    typed and never pressed or parsed as a key."""
+    if item.startswith(TEXT_PREFIX):
+        return None
+    if NAME_FIELD in item:
+        return f"{NAME_FIELD} is allowed only in a {TEXT_PREFIX} item"
+    if item.startswith(LANE_PREFIX):
+        lane = item[len(LANE_PREFIX):].strip().upper()
+        if lane not in Lane.__members__:
+            return f"{item!r} is not {LANE_PREFIX} and one lane name"
+        return None
+    if item.strip().lower() not in MENU_KEYS:
+        return f"{item!r} is not a MENU_KEYS name"
+    return None
+
+
 def load_steps(path: str = STEPS_FILE) -> dict:
     """The step file, checked: a list of steps, each with a name, a list of
-    keys and an expect word from EXPECT, and no key in FORBIDDEN_KEYS.
-    Raises StepsInvalid naming what is wrong."""
+    keys that pass key_item_problem and an expect word from EXPECT, and no key
+    in FORBIDDEN_KEYS. Raises StepsInvalid naming what is wrong."""
     try:
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
@@ -143,6 +163,11 @@ def load_steps(path: str = STEPS_FILE) -> dict:
         if bad:
             raise StepsInvalid(f"{path}: step {i} ({step['name']}) presses {bad[0]}, which "
                                "no step may press (FORBIDDEN_KEYS)")
+        for item in keys:
+            problem = key_item_problem(item)
+            if problem is not None:
+                raise StepsInvalid(f"{path}: step {i} ({step['name']}) lists a key that "
+                                   f"cannot be pressed: {problem}")
         if step.get("expect") not in EXPECT:
             raise StepsInvalid(f"{path}: step {i} ({step['name']}) expects "
                                f"{step.get('expect')!r}; the words are {', '.join(EXPECT)}")
@@ -178,6 +203,8 @@ class MenuTools:
         self._pressed = False
         self._sent: List[str] = []
         self._lines: List[str] = []
+        # The newest read that came back in this run, for a stop that has none of its own.
+        self._last_read: Optional[dict] = None
 
     def ch_open_song(self, song_folder: str) -> str:
         """Start the song in `song_folder` from the menus: for each step of
@@ -189,6 +216,7 @@ class MenuTools:
             self._pressed = False
             self._sent = []
             self._lines = []
+            self._last_read = None
             try:
                 steps = load_steps(self._steps_path)["steps"]
             except StepsInvalid as e:
@@ -263,9 +291,10 @@ class MenuTools:
 
     def _press(self, items: Sequence[str]) -> None:
         """Send `items` in order: each run of key and text items in one
-        press_keys call, each lane item through ch_press. Every press call
+        press_keys call, each lane item through press_lanes. Every press call
         after the run's first waits MENU_KEY_GAP_S first. The game's replies
-        go in the reply, indented."""
+        go in the reply, indented. A press the game refuses (its result says
+        sent False) stops the run at once, naming the refusal."""
         groups: List[Tuple[str, List[str]]] = []
         for item in items:
             if item.startswith(LANE_PREFIX):
@@ -278,13 +307,13 @@ class MenuTools:
             if self._pressed:
                 self._sleep(MENU_KEY_GAP_S)
             self._pressed = True
-            if kind == "lane":
-                reply = self._game.ch_press(group[0])
-                self._sent.append(LANE_PREFIX + group[0])
-            else:
-                reply = self._game.press_keys(group)
-                self._sent.extend(group)
-            self._lines.extend("  " + line for line in str(reply).splitlines() if line)
+            result = self._game.press_lanes(group[0]) if kind == "lane" \
+                else self._game.press_keys(group)
+            if not result.sent:
+                raise _Stopped(f"the game refused the press of {', '.join(group)}, so "
+                               f"nothing was sent: {result.text}", self._last_read)
+            self._lines.extend("  " + line for line in result.text.splitlines() if line)
+            self._sent.extend([LANE_PREFIX + group[0]] if kind == "lane" else group)
 
     def _wait(self, label: str, holds: Callable[[dict], bool]) -> Tuple[bool, dict]:
         """Read every MENU_POLL_S until `holds` is true of a read or
@@ -304,7 +333,8 @@ class MenuTools:
 
     def _read(self) -> dict:
         try:
-            return self._frida.read_state()
+            self._last_read = self._frida.read_state()
+            return self._last_read
         except StateUnread as e:
             raise _Stopped(f"no read came back: {e}", None) from e
 
