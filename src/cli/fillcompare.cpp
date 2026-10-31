@@ -33,6 +33,7 @@
 #include "app/report_files.h"
 #include "app/user_messages.h"
 #include "core/model.h"
+#include "core/unknown_option.h"
 #include "core/winstr.h"
 #include "store/record_store.h"
 
@@ -62,7 +63,7 @@ int fillcompare_main() {
                          arg.c_str());
             return 2;
         } else {
-            std::fprintf(stderr, "Unknown option: %s\n", arg.c_str());
+            std::fprintf(stderr, "%s\n", hydra::unknown_option_line(arg).c_str());
             std::fprintf(stderr,
                 "Usage: hydra_fillcompare [--db <path>] [--out fill_compare.html] "
                 "[--no-open] [--rules hydra_rules.ini]\n");

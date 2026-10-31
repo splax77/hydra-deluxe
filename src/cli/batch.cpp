@@ -42,6 +42,7 @@
 #include "app/user_messages.h"
 #include "cli/batch_scope.h"
 #include "core/model.h"
+#include "core/unknown_option.h"
 #include "core/winstr.h"
 #include "parse/song.h"
 #include "search/graph.h"
@@ -83,7 +84,7 @@ int batch_main() {
         else if (arg == "--db" && i + 1 < argc) dbpath = args[++i];
         else if (arg == "--rules" && i + 1 < argc) rulespath = args[++i];
         else if (arg.rfind("--", 0) == 0) {
-            std::fprintf(stderr, "Unknown option: %s\n", arg.c_str());
+            std::fprintf(stderr, "%s\n", hydra::unknown_option_line(arg).c_str());
             return 2;
         } else {
             folder_args.push_back(arg);

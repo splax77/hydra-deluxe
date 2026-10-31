@@ -28,6 +28,7 @@
 #include "app/config.h"
 #include "app/user_messages.h"  // kDatabaseOpenSentence
 #include "cli/batch_scope.h"
+#include "core/unknown_option.h"
 #include "core/winstr.h"
 #include "corpus_util.h"
 #include "db_file_util.h"  // write_junk_db
@@ -285,6 +286,19 @@ TEST_CASE("hydra_batch refuses an unknown option") {
     CHECK(r.exit_code == 2);
     CHECK(contains(r.output, "Unknown option: --no-such-option"));
     CHECK_FALSE(fs::exists(fs::u8path(db)));
+}
+
+// D271 item 6: every tool prints the one helper's line for an option it does
+// not know, in the words the user chose (D276 item 5). Both tools here exit 2.
+TEST_CASE("hydra_batch and hydra_fillcompare print the one unknown-option line") {
+    CHECK(hydra::unknown_option_line("--bogus") == "Unknown option: --bogus");
+    CliSandbox box("unknown_option_line");
+    for (const fs::path& exe : {box.batch, box.fillcompare}) {
+        RunResult r = run_exe(exe, {"--bogus"});
+        INFO(exe.u8string() << ": " << r.output);
+        CHECK(r.exit_code == 2);
+        CHECK(contains(r.output, hydra::unknown_option_line("--bogus") + "\r\n"));
+    }
 }
 
 // D114 item 11: a bad hydra_rules.ini prints the tools' sentence and then the
