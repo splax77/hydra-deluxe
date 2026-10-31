@@ -158,8 +158,6 @@ FL-27, the Ladies Talk check, is the first entry on this page.
 
 ## Page 7: internals
 
-**IN-12.** Question: does anything write the drum engine's double at +0x2E0 during hits? Pass: it changes at each hit and equals the song clock at the hit within 10 ms. Fail: it stays 0.0 through hits. A bot run already read 0.0 in run1_cal0's key run; needs a hand-played or key-press stretch, no Star Power, a menu start.
-
 **IN-19.** Question: does `0x20DEEC0` fire only for hit notes? Pass: on a run with misses its calls equal the game's hit-note count in every section. Fail: calls exceed it. A bot never misses, so it needs a key-press run with misses and a menu start; no Star Power.
 
 **IN-20.** Question: does `0x20DE770` fire for a missed note? Pass (hit-only): its count equals the hit-note count. Fail: it also counts misses. Needs a key-press run with misses and a menu start; no Star Power.

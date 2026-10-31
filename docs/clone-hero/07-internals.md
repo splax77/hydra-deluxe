@@ -120,14 +120,14 @@ Hydra: no owner: Hydra's score is its own sum. The tool's names are `OFF_SONG_CL
 Ruling: none needed: no Hydra rule reads it.
 Found: 2026-09-25, session 8157f2dc; checked by this plan's wave 1 scouts H7a and H7b.
 
-### IN-12 Nothing shows that the double at +0x2E0 is a hit time
+### IN-12 The double at +0x2E0 is the start of a double lane's round, not a hit time
 
-Rule: The tools call the drum engine's double at +0x2E0 the hit time, but in the one run that logged it, it read 0.0 in every row. What writes it is not known.
-Label: Unknown
-Evidence: `overlay-spike/run1_cal0_sp_watch.csv`: the hit-time column is 0.0 in all 40,922 rows. The early "hit time" columns of `tools/ch_probe/experiments/results/hit_detect.csv` were the song clock at +0x100, not this field (session 8157f2dc). Looked in: run1_cal0 only (runs 2, 2b and 2c not read), the results folder, `tools/ch_probe/README.md`; the code that writes +0x2E0 was not read.
-Game code (6142): `#8255+0x2E0`; writer not found.
-Hydra: no owner. The tool calls it `OFF_HIT_TIME` in tools/ch_probe/constants.py line 106.
-Ruling: open split: see questions page Q-78
+Rule: The tools call the drum engine's double at +0x2E0 the hit time. It is not a per-hit time. The engine writes it, with the song clock, only while it handles a note flagged 0xC000 (a note in a double lane), at the hit that empties the round's pending-pad mask at +0x2C6; the mask is then refilled from +0x2C4 for the next round. The engine compares the song clock minus this value with 0.75 s (IN-15). So on a chart with no double lane the value is never written.
+Label: Proven in the game's code
+Evidence: `docs/audit/drum-lanes/play/f20deaa0.asm` has two copies of the code. Each tests flag 0xC000 (lines 131 and 179), clears the hit lane's bit in the pending mask at +0x2C6 (lines 137 and 185) and, only when that leaves no lane pending, writes the clock from `[rdi + 0x100]` into +0x2E0 (lines 140 and 188). The reads are in IN-15. The one run that logged the field read 0.0 in every row of `overlay-spike/run1_cal0_sp_watch.csv` (40,922 rows); that fits a chart without double lanes, but the chart was not checked for them. The early "hit time" columns of `tools/ch_probe/experiments/results/hit_detect.csv` were the song clock at +0x100, not this field (session 8157f2dc). Page 02's NL-59 describes the same timer from the game's side.
+Game code (6142): `#8255+0x2E0`; writer in the engine method at RVA `0x20DEAA0`, `docs/audit/drum-lanes/play/f20deaa0.asm` lines 140 and 188.
+Hydra: no owner. The tool calls it `OFF_HIT_TIME` in tools/ch_probe/constants.py line 106, which is the wrong name.
+Ruling: none needed: no Hydra rule reads it; the tool's name is Q-78
 Found: 2026-09-25, session 8157f2dc; this plan's wave 1 scouts H7a and H7b.
 
 ### IN-13 The combo count and the window note count have no result file
@@ -150,12 +150,12 @@ Hydra: no owner. The tool relies on it in `find_live_engine` (tools/ch_probe/eng
 Ruling: none needed: no Hydra rule reads it.
 Found: 2026-09-25, session 8157f2dc.
 
-### IN-15 The hit-threshold constant's role is a guess
+### IN-15 The hit-threshold constant is a double lane's 0.75 s round timer
 
-Rule: The constant the tools name `RVA_HITCHECK_THRESHOLD` read 0.75 live and was guessed to be a hit-grade fraction; where the game uses it was never looked up.
-Label: Unknown
-Evidence: unchecked by the scout: it needs a search of GD or the DLL for the constant's users. The only record is a session printout (8157f2dc, condensed lines 233 to 234).
-Game code (6142): not found: no user of the constant searched.
+Rule: The constant the tools name `RVA_HITCHECK_THRESHOLD` (a double, 0.75, in the DLL's data) is not a hit grade. The drum engine compares the song clock minus the round start at +0x2E0 (IN-12) with it, and when the time is over 0.75 s while a round is pending it makes one virtual call and clears the round state.
+Label: Proven in the game's code
+Evidence: `RVA_HITCHECK_THRESHOLD = 0x31406E8` (tools/ch_probe/constants.py line 191); the listings annotate the address as `[0x31406e8] xmm dbl=(0.75, 12.0)`. Its two users are `docs/audit/drum-lanes/play/f20ddec0.asm` lines 30 to 45 (clock at +0x100 minus +0x2E0, compared with it; the break needs +0x2C4 and +0x2C8 non-zero and the byte at +0x2F1 zero, then clears +0x2EC, +0x2C4, +0x2C8 and +0x2F0) and its twin `f20de5b0.asm` lines 17 to 19. The virtual call's target was not read. The earlier session printout (8157f2dc, condensed lines 233 to 234) only showed the value 0.75.
+Game code (6142): engine methods at RVA `0x20DDEC0` and `0x20DE5B0`, the listings above.
 Hydra: no owner.
 Ruling: none needed: no Hydra rule reads it.
 Found: 2026-09-25, session 8157f2dc.
@@ -580,7 +580,7 @@ Found: 2026-10-10, session c8856afd; 2026-10-09, session e8435f64
 
 ## Rows waiting on a live run
 
-IN-12, IN-19, IN-20, IN-21, IN-27, IN-29, IN-36, IN-40, IN-44. See `live-checks.md`.
+IN-19, IN-20, IN-21, IN-27, IN-29, IN-36, IN-40, IN-44. See `live-checks.md`.
 
 ## Open splits
 

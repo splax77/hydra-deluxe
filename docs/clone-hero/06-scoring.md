@@ -134,9 +134,9 @@ Found: wave 2 scout R6
 
 ### SC-13 The performed mark compares a lane value with a threshold
 
-Rule: The hit handler picks a signed byte per lane and compares it with an engine threshold. An accent is marked when the byte is at least 0 and below the threshold; a ghost is marked when it is at or above it. A negative byte marks neither. Each mark also bumps a counter.
+Rule: The hit handler picks a signed byte per lane and compares it with an engine threshold. A ghost is marked when the byte is at least 0 and below the threshold; an accent is marked when it is at or above it. A negative byte marks neither. Each mark also bumps a counter: +0xD8 for a ghost and +0xDC for an accent.
 Label: Proven in the game's code
-Evidence: Lines 29 to 61 pick the lane byte (one byte each at +0x309 to +0x310); lines 64 to 83 mark the ghost and bump +0xDC; lines 91 to 102 mark the accent and bump +0xD8. ghidra_decompile_all.txt lines 1163 to 1181 read the same. What the bytes and the threshold hold in play, and what writes them, was not found; which side is a hard hit is not known.
+Evidence: Lines 29 to 61 pick the lane byte (one byte each at +0x309 to +0x310); lines 72 to 83 are the path for the flag the getter `0x214BE10` tests (note +0x7C bit 0x80000, `DrumsAccentHit` at dump.cs line 548216): mark and bump +0xDC, the accent counter. Lines 91 to 102 are the path for `0x214B6C0` (bit 0x40000, `DrumsGhostHit`, dump.cs line 548215): mark and bump +0xD8, the ghost counter. Both getters were read in the 6142 DLL with tools/ch_mcp/chdis.py on 2026-10-31 (each is one `test dword ptr [rcx + 0x7c]` against that bit). ghidra_decompile_all.txt lines 1163 to 1181 read the same. What the bytes and the threshold hold in play, and what writes them, was not found; which side is a hard hit is not known.
 Game code (6142): RVA `0x20DE770` (slot 11), `code/6142/note_hit_dynamics_20DE770.asm` lines 29 to 102; threshold `#8255+0x2C0`
 Hydra: no owner: Hydra has no velocity or threshold
 Ruling: none needed for the comparison; the paid-or-not question is Q-51
@@ -280,7 +280,7 @@ Found: wave 2 scout R6; this plan's wave 1 scout H6
 
 Rule: The drums star base is the sum over notes of (50, plus 15 for a cymbal) times the gem count, times 2 when the note carries either dynamic flag (once, even with both). There is no sustain term for drums. It runs when the instrument is Drums (6) or ProDrums (9), after the Note Shuffle, and is stored at +0x1D0. Other instruments take a sustain term instead: every note whose length is at least a third of a chart value (read as the resolution) adds its length in ticks, and the total is turned into points once, at 25 points per beat, rounded by the same helper as SC-26.
 Label: Proven in the game's code
-Evidence: Star base lines 68 (drums branch), 87 to 101 (cymbal and the two flag tests), 103 to 118 (gem count) and 120 to 123 (the sum); lines 68 to 80 and 147 to 149 leave the sustain term at 0. The non-drums term is lines 29 to 39 (the value divided by 3.0), 73 to 82 (the length test) and 139 to 149 (the total divided by the value over 25.0); that the value at chart record +0xB8 is the resolution is session 9168b711's reading (card line 24 says "sustains at 25 points per beat"), not shown by name in the dump. The constructor picks the drums branch for 6 or 9 at lines 183 to 189, calls it at line 196 and stores the result at line 202. That the two flags are accent and ghost is the scouts' reading (the dump does not name them). Live: the game's base_score is 73,520 on Trippin SP Spike ProDrums, 62,850 on its plain Drums run (1,257 gems times 50, no cymbals or dynamics) and 7,100 on Window Map (142 gems times 50); wave 1 scout H6 found these equal to Hydra's chart base score on all three.
+Evidence: Star base lines 68 (drums branch), 87 to 101 (cymbal and the two flag tests), 103 to 118 (gem count) and 120 to 123 (the sum); lines 68 to 80 and 147 to 149 leave the sustain term at 0. The non-drums term is lines 29 to 39 (the value divided by 3.0), 73 to 82 (the length test) and 139 to 149 (the total divided by the value over 25.0); that the value at chart record +0xB8 is the resolution is session 9168b711's reading (card line 24 says "sustains at 25 points per beat"), not shown by name in the dump. The constructor picks the drums branch for 6 or 9 at lines 183 to 189, calls it at line 196 and stores the result at line 202. That the two flags are accent and ghost is named by the dump: 0x40000 is `DrumsGhostHit` and 0x80000 is `DrumsAccentHit` (dump.cs lines 548215 and 548216). Live: the game's base_score is 73,520 on Trippin SP Spike ProDrums, 62,850 on its plain Drums run (1,257 gems times 50, no cymbals or dynamics) and 7,100 on Window Map (142 gems times 50); wave 1 scout H6 found these equal to Hydra's chart base score on all three.
 Game code (6142): RVA `0x20F4680`, `code/6142/star_base_20F4680.asm` lines 68 to 149; constructor RVA `0x20F79E0`, `code/6142/engine_ctor_20F79E0.asm` lines 183 to 202
 Hydra: `Path::chart_base_score` in src/core/model.cpp line 833
 Ruling: none needed: same rule (a Hydra note holds one dynamic type, so the both-flags case does not arise)
@@ -429,9 +429,9 @@ Per-player keys. "Unknown" means no code was read that writes the key; a named f
 | squeezed_notes | 0, or 7 on run 1 | Unknown (the squeeze counter at +0xE8, page 5 SP-36, is a candidate) |
 | squeeze_note_losses | 0, or 1 on run 1 | Unknown (the counter at +0xEC, page 5 SP-36, is a candidate) |
 | frets_ghosted | 0 | Unknown |
-| accent_notes_hit | 9 of 9 on the ProDrums bot, 0 on run 1 | Unknown (the accent counter at +0xD8, SC-13, is a candidate) |
+| accent_notes_hit | 9 of 9 on the ProDrums bot, 0 on run 1 | Unknown (the accent counter at +0xDC, SC-13, is a candidate) |
 | accent_notes_total | 9 | Unknown |
-| ghost_notes_hit | 34 of 34 on the ProDrums bot, 0 on run 1 | Unknown (the ghost counter at +0xDC, SC-13, is a candidate) |
+| ghost_notes_hit | 34 of 34 on the ProDrums bot, 0 on run 1 | Unknown (the ghost counter at +0xD8, SC-13, is a candidate) |
 | ghost_notes_total | 34 | Unknown |
 | is_fc | true | Unknown |
 | is_pfc | true | Unknown |

@@ -22,4 +22,4 @@ Lines 139 to 149: r14 as a double, divided by (xmm2 divided by 25.0), rounded by
 Lines 150 to 160: restore registers and return the sum in eax.
 Lines 161 to 168: null throws and an unwind trap.
 
-Unsettled: the names behind the two dynamics bits (0x80000 and 0x40000 are presumably accent and ghost; the dump does not say). The cymbal test is "any of three lane-mask bits"; the committed drum listings use the same getter 0x18214BE30 (`docs/audit/drum-lanes/play/f20deec0.asm` line 13), where the same +15 is added.
+The two dynamics bits are named in the dump: 0x40000 is `DrumsGhostHit` and 0x80000 is `DrumsAccentHit` (dump.cs lines 548215 and 548216). The cymbal test is "any of three lane-mask bits"; the committed drum listings use the same getter 0x18214BE30 (`docs/audit/drum-lanes/play/f20deec0.asm` line 13), where the same +15 is added.
