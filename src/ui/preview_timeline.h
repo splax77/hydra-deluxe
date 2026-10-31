@@ -188,9 +188,9 @@ struct TimelineFillTint {
     ImU32 col = 0;
 };
 
-// The old cost label. Nothing reads it any more; it stays only until the
-// Path Builder's screen stops filling TimelineInput::labels, and goes with
-// that field.
+// Read by nothing. It stays because the Path Builder's screen still fills
+// TimelineInput::labels with it; the plan task that rebuilds that screen
+// (2026-10-31-path-builder-redesign-2, SC-3b) deletes both.
 struct TimelineFillLabel {
     int64_t chord_tick = 0;
     std::string text;
