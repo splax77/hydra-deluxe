@@ -171,7 +171,7 @@ struct ViewedSong {
         Cancelled,    // the panel's Cancel stopped it ("Analysis cancelled.")
         Failed,       // `message` and `error` say why
         FileMissing,  // the chart file is gone; the panel's notice says so
-        RulesBroken,  // analysis is off; only the Dynamics count ran
+        AnalysisOff,  // analysis is off; only the Dynamics count ran
     };
     State state = State::None;
     std::optional<HydraRecord> record;     // set only when Ready
@@ -186,7 +186,7 @@ struct ViewedSong {
     std::string message;
     std::string error;
     // The Dynamics count, or why it failed. Set in every state the job
-    // finished in, RulesBroken included.
+    // finished in, AnalysisOff included.
     std::optional<app::DynamicsBreakdown> dynamics;
     std::string dynamics_message;
     std::string dynamics_error;
@@ -239,10 +239,12 @@ using PathReportSlot = ReportSlot<app::report::GeneratedReport>;
 using DmReportSlot = ReportSlot<app::dm_report::GeneratedDmReport>;
 
 // What the app reads before it opens the store: the settings, with
-// hydra_rules.ini already loaded, and the loader's error if the file was bad.
+// hydra_rules.ini already loaded, and each loader's error if its file was
+// bad. A bad hydra_settings.ini leaves `settings` default-constructed.
 struct StartupSettings {
     app::Settings settings;
     std::string rules_error;
+    std::string settings_error;
 };
 
 class AppState {
@@ -297,13 +299,24 @@ public:
     void wait_store_open();
     // Set at startup when hydra_rules.ini is bad (the loader's message, which
     // names the key). While set, analysis is off: start_batch does nothing
-    // and a click counts only the Dynamics (ViewedSong::State::RulesBroken).
+    // and a click counts only the Dynamics (ViewedSong::State::AnalysisOff).
     // It clears only on a restart with a fixed file; there is no fallback to
     // the default rules.
     std::string rules_error;
-    // What the screens say above rules_error while analysis is off:
-    // app::kAnalysisOffSentence (D103 item 24, D114 item 11).
-    bool analysis_blocked() const { return !rules_error.empty(); }
+    // Set at startup when hydra_settings.ini is bad (the loader's message,
+    // which names the file, the key and the value). While set, Hydra runs on
+    // a default-constructed Settings, analysis is off as for rules_error, no
+    // scan starts (can_scan) and save_settings writes nothing, so the file is
+    // never touched (D276 item 1). It clears only on a restart with a fixed
+    // file.
+    std::string settings_error;
+    // Whether either file is bad, which turns analysis off.
+    bool analysis_blocked() const { return !rules_error.empty() || !settings_error.empty(); }
+    // What the screens show while analysis is off: for each bad file, its
+    // sentence from app/user_messages.h and the loader's error, the settings
+    // file first (D103 item 24, D114 item 11, D276 item 1). Empty when
+    // analysis is on.
+    std::vector<AnalysisOffLine> analysis_off_lines() const;
 
     // Library browsing: every scanned chart in memory, with its stored
     // summary, filtered by the search and the status chip and sorted by the
@@ -500,13 +513,14 @@ public:
     // line's, and the greyed Scan and Analyze buttons' tooltip (D51 call 24,
     // D114 item 12).
     static constexpr const char* kBatchRunningStatus = "A batch is running.";
-    // Whether a library scan may start now: there are song folders, no scan
-    // job is held (its modal is still up until Continue), and no batch is
-    // running. start_scan enforces it; the toolbar button reads it.
+    // Whether a library scan may start now (the conditions are in its body;
+    // settings_error is one, because a scan rewrites the saved library).
+    // start_scan enforces it; the toolbar button reads it.
     bool can_scan() const;
-    // Whether a batch may start now, whatever it would cover: hydra_rules.ini
-    // is good and no batch is running. start_batch enforces it; the toolbar's
-    // Analyze button and the confirm's Start read it. Each screen asks its own
+    // Whether a batch may start now, whatever it would cover: analysis is not
+    // blocked (analysis_blocked) and no batch is running. start_batch
+    // enforces it; the toolbar's Analyze button and the confirm's Start read
+    // it. Each screen asks its own
     // "is there anything to analyze?" on top, because they count different
     // things (matched rows, rows still to do).
     bool can_analyze() const;
@@ -780,6 +794,11 @@ public:
 
 private:
     explicit AppState(StartupSettings start);
+    // The injecting form's work, with settings_error set before it starts:
+    // start_updates saves, and save_settings must already know the file was
+    // refused.
+    AppState(app::Settings settings, std::unique_ptr<store::RecordStore> store,
+             std::string settings_error);
 
     // Moves a finished startup open into place: the store and library, or
     // the failure. tick() and wait_store_open() both collect through it.
@@ -897,6 +916,7 @@ private:
 
     // An edit_settings change the INI does not have yet.
     bool settings_unsaved_ = false;
+    // The one writer of the INI. Writes nothing while settings_error is set.
     void save_settings();
     // The refresh half of commit_settings.
     void apply_settings();

@@ -1083,7 +1083,7 @@ void test_view_rules_broken(ImGuiTestContext* ctx) {
     open_titled(ctx, "Acid Romance", "Acid Romance");
     if (ctx->IsError()) return;
     IM_CHECK(wait_until(ctx, [&] {
-        return h.app->viewed.state == hydra::ui::ViewedSong::State::RulesBroken;
+        return h.app->viewed.state == hydra::ui::ViewedSong::State::AnalysisOff;
     }, 60));
     ctx->ItemClick("##DetailsTabs/Paths");
     ctx->Yield(3);

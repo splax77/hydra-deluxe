@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "app/analysis.h"
+#include "core/error_kind.h"
 #include "core/rules.h"
 #include "search/graph.h"  // FillDeadlineRule
 #include "store/record_store.h"
@@ -43,17 +44,29 @@ void set_installed_for_test(std::optional<bool> installed);
 // copies resource/ there; see CMakeLists.txt).
 std::string resource_dir();
 
+// The settings file's name, beside the exe.
+inline constexpr std::string_view kSettingsFileName = "hydra_settings.ini";
+
 // The user's database and settings file, next to the exe ("hydra.db" /
-// "hydra_settings.ini").
+// kSettingsFileName).
 std::string db_path();
 std::string ini_path();
+
+// A line of hydra_settings.ini that can't be read. Its text comes from
+// app/ini_errors.h, the wording hydra_rules.ini's errors share; its kind is
+// SettingsFile.
+struct SettingsFileError : KindedError {
+    explicit SettingsFileError(const std::string& what)
+        : KindedError(ErrorKind::SettingsFile, what) {}
+};
 
 // The command-line switch that runs a tool under Clone Hero 1.0's fill rule.
 // Every tool that takes it compares against this one spelling.
 inline constexpr std::string_view kLegacyFillsFlag = "--legacy-fills";
 
 // A key a released Hydra stopped reading. A file that still sets one keeps
-// loading, and its value is ignored. Each file reader keeps its own list:
+// loading, its value is ignored, and the next save leaves it out (D270 call
+// 7). Each file reader keeps its own list:
 // kRetiredSettingsKeys below for hydra_settings.ini, and kRetiredRulesKeys in
 // app/rules_file.cpp for hydra_rules.ini.
 struct RetiredKey {
@@ -69,14 +82,14 @@ constexpr bool is_retired_key(const RetiredKey (&list)[N], std::string_view key)
     return false;
 }
 
-// hydra_settings.ini's retired keys. Settings::load_file skips any key no
-// setting has, so these need no code of their own; the list says which ones
-// a released Hydra wrote.
+// hydra_settings.ini's retired keys: Settings::load_file skips them, and
+// refuses any other key no setting has.
 inline constexpr RetiredKey kRetiredSettingsKeys[] = {
     {"sp_cap_enabled", "1.6.0"},  // replaced by sp_cap
     {"sp_cap_value", "1.6.0"},    // replaced by sp_cap
     {"check_updates", "2.12.0"},      // every installed start checks (D260)
     {"last_update_check", "2.12.0"},  // every installed start checks (D260)
+    {"hit_window_ms", "2.14.0"},      // one fixed hit window, kHitWindowMs (D270 call 8)
 };
 
 // Opens the store at `db`. `rules` gates Ready: a row analyzed
@@ -160,18 +173,13 @@ struct Settings {
     bool backendlimit_enabled = false;
     int backendlimit_value = 50;
 
-    // Read from and written to the file, but nothing else reads it: the hit
-    // window is one fixed number, kHitWindowMs (D270 call 8).
-    double hit_window_ms = kHitWindowMs;
-
     // Preview playback volume in percent. A summed multi-stem mix at 100 % is
     // loud and clips, so the default sits well below it.
     int preview_volume = 40;
 
     // The Star Power meter ceiling in bars, at least 1. 4 is Clone Hero's
     // rule (the default); other values are what-ifs. INI line: sp_cap=4.
-    // Hydra 1.8.4's sp_cap=auto, zero and junk load as 4. The keys it
-    // replaced are in kRetiredSettingsKeys.
+    // The keys it replaced are in kRetiredSettingsKeys.
     int sp_cap = kCloneHeroSpCap;
 
     // Spawn fills by Clone Hero 1.0's deadline instead of 1.1's (search/graph.h
@@ -210,27 +218,26 @@ struct Settings {
     // The settings a command-line run works under: load()'s, except the fill
     // rule, which comes from the run's own kLegacyFillsFlag and never from
     // the app's "1.0 fills" setting. So a run means the same thing whatever
-    // the app was left on. hydra_batch and hydra_bench both load through here.
+    // the app was left on. The tools with that flag reach it through
+    // load_tool_settings.
     static Settings load_for_command_line(bool legacy_fills_flag);
     // False when the INI can't be written (the GUI surfaces this; the CLIs
     // never call save()).
     bool save() const;
 
     // Explicit-path forms, so tests can round-trip through a temp file
-    // without touching the real INI. load/save delegate here.
+    // without touching the real INI. load/save delegate here. A missing file
+    // loads the defaults. A line the file can't hold throws
+    // SettingsFileError naming the file, the key and the value (D270 call 4);
+    // a retired key (kRetiredSettingsKeys) is skipped.
     static Settings load_file(const std::string& path);
     bool save_file(const std::string& path) const;
 
     // A number setting pulled into its allowed range: the one the key table
     // in config.cpp keeps, which its box reads too. A value outside the range
-    // lands on the nearest edge (D51 Q14). Name the setting by its field:
-    // clamp(&Settings::mslimit_value, 900) is 500. depth_mode lands on its
-    // default instead, because a switch has no edge to land on (anything but
-    // 1 means scores). load_file runs every whole-number setting through
-    // here, with one more rule for sp_cap: in the file, 0 and junk (and
-    // 1.8.4's "auto") read as the default 4, not as the floor 1. The hit
-    // window is a decimal, not a box: only load_file pulls it into range, by
-    // the same key table.
+    // lands on the nearest edge (D51 Q14, D270 calls 1 and 2). Name the
+    // setting by its field: clamp(&Settings::mslimit_value, 900) is 500.
+    // load_file runs every whole-number setting through here.
     static int clamp(int Settings::* field, int value);
 
     // depth_mode as the search's enum: 1 is points, anything else scores.
@@ -242,9 +249,10 @@ struct Settings {
     static float volume_gain(int percent);
 
     // view_difficulty as the parsers' enum. The name matches in any case
-    // ("hard" reads as Hard). An unrecognized string reads as
-    // Expert. load_file normalizes the stored string too, and chartmode_key()
-    // names the difficulty through here, so a junk word never reaches a key.
+    // ("hard" reads as Hard). An unrecognized string, which only a caller
+    // setting the field can leave (load_file refuses one), reads as Expert.
+    // chartmode_key() names the difficulty through here, so a junk word never
+    // reaches a key.
     Difficulty difficulty() const;
 
     // Whether an analysis, the Preview and a record's key read 2x kicks: the
@@ -275,8 +283,8 @@ struct Settings {
     Settings with_known_chartmode(const std::string& chartmode) const;
 
     // These settings with every field in kAnalysisFields put back to a
-    // default-constructed Settings'; the rest (folders, volume, hit window,
-    // rules) are kept. The panel's "Reset to defaults" button applies it.
+    // default-constructed Settings'; the rest (folders, volume, rules) are
+    // kept. The panel's "Reset to defaults" button applies it.
     Settings with_analysis_defaults() const;
 
     // The panel settings with a field in kAnalysisFields that differs from a
@@ -316,6 +324,15 @@ struct Settings {
     // one Settings, so they cannot disagree.
     BatchRun batch_run() const;
 };
+
+// How a command-line tool loads its settings: Settings::load_for_command_line
+// when the tool has a fill-rule flag of its own (`legacy_fills_flag`), else
+// Settings::load. On success it fills `out` and returns 0. A refused file
+// prints ini_file_tool_text (app/user_messages.h) on stderr and returns the
+// tool's exit code, before the tool opens anything (D270 call 4). It is the
+// settings file's twin of load_tool_rules (app/rules_file.h). The app does not
+// call this: it keeps running on the defaults instead (AppState::settings_error).
+int load_tool_settings(Settings& out, std::optional<bool> legacy_fills_flag);
 
 // One field of the analysis set: the Settings member, the panel setting it
 // belongs to and the key part it is filed under. Its default is the one a

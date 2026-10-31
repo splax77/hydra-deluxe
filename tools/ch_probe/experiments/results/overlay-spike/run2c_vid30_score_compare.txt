@@ -1,0 +1,11 @@
+Running difference (game - Hydra) after each ghost or accent chord (and the chord where a lagged one showed):
+  chord index 50: -200 (was +0)
+  chord index 61: -460 (was -200)
+  chord index 78: -660 (was -460)
+
+Score at 111 presses: 108 equal, 0 lagged, 3 changed at a ghost or accent chord, 0 failed
+PASS score: the difference changed only at ghost or accent chords
+Final: game 29495, Hydra 30155 at chord index 110; Hydra's whole-chart total 378855
+
+Clock at press minus chart ms: median -0.53, 5th percentile -1.86, 95th percentile +0.88 (111 presses)
+PASS hit rate 100.0% (111 of 111)

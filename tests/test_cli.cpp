@@ -387,6 +387,41 @@ TEST_CASE("hydra_batch names a bad hydra_rules.ini and stops") {
     CHECK_FALSE(fs::exists(fs::u8path(db)));
 }
 
+// D270 call 4: a bad hydra_settings.ini prints the tools' sentence and then
+// the loader's line, and the run stops before it opens the database.
+TEST_CASE("hydra_batch names a bad hydra_settings.ini and stops") {
+    CliSandbox box("bad_settings");
+    {
+        std::ofstream settings(box.dir / "hydra_settings.ini", std::ios::binary);
+        settings << "sp_cap=abc\n";
+    }
+    const std::string db = box.db("untouched.db");
+    RunResult r = run_exe(box.batch, {"--db", db, box.folder()});
+    INFO(r.output);
+    CHECK(r.exit_code == 2);
+    // Two checks, because the console's text mode turns each "\n" into "\r\n".
+    CHECK(contains(r.output, "hydra_settings.ini has an error:"));
+    CHECK(contains(r.output, "hydra_settings.ini: sp_cap = \"abc\" is not a whole number"));
+    CHECK_FALSE(fs::exists(fs::u8path(db)));
+}
+
+TEST_CASE("hydra_fillcompare names a bad hydra_settings.ini and stops") {
+    CliSandbox box("bad_settings_fc");
+    {
+        std::ofstream settings(box.dir / "hydra_settings.ini", std::ios::binary);
+        settings << "sp_cap=abc\n";
+    }
+    const std::string db = box.db("untouched.db");
+    const std::string page = (box.dir / "page.html").u8string();
+    RunResult r = run_exe(box.fillcompare, {"--db", db, "--out", page, "--no-open"});
+    INFO(r.output);
+    CHECK(r.exit_code == 2);
+    CHECK(contains(r.output, "hydra_settings.ini has an error:"));
+    CHECK(contains(r.output, "hydra_settings.ini: sp_cap = \"abc\" is not a whole number"));
+    CHECK_FALSE(fs::exists(fs::u8path(db)));
+    CHECK_FALSE(fs::exists(fs::u8path(page)));
+}
+
 TEST_CASE("hydra_batch writes a 1.0 run and a 1.1 run into one database") {
     // Each record carries its fill rule in its profile, so one file takes
     // both runs and each reads back under its own rule (D115 task A1-6c).

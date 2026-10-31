@@ -218,8 +218,7 @@ TEST_CASE("a number setting edited outside its range lands on the edge the file 
     CHECK(saved.mslimit_value == hand.mslimit_value);
     CHECK(saved.depth_value == 0);
     CHECK(saved.depth_value == hand.depth_value);
-    // The cap floors at 1 bar (D51 call 16). A hand-written sp_cap=0 is the
-    // one place the two differ on purpose: the file reads 0 as Clone Hero's 4.
+    // The cap floors at 1 bar (D51 call 16), in the file as in the box.
     CHECK(saved.sp_cap == 1);
 }
 

@@ -19,12 +19,14 @@
 #include <cfloat>
 #include <cstdio>
 #include <string>
+#include <vector>
 
 #include "app/display_format.h"  // progress_fraction
 #include "core/model.h"  // group_thousands
 #include "imgui.h"
 #include "imgui_internal.h"  // GetCurrentWindow, for the window's draw list
 #include "render/overlay_layout.h"  // ellipsize
+#include "ui/report_state.h"  // AnalysisOffLine
 #include "ui/theme.h"
 
 namespace hydra::ui {
@@ -80,6 +82,19 @@ struct WarnColor {
     WarnColor(const WarnColor&) = delete;
     WarnColor& operator=(const WarnColor&) = delete;
 };
+
+// The lines AppState::analysis_off_lines gives, in warning color and wrapped:
+// each bad file's sentence, then, with `with_errors`, the loader's error under
+// it. Draws nothing when the list is empty.
+inline void analysis_off_notice(const std::vector<AnalysisOffLine>& lines, bool with_errors) {
+    if (lines.empty()) return;
+    ImGui::PushTextWrapPos(0.0f);
+    for (const AnalysisOffLine& off : lines) {
+        ImGui::TextColored(kWarningColor, "%s", off.sentence);
+        if (with_errors) ImGui::TextColored(kWarningColor, "%s", off.error.c_str());
+    }
+    ImGui::PopTextWrapPos();
+}
 
 // Full-width progress bar with a "done / total" overlay, digits grouped the
 // way every count reads (group_thousands, D79).

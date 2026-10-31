@@ -49,6 +49,7 @@
 
 #include "app/analysis.h"
 #include "app/config.h"
+#include "app/ini_errors.h"
 #include "app/rules_file.h"
 #include "core/replay.h"
 #include "core/squeeze_rating.h"
@@ -167,11 +168,10 @@ app::Settings settings_from(const Args& a) {
     if (a.cap) {
         // A whole number out of range lands on its nearest edge in the clamp
         // below, as the Settings box does (D270 call 1). Text that is not a
-        // whole number is refused. What text is a number: parse_finite_number,
-        // which hydra_rules.ini's whole numbers read through too.
-        const std::optional<double> cap = parse_finite_number(*a.cap);
-        if (!cap || *cap != std::trunc(*cap) || *cap < std::numeric_limits<int>::min() ||
-            *cap > std::numeric_limits<int>::max()) {
+        // whole number is refused. What text is a whole number:
+        // app::parse_whole_number, which both settings files read through too.
+        const std::optional<int> cap = app::parse_whole_number(*a.cap);
+        if (!cap) {
             // The range's bottom, from the clamp that owns it.
             const int lowest = Settings::clamp(&Settings::sp_cap, std::numeric_limits<int>::min());
             throw std::runtime_error("--cap takes a whole number of bars, " +
@@ -179,7 +179,7 @@ app::Settings settings_from(const Args& a) {
                                      std::to_string(kCloneHeroSpCap) +
                                      " is Clone Hero's rule), not \"" + *a.cap + "\"");
         }
-        s.sp_cap = static_cast<int>(*cap);
+        s.sp_cap = *cap;
     }
 
     if (a.ms) {

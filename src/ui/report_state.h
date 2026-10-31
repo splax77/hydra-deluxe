@@ -5,6 +5,8 @@
 #ifndef HYDRA_UI_REPORT_STATE_H
 #define HYDRA_UI_REPORT_STATE_H
 
+#include <string>
+
 namespace hydra::ui {
 
 // Where a report's latest build stands. AppState::path_report_build and
@@ -20,6 +22,15 @@ enum class ReportBuild { None, Building, Ready, Cancelled, Failed };
 // changed (Settings). The later of the two wins (D103). The window's
 // out-of-date strip reads it.
 enum class ReportOutOfDate { None, Library, Settings };
+
+// One bad file's line while analysis is off: its sentence (app/user_messages.h)
+// and the loader's error. AppState::analysis_off_lines is the one place that
+// builds them; the toolbar, the song panel and the path report window draw
+// them through analysis_off_notice (ui/widgets.h).
+struct AnalysisOffLine {
+    const char* sentence;
+    std::string error;
+};
 
 }  // namespace hydra::ui
 

@@ -25,6 +25,7 @@
 #include "app/dm_report.h"  // GeneratedDmReport
 #include "app/dynamics_breakdown.h"
 #include "app/report.h"  // GeneratedReport
+#include "app/user_messages.h"  // kSettingsOffSentence
 #include "app_state_fixtures.h"
 #include "audio_chart_fixtures.h"
 #include "core/error_kind.h"
@@ -43,6 +44,7 @@
 #include "ui/app_state.h"
 #include "ui/library_jobs.h"  // set_view_analyzer_for_test
 #include "ui/library_parts.h"  // analyze_shown_label
+#include "ui/report_window.h"  // path_report_input
 
 using hydra::app::Settings;
 using hydra::store::ChartLibraryEntry;
@@ -581,16 +583,77 @@ TEST_CASE("a bad hydra_rules.ini names the key and keeps analysis off") {
     app.wait_store_open();
     CHECK(app.rules_error.find("max_tied_paths") != std::string::npos);
     CHECK(app.analysis_blocked());
+    // The path report window is given the same lines the toolbar draws.
+    const hydra::ui::PathReportInput window = hydra::ui::path_report_input(app);
+    REQUIRE(window.analysis_off.size() == 1);
+    CHECK(std::string(window.analysis_off[0].sentence) == hydra::app::kAnalysisOffSentence);
+    CHECK(window.analysis_off[0].error == app.rules_error);
 
     // A click analyzes nothing, but the Dynamics count needs only the parse,
     // so it still shows.
     click(app, song);
-    CHECK(app.viewed.state == ViewedSong::State::RulesBroken);
+    CHECK(app.viewed.state == ViewedSong::State::AnalysisOff);
     CHECK_FALSE(app.viewed.record.has_value());
     CHECK(app.viewed.dynamics.has_value());
     CHECK(hydra::test::record_rows_in(paths.db) == 0);
     app.start_batch(false);
     CHECK(app.batch_job == nullptr);
+}
+
+// D276 item 1: a refused settings file opens Hydra on its defaults with
+// analysis off, and nothing ever writes the file.
+TEST_CASE("a bad hydra_settings.ini keeps analysis off and saves nothing") {
+    ScratchPaths paths("appstate_badsettings");
+    const std::string bad = "chartfolder=C:\\Songs\nsp_cap=abc\n";
+    {
+        std::ofstream f(paths.ini, std::ios::binary);
+        f << bad;
+    }
+    seeded_store(paths.db).reset();
+
+    {
+        AppState app;
+        app.wait_store_open();
+        CHECK(app.settings_error.find(paths.ini) != std::string::npos);
+        CHECK(app.settings_error.find("sp_cap = \"abc\"") != std::string::npos);
+        CHECK(app.rules_error.empty());
+        CHECK(app.analysis_blocked());
+        CHECK_FALSE(app.can_analyze());
+        // The screens' lines: the settings file's sentence over its error.
+        const std::vector<hydra::ui::AnalysisOffLine> off = app.analysis_off_lines();
+        REQUIRE(off.size() == 1);
+        CHECK(std::string(off[0].sentence) == hydra::app::kSettingsOffSentence);
+        CHECK(off[0].error == app.settings_error);
+        // With only the settings file bad, the path report window still gets
+        // a reason, the same line.
+        const hydra::ui::PathReportInput window = hydra::ui::path_report_input(app);
+        REQUIRE(window.analysis_off.size() == 1);
+        CHECK(std::string(window.analysis_off[0].sentence) == hydra::app::kSettingsOffSentence);
+        CHECK(window.analysis_off[0].error == app.settings_error);
+        // The defaults, not the file's lines before the bad one.
+        CHECK(app.settings.chartfolders.empty());
+
+        app.start_batch(false);
+        CHECK(app.batch_job == nullptr);
+        // A folder added for the session still starts no scan: a scan
+        // rewrites the saved library.
+        app.settings.chartfolders = {std::filesystem::u8path(paths.db).parent_path().u8string()};
+        CHECK_FALSE(app.can_scan());
+        app.start_scan();
+        CHECK(app.scan_job == nullptr);
+
+        // A settings edit, committed, then another flushed, leaves the file
+        // as it was.
+        app.settings.view_prodrums = !app.settings.view_prodrums;
+        app.commit_settings();
+        CHECK(corpus::read_bytes(paths.ini) == bad);
+        app.settings.view_prodrums = !app.settings.view_prodrums;
+        app.edit_settings();
+        app.flush_settings();
+        CHECK(corpus::read_bytes(paths.ini) == bad);
+    }
+    // The destructor's flush writes nothing either.
+    CHECK(corpus::read_bytes(paths.ini) == bad);
 }
 
 TEST_CASE("no hydra_rules.ini leaves analysis on") {

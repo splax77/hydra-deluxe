@@ -171,7 +171,8 @@ void Harness::stop() {
     app.reset();
 }
 
-void reset_app(Harness& h, const std::string& rules_text, bool wait_store) {
+void reset_app(Harness& h, const std::string& rules_text, bool wait_store,
+               const std::string& settings_text) {
     // The engine runs this step inside ImGui's end-of-frame hook: the app has
     // drawn this frame and it hasn't rendered yet, so an Image the Preview drew
     // still points at its texture (the warning on PreviewController::close).
@@ -225,9 +226,17 @@ void reset_app(Harness& h, const std::string& rules_text, bool wait_store) {
         }
     };
     if (!h.seed_db.empty()) copy_seed(h.seed_db, h.db_path, {"", "-wal", "-shm"}, "--db");
-    // The settings: --ini's copy, else the GUI tests' settings
-    // (tests/scratch_settings.h), written the way the app writes its own ini.
-    if (!h.seed_ini.empty()) {
+    // The settings: the test's own bytes, else --ini's copy, else the GUI
+    // tests' settings (tests/scratch_settings.h), written the way the app
+    // writes its own ini.
+    if (!settings_text.empty()) {
+        std::ofstream f(fs::u8path(h.ini_path), std::ios::binary | std::ios::trunc);
+        f << settings_text;
+        if (!f) {
+            std::fprintf(stderr, "hydra_uitest: could not write \"%s\"\n", h.ini_path.c_str());
+            std::exit(1);
+        }
+    } else if (!h.seed_ini.empty()) {
         copy_seed(h.seed_ini, h.ini_path, {""}, "--ini");
     } else if (!scratch_settings().save_file(h.ini_path)) {
         std::fprintf(stderr, "hydra_uitest: could not write \"%s\"\n", h.ini_path.c_str());

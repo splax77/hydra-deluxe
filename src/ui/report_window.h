@@ -68,10 +68,10 @@ struct ReportWindowInput {
     // out-of-date line's "(a batch finished at HH:MM)". Unset: the line
     // names no time (D103 item 21).
     std::optional<std::chrono::system_clock::time_point> batch_finished;
-    // The path report only: hydra_rules.ini's error while analysis is off
-    // (AppState::rules_error), shown when no report is in memory. Empty when
+    // The path report only: why analysis is off (AppState::analysis_off_lines,
+    // the toolbar's own lines), shown when no report is in memory. Empty when
     // analysis is on.
-    std::string rules_error;
+    std::vector<AnalysisOffLine> analysis_off;
     // The path report only: `result` was built because the window opened
     // with nothing in memory (ReportSlot::built_on_open), so the window keeps
     // its search, timing, Optimal paths only and sort when the rows arrive.
@@ -164,11 +164,9 @@ struct Frame {
     // question), greyed unless analyze_enabled.
     bool analyze_button = false;
     bool analyze_enabled = false;
-    // Never built: why no build can start (empty: the header alone). The
-    // sentence's owner is app::kAnalysisOffSentence (app/user_messages.h); the error is
-    // AppState::rules_error.
-    const char* analysis_off_sentence = "";
-    std::string analysis_off_error;
+    // Never built: why no build can start (empty: the header alone), as the
+    // input gives them.
+    std::vector<AnalysisOffLine> analysis_off;
     // Failed: the report's own sentence, then the job's words.
     const char* failure_sentence = "";
     std::string failure_message;

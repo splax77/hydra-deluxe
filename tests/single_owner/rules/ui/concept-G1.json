@@ -19,6 +19,25 @@
       "note": "The song panel once had its own shorter sentence for a bad hydra_rules.ini. It shows the toolbar's sentence now, without the file's error, because the toolbar above already shows that. Decided by: D114 item 13, concept audit M82."
     },
     {
+      "question": "How are the lines that say analysis is off drawn?",
+      "owner": "analysis_off_notice in src/ui/widgets.h",
+      "owner_file": "src/ui/widgets.h",
+      "owner_symbol": "analysis_off_notice",
+      "date": "2026-10-30",
+      "decision": "D276 item 1",
+      "added_by": "aoa-a3b-review",
+      "pattern": "\\boff\\.(sentence|error)\\b",
+      "owner_files": ["src/ui/widgets.h"],
+      "must_match": [
+        "        ImGui::TextColored(kWarningColor, \"%s\", off.sentence);",
+        "        if (with_errors) ImGui::TextColored(kWarningColor, \"%s\", off.error.c_str());"
+      ],
+      "must_not_match": [
+        "    analysis_off_notice(app.analysis_off_lines(), /*with_errors=*/true);"
+      ],
+      "note": "The toolbar, the song panel and the path report window each looped over AppState::analysis_off_lines and drew the sentence and error themselves, and the report window drew only the rules file's error, so a bad settings file alone gave it no reason. They call analysis_off_notice now. Decided by: D276 item 1."
+    },
+    {
       "question": "How is a refusal because a batch is running worded on the greyed buttons?",
       "owner": "AppState::kBatchRunningStatus in src/ui/app_state.h",
       "owner_file": "src/ui/app_state.h",
