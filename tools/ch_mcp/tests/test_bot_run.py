@@ -837,6 +837,21 @@ class HumanLaunchTest(unittest.TestCase):
             B.resume_main_thread(0xFFFFFFF0)
         self.assertIn("has no thread to resume", str(cm.exception))
 
+    def test_the_toolhelp_and_thread_time_calls_find_this_processs_main_thread(self):
+        # Read-only calls on the test's own process: they check the struct
+        # layouts and argtypes against the real kernel32. ResumeThread itself
+        # needs a suspended process, which only a launch makes (LS-D0).
+        k32 = B._kernel32()
+        mine = B._thread_ids(k32, os.getpid())
+        self.assertIn(threading.get_native_id(), mine)
+        self.assertEqual(B._oldest_thread_id(k32, os.getpid()), threading.main_thread().native_id)
+
+    def test_a_spawned_games_process_handle_reports_a_running_process(self):
+        # Read-only: asks about the test's own process and never stops it.
+        process = B._PidProcess(os.getpid())
+        self.assertEqual(process.pid, os.getpid())
+        self.assertTrue(process.is_running())
+
     def test_bot_run_never_opens_the_game_exe_for_writing(self):
         with open(B.__file__, encoding="utf-8") as f:
             source = f.read().splitlines()

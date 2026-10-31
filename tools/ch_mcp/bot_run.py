@@ -246,13 +246,10 @@ def _thread_ids(k32: Any, pid: int) -> list[int]:
         k32.CloseHandle(snap)
 
 
-def resume_main_thread(pid: int) -> None:
-    """Resume the main thread of a process created with CREATE_SUSPENDED.
-    Popen closes its thread handle, so the thread is found again: of the
-    process's threads (Frida's attach adds its own), the main thread is the
-    one created first. Raises OSError when there is no thread, when the
-    thread cannot be opened or resumed, or when it was not suspended."""
-    k32 = _kernel32()
+def _oldest_thread_id(k32: Any, pid: int) -> int:
+    """The id of the thread of process `pid` that was created first: its main
+    thread, since Frida's attach adds threads of its own later. Raises
+    OSError when the process has no thread that can be read."""
     oldest: Optional[tuple[int, int]] = None  # (creation time, thread id)
     for tid in _thread_ids(k32, pid):
         h = k32.OpenThread(_THREAD_QUERY_LIMITED_INFORMATION, False, tid)
@@ -269,7 +266,17 @@ def resume_main_thread(pid: int) -> None:
             k32.CloseHandle(h)
     if oldest is None:
         raise OSError(f"process {pid} has no thread to resume")
-    tid = oldest[1]
+    return oldest[1]
+
+
+def resume_main_thread(pid: int) -> None:
+    """Resume the main thread of a process created with CREATE_SUSPENDED.
+    Popen closes its thread handle, so _oldest_thread_id finds the thread
+    again. Raises OSError when there is no thread, when the thread cannot be
+    opened or resumed, when it was not suspended, or when it is still
+    suspended after the resume."""
+    k32 = _kernel32()
+    tid = _oldest_thread_id(k32, pid)
     h = k32.OpenThread(_THREAD_SUSPEND_RESUME, False, tid)
     if not h:
         raise OSError(f"OpenThread on thread {tid} of process {pid} failed: "
@@ -283,6 +290,11 @@ def resume_main_thread(pid: int) -> None:
                       f"error {ctypes.get_last_error()}")
     if before == 0:
         raise OSError(f"thread {tid} of process {pid} was not suspended")
+    if before > 1:
+        # ResumeThread returns the suspend count it had; one resume of a
+        # count above 1 leaves the thread suspended.
+        raise OSError(f"thread {tid} of process {pid} had a suspend count of {before}, so it "
+                      "is still suspended after the resume")
 
 
 class _PidProcess:
