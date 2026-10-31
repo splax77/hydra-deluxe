@@ -24,7 +24,6 @@ import argparse
 import json
 import os
 import re
-import struct
 import sys
 
 if not __package__:
@@ -33,7 +32,7 @@ if not __package__:
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from tools.ch_mcp import build_facts, dump_build, game_files
-from tools.ch_probe.process import decode_double, decode_u32, decode_u64
+from tools.ch_probe.process import decode_double, decode_f32, decode_u32, decode_u64
 
 SCRIPT_FILE = "script.json"
 DEFAULT_MAXBYTES = 0x1200
@@ -70,10 +69,6 @@ def _u16(data: bytes, off: int) -> int:
     # this reads the 32 bits at `off` and keeps the low half. Every 16-bit
     # field read here has two more header bytes after it.
     return _u32(data, off) & 0xFFFF
-
-
-def _f32(blob: bytes) -> float:
-    return struct.unpack("<f", blob)[0]
 
 
 def _read_sections(data: bytes, path: str) -> tuple[int, list[tuple[str, int, int, int, int]]]:
@@ -201,9 +196,9 @@ class Image:
         if size == "qword":
             return f"dbl={decode_double(blob)!r} q={decode_u64(blob):#x}"
         if size == "dword":
-            return f"flt={_f32(blob)!r} i={decode_u32(blob)}"
+            return f"flt={decode_f32(blob)!r} i={decode_u32(blob)}"
         doubles = tuple(decode_double(blob[i:i + 8]) for i in (0, 8))
-        floats = tuple(_f32(blob[i:i + 4]) for i in (0, 4, 8, 12))
+        floats = tuple(decode_f32(blob[i:i + 4]) for i in (0, 4, 8, 12))
         return f"xmm dbl={doubles!r} flt={floats!r}"
 
     def dis(self, rva: int, maxbytes: int = DEFAULT_MAXBYTES, out=None) -> None:
