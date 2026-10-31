@@ -535,7 +535,8 @@ public:
     // Once per frame, before any view draws (run_frame). Collects the
     // startup open once it finishes. Owns the panel's
     // closing edge and the click's job: saving its summary, re-identifying
-    // an edited chart, and showing its result. `now` is ImGui::GetTime() in
+    // an edited chart, and showing its result. Opens the path report that
+    // open_path_report_once_shown asked for. `now` is ImGui::GetTime() in
     // the app.
     void tick(double now);
 
@@ -593,6 +594,14 @@ public:
     // library has rows and analysis is on, since opening is how a library is
     // analyzed for the report.
     bool path_report_offered() const;
+    // Whether the main window's toolbar shows its path report button this
+    // frame. The toolbar and open_path_report_once_shown both ask here.
+    bool path_report_button_shown() const;
+    // `Hydra.exe --open-report`, a testing aid (docs/agents/ui-testing.md):
+    // the first tick() at which path_report_button_shown holds opens the
+    // window through show_path_report, as a click on the button would. It
+    // opens once per call; a close afterwards stays closed.
+    void open_path_report_once_shown();
     // More rows to run than this and opening the report asks first, in the
     // report window itself (the user's answer 8, 2026-10-15).
     static constexpr int kReportConfirmAbove = 500;
@@ -816,6 +825,9 @@ private:
     bool scan_blocked_by_missing_folder(app::ScanAsker asker);
     std::exception_ptr store_open_error_;
     std::string startup_notice_;  // what startup_notice returns
+    // Set by open_path_report_once_shown; tick() clears it when it opens the
+    // window.
+    bool open_report_when_shown_ = false;
 
     // The click's job lifecycle on the UI thread: drop a late result, then
     // re-identify an edited chart, save the summary when needed and show the

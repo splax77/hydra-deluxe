@@ -117,6 +117,44 @@ TEST_CASE("showing the path report opens its window and builds it only the first
     CHECK(app->report_job == nullptr);  // the rows in memory show; nothing rebuilds
 }
 
+// Hydra.exe --open-report: the window opens at the first tick the toolbar's
+// button shows, once, and a close afterwards stays closed.
+TEST_CASE("--open-report opens the path report once the button shows, and only once") {
+    ScratchPaths paths("appstate_pathopenflag");
+    std::unique_ptr<AppState> app = app_with_result(paths, "pathopenflag");
+    app->open_path_report_once_shown();
+
+    // Before the startup open brings the store, the main window and its
+    // toolbar don't draw, so nothing opens.
+    std::unique_ptr<hydra::store::RecordStore> held = std::move(app->store);
+    REQUIRE_FALSE(app->path_report_button_shown());
+    app->tick(0.0);
+    CHECK_FALSE(app->path_report.window_open);
+    CHECK(app->report_job == nullptr);
+
+    app->store = std::move(held);
+    REQUIRE(app->path_report_button_shown());
+    app->tick(0.0);
+    CHECK(app->path_report.window_open);
+    finish_path_report(*app);
+    CHECK(app->path_report.built_on_open);  // opened as the button opens it
+
+    app->close_path_report();
+    app->tick(0.0);
+    app->tick(0.0);
+    CHECK_FALSE(app->path_report.window_open);
+}
+
+// Without the option, the button showing opens nothing.
+TEST_CASE("the path report stays shut at a tick without --open-report") {
+    ScratchPaths paths("appstate_pathnoflag");
+    std::unique_ptr<AppState> app = app_with_result(paths, "pathnoflag");
+    REQUIRE(app->path_report_button_shown());
+    app->tick(0.0);
+    CHECK_FALSE(app->path_report.window_open);
+    CHECK(app->report_job == nullptr);
+}
+
 // D271 item 7: closing the window (its X, Esc or Ctrl+W) only hides it, as
 // the comparison's close does, so reopening shows the same rows at once.
 TEST_CASE("closing the path report keeps its rows, and reopening shows them without a build") {

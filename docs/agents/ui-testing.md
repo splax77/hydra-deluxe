@@ -128,6 +128,8 @@ When unsure, `dump Hydra` and read the labels off it. The dump lists items at ev
 
 The path report and the dmleaderboards comparison are their own windows (ADR 0027). In the app each one is a separate OS window. `hydra_uitest` has no platform backend, so ImGui turns that off by itself and each report window draws inside the main viewport. The test engine finds windows by name across viewports, so the same refs work in both. A report window's name ends in `###pathreport` or `###dmreport`, so its title can change without moving its saved place. A C++ test points at one with `window_named("###pathreport")` and `ctx->SetRef(...)`; a command file can try `window //###pathreport`.
 
+A script can't click `Open path report` in the real window, so a dev build's `Hydra.exe --open-report` opens the path report once, on a plain launch, the first time the toolbar shows that button (`AppState::open_path_report_once_shown`). To close it from a script, post `WM_CLOSE` to the report's own OS window (class `ImGui Platform`, title `Path report — Hydra`): the Win32 backend turns it into ImGui's close request for that window, which runs the same close as its X.
+
 Their tests live in `tests/ui/uitest_report_windows.cpp`, in two groups.
 
 The first group opens the windows on sample rows, with no AppState. The test's own GUI function (`draw_windows`) draws both windows from a `ReportWindowInput` it fills itself, and records what each button hands back. The rows are the shared samples in `tests/report_samples.{h,cpp}`, the same ones `tests/test_report_page.cpp` pins the tiles on. These tests are `report-window-sort`, `report-window-filters`, `report-window-states`, `report-window-keys` and `report-windows-both`.

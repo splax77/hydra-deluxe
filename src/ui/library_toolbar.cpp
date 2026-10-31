@@ -122,12 +122,11 @@ void render_actions_row(AppState& app) {
             ImGui::SetTooltip("%s", app::dm_report::compare_tooltip().c_str());
     }
 
-    // The path report, at the right, whenever opening it can build one
-    // (AppState::path_report_offered) or one is in memory (D103). While one
-    // builds the button says so, and still opens the window in its building
-    // state.
+    // The path report, at the right, when AppState::path_report_button_shown
+    // says so. While one builds the button says so, and still opens the
+    // window in its building state.
     const bool building = app.path_report_build() == ReportBuild::Building;
-    const bool show_report = building || app.path_report.result || app.path_report_offered();
+    const bool show_report = app.path_report_button_shown();
     const float report_w = std::max(button_slot_width("Open path report"),
                                     button_slot_width("Building path report..."));
 
