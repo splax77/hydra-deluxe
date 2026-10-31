@@ -795,13 +795,14 @@ TEST_CASE("rate_activation: a plain row inside the leeway is not a frontend sque
     CHECK_FALSE(r.scale_governs);
     REQUIRE(r.backends.size() == 1);
     CHECK_FALSE(r.backends[0].note.effective_ms.has_value());
-    CHECK(act.backends[0].summarystr(false) == "Standard");
+    CHECK(act.backends[0].summarystr(false, r.backends[0].note.effective_ms) == "Normal");
 
     // At the leeway edge the row is uncounted, so the frontend decides it.
     act.backends[0].offset_ms = 3.0;
     r = rate_activation(act);
     CHECK(r.cap_clamped);
-    CHECK(act.backends[0].summarystr(false) == "Hard (uncounted)");
+    CHECK(act.backends[0].summarystr(false, r.backends[0].note.effective_ms) ==
+          "Hard (uncounted)");
 
     // The edge is the user's rule: a 2 ms leeway makes 2.5 ms uncounted.
     const double narrow = 2.0;
@@ -809,7 +810,38 @@ TEST_CASE("rate_activation: a plain row inside the leeway is not a frontend sque
     act.backends[0].offset_ms = 2.5;
     r = rate_activation(act, narrow);
     CHECK(r.cap_clamped);
-    CHECK(act.backends[0].summarystr(false, narrow) == "Hard (uncounted)");
+    CHECK(act.backends[0].summarystr(false, r.backends[0].note.effective_ms, narrow) ==
+          "Hard (uncounted)");
+}
+
+// D269: the Rating word bands the eff. figure when the row's scale side is
+// scaled. The rows come from rate_activation, so the figure is the one the
+// table shows beside the word.
+TEST_CASE("BackendSqueeze::summarystr: a scaled row's word follows its eff. figure") {
+    // One backend row at `offset_ms`, squeezed out or plain, under the SP
+    // end's stored scale `post`; returns the word the table shows.
+    auto word = [](double offset_ms, bool squeezed_out, TransferScale post) {
+        Activation act;
+        test::set_skips(act, 0);
+        act.e_offset = 300.0;  // not e-critical
+        BackendSqueeze row;
+        row.timecode = Timecode::raw(3000);
+        row.offset_ms = offset_ms;
+        act.backends.push_back(row);
+        if (squeezed_out) act.set_sqout(row.timecode.ticks());
+        test::set_transfer(act, TransferScale{}, post);
+        const ActivationRating r = rate_activation(act);
+        REQUIRE(r.backends.size() == 1);
+        REQUIRE(r.backends[0].squeezed_out == squeezed_out);
+        return r.backends[0].row.summarystr(squeezed_out, r.backends[0].note.effective_ms);
+    };
+    // The squeezed-out row 50 ms inside SP needs a 50 ms late hit; the early
+    // side of the SP end governs it.
+    CHECK(word(-50.0, true, TransferScale{0.5, 1.0}) == "Extreme");
+    CHECK(word(-50.0, true, TransferScale{2.0, 1.0}) == "Hard");
+    CHECK(word(-50.0, true, TransferScale{}) == "Extreme");
+    // A plain row 50 ms past the end is uncounted; the late side governs it.
+    CHECK(word(50.0, false, TransferScale{1.0, 2.0}) == "Hard (uncounted)");
 }
 
 TEST_CASE("squeeze_budget_ms: identity scale is twice the hit window") {

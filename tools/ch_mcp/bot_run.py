@@ -318,8 +318,7 @@ def _restore(backup_dir: str, env: Env) -> bool:
     caller then stops."""
     env.out(f"restoring the user files from {backup_dir}")
     try:
-        game_files.restore(backup_dir, out=env.out)
-        game_files.restore_registry(backup_dir, run_reg=env.run_reg, out=env.out)
+        game_files.restore_all(backup_dir, out=env.out, run_reg=env.run_reg)
     except game_files.RestoreError as e:
         env.out(f"restore failed on {e.name}: {e.error}")
         env.out(f"stopped; the backup is still in {backup_dir}")

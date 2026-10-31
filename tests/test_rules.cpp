@@ -172,65 +172,99 @@ TEST_CASE("rules: whole_chord takes every note's SP doubling on a squeeze-out") 
     CHECK(per_note[1].sqout_reduction == 50);
 }
 
-TEST_CASE("rules: the leeway moves the Standard edge of a backend rating") {
+// The leeway decides only whether a plain row is counted (D269 call 4).
+TEST_CASE("rules: the leeway decides whether a plain backend row is counted") {
     BackendSqueeze b;
     b.offset_ms = 4.0;
-    CHECK(b.summarystr(false) == "Hard (uncounted)");
-    CHECK(b.summarystr(false, 5.0) == "Standard");
+    CHECK(b.summarystr(false, std::nullopt) == "Hard (uncounted)");
+    CHECK(b.summarystr(false, std::nullopt, 5.0) == "Normal");
 }
 
-// Finding 29: the SqOut ladder is for the row the activation squeezed out
-// (Activation::sqout_tick), not for every phrase chord.
-TEST_CASE("BackendSqueeze::summarystr: the SqOut ladder is for the squeezed-out row only") {
+// D269: the timing the player needs for each row. The SP end is one point
+// (call 4), so a squeezed-out row needs nothing at or past it, even while
+// the leeway still has the engine count the chord.
+TEST_CASE("backend_row_timing: the timing the player needs for each row") {
+    const double lw = core::default_rules().backend_leeway_ms;
+    REQUIRE(lw == 3.0);
+    // A plain row the engine counts needs nothing.
+    for (double off : {-100.0, -5.0, 0.0, 2.999}) {
+        CAPTURE(off);
+        CHECK(backend_row_timing(off, false, lw) == 0.0);
+    }
+    // A plain row it does not count needs its offset early.
+    CHECK(backend_row_timing(3.0, false, lw) == 3.0);
+    CHECK(backend_row_timing(50.0, false, lw) == 50.0);
+    // The squeezed-out row needs its SqOut's late hit.
+    CHECK(backend_row_timing(-163.0, true, lw) == 163.0);
+    CHECK(backend_row_timing(-5.0, true, lw) == 5.0);
+    for (double off : {0.0, 2.0, 50.0}) {
+        CAPTURE(off);
+        CHECK(backend_row_timing(off, true, lw) <= 0.0);
+    }
+    // At +2 ms the squeezed-out row needs nothing, yet the engine still
+    // counts the chord, so the squeeze-out still costs points.
+    CHECK(core::counted_without_squeeze(2.0, lw));
+    BackendSqueeze b;
+    b.offset_ms = 2.0;
+    CHECK(b.summarystr(true, std::nullopt, lw) == "Normal");
+}
+
+// D276 item 2: every counted plain row reads Normal.
+TEST_CASE("BackendSqueeze::summarystr: every counted plain row reads Normal") {
+    BackendSqueeze b;
+    for (double off : {-100.0, -5.0, 2.999}) {
+        CAPTURE(off);
+        b.offset_ms = off;
+        CHECK(b.summarystr(false, std::nullopt) == "Normal");
+    }
+}
+
+// D269 call 1: one rule for every row, so a squeezed-out row and a plain row
+// at the same offset differ only by what each needs.
+TEST_CASE("BackendSqueeze::summarystr: one rule for the squeezed-out and the plain row") {
     BackendSqueeze b;
     b.offset_ms = -50.0;
-    CHECK(b.summarystr(true) == "Hard SqOut");
-    CHECK(b.summarystr(false) == "Easy");
+    CHECK(b.summarystr(true, std::nullopt) == "Extreme");
+    CHECK(b.summarystr(false, std::nullopt) == "Normal");
     b.offset_ms = 150.0;
-    CHECK(b.summarystr(true) == "Free SqOut (uncounted)");
-    CHECK(b.summarystr(false) == "Insane (uncounted)");
+    CHECK(b.summarystr(true, std::nullopt) == "Normal (uncounted)");
+    CHECK(b.summarystr(false, std::nullopt) == "Insane+ (uncounted)");
 }
 
-// Finding 33, D48 Q6: a squeezed-out row the engine does not count says so,
-// as the plain rows do, under the same test (counted_without_squeeze).
+// Finding 33, D48 Q6: a row the engine does not count says so, squeezed out
+// or not, under the same test (counted_without_squeeze).
 TEST_CASE("BackendSqueeze::summarystr: an uncounted squeezed-out row carries the tag") {
     BackendSqueeze b;
-    b.offset_ms = 150.0;
-    CHECK(b.summarystr(true) == "Free SqOut (uncounted)");
     b.offset_ms = 50.0;
-    CHECK(b.summarystr(true) == "Easy SqOut (uncounted)");
+    CHECK(b.summarystr(true, std::nullopt) == "Normal (uncounted)");
     b.offset_ms = 4.0;
-    CHECK(b.summarystr(true) == "Standard SqOut (uncounted)");
-    CHECK(b.summarystr(true, 5.0) == "Standard SqOut");
-    b.offset_ms = -50.0;
-    CHECK(b.summarystr(true) == "Hard SqOut");
-    // The plain rows read as before.
-    b.offset_ms = 150.0;
-    CHECK(b.summarystr(false) == "Insane (uncounted)");
-    b.offset_ms = 50.0;
-    CHECK(b.summarystr(false) == "Hard (uncounted)");
-    b.offset_ms = -50.0;
-    CHECK(b.summarystr(false) == "Easy");
+    CHECK(b.summarystr(true, std::nullopt) == "Normal (uncounted)");
+    CHECK(b.summarystr(true, std::nullopt, 5.0) == "Normal");
+    b.offset_ms = -5.0;
+    CHECK(b.summarystr(true, std::nullopt) == "Hard");
 }
 
-// Finding 306, D48 Q4: the ladder's inner edges are their own named 10 ms.
-// The labels either side of each edge read as before; past the leeway a
-// squeezed-out row also carries finding 33's "(uncounted)".
-TEST_CASE("kBackendInnerBandMs: the backend ladder's inner edges sit at 10 ms") {
-    CHECK(kBackendInnerBandMs == 10.0);
+// D269 call 3, D48 Q3: the rows band on the report's timing tiers, and a
+// timing exactly on an edge reads the band below it. The plain rows use a
+// 0 ms leeway so that every offset past the end is uncounted and needs
+// itself, which puts the first edge within reach.
+TEST_CASE("BackendSqueeze::summarystr: the tier edges for both row kinds") {
+    const struct {
+        double ms;
+        const char* word;
+    } kEdges[] = {
+        {2.0, "Normal"},     {2.001, "Hard"},      {42.5, "Hard"},
+        {85.0, "Extreme"},   {127.5, "Insane"},    {170.0, "Insane+"},
+        {170.001, "Beyond"},
+    };
     BackendSqueeze b;
-    b.offset_ms = -10.1;
-    CHECK(b.summarystr(true) == "Hard SqOut");
-    CHECK(b.summarystr(false) == "Easy");
-    b.offset_ms = -10.0;
-    CHECK(b.summarystr(true) == "Standard SqOut");
-    CHECK(b.summarystr(false) == "Standard");
-    b.offset_ms = 9.9;
-    CHECK(b.summarystr(true) == "Standard SqOut (uncounted)");
-    CHECK(b.summarystr(false) == "Hard (uncounted)");
-    b.offset_ms = 10.0;
-    CHECK(b.summarystr(true) == "Easy SqOut (uncounted)");
-    CHECK(b.summarystr(false) == "Hard (uncounted)");
+    for (const auto& e : kEdges) {
+        CAPTURE(e.ms);
+        b.offset_ms = -e.ms;
+        CHECK(b.summarystr(true, std::nullopt) == e.word);
+        b.offset_ms = e.ms;
+        CHECK(b.summarystr(false, std::nullopt, 0.0) == std::string(e.word) + " (uncounted)");
+    }
 }
 
 TEST_CASE("rules: the leeway changes what the engine counts") {

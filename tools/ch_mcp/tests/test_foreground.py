@@ -102,10 +102,30 @@ class ForegroundWatchTest(unittest.TestCase):
         w = F.ForegroundWatch(lambda: GAME, script, time.monotonic, sleep)
         w.start()
         self.assertTrue(done.wait(THREAD_CAP_S))
-        self.assertEqual(w.line(), "foreground went to the game 1 time so far")
+        first, times = w.line().splitlines()
+        self.assertEqual(first, "foreground went to the game 1 time so far")
+        self.assertTrue(times.startswith("foreground went to the game at (since the watch started): "))
         w.stop()
         self.assertEqual(w.count, 1)
-        self.assertEqual(w.line(), "foreground went to the game 1 time")
+        self.assertEqual(w.line().splitlines()[0], "foreground went to the game 1 time")
+
+    def test_the_line_lists_when_the_game_came_forward_since_the_start(self):
+        now = iter([100.0, 100.5, 112.5, 130.0, 131.0])  # start, USER, GAME, OTHER, GAME
+        w = F.ForegroundWatch(lambda: GAME, Script([USER, GAME, OTHER, GAME]),
+                              lambda: next(now), lambda s: None)
+        w._started_at = w._now()  # what start() records
+        for _ in range(4):
+            w.poll()
+        self.assertEqual(w.game_times, [112.5, 131.0])
+        self.assertEqual(w.line().splitlines(), [
+            "foreground went to the game 2 times",
+            "foreground went to the game at (since the watch started): 12.5 s, 31.0 s"])
+
+    def test_the_line_has_no_times_while_the_game_never_came_forward(self):
+        w = _watch([USER, OTHER])
+        w.poll()
+        w.poll()
+        self.assertEqual(w.line(), "foreground went to the game 0 times")
 
     def test_a_poll_that_raises_ends_the_watch_and_the_line_says_why(self):
         def broken():

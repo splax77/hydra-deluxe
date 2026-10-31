@@ -14,6 +14,7 @@
 #include "app/analysis.h"
 #include "app/display_format.h"
 #include "app/path_view.h"
+#include "core/squeeze_rating.h"
 #include "analyzed_chart.h"
 #include "record_fixtures.h"
 #include "song_details_fixtures.h"
@@ -22,6 +23,34 @@ using namespace hydra;
 using namespace hydra::app;
 using song_details::burnout;
 using song_details::kDot;
+
+namespace {
+
+// D269: the squeezed-out row's word is past the first tier exactly when its
+// badge is orange (SPSqueeze::is_difficult). The scale is reset to x1.00
+// first, so the raw and the eff. figure are one figure; the badge reads raw
+// ms (D269 call 5).
+void check_word_agrees_with_badge(Activation act) {
+    test::set_transfer(act, TransferScale{});
+    const SPSqueeze* sqout = nullptr;
+    for (const SPSqueeze& sq : act.sqinouts)
+        if (sq.kind == SqueezeKind::SqOut) sqout = &sq;
+    REQUIRE(sqout != nullptr);
+    const std::string first_tier = timing_tiers().front().name;
+    int rows = 0;
+    for (const BackendRating& br : rate_activation(act).backends) {
+        if (!br.squeezed_out) continue;
+        ++rows;
+        CHECK_FALSE(br.note.effective_ms.has_value());
+        const std::string word = br.row.summarystr(true, br.note.effective_ms);
+        CAPTURE(word);
+        const bool past_first_tier = word.rfind(first_tier, 0) != 0;
+        CHECK(sqout->is_difficult() == past_first_tier);
+    }
+    CHECK(rows == 1);
+}
+
+}  // namespace
 
 TEST_CASE("display format: the average multiplier rounds the exact double") {
     // Python's round(x, 3) on the binary value, not on the decimal literal.
@@ -464,8 +493,9 @@ TEST_CASE("build_activations: a squeezed-out row past the leeway is worth 0") {
     REQUIRE(v.acts[0].backends.size() == 1);
     CHECK(v.acts[0].backends[0].points == "0");
     CHECK(v.acts[0].backends[0].rating ==
-          "Free SqOut (uncounted) <-- squeezed out");
+          "Normal (uncounted) <-- squeezed out");
     CHECK_FALSE(v.acts[0].backends[0].warn);
+    check_word_agrees_with_badge(far);
 
     // The same chord squeezed out 5 ms inside SP really costs 200, and
     // that row keeps its warning colour.
@@ -478,12 +508,14 @@ TEST_CASE("build_activations: a squeezed-out row past the leeway is worth 0") {
     REQUIRE(v.acts[0].backends.size() == 1);
     CHECK(v.acts[0].backends[0].points == "260");
     CHECK(v.acts[0].backends[0].rating ==
-          "Standard SqOut <-- squeezed out (-200)");
+          "Hard <-- squeezed out (-200)");
     CHECK(v.acts[0].backends[0].warn);
+    check_word_agrees_with_badge(near);
 }
 
 // User decision 19: every row the engine does not count reads 0 and is not
-// highlighted, not only squeezed-out ones. Labels stay as they are.
+// highlighted, not only squeezed-out ones. Every counted plain row reads
+// Normal (D276 item 2).
 TEST_CASE("build_activations: plain rows past the leeway show 0") {
     HydraRecord rec;  // only feeds the footer
 
@@ -517,15 +549,15 @@ TEST_CASE("build_activations: plain rows past the leeway show 0") {
     const std::vector<BackendRowView>& b = v.acts[0].backends;
     REQUIRE(b.size() == 5);
     CHECK(b[0].points == "460");
-    CHECK(b[0].rating == "Easy");
+    CHECK(b[0].rating == "Normal");
     CHECK(b[1].points == "460");
-    CHECK(b[1].rating == "Standard");
+    CHECK(b[1].rating == "Normal");
     CHECK(b[2].points == "0");
     CHECK(b[2].rating == "Hard (uncounted)");
     CHECK(b[3].points == "0");
     CHECK(b[3].rating == "Insane (uncounted)");
     CHECK(b[4].points == "0");
-    CHECK(b[4].rating == "Insane (uncounted)");
+    CHECK(b[4].rating == "Insane+ (uncounted)");
     for (const BackendRowView& row : b) CHECK_FALSE(row.warn);
 }
 
@@ -587,6 +619,14 @@ TEST_CASE("activation rows: Burnout's three activations") {
     // No song length given: no timeline.
     CHECK_FALSE(a1.song_fraction.has_value());
     CHECK(view.timeline_end.empty());
+
+    int squeezed_out = 0;
+    for (const Activation& act : best.activations)
+        if (act.sqout_row()) {
+            check_word_agrees_with_badge(act);
+            ++squeezed_out;
+        }
+    CHECK(squeezed_out == 1);
 }
 
 TEST_CASE("activation timeline: onset over the song's length, and the end measure") {

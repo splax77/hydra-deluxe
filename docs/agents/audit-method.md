@@ -20,7 +20,7 @@ A **closure** is any exit other than a question to the user. Closures are where 
 
 Every finding leaves by exactly one of these. An audit that reports a finding with no exit is not finished.
 
-1. **Fixed.** The code no longer has the problem. The evidence is the commit that removed it, and a read of the code at that commit. Giving a number a name, moving it to a constant, or rewording a comment does not remove a split. Finding 306 was marked "fixed" because the 10 ms got the name `kBackendInnerBandMs`, and both edges stayed.
+1. **Fixed.** The code no longer has the problem. The evidence is the commit that removed it, and a read of the code at that commit. Giving a number a name, moving it to a constant, or rewording a comment does not remove a split. Finding 306 was marked "fixed" because the 10 ms got the name kBackendInnerBandMs (a constant D269 has since deleted), and both edges stayed.
 2. **A question to the user.** This is the default for every split and for every finding whose fix changes what the user sees, a stored record, a score or a count. "How to write a question" below says how.
 3. **Covered by a ruling.** The user already decided this exact thing. The evidence is a verbatim quote of their ruling, with its file and line, and the quote names both sides of the split. When the user answered a batch with "all recommended", their words are the question's own text and its Recommended line. So that text must name both sides. A ruling about the same topic is not enough. D50 covered "two ladders" (report tiers against row labels), and M39 was a different pair of ladders, so D50 does not cover M39.
 4. **Not a problem.** The two parts look alike but answer different questions, or the "copy" is a call to the owner. The evidence is one sentence saying what each side answers, which a fresh agent agrees with. "On purpose", "by design", "deliberately" and "kept" are not evidence. They are claims about what someone wanted, so they need a ruling (exit 3) or they become a question (exit 2).
@@ -131,7 +131,7 @@ Each story below is a real miss, with where its record lives. Most sources are s
 
 ### The split two audits saw and neither asked about (M39)
 
-The Backend timings table rates each note by how far it lands from the Star Power end. A plain row reads "Standard" from -10 ms to under 3 ms, where 3 is the default of the leeway setting (the most a note can land after the end and still count). The squeezed-out row reads "Standard SqOut" from -10 ms to under 10 ms, where 10 is `kBackendInnerBandMs`. So a note 5 ms after the end reads "Hard (uncounted)" on one row and "Standard SqOut (uncounted)" on the other. Public Hydra's author added both ladders in commit c9c00cf7 (2025-08-12). That was a year before the user's first commit.
+The Backend timings table rates each note by how far it lands from the Star Power end. A plain row reads "Standard" from -10 ms to under 3 ms, where 3 is the default of the leeway setting (the most a note can land after the end and still count). The squeezed-out row reads "Standard SqOut" from -10 ms to under 10 ms, where 10 was kBackendInnerBandMs, a constant D269 has since deleted along with both ladders. So a note 5 ms after the end reads "Hard (uncounted)" on one row and "Standard SqOut (uncounted)" on the other. Public Hydra's author added both ladders in commit c9c00cf7 (2025-08-12). That was a year before the user's first commit.
 
 Four steps passed the split by:
 
