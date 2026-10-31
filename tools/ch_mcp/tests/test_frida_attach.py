@@ -1,5 +1,6 @@
 """Tests for frida_attach: the attach runner detaches on every path, the clock
-summary is right, and the Frida agents contain nothing that writes to the game.
+summary is right, the Frida agents read fields by name and never by raw
+offset, and every game method they call is one menu.ts names.
 
 No game and no Frida: a fake frida module hands back a fake session whose
 script delivers hand-written messages, and a fake wait returns at once.
@@ -27,35 +28,71 @@ from tools.ch_probe.constants import PROCESS_NAME  # noqa: E402
 
 AGENT_DIR = os.path.join(_REPO_ROOT, "tools", "ch_mcp", "agent")
 
-# ---- the no-writes check ------------------------------------------------
+# ---- the by-name check ----------------------------------------------------
 # The one list of what an agent script may never contain, each with why.
-# Task D's tests call no_write_findings over trace.ts with this same list.
-NO_WRITE_PATTERNS = (
-    (r"Memory\.write", "writes game memory"),
-    (r"\.write[A-Z]\w*\(", "writes game memory through a pointer"),
-    (r"Memory\.(patchCode|protect|copy)\b",
-     "changes game memory, code or page rights"),
-    (r"\.value\s*(?:\+\+|--|(?:[-+*/%&|^]|<<|>>>?|\*\*|&&|\|\||\?\?)?=(?![=>]))",
-     "sets a field"),
-    (r"\.invoke\(", "calls a game method"),
-    (r"new\s+NativeFunction\b", "calls a game function"),
-    (r"\.implementation\s*=(?!=)", "replaces a game method"),
-    (r"Interceptor\.replace", "replaces a game function"),
-    (r"\bretval\.replace\(", "changes a return value"),
-    (r"\bargs\[[^\]]+\]\s*=(?![=>])", "changes a call argument"),
-    (r"\b(?:\w+\.)?(?:context|ctx)\.\w+\s*=(?![=>])", "changes a register"),
+# Writes and method calls are allowed (the user's rulings 2 and 5 of
+# 2026-10-30, D272); reading by raw offset is not. test_trace_hits.py calls
+# by_name_only_findings over trace.ts with this same list.
+BY_NAME_ONLY_PATTERNS = (
     (r"add\(0x", "reads by offset, not by field name"),
 )
 
 
-def no_write_findings(text: str) -> list[tuple[int, str, str]]:
-    """Every line of an agent script that matches NO_WRITE_PATTERNS, as
+def by_name_only_findings(text: str) -> list[tuple[int, str, str]]:
+    """Every line of an agent script that matches BY_NAME_ONLY_PATTERNS, as
     (line number, line, why)."""
     found = []
     for n, line in enumerate(text.splitlines(), start=1):
-        for pattern, why in NO_WRITE_PATTERNS:
+        for pattern, why in BY_NAME_ONLY_PATTERNS:
             if re.search(pattern, line):
                 found.append((n, line.strip(), why))
+    return found
+
+
+# ---- the allowed-calls check ----------------------------------------------
+# Every game method an agent calls is named in menu.ts's ALLOWED_CALLS, and
+# only menu.ts calls one. CALL_SITES is how many `.invoke(` lines each agent
+# may hold.
+MENU_AGENT = "menu.ts"
+CALL_SITES = {MENU_AGENT: 1}
+# A method looked up by name, with an optional type argument; group 2 is the
+# name when it is a string literal.
+_METHOD_LOOKUP = re.compile(r"\.(?:method|tryMethod)\s*(?:<[^>]*>)?\s*\(\s*(?:([\"'])(\w+)\1)?")
+_INVOKE = re.compile(r"\.invoke\(")
+_NATIVE_FUNCTION = re.compile(r"new\s+NativeFunction\b")
+_ALLOWED_LIST = re.compile(r"ALLOWED_CALLS\s*=\s*\[([^\]]*)\]")
+
+
+def allowed_calls(menu_text: str) -> list[str]:
+    """The names in menu.ts's ALLOWED_CALLS literal."""
+    match = _ALLOWED_LIST.search(menu_text)
+    if match is None:
+        return []
+    return re.findall(r"[\"'](\w+)[\"']", match.group(1))
+
+
+def call_findings(texts: dict[str, str]) -> list[str]:
+    """Every call in `texts` (agent file name -> its text) that the allowed
+    list does not cover: a method looked up by a name outside ALLOWED_CALLS
+    or by a name that is not a literal, a NativeFunction, or more `.invoke(`
+    lines in a file than CALL_SITES gives it."""
+    allowed = set(allowed_calls(texts.get(MENU_AGENT, "")))
+    found = []
+    for name, text in sorted(texts.items()):
+        invokes = 0
+        for n, line in enumerate(text.splitlines(), start=1):
+            for m in _METHOD_LOOKUP.finditer(line):
+                if m.group(2) is None:
+                    found.append(f"{name}:{n}: a method looked up by a name "
+                                 f"that is not a literal: {line.strip()}")
+                elif m.group(2) not in allowed:
+                    found.append(f"{name}:{n}: {m.group(2)} is not in ALLOWED_CALLS")
+            if _NATIVE_FUNCTION.search(line):
+                found.append(f"{name}:{n}: calls a game function: {line.strip()}")
+            invokes += len(_INVOKE.findall(line))
+        if invokes != CALL_SITES.get(name, 0):
+            found.append(f"{name}: {invokes} .invoke( sites, expected "
+                         f"{CALL_SITES.get(name, 0)}")
     return found
 
 
@@ -650,35 +687,22 @@ class SummaryTest(unittest.TestCase):
 
 # ---- the agents ---------------------------------------------------------------
 
-class NoWritesTest(unittest.TestCase):
+class ByNameOnlyTest(unittest.TestCase):
     def test_the_check_catches_every_pattern(self):
         # Without this, a broken pattern would let every agent pass.
         bad = [
-            "Memory.writeDouble(p, 1);",
-            "p.writeU8(1);",
-            "Memory.protect(p, 4096, 'rwx');",
-            "gm.field('songTime').value = 0;",
-            "gm.method('Stop').invoke();",
-            "const f = new NativeFunction(p, 'void', []);",
-            "klass.method('Hit').implementation = function () {};",
-            "Interceptor.replace(p, cb);",
             "gm.handle.add(0x70).readDouble();",
-            "Memory.copy(dst, src, 8);",
-            "gm.field('count').value += 1;",
-            "gm.field('count').value++;",
-            "gm.field('flag').value ??= true;",
-            "retval.replace(ptr(0));",
-            "args[0] = ptr(0);",
-            "args[slot] = ptr(0);",
-            "this.context.rax = ptr(0);",
-            "ctx.xmm0 = buf;",
         ]
         for line in bad:
             with self.subTest(line=line):
-                self.assertTrue(no_write_findings(line))
+                self.assertTrue(by_name_only_findings(line))
 
     def test_reads_and_comparisons_pass(self):
         ok = [
+            # Method calls and field sets are allowed (rulings 2 and 5).
+            "gm.method('Stop').invoke();",
+            "gm.field('count').value = 1;",
+            "Memory.writeU8(p, 1);",
             "const t = gm.field<number>('songTime').value;",
             "if (f.value === true) {}",
             "if (f.value == 1) {}",
@@ -695,16 +719,57 @@ class NoWritesTest(unittest.TestCase):
         ]
         for line in ok:
             with self.subTest(line=line):
-                self.assertEqual(no_write_findings(line), [])
+                self.assertEqual(by_name_only_findings(line), [])
 
-    def test_no_agent_writes_to_the_game(self):
+    def test_no_agent_reads_by_offset(self):
         sources = agent_sources()
         self.assertIn(os.path.join(AGENT_DIR, "clock.ts"), sources)
         self.assertIn(os.path.join(AGENT_DIR, "state.ts"), sources)
+        self.assertIn(os.path.join(AGENT_DIR, MENU_AGENT), sources)
         for path in sources:
             with self.subTest(agent=os.path.basename(path)):
                 with open(path, encoding="utf-8") as fh:
-                    self.assertEqual(no_write_findings(fh.read()), [])
+                    self.assertEqual(by_name_only_findings(fh.read()), [])
+
+
+class AllowedCallsTest(unittest.TestCase):
+    MENU_TEXT = ('export const ALLOWED_CALLS = ["get_activeInHierarchy"];\n'
+                 'return o.method<boolean>("get_activeInHierarchy").invoke();\n')
+
+    def test_agent_calls_only_named_methods(self):
+        texts = {}
+        for path in agent_sources():
+            with open(path, encoding="utf-8") as fh:
+                texts[os.path.basename(path)] = fh.read()
+        self.assertEqual(allowed_calls(texts[MENU_AGENT]), ["get_activeInHierarchy"])
+        self.assertEqual(call_findings(texts), [])
+
+    def test_a_method_outside_the_list_fails(self):
+        texts = {MENU_AGENT: self.MENU_TEXT,
+                 "other.ts": 'go.method("SetActive");\n'}
+        self.assertEqual(call_findings(texts),
+                         ["other.ts:1: SetActive is not in ALLOWED_CALLS"])
+
+    def test_an_invoke_in_a_second_file_fails(self):
+        texts = {MENU_AGENT: self.MENU_TEXT,
+                 "other.ts": "m.invoke();\n"}
+        self.assertEqual(call_findings(texts),
+                         ["other.ts: 1 .invoke( sites, expected 0"])
+
+    def test_a_second_invoke_in_menu_ts_fails(self):
+        texts = {MENU_AGENT: self.MENU_TEXT + "m.invoke();\n"}
+        self.assertEqual(call_findings(texts),
+                         [f"{MENU_AGENT}: 2 .invoke( sites, expected 1"])
+
+    def test_a_lookup_by_a_name_that_is_not_a_literal_fails(self):
+        texts = {MENU_AGENT: self.MENU_TEXT,
+                 "other.ts": "o.tryMethod(name);\n"}
+        self.assertEqual(len(call_findings(texts)), 1)
+
+    def test_a_native_function_fails(self):
+        texts = {MENU_AGENT: self.MENU_TEXT,
+                 "other.ts": "const f = new NativeFunction(p, 'void', []);\n"}
+        self.assertEqual(len(call_findings(texts)), 1)
 
 
 class DestroyedSkipTest(unittest.TestCase):

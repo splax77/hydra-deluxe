@@ -25,7 +25,7 @@ if _REPO_ROOT not in sys.path:
 from tools.ch_mcp import trace_hits as TH  # noqa: E402
 from tools.ch_mcp import frida_attach as FA  # noqa: E402
 from tools.ch_mcp.tests.test_frida_attach import (  # noqa: E402
-    AGENT_DIR, FakeFrida, FakeSession, instant_wait, no_write_findings, sent)
+    AGENT_DIR, FakeFrida, FakeSession, instant_wait, by_name_only_findings, sent)
 from tools.ch_probe import constants as C  # noqa: E402
 from tools.ch_probe.probe_songs import WINDOW_MAP  # noqa: E402
 
@@ -233,7 +233,7 @@ class CommandLineTest(unittest.TestCase):
 class TraceAgentTest(unittest.TestCase):
     def test_trace_ts_writes_nothing_to_the_game(self):
         with open(os.path.join(AGENT_DIR, "trace.ts"), encoding="utf-8") as fh:
-            self.assertEqual(no_write_findings(fh.read()), [])
+            self.assertEqual(by_name_only_findings(fh.read()), [])
 
     def test_only_gamemanager_ts_looks_up_the_game_manager(self):
         # One owner: the agents call findGameManager; none repeats the lookup.

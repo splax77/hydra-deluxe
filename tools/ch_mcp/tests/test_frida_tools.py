@@ -292,6 +292,74 @@ class ReadTest(Rig):
         self.assertIn("song clock at that press: 2998.0 ms", out)
 
 
+# A hand-written menu block in the shape agent/menu.ts sends.
+MENU_READ = {
+    "classes": {
+        "MainMenu": {"found": True, "live": 1, "destroyed": 0,
+                     "onlineMenuActive": [False]},
+        "SongSelect": {"found": True, "live": 1, "destroyed": 2,
+                       "onlineMenuActive": [True]},
+        "PlayerSelectionMenu": {"found": False, "reason": "PlayerSelectionMenu not found"},
+    },
+    "selectedSong": {"folderPath": "C:\\Songs\\Window Map", "chartName": "notes.chart"},
+    "globals": {"found": True, "currentSongFolder": None, "gameMode": 0, "playerCount": 1},
+}
+MENU_LINES = [
+    "MainMenu: 1 live, 0 destroyed; onlineMenuActive: [false]",
+    "SongSelect: 1 live, 2 destroyed; onlineMenuActive: [true]",
+    "PlayerSelectionMenu: PlayerSelectionMenu not found",
+    "selected song folder: C:\\Songs\\Window Map",
+    "selected song chartName: notes.chart",
+    "GlobalVariables currentSongFolder: null",
+    "GlobalVariables gameMode: 0",
+    "GlobalVariables playerCount: 1",
+]
+
+
+class MenuTest(Rig):
+    def test_menu_lines_print_the_block_as_sent(self):
+        self.assertEqual(FT.menu_lines(MENU_READ), MENU_LINES)
+
+    def test_menu_lines_with_no_song_and_no_globals(self):
+        menu = {**MENU_READ, "selectedSong": None,
+                "globals": {"found": False, "reason": "no live GlobalVariables.instance"}}
+        lines = FT.menu_lines(menu)
+        self.assertIn("selected song: none", lines)
+        self.assertEqual(lines[-1], "GlobalVariables: no live GlobalVariables.instance")
+
+    def test_menu_lines_print_the_agents_error(self):
+        self.assertEqual(FT.menu_lines({"error": "reading the menus failed: x"}),
+                         ["menu: reading the menus failed: x"])
+
+    def test_menu_lines_with_no_block(self):
+        self.assertEqual(FT.menu_lines(None),
+                         ["menu: not read (the agent sent no menu block)"])
+
+    def test_ch_menu_prints_the_lines_then_the_state_word(self):
+        tools = self.tools([STATE, {**MENU, "menu": MENU_READ}], attached=True)
+        self.assertEqual(tools.ch_menu().splitlines(),
+                         MENU_LINES + ["state: menu (no live GameManager)"])
+
+    def test_ch_menu_before_attach_says_not_attached(self):
+        self.assertEqual(self.tools().ch_menu(), f"state: not attached; {FT.NOT_ATTACHED}")
+
+    def test_state_leaves_the_menu_block_to_ch_menu(self):
+        tools = self.tools([STATE, {**STATE, "menu": MENU_READ}], attached=True)
+        out = tools.ch_state()
+        self.assertIn("songTime: 3.5", out)
+        self.assertNotIn("menu", out)
+
+    def test_read_state_returns_the_agents_dict(self):
+        reply = {**STATE, "menu": MENU_READ}
+        tools = self.tools([STATE, reply], attached=True)
+        self.assertEqual(tools.read_state(), reply)
+
+    def test_read_state_before_attach_raises_with_the_reason(self):
+        with self.assertRaises(FT.StateUnread) as caught:
+            self.tools().read_state()
+        self.assertEqual(str(caught.exception), f"state: not attached; {FT.NOT_ATTACHED}")
+
+
 class StateWordsTest(unittest.TestCase):
     def state(self, **fields):
         return {**STATE, **fields}
