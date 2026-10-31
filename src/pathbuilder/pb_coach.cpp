@@ -502,7 +502,7 @@ void DecisionList::poll(PbState& state) {
     if (click_job_ && click_job_->finished()) {
         if (state.history().generation() != click_generation_) {
             // The player's path changed while the search ran (undo, redo,
-            // Finish for me, another edit), so its answer is for a path that
+            // Finish the rest for me, another edit), so its answer is for a path that
             // is gone. The player clicks again if they still want it.
         } else if (!click_job_->ok()) {
             message_ = click_job_->message();

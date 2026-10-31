@@ -1,7 +1,7 @@
 // The Path Builder's decision list (src/pathbuilder/pb_coach.h): the rows a
-// ladder fills, the tight-window note, the end choices, "Finish for me", the
-// clicks that start and remove a window, and the worker a newer request
-// supersedes.
+// ladder fills, the tight-window note, the end choices, "Finish the rest for
+// me", the clicks that start and remove a window, the candidate costs and
+// queue, and the workers a newer request supersedes.
 // Charts come from the corpus; every figure is pinned from one run.
 
 #include "doctest.h"
@@ -35,7 +35,7 @@ LadderRun ladder(const OpenChart& c, const std::vector<PinnedWindow>& windows) {
 
 }  // namespace
 
-TEST_CASE("coach rows: a two-click path fills the ladder, the rows, the ends and Finish for me") {
+TEST_CASE("coach rows: a two-click path fills the ladder, the rows, the ends and Finish the rest for me") {
     PbState s;
     open_and_wait(s, corpus::burnout_notes(), scratch_settings());
     REQUIRE(s.chart() != nullptr);
@@ -91,7 +91,7 @@ TEST_CASE("coach rows: a two-click path fills the ladder, the rows, the ends and
     CHECK(ends[0].window.deact_tick == 128640);
     CHECK(ends[0].best_finish == 364675);
 
-    // Finish for me is BF(2)'s path.
+    // Finish the rest for me is BF(2)'s path.
     const std::optional<Path> finish = hydra::pathbuilder::finish_for_me(run, 2);
     REQUIRE(finish.has_value());
     CHECK(finish->pathstring() == run.best[2].pathstring());
@@ -322,7 +322,7 @@ TEST_CASE("coach click: a result that arrives after the player's path changed is
     };
 
     // The forced order: the click starts, the player's path changes (the
-    // empty path stands in for an undo, a redo or Finish for me), then the
+    // empty path stands in for an undo, a redo or Finish the rest for me), then the
     // answer is taken in.
     d.click_fill(s.search_graph(), c.settings, s.history().current().windows, tick,
                  s.history().generation());
