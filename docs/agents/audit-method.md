@@ -104,7 +104,7 @@ Send splits alone or in small groups. The user approved that rule on 2026-10-29 
 
 ### 8. Record
 
-Each answer becomes a D-record in `docs/audit/2026-10-03-fix-decisions.md`. A record for a split names both sides and quotes the question's text, so a later audit can test "does this ruling name both sides?" by reading one entry. A triage file that tracks findings (such as `2026-10-03-fix-triage.json`) records each finding's exit and its evidence, not just a status word. "fixed" alone is the kind of status that hid finding 306.
+Each answer becomes a D-record in `docs/audit/2026-10-03-fix-decisions.md`. A record for a split names both sides and quotes the question's text, so a later audit can test "does this ruling name both sides?" by reading one entry. A triage file that tracks findings (such as `docs/audit/2026-10-03-fix-triage.json`) records each finding's exit and its evidence, not just a status word. "fixed" alone is the kind of status that hid finding 306.
 
 The merge that fixes a finding updates its row in the same step. On 2026-10-05 the triage file still showed 192 of 396 findings open after phase 6 had fixed its share, because no merge had marked its rows.
 
@@ -138,7 +138,7 @@ Four steps passed the split by:
 1. A 2026-08-21 session asked about "two squeeze rating ladders" (card `2026-08-21-266e74ad`). The user chose "Behaviour-preserving only". That question was about the report tiers against the row labels, a different pair.
 2. Derivation audit finding 306 (2026-10-03) had the split in its own table, at +3 and +10 ms. It was titled "Backend rating bands start at a fixed 10 ms nobody chose". Its question became D48 question 4, which described only the 10 ms edges: a row "turns "Easy SqOut" at +10 ms and "Easy" at -10 ms". It never said that the plain row changes at +3. The user answered all 33 questions in that file with "all recommended". The triage then marked 306 "fixed", because the 10 got a name.
 3. D50 item 1 reworded the report footer. It settled the report-against-rows pair and nothing else.
-4. The concept audit (2026-10-11) re-found it as M39. Verifier V5 wrote both row tables, then matched the finding to D50 item 1 by topic, since both were about two ladders. `questions.md` listed it under "Already decided, no question", a section the audit's plan never defined.
+4. The concept audit (2026-10-11) re-found it as M39. Verifier V5 wrote both row tables, then matched the finding to D50 item 1 by topic, since both were about two ladders. `docs/audit/2026-10-11-concept-audit/questions.md` listed it under "Already decided, no question", a section the audit's plan never defined.
 
 The user found it on 2026-10-29, when the Path Builder handoff's list of open items named it. Two other items in that same "already decided" list show the same pattern. M04 says "no decision covers that" and is still listed as decided. M60 says the charter "deliberately differs" and names no ruling.
 
