@@ -214,7 +214,7 @@ Found: 2026-10-30, wave 2 scout R1.
 
 Rule: in the game `drums0dnoflip` counts as a span start (its 7th character is d), adds only a no-flip flag to notes that are not already Disco, and is too long to end an open drums0d span, so an earlier drums0d keeps flipping through it. Hydra reads it as flip off on purpose. This replaces the older reading "it looks only at the 7th character".
 Label: Proven in the game's code
-Evidence: `code/6142/disco_apply_215CD50.asm` lines 105 and 107 (the 7th character and the length 13), 137 to 148 (the compare with "dnoflip"), 223 (the end needs length 6) and 282 to 289 (Disco set, or the 0x40 flag only when Disco is clear); decompile lines 48364 to 48476. The 2026-09-27 Marigold run (693,780 in the game against Hydra's 664,700) left no result file.
+Evidence: `code/6142/disco_apply_215CD50.asm` lines 105 and 107 (the 7th character and the length 13), 137 to 148 (the compare with "dnoflip"), 223 (the end needs length 6) and 282 to 289 (Disco set, or the 0x40 flag only when Disco is clear); decompile lines 48364 to 48476. A video of a human full-combo run backs it: on 2026-09-27 a Pro Drums run of Periphery's Marigold scored 693,780 against Hydra's optimal of 664,700. A scratch copy of the chart with the marker renamed, so flip stays on, matched the on-screen score at 101 readings, and its optimal is 693,980, 200 above the run (card 2026-09-28-1b0a7cd8). The run left no result file.
 Game code (6142): RVA `0x215CD50`, the listing above.
 Hydra: `is_disco_off_marker` in src/parse/song.cpp lines 318 to 324.
 Ruling: deliberate difference: "this is a bug in clone hero, not an intentional feature. it will be fixed in a future update." (card 2026-09-28-1b0a7cd8, 03:43 UTC); D19: "`drums0dnoflip` stays off (Hydra does not copy Clone Hero's bug)."
@@ -232,9 +232,9 @@ Found: this plan's wave 1 scout H2b.
 
 ### NL-23 How many charts carry drums0dnoflip
 
-Rule: ADR 0023 says 48 library charts carry the marker; the memory note says 22 files contain it and 5 change score.
+Rule: ADR 0023 says 48 library charts carry the marker. A scan in session 1b0a7cd8 found it in 22 of 19,883 chart files, and in 5 of them the game's reading (NL-21) raises the best score over Hydra's: Periphery Marigold by 29,280, Periphery Lune by 11,520, Vadrum Drum Intro Medley by 12,000, Northlane Corruption by 2,280 and Bearstronaut Shadow by 1,320. The best path is the same under both readings in all five.
 Label: Unknown
-Evidence: unchecked by the scout: it would need a whole-library scan, which needs the user's permission. The two counts disagree.
+Evidence: the 22 and the five deltas are in session 1b0a7cd8's condensed transcript (the table at lines 131 to 135, the file count at line 140); its card names the same five charts. The scan scripts were in that session's scratch folder and are gone, so no repo file holds the result. The two counts (48 and 22) disagree, and settling them needs a whole-library scan, which needs the user's permission.
 Game code (6142): not found: data, not code.
 Hydra: none.
 Ruling: none found.
@@ -444,7 +444,7 @@ Found: 2026-10-09, session 30beeb6e.
 
 Rule: the shuffle runs only when modifier bit 0x40 is set, after the flam step, the 2x-kick removal (when bit 2 is clear), the cymbal fold or Pro step, and the dynamics clear; so each drum setting gets its own shuffled chart.
 Label: Proven in the game's code
-Evidence: docs/audit/note-shuffle/step0/open34/builder_20d2ea0.asm lines 153 to 162 (instruments 6 and 9 take the drum path) and 228 to 259 (the step calls in order, then the 0x40 test and the call at 0x20D3315). The names of the steps before the shuffle are the 2026-10-09 scouts' (open2/README.md lines 9 and 24).
+Evidence: docs/audit/note-shuffle/step0/open34/builder_20d2ea0.asm lines 153 to 162 (instruments 6 and 9 take the drum path) and 228 to 259 (the step calls in order, then the 0x40 test and the call at 0x20D3315). The names of the steps before the shuffle are the 2026-10-09 scouts' (open2/README.md lines 9 and 24). Whether the disco flip runs before the shuffle was not read: the builder listing holds no disco test (NL-22), so the disco flip is not among the steps named here.
 Game code (6142): builder RVA `0x20D2EA0`, the listing above.
 Hydra: `apply_shuffle_switch` in src/parse/song.cpp lines 1931 to 1935 and `finish_loaded_song` lines 1943 to 1946, after `emit_chord_timestamp` and `Chord::apply_2x_bass`.
 Ruling: D104 item 3 (record text): "Pro Drums off gets its own row too."
@@ -584,9 +584,9 @@ Found: 2026-10-10, docs/audit/drum-lanes.
 
 ### NL-57 With Note Shuffle on, how the game draws a lane
 
-Rule: the user saw the game draw only the blue column for a lane on Glide with Note Shuffle on; Hydra's Preview lights every pad the lane's notes land on, on purpose. The game's lane-draw routine has never been read.
+Rule: the user saw the game draw only the blue column for a lane on Glide with Note Shuffle on; Hydra's Preview lights every pad the lane's notes land on, on purpose. The game's lane-draw routine has never been read. What is known is what a lane stores: references to the lane's chords, not colours.
 Label: Unknown
-Evidence: the user's report only; D112's record says "The routine that draws a lane was not read".
+Evidence: the user's report, and D112's record says "The routine that draws a lane was not read". The listings show the lane stores references: `docs/audit/drum-lanes/f20d12c0.asm` writes the first chord's reference into the lane at +0x20 (line 268) and, for a double lane, the second chord's at +0x28 (line 272; a single lane stores null there), and the shuffle rewrites each note's 16-bit lane word in place (`docs/audit/note-shuffle/step0/open2/f20f0c30_shuffle.asm` line 317). So the lane's notes are recoloured after the lane is built; that the drawn strip follows them is unread (decision log, D112's correction of 2026-10-17, line 539).
 Game code (6142): not found: looked in docs/audit/drum-lanes (none of its listings is the draw routine).
 Hydra: `light_drum_lanes` in src/parse/song.cpp lines 194 to 202, called at lines 1945 and 1946.
 Ruling: deliberate difference, D254: "clone hero only draws the blue. this will be an intentional deviation from the game. it looks better with both."; items "Every pad its notes use." and "Only with Note Shuffle on."
@@ -604,10 +604,10 @@ Found: 2026-10-10, D112.
 
 ### NL-59 A double lane's 0.75-second timer
 
-Rule: for a player who hits every note, lanes change no score, except a double lane's timer (a round of both pads within 0.75 s), which Hydra does not model; no Expert double lane in the library trips it.
-Label: Unknown
-Evidence: unchecked by the scout: docs/audit/drum-lanes/FINDINGS-play-time.md lines 5 to 9 state it; the play-time listings and docs/audit/drum-lanes/play/library_double_lane_breaks.csv were not opened.
-Game code (6142): RVAs `0x20DCAD0` and `0x20DEAA0`, listings not read.
+Rule: for a player who hits every note, lanes change no score, except a double lane's round timer, which Hydra does not model. A round is one press on every pad of the lane. When more than 0.75 s of song clock passes since the current round started, and the lane is double and not finished, the engine breaks the combo and clears the lane. A press on a lane pad crosses that pad off the round; when the last pad is crossed off, the round restarts at that press. A single lane has no such timer. This is a different timer from the 0.075 s grant window of TM-45. The engine keeps the open lane's pad mask at +0x2C4, the pads still owed this round at +0x2C6, a double-lane byte at +0x2C8 and the round's start time at +0x2E0.
+Label: Proven in the game's code
+Evidence: docs/audit/drum-lanes/play/f20ddec0.asm lines 30 to 50: the song clock at +0x100 minus the round start at +0x2E0 is compared with 0.75 (line 32); the call goes ahead only when the pad mask at +0x2C4 is set (line 34), the double byte at +0x2C8 is set (line 36) and the finished byte at +0x2F1 is clear (line 38); it then makes the virtual call at line 45 and zeroes the lane fields (lines 46 to 50). The twin update `docs/audit/drum-lanes/play/f20de5b0.asm` line 19 makes the same 0.75 compare. The round restart is `docs/audit/drum-lanes/play/f20deaa0.asm` lines 134 to 142: the pressed pad's bit is cleared from +0x2C6, and when nothing is left the clock goes to +0x2E0 and +0x2C6 is refilled from +0x2C4. docs/audit/drum-lanes/FINDINGS-play-time.md lines 25 to 27 name the fields and lines 66 to 73 read the virtual call as the combo breaker (vtable slot 20, `0x20F4B60`). The 0.75 sits in the same .rdata slot the probe calls `RVA_HITCHECK_THRESHOLD`. That the game breaks the combo has not been seen in a run; docs/audit/drum-lanes/FINDINGS-play-time.md line 140 says no Expert double lane in the library trips the timer.
+Game code (6142): the lane update RVA `0x20DDEC0` (`docs/audit/drum-lanes/play/f20ddec0.asm`) and its twin; the press handler RVA `0x20DEAA0`.
 Hydra: no owner: lanes are display-only in Hydra.
 Ruling: "lanes only affect how lenient the engine is, it doesnt change the underlying notes." and "if not then it doesnt matter" (card 2026-10-11-27bb17bc, 03:52 and 03:55 UTC).
 Found: 2026-10-10, docs/audit/drum-lanes.
@@ -715,6 +715,30 @@ Game code (6142): not found: looked in docs/audit/note-shuffle, docs/audit/drum-
 Hydra: no owner.
 Ruling: none found.
 Found: this plan's wave 1 scouts H2a and H2b.
+
+## Side files in a song folder
+
+### NL-70 An expert+.mid beside notes.mid folds the 2x kicks into normal kicks
+
+Rule: some song folders carry an `expert+.mid` next to `notes.mid`. In Synovial's Slipping the `expert+.mid` holds no gem on pitch 95 and 1,217 on pitch 96, which is the 915 normal kicks plus the 302 2x kicks of `notes.mid` (NL-31). So that file puts every 2x kick on the normal kick pitch, and the game plays `notes.mid`.
+Label: Unknown
+Evidence: session 8157f2dc (2026-09-25), condensed transcript lines 3160 and 3255, counted the pitches of both files in that folder. No script or result file is in the repo, and only this one chart was counted. That the game plays `notes.mid` there is the session's reading from the 2x kicks it registered; whether the game ever opens `expert+.mid` was not read in its code.
+Game code (6142): not found: data, not code.
+Hydra: none: Hydra reads only the notes file.
+Ruling: none needed.
+Found: 2026-09-25, session 8157f2dc.
+
+## The first Note Shuffle video
+
+### NL-71 The 2026-10-08 video matched the decoded shuffle on 22 of 22 notes
+
+Rule: a bot run on a 480-resolution .mid with Note Shuffle on scored 180 points more than Hydra's unshuffled number, all from toms that became cymbals. The decoded shuffle (NL-40 to NL-46), fed the file's own ticks, put all 22 of the video chart's notes in their filmed positions. Scaling the ticks to 192 per beat matched 11 of 22, and dropping the rule that a new chord's first note avoids the previous chord's colours matched 5 of 22.
+Label: Unknown
+Evidence: docs/superpowers/plans/2026-10-08-note-shuffle.md lines 27 to 33 state the 22 of 22, the 11 of 22, the 5 of 22 and the 180 points; card 2026-10-09-6c19d0ef (lines 11 and 21) says the run was a bot run and all 22 matched. The video is C:/Users/Patrick/Videos/2026-10-08 21-52-37.mp4 (it exists today; no scout of this plan watched it), and the probe scripts were in that session's scratch folder and are gone.
+Game code (6142): not found: a filmed run, not code; the algorithm is NL-40 to NL-46.
+Hydra: `apply_note_shuffle` in src/parse/note_shuffle.cpp pins rows from later runs (NL-52); no test uses this video.
+Ruling: none needed.
+Found: 2026-10-08, session 6c19d0ef.
 
 ## Rows waiting on a live run
 

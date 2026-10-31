@@ -50,7 +50,7 @@ Found: 2026-09-29, session 7c71d4dd; listed by wave 2 scout R9.
 
 Rule: session 7c71d4dd read bytes 0 to 7 as a per-file key and bytes 8 to 15 as the song-info size scrambled with it (by CR-04's functions); nobody has seen which bytes the game passes in.
 Label: Unknown
-Evidence: unchecked by the scout: it would need a caller of `0x214EFD0` or `0x214F0A0` read to show which bytes feed them. The card's "all 30 stored header values match" has no script or result file. docs/srb-format.md lines 45 to 49 still call the header unknown.
+Evidence: unchecked by the scout: it would need a caller of `0x214EFD0` or `0x214F0A0` read to show which bytes feed them. The card's "all 30 stored header values match" has no script or result file. The same condensed transcript (line 351) adds that each key is a sign-extended 56-bit value in all 30 bundles. The session's condensed transcript (line 348) reads the key big-endian and the scrambled size little-endian, which fits the older byte observation in docs/srb-format.md ("The header") that bytes 12 to 15 hold a small number from 1 to 29.
 Game code (6142): not found: no caller of the two functions was read.
 Hydra: `kSrbHeaderSize` in src/parse/srb.h line 43 skips the 16 bytes.
 Ruling: none needed.
@@ -519,6 +519,40 @@ Game code (6142): not found: not read.
 Hydra: no owner located for this page; the refusal is D6's error sentence.
 Ruling: D6: chose "Refuse with error (Recommended)" (card cebf3006, 21:45 UTC).
 Found: 2026-10-03, session cebf3006.
+
+## More on the .srb container
+
+### CR-51 The rest of a .srb's song info, and its audio table
+
+Rule: the song-info stream's first four bytes ("4b4" and a byte of 1) are a 32-bit version number, 20210228 (0x01346234), which matches a constant in the game's reader class. After the eight text fields come 12 one-byte difficulties in this order: band, guitar, guitar co-op, bass, rhythm, drums, Pro Drums, keys, then the four GHL parts (guitar, bass, rhythm, co-op). Then the preview start in ms, an icon name, the playlist track, the album track, the song length in ms and the 16-byte checksum. Then a table: the chart size, the stem count, an image flag byte (2 means album art, 1 a background), the image count and indices, the image sizes, and each stem's offset and size inside the audio section. Each audio entry is a 32-bit stem type, 4 unused bytes, the two IV halves and a 64-bit size. The stem types are 0 guitar, 1 bass, 2 rhythm, 3 vocals, 4 and 5 the two extra vocals, 6 drums, 7 to 10 the four drum stems, 11 keys, 12 song and 13 crowd. In all 30 bundles the stems are stored in alphabetical order.
+Label: Unknown
+Evidence: session 7c71d4dd (2026-09-29) read the game's reader class and checked the layout on all 30 bundles; its condensed transcript lists every field above (lines 351 to 375) and says the version matches a constant in the reader class (line 136); that the game refuses any other version was not read. No listing, script or result file from that session is in the repo, so nothing here can be re-checked from the repo. docs/srb-format.md describes only the part Hydra reads.
+Game code (6142): not found: listing lost; the reader class was read in session 7c71d4dd with no address recorded.
+Hydra: `srb_parse_metadata` in src/parse/srb.cpp line 136 reads up to the checksum and stops.
+Ruling: none needed: Hydra reads no field past the checksum.
+Found: 2026-09-29, session 7c71d4dd.
+
+### CR-52 A stem typed -1 stops a bundle's audio, and the song freezes the game
+
+Rule: the game's stem-type getter throws when the type is below 0, and the audio loader calls it on every stem. Saurian King ships with two stems typed -1. Highlighting it in the song list loads no preview audio, because the audio thread catches the throw. Starting it freezes the game on a black screen, because the song-load coroutine does not catch it. Saurian King cannot be played in 1.1.0.6142.
+Label: Proven in a live run
+Evidence: session 7c71d4dd (2026-09-29), condensed transcript lines 294 to 297 and 398 to 404: after the user highlighted the song, `Player.log` held "Audio resource thread error! System.InvalidOperationException"; after the user started it, the log held "Loading Song: Shadow of Intent - Saurian King" and "Uploading Crash Report" with the same exception. The code path (the getter at RVA 0x1ED840, the loader at 0x36B700, the coroutine's MoveNext at 0xD8D80 with the call at 0xD915D) was read in that session (lines 377 to 380); no listing or log copy is in the repo.
+Game code (6142): not found: listings lost; addresses as recorded in session 7c71d4dd, given above as plain text.
+Hydra: none: Hydra's Preview names stems by position and never reads the type.
+Ruling: none needed.
+Found: 2026-09-29, session 7c71d4dd.
+
+## Duplicate charts
+
+### CR-53 The game hides a chart whose notes file matches one it already has
+
+Rule: when two song folders hold byte-identical charts, the game shows only one and lists the other in `badsongs.txt` in the Clone Hero documents folder. Changing one line of the copy's chart (its Name) makes it show.
+Label: Proven in a live run
+Evidence: session 2a88c065 (2026-09-25), condensed transcript lines 234 and 321: a test copy of Lunaris did not appear after a rescan, `badsongs.txt` named it as a duplicate, and the copy appeared once its Name line was changed. That the test compares the whole notes file (rather than, say, the song id of CR-10) is the session's reading, not shown by code.
+Game code (6142): not found: not read.
+Hydra: none: Hydra lists every chart it finds.
+Ruling: none needed.
+Found: 2026-09-25, session 2a88c065.
 
 ## Rows waiting on a live run
 

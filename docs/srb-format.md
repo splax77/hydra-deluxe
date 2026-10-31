@@ -44,9 +44,14 @@ the end of the file in all 30 real bundles.
 
 ### The header
 
-The first 16 bytes are 12 bytes that differ per file, then a 4-byte number.
-The number ranges from 1 to 29 across the real files, and its meaning is
-unknown. Hydra never needs either part; it just skips to offset 16.
+The first 16 bytes are, as one session read them, two 8-byte numbers: a
+per-file key, then the size of stream 1 scrambled with that key. The game holds the scrambler and its exact
+inverse; the Clone Hero reference has them in
+`docs/clone-hero/01-reading-a-chart.md`, rows CR-04 (read from the game's code)
+and CR-05 (which bytes feed them, not yet shown by the code). Seen as raw bytes,
+bytes 12 to 15 hold a small number from 1 to 29 across the real files. That is
+the top of the scrambled size, which fits in 37 bits. Hydra never needs the
+header; it just skips to offset 16.
 
 ### Why you have to unpack a stream to find the next one
 
@@ -99,7 +104,10 @@ start, in this order (`srb_parse_metadata` in `src/parse/srb.cpp`):
 | song length in ms | 4 bytes, read |
 | checksum | 16 bytes, read: the song's id (see "Scanning the library") |
 
-Hydra does not read the bytes after the checksum.
+Hydra does not read the bytes after the checksum. What the game reads there
+(a table of the chart, image and stem sizes), the order of the 12 difficulty
+bytes, and the version number behind the `4b4` prefix are on the Clone Hero
+reference, row CR-51 in `docs/clone-hero/01-reading-a-chart.md`.
 
 ### Stream 2: the chart
 
@@ -122,7 +130,7 @@ The section is a run of audio pieces, which Hydra calls blobs, back to back.
 Each blob is laid out like this:
 
 ```
-8 bytes    type tag (meaning unknown; see below)
+8 bytes    type tag (the game reads 4 bytes of stem type, then 4 unused; see below)
 16 bytes   blob header, which also supplies the decryption starting value (IV)
 8 bytes    size of the encrypted data
 N bytes    encrypted data
@@ -141,8 +149,9 @@ song.
 **The type tags.** The values seen across the 30 files are 0, 1, 2, 3, 6
 through 12, and one file with all bits set. Within a file they almost never
 repeat, which fits "one tag per instrument". Which number means which
-instrument is not known, so Hydra skips the tags and names the blobs by
-position instead.
+instrument, as read from the game's reader in one session, is row CR-51 of
+the Clone Hero reference; a tag of -1 breaks the game's audio load (row
+CR-52). Hydra skips the tags and names the blobs by position instead.
 
 Hydra's audio code first read the tag on the first blob as a separate
 "purpose unclear" number at the start of the section. It had ruled out a blob

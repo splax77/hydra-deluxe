@@ -34,7 +34,7 @@ Evidence: `code/6142/chart_song_metadata_35C980.asm` lines 87, 103, 562 to 586 a
 Game code (6142): `SongEntry` chart metadata reader (scrambled member), RVA `0x35C980`, and the load coroutine `GameManager` (scrambled `MoveNext`), RVA `0xD8D80`, listings as above.
 Hydra: `preview_audio_offset_ms` in src/app/preview_source.cpp lines 311 to 316 makes the same choice (the delay wins when present and nonzero, else Offset x 1000), with the Offset parsed into `chart_offset_s` at src/parse/song.cpp line 1825. Hydra keeps fractional milliseconds and does not round up.
 Ruling: The choice is ruled: D274 item 6, "Check the game, then honor (Recommended)" for the Preview's audio delay and Offset. The rounding up is not named in it: open split: see questions page Q-31
-Found: 2026-10-30, wave 2 scout R7; the measurements 2026-09-24, session 2a88c065.
+Found: 2026-10-30, wave 2 scout R7; the measurements 2026-09-25, session 2a88c065.
 
 ### TM-04 A delay equal to the Offset makes no difference
 
@@ -54,7 +54,7 @@ Evidence: `code/6142/clock_ctor_16C9A0.asm` lines 22 to 32 (`+0x58` = -(b / c)),
 Game code (6142): the clock constructor of class #707, RVA `0x16C9A0`; the delay-in-seconds getter of class #828, RVA `0x1EF1A0`.
 Hydra: `kOffsetDirection` in src/app/preview_source.cpp line 139.
 Ruling: D274 item 6: "Check the game, then honor (Recommended)".
-Found: 2026-10-30, wave 2 scout R7; the recording 2026-09-24, session 2a88c065.
+Found: 2026-10-30, wave 2 scout R7; the recording 2026-09-25, session 2a88c065.
 
 ### TM-06 A .sng's delay follows the same rule; a .srb has none
 
@@ -142,7 +142,7 @@ Found: 2026-09-25, session 8157f2dc.
 
 Rule: The engine is said to copy the song clock into `#8255+0x2E0` when a note is hit.
 Label: Unknown
-Evidence: unchecked by the scout: it needs the instruction that writes the field. `constants.py` lines 103 to 106 say "NOT yet confirmed live"; the field read 0.0 in all 40,922 rows of the bot run `run1_cal0_sp_watch.csv` (wave 1 scouts H3, H3-31; H7a, H7a-07; H7b, H7b-10).
+Evidence: unchecked by the scout: it needs the instruction that writes the field. `constants.py` lines 103 to 106 say "NOT yet confirmed live"; the field read 0.0 in all 40,922 rows of the bot run `run1_cal0_sp_watch.csv` (wave 1 scouts H3, H3-31; H7a, H7a-07; H7b, H7b-10). Two writes of the field are now known, and neither is a hit time: the press handler stores the clock there when a press completes a lane's round of pads, at lines 140 and 188 of `docs/audit/drum-lanes/play/f20deaa0.asm`, and the lane update reads it as the round's start (NL-59). That fits the 0.0 on a chart with no lane.
 Game code (6142): field `#8255+0x2E0` (`dump.cs` lines 527435 to 527436); the writer was not read.
 Hydra: no owner in `src/`; the tool name is `OFF_HIT_TIME` in tools/ch_probe/constants.py line 106.
 Ruling: none needed: no Hydra rule depends on it
@@ -460,17 +460,29 @@ Found: 2026-10-03, D25.
 
 ### TM-45 A missed lane note is granted after a recent lane press
 
-Rule: A missed lane note is granted a hit when fewer than 2 grants (single lane) or 4 (double lane) have happened since the last lane press, or when a lane pad was pressed in the last 0.075 s of engine time. The grant lands at the window's end, to within a rounding step, so lanes open no new squeeze timing. Every press of a note that carries a lane flag zeroes both grant counters (at `+0x2E8` and `+0x2EC`) with one 8-byte write at 0x20DECF3 and stores the press time at `+0x2D0`, so during a roll a few dropped notes are still credited.
+Rule: A missed lane note is granted a hit when fewer than 2 grants (single lane) or 4 (double lane) have happened since the last lane press, or when a lane pad was pressed in the last 0.075 s of engine time (song clock at +0x100 minus the last lane press at `+0x2D0`). That 0.075 s is a different timer from a double lane's 0.75 s round timer, which breaks the combo (NL-59). The grant lands at the window's end, to within a rounding step, so lanes open no new squeeze timing. Every press of a note that carries a lane flag zeroes both grant counters (at `+0x2E8` and `+0x2EC`) with one 8-byte write at 0x20DECF3 and stores the press time at `+0x2D0`, so during a roll a few dropped notes are still credited.
 Label: Proven in the game's code
-Evidence: committed listing `docs/audit/drum-lanes/f20dcad0.asm` lines 22 to 27 (the grant check), 57 (the grant counter increment) and 69 to 73 (clock minus the last lane press against 0.075) (wave 1 scout H3, H3-27). The limits 2 and 4 themselves were not opened by the scout. The reset is `docs/audit/drum-lanes/play/f20deaa0.asm` lines 131 to 138: the test for the lane bits 0xC000 on the note (line 131), the 8-byte store of a zero register over `+0x2E8` (line 133, with the register zeroed at line 23) and the press-time store (line 138); the same three steps repeat at lines 179 to 186 (0x20DEDC3 to 0x20DEDF4). Read from the listing by the reviewer of this page's move out of the drum-lanes findings; no run has shown it.
+Evidence: committed listing `docs/audit/drum-lanes/f20dcad0.asm` lines 22 to 27 (the grant check), 57 (the grant counter increment) and 69 to 73 (clock minus the last lane press against 0.075; line 71 loads the double 0.075) (wave 1 scout H3, H3-27). The limits 2 and 4 themselves were not opened by the scout. The reset is `docs/audit/drum-lanes/play/f20deaa0.asm` lines 131 to 138: the test for the lane bits 0xC000 on the note (line 131), the 8-byte store of a zero register over `+0x2E8` (line 133, with the register zeroed at line 23) and the press-time store (line 138); the same three steps repeat at lines 179 to 186 (0x20DEDC3 to 0x20DEDF4). Read from the listing by the reviewer of this page's move out of the drum-lanes findings; no run has shown it.
 Game code (6142): RVA `0x20DCAD0`, `docs/audit/drum-lanes/f20dcad0.asm` lines 22 to 73; the press handler RVA `0x20DEAA0`, `docs/audit/drum-lanes/play/f20deaa0.asm` lines 131 to 138.
 Hydra: no owner: a grep of `src/` for `0.075`, `lane_press`, `press_window` and `grant` finds nothing; Hydra's paths assume every note is hit.
 Ruling: none needed: no Hydra rule depends on it
 Found: drum-lanes FINDINGS-play-time.md.
 
+## Overhits
+
+### TM-46 Pressing both the tom and the cymbal key for one gem misses it
+
+Rule: pressing the tom key and the cymbal key of one colour for a single gem counts as an overhit, and the gem is missed.
+Label: Unknown
+Evidence: session 8157f2dc (2026-09-25), condensed transcript lines 2020 to 2056 and 2360: the bot's cymbal notes missed from about note 40 on while its parser pressed both the tom key and the cymbal key for each such gem, and they hit once the parser pressed one key per gem. The session read that as an overhit; its card (the roadblock about cymbal notes) records the same. No run isolated the two-keys cause, no result file is in the repo, and the overhit path was not read in the game's code.
+Game code (6142): not found: the overhit path was not read.
+Hydra: none: Hydra's paths press only the notes in the chart.
+Ruling: none needed.
+Found: 2026-09-25, session 8157f2dc.
+
 ## Rows waiting on a live run
 
-TM-02, TM-03, TM-14, TM-22, TM-26, TM-27, TM-32, TM-36, TM-40, TM-43. See `live-checks.md`.
+TM-02, TM-03, TM-14, TM-22, TM-26, TM-27, TM-32, TM-36, TM-40, TM-43, TM-46. See `live-checks.md`.
 
 ## Open splits
 
