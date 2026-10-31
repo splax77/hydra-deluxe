@@ -1,9 +1,11 @@
 // Every sentence the Path Builder's redesigned screen says, as plain
-// functions over plain values. The wording is the approved mockup's
-// (docs/superpowers/specs/2026-10-30-path-builder-mockup/mockup_template.html);
-// every figure in it comes from its owner, and this file works out no game
-// fact of its own. Plan: docs/superpowers/plans/
-// 2026-10-30-path-builder-redesign.md, task CO-1.
+// functions over plain values. The wording is the approved mockups'
+// (docs/superpowers/specs/2026-10-30-path-builder-mockup/mockup_template.html,
+// then docs/superpowers/specs/2026-10-31-path-builder-mockup-2/
+// mockup_template.html with answers.md beside it); every figure in it comes
+// from its owner, and this file works out no game fact of its own. Plans:
+// docs/superpowers/plans/2026-10-30-path-builder-redesign.md, task CO-1, and
+// docs/superpowers/plans/2026-10-31-path-builder-redesign-2.md, task SC-3a.
 
 #ifndef HYDRA_PATHBUILDER_PB_TEXT_H
 #define HYDRA_PATHBUILDER_PB_TEXT_H
@@ -12,7 +14,9 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <vector>
 
+#include "app/path_costs.h"
 #include "app/preview_view.h"
 #include "core/model.h"
 #include "core/timing.h"
@@ -42,7 +46,10 @@ extern const char* const kActivationRemovedText;
 extern const char* const kStartedOverText;
 extern const char* const kBuiltWholePathText;
 extern const char* const kYourActivationHoverText;
-extern const char* const kBeforeLastActivationText;
+// What a fill before the player's last activation says on hover, and the
+// tail it shares with locked_message: answers.md answer 2's words.
+extern const char* const kBuildLeftToRightText;
+extern const std::string kBeforeLastActivationText;
 extern const char* const kGameHidesFillText;
 extern const char* const kBestChoiceNowText;
 extern const char* const kNothingLeftText;
@@ -55,20 +62,69 @@ std::string fill_name(const PreviewScene& scene, const PreviewFill& fill);
 // them (sp_meter_bars_at), in whole bars.
 int bars_saved_at(const PreviewScene& scene, const PreviewFill& fill);
 
-// Why the player cannot activate at scene.fills[fill_index], or empty when
-// they can (an Offered fill after their last window) or when the fill is
-// their own activation. `scene` is the player's path's scene: its activations
-// are the player's windows. The facts it reads, in order: the fill is Taken;
-// a window's Star Power is running at the fill's end (sp_running_at); the
-// fill's chord is before the last activation (the screen builds left to
-// right, the user's answer Q1); the fill is Offered; the meter at the fill
-// is under kSpActivationBars; otherwise the engine did not offer it.
+// Which kind of refusal a fill gets, or none. BeforeLast is the builder's
+// own left-to-right rule (the locked look); SpRunning, UnderBars and
+// GameHides are the game's; Taken is the player's own activation.
+enum class FillRefusal { None, Taken, SpRunning, BeforeLast, UnderBars, GameHides };
+
+// Why the player cannot activate at scene.fills[fill_index]: the kind in
+// `kind`, and the sentence for it as the return value. The sentence is empty
+// for None (an Offered fill after their last window) and for Taken (the fill
+// is their own activation). `scene` is the player's path's scene: its
+// activations are the player's windows. The one owner of the order the facts
+// are read in, the order FillRefusal lists them: the fill is Taken; a
+// window's Star Power is running at the fill's chord; the fill's chord is
+// before the last activation (the screen builds left to right, the user's
+// answer Q1); the fill is Offered (None); the meter at the fill is under
+// kSpActivationBars; otherwise the engine did not offer it.
+std::string fill_reason(const PreviewScene& scene, size_t fill_index, FillRefusal& kind);
+// The sentence alone.
 std::string fill_reason(const PreviewScene& scene, size_t fill_index);
+// The kind alone.
+FillRefusal fill_refusal(const PreviewScene& scene, size_t fill_index);
 
 // ", ending with a squeeze-out that needs 12.3 ms and a squeeze-in that needs
 // no timing", one clause per squeeze in Activation::badge_timings, each
 // figure through format_ms. Empty when the activation has no squeeze.
 std::string squeeze_end_text(const Activation& act);
+
+// The "Where to activate next" list's words, from the mockup's
+// renderChoices: its heading, the hint under it, and what it says when the
+// engine lists no fill (after the player's last activation, or with none).
+extern const char* const kChoicesHeading;
+extern const char* const kChoicesHint;
+extern const char* const kNoChoicesFinishedText;
+extern const char* const kNoChoicesText;
+
+// The middle of a list row for scene.fills[fill_index], its parts joined by
+// app::kFactSeparator: the fill's clock (clock_str), the phrases saved there
+// (bars_saved_at; the engine already held the meter at its cap, so no cap is
+// applied here), and "ends m36" from `end`,
+// the candidate's activation (DecisionList::candidate_end) with its
+// squeezes in short form ("squeeze-out 12.3 ms", "squeeze-in, no timing").
+// A null `end` (the candidate's search has not landed) reads kPendingText in
+// place of the end; an `end` with no deact node leaves the end out.
+std::string candidate_row_text(const PreviewScene& scene, size_t fill_index,
+                               const Activation* end);
+
+// The list's rows in order, as chord ticks: `offered` is every fill the
+// engine lists (PreviewScene::trailing_skipped_fill_ticks), in chart order,
+// and `priced` the candidates whose cost has landed (DecisionList::
+// candidates()). Priced fills come first, cheapest first, ties in chart
+// order; the fills still being priced follow, in chart order. A priced
+// candidate whose tick is not in `offered` is left out.
+std::vector<int64_t> choice_order(const std::vector<int64_t>& offered,
+                                  const std::vector<app::CandidateCost>& priced);
+
+// A compact step's two pieces: `span` is where the activation starts and
+// where its Star Power ends, "m32 → m36" (measure_label of the activation
+// and of its deact node; the start alone when it has none), and `saved` the
+// phrases it spends, "2 phrases" (Activation::sp_meter, as step_sentence).
+struct StepShort {
+    std::string span;
+    std::string saved;
+};
+StepShort step_short(const SongTiming& timing, const Activation& act);
 
 // "costs nothing" or "costs 1,234 points" (group_thousands).
 std::string cost_text(int64_t cost);
@@ -103,8 +159,12 @@ struct GuideMessage {
     std::optional<size_t> star_at;
 };
 
-// "Can't activate at m12: <reason>", a refusal.
+// "Can't activate at m12: <reason>", a refusal, for every kind but
+// BeforeLast.
 GuideMessage cant_activate_message(const std::string& fill, const std::string& reason);
+// A click on a fill refused as BeforeLast: "m12 is before your last
+// activation." and kBuildLeftToRightText, a refusal.
+GuideMessage locked_message(const std::string& fill);
 // After Remove: "Activation removed." for the last window (index is 0-based
 // and `last` says it was the last), else "Removed activation N and
 // everything after it."

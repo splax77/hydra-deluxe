@@ -1,5 +1,6 @@
 // The Path Builder's sentences (pathbuilder/pb_text.h; plan
-// docs/superpowers/plans/2026-10-30-path-builder-redesign.md, task CO-1).
+// docs/superpowers/plans/2026-10-30-path-builder-redesign.md, task CO-1, and
+// docs/superpowers/plans/2026-10-31-path-builder-redesign-2.md, task SC-3a).
 // The corpus cases run at the GUI's default settings, whose Path limit is
 // 10 ms; every sentence is pinned from one run.
 
@@ -48,15 +49,115 @@ size_t fill_index(const app::PreviewScene& scene, int64_t chord_tick) {
 
 }  // namespace
 
-TEST_CASE("fill reason: inside a window, before the last activation, under two bars, refused by "
-          "the game, and none for an offered fill") {
+TEST_CASE("candidate row: the clock, phrases, end and squeeze of a priced fill") {
+    // August Burns Red "White Washed" with the player's path on its best
+    // path's first three activations: the fourth's fill is offered next, and
+    // its candidate activation (best_finish with it pinned, as the candidate
+    // queue prices it) ends with a squeeze-out. Pinned from one run.
+    const std::string name = "August Burns Red - White Washed";
+    const Song& song = song_named(name);
+    const HydraRecord& rec = corpus::analyzed(corpus::chart_named(name), default_cfg());
+    const std::vector<Activation> acts = rec.best_path().all_activations();
+    REQUIRE(acts.size() == 5);
+    const app::PreviewScene three = scene_for(
+        song, player_path(song, {acts[0].timecode.ticks(), acts[1].timecode.ticks(),
+                                 acts[2].timecode.ticks()}));
+    std::vector<PinnedWindow> pins;
+    for (size_t k = 0; k < 4; ++k)
+        pins.push_back(PinnedWindow{acts[k].timecode.ticks(), std::nullopt, false, std::nullopt});
+    const TargetResult with = best_finish(song, default_cfg(), pins);
+    const std::vector<Activation> ends = with.paths.at(0).all_activations();
+    REQUIRE(ends.size() >= 4);
+    const size_t idx = fill_index(three, 245760);
+    CHECK(fill_refusal(three, idx) == FillRefusal::None);
+    CHECK(candidate_row_text(three, idx, &ends[3]) ==
+          "2:51.485 · 2 phrases · ends m136 · squeeze-out 130.4 ms");
+    // The same squeeze, once, in the step's long form.
+    CHECK(squeeze_end_text(ends[3]) == ", ending with a squeeze-out that needs 130.4 ms");
+    // Before its search lands, the end reads kPendingText.
+    CHECK(candidate_row_text(three, idx, nullptr) == "2:51.485 · 2 phrases · ...");
+    // With no squeeze the row stops at the end: the best path's last
+    // activation, read on the best path's own scene.
+    const app::PreviewScene best = scene_for(song, rec.best_path());
+    CHECK(candidate_row_text(best, fill_index(best, 272640), &acts[4]) ==
+          "3:20.702 · 2 phrases · ends m150");
+    // No corpus chart has a squeeze-in that needs no timing, so a hand-built
+    // activation with the same end carries one of each kind that needs none
+    // (SPSqueeze::needs_no_timing): the short form and the long form both
+    // say so.
+    Activation free_squeezes;
+    free_squeezes.sp_end_steps.push_back({0, *ends[3].deact_tick(), SpEndKind::Activation});
+    free_squeezes.sqinouts = {SPSqueeze{SqueezeKind::SqIn, 0.0},
+                              SPSqueeze{SqueezeKind::SqOut, 0.001}};
+    CHECK(candidate_row_text(three, idx, &free_squeezes) ==
+          "2:51.485 · 2 phrases · ends m136 · squeeze-in, no timing, squeeze-out, no timing");
+    CHECK(squeeze_end_text(free_squeezes) ==
+          ", ending with a squeeze-in that needs no timing and a squeeze-out that needs no "
+          "timing");
+}
+
+TEST_CASE("choice order: cheapest first, ties in chart order, pending last") {
+    // Allister "Overrated" with no activation: the engine lists these fills.
+    // The costs are made up to put a tie and two pending fills in the list.
+    const Song& song = song_named("Allister - Overrated");
+    const app::PreviewScene empty = scene_for(song, player_path(song, {}));
+    const std::vector<int64_t>& offered = empty.trailing_skipped_fill_ticks;
+    REQUIRE(offered == std::vector<int64_t>{55680, 71040, 90240, 105600, 120960, 136320, 151680,
+                                            167040});
+    const std::vector<app::CandidateCost> priced = {
+        {55680, 0, 2500, app::CostTier::Yellow},  {71040, 0, 0, app::CostTier::Green},
+        {105600, 0, 2500, app::CostTier::Yellow}, {120960, 0, 900, app::CostTier::Yellow},
+        {136320, 0, 0, app::CostTier::Green},     {999999, 0, 0, app::CostTier::Green},
+    };
+    CHECK(choice_order(offered, priced) ==
+          std::vector<int64_t>{71040, 136320, 120960, 55680, 105600, 90240, 151680, 167040});
+    // Nothing priced yet: chart order.
+    CHECK(choice_order(offered, {}) == offered);
+}
+
+TEST_CASE("step short: start, end and phrases") {
+    const std::string name = "August Burns Red - White Washed";
+    const Song& song = song_named(name);
+    const HydraRecord& rec = corpus::analyzed(corpus::chart_named(name), default_cfg());
+    const std::vector<Activation> acts = rec.best_path().all_activations();
+    REQUIRE(acts.size() == 5);
+    const app::PreviewScene scene = scene_for(song, rec.best_path());
+    const StepShort first = step_short(*scene.timing, acts[0]);
+    CHECK(first.span == "m23 → m29");
+    CHECK(first.saved == "2 phrases");
+    const StepShort third = step_short(*scene.timing, acts[2]);
+    CHECK(third.span == "m108 → m116");
+    CHECK(third.saved == "4 phrases");
+}
+
+TEST_CASE("locked message: the fill's name, no Can't-activate prefix") {
+    const GuideMessage m = locked_message("m12");
+    CHECK(m.text ==
+          "m12 is before your last activation. You build left to right; Undo or Remove goes "
+          "back a step.");
+    CHECK(m.refuse);
+    CHECK_FALSE(m.star_at);
+    // The game's refusals keep the prefix.
+    CHECK(cant_activate_message("m12", kGameHidesFillText).text ==
+          "Can't activate at m12: The game doesn't show this fill here.");
+    // The hover's form shares the tail.
+    CHECK(kBeforeLastActivationText ==
+          "This is before your last activation. You build left to right; Undo or Remove goes "
+          "back a step.");
+}
+
+TEST_CASE("fill refusal: the five kinds in fill_reason's order, and fill_reason's sentence for "
+          "each") {
     // Trivium "Feast of Fire". With no activation, its third fill comes with
     // enough bars saved and the engine still does not offer it.
     const Song& song = song_named("Trivium - Feast of Fire");
     const app::PreviewScene empty = scene_for(song, player_path(song, {}));
     REQUIRE(empty.fills.size() >= 4);
+    CHECK(fill_refusal(empty, 0) == FillRefusal::UnderBars);
     CHECK(fill_reason(empty, 0) == "You have 1 phrase saved here. You need 2 to activate.");
+    CHECK(fill_refusal(empty, 2) == FillRefusal::GameHides);
     CHECK(fill_reason(empty, 2) == "The game doesn't show this fill here.");
+    CHECK(fill_refusal(empty, 3) == FillRefusal::None);
     CHECK(fill_reason(empty, 3).empty());
     const HydraRecord& rec =
         corpus::analyzed(corpus::chart_named("Trivium - Feast of Fire"), default_cfg());
@@ -66,11 +167,22 @@ TEST_CASE("fill reason: inside a window, before the last activation, under two b
     const app::PreviewScene best = scene_for(song, rec.best_path());
     REQUIRE(best.fills.size() > 5);
     CHECK(best.fills[4].state == app::PreviewFillState::Taken);
+    CHECK(fill_refusal(best, 4) == FillRefusal::Taken);
     CHECK(fill_reason(best, 4).empty());
     CHECK(best.fills[5].chord_tick == 72480);
+    CHECK(fill_refusal(best, 5) == FillRefusal::SpRunning);
     CHECK(fill_reason(best, 5) == "Star Power is already on here. Activation 1 runs until m40.");
     CHECK(best.fills[3].state == app::PreviewFillState::Offered);
+    CHECK(fill_refusal(best, 3) == FillRefusal::BeforeLast);
     CHECK(fill_reason(best, 3) == kBeforeLastActivationText);
+    // A fill the game hides is locked too when it is before the last
+    // activation: the left-to-right rule comes before the game's.
+    CHECK(best.fills[0].state == app::PreviewFillState::Hidden);
+    CHECK(fill_refusal(best, 0) == FillRefusal::BeforeLast);
+    // The sentence and the kind come from one walk.
+    FillRefusal kind = FillRefusal::None;
+    CHECK(fill_reason(best, 5, kind) == fill_reason(best, 5));
+    CHECK(kind == FillRefusal::SpRunning);
     // "Before your last activation" is a fill ahead of that activation's
     // start. With one window at 180000 that ends at 195360, the fill sitting
     // exactly on 195360 is after the last activation's start, so it is not
@@ -149,10 +261,10 @@ TEST_CASE("guide text: step 1 names the earliest offered fill; a finished path s
           "your path is finished. Your score is 228,710.");
 
     // A one-shot message wins over both.
-    finished.message = cant_activate_message("m12", kBeforeLastActivationText);
+    finished.message = locked_message("m12");
     CHECK(guide_text(finished).text ==
-          "Can't activate at m12: This is before your last activation. You build left to "
-          "right; Undo goes back a step.");
+          "m12 is before your last activation. You build left to right; Undo or Remove goes "
+          "back a step.");
     CHECK(guide_text(finished).refuse);
     // Neither sentence carries the star; only "Save 2 more phrases" does.
     CHECK_FALSE(step1.star_at);
@@ -166,6 +278,9 @@ TEST_CASE("star place: just after the word phrases, in the intro and the guide")
           "Build your own Star Power path, left to right. Click a glowing fill to activate Star "
           "Power there. You need at least 2 Star Power phrases");
     CHECK(intro.substr(intro_star_at(), 33) == " saved since your last activation");
+    CHECK(intro.substr(intro_star_at()) ==
+          " saved since your last activation. A fill's colour is what activating there costs "
+          "you. The highway below shows the notes wherever you hover or click.");
 
     GuideFacts next;
     next.last_end = "m40";

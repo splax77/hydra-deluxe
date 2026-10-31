@@ -1,5 +1,6 @@
 #include "pathbuilder/pb_text.h"
 
+#include <algorithm>
 #include <cmath>
 #include <stdexcept>
 #include <vector>
@@ -24,9 +25,8 @@ std::string intro_before_star() {
 
 std::string intro_text() {
     return intro_before_star() +
-           " saved since your last activation. The number under each glowing fill is what "
-           "activating there costs you. The highway below shows the notes wherever you hover or "
-           "click.";
+           " saved since your last activation. A fill's colour is what activating there costs "
+           "you. The highway below shows the notes wherever you hover or click.";
 }
 
 size_t intro_star_at() { return intro_before_star().size(); }
@@ -40,8 +40,19 @@ const char* const kStartedOverText =
 const char* const kBuiltWholePathText =
     "Hydra built the whole path the best way. Undo takes it back.";
 const char* const kYourActivationHoverText = "Your activation. Click to see it below.";
-const char* const kBeforeLastActivationText =
-    "This is before your last activation. You build left to right; Undo goes back a step.";
+const char* const kBuildLeftToRightText =
+    "You build left to right; Undo or Remove goes back a step.";
+
+namespace {
+
+// The locked sentence about `subject` ("This", or a fill's name).
+std::string before_last_sentence(const std::string& subject) {
+    return subject + " is before your last activation. " + kBuildLeftToRightText;
+}
+
+}  // namespace
+
+const std::string kBeforeLastActivationText = before_last_sentence("This");
 const char* const kGameHidesFillText = "The game doesn't show this fill here.";
 const char* const kBestChoiceNowText = "That is the best choice right now.";
 const char* const kNothingLeftText = "Nothing left on the table after your last activation.";
@@ -69,10 +80,12 @@ int bars_saved_at(const PreviewScene& scene, const PreviewFill& fill) {
     return static_cast<int>(std::floor(app::sp_meter_bars_at(scene.sp_meter, fill.span.end_ms)));
 }
 
-std::string fill_reason(const PreviewScene& scene, size_t fill_index) {
+std::string fill_reason(const PreviewScene& scene, size_t fill_index, FillRefusal& kind) {
     const PreviewFill& fill = scene.fills.at(fill_index);
+    kind = FillRefusal::Taken;
     if (fill.state == app::PreviewFillState::Taken) return {};
     const SongTiming& timing = scene_timing(scene);
+    kind = FillRefusal::SpRunning;
     for (size_t i = 0; i < scene.activations.size(); ++i) {
         // Whether the fill's chord falls under this window is the engine's
         // side-of-the-end rule (core::after_sp_end), the one the fill's state
@@ -82,25 +95,124 @@ std::string fill_reason(const PreviewScene& scene, size_t fill_index) {
             return "Star Power is already on here. Activation " + std::to_string(i + 1) +
                    " runs until " + measure_at(timing, a.sp_end_tick) + ".";
     }
+    kind = FillRefusal::BeforeLast;
     if (!scene.activations.empty() && fill.chord_tick < scene.activations.back().tick)
         return kBeforeLastActivationText;
+    kind = FillRefusal::None;
     if (fill.state == app::PreviewFillState::Offered) return {};
+    kind = FillRefusal::UnderBars;
     const int bars = bars_saved_at(scene, fill);
     if (bars < kSpActivationBars)
         return "You have " + counted(bars, "phrase", "phrases") + " saved here. You need " +
                std::to_string(kSpActivationBars) + " to activate.";
+    kind = FillRefusal::GameHides;
     return kGameHidesFillText;
 }
 
+std::string fill_reason(const PreviewScene& scene, size_t fill_index) {
+    FillRefusal kind = FillRefusal::None;
+    return fill_reason(scene, fill_index, kind);
+}
+
+FillRefusal fill_refusal(const PreviewScene& scene, size_t fill_index) {
+    FillRefusal kind = FillRefusal::None;
+    fill_reason(scene, fill_index, kind);
+    return kind;
+}
+
+namespace {
+
+// The squeezes an activation's sentences name: its badge_timings without the
+// early-fill part, in the order listed. squeeze_end_text and the list row's
+// short form both read this, so which timings count is decided here once.
+std::vector<ActivationTiming> squeezes_of(const Activation& act) {
+    std::vector<ActivationTiming> out;
+    for (const ActivationTiming& t : act.badge_timings())
+        if (t.part != TimingPart::EarlyFill) out.push_back(t);
+    return out;
+}
+
+const char* squeeze_word(const ActivationTiming& t) {
+    return t.part == TimingPart::SqueezeOut ? "squeeze-out" : "squeeze-in";
+}
+
+// "squeeze-out 12.3 ms, squeeze-in, no timing": the mockup's sqShort.
+std::string squeeze_short_text(const Activation& act) {
+    std::string out;
+    for (const ActivationTiming& t : squeezes_of(act)) {
+        if (!out.empty()) out += ", ";
+        out += squeeze_word(t);
+        out += t.required ? " " + format_ms(t.ms) : ", no timing";
+    }
+    return out;
+}
+
+}  // namespace
+
 std::string squeeze_end_text(const Activation& act) {
     std::string out;
-    for (const ActivationTiming& t : act.badge_timings()) {
-        if (t.part == TimingPart::EarlyFill) continue;
+    for (const ActivationTiming& t : squeezes_of(act)) {
         out += out.empty() ? ", ending with " : " and ";
-        out += t.part == TimingPart::SqueezeOut ? "a squeeze-out" : "a squeeze-in";
+        out += std::string("a ") + squeeze_word(t);
         out += t.required ? " that needs " + format_ms(t.ms) : " that needs no timing";
     }
     return out;
+}
+
+const char* const kChoicesHeading = "Where to activate next";
+const char* const kChoicesHint =
+    "Cheapest first. Hover a row to see it on the highway; click it to activate there.";
+const char* const kNoChoicesFinishedText =
+    "No fill after your last activation can be activated. Your path is finished.";
+const char* const kNoChoicesText = "No fill can be activated.";
+
+std::string candidate_row_text(const PreviewScene& scene, size_t fill_index,
+                               const Activation* end) {
+    const PreviewFill& fill = scene.fills.at(fill_index);
+    const SongTiming& timing = scene_timing(scene);
+    std::string t = app::clock_str(timing.timecode(fill.chord_tick).ms()) + app::kFactSeparator +
+                    counted(bars_saved_at(scene, fill), "phrase", "phrases");
+    if (!end) return t + app::kFactSeparator + kPendingText;
+    if (const std::optional<int64_t> d = end->deact_tick()) {
+        t += app::kFactSeparator + std::string("ends ") + measure_at(timing, *d);
+        const std::string sq = squeeze_short_text(*end);
+        if (!sq.empty()) t += app::kFactSeparator + sq;
+    }
+    return t;
+}
+
+std::vector<int64_t> choice_order(const std::vector<int64_t>& offered,
+                                  const std::vector<app::CandidateCost>& priced) {
+    struct Row {
+        int64_t tick;
+        std::optional<int64_t> cost;  // empty while the fill is being priced
+    };
+    std::vector<Row> rows;
+    rows.reserve(offered.size());
+    for (const int64_t tick : offered) {
+        Row r{tick, std::nullopt};
+        for (const app::CandidateCost& c : priced)
+            if (c.act_tick == tick) r.cost = c.cost;
+        rows.push_back(r);
+    }
+    // Stable, so ties and the pending rows keep chart order.
+    std::stable_sort(rows.begin(), rows.end(), [](const Row& a, const Row& b) {
+        if (a.cost.has_value() != b.cost.has_value()) return a.cost.has_value();
+        return a.cost && *a.cost < *b.cost;
+    });
+    std::vector<int64_t> out;
+    out.reserve(rows.size());
+    for (const Row& r : rows) out.push_back(r.tick);
+    return out;
+}
+
+StepShort step_short(const SongTiming& timing, const Activation& act) {
+    StepShort s;
+    s.span = measure_label(act.timecode);
+    if (const std::optional<int64_t> d = act.deact_tick())
+        s.span += " \xE2\x86\x92 " + measure_at(timing, *d);  // a right arrow
+    s.saved = counted(act.sp_meter(), "phrase", "phrases");
+    return s;
 }
 
 std::string cost_text(int64_t cost) {
@@ -138,6 +250,8 @@ std::string fill_hover_text(const PreviewScene& scene, size_t fill_index,
 GuideMessage cant_activate_message(const std::string& fill, const std::string& reason) {
     return {"Can't activate at " + fill + ": " + reason, true};
 }
+
+GuideMessage locked_message(const std::string& fill) { return {before_last_sentence(fill), true}; }
 
 GuideMessage removed_message(size_t index, bool last) {
     if (last) return {kActivationRemovedText, false};
