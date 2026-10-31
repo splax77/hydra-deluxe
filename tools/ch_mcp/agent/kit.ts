@@ -1,8 +1,7 @@
 // The kit agent: a virtual drum kit inside the game. It builds one Rewired
 // custom controller from the game's own drum definition, hands it to one
 // player with one of the game's maps loaded by category and layout, presses
-// its pads and buttons on
-// request, and takes it away again. It sends no key presses and never touches
+// its pads and buttons on request, and takes it away again. It sends no key presses and never touches
 // the window, so the game can stay minimized and unfocused. While the kit is
 // set up, Rewired's keyboard and mouse devices are switched off, so the user's
 // own keys and mouse reach no player; teardown switches each back.
@@ -16,8 +15,8 @@
 // tests/test_frida_attach.py checks both. It reads fields by name.
 //
 // It holds none of the kit's numbers. The definition id, the tag, the player,
-// the map's category and layout, the element ids and values, the hold in frames, the rewrite flag, the
-// thread and the press cap all come in the messages; tools/ch_mcp/kit_tools.py
+// the map's category and layout, the element ids and values, the hold in
+// frames, the rewrite flag, the thread and the press cap all come in the messages; tools/ch_mcp/kit_tools.py
 // owns them and checks the map this agent reads back.
 //
 // frida_attach.LiveAgent posts each message with an id and takes only the

@@ -2,8 +2,8 @@
 
 The kit agent (agent/kit.ts, built to kit.js) builds one Rewired custom
 controller from the game's own drum definition, hands it to a player with the
-game's drum map (KIT_MAP_CATEGORY_ID, KIT_MAP_LAYOUT_ID), presses its pads and buttons on request and takes it away
-again. It sends no key presses and never touches the window, so the game can
+game's drum map (KIT_MAP_CATEGORY_ID, KIT_MAP_LAYOUT_ID), presses its pads
+and buttons on request and takes it away again. It sends no key presses and never touches the window, so the game can
 stay minimized and unfocused; while the kit is set up, the Rewired devices in
 KIT_DEVICES are switched off so the user's own keys and mouse reach no player
 (the plan
