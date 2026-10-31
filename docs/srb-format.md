@@ -44,8 +44,8 @@ the end of the file in all 30 real bundles.
 
 ### The header
 
-The first 16 bytes are two 8-byte numbers: a per-file key, then the size of
-stream 1 scrambled with that key. The game holds the scrambler and its exact
+The first 16 bytes are, as one session read them, two 8-byte numbers: a
+per-file key, then the size of stream 1 scrambled with that key. The game holds the scrambler and its exact
 inverse; the Clone Hero reference has them in
 `docs/clone-hero/01-reading-a-chart.md`, rows CR-04 (read from the game's code)
 and CR-05 (which bytes feed them, not yet shown by the code). Seen as raw bytes,
@@ -130,7 +130,7 @@ The section is a run of audio pieces, which Hydra calls blobs, back to back.
 Each blob is laid out like this:
 
 ```
-8 bytes    type tag (meaning unknown; see below)
+8 bytes    type tag (the game reads 4 bytes of stem type, then 4 unused; see below)
 16 bytes   blob header, which also supplies the decryption starting value (IV)
 8 bytes    size of the encrypted data
 N bytes    encrypted data

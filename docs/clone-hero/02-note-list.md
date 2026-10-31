@@ -444,7 +444,7 @@ Found: 2026-10-09, session 30beeb6e.
 
 Rule: the shuffle runs only when modifier bit 0x40 is set, after the flam step, the 2x-kick removal (when bit 2 is clear), the cymbal fold or Pro step, and the dynamics clear; so each drum setting gets its own shuffled chart.
 Label: Proven in the game's code
-Evidence: docs/audit/note-shuffle/step0/open34/builder_20d2ea0.asm lines 153 to 162 (instruments 6 and 9 take the drum path) and 228 to 259 (the step calls in order, then the 0x40 test and the call at 0x20D3315). The names of the steps before the shuffle are the 2026-10-09 scouts' (open2/README.md lines 9 and 24).
+Evidence: docs/audit/note-shuffle/step0/open34/builder_20d2ea0.asm lines 153 to 162 (instruments 6 and 9 take the drum path) and 228 to 259 (the step calls in order, then the 0x40 test and the call at 0x20D3315). The names of the steps before the shuffle are the 2026-10-09 scouts' (open2/README.md lines 9 and 24). Whether the disco flip runs before the shuffle was not read: the builder listing holds no disco test (NL-22), so the disco flip is not among the steps named here.
 Game code (6142): builder RVA `0x20D2EA0`, the listing above.
 Hydra: `apply_shuffle_switch` in src/parse/song.cpp lines 1931 to 1935 and `finish_loaded_song` lines 1943 to 1946, after `emit_chord_timestamp` and `Chord::apply_2x_bass`.
 Ruling: D104 item 3 (record text): "Pro Drums off gets its own row too."
@@ -584,9 +584,9 @@ Found: 2026-10-10, docs/audit/drum-lanes.
 
 ### NL-57 With Note Shuffle on, how the game draws a lane
 
-Rule: the user saw the game draw only the blue column for a lane on Glide with Note Shuffle on; Hydra's Preview lights every pad the lane's notes land on, on purpose. The game's lane-draw routine has never been read.
+Rule: the user saw the game draw only the blue column for a lane on Glide with Note Shuffle on; Hydra's Preview lights every pad the lane's notes land on, on purpose. The game's lane-draw routine has never been read. What is known is what a lane stores: references to the lane's chords, not colours.
 Label: Unknown
-Evidence: the user's report only; D112's record says "The routine that draws a lane was not read".
+Evidence: the user's report, and D112's record says "The routine that draws a lane was not read". The listings show the lane stores references: `docs/audit/drum-lanes/f20d12c0.asm` writes the first chord's reference into the lane at +0x20 (line 268) and, for a double lane, the second chord's at +0x28 (line 272; a single lane stores null there), and the shuffle rewrites each note's 16-bit lane word in place (`docs/audit/note-shuffle/step0/open2/f20f0c30_shuffle.asm` line 317). So the lane's notes are recoloured after the lane is built; that the drawn strip follows them is unread (decision log, D112's correction of 2026-10-17, line 539).
 Game code (6142): not found: looked in docs/audit/drum-lanes (none of its listings is the draw routine).
 Hydra: `light_drum_lanes` in src/parse/song.cpp lines 194 to 202, called at lines 1945 and 1946.
 Ruling: deliberate difference, D254: "clone hero only draws the blue. this will be an intentional deviation from the game. it looks better with both."; items "Every pad its notes use." and "Only with Note Shuffle on."
@@ -727,6 +727,18 @@ Game code (6142): not found: data, not code.
 Hydra: none: Hydra reads only the notes file.
 Ruling: none needed.
 Found: 2026-09-25, session 8157f2dc.
+
+## The first Note Shuffle video
+
+### NL-71 The 2026-10-08 video matched the decoded shuffle on 22 of 22 notes
+
+Rule: a bot run on a 480-resolution .mid with Note Shuffle on scored 180 points more than Hydra's unshuffled number, all from toms that became cymbals. The decoded shuffle (NL-40 to NL-46), fed the file's own ticks, put all 22 of the video chart's notes in their filmed positions. Scaling the ticks to 192 per beat matched 11 of 22, and dropping the rule that a new chord's first note avoids the previous chord's colours matched 5 of 22.
+Label: Unknown
+Evidence: docs/superpowers/plans/2026-10-08-note-shuffle.md lines 27 to 33 state the 22 of 22, the 11 of 22, the 5 of 22 and the 180 points; card 2026-10-09-6c19d0ef (lines 11 and 21) says the run was a bot run and all 22 matched. The video is C:/Users/Patrick/Videos/2026-10-08 21-52-37.mp4 (it exists today; no scout of this plan watched it), and the probe scripts were in that session's scratch folder and are gone.
+Game code (6142): not found: a filmed run, not code; the algorithm is NL-40 to NL-46.
+Hydra: `apply_note_shuffle` in src/parse/note_shuffle.cpp pins rows from later runs (NL-52); no test uses this video.
+Ruling: none needed.
+Found: 2026-10-08, session 6c19d0ef.
 
 ## Rows waiting on a live run
 

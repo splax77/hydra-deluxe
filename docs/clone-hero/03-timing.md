@@ -34,7 +34,7 @@ Evidence: `code/6142/chart_song_metadata_35C980.asm` lines 87, 103, 562 to 586 a
 Game code (6142): `SongEntry` chart metadata reader (scrambled member), RVA `0x35C980`, and the load coroutine `GameManager` (scrambled `MoveNext`), RVA `0xD8D80`, listings as above.
 Hydra: `preview_audio_offset_ms` in src/app/preview_source.cpp lines 311 to 316 makes the same choice (the delay wins when present and nonzero, else Offset x 1000), with the Offset parsed into `chart_offset_s` at src/parse/song.cpp line 1825. Hydra keeps fractional milliseconds and does not round up.
 Ruling: The choice is ruled: D274 item 6, "Check the game, then honor (Recommended)" for the Preview's audio delay and Offset. The rounding up is not named in it: open split: see questions page Q-31
-Found: 2026-10-30, wave 2 scout R7; the measurements 2026-09-24, session 2a88c065.
+Found: 2026-10-30, wave 2 scout R7; the measurements 2026-09-25, session 2a88c065.
 
 ### TM-04 A delay equal to the Offset makes no difference
 
@@ -54,7 +54,7 @@ Evidence: `code/6142/clock_ctor_16C9A0.asm` lines 22 to 32 (`+0x58` = -(b / c)),
 Game code (6142): the clock constructor of class #707, RVA `0x16C9A0`; the delay-in-seconds getter of class #828, RVA `0x1EF1A0`.
 Hydra: `kOffsetDirection` in src/app/preview_source.cpp line 139.
 Ruling: D274 item 6: "Check the game, then honor (Recommended)".
-Found: 2026-10-30, wave 2 scout R7; the recording 2026-09-24, session 2a88c065.
+Found: 2026-10-30, wave 2 scout R7; the recording 2026-09-25, session 2a88c065.
 
 ### TM-06 A .sng's delay follows the same rule; a .srb has none
 
@@ -474,7 +474,7 @@ Found: drum-lanes FINDINGS-play-time.md.
 
 Rule: pressing the tom key and the cymbal key of one colour for a single gem counts as an overhit, and the gem is missed.
 Label: Unknown
-Evidence: stated in session 8157f2dc (2026-09-25) while its auto-player was being fixed; its card (line 15) records only that pressing every pad breaks the combo by overhitting. No listing, run file or card line shows the both-keys case.
+Evidence: session 8157f2dc (2026-09-25), condensed transcript lines 2020 to 2056 and 2360: the bot's cymbal notes missed from about note 40 on while its parser pressed both the tom key and the cymbal key for each such gem, and they hit once the parser pressed one key per gem. The session read that as an overhit; its card (the roadblock about cymbal notes) records the same. No run isolated the two-keys cause, no result file is in the repo, and the overhit path was not read in the game's code.
 Game code (6142): not found: the overhit path was not read.
 Hydra: none: Hydra's paths press only the notes in the chart.
 Ruling: none needed.
