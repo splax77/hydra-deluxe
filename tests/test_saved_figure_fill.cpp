@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <functional>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -155,6 +156,50 @@ TEST_CASE("a stop leaves the marker unset") {
     CHECK(hydra::app::fill_saved_hardest(store, fill_settings(), next.fn()));
     CHECK(next.charts_total == 1);
     CHECK(figures_of(store, entry.md5)[0] == std::optional<double>(0.0));
+    CHECK(store.hardest_figure_filled(fill_settings().profile()));
+}
+
+TEST_CASE("a chart whose replay throws keeps its rows empty, and the fill goes on") {
+    // Two charts in one library, so save_as_old_build (which lists one chart
+    // as the whole library) is not used: Everlong's ranks 1 and 2 and Smash
+    // Mouth's rank 1 are saved with an empty figure.
+    RecordStore store(":memory:");
+    const CorpusChart throws = named_chart(kEverlong);
+    const CorpusChart kept = named_chart(kSmashMouth);
+    store.rebuild_chart_library({throws.entry, kept.entry});
+    const auto save = [&](const CorpusChart& chart, const std::vector<int>& emptied) {
+        PreparedRecord prepared = hydra::store::prepare_record(
+            chart.entry.md5, fill_settings().profile(),
+            corpus::analyzed(chart.file, fill_settings().to_analysis_settings()));
+        for (int rank : emptied)
+            prepared.record.paths.at(static_cast<size_t>(rank - 1)).hardest_ms.reset();
+        store.save(prepared);
+    };
+    save(throws, {1, 2});
+    save(kept, {1});
+
+    // The replay throws for Everlong's rank 1 text only. Its rank 2 would
+    // replay, but the whole chart is skipped.
+    const std::string throwing_text = "1 2 3+";
+    int thrown = 0;
+    const hydra::app::PathReplay replay = [&](const hydra::Song& song,
+                                              const hydra::SearchSettings& settings,
+                                              const std::string& text) {
+        if (text == throwing_text) {
+            ++thrown;
+            throw std::logic_error("a replay that breaks");
+        }
+        return hydra::paths_from_pathstring(song, settings, text);
+    };
+    CHECK(store.lookup_one(throws.entry.md5, fill_settings().profile()).record.paths[0].path ==
+          throwing_text);
+
+    CHECK(hydra::app::fill_saved_hardest(store, fill_settings(), {}, replay));
+    CHECK(thrown == 1);
+    const std::vector<std::optional<double>> skipped = figures_of(store, throws.entry.md5);
+    CHECK_FALSE(skipped[0].has_value());
+    CHECK_FALSE(skipped[1].has_value());
+    CHECK(figures_of(store, kept.entry.md5)[0] == std::optional<double>(0.0));
     CHECK(store.hardest_figure_filled(fill_settings().profile()));
 }
 

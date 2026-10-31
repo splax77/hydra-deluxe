@@ -48,9 +48,10 @@ struct ProfileFigures {
 
 // The figures for one chart's rows, `first` to `last`, read off `song`, one
 // entry per profile row. Each row gets a figure only when its replay matches
-// it; a row whose text the reader refuses gets none. Throws anything else the
-// replay or the comparison throws.
+// it; a row whose text the reader refuses gets none. Throws anything else
+// `replay` or the comparison throws.
 std::vector<ProfileFigures> replayed_figures(const Song& song, const AnalysisSettings& settings,
+                                             const PathReplay& replay,
                                              std::vector<MissingHardestRow>::const_iterator first,
                                              std::vector<MissingHardestRow>::const_iterator last) {
     // The rows come sorted by profile row, then rank (rows_missing_hardest),
@@ -61,7 +62,7 @@ std::vector<ProfileFigures> replayed_figures(const Song& song, const AnalysisSet
             out.push_back(ProfileFigures{it->profile_id, {}});
         std::optional<Path> replayed;
         try {
-            replayed = paths_from_pathstring(song, settings, it->path);
+            replayed = replay(song, settings, it->path);
         } catch (const KindedError& e) {
             if (e.kind() != ErrorKind::PathTextRefused) throw;
             continue;
@@ -77,6 +78,7 @@ std::vector<ProfileFigures> replayed_figures(const Song& song, const AnalysisSet
 // profile row. The chart is read and every row replayed before anything is
 // written, so a chart that throws there leaves all its rows as they are.
 void fill_chart(store::RecordStore& store, const AnalysisSettings& settings,
+                const PathReplay& replay,
                 std::vector<MissingHardestRow>::const_iterator first,
                 std::vector<MissingHardestRow>::const_iterator last) {
     if (!chart_still_there(*first)) return;
@@ -84,7 +86,7 @@ void fill_chart(store::RecordStore& store, const AnalysisSettings& settings,
     try {
         const Song song = load_songpath(first->notespath, settings.reading(), settings.rules,
                                         fill_rule_for(settings.legacy_fills));
-        found = replayed_figures(song, settings, first, last);
+        found = replayed_figures(song, settings, replay, first, last);
     } catch (const std::exception&) {
         // A chart that no longer reads, or whose replay throws, keeps its rows
         // empty, as a gone one does. The fault is the song's, not the store's,
@@ -99,7 +101,7 @@ void fill_chart(store::RecordStore& store, const AnalysisSettings& settings,
 }  // namespace
 
 bool fill_saved_hardest(store::RecordStore& store, const Settings& settings,
-                        const SavedFigureProgress& progress) {
+                        const SavedFigureProgress& progress, const PathReplay& replay) {
     const store::Profile profile = settings.profile();
     if (store.hardest_figure_filled(profile)) return true;
 
@@ -114,7 +116,7 @@ bool fill_saved_hardest(store::RecordStore& store, const Settings& settings,
     const uint64_t charts = starts.size() - 1;
     for (uint64_t c = 0; c < charts; ++c) {
         if (progress && !progress(c, charts)) return false;
-        fill_chart(store, analysis, rows.begin() + static_cast<std::ptrdiff_t>(starts[c]),
+        fill_chart(store, analysis, replay, rows.begin() + static_cast<std::ptrdiff_t>(starts[c]),
                    rows.begin() + static_cast<std::ptrdiff_t>(starts[c + 1]));
     }
     store.mark_hardest_figure_filled(profile);

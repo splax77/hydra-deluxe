@@ -11,8 +11,10 @@
 
 #include <cstdint>
 #include <functional>
+#include <string>
 
 #include "app/config.h"
+#include "search/pathstring_read.h"
 #include "store/record_store.h"
 
 namespace hydra::app {
@@ -30,24 +32,31 @@ using SavedFigureProgress = std::function<bool(uint64_t charts_done, uint64_t ch
 // Chart by chart, a chart whose files changed since the scan, or are gone
 // (chart_changed_since), keeps its rows as they are. Otherwise the chart is
 // read once under the settings' reading, rules and fill rule, and each row's
-// path text is replayed on it (paths_from_pathstring). A replay is used only
+// path text is replayed on it (`replay`, below). A replay is used only
 // when its text, score and squeeze counts, read the way the store writes them
 // (store::record_of), equal the row's. The figure written is the replayed
 // path's engine_hardest_ms. A row whose text the reader refuses, or whose
 // replay differs, keeps its empty figure.
 //
 // A chart that no longer reads, or whose replay or comparison with a row
-// throws anything at all, is skipped: every one of its rows keeps its empty
-// figure, and the fill goes on with the next chart. The marker is still set
-// at the end, so a skipped chart is not tried again.
+// throws any other std::exception, is skipped: every one of its rows keeps
+// its empty figure, and the fill goes on with the next chart. The marker is
+// still set at the end, so a skipped chart is not tried again.
 //
 // Returns true when the fill has run for the profile, false when `progress`
 // answered stop. A stop leaves the marker unset, so the next open goes on
 // with the rows still empty. Throws what the store throws, such as a failed
 // write of a figure or of the marker; that stops the fill with the marker
 // unset.
+//
+// `replay` is how a row's path text is replayed on its chart. The app passes
+// none and gets paths_from_pathstring; a test passes one that throws for a
+// chart it picks.
+using PathReplay =
+    std::function<Path(const Song& song, const SearchSettings& settings, const std::string& text)>;
 bool fill_saved_hardest(store::RecordStore& store, const Settings& settings,
-                        const SavedFigureProgress& progress);
+                        const SavedFigureProgress& progress,
+                        const PathReplay& replay = paths_from_pathstring);
 
 }  // namespace hydra::app
 
