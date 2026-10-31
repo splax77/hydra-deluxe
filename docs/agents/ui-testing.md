@@ -22,7 +22,7 @@ One rule covers every GUI check. It has three cases, and each case names what th
 .\build-cpp\Release\hydra_uitest.exe --all
 ```
 
-Agents do not run `--all`. They run only the tests for their own change, with `--test <name>`; the rule is in `docs/agents/brief-preamble.md`. The main session runs the merge's tests once; CLAUDE.md rule 1 says which.
+Agents do not run `--all`. They run only the tests for their own change, with `--test <name>`; the rule is in `docs/agents/brief-preamble.md`. The main session runs the merge's tests once; `docs/agents/agent-rules.md`, rule 1, says which.
 
 | Command | What it does |
 |---|---|
