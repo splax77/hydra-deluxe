@@ -422,16 +422,23 @@ What a bad hydra_settings.ini is. `Settings::load_file` (src/app/config.h)
 refuses what the rules loader refuses: a line with no `=`, an unknown key, a
 value that is not a whole number, an on/off that is not `0` or `1`, and a
 `view_difficulty` that names no difficulty. It throws `SettingsFileError`
-(kind `SettingsFile`, whose app sentence is `kSettingsOffSentence`), and the
-tools print it through `ini_file_tool_text`. Both loaders word those lines
+(kind `SettingsFile`, whose app sentence is `kSettingsOffSentence`). In the app,
+Hydra opens on a default `Settings`, analysis is off as for the rules file, no
+scan starts and `save_settings` writes nothing, so the file is never touched
+(`AppState::settings_error`, D276 item 1). `AppState::analysis_off_lines` gives
+the lines for both files, and the toolbar, the song panel and the path report
+window draw them through `analysis_off_notice` (src/ui/widgets.h). A
+command-line tool stops instead: `app::load_tool_settings` (src/app/config.h)
+loads the settings for every tool and prints them through `ini_file_tool_text`.
+Both loaders word those lines
 through `ini_not_key_value_text`, `ini_unknown_key_text` and
 `ini_bad_value_text`, and read whole numbers through `parse_whole_number`, all
 in src/app/ini_errors.h (D270 call 4); a scan row (ini-errors.json) holds
 that. A number outside its range loads at the nearest edge in the settings
 file, where `hydra_rules.ini` refuses a number below one of its five floors
 (D270 calls 1 to 3). A key on `kRetiredSettingsKeys` is skipped and left out
-at the next save (D270 call 7). It leaves out what the app does while the file
-is refused.
+at the next save (D270 call 7). It leaves out a refusal of hydra_rules.ini
+(Rules file error).
 
 **Job outcome**:
 How a finished background job ended: done, cancelled or failed
