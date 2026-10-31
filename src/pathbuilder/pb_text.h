@@ -98,7 +98,8 @@ extern const char* const kNoChoicesText;
 
 // The middle of a list row for scene.fills[fill_index], its parts joined by
 // app::kFactSeparator: the fill's clock (clock_str), the phrases saved there
-// (bars_saved_at, held under the meter's cap), and "ends m36" from `end`,
+// (bars_saved_at; the engine already held the meter at its cap, so no cap is
+// applied here), and "ends m36" from `end`,
 // the candidate's activation (DecisionList::candidate_end) with its
 // squeezes in short form ("squeeze-out 12.3 ms", "squeeze-in, no timing").
 // A null `end` (the candidate's search has not landed) reads kPendingText in

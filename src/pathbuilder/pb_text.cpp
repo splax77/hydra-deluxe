@@ -170,9 +170,8 @@ std::string candidate_row_text(const PreviewScene& scene, size_t fill_index,
                                const Activation* end) {
     const PreviewFill& fill = scene.fills.at(fill_index);
     const SongTiming& timing = scene_timing(scene);
-    const int saved = std::min(bars_saved_at(scene, fill), scene.sp_meter.cap);
     std::string t = app::clock_str(timing.timecode(fill.chord_tick).ms()) + app::kFactSeparator +
-                    counted(saved, "phrase", "phrases");
+                    counted(bars_saved_at(scene, fill), "phrase", "phrases");
     if (!end) return t + app::kFactSeparator + kPendingText;
     if (const std::optional<int64_t> d = end->deact_tick()) {
         t += app::kFactSeparator + std::string("ends ") + measure_at(timing, *d);

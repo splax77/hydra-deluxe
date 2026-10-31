@@ -81,6 +81,19 @@ TEST_CASE("candidate row: the clock, phrases, end and squeeze of a priced fill")
     const app::PreviewScene best = scene_for(song, rec.best_path());
     CHECK(candidate_row_text(best, fill_index(best, 272640), &acts[4]) ==
           "3:20.702 · 2 phrases · ends m150");
+    // No corpus chart has a squeeze-in that needs no timing, so a hand-built
+    // activation with the same end carries one of each kind that needs none
+    // (SPSqueeze::needs_no_timing): the short form and the long form both
+    // say so.
+    Activation free_squeezes;
+    free_squeezes.sp_end_steps.push_back({0, *ends[3].deact_tick(), SpEndKind::Activation});
+    free_squeezes.sqinouts = {SPSqueeze{SqueezeKind::SqIn, 0.0},
+                              SPSqueeze{SqueezeKind::SqOut, 0.001}};
+    CHECK(candidate_row_text(three, idx, &free_squeezes) ==
+          "2:51.485 · 2 phrases · ends m136 · squeeze-in, no timing, squeeze-out, no timing");
+    CHECK(squeeze_end_text(free_squeezes) ==
+          ", ending with a squeeze-in that needs no timing and a squeeze-out that needs no "
+          "timing");
 }
 
 TEST_CASE("choice order: cheapest first, ties in chart order, pending last") {
