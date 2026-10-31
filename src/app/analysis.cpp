@@ -904,7 +904,6 @@ void run_batch(const BatchPlan& plan, const BatchRun& run, store::RecordStore& s
             if (wr.failed) ++progress.failed;
             else ++progress.analyzed;
             progress.completed = progress.analyzed + progress.failed;
-            progress.current_title = wr.item.title;
             if (callbacks.on_progress) callbacks.on_progress(progress);
             if (wr.failed) {
                 if (callbacks.on_error) callbacks.on_error(wr.item.title, wr.sentence, wr.error);
