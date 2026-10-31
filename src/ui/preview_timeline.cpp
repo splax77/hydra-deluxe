@@ -279,16 +279,18 @@ TimelineEvents PreviewTimeline::draw(const TimelineInput& in) const {
         if (r > 0)
             dl->AddRectFilled(ImVec2(origin.x, t0.y + row.y0), at(l.width, row.y0 + px(1.0f)), kRowEdgeColor);
         if (names[r] == nullptr) continue;
+        // The label wraps, which only the font-taking AddText does; size 0 is
+        // the size ScopedFont pushed.
         ScopedFont font(TextRole::Label);
+        ImFont* const label_font = font_for(TextRole::Label).font;
         const bool sub = static_cast<TimelineRow>(r) == TimelineRow::Fills;
         const ImVec2 main_sz = ImGui::CalcTextSize(names[r], nullptr, false, label_wrap);
         const ImVec2 sub_sz = sub ? ImGui::CalcTextSize(kTimelineFillsSubLabel, nullptr, false, label_wrap) : ImVec2();
         float y = t0.y + (row.y0 + row.y1) * 0.5f - (main_sz.y + sub_sz.y) * 0.5f;
-        dl->AddText(ImGui::GetFont(), ImGui::GetFontSize(), ImVec2(origin.x, y), kMutedColor, names[r], nullptr,
-                    label_wrap);
+        dl->AddText(label_font, 0.0f, ImVec2(origin.x, y), kMutedColor, names[r], nullptr, label_wrap);
         if (sub)
-            dl->AddText(ImGui::GetFont(), ImGui::GetFontSize(), ImVec2(origin.x, y + main_sz.y), kDimColor,
-                        kTimelineFillsSubLabel, nullptr, label_wrap);
+            dl->AddText(label_font, 0.0f, ImVec2(origin.x, y + main_sz.y), kDimColor, kTimelineFillsSubLabel,
+                        nullptr, label_wrap);
     }
 
     // The axis's time labels, each centred on its moment.
