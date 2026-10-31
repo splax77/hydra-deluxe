@@ -232,6 +232,7 @@ The main session put the plan to the user with each question's recommendation in
 - Q7: the three timeline roles stay, at size 0.
 - Q8: the audio-warning line is in the shared panel; the chart-changed line stays Hydra's.
 - Q9: the mockup's score order, with no hint lines; each hint becomes a hover tooltip on its figure.
+- The remaining timeline sizes (2026-10-31). Q1 named some timeline sizes and left others out, so the main session asked: "Q1 left some timeline sizes unnamed (fill centre 1.05 rem, "best" 1.85 rem down, band inset 0.35, ring width 0.18, section padding, axis label top, caption dash 1.4 rem, teal swatch 1.4×0.6 rem). Take the mockup's rem value for every one of them?" The user answered "All mockup rem (Recommended)". So every remaining position, gap and shape the second mockup gives in rem is that rem value times the font size, and text sizes stay at the user's font size, as Q7 ruled.
 
 ## Promise map
 

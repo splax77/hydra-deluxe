@@ -143,6 +143,66 @@ TEST_CASE("preview timeline: the insets move the bands, the fills and the saved 
     CHECK(l.activate_y == doctest::Approx(35.0f));
 }
 
+TEST_CASE("preview timeline: the saved row's enough stretches start after the last activation and split a segment at the line") {
+    app::PreviewScene s = fx::timed_scene();
+    app::PreviewActivation act;
+    act.ms = 2000.0;
+    act.has_sp_end = true;
+    act.sp_end_ms = 3000.0;
+    s.activations = {act};
+    // Three bars before the activation, drained to none by its end, then a
+    // climb from one bar to the cap that crosses the line at two.
+    s.sp_meter.cap = 4;
+    s.sp_meter.segments = {{0.0, 2000.0, 3.0, 3.0},
+                           {2000.0, 3000.0, 3.0, 0.0},
+                           {3000.0, 5000.0, 0.0, 0.0},
+                           {5000.0, 9000.0, 1.0, 4.0},
+                           {9000.0, 10000.0, 4.0, 4.0}};
+    const ui::TimelineLayout l = *ui::timeline_layout(s, kLengthMs, kWidth, metrics());
+    // The three bars before the window are not shaded; the climb is from its
+    // crossing on, merged with the stretch at the cap. Pinned from one run.
+    REQUIRE(l.saved_enough.size() == 1);
+    CHECK(l.saved_enough[0].x0 == doctest::Approx(633.3333f));
+    CHECK(l.saved_enough[0].x1 == doctest::Approx(1000.0f));
+    // The saved row's full height, 30 to 40 px down.
+    CHECK(l.saved_enough[0].y0 == doctest::Approx(30.0f));
+    CHECK(l.saved_enough[0].y1 == doctest::Approx(40.0f));
+}
+
+TEST_CASE("preview timeline: a segment ending exactly on the line is enough") {
+    app::PreviewScene s = fx::timed_scene();
+    // A climb that ends on two bars, a stretch on the line, then a drain
+    // that starts on it.
+    s.sp_meter.cap = 4;
+    s.sp_meter.segments = {{0.0, 3000.0, 0.0, 2.0},
+                           {3000.0, 6000.0, 2.0, 2.0},
+                           {6000.0, 8000.0, 2.0, 0.0},
+                           {8000.0, 10000.0, 0.0, 0.0}};
+    const ui::TimelineLayout l = *ui::timeline_layout(s, kLengthMs, kWidth, metrics());
+    // Pinned from one run.
+    REQUIRE(l.saved_enough.size() == 1);
+    CHECK(l.saved_enough[0].x0 == doctest::Approx(300.0f));
+    CHECK(l.saved_enough[0].x1 == doctest::Approx(600.0f));
+}
+
+TEST_CASE("preview timeline: with no activation every stretch at or above the line is shaded") {
+    app::PreviewScene s = fx::timed_scene();
+    // Above the line, down across it, below, up across it, above.
+    s.sp_meter.cap = 4;
+    s.sp_meter.segments = {{0.0, 2000.0, 3.0, 3.0},
+                           {2000.0, 4000.0, 3.0, 1.0},
+                           {4000.0, 6000.0, 1.0, 1.0},
+                           {6000.0, 8000.0, 1.0, 3.0},
+                           {8000.0, 10000.0, 3.0, 3.0}};
+    const ui::TimelineLayout l = *ui::timeline_layout(s, kLengthMs, kWidth, metrics());
+    // Pinned from one run.
+    REQUIRE(l.saved_enough.size() == 2);
+    CHECK(l.saved_enough[0].x0 == doctest::Approx(0.0f));
+    CHECK(l.saved_enough[0].x1 == doctest::Approx(300.0f));
+    CHECK(l.saved_enough[1].x0 == doctest::Approx(700.0f));
+    CHECK(l.saved_enough[1].x1 == doctest::Approx(1000.0f));
+}
+
 TEST_CASE("preview timeline: the ghost path's windows are bands in their own row, which is 0 tall with no ghost") {
     app::PreviewScene s = scene_with_fills();
     ui::TimelineMetrics m = metrics();
@@ -202,21 +262,11 @@ TEST_CASE("preview timeline: the Section row leaves out a section named End") {
 
 namespace {
 
-// Offered fills ending at each of `end_ms`, chord tick = end, each with a
-// four-character label 40 px wide.
-struct LabelledFills {
-    app::PreviewScene scene;
-    std::vector<ui::TimelineFillLabel> labels;
-};
-LabelledFills labelled_fills(const std::vector<double>& end_ms) {
-    LabelledFills out{fx::timed_scene(), {}};
-    for (double e : end_ms) {
-        app::PreviewFill f = fx::fill(fx::span(e - 500.0, e), PreviewFillState::Offered);
-        f.chord_tick = static_cast<int64_t>(e);
-        out.scene.fills.push_back(f);
-        out.labels.push_back({f.chord_tick, "-1.0", 0});
-    }
-    return out;
+// A fill ending at `end_ms` in `state`, its chord tick the end.
+app::PreviewFill fill_at(double end_ms, PreviewFillState state) {
+    app::PreviewFill f = fx::fill(fx::span(end_ms - 50.0, end_ms), state);
+    f.chord_tick = static_cast<int64_t>(end_ms);
+    return f;
 }
 
 ui::TimelineMetrics label_metrics() {
@@ -232,65 +282,69 @@ ui::TimelineMetrics label_metrics() {
 
 }  // namespace
 
-TEST_CASE("preview timeline: a cost label that would touch the one before it drops to a second line") {
-    const ui::TimelineMetrics m = label_metrics();
-
-    // Fills at 200, 240 and 300 px; each label is 40 px, centred. The second
-    // starts at 220 px, where the first ends, so it touches and drops to line
-    // 1. The third starts at 280 px, clear of the first, so it stays on line
-    // 0. Pinned from one run.
-    const LabelledFills touch = labelled_fills({2000.0, 2400.0, 3000.0});
-    const ui::TimelineLayout l = *ui::timeline_layout(touch.scene, kLengthMs, kWidth, m, touch.labels);
-    REQUIRE(l.cost_labels.size() == 3);
-    CHECK(l.cost_labels[0].line == 0);
-    CHECK(l.cost_labels[0].rect.x0 == doctest::Approx(180.0f));
-    CHECK(l.cost_labels[0].rect.x1 == doctest::Approx(220.0f));
-    CHECK(l.cost_labels[1].line == 1);
-    CHECK(l.cost_labels[1].rect.x0 == doctest::Approx(220.0f));
-    CHECK(l.cost_labels[2].line == 0);
-    CHECK(l.cost_clashes == 0);
-    // The Fills row starts at 50 px; line 0 is 3 px down, line 1 one 5 px
-    // line under it, and the row is that one line taller.
-    CHECK(l.cost_labels[0].rect.y0 == doctest::Approx(53.0f));
-    CHECK(l.cost_labels[1].rect.y0 == doctest::Approx(58.0f));
-    CHECK(l.cost_labels[1].rect.y1 == doctest::Approx(63.0f));
-    CHECK(l.row(ui::TimelineRow::Fills).y1 == doctest::Approx(65.0f));
-    CHECK(l.height() == doctest::Approx(65.0f));
-
-    // One pixel further, the second label starts at 221 px and clears the
-    // first: every label on line 0, and the row keeps its height.
-    const LabelledFills clear = labelled_fills({2000.0, 2410.0, 3000.0});
-    const ui::TimelineLayout c = *ui::timeline_layout(clear.scene, kLengthMs, kWidth, m, clear.labels);
-    REQUIRE(c.cost_labels.size() == 3);
-    for (const ui::TimelineCostLabel& lab : c.cost_labels) CHECK(lab.line == 0);
-    CHECK(c.height() == doctest::Approx(60.0f));
+TEST_CASE("preview timeline: a tinted fill reads its tint and an untinted offered fill reads none") {
+    app::PreviewScene s = fx::timed_scene();
+    s.fills = {fill_at(2000.0, PreviewFillState::Offered), fill_at(3000.0, PreviewFillState::Offered)};
+    ui::TimelineFillMarks marks;
+    marks.tints = {{2000, IM_COL32(1, 2, 3, 255)}};
+    const ui::TimelineLayout l = *ui::timeline_layout(s, kLengthMs, kWidth, metrics(), marks);
+    REQUIRE(l.fills.size() == 2);
+    REQUIRE(l.fills[0].tint.has_value());
+    CHECK(*l.fills[0].tint == IM_COL32(1, 2, 3, 255));
+    CHECK_FALSE(l.fills[1].tint.has_value());
+    // A tint changes the colour, not the look.
+    CHECK(l.fills[0].look == ui::TimelineFillLook::Offered);
+    CHECK(l.fills[1].look == ui::TimelineFillLook::Offered);
 }
 
-TEST_CASE("preview timeline: the stagger measures a label where it is kept inside the timeline, not where it would be centred") {
-    // Fills at 950 and 995 px, 40 px labels. Centred, the second would start
-    // at 975 px, clear of the first's end at 970. Kept inside the 1,000 px
-    // timeline it starts at 960 px and touches it, so it drops to line 1.
-    // Pinned from one run.
-    const LabelledFills f = labelled_fills({9500.0, 9950.0});
-    const ui::TimelineLayout l = *ui::timeline_layout(f.scene, kLengthMs, kWidth, label_metrics(), f.labels);
-    REQUIRE(l.cost_labels.size() == 2);
-    CHECK(l.cost_labels[0].rect.x1 == doctest::Approx(970.0f));
-    CHECK(l.cost_labels[1].rect.x0 == doctest::Approx(960.0f));
-    CHECK(l.cost_labels[1].rect.x1 == doctest::Approx(1000.0f));
-    CHECK(l.cost_labels[0].line == 0);
-    CHECK(l.cost_labels[1].line == 1);
+TEST_CASE("preview timeline: every fill in best_ticks has a word under it, kept inside the timeline") {
+    // A best fill at 10 px, where a centred 40 px word would start left of
+    // the timeline, a second best fill tied with it at 500 px, and a fill
+    // that is not best. Pinned from one run.
+    app::PreviewScene s = fx::timed_scene();
+    s.fills = {fill_at(100.0, PreviewFillState::Offered), fill_at(5000.0, PreviewFillState::Offered),
+               fill_at(7000.0, PreviewFillState::Offered)};
+    ui::TimelineFillMarks marks;
+    marks.tints = {{100, IM_COL32(1, 2, 3, 255)}};
+    marks.best_ticks = {100, 5000};
+    marks.best_label = "best";
+    const ui::TimelineLayout l = *ui::timeline_layout(s, kLengthMs, kWidth, label_metrics(), marks);
+    REQUIRE(l.best_labels.size() == 2);
+    CHECK(l.best_labels[0].fill == 0);
+    CHECK(l.best_labels[0].col == IM_COL32(1, 2, 3, 255));
+    CHECK(l.best_labels[0].rect.x0 == doctest::Approx(0.0f));
+    CHECK(l.best_labels[0].rect.x1 == doctest::Approx(40.0f));
+    CHECK(l.best_labels[1].fill == 1);
+    CHECK(l.best_labels[1].rect.x0 == doctest::Approx(480.0f));
+    CHECK(l.best_labels[1].rect.x1 == doctest::Approx(520.0f));
+    // The Fills row starts at 50 px (no ghost row); the word is 3 px down,
+    // one 5 px line tall, and the row keeps its height.
+    CHECK(l.best_labels[1].rect.y0 == doctest::Approx(53.0f));
+    CHECK(l.best_labels[1].rect.y1 == doctest::Approx(58.0f));
+    CHECK(l.height() == doctest::Approx(60.0f));
 }
 
-TEST_CASE("preview timeline: a cost label that touches the last label on both lines goes where the last one ends first, and is counted") {
-    // Fills at 200, 210 and 220 px: line 0 ends at 220, line 1 at 230, and
-    // the third starts at 200, touching both. Pinned from one run.
-    const LabelledFills f = labelled_fills({2000.0, 2100.0, 2200.0});
-    const ui::TimelineLayout l = *ui::timeline_layout(f.scene, kLengthMs, kWidth, label_metrics(), f.labels);
-    REQUIRE(l.cost_labels.size() == 3);
-    CHECK(l.cost_labels[0].line == 0);
-    CHECK(l.cost_labels[1].line == 1);
-    CHECK(l.cost_labels[2].line == 0);
-    CHECK(l.cost_clashes == 1);
+TEST_CASE("preview timeline: looks are Taken, then Locked, then Offered, then Cant") {
+    app::PreviewScene s = fx::timed_scene();
+    s.fills = {
+        fill_at(1000.0, PreviewFillState::Taken),    // Taken, though locked
+        fill_at(2000.0, PreviewFillState::Hidden),   // Locked, though hidden
+        fill_at(3000.0, PreviewFillState::Offered),  // Locked, though offered and can't
+        fill_at(4000.0, PreviewFillState::Offered),  // Offered
+        fill_at(5000.0, PreviewFillState::Offered),  // Cant: in cant_ticks
+        fill_at(6000.0, PreviewFillState::Hidden),   // Cant: the game hides it
+    };
+    ui::TimelineFillMarks marks;
+    marks.locked_ticks = {1000, 2000, 3000};
+    marks.cant_ticks = {3000, 5000};
+    const ui::TimelineLayout l = *ui::timeline_layout(s, kLengthMs, kWidth, metrics(), marks);
+    REQUIRE(l.fills.size() == 6);
+    using Look = ui::TimelineFillLook;
+    const Look want[6] = {Look::Taken, Look::Locked, Look::Locked, Look::Offered, Look::Cant, Look::Cant};
+    for (size_t i = 0; i < 6; ++i) {
+        CAPTURE(i);
+        CHECK(l.fills[i].look == want[i]);
+    }
 }
 
 TEST_CASE("preview timeline: a section name too long for its section ends in an ellipsis") {
