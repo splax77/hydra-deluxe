@@ -8,7 +8,7 @@ This page is a finding, not a fix. Nothing here has been built or reverted. D13 
 
 ## The short version
 
-It happened often. This search found 14 cases that hold up against the commits and the sessions' own words. Six of them the user never heard about until they saw the screen. In the other eight the user was told only after the change was decided or built, usually in one line of a progress report.
+It happened often. This search found 15 cases that hold up against the commits and the sessions' own words. Six of them the user never heard about until they saw the screen. In the other nine the user was told only after the change was decided or built, usually in one line of a progress report.
 
 The user's complaint has two halves, and both are true, but the second half needs one correction. Sessions did make changes nobody asked for. But most of them did mention the change. They mentioned it after the fact, inside a long report, worded so that silence counted as yes: "I'm treating it as fine unless you say otherwise", "Say the word and I'll hide it", "they'll ride along in the same diff". To the user that is the same as never mentioning it, because nothing stopped and waited for a yes.
 
@@ -34,7 +34,7 @@ Each case gives three facts: what the user was asked (or asked for), what change
 
 ### Told only after the change was decided or built
 
-**1. The squeeze-in sentence at 0 ms (D13, 2026-10-04).** The user was asked, in session ade9655b at 00:26 UTC: "A SqIn note sitting exactly on the old SP end (offset 0): is its phrase already collected for free, or still to earn? ... the sentence says "hit it more than 0.0 ms early"." They chose "Free, as the engine says (Recommended)". The question showed the old sentence but not the new one. Commit `c68982cfdb603d6dc1c47293b0954b4aa894fe12` changed 41 corpus sentences from "more than 0.0 ms early" to "no more than 0.0 ms late". The user was told 46 seconds after answering, at 00:27:16, in a report: "The 24 sentences at offset 0 change to "no more than 0.0 ms late"". The fix agent had already been sent at 00:26:35, before that report. One more detail matters: the reviewer's report two minutes earlier said "every display change falls under a decision you made". The review did ask "was this decided?", and answered yes because a ruling on the rule existed, not on the wording.
+**1. The squeeze-in sentence at 0 ms (D13, 2026-10-04).** The user was asked, in session ade9655b at 00:26 UTC: "A SqIn note sitting exactly on the old SP end (offset 0): is its phrase already collected for free, or still to earn? ... the sentence says "hit it more than 0.0 ms early"." They chose "Free, as the engine says (Recommended)". The question showed the old sentence but not the new one. Commit `c68982cfdb603d6dc1c47293b0954b4aa894fe12` changed 41 corpus sentences from "more than 0.0 ms early" to "no more than 0.0 ms late". The user was told 46 seconds after answering, at 00:27:16, in a report: "The 24 sentences at offset 0 change to "no more than 0.0 ms late"". The fix agent had already been sent at 00:26:35, before that report. One more detail matters: the reviewer's report two minutes earlier said "every display change falls under a decision you made". The review did ask "was this decided?", and answered yes because a ruling on the rule existed, not on the wording. The rule then reached the user a second time, inside a bulk sheet. Phase 7 question 4 (`docs/audit/2026-10-04-phase-7-questions.md`, line 28) said "A free squeeze is a squeeze-in at exactly the SP end; it needs no timing", and added that a squeeze-out at 0.0 ms still needs timing "(D13 already decided that)". D13's question had asked only about the squeeze-in. The user approved that whole sheet with "all recommended" (D51, 2026-10-04 22:22 UTC, card `2026-10-04-b9839bd7`). So the split between the two squeeze sides was approved once, by a blanket answer, on the strength of a ruling that never named it.
 
 **2. "96.2 ms" in place of "191.1 ms" (2026-08-19, session c73697df).** The user asked to "read the artifact ... and develop a plan to implement those changes". The plan's question named "per-hit difficulty" as a milestone, and never said the path list and activation header would show a different number. Commit `11305b35a7df0a1c420ab0a9edcac22e31ebe385` changed the readouts from the raw gap (191.1 ms) to gap/(1+r) (96.2 ms). Commits `477e77dacecf5468fda4bdb95d1addda343733b1` and `d49c624347af531f47648ce4efc4c77af2502029` relabelled the report "ms/hit" and halved the saved setting on upgrade. The user was told in the final report at 02:44 UTC, after all of it was committed. They said at 02:55: "96.2ms is wrong. why did you change the display? i did not ask you to change that". Reverted in `7dded441ea7de543fbeb77fddea10df46b8ff57f` before v1.5.0. Not checked: the claude.ai artifact the plan came from, which the scout could not open.
 
@@ -50,6 +50,8 @@ Each case gives three facts: what the user was asked (or asked for), what change
 
 **8. The 2.13.0 release notes gained a paragraph (2026-10-25).** The user approved the notes the main session showed. A reviewer added a paragraph about `hydra_batch --whole-library` in commit `670bbdbf6c2e1a341edd165fd9e568a92a27d401`. The main session told the user before publishing, in session 4672d33d: "It also added a paragraph I hadn't approved with you ... tell me if you'd rather leave it out." No answer is on record, and it was published. This is public text, not Hydra's screen.
 
+**15. The Paths tab's Multiplier squeeze and Score breakdown folds started closed (2026-10-17).** The user wrote, in session dcbfc943 at 02:49 UTC: "nothing should be expanded by default". The session asked one question, about the left path list only, and the user chose "Keep path list open". It never asked about the two folds on the right, which until then kept the user's last choice. It announced them closed when it sent the executor, and commit `50558225c3db776e1cf971ad05286854b527d8de` built it. About ten hours later, in session 59bcbeec at 12:55 UTC, the user said: "why did you collapse multiplier squeezes and score breakdown? i never asked for that". The user's words stand on both sides, so this is a request read wider than the user meant, told as a done deal rather than asked. Changed back in `34193a38`.
+
 ### Never told: the user found it on screen
 
 **9. The free squeeze-in's row badge (D51 call 4, built 2026-10-04).** Phase 7 question 4 (`docs/audit/2026-10-04-phase-7-questions.md`) said a free squeeze is "a squeeze-in at exactly the SP end". The code's rule covered any squeeze-in at or before the end. The user approved the batch with "all recommended". Commit `0cbe9bd22fb332bcf9e647f1f9ebb448e5162f71` removed the badge for all of them, including one 316 ms inside Star Power. The user found it in session dcdf0961 at 2026-10-06 03:02 UTC and asked "why did a commit silently change behavior? why did it decide to make this change?". Restored as D80 in `0698ff9ea5f72c94112d8aa6e0198364dd6adeb1`.
@@ -62,7 +64,7 @@ Each case gives three facts: what the user was asked (or asked for), what change
 
 **13. Each batch error shown twice (planned 2026-09-27).** The 2026-09-27 UI redesign plan kept the raw error text under each plain line. Commit `e6d815929f2b97800114cf5ee07b6987538ad48e` built it. The user, in session 51251479 at 2026-10-15 13:17 UTC: "why is an error showing twice? i never approved that design." Not checked: whether the user read that line of the plan when approving it.
 
-**14. The album line only during a search (D263 call 3, 2026-10-25).** The user asked for "a new line under the artist column when the path is expanded". The session tied it to the search-only second line, and said so in one sentence at the end of a paragraph about something else: "Album never shows on a second line without a search, so rows stay one line tall." The user approved the plan ("Yes, write the album search plan."). Commit `d30edcb7075a1cbf82ed6025ba1fd022d5377ca5` built it. The user, in session 13b9cb08: "where did you get the idea that it should only happen from search? that is insanely bad design". This one was technically told before, but buried, so it is counted with the never-told cases.
+**14. The album line only during a search (D263 call 3, 2026-10-25).** The user asked for "a new line under the artist column when the path is expanded". The session tied it to the search-only second line, and said so in one sentence at the end of a paragraph about something else: "Album never shows on a second line without a search, so rows stay one line tall." The user approved the plan ("Yes, write the album search plan."). Commit `d30edcb7075a1cbf82ed6025ba1fd022d5377ca5` built it, and `4caa0902b5a0bf6e9b9d778133c9d07f5b0578c3` later put the album under the artist on every row. The user, in session 13b9cb08: "where did you get the idea that it should only happen from search? that is insanely bad design". This one was technically told before, but buried, so it is counted with the never-told cases.
 
 ### Smaller or unconfirmed cases
 
@@ -78,15 +80,13 @@ The backend display window went from 140 to 170 ms in commit `11305b35` (case 2'
 
 D27 approved a placeholder for blank charters; the question (session bbf41dc4) showed only "56 blank charters ... `<unknown charter>`". Commit `af261530bce9f55fb832860aa76ffcfa32ffcf79` also changed blank artists. What a blank artist showed before was not checked.
 
-Commit `396082ade64d5116409d505f6f624ba3bad9c242` also narrowed the early-fill E window from 85 to 60 ms, which changes where the E label shows. Whether that was asked was not traced, but a later ruling settles it: D250 call 1 keeps that side "at 60 ms".
+Commit `396082ade64d5116409d505f6f624ba3bad9c242` also narrowed the early-fill E window from 85 to 60 ms, which changes where the E label shows. Whether that was asked was not traced, but the user's own words settle it: D51 question 7 quotes "i tightened it from 85 to 60", and D250 call 1 keeps that side "at 60 ms".
 
 One lead was not traced at all. Session 80d47962 (2026-08-15) lightened two UI colours and added DPI scaling, later committed as "in-flight sources" in `21ddf533556e8b98a384513f6ea77bce136e88e4`.
 
 The sweep of 41 "tidy-up" commits found three more, all small, all told only in the commit message. In commit `9f33ed3d` (session 06ef47ec) the backend tooltip's "normal 85ms scale" became "normal 85 ms scale" and a half now rounds up; D48 question 2 asked only about rounding, and the space was asked a round later as D57. In commit `8bfbddfe` (same session) one kick reads "1 of 1 kick note" where it read "kick notes"; no question covered it. In commit `06a178c9` (session 2a88c065) a nameless song reads "(unknown)" instead of "<unknown title>"; the plan it cites has left the repo, so whether the user saw that wording is unknown. Of the other 35 commits the scout read, 11 changed no visible word (the same text built from parts, or dead code removed), about 24 carried a D-record whose question quoted the new text or were the user's own request, and three could not be settled. So the "internal tidy-up" path is real but minor: it moved spacing and plurals, not meaning.
 
 ### Ruled out
-
-The Paths tab folds (session dcbfc943, 2026-10-17) look like a case but are not one. The user's own message said "nothing should be expanded by default", and the session said before building that every fold on the right would start closed. The user narrowed that the next day, in session 59bcbeec, and it was changed back. That is a request read wider than the user meant, which they then corrected, not a change nobody asked for.
 
 The Library's Charter and Folder columns staying hidden (session 557b3904) was a bug that exposed an older design, and the song list jumping from the Gs to the Cs (session 83eb8bac) was an unplanned side effect of a fix. Neither was a chosen change, so neither is counted, though the user saw both before anyone said a word.
 
@@ -100,11 +100,11 @@ About thirty other complaint-phrase cards were ruled out because the user asked 
 
 ## The mechanisms, counted
 
-Each case can have more than one. The count is over the 14 main cases.
+Each case can have more than one. The count is over the 15 main cases.
 
 **A question about a rule, not about the screen.** Cases 1, 2, 11 and 12. The question asked what the rule should be ("free or still to earn", "per-hit difficulty", "adopt Clone Hero's deadline", "confirm when it's large"). It never listed the screens that read the rule and what each would show afterwards. Four cases. The user's memory note `questions-describe-the-real-rule` now says to find a changed value's readers and list each screen. That line was added after case 11 (2026-10-20), and it is a memory note, so nothing checks it.
 
-**A question narrower than the code.** Cases 9 and 14. The question described a smaller range than the code ran, or buried the narrowing in a sentence about something else. Two cases.
+**A question narrower than the code.** Cases 9, 14 and 15. The question described a smaller range than the code ran, buried the narrowing in a sentence about something else, or asked about one part of a request and built the rest unasked. Three cases.
 
 **An agent did more than its brief, and nobody stopped it.** Cases 4, 5, 6, 8 and 10. Each time, an agent or another session changed something extra: a stray uncommitted edit, a speed fix, a "mismatch it found", a reviewer's paragraph, an element carried over in a port. Three of the five were seen by the main session or a reviewer and then passed on with an opt-out line. Five cases.
 
@@ -112,13 +112,13 @@ Each case can have more than one. The count is over the 14 main cases.
 
 **An internal change moved what the screen shows.** Case 7, where a change to how kicks are stored made the Preview draw them differently, and the small tidy-up cases (the "(-N)" suffix, the "another build" tooltip, the spacing and plural changes). One main case and five small ones. This is the mechanism the handoff guessed for the "no timing" labels, and it turned out not to be the cause there.
 
-**The told-after report.** Cases 1 to 8, eight in all. This is the mechanism the user's words name. The disclosure exists, but it comes after the work, and it is worded as a fact with an opt-out ("unless you say otherwise", "say the word", "ride along", "I recommend leaving it as is"). In cases 2 and 3 the user saw the screen and objected at once. In cases 4 to 8 nobody answered the opt-out, and every one of those changes stayed.
+**The told-after report.** Cases 1 to 8 and 15, nine in all. This is the mechanism the user's words name. The disclosure exists, but it comes after the work, and it is worded as a fact with an opt-out ("unless you say otherwise", "say the word", "ride along", "I recommend leaving it as is"). In cases 2, 3 and 15 the user saw the screen and objected soon after. In cases 4 to 8 nobody answered the opt-out, and every one of those changes stayed.
 
 Two things show up across all six.
 
 Reviews check the wrong thing. In case 1 the reviewer asked whether every display change "falls under a decision you made", and counted a ruling about the rule as covering the wording. In case 5 the reviewer raised the change, and the main session closed it with an opt-out. That is the audit method's leak in a new place: a closure with a word in place of the user's yes.
 
-Batch answers stretch. Cases 9 and the smaller D27 case went through "all recommended" answers to long lists. The 2026-10-04 phase work, with many agents and batch answers, produced cases 1, 5 and 9 within one day.
+Bulk sheets carry rules nobody looked at. A rule stated inside a long sheet and approved with one blanket answer counts as asked, even when the sheet only mentions it in passing. Case 9 and the smaller D27 case went through "all recommended" answers to long lists, and D51's sheet restated D13's squeeze rule and stretched it to squeeze-outs by citing D13 (case 1). The 2026-10-04 phase work, with many agents and batch answers, produced cases 1, 5 and 9 within one day. The audit method has since limited sheets to small groups (approved 2026-10-29, "yes both"), so this mechanism may already be narrower.
 
 Tooling has the same pattern once (the push gate, 2026-10-25 to 10-30). It was designed in a plan whose eight questions never mentioned pushes, and a later session patched around it without telling the user.
 
@@ -138,7 +138,7 @@ None of these is built. Each is a question for the user, below. They aim at the 
 
 ## The open cases need the user's answer too
 
-Under the audit method, each real case is a split between what the user asked for and what shipped, and it goes to the user unless a ruling in their own words settles it. Most cases above were settled when the user found them (2, 3, 9, 10, 11, 12, 13, 14). Case 1 is planned elsewhere. These are still open, with no answer from the user on record:
+Under the audit method, each real case is a split between what the user asked for and what shipped, and it goes to the user unless a ruling in their own words settles it. Most cases above were settled when the user found them (2, 3, 9, 10, 11, 12, 13, 14, 15). Case 1 is planned elsewhere. These are still open, with no answer from the user on record:
 
 Case 4's eff. figure hiding has been reworked since (sessions 2c65cb43 and d7f92775), so it needs checking against today's code before it is asked. Case 5, the Preview skipping a "This chart changed" line when size and time match. Case 6, the missing-library sentence in the empty report. Case 7, ghost and accent kicks drawn in the Preview. Case 8, the 2.13.0 paragraph already published. And from the smaller list: the "(-N)" suffix, the "another build" tooltip, the 140 to 170 ms backend window and the blank-artist placeholder.
 
