@@ -8,7 +8,7 @@ b02ab3e6-76ac-4735-8576-04b87f32bb8d, scout R8). Build 4045 has no addresses; ci
 `fill_deadline.cs`.
 
 The fill objects are those `fill_generator.md` describes: each has a start time in seconds, a length in seconds,
-the note it ends on, and an "on" flag. The song clock is the field `gameManager.songTime`, seconds.
+the note it ends on, and an "on" flag. The song clock is the game manager's song time, `GameManager.songTime`, in seconds.
 
 ## F6: when the check runs, `DrumsPlayer.AddStarPower` (lines 7 to 14)
 
@@ -39,7 +39,7 @@ length is over 10 s is removed whenever it starts within 10 s. In plain words: S
 one fill-length before the fill starts, at least 0.25 seconds before, and no more than 10 seconds before. All of this
 is in real time. The length is the fill's own length from `fill_generator.md` (half a measure of real time plus one
 64th note for generated fills; the written start to the activation note plus one 64th note for written fills), so the
-`1/64 note` in the memory note `fill-spawn-comparison` is part of the length, not a separate term.
+64th note that earlier write-ups of this rule list is part of the length, not a separate term.
 
 ## F8: the meter gain, `BasePlayer.AddStarPower` (lines 34 to 57)
 

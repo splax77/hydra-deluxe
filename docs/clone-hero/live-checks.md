@@ -136,6 +136,8 @@ FL-27, the Ladies Talk check, is the first entry on this page.
 
 **SP-37.** Question: do game and Hydra agree on which early or late hits collect a phrase at the SP end? Pass: the meter rises only on the side Hydra's SqIn or SqOut rule says; fail: otherwise. Needs Star Power activation and a menu start.
 
+**SP-46.** Question: during Star Power, is the multiplier disc the only thing on the 1.1 screen that changes, with no Star Power meter drawn? Pass: a screenshot before and during Star Power differs only at the disc (and the highway's colours); fail: a meter or bar shows the Star Power amount. Needs Star Power activation and a menu start.
+
 ## Page 6: scoring
 
 **SC-07 and SC-08.** Question: on a run that activates Star Power, do sp_score and combo_score equal Hydra's for the same activation path? Pass: equal; fail: they differ. Needs Star Power activation and a menu start (the bot never gains Star Power).
@@ -157,8 +159,6 @@ FL-27, the Ladies Talk check, is the first entry on this page.
 **SC-30.** Question: which HUD star-bar copy runs (slot 0 at 0.1 times base, or slot 1 at 0.5)? Pass: the StarProgress cutoff array's slot 0 is ceil(0.1 x base); fail: slot 0 is 0. A bot run read after the first frame.
 
 ## Page 7: internals
-
-**IN-12.** Question: does anything write the drum engine's double at +0x2E0 during hits? Pass: it changes at each hit and equals the song clock at the hit within 10 ms. Fail: it stays 0.0 through hits. A bot run already read 0.0 in run1_cal0's key run; needs a hand-played or key-press stretch, no Star Power, a menu start.
 
 **IN-19.** Question: does `0x20DEEC0` fire only for hit notes? Pass: on a run with misses its calls equal the game's hit-note count in every section. Fail: calls exceed it. A bot never misses, so it needs a key-press run with misses and a menu start; no Star Power.
 

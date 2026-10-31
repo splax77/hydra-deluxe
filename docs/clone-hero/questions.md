@@ -216,11 +216,11 @@ What the tool does today: `RVA_BASE_ENGINE_CTOR_DRUMS = 0x100E960` (tools/ch_pro
 
 ### Q-78 OFF_HIT_TIME (+0x2E0) is labelled the hit time, but the only run that logged it read 0.0 throughout
 
-The game's real layout (`dump.cs` line 527437): #8255 has a private double at +0x2E0. No code that writes it has been read. Live: `overlay-spike/run1_cal0_sp_watch.csv` has its column at 0.0 in all 40,922 rows of a key-press run that hit every note.
+The game's real layout (`dump.cs` line 527437): #8255 has a private double at +0x2E0. The code that writes it has now been read: it is the start of a double lane's round, written only while a note flagged 0xC000 is handled (page 07 IN-12), so it is not a hit time at all. Live: `overlay-spike/run1_cal0_sp_watch.csv` has its column at 0.0 in all 40,922 rows of a key-press run that hit every note.
 
 One end: if it were the hit time, it would equal the song clock at each hit within 10 ms (`HIT_TIME_MAX_GAP_MS`, constants.py line 297). Other end: it stays 0.0 through hits, as run1_cal0 shows.
 
-What the tool does today: `OFF_HIT_TIME = 0x2E0` (constants.py line 106) with the comment "NOT yet confirmed live" (lines 103 to 106). Owner: constants.py; the comment should say what the run showed, or the constant should go, once the writer is read (xrefs to +0x2E0). Page row IN-12.
+What the tool does today: `OFF_HIT_TIME = 0x2E0` (constants.py line 106) with the comment "NOT yet confirmed live" (lines 103 to 106). Owner: constants.py; the comment should say what the run showed, or the constant should go, now that the writer is read: it should say "double-lane round start". Page rows IN-12 and IN-15.
 
 ### Q-79 OFF_SP_OVERFLOW (+0x130) is described as set only on an overfill, but every gain sets it
 

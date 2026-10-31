@@ -84,7 +84,7 @@ Found: this plan's wave 1 scouts H6 and H7a
 
 Rule: Outside Star Power a hit's combo share is (multiplier minus 1) times its points. Inside Star Power the stored multiplier is doubled, so the game halves it first: the combo share is (half minus 1) times points and the Star Power share is half times points, one extra copy of the points at the normal multiplier.
 Label: Proven in the game's code
-Evidence: Lines 45 to 50 (outside) and 62 to 73 (inside) of the adder, writing +0xC8 (combo) and +0xCC (Star Power). Hydra's split gives the same numbers for a combo multiplier c: (c minus 1) times points and c times points. Run 1's whole-run sp_score 83,260 is not compared with Hydra here.
+Evidence: Lines 45 to 50 (outside) and 62 to 73 (inside) of the adder, writing +0xC8 (combo) and +0xCC (Star Power). Hydra's split gives the same numbers for a combo multiplier c: (c minus 1) times points and c times points. So at a 4x combo inside Star Power a plain gem's Star Power share is 4 x 50 = 200 points and a cymbal's is 4 x 65 = 260 (SC-01, SC-02); the August 2026 video score work used the same two values. Run 1's whole-run sp_score 83,260 is not compared with Hydra here.
 Game code (6142): RVA `0x20F6EB0`, `code/6142/add_note_score_20F6EB0.asm` lines 45 to 50 and 62 to 73
 Hydra: `category_scores` in src/core/scoring.cpp line 26
 Ruling: none needed: same rule
@@ -134,9 +134,9 @@ Found: wave 2 scout R6
 
 ### SC-13 The performed mark compares a lane value with a threshold
 
-Rule: The hit handler picks a signed byte per lane and compares it with an engine threshold. An accent is marked when the byte is at least 0 and below the threshold; a ghost is marked when it is at or above it. A negative byte marks neither. Each mark also bumps a counter.
+Rule: The hit handler picks a signed byte per lane and compares it with an engine threshold. A ghost is marked when the byte is at least 0 and below the threshold; an accent is marked when it is at or above it. A negative byte marks neither. Each mark also bumps a counter: +0xD8 for a ghost and +0xDC for an accent.
 Label: Proven in the game's code
-Evidence: Lines 29 to 61 pick the lane byte (one byte each at +0x309 to +0x310); lines 64 to 83 mark the ghost and bump +0xDC; lines 91 to 102 mark the accent and bump +0xD8. ghidra_decompile_all.txt lines 1163 to 1181 read the same. What the bytes and the threshold hold in play, and what writes them, was not found; which side is a hard hit is not known.
+Evidence: Lines 29 to 61 pick the lane byte (one byte each at +0x309 to +0x310); lines 72 to 83 are the path for the flag the getter `0x214BE10` tests (note +0x7C bit 0x80000, `DrumsAccentHit` at dump.cs line 548216): mark and bump +0xDC, the accent counter. Lines 91 to 102 are the path for `0x214B6C0` (bit 0x40000, `DrumsGhostHit`, dump.cs line 548215): mark and bump +0xD8, the ghost counter. Both getters were read in the 6142 DLL with tools/ch_mcp/chdis.py on 2026-10-31 (each is one `test dword ptr [rcx + 0x7c]` against that bit). ghidra_decompile_all.txt lines 1163 to 1181 read the same. What the bytes and the threshold hold in play, and what writes them, was not found; which side is a hard hit is not known.
 Game code (6142): RVA `0x20DE770` (slot 11), `code/6142/note_hit_dynamics_20DE770.asm` lines 29 to 102; threshold `#8255+0x2C0`
 Hydra: no owner: Hydra has no velocity or threshold
 Ruling: none needed for the comparison; the paid-or-not question is Q-51
@@ -216,9 +216,9 @@ Found: this plan's wave 1 scout H6; wave 2 scout R6; 2026-10-16, session 5b35957
 
 ### SC-21 The solo's note count counts every gem
 
-Rule: Hydra counts every gem of a chord in a solo's note total. The game's count is not settled: the memory note says every gem counts, and card 1aaf0ac4 says a scout found same-tick gems merge.
+Rule: Hydra counts every gem of a chord in a solo's note total. The game's count is not settled. Session 1aaf0ac4 (2026-10-16) first wrote that every gem counts, citing the Swim to the Moon video in which a 236-note solo paid 23,600 points (SC-22); a later scout in the same session reported that the game merges same-tick drum gems into one note.
 Label: Unknown
-Evidence: unchecked by the scout: no listing; the two records disagree.
+Evidence: unchecked by the scout: no listing. The two statements are in session 1aaf0ac4's condensed transcript, lines 97 and 214, and card 1aaf0ac4 line 29; no repo file holds either. The video's 236 may itself count gems or chords, so it does not settle the question.
 Game code (6142): none
 Hydra: `solo_note_count` in src/core/scoring.cpp line 91
 Ruling: none yet: the game's rule is not settled
@@ -236,9 +236,9 @@ Found: this plan's wave 1 scout H6
 
 ### SC-23 The solo box shows a whole percent and a message ladder
 
-Rule: During a solo the game shows trunc(float(h) / float(N) times 100.0f) percent. After the last note it shows a message for 1.5 s and the bonus for 1.5 s. The messages run 100 Perfect, 95+ Awesome, 90+ Great, 80+ Good, 70+ Solid, 69 "nice", 60+ Okay, else Messy, and N minus 1 gives "Awesome Choke!".
+Rule: The box appears when the player hits the solo's first note, not at the chart's solo marker, and hitting the last note ends the solo. During a solo the game shows trunc(float(h) / float(N) times 100.0f) percent. After the last note it shows a message for 1.5 s and the bonus for 1.5 s. The messages run 100 Perfect, 95+ Awesome, 90+ Great, 80+ Good, 70+ Solid, 69 "nice", 60+ Okay, else Messy, and N minus 1 gives "Awesome Choke!".
 Label: Unknown
-Evidence: listing lost; read 2026-10-16, sessions 1aaf0ac4 and 5b35957b (D251's record, decision log line 876). Hydra's own box was checked in the real app (card 5b35957b: 44% = 53 / 119), which checks Hydra, not the game.
+Evidence: listing lost; read 2026-10-16, sessions 1aaf0ac4 and 5b35957b (D251's record, decision log line 876). The first-note start is in those sessions' condensed transcripts (line 77 of each) and in no repo file. Hydra's own box was checked in the real app (card 5b35957b: 44% = 53 / 119), which checks Hydra, not the game.
 Game code (6142): not found (as SC-20)
 Hydra: `solo_percent` in src/app/preview_view.cpp; `kSoloResultMs` in src/app/preview_view.h (Hydra shows only "Perfect Solo!")
 Ruling: D251: "Game's look + count" and "Like the game" (decision log lines 877 and 878)
@@ -270,7 +270,7 @@ Found: wave 2 scout R6; this plan's wave 1 scout H6
 
 Rule: The rounding after the float multiply is Math.Ceiling, so a cutoff moves by one point only when the base score is not a multiple of 5; drum bases always are.
 Label: Unknown
-Evidence: unchecked by the scout: the helper's body was not opened. The memory note ch-star-cutoffs says roundsd mode 0xA, read 2026-09-27 in session 9168b711 (listing lost). The reviewer of this page opened the helper once (tools/ch_mcp/chdis.py on the 6142 DLL, 2026-10-30, no listing committed): it tests a stored CPU-feature value and, when it is 2 or more, jumps to `roundsd xmm0, xmm0, 0xa`, which rounds up; below 2 it runs a software routine that was not read. That fits "rounds up" on a machine with that instruction, and the software path is why the block stays Unknown. Multiples of 5 follow from 50, 65, 100 and 130 (SC-01, SC-02).
+Evidence: unchecked by the scout: the helper's body was not opened. Session 9168b711 (2026-09-27) read it as roundsd mode 0xA; that listing is lost and no repo file holds it. An example of where 32-bit floats matter: a base of 786,437 times the 3.6 slot is 2,831,173.0 in 32-bit floats, so 6 stars need 2,831,173 points, where exact arithmetic would need 2,831,174 (worked out with Python's 32-bit float packing on 2026-10-31 from SC-24 and SC-25; it assumes the rounding is Math.Ceiling, which is this block's open question). The reviewer of this page opened the helper once (tools/ch_mcp/chdis.py on the 6142 DLL, 2026-10-30, no listing committed): it tests a stored CPU-feature value and, when it is 2 or more, jumps to `roundsd xmm0, xmm0, 0xa`, which rounds up; below 2 it runs a software routine that was not read. That fits "rounds up" on a machine with that instruction, and the software path is why the block stays Unknown. Multiples of 5 follow from 50, 65, 100 and 130 (SC-01, SC-02).
 Game code (6142): call target in `code/6142/star_count_210DD00.asm` lines 46 to 48, not opened
 Hydra: `star_cutoff` in src/core/stars.cpp line 9
 Ruling: none needed: no drum chart reaches the difference
@@ -278,9 +278,9 @@ Found: wave 2 scout R6; this plan's wave 1 scout H6
 
 ### SC-27 The star base is worked out once, when the engine is built
 
-Rule: The drums star base is the sum over notes of (50, plus 15 for a cymbal) times the gem count, times 2 when the note carries either dynamic flag (once, even with both). There is no sustain term for drums. It runs when the instrument is Drums (6) or ProDrums (9), after the Note Shuffle, and is stored at +0x1D0.
+Rule: The drums star base is the sum over notes of (50, plus 15 for a cymbal) times the gem count, times 2 when the note carries either dynamic flag (once, even with both). There is no sustain term for drums. It runs when the instrument is Drums (6) or ProDrums (9), after the Note Shuffle, and is stored at +0x1D0. Other instruments take a sustain term instead: every note whose length is at least a third of a chart value (read as the resolution) adds its length in ticks, and the total is turned into points once, at 25 points per beat, rounded by the same helper as SC-26.
 Label: Proven in the game's code
-Evidence: Star base lines 68 (drums branch), 87 to 101 (cymbal and the two flag tests), 103 to 118 (gem count) and 120 to 123 (the sum); lines 68 to 80 and 147 to 149 leave the sustain term at 0. The constructor picks the drums branch for 6 or 9 at lines 183 to 189, calls it at line 196 and stores the result at line 202. That the two flags are accent and ghost is the scouts' reading (the dump does not name them). Live: the game's base_score is 73,520 on Trippin SP Spike ProDrums, 62,850 on its plain Drums run (1,257 gems times 50, no cymbals or dynamics) and 7,100 on Window Map (142 gems times 50); wave 1 scout H6 found these equal to Hydra's chart base score on all three.
+Evidence: Star base lines 68 (drums branch), 87 to 101 (cymbal and the two flag tests), 103 to 118 (gem count) and 120 to 123 (the sum); lines 68 to 80 and 147 to 149 leave the sustain term at 0. The non-drums term is lines 29 to 39 (the value divided by 3.0), 73 to 82 (the length test) and 139 to 149 (the total divided by the value over 25.0); that the value at chart record +0xB8 is the resolution is session 9168b711's reading (card line 24 says "sustains at 25 points per beat"), not shown by name in the dump. The constructor picks the drums branch for 6 or 9 at lines 183 to 189, calls it at line 196 and stores the result at line 202. That the two flags are accent and ghost is named by the dump: 0x40000 is `DrumsGhostHit` and 0x80000 is `DrumsAccentHit` (dump.cs lines 548215 and 548216). Live: the game's base_score is 73,520 on Trippin SP Spike ProDrums, 62,850 on its plain Drums run (1,257 gems times 50, no cymbals or dynamics) and 7,100 on Window Map (142 gems times 50); wave 1 scout H6 found these equal to Hydra's chart base score on all three.
 Game code (6142): RVA `0x20F4680`, `code/6142/star_base_20F4680.asm` lines 68 to 149; constructor RVA `0x20F79E0`, `code/6142/engine_ctor_20F79E0.asm` lines 183 to 202
 Hydra: `Path::chart_base_score` in src/core/model.cpp line 833
 Ruling: none needed: same rule (a Hydra note holds one dynamic type, so the both-flags case does not arise)
@@ -300,7 +300,7 @@ Found: this plan's wave 1 scout H6
 
 Rule: Hydra compares a score without the solo bonus with the cutoffs. Whether the game's count does the same is not read.
 Label: Unknown
-Evidence: unchecked by the scout: four other callers of the star counter (`0x210E2A0`, `0x210F140`, `0x21104F0`, `0x2110920`, all in #8351) were found and not opened. Card 9168b711 says which bonus field is "solo" came from CHOpt and the changelog, not from the code. No saved run has a solo.
+Evidence: unchecked by the scout: four other callers of the star counter (`0x210E2A0`, `0x210F140`, `0x21104F0`, `0x2110920`, all in #8351) were found and not opened. Card 9168b711 says which bonus field is "solo" came from CHOpt and the changelog, not from the code. That session read the count's score as leaving out two bonus totals that are added after the stars are counted; CHOpt (another optimizer) names them the solo bonus and the clean-play bonus, and the game's changelog says solos stopped counting toward stars in v0.20 (condensed transcript of session 9168b711, line 123; no repo file holds the listing). The same session found that the official wiki (wiki.clonehero.net, "How to play") and CHOpt agree with the game's cutoffs for 3 to 7 stars (card 9168b711 line 24). No saved run has a solo.
 Game code (6142): callers of RVA `0x210DD00`, not opened
 Hydra: `score_without_solo` in src/core/stars.h line 51; `path_stars` line 59
 Ruling: none yet: the game's rule is not settled
@@ -332,7 +332,7 @@ Found: this plan's wave 1 scouts H6 and H7a; wave 2 scouts R4 and R6
 
 Rule: The results screen's Notes line is the plain-points total less 50 for each accent or ghost hit, so a dynamic cymbal's extra 15 stays in Notes. The Accent and Ghost lines are the hits times 50.
 Label: Unknown
-Evidence: listing lost; read 2026-10-11 at RVA `0x20F3DC0` (instructions 0x20F425C to 0x20F426F) and at 0x126FD6 and 0x127029, session 1bae448b. Live: the ProDrums bot's note_score 71,370 = base_score 73,520 less 50 x 43, and equals Hydra's Notes. Run 1 (no dynamic performed) has note_score 71,235, 2,285 below base_score; that would be 43 x 50 plus 9 x 15 if 9 of the dynamic gems are cymbals, which was not checked.
+Evidence: listing lost; read 2026-10-11 at RVA `0x20F3DC0` (instructions 0x20F425C to 0x20F426F) and at 0x126FD6 and 0x127029, session 1bae448b (condensed transcript lines 108, 111 and 112). Both of those addresses lie inside the `PlayerStatsBox` method that starts at 0x126280 and ends before 0x1270D0 (its bounds from the 6142 dump's script.json, checked 2026-10-31); the dump names its class `PlayerStatsBox`. The same session read the base value 50 passed by the drum hit handler at 0x20DE96C (line 98), inside 0x20DE770. Live: the ProDrums bot's note_score 71,370 = base_score 73,520 less 50 x 43, and equals Hydra's Notes. Run 1 (no dynamic performed) has note_score 71,235, 2,285 below base_score; that would be 43 x 50 plus 9 x 15 if 9 of the dynamic gems are cymbals, which was not checked.
 Game code (6142): RVA `0x20F3DC0` (listing lost)
 Hydra: `category_scores` in src/core/scoring.cpp line 26
 Ruling: D208: "we don't need to change anything, matching the game is correct." (decision log line 777)
@@ -352,7 +352,7 @@ Found: this plan's wave 1 scout H6
 
 Rule: Hydra's optimum is for normal speed only, and a score above it is labelled "above optimal", never "impossible", because Hydra's optimum leaves out many backends and the old fill-spawn logic.
 Label: Hydra assumes it, never checked
-Evidence: src/app/dm_report.cpp lines 107 to 122. A dmleaderboards note (memory dmleaderboards-comparison) says the site ranks every speed on one board per chart; that rests on the public DMBot source and a user screenshot, neither committed. The Clone Hero v1.1 leaderboard announcement (https://clonehero.net/2024/11/10/clonehero-leaderboards.html) says the game's own leaderboards show only scores for the selected modifiers and speed (ch-evidence.md question 222 at commit 5fbe71ae; not re-read for this page).
+Evidence: src/app/dm_report.cpp lines 107 to 122. The dmleaderboards site (a community leaderboard for drum scores) ranks every speed on one board per chart. The user said so on 2026-10-10 (D206, card 35360d51 line 18: "dmleaderboards does not use separate leaderboards for different speeds."); the public DMBot source and a user screenshot backed it, neither committed. The Clone Hero v1.1 leaderboard announcement (https://clonehero.net/2024/11/10/clonehero-leaderboards.html) says the game's own leaderboards show only scores for the selected modifiers and speed (ch-evidence.md question 222 at commit 5fbe71ae; not re-read for this page).
 Game code (6142): none (outside the game)
 Hydra: `is_base_speed` in src/net/dmbot_client.h line 36
 Ruling: card e3a57d11: "do not label above optimal as impossible." and "just note them as above optimal." (02:24 UTC)
@@ -362,9 +362,9 @@ Found: this plan's wave 1 scouts H6 and HB
 
 ### SC-35 The game writes scorestats.json when the results screen starts
 
-Rule: When the end-of-song screen starts, the game builds a stats object, fills it, joins a folder path with the literal file name, writes the serialised text with File.WriteAllText, and logs "Failed to write scorestats.json: " on an error. One file is overwritten each time.
+Rule: When the end-of-song screen starts, the game builds a stats object, fills it, joins a folder path with the literal file name, writes the serialised text with File.WriteAllText, and logs "Failed to write scorestats.json: " on an error. Every song writes the same file name, and File.WriteAllText replaces whatever the file held, so each song overwrites the last one's file.
 Label: Proven in the game's code
-Evidence: Listing lines 87 (the literal), 171 to 181 (new object), 207 (fill), 242 (per player), 251 to 270 (folder, Path.Combine, serialiser, write) and 274 to 300 (the error text and Debug.LogError). Live: the bot runs of 2026-10-28 copied the file after each run (feasibility study lines 31 and 119).
+Evidence: Listing lines 87 (the literal), 171 to 181 (new object), 207 (fill), 242 (per player), 251 to 270 (folder, Path.Combine, serialiser, write) and 274 to 300 (the error text and Debug.LogError). The overwrite is read from the code only. The bot runs of 2026-10-28 copied the file after each run because the feasibility study (docs/research/2026-10-28-clone-hero-mcp-feasibility.md line 31) expected it to be overwritten; no run checked that an earlier file was gone (IN-37).
 Game code (6142): `EndOfSong.Start`, RVA `0x15DC20`, `code/6142/scorestats_writer_15DC20.asm` lines 171 to 300
 Hydra: no owner in src/; the tools read it (`SCORESTATS` in tools/ch_mcp/game_files.py; tools/ch_mcp/compare_scorestats.py)
 Ruling: none needed: a game file
@@ -429,9 +429,9 @@ Per-player keys. "Unknown" means no code was read that writes the key; a named f
 | squeezed_notes | 0, or 7 on run 1 | Unknown (the squeeze counter at +0xE8, page 5 SP-36, is a candidate) |
 | squeeze_note_losses | 0, or 1 on run 1 | Unknown (the counter at +0xEC, page 5 SP-36, is a candidate) |
 | frets_ghosted | 0 | Unknown |
-| accent_notes_hit | 9 of 9 on the ProDrums bot, 0 on run 1 | Unknown (the accent counter at +0xD8, SC-13, is a candidate) |
+| accent_notes_hit | 9 of 9 on the ProDrums bot, 0 on run 1 | Unknown (the accent counter at +0xDC, SC-13, is a candidate) |
 | accent_notes_total | 9 | Unknown |
-| ghost_notes_hit | 34 of 34 on the ProDrums bot, 0 on run 1 | Unknown (the ghost counter at +0xDC, SC-13, is a candidate) |
+| ghost_notes_hit | 34 of 34 on the ProDrums bot, 0 on run 1 | Unknown (the ghost counter at +0xD8, SC-13, is a candidate) |
 | ghost_notes_total | 34 | Unknown |
 | is_fc | true | Unknown |
 | is_pfc | true | Unknown |

@@ -4,7 +4,7 @@ Annotations only; the committed `.asm` files under `docs/audit/drum-lanes/` are 
 
 `docs/audit/drum-lanes/play/f20deec0.asm` is the drums score function, class 8255, RVA 0x20DEEC0.
 - Lines 13 to 16: ask the note whether it is a cymbal (0x18214BE30, which tests three lane-mask bits); if yes the base value in esi gets +15 (`lea ebx,[rsi+0xf]`), else stays.
-- Lines 19 to 24: ask the note a second yes/no question (0x18214BB40, not disassembled by this scout; the memory note `ch-score-breakdown-lines` says it is the ghost or accent test); if yes the value is doubled (`lea r8d,[rbx+rbx]`).
+- Lines 19 to 24: ask the note a second yes/no question (0x18214BB40, not disassembled by this scout; session 1bae448b, 2026-10-11, read it as the ghost or accent test; that listing is not committed); if yes the value is doubled (`lea r8d,[rbx+rbx]`).
 - Line 31: `jmp 0x1820f6eb0` tail-calls the base engine's AddScore (`add_note_score_20F6EB0.asm`). So the drums engine's whole Star Power split (multiplier halving, the Star Power share) is the base class's code, not drums code.
 
 `docs/audit/drum-lanes/f20de770.asm` is the drums hit routine, RVA 0x20DE770, slot 11.
