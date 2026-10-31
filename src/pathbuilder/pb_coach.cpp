@@ -75,6 +75,16 @@ std::string impossible_window_text(const std::string& failed_reason, bool at_cli
     return app::kSomethingWentWrong;
 }
 
+namespace {
+
+// What tells two ends of one window apart: end_choices lists each once, and
+// is_kept_end matches the player's window by it.
+using EndKey = std::pair<std::optional<int64_t>, std::optional<int64_t>>;
+
+EndKey end_key(const PinnedWindow& w) { return {w.deact_tick, w.squeezed_out}; }
+
+}  // namespace
+
 std::vector<EndChoice> end_choices(const ScoreGraph& graph, const SearchSettings& settings,
                                    const std::vector<PinnedWindow>& before, int64_t act_tick) {
     std::vector<PinnedWindow> pins = before;
@@ -83,13 +93,13 @@ std::vector<EndChoice> end_choices(const ScoreGraph& graph, const SearchSettings
     const TargetResult found = search_target(graph, pins);
 
     std::vector<EndChoice> out;
-    std::set<std::pair<std::optional<int64_t>, std::optional<int64_t>>> seen;
+    std::set<EndKey> seen;
     auto consider = [&](const Path& p) {
         const ActivationWalk acts = p.walk_activations();
         if (acts.size() <= k) return;
         const std::vector<PinnedWindow> full = pinned_windows(p);
         const PinnedWindow& w = full.at(k);
-        if (!seen.insert({w.deact_tick, w.squeezed_out}).second) return;
+        if (!seen.insert(end_key(w)).second) return;
         std::vector<PinnedWindow> with_end = before;
         with_end.push_back(w);
         const TargetResult bf = best_finish(graph, settings, with_end);
@@ -99,6 +109,7 @@ std::vector<EndChoice> end_choices(const ScoreGraph& graph, const SearchSettings
         c.token = acts[k].notationstr();
         c.timing = timing_text(acts[k]);
         c.best_finish = bf.paths.front().totalscore();
+        c.activation = acts[k];
         out.push_back(std::move(c));
     };
     for (const Path& p : found.paths) {
@@ -106,6 +117,10 @@ std::vector<EndChoice> end_choices(const ScoreGraph& graph, const SearchSettings
         for (const Path& v : p.variants) consider(v);
     }
     return out;
+}
+
+bool is_kept_end(const PinnedWindow& window, const EndChoice& end) {
+    return end_key(window) == end_key(end.window);
 }
 
 namespace {
