@@ -13,4 +13,4 @@ Plain words: for every note whose "colour" word has any of the three top bits of
 - Lines 33 to 35: `movzx ecx, word [note+0x80]; shr cx, 3; mov word [note+0x80], cx`. This is the fold.
 - Lines 36 to 38: next note, loop. Lines 39 to 42: return. Line 43: null exit.
 
-Who calls it: only `0x20D2EA0`, at `0x20D32F2`, on the branch where the instrument byte is not 9 (`f20D2EA0.asm` lines 245 to 251). On ProDrums (byte 9) `0x20F1420` runs instead.
+Who calls it: only `0x20D2EA0`, at 0x20D32F2, on the branch where the instrument byte is not 9 (`f20D2EA0.asm` lines 245 to 251). On ProDrums (byte 9) `0x20F1420` runs instead.

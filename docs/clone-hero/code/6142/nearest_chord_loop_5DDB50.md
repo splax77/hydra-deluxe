@@ -10,7 +10,7 @@ Plain words: the same nearest-chord search as `0x5DE030` but with no window and 
 - Lines 33 to 39: call `0x2C7CE00(list, target, r8d, true)`: index B or -1.
 - Lines 40 to 43: B is -1 and A is -1: return -1 (line 45). B is -1 and A is not: return A (line 43 `jne` to line 91 `mov eax, ebx`).
 - Lines 44 to 45: A is -1 and B is not: return B (line 47 `je` to line 98).
-- Lines 46 to 71: fetch both chords and their ticks (virtual call `0x182C44210`, lines 62 and 70).
+- Lines 46 to 71: fetch both chords and their ticks (virtual call 0x182C44210, lines 62 and 70).
 - Lines 72 to 79: `(tick(A) - target) > (target - tick(B))` returns B (line 98), else A (line 91).
 
 Note for the claims table: the backward search starts at `startIndex` when there is no A, so with no chord after the target it returns the chord at or below `startIndex`, which is not necessarily the last chord of the song.

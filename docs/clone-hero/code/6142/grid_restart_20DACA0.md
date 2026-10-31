@@ -20,4 +20,4 @@ Plain words: walk the chart from tick 0 to the song's end, one beat at a time. A
 - Lines 193 to 198: stop when `rbp` exceeds the song end; else bump counters and loop (line 198 jumps back to line 40).
 - Lines 199 to 221: finish: store the last index of two of the grid's lists and return.
 
-Who calls it: only `0x20D2EA0` (the chart builder) at `0x20D312D`, right before the loop that decides between written and generated fills (`f20D2EA0.asm` lines 118 to 134).
+Who calls it: only `0x20D2EA0` (the chart builder) at 0x20D312D, right before the loop that decides between written and generated fills (`f20D2EA0.asm` lines 118 to 134).

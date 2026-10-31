@@ -8,10 +8,10 @@ Last write-back: 2026-10-30.
 
 ### FL-01 Written fills come from MIDI note 120 and .chart S 64
 
-Rule: The game adds a written fill at four places: the `.chart` reader (event type 0x40, written `S 64`), the `.mid` reader (MIDI note 120, through the helper `0x20CEDC0`), and two cache paths.
+Rule: The game adds a written fill at four places: the `.chart` reader (event type 0x40, written `S 64`), the `.mid` reader (MIDI note 120, through the helper 0x20CEDC0), and two cache paths.
 Label: Proven in the game's code
-Evidence: the callers of the fill initialiser `0x20FB9A0`, found by a call scan: in `0x20CEDC0`, `0x20E5E70`, `0x213E0C0`, `0x215B7C0` and `0x215BD50`. The `.mid` reader tests the event byte against 0x78 (note 120) before it calls `0x20CEDC0`; the `.chart` reader's test is in the decompile lines 25570 to 25594 (wave 2 scout R5, row R5-07; wave 1 scout H4, H4-24). That two of the paths read a cache is the game survey's reading, not checked.
-Game code (6142): the `.mid` fill helper `0x20CEDC0`, listed at `code/6142/mid_fill_reader_20CEDC0.asm`; the `.chart` reader `0x213E0C0`; the cache reader `0x20E49D0`, listed at `code/6142/fill_cache_caller_20E49D0.asm`.
+Evidence: the callers of the fill initialiser `0x20FB9A0`, found by a call scan: in 0x20CEDC0, `0x20E5E70`, `0x213E0C0`, `0x215B7C0` and `0x215BD50`. The `.mid` reader tests the event byte against 0x78 (note 120) before it calls 0x20CEDC0; the `.chart` reader's test is in the decompile lines 25570 to 25594 (wave 2 scout R5, row R5-07; wave 1 scout H4, H4-24). That two of the paths read a cache is the game survey's reading, not checked.
+Game code (6142): the `.mid` fill helper 0x20CEDC0, listed at `code/6142/mid_fill_reader_20CEDC0.asm`; the `.chart` reader `0x213E0C0`; the cache reader `0x20E49D0`, listed at `code/6142/fill_cache_caller_20E49D0.asm`.
 Hydra: `kFillMarkerPitch` in src/parse/song.cpp line 684; both parsers end in `place_authored_fills` (lines 1119 and 1874).
 Ruling: none needed: same rule
 Found: 2026-10-30, wave 2 scout R5.
@@ -71,7 +71,7 @@ Found: 2026-10-03, session cebf3006; listed 2026-10-30, wave 2 scout R2.
 Rule: When no chord sits after a written fill's end, the game's backward search restarts at its start index, which is 0 for written fills. So it returns chord 0 of the song, if that chord is before the end tick, with no bound test. The record's wording, "takes the chord before however far", is wrong for this side. Hydra drops the fill.
 Label: Proven in the game's code
 Evidence: `code/6142/nearest_chord_5DE030.asm` lines 28 to 32 (the start index swapped in when the after side is -1) and 61 to 69 (the before chord returned with no bound test); `code/6142/back_search_2C7CE00.asm` lines 20 to 34; the start index is the constant 0 at `code/6142/fill_to_activation_20CFF60.asm` line 93 (wave 2 scout R2, R2-12). This is a reading of a loop nobody ran.
-Game code (6142): RVA `0x5DE030` lines 28 to 69; the backward helper `0x2C7CE00` lines 20 to 34.
+Game code (6142): RVA `0x5DE030` lines 28 to 69; the backward helper 0x2C7CE00 lines 20 to 34.
 Hydra: `place_authored_fills` in src/parse/song.cpp lines 380 to 383 drop the fill.
 Ruling: D30: "Clone Hero's unbounded one-side fallback (B2) is not adopted." It does not say which chord the game takes on this side, but Hydra drops the fill on both sides, so the ruling covers it.
 Found: 2026-10-30, wave 2 scout R2.
@@ -183,7 +183,7 @@ Found: 2026-10-30, wave 2 scout R2.
 Rule: When no chord sits after a measure line, the game's "chord before the line" is searched downward from the carried start index, so it finds the last chord that took a fill, not the song's last chord. That chord is far from the line, so the line is skipped. Hydra takes the song's true last chord, which can be a few ticks before the line and take a fill.
 Label: Proven in the game's code
 Evidence: `code/6142/nearest_chord_loop_5DDB50.asm` lines 29 to 45 (the start index swapped in when the after side is -1, then the before chord returned); `code/6142/back_search_2C7CE00.asm` lines 20 to 34; `code/6142/fill_generator_20D2B30.asm` lines 116 to 126 (the distance test then fails) (wave 2 scout R2, R2-21). Scout R5 (R5-09) read the same lines and labelled them unchecked, because it read only the first 70 lines of the enumerator constructor `0x5FB640`; scout R2 read that constructor and its `MoveNext` `0xFEC570` (in `code/6142/back_search_2C7CE00.md`), so the code label holds. No run has shown it.
-Game code (6142): RVA `0x5DDB50` lines 29 to 45; RVA `0x2C7CE00` lines 20 to 34; RVA `0x20D2B30` lines 98 to 126.
+Game code (6142): RVA `0x5DDB50` lines 29 to 45; RVA 0x2C7CE00 lines 20 to 34; RVA `0x20D2B30` lines 98 to 126.
 Hydra: `Song::place_fills_ch11` in src/core/song.cpp lines 199 to 209 (the last chord when nothing follows the line).
 Ruling: open split: see questions page Q-36
 Found: 2026-10-30, wave 2 scouts R2 and R5.
@@ -212,7 +212,7 @@ Found: 2026-10-12, the fill evidence read; listed 2026-10-30, wave 2 scout R2.
 
 Rule: The half meter the deadline tests is `#8288+0x1B8`, twice a base derived from the resolution times 7.5; the full meter at `+0x1B0` is four times that base, so a full bar is 30 times the resolution when that product is whole.
 Label: Proven in the game's code
-Evidence: `code/6142/engine_ctor_20F79E0.asm` lines 162 to 170 (the multiply by 7.5 at line 162 and the store to `+0x1b8` at line 168) (wave 2 scout R2, R2-24; the line numbers re-read in scout R4's canonical listing). A scorestats file of Trippin SP Spike has `sp_bar_ticks` 5760, which is 4 x (192 x 7.5). What the call to `0x2C49A60` in between does was not read.
+Evidence: `code/6142/engine_ctor_20F79E0.asm` lines 162 to 170 (the multiply by 7.5 at line 162 and the store to `+0x1b8` at line 168) (wave 2 scout R2, R2-24; the line numbers re-read in scout R4's canonical listing). A scorestats file of Trippin SP Spike has `sp_bar_ticks` 5760, which is 4 x (192 x 7.5). What the call to 0x2C49A60 in between does was not read.
 Game code (6142): the base engine constructor, RVA `0x20F79E0`, `code/6142/engine_ctor_20F79E0.asm` lines 162 to 170.
 Hydra: none here; the meter size is page 5's row.
 Ruling: none needed: page 5 owns the meter size
@@ -220,10 +220,10 @@ Found: 2026-10-30, wave 2 scout R2.
 
 ### FL-22 What the long at engine+0x108 holds
 
-Rule: The deadline adds `+0x300` to the engine field at `#8288+0x108`, which scout R2 calls the current tick. Wave 1 scout H7b reads the same field as the song clock in whole milliseconds.
+Rule: The deadline adds `+0x300` to the engine field at #8288+0x108, which scout R2 calls the current tick. Wave 1 scout H7b reads the same field as the song clock in whole milliseconds.
 Label: Unknown
 Evidence: only the add at `code/6142/fill_deadline_20DDB70.asm` lines 24 to 26; `+0x108` is not among the fields named in `il2cpp-fields.md`, and its writer was not looked for (wave 2 scout R2, R2-25). Wave 1 scout H7b (H7b-09) took "whole milliseconds" from a 2026-09-25 transcript. A tick compare against fill start ticks fits R2's reading; neither is proven.
-Game code (6142): field `#8288+0x108`; its writer was not read.
+Game code (6142): field #8288+0x108; its writer was not read.
 Hydra: no owner
 Ruling: none needed: no Hydra rule depends on it
 Found: 2026-10-30, wave 2 scout R2.
@@ -265,7 +265,7 @@ Found: 2026-10-28, session f756d547.
 Rule: The grid is built beat by beat from tick 0 to the song's end, each step trunc(resolution x 4.0 / denominator) ticks. A new measure begins on the first beat at or after a time-signature change, where a change means the numerator or the denominator differs from the previous beat's signature; the beat and measure counters go back to zero there. Only measure lines go into the list the generator reads. The end is the song-end call `0x212E130`, so measure lines past the last chord exist.
 Label: Proven in the game's code
 Evidence: `code/6142/grid_restart_20DACA0.asm` lines 24 to 33 (the song-end call), 66 to 106 (the signature in force), 107 to 126 (the change test and the reset), 127 to 136 (the wrap), 185 to 192 (the step) and 193 and 194 (the stop); `code/6142/grid_add_line_20CF2B0.asm` lines 107 to 119 (only kind 0 adds a measure line) (wave 2 scout R2, R2-26 and R2-27; wave 1 scout H4, H4-20). The 4.0 is a `.rdata` value with no name in `constants.py`, and the kinds 1 and 2 as "beat" and "sub-beat" are the scout's reading.
-Game code (6142): the grid builder of class #8257 (scrambled name), RVA `0x20DACA0`, `code/6142/grid_restart_20DACA0.asm` lines 24 to 198; RVA `0x20CF2B0` lines 107 to 119.
+Game code (6142): the grid builder of class #8257 (scrambled name), RVA `0x20DACA0`, `code/6142/grid_restart_20DACA0.asm` lines 24 to 198; RVA 0x20CF2B0 lines 107 to 119.
 Hydra: `MeasureIndex` in src/core/timing.h line 120 and `MeasureIndex::first_measure_line_at_or_after` in src/core/timing.cpp line 196; `Song::place_fills_ch11` stops at the last reachable chord.
 Ruling: D230: chose "CH's grid, everywhere (Recommended)" to "Hydra has one measure grid ...".
 Found: 2026-10-12, session 28fad19c; listed 2026-10-30, wave 2 scout R2.
@@ -297,7 +297,7 @@ Found: 2026-10-30, wave 2 scout R5.
 Rule: The list the builder tests belongs to one (instrument, difficulty) track. A fill written for Expert only does not stop generation on Hard, unless the reader also adds it to Hard's track. The `.chart` reader adds a fill to its own section's track; what the `.mid` reader does with note 120 across the four difficulties is not known.
 Label: Unknown
 Evidence: `code/6142/note_builder_20D2EA0.asm` lines 36 to 62 and `code/6142/track_lookup_20CFD40.asm` lines 31 to 44 (index = instrument x a static + difficulty); the `.chart` side is the decompile lines 25570 to 25594 (wave 2 scout R5, R5-05; R2, R2-15; wave 1 scout H4, H4-08). The scouts proved the per-track list; the block stays Unknown because the `.mid` half, which most charts use, was not read, and Hydra's side was not checked.
-Game code (6142): the track lookup `0x20CFD40`; the `.chart` reader `0x213E0C0`; the `.mid` reader `0x2155050`, not read for this.
+Game code (6142): the track lookup 0x20CFD40; the `.chart` reader `0x213E0C0`; the `.mid` reader `0x2155050`, not read for this.
 Hydra: `Song::check_activations` in src/core/song.cpp line 105 runs once per loaded difficulty; whether the `.mid` parser hands every difficulty the same fills was not checked.
 Ruling: none found
 Found: 2026-10-30, wave 2 scout R5.

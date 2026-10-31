@@ -15,4 +15,4 @@ Plain words: for every note in the list it clears two flag bits. Nothing is adde
 
 The `int8` second parameter is never read in this listing (no use of `dl`/`sil`/`edx` as a value; line 20 reuses `edx` as the index argument).
 
-Who calls it: only `0x20D2EA0` (the chart builder), at `0x20D3301` (found by scanning the `il2cpp` section for call and jmp instructions to this RVA, 2026-10-30), and only on the branch where the instrument byte is not 9 (`docs/audit/note-shuffle/step0/open2-refute/f20D2EA0.asm` lines 245 to 253: `cmp sil, 9; jne` to the call at `0x20D32F2` of `0x20F16E0`, then this call).
+Who calls it: only `0x20D2EA0` (the chart builder), at 0x20D3301 (found by scanning the `il2cpp` section for call and jmp instructions to this RVA, 2026-10-30), and only on the branch where the instrument byte is not 9 (`docs/audit/note-shuffle/step0/open2-refute/f20D2EA0.asm` lines 245 to 253: `cmp sil, 9; jne` to the call at 0x20D32F2 of `0x20F16E0`, then this call).

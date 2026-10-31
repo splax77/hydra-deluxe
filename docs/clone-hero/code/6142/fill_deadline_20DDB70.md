@@ -18,6 +18,6 @@ Plain words: just before the engine adds `amount` ticks of Star Power, if that a
 - Lines 53 to 58: next index, re-fetch the list, loop (the compare at line 32).
 - Lines 59: store the index; lines 60 to 69: the tail jump to the base method. Lines 70 to 71: null exit.
 
-The `0x20DF7B7` instruction is not in this function. It is inside the drum engine constructor `0x20DF680` (class `#8255`, `.ctor`), at line 68 of `engine_ctor_20DF680.asm`: `shl rax, 2` just after `cvttsd2si rax, [chart+0xb8]` (line 57). The next instruction (line 69) stores the result into `[engine+0x300]`.
+The 0x20DF7B7 instruction is not in this function. It is inside the drum engine constructor `0x20DF680` (class `#8255`, `.ctor`), at line 68 of `engine_ctor_20DF680.asm`: `shl rax, 2` just after `cvttsd2si rax, [chart+0xb8]` (line 57). The next instruction (line 69) stores the result into `[engine+0x300]`.
 
 Who calls it: no direct call found (scan of the `il2cpp` section, 2026-10-30); it runs as a virtual override, so it is reached through the engine's vtable.
