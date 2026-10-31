@@ -1427,6 +1427,103 @@ int64_t RecordStore::record_count() {
     return sqlite3_column_int64(s, 0);
 }
 
+// ---- the saved hardest figure -------------------------------------------
+
+namespace {
+// The meta row that says the fill has run for profile row `profile_id`
+// (mark_hardest_figure_filled).
+std::string hardest_filled_key(int64_t profile_id) {
+    return "hardest_ms_is_engine_figure." + std::to_string(profile_id);
+}
+}  // namespace
+
+std::vector<int64_t> RecordStore::ready_profile_ids(const Profile& want) {
+    // The profile rows lookup's candidates are filed under (candidate_song_ids
+    // reads the same rows); rank_row then says which are Ready.
+    std::string sql =
+        "SELECT DISTINCT p.id, p.hyversion, p.rules_fp FROM records r"
+        " JOIN profiles p ON p.id = r.profile_id WHERE p.chartmode=?";
+    append_candidate_filter(sql, "p.");
+    Stmt s = prepare_read(db_, sql.c_str());
+    bind_text(s, 1, want.chartmode);
+    bind_candidate_filter(s, 2, want.cap, want.lens);
+    const std::vector<uint8_t> fixed_fp = ready_rules_fp(rules_fingerprint_);
+    std::vector<int64_t> out;
+    while (step_row(s)) {
+        const int64_t id = sqlite3_column_int64(s, 0);
+        // rank_row's last fact is a record's (a failure kind a later build
+        // wrote). A profile row holds no failure, and a failure record keeps
+        // no path rows (failure_record), so it is true here.
+        if (rank_row(column_text(s, 1), column_blob(s, 2), id, fixed_fp, /*kind_known=*/true)
+                .ready())
+            out.push_back(id);
+    }
+    return out;
+}
+
+std::vector<MissingHardestRow> RecordStore::rows_missing_hardest(const Profile& profile) {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    std::vector<MissingHardestRow> out;
+    const std::vector<int64_t> ids = ready_profile_ids(profile);
+    if (ids.empty()) return out;
+    // Which charts the library lists, and the copy that names each, are
+    // ChartIndex's answers.
+    const ChartIndex library = chart_index();
+    const std::string sql =
+        "SELECT song_id, profile_id, rank, path, score, sqin_count, sqout_count"
+        " FROM record_paths WHERE profile_id IN (" + placeholders(ids.size()) +
+        ") AND hardest_ms IS NULL AND sqin_count > 0 ORDER BY song_id, profile_id, rank";
+    Stmt s = prepare_read(db_, sql.c_str());
+    for (size_t i = 0; i < ids.size(); ++i) sqlite3_bind_int64(s, static_cast<int>(i + 1), ids[i]);
+    while (step_row(s)) {
+        MissingHardestRow row;
+        row.song_id = column_text(s, 0);
+        const ChartLibraryEntry* copy = library.naming(row.song_id);
+        if (!copy) continue;
+        row.profile_id = sqlite3_column_int64(s, 1);
+        row.rank = sqlite3_column_int(s, 2);
+        row.path = column_text(s, 3);
+        row.score = sqlite3_column_int64(s, 4);
+        row.sqin_count = sqlite3_column_int(s, 5);
+        row.sqout_count = sqlite3_column_int(s, 6);
+        row.notespath = copy->notespath;
+        row.sig = copy->sig;
+        out.push_back(std::move(row));
+    }
+    return out;
+}
+
+void RecordStore::set_hardest(const std::string& song_id, int64_t profile_id,
+                              const std::vector<HardestFigure>& figures) {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    in_transaction([&] {
+        for (const HardestFigure& f : figures) {
+            CachedStmt s = use_write(db_, stmt_cache_,
+                "UPDATE record_paths SET hardest_ms=?"
+                " WHERE profile_id=? AND song_id=? AND rank=? AND hardest_ms IS NULL");
+            sqlite3_bind_double(s, 1, f.hardest_ms);
+            sqlite3_bind_int64(s, 2, profile_id);
+            bind_text(s, 3, song_id);
+            sqlite3_bind_int(s, 4, f.rank);
+            step_done(s, "set_hardest");
+        }
+    });
+}
+
+bool RecordStore::hardest_figure_filled(const Profile& profile) {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    for (int64_t id : ready_profile_ids(profile))
+        if (!meta_get(hardest_filled_key(id))) return false;
+    return true;
+}
+
+void RecordStore::mark_hardest_figure_filled(const Profile& profile) {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    in_transaction([&] {
+        for (int64_t id : ready_profile_ids(profile)) meta_set(hardest_filled_key(id), "1");
+    });
+}
+
 // ---- chart library ------------------------------------------------------
 
 namespace {

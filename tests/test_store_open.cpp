@@ -1111,3 +1111,159 @@ TEST_CASE("the batch guard sets the checkpoint threshold and truncates the log a
     }
     std::remove(path.c_str());
 }
+
+// ---- the saved hardest figure (rows_missing_hardest, set_hardest) ----------
+
+namespace {
+
+// A path row saved by hand at `rank`, with the figure and squeeze-in count
+// given. The other columns are any values a record may hold.
+PathRow hand_path(int rank, std::optional<double> hardest_ms, int sqin_count) {
+    PathRow p;
+    p.rank = rank;
+    p.path = "1 0+ 0 0";
+    p.score = 100000 - rank;
+    p.actcount = 2;
+    p.hardest_ms = hardest_ms;
+    p.sqin_count = sqin_count;
+    p.sqout_count = 1;
+    p.optimal = rank == 1;
+    return p;
+}
+
+// A record for chart `id` under `profile` that holds `paths`, ready to save.
+PreparedRecord hand_record(const std::string& id, const Profile& profile,
+                           std::vector<PathRow> paths) {
+    PreparedRecord prepared =
+        prepare_record(id, profile, hydra::test::empty_analysis_under(profile));
+    prepared.record.pathcount = static_cast<int>(paths.size());
+    prepared.record.paths = std::move(paths);
+    return prepared;
+}
+
+// The figures chart `id`'s Ready record under `profile` holds, in rank order.
+std::vector<std::optional<double>> saved_figures(RecordStore& store, const std::string& id,
+                                                 const Profile& profile) {
+    const RecordLookup found = store.lookup_one(id, profile);
+    REQUIRE(found.status == RecordStatus::Ready);
+    std::vector<std::optional<double>> out;
+    for (const PathRow& p : found.record.paths) out.push_back(p.hardest_ms);
+    return out;
+}
+
+}  // namespace
+
+TEST_CASE("rows missing the hardest figure: a Ready row with an empty figure and a squeeze-in "
+          "is a candidate") {
+    RecordStore store(":memory:");
+    const Profile profile = hydra::test::at4();
+    // Chart "ready" is listed twice; the first copy names it.
+    ChartLibraryEntry second_copy = library_row("ready", "Ready");
+    second_copy.notespath = "C:\\copy\\ready\\notes.chart";
+    second_copy.sig = "sig-copy";
+    store.rebuild_chart_library({library_row("ready", "Ready"), second_copy,
+                                 library_row("stale", "Stale"), library_row("rules", "Rules")});
+    // Rank 1 is the candidate; rank 2 holds a figure and rank 3 has no
+    // squeeze-in.
+    store.save(hand_record("ready", profile,
+                           {hand_path(1, std::nullopt, 1), hand_path(2, -315.8, 1),
+                            hand_path(3, std::nullopt, 0)}));
+    // Each of these has the candidate's shape and is left out: another
+    // build's row, a row under other rules, and a chart the library does not
+    // list.
+    hydra::test::save_old_build_record(store,
+                                       hand_record("stale", profile, {hand_path(1, std::nullopt, 1)}));
+    PreparedRecord other_rules = hand_record("rules", profile, {hand_path(1, std::nullopt, 1)});
+    other_rules.rules_fp = hydra::test::other_rules().fingerprint();
+    store.save(other_rules);
+    store.save(hand_record("gone", profile, {hand_path(1, std::nullopt, 1)}));
+    REQUIRE(store.lookup_one("stale", profile).status == RecordStatus::Stale);
+    REQUIRE(store.lookup_one("rules", profile).status == RecordStatus::Stale);
+    REQUIRE(store.lookup_one("gone", profile).status == RecordStatus::Ready);
+
+    const std::vector<MissingHardestRow> rows = store.rows_missing_hardest(profile);
+    REQUIRE(rows.size() == 1);
+    CHECK(rows[0].song_id == "ready");
+    CHECK(rows[0].profile_id > 0);
+    CHECK(rows[0].rank == 1);
+    CHECK(rows[0].path == "1 0+ 0 0");
+    CHECK(rows[0].score == 99999);
+    CHECK(rows[0].sqin_count == 1);
+    CHECK(rows[0].sqout_count == 1);
+    CHECK(rows[0].notespath == "C:\\charts\\ready\\notes.chart");
+    CHECK(rows[0].sig == "sig-ready");
+}
+
+TEST_CASE("set_hardest writes one chart's rows together") {
+    RecordStore store(":memory:");
+    const Profile profile = hydra::test::at4();
+    store.rebuild_chart_library({library_row("a", "A")});
+    store.save(hand_record("a", profile,
+                           {hand_path(1, std::nullopt, 1), hand_path(2, std::nullopt, 2),
+                            hand_path(3, 12.5, 1)}));
+    const std::vector<MissingHardestRow> before = store.rows_missing_hardest(profile);
+    REQUIRE(before.size() == 2);
+    CHECK(before[0].rank == 1);
+    CHECK(before[1].rank == 2);
+
+    // Rank 3 already holds a figure, which the write leaves alone.
+    store.set_hardest("a", before[0].profile_id, {{1, 0.0}, {2, -315.8}, {3, 99.0}});
+    CHECK(store.rows_missing_hardest(profile).empty());
+    CHECK(saved_figures(store, "a", profile) ==
+          std::vector<std::optional<double>>{0.0, -315.8, 12.5});
+}
+
+TEST_CASE("the hardest-figure marker is per profile: unset at first, set for one profile after "
+          "it is recorded, still unset for another, and it survives a reopen") {
+    const std::string path = testtemp::temp_path("hardest_marker", ".db");
+    remove_db(path);
+    const Profile filled = hydra::test::at4("filled");
+    const Profile other = hydra::test::at4("other");
+    // No record is filed under this one, so it has nothing to fill.
+    const Profile empty = hydra::test::at4("empty");
+    {
+        RecordStore store(path);
+        store.save(hand_record("a", filled, {hand_path(1, std::nullopt, 1)}));
+        store.save(hand_record("a", other, {hand_path(1, std::nullopt, 1)}));
+        CHECK_FALSE(store.hardest_figure_filled(filled));
+        CHECK_FALSE(store.hardest_figure_filled(other));
+        CHECK(store.hardest_figure_filled(empty));
+
+        store.mark_hardest_figure_filled(filled);
+        CHECK(store.hardest_figure_filled(filled));
+        CHECK_FALSE(store.hardest_figure_filled(other));
+    }
+    {
+        RecordStore reopened(path);
+        CHECK(reopened.hardest_figure_filled(filled));
+        CHECK_FALSE(reopened.hardest_figure_filled(other));
+    }
+    remove_db(path);
+}
+
+TEST_CASE("rows_missing_hardest for a profile with other rows returns none of theirs") {
+    const std::string path = testtemp::temp_path("hardest_profiles", ".db");
+    remove_db(path);
+    const Profile mine = hydra::test::at4("mine");
+    const Profile theirs = hydra::test::at4("theirs");
+    {
+        RecordStore store(path);
+        store.rebuild_chart_library({library_row("a", "A"), library_row("b", "B")});
+        store.save(hand_record("a", mine, {hand_path(1, std::nullopt, 1)}));
+        store.save(hand_record("b", theirs, {hand_path(1, std::nullopt, 1)}));
+
+        const std::vector<MissingHardestRow> rows = store.rows_missing_hardest(mine);
+        REQUIRE(rows.size() == 1);
+        CHECK(rows[0].song_id == "a");
+        const std::vector<MissingHardestRow> their_rows = store.rows_missing_hardest(theirs);
+        REQUIRE(their_rows.size() == 1);
+        CHECK(their_rows[0].song_id == "b");
+
+        // A profile the store holds no row for has no candidates, and asking
+        // files no profile row for it.
+        CHECK(store.rows_missing_hardest(hydra::test::at4("none")).empty());
+        CHECK(store.hardest_figure_filled(hydra::test::at4("none")));
+        CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM profiles") == 2);
+    }
+    remove_db(path);
+}
