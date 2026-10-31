@@ -27,7 +27,7 @@ Every block carries exactly one of these four labels, and the evidence the label
 
 ## What a block may cite
 
-A block's `Evidence:` and `Found:` lines cite only permanent records. Those are files in the repo (a listing under `code/`, a file under `docs/audit/` or `tools/`, Hydra's code, the decision log, an ADR), session cards and condensed transcripts, and the game's own files and dumps. They never cite an agent's working notes, such as a scout's claim table, or anything in a scratch or temp folder. Those are gone once the session ends, so a reader cannot follow the pointer.
+A block's `Evidence:` and `Found:` lines cite only permanent records. Those are files in the repo (a listing under `code/`, a file under `docs/audit/` or `tools/`, Hydra's code, the decision log, an ADR), session cards and condensed transcripts, and the game's own files and dumps. They never cite an agent's working notes, such as a claim table an agent kept while it worked, or any file in a session's temporary folder. Those are gone once the session ends, so a reader cannot follow the pointer.
 
 When the only record of a fact sat in such a place, open the file it pointed at and cite that instead. If that file is not in the repo, or does not show the rule, the block is Unknown and its evidence line says where we looked. When a file a block names was never kept, the block says so ("the listing was not kept") and does not give its old path.
 
