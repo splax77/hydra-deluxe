@@ -173,16 +173,17 @@ void test_build_a_path_by_clicking(ImGuiTestContext* ctx) {
     IM_CHECK_STR_EQ(figure_under(h, kBestReachLabel).c_str(), "378,175");
 
     // The list names the second fill. Hovering its row moves the Preview's
-    // clock to the fill's span start; moving off puts it back and leaves the
-    // Preview paused, its button still reading Play. From one run: the click
-    // on the first fill left the clock at that fill's span start.
-    const std::string clock_after_one = "0:23.840 / 2:10.088";
+    // clock to the fill's dot, the moment its row and card name; moving off
+    // puts it back and leaves the Preview paused, its button still reading
+    // Play. From one run: the click on the first fill left the clock on that
+    // fill's dot (m20, 0:25.123).
+    const std::string clock_after_one = "0:25.123 / 2:10.088";
     IM_CHECK(on_screen(h, "m40 0:51.421 · 2 phrases · ends m44 −1,580"));
     IM_CHECK(on_screen(h, clock_after_one));
     IM_CHECK_RETV(scroll_side_to(ctx, choice_ref(kSecondFillTick)), );
     ctx->MouseMove(choice_ref(kSecondFillTick).c_str());
     ctx->Yield(2);
-    IM_CHECK(on_screen(h, "0:50.095 / 2:10.088"));
+    IM_CHECK(on_screen(h, "0:51.421 / 2:10.088"));
     IM_CHECK(!on_screen(h, clock_after_one));
     move_off_timeline(ctx);
     IM_CHECK(on_screen(h, clock_after_one));
@@ -207,11 +208,15 @@ void test_build_a_path_by_clicking(ImGuiTestContext* ctx) {
     IM_CHECK_STR_EQ(two_step_score.c_str(), "340,675");
     IM_CHECK_STR_EQ(figure_under(h, kBestReachLabel).c_str(), "376,595");
 
-    // The row click left the clock at the second fill's span start, as a
-    // click on a fill does (the clock row-click-moves-clock pins). "Act >"
-    // jumps the Preview from there, just before the second activation, to
-    // that activation's clock (m40, 0:51.421).
-    IM_CHECK(on_screen(h, "0:50.095 / 2:10.088"));
+    // The row click left the clock on the second fill's dot, as a click on a
+    // fill does (the clock row-click-moves-clock pins): the second
+    // activation's own clock (m40, 0:51.421). "< Act" jumps the Preview from
+    // there back to the first activation's clock (m20, 0:25.123), and "Act >"
+    // forward again to the second's.
+    IM_CHECK(on_screen(h, "0:51.421 / 2:10.088"));
+    ctx->ItemClick(kPrevActRef);
+    ctx->Yield(2);
+    IM_CHECK(on_screen(h, clock_after_one));
     ctx->ItemClick(kNextActRef);
     ctx->Yield(2);
     IM_CHECK(on_screen(h, "0:51.421 / 2:10.088"));
@@ -335,18 +340,18 @@ void test_build_a_path_on_a_long_song(ImGuiTestContext* ctx) {
     IM_CHECK_STR_EQ(figure_under(h, kYourScoreLabel).c_str(), "879,860");
     IM_CHECK_STR_EQ(figure_under(h, kBestReachLabel).c_str(), "944,680");
 
-    // The click left the clock at the fill's span start; the forward jump
-    // carries it past the activation, still inside the window, so the window
-    // stays.
-    IM_CHECK(on_screen(h, "3:14.431" + std::string(kLongSongClockTail)));
+    // The click left the clock on the fill's dot, the card heading's moment;
+    // the forward jump carries it past the activation, still inside the
+    // window, so the window stays.
+    IM_CHECK(on_screen(h, "3:15.859" + std::string(kLongSongClockTail)));
     ctx->ItemClick(jump_forward_ref().c_str());
     IM_CHECK(readout_reads(ctx, "2:59 – 5:59 of 5:59"));
-    IM_CHECK(on_screen(h, "3:19.431" + std::string(kLongSongClockTail)));
+    IM_CHECK(on_screen(h, "3:20.859" + std::string(kLongSongClockTail)));
     // Back to the song's start: the clock stays where it was, outside the
     // window.
     ctx->ItemClick(back.c_str());
     IM_CHECK(readout_reads(ctx, "0:00 – 3:00 of 5:59"));
-    IM_CHECK(on_screen(h, "3:19.431" + std::string(kLongSongClockTail)));
+    IM_CHECK(on_screen(h, "3:20.859" + std::string(kLongSongClockTail)));
     // "< Act" jumps the clock back to the activation, outside the window,
     // and the window comes to it.
     ctx->ItemClick(kPrevActRef);

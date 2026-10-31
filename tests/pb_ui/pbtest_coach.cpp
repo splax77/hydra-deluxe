@@ -191,13 +191,14 @@ void test_tight_window_note(ImGuiTestContext* ctx) {
 
 // The Preview clock's tail on Burnout, the song's length (from one run).
 constexpr const char* kBurnoutClockTail = " / 2:10.088";
-// The first fill's span start as the clock reads it, where a hover or a
-// click on it parks the Preview (from one run).
-constexpr const char* kFirstFillSpanStart = "0:23.840";
+// The first fill's dot as the clock reads it, where a hover or a click on it
+// parks the Preview: the moment its card heading names, "m20 · 0:25.123"
+// (from one run).
+constexpr const char* kFirstFillDot = "0:25.123";
 // How long a check waits for a card whose search is still running.
 constexpr double kCardWaitSeconds = 60.0;
 
-// The Preview's clock as the screen drew it last frame, "0:23.840 / 2:10.088",
+// The Preview's clock as the screen drew it last frame, "0:25.123 / 2:10.088",
 // or empty when it is not drawn.
 std::string burnout_clock(Harness& h) {
     const std::string text = visible_text(h);
@@ -223,7 +224,7 @@ void test_hover_shows_never_plays(ImGuiTestContext* ctx) {
 
     ctx->MouseMove(fill_ref(kFirstFillTick).c_str());
     ctx->Yield(2);
-    IM_CHECK(burnout_clock(h) == std::string(kFirstFillSpanStart) + kBurnoutClockTail);
+    IM_CHECK(burnout_clock(h) == std::string(kFirstFillDot) + kBurnoutClockTail);
     IM_CHECK(on_screen(h, "Play"));
     IM_CHECK(!on_screen(h, "Pause"));
 
@@ -237,7 +238,7 @@ void test_hover_shows_never_plays(ImGuiTestContext* ctx) {
     const std::string second = burnout_clock(h);
     IM_CHECK(!first.empty());
     IM_CHECK_STR_EQ(first.c_str(), second.c_str());
-    IM_CHECK(first.find(kFirstFillSpanStart) == std::string::npos);
+    IM_CHECK(first.find(kFirstFillDot) == std::string::npos);
     IM_CHECK(on_screen(h, "Play"));
     IM_CHECK(!on_screen(h, "Pause"));
 }
@@ -271,8 +272,8 @@ void test_fill_card(ImGuiTestContext* ctx) {
 }
 
 // One activation on Burnout, then a click on the second fill's list row: once
-// the pointer leaves the list, the clock stays on that fill's span start
-// (bar question 7: a row click moves the Preview's clock, like a fill click).
+// the pointer leaves the list, the clock stays on that fill's dot (bar
+// question 7: a row click moves the Preview's clock, like a fill click).
 void test_row_click_moves_clock(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     IM_CHECK_RETV(open_chart(ctx, corpus::burnout_notes()), );
@@ -281,8 +282,9 @@ void test_row_click_moves_clock(ImGuiTestContext* ctx) {
     ctx->ItemClick(choice_ref(kSecondFillTick).c_str());
     IM_CHECK_RETV(wait_for_edit(ctx), );
     move_off_timeline(ctx);
-    // From one run: the second fill's span start.
-    IM_CHECK_STR_EQ(burnout_clock(h).c_str(), "0:50.095 / 2:10.088");
+    // From one run: the second fill's dot, the moment its row names
+    // ("m40 0:51.421").
+    IM_CHECK_STR_EQ(burnout_clock(h).c_str(), "0:51.421 / 2:10.088");
 }
 
 }  // namespace

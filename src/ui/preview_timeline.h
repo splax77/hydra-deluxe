@@ -1,7 +1,7 @@
 // The Preview's timeline: one row per kind of thing in a PreviewScene, laid
 // out over one width through a window on the song (TimelineView), each x from
-// the view's fraction (ui/timeline_view.h), with the whole-song overview strip
-// above it and the scrollbar under it. The layouts and the hit test are
+// the view's fraction (ui/timeline_view.h), with the scrollbar under it, the
+// one control over the whole song. The layouts and the hit test are
 // pure, so they run with no ImGui context; the drawing is thin over them. The
 // scrub bar's gold marks and the score box's star glyph are drawn here too,
 // so one place owns that geometry.
@@ -265,7 +265,8 @@ struct TimelineLayout {
 std::string timeline_fill_id(int64_t chord_tick);
 
 // The moment the timeline puts `fill` at: the end of its span. The Fills row,
-// the strip and a screen that scrolls to a fill all read it here.
+// a screen that scrolls to a fill, and a screen that moves the Preview's clock
+// to a fill (so the clock line sits on the fill's dot) all read it here.
 double timeline_fill_ms(const app::PreviewFill& fill);
 
 // Lay the scene of a song `length_ms` long (the Preview's playback end) out
@@ -291,11 +292,6 @@ struct TimelineHit {
 };
 TimelineHit timeline_hit(const TimelineLayout& layout, float x, float y);
 
-// The overview strip above the rows (the third mockup's `.ovrow`, line 247):
-// its name in the label column and the small line under it.
-inline constexpr const char* kTimelineStripLabel = "Whole song";
-inline constexpr const char* kTimelineStripHint = "click or drag the white frame";
-
 // The scrollbar under the rows (line 249): the words in its label column, the
 // two buttons (the glyphs U+25C0 and U+25B6, which Hydra draws from the
 // fallback font, ui/fallback_fonts.h) and their hover hints.
@@ -305,68 +301,8 @@ inline constexpr const char* kScrollForwardLabel = "\xE2\x96\xB6##scrollforward"
 inline constexpr const char* kScrollBackHint = "Back one window";
 inline constexpr const char* kScrollForwardHint = "Forward one window";
 
-// The item names a GUI test finds the strip and the scrollbar's bar by.
-inline constexpr const char* kTimelineStripId = "##strip";
+// The item name a GUI test finds the scrollbar's bar by.
 inline constexpr const char* kTimelineScrollbarId = "##scrollbar";
-
-// The strip's colour for a fill that is neither taken nor offered with a
-// tint: the third mockup's #5a5e66 (renderStrip, line 684).
-inline constexpr ImU32 kStripFillGrey = IM_COL32(0x5a, 0x5e, 0x66, 0xff);
-
-// The strip's sizes in pixels, inside its 1 px border: its inner height, how
-// far down a fill's bar starts, how tall and wide it is, how far up from the
-// bottom an activation's bar ends and how tall it is, and the frame's least
-// width. strip_metrics() gives the screen's.
-struct StripMetrics {
-    float height = 0.0f;
-    float fill_top = 0.0f;
-    float fill_h = 0.0f;
-    float fill_w = 0.0f;
-    float act_bottom = 0.0f;
-    float act_h = 0.0f;
-    float frame_min_w = 0.0f;
-};
-
-// The mockup's strip sizes (lines 102 to 112) at the current font size or
-// the display's scale. Call it inside a frame.
-StripMetrics strip_metrics();
-
-// One section's stripe on the strip, shaded as the Section row shades it.
-struct StripStripe {
-    TimelineRect rect;
-    bool shaded = false;
-};
-
-// One fill's bar on the strip: its index in the scene's fills, its rectangle
-// and its colour: the drawn path's colour for a Taken fill, the caller's tint
-// for an Offered one that has a tint, kStripFillGrey for every other fill
-// (the third mockup's renderStrip, line 684).
-struct StripFill {
-    size_t fill = 0;
-    TimelineRect rect;
-    ImU32 col = 0;
-};
-
-// The strip: the whole song over `width` pixels at once (each x is
-// app::song_fraction's), every section, fill and activation on it, the frame
-// around the window, and the playhead's x.
-struct StripLayout {
-    float width = 0.0f;
-    float height = 0.0f;
-    std::vector<StripStripe> sections;
-    std::vector<StripFill> fills;
-    std::vector<TimelineBand> bands;
-    TimelineRect frame;
-    float playhead_x = 0.0f;
-};
-
-// Lay the strip out for the scene of a song `length_ms` long, the window
-// `view` and the playhead at `position_ms`, with the fills' looks from
-// `marks` as the timeline gives them. No value when app::has_song_length
-// refuses the length.
-std::optional<StripLayout> strip_layout(const app::PreviewScene& scene, double length_ms, TimelineView view,
-                                        double position_ms, float width, const StripMetrics& metrics,
-                                        const TimelineFillMarks& marks = {});
 
 // The scrollbar's bar, `width` by `height` pixels inside its border: the
 // thumb's rectangle (thumb()'s shares of the width, at least `thumb_min_w`
@@ -400,23 +336,19 @@ struct TimelineEvents {
     std::optional<size_t> clicked_fill;
     std::optional<size_t> clicked_band;
     std::optional<double> clicked_ms;  // a click anywhere else on the rows
-    // The window the user asked for this frame through the strip, the
-    // scrollbar or the wheel over the rows: on a press, a button, a wheel
-    // notch, or a frame or thumb drag the pointer moved in, even when the
-    // window could not move. The caller keeps the window; the timeline only
-    // reports.
+    // The window the user asked for this frame through the scrollbar or the
+    // wheel over the rows: on a press, a button, a wheel notch, or a thumb
+    // drag the pointer moved in, even when the window could not move. The
+    // caller keeps the window; the timeline only reports.
     std::optional<TimelineView> view;
 };
 
 // The timeline as ImGui items at the cursor, the ImGui window's width wide.
-// On top, the overview strip: a label column, then the strip
-// (kTimelineStripId) over strip_layout. A press on the strip's frame drags
-// the window with the pointer; a press anywhere else on it centres the window
-// there (the third mockup, lines 715 to 728). Then the rows: a label column
-// and the rows over timeline_layout, clipped to the rows' rectangle. Each
-// fill in view is an InvisibleButton named timeline_fill_id(chord_tick) over
-// its hit box. A wheel notch over the rows moves the window a wheel() notch
-// (line 729). Last, the scrollbar: its label, the back button, the bar
+// First the rows: a label column and the rows over timeline_layout, clipped
+// to the rows' rectangle. Each fill in view is an InvisibleButton named
+// timeline_fill_id(chord_tick) over its hit box. A wheel notch over the rows
+// moves the window a wheel() notch (the third mockup, line 729). Then the
+// scrollbar, the one control over the whole song: its label, the back button, the bar
 // (kTimelineScrollbarId), whose thumb drags and where a press beside the thumb
 // moves one window, the forward button and the readout (lines 701 to 714).
 // Draws nothing when the layout has no value.

@@ -672,7 +672,7 @@ void PbApp::draw_timeline(const OpenChart& chart) {
 
     const ui::TimelineEvents ev = ui::PreviewTimeline{}.draw(in);
 
-    // The strip, the scrollbar or the wheel moved the window by hand; while
+    // The scrollbar or the wheel moved the window by hand; while
     // playing, that stops the window following the playhead until Play is
     // pressed again (the third mockup's setView with byUser).
     if (ev.view) {
@@ -681,10 +681,11 @@ void PbApp::draw_timeline(const OpenChart& chart) {
     }
 
     // While the pointer is on a fill, or on its row in the list, the highway
-    // shows it, paused, with the fill's start on the strike line (the user's
-    // answer Q4); when the pointer leaves, the Preview goes back to the time
-    // it had and stays paused, so only Play or Space starts sound (the third
-    // mockup's answers.md, answer 1).
+    // shows it, paused, with the clock on the fill's dot (ui::timeline_fill_ms,
+    // plan 3's "RA-6 changes"), so its note is on the strike line; when the
+    // pointer leaves, the Preview goes back to the time it had and stays
+    // paused, so only Play or Space starts sound (the third mockup's
+    // answers.md, answer 1).
     const std::optional<size_t> hovered =
         ev.hovered_fill && *ev.hovered_fill < scene.fills.size() ? ev.hovered_fill : in.highlighted;
     if (hovered) {
@@ -692,7 +693,7 @@ void PbApp::draw_timeline(const OpenChart& chart) {
             hover_return_ms_ = preview_->position_ms();
             preview_->pause();
         }
-        if (hovered_fill_ != hovered) preview_->seek_ms(scene.fills[*hovered].span.start_ms);
+        if (hovered_fill_ != hovered) preview_->seek_ms(ui::timeline_fill_ms(scene.fills[*hovered]));
         hovered_fill_ = hovered;
     } else if (hovered_fill_) {
         hovered_fill_.reset();
@@ -767,9 +768,9 @@ void PbApp::click_fill(const OpenChart& chart, size_t index) {
     const app::PreviewScene& scene = preview_->scene();
     if (index >= scene.fills.size()) return;
     const PreviewFill& f = scene.fills[index];
-    // Whatever the click does, the Preview's clock stays on the fill when the
-    // pointer leaves it (draw_timeline's hover block).
-    hover_return_ms_ = f.span.start_ms;
+    // Whatever the click does, the Preview's clock stays on the fill's dot
+    // when the pointer leaves it (draw_timeline's hover block).
+    hover_return_ms_ = ui::timeline_fill_ms(f);
     if (f.state == app::PreviewFillState::Taken) {
         // The step standing on this fill is the one whose taken_fill is it.
         for (size_t k = 0; k < scene.activations.size(); ++k) {

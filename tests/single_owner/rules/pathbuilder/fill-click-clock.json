@@ -2,26 +2,29 @@
   "rules": [
     {
       "question": "Where does the Preview's clock go when a fill is clicked?",
-      "owner": "PbApp::click_fill in src/pathbuilder/pb_window.cpp, which sets hover_return_ms_ for the timeline, the highway and a list row alike",
+      "owner": "PbApp::click_fill in src/pathbuilder/pb_window.cpp, which sets hover_return_ms_ to the fill's dot (ui::timeline_fill_ms) for the timeline, the highway and a list row alike",
       "owner_file": "src/pathbuilder/pb_window.cpp",
       "owner_symbol": "click_fill",
       "date": "2026-10-31",
-      "decision": "docs/superpowers/specs/2026-10-31-path-builder-mockup-3/answers.md, bar question 7: a row click moves the Preview's clock to the fill, like a fill click; found by the SC-4a review",
+      "decision": "docs/superpowers/specs/2026-10-31-path-builder-mockup-3/answers.md, bar question 7: a row click moves the Preview's clock to the fill, like a fill click; found by the SC-4a review. The moment is the fill's dot: docs/superpowers/plans/2026-10-31-path-builder-redesign-3.md, \"RA-6 changes (2026-10-31)\"",
       "added_by": "PBR3-SC4A-REV",
       "anchor": "hover_return_ms_",
-      "pattern": "\\bhover_return_ms_\\s*=\\s*[^;]*span\\.start_ms",
+      "pattern": "\\bhover_return_ms_\\s*=\\s*[^;]*(\\bspan\\.|\\btimeline_fill_ms\\s*\\()",
       "must_match": [
         "hover_return_ms_ = scene.fills[*ev.clicked_fill].span.start_ms;",
-        "hover_return_ms_ = f.span.start_ms;"
+        "hover_return_ms_ = f.span.start_ms;",
+        "hover_return_ms_ = f.span.end_ms;",
+        "hover_return_ms_ = ui::timeline_fill_ms(scene.fills[*ev.clicked_fill]);"
       ],
       "must_not_match": [
         "hover_return_ms_ = preview_->position_ms();",
+        "preview_->seek_ms(ui::timeline_fill_ms(scene.fills[*hovered]));",
         "preview_->seek_ms(scene.fills[*hovered].span.start_ms);"
       ],
       "owner_lines": [
         {
           "file": "src/pathbuilder/pb_window.cpp",
-          "line_text": "hover_return_ms_ = f.span.start_ms;",
+          "line_text": "hover_return_ms_ = ui::timeline_fill_ms(f);",
           "why": "click_fill, the owner"
         }
       ],
@@ -42,7 +45,7 @@
         "src/pathbuilder/pb_window.cpp",
         "src/pathbuilder/pb_window.h"
       ],
-      "note": "Every way of clicking a fill ends in PbApp::click_fill, which parks the clock the hover returns to on the fill's span start. A caller that sets hover_return_ms_ to the fill's start before calling it is saying that a second time. The hover block's own writes (the position on entering, a band click's position) are different questions and do not match. A scope names a top folder or a single file (OwnerRule::scope), so the row lists each file under src/pathbuilder; a new file there joins the list."
+      "note": "Every way of clicking a fill ends in PbApp::click_fill, which parks the clock the hover returns to on the fill's dot. A caller that sets hover_return_ms_ to the fill's moment before calling it, through the owner of that moment or from the span by hand, is saying that a second time. The hover block's own writes (the position on entering, a band click's position) are different questions and do not match. A scope names a top folder or a single file (OwnerRule::scope), so the row lists each file under src/pathbuilder; a new file there joins the list."
     }
   ]
 }

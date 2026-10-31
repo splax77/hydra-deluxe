@@ -3,8 +3,8 @@
 // Pure arithmetic over milliseconds, with no ImGui, so the tests run it with
 // no context. The spec is the third mockup's script
 // (docs/superpowers/specs/2026-10-31-path-builder-mockup-3/mockup_template.html);
-// each function names the line it follows. The whole-song share the overview
-// strip and the scrubber use stays app::song_fraction's.
+// each function names the line it follows. The whole-song share the scrubber
+// uses stays app::song_fraction's.
 #pragma once
 
 #include <string>
@@ -80,13 +80,12 @@ double fraction(TimelineView view, double ms);
 // The moment `share` of the way across the window: fraction run backwards, so
 // ms_at(view, fraction(view, ms)) is `ms` again. Not held to the window or the
 // song; a caller that needs a moment inside them clamps. A point on the
-// timeline, on the strip or on the scrollbar becomes a moment through here
-// (the strip and the scrollbar read the whole song as one window,
-// whole_song_view).
+// timeline or on the scrollbar becomes a moment through here (the scrollbar
+// reads the whole song as one window, whole_song_view).
 double ms_at(TimelineView view, double share);
 
-// The whole song as one window: from 0, `length_ms` long. The overview strip
-// and the scrollbar lay the song out over their width with it.
+// The whole song as one window: from 0, `length_ms` long. The scrollbar lays
+// the song out over its width with it.
 TimelineView whole_song_view(double length_ms);
 
 // Is `ms` inside the window, its ends included (inView, line 358)?

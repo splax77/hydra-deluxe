@@ -77,10 +77,9 @@ void test_open_starts_empty(ImGuiTestContext* ctx) {
     IM_CHECK(on_screen(h, "0:00.000"));
     IM_CHECK(on_screen(h, "Step 1."));
     // Burnout is shorter than the window, so the window is the whole song
-    // (plan 3's Q1): the scrollbar's readout, from one run. The strip and the
-    // scrollbar's names are on screen.
+    // (plan 3's Q1): the scrollbar's readout, from one run. The scrollbar's
+    // name is on screen.
     IM_CHECK(on_screen(h, "0:00 – 2:10 of 2:10"));
-    IM_CHECK(on_screen(h, hydra::ui::kTimelineStripLabel));
     IM_CHECK(on_screen(h, hydra::ui::kTimelineScrollLabel));
     // The list and the legend's new entries; the timeline's caption sits in
     // the label column; no cost line under the Fills row, and no highway of
@@ -187,10 +186,9 @@ void drag(ImGuiTestContext* ctx, ImVec2 from, ImVec2 to) {
 }
 
 // The timeline scrolled by hand on a song longer than its window, nothing
-// playing: the scrollbar's two buttons, a wheel notch over the rows, a press
-// on the strip beside its frame, a drag of the frame, a drag of the
-// scrollbar's thumb, and the hover of a list row whose fill is off screen.
-// Each step reads the scrollbar's readout, from one run.
+// playing: the scrollbar's two buttons, a wheel notch over the rows, a drag
+// of the scrollbar's thumb, and the hover of a list row whose fill is off
+// screen. Each step reads the scrollbar's readout, from one run.
 void test_scroll_the_timeline(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     h.chart_arg = long_song_notes();
@@ -209,13 +207,10 @@ void test_scroll_the_timeline(ImGuiTestContext* ctx) {
         return shown;
     };
     IM_CHECK(reads("0:00 – 3:00 of 5:59"));
-    IM_CHECK(on_screen(h, hydra::ui::kTimelineStripLabel));
-    IM_CHECK(on_screen(h, hydra::ui::kTimelineStripHint));
     IM_CHECK(on_screen(h, hydra::ui::kTimelineScrollLabel));
 
     const std::string forward = any_ref(hydra::ui::kScrollForwardLabel);
     const std::string back = any_ref(hydra::ui::kScrollBackLabel);
-    const std::string strip = any_ref(hydra::ui::kTimelineStripId);
     const std::string bar = any_ref(hydra::ui::kTimelineScrollbarId);
     ctx->SetRef(h.home_ref.c_str());
 
@@ -232,24 +227,8 @@ void test_scroll_the_timeline(ImGuiTestContext* ctx) {
     ctx->MouseWheelY(-1.0f);
     IM_CHECK(reads("1:00 – 4:00 of 5:59"));
 
-    // A press on the strip beside the frame centres the window there. The
-    // frame covers about the strip's first half while the window is at the
-    // start, and a strip's midpoint is always inside a frame this wide, so
-    // the press lands at five eighths of the strip.
-    ctx->ItemClick(back.c_str());
-    IM_CHECK(reads("0:00 – 3:00 of 5:59"));
-    ctx->MouseMoveToPos(point_across(ctx, strip, 0.625f));
-    ctx->MouseClick(ImGuiMouseButton_Left);
-    IM_CHECK(reads("2:14 – 5:14 of 5:59"));
-
-    // A drag of the frame, a tenth of the strip to the right, moves the
-    // window later by about a tenth of the song.
-    ctx->ItemClick(back.c_str());
-    IM_CHECK(reads("0:00 – 3:00 of 5:59"));
-    drag(ctx, point_across(ctx, strip, 0.25f), point_across(ctx, strip, 0.35f));
-    IM_CHECK(reads("0:36 – 3:36 of 5:59"));
-
-    // A drag of the scrollbar's thumb does the same.
+    // A drag of the scrollbar's thumb, a tenth of the bar to the right, moves
+    // the window later by about a tenth of the song.
     ctx->ItemClick(back.c_str());
     IM_CHECK(reads("0:00 – 3:00 of 5:59"));
     drag(ctx, point_across(ctx, bar, 0.25f), point_across(ctx, bar, 0.35f));

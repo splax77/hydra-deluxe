@@ -241,7 +241,7 @@ float inside_start(float center, float w, float width) {
     return std::max(0.0f, std::min(center - w * 0.5f, width - w));
 }
 
-// One section the Section row and the strip show: its index in the scene's
+// One section the Section row shows: its index in the scene's
 // sections, the stretch until the next section (or the song's end), and its
 // shade. The hidden section is left out, and the shade alternates over the
 // sections shown (TimelineSection says why).
@@ -603,46 +603,12 @@ TimelineMetrics timeline_metrics() {
 
 namespace {
 
-// The strip and the scrollbar, from the third mockup,
+// The scrollbar, from the third mockup,
 // docs/superpowers/specs/2026-10-31-path-builder-mockup-3/mockup_template.html.
-// --line, --text and --muted are its line 11; --sp is kTimelinePathColor.
+// --line, --text and --muted are its line 11.
 constexpr ImU32 kLineColor = rgba(0x3a, 0x3d, 0x44, 1.0f);  // --line
 constexpr ImU32 kTextColor = rgba(0xe8, 0xe8, 0xe8, 1.0f);  // --text
-constexpr float kBorderW = 1.0f;  // `border:1px solid var(--line)` on the strip, buttons and bar
-
-// The strip's row: `.ovrow{margin-bottom:.3rem}` (line 101), so .3 rem down
-// to the rows. The strip: `.ov{background:#1e2024; border-radius:.2rem}`
-// (line 102) and `.ov{height:2.2rem}` (line 110), its border inside that.
-// The label column's hint is `.rlab small{margin-top:.1rem}` (line 62),
-// kCaptionGapRem.
-constexpr float kStripGapRem = 0.3f;
-constexpr ImU32 kStripColor = rgba(0x1e, 0x20, 0x24, 1.0f);
-constexpr float kStripRoundingRem = 0.2f;
-constexpr float kStripRem = 2.2f;
-// The sections' stripes: `.os{background:#25272c}`, `.os.odd{background:#2e3036}`
-// (lines 104 and 105); a shaded section takes the odd stripe.
-constexpr ImU32 kStripeColor = rgba(0x25, 0x27, 0x2c, 1.0f);
-constexpr ImU32 kStripeShadedColor = rgba(0x2e, 0x30, 0x36, 1.0f);
-// A fill's bar: `.of{width:2px}` (line 106), `.of{top:.3rem; height:.9rem}`
-// (line 111).
-constexpr float kStripFillW = 2.0f;
-constexpr float kStripFillTopRem = 0.3f;
-constexpr float kStripFillRem = 0.9f;
-// An activation's bar: `.oa{bottom:.15rem}` (line 107), `.oa{height:.5rem}`
-// (line 112).
-constexpr float kStripActBottomRem = 0.15f;
-constexpr float kStripActRem = 0.5f;
-// The frame: `.frame{border:2px solid #fff; border-radius:.15rem;
-// background:rgba(255,255,255,.07); min-width:4px}` (line 108).
-constexpr float kFrameBorderW = 2.0f;
-constexpr ImU32 kFrameColor = rgba(0xff, 0xff, 0xff, 1.0f);
-constexpr ImU32 kFrameFillColor = rgba(0xff, 0xff, 0xff, 0.07f);
-constexpr float kFrameRoundingRem = 0.15f;
-constexpr float kFrameMinW = 4.0f;
-// The strip's playhead: `.oph{width:1px; background:#fff; opacity:.75}`
-// (line 109).
-constexpr float kStripPlayheadW = 1.0f;
-constexpr ImU32 kStripPlayheadColor = rgba(0xff, 0xff, 0xff, 0.75f);
+constexpr float kBorderW = 1.0f;  // `border:1px solid var(--line)` on the buttons and bar
 
 // The scrollbar's row: `.sbrow{gap:.3rem; margin-top:.3rem}` (line 114), its
 // label in --dim (line 115). The buttons: `.sbbtn{background:#30333a;
@@ -661,6 +627,7 @@ constexpr float kScrollButtonRoundingRem = 0.2f;
 constexpr float kScrollButtonWRem = 1.8f;
 constexpr float kScrollButtonHRem = 1.3f;
 constexpr float kScrollBarRem = 1.1f;
+constexpr ImU32 kScrollBarColor = rgba(0x1e, 0x20, 0x24, 1.0f);
 constexpr float kScrollBarRoundingRem = 0.55f;
 constexpr ImU32 kThumbColor = rgba(0x5a, 0x5f, 0x69, 1.0f);
 constexpr ImU32 kThumbHoverColor = rgba(0x7a, 0x80, 0x8b, 1.0f);
@@ -669,29 +636,23 @@ constexpr float kThumbRoundingRem = 0.5f;
 constexpr float kThumbMinRem = 1.2f;
 constexpr float kReadoutMinRem = 9.5f;
 
-// The moment under a point `share` of the way along a bar that shows the
-// whole song, held inside the song as the strip's msAt holds it (line 716).
-double song_ms_at(double share, double length_ms) {
-    return std::clamp(ms_at(whole_song_view(length_ms), share), 0.0, length_ms);
-}
-
-// A press on an item over the whole song (the strip or the scrollbar's bar)
-// `x` pixels into its `width`: a press inside [grab_x0, grab_x1] (the frame
-// or the thumb) starts a drag that keeps the moment under the pointer at the
-// same place in the window; a press anywhere else gives `on_press`'s window.
-// While the drag lasts, each move of the pointer gives the window it asks
-// for. The drag is kept in ImGui's state storage under the item's id, so the
-// timeline keeps no state of its own. `held` says whether the point is held
-// inside the song (the strip's msAt) or not (the scrollbar's uAt, line 702).
+// A press on the scrollbar's bar `x` pixels into its `width`, which shows the
+// whole song: a press inside [grab_x0, grab_x1] (the thumb) starts a drag
+// that keeps the moment under the pointer at the same place in the window; a
+// press anywhere else gives `on_press`'s window. While the drag lasts, each
+// move of the pointer gives the window it asks for. The point is not held
+// inside the song (the scrollbar's uAt, line 702). The drag is kept in
+// ImGui's state storage under the item's id, so the timeline keeps no state
+// of its own.
 template <typename OnPress>
 std::optional<TimelineView> press_or_drag(TimelineView view, double length_ms, float x, float width, float grab_x0,
-                                          float grab_x1, bool held, OnPress on_press) {
+                                          float grab_x1, OnPress on_press) {
     const ImGuiID id = ImGui::GetItemID();
     ImGuiStorage* store = ImGui::GetStateStorage();
     const ImGuiID drag_key = ImHashStr("drag", 0, id);
     const ImGuiID grab_key = ImHashStr("grab", 0, id);
     const double share = width > 0.0f ? static_cast<double>(x) / static_cast<double>(width) : 0.0;
-    const double at = held ? song_ms_at(share, length_ms) : ms_at(whole_song_view(length_ms), share);
+    const double at = ms_at(whole_song_view(length_ms), share);
     if (ImGui::IsItemActivated()) {
         const bool on_grab = x >= grab_x0 && x <= grab_x1;
         store->SetBool(drag_key, on_grab);
@@ -706,84 +667,28 @@ std::optional<TimelineView> press_or_drag(TimelineView view, double length_ms, f
     return std::nullopt;
 }
 
-// The strip's and the bar's border: kBorderW wide in kLineColor, inside the box
-// from `b0` to `b1` as a CSS border is, so its centre line is half a border in.
+// The bar's border: kBorderW wide in kLineColor, inside the box from `b0` to
+// `b1` as a CSS border is, so its centre line is half a border in.
 void draw_line_border(ImDrawList* dl, ImVec2 b0, ImVec2 b1, float rounding) {
     const float border = px(kBorderW);
     dl->AddRect(ImVec2(b0.x + border * 0.5f, b0.y + border * 0.5f), ImVec2(b1.x - border * 0.5f, b1.y - border * 0.5f),
                 kLineColor, rounding, ImDrawFlags_None, border);
 }
 
-// A label column's words: `first` in `first_col`, then, when given, `second`
-// under it in kDimColor, kCaptionGapRem apart, both in the Label role and
-// wrapping at `wrap_w`, as one block centred between `y0` and `y1`. The
-// wrapping is the font-taking AddText's; size 0 is the size ScopedFont
-// pushed. Returns the block's height; with `y1` below `y0` it only measures.
-// Every row's name, the strip's and the scrollbar's are drawn through here.
-float label_block(ImDrawList* dl, float x, float y0, float y1, float wrap_w, const char* first, ImU32 first_col,
-                  const char* second) {
+// A label column's words, `text` in `col` in the Label role, wrapping at
+// `wrap_w`, as one block centred between `y0` and `y1`. The wrapping is the
+// font-taking AddText's; size 0 is the size ScopedFont pushed. Returns the
+// block's height; with `y1` below `y0` it only measures. Every row's name and
+// the scrollbar's are drawn through here.
+float label_block(ImDrawList* dl, float x, float y0, float y1, float wrap_w, const char* text, ImU32 col) {
     ScopedFont font(TextRole::Label);
     ImFont* const label_font = font_for(TextRole::Label).font;
-    const float first_h = ImGui::CalcTextSize(first, nullptr, false, wrap_w).y;
-    const float second_h = second ? ImGui::CalcTextSize(second, nullptr, false, wrap_w).y : 0.0f;
-    const float h = first_h + (second ? rem(kCaptionGapRem) + second_h : 0.0f);
+    const float h = ImGui::CalcTextSize(text, nullptr, false, wrap_w).y;
     if (y1 < y0) return h;
-    float y = (y0 + y1) * 0.5f - h * 0.5f;
-    dl->AddText(label_font, 0.0f, ImVec2(x, y), first_col, first, nullptr, wrap_w);
-    log_text(ImVec2(x, y), first);
-    if (second) {
-        y += first_h + rem(kCaptionGapRem);
-        dl->AddText(label_font, 0.0f, ImVec2(x, y), kDimColor, second, nullptr, wrap_w);
-        log_text(ImVec2(x, y), second);
-    }
+    const float y = (y0 + y1) * 0.5f - h * 0.5f;
+    dl->AddText(label_font, 0.0f, ImVec2(x, y), col, text, nullptr, wrap_w);
+    log_text(ImVec2(x, y), text);
     return h;
-}
-
-// The strip's row at `top`: its label column, then the strip over `s`, which
-// was laid out for the track's width less the strip's border. A press or drag
-// on it goes into `ev`. Returns the row's height.
-float draw_strip_row(const StripLayout& s, ImVec2 top, float label_w, float label_wrap, TimelineView view,
-                     double length_ms, TimelineEvents& ev) {
-    ImDrawList* dl = ImGui::GetWindowDrawList();
-    const float border = px(kBorderW);
-    const ImVec2 size(s.width + 2.0f * border, s.height + 2.0f * border);
-    const float block_h = label_block(dl, 0.0f, 0.0f, -1.0f, label_wrap, kTimelineStripLabel, kMutedColor,
-                                      kTimelineStripHint);
-    const float row_h = std::max(size.y, block_h);
-    label_block(dl, top.x, top.y, top.y + row_h, label_wrap, kTimelineStripLabel, kMutedColor, kTimelineStripHint);
-
-    const ImVec2 b0(top.x + label_w, top.y + (row_h - size.y) * 0.5f);
-    const ImVec2 b1(b0.x + size.x, b0.y + size.y);
-    const ImVec2 in0(b0.x + border, b0.y + border);
-    auto at = [&](float x, float y) { return ImVec2(in0.x + x, in0.y + y); };
-    dl->AddRectFilled(b0, b1, kStripColor, rem(kStripRoundingRem));
-    dl->PushClipRect(in0, at(s.width, s.height), true);
-    for (const StripStripe& st : s.sections)
-        dl->AddRectFilled(at(st.rect.x0, st.rect.y0), at(st.rect.x1, st.rect.y1),
-                          st.shaded ? kStripeShadedColor : kStripeColor);
-    for (const StripFill& f : s.fills) dl->AddRectFilled(at(f.rect.x0, f.rect.y0), at(f.rect.x1, f.rect.y1), f.col);
-    for (const TimelineBand& b : s.bands)
-        dl->AddRectFilled(at(b.rect.x0, b.rect.y0), at(b.rect.x1, b.rect.y1), kTimelinePathColor);
-    // The frame's border sits inside its box, as a CSS border does.
-    const TimelineRect& fr = s.frame;
-    const float half = px(kFrameBorderW) * 0.5f;
-    dl->AddRectFilled(at(fr.x0, fr.y0), at(fr.x1, fr.y1), kFrameFillColor, rem(kFrameRoundingRem));
-    dl->AddRect(at(fr.x0 + half, fr.y0 + half), at(fr.x1 - half, fr.y1 - half), kFrameColor,
-                rem(kFrameRoundingRem), ImDrawFlags_None, px(kFrameBorderW));
-    dl->AddRectFilled(at(s.playhead_x, 0.0f), at(s.playhead_x + px(kStripPlayheadW), s.height), kStripPlayheadColor);
-    dl->PopClipRect();
-    draw_line_border(dl, b0, b1, rem(kStripRoundingRem));
-
-    // A press on the frame drags it; a press anywhere else centres the
-    // window there (lines 718 to 726).
-    ImGui::SetCursorScreenPos(b0);
-    ImGui::InvisibleButton(kTimelineStripId, size);
-    const float x = ImGui::GetIO().MousePos.x - in0.x;
-    if (std::optional<TimelineView> v =
-            press_or_drag(view, length_ms, x, s.width, fr.x0, fr.x1, true,
-                          [&](double ms, double) { return std::optional(centre_on(view, ms, length_ms)); }))
-        ev.view = v;
-    return row_h;
 }
 
 // One of the scrollbar's two buttons at `at`, `size` big, with its hover
@@ -823,10 +728,10 @@ float draw_scrollbar_row(ImVec2 top, float avail_w, float label_w, float label_w
     const float readout_w = std::max(rem(kReadoutMinRem), text_sz.x);
     const float bar_w = avail_w - label_w - 4.0f * gap - 2.0f * button.x - readout_w;
     const float bar_h = rem(kScrollBarRem);
-    const float label_h = label_block(dl, 0.0f, 0.0f, -1.0f, label_wrap, kTimelineScrollLabel, kDimColor, nullptr);
+    const float label_h = label_block(dl, 0.0f, 0.0f, -1.0f, label_wrap, kTimelineScrollLabel, kDimColor);
     const float row_h = std::max({button.y, bar_h, label_h, text_sz.y});
     const float mid = top.y + row_h * 0.5f;
-    label_block(dl, top.x, top.y, top.y + row_h, label_wrap, kTimelineScrollLabel, kDimColor, nullptr);
+    label_block(dl, top.x, top.y, top.y + row_h, label_wrap, kTimelineScrollLabel, kDimColor);
 
     float x = top.x + label_w + gap;
     if (scroll_button(ImVec2(x, mid - button.y * 0.5f), button, kScrollBackLabel, kScrollBackHint))
@@ -845,12 +750,12 @@ float draw_scrollbar_row(ImVec2 top, float avail_w, float label_w, float label_w
         const bool on_thumb = ImGui::IsItemHovered() && mx >= sb.thumb.x0 && mx <= sb.thumb.x1;
         const bool dragging = ImGui::IsItemActive() && ImGui::GetStateStorage()->GetBool(ImHashStr("drag", 0, ImGui::GetItemID()));
         // A press beside the thumb moves one window toward it (line 711).
-        if (std::optional<TimelineView> v = press_or_drag(view, length_ms, mx, in_w, sb.thumb.x0, sb.thumb.x1, false,
+        if (std::optional<TimelineView> v = press_or_drag(view, length_ms, mx, in_w, sb.thumb.x0, sb.thumb.x1,
                                                           [&](double, double share) {
                                                               return std::optional(scrollbar_click(view, share, length_ms));
                                                           }))
             ev.view = v;
-        dl->AddRectFilled(b0, b1, kStripColor, rem(kScrollBarRoundingRem));
+        dl->AddRectFilled(b0, b1, kScrollBarColor, rem(kScrollBarRoundingRem));
         draw_line_border(dl, b0, b1, rem(kScrollBarRoundingRem));
         dl->AddRectFilled(ImVec2(in0.x + sb.thumb.x0, in0.y + sb.thumb.y0), ImVec2(in0.x + sb.thumb.x1, in0.y + sb.thumb.y1),
                           on_thumb || dragging ? kThumbHoverColor : kThumbColor, rem(kThumbRoundingRem));
@@ -875,60 +780,6 @@ float draw_scrollbar_row(ImVec2 top, float avail_w, float label_w, float label_w
 
 }  // namespace
 
-StripMetrics strip_metrics() {
-    StripMetrics m;
-    m.height = rem(kStripRem) - 2.0f * px(kBorderW);
-    m.fill_top = rem(kStripFillTopRem);
-    m.fill_h = rem(kStripFillRem);
-    m.fill_w = px(kStripFillW);
-    m.act_bottom = rem(kStripActBottomRem);
-    m.act_h = rem(kStripActRem);
-    m.frame_min_w = px(kFrameMinW);
-    return m;
-}
-
-std::optional<StripLayout> strip_layout(const app::PreviewScene& scene, double length_ms, TimelineView view,
-                                        double position_ms, float width, const StripMetrics& metrics,
-                                        const TimelineFillMarks& marks) {
-    if (!app::has_song_length(length_ms)) return std::nullopt;
-    StripLayout out;
-    out.width = width;
-    out.height = metrics.height;
-    auto x_of = [&](double ms) {
-        return static_cast<float>(app::song_fraction(ms, length_ms).value_or(0.0)) * width;
-    };
-    const float h = metrics.height;
-    for (const ShownSection& s : shown_sections(scene, length_ms))
-        out.sections.push_back({{x_of(s.start_ms), 0.0f, x_of(s.end_ms), h}, s.shaded});
-    for (size_t i = 0; i < scene.fills.size(); ++i) {
-        const app::PreviewFill& f = scene.fills[i];
-        const TimelineFillLook look = fill_look(f, marks);
-        const std::optional<ImU32> tint = fill_tint(marks, f.chord_tick);
-        ImU32 col = kStripFillGrey;
-        if (look == TimelineFillLook::Taken)
-            col = kTimelinePathColor;
-        else if (look == TimelineFillLook::Offered && tint)
-            col = *tint;
-        // The bar's left edge at the fill's end, where the Fills row puts the
-        // dot's centre (`.of` is placed by its left, line 685).
-        const float x = x_of(timeline_fill_ms(f));
-        out.fills.push_back({i, {x, metrics.fill_top, x + metrics.fill_w, metrics.fill_top + metrics.fill_h}, col});
-    }
-    for (size_t i = 0; i < scene.activations.size(); ++i) {
-        const std::optional<std::pair<double, double>> w = scene.activations[i].sp_window();
-        if (!w) continue;
-        out.bands.push_back(
-            {i, {x_of(w->first), h - metrics.act_bottom - metrics.act_h, x_of(w->second), h - metrics.act_bottom}});
-    }
-    // The frame runs from the window's start to its end held at the song's
-    // end (line 688), at least frame_min_w wide.
-    const float x0 = x_of(view.start_ms);
-    const float x1 = std::max(x_of(std::min(length_ms, view.start_ms + view.span_ms)), x0 + metrics.frame_min_w);
-    out.frame = {x0, 0.0f, x1, h};
-    out.playhead_x = x_of(position_ms);
-    return out;
-}
-
 ScrollbarLayout scrollbar_layout(TimelineView view, double length_ms, float width, float height, float thumb_min_w,
                                  float thumb_inset) {
     ScrollbarLayout out;
@@ -947,20 +798,17 @@ TimelineEvents PreviewTimeline::draw(const TimelineInput& in) const {
     const float avail_w = ImGui::GetContentRegionAvail().x;
     const float label_w = rem(kLabelColumnRem);
     const float track_w = avail_w - label_w;
-    const float strip_w = track_w - 2.0f * px(kBorderW);
-    if (!(strip_w > 0.0f)) return ev;
+    if (!(track_w > 0.0f)) return ev;
     const TimelineView view = in.view.value_or(open_view(in.length_ms));
     const std::optional<TimelineLayout> laid =
         timeline_layout(*in.scene, in.length_ms, view, track_w, timeline_metrics(), in);
-    const std::optional<StripLayout> strip =
-        strip_layout(*in.scene, in.length_ms, view, in.position_ms, strip_w, strip_metrics(), in);
-    if (!laid || !strip) return ev;
+    if (!laid) return ev;
     const TimelineLayout& l = *laid;
     const float label_wrap = label_w - rem(kLabelPadRightRem);
 
-    // The overview strip, then the rows .3 rem under it.
-    const float strip_h = draw_strip_row(*strip, top, label_w, label_wrap, view, in.length_ms, ev);
-    const ImVec2 origin(top.x, top.y + strip_h + rem(kStripGapRem));
+    // The rows start at the cursor; the scrollbar is the only whole-song
+    // control.
+    const ImVec2 origin = top;
     const ImVec2 t0(origin.x + label_w, origin.y);
     auto at = [&](float x, float y) { return ImVec2(t0.x + x, t0.y + y); };
     ImDrawList* dl = ImGui::GetWindowDrawList();
@@ -981,7 +829,7 @@ TimelineEvents PreviewTimeline::draw(const TimelineInput& in) const {
         if (static_cast<TimelineRow>(r) == TimelineRow::Saved)
             draw_saved_caption(dl, origin.x, t0.y + row.y0, t0.y + row.y1, label_wrap);
         if (names[r] == nullptr) continue;
-        label_block(dl, origin.x, t0.y + row.y0, t0.y + row.y1, label_wrap, names[r], kMutedColor, nullptr);
+        label_block(dl, origin.x, t0.y + row.y0, t0.y + row.y1, label_wrap, names[r], kMutedColor);
     }
 
     // Everything on the track is clipped to the rows' rectangle, so a mark
