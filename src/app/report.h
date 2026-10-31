@@ -72,11 +72,10 @@ struct Tile {
 // What a tile or cell shows where a value is missing: the pages' DASH.
 inline constexpr const char* kDash = "—";
 
-// The colour a report chip is drawn in. Each member is named after the pages'
-// CSS variable for it: the timing tiers' --t0 to --t5 and --tn, and the dim
-// --muted. A path row's tier carries its token's name as ReportRow::tok, and
-// dm_report::status_token gives a comparison status's. The theme turns a
-// token into a colour.
+// The colour a report chip is drawn in. A path row's tier carries its token's
+// name as ReportRow::tok, and dm_report::status_token gives a comparison
+// status's. The theme turns a token into a colour (ui::chip_color, which says
+// where each colour comes from).
 enum class ChipToken { t0, t1, t2, t3, t4, t5, tn, muted };
 
 // The token a path row's Timing chip is drawn in, read from the token name
