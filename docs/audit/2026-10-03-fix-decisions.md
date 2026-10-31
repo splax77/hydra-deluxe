@@ -1422,7 +1422,7 @@ The re-measure after the trims (merged as 27c9be8d), same snapshot and script: t
 
 On 2026-10-31 the finished plans left the repo. A plan's "User decisions" or "Test limits" block held rulings and numbers that the precheck's check 3 accepts a new number from. The blocks that no earlier record held are copied below, word for word, one record per plan, so they stay readable after the plan is gone. A block's heading is set in bold so the block stays under its record. Blocks that an earlier record already held are copied under that record instead: D48, D51, D54, D86, D87, D103, D113, D274 and D275.
 
-**D284 (plan block), 2026-09-25, recorded 2026-10-31. The Preview score box and stepping plan's user decisions.** Copied word for word when the plan left the repo, from its "User decisions" block (`docs/superpowers/plans/2026-09-25-preview-score-and-stepping.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-09-25-preview-score-and-stepping.md`)):
+**D285 (plan block), 2026-09-25, recorded 2026-10-31. The Preview score box and stepping plan's user decisions.** Copied word for word when the plan left the repo, from its "User decisions" block (`docs/superpowers/plans/2026-09-25-preview-score-and-stepping.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-09-25-preview-score-and-stepping.md`)):
 
 **User decisions (already made):**
 - The tick step is exactly one chart tick ("Chart tick (as asked)").
@@ -1431,7 +1431,7 @@ On 2026-10-31 the finished plans left the repo. A plan's "User decisions" or "Te
 - With no analyzed path, the score box is hidden ("Hide the box").
 - The design in chat was accepted as shown: box under the time box, same translucent style, "Score unavailable" on a mismatch, button labels `-5s` `< Tick` `Play` `Tick >` `+5s` with tooltips naming the key, 5 s jumps keep the play state, tick steps pause first.
 
-**D285 (plan block), 2026-09-27, recorded 2026-10-31. The Preview SP drain box plan's user decisions.** Copied word for word when the plan left the repo, from its two "User decisions" blocks (`docs/superpowers/plans/2026-09-27-preview-sp-drain-box.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-09-27-preview-sp-drain-box.md`)):
+**D286 (plan block), 2026-09-27, recorded 2026-10-31. The Preview SP drain box plan's user decisions.** Copied word for word when the plan left the repo, from its two "User decisions" blocks (`docs/superpowers/plans/2026-09-27-preview-sp-drain-box.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-09-27-preview-sp-drain-box.md`)):
 
 **User decisions (already made):**
 - "show rate if activated" — when SP isn't running, the box stays visible in grey as "SP drain (if activated)".
@@ -1448,14 +1448,14 @@ On 2026-10-31 the finished plans left the repo. A plan's "User decisions" or "Te
 
 Task 4 and Task 5 can run in parallel. Task 6 starts from Task 5's branch, because it redraws the time box that Task 5 adds a line to. Task 7 is the user's.
 
-**D286 (plan block), 2026-09-27, recorded 2026-10-31. The Stars tab plan's user decisions.** Copied word for word when the plan left the repo, from its "User decisions" block (`docs/superpowers/plans/2026-09-27-stars-tab.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-09-27-stars-tab.md`)):
+**D287 (plan block), 2026-09-27, recorded 2026-10-31. The Stars tab plan's user decisions.** Copied word for word when the plan left the repo, from its "User decisions" block (`docs/superpowers/plans/2026-09-27-stars-tab.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-09-27-stars-tab.md`)):
 
 **User decisions (already made):**
 - "add a new tab after Dynamics called Stars that shows the exact star cutoffs for each song. for songs with solos, show the total solo bonus separately"
 - Solo bonus layout: "Extra column (Recommended)". The solo total sits on its own line above the table, and each row adds a "With full solo bonus" column.
 - Design approved 2026-09-27 ("that looks good"). The numbers come from the analyzed record, the math lives in a new `src/core/stars.{h,cpp}`, the math is unit-tested, and the tab is checked with `hydra_uitest` on a song with a solo and one without.
 
-**D287 (plan block), 2026-09-27, recorded 2026-10-31. The UI redesign plan's user decisions.** Copied word for word when the plan left the repo, from its "User decisions" block (`docs/superpowers/plans/2026-09-27-ui-redesign.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-09-27-ui-redesign.md`)):
+**D288 (plan block), 2026-09-27, recorded 2026-10-31. The UI redesign plan's user decisions.** Copied word for word when the plan left the repo, from its "User decisions" block (`docs/superpowers/plans/2026-09-27-ui-redesign.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-09-27-ui-redesign.md`)):
 
 **User decisions (already made, 2026-09-27):**
 
@@ -1472,7 +1472,7 @@ Task 4 and Task 5 can run in parallel. Task 6 starts from Task 5's branch, becau
 11. An old path report next to `hydra.db` is left where it is; the next batch writes a new one in Documents\Hydra ("we'll be generating a new path report anyway so it doesnt matter").
 12. The calls listed below were accepted ("the rest sounds good").
 
-**D288 (plan block), 2026-10-03, recorded 2026-10-31. The derive-once review gate plan's user decisions.** The gate's three calls are also D125 to D127, and its git-side hook is D131. Copied word for word when the plan left the repo, from its "User decisions" block (`docs/superpowers/plans/2026-10-03-derive-once-review-gate.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-10-03-derive-once-review-gate.md`)):
+**D289 (plan block), 2026-10-03, recorded 2026-10-31. The derive-once review gate plan's user decisions.** The gate's three calls are also D125 to D127, and its git-side hook is D131. Copied word for word when the plan left the repo, from its "User decisions" block (`docs/superpowers/plans/2026-10-03-derive-once-review-gate.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-10-03-derive-once-review-gate.md`)):
 
 **User decisions (already made):**
 - "add both to the fix list, write the review gate plan" (2026-10-03). The shell path-length fold is on the audit's fix list. It is not part of this plan. This plan only adds its scan rule, with today's copies in the baseline.
@@ -1482,7 +1482,7 @@ Task 4 and Task 5 can run in parallel. Task 6 starts from Task 5's branch, becau
 - Gated paths widened at install (2026-10-03, session ade9655b): `third_party/`, `installer/`, `CMakePresets.json` and `build_cpp.ps1` are gated too, as is the marker file itself. The one owner of the list is `Test-DeriveOnceGatedPath` in `hooks\lib\derive_once_rules.ps1`; the marker and CLAUDE.md point at it rather than restating it.
 - Execution: "Subagent-Driven (this session)" (2026-10-03).
 
-**D289 (plan block), 2026-10-03, recorded 2026-10-31. The one squeeze rating rule plan's user decisions.** The user's words behind it are also D116 to D118. Copied word for word when the plan left the repo, from its "User decisions" block (`docs/superpowers/plans/2026-10-03-one-squeeze-rating-rule.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-10-03-one-squeeze-rating-rule.md`)):
+**D290 (plan block), 2026-10-03, recorded 2026-10-31. The one squeeze rating rule plan's user decisions.** The user's words behind it are also D116 to D118. Copied word for word when the plan left the repo, from its "User decisions" block (`docs/superpowers/plans/2026-10-03-one-squeeze-rating-rule.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-10-03-one-squeeze-rating-rule.md`)):
 
 **User decisions (already made):**
 1. "if a multiplier exists there should be a corresponding display": the 1 ms cutoff goes.
@@ -1493,13 +1493,13 @@ Task 4 and Task 5 can run in parallel. Task 6 starts from Task 5's branch, becau
 6. Counted rows at the SP end or inside the leeway get the early multiplier like every other counted row.
 7. Orange means "a multiplier shown on the line governs at least one row or SqIn on this activation". No threshold.
 
-**D290 (plan block), 2026-10-03, recorded 2026-10-31. The Preview loading fixes plan's user decisions.** Copied word for word when the plan left the repo, from its "User decisions" block (`docs/superpowers/plans/2026-10-03-preview-loading-fixes.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-10-03-preview-loading-fixes.md`)):
+**D291 (plan block), 2026-10-03, recorded 2026-10-31. The Preview loading fixes plan's user decisions.** Copied word for word when the plan left the repo, from its "User decisions" block (`docs/superpowers/plans/2026-10-03-preview-loading-fixes.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-10-03-preview-loading-fixes.md`)):
 
 **User decisions (already made):**
 - "make all of those fixes" (2026-10-03): streaming audio, cancel inside the load, honest progress bar, linear timeline off the UI thread with path-only rebuilds, the smaller algorithm fixes, and the correctness bugs from the audit.
 - Opus header gain gets applied as the Opus spec requires. No ask needed: a scan of the library found 0 of 3,722 Opus files with a non-zero gain, so nothing audible changes today.
 
-**D291 (plan block), 2026-10-03, recorded 2026-10-31. The step-1 plan's user decisions (the engine stores what the display used to guess).** Each call is also its own record, D1 to D10. Copied word for word when the plan left the repo, from its "User decisions" block (`docs/superpowers/plans/2026-10-03-step1-engine-stores-what-displays-guess.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-10-03-step1-engine-stores-what-displays-guess.md`)):
+**D292 (plan block), 2026-10-03, recorded 2026-10-31. The step-1 plan's user decisions (the engine stores what the display used to guess).** Each call is also its own record, D1 to D10. Copied word for word when the plan left the repo, from its "User decisions" block (`docs/superpowers/plans/2026-10-03-step1-engine-stores-what-displays-guess.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-10-03-step1-engine-stores-what-displays-guess.md`)):
 
 **User decisions (already made, 2026-10-03):**
 - D1 (finding 28): "When the SP cap clamps a window, the transfer scale is measured from the collecting note, not the activation." Finding 27 is fixed in the same change, under one stamp bump.
@@ -1514,7 +1514,7 @@ Task 4 and Task 5 can run in parallel. Task 6 starts from Task 5's branch, becau
 - Q4 (2026-10-03): on a late squeeze-in the SP gauge refills at the old SP end.
 - Q5-Q10: the recommended answers below apply unless the user overrides them before execution.
 
-**D292 (plan block), 2026-10-03, recorded 2026-10-31. The step-2 plan's user decisions (parser rules).** Each call is also its own record, D19 to D31. Copied word for word when the plan left the repo, from its "User decisions" block (`docs/superpowers/plans/2026-10-03-step2-parser-rules.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-10-03-step2-parser-rules.md`)):
+**D293 (plan block), 2026-10-03, recorded 2026-10-31. The step-2 plan's user decisions (parser rules).** Each call is also its own record, D19 to D31. Copied word for word when the plan left the repo, from its "User decisions" block (`docs/superpowers/plans/2026-10-03-step2-parser-rules.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-10-03-step2-parser-rules.md`)):
 
 **User decisions this plan implements (all 2026-10-03):**
 
@@ -1534,7 +1534,7 @@ Task 4 and Task 5 can run in parallel. Task 6 starts from Task 5's branch, becau
 
 The Clone Hero rules this plan built on now live in the reference pages under docs/clone-hero/, and the addresses quoted in its decisions and task code are a record of what was read then. The rows: disco flip in 02-note-list.md (NL-17, NL-21); 2x kicks in 02-note-list.md (NL-24 to NL-27); phrase edges in 05-star-power.md (SP-01 to SP-03, SP-07); fill placement in 04-fills.md (FL-03 to FL-07); the dynamics tag in 02-note-list.md (NL-11, NL-13); the score's speed term in 06-scoring.md (SC-03) and 03-timing.md (TM-42); the hit window in 03-timing.md (TM-19 to TM-23); and the SP-end extension and the leeway in 05-star-power.md (SP-24, SP-34, SP-42) and 07-internals.md (IN-27).
 
-**D293 (plan block), 2026-10-10, recorded 2026-10-31. The CI test tooling plan's questions.** Its "User decisions" section holds the questions and recommendations put to the user; the plan did not record the answers in it. Copied word for word when the plan left the repo (`docs/superpowers/plans/2026-10-10-ci-test-tooling.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-10-10-ci-test-tooling.md`)):
+**D294 (plan block), 2026-10-10, recorded 2026-10-31. The CI test tooling plan's questions.** Its "User decisions" section holds the questions and recommendations put to the user; the plan did not record the answers in it. Copied word for word when the plan left the repo (`docs/superpowers/plans/2026-10-10-ci-test-tooling.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-10-10-ci-test-tooling.md`)):
 
 **User decisions**
 
@@ -1554,7 +1554,7 @@ The Clone Hero rules this plan built on now live in the reference pages under do
 
 **8. The runner label (outside this plan's scope, but it affects every new job).** CI pins `windows-2025-vs2026`. GitHub's changelog says that label was a pre-migration test label and that `windows-2025` and `windows-latest` moved to Visual Studio 2026 by 15 June 2026 (https://github.blog/changelog/2026-05-14-github-actions-upcoming-image-migrations). I could not confirm the label's current status. Recommendation: a one-line follow-up that tries `windows-2025` on a branch; if it builds, switch, so the workflow does not depend on a label GitHub called temporary.
 
-**D294 (plan block), 2026-10-10, recorded 2026-10-31. The hook test hygiene plan's questions.** Its "User decisions" section holds the questions and recommendations put to the user; the plan did not record the answers in it. Copied word for word when the plan left the repo (`docs/superpowers/plans/2026-10-10-hook-test-hygiene.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-10-10-hook-test-hygiene.md`)):
+**D295 (plan block), 2026-10-10, recorded 2026-10-31. The hook test hygiene plan's questions.** Its "User decisions" section holds the questions and recommendations put to the user; the plan did not record the answers in it. Copied word for word when the plan left the repo (`docs/superpowers/plans/2026-10-10-hook-test-hygiene.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-10-10-hook-test-hygiene.md`)):
 
 **User decisions**
 
@@ -1570,7 +1570,7 @@ The Clone Hero rules this plan built on now live in the reference pages under do
 
 **Q6. Pester.** Recommendation above: no. Say so if you want it anyway, and the harness becomes a Pester shim instead.
 
-**D295 (plan block), 2026-10-10, recorded 2026-10-31. The test dedup, naming and gaps plan's questions.** Its "User decisions" section holds the questions and recommendations put to the user; the plan did not record the answers in it. Copied word for word when the plan left the repo (`docs/superpowers/plans/2026-10-10-test-dedup-naming-gaps.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-10-10-test-dedup-naming-gaps.md`)):
+**D296 (plan block), 2026-10-10, recorded 2026-10-31. The test dedup, naming and gaps plan's questions.** Its "User decisions" section holds the questions and recommendations put to the user; the plan did not record the answers in it. Copied word for word when the plan left the repo (`docs/superpowers/plans/2026-10-10-test-dedup-naming-gaps.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-10-10-test-dedup-naming-gaps.md`)):
 
 **User decisions**
 
@@ -1590,7 +1590,7 @@ The Clone Hero rules this plan built on now live in the reference pages under do
 
 **Q8. The database sentences.** Options: (a) export the two sentences as constants from `user_messages.h` and compare against them in the other four files; (b) drop the sentence checks in the non-owner files and keep only the `kind()` checks. Recommended: (a). The non-owner files are proving the sentence reaches the user through that path, which (b) would stop proving.
 
-**D296 (plan block), 2026-10-10, recorded 2026-10-31. The test fidelity fixes plan's user decisions.** Its "User decisions" section holds the questions put to the user, with the answers written in where the user gave them (items 3, 4a and 8a). The golden-image answers are also D197 and D198, and the sound device message is D109. Copied word for word when the plan left the repo (`docs/superpowers/plans/2026-10-10-test-fidelity-fixes.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-10-10-test-fidelity-fixes.md`)):
+**D297 (plan block), 2026-10-10, recorded 2026-10-31. The test fidelity fixes plan's user decisions.** Its "User decisions" section holds the questions put to the user, with the answers written in where the user gave them (items 3, 4a and 8a). The golden-image answers are also D197 and D198, and the sound device message is D109. Copied word for word when the plan left the repo (`docs/superpowers/plans/2026-10-10-test-fidelity-fixes.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-10-10-test-fidelity-fixes.md`)):
 
 **User decisions**
 
@@ -1606,7 +1606,7 @@ The Clone Hero rules this plan built on now live in the reference pages under do
 7. **Device test (Task 7).** (A) keep and strengthen with a wait cap of 2 s for the first callback (recommended; a WASAPI device calls back within tens of ms, so 2 s is a hang detector, not a timing test); (B) delete it.
 8. **Surface a failed `ma_device_start` to the user?** Not in this plan; yes or no decides a follow-up.
 
-**D297 (plan block), 2026-10-24, recorded 2026-10-31. The precheck in C++ plan's user decisions.** Copied word for word when the plan left the repo, from its "User decisions" section (`docs/superpowers/plans/2026-10-24-precheck-in-cpp.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-10-24-precheck-in-cpp.md`)):
+**D298 (plan block), 2026-10-24, recorded 2026-10-31. The precheck in C++ plan's user decisions.** Copied word for word when the plan left the repo, from its "User decisions" section (`docs/superpowers/plans/2026-10-24-precheck-in-cpp.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-10-24-precheck-in-cpp.md`)):
 
 **User decisions (2026-10-24)**
 
@@ -1617,7 +1617,7 @@ The user approved the plan with these answers, in their words: "Yes, build it wi
 3. The two real ranges stay, with `fetch-depth: 0` on the "Build and test" checkout.
 4. Every printed line keeps today's wording, including the "derive_once_precheck:" prefix.
 
-**D298 (plan block), 2026-10-25, recorded 2026-10-31. The merge test picker plan's user decisions.** The picker's spec and its user-set numbers also live in `docs/development.md`, "The merge test picker". Copied word for word when the plan left the repo, from its "User decisions" section (`docs/superpowers/plans/2026-10-25-merge-test-picker.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-10-25-merge-test-picker.md`)):
+**D299 (plan block), 2026-10-25, recorded 2026-10-31. The merge test picker plan's user decisions.** The picker's spec and its user-set numbers also live in `docs/development.md`, "The merge test picker". Copied word for word when the plan left the repo, from its "User decisions" section (`docs/superpowers/plans/2026-10-25-merge-test-picker.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-10-25-merge-test-picker.md`)):
 
 **User decisions**
 
