@@ -28,7 +28,7 @@ import time
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 from tools.ch_mcp.frida_tools import MENU_BLOCK, StateUnread, menu_lines, state_words
-from tools.ch_mcp.kit_tools import KIT_ELEMENTS, KIT_PREFIX, item_names
+from tools.ch_mcp.kit_tools import KIT_PREFIX, KitRefused, parse_items
 from tools.ch_probe.input_driver import MENU_KEY_GAP_S
 
 # The user's ruling 3 in the plan above, 2026-10-30.
@@ -41,9 +41,11 @@ MENU_POLL_S = 0.5
 
 STEPS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "menu_steps.json")
 
-# The kit item the search step presses to move to the next song. The manual's
-# How to Play page says the Yellow and Blue pads scroll menus by default
-# ("Drum Pad Scrolling"); live step LS-K3 checks which way Blue goes.
+# The kit item the search step presses to move to the next song. No manual
+# page says which pads scroll: the plan only notes that the user's
+# settings.ini has drum_pad_scrolling = 1, and How to Play says the Blue fret
+# opens the search tool. So Blue is a guess, and live step LS-K3 checks what it
+# does. The checked-in menu_steps.json has no search step.
 SEARCH_NEXT_ITEM = KIT_PREFIX + "blue"
 
 # The menu classes the expect words look at, by the name agent/menu.ts sends.
@@ -158,14 +160,15 @@ def online_refusal(state: dict) -> Optional[str]:
 
 def item_problem(item: str) -> Optional[str]:
     """Why `item` is not an item a step may list, or None when it is. A step
-    lists only kit items: KIT_PREFIX and one KIT_ELEMENTS name. Anything else
-    (a key name, a lane, typed text) is refused, because the kit route presses
-    no keys."""
+    lists only kit items: KIT_PREFIX and one name kit_tools.parse_items
+    accepts. Anything else (a key name, a lane, typed text) is refused,
+    because the kit route presses no keys."""
     if not item.strip().lower().startswith(KIT_PREFIX):
         return f"{item!r} is not a {KIT_PREFIX} item, and the kit route presses no keys"
-    name = item.strip()[len(KIT_PREFIX):].strip().lower()
-    if name not in KIT_ELEMENTS:
-        return f"{item!r} is not {KIT_PREFIX} and one kit item name ({item_names()})"
+    try:
+        parse_items([item])
+    except KitRefused as e:
+        return str(e)
     return None
 
 
