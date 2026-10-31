@@ -352,7 +352,7 @@ class PressTest(Rig):
         reply = tools.ch_kit_press("green,kick")
         self.assertEqual(self.posted()[-1], {
             "type": "press", "elements": [{"id": 3, "value": 1.0}, {"id": 22, "value": True}],
-            "hold_frames": 2, "cap_s": 1, "rewrite": True, "on_main": False})
+            "hold_frames": 2, "cap_s": 1, "rewrite": False, "on_main": False})
         self.assertEqual(reply, "pressed green, kick (elements 3, 22) for 2 frames: down at frame "
                                 "1200, up at frame 1202 (2 frames apart, 13 ms by the agent's clock)")
 
@@ -389,7 +389,7 @@ class PressOptionsTest(Rig):
         lines = tools.ch_kit_press("green", read="Green").splitlines()
         self.assertEqual(self.posted()[-1], {
             "type": "press", "elements": [{"id": 3, "value": 1.0}], "hold_frames": 2,
-            "cap_s": 1, "rewrite": True, "on_main": False, "read": ["Green"]})
+            "cap_s": 1, "rewrite": False, "on_main": False, "read": ["Green"]})
         self.assertEqual(lines[1:], [
             "read back on the kit's player: Green",
             "  frame 1200: Green off",
