@@ -68,7 +68,7 @@ While an update downloads or installs, the bar shows that step instead, with its
 
 ### Toolbar
 
-The toolbar holds, from left to right, `Manage folders... (N)`, `Scan library`, `Analyze library...`, `Compare with dmleaderboards...` and the `Analysis settings` button. `Open path report` sits at the right edge whenever your library has songs and `hydra_rules.ini` has no error.
+The toolbar holds, from left to right, `Manage folders... (N)`, `Scan library`, `Analyze library...`, `Compare with dmleaderboards...` and the `Analysis settings` button. `Open path report` sits at the right edge whenever your library has songs and neither `hydra_settings.ini` nor `hydra_rules.ini` has an error.
 
 `Manage folders... (N)` opens the `Song folders` window, where you choose which folders Hydra Deluxe reads. N is how many folders you have. Click `Add folder...` and pick your Clone Hero song folder, or any folder of charts. Hydra Deluxe finds every chart in its subfolders too. Each folder in the list has a red `X` that removes it, after you confirm. `Close` closes the window. After you add or remove a folder, and while at least one folder is left, a `Scan now` button appears beside `Close`. It closes the window and starts a scan, because a changed list only takes effect when you scan.
 
@@ -84,9 +84,9 @@ Hydra Deluxe reads `notes.mid` or `notes.chart` folders with a `song.ini`, `.sng
 
 `Analysis settings: ...` shows the settings your analyses run under, and opens the panel where you change them. See [Analysis settings](#analysis-settings).
 
-`Open path report` opens the path report in its own window. When the report has to be built, Hydra Deluxe first analyzes every song that has no current result. The button appears whenever your library has songs and `hydra_rules.ini` has no error, and it stays while a report is open or building. While a report builds, it reads `Building path report...`. You can still click it, and the window shows that the report is building. See [Reports](#reports).
+`Open path report` opens the path report in its own window. When the report has to be built, Hydra Deluxe first analyzes every song that has no current result. The button appears whenever your library has songs and neither `hydra_settings.ini` nor `hydra_rules.ini` has an error, and it stays while a report is open or building. While a report builds, it reads `Building path report...`. You can still click it, and the window shows that the report is building. See [Reports](#reports).
 
-While a batch runs, `Scan library` and `Analyze library...` are greyed out, and hovering them says `A batch is running.` `Scan library` is also greyed out while a scan runs and when you have no folders. `Analyze library...` is also greyed out when there is nothing to analyze, and while `hydra_rules.ini` has an error.
+While a batch runs, `Scan library` and `Analyze library...` are greyed out, and hovering them says `A batch is running.` `Scan library` is also greyed out while a scan runs, when you have no folders, and while `hydra_settings.ini` has an error. `Analyze library...` is also greyed out when there is nothing to analyze, and while `hydra_settings.ini` or `hydra_rules.ini` has an error.
 
 #### When a new version is out
 
@@ -272,7 +272,13 @@ An open row shows these, in order:
 
 A backend squeeze means hitting the note at the SP end early, so it lands inside Star Power. In the `Backend timings` table, `Timing` is how far each note sits from the SP end, in ms. A negative figure is before the end, and the note at `0.0 ms` is exactly where SP ends. `Points` is the Star Power score the note adds on this path, and 0 for a note the path doesn't count. If the last activation's SP runs past the end of the chart, the table lists the notes before that end, so every timing is negative.
 
-The rating beside each note is a rough guide to how hard it is to fit into Star Power. A note the path doesn't count is tagged `(uncounted)`, squeeze-out notes included, like `Free SqOut (uncounted)`. For backend squeezes, look for notes from the backend leeway up to the hit window. The leeway is 3 ms<!-- default: Rules::backend_leeway_ms --> by default (`backend_leeway_ms` in `hydra_rules.ini`). The hit window is 85 ms by default (`hit_window_ms`, below).
+The `Rating` beside each note says how much timing that note needs from you, in the same bands as the path report's timing tiers. The bands are steps of the 85 ms hit window, Clone Hero's Pro Drums window, which is fixed and not a setting. A note needing up to 2.0 ms reads `Normal`, up to 42.5 ms `Hard`, up to 85 ms `Extreme`, up to 127.5 ms `Insane`, up to 170 ms `Insane+`, and past that `Beyond`. Each edge belongs to the band below it, so exactly 85 ms is `Extreme`.
+
+Which timing a note needs depends on the row. A note the path counts without a squeeze needs nothing, so it reads `Normal`. A note too late to count needs you to hit it early by its `Timing`, and is tagged `(uncounted)`, like `Hard (uncounted)`. The note the path squeezes out is the exception: it needs the late hit its badge shows. When it already sits past the SP end, it needs nothing and reads `Normal`. It also gets `(uncounted)` once it is past the backend leeway (below), like `Normal (uncounted) <-- squeezed out`. When a row shows an `eff.` figure, the rating follows that figure, because it is the timing you need after the frontend timing scale (below). A note that needs nothing still reads `Normal` whatever its scale.
+
+On Burnout's optimal path, activation 1's squeezed-out yellow note sits 163.0 ms inside Star Power, and its rating reads `Insane+ (eff. 163.5 ms) <-- squeezed out (-260)`. You need about 163.5 ms late, between one and a half and two hit windows. The `(-260)` is how many points the squeeze-out costs. The badges and the path report stay on the raw timing, so that row's badge reads `squeeze out 163 ms`. So when a frontend timing scale applies, a row's rating can fall in a different band from the report's tier for the same squeeze.
+
+A backend note just past the SP end still counts when it lands less than the backend leeway after it, 3 ms<!-- default: Rules::backend_leeway_ms --> by default (`backend_leeway_ms` in `hydra_rules.ini`). So a note 2.5 ms after the end reads `Normal`, and one 20 ms after it reads `Hard (uncounted)`.
 
 ### Frontend timing scale and overfill
 
@@ -293,8 +299,6 @@ Under the activation rows are two folds, `Multiplier squeeze` and `Score breakdo
 `Copy path` copies the selected path's notation. `Ctrl+C` does the same and flashes `Copied!`.
 
 `Hide backend rows beyond` hides backend rows more than this many ms from the SP end. It starts off<!-- default: Settings::backendlimit_enabled -->, with 50 ms<!-- default: Settings::backendlimit_value --> in the box. A note the path squeezes out always shows. When it hides rows, the `Backend timings` line still counts every note and adds how many are hidden on each side of the SP end, like `8 notes near the SP end · 8 hidden: 4 before, 4 after`. The fold says the same with the limit, like `All 8 hidden: 4 before the SP end and 4 after, beyond 50 ms.` This only changes the display. It is not an analysis setting, so changing it never re-analyzes anything.
-
-One more setting feeds these displays: `hit_window_ms` in `hydra_settings.ini` (default 85, the Clone Hero Pro Drums hit window per side). It has no control on screen yet.
 
 ## Preview tab
 
@@ -457,7 +461,7 @@ When you open the report and it needs building, Hydra Deluxe first analyzes ever
 
 A finished batch builds the report too. `Open path report` on the toolbar opens it. Hydra Deluxe keeps the report in memory, not in a file. So the first time you open it after starting Hydra Deluxe, it builds a fresh one. Closing the window only hides it. The report stays in memory, and opening the window again shows it at once, with your search, timing choice, `Optimal paths only` and sort as you left them. `Refresh` and a batch's new report start those over. If a build is still running when you close the window, it keeps going, and its report is there when you open the window again. A report that was cancelled or failed still shows that when you reopen the window, with `Try again`. Closing the window during the analysis doesn't stop the batch; use `Cancel` or the strip's `Stop` for that. A report a batch builds while the window is closed waits for you to open it.
 
-Once the analysis is done, the report builds. While it builds, the line under the header reads `Building the report from your library...`, with a `Cancel` button and grey placeholder rows. While `hydra_rules.ini` has an error, analysis is off. A window with no report to show then says so instead of building. Cancelling shows `Report cancelled.` with `Try again`. If the build fails, the window says `The path report could not be built.`, with the reason and `Try again`.
+Once the analysis is done, the report builds. While it builds, the line under the header reads `Building the report from your library...`, with a `Cancel` button and grey placeholder rows. While `hydra_settings.ini` or `hydra_rules.ini` has an error, analysis is off. A window with no report to show then says so instead of building. Cancelling shows `Report cancelled.` with `Try again`. If the build fails, the window says `The path report could not be built.`, with the reason and `Try again`.
 
 The window is titled `Path report — Hydra`, and its header reads `Hydra Path Index`. The line under it reads like `N charts — top 5 paths per chart — SP cap 4 bars`, and ends in `— Clone Hero 1.0 fills` when `1.0 fills` is on. A chart you have more than one copy of in your library shows its paths once, but each copy counts in that line and in the `Charts shown` tile.
 
@@ -475,12 +479,12 @@ The five tiles sum up the paths that pass the filters:
 
 The controls are a search box, a timing dropdown and `Optimal paths only`. On the right, a count line says how many paths pass, like `120 of 4,512 paths`.
 
-The timing dropdown starts at `All timing tiers`. Each other entry shows only the paths in one timing tier. A path's tier comes from its `Hardest ms`, measured in steps of your hit window:
+The timing dropdown starts at `All timing tiers`. Each other entry shows only the paths in one timing tier. A path's tier comes from its `Hardest ms`, measured in steps of the 85 ms hit window:
 
 | Entry | Paths it shows |
 | --- | --- |
 | `Normal`, `Hard`, `Extreme`, `Insane`, `Insane+` | Paths whose hardest timing falls in that band, from easiest to hardest. `Normal` takes timings up to 2.0 ms. |
-| `Beyond N ms` | Paths whose hardest timing is past N ms, more than twice the hit window. At the default hit window of 85 ms, N is 170. |
+| `Beyond N ms` | Paths whose hardest timing is past N ms, more than twice the hit window. N is 170. |
 | `No timing needed` | Paths that need no squeeze and no required early fill. |
 
 `Optimal paths only` starts checked. It keeps just the optimal paths among each chart's 5 paths shown. When paths tie for the top score, it keeps every one of them, because each is optimal. `Clear filters` leaves it as it is.
@@ -578,7 +582,7 @@ The comparison goes out of date the same way the path report does, with the same
 
 ## Scoring rules (`hydra_rules.ini`)
 
-A few of Hydra Deluxe's rules are judgment calls, not facts read from Clone Hero. You can change them in `hydra_rules.ini`, a plain text file next to Hydra.exe. The app and every command line tool read the same file.
+A few scoring rules are judgment calls, not facts read from Clone Hero. Some start from the public Hydra's rules, such as the backend leeway's 3 ms default, which is DragonDelgar's number. Others are Hydra Deluxe's own, such as how many tied paths to keep. You can change them in `hydra_rules.ini`, a plain text file next to Hydra.exe. The app and every command line tool read the same file.
 
 The file is optional. A missing file, or a missing line, means the default below. Each line is `key = value`. A `#` starts a comment, either on a line of its own or after a value on the same line. There are no `[section]` headers.
 
@@ -606,6 +610,15 @@ What each line does:
 Older files may still have `auto_cap_ladder`, `auto_budget_s` or `fill_length_measures` lines. Hydra Deluxe reads and ignores them, so those files keep working.
 
 A value Hydra Deluxe can't read, a key it doesn't know, or a line with no `=` is an error. The error names the key, or quotes the line. The command line tools print the error and stop with exit code 2. The app still opens and shows the error, but analysis stays off until you fix the file and restart Hydra Deluxe. Hydra Deluxe never analyzes on the defaults behind your back.
+
+`hydra_settings.ini`, the file next to Hydra.exe that holds your song folders and settings, follows the same rules. A value Hydra Deluxe can't read, a key it doesn't know, or a line with no `=` is an error there too. A whole number outside its range is not an error: it loads at the nearest end of the range, so `sp_cap=0` loads as an SP cap of 1. Older files may still have a `hit_window_ms` line. The hit window is now always 85 ms, so Hydra Deluxe skips that line and leaves it out the next time it saves the file. When the file has an error, the command line tools that read it print the error and stop with exit code 2. The app still opens, on its default settings, and shows two orange lines under the toolbar, like these. The second line starts with the path of your own file, which sits next to Hydra.exe. The example shows the default install folder:
+
+```
+hydra_settings.ini has an error, so Hydra is running on its default settings and saving nothing until the file is fixed and Hydra is restarted.
+C:\Program Files\Hydra\hydra_settings.ini: sp_cap = "abc" is not a whole number
+```
+
+Until you fix the file and restart Hydra Deluxe, analysis and scans stay off and nothing you change is saved, so your file stays as it was. The song panel shows the first line too, and a path report window with no report to show shows both.
 
 Every result remembers the rules it was made with. After you change the file, results made under the old rules show `Stale` until you click the song or run a batch. Switching the rules back brings those results back.
 

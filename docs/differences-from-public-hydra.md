@@ -86,7 +86,7 @@ The two versions can give different optimal scores for the same chart. There are
 
 This version's parser started as a port of public Hydra 1.x, checked chart by chart. Public Hydra's disco and 2x kick rules were checked only in its 1.2.0 source, which still reads charts the old way. Whether a newer public version changed that was not checked. The biggest effect is on Hard, Medium and Easy with Pro Drums, where about 640 charts each score differently, mostly higher. One Clone Hero rule is deliberately not copied: `drums0dnoflip` turns disco flip off here, as the marker says.
 
-The hit window affects only the display, never the path search. It is 85 ms per side, which is Clone Hero's Pro Drums window. It sets the squeeze ratings and the report's difficulty tiers.
+The hit window is a fixed 85 ms per side, which is Clone Hero's Pro Drums window. It is not a setting. It sets the `Rating` word on each backend row in the Paths tab, the squeeze budget in the tooltip of a backend row that shows an `eff.` figure, the path report's timing tiers, and how early you can hit to summon a fill. Only that last one steers the path search.
 
 The early fill window has two sides. Each is a fixed number in Hydra Deluxe, not a setting. The first side steers the path search. When your Star Power comes ready after a fill's deadline, you can still summon the fill by hitting the activation early, by up to 85 ms. The search keeps every activation that needs 85 ms or less and drops the rest. The second side only marks paths. When Star Power comes ready before the deadline with less than 60 ms to spare, the activation still shows `E` and an `early fill` badge with a figure below 0. Nothing on it needs timing.
 
