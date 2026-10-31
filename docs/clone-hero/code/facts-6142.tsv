@@ -5,6 +5,7 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	class	1721	Math				System.Math
 6142	field	1048	GlobalVariables	currentSongEntry		0x28	GlobalVariables.currentSongEntry
 6142	field	1048	GlobalVariables	instance		0x8	GlobalVariables.instance
+6142	field	1048	GlobalVariables	playerList		0x38	GlobalVariables.playerList
 6142	field	1048	GlobalVariables	scoreDisabled		0x7C	GlobalVariables.scoreDisabled
 6142	field	1429	PlayerSelectionMenu	playerIndex		0x130	PlayerSelectionMenu.playerIndex
 6142	field	1429	PlayerSelectionMenu	ʳʲʿˁʵʴʿˁʺʵʾ		0x246	#1429+0x246
@@ -18,7 +19,10 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	field	1429	PlayerSelectionMenu	ʾʺʽʵʾˀʷʳʺʴʽ		0x120	#1429+0x120
 6142	field	1429	PlayerSelectionMenu	ˁʳʾʴˀʼʽˁʴˀʼ		0x244	#1429+0x244
 6142	field	1429	PlayerSelectionMenu	ˁʶˁʲʳʾʽʿʸʿˀ		0x228	#1429+0x228
+6142	field	1435		ʾʵʻʳʷʴʼʲʻʶʷ		0x18	#1435+0x18
 6142	field	176	SongEntry	checksum		0x38	SongEntry.checksum
+6142	field	282	CliGameLauncher	ʲʻʺʲʴʳʼʷʲʸˀ		0x58	#282+0x58
+6142	field	282	CliGameLauncher	ˀʷʾʸʶʺʴʷʼʿʲ		0x60	#282+0x60
 6142	field	449	GameManager	audioCal		0x6C	GameManager.audioCal
 6142	field	449	GameManager	isSongOver		0x91	GameManager.isSongOver
 6142	field	449	GameManager	practiceSpeed		0xD8	GameManager.practiceSpeed
@@ -66,9 +70,15 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	field	8288		ʿʾʸˁʾˁˀˀʻʻʼ		0x38	#8288+0x38
 6142	field	8288		ˀʾʾʻʴʵʼʼʼʾʴ		0x1B0	#8288+0x1B0
 6142	field	8288		ˁʸʴʵʳʾʽʿʹʷʿ		0x42	#8288+0x42
+6142	field	8526		ʵʽˀˁʿʿʷʿʶˁʺ		0x11	#8526+0x11
+6142	field	8526		ʷʻʺʼʴʶʴʳʽʺʿ		0x10	#8526+0x10
+6142	field	8526		ʺʾʷˁʵʳʼʼʿˁʷ		0x60	#8526+0x60
+6142	field	8526		ʾʼʶˁʽʶʸʺʸʷʼ		0x14	#8526+0x14
+6142	field	8526		ˀˀʽʾʻʼʷʾˀʹʵ		0x48	#8526+0x48
 6142	field	8611		ʼʲʺʹʹʽʹʽˁʴʽ		0x0	#8611.starThresholds
 6142	field	8661		<ˀʽʸʽʼʿʼʴʸʿʷ>k__BackingField		0x88	#8661+0x88
 6142	field	901	BasePlayer	engine		0x120	BasePlayer.engine
+6142	field	901	BasePlayer	player		0x88	#901.player
 6142	method	1037		ʵʲʽʶʲʳʿʸˁʳʲ	0x251A70		0x251A70
 6142	method	1037		ʼʻʺʾʻʹʸʸʺˁʸ	0x252200		0x252200
 6142	method	1037		ʽʻʷʶʸʽʼʽʵˀʵ	0x252630		0x252630
@@ -88,8 +98,13 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	method	1281	Calibrator	Update	0x2FB0B0		0x2FB0B0
 6142	method	1281	Calibrator	Update	0x2FB0B0		Calibrator.Update
 6142	method	1302		ʴˁʿʸʷˁʷʳʴʻʷ	0x307B40		0x307B40
+6142	method	1429	PlayerSelectionMenu	OnEnable	0x32BF80		0x32BF80
+6142	method	1429	PlayerSelectionMenu	Update	0x3314E0		0x3314E0
 6142	method	1435		ʳʷʻʿʻʲʿʾʵʷʶ	0x337540		0x337540
+6142	method	1435		ʴˁʽˁˀʺʵʷʸʳʹ	0x337720		0x337720
+6142	method	1435		ʿʹʲʸʻʻʼʵʸʵˀ	0x337720		0x337720
 6142	method	1435		ˀʶʷʼʻʸʼʽʵʼʹ	0x337D00		0x337D00
+6142	method	156	DrumsPlayer	ˀʿʸʺʿʲʻʹʼʳʿ	0x33C560		0x33C560
 6142	method	16061	__Il2CppComObject	Finalize	0x2BF4C30		0x2BF4C30
 6142	method	16062	__Il2CppComDelegate	Finalize	0x2BF4C30		0x2BF4C30
 6142	method	176	SongEntry	ʷʲʿʾʷʿʽʽʷʴʷ	0x358850		0x358850
@@ -102,14 +117,19 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	method	190	BassAudioManager	ʾʳʸʴʻʳʾʴʺˀʺ	0x36B700		0x36B700
 6142	method	193		ʺʷʻʲʴʺʷʺʺʶʴ	0x374D50		0x374D50
 6142	method	225	HighwayScroll	Update	0x3818E0		HighwayScroll.Update
+6142	method	282	CliGameLauncher	ʴʾʹʶʺˁʼʳʼʾʹ	0x396110		0x396110
+6142	method	282	CliGameLauncher	ʶʷʶʲʽʼʼʾʿʵʵ	0x3968D0		0x3968D0
 6142	method	443		MoveNext	0xD8D80		0xD8D80
 6142	method	449	GameManager	Awake	0xB41A0		0xB41A0
 6142	method	449	GameManager	Awake	0xB41A0		GameManager.Awake
 6142	method	449	GameManager	Update	0xC05A0		0xC05A0
 6142	method	449	GameManager	Update	0xC05A0		GameManager.Update
 6142	method	561		ʺʳʾʺʹʶʵʲʾʲʿ	0x112490		0x112490
+6142	method	561		ʽʻʷʶʸʽʼʽʵˀʵ	0x1144C0		0x1144C0
 6142	method	592	ScoreManager	Update	0x1286B0		0x1286B0
 6142	method	592	ScoreManager	Update	0x1286B0		ScoreManager.Update
+6142	method	612		ˀʵʲʲʻʸʸʽʹʽˁ	0x13F8B0		0x13F8B0
+6142	method	612		ˀʾʻʷʿʿʶʵʻʲʷ	0x13F8E0		0x13F8E0
 6142	method	617	DrumsNoteRenderer	Update	0x1370A0		DrumsNoteRenderer.Update
 6142	method	707		.ctor	0x16C9A0		0x16C9A0
 6142	method	707		ʵʲʿʾʽʿʹʸʺʻˁ	0x16C480		0x16C480
@@ -263,6 +283,7 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	method	8301		ˁʶʽʲʹʳʹʷʺʿʼ	0x20FC5F0		0x20FC5F0
 6142	method	8305		ʼʽʸʵʻʺʼʶʶʲʹ	0x20FE510		0x20FE510
 6142	method	8308		.ctor	0x210C470		0x210C470
+6142	method	8308		ʴˁʺʸʲʶʸʵʹʹʿ	0x210BF30		0x210BF30
 6142	method	8308		ʸʺˀʳˁʽʸʺʲʻˁ	0x210C090		0x210C090
 6142	method	8308		ʽʺʲʴʼʿˁʼʻˁʴ	0x210C1F0		0x210C1F0
 6142	method	8316		ʳʺʾʶʷʻʷʴʴʶˀ	0x210D780		0x210D780
@@ -271,15 +292,19 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	method	8316		ʼʴʷʽˀʺʻʹʿʺʲ	0x210D9C0		0x210D9C0
 6142	method	8316		ʾʵʺˀʺˀʶʺʵʵʶ	0x210D780		0x210D780
 6142	method	8333		ʾˁʲʻʹʽʶʹʶʲʹ<object>	0x5FAD90		0x5FAD90
+6142	method	8338		ʸʾʵʽʳʾʾʻʷʲʽ	0xFE5F50		0xFE5F50
 6142	method	8351		ʳʴʽʲʺʹˁʵʼʶʴ	0x210DD00		0x210DD00
 6142	method	8351		ʴʼʺˀˁʹʼʸʵʹʸ	0x210E2A0		0x210E2A0
 6142	method	8351		ʷʽʷʺʴˀʽʲʷʷʳ	0x210F140		0x210F140
 6142	method	8351		ʽʵʲˁʹʶʻʹʷʼʿ	0x21104F0		0x21104F0
 6142	method	8351		ʾʷʵʶʵˁʿʺʷʷˁ	0x2110920		0x2110920
 6142	method	8354		.ctor	0x2116210		0x2116210
+6142	method	838	PlayerProfileMenu	ʼʼʿʻʴˁʼʲʳʲʽ	0x1E68D0		0x1E68D0
 6142	method	8501		ʲʺʷʼʴˀʳʴʲʵʾ	0x211BAD0		0x211BAD0
 6142	method	8501		ʵʽʼʿʹʹˀʸʻʵʺ	0x211C270		0x211C270
 6142	method	8501		ʼʴˁʼʻʹʾʹʷʹʿ	0x211E4C0		0x211E4C0
+6142	method	8526		.ctor	0x2123890		0x2123890
+6142	method	8526		ʼʾˁʺʴʻʵʳʾʲʺ	0x2123320		0x2123320
 6142	method	8538		ʳʻʵˁʺʾʹʸʻʸʿ	0x212B9C0		0x212B9C0
 6142	method	8538		ʴʸˁʳˀʽʼʺʸʾˁ	0x20CFCE0		0x20CFCE0
 6142	method	8538		ʴˁʹˀʵʲʾʺʴʼʵ	0x212C0B0		0x212C0B0
@@ -343,3 +368,4 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	method	8670		ʷʾˀʼˀʵʹˁʻʻʷ<object>	0x5DE030		0x5DE030
 6142	method	901	BasePlayer	Update	0x20A1B0		0x20A1B0
 6142	method	901	BasePlayer	ʶʷʶʲʽʼʼʾʿʵʵ	0x208870		0x208870
+6142	method	996		ʷʺʲʿʲʼʽʵʹʳʴ	0x11676A0		0x11676A0

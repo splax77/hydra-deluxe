@@ -228,7 +228,7 @@ The first column is the function start, read from the listing's own first line. 
 
 ## New listings
 
-The 81 listings below were made for the reference on 2026-10-30, in session b02ab3e6 (the reference build). There are 79 `.asm` files under `code/6142/` and 2 `.cs` files under `code/4045/`, and each has a `.md` beside it that explains its branches in plain words.
+The 83 listings below were made for the reference on 2026-10-30, in session b02ab3e6 (the reference build), except two: the cli loader and the player kind were added on 2026-10-31, in session b15bb484. There are 81 `.asm` files under `code/6142/` and 2 `.cs` files under `code/4045/`, and each has a `.md` beside it that explains its branches in plain words.
 
 The `.asm` files are from build 1.1.0.6142 (`GameAssembly.dll`), made with tools/ch_mcp/chdis.py. The start is the RVA in the file name, and for every file it matches the address on the listing's first line (or the `; function` line some listings open with). The role is the file name with the RVA taken off.
 
@@ -254,6 +254,7 @@ The table was generated from the files, not typed. One more file, `code/6142/dru
 | 0x213D160 | chart modifier decode | [code/6142/chart_modifier_decode_213D160.asm](6142/chart_modifier_decode_213D160.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x213D620 | chart n handler | [code/6142/chart_n_handler_213D620.asm](6142/chart_n_handler_213D620.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x35C980 | chart song metadata | [code/6142/chart_song_metadata_35C980.asm](6142/chart_song_metadata_35C980.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x3968D0 | cli loader | [code/6142/cli_loader_3968D0.asm](6142/cli_loader_3968D0.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x16C9A0 | clock ctor | [code/6142/clock_ctor_16C9A0.asm](6142/clock_ctor_16C9A0.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x16C480 | clock raw minus audio | [code/6142/clock_raw_minus_audio_16C480.asm](6142/clock_raw_minus_audio_16C480.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x16C490 | clock raw plus video | [code/6142/clock_raw_plus_video_16C490.asm](6142/clock_raw_plus_video_16C490.asm) | 6142 | tools/ch_mcp/chdis.py |
@@ -295,6 +296,7 @@ The table was generated from the files, not typed. One more file, `code/6142/dru
 | 0x20F3A90 | note window | [code/6142/note_window_20F3A90.asm](6142/note_window_20F3A90.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x210D9C0 | pitch difficulty map | [code/6142/pitch_difficulty_map_210D9C0.asm](6142/pitch_difficulty_map_210D9C0.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x20EFEE0 | plain drums | [code/6142/plain_drums_20EFEE0.asm](6142/plain_drums_20EFEE0.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x11676A0 | player kind | [code/6142/player_kind_11676A0.asm](6142/player_kind_11676A0.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x252630 | scorestats json | [code/6142/scorestats_json_252630.asm](6142/scorestats_json_252630.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x15DC20 | scorestats writer | [code/6142/scorestats_writer_15DC20.asm](6142/scorestats_writer_15DC20.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x2116210 | setting base ctor | [code/6142/setting_base_ctor_2116210.asm](6142/setting_base_ctor_2116210.asm) | 6142 | tools/ch_mcp/chdis.py |
