@@ -30,7 +30,7 @@ Found: 2026-10-30, wave 2 scout R7.
 
 Rule: The load coroutine reads `song.ini` first and the chart second. The chart's `Offset` is used only when the metadata delay is still 0, and then the delay becomes ceil(Offset x 1000) whole milliseconds. A nonzero delay wins, and `delay = 0` does not block the Offset.
 Label: Proven in the game's code
-Evidence: `code/6142/chart_song_metadata_35C980.asm` lines 87, 103, 562 to 586 and 634 to 663 (the skip when `+0x24` is nonzero at line 636, Single.TryParse at line 644, the multiply at line 659, the ceil helper call at line 660, the store at line 663); the helper 0x3031130 jumps to a one-instruction round toward plus infinity. The order is in `code/6142/gm_load_coroutine_D8D80.asm` lines 272 to 291 (wave 2 scout R7, rows R7-10 and R7-11). Wave 1 scout H3 (H3-19 to H3-21) holds the three measured points from the 2026-09-24 recording; its result files are gone, but every point agrees with this reading.
+Evidence: `code/6142/chart_song_metadata_35C980.asm` lines 87, 103, 562 to 586 and 634 to 663 (the skip when `+0x24` is nonzero at line 636, Single.TryParse at line 651, the multiply at line 659, the call to the C runtime's ceiling helper at line 661, the store at line 663); that helper jumps to a one-instruction round toward plus infinity. The order is in `code/6142/gm_load_coroutine_D8D80.asm` lines 272 to 291 (wave 2 scout R7, rows R7-10 and R7-11). Wave 1 scout H3 (H3-19 to H3-21) holds the three measured points from the 2026-09-24 recording; its result files are gone, but every point agrees with this reading.
 Game code (6142): `SongEntry` chart metadata reader (scrambled member), RVA `0x35C980`, and the load coroutine `GameManager` (scrambled `MoveNext`), RVA `0xD8D80`, listings as above.
 Hydra: `preview_audio_offset_ms` in src/app/preview_source.cpp lines 311 to 316 makes the same choice (the delay wins when present and nonzero, else Offset x 1000), with the Offset parsed into `chart_offset_s` at src/parse/song.cpp line 1825. Hydra keeps fractional milliseconds and does not round up.
 Ruling: The choice is ruled: D274 item 6, "Check the game, then honor (Recommended)" for the Preview's audio delay and Offset. The rounding up is not named in it: open split: see questions page Q-31
@@ -40,7 +40,7 @@ Found: 2026-10-30, wave 2 scout R7; the measurements 2026-09-24, session 2a88c06
 
 Rule: A `song.ini` delay exactly equal to the chart Offset changes nothing, because both routes store the same milliseconds in the same field and the clock reads that one field.
 Label: Proven in the game's code
-Evidence: Follows from TM-01 and TM-03: one field, `#828+0x24`, one clock argument (`code/6142/ini_song_reader_1EFC60.asm` lines 38 to 47, `code/6142/chart_song_metadata_35C980.asm` lines 634 to 663; wave 2 scout R7, row R7-12). Wave 1 scout H3 (H3-20) adds that this edge is not the sharp case anyway: the readings "delay replaces Offset" and "the larger wins" agree there.
+Evidence: Follows from TM-01 and TM-03: one field, `#828+0x24`, one clock argument (`code/6142/ini_song_reader_1EFC60.asm` lines 38 to 47, `code/6142/chart_song_metadata_35C980.asm` lines 634 to 663; wave 2 scout R7, row R7-12). Wave 1 scout H3 (H3-20) adds that this edge is not the sharp case anyway: the readings "delay replaces Offset" and "the larger wins" agree there. This settles the reserved question Q-73 (the delay-equals-Offset edge) on the game's side.
 Game code (6142): RVAs `0x1EFC60` and `0x35C980`, listings as above.
 Hydra: `preview_audio_offset_ms` in src/app/preview_source.cpp line 311.
 Ruling: none needed: same rule
@@ -50,7 +50,7 @@ Found: 2026-10-30, wave 2 scout R7.
 
 Rule: The clock reads audio position / ratio plus (-delay / ratio), so audio position `delay` is chart time 0. A positive delay makes the notes come later against the music. Delay and Offset change only this mapping, never the chart's own times.
 Label: Proven in the game's code
-Evidence: `code/6142/clock_ctor_16C9A0.asm` lines 22 to 32 (`+0x58` = -(b / c)), `code/6142/clock_tick_16C650.asm` lines 73 to 75, `code/6142/gm_load_coroutine_D8D80.asm` lines 435 to 464 and `code/6142/delay_seconds_1EF1A0.asm` lines 2 to 4 (wave 2 scout R7, row R7-13). The 2026-09-24 recording (`delay = 1016` measured +1018 ms, `Offset = 0.25` measured +248 ms) agrees; its scripts are gone (wave 1 scout H3, H3-19).
+Evidence: `code/6142/clock_ctor_16C9A0.asm` lines 22 to 32 (`+0x58` = -(b / c)), `code/6142/clock_tick_16C650.asm` lines 72 to 75, `code/6142/gm_load_coroutine_D8D80.asm` lines 435 to 464 and `code/6142/delay_seconds_1EF1A0.asm` lines 2 to 4 (wave 2 scout R7, row R7-13). The 2026-09-24 recording (`delay = 1016` measured +1018 ms, `Offset = 0.25` measured +248 ms) agrees; its scripts are gone (wave 1 scout H3, H3-19).
 Game code (6142): the clock constructor of class #707, RVA `0x16C9A0`; the delay-in-seconds getter of class #828, RVA `0x1EF1A0`.
 Hydra: `kOffsetDirection` in src/app/preview_source.cpp line 139.
 Ruling: D274 item 6: "Check the game, then honor (Recommended)".
@@ -108,11 +108,11 @@ Hydra: no owner: the Preview and Paths use chart time and never read the game cl
 Ruling: none needed: no Hydra rule depends on it
 Found: 2026-10-28, session f756d547.
 
-### TM-11 The raw clock starts one second before chart time 0 or the lead-in
+### TM-11 The raw clock starts at least one second before chart time 0
 
-Rule: The raw clock starts at min(-1.0, -delay / ratio - 1.0) seconds: one second before the earlier of chart time 0 and the lead-in.
+Rule: Let d be the delay divided by the ratio, in seconds. The raw clock starts at -1.0 s when d is 1 s or less, and at -d - 1.0 s when d is more than 1 s. So it always starts at least one second before chart time 0, and a delay of more than 1 s moves the start back by the whole delay plus one second.
 Label: Proven in the game's code
-Evidence: `code/6142/clock_ctor_16C9A0.asm` lines 26 to 38 (wave 2 scout R7, row R7-14).
+Evidence: `code/6142/clock_ctor_16C9A0.asm` lines 25 to 38: line 25 negates b / c (stored at `+0x58` on line 32), line 27 compares -1.0 with it, and the branch picks -1.0 (line 38) or `+0x58` minus 1.0 (line 34) (wave 2 scout R7, row R7-14). The scout's row wrote this as min(-1.0, -d - 1.0), which differs from the listing for d between 0 and 1 s; the listing's own note reads it the way this block does.
 Game code (6142): the clock constructor of class #707, RVA `0x16C9A0`.
 Hydra: no owner: Hydra has no count-in model.
 Ruling: none needed: no Hydra rule depends on it
@@ -152,7 +152,7 @@ Found: this plan's wave 1 scout H7b.
 
 Rule: With a bot, neither a 30 ms audio calibration nor a 30 ms video calibration moved the engine clock against the chart's own times. Star Power phrase and end events came at the same engine times as the 0 ms run, within a few ms.
 Label: Proven in a live run
-Evidence: `tools/ch_probe/experiments/results/overlay-spike/run1_cal0_sp_compare.txt`, `run2_cal30_sp_compare.txt` and `run2b_vid30_sp_compare.txt` (all 8 phrase rises PASS), and the `*_score_compare.txt` press medians -0.42, -0.45 and -0.45 ms (wave 1 scout H3, H3-17; wave 2 scout R7, R7-07). Trippin SP Spike, bot, 2026-10-28. The press medians alone prove nothing, because the bot presses from the same clock.
+Evidence: `tools/ch_probe/experiments/results/overlay-spike/run1_cal0_sp_compare.txt`, `run2_cal30_sp_compare.txt` and `run2b_vid30_sp_compare.txt` (the first 8 phrase rises PASS in all three files; the two 30 ms runs ended early, at 137.8 s and 118.0 s of the 0 ms run's 181.2 s, so only run 1 holds the later rises, and run 2's two "missing" rises fall after its end), and the `*_score_compare.txt` press medians -0.42, -0.45 and -0.45 ms (wave 1 scout H3, H3-17; wave 2 scout R7, R7-07). Trippin SP Spike, bot, 2026-10-28. The press medians alone prove nothing, because the bot presses from the same clock.
 Game code (6142): see TM-09.
 Hydra: no owner
 Ruling: none needed: no Hydra rule depends on it
@@ -254,8 +254,8 @@ Found: 2026-10-30, wave 2 scout R3.
 
 Rule: A note counts as missed only when the clock is strictly later than its window end, and a press is valid up to and including the window end.
 Label: Proven in the game's code
-Evidence: committed listing `docs/audit/drum-lanes/play/f20f5810_base_update.asm` lines 94 to 98 (the compares at 0x20F59E7 and 0x20F59FB); decompile line 52955 (wave 1 scout H3, H3-03).
-Game code (6142): the base engine update, RVA `0x20F5810`, `docs/audit/drum-lanes/play/f20f5810_base_update.asm` lines 94 to 98.
+Evidence: committed listing `docs/audit/drum-lanes/play/f20f5810_base_update.asm` lines 94 to 99 (the compares at 0x20F59E7 and 0x20F59FB); decompile line 52955 (wave 1 scout H3, H3-03).
+Game code (6142): the base engine update, RVA `0x20F5810`, `docs/audit/drum-lanes/play/f20f5810_base_update.asm` lines 94 to 99.
 Hydra: not compared: the scout did not read how `timing_tiers` (src/core/squeeze_rating.cpp) treats a hit exactly on the edge.
 Ruling: none found: Hydra's own edge was not read
 Found: 2026-10-03, drum-lanes FINDINGS-play-time.md.
@@ -410,7 +410,7 @@ Found: 2026-10-30, wave 2 scout R7.
 
 Rule: At a ratio other than 1 the clock divides both the audio position and the delay by the ratio. Whether the audio position is in file seconds or in stretched real seconds is not known.
 Label: Unknown
-Evidence: unchecked by the scout: it needs the unit of the audio manager's position read at `0x365F10`. The division is in `code/6142/clock_tick_16C650.asm` lines 73 to 75 and `code/6142/clock_ctor_16C9A0.asm` lines 22 to 32 (wave 2 scout R7, row R7-17).
+Evidence: unchecked by the scout: it needs the unit of the audio manager's position read at `0x365F10`. The division is in `code/6142/clock_tick_16C650.asm` lines 72 to 75 and `code/6142/clock_ctor_16C9A0.asm` lines 22 to 32 (wave 2 scout R7, row R7-17).
 Game code (6142): RVA `0x365F10` (scrambled `BassAudioManager` member), not read.
 Hydra: no owner
 Ruling: none needed: no Hydra rule depends on it
@@ -430,7 +430,7 @@ Found: 2026-10-30, wave 2 scout R7.
 
 Rule: The score adder adds the points times the multiplier and nothing else, so the playback speed does not change a note's points.
 Label: Proven in the game's code
-Evidence: decompile `ghidra_decompile_all.txt` lines 53121 to 53138 (`+0x94 += param_2 * +0x48`, no other factor) (wave 1 scout H3, H3-25). The other two adders, `0x20F6EB0` and `0x20F6A50`, were not re-read for a speed term.
+Evidence: decompile `ghidra_decompile_all.txt` lines 53121 to 53138 (`+0x94 += param_2 * +0x48`, no other factor) (wave 1 scout H3, H3-25). The adder that pays each note, `0x20F6EB0`, does the same in `code/6142/add_note_score_20F6EB0.asm` lines 36 to 41 (the imul by `+0x48` at line 40 and the add into `+0x94` at line 41; wave 2 scout R4, R4-18). The third adder, `0x20F6A50`, was not re-read for a speed term.
 Game code (6142): RVA `0x20F5F70`, decompiled lines as above; the listing is `code/6142/add_points_20F5F70.asm`.
 Hydra: no owner for a speed rule (TM-44).
 Ruling: none needed: same rule

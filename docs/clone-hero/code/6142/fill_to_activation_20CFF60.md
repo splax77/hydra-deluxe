@@ -11,7 +11,7 @@ Plain words: for every written fill on the track that is not marked "skip", find
 - Lines 53 to 54: `r12` is the chart; null exits.
 - Lines 55 to 56: `xmm0 = [chart+0xb8] * 0.03125`. `[chart+0xb8]` is the chart's resolution as a double: the engine constructor reads the same field at `engine_ctor_20DF680.asm` line 57 and turns it into `resolution << 2`. 0.03125 is 1/32 (the listing's own comment names the constant).
 - Lines 61 to 62: `cvttsd2si rdi, xmm0` truncates toward zero, then `inc rdi`. So the slop is `trunc(resolution / 32) + 1` ticks. Line 63 saves it.
-- Lines 64 to 74: start walking the track's fill list with `List.GetEnumerator`.
+- Lines 64 to 74: start walking the track's fill list with List.GetEnumerator.
 - Lines 78 to 82: `MoveNext`; when it returns false jump to the clean-up at line 148.
 - Lines 83 to 87: `rsi` = the current fill. Line 86 to 87: `cmp byte [fill+0x20], 0; jne` skips a fill whose byte `+0x20` is non-zero (the record calls this the skip flag; what sets it is not in this function).
 - Lines 88 to 96: the call to `0x5DE030`. Arguments: notes list (`r14`), `rdx = [fill+0x18] + [fill+0x10]` = fill end (the fill's tick plus its length, so `+0x10` is the start and `+0x18` the length), `r8 = [fill+0x10]` = fill start, `r9 = end + slop`, then a stack integer 0 (the start index, line 93) and the generic method info (line 92). So the nearest-chord search always starts at index 0 for every written fill.

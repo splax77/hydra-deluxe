@@ -10,7 +10,7 @@ Lines 17 to 22: gap = noteB.time minus noteA.time; if the gap is exactly 0, jump
 
 Lines 23 to 33: half = (noteB.time - noteA.time) * 0.5 (constant 0x3063FB0 is 0.5), kept in xmm6.
 
-Lines 40 to 50: `max` is loaded into xmm7. If `min` is greater than `max`, `Math.ThrowMinMaxException` is called (this is the `Math.Clamp` argument check). Not reachable with the drums engine's constants.
+Lines 40 to 50: `max` is loaded into xmm7. If `min` is greater than `max`, Math.ThrowMinMaxException is called (this is the Math.Clamp argument check). Not reachable with the drums engine's constants.
 
 Lines 51 to 52: if `min` is greater than the half-gap, the result is `min` (line 63 puts it in xmm6).
 

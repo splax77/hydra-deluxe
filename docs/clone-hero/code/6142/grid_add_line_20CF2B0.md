@@ -1,4 +1,4 @@
-# grid_add_line_20CF2B0.asm (build 6142, RVA `0x20CF2B0`)
+# grid_add_line_20CF2B0.asm (build 6142, RVA 0x20CF2B0)
 
 Made 2026-10-30 with `tools/ch_mcp/chdis.py` (183 lines). Support listing for the grid builder `0x20DACA0`, which calls it once per line (`grid_restart_20DACA0.asm` line 184). Method `#8265.ʷʿʽʽ...` family; its static arguments are `(grid, chart, tick, kind, out int)`. I read only the parts that decide which list gets what; the tempo walk in lines 36 to 82 was not traced in detail.
 
