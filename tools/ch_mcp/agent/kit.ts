@@ -326,19 +326,24 @@ async function press(m: Message) {
         touched.set(e.id, typeof e.value === "boolean");
     }
     const start = Date.now();
-    const downFrame = await Il2Cpp.perform(() => {
-        write(kit, elements, false);
-        return frameCount();
-    }, where);
-    const downMs = Date.now();
-    let frame = downFrame;
-    let upFrame = downFrame;
-    let upMs = downMs;
-    let capped = false;
+    let downFrame = -1;
+    let downMs = start;
+    let upFrame = -1;
+    let upMs = start;
+    let failure: Error | null = null;
+    // The down write sits inside the try too: a write that fails half-way has
+    // already put some elements down, and the release below clears them all.
     try {
+        downFrame = await Il2Cpp.perform(() => {
+            write(kit, elements, false);
+            return frameCount();
+        }, where);
+        downMs = Date.now();
+        let frame = downFrame;
         while (frame < downFrame + hold) {
             if (Date.now() - start >= capS * 1000) {
-                capped = true;
+                failure = new Error(`the hold of ${hold} frames did not pass within the cap of `
+                    + `${capS} s: down at frame ${downFrame}, last frame seen ${frame}`);
                 break;
             }
             await sleep(TICK_MS);
@@ -349,16 +354,23 @@ async function press(m: Message) {
                 return frameCount();
             }, where);
         }
-    } finally {
+    } catch (e) {
+        failure = e instanceof Error ? e : new Error(`${e}`);
+    }
+    // The release runs on every path: after the hold, after a failed wait and
+    // at the cap.
+    try {
         upFrame = await Il2Cpp.perform(() => {
             write(kit, elements, true);
             return frameCount();
         }, where);
         upMs = Date.now();
+    } catch (e) {
+        throw new Error(`${failure === null ? "" : `${failure.message}; and `}the release failed, `
+            + `so a pad may still be down (send teardown): ${e}`);
     }
-    if (capped) {
-        throw new Error(`the hold of ${hold} frames did not pass within the cap of ${capS} s: `
-            + `down at frame ${downFrame}, released at frame ${upFrame}`);
+    if (failure !== null) {
+        throw new Error(`${failure.message}; released at frame ${upFrame}`);
     }
     return { down_frame: downFrame, up_frame: upFrame, down_ms: downMs, up_ms: upMs,
              hold_frames: hold, rewrite, on_main: onMain };
