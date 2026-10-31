@@ -13,6 +13,10 @@ gives its columns. Which backticked spans count as game facts is decided by
 `game_fact` alone; the C++ docs test (tests/test_docs_match_code.cpp) applies
 the same forms, so compare the two when either changes. Which build a span
 belongs to is decided by `span_builds`, which mirrors that test's rule too.
+A method address that dump.cs prints only inside a generic method's
+`GenericInstMethod` block (`parse_dump` collects those as `instances`) also
+gets a method row; facts.json does not carry them, so a facts.json holds no
+such rows.
 `--check` rebuilds the table and exits 1 when the file on disk differs.
 
 Run:
@@ -62,6 +66,12 @@ _FIELD_RE = re.compile(r"^\t(?P<decl>[^/]+?)(?: /\*[^*]*\*/)?; // 0x(?P<off>[0-9
 _HEX_ADDRESS = r"0x[0-9A-Fa-f]+"
 _RVA_RE = re.compile(rf"^\t// RVA: (?P<rva>-1|{_HEX_ADDRESS}) ")
 _SECTION_RE = re.compile(r"^\t// (?P<section>Fields|Properties|Methods)$")
+# A generic method's `/* GenericInstMethod : ... */` block lists each address its
+# instantiations were compiled at (`|-RVA:`), and under it the instantiations
+# (`|-<class>.<method>`).
+_INSTANCE_RVA_RE = re.compile(rf"^\t\|-RVA: (?P<rva>{_HEX_ADDRESS}) ")
+_INSTANCE_NAME_RE = re.compile(r"^\t\|-(?P<name>.+)$")
+_INSTANCE_END = "\t*/"
 
 
 class FactsError(Exception):
@@ -175,13 +185,46 @@ def _is_method_line(line: str) -> bool:
     )
 
 
-def parse_dump(text: str) -> list[dict]:
-    """Every class in a dump.cs text, in file order."""
+def _split_instance(name: str, method: str) -> tuple[str, str]:
+    """Split an instantiation line into its class and its method as written.
+
+    `method` is the generic method the block follows. The line is that name,
+    with its own `<...>` arguments, after the class's last top-level dot; when
+    no such dot is found, the first top-level dot divides them.
+    """
+    dots: list[int] = []
+    depth = 0
+    for i, ch in enumerate(name):
+        if ch == "<":
+            depth += 1
+        elif ch == ">":
+            depth -= 1
+        elif ch == "." and depth == 0:
+            dots.append(i)
+    for i in reversed(dots):
+        rest = name[i + 1:]
+        if rest.startswith(method) and (len(rest) == len(method) or rest[len(method)] == "<"):
+            return name[:i], rest
+    if dots:
+        return name[:dots[0]], name[dots[0] + 1:]
+    return "", name
+
+
+def parse_dump(text: str, instances: list[dict] | None = None) -> list[dict]:
+    """Every class in a dump.cs text, in file order.
+
+    The methods a generic method's `GenericInstMethod` block lists are not
+    class members, so they stay out of the result. Pass a list as `instances`
+    to collect them: one record per instantiation with the TypeDefIndex of the
+    class holding the generic method, the instantiated `class` and `method` as
+    the dump writes them, and the `rva`. facts.json does not carry them.
+    """
     classes: list[dict] = []
     namespace = ""
     current: dict | None = None
     section = ""
     pending_rva: int | None = None
+    instance_rva: int | None = None
     for lineno, raw in enumerate(text.splitlines(), start=1):
         line = raw.rstrip("\r")
         if current is None:
@@ -212,6 +255,20 @@ def parse_dump(text: str) -> list[dict]:
         m = _SECTION_RE.match(line)
         if m:
             section = m.group("section")
+            continue
+        if line == _INSTANCE_END:
+            instance_rva = None
+            continue
+        m = _INSTANCE_RVA_RE.match(line)
+        if m:
+            instance_rva = int(m.group("rva"), 16)
+            continue
+        m = _INSTANCE_NAME_RE.match(line)
+        if m:
+            if instances is not None and instance_rva is not None and current["methods"]:
+                owner, method = _split_instance(m.group("name"), current["methods"][-1]["name"])
+                instances.append({"typedef_index": current["typedef_index"], "class": owner,
+                                  "method": method, "rva": instance_rva})
             continue
         if section == "Fields":
             m = _FIELD_RE.match(line)
@@ -522,9 +579,11 @@ def constants_facts(constants_path: str, classes: list[dict]) -> tuple[list[Cite
 
 
 class _Index:
-    """The dump's classes, indexed for the table's lookups."""
+    """The dump's classes, indexed for the table's lookups. `instances` are
+    the generic instantiations `parse_dump` collects; each is a method at its
+    address, in the instantiated class the dump names."""
 
-    def __init__(self, classes: list[dict]):
+    def __init__(self, classes: list[dict], instances: list[dict] = ()):
         self.by_index: dict[int, list[dict]] = {}
         self.by_name: dict[str, list[dict]] = {}
         self.by_bare: dict[str, list[dict]] = {}
@@ -539,6 +598,11 @@ class _Index:
             for m in c["methods"]:
                 if isinstance(m.get("rva"), int) and m["rva"] >= 0:
                     self.by_rva.setdefault(m["rva"], []).append((c, m))
+        for inst in instances:
+            owner = {"typedef_index": inst["typedef_index"], "name": inst["class"],
+                     "readable": is_readable(inst["class"])}
+            method = {"name": inst["method"], "rva": inst["rva"]}
+            self.by_rva.setdefault(inst["rva"], []).append((owner, method))
 
     def chain(self, cls: dict) -> list[dict]:
         """The class and its base classes, nearest first. A base the dump
@@ -616,10 +680,11 @@ def _lookup(index: _Index, build: str, fact: Fact) -> tuple[list[tuple], str]:
     return rows, ""
 
 
-def table_rows(classes: list[dict], build: str, cited: list[Cited]) -> tuple[list[tuple], list[str]]:
+def table_rows(classes: list[dict], build: str, cited: list[Cited],
+               instances: list[dict] = ()) -> tuple[list[tuple], list[str]]:
     """One row per distinct fact, sorted, and an error for each fact that is
     not exactly one dump entry (an address several methods share excepted)."""
-    index = _Index(classes)
+    index = _Index(classes, instances)
     rows: set[tuple] = set()
     errors: list[str] = []
     for c in cited:
@@ -651,9 +716,10 @@ def render_table(version: str, dll_path: str, rows: list[tuple]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def load_classes(dump_path: str, version: str | None) -> tuple[list[dict], str]:
-    """The classes of a dump.cs or a facts.json, and the build's version
-    string. A facts.json carries its own version; a dump.cs needs one given."""
+def load_classes(dump_path: str, version: str | None) -> tuple[list[dict], list[dict], str]:
+    """The classes of a dump.cs or a facts.json, the generic instantiations
+    (only a dump.cs holds them), and the build's version string. A facts.json
+    carries its own version; a dump.cs needs one given."""
     with open(dump_path, encoding="utf-8") as f:
         text = f.read()
     if dump_path.lower().endswith(".json"):
@@ -661,10 +727,11 @@ def load_classes(dump_path: str, version: str | None) -> tuple[list[dict], str]:
         described = facts.get("game_version")
         if version is not None and version != described:
             raise FactsError(f"{dump_path} describes {described}, not {version}")
-        return facts["classes"], described
+        return facts["classes"], [], described
     if version is None:
         raise FactsError("a dump.cs needs --version")
-    return parse_dump(text), version
+    instances: list[dict] = []
+    return parse_dump(text, instances), instances, version
 
 
 def build_table(dump_path: str, pages_dir: str, dll_path: str, version: str | None = None,
@@ -672,7 +739,7 @@ def build_table(dump_path: str, pages_dir: str, dll_path: str, version: str | No
     """The facts table text for one build, and every lookup error."""
     from tools.ch_mcp.build_facts import BuildFactsError, build_number
 
-    classes, version = load_classes(dump_path, version)
+    classes, instances, version = load_classes(dump_path, version)
     try:
         build = build_number(version)
     except BuildFactsError as exc:
@@ -682,7 +749,7 @@ def build_table(dump_path: str, pages_dir: str, dll_path: str, version: str | No
     if build == DEFAULT_BUILD:
         from_constants, errors = constants_facts(constants_path, classes)
         cited += from_constants
-    rows, lookup_errors = table_rows(classes, build, cited)
+    rows, lookup_errors = table_rows(classes, build, cited, instances)
     return render_table(version, dll_path, rows), errors + lookup_errors
 
 

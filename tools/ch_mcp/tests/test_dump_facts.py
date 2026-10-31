@@ -370,10 +370,40 @@ public class Other // TypeDefIndex: 9000
 	// RVA: 0x20AAAA0 Offset: 0x20A9EA0 VA: 0x1820AAAA0
 	public void Shared() { }
 }
+
+// Namespace:
+public class ʿʺʸ<TInputs> // TypeDefIndex: 9100
+{
+	// Methods
+
+	// RVA: -1 Offset: -1
+	protected void .ctor(int x) { }
+	/* GenericInstMethod :
+	|
+	|-RVA: 0x100EC60 Offset: 0x100E060 VA: 0x18100EC60
+	|-ʿʺʸ<__Il2CppFullySharedGenericStructType>..ctor
+	|
+	|-RVA: 0x100E960 Offset: 0x100DD60 VA: 0x18100E960
+	|-ʿʺʸ<ʻʹʻ>..ctor
+	|-ʿʺʸ<ʽʽʲ>..ctor
+	*/
+
+	// RVA: -1 Offset: -1 Slot: 25
+	protected virtual bool Check() { }
+	/* GenericInstMethod :
+	|
+	|-RVA: 0x100DAB0 Offset: 0x100CEB0 VA: 0x18100DAB0
+	|-ʿʺʸ<ʻʹʻ>.Check
+	|
+	|-RVA: 0x100DAE0 Offset: 0x100CEE0 VA: 0x18100DAE0
+	|-Box<int>.Check<object>
+	*/
+}
 """
 
 TINY_CONSTANTS = """\
 RVA_DRUMS_ENGINE_CTOR = 0x20DF680
+RVA_BASE_ENGINE_CTOR_DRUMS = 0x100E960
 RVA_CONST_NORMAL_BACK = 0x31406E0
 OFF_SP_AMOUNT = 0x68
 """
@@ -452,7 +482,45 @@ class FactsTableTests(unittest.TestCase):
         rows = self.rows(text)
         self.assertIn(["6142", "method", "8255", "", ".ctor", "0x20DF680", ""], rows)
         self.assertIn(["6142", "field", "8255", "", SP_AMOUNT, "", "0x68"], rows)
-        self.assertEqual(len(rows), 2)
+        self.assertIn(["6142", "method", "9100", "", ".ctor", "0x100E960", ""], rows)
+        self.assertEqual(len(rows), 3)
+
+    def test_an_address_only_in_a_generic_instantiation_block_is_a_method_row(self):
+        self.page("# P\n\n`0x100DAB0` and `0x100DAE0`\n")
+        text, errors = self.table()
+        self.assertEqual(errors, [])
+        rows = self.rows(text)
+        # An obfuscated class name is blank, as for any other row; the readable one shows.
+        self.assertIn(["6142", "method", "9100", "", "Check", "0x100DAB0", ""], rows)
+        self.assertIn(["6142", "method", "9100", "Box<int>", "Check<object>", "0x100DAE0", ""], rows)
+
+    def test_instantiations_are_collected_only_when_asked_and_leave_the_classes_alone(self):
+        instances = []
+        with_list = D.parse_dump(TINY_DUMP, instances)
+        self.assertEqual(with_list, D.parse_dump(TINY_DUMP))
+        generic = by_name(with_list, "ʿʺʸ<TInputs>")
+        self.assertEqual([m["name"] for m in generic["methods"]], [".ctor", "Check"])
+        self.assertEqual(
+            sorted((i["rva"], i["class"], i["method"]) for i in instances),
+            [(0x100DAB0, "ʿʺʸ<ʻʹʻ>", "Check"), (0x100DAE0, "Box<int>", "Check<object>"),
+             (0x100E960, "ʿʺʸ<ʻʹʻ>", ".ctor"), (0x100E960, "ʿʺʸ<ʽʽʲ>", ".ctor"),
+             (0x100EC60, "ʿʺʸ<__Il2CppFullySharedGenericStructType>", ".ctor")])
+        self.assertTrue(all(i["typedef_index"] == 9100 for i in instances))
+
+    def test_split_instance_uses_the_methods_own_name(self):
+        self.assertEqual(D._split_instance("A<B, C>..ctor", ".ctor"), ("A<B, C>", ".ctor"))
+        self.assertEqual(D._split_instance("SLImage.M<Color32>", "M"), ("SLImage", "M<Color32>"))
+        self.assertEqual(D._split_instance("Outer.Inner<T>.M", "M"), ("Outer.Inner<T>", "M"))
+        self.assertEqual(D._split_instance("A.B", "Other"), ("A", "B"))
+
+    def test_a_facts_json_has_no_instantiation_rows(self):
+        facts = {"game_version": TINY_VERSION, "classes": D.parse_dump(TINY_DUMP)}
+        path = os.path.join(self.tmp, "facts.json")
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(facts, f, ensure_ascii=False)
+        self.page("# P\n\n`0x100DAB0`\n")
+        _, errors = D.build_table(path, self.pages, self.dll, constants_path=self.constants)
+        self.assertTrue(any("0x100DAB0" in e for e in errors), errors)
 
     def test_header_md5_comes_from_the_dll_bytes(self):
         text, _ = self.table()
