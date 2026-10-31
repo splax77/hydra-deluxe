@@ -9,8 +9,7 @@
 #include "app/display_format.h"
 #include "app/path_costs.h"  // costs_nothing
 #include "app/path_view.h"   // activation_badges
-#include "core/backend_value.h"    // after_sp_end
-#include "pathbuilder/pb_coach.h"  // tight_window_note
+#include "core/backend_value.h"  // after_sp_end
 
 namespace hydra::pathbuilder {
 
@@ -57,7 +56,6 @@ std::string before_last_sentence(const std::string& subject) {
 const std::string kBeforeLastActivationText = before_last_sentence("This");
 const char* const kGameHidesFillText = "The game doesn't show this fill here.";
 const char* const kBestChoiceNowText = "This is the best choice now.";
-const char* const kNothingLeftText = "Nothing left on the table after your last activation.";
 const char* const kPendingText = "...";
 
 namespace {
@@ -204,11 +202,6 @@ std::string end_choice_text(const SongTiming& timing, const Activation& act) {
     return (d ? "ends " + measure_at(timing, *d) : act.notationstr()) + badges_after(act);
 }
 
-std::string cost_text(int64_t cost) {
-    if (app::costs_nothing(cost)) return "costs nothing";
-    return "costs " + group_thousands(cost) + " points";
-}
-
 std::string cost_or_best(int64_t cost) {
     return app::costs_nothing(cost) ? std::string(kBestFillLabel) : app::format_cost(cost);
 }
@@ -308,39 +301,6 @@ GuideMessage guide_text(const GuideFacts& facts) {
     if (facts.earliest_fill) t += " The next glowing fill is " + *facts.earliest_fill + ".";
     if (facts.best_fill) t += " Your best next choice is " + *facts.best_fill + ".";
     return {t, false, star_at};
-}
-
-StepText step_sentence(const SongTiming& timing, const Activation& act, int64_t cost,
-                       int64_t before, int64_t after,
-                       const std::optional<double>& limit_ms) {
-    StepText s;
-    s.sentence = "Activate at " + measure_label(act.timecode) + " (" +
-                 app::clock_str(act.timecode.ms()) + ") with " +
-                 counted(act.sp_meter(), "phrase", "phrases") + " saved.";
-    if (const std::optional<int64_t> d = act.deact_tick())
-        s.sentence += " Star Power runs until " + measure_at(timing, *d) + badges_after(act) + ".";
-    s.sentence += " This choice " + cost_text(cost) + ".";
-    s.why = !app::costs_nothing(cost)
-                ? "Before it, the best you could still finish with was " + group_thousands(before) +
-                      ". After it, " + group_thousands(after) + "."
-                : "The best you can still finish with stays at " + group_thousands(after) + ".";
-    s.note = tight_window_note(act, limit_ms);
-    return s;
-}
-
-std::string leftover_text(int64_t after_last) {
-    if (after_last <= 0) return kNothingLeftText;
-    return "You still have Star Power to use. Activating the best way from here would add " +
-           group_thousands(after_last) + " points.";
-}
-
-std::string glossary_text() {
-    return "Cost: how many points a choice takes off the best score you can still reach. "
-           "Squeeze-out: a Star Power phrase ends right where your Star Power runs out; hitting "
-           "its last note late enough saves the phrase for your next activation. "
-           "Squeeze-in: hitting a phrase's last note early enough that it still lands inside "
-           "your Star Power and stretches it. "
-           "The ms figure is how much timing it needs, as Hydra's Paths tab shows it.";
 }
 
 }  // namespace hydra::pathbuilder

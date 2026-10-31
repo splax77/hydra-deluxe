@@ -58,7 +58,6 @@ extern const char* const kBuildLeftToRightText;
 extern const std::string kBeforeLastActivationText;
 extern const char* const kGameHidesFillText;
 extern const char* const kBestChoiceNowText;
-extern const char* const kNothingLeftText;
 extern const char* const kPendingText;  // a figure whose search has not landed
 
 // A fill's name on screen: its measure, "m96" (measure_label).
@@ -124,7 +123,7 @@ std::vector<int64_t> choice_order(const std::vector<int64_t>& offered,
 // A compact step's two pieces: `span` is where the activation starts and
 // where its Star Power ends, "m32 → m36" (measure_label of the activation
 // and of its deact node; the start alone when it has none), `saved` the
-// phrases it spends, "2 phrases" (Activation::sp_meter, as step_sentence),
+// phrases it spends, "2 phrases" (Activation::sp_meter),
 // and `squeezes` its timings as the Paths tab's badges word them (badges_text;
 // empty when it has none).
 // The screen joins `squeezes` to `saved` with app::kFactSeparator only when
@@ -142,9 +141,6 @@ StepShort step_short(const SongTiming& timing, const Activation& act);
 // joined by app::kFactSeparator, when it has any. The
 // list row's end (candidate_row_text) reads it too.
 std::string end_choice_text(const SongTiming& timing, const Activation& act);
-
-// "costs nothing" or "costs 1,234 points" (group_thousands).
-std::string cost_text(int64_t cost);
 
 // The word under the best next fills on the timeline, and the cost of a list
 // row, a step, an end choice or a fill card that loses nothing.
@@ -246,31 +242,6 @@ struct GuideFacts {
 };
 
 GuideMessage guide_text(const GuideFacts& facts);
-
-// One step in the steps panel: the sentence, the line under it with the two
-// numbers its cost compares, and the violet note (tight_window_note; empty
-// when the window is inside the Path limit).
-struct StepText {
-    std::string sentence;
-    std::string why;
-    std::string note;
-};
-
-// The step for activation `act`: where it starts (measure_label, clock_str),
-// the bars it spends (Activation::sp_meter), where its Star Power ends (its
-// deact node), its timings (badges_text), and its cost, with `before`
-// and `after` the best finish before and after it (the ladder's bf[i] and
-// bf[i + 1]) and `cost` cost_list's figure for it.
-StepText step_sentence(const SongTiming& timing, const Activation& act, int64_t cost,
-                       int64_t before, int64_t after,
-                       const std::optional<double>& limit_ms);
-
-// The line after the steps: cost_list's after_last, what the best rest of
-// the path would add.
-std::string leftover_text(int64_t after_last);
-
-// The glossary under the steps.
-std::string glossary_text();
 
 }  // namespace hydra::pathbuilder
 
