@@ -927,6 +927,35 @@
       "note": "A timing printed as a whole number of ms: printf's %.0f with or without a space before \"ms\", or a cast, round, lround or llround with \" ms\" after it. Decided by: D48, Q2 (audit findings 4 and 18; phase 3 task O1; M_D review round 2, library finding 6)"
     },
     {
+      "question": "What does a tool print for an option it does not know?",
+      "owner": "unknown_option_line in src/core/unknown_option.h",
+      "owner_file": "src/core/unknown_option.h",
+      "owner_symbol": "unknown_option_line",
+      "date": "2026-10-30",
+      "decision": "D271 item 6, D276 item 5",
+      "added_by": "T6 (aoa-b6)",
+      "pattern": "\"[^\"]*[Uu]nknown option",
+      "calls_owner": "\\bunknown_option_line\\(",
+      "must_match": [
+        "std::fprintf(stderr, \"Unknown option: %s\\n\", arg.c_str());",
+        "else { std::fprintf(stderr, \"unknown option %s\\n\", k.c_str()); usage(); return 2; }",
+        "else if (!a.empty() && a[0] == '-') throw std::invalid_argument(\"unknown option \" + a);"
+      ],
+      "must_not_match": [
+        "std::fprintf(stderr, \"%s\\n\", hydra::unknown_option_line(arg).c_str());",
+        "else if (!a.empty() && a[0] == '-') throw std::invalid_argument(hydra::unknown_option_line(a));",
+        "throw std::runtime_error(\"unknown chart mode \" + mode);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/core/unknown_option.h",
+          "line_text": "return \"Unknown option: \" + option;",
+          "why": "unknown_option_line, the owner"
+        }
+      ],
+      "note": "Every command-line tool in src and tools prints the same line for an option it does not know, from the one helper. The words typed in a string anywhere else are a second copy. Decided by: D271 item 6 (one line, one helper) and D276 item 5 (the wording), plan docs/superpowers/plans/2026-10-30-d271-wording-and-windows.md, T6"
+    },
+    {
       "question": "Which tick does a screen show at a time?",
       "owner": "SongTiming::display_tick_at_ms in src/core/timing.cpp",
       "owner_file": "src/core/timing.cpp",

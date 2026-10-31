@@ -14,6 +14,13 @@
 //    shot list takes and the files in docs/images are the same set, and each
 //    file is a PNG within the size limits (kDocImageMaxBytes and
 //    kDocImagesMaxTotalBytes).
+// 5. Every game fact on a Clone Hero page (docs/clone-hero/) has a row in that
+//    build's facts table, every method address and field offset in
+//    tools/ch_probe/constants.py has a row in the 6142 table, and every rule
+//    block has the page template's shape. The fact forms, the table columns
+//    and the template are question 2 and "The page template" in
+//    docs/superpowers/plans/2026-10-30-clone-hero-reference.md;
+//    tools/ch_mcp/dump_facts.py --tsv writes the tables.
 //
 // It finds the repo and walks the code through tests/source_tree.h, as the
 // scans in tests/single_owner/ do.
@@ -26,6 +33,7 @@
 #include <filesystem>
 #include <fstream>
 #include <map>
+#include <optional>
 #include <regex>
 #include <set>
 #include <sstream>
@@ -65,8 +73,35 @@ std::vector<std::string> read_lines(const fs::path& p) {
     return out;
 }
 
-// Every docs/adr/*.md and docs/agents/*.md, the README, CONTEXT.md, the User
-// Guide, development.md and the cap-clamped squeeze note.
+// The Clone Hero reference's folder, repo-relative.
+constexpr const char* kCloneHeroDir = "docs/clone-hero";
+
+std::vector<Doc> load_docs(const std::vector<std::string>& rels) {
+    const fs::path root = sourcetree::root();
+    std::vector<Doc> out;
+    for (const std::string& rel : rels) {
+        Doc d{rel, read_lines(root / fs::u8path(rel))};
+        REQUIRE_MESSAGE(!d.lines.empty(), rel << " is missing or empty");
+        out.push_back(std::move(d));
+    }
+    return out;
+}
+
+// Every .md under docs/clone-hero/, its subfolders included, in path order.
+std::vector<Doc> clone_hero_pages() {
+    const fs::path root = sourcetree::root();
+    std::vector<std::string> rels;
+    for (const auto& e : fs::recursive_directory_iterator(root / fs::u8path(kCloneHeroDir))) {
+        if (!e.is_regular_file() || e.path().extension() != ".md") continue;
+        rels.push_back(fs::relative(e.path(), root).generic_u8string());
+    }
+    std::sort(rels.begin(), rels.end());
+    return load_docs(rels);
+}
+
+// Every docs/adr/*.md and docs/agents/*.md, every page of the Clone Hero
+// reference, the README, CONTEXT.md, the User Guide, development.md and the
+// cap-clamped squeeze note.
 std::vector<Doc> docs() {
     const fs::path root = sourcetree::root();
     std::vector<std::string> rels;
@@ -79,13 +114,40 @@ std::vector<Doc> docs() {
     for (const char* rel : {"README.md", "CONTEXT.md", "docs/UserGuide.md", "docs/development.md",
                             "docs/cap-clamped-squeeze-frontend-anchor.md"})
         rels.push_back(rel);
-    std::vector<Doc> out;
-    for (const std::string& rel : rels) {
-        Doc d{rel, read_lines(root / fs::u8path(rel))};
-        REQUIRE_MESSAGE(!d.lines.empty(), rel << " is missing or empty");
-        out.push_back(std::move(d));
+    std::vector<Doc> out = load_docs(rels);
+    for (Doc& d : clone_hero_pages()) out.push_back(std::move(d));
+    return out;
+}
+
+// The inline code spans on one line: the text between each pair of backticks.
+// A span is never empty, so two backticks in a row do not pair: the second one
+// opens the next span. tools/ch_mcp/dump_facts.py (_SPAN_RE) reads spans the
+// same way.
+std::vector<std::string> inline_spans(const std::string& line) {
+    std::vector<std::string> out;
+    size_t from = 0;
+    while (true) {
+        const size_t open = line.find('`', from);
+        if (open == std::string::npos) break;
+        const size_t close = line.find('`', open + 1);
+        if (close == std::string::npos) break;
+        if (close == open + 1) {
+            from = close;
+            continue;
+        }
+        out.push_back(line.substr(open + 1, close - open - 1));
+        from = close + 1;
     }
     return out;
+}
+
+// Whether a span names a file by its extension, such as `song.ini` or
+// `scoredata.bin`. Check 1 and check 5 both skip such a span.
+bool is_file_name(const std::string& span) {
+    static const std::regex file_ext(
+        R"(\.(cpp|h|c|md|ini|json|py|ps1|exe|db|txt|mid|chart|sng|srb|opus|ogg|mp3|wav|flac|png|jpg|cmake|hlsl|dll|asm|cs|tsv|bin|log|csv|xml|yml|yaml|dat|cfg)$)",
+        std::regex::icase);
+    return std::regex_search(span, file_ext);
 }
 
 // A Markdown heading's level (1 to 6), or 0 for any other line.
@@ -162,10 +224,7 @@ std::vector<std::string> code_name_parts(std::string span) {
     span = hydra::trim(span);
     if (span.empty()) return {};
     if (span.find_first_of("/\\=") != std::string::npos) return {};
-    static const std::regex file_ext(
-        R"(\.(cpp|h|c|md|ini|json|py|ps1|exe|db|txt|mid|chart|sng|srb|opus|ogg|mp3|wav|flac|png|jpg|cmake|hlsl|dll)$)",
-        std::regex::icase);
-    if (std::regex_search(span, file_ext)) return {};
+    if (is_file_name(span)) return {};
     bool call = false;
     const size_t paren = span.find('(');
     if (paren != std::string::npos) {
@@ -357,16 +416,8 @@ TEST_CASE("docs match code: every backticked code name exists in src/, tools/ or
                 if (!skip_level && !first_heading_skip_reason(line).empty()) skip_level = level;
             }
             if (skip_level) continue;
-            // Inline code spans: text between a pair of backticks on one line.
-            size_t from = 0;
-            while (true) {
-                const size_t open = line.find('`', from);
-                if (open == std::string::npos) break;
-                const size_t close = line.find('`', open + 1);
-                if (close == std::string::npos) break;
-                from = close + 1;
-                const std::vector<std::string> parts =
-                    code_name_parts(line.substr(open + 1, close - open - 1));
+            for (const std::string& span : inline_spans(line)) {
+                const std::vector<std::string> parts = code_name_parts(span);
                 if (parts.empty()) continue;
                 ++names_checked;
                 bool all_found = true;
@@ -383,8 +434,7 @@ TEST_CASE("docs match code: every backticked code name exists in src/, tools/ or
                 std::string missing;
                 for (const std::string& p : parts)
                     if (!words.count(p)) missing += (missing.empty() ? "" : ", ") + p;
-                problems.push_back(d.rel + ":" + std::to_string(i + 1) + ": `" +
-                                   line.substr(open + 1, close - open - 1) + "` names " +
+                problems.push_back(d.rel + ":" + std::to_string(i + 1) + ": `" + span + "` names " +
                                    missing + ", which the code does not use (see code_words)");
             }
         }
@@ -507,6 +557,533 @@ TEST_CASE("docs match code: what counts as a code name") {
     CHECK(code_name_parts("hydra_rules.ini").empty());
     CHECK(code_name_parts("hydra_batch --legacy-fills").empty());
     CHECK(code_name_parts("[ENABLE_CHART_DYNAMICS]").empty());
+    // Not code: a game name as the Clone Hero pages write it, and an address.
+    CHECK(code_name_parts("GameManager.Update").empty());
+    CHECK(code_name_parts("0x20DF680").empty());
+    // Not code: file names whose extensions the Clone Hero pages need.
+    CHECK(code_name_parts("scoredata.bin").empty());
+    CHECK(code_name_parts("dump.cs").empty());
+}
+
+namespace {
+
+// ---- check 5: game facts on the Clone Hero pages ---------------------------
+
+// The kinds of backticked span check 5 reads. The forms are question 2 of
+// docs/superpowers/plans/2026-10-30-clone-hero-reference.md; fact_form below
+// is the one place this test tells them apart.
+enum class FactForm {
+    None,         // not a game fact
+    Rva,          // `0x20F6800`: an address in GameAssembly.dll
+    ClassMember,  // `GameManager.songTime`: a member of a readable class
+    IndexMember,  // `#8255.sp_amount`: a member of a class known by TypeDefIndex
+    IndexOffset,  // `#8255+0x68`: a field known only by its offset
+    PythonName,   // `bot_run.launch_command`: a name in a .py module under tools/
+};
+
+struct FactSpan {
+    FactForm form = FactForm::None;
+    std::string left;     // the class, the TypeDefIndex or the Python module
+    std::string right;    // the member or the Python name
+    uint64_t number = 0;  // the address or the offset
+};
+
+// A hex number written with or without 0x; nothing when blank or not hex.
+std::optional<uint64_t> read_hex(std::string text) {
+    text = hydra::trim(text);
+    if (text.size() > 2 && text[0] == '0' && (text[1] == 'x' || text[1] == 'X')) text = text.substr(2);
+    if (text.empty() || text.size() > 16 ||
+        text.find_first_not_of("0123456789abcdefABCDEF") != std::string::npos)
+        return std::nullopt;
+    return std::stoull(text, nullptr, 16);
+}
+
+// Every .py module under tools/, by its file name without .py, with the code
+// words in it (comments and strings left out). Two modules of one name share
+// a set.
+const std::map<std::string, std::set<std::string>>& tools_python_modules() {
+    static const std::map<std::string, std::set<std::string>> modules = [] {
+        std::map<std::string, std::set<std::string>> out;
+        sourcetree::for_each_source_file([&](const fs::path& path, const std::string& rel) {
+            if (rel.rfind("tools/", 0) != 0 || path.extension() != ".py") return;
+            std::ifstream in(path, std::ios::binary);
+            std::ostringstream ss;
+            ss << in.rdbuf();
+            const std::string text = ss.str();
+            std::set<std::string>& words = out[path.stem().u8string()];
+            for (const codelex::Piece& p : codelex::split(text, codelex::Lang::Python))
+                if (p.kind == codelex::Kind::Code) add_words(text, p.begin, p.end, words);
+        });
+        return out;
+    }();
+    return modules;
+}
+
+// Which fact form a backticked span has. A dotted span whose left part is a
+// .py module under tools/ is a Python name, not a game fact.
+FactSpan fact_form(std::string span) {
+    span = hydra::trim(span);
+    static const std::regex rva(R"(^0x([0-9A-Fa-f]{5,})$)");
+    static const std::regex dotted(R"(^([A-Za-z_]\w*)\.([A-Za-z_]\w*)$)");
+    static const std::regex index_member(R"(^#(\d+)\.([A-Za-z_]\w*)$)");
+    static const std::regex index_offset(R"(^#(\d+)\+0x([0-9A-Fa-f]+)$)");
+    std::smatch m;
+    FactSpan f;
+    if (std::regex_match(span, m, rva)) {
+        const std::optional<uint64_t> n = read_hex(m[1].str());
+        if (!n) return f;
+        f.form = FactForm::Rva;
+        f.number = *n;
+    } else if (std::regex_match(span, m, dotted) && !is_file_name(span)) {
+        f.left = m[1].str();
+        f.right = m[2].str();
+        f.form = tools_python_modules().count(f.left) ? FactForm::PythonName : FactForm::ClassMember;
+    } else if (std::regex_match(span, m, index_member)) {
+        f.form = FactForm::IndexMember;
+        f.left = m[1].str();
+        f.right = m[2].str();
+    } else if (std::regex_match(span, m, index_offset)) {
+        const std::optional<uint64_t> n = read_hex(m[2].str());
+        if (!n) return f;
+        f.form = FactForm::IndexOffset;
+        f.left = m[1].str();
+        f.number = *n;
+    }
+    return f;
+}
+
+// Whether a Python name's module uses the name in its code.
+bool python_name_found(const FactSpan& f) {
+    const auto mod = tools_python_modules().find(f.left);
+    return mod != tools_python_modules().end() && mod->second.count(f.right);
+}
+
+// One row of a facts table.
+struct FactRow {
+    std::string type_def_index;
+    std::string class_name;  // blank when the class is obfuscated
+    std::string member;
+    std::optional<uint64_t> rva;     // blank for 4045, whose dump has no addresses
+    std::optional<uint64_t> offset;  // a field's offset, blank for others
+};
+
+struct FactsTable {
+    std::string rel;  // repo-relative path
+    bool present = false;
+    std::vector<FactRow> rows;
+};
+
+// The facts tables' columns, in the order question 2 gives them, and the
+// column line tools/ch_mcp/dump_facts.py --tsv writes after the # header.
+enum FactColumn : size_t { kColBuild, kColKind, kColTypeDefIndex, kColClass, kColMember, kColRva,
+                           kColOffset, kColCount };
+constexpr const char* kFactColumnLine = "build\tkind\ttypedef_index\tclass\tmember\trva\toffset";
+
+// The repo-relative path of one build's facts table.
+std::string facts_table_rel(const std::string& build) {
+    return std::string(kCloneHeroDir) + "/code/facts-" + build + ".tsv";
+}
+
+// Reads one build's facts table. A missing file gives a table that is not
+// present; a malformed row is a problem naming its line.
+FactsTable load_facts_table(const std::string& build, std::vector<std::string>& problems) {
+    FactsTable t;
+    t.rel = facts_table_rel(build);
+    const fs::path path = sourcetree::root() / fs::u8path(t.rel);
+    if (!fs::is_regular_file(path)) return t;
+    t.present = true;
+    const std::vector<std::string> lines = read_lines(path);
+    bool columns_seen = false;
+    for (size_t i = 0; i < lines.size(); ++i) {
+        const std::string& line = lines[i];
+        if (hydra::trim(line).empty() || line.rfind("#", 0) == 0) continue;  // a header line
+        const std::string where = t.rel + ":" + std::to_string(i + 1) + ": ";
+        if (!columns_seen) {
+            columns_seen = true;
+            if (line != kFactColumnLine)
+                problems.push_back(where + "the first line after the # header is not the column line");
+            continue;
+        }
+        std::vector<std::string> cols;
+        for (size_t from = 0;;) {
+            const size_t tab = line.find('\t', from);
+            cols.push_back(hydra::trim(line.substr(from, tab == std::string::npos ? std::string::npos : tab - from)));
+            if (tab == std::string::npos) break;
+            from = tab + 1;
+        }
+        if (cols.size() != kColCount) {
+            problems.push_back(where + std::to_string(cols.size()) + " tab-separated columns, not " +
+                               std::to_string(kColCount));
+            continue;
+        }
+        FactRow r{cols[kColTypeDefIndex], cols[kColClass], cols[kColMember], read_hex(cols[kColRva]),
+                  read_hex(cols[kColOffset])};
+        if (!cols[kColRva].empty() && !r.rva)
+            problems.push_back(where + "the RVA \"" + cols[kColRva] + "\" is not a hex number");
+        if (!cols[kColOffset].empty() && !r.offset)
+            problems.push_back(where + "the field offset \"" + cols[kColOffset] + "\" is not a hex number");
+        t.rows.push_back(std::move(r));
+    }
+    return t;
+}
+
+// Whether a table has the row a fact span names.
+bool has_row(const FactsTable& t, const FactSpan& f) {
+    for (const FactRow& r : t.rows) {
+        switch (f.form) {
+            case FactForm::Rva:
+                if (r.rva && *r.rva == f.number) return true;
+                break;
+            case FactForm::ClassMember:
+                if (r.class_name == f.left && r.member == f.right) return true;
+                break;
+            case FactForm::IndexMember:
+                if (r.type_def_index == f.left && r.member == f.right) return true;
+                break;
+            case FactForm::IndexOffset:
+                if (r.type_def_index == f.left && r.offset && *r.offset == f.number) return true;
+                break;
+            default:
+                break;
+        }
+    }
+    return false;
+}
+
+// The seven fixed lines of a rule block, from "The page template" in the
+// plan. A Game code line names its build in the parentheses.
+constexpr const char* kFixedLines[] = {"Rule:", "Label:", "Evidence:", "Game code (", "Hydra:", "Ruling:",
+                                       "Found:"};
+
+// The four labels, from the same template.
+constexpr const char* kLabels[] = {"Proven in the game's code", "Proven in a live run",
+                                   "Hydra assumes it, never checked", "Unknown"};
+
+// The builds that have a facts table. A span's build is its block's Game code
+// line, else the nearest heading above it that names a build ("Build
+// 1.0.0.4045"), else 1.1; tools/ch_mcp/dump_facts.py --tsv picks the same.
+constexpr const char* kBuild11 = "6142";
+constexpr const char* kBuild10 = "4045";
+
+// The pages of the reference that are not area pages, so their ### headings
+// are not rule blocks: the index, the questions page and the live-checks page.
+// An .md under code/ is never an area page either.
+constexpr const char* kNotAreaPages[] = {"README.md", "questions.md", "live-checks.md"};
+constexpr const char* kQuestionsPage = "questions.md";
+
+// The RVA_ names in tools/ch_probe/constants.py that are data addresses in
+// the DLL's .rdata section, not methods, so no dump line names them (plan
+// question 2). Every other RVA_ name there is a method.
+constexpr const char* kDataAddressNames[] = {
+    "RVA_CONST_NORMAL_BACK", "RVA_CONST_NORMAL_FRONT", "RVA_CONST_PRECISION_BACK",
+    "RVA_CONST_PRECISION_FRONT", "RVA_FORMULA_NORMAL", "RVA_FORMULA_PRECISION",
+    "RVA_FORMULA_DIVISOR", "RVA_FORMULA_EXPONENT", "RVA_HITCHECK_THRESHOLD"};
+constexpr const char* kProbeConstants = "tools/ch_probe/constants.py";
+
+// A ### heading and the lines under it up to the next heading of any level.
+// `rule` is whether the page is an area page, where such a block is a rule
+// block with the template's shape; on any other page the block only decides
+// which build its spans belong to.
+struct RuleBlock {
+    int line = 0;  // the ### heading's line number
+    bool rule = false;
+    std::map<std::string, std::vector<size_t>> fixed;  // fixed line -> line indexes
+    std::string build;  // the facts table its spans are looked up in
+};
+
+// What check 5 found, so the test case can assert on the counts.
+struct CloneHeroCheck {
+    std::vector<std::string> problems;
+    int blocks = 0;
+    std::map<FactForm, int> checked;  // spans looked up in a present table, by form
+};
+
+// One page as check 5 reads it: its rule blocks, the block each line is in,
+// the fenced lines, and the build a line outside a block is looked up in.
+struct PageScan {
+    const Doc* doc = nullptr;
+    std::vector<RuleBlock> blocks;
+    std::vector<int> block_of;           // index into blocks, or -1
+    std::vector<bool> fenced;            // inside a fenced code block, so skipped
+    std::vector<std::string> build_at;   // the nearest build heading above, else 6142
+    std::vector<std::pair<std::string, size_t>> q_headings;  // on the questions page
+};
+
+PageScan scan_page(const Doc& d) {
+    static const std::regex build_heading(R"(\bBuild \d+\.\d+\.\d+\.(\d+)\b)");
+    static const std::regex q_heading(R"(^Q-\d+\b)");
+    const std::string name = d.rel.substr(std::string(kCloneHeroDir).size() + 1);
+    bool area = name.find('/') == std::string::npos;
+    for (const char* not_area : kNotAreaPages) area = area && name != not_area;
+    PageScan s;
+    s.doc = &d;
+    s.block_of.assign(d.lines.size(), -1);
+    s.fenced.assign(d.lines.size(), false);
+    s.build_at.assign(d.lines.size(), kBuild11);
+    bool fenced = false;
+    std::string build = kBuild11;
+    // The headings above that name a build, outermost first: a section's
+    // build ends where the next heading of its level or a higher one starts.
+    std::vector<std::pair<int, std::string>> sections;
+    int cur = -1;
+    for (size_t i = 0; i < d.lines.size(); ++i) {
+        const std::string& line = d.lines[i];
+        if (is_fence(line) || fenced) {
+            if (is_fence(line)) fenced = !fenced;
+            s.fenced[i] = true;
+        } else if (const int level = heading_level(line)) {
+            const std::string text = hydra::trim(line.substr(static_cast<size_t>(level)));
+            std::smatch m;
+            while (!sections.empty() && sections.back().first >= level) sections.pop_back();
+            if (std::regex_search(text, m, build_heading)) sections.emplace_back(level, m.str(1));
+            build = sections.empty() ? kBuild11 : sections.back().second;
+            cur = -1;
+            if (level == 3) {
+                s.blocks.push_back(RuleBlock{static_cast<int>(i + 1), area, {}, build});
+                cur = static_cast<int>(s.blocks.size()) - 1;
+            }
+            if (name == kQuestionsPage && std::regex_search(text, m, q_heading))
+                s.q_headings.emplace_back(m.str(0), i);
+        } else if (cur >= 0) {
+            for (const char* key : kFixedLines)
+                if (line.rfind(key, 0) == 0) s.blocks[static_cast<size_t>(cur)].fixed[key].push_back(i);
+        }
+        s.block_of[i] = cur;
+        s.build_at[i] = build;
+    }
+    return s;
+}
+
+CloneHeroCheck check_clone_hero(const std::vector<Doc>& pages) {
+    CloneHeroCheck out;
+    std::vector<PageScan> scans;
+    for (const Doc& d : pages) {
+        scans.push_back(scan_page(d));
+        for (const RuleBlock& b : scans.back().blocks) out.blocks += b.rule ? 1 : 0;
+    }
+    // This branch lands on main before task J1 writes the facts tables, over
+    // the skeleton pages, so with no rule block anywhere nothing is checked.
+    if (out.blocks == 0) return out;
+
+    std::vector<std::string>& problems = out.problems;
+    const fs::path dir = sourcetree::root() / fs::u8path(kCloneHeroDir);
+    const std::string prefix = std::string(kCloneHeroDir) + "/";
+    std::map<std::string, FactsTable> tables;
+    for (const char* build : {kBuild11, kBuild10}) {
+        tables[build] = load_facts_table(build, problems);
+        if (!tables[build].present)
+            problems.push_back(tables[build].rel + " is missing, and the pages hold rule blocks");
+    }
+
+    static const std::regex game_code(R"(^Game code \((\w+)\):)");
+    static const std::regex q_id(R"(\bQ-\d+\b)");
+    static const std::regex code_path(R"((?:^|[\s`(\[])(code/[^\s`,;()\[\]]+))");
+    std::map<std::string, std::string> rulings_q;  // Q id -> first "page:line" naming it
+    std::map<std::string, std::string> heading_q;  // Q id -> "page:line" of its heading
+
+    for (PageScan& s : scans) {
+        const Doc& d = *s.doc;
+        std::vector<RuleBlock>& blocks = s.blocks;
+        for (const auto& [id, i] : s.q_headings) {
+            const std::string where = d.rel + ":" + std::to_string(i + 1);
+            if (!heading_q.emplace(id, where).second)
+                problems.push_back(where + ": " + id + " is a heading twice (first at " + heading_q[id] + ")");
+        }
+
+        // The shape of each block.
+        for (RuleBlock& b : blocks) {
+            const std::string where = d.rel + ":" + std::to_string(b.line) + ": the rule block ";
+            for (size_t i : b.fixed["Game code ("]) {
+                std::smatch m;
+                const std::string& line = d.lines[i];
+                if (std::regex_search(line, m, game_code) && tables.count(m.str(1)))
+                    b.build = m.str(1);
+                else if (b.rule)
+                    problems.push_back(d.rel + ":" + std::to_string(i + 1) +
+                                       ": the Game code line names no build with a facts table (" +
+                                       kBuild11 + " or " + kBuild10 + ")");
+            }
+            if (!b.rule) continue;
+            for (const char* key : kFixedLines) {
+                const size_t n = b.fixed[key].size();
+                if (n == 0) problems.push_back(where + "has no `" + key + "` line");
+                if (n > 1)
+                    problems.push_back(where + "has " + std::to_string(n) + " `" + key + "` lines, not one");
+            }
+            for (size_t i : b.fixed["Label:"]) {
+                const std::string label = hydra::trim(d.lines[i].substr(std::string("Label:").size()));
+                bool known = false;
+                for (const char* l : kLabels) known = known || label == l;
+                if (!known)
+                    problems.push_back(d.rel + ":" + std::to_string(i + 1) + ": the label \"" + label +
+                                       "\" is not one of the four");
+            }
+            for (const char* key : {"Evidence:", "Game code ("}) {
+                for (size_t i : b.fixed[key]) {
+                    const std::string& line = d.lines[i];
+                    for (auto it = std::sregex_iterator(line.begin(), line.end(), code_path);
+                         it != std::sregex_iterator(); ++it) {
+                        std::string p = (*it)[1].str();
+                        while (!p.empty() && (p.back() == '.' || p.back() == ':')) p.pop_back();
+                        if (!fs::exists(dir / fs::u8path(p)))
+                            problems.push_back(d.rel + ":" + std::to_string(i + 1) + ": " + prefix + p +
+                                               " does not exist");
+                    }
+                }
+            }
+            for (size_t i : b.fixed["Ruling:"]) {
+                const std::string& line = d.lines[i];
+                for (auto it = std::sregex_iterator(line.begin(), line.end(), q_id);
+                     it != std::sregex_iterator(); ++it)
+                    rulings_q.emplace(it->str(0), d.rel + ":" + std::to_string(i + 1));
+            }
+        }
+        // Every fact span has a row in its build's table.
+        for (size_t i = 0; i < d.lines.size(); ++i) {
+            if (s.fenced[i]) continue;
+            for (const std::string& span : inline_spans(d.lines[i])) {
+                const FactSpan f = fact_form(span);
+                if (f.form == FactForm::None) continue;
+                const std::string where = d.rel + ":" + std::to_string(i + 1) + ": `" + span + "`";
+                if (f.form == FactForm::PythonName) {
+                    if (!python_name_found(f))
+                        problems.push_back(where + " names " + f.right + ", which no " + f.left +
+                                           ".py under tools/ uses");
+                    continue;
+                }
+                const int b = s.block_of[i];
+                const std::string build = b >= 0 ? blocks[static_cast<size_t>(b)].build : s.build_at[i];
+                const auto table = tables.find(build);
+                if (table == tables.end()) {
+                    problems.push_back(where + " sits under a heading naming build " + build +
+                                       ", which has no facts table");
+                    continue;
+                }
+                const FactsTable& t = table->second;
+                if (!t.present) continue;  // reported once above
+                ++out.checked[f.form];
+                if (!has_row(t, f)) problems.push_back(where + " has no row in " + t.rel);
+            }
+        }
+    }
+
+    // Every Q-nn a Ruling line names is a heading on the questions page, and
+    // every Q-nn heading there is named by a row.
+    for (const auto& [id, where] : rulings_q)
+        if (!heading_q.count(id))
+            problems.push_back(where + ": the Ruling line names " + id + ", which is not a heading on " +
+                               prefix + kQuestionsPage);
+    for (const auto& [id, where] : heading_q)
+        if (!rulings_q.count(id)) problems.push_back(where + ": " + id + " is named by no rule block's Ruling line");
+
+    // Every listing has its plain-words explanation beside it.
+    const fs::path listings = dir / "code" / kBuild11;
+    if (fs::is_directory(listings))
+        for (const auto& e : fs::recursive_directory_iterator(listings)) {
+            if (!e.is_regular_file() || e.path().extension() != ".asm") continue;
+            fs::path md = e.path();
+            md.replace_extension(".md");
+            if (!fs::is_regular_file(md))
+                problems.push_back(fs::relative(e.path(), sourcetree::root()).generic_u8string() + " has no " +
+                                   md.filename().u8string() + " beside it");
+        }
+
+    // Every method address and field offset in tools/ch_probe/constants.py
+    // has a row in the 6142 table, so the two homes cannot drift apart.
+    const std::vector<std::string> probe = read_lines(sourcetree::root() / kProbeConstants);
+    REQUIRE_MESSAGE(!probe.empty(), kProbeConstants << " is missing or empty");
+    for (const char* data : kDataAddressNames) {
+        const std::regex assigned("^" + std::string(data) + R"(\s*=)");
+        bool found = false;
+        for (const std::string& line : probe) found = found || std::regex_search(line, assigned);
+        if (!found)
+            problems.push_back(std::string("kDataAddressNames lists ") + data + ", which " + kProbeConstants +
+                               " no longer assigns");
+    }
+    static const std::regex named_value(R"(^((?:RVA|OFF)_\w+)\s*=\s*0x([0-9A-Fa-f]+)\b)");
+    int methods = 0, offsets = 0;
+    const FactsTable& t11 = tables[kBuild11];
+    for (size_t i = 0; i < probe.size(); ++i) {
+        std::smatch m;
+        if (!std::regex_search(probe[i], m, named_value)) continue;
+        const std::string name = m.str(1);
+        bool data = false;
+        for (const char* d : kDataAddressNames) data = data || name == d;
+        if (data) continue;
+        const bool is_offset = name.rfind("OFF_", 0) == 0;
+        (is_offset ? offsets : methods) += 1;
+        if (!t11.present) continue;
+        const std::optional<uint64_t> value = read_hex(m.str(2));
+        bool found = false;
+        for (const FactRow& r : t11.rows) {
+            const std::optional<uint64_t>& cell = is_offset ? r.offset : r.rva;
+            found = found || (value && cell && *cell == *value);
+        }
+        if (!found)
+            problems.push_back(std::string(kProbeConstants) + ":" + std::to_string(i + 1) + ": " + name + " = 0x" +
+                               m.str(2) + " has no row in " + t11.rel);
+    }
+    // The parse found the values, so a change of form there cannot empty the check.
+    CHECK(methods > 0);
+    CHECK(offsets > 0);
+    return out;
+}
+
+}  // namespace
+
+TEST_CASE("docs match code: what counts as a game fact on a Clone Hero page") {
+    CHECK(fact_form("0x20DF680").form == FactForm::Rva);
+    CHECK(fact_form("0x20DF680").number == 0x20DF680);
+    CHECK(fact_form("0x20DF6").form == FactForm::Rva);
+    CHECK(fact_form("GameManager.songTime").form == FactForm::ClassMember);
+    CHECK(fact_form("#8255.sp_amount").form == FactForm::IndexMember);
+    CHECK(fact_form("#8255+0x68").form == FactForm::IndexOffset);
+    CHECK(fact_form("#8255+0x68").number == 0x68);
+    // A Python name is checked against its module, not a facts table.
+    const FactSpan py = fact_form("bot_run.launch_command");
+    CHECK(py.form == FactForm::PythonName);
+    CHECK(python_name_found(py));
+    CHECK(!python_name_found(fact_form("bot_run.no_such_name")));
+    // Not game facts: short hex, files, Hydra names, a .rdata constant's name.
+    CHECK(fact_form("0x20DF").form == FactForm::None);
+    CHECK(fact_form("song.ini").form == FactForm::None);
+    CHECK(fact_form("scoredata.bin").form == FactForm::None);
+    CHECK(fact_form("dump.cs").form == FactForm::None);
+    CHECK(fact_form("Song::check_activations").form == FactForm::None);
+    CHECK(fact_form("RVA_CONST_NORMAL_BACK").form == FactForm::None);
+}
+
+TEST_CASE("docs match code: which spans and which build a Clone Hero page line has") {
+    // Two backticks in a row do not pair; the second opens the next span.
+    CHECK(inline_spans("``x``") == std::vector<std::string>{"x"});
+    CHECK(inline_spans("`a``b`") == std::vector<std::string>{"a", "b"});
+    CHECK(inline_spans("a `b` c `d").size() == 1);
+
+    // A block ends at the next heading of any level, and a build heading
+    // covers its own section only.
+    const Doc under_build{"docs/clone-hero/04-fills.md",
+                          {"## Build 1.0.0.4045", "### X", "Game code (4045): a", "`a.b`", "#### sub",
+                           "`c.d`", "## Other", "`e.f`"}};
+    const PageScan scan = scan_page(under_build);
+    REQUIRE(scan.blocks.size() == 1);
+    CHECK(scan.blocks[0].fixed.at("Game code (").size() == 1);
+    CHECK(scan.block_of[3] == 0);
+    CHECK(scan.block_of[5] == -1);
+    CHECK(scan.build_at[5] == kBuild10);  // the section's build, not the block's Game code line
+    CHECK(scan.build_at[7] == kBuild11);
+}
+
+TEST_CASE("docs match code: every game fact on a Clone Hero page has a home") {
+    const CloneHeroCheck result = check_clone_hero(clone_hero_pages());
+    // Only once the pages hold rule blocks: the skeleton the writers start
+    // from has no facts to check, so a count there would fail an empty folder.
+    if (result.blocks > 0)
+        for (FactForm form : {FactForm::Rva, FactForm::ClassMember, FactForm::IndexMember, FactForm::IndexOffset}) {
+            INFO("fact form " << static_cast<int>(form) << " (see FactForm)");
+            CHECK(result.checked.count(form));
+        }
+    INFO(report(result.problems));
+    CHECK(result.problems.empty());
 }
 
 namespace {
