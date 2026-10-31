@@ -1,6 +1,6 @@
 # Rulings: agents and workflow
 
-How agents are run: status lines, parallel work, budgets, approvals, and how far an agent's word is trusted. The line format is in `README.md` beside this file. Newest first.
+How agents are run: status lines, parallel work, budgets, approvals, and how far an agent's word is trusted. The line format is in README.md beside this file. Newest first.
 
 - **2026-10-31** "this whole time we've been accepting another agent's framing without verifying any of this is actually necessary." Also, as the note records it: The user asked (2026-10-31) why earlier attempts never checked the code. (session: not stated; note: trace-pass-inputs-before-live-runs; backs: CLAUDE.md rule 9)
 - **2026-10-30** "how many traces have you fucked up now?" As the note records it: Each failure only surfaced when the user asked for status. (session 2026-10-31-12fcfbd2, the note's only one; note: check-long-captures-early; backs: no page yet)

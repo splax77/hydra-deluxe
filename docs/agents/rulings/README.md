@@ -17,7 +17,7 @@ This folder holds every ruling the user gave that a memory note recorded, copied
 
 Each line is one ruling, newest first within its file. It starts with the date of the ruling in bold, then the user's words in quotes. Words a note states without quoting the user follow "As the note records it:" and are copied as the note words them. In brackets come the session, the note and the rule the ruling backs.
 
-Quoted words are copied letter for letter, typos included. Only the note's markdown was dropped: backticks, bold marks and line breaks inside a quote. Where a note's line stops mid-sentence, the line here says so.
+Quoted words are copied letter for letter, typos included. Only the note's markdown was dropped: backticks, bold marks and line breaks inside a quote.
 
 The session is the one the note names for that ruling. Where the note names none, "by date" marks the one session in the note's Sessions line that falls on the ruling's date, and "the note's only one" marks a note with a single session. Otherwise the session says "not stated", and nothing is guessed. A "card" id is a session card the note itself cites. The note is the memory file's name; "archive/" means it sat in the memory archive. "Backs" names the CLAUDE.md rule or docs/agents page that carries the ruling today, or says "no page yet".
 
