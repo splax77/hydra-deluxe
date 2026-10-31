@@ -1,0 +1,37 @@
+{
+  "rules": [
+    {
+      "question": "Does this timing need hitting?",
+      "owner": "timing_needs_hitting in src/core/model.h",
+      "owner_file": "src/core/model.h",
+      "owner_symbol": "timing_needs_hitting",
+      "date": "2026-10-31",
+      "decision": "D301 (reverses D13 and the free squeeze-in of D51 question 4)",
+      "added_by": "PBR4-A1",
+      "pattern": "difficulty\\w*(\\([^()]*\\))?\\s*>=\\s*0(\\.0*)?(?![.\\d])",
+      "anchor": ">=",
+      "owner_lines": [
+        {
+          "file": "src/core/model.h",
+          "line_text": "inline bool timing_needs_hitting(double difficulty_ms) { return difficulty_ms >= 0.0; }",
+          "why": "timing_needs_hitting, the owner"
+        }
+      ],
+      "must_match": [
+        "inline bool early_fill_needs_timing(double e_offset) { return early_fill_difficulty(e_offset) >= 0.0; }",
+        "bool needs_no_timing() const { return !(difficulty() >= 0.0); }",
+        "if (sq.difficulty() >= 0) required = true;"
+      ],
+      "must_not_match": [
+        "return timing_needs_hitting(early_fill_difficulty(e_offset));",
+        "if (copied_at >= 0.0 && ImGui::GetTime() - copied_at < AppState::kCopiedSeconds) {",
+        "inline bool timing_reaches_floor(double ms, double floor_ms) { return ms >= floor_ms; }"
+      ],
+      "scope": [
+        "src",
+        "tools"
+      ],
+      "note": "A second copy of \"a timing of 0.0 ms must still be hit\". Call timing_needs_hitting. Tests are out of scope because they pin figures against 0 on purpose. Decided by: D301"
+    }
+  ]
+}

@@ -317,11 +317,17 @@ inline bool is_e0(double e_offset, int skips) {
 // How hard an E0 activation's early fill is, in ms.
 inline double early_fill_difficulty(double e_offset) { return -e_offset + 0.0; }
 
-// Does an early fill need timing? Only when SP is ready no earlier than the
-// fill's deadline: a fill with time to spare spawns however the player hits
-// the activation. Zero slack counts, like a squeeze-out on the SP end (D51
-// call 4, D13). Activation::hardest and the engine's limit check ask it.
-inline bool early_fill_needs_timing(double e_offset) { return early_fill_difficulty(e_offset) >= 0.0; }
+// Does a timing (a squeeze's or an early fill's difficulty, in ms) need
+// hitting? A figure of 0.0 ms is still a timing to hit, not "no timing"
+// (D301). early_fill_needs_timing and SPSqueeze::needs_no_timing ask it.
+inline bool timing_needs_hitting(double difficulty_ms) { return difficulty_ms >= 0.0; }
+
+// Does an early fill need timing (timing_needs_hitting)? A fill with time to
+// spare spawns however the player hits the activation. Activation::hardest
+// and the engine's limit check ask it.
+inline bool early_fill_needs_timing(double e_offset) {
+    return timing_needs_hitting(early_fill_difficulty(e_offset));
+}
 
 // Is an activation's early fill inside a ms limit? An optional fill is never
 // a limit's business, as in Activation::difficulty. The engine's limit checks
@@ -348,8 +354,9 @@ inline bool allzero_activation(double e_offset, int skips) {
 // exactly on a meter/tempo change: an early (-) hit moves into the section
 // before the tick, a late (+) hit into the section at/after it.
 struct TransferScale {
-    double early = 1.0;  // r- : early (-) hits — difficult SqOuts, free SqIns
-    double late = 1.0;   // r+ : late (+) hits — difficult SqIns, free SqOuts,
+    double early = 1.0;  // r- : early (-) hits — notes inside Star Power
+                         //      (core::paid_by_sp_walk)
+    double late = 1.0;   // r+ : late (+) hits — notes past the SP end,
                          //      backend squeezes
     // Plain == on both doubles, no tolerance: a stored scale equals only the
     // same values (not bit-exact: -0.0 equals 0.0 and NaN equals nothing;
@@ -375,15 +382,13 @@ struct SPSqueeze {
     // needs no timing is asked too, by its own figure. The engine's limit
     // checks and Activation::within_ms_limit ask it.
     bool within_limit(double limit_ms) const { return timing_within_limit(difficulty(), limit_ms); }
-    // Whether the squeeze is already done with no frontend timing: the one
-    // answer the rating and the sentence both read. The SP walk pays a note
-    // on the SP end (core::paid_by_sp_walk), so a SqIn there is already in,
-    // and a SqOut there still has to be hit late (D13). The word "Free" on
-    // screen is BackendSqueeze::summarystr's, a different test.
-    bool needs_no_timing() const {
-        const bool inside_sp = core::paid_by_sp_walk(offset_ms);
-        return kind == SqueezeKind::SqIn ? inside_sp : !inside_sp;
-    }
+    // Whether the squeeze is already done with no frontend timing: its
+    // figure does not need hitting (timing_needs_hitting, D301). The badges,
+    // hardest() and the Paths tab's sentences read it. Which side of the SP
+    // end the note sits on is core::paid_by_sp_walk's question, not this
+    // one. The word "Free" on screen is BackendSqueeze::summarystr's, a
+    // different test.
+    bool needs_no_timing() const { return !timing_needs_hitting(difficulty()); }
     const char* type_name() const {
         return kind == SqueezeKind::SqIn ? "SqIn" : "SqOut";
     }
@@ -546,8 +551,8 @@ struct ActivationTiming {
     // Must the path hit it? A squeeze that needs timing
     // (SPSqueeze::needs_no_timing false) or a required (E0) fill. hardest()
     // weighs these; it weighs an optional fill only when nothing else is, and
-    // never a free squeeze or a fill with time to spare
-    // (early_fill_needs_timing).
+    // never a squeeze that needs no timing or a fill with time to spare
+    // (early_fill_needs_timing). Both ask timing_needs_hitting (D301).
     bool required = false;
     // Warn-coloured on its own: SPSqueeze::is_difficult for a squeeze; for a
     // fill, required and past_difficult_floor.
@@ -656,9 +661,10 @@ struct Activation {
     // With none of those, an E-critical activation that skipped fills still
     // answers with its optional early fill (D48 Q10): that fill's timing
     // decides whether the first fill shows up at all, which is what the skip
-    // count counts. Only timings that need hitting take part (D51 call 4,
-    // D13): a squeeze that needs no timing (SPSqueeze::needs_no_timing) or a
-    // fill with time to spare never names it.
+    // count counts. Only timings that need hitting take part (D51 call 4;
+    // timing_needs_hitting, D301): a squeeze that needs no timing
+    // (SPSqueeze::needs_no_timing) or a fill with time to spare never names
+    // it.
     // Empty means nothing to time.
     std::optional<HardestTiming> hardest() const;
     // Every timing this activation has, in the notation's order: the early
@@ -666,9 +672,9 @@ struct Activation {
     // sqinouts order. A fill with time to spare is listed too (D261), its
     // figure below 0 ("early fill -56.2 ms": SP was ready 56.2 ms before the
     // deadline). So is a squeeze that needs no timing
-    // (SPSqueeze::needs_no_timing), as 2.0 showed it (D80); its figure is 0
-    // or less ("squeeze in -315.8 ms": the note already lands 315.8 ms inside
-    // SP). hardest() picks from this list, leaving those two out. The Paths
+    // (SPSqueeze::needs_no_timing), as 2.0 showed it (D80); its figure is
+    // below 0 (timing_needs_hitting, D301; "squeeze in -315.8 ms": the note
+    // already lands 315.8 ms inside SP). hardest() picks from this list, leaving those two out. The Paths
     // tab's row shows one badge per entry; empty means no badge.
     std::vector<ActivationTiming> badge_timings() const;
     // hardest()'s ms when it is a squeeze or a required fill; empty for an
@@ -677,7 +683,7 @@ struct Activation {
     std::optional<double> difficulty() const;
     // Does this activation need any timing at all? The per-activation half of
     // Path::needs_timing. The Paths tab's path button and the stored summary
-    // read Path::difficulty(), which rests on hardest() (D51 call 4, D13). The
+    // read Path::difficulty(), which rests on hardest() (D51 call 4, D301). The
     // row badges alone also show a squeeze that needs no timing
     // (SPSqueeze::needs_no_timing; badge_timings, D80) and a fill with time
     // to spare (D261).

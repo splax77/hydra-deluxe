@@ -561,8 +561,9 @@ TEST_CASE("rate_activation: a SqIn reads its SqIn scale, by its side of the end"
     CHECK(r.sqins_read[1].late);
 }
 
-// D13.
-TEST_CASE("rate_activation: a SqIn on the SP end is free, so it reads its SqIn scale's early side") {
+// D301: the side is where the note sits (core::paid_by_sp_walk), not whether
+// the squeeze needs timing.
+TEST_CASE("rate_activation: a SqIn on the SP end is inside Star Power, so it reads its SqIn scale's early side") {
     // Only one side scaled, so the figure shows which side was read.
     auto figure = [](TransferScale sqin_scale, double offset) {
         Activation act;
@@ -576,11 +577,11 @@ TEST_CASE("rate_activation: a SqIn on the SP end is free, so it reads its SqIn s
     };
     const TransferScale early_only{1.6, 1.0};
     const TransferScale late_only{1.0, 1.6};
-    // Exactly on the end: free, early side.
+    // Exactly on the end: inside Star Power, early side.
     REQUIRE(figure(early_only, 0.0).has_value());
     CHECK(*figure(early_only, 0.0) == 0.0);
     CHECK_FALSE(figure(late_only, 0.0).has_value());
-    // Just before the end: free, early side.
+    // Just before the end: inside Star Power, early side.
     REQUIRE(figure(early_only, -0.5).has_value());
     CHECK(*figure(early_only, -0.5) == doctest::Approx(0.38461538461538464).epsilon(1e-12));
     CHECK_FALSE(figure(late_only, -0.5).has_value());
@@ -588,6 +589,36 @@ TEST_CASE("rate_activation: a SqIn on the SP end is free, so it reads its SqIn s
     CHECK_FALSE(figure(early_only, 0.5).has_value());
     REQUIRE(figure(late_only, 0.5).has_value());
     CHECK(*figure(late_only, 0.5) == doctest::Approx(0.38461538461538464).epsilon(1e-12));
+}
+
+// D301: the squeezed-out row's side is read the same way, so both kinds are
+// pinned at the SP end.
+TEST_CASE("rate_note side at the SP end: a squeeze-out at 0 reads the early side too") {
+    auto rated_row = [](TransferScale post) {
+        Activation act;
+        test::set_skips(act, 0);
+        act.e_offset = 300.0;
+        act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, 0.0});
+        BackendSqueeze row;
+        row.timecode = Timecode::raw(5000);
+        row.offset_ms = 0.0;
+        act.backends.push_back(row);
+        act.sqout_tick = 5000;
+        test::set_transfer(act, TransferScale{}, post);
+        ActivationRating r = rate_activation(act, 85.0);
+        REQUIRE(r.backends.size() == 1);
+        REQUIRE(r.backends[0].squeezed_out);
+        return r.backends[0].note;
+    };
+    const NoteRating early = rated_row(TransferScale{1.6, 1.0});
+    CHECK(early.early);
+    CHECK(early.scale == 1.6);
+    REQUIRE(early.effective_ms.has_value());
+    CHECK(*early.effective_ms == 0.0);
+    const NoteRating late = rated_row(TransferScale{1.0, 1.6});
+    CHECK(late.early);
+    CHECK(late.scale == 1.0);
+    CHECK_FALSE(late.effective_ms.has_value());
 }
 
 TEST_CASE("rate_activation: scale_governs only for a scaled multiplier on a rated note") {
