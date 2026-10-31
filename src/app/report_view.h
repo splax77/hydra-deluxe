@@ -1,10 +1,10 @@
 // The table both report windows show, as plain C++ with no ImGui, so the
 // tests pin it. A TableView shares a report's rows (shared_rows), and holds
 // each row's search text, the report's column table and a keep-rule from the
-// window's controls. It
-// answers which rows show, in what order, and the count line. Each report's
-// columns and keep-rule live in its own file (app/path_report_view.h,
-// app/dm_report_view.h); the window draws what this hands it.
+// window's controls. It answers which rows show, in what order, and the
+// count line. Each report's columns and keep-rule live in its own file
+// (app/path_report_view.h, app/dm_report_view.h); the window draws what this
+// hands it.
 
 #ifndef HYDRA_APP_REPORT_VIEW_H
 #define HYDRA_APP_REPORT_VIEW_H

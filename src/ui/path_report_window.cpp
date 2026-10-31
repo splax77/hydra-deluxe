@@ -190,6 +190,9 @@ void draw_path_report_window(bool* open, const PathReportInput& input) {
     PathWindow& w = path_window();
     if (!*open) {
         w.memory.was_open = false;
+        // The view keeps its whole result alive (shared_rows), so a result
+        // that replaced it while hidden lets it go now, not at the reopen.
+        if (!report_frame::same_result(w.built_from, input.result)) drop_rows(w);
         return;
     }
     if (!report_frame::same_result(w.built_from, input.result))

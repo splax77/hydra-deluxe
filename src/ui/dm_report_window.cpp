@@ -49,10 +49,17 @@ void apply_filters(DmWindow& w) {
     w.tiles_dirty = true;
 }
 
-void rebuild(DmWindow& w, const std::shared_ptr<const GeneratedDmReport>& result) {
-    w.memory.reset();
+// Lets the window's view of the rows go, and the cells fitted from them.
+void drop_rows(DmWindow& w) {
     w.view.reset();
     w.widths = {};
+    w.memory.fitted.clear();
+    w.tiles.clear();
+}
+
+void rebuild(DmWindow& w, const std::shared_ptr<const GeneratedDmReport>& result) {
+    drop_rows(w);
+    w.memory.reset();
     w.status = app::report_view::kEveryRowChoice;
     w.tiles_dirty = true;
     w.built_from = result;
@@ -111,6 +118,9 @@ void draw_dm_report_window(bool* open, const DmReportInput& input) {
     DmWindow& w = dm_window();
     if (!*open) {
         w.memory.was_open = false;
+        // The view keeps its whole result alive (shared_rows), so a result
+        // that replaced it while hidden lets it go now, not at the reopen.
+        if (!report_frame::same_result(w.built_from, input.result)) drop_rows(w);
         return;
     }
     if (!report_frame::same_result(w.built_from, input.result)) rebuild(w, input.result);
