@@ -119,14 +119,14 @@ TEST_CASE("preview timeline: the insets move the bands, the fills and the saved 
     m.band_inset = 2.0f;
     m.fill_center_y = 6.0f;
     m.saved_inset = 1.0f;
-    // A 65 s song on the same 1,000 px, so the axis has three labels.
+    // A 65 s song on the same 1,000 px, so the axis has two labels: 0:30 and
+    // 1:00, the start getting none.
     const ui::TimelineLayout l = *ui::timeline_layout(s, 65000.0, kWidth, m);
     // Pinned from one run.
-    REQUIRE(l.axis_ticks.size() == 3);
-    CHECK(l.axis_ticks[0].ms == doctest::Approx(0.0));
-    CHECK(l.axis_ticks[1].ms == doctest::Approx(30000.0));
-    CHECK(l.axis_ticks[2].ms == doctest::Approx(60000.0));
-    CHECK(l.axis_ticks[2].x == doctest::Approx(923.0769f));
+    REQUIRE(l.axis_ticks.size() == 2);
+    CHECK(l.axis_ticks[0].ms == doctest::Approx(30000.0));
+    CHECK(l.axis_ticks[1].ms == doctest::Approx(60000.0));
+    CHECK(l.axis_ticks[1].x == doctest::Approx(923.0769f));
     // With no ghost the ghost row is 0 tall, so the Activations row is 40 to
     // 50 px down; its band stands 2 px in.
     REQUIRE(l.bands.size() == 1);
@@ -362,20 +362,28 @@ TEST_CASE("preview timeline: a section name too long for its section ends in an 
 
 TEST_CASE("preview timeline: the axis labels stay inside the timeline") {
     const app::PreviewScene s = fx::timed_scene();
-    // A 61 s song on 1,000 px: labels at 0, 30 and 60 s, each 40 px. Pinned
-    // from one run.
+    // A 61 s song on 1,000 px: labels at 30 and 60 s, each 40 px; the start
+    // gets none. Pinned from one run.
     const ui::TimelineLayout l = *ui::timeline_layout(s, 61000.0, kWidth, label_metrics());
-    REQUIRE(l.axis_ticks.size() == 3);
-    // 0:00 would start 20 px left of the timeline, in the label column; it
-    // starts at the timeline's left edge instead.
-    CHECK(l.axis_ticks[0].text == "0:00");
-    CHECK(l.axis_ticks[0].x == doctest::Approx(0.0f));
-    CHECK(l.axis_ticks[0].text_x == doctest::Approx(0.0f));
+    REQUIRE(l.axis_ticks.size() == 2);
     // 0:30 is centred on its moment.
-    CHECK(l.axis_ticks[1].text_x == doctest::Approx(471.8033f));
+    CHECK(l.axis_ticks[0].text == "0:30");
+    CHECK(l.axis_ticks[0].text_x == doctest::Approx(471.8033f));
     // 1:00 at 983.6 px would end past the right edge; it ends on it.
-    CHECK(l.axis_ticks[2].text == "1:00");
-    CHECK(l.axis_ticks[2].text_x == doctest::Approx(960.0f));
+    CHECK(l.axis_ticks[1].text == "1:00");
+    CHECK(l.axis_ticks[1].text_x == doctest::Approx(960.0f));
+}
+
+TEST_CASE("preview timeline: a label that would start left of the timeline starts at its left edge") {
+    const app::PreviewScene s = fx::timed_scene();
+    // A 50-minute song on 1,000 px: 0:30 sits at 10 px, and its 40 px label
+    // centred there would start 10 px left of the timeline. Pinned from one
+    // run.
+    const ui::TimelineLayout l = *ui::timeline_layout(s, 3000000.0, kWidth, label_metrics());
+    REQUIRE_FALSE(l.axis_ticks.empty());
+    CHECK(l.axis_ticks[0].text == "0:30");
+    CHECK(l.axis_ticks[0].x == doctest::Approx(10.0f));
+    CHECK(l.axis_ticks[0].text_x == doctest::Approx(0.0f));
 }
 
 TEST_CASE("preview timeline: a huge song length gets labels by the width, not by the length") {
@@ -383,13 +391,14 @@ TEST_CASE("preview timeline: a huge song length gets labels by the width, not by
     ui::TimelineMetrics m = metrics();
     m.axis_label_gap = 50.0f;
     // A 10-minute song on 1,000 px: 30 s is 50 px, exactly the gap, so every
-    // step is labelled: 20 labels. Pinned from one run.
+    // step but the start is labelled: 19 labels. Pinned from one run.
     const ui::TimelineLayout normal = *ui::timeline_layout(s, 600000.0, kWidth, m);
-    CHECK(normal.axis_ticks.size() == 20);
-    // Twice the length: 30 s is 25 px, so every second step: 20 labels, 60 s apart.
+    CHECK(normal.axis_ticks.size() == 19);
+    // Twice the length: 30 s is 25 px, so every second step: 19 labels, 60 s apart.
     const ui::TimelineLayout longer = *ui::timeline_layout(s, 1200000.0, kWidth, m);
-    REQUIRE(longer.axis_ticks.size() == 20);
-    CHECK(longer.axis_ticks[1].ms == doctest::Approx(60000.0));
+    REQUIRE(longer.axis_ticks.size() == 19);
+    CHECK(longer.axis_ticks[0].ms == doctest::Approx(60000.0));
+    CHECK(longer.axis_ticks[1].ms == doctest::Approx(120000.0));
     // A length a corrupt song.ini could state: still a handful of labels.
     const ui::TimelineLayout huge = *ui::timeline_layout(s, 1e300, kWidth, m);
     CHECK(huge.axis_ticks.size() <= 20);

@@ -56,32 +56,39 @@ constexpr float kLabelPadRightRem = 0.5f;
 constexpr ImU32 kMutedColor = rgba(0xa3, 0xa9, 0xb0, 1.0f);  // --muted
 constexpr ImU32 kDimColor = rgba(0x6c, 0x71, 0x7a, 1.0f);    // --dim
 
-// A row's top edge: `.row{border-top:1px solid #2c2e33}`, none on the first.
-constexpr ImU32 kRowEdgeColor = rgba(0x2c, 0x2e, 0x33, 1.0f);
+// A row's top edge: `.row{border-top:1px solid #2d2f34}` (second mockup,
+// line 59), none on the first (line 60).
+constexpr ImU32 kRowEdgeColor = rgba(0x2d, 0x2f, 0x34, 1.0f);
 
 // The axis labels: `.axis span{top:.1rem}` (second mockup, line 85), with the
 // first mockup's `color:var(--dim)`.
 constexpr float kAxisLabelTopRem = 0.1f;
 
 // Sections: `.sec{padding:.2rem .25rem}` (second mockup, line 65), .2 rem
-// above the name and .25 rem left and right of it, with the first mockup's
-// `border-left:1px solid #3a3d44` and `.sec:nth-child(odd){background:#25272b}`.
-constexpr ImU32 kSectionShade = rgba(0x25, 0x27, 0x2b, 1.0f);
+// above the name and .25 rem left and right of it, and its
+// `border-left:1px solid #3a3d44`. The shaded sections are
+// `.sec.odd{background:#27292e}` (line 66), which renderRows gives the
+// sections at odd places in the list (`i % 2 ? " odd" : ""`, line 458).
+constexpr ImU32 kSectionShade = rgba(0x27, 0x29, 0x2e, 1.0f);
 constexpr ImU32 kSectionEdge = rgba(0x3a, 0x3d, 0x44, 1.0f);
 constexpr float kSectionPadTopRem = 0.2f;
 constexpr float kSectionPadSideRem = 0.25f;
 
-// The phrase stars: the first mockup's `.star{color:var(--star)}`. The star
-// is a glyph in the mockups, so it is drawn the text's size, the user's font
-// size (Q7). The saved line is drawn in the same --star.
+// The phrase stars: the first mockup's `.star{color:var(--star)}`, and the
+// second mockup's `.star{font-size:.85rem}` (line 67), the star's height. The
+// saved line is drawn in the same --star.
 constexpr ImU32 kStarColor = rgba(0xf2, 0xd0, 0x6b, 1.0f);  // --star
+constexpr float kStarRem = 0.85f;
 
-// The saved row (the first mockup's drawMeter): the curve 6 px in from the
-// top and bottom (`y = n => H - 6 - n / 4 * (H - 12)`), stroke-width 2; the
-// activate line `stroke="#4a6" stroke-dasharray="4 4" opacity=".7"`.
-constexpr float kSavedInset = 6.0f;
+// The saved row (the second mockup's drawMeter): the curve 5 px in from the
+// top and bottom (`y = n => H - 5 - n / CAP * (H - 10)`, line 528),
+// `stroke-width="2"` (line 550); the activate line `stroke="#7c9"
+// stroke-dasharray="4 4" opacity=".75"` (line 549). The caption's dash sample
+// is the same #7c9 at full opacity (line 63), so both read kActivateColor.
+constexpr float kSavedInset = 5.0f;
 constexpr float kSavedLineW = 2.0f;
-constexpr ImU32 kActivateLineColor = rgba(0x44, 0xaa, 0x66, 0.7f);
+constexpr ImU32 kActivateColor = rgba(0x77, 0xcc, 0x99, 1.0f);
+constexpr ImU32 kActivateLineColor = with_alpha_of(kActivateColor, rgba(0, 0, 0, 0.75f));
 constexpr float kActivateDash = 4.0f;
 
 // The saved row's caption, in the label column under the row's name (second
@@ -95,7 +102,6 @@ constexpr float kActivateDash = 4.0f;
 constexpr float kCaptionGapRem = 0.1f;
 constexpr float kCaptionMarkRem = 1.4f;     // the sample's and the swatch's width
 constexpr float kCaptionMarkGapRem = 0.3f;  // between a mark and its words
-constexpr ImU32 kActivateSampleColor = rgba(0x77, 0xcc, 0x99, 1.0f);
 constexpr float kActivateSampleW = 2.0f;
 constexpr float kActivateSampleRiseRem = 0.2f;
 constexpr ImU32 kEnoughSwatchColor = rgba(54, 208, 214, 0.28f);
@@ -159,7 +165,7 @@ void draw_saved_caption(ImDrawList* dl, float x, float y0, float y1, float wrap_
     // The sample's 2 px border is the whole of its box, so its centre line is
     // half the border above the box's bottom.
     const float dash_y = y + ascent - rem(kActivateSampleRiseRem) - px(kActivateSampleW) * 0.5f;
-    draw_dashed(dl, {ImVec2(x, dash_y), ImVec2(x + rem(kCaptionMarkRem), dash_y)}, kActivateSampleColor,
+    draw_dashed(dl, {ImVec2(x, dash_y), ImVec2(x + rem(kCaptionMarkRem), dash_y)}, kActivateColor,
                 px(kActivateSampleW));
     dl->AddText(label_font, 0.0f, ImVec2(x + mark_w, y), kDimColor, needed.c_str(), nullptr, wrap_w - mark_w);
     y += needed_h + gap;
@@ -211,9 +217,10 @@ constexpr float kBestLabelTopRem = 1.85f;
 constexpr float kSwatchRem = 0.75f;
 constexpr float kSwatchGapRem = 0.3f;
 
-// The playhead: `.playhead{width:2px; background:#fff; opacity:.55}`.
+// The playhead: `.playhead{width:2px; background:#fff; opacity:.6}` (second
+// mockup, line 86).
 constexpr float kPlayheadW = 2.0f;
-constexpr ImU32 kPlayheadColor = rgba(0xff, 0xff, 0xff, 0.55f);
+constexpr ImU32 kPlayheadColor = rgba(0xff, 0xff, 0xff, 0.6f);
 
 // `text`'s width by `width_of`, or 0 with no measure.
 float measure(const TimelineTextWidth& width_of, const std::string& text) {
@@ -341,12 +348,14 @@ std::optional<TimelineLayout> timeline_layout(const app::PreviewScene& scene, do
     // The song's length is a number read from the chart's metadata, so the
     // label count follows the width: when one step is narrower than the gap
     // the labels need, take every n-th step. n is infinite for a width of 0.
+    // The song's start gets no label, as the second mockup's renderRows
+    // skips it (`if (s)`, line 452).
     if (width > 0.0f) {
         const double step_px = kTimelineAxisStepMs / length_ms * static_cast<double>(width);
         const double every = static_cast<double>(metrics.axis_label_gap) > step_px
                                  ? std::ceil(static_cast<double>(metrics.axis_label_gap) / step_px)
                                  : 1.0;
-        for (double k = 0.0; k * kTimelineAxisStepMs < length_ms; k += every) {
+        for (double k = every; k * kTimelineAxisStepMs < length_ms; k += every) {
             const double ms = k * kTimelineAxisStepMs;
             TimelineTick t;
             t.ms = ms;
@@ -567,14 +576,14 @@ TimelineEvents PreviewTimeline::draw(const TimelineInput& in) const {
         for (const TimelineTick& t : l.axis_ticks) dl->AddText(at(t.text_x, y), kDimColor, t.text.c_str());
     }
 
-    // Sections: every other one shaded, each with its left edge and its name,
-    // cut to fit by the layout.
+    // Sections: the odd ones shaded (kSectionShade), each with its left edge
+    // and its name, cut to fit by the layout.
     {
         ScopedFont font(TextRole::TimelineSection);
         for (size_t i = 0; i < l.sections.size(); ++i) {
             const TimelineRect& r = l.sections[i].rect;
             const ImVec2 mn = at(r.x0, r.y0), mx = at(r.x1, r.y1);
-            if (i % 2 == 0) dl->AddRectFilled(mn, mx, kSectionShade);
+            if (i % 2 == 1) dl->AddRectFilled(mn, mx, kSectionShade);
             dl->AddRectFilled(mn, ImVec2(mn.x + px(1.0f), mx.y), kSectionEdge);
             dl->PushClipRect(mn, mx, true);
             dl->AddText(ImVec2(mn.x + rem(kSectionPadSideRem), mn.y + rem(kSectionPadTopRem)), kMutedColor,
@@ -586,7 +595,7 @@ TimelineEvents PreviewTimeline::draw(const TimelineInput& in) const {
     // Star Power phrases: a star at each phrase's start.
     {
         const TimelineRect& row = l.row(TimelineRow::Phrases);
-        const float size = ImGui::GetFontSize();
+        const float size = rem(kStarRem);
         const float y = (row.y0 + row.y1) * 0.5f - size * 0.5f;
         for (float x : l.phrase_x) draw_star(dl, at(x - size * 0.5f, y), size, true, kStarColor);
     }
