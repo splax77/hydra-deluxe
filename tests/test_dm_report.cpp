@@ -226,7 +226,8 @@ TEST_CASE("generate_dm_report: tally and framing behind one seam") {
 
     // The subtitle counts every score and nothing by status: the tiles count
     // the scores that pass the filters (D103 item 27).
-    CHECK(result.subtitle == "TestUser — 5 scores — SP cap 4, Clone Hero's rule");
+    CHECK(result.subtitle ==
+          "TestUser — 5 scores — " + app::dm_report::clone_hero_cap_phrase());
     CHECK(result.footer.rfind("Actual scores from dmleaderboards.com against Hydra's", 0) == 0);
 
     // No scores: zero stats, no rows.
@@ -254,10 +255,11 @@ TEST_CASE("generate_dm_report hands over its rows, subtitle, footer, player and 
     CHECK(result.username == "TestUser");
     CHECK(result.chartmode == kMode);
     // The line ends with the cap the comparison runs at (D276 item 7).
-    CHECK(result.subtitle == "TestUser — 2 scores — SP cap 4, Clone Hero's rule");
+    CHECK(result.subtitle ==
+          "TestUser — 2 scores — " + app::dm_report::clone_hero_cap_phrase());
     // One score reads singular, as the count line writes its noun.
     CHECK(app::dm_report::generate_dm_report(store, {scores[0]}, testdm::profile(), "TestUser")
-              .subtitle == "TestUser — 1 score — SP cap 4, Clone Hero's rule");
+              .subtitle == "TestUser — 1 score — " + app::dm_report::clone_hero_cap_phrase());
     CHECK(result.footer.rfind("Actual scores from dmleaderboards.com against Hydra's optimal for " +
                                   std::string(kMode) + ".",
                               0) == 0);
