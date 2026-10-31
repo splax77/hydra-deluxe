@@ -69,7 +69,7 @@ _SECTION_RE = re.compile(r"^\t// (?P<section>Fields|Properties|Methods)$")
 # A generic method's `/* GenericInstMethod : ... */` block lists each address its
 # instantiations were compiled at (`|-RVA:`), and under it the instantiations
 # (`|-<class>.<method>`).
-_INSTANCE_RVA_RE = re.compile(rf"^\t\|-RVA: (?P<rva>{_HEX_ADDRESS}) ")
+_INSTANCE_RVA_RE = re.compile(rf"^\t\|-RVA: (?P<rva>-1|{_HEX_ADDRESS}) ")
 _INSTANCE_NAME_RE = re.compile(r"^\t\|-(?P<name>.+)$")
 _INSTANCE_END = "\t*/"
 
@@ -261,7 +261,8 @@ def parse_dump(text: str, instances: list[dict] | None = None) -> list[dict]:
             continue
         m = _INSTANCE_RVA_RE.match(line)
         if m:
-            instance_rva = int(m.group("rva"), 16)
+            rva = m.group("rva")
+            instance_rva = None if rva == "-1" else int(rva, 16)  # -1: an abstract method has no address
             continue
         m = _INSTANCE_NAME_RE.match(line)
         if m:

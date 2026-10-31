@@ -397,6 +397,9 @@ public class ʿʺʸ<TInputs> // TypeDefIndex: 9100
 	|
 	|-RVA: 0x100DAE0 Offset: 0x100CEE0 VA: 0x18100DAE0
 	|-Box<int>.Check<object>
+	|
+	|-RVA: -1 Offset: -1
+	|-ʿʺʸ<object>.Check
 	*/
 }
 """
