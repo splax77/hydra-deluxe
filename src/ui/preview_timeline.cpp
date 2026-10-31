@@ -639,11 +639,11 @@ constexpr float kReadoutMinRem = 9.5f;
 // A press on the scrollbar's bar `x` pixels into its `width`, which shows the
 // whole song: a press inside [grab_x0, grab_x1] (the thumb) starts a drag
 // that keeps the moment under the pointer at the same place in the window; a
-// press anywhere else gives `on_press`'s window. While the drag lasts, each
-// move of the pointer gives the window it asks for. The point is not held
-// inside the song (the scrollbar's uAt, line 702). The drag is kept in
-// ImGui's state storage under the item's id, so the timeline keeps no state
-// of its own.
+// press anywhere else gives `on_press`'s window, asked with the press's share
+// of the bar (the scrollbar's uAt, line 702). While the drag lasts, each move
+// of the pointer gives the window it asks for. The drag is kept in ImGui's
+// state storage under the item's id, so the timeline keeps no state of its
+// own.
 template <typename OnPress>
 std::optional<TimelineView> press_or_drag(TimelineView view, double length_ms, float x, float width, float grab_x0,
                                           float grab_x1, OnPress on_press) {
@@ -656,7 +656,7 @@ std::optional<TimelineView> press_or_drag(TimelineView view, double length_ms, f
     if (ImGui::IsItemActivated()) {
         const bool on_grab = x >= grab_x0 && x <= grab_x1;
         store->SetBool(drag_key, on_grab);
-        if (!on_grab) return on_press(at, share);
+        if (!on_grab) return on_press(share);
         store->SetFloat(grab_key, static_cast<float>(at - view.start_ms));
         return std::nullopt;
     }
@@ -751,7 +751,7 @@ float draw_scrollbar_row(ImVec2 top, float avail_w, float label_w, float label_w
         const bool dragging = ImGui::IsItemActive() && ImGui::GetStateStorage()->GetBool(ImHashStr("drag", 0, ImGui::GetItemID()));
         // A press beside the thumb moves one window toward it (line 711).
         if (std::optional<TimelineView> v = press_or_drag(view, length_ms, mx, in_w, sb.thumb.x0, sb.thumb.x1,
-                                                          [&](double, double share) {
+                                                          [&](double share) {
                                                               return std::optional(scrollbar_click(view, share, length_ms));
                                                           }))
             ev.view = v;
