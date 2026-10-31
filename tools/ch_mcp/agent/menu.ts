@@ -9,7 +9,9 @@
 // method calls on 2026-10-30 (ruling 2 of the plan
 // 2026-10-30-ch-mcp-star-power-and-song-start.md);
 // test_agent_calls_only_named_methods in tests/test_frida_attach.py checks
-// that every call in every agent is named in that agent's list.
+// that every call written in an agent's own source is named in that agent's
+// list. It does not see inside the bridge: arrayValues says the one call the
+// bridge makes on its own when an array is read.
 //
 // The player screen's fields are private and their names obfuscated, so they
 // come from tools/ch_mcp/menu_fields.json, bundled in at build time; that file
