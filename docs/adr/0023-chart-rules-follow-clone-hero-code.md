@@ -114,7 +114,9 @@ Two items this list used to hold are settled in the code now (noted
   the position text step by the resolution × 4 ÷ the bottom number, as Clone
   Hero's grid does (0x20DACA0). The 4-beat fill deadline counts quarter notes
   in every meter, as Clone Hero's code does (`resolution << 2`, read at
-  0x20DDB70 on 2026-10-12). Neither has been checked in a run of the game.
+  0x20DDB70 on 2026-10-12). Both are code readings; the grid's step constant
+  4.0 was read from the game file's data. Neither has been checked in a run of
+  the game.
 
 ## Consequences
 

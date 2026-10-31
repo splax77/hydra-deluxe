@@ -66,5 +66,5 @@ the scene 4.5% and the highway the rest. It counts the audio in whole
 megabytes (10^6 bytes, rounded to nearest). Its time-left estimate changes at
 most once a second, from the last second's bytes, and appears only after 3 s
 of loading (src/ui/preview_load_job.cpp). It reads "about m:ss left" at every
-length, in the same words as the batch strip (`time_left_text` in
+length (h:mm:ss past an hour), in the same words as the batch strip (`time_left_text` in
 src/app/display_format.h).
