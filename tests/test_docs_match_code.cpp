@@ -255,7 +255,7 @@ const std::map<std::string, KnownDefault>& known_defaults() {
         out["Settings::backendlimit_enabled"] = {true, s.backendlimit_enabled ? 1.0 : 0.0};
         out["Rules::backend_leeway_ms"] = {false, r.backend_leeway_ms};
         out["kSqueezeWindowMs"] = {false, hydra::kSqueezeWindowMs};
-        out["kEarlyFillReachMs"] = {false, hydra::kEarlyFillReachMs};
+        out["kHitWindowMs"] = {false, hydra::kHitWindowMs};
         out["kEarlyFillSlackMs"] = {false, hydra::kEarlyFillSlackMs};
         out["kDefaultDepthValue"] = {false, static_cast<double>(hydra::kDefaultDepthValue)};
         out["kSpActivationBars"] = {false, static_cast<double>(hydra::kSpActivationBars)};

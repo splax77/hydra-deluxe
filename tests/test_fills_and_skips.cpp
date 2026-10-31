@@ -68,7 +68,7 @@ TEST_CASE("Skipped fills: the 1.0 rule's offered fill is the one stored") {
 }
 
 // The 1.1 rule at the exact edge. A fill spawns when SP is ready no later
-// than kEarlyFillReachMs past its deadline (fill_refuses). 125 BPM at 480
+// than kHitWindowMs past its deadline (fill_refuses). 125 BPM at 480
 // ticks a beat makes a tick one millisecond. Fill A ends at 9600 and is 480
 // ticks long, so its 1.1 deadline is 4 beats before its start: tick 7200,
 // 7200 ms. The first phrase (480) banks a bar; the second, at `ready`, banks
@@ -102,7 +102,7 @@ TEST_CASE("Skipped fills: under the 1.1 rule a fill exactly at the reach edge is
         REQUIRE(paths.front().activations.front().timecode.ticks() == 19200);
         return paths.front().activations.front().skipped_fill_ticks;
     };
-    const int64_t edge = 7200 + static_cast<int64_t>(kEarlyFillReachMs);
+    const int64_t edge = 7200 + static_cast<int64_t>(kHitWindowMs);
     CHECK((passed_over(edge) == std::vector<int64_t>{9600}));
     CHECK(passed_over(edge + 1).empty());
 }
