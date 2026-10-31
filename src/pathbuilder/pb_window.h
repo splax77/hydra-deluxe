@@ -20,6 +20,7 @@
 
 #include "pathbuilder/pb_state.h"
 #include "pathbuilder/pb_text.h"  // GuideMessage
+#include "ui/preview_timeline.h"  // kTimelineActivationsLabel
 
 struct ID3D11Device;
 struct ID3D11DeviceContext;
@@ -55,7 +56,8 @@ inline constexpr const char* kShowBestPathLabel = "Show Hydra's best path";
 inline constexpr const char* kHighwayHeading = "Highway";
 inline constexpr const char* kPlayLabel = "Play";
 inline constexpr const char* kPauseLabel = "Pause";
-inline constexpr const char* kStepsHeading = "Your activations";
+// The steps panel's heading is the timeline's name for the same activations.
+inline constexpr const char* kStepsHeading = ui::kTimelineActivationsLabel;
 inline constexpr const char* kRemoveLastLabel = "Remove";
 inline constexpr const char* kRemoveEarlierLabel = "Remove this and later ones";
 inline constexpr const char* kEndItAtLabel = "End it at:";
