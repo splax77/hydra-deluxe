@@ -1206,8 +1206,9 @@ TEST_CASE("set_hardest writes one chart's rows together") {
     CHECK(before[0].rank == 1);
     CHECK(before[1].rank == 2);
 
-    // Rank 3 already holds a figure, which the write leaves alone.
-    store.set_hardest("a", before[0].profile_id, {{1, 0.0}, {2, -315.8}, {3, 99.0}});
+    // Rank 3 already holds a figure, which the write leaves alone, and the
+    // record has no rank 9.
+    store.set_hardest("a", before[0].profile_id, {{1, 0.0}, {2, -315.8}, {3, 99.0}, {9, 7.0}});
     CHECK(store.rows_missing_hardest(profile).empty());
     CHECK(saved_figures(store, "a", profile) ==
           std::vector<std::optional<double>>{0.0, -315.8, 12.5});
