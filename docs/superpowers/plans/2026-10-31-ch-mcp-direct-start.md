@@ -206,7 +206,7 @@ Each names its pass and fail lines, has a run cap and a minutes cap, and ends wi
 
 ### What the retrofit changed, and why the order is new
 
-Task PM-4 of `docs/superpowers/plans/2026-10-31-premise-map.md` rewrote this section on 2026-10-31, after LS-D0 run 1 and LS-D1 run 1. The user approved it by answering that plan's question 2 (row P41). Three things changed.
+Task PM-4 of `docs/superpowers/plans/2026-10-31-premise-map.md` (removed; `git show 85fa0fe0:docs/superpowers/plans/2026-10-31-premise-map.md`) rewrote this section on 2026-10-31, after LS-D0 run 1 and LS-D1 run 1. The user approved it by answering that plan's question 2 (row P41). Three things changed.
 
 First, each step now tries one new tool call. The old LS-D1 chained four calls no human launch had used (`ch_kit_setup` on a new player, `ch_trace_start`, `ch_kit_press`, `ch_notes`), and the old LS-D2 chained six. A failure there could not say which piece broke. So the old LS-D1 is now LS-D1a to LS-D1d, and the old LS-D2 is now LS-D2a to LS-D2g. Some of the new steps run inside an earlier step's game, after that step's pass line, so the split costs few extra launches. Each step's `Calls:` line lists its calls in order, with the one new call marked `(never tried)` (`docs/agents/premise-map.md`, "The call list of a live step").
 
@@ -393,7 +393,7 @@ The facts this plan stands on, in the shape `docs/agents/premise-map.md` owns. A
 | P38: Nothing can be armed before the resume: `ch_start` returns after it, and `ch_attach` waits 5 s from the launch | code | `tools/ch_mcp/bot_run.py` line 615 (`launch_human`), `tools/ch_mcp/frida_tools.py` line 36 (`ATTACH_DELAY_S`) | checked 2026-10-31 |
 | P39: Whether a finished song posts anything online when nobody is logged in | unchecked | `docs/clone-hero/07-internals.md` IN-73 is labelled Unknown | question 8 |
 | P40: The user allowed the one-byte patch in memory | unchecked | this plan's question list reports "approve"; no card for session `b15bb484` sits in `docs/sessions/index.md` | question 6, once its card quotes the user's words |
-| P41: The user approved the retrofit, which changes LS-D2's chart and the order of the live steps | ruling | the user's words "Approve all six" on `docs/superpowers/plans/2026-10-31-premise-map.md` question 2, as the main session quotes them in the PM-4 reviewer's brief, confirming that they approved that plan's six recommended answers, question 2 among them; no card holds them yet | checked 2026-10-31, from that brief's quote |
+| P41: The user approved the retrofit, which changes LS-D2's chart and the order of the live steps | ruling | the user's words "Approve all six" on `docs/superpowers/plans/2026-10-31-premise-map.md` (removed; `git show 85fa0fe0:docs/superpowers/plans/2026-10-31-premise-map.md`) question 2, as the main session quotes them in the PM-4 reviewer's brief, confirming that they approved that plan's six recommended answers, question 2 among them; no card holds them yet | checked 2026-10-31, from that brief's quote |
 | P42: The game's DLL kept its MD5 through both runs | run | `hydra-data\ch-mcp-runs\2026-10-31\ls-d0-run1\replies.txt` lines 2 and 3, `ls-d1-run1\replies.txt` lines 2 and 3 | checked 2026-10-31 |
 | P43: A bot is fed the chart's notes as input, and `is_bot` is read again on every call | data | `docs/clone-hero/07-internals.md` IN-69 | checked 2026-10-31, label Proven in the game's code |
 | P44: Window Map's folder holds the manifest `ch_trace_start` reads | chart | `C:\Clone Hero\songs\Hydra Probe\Window Map\manifest.json` | checked 2026-10-31 |
