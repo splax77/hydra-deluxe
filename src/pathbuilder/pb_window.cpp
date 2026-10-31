@@ -23,6 +23,7 @@
 #include "pathbuilder/pb_open.h"
 #include "search/graph.h"  // fill_rule_for
 #include "ui/fonts.h"  // rem
+#include "ui/list_scroll.h"  // scroll_block_into_view
 #include "ui/preview_controller.h"
 #include "ui/preview_panel.h"
 #include "ui/preview_timeline.h"
@@ -757,9 +758,7 @@ void PbApp::move_view_with_clock(double length_ms) {
 
 void PbApp::scroll_to_fill(const app::PreviewScene& scene, size_t index, double length_ms) {
     if (!view_ || index >= scene.fills.size()) return;
-    // The moment the timeline draws the fill at (ui::timeline_layout places
-    // it at its span's end).
-    const double at = scene.fills[index].span.end_ms;
+    const double at = ui::timeline_fill_ms(scene.fills[index]);
     if (!ui::in_view(*view_, at)) view_ = ui::centre_on(*view_, at, length_ms);
 }
 
@@ -1009,9 +1008,8 @@ void PbApp::draw_steps(const OpenChart& chart) {
             const float block_bottom = ImGui::GetCursorScreenPos().y;
             const float block_h = block_bottom - start_screen.y;
             if (block_h != steps_block_h_) {
-                ImGui::ScrollToRect(ImGui::GetCurrentWindow(),
-                                    ImRect(start_screen.x, start_screen.y, start_screen.x + row_w, block_bottom),
-                                    ImGuiScrollFlags_KeepVisibleEdgeY);
+                ui::scroll_block_into_view(ui::ScrollTo::NearestEdge, start_screen.x, start_screen.y,
+                                           start_screen.x + row_w, block_bottom);
                 steps_block_h_ = block_h;
             }
         }

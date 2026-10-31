@@ -34,4 +34,15 @@ void scroll_last_row(ScrollTo how) {
     }
 }
 
+void scroll_block_into_view(ScrollTo how, float left, float top, float right, float bottom) {
+    switch (how) {
+        case ScrollTo::None:
+            return;
+        case ScrollTo::NearestEdge:
+            ImGui::ScrollToRect(ImGui::GetCurrentWindow(), ImRect(left, top, right, bottom),
+                                kNearestEdgeScrollFlags);
+            return;
+    }
+}
+
 }  // namespace hydra::ui
