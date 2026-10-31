@@ -242,18 +242,12 @@ static void corpus_bench() {
 }
 
 // The settings --engine and --parse run under: hydra_batch's, read through
-// app::Settings::load_for_command_line, under this run's rules. Pointing a run
-// at other settings means a copy of the exe beside another ini. Returns the
-// exit code, as app::load_tool_rules does: a bad settings file prints
-// ini_file_tool_text and gives 2, which the caller returns before its mode
-// opens anything (D270 call 4).
+// app::load_tool_settings, under this run's rules. Pointing a run at other
+// settings means a copy of the exe beside another ini. Returns the exit code
+// load_tool_settings gives, which the caller returns before its mode opens
+// anything.
 static int ini_settings(app::Settings& st) {
-    try {
-        st = app::Settings::load_for_command_line(g_legacy_fills);
-    } catch (const app::SettingsFileError& e) {
-        std::fprintf(stderr, "%s\n", app::ini_file_tool_text(app::kSettingsFileName, e).c_str());
-        return 2;
-    }
+    if (const int code = app::load_tool_settings(st, g_legacy_fills)) return code;
     st.rules = g_rules;
     return 0;
 }

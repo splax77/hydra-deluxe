@@ -20,6 +20,7 @@
 
 #include "app/ini_errors.h"
 #include "app/report_files.h"  // write_file_replacing
+#include "app/user_messages.h"  // ini_file_tool_text
 
 #include "core/model.h"
 #include "core/strutil.h"
@@ -121,6 +122,17 @@ Settings Settings::load_for_command_line(bool legacy_fills_flag) {
     Settings s = load();
     s.legacy_fills = legacy_fills_flag;
     return s;
+}
+
+int load_tool_settings(Settings& out, std::optional<bool> legacy_fills_flag) {
+    try {
+        out = legacy_fills_flag ? Settings::load_for_command_line(*legacy_fills_flag)
+                                : Settings::load();
+    } catch (const SettingsFileError& e) {
+        std::fprintf(stderr, "%s\n", ini_file_tool_text(kSettingsFileName, e).c_str());
+        return 2;
+    }
+    return 0;
 }
 
 namespace {

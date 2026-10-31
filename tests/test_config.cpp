@@ -202,6 +202,32 @@ TEST_CASE("command-line settings take the fill rule from the flag, the rest from
     CHECK(on.batch_run().profile.lens.legacy_fills == 1);
 }
 
+// The tools' one loader (D270 call 4). The text it prints is checked through
+// the tools themselves in test_cli.cpp.
+TEST_CASE("load_tool_settings gives the tools' settings, or exit code 2 for a refused file") {
+    const ScratchPaths paths("tool_settings");
+    auto write_ini = [&](const std::string& text) {
+        std::ofstream f(paths.ini, std::ios::trunc);
+        f << text;
+    };
+
+    write_ini("legacy_fills=1\nsp_cap=2\n");
+    Settings st;
+    CHECK(hydra::app::load_tool_settings(st, std::nullopt) == 0);
+    CHECK(st.legacy_fills);  // no flag of its own: the file's setting stands
+    CHECK(st.sp_cap == 2);
+    CHECK(hydra::app::load_tool_settings(st, false) == 0);
+    CHECK_FALSE(st.legacy_fills);  // the tool's flag wins
+    CHECK(st.sp_cap == 2);
+
+    write_ini("sp_cap=abc\n");
+    Settings untouched;
+    untouched.sp_cap = 7;
+    CHECK(hydra::app::load_tool_settings(untouched, std::nullopt) == 2);
+    CHECK(hydra::app::load_tool_settings(untouched, true) == 2);
+    CHECK(untouched.sp_cap == 7);
+}
+
 TEST_CASE("a missing INI yields defaults") {
     Settings r = Settings::load_file(testtemp::temp_path("missing_never_written", ".ini"));
     Settings d;

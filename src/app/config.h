@@ -218,7 +218,8 @@ struct Settings {
     // The settings a command-line run works under: load()'s, except the fill
     // rule, which comes from the run's own kLegacyFillsFlag and never from
     // the app's "1.0 fills" setting. So a run means the same thing whatever
-    // the app was left on. hydra_batch and hydra_bench both load through here.
+    // the app was left on. The tools with that flag reach it through
+    // load_tool_settings.
     static Settings load_for_command_line(bool legacy_fills_flag);
     // False when the INI can't be written (the GUI surfaces this; the CLIs
     // never call save()).
@@ -323,6 +324,15 @@ struct Settings {
     // one Settings, so they cannot disagree.
     BatchRun batch_run() const;
 };
+
+// How a command-line tool loads its settings: Settings::load_for_command_line
+// when the tool has a fill-rule flag of its own (`legacy_fills_flag`), else
+// Settings::load. On success it fills `out` and returns 0. A refused file
+// prints ini_file_tool_text (app/user_messages.h) on stderr and returns the
+// tool's exit code, before the tool opens anything (D270 call 4). It is the
+// settings file's twin of load_tool_rules (app/rules_file.h). The app does not
+// call this: it keeps running on the defaults instead (AppState::settings_error).
+int load_tool_settings(Settings& out, std::optional<bool> legacy_fills_flag);
 
 // One field of the analysis set: the Settings member, the panel setting it
 // belongs to and the key part it is filed under. Its default is the one a
