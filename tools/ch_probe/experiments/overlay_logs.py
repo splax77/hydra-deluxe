@@ -10,7 +10,9 @@ the disassembly does not say how wide they are; the write-up picks one.
 
 PRESS_LOG_COLUMNS is the auto-player's press log (play_chart.py --log): one
 row per chord it pressed. `index` is the chord's own `index` field in the
-`hydra_replay score` JSON, not a running count.
+`hydra_replay score` JSON, not a running count. The last four columns are
+the kit press's reply (tools/ch_mcp/kit_tools.py); a run that presses keys
+leaves them blank.
 """
 
 from __future__ import annotations
@@ -39,4 +41,8 @@ PRESS_LOG_COLUMNS = (
     "score_before",
     "score_after",
     "hit",
+    "down_frame",
+    "up_frame",
+    "down_ms",
+    "up_ms",
 )

@@ -343,6 +343,29 @@ class SetGameSettingTest(unittest.TestCase):
         self.assertEqual(_read(self.path), before)
 
 
+class GetGameSettingTest(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.path = os.path.join(self._tmp.name, "settings.ini")
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_reads_the_value_of_the_line_in_the_game_section(self):
+        _write(self.path, SETTINGS_FIXTURE.replace(b"note_speed = 7\r\npause_on_focus_lost = 1\r\n",
+                                                   b"note_speed = 7\r\npause_on_focus_lost = 0\r\n"))
+        self.assertEqual(G.get_game_setting(self.path, "pause_on_focus_lost"), "0")
+
+    def test_drops_the_spacing_and_the_line_ending(self):
+        _write(self.path, b"\xef\xbb\xbf[Game]\nPause_On_Focus_Lost =  1  \r\n")
+        self.assertEqual(G.get_game_setting(self.path, "pause_on_focus_lost"), "1")
+
+    def test_refuses_when_the_key_sits_only_in_another_section(self):
+        _write(self.path, b"[audio]\r\npause_on_focus_lost = 1\r\n[game]\r\nnote_speed = 7\r\n")
+        with self.assertRaises(G.SettingNotFound):
+            G.get_game_setting(self.path, "pause_on_focus_lost")
+
+
 class SongIniTest(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()

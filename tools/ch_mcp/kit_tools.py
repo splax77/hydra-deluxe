@@ -1,0 +1,539 @@
+"""The Clone Hero MCP server's kit tools: a virtual drum kit inside the game.
+
+The kit agent (agent/kit.ts, built to kit.js) builds one Rewired custom
+controller from the game's own drum definition, hands it to a player with the
+game's default map, presses its pads and buttons on request and takes it away
+again. Nothing it does touches the keyboard or the window, so the game can stay
+minimized and unfocused (the plan
+docs/superpowers/plans/2026-10-30-ch-mcp-in-game-input.md, "One agent for the
+kit" and "The tools").
+
+The agent holds none of the kit's numbers. This module owns them: the
+definition, the tag, the player, the elements, the bindings the game's map must
+give, the hold, the caps and the axis value (the plan's owner table). The
+agent reads the map back and this module refuses to go on when it differs.
+
+`kit_press` is the auto-player's press on the kit route. play_chart.play_chords
+still owns when a chord is pressed; the kit press only delivers it, and its
+reply rides into the press row.
+
+Every tool returns plain text and never prints: an MCP server's stdout is its
+protocol channel. The server hands in the one RLock it shares with the other
+tools; every tool holds it. The kit agent answers one request at a time, so
+every request also holds this module's own request lock, which the play
+thread takes too (the play thread never takes the server's lock).
+"""
+
+from __future__ import annotations
+
+import dataclasses
+import os
+import threading
+import time
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
+
+from tools.ch_mcp import frida_attach as FA
+from tools.ch_mcp import game_files
+from tools.ch_mcp import trace_hits as TH
+from tools.ch_mcp.frida_tools import AGENT_DIR, ATTACH_CAP_S, NOT_ATTACHED, READ_CAP_S
+from tools.ch_mcp.game_tools import PressResult
+from tools.ch_probe.input_driver import Lane
+
+KIT_AGENT_NAME = "kit"
+KIT_AGENT_FILE = f"{KIT_AGENT_NAME}.js"
+
+# The Rewired controller definition the kit is built from, "SLInputDrums"
+# (the probe's q4_out.json and the plan's probe facts).
+KIT_DEFINITION_ID = 6
+# The tag the kit is created with and found by (the plan's owner table).
+KIT_TAG = "hydra-kit"
+# The Rewired player the kit is handed to (the probe: Players are Player1 to
+# Player4).
+KIT_PLAYER = "Player1"
+
+# How long a press holds, counted in the game's frames (the user's answer to
+# the plan's question 2, 2026-10-30).
+KIT_HOLD_FRAMES = 2
+# How long setup and teardown get to answer (question 3): a handful of calls
+# on the game's main thread.
+KIT_SETUP_CAP_S = 10
+# How long one press gets to answer (question 3): a press replies once its
+# hold has passed, so a missing reply means the agent is gone or the game froze.
+KIT_PRESS_CAP_S = 1
+# The value a pad press writes to its axis: the probe's value (q8_pad.js).
+# LS-K4's compare says whether the game grades it as a velocity.
+KIT_AXIS_VALUE = 1.0
+# Whether a press writes its values again on every tick of its hold. True is
+# the probe's way, the one that has worked at the game (q7_press.js); live
+# step LS-K1 decides, and this line then quotes its reply.
+KIT_REWRITE = True
+# Whether a press runs on the game's main thread. False runs it on Frida's
+# own thread, the plan's first try ("One agent for the kit"); LS-K1 decides.
+KIT_PRESS_ON_MAIN = False
+# ch_kit_status counts frames over this long to give the frame rate (the
+# plan's "Where the schedule runs").
+KIT_RATE_WINDOW_S = 1.0
+
+# The prefix a menu step names a kit item with (menu_steps.json's kit: items).
+KIT_PREFIX = "kit:"
+
+
+@dataclasses.dataclass(frozen=True)
+class KitElement:
+    """One element of the kit: its id and name on the definition, and
+    whether it is a button (pressed with true) or a pad axis (pressed with
+    KIT_AXIS_VALUE)."""
+    id: int
+    name: str
+    button: bool
+
+
+# The one table of what can be pressed on the kit, by the name a caller uses.
+# The pad names are the auto-player's lanes (input_driver.Lane, lower-cased),
+# so a chord's lanes are found here by name. Element ids and names are the
+# definition's (q4_out.json, "def6_elements").
+KIT_ELEMENTS: Dict[str, KitElement] = {
+    "red": KitElement(0, "Snare", False),
+    "yellow": KitElement(1, "Tom1", False),
+    "blue": KitElement(2, "Tom2", False),
+    "green": KitElement(3, "Tom3", False),
+    "yellow_cymbal": KitElement(4, "Cymbal1", False),
+    "blue_cymbal": KitElement(5, "Cymbal2", False),
+    "green_cymbal": KitElement(6, "Cymbal3", False),
+    "start": KitElement(20, "Start", True),
+    "select": KitElement(21, "Select", True),
+    "kick": KitElement(22, "Kick", True),
+}
+
+# The bindings the game's default map must give the kit: element id to the
+# game action's id and name. The action ids are the game's action table
+# (q4_out.json, "actions"); the agent sends each binding's action id, and the
+# check compares those. The names are for the reply only.
+KIT_BINDINGS: Dict[int, Tuple[int, str]] = {
+    0: (1, "Red"),
+    1: (2, "Yellow"),
+    2: (3, "Blue"),
+    3: (0, "Green"),
+    4: (37, "YellowCymbal"),
+    5: (38, "BlueCymbal"),
+    6: (39, "GreenCymbal"),
+    20: (16, "Start"),
+    21: (6, "Select"),
+    22: (4, "Orange"),
+}
+
+NOT_SET_UP = "the kit is not set up; call ch_kit_setup first"
+PLAY_RUNNING = "a play session is running; call ch_play_stop first"
+
+
+class KitRefused(Exception):
+    """A kit request that was refused before anything was sent; the text
+    says why."""
+
+
+def lane_element(lane: int) -> KitElement:
+    """The kit element that presses one of the auto-player's lanes."""
+    return KIT_ELEMENTS[Lane(lane).name.lower()]
+
+
+def item_names() -> str:
+    return ", ".join(KIT_ELEMENTS)
+
+
+def parse_items(items: Union[str, Sequence[str]]) -> List[str]:
+    """A comma list or sequence of kit names, each with or without the
+    KIT_PREFIX, as KIT_ELEMENTS keys in order, each once. Raises KitRefused
+    naming an unknown name, or when there is none."""
+    raw = items.split(",") if isinstance(items, str) else list(items)
+    names: List[str] = []
+    for item in raw:
+        name = item.strip().lower()
+        if name.startswith(KIT_PREFIX):
+            name = name[len(KIT_PREFIX):].strip()
+        if not name:
+            continue
+        if name not in KIT_ELEMENTS:
+            raise KitRefused(f'unknown kit item "{item.strip()}"; kit items: {item_names()}')
+        if name not in names:
+            names.append(name)
+    if not names:
+        raise KitRefused(f"no kit items given; kit items: {item_names()}")
+    return names
+
+
+def setup_message() -> dict:
+    return {"type": "setup", "tag": KIT_TAG, "definition_id": KIT_DEFINITION_ID,
+            "player": KIT_PLAYER}
+
+
+def press_message(elements: Sequence[KitElement], hold_frames: int = KIT_HOLD_FRAMES) -> dict:
+    """The press message for `elements`, each once, in order."""
+    seen: List[KitElement] = []
+    for e in elements:
+        if e not in seen:
+            seen.append(e)
+    return {"type": "press",
+            "elements": [{"id": e.id, "value": True if e.button else KIT_AXIS_VALUE}
+                         for e in seen],
+            "hold_frames": hold_frames, "cap_s": KIT_PRESS_CAP_S,
+            "rewrite": KIT_REWRITE, "on_main": KIT_PRESS_ON_MAIN}
+
+
+def binding_problems(maps: Any) -> List[str]:
+    """How the setup reply's maps differ from KIT_BINDINGS, one line per
+    element; empty when they match. Only bindings in enabled maps count,
+    because a disabled map's bindings never fire."""
+    if not isinstance(maps, list) or not maps:
+        return ["the setup reply holds no map for the kit"]
+    got: Dict[int, set] = {}
+    for m in maps:
+        if not m.get("enabled"):
+            continue
+        for b in m.get("bindings") or []:
+            got.setdefault(b.get("element_id"), set()).add(b.get("action_id"))
+    problems: List[str] = []
+    names = {e.id: e.name for e in KIT_ELEMENTS.values()}
+    for element_id, (action_id, action_name) in KIT_BINDINGS.items():
+        actions = got.pop(element_id, set())
+        label = f"{names.get(element_id, '?')} (element {element_id})"
+        if actions != {action_id}:
+            found = ", ".join(str(a) for a in sorted(actions, key=str)) or "none"
+            problems.append(f"{label}: expected action {action_id} ({action_name}), "
+                            f"the map gives {found}")
+    for element_id, actions in sorted(got.items(), key=lambda kv: str(kv[0])):
+        problems.append(f"element {element_id}: not in KIT_BINDINGS, the map gives "
+                        + ", ".join(str(a) for a in sorted(actions, key=str)))
+    return problems
+
+
+def _flag_text(value: Any) -> str:
+    return "on" if value is True else "off" if value is False else str(value)
+
+
+def setup_lines(reply: dict) -> List[str]:
+    """The setup reply as lines: the switch, each player's keyboard and mouse
+    flags before and now, the kit, and each map with its bindings."""
+    lines = [f"ignoreInputWhenAppNotInFocus: was {_flag_text(reply.get('switch_was'))}, "
+             f"now {_flag_text(reply.get('switch_now'))}"]
+    now = {p.get("id"): p for p in reply.get("players_now") or []}
+    for p in reply.get("players_was") or []:
+        n = now.get(p.get("id"), {})
+        lines.append(f"player {p.get('id')} {p.get('name')}: keyboard was "
+                     f"{_flag_text(p.get('has_keyboard'))}, now {_flag_text(n.get('has_keyboard'))}; "
+                     f"mouse was {_flag_text(p.get('has_mouse'))}, now {_flag_text(n.get('has_mouse'))}")
+    kit = reply.get("kit") or {}
+    lines.append(f"kit: controller {kit.get('id')}, tag {kit.get('tag')}, "
+                 f"{'created' if kit.get('created') else 'found already made'}, "
+                 f"on {kit.get('player')}")
+    if not reply.get("first_setup", True):
+        lines.append("an earlier setup in this agent recorded the flags above; "
+                     "teardown puts those back")
+    for m in reply.get("maps") or []:
+        bindings = m.get("bindings") or []
+        lines.append(f"map: category {m.get('category_id')}, layout {m.get('layout_id')}, "
+                     f"{'enabled' if m.get('enabled') else 'disabled'}, "
+                     f"{len(bindings)} bindings")
+        lines.extend(f"  {b.get('element_name')} (element {b.get('element_id')}) -> "
+                     f"{b.get('action_name')} (action {b.get('action_id')})" for b in bindings)
+    return lines
+
+
+def teardown_lines(reply: dict) -> List[str]:
+    """The teardown reply's checks, one line each. A failed check reads the
+    way a failed file restore does ("... failed on <what>: ...")."""
+    lines: List[str] = []
+    for c in reply.get("checks") or []:
+        if c.get("ok"):
+            lines.append(f"kit teardown: {c.get('what')}: ok ({c.get('detail')})")
+        else:
+            lines.append(f"kit teardown failed on {c.get('what')}: {c.get('detail')}")
+    lines.append("kit teardown: all checks ok" if reply.get("all_ok")
+                 else "kit teardown: NOT all checks ok; see the lines above")
+    return lines
+
+
+def kit_press(agent: FA.LiveAgent, *, request_lock: Optional[threading.Lock] = None,
+              hold_frames: int = KIT_HOLD_FRAMES) -> Callable[[Sequence[int]], dict]:
+    """The auto-player's press on the kit route: a callable that sends one
+    chord's lanes to the kit agent and returns its reply, which play_chords
+    keeps in the press row. It waits at most KIT_PRESS_CAP_S and raises
+    frida_attach.ReadFailed when no reply comes, which ends the run."""
+    lock = request_lock if request_lock is not None else threading.Lock()
+
+    def press(lanes: Sequence[int]) -> dict:
+        message = press_message([lane_element(lane) for lane in lanes], hold_frames)
+        with lock:
+            return agent.request(message, KIT_PRESS_CAP_S)
+    return press
+
+
+def read_pause_setting(documents_dir: str = game_files.DOCUMENTS_DIR) -> str:
+    """The value of settings.ini's pause_on_focus_lost line, through
+    game_files' own lookup of a [game] line. Raises
+    game_files.SettingNotFound or OSError as that lookup does."""
+    return game_files.get_game_setting(os.path.join(documents_dir, game_files.SETTINGS),
+                                       game_files.PAUSE_ON_FOCUS_LOST)
+
+
+class KitTools:
+    """The four kit tools, press_items for the menu driver, kit_press for the
+    auto-player, and the kit agent between them.
+
+    `game` is the server's game_tools.GameTools: this class takes its backup,
+    session folder, play snapshot and foreground line, registers a stop hook
+    that tears the kit down, and hands it the kit press. `frida` is the
+    server's frida_tools.FridaTools; ch_kit_setup needs its attach. Every
+    outside seam is an argument so the tests swap each for a fake:
+    `agent_dir`, `frida_mod` (None imports frida at the first attach), `wait`
+    (how a request waits for its reply), `now` and `sleep` (the clock the
+    frame rate is timed on) and `read_settings` (the live settings.ini's
+    pause_on_focus_lost value)."""
+
+    def __init__(self, game, frida, lock, *,
+                 agent_dir: str = AGENT_DIR,
+                 frida_mod: Any = None,
+                 wait: Optional[Callable] = None,
+                 now: Callable[[], float] = time.monotonic,
+                 sleep: Callable[[float], None] = time.sleep,
+                 read_settings: Callable[[], str] = read_pause_setting):
+        self._game = game
+        self._frida = frida
+        self._lock = lock
+        self._agent_dir = agent_dir
+        self._frida_mod = frida_mod
+        self._wait = wait
+        self._now = now
+        self._sleep = sleep
+        self._read_settings = read_settings
+        # One request at a time to the kit agent, from a tool or the play
+        # thread.
+        self._request_lock = threading.Lock()
+        self._agent: Optional[FA.LiveAgent] = None
+        # True once setup answered with the expected bindings.
+        self._ready = False
+        self._count = 0
+        # Lines the live agent says outside a reply (a refused detach).
+        self._said: List[str] = []
+        game.add_stop_hook(self._stop_hook)
+        game.use_kit_press(self.kit_press)
+
+    # -- the tools ------------------------------------------------------------------
+
+    def ch_kit_setup(self) -> str:
+        """Check the attach and settings.ini, take the backup, attach the kit
+        agent, send setup and check the bindings it read back against
+        KIT_BINDINGS. A setup that fails or reads other bindings is torn down
+        again, so nothing is left half done."""
+        with self._lock:
+            if not self._frida.is_attached():
+                return NOT_ATTACHED
+            if self._ready and self._agent is not None and self._agent.alive:
+                return "the kit is already set up; call ch_kit_teardown first to set it up again"
+            key = game_files.PAUSE_ON_FOCUS_LOST
+            want = game_files.PAUSE_ON_FOCUS_LOST_RUN_VALUE
+            try:
+                value = self._read_settings()
+            except (game_files.SettingNotFound, OSError) as e:
+                return (f"refused: could not read {key} in {game_files.SETTINGS} ({e}); "
+                        f"start the game with ch_start, which sets it to {want}")
+            if value.strip() != want:
+                return (f"refused: {game_files.SETTINGS} reads {key} = {value.strip()}, "
+                        f"not {want}; start the game with ch_start, which sets it for the run")
+            lines = [line for line in (self._game.ensure_backup(),) if line]
+            path = os.path.join(self._agent_dir, KIT_AGENT_FILE)
+            if not os.path.isfile(path):
+                lines.append(TH.agent_missing_line(path, KIT_AGENT_NAME))
+                return self._reply(lines)
+            if self._agent is not None:
+                # A session the game dropped: detach closes its log file.
+                self._agent.detach()
+                self._agent = None
+            self._count += 1
+            log = os.path.join(self._game.session_dir(), f"kit-{self._count}.jsonl")
+            agent = FA.LiveAgent(path, log_path=log, frida_mod=self._frida_mod,
+                                 wait=self._wait, out=self._said.append)
+            try:
+                agent.start(ATTACH_CAP_S)
+            except FA.AttachFailed as e:
+                lines.append(f"kit agent: {e}{self._cap_note(e, 'ATTACH_CAP_S')}")
+                return self._reply(lines)
+            except SystemExit as e:  # frida_attach's advice for a failed import
+                lines.append(str(e))
+                return self._reply(lines)
+            self._agent = agent
+            lines.append(f"kit agent attached; log: {log}")
+            try:
+                with self._request_lock:
+                    reply = agent.request(setup_message(), KIT_SETUP_CAP_S)
+            except FA.ReadFailed as e:
+                lines.append(f"setup failed: {e}{self._cap_note(e, 'KIT_SETUP_CAP_S')}")
+                lines.extend(self._teardown_and_detach())
+                return self._reply(lines)
+            lines.extend(setup_lines(reply))
+            problems = binding_problems(reply.get("maps"))
+            if problems:
+                lines.append("refused: the kit's bindings differ from KIT_BINDINGS:")
+                lines.extend(f"  {p}" for p in problems)
+                lines.extend(self._teardown_and_detach())
+                return self._reply(lines)
+            self._ready = True
+            lines.append(f"bindings: all {len(KIT_BINDINGS)} match KIT_BINDINGS")
+            return self._reply(lines)
+
+    def ch_kit_press(self, items: Union[str, Sequence[str]],
+                     hold_frames: Optional[int] = None) -> str:
+        """Press one chord of kit items, such as "green,kick" or "start", and
+        print the frames it went down and came up on. press_items does the
+        work."""
+        return self.press_items(items, hold_frames).text
+
+    def press_items(self, items: Union[str, Sequence[str]],
+                    hold_frames: Optional[int] = None) -> PressResult:
+        """Press one chord of kit items (KIT_ELEMENTS names, with or without
+        KIT_PREFIX), held `hold_frames` frames (KIT_HOLD_FRAMES when None).
+        The result says whether the press went out, for the menu driver."""
+        with self._lock:
+            try:
+                names = parse_items(items)
+            except KitRefused as e:
+                return PressResult(False, str(e))
+            hold = KIT_HOLD_FRAMES if hold_frames is None else hold_frames
+            if isinstance(hold, bool) or not isinstance(hold, int) or hold < 1:
+                return PressResult(False, f"hold_frames is a whole number of 1 or more, "
+                                          f"not {hold_frames!r}")
+            agent = self._ready_agent()
+            if agent is None:
+                return PressResult(False, NOT_SET_UP)
+            if self._play_running():
+                return PressResult(False, PLAY_RUNNING)
+            elements = [KIT_ELEMENTS[n] for n in names]
+            try:
+                with self._request_lock:
+                    reply = agent.request(press_message(elements, hold), KIT_PRESS_CAP_S)
+            except FA.ReadFailed as e:
+                return PressResult(False, self._reply(
+                    [f"press failed: {e}{self._cap_note(e, 'KIT_PRESS_CAP_S')}"]))
+            down, up = reply.get("down_frame"), reply.get("up_frame")
+            frames = up - down if isinstance(down, int) and isinstance(up, int) else "?"
+            down_ms, up_ms = reply.get("down_ms"), reply.get("up_ms")
+            held = (f"{up_ms - down_ms:g} ms" if isinstance(down_ms, (int, float))
+                    and isinstance(up_ms, (int, float)) else "? ms")
+            return PressResult(True, self._reply([
+                f"pressed {', '.join(names)} (elements "
+                f"{', '.join(str(e.id) for e in elements)}) for {hold} frames: down at frame "
+                f"{down}, up at frame {up} ({frames} frames apart, {held} by the agent's clock)"]))
+
+    def ch_kit_status(self) -> str:
+        """The kit agent's status: the frame count, the frame rate over
+        KIT_RATE_WINDOW_S, whether the game has focus, the switch, the kit,
+        each player's keyboard and mouse flags, then the foreground count."""
+        with self._lock:
+            lines: List[str] = []
+            agent = self._agent
+            if agent is None or not agent.alive:
+                why = f" ({agent.gone_reason})" if agent is not None else ""
+                lines.append(f"kit agent: not attached{why}; call ch_kit_setup")
+            else:
+                try:
+                    first, t0 = self._status(agent), self._now()
+                    self._sleep(KIT_RATE_WINDOW_S)
+                    second, t1 = self._status(agent), self._now()
+                except FA.ReadFailed as e:
+                    lines.append(f"status failed: {e}{self._cap_note(e, 'READ_CAP_S')}")
+                else:
+                    lines.extend(self._status_lines(first, second, t1 - t0))
+            fg = self._game.foreground_line()
+            lines.append(fg if fg else "foreground: no watch (the server did not start the game)")
+            return self._reply(lines)
+
+    def ch_kit_teardown(self) -> str:
+        """Clear the kit's elements, remove the kit, give every player back
+        the keyboard and mouse flags setup recorded, put the switch back,
+        print each check, and detach the kit agent."""
+        with self._lock:
+            if self._play_running():
+                return PLAY_RUNNING
+            if self._agent is None:
+                return "no kit agent attached; nothing to tear down"
+            return self._reply(self._teardown_and_detach())
+
+    def kit_press(self) -> Optional[Callable[[Sequence[int]], dict]]:
+        """The auto-player's kit press, or None when the kit is not set up."""
+        with self._lock:
+            agent = self._ready_agent()
+            if agent is None:
+                return None
+            return kit_press(agent, request_lock=self._request_lock)
+
+    # -- inside -----------------------------------------------------------------------
+
+    def _ready_agent(self) -> Optional[FA.LiveAgent]:
+        agent = self._agent
+        if not self._ready or agent is None or not agent.alive:
+            return None
+        return agent
+
+    def _play_running(self) -> bool:
+        play = self._game.play_snapshot()
+        return play is not None and play["stop"] is None
+
+    def _status(self, agent: FA.LiveAgent) -> dict:
+        with self._request_lock:
+            return agent.request({"type": "status", "tag": KIT_TAG}, READ_CAP_S)
+
+    @staticmethod
+    def _status_lines(first: dict, second: dict, seconds: float) -> List[str]:
+        lines = [f"frame: {second.get('frame')}"]
+        f0, f1 = first.get("frame"), second.get("frame")
+        if isinstance(f0, int) and isinstance(f1, int) and seconds > 0:
+            lines.append(f"frame rate: {(f1 - f0) / seconds:.1f} frames a second "
+                         f"({f1 - f0} frames in {seconds:.2f} s)")
+        else:
+            lines.append("frame rate: not known (no two frame counts)")
+        lines.append(f"game focused: {_flag_text(second.get('focused'))}")
+        lines.append(f"ignoreInputWhenAppNotInFocus: {_flag_text(second.get('switch_now'))}")
+        if second.get("kit_exists"):
+            lines.append(f"kit: controller {second.get('kit_id')}, tag {second.get('kit_tag')}")
+        else:
+            lines.append(f"kit: none tagged {second.get('kit_tag')}")
+        lines.extend(f"player {p.get('id')} {p.get('name')}: keyboard "
+                     f"{_flag_text(p.get('has_keyboard'))}, mouse {_flag_text(p.get('has_mouse'))}"
+                     for p in second.get("players") or [])
+        return lines
+
+    def _teardown_and_detach(self) -> List[str]:
+        """Send teardown, print its checks, then detach the kit agent."""
+        lines: List[str] = []
+        agent = self._agent
+        self._ready = False
+        if agent is None:
+            return lines
+        try:
+            with self._request_lock:
+                reply = agent.request({"type": "teardown", "tag": KIT_TAG}, KIT_SETUP_CAP_S)
+        except FA.ReadFailed as e:
+            lines.append(f"kit teardown failed on the request: {e}"
+                         f"{self._cap_note(e, 'KIT_SETUP_CAP_S')}")
+        else:
+            lines.extend(teardown_lines(reply))
+        lines.append("kit agent: " + agent.detach())
+        self._agent = None
+        return lines
+
+    def _stop_hook(self) -> Optional[str]:
+        """game_tools' stop hook: tear the kit down, then detach its agent."""
+        with self._lock:
+            lines = self._teardown_and_detach() if self._agent is not None else []
+            lines.extend(self._said)
+            self._said.clear()
+            return "\n".join(lines) or None
+
+    @staticmethod
+    def _cap_note(error: FA.LiveAgentError, name: str) -> str:
+        return f" ({name})" if error.reason == FA.END_CAP else ""
+
+    def _reply(self, lines: List[str]) -> str:
+        """`lines`, then anything the live agent said meanwhile."""
+        lines = lines + self._said
+        self._said.clear()
+        return "\n".join(lines)

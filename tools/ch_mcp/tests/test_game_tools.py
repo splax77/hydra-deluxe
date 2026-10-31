@@ -615,6 +615,83 @@ class GameToolsTest(unittest.TestCase):
         # The play run took the adopted game's backup, and ch_stop restored it.
         self.assertIn("settings.ini: unchanged", reply)
 
+    # -- the kit route ----------------------------------------------------------------------
+
+    def _kit_rig(self, kit_press):
+        seen = []
+
+        def live_play(chords, **kw):
+            seen.append(kw)
+            return play_chart.RunResult(stop="done", rows=[])
+
+        t = ToolRig(self.tmp, live_play=live_play)
+        t.tools.use_kit_press(lambda: kit_press)
+        return t, seen
+
+    def test_route_kit_hands_live_play_the_kit_press_and_no_driver(self):
+        def kit_press(lanes):
+            return {}
+
+        t, seen = self._kit_rig(kit_press)
+        reply = t.tools.ch_play_chart(self._score_json(), route="kit")
+        t.tools._play.thread.join(THREAD_CAP_S)
+        self.assertIs(seen[0]["press"], kit_press)
+        self.assertNotIn("driver", seen[0])
+        self.assertIn("route: kit (presses through the virtual kit inside the game)",
+                      reply.splitlines())
+
+    def test_no_route_picks_the_kit_once_it_is_set_up(self):
+        def kit_press(lanes):
+            return {}
+
+        t, seen = self._kit_rig(kit_press)
+        t.tools.ch_play_chart(self._score_json())
+        t.tools._play.thread.join(THREAD_CAP_S)
+        self.assertIs(seen[-1]["press"], kit_press)
+
+    def test_no_route_picks_keys_while_the_kit_is_not_set_up(self):
+        t, seen = self._kit_rig(None)
+        reply = t.tools.ch_play_chart(self._score_json())
+        t.tools._play.thread.join(THREAD_CAP_S)
+        self.assertIs(seen[-1]["driver"], t.driver)
+        self.assertNotIn("press", seen[-1])
+        self.assertIn("route: keys (keys to the focused game window)", reply.splitlines())
+
+    def test_route_kit_without_a_kit_and_an_unknown_route_are_refused(self):
+        t, seen = self._kit_rig(None)
+        self.assertEqual(t.tools.ch_play_chart(self._score_json(), route="kit"),
+                         'route kit: the kit is not set up; call ch_kit_setup first, '
+                         'or pass route="keys"')
+        self.assertEqual(t.tools.ch_play_chart(self._score_json(), route="pads"),
+                         'unknown route "pads"; routes: kit, keys')
+        self.assertIsNone(t.tools._play)
+        self.assertEqual(seen, [])
+
+    def test_the_status_rows_show_the_kit_columns_only_when_rows_carry_them(self):
+        rows = [{**ROWS[0], "down_frame": 10, "up_frame": 12, "down_ms": 100, "up_ms": 113}]
+
+        def live_play(chords, *, on_press, **kw):
+            for row in rows:
+                on_press(row)
+            return play_chart.RunResult(stop="done", sent=1, hit=1, rows=rows)
+
+        t = ToolRig(self.tmp, live_play=live_play)
+        t.tools.use_kit_press(lambda: (lambda lanes: {}))
+        t.tools.ch_play_chart(self._score_json())
+        t.tools._play.thread.join(THREAD_CAP_S)
+        lines = t.tools.ch_play_status().splitlines()
+        self.assertEqual(lines[-2:], [
+            "rows, newest first (index, chart_ms, clock_ms_at_press, score_before, score_after, "
+            "hit, down_frame, up_frame, down_ms, up_ms):",
+            "  0, 1000.0, 998.0, 0, 50, 1, 10, 12, 100, 113"])
+
+    def test_foreground_line_is_the_watchs_line_or_none(self):
+        t = ToolRig(self.tmp)
+        self.assertIsNone(t.tools.foreground_line())
+        t.tools.ch_start(t.r.song)
+        self.assertEqual(t.tools.foreground_line(), "foreground went to the game 0 times so far")
+        t.tools.ch_stop()
+
 
 # A settings.ini with the run's line in its [game] section.
 USER_SETTINGS = b"[audio]\r\nvolume = 1\r\n\r\n[game]\r\npause_on_focus_lost = 1\r\nnote_speed = 7\r\n"

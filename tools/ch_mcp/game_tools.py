@@ -41,6 +41,13 @@ INSTALL_CAP_S = 60.0
 
 SCRATCH_PREFIX = "ch_live_"
 
+# ch_play_chart's two routes: the virtual kit inside the game, or keys sent to
+# the focused game window (the plan 2026-10-30-ch-mcp-in-game-input.md, "The
+# tools").
+ROUTE_KIT = "kit"
+ROUTE_KEYS = "keys"
+ROUTES = (ROUTE_KIT, ROUTE_KEYS)
+
 _NOT_RUNNING = f"{C.PROCESS_NAME} is not running"
 
 
@@ -115,6 +122,8 @@ class _PlaySession:
     log_path: Optional[str]
     # The run cap handed to live_play; None leaves live_play's own.
     cap_s: Optional[float] = None
+    # The kit press on the kit route; None presses keys through the driver.
+    press: Optional[Callable] = None
     thread: Optional[threading.Thread] = None
     stop: threading.Event = dataclasses.field(default_factory=threading.Event)
     rows: list = dataclasses.field(default_factory=list)
@@ -174,6 +183,9 @@ class GameTools:
         self._last_stats: Optional[str] = None
         self._play: Optional[_PlaySession] = None
         self._stop_hooks: List[Callable[[], object]] = []
+        # Where ch_play_chart gets the kit press: kit_tools.KitTools.kit_press,
+        # handed in by use_kit_press. None until then.
+        self._kit_press_source: Optional[Callable[[], Optional[Callable]]] = None
 
     # -- the interface frida_tools builds on ------------------------------------
 
@@ -313,8 +325,9 @@ class GameTools:
                 lines.append(f"backup folder: {self._adopted_backup}")
             else:
                 lines.append("game: no run open, and no backup taken")
-            if self._watch is not None:
-                lines.append(self._watch.line())
+            watch_line = self.foreground_line()
+            if watch_line is not None:
+                lines.append(watch_line)
             if self._scratch is not None:
                 lines.append(f"scratch folder: {self._scratch}")
             play = self._play
@@ -480,16 +493,39 @@ class GameTools:
             lines.append("keys sent: " + ", ".join(sent))
             return PressResult(True, "\n".join(lines))
 
+    def use_kit_press(self, source: Callable[[], Optional[Callable]]) -> None:
+        """Hand in where the kit press comes from (kit_tools.KitTools.kit_press:
+        the press, or None while the kit is not set up)."""
+        with self._lock:
+            self._kit_press_source = source
+
+    def foreground_line(self) -> Optional[str]:
+        """The foreground watch's count line, or None when no watch runs
+        (the server did not start the game)."""
+        with self._lock:
+            return self._watch.line() if self._watch is not None else None
+
     def ch_play_chart(self, score_json: str, log: Optional[str] = None,
-                      song_folder: Optional[str] = None) -> str:
+                      song_folder: Optional[str] = None, route: Optional[str] = None) -> str:
         """Start the auto-player (play_chart.live_play) on a hydra_replay score
         JSON in a background thread. `log`, when given, is where the press log
         is written when the run ends; a relative path goes in the session
         folder. `song_folder`, when given, sets the run cap through run_cap_s;
-        with none the run keeps live_play's own cap."""
+        with none the run keeps live_play's own cap. `route` is ROUTE_KIT
+        (presses through the virtual kit inside the game) or ROUTE_KEYS (keys
+        to the focused window); None picks the kit once it is set up."""
         with self._lock:
             if self._play is not None and self._play.running():
                 return "a play session is already running; call ch_play_stop first"
+            kit_press = self._kit_press_source() if self._kit_press_source is not None else None
+            if route is None:
+                route = ROUTE_KIT if kit_press is not None else ROUTE_KEYS
+            if route not in ROUTES:
+                return f'unknown route "{route}"; routes: {", ".join(ROUTES)}'
+            if route == ROUTE_KIT and kit_press is None:
+                return (f"route {ROUTE_KIT}: the kit is not set up; call ch_kit_setup first, "
+                        f'or pass route="{ROUTE_KEYS}"')
+            press = kit_press if route == ROUTE_KIT else None
             try:
                 chords = play_chart.load_dump_chords(score_json)
             except (OSError, ValueError, KeyError, TypeError) as e:
@@ -502,12 +538,15 @@ class GameTools:
                 log_path = log if os.path.isabs(log) else os.path.join(self.session_dir(), log)
             cap_s = None if song_folder is None else run_cap_s(song_folder)
             play = _PlaySession(score_json=score_json, chord_count=len(chords), log_path=log_path,
-                                cap_s=cap_s)
+                                cap_s=cap_s, press=press)
             play.thread = threading.Thread(target=self._play_body, args=(play, chords),
                                            name="ch_play_chart", daemon=True)
             self._play = play
             play.thread.start()
             lines.append(f"play session started: {len(chords)} chords from {score_json}")
+            lines.append(f"route: {route} ("
+                         + ("presses through the virtual kit inside the game"
+                            if route == ROUTE_KIT else "keys to the focused game window") + ")")
             lines.append(f"run cap: {play_chart.RUN_CAP_S if cap_s is None else cap_s:g} s")
             lines.append(f"waiting for a moving clock (cap {engine_finder.ENGINE_SEARCH_CAP_S:.0f} s): "
                          "start the song from the game's menu; a song launched with a bot "
@@ -598,8 +637,11 @@ class GameTools:
         """The play thread: live_play, then the press log. It never takes the
         lock, so a tool holding it never waits on the thread."""
         cap = {} if play.cap_s is None else {"cap_s": play.cap_s}
+        # The kit route hands live_play its press and no driver, so no window
+        # is looked up; the keys route keeps the driver.
+        route = {"driver": self._driver} if play.press is None else {"press": play.press}
         try:
-            play.result = self._live_play(chords, driver=self._driver,
+            play.result = self._live_play(chords, **route,
                                           on_press=play.rows.append,
                                           should_stop=play.stop.is_set,
                                           out=io.StringIO(), **cap)
@@ -639,7 +681,9 @@ class GameTools:
             if play.log_note:
                 lines.append(play.log_note)
         if rows:
-            lines.append(f"rows, newest first ({', '.join(PRESS_LOG_COLUMNS)}):")
-            lines.extend("  " + ", ".join(str(r.get(c, "")) for c in PRESS_LOG_COLUMNS)
+            # The kit press's columns show only when the rows carry them.
+            columns = [c for c in PRESS_LOG_COLUMNS if any(c in r for r in rows)]
+            lines.append(f"rows, newest first ({', '.join(columns)}):")
+            lines.extend("  " + ", ".join(str(r.get(c, "")) for c in columns)
                          for r in reversed(rows))
         return lines
