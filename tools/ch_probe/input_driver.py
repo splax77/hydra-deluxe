@@ -2,8 +2,9 @@
 
 What this does, in one line: it presses and releases a keyboard key for a
 drum lane. It also presses the non-lane keys in MENU_KEYS and types text,
-for driving the game's menus. Waiting for the song clock to reach a note is not its job; the
-runners do that with experiments/live.wait_until, then call press_chord.
+for driving the game's menus. Waiting for the song clock to reach a note is
+not its job; the runners do that with experiments/live.wait_until, then call
+press_chord.
 
 Why the timing can be sloppy. Windows cannot deliver a keystroke at an exact
 millisecond -- the scheduler jitters by several ms, which is huge next to an

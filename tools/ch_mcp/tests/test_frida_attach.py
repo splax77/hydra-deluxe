@@ -785,6 +785,18 @@ class DestroyedSkipTest(unittest.TestCase):
         self.assertIn("field<NativePointer>(NATIVE_OBJECT_FIELD).value.isNull()", text)
         self.assertNotIn(".method(", text)
 
+    def test_only_gamemanager_ts_names_the_native_object_field(self):
+        # One owner for "is this Unity object destroyed": the other agents
+        # import isDestroyed and never name the field themselves.
+        for path in agent_sources():
+            name = os.path.basename(path)
+            if name == "gamemanager.ts":
+                continue
+            with self.subTest(agent=name):
+                self.assertNotIn("m_CachedPtr", self.read(name))
+        self.assertIn("export function isDestroyed(", self.read("gamemanager.ts"))
+        self.assertIn("isDestroyed", self.read("menu.ts"))
+
     def test_the_state_agent_sends_the_destroyed_count_in_both_replies(self):
         text = self.read("state.ts")
         self.assertIn("lookUpGameManager()", text)

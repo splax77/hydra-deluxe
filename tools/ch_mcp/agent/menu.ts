@@ -11,6 +11,7 @@
 // that every call in every agent is named here.
 
 import "frida-il2cpp-bridge";
+import { isDestroyed } from "./gamemanager.js";
 
 // The game methods an agent may call, by name. The test above reads this list
 // from this file's text, so it stays one literal list.
@@ -25,14 +26,6 @@ const MENU_CLASSES = ["MainMenu", "SongSelect", "PlayerSelectionMenu"];
 const ONLINE_MENU_HOLDERS = new Set(["MainMenu", "SongSelect"]);
 const SONG_SELECT = "SongSelect";
 const GLOBALS_CLASS = "GlobalVariables";
-
-// The same field gamemanager.ts reads to tell a destroyed Unity object from a
-// live one; see NATIVE_OBJECT_FIELD there.
-const NATIVE_OBJECT_FIELD = "m_CachedPtr";
-
-function isDestroyed(obj: Il2Cpp.Object): boolean {
-    return obj.field<NativePointer>(NATIVE_OBJECT_FIELD).value.isNull();
-}
 
 function text(s: Il2Cpp.String): string | null {
     return s.isNull() ? null : s.content;
