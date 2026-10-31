@@ -57,7 +57,7 @@ void place_record(std::vector<ReportRow>& out, const store::RecordRow& record,
         row.sqin = p.sqin_count;
         row.sqout = p.sqout_count;
         row.notes = record.notecount;
-        std::tie(row.tier, row.tok) = tier_for(row.ms, tiers);
+        std::tie(row.tier, row.tok) = hydra::tier_for(row.ms, tiers);
         row.hyhash = record.song_id;
         out.push_back(std::move(row));
     }
@@ -69,27 +69,7 @@ std::pair<std::string, std::string> tier_for(const std::optional<double>& ms) {
     // The ladder itself lives in core/squeeze_rating.h (timing_tiers) so
     // these labels and every other reader of the tier table cannot drift
     // apart.
-    return tier_for(ms, timing_tiers());
-}
-
-const TimingTier& beyond_tier(const std::vector<TimingTier>& tiers) {
-    return tiers[tiers.size() - 2];
-}
-
-const TimingTier& none_tier(const std::vector<TimingTier>& tiers) { return tiers.back(); }
-
-std::pair<std::string, std::string> tier_for(const std::optional<double>& ms,
-                                             const std::vector<TimingTier>& tiers) {
-    const TimingTier& none = none_tier(tiers);
-    const TimingTier& beyond = beyond_tier(tiers);
-    if (!ms) return {none.name, none.tok};
-    // Each edge belongs to the band below it (D48 Q3). The table's first row
-    // is Normal up to and including the difficult floor, so a timing on the
-    // floor reads Normal (past_difficult_floor's rule), and a timing exactly
-    // on the two-hit budget is Insane+, not Beyond.
-    for (const TimingTier& t : tiers)
-        if (t.cutoff && *ms <= *t.cutoff) return {t.name, t.tok};
-    return {beyond.name, beyond.tok};
+    return hydra::tier_for(ms, timing_tiers());
 }
 
 namespace {

@@ -352,7 +352,8 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
                 core::sqout_position(bsq.timecode.ticks(), act.sqout_tick),
                 rules.backend_leeway_ms);
             row.points = std::to_string(value);
-            row.rating = bsq.summarystr(br.squeezed_out, rules.backend_leeway_ms);
+            row.rating =
+                bsq.summarystr(br.squeezed_out, br.note.effective_ms, rules.backend_leeway_ms);
             if (br.note.effective_ms)
                 row.rating += eff_suffix(*br.note.effective_ms);
             if (br.squeezed_out) {

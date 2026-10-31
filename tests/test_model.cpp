@@ -835,9 +835,9 @@ TEST_CASE("backend leeway: +2.999 ms is counted, exactly +3.0 ms is not") {
     // rule.
     BackendSqueeze row;
     row.offset_ms = 2.999;
-    CHECK(row.summarystr(false, lw) == "Standard");
+    CHECK(row.summarystr(false, std::nullopt, lw) == "Normal");
     row.offset_ms = 3.0;
-    CHECK(row.summarystr(false, lw) == "Hard (uncounted)");
+    CHECK(row.summarystr(false, std::nullopt, lw) == "Hard (uncounted)");
 }
 
 // D13.

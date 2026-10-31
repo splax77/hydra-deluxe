@@ -192,6 +192,26 @@ std::vector<TimingTier> timing_tiers() {
     };
 }
 
+const TimingTier& beyond_tier(const std::vector<TimingTier>& tiers) {
+    return tiers[tiers.size() - 2];
+}
+
+const TimingTier& none_tier(const std::vector<TimingTier>& tiers) { return tiers.back(); }
+
+std::pair<std::string, std::string> tier_for(const std::optional<double>& ms,
+                                             const std::vector<TimingTier>& tiers) {
+    const TimingTier& none = none_tier(tiers);
+    const TimingTier& beyond = beyond_tier(tiers);
+    if (!ms) return {none.name, none.tok};
+    // Each edge belongs to the band below it (D48 Q3). The table's first row
+    // is Normal up to and including the difficult floor, so a timing on the
+    // floor reads Normal (past_difficult_floor's rule), and a timing exactly
+    // on the two-hit budget is Insane+, not Beyond.
+    for (const TimingTier& t : tiers)
+        if (t.cutoff && *ms <= *t.cutoff) return {t.name, t.tok};
+    return {beyond.name, beyond.tok};
+}
+
 double beyond_edge_ms() {
     double edge = 0.0;
     for (const TimingTier& t : timing_tiers())

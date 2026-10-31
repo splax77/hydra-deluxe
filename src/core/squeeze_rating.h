@@ -26,6 +26,8 @@
 #include <cmath>
 #include <limits>
 #include <optional>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "core/model.h"
@@ -205,6 +207,20 @@ ActivationRating rate_activation(
 // open "Beyond" band and the "None" (no squeeze) entry.
 struct TimingTier { const char* name; const char* tok; std::optional<double> cutoff; };
 std::vector<TimingTier> timing_tiers();
+
+// The timing_tiers table's two open bands, the one answer to which entries
+// they are: Beyond, past the last cutoff, and None, a path with no squeeze.
+// tier_for labels with them, the report's tiles count the Beyond rows and the
+// path report view names both.
+const TimingTier& beyond_tier(const std::vector<TimingTier>& tiers);
+const TimingTier& none_tier(const std::vector<TimingTier>& tiers);
+
+// (label, token) for a timing in ms on a timing_tiers table, e.g.
+// (Extreme, t2); nullopt reads None. The one lookup on the ladder: the
+// report labels each path's hardest squeeze with it, and
+// BackendSqueeze::summarystr each Backend timings row.
+std::pair<std::string, std::string> tier_for(const std::optional<double>& ms,
+                                             const std::vector<TimingTier>& tiers);
 
 // Where the report's "Beyond" tier starts: the last finite cutoff of
 // timing_tiers. The footer and the page script both print this number.

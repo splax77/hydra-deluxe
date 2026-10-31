@@ -94,11 +94,6 @@ constexpr double kDifficultMs = 2.0;
 // is_difficult asks this.
 inline bool past_difficult_floor(double ms) { return ms > kDifficultMs; }
 
-// The inner edges of the backend rating ladder: a row within this many ms of
-// the SP end, either side, sits in the middle rungs (BackendSqueeze::
-// summarystr). A fixed rule of its own, not the backend leeway (D48 Q4).
-constexpr double kBackendInnerBandMs = 10.0;
-
 // The backend leeway edge is a user rule now: core::Rules::backend_leeway_ms
 // (hydra_rules.ini), read by the engine and BackendSqueeze::summarystr.
 
@@ -276,6 +271,18 @@ inline double squeeze_difficulty(bool is_sqin, double offset_ms) {
     return is_sqin ? offset_ms : (-offset_ms + 0.0);
 }
 
+// The timing, in ms, the player needs for one Backend timings row: the one
+// figure its Rating word is banded on (D269). Zero or less means the row
+// needs nothing. The squeezed-out row needs its SqOut's squeeze_difficulty,
+// measured from the one SP end (D269 call 4). A plain row the engine counts
+// (core::counted_without_squeeze) needs nothing; one it does not count
+// needs its offset, the early hit that would win it. The leeway only
+// decides which of those two a plain row is.
+inline double backend_row_timing(double offset_ms, bool squeezed_out, double leeway_ms) {
+    if (squeezed_out) return squeeze_difficulty(/*is_sqin=*/false, offset_ms);
+    return core::counted_without_squeeze(offset_ms, leeway_ms) ? 0.0 : offset_ms;
+}
+
 // Is one timing (a squeeze's or an early fill's difficulty, in ms) inside a
 // ms limit? The one comparison every limit check makes: the user's Path limit
 // in the search, and the all-0 pass's 0 ms limit (D85). SPSqueeze::within_limit
@@ -378,8 +385,7 @@ struct SPSqueeze {
     // Whether the squeeze is already done with no frontend timing: the one
     // answer the rating and the sentence both read. The SP walk pays a note
     // on the SP end (core::paid_by_sp_walk), so a SqIn there is already in
-    // (D13), and a SqOut there still has to be hit late (D51 call 4). The
-    // word "Free" on screen is BackendSqueeze::summarystr's, a different test.
+    // (D13), and a SqOut there still has to be hit late (D51 call 4).
     bool needs_no_timing() const {
         const bool inside_sp = core::paid_by_sp_walk(offset_ms);
         return kind == SqueezeKind::SqIn ? inside_sp : !inside_sp;
@@ -414,16 +420,15 @@ struct BackendSqueeze {
     double offset() const;
 
     bool operator==(const BackendSqueeze& o) const;
-    // Rating label. The outer +/-W edges come from the hit window
-    // (kHitWindowMs); the inner edges are kBackendInnerBandMs either side of
-    // the SP end, and the plain ladder's Standard edge is the leeway (none of
-    // them is the window).
+    // The Rating word: backend_row_timing banded on the report's timing
+    // tiers (timing_tiers, tier_for), one rule for every row (D269), and the
+    // "(uncounted)" tag where the engine does not count the row.
     // squeezed_out: this row is the activation's squeezed-out chord
-    // (Activation::is_sqout_backend). Only that row reads the SqOut ladder;
-    // every other row, phrase chord or not, reads the plain one.
-    // leeway_ms: the backend leeway edge (Rules::backend_leeway_ms); a
-    // plain row under it rates "Standard".
-    std::string summarystr(bool squeezed_out,
+    // (Activation::is_sqout_backend).
+    // effective_ms: the row's eff. figure (NoteRating::effective_ms), banded
+    // in place of the raw one when the row needs a timing.
+    // leeway_ms: the backend leeway edge (Rules::backend_leeway_ms).
+    std::string summarystr(bool squeezed_out, std::optional<double> effective_ms,
                            double leeway_ms = core::default_rules().backend_leeway_ms) const;
 };
 
