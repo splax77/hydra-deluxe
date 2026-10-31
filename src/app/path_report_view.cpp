@@ -98,14 +98,19 @@ std::vector<Column<ReportRow>> path_columns() {
         cols.push_back(std::move(c));
     }
     {
-        // The chip names the tier tier_for gave the row; the column sorts on
-        // that name.
+        // The chip names the tier tier_for gave the row. The column sorts on
+        // that tier's place in timing_tiers(), the ladder the Timing dropdown
+        // lists, not on its name (D284 item 1).
         Column<ReportRow> c;
         c.id = "tier";
         c.title = "Timing";
         c.definition = "How hard Hardest ms is, in bands of the " + report::hit_window_text() +
                        " ms hit window. Beyond means more than twice the hit window.";
-        c.sort_key = [](const ReportRow& r) { return SortKey{r.tier}; };
+        c.sort_key = [tiers = timing_tiers()](const ReportRow& r) {
+            for (size_t i = 0; i < tiers.size(); ++i)
+                if (tiers[i].name == r.tier) return SortKey{static_cast<double>(i)};
+            return SortKey{};
+        };
         c.cell = [](const ReportRow& r) { return tier_label(r.tier); };
         c.look.chip = true;
         cols.push_back(std::move(c));
