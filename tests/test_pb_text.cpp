@@ -80,6 +80,8 @@ TEST_CASE("fill reason: inside a window, before the last activation, under two b
     REQUIRE(one.activations.size() == 1);
     REQUIRE(one.activations[0].sp_end_tick == 195360);
     CHECK(fill_reason(one, at_end) != kBeforeLastActivationText);
+    // A chord on the end tick is still under Star Power (core::after_sp_end).
+    CHECK(fill_reason(one, at_end) == "Star Power is already on here. Activation 1 runs until m102.");
     CHECK(fill_reason(one, fill_index(one, 156960)) == kBeforeLastActivationText);
 }
 

@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "app/display_format.h"
+#include "core/backend_value.h"    // after_sp_end
 #include "pathbuilder/pb_coach.h"  // tight_window_note
 
 namespace hydra::pathbuilder {
@@ -60,8 +61,11 @@ std::string fill_reason(const PreviewScene& scene, size_t fill_index) {
     if (fill.state == app::PreviewFillState::Taken) return {};
     const SongTiming& timing = scene_timing(scene);
     for (size_t i = 0; i < scene.activations.size(); ++i) {
+        // Whether the fill's chord falls under this window is the engine's
+        // side-of-the-end rule (core::after_sp_end), the one the fill's state
+        // came from, so a chord on the end tick is still under Star Power.
         const app::PreviewActivation& a = scene.activations[i];
-        if (a.sp_running_at(fill.span.end_ms))
+        if (a.sp_window() && fill.chord_tick > a.tick && !core::after_sp_end(fill.chord_tick, a.sp_end_tick))
             return "Star Power is already on here. Activation " + std::to_string(i + 1) +
                    " runs until " + measure_at(timing, a.sp_end_tick) + ".";
     }
