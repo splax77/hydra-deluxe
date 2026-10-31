@@ -20,8 +20,8 @@ folder, for the next run's -Prepare to read.
 
 The build folder is relative to -Repo, which defaults to this script's
 checkout. Any git error stops the script with a message; it never falls
-through to a warm build. The plan is
-docs/superpowers/plans/2026-10-24-ci-build-speed.md.
+through to a warm build. The plan was
+docs/superpowers/plans/2026-10-24-ci-build-speed.md (removed; git show 444631e6:docs/superpowers/plans/2026-10-24-ci-build-speed.md).
 #>
 [CmdletBinding()]
 param(
