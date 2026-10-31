@@ -9,7 +9,7 @@ Plain words: just before the engine adds `amount` ticks of Star Power, if that a
 - Lines 11 to 14: `amount_now + amount < [engine+0x1b8]` also jumps to the tail: the addition does not reach half.
 - Lines 15 to 16: `[engine+0x42] != 0` (Star Power active) jumps to the tail.
 - Lines 17 to 23: one-time generic-slot load.
-- Lines 24 to 26: `rsi = [engine+0x300] + [engine+0x108]`. `+0x300` is `resolution << 2`, written by the constructor (`engine_ctor_20DF680.asm` lines 57 and 68 to 69). `+0x108` is added to it; the record reads `+0x108` as the current chart tick, but its field meaning and writer were not checked here (see the claims table, row R2-17).
+- Lines 24 to 26: `rsi = [engine+0x300] + [engine+0x108]`. `+0x300` is `resolution << 2`, written by the constructor (`engine_ctor_20DF680.asm` lines 57 and 68 to 69). `+0x108` is added to it; the record reads `+0x108` as the current chart tick, but its field meaning and writer were not checked here (see FL-22 on page 4).
 - Line 28: `edi = [engine+0x2f8]`: a running index into the fill list, so each call continues where the previous one stopped.
 - Lines 29 to 31, 34 to 38: fetch the wrapper list through `0x20F4650(engine, 0)` and test that the index is below its count; if not, go to the tail.
 - Lines 39 to 44: fetch wrapper number `edi`.

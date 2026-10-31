@@ -9,7 +9,7 @@ New listings made for the reference live under `code/6142/` (build 1.1.0.6142) a
 
 The 210 listings below were committed before the reference existed, by the Note Shuffle work under `docs/audit/note-shuffle/` and the drum-lane work under `docs/audit/drum-lanes/`. They stay in those folders, so the links in their own FINDINGS and plans keep working, and this table is the one place that says which file holds which address.
 
-Every one is from build 1.1.0.6142 (`GameAssembly.dll`). They were made with a capstone wrapper (capstone is a disassembler library) whose first copy lived in a scratch folder and is gone. The same wrapper is now committed as tools/ch_mcp/chdis.py, and it reproduces them: run on 0x20F0B30, it printed the 69 lines of `lanedraw_20f0b30.asm` exactly (checked 2026-10-30). The date is the day git first added the file.
+Every one is from build 1.1.0.6142 (`GameAssembly.dll`). They were made with a capstone wrapper (capstone is a disassembler library) whose first copy was not kept. The same wrapper is now committed as tools/ch_mcp/chdis.py, and it reproduces them: run on 0x20F0B30, it printed the 69 lines of `lanedraw_20f0b30.asm` exactly (checked 2026-10-30). The date is the day git first added the file.
 
 The first column is the function start, read from the listing's own first line. A file that holds several functions lists each start, in the order the file holds them. The role is the name the scout gave the file; where the file name carries no role, the folder's README or FINDINGS says what the function does. Several functions were listed twice, once by the scout that read them and once by the scout that tried to refute the reading (the `-refute` folders), so one address can have two or three rows. The table was generated from the files, not typed, and its 210 rows match the 210 `.asm` files in the two folders.
 
@@ -228,11 +228,13 @@ The first column is the function start, read from the listing's own first line. 
 
 ## New listings
 
-The 81 listings below were made for the reference on 2026-10-30 by the wave 2 scouts. There are 79 `.asm` files under `code/6142/` and 2 `.cs` files under `code/4045/`, and each has a `.md` beside it that explains its branches in plain words.
+The 81 listings below were made for the reference on 2026-10-30, in session b02ab3e6 (the reference build). There are 79 `.asm` files under `code/6142/` and 2 `.cs` files under `code/4045/`, and each has a `.md` beside it that explains its branches in plain words.
 
-The `.asm` files are from build 1.1.0.6142 (`GameAssembly.dll`), made with tools/ch_mcp/chdis.py. The start is the RVA in the file name, and for every file it matches the address on the listing's first line (or the `; function` line some listings open with). The role is the scout's file name with the RVA taken off.
+The `.asm` files are from build 1.1.0.6142 (`GameAssembly.dll`), made with tools/ch_mcp/chdis.py. The start is the RVA in the file name, and for every file it matches the address on the listing's first line (or the `; function` line some listings open with). The role is the file name with the RVA taken off.
 
 The `.cs` files are from build 1.0.0.4045 (`Assembly-CSharp.dll`), decompiled with `ilspycmd`. That build's dump has no addresses, so their start column names the file's first method and its lines in the full ilspycmd output instead.
+
+"The decompile" and `ghidra_decompile_all.txt`, on these notes and on the area pages, mean Ghidra's full decompile of build 6142's `GameAssembly.dll`, made 2026-09-17, with each function named `FUN_` plus its address. It is not in the repo and was not kept as a permanent record, so its line numbers are a pointer for a later reader with their own decompile, not a source to cite alone.
 
 The table was generated from the files, not typed. One more file, `code/6142/drum_lanes_sp_lines.md`, has no listing of its own: it annotates the Star Power lines of the committed drum-lane listings under `docs/audit/drum-lanes/`.
 

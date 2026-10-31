@@ -25,6 +25,14 @@ Every block carries exactly one of these four labels, and the evidence the label
 - **Hydra assumes it, never checked:** the Hydra code that holds the assumption.
 - **Unknown.** The block's evidence line says where we looked. A claim nobody checked is Unknown, never a fact.
 
+## What a block may cite
+
+A block's `Evidence:` and `Found:` lines cite only permanent records. Those are files in the repo (a listing under `code/`, a file under `docs/audit/` or `tools/`, Hydra's code, the decision log, an ADR), session cards and condensed transcripts, and the game's own files and dumps. They never cite an agent's working notes, such as a scout's claim table, or anything in a scratch or temp folder. Those are gone once the session ends, so a reader cannot follow the pointer.
+
+When the only record of a fact sat in such a place, open the file it pointed at and cite that instead. If that file is not in the repo, or does not show the rule, the block is Unknown and its evidence line says where we looked. When a file a block names was never kept, the block says so ("the listing was not kept") and does not give its old path.
+
+A `Found:` line gives the date and the session that found the rule, such as `2026-10-30, session b02ab3e6 (the reference build)`. It names an agent only by its session, never by a role in a plan's wave.
+
 ## The pages
 
 - `01-reading-a-chart.md` [CR]: finding and reading a chart file, the song id, tracks, song.ini keys, sections, solos and the song end.
