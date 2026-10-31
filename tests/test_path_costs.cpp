@@ -14,6 +14,7 @@
 #include "app/config.h"
 #include "app/path_costs.h"
 #include "core/model.h"
+#include "corpus_default_cfg.h"
 #include "corpus_util.h"
 #include "record_fixtures.h"
 #include "search/graph.h"
@@ -40,18 +41,10 @@ using hydra::app::build_ladder;
 using hydra::app::cost_list;
 using hydra::app::cost_tier;
 
+using corpus::default_cfg;
+using corpus::song_named;
+
 namespace {
-
-const app::AnalysisSettings& default_cfg() {
-    static const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
-    return cfg;
-}
-
-const Song& song_named(const std::string& name) {
-    const std::string chart = corpus::chart_named(name);
-    REQUIRE_FALSE(chart.empty());
-    return corpus::song(chart, default_cfg().reading());
-}
 
 const HydraRecord& record_named(const std::string& name) {
     return corpus::analyzed(corpus::chart_named(name), default_cfg());

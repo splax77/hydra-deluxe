@@ -13,6 +13,7 @@
 #include "app/config.h"
 #include "app/preview_view.h"
 #include "core/model.h"
+#include "corpus_default_cfg.h"
 #include "corpus_util.h"
 #include "pathbuilder/pb_text.h"
 #include "search/pather.h"
@@ -20,18 +21,10 @@
 using namespace hydra;
 using namespace hydra::pathbuilder;
 
+using corpus::default_cfg;
+using corpus::song_named;
+
 namespace {
-
-const app::AnalysisSettings& default_cfg() {
-    static const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
-    return cfg;
-}
-
-const Song& song_named(const std::string& name) {
-    const std::string chart = corpus::chart_named(name);
-    REQUIRE_FALSE(chart.empty());
-    return corpus::song(chart, default_cfg().reading(), default_cfg().rules);
-}
 
 // The one path search_target makes of activation-only pins at `ticks`.
 Path player_path(const Song& song, const std::vector<int64_t>& ticks) {
@@ -78,6 +71,16 @@ TEST_CASE("fill reason: inside a window, before the last activation, under two b
     CHECK(fill_reason(best, 5) == "Star Power is already on here. Activation 1 runs until m40.");
     CHECK(best.fills[3].state == app::PreviewFillState::Offered);
     CHECK(fill_reason(best, 3) == kBeforeLastActivationText);
+    // "Before your last activation" is a fill ahead of that activation's
+    // start. With one window at 180000 that ends at 195360, the fill sitting
+    // exactly on 195360 is after the last activation's start, so it is not
+    // that sentence.
+    const app::PreviewScene one = scene_for(song, player_path(song, {180000}));
+    const size_t at_end = fill_index(one, 195360);
+    REQUIRE(one.activations.size() == 1);
+    REQUIRE(one.activations[0].sp_end_tick == 195360);
+    CHECK(fill_reason(one, at_end) != kBeforeLastActivationText);
+    CHECK(fill_reason(one, fill_index(one, 156960)) == kBeforeLastActivationText);
 }
 
 TEST_CASE("step sentence: a squeeze-out over the limit carries the ms figure and the violet note") {
