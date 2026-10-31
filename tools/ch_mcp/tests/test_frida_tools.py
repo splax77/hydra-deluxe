@@ -386,6 +386,35 @@ class MenuFieldsTest(unittest.TestCase):
                 self.assertEqual(field["values"], consts)
 
 
+# The player screen's per-frame method that agent/menu.ts hooks, as its
+# literal there.
+_FRAME_RVA = re.compile(r"PLAYER_SCREEN_FRAME_RVA = (0x[0-9A-Fa-f]+);")
+
+
+class PlayerScreenHookTest(unittest.TestCase):
+    """The method menu.ts hooks to record the player screens is an instance
+    method of PlayerSelectionMenu, in the facts of the build menu_fields.json
+    names, and no other class runs its code (a shared body would record other
+    classes' objects as player screens). Skipped without the facts."""
+
+    def test_the_hooked_method_is_the_player_screens_own(self):
+        with open(os.path.join(FT.AGENT_DIR, "menu.ts"), encoding="utf-8") as f:
+            match = _FRAME_RVA.search(f.read())
+        self.assertIsNotNone(match, "menu.ts names no PLAYER_SCREEN_FRAME_RVA")
+        rva = int(match.group(1), 16)
+        path = os.path.join(B.DUMPS_ROOT, FT.menu_fields()["build"], B.FACTS_FILE)
+        if not os.path.isfile(path):
+            self.skipTest(f"{path} is not on this machine")
+        with open(path, encoding="utf-8") as f:
+            facts = json.load(f)
+        owners = [c for c in facts["classes"]
+                  if any(m["rva"] == rva for m in c["methods"])]
+        self.assertEqual([c["name"] for c in owners], ["PlayerSelectionMenu"])
+        methods = [m for m in owners[0]["methods"] if m["rva"] == rva]
+        self.assertEqual([(m["name"], m["static"], m["params"]) for m in methods],
+                         [("ʸʳʼʹʸʽʾˀʴʼʷ", False, [])])
+
+
 class MenuTest(Rig):
     def test_menu_lines_print_the_block_as_sent(self):
         self.assertEqual(FT.menu_lines(MENU_READ), MENU_LINES)
@@ -435,6 +464,12 @@ class MenuTest(Rig):
         line = FT.menu_lines(player(6, 2))[0]
         self.assertIn("instrument: [6 (Drums)]", line)
         self.assertIn("difficulty: [2 (Hard)]", line)
+
+    def test_menu_lines_print_why_the_player_screen_was_not_read(self):
+        menu = {**MENU_READ, "classes": {"PlayerSelectionMenu": {
+            "found": False, "reason": "the player-screen hook has not been placed yet"}}}
+        self.assertEqual(FT.menu_lines(menu)[0],
+                         "PlayerSelectionMenu: the player-screen hook has not been placed yet")
 
     def test_menu_lines_print_a_field_read_that_is_not_a_known_number_as_sent(self):
         menu = {**MENU_READ, "classes": {"PlayerSelectionMenu": {

@@ -3,11 +3,12 @@
     "game_version": "1.1.0.6142-final",
     "dump": "dump.cs in this version's dump folder, the one build_facts.facts_path names",
     "hook_kinds": {
-        "all": "every method of the class; the listed methods are the ones the plan names, kept for the record and the facts check",
+        "all": "every method of the class but those whose code other classes share (method_watch.shared_rvas decides which); the listed methods are the ones the plan names, kept for the record and the facts check",
         "listed": "only the methods at the listed RVAs",
         "by_name": "every overload with one of the listed names, its RVA found on the live class"
     },
     "scene_load": "a class marked scene_load loads scenes: the stop reply names each of its calls with its scene argument and the call before it",
+    "assembly": "an entry's assembly names the one assembly its class is looked up in; findClass in agent/menuhooks.ts owns the lookup, with and without one. The dump's '// Image N: <name>.dll - <first TypeDefIndex>' header lines say which image holds a class",
     "classes": [
         {
             "class": "SongSelect",
@@ -76,6 +77,7 @@
         {
             "class": "SceneManager",
             "namespace": "UnityEngine.SceneManagement",
+            "assembly": "UnityEngine.CoreModule",
             "dump_line": 699684,
             "hook": "by_name",
             "scene_load": true,

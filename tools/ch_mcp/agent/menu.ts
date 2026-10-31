@@ -14,6 +14,15 @@
 // The player screen's fields are private and their names obfuscated, so they
 // come from tools/ch_mcp/menu_fields.json, bundled in at build time; that file
 // names each field, its class and its dump line, and holds the enum words.
+//
+// The player screen is found a different way from the other menus. The
+// bridge's Il2Cpp.gc.choose asks il2cpp's liveness walk for the objects of a
+// class, and that walk starts only from static fields
+// (livenessCalculationFromStatics). Live step LS-K3 read "0 live" for
+// PlayerSelectionMenu while the game called the screen's methods every frame,
+// so no chain of fields from a static leads to it; Unity's native scene holds
+// it. So watchPlayerScreens hooks one per-frame method of the class and
+// records each object it is called on, and the read uses that record.
 
 import "frida-il2cpp-bridge";
 import { isDestroyed } from "./gamemanager.js";
@@ -30,7 +39,14 @@ export const ALLOWED_CALLS = ["get_activeInHierarchy", "get_gameObject"];
 // PlayerProfileMenu 45647, PlayerSelectionMenu 72822, GlobalVariables 55801,
 // SongEntry 11073).
 const ASSEMBLY_NAME = "CloneHero";
-const MENU_CLASSES = ["PlayerProfileMenu", "MainMenu", "SongSelect", "PlayerSelectionMenu"];
+const PLAYER_SCREEN = "PlayerSelectionMenu";
+const MENU_CLASSES = ["PlayerProfileMenu", "MainMenu", "SongSelect", PLAYER_SCREEN];
+// The player screen's per-frame method: `public bool ʸʳʼʹʸʽʾˀʴʼʷ()`, an
+// instance method of PlayerSelectionMenu at dump.cs line 73000 of build 6142,
+// whose code no other class shares. The method watch of LS-K3 saw it called
+// once a frame while the screen ran. tests/test_frida_tools.py checks it
+// against the dump's facts.
+const PLAYER_SCREEN_FRAME_RVA = 0x32F590;
 // The menus that hold an `onlineMenu` GameObject.
 const ONLINE_MENU_HOLDERS = new Set(["MainMenu", "SongSelect"]);
 const SONG_SELECT = "SongSelect";
@@ -105,22 +121,114 @@ function findClass(image: Il2Cpp.Image, name: string): Il2Cpp.Class | string {
     return klass === null ? `${name} not found` : klass;
 }
 
-// One menu class: how many live and destroyed instances the collector holds;
-// each live instance's active read; for the menus that hold one, each live
-// instance's Online menu read; and each field menu_fields.json names for this
-// class, one value per live instance.
+// ---- the player-screen record ----------------------------------------------
+// The PlayerSelectionMenu objects the per-frame hook has been called on, by
+// address. Only the hook adds to it; only seenPlayerScreens takes from it.
+const playerScreens = new Map<string, NativePointer>();
+// Why the hook is not in, or null once it is.
+let playerScreenHook: string | null = "the player-screen hook has not been placed yet";
+
+// Hook the player screen's per-frame method, once, as the state agent loads.
+// Call it inside Il2Cpp.perform. The hook only records the object the method
+// runs on: it walks no heap, reads no field and calls no game method, so it
+// costs the game one map write a frame.
+export function watchPlayerScreens(): void {
+    const assembly = Il2Cpp.domain.tryAssembly(ASSEMBLY_NAME);
+    if (assembly === null) {
+        playerScreenHook = `${ASSEMBLY_NAME} assembly not found`;
+        return;
+    }
+    const klass = findClass(assembly.image, PLAYER_SCREEN);
+    if (typeof klass === "string") {
+        playerScreenHook = klass;
+        return;
+    }
+    const rva = ptr(PLAYER_SCREEN_FRAME_RVA).toString();
+    const method = klass.methods.find(
+        (m) => !m.isStatic && m.relativeVirtualAddress.toString() === rva);
+    if (method === undefined) {
+        playerScreenHook = `${PLAYER_SCREEN} has no instance method at RVA ${rva}`;
+        return;
+    }
+    try {
+        Interceptor.attach(method.virtualAddress, {
+            onEnter(args) {
+                // An instance method gets its object first.
+                playerScreens.set(args[0].toString(), args[0]);
+            },
+        });
+    } catch (e) {
+        playerScreenHook = `hooking ${PLAYER_SCREEN} at RVA ${rva} failed: ${e}`;
+        return;
+    }
+    playerScreenHook = null;
+}
+
+// What the read says when the Il2Cpp.perform around watchPlayerScreens failed.
+export function playerScreenWatchFailed(e: unknown): void {
+    playerScreenHook = `placing the player-screen hook failed: ${e}`;
+}
+
+// The recorded player screens that are still alive, and how many were not.
+// One that is destroyed, or whose memory no longer holds a PlayerSelectionMenu
+// (the collector freed it and reused the space), is counted as destroyed and
+// forgotten, so a later read never touches that memory again.
+function seenPlayerScreens(klass: Il2Cpp.Class): Instances | string {
+    if (playerScreenHook !== null) {
+        return playerScreenHook;
+    }
+    const alive: Il2Cpp.Object[] = [];
+    let destroyed = 0;
+    for (const [key, p] of playerScreens) {
+        const obj = new Il2Cpp.Object(p);
+        if (obj.class.handle.equals(klass.handle) && !isDestroyed(obj)) {
+            alive.push(obj);
+        } else {
+            playerScreens.delete(key);
+            destroyed += 1;
+        }
+    }
+    return { alive, destroyed };
+}
+
+// ---- reading the menus -----------------------------------------------------
+
+interface Instances {
+    alive: Il2Cpp.Object[];
+    destroyed: number;
+}
+
+// One menu class's live instances and how many destroyed ones were skipped:
+// the player screen's from the hook's record, every other class's from the
+// collector, which walks the whole heap once per class.
+function instancesOf(klass: Il2Cpp.Class, name: string): Instances | string {
+    if (name === PLAYER_SCREEN) {
+        return seenPlayerScreens(klass);
+    }
+    const held = Il2Cpp.gc.choose(klass);
+    const alive = held.filter((obj) => !isDestroyed(obj));
+    return { alive, destroyed: held.length - alive.length };
+}
+
+// One menu class: how many live and destroyed instances it has; each live
+// instance's active read; for the menus that hold one, each live instance's
+// Online menu read; and each field menu_fields.json names for this class, one
+// value per live instance.
 function readClass(image: Il2Cpp.Image, name: string, live: Map<string, Il2Cpp.Object[]>) {
     const klass = findClass(image, name);
     if (typeof klass === "string") {
         return { found: false, reason: klass };
     }
-    const held = Il2Cpp.gc.choose(klass);
-    const alive = held.filter((obj) => !isDestroyed(obj));
+    const instances = instancesOf(klass, name);
+    if (typeof instances === "string") {
+        return { found: false, reason: instances };
+    }
+    const { alive, destroyed } = instances;
     live.set(name, alive);
     const entry: { [key: string]: unknown } = {
         found: true,
         live: alive.length,
-        destroyed: held.length - alive.length,
+        destroyed,
         active: alive.map(menuActive),
     };
     if (ONLINE_MENU_HOLDERS.has(name)) {
@@ -157,7 +265,8 @@ function readGlobals(image: Il2Cpp.Image) {
 }
 
 // The menu block. Call it inside Il2Cpp.perform. Like lookUpGameManager, each
-// menu class costs one walk of the whole heap.
+// menu class read through the collector costs one walk of the whole heap
+// (instancesOf says which classes are).
 export function readMenu() {
     const assembly = Il2Cpp.domain.tryAssembly(ASSEMBLY_NAME);
     if (assembly === null) {
