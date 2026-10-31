@@ -70,9 +70,12 @@ class BackupRestoreTest(unittest.TestCase):
     def test_the_backed_up_files_are_the_safety_rule_list(self):
         self.assertEqual(sorted(G.DOCUMENTS_FILES + G.LOCALLOW_FILES), sorted(ORIGINAL))
 
-    def test_the_profiles_files_are_backed_up_from_locallow(self):
-        # The direct-start plan's question 3, answered 2026-10-31.
-        self.assertEqual(G.LOCALLOW_FILES[-2:], ("profiles.ini", "profiles.bin"))
+    def test_the_profiles_files_are_backed_up_from_documents(self):
+        # The direct-start plan's question 3, answered 2026-10-31; the game
+        # keeps them in the Documents folder (page 07, IN-70).
+        self.assertEqual(G.DOCUMENTS_FILES,
+                         ("settings.ini", "scorestats.json", "profiles.ini", "profiles.bin"))
+        self.assertEqual(G.LOCALLOW_FILES, ("scoredata.bin", "scoresext.bin", "user.bin"))
 
     def test_the_profiles_files_are_copied_and_restored_byte_for_byte(self):
         f = Folders(self.tmp, absent=("profiles.bin",))
@@ -114,11 +117,11 @@ class BackupRestoreTest(unittest.TestCase):
         self.assertEqual(lines, [
             "settings.ini: restored",
             "scorestats.json: restored",
+            "profiles.ini: unchanged",
+            "profiles.bin: unchanged",
             "scoredata.bin: restored",
             "scoresext.bin: unchanged",
             f"user.bin: absent before the run; the game's new copy moved to {aside}",
-            "profiles.ini: unchanged",
-            "profiles.bin: unchanged",
         ])
 
     def test_a_file_absent_before_and_after_is_reported_unchanged(self):
