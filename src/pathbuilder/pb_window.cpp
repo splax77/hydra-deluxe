@@ -246,6 +246,7 @@ void PbApp::take_in_chart() {
     selected_.reset();
     hovered_fill_.reset();
     row_hovered_fill_.reset();
+    view_.reset();
     overlay_built_ = false;
 }
 
@@ -270,6 +271,7 @@ void PbApp::start_over() {
 void PbApp::select_step(size_t index) {
     selected_ = index;
     selected_generation_ = state.history().generation();
+    steps_block_h_ = -1.0f;  // draw_steps scrolls the opened step into view
     // End choices are offered on the last activation only (the user's answer Q6).
     if (index + 1 == state.history().current().windows.size()) state.decisions().select(index);
     if (preview_) preview_->seek_activation(index);
@@ -634,10 +636,12 @@ void PbApp::draw_timeline(const OpenChart& chart) {
     }
     const app::PreviewScene& scene = preview_->scene();
     const DecisionList& d = state.decisions();
+    const double length_ms = preview_->playback_end_ms();
+    move_view_with_clock(length_ms);
 
     ui::TimelineInput in;
     in.scene = &scene;
-    in.length_ms = preview_->playback_end_ms();
+    in.length_ms = length_ms;
     in.position_ms = preview_->position_ms();
     in.selected = selected_step();
     // Which look each fill gets is fill_refusal's kind: a fill before the
@@ -657,9 +661,23 @@ void PbApp::draw_timeline(const OpenChart& chart) {
     in.best_label = kBestFillLabel;
     const std::optional<size_t> row_hovered = row_hovered_fill_;
     row_hovered_fill_.reset();
-    if (row_hovered && *row_hovered < scene.fills.size()) in.highlighted = row_hovered;
+    if (row_hovered && *row_hovered < scene.fills.size()) {
+        in.highlighted = row_hovered;
+        // A row whose fill is off screen brings it into view, and the window
+        // stays there when the pointer leaves (the third mockup's row hover).
+        scroll_to_fill(scene, *row_hovered, length_ms);
+    }
+    in.view = view_;
 
     const ui::TimelineEvents ev = ui::PreviewTimeline{}.draw(in);
+
+    // The strip, the scrollbar or the wheel moved the window by hand; while
+    // playing, that stops the window following the playhead until Play is
+    // pressed again (the third mockup's setView with byUser).
+    if (ev.view) {
+        view_ = *ev.view;
+        if (preview_->playing()) follow_ = false;
+    }
 
     // While the pointer is on a fill, or on its row in the list, the highway
     // shows it, paused, with the fill's start on the strike line (the user's
@@ -679,6 +697,10 @@ void PbApp::draw_timeline(const OpenChart& chart) {
         hovered_fill_.reset();
         preview_->seek_ms(hover_return_ms_);
     }
+    // The clock as the hover left it: next frame's move_view_with_clock sees
+    // every later change, and none of the hover's own seeks.
+    last_position_ms_ = preview_->position_ms();
+    was_playing_ = preview_->playing();
 
     // The fill's own tooltip, on the fill only; a list row shows none.
     if (ev.hovered_fill && *ev.hovered_fill < scene.fills.size()) {
@@ -710,6 +732,35 @@ void PbApp::draw_timeline(const OpenChart& chart) {
     } else if (ev.clicked_ms) {
         preview_->seek_ms(*ev.clicked_ms);
     }
+}
+
+void PbApp::move_view_with_clock(double length_ms) {
+    const double pos = preview_->position_ms();
+    const bool playing = preview_->playing();
+    if (!view_) {
+        view_ = ui::open_view(length_ms);
+        follow_ = true;
+    } else if (playing) {
+        // A press of Play turns following back on (the third mockup's
+        // togglePlay, line 985); the window then turns its pages with the
+        // playhead (follow, line 362).
+        if (!was_playing_) follow_ = true;
+        if (follow_) view_ = ui::follow_playing(*view_, pos, length_ms);
+    } else if (!was_playing_ && pos != last_position_ms_) {
+        // The paused clock jumped (the scrubber, a jump button, "< Act",
+        // "Act >" or a click on the timeline): a jump out of the window
+        // brings the window with it (seek, line 813). A clock that was
+        // playing last frame only ran, so pausing moves nothing.
+        view_ = ui::show(*view_, pos, length_ms);
+    }
+}
+
+void PbApp::scroll_to_fill(const app::PreviewScene& scene, size_t index, double length_ms) {
+    if (!view_ || index >= scene.fills.size()) return;
+    // The moment the timeline draws the fill at (ui::timeline_layout places
+    // it at its span's end).
+    const double at = scene.fills[index].span.end_ms;
+    if (!ui::in_view(*view_, at)) view_ = ui::centre_on(*view_, at, length_ms);
 }
 
 void PbApp::click_fill(const OpenChart& chart, size_t index) {
@@ -811,7 +862,10 @@ void PbApp::draw_choices(const OpenChart& chart) {
         const float row_w = ImGui::GetContentRegionAvail().x;
         ImGui::SetNextItemAllowOverlap();
         const std::string id = "##choice_" + std::to_string(tick);
-        if (ImGui::Selectable(id.c_str(), hovered_fill_ == fill)) click_fill(chart, *fill);
+        if (ImGui::Selectable(id.c_str(), hovered_fill_ == fill)) {
+            scroll_to_fill(scene, *fill, preview_->playback_end_ms());
+            click_fill(chart, *fill);
+        }
         if (ImGui::IsItemHovered()) row_hovered_fill_ = fill;
         ImGui::SetCursorPos(start);
 
@@ -876,6 +930,7 @@ void PbApp::draw_steps(const OpenChart& chart) {
         const std::optional<int64_t> cost = i < list.rows.size() ? list.rows[i].cost : std::nullopt;
         const std::optional<app::CostTier> tier = i < list.rows.size() ? list.rows[i].tier : std::nullopt;
         const ImVec2 start = ImGui::GetCursorPos();
+        const ImVec2 start_screen = ImGui::GetCursorScreenPos();
         const float row_w = ImGui::GetContentRegionAvail().x;
         const float disc_w = rem(kStepDiscRem);
         const float row_h = (std::max)(disc_w, ImGui::GetTextLineHeight());
@@ -944,6 +999,20 @@ void PbApp::draw_steps(const OpenChart& chart) {
                 pending_guide_ = removed_message(i, last);
                 d.click_remove(state.search_graph(), chart.settings, windows, windows[i].act_tick,
                                h.generation());
+            }
+            // The panel scrolls the opened step into view, row, sentence,
+            // note and buttons, as little as it can (its top first when it
+            // is taller than the panel). It does so when the step opens and
+            // whenever the block's height changes, as when its sentence or
+            // end choices land; a scroll by hand leaves the height alone, so
+            // the panel never pulls back against it.
+            const float block_bottom = ImGui::GetCursorScreenPos().y;
+            const float block_h = block_bottom - start_screen.y;
+            if (block_h != steps_block_h_) {
+                ImGui::ScrollToRect(ImGui::GetCurrentWindow(),
+                                    ImRect(start_screen.x, start_screen.y, start_screen.x + row_w, block_bottom),
+                                    ImGuiScrollFlags_KeepVisibleEdgeY);
+                steps_block_h_ = block_h;
             }
         }
         ImGui::Separator();

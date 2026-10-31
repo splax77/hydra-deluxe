@@ -2,8 +2,8 @@
 // order (docs/superpowers/specs/2026-10-31-path-builder-mockup-2/
 // mockup_template.html, answers.md answer 4): the head row (title and mode,
 // the three scores, Undo, Start over, Finish the rest for me), the intro, the
-// guide line, the legend and the Preview's whole-song timeline
-// (ui::PreviewTimeline), then Hydra's own Preview panel (ui::draw_preview_panel)
+// guide line, the legend and the Preview's timeline over a window of the song
+// (ui::PreviewTimeline, the third mockup's), then Hydra's own Preview panel (ui::draw_preview_panel)
 // with a side column beside it holding "Where to activate next" above "Your
 // activations". Everything drawn about the chart is the Preview's; every
 // sentence is pb_text's. main.cpp and the headless runner (tests/pb_ui) both
@@ -22,6 +22,7 @@
 #include "pathbuilder/pb_state.h"
 #include "pathbuilder/pb_text.h"  // GuideMessage
 #include "ui/preview_timeline.h"  // kTimelineActivationsLabel
+#include "ui/timeline_view.h"
 
 struct ID3D11Device;
 struct ID3D11DeviceContext;
@@ -131,6 +132,9 @@ private:
     // The selected step and the history generation it was picked at.
     std::optional<size_t> selected_;
     uint64_t selected_generation_ = 0;
+    // How tall the opened step's block in "Your activations" was when the
+    // panel last scrolled to it; select_step clears it to scroll again.
+    float steps_block_h_ = -1.0f;
     // The step a click or an end choice selects once its edit lands, as the
     // mockup selects the step it just made.
     std::optional<size_t> pending_select_;
@@ -143,6 +147,18 @@ private:
     // The fill whose list row the pointer was on last frame; the list is
     // drawn after the timeline, so the timeline reads it a frame later.
     std::optional<size_t> row_hovered_fill_;
+    // The stretch of the song the timeline shows (ui/timeline_view.h). None
+    // until the chart's Preview has loaded; then it opens with open_view.
+    std::optional<ui::TimelineView> view_;
+    // Whether the window turns its pages with the playhead while playing
+    // (the third mockup's followOff, run backwards): a press of Play turns it
+    // on, and a scroll by hand while playing turns it off.
+    bool follow_ = true;
+    // The Preview's clock, and whether it was playing, as the hover left
+    // them last frame. The next frame compares against them, so it can tell
+    // a Play press or a jump from the hover's own seeks.
+    double last_position_ms_ = 0.0;
+    bool was_playing_ = false;
     // The Preview's volume for this run: the settings file's at the first
     // open (PbState::preview_volume), then the player's slider; never
     // written back (plan Q2).
@@ -174,6 +190,14 @@ private:
     void draw_guide(const OpenChart& chart);
     void draw_legend(const OpenChart& chart);
     void draw_timeline(const OpenChart& chart);
+    // Moves the window for what the Preview's clock did since last frame:
+    // it opens the window at the first frame, follows the playhead while
+    // playing, and shows a jump the paused clock made (ui::follow_playing,
+    // ui::show). `length_ms` is the Preview's playback end.
+    void move_view_with_clock(double length_ms);
+    // Centres the window on scene fill `index` when the timeline does not
+    // show it (a list row's hover or click).
+    void scroll_to_fill(const app::PreviewScene& scene, size_t index, double length_ms);
     // The Preview panel, or the controller's error in its place.
     void draw_preview(const OpenChart& chart);
     void draw_choices(const OpenChart& chart);

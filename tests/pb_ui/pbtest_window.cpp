@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
+#include <optional>
 #include <string>
 
 #include "imgui_te_context.h"
@@ -75,6 +76,12 @@ void test_open_starts_empty(ImGuiTestContext* ctx) {
     // The Preview panel's clock at the song's start, from one run.
     IM_CHECK(on_screen(h, "0:00.000"));
     IM_CHECK(on_screen(h, "Step 1."));
+    // Burnout is shorter than the window, so the window is the whole song
+    // (plan 3's Q1): the scrollbar's readout, from one run. The strip and the
+    // scrollbar's names are on screen.
+    IM_CHECK(on_screen(h, "0:00 – 2:10 of 2:10"));
+    IM_CHECK(on_screen(h, hydra::ui::kTimelineStripLabel));
+    IM_CHECK(on_screen(h, hydra::ui::kTimelineScrollLabel));
     // The list and the legend's new entries; the timeline's caption sits in
     // the label column; no cost line under the Fills row, and no highway of
     // the builder's own.
@@ -152,6 +159,122 @@ void test_open_starts_empty(ImGuiTestContext* ctx) {
                           "This choice costs 140 points."));
 }
 
+// Symphony X - Set the World on Fire's notes.chart in the corpus: a song
+// about six minutes long, so longer than the timeline's window.
+std::string long_song_notes() {
+    return corpus::root() + "/common/IB24/T5/Symphony X - Set the World on Fire/notes.chart";
+}
+
+// The line of visible text that holds the scrollbar's readout for a song
+// `length` long (the readout ends " of <length>"), or "" when none does.
+std::string readout_line(Harness& h, const std::string& length) {
+    const std::string text = uitest::visible_text(h);
+    const size_t at = text.find(" of " + length);
+    if (at == std::string::npos) return {};
+    const size_t start = text.rfind('\n', at);
+    const size_t end = text.find('\n', at);
+    const size_t from = start == std::string::npos ? 0 : start + 1;
+    return text.substr(from, end == std::string::npos ? std::string::npos : end - from);
+}
+
+// A point `share` of the way across the item `ref`, at its middle height.
+ImVec2 point_across(ImGuiTestContext* ctx, const std::string& ref, float share) {
+    const ImRect r = ctx->ItemInfo(ref.c_str()).RectFull;
+    return ImVec2(r.Min.x + r.GetWidth() * share, r.GetCenter().y);
+}
+
+// Presses the left button at `from`, moves to `to` and lets go.
+void drag(ImGuiTestContext* ctx, ImVec2 from, ImVec2 to) {
+    ctx->MouseMoveToPos(from);
+    ctx->MouseDown(ImGuiMouseButton_Left);
+    ctx->MouseMoveToPos(to);
+    ctx->MouseUp(ImGuiMouseButton_Left);
+    ctx->Yield(2);
+}
+
+// The timeline scrolled by hand on a song longer than its window, nothing
+// playing: the scrollbar's two buttons, a wheel notch over the rows, a press
+// on the strip beside its frame, a drag of the frame, a drag of the
+// scrollbar's thumb, and the hover of a list row whose fill is off screen.
+// Each step reads the scrollbar's readout, from one run.
+void test_scroll_the_timeline(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    h.chart_arg = long_song_notes();
+    reset_app(h);
+    IM_CHECK(wait_idle(ctx));
+    ctx->Yield(2);
+    // The Preview's end for this chart reads 5:59 on screen (from one run).
+    const std::string length = "5:59";
+    // Gives the last action two frames, then reads the readout; the whole
+    // line it sits in is logged when it is not the one expected.
+    auto reads = [&](const char* expected) {
+        ctx->Yield(2);
+        const bool shown = on_screen(h, expected);
+        if (!shown) ctx->LogError("readout line: [%s]", readout_line(h, length).c_str());
+        return shown;
+    };
+    IM_CHECK(reads("0:00 – 3:00 of 5:59"));
+    IM_CHECK(on_screen(h, hydra::ui::kTimelineStripLabel));
+    IM_CHECK(on_screen(h, hydra::ui::kTimelineStripHint));
+    IM_CHECK(on_screen(h, hydra::ui::kTimelineScrollLabel));
+
+    const std::string forward = any_ref(hydra::ui::kScrollForwardLabel);
+    const std::string back = any_ref(hydra::ui::kScrollBackLabel);
+    const std::string strip = any_ref(hydra::ui::kTimelineStripId);
+    const std::string bar = any_ref(hydra::ui::kTimelineScrollbarId);
+    ctx->SetRef(h.home_ref.c_str());
+
+    // The buttons: one window forward stops at the song's end, then one back.
+    ctx->ItemClick(forward.c_str());
+    IM_CHECK(reads("2:59 – 5:59 of 5:59"));
+    ctx->ItemClick(back.c_str());
+    IM_CHECK(reads("0:00 – 3:00 of 5:59"));
+
+    // A wheel notch down over the rows, away from the Fills row so no fill
+    // is hovered: a third of the window later.
+    const ImRect rows = ctx->ItemInfo(any_ref("##timeline").c_str()).RectFull;
+    ctx->MouseMoveToPos(ImVec2(rows.GetCenter().x, rows.Min.y + rows.GetHeight() * 0.4f));
+    ctx->MouseWheelY(-1.0f);
+    IM_CHECK(reads("1:00 – 4:00 of 5:59"));
+
+    // A press on the strip beside the frame centres the window there. The
+    // frame covers about the strip's first half while the window is at the
+    // start, and a strip's midpoint is always inside a frame this wide, so
+    // the press lands at five eighths of the strip.
+    ctx->ItemClick(back.c_str());
+    IM_CHECK(reads("0:00 – 3:00 of 5:59"));
+    ctx->MouseMoveToPos(point_across(ctx, strip, 0.625f));
+    ctx->MouseClick(ImGuiMouseButton_Left);
+    IM_CHECK(reads("2:14 – 5:14 of 5:59"));
+
+    // A drag of the frame, a tenth of the strip to the right, moves the
+    // window later by about a tenth of the song.
+    ctx->ItemClick(back.c_str());
+    IM_CHECK(reads("0:00 – 3:00 of 5:59"));
+    drag(ctx, point_across(ctx, strip, 0.25f), point_across(ctx, strip, 0.35f));
+    IM_CHECK(reads("0:36 – 3:36 of 5:59"));
+
+    // A drag of the scrollbar's thumb does the same.
+    ctx->ItemClick(back.c_str());
+    IM_CHECK(reads("0:00 – 3:00 of 5:59"));
+    drag(ctx, point_across(ctx, bar, 0.25f), point_across(ctx, bar, 0.35f));
+    IM_CHECK(reads("0:36 – 3:36 of 5:59"));
+
+    // Hovering the list row of a fill past the window (its chord at 3:58,
+    // from one run) centres the window on that fill, whose own item is then
+    // on the timeline; before the hover it has none.
+    static constexpr int64_t kLateFillTick = 162240;
+    ctx->ItemClick(back.c_str());
+    IM_CHECK(reads("0:00 – 3:00 of 5:59"));
+    IM_CHECK(ctx->ItemInfo(fill_ref(kLateFillTick).c_str(), ImGuiTestOpFlags_NoError).ID == 0);
+    ctx->MouseMove(choice_ref(kLateFillTick).c_str());
+    IM_CHECK(reads("2:28 – 5:28 of 5:59"));
+    IM_CHECK(ctx->ItemInfo(fill_ref(kLateFillTick).c_str(), ImGuiTestOpFlags_NoError).ID != 0);
+    // The window stays there when the pointer leaves the row.
+    move_off_timeline(ctx);
+    IM_CHECK(reads("2:28 – 5:28 of 5:59"));
+}
+
 // A chart with notes and no Star Power phrase opens and says there is
 // nothing to build.
 void test_no_star_power(ImGuiTestContext* ctx) {
@@ -192,6 +315,7 @@ void test_file_open_error(ImGuiTestContext* ctx) {
 
 void register_tests(Harness& h) {
     uitest::register_test(h, "open-starts-empty", test_open_starts_empty);
+    uitest::register_test(h, "scroll-the-timeline", test_scroll_the_timeline);
     uitest::register_test(h, "no-star-power", test_no_star_power);
     uitest::register_test(h, "file-open-error", test_file_open_error);
 }
