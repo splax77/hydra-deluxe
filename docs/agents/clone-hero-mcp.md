@@ -49,6 +49,8 @@ Each live run names its pass and fail lines before it starts, has a cap on how m
 7. For a trace, `ch_trace_start` once the song is loaded, `ch_notes` to read the calls in pieces, and `ch_trace_stop`. The default hook fires once per note the player hits; a missed note and an overhit fire nothing, so a run with misses has fewer calls than notes.
 8. `ch_stop`. It tears the kit down and prints each check, prints the foreground count, then closes the game and prints one restore line per file and one for the registry key. Check that every check is "ok" and that everything was restored.
 
+Before the main session asks the user for a run, its message shows that step's `Calls:` line exactly as the plan holds it. The message then names each `(never tried)` call on that line, and each `unchecked` Premise map row the step uses. The user's go answers that message, not a bare step name. `docs/agents/premise-map.md` owns the shape of the call list and the map. No hook checks this message; the plan reviewer checks that every step has its `Calls:` line.
+
 The restore puts the user's own scorestats.json back, so copy a run's end-of-song stats before `ch_stop`. `ch_wait_stats` makes that copy only for a song launched from the command line, whether the bot or a human player (`human=True`) plays it (`wait_stats` in `tools/ch_mcp/bot_run.py`). For a song started from the menus, copy `Documents\Clone Hero\scorestats.json` yourself.
 
 The server keeps the Python code it loaded when it started. A change to one of its Python files under `tools/ch_mcp/` reaches a running session only after the `ch` server is reconnected.
