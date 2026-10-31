@@ -161,6 +161,24 @@ class WatchTest(unittest.TestCase):
         self.assertEqual(summary.rows, 241)
         self.assertEqual(summary.last_clock_s, 240.0)
 
+    def test_should_stop_ends_the_run_after_two_polls(self):
+        rows = []
+        clock = FakeClock()
+        asked = []
+
+        def should_stop():
+            asked.append(True)
+            return len(asked) > 2
+
+        summary = sp_watch.watch(
+            snapshots([snap_at(1.0), snap_at(1.01), snap_at(1.02)]),
+            rows.append, now=clock.now, sleep=clock.sleep,
+            should_stop=should_stop)
+        self.assertEqual(summary.reason, "stopped")
+        self.assertEqual(clock.sleeps, [0.004] * 2)
+        self.assertEqual([r[1] for r in rows], [1.0, 1.01, 1.02])
+        self.assertEqual(summary.rows, 3)
+
     def test_poll_and_cap_literals(self):
         self.assertEqual(sp_watch.POLL_S, 0.004)
         self.assertEqual(sp_watch.RUN_CAP_S, 240.0)

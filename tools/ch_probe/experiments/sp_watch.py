@@ -15,8 +15,9 @@ watch_checks.py and sp_compare.py read the log.
 can be lined up with log_tail.py's wall-clock lines.
 
 The run ends when the song clock stops (live.StoppedCheck: frozen too long,
-or jumped back), when the engine can no longer be read, on Ctrl-C, or at
-RUN_CAP_S of wall time.
+or jumped back), when the engine can no longer be read, on Ctrl-C, at
+RUN_CAP_S of wall time, or when the caller's should_stop says so (the `ch`
+MCP server's ch_sp_watch_stop).
 
 Usage:
     py tools\\ch_probe\\experiments\\sp_watch.py [--out <csv>]
@@ -62,6 +63,9 @@ WALL_COLUMN = "wall_s"
 # Exit code for "no song started inside the engine search's cap".
 EXIT_NO_SONG = 2
 
+# The reason a run gives when its caller's should_stop said so.
+STOPPED_REASON = "stopped"
+
 
 def watch_row(wall_s: float, snap: Snapshot) -> list:
     """One CSV row in WATCH_COLUMNS order: the wall time, then each logged
@@ -98,6 +102,7 @@ def watch(
     sleep: Callable[[float], None] = time.sleep,
     poll_s: float = POLL_S,
     cap_s: float = RUN_CAP_S,
+    should_stop: Optional[Callable[[], bool]] = None,
 ) -> WatchSummary:
     """Poll `snapshot` every `poll_s` seconds and write a row on each change.
 
@@ -105,7 +110,9 @@ def watch(
     differ from the last row written, and once more at the end for the last
     read when it was not written already. The run stops on the first of: the
     clock stopping (live.StoppedCheck raises), a failed read (OSError),
-    Ctrl-C, or `cap_s` seconds of `now()` since the start."""
+    Ctrl-C, `cap_s` seconds of `now()` since the start, or `should_stop`
+    returning True (reason STOPPED_REASON). `should_stop` is asked before
+    each poll, beside the cap."""
     start = now()
     first = snapshot()
     t = now()
@@ -121,6 +128,9 @@ def watch(
         while True:
             if now() - start >= cap_s:
                 reason = f"run cap of {cap_s:g} s reached"
+                break
+            if should_stop is not None and should_stop():
+                reason = STOPPED_REASON
                 break
             sleep(poll_s)
             try:
