@@ -16,6 +16,7 @@
 
 #include "app/analysis.h"  // AnalysisSettings
 #include "app/config.h"
+#include "app/report_files.h"  // replacing_temp_path
 #include "core/model.h"
 #include "core/strutil.h"
 #include "core/version.h"
@@ -801,7 +802,7 @@ TEST_CASE("save_file replaces the settings file through a temp and a rename") {
     s.sp_cap = 3;
     REQUIRE(s.save_file(path));
     CHECK(Settings::load_file(path).sp_cap == 3);
-    CHECK_FALSE(std::filesystem::exists(path + ".tmp"));
+    CHECK_FALSE(std::filesystem::exists(hydra::app::replacing_temp_path(path)));
     std::remove(path.c_str());
 }
 
@@ -837,7 +838,7 @@ TEST_CASE("save_file that cannot land keeps the old file whole and leaves no .tm
     fs::permissions(path, writes, fs::perm_options::add);
     CHECK_FALSE(saved);
     CHECK(Settings::load_file(path).sp_cap == 6);
-    CHECK_FALSE(fs::exists(path + ".tmp"));
+    CHECK_FALSE(fs::exists(hydra::app::replacing_temp_path(path)));
     std::remove(path.c_str());
 }
 

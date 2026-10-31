@@ -73,7 +73,7 @@ TEST_CASE("write_report_file swaps the page in and leaves no .tmp behind") {
     in.close();
     CHECK(contents.str() == "<html>\nnew\n</html>\n");
 
-    CHECK_FALSE(std::filesystem::exists(path + ".tmp"));
+    CHECK_FALSE(std::filesystem::exists(hydra::app::replacing_temp_path(path)));
 
     std::error_code ec;
     std::filesystem::remove(path, ec);

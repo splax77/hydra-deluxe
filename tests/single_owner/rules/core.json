@@ -1539,7 +1539,7 @@
         "tools",
         "tests"
       ],
-      "note": "The root and one more byte cut off a path. relpath in analysis.cpp cuts only after a separator and keeps backslashes: Python's os.path.relpath for the library's stored path, another question. Decided by: audit finding 274; phase 6 task J2-1 (D53, D54)"
+      "note": "The root and the separator after it cut off a path. relpath in analysis.cpp cuts only after a separator and keeps backslashes: Python's os.path.relpath for the library's stored path, another question. Decided by: audit finding 274; phase 6 task J2-1 (D53, D54)"
     },
     {
       "question": "Does a string end with a tail?",
