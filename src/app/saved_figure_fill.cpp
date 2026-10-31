@@ -40,45 +40,60 @@ bool chart_still_there(const MissingHardestRow& row) {
     return !now->md5.empty() && !now->differs_from(row.song_id);
 }
 
-// The figures for one chart's rows, `first` to `last`, written profile row by
-// profile row. Each row keeps its empty figure unless its replay matches it.
-void fill_chart(store::RecordStore& store, const AnalysisSettings& settings,
-                std::vector<MissingHardestRow>::const_iterator first,
-                std::vector<MissingHardestRow>::const_iterator last) {
-    if (!chart_still_there(*first)) return;
-    std::optional<Song> song;
-    try {
-        song.emplace(load_songpath(first->notespath, settings.reading(), settings.rules,
-                                   fill_rule_for(settings.legacy_fills)));
-    } catch (const std::exception&) {
-        return;  // a chart that no longer reads keeps its rows, as a gone one does
-    }
-
-    // The rows come sorted by profile row, then rank (rows_missing_hardest),
-    // so each profile row's figures are written together.
+// The figures one profile row's rows of a chart get.
+struct ProfileFigures {
+    int64_t profile_id = 0;
     std::vector<HardestFigure> figures;
-    int64_t profile_id = first->profile_id;
-    auto write = [&] {
-        if (!figures.empty()) store.set_hardest(first->song_id, profile_id, figures);
-        figures.clear();
-    };
+};
+
+// The figures for one chart's rows, `first` to `last`, read off `song`, one
+// entry per profile row. Each row gets a figure only when its replay matches
+// it; a row whose text the reader refuses gets none. Throws anything else the
+// replay or the comparison throws.
+std::vector<ProfileFigures> replayed_figures(const Song& song, const AnalysisSettings& settings,
+                                             std::vector<MissingHardestRow>::const_iterator first,
+                                             std::vector<MissingHardestRow>::const_iterator last) {
+    // The rows come sorted by profile row, then rank (rows_missing_hardest),
+    // so each profile row's rows sit together.
+    std::vector<ProfileFigures> out;
     for (auto it = first; it != last; ++it) {
-        if (it->profile_id != profile_id) {
-            write();
-            profile_id = it->profile_id;
-        }
+        if (out.empty() || out.back().profile_id != it->profile_id)
+            out.push_back(ProfileFigures{it->profile_id, {}});
         std::optional<Path> replayed;
         try {
-            replayed = paths_from_pathstring(*song, settings, it->path);
+            replayed = paths_from_pathstring(song, settings, it->path);
         } catch (const KindedError& e) {
             if (e.kind() != ErrorKind::PathTextRefused) throw;
             continue;
         }
         if (!replay_matches(*it, *replayed)) continue;
         if (const std::optional<double> figure = engine_hardest_ms(*replayed))
-            figures.push_back(HardestFigure{it->rank, *figure});
+            out.back().figures.push_back(HardestFigure{it->rank, *figure});
     }
-    write();
+    return out;
+}
+
+// The figures for one chart's rows, `first` to `last`, written profile row by
+// profile row. The chart is read and every row replayed before anything is
+// written, so a chart that throws there leaves all its rows as they are.
+void fill_chart(store::RecordStore& store, const AnalysisSettings& settings,
+                std::vector<MissingHardestRow>::const_iterator first,
+                std::vector<MissingHardestRow>::const_iterator last) {
+    if (!chart_still_there(*first)) return;
+    std::vector<ProfileFigures> found;
+    try {
+        const Song song = load_songpath(first->notespath, settings.reading(), settings.rules,
+                                        fill_rule_for(settings.legacy_fills));
+        found = replayed_figures(song, settings, first, last);
+    } catch (const std::exception&) {
+        // A chart that no longer reads, or whose replay throws, keeps its rows
+        // empty, as a gone one does. The fault is the song's, not the store's,
+        // so the fill goes on with the next chart.
+        return;
+    }
+    // A failed write is the store's fault, not the song's: it throws on.
+    for (const ProfileFigures& p : found)
+        if (!p.figures.empty()) store.set_hardest(first->song_id, p.profile_id, p.figures);
 }
 
 }  // namespace

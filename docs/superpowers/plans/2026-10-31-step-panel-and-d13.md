@@ -174,6 +174,8 @@ Run: `build-cpp\Release\hydra_tests.exe "-sf=*test_saved_figure_fill.cpp"`; `"-s
 
 Done when they pass. Blockers: A4 (the store calls it needs) and A3 (`engine_hardest_ms`), both from their executor commits; Q2 answered before the progress words are written (the tests can start first).
 
+When the fill fails, the user answered two questions on 2026-10-31. Asked "If the catch-up hits an error at open, should Hydra still open the library and show the problem on the status line?", they picked "Open, show it (Rec.)". Asked "If one song's replay throws an unexpected error, should the catch-up skip that song or stop?", they picked "Skip that song (Rec.)", whose text read: "That song keeps its empty figure (shows no timing); every other song gets the engine's number, and the catch-up finishes." So a chart whose replay or comparison throws keeps its rows empty and is not tried again, while a failed store write still stops the fill and goes on the status line (A4c).
+
 #### A5. The corpus counts, measured and pinned
 
 Owns `tests/test_engine_sweeps.cpp`.

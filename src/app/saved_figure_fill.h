@@ -36,10 +36,16 @@ using SavedFigureProgress = std::function<bool(uint64_t charts_done, uint64_t ch
 // path's engine_hardest_ms. A row whose text the reader refuses, or whose
 // replay differs, keeps its empty figure.
 //
+// A chart that no longer reads, or whose replay or comparison with a row
+// throws anything at all, is skipped: every one of its rows keeps its empty
+// figure, and the fill goes on with the next chart. The marker is still set
+// at the end, so a skipped chart is not tried again.
+//
 // Returns true when the fill has run for the profile, false when `progress`
 // answered stop. A stop leaves the marker unset, so the next open goes on
-// with the rows still empty. Throws what the store or the replay throws for
-// anything else.
+// with the rows still empty. Throws what the store throws, such as a failed
+// write of a figure or of the marker; that stops the fill with the marker
+// unset.
 bool fill_saved_hardest(store::RecordStore& store, const Settings& settings,
                         const SavedFigureProgress& progress);
 
