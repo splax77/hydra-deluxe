@@ -183,10 +183,10 @@ struct Settings {
     // load_for_command_line. (The path report follows it, docs/adr/0010.)
     bool legacy_fills = false;
 
-    // Open a report in the browser as soon as Hydra builds it. It covers every
-    // report Hydra builds, the batch's path report and the leaderboard
-    // comparison alike (D51 call 23): ReportJob and DmReportJob both read it.
-    // Off by default (the finished modal offers an "Open report" button).
+    // Open the batch's path report window as soon as Hydra builds it. It
+    // covers only the path report, not the leaderboard comparison (D103 item
+    // 13): AppState::collect_path_report is its one reader. Off by default
+    // (the finished strip offers an "Open report" button).
     bool auto_open_report = false;
 
     // The dmleaderboards user (Discord ID) last compared against, so the

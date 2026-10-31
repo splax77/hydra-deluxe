@@ -320,7 +320,7 @@ inline double early_fill_difficulty(double e_offset) { return -e_offset + 0.0; }
 // Does an early fill need timing? Only when SP is ready no earlier than the
 // fill's deadline: a fill with time to spare spawns however the player hits
 // the activation. Zero slack counts, like a squeeze-out on the SP end (D51
-// call 4, D13). Activation::hardest and the engine's limit check ask it.
+// call 4). Activation::hardest and the engine's limit check ask it.
 inline bool early_fill_needs_timing(double e_offset) { return early_fill_difficulty(e_offset) >= 0.0; }
 
 // Is an activation's early fill inside a ms limit? An optional fill is never
@@ -377,9 +377,9 @@ struct SPSqueeze {
     bool within_limit(double limit_ms) const { return timing_within_limit(difficulty(), limit_ms); }
     // Whether the squeeze is already done with no frontend timing: the one
     // answer the rating and the sentence both read. The SP walk pays a note
-    // on the SP end (core::paid_by_sp_walk), so a SqIn there is already in,
-    // and a SqOut there still has to be hit late (D13). The word "Free" on
-    // screen is BackendSqueeze::summarystr's, a different test.
+    // on the SP end (core::paid_by_sp_walk), so a SqIn there is already in
+    // (D13), and a SqOut there still has to be hit late (D51 call 4). The
+    // word "Free" on screen is BackendSqueeze::summarystr's, a different test.
     bool needs_no_timing() const {
         const bool inside_sp = core::paid_by_sp_walk(offset_ms);
         return kind == SqueezeKind::SqIn ? inside_sp : !inside_sp;

@@ -19,14 +19,6 @@ std::optional<double> stated_length_ms_of_text(std::string_view text) {
     return stated_length_ms(parse_finite_number(text));
 }
 
-std::optional<double> last_note_start_ms(const Song& song) {
-    // Only a timestamp that holds a note counts, as in the Preview's scene
-    // (last_drawn_note), which draws no note-less timestamp.
-    for (auto it = song.sequence.rbegin(); it != song.sequence.rend(); ++it)
-        if (it->chord.count() > 0) return it->timecode.ms();
-    return std::nullopt;
-}
-
 bool end_event_counts(const Song& song) {
     if (!song.end_event_tick) return false;
     const int64_t last_note_end = song.last_note_end_tick.value_or(0);
