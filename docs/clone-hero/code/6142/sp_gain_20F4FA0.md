@@ -5,7 +5,7 @@ with `tools/ch_mcp/chdis.py` from `C:\Clone Hero\1.1 june\Clone Hero\GameAssembl
 first instruction (RVA `0x20F4FA0` is in `script.json` as a method start). Our readable name for it is `#8288.AddStarPower`
 (class `BaseEngine`, TypeDefIndex 8288, the engine base class that `BasePlayer.engine` holds; `dump.cs` line 529952 is
 the class and the method is the one declared as a `public virtual void` method, under its scrambled name, with the parameters `(long ..., bool ... = False)`).
-Its only Ghidra caller in the surviving decompile is `FUN_1820ddb70` (the deadline function, `ghidra_decompile_all.txt` lines
+Its only Ghidra caller in the decompile is `FUN_1820ddb70` (the deadline function, `ghidra_decompile_all.txt` lines
 670 to 681, call at line 681).
 
 Plain version: when the engine is asked to add Star Power meter, it first looks at which kind of player the engine belongs

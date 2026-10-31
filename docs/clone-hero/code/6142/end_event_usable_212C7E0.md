@@ -1,6 +1,6 @@
 # end_event_usable_212C7E0 (build 6142, made 2026-10-30 with tools/ch_mcp/chdis.py)
 
-Function: `#8538.EndEventUsable()` on the chart class (`dump.cs` line 543589), RVA `0x212C7E0`; the first instruction is the function start. The decompile (see `code/README.md`; not kept) has it at lines 14779 to 14791 (`FUN_18212c7e0`). It says whether the chart's `[end]` event is allowed to end the song. The end event object is at chart+0x108, and its tick is the `long` at +0x10 of that object. The setter `0x212E310` (decompile lines 15845 to 15867) stores only the first end event: it fills +0x108 only when it is still null.
+Function: `#8538.EndEventUsable()` on the chart class (`dump.cs` line 543589), RVA `0x212C7E0`; the first instruction is the function start. The decompile (see `code/README.md`) has it at lines 14779 to 14791 (`FUN_18212c7e0`). It says whether the chart's `[end]` event is allowed to end the song. The end event object is at chart+0x108, and its tick is the `long` at +0x10 of that object. The setter `0x212E310` (decompile lines 15845 to 15867) stores only the first end event: it fills +0x108 only when it is still null.
 
 Lines 1 to 2: prologue; the end event pointer at chart+0x108 is tested.
 

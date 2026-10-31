@@ -1,6 +1,6 @@
 # hit_window_formula_20DDDA0 (build 6142, made 2026-10-30 with tools/ch_mcp/chdis.py)
 
-Function: `#8255.HitWindowFromGap(double)`, an override in vtable slot 19 of the sealed drums engine class `#8255` (`dump.cs` line 527484, "Slot: 19"), RVA `0x20DDDA0`; the first instruction is the function start. The decompile (see `code/README.md`; not kept) has it at lines 757 to 782. The argument is a gap in seconds (the sum of two clamped half-gaps from `half_gap_clamp_20F7210`); the result is a whole-window width in seconds. `this+0x198 & 0x1000` is the PrecisionMode bit.
+Function: `#8255.HitWindowFromGap(double)`, an override in vtable slot 19 of the sealed drums engine class `#8255` (`dump.cs` line 527484, "Slot: 19"), RVA `0x20DDDA0`; the first instruction is the function start. The decompile (see `code/README.md`) has it at lines 757 to 782. The argument is a gap in seconds (the sum of two clamped half-gaps from `half_gap_clamp_20F7210`); the result is a whole-window width in seconds. `this+0x198 & 0x1000` is the PrecisionMode bit.
 
 Lines 1 to 10: prologue and the one-time class-init setup for `System.Math`.
 

@@ -234,7 +234,7 @@ The `.asm` files are from build 1.1.0.6142 (`GameAssembly.dll`), made with tools
 
 The `.cs` files are from build 1.0.0.4045 (`Assembly-CSharp.dll`), decompiled with `ilspycmd`. That build's dump has no addresses, so their start column names the file's first method and its lines in the full ilspycmd output instead.
 
-"The decompile" and `ghidra_decompile_all.txt`, on these notes and on the area pages, mean Ghidra's full decompile of build 6142's `GameAssembly.dll`, made 2026-09-17, with each function named `FUN_` plus its address. It is not in the repo and was not kept as a permanent record, so its line numbers are a pointer for a later reader with their own decompile, not a source to cite alone.
+"The decompile" and `ghidra_decompile_all.txt`, on these notes and on the area pages, mean Ghidra's full decompile of build 6142's `GameAssembly.dll`, made 2026-09-17, with each function named `FUN_` plus its address. It is too big for the repo and is not part of the project, so it lives outside it, beside that build's game dump, at `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-dumps\6142\ghidra\ghidra_decompile_all.txt`. Its line numbers can be cited from that file.
 
 The table was generated from the files, not typed. One more file, `code/6142/drum_lanes_sp_lines.md`, has no listing of its own: it annotates the Star Power lines of the committed drum-lane listings under `docs/audit/drum-lanes/`.
 
