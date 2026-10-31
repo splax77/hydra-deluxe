@@ -132,6 +132,8 @@ void test_cant_activate_reason(ImGuiTestContext* ctx) {
     IM_CHECK_EQ(s.history().generation(), generation);
     IM_CHECK(!s.history().current().path.has_value());
     IM_CHECK(!s.history().can_undo());
+    // As the locked-fill test: the pointer must not stay on the fill.
+    move_off_timeline(ctx);
 }
 
 // One activation on Burnout, then a click on a fill before it: the guide
@@ -157,6 +159,9 @@ void test_locked_fill_says_left_to_right(ImGuiTestContext* ctx) {
     // The path is as it was: the one step, and none at m12.
     IM_CHECK(on_screen(h, step_row));
     IM_CHECK(!on_screen(h, "m12 →"));
+    // The pointer would stay on that fill into the next test, whose fresh
+    // builder would read it as a hover.
+    move_off_timeline(ctx);
 }
 
 // White Washed under the GUI tests' Path limit (10 ms, the app's default):
@@ -184,6 +189,102 @@ void test_tight_window_note(ImGuiTestContext* ctx) {
     IM_CHECK_LE(span->second - span->first, ImGui::GetTextLineHeightWithSpacing());
 }
 
+// The Preview clock's tail on Burnout, the song's length (from one run).
+constexpr const char* kBurnoutClockTail = " / 2:10.088";
+// The first fill's span start as the clock reads it, where a hover or a
+// click on it parks the Preview (from one run).
+constexpr const char* kFirstFillSpanStart = "0:23.840";
+// How long a check waits for a card whose search is still running.
+constexpr double kCardWaitSeconds = 60.0;
+
+// The Preview's clock as the screen drew it last frame, "0:23.840 / 2:10.088",
+// or empty when it is not drawn.
+std::string burnout_clock(Harness& h) {
+    const std::string text = visible_text(h);
+    const size_t tail = text.find(kBurnoutClockTail);
+    if (tail == std::string::npos) return std::string();
+    size_t from = tail;
+    while (from > 0 && text[from - 1] != ' ' && text[from - 1] != '\n' && text[from - 1] != '\r') --from;
+    return text.substr(from, tail + std::string(kBurnoutClockTail).size() - from);
+}
+
+// Burnout playing, then a hover on its first fill: the hover pauses and shows
+// the fill, and moving off puts the clock back and leaves it paused (the third
+// mockup's answers.md, answer 1).
+void test_hover_shows_never_plays(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    IM_CHECK_RETV(open_chart(ctx, corpus::burnout_notes()), );
+    ctx->SetRef(h.home_ref.c_str());
+    // The panel's button reads "Pause" while the Preview plays
+    // (preview_panel.cpp's transport row).
+    ctx->ItemClick(any_ref("Play").c_str());
+    ctx->Yield(2);
+    IM_CHECK_RETV(on_screen(h, "Pause"), );
+
+    ctx->MouseMove(fill_ref(kFirstFillTick).c_str());
+    ctx->Yield(2);
+    IM_CHECK(burnout_clock(h) == std::string(kFirstFillSpanStart) + kBurnoutClockTail);
+    IM_CHECK(on_screen(h, "Play"));
+    IM_CHECK(!on_screen(h, "Pause"));
+
+    move_off_timeline(ctx);
+    IM_CHECK(on_screen(h, "Play"));
+    IM_CHECK(!on_screen(h, "Pause"));
+    // Nothing resumed: the clock reads the same a quarter second later, and
+    // it is back where it was, not on the fill.
+    const std::string first = burnout_clock(h);
+    ctx->SleepNoSkip(0.25f, 1.0f / 60.0f);
+    const std::string second = burnout_clock(h);
+    IM_CHECK(!first.empty());
+    IM_CHECK_STR_EQ(first.c_str(), second.c_str());
+    IM_CHECK(first.find(kFirstFillSpanStart) == std::string::npos);
+    IM_CHECK(on_screen(h, "Play"));
+    IM_CHECK(!on_screen(h, "Pause"));
+}
+
+// The card on Burnout's first fill once its search has landed: the heading,
+// the three rows and the two grey lines (the figures pbtest_build.cpp's
+// build-a-path-by-clicking pins, from one run).
+void test_fill_card(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    IM_CHECK_RETV(open_chart(ctx, corpus::burnout_notes()), );
+    ctx->SetRef(h.home_ref.c_str());
+    ctx->MouseMove(fill_ref(kFirstFillTick).c_str());
+    const std::string best_line = "Best choice now is m32 (378,315).";
+    IM_CHECK_RETV(uitest::wait_until(ctx, [&] { return on_screen(h, best_line); }, kCardWaitSeconds), );
+    IM_CHECK(on_screen(h, "m20 · 0:25.123"));
+    IM_CHECK(on_screen(h, "Phrases saved"));
+    IM_CHECK(on_screen(h, "Best finish here"));
+    IM_CHECK(on_screen(h, "378,175"));
+    IM_CHECK(on_screen(h, "Cost"));
+    IM_CHECK(on_screen(h, "−140"));
+    IM_CHECK(on_screen(h, "Hydra would end it at m24."));
+    // Each figure sits on its label's row: ImGui's text log writes a table
+    // row's cells on one line, each after a "|".
+    IM_CHECK(on_screen(h, "Phrases saved | 2"));
+    IM_CHECK(on_screen(h, "Best finish here | 378,175"));
+    IM_CHECK(on_screen(h, "Cost | −140"));
+    // The old six sentences are gone.
+    IM_CHECK(!on_screen(h, "If you activate here"));
+    move_off_timeline(ctx);
+    IM_CHECK(!on_screen(h, best_line));
+}
+
+// One activation on Burnout, then a click on the second fill's list row: once
+// the pointer leaves the list, the clock stays on that fill's span start
+// (bar question 7: a row click moves the Preview's clock, like a fill click).
+void test_row_click_moves_clock(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    IM_CHECK_RETV(open_chart(ctx, corpus::burnout_notes()), );
+    IM_CHECK_RETV(click_fill(ctx, kFirstFillTick), );
+    ctx->SetRef(h.home_ref.c_str());
+    ctx->ItemClick(choice_ref(kSecondFillTick).c_str());
+    IM_CHECK_RETV(wait_for_edit(ctx), );
+    move_off_timeline(ctx);
+    // From one run: the second fill's span start.
+    IM_CHECK_STR_EQ(burnout_clock(h).c_str(), "0:50.095 / 2:10.088");
+}
+
 }  // namespace
 
 void register_coach_tests(Harness& h) {
@@ -191,6 +292,9 @@ void register_coach_tests(Harness& h) {
     uitest::register_test(h, "cant-activate-reason", test_cant_activate_reason);
     uitest::register_test(h, "tight-window-note", test_tight_window_note);
     uitest::register_test(h, "locked-fill-says-left-to-right", test_locked_fill_says_left_to_right);
+    uitest::register_test(h, "hover-shows-never-plays", test_hover_shows_never_plays);
+    uitest::register_test(h, "fill-card", test_fill_card);
+    uitest::register_test(h, "row-click-moves-clock", test_row_click_moves_clock);
 }
 
 }  // namespace pbtest

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
+#include <utility>
 #include <vector>
 
 #include "app/display_format.h"
@@ -54,7 +55,7 @@ std::string before_last_sentence(const std::string& subject) {
 
 const std::string kBeforeLastActivationText = before_last_sentence("This");
 const char* const kGameHidesFillText = "The game doesn't show this fill here.";
-const char* const kBestChoiceNowText = "That is the best choice right now.";
+const char* const kBestChoiceNowText = "This is the best choice now.";
 const char* const kNothingLeftText = "Nothing left on the table after your last activation.";
 const char* const kPendingText = "...";
 
@@ -220,31 +221,60 @@ std::string cost_text(int64_t cost) {
     return "costs " + group_thousands(cost) + " points";
 }
 
-std::string fill_hover_text(const PreviewScene& scene, size_t fill_index,
-                            const std::optional<FillHoverNumbers>& numbers) {
+std::string cost_or_best(int64_t cost) {
+    return app::costs_nothing(cost) ? std::string(kBestFillLabel) : app::format_cost(cost);
+}
+
+namespace {
+
+// "Hydra would end it at m97, ending with ... ." for the candidate's
+// activation, or nothing when it has no deact node. fill_hover_card says it.
+std::optional<std::string> hydra_end_sentence(const PreviewScene& scene, const Activation& end) {
+    const std::optional<int64_t> d = end.deact_tick();
+    if (!d) return std::nullopt;
+    return "Hydra would end it at " + measure_at(scene_timing(scene), *d) + squeeze_end_text(end) +
+           ".";
+}
+
+// The heading's name and clock, "m87 · 2:25.655".
+std::string fill_heading(const PreviewScene& scene, const PreviewFill& fill) {
+    return fill_name(scene, fill) + app::kFactSeparator +
+           app::clock_str(scene_timing(scene).timecode(fill.chord_tick).ms());
+}
+
+}  // namespace
+
+FillHoverCard fill_hover_card(const PreviewScene& scene, size_t fill_index,
+                              const std::optional<FillHoverNumbers>& numbers) {
     const PreviewFill& fill = scene.fills.at(fill_index);
-    std::string t = "Fill at " + fill_name(scene, fill) + " · " +
-                    app::clock_str(scene_timing(scene).timecode(fill.chord_tick).ms()) + "\n";
-    if (fill.state == app::PreviewFillState::Taken) return t + kYourActivationHoverText;
+    FillHoverCard card;
+    card.heading = fill_heading(scene, fill);
+    if (fill.state == app::PreviewFillState::Taken) {
+        card.grey.push_back(kYourActivationHoverText);
+        return card;
+    }
     const std::string reason = fill_reason(scene, fill_index);
-    if (!reason.empty()) return t + reason;
-    t += "You have " + counted(bars_saved_at(scene, fill), "phrase", "phrases") + " saved.\n";
-    if (!numbers) return t + kPendingText;
-    t += "If you activate here, the best you can still finish with is " +
-         group_thousands(numbers->best_finish) + ".";
-    if (app::costs_nothing(numbers->cost)) {
-        t += std::string("\n") + kBestChoiceNowText;
-    } else {
-        t += "\nYour best choice right now is " + numbers->best_fill + ", which keeps " +
-             group_thousands(numbers->best_now) + ".\nSo activating here " +
-             cost_text(numbers->cost) + ".";
+    if (!reason.empty()) {
+        card.grey.push_back(reason);
+        return card;
     }
-    if (numbers->hydra_end) {
-        if (const std::optional<int64_t> d = numbers->hydra_end->deact_tick())
-            t += "\nHydra would end it at " + measure_at(scene_timing(scene), *d) +
-                 squeeze_end_text(*numbers->hydra_end) + ".";
+    card.rows.push_back({kPhrasesSavedLabel, std::to_string(bars_saved_at(scene, fill))});
+    if (!numbers) {
+        card.rows.push_back({kBestFinishHereLabel, kPendingText});
+        card.rows.push_back({kCostLabel, kPendingText});
+        return card;
     }
-    return t;
+    card.rows.push_back({kBestFinishHereLabel, group_thousands(numbers->best_finish)});
+    card.rows.push_back({kCostLabel, cost_or_best(numbers->cost)});
+    card.cost_tier = numbers->tier;
+    card.grey.push_back(app::costs_nothing(numbers->cost)
+                            ? std::string(kBestChoiceNowText)
+                            : "Best choice now is " + numbers->best_fill + " (" +
+                                  group_thousands(numbers->best_now) + ").");
+    if (numbers->hydra_end)
+        if (std::optional<std::string> end = hydra_end_sentence(scene, *numbers->hydra_end))
+            card.grey.push_back(std::move(*end));
+    return card;
 }
 
 GuideMessage cant_activate_message(const std::string& fill, const std::string& reason) {

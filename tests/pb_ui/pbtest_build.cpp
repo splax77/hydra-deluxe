@@ -20,8 +20,8 @@
 
 #include "pathbuilder/pb_coach.h"   // kFinishForMeLabel
 #include "pathbuilder/pb_menu.h"    // kStartOverLabel
-#include "pathbuilder/pb_text.h"    // kNoStepsText, locked_message
-#include "pathbuilder/pb_window.h"  // the score and button labels, kBestFillLabel
+#include "pathbuilder/pb_text.h"    // kNoStepsText, kBestFillLabel, locked_message
+#include "pathbuilder/pb_window.h"  // the score and button labels
 #include "ui/preview_timeline.h"    // timeline_fill_id, kTimelineFillsLabel
 
 namespace pbtest {
@@ -33,25 +33,16 @@ using namespace hydra::pathbuilder;
 // How long a check waits for a sentence whose search is still running.
 constexpr double kTextWaitSeconds = 60.0;
 
-// Burnout's fills the test clicks, by chord tick, from one run: the first two
-// fills the player can activate on (m20 and m40); the fill at m44, which
-// comes after the second activation's Star Power has ended, with no phrases
-// saved there; and the fill at m32, which sits between the two activations.
-constexpr int64_t kFirstFillTick = 36480;
-constexpr int64_t kSecondFillTick = 74880;
+// Burnout's other fills the test clicks, by chord tick, from one run (the
+// first two are kFirstFillTick and kSecondFillTick in pbtest_harness.h): the
+// fill at m44, which comes after the second activation's Star Power has ended,
+// with no phrases saved there; and the fill at m32, which sits between the two
+// activations.
 constexpr int64_t kCantFillTick = 83040;
 constexpr int64_t kLockedFillTick = 59520;
 
 // The Preview's "Act >" button (ui::draw_preview_panel).
 constexpr const char* kNextActRef = "**/Act >##nextact";
-
-std::string any_ref(const std::string& label) { return "**/" + label; }
-
-std::string fill_ref(int64_t tick) { return any_ref(hydra::ui::timeline_fill_id(tick)); }
-
-// The list row the screen names after the fill's chord tick (pb_window.cpp's
-// draw_choices).
-std::string choice_ref(int64_t tick) { return any_ref("##choice_" + std::to_string(tick)); }
 
 bool is_line_end(char c) { return c == '\r' || c == '\n'; }
 
@@ -92,13 +83,6 @@ size_t best_words_under_fills(Harness& h) {
 bool wait_text(ImGuiTestContext* ctx, const std::string& s) {
     Harness& h = harness(ctx);
     return uitest::wait_until(ctx, [&] { return on_screen(h, s); }, kTextWaitSeconds);
-}
-
-// Moves the pointer off the timeline and the list, onto the legend's
-// checkbox, so no fill or row stays hovered and a fill's tooltip goes.
-void move_off_timeline(ImGuiTestContext* ctx) {
-    ctx->MouseMove(any_ref(kShowBestPathLabel).c_str());
-    ctx->Yield(2);
 }
 
 void test_build_a_path_by_clicking(ImGuiTestContext* ctx) {

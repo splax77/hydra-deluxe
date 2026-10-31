@@ -68,9 +68,6 @@ inline constexpr const char* kRemoveLastLabel = "Remove";
 inline constexpr const char* kRemoveEarlierLabel = "Remove this and later ones";
 inline constexpr const char* kEndItAtLabel = "End it at:";
 inline constexpr const char* kNoTimingNeededText = "no timing needed";
-// The word under the best next fills on the timeline, and the cost of a list
-// row, a step or an end choice that loses nothing.
-inline constexpr const char* kBestFillLabel = "best";
 
 // The builder's whole state between frames.
 class PbApp {
@@ -140,10 +137,9 @@ private:
     // "Show Hydra's best path".
     bool show_best_ = false;
     // While the pointer is on a fill or its list row: the fill, and the time
-    // and play state the Preview goes back to when the pointer leaves.
+    // the Preview goes back to, still paused, when the pointer leaves.
     std::optional<size_t> hovered_fill_;
     double hover_return_ms_ = 0.0;
-    bool hover_return_playing_ = false;
     // The fill whose list row the pointer was on last frame; the list is
     // drawn after the timeline, so the timeline reads it a frame later.
     std::optional<size_t> row_hovered_fill_;
@@ -184,7 +180,8 @@ private:
     void draw_steps(const OpenChart& chart);
     // What a click on scene fill `index` does (the timeline, the highway or a
     // list row): an offered fill fill_reason accepts starts a window, a taken
-    // one selects its step, any other puts its reason in the guide line.
+    // one selects its step, any other puts its reason in the guide line. Every
+    // click also parks the Preview's clock on the fill's span start.
     void click_fill(const OpenChart& chart, size_t index);
     // The guide line's facts for the shown path's scene.
     GuideFacts guide_facts(const OpenChart& chart) const;

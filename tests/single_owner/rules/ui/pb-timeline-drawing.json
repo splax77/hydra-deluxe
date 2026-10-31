@@ -2,7 +2,7 @@
   "rules": [
     {
       "question": "Where on the Path Builder's screen is a moment of the song drawn, and how are the timeline's marks drawn?",
-      "owner": "ui::PreviewTimeline in src/ui/preview_timeline.h, the Preview's whole-song timeline, which places every mark by song_fraction and draws its star glyph with ui::draw_star",
+      "owner": "ui::PreviewTimeline in src/ui/preview_timeline.h, the Preview's timeline, which places every mark through the window's fraction (ui/timeline_view.h) and draws its star glyph with ui::draw_star",
       "owner_file": "src/ui/preview_timeline.h",
       "owner_symbol": "PreviewTimeline",
       "date": "2026-10-30",

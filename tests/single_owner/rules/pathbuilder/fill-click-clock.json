@@ -1,0 +1,48 @@
+{
+  "rules": [
+    {
+      "question": "Where does the Preview's clock go when a fill is clicked?",
+      "owner": "PbApp::click_fill in src/pathbuilder/pb_window.cpp, which sets hover_return_ms_ for the timeline, the highway and a list row alike",
+      "owner_file": "src/pathbuilder/pb_window.cpp",
+      "owner_symbol": "click_fill",
+      "date": "2026-10-31",
+      "decision": "docs/superpowers/specs/2026-10-31-path-builder-mockup-3/answers.md, bar question 7: a row click moves the Preview's clock to the fill, like a fill click; found by the SC-4a review",
+      "added_by": "PBR3-SC4A-REV",
+      "anchor": "hover_return_ms_",
+      "pattern": "\\bhover_return_ms_\\s*=\\s*[^;]*span\\.start_ms",
+      "must_match": [
+        "hover_return_ms_ = scene.fills[*ev.clicked_fill].span.start_ms;",
+        "hover_return_ms_ = f.span.start_ms;"
+      ],
+      "must_not_match": [
+        "hover_return_ms_ = preview_->position_ms();",
+        "preview_->seek_ms(scene.fills[*hovered].span.start_ms);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/pathbuilder/pb_window.cpp",
+          "line_text": "hover_return_ms_ = f.span.start_ms;",
+          "why": "click_fill, the owner"
+        }
+      ],
+      "scope": [
+        "src/pathbuilder/main.cpp",
+        "src/pathbuilder/pb_coach.cpp",
+        "src/pathbuilder/pb_coach.h",
+        "src/pathbuilder/pb_files.cpp",
+        "src/pathbuilder/pb_files.h",
+        "src/pathbuilder/pb_menu.cpp",
+        "src/pathbuilder/pb_menu.h",
+        "src/pathbuilder/pb_open.cpp",
+        "src/pathbuilder/pb_open.h",
+        "src/pathbuilder/pb_state.cpp",
+        "src/pathbuilder/pb_state.h",
+        "src/pathbuilder/pb_text.cpp",
+        "src/pathbuilder/pb_text.h",
+        "src/pathbuilder/pb_window.cpp",
+        "src/pathbuilder/pb_window.h"
+      ],
+      "note": "Every way of clicking a fill ends in PbApp::click_fill, which parks the clock the hover returns to on the fill's span start. A caller that sets hover_return_ms_ to the fill's start before calling it is saying that a second time. The hover block's own writes (the position on entering, a band click's position) are different questions and do not match. A scope names a top folder or a single file (OwnerRule::scope), so the row lists each file under src/pathbuilder; a new file there joins the list."
+    }
+  ]
+}
