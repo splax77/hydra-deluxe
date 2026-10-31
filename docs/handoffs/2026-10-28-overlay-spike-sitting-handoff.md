@@ -42,43 +42,27 @@ Every number below comes from the result file named with it.
 
 **Run 1** (calibration 0, auto-player, Trippin path 3). The auto-player hit all 857 notes (`run1_cal0_play_chart.txt`). Its presses landed a median of 0.42 ms before the chart time, with 90% between -1.86 and +0.94 ms (`run1_cal0_score_compare.txt`).
 
-- **Star Power fields: go** (`run1_cal0_sp_compare.txt`).
-  - All 11 phrase ends raised `+0x68` by 1,438 to 1,440.
-  - `+0x1B0` held at 5,760, and four phrases fill the meter.
-  - Each activation set the flag at `+0x42`, doubled `+0x48` from 4 to 8, and set the end time at `+0x120`. The flag cleared at that end time.
-  - The two activations that stayed on the path ended within 2.9 and 1.2 ms of Hydra's deactivation.
-- **The meter's unit is not Hydra's chart ticks.** The game's full meter is 5,760 units on this chart (resolution 192), and Hydra's is 6,144 ticks. The NS E chart (resolution 480) showed 14,400 in `scorestats.json`. In both charts the game's full meter is 30 times the resolution, where Hydra's is 32 times. The end times still match Hydra, so this looks like a difference of unit, not of timing. Why it is 30 is not yet known.
-- **The path split at the third activation.** Path 3's third activation is an E0 fill at tick 34944. The game did not offer it and activated at the next fill, tick 38016. Every comparison after about 102.7 s is off the path. Most of the 13,760-point gap (game 365,095 against Hydra 378,855) comes from here.
-- **Ghost and accent notes pay less from a keyboard.** Before the split, the score fell behind Hydra only on ghost and accent chords, 200 to 260 points each and double in Star Power. `run1_cal0_scorestats.json` says ghost notes hit 0 of 34 and accent notes hit 0 of 9. A keyboard press carries no strike strength.
+- **Star Power fields: go** (`run1_cal0_sp_compare.txt`). What the five fields do now lives in docs/clone-hero/07-internals.md (IN-25). The two activations that stayed on the path ended within 2.9 and 1.2 ms of Hydra's deactivation.
+- **The meter's unit is not Hydra's chart ticks.** The full meter now lives in docs/clone-hero/05-star-power.md (SP-10, SP-11) and 04-fills.md (FL-21).
+- **The path split at the third activation.** The game did not offer path 3's E0 fill (FL-25 in docs/clone-hero/04-fills.md). Every comparison after about 102.7 s is off the path. Most of the 13,760-point gap (game 365,095 against Hydra 378,855) comes from here.
+- **Ghost and accent notes pay less from a keyboard.** Before the split, the score fell behind Hydra only on ghost and accent chords, 200 to 260 points each and double in Star Power. The rule now lives in docs/clone-hero/06-scoring.md (SC-14) and 02-note-list.md (NL-67).
 - **One unexplained step.** Chord 420, the last chord of activation 2 and a plain chord, lost 260 points. Task E should look at it.
-- **The checksum is plain MD5 for a `.chart` file too.** `scorestats.json` says `DDCD74C4...`, the MD5 of the renamed `notes.chart`. Its score, 365,095, equals the live read; `sp_bar_ticks` equals the live `+0x1B0` (5,760); and `sp_activations` is 4.
-- **The log is written live.** "Loading Song: Hydra Probe - Trippin SP Spike" arrived 4.3 s after "go", which is when the user pressed Play (`run1_cal0_log_tail.txt`).
+- **The checksum.** The song id rule now lives in docs/clone-hero/01-reading-a-chart.md (CR-10). The stats file's score, 365,095, equals the live read, and `sp_activations` is 4.
+- **The log is written live.** "Loading Song: Hydra Probe - Trippin SP Spike" arrived 4.3 s after "go", which is when the user pressed Play (`run1_cal0_log_tail.txt`). No row on the pages holds this yet.
 
 **Run 2** (audio calibration 30 ms). It stopped at 137.8 s because the game was paused there; the log shows a seek to 137.86 s. All 704 presses hit. Their median was -0.45 ms, and activation end times matched Run 1 within 0.2 ms (`run2_cal30_*`). The game wrote no `scorestats.json` because the song did not finish.
 
 **Runs 2b and 2c** (video calibration 30 ms, audio 0). 2b ran 583 notes, all hits, median -0.45 ms, activation ends within about 1 ms of Run 1. 2c ran 111 notes, all hits, median -0.53 ms. During 2c the game's own pause screen read "Accuracy: 1.1 ms, Average: 2.5 ms" (from the user's screenshot).
 
-**What the calibration runs mean.** Neither setting moves the engine clock at `+0x100` against the chart's own times, so hits land the same against chart times. The code trace below shows that audio calibration does move that clock against the music you hear. The auto-player presses from the clock, so it is blind to both settings by design.
+**What the calibration runs mean.** What they showed about the engine clock now lives in docs/clone-hero/03-timing.md (TM-15). The auto-player presses from the clock, so it is blind to both settings by design.
 
 The user pointed out that video calibration clearly matters in real play. That fits a picture-only setting: a human hits when a note reaches the strike line, so moving the picture moves the human's hits. The overlay can compare with Hydra in the engine clock and ignore calibration. Anything it draws that must line up with notes on screen needs the video offset, applied the way the game applies it.
 
-The game's own average of +2.5 ms, against our clock reads of about -0.5 ms, suggests about 3 ms of input polling delay. That is an inference.
+The inference about input polling delay drawn from the game's own average now lives in docs/clone-hero/03-timing.md (TM-16).
 
 ## What the code says about calibration
 
-A read-only scout traced both settings through `GameAssembly.dll` (v1.1.0.6142, image base 0x180000000). Its scripts are in the scratch folder under `calibration-trace\`. Each claim below is marked by how it was checked.
-
-**Audio calibration shifts the clock the game judges against. Video calibration shifts only where notes are drawn.**
-
-- **Loading.** The settings loader (RVA 0x374D50) reads `[offsets] audio` and `video`, each limited to -2000..2000 ms. `GameManager.Awake` (RVA 0xB41A0) turns them into seconds. It stores `audioCal` = audio/1000 at GameManager+0x6C and `videoCal` = (video − audio)/1000 at +0x68. _Scout's disassembly; the field names and offsets match dump.cs line 25302 onward._
-- **The clock.** At song start both values go to a clock class (TypeDefIndex 707): audio at clock+0x48, video minus audio at +0x50. The clock's raw time at +0x38 follows the audio playback position. _Scout's disassembly._
-  - The getter at RVA 0x16C480 returns raw time minus audio.
-  - The getter at RVA 0x16C490 returns raw time plus (video − audio), which is songTime plus video.
-  - _Both getters checked by the main session from the file's bytes:_ `f2 0f 10 41 38 f2 0f 5c 41 48 c3` and `f2 0f 10 41 50 f2 0f 58 41 38 c3`.
-- **Per frame.** Every frame, `GameManager.Update` (RVA 0xC05A0) stores the first getter's result as `songTime` (+0x70) and the second's as `songTimeVideoTime` (+0x78). `BasePlayer.Update` passes `songTime` to the engine, which writes it to engine+0x100. So the engine clock the probe reads is songTime. _Scout's disassembly; the field offsets match dump.cs._
-- **The readers.** The readers of `songTimeVideoTime` that the scout found are drawing code: `HighwayScroll.Update` and `DrumsNoteRenderer.Update`, among others. It did not trace all of the roughly 30 readers. _Scout's disassembly; "drawing only" is not fully proven._
-- **Sign.** With a positive audio value, the judged clock trails the music by that many ms, so a note is judged that much later in the audio. With a positive video value, notes are drawn as if the song were that much later. _The arithmetic is checked. How the in-game Calibration menu picks the values was not traced._
-- **Other uses.** The song-end check (GameManager+0x50) compares against songTime, so it moves with audio too. Both values are also sent to the online leaderboard when a session starts. _Scout's disassembly._
+A read-only scout traced both settings through `GameAssembly.dll` (v1.1.0.6142, image base 0x180000000). Its scripts are in the scratch folder under `calibration-trace\`. What it found now lives in docs/clone-hero/03-timing.md (TM-09, TM-10, TM-12, TM-13, TM-34 to TM-36), 07-internals.md (IN-04, IN-05, IN-07) and 01-reading-a-chart.md (CR-45 for the song-end check). One claim has no row on the pages, so it stays here as the scout's: both values are also sent to the online leaderboard when a session starts (_Scout's disassembly_; 03-timing.md's TM-37 records that this was never read).
 
 **What this means for the overlay.**
 - **Comparing with Hydra:** use engine+0x100 against Hydra's chart times directly, with no correction for either setting. Runs 2, 2b and 2c measured exactly this.

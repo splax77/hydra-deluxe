@@ -34,13 +34,9 @@ Then the main session runs the live steps with the user at the game, in order: L
 
 ## Facts the next session should know
 
-The game is at `C:\Clone Hero\1.1 june\Clone Hero\`: v1.1.0.6142-final, Unity 2022.3.62f2, IL2CPP, metadata version 31. It is scrambled by Beebyte Obfuscator 3.13.0, but only in four libraries: CloneHero.dll, StrikeCore.dll, CHNet.Core.dll and CHNet.Server.dll. `GameManager`, `ScoreManager`, `DrumsPlayer`, `SongSelect` and `PlayerStatsBox` keep their real names. `GameManager` keeps readable fields such as `songTime` at 0x70 and `isSongOver` at 0x91.
+The game is at `C:\Clone Hero\1.1 june\Clone Hero\`: v1.1.0.6142-final, IL2CPP. What this session knew about its scrambling and readable names now lives in docs/clone-hero/07-internals.md (IN-46, IN-01, IN-02), the drum engine's class in IN-09, the hit-check address in IN-22, and `scorestats.json` (at `Documents\Clone Hero\`) in 06-scoring.md (SC-35, SC-37) and 07-internals.md (IN-37). Any `ch_probe` debugger result taken at the address IN-22 names came from the wrong code; the new tests do not depend on it.
 
-The drum engine that `tools/ch_probe` finds is the scrambled class at TypeDefIndex 8255. All three engine addresses in `ch_probe/constants.py` belong to it. `DrumsPlayer` holds a field of that type, so a readable class leads to the engine.
-
-`ch_probe`'s hit-check address `0x100DAB0` is not the drums version of that method. It belongs to a different instantiation of the base class, which the reviewer believes is guitar. The drum version is at `0x100DAE0`. The main session checked this in `script.json`. Any `ch_probe` debugger result taken at `0x100DAB0` came from the wrong code. The new tests do not depend on it.
-
-`Documents\Clone Hero\scorestats.json` is written at the end of every song, bot runs included, with about 46 fields per player. It is overwritten each time.
+Three facts here have no row on the pages, so they stay as this session recorded them. The build is Unity 2022.3.62f2. Besides `GameManager`, the classes `ScoreManager`, `DrumsPlayer`, `SongSelect` and `PlayerStatsBox` keep their real names. `DrumsPlayer` holds a field of the drum engine's type, so a readable class leads to the engine.
 
 The Il2CppDumper output this session made lives in the session scratch folder, `C:\Users\Patrick\AppData\Local\Temp\claude\C--Users-Patrick-Downloads-Hydra-hydra-test\856d0fac-b682-4ca5-b28f-65f459b0833d\scratchpad\obfuscation\`. It is temporary. Task A regenerates it into `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-dumps\6142\`. Il2CppDumper is at `C:\Users\Patrick\Downloads\Il2CppDumper-net7-v6.7.46\`. It needs `DOTNET_ROLL_FORWARD=Major`, and it crashes on its final "press any key" after printing `Done!` three times, which is harmless.
 

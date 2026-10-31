@@ -8,18 +8,18 @@ The feasibility work is finished. All seven tool tasks (A to G) are reviewed and
 
 Read the "Results of the four tests" section of `docs/research/2026-10-28-clone-hero-mcp-feasibility.md` first. It is the record. The plan, `docs/superpowers/plans/2026-10-28-ch-mcp-feasibility-tests.md`, now has an outcome line and "As built" notes where the build changed from it.
 
-In one line each:
-- **Test 1, the bot launch:** passed. A command-line bot run writes `scorestats.json`, and its note and Star Power phrase counts match Hydra. The bot never uses Star Power.
-- **Test 2, the Frida attach:** passed. Frida reads `GameManager.songTime` and the other fields by name.
-- **Test 3, the hit method:** passed. Engine methods `0x20DEEC0` and `0x20DE770` and base method `0x100E6E0` each run once per note, for both the bot and key presses.
-- **Test 4, a second build:** v1.0 against v1.1 reshuffles most scrambled names. The MCP must find classes again by shape after an update.
+In one line each, with the rows on the docs/clone-hero/ pages that now hold what each test found:
+- **Test 1, the bot launch:** passed. The findings are IN-34, IN-35, IN-37 and IN-31 in 07-internals.md, and SP-44 in 05-star-power.md.
+- **Test 2, the Frida attach:** passed. The findings are IN-02 and IN-43 in 07-internals.md.
+- **Test 3, the hit method:** passed. The three per-note methods are IN-17 and IN-18 in 07-internals.md.
+- **Test 4, a second build:** the name comparison is IN-48 to IN-51 in 07-internals.md. The MCP must find classes again by shape after an update.
 
 The tools live in `tools/ch_mcp/`, and its README says how to run each one. The game dumps are in `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-dumps\4045\` (v1.0) and `...\6142\` (v1.1). The raw evidence from the runs is in `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-10-28\`. That covers the stats copies, clock samples, trace tables, game-code decompiles and the disassembly check script. The study still points at the old scratch paths, which no longer exist; this folder holds the same files under the same names (`l1` to `l4`, `ch-dynamics`, `ch-dynamics-2`).
 
 ## The user's rulings, in their words
 
 - **The EULA:** it forbids reverse-engineering. The user's ruling: "Proceed, my call." That came after the user learned the approval question had wrongly said "allows". A stray edit had flipped the word in the old handoff and in an uncommitted copy of the plan. That edit's diff is kept as `stray-eula-edit-ch-mcp-tests-plan.diff` in the evidence folder. Check any EULA claim against https://clonehero.net/eula, never against a summary.
-- **Plain Drums and dynamics:** the game clears every accent and ghost on plain Drums (`0x20EFEE0`, reached only when the instrument isn't ProDrums). The user said "there is no way this is intentional, it must be a bug in clone hero" and then "Keep Hydra as is". Hydra's normal-drums mode keeps scoring dynamics. The memory note `ch-plain-drums-drops-dynamics` has the details.
+- **Plain Drums and dynamics:** what the game does with accents and ghosts on plain Drums now lives in docs/clone-hero/06-scoring.md (SC-15) and 02-note-list.md (NL-61, NL-62). The user said "there is no way this is intentional, it must be a bug in clone hero" and then "Keep Hydra as is". Hydra's normal-drums mode keeps scoring dynamics. The memory note `ch-plain-drums-drops-dynamics` has the details.
 - **Task F:** "Cap them too". The old probe scripts now stop at the existing 120 s cap.
 - **Task G:** yes, add a reader for the Mono v1.0 build.
 
@@ -35,14 +35,14 @@ The trace cap's 120 s wall-clock backstop is a new number the user has not ruled
 
 None of these has started, and each needs the user's yes:
 - **Build the MCP server itself,** in the shape of `tools/hydra_ui_mcp.py`. The study's "Recommendation" section has the four tool groups.
-- **Read a note's result and offset** from the per-note hook's arguments. `0x20DE770` takes the note object, and `0x20DEEC0` takes the note and the base points.
+- **Read a note's result and offset** from the per-note hook's arguments (the hooks and their arguments are IN-17 in docs/clone-hero/07-internals.md).
 - **Find the switch for the empty `HitDetection-*.log` files.**
 - **Move input inside the process** instead of `SendInput`.
 
 ## Things that bite
 
 - **Running Frida:** use `py`, not `py -I`, because frida is installed in the user site-packages.
-- **Attaching after a launch:** after a command-line launch, the session log writes only its `Loading Song` line at first. Waiting on it for `OnCountdownStart` never works. Attach about 5 s after launch instead, because the first probe note is at 3 s.
+- **Attaching after a launch:** waiting on the session log for `OnCountdownStart` never works after a command-line launch (IN-43 in docs/clone-hero/07-internals.md says why). Attach about 5 s after launch instead, because the first probe note is at 3 s.
 - **Starting the tracer:** it needs a live `GameManager` when it attaches, and the menu has none. For a human-started song, start the song, pause it, attach, then unpause. Since main 6bdbc494 the trace's cap counts song time, so the pause no longer uses it up; a wall-clock backstop of the song cap plus 120 s still ends a song that never starts.
 - **`node_modules` in the main checkout:** since main 18825c8a the repo scans read git's file list, so a `npm install` in `tools/ch_mcp/agent` no longer fails them. Run `npm install` and `npm run build:clock` or `build:trace` there when needed.
 - **Backups:** every live run backs up the five user files and restores them. A human run changes `scoredata.bin`, so restoring discards that run's saved score.
