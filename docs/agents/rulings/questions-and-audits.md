@@ -2,6 +2,7 @@
 
 How a question goes to the user, what to do when Hydra answers one question two ways, and when an audit finding may close. The line format is in README.md beside this file. Newest first.
 
+- **2026-10-31** "i think this would cause more trouble than it would fix. agents are very very bad at remembering to update things and im sure there are tons of stale comments throughout the project that no longer accurately describe their code", declining a test that pins on-screen text (proposal 3 of the silent-changes finding). (session a7d95f1c-a1ce-46e9-bf4d-2e7cfbd98d1e; note: none; backs: docs/audit/2026-10-31-silent-changes.md)
 - **2026-10-31** "Yes, ban them (Recommended)", to: "Proposal 2. Should opt-out lines be banned? ..." (session a7d95f1c-a1ce-46e9-bf4d-2e7cfbd98d1e; note: no-silent-functionality-changes; backs: docs/agents/agent-rules.md rule 12)
 - **2026-10-31** "Yes, require it", to: "Should every rule question list each screen's before and after text?" (session a7d95f1c-a1ce-46e9-bf4d-2e7cfbd98d1e; note: questions-describe-the-real-rule; backs: docs/agents/agent-rules.md rule 11)
 - **2026-10-29** "when did they diverge and why? did i ever ask for it?" (session 2026-10-29-caca5d75, by date; note: never-keep-a-split-quietly; backs: docs/agents/audit-method.md)
