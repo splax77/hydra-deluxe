@@ -2,7 +2,7 @@
 
 This page covers the game's classes and fields that the tools read, the per-note hooks, the bot, and how the two builds name things.
 It describes build 1.1 (v1.1.0.6142), and says where 1.0 (v1.0.0.4045) differs.
-Last write-back: 2026-10-31.
+Last write-back: 2026-11-05.
 
 Most rows here are about the game's own layout, which no Hydra rule reads. Their Ruling line says so. The rules these fields feed (timing, Star Power, scoring) live on pages 03, 05 and 06. Paths that start `RUNS` mean `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-10-28\`; `GD` means Ghidra's full decompile `ghidra_decompile_all.txt`, which `code/README.md` describes (it is not in the repo); `dump.cs` is `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-dumps\6142\dump.cs`; `overlay-spike` means `tools/ch_probe/experiments/results/overlay-spike/`, whose result files are untracked today.
 
@@ -778,7 +778,47 @@ Evidence: LS-D1 run 1 of `docs/superpowers/plans/2026-10-31-ch-mcp-direct-start.
 Game code (6142): AddController RVA `0x1F2D2B0` (`dump.cs` line 306697) as listed in tools/ch_mcp/kit_methods.json, and LoadDefaultMaps RVA `0x1F50710` (`dump.cs` line 304761), which the kit no longer calls; it loads the map with LoadMap (RVA `0x1F508C0`, `dump.cs` line 303889).
 Hydra: no owner: Hydra never reads the running game. The tools hand the kit to a player in `ch_kit_setup` in tools/ch_mcp/kit_tools.py.
 Ruling: none needed: no Hydra rule reads it.
-Found: 2026-10-31, session 90d40bc9 (LS-D1 run 1), from a live run; the fault's place and the map on System, 2026-10-31, session d1867340 (LS-D1a runs 2 and 3).
+Found: 2026-10-31, session 90d40bc9 (LS-D1 run 1), from a live run; the access violation, 2026-10-31, session 6e9d8be4 (LS-D1a run 1); the fault's place and the map on System, 2026-10-31, session d1867340 (LS-D1a runs 2 and 3).
+
+### IN-77 A press on the virtual kit reads one frame later, with the game minimized and unfocused
+
+Rule: With Rewired's switch that drops input in an unfocused window set off, a virtual drum kit takes presses while the game is minimized and not in front. The kit is made from the game's custom controller definition 6 ("SLInputDrums") and given to Player1. Its Start press reads as Start one frame later. A pad press reads as its lane one frame later, then off on release. One write is enough for a whole press, and it need not come from the game's main thread.
+Label: Proven in a live run
+Evidence: the probe of 2026-10-31, recorded in docs/sessions/2026-10-31-a5f17ca5.md and in "The probe facts" in `docs/superpowers/plans/2026-10-30-ch-mcp-in-game-input.md`. Start was written every 2 ms for 150 ms and read true one frame later. The Tom3 pad, bound to Green, was written at 1.0 for 100 ms, and Green read true one frame later and false on release. LS-K1 of the same plan, 2026-10-31, recorded in docs/sessions/2026-10-31-a379bc75.md, wrote each press once. Three presses of Green, held 1, 2 and 3 frames, each read on from the frame after the down write. The comment on `KIT_REWRITE` in tools/ch_mcp/kit_tools.py quotes the frames of the 2-frame hold and says all three ran off the main thread. The probe's scripts and the runs' raw replies were not kept.
+Game code (6142): not found: no game method was read for this. The Rewired calls are listed in tools/ch_mcp/kit_methods.json.
+Hydra: no owner: Hydra never reads the running game. The tools press the kit with `ch_kit_press` in tools/ch_mcp/kit_tools.py.
+Ruling: none needed: no Hydra rule reads it.
+Found: 2026-10-31, session a5f17ca5 (the probe); 2026-10-31, session a379bc75 (LS-K1).
+
+### IN-78 The game takes the front just after launch, and keeps running behind other windows
+
+Rule: Asked to start minimized and not in front, the game still comes to the front 0.4 to 0.5 seconds after launch. In LS-K2 it kept the front until the user clicked another window. With `pause_on_focus_lost` at 0, as the tools set it for a run, the game keeps running when it is not in front.
+Label: Proven in a live run
+Evidence: LS-K0 and LS-K2 of `docs/superpowers/plans/2026-10-30-ch-mcp-in-game-input.md`, 2026-10-31, recorded in docs/sessions/2026-10-31-a379bc75.md. LS-K0's foreground watch saw the game come forward about 0.5 seconds after launch. It did not time how long the game stayed there. In LS-K2 the game came forward about 0.4 seconds after launch and stayed until the user clicked away. During LS-K2's 20-second watch, with another window in front, the frame count rose from 2829 to 6127. No result file of these runs was kept. IN-74 saw the same single trip to the front on a paused start.
+Game code (6142): not found: no game method was read for this.
+Hydra: no owner: Hydra never reads the running game. The tools ask for the minimized start in tools/ch_mcp/bot_run.py, count trips to the front in tools/ch_mcp/foreground.py, and set the run's pause line in tools/ch_mcp/game_tools.py.
+Ruling: none needed: no Hydra rule reads it.
+Found: 2026-10-31, session a379bc75 (LS-K0 and LS-K2), from live runs.
+
+### IN-79 Four kit presses go from the title screen to the player screen, and the active read cannot tell the profile screen from the main menu
+
+Rule: From the title screen, the kit's Start joins a player, and the game's player count goes from 0 to 1. The first Green picks the profile. The second Green opens the song list: the main menu goes inactive and the song list goes active. The third Green picks the highlighted song, sets the game's current-song folder and switches the player screen on. The profile screen and the main menu both read active from the moment the game opens, so that read cannot tell those two apart.
+Label: Proven in a live run
+Evidence: LS-K3 run 1 of `docs/superpowers/plans/2026-10-30-ch-mcp-in-game-input.md`, 2026-10-31, recorded in docs/sessions/2026-10-31-597e0795.md. The active read is Unity's activeInHierarchy on the menu's game object, in tools/ch_mcp/agent/menu.ts. The first Green changed nothing the reads could see, so that it picked the profile is taken from the next press opening the song list. The run stopped on the player screen by the user's choice, before any Ready press, so this block says nothing about the song loading. No result file of this run was kept.
+Game code (6142): not found: no game method was read for this.
+Hydra: no owner: Hydra never reads the running game. The kit's menu steps are in tools/ch_mcp/menu_steps.json.
+Ruling: none needed: no Hydra rule reads it.
+Found: 2026-10-31, session 597e0795 (LS-K3 run 1), from a live run.
+
+### IN-80 What the keyboard does in the menus has not been tried on the game
+
+Rule: Not settled by any run. The manual says Space opens the control mapper from the main menu. On this install Green and Blue are the keys A and K. A key sequence through the menus was written from the manual, and no run has confirmed it.
+Label: Unknown
+Evidence: the Space line is the manual's Keyboard and Gamepads page, read 2026-10-30, as `MENU_KEYS` in tools/ch_probe/input_driver.py and docs/agents/clone-hero-mcp.md record it; no tool sends Space. A and K are in `DEFAULT_BINDINGS` in the same file, whose comment says they were read off the game's Controller Remap screen on 2026-09-25, while docs/sessions/2026-10-31-4c48c8e5.md's write-back line gives them with the manual's facts. That card marks the key sequence unverified until live step LS1 of `docs/superpowers/plans/2026-10-30-ch-mcp-star-power-and-song-start.md`. No later block settles it. The first key-press step was paused before any press (docs/sessions/2026-10-31-a5f17ca5.md), and the walk was rebuilt on kit presses. So tools/ch_mcp/menu_steps.json now holds kit items only and is still marked not verified, and IN-79 shows kit presses, not keys.
+Game code (6142): not found: no game method was read for this.
+Hydra: no owner: Hydra never reads the running game. The tools' key table is `MENU_KEYS` in tools/ch_probe/input_driver.py.
+Ruling: none needed: no Hydra rule reads it.
+Found: 2026-10-31, session 4c48c8e5, from the manual; no run.
 
 ## Saved score files
 
@@ -794,7 +834,7 @@ Found: 2026-10-10, session c8856afd; 2026-10-09, session e8435f64
 
 ## Rows waiting on a live run
 
-IN-19, IN-20, IN-21, IN-27, IN-29, IN-36, IN-40, IN-44, IN-59, IN-60. See `live-checks.md`.
+IN-19, IN-20, IN-21, IN-27, IN-29, IN-36, IN-40, IN-44, IN-59, IN-60, IN-80. See `live-checks.md`.
 
 ## Open splits
 
