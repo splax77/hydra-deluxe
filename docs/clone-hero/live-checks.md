@@ -2,7 +2,7 @@
 
 This page lists the rows only a run of the real game can settle.
 It describes build 1.1 (v1.1.0.6142) unless a check names build 1.0.
-Last write-back: 2026-10-31.
+Last write-back: 2026-11-05.
 
 Each check gives its row id, the question in one line, what a pass and a fail look like, and whether a bot run is enough or the run needs Star Power activation and a menu start. The Star Power plan, `docs/superpowers/plans/2026-10-30-ch-mcp-star-power-and-song-start.md`, takes its live steps from this list. Where one entry covers two or three rows, they share one run.
 
@@ -177,3 +177,5 @@ FL-27, the Ladies Talk check, is the first entry on this page.
 **IN-59.** Question: are the player screen's instrument and difficulty fields the profile's saved copy, unchanged while the cursor moves? Pass: on the Instrument page, `ch_menu` shows the cursor move while the instrument field stays put, and the field changes only after Green confirms a row. Fail: the field follows the cursor. Needs a menu-started run with the kit (LS-K3); no Star Power.
 
 **IN-60.** Question: do Green, Yellow and Blue move the player screen the way the decompile says? Pass: with a Drums or FiveLaneDrums controller type, Blue and Yellow change the cursor by one, and Green on the Instrument page sets the highlighted row's instrument and moves to the next page. Fail: any press does something else. Needs a menu-started run with the kit (LS-K3); no Star Power.
+
+**IN-80.** Question: does a key sequence through the menus reach a song, with Green and Blue on A and K? Pass: a key-press run from the title screen reaches a loaded song, and its steps are written down. Fail: a step does something else. Needs a menu start with the game in front and the user's typed allow key run; no Star Power. No run presses Space, because the server never opens the control mapper (D272), so the manual's Space line stays unchecked.
