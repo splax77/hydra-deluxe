@@ -548,6 +548,115 @@ TEST_CASE("library model: Best path sorts by score, with unscored rows last both
     CHECK(titles(m).front() == "Halo");  // "beyonce" folds first
 }
 
+// The rows of sample() under Best path, highest first, once YYZ has a new score
+// that its row is still holding back from the sort.
+namespace {
+
+const std::vector<std::string> kHeldOrder{"Burnout", "Chair", "Acid Romance", "Halo", "Other",
+                                          "YYZ"};
+const std::vector<std::string> kScoreOrder{"YYZ", "Burnout", "Chair", "Acid Romance", "Halo",
+                                           "Other"};
+
+LibraryModel sample_with_held_yyz() {
+    LibraryModel m = sample();
+    m.set_sort(LibrarySort::BestPath, false);
+    REQUIRE(m.set_summary_for("yyz", ready(500000, "2 2", 7, 12.0)) == 1);
+    return m;
+}
+
+}  // namespace
+
+// The user's words: "Yes, hold them still". New scores fill in where each row
+// already sits, and the list re-sorts when it is asked to.
+TEST_CASE("library model: a new score fills in where the row sits, and one call sorts it") {
+    LibraryModel m = sample_with_held_yyz();
+    CHECK(titles(m) == kHeldOrder);
+    CHECK(m.rows()[m.order().back()].best_label() == "500,000  2 2");
+    CHECK(m.counts().analyzed == 2);
+
+    CHECK(m.sort_if_out_of_date());
+    CHECK(titles(m) == kScoreOrder);
+    CHECK_FALSE(m.sort_if_out_of_date());  // nothing is out of date now
+}
+
+TEST_CASE("library model: a whole re-read of the summaries keeps the rows in place too") {
+    LibraryModel m = sample();
+    m.set_sort(LibrarySort::BestPath, false);
+    const RecordLookup none;
+    REQUIRE(m.set_summaries({ready(378315, "3- 1 2", 7, 163.0), ready(500000, "2 2", 7, 12.0),
+                             stale(), none, none, none}) == 1);
+    CHECK(titles(m) == kHeldOrder);
+    CHECK(m.sort_if_out_of_date());
+    CHECK(titles(m) == kScoreOrder);
+}
+
+TEST_CASE("library model: answers that change nothing leave the order up to date") {
+    LibraryModel m = sample();
+    m.set_sort(LibrarySort::BestPath, false);
+    REQUIRE(m.set_summary_for("burnout", ready(378315, "3- 1 2", 7, 163.0)) == 0);
+    CHECK_FALSE(m.sort_if_out_of_date());
+}
+
+// Only the Best path sort reads a row's summary, so no other sort has an order
+// a new summary can put out of date.
+TEST_CASE("library model: a new score under another sort leaves nothing to re-sort") {
+    LibraryModel m = sample();
+    const std::vector<std::string> by_title = titles(m);
+    REQUIRE(m.set_summary_for("yyz", ready(500000, "2 2", 7, 12.0)) == 1);
+    CHECK(titles(m) == by_title);
+    CHECK_FALSE(m.sort_if_out_of_date());
+}
+
+TEST_CASE("library model: a held row still leaves a chip it no longer belongs to") {
+    LibraryModel m = sample();
+    m.set_sort(LibrarySort::BestPath, false);
+    m.set_chip(StatusChip::NotAnalyzed);
+    REQUIRE(titles(m) == std::vector<std::string>{"Acid Romance", "Halo", "Other", "YYZ"});
+    REQUIRE(m.set_summary_for("halo", ready(500000, "2 2", 7, 12.0)) == 1);
+    CHECK(titles(m) == std::vector<std::string>{"Acid Romance", "Other", "YYZ"});
+    CHECK(m.counts().not_analyzed == 3);
+    CHECK(m.counts().analyzed == 2);
+}
+
+TEST_CASE("library model: a search, a chip or a header click sorts a held order at once") {
+    LibraryModel m = sample_with_held_yyz();
+    SUBCASE("a search") {
+        m.set_query("e");
+        CHECK(titles(m).front() == "YYZ");
+    }
+    SUBCASE("a chip") {
+        m.set_chip(StatusChip::Analyzed);
+        CHECK(titles(m) == std::vector<std::string>{"YYZ", "Burnout"});
+    }
+    SUBCASE("a header click") {
+        m.set_sort(LibrarySort::BestPath, true);
+        CHECK(titles(m) == std::vector<std::string>{"Burnout", "YYZ", "Chair", "Acid Romance",
+                                                    "Halo", "Other"});
+    }
+    SUBCASE("a click on another column's header") {
+        m.set_sort(LibrarySort::Title, true);
+        CHECK(titles(m).back() == "YYZ");
+    }
+    CHECK_FALSE(m.sort_if_out_of_date());
+}
+
+// The table hands over its sort on its first frame whether or not it changed,
+// and the search box and chips can repeat themselves: only a change counts.
+TEST_CASE("library model: asking for the search, chip and sort already in place holds the order") {
+    LibraryModel m = sample_with_held_yyz();
+    m.set_query("");
+    m.set_chip(StatusChip::All);
+    m.set_sort(LibrarySort::BestPath, false);
+    CHECK(titles(m) == kHeldOrder);
+    CHECK(m.sort_if_out_of_date());
+}
+
+TEST_CASE("library model: new rows leave no held order behind") {
+    LibraryModel m = sample_with_held_yyz();
+    m.set_charts({chart("a", "A", "X", "Y", "common")});
+    CHECK_FALSE(m.sort_if_out_of_date());
+}
+
 // A chart that can't be analyzed sorts after Not analyzed in both directions:
 // it is the one row that never gains a score (unscored_rank).
 TEST_CASE("library model: Best path sorts a Can't analyze row after Not analyzed both ways") {

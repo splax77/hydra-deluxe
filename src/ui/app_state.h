@@ -330,15 +330,18 @@ public:
     // Re-reads every chart and summary: at startup and after a scan. The open
     // song panel's entry follows its row (follow_selected_row).
     void reload_library();
-    // Re-reads every row's summary: after a settings change or a batch step.
+    // Re-reads every row's summary and sorts on them at once: after a
+    // settings change.
     void refresh_library_summaries();
-    // Re-reads one chart's summary: after one song's analysis is stored, and
-    // for the open chart on each batch refresh. True when its row changed.
+    // Re-reads one chart's summary: after one song's analysis is stored. Its
+    // row keeps its place until the next re-sort
+    // (LibraryModel::sort_if_out_of_date). True when its row changed.
     bool refresh_library_row(const std::string& md5);
     // Once per frame, from the library pane: reloads after a scan finishes,
     // and re-reads summaries while a batch runs -- at most once per
     // kBatchRefreshSeconds, and only when the batch stored something since
-    // the last look.
+    // the last look. Those reads leave the rows in place; the list sorts once
+    // when the batch ends.
     void tick_library(double now);
 
     // The rows on screen, in order, as indices into library.rows().
@@ -938,12 +941,17 @@ private:
     // every frame; a click, previous / next and the batch confirm run it
     // first, so none of them reads rows older than the store.
     bool reload_after_scan();
+    // Re-reads every row's summary and leaves the rows in place. A failed
+    // read is the status line's problem.
+    void read_summaries_in_place();
     // reload_after_scan's memory: whether the current scan's result was read
     // yet. Then tick_library's: the batch's stored count and time at the last
-    // summary read.
+    // summary read, and whether the latest batch still owes the list its one
+    // sort at the end.
     bool scan_reloaded_ = true;
     int batch_seen_completed_ = 0;
     double batch_refreshed_at_ = -1.0;
+    bool batch_end_sort_due_ = false;
 
     // The updater's start-up work, which both constructors run.
     void start_updates();

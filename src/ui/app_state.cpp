@@ -225,8 +225,13 @@ std::optional<store::ChartLibraryEntry> AppState::read_entry(const std::string& 
     return std::nullopt;
 }
 
-void AppState::refresh_library_summaries() {
+void AppState::read_summaries_in_place() {
     read_store([&] { read_library_summaries(*store, settings, library); });
+}
+
+void AppState::refresh_library_summaries() {
+    read_summaries_in_place();
+    library.sort_if_out_of_date();
 }
 
 bool AppState::refresh_library_row(const std::string& md5) {
@@ -275,10 +280,12 @@ void AppState::tick_library(double now) {
     reload_after_scan();
     // A batch stores results on its own threads. Re-read the summaries at
     // most once per kBatchRefreshSeconds, only when it stored something since
-    // the last read,
-    // and once more when it ends so the last results show.
+    // the last read, and once more when it ends so the last results show.
+    // The rows hold their order through these reads.
+    bool batch_over = true;  // the finished strip's X can let the job go first
     if (batch_job) {
         const BatchJob::Snapshot snap = batch_job->snapshot();
+        batch_over = snap.finished;
         if (snap.completed != batch_seen_completed_ &&
             (snap.finished || now - batch_refreshed_at_ >= kBatchRefreshSeconds)) {
             batch_seen_completed_ = snap.completed;
@@ -286,8 +293,16 @@ void AppState::tick_library(double now) {
             // The open song's panel shows the engine's own result, which a
             // batch under the same settings finds again, so only the rows are
             // read (D87 item 1).
-            refresh_library_summaries();
+            read_summaries_in_place();
         }
+    }
+    // The list sorts once when a batch ends, however it ended. This stands
+    // apart from the read above, which a batch whose last result was already
+    // read never reaches. It goes by the same snapshot as that read, so it
+    // can't run ahead of the last results.
+    if (batch_over && batch_end_sort_due_) {
+        batch_end_sort_due_ = false;
+        library.sort_if_out_of_date();
     }
 }
 
@@ -734,6 +749,7 @@ void AppState::start_batch(bool redo) {
     report_started = false;
     batch_seen_completed_ = 0;
     batch_refreshed_at_ = -1.0;
+    batch_end_sort_due_ = true;
     batch_finish_seen_ = false;
     apply_app_batch_analyzer_for_test(*batch_job);
     batch_job->start();

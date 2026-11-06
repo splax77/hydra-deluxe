@@ -46,6 +46,7 @@ std::string read_library(store::RecordStore& store, const app::Settings& setting
     }
     try {
         read_library_summaries(store, settings, library);
+        library.sort_if_out_of_date();
     } catch (const std::exception& e) {
         return app::plain_error(e);
     }
