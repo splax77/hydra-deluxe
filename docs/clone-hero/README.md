@@ -2,7 +2,7 @@
 
 This folder is the one home of what the project knows about how Clone Hero works.
 It describes build 1.1 (v1.1.0.6142) unless a page says otherwise; the fills page also covers 1.0 (v1.0.0.4045).
-Last write-back: 2026-10-31.
+Last write-back: 2026-11-05.
 
 This page is the index. It says what each page holds and how the pages are kept honest. It states no rule of the game; the rules live on the area pages.
 
@@ -50,7 +50,7 @@ A `Found:` line gives the date and the session that found the rule, such as `202
 
 ## How many blocks each page holds
 
-These counts were taken from the pages on 2026-10-31, by counting their `###` headings and `Label:` lines.
+These counts were taken from the pages on 2026-11-05, by counting their `###` headings and `Label:` lines.
 
 | Page | Blocks | Proven in the game's code | Proven in a live run | Hydra assumes it, never checked | Unknown |
 |---|---|---|---|---|---|
@@ -60,10 +60,10 @@ These counts were taken from the pages on 2026-10-31, by counting their `###` he
 | 04 fills | 45 | 32 | 2 | 4 | 7 |
 | 05 Star Power | 46 | 22 | 3 | 9 | 12 |
 | 06 scoring | 37 | 17 | 7 | 3 | 10 |
-| 07 internals | 76 | 42 | 13 | 0 | 21 |
-| All pages | 375 | 200 | 36 | 34 | 105 |
+| 07 internals | 80 | 42 | 16 | 0 | 22 |
+| All pages | 379 | 200 | 39 | 34 | 106 |
 
-Eleven of page 4's blocks describe build 1.0. The questions page holds 24 open questions, and the live-checks page holds 72 checks covering 82 rows.
+Eleven of page 4's blocks describe build 1.0. The questions page holds 24 open questions, and the live-checks page holds 73 checks covering 83 rows.
 
 ## Names in obfuscated code
 
