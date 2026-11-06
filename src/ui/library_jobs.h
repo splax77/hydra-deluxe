@@ -67,15 +67,16 @@ struct StoreOpenProgress {
 };
 
 // Reads every chart in the library, then every row's summary under
-// `settings` (its chart mode, SP cap and lens), into `library`: the read at
-// startup and after a scan. Returns the plain sentence of the read that
-// failed, or "" when both worked; a failed read leaves the model's rows as
-// they were (D73 item 3).
+// `settings` (its chart mode, SP cap and lens), into `library`, and leaves it
+// sorted on them: the read at startup and after a scan. Returns the plain
+// sentence of the read that failed, or "" when both worked; a failed read
+// leaves the model's rows as they were (D73 item 3).
 std::string read_library(store::RecordStore& store, const app::Settings& settings,
                          LibraryModel& library);
 // Re-reads every row's summary under `settings`: one store call for the
 // whole library, never per row per frame (the batch workers share the
-// store's lock). Throws when the read fails.
+// store's lock). The rows keep their order (LibraryModel::sort_if_out_of_date).
+// Throws when the read fails.
 void read_library_summaries(store::RecordStore& store, const app::Settings& settings,
                             LibraryModel& library);
 

@@ -142,6 +142,213 @@ TEST_CASE("refresh_library_row picks up one chart's new result") {
     CHECK(app->library.counts().analyzed == 2);
 }
 
+// ---- the row order while results arrive -------------------------------------
+
+namespace {
+
+// How many charts the order tests' library holds.
+constexpr int kHeldCharts = 4;
+
+// An analysis whose best path scores `score` under the default settings.
+hydra::HydraRecord scored_record(int64_t score) {
+    hydra::HydraRecord record = hydra::test::empty_analysis_under(Settings{}.profile());
+    hydra::Path best;
+    best.notes_points = score;
+    record.paths.push_back(best);
+    return record;
+}
+
+// A result stored behind the view's back, as one song's analysis stores it.
+void save_scored(AppState& app, int chart, int64_t score) {
+    app.store->save(hydra::store::prepare_record(library_entry(chart).md5, app.settings.profile(),
+                                                 scored_record(score)));
+}
+
+// A library of kHeldCharts charts with no results, under Best path, highest
+// first. With every row unscored they read in title order, library_entry's.
+std::unique_ptr<AppState> app_under_best_path(const ScratchPaths& paths) {
+    std::vector<ChartLibraryEntry> charts;
+    for (int i = 0; i < kHeldCharts; ++i) charts.push_back(library_entry(i));
+    std::unique_ptr<AppState> app = app_with(paths, charts);
+    app->library.set_sort(hydra::ui::LibrarySort::BestPath, false);
+    return app;
+}
+
+// The rows on screen, top to bottom, as library_entry numbers.
+std::vector<int> shown(const AppState& app) {
+    std::vector<int> out;
+    for (size_t i = 0; i < app.library_shown_count(); ++i)
+        for (int chart = 0; chart < kHeldCharts; ++chart)
+            if (app.library_row_at(i).entry.md5 == library_entry(chart).md5) out.push_back(chart);
+    return out;
+}
+
+const std::vector<int> kTitleOrder{0, 1, 2, 3};
+
+// Lets a batch's charts through one at a time, so a test knows exactly what the
+// batch has stored at each tick with no sleep and no race. A chart waits here
+// for its turn; its progress callback throws once Stop is pressed, so a chart
+// still waiting is neither stored nor counted. The n-th chart through scores
+// n * 1000, so each chart outscores the ones before it.
+struct ChartGate {
+    std::atomic<int> started{0};
+    std::atomic<int> allowed{0};
+};
+
+hydra::app::ChartAnalyzer gated_scores(std::shared_ptr<ChartGate> gate) {
+    return [gate](const std::string&, const hydra::app::AnalysisSettings&,
+                  const std::function<void(float)>& on_progress) {
+        const int turn = ++gate->started;
+        wait_until(
+            [&] {
+                on_progress(0.0f);
+                return gate->allowed.load() >= turn;
+            },
+            "the test to let a chart through");
+        return hydra::app::AnalysisResult{scored_record(int64_t{1000} * turn), hydra::Song(192)};
+    };
+}
+
+// Lets `charts` charts in all through the gate and waits until the batch counts
+// them.
+void let_through(AppState& app, ChartGate& gate, int charts) {
+    gate.allowed.store(charts);
+    wait_until([&] { return app.batch_job->snapshot().completed == charts; },
+               "the batch to store its charts");
+}
+
+// A library under Best path whose batch has stored two charts and whose rows
+// have read both: the first chart through still sits above the second, which
+// outscores it.
+struct BatchAfterTwoCharts {
+    std::unique_ptr<AppState> app;
+    std::shared_ptr<ChartGate> gate = std::make_shared<ChartGate>();
+
+    explicit BatchAfterTwoCharts(const ScratchPaths& paths) : app(app_under_best_path(paths)) {
+        start_redo_batch(*app, gated_scores(gate));
+        let_through(*app, *gate, 2);
+        app->tick_library(0.0);
+        REQUIRE(shown(*app) == kTitleOrder);
+    }
+};
+
+}  // namespace
+
+TEST_CASE("a batch refresh fills scores in where the rows sit; the batch's end sorts them") {
+    ScratchPaths paths("appstate_batchhold");
+    BatchAfterTwoCharts batch(paths);
+    AppState& app = *batch.app;
+    CHECK(row_of(app, library_entry(1).md5).best_label().find("2,000") == 0);
+    CHECK(app.library.counts().analyzed == 2);
+
+    let_through(app, *batch.gate, 3);
+    app.tick_library(10.0);
+    CHECK(shown(app) == kTitleOrder);
+    CHECK(app.library.counts().analyzed == 3);
+
+    batch.gate->allowed.store(kHeldCharts);
+    wait_batch_finished(app);
+    app.tick_library(20.0);
+    CHECK(shown(app) == std::vector<int>{3, 2, 1, 0});
+}
+
+// Stop leaves the count where the last refresh read it, so the refresh's own
+// check finds nothing new: the same ending as a batch whose last result was
+// read just before it finished, held still for the test.
+TEST_CASE("a batch whose last result was already read still sorts when it ends") {
+    ScratchPaths paths("appstate_batchreadend");
+    BatchAfterTwoCharts batch(paths);
+    AppState& app = *batch.app;
+    stop_batch(app);
+    REQUIRE(app.batch_job->snapshot().completed == 2);
+    app.tick_library(10.0);
+    CHECK(shown(app) == std::vector<int>{1, 0, 2, 3});
+}
+
+TEST_CASE("a batch's end sorts once, and the next batch sorts when it ends") {
+    ScratchPaths paths("appstate_batchonce");
+    BatchAfterTwoCharts batch(paths);
+    AppState& app = *batch.app;
+    stop_batch(app);
+    app.tick_library(10.0);
+    REQUIRE(shown(app) == std::vector<int>{1, 0, 2, 3});
+
+    // A song's own result after the end holds its place, however many frames
+    // the finished batch stays on its strip.
+    save_scored(app, 3, 5000);
+    REQUIRE(app.refresh_library_row(library_entry(3).md5));
+    app.tick_library(20.0);
+    app.tick_library(30.0);
+    CHECK(shown(app) == std::vector<int>{1, 0, 2, 3});
+
+    start_redo_batch(app, gated_scores(std::make_shared<ChartGate>()));
+    stop_batch(app);
+    app.tick_library(40.0);
+    CHECK(shown(app) == std::vector<int>{3, 1, 0, 2});
+}
+
+// The finished strip's X can let the job go before the frame's tick reads it.
+TEST_CASE("a batch dismissed before a tick saw it finish still sorts") {
+    ScratchPaths paths("appstate_batchdismiss");
+    BatchAfterTwoCharts batch(paths);
+    AppState& app = *batch.app;
+    stop_batch(app);
+    app.batch_job.reset();
+    app.tick_library(10.0);
+    CHECK(shown(app) == std::vector<int>{1, 0, 2, 3});
+}
+
+// A pool of no workers is a run that fails as a whole (BatchJob::finish_failed).
+TEST_CASE("a batch that fails as a whole sorts a held order when it ends") {
+    ScratchPaths paths("appstate_batcherror");
+    std::unique_ptr<AppState> app = app_under_best_path(paths);
+    save_scored(*app, 3, 5000);
+    REQUIRE(app->refresh_library_row(library_entry(3).md5));
+    REQUIRE(shown(*app) == kTitleOrder);
+    {
+        const ScopedHook seam(hydra::ui::set_app_batch_analyzer_for_test,
+                              gated_scores(std::make_shared<ChartGate>()), /*workers=*/0);
+        app->start_batch(true);
+    }
+    REQUIRE(app->batch_job != nullptr);
+    wait_batch_finished(*app);
+    REQUIRE_FALSE(app->batch_job->snapshot().run_error.empty());
+    app->tick_library(0.0);
+    CHECK(shown(*app) == std::vector<int>{3, 0, 1, 2});
+}
+
+// The user's wording: for a single opened song the row stays put until the
+// next re-sort.
+TEST_CASE("one song's stored result keeps its row in place, with no batch running") {
+    ScratchPaths paths("appstate_rowhold");
+    std::unique_ptr<AppState> app = app_under_best_path(paths);
+    save_scored(*app, 3, 5000);
+    REQUIRE(app->refresh_library_row(library_entry(3).md5));
+    CHECK(shown(*app) == kTitleOrder);
+    CHECK(row_of(*app, library_entry(3).md5).best_label().find("5,000") == 0);
+    app->tick_library(0.0);  // no batch, so no end to sort at
+    CHECK(shown(*app) == kTitleOrder);
+}
+
+TEST_CASE("a settings change's re-read of the summaries sorts a held order at once") {
+    ScratchPaths paths("appstate_settingssort");
+    std::unique_ptr<AppState> app = app_under_best_path(paths);
+    save_scored(*app, 3, 5000);
+    REQUIRE(app->refresh_library_row(library_entry(3).md5));
+    app->refresh_library_summaries();
+    CHECK(shown(*app) == std::vector<int>{3, 0, 1, 2});
+}
+
+// A reload replaces every row and then reads their summaries, and the list
+// comes up sorted on them.
+TEST_CASE("a reload comes up sorted under Best path") {
+    ScratchPaths paths("appstate_reloadsort");
+    std::unique_ptr<AppState> app = app_under_best_path(paths);
+    save_scored(*app, 3, 5000);
+    app->reload_library();
+    CHECK(shown(*app) == std::vector<int>{3, 0, 1, 2});
+}
+
 // ---- scans and the batch ----------------------------------------------------
 
 namespace {
