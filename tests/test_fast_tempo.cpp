@@ -5,9 +5,9 @@
 // still stores what a lone search stores, and no bar is banked on a phrase a
 // squeeze-in spent.
 //
-// The fixtures in testdata/input/test_fast_tempo are fuzzed charts at 2,000
-// or 4,000 BPM, untrimmed. They have no song.ini, so the corpus scan skips
-// them.
+// The fixtures in testdata/input/test_fast_tempo run at 2,000 or 4,000 BPM.
+// Most are fuzzed charts, untrimmed; the two named in the "next phrase" test
+// are hand-made. They have no song.ini, so the corpus scan skips them.
 
 #include "doctest.h"
 
@@ -73,9 +73,8 @@ using bank_check::check_one_step_per_sqin;
 // stored path, tied variants included: no bank list holds a phrase a
 // squeeze-in spent, and every list banks in order between its windows. The
 // corpus never reaches the D32 states, so these charts are where they are
-// checked. The order check came back with D36: until then a squeezed-out bar
-// could land on the real deact node past the record's deact_tick() (on
-// node_before_phrase at cap 3, path "0-" stored 13440 and ended at 15648).
+// checked. The order check also catches a squeezed-out bar landing on the
+// real deact node past the record's deact_tick().
 // That a closed window's record ends on the node SP ended at is rebuild's
 // own check (engine.cpp), so analyze_chart throws when it breaks.
 using bank_check::check_record_banks;
@@ -100,11 +99,11 @@ using test::fuzz_chart;
 
 // The graph adds a node where an SP end falls. An end the graph only learns
 // of at a later phrase (a squeeze-in's end one bar past an SP end, when the
-// bar is shorter than the squeeze window) used to land behind that phrase:
-// the node at the earlier tick was built after it and took the phrase on its
-// incoming edge. A path folded there then held a step past its fold (the
-// close_folded_act throw). Both tracks must run forward in time, and each
-// phrase must sit on the edge that reaches it.
+// bar is shorter than the squeeze window) must still land ahead of that
+// phrase. A node behind it would take the phrase on its incoming edge, and a
+// path folded there would hold a step past its fold (the close_folded_act
+// throw). Both tracks must run forward in time, and each phrase must sit on
+// the edge that reaches it.
 TEST_CASE("fast tempo: graph tracks run forward and every phrase sits on its own edge") {
     for (const std::string name : {"node_before_phrase.chart", "end_on_window_node.chart",
                                    "sqin_end_before_phrase.chart", "late_sqin_twice.chart",
@@ -130,23 +129,21 @@ TEST_CASE("fast tempo: graph tracks run forward and every phrase sits on its own
     }
 }
 
-// Each fixture threw before D32's fixes:
+// The throw each fixture guards against (D32):
 //   node_before_phrase      "a folded variant holds a step past its fold"
 //   end_on_window_node      "search reached a broken state": a path whose SP
-//                           ended on a node with a squeezable phrase in its
-//                           window was never deactivated there
+//                           ends on a node with a squeezable phrase in its
+//                           window must deactivate there
 //   sqin_end_before_phrase  the same throw: a late squeeze-in's end, one bar
-//                           past the old end, fell before its own phrase and
-//                           had no node
-//   late_sqin_twice         the same throw: a late squeeze-in's phrase was
-//                           squeezed in a second time at the next SP end
-// early_sqin_twice never threw. A path on it squeezed one early phrase in at
-// two SP ends; D34 ended that (a phrase is squeezed in only once). A variant
-// folded there could still differ from its lone pricing (D36 gap b): the
-// search grouped running paths without the phrases their window already
-// squeezed in, so a variant took its leader's squeeze of the next phrase
-// where alone it would squeeze the first. D36 offers only the newest phrase,
-// which every path at one node shares, so the chart is back in the list.
+//                           past the end it moves, falls before its own phrase
+//                           and needs a node
+//   late_sqin_twice         the same throw: a late squeeze-in's phrase must
+//                           not be squeezed in again at the next SP end
+// early_sqin_twice guards two rules, not a throw. A phrase is squeezed in only
+// once (D34). A variant folded there must match its lone pricing (D36 gap b):
+// the search groups running paths without the phrases their window already
+// squeezed in, so an SP end offers only the newest phrase, which every path at
+// one node shares.
 TEST_CASE("fast tempo: the crash charts analyze, one SqIn step per SqIn") {
     const std::vector<std::pair<std::string, int>> charts = {
         {"node_before_phrase.chart", 3},     {"end_on_window_node.chart", 2},
@@ -169,12 +166,12 @@ TEST_CASE("fast tempo: the crash charts analyze, one SqIn step per SqIn") {
     }
 }
 
-// The engine's "spent phrase stays buffered" branch, pinned. On this chart at
-// cap 3, the path that activates at 5472 late-squeezes in the phrase at 13920,
-// and its new SP end is 11616, before that phrase. So SP ends first, with an
-// empty meter and the phrase still spent. The graph has a node between the
-// two, so the path then walks an edge without the phrase: the meter math
-// would go below zero there, and the engine keeps the phrase buffered instead.
+// Engine::advance's off-SP branch, where a spent phrase "stays spent", pinned.
+// On this chart at cap 3, the path that activates at 5472 late-squeezes in the
+// phrase at 13920, and its new SP end is 11616, before that phrase. So SP ends
+// first, with an empty meter and the phrase still spent. The graph has a node
+// between the two, so the path then walks an edge without the phrase, and the
+// phrase stays spent.
 // Hitting the phrase later must add nothing, so no bank list holds 13920 (a
 // tick there would light a bar the SqIn already used).
 TEST_CASE("fast tempo: a phrase a SqIn spent banks no bar when SP ends before it") {
@@ -221,13 +218,12 @@ TEST_CASE("fast tempo: a phrase a SqIn spent banks no bar when SP ends before it
 // 500 ms spans about four SP bars. The activation is on 12288 with 2 bars.
 //   banked_then_next  the phrase on 12000 is banked before the activation and
 //                     sits in the window of the SP end 15360. The next phrase,
-//                     16000, comes after that end. Before D34 the banked
-//                     phrase hid it, so nothing was squeezed there.
+//                     16000, comes after that end. The banked phrase must not
+//                     hide it.
 //   spent_then_next   the phrase on 17360 is squeezed in late at the SP end
 //                     15360, which moves the end to 16896, still before it.
 //                     The next phrase, 18360, sits in the window of 16896.
-//                     Before D34 the spent phrase hid it, and SP just ended
-//                     at 16896.
+//                     The spent phrase must not hide it.
 // Each chart must offer the next phrase both ways (in and out), analyze, and
 // keep every variant priced as it is alone.
 TEST_CASE("fast tempo: an SP end offers the next phrase after a banked or spent one") {
@@ -274,9 +270,7 @@ TEST_CASE("fast tempo: an SP end offers the next phrase after a banked or spent 
 // last moves its end from 15648. All three sit in the squeeze window of the
 // SP end 15648. A squeeze-out there can only be 14016's: 9696 and 11040 were
 // hit before it, so a player who hits either after SP ran out also hits
-// 14016 after SP ran out. Before D36 the search squeezed out 9696 (the first
-// in the window), kept 11040's and 14016's extensions, ended at 15648 and
-// stored the end 13440.
+// 14016 after SP ran out.
 TEST_CASE("fast tempo: a squeeze-out at an SP end gives back only the newest phrase") {
     const Song song = fixture("node_before_phrase.chart");
     const app::AnalysisSettings cfg = scores_settings(3);
@@ -300,9 +294,7 @@ TEST_CASE("fast tempo: a squeeze-out at an SP end gives back only the newest phr
 // D36 gap b, pinned. On early_sqin_twice at cap 2 the window activated on
 // 10176 collects 11712, 13152 and 13248. The SP end 16224 is the one 13248
 // moved, and it is the only end where this window can squeeze anything:
-// in or out, the phrase is 13248. Before D36 the SP end 14784 offered 11712
-// or 13152 (the first not yet squeezed in), and a folded variant took its
-// leader's choice of the two.
+// in or out, the phrase is 13248.
 TEST_CASE("fast tempo: early_sqin_twice offers its window one squeeze, 13248 at 16224") {
     const Song song = fixture("early_sqin_twice.chart");
     const app::AnalysisSettings cfg = scores_settings(2);
@@ -324,15 +316,11 @@ TEST_CASE("fast tempo: early_sqin_twice offers its window one squeeze, 13248 at 
     CHECK(out);
 }
 
-// Seeds whose only lone-pricing mismatch is the known SP-ready grouping gap.
-// The search groups running paths without their SP-ready time (see the
-// grouping key in Engine::reduce_group), so at these tempos a variant can
-// inherit its leader's earlier SP-ready time and take a fill that a lone
-// search refuses ("no lone path ties it"; the D32 review's fuzz chart 6006
-// shows it).
-// That gap is an open question with the user, not part of D32. A seed that
-// fails only on it is listed here by number, so the check stays exact for
-// every other seed. Seeds 1 to 48 hit none today, so the list is empty.
+// Seeds whose only lone-pricing mismatch comes from how the search groups
+// paths by SP-ready time (see the grouping key in Engine::reduce_group): a
+// variant takes a fill that a lone search refuses ("no lone root ties it").
+// A seed that fails only on that is listed here by number, so the check stays
+// exact for every other seed. Seeds 1 to 48 hit none, so the list is empty.
 const std::vector<uint64_t> kSpReadyGapSeeds = {};
 
 // A small deterministic fuzz: every chart analyzes, keeps one SqIn step per
@@ -367,13 +355,13 @@ TEST_CASE("fast tempo: fuzzed charts analyze and their variants price as alone")
     CHECK(variants > 50);
 }
 
-// The phrases still ahead when SP ends, pinned (s1-fix-merge). D34 lets one
+// The phrases still ahead when SP ends, pinned. D34 lets one
 // window squeeze in two late phrases that both come after its final SP end:
 // the path leaves SP with two spent phrases ahead and an empty meter. Its
 // SqOut sibling squeezes a third phrase out at that end instead, so it leaves
-// SP with two spent phrases and one banked bar ahead. Before the engine kept
-// spent and banked phrases apart, the first edge after either end threw "the
-// SP meter went below zero off SP". The record shows both states: SqIn steps
+// SP with two spent phrases and one banked bar ahead. The engine keeps spent
+// and banked phrases apart, so the first edge after either end must not throw
+// "the SP meter went below zero off SP". The record shows both states: SqIn steps
 // on phrases past the window's deact tick, and for the second a squeezed-out
 // phrase past it too. Each path that shows one must price as it does alone,
 // bank no spent phrase, and bank the squeezed-out phrase's bar once, on its

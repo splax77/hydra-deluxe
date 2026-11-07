@@ -1,4 +1,5 @@
-// Tests for generated fills (Song::check_activations, D115 B2-3).
+// Tests for generated fills (Song::check_activations, D115). The plan is
+// docs/superpowers/plans/2026-10-12-one-record-per-chart/part-B2-timing.md (removed; git show 444631e6:docs/superpowers/plans/2026-10-12-one-record-per-chart/part-B2-timing.md).
 //
 // A chart with no fills of its own gets fills placed the way Clone Hero
 // 1.1.0.6142's generator places them (0x20D2B30): on the chord nearest a
@@ -95,7 +96,7 @@ TEST_CASE("generated fills: a chord exactly on the line has length 0") {
 }
 
 TEST_CASE("generated fills: a chord just before its line has a negative length") {
-    // User answer 6 (2026-10-12): the fill starts on the line, as Clone Hero's does.
+    // D115 item 4: the fill starts on the line, as Clone Hero's does.
     const Song song = song_with_chords({1820});
     REQUIRE(song.sequence[0].has_activation());
     CHECK(*song.sequence[0].activation_length == -100);
@@ -144,7 +145,7 @@ TEST_CASE("generated fills: a first chord in measure 3 still counts lines from t
 }
 
 TEST_CASE("generated fills: a 4/4 to 7/8 change places fills on the restarted grid") {
-    // The scout's map: 7/8 from tick 2880, one and a half 4/4 measures in.
+    // The meter map: 7/8 from tick 2880, one and a half 4/4 measures in.
     // Clone Hero's grid restarts there, so its lines run 0, 1920, 2880, 4560,
     // 6240, ... (1680 ticks per 7/8 measure).
     const Song song = song_with_chords({3000, 4660, 9650}, 2880);
@@ -187,9 +188,8 @@ TEST_CASE("generated fills: a chart with its own fills gets none generated") {
 //
 // For every corpus chart whose fills are generated, its fills as
 // "start:chord" pairs, folded to one FNV-1a hash, with the count beside it.
-// Pinned from one run of the code at D115 B2-3. A mismatch prints the
-// chart's new line in the table's own form, so a deliberate change re-pins
-// by copying it.
+// Pinned from one run of the code. A mismatch prints the chart's new line in
+// the table's own form, so a deliberate change re-pins by copying it.
 
 namespace {
 

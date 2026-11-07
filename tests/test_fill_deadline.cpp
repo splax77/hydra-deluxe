@@ -53,8 +53,7 @@ TEST_CASE("fill deadline: CH 1.0 anchor value") {
 TEST_CASE("fill deadline: CH 1.0 lead over two fill lengths, one per tempo") {
     // How far the deadline sits before the tick two fill-lengths back, one
     // lead per tempo. activation_fill_deadline_ms in search/graph.cpp owns the
-    // rule. The leads were pinned from one run of that code on 2026-10-10 at
-    // 013f4c66; Python Hydra v1.2's test_e has the same 37.5 ms at 100 BPM.
+    // rule. The leads were pinned from one run of that code.
     struct TempoLead {
         double bpm;
         double lead_ms;
@@ -113,11 +112,10 @@ TEST_CASE("fill deadline: CH 1.0 preroll clamps at 10000 ms") {
 }
 
 TEST_CASE("fill deadline: CH 1.1 is unchanged 4-beats-before math") {
-    // The default rule must still be exactly what add_act_edge computed inline
-    // before the rule became a parameter. activation_fill_deadline_ms in
-    // search/graph.cpp owns it. These deadlines were pinned from one run of
-    // that code on 2026-10-05, one per resolution, tempo and fill length, so a
-    // change to the rule fails here instead of being repeated here.
+    // activation_fill_deadline_ms in search/graph.cpp owns the 1.1 rule. These
+    // deadlines were pinned from one run of that code, one per resolution,
+    // tempo and fill length, so a change to the rule fails here instead of
+    // being repeated here.
     const double want[2][3][3] = {
         // res 192: 90, 120 and 200 BPM; fills of 96, 384 and 960 ticks.
         {{23666.666666666668, 22666.666666666668, 20666.666666666668},

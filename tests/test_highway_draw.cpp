@@ -338,8 +338,8 @@ TEST_CASE("build_highway_draws: hit flash and target glow after a note passes") 
     for (const DrawCommand& c : cmds)
         if (c.material.texture == TextureId::TargetGreenLight) {
             ++glows;
-            // Pinned from one run on 2026-10-05; the fade length is the
-            // shipped json's targets_secs_light.
+            // Pinned from one run; the fade length is the shipped json's
+            // targets_secs_light.
             CHECK(c.alpha == doctest::Approx(0.7f));
         }
     CHECK(glows == 1);

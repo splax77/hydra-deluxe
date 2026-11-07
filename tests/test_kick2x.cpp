@@ -50,8 +50,8 @@ TEST_CASE(".mid: each difficulty reads its own 2x kick pitch, as Clone Hero does
 
 TEST_CASE(".mid: Expert's 2x kick never swallows a Hard kick on the same tick") {
     // Finding 255: Hard reads only its own 2x kick (83), so Expert's 95 on
-    // the same tick is dropped. With the 95 first, Hard used to lose its real
-    // kick to it.
+    // the same tick is dropped. With the 95 first, Hard still keeps its real
+    // kick.
     using namespace testmidi;
     const std::vector<uint8_t> mid = smf_drums(concat(
         {track_name("PART DRUMS"), note_on(95, 100), note_on(84, 100),
@@ -90,9 +90,8 @@ TEST_CASE("Dynamics: one kick total follows the 2x Bass setting") {
 
 TEST_CASE("Dynamics: Car Bomb - The Sentinel at Hard counts Hard's own kicks") {
     // Finding 10's chart. Hard has 1,147 kicks (pitch 84) and no 2x kicks of
-    // its own; Expert's 95 shares a tick with 409 of them. Before D20 the
-    // Dynamics parse at Hard showed 828 kicks plus 319 "2x kicks" (the 95 came
-    // first on those ticks), and Totals said 1,719 instead of 2,038.
+    // its own; Expert's 95 shares a tick with 409 of them. The Dynamics parse
+    // at Hard must count none of those as 2x kicks (D20).
     using app::DynamicsRow;
     const std::string path =
         corpus::root() + "/common/IB24/T7/Car Bomb - The Sentinel/notes.mid";
