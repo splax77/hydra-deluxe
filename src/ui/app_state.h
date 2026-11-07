@@ -515,7 +515,6 @@ public:
     // a caller that needs both "locked?" and "by what?" reads this once.
     enum class SettingsLock { None, Batch };
     SettingsLock settings_lock() const;
-    bool settings_locked() const { return settings_lock() != SettingsLock::None; }
     // The one sentence for a request a running batch turns away: the status
     // line's, and the greyed Scan and Analyze buttons' tooltip (D51 call 24,
     // D114 item 12).

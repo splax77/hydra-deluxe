@@ -397,13 +397,9 @@ TEST_CASE("a comparison row click selects the chart and keeps the bar's mode") {
     std::unique_ptr<AppState> app = app_on(paths);
     const std::string bar = app->settings.chartmode_key();
 
-    Settings built_in;
-    built_in.view_difficulty = "Hard";
-    built_in.view_prodrums = false;
-    built_in.view_bass2x = true;
+    // The comparison keeps no mode of its own, so the click has none to switch
+    // to; the bar's mode must stay as it was.
     auto result = std::make_shared<hydra::app::dm_report::GeneratedDmReport>();
-    result->chartmode = built_in.chartmode_key();
-    REQUIRE(result->chartmode != bar);
     result->rows.emplace_back();
     result->rows.back().identifier = library_entry(7).md5;
     app->dm_report.result = result;

@@ -238,7 +238,7 @@ TEST_CASE("generate_dm_report: tally and framing behind one seam") {
 }
 
 // What a window draws from: the rows, the subtitle and footer the page shows,
-// and who and which mode it compared.
+// and who it compared. The footer names the mode it compared.
 TEST_CASE("generate_dm_report hands over its rows, subtitle, footer, player and mode") {
     store::RecordStore store(":memory:");
     const int64_t optimal = fill_store(store);
@@ -253,7 +253,6 @@ TEST_CASE("generate_dm_report hands over its rows, subtitle, footer, player and 
     CHECK(result.rows[0].status == "under optimal");
     CHECK(result.rows[1].status == "not in library");
     CHECK(result.username == "TestUser");
-    CHECK(result.chartmode == kMode);
     // The line ends with the cap the comparison runs at (D276 item 7).
     CHECK(result.subtitle ==
           "TestUser — 2 scores — " + app::dm_report::clone_hero_cap_phrase());
@@ -271,12 +270,11 @@ TEST_CASE("generate_dm_report hands over its rows, subtitle, footer, player and 
     REQUIRE(result.footer.size() > last_sentence.size());
     CHECK(result.footer.substr(result.footer.size() - last_sentence.size()) == last_sentence);
 
-    // No scores: the player and mode are still named, and nothing else is.
+    // No scores: the player is still named, and nothing else is.
     const app::dm_report::GeneratedDmReport none =
         app::dm_report::generate_dm_report(store, {}, testdm::profile(), "TestUser");
     CHECK(none.rows.empty());
     CHECK(none.username == "TestUser");
-    CHECK(none.chartmode == kMode);
     CHECK(none.subtitle.empty());
     CHECK(none.footer.empty());
 }

@@ -96,7 +96,6 @@ TEST_CASE("song panel: tick runs the teardown once, on the closing edge") {
 TEST_CASE("song panel: nothing is locked while idle") {
     ScratchPaths paths("panel_lock");
     auto app = app_with_library(paths, 5);
-    CHECK_FALSE(app->settings_locked());
     CHECK(app->settings_lock() == AppState::SettingsLock::None);
     CHECK_FALSE(app->view_running());
     CHECK_FALSE(app->batch_running());
@@ -123,11 +122,9 @@ TEST_CASE("song panel: a running batch locks the settings as a batch, then unloc
     }
     REQUIRE(app->batch_job != nullptr);
     CHECK(app->settings_lock() == AppState::SettingsLock::Batch);
-    CHECK(app->settings_locked());
 
     release = true;
     testwait::wait_until([&] { return app->batch_job->snapshot().finished; },
                          "the batch to finish");
     CHECK(app->settings_lock() == AppState::SettingsLock::None);
-    CHECK_FALSE(app->settings_locked());
 }

@@ -449,7 +449,6 @@ TEST_CASE("the settings lock is the batch's alone") {
     std::unique_ptr<AppState> app = app_with(paths, {song});
     app->select(song, hydra::ui::SelectionSource::Click);
     CHECK(app->settings_lock() == AppState::SettingsLock::None);
-    CHECK_FALSE(app->settings_locked());
     settle(*app);
 }
 

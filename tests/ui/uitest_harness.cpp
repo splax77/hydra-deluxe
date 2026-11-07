@@ -458,12 +458,6 @@ float drawn_font_size() {
     return st.FontSizeBase * st.FontScaleMain * st.FontScaleDpi;
 }
 
-hydra::ui::WidthOf text_measurer(ImFont* font) {
-    const float size = drawn_font_size();
-    if (!font) font = ImGui::GetIO().FontDefault ? ImGui::GetIO().FontDefault : ImGui::GetFont();
-    return hydra::ui::measure_in_font(font, size);
-}
-
 // Scan testdata/input through the UI and land on the populated library.
 void scan_library(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
