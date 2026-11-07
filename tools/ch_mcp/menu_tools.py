@@ -65,10 +65,11 @@ class StepsInvalid(Exception):
 
 def same_folder(a: Optional[str], b: Optional[str]) -> bool:
     """Whether two folder paths name the same folder, ignoring case, slash
-    direction and a trailing slash."""
+    direction and a trailing slash. Both are resolved first, so a junction, a
+    symbolic link or an 8.3 short name cannot make one folder look like two."""
     if not a or not b:
         return False
-    return os.path.normcase(os.path.normpath(a)) == os.path.normcase(os.path.normpath(b))
+    return os.path.normcase(os.path.realpath(a)) == os.path.normcase(os.path.realpath(b))
 
 
 def _menu(state: dict) -> dict:
