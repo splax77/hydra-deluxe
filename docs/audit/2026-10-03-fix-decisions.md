@@ -1804,7 +1804,7 @@ The slimmer-top plan left a highway click on a fill the player can't take with n
 8. **A fix-review fix that fails too.** The main session stops and tells the user.
 9. **Tool numbers.** `tools/build_slot.ps1` waits 5 s for its turn at the slot folder, counts an empty lock as live for 5 s, and retries a release for 2 s. `tools/hydra_ui_mcp.py` waits 30 s for the pass script. These change how the tools behave and nothing else. The user's answer to items 2, 7, 8 and 9: "Yes, merge".
 
-**D315 (session 28b91640), 2026-11-07. The stale comment audit's code tasks plan.** The plan and its full questions are `docs/superpowers/plans/2026-11-07-stale-comment-code-tasks.md`. The user answered: "Yes, all recommended".
+**D315 (session 28b91640), 2026-11-07. The stale comment audit's code tasks plan.** The plan and its full questions are `docs/superpowers/plans/2026-11-07-stale-comment-code-tasks.md` (removed; `git show a4470f33:docs/superpowers/plans/2026-11-07-stale-comment-code-tasks.md`). The user answered: "Yes, all recommended".
 
 1. **The order.** Recommended, and chosen: the decision log's D305 to D314 reach `main` before any task merges, so comments and commits can cite them.
 2. **`select_chart`'s mode parameter.** After a DM comparison row click stops switching the mode, both callers pass the bar's own mode. Recommended, and chosen: the parameter and the switch branch go, with its two refusals, and the test that pinned the switch checks selection only.
