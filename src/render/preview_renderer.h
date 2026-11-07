@@ -19,11 +19,21 @@
 #include <memory>
 #include <string>
 
+#include <cstddef>
+#include <optional>
+
 #include "app/preview_view.h"
+#include "render/overlay_layout.h"  // ImagePoint
 #include "render/preview_config.h"
 #include "render/track_state.h"
 
 namespace hydra::render {
+
+// The playback speed the highway is drawn at. Onyx's draw code takes one;
+// Hydra always plays at 1x. Everything that reads the drawn highway back
+// (PreviewRenderer::fill_at_image, a test projecting a point onto it) uses
+// this one.
+inline constexpr double kPlaybackSpeed = 1.0;
 
 class PreviewRenderer {
 public:
@@ -57,6 +67,13 @@ public:
 
     // Draw the frame at `now_ms` into the offscreen target.
     void render(double now_ms);
+
+    // The fill lit under `point` on a width x height image of the highway
+    // drawn at `now_ms`, as its index into the drawn scene's fills: the
+    // floor time there (image_to_floor_time) read by TrackState::fill_at.
+    // None off the floor or where no fill is lit.
+    std::optional<size_t> fill_at_image(ImagePoint point, int width, int height,
+                                        double now_ms) const;
 
     // The final colour texture's shader-resource view (null before resize).
     ID3D11ShaderResourceView* texture_srv() const;

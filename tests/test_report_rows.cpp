@@ -322,16 +322,52 @@ TEST_CASE("path report: a batch's records read back as a fresh analysis's rows")
         CHECK(g.score == p.score);
         CHECK(g.acts == p.actcount);
         CHECK(g.skip == p.maxskip);
-        CHECK(g.ms == p.hardest_ms);
+        CHECK(g.ms == shown_timing(p.hardest_ms));
         CHECK(g.efill == p.hardest_efill);
         CHECK(g.mult == p.avgmult);
         CHECK(g.sqin == p.sqin_count);
         CHECK(g.sqout == p.sqout_count);
         CHECK(g.notes == fresh[i].notes);
-        CHECK(std::make_pair(g.tier, g.tok) == hydra::tier_for(p.hardest_ms, tiers));
+        CHECK(std::make_pair(g.tier, g.tok) ==
+              hydra::tier_for(shown_timing(p.hardest_ms), tiers));
     }
     // Ranks match, except that rows tied at one score may swap them.
     CHECK(ranks_by_chart(page.paths) == fresh_ranks);
+}
+
+// The store saves the engine's figure, sign included; the report shows it
+// through shown_timing, so a squeeze-in inside Star Power reads as no timing.
+TEST_CASE("path report: a saved figure below 0 shows no timing and the none tier") {
+    store::RecordStore store(":memory:");
+    std::vector<store::ChartLibraryEntry> library{
+        library_entry_for_file("inside", "Inside", kTiedFile)};
+    store.rebuild_chart_library(library);
+
+    Activation a;
+    test::set_skips(a, 0);
+    a.e_offset = 300.0;  // not e-critical
+    a.sqinouts = {SPSqueeze{SqueezeKind::SqIn, -315.8}};
+    Path p;
+    p.activations = {a};
+    HydraRecord record;
+    record.paths = {p};
+    record.sp_cap = 4;
+    testdm::save(store, "inside", fixture_settings(4), record);
+    const std::vector<store::RecordLookup> saved =
+        store.lookup({"inside"}, fixture_settings(4).profile());
+    REQUIRE(saved.size() == 1);
+    REQUIRE(saved[0].record.paths.size() == 1);
+    REQUIRE(saved[0].record.paths[0].hardest_ms == std::optional<double>(-315.8));
+
+    const report::ReportOptions options = fixture_options(4);
+    const std::vector<report::ReportRow> rows = report::collect_rows(store, options).rows;
+    REQUIRE(rows.size() == 1);
+    const report::ReportRow& g = rows[0];
+    CHECK_FALSE(g.ms.has_value());
+    const std::vector<TimingTier> tiers = timing_tiers();
+    const TimingTier& none = hydra::none_tier(tiers);
+    CHECK(g.tier == none.name);
+    CHECK(g.tok == none.tok);
 }
 
 // prepare_record numbers a record's paths in all_paths() order, so that order

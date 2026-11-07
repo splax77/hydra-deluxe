@@ -120,14 +120,14 @@ TEST_CASE("category_scores: the squeeze-out cut is basescore at each note's mult
     }
 }
 
-// Finding 4: the copied path's timing used to cut 12.6 ms down to "12 ms",
-// while the badge said 13.
-TEST_CASE("notationstr_verbose: a 12.6 ms squeeze copies as 13 ms") {
+// The copied path writes a needed timing with one decimal, as every screen
+// does (D265).
+TEST_CASE("notationstr_verbose: a 12.6 ms squeeze copies as 12.6 ms") {
     Activation a;
     test::set_skips(a, 0);
     a.e_offset = 300.0;  // not e-critical
     a.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 12.6});
-    CHECK(a.notationstr_verbose() == "0+ (13 ms)");
+    CHECK(a.notationstr_verbose() == "0+ (12.6 ms)");
 }
 
 TEST_CASE("squeeze symbols, timing, difficulty") {
@@ -329,8 +329,8 @@ TEST_CASE("Activation::hardest: the part with its ms, a tie names the squeeze") 
     CHECK_FALSE(plain().hardest().has_value());
 }
 
-// D51 Q4; D13.
-TEST_CASE("Activation::needs_timing: free squeezes and slack fills need none") {
+// D51 Q4; D302.
+TEST_CASE("Activation::needs_timing: squeezes inside and slack fills need none") {
     auto plain = [] {
         Activation a;
         test::set_skips(a, 0);
@@ -346,10 +346,14 @@ TEST_CASE("Activation::needs_timing: free squeezes and slack fills need none") {
     CHECK_FALSE(free_in.hardest().has_value());
     CHECK_FALSE(free_in.difficulty().has_value());
 
-    // A squeeze-in dead on the SP end is inside SP too (D13).
+    // A squeeze-in dead on the SP end still needs 0.0 ms, like the
+    // squeeze-out on the same note (D302).
     Activation on_end_in = plain();
     on_end_in.sqinouts = {SPSqueeze{SqueezeKind::SqIn, 0.0}};
-    CHECK_FALSE(on_end_in.needs_timing());
+    CHECK(on_end_in.needs_timing());
+    CHECK(on_end_in.difficulty() == std::optional<double>(0.0));
+    CHECK(on_end_in.hardest() ==
+          std::optional<HardestTiming>(HardestTiming{TimingPart::SqueezeIn, 0.0}));
 
     // A squeeze-out dead on the SP end still has to be hit late.
     Activation on_end_out = plain();
@@ -376,10 +380,13 @@ TEST_CASE("Activation::needs_timing: free squeezes and slack fills need none") {
 
     // A path needs timing once any of its activations does.
     Path p;
-    p.activations = {free_in, on_end_in, slack_fill};
+    p.activations = {free_in, slack_fill};
     CHECK_FALSE(p.needs_timing());
-    p.activations.push_back(late_out);
+    p.activations.push_back(on_end_in);
     CHECK(p.needs_timing());
+    Path q;
+    q.activations = {free_in, slack_fill, late_out};
+    CHECK(q.needs_timing());
 }
 
 TEST_CASE("Activation::badge_timings: every timing in notation order; hardest() picks from it") {
@@ -840,19 +847,89 @@ TEST_CASE("backend leeway: +2.999 ms is counted, exactly +3.0 ms is not") {
     CHECK(row.summarystr(false, std::nullopt, lw) == "Hard (uncounted)");
 }
 
-// D13.
-TEST_CASE("SPSqueeze::needs_no_timing: a note on the SP end is inside SP") {
-    // A SqIn needs no timing once its note is inside SP: at the end or
-    // before it.
-    CHECK(SPSqueeze{SqueezeKind::SqIn, 0.0}.needs_no_timing());
-    CHECK(SPSqueeze{SqueezeKind::SqIn, -0.0}.needs_no_timing());
-    CHECK(SPSqueeze{SqueezeKind::SqIn, -0.001}.needs_no_timing());
+// D302.
+TEST_CASE("SPSqueeze::needs_no_timing: a squeeze at exactly 0 needs 0.0 ms, one inside needs none") {
+    // A SqIn needs no timing only once its note is already inside SP, before
+    // the end; on the end it needs 0.0 ms.
+    CHECK_FALSE(SPSqueeze{SqueezeKind::SqIn, 0.0}.needs_no_timing());
+    CHECK_FALSE(SPSqueeze{SqueezeKind::SqIn, -0.0}.needs_no_timing());
     CHECK_FALSE(SPSqueeze{SqueezeKind::SqIn, 0.001}.needs_no_timing());
-    // A SqOut needs no timing once its note is already outside: past the end
-    // only.
+    CHECK(SPSqueeze{SqueezeKind::SqIn, -0.001}.needs_no_timing());
+    // A SqOut needs no timing only once its note is already past the end; on
+    // the end it needs 0.0 ms.
     CHECK_FALSE(SPSqueeze{SqueezeKind::SqOut, 0.0}.needs_no_timing());
     CHECK_FALSE(SPSqueeze{SqueezeKind::SqOut, -0.001}.needs_no_timing());
     CHECK(SPSqueeze{SqueezeKind::SqOut, 0.001}.needs_no_timing());
+}
+
+// D302: a timing of 0.0 ms is still a timing to hit.
+TEST_CASE("timing_needs_hitting: 0.0 ms and more need hitting, below 0 does not") {
+    CHECK_FALSE(timing_needs_hitting(-0.001));
+    CHECK(timing_needs_hitting(0.0));
+    CHECK(timing_needs_hitting(0.001));
+}
+
+TEST_CASE("early_fill_needs_timing: zero slack needs timing, time to spare does not") {
+    CHECK(early_fill_needs_timing(0.0));
+    CHECK(early_fill_needs_timing(-0.001));
+    CHECK_FALSE(early_fill_needs_timing(0.001));
+}
+
+TEST_CASE("shown_timing: a saved figure shows when it needs hitting") {
+    CHECK_FALSE(shown_timing(std::nullopt).has_value());
+    CHECK_FALSE(shown_timing(-0.001).has_value());
+    CHECK_FALSE(shown_timing(-315.8).has_value());
+    CHECK(shown_timing(0.0) == std::optional<double>(0.0));
+    CHECK(shown_timing(163.0) == std::optional<double>(163.0));
+}
+
+TEST_CASE("engine_hardest_ms: the largest figure, sign included") {
+    auto plain = [] {
+        Activation a;
+        test::set_skips(a, 0);
+        a.e_offset = 300.0;  // not e-critical
+        return a;
+    };
+    auto path_of = [](std::vector<Activation> acts) {
+        Path p;
+        p.activations = std::move(acts);
+        return p;
+    };
+
+    Activation inside_in = plain();
+    inside_in.sqinouts = {SPSqueeze{SqueezeKind::SqIn, -315.8}};
+    Activation late_out = plain();
+    late_out.sqinouts = {SPSqueeze{SqueezeKind::SqOut, -130.4}};  // needs 130.4 ms
+    Activation on_end_in = plain();
+    on_end_in.sqinouts = {SPSqueeze{SqueezeKind::SqIn, 0.0}};
+    Activation slack_fill = plain();
+    slack_fill.e_offset = 20.0;
+    REQUIRE(slack_fill.is_E0());
+    Activation optional_fill = plain();
+    test::set_skips(optional_fill, 1);
+    test::set_sp_meter(optional_fill, 2);
+    optional_fill.e_offset = -30.0;
+    REQUIRE(optional_fill.is_e_critical());
+    REQUIRE_FALSE(optional_fill.is_E0());
+
+    const Path inside_only = path_of({inside_in});
+    const Path with_out = path_of({inside_in, late_out});
+    const Path at_zero = path_of({on_end_in});
+    const Path nothing = path_of({plain()});
+    const Path slack_only = path_of({slack_fill});
+    const Path optional_only = path_of({optional_fill});
+
+    CHECK(engine_hardest_ms(inside_only) == std::optional<double>(-315.8));
+    CHECK(engine_hardest_ms(with_out) == std::optional<double>(130.4));
+    CHECK(engine_hardest_ms(at_zero) == std::optional<double>(0.0));
+    CHECK_FALSE(engine_hardest_ms(nothing).has_value());
+    CHECK(engine_hardest_ms(slack_only) == std::optional<double>(-20.0));
+    CHECK_FALSE(engine_hardest_ms(optional_only).has_value());
+
+    // Through shown_timing, the saved figure shows what Path::difficulty()
+    // shows on the live path, so a fresh row reads as it did.
+    for (const Path* p : {&inside_only, &with_out, &at_zero, &nothing, &slack_only, &optional_only})
+        CHECK(shown_timing(engine_hardest_ms(*p)) == p->difficulty());
 }
 
 TEST_CASE("difficulty names: one list, one spelling") {

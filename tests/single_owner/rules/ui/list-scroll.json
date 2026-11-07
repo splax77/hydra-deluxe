@@ -26,6 +26,11 @@
         },
         {
           "file": "src/ui/list_scroll.cpp",
+          "line_text": "ImGui::ScrollToRect(ImGui::GetCurrentWindow(), ImRect(left, top, right, bottom),",
+          "why": "scroll_block_into_view: the one ImGui call that moves a list to a row opened wider than its Selectable"
+        },
+        {
+          "file": "src/ui/list_scroll.cpp",
           "line_text": "ImGui::SetScrollY(ImGui::GetScrollY() + top_now - *last.top);",
           "why": "keep_last_row_in_place: the one ImGui call that puts the selected row back where it sat when every row changes height"
         }

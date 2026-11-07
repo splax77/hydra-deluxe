@@ -32,10 +32,27 @@ namespace hydra::app {
 // shape for both (concept audit M21), so nothing copies between them.
 using ScanItem = store::ChartLibraryEntry;
 
-// The chart's stated length and delay, read from its files through the same
-// three readers the scan uses: song.ini beside a folder chart (none when
-// there is no song.ini), a .sng's metadata, a .srb's metadata block. Only the
-// metadata is read, never the audio. Throws when a file cannot be read.
+// What the scan reads from one chart's metadata. The names are empty when
+// missing or blank; discover_charts applies the one stored fallback for each
+// (title_or_unknown, artist_or_unknown, charter_or_unknown), and a screen
+// shows them through display_title and its siblings. The album has no
+// fallback: blank stays blank.
+struct ChartMeta {
+    std::string title;
+    std::string artist;
+    std::string charter;
+    std::string album;
+    store::ChartTimingMeta timing;
+};
+
+// One chart's names and timing, read from its files through the same three
+// readers the scan uses: song.ini beside a folder chart (all empty when there
+// is no song.ini), a .sng's metadata, a .srb's metadata block (all empty when
+// it cannot be parsed). Only the metadata is read, never the audio. Throws
+// when a file cannot be read.
+ChartMeta read_chart_meta(const std::string& notespath);
+
+// read_chart_meta's stated length and delay.
 store::ChartTimingMeta read_chart_timing_meta(const std::string& notespath);
 
 // What the scan read for the chart at `notespath`, or, for a library row an

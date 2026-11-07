@@ -73,14 +73,6 @@ void retire(std::unique_ptr<Job>& job, std::vector<std::unique_ptr<Job>>& retire
     retired.push_back(std::move(job));
 }
 
-// Drops the retired jobs whose threads have ended.
-template <typename Job>
-void drop_finished(std::vector<std::unique_ptr<Job>>& retired) {
-    retired.erase(std::remove_if(retired.begin(), retired.end(),
-                                 [](const std::unique_ptr<Job>& j) { return j->finished(); }),
-                  retired.end());
-}
-
 }  // namespace
 
 PreviewController::~PreviewController() { close(); }
@@ -258,6 +250,8 @@ void PreviewController::close() {
     rt_h_ = 0;
     active_ = false;
     scrubbing_ = false;
+    slider_held_ = false;
+    timeline_held_ = false;
     resume_after_scrub_ = false;
     open_key_ = PreviewSongKey{};
     error_.clear();
@@ -268,9 +262,9 @@ void PreviewController::close() {
 
 void PreviewController::poll() {
     // Replaced notes, base and overlay builds that have finished can go.
-    drop_finished(retired_scene_jobs_);
-    drop_finished(retired_base_jobs_);
-    drop_finished(retired_notes_jobs_);
+    drop_finished_jobs(retired_scene_jobs_);
+    drop_finished_jobs(retired_base_jobs_);
+    drop_finished_jobs(retired_notes_jobs_);
     // A new mode's notes are ready: swap them in (or show why not). If the
     // path changed while they were read, its overlay builds next.
     if (notes_job_ && notes_job_->finished()) {
@@ -396,6 +390,14 @@ ID3D11ShaderResourceView* PreviewController::render(int width, int height) {
     }
 }
 
+std::optional<size_t> PreviewController::fill_at_image(render::ImagePoint point, int width,
+                                                       int height) const {
+    // A scene not yet taken in by render() is not the one on screen, and the
+    // renderer's indices are into the one it drew.
+    if (!renderer_ || !have_frame_ || scene_dirty_) return std::nullopt;
+    return renderer_->fill_at_image(point, width, height, transport_.now_ms());
+}
+
 // ---- transport controls: forwarded to the Transport --------------------
 
 void PreviewController::play() {
@@ -435,10 +437,12 @@ void PreviewController::step_ms(double delta_ms) {
         hydra::app::step_shown_ms(transport_.now_ms(), playback_end_ms(), delta_ms));
 }
 
-void PreviewController::set_scrubbing(bool held) {
-    if (held == scrubbing_) return;
-    scrubbing_ = held;
-    if (held) {
+void PreviewController::set_scrubbing(bool held, ScrubHold by) {
+    (by == ScrubHold::Slider ? slider_held_ : timeline_held_) = held;
+    const bool any_held = slider_held_ || timeline_held_;
+    if (any_held == scrubbing_) return;
+    scrubbing_ = any_held;
+    if (any_held) {
         resume_after_scrub_ = transport_.playing();
         if (resume_after_scrub_) transport_.pause();
     } else if (resume_after_scrub_) {

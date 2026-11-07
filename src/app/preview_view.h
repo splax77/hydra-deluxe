@@ -285,10 +285,19 @@ struct PreviewScene {
     // `fills` in chart order. apply_preview_overlay names them by the rule
     // that names the drawn path's Taken fill. Empty with no ghost path.
     std::vector<size_t> ghost_fills;
+    // Overlay: the ghost path's Star Power windows, {start ms, end ms}, in
+    // order. Each is the sp_window() of the PreviewActivation the overlay
+    // builds for one of the ghost's activations, the same build the drawn
+    // path's activations get; an activation with no window adds none. Empty
+    // with no ghost path.
+    std::vector<std::pair<double, double>> ghost_windows;
     // Overlay: where each bar banked after the path's last window arrived
     // (Path::trailing_bank_ticks). Empty without a path.
     std::vector<int64_t> trailing_bank_ticks;
-    std::vector<PreviewBeat> beats;    // measure/beat/half lines, tick order
+    // Overlay: the fills the path passed over after its last activation
+    // (Path::trailing_skipped_fill_ticks). Empty without a path.
+    std::vector<int64_t> trailing_skipped_fill_ticks;
+    std::vector<PreviewBeat> beats;   // measure/beat/half lines, tick order
     std::vector<PreviewTempo> tempos;  // tempo changes, tick order
     std::vector<PreviewSection> sections;  // practice sections, tick order
     std::vector<PreviewMeasureSpan> measure_spans;  // one per time signature, tick order
@@ -319,6 +328,11 @@ struct PreviewScene {
     // empty gauge. The gauge and the drain box both ask this.
     bool has_sp_gauge() const { return timing.has_value(); }
 };
+
+// The index in scene.fills of the fill riding on the chord at `tick`, or none:
+// the same lookup apply_preview_overlay makes to mark a fill, for a caller that
+// asks about one tick.
+std::optional<size_t> fill_index_on_chord(const PreviewScene& scene, int64_t tick);
 
 // The last note the highway draws, or null when the scene has none. The one
 // answer to "when is the scene's last note": a song with no length ends its
@@ -527,7 +541,8 @@ double sp_meter_bars_at(const SpMeterCurve& curve, double ms);
 // the overlay, their ms resolved against the song's own
 // timing so they line up with the notes exactly, and each candidate fill is
 // classified Hidden / Offered / Taken from the activations' stored
-// passed-over fills.
+// passed-over fills and the path's own after its last activation
+// (Path::trailing_skipped_fill_ticks).
 //
 // `sp_cap` is the SP meter's ceiling in bars — the viewed record's own sp_cap,
 // which is 4 for any normal Clone Hero run and differs only on a what-if
@@ -543,7 +558,7 @@ double sp_meter_bars_at(const SpMeterCurve& curve, double ms);
 // the beat lines without a length.
 //
 // `ghost_path` (may be null) is a second path drawn faintly beside the first:
-// it fills ghost_fills and nothing else. Without one the scene is exactly
+// it fills ghost_fills and ghost_windows and nothing else. Without one the scene is exactly
 // what it was before the ghost existed.
 PreviewScene build_preview_scene(const Song& song, const Path* path,
                                  int sp_cap = kCloneHeroSpCap,
@@ -561,7 +576,7 @@ PreviewScene build_preview_scene(const Song& song, const Path* path,
 // Every fill in a base reads Hidden, the field's default.
 //
 // The overlay owns the rest: activations, every fill's state, ghost_fills,
-// score and sp_meter. Those read the path, the ghost path, the SP cap or the
+// ghost_windows, score and sp_meter. Those read the path, the ghost path, the SP cap or the
 // rules. The SP meter is
 // overlay even without a path: its ceiling is the record's cap and its drain
 // is the path's activations.

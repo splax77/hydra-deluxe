@@ -342,8 +342,9 @@ std::string BackendSqueeze::summarystr(bool squeezed_out, std::optional<double> 
     const double off = offset();
     const double needed = backend_row_timing(off, squeezed_out, leeway_ms);
     // The eff. figure is the same need after the frontend scale (rate_note),
-    // so it is banded in place of the raw one. A row that needs nothing reads
-    // the first tier whatever its scale (D276 item 2).
+    // so it is banded in place of the raw one. A figure of 0 or less is banded
+    // as it stands, so the row reads the first tier whatever its scale (D276
+    // item 2); backend_row_timing says what a 0 means on each row.
     const double banded = (needed > 0.0 && effective_ms) ? *effective_ms : needed;
     std::string word = tier_for(banded, timing_tiers()).first;
     // A row the engine does not count says so, squeezed out or not
@@ -493,7 +494,7 @@ std::vector<ActivationTiming> Activation::badge_timings() const {
 }
 
 std::optional<HardestTiming> Activation::hardest() const {
-    // Only timings that need hitting take part (D51 call 4, D13): a squeeze
+    // Only timings that need hitting take part (D51 call 4, D302): a squeeze
     // that needs no timing (SPSqueeze::needs_no_timing) and an early fill with
     // time to spare (early_fill_needs_timing) never name the hardest part.
     const std::vector<ActivationTiming> all = badge_timings();
@@ -521,7 +522,7 @@ std::optional<double> Activation::difficulty() const {
     return h->ms;
 }
 
-// D51 call 4 and D13: hardest() only names a timing that needs hitting, so
+// D51 call 4 and D302: hardest() only names a timing that needs hitting, so
 // difficulty() is empty exactly when there is nothing to time.
 bool Activation::needs_timing() const { return difficulty().has_value(); }
 
@@ -545,8 +546,8 @@ std::string Activation::notationstr() const {
 
 std::string Activation::notationstr_verbose() const {
     std::vector<std::string> timings;
-    if (is_e_critical()) timings.push_back(format_ms_whole(*e_difficulty(true)));
-    for (const SPSqueeze& sq : sqinouts) timings.push_back(format_ms_whole(sq.difficulty()));
+    if (is_e_critical()) timings.push_back(format_ms(*e_difficulty(true)));
+    for (const SPSqueeze& sq : sqinouts) timings.push_back(format_ms(sq.difficulty()));
 
     if (timings.empty()) return notationstr();
 
@@ -654,7 +655,8 @@ void Path::prepare_variants() {
         v.score_ghosts = score_ghosts;
         v.notecount = notecount;
         // trailing_bank_ticks is the variant's own: the engine stores it and
-        // the record keeps it per variant (D3, finding 89).
+        // the record keeps it per variant (D3, finding 89). So is
+        // trailing_skipped_fill_ticks, which the engine emits beside it.
         v.prepare_variants();
     }
 }
@@ -906,6 +908,12 @@ std::string counted(int64_t n, const std::string& one, const std::string& many) 
 
 const char* has_have(int64_t n) {
     return n == 1 ? "has" : "have";
+}
+
+std::string format_ms(double ms) {
+    char buf[64];
+    std::snprintf(buf, sizeof(buf), "%.1f ms", ms);
+    return buf;
 }
 
 std::string format_ms_whole(double ms) {

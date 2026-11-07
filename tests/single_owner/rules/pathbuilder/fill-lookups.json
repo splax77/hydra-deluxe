@@ -1,0 +1,53 @@
+{
+  "rules": [
+    {
+      "question": "Which activation stands on a fill the path took?",
+      "owner": "PreviewActivation::taken_fill in src/app/preview_view.h, which apply_preview_overlay sets when it marks the fill Taken",
+      "owner_file": "src/app/preview_view.h",
+      "owner_symbol": "taken_fill",
+      "date": "2026-10-30",
+      "decision": "docs/superpowers/plans/2026-10-30-path-builder-redesign.md (removed; git show 307d0b5c:docs/superpowers/plans/2026-10-30-path-builder-redesign.md), \"Engine truth\": every reader of the fill's state reads what the overlay wrote; found by the PB-5 review",
+      "added_by": "PB-5-REVIEW",
+      "anchor": "chord_tick",
+      "pattern": "\\bactivations?(?:\\[[^\\]]*\\])?\\.tick\\s*==\\s*[\\w.>\\[\\]-]*chord_tick|[\\w.>\\[\\]-]*chord_tick\\s*==\\s*[\\w.>\\[\\]-]*activations?(?:\\[[^\\]]*\\])?\\.tick",
+      "must_match": [
+        "if (scene.activations[k].tick == f.chord_tick) select_step(k);",
+        "if (f.chord_tick == scene.activations[k].tick) return k;"
+      ],
+      "must_not_match": [
+        "if (scene.activations[k].taken_fill != index) continue;",
+        "return c.act_tick == scene.fills[i].chord_tick;",
+        "if (scene.fills[i].chord_tick == tick) return i;"
+      ],
+      "note": "The overlay writes the fill a taken activation stands on into PreviewActivation::taken_fill, so a screen that wants the step behind a Taken fill reads that field and never matches the two ticks itself. A candidate's act_tick against a fill's chord_tick is a different question (which fill a priced candidate belongs to) and the pattern does not match it."
+    },
+    {
+      "question": "Which fill rides on the chord at a tick?",
+      "owner": "fill_on_chord in src/app/preview_view.cpp, which apply_preview_overlay and fill_index_on_chord both use",
+      "owner_file": "src/app/preview_view.cpp",
+      "owner_symbol": "fill_on_chord",
+      "date": "2026-10-30",
+      "decision": "docs/superpowers/plans/2026-10-30-path-builder-redesign.md (removed; git show 307d0b5c:docs/superpowers/plans/2026-10-30-path-builder-redesign.md), \"Engine truth\": every reader of the fills reads what the overlay wrote; found by the PB-5 review",
+      "added_by": "PB-5-REVIEW",
+      "anchor": "chord_tick",
+      "pattern": "\\bfills(?:\\[\\w+\\])?\\.chord_tick\\s*(?:==|!=)",
+      "must_match": [
+        "if (scene.fills[i].chord_tick == tick) return i;",
+        "if (fills[from].chord_tick != tick) return std::nullopt;"
+      ],
+      "must_not_match": [
+        "return c.act_tick == scene.fills[i].chord_tick;",
+        "const std::optional<size_t> i = app::fill_index_on_chord(scene, best->act_tick);",
+        "while (from < fills.size() && fills[from].chord_tick < tick) ++from;"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/app/preview_view.cpp",
+          "line_text": "if (from >= fills.size() || fills[from].chord_tick != tick) return std::nullopt;",
+          "why": "fill_on_chord, the owner"
+        }
+      ],
+      "note": "A screen that wants the fill on a tick calls app::fill_index_on_chord, which asks fill_on_chord, and never walks scene.fills comparing ticks. The ordered walk in fill_on_chord stops at the first fill at or past the tick, so its own `<` test is not matched."
+    }
+  ]
+}

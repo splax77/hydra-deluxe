@@ -53,6 +53,10 @@
         {
           "file": "src/ui/app_state.cpp",
           "why": "The app answers a different question on purpose: it keeps running on the defaults and saves nothing (AppState::settings_error) instead of exiting."
+        },
+        {
+          "file": "src/pathbuilder/pb_window.cpp",
+          "why": "The Path Builder answers a different question on purpose: it refuses the song on its top line and keeps running (D304 item 8), instead of exiting."
         }
       ],
       "must_match": [

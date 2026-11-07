@@ -421,6 +421,14 @@ void PreviewRenderer::set_scene(const PreviewScene& /*scene*/, TrackState state)
     impl_->state = std::move(state);
 }
 
+std::optional<size_t> PreviewRenderer::fill_at_image(ImagePoint point, int width, int height,
+                                                     double now_ms) const {
+    const std::optional<double> t =
+        image_to_floor_time(impl_->cfg, width, height, point, now_ms / 1000.0, kPlaybackSpeed);
+    if (!t) return std::nullopt;
+    return impl_->state.fill_at(*t);
+}
+
 void PreviewRenderer::render(double now_ms) {
     Impl& d = *impl_;
     if (!d.final_rtv) return;
@@ -428,8 +436,6 @@ void PreviewRenderer::render(double now_ms) {
     const PreviewConfig& cfg = d.cfg;
 
     // ---- scene pass: the highway into the (multisampled) track target ----
-    // Onyx's draw code takes a playback speed; Hydra always plays at 1x.
-    constexpr double kPlaybackSpeed = 1.0;
     std::vector<DrawCommand> cmds =
         build_highway_draws(d.state, cfg, now_ms / 1000.0, kPlaybackSpeed);
 

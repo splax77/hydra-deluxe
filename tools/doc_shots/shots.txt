@@ -38,7 +38,7 @@ open Burnout
 type **/##search |
 click **/##DetailsTabs/Paths
 wait 0.5
-expect-text squeeze out 163 ms
+expect-text squeeze out 163.0 ms
 rect //Hydra/##versionbar
 screenshot main-screen.png
 

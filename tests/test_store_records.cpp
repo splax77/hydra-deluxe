@@ -249,7 +249,8 @@ TEST_CASE("store: the remembered failures are exactly the four the chart's conte
           ErrorKind::NetHttpStatus, ErrorKind::NetBadReply, ErrorKind::NoScores,
           ErrorKind::NoRecords, ErrorKind::ReportWrite, ErrorKind::RulesFile,
           ErrorKind::SettingsFile, ErrorKind::AudioDecode, ErrorKind::PreviewAssets,
-          ErrorKind::UpdateUnverified}) {
+          ErrorKind::UpdateUnverified, ErrorKind::PathTextRefused, ErrorKind::PathFileRefused,
+          ErrorKind::PathFileUnreadable, ErrorKind::PathFileWrite}) {
         CAPTURE(static_cast<int>(kind));
         const bool want = remembered.count(kind) == 1;
         CHECK(remembered_failure(kind) == want);

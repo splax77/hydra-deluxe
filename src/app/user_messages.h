@@ -20,6 +20,15 @@ enum class ErrorKind;  // core/error_kind.h
 
 namespace hydra::app {
 
+// Which of Hydra's programs is showing an error. A few sentences point at
+// something only one program has (Hydra's Scan library button; the Path Builder
+// has no library), so kind_sentence in user_messages.cpp asks. Each program
+// sets its own once, when it starts and before it starts any worker thread
+// (D267). Hydra, and every command-line tool, is the default.
+enum class Program { Hydra, PathBuilder };
+void set_program(Program program);
+Program current_program();
+
 // What every error Hydra doesn't recognize reads as.
 inline constexpr const char* kSomethingWentWrong =
     "Something went wrong. Try again, and if it keeps happening, report it with the "
@@ -43,12 +52,22 @@ inline constexpr const char* kAnalysisOffSentence =
     "hydra_rules.ini has an error, so analysis is off until the file is fixed and "
     "Hydra is restarted.";
 
+// What a bad hydra_rules.ini reads as in the Path Builder (D304 item 13): it
+// has no analysis to turn off, so PbApp::open refuses the song instead.
+inline constexpr const char* kRulesRefusedSentence =
+    "hydra_rules.ini has an error, so the song can't open until the file is fixed.";
+
 // What a bad hydra_settings.ini reads as in the app (ErrorKind::SettingsFile,
 // D270 call 4, D276 item 1): Hydra runs on its defaults and saves nothing
 // while it is bad.
 inline constexpr const char* kSettingsOffSentence =
     "hydra_settings.ini has an error, so Hydra is running on its default settings and "
     "saving nothing until the file is fixed and Hydra is restarted.";
+
+// What a bad hydra_settings.ini reads as in the Path Builder (D304 item 8): it
+// has no defaults to run on, so PbApp::open refuses the song instead.
+inline constexpr const char* kSettingsRefusedSentence =
+    "hydra_settings.ini has an error, so the song can't open until the file is fixed.";
 
 // What a refused update reads as (ErrorKind::UpdateUnverified, D259 call 9).
 // The version bar shows

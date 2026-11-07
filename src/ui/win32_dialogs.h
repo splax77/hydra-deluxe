@@ -5,6 +5,7 @@
 
 #include <optional>
 #include <string>
+#include <vector>
 
 struct HWND__;
 typedef HWND__* HWND;
@@ -17,6 +18,28 @@ namespace hydra::ui {
 // so the caller can tell the user (a cancel must stay silent, but a dialog
 // that never appeared shouldn't). UTF-8 in, UTF-8 out.
 std::optional<std::string> browse_for_folder(HWND owner, bool* failed = nullptr);
+
+// One line of a file dialog's type list: the name the user reads and the
+// patterns it shows, separated by ';' (L"Charts", L"*.mid;*.chart"), wide as
+// the dialog takes them.
+struct FileTypeFilter {
+    std::wstring name;
+    std::wstring patterns;
+};
+
+// The same dialog picking one existing file, its type list `types` (the first
+// is selected). Cancel and failure answer as browse_for_folder's do.
+std::optional<std::string> browse_for_file(HWND owner, const std::vector<FileTypeFilter>& types,
+                                           bool* failed = nullptr);
+
+// The system's save dialog: the file to write, picked or typed, with the type
+// list `types`. It asks before replacing a file that exists. A name typed
+// with no extension gets `default_extension` (L"json", no dot). Cancel and
+// failure answer as browse_for_folder's do.
+std::optional<std::string> browse_for_save_file(HWND owner,
+                                                const std::vector<FileTypeFilter>& types,
+                                                const std::wstring& default_extension,
+                                                bool* failed = nullptr);
 
 }  // namespace hydra::ui
 

@@ -738,11 +738,23 @@ different word from its path's report tier, and the report's footer says the
 two can differ.
 
 **Needs no timing**:
-A squeeze that is already done with no frontend timing: a SqIn whose note the
-SP walk already pays, or a SqOut whose note it does not. `SPSqueeze::needs_no_timing`
-in src/core/model.h is the one answer, and the rating and the details sentence
-both read it.
+A squeeze that is already done with no frontend timing: its difficulty is below
+0, so a SqIn already inside Star Power or a SqOut already past it. At exactly 0
+both need 0.0 ms (D302). `SPSqueeze::needs_no_timing` in src/core/model.h is the
+one answer, through `timing_needs_hitting`, and the details sentence reads it.
+The rating does not: it reads which side of the SP end the note sits on
+(`core::paid_by_sp_walk`).
 _Avoid_: free (for this test)
+
+**Saved hardest figure**:
+A path's hardest figure as the engine knows it, sign included, with no
+needs-timing rule applied. `engine_hardest_ms` in src/core/model.h works it
+out, and the library saves it as `hardest_ms`.
+
+**Shown timing**:
+The timing a screen shows for a saved hardest figure: the saved figure with the
+needs-timing rule applied. `shown_timing` in src/core/model.h is the one place
+that happens, so a change to the rule needs no re-analysis.
 
 **Backend leeway**:
 How long after the SP end a note still scores under Star Power without a
@@ -982,6 +994,29 @@ decision 9; Task 17's gate was measured at the game) and extended to .sng and
 .srb by D275 (item 4).
 _Avoid_: player (the whole Preview), scrubber (the UI control only), playhead
 (the audio follower only)
+
+### Path Builder
+
+**Path Builder**:
+The second program, `HydraPathBuilder.exe`: the player builds their own Star
+Power path by clicking fills and sees what each choice costs against the best
+path. `PbApp` in src/pathbuilder/pb_window.h draws its window, and its header
+says in what order. Under the timeline sits Hydra's own Preview panel
+(`ui::draw_preview_panel`), shared code, so the two programs draw one Preview.
+Beside the panel a side column holds the "Where to activate next" list and the
+"Your activations" panel. pb_text.h owns every sentence on the screen.
+
+**Builder timeline**:
+The rows over the Preview, drawn by `ui::PreviewTimeline`, over one stretch of
+the song at a time (`ui::TimelineView`, src/ui/timeline_view.h). One time scale
+runs across every row. The scrollbar under it is the only whole-song control.
+
+**Step**:
+One of the player's activations in the Path Builder: a compact row in the "Your
+activations" panel (`step_short`), which opens to its ending lines
+(`end_choice_text`). Only the last step's ending can change.
+_Avoid_: window (the search's word for the same activation, and the timeline's
+word for the stretch it shows)
 
 ### Code layout
 

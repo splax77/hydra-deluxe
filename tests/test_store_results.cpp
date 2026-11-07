@@ -601,7 +601,11 @@ TEST_CASE("a saved record stores its best path's star count") {
     CHECK(got[0].record == prepare_record("ready", at4, at_cap(4)).record);
     CHECK(got[0].record.stars == stars);
     CHECK(got[0].record.summary().score == best.totalscore());
-    CHECK(got[0].record.summary().hardest_ms == best.difficulty());
+    // The saved figure is the engine's own (engine_hardest_ms), pinned from
+    // one run: the fixture's best path has no squeeze and no E0 fill, so none.
+    // Shown, it is the live path's difficulty.
+    CHECK_FALSE(got[0].record.summary().hardest_ms.has_value());
+    CHECK(shown_timing(got[0].record.summary().hardest_ms) == best.difficulty());
     CHECK(got[0].record.summary().stars == stars);
     // Only a Ready answer carries a record.
     CHECK(got[1].status == RecordStatus::Stale);
@@ -614,6 +618,34 @@ TEST_CASE("a saved record stores its best path's star count") {
     REQUIRE(listing.size() == 1);
     CHECK(listing[0].stars == stars);
     CHECK(listing[0].song_id == "ready");
+}
+
+TEST_CASE("store: the saved hardest figure is the engine's, sign included") {
+    // One activation whose only squeeze is a squeeze-in, the on_end_in shape
+    // of test_model.cpp with its offset set per case.
+    auto record_with_sqin = [](double offset_ms) {
+        Activation a;
+        test::set_skips(a, 0);
+        a.e_offset = 300.0;  // not e-critical
+        a.sqinouts = {SPSqueeze{SqueezeKind::SqIn, offset_ms}};
+        Path p;
+        p.activations = {a};
+        HydraRecord rec;
+        rec.paths = {p};
+        return rec;
+    };
+
+    // Inside Star Power: no difficulty, but the engine's figure is saved.
+    const HydraRecord inside = record_with_sqin(-315.8);
+    REQUIRE_FALSE(inside.paths[0].difficulty().has_value());
+    const RecordRow inside_row = record_of("", inside);
+    REQUIRE(inside_row.paths.size() == 1);
+    CHECK(inside_row.paths[0].hardest_ms == std::optional<double>(-315.8));
+
+    // On the SP end: 0.0 ms, saved as 0.0.
+    const RecordRow at_end_row = record_of("", record_with_sqin(0.0));
+    REQUIRE(at_end_row.paths.size() == 1);
+    CHECK(at_end_row.paths[0].hardest_ms == std::optional<double>(0.0));
 }
 
 TEST_CASE("lookup answers a whole library in chunks") {

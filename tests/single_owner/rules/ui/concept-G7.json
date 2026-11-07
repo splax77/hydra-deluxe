@@ -2,8 +2,8 @@
   "rules": [
     {
       "question": "How is a Preview text box's panel drawn?",
-      "owner": "draw_text_box in src/ui/preview_tab.cpp",
-      "owner_file": "src/ui/preview_tab.cpp",
+      "owner": "draw_text_box in src/ui/preview_panel.cpp",
+      "owner_file": "src/ui/preview_panel.cpp",
       "owner_symbol": "draw_text_box",
       "date": "2026-10-11",
       "decision": "D114 item 27 (concept audit fix wave, task G7)",
@@ -20,12 +20,12 @@
       ],
       "owner_lines": [
         {
-          "file": "src/ui/preview_tab.cpp",
+          "file": "src/ui/preview_panel.cpp",
           "line_text": "dl->AddRectFilled(min, max, IM_COL32(0, 0, 0, 128), corner, flags);",
           "why": "draw_text_box, the owner: every text box's panel"
         },
         {
-          "file": "src/ui/preview_tab.cpp",
+          "file": "src/ui/preview_panel.cpp",
           "line_text": "dl->AddRectFilled(gauge_min, gauge_max, IM_COL32(0, 0, 0, 128), px(4.0f));",
           "why": "the SP gauge, which is not a text box and keeps its own drawing"
         }

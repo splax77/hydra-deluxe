@@ -24,14 +24,8 @@ std::string format_avg_mult(double v);
 // The average multiplier's name, wherever a screen labels it (D115).
 inline constexpr char kAverageMultiplierLabel[] = "Average Multiplier";
 
-// Every one-decimal timing a screen shows: one decimal, a space, the unit
-// ("163.5 ms", D57 item 1). The Paths tab reads it for the squeeze sentences,
-// the "(eff. ...)" figures, the backend tooltip, the early-fill line and the
-// path buttons; the path report reads it for its Hardest and Early fill
-// columns. The caller decides the sign; the early fill passes
-// Activation::e_difficulty(true), which is positive when the fill is hit
-// early. A whole-ms timing ("163 ms") is format_ms_whole in core/model.h.
-std::string format_ms(double ms);
+// A timing in ms is written by format_ms in core/model.h, which the copied
+// path shares; a whole-ms limit by format_ms_whole beside it.
 
 // Part over total as a percentage with the sign, rounded to the nearest at
 // `decimals` places: 12 of 453 at 0 reads "3%", 198,010 of 198,020 at 2 reads
@@ -44,6 +38,15 @@ std::string format_percent(int64_t part, int64_t total, int decimals);
 // out itself, like the leaderboard page's average tile, is sent these whole
 // numbers so it rounds nothing in floating point.
 int64_t percent_steps(int64_t part, int64_t total, int decimals);
+
+// The minus sign before a cost on the Path Builder's screen: U+2212 in UTF-8,
+// as the mockup writes it. The UI font (ShipporiAntiqueB1-Regular.ttf) has
+// the glyph, and so does the first backup font (segoeui.ttf).
+inline constexpr char kCostMinus[] = "\xE2\x88\x92";
+
+// A cost in full: kCostMinus, then group_thousands ("−1,234"), the mockup's
+// `"−" + fmt(...)`, on the Path Builder's list rows, steps and end choices.
+std::string format_cost(int64_t cost);
 
 // A song time as the Preview's clock shows it, "m:ss.mmm" ("1:04.000"). The
 // time rounds to the nearest whole ms first (a half rounds away from zero),

@@ -8,11 +8,14 @@
 #ifndef HYDRA_APP_JOB_BASE_H
 #define HYDRA_APP_JOB_BASE_H
 
+#include <algorithm>
 #include <atomic>
 #include <exception>
 #include <functional>
+#include <memory>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include "app/user_messages.h"
 #include "core/error_kind.h"
@@ -120,6 +123,16 @@ protected:
     std::string error_;
     std::string message_;
 };
+
+// Lets go of the cancelled or replaced jobs in `parked` whose threads have
+// ended (finished()). The one place a parked list is swept, so the UI thread
+// never waits on a job it has given up. Call it once per frame.
+template <class Job>
+void drop_finished_jobs(std::vector<std::unique_ptr<Job>>& parked) {
+    parked.erase(std::remove_if(parked.begin(), parked.end(),
+                                [](const std::unique_ptr<Job>& j) { return j->finished(); }),
+                 parked.end());
+}
 
 }  // namespace hydra::ui
 

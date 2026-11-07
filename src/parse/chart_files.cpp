@@ -6,11 +6,19 @@
 
 namespace hydra {
 
+const std::vector<ChartExtension>& chart_extensions() {
+    static const std::vector<ChartExtension> list = {
+        {".mid", ChartFormat::Mid},
+        {".chart", ChartFormat::Chart},
+        {".sng", ChartFormat::Sng},
+        {".srb", ChartFormat::Srb},
+    };
+    return list;
+}
+
 ChartFormat chart_format_of(std::string_view path) {
-    if (ends_with_ci(path, ".mid")) return ChartFormat::Mid;
-    if (ends_with_ci(path, ".chart")) return ChartFormat::Chart;
-    if (ends_with_ci(path, ".sng")) return ChartFormat::Sng;
-    if (ends_with_ci(path, ".srb")) return ChartFormat::Srb;
+    for (const ChartExtension& e : chart_extensions())
+        if (ends_with_ci(path, e.extension)) return e.format;
     return ChartFormat::None;
 }
 
