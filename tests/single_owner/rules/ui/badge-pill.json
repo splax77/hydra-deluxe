@@ -6,7 +6,7 @@
       "owner_file": "src/ui/badge_pill.h",
       "owner_symbol": "kPillFill",
       "date": "2026-10-22",
-      "decision": "D257 call 6, the user's ruling \"Yes, one helper\"; D257 call 6.",
+      "decision": "D257 call 6, the user's ruling \"Yes, one helper\"",
       "added_by": "BADGE2-pill",
       "pattern": "\\b51\\b[^,;]{0,12},\\s*38\\b[^,;]{0,12},\\s*26\\b|\\b106\\b[^,;]{0,12},\\s*69\\b[^,;]{0,12},\\s*32\\b",
       "must_match": [
@@ -36,7 +36,7 @@
       "owner_file": "src/ui/badge_pill.h",
       "owner_symbol": "draw_badge",
       "date": "2026-10-24",
-      "decision": "D262, the user's ruling \"there should be one shared helper function that all badges draw from\"; D262.",
+      "decision": "D262, the user's ruling \"there should be one shared helper function that all badges draw from\"",
       "added_by": "PILL-W1",
       "pattern": "\\bAddRect(?:Filled)?\\s*\\([^;]*\\bpill_u32\\s*\\(|\\bkPillRadius\\b|\\bpill_rect\\s*\\(|\\bcentred_text_x\\s*\\(",
       "must_match": [
