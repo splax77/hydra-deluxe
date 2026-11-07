@@ -186,8 +186,8 @@ std::vector<std::string> split_command_line_utf8(const std::wstring& command_lin
 // This process's arguments as UTF-8, argv[0] included. main()'s char** argv
 // is the ANSI copy of the command line: Windows swaps each character the code
 // page lacks for a look-alike (a fullwidth slash becomes '/'), so a path to a
-// chart folder with such a name points somewhere else. Every entry point
-// reads its arguments from here instead.
+// chart folder with such a name points somewhere else. Read arguments from
+// here instead.
 std::vector<std::string> utf8_argv();
 
 }  // namespace hydra

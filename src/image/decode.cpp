@@ -1,7 +1,7 @@
 #include "image/decode.h"
 
 // The one and only STB_IMAGE_IMPLEMENTATION in the binary. PNG + JPEG cover the
-// authored-art contract (docs/adr/0007); decoding is always from memory.
+// GUI's icons and the Preview's textures; decoding is always from memory.
 #define STB_IMAGE_IMPLEMENTATION
 #define STBI_ONLY_PNG
 #define STBI_ONLY_JPEG
