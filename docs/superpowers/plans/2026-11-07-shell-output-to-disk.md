@@ -59,7 +59,7 @@ Two read-only scripts counted the sizes of tool results in the transcripts under
 | 300 agent transcripts | 16,617 | 48,192,451 | 3,559 | 578 | 3,900,877 (8.1%) | 2,169,779 (4.5%) |
 | Both | 25,505 | 64,247,182 | 6,531 | 967 | 5,516,167 (8.6%) | 2,828,500 (4.4%) |
 
-"Removed" counts the characters past the cap, before the hook adds its head, tail and error lines back; the real saving is smaller by about 3,300 characters per trimmed call (question 2). Shell results are 35.5% of main-session tool-result characters and 18.1% of agents'. Read results are the biggest share (44.5% and 63.8%) and are out of scope here.
+"Removed" counts the characters past the cap, as if a trimmed result kept all 4,000. The hook keeps about 3,300 (question 2), so at a 4,000 cap the real saving is about 700 characters per trimmed call larger than the table shows, before read-backs. Shell results are 35.5% of main-session tool-result characters and 18.1% of agents'. Read results are the biggest share (44.5% and 63.8%) and are out of scope here.
 
 Failed shell calls: 203 in the main set and 473 in the agent set, 676 in all. 22 of them were over 4,000 characters, and 7 sat at the 10,000 ceiling, which means their end was lost. Those 7 are the calls part 2 exists for.
 
