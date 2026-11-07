@@ -36,6 +36,7 @@ from tools.ch_mcp.tests.test_frida_attach import (  # noqa: E402
 from tools.ch_probe import constants as C  # noqa: E402
 from tools.ch_probe import engine_finder  # noqa: E402
 from tools.ch_probe.engine import SNAPSHOT_SIZE  # noqa: E402
+from tools.ch_probe.process import decode_u32  # noqa: E402
 
 VERSION = "v1.1.0.6142-final"
 FACTS = {
@@ -158,7 +159,7 @@ class FakeEngineProcess:
         return bytes(self.block[addr - ENGINE:addr - ENGINE + size])
 
     def read_u32(self, addr):
-        return struct.unpack_from("<I", self.block, addr - ENGINE)[0]
+        return decode_u32(self.read(addr, 4))
 
     def close(self):
         self.closed = True
