@@ -150,7 +150,7 @@ ActivationRating rate_activation(const Activation& act,
         // end (core::paid_by_sp_walk), the same answer the squeezed-out row
         // above reads. Whether the squeeze needs timing is a different
         // question (SPSqueeze::needs_no_timing): a SqIn on the end is inside
-        // SP yet still needs 0.0 ms (D301). Its stored scale is the one at
+        // SP yet still needs 0.0 ms (D302). Its stored scale is the one at
         // its SqIn rank. Its sides go on sqins_read in this same walk, so
         // that list pairs with scales->sqins the way stored_transfer_scales
         // built it: one entry per SqIn, in list order.

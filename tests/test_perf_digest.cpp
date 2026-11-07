@@ -137,7 +137,7 @@ void check_parse_digest(const app::Settings& st, uint64_t pinned, size_t pinned_
 //      parse digests.
 //
 // The four prepared-row digests were re-pinned again from one run on
-// 2026-10-31 (task PBR4-A3, D301). The summary's hardest_ms now holds the
+// 2026-10-31 (task PBR4-A3, D302). The summary's hardest_ms now holds the
 // engine's own figure, sign included (engine_hardest_ms), so the prepared row
 // moved; the engine's output folded through record_hash did not, and the
 // results stamp did not move. The two parse digests did not move, so no chart

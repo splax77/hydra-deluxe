@@ -672,12 +672,24 @@ src/core/model.cpp. That ladder differs from the report's timing tiers
 (`timing_tiers`), and the report's footer says the two can differ.
 
 **Needs no timing**:
-A squeeze that is already done with no frontend timing: a SqIn whose note the
-SP walk already pays, or a SqOut whose note it does not. `SPSqueeze::needs_no_timing`
-in src/core/model.h is the one answer, and the rating and the details sentence
-both read it. The word "Free" in the Rating cell is a different test,
-`BackendSqueeze::summarystr`'s, on a backend row's offset.
+A squeeze that is already done with no frontend timing: its difficulty is below
+0, so a SqIn already inside Star Power or a SqOut already past it. At exactly 0
+both need 0.0 ms (D302). `SPSqueeze::needs_no_timing` in src/core/model.h is the
+one answer, through `timing_needs_hitting`, and the details sentence reads it.
+The rating does not: it reads which side of the SP end the note sits on
+(`core::paid_by_sp_walk`). The word "Free" in the Rating cell is a different
+test, `BackendSqueeze::summarystr`'s, on a backend row's offset.
 _Avoid_: free (for this test)
+
+**Saved hardest figure**:
+A path's hardest figure as the engine knows it, sign included, with no
+needs-timing rule applied. `engine_hardest_ms` in src/core/model.h works it
+out, and the library saves it as `hardest_ms`.
+
+**Shown timing**:
+The timing a screen shows for a saved hardest figure: the saved figure with the
+needs-timing rule applied. `shown_timing` in src/core/model.h is the one place
+that happens, so a change to the rule needs no re-analysis.
 
 **Backend leeway**:
 How long after the SP end a note still scores under Star Power without a

@@ -324,7 +324,7 @@ TEST_CASE("library query: a row at exactly N ms matches <=N and >=N, not <N or >
 
 TEST_CASE("squeeze filters: a path whose hardest is 0.0 passes squeeze<=0, matches squeeze>=0, "
           "fails squeeze<0 and squeeze<=-5") {
-    // A squeeze at exactly 0.0 ms is a timing to hit (D301), so the path is
+    // A squeeze at exactly 0.0 ms is a timing to hit (D302), so the path is
     // timed at 0.0 and D266's strict < drops it at the boundary.
     CHECK(matches("squeeze<=0", burnout(), analyzed(7, 0.0)));
     CHECK(matches("squeeze>=0", burnout(), analyzed(7, 0.0)));

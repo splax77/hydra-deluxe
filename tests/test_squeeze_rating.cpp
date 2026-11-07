@@ -561,7 +561,7 @@ TEST_CASE("rate_activation: a SqIn reads its SqIn scale, by its side of the end"
     CHECK(r.sqins_read[1].late);
 }
 
-// D301: the side is where the note sits (core::paid_by_sp_walk), not whether
+// D302: the side is where the note sits (core::paid_by_sp_walk), not whether
 // the squeeze needs timing.
 TEST_CASE("rate_activation: a SqIn on the SP end is inside Star Power, so it reads its SqIn scale's early side") {
     // Only one side scaled, so the figure shows which side was read.
@@ -591,7 +591,7 @@ TEST_CASE("rate_activation: a SqIn on the SP end is inside Star Power, so it rea
     CHECK(*figure(late_only, 0.5) == doctest::Approx(0.38461538461538464).epsilon(1e-12));
 }
 
-// D301: the squeezed-out row's side is read the same way, so both kinds are
+// D302: the squeezed-out row's side is read the same way, so both kinds are
 // pinned at the SP end.
 TEST_CASE("rate_note side at the SP end: a squeeze-out at 0 reads the early side too") {
     auto rated_row = [](TransferScale post) {

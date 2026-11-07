@@ -134,6 +134,10 @@ The first group opens the windows on sample rows, with no AppState. The test's o
 
 The second group goes end to end through AppState: the toolbar, the batch strip, the dm picker and the analysis settings. These are `report-window-open-path`, `report-window-dm-handover`, `report-window-row-click`, `report-window-reopen`, `report-window-reopen-keeps-filters` and `report-window-out-of-date`. They use the canned dmleaderboards API above and never reach the real server.
 
+## The Path Builder's tests
+
+The Path Builder has its own headless runner, `hydra_pathbuilder_uitest`, built on the same engine. Its tests live in `tests/pb_ui`. It has no `--all`; run a test by name with `--test <name>`. An opened step's ending lines are the items `##end_<tick>`, named by the ending's deact tick, and `choose-an-ending` drives them.
+
 ## Watching it run: attached mode
 
 ```bash

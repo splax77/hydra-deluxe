@@ -255,3 +255,9 @@ on the engine option and the main window.
   fail a squeeze that needs no timing, which `Activation::difficulty` leaves
   out. On such a window the note has a flag but no figure to name. The plan
   sends that case to the user; nothing is invented for it.
+
+## Redesign, 2026-10-31
+
+2026-10-31: the fourth mockup
+(`docs/superpowers/specs/2026-10-31-path-builder-mockup-4/`) is the spec for
+the steps panel. D302 settled the 0 ms rule it rests on.
