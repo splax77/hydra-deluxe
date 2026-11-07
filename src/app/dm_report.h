@@ -204,11 +204,9 @@ struct GeneratedDmReport {
     // shows them. Empty when the user had no scores to compare.
     std::string subtitle;
     std::string footer;
-    // Whose scores, compared in which chart mode: generate_dm_report's
-    // username and its profile's chart mode, set even when there were no
-    // scores.
+    // Whose scores: generate_dm_report's username, set even when there were
+    // no scores.
     std::string username;
-    std::string chartmode;
 };
 
 GeneratedDmReport generate_dm_report(store::RecordStore& store,

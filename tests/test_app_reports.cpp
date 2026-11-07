@@ -401,9 +401,10 @@ TEST_CASE("a comparison row click selects the chart and keeps the bar's mode") {
     built_in.view_difficulty = "Hard";
     built_in.view_prodrums = false;
     built_in.view_bass2x = true;
+    REQUIRE(built_in.chartmode_key() != bar);
+    // The comparison keeps no mode field; only its footer names the mode it
+    // was built in, so `built_in` stands for that mode here.
     auto result = std::make_shared<hydra::app::dm_report::GeneratedDmReport>();
-    result->chartmode = built_in.chartmode_key();
-    REQUIRE(result->chartmode != bar);
     result->rows.emplace_back();
     result->rows.back().identifier = library_entry(7).md5;
     app->dm_report.result = result;

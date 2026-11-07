@@ -211,13 +211,8 @@ std::string canned_dm_scores(const std::vector<std::string>& score_rows);
 // state verb's text (EngineHooks::state_text).
 std::string state_text(Harness& h);
 
-// The pixel size ImGui draws text at now. text_measurer uses it.
+// The pixel size ImGui draws text at now, for a test that measures text itself.
 float drawn_font_size();
-
-// How wide ImGui draws a string in `font` (the default font when null), at
-// drawn_font_size, as the width rule's WidthOf (ui/column_widths.h), for a
-// test that checks a column against the rule.
-hydra::ui::WidthOf text_measurer(ImFont* font = nullptr);
 
 // ---- the checked-in C++ tests ---------------------------------------------
 

@@ -232,7 +232,6 @@ GeneratedDmReport generate_dm_report(store::RecordStore& store,
                                      const std::string& username) {
     GeneratedDmReport out;
     out.username = username;
-    out.chartmode = profile.chartmode;
     const std::string& chartmode = profile.chartmode;
     std::vector<DmReportRow> rows = collect_dm_rows(store, scores, profile);
     out.stats = tally_dm_rows(rows);

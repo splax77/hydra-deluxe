@@ -975,7 +975,7 @@
         {
           "file": "tests/ui/uitest_harness.cpp",
           "line_text": "return st.FontSizeBase * st.FontScaleMain * st.FontScaleDpi;",
-          "why": "drawn_font_size, the owner: text_measurer and the mono-font check call it"
+          "why": "drawn_font_size, the owner: the mono-font check and the badge-centring check in tests/ui/uitest_paths.cpp call it"
         }
       ],
       "scope": [
