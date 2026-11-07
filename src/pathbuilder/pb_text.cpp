@@ -16,25 +16,10 @@ namespace hydra::pathbuilder {
 const char* const kNoStepsText =
     "None yet. Each activation you make shows up here: where it starts and ends, and what it "
     "cost you.";
-const char* const kActivationRemovedText = "Activation removed.";
-const char* const kStartedOverText =
-    "Started over. Click a glowing fill to make your first activation.";
-const char* const kBuiltWholePathText =
-    "Hydra built the whole path the best way. Undo takes it back.";
 const char* const kYourActivationHoverText = "Your activation. Click to see it below.";
-const char* const kBuildLeftToRightText =
-    "You build left to right; Undo or Remove goes back a step.";
-
-namespace {
-
-// The locked sentence about `subject` ("This", or a fill's name).
-std::string before_last_sentence(const std::string& subject) {
-    return subject + " is before your last activation. " + kBuildLeftToRightText;
-}
-
-}  // namespace
-
-const std::string kBeforeLastActivationText = before_last_sentence("This");
+const char* const kBeforeLastActivationText =
+    "This is before your last activation. You build left to right; Undo or Remove goes back a "
+    "step.";
 const char* const kGameHidesFillText = "The game doesn't show this fill here.";
 const char* const kBestChoiceNowText = "This is the best choice now.";
 const char* const kPendingText = "...";
@@ -236,52 +221,6 @@ FillHoverCard fill_hover_card(const PreviewScene& scene, size_t fill_index,
         if (std::optional<std::string> end = hydra_end_sentence(scene, *numbers->hydra_end))
             card.grey.push_back(std::move(*end));
     return card;
-}
-
-GuideMessage cant_activate_message(const std::string& fill, const std::string& reason) {
-    return {"Can't activate at " + fill + ": " + reason, true};
-}
-
-GuideMessage locked_message(const std::string& fill) { return {before_last_sentence(fill), true}; }
-
-GuideMessage removed_message(size_t index, bool last) {
-    if (last) return {kActivationRemovedText, false};
-    return {"Removed activation " + std::to_string(index + 1) + " and everything after it.",
-            false};
-}
-
-GuideMessage started_over_message() { return {kStartedOverText, false}; }
-
-GuideMessage finished_for_player_message(size_t kept) {
-    if (kept == 0) return {kBuiltWholePathText, false};
-    return {"Hydra kept your " + counted(static_cast<int64_t>(kept), "activation", "activations") +
-                " and added the best rest of the path. Undo takes it back.",
-            false};
-}
-
-GuideMessage guide_text(const GuideFacts& facts) {
-    if (facts.message) return *facts.message;
-    const std::string need = std::to_string(kSpActivationBars);
-    if (!facts.last_end) {
-        std::string t = "Step 1. Click a glowing fill to make your first activation.";
-        if (facts.earliest_fill)
-            t += " The earliest you can activate is " + *facts.earliest_fill + " (" +
-                 app::clock_str(facts.earliest_ms) + "), once you've saved " + need +
-                 " phrases.";
-        return {t + " Hover a fill to see it on the highway.", false};
-    }
-    std::string t = "Your Star Power runs until " + *facts.last_end + ".";
-    if (facts.fills_after_last == 0)
-        return {t + " No fill after that comes with " + need +
-                    " saved phrases, so your path is finished. Your score is " +
-                    group_thousands(facts.player_total) + ".",
-                false};
-    t += " Save " + need + " more phrases";
-    const size_t star_at = t.size();
-    t += ", then activate again.";
-    if (facts.earliest_fill) t += " The next glowing fill is " + *facts.earliest_fill + ".";
-    if (facts.best_fill) t += " Your best next choice is " + *facts.best_fill + ".";
-    return {t, false, star_at};
 }
 
 }  // namespace hydra::pathbuilder

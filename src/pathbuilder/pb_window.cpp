@@ -1,7 +1,6 @@
 #include "pathbuilder/pb_window.h"
 
 #include <algorithm>
-#include <cfloat>
 #include <cstdint>
 #include <exception>
 #include <optional>
@@ -9,7 +8,6 @@
 #include <utility>
 
 #include "imgui.h"
-#include "imgui_internal.h"  // ImFontCalcTextSizeEx, CalcWrapWidthForPos, the window's text cursor
 
 #include "app/config.h"          // chartmode_key
 #include "app/display_format.h"  // format_cost, kFactSeparator
@@ -17,10 +15,10 @@
 #include "app/preview_view.h"    // path_overlay_key, fill_index_on_chord
 #include "app/report.h"          // ChipToken
 #include "app/user_messages.h"
-#include "core/timing.h"  // measure_label
 #include "pathbuilder/pb_files.h"
 #include "pathbuilder/pb_menu.h"
 #include "pathbuilder/pb_open.h"
+#include "pathbuilder/pb_text.h"
 #include "search/graph.h"  // fill_rule_for
 #include "ui/fonts.h"  // rem
 #include "ui/list_scroll.h"  // scroll_block_into_view
@@ -28,7 +26,7 @@
 #include "ui/preview_panel.h"
 #include "ui/preview_timeline.h"
 #include "ui/text_role.h"
-#include "ui/theme.h"    // chip_color, kAccentColor, kStarPowerColor
+#include "ui/theme.h"    // chip_color
 #include "ui/widgets.h"  // WarnColor, error_detail_line
 
 namespace hydra::pathbuilder {
@@ -88,45 +86,14 @@ ImVec4 tier_color(app::CostTier tier) {
     return ui::chip_color(ChipToken::muted);
 }
 
-// `text` wrapped at the window's edge, with the Star Power star the mockup
-// writes as "(★)" at byte `star_at` (GuideMessage::star_at), one text line
-// tall. The sentence is drawn as one text item with no-break spaces where the
-// star goes, so it wraps as one sentence; the star is drawn over that gap,
-// found by ImGui's own wrap layout of the same text.
-void text_with_star(const std::string& text, std::optional<size_t> star_at) {
-    ui::ScopedFont prose(ui::TextRole::Prose);
-    if (!star_at || *star_at > text.size()) {
-        ImGui::TextWrapped("%s", text.c_str());
-        return;
+// One warning: the plain sentence in the warning colour, its details line
+// under it.
+void warning_line(const std::string& sentence, const std::string& detail) {
+    {
+        ui::WarnColor warn;
+        ImGui::TextWrapped("%s", sentence.c_str());
     }
-    const float size = ImGui::GetTextLineHeight();
-    constexpr const char* kNoBreakSpace = "\xC2\xA0";  // U+00A0, which ImGui never wraps at
-    const float space_w = ImGui::CalcTextSize(kNoBreakSpace).x;
-    std::string gap;
-    float gap_w = 0.0f;
-    while (space_w > 0.0f && gap_w < size) {
-        gap += kNoBreakSpace;
-        gap_w += space_w;
-    }
-    const std::string open = text.substr(0, *star_at) + kStarOpen;
-    const std::string drawn = open + gap + kStarClose + text.substr(*star_at);
-
-    ImGuiWindow* window = ImGui::GetCurrentWindow();
-    const bool own_wrap = window->DC.TextWrapPos < 0.0f;  // as TextWrapped does
-    if (own_wrap) ImGui::PushTextWrapPos(0.0f);
-    const ImVec2 pos(window->DC.CursorPos.x, window->DC.CursorPos.y + window->DC.CurrLineTextBaseOffset);
-    const float wrap_w = ImGui::CalcWrapWidthForPos(window->DC.CursorPos, window->DC.TextWrapPos);
-    ImGui::TextUnformatted(drawn.c_str(), drawn.c_str() + drawn.size());
-    if (own_wrap) ImGui::PopTextWrapPos();
-
-    // Where the gap starts: the end of `open` in the wrapped layout, given
-    // as the bottom of its line.
-    ImVec2 end;
-    ImFontCalcTextSizeEx(ui::font_for(ui::TextRole::Prose).font, ImGui::GetFontSize(), FLT_MAX, wrap_w, drawn.c_str(),
-                         drawn.c_str() + open.size(), drawn.c_str() + drawn.size(), nullptr, &end,
-                         0);
-    const ImVec2 at(pos.x + end.x + (gap_w - size) * 0.5f, pos.y + end.y - ImGui::GetFontSize());
-    ui::draw_star(ImGui::GetWindowDrawList(), at, size, true, ImGui::GetColorU32(ui::kStarPowerColor));
+    ui::error_detail_line(detail);
 }
 
 // Dim text that wraps at the window's edge, as the mockup's muted lines do.
@@ -274,8 +241,6 @@ void PbApp::take_in_chart() {
     if (chart == chart_seen_) return;
     chart_seen_ = chart;
     set_refusal({}, {});
-    guide_message_.reset();
-    pending_guide_.reset();
     pending_select_.reset();
     selected_.reset();
     hovered_fill_.reset();
@@ -290,16 +255,9 @@ void PbApp::set_refusal(std::string sentence, std::string detail) {
     refusal_generation_ = state.history().generation();
 }
 
-void PbApp::set_guide_message(GuideMessage m) {
-    guide_message_ = std::move(m);
-    guide_message_generation_ = state.history().generation();
-}
-
 void PbApp::start_over() {
-    pending_guide_.reset();
     pending_select_.reset();
     state.history().edit(PlayerPath{});
-    set_guide_message(started_over_message());
 }
 
 void PbApp::select_step(size_t index) {
@@ -332,7 +290,6 @@ void PbApp::act_on_menu() {
     const MenuChoice choice = draw_menu(flags);
     if (choice != MenuChoice::None) {
         set_refusal({}, {});
-        pending_guide_.reset();
         pending_select_.reset();
     }
 
@@ -404,22 +361,16 @@ void PbApp::draw() {
         ui::WarnColor warn;
         ImGui::TextWrapped("%s", dialog_failed_);
     }
-    // A refusal shows as an open's error does, until the player's path changes.
-    if (!refusal_.empty() && refusal_generation_ == state.history().generation()) {
-        {
-            ui::WarnColor warn;
-            ImGui::TextWrapped("%s", refusal_.c_str());
-        }
-        ui::error_detail_line(refusal_detail_);
-    }
+    // A refusal shows as an open's error does, until the player's path
+    // changes. Each one here has its own reason and its own clearing, so when
+    // two hold at once both show.
+    const uint64_t generation = state.history().generation();
+    if (!refusal_.empty() && refusal_generation_ == generation) warning_line(refusal_, refusal_detail_);
+    const DecisionList& d = state.decisions();
+    if (!d.message().empty() && edit_generation_ == generation) warning_line(d.message(), d.detail());
+    if (const std::string error = d.error(); !error.empty()) warning_line(error, d.error_detail());
     if (state.opening()) ImGui::TextWrapped("Opening %s ...", state.requested_path().c_str());
-    if (!state.error().empty()) {
-        {
-            ui::WarnColor warn;
-            ImGui::TextWrapped("%s", state.error().c_str());
-        }
-        ui::error_detail_line(state.error_detail());
-    }
+    if (!state.error().empty()) warning_line(state.error(), state.error_detail());
 
     if (const OpenChart* chart = state.chart())
         draw_body(*chart);
@@ -467,14 +418,11 @@ void PbApp::draw_body(const OpenChart& chart) {
            "player " + std::to_string(state.history().generation()));
     if (open_preview(chart, shown)) d.price_fills(preview_->scene().trailing_skipped_fill_ticks);
     if (d.take_player_changed()) {
-        if (pending_guide_) set_guide_message(std::move(*pending_guide_));
         if (pending_select_) select_step(*pending_select_);
-        pending_guide_.reset();
         pending_select_.reset();
     }
 
     draw_head(chart);
-    draw_guide(chart);
     draw_timeline(chart);
 
     if (!ImGui::GetIO().WantTextInput && ImGui::IsKeyPressed(ImGuiKey_Escape, false))
@@ -546,7 +494,6 @@ void PbApp::draw_head(const OpenChart& chart) {
     ImGui::SameLine(0.0f, rem(kHeadGapRem));
     ImGui::BeginDisabled(!h.can_undo());
     if (ImGui::Button(kUndoLabel)) {
-        pending_guide_.reset();
         pending_select_.reset();
         h.undo();
     }
@@ -558,67 +505,14 @@ void PbApp::draw_head(const OpenChart& chart) {
     ImGui::SameLine();
     ImGui::BeginDisabled(!d.can_finish());
     if (ImGui::Button(kFinishForMeLabel)) {
-        pending_guide_.reset();
         pending_select_.reset();
-        const size_t kept = h.current().windows.size();
-        const uint64_t before = h.generation();
+        edit_generation_ = h.generation();
         d.finish(state);
-        if (h.generation() != before) set_guide_message(finished_for_player_message(kept));
     }
     ImGui::EndDisabled();
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", kFinishTooltip);
     ImGui::SameLine(0.0f, rem(kBestBoxGapRem));
     ImGui::Checkbox(kShowBestPathLabel, &show_best_);
-}
-
-GuideFacts PbApp::guide_facts(const OpenChart& chart) const {
-    GuideFacts f;
-    const PathHistory& h = state.history();
-    const DecisionList& d = state.decisions();
-    if (guide_message_ && guide_message_generation_ == h.generation()) f.message = guide_message_;
-    else if (!d.message().empty()) f.message = GuideMessage{d.message(), true};
-    if (const app::LadderRun* run = d.run(); run && run->complete) f.player_total = run->ladder.player_total;
-    if (!h.current().windows.empty() && h.current().path) {
-        const ActivationWalk acts = h.current().path->walk_activations();
-        if (acts.size() > 0)
-            if (const std::optional<int64_t> end = acts[acts.size() - 1].deact_tick())
-                f.last_end = measure_label(chart.song.timing().timecode(*end));
-    }
-    if (!preview_ || !preview_->shows_path(overlay_key_)) return f;
-    const app::PreviewScene& scene = preview_->scene();
-    f.fills_after_last = scene.trailing_skipped_fill_ticks.size();
-    for (size_t i = 0; i < scene.fills.size(); ++i) {
-        const PreviewFill& fill = scene.fills[i];
-        if (fill.state != app::PreviewFillState::Offered || !fill_reason(scene, i).empty()) continue;
-        f.earliest_fill = fill_name(scene, fill);
-        f.earliest_ms = scene.timing->timecode(fill.chord_tick).ms();
-        break;
-    }
-    f.best_fill = best_fill_name(scene, d.candidates());
-    return f;
-}
-
-void PbApp::draw_guide(const OpenChart& chart) {
-    const GuideFacts facts = guide_facts(chart);
-    guide_ = guide_text(facts);
-    // The guide's edge: the mockup's `.guide{border-left:4px solid var(--glow)}`,
-    // red for a refusal (`.guide.refuse`).
-    ImGui::PushStyleColor(ImGuiCol_Border, guide_.refuse ? ui::chip_color(app::report::ChipToken::t3)
-                                                         : ui::kAccentColor);
-    ImGui::BeginChild("##guide", ImVec2(0, 0), ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY);
-    text_with_star(guide_.text, guide_.star_at);
-    if (!guide_message_ && !state.decisions().message().empty())
-        ui::error_detail_line(state.decisions().detail());
-    const std::string error = state.decisions().error();
-    if (!error.empty()) {
-        {
-            ui::WarnColor warn;
-            ImGui::TextWrapped("%s", error.c_str());
-        }
-        ui::error_detail_line(state.decisions().error_detail());
-    }
-    ImGui::EndChild();
-    ImGui::PopStyleColor();
 }
 
 void PbApp::draw_timeline(const OpenChart& chart) {
@@ -775,21 +669,11 @@ void PbApp::click_fill(const OpenChart& chart, size_t index) {
         }
         return;
     }
-    FillRefusal kind = FillRefusal::None;
-    const std::string reason = fill_reason(scene, index, kind);
-    if (kind == FillRefusal::BeforeLast) {
-        set_guide_message(locked_message(fill_name(scene, f)));
-        return;
-    }
-    if (kind != FillRefusal::None && kind != FillRefusal::Taken) {
-        set_guide_message(cant_activate_message(fill_name(scene, f), reason));
-        return;
-    }
-    if (f.state != app::PreviewFillState::Offered) return;
+    // A refused fill's click does nothing; its hover card says why.
+    if (fill_refusal(scene, index) != FillRefusal::None) return;
     const PathHistory& h = state.history();
-    pending_guide_.reset();
     pending_select_ = h.current().windows.size();
-    guide_message_.reset();
+    edit_generation_ = h.generation();
     state.decisions().click_fill(state.search_graph(), chart.settings, h.current().windows,
                                  f.chord_tick, h.generation());
 }
@@ -799,11 +683,7 @@ void PbApp::draw_preview(const OpenChart& chart) {
     // The panel draws only a loaded controller, so its error is the
     // builder's to show.
     if (preview_->has_error()) {
-        {
-            ui::WarnColor warn;
-            ImGui::TextWrapped("%s", preview_->error().c_str());
-        }
-        ui::error_detail_line(preview_->error_detail());
+        warning_line(preview_->error(), preview_->error_detail());
         return;
     }
     // Loading shows as the progress bar in draw_timeline.
@@ -991,8 +871,8 @@ void PbApp::draw_steps(const OpenChart& chart) {
                     }
                     ImGui::SetCursorPosY(line.y + line_h + ImGui::GetStyle().ItemSpacing.y);
                     if (picked && last) {
-                        pending_guide_.reset();
                         pending_select_ = i;
+                        edit_generation_ = h.generation();
                         d.choose_end(c.window, h.generation());
                     }
                     ImGui::PopID();
@@ -1008,7 +888,7 @@ void PbApp::draw_steps(const OpenChart& chart) {
             }
             if (ImGui::Button(last ? kRemoveLastLabel : kRemoveEarlierLabel)) {
                 pending_select_.reset();
-                pending_guide_ = removed_message(i, last);
+                edit_generation_ = h.generation();
                 d.click_remove(state.search_graph(), chart.settings, windows, windows[i].act_tick,
                                h.generation());
             }

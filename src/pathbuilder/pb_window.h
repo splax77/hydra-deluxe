@@ -1,7 +1,7 @@
 // The Path Builder's main window, drawn each frame in this order: the head
 // row (title and mode, the three scores, Undo, Start over, Finish the rest for
-// me, "Show Hydra's best path"), the guide line and the Preview's timeline
-// over a window of the song (ui::PreviewTimeline, the third mockup's), then
+// me, "Show Hydra's best path"), the Preview's timeline over a window of the
+// song (ui::PreviewTimeline, the third mockup's), then
 // Hydra's own Preview panel (ui::draw_preview_panel) with a side column beside
 // it holding "Where to activate next" above "Your activations". The top
 // follows the fifth mockup
@@ -24,7 +24,6 @@
 #include <vector>
 
 #include "pathbuilder/pb_state.h"
-#include "pathbuilder/pb_text.h"  // GuideMessage
 #include "ui/preview_timeline.h"  // kTimelineActivationsLabel
 #include "ui/timeline_view.h"
 
@@ -98,8 +97,6 @@ public:
     // is showing.
     const std::string& refusal() const { return refusal_; }
     const std::string& refusal_detail() const { return refusal_detail_; }
-    // The guide line as it reads this frame (guide_text).
-    const GuideMessage& guide() const { return guide_; }
     // The step the player selected (a band, a taken fill or a step row), as
     // an index into the path's activations; none after Escape or a change of
     // the player's path.
@@ -122,13 +119,10 @@ private:
     std::string refusal_;
     std::string refusal_detail_;
     uint64_t refusal_generation_ = 0;
-    // The one-shot guide message (pb_text's GuideMessage) and the history
-    // generation it belongs to; it goes when the player's path changes. A
-    // removal's message waits in pending_guide_ until its edit lands.
-    std::optional<GuideMessage> guide_message_;
-    uint64_t guide_message_generation_ = 0;
-    std::optional<GuideMessage> pending_guide_;
-    GuideMessage guide_;
+    // The history generation the last edit handed to the decision list
+    // started from. DecisionList::message() is about that edit, so it shows
+    // only while the player's path is still at this generation.
+    uint64_t edit_generation_ = 0;
     // The selected step and the history generation it was picked at.
     std::optional<size_t> selected_;
     uint64_t selected_generation_ = 0;
@@ -178,8 +172,6 @@ private:
     void act_on_menu();
     // Shows `sentence` and `detail` as the refusal (empty clears it).
     void set_refusal(std::string sentence, std::string detail);
-    // Makes `m` the guide's one-shot message for the path as it is now.
-    void set_guide_message(GuideMessage m);
     void start_over();
     void select_step(size_t index);
     // Opens the Preview on the shown path and takes its load in. False while
@@ -187,7 +179,6 @@ private:
     bool open_preview(const OpenChart& chart, const Path* shown);
     void draw_body(const OpenChart& chart);
     void draw_head(const OpenChart& chart);
-    void draw_guide(const OpenChart& chart);
     void draw_timeline(const OpenChart& chart);
     // Moves the window for what the Preview's clock did since last frame:
     // it opens the window at the first frame, follows the playhead while
@@ -203,12 +194,9 @@ private:
     void draw_steps(const OpenChart& chart);
     // What a click on scene fill `index` does (the timeline, the highway or a
     // list row): an offered fill fill_reason accepts starts a window, a taken
-    // one selects its step, any other puts its reason in the guide line. Every
-    // click also parks the Preview's clock on the fill's dot
-    // (ui::timeline_fill_ms).
+    // one selects its step, any other does nothing. Every click also parks
+    // the Preview's clock on the fill's dot (ui::timeline_fill_ms).
     void click_fill(const OpenChart& chart, size_t index);
-    // The guide line's facts for the shown path's scene.
-    GuideFacts guide_facts(const OpenChart& chart) const;
 };
 
 }  // namespace hydra::pathbuilder

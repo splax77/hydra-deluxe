@@ -41,13 +41,12 @@ bool write_file(const std::string& path, const std::string& text) {
     return true;
 }
 
-// Opens the chart from the command line: the screen starts from nothing. Step
-// 1 of the guide and the three scores are on screen, the old decision list is
-// not, and "Show Hydra's best path" sits in the head row. The fill keys and
-// the saved row's words show only while their label is hovered. A fill under
-// two saved phrases is drawn as can't while the guide names a later fill as
-// the earliest. Then a click on the highway at that earliest fill activates
-// there.
+// Opens the chart from the command line: the screen starts from nothing. The
+// three scores are on screen, the intro, the coach line and the old decision
+// list are not, and "Show Hydra's best path" sits in the head row. The fill
+// keys and the saved row's words show only while their label is hovered. A
+// fill under two saved phrases is drawn as can't. Then a click on the highway
+// at the earliest fill the player can take activates there.
 void test_open_starts_empty(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     h.chart_arg = corpus::burnout_notes();
@@ -73,7 +72,7 @@ void test_open_starts_empty(ImGuiTestContext* ctx) {
     IM_CHECK(!on_screen(h, "Build your own"));
     // The Preview panel's clock at the song's start, from one run.
     IM_CHECK(on_screen(h, "0:00.000"));
-    IM_CHECK(on_screen(h, "Step 1."));
+    IM_CHECK(!on_screen(h, "Step 1."));
     // Burnout is shorter than the window, so the window is the whole song
     // (plan 3's Q1): the scrollbar's readout, from one run. The scrollbar's
     // name is on screen.
@@ -140,8 +139,7 @@ void test_open_starts_empty(ImGuiTestContext* ctx) {
     IM_CHECK(on_screen(h, hydra::pathbuilder::kNoStepsText));
 
     // From one run: Burnout's second fill comes with one phrase saved, so it
-    // does not glow, and the guide names the fill at tick 36480 (m20) as the
-    // earliest.
+    // does not glow.
     static constexpr int64_t kUnderTwoTick = 21120;
     const hydra::app::PreviewScene& scene = h.app->preview()->scene();
     const auto under_two =
@@ -153,13 +151,9 @@ void test_open_starts_empty(ImGuiTestContext* ctx) {
         hydra::pathbuilder::fill_reason(scene, static_cast<size_t>(under_two - scene.fills.begin()))
             .c_str(),
         "You have 1 phrase saved here. You need 2 to activate.");
-    IM_CHECK_STR_EQ(h.app->guide().text.c_str(),
-                    "Step 1. Click a glowing fill to make your first activation. The earliest you "
-                    "can activate is m20 (0:25.123), once you've saved 2 phrases. Hover a fill to "
-                    "see it on the highway.");
-    IM_CHECK(on_screen(h, h.app->guide().text));
 
-    // A click on the highway at that fill activates there, as a click on it
+    // A click on the highway at the earliest fill the player can take, from
+    // one run the one at tick 36480 (m20), activates there, as a click on it
     // in the timeline does. The highway is moved so the fill starts on the
     // strike line, and the click lands on the floor halfway up the part of
     // the fill the highway shows (project_to_image, the renderer's camera).

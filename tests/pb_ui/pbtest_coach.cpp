@@ -1,5 +1,4 @@
-// The Path Builder's steps panel and guide line, driven headless: a step's
-// ending lines, "Finish the rest for me", the tight-window note, and a click
+// The Path Builder's steps panel, driven headless: a step's ending lines, "Finish the rest for me", the tight-window note, and a click
 // on a fill the player cannot activate on. Every figure is pinned from one run under the GUI
 // tests' settings (tests/scratch_settings.h).
 
@@ -102,13 +101,20 @@ void test_finish_for_me(ImGuiTestContext* ctx) {
     IM_CHECK_EQ(done.path->totalscore(), int64_t{364675});
     IM_CHECK_EQ(done.windows.size(), size_t{2});
     IM_CHECK(s.history().can_undo());
-    IM_CHECK(on_screen(h, hydra::pathbuilder::finished_for_player_message(1).text));
     // The second step is on screen as its compact row. From one run.
     IM_CHECK(on_screen(h, "m88 → m92 2 phrases best"));
 }
 
-// A click on a fill under two saved phrases: the guide line says why, in
-// fill_reason's sentence, and the player's path stays as it was.
+// True once the hover card on the fill at `tick` shows `sentence`. A click on
+// a refused fill says nothing, so this card is where the player reads why.
+bool card_says(ImGuiTestContext* ctx, int64_t tick, const std::string& sentence) {
+    Harness& h = harness(ctx);
+    ctx->MouseMove(fill_ref(tick).c_str());
+    return uitest::wait_until(ctx, [&] { return on_screen(h, sentence); }, 5.0);
+}
+
+// A click on a fill under two saved phrases changes nothing, and the fill's
+// card gives fill_reason's sentence.
 void test_cant_activate_reason(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     IM_CHECK_RETV(open_chart(ctx, corpus::burnout_notes()), );
@@ -120,20 +126,17 @@ void test_cant_activate_reason(ImGuiTestContext* ctx) {
     ctx->SetRef(h.home_ref.c_str());
     ctx->ItemClick(("**/" + hydra::ui::timeline_fill_id(kUnderTwoTick)).c_str());
     ctx->Yield(2);
-    const std::string guide = h.app->guide().text;
-    IM_CHECK(h.app->guide().refuse);
-    IM_CHECK_STR_EQ(guide.c_str(), "Can't activate at m12: You have 1 phrase saved here. You need 2 to activate.");
-    IM_CHECK(on_screen(h, guide));
     IM_CHECK_EQ(s.history().generation(), generation);
     IM_CHECK(!s.history().current().path.has_value());
     IM_CHECK(!s.history().can_undo());
+    IM_CHECK(card_says(ctx, kUnderTwoTick, "You have 1 phrase saved here. You need 2 to activate."));
+    IM_CHECK(!on_screen(h, "Can't activate at"));
     // As the locked-fill test: the pointer must not stay on the fill.
     move_off_timeline(ctx);
 }
 
-// One activation on Burnout, then a click on a fill before it: the guide
-// line says the builder goes left to right, in locked_message's words, and
-// the path stays as it was.
+// One activation on Burnout, then a click on a fill before it: the path stays
+// as it was, and the fill's card says the builder goes left to right.
 void test_locked_fill_says_left_to_right(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     IM_CHECK_RETV(open_chart(ctx, corpus::burnout_notes()), );
@@ -149,11 +152,10 @@ void test_locked_fill_says_left_to_right(ImGuiTestContext* ctx) {
     ctx->SetRef(h.home_ref.c_str());
     ctx->ItemClick(("**/" + hydra::ui::timeline_fill_id(kEarlierTick)).c_str());
     ctx->Yield(2);
-    IM_CHECK(h.app->guide().refuse);
-    IM_CHECK(on_screen(h, hydra::pathbuilder::locked_message("m12").text));
     // The path is as it was: the one step, and none at m12.
     IM_CHECK(on_screen(h, step_row));
     IM_CHECK(!on_screen(h, "m12 →"));
+    IM_CHECK(card_says(ctx, kEarlierTick, hydra::pathbuilder::kBeforeLastActivationText));
     // The pointer would stay on that fill into the next test, whose fresh
     // builder would read it as a hover.
     move_off_timeline(ctx);

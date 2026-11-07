@@ -191,22 +191,6 @@ TEST_CASE("end choice text: the end measure and the Paths tab's badge words") {
     CHECK(end_choice_text(timing, no_end) == "E0- · early fill 0.0 ms · squeeze out 0.0 ms");
 }
 
-TEST_CASE("locked message: the fill's name, no Can't-activate prefix") {
-    const GuideMessage m = locked_message("m12");
-    CHECK(m.text ==
-          "m12 is before your last activation. You build left to right; Undo or Remove goes "
-          "back a step.");
-    CHECK(m.refuse);
-    CHECK_FALSE(m.star_at);
-    // The game's refusals keep the prefix.
-    CHECK(cant_activate_message("m12", kGameHidesFillText).text ==
-          "Can't activate at m12: The game doesn't show this fill here.");
-    // The hover's form shares the tail.
-    CHECK(kBeforeLastActivationText ==
-          "This is before your last activation. You build left to right; Undo or Remove goes "
-          "back a step.");
-}
-
 TEST_CASE("fill refusal: the five kinds in fill_reason's order, and fill_reason's sentence for "
           "each") {
     // Trivium "Feast of Fire". With no activation, its third fill comes with
@@ -235,7 +219,9 @@ TEST_CASE("fill refusal: the five kinds in fill_reason's order, and fill_reason'
     CHECK(fill_reason(best, 5) == "Star Power is already on here. Activation 1 runs until m40.");
     CHECK(best.fills[3].state == app::PreviewFillState::Offered);
     CHECK(fill_refusal(best, 3) == FillRefusal::BeforeLast);
-    CHECK(fill_reason(best, 3) == kBeforeLastActivationText);
+    CHECK(fill_reason(best, 3) ==
+          "This is before your last activation. You build left to right; Undo or Remove goes "
+          "back a step.");
     // A fill the game hides is locked too when it is before the last
     // activation: the left-to-right rule comes before the game's.
     CHECK(best.fills[0].state == app::PreviewFillState::Hidden);
@@ -256,66 +242,6 @@ TEST_CASE("fill refusal: the five kinds in fill_reason's order, and fill_reason'
     // A chord on the end tick is still under Star Power (core::after_sp_end).
     CHECK(fill_reason(one, at_end) == "Star Power is already on here. Activation 1 runs until m102.");
     CHECK(fill_reason(one, fill_index(one, 156960)) == kBeforeLastActivationText);
-}
-
-TEST_CASE("guide text: step 1 names the earliest offered fill; a finished path says so") {
-    // Allister "Overrated": with no activation the first fill comes with one
-    // bar saved, so the earliest the player can activate is the second.
-    const Song& song = song_named("Allister - Overrated");
-    const app::PreviewScene empty = scene_for(song, player_path(song, {}));
-    GuideFacts start;
-    for (size_t i = 0; i < empty.fills.size(); ++i) {
-        if (empty.fills[i].state == app::PreviewFillState::Offered && fill_reason(empty, i).empty()) {
-            start.earliest_fill = fill_name(empty, empty.fills[i]);
-            start.earliest_ms = empty.timing->timecode(empty.fills[i].chord_tick).ms();
-            break;
-        }
-    }
-    start.fills_after_last = empty.trailing_skipped_fill_ticks.size();
-    const GuideMessage step1 = guide_text(start);
-    CHECK(step1.text ==
-          "Step 1. Click a glowing fill to make your first activation. The earliest you can "
-          "activate is m30 (0:45.789), once you've saved 2 phrases. Hover a fill to see it on "
-          "the highway.");
-    CHECK_FALSE(step1.refuse);
-
-    // Hydra's best path ends with no fill offered after its last window.
-    const HydraRecord& rec =
-        corpus::analyzed(corpus::chart_named("Allister - Overrated"), default_cfg());
-    const Path& best = rec.best_path();
-    const app::PreviewScene done = scene_for(song, best);
-    REQUIRE(done.trailing_skipped_fill_ticks.empty());
-    GuideFacts finished;
-    finished.last_end = measure_label(
-        done.timing->timecode(*best.all_activations().back().deact_tick()));
-    finished.player_total = best.totalscore();
-    const GuideMessage end = guide_text(finished);
-    CHECK(end.text ==
-          "Your Star Power runs until m90. No fill after that comes with 2 saved phrases, so "
-          "your path is finished. Your score is 228,710.");
-
-    // A one-shot message wins over both.
-    finished.message = locked_message("m12");
-    CHECK(guide_text(finished).text ==
-          "m12 is before your last activation. You build left to right; Undo or Remove goes "
-          "back a step.");
-    CHECK(guide_text(finished).refuse);
-    // Neither sentence carries the star; only "Save 2 more phrases" does.
-    CHECK_FALSE(step1.star_at);
-    CHECK_FALSE(end.star_at);
-}
-
-TEST_CASE("star place: just after the word phrases, in the guide") {
-    GuideFacts next;
-    next.last_end = "m40";
-    next.earliest_fill = "m52";
-    next.fills_after_last = 1;
-    const GuideMessage g = guide_text(next);
-    CHECK(g.text ==
-          "Your Star Power runs until m40. Save 2 more phrases, then activate again. The next "
-          "glowing fill is m52.");
-    REQUIRE(g.star_at);
-    CHECK(g.text.substr(0, *g.star_at) == "Your Star Power runs until m40. Save 2 more phrases");
 }
 
 namespace {

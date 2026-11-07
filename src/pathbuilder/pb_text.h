@@ -14,7 +14,7 @@
 // docs/superpowers/plans/2026-10-31-step-panel-and-d13.md, task B1.
 // The top of the screen follows the fifth mockup
 // (docs/superpowers/specs/2026-10-31-path-builder-mockup-5/top-mockup.html):
-// the head row, the guide line, then the timeline.
+// the head row, then the timeline.
 
 #ifndef HYDRA_PATHBUILDER_PB_TEXT_H
 #define HYDRA_PATHBUILDER_PB_TEXT_H
@@ -35,24 +35,12 @@ namespace hydra::pathbuilder {
 using app::PreviewFill;
 using app::PreviewScene;
 
-// Where the Star Power star goes in a sentence the screen draws one in: a
-// byte offset into the sentence's text, just after the word "phrases" the
-// star stands beside. The text holds no star, so a test reads the sentence
-// whole; the screen draws kStarOpen, the star (ui::draw_star) and kStarClose
-// at the offset, as the mockup writes "phrases (★)".
-inline constexpr const char* kStarOpen = " (";
-inline constexpr const char* kStarClose = ")";
-
 // The sentences that take no figure, each from the mockup.
 extern const char* const kNoStepsText;
-extern const char* const kActivationRemovedText;
-extern const char* const kStartedOverText;
-extern const char* const kBuiltWholePathText;
 extern const char* const kYourActivationHoverText;
-// What a fill before the player's last activation says on hover, and the
-// tail it shares with locked_message: answers.md answer 2's words.
-extern const char* const kBuildLeftToRightText;
-extern const std::string kBeforeLastActivationText;
+// What a fill before the player's last activation says on hover: answers.md
+// answer 2's words.
+extern const char* const kBeforeLastActivationText;
 extern const char* const kGameHidesFillText;
 extern const char* const kBestChoiceNowText;
 extern const char* const kPendingText;  // a figure whose search has not landed
@@ -195,50 +183,6 @@ struct FillHoverCard {
 // no grey line follows.
 FillHoverCard fill_hover_card(const PreviewScene& scene, size_t fill_index,
                               const std::optional<FillHoverNumbers>& numbers);
-
-// A one-shot message the guide line shows after an action, and whether it is
-// a refusal (drawn red-edged). star_at is the star's place in the text, set
-// only on guide_text's "Save 2 more phrases" sentence.
-struct GuideMessage {
-    std::string text;
-    bool refuse = false;
-    std::optional<size_t> star_at;
-};
-
-// "Can't activate at m12: <reason>", a refusal, for every kind but
-// BeforeLast.
-GuideMessage cant_activate_message(const std::string& fill, const std::string& reason);
-// A click on a fill refused as BeforeLast: "m12 is before your last
-// activation." and kBuildLeftToRightText, a refusal.
-GuideMessage locked_message(const std::string& fill);
-// After Remove: "Activation removed." for the last window (index is 0-based
-// and `last` says it was the last), else "Removed activation N and
-// everything after it."
-GuideMessage removed_message(size_t index, bool last);
-GuideMessage started_over_message();
-// After "Finish the rest for me", with `kept` the windows the player had.
-GuideMessage finished_for_player_message(size_t kept);
-
-// What the guide line needs to say the next step.
-struct GuideFacts {
-    // The earliest fill the player can activate on: its name and its
-    // chord's time in ms. Empty when there is none.
-    std::optional<std::string> earliest_fill;
-    double earliest_ms = 0.0;
-    // The fill that keeps BF(n), once its search has landed.
-    std::optional<std::string> best_fill;
-    // The last window's end measure (measure_label of its deact node);
-    // empty while the player has no window.
-    std::optional<std::string> last_end;
-    // How many fills the engine lists after the last window
-    // (PreviewScene::trailing_skipped_fill_ticks); none means finished.
-    size_t fills_after_last = 0;
-    int64_t player_total = 0;
-    // The one-shot message, when an action just left one.
-    std::optional<GuideMessage> message;
-};
-
-GuideMessage guide_text(const GuideFacts& facts);
 
 }  // namespace hydra::pathbuilder
 

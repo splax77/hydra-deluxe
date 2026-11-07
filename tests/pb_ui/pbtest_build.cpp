@@ -22,7 +22,7 @@
 
 #include "pathbuilder/pb_coach.h"   // kFinishForMeLabel
 #include "pathbuilder/pb_menu.h"    // kStartOverLabel
-#include "pathbuilder/pb_text.h"    // kNoStepsText, kBestFillLabel, locked_message
+#include "pathbuilder/pb_text.h"    // kNoStepsText, kBestFillLabel, kBeforeLastActivationText
 #include "pathbuilder/pb_window.h"  // the score and button labels
 #include "ui/preview_panel.h"       // kJumpSeconds, jump_forward_label
 #include "ui/preview_timeline.h"    // timeline_fill_id, kTimelineActivationsLabel, the scroll buttons
@@ -66,7 +66,7 @@ bool is_line_end(char c) { return c == '\r' || c == '\n'; }
 
 // The next non-empty line the screen drew after the line that is exactly
 // `label`: the figure under a score's label, or the words under the
-// timeline's Fills row. Empty when the label is not drawn.
+// timeline's "Your activations" row. Empty when the label is not drawn.
 std::string figure_under(Harness& h, const std::string& label) {
     const std::string text = visible_text(h);
     size_t at = 0;
@@ -87,7 +87,8 @@ std::string figure_under(Harness& h, const std::string& label) {
 }
 
 // How many times the word kBestFillLabel stands in the line the timeline
-// drew under its Fills row's name, where the words under the fills go.
+// drew under its "Your activations" row's name, where the words under the
+// fills go.
 size_t best_words_under_fills(Harness& h) {
     const std::string line = figure_under(h, hydra::ui::kTimelineActivationsLabel);
     const std::string word = kBestFillLabel;
@@ -138,10 +139,9 @@ void test_build_a_path_by_clicking(ImGuiTestContext* ctx) {
     IM_CHECK_RETV(wait_idle(ctx), );
     ctx->SetRef(h.home_ref.c_str());
 
-    // The empty start: the guide's first step, no steps, and the three scores.
-    IM_CHECK_RETV(wait_text(ctx, "Step 1. Click a glowing fill"), );
+    // The empty start: no steps, and the three scores.
+    IM_CHECK_RETV(wait_text(ctx, kNoStepsText), );
     IM_CHECK(on_screen(h, "Burnout — Green Day"));
-    IM_CHECK(on_screen(h, kNoStepsText));
     const std::string empty_score = figure_under(h, kYourScoreLabel);
     IM_CHECK_STR_EQ(empty_score.c_str(), "313,635");
     IM_CHECK_STR_EQ(figure_under(h, kBestPossibleLabel).c_str(), "378,315");
@@ -253,22 +253,23 @@ void test_build_a_path_by_clicking(ImGuiTestContext* ctx) {
     IM_CHECK(on_screen(h, step_one_row));
     IM_CHECK(on_screen(h, step_two_row));
 
-    // A fill the player cannot activate on: the guide line says why, and the
-    // path stays as it was.
+    // A fill the player cannot activate on: its card says why, and the path
+    // stays as it was.
     ctx->ItemClick(fill_ref(kCantFillTick).c_str());
     ctx->Yield(2);
+    ctx->MouseMove(fill_ref(kCantFillTick).c_str());
+    IM_CHECK_RETV(wait_text(ctx, "You have 0 phrases saved here. You need 2 to activate."), );
     move_off_timeline(ctx);
-    IM_CHECK(on_screen(h, "Can't activate at m44: You have 0 phrases saved here. You need 2 to activate."));
     IM_CHECK(on_screen(h, step_two_row));
     IM_CHECK_STR_EQ(figure_under(h, kYourScoreLabel).c_str(), two_step_score.c_str());
 
-    // A fill before the last activation is locked: the guide line says the
-    // builder goes left to right, in locked_message's words, and the path
-    // stays as it was.
+    // A fill before the last activation is locked: its card says the builder
+    // goes left to right, and the path stays as it was.
     ctx->ItemClick(fill_ref(kLockedFillTick).c_str());
     ctx->Yield(2);
+    ctx->MouseMove(fill_ref(kLockedFillTick).c_str());
+    IM_CHECK_RETV(wait_text(ctx, kBeforeLastActivationText), );
     move_off_timeline(ctx);
-    IM_CHECK(on_screen(h, locked_message("m32").text));
     IM_CHECK(on_screen(h, step_one_row));
     IM_CHECK(on_screen(h, step_two_row));
     IM_CHECK(!on_screen(h, "m32 →"));
@@ -286,8 +287,6 @@ void test_build_a_path_by_clicking(ImGuiTestContext* ctx) {
     const std::string reach_before_finish = figure_under(h, kBestReachLabel);
     ctx->ItemClick(any_ref(kFinishForMeLabel).c_str());
     IM_CHECK_RETV(wait_for_edit(ctx), );
-    IM_CHECK_RETV(wait_text(ctx, "Hydra kept your 1 activation and added the best rest of the path. Undo "
-                                 "takes it back."), );
     IM_CHECK(on_screen(h, step_one_row));
     IM_CHECK(on_screen(h, "m58 → m68 4 phrases best"));
     IM_CHECK(on_screen(h, "m88 → m92 2 phrases best"));
@@ -300,7 +299,6 @@ void test_build_a_path_by_clicking(ImGuiTestContext* ctx) {
     ctx->ItemClick(any_ref(kStartOverLabel).c_str());
     IM_CHECK_RETV(wait_for_edit(ctx), );
     IM_CHECK_RETV(wait_text(ctx, kNoStepsText), );
-    IM_CHECK(on_screen(h, "Started over."));
     IM_CHECK(!on_screen(h, step_one_row));
     IM_CHECK_STR_EQ(figure_under(h, kYourScoreLabel).c_str(), empty_score.c_str());
 }
