@@ -129,6 +129,37 @@ class Chord:
     declined: bool = False
 
 
+def half_gap_ms(gap_ms: Optional[float]) -> float:
+    """The game's clamped half-gap to a neighbour `gap_ms` away, in normal
+    mode; None means there is no neighbour. TM-18 and TM-19 on
+    docs/clone-hero/03-timing.md say what a missing neighbour, or one at the
+    same time, gives."""
+    if gap_ms is None or gap_ms == 0:
+        return C.EXPECT_NORMAL_BACK_MS
+    return min(max(gap_ms / 2, C.s_to_ms(C.EXPECT_NORMAL_FRONT_S)),
+               C.EXPECT_NORMAL_BACK_MS)
+
+
+def window_side_ms(summed_ms: float) -> float:
+    """How far from a note the game's window reaches on each side, given the
+    sum of its two clamped half-gaps: half the normal-mode formula's output
+    (TM-20 and TM-21; the constants are constants.WINDOW_FORMULA_NORMAL_*).
+    The page leaves open whether the two sides differ (TM-26) and whether the
+    hit check enforces this window (TM-27); the player assumes both sides
+    are this one."""
+    whole_ms = ((summed_ms * C.WINDOW_FORMULA_NORMAL_LINEAR
+                 - summed_ms ** 2 * C.WINDOW_FORMULA_NORMAL_SQUARE)
+                * C.WINDOW_FORMULA_NORMAL_SCALE - C.WINDOW_FORMULA_NORMAL_OFFSET_MS)
+    return whole_ms / 2
+
+
+def note_window_ms(gap_before_ms: Optional[float], gap_after_ms: Optional[float]) -> float:
+    """The game's window, each side, for a note `gap_before_ms` after the
+    note before it and `gap_after_ms` before the note after it (None where
+    there is none)."""
+    return window_side_ms(half_gap_ms(gap_before_ms) + half_gap_ms(gap_after_ms))
+
+
 def early_side_ms(gap_ms: float) -> float:
     """How far from a note the game's window reaches on the side of a
     neighbour `gap_ms` away, in normal mode (TM-18 and TM-19 on

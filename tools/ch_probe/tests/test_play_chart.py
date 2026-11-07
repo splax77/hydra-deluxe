@@ -764,6 +764,38 @@ class AppendPressRowTest(unittest.TestCase):
         self.assertLess(statistics.median(took), play_chart.SCORE_READ_DELAY_S)
 
 
+class WindowTest(unittest.TestCase):
+    """The game's per-note window, from TM-19 to TM-21 on
+    docs/clone-hero/03-timing.md. The literals are the page's, rounded to
+    0.01 ms."""
+
+    def test_the_formula_values_are_the_pages(self):
+        from tools.ch_probe import constants as C
+        self.assertEqual((C.WINDOW_FORMULA_NORMAL_LINEAR, C.WINDOW_FORMULA_NORMAL_SQUARE,
+                          C.WINDOW_FORMULA_NORMAL_SCALE, C.WINDOW_FORMULA_NORMAL_OFFSET_MS),
+                         (0.0110924369747899, 2.628539e-05, 170.0, 20.0))
+
+    def test_the_floor_and_the_cap(self):
+        self.assertEqual(round(play_chart.window_side_ms(75.0), 2), 48.15)
+        self.assertEqual(round(play_chart.window_side_ms(170.0), 2), 85.72)
+        # TM-21's whole window at 80 ms is 102.2586.
+        self.assertEqual(round(2 * play_chart.window_side_ms(80.0), 4), 102.2586)
+
+    def test_the_half_gaps_are_clamped_before_the_formula(self):
+        self.assertEqual(round(play_chart.note_window_ms(40.0, 60.0), 2), 48.15)
+        self.assertEqual(round(play_chart.note_window_ms(400.0, 9774.0), 2), 85.72)
+        self.assertEqual(round(play_chart.note_window_ms(None, None), 2), 85.72)
+        self.assertEqual(play_chart.half_gap_ms(0.0), 85.0)
+
+    def test_the_chords_the_plan_names(self):
+        # Bomber chord 180 (83.33 ms both sides) and 147 (83.33 and 333.33);
+        # Mouths chord 465 (49.71 and 124.72) and 431 (50.31 and 121.2).
+        self.assertEqual(round(play_chart.note_window_ms(250 / 3, 250 / 3), 2), 53.06)
+        self.assertEqual(round(play_chart.note_window_ms(250 / 3, 1000 / 3), 2), 73.58)
+        self.assertEqual(round(play_chart.note_window_ms(49.71, 124.72), 2), 61.87)
+        self.assertEqual(round(play_chart.note_window_ms(50.31, 121.2), 2), 60.99)
+
+
 # The 8 end chords of Senri's top path and the chord before each, with the
 # path's activations, cut from the `hydra_replay score` file of that path. Each
 # chord keeps only its index, tick, ms and the three fields of each gem
