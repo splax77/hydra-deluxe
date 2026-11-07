@@ -3,13 +3,16 @@
 The front starts the worker command given after `--`, copies the worker's tool
 list and instructions, and forwards every tool call to it. So a worker can be
 replaced without Claude Code's connection dropping. The plan is
-docs/superpowers/plans/2026-11-06-ch-server-reload.md; its design points 1, 3,
-5 and 6 say why the front is shaped this way.
+docs/superpowers/plans/2026-11-06-ch-server-reload.md; its design points 1 to 6
+and 9 say why the front is shaped this way.
 
 Run it as:  py tools/ch_mcp/front.py -- py tools/ch_mcp/server.py
 
-The front holds no game state and no tool text, and it never cuts a reply: the
-worker owns all three. It speaks to the worker with its own JSON-RPC lines over
+The front adds two tools of its own. ch_reload swaps the worker for a fresh one
+when nothing is open, and ch_call reaches a worker tool by name.
+
+The front holds no game state and no worker tool text, and it never cuts a
+reply: the worker owns all three. It speaks to the worker with its own JSON-RPC lines over
 a plain Popen, not the mcp package's stdio client (the plan's question 1 says
 why). Nothing here prints to stdout, because stdout is the MCP protocol channel.
 """
@@ -17,22 +20,26 @@ why). Nothing here prints to stdout, because stdout is the MCP protocol channel.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import itertools
 import json
+import os
 import subprocess
 import sys
 import threading
 import time
-from typing import Any, NamedTuple
+from typing import Any, Iterator, NamedTuple
 
 from mcp.server.lowlevel import NotificationOptions, Server
 from mcp.server.stdio import stdio_server
-from mcp.types import CallToolResult, ListToolsResult, TextContent, Tool
+from mcp.types import CallToolResult, ListToolsResult, NotificationParams, TextContent, Tool
 from mcp_types.version import LATEST_HANDSHAKE_VERSION
 
-# How long a new worker gets to answer initialize and tools/list (the plan's question 3).
+# How long a new worker gets to answer initialize and tools/list, and then
+# ch_open_items (the plan's question 3).
 WORKER_START_CAP_S = 30
-# How long a reload's stop waits for the worker to exit (the plan's question 5).
+# How long a reload waits for the old worker's ch_open_items answer, and then for
+# its exit (the plan's question 5).
 WORKER_EXIT_CAP_S = 10
 # How long the front's own exit waits for the worker to exit (the plan's question 5).
 FRONT_EXIT_CAP_S = 90
@@ -44,6 +51,47 @@ FRONT_INSTRUCTIONS = (
     "ch_reload swaps in a fresh worker so merged code goes live, and "
     "ch_call(tool, args) reaches a worker tool this session does not list yet."
 )
+
+RELOAD_TOOL = "ch_reload"
+CALL_TOOL = "ch_call"
+# The worker's tool that lists what it holds open, and its words for "nothing".
+# Any other reply counts as something open, so a changed word refuses a reload.
+OPEN_ITEMS_TOOL = "ch_open_items"
+NOTHING_OPEN = "nothing open"
+
+# The two tools the front serves itself; every other tool is the worker's.
+FRONT_TOOLS = [
+    Tool(
+        name=RELOAD_TOOL,
+        description=(
+            "Stop the worker and start a fresh one, so Python code merged since it started "
+            "goes live with no reconnect. Refuses while anything is open or another call is "
+            "running. The reply gives both process ids, each step's seconds, the tools added "
+            "and removed, and whether Claude Code was told the list changed."
+        ),
+        input_schema={"type": "object", "properties": {}},
+    ),
+    Tool(
+        name=CALL_TOOL,
+        description=(
+            "Call a worker tool by name, for a tool this session does not list yet or whose "
+            "schema changed at a ch_reload. args is required; a call with no arguments "
+            "passes {}. The reply is the tool's own."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "tool": {"type": "string", "description": "The worker tool's name."},
+                "args": {"type": "object", "description": "The tool's arguments."},
+            },
+            "required": ["tool", "args"],
+        },
+    ),
+]
+
+# Passed at the handshake and asked again per connection, so the mcp package
+# alone decides whether listChanged is declared (design point 6).
+LIST_CHANGED_OPTIONS = NotificationOptions(tools_changed=True)
 
 
 def _log(line: str) -> None:
@@ -227,14 +275,18 @@ class WorkerLink:
                 return "no worker is running; the next call tries to start one"
             return f"the front has started a new worker (pid {self._proc.pid})"
 
-    def request(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
+    def request(
+        self, method: str, params: dict[str, Any], cap_s: float | None = None
+    ) -> dict[str, Any]:
         """Ask the current worker, starting one if none runs. The wait ends at the
-        reply or the worker's exit (WorkerExited), with no fixed cap (question 4)."""
+        reply or the worker's exit (WorkerExited). A forwarded call passes no cap
+        (question 4); with one, its end raises TimeoutError."""
         with self.swap_lock:
             if self._proc is None:
                 self.start()
             proc, pending = self._proc, self._pending
-        return self._ask(proc, pending, method, params)
+        deadline = None if cap_s is None else time.monotonic() + cap_s
+        return self._ask(proc, pending, method, params, deadline)
 
     def _ask(
         self,
@@ -303,8 +355,87 @@ def _close_pipe(pipe: Any) -> None:
         pass
 
 
+class OpenCalls:
+    """The tool calls in flight, by name, so a reload can name what stopped it.
+
+    A call enters before it reaches WorkerLink.request. So one that enters after
+    a reload's check waits on swap_lock and goes to the new worker, and none can
+    be on its way to the worker being stopped.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._names: dict[int, str] = {}
+        self._ids = itertools.count(1)
+
+    @contextlib.contextmanager
+    def held(self, name: str) -> Iterator[int]:
+        token = next(self._ids)
+        with self._lock:
+            self._names[token] = name
+        try:
+            yield token
+        finally:
+            with self._lock:
+                del self._names[token]
+
+    def others(self, token: int) -> list[str]:
+        with self._lock:
+            return sorted(name for held, name in self._names.items() if held != token)
+
+
+class OpenItemsUnread(Exception):
+    """ch_open_items answered, but not with a list of what is open."""
+
+
+class Swapped(NamedTuple):
+    """A finished reload: its reply so far, and whether the tool lists differ."""
+
+    lines: list[str]
+    lists_differ: bool
+
+
 def _failed(text: str) -> CallToolResult:
     return CallToolResult(content=[TextContent(type="text", text=text)], is_error=True)
+
+
+def open_items(link: WorkerLink, cap_s: float) -> list[str]:
+    """What the worker holds open, one line each; empty when nothing is. Raises
+    OpenItemsUnread, TimeoutError or what WorkerLink.request raises."""
+    message = link.request("tools/call", {"name": OPEN_ITEMS_TOOL, "arguments": {}}, cap_s)
+    if "result" not in message:
+        raise OpenItemsUnread(f"the worker refused the call: {message.get('error')}")
+    result = message["result"]
+    text = "\n".join(block.get("text", "") for block in result.get("content", []))
+    lines = [line for line in text.splitlines() if line.strip()]
+    if result.get("isError") or not lines:
+        raise OpenItemsUnread(text or "its reply held no text")
+    return [] if lines == [NOTHING_OPEN] else lines
+
+
+def new_worker_lines(link: WorkerLink) -> list[str]:
+    """What a worker that just started holds open, such as the backup a dead
+    worker left, for the reply of the call that replaced it (design point 3).
+    A failed ask becomes a line, so the caller's own text is never lost."""
+    if link.pid is None:
+        return []
+    try:
+        return open_items(link, WORKER_START_CAP_S)
+    except WorkerExited as gone:
+        why = f"it exited with code {gone.code}"
+    except TimeoutError:
+        why = f"it gave no reply within WORKER_START_CAP_S ({WORKER_START_CAP_S} s)"
+    except (WorkerStartFailed, OpenItemsUnread) as failure:
+        why = str(failure)
+    return [f"the front could not read what the new worker holds open: {why}"]
+
+
+def worker_died(link: WorkerLink, name: str, gone: WorkerExited) -> CallToolResult:
+    """The reply for a call whose worker exited: a new worker starts at once."""
+    lines = [f"{name}: the worker exited with code {gone.code} before it replied; {link.replace(gone.proc)}"]
+    text = "\n".join(lines + new_worker_lines(link))
+    _log(text)
+    return _failed(text)
 
 
 def forward(link: WorkerLink, name: str, arguments: dict[str, Any] | None) -> CallToolResult:
@@ -318,38 +449,207 @@ def forward(link: WorkerLink, name: str, arguments: dict[str, Any] | None) -> Ca
         _log(str(failure))
         return _failed(f"{name}: {failure}")
     except WorkerExited as gone:
-        text = f"{name}: the worker exited with code {gone.code} before it replied; {link.replace(gone.proc)}"
-        _log(text)
-        return _failed(text)
+        return worker_died(link, name, gone)
     if "result" not in message:
         return _failed(f"{name}: the worker refused the call: {message.get('error')}")
     return CallToolResult.model_validate(message["result"])
 
 
+def call_shape_refusal(arguments: dict[str, Any]) -> str | None:
+    """Why this ch_call never reaches a worker, whatever the worker lists. The
+    hook in percall.py reads the same two fields, so nothing is coerced here."""
+    tool = arguments.get("tool")
+    if not isinstance(tool, str):
+        return f"refused: {CALL_TOOL}'s tool must be a string, and this one is {tool!r}"
+    if not isinstance(arguments.get("args"), dict):
+        return (
+            f"refused: {CALL_TOOL}'s args must be an object, and this one is "
+            f"{arguments.get('args')!r}; a call with no arguments passes {{}}"
+        )
+    if tool in (CALL_TOOL, RELOAD_TOOL):
+        return f"refused: {tool} does not go through {CALL_TOOL}"
+    return None
+
+
+def route_call(link: WorkerLink, calls: OpenCalls, name: str, arguments: dict[str, Any] | None) -> CallToolResult:
+    """One call other than ch_reload: forwarded, or ch_call's inner call forwarded."""
+    if name == CALL_TOOL:
+        arguments = arguments or {}
+        refusal = call_shape_refusal(arguments)
+        if refusal:
+            return _failed(refusal)
+        name, arguments = arguments["tool"], arguments["args"]
+        try:
+            # A front whose first start failed lists no worker tool until one runs.
+            with link.swap_lock:
+                if link.pid is None:
+                    link.start()
+                listed = [tool.name for tool in link.tools]
+        except WorkerStartFailed as failure:
+            _log(str(failure))
+            return _failed(f"{CALL_TOOL}: {failure}")
+        if name not in listed:
+            return _failed(f"refused: the worker has no tool {name!r}; its tools: {', '.join(listed)}")
+    with calls.held(name):
+        return forward(link, name, arguments)
+
+
+def process_label(link: WorkerLink) -> str:
+    """What the pid in a reload's reply is. Popen's pid is whatever the command
+    started, so behind `py` it is the launcher's, not the Python in the marker."""
+    program = os.path.splitext(os.path.basename(link.command[0]))[0].lower()
+    return "worker process (py launcher)" if program == "py" else "worker process"
+
+
+def reload_refusal(link: WorkerLink, calls: OpenCalls, token: int) -> CallToolResult | None:
+    """Why this reload must leave the worker alone, or None when it may go on
+    (design point 2). Anything but a clear "nothing open" refuses."""
+    try:
+        items = open_items(link, WORKER_EXIT_CAP_S)
+    except WorkerExited as gone:
+        return worker_died(link, RELOAD_TOOL, gone)
+    except WorkerStartFailed as failure:
+        _log(str(failure))
+        return _failed(f"{RELOAD_TOOL}: {failure}")
+    except TimeoutError:
+        running = ", ".join(calls.others(token)) or "none"
+        return _failed(
+            f"refused: the worker gave no reply to {OPEN_ITEMS_TOOL} within WORKER_EXIT_CAP_S "
+            f"({WORKER_EXIT_CAP_S} s), so the front left it running; calls in flight: {running}"
+        )
+    except OpenItemsUnread as failure:
+        return _failed(f"refused: {OPEN_ITEMS_TOOL} failed, so the front left the worker running: {failure}")
+    if items:
+        return _failed(f"refused: {'; '.join(items)}; call ch_stop first, then {RELOAD_TOOL}")
+    running = calls.others(token)
+    if running:
+        return _failed(f"refused: a call is in flight: {', '.join(running)}; {RELOAD_TOOL} after it replies")
+    return None
+
+
+def stop_line(stopped: WorkerStop) -> str:
+    if stopped.cap_ended:
+        return (
+            f"stop: WORKER_EXIT_CAP_S ({WORKER_EXIT_CAP_S} s) ended the wait for pid {stopped.pid}; "
+            f"the front terminated it (exit code {stopped.code}, {stopped.seconds:.1f} s)"
+        )
+    return f"stop: {stopped.seconds:.1f} s, exit code {stopped.code}"
+
+
+def names_line(label: str, names: list[str]) -> str:
+    return f"{label}: {', '.join(names) or 'none'}"
+
+
+def reload_worker(link: WorkerLink, calls: OpenCalls) -> CallToolResult | Swapped:
+    """Design point 2. The lock holds new calls back until the new worker runs."""
+    with calls.held(RELOAD_TOOL) as token, link.swap_lock:
+        began = time.monotonic()
+        refusal = reload_refusal(link, calls, token)
+        if refusal:
+            return refusal
+        checked = time.monotonic()
+        tools_before, instructions_before = link.tools, link.instructions
+        # The check above left a worker running, and the lock keeps it so.
+        stopped = link.stop(WORKER_EXIT_CAP_S)
+        _log(stop_line(stopped))
+        stopped_at = time.monotonic()
+        try:
+            link.start()
+        except WorkerStartFailed as failure:
+            _log(str(failure))
+            return _failed(
+                f"{stop_line(stopped)}\n{RELOAD_TOOL}: no new worker started: {failure}; "
+                "the next call tries again"
+            )
+        before = {tool.name: tool for tool in tools_before}
+        after = {tool.name: tool for tool in link.tools}
+        added = sorted(after.keys() - before.keys())
+        removed = sorted(before.keys() - after.keys())
+        changed = sorted(name for name in after.keys() & before.keys() if after[name] != before[name])
+        lines = [
+            f"{process_label(link)}: pid {stopped.pid} stopped, pid {link.pid} started "
+            "(the process the front started, not the pid in the open-run marker)",
+            f"open check: {checked - began:.1f} s",
+            stop_line(stopped),
+            f"start: {time.monotonic() - stopped_at:.1f} s",
+            f"worker tools: {len(before)} before, {len(after)} after",
+            names_line("added", added),
+            names_line("removed", removed),
+            names_line("changed", changed),
+        ]
+        if link.instructions != instructions_before:
+            lines.append("instructions changed; live at the next reconnect")
+    return Swapped(lines + new_worker_lines(link), bool(added or removed or changed))
+
+
+async def list_changed_lines(server: Server, ctx: Any, lists_differ: bool) -> list[str]:
+    """Tell Claude Code the list changed when the connection allows it, and say
+    what happened (design point 6)."""
+    version = ctx.protocol_version
+    declared = server.get_capabilities(LIST_CHANGED_OPTIONS, protocol_version=version).tools.list_changed
+    lines = [] if declared else [f"list_changed not declared on protocol {version}; use ch_call for a new tool"]
+    if not lists_differ:
+        return [*lines, "list_changed: not sent, lists equal"]
+    if not declared:
+        return lines
+    try:
+        await ctx.session.send_tool_list_changed()
+    except Exception as error:  # the reload is done, and its reply must still arrive
+        return [f"list_changed not sent: {error}; use ch_call for a new tool"]
+    return ["list_changed sent"]
+
+
 def build_front(link: WorkerLink, start_failure: str | None) -> Server:
     """The server Claude Code talks to. After a failed start it still serves, so
     the failure reaches Claude Code as text and each call tries a new worker."""
+    calls = OpenCalls()
+    announced: list[str] = []
+
+    def note_protocol(ctx: Any) -> None:
+        """The version line for the MCP log, once. A connection on 2026-07-28
+        has no initialize, so its first request prints it."""
+        if not announced:
+            announced.append(ctx.protocol_version)
+            offered = getattr(ctx.session.client_params, "protocol_version", "no version")
+            _log(f"Claude Code offered {offered}; this connection runs protocol {ctx.protocol_version}")
+
+    async def on_initialized(ctx: Any, params: Any) -> None:
+        note_protocol(ctx)
 
     async def on_list_tools(ctx: Any, params: Any) -> ListToolsResult:
-        return ListToolsResult(tools=link.tools)
+        note_protocol(ctx)
+        return ListToolsResult(tools=[*link.tools, *FRONT_TOOLS])
 
     async def on_call_tool(ctx: Any, params: Any) -> CallToolResult:
+        note_protocol(ctx)
         # On a thread, so a long call holds up neither other calls nor the exit.
-        return await asyncio.to_thread(forward, link, params.name, params.arguments)
+        if params.name != RELOAD_TOOL:
+            return await asyncio.to_thread(route_call, link, calls, params.name, params.arguments)
+        swapped = await asyncio.to_thread(reload_worker, link, calls)
+        if isinstance(swapped, CallToolResult):
+            return swapped
+        lines = [
+            *swapped.lines,
+            f"protocol version with Claude Code: {ctx.protocol_version}",
+            *await list_changed_lines(front, ctx, swapped.lists_differ),
+        ]
+        return CallToolResult(content=[TextContent(type="text", text="\n".join(lines))])
 
-    return Server(
+    front = Server(
         "ch",
         instructions=f"{link.instructions or start_failure or ''} {FRONT_INSTRUCTIONS}".strip(),
         on_list_tools=on_list_tools,
         on_call_tool=on_call_tool,
     )
+    front.add_notification_handler("notifications/initialized", NotificationParams, on_initialized)
+    return front
 
 
 async def serve(link: WorkerLink, server: Server) -> None:
     """Serve until the front's stdin ends, then see the worker out."""
     try:
         async with stdio_server() as (read_stream, write_stream):
-            options = server.create_initialization_options(NotificationOptions(tools_changed=True))
+            options = server.create_initialization_options(LIST_CHANGED_OPTIONS)
             await server.run(read_stream, write_stream, options)
     finally:
         link.close()

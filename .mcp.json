@@ -6,7 +6,7 @@
     },
     "ch": {
       "command": "py",
-      "args": ["tools/ch_mcp/server.py"]
+      "args": ["tools/ch_mcp/front.py", "--", "py", "tools/ch_mcp/server.py"]
     }
   }
 }

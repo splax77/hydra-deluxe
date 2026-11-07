@@ -194,11 +194,11 @@ class ServerTest(unittest.TestCase):
 
 
 class McpJsonTest(unittest.TestCase):
-    def test_the_ch_entry_runs_the_server_without_dash_i(self):
+    def test_the_ch_entry_runs_the_front_and_the_worker_without_dash_i(self):
         with open(os.path.join(_REPO_ROOT, ".mcp.json"), encoding="utf-8") as f:
             entry = json.load(f)["mcpServers"]["ch"]
         self.assertEqual(entry["command"], "py")
-        self.assertEqual(entry["args"], ["tools/ch_mcp/server.py"])
+        self.assertEqual(entry["args"], ["tools/ch_mcp/front.py", "--", "py", "tools/ch_mcp/server.py"])
         self.assertNotIn("-I", entry["args"])
 
 
