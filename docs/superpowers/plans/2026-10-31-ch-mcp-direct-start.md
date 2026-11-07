@@ -246,7 +246,7 @@ Window Map's folder holds the manifest the trace reads. Pass: the reply says the
 
 Calls: `ch_state` (seen: LS-D0 run 1), `ch_kit_press("kick")` (seen: LS-D1b's passing run), `ch_notes` (never tried)
 
-What only a run can settle: whether the drums input reads the kit on the player question 7 picks. No tool reads the score or `IsBot` today, so the proof is the hit trace. The press is timed at a kick note by hand against `ch_state`'s clock; Window Map's note times are in its manifest (row P44). Pass: `ch_notes` lists a hit at that press. Then `KIT_PLAYER` is recorded as question 7's player in a one-line data commit that quotes the reply. Fail: no hit in `ch_notes`; the report quotes both replies and the plan stops for the user.
+What only a run can settle: whether the drums input reads the kit on the player question 7 picks. No tool reads the score or `IsBot` today, so the proof is the hit trace. The press is timed at a kick note by hand against `ch_state`'s clock; Window Map's note times are in its manifest (row P44). Pass: `ch_notes` lists a hit at that press. Passed on 2026-11-06 (`hydra-data\ch-mcp-runs\2026-11-06\ls-d1b-run1\replies.txt`). The one-line `KIT_PLAYER` commit this step first named is dropped: the user ruled "Keep Player1" on 2026-11-06, so `KIT_PLAYER` stays `Player1` and each human launch names `System` in `ch_kit_setup`. Fail: no hit in `ch_notes`; the report quotes both replies and the plan stops for the user.
 
 ### LS-D2a: the Senri chart starts by the direct route as ProDrums (2 runs, 10 minutes)
 
@@ -392,7 +392,7 @@ The facts this plan stands on, in the shape `docs/agents/premise-map.md` owns. A
 | P37: The kit's kick pad reads as the game action `Orange`, not "Kick" | code | `tools/ch_mcp/kit_tools.py` line 139 (`KIT_BINDINGS` element 22) | checked 2026-10-31 |
 | P38: Nothing can be armed before the resume: `ch_start` returns after it, and `ch_attach` waits 5 s from the launch | code | `tools/ch_mcp/bot_run.py` line 615 (`launch_human`), `tools/ch_mcp/frida_tools.py` line 36 (`ATTACH_DELAY_S`) | checked 2026-10-31 |
 | P39: Whether a finished song posts anything online when nobody is logged in | unchecked | `docs/clone-hero/07-internals.md` IN-73 is labelled Unknown | question 8 |
-| P40: The user allowed the one-byte patch in memory | unchecked | this plan's question list reports "approve"; no card for session `b15bb484` sits in `docs/sessions/index.md` | question 6, once its card quotes the user's words |
+| P40: The user allowed the one-byte patch in memory | ruling | `docs/sessions/2026-10-31-b15bb484.md` quotes "approve" | checked 2026-11-06 |
 | P41: The user approved the retrofit, which changes LS-D2's chart and the order of the live steps | ruling | the user's words "Approve all six" on `docs/superpowers/plans/2026-10-31-premise-map.md` (removed; `git show 85fa0fe0:docs/superpowers/plans/2026-10-31-premise-map.md`) question 2, as the main session quotes them in the PM-4 reviewer's brief, confirming that they approved that plan's six recommended answers, question 2 among them; no card holds them yet | checked 2026-10-31, from that brief's quote |
 | P42: The game's DLL kept its MD5 through both runs | run | `hydra-data\ch-mcp-runs\2026-10-31\ls-d0-run1\replies.txt` lines 2 and 3, `ls-d1-run1\replies.txt` lines 2 and 3 | checked 2026-10-31 |
 | P43: A bot is fed the chart's notes as input, and `is_bot` is read again on every call | data | `docs/clone-hero/07-internals.md` IN-69 | checked 2026-10-31, label Proven in the game's code |
