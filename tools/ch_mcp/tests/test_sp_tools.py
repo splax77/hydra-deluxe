@@ -27,7 +27,7 @@ _REPO_ROOT = os.path.abspath(os.path.join(_HERE, "..", "..", ".."))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from tools.ch_mcp import sp_tools  # noqa: E402
+from tools.ch_mcp import frida_tools, sp_tools  # noqa: E402
 from tools.ch_probe import engine  # noqa: E402
 from tools.ch_probe import engine_finder as F  # noqa: E402
 from tools.ch_probe.experiments import sp_watch  # noqa: E402
@@ -202,7 +202,7 @@ class SpToolsTest(unittest.TestCase):
         stdout = io.StringIO()
         with fakes.searching_for_no_song(F), contextlib.redirect_stdout(stdout):
             with self.assertRaises(F.EngineSearchTimeout):
-                sp_tools._find_engine_quietly(types.SimpleNamespace(module_base=0x1000))
+                frida_tools.find_engine_quietly(types.SimpleNamespace(module_base=0x1000))
         self.assertEqual(stdout.getvalue(), "")
 
     def test_a_finder_timeout_is_the_reason_in_the_status(self):

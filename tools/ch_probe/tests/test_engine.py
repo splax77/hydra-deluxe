@@ -362,6 +362,13 @@ class TestScoreAndFoundObject(unittest.TestCase):
         eng.capture_object()
         self.assertEqual(eng.score(), 4200)
 
+    def test_dyn_threshold_reads_u32_off_0x2c0(self):
+        self.assertEqual(C.OFF_DYN_THRESHOLD, 0x2C0)
+        eng, proc, dbg, mem = make_engine(object_ptr=OBJ,
+                                     dwords={OBJ + C.OFF_DYN_THRESHOLD: 64})
+        eng.capture_object()
+        self.assertEqual(eng.dyn_threshold(), 64)
+
     def test_use_object_takes_a_scanned_pointer_without_a_debugger(self):
         proc, _ = fakes.fake_process(None, MODULE_BASE,
                                      doubles={OBJ + C.OFF_SONG_CLOCK: 1.25})

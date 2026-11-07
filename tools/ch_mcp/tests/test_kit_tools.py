@@ -9,7 +9,12 @@ from __future__ import annotations
 
 import csv
 import io
+import json
 import os
+import pathlib
+import re
+import shutil
+import subprocess
 import sys
 import tempfile
 import threading
@@ -52,7 +57,13 @@ BINDINGS = [
 ]
 
 
-def setup_reply(bindings=BINDINGS):
+# The six placeholder tags, as the setup and teardown messages carry them.
+PLACEHOLDER_TAGS = [f"hydra-placeholder-{i}" for i in range(6)]
+TEARDOWN_MESSAGE = {"type": "teardown", "tag": "hydra-kit",
+                    "placeholder_tags": PLACEHOLDER_TAGS}
+
+
+def setup_reply(bindings=BINDINGS, kit_id=6):
     return {
         "first_setup": True, "switch_was": True, "switch_now": False,
         "keyboard_was": True, "keyboard_now": False, "mouse_was": True, "mouse_now": False,
@@ -62,7 +73,9 @@ def setup_reply(bindings=BINDINGS):
         "players_now": [
             {"id": 9999999, "name": "System", "has_keyboard": False, "has_mouse": False},
             {"id": 0, "name": "Player1", "has_keyboard": False, "has_mouse": False}],
-        "kit": {"id": 7, "tag": "hydra-kit", "created": True, "player": "Player1"},
+        "placeholders": [{"id": i, "tag": tag} for i, tag in enumerate(PLACEHOLDER_TAGS)],
+        "placeholders_created": 6,
+        "kit": {"id": kit_id, "tag": "hydra-kit", "created": True, "player": "Player1"},
         "maps": [{"category_id": 1, "layout_id": 2, "enabled": True, "bindings": list(bindings)}],
     }
 
@@ -216,7 +229,6 @@ class ConstantsTest(unittest.TestCase):
         self.assertEqual(K.KIT_HOLD_FRAMES, 2)
         self.assertEqual(K.KIT_SETUP_CAP_S, 10)
         self.assertEqual(K.KIT_PRESS_CAP_S, 1)
-        self.assertEqual(K.KIT_AXIS_VALUE, 1.0)
         self.assertEqual(K.KIT_WATCH_MAX_S, 60.0)
         self.assertEqual(K.KIT_DEFINITION_ID, 6)
         self.assertEqual(K.KIT_TAG, "hydra-kit")
@@ -230,7 +242,18 @@ class ConstantsTest(unittest.TestCase):
     def test_the_setup_message_carries_the_maps_ids(self):
         self.assertEqual(K.setup_message("System"), {
             "type": "setup", "tag": K.KIT_TAG, "definition_id": 6, "player": "System",
-            "category_id": 1, "layout_id": 2})
+            "category_id": 1, "layout_id": 2, "placeholder_tags": PLACEHOLDER_TAGS})
+
+    def test_the_gates_id_and_the_placeholder_count_are_pinned(self):
+        # The literal the gate passes: lane_velocity_337E10.asm line 53.
+        self.assertEqual(K.KIT_REQUIRED_ID, 6)
+        self.assertEqual(K.KIT_PLACEHOLDERS, 6)
+
+    def test_no_placeholder_tag_equals_or_starts_with_the_kits_tag(self):
+        tags = K.placeholder_tags()
+        self.assertEqual(len(set(tags)), K.KIT_PLACEHOLDERS)
+        for tag in tags:
+            self.assertFalse(tag.startswith(K.KIT_TAG), tag)
 
     def test_every_auto_player_lane_has_a_kit_element(self):
         self.assertEqual({lane: K.lane_element(lane).id for lane in Lane}, {
@@ -271,14 +294,14 @@ class SetupTest(Rig):
         self.assertEqual(self.posted(), [
             {"type": "read"},
             {"type": "setup", "tag": "hydra-kit", "definition_id": 6, "player": "Player1",
-             "category_id": 1, "layout_id": 2}])
+             "category_id": 1, "layout_id": 2, "placeholder_tags": PLACEHOLDER_TAGS}])
         self.assertEqual(lines[0], BACKUP_LINE)
         self.assertIn("ignoreInputWhenAppNotInFocus: was on, now off", lines)
         self.assertIn("Keyboard.enabled: was on, now off", lines)
         self.assertIn("Mouse.enabled: was on, now off", lines)
         self.assertIn("player 9999999 System: keyboard was on, now off; mouse was on, now off", lines)
         self.assertIn("player 0 Player1: keyboard was on, now off; mouse was off, now off", lines)
-        self.assertIn("kit: controller 7, tag hydra-kit, created, on Player1", lines)
+        self.assertIn("kit: controller 6, tag hydra-kit, created, on Player1", lines)
         self.assertIn("map: category 1, layout 2, enabled, 10 bindings", lines)
         self.assertIn("  Kick (element 22) -> Orange (action 4)", lines)
         self.assertEqual(lines[-1], "bindings: all 10 match KIT_BINDINGS")
@@ -291,7 +314,7 @@ class SetupTest(Rig):
         lines = tools.ch_kit_setup().splitlines()
         self.assertIn("refused: the kit's bindings differ from KIT_BINDINGS:", lines)
         self.assertIn("  Kick (element 22): expected action 4 (Orange), the map gives 0", lines)
-        self.assertEqual(self.posted()[-1], {"type": "teardown", "tag": "hydra-kit"})
+        self.assertEqual(self.posted()[-1], TEARDOWN_MESSAGE)
         self.assertIn("kit teardown: all checks ok", lines)
         self.assertEqual(lines[-1], "kit agent: detached")
         self.assertIsNone(self.game.kit_source())
@@ -305,7 +328,7 @@ class SetupTest(Rig):
         self.assertIn("refused: Rewired's keyboard (Keyboard.enabled) reads on after setup, "
                       "not off, so the user's own input would still reach the game", lines)
         self.assertNotIn("bindings: all 10 match KIT_BINDINGS", lines)
-        self.assertEqual(self.posted()[-1], {"type": "teardown", "tag": "hydra-kit"})
+        self.assertEqual(self.posted()[-1], TEARDOWN_MESSAGE)
         self.assertIn("kit teardown: keyboard: ok (Keyboard.enabled true (was true))", lines)
         self.assertEqual(lines[-1], "kit agent: detached")
         self.assertIsNone(self.game.kit_source())
@@ -320,7 +343,7 @@ class SetupTest(Rig):
         self.assertIn("refused: Rewired's mouse (Mouse.enabled) reads on after setup, "
                       "not off, so the user's own input would still reach the game", lines)
         self.assertNotIn("bindings: all 10 match KIT_BINDINGS", lines)
-        self.assertEqual(self.posted()[-1], {"type": "teardown", "tag": "hydra-kit"})
+        self.assertEqual(self.posted()[-1], TEARDOWN_MESSAGE)
         self.assertIn("kit teardown: mouse: ok (Mouse.enabled true (was true))", lines)
         self.assertEqual(lines[-1], "kit agent: detached")
         self.assertIsNone(self.game.kit_source())
@@ -354,7 +377,7 @@ class SetupTest(Rig):
         self.assertIn("refused: Rewired's mouse (Mouse.enabled) reads None after setup, "
                       "not off, so the user's own input would still reach the game", lines)
         self.assertNotIn("bindings: all 10 match KIT_BINDINGS", lines)
-        self.assertEqual(self.posted()[-1], {"type": "teardown", "tag": "hydra-kit"})
+        self.assertEqual(self.posted()[-1], TEARDOWN_MESSAGE)
         self.assertIsNone(self.game.kit_source())
 
     def test_a_disabled_map_or_a_missing_binding_is_a_difference(self):
@@ -416,7 +439,7 @@ class MapProblemsTest(Rig):
         self.assertEqual(lines[at + 1], "  expected one enabled map at category 1, layout 2; "
                                         "the setup reply holds no map for the kit")
         self.assertNotIn("refused: the kit's bindings differ from KIT_BINDINGS:", lines)
-        self.assertEqual(self.posted()[-1], {"type": "teardown", "tag": "hydra-kit"})
+        self.assertEqual(self.posted()[-1], TEARDOWN_MESSAGE)
         self.assertIn("kit teardown: all checks ok", lines)
         self.assertEqual(lines[-1], "kit agent: detached")
         self.assertIsNone(self.game.kit_source())
@@ -431,7 +454,7 @@ class SetupPlayerTest(Rig):
         lines = tools.ch_kit_setup().splitlines()
         self.assertEqual(self.setup_posted(), [
             {"type": "setup", "tag": "hydra-kit", "definition_id": 6, "player": "Player1",
-             "category_id": 1, "layout_id": 2}])
+             "category_id": 1, "layout_id": 2, "placeholder_tags": PLACEHOLDER_TAGS}])
         self.assertEqual(lines[0], BACKUP_LINE)
 
     def test_a_given_player_is_sent_as_is_and_named_first(self):
@@ -441,10 +464,10 @@ class SetupPlayerTest(Rig):
         lines = tools.ch_kit_setup(player="System").splitlines()
         self.assertEqual(self.setup_posted(), [
             {"type": "setup", "tag": "hydra-kit", "definition_id": 6, "player": "System",
-             "category_id": 1, "layout_id": 2}])
+             "category_id": 1, "layout_id": 2, "placeholder_tags": PLACEHOLDER_TAGS}])
         self.assertEqual(lines[0], 'kit player: "System" as given (KIT_PLAYER is Player1)')
         self.assertEqual(lines[1], BACKUP_LINE)
-        self.assertIn("kit: controller 7, tag hydra-kit, created, on System", lines)
+        self.assertIn("kit: controller 6, tag hydra-kit, created, on System", lines)
         self.assertEqual(lines[-1], "bindings: all 10 match KIT_BINDINGS")
 
     def test_a_name_no_player_has_is_printed_as_the_agents_refusal(self):
@@ -455,7 +478,7 @@ class SetupPlayerTest(Rig):
         self.assertEqual(lines[0], 'kit player: "Player9" as given (KIT_PLAYER is Player1)')
         self.assertIn("setup failed: the agent sent an error: setup failed: Error: no player "
                       "named Player9; players: System, Player1", lines)
-        self.assertEqual(self.posted()[-1], {"type": "teardown", "tag": "hydra-kit"})
+        self.assertEqual(self.posted()[-1], TEARDOWN_MESSAGE)
         self.assertEqual(lines[-1], "kit agent: detached")
         self.assertIsNone(self.game.kit_source())
 
@@ -476,7 +499,7 @@ class SetupPlayerTest(Rig):
             "  at setup (kit.ts:308)",
             "kit teardown: elements cleared: ok (2 cleared)",
         ])
-        self.assertEqual(self.posted()[-1], {"type": "teardown", "tag": "hydra-kit"})
+        self.assertEqual(self.posted()[-1], TEARDOWN_MESSAGE)
         self.assertIn("kit teardown: all checks ok", lines)
         self.assertEqual(lines[-1], "kit agent: detached")
 
@@ -588,6 +611,91 @@ class PressOptionsTest(Rig):
                          "on_main is true, false or left out, not 1")
 
 
+class PadAxisTest(unittest.TestCase):
+    """pad_axis against the byte the game makes of an axis, in
+    code/6142/lane_velocity_337E10.asm."""
+
+    @staticmethod
+    def byte(axis):
+        return round((axis - 0.5) * 254)
+
+    def test_an_accent_and_a_plain_gem_press_at_full_strength_for_any_threshold(self):
+        for threshold in (1, 64, 127):
+            self.assertEqual(K.pad_axis("accent", threshold), 1.0)
+            self.assertEqual(K.pad_axis("none", threshold), 1.0)
+
+    def test_a_plain_or_accent_gem_needs_no_threshold(self):
+        self.assertEqual(K.pad_axis("accent"), 1.0)
+        self.assertEqual(K.pad_axis("none"), 1.0)
+
+    def test_a_ghost_makes_a_byte_of_the_threshold_minus_one(self):
+        self.assertEqual(self.byte(K.pad_axis("ghost", 1)), 0)
+        self.assertEqual(self.byte(K.pad_axis("ghost", 64)), 63)
+        self.assertEqual(self.byte(K.pad_axis("ghost", 127)), 126)
+
+    def test_a_threshold_with_no_ghost_strength_is_refused_naming_the_field(self):
+        for threshold in (0, 128, None):
+            with self.assertRaises(ValueError) as caught:
+                K.pad_axis("ghost", threshold)
+            self.assertIn("OFF_DYN_THRESHOLD", str(caught.exception))
+            self.assertIn(str(threshold), str(caught.exception))
+
+    def test_a_word_hydra_replay_never_writes_is_refused(self):
+        with self.assertRaises(ValueError) as caught:
+            K.pad_axis("loud", 64)
+        self.assertIn('"loud"', str(caught.exception))
+
+
+class StrengthTest(Rig):
+    def test_a_mixed_chord_carries_one_strength_per_lane_and_the_kick_stays_true(self):
+        ghost, accent = K.pad_axis("ghost", 64), K.pad_axis("accent", 64)
+        message = K.press_message(
+            [K.lane_element(Lane.RED), K.lane_element(Lane.YELLOW_CYMBAL),
+             K.lane_element(Lane.KICK)],
+            values=[ghost, accent, K.pad_axis("none", 64)])
+        self.assertEqual(message["elements"], [{"id": 0, "value": ghost},
+                                               {"id": 4, "value": accent},
+                                               {"id": 22, "value": True}])
+        self.assertNotEqual(ghost, accent)
+
+    def test_a_press_with_no_values_presses_pads_as_plain_gems(self):
+        message = K.press_message([K.KIT_ELEMENTS["red"]])
+        self.assertEqual(message["elements"], [{"id": 0, "value": K.pad_axis("none")}])
+
+    def test_a_list_of_values_of_another_length_is_an_error(self):
+        with self.assertRaises(ValueError):
+            K.press_message([K.KIT_ELEMENTS["red"]], values=[0.6, 0.7])
+
+    def test_the_kit_press_sends_the_chords_axes(self):
+        self.set_up([PRESS_REPLY])
+        press = self.game.kit_source()
+        ghost = K.pad_axis("ghost", 64)
+        press([Lane.RED, Lane.KICK], [ghost, K.pad_axis("none", 64)])
+        self.assertEqual(self.posted()[-1]["elements"],
+                         [{"id": 0, "value": ghost}, {"id": 22, "value": True}])
+
+    def test_ch_kit_press_sends_a_given_value_to_the_pads_and_true_to_a_button(self):
+        tools = self.set_up([PRESS_REPLY])
+        lines = tools.ch_kit_press("red,kick", value=0.6).splitlines()
+        self.assertEqual(self.posted()[-1]["elements"],
+                         [{"id": 0, "value": 0.6}, {"id": 22, "value": True}])
+        self.assertEqual(lines[1], "pads pressed at value 0.6")
+
+    def test_a_value_at_either_end_is_sent(self):
+        tools = self.set_up([PRESS_REPLY, PRESS_REPLY])
+        for value in (0, 1):
+            self.assertTrue(tools.press_items("red", value=value).sent)
+            self.assertEqual(self.posted()[-1]["elements"], [{"id": 0, "value": value}])
+
+    def test_a_value_outside_0_to_1_is_refused_and_nothing_is_sent(self):
+        tools = self.set_up()
+        sent = len(self.posted())
+        for bad in (1.5, -0.1, float("nan"), True, "0.6"):
+            self.assertEqual(tools.ch_kit_press("red", value=bad),
+                             f"value is a number from 0 to 1 or left out, not {bad!r}")
+        self.assertEqual(len(self.posted()), sent)
+
+
 WATCH_QUIET = {"seconds": 20, "ticks": 3100, "first_frame": 5000, "last_frame": 8200,
                "readers": ["System", "Player1", "controllers"], "true_count": 0, "reads": []}
 
@@ -662,7 +770,7 @@ class KitPressTest(Rig):
         tools = self.set_up([PRESS_REPLY])
         press = self.game.kit_source()
         wall = _FakeTime()
-        chords = [play_chart.Chord(7, 1000.0, [Lane.GREEN, Lane.KICK])]
+        chords = [play_chart.Chord(7, 1000.0, [Lane.GREEN, Lane.KICK], ["none", "none"])]
         score = iter([0, 50])
         result = play_chart.play_chords(
             chords, _FakeSongClock(wall, start_s=0.5), lambda: next(score), press,
@@ -737,7 +845,7 @@ class TeardownTest(Rig):
     def test_teardown_prints_each_check_and_detaches(self):
         tools = self.set_up([TEARDOWN_OK])
         lines = tools.ch_kit_teardown().splitlines()
-        self.assertEqual(self.posted()[-1], {"type": "teardown", "tag": "hydra-kit"})
+        self.assertEqual(self.posted()[-1], TEARDOWN_MESSAGE)
         self.assertEqual(lines, [
             "kit teardown: elements cleared: ok (2 cleared)",
             "kit teardown: kit gone: ok (no controller tagged hydra-kit)",
@@ -783,6 +891,314 @@ class TeardownTest(Rig):
         self.assertEqual(self.session.detach_calls, 1)
         self.assertIsNone(tools._agent)
         self.assertIsNone(self.game.hooks[0]())
+
+
+class KitIdTest(Rig):
+    """The kit must hold the id the gate asks for; any other is refused."""
+
+    def test_a_kit_at_id_6_passes_and_the_reply_names_all_seven_ids(self):
+        tools = self.tools([STATUS, setup_reply()])
+        lines = tools.ch_kit_setup().splitlines()
+        self.assertIn("placeholders: controllers 0, 1, 2, 3, 4, 5 (6 created)", lines)
+        self.assertIn("kit: controller 6, tag hydra-kit, created, on Player1", lines)
+        self.assertEqual(lines[-1], "bindings: all 10 match KIT_BINDINGS")
+        self.assertIsNotNone(self.game.kit_source())
+
+    def test_a_kit_at_any_other_id_is_refused_with_the_ids_and_torn_down(self):
+        for kit_id in (0, 7):
+            with self.subTest(kit_id=kit_id):
+                tools = self.tools([STATUS, setup_reply(kit_id=kit_id), TEARDOWN_OK])
+                lines = tools.ch_kit_setup().splitlines()
+                self.assertIn(f"refused: the kit is controller {kit_id}, not "
+                              "KIT_REQUIRED_ID 6; placeholder ids: 0, 1, 2, 3, 4, 5", lines)
+                self.assertEqual(self.posted()[-1], TEARDOWN_MESSAGE)
+                self.assertIn("kit teardown: all checks ok", lines)
+                self.assertEqual(lines[-1], "kit agent: detached")
+                self.assertIsNone(self.game.kit_source())
+
+    def test_a_reply_with_no_kit_id_is_refused_too(self):
+        reply = setup_reply()
+        del reply["kit"]["id"]
+        tools = self.tools([STATUS, reply, TEARDOWN_OK])
+        self.assertIn("refused: the kit is controller None, not KIT_REQUIRED_ID 6",
+                      tools.ch_kit_setup())
+        self.assertEqual(self.posted()[-1], TEARDOWN_MESSAGE)
+
+    def test_the_id_refusal_says_a_new_launch_puts_the_kit_back_on_id_6(self):
+        tools = self.tools([STATUS, setup_reply(kit_id=7), TEARDOWN_OK])
+        lines = tools.ch_kit_setup().splitlines()
+        self.assertIn("only a new launch of the game puts the kit back on id 6: a "
+                      "teardown does not reset the game's id counter, so a setup after "
+                      "one gets a higher id (docs/clone-hero/07-internals.md, IN-81); "
+                      "ch_stop, then ch_start", lines)
+
+    def test_a_setup_on_a_kit_already_set_up_does_not_advise_a_teardown_and_setup(self):
+        tools = self.set_up()
+        posted = len(self.posted())
+        said = tools.ch_kit_setup()
+        self.assertEqual(said, "the kit is already set up. ch_kit_teardown takes it "
+                         "away, but a setup after that in the same launch is refused, "
+                         "because the kit would not be on id 6; start the game again "
+                         "(ch_stop, then ch_start) to set it up again")
+        self.assertNotIn("call ch_kit_teardown first", said)
+        self.assertEqual(len(self.posted()), posted)
+
+
+# The fake game for KitAgentTest. It reads one case from stdin, loads the real
+# kit.ts (Node erases its types) with a fake il2cpp bridge around it, posts
+# each message the way Frida would, and prints the replies, every create,
+# destroy and AddController call, and the controllers left in the fake game.
+# Ids come from a counter that destroying never moves, as the game's does
+# (IN-81).
+AGENT_DRIVER = """
+import { readFileSync } from "node:fs";
+const c = JSON.parse(readFileSync(0, "utf8"));
+const calls = [];
+const live = [];
+let nextId = c.first_id ?? 0;
+let creates = 0;
+function controller(tag) {
+    const made = obj({SetAxisValueById() {}, SetButtonValueById() {}}, {id: nextId++});
+    made.tag = tag;
+    live.push(made);
+    return made;
+}
+function obj(methods, fields = {}) {
+    return {
+        handle: 1,
+        isNull: () => false,
+        method(name) {
+            if (!(name in methods)) { throw new Error(`the fake has no method ${name}`); }
+            const m = {
+                invoke: (...args) => methods[name](...args), overload: () => m,
+                virtualAddress: {isNull: () => false}, parameters: [],
+                returnType: {fridaAlias: "void"}, handle: 2,
+            };
+            return m;
+        },
+        field: (name) => ({value: fields[name]}),
+    };
+}
+const list = (xs) => obj({get_Count: () => xs.length, get_Item: (i) => xs[i]});
+const flag = (get, set, value) => {
+    const state = {value};
+    return {[get]: () => state.value, [set]: (v) => { state.value = v; }};
+};
+const device = () => obj(flag("get_enabled", "set_enabled", true));
+const devices = {keyboard: device(), mouse: device()};
+function player(id, name) {
+    const maps = obj({LoadMap() {}, GetMaps: () => list([])});
+    const pc = obj({
+        ...flag("get_hasKeyboard", "set_hasKeyboard", true),
+        ...flag("get_hasMouse", "set_hasMouse", false),
+        AddController(ctl) { calls.push(["add", ctl.field("id").value, name]); },
+        RemoveController(ctl) { calls.push(["remove", ctl.field("id").value, name]); },
+    }, {maps});
+    return obj({get_id: () => id, get_name: () => ({isNull: () => false, content: name})},
+               {controllers: pc});
+}
+const players = [player(9999999, "System"), player(0, "Player1")];
+const helper = obj({
+    get_Keyboard: () => devices.keyboard,
+    get_Mouse: () => devices.mouse,
+    GetFirstCustomControllerWithTag: (s) => live.find((x) => x.tag === s.content) ?? null,
+    CreateCustomController(definition, s) {
+        creates += 1;
+        calls.push(["create", definition, s.content]);
+        if (creates === c.fail_on_create) { throw new Error("create failed"); }
+        return controller(s.content);
+    },
+    DestroyCustomController(ctl) {
+        const id = ctl.field("id").value;
+        calls.push(["destroy", id]);
+        if ((c.stuck ?? []).includes(id)) { return false; }
+        live.splice(live.indexOf(ctl), 1);
+        return true;
+    },
+});
+const cfg = obj(flag("get_ignoreInputWhenAppNotInFocus",
+                     "set_ignoreInputWhenAppNotInFocus", true));
+const classes = {
+    "Rewired.ReInput": obj({
+        get_configuration: () => cfg, get_controllers: () => helper,
+        get_players: () => obj({get_AllPlayers: () => list(players)}),
+    }),
+    "Rewired.ControllerType": obj({}, {Custom: 20}),
+    "UnityEngine.Time": obj({get_frameCount: () => 1000}),
+    "UnityEngine.Application": obj({get_isFocused: () => false}),
+};
+for (const tag of c.already_there ?? []) { controller(tag); }
+let handler = null;
+let answered = null;
+globalThis.Il2Cpp = {
+    domain: {assembly: () => ({image: {class: (name) => classes[name]}})},
+    string: (content) => ({content, isNull: () => false}),
+    perform: async (fn) => fn(),
+    toFridaValue: (v) => v,
+    ValueType: class {},
+};
+globalThis.NativeFunction = function () { return () => {}; };
+globalThis.NativePointer = class {};
+globalThis.recv = (fn) => { handler = fn; };
+globalThis.send = (reply) => { answered(reply); };
+await import(%(kit_url)s);
+const replies = [];
+for (const [i, m] of c.messages.entries()) {
+    for (let tries = 0; handler === null && tries < 1000; tries++) {
+        await new Promise((go) => setImmediate(go));
+    }
+    const fn = handler;
+    handler = null;
+    replies.push(await new Promise((go) => { answered = go; fn({...m, id: i}); }));
+}
+console.log(JSON.stringify({replies, calls, live: live.map((x) => x.tag)}));
+"""
+NODE = shutil.which("node")
+# One driver run is a fresh Node start; this is its stop.
+NODE_CAP_S = 30
+
+
+@unittest.skipIf(NODE is None, "node is not on PATH")
+class KitAgentTest(unittest.TestCase):
+    """The real kit.ts, run in Node against a fake game."""
+
+    def run_agent(self, messages, **case):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        with open(os.path.join(_REPO_ROOT, "tools", "ch_mcp", "agent", "kit.ts"),
+                  encoding="utf-8") as f:
+            source = f.read()
+        # The one line Node cannot load; the driver sets the global it defines.
+        bridge = 'import "frida-il2cpp-bridge";\n'
+        self.assertIn(bridge, source)
+        agent = os.path.join(tmp.name, "kit.mts")
+        with open(agent, "w", encoding="utf-8") as f:
+            f.write(source.replace(bridge, ""))
+        driver = os.path.join(tmp.name, "driver.mjs")
+        with open(driver, "w", encoding="utf-8") as f:
+            f.write(AGENT_DRIVER % {"kit_url": json.dumps(pathlib.Path(agent).as_uri())})
+        done = subprocess.run([NODE, driver], input=json.dumps({"messages": messages, **case}),
+                              capture_output=True, text=True, timeout=NODE_CAP_S)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        return json.loads(done.stdout.splitlines()[-1])
+
+    @staticmethod
+    def of(out, kind):
+        return [c[1:] for c in out["calls"] if c[0] == kind]
+
+    @staticmethod
+    def destroyed_checks(reply):
+        return [c for c in reply["checks"] if c["what"].endswith(" destroyed")]
+
+    def test_setup_makes_six_placeholders_then_the_kit_at_id_6(self):
+        out = self.run_agent([K.setup_message("System")])
+        reply = out["replies"][0]
+        self.assertEqual(self.of(out, "create"),
+                         [[6, tag] for tag in PLACEHOLDER_TAGS] + [[6, "hydra-kit"]])
+        self.assertEqual(reply["placeholders"],
+                         [{"id": i, "tag": tag} for i, tag in enumerate(PLACEHOLDER_TAGS)])
+        self.assertEqual(reply["placeholders_created"], 6)
+        self.assertEqual(reply["kit"]["id"], 6)
+        self.assertIsNone(K.kit_id_problem(reply))
+
+    def test_only_the_kit_is_handed_to_a_player(self):
+        out = self.run_agent([K.setup_message("System")])
+        self.assertEqual(self.of(out, "add"), [[6, "System"]])
+
+    def test_teardown_destroys_all_seven_and_checks_each(self):
+        out = self.run_agent([K.setup_message("System"), K.teardown_message()])
+        reply = out["replies"][1]
+        self.assertEqual(sorted(c[0] for c in self.of(out, "destroy")), list(range(7)))
+        checks = self.destroyed_checks(reply)
+        self.assertEqual(len(checks), 7)
+        self.assertTrue(all(c["ok"] for c in checks), checks)
+        self.assertEqual(out["live"], [])
+        self.assertTrue(reply["all_ok"], reply)
+        lines = K.teardown_lines(reply)
+        self.assertEqual(len([s for s in lines if " destroyed: ok" in s]), 7)
+        self.assertIn("kit teardown: hydra-placeholder-2 destroyed: ok "
+                      "(controller 2: DestroyCustomController returned true)", lines)
+        self.assertIn("kit teardown: kit gone: ok (no controller tagged hydra-kit or "
+                      "a placeholder tag)", lines)
+
+    def test_kit_gone_fails_when_a_placeholder_tag_remains(self):
+        out = self.run_agent([K.setup_message("System"), K.teardown_message()], stuck=[3])
+        reply = out["replies"][1]
+        self.assertEqual(out["live"], ["hydra-placeholder-3"])
+        self.assertFalse(reply["all_ok"])
+        lines = K.teardown_lines(reply)
+        self.assertIn("kit teardown failed on hydra-placeholder-3 destroyed: "
+                      "controller 3: DestroyCustomController returned false", lines)
+        self.assertIn("kit teardown failed on kit gone: controller 3 still tagged "
+                      "hydra-placeholder-3", lines)
+
+    def test_kit_gone_fails_when_the_kit_remains(self):
+        out = self.run_agent([K.setup_message("System"), K.teardown_message()], stuck=[6])
+        self.assertIn("kit teardown failed on kit gone: controller 6 still tagged hydra-kit",
+                      K.teardown_lines(out["replies"][1]))
+
+    def test_a_setup_that_throws_after_the_third_placeholder_leaves_three_to_destroy(self):
+        out = self.run_agent([K.setup_message("System"), K.teardown_message()], fail_on_create=4)
+        self.assertIn("create failed", out["replies"][0]["error"])
+        reply = out["replies"][1]
+        self.assertEqual(sorted(c[0] for c in self.of(out, "destroy")), [0, 1, 2])
+        self.assertEqual(len(self.destroyed_checks(reply)), 3)
+        self.assertEqual(out["live"], [])
+        self.assertTrue(reply["all_ok"], reply)
+
+    def test_a_setup_that_finds_the_kit_creates_nothing(self):
+        out = self.run_agent([K.setup_message("System")],
+                             already_there=[*PLACEHOLDER_TAGS, "hydra-kit"])
+        reply = out["replies"][0]
+        self.assertEqual(self.of(out, "create"), [])
+        self.assertFalse(reply["kit"]["created"])
+        self.assertEqual(reply["placeholders_created"], 0)
+        self.assertEqual([p["id"] for p in reply["placeholders"]], list(range(6)))
+
+    def test_a_second_setup_in_one_agent_creates_nothing_and_teardown_destroys_seven(self):
+        out = self.run_agent([K.setup_message("System"), K.setup_message("System"),
+                              K.teardown_message()])
+        self.assertEqual(len(self.of(out, "create")), 7)
+        self.assertEqual(len(out["replies"][1]["placeholders"]), 6)
+        self.assertEqual(len(self.destroyed_checks(out["replies"][2])), 7)
+        self.assertEqual(out["live"], [])
+
+    def test_a_setup_after_a_throw_keeps_the_placeholders_it_finds(self):
+        out = self.run_agent([K.setup_message("System"), K.setup_message("System")],
+                             fail_on_create=4)
+        self.assertEqual(self.of(out, "create").count([6, "hydra-placeholder-0"]), 1)
+        self.assertEqual(out["replies"][1]["placeholders_created"], 3)
+        self.assertEqual(len(out["replies"][1]["placeholders"]), 6)
+
+    def test_a_teardown_with_no_setup_record_finds_the_controllers_by_tag(self):
+        out = self.run_agent([K.teardown_message()],
+                             already_there=[*PLACEHOLDER_TAGS, "hydra-kit"])
+        self.assertEqual(len(self.destroyed_checks(out["replies"][0])), 7)
+        self.assertEqual(out["live"], [])
+
+
+class KitIdLiteralTest(unittest.TestCase):
+    """The kit's id is read from the object; no code compares it with 0."""
+
+    # A comparison of the kit's id with a bare 0, either way round, and a
+    # truth test that would read id 0 as "no kit".
+    KIT_ID = r"""(?:kitId\([^)]*\)|\bkit_id\b|\bkit\.id\b|kit\.get\(["']id["']\))"""
+    COMPARE = r"(?:===|!==|==|!=|<=|>=|<|>)"
+    ZERO_AGAINST_ID = re.compile(
+        rf"{KIT_ID}\s*{COMPARE}\s*0\b|\b0\s*{COMPARE}\s*{KIT_ID}|\bnot\s+{KIT_ID}|!{KIT_ID}")
+
+    def test_the_pattern_catches_each_form(self):
+        for line in ("kitId(kit) === 0", "0 != kit_id", 'kit.get("id") == 0', "not kit_id",
+                     "!kitId(kit)"):
+            self.assertIsNotNone(self.ZERO_AGAINST_ID.search(line), line)
+        self.assertIsNone(self.ZERO_AGAINST_ID.search("kitId(kit) === wanted"))
+
+    def test_no_literal_0_is_compared_with_the_kits_id(self):
+        for rel in (("agent", "kit.ts"), ("kit_tools.py",)):
+            path = os.path.join(_REPO_ROOT, "tools", "ch_mcp", *rel)
+            with open(path, encoding="utf-8") as f:
+                found = [line for line in f if self.ZERO_AGAINST_ID.search(line)]
+            self.assertEqual(found, [], path)
 
 
 class ReadPauseSettingTest(unittest.TestCase):

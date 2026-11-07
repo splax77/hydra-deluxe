@@ -143,6 +143,10 @@ OFF_SP_OVERFLOW = 0x130
 OFF_FLAGS = 0x198
 PRECISION_MODE_BIT = 0x1000
 
+# Dynamics threshold (dword): the value the hit handler compares a lane's
+# velocity with. docs/clone-hero/06-scoring.md, SC-13, gives the comparison.
+OFF_DYN_THRESHOLD = 0x2C0
+
 # Note count used by the processing loop (dword).
 OFF_NOTE_COUNT = 0x8C
 

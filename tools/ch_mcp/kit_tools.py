@@ -8,7 +8,8 @@ stay minimized and unfocused; while the kit is set up, the Rewired devices in
 KIT_DEVICES are switched off so the user's own keys and mouse reach no player
 (the plan
 docs/superpowers/plans/2026-10-30-ch-mcp-in-game-input.md, "One agent for the
-kit" and "The tools").
+kit" and "The tools"). Placeholder controllers made before it put the kit on
+KIT_REQUIRED_ID, the one id the game grades hit strength for.
 
 The agent holds none of the kit's numbers. This module owns them: the
 definition, the tag, the player, the elements, the bindings the game's map must
@@ -55,10 +56,30 @@ KIT_MAP_CATEGORY_ID = 1
 KIT_MAP_LAYOUT_ID = 2
 # The tag the kit is created with and found by (the plan's owner table).
 KIT_TAG = "hydra-kit"
-# The Rewired player the kit is handed to when ch_kit_setup names none (the
-# probe: Players are Player1 to Player4). Live step LS-D1 of the plan
-# docs/superpowers/plans/2026-10-31-ch-mcp-direct-start.md decides whether it
-# becomes the System player.
+# The id the kit must hold: the literal the game's velocity gate passes to
+# ContainsController (docs/clone-hero/code/6142/lane_velocity_337E10.asm line
+# 53). Only a custom controller with this id has its hit strength read.
+KIT_REQUIRED_ID = 6
+# How many placeholder controllers setup creates before the kit, from the same
+# literal: ids count up from zero in a launch (block IN-81 of
+# docs/clone-hero/07-internals.md), so this many use up every id below it.
+KIT_PLACEHOLDERS = KIT_REQUIRED_ID
+# Why a second setup in one launch cannot reach KIT_REQUIRED_ID, and what does.
+# Destroying a controller does not move the game's id counter (IN-81).
+NEW_LAUNCH_NOTE = ("only a new launch of the game puts the kit back on id "
+                   f"{KIT_REQUIRED_ID}: a teardown does not reset the game's id "
+                   "counter, so a setup after one gets a higher id "
+                   "(docs/clone-hero/07-internals.md, IN-81); ch_stop, then ch_start")
+KIT_ALREADY_SET_UP = ("the kit is already set up. ch_kit_teardown takes it away, but "
+                      "a setup after that in the same launch is refused, because the "
+                      f"kit would not be on id {KIT_REQUIRED_ID}; "
+                      "start the game again (ch_stop, then ch_start) to set it up again")
+# The tag of a placeholder is this text plus its index. It must not start with
+# KIT_TAG, so a placeholder can never be taken for the kit.
+KIT_PLACEHOLDER_TAG = "hydra-placeholder-"
+# The Rewired player the kit is handed to when ch_kit_setup names none. The
+# user kept Player1 (docs/agents/rulings/clone-hero.md, "Keep Player1"); a
+# human launch passes player="System" to ch_kit_setup.
 KIT_PLAYER = "Player1"
 
 # How long a press holds, counted in the game's frames (the user's answer to
@@ -70,9 +91,6 @@ KIT_SETUP_CAP_S = 10
 # How long one press gets to answer (question 3): a press replies once its
 # hold has passed, so a missing reply means the agent is gone or the game froze.
 KIT_PRESS_CAP_S = 1
-# The value a pad press writes to its axis: the probe's value (q8_pad.js).
-# LS-K4's compare says whether the game grades it as a velocity.
-KIT_AXIS_VALUE = 1.0
 # Whether a press writes its values again on every tick of its hold. One
 # write is enough: at live step LS-K1, presses of green held 1, 2 and 3
 # frames with rewrite off each read "Green on" from the frame after the down
@@ -104,7 +122,7 @@ KIT_PREFIX = "kit:"
 class KitElement:
     """One element of the kit: its id and name on the definition, and
     whether it is a button (pressed with true) or a pad axis (pressed with
-    KIT_AXIS_VALUE)."""
+    a pad_axis value)."""
     id: int
     name: str
     button: bool
@@ -183,14 +201,26 @@ def parse_items(items: Union[str, Sequence[str]]) -> List[str]:
     return names
 
 
+def placeholder_tags() -> List[str]:
+    """The tag of each placeholder controller, in the order setup makes
+    them."""
+    return [f"{KIT_PLACEHOLDER_TAG}{i}" for i in range(KIT_PLACEHOLDERS)]
+
+
 def setup_message(player: Any) -> dict:
     """The setup message, handing the kit to `player` with the map at
-    KIT_MAP_CATEGORY_ID and KIT_MAP_LAYOUT_ID. The name goes to the agent as
-    given: the agent knows the game's players and refuses a name none of
-    them has."""
+    KIT_MAP_CATEGORY_ID and KIT_MAP_LAYOUT_ID, after the placeholders. The
+    name goes to the agent as given: the agent knows the game's players and
+    refuses a name none of them has."""
     return {"type": "setup", "tag": KIT_TAG, "definition_id": KIT_DEFINITION_ID,
             "player": player, "category_id": KIT_MAP_CATEGORY_ID,
-            "layout_id": KIT_MAP_LAYOUT_ID}
+            "layout_id": KIT_MAP_LAYOUT_ID, "placeholder_tags": placeholder_tags()}
+
+
+def teardown_message() -> dict:
+    """The teardown message. It carries the tags so an agent that holds no
+    setup record can still find the kit and the placeholders."""
+    return {"type": "teardown", "tag": KIT_TAG, "placeholder_tags": placeholder_tags()}
 
 
 def given_player_line(player: Any) -> str:
@@ -199,19 +229,58 @@ def given_player_line(player: Any) -> str:
     return f'kit player: "{player}" as given (KIT_PLAYER is {KIT_PLAYER})'
 
 
+# The words hydra_replay writes in a gem's "dynamic"; dynamic_str in
+# src/core/model.cpp owns them.
+DYNAMIC_NONE = "none"
+DYNAMIC_GHOST = "ghost"
+DYNAMIC_ACCENT = "accent"
+
+
+# The strengths copy the game's own bot and MIDI handler, from the Evidence
+# line of SC-13 in docs/clone-hero/06-scoring.md: the bot's velocity for an
+# accent and for a ghost, and the handler's turning of a velocity into an axis
+# value. A plain gem's velocity is never read, so it presses like an accent.
+def pad_axis(dynamic: str, threshold: Optional[int] = None) -> float:
+    """The axis value that presses a pad gem of this `dynamic`, the one home
+    of the strengths. Only a ghost needs `threshold`, the engine's dynamics
+    threshold (constants.OFF_DYN_THRESHOLD). Raises ValueError for a word
+    hydra_replay does not write, and for a ghost with a `threshold` no
+    velocity can answer."""
+    top_velocity = 127
+
+    def axis(velocity: int) -> float:
+        return 0.5 + velocity / (2 * top_velocity)
+
+    if dynamic in (DYNAMIC_NONE, DYNAMIC_ACCENT):
+        return axis(top_velocity)
+    if dynamic != DYNAMIC_GHOST:
+        raise ValueError(f'unknown gem dynamic "{dynamic}"; make the score file again '
+                         f"with hydra_replay score")
+    if threshold is None or not 1 <= threshold <= top_velocity:
+        raise ValueError(f"no ghost press is possible: the engine's dynamics threshold "
+                         f"(OFF_DYN_THRESHOLD) reads {threshold}, and it must be 1 to "
+                         f"{top_velocity}; start the song, read the field again, and "
+                         f"report the number if it stays outside that range")
+    return axis(threshold - 1)
+
+
 def press_message(elements: Sequence[KitElement], hold_frames: int = KIT_HOLD_FRAMES, *,
                   rewrite: bool = KIT_REWRITE, on_main: bool = KIT_PRESS_ON_MAIN,
-                  read: Sequence[str] = ()) -> dict:
-    """The press message for `elements`, each once, in order. `read` names
-    the game actions the agent reads back on the kit's player during the
-    hold; the message carries it only when it names some."""
-    seen: List[KitElement] = []
-    for e in elements:
-        if e not in seen:
-            seen.append(e)
+                  read: Sequence[str] = (),
+                  values: Optional[Sequence[float]] = None) -> dict:
+    """The press message for `elements`, each once, in order. `values` gives
+    each element's axis value, one per element, and a button ignores its own;
+    None presses every pad as a plain gem. `read` names the game actions the
+    agent reads back on the kit's player during the hold; the message carries
+    it only when it names some."""
+    if values is None:
+        values = [pad_axis(DYNAMIC_NONE)] * len(elements)
+    seen: Dict[KitElement, float] = {}
+    for e, value in zip(elements, values, strict=True):
+        seen.setdefault(e, value)
     message = {"type": "press",
-               "elements": [{"id": e.id, "value": True if e.button else KIT_AXIS_VALUE}
-                            for e in seen],
+               "elements": [{"id": e.id, "value": True if e.button else value}
+                            for e, value in seen.items()],
                "hold_frames": hold_frames, "cap_s": KIT_PRESS_CAP_S,
                "rewrite": rewrite, "on_main": on_main}
     if read:
@@ -356,10 +425,26 @@ def devices_problem(reply: dict) -> Optional[str]:
             "input would still reach the game")
 
 
+def placeholder_ids(reply: dict) -> str:
+    """The setup reply's placeholder ids as text, or "none"."""
+    return ", ".join(str(p.get("id")) for p in reply.get("placeholders") or []) or "none"
+
+
+def kit_id_problem(reply: dict) -> Optional[str]:
+    """Why the setup reply's kit does not hold KIT_REQUIRED_ID, naming the
+    ids the placeholders and the kit got, or None when it does."""
+    kit_id = (reply.get("kit") or {}).get("id")
+    if kit_id == KIT_REQUIRED_ID:
+        return None
+    return (f"refused: the kit is controller {kit_id}, not KIT_REQUIRED_ID "
+            f"{KIT_REQUIRED_ID}; placeholder ids: {placeholder_ids(reply)}\n"
+            f"{NEW_LAUNCH_NOTE}")
+
+
 def setup_lines(reply: dict) -> List[str]:
     """The setup reply as lines: the switch, each KIT_DEVICES device, each
-    player's keyboard and mouse flags before and now, the kit, and each map
-    with its bindings."""
+    player's keyboard and mouse flags before and now, the placeholders, the
+    kit, and each map with its bindings."""
     lines = [f"ignoreInputWhenAppNotInFocus: was {_flag_text(reply.get('switch_was'))}, "
              f"now {_flag_text(reply.get('switch_now'))}"]
     lines.extend(f"{device_label(d)}: was {_flag_text(reply.get(f'{d}_was'))}, "
@@ -370,6 +455,8 @@ def setup_lines(reply: dict) -> List[str]:
         lines.append(f"player {p.get('id')} {p.get('name')}: keyboard was "
                      f"{_flag_text(p.get('has_keyboard'))}, now {_flag_text(n.get('has_keyboard'))}; "
                      f"mouse was {_flag_text(p.get('has_mouse'))}, now {_flag_text(n.get('has_mouse'))}")
+    lines.append(f"placeholders: controllers {placeholder_ids(reply)} "
+                 f"({reply.get('placeholders_created')} created)")
     kit = reply.get("kit") or {}
     lines.append(f"kit: controller {kit.get('id')}, tag {kit.get('tag')}, "
                  f"{'created' if kit.get('created') else 'found already made'}, "
@@ -433,17 +520,19 @@ def fault_lines(error: FA.LiveAgentError) -> List[str]:
 
 
 def kit_press(agent: FA.LiveAgent, *, request_lock: Optional[threading.Lock] = None,
-              hold_frames: int = KIT_HOLD_FRAMES) -> Callable[[Sequence[int]], dict]:
+              hold_frames: int = KIT_HOLD_FRAMES) -> Callable[..., dict]:
     """The auto-player's press on the kit route: a callable that sends one
-    chord's lanes to the kit agent and returns its reply, which play_chords
-    keeps in the press row. It waits at most KIT_PRESS_CAP_S and raises
+    chord's lanes at their `axes` to the kit agent and returns its reply,
+    which play_chords keeps in the press row. Axes of None press every pad as
+    a plain gem. It waits at most KIT_PRESS_CAP_S and raises
     frida_attach.ReadFailed when no reply comes, which ends the run. A reply
     that carries a native fault puts fault_lines under the error's message,
     since the run reports only that message."""
     lock = request_lock if request_lock is not None else threading.Lock()
 
-    def press(lanes: Sequence[int]) -> dict:
-        message = press_message([lane_element(lane) for lane in lanes], hold_frames)
+    def press(lanes: Sequence[int], axes: Optional[Sequence[float]] = None) -> dict:
+        message = press_message([lane_element(lane) for lane in lanes], hold_frames,
+                                values=axes)
         with lock:
             try:
                 return agent.request(message, KIT_PRESS_CAP_S)
@@ -510,11 +599,12 @@ class KitTools:
     def ch_kit_setup(self, player: Optional[str] = None) -> str:
         """Check the attach and settings.ini, take the backup, attach the kit
         agent, send setup, check with devices_problem that the Rewired
-        devices read off, check with map_problems that the map it read back
-        is the one setup_message names, and check that map's bindings against
-        KIT_BINDINGS. A setup that fails, leaves a device on, reads another
-        map or reads other bindings is torn down again, so nothing is left
-        half done.
+        devices read off, check with kit_id_problem that the kit holds
+        KIT_REQUIRED_ID, check with map_problems that the map it read back is
+        the one setup_message names, and check that map's bindings against
+        KIT_BINDINGS. A setup that fails, leaves a device on, gets another
+        id, reads another map or reads other bindings is torn down again, so
+        nothing is left half done.
 
         `player` names the Rewired player the kit is handed to; None hands
         it to KIT_PLAYER. A given name is sent as is, and the reply's first
@@ -530,7 +620,7 @@ class KitTools:
             if not self._frida.is_attached():
                 return NOT_ATTACHED
             if self._ready and self._agent is not None and self._agent.alive:
-                return "the kit is already set up; call ch_kit_teardown first to set it up again"
+                return KIT_ALREADY_SET_UP
             key = game_files.PAUSE_ON_FOCUS_LOST
             want = game_files.PAUSE_ON_FOCUS_LOST_RUN_VALUE
             try:
@@ -578,6 +668,11 @@ class KitTools:
                 lines.append(devices)
                 lines.extend(self._teardown_and_detach())
                 return self._reply(lines)
+            wrong_id = kit_id_problem(reply)
+            if wrong_id is not None:
+                lines.append(wrong_id)
+                lines.extend(self._teardown_and_detach())
+                return self._reply(lines)
             map_wrong = map_problems(reply.get("maps"))
             if map_wrong:
                 lines.append(f"refused: the kit's map is not the one at category "
@@ -598,23 +693,27 @@ class KitTools:
     def ch_kit_press(self, items: Union[str, Sequence[str]],
                      hold_frames: Optional[int] = None, rewrite: Optional[bool] = None,
                      on_main: Optional[bool] = None,
-                     read: Union[None, str, Sequence[str]] = None) -> str:
+                     read: Union[None, str, Sequence[str]] = None,
+                     value: Optional[float] = None) -> str:
         """Press one chord of kit items, such as "green,kick" or "start", and
         print the frames it went down and came up on. press_items does the
         work and says what each argument does."""
         return self.press_items(items, hold_frames, rewrite=rewrite, on_main=on_main,
-                                read=read).text
+                                read=read, value=value).text
 
     def press_items(self, items: Union[str, Sequence[str]],
                     hold_frames: Optional[int] = None, *, rewrite: Optional[bool] = None,
                     on_main: Optional[bool] = None,
-                    read: Union[None, str, Sequence[str]] = None) -> PressResult:
+                    read: Union[None, str, Sequence[str]] = None,
+                    value: Optional[float] = None) -> PressResult:
         """Press one chord of kit items (KIT_ELEMENTS names, with or without
         KIT_PREFIX), held `hold_frames` frames (KIT_HOLD_FRAMES when None).
         `rewrite` and `on_main` set the press's rewrite and thread
         (KIT_REWRITE and KIT_PRESS_ON_MAIN when None). `read` names game
         actions, such as "Green", that the agent reads back on the kit's
-        player during the hold; the text then lists each change it saw. The
+        player during the hold; the text then lists each change it saw.
+        `value` is the axis value of this press's pads, from 0 to 1; None
+        presses them as plain gems, and a button is never given one. The
         result says whether the press went out, for the menu driver."""
         with self._lock:
             try:
@@ -626,10 +725,15 @@ class KitTools:
             if isinstance(hold, bool) or not isinstance(hold, int) or hold < 1:
                 return PressResult(False, f"hold_frames is a whole number of 1 or more, "
                                           f"not {hold_frames!r}")
-            for what, value in (("rewrite", rewrite), ("on_main", on_main)):
-                if value is not None and not isinstance(value, bool):
+            for what, flag in (("rewrite", rewrite), ("on_main", on_main)):
+                if flag is not None and not isinstance(flag, bool):
                     return PressResult(False, f"{what} is true, false or left out, "
-                                              f"not {value!r}")
+                                              f"not {flag!r}")
+            if value is not None and (isinstance(value, bool)
+                                      or not isinstance(value, (int, float))
+                                      or not 0 <= value <= 1):
+                return PressResult(False, f"value is a number from 0 to 1 or left out, "
+                                          f"not {value!r}")
             agent = self._ready_agent()
             if agent is None:
                 return PressResult(False, NOT_SET_UP)
@@ -640,7 +744,8 @@ class KitTools:
                 elements, hold,
                 rewrite=KIT_REWRITE if rewrite is None else rewrite,
                 on_main=KIT_PRESS_ON_MAIN if on_main is None else on_main,
-                read=actions)
+                read=actions,
+                values=None if value is None else [value] * len(elements))
             try:
                 with self._request_lock:
                     reply = agent.request(message, KIT_PRESS_CAP_S)
@@ -660,6 +765,8 @@ class KitTools:
             if rewrite is not None or on_main is not None:
                 lines.append(f"rewrite {_flag_text(reply.get('rewrite'))}, main thread "
                              f"{_flag_text(reply.get('on_main'))} (as the agent ran it)")
+            if value is not None:
+                lines.append(f"pads pressed at value {value}")
             lines.extend(seen_lines(reply))
             return PressResult(True, self._reply(lines))
 
@@ -717,9 +824,10 @@ class KitTools:
             return self._reply(lines)
 
     def ch_kit_teardown(self) -> str:
-        """Clear the kit's elements, remove the kit, give every player back
-        the keyboard and mouse flags setup recorded, put the Rewired devices
-        and the switch back, print each check, and detach the kit agent."""
+        """Clear the kit's elements, remove the kit, destroy it and every
+        placeholder, give every player back the keyboard and mouse flags
+        setup recorded, put the Rewired devices and the switch back, print
+        each check, and detach the kit agent."""
         with self._lock:
             if self._play_running():
                 return PLAY_RUNNING
@@ -727,7 +835,7 @@ class KitTools:
                 return "no kit agent attached; nothing to tear down"
             return self._reply(self._teardown_and_detach())
 
-    def kit_press(self) -> Optional[Callable[[Sequence[int]], dict]]:
+    def kit_press(self) -> Optional[Callable[..., dict]]:
         """The auto-player's kit press, or None when the kit is not set up."""
         with self._lock:
             agent = self._ready_agent()
@@ -782,7 +890,7 @@ class KitTools:
             return lines
         try:
             with self._request_lock:
-                reply = agent.request({"type": "teardown", "tag": KIT_TAG}, KIT_SETUP_CAP_S)
+                reply = agent.request(teardown_message(), KIT_SETUP_CAP_S)
         except FA.ReadFailed as e:
             lines.append(f"kit teardown failed on the request: {e}"
                          f"{self._cap_note(e, 'KIT_SETUP_CAP_S')}")

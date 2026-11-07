@@ -211,6 +211,11 @@ class EngineModel:
         play_chart.py tells a hit from a miss."""
         return self._process.read_u32(self._addr(C.OFF_SCORE))
 
+    def dyn_threshold(self) -> int:
+        """The dynamics threshold a hit's velocity is compared with
+        (docs/clone-hero/06-scoring.md, SC-13)."""
+        return self._process.read_u32(self._addr(C.OFF_DYN_THRESHOLD))
+
     def note_count(self) -> int:
         """Note count the processing loop uses."""
         return self._process.read_u32(self._addr(C.OFF_NOTE_COUNT))

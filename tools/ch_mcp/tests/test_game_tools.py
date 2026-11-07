@@ -47,8 +47,10 @@ ROWS = [
      "score_before": 50, "score_after": 50, "hit": 0},
 ]
 SCORE_JSON = {"chords": [
-    {"index": 0, "ms": 1000.0, "notes": [{"color": "Red", "cymbal": False}]},
-    {"index": 1, "ms": 1500.0, "notes": [{"color": "Kick", "cymbal": False}]},
+    {"index": 0, "ms": 1000.0,
+     "notes": [{"color": "Red", "cymbal": False, "dynamic": "none"}]},
+    {"index": 1, "ms": 1500.0,
+     "notes": [{"color": "Kick", "cymbal": False, "dynamic": "none"}]},
 ]}
 
 
@@ -546,6 +548,50 @@ class GameToolsTest(unittest.TestCase):
         t.tools._play.thread.join(THREAD_CAP_S)
         self.assertEqual(seen, [320.504])
         self.assertIn("run cap: 320.504 s", reply.splitlines())
+
+    def test_the_status_prints_the_threshold_the_player_read(self):
+        def live_play(chords, **kw):
+            return play_chart.RunResult(stop="done", dyn_threshold=64)
+
+        t = ToolRig(self.tmp, live_play=live_play)
+        t.tools.ch_play_chart(self._score_json(), route="keys")
+        t.tools._play.thread.join(THREAD_CAP_S)
+        self.assertEqual(t.tools.ch_play_status().splitlines()[2], "dynamics threshold: 64")
+
+    def test_the_status_prints_no_threshold_when_none_was_read(self):
+        t = ToolRig(self.tmp, live_play=lambda chords, **kw: play_chart.RunResult(stop="done"))
+        t.tools.ch_play_chart(self._score_json(), route="keys")
+        t.tools._play.thread.join(THREAD_CAP_S)
+        self.assertNotIn("threshold", t.tools.ch_play_status())
+
+    def test_the_status_names_the_first_chord_pressed_from_the_oldest_row(self):
+        def live_play(chords, **kw):
+            for row in ({**ROWS[0], "index": 7, "chart_ms": 5398.0},
+                        {**ROWS[1], "index": 8, "chart_ms": 5600.0}):
+                kw["on_press"](row)
+            return play_chart.RunResult(stop="done", sent=2, hit=1)
+
+        t = ToolRig(self.tmp, live_play=live_play)
+        t.tools.ch_play_chart(self._score_json(), route="keys")
+        t.tools._play.thread.join(THREAD_CAP_S)
+        self.assertIn("first press chord index 7 at 5398.0 ms",
+                      t.tools.ch_play_status().splitlines())
+
+    def test_the_status_names_the_first_chord_while_the_run_goes_on(self):
+        t = ToolRig(self.tmp)
+        t.tools.ch_play_chart(self._score_json(), route="keys")
+        self.assertTrue(t.live_play.delivered.wait(THREAD_CAP_S))
+        self.assertIn("first press chord index 0 at 1000.0 ms",
+                      t.tools.ch_play_status().splitlines())
+        t.tools.ch_play_stop()
+        t.tools._play.thread.join(THREAD_CAP_S)
+
+    def test_the_status_says_when_no_chord_was_pressed(self):
+        t = ToolRig(self.tmp, live_play=lambda chords, **kw: play_chart.RunResult(stop="done"))
+        t.tools.ch_play_chart(self._score_json(), route="keys")
+        t.tools._play.thread.join(THREAD_CAP_S)
+        self.assertIn("first press: none, no chord was pressed",
+                      t.tools.ch_play_status().splitlines())
 
     # -- the auto-player ------------------------------------------------------------------
 
