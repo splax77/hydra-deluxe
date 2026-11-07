@@ -13,7 +13,7 @@ Rule: The game adds a written fill at four places: the `.chart` reader (event ty
 Label: Proven in the game's code
 Evidence: the callers of the fill initialiser `0x20FB9A0`, found by a call scan: in 0x20CEDC0, `0x20E5E70`, `0x213E0C0`, `0x215B7C0` and `0x215BD50`. The `.mid` reader tests the event byte against 0x78 (note 120) before it calls 0x20CEDC0; the `.chart` reader's test is in the decompile lines 25570 to 25594. That two of the paths read a cache is the game survey's reading, not checked.
 Game code (6142): the `.mid` fill helper 0x20CEDC0, listed at `code/6142/mid_fill_reader_20CEDC0.asm`; the `.chart` reader `0x213E0C0`; the cache reader `0x20E49D0`, listed at `code/6142/fill_cache_caller_20E49D0.asm`.
-Hydra: `kFillMarkerPitch` in src/parse/song.cpp line 684; both parsers end in `place_authored_fills` (lines 1119 and 1874).
+Hydra: `kFillMarkerPitch` in src/parse/song.cpp line 684; both parsers end in `place_authored_fills`.
 Ruling: none needed: same rule
 Found: 2026-10-30, session b02ab3e6 (the reference build).
 
@@ -51,7 +51,7 @@ Found: 2026-10-30, session b02ab3e6 (the reference build).
 
 Rule: The game takes the first chord strictly after the fill's end and the last chord at or before it. The one at or before is dropped if it is earlier than the fill's start, and the one after is dropped if it is later than end + slop; a chord exactly at the start or at end + slop stays. When both stay, the closer wins, and a tie goes to the later chord.
 Label: Proven in the game's code
-Evidence: `code/6142/nearest_chord_5DE030.asm` lines 28 (the forward search), 39 (the backward search), 90 to 99 (the strict "outside" tests) and 100 to 113 (`tick(after) - target <= target - tick(before)` returns the after chord); the helpers' meanings are in `code/6142/first_after_search_2C7CF70.asm` lines 65 and 66 and `code/6142/back_search_2C7CE00.asm` lines 69 to 79. The addresses 0x2C7CF70 and 0x2C7CE00 are compiler-generated helpers with no dump entry. Before these listings the rule rested only on the 2026-10-03 listing, which was lost.
+Evidence: `code/6142/nearest_chord_5DE030.asm` lines 28 (the forward search), 39 (the backward search), 90 to 99 (the strict "outside" tests) and 100 to 113 (`tick(after) - target <= target - tick(before)` returns the after chord); the helpers' meanings are in `code/6142/first_after_search_2C7CF70.asm` lines 65 and 66 and `code/6142/back_search_2C7CE00.asm` lines 69 to 79. The addresses 0x2C7CF70 and 0x2C7CE00 are compiler-generated helpers with no dump entry.
 Game code (6142): the nearest-chord helper, RVA `0x5DE030`, `code/6142/nearest_chord_5DE030.asm` lines 28 to 117.
 Hydra: `place_authored_fills` in src/parse/song.cpp lines 377 to 388.
 Ruling: none needed: same rule. D30: "Each fill takes the last chord at or before its end, but not before its start, or the first chord after its end within the slop. A tie goes to the later chord, and a fill with no chord in bounds is dropped." (the decision log's words)
@@ -69,7 +69,7 @@ Found: 2026-10-03, session cebf3006; listed 2026-10-30, session b02ab3e6 (the re
 
 ### FL-07 With no chord after the end, the game falls back to chord 0
 
-Rule: When no chord sits after a written fill's end, the game's backward search restarts at its start index, which is 0 for written fills. So it returns chord 0 of the song, if that chord is before the end tick, with no bound test. The record's wording, "takes the chord before however far", is wrong for this side. Hydra drops the fill.
+Rule: When no chord sits after a written fill's end, the game's backward search restarts at its start index, which is 0 for written fills. So it returns chord 0 of the song, if that chord is before the end tick, with no bound test. Hydra drops the fill.
 Label: Proven in the game's code
 Evidence: `code/6142/nearest_chord_5DE030.asm` lines 28 to 32 (the start index swapped in when the after side is -1) and 61 to 69 (the before chord returned with no bound test); `code/6142/back_search_2C7CE00.asm` lines 20 to 34; the start index is the constant 0 at `code/6142/fill_to_activation_20CFF60.asm` line 93. The address 0x2C7CE00 is a compiler-generated helper with no dump entry. This is a reading of a loop nobody ran.
 Game code (6142): RVA `0x5DE030` lines 28 to 69; the backward helper 0x2C7CE00 lines 20 to 34.
@@ -206,7 +206,7 @@ Label: Proven in the game's code
 Evidence: `code/6142/engine_ctor_20DF680.asm` lines 57 (the truncating convert of `[chart+0xb8]`) and 68 and 69 (`shl rax, 2` at 0x20DF7B7, then the store to `+0x300`). No 6/8 or 7/8 run exists.
 Game code (6142): the drums engine constructor, RVA `0x20DF680`, `code/6142/engine_ctor_20DF680.asm` lines 57 to 69.
 Hydra: `kCh11FillLeadBeats` times `tick_resolution` in src/search/graph.cpp lines 68 and 69.
-Ruling: none needed: same rule. D26 had kept "6/8 beats" as "unverified against Clone Hero"; this code read settles it.
+Ruling: none needed: same rule
 Found: 2026-10-12, the fill evidence read; listed 2026-10-30, session b02ab3e6 (the reference build).
 
 ### FL-21 The deadline's "half" is twice a base of resolution times 7.5
@@ -380,7 +380,7 @@ Label: Proven in the game's code
 Evidence: `code/4045/fill_generator.cs` lines 30 to 77: line 40 (`i = 1`), 44 to 49 and 53 to 56 (`i += 4`; `i -= 3` on a miss), line 53 (`num5 > 0.25f`), lines 39, 42, 43 and 58 to 74 (the fill's start and end). Hydra's side: `Song::place_fills_ch10` in src/core/song.cpp lines 135 to 167 and `kCh10FillLengthMeasures` at line 123.
 Game code (4045): the 1.0 generator (scrambled name), `code/4045/fill_generator.cs` lines 30 to 77.
 Hydra: `Song::place_fills_ch10` in src/core/song.cpp line 135.
-Ruling: open split: see questions page Q-38. D115 item 6 says "Clone Hero 1.0 mode keeps its old fill generator exactly." (the decision log's words), and card c0e1259d has the user choosing "Keep 1.0 exactly as before (Recommended)"; both came before the 1.0 code was read, so neither names the game's side.
+Ruling: open split: see questions page Q-38. D115 item 6 says "Clone Hero 1.0 mode keeps its old fill generator exactly." (the decision log's words), and card c0e1259d has the user choosing "Keep 1.0 exactly as before (Recommended)"; neither names the game's side.
 Found: 2026-10-30, session b02ab3e6 (the reference build).
 
 ### FL-37 The 1.0 fill's activation note is the highest pad
@@ -397,7 +397,7 @@ Found: 2026-10-30, session b02ab3e6 (the reference build).
 
 Rule: A 1.0 written fill is attached to the chord nearest its end tick, no earlier than the fill start and no later than the end plus a 32nd note (resolution x 6 / 192 ticks). A tie goes to the later chord, a fill with no chord is dropped, and its length is rebuilt to end one 64th note after the activation note. Hydra places written fills the same way under 1.0 and 1.1, with 1.1's +1 tick.
 Label: Proven in the game's code
-Evidence: `code/4045/fill_generator.cs` lines 80 to 113 and the helper at lines 144 to 193. Hydra's side: `place_authored_fills` takes only a slop and has no rule argument (src/parse/song.cpp line 363, called at lines 1119 and 1874).
+Evidence: `code/4045/fill_generator.cs` lines 80 to 113 and the helper at lines 144 to 193. Hydra's side: `place_authored_fills` takes only a slop and has no rule argument (src/parse/song.cpp line 363, called by both parsers).
 Game code (4045): a scrambled method of the 1.0 note builder, `code/4045/fill_generator.cs` lines 80 to 113.
 Hydra: `place_authored_fills` in src/parse/song.cpp line 363.
 Ruling: open split: see questions page Q-39
@@ -447,9 +447,9 @@ Found: 2026-10-30, session b02ab3e6 (the reference build).
 
 Rule: In Splax's Desecration Day full combo on Clone Hero v1.0.0.4080 (video uploaded 2026-03-17), the player activated at tick 25680, a fill the 1.1 rule rejects, and scored 955,660, above Hydra's 1.1 optimal 955,500. Hydra's 1.0 rule lets that fill through: the player's activations equal Hydra's 1.0 optimal path.
 Label: Proven in a live run
-Evidence: `C:\ytdl\videos\Desecration Day Pro Drums FC [68yrLU78FLo].fcreport.md` line 23 (activation 1 at tick 25680) and lines 36 to 38 (optimal 959,340 with Hydra path 0 `0 3- 4- 4 1 0`, actual 955,660); the results screenshot shows "Clone Hero v1.0.0.4080-final". The build is 4080, not 4045, and it is a third-party video, not a controlled run. It shows Hydra's rule agrees with one fill, not the formula. Hydra's own timing of that fill: under the 1.1 rule the meter reaches half 363 ms too late for the fill to appear, and under the 1.0 rule it appears with 212 ms to spare (Hydra's numbers, not read from the game; session d46444c2 worked them out, and its card, docs/sessions/2026-09-03-d46444c2.md, records the 1.0 pricing but not these two timings, whose record is not kept). The fcreport's lines 37 and 38 put the played path's ceiling at 957,320 and the run 1,660 below it.
+Evidence: the full-combo report on the video "Desecration Day Pro Drums FC" (YouTube id 68yrLU78FLo), line 23 (activation 1 at tick 25680) and lines 36 to 38 (optimal 959,340 with Hydra path 0 `0 3- 4- 4 1 0`, actual 955,660); the results screenshot shows "Clone Hero v1.0.0.4080-final". The build is 4080, not 4045, and it is a third-party video, not a controlled run. It shows Hydra's rule agrees with one fill, not the formula. Hydra's own timing of that fill: under the 1.1 rule the meter reaches half 363 ms too late for the fill to appear, and under the 1.0 rule it appears with 212 ms to spare (Hydra's numbers, not read from the game; session d46444c2 worked them out, and its card, docs/sessions/2026-09-03-d46444c2.md, records the 1.0 pricing but not these two timings, whose record is not kept). The report's lines 37 and 38 put the played path's ceiling at 957,320 and the run 1,660 below it.
 Game code (4045): see FL-42.
-Hydra: `kLegacyFillsFlag` in src/app/config.h line 53; `fill_rule_for` in src/search/graph.h line 45.
+Hydra: `kLegacyFillsFlag` in src/app/config.h; `fill_rule_for` in src/search/graph.h line 45.
 Ruling: none needed: same rule
 Found: card d46444c2.
 
@@ -457,15 +457,15 @@ Found: card d46444c2.
 
 Rule: Hydra uses the 1.0 rule only when told to, by `--legacy-fills` or the app's 1.0 fills setting; it never detects a chart's or a run's game version.
 Label: Hydra assumes it, never checked
-Evidence: `fill_rule_for` in src/search/graph.h line 45 and `kLegacyFillsFlag` in src/app/config.h line 53.
+Evidence: `fill_rule_for` in src/search/graph.h line 45 and `kLegacyFillsFlag` in src/app/config.h.
 Game code (4045): none: not a game rule.
 Hydra: `fill_rule_for` in src/search/graph.h line 45.
 Ruling: D115 item 6: "`hydra_batch` may write `--legacy-fills` results into the app's own hydra.db" (the decision log's words).
 Found: 2026-10-30, session b02ab3e6 (the reference build).
 
-### FL-45 Since 2026-10-24 Hydra's 1.0 generator counts measures on Clone Hero's grid
+### FL-45 Hydra's 1.0 generator counts measures on Clone Hero's grid
 
-Rule: Hydra's 1.0 generator counts measures on Clone Hero's grid, not the old Python counter, so it no longer equals Python Hydra 1.2 on charts with mid-measure meter changes. Colors (BTBAM), played on 1.0.0.4080, used 57 activations under both rules, so it carries no fill-rule evidence.
+Rule: Hydra's 1.0 generator counts measures on Clone Hero's grid. Colors (BTBAM), played on 1.0.0.4080, used 57 activations under both rules, so it carries no fill-rule evidence.
 Label: Unknown
 Evidence: not checked: the card's "11 of 97 corpus charts changed fills, no best score moved" needs a recount, and the Colors numbers (8,409,815 played; 8,729,975 under 1.0 and 8,727,795 under 1.1, card f520253b lines 20 and 21) need the run's `refs.json` entry opened. The code side was read: src/core/song.cpp lines 136 and 146 to 148 use `measure_index`.
 Game code (4045): see FL-40.

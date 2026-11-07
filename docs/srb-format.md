@@ -153,12 +153,10 @@ instrument, as read from the game's reader in one session, is row CR-51 of
 the Clone Hero reference; a tag of -1 breaks the game's audio load (row
 CR-52). Hydra skips the tags and names the blobs by position instead.
 
-Hydra's audio code first read the tag on the first blob as a separate
-"purpose unclear" number at the start of the section. It had ruled out a blob
-count, but never compared that number with the tags on the later blobs. The
-two match in size and in the range of values, so the code comment now
-describes every blob as starting with a tag. The reading loop was already
-correct, because it skips that number either way.
+The first blob's tag sits at the very start of the section. It is taken as a
+tag, not a blob count, because it matches the tags on the later blobs in size
+and in its range of values. `src/app/preview_source.cpp` skips it like the
+others.
 
 ## How Hydra uses a .srb
 
@@ -254,8 +252,5 @@ in `src/parse/song.cpp`. The library scan reads the song info and the id in
 `song_id_read` in `src/app/analysis.cpp`. The audio extraction and
 decryption live in `src/app/preview_source.cpp`.
 
-If a change to `srb.cpp` alters which notes a chart ends up with, two stamps in
-`src/store/stored_versions.h` need bumping. The Dynamics count stamp goes up by
-one so stored note counts get redone; its comment names `srb.cpp` directly. The
-results stamp moves to the release version too, because the paths computed
-from those notes change as well.
+If a change to `srb.cpp` alters what a chart reads as, the comments in
+`src/store/stored_versions.h` say which stamp needs bumping and how.
