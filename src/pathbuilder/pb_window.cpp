@@ -48,8 +48,10 @@ constexpr float kHeadGapRem = 2.0f;
 constexpr float kScoresGapRem = 1.6f;
 // How wide the hover tooltip may grow before it wraps: line 87, `.tip{max-width:24rem}`.
 constexpr float kTooltipRem = 24.0f;
-// The space between the legend's items: line 48, `.legend{gap:1.1rem}`.
-constexpr float kLegendGapRem = 1.1f;
+// The gap before "Show Hydra's best path" in the head row:
+// docs/superpowers/specs/2026-10-31-path-builder-mockup-5/top-mockup.html
+// line 42, `.bestbox{margin-left:.8rem}`.
+constexpr float kBestBoxGapRem = 0.8f;
 // The gap between a fill card's labels and its figures:
 // docs/superpowers/specs/2026-10-31-path-builder-mockup-3/mockup_template.html
 // line 90, `.tip .kv{...column-gap:1.4rem}`.
@@ -87,11 +89,10 @@ ImVec4 tier_color(app::CostTier tier) {
 }
 
 // `text` wrapped at the window's edge, with the Star Power star the mockup
-// writes as "(★)" at byte `star_at` (pb_text's intro_star_at and
-// GuideMessage::star_at), one text line tall. The sentence is drawn as one
-// text item with no-break spaces where the star goes, so it wraps as one
-// sentence; the star is drawn over that gap, found by ImGui's own wrap
-// layout of the same text.
+// writes as "(★)" at byte `star_at` (GuideMessage::star_at), one text line
+// tall. The sentence is drawn as one text item with no-break spaces where the
+// star goes, so it wraps as one sentence; the star is drawn over that gap,
+// found by ImGui's own wrap layout of the same text.
 void text_with_star(const std::string& text, std::optional<size_t> star_at) {
     ui::ScopedFont prose(ui::TextRole::Prose);
     if (!star_at || *star_at > text.size()) {
@@ -198,6 +199,34 @@ void draw_fill_card(const FillHoverCard& card) {
     ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
     for (const std::string& line : card.grey) ImGui::TextUnformatted(line.c_str());
     ImGui::PopStyleColor();
+    ImGui::PopTextWrapPos();
+    ImGui::EndTooltip();
+}
+
+// The "Your activations" label's tooltip: what each look of a fill means, one
+// key per line (the fifth mockup's `title` on that label, line 553).
+void draw_activations_hover() {
+    struct Key {
+        ui::LegendSwatch swatch;
+        ImU32 col;
+        const char* text;
+    };
+    const Key keys[] = {
+        {ui::LegendSwatch::Tinted, ImGui::GetColorU32(tier_color(app::CostTier::Green)), kLegendBestText},
+        {ui::LegendSwatch::Tinted, ImGui::GetColorU32(tier_color(app::CostTier::Yellow)),
+         kLegendUnderOnePercentText},
+        {ui::LegendSwatch::Tinted, ImGui::GetColorU32(tier_color(app::CostTier::Red)), kLegendCostsMoreText},
+        {ui::LegendSwatch::Activation, 0, kLegendMineText},
+        {ui::LegendSwatch::Cant, 0, kLegendCantText},
+        {ui::LegendSwatch::Locked, 0, kLegendLockedText},
+    };
+    ImGui::BeginTooltip();
+    ImGui::PushTextWrapPos(rem(kTooltipRem));
+    for (const Key& key : keys) {
+        ui::legend_swatch(key.swatch, key.col);
+        ImGui::SameLine(0.0f, 0.0f);
+        ImGui::TextDisabled("%s", key.text);
+    }
     ImGui::PopTextWrapPos();
     ImGui::EndTooltip();
 }
@@ -445,9 +474,7 @@ void PbApp::draw_body(const OpenChart& chart) {
     }
 
     draw_head(chart);
-    text_with_star(intro_text(), intro_star_at());
     draw_guide(chart);
-    draw_legend(chart);
     draw_timeline(chart);
 
     if (!ImGui::GetIO().WantTextInput && ImGui::IsKeyPressed(ImGuiKey_Escape, false))
@@ -540,6 +567,8 @@ void PbApp::draw_head(const OpenChart& chart) {
     }
     ImGui::EndDisabled();
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", kFinishTooltip);
+    ImGui::SameLine(0.0f, rem(kBestBoxGapRem));
+    ImGui::Checkbox(kShowBestPathLabel, &show_best_);
 }
 
 GuideFacts PbApp::guide_facts(const OpenChart& chart) const {
@@ -592,47 +621,6 @@ void PbApp::draw_guide(const OpenChart& chart) {
     ImGui::PopStyleColor();
 }
 
-void PbApp::draw_legend(const OpenChart& chart) {
-    struct Item {
-        ui::LegendSwatch swatch;
-        ImU32 col;
-        const char* text;
-    };
-    const Item items[] = {
-        {ui::LegendSwatch::Tinted, ImGui::GetColorU32(tier_color(app::CostTier::Green)), kLegendBestText},
-        {ui::LegendSwatch::Tinted, ImGui::GetColorU32(tier_color(app::CostTier::Yellow)),
-         kLegendUnderOnePercentText},
-        {ui::LegendSwatch::Tinted, ImGui::GetColorU32(tier_color(app::CostTier::Red)), kLegendCostsMoreText},
-        {ui::LegendSwatch::Offered, 0, kLegendCanText},
-        {ui::LegendSwatch::Activation, 0, kLegendMineText},
-        {ui::LegendSwatch::Cant, 0, kLegendCantText},
-        {ui::LegendSwatch::Locked, 0, kLegendLockedText},
-    };
-    // The entries flow left to right and wrap at the window's edge, as the
-    // mockup's `.legend{flex-wrap:wrap}` does.
-    const float gap = rem(kLegendGapRem);
-    const float swatch_w = ui::legend_swatch_width();
-    bool first = true;
-    const auto next_entry = [&](float w) {
-        if (!first && ui::fits_on_line(w, gap)) ImGui::SameLine(0.0f, gap);
-        first = false;
-    };
-    for (const Item& item : items) {
-        next_entry(swatch_w + ImGui::CalcTextSize(item.text).x);
-        ImGui::BeginGroup();
-        ui::legend_swatch(item.swatch, item.col);
-        ImGui::SameLine(0.0f, 0.0f);
-        ImGui::TextDisabled("%s", item.text);
-        ImGui::EndGroup();
-    }
-    next_entry(ImGui::CalcTextSize(kLegendSeekText).x);
-    ImGui::TextDisabled("%s", kLegendSeekText);
-    next_entry(ImGui::GetFrameHeight() + ImGui::GetStyle().ItemInnerSpacing.x +
-               ImGui::CalcTextSize(kShowBestPathLabel).x);
-    ImGui::Checkbox(kShowBestPathLabel, &show_best_);
-    (void)chart;
-}
-
 void PbApp::draw_timeline(const OpenChart& chart) {
     if (!preview_ || !preview_->shows_path(overlay_key_)) {
         if (preview_ && preview_->loading()) {
@@ -677,6 +665,7 @@ void PbApp::draw_timeline(const OpenChart& chart) {
     in.view = view_;
 
     const ui::TimelineEvents ev = ui::PreviewTimeline{}.draw(in);
+    if (ev.hovered_activations_label) draw_activations_hover();
 
     // The scrollbar or the wheel moved the window by hand; while
     // playing, that stops the window following the playhead until Play is

@@ -6,10 +6,12 @@
 #include "pbtest_harness.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "imgui_te_context.h"
 
@@ -20,7 +22,7 @@
 #include "app/preview_view.h"
 #include "core/winstr.h"
 #include "pathbuilder/pb_text.h"
-#include "pathbuilder/pb_window.h"  // the legend's words
+#include "pathbuilder/pb_window.h"  // the hover's words
 #include "render/highway_draw.h"      // far_time, time_to_z
 #include "render/overlay_layout.h"    // project_to_image
 #include "render/preview_renderer.h"  // kPlaybackSpeed
@@ -39,11 +41,13 @@ bool write_file(const std::string& path, const std::string& text) {
     return true;
 }
 
-// Opens the chart from the command line: the screen starts from nothing. The
-// intro, step 1 of the guide and the three scores are on screen, the old
-// decision list is not, and a fill under two saved phrases is drawn as can't
-// while the guide names a later fill as the earliest. Then a click on the
-// highway at that earliest fill activates there.
+// Opens the chart from the command line: the screen starts from nothing. Step
+// 1 of the guide and the three scores are on screen, the old decision list is
+// not, and "Show Hydra's best path" sits in the head row. The fill keys and
+// the saved row's words show only while their label is hovered. A fill under
+// two saved phrases is drawn as can't while the guide names a later fill as
+// the earliest. Then a click on the highway at that earliest fill activates
+// there.
 void test_open_starts_empty(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     h.chart_arg = corpus::burnout_notes();
@@ -66,13 +70,7 @@ void test_open_starts_empty(ImGuiTestContext* ctx) {
     // From one run.
     IM_CHECK(on_screen(h, "Burnout — Green Day"));
     IM_CHECK(!on_screen(h, h.chart_arg));
-    // The intro is drawn with the star inside it, so its two sides are on
-    // screen and the joined sentence is not.
-    const std::string intro = hydra::pathbuilder::intro_text();
-    const size_t star = hydra::pathbuilder::intro_star_at();
-    IM_CHECK(on_screen(h, intro.substr(0, star) + hydra::pathbuilder::kStarOpen));
-    IM_CHECK(on_screen(h, hydra::pathbuilder::kStarClose + intro.substr(star)));
-    IM_CHECK(!on_screen(h, intro));
+    IM_CHECK(!on_screen(h, "Build your own"));
     // The Preview panel's clock at the song's start, from one run.
     IM_CHECK(on_screen(h, "0:00.000"));
     IM_CHECK(on_screen(h, "Step 1."));
@@ -81,19 +79,56 @@ void test_open_starts_empty(ImGuiTestContext* ctx) {
     // name is on screen.
     IM_CHECK(on_screen(h, "0:00 – 2:10 of 2:10"));
     IM_CHECK(on_screen(h, hydra::ui::kTimelineScrollLabel));
-    // The list and the legend's new entries; the timeline's caption sits in
-    // the label column; no cost line under the Fills row, and no highway of
-    // the builder's own.
-    for (const char* text : {hydra::pathbuilder::kChoicesHeading, hydra::pathbuilder::kLegendBestText,
-                             hydra::pathbuilder::kLegendUnderOnePercentText,
-                             hydra::pathbuilder::kLegendCostsMoreText, hydra::pathbuilder::kLegendLockedText,
-                             "needed to activate", "enough to activate"})
-        IM_CHECK(on_screen(h, text));
+    // The list; no cost line under the fills, and no highway of the
+    // builder's own.
+    IM_CHECK(on_screen(h, hydra::pathbuilder::kChoicesHeading));
     IM_CHECK(!on_screen(h, "and their cost"));
     IM_CHECK(!on_screen(h, "Highway"));
+    ctx->SetRef(h.home_ref.c_str());
+
+    // "Show Hydra's best path" sits on the head row, beside the buttons.
+    IM_CHECK(on_screen(h, hydra::pathbuilder::kShowBestPathLabel));
+    const float best_box_y =
+        ctx->ItemInfo(any_ref(hydra::pathbuilder::kShowBestPathLabel).c_str()).RectFull.Min.y;
+    const float finish_y =
+        ctx->ItemInfo(any_ref(hydra::pathbuilder::kFinishForMeLabel).c_str()).RectFull.Min.y;
+    IM_CHECK_LE(std::fabs(best_box_y - finish_y), 1.0f);
+
+    // Each label's words show only while the pointer is on that label. "Your
+    // activation" is read with its line's end, because the row's own label
+    // starts with the same words.
+    const std::string mine_key = std::string(hydra::pathbuilder::kLegendMineText) + IM_NEWLINE;
+    const std::vector<const char*> fill_keys = {
+        hydra::pathbuilder::kLegendBestText,      hydra::pathbuilder::kLegendUnderOnePercentText,
+        hydra::pathbuilder::kLegendCostsMoreText, mine_key.c_str(),
+        hydra::pathbuilder::kLegendCantText,      hydra::pathbuilder::kLegendLockedText};
+    const std::vector<const char*> saved_words = {hydra::ui::kTimelinePhrasesLabel,
+                                                  "2 phrases: needed to activate", "enough to activate"};
+    const auto all_on_screen = [&](const std::vector<const char*>& words) {
+        return std::all_of(words.begin(), words.end(), [&](const char* w) { return on_screen(h, w); });
+    };
+    const auto none_on_screen = [&](const std::vector<const char*>& words) {
+        return std::none_of(words.begin(), words.end(), [&](const char* w) { return on_screen(h, w); });
+    };
+    move_off_timeline(ctx);
+    IM_CHECK(none_on_screen(fill_keys));
+    IM_CHECK(none_on_screen(saved_words));
+    IM_CHECK(!on_screen(h, "needed to activate"));
+
+    ctx->MouseMove(any_ref("##label_activations").c_str());
+    IM_CHECK(uitest::wait_until(ctx, [&] { return all_on_screen(fill_keys); }, 5.0));
+    IM_CHECK(none_on_screen(saved_words));
+
+    ctx->MouseMove(any_ref("##label_saved").c_str());
+    IM_CHECK(uitest::wait_until(ctx, [&] { return all_on_screen(saved_words); }, 5.0));
+    IM_CHECK(none_on_screen(fill_keys));
+
+    move_off_timeline(ctx);
+    IM_CHECK(none_on_screen(saved_words));
+    IM_CHECK(!on_screen(h, "needed to activate"));
+
     // The Preview's "< Act" is on screen and greyed: the empty path has no
     // activation to jump to.
-    ctx->SetRef(h.home_ref.c_str());
     const ImGuiTestItemInfo prev_act = ctx->ItemInfo("**/< Act##prevact", ImGuiTestOpFlags_NoError);
     IM_CHECK(prev_act.ID != 0);
     IM_CHECK((prev_act.ItemFlags & ImGuiItemFlags_Disabled) != 0);

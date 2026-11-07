@@ -75,7 +75,7 @@ std::string fill_ref(int64_t tick);
 // draw_choices).
 std::string choice_ref(int64_t tick);
 
-// Moves the pointer off the timeline and the list, onto the legend's
+// Moves the pointer off the timeline and the list, onto the head row's
 // checkbox, so no fill or row stays hovered and a fill's tooltip goes.
 void move_off_timeline(ImGuiTestContext* ctx);
 

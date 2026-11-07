@@ -17,9 +17,8 @@
         "return bars < kSpActivationBars ? kCantColor : kGlowColor;"
       ],
       "must_not_match": [
-        "\"Power there. You need at least \" + std::to_string(kSpActivationBars) +",
         "out.activate_y = y_of(kSpActivationBars);",
-        "const std::string label = std::to_string(kSpActivationBars) + kTimelineActivateLabelTail;",
+        "const std::string needed = std::to_string(kSpActivationBars) + kTimelineActivateLabelTail;",
         "if (fill.state != app::PreviewFillState::Offered || !fill_reason(scene, i).empty()) continue;"
       ],
       "owner_lines": [
@@ -48,7 +47,7 @@
         "src/pathbuilder/pb_window.h",
         "src/ui/preview_timeline.cpp"
       ],
-      "note": "Whether the player could activate at a fill is the engine's answer (branch_activate, read through the fill's PreviewFillState), never the screen's count of phrases; the mockup's shortcut of counting phrases is what the plan forbids. The builder and the timeline may write kSpActivationBars as a figure (the intro's \"2\", the timeline's activate line and its label) but compare it only in fill_reason, which reads the meter to say why an unoffered fill cannot be taken. The pattern flags a comparison operator on either side of the constant. A scope names a top folder or a single file (OwnerRule::scope), so the row lists each file under src/pathbuilder; a new file there joins the list. Decided by: the PB-5 scan rows in the plan."
+      "note": "Whether the player could activate at a fill is the engine's answer (branch_activate, read through the fill's PreviewFillState), never the screen's count of phrases; the mockup's shortcut of counting phrases is what the plan forbids. The builder and the timeline may write kSpActivationBars as a figure (the timeline's activate line and the Saved label's hover line) but compare it only in fill_reason, which reads the meter to say why an unoffered fill cannot be taken. The pattern flags a comparison operator on either side of the constant. A scope names a top folder or a single file (OwnerRule::scope), so the row lists each file under src/pathbuilder; a new file there joins the list. Decided by: the PB-5 scan rows in the plan."
     }
   ]
 }

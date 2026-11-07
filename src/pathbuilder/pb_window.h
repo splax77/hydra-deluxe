@@ -1,14 +1,18 @@
-// The Path Builder's main window, drawn each frame in the second mockup's
-// order (docs/superpowers/specs/2026-10-31-path-builder-mockup-2/
-// mockup_template.html, answers.md answer 4): the head row (title and mode,
-// the three scores, Undo, Start over, Finish the rest for me), the intro, the
-// guide line, the legend and the Preview's timeline over a window of the song
-// (ui::PreviewTimeline, the third mockup's), then Hydra's own Preview panel (ui::draw_preview_panel)
-// with a side column beside it holding "Where to activate next" above "Your
-// activations". Everything drawn about the chart is the Preview's; every
-// sentence is pb_text's. main.cpp and the headless runner (tests/pb_ui) both
-// draw through draw(), so a test sees what the player sees. Plan:
-// docs/superpowers/plans/2026-10-31-path-builder-redesign-2.md, task SC-3b.
+// The Path Builder's main window, drawn each frame in this order: the head
+// row (title and mode, the three scores, Undo, Start over, Finish the rest for
+// me, "Show Hydra's best path"), the guide line and the Preview's timeline
+// over a window of the song (ui::PreviewTimeline, the third mockup's), then
+// Hydra's own Preview panel (ui::draw_preview_panel) with a side column beside
+// it holding "Where to activate next" above "Your activations". The top
+// follows the fifth mockup
+// (docs/superpowers/specs/2026-10-31-path-builder-mockup-5/top-mockup.html),
+// and what lies under the timeline the second
+// (docs/superpowers/specs/2026-10-31-path-builder-mockup-2/
+// mockup_template.html, answers.md answer 4). Everything drawn about the chart
+// is the Preview's; every sentence is pb_text's. main.cpp and the headless
+// runner (tests/pb_ui) both draw through draw(), so a test sees what the
+// player sees. Plan: docs/superpowers/plans/2026-10-31-path-builder-redesign-2.md,
+// task SC-3b.
 
 #ifndef HYDRA_PATHBUILDER_PB_WINDOW_H
 #define HYDRA_PATHBUILDER_PB_WINDOW_H
@@ -50,18 +54,15 @@ inline constexpr const char* kBestReachHint =
 inline constexpr const char* kUndoLabel = "Undo";
 inline constexpr const char* kFinishTooltip =
     "Keeps your activations and lets Hydra choose the best rest of the path";
-// The legend's tier entries, the mockup's renderLegend words, one per
-// app::CostTier.
+// The keys the "Your activations" label's hover shows, the fifth mockup's
+// words (top-mockup.html line 553): one per app::CostTier, then one per look
+// of a fill that has no cost.
 inline constexpr const char* kLegendBestText = "Best place to activate";
 inline constexpr const char* kLegendUnderOnePercentText = "Costs under 1% of the best score";
 inline constexpr const char* kLegendCostsMoreText = "Costs more";
-// A fill whose cost is still being worked out (plan Q3).
-inline constexpr const char* kLegendCanText = "You can activate here";
 inline constexpr const char* kLegendMineText = "Your activation";
 inline constexpr const char* kLegendCantText = "Can't activate here (hover to see why)";
 inline constexpr const char* kLegendLockedText = "Before your last activation";
-inline constexpr const char* kLegendSeekText =
-    "Click anywhere on the timeline to move the highway there.";
 inline constexpr const char* kShowBestPathLabel = "Show Hydra's best path";
 // The steps panel's heading is the timeline's name for the same activations.
 inline constexpr const char* kStepsHeading = ui::kTimelineActivationsLabel;
@@ -187,7 +188,6 @@ private:
     void draw_body(const OpenChart& chart);
     void draw_head(const OpenChart& chart);
     void draw_guide(const OpenChart& chart);
-    void draw_legend(const OpenChart& chart);
     void draw_timeline(const OpenChart& chart);
     // Moves the window for what the Preview's clock did since last frame:
     // it opens the window at the first frame, follows the playhead while

@@ -12,6 +12,9 @@
 // The step rows and ending lines follow the fourth mockup
 // (docs/superpowers/specs/2026-10-31-path-builder-mockup-4/), plan
 // docs/superpowers/plans/2026-10-31-step-panel-and-d13.md, task B1.
+// The top of the screen follows the fifth mockup
+// (docs/superpowers/specs/2026-10-31-path-builder-mockup-5/top-mockup.html):
+// the head row, the guide line, then the timeline.
 
 #ifndef HYDRA_PATHBUILDER_PB_TEXT_H
 #define HYDRA_PATHBUILDER_PB_TEXT_H
@@ -32,9 +35,6 @@ namespace hydra::pathbuilder {
 using app::PreviewFill;
 using app::PreviewScene;
 
-// The intro under the title; its phrase count is kSpActivationBars.
-std::string intro_text();
-
 // Where the Star Power star goes in a sentence the screen draws one in: a
 // byte offset into the sentence's text, just after the word "phrases" the
 // star stands beside. The text holds no star, so a test reads the sentence
@@ -42,9 +42,6 @@ std::string intro_text();
 // at the offset, as the mockup writes "phrases (★)".
 inline constexpr const char* kStarOpen = " (";
 inline constexpr const char* kStarClose = ")";
-
-// The star's place in intro_text.
-size_t intro_star_at();
 
 // The sentences that take no figure, each from the mockup.
 extern const char* const kNoStepsText;
@@ -200,8 +197,8 @@ FillHoverCard fill_hover_card(const PreviewScene& scene, size_t fill_index,
                               const std::optional<FillHoverNumbers>& numbers);
 
 // A one-shot message the guide line shows after an action, and whether it is
-// a refusal (drawn red-edged). star_at is the star's place in the text (as
-// intro_star_at), set only on guide_text's "Save 2 more phrases" sentence.
+// a refusal (drawn red-edged). star_at is the star's place in the text, set
+// only on guide_text's "Save 2 more phrases" sentence.
 struct GuideMessage {
     std::string text;
     bool refuse = false;

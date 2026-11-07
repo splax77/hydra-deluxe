@@ -13,25 +13,6 @@
 
 namespace hydra::pathbuilder {
 
-namespace {
-
-// intro_text up to the star.
-std::string intro_before_star() {
-    return "Build your own Star Power path, left to right. Click a glowing fill to activate Star "
-           "Power there. You need at least " + std::to_string(kSpActivationBars) +
-           " Star Power phrases";
-}
-
-}  // namespace
-
-std::string intro_text() {
-    return intro_before_star() +
-           " saved since your last activation. A fill's colour is what activating there costs "
-           "you. The highway below shows the notes wherever you hover or click.";
-}
-
-size_t intro_star_at() { return intro_before_star().size(); }
-
 const char* const kNoStepsText =
     "None yet. Each activation you make shows up here: where it starts and ends, and what it "
     "cost you.";

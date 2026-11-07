@@ -305,17 +305,7 @@ TEST_CASE("guide text: step 1 names the earliest offered fill; a finished path s
     CHECK_FALSE(end.star_at);
 }
 
-TEST_CASE("star place: just after the word phrases, in the intro and the guide") {
-    const std::string intro = intro_text();
-    REQUIRE(intro_star_at() <= intro.size());
-    CHECK(intro.substr(0, intro_star_at()) ==
-          "Build your own Star Power path, left to right. Click a glowing fill to activate Star "
-          "Power there. You need at least 2 Star Power phrases");
-    CHECK(intro.substr(intro_star_at(), 33) == " saved since your last activation");
-    CHECK(intro.substr(intro_star_at()) ==
-          " saved since your last activation. A fill's colour is what activating there costs "
-          "you. The highway below shows the notes wherever you hover or click.");
-
+TEST_CASE("star place: just after the word phrases, in the guide") {
     GuideFacts next;
     next.last_end = "m40";
     next.earliest_fill = "m52";
