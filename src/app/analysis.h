@@ -64,8 +64,7 @@ store::ChartTimingMeta chart_timing_meta(const std::optional<store::ChartTimingM
 // Progress/cancel hooks for the extended scan. Callbacks fire on the calling
 // thread only (never a worker), like run_batch's.
 struct ScanCallbacks {
-    // Running count of folders visited during enumeration (monotonic; the
-    // same values the simple overload's cb_progress sees).
+    // Running count of folders visited during enumeration (monotonic).
     std::function<void(int)> on_folders;
     // Chart-reading progress: fired once with done=0 when the total becomes
     // known (enumeration finished), then per chart processed. `cached` counts
@@ -87,8 +86,7 @@ struct ScanCallbacks {
 // `cache` (load_scan_cache) lets a chart whose fingerprint is unchanged reuse
 // its previous md5/metadata without any file I/O; an empty cache is no help,
 // so every chart is read. A failing chart file is skipped with an error entry;
-// its folder's other charts and subtree still scan (unlike the Python
-// original, which dropped the whole folder).
+// its folder's other charts and subtree still scan.
 std::pair<std::vector<ScanItem>, std::vector<std::string>> discover_charts(
     const std::vector<std::string>& rootfolders, const ScanCallbacks& callbacks,
     const store::ChartLibraryCache& cache);

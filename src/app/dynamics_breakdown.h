@@ -1,7 +1,7 @@
 // Per-pad ghost/accent/normal note counts for a parsed chart.
 //
 // count_dynamics walks the Song's sequence once and bins every ChordNote by
-// pad, cymbal flag, and dynamic type. The GUI (task 2) draws the result;
+// pad, cymbal flag, and dynamic type. ui/dynamics_tab.cpp draws the result;
 // this module is pure data, no UI dependency.
 
 #ifndef HYDRA_APP_DYNAMICS_BREAKDOWN_H

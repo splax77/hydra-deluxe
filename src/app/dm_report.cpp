@@ -136,7 +136,7 @@ std::vector<DmReportRow> collect_dm_rows(store::RecordStore& store,
                          : s.score == opt ? kStatusAtOptimal
                                           : kStatusUnderOptimal;
             // Kept apart from the status, which an off-speed score overwrites
-            // below; the page's "+N over" reads it (D64).
+            // below; dm_report_view's "+N over" cell reads it (D64).
             row.above_optimal = above;
         } else if (rec) {
             // A Ready result whose analysis kept no path (D51 call 11).
