@@ -51,6 +51,8 @@ No other task changes anything a player sees.
 
 ## Questions for the user
 
+**Answered.** The user said "Yes, all recommended" on 2026-11-07, and D314 records it. That approves the plan, and option (a) of all five questions. So the decision log reaches main first, CT-4 removes `select_chart`'s mode parameter, CT-6 keeps the two rows and removes only their dead samples, SN-216 and I-0623 close with no edit, and CT-7 also owns `watch_checks.py` and `test_watch_checks.py`. Where a task below says "until answered", this paragraph is the answer. LS-1 still waits for its own go.
+
 Each question names which side owns it.
 
 1. **Which comes first, the audit branch or these tasks?** (Owner: the main session, git.) The D-records live only on `claude/stale-comment-scouts`. Options: (a) merge that branch, or at least its `docs/audit/2026-10-03-fix-decisions.md`, before any task here merges, so comments and commits can cite D305 to D313; (b) start the tasks now and cite "the stale comment audit's ruling of 2026-11-06" in comments, with D-numbers only in commit messages. Recommended: (a). Cost of (a): no task merges until that branch merges. Cost of (b): comments carry a wordier cite and the D-numbers stay out of the code. The audit branch's merge itself is out of this plan's scope; this question only asks for its order.
