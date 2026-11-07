@@ -35,21 +35,25 @@ BUILD_RECENT_S = 60
 COMPILER_NAMES = ("cl", "link", "MSBuild", "cmake", "ninja", "clang-cl", "lld-link", "rc", "mt",
                   "tsc", "esbuild")
 
-# How long the folder scan may run. It is twice the slowest scan measured on
-# this machine (1.5 s for 31 folders), and a refusal at the cap leaves the next
-# scan reading from the disk cache.
+# The user's ruling of 2026-11-07: an MSBuild started with this flag is a helper
+# a build left waiting for work, so it is reported and is no running compiler.
+_MSBUILD_NAME = "msbuild"
+_MSBUILD_HELPER_FLAG = re.compile(r"\s/nodemode:1(\s|$)", re.IGNORECASE)
+
+# The user's ruling of 2026-11-07: how long the folder scan may run. It is twice
+# the slowest scan measured on this machine (1.5 s for 31 folders), and a
+# refusal at the cap leaves the next scan reading from the disk cache.
 SCAN_CAP_S = 3.0
 
 # Reported for the trace's factors table, and never a reason to refuse.
 REPORTED_NAMES = ("Spotify.exe", "MsMpEng.exe")
 
 _HOME = os.path.expanduser("~")
-# Each root's worktrees, with the folder inside each one to read; "" reads the
-# whole worktree.
-WORKTREE_ROOTS = (
-    (os.path.join(_HOME, "Downloads", "Hydra", "hydra-test", ".claude", "worktrees"), "build-cpp"),
-    (os.path.join(_HOME, ".claude", "worktrees"), ""),
-)
+# The main checkout under the home folder. Its own build folder and each of its
+# worktrees' are the ones scanned. The home folder's .claude\worktrees stays out
+# by the same ruling: hooks write there, and no worktree there has a build folder.
+_CHECKOUT = ("Downloads", "Hydra", "hydra-test")
+_BUILD_FOLDER = "build-cpp"
 
 _READ_ERRORS = (OSError, ValueError, subprocess.SubprocessError)
 
@@ -115,6 +119,14 @@ def is_compiler(process_name: str) -> bool:
     return stem in {name.lower() for name in COMPILER_NAMES}
 
 
+def is_msbuild_helper(process: Proc) -> bool:
+    """Is this an idle-capable MSBuild helper. A hidden command line is not,
+    because a check that could not look never says quiet."""
+    return (os.path.splitext(process.name)[0].lower() == _MSBUILD_NAME
+            and process.command_line is not None
+            and _MSBUILD_HELPER_FLAG.search(process.command_line) is not None)
+
+
 def is_recent(age_s: Optional[float]) -> bool:
     """Is a folder whose newest file has this age a build at work."""
     return age_s is not None and age_s < BUILD_RECENT_S
@@ -134,7 +146,7 @@ def folder_named(command_line: Optional[str]) -> Optional[str]:
 def _compiler_lines(processes: Sequence[Proc]) -> List[str]:
     lines = []
     for process in processes:
-        if is_compiler(process.name):
+        if is_compiler(process.name) and not is_msbuild_helper(process):
             folder = folder_named(process.command_line)
             where = f"folder {folder}" if folder else "no folder in its command line"
             lines.append(f"compiler running: {process.name}, pid {process.pid}, {where}")
@@ -177,6 +189,9 @@ def quiet_report(env: QuietEnv) -> QuietReport:
         compilers = _compiler_lines(processes)
         quiet = quiet and not compilers
         lines.extend(compilers or ["no compiler running"])
+        helpers = sum(1 for process in processes if is_msbuild_helper(process))
+        if helpers:
+            lines.append(f"MSBuild helpers left from a build: {helpers}")
 
     try:
         cpu = env.sample_cpu(QUIET_SAMPLE_S)
@@ -219,22 +234,19 @@ def refusal_text(report: QuietReport) -> str:
             "hold the other sessions' builds and call ch_start again")
 
 
-def _worktree_folders(roots) -> List[str]:
-    folders = []
-    for root, sub in roots:
-        try:
-            with os.scandir(root) as listing:
-                worktrees = sorted(e.path for e in listing if e.is_dir())
-        except FileNotFoundError:
-            continue
-        for worktree in worktrees:
-            folder = os.path.join(worktree, sub) if sub else worktree
-            if os.path.isdir(folder):
-                folders.append(folder)
-    return folders
+def _build_folders(home: str) -> List[str]:
+    """The build folders that exist: the main checkout's, then its worktrees'."""
+    checkout = os.path.join(home, *_CHECKOUT)
+    try:
+        with os.scandir(os.path.join(checkout, ".claude", "worktrees")) as listing:
+            worktrees = sorted(e.path for e in listing if e.is_dir())
+    except FileNotFoundError:
+        worktrees = []
+    folders = (os.path.join(tree, _BUILD_FOLDER) for tree in [checkout, *worktrees])
+    return [folder for folder in folders if os.path.isdir(folder)]
 
 
-def scan_folders(roots=WORKTREE_ROOTS, wall: Callable[[], float] = time.time,
+def scan_folders(home: str = _HOME, wall: Callable[[], float] = time.time,
                  clock: Callable[[], float] = time.monotonic) -> FolderScan:
     """Find each folder's newest file. os.scandir gets a whole directory's
     file times in one read of the directory, so no file is opened. A folder
@@ -243,7 +255,7 @@ def scan_folders(roots=WORKTREE_ROOTS, wall: Callable[[], float] = time.time,
     leaves its directory's time alone."""
     began = clock()
     now = wall()
-    folders = _worktree_folders(roots)
+    folders = _build_folders(home)
     read: List[FolderAge] = []
     errors: List[str] = []
     entries = 0

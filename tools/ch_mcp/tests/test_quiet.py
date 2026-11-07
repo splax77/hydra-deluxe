@@ -51,6 +51,11 @@ def report(**fake_args):
     return Q.quiet_report(FakeReaders(**fake_args).env())
 
 
+def msbuild_helper(pid):
+    return Q.Proc("MSBuild.exe", pid,
+                  r'"C:\VS\MSBuild.exe" /noautoresponse /nologo /nodemode:1 /nodeReuse:true')
+
+
 def raises(error):
     def reader(*_args):
         raise error
@@ -90,6 +95,34 @@ class VerdictTest(unittest.TestCase):
             with self.subTest(exe=exe):
                 self.assertTrue(report(processes=[Q.Proc(exe, 1, None)]).quiet)
 
+    def test_msbuild_helpers_alone_are_quiet_and_one_line_gives_their_count(self):
+        got = report(processes=[msbuild_helper(11), msbuild_helper(12), msbuild_helper(13)])
+        self.assertTrue(got.quiet)
+        self.assertEqual(list(got.lines[:2]),
+                         ["no compiler running", "MSBuild helpers left from a build: 3"])
+
+    def test_a_main_msbuild_beside_helpers_stops_it_and_only_the_main_one_is_a_compiler(self):
+        main = Q.Proc("MSBuild.exe", 20, r'"C:\VS\MSBuild.exe" C:\other\proj.sln /m')
+        got = report(processes=[msbuild_helper(11), main, msbuild_helper(12)])
+        self.assertFalse(got.quiet)
+        self.assertEqual(list(got.lines[:2]),
+                         ["compiler running: MSBuild.exe, pid 20, folder C:\\other\\proj.sln",
+                          "MSBuild helpers left from a build: 2"])
+
+    def test_the_helper_flag_counts_only_on_msbuild_and_only_as_a_whole_word(self):
+        for process in (Q.Proc("cl.exe", 1, "cl.exe /nodemode:1"),
+                        Q.Proc("MSBuild.exe", 2, "MSBuild.exe /nodemode:2"),
+                        Q.Proc("MSBuild.exe", 3, "MSBuild.exe /nodemode:10"),
+                        Q.Proc("MSBuild.exe", 4, None)):
+            with self.subTest(process=process):
+                self.assertFalse(report(processes=[process]).quiet)
+
+    def test_the_helper_flag_is_read_whatever_its_case_and_at_the_end_of_the_line(self):
+        self.assertTrue(report(processes=[Q.Proc("MSBUILD.EXE", 1, "x.exe /nodeMode:1")]).quiet)
+
+    def test_no_helpers_means_no_helper_line(self):
+        self.assertFalse(any("helper" in line for line in report().lines))
+
     def test_cpu_exactly_at_the_threshold_is_quiet_and_one_above_is_not(self):
         self.assertTrue(report(cpu=Q.QUIET_CPU_PCT).quiet)
         self.assertFalse(report(cpu=Q.QUIET_CPU_PCT + 1).quiet)
@@ -126,6 +159,7 @@ class VerdictTest(unittest.TestCase):
 
     def test_the_decided_numbers(self):
         self.assertEqual((Q.QUIET_CPU_PCT, Q.QUIET_SAMPLE_S, Q.BUILD_RECENT_S), (15, 5, 60))
+        self.assertEqual(Q.SCAN_CAP_S, 3.0)
         self.assertEqual(set(Q.COMPILER_NAMES),
                          {"cl", "link", "MSBuild", "cmake", "ninja", "clang-cl", "lld-link",
                           "rc", "mt", "tsc", "esbuild"})
@@ -215,25 +249,26 @@ NOW = 2_000_000_000.0
 class ScanTest(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
-        self.tmp = self._tmp.name
-        self.root = os.path.join(self.tmp, "worktrees")
+        self.home = self._tmp.name
+        self.checkout = os.path.join(self.home, "Downloads", "Hydra", "hydra-test")
+        self.root = os.path.join(self.checkout, ".claude", "worktrees")
 
     def tearDown(self):
         self._tmp.cleanup()
 
-    def file(self, relative, age_s):
-        path = os.path.join(self.root, *relative.split("/"))
+    def file(self, relative, age_s, under=None):
+        path = os.path.join(under or self.root, *relative.split("/"))
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "wb"):
             pass
         os.utime(path, (NOW - age_s, NOW - age_s))
         return path
 
-    def scan(self, sub="build-cpp", clock=None):
-        return Q.scan_folders(((self.root, sub),), wall=lambda: NOW, clock=clock or ClockFake())
+    def scan(self, clock=None):
+        return Q.scan_folders(self.home, wall=lambda: NOW, clock=clock or ClockFake())
 
-    def folder(self, name, sub="build-cpp"):
-        return os.path.join(self.root, name, sub) if sub else os.path.join(self.root, name)
+    def folder(self, name):
+        return os.path.join(self.root, name, "build-cpp")
 
     def test_the_age_is_the_newest_files_at_any_depth(self):
         self.file("a/build-cpp/old.txt", 9000)
@@ -252,11 +287,41 @@ class ScanTest(unittest.TestCase):
         self.file("a/src/new.cpp", 1)
         self.assertEqual(self.scan().folders, ())
 
-    def test_an_empty_sub_name_reads_the_whole_worktree(self):
-        self.file("a/gates/new.py", 7)
-        self.assertEqual(self.scan(sub="").folders, (Q.FolderAge(self.folder("a", ""), 7.0),))
+    def test_the_home_folders_worktrees_are_not_read(self):
+        dropped = os.path.join(self.home, ".claude", "worktrees")
+        self.file("hook-work/gates/new.py", 1, under=dropped)
+        self.file("hook-work/build-cpp/new.obj", 1, under=dropped)
+        real = os.scandir
+        opened = []
 
-    def test_a_missing_root_reads_nothing(self):
+        def scandir(path):
+            opened.append(path)
+            return real(path)
+
+        with unittest.mock.patch.object(Q.os, "scandir", scandir):
+            got = self.scan()
+        self.assertEqual(got.folders, ())
+        self.assertFalse([path for path in opened if path.startswith(dropped)])
+
+    def test_the_main_checkouts_build_folder_is_read_first(self):
+        self.file("build-cpp/old.obj", 9000, under=self.checkout)
+        self.file("a/build-cpp/old.obj", 500)
+        self.assertEqual(self.scan().folders,
+                         (Q.FolderAge(os.path.join(self.checkout, "build-cpp"), 9000.0),
+                          Q.FolderAge(self.folder("a"), 500.0)))
+
+    def test_a_recent_file_in_the_main_checkouts_build_folder_refuses(self):
+        self.file("build-cpp/x.dir/new.obj", 2, under=self.checkout)
+        got = Q.quiet_report(FakeReaders().env(scan_folders=self.scan))
+        self.assertFalse(got.quiet)
+        self.assertIn("build folder written to in the last 60 s: "
+                      f"{os.path.join(self.checkout, 'build-cpp')} (a file 2 s old)", got.lines)
+
+    def test_no_worktrees_folder_still_reads_the_main_checkout(self):
+        self.file("build-cpp/old.obj", 9000, under=self.checkout)
+        self.assertEqual(len(self.scan().folders), 1)
+
+    def test_a_missing_checkout_reads_nothing(self):
         self.assertEqual(self.scan().folders, ())
 
     def test_a_folder_stops_at_its_first_recent_file_and_is_still_recent(self):
