@@ -6,7 +6,7 @@
       "owner_file": "src/core/timing.cpp",
       "owner_symbol": "MeasureIndex::walk",
       "date": "2026-10-14",
-      "decision": "D115",
+      "decision": "D115 (plan part B2, task B2-1)",
       "added_by": "D115-B2-1",
       "pattern": "for \\(int64_t \\w+ = [^;]*;[^;]*;\\s*\\w+ \\+= (\\w+(\\.|->))?(tick_r|step|tpm)\\b",
       "anchor": "for (int64_t",
@@ -25,7 +25,7 @@
           "why": "MeasureIndex::walk, the owner: Clone Hero's grid walk"
         }
       ],
-      "note": "Stepping a tick through the measure grid by a beat or a measure. MeasureIndex::walk is Clone Hero's beat-line walk, built once from the time signatures. Decided by: D115 (plan part B2, task B2-1)"
+      "note": "Stepping a tick through the measure grid by a beat or a measure. MeasureIndex::walk is Clone Hero's beat-line walk, built once from the time signatures."
     },
     {
       "question": "How many measures lie between two ticks?",
@@ -33,7 +33,7 @@
       "owner_file": "src/core/timing.cpp",
       "owner_symbol": "MeasureCount",
       "date": "2026-10-14",
-      "decision": "D115",
+      "decision": "D115 (plan part B2, task B2-1; plusmeasure in exact whole numbers)",
       "added_by": "D115-B2-1",
       "pattern": "/ (static_cast<double>\\()?(\\w+(\\.|->))?(tpm|measure_len)\\w*\\b|^\\s*static_cast<double>\\((\\w+(\\.|->))?(tpm|measure_len)\\w*\\b|measures_decimal\\(\\) \\+",
       "must_match": [
@@ -65,7 +65,7 @@
           "why": "MeasureCount::measures_at, the owner: the part measure"
         }
       ],
-      "note": "Dividing ticks by a ticks-per-measure, or adding measures to a decimal measure position. A line that starts with the divisor is the second half of a wrapped division. MeasureCount is Clone Hero's continuous count (its Star Power drain): measures_at, tick_at and tick_after answer it, and plusmeasure, measures_at_tick_f and sp_end_ms read them. Dividing a measure length by a tempo is a duration, another question. Decided by: D115 (plan part B2, task B2-1; plusmeasure in exact whole numbers)"
+      "note": "Dividing ticks by a ticks-per-measure, or adding measures to a decimal measure position. A line that starts with the divisor is the second half of a wrapped division. MeasureCount is Clone Hero's continuous count (its Star Power drain): measures_at, tick_at and tick_after answer it, and plusmeasure, measures_at_tick_f and sp_end_ms read them. Dividing a measure length by a tempo is a duration, another question."
     },
     {
       "question": "Which tempo is in force at a tick?",
@@ -73,7 +73,7 @@
       "owner_file": "src/core/timing.cpp",
       "owner_symbol": "SongTiming::tempo_at",
       "date": "2026-10-14",
-      "decision": "D115",
+      "decision": "D115 (plan part B2, task B2-1)",
       "added_by": "D115-B2-1",
       "pattern": "(tempo|bpm)\\w*\\s*=\\s*std::upper_bound\\(|upper_bound\\([^)]*(tempos|bpm)|bpm_\\[span_at\\(",
       "must_match": [
@@ -91,7 +91,7 @@
           "why": "MsIndex::bpm_at, which SongTiming::tempo_at calls: the tempo span through last_at_or_before"
         }
       ],
-      "note": "A binary search over tempo marks for the BPM in force. SongTiming::tempo_at answers it with the same span rule as the milliseconds (a tick on a change reads the new tempo). Decided by: D115 (plan part B2, task B2-1)"
+      "note": "A binary search over tempo marks for the BPM in force. SongTiming::tempo_at answers it with the same span rule as the milliseconds (a tick on a change reads the new tempo)."
     },
     {
       "question": "Which time signature is in force at a tick?",
@@ -99,7 +99,7 @@
       "owner_file": "src/core/timing.cpp",
       "owner_symbol": "SongTiming::time_signature_at",
       "date": "2026-10-14",
-      "decision": "D115",
+      "decision": "D115 (plan part B2, task B2-1)",
       "added_by": "D115-B2-1",
       "pattern": "sig\\w*\\s*=\\s*std::upper_bound\\(|upper_bound\\([^)]*time_sigs|\\{\\s*\\w+\\.numerator_at\\(",
       "must_match": [
@@ -117,7 +117,7 @@
           "why": "SongTiming::time_signature_at, the owner: the grid span's meter"
         }
       ],
-      "note": "A binary search over time signature marks for the meter in force. SongTiming::time_signature_at answers it from the grid, so the time box's signature switches on the tick the measure lines restart. Decided by: D115 (plan part B2, task B2-1)"
+      "note": "A binary search over time signature marks for the meter in force. SongTiming::time_signature_at answers it from the grid, so the time box's signature switches on the tick the measure lines restart."
     }
   ]
 }

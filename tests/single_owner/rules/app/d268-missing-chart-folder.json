@@ -6,7 +6,7 @@
       "owner_file": "src/app/analysis.cpp",
       "owner_symbol": "first_missing_chart_folder",
       "date": "2026-10-29",
-      "decision": "D268",
+      "decision": "D268 (D266 item 4).",
       "added_by": "D266-scan2-review",
       "pattern": "is_directory_utf8\\(",
       "anchor": "is_directory_utf8(",
@@ -48,7 +48,7 @@
         "    if (const std::optional<std::string> missing = app::first_missing_chart_folder(folders)) {"
       ],
       "scope": ["src", "tools"],
-      "note": "The scan walk in analysis.cpp skips a root that is not a folder, which is its own question (what to walk), so both lines in the owner file are listed. Any other line that checks a folder on disk is flagged: a chart folder check outside the owner would give the app and hydra_batch two answers to which folder is missing. Decided by: D268 (D266 item 4)."
+      "note": "The scan walk in analysis.cpp skips a root that is not a folder, which is its own question (what to walk), so both lines in the owner file are listed. Any other line that checks a folder on disk is flagged: a chart folder check outside the owner would give the app and hydra_batch two answers to which folder is missing."
     }
   ]
 }

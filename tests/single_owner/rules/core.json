@@ -6,7 +6,7 @@
       "owner_file": "src/core/winstr.cpp",
       "owner_symbol": "fits_shell",
       "date": "2026-10-03",
-      "decision": "ADR 0020",
+      "decision": "ADR 0020 (the shell takes nothing of 260 or more, and no prefixed path); one owner put on the fix list by the user 2026-10-03 (audit R7.12 addendum)",
       "added_by": "t1scan",
       "pattern": "((\\.|->)(size|length)\\(\\)|\\b(wcs|str)len\\s*\\(([^()]|\\([^()]*\\))*\\))(\\s*[-+]\\s*[\\w.]+)*\\s*(==|!=|[<>]=?)\\s*(MAX_PATH|259|260)\\b|\\b(MAX_PATH|259|260)(\\s*[-+]\\s*[\\w.]+)*\\s*(==|!=|[<>]=?)\\s*[\\w.:>()-]*((\\.|->)(size|length)\\(\\)|\\b(wcs|str)len\\s*\\()",
       "must_match": [
@@ -50,7 +50,7 @@
           "why": "fits_shell, the owner: shell_path, open_in_browser and copy_to_short_temp call it"
         }
       ],
-      "note": "Only length comparisons count. Sizing a buffer against MAX_PATH (GetTempPathW in copy_to_short_temp) asks whether a result fitted, which audit R7.12 calls a different question. A length is .size(), .length() (through . or ->), strlen or wcslen. The limit may be spelled MAX_PATH, 260 or 259, on either side of any comparison (<, <=, >, >=, ==, !=), and either side may carry a little arithmetic (size() - 4 < MAX_PATH). A length held in a plain variable is not caught: `n > MAX_PATH` is also how a buffer-fit check reads. winstr.cpp is not exempt as a file: only fits_shell's one line is listed. Decided by: ADR 0020 (the shell takes nothing of 260 or more, and no prefixed path); one owner put on the fix list by the user 2026-10-03 (audit R7.12 addendum)"
+      "note": "Only length comparisons count. Sizing a buffer against MAX_PATH (GetTempPathW in copy_to_short_temp) asks whether a result fitted, which audit R7.12 calls a different question. A length is .size(), .length() (through . or ->), strlen or wcslen. The limit may be spelled MAX_PATH, 260 or 259, on either side of any comparison (<, <=, >, >=, ==, !=), and either side may carry a little arithmetic (size() - 4 < MAX_PATH). A length held in a plain variable is not caught: `n > MAX_PATH` is also how a buffer-fit check reads. winstr.cpp is not exempt as a file: only fits_shell's one line is listed."
     },
     {
       "question": "How many bytes does a file hold?",
@@ -58,7 +58,7 @@
       "owner_file": "src/core/winstr.cpp",
       "owner_symbol": "open_handle_size_bytes",
       "date": "2026-10-03",
-      "decision": "D39",
+      "decision": "no ADR records it. Audit R7.11 names read_file_bytes the owner (fix read-file-bytes-owner); its 64-bit size came from the user's \"make all of those fixes\" (2026-10-03, preview-loading-fixes plan); the open-file helpers are the user's decision D39 (2026-10-04, audit R7.25)",
       "added_by": "t1scan",
       "pattern": "(^|[^\\w])(std::)?(_?f(tell|seek)(i64|o)?|GetFileSize(Ex)?|GetCompressedFileSize[AW]?|GetFileInformationByHandle(Ex)?|_?filelength(i64)?|_?fstat(64|i64)?|(tell|seek)g|file_size)\\s*\\(|\\b(nFileSize(High|Low)|st_size|SEEK_END|FILE_END)\\b",
       "must_match": [
@@ -91,7 +91,7 @@
           "why": "list_dir keeps the folder listing's size for the rescan cache, because opening every library file would slow scans: the user's decision D39 (2026-10-04)"
         }
       ],
-      "note": "Every way this codebase works out a file's size: the stdio seek and tell (32- and 64-bit), stream seekg/tellg, the Win32 size calls and the size fields of their find and attribute data, the CRT's filelength and fstat, std::filesystem's file_size, and a seek to the end. open_handle_size_bytes owns sizing a file, open or by path: open_file_size_bytes (a stdio stream), file_size_bytes and read_file_bytes call it. list_dir uses the listing's size by D39. winstr.cpp is not exempt as a file: only those two lines are listed. Decided by: no ADR records it. Audit R7.11 names read_file_bytes the owner (fix read-file-bytes-owner); its 64-bit size came from the user's \"make all of those fixes\" (2026-10-03, preview-loading-fixes plan); the open-file helpers are the user's decision D39 (2026-10-04, audit R7.25)"
+      "note": "Every way this codebase works out a file's size: the stdio seek and tell (32- and 64-bit), stream seekg/tellg, the Win32 size calls and the size fields of their find and attribute data, the CRT's filelength and fstat, std::filesystem's file_size, and a seek to the end. open_handle_size_bytes owns sizing a file, open or by path: open_file_size_bytes (a stdio stream), file_size_bytes and read_file_bytes call it. list_dir uses the listing's size by D39. winstr.cpp is not exempt as a file: only those two lines are listed."
     },
     {
       "question": "How is a long path prefixed for Win32?",
@@ -254,7 +254,7 @@
       "owner_file": "src/core/backend_value.h",
       "owner_symbol": "after_sp_end",
       "date": "2026-10-04",
-      "decision": "audit findings 1 and 32",
+      "decision": "audit findings 1 and 32; step-1 derive-once review finding 1 (2026-10-04)",
       "added_by": "step-1 derive-once fixes",
       "pattern": "\\.ticks\\(\\)\\s*>\\s*end\\.ticks\\(\\)|\\btick\\s*>\\s*w\\.deact_tick\\b",
       "anchor": "tick",
@@ -267,7 +267,7 @@
         "if (s.tick > var.fold_tick)",
         "choice.late = core::after_sp_end(c->timecode.ticks(), end.ticks());"
       ],
-      "note": "A chord exactly on the SP end is not after it. Decided by: audit findings 1 and 32; step-1 derive-once review finding 1 (2026-10-04)"
+      "note": "A chord exactly on the SP end is not after it."
     },
     {
       "question": "Is this row the squeezed-out chord, or past it?",
@@ -275,7 +275,7 @@
       "owner_file": "src/core/backend_value.h",
       "owner_symbol": "sqout_position",
       "date": "2026-10-04",
-      "decision": "audit finding 146",
+      "decision": "audit finding 146; step-1 derive-once review finding 5 (2026-10-04)",
       "added_by": "step-1 derive-once fixes",
       "pattern": "ticks\\(\\)\\s*(==|>|<)\\s*\\*?sqout_tick\\b",
       "anchor": "sqout_tick",
@@ -295,7 +295,7 @@
         "tools",
         "tests"
       ],
-      "note": "Tests too (J3-2): a test asks sqout_position. Decided by: audit finding 146; step-1 derive-once review finding 5 (2026-10-04)"
+      "note": "Tests too (J3-2): a test asks sqout_position."
     },
     {
       "question": "Is this SP-end step a squeeze-in?",
@@ -303,7 +303,7 @@
       "owner_file": "src/core/model.h",
       "owner_symbol": "is_sqin_kind",
       "date": "2026-10-04",
-      "decision": "ADR 0014, D34",
+      "decision": "ADR 0014 (D34: the window holds an SqIn step on that phrase); step-1 derive-once review findings 2 and 3 (2026-10-04)",
       "added_by": "step-1 derive-once fixes",
       "pattern": "\\bkind\\s*==\\s*SpEndKind::SqIn\\b",
       "anchor": "SpEndKind::SqIn",
@@ -327,7 +327,7 @@
         "tools",
         "tests"
       ],
-      "note": "Tests too (step-1 derive-once sweep after the review of cc2e1d9): a test asks is_sqin_kind, is_sqin_step_on or sqin_phrase_ticks. Decided by: ADR 0014 (D34: the window holds an SqIn step on that phrase); step-1 derive-once review findings 2 and 3 (2026-10-04)"
+      "note": "Tests too (step-1 derive-once sweep after the review of cc2e1d9): a test asks is_sqin_kind, is_sqin_step_on or sqin_phrase_ticks."
     },
     {
       "question": "Does an E0 need nothing passed over?",
@@ -335,7 +335,7 @@
       "owner_file": "src/core/model.h",
       "owner_symbol": "is_e0",
       "date": "2026-10-04",
-      "decision": "CONTEXT.md",
+      "decision": "CONTEXT.md (E0); step-1 derive-once review finding 4 (2026-10-04)",
       "added_by": "step-1 derive-once fixes",
       "pattern": "skips\\s*==\\s*0\\b",
       "anchor": "skips",
@@ -358,8 +358,7 @@
           "line_text": "return skips == 0 || (skips == 1 && is_e0(e_offset, 0));",
           "why": "allzero_activation, the owner of the all-0 rule (D102), asks is_e0 for the E"
         }
-      ],
-      "note": "Decided by: CONTEXT.md (E0); step-1 derive-once review finding 4 (2026-10-04)"
+      ]
     },
     {
       "question": "Does an activation fit the all-0 rule?",
@@ -367,7 +366,7 @@
       "owner_file": "src/core/model.h",
       "owner_symbol": "allzero_activation",
       "date": "2026-10-07",
-      "decision": "D102",
+      "decision": "D102 (the all-0 path allows an E1), 2026-10-07",
       "added_by": "allzero-e1",
       "pattern": "\\bskips(\\(\\))?\\s*(==\\s*1|!=\\s*0)\\b",
       "anchor": "skips",
@@ -385,8 +384,7 @@
           "line_text": "return skips == 0 || (skips == 1 && is_e0(e_offset, 0));",
           "why": "allzero_activation, the owner"
         }
-      ],
-      "note": "Decided by: D102 (the all-0 path allows an E1), 2026-10-07"
+      ]
     },
     {
       "question": "Which SP-end kinds are valid?",
@@ -394,7 +392,7 @@
       "owner_file": "src/core/model.h",
       "owner_symbol": "kLastSpEndKind",
       "date": "2026-10-04",
-      "decision": "ADR 0021",
+      "decision": "ADR 0021 (the SP-end history); step-1 derive-once review finding 7 (2026-10-04)",
       "added_by": "step-1 derive-once fixes",
       "pattern": "[<>]=?\\s*static_cast<uint8_t>\\(SpEndKind::",
       "anchor": "static_cast<uint8_t>(SpEndKind::",
@@ -408,8 +406,7 @@
       "must_not_match": [
         "w.u8(static_cast<uint8_t>(s.kind));",
         "if (kind > static_cast<uint8_t>(kLastSpEndKind))"
-      ],
-      "note": "Decided by: ADR 0021 (the SP-end history); step-1 derive-once review finding 7 (2026-10-04)"
+      ]
     },
     {
       "question": "Who reads the early-fill reach (how late SP may be ready and a fill still spawn)?",
@@ -417,7 +414,7 @@
       "owner_file": "src/core/model.h",
       "owner_symbol": "fill_refuses",
       "date": "2026-10-15",
-      "decision": "D250",
+      "decision": "D250; D270 call 8",
       "added_by": "EF85",
       "pattern": "[-+]\\s*(hydra::)?kHitWindowMs\\b",
       "anchor": "kHitWindowMs",
@@ -438,7 +435,7 @@
           "why": "fill_refuses, the owner of the refusal"
         }
       ],
-      "note": "Split from the one early-fill window row (D35; step-1 derive-once review finding 12, 2026-10-04) when the two sides got their own numbers. The reach is the hit window, kHitWindowMs, which the squeeze budgets and the report also read, so the row flags the window added to or taken from a deadline or an offset, not every read of it. Decided by: D250; D270 call 8"
+      "note": "The reach is the hit window, kHitWindowMs, which the squeeze budgets and the report also read, so the row flags the window added to or taken from a deadline or an offset, not every read of it."
     },
     {
       "question": "Who reads the early-fill slack (how little time to spare still marks an activation E-critical)?",
@@ -446,7 +443,7 @@
       "owner_file": "src/core/model.h",
       "owner_symbol": "is_e0",
       "date": "2026-10-15",
-      "decision": "D250",
+      "decision": "D250 (the slack stays at D51 call 7's value)",
       "added_by": "EF85",
       "pattern": "\\bkEarlyFillSlackMs\\b",
       "anchor": "kEarlyFillSlackMs",
@@ -469,7 +466,7 @@
           "why": "is_e0, the owner of the E0"
         }
       ],
-      "note": "Split from the one early-fill window row (D35; step-1 derive-once review finding 12, 2026-10-04) when the two sides got their own numbers. Decided by: D250 (the slack stays at D51 call 7's value)"
+      "note": "The slack is its own number, separate from the reach in the row above."
     },
     {
       "question": "Who writes an activation's sqout_tick?",
@@ -477,7 +474,7 @@
       "owner_file": "src/core/model.cpp",
       "owner_symbol": "Activation::set_sqout",
       "date": "2026-10-04",
-      "decision": "ADR 0014",
+      "decision": "ADR 0014 (the squeeze-out is stored once); step-1 derive-once review finding 12 (2026-10-04)",
       "added_by": "step-1 derive-once fixes",
       "pattern": "(^|[^\\w.>])sqout_tick\\s*(=(?!=)|\\.\\s*(reset|emplace)\\s*\\()|\\b\\w+\\s*(\\.|->)\\s*sqout_tick\\s*(=(?!=)|\\.\\s*(reset|emplace)\\s*\\()",
       "anchor": "sqout_tick",
@@ -524,7 +521,7 @@
           "why": "a window read from hydra_replay's JSON (ReplayWindow), not an Activation"
         }
       ],
-      "note": "Was its own walker in test_model.cpp (review finding 12). The replay keeps its own windows (ReplayWindow, and replay.cpp's Window) with a field of the same name; those are always named w or win, and a write to w.sqout_tick or win.sqout_tick is not flagged. Decided by: ADR 0014 (the squeeze-out is stored once); step-1 derive-once review finding 12 (2026-10-04)"
+      "note": "The replay keeps its own windows (ReplayWindow, and replay.cpp's Window) with a field of the same name; those are always named w or win, and a write to w.sqout_tick or win.sqout_tick is not flagged."
     },
     {
       "question": "Is this SP-end step a clamp?",
@@ -532,7 +529,7 @@
       "owner_file": "src/core/model.h",
       "owner_symbol": "is_clamp_kind",
       "date": "2026-10-04",
-      "decision": "ADR 0013",
+      "decision": "ADR 0013 (the clamp note is stored); step-1 derive-once review of fb1189b, finding 2 (2026-10-04); T10+T11 derive-once review finding 6 (2026-10-04)",
       "added_by": "step-1 derive-once fixes round 2",
       "pattern": "\\bkind\\s*==\\s*SpEndKind::Clamped\\b",
       "anchor": "SpEndKind::Clamped",
@@ -549,8 +546,7 @@
           "line_text": "inline bool is_clamp_kind(SpEndKind kind) { return kind == SpEndKind::Clamped; }",
           "why": "is_clamp_kind, the owner"
         }
-      ],
-      "note": "Decided by: ADR 0013 (the clamp note is stored); step-1 derive-once review of fb1189b, finding 2 (2026-10-04); T10+T11 derive-once review finding 6 (2026-10-04)"
+      ]
     },
     {
       "question": "Does this SP end offer the window its newest phrase?",
@@ -558,7 +554,7 @@
       "owner_file": "src/core/sqout_chord.h",
       "owner_symbol": "offered_phrase",
       "date": "2026-10-04",
-      "decision": "D36",
+      "decision": "D36 (extreme-tempo gaps, 2026-10-04)",
       "added_by": "D36 extreme-tempo gaps",
       "pattern": "\\b(sqout_at|newest_moved_from)\\s*[!=]=(?!\\s*NO_TIME\\b)",
       "must_match": [
@@ -577,7 +573,7 @@
           "why": "offered_phrase, the owner"
         }
       ],
-      "note": "D36: an SP end offers a window its newest phrase only when that phrase's step moved the end from there. Comparing a step's moved- from end to an SP end anywhere else restates the early side. Decided by: D36 (extreme-tempo gaps, 2026-10-04)"
+      "note": "D36: an SP end offers a window its newest phrase only when that phrase's step moved the end from there. Comparing a step's moved- from end to an SP end anywhere else restates the early side."
     },
     {
       "question": "Is a value inside the squeeze window?",
@@ -585,7 +581,7 @@
       "owner_file": "src/core/model.h",
       "owner_symbol": "within_squeeze_window",
       "date": "2026-10-04",
-      "decision": "ADR 0014",
+      "decision": "ADR 0014; step-1 plan (one squeeze window); step-1 derive-once review finding 12 (2026-10-04)",
       "added_by": "step-1 derive-once fixes",
       "pattern": "[<>]=?\\s*(\\w+::)*kSqueezeWindowMs|(\\w+::)*kSqueezeWindowMs\\s*[<>]",
       "anchor": "kSqueezeWindowMs",
@@ -605,7 +601,7 @@
           "why": "within_squeeze_window, the owner"
         }
       ],
-      "note": "Was part of a walker in test_squeeze_rating.cpp (review finding 12). An optional namespace prefix (hydra::kSqueezeWindowMs) must not hide a comparison. Decided by: ADR 0014; step-1 plan (one squeeze window); step-1 derive-once review finding 12 (2026-10-04)"
+      "note": "An optional namespace prefix (hydra::kSqueezeWindowMs) must not hide a comparison."
     },
     {
       "question": "Is the squeeze window typed as 500?",
@@ -613,7 +609,7 @@
       "owner_file": "src/core/model.h",
       "owner_symbol": "kSqueezeWindowMs",
       "date": "2026-10-04",
-      "decision": "D41",
+      "decision": "step-1 plan (one squeeze window); the user's decision D41 (2026-10-04: the Path limit's ±500 ms ceiling is the squeeze window)",
       "added_by": "step-1 derive-once fixes",
       "pattern": "clamp\\([^;]*[-, ]500\\b|within 500 ms",
       "anchor": "500",
@@ -626,7 +622,7 @@
         "app.settings.mslimit_value = std::clamp(app.settings.mslimit_value, -window, window);",
         "x = std::clamp(x, 0, 5000);"
       ],
-      "note": "The rest of that walker. The Path limit's ceiling is the squeeze window too (decision D41), so no clamp is exempt. Decided by: step-1 plan (one squeeze window); the user's decision D41 (2026-10-04: the Path limit's ±500 ms ceiling is the squeeze window)"
+      "note": "The rest of that walker. The Path limit's ceiling is the squeeze window too (decision D41), so no clamp is exempt."
     },
     {
       "question": "Is a note inside the squeeze window, typed as 500 in a test?",
@@ -676,7 +672,7 @@
       "owner_file": "src/core/model.cpp",
       "owner_symbol": "HydraRecord::all_paths",
       "date": "2026-10-04",
-      "decision": "D36",
+      "decision": "D36 derive-once review finding 1 (2026-10-04)",
       "added_by": "d36-review-fixes",
       "pattern": "for \\(const (hydra::)?Path\\* \\w+ : all_tied\\(\\w+\\.paths\\)\\) \\w+\\.push_back\\(",
       "anchor": ".push_back(",
@@ -690,7 +686,7 @@
       "scope": [
         "tests"
       ],
-      "note": "all_paths already walks every root's tied variants (flatten_paths), so adding all_tied's list to it checks each variant twice. Decided by: D36 derive-once review finding 1 (2026-10-04)"
+      "note": "all_paths already walks every root's tied variants (flatten_paths), so adding all_tied's list to it checks each variant twice."
     },
     {
       "question": "Which chords can this SP end squeeze out (the deleted sqout_chord's name)?",
@@ -698,7 +694,7 @@
       "owner_file": "src/core/sqout_chord.h",
       "owner_symbol": "sqout_chords",
       "date": "2026-10-04",
-      "decision": "D36",
+      "decision": "D36 derive-once review finding 10 (2026-10-04)",
       "added_by": "d36-review-fixes",
       "pattern": "\\bsqout_chord\\b(?![s.])",
       "anchor": "sqout_chord",
@@ -716,7 +712,7 @@
         "tests"
       ],
       "scan_comments": true,
-      "note": "D36 deleted core::sqout_chord; a comment that still names it points at nothing. Comments are scanned too, since that is where it lived. Decided by: D36 derive-once review finding 10 (2026-10-04)"
+      "note": "D36 deleted core::sqout_chord; a comment that still names it points at nothing. Comments are scanned too, since that is where it lived."
     },
     {
       "question": "How far is a note from an SP end, in a test?",
@@ -724,7 +720,7 @@
       "owner_file": "src/core/model.h",
       "owner_symbol": "offset_from_sp_end",
       "date": "2026-10-04",
-      "decision": "step-1 derive-once review findings 8, 9 and R7.30 (2026-10-04)",
+      "decision": "step-1 derive-once review findings 8, 9 and R7.30 (2026-10-04); T10+T11 derive-once review finding 1 and its round-2 follow-up (2026-10-04)",
       "added_by": "step-1 derive-once fixes",
       "pattern": "\\.ms\\(\\)\\s*-\\s*(end\\.ms\\(\\)|end_ms\\b)|(sqout_ms|offset_ms|own_ms)\\s*==?\\s*\\w+\\.timecode\\(|-\\s*\\w+\\.timecode\\([^;]*\\b(\\w*end|deact_tick\\(\\))\\)*\\.ms\\(\\)|\\w*_ms\\([^;]*\\)\\s*-\\s*\\w*end\\w*_ms\\b",
       "must_match": [
@@ -741,8 +737,7 @@
       ],
       "scope": [
         "tests"
-      ],
-      "note": "Decided by: step-1 derive-once review findings 8, 9 and R7.30 (2026-10-04); T10+T11 derive-once review finding 1 and its round-2 follow-up (2026-10-04)"
+      ]
     },
     {
       "question": "Does a typed window still need its squeeze-out chord resolved?",
@@ -833,7 +828,7 @@
       "owner_file": "src/core/replay.cpp",
       "owner_symbol": "chord_text",
       "date": "2026-10-06",
-      "decision": "D83",
+      "decision": "derive-once review of 0997980, finding 1 (D83)",
       "added_by": "REPLAYTIE",
       "pattern": "tick %lld \\(%\\.2f ms\\)",
       "anchor": "tick %lld (%.2f ms)",
@@ -853,7 +848,7 @@
           "why": "chord_text, the owner"
         }
       ],
-      "note": "---- how a SqOut refusal names a chord (REPLAYTIE review) ---- resolve_sqout_note's refusals list chords through one local lambda; a second hand-written format would drift from it. Decided by: derive-once review of 0997980, finding 1 (D83)"
+      "note": "---- how a SqOut refusal names a chord (REPLAYTIE review) ---- resolve_sqout_note's refusals list chords through one local lambda; a second hand-written format would drift from it."
     },
     {
       "question": "How is a count written next to its noun?",
@@ -861,7 +856,7 @@
       "owner_file": "src/core/model.cpp",
       "owner_symbol": "counted",
       "date": "2026-10-04",
-      "decision": "D48",
+      "decision": "D48, Q12 (audit finding 14; phase 3 task O1; M_D review finding 4)",
       "added_by": "O1",
       "pattern": "==\\s*1\\s*\\?\\s*(\"|one\\b)|%\\w+ bars?\\b|\" bars?\"|group_thousands\\([^;]*\\)\\s*\\+\\s*\" (charts?|records?|songs?|paths?|scores?(?! higher)|rows?|notes?)\\b|%[sd] (charts|records|songs|paths|scores|rows|notes)\\b",
       "calls_owner": "\\b(counted|has_have)\\(",
@@ -891,7 +886,7 @@
           "why": "has_have, the owner"
         }
       ],
-      "note": "---- counts and whole-ms timings (phase 3 task O1) ---- A test on exactly 1 that picks a word, or a number with \" bar\" or \" bars\" typed after it. counted owns the rule and has_have the verb a sentence puts after such a count. \"score higher\" is the verb after a count of charts, not a noun. Decided by: D48, Q12 (audit finding 14; phase 3 task O1; M_D review finding 4)"
+      "note": "---- counts and whole-ms timings (phase 3 task O1) ---- A test on exactly 1 that picks a word, or a number with \" bar\" or \" bars\" typed after it. counted owns the rule and has_have the verb a sentence puts after such a count. \"score higher\" is the verb after a count of charts, not a noun."
     },
     {
       "question": "How is a timing written in whole ms?",
@@ -899,7 +894,7 @@
       "owner_file": "src/core/model.cpp",
       "owner_symbol": "format_ms_whole",
       "date": "2026-10-04",
-      "decision": "D48",
+      "decision": "D48, Q2 (audit findings 4 and 18; phase 3 task O1; M_D review round 2, library finding 6); D265",
       "added_by": "O1",
       "pattern": "%\\.0f ?ms|static_cast<(long long|long|int|int64_t)>\\([^;]*\\)\\)\\s*\\+\\s*\" ms\"|\\bl{0,2}round\\([^;]*\\+\\s*\" ms\"",
       "calls_owner": "\\bformat_ms_whole\\(",
@@ -932,7 +927,7 @@
           "why": "format_ms_whole, the owner"
         }
       ],
-      "note": "A timing printed as a whole number of ms: printf's %.0f with or without a space before \"ms\", or a cast, round, lround or llround with \" ms\" after it. Only a limit the user sets is written this way; a timing a window needs is format_ms's, one decimal (D265). Decided by: D48, Q2 (audit findings 4 and 18; phase 3 task O1; M_D review round 2, library finding 6); D265"
+      "note": "A timing printed as a whole number of ms: printf's %.0f with or without a space before \"ms\", or a cast, round, lround or llround with \" ms\" after it. Only a limit the user sets is written this way; a timing a window needs is format_ms's, one decimal (D265)."
     },
     {
       "question": "What does a tool print for an option it does not know?",
@@ -940,7 +935,7 @@
       "owner_file": "src/core/unknown_option.h",
       "owner_symbol": "unknown_option_line",
       "date": "2026-10-30",
-      "decision": "D271 item 6, D276 item 5",
+      "decision": "D271 item 6 (one line, one helper) and D276 item 5 (the wording)",
       "added_by": "T6 (aoa-b6)",
       "pattern": "\"[^\"]*[Uu]nknown option",
       "calls_owner": "\\bunknown_option_line\\(",
@@ -961,7 +956,7 @@
           "why": "unknown_option_line, the owner"
         }
       ],
-      "note": "Every command-line tool in src and tools prints the same line for an option it does not know, from the one helper. The words typed in a string anywhere else are a second copy. Decided by: D271 item 6 (one line, one helper) and D276 item 5 (the wording)"
+      "note": "Every command-line tool in src and tools prints the same line for an option it does not know, from the one helper. The words typed in a string anywhere else are a second copy."
     },
     {
       "question": "Which tick does a screen show at a time?",
@@ -969,7 +964,7 @@
       "owner_file": "src/core/timing.cpp",
       "owner_symbol": "SongTiming::display_tick_at_ms",
       "date": "2026-10-04",
-      "decision": "D48",
+      "decision": "D48, Q23 (audit finding 183; M_D review, reports finding 7, round 2 library finding 6)",
       "added_by": "FX-L",
       "pattern": "\\btick_at_ms\\(",
       "anchor": "tick_at_ms(",
@@ -1004,7 +999,7 @@
           "why": "sp_end_ms keeps the fractional tick for its continuous map; no screen shows it"
         }
       ],
-      "note": "A time turned into a tick outside the timing code. display_tick_at_ms is the one rule for which tick a screen shows at a time (D48, Q23). The row flags every raw tick_at_ms call, so a rounding of any kind (llround, round, floor, a cast) is caught, and so is one split over two lines, whose second line still holds the call. The second line of \"std::llround(\\n timing->ms_index().tick_at_ms(ms));\". Decided by: D48, Q23 (audit finding 183; M_D review, reports finding 7, round 2 library finding 6)"
+      "note": "A time turned into a tick outside the timing code. display_tick_at_ms is the one rule for which tick a screen shows at a time (D48, Q23). The row flags every raw tick_at_ms call, so a rounding of any kind (llround, round, floor, a cast) is caught, and so is one split over two lines, whose second line still holds the call. The second line of \"std::llround(\\n timing->ms_index().tick_at_ms(ms));\"."
     },
     {
       "question": "Is this the same path as that one?",
@@ -1012,7 +1007,7 @@
       "owner_file": "src/core/model.cpp",
       "owner_symbol": "path_identity",
       "date": "2026-10-04",
-      "decision": "audit finding 249",
+      "decision": "audit finding 249; derive-once review of M_C (6d86f1c), proposed scan row 2 (2026-10-04)",
       "added_by": "M_C fix prod",
       "pattern": "totalscore\\(\\)\\s*==[^;]*pathstring\\(\\)|pathstring_verbose\\(\\{\\}\\)\\s*\\+\\s*\"\\|\"",
       "anchor": "pathstring",
@@ -1023,7 +1018,7 @@
       "must_not_match": [
         "if (path_identity(*p) == identity) return view;"
       ],
-      "note": "Two paths compared by score and notation, or keyed by notation and score glued together, instead of by path_identity. Decided by: audit finding 249; derive-once review of M_C (6d86f1c), proposed scan row 2 (2026-10-04)"
+      "note": "Two paths compared by score and notation, or keyed by notation and score glued together, instead of by path_identity."
     },
     {
       "question": "What is the two-hit budget at the identity scale?",
@@ -1031,7 +1026,7 @@
       "owner_file": "src/core/squeeze_rating.cpp",
       "owner_symbol": "nominal_budget_ms",
       "date": "2026-10-04",
-      "decision": "phase 3 task C4c",
+      "decision": "phase 3 task C4c; derive-once review of M_C (6d86f1c), finding 3, and round 2, finding 2 (2026-10-04); D270 call 8 (one window, kHitWindowMs)",
       "added_by": "M_C fix prod",
       "pattern": "\\b2(\\.0)?\\s*\\*\\s*(w|hit_window\\w*|kHitWindowMs)\\b|\\b(w|hit_window\\w*|kHitWindowMs)\\s*\\*\\s*2(\\.0)?\\b|squeeze_budget_ms\\(\\s*(1(\\.0)?|kIdentityScale)\\s*\\)|budget_for_window\\(\\s*(1(\\.0)?|kIdentityScale)\\s*,\\s*(hydra::)?kHitWindowMs\\b|\\*\\s*2\\.0\\s*/\\s*\\(1\\.0\\s*\\+",
       "must_match": [
@@ -1054,7 +1049,7 @@
           "why": "nominal_budget_ms, the owner"
         }
       ],
-      "note": "The two-hit budget written out as twice the window (either way round), as squeeze_budget_ms or budget_for_window at a hand-typed identity scale, or the backend rescale written out as 2 / (1 + r), instead of nominal_budget_ms and squeeze_budget_ms. Decided by: phase 3 task C4c; derive-once review of M_C (6d86f1c), finding 3, and round 2, finding 2 (2026-10-04); D270 call 8 (one window, kHitWindowMs)"
+      "note": "The two-hit budget written out as twice the window (either way round), as squeeze_budget_ms or budget_for_window at a hand-typed identity scale, or the backend rescale written out as 2 / (1 + r), instead of nominal_budget_ms and squeeze_budget_ms."
     },
     {
       "question": "How does a ByteSource read its bytes?",
@@ -1090,7 +1085,7 @@
       "owner_file": "src/core/winstr.h",
       "owner_symbol": "kFirstPieceRead",
       "date": "2026-10-04",
-      "decision": "ADR 0024",
+      "decision": "ADR 0024 (the user chose 64 KB, then double, on 2026-10-04)",
       "added_by": "container ranged reads",
       "pattern": "constexpr\\s+size_t\\s+k\\w*First\\w*Read\\s*=",
       "anchor": "constexpr",
@@ -1112,8 +1107,7 @@
         "src",
         "tools",
         "tests"
-      ],
-      "note": "Decided by: ADR 0024 (the user chose 64 KB, then double, on 2026-10-04)"
+      ]
     },
     {
       "question": "Has a ByteSource run out?",
@@ -1140,7 +1134,7 @@
         "tools",
         "tests"
       ],
-      "note": "A file can shrink after it was sized, so comparing what was read with the stated size can wait forever (sng_read_head did)."
+      "note": "A file can shrink after it was sized, so comparing what was read with the stated size can wait forever."
     },
     {
       "question": "What are all of a ByteSource's bytes?",
@@ -1220,7 +1214,7 @@
       "owner_file": "src/core/timing.cpp",
       "owner_symbol": "to_multiplier",
       "date": "2026-10-04",
-      "decision": "D51",
+      "decision": "D51 calls 3 and 13 (audit findings 49 and 335), 2026-10-04",
       "added_by": "E2",
       "pattern": "\\bcombo\\w*\\)?\\s*%\\s*10\\b|\\bcombo\\w*\\s*[<>]=?\\s*(10|20|30)\\b|\\b(10|20|30)\\s*[<>]=?\\s*combo",
       "anchor": "combo",
@@ -1252,7 +1246,7 @@
           "why": "to_multiplier, the owner"
         }
       ],
-      "note": "Task E2: the multiplier steps live in to_multiplier only. A combo tested against 10, 20 or 30, or taken mod 10, is a second answer (MultSqueeze::applies held one before D51 call 3). Decided by: D51 calls 3 and 13 (audit findings 49 and 335), 2026-10-04"
+      "note": "The multiplier steps live in to_multiplier only. A combo tested against 10, 20 or 30, or taken mod 10, is a second answer."
     },
     {
       "question": "What text turns an INI setting on or off?",
@@ -1292,7 +1286,7 @@
       "owner_file": "src/core/winstr.cpp",
       "owner_symbol": "parent_folder",
       "date": "2026-10-04",
-      "decision": "audit finding 251",
+      "decision": "audit finding 251; the scan's rule, kept for the stored rootfolder (phase 6 task J1-5, decided at launch)",
       "added_by": "J1-5",
       "pattern": "\\b(pos|slash)\\s*[!=]=\\s*(std::string::)?npos\\b.*\\.substr\\(\\s*0\\s*,\\s*(pos|slash)\\s*\\)",
       "anchor": ".substr(",
@@ -1313,7 +1307,7 @@
           "why": "parent_folder, the owner"
         }
       ],
-      "note": "Keyed on the cut beside its \"no separator\" test, not on find_last_of: a file's base name (substr(slash + 1)) and a name's stem (substr(0, dot)) find the same separator for other questions. Decided by: audit finding 251; the scan's rule, kept for the stored rootfolder (phase 6 task J1-5, decided at launch)"
+      "note": "Keyed on the cut beside its \"no separator\" test, not on find_last_of: a file's base name (substr(slash + 1)) and a name's stem (substr(0, dot)) find the same separator for other questions."
     },
     {
       "question": "Did a ShellExecute launch succeed?",
@@ -1321,7 +1315,7 @@
       "owner_file": "src/core/winstr.cpp",
       "owner_symbol": "shell_execute_ok",
       "date": "2026-10-04",
-      "decision": "audit finding 217",
+      "decision": "audit finding 217; ShellExecute's documented rule (32 and below means failure)",
       "added_by": "J1-5",
       "pattern": "reinterpret_cast<\\s*(INT_PTR|intptr_t|LONG_PTR)\\s*>\\s*\\(\\s*\\w+\\s*\\)\\s*>\\s*32\\b|\\(\\s*(INT_PTR|intptr_t|LONG_PTR)\\s*\\)\\s*\\w+\\s*>\\s*32\\b",
       "must_match": [
@@ -1340,7 +1334,7 @@
           "why": "shell_execute_ok, the owner"
         }
       ],
-      "note": "The \"above 32\" test on ShellExecute's result. Which code makes the call is the \"Which code launches the Windows shell?\" row. Decided by: audit finding 217; ShellExecute's documented rule (32 and below means failure)"
+      "note": "The \"above 32\" test on ShellExecute's result. Which code makes the call is the \"Which code launches the Windows shell?\" row."
     },
     {
       "question": "How are a folder and a file name joined?",
@@ -1377,7 +1371,7 @@
       "owner_file": "src/core/model.h",
       "owner_symbol": "within_squeeze_window",
       "date": "2026-10-04",
-      "decision": "D53, D54",
+      "decision": "audit finding 283; phase 6 task J1-1 (D53, D54)",
       "added_by": "J1-1",
       "pattern": "[<>]=?\\s*(\\w+::)*kSqueezeWindowMs|(\\w+::)*kSqueezeWindowMs\\s*[<>]",
       "anchor": "kSqueezeWindowMs",
@@ -1396,7 +1390,7 @@
       "scope": [
         "tests"
       ],
-      "note": "The same pattern as \"Is a value inside the squeeze window?\", over tests/. That row's scope stays src and tools; rows are append-only. Arithmetic and == on the constant (test_squeeze_rating.cpp) and storing it (test_docs_match_code.cpp) answer other questions. Decided by: audit finding 283; phase 6 task J1-1 (D53, D54)"
+      "note": "The same pattern as \"Is a value inside the squeeze window?\", over tests/. That row's scope stays src and tools; rows are append-only. Arithmetic and == on the constant (test_squeeze_rating.cpp) and storing it (test_docs_match_code.cpp) answer other questions."
     },
     {
       "question": "Which meter section is a tick measured in?",
@@ -1404,7 +1398,7 @@
       "owner_file": "src/core/timing.cpp",
       "owner_symbol": "MeasureIndex::span_at",
       "date": "2026-10-04",
-      "decision": "D51, D58, D115",
+      "decision": "audit finding 58; D51 call 22; phase 7 task TM (D58); D115",
       "added_by": "TM",
       "pattern": "restart_at\\([^()]*\\)\\)*\\s*[<>]|(^|[^-])[<>]=?\\s*(\\w+(\\.|->))?restart_at\\(",
       "anchor": "restart_at(",
@@ -1420,7 +1414,7 @@
         "const int64_t first = mi->restart_at(i);",
         "const int i = idx.span_at(static_cast<int64_t>(std::ceil(ticks)));"
       ],
-      "note": "Picking a tick's grid span by ordering it against the spans' restart ticks. span_at answers that through last_at_or_before, so no restart_at ordering is the owner's. An equality test against a restart, and reading a span's bounds, answer other questions. D115 renamed the owner from section_at when the grid became Clone Hero's (a tick on a restart is in the new span). Decided by: audit finding 58; D51 call 22; phase 7 task TM (D58); D115"
+      "note": "Picking a tick's grid span by ordering it against the spans' restart ticks. span_at answers that through last_at_or_before, so no restart_at ordering is the owner's. An equality test against a restart, and reading a span's bounds, answer other questions. A tick on a restart is in the new span."
     },
     {
       "question": "How are a folder and a file name joined? (any name, not only folder)",
@@ -1428,7 +1422,7 @@
       "owner_file": "src/core/winstr.cpp",
       "owner_symbol": "join_folder",
       "date": "2026-10-04",
-      "decision": "D53",
+      "decision": "audit finding 209; phase 6 task J2-1 (D53)",
       "added_by": "J2-1",
       "pattern": "\\+\\s*\"\\\\\\\\\\w|\\+=\\s*\"\\\\\\\\\"",
       "must_match": [
@@ -1445,7 +1439,7 @@
         "src",
         "tools"
       ],
-      "note": "The join row above, for any name: a string literal that starts with a backslash and a name, glued on with +, or a bare backslash added with +=. join_folder's own \"\\\\\" is followed by a quote, not a name. Rows are append-only, so the first row stays as it is. Decided by: audit finding 209; phase 6 task J2-1 (D53)"
+      "note": "The join row above, for any name: a string literal that starts with a backslash and a name, glued on with +, or a bare backslash added with +=. join_folder's own \"\\\\\" is followed by a quote, not a name. Rows are append-only, so the first row stays as it is."
     },
     {
       "question": "How is text compared ignoring ASCII case, and which bytes are whitespace?",
@@ -1453,7 +1447,7 @@
       "owner_file": "src/core/strutil.cpp",
       "owner_symbol": "lower_ascii",
       "date": "2026-10-04",
-      "decision": "D53",
+      "decision": "audit finding 201; phase 6 task J2-1 (D53)",
       "added_by": "J2-1",
       "pattern": "std::tolower\\(|\\b(bool|char)\\s+(starts_with|starts_with_ci|ends_with|ends_with_ci|equals_ci|iequals_ascii|is_ascii_space|ascii_lower|lower_ascii)\\s*\\([^;]*$",
       "must_match": [
@@ -1509,7 +1503,7 @@
           "why": "the wide prefix test winstr keeps for its long-path prefixes (J2-1, decided at launch)"
         }
       ],
-      "note": "A byte lowered through the C locale, or a private definition of one of strutil's ASCII helpers (a definition line has no ; after its open paren). C2's wide starts_with in winstr.cpp stays where it is (J2-1, decided at launch). Decided by: audit finding 201; phase 6 task J2-1 (D53)"
+      "note": "A byte lowered through the C locale, or a private definition of one of strutil's ASCII helpers (a definition line has no ; after its open paren). C2's wide starts_with in winstr.cpp stays where it is (J2-1, decided at launch)."
     },
     {
       "question": "How is a scanned path keyed in the scan snapshot?",
@@ -1517,7 +1511,7 @@
       "owner_file": "src/core/strutil.cpp",
       "owner_symbol": "relative_slash_path",
       "date": "2026-10-04",
-      "decision": "D53, D54",
+      "decision": "audit finding 274; phase 6 task J2-1 (D53, D54)",
       "added_by": "J2-1",
       "pattern": "\\.substr\\(\\s*\\w+\\.size\\(\\)\\s*\\+\\s*1\\s*\\)",
       "anchor": ".substr(",
@@ -1547,7 +1541,7 @@
         "tools",
         "tests"
       ],
-      "note": "The root and the separator after it cut off a path. relpath in analysis.cpp cuts only after a separator and keeps backslashes: Python's os.path.relpath for the library's stored path, another question. Decided by: audit finding 274; phase 6 task J2-1 (D53, D54)"
+      "note": "The root and the separator after it cut off a path. relpath in analysis.cpp cuts only after a separator and keeps backslashes: Python's os.path.relpath for the library's stored path, another question."
     },
     {
       "question": "Does a string end with a tail?",
@@ -1595,7 +1589,7 @@
       "owner_file": "src/core/little_endian.h",
       "owner_symbol": "append_le_u32",
       "date": "2026-10-04",
-      "decision": "D53",
+      "decision": "audit finding 195 (the Dynamics half); phase 6 task J2-5 (D53)",
       "added_by": "J2-5",
       "pattern": "\\b(write|read)_u32_le\\(",
       "anchor": "_u32_le(",
@@ -1610,15 +1604,15 @@
       "scope": [
         "src"
       ],
-      "note": "A private byte-by-byte little-endian helper. src/core/little_endian.h is the codec; the store's own read_le/write_le are task J3-6's and are not in this row. Decided by: audit finding 195 (the Dynamics half); phase 6 task J2-5 (D53)"
+      "note": "A private byte-by-byte little-endian helper. src/core/little_endian.h is the codec. This row catches the u32 helper names; the row whose question ends \"(any width or name)\" catches the rest."
     },
     {
       "question": "In what order does a record list its paths?",
-      "owner": "HydraRecord::all_paths, in the order pather::read builds",
+      "owner": "HydraRecord::all_paths, in the order Engine::run sorts the roots",
       "owner_file": "src/core/model.h",
       "owner_symbol": "all_paths",
       "date": "2026-10-04",
-      "decision": "D53",
+      "decision": "audit finding 169; phase 6 task J2-2 (D53)",
       "added_by": "J2-2",
       "pattern": "totalscore\\(\\)\\s*>\\s*\\w+->totalscore\\(\\)",
       "anchor": "->totalscore()",
@@ -1634,7 +1628,7 @@
         "tools",
         "tests"
       ],
-      "note": "A record's paths come best first from all_paths() (pather::read sorts the roots; each variant sits under its parent). Sorting them by score again is a second answer. Decided by: audit finding 169; phase 6 task J2-2 (D53)"
+      "note": "A record's paths come best first from all_paths() (Engine::run in src/search/engine.cpp sorts the roots; each variant sits under its parent). Sorting them by score again is a second answer."
     },
     {
       "question": "What is a path's score without the solo bonus?",
@@ -1642,7 +1636,7 @@
       "owner_file": "src/core/stars.cpp",
       "owner_symbol": "score_without_solo",
       "date": "2026-10-04",
-      "decision": "D53, D54",
+      "decision": "audit finding 166; phase 6 task J2-7 (D53, D54)",
       "added_by": "J2-7",
       "pattern": "\\b(totalscore|total)\\(\\)\\s*-\\s*(\\w+(\\.|->))*(score_)?solo\\b",
       "anchor": "total",
@@ -1670,7 +1664,7 @@
         "tools",
         "tests"
       ],
-      "note": "The game counts stars on the total less the solo bonus, whether the total is a Path's or a replay's running ReplayScore (the Preview's star counter, D111). Adding the categories up into the total is a different question. Decided by: audit finding 166; phase 6 task J2-7 (D53, D54)"
+      "note": "The game counts stars on the total less the solo bonus, whether the total is a Path's or a replay's running ReplayScore (the Preview's star counter, D111). Adding the categories up into the total is a different question."
     },
     {
       "question": "What score shows at a star cutoff with the full solo bonus?",
@@ -1678,7 +1672,7 @@
       "owner_file": "src/core/stars.cpp",
       "owner_symbol": "star_cutoffs",
       "date": "2026-10-04",
-      "decision": "D53, D54",
+      "decision": "audit finding 166; phase 6 task J2-7 (D53, D54)",
       "added_by": "J2-7",
       "pattern": "\\bcutoffs?(\\[[^\\]]*\\])?\\s*\\+\\s*(\\w+(\\.|->))?solo_bonus\\b",
       "anchor": "solo_bonus",
@@ -1702,7 +1696,7 @@
         "src",
         "tests"
       ],
-      "note": "The Stars tab's \"With full solo bonus\" column and its GUI test read StarCutoffs::with_solo instead of adding the two themselves. Decided by: audit finding 166; phase 6 task J2-7 (D53, D54)"
+      "note": "The Stars tab's \"With full solo bonus\" column and its GUI test read StarCutoffs::with_solo instead of adding the two themselves."
     },
     {
       "question": "How many solo-bonus points does a chord earn?",
@@ -1710,7 +1704,7 @@
       "owner_file": "src/core/scoring.cpp",
       "owner_symbol": "solo_bonus",
       "date": "2026-10-04",
-      "decision": "D53, D54",
+      "decision": "audit finding 163; phase 6 task J2-7 (D53, D54)",
       "added_by": "J2-7",
       "pattern": "\\bkSoloBonusPerNote\\)?\\s*\\*|\\*\\s*(\\w+::)*kSoloBonusPerNote\\b",
       "anchor": "kSoloBonusPerNote",
@@ -1736,7 +1730,7 @@
         "tools",
         "tests"
       ],
-      "note": "The constant multiplied by a note count. Pinning the constant (test_model.cpp) is not an answer. Decided by: audit finding 163; phase 6 task J2-7 (D53, D54)"
+      "note": "The constant multiplied by a note count. Pinning the constant (test_model.cpp) is not an answer."
     },
     {
       "question": "How many of a chord's notes count toward a solo?",
@@ -1744,7 +1738,7 @@
       "owner_file": "src/core/scoring.cpp",
       "owner_symbol": "solo_note_count",
       "date": "2026-10-16",
-      "decision": "D251",
+      "decision": "D251; derive-once review of PV-SOLO",
       "added_by": "PV-SOLO-REVIEW",
       "pattern": "/\\s*(\\w+::)*kSoloBonusPerNote\\b|\\bflag_solo\\s*\\?[^:;]*\\bcount\\(\\)",
       "must_match": [
@@ -1768,7 +1762,7 @@
         "tools",
         "tests"
       ],
-      "note": "A solo's note count read back out of a bonus (the bonus divided by the per-note constant), or a chord's count gated on the solo flag by hand. The Preview's solo box and solo_bonus both call the owner. Decided by: D251; derive-once review of PV-SOLO"
+      "note": "A solo's note count read back out of a bonus (the bonus divided by the per-note constant), or a chord's count gated on the solo flag by hand. The Preview's solo box and solo_bonus both call the owner."
     },
     {
       "question": "What is the combo after a chord?",
@@ -1776,7 +1770,7 @@
       "owner_file": "src/core/scoring.h",
       "owner_symbol": "combo_after",
       "date": "2026-10-04",
-      "decision": "D53, D54",
+      "decision": "audit finding 164; phase 6 task J2-7 (D53, D54)",
       "added_by": "J2-7",
       "pattern": "\\bcombo_?\\s*\\+=\\s*.*\\bcount\\(\\)",
       "anchor": "count()",
@@ -1794,7 +1788,7 @@
         "tools",
         "tests"
       ],
-      "note": "A running combo stepped by a whole chord's note count. The scorer steps one note at a time (combo += 1), so it has no owner line. Decided by: audit finding 164; phase 6 task J2-7 (D53, D54)"
+      "note": "A running combo stepped by a whole chord's note count. The scorer steps one note at a time (combo += 1), so it has no owner line."
     },
     {
       "question": "What is the combo before a chord?",
@@ -1802,7 +1796,7 @@
       "owner_file": "src/core/scoring.cpp",
       "owner_symbol": "chord_score_table",
       "date": "2026-10-07",
-      "decision": "derive-once review of track-r1, proposed scan rules (2026-10-07)",
+      "decision": "derive-once review of track-r1, proposed scan rules (2026-10-07); audit finding 164",
       "added_by": "finding-164-test-copy",
       "pattern": "\\b\\w*combo_?\\s*=\\s*(category_scores\\(|\\w+\\.combo_after\\b)",
       "anchor": "combo",
@@ -1830,7 +1824,7 @@
         "tools",
         "tests"
       ],
-      "note": "A running combo carried chord to chord through category_scores, in one statement or two, is a second walk of the chart. chord_score_table is the one walk; read its rows' combo_before and combo_after instead. Decided by: derive-once review of track-r1, proposed scan rules (2026-10-07); audit finding 164"
+      "note": "A running combo carried chord to chord through category_scores, in one statement or two, is a second walk of the chart. chord_score_table is the one walk; read its rows' combo_before and combo_after instead."
     },
     {
       "question": "How long is an ID3v2 tag, and what sits behind it?",
@@ -1838,7 +1832,7 @@
       "owner_file": "src/core/audio_sniff.cpp",
       "owner_symbol": "id3v2_tag_length",
       "date": "2026-10-05",
-      "decision": "D53",
+      "decision": "audit R7.23; phase 6 task J2-6 (D53)",
       "added_by": "J2-6",
       "pattern": "&\\s*0x7F\\)\\s*<<\\s*21",
       "anchor": "0x7F)",
@@ -1860,8 +1854,7 @@
         "src",
         "tools",
         "tests"
-      ],
-      "note": "Decided by: audit R7.23; phase 6 task J2-6 (D53)"
+      ]
     },
     {
       "question": "Which SP cap does the leaderboard comparison name?",
@@ -1869,7 +1862,7 @@
       "owner_file": "src/core/model.h",
       "owner_symbol": "kCloneHeroSpCap",
       "date": "2026-10-05",
-      "decision": "D51",
+      "decision": "audit finding 170, D51's code-only calls (phase 7 task RP)",
       "added_by": "RP",
       "pattern": "SP cap (to )?4\\b",
       "anchor": "SP cap",
@@ -1882,7 +1875,7 @@
         "\": set SP cap to \" + cap + \", analyze them, then compare again.\";",
         "\"SP cap 40\""
       ],
-      "note": "---- report pages (phase 7 task RP) ---- Clone Hero's SP cap written as text, where the leaderboard page names it. Decided by: audit finding 170, D51's code-only calls (phase 7 task RP)"
+      "note": "---- report pages (phase 7 task RP) ---- Clone Hero's SP cap written as text, where the leaderboard page names it."
     },
     {
       "question": "What is the hit window?",
@@ -1890,7 +1883,7 @@
       "owner_file": "src/core/model.h",
       "owner_symbol": "kHitWindowMs",
       "date": "2026-10-05",
-      "decision": "D51; D270 call 8",
+      "decision": "audit finding 140; D51 call 15 (phase 7 task LB1); D270 call 8 (one fixed window)",
       "added_by": "LB1",
       "pattern": "static_cast<int>\\(\\s*(hydra::)?kHitWindowMs\\s*\\)",
       "anchor": "kHitWindowMs",
@@ -1907,7 +1900,7 @@
         "src",
         "tests"
       ],
-      "note": "The hit window cut to a whole number by hand. The reports print it through report::hit_window_text, and everything else reads kHitWindowMs as it is. Decided by: audit finding 140; D51 call 15 (phase 7 task LB1); D270 call 8 (one fixed window)"
+      "note": "The hit window cut to a whole number by hand. The reports print it through report::hit_window_text, and everything else reads kHitWindowMs as it is."
     },
     {
       "question": "What does squeezing out a row cost?",
@@ -1915,7 +1908,7 @@
       "owner_file": "src/core/backend_value.h",
       "owner_symbol": "sqout_cost",
       "date": "2026-10-05",
-      "decision": "D53, D54",
+      "decision": "audit finding 150; phase 6 task J3-1 (D53, D54)",
       "added_by": "J3-1",
       "pattern": "(\\.|->)sp_points\\s*-\\s*value\\b",
       "anchor": "points",
@@ -1933,7 +1926,7 @@
       "scope": [
         "src"
       ],
-      "note": "The row's full SP value less what backend_row_value pays it as the squeezed-out chord. Decided by: audit finding 150; phase 6 task J3-1 (D53, D54)"
+      "note": "The row's full SP value less what backend_row_value pays it as the squeezed-out chord."
     },
     {
       "question": "What is a backend row's offset?",
@@ -1941,7 +1934,7 @@
       "owner_file": "src/core/model.cpp",
       "owner_symbol": "BackendSqueeze::offset",
       "date": "2026-10-05",
-      "decision": "D53, D54",
+      "decision": "audit finding 346; phase 6 task J3-1 (D53, D54)",
       "added_by": "J3-1",
       "pattern": "offset_ms\\.value_or\\(",
       "anchor": "offset_ms.value_or(",
@@ -1953,7 +1946,7 @@
         "if (!sqout || !sqout->offset_ms || *sqout->offset_ms != sq.offset_ms)",
         "const double off = offset();"
       ],
-      "note": "The value_or fallback. A bare dereference of the optional reads the same fact; the J3-9 row at the end of rules() scans for those. Decided by: audit finding 346; phase 6 task J3-1 (D53, D54)"
+      "note": "The value_or fallback. A bare dereference of the optional reads the same fact; the J3-9 row at the end of rules() scans for those."
     },
     {
       "question": "Which lanes may carry a flag, and what does the flag mean?",
@@ -1961,7 +1954,7 @@
       "owner_file": "src/core/model.cpp",
       "owner_symbol": "lane_allows_flag",
       "date": "2026-10-05",
-      "decision": "D53, D54",
+      "decision": "audit finding 190; phase 6 task J3-1 (D53, D54)",
       "added_by": "J3-1",
       "pattern": "[!=]=\\s*NoteColor::Kick\\b.*(is2x|cymbal|\\)\\s*\\{\\s*$)",
       "anchor": "NoteColor::Kick",
@@ -1996,7 +1989,7 @@
         "src",
         "tests"
       ],
-      "note": "A comparison with the kick lane beside a flag field, or opening a branch, decides the flag split itself. Decided by: audit finding 190; phase 6 task J3-1 (D53, D54)"
+      "note": "A comparison with the kick lane beside a flag field, or opening a branch, decides the flag split itself."
     },
     {
       "question": "What is a note's dynamic called in text?",
@@ -2004,7 +1997,7 @@
       "owner_file": "src/core/model.cpp",
       "owner_symbol": "dynamic_str",
       "date": "2026-10-05",
-      "decision": "D53, D54",
+      "decision": "audit finding 241; phase 6 task J3-1 (D53, D54)",
       "added_by": "J3-1",
       "pattern": "\"[ (]*(Ghost|Accent)\\)?\"",
       "must_match": [
@@ -2018,7 +2011,7 @@
       "scope": [
         "src"
       ],
-      "note": "Tests pin the shown text and may type it. \"Ghost Notes:\" is a score category's name, a different question. Decided by: audit finding 241; phase 6 task J3-1 (D53, D54)"
+      "note": "Tests pin the shown text and may type it. \"Ghost Notes:\" is a score category's name, a different question."
     },
     {
       "question": "How is a squeeze kind spelled?",
@@ -2026,7 +2019,7 @@
       "owner_file": "src/core/model.h",
       "owner_symbol": "type_name",
       "date": "2026-10-05",
-      "decision": "D53, D54",
+      "decision": "audit finding 203; phase 6 task J3-1 (D53, D54)",
       "added_by": "J3-1",
       "pattern": "\"(SqIn|SqOut)\"",
       "must_match": [
@@ -2052,7 +2045,7 @@
           "why": "a column title the user reads, not a kind read from data (derive-once review of RW-T3, finding 1)"
         }
       ],
-      "note": "Test JSON fixtures pin the wire format and stay out of scope. Decided by: audit finding 203; phase 6 task J3-1 (D53, D54)"
+      "note": "Test JSON fixtures pin the wire format and stay out of scope."
     },
     {
       "question": "How is a multiplier squeeze written as text?",
@@ -2060,7 +2053,7 @@
       "owner_file": "src/core/model.cpp",
       "owner_symbol": "MultSqueeze::notationstr",
       "date": "2026-10-05",
-      "decision": "D53, D54",
+      "decision": "audit finding 248; phase 6 task J3-1 (D53, D54)",
       "added_by": "J3-1",
       "pattern": "multiplier\\(\\)\\)\\s*\\+\\s*\"x\"",
       "anchor": "multiplier())",
@@ -2079,8 +2072,7 @@
       ],
       "scope": [
         "src"
-      ],
-      "note": "Decided by: audit finding 248; phase 6 task J3-1 (D53, D54)"
+      ]
     },
     {
       "question": "Which activations does a path have, and in what order?",
@@ -2088,7 +2080,7 @@
       "owner_file": "src/core/model.h",
       "owner_symbol": "ActivationWalk",
       "date": "2026-10-05",
-      "decision": "D53, D54",
+      "decision": "audit finding 268; phase 6 task J3-1 (D53, D54)",
       "added_by": "J3-1",
       "pattern": "variant_tail\\.(begin|end|empty)\\(\\)",
       "anchor": "variant_tail.",
@@ -2103,7 +2095,7 @@
       "scope": [
         "src"
       ],
-      "note": "prepare_variants writes the tail; only reading it is the question. Decided by: audit finding 268; phase 6 task J3-1 (D53, D54)"
+      "note": "prepare_variants writes the tail; only reading it is the question."
     },
     {
       "question": "What is a path's total score?",
@@ -2111,7 +2103,7 @@
       "owner_file": "src/core/model.h",
       "owner_symbol": "score_total",
       "date": "2026-10-05",
-      "decision": "D53, D54",
+      "decision": "audit finding 165; phase 6 task J3-1 (D53, D54)",
       "added_by": "J3-1",
       "pattern": "notes_points\\s*\\+\\s*score_combo\\s*\\+\\s*score_sp|\\bnotes\\s*\\+\\s*combo\\s*\\+\\s*sp\\s*\\+\\s*solo\\b",
       "anchor": "combo",
@@ -2133,7 +2125,7 @@
       "scope": [
         "src"
       ],
-      "note": "The engine's running p.score is a different sum, per edge; task J3-2 checks it against score_total at copy-out. Decided by: audit finding 165; phase 6 task J3-1 (D53, D54)"
+      "note": "The engine's running p.score is a different sum, per edge; task J3-2 checks it against score_total at copy-out."
     },
     {
       "question": "How many SP bars does an activation need?",
@@ -2141,7 +2133,7 @@
       "owner_file": "src/core/timing.h",
       "owner_symbol": "kSpActivationBars",
       "date": "2026-10-05",
-      "decision": "D54",
+      "decision": "audit finding 334; D54 (kSpActivationBars, a code-only call); M7-2a review row 3; phase 6 task J3-2",
       "added_by": "J3-2",
       "pattern": "\\bsp(_bars)?\\s*(<|>=)\\s*2\\b|\\bkept\\s*<\\s*2\\b|for \\(int sp = 2\\b|sp_cap\\s*==\\s*1\\b",
       "must_match": [
@@ -2157,7 +2149,7 @@
       "scope": [
         "src"
       ],
-      "note": "---- phase 6 task J3-2: the graph, the engine and the replay ---- The engine's message \"a variant under 2 bars at its fold passed a fill\" names the number in words and is not a comparison. Decided by: audit finding 334; D54 (kSpActivationBars, a code-only call); M7-2a review row 3; phase 6 task J3-2"
+      "note": "---- phase 6 task J3-2: the graph, the engine and the replay ---- The engine's message \"a variant under kSpActivationBars at its fold passed a fill\" names the constant and is not a comparison."
     },
     {
       "question": "How is a little-endian number written byte by byte? (any width or name)",
@@ -2165,7 +2157,7 @@
       "owner_file": "src/core/little_endian.h",
       "owner_symbol": "read_le",
       "date": "2026-10-05",
-      "decision": "D53",
+      "decision": "audit finding 195, folded under D53 (phase 6 tasks J3-6 and J3-9d); widened by review of J3-6 finding 1 and by J3-9d; tests scanned since the J3 join; writing folded in the J3 review fix",
       "added_by": "J3-9",
       "pattern": "\\b(uint16_t|uint32_t|uint64_t|size_t|void|std::vector<uint8_t>)\\s+(read|write)_(u16_|u32_|u64_)?le\\(|<<\\s*\\(8\\s*\\*\\s*i\\)|>>\\s*\\(8\\s*\\*\\s*i\\)|\\b\\w*le(16|32|64)\\s*\\(\\s*const\\s+(uint8_t|unsigned char)\\s*\\*|\\|\\s*\\(*\\s*(static_cast<\\w+>|u?int\\d*_t)?\\s*\\(*\\s*[\\w.>-]+\\[[^\\]]*\\]\\s*\\)*\\s*<<\\s*8\\b",
       "must_match": [
@@ -2215,7 +2207,7 @@
         "src",
         "tests"
       ],
-      "note": "A hand-written little-endian helper beside the shared codec. The byte-at-a-time shift loop is the form most copies use, whatever the helper is called. A fully unrolled helper with no telling name is not caught. The hash's byte loops store no number, so they are listed as owner lines, not copies (review of J3-6 finding 1). The J2-5 row's question is the same with the u32 helper names; the suffix keeps the two rows' questions apart. Reading moved down to core/ in task J3-9d, because parse/ cannot include store/; the pattern also catches a helper named for its width alone (le32) and the second byte of an unrolled read OR-ed in shifted by 8. A big-endian read (MIDI) and the hash's XOR-ed tail bytes are other questions and are not flagged. Decided by: audit finding 195, folded under D53 (phase 6 tasks J3-6 and J3-9d); widened by review of J3-6 finding 1 and by J3-9d; tests scanned since the J3 join; writing folded in the J3 review fix"
+      "note": "A hand-written little-endian helper beside the shared codec. The byte-at-a-time shift loop is the form most copies use, whatever the helper is called. A fully unrolled helper with no telling name is not caught. The hash's byte loops store no number, so they are listed as owner lines, not copies. The row for the u32 helper names asks the same question; the suffix keeps the two rows' questions apart. The codec lives in core/ because parse/ cannot include store/. The pattern also catches a helper named for its width alone (le32) and the second byte of an unrolled read OR-ed in shifted by 8. A big-endian read (MIDI) and the hash's XOR-ed tail bytes are other questions and are not flagged."
     },
     {
       "question": "How many paths did a record keep?",
@@ -2223,7 +2215,7 @@
       "owner_file": "src/core/model.h",
       "owner_symbol": "all_paths",
       "date": "2026-10-05",
-      "decision": "D53",
+      "decision": "audit finding 172, folded under D53 (phase 6 task J3-6)",
       "added_by": "J3-6",
       "pattern": "\\+=\\s*\\w+\\.tied_pathcount\\(\\)",
       "anchor": ".tied_pathcount()",
@@ -2233,7 +2225,7 @@
       "must_not_match": [
         "tied_count += v.tied_count;"
       ],
-      "note": "Summing each root's tied count instead of counting all_paths(). Decided by: audit finding 172, folded under D53 (phase 6 task J3-6)"
+      "note": "Summing each root's tied count instead of counting all_paths()."
     },
     {
       "question": "What is a backend row's offset? (a bare dereference)",
@@ -2241,7 +2233,7 @@
       "owner_file": "src/core/model.cpp",
       "owner_symbol": "BackendSqueeze::offset",
       "date": "2026-10-05",
-      "decision": "audit finding 346",
+      "decision": "audit finding 346; the J3 join (task J3-9)",
       "added_by": "J3-9",
       "pattern": "(^|[(,=!&|?:{]|\\breturn)\\s*\\*\\s*(\\w+(\\.|->)|\\w+\\(\\)(\\.|->))*offset_ms\\b",
       "anchor": "offset_ms",
@@ -2262,7 +2254,7 @@
           "why": "BackendSqueeze::offset, the owner"
         }
       ],
-      "note": "---- the J3 join's leftovers (task J3-9) ---- The J3-1 offset row above catches the value_or fallback; this one catches a bare dereference of the same optional. The star must follow an opening, an operator or return, so a product with a local named offset_ms is not flagged. Tests pin stored offsets and stay out of scope. Decided by: audit finding 346; the J3 join (task J3-9)"
+      "note": "---- the J3 join's leftovers (task J3-9) ---- The J3-1 offset row above catches the value_or fallback; this one catches a bare dereference of the same optional. The star must follow an opening, an operator or return, so a product with a local named offset_ms is not flagged. Tests pin stored offsets and stay out of scope."
     },
     {
       "question": "Which position does a backend row take when the Paths tab prices it?",
@@ -2270,7 +2262,7 @@
       "owner_file": "src/core/backend_value.h",
       "owner_symbol": "sqout_position",
       "date": "2026-10-05",
-      "decision": "D53, D54",
+      "decision": "audit findings 150 and 346; phase 6 task J3-3 (D53, D54)",
       "added_by": "J3-3",
       "pattern": "SqOutPosition::(Exact|NoSqOut)\\b",
       "anchor": "SqOutPosition::",
@@ -2289,7 +2281,7 @@
       "scope": [
         "src"
       ],
-      "note": "---- phase 6 tasks J3-3, J3-4 and J3-5 ---- A line that asks sqout_position for the position, as Activation::is_sqout_backend does, passes. Decided by: audit findings 150 and 346; phase 6 task J3-3 (D53, D54)"
+      "note": "---- phase 6 tasks J3-3, J3-4 and J3-5 ---- A line that asks sqout_position for the position, as Activation::is_sqout_backend does, passes."
     },
     {
       "question": "How is wide text converted to UTF-8 in a test?",
@@ -2297,7 +2289,7 @@
       "owner_file": "src/core/winstr.cpp",
       "owner_symbol": "wide_to_utf8",
       "date": "2026-10-05",
-      "decision": "D53, D54",
+      "decision": "audit finding 287 (test_srb.cpp's hand conversion); phase 6 task J4-6 (D53, D54)",
       "added_by": "J4-6",
       "pattern": "\\bWideCharToMultiByte\\(",
       "anchor": "WideCharToMultiByte(",
@@ -2312,7 +2304,7 @@
       "scope": [
         "tests"
       ],
-      "note": "The owner lives in src, so no line under tests/ is an owner line. Decided by: audit finding 287 (test_srb.cpp's hand conversion); phase 6 task J4-6 (D53, D54)"
+      "note": "The owner lives in src, so no line under tests/ is an owner line."
     },
     {
       "question": "What multiplier does each note in a chord score at? (tests)",
@@ -2320,7 +2312,7 @@
       "owner_file": "src/core/scoring.cpp",
       "owner_symbol": "category_scores",
       "date": "2026-10-05",
-      "decision": "D53, D54",
+      "decision": "audit finding 266; phase 6 task J4-5 (D53, D54)",
       "added_by": "J4-5",
       "pattern": "to_multiplier\\([\\w.]+ \\+ 1",
       "anchor": "to_multiplier(",
@@ -2335,7 +2327,7 @@
       "scope": [
         "tests"
       ],
-      "note": "A test that adds one to a combo to find a note's multiplier, where category_scores already stamps it. Decided by: audit finding 266; phase 6 task J4-5 (D53, D54)"
+      "note": "A test that adds one to a combo to find a note's multiplier, where category_scores already stamps it."
     },
     {
       "question": "What running total does the score box show during a solo? (tests)",
@@ -2343,7 +2335,7 @@
       "owner_file": "src/core/replay.cpp",
       "owner_symbol": "replay_path",
       "date": "2026-10-05",
-      "decision": "D53, D54",
+      "decision": "audit finding 281; phase 6 task J4-5 (D53, D54)",
       "added_by": "J4-5",
       "pattern": "\\.cum\\.total\\(\\)\\s*-\\s*",
       "anchor": ".cum.total()",
@@ -2356,7 +2348,7 @@
       "scope": [
         "tests"
       ],
-      "note": "A test that takes the solo bonus back off the running total itself. Decided by: audit finding 281; phase 6 task J4-5 (D53, D54)"
+      "note": "A test that takes the solo bonus back off the running total itself."
     },
     {
       "question": "Which Path field holds which ReplayScore category?",
@@ -2364,7 +2356,7 @@
       "owner_file": "src/core/replay.cpp",
       "owner_symbol": "score_of",
       "date": "2026-10-05",
-      "decision": "D53, D54",
+      "decision": "audit finding 282; phase 6 task J4-5 (D53, D54)",
       "added_by": "J4-5",
       "pattern": "score_ghosts\\s*=\\s*\\w+\\.ghost",
       "anchor": "score_ghosts",
@@ -2386,7 +2378,7 @@
         "tools",
         "tests"
       ],
-      "note": "Copying a ReplayScore into a Path field by field anywhere but assign_score. Decided by: audit finding 282; phase 6 task J4-5 (D53, D54)"
+      "note": "Copying a ReplayScore into a Path field by field anywhere but assign_score."
     },
     {
       "question": "Which SP cap does the leaderboard comparison need? (tests)",
@@ -2394,7 +2386,7 @@
       "owner_file": "src/core/model.h",
       "owner_symbol": "kCloneHeroSpCap",
       "date": "2026-10-05",
-      "decision": "D53, D54",
+      "decision": "audit finding 296; phase 6 task J4-3 (D53, D54)",
       "added_by": "J4-3",
       "pattern": "sp_cap = 4;",
       "anchor": "sp_cap = 4;",
@@ -2418,7 +2410,7 @@
         "tests/ui/uitest_script.cpp",
         "tests/ui/uitest_tests.cpp"
       ],
-      "note": "The GUI tests put the cap back where the Compare button accepts it. Other caps they set are deliberate what-ifs, and the unit tests' engine settings are a different question. Decided by: audit finding 296; phase 6 task J4-3 (D53, D54)"
+      "note": "The GUI tests put the cap back where the Compare button accepts it. Other caps they set are deliberate what-ifs, and the unit tests' engine settings are a different question."
     },
     {
       "question": "Is a timing inside a ms limit?",
@@ -2426,7 +2418,7 @@
       "owner_file": "src/core/model.h",
       "owner_symbol": "timing_within_limit",
       "date": "2026-10-06",
-      "decision": "D85",
+      "decision": "derive-once review of D85, finding 1; audit finding 152",
       "added_by": "ALLZERO",
       "pattern": "(<=|[^-]>)\\s*\\*?(\\w+(\\.|->))*(limit_ms|ms_filter_)\\b|(<=|[^-]>)\\s*(\\*\\s*(\\w+(\\.|->))*|(\\w+(\\.|->))+)squeeze_max_ms\\b|\\b(limit_ms|ms_filter_|squeeze_max_ms)\\s*(>=|<)",
       "must_match": [
@@ -2449,7 +2441,7 @@
           "why": "timing_within_limit, the owner"
         }
       ],
-      "note": "Any comparison against a ms limit by its name, on either side. The walks (Engine::act_within_limit, Activation::within_ms_limit) call SPSqueeze::within_limit and fill_within_limit, which ask the owner. Decided by: derive-once review of D85, finding 1; audit finding 152"
+      "note": "Any comparison against a ms limit by its name, on either side. The walks (Engine::act_within_limit, Activation::within_ms_limit) call SPSqueeze::within_limit and fill_within_limit, which ask the owner."
     },
     {
       "question": "Does a timing reach a ms floor?",
@@ -2457,7 +2449,7 @@
       "owner_file": "src/core/model.h",
       "owner_symbol": "timing_reaches_floor",
       "date": "2026-10-24",
-      "decision": "SQZ-GT-REVIEW",
+      "decision": "SQZ-GT-REVIEW; derive-once review of SQZ-GT; D266",
       "added_by": "SQZ-GT-REVIEW",
       "pattern": "(>=|<|[^-]>)\\s*(\\*\\s*(\\w+(\\.|->))*|(\\w+(\\.|->))+)squeeze_min_ms\\b|\\b(floor_ms|squeeze_min_ms)\\s*(<=|>|<)|(>=|<)\\s*\\*?(\\w+(\\.|->))*floor_ms\\b|(>=|<)\\s*(\\*\\s*(\\w+(\\.|->))*|(\\w+(\\.|->))+)squeeze_max_ms\\b|\\bsqueeze_max_ms\\s*(<=|>(?!=))",
       "must_match": [
@@ -2484,7 +2476,7 @@
           "why": "timing_reaches_floor, the owner"
         }
       ],
-      "note": "Any comparison against a ms floor by its name, on either side, and any strict below-the-limit comparison against squeeze_max_ms, since squeeze<N is the negation of this owner (D266). squeeze>N is the negation of timing_within_limit, which its own row covers. Decided by: derive-once review of SQZ-GT; D266"
+      "note": "Any comparison against a ms floor by its name, on either side, and any strict below-the-limit comparison against squeeze_max_ms, since squeeze<N is the negation of this owner (D266). squeeze>N is the negation of timing_within_limit, which its own row covers."
     },
     {
       "question": "What text separates the sections of Hydra's long Copy path text?",
@@ -2492,7 +2484,7 @@
       "owner_file": "src/core/model.h",
       "owner_symbol": "kPathSectionSeparator",
       "date": "2026-10-29",
-      "decision": "the Path Builder plan, task PB-3b (read both forms)",
+      "decision": "the Path Builder plan, task PB-3b (the user's ruling \"Read both forms\")",
       "added_by": "PB-3b review",
       "pattern": "\" \\| \"",
       "anchor": "\" | \"",
@@ -2513,7 +2505,7 @@
       "scope": [
         "src"
       ],
-      "note": "The long text's sections are joined and cut at one constant. A second \" | \" literal in src is a second copy of the separator that the writer could change without it. Decided by: the Path Builder plan, task PB-3b (the user's ruling \"Read both forms\")"
+      "note": "The long text's sections are joined and cut at one constant. A second \" | \" literal in src is a second copy of the separator that the writer could change without it."
     },
     {
       "question": "In what order does a chord list its notes?",
@@ -2521,7 +2513,7 @@
       "owner_file": "src/core/model.cpp",
       "owner_symbol": "Chord::note_list",
       "date": "2026-10-06",
-      "decision": "D86",
+      "decision": "D86, the speedups plan's task G1",
       "added_by": "G1",
       "pattern": "[<>]\\s*[\\w.\\[\\]\\s\\-]*\\.basescore\\(\\)",
       "anchor": ".basescore()",
@@ -2542,7 +2534,7 @@
       "scope": [
         "src"
       ],
-      "note": "A chord's note order prices it: ties keep lane order, and the first note is the one a squeeze-out takes. One function sorts; a second sort on basescore, stable_sort's comparator or an insertion sort's shift test, could break ties another way. Decided by: D86, the speedups plan's task G1"
+      "note": "A chord's note order prices it: ties keep lane order, and the first note is the one a squeeze-out takes. One function sorts; a second sort on basescore, stable_sort's comparator or an insertion sort's shift test, could break ties another way."
     },
     {
       "question": "How many notes can a chord hold?",
@@ -2581,7 +2573,7 @@
       "owner_file": "src/core/app_version.h",
       "owner_symbol": "parse_version",
       "date": "2026-10-22",
-      "decision": "D259 (docs/development.md, \"The version rule\")",
+      "decision": "the user's yes to D259; docs/development.md, \"The version rule\" (2026-10-22)",
       "added_by": "UPD-T2a",
       "pattern": "\\bHYDRA_VERSION\\s*(==|!=|<=?([^<]|$)|>=?([^>]|$))|(==|!=|(^|[^<])<=?|(^|[^>])>=?)\\s*HYDRA_VERSION\\b|%[du]\\.%[du]\\.%[du]|\\[\"tag_name\"\\]\\s*(==|!=|<|>)",
       "must_match": [
@@ -2601,7 +2593,7 @@
       "owner_files": [
         "src/core/app_version.h"
       ],
-      "note": "Versions are compared as three numbers, never as text (2.9.1 is older than 2.10.2). Code that compares versions reads both through parse_version (the running one through running_version) and compares AppVersion values. Decided by: the user's yes to D259; docs/development.md, \"The version rule\" (2026-10-22)"
+      "note": "Versions are compared as three numbers, never as text (2.9.1 is older than 2.10.2). Code that compares versions reads both through parse_version (the running one through running_version) and compares AppVersion values."
     },
     {
       "question": "What is the version text the user reads?",
@@ -2632,7 +2624,7 @@
           "why": "named_version, the owner: the version bar's name and every update sentence that names a version call it"
         }
       ],
-      "note": "The app's name and a version are joined in one place, so the bar's name and the update sentences read the same. A name built by hand from HYDRA_APP_NAME and a space, or a literal \"Hydra Deluxe \" before a version, is a second copy. Sentences that name the app without a version (the not-installed line, the window title) are not this question. Decided by: D260"
+      "note": "The app's name and a version are joined in one place, so the bar's name and the update sentences read the same. A name built by hand from HYDRA_APP_NAME and a space, or a literal \"Hydra Deluxe \" before a version, is a second copy. Sentences that name the app without a version (the not-installed line, the window title) are not this question."
     },
     {
       "question": "Do these two paths name one folder?",
@@ -2640,7 +2632,7 @@
       "owner_file": "src/core/winstr.cpp",
       "owner_symbol": "same_folder",
       "date": "2026-10-31",
-      "decision": "AOA-W3 V3-SN5 (the user approved walking a repeated song folder once)",
+      "decision": "AOA-W3 V3-SN5 (the user approved walking a repeated song folder once); AOA-W3 V3-SN5 (the Song folders scan lists a repeated folder once)",
       "added_by": "AOA-W3-F3 review",
       "pattern": "\\bCompareStringOrdinal\\(",
       "anchor": "CompareStringOrdinal(",
@@ -2653,7 +2645,7 @@
       "must_not_match": [
         "return same_folder(here, wide_to_utf8(registered));"
       ],
-      "note": "Two folders spelled with another letter case, slash direction, trailing separator or long-path prefix are one folder. A second comparison of two paths worked out by hand (the way installed_by_setup once did) can disagree with the scan. The test helper is_under_temp in tests/temp_util.h asks whether a path lies below the temp folder, a different question, and is outside this row's scope. Decided by: AOA-W3 V3-SN5 (the Song folders scan lists a repeated folder once)"
+      "note": "Two folders spelled with another letter case, slash direction, trailing separator or long-path prefix are one folder. A second comparison of two paths worked out by hand can disagree with the scan. The test helper is_under_temp in tests/temp_util.h asks whether a path lies below the temp folder, a different question, and is outside this row's scope."
     }
   ]
 }

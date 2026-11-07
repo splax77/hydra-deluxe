@@ -6,7 +6,7 @@
       "owner_file": "src/core/winstr.cpp",
       "owner_symbol": "is_path_separator",
       "date": "2026-10-11",
-      "decision": "concept audit M75 (code-only)",
+      "decision": "concept audit M75 (code-only, 2026-10-11)",
       "added_by": "concept-G2",
       "pattern": "==\\s*'\\\\\\\\'\\s*\\|\\||\\|\\|\\s*[\\w.()]+\\s*==\\s*'\\\\\\\\'",
       "scope": ["src"],
@@ -31,7 +31,7 @@
         "while (!path.empty() && is_path_separator(path.back())) path.pop_back();",
         "if (c == '\\\\') c = '/';"
       ],
-      "note": "M75 found the trailing-separator trim spelled three times (parent_folder once, relpath twice) and the separator test twice more. trim_trailing_separators and is_path_separator in core/winstr now own them. base_name in preview_source.cpp keeps its own find_last_of cut: its callers never pass a trailing separator. Decided by: concept audit M75 (code-only, 2026-10-11)"
+      "note": "trim_trailing_separators and is_path_separator in core/winstr own the trailing-separator trim and the separator test. base_name in preview_source.cpp keeps its own find_last_of cut: its callers never pass a trailing separator."
     }
   ]
 }
