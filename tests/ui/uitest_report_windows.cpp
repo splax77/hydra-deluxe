@@ -82,6 +82,11 @@ struct Fixture {
     // table's widths as the rule gives them (note_rule_widths).
     bool want_rule_widths = false;
     std::vector<float> rule_widths;
+    // report-window-chip-outline: when set, each frame draws a tn chip and a
+    // t0 chip (note_chip_vertices) and keeps what each added to the draw list.
+    bool want_chip_vertices = false;
+    int tn_chip_vertices = 0;
+    int t0_chip_vertices = 0;
 };
 
 Fixture& fixture() {
@@ -165,6 +170,28 @@ void note_rule_widths() {
     ImGui::End();
 }
 
+// The vertices one chip adds to the current window's draw list. The label is
+// the same for every token, so the glyphs add the same number each time.
+int chip_vertices(hydra::app::report::ChipToken token) {
+    const ImDrawList* list = ImGui::GetWindowDrawList();
+    const int before = list->VtxBuffer.Size;
+    hydra::ui::report_frame::chip("Sample chip", token);
+    return list->VtxBuffer.Size - before;
+}
+
+// Draws the two chips in a window of their own, big enough that neither is
+// clipped, and notes what each added.
+void note_chip_vertices() {
+    using hydra::app::report::ChipToken;
+    Fixture& f = fixture();
+    ImGui::SetNextWindowPos(ImGui::GetMainViewport()->WorkPos);
+    ImGui::SetNextWindowSize(ImVec2(400.0f, 160.0f));
+    ImGui::Begin("###chipoutline", nullptr, ImGuiWindowFlags_NoSavedSettings);
+    f.tn_chip_vertices = chip_vertices(ChipToken::tn);
+    f.t0_chip_vertices = chip_vertices(ChipToken::t0);
+    ImGui::End();
+}
+
 // Runs `Test` with the app's frame leaving the report windows to
 // draw_windows. Each window keeps one state for the process, so the app's
 // own call, with AppState's empty input, would otherwise drop the rows the
@@ -185,6 +212,7 @@ void draw_windows(ImGuiTestContext*) {
     f.text.assign(g.LogBuffer.begin(), g.LogBuffer.end());
     ImGui::LogFinish();
     if (f.want_rule_widths) note_rule_widths();
+    if (f.want_chip_vertices) note_chip_vertices();
 }
 
 // Today at hour:minute, local time.
@@ -633,6 +661,20 @@ void test_chip_label(ImGuiTestContext* ctx) {
     }
     for (size_t c = 0; c < columns.size(); ++c)
         if (columns[c].numeric) IM_CHECK(read[c]);
+}
+
+// A tn chip draws the outline a t0 chip does (D308 item 5). The two hold the
+// same words, so a chip that left its outline out would add fewer vertices.
+void test_chip_outline(ImGuiTestContext* ctx) {
+    reset_app(harness(ctx));
+    reset_fixture();
+    Fixture& f = fixture();
+    f.want_chip_vertices = true;
+    ctx->Yield(3);
+    ctx->LogInfo("vertices: tn chip %d, t0 chip %d", f.tn_chip_vertices, f.t0_chip_vertices);
+    IM_CHECK_GT(f.t0_chip_vertices, 0);
+    IM_CHECK_EQ(f.tn_chip_vertices, f.t0_chip_vertices);
+    f.want_chip_vertices = false;
 }
 
 // With the window wide, every column is as wide as the rule says for the
@@ -1557,6 +1599,7 @@ void register_report_window_tests(Harness& h) {
         {"report-window-hidden-new-result", drawn_by_fixture<test_hidden_new_result>},
         {"report-windows-both", drawn_by_fixture<test_both>},
         {"report-window-chip-label", drawn_by_fixture<test_chip_label>},
+        {"report-window-chip-outline", drawn_by_fixture<test_chip_outline>},
         {"report-window-column-widths", drawn_by_fixture<test_column_widths>},
         {"report-window-cells-left", drawn_by_fixture<test_cells_left>},
         {"report-window-header-narrow", drawn_by_fixture<test_header_narrow>},

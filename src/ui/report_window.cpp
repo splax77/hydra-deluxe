@@ -385,13 +385,9 @@ void chip(const std::string& text, ChipToken token) {
     ImGui::PushStyleColor(ImGuiCol_Text, color);
     ImGui::TextUnformatted(text.c_str());
     ImGui::PopStyleColor();
-    // The pages drew the no-squeeze and not-in-library chips (tn) without an
-    // outline.
-    if (token != ChipToken::tn) {
-        const float h = ImGui::GetTextLineHeight();
-        ImGui::GetWindowDrawList()->AddRect(pos, ImVec2(ImGui::GetItemRectMax().x + pad, pos.y + h),
-                                            ImGui::GetColorU32(color), h * 0.5f);
-    }
+    const float h = ImGui::GetTextLineHeight();
+    ImGui::GetWindowDrawList()->AddRect(pos, ImVec2(ImGui::GetItemRectMax().x + pad, pos.y + h),
+                                        ImGui::GetColorU32(color), h * 0.5f);
 }
 
 std::string row_number(size_t k) { return group_thousands(static_cast<int64_t>(k) + 1); }
