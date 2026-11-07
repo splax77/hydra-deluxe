@@ -6,4 +6,4 @@ Listing: `note_is_activation_214BB50.asm`, build 6142, made 2026-10-30 with `too
 - Line 2: `seta al`: the result is true when the flag bit is set.
 - Line 3: return.
 
-The drum hit handlers call this to decide whether the hit note starts Star Power (see SP-17 on page 5).
+Five drum hit handlers call this to decide whether the hit note starts Star Power (SP-17 on page 5 names them).

@@ -8,11 +8,11 @@ Lines 36-47: read the instrument byte; instrument 9 (ProDrums) is mapped to 6 (D
 
 Lines 48-62: ask 0x20CFD40 for the track of this instrument and difficulty (`rbp`). Then `0x20D4BE0` builds the note list (`rdi`).
 
-Lines 63-130: make a new measure-grid object (`r13`, later `[rsp+0xb8]`), give it three empty lists, then `0x20DACA0` fills it (the grid restart at a meter change; see FL-26 on page 4).
+Lines 63-130: make a new measure-grid object (`r13`, later `[rsp+0xb8]`), give it four empty lists, then `0x20DACA0` fills it (the grid restart at a meter change; see FL-26 on page 4).
 
 Lines 131-146: stop if the note list is empty (line 137-138); set `r13d` to 0 (line 134). Nothing writes `r13` again before line 285.
 
-Lines 147-152: read the modifier int (`[settings+4]`) into `ebx`; call `0x20D12C0` for a list in `r14`.
+Line 139 reads the modifier int (`[settings+4]`) into `ebx`. Lines 147-152: call `0x20D12C0` for a list in `r14`.
 
 Lines 153-156: instrument 6 or 9 jumps to line 228 (the drum path). Any other instrument goes on to lines 157-189, where each set modifier bit calls its own transform (Note Shuffle is the `0x40` bit, line 157-162), and all of those paths end at line 207 with a jump to line 302, past every fill line. So other instruments never reach the fill test.
 
