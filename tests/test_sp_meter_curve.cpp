@@ -178,14 +178,12 @@ TEST_CASE("sp meter curve: a full bank that collects a phrase and stores no row"
     //
     // A four-bar activation collects one SP phrase while Star Power is
     // running, and no note lands within the engine's 500 ms squeeze window
-    // after the deactivation node. So the record stores no backend row at all,
-    // and the old code had nothing to read the node out of: it fell back to
-    // "two measures per banked bar", which cannot see the collection. The
-    // meter emptied two measures early and then showed a bar it had never
-    // banked.
+    // after the deactivation node. So the record stores no backend row at all.
+    // Two measures per banked bar cannot see the collection: that count would
+    // empty the meter two measures early and then show a bar never banked.
     //
-    // Now the search stamps the node and the Preview just reads it. Eight
-    // measures for the four banked bars plus two for the collection: ten.
+    // The search stamps the node and the Preview just reads it. Eight measures
+    // for the four banked bars plus two for the collection: ten.
     //
     // The phrase's last note sits 3 and 15/16 measures into the window, off
     // the quarter-note grid, so the drain is caught mid-measure on both sides
@@ -230,9 +228,8 @@ TEST_CASE("sp meter curve: two clamped collections refill twice and empty at the
     // Cap 2. Two phrases bank 2 bars; the activation at tick 2304 (6000 ms)
     // spends them. The phrases at 3072 (8000 ms) and 3840 (10000 ms) are both
     // collected during SP, and each one clamps at the cap. The engine puts
-    // the deact node at 6912 (18000 ms). The old gauge counted the
-    // collections off the deact node: (9 - 3) / 2 - 2 = 1, so it drew one
-    // refill and then showed a bar after SP ended that was never banked.
+    // the deact node at 6912 (18000 ms). The curve draws both refills, and no
+    // bar shows after SP ends.
     Song song = make_overfill_song();
     ScoreGraph graph(song, 2);
     std::vector<Path> paths = run_search(graph, EngineOptions{});
