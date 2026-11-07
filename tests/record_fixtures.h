@@ -154,8 +154,8 @@ inline Song build_tail_song(const std::vector<TailNote>& notes) {
 // 2304 activates, so SP ends at X = 2304 + 4 measures = 5376. The phrase at
 // 5280 sits 250 ms before X: collecting it is the SqIn, and moves the end to
 // 6912. The phrase at 6144 is then collected mid-SP and moves it to 8448.
-// The tempo halves at 6000, so X (120 BPM) and D (60 BPM) differ, and the old
-// "D minus two measures" rebuild (6912, 60 BPM) is wrong.
+// The tempo halves at 6000, so X (120 BPM) and the deact tick D (60 BPM)
+// differ, and D minus two measures (6912, 60 BPM) is not X.
 inline Song sqin_then_collect_song() {
     return build_tempo_song({{0, true},  {768, true},  {1536},       {2304, false, true},
                              {3072},     {3840},       {4608},       {5280, true},
@@ -228,7 +228,7 @@ inline Song banked_phrase_window_song() {
 // activates at 13824 with two bars: SP end 16896 too, with the same score at
 // 13824. The SP end at 15360 has 12288 in its window. '1' can squeeze it out
 // there; '0 E0' banked it before its activation and cannot, so the two must
-// not be folded into one future. The trimmed review probe probe1.
+// not be folded into one future.
 inline Song banked_phrase_fold_song() {
     return build_tempo_song({{768, true},   {2304, true},  {4608, false, true}, {6144},
                              {8448, true},  {10752, false, true}, {12288, true},

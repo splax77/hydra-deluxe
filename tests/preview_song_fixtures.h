@@ -133,10 +133,9 @@ inline Song make_sp_song(const std::vector<int64_t>& phrase_ends, int64_t last_t
 }
 
 // An activation the engine could have recorded: a timecode, the bars it
-// spends, and the SP end the search stamped on it. Nothing derives that end
-// any more, so the fixture states it as a literal tick. The window is plain:
-// an activation that collects no phrase mid-SP. A fixture that collects one
-// states its whole SP-end history itself.
+// spends, and the SP end the search stamped on it, given as a literal tick.
+// The window is plain: an activation that collects no phrase mid-SP. A fixture
+// that collects one states its whole SP-end history itself.
 inline Activation sp_act_at(const Song& song, int64_t tick, int sp_meter, int64_t end_tick) {
     Activation a;
     a.timecode = song.timecode(tick);

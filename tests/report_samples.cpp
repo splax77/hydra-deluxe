@@ -10,8 +10,8 @@ using namespace hydra::app;
 
 std::vector<report::ReportRow> sample_path_rows() {
     std::vector<report::ReportRow> paths;
-    // The second argument names the chart mode a row was found under before
-    // the page listed one profile; the rows no longer carry it.
+    // The second argument names a chart mode. A row carries no mode, so the
+    // argument goes unused.
     auto add_path = [&](const std::string& song, const char* /*mode*/, int rank,
                         const std::string& path, int64_t score, std::optional<double> ms,
                         std::optional<double> efill) {

@@ -11,8 +11,9 @@
 #
 # The slices are balanced for the AddressSanitizer CI job, where four entries
 # run on four cores. The per-file times they rest on are in
-# docs/superpowers/plans/2026-10-24-asan-ci-speed.md (Task 2). A slice name is
-# only a label; a slice holds whatever files balance it.
+# docs/superpowers/plans/2026-10-24-asan-ci-speed.md, under "Local per-case
+# times under ASan". A slice name is only a label; a slice holds whatever files
+# balance it.
 
 single_owner *single_owner*,*test_library_jobs.cpp,*test_replay_windows.cpp,*test_precheck_git.cpp
 track_state *test_track_state.cpp,*test_preview_controller.cpp,*test_replay.cpp,*test_precheck.cpp

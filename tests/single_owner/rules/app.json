@@ -69,7 +69,7 @@
       ],
       "function_file": "src/app/preview_view.cpp",
       "function": "SpMeterCurve build_sp_meter_curve(",
-      "note": "Was its own Preview test, in the file now split into test_sp_meter_curve.cpp and its siblings (findings 147 and 159): the path gauge's body never touches the chart's phrases, the collected list, the bank count, the cap rule or the squeeze-in rule (that one lives in refill_tick). Scoped to that one function."
+      "note": "The path gauge's body never touches the chart's phrases, the collected list, the bank count, the cap rule or the squeeze-in rule (that one lives in refill_tick). Scoped to that one function."
     },
     {
       "question": "Which fill rule does a command-line run use?",
@@ -203,7 +203,7 @@
       "must_not_match": [
         "ImGui::SetTooltip(\"%s\", app::kNotAnalyzedText);"
       ],
-      "note": "The not-analyzed row's tooltip. The old copy was split over two source lines, so a rule on the whole sentence missed it; this one matches the sentence's first words, which sit on one line however the rest is split. kNotAnalyzedText is the one place it is typed."
+      "note": "The not-analyzed row's tooltip. A rule on the whole sentence would miss a copy split over two source lines, so this one matches the sentence's first words, which sit on one line however the rest is split. kNotAnalyzedText is the one place it is typed."
     },
     {
       "question": "What does a program say when it can't open a song file?",
@@ -380,7 +380,7 @@
           "why": "dynamics_row_label's guard: Count marks the end of the rows and names no row"
         }
       ],
-      "note": "---- M_D review follow-ups (phase 3 task FX-L) ---- A switch over the Dynamics rows, the 2x test that picks a kick row, or a test of a row against a named row (the old cymbal-row hide was \"r == app::DynamicsRow::YellowCymbal || ...\"): a second table of which note each row holds. The one table is kDynamicsRows in dynamics_breakdown.cpp, read through dynamics_row_info and dynamics_row_for."
+      "note": "A switch over the Dynamics rows, the 2x test that picks a kick row, or a test of a row against a named row: a second table of which note each row holds. The one table is kDynamicsRows in dynamics_breakdown.cpp, read through dynamics_row_info and dynamics_row_for."
     },
     {
       "question": "Which Dynamics rows are pad rows?",
@@ -410,7 +410,7 @@
         "tools",
         "tests"
       ],
-      "note": "Which Dynamics rows are pads, decided by cutting the row order at a named row. Four copies once did (pads_total, dynamics_for_settings, the Dynamics tab's pad table and a Note Shuffle test); a row added or moved in the enum would have split them. is_pad_row reads the row table instead."
+      "note": "Which Dynamics rows are pads, decided by cutting the row order at a named row. A row added or moved in the enum would split such a cut from the row table. is_pad_row reads the row table instead."
     },
     {
       "question": "Which words name a comparison row's status?",
@@ -704,7 +704,7 @@
         "tools",
         "tests"
       ],
-      "note": "A brace list of a scan row's fields, md5 first, pushed into the library's entries or built as a ChartLibraryEntry. Since concept audit M21 a scan row is the library entry itself (the ScanItem alias), so no conversion is needed and a positional copy is always a stray. The ScanJob's list of ScanItems read back from the library (items_) is the other direction, a different question."
+      "note": "A brace list of a scan row's fields, md5 first, pushed into the library's entries or built as a ChartLibraryEntry. A scan row is the library entry itself (the ScanItem alias), so no conversion is needed and a positional copy is always a stray. The ScanJob's list of ScanItems read back from the library (items_) is the other direction, a different question."
     },
     {
       "question": "How many workers does a batch get?",
@@ -884,7 +884,7 @@
           "why": "score_range_text, which describe_settings reads: the owner"
         }
       ],
-      "note": "A depth unit word chosen from the search's enum, or bench's header words. Since D114 item 9 the batch confirm, the settings button, the Paths tab's \"Within\" heading and hydra_batch's header all read score_range_text, so the owner's line is the only one."
+      "note": "A depth unit word chosen from the search's enum, or bench's header words. The batch confirm, the settings button, the Paths tab's \"Within\" heading and hydra_batch's header all read score_range_text, so the owner's line is the only one."
     },
     {
       "question": "What does the stars filter say when its number is out of range?",
@@ -928,7 +928,7 @@
       ],
       "function_file": "src/app/library_query.cpp",
       "function": "bool term_matches(",
-      "note": "Whether a term limited to one field counts in a column. Matching and highlighting each asked it their own way; both now call the owner. Any line naming QueryField::Any inside either function answers it again."
+      "note": "Whether a term limited to one field counts in a column. Matching and highlighting both call the owner. Any line naming QueryField::Any inside either function answers it again."
     },
     {
       "question": "Does a term apply to a column? (highlighting)",
@@ -985,7 +985,7 @@
     },
     {
       "question": "Where does the Beyond tier start on the report page?",
-      "owner": "beyond_edge_ms and tier_for, carried in the payload by src/app/report.cpp",
+      "owner": "beyond_edge_ms and tier_for, read in src/app/report.cpp",
       "owner_file": "src/app/report.cpp",
       "owner_symbol": "beyond_edge_ms",
       "date": "2026-10-04",
@@ -1003,7 +1003,7 @@
       "scope": [
         "src"
       ],
-      "note": "The path report's page script once found the Beyond edge as the largest tier cutoff and counted rows past it by their ms. The page now reads the edge from the payload and counts rows whose tier tier_for already set to Beyond."
+      "note": "The path report's Past tile prints the edge through beyond_edge_text and counts rows whose tier tier_for already set to Beyond (path_tiles in report.cpp). A page script that finds the edge from the tier cutoffs, or counts rows past it by their ms, answers this again."
     },
     {
       "question": "How many charts does a path report list?",
@@ -1125,7 +1125,7 @@
           "why": "Settings::with_chartmode, the owner"
         }
       ],
-      "note": "A search over the view choices for a chart mode: a difficulty set from a loop's enum, or a built key tested against a wanted one. report.cpp's settings_for_mode and AppState::select_chart each had one before the RW-T4 review."
+      "note": "A search over the view choices for a chart mode: a difficulty set from a loop's enum, or a built key tested against a wanted one."
     },
     {
       "question": "Why can't these settings be compared with the leaderboard?",
@@ -1500,7 +1500,7 @@
         "tests",
         "tools"
       ],
-      "note": "A profile rebuilt from a BatchRun's or a Settings' parts in a tool or a test, instead of taking run.profile or Settings::profile whole. A profile made of literals, as the store's own tests use, is a different question. The owner is in src, so no line in scope is an owner line; src and tools are also read by the d115-profile row. Before D115 this row asked which RecordKey a tool files a result under, with Settings::record_key as owner; RecordKey is gone."
+      "note": "A profile rebuilt from a BatchRun's or a Settings' parts in a tool or a test, instead of taking run.profile or Settings::profile whole. A profile made of literals, as the store's own tests use, is a different question. The owner is in src, so no line in scope is an owner line; src and tools are also read by the d115-profile row."
     },
     {
       "question": "Does this database have a chart library to report on?",
@@ -1554,7 +1554,7 @@
         "if (library.lists(r.song_id)) {",
         "{\"Charts shown\", group_thousands(library.count(ids_of(rows, shown)))},"
       ],
-      "note": "The path report and the comparison pages once each tested \"is this chart in the library\" against their own map (the naming-copy files and the copies). A page that looks a chart up in a library map itself can disagree with them about which charts the library lists. Since D115 every page asks store::ChartIndex::lists, the path report through report::library_lookup. A ChartIndex::count over the page's ids is the chart count's question, not this one."
+      "note": "A page that looks a chart up in a library map itself can disagree with the other pages about which charts the library lists. The DM comparison's status asks store::ChartIndex::lists. The path report, the DM comparison's results and the fill comparison walk ChartIndex::song_ids through report::library_lookup, so every chart they read is one the library lists. A ChartIndex::count over the page's ids is the chart count's question, not this one."
     },
     {
       "question": "How is a picker item's id spelled?",
@@ -1853,7 +1853,7 @@
           "why": "holds_results, the owner: it asks only whether the store is empty"
         }
       ],
-      "note": "D79 B5: RecordStore::record_count() (the old counts() before D115 A1-5) adds up every stored record under every profile, so a line that printed it next to the batch's counts read as a second chart count. This row flags every call to a store's record_count() in src/ and tools/. The one call kept is holds_results in src/app/report.cpp, which asks only whether the store is empty."
+      "note": "D79 B5: RecordStore::record_count() adds up every stored record under every profile, so a line that prints it next to the batch's counts reads as a second chart count. This row flags every call to a store's record_count() in src/ and tools/. The one call kept is holds_results in src/app/report.cpp, which asks only whether the store is empty."
     },
     {
       "question": "How does a finished scan become the library?",
@@ -1964,7 +1964,7 @@
       "scope": [
         "src/app/analysis.cpp"
       ],
-      "note": "S1: a fresh zero-filled megabyte per hashed file cost the library scan measurable time, so each hashing thread keeps one buffer."
+      "note": "Each hashing thread keeps one buffer, so the library scan does not zero a fresh megabyte for every hashed file."
     },
     {
       "question": "What does a hyhash identify (the old 'chart-file MD5' wording)?",
@@ -2041,7 +2041,7 @@
           "why": "Settings::search_depth_mode, the owner"
         }
       ],
-      "note": "Was the E3 test case, which pinned the whole line; now a row, so a drift asks for the owner line to be updated. The owner is the one line that compares the int, however the comparison is spelled."
+      "note": "A drift asks for the owner line to be updated. The owner is the one line that compares the int, however the comparison is spelled."
     },
     {
       "question": "Is this the Hydra.exe the installer put in place?",

@@ -29,8 +29,8 @@ namespace single_owner {
 inline constexpr const char* kRulesDir = "tests/single_owner/rules";
 inline constexpr const char* kBaselineFile = "tests/single_owner/baseline.json";
 
-// How many days after its date a baseline entry may stay at most. The user's
-// cap, from "Baselines that shrink" in
+// How many days after its date a baseline entry may stay at most. The number
+// is the suggestion in question 5, "Baseline cap", approved with the rest of
 // docs/superpowers/plans/2026-10-10-single-owner-redesign.md (removed; git show 444631e6:docs/superpowers/plans/2026-10-10-single-owner-redesign.md).
 inline constexpr int kBaselineMaxDays = 14;
 
