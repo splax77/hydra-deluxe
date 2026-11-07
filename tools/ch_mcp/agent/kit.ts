@@ -6,6 +6,11 @@
 // set up, Rewired's keyboard and mouse devices are switched off, so the user's
 // own keys and mouse reach no player; teardown switches each back.
 //
+// Before the kit it builds the placeholder controllers the setup message
+// names, which only use up ids, so the kit lands on the id the game grades
+// hit strength for; tools/ch_mcp/kit_tools.py says which id and checks it.
+// A placeholder is never given to a player, and teardown destroys each one.
+//
 // The plan is docs/superpowers/plans/2026-10-30-ch-mcp-in-game-input.md
 // ("One agent for the kit"). The user allowed method calls and field sets
 // where a feature needs them (D272 rulings 2 and 5).
@@ -14,7 +19,7 @@
 // name there is listed with its dump line in tools/ch_mcp/kit_methods.json;
 // tests/test_frida_attach.py checks both. It reads fields by name.
 //
-// It holds none of the kit's numbers. The definition id, the tag, the player,
+// It holds none of the kit's numbers. The definition id, the tags, the player,
 // the map's category and layout, the element ids and values, the hold in
 // frames, the rewrite flag, the thread and the press cap all come in the messages; tools/ch_mcp/kit_tools.py
 // owns them and checks the map this agent reads back.
@@ -84,12 +89,20 @@ interface PlayerRecord {
 // Set by the first setup of this agent and kept until teardown.
 interface Recorded {
     tag: string;
+    placeholderTags: string[];
     switchWas: boolean;
     keyboardWas: boolean;
     mouseWas: boolean;
     players: PlayerRecord[];
+    placeholders: Placeholder[];
     kit: Il2Cpp.Object | null;
     target: PlayerRecord | null;
+}
+
+// A placeholder controller that exists in the game, with the tag it has.
+interface Placeholder {
+    tag: string;
+    controller: Il2Cpp.Object;
 }
 
 let recorded: Recorded | null = null;
@@ -228,14 +241,53 @@ function playerLine(p: PlayerRecord) {
     return { id: p.id, name: p.name, has_keyboard: p.hasKeyboard, has_mouse: p.hasMouse };
 }
 
-function findKit(tag: string): Il2Cpp.Object | null {
-    const kit = controllers().method<Il2Cpp.Object>("GetFirstCustomControllerWithTag", 1)
+function findTagged(tag: string): Il2Cpp.Object | null {
+    const found = controllers().method<Il2Cpp.Object>("GetFirstCustomControllerWithTag", 1)
         .invoke(Il2Cpp.string(tag));
-    return isNothing(kit) ? null : kit;
+    return isNothing(found) ? null : found;
 }
 
 function kitId(kit: Il2Cpp.Object): number {
     return kit.field<number>("id").value;
+}
+
+function createController(definitionId: number, tag: string): Il2Cpp.Object {
+    const made = controllers().method<Il2Cpp.Object>("CreateCustomController", 2)
+        .overload("System.Int32", "System.String").invoke(definitionId, Il2Cpp.string(tag));
+    if (isNothing(made)) {
+        throw new Error(`CreateCustomController(${definitionId}, "${tag}") returned nothing`);
+    }
+    return made;
+}
+
+// One teardown check for one controller: destroys it and says whether the
+// game agreed. The id is read first, so the line can name it afterwards.
+function destroyController(what: string, controller: Il2Cpp.Object): Check {
+    const id = kitId(controller);
+    const done = controllers().method<boolean>("DestroyCustomController", 1).invoke(controller);
+    return { what, ok: done, detail: `controller ${id}: DestroyCustomController returned ${done}` };
+}
+
+// Records each placeholder that exists, by its tag, and, when `make` is true,
+// creates the ones that do not. Each goes in the record the moment it is
+// known, so a teardown after a create that threw destroys the ones before it.
+// A tag already recorded is left alone. Returns how many it created.
+function recordPlaceholders(rec: Recorded, definitionId: number, make: boolean): number {
+    let created = 0;
+    for (const tag of rec.placeholderTags) {
+        if (rec.placeholders.some((p) => p.tag === tag)) {
+            continue;
+        }
+        let controller = findTagged(tag);
+        if (controller === null && make) {
+            controller = createController(definitionId, tag);
+            created += 1;
+        }
+        if (controller !== null) {
+            rec.placeholders.push({ tag, controller });
+        }
+    }
+    return created;
 }
 
 // The kit's maps on the player, each with every binding it holds.
@@ -266,6 +318,14 @@ function needString(m: Message, key: string): string {
     return v;
 }
 
+function stringList(m: Message, key: string): string[] {
+    const v = m[key];
+    if (!Array.isArray(v) || !v.every((s) => typeof s === "string" && s !== "")) {
+        throw new Error(`${m.type} needs a list of texts "${key}"`);
+    }
+    return v;
+}
+
 function needInteger(m: Message, key: string): number {
     const v = m[key];
     if (typeof v !== "number" || !Number.isInteger(v) || v < 1) {
@@ -277,16 +337,19 @@ function needInteger(m: Message, key: string): number {
 // Runs on the main thread. Records the switch, Rewired's keyboard and mouse
 // devices and every player's keyboard and mouse flags before it changes
 // anything, then turns the switch off, switches both devices off, takes the
-// keyboard and mouse from every player, finds or builds the kit, gives it to
-// the named player and loads the one map the message names by category and
-// layout, enabled. It loads that map by name rather than the player's default
-// maps, because the System player lists no default map for a custom
-// controller (docs/clone-hero/07-internals.md, IN-76). The record goes in
-// `recorded` before the first change, and the kit and its player go in it as
-// soon as each is known, so a teardown after a setup that threw part-way
-// still puts everything back.
+// keyboard and mouse from every player, finds the kit or builds the
+// placeholders and then the kit, gives the kit to the named player and loads
+// the one map the message names by category and layout, enabled. A kit found
+// by its tag gets no new placeholders: its id is already set. It loads that
+// map by name rather than the player's default maps, because the System
+// player lists no default map for a custom controller
+// (docs/clone-hero/07-internals.md, IN-76). The record goes in `recorded`
+// before the first change, and each placeholder, the kit and its player go in
+// it as soon as each is known, so a teardown after a setup that threw
+// part-way still puts everything back.
 function setup(m: Message) {
     const tag = needString(m, "tag");
+    const placeholderTags = stringList(m, "placeholder_tags");
     const definitionId = needInteger(m, "definition_id");
     const playerName = needString(m, "player");
     const categoryId = needInteger(m, "category_id");
@@ -297,8 +360,9 @@ function setup(m: Message) {
     // the ones the first setup set, not the user's.
     const first = recorded === null;
     if (recorded === null) {
-        recorded = { tag, switchWas: ignoresUnfocused(cfg), keyboardWas: deviceOn("keyboard"),
-                     mouseWas: deviceOn("mouse"), players, kit: null, target: null };
+        recorded = { tag, placeholderTags, switchWas: ignoresUnfocused(cfg),
+                     keyboardWas: deviceOn("keyboard"), mouseWas: deviceOn("mouse"), players,
+                     placeholders: [], kit: null, target: null };
     }
     const rec = recorded;
     setIgnoresUnfocused(cfg, false);
@@ -307,14 +371,11 @@ function setup(m: Message) {
     for (const p of players) {
         setFlags(p.helper, false, false);
     }
-    let kit = findKit(tag);
+    let kit = findTagged(tag);
     const created = kit === null;
+    const placeholdersCreated = recordPlaceholders(rec, definitionId, created);
     if (kit === null) {
-        kit = controllers().method<Il2Cpp.Object>("CreateCustomController", 2)
-            .overload("System.Int32", "System.String").invoke(definitionId, Il2Cpp.string(tag));
-        if (isNothing(kit)) {
-            throw new Error(`CreateCustomController(${definitionId}, "${tag}") returned nothing`);
-        }
+        kit = createController(definitionId, tag);
     }
     rec.kit = kit;
     const target = players.find((p) => p.name === playerName);
@@ -355,6 +416,8 @@ function setup(m: Message) {
         mouse_now: deviceOn("mouse"),
         players_was: rec.players.map(playerLine),
         players_now: allPlayers().map(playerLine),
+        placeholders: rec.placeholders.map((p) => ({ id: kitId(p.controller), tag: p.tag })),
+        placeholders_created: placeholdersCreated,
         kit: { id: kitId(kit), tag, created, player: playerName },
         maps: readMaps(target.helper, kit),
     };
@@ -596,7 +659,7 @@ async function watch(m: Message) {
 // else by the message's tag, else not at all.
 function status(m: Message) {
     const tag = recorded !== null ? recorded.tag : (typeof m.tag === "string" ? m.tag : null);
-    const kit = tag === null ? null : findKit(tag);
+    const kit = tag === null ? null : findTagged(tag);
     return {
         frame: frameCount(),
         focused: unity("UnityEngine.Application").method<boolean>("get_isFocused").invoke(),
@@ -628,15 +691,32 @@ function step(checks: Check[], what: string, fn: () => string | Check): void {
     }
 }
 
+// The placeholders a teardown destroys: those setup recorded, and any other
+// that a tag in `tags` finds, which is how a teardown with no setup record
+// reaches them.
+function placeholdersToDestroy(rec: Recorded | null, tags: string[]): Placeholder[] {
+    const known = rec !== null ? rec.placeholders : [];
+    const found: Placeholder[] = [];
+    for (const tag of tags) {
+        const controller = known.some((p) => p.tag === tag) ? null : findTagged(tag);
+        if (controller !== null) {
+            found.push({ tag, controller });
+        }
+    }
+    return [...known, ...found];
+}
+
 // Runs on the main thread. Clears every element a press wrote, takes the kit
-// from its player, destroys it, gives every player back the keyboard and
-// mouse flags setup recorded, puts Rewired's keyboard and mouse devices and
-// the switch back, and checks each.
+// from its player, destroys it and every placeholder, gives every player back
+// the keyboard and mouse flags setup recorded, puts Rewired's keyboard and
+// mouse devices and the switch back, and checks each. The check "kit gone"
+// covers the kit's tag and every placeholder tag.
 function teardown(m: Message) {
     const checks: Check[] = [];
     const rec = recorded;
     const tag = rec !== null ? rec.tag : (typeof m.tag === "string" ? m.tag : null);
-    const kit = rec !== null && rec.kit !== null ? rec.kit : (tag === null ? null : findKit(tag));
+    const placeholderTags = rec !== null ? rec.placeholderTags : stringList(m, "placeholder_tags");
+    const kit = rec !== null && rec.kit !== null ? rec.kit : (tag === null ? null : findTagged(tag));
     if (kit !== null) {
         step(checks, "elements cleared", () => {
             // Only each value's kind matters here: a release writes the rest value.
@@ -653,18 +733,25 @@ function teardown(m: Message) {
                 return `removed from ${target.name}`;
             });
         }
-        step(checks, "kit destroyed", () => {
-            const done = controllers().method<boolean>("DestroyCustomController", 1).invoke(kit);
-            return { what: "kit destroyed", ok: done, detail: `DestroyCustomController returned ${done}` };
-        });
+        step(checks, "kit destroyed", () => destroyController("kit destroyed", kit));
+    }
+    for (const p of placeholdersToDestroy(rec, placeholderTags)) {
+        const what = `${p.tag} destroyed`;
+        step(checks, what, () => destroyController(what, p.controller));
     }
     step(checks, "kit gone", () => {
         if (tag === null) {
             return { what: "kit gone", ok: false, detail: "no tag recorded or sent; not looked up" };
         }
-        const left = findKit(tag);
-        return left === null ? `no controller tagged ${tag}`
-            : { what: "kit gone", ok: false, detail: `controller ${kitId(left)} still tagged ${tag}` };
+        const left: string[] = [];
+        for (const t of [tag, ...placeholderTags]) {
+            const still = findTagged(t);
+            if (still !== null) {
+                left.push(`controller ${kitId(still)} still tagged ${t}`);
+            }
+        }
+        return left.length === 0 ? `no controller tagged ${tag} or a placeholder tag`
+            : { what: "kit gone", ok: false, detail: left.join("; ") };
     });
     if (rec === null) {
         checks.push({ what: "setup record", ok: false,
