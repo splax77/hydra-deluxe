@@ -226,6 +226,8 @@ Click a song to open its panel beside the library. Opening a song analyzes it un
 
 `Hide library`, left of `<`, gives the song panel the whole window. It then reads `Show library`, which puts the library back at the width you left it. `<` and `>` still step through the list while it's hidden. Closing the panel always brings the library back. Hydra Deluxe remembers the choice, so the next song opens the same way, even after a restart.
 
+`Open in Path Builder`, left of `Hide library`, opens the song in the [Path Builder](#path-builder).
+
 Below the header is the headline: the best score, its path, and one line like `Optimal path · 7 stars`. When the chart has 2x kicks, that line also says how many there are and what share of the chart's kick notes they make up, like `Optimal path · 7 stars · 37 2x kicks (8%)` for Acid Romance. The count is the same with 2x Bass on or off. A chart with no 2x kicks shows no such part. Under it are four tabs: `Paths`, `Preview`, `Dynamics` and `Stars`.
 
 Most songs take a few milliseconds to analyze, so the paths appear at once. A song that takes longer than 0.15 seconds shows `Analyzing chart...` with a progress bar and a `Cancel` button. Cancelling shows `Analysis cancelled.` with a `Try again` button, and nothing is saved for that song. Closing the panel or clicking another song cancels it the same way.
