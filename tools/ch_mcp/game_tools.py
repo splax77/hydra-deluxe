@@ -711,7 +711,11 @@ class GameTools:
                                  f"{len(rows)} presses")
             if play.log_note:
                 lines.append(play.log_note)
-        if rows:
+        if not rows:
+            lines.append("first press: none, no chord was pressed")
+        else:
+            lines.append(f"first press chord index {rows[0]['index']} "
+                         f"at {rows[0]['chart_ms']} ms")
             # The kit press's columns show only when the rows carry them.
             columns = [c for c in PRESS_LOG_COLUMNS if any(c in r for r in rows)]
             lines.append(f"rows, newest first ({', '.join(columns)}):")

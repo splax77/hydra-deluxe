@@ -8,8 +8,9 @@ frida_attach.LiveAgent for the attach and the reads,
 build_facts for the build check and the hook names, ch_probe.constants for
 the hook addresses, and trace_hits for the trace and its line-up. This module
 adds only the session state between tool calls (the live agent, the trace,
-the facts loaded once per build), the state words, which it owns, and the
-menu lines, which print agent/menu.ts's block as sent.
+the facts loaded once per build), the state words, which it owns, the menu
+lines, which print agent/menu.ts's block as sent, and ch_snapshot's engine
+lines, which print what EngineModel reads and kit_tools.pad_axis gives.
 
 Every tool returns plain text and never prints: an MCP server's stdout is its
 protocol channel. The server (server.py) hands in the one RLock it shares
@@ -28,6 +29,8 @@ from tools.ch_mcp import build_facts
 from tools.ch_mcp import frida_attach as FA
 from tools.ch_mcp import trace_hits as TH
 from tools.ch_probe import constants as C
+from tools.ch_probe.engine import EngineModel
+from tools.ch_probe.process import open_process
 
 # The three Frida caps of the plan's question 5, approved by the user on
 # 2026-10-29.
@@ -51,6 +54,13 @@ NO_GAME_MANAGER = ("no live GameManager: start the song (pause it if you like), 
 
 NOT_ATTACHED = "not attached; call ch_attach first"
 
+# The word state_words gives a song whose clock is moving.
+PLAYING = "playing"
+
+# The bit of the engine's flags word that SC-16 in
+# docs/clone-hero/06-scoring.md asks about.
+DYNAMICS_STOP_BIT = 0x10
+
 # The key of state.ts's reply that holds menu.ts's block.
 MENU_BLOCK = "menu"
 # The menu fields menu.ts reads and their enum words; menu.ts bundles the same
@@ -61,6 +71,14 @@ MENU_FIELDS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "men
 class StateUnread(Exception):
     """FridaTools.read_state found no attached agent or the read failed; the
     text is the reason, as ch_state would print it."""
+
+
+def _find_engine(proc) -> int:
+    """LIVE-ONLY: the engine search the Star Power tools use, which keeps the
+    server's stdout clean."""
+    # Imported here because sp_tools imports this module.
+    from tools.ch_mcp.sp_tools import _find_engine_quietly
+    return _find_engine_quietly(proc)
 
 
 def state_words(snapshot: Optional[dict], *, running: bool = True) -> str:
@@ -81,8 +99,26 @@ def state_words(snapshot: Optional[dict], *, running: bool = True) -> str:
     if snapshot.get("isPaused"):
         return "paused"
     if snapshot.get("isSongPlaying"):
-        return "playing"
+        return PLAYING
     return "loaded, not started"
+
+
+def engine_lines(flags: int, threshold: int) -> List[str]:
+    """The engine's flags word and dynamics threshold as lines, then the ghost
+    value kit_tools.pad_axis gives for that threshold. The value prints in
+    full, so a ch_kit_press given it presses exactly what the player would."""
+    # Imported here because kit_tools imports this module.
+    from tools.ch_mcp.kit_tools import DYNAMIC_GHOST, pad_axis
+    bit = "set" if flags & DYNAMICS_STOP_BIT else "clear"
+    lines = [f"flags word: {flags:#x} (OFF_FLAGS)",
+             f"bit {DYNAMICS_STOP_BIT:#x}: {bit}",
+             f"dynamics threshold: {threshold} (OFF_DYN_THRESHOLD, +{C.OFF_DYN_THRESHOLD:#x})"]
+    try:
+        lines.append(f"ghost axis value: {pad_axis(DYNAMIC_GHOST, threshold)!r} "
+                     "(kit_tools.pad_axis)")
+    except ValueError as e:
+        lines.append(f"ghost axis value: none is possible ({e})")
+    return lines
 
 
 def _value_text(value: Any) -> str:
@@ -284,7 +320,8 @@ class FridaTools:
     first attach needs it), `wait` (how a read waits for its reply),
     `current_build` and `load_facts` (build_facts'), `trace_session`
     (trace_hits.TraceSession), `agent_dir`, `now` and `sleep` (the clock
-    `game.launched_at` is on)."""
+    `game.launched_at` is on), and `opener` and `find_engine` (open_process
+    and the capped engine search, for ch_snapshot's engine lines)."""
 
     def __init__(self, game, lock, *,
                  frida_mod: Any = None,
@@ -294,7 +331,9 @@ class FridaTools:
                  trace_session: Callable[..., Any] = TH.TraceSession,
                  agent_dir: str = AGENT_DIR,
                  now: Callable[[], float] = time.monotonic,
-                 sleep: Callable[[float], None] = time.sleep):
+                 sleep: Callable[[float], None] = time.sleep,
+                 opener: Callable[..., Any] = open_process,
+                 find_engine: Callable[[Any], int] = _find_engine):
         self._game = game
         self._lock = lock
         self._frida_mod = frida_mod
@@ -305,6 +344,8 @@ class FridaTools:
         self._agent_dir = agent_dir
         self._now = now
         self._sleep = sleep
+        self._opener = opener
+        self._find_engine = find_engine
 
         self._agent: Optional[FA.LiveAgent] = None
         self._not_running = False
@@ -395,7 +436,8 @@ class FridaTools:
     def ch_snapshot(self) -> str:
         """One fresh read of GameManager's fields, then the score after the
         play session's last press and the song clock at that press, so the
-        two clocks sit side by side."""
+        two clocks sit side by side, then the engine lines. The engine search
+        runs outside the lock, because it can take its whole cap."""
         with self._lock:
             lines: List[str] = []
             snapshot = self._read(lines)
@@ -406,6 +448,8 @@ class FridaTools:
             if isinstance(song_time, (int, float)):
                 lines.append(f"songTime in ms: {C.s_to_ms(song_time):.1f} (GameManager's clock)")
             lines.extend(self._score_lines())
+        lines.extend(self._engine_read_lines(snapshot))
+        with self._lock:
             return self._reply(lines)
 
     def ch_menu(self) -> str:
@@ -608,6 +652,27 @@ class FridaTools:
         return [f"score after press {play['press_count']}: {row['score_after']}{ended}",
                 f"song clock at that press: {row['clock_ms_at_press']} ms "
                 "(the play session's clock)"]
+
+    def _engine_read_lines(self, snapshot: dict) -> List[str]:
+        """engine_lines from a fresh read of the engine, or one line saying
+        why there was none. The state agent does not read the engine, so this
+        opens the game the way the Star Power watch does. The search waits for
+        a moving clock, so a song that is not playing is never searched."""
+        word = state_words(snapshot)
+        if word != PLAYING:
+            return [f"engine fields: not read (state: {word}; "
+                    "the engine search needs a playing song)"]
+        try:
+            proc = self._opener(read_only=True)
+            try:
+                proc.verify_targets()
+                model = EngineModel(proc)
+                model.use_object(self._find_engine(proc))
+                return engine_lines(model.snapshot().flags, model.dyn_threshold())
+            finally:
+                proc.close()
+        except Exception as e:  # the reply keeps the state read and says why
+            return [f"engine fields: not read: {type(e).__name__}: {e}"]
 
     @staticmethod
     def _trace_result(session) -> FA.RunResult:

@@ -270,15 +270,18 @@ def build_server(helper: Optional[Helper] = None):
     @server.tool()
     def ch_kit_press(items: str, hold_frames: int | None = None,
                      rewrite: bool | None = None, on_main: bool | None = None,
-                     read: str | None = None) -> str:
+                     read: str | None = None, value: float | None = None) -> str:
         """Press one chord of kit items, such as "green,kick" or "start",
         with or without the kit: prefix, and print the frames it went down
         and came up on. hold_frames, rewrite and on_main override the kit's
         hold, rewrite and thread for this press; left out, the kit's own
         values apply. read names game actions, such as "Green", to read back
-        on the kit's player during the hold. An unknown name is refused with
-        the list of kit items. Needs ch_kit_setup."""
-        return capped(h.kit.ch_kit_press(items, hold_frames, rewrite, on_main, read))
+        on the kit's player during the hold. value sets the axis value of
+        this press's pads, from 0 to 1, such as the ghost value ch_snapshot
+        prints; left out, the pads press as plain gems, and buttons never
+        take one. An unknown name is refused with the list of kit items.
+        Needs ch_kit_setup."""
+        return capped(h.kit.ch_kit_press(items, hold_frames, rewrite, on_main, read, value))
 
     @server.tool()
     def ch_kit_status() -> str:
