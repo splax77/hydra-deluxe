@@ -5,10 +5,10 @@ arming write 0xCC and remember the real byte, does disarming put it back), the
 XMM0-to-double decode, the rip-minus-one fix-up, the read masking that hides
 0xCC, and the ThreadContext register snapshot.
 
-What we cannot test here: the Win32 event pump (attach, WaitForDebugEvent,
-GetThreadContext). Those need a live debuggee and are marked LIVE-ONLY in the
-module. We still confirm the Debugger class exposes the right method names so
-the interface contract is met.
+What we cannot test here: the Win32 event pump (WaitForDebugEvent,
+GetThreadContext). It needs a live debuggee and is marked LIVE-ONLY in the
+module. attach's setup steps do run here, on a fake Win32. We still confirm the
+Debugger class exposes the right method names so the interface contract is met.
 """
 
 from __future__ import annotations

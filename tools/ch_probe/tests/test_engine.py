@@ -161,8 +161,8 @@ class TestFieldReads(unittest.TestCase):
         self.assertEqual(eng.front_window(), 37.5)
 
     def test_hit_time_reads_off_0x2e0(self):
-        # +0x100 is the song clock (proven live); the hit-time candidate is
-        # +0x2e0, still to be confirmed at the game.
+        # +0x100 is the song clock (proven live). This pins only where the read
+        # lands; OFF_HIT_TIME's comment in constants.py says what +0x2e0 holds.
         self.assertEqual(C.OFF_HIT_TIME, 0x2E0)
         eng = self._engine_with_fields(hit_time=12.34)
         self.assertEqual(eng.hit_time(), 12.34)
@@ -343,8 +343,8 @@ class TestConstants(unittest.TestCase):
 
 class TestSongClock(unittest.TestCase):
     def test_reads_the_proven_clock_at_0x100(self):
-        # play_chart.py plays whole songs off this field (2026-09-25), so the
-        # song clock is +0x100, in seconds.
+        # play_chart.py plays whole songs off this field, so the song clock is
+        # +0x100, in seconds.
         self.assertEqual(C.OFF_SONG_CLOCK, 0x100)
         doubles = {OBJ + C.OFF_SONG_CLOCK: 3.5}
         eng, proc, dbg, mem = make_engine(object_ptr=OBJ, doubles=doubles)

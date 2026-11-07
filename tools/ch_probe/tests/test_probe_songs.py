@@ -34,7 +34,7 @@ class ProbeSongsTest(unittest.TestCase):
             # Every note is the kick, with no sustain.
             self.assertEqual({(note, sustain) for _tick, note, sustain in read},
                              {(C.PROBE_CHART_NOTE_KICK, 0)})
-            # Bytes from the base's own writer, before the fold to probe_chart.
+            # The [Song] and [SyncTrack] lines probe_chart's writer puts out.
             self.assertIn("  Resolution = 480\n", text)
             self.assertIn("  0 = B 125000\n", text)
             self.assertIn('  MusicStream = "song.ogg"\n', text)
