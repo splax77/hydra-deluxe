@@ -4,9 +4,10 @@
 // tests read it through the app's own Settings::to_analysis_settings, so the
 // two can never drift apart.
 //
-// Everything is the app's default except three things: the chart folder is
-// the checked-in corpus, a finished report does not open a browser, and the
-// depth is 2 scores to keep analyses short.
+// Everything is the app's default except two things: the chart folder is the
+// checked-in corpus, and the depth is 2 scores to keep analyses short. The
+// struct also sets auto_open_report, so a finished report does not open a
+// browser whatever the app's default is.
 
 #ifndef HYDRA_TESTS_SCRATCH_SETTINGS_H
 #define HYDRA_TESTS_SCRATCH_SETTINGS_H

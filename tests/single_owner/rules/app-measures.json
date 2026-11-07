@@ -6,7 +6,7 @@
       "owner_file": "src/app/preview_view.cpp",
       "owner_symbol": "build_time_box",
       "date": "2026-10-14",
-      "decision": "D115",
+      "decision": "D115 (plan part B2, task B2-2)",
       "added_by": "D115-B2-2",
       "pattern": "(upper_bound|lower_bound|last_at_or_before)\\(\\s*(\\w+(\\.|->))*\\w*sections\\b|section\\w*\\s*=\\s*std::(upper|lower)_bound\\(|^\\s*(\\w+(\\.|->))*\\w*sections\\.begin\\(\\),\\s*(\\w+(\\.|->))*\\w*sections\\.end\\(\\),",
       "must_match": [
@@ -30,7 +30,7 @@
           "why": "build_time_box, the owner: the time box's section line, through the one in-force search"
         }
       ],
-      "note": "A search over the practice sections for the one in force at a tick. build_time_box answers it once, through last_at_or_before (the search SongTiming's tempo and time signature lookups use too); the tempo and the time signature in force are rows in core-measures.json. Sections live outside SongTiming because the .mid reader fills them after build_timing. Listing the sections (hydra_replay's dump) answers another question. Decided by: D115 (plan part B2, task B2-2)"
+      "note": "A search over the practice sections for the one in force at a tick. build_time_box answers it once, through last_at_or_before (the search SongTiming's tempo and time signature lookups use too); the tempo and the time signature in force are rows in core-measures.json. Sections live outside SongTiming because the .mid reader fills them after build_timing. Listing the sections (hydra_replay's dump) answers another question."
     }
   ]
 }

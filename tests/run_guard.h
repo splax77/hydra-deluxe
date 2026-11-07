@@ -5,8 +5,8 @@
 // starts with a dash at its first dot, so `-sf=*test_x.cpp` reaches the exe as
 // `-sf=*test_x` and `.cpp`; doctest ignores the stray piece and runs nothing
 // from that file. And doctest keeps only one occurrence of a repeated filter,
-// so `"-sf=*a*" "-sf=*b*"` runs only one of the two. Either way the run used
-// to end in "Status: SUCCESS!" with nothing tested.
+// so `"-sf=*a*" "-sf=*b*"` runs only one of the two. Either way doctest alone
+// ends the run in "Status: SUCCESS!" with tests it was told to run left out.
 #pragma once
 
 #include <optional>

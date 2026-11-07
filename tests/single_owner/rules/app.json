@@ -6,7 +6,7 @@
       "owner_file": "src/app/report_files.cpp",
       "owner_symbol": "open_in_browser",
       "date": "2026-10-04",
-      "decision": "ADR 0020",
+      "decision": "ADR 0020 (The shell: Open report and Show in folder)",
       "added_by": "gate-fix",
       "pattern": "ShellExecute",
       "owner_files": [
@@ -18,7 +18,7 @@
       "must_not_match": [
         "hydra::app::open_in_browser(page);"
       ],
-      "note": "The shell takes no long or prefixed path (fits_shell), so only open_in_browser launches it, with shell_path's short form. Starting a program of our own is the \"Which code starts a program?\" row. Decided by: ADR 0020 (The shell: Open report and Show in folder)"
+      "note": "The shell takes no long or prefixed path (fits_shell), so only open_in_browser launches it, with shell_path's short form. Starting a program of our own is the \"Which code starts a program?\" row."
     },
     {
       "question": "Which code starts a program?",
@@ -26,7 +26,7 @@
       "owner_file": "src/app/launch.cpp",
       "owner_symbol": "launch_program",
       "date": "2026-10-29",
-      "decision": "plan docs/superpowers/plans/2026-10-28-path-builder.md (removed; git show b29a3c28:docs/superpowers/plans/2026-10-28-path-builder.md), HY-1",
+      "decision": "plan docs/superpowers/plans/2026-10-28-path-builder.md (removed; git show b29a3c28:docs/superpowers/plans/2026-10-28-path-builder.md), HY-1; the Path Builder plan, HY-1",
       "added_by": "HY-1",
       "pattern": "CreateProcess",
       "owner_files": [
@@ -44,7 +44,7 @@
       "must_not_match": [
         "launch_program(exe, {page});"
       ],
-      "note": "launch_program is the one CreateProcessW in src, so the one place a command line is quoted (quote_argument). launch_html_viewer and launch_sibling call it. Decided by: the Path Builder plan, HY-1"
+      "note": "launch_program is the one CreateProcessW in src, so the one place a command line is quoted (quote_argument). launch_html_viewer and launch_sibling call it."
     },
     {
       "question": "Does the path gauge work out an SP fact itself?",
@@ -52,7 +52,7 @@
       "owner_file": "src/app/preview_view.cpp",
       "owner_symbol": "build_sp_meter_curve",
       "date": "2026-10-04",
-      "decision": "audit findings 147 and 159",
+      "decision": "audit findings 147 and 159; step-1 derive-once review of fb1189b, finding 5 (2026-10-04)",
       "added_by": "step-1 derive-once fixes round 2",
       "pattern": "sp_phrases|collected_phrase_ticks|sp_meter\\(\\)|sp_bars_to_measures|std::min\\(|SqIn",
       "must_match": [
@@ -69,7 +69,7 @@
       ],
       "function_file": "src/app/preview_view.cpp",
       "function": "SpMeterCurve build_sp_meter_curve(",
-      "note": "Was its own Preview test, in the file now split into test_sp_meter_curve.cpp and its siblings (findings 147 and 159): the path gauge's body never touches the chart's phrases, the collected list, the bank count, the cap rule or the squeeze-in rule (that one lives in refill_tick). Scoped to that one function. Decided by: audit findings 147 and 159; step-1 derive-once review of fb1189b, finding 5 (2026-10-04)"
+      "note": "The path gauge's body never touches the chart's phrases, the collected list, the bank count, the cap rule or the squeeze-in rule (that one lives in refill_tick). Scoped to that one function."
     },
     {
       "question": "Which fill rule does a command-line run use?",
@@ -114,7 +114,7 @@
       "owner_file": "src/app/user_messages.cpp",
       "owner_symbol": "stale_text",
       "date": "2026-10-04",
-      "decision": "D48",
+      "decision": "audit finding 13; D48, Q17 (phase 3 task O3b)",
       "added_by": "O3b",
       "pattern": "another Hydra version|different rules in hydra_rules|Re-analyze to refresh|run a batch to refresh",
       "must_match": [
@@ -148,7 +148,7 @@
           "why": "stale_chip_text, beside the owner: the Stale chip's ending (tooltip wording approved 2026-10-10)"
         }
       ],
-      "note": "---- app and UI helper owners (phase 3 task O3b) ---- The out-of-date sentence, by any of its pieces: the cause it names or the \"Re-analyze to refresh\" it ends on. stale_text names the store's real cause; every screen shows its sentence. Decided by: audit finding 13; D48, Q17 (phase 3 task O3b)"
+      "note": "---- app and UI helper owners (phase 3 task O3b) ---- The out-of-date sentence, by any of its pieces: the cause it names or the \"Re-analyze to refresh\" it ends on. stale_text names the store's real cause; every screen shows its sentence."
     },
     {
       "question": "Has a chart file changed since its library row was made?",
@@ -156,7 +156,7 @@
       "owner_file": "src/app/analysis.cpp",
       "owner_symbol": "chart_changed_since",
       "date": "2026-10-07",
-      "decision": "D87",
+      "decision": "storage-T2 review finding 2 (D87 item 3)",
       "added_by": "storage-T2",
       "pattern": "\\b(hash_chart_file|chart_files_unchanged|chart_files_sig)\\(",
       "anchor": "chart_file",
@@ -181,7 +181,7 @@
           "why": "the Path Builder has no library row to compare with; it hashes the file it opens to name the chart for the Preview (path builder plan, task PB-1)"
         }
       ],
-      "note": "Whether a chart file changed since its library row was made. The Preview's load and the click's job both ask chart_changed_since, so the two never disagree; the fingerprint and the hash have no other caller in src or tools. src only: tools/replay.cpp hashes a chart to look it up by path, which is a different question. Decided by: storage-T2 review finding 2 (D87 item 3)"
+      "note": "Whether a chart file changed since its library row was made. The Preview's load and the click's job both ask chart_changed_since, so the two never disagree; the fingerprint and the hash have no other caller in src or tools. src only: tools/replay.cpp hashes a chart to look it up by path, which is a different question."
     },
     {
       "question": "What does a library row with no result say when hovered?",
@@ -189,7 +189,7 @@
       "owner_file": "src/app/user_messages.h",
       "owner_symbol": "kNotAnalyzedText",
       "date": "2026-10-07",
-      "decision": "D91",
+      "decision": "D91 (2026-10-07)",
       "added_by": "storage-T2",
       "pattern": "Not analyzed yet",
       "anchor": "Not analyzed yet",
@@ -203,7 +203,7 @@
       "must_not_match": [
         "ImGui::SetTooltip(\"%s\", app::kNotAnalyzedText);"
       ],
-      "note": "The not-analyzed row's tooltip. The old copy was split over two source lines, so a rule on the whole sentence missed it; this one matches the sentence's first words, which sit on one line however the rest is split. kNotAnalyzedText is the one place it is typed. Decided by: D91 (2026-10-07)"
+      "note": "The not-analyzed row's tooltip. A rule on the whole sentence would miss a copy split over two source lines, so this one matches the sentence's first words, which sit on one line however the rest is split. kNotAnalyzedText is the one place it is typed."
     },
     {
       "question": "What does a program say when it can't open a song file?",
@@ -211,7 +211,7 @@
       "owner_file": "src/app/user_messages.cpp",
       "owner_symbol": "song_file_missing_sentence",
       "date": "2026-10-29",
-      "decision": "D267",
+      "decision": "D267 (2026-10-29)",
       "added_by": "PB-1-review",
       "pattern": "open the song file",
       "anchor": "open the song file",
@@ -228,7 +228,7 @@
       "scope": [
         "src"
       ],
-      "note": "The song file's sentence is written once, with Hydra's Scan advice added only for Hydra, so the Path Builder (no library) and Hydra never keep two copies of its first half. Every error line reads it through plain_error. Decided by: D267 (2026-10-29)"
+      "note": "The song file's sentence is written once, with Hydra's Scan advice added only for Hydra, so the Path Builder (no library) and Hydra never keep two copies of its first half. Every error line reads it through plain_error."
     },
     {
       "question": "What text shows where a value is missing?",
@@ -380,7 +380,7 @@
           "why": "dynamics_row_label's guard: Count marks the end of the rows and names no row"
         }
       ],
-      "note": "---- M_D review follow-ups (phase 3 task FX-L) ---- A switch over the Dynamics rows, the 2x test that picks a kick row, or a test of a row against a named row (the old cymbal-row hide was \"r == app::DynamicsRow::YellowCymbal || ...\"): a second table of which note each row holds. The one table is kDynamicsRows in dynamics_breakdown.cpp, read through dynamics_row_info and dynamics_row_for."
+      "note": "A switch over the Dynamics rows, the 2x test that picks a kick row, or a test of a row against a named row: a second table of which note each row holds. The one table is kDynamicsRows in dynamics_breakdown.cpp, read through dynamics_row_info and dynamics_row_for."
     },
     {
       "question": "Which Dynamics rows are pad rows?",
@@ -410,7 +410,7 @@
         "tools",
         "tests"
       ],
-      "note": "Which Dynamics rows are pads, decided by cutting the row order at a named row. Four copies once did (pads_total, dynamics_for_settings, the Dynamics tab's pad table and a Note Shuffle test); a row added or moved in the enum would have split them. is_pad_row reads the row table instead."
+      "note": "Which Dynamics rows are pads, decided by cutting the row order at a named row. A row added or moved in the enum would split such a cut from the row table. is_pad_row reads the row table instead."
     },
     {
       "question": "Which words name a comparison row's status?",
@@ -499,7 +499,7 @@
       "owner_file": "src/app/preview_view.cpp",
       "owner_symbol": "song_fraction",
       "date": "2026-10-04",
-      "decision": "phase 3 task C4a",
+      "decision": "phase 3 task C4a; derive-once review of M_C (6d86f1c), finding 4 (2026-10-04)",
       "added_by": "M_C fix prod",
       "pattern": "std::clamp\\([^;]*/\\s*\\*?\\w*length\\w*\\s*,\\s*0\\.0\\s*,\\s*1\\.0",
       "anchor": "std::clamp(",
@@ -517,7 +517,7 @@
           "why": "song_fraction, the owner"
         }
       ],
-      "note": "A moment's ms over the song length, clamped to 0..1, worked out anywhere but song_fraction. Decided by: phase 3 task C4a; derive-once review of M_C (6d86f1c), finding 4 (2026-10-04)"
+      "note": "A moment's ms over the song length, clamped to 0..1, worked out anywhere but song_fraction."
     },
     {
       "question": "When is the song's last note?",
@@ -525,7 +525,7 @@
       "owner_file": "src/app/preview_view.cpp",
       "owner_symbol": "last_drawn_note",
       "date": "2026-10-04",
-      "decision": "D69",
+      "decision": "audit finding 9; derive-once review of M_D, preview finding 1 (phase 3 task FX-P); re-pointed by D69 (phase 7 task AL1)",
       "added_by": "FX-P",
       "pattern": "notes\\.back\\(\\)|sequence\\.back\\(\\)\\.timecode\\.ms\\(\\)",
       "anchor": ".back()",
@@ -545,7 +545,7 @@
           "why": "last_drawn_note, the owner"
         }
       ],
-      "note": "---- the Preview (derive-once review of M_D, phase 3 task FX-P) ---- The last drawn note, or the last timestamp's onset, read anywhere but last_drawn_note. The song's length has its own owner (app::song_length_ms, D75), whose backup is listed below. Decided by: audit finding 9; derive-once review of M_D, preview finding 1 (phase 3 task FX-P); re-pointed by D69 (phase 7 task AL1)"
+      "note": "---- the Preview (derive-once review of M_D, phase 3 task FX-P) ---- The last drawn note, or the last timestamp's onset, read anywhere but last_drawn_note. The song's length has its own owner (app::song_length_ms, D75), whose backup is listed below."
     },
     {
       "question": "Is a note struck with the playhead at now?",
@@ -553,7 +553,7 @@
       "owner_file": "src/app/preview_view.h",
       "owner_symbol": "struck_at",
       "date": "2026-10-04",
-      "decision": "D48",
+      "decision": "D48, Q27; derive-once review of M_D, preview finding 4 (phase 3 task FX-P)",
       "added_by": "FX-P",
       "pattern": "\\b\\w+\\.ms\\s*<=\\s*now\\w*\\b|now\\w*\\s*>=\\s*\\w+\\.ms\\b|\\bnote_ms\\s*<=\\s*now_ms\\b",
       "anchor": "now",
@@ -574,7 +574,7 @@
           "why": "struck_at, the owner"
         }
       ],
-      "note": "A note's ms compared with the playhead by hand instead of through struck_at. Decided by: D48, Q27; derive-once review of M_D, preview finding 4 (phase 3 task FX-P)"
+      "note": "A note's ms compared with the playhead by hand instead of through struck_at."
     },
     {
       "question": "Which locale groups thousands on a report page?",
@@ -582,7 +582,7 @@
       "owner_file": "src/app/html_page.cpp",
       "owner_symbol": "fmt",
       "date": "2026-10-04",
-      "decision": "D48",
+      "decision": "audit findings 14 and 99; D48, Q12 (phase 3 task K1a)",
       "added_by": "K1a",
       "pattern": "\\.toLocaleString\\(\\)",
       "anchor": ".toLocaleString()",
@@ -597,7 +597,7 @@
       "scope": [
         "src"
       ],
-      "note": "---- the report pages (phase 3 task K1a) ---- A bare toLocaleString() groups by the browser's own language, so a German browser prints 1.234 under a subtitle that says 1,234. The pages' shared fmt groups with one fixed rule. The pages live in src/app; a scope entry with a slash names one file, so the row scans all of src, where nothing else has one. Decided by: audit findings 14 and 99; D48, Q12 (phase 3 task K1a)"
+      "note": "---- the report pages (phase 3 task K1a) ---- A bare toLocaleString() groups by the browser's own language, so a German browser prints 1.234 under a subtitle that says 1,234. The pages' shared fmt groups with one fixed rule. The pages live in src/app; a scope entry with a slash names one file, so the row scans all of src, where nothing else has one."
     },
     {
       "question": "How is a number rounded on a report page?",
@@ -605,7 +605,7 @@
       "owner_file": "src/app/display_format.cpp",
       "owner_symbol": "format_percent",
       "date": "2026-10-04",
-      "decision": "audit finding 51",
+      "decision": "audit finding 51; M_D review findings 2 and 8 (phase 3 task FX-R)",
       "added_by": "FX-R",
       "pattern": "\\.toFixed\\(",
       "anchor": ".toFixed(",
@@ -620,7 +620,7 @@
       "scope": [
         "src"
       ],
-      "note": "toFixed rounds the float a page holds, which can tip an exact half the wrong way (99.005% read 99.00%). The pages show numbers the C++ wrote as text, or work in whole numbers the C++ sent. Decided by: audit finding 51; M_D review findings 2 and 8 (phase 3 task FX-R)"
+      "note": "toFixed rounds the float a page holds, which can tip an exact half the wrong way (99.005% read 99.00%). The pages show numbers the C++ wrote as text, or work in whole numbers the C++ sent."
     },
     {
       "question": "What range may a number setting hold?",
@@ -628,7 +628,7 @@
       "owner_file": "src/app/config.cpp",
       "owner_symbol": "Settings::clamp",
       "date": "2026-10-04",
-      "decision": "D51",
+      "decision": "D51 Q14 (nearest edge of the box's range, volume 0 to 100) and Q16 (a 1-bar cap stays allowed); audit findings 138, 139, 322; phase 7 task SE1",
       "added_by": "SE1",
       "pattern": "\\b(mslimit_value|backendlimit_value|preview_volume|depth_value|depth_mode|sp_cap|volume_pct_)\\s*=\\s*(std::(clamp|max|min)\\(|[^;]*>\\s*100\\s*\\?)|\\b(sp_)?cap\\s*<\\s*1\\b|std::max\\(\\s*1\\s*,[^;]*cap\\b",
       "calls_owner": "Settings::clamp\\(",
@@ -649,7 +649,7 @@
         "d.width = std::max(1, width);",
         "const int window = static_cast<int>(kSqueezeWindowMs);"
       ],
-      "note": "A setting's range, or the cap floor of 1 bar, worked out again outside the key table. Decided by: D51 Q14 (nearest edge of the box's range, volume 0 to 100) and Q16 (a 1-bar cap stays allowed); audit findings 138, 139, 322; phase 7 task SE1"
+      "note": "A setting's range, or the cap floor of 1 bar, worked out again outside the key table."
     },
     {
       "question": "What gain does a volume percent play at?",
@@ -684,7 +684,7 @@
       "owner_file": "src/app/analysis.h",
       "owner_symbol": "ScanItem",
       "date": "2026-10-04",
-      "decision": "D53; concept audit M21 moved the owner to the alias",
+      "decision": "D53; concept audit M21 moved the owner to the alias; audit finding 256; phase 6 task J1-6 (D53); concept audit M21",
       "added_by": "J1-6",
       "pattern": "\\b(ChartLibraryEntry(\\s+\\w+)?\\s*\\{|entries\\.push_back\\(\\s*\\{)\\s*\\w+\\.md5\\b",
       "anchor": ".md5",
@@ -704,7 +704,7 @@
         "tools",
         "tests"
       ],
-      "note": "A brace list of a scan row's fields, md5 first, pushed into the library's entries or built as a ChartLibraryEntry. Since concept audit M21 a scan row is the library entry itself (the ScanItem alias), so no conversion is needed and a positional copy is always a stray. The ScanJob's list of ScanItems read back from the library (items_) is the other direction, a different question. Decided by: audit finding 256; phase 6 task J1-6 (D53); concept audit M21"
+      "note": "A brace list of a scan row's fields, md5 first, pushed into the library's entries or built as a ChartLibraryEntry. A scan row is the library entry itself (the ScanItem alias), so no conversion is needed and a positional copy is always a stray. The ScanJob's list of ScanItems read back from the library (items_) is the other direction, a different question."
     },
     {
       "question": "How many workers does a batch get?",
@@ -712,7 +712,7 @@
       "owner_file": "src/app/analysis.cpp",
       "owner_symbol": "batch_worker_count",
       "date": "2026-10-04",
-      "decision": "D54",
+      "decision": "audit R7.22; D54 (the worker rule recorded as it is)",
       "added_by": "J1-6",
       "pattern": "std::max\\(\\s*1\\s*,\\s*(std::min\\(\\s*)?(worker\\w*|guess)\\b",
       "anchor": "std::max(",
@@ -732,7 +732,7 @@
           "why": "batch_worker_count, the owner"
         }
       ],
-      "note": "A floor of 1 on a worker count. batch_worker_count keeps the floor (D54 records its rule as it is); run_work_pool refuses a count below 1 rather than raising it. Decided by: audit R7.22; D54 (the worker rule recorded as it is)"
+      "note": "A floor of 1 on a worker count. batch_worker_count keeps the floor (D54 records its rule as it is); run_work_pool refuses a count below 1 rather than raising it."
     },
     {
       "question": "How is a chart hash spelled for matching?",
@@ -740,7 +740,7 @@
       "owner_file": "src/app/analysis.cpp",
       "owner_symbol": "normalize_chart_hash",
       "date": "2026-10-04",
-      "decision": "D53",
+      "decision": "audit finding 192; phase 6 task J1-6 (D53)",
       "added_by": "J1-6",
       "pattern": "\\bto_lower_ascii\\(.*\\b(md5|hash|hyhash|identifier)\\b",
       "anchor": "to_lower_ascii(",
@@ -761,7 +761,7 @@
           "why": "normalize_chart_hash, the owner"
         }
       ],
-      "note": "Lowering a hash, a leaderboard identifier or a stored md5 so two spellings match. Lowering an ini key or a search query is a different question. Who may call the owner at all is the next row, \"Where is a chart hash from outside Hydra lowercased into a song id?\". Decided by: audit finding 192; phase 6 task J1-6 (D53)"
+      "note": "Lowering a hash, a leaderboard identifier or a stored md5 so two spellings match. Lowering an ini key or a search query is a different question. Who may call the owner at all is the next row, \"Where is a chart hash from outside Hydra lowercased into a song id?\"."
     },
     {
       "question": "Where is a chart hash from outside Hydra lowercased into a song id?",
@@ -769,7 +769,7 @@
       "owner_file": "src/app/analysis.cpp",
       "owner_symbol": "normalize_chart_hash",
       "date": "2026-10-15",
-      "decision": "D115 (spec section 8; plan part A1, task A1-5)",
+      "decision": "D115 (spec section 8; plan part A1, task A1-5); D115 (ADR 0031).",
       "added_by": "D115-A1-5j",
       "pattern": "\\bnormalize_chart_hash\\(",
       "anchor": "normalize_chart_hash(",
@@ -801,7 +801,7 @@
           "why": "normalize_chart_hash, the owner"
         }
       ],
-      "note": "A call to normalize_chart_hash anywhere but the leaderboard boundary. Hydra's own song ids come lowercase from song_id_read (spec section 2, ADR 0028), so nothing inside Hydra lowercases one again: ids are compared as they are. The scan scopes rows by top folder, so this row reads src and tools; the owner's own tests in tests/ are out of scope. Kept as its own row because a row holds one pattern, and the row above must still read dmbot_client.cpp. Decided by: D115 (ADR 0031)."
+      "note": "A call to normalize_chart_hash anywhere but the leaderboard boundary. Hydra's own song ids come lowercase from song_id_read (spec section 2, ADR 0028), so nothing inside Hydra lowercases one again: ids are compared as they are. The scan scopes rows by top folder, so this row reads src and tools; the owner's own tests in tests/ are out of scope. Kept as its own row because a row holds one pattern, and the row above must still read dmbot_client.cpp."
     },
     {
       "question": "Which files make up a chart's fingerprint?",
@@ -841,7 +841,7 @@
       "owner_file": "src/app/config.cpp",
       "owner_symbol": "resource_dir",
       "date": "2026-10-04",
-      "decision": "D53",
+      "decision": "audit finding 209; phase 6 task J2-1 (D53)",
       "added_by": "J2-1",
       "pattern": "\"[^\"]*\\\\\\\\resource",
       "anchor": "\\\\resource",
@@ -856,7 +856,7 @@
       "scope": [
         "src"
       ],
-      "note": "A string literal naming the resource folder under the exe. The owner joins the bare name \"resource\", so no line matches it. Decided by: audit finding 209; phase 6 task J2-1 (D53)"
+      "note": "A string literal naming the resource folder under the exe. The owner joins the bare name \"resource\", so no line matches it."
     },
     {
       "question": "How do the analysis settings read as text?",
@@ -864,7 +864,7 @@
       "owner_file": "src/app/config.cpp",
       "owner_symbol": "describe_settings",
       "date": "2026-10-04",
-      "decision": "D53, D54",
+      "decision": "audit finding 206; phase 6 task J2-1 (D53, D54); concept audit M15 (D114 item 9)",
       "added_by": "J2-1",
       "pattern": "DepthMode::\\w+.*\"(scores|points)\"|score range %d|%dms limit",
       "must_match": [
@@ -884,7 +884,7 @@
           "why": "score_range_text, which describe_settings reads: the owner"
         }
       ],
-      "note": "A depth unit word chosen from the search's enum, or bench's header words. Since D114 item 9 the batch confirm, the settings button, the Paths tab's \"Within\" heading and hydra_batch's header all read score_range_text, so the owner's line is the only one. Decided by: audit finding 206; phase 6 task J2-1 (D53, D54); concept audit M15 (D114 item 9)"
+      "note": "A depth unit word chosen from the search's enum, or bench's header words. The batch confirm, the settings button, the Paths tab's \"Within\" heading and hydra_batch's header all read score_range_text, so the owner's line is the only one."
     },
     {
       "question": "What does the stars filter say when its number is out of range?",
@@ -892,7 +892,7 @@
       "owner_file": "src/app/library_query.cpp",
       "owner_symbol": "stars_error",
       "date": "2026-10-04",
-      "decision": "D53",
+      "decision": "audit finding 171; phase 6 task J2-5 (D53)",
       "added_by": "J2-5",
       "pattern": "\\b0 to 7\\b",
       "anchor": "0 to 7",
@@ -906,7 +906,7 @@
       "scope": [
         "src"
       ],
-      "note": "The stars filter's range typed out as text. The owner builds the top of the range from kMaxStars, so no line matches it. The tests pin the whole sentence on purpose, so they are outside the scope. Decided by: audit finding 171; phase 6 task J2-5 (D53)"
+      "note": "The stars filter's range typed out as text. The owner builds the top of the range from kMaxStars, so no line matches it. The tests pin the whole sentence on purpose, so they are outside the scope."
     },
     {
       "question": "Does a term apply to a column? (matching)",
@@ -914,7 +914,7 @@
       "owner_file": "src/app/library_query.cpp",
       "owner_symbol": "term_applies_to",
       "date": "2026-10-04",
-      "decision": "D53",
+      "decision": "audit finding 204; phase 6 task J2-5 (D53)",
       "added_by": "J2-5",
       "pattern": "QueryField::Any",
       "anchor": "QueryField::Any",
@@ -928,7 +928,7 @@
       ],
       "function_file": "src/app/library_query.cpp",
       "function": "bool term_matches(",
-      "note": "Whether a term limited to one field counts in a column. Matching and highlighting each asked it their own way; both now call the owner. Any line naming QueryField::Any inside either function answers it again. Decided by: audit finding 204; phase 6 task J2-5 (D53)"
+      "note": "Whether a term limited to one field counts in a column. Matching and highlighting both call the owner. Any line naming QueryField::Any inside either function answers it again."
     },
     {
       "question": "Does a term apply to a column? (highlighting)",
@@ -936,7 +936,7 @@
       "owner_file": "src/app/library_query.cpp",
       "owner_symbol": "term_applies_to",
       "date": "2026-10-04",
-      "decision": "D53",
+      "decision": "audit finding 204; phase 6 task J2-5 (D53)",
       "added_by": "J2-5",
       "pattern": "QueryField::Any",
       "anchor": "QueryField::Any",
@@ -949,8 +949,7 @@
         "return term_applies_to(QueryField::Any, column);"
       ],
       "function_file": "src/app/library_query.cpp",
-      "function": "std::vector<MatchSpan> match_spans(",
-      "note": "Decided by: audit finding 204; phase 6 task J2-5 (D53)"
+      "function": "std::vector<MatchSpan> match_spans("
     },
     {
       "question": "How many dynamic notes does a count hold?",
@@ -958,7 +957,7 @@
       "owner_file": "src/app/dynamics_breakdown.h",
       "owner_symbol": "dynamic",
       "date": "2026-10-04",
-      "decision": "D53",
+      "decision": "audit finding 205; phase 6 task J2-5 (D53)",
       "added_by": "J2-5",
       "pattern": "(\\b\\w+\\.)?\\bghost\\s*\\+\\s*\\w*\\.?accent\\b(?!\\s*\\+)",
       "anchor": "accent",
@@ -982,15 +981,15 @@
         "src",
         "tests"
       ],
-      "note": "Ghosts plus accents, on a bare count or through a variable. The three-way sum that goes on to add normals is all(), another question. Decided by: audit finding 205; phase 6 task J2-5 (D53)"
+      "note": "Ghosts plus accents, on a bare count or through a variable. The three-way sum that goes on to add normals is all(), another question."
     },
     {
       "question": "Where does the Beyond tier start on the report page?",
-      "owner": "beyond_edge_ms and tier_for, carried in the payload by src/app/report.cpp",
+      "owner": "beyond_edge_ms and tier_for, read in src/app/report.cpp",
       "owner_file": "src/app/report.cpp",
       "owner_symbol": "beyond_edge_ms",
       "date": "2026-10-04",
-      "decision": "D53",
+      "decision": "audit finding 155; phase 6 task J2-2 (D53)",
       "added_by": "J2-2",
       "pattern": "Math\\.max\\(\\.\\.\\.DATA\\.tiers|r\\.ms\\s*>=?\\s*BEYOND",
       "must_match": [
@@ -1004,7 +1003,7 @@
       "scope": [
         "src"
       ],
-      "note": "The path report's page script once found the Beyond edge as the largest tier cutoff and counted rows past it by their ms. The page now reads the edge from the payload and counts rows whose tier tier_for already set to Beyond. Decided by: audit finding 155; phase 6 task J2-2 (D53)"
+      "note": "The path report's Past tile prints the edge through beyond_edge_text and counts rows whose tier tier_for already set to Beyond (path_tiles in report.cpp). A page script that finds the edge from the tier cutoffs, or counts rows past it by their ms, answers this again."
     },
     {
       "question": "How many charts does a path report list?",
@@ -1012,7 +1011,7 @@
       "owner_file": "src/store/chart_index.cpp",
       "owner_symbol": "count_charts",
       "date": "2026-10-14",
-      "decision": "D53, D77, D115 (task A2-2 moved the owner to ChartIndex::count), D282 (the rule moved into store::count_charts)",
+      "decision": "D53, D77, D115 (task A2-2 moved the owner to ChartIndex::count), D282 (the rule moved into store::count_charts); audit finding 242; phase 6 task J2-2 (D53); D77 (copies); D115 (task A2-2)",
       "added_by": "RW-T7",
       "pattern": "\\.(insert|emplace)\\([^)]*\\.hyhash|\\.(insert|emplace)\\([^)]*\\)\\.second\\)\\s*[\\w.>-]+\\s*\\+=",
       "must_match": [
@@ -1036,7 +1035,7 @@
       "scope": [
         "src"
       ],
-      "note": "The path report's subtitle and its Charts shown tile, and the comparison pages' counts, all ask store::count_charts, through the library index (ChartIndex::count) or, for the path report's tile, over the copies its rows kept. A page that adds up each chart's copies itself is a second answer. Decided by: audit finding 242; phase 6 task J2-2 (D53); D77 (copies); D115 (task A2-2)"
+      "note": "The path report's subtitle and its Charts shown tile, and the comparison pages' counts, all ask store::count_charts, through the library index (ChartIndex::count) or, for the path report's tile, over the copies its rows kept. A page that adds up each chart's copies itself is a second answer."
     },
     {
       "question": "Which side of a report comparison is higher?",
@@ -1044,7 +1043,7 @@
       "owner_file": "src/app/dm_report.cpp",
       "owner_symbol": "collect_dm_rows",
       "date": "2026-10-04",
-      "decision": "D53",
+      "decision": "audit finding 168; phase 6 task J2-2 (D53)",
       "added_by": "J2-2",
       "pattern": "r\\.delta\\s*[<>]\\s*0\\s*\\?",
       "anchor": "r.delta",
@@ -1064,7 +1063,7 @@
       "scope": [
         "src"
       ],
-      "note": "collect_dm_rows and collect_fill_rows set each row's status from the one comparison; the page scripts read it instead of testing the delta's sign. The leaderboard row also keeps that answer in above_optimal, which an off-speed status hides (D64). The C++ assignments carry no `r.` and are the owner. Decided by: audit finding 168; phase 6 task J2-2 (D53)"
+      "note": "collect_dm_rows and collect_fill_rows set each row's status from the one comparison; the page scripts read it instead of testing the delta's sign. The leaderboard row also keeps that answer in above_optimal, which an off-speed status hides (D64). The C++ assignments carry no `r.` and are the owner."
     },
     {
       "question": "How many charts did a batch analyze, skip and fail?",
@@ -1072,7 +1071,7 @@
       "owner_file": "src/app/analysis.cpp",
       "owner_symbol": "run_batch",
       "date": "2026-10-05",
-      "decision": "D51, D76",
+      "decision": "audit finding 142; D51 call 26 (phase 7 task LB1); D76 (every copy counted)",
       "added_by": "LB1",
       "pattern": "size\\(\\)\\)?\\s*-\\s*(\\w+(\\.|->))?total\\b|\\bcompleted\\s*-\\s*(\\w+(\\.|->))?failed\\b",
       "must_match": [
@@ -1090,7 +1089,7 @@
       "scope": [
         "src"
       ],
-      "note": "A batch count worked out again from other counts: \"skipped\" as the scan list less the total, or \"analyzed\" as finished less failed. BatchProgress carries every count, filled by run_batch. Decided by: audit finding 142; D51 call 26 (phase 7 task LB1); D76 (every copy counted)"
+      "note": "A batch count worked out again from other counts: \"skipped\" as the scan list less the total, or \"analyzed\" as finished less failed. BatchProgress carries every count, filled by run_batch."
     },
     {
       "question": "Which Difficulty, Pro Drums, 2x Bass and Note Shuffle choices spell a chart mode key?",
@@ -1126,7 +1125,7 @@
           "why": "Settings::with_chartmode, the owner"
         }
       ],
-      "note": "A search over the view choices for a chart mode: a difficulty set from a loop's enum, or a built key tested against a wanted one. report.cpp's settings_for_mode and AppState::select_chart each had one before the RW-T4 review."
+      "note": "A search over the view choices for a chart mode: a difficulty set from a loop's enum, or a built key tested against a wanted one."
     },
     {
       "question": "Why can't these settings be compared with the leaderboard?",
@@ -1157,7 +1156,7 @@
       "owner_file": "src/app/preview_view.cpp",
       "owner_symbol": "last_drawn_note",
       "date": "2026-10-05",
-      "decision": "D69",
+      "decision": "audit finding 191, the store test's compare (phase 6 task J3-6); re-pointed by D69 (phase 7 task AL2)",
       "added_by": "J3-6",
       "pattern": "sequence\\.back\\(\\)\\.timecode\\.ms\\(\\)",
       "anchor": "sequence.back().timecode.ms()",
@@ -1170,8 +1169,7 @@
       ],
       "scope": [
         "tests"
-      ],
-      "note": "Decided by: audit finding 191, the store test's compare (phase 6 task J3-6); re-pointed by D69 (phase 7 task AL2)"
+      ]
     },
     {
       "question": "How is a measure number written as a label?",
@@ -1179,7 +1177,7 @@
       "owner_file": "src/core/timing.cpp",
       "owner_symbol": "measure_label",
       "date": "2026-10-05",
-      "decision": "D53, D54",
+      "decision": "audit findings 183 and 184; phase 6 task J3-3 (D53, D54); moved beside Timecode in core/timing.cpp by the Hydra libraries plan (task T1b)",
       "added_by": "J3-3",
       "pattern": "\"m\" \\+ std::to_string|TextDisabled\\(\"m1\"\\)|measure_beats_ticks\\(\\)\\[0\\] \\+ 1",
       "exempt": [
@@ -1205,8 +1203,7 @@
       ],
       "scope": [
         "src"
-      ],
-      "note": "Decided by: audit findings 183 and 184; phase 6 task J3-3 (D53, D54); moved beside Timecode in core/timing.cpp by the Hydra libraries plan (task T1b)"
+      ]
     },
     {
       "question": "How is the first measure spelled?",
@@ -1214,7 +1211,7 @@
       "owner_file": "src/app/path_view.cpp",
       "owner_symbol": "first_measure_label",
       "date": "2026-10-05",
-      "decision": "D53, D54",
+      "decision": "audit R7.27; phase 6 task J3-3 (D53, D54)",
       "added_by": "J3-3",
       "pattern": "\"m1\\.1\\.0\"",
       "anchor": "\"m1.1.0\"",
@@ -1227,7 +1224,7 @@
       "scope": [
         "src"
       ],
-      "note": "Tests pin the shown text and may type it. Decided by: audit R7.27; phase 6 task J3-3 (D53, D54)"
+      "note": "Tests pin the shown text and may type it."
     },
     {
       "question": "What is the longest badge an activation row can show?",
@@ -1235,7 +1232,7 @@
       "owner_file": "src/app/path_view.cpp",
       "owner_symbol": "longest_activation_badge",
       "date": "2026-10-05",
-      "decision": "D53, D54",
+      "decision": "audit finding 292; phase 6 task J3-3 (D53, D54)",
       "added_by": "J3-3",
       "pattern": "[a-z] 999 ms|text\\(18\\)",
       "must_match": [
@@ -1250,7 +1247,7 @@
       "scope": [
         "tests"
       ],
-      "note": "A letter before the figure: a badge's wording, not a decimal such as \"2.999 ms\" in a leeway case. Decided by: audit finding 292; phase 6 task J3-3 (D53, D54)"
+      "note": "A letter before the figure: a badge's wording, not a decimal such as \"2.999 ms\" in a leeway case."
     },
     {
       "question": "Which moment do the Preview's overlay boxes read?",
@@ -1258,7 +1255,7 @@
       "owner_file": "src/app/preview_view.cpp",
       "owner_symbol": "shown_ms",
       "date": "2026-10-05",
-      "decision": "D53, D54",
+      "decision": "audit finding 185; phase 6 task J3-4 (D53, D54)",
       "added_by": "J3-4",
       "pattern": "now_ms < 0\\.0 \\? 0\\.0 : now_ms|now_ms > len \\? len",
       "anchor": "now_ms ",
@@ -1277,8 +1274,7 @@
       ],
       "scope": [
         "src"
-      ],
-      "note": "Decided by: audit finding 185; phase 6 task J3-4 (D53, D54)"
+      ]
     },
     {
       "question": "Does the Preview scene have an SP gauge?",
@@ -1286,7 +1282,7 @@
       "owner_file": "src/app/preview_view.h",
       "owner_symbol": "has_sp_gauge",
       "date": "2026-10-05",
-      "decision": "D53, D54",
+      "decision": "audit finding 216; phase 6 task J3-4 (D53, D54); gauge on every song, the user's request in task pv1 (2026-10-16)",
       "added_by": "J3-4",
       "pattern": "sp_meter\\.segments\\.empty\\(\\)",
       "anchor": "sp_meter.segments.empty()",
@@ -1300,7 +1296,7 @@
       "scope": [
         "src"
       ],
-      "note": "The owner asks for timing alone, so a chart with no SP phrase still shows its gauge, empty, and the drain box. The owner never tests the curve, so no line of it matches the pattern and the row has no owner line; the pattern flags any code that hides the gauge on an empty curve. Tests pin the fact that a scene has no curve; those are assertions, not a predicate. Decided by: audit finding 216; phase 6 task J3-4 (D53, D54); gauge on every song, the user's request in task pv1 (2026-10-16)"
+      "note": "The owner asks for timing alone, so a chart with no SP phrase still shows its gauge, empty, and the drain box. The owner never tests the curve, so no line of it matches the pattern and the row has no owner line; the pattern flags any code that hides the gauge on an empty curve. Tests pin the fact that a scene has no curve; those are assertions, not a predicate."
     },
     {
       "question": "Over which stretch is an activation's Star Power running?",
@@ -1308,7 +1304,7 @@
       "owner_file": "src/app/preview_view.h",
       "owner_symbol": "sp_window",
       "date": "2026-10-05",
-      "decision": "D53, D54",
+      "decision": "audit finding 157; phase 6 task J3-4 (D53, D54)",
       "added_by": "J3-4",
       "pattern": "has_sp_end && (struck_at\\(now, a\\.ms\\)|a\\.sp_end_ms > a\\.ms)",
       "anchor": "has_sp_end && ",
@@ -1322,8 +1318,7 @@
       ],
       "scope": [
         "src"
-      ],
-      "note": "Decided by: audit finding 157; phase 6 task J3-4 (D53, D54)"
+      ]
     },
     {
       "question": "Which fill did an activation take?",
@@ -1331,7 +1326,7 @@
       "owner_file": "src/app/preview_view.cpp",
       "owner_symbol": "apply_preview_overlay",
       "date": "2026-10-05",
-      "decision": "D53, D54",
+      "decision": "audit finding 175; phase 6 task J3-4 (D53, D54)",
       "added_by": "J3-4",
       "pattern": "span\\.end_tick\\s*[!=]=\\s*a\\.tick",
       "anchor": "span.end_tick",
@@ -1344,7 +1339,7 @@
       "scope": [
         "src"
       ],
-      "note": "The owner is apply_preview_overlay's mark, which stores the fill on the activation (PreviewActivation::taken_fill); readers take it from there instead of searching the fills again. Decided by: audit finding 175; phase 6 task J3-4 (D53, D54)"
+      "note": "The owner is apply_preview_overlay's mark, which stores the fill on the activation (PreviewActivation::taken_fill); readers take it from there instead of searching the fills again."
     },
     {
       "question": "How long is this song?",
@@ -1352,7 +1347,7 @@
       "owner_file": "src/app/song_length.cpp",
       "owner_symbol": "song_length_ms",
       "date": "2026-10-05",
-      "decision": "D75",
+      "decision": "D75 (a song's length comes from its chart metadata); D255 (the end event, the last note over every instrument, the pad); phase 7 task AL1, task SL1",
       "added_by": "AL1",
       "pattern": "make_(unique|shared)<\\s*(\\w+::)*StreamMix\\s*>|\\b(\\w+::)*StreamMix\\s+\\w+\\s*[({]|\\baudio_end_chart_ms\\s*\\((?!\\s*const\\b)",
       "owner_files": [
@@ -1371,7 +1366,7 @@
       "scope": [
         "src"
       ],
-      "note": "---- a song's length comes from its metadata and its chart, never its audio (D75, D255) ---- The owner (app::song_length_ms) opens no audio: it reads the stated length, the chart's end event and the last note's end (the row below owns those two facts). A song's stems mixed, or the audio's end asked of a mix, anywhere but the Preview's own mix step is a length worked out from audio again. The Preview's playback ends at this length too (D255, the user's answer 5), so the transport asks its audio for no end. Decided by: D75 (a song's length comes from its chart metadata); D255 (the end event, the last note over every instrument, the pad); phase 7 task AL1, task SL1"
+      "note": "---- a song's length comes from its metadata and its chart, never its audio (D75, D255) ---- The owner (app::song_length_ms) opens no audio: it reads the stated length, the chart's end event and the last note's end (the row below owns those two facts). A song's stems mixed, or the audio's end asked of a mix, anywhere but the Preview's own mix step is a length worked out from audio again. The Preview's playback ends at this length too (D255, the user's answer 5), so the transport asks its audio for no end."
     },
     {
       "question": "Where does the chart's end event sit, and does it count?",
@@ -1379,7 +1374,7 @@
       "owner_file": "src/app/song_length.cpp",
       "owner_symbol": "end_event_counts",
       "date": "2026-10-18",
-      "decision": "D255",
+      "decision": "D255 (the user's answers 1 to 5, 2026-10-18); task SONGEND-T2a",
       "added_by": "SONGEND-T2a",
       "pattern": "\\.(end_event_tick|last_note_end_tick)\\b",
       "owner_files": [
@@ -1425,7 +1420,7 @@
       "scope": [
         "src"
       ],
-      "note": "The end event and the last note's end are read only by app::song_length_ms, through end_event_counts for the one-beat margin, so no second place decides where a song ends. The parsers store both; nothing else in src reads them. Decided by: D255 (the user's answers 1 to 5, 2026-10-18); task SONGEND-T2a"
+      "note": "The end event and the last note's end are read only by app::song_length_ms, through end_event_counts for the one-beat margin, so no second place decides where a song ends. The parsers store both; nothing else in src reads them."
     },
     {
       "question": "What does a failed length read leave in the store?",
@@ -1433,7 +1428,7 @@
       "owner_file": "src/app/analysis.cpp",
       "owner_symbol": "analysis_song_length",
       "date": "2026-10-05",
-      "decision": "D69, D75",
+      "decision": "derive-once review of AL2, finding 1 (D69); D75, task SL1",
       "added_by": "SL1",
       "pattern": "\\bSongLength::found\\s*\\(",
       "anchor": "SongLength::found",
@@ -1454,7 +1449,7 @@
           "why": "analysis_song_length, the owner"
         }
       ],
-      "note": "The owner's answer turned into a stored length anywhere but the one helper an analysis saves through, so no third try/catch decides what a failed read leaves. Decided by: derive-once review of AL2, finding 1 (D69); D75, task SL1"
+      "note": "The owner's answer turned into a stored length anywhere but the one helper an analysis saves through, so no third try/catch decides what a failed read leaves."
     },
     {
       "question": "How many ticks per quarter note does the Preview scene have?",
@@ -1462,7 +1457,7 @@
       "owner_file": "src/app/preview_view.h",
       "owner_symbol": "timing",
       "date": "2026-10-05",
-      "decision": "D53, D54",
+      "decision": "audit finding 135; phase 6 task J4-5 (D53, D54)",
       "added_by": "J4-5",
       "pattern": "\\.tick_resolution\\s*=\\s*",
       "anchor": ".tick_resolution",
@@ -1478,7 +1473,7 @@
         "tools",
         "tests"
       ],
-      "note": "A field written beside PreviewScene::timing that holds its resolution a second time. Decided by: audit finding 135; phase 6 task J4-5 (D53, D54)"
+      "note": "A field written beside PreviewScene::timing that holds its resolution a second time."
     },
     {
       "question": "Which profile does a tool or test file a chart's result under?",
@@ -1486,7 +1481,7 @@
       "owner_file": "src/app/config.cpp",
       "owner_symbol": "Settings::profile",
       "date": "2026-10-15",
-      "decision": "audit finding 240; D115 (plan part A2, task A2-3; part A1, task A1-5)",
+      "decision": "audit finding 240; H1 derive-once review finding 1 (2026-10-06); D115 plan part A2, task A2-3 (the row's new wording) and part A1, task A1-5.",
       "added_by": "D115-A1-5j",
       "pattern": "Profile(\\s+\\w+)?\\s*\\{[^}]*(\\brun\\.profile\\.|chartmode_key\\(\\)|cap_query\\(\\)|lens\\(\\))",
       "anchor": "Profile",
@@ -1505,7 +1500,7 @@
         "tests",
         "tools"
       ],
-      "note": "A profile rebuilt from a BatchRun's or a Settings' parts in a tool or a test, instead of taking run.profile or Settings::profile whole. A profile made of literals, as the store's own tests use, is a different question. The owner is in src, so no line in scope is an owner line; src and tools are also read by the d115-profile row. Before D115 this row asked which RecordKey a tool files a result under, with Settings::record_key as owner; RecordKey is gone. Decided by: audit finding 240; H1 derive-once review finding 1 (2026-10-06); D115 plan part A2, task A2-3 (the row's new wording) and part A1, task A1-5."
+      "note": "A profile rebuilt from a BatchRun's or a Settings' parts in a tool or a test, instead of taking run.profile or Settings::profile whole. A profile made of literals, as the store's own tests use, is a different question. The owner is in src, so no line in scope is an owner line; src and tools are also read by the d115-profile row."
     },
     {
       "question": "Does this database have a chart library to report on?",
@@ -1513,7 +1508,7 @@
       "owner_file": "src/app/report.cpp",
       "owner_symbol": "lacks_chart_library",
       "date": "2026-10-07",
-      "decision": "D89, D92",
+      "decision": "D89 item 2, D92 (task storage-T5)",
       "added_by": "storage-T5",
       "pattern": "chart_library_count\\(\\)\\s*==\\s*0",
       "anchor": "chart_library_count()",
@@ -1535,7 +1530,7 @@
       "scope": [
         "src"
       ],
-      "note": "A page that decides \"no chart library\" itself could stop where the path report does not, or say it in other words (D89 item 2, D92). Decided by: D89 item 2, D92 (task storage-T5)"
+      "note": "A page that decides \"no chart library\" itself could stop where the path report does not, or say it in other words (D89 item 2, D92)."
     },
     {
       "question": "Does the library list this chart?",
@@ -1543,7 +1538,7 @@
       "owner_file": "src/store/chart_index.cpp",
       "owner_symbol": "ChartIndex::lists",
       "date": "2026-10-14",
-      "decision": "D87, D92, D115 (task A2-4 moved the owner to ChartIndex::lists; A2-2 moved the path report onto it)",
+      "decision": "D87, D92, D115 (task A2-4 moved the owner to ChartIndex::lists; A2-2 moved the path report onto it); D87 item 4, D92 (task som-a), D115 (tasks A2-4, A2-2)",
       "added_by": "som-a",
       "pattern": "\\blibrary\\w*\\.(find|end|contains)\\(|\\blibrary\\w*\\.count\\((?!ids_of\\()|\\bfiles\\.(find|end|count|contains)\\(",
       "must_match": [
@@ -1559,7 +1554,7 @@
         "if (library.lists(r.song_id)) {",
         "{\"Charts shown\", group_thousands(library.count(ids_of(rows, shown)))},"
       ],
-      "note": "The path report and the comparison pages once each tested \"is this chart in the library\" against their own map (the naming-copy files and the copies). A page that looks a chart up in a library map itself can disagree with them about which charts the library lists. Since D115 every page asks store::ChartIndex::lists, the path report through report::library_lookup. A ChartIndex::count over the page's ids is the chart count's question, not this one. Decided by: D87 item 4, D92 (task som-a), D115 (tasks A2-4, A2-2)"
+      "note": "A page that looks a chart up in a library map itself can disagree with the other pages about which charts the library lists. The DM comparison's status asks store::ChartIndex::lists. The path report, the DM comparison's results and the fill comparison walk ChartIndex::song_ids through report::library_lookup, so every chart they read is one the library lists. A ChartIndex::count over the page's ids is the chart count's question, not this one."
     },
     {
       "question": "How is a picker item's id spelled?",
@@ -1567,7 +1562,7 @@
       "owner_file": "src/app/path_view.h",
       "owner_symbol": "path_item_id",
       "date": "2026-10-05",
-      "decision": "D53, D54",
+      "decision": "audit finding 352; phase 6 task J4-4 (D53, D54)",
       "added_by": "J4-4",
       "pattern": "\"##\" \\+ std::to_string\\(",
       "anchor": "\"##\" + std::to_string(",
@@ -1591,7 +1586,7 @@
         "tools",
         "tests"
       ],
-      "note": "The Preview picker's \"label##index\" id. The library's chip id (\")##\" + c.id) is another widget's and does not fit. Decided by: audit finding 352; phase 6 task J4-4 (D53, D54)"
+      "note": "The Preview picker's \"label##index\" id. The library's chip id (\")##\" + c.id) is another widget's and does not fit."
     },
     {
       "question": "What does a list call the best all-0 path?",
@@ -1659,7 +1654,7 @@
       "owner_file": "src/app/user_messages.cpp",
       "owner_symbol": "tool_error",
       "date": "2026-10-05",
-      "decision": "D72, D73",
+      "decision": "D72 item 5, D73 item 4",
       "added_by": "RD1",
       "pattern": "plain_error_block\\(",
       "anchor": "plain_error_block(",
@@ -1706,7 +1701,7 @@
           "why": "stored_failure_text: the library's Can't analyze tooltip shows a stored failure's block in the GUI, not a tool's exit (D249)"
         }
       ],
-      "note": "A tool that prints an error's block itself is a second way for a tool to end on an error (D73 review finding 2). Decided by: D72 item 5, D73 item 4"
+      "note": "A tool that prints an error's block itself is a second way for a tool to end on an error (D73 review finding 2)."
     },
     {
       "question": "Which library charts match a typed search?",
@@ -1714,7 +1709,7 @@
       "owner_file": "src/app/library_query.cpp",
       "owner_symbol": "query_matches",
       "date": "2026-10-05",
-      "decision": "D53, D54",
+      "decision": "audit finding 113; phase 6 task J4-2 (D53, D54)",
       "added_by": "J4-2",
       "pattern": "LIKE \\?",
       "anchor": "LIKE ?",
@@ -1724,7 +1719,7 @@
       "must_not_match": [
         "\" ORDER BY name LIMIT ? OFFSET ?\");"
       ],
-      "note": "The library's search folds case and accents and knows field prefixes; an SQL LIKE would be a second, disagreeing rule. Decided by: audit finding 113; phase 6 task J4-2 (D53, D54)"
+      "note": "The library's search folds case and accents and knows field prefixes; an SQL LIKE would be a second, disagreeing rule."
     },
     {
       "question": "Which plain sentence does this failure show?",
@@ -1732,7 +1727,7 @@
       "owner_file": "src/app/user_messages.cpp",
       "owner_symbol": "plain_error",
       "date": "2026-10-05",
-      "decision": "D51, D71",
+      "decision": "audit finding 193 and R7.20; phase 7 tasks ER1 and ER2 (D51 call 25, D71)",
       "added_by": "p7-er1",
       "pattern": "\\b(what|error)(\\(\\))?\\)?\\s*[!=]=\\s*\"|\\b(starts_with|ends_with|starts_with_any)\\(\\s*(\\w+\\.)?(what|error)(\\(\\))?\\s*,|\\b(what|error)(\\(\\))?\\)?\\.(find|rfind|compare)\\(|\\b(what|error)(\\(\\))?\\)?\\.substr\\(.*\\)\\s*[!=]=",
       "must_match": [
@@ -1750,7 +1745,7 @@
       "scope": [
         "src"
       ],
-      "note": "The thrower names the kind; reading the exception's words back is a second answer, anywhere in src, user_messages.cpp included. Decided by: audit finding 193 and R7.20; phase 7 tasks ER1 and ER2 (D51 call 25, D71)"
+      "note": "The thrower names the kind; reading the exception's words back is a second answer, anywhere in src, user_messages.cpp included."
     },
     {
       "question": "How do an error's sentence and its raw text read as one block?",
@@ -1758,7 +1753,7 @@
       "owner_file": "src/app/user_messages.cpp",
       "owner_symbol": "plain_error_block",
       "date": "2026-10-05",
-      "decision": "D72",
+      "decision": "D72 items 1 and 5 (task DB1)",
       "added_by": "DB1",
       "pattern": "\\bplain_error\\(.*\\+.*(\\bplain_error_detail\\(|\\bwhat\\(\\))|(\\bplain_error_detail\\(|\\bwhat\\(\\)).*\\+.*\\bplain_error\\(",
       "anchor": "plain_error(",
@@ -1780,7 +1775,7 @@
       "scope": [
         "src"
       ],
-      "note": "The startup message box and the command-line tools show an error's sentence and raw text together; gluing the two on one line anywhere else is a second layout of that block. Decided by: D72 items 1 and 5 (task DB1)"
+      "note": "The startup message box and the command-line tools show an error's sentence and raw text together; gluing the two on one line anywhere else is a second layout of that block."
     },
     {
       "question": "How many library rows has a batch analyzed, failed or skipped?",
@@ -1788,7 +1783,7 @@
       "owner_file": "src/app/analysis.cpp",
       "owner_symbol": "BatchProgress",
       "date": "2026-10-05",
-      "decision": "D76, D79",
+      "decision": "D76, D79 item B3 (task COUNT-B)",
       "added_by": "COUNT-B",
       "pattern": "\\+\\+\\s*[\\w.>-]*\\b(done|completed|analyzed|failed|skipped)\\b|\\b(done|completed|analyzed|failed|skipped)\\s*\\+\\+|failures\\.size\\(\\)",
       "must_match": [
@@ -1831,7 +1826,7 @@
         "src/ui/library_dialogs.cpp",
         "src/ui/app_state.cpp"
       ],
-      "note": "D79 B3: every batch number is BatchProgress's. A count of the failure lines, or a counter of its own, is a second count. Decided by: D76, D79 item B3 (task COUNT-B)"
+      "note": "D79 B3: every batch number is BatchProgress's. A count of the failure lines, or a counter of its own, is a second count."
     },
     {
       "question": "Does a line print the store's raw row count as a count of charts?",
@@ -1839,7 +1834,7 @@
       "owner_file": "src/app/report.cpp",
       "owner_symbol": "library",
       "date": "2026-10-05",
-      "decision": "D79",
+      "decision": "D79 item 2 (task COUNT-B)",
       "added_by": "COUNT-B",
       "pattern": "\\b\\w*store\\w*(\\.|->)record_count\\(\\)",
       "anchor": "record_count()",
@@ -1858,7 +1853,7 @@
           "why": "holds_results, the owner: it asks only whether the store is empty"
         }
       ],
-      "note": "D79 B5: RecordStore::record_count() (the old counts() before D115 A1-5) adds up every stored record under every profile, so a line that printed it next to the batch's counts read as a second chart count. This row flags every call to a store's record_count() in src/ and tools/. The one call kept is holds_results in src/app/report.cpp, which asks only whether the store is empty. Decided by: D79 item 2 (task COUNT-B)"
+      "note": "D79 B5: RecordStore::record_count() adds up every stored record under every profile, so a line that prints it next to the batch's counts reads as a second chart count. This row flags every call to a store's record_count() in src/ and tools/. The one call kept is holds_results in src/app/report.cpp, which asks only whether the store is empty."
     },
     {
       "question": "How does a finished scan become the library?",
@@ -1866,7 +1861,7 @@
       "owner_file": "src/app/analysis.cpp",
       "owner_symbol": "save_scan_as_library",
       "date": "2026-10-05",
-      "decision": "D79",
+      "decision": "D79 item 1 (task COUNT-B)",
       "added_by": "COUNT-B",
       "pattern": "\\brebuild_chart_library\\s*\\(",
       "anchor": "rebuild_chart_library",
@@ -1889,7 +1884,7 @@
           "why": "save_scan_as_library, the owner"
         }
       ],
-      "note": "D79 B4: Scan library, hydra_batch and the bench tool each saved a scan their own way. One function saves it, so every one leaves the same library behind. Decided by: D79 item 1 (task COUNT-B)"
+      "note": "D79 B4: Scan library, hydra_batch and the bench tool each saved a scan their own way. One function saves it, so every one leaves the same library behind."
     },
     {
       "question": "How many charts does the confirm's batch cover, run and skip?",
@@ -1897,7 +1892,7 @@
       "owner_file": "src/app/analysis.cpp",
       "owner_symbol": "BatchPlan::todo_rows",
       "date": "2026-10-05",
-      "decision": "D79",
+      "decision": "D79 item B2 (task COUNT-B)",
       "added_by": "COUNT-B",
       "pattern": "\\bint64_t\\s+batch_scope_\\w+\\s*=|=\\s*total\\s*-\\s*with\\b",
       "must_match": [
@@ -1913,7 +1908,7 @@
         "src/ui/app_state.h",
         "src/ui/library_dialogs.cpp"
       ],
-      "note": "D79 B2: every number the confirm shows is read off its plans. A field that holds a plan's count, or a subtraction of one count from another, is a second answer to \"how many will run\". Decided by: D79 item B2 (task COUNT-B)"
+      "note": "D79 B2: every number the confirm shows is read off its plans. A field that holds a plan's count, or a subtraction of one count from another, is a second answer to \"how many will run\"."
     },
     {
       "question": "Which code saves charts in groups?",
@@ -1921,7 +1916,7 @@
       "owner_file": "src/app/analysis.cpp",
       "owner_symbol": "run_batch",
       "date": "2026-10-06",
-      "decision": "D86",
+      "decision": "D86 items 1 and 2 (task W1)",
       "added_by": "W1",
       "pattern": "\\b(begin|commit)_save_group\\s*\\(",
       "anchor": "_save_group",
@@ -1938,7 +1933,7 @@
         "if (!store.save_group_open()) {",
         "bool save_group_open() const { return group_open_; }"
       ],
-      "note": "D86 items 1 and 2: the batch's writer is the one caller that saves charts in groups, and the one that retries a lost group's charts alone. Another caller opening a group would hold the store lock without that retry. Decided by: D86 items 1 and 2 (task W1)"
+      "note": "D86 items 1 and 2: the batch's writer is the one caller that saves charts in groups, and the one that retries a lost group's charts alone. Another caller opening a group would hold the store lock without that retry."
     },
     {
       "question": "What buffer does a chart file's MD5 read through?",
@@ -1946,7 +1941,7 @@
       "owner_file": "src/app/analysis.cpp",
       "owner_symbol": "stream_md5",
       "date": "2026-10-06",
-      "decision": "D86",
+      "decision": "D86 speedups plan, task S1",
       "added_by": "S1",
       "pattern": "std::vector<uint8_t>\\s+\\w+\\s*\\(\\s*1\\s*<<\\s*20\\s*\\)",
       "anchor": "std::vector<uint8_t>",
@@ -1969,7 +1964,7 @@
       "scope": [
         "src/app/analysis.cpp"
       ],
-      "note": "S1: a fresh zero-filled megabyte per hashed file cost the library scan measurable time, so each hashing thread keeps one buffer. Decided by: D86 speedups plan, task S1"
+      "note": "Each hashing thread keeps one buffer, so the library scan does not zero a fresh megabyte for every hashed file."
     },
     {
       "question": "What does a hyhash identify (the old 'chart-file MD5' wording)?",
@@ -1977,7 +1972,7 @@
       "owner_file": "src/app/analysis.cpp",
       "owner_symbol": "song_id_read",
       "date": "2026-10-10",
-      "decision": "ADR 0028",
+      "decision": "ADR 0028 and the derive-once review of 36be3a70 (finding 1)",
       "added_by": "song-id-archives",
       "pattern": "chart[- ]file MD5",
       "anchor": "file MD5",
@@ -1995,7 +1990,7 @@
         "tests"
       ],
       "scan_comments": true,
-      "note": "ADR 0028: a hyhash is Clone Hero's song id, which for a .sng or .srb is not the MD5 of the chart file. Comments that still called it one were wrong, so comments are scanned too; they name the owner instead. Decided by: ADR 0028 and the derive-once review of 36be3a70 (finding 1)"
+      "note": "ADR 0028: a hyhash is Clone Hero's song id, which for a .sng or .srb is not the MD5 of the chart file. Comments that still called it one were wrong, so comments are scanned too; they name the owner instead."
     },
     {
       "question": "How many sort keys may a report hold?",
@@ -2003,7 +1998,7 @@
       "owner_file": "src/app/report_view.h",
       "owner_symbol": "kMaxSortKeys",
       "date": "2026-10-08",
-      "decision": "D103",
+      "decision": "D103 item 1 (Shift+click adds a second key); derive-once review of RW-T5 (finding 3)",
       "added_by": "RW-T5",
       "pattern": "\\bSpecsCount\\b[^;]*[<>]=?\\s*[2-9]\\b",
       "anchor": "SpecsCount",
@@ -2019,7 +2014,7 @@
       "scope": [
         "src"
       ],
-      "note": "A table's header sort can hold more keys than a report sorts by, so the window cuts it to the report's limit, read from the owner. Decided by: D103 item 1 (Shift+click adds a second key); derive-once review of RW-T5 (finding 3)"
+      "note": "A table's header sort can hold more keys than a report sorts by, so the window cuts it to the report's limit, read from the owner."
     },
     {
       "question": "What does the Score range's INI depth_mode int mean?",
@@ -2046,7 +2041,7 @@
           "why": "Settings::search_depth_mode, the owner"
         }
       ],
-      "note": "Was the E3 test case, which pinned the whole line; now a row, so a drift asks for the owner line to be updated. The owner is the one line that compares the int, however the comparison is spelled."
+      "note": "A drift asks for the owner line to be updated. The owner is the one line that compares the int, however the comparison is spelled."
     },
     {
       "question": "Is this the Hydra.exe the installer put in place?",
@@ -2054,7 +2049,7 @@
       "owner_file": "src/app/config.cpp",
       "owner_symbol": "installed_by_setup",
       "date": "2026-10-22",
-      "decision": "D259 call 14",
+      "decision": "the user's yes to D259, call 14 (2026-10-22)",
       "added_by": "UPD-T2a",
       "pattern": "638FCDD7-88E0-438D-9C52-388C6C9CF4E3|\\bInstallLocation\\b",
       "must_match": [
@@ -2077,7 +2072,7 @@
           "why": "installed_by_setup, the owner: the value that holds the installed folder"
         }
       ],
-      "note": "Only the installed exe checks for updates, so a second reading of the installer's registry key would be a second, disagreeing answer. Code that needs the answer calls installed_by_setup; tests set it with set_installed_for_test. Decided by: the user's yes to D259, call 14 (2026-10-22)"
+      "note": "Only the installed exe checks for updates, so a second reading of the installer's registry key would be a second, disagreeing answer. Code that needs the answer calls installed_by_setup; tests set it with set_installed_for_test."
     }
   ]
 }

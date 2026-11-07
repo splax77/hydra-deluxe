@@ -49,8 +49,8 @@ inline app::PreviewDrumLane drum_lane(app::PreviewSpan s,
 }
 
 // One tick per millisecond (60 BPM at 1000 ticks per beat), matching note()
-// and span() above, so half a tick is 0.5 ms and the edges the tests expect
-// (1.0005, 0.2505, ...) are the same as before spans moved to ticks.
+// and span() above, so half a tick is 0.5 ms, which gives the edges the tests
+// expect (1.0005, 0.2505, ...).
 inline app::PreviewScene timed_scene() {
     app::PreviewScene s;
     s.timing = SongTiming(1000, {{0, 4000}}, {{0, 60.0}}, {{0, {4, 4}}});
@@ -69,8 +69,7 @@ inline app::PreviewNote note_at_tick(const SongTiming& timing, int64_t tick,
 
 // At 480 ticks a beat and 300 BPM, a scene with an SP phrase from tick 0 to
 // tick 480 and `notes` (tick, lane) on their ticks. One tick here is 0.417 ms,
-// shorter than the old half-millisecond margin, so a note on tick 481 sits
-// just outside the phrase.
+// so a note on tick 481 sits just outside the phrase.
 inline app::PreviewScene phrase_to_tick_480_scene(
     std::initializer_list<std::pair<int64_t, app::PreviewLane>> notes) {
     SongTiming timing(480, {{0, 1920}}, {{0, 300.0}}, {{0, {4, 4}}});
