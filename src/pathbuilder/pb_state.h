@@ -65,8 +65,8 @@ std::unique_ptr<OpenChart> load_open_chart(const std::string& notespath,
                                            const std::atomic<bool>* cancel = nullptr);
 
 // The window's title line for an open chart, as the mockup's title line
-// reads (docs/superpowers/specs/2026-10-30-path-builder-mockup/
-// mockup_template.html): the song's name, a dash and its artist, each as
+// reads (docs/superpowers/specs/2026-10-30-path-builder-mockup/mockup_template.html (removed; git show 6804353f:docs/superpowers/specs/2026-10-30-path-builder-mockup/mockup_template.html)):
+// the song's name, a dash and its artist, each as
 // display_title and display_artist show them. A chart with no usable name
 // (display_title's kUnknownTitle) shows its file path instead.
 std::string chart_title_line(const OpenChart& chart);

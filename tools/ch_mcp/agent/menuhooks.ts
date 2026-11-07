@@ -1,7 +1,7 @@
 // The method-watch agent: hooks the menu and song-start methods that
 // tools/ch_mcp/start_candidates.json names, and sends every call with its
 // arguments, so a live run can show which method starts a song (the plan
-// 2026-10-30-ch-mcp-star-power-and-song-start.md, task T7 and live step LS-M).
+// docs/superpowers/plans/2026-10-30-ch-mcp-star-power-and-song-start.md (removed; git show 6804353f:docs/superpowers/plans/2026-10-30-ch-mcp-star-power-and-song-start.md), task T7 and live step LS-M).
 //
 // It reads and traces only. Every hook is an Interceptor.attach whose onEnter
 // reads its arguments; nothing changes an argument or a return value, writes

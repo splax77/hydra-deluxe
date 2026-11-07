@@ -7,7 +7,7 @@
 // It reads fields by name. It calls the game's getters in ALLOWED_CALLS,
 // because whether an object is on screen is not a field. The user allowed
 // method calls on 2026-10-30 (ruling 2 of the plan
-// 2026-10-30-ch-mcp-star-power-and-song-start.md);
+// docs/superpowers/plans/2026-10-30-ch-mcp-star-power-and-song-start.md (removed; git show 6804353f:docs/superpowers/plans/2026-10-30-ch-mcp-star-power-and-song-start.md));
 // test_agent_calls_only_named_methods in tests/test_frida_attach.py checks
 // that every call written in an agent's own source is named in that agent's
 // list. It does not see inside the bridge: arrayValues says the one call the

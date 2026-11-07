@@ -4,7 +4,7 @@
 // byte of the command-line player loader in memory so the loader builds a
 // human player, not the bot. The game file on disk is never written.
 //
-// The plan is docs/superpowers/plans/2026-10-31-ch-mcp-direct-start.md, "The
+// The plan is docs/superpowers/plans/2026-10-31-ch-mcp-direct-start.md (removed; git show 6804353f:docs/superpowers/plans/2026-10-31-ch-mcp-direct-start.md), "The
 // launch" and "1. When the loader runs, and how the byte is 0 before it does";
 // the user allowed this one-byte patch there ("Questions for the user",
 // question 6). The decision itself, both byte checks, the write and the

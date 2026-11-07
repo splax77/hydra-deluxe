@@ -105,7 +105,7 @@ MENU_KEYS: Dict[str, int] = {
 }
 
 # The wait between two menu keys, and between two typed characters (the
-# user's ruling 3 in docs/superpowers/plans/2026-10-30-ch-mcp-star-power-and-song-start.md).
+# user's ruling 3 in docs/superpowers/plans/2026-10-30-ch-mcp-star-power-and-song-start.md (removed; git show 6804353f:docs/superpowers/plans/2026-10-30-ch-mcp-star-power-and-song-start.md)).
 MENU_KEY_GAP_S = 0.25
 
 

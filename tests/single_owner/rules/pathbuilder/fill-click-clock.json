@@ -6,7 +6,7 @@
       "owner_file": "src/pathbuilder/pb_window.cpp",
       "owner_symbol": "click_fill",
       "date": "2026-10-31",
-      "decision": "docs/superpowers/specs/2026-10-31-path-builder-mockup-3/answers.md, bar question 7: a row click moves the Preview's clock to the fill, like a fill click; found by the SC-4a review. The moment is the fill's dot: D303 item 9",
+      "decision": "docs/superpowers/specs/2026-10-31-path-builder-mockup-3/answers.md (removed; git show 6804353f:docs/superpowers/specs/2026-10-31-path-builder-mockup-3/answers.md), bar question 7: a row click moves the Preview's clock to the fill, like a fill click; found by the SC-4a review. The moment is the fill's dot: D303 item 9",
       "added_by": "PBR3-SC4A-REV",
       "anchor": "seek_ms",
       "pattern": "\\bseek_ms\\s*\\([^;]*(\\bspan\\.|\\btimeline_fill_ms\\s*\\()",

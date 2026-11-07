@@ -7,7 +7,7 @@ and buttons on request and takes it away again. It sends no key presses and neve
 stay minimized and unfocused; while the kit is set up, the Rewired devices in
 KIT_DEVICES are switched off so the user's own keys and mouse reach no player
 (the plan
-docs/superpowers/plans/2026-10-30-ch-mcp-in-game-input.md, "One agent for the
+docs/superpowers/plans/2026-10-30-ch-mcp-in-game-input.md (removed; git show 6804353f:docs/superpowers/plans/2026-10-30-ch-mcp-in-game-input.md), "One agent for the
 kit" and "The tools"). Placeholder controllers made before it put the kit on
 KIT_REQUIRED_ID, the one id the game grades hit strength for.
 

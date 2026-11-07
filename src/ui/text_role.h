@@ -4,7 +4,7 @@
 // measure_in_role. Where text of mixed roles sits on a shared line is
 // baseline_shift's to say. Why each
 // role takes its font is in
-// docs/superpowers/plans/2026-10-22-font-role-single-owner.md ("The roles").
+// docs/superpowers/plans/2026-10-22-font-role-single-owner.md (removed; git show 6804353f:docs/superpowers/plans/2026-10-22-font-role-single-owner.md), "The roles".
 
 #ifndef HYDRA_UI_TEXT_ROLE_H
 #define HYDRA_UI_TEXT_ROLE_H

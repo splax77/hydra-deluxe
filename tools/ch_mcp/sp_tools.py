@@ -2,7 +2,7 @@
 Power fields while a song plays, and answer questions about the rows.
 
 The read lives in ch_probe, and this module only calls it (the plan
-docs/superpowers/plans/2026-10-30-ch-mcp-star-power-and-song-start.md, "Where
+docs/superpowers/plans/2026-10-30-ch-mcp-star-power-and-song-start.md (removed; git show 6804353f:docs/superpowers/plans/2026-10-30-ch-mcp-star-power-and-song-start.md), "Where
 the Star Power read lives, and who calls it"). engine.decode_snapshot says
 where each field is, EngineModel.snapshot reads it, and sp_watch.watch polls
 it and decides when a run stops. sp_compare owns every question about the
