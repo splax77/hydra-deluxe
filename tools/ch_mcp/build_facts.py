@@ -6,8 +6,8 @@ This module is the one home of those three questions (the plan
 git show ec91f8d1:docs/superpowers/plans/2026-10-28-ch-mcp-server.md).
 Every Frida tool asks it before it attaches, and refuses on its answer: a
 build with no facts file,
-or one whose facts describe another version, is unknown, and the first
-version of the server only stops there.
+or one whose facts describe another version, is unknown, and the caller stops
+and passes the refusal on.
 
 The facts file is the one dump_facts.py writes (see this folder's README.md
 for its layout). It is large, so a caller loads it once per build and keeps

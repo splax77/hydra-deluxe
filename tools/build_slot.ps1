@@ -8,15 +8,14 @@
 # gone is stale, so the next build takes it over. While every slot is busy, a
 # build waits in the foreground and says so now and then.
 #
-# Run a build in an existing worktree, inside a slot (what phase 3's
-# cold_build.ps1 did):
+# Run a build in an existing worktree, inside a slot:
 #     pwsh -NoProfile -File tools\build_slot.ps1 -Repo <worktree> [-Target hydra_tests]
 # It runs <worktree>\build_cpp.ps1 and exits with the build's result: 0 when
 # it passed, otherwise its exit code, or 1 when it threw. tools\new_worktree.ps1
 # calls it the same way (with &) after it makes a new worktree. Call it; do
 # not dot-source it, because its -Repo and -Target would replace the caller's.
-# A very long -Repo path can break MSBuild's 260-character limit (seen
-# 2026-10-10 under the scratchpad), so put old-release worktrees on a short path.
+# A very long -Repo path can break MSBuild's 260-character limit, so put
+# old-release worktrees on a short path.
 #
 # -SlotDir points at another folder, for a dry run that must not take a real
 # slot:

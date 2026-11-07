@@ -5,8 +5,9 @@
 // human player, not the bot. The game file on disk is never written.
 //
 // The plan is docs/superpowers/plans/2026-10-31-ch-mcp-direct-start.md, "The
-// launch" and question 1; the user allowed this one-byte patch there
-// (question 6). The decision itself, both byte checks, the write and the
+// launch" and "1. When the loader runs, and how the byte is 0 before it does";
+// the user allowed this one-byte patch there ("Questions for the user",
+// question 6). The decision itself, both byte checks, the write and the
 // read-only hook on the loader's entry, is applyPatch in launch_core.ts. This
 // file is the glue between it and Frida.
 //
@@ -72,7 +73,7 @@ function patchModule(patch: Patch, module: Module): void {
 
 // Frida calls onAdded for every module already loaded, then for each new one
 // as it is mapped. `defer` moves the patch out of that call to setImmediate
-// (the plan, question 1, says when a run sets it).
+// (the plan's "Questions for the user", question 2, says when a run sets it).
 function arm(m: Message): object {
     if (armed !== null) {
         throw new Error("this agent is already armed; a launch arms once");

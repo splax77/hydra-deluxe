@@ -3,8 +3,8 @@
 The game's command line plays a song folder with bot players. This script
 backs up the user files first, starts the game, waits (with a cap) for
 scorestats.json to change, copies the new file out, watches whether the game
-exits, and then puts the user files back. It is the one owner of the plan's
-"Safety rules for every live step" for the launch.
+exits, and then puts the user files back. For the launch, it is the one owner
+of the rules in docs/agents/clone-hero-mcp.md, "Safety rules".
 
     py tools/ch_mcp/bot_run.py --song <song folder> --out <folder>
         [--player Drums,Expert] [--profile <name>] [--stop] [--backup-root <folder>]
@@ -16,10 +16,11 @@ nothing; run --restore on the printed folder after the step. The game is
 never closed unless --stop is given. No --profile means the game plays as
 its default player.
 
-A caller that needs to act between the steps (the MCP server) calls them one
-at a time: start_run, wait_stats, exit_check and finish_run. run_bot is those
-four in order. start_run with no song folder starts the game at its menu;
-launch_command owns what the game is given either way.
+The steps are start_run, wait_stats, exit_check and finish_run, and run_bot
+is those four in order. A caller that needs to act between the steps calls
+them one at a time; the MCP server calls all of them but exit_check. start_run
+with no song folder starts the game at its menu; launch_command owns what the
+game is given either way.
 
 start_run with human=True plays the song as a human player instead of the
 bot: launch_human starts the game paused, attaches agent/launch.ts, arms it,
@@ -58,7 +59,8 @@ from tools.ch_probe import constants as C  # noqa: E402
 from tools.ch_probe import probe_songs  # noqa: E402
 
 DEFAULT_PLAYER = "Drums,Expert"
-# The user's caps for the live steps (the plan's question 5).
+# The user's caps for the live steps: question 5 of the feasibility plan,
+# docs/superpowers/plans/2026-10-28-ch-mcp-feasibility-tests.md (removed; git show 444631e6:docs/superpowers/plans/2026-10-28-ch-mcp-feasibility-tests.md).
 POLL_INTERVAL_S = 1.0
 POLL_CAP_EXTRA_S = 60.0
 EXIT_CHECK_S = 30.0
