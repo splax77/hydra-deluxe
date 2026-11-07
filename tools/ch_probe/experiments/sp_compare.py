@@ -32,6 +32,7 @@ nothing itself.
 Usage:
     py tools\\ch_probe\\experiments\\sp_compare.py <watch.csv> <score.json>
         [--resolution 192] [--sp-bar-ticks 14400] [--width 64|32]
+        [--dump <dump.json>] [--path-index N]
 
 Exit code 0 when every check passed, 1 when any printed FAIL.
 """
@@ -45,6 +46,7 @@ import json
 import math
 import os
 import sys
+import tempfile
 from dataclasses import dataclass, field
 from typing import NamedTuple
 
@@ -57,7 +59,7 @@ if _REPO_ROOT not in sys.path:
 from tools.ch_probe import constants as C
 from tools.ch_probe.experiments.overlay_logs import (
     WATCH_COLUMNS, WATCH_COLUMNS_WITHOUT_CLOCK, watch_header)
-from tools.ch_probe.experiments.play_chart import PRESS_LEAD_MS, SP_END_LEAD_MS
+from tools.ch_probe.experiments import play_chart
 
 # How far from an event a matching change in the watcher log may sit: a
 # phrase end's rise, the multiplier doubling after an activation, the flag
@@ -68,22 +70,41 @@ EVENT_WINDOW_MS = 100.0
 # may sit. The plan's Task S names this window.
 LANDING_WINDOW_MS = 150.0
 
-# The game can credit a chord before the chord's own ms, because the
-# auto-player presses it early (play_chart.py owns both leads): by
-# SP_END_LEAD_MS for a chord on an activation's end and by PRESS_LEAD_MS for
-# every other. So a rise or an activation flag can show on a row whose clock is
-# that much before the chord, and the searches reach back that far for that
-# chord only. A wider reach for every chord could hand a rise to the wrong one
-# of two chords a few ms apart.
-def early_credit_ms(chord: dict, end_ticks: set) -> float:
-    """How far before `chord`'s ms the game can credit it. `end_ticks` are the
-    path's deact ticks (end_ticks_of)."""
-    return SP_END_LEAD_MS if chord["tick"] in end_ticks else PRESS_LEAD_MS
+# The game credits a chord when the auto-player presses it, which is not at
+# the chord's own ms: play_chart.press_plan is the one place that says when
+# each gem is pressed, early or late, and a chord can have two presses. So a
+# rise or an activation flag can show on a row whose clock is that far from the
+# chord, and the searches reach that far for that chord only. A wider reach for
+# every chord could hand a rise to the wrong one of two chords a few ms apart.
+class PressReach(NamedTuple):
+    """The song clock of a chord's first and last press (press_reach)."""
+    earliest_ms: float
+    latest_ms: float
 
 
-def end_ticks_of(score: dict) -> set:
-    """The ticks of the score JSON's activation ends."""
-    return {act["deact_tick"] for act in score["activations"]}
+def press_reach(score_path: str, dump_path: str | None = None,
+                path_index: int = 0) -> dict:
+    """Each chord's PressReach by its `index`, from press_plan over
+    play_chart.load_dump_chords of the score file. `dump_path` and
+    `path_index` name the path's dump, which the loader needs for a
+    squeeze-out and raises ValueError without."""
+    chords = play_chart.load_dump_chords(score_path, dump_path=dump_path,
+                                         path_index=path_index)
+    reach = {}
+    for press in play_chart.press_plan(chords):
+        lo, hi = reach.get(press.index, (press.at_ms, press.at_ms))
+        reach[press.index] = PressReach(min(lo, press.at_ms), max(hi, press.at_ms))
+    return reach
+
+
+def _score_press_reach(score: dict) -> dict:
+    """press_reach for a score JSON already read, with no dump: for a caller
+    that holds the file's contents but not its path."""
+    with tempfile.TemporaryDirectory() as folder:
+        path = os.path.join(folder, "score.json")
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(score, f)
+        return press_reach(path)
 
 # Hydra's own constants, copied because this script cannot read C++. The
 # owners are kStarPowerMultiplier in src/core/timing.h, kMeasuresPerSpBar in
@@ -331,15 +352,18 @@ def ready_between(rows: list, start_ms: float, end_ms: float,
 
 
 def _check_phrase_rises(report: Report, rows: list, chords: list,
-                        amount_col: str, max_col: str, end_ticks: set) -> None:
+                        amount_col: str, max_col: str, reach: dict) -> None:
+    """A rise is looked for from the chord's first press (press_reach) to
+    EVENT_WINDOW_MS after the later of its ms and its last press."""
     used_steps = set()
     full_sizes = []
     rise_rows = _rise_rows(rows, amount_col)
     for chord in chords:
         if not chord["is_sp_phrase_end"]:
             continue
-        lo = chord["ms"] - early_credit_ms(chord, end_ticks)
-        hi = chord["ms"] + EVENT_WINDOW_MS
+        presses = reach[chord["index"]]
+        lo = presses.earliest_ms
+        hi = max(chord["ms"], presses.latest_ms) + EVENT_WINDOW_MS
         step = None
         for i in rise_rows:
             t = _ms(rows[i])
@@ -397,11 +421,15 @@ def _check_sp_max(report: Report, rows: list, max_col: str,
         report.check(False, f"sp_max not constant: values {shown}; {beside}")
 
 
-def _landed_chord(chords: list, chord_ms: list, flip_ms: float, end_ticks: set):
-    """The latest chord at or before the flip (allowing each chord its own
-    early credit), within LANDING_WINDOW_MS, or None."""
-    i = bisect.bisect_right(chord_ms, flip_ms + SP_END_LEAD_MS) - 1
-    while i >= 0 and chord_ms[i] - early_credit_ms(chords[i], end_ticks) > flip_ms:
+def _landed_chord(chords: list, chord_ms: list, flip_ms: float, reach: dict):
+    """The latest chord whose first press (press_reach) is at or before the
+    flip, within LANDING_WINDOW_MS of the chord's ms, or None."""
+    def earliest(chord: dict) -> float:
+        return reach[chord["index"]].earliest_ms
+    # No chord after the one the widest early press reaches can qualify.
+    widest_lead = max([0.0] + [c["ms"] - earliest(c) for c in chords])
+    i = bisect.bisect_right(chord_ms, flip_ms + widest_lead) - 1
+    while i >= 0 and earliest(chords[i]) > flip_ms:
         i -= 1
     if i < 0 or flip_ms - chord_ms[i] > LANDING_WINDOW_MS:
         return None
@@ -462,13 +490,13 @@ def _check_activation(report: Report, rows: list, act: _Activation) -> None:
                      f"before, {seen} within {EVENT_WINDOW_MS:g} ms of the end")
 
 
-def _check_activations(report: Report, rows: list, score: dict) -> float | None:
+def _check_activations(report: Report, rows: list, score: dict,
+                       reach: dict) -> float | None:
     """The per-activation checks. Returns the clock ms at which the game's
     activations first part from the path's, or None when they never do."""
     chords = score["chords"]
     chord_ms = [c["ms"] for c in chords]
     by_tick = {c["tick"]: c for c in chords}
-    end_ticks = end_ticks_of(score)
     path = score["activations"]
     game = find_activations(rows)
 
@@ -490,7 +518,7 @@ def _check_activations(report: Report, rows: list, score: dict) -> float | None:
         report.note(f"Activation {act.number} at clock {format_ms(flip_ms)}:")
         _check_activation(report, rows, act)
 
-        landed = _landed_chord(chords, chord_ms, flip_ms, end_ticks)
+        landed = _landed_chord(chords, chord_ms, flip_ms, reach)
         landed_tick = landed["tick"] if landed else None
         if want is not None and landed_tick == want["act_tick"]:
             deact = by_tick.get(want["deact_tick"])
@@ -524,11 +552,12 @@ def _expected_multipliers(chord: dict) -> set:
 
 
 def _check_multipliers(report: Report, rows: list, chords: list,
-                       parted_ms, end_ticks: set) -> None:
+                       parted_ms, reach: dict) -> None:
     """The game's multiplier after each chord is credited, read on the last
     row before the next chord, against Hydra's for that chord. One chord of
     lag either way is allowed, because a 4 ms poll can land on either side of
-    a credit."""
+    a credit. A chord with no row from its first press (press_reach) on is
+    not compared."""
     clocks = [_ms(r) for r in rows]
     compared = matched = 0
     first_fail = None
@@ -541,7 +570,7 @@ def _check_multipliers(report: Report, rows: list, chords: list,
             stopped_at = chord
             break
         j = bisect.bisect_left(clocks, sample_ms) - 1
-        if j < 0 or clocks[j] < chord["ms"] - early_credit_ms(chord, end_ticks):
+        if j < 0 or clocks[j] < reach[chord["index"]].earliest_ms:
             skipped_before += 1
             continue
         game = rows[j]["sp_mult_u32"]
@@ -574,9 +603,12 @@ def _check_multipliers(report: Report, rows: list, chords: list,
 
 
 def compare(rows: list, score: dict, *, resolution: int | None = None,
-            sp_bar_ticks: int | None = None, width: int = DEFAULT_WIDTH) -> Report:
+            sp_bar_ticks: int | None = None, width: int = DEFAULT_WIDTH,
+            reach: dict | None = None) -> Report:
     """Every check over the watcher rows and the score JSON, as a Report.
-    With no resolution, Hydra's full meter is left out of the sp_max line."""
+    With no resolution, Hydra's full meter is left out of the sp_max line.
+    `reach` is press_reach of the score file; with none it is worked out
+    from `score` with no dump, which a path with a squeeze-out refuses."""
     amount_col, max_col = column_names(width)
     chords = score["chords"]
     report = Report()
@@ -592,11 +624,12 @@ def compare(rows: list, score: dict, *, resolution: int | None = None,
                         f"the checks assume one pass through the song")
             break
 
-    end_ticks = end_ticks_of(score)
-    _check_phrase_rises(report, rows, chords, amount_col, max_col, end_ticks)
+    if reach is None:
+        reach = _score_press_reach(score)
+    _check_phrase_rises(report, rows, chords, amount_col, max_col, reach)
     _check_sp_max(report, rows, max_col, resolution, sp_bar_ticks)
-    parted_ms = _check_activations(report, rows, score)
-    _check_multipliers(report, rows, chords, parted_ms, end_ticks)
+    parted_ms = _check_activations(report, rows, score, reach)
+    _check_multipliers(report, rows, chords, parted_ms, reach)
     report.note(f"Summary: {report.passes} PASS, {report.fails} FAIL")
     return report
 
@@ -612,10 +645,16 @@ def main(argv=None) -> int:
                     help="sp_bar_ticks from the game's scorestats.json")
     ap.add_argument("--width", type=int, choices=(32, 64), default=DEFAULT_WIDTH,
                     help="which sp_amount and sp_max columns to read")
+    ap.add_argument("--dump", default=None,
+                    help="the path's hydra_replay dump JSON, which a path with a "
+                         "squeeze-out needs for its press times")
+    ap.add_argument("--path-index", type=int, default=0,
+                    help="which path of the dump the score file was made from")
     args = ap.parse_args(argv)
     report = compare(load_watch_rows(args.watch_csv), load_score(args.score_json),
                      resolution=args.resolution, sp_bar_ticks=args.sp_bar_ticks,
-                     width=args.width)
+                     width=args.width,
+                     reach=press_reach(args.score_json, args.dump, args.path_index))
     print(report.text())
     return 1 if report.fails else 0
 
