@@ -1792,7 +1792,19 @@ The slimmer-top plan left a highway click on a fill the player can't take with n
 2. **The `C:\ytdl` folders.** Closed. No page under `docs/clone-hero/` cites them, so nothing changes, and the user says they do not affect this project.
 3. **The leftover fixes.** Recommended, and chosen: one group fixes I-0897, I-0898, I-0900, I-0502 and I-0504, and I-0112 and I-0112/S1 join it now that their file is clean.
 
-**D314 (session 28b91640), 2026-11-07. The stale comment audit's code tasks plan.** The plan and its full questions are `docs/superpowers/plans/2026-11-07-stale-comment-code-tasks.md`. The user answered: "Yes, all recommended".
+**D314 (session e3e9069c), 2026-11-07. Only main sessions build, at most three at once.** This takes over from D49's limit of 3 cold builds. The old limit failed because a plain `build_cpp.ps1` run never asked for a slot. The user: "i want a limit of three builds at once, strictly enforced. agents are never allowed to start their own builds, only the main session, with a limit of one build per session." Asked what one build per session means, the user chose "One at a time (Recommended)". Asked how agents get a build, the user wrote: "any tests that require a build are done by the main session, not agents." Agent rule 14 says the rule, and `docs/development.md`, "Building under Claude Code", says how a build runs. Nothing changes in Hydra itself. The user answered the seven questions that followed in one line, on 2026-11-07: "Yes, all recommended". So:
+
+1. **A build or test fails before review.** A fresh executor on the same branch gets the failure output, and the main session builds again.
+2. **A reviewer's C++ fix fails the main session's build or a test.** A fresh executor fixes it, and a fresh reviewer reads only that fix. This is a narrow exception to D107's "no second round".
+3. **Failing-first tests.** The main session runs a test red only when a brief asks for it. Otherwise the reviewer reads the test and says what would make it fail. Running every test red would double the builds.
+4. **Low priority.** Builds run at low priority, through MSBuild's `-lowPriority` switch, because three full-width builds can still fill the CPU.
+5. **The user's own terminal.** Terminal builds do not count toward the three, the same way the git gate leaves the terminal alone. A terminal build on top of three Claude builds makes four.
+6. **An unclaimed pass.** A pass runs out after 2 minutes.
+7. **Programs an agent may still run.** `hydra_precheck.exe` from main, because it only reads a worktree and tests nothing. Not `hydra_tests.exe`, `hydra_uitest.exe` or `hydra_replay.exe`, because they test a branch's code and need that branch built. The `hydra` MCP server runs `hydra_uitest.exe`, so it is the main session's too.
+8. **A fix-review fix that fails too.** The main session stops and tells the user.
+9. **Tool numbers.** `tools/build_slot.ps1` waits 5 s for its turn at the slot folder, counts an empty lock as live for 5 s, and retries a release for 2 s. `tools/hydra_ui_mcp.py` waits 30 s for the pass script. These change how the tools behave and nothing else. The user's answer to items 2, 7, 8 and 9: "Yes, merge".
+
+**D315 (session 28b91640), 2026-11-07. The stale comment audit's code tasks plan.** The plan and its full questions are `docs/superpowers/plans/2026-11-07-stale-comment-code-tasks.md`. The user answered: "Yes, all recommended".
 
 1. **The order.** Recommended, and chosen: the decision log's D305 to D314 reach `main` before any task merges, so comments and commits can cite them.
 2. **`select_chart`'s mode parameter.** After a DM comparison row click stops switching the mode, both callers pass the bar's own mode. Recommended, and chosen: the parameter and the switch branch go, with its two refusals, and the test that pinned the switch checks selection only.

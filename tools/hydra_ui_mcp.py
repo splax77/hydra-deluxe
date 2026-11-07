@@ -18,6 +18,11 @@ snapshot of the user's library (snapshot_library, the only code that knows
 that folder's path), and the real-app record a window session leaves
 (realapp_record). What it never does: build anything, or name the library
 folder on a command line.
+
+One tool has nothing to do with the GUI. hydra_build_pass hands a main session
+a build pass. It lives here because a hook can then refuse that one tool to
+agents by its name. The rule is tools/build_slot.ps1's; build_pass only asks
+that script, and adds this session's id.
 """
 
 import atexit
@@ -77,6 +82,11 @@ SHOT_REPLY = "screenshot: "
 # The longest one git call for the record may take. A record that cannot be
 # written in time is reported as not written; the stop still finishes.
 GIT_TIMEOUT_S = 60
+BUILD_SLOT_SCRIPT = REPO / "tools" / "build_slot.ps1"
+SESSION_ENV = "CLAUDE_CODE_SESSION_ID"
+# The script answers at once on an idle machine. This cap only keeps a stuck
+# one from holding the tool call, on a machine busy with builds.
+BUILD_PASS_TIMEOUT_S = 30
 
 
 class SnapshotRefused(Exception):
@@ -370,8 +380,8 @@ class Helper:
             exe = self.exe_dir / (HEADLESS_EXE if mode == "headless" else WINDOW_EXE)
             if not exe.is_file():
                 return "\n".join(notes + [
-                    f"{exe.name} is not built (looked in {self.exe_dir}). Build it from the repo"
-                    f" root with: .\\build_cpp.ps1 -Target {BUILD_TARGETS[exe.name]}"])
+                    f"{exe.name} is not built (looked in {self.exe_dir}). Ask the main"
+                    f" session to build the {BUILD_TARGETS[exe.name]} target."])
             self.count += 1
             tag = f"{os.getpid()}_{self.count}"
             scratch = self.temp_root / f"hydra_live_{tag}"
@@ -749,6 +759,29 @@ def filtered(line, contains):
     return line if contains is None else f"{line} | {contains}"
 
 
+def build_pass():
+    """Ask tools/build_slot.ps1 for a build pass and return what it says. A
+    refusal is a reply like any other, so this never waits for a slot."""
+    session = os.environ.get(SESSION_ENV, "").strip()
+    if not session:
+        return (f"no pass: {SESSION_ENV} is not set in this server, so this session cannot"
+                " be told from another. Nothing was handed out.")
+    pwsh = shutil.which("pwsh")
+    if not pwsh:
+        return "no pass: pwsh is not on this server's PATH, so tools/build_slot.ps1 cannot run."
+    args = [pwsh, "-NoProfile", "-File", str(BUILD_SLOT_SCRIPT), "-NewPass",
+            "-Session", session, "-Holder", str(os.getpid())]
+    try:
+        # stdin is the MCP channel, so the child must not inherit it.
+        done = subprocess.run(args, stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                              encoding="utf-8", errors="replace", timeout=BUILD_PASS_TIMEOUT_S,
+                              creationflags=subprocess.CREATE_NO_WINDOW)
+    except subprocess.TimeoutExpired:
+        return f"no pass: tools/build_slot.ps1 gave no answer in {BUILD_PASS_TIMEOUT_S} s."
+    text = (done.stdout + done.stderr).strip()
+    return text or f"no pass: tools/build_slot.ps1 said nothing and exited {done.returncode}."
+
+
 # ---------------------------------------------------------------------------
 # The tools Claude sees. Each returns plain text.
 
@@ -879,6 +912,14 @@ def build_server():
         """Several command lines at once, one per line, stopping at the first
         failure, which names its line in the script."""
         return HELPER.run(script)
+
+    @server.tool()
+    def hydra_build_pass() -> str:
+        """Get the build pass a build under Claude Code needs. Main sessions
+        only. It never waits: the reply is the pass and the command to build
+        with, or a refusal naming who holds the build slots. tools/build_slot.ps1
+        owns the rule."""
+        return build_pass()
 
     return server
 

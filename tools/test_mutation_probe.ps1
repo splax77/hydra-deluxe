@@ -6,8 +6,8 @@ Self-test for tools/mutation_probe.ps1.
 
 Part 1 loads the probe's finder from its own text (as a literal, without
 running the script) and runs it on a sample snippet. It needs a built
-hydra_precheck.exe (.\build_cpp.ps1 -Target hydra_precheck), because the
-finder masks comments and strings with it. The snippet has one of each kind
+hydra_precheck.exe (ask the main session to build it), because the finder
+masks comments and strings with it. The snippet has one of each kind
 of edit the probe makes, with three comparison flips standing in for all six,
 and a trap for each thing it must skip: comments, strings, a raw string, a
 character literal, a preprocessor line, template brackets, a shift, an
@@ -23,8 +23,10 @@ pass. The runs check that the probe refuses the main checkout and a source
 file that differs from git; that a normal run reports each edit's result
 and the score, and leaves the file byte-identical and git-clean; and that a
 run which breaks part way (the fake build deletes the test program) still
-restores the file and gives its build slot back. The fixture is deleted at
-the end; this repository is never touched.
+restores the file and gives its build slot back. These runs clear CLAUDECODE,
+so they take the plain slot. A last run sets it and proves the probe holds one
+pass across all its rebuilds, and another that it refuses to start with no
+pass. The fixture is deleted at the end; this repository is never touched.
 #>
 [CmdletBinding()]
 param()
@@ -51,7 +53,7 @@ $defs = foreach ($name in $names) {
 # Get-CodeMask runs hydra_precheck --code-mask, from the same place the probe uses.
 $precheckExe = Join-Path $PSScriptRoot '..\build-cpp\Release\hydra_precheck.exe'
 if (-not (Test-Path -LiteralPath $precheckExe -PathType Leaf)) {
-    Write-Host "test_mutation_probe: FAILED, hydra_precheck.exe is missing at $([IO.Path]::GetFullPath($precheckExe)). Build it first: .\build_cpp.ps1 -Target hydra_precheck"
+    Write-Host "test_mutation_probe: FAILED, hydra_precheck.exe is missing at $([IO.Path]::GetFullPath($precheckExe)). Ask the main session to build the hydra_precheck target."
     exit 1
 }
 
@@ -135,6 +137,8 @@ function Invoke-Probe([string]$In, [string]$Exe, [string[]]$Pick = @('-Max', '6'
     [pscustomobject]@{ Code = $LASTEXITCODE; Lines = $out; Text = ($out -join "`n") }
 }
 
+$callerClaudeCode = $env:CLAUDECODE
+$callerPass = $env:HYDRA_BUILD_PASS
 try {
     $sample = @'
 int next_index(int i) { return i + 1; }
@@ -152,10 +156,17 @@ bool both(bool a, bool b) {
     # The fake build: "i - 1" does not compile; anything else is "built" by
     # copying the source where the fake tests read it. With
     # MUTPROBE_FAKE_CRASH set to a file, its second build deletes that file.
+    # With MUTPROBE_FAKE_LOCKS set to a file, it claims as the real build does
+    # (the real tools\build_slot.ps1, named in the variable MUTPROBE_FAKE_SLOT)
+    # and adds how many locks the slot folder holds to that file.
     Write-Text (Join-Path $repo 'build_cpp.ps1') @'
 param([string]$Target)
 $out = Join-Path $PSScriptRoot 'build-cpp'
 New-Item -ItemType Directory -Force -Path $out | Out-Null
+if ($env:MUTPROBE_FAKE_LOCKS) {
+    $pass = & $env:MUTPROBE_FAKE_SLOT -Claim -Owner $PSScriptRoot
+    Add-Content $env:MUTPROBE_FAKE_LOCKS "$(@(Get-ChildItem $env:HYDRA_BUILD_SLOT_DIR).Count) locks, gated $($pass.Gated), to release '$($pass.Lock)'"
+}
 if ($env:MUTPROBE_FAKE_CRASH) {
     $count = Join-Path $out 'builds.txt'
     $n = if (Test-Path $count) { [int](Get-Content $count) + 1 } else { 1 }
@@ -180,6 +191,8 @@ if ($fail) { '[doctest] test cases: 3 | 2 passed | 1 failed'; exit 1 }
 '@.Replace('BUILT', (Join-Path $wt 'build-cpp\built.cpp')))
     $sampleWt = Join-Path $wt 'src\sample.cpp'
     $committed = [IO.File]::ReadAllBytes($sampleWt)
+    Remove-Item Env:CLAUDECODE -ErrorAction SilentlyContinue
+    Remove-Item Env:HYDRA_BUILD_PASS -ErrorAction SilentlyContinue
     $restored = {
         param([string]$Label)
         $same = [Convert]::ToBase64String([IO.File]::ReadAllBytes($sampleWt)) -eq [Convert]::ToBase64String($committed)
@@ -221,7 +234,31 @@ if ($fail) { '[doctest] test cases: 3 | 2 passed | 1 failed'; exit 1 }
     try { $r = Invoke-Probe $wt $runner2 } finally { Remove-Item Env:MUTPROBE_FAKE_CRASH }
     Check ($r.Code -eq 1 -and $r.Text -match 'test program is missing') "broken run: expected exit 1 and 'test program is missing', got exit $($r.Code):`n$($r.Text)"
     & $restored 'broken run'
+
+    # Under the gate with no pass: the probe stops before it builds or edits.
+    $env:CLAUDECODE = '1'
+    $r = Invoke-Probe $wt $runner
+    Check ($r.Code -eq 1 -and $r.Text -match 'no build pass' -and $r.Text -notmatch 'building the unmutated') "no pass: expected a stop before any build, got exit $($r.Code):`n$($r.Text)"
+    & $restored 'no-pass run'
+
+    # Under the gate with a pass: one pass holds across every rebuild. The
+    # baseline, six edits and the final build make eight claims that each find
+    # the probe's own claim, so each sees one lock and has nothing to release.
+    $passText = & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'build_slot.ps1') -NewPass -Session probe-test -SlotDir $slots
+    $env:HYDRA_BUILD_PASS = ("$($passText[0])" -replace '^pass: ', '')
+    $env:HYDRA_BUILD_SLOT_DIR = $slots
+    $env:MUTPROBE_FAKE_LOCKS = Join-Path $fixture 'locks.txt'
+    $env:MUTPROBE_FAKE_SLOT = Join-Path $PSScriptRoot 'build_slot.ps1'
+    try { $r = Invoke-Probe $wt $runner } finally {
+        Remove-Item Env:MUTPROBE_FAKE_LOCKS, Env:MUTPROBE_FAKE_SLOT, Env:HYDRA_BUILD_SLOT_DIR
+    }
+    Check ($r.Code -eq 0) "pass run: exit $($r.Code):`n$($r.Text)"
+    $seen = @(Get-Content (Join-Path $fixture 'locks.txt'))
+    Check ($seen.Count -eq 8 -and @($seen | Where-Object { $_ -ne "1 locks, gated True, to release ''" }).Count -eq 0) "pass run: expected eight builds inside one claim, got:`n$($seen -join "`n")"
+    & $restored 'pass run'
 } finally {
+    $env:CLAUDECODE = $callerClaudeCode
+    $env:HYDRA_BUILD_PASS = $callerPass
     Remove-Item -Recurse -Force -LiteralPath $fixture -ErrorAction SilentlyContinue
 }
 

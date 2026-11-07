@@ -16,7 +16,7 @@ Most pictures are cropped to one window or widget, with the `screenshot <file> |
 
 Last, the script runs `tools/doc_shots/shrink.py`. It does the crop above, then saves every PNG again with Pillow's `optimize=True`. That keeps every pixel and only makes the file smaller. It prints one `size:` line per file and a `total:` line, and fails when a file or the whole folder is over the user's limits; the constants at the top of `tools/doc_shots/shrink.py` hold them.
 
-The script stops with a message naming `.\build_cpp.ps1 -Target hydra_uitest` when the runner is not built.
+The script runs `hydra_uitest`, so the main session runs it, never an agent (agent rule 14). It stops with a message when the runner is not built. The main session then runs `.\build_cpp.ps1 -Target hydra_uitest` the way `docs/development.md`, "Building under Claude Code", says.
 
 ## When to run it
 

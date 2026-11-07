@@ -51,6 +51,7 @@ TOOL_NAMES = {
     "hydra_start", "hydra_stop", "hydra_reset", "hydra_open_song", "hydra_click", "hydra_type",
     "hydra_check", "hydra_key", "hydra_window", "hydra_wait_idle", "hydra_wait_text",
     "hydra_text", "hydra_state", "hydra_dump", "hydra_rect", "hydra_screenshot", "hydra_run",
+    "hydra_build_pass",
 }
 
 
@@ -269,10 +270,11 @@ class TransportLayer(unittest.TestCase):
         self.assertLessEqual(len(out), 1000)
         self.assertTrue(out.endswith("1 of 1 lines dropped; contains= narrows hydra_text and hydra_dump]"))
 
-    def test_missing_exe_names_the_build_command(self):
+    def test_missing_exe_says_to_ask_the_main_session(self):
         (self.exe_dir / hm.HEADLESS_EXE).unlink()
         out = self.helper.start("headless")
-        self.assertIn(r".\build_cpp.ps1 -Target hydra_uitest", out)
+        self.assertIn("Ask the main session to build the hydra_uitest target.", out)
+        self.assertNotIn("build_cpp.ps1", out)
         self.assertIsNone(self.helper.session)
 
     # -- where the scratch folder lives -------------------------------------
@@ -583,6 +585,70 @@ class TransportLayer(unittest.TestCase):
         out = self.helper.stop()
         self.assertTrue(out.startswith("Hydra exited with code 0\nno real-app record written: git "), out)
         self.assertIsNone(self.helper.session)
+
+
+class BuildPassTool(unittest.TestCase):
+    """hydra_build_pass, through the real tools/build_slot.ps1 on a temporary
+    slot folder. Every rule it reports is the script's; tools/test_build_pass.ps1
+    tests those. This checks what the tool itself adds."""
+
+    def setUp(self):
+        self.slots = Path(tempfile.mkdtemp(prefix="hydra_build_pass_"))
+        self.addCleanup(shutil.rmtree, self.slots, ignore_errors=True)
+
+    def ask(self, session):
+        env = {"HYDRA_BUILD_SLOT_DIR": str(self.slots), hm.SESSION_ENV: session}
+        with mock.patch.dict(os.environ, env):
+            return hm.build_pass()
+
+    def test_the_reply_is_a_pass_and_the_command_to_build_with(self):
+        out = self.ask("session-a")
+        token = re.match(r"pass: (\w+)\n", out).group(1)
+        self.assertIn(f"$env:HYDRA_BUILD_PASS='{token}'; .\\build_cpp.ps1 -Target hydra_tests", out)
+
+    def test_the_lock_holds_this_session_and_this_server(self):
+        self.ask("session-a")
+        lines = (self.slots / "slot1.lock").read_text().split("\n")
+        self.assertEqual(lines[0], str(os.getpid()))
+        self.assertIn("session=session-a", lines)
+
+    def test_a_second_ask_from_one_session_is_refused(self):
+        self.ask("session-a")
+        self.assertRegex(self.ask("session-a"), r"^no pass: this session already holds one")
+
+    def test_a_fourth_session_is_refused_and_told_who_holds_the_slots(self):
+        for name in ("session-a", "session-b", "session-c"):
+            self.ask(name)
+        out = self.ask("session-d")
+        self.assertRegex(out, r"^no pass: all 3 build slots are taken")
+        for name in ("session-a", "session-b", "session-c"):
+            self.assertIn(name, out)
+
+    def test_no_session_id_refuses_and_hands_out_nothing(self):
+        for value in ("", "   "):
+            with self.subTest(value=value):
+                out = self.ask(value)
+                self.assertRegex(out, r"^no pass: CLAUDE_CODE_SESSION_ID is not set")
+                self.assertEqual(list(self.slots.iterdir()), [])
+
+    def test_a_missing_variable_refuses_too(self):
+        with mock.patch.dict(os.environ, {"HYDRA_BUILD_SLOT_DIR": str(self.slots)}):
+            os.environ.pop(hm.SESSION_ENV, None)
+            self.assertRegex(hm.build_pass(), r"^no pass: CLAUDE_CODE_SESSION_ID is not set")
+
+    def test_no_pwsh_refuses_loudly(self):
+        with mock.patch.object(hm.shutil, "which", return_value=None):
+            self.assertRegex(self.ask("session-a"), r"^no pass: pwsh is not on this server's PATH")
+
+    def test_a_stuck_script_refuses_loudly(self):
+        stuck = subprocess.TimeoutExpired("pwsh", hm.BUILD_PASS_TIMEOUT_S)
+        with mock.patch.object(hm.subprocess, "run", side_effect=stuck):
+            self.assertRegex(self.ask("session-a"), r"^no pass: tools/build_slot\.ps1 gave no answer")
+
+    def test_a_silent_failure_names_the_exit_code(self):
+        silent = subprocess.CompletedProcess([], 7, stdout="", stderr="")
+        with mock.patch.object(hm.subprocess, "run", return_value=silent):
+            self.assertEqual(self.ask("session-a"), "no pass: tools/build_slot.ps1 said nothing and exited 7.")
 
 
 class SdkClient(unittest.TestCase):

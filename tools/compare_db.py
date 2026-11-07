@@ -38,12 +38,13 @@ A speedup counts only if the output is identical.
 
 The exes. Two sets: the baseline and the task's. The main session builds the
 baseline once at dispatch, from the exact commit the wave forks from, in a
-detached throwaway worktree through `tools/build_slot.ps1`, and copies
-`hydra_batch.exe` and `hydra_bench.exe` to
-`C:\Users\Patrick\.claude\hooks\state\bench\baseline-<short hash>\`, so five
-agents do not each cold-build a baseline. The task builds its own
-`hydra_batch` and `hydra_bench` by `-Target` in its worktree (`hydra_bench` is
-EXCLUDE_FROM_ALL, so a plain build never rebuilds it).
+detached throwaway worktree through `tools/build_slot.ps1`, under its build
+pass, and copies `hydra_batch.exe` and `hydra_bench.exe` to
+`C:\Users\Patrick\.claude\hooks\state\bench\baseline-<short hash>\`, so every
+task compares against the same baseline. The main session also builds the
+task's `hydra_batch` and `hydra_bench` by `-Target` in the task's worktree,
+because agents never build (`hydra_bench` is EXCLUDE_FROM_ALL, so a plain
+build never rebuilds it).
 
 The settings. `hydra_batch` and `hydra_bench` read `hydra_settings.ini` from
 the folder they run in. Both exe folders get a copy of the installed
