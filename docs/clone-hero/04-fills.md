@@ -3,7 +3,7 @@
 This page covers written fills, the fills the game generates, their deadlines, and when a fill shows up.
 It describes build 1.1 (v1.1.0.6142), and build 1.0 (v1.0.0.4045) under its own heading.
 "The decompile" on this page means Ghidra's full decompile of build 6142, which `code/README.md` describes; it is not in the repo.
-Last write-back: 2026-10-31.
+Last write-back: 2026-11-06.
 
 ## Written fills
 
@@ -323,11 +323,11 @@ The search position of the written-fill search is FL-04, and the generator's is 
 
 Rule: When Star Power can be activated, a missed fill-end note is granted as a hit (the first branch of the miss handler). A correct press on a fill-end note while Star Power can activate first makes a virtual call, which the drum-lanes notes read as activating Star Power, then hits the note.
 Label: Proven in the game's code
-Evidence: committed listing `docs/audit/drum-lanes/f20dcad0.asm` lines 6 to 16 (the call to `0x20F57F0`, the Star Power ready test, then the flag getter `0x214BB50` on the note, then the branch). The press side is `docs/audit/drum-lanes/play/f20deaa0.asm` lines 120 to 130; that its vtable call is the activation is the FINDINGS file's reading, and the slot was not resolved.
+Evidence: committed listing `docs/audit/drum-lanes/f20dcad0.asm` lines 6 to 16 (the call to `0x20F57F0`, the Star Power ready test, then the flag getter `0x214BB50` on the note, then the branch). The press side is `docs/audit/drum-lanes/play/f20deaa0.asm` lines 120 to 130; that its vtable call is the activation is the FINDINGS file's reading, and the slot was not resolved. The grant jumps through the class slot at +0x1E8. `code/6142/note_hit_dynamics_20DE770.md` puts slot 6 at +0x198 and calls RVA `0x20DE770` slot 11, so at 16 bytes a slot the grant reaches that plain hit handler, not the press handler. So a missed fill-end note should score as a hit without activating; that is read from the slot spacing, and no run has tried it.
 Game code (6142): RVA `0x20DCAD0`, `docs/audit/drum-lanes/f20dcad0.asm` lines 6 to 16; the press handler RVA `0x20DEAA0`.
 Hydra: no owner: a grep of `src/` for a fill-end grant finds nothing; Hydra's paths hit every note.
 Ruling: none needed: Hydra's paths hit every note, so the grant changes nothing they score
-Found: drum-lanes FINDINGS-play-time.md.
+Found: drum-lanes FINDINGS-play-time.md.; the grant's slot, 2026-11-06, session 70bfa33d
 
 ## When a fill shows up
 

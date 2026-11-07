@@ -400,4 +400,6 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	method	901	BasePlayer	Update	0x20A1B0		BasePlayer.Update
 6142	method	901	BasePlayer	ʶʷʶʲʽʼʼʾʿʵʵ	0x208870		0x208870
 6142	method	901	BasePlayer	ʸʾʶʹʲʽʵʿʹʺʽ	0x208F50		0x208F50
+6142	method	990	MIDIInputManager	ʳʲʾʿʻˀʾʽʹʼʻ	0x21CDE0		0x21CDE0
+6142	method	990	MIDIInputManager	ʸʲˀʸʲʻˀʶʲʲʲ	0x21E420		0x21E420
 6142	method	996		ʷʺʲʿʲʼʽʵʹʳʴ	0x11676A0		0x11676A0
