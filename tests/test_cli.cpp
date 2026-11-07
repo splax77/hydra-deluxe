@@ -1,9 +1,9 @@
-// End-to-end tests for the two console tools (src/cli/). Each test copies
-// the built exes into a fresh temp folder and runs them there, because the
-// tools read hydra_settings.ini and hydra_rules.ini from their own folder: a
-// folder with neither gives the app's defaults, whatever the developer's build
-// folder holds. The exe paths come from CMakeLists.txt, which also builds the
-// tools before the tests.
+// End-to-end tests for the two console tools (src/cli/) and hydra_replay's
+// flags. Each test copies the built exes into a fresh temp folder and runs
+// them there, because the tools read hydra_settings.ini and hydra_rules.ini
+// from their own folder: a folder with neither gives the app's defaults,
+// whatever the developer's build folder holds. The exe paths come from
+// CMakeLists.txt, which also builds the tools before the tests.
 
 #include "doctest.h"
 
@@ -41,7 +41,7 @@
 #include "temp_util.h"
 #include "wait_util.h"
 
-#if !defined(HYDRA_BATCH_EXE) || !defined(HYDRA_FILLCOMPARE_EXE)
+#if !defined(HYDRA_BATCH_EXE) || !defined(HYDRA_FILLCOMPARE_EXE) || !defined(HYDRA_REPLAY_EXE)
 #error "the CLI exe paths must be defined (see CMakeLists.txt)"
 #endif
 
@@ -623,6 +623,48 @@ TEST_CASE("hydra_fillcompare compares both rules out of one database") {
     // The parts add up to the total: 1 same + 1 in both, not both scored.
     CHECK(contains(two.output, "Compared 2 charts: 1 same, 0 1.0 higher, 0 1.1 higher, "
                                "0 only under 1.0, 0 only under 1.1, 1 in both, not both scored"));
+}
+
+// D308 item 1: a typo in --ms or --depth stops the run with a line naming the
+// flag, where it would otherwise price the chart under a number nobody typed.
+// Each run names a real chart and a command, so a flag read loosely runs to the
+// end and exits 0.
+TEST_CASE("hydra_replay refuses --ms and --depth values that are not whole numbers") {
+    CliSandbox box("replay_flags");
+    const fs::path replay = box.copy_tool(HYDRA_REPLAY_EXE);
+    const std::string chart = (box.songs / "fixture" / "notes.chart").u8string();
+    const std::string out = (box.dir / "dump.json").u8string();
+
+    const struct {
+        const char* flag;
+        const char* value;
+        const char* line;
+    } refused[] = {
+        {"--ms", "abc", "--ms takes a whole number, not \"abc\""},
+        {"--depth", "1x", "--depth takes a whole number, not \"1x\""},
+        {"--depth", "99999999999", "--depth takes a whole number, not \"99999999999\""},
+    };
+    for (const auto& bad : refused) {
+        const RunResult r = run_exe(replay, {"dump", "--chart", chart, bad.flag, bad.value, "--out", out});
+        INFO(bad.flag << " " << bad.value << " printed: " << r.output);
+        CHECK(r.exit_code == 2);
+        CHECK(contains(r.output, bad.line));
+        CHECK_FALSE(fs::exists(fs::u8path(out)));
+        std::error_code ec;
+        fs::remove(fs::u8path(out), ec);  // a loose read writes it; the next run starts clean
+    }
+
+    // Whole numbers still run, and "off" still turns the limit off. A number
+    // past a setting's range is no typo: settings_from pulls it in.
+    for (const std::vector<std::string>& flags :
+         {std::vector<std::string>{"--ms", "10", "--depth", "1"},
+          std::vector<std::string>{"--ms", "off", "--depth", "-1"}}) {
+        std::vector<std::string> args = {"dump", "--chart", chart, "--out", out};
+        args.insert(args.end(), flags.begin(), flags.end());
+        const RunResult r = run_exe(replay, args);
+        INFO(flags[1] << " printed: " << r.output);
+        CHECK(r.exit_code == 0);
+    }
 }
 
 // The network code lives in hydra_dm, which only the GUI links (CMakeLists.txt),

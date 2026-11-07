@@ -123,7 +123,10 @@ const std::vector<std::string>& size_excluded_folders();
 // size_excluded_folders(). A binary file counts no lines (git gives it no
 // line counts). The one place that rule lives.
 RangeSize range_size(const Repo& repo, const std::string& base, const std::string& tip);
-// The same, read from `diff --numstat` lines.
+// The path field of one `diff --numstat` line, without the pair of quotes git
+// puts around an unusual path. Git's escapes inside the quotes stay as written.
+std::string numstat_path(const std::string& field);
+// The same count as range_size, read from `diff --numstat` lines.
 RangeSize parse_numstat(const std::vector<std::string>& numstat_lines);
 
 }  // namespace precheck

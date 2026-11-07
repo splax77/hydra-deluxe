@@ -353,9 +353,7 @@ TEST_CASE("Profile compares on every part of the identity") {
     CHECK(kLensA != Lens::from(std::nullopt, 0, 20));
     CHECK(kLensA != Lens::from(10, 0, 20, /*legacy_fills=*/true));
 
-    // ...except the ms value when the limit is off, which the engine ignores:
-    // "off at 10" and "off at 42" ran the same search.
-    CHECK(Lens::from(std::nullopt, 0, 4) == Lens::from(std::nullopt, 0, 4));
+    // ...except the ms value when the limit is off: an off limit stores 0.
     CHECK(Lens::from(std::nullopt, 0, 4).ms_value == 0);
 }
 

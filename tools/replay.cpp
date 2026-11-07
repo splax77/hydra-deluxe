@@ -151,6 +151,28 @@ void usage() {
         kSqueezeWindowMs);
 }
 
+// ---- strict flag numbers -------------------------------------------------
+
+// A flag's number, whole-string, or nothing. std::atoi would turn "1x" into 1
+// and "abc" into 0 and run under a number nobody typed.
+std::optional<long long> strict_flag_number(const std::string& v) {
+    const std::string t = trim(v);
+    char* end = nullptr;
+    errno = 0;
+    const long long n = std::strtoll(t.c_str(), &end, 10);
+    if (t.empty() || end != t.c_str() + t.size() || errno == ERANGE) return std::nullopt;
+    return n;
+}
+
+// The value of a setting flag that holds a number. A number past the setting's
+// range is settings_from's to pull in, so this refuses only what fits no int.
+int setting_flag_number(const std::string& flag, const std::string& v) {
+    const std::optional<long long> n = strict_flag_number(v);
+    if (!n || *n < std::numeric_limits<int>::min() || *n > std::numeric_limits<int>::max())
+        throw std::runtime_error(flag + " takes a whole number, not \"" + v + "\"");
+    return static_cast<int>(*n);
+}
+
 // ---- shared settings -----------------------------------------------------
 
 // The app's settings with the typed flags applied. A flag not given keeps the
@@ -184,7 +206,7 @@ app::Settings settings_from(const Args& a) {
 
     if (a.ms) {
         if (*a.ms == "off") s.mslimit_enabled = false;
-        else { s.mslimit_enabled = true; s.mslimit_value = std::atoi(a.ms->c_str()); }
+        else { s.mslimit_enabled = true; s.mslimit_value = setting_flag_number("--ms", *a.ms); }
     }
 
     if (a.depth_mode) s.depth_mode = *a.depth_mode == "points" ? 1 : 0;
@@ -297,18 +319,14 @@ std::vector<ReplayWindow> parse_acts(const std::string& spec) {
     return out;
 }
 
-// --index, whole-string. std::atoi would turn "1x" or "one" into 0 and price
-// the first path as if that were what was asked for.
+// --index, read by strict_flag_number: a loose read would price the first path
+// as if that were what was asked for.
 int parse_index(const std::string& v) {
-    const std::string t = trim(v);
-    char* end = nullptr;
-    errno = 0;
-    const long long n = std::strtoll(t.c_str(), &end, 10);
-    if (t.empty() || end != t.c_str() + t.size() || errno == ERANGE || n < 0 ||
-        n > 1000000)
+    const std::optional<long long> n = strict_flag_number(v);
+    if (!n || *n < 0 || *n > 1000000)
         throw std::runtime_error("--index '" + v +
                                  "' is not a whole path number");
-    return static_cast<int>(n);
+    return static_cast<int>(*n);
 }
 
 // Read one path out of the JSON `dump` or `target` wrote. The conversion to
@@ -758,7 +776,7 @@ int main() {
             else if (k == "--cap") a.cap = next();
             else if (k == "--ms") a.ms = next();
             else if (k == "--depth-mode") a.depth_mode = next();
-            else if (k == "--depth") a.depth = std::atoi(next().c_str());
+            else if (k == "--depth") a.depth = setting_flag_number(k, next());
             else if (k == "--acts") a.acts = next();
             else if (k == "--path") a.path = next();
             // Parsed strictly: std::atoi turns a typo into 0, which would

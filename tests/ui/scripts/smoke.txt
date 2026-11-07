@@ -24,7 +24,6 @@ expect-text Burnout
 # the field, and text and dump filter on nothing, which keeps every line.
 type **/##search | zzqx
 expect-text Nothing matches.
-expect-not-text No charts match your search.
 type **/##search |
 expect-not-text Nothing matches.
 expect-text Burnout
