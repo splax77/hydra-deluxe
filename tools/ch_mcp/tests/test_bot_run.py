@@ -12,6 +12,7 @@ import io
 import json
 import os
 import re
+import stat
 import subprocess
 import sys
 import tempfile
@@ -988,6 +989,114 @@ class InstallChartTest(unittest.TestCase):
         with self.assertRaises(I.InstallRefused):
             I.install(self.src, dest_root=self.dest_root, write_ogg=self.fake_ogg)
         self.assertFalse(os.path.exists(self.dest_root))
+
+    # -- the copy's title -----------------------------------------------------------
+
+    def installed_ini(self, source_ini: bytes, *, name=None) -> bytes:
+        """The copy's song.ini after installing a source with `source_ini`."""
+        _write(os.path.join(self.src, G.SONG_INI), source_ini)
+        I.install(self.src, dest_root=self.dest_root, name=name, write_ogg=self.fake_ogg)
+        return _read(os.path.join(self.dest_root, name or "Some Song", G.SONG_INI))
+
+    def test_the_copys_title_gets_the_probe_prefix(self):
+        ini = self.installed_ini(b"[song]\nname = Ladies Talk [Kiyo Sen] (Drumeo Performance)\n"
+                                 b"song_length = 90000\n")
+        self.assertEqual(ini, b"[song]\nname = Hydra Probe - Ladies Talk [Kiyo Sen] "
+                              b"(Drumeo Performance)\nsong_length = 90000\n")
+        self.assertEqual(G.read_song_ini(os.path.join(self.dest_root, "Some Song"))["name"],
+                         "Hydra Probe - Ladies Talk [Kiyo Sen] (Drumeo Performance)")
+
+    def test_every_other_byte_of_the_song_ini_stays(self):
+        ini = self.installed_ini(b"\xef\xbb\xbf; name = a comment\r\n"
+                                 b"[Song]\r\n"
+                                 b"artist  =  Caf\xe9 \r\n"
+                                 b"# name = another comment\r\n"
+                                 b"NAME=Caf\xe9 Title  \r\n"
+                                 b"\r\n"
+                                 b"song_length = 90000\r\n"
+                                 b"[other]\r\n"
+                                 b"name = not the title\r\n"
+                                 b"last line = no ending")
+        self.assertEqual(ini, b"\xef\xbb\xbf; name = a comment\r\n"
+                              b"[Song]\r\n"
+                              b"artist  =  Caf\xe9 \r\n"
+                              b"# name = another comment\r\n"
+                              b"NAME=Hydra Probe - Caf\xe9 Title  \r\n"
+                              b"\r\n"
+                              b"song_length = 90000\r\n"
+                              b"[other]\r\n"
+                              b"name = not the title\r\n"
+                              b"last line = no ending")
+
+    def test_the_source_chart_is_never_touched(self):
+        source = b"[song]\r\nname = Real Title\r\nsong_length = 90000\r\n"
+        self.installed_ini(source)
+        self.assertEqual(_read(os.path.join(self.src, G.SONG_INI)), source)
+
+    def test_a_title_with_the_prefix_is_not_doubled(self):
+        source = b"[song]\nname = Hydra Probe - Real Title\nsong_length = 90000\n"
+        self.assertEqual(self.installed_ini(source), source)
+
+    def test_a_name_before_any_section_is_the_title(self):
+        self.assertEqual(self.installed_ini(b"name = Real Title\nsong_length = 90000\n"),
+                         b"name = Hydra Probe - Real Title\nsong_length = 90000\n")
+
+    def test_every_name_line_is_marked(self):
+        # game_files reads the first of two name lines and Hydra the last.
+        self.assertEqual(self.installed_ini(b"[song]\nname = First\nname = Last\n"
+                                            b"song_length = 90000\n"),
+                         b"[song]\nname = Hydra Probe - First\nname = Hydra Probe - Last\n"
+                         b"song_length = 90000\n")
+
+    def test_no_name_key_gets_one_from_the_folder_name(self):
+        self.assertEqual(self.installed_ini(b"[song]\nsong_length = 90000\n"),
+                         b"[song]\nname = Hydra Probe - Some Song\nsong_length = 90000\n")
+
+    def test_no_name_key_uses_the_installed_folders_name(self):
+        self.assertEqual(self.installed_ini(b"[song]\nsong_length = 90000\n", name="Other"),
+                         b"[song]\nname = Hydra Probe - Other\nsong_length = 90000\n")
+
+    def test_an_empty_name_counts_as_no_name(self):
+        self.assertEqual(self.installed_ini(b"[song]\nname = \nsong_length = 90000\n"),
+                         b"[song]\nname = Hydra Probe - Some Song\nsong_length = 90000\n")
+
+    def test_a_new_name_line_uses_the_files_line_ending(self):
+        self.assertEqual(self.installed_ini(b"\xef\xbb\xbf[song]\r\nsong_length = 90000\r\n"),
+                         b"\xef\xbb\xbf[song]\r\nname = Hydra Probe - Some Song\r\n"
+                         b"song_length = 90000\r\n")
+
+    def test_a_new_name_line_goes_in_the_song_section_when_there_is_one(self):
+        # Hydra reads only the [song] section.
+        self.assertEqual(self.installed_ini(b"song_length = 90000\n[song]\nartist = x\n"),
+                         b"song_length = 90000\n[song]\nname = Hydra Probe - Some Song\n"
+                         b"artist = x\n")
+
+    def test_a_new_name_line_after_a_last_line_with_no_ending(self):
+        self.assertEqual(self.installed_ini(b"\xef\xbb\xbfsong_length = 90000"),
+                         b"\xef\xbb\xbfsong_length = 90000\nname = Hydra Probe - Some Song")
+
+    def test_a_read_only_song_ini_is_marked_in_the_copy_and_stays_read_only_at_the_source(self):
+        path = os.path.join(self.src, G.SONG_INI)
+        _write(path, b"[song]\nname = Real Title\nsong_length = 90000\n")
+        os.chmod(path, stat.S_IREAD)
+        try:
+            I.install(self.src, dest_root=self.dest_root, write_ogg=self.fake_ogg)
+            self.assertFalse(os.access(path, os.W_OK))
+        finally:
+            os.chmod(path, stat.S_IREAD | stat.S_IWRITE)
+        self.assertEqual(_read(os.path.join(self.dest_root, "Some Song", G.SONG_INI)),
+                         b"[song]\nname = Hydra Probe - Real Title\nsong_length = 90000\n")
+
+    def test_a_failed_title_leaves_no_half_made_folder(self):
+        with mock.patch.object(G, "set_song_title", side_effect=OSError("disk full")):
+            with self.assertRaises(OSError):
+                I.install(self.src, dest_root=self.dest_root, write_ogg=self.fake_ogg)
+        self.assertFalse(os.path.exists(os.path.join(self.dest_root, "Some Song")))
+
+    def test_a_song_ini_with_nowhere_for_a_title_is_refused_by_the_writer(self):
+        _write(os.path.join(self.src, G.SONG_INI), b"[other]\nsong_length = 90000\n")
+        with self.assertRaises(G.SettingNotFound):
+            G.set_song_title(self.src, lambda title: title)
 
 
 if __name__ == "__main__":

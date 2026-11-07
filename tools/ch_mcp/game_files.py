@@ -1,6 +1,6 @@
 """Clone Hero's files on this machine: where the game and its user files are,
 how to back the user files up before a live step and put them back after it,
-and how to read a song folder's song.ini.
+and how to read a song folder's song.ini and change its title.
 
 This module is the one home of those paths, of the list of files a live
 step backs up (the plan's "Safety rules for every live step"), of the
@@ -21,7 +21,7 @@ import shutil
 import subprocess
 import time
 from dataclasses import dataclass
-from typing import Callable, Optional, Sequence
+from typing import Callable, Iterator, Optional, Sequence
 
 from tools.ch_probe.constants import PROCESS_NAME
 
@@ -54,6 +54,9 @@ BACKUP_MANIFEST = "backup.json"
 AFTER_RUN_SUFFIX = ".after-run"
 
 SONG_INI = "song.ini"
+# The song.ini section read_song_ini reads, and its key for the listed title.
+SONG_SECTION = "song"
+SONG_TITLE_KEY = "name"
 
 # Where the game's input library (Rewired) saves its bindings. The key has a
 # dot in "Inc.", unlike the LocalLow folder above.
@@ -310,28 +313,81 @@ def set_game_setting(path: str, key: str, value: str) -> None:
         f.write(b"".join(lines))
 
 
+def _song_ini_lines(path: str) -> list[bytes]:
+    with open(path, "rb") as f:
+        return f.read().splitlines(keepends=True)
+
+
+def _song_section_lines(lines: list[bytes]) -> Iterator[tuple[int, Optional[str], str]]:
+    """The lines of a song.ini, split into lines, that belong to its song
+    section, as (line index, key, value). The key comes lower-cased and is
+    None for a `[song]` header. Keys before any section header count too. This
+    is the one rule for which lines read_song_ini and set_song_title see."""
+    section: Optional[str] = None
+    for i, raw in enumerate(lines):
+        line = raw.decode("utf-8-sig" if i == 0 else "utf-8", "replace").strip()
+        if not line or line[0] in ";#":
+            continue
+        if line.startswith("[") and line.endswith("]"):
+            section = line[1:-1].strip().lower()
+            if section == SONG_SECTION:
+                yield i, None, ""
+            continue
+        if section not in (None, SONG_SECTION) or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        yield i, key.strip().lower(), value.strip()
+
+
 def read_song_ini(folder: str) -> dict[str, str]:
-    """The keys of a song folder's song.ini `[song]` section, lower-cased.
-    Keys before any section header count too. Empty when there is no
-    song.ini."""
+    """The keys of a song folder's song.ini song section, lower-cased; the
+    first of two lines with one key wins. Empty when there is no song.ini."""
     path = os.path.join(folder, SONG_INI)
     if not os.path.isfile(path):
         return {}
     keys: dict[str, str] = {}
-    section: Optional[str] = None
-    with open(path, encoding="utf-8-sig", errors="replace") as f:
-        for raw in f:
-            line = raw.strip()
-            if not line or line[0] in ";#":
-                continue
-            if line.startswith("[") and line.endswith("]"):
-                section = line[1:-1].strip().lower()
-                continue
-            if section not in (None, "song") or "=" not in line:
-                continue
-            key, value = line.split("=", 1)
-            keys.setdefault(key.strip().lower(), value.strip())
+    for _i, key, value in _song_section_lines(_song_ini_lines(path)):
+        if key is not None:
+            keys.setdefault(key, value)
     return keys
+
+
+def _add_song_title(lines: list[bytes], after: int, title: bytes) -> None:
+    """Insert a title line after line `after`, ending it the way the file's
+    first line ends."""
+    found = re.search(rb"\r\n|\r|\n", b"".join(lines))
+    ending = found.group() if found else b"\n"
+    line = SONG_TITLE_KEY.encode() + b" = " + title
+    ends_a_line = lines[after].endswith((b"\r", b"\n"))
+    lines.insert(after + 1, line + ending if ends_a_line else ending + line)
+
+
+def set_song_title(folder: str, title_for: Callable[[str], str]) -> None:
+    """Replace the title in a song folder's song.ini with `title_for` of it.
+    A title line that holds no title, or a file with no title line, gives
+    `title_for` an empty string. Every title line in the song section changes,
+    because the readers disagree on which of two wins: read_song_ini takes the
+    first and Hydra's read_song_ini_keys the last. A file with no title line
+    gets one, under its `[song]` header when it has one. Every other byte
+    stays. Raises SettingNotFound when the file has no song section at all,
+    and OSError when it cannot be read or written."""
+    path = os.path.join(folder, SONG_INI)
+    lines = _song_ini_lines(path)
+    entries = list(_song_section_lines(lines))
+    if not entries:
+        raise SettingNotFound(f"no [{SONG_SECTION}] section in {path}")
+    titles = [i for i, key, _value in entries if key == SONG_TITLE_KEY]
+    for i in titles:
+        m = _SETTING_LINE.match(lines[i])
+        # surrogateescape carries bytes that are not UTF-8 through unchanged.
+        title = title_for(m.group(2).decode("utf-8", "surrogateescape"))
+        lines[i] = m.group(1) + title.encode("utf-8", "surrogateescape") + m.group(3)
+    if not titles:
+        headers = [i for i, key, _value in entries if key is None]
+        _add_song_title(lines, headers[0] if headers else entries[0][0],
+                        title_for("").encode("utf-8", "surrogateescape"))
+    with open(path, "wb") as f:
+        f.write(b"".join(lines))
 
 
 def song_ini_length_ms(folder: str) -> Optional[int]:
