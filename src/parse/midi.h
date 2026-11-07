@@ -1,18 +1,19 @@
-// MIDI reader — the C++ port of hydra/hymidi.py.
+// MIDI reader.
 //
 // A purpose-built reader for exactly what the chart parser consumes: it pulls
 // the file into one byte buffer and walks it with an index, emitting only the
-// events hysong can act on. Events it cannot match are dropped and their delta
-// rolled into the next emitted event, so absolute tick totals are preserved.
+// events the song parser can act on. Events it cannot match are dropped and
+// their delta rolled into the next emitted event, so absolute tick totals are
+// preserved.
 //
-// Shape mirrors hymidi so the parser port (Phase 2) maps across directly:
+// What it produces:
 //     MidiFile     ticks_per_beat, tracks
 //     MidiTrack    name, messages
-//     Message      channel note_on/note_off, and the metas hysong reads
+//     Message      channel note_on/note_off, and the metas meta_message builds
 //
-// The load-bearing meta-string split is preserved: text-metas carry a string
-// under StrAttr::Text, name-metas under StrAttr::Name, and 0x08 carries neither
-// — hysong matches MetaMessage(text=...), which must not fire on a track name.
+// The meta-string split is load-bearing: text-metas carry a string under
+// StrAttr::Text, name-metas under StrAttr::Name, and 0x08 carries neither. The
+// song parser matches only StrAttr::Text strings, so a track name never matches.
 
 #ifndef HYDRA_PARSE_MIDI_H
 #define HYDRA_PARSE_MIDI_H
@@ -28,7 +29,7 @@
 
 namespace hydra {
 
-// Thrown for input that is not a usable MIDI file (mirrors hymidi's ValueError).
+// Thrown for input that is not a usable MIDI file.
 class MidiError : public KindedError {
 public:
     explicit MidiError(const std::string& what) : KindedError(ErrorKind::ChartUnreadable, what) {}
@@ -43,8 +44,8 @@ bool is_midi_header(const uint8_t* data, size_t size);
 // bit clear.
 inline constexpr int kMidiDataValues = 128;
 
-// One event. A single struct covers channel and meta messages, matching the
-// dynamic shape hymidi produces; only the fields relevant to `type` are set.
+// One event. A single struct covers channel and meta messages; only the fields
+// relevant to `type` are set.
 struct Message {
     // Every kind of message the reader emits. The names mido gives them are
     // spelled by message_type_name().
@@ -57,7 +58,7 @@ struct Message {
     };
 
     // Which string attribute a meta carries, if any. Text-metas and name-metas
-    // are kept distinct because hysong pattern-matches on `text` specifically.
+    // are kept distinct because the song parser matches on text-metas only.
     enum class StrAttr : uint8_t { None, Text, Name };
 
     int64_t time = 0;          // delta ticks since the previous emitted event.
@@ -72,7 +73,7 @@ struct Message {
 
     int numerator = 0;         // time_signature
     int denominator = 0;       // time_signature (already 2**b, as in mido;
-                               // 0 when b is past 30, see parse/timesig.h)
+                               // parse/timesig.h says when it is 0)
 
     // Text/name payload, UTF-8 as decode_chart_text (parse/text_decode.h)
     // reads each event's bytes. Only text and name metas
@@ -118,7 +119,7 @@ bool is_events_track_name(std::string_view name);
 // The instrument track names Clone Hero 1.1 holds besides the drum names
 // (kDrumsTrackNames): its string literals list them beside "part drum" and
 // "part drums". Only MidiFile::last_note_end_tick reads them, through
-// is_instrument_track_name. BEAT, VENUE and EVENTS are not instruments.
+// is_other_instrument_track_name. BEAT, VENUE and EVENTS are not instruments.
 inline constexpr std::string_view kVocalsTrackName = "part vocals";
 inline constexpr std::string_view kOtherInstrumentTrackNames[] = {
     "part bass",   "part bass ghl",   "part guitar", "part guitar coop", "part guitar coop ghl",
@@ -137,15 +138,13 @@ bool is_instrument_track_name(std::string_view name);
 // Whether a note-on or note-off pitch on an instrument track is a gem or a
 // vocal note above the guitar and drum range. The layouts live in
 // GuitarGame_ChartFormats, docs/Chart-File-Formats/mid-format/Tracks:
-// 5-Fret-Guitar.md, 6-Fret-Guitar.md and Drums.md put the lowest gem at 58
-// (6-fret Easy Open) and the first marker (solo) at 103; the markers above
-// it (Star Power, versus phrase, tom, fill, Big Rock Ending, tremolo and
-// trill) are not notes. The pitches below 58 on a guitar track are animation,
-// not notes.
+// 5-Fret-Guitar.md, 6-Fret-Guitar.md and Drums.md give the lowest gem (6-fret
+// Easy Open) and the first marker (solo). The markers above it are not notes,
+// and the pitches below the lowest gem on a guitar track are animation.
 inline bool is_gem_pitch(int pitch) { return pitch >= 58 && pitch < 103; }
 
 // Whether a pitch is below the gems and still a note on a vocals track
-// (Vocals.md puts the lowest vocal note at 36). Only a vocals track reads it
+// (Vocals.md gives the lowest vocal note). Only a vocals track reads it
 // (MidiFile::last_note_end_tick); on any other track these pitches are
 // animation or range shifts.
 inline bool is_low_vocal_pitch(int pitch) { return pitch >= 36 && pitch < 58; }
@@ -166,7 +165,7 @@ public:
 
 // Which drum-track note messages MidiFile::lean keeps, one table by pitch for
 // the messages Message::is_note_on accepts and one for the rest. The song
-// parser fills it (load_songbytes_mid in parse/song.cpp).
+// parser fills it (parse_mid_lean in parse/song.cpp).
 struct MidiLeanFilter {
     bool note_on[kMidiDataValues] = {};
     bool note_off[kMidiDataValues] = {};
@@ -219,8 +218,8 @@ public:
     // parser's Song::last_note_end_tick), or nullopt when they hold no note.
     // A note ends at its note-off, so the latest note message on a track is
     // its latest end (a note left open counts at its note-on). A track counts
-    // from kFirstInstrumentTrack when is_instrument_track_name accepts its
-    // name and no earlier track holds the same instrument: Clone Hero 1.1
+    // from kFirstInstrumentTrack when is_other_instrument_track_name accepts
+    // its name and no earlier track holds the same instrument: Clone Hero 1.1
     // reads each instrument once (see drums_track), and the drum names are
     // one instrument, so the drums count through drums_track.
     std::optional<int64_t> last_note_end_tick() const;
