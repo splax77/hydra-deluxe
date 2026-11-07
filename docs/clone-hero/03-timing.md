@@ -164,7 +164,7 @@ Rule: The engine does not copy the song clock into `#8255+0x2E0` at each hit, as
 Label: Proven in the game's code
 Evidence: the only two writes are at lines 140 and 188 of `docs/audit/drum-lanes/play/f20deaa0.asm`, each behind the double-lane flag test 0xC000 (lines 131 and 179), and the lane update reads the field as the round's start (NL-59, IN-15). The field read 0.0 in all 40,922 rows of the bot run `run1_cal0_sp_watch.csv`, which fits a chart with no double lane.
 Game code (6142): field `#8255+0x2E0` (`dump.cs` lines 527435 to 527436); writer in the engine method at RVA `0x20DEAA0`, `docs/audit/drum-lanes/play/f20deaa0.asm` lines 140 and 188.
-Hydra: no owner in `src/`; the tool name is `OFF_HIT_TIME` in tools/ch_probe/constants.py line 106.
+Hydra: no owner in `src/`; the tool name is `OFF_ROUND_START` in tools/ch_probe/constants.py line 106.
 Ruling: none needed: no Hydra rule depends on it
 Found: 2026-10-30, session b02ab3e6 (the reference build).
 

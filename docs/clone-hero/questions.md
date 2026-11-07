@@ -214,14 +214,6 @@ One end: a hook placed at `0x100E960` during a drums song never fires for the dr
 
 What the tool does today: `RVA_BASE_ENGINE_CTOR_DRUMS = 0x100E960` (tools/ch_probe/constants.py line 46). Nothing uses it except a test fixture copy (tools/ch_mcp/tests/test_dump_facts.py line 409). Owner: constants.py. Page row IN-23. Same family as Q-72.
 
-### Q-78 OFF_HIT_TIME (+0x2E0) is labelled the hit time, but the only run that logged it read 0.0 throughout
-
-The game's real layout (`dump.cs` line 527437): #8255 has a private double at +0x2E0. The code that writes it has now been read: it is the start of a double lane's round, written only while a note flagged 0xC000 is handled (page 07 IN-12), so it is not a hit time at all. Live: `overlay-spike/run1_cal0_sp_watch.csv` has its column at 0.0 in all 40,922 rows of a key-press run that hit every note.
-
-One end: if it were the hit time, it would equal the song clock at each hit within 10 ms (`HIT_TIME_MAX_GAP_MS`, constants.py line 297). Other end: it stays 0.0 through hits, as run1_cal0 shows.
-
-What the tool does today: `OFF_HIT_TIME = 0x2E0` (constants.py), whose comment says the name is a wrong first guess and points at TM-14. Owner: constants.py. The name still says hit time, and tools/ch_probe/engine.py and tools/ch_mcp/trace_hits.py still read the field under it. The question: should the comment itself say "double-lane round start", or should the constant go? Page rows IN-12 and IN-15.
-
 ### Q-79 OFF_SP_OVERFLOW (+0x130) is described as set only on an overfill, but every gain sets it
 
 The game's real rule: the gain method `0x20F4FA0` sets the byte at +0x130 on every gain (`code/6142/sp_gain_20F4FA0.asm` lines 44 to 57, then it sends the new meter ratio), and the per-update method `0x20F6800` also sets it at its clamp (GD lines 53552 to 53557: amount above max sets amount = max and sets the flag). In the same method's Star-Power-on branch the flag is tested at line 53558, the end time is recomputed, and line 53572 clears it; no clear was found for the Star-Power-off case.

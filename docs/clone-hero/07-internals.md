@@ -122,12 +122,12 @@ Found: 2026-09-25, session 8157f2dc; checked 2026-10-30, session b02ab3e6 (the r
 
 ### IN-12 The double at +0x2E0 is the start of a double lane's round, not a hit time
 
-Rule: The tools call the drum engine's double at +0x2E0 the hit time. It is not a per-hit time. The engine writes it, with the song clock, only while it handles a note flagged 0xC000 (a note in a double lane), at the hit that empties the round's pending-pad mask at +0x2C6; the mask is then refilled from +0x2C4 for the next round. The engine compares the song clock minus this value with 0.75 s (IN-15). So on a chart with no double lane the value is never written.
+Rule: The drum engine's double at +0x2E0 is the round start, not a per-hit time. The engine writes it, with the song clock, only while it handles a note flagged 0xC000 (a note in a double lane), at the hit that empties the round's pending-pad mask at +0x2C6; the mask is then refilled from +0x2C4 for the next round. The engine compares the song clock minus this value with 0.75 s (IN-15). So on a chart with no double lane the value is never written.
 Label: Proven in the game's code
 Evidence: `docs/audit/drum-lanes/play/f20deaa0.asm` has two copies of the code. Each tests flag 0xC000 (lines 131 and 179), clears the hit lane's bit in the pending mask at +0x2C6 (lines 137 and 185) and, only when that leaves no lane pending, writes the clock from `[rdi + 0x100]` into +0x2E0 (lines 140 and 188). The reads are in IN-15. The one run that logged the field read 0.0 in every row of `overlay-spike/run1_cal0_sp_watch.csv` (40,922 rows); that fits a chart without double lanes, but the chart was not checked for them. The early "hit time" columns of `tools/ch_probe/experiments/results/hit_detect.csv` were the song clock at +0x100, not this field (session 8157f2dc). Page 02's NL-59 describes the same timer from the game's side.
 Game code (6142): `#8255+0x2E0`; writer in the engine method at RVA `0x20DEAA0`, `docs/audit/drum-lanes/play/f20deaa0.asm` lines 140 and 188.
-Hydra: no owner. The tool calls it `OFF_HIT_TIME` in tools/ch_probe/constants.py line 106, which is the wrong name.
-Ruling: none needed: no Hydra rule reads it; the tool's name is Q-78
+Hydra: no owner in `src/`; the tool name is `OFF_ROUND_START` in tools/ch_probe/constants.py line 106.
+Ruling: D317: the user chose "Rename to round start (Recommended)"; no Hydra rule reads it
 Found: 2026-09-25, session 8157f2dc; 2026-10-30, session b02ab3e6 (the reference build).
 
 ### IN-13 The combo count and the window note count have no result file
@@ -848,4 +848,4 @@ IN-19, IN-20, IN-21, IN-27, IN-29, IN-36, IN-40, IN-44, IN-59, IN-60, IN-80. See
 
 ## Open splits
 
-IN-16 (Q-76), IN-12 (Q-78), IN-22 (Q-72), IN-23 (Q-77), IN-27 (Q-79). See `questions.md`.
+IN-16 (Q-76), IN-22 (Q-72), IN-23 (Q-77), IN-27 (Q-79). See `questions.md`.

@@ -152,8 +152,10 @@ once live:
 - `+0x38` — front-window constant, `double` (min per-side; ~37.5 ms normal).
 - `+0x100` — the song clock, in seconds. The Ghidra reading called it the hit
   time; the live game (play_chart.py, 2026-09-25) shows it is the running
-  clock. `+0x2e0` (`constants.OFF_HIT_TIME`) is not a hit time either:
-  `docs/clone-hero/03-timing.md`, TM-14, says what the engine writes there.
+  clock.
+- `+0x2e0` — the round start (`constants.OFF_ROUND_START`), `double`: the song
+  clock at the start of a double lane's round, not a per-hit time.
+  `docs/clone-hero/07-internals.md`, IN-12, says when the engine writes it.
 - `+0x198` — flags dword; **bit `0x1000` is PrecisionMode** (clear = normal).
 - `+0x8c` — note count used by the processing loop.
 
