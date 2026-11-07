@@ -52,7 +52,7 @@ ETW is Windows' own event log of who held the CPU and the disk. Three tools work
 
 There is a second `wpr.exe`, version 10.0.26100.8249, in that same Windows Performance Toolkit folder. A bare `wpr` reaches the one in `System32`, because it comes first on the PATH. `tools/ch_mcp/etw/record.ps1` calls `wpr.exe` and `xperf.exe` by full path, so it never depends on the PATH.
 
-Run that script with `pwsh`, which is PowerShell 7.6.9 at `C:\Program Files\PowerShell\7\pwsh.exe`, in an elevated window too. Its execution policy is RemoteSigned. Windows PowerShell (`powershell.exe`) has no policy set here, so a plain call to a script there is refused with "running scripts is disabled on this system".
+Run that script with `pwsh`, which is PowerShell 7.6.9 at `C:\Program Files\PowerShell\7\pwsh.exe`. Whether the script also needs an elevated window is open (see the next paragraph). Its execution policy is RemoteSigned. Windows PowerShell (`powershell.exe`) has no policy set here, so a plain call to a script there is refused with "running scripts is disabled on this system".
 
 The shell agents run in is not elevated (it does not have administrator rights switched on). The account is a member of `BUILTIN\Administrators`, but that group is deny-only in this shell, which runs at `Medium Mandatory Level`. `wpr -status` and `wpr -profiles` both answer from it. No `wpr -start` has been tried here yet, so whether it needs an elevated window is not known. Only the user can open one. Whoever tries it first fixes this line.
 
