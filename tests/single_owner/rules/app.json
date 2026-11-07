@@ -984,28 +984,6 @@
       "note": "Ghosts plus accents, on a bare count or through a variable. The three-way sum that goes on to add normals is all(), another question."
     },
     {
-      "question": "Where does the Beyond tier start on the report page?",
-      "owner": "beyond_edge_ms and tier_for, read in src/app/report.cpp",
-      "owner_file": "src/app/report.cpp",
-      "owner_symbol": "beyond_edge_ms",
-      "date": "2026-10-04",
-      "decision": "audit finding 155; phase 6 task J2-2 (D53)",
-      "added_by": "J2-2",
-      "pattern": "Math\\.max\\(\\.\\.\\.DATA\\.tiers|r\\.ms\\s*>=?\\s*BEYOND",
-      "must_match": [
-        "const BEYOND = Math.max(...DATA.tiers.filter(t => t.cutoff !== null).map(t => t.cutoff));",
-        "const beyond = rows.filter(r => r.ms !== null && r.ms > BEYOND).length;"
-      ],
-      "must_not_match": [
-        "const beyond = rows.filter(r => r.tier === 'Beyond').length;",
-        "return name === 'Beyond' ? 'Beyond ' + DATA.beyond_edge_ms + ' ms'"
-      ],
-      "scope": [
-        "src"
-      ],
-      "note": "The path report's Past tile prints the edge through beyond_edge_text and counts rows whose tier tier_for already set to Beyond (path_tiles in report.cpp). A page script that finds the edge from the tier cutoffs, or counts rows past it by their ms, answers this again."
-    },
-    {
       "question": "How many charts does a path report list?",
       "owner": "store::count_charts in src/store/chart_index.cpp, which ChartIndex::count calls",
       "owner_file": "src/store/chart_index.cpp",

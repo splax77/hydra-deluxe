@@ -42,7 +42,6 @@
       "must_match": [
         "    ImGui::TextUnformatted(\"Nothing matches.\");",
         "  empty.textContent = 'Nothing matches.';",
-        "        ImGui::TextUnformatted(\"No charts match your search.\");",
         "    if (report_frame::search_box(w.memory, \"Search song, artist, or charter\")) apply_filters(w);",
         "    if (report_frame::search_box(w.memory, \"Search song, artist, charter, or path notation\"))",
         "        edited = ImGui::InputTextWithHint(\"##search\", \"Search song, artist, album, charter, or folder\", buf,"

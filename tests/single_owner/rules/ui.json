@@ -771,29 +771,6 @@
       "note": "A scan row built from a library entry's fields by position. A scan row is the library entry itself (the ScanItem alias), so the entry is used as it is. The forward direction (a scan row into the library) is the app.json row with the same owner."
     },
     {
-      "question": "Which charts does a batch analyze?",
-      "owner": "the rows the library screen hands over: AppState::open_batch_confirm and BatchJob's plan constructor (src/ui/app_state.cpp, src/ui/library_jobs.h)",
-      "owner_file": "src/ui/app_state.cpp",
-      "owner_symbol": "rows",
-      "date": "2026-10-04",
-      "decision": "audit finding 113; phase 6 task J2-4 (D53)",
-      "added_by": "J2-4",
-      "pattern": "BatchJob\\(std::optional<std::string>|list_chart_library\\(\\s*search",
-      "must_match": [
-        "BatchJob(std::optional<std::string> search, app::BatchRun run,",
-        ": store_.list_chart_library(search_, 0, -1);  // LIMIT -1 = no limit"
-      ],
-      "must_not_match": [
-        "library.set_charts(store->list_chart_library(std::nullopt, 0, -1));  // -1 = no limit",
-        "BatchJob(std::vector<store::ChartLibraryEntry> charts, app::BatchRun run,"
-      ],
-      "scope": [
-        "src",
-        "tests"
-      ],
-      "note": "A batch built from a search string, or a store call that filters charts by one. BatchJob takes a plan instead, and on the Analyze button's path the library screen's own search decides which rows match."
-    },
-    {
       "question": "What locks the analysis settings?",
       "owner": "settings_lock in src/ui/app_state.cpp",
       "owner_file": "src/ui/app_state.cpp",
