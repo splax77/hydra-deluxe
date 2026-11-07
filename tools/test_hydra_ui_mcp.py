@@ -29,8 +29,9 @@ import unittest
 from ctypes import wintypes
 from datetime import datetime
 from pathlib import Path
+from unittest import mock
 
-HERE = Path(__file__).resolve().parent
+HERE =Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
 import fake_hydra_live as fake  # noqa: E402
@@ -273,6 +274,35 @@ class TransportLayer(unittest.TestCase):
         out = self.helper.start("headless")
         self.assertIn(r".\build_cpp.ps1 -Target hydra_uitest", out)
         self.assertIsNone(self.helper.session)
+
+    # -- where the scratch folder lives -------------------------------------
+
+    def test_the_default_temp_root_is_the_claude_folder_in_the_temp_folder(self):
+        with mock.patch.object(tempfile, "gettempdir", return_value=str(self.root)):
+            helper = self.new_helper(temp_root=None)
+            self.assertEqual(helper.temp_root, Path(tempfile.gettempdir()) / "claude")
+
+    def test_an_explicit_temp_root_wins(self):
+        with mock.patch.object(tempfile, "gettempdir", return_value=str(self.root)):
+            helper = self.new_helper(temp_root=self.root / "mine")
+        self.assertEqual(helper.temp_root, self.root / "mine")
+
+    def test_a_headless_start_makes_a_temp_root_that_does_not_exist_yet(self):
+        missing = self.root / "not made yet"
+        self.helper = self.new_helper(temp_root=missing)
+        out = self.helper.start("headless")
+        self.assertIn("started a headless session", out)
+        s = self.helper.session
+        self.assertEqual(s.scratch.parent, missing)
+        self.assertTrue(s.scratch.name.startswith("hydra_live_"), s.scratch)
+        self.assertTrue(s.scratch.is_dir())
+
+    def test_a_window_start_makes_a_temp_root_that_does_not_exist_yet(self):
+        missing = self.root / "not made yet"
+        self.helper = self.new_helper(temp_root=missing)
+        s = self.start_window()
+        self.assertEqual(s.scratch.parent, missing)
+        self.assertTrue((s.scratch / "hydra.db").is_file())
 
     # -- the snapshot and window mode ---------------------------------------
 

@@ -60,6 +60,8 @@ BUILD_TARGETS = {HEADLESS_EXE: "hydra_uitest", WINDOW_EXE: "Hydra"}
 # The file the helper asks Hydra.exe to log to (--uitest-log), in its own
 # scratch folder. hydra_uitest logs to stdout, which the helper captures.
 WINDOW_LOG = "window.log"
+# The folder in the Windows temp folder that holds the helper's scratch folders.
+SCRATCH_SUBFOLDER = "claude"
 
 # What a snapshot copies, in order. Only hydra.db must exist.
 SNAPSHOT_FILES = ("hydra.db", "hydra.db-wal", "hydra.db-shm", "hydra_settings.ini", "hydra_ui.ini")
@@ -328,6 +330,14 @@ def default_launcher(exe, args):
     return [str(exe)] + list(args)
 
 
+def default_temp_root():
+    """Where the helper's scratch folders go. The cleanup sweep walks this
+    folder ($ScratchRoot in cleanup_sweep.ps1), so what the helper keeps does
+    not pile up. It stays inside the temp folder because Hydra refuses a seed
+    outside it (is_under_temp in tests/temp_util.h)."""
+    return Path(tempfile.gettempdir()) / SCRATCH_SUBFOLDER
+
+
 class Helper:
     """Everything the tools do, with the outside world passed in so the tests
     can swap the exes for the stand-in and the process list for a fake."""
@@ -338,7 +348,7 @@ class Helper:
         self.exe_dir = Path(exe_dir)
         self.repo = Path(repo)  # the tree a window session's record names
         self.launcher = launcher
-        self.temp_root = Path(temp_root) if temp_root else Path(tempfile.gettempdir())
+        self.temp_root = Path(temp_root) if temp_root else default_temp_root()
         self.process_lister = process_lister
         self.reply_margin_s = reply_margin_s
         self.hello_timeout_s = hello_timeout_s
@@ -620,7 +630,9 @@ class Helper:
         if s.crash_dump is not None and s.crash_dump.is_file():
             lines.append(f"crash dump: {s.crash_dump}")
         # The helper's scratch folder stays after a crash or a kill, so the log
-        # can be read; the SessionStart cleanup sweep removes it later.
+        # can be read. The SessionStart cleanup sweep removes it once it has
+        # gone a week with no writes; $ScratchAgeDays in cleanup_sweep.ps1 owns
+        # that age.
         lines.append(f"files kept in {s.scratch}")
         return "\n".join(lines)
 
@@ -766,7 +778,8 @@ def build_server():
         window on a fresh snapshot copy of the library folder: library_dir, else
         HYDRA_LIBRARY_DIR, else DEFAULT_LIBRARY_DIR in tools/hydra_ui_mcp.py).
         keep=True keeps the helper's scratch folder, screenshots included,
-        after hydra_stop."""
+        after hydra_stop, until the cleanup sweep removes it after a week with
+        no writes."""
         return HELPER.start(mode, library_dir, keep)
 
     @server.tool()
