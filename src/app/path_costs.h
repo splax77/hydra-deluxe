@@ -1,7 +1,7 @@
 // The Path Builder's cost list: what each of the player's windows costs
 // against Hydra's best path. Every cost is a difference of two best-finish
 // totals (best_finish and search_target, search/pather.h); nothing here
-// prices a path itself. Plan: docs/superpowers/plans/2026-10-28-path-builder.md,
+// prices a path itself. Plan: docs/superpowers/plans/2026-10-28-path-builder.md (removed; git show b29a3c28:docs/superpowers/plans/2026-10-28-path-builder.md),
 // task EN-3.
 
 #ifndef HYDRA_APP_PATH_COSTS_H

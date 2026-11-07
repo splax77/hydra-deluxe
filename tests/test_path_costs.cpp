@@ -1,5 +1,5 @@
 // The Path Builder's cost list (app/path_costs.h; plan
-// docs/superpowers/plans/2026-10-28-path-builder.md, task EN-3). The corpus
+// docs/superpowers/plans/2026-10-28-path-builder.md (removed; git show b29a3c28:docs/superpowers/plans/2026-10-28-path-builder.md), task EN-3). The corpus
 // cases run at the GUI's default settings, whose Path limit is 10 ms; every
 // total is pinned from one run.
 

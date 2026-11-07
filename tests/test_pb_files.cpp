@@ -1,6 +1,6 @@
 // The Path Builder's saved path files and its copy and paste
-// (src/pathbuilder/pb_files.h; plan docs/superpowers/plans/
-// 2026-10-28-path-builder.md, task PB-4). Every case opens the corpus chart
+// (src/pathbuilder/pb_files.h; plan
+// docs/superpowers/plans/2026-10-28-path-builder.md (removed; git show b29a3c28:docs/superpowers/plans/2026-10-28-path-builder.md), task PB-4). Every case opens the corpus chart
 // "Burnout" through the builder's own state, at the GUI tests' settings.
 
 #include "doctest.h"

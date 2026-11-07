@@ -86,7 +86,7 @@ Type: files; Name: "{autoprograms}\Hydra.lnk"
 ; (both come from CMakeLists.txt), so taskbar pins group with it. CLI tools
 ; get no shortcuts. The Path Builder's shortcut sets no AppUserModelID, so the
 ; builder gets a taskbar button of its own instead of joining Hydra's (the
-; user's answer of 2026-10-29 in docs/superpowers/plans/2026-10-28-path-builder.md).
+; user's answer of 2026-10-29 in docs/superpowers/plans/2026-10-28-path-builder.md (removed; git show b29a3c28:docs/superpowers/plans/2026-10-28-path-builder.md)).
 Name: "{autoprograms}\{#HYDRA_APP_NAME}"; Filename: "{app}\Hydra.exe"; AppUserModelID: "{#HYDRA_APP_USER_MODEL_ID}"
 Name: "{autoprograms}\{#HYDRA_APP_NAME} Path Builder"; Filename: "{app}\HydraPathBuilder.exe"
 

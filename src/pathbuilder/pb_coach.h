@@ -3,8 +3,8 @@
 // tight-window note; the end choices of a window and which one it kept;
 // "Finish the rest for me"; and the clicks that start and remove a window.
 // Every number is read from its owner: costs from cost_list and cost_tier,
-// the note from Activation::within_ms_limit. Plan: docs/superpowers/plans/
-// 2026-10-28-path-builder.md, task PB-2a. The candidate queue, which prices
+// the note from Activation::within_ms_limit. Plan:
+// docs/superpowers/plans/2026-10-28-path-builder.md (removed; git show b29a3c28:docs/superpowers/plans/2026-10-28-path-builder.md), task PB-2a. The candidate queue, which prices
 // each fill the player could activate on next (app::candidate_costs), is task
 // CO-2 of docs/superpowers/plans/2026-10-30-path-builder-redesign.md (removed; git show 307d0b5c:docs/superpowers/plans/2026-10-30-path-builder-redesign.md);
 // that plan's Q1 (the player builds left to right) is why a click changes no
