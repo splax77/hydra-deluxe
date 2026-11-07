@@ -414,6 +414,7 @@ def write_press_log(path: str, rows: Sequence[dict]) -> None:
     """Write the press log: the PRESS_LOG_COLUMNS header, then one row per
     press. A row's other values stay out of the file."""
     with open(path, "w", encoding="utf-8", newline="") as f:
+        # lead_ms stays off the log: a row's clock_ms_at_press already shows it.
         writer = csv.DictWriter(f, fieldnames=PRESS_LOG_COLUMNS, extrasaction="ignore")
         writer.writeheader()
         writer.writerows(rows)

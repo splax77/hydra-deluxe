@@ -4,17 +4,22 @@
         [--player-index 0]
 
 The Hydra side is the JSON `hydra_replay score --chart <chart> --out <json>`
-writes. Three lines come out:
+writes. Six lines come out, five of them checked:
 
   total_notes        pass or fail. The game's count against Hydra's gem count
                      and its chord count; the line says which one matches.
   sp_phrases_total   pass or fail. Against Hydra's chords that end an SP phrase.
+  score              pass or fail. The game's score against Hydra's final.total.
+  accent_notes_hit, ghost_notes_hit
+                     pass or fail, one line for the two. Against Hydra's gems
+                     of each dynamic.
+  sp_activations     pass or fail. Against Hydra's list of activations.
   base_score         reported only. The game's base_score and note_score beside
                      three Hydra numbers, because what the game counts in
                      base_score is one of the things the live test learns.
 
-Every number names the file it came from. The exit code is 0 when both
-checked lines pass, 1 otherwise.
+Every number names the file it came from. The exit code is 0 when every
+checked line passes, 1 otherwise.
 """
 
 from __future__ import annotations
@@ -22,8 +27,16 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections import Counter
 from dataclasses import dataclass
 from typing import Callable, Optional
+
+# The words hydra_replay writes in a gem's "dynamic"; dynamic_str in
+# src/core/model.cpp owns them. They are written out here because this file
+# runs on its own under py -I, and kit_tools imports game_tools, which imports
+# this file.
+DYNAMIC_ACCENT = "accent"
+DYNAMIC_GHOST = "ghost"
 
 
 @dataclass(frozen=True)
@@ -34,6 +47,9 @@ class HydraCounts:
     notes: int
     notes_accent_ghost: int
     total: int
+    accent_gems: int
+    ghost_gems: int
+    activations: int
 
 
 def _load(path: str) -> dict:
@@ -44,6 +60,7 @@ def _load(path: str) -> dict:
 def hydra_counts(score: dict) -> HydraCounts:
     chords = score["chords"]
     final = score["final"]
+    dynamics = Counter(n["dynamic"] for c in chords for n in c["notes"])
     return HydraCounts(
         gems=sum(len(c["notes"]) for c in chords),
         chords=len(chords),
@@ -51,13 +68,19 @@ def hydra_counts(score: dict) -> HydraCounts:
         notes=int(final["notes"]),
         notes_accent_ghost=int(final["notes"]) + int(final["accent"]) + int(final["ghost"]),
         total=int(final["total"]),
+        accent_gems=dynamics[DYNAMIC_ACCENT],
+        ghost_gems=dynamics[DYNAMIC_GHOST],
+        activations=len(score["activations"]),
     )
+
+
+def _verdict(ok: bool) -> str:
+    return "pass" if ok else "FAIL"
 
 
 def compare(stats_path: str, hydra_path: str, *, player_index: int = 0,
             out: Callable[[str], None] = print) -> bool:
-    """Print the three lines. Returns True when total_notes and
-    sp_phrases_total both pass."""
+    """Print the six lines. Returns True when every checked line passes."""
     stats = _load(stats_path)
     players = stats.get("players") or []
     if not 0 <= player_index < len(players):
@@ -71,14 +94,30 @@ def compare(stats_path: str, hydra_path: str, *, player_index: int = 0,
     total = int(p["total_notes"])
     matches = [name for name, value in (("gems", h.gems), ("chords", h.chords)) if value == total]
     notes_ok = bool(matches)
-    out(f"total_notes: {'pass' if notes_ok else 'FAIL'}; game {total} {game_src}; "
+    out(f"total_notes: {_verdict(notes_ok)}; game {total} {game_src}; "
         f"Hydra gems {h.gems}, chords {h.chords} {hydra_src}; "
         f"matches {' and '.join(matches) if matches else 'neither'}")
 
     phrases = int(p["sp_phrases_total"])
     sp_ok = phrases == h.sp_phrase_ends
-    out(f"sp_phrases_total: {'pass' if sp_ok else 'FAIL'}; game {phrases} {game_src}; "
+    out(f"sp_phrases_total: {_verdict(sp_ok)}; game {phrases} {game_src}; "
         f"Hydra chords with is_sp_phrase_end {h.sp_phrase_ends} {hydra_src}")
+
+    game_score = int(p["score"])
+    score_ok = game_score == h.total
+    out(f"score: {_verdict(score_ok)}; game {game_score} {game_src}; "
+        f"Hydra final.total {h.total} {hydra_src}")
+
+    accents, ghosts = int(p["accent_notes_hit"]), int(p["ghost_notes_hit"])
+    dynamics_ok = accents == h.accent_gems and ghosts == h.ghost_gems
+    out(f"accent_notes_hit, ghost_notes_hit: {_verdict(dynamics_ok)}; "
+        f"game {accents} accents, {ghosts} ghosts {game_src}; "
+        f"Hydra gems with dynamic accent {h.accent_gems}, ghost {h.ghost_gems} {hydra_src}")
+
+    activations = int(p["sp_activations"])
+    activations_ok = activations == h.activations
+    out(f"sp_activations: {_verdict(activations_ok)}; game {activations} {game_src}; "
+        f"Hydra activations {h.activations} {hydra_src}")
 
     hydra_values = (("final.notes", h.notes),
                     ("final.notes + accent + ghost", h.notes_accent_ghost),
@@ -92,7 +131,7 @@ def compare(stats_path: str, hydra_path: str, *, player_index: int = 0,
     out(f"base_score (reported): game base_score {base}, note_score {note} {game_src}; "
         + ", ".join(f"Hydra {name} {v}" for name, v in hydra_values) + f" {hydra_src}; "
         f"base_score equals {equal_to(base)}; note_score equals {equal_to(note)}")
-    return notes_ok and sp_ok
+    return notes_ok and sp_ok and score_ok and dynamics_ok and activations_ok
 
 
 def main(argv: Optional[list[str]] = None) -> int:

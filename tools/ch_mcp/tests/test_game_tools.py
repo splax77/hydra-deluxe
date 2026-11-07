@@ -364,10 +364,13 @@ class GameToolsTest(unittest.TestCase):
         stats = os.path.join(self.tmp, "stats.json")
         score = os.path.join(self.tmp, "score.json")
         _write(stats, json.dumps({"players": [{"total_notes": 2, "sp_phrases_total": 0,
-                                               "base_score": 100, "note_score": 100}]}).encode())
+                                               "base_score": 100, "note_score": 100,
+                                               "score": 100, "accent_notes_hit": 0,
+                                               "ghost_notes_hit": 0, "sp_activations": 0}]}).encode())
         _write(score, json.dumps({
-            "chords": [{"notes": [{}], "is_sp_phrase_end": False}] * 2,
-            "final": {"notes": 100, "accent": 0, "ghost": 0, "total": 100}}).encode())
+            "chords": [{"notes": [{"dynamic": "none"}], "is_sp_phrase_end": False}] * 2,
+            "final": {"notes": 100, "accent": 0, "ghost": 0, "total": 100},
+            "activations": []}).encode())
         expected = []
         self.assertTrue(compare_scorestats.compare(stats, score, out=expected.append))
         t = ToolRig(self.tmp)

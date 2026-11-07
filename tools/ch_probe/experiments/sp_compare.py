@@ -53,7 +53,7 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 from tools.ch_probe.experiments.overlay_logs import WATCH_COLUMNS
-from tools.ch_probe.experiments.play_chart import PRESS_LEAD_MS
+from tools.ch_probe.experiments.play_chart import PRESS_LEAD_MS, SP_END_LEAD_MS
 
 # How far from an event a matching change in the watcher log may sit: a
 # phrase end's rise, the multiplier doubling after an activation, the flag
@@ -64,11 +64,22 @@ EVENT_WINDOW_MS = 100.0
 # may sit. The plan's Task S names this window.
 LANDING_WINDOW_MS = 150.0
 
-# The game can credit a chord up to PRESS_LEAD_MS before the chord's own ms,
-# because the auto-player presses that early (play_chart.py owns the lead).
-# So a rise or an activation flag can show on a row whose clock is that much
-# before the chord, and both searches reach back that far.
-EARLY_CREDIT_MS = PRESS_LEAD_MS
+# The game can credit a chord before the chord's own ms, because the
+# auto-player presses it early (play_chart.py owns both leads): by
+# SP_END_LEAD_MS for a chord on an activation's end and by PRESS_LEAD_MS for
+# every other. So a rise or an activation flag can show on a row whose clock is
+# that much before the chord, and the searches reach back that far for that
+# chord only. A wider reach for every chord could hand a rise to the wrong one
+# of two chords a few ms apart.
+def early_credit_ms(chord: dict, end_ticks: set) -> float:
+    """How far before `chord`'s ms the game can credit it. `end_ticks` are the
+    path's deact ticks (end_ticks_of)."""
+    return SP_END_LEAD_MS if chord["tick"] in end_ticks else PRESS_LEAD_MS
+
+
+def end_ticks_of(score: dict) -> set:
+    """The ticks of the score JSON's activation ends."""
+    return {act["deact_tick"] for act in score["activations"]}
 
 # Hydra's own constants, copied because this script cannot read C++. The
 # owners are kStarPowerMultiplier in src/core/timing.h, kMeasuresPerSpBar in
@@ -279,14 +290,14 @@ def ready_between(rows: list, start_ms: float, end_ms: float,
 
 
 def _check_phrase_rises(report: Report, rows: list, chords: list,
-                        amount_col: str, max_col: str) -> None:
+                        amount_col: str, max_col: str, end_ticks: set) -> None:
     used_steps = set()
     full_sizes = []
     rise_rows = _rise_rows(rows, amount_col)
     for chord in chords:
         if not chord["is_sp_phrase_end"]:
             continue
-        lo = chord["ms"] - EARLY_CREDIT_MS
+        lo = chord["ms"] - early_credit_ms(chord, end_ticks)
         hi = chord["ms"] + EVENT_WINDOW_MS
         step = None
         for i in rise_rows:
@@ -345,10 +356,12 @@ def _check_sp_max(report: Report, rows: list, max_col: str,
         report.check(False, f"sp_max not constant: values {shown}; {beside}")
 
 
-def _landed_chord(chords: list, chord_ms: list, flip_ms: float):
-    """The latest chord at or before the flip (allowing the early credit),
-    within LANDING_WINDOW_MS, or None."""
-    i = bisect.bisect_right(chord_ms, flip_ms + EARLY_CREDIT_MS) - 1
+def _landed_chord(chords: list, chord_ms: list, flip_ms: float, end_ticks: set):
+    """The latest chord at or before the flip (allowing each chord its own
+    early credit), within LANDING_WINDOW_MS, or None."""
+    i = bisect.bisect_right(chord_ms, flip_ms + SP_END_LEAD_MS) - 1
+    while i >= 0 and chord_ms[i] - early_credit_ms(chords[i], end_ticks) > flip_ms:
+        i -= 1
     if i < 0 or flip_ms - chord_ms[i] > LANDING_WINDOW_MS:
         return None
     return chords[i]
@@ -414,6 +427,7 @@ def _check_activations(report: Report, rows: list, score: dict) -> float | None:
     chords = score["chords"]
     chord_ms = [c["ms"] for c in chords]
     by_tick = {c["tick"]: c for c in chords}
+    end_ticks = end_ticks_of(score)
     path = score["activations"]
     game = find_activations(rows)
 
@@ -435,7 +449,7 @@ def _check_activations(report: Report, rows: list, score: dict) -> float | None:
         report.note(f"Activation {act.number} at clock {format_ms(flip_ms)}:")
         _check_activation(report, rows, act)
 
-        landed = _landed_chord(chords, chord_ms, flip_ms)
+        landed = _landed_chord(chords, chord_ms, flip_ms, end_ticks)
         landed_tick = landed["tick"] if landed else None
         if want is not None and landed_tick == want["act_tick"]:
             deact = by_tick.get(want["deact_tick"])
@@ -469,7 +483,7 @@ def _expected_multipliers(chord: dict) -> set:
 
 
 def _check_multipliers(report: Report, rows: list, chords: list,
-                       parted_ms) -> None:
+                       parted_ms, end_ticks: set) -> None:
     """The game's multiplier after each chord is credited, read on the last
     row before the next chord, against Hydra's for that chord. One chord of
     lag either way is allowed, because a 4 ms poll can land on either side of
@@ -486,7 +500,7 @@ def _check_multipliers(report: Report, rows: list, chords: list,
             stopped_at = chord
             break
         j = bisect.bisect_left(clocks, sample_ms) - 1
-        if j < 0 or clocks[j] < chord["ms"] - EARLY_CREDIT_MS:
+        if j < 0 or clocks[j] < chord["ms"] - early_credit_ms(chord, end_ticks):
             skipped_before += 1
             continue
         game = rows[j]["sp_mult_u32"]
@@ -537,10 +551,11 @@ def compare(rows: list, score: dict, *, resolution: int | None = None,
                         f"the checks assume one pass through the song")
             break
 
-    _check_phrase_rises(report, rows, chords, amount_col, max_col)
+    end_ticks = end_ticks_of(score)
+    _check_phrase_rises(report, rows, chords, amount_col, max_col, end_ticks)
     _check_sp_max(report, rows, max_col, resolution, sp_bar_ticks)
     parted_ms = _check_activations(report, rows, score)
-    _check_multipliers(report, rows, chords, parted_ms)
+    _check_multipliers(report, rows, chords, parted_ms, end_ticks)
     report.note(f"Summary: {report.passes} PASS, {report.fails} FAIL")
     return report
 
