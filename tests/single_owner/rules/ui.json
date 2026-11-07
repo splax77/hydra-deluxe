@@ -55,7 +55,7 @@
           "why": "kButtonHoveredColor, the owner"
         }
       ],
-      "note": "The pattern also catches the old frame/header teal, the second hover teal D74 folded into the button one, so it can't come back."
+      "note": "The pattern also catches a near-identical teal, so a second hover shade can't sit beside the button's."
     },
     {
       "question": "Which gold is Star Power?",
@@ -664,7 +664,7 @@
         "src",
         "tests"
       ],
-      "note": "A cached copy of the library's chart count. The model's own rows are the count; the cache is gone, so no line may name it."
+      "note": "A cached copy of the library's chart count. The model's own rows are the count, so no line may name a copy."
     },
     {
       "question": "How long does the UI trust a cached file-exists answer?",
@@ -688,7 +688,7 @@
         "details_ui.file_checked_at = -1.0;",
         "library_ui.report_checked_at = -1.0;  // a new report: look at once"
       ],
-      "note": "A \"checked at\" time tested against an interval, or the report check's own interval, which D54 folded into kFileCheckSeconds."
+      "note": "A \"checked at\" time tested against an interval, or a separate interval for the report check. kFileCheckSeconds is the one interval."
     },
     {
       "question": "What does a failed job record?",
@@ -768,11 +768,11 @@
         "tools",
         "tests"
       ],
-      "note": "A scan row built from a library entry's fields by position. Since concept audit M21 a scan row is the library entry itself (the ScanItem alias), so the entry is used as it is. The forward direction (a scan row into the library) is the app.json row with the same owner."
+      "note": "A scan row built from a library entry's fields by position. A scan row is the library entry itself (the ScanItem alias), so the entry is used as it is. The forward direction (a scan row into the library) is the app.json row with the same owner."
     },
     {
       "question": "Which charts does a batch analyze?",
-      "owner": "the rows the library screen hands over: AppState::open_batch_confirm and BatchJob's vector constructor (src/ui/app_state.cpp, src/ui/library_jobs.h)",
+      "owner": "the rows the library screen hands over: AppState::open_batch_confirm and BatchJob's plan constructor (src/ui/app_state.cpp, src/ui/library_jobs.h)",
       "owner_file": "src/ui/app_state.cpp",
       "owner_symbol": "rows",
       "date": "2026-10-04",
@@ -791,7 +791,7 @@
         "src",
         "tests"
       ],
-      "note": "A batch that picks its own charts with the store's SQL search. The library screen's own search decides which rows match."
+      "note": "A batch built from a search string, or a store call that filters charts by one. BatchJob takes a plan instead, and on the Analyze button's path the library screen's own search decides which rows match."
     },
     {
       "question": "What locks the analysis settings?",
@@ -937,7 +937,7 @@
         "src",
         "tests"
       ],
-      "note": "Song folders and the scan job tested together, or the old scan-only guard in start_scan."
+      "note": "Song folders and the scan job tested together, or a line that returns early because a scan is still running. start_scan asks can_scan for both."
     },
     {
       "question": "Is any background job still running?",
@@ -1089,7 +1089,7 @@
         "src/ui/preview_panel.cpp",
         "src/ui/preview_tab.cpp"
       ],
-      "note": "highway_draw.cpp and overlay_layout.cpp have their own factors under J2-8's rows, so only the Preview panel and tab are scanned."
+      "note": "These factors belong to the Preview's overlay boxes, so only the Preview panel and tab are scanned."
     },
     {
       "question": "When a Preview scene lands or is dropped, what moves with it?",
@@ -1137,7 +1137,7 @@
       "scope": [
         "src/ui/preview_controller.cpp"
       ],
-      "note": "The first load, a notes reload and an overlay build each used to swap their scene in by hand; close() and a failed notes reload dropped it the same way."
+      "note": "The first load, a notes reload and an overlay build all swap their scene in through show_scene; close() and a failed notes reload drop it the same way."
     },
     {
       "question": "What does the Preview controller remember when open() is asked for a path?",
@@ -1186,7 +1186,7 @@
       "scope": [
         "src/ui/preview_controller.cpp"
       ],
-      "note": "open()'s three branches each used to write these by hand. close() only forgets them (clear, reset, the default cap), so it is not a copy."
+      "note": "open()'s three branches and set_ghost_path all write these through record_request. close() only forgets them (clear, reset, the default cap), so it is not a copy."
     },
     {
       "question": "Which path does a Preview build the controller starts draw?",
@@ -1222,7 +1222,7 @@
       "scope": [
         "src/ui/preview_controller.cpp"
       ],
-      "note": "The overlay build and the notes reload each used to work this out and copy it inline. The ghost path asks the same owner (path_to_draw(ghost_)), so a changed chart hides it as it hides the path."
+      "note": "The overlay build and the notes reload both ask path_to_draw. The ghost path asks the same owner (path_to_draw(ghost_)), so a changed chart hides it as it hides the path."
     },
     {
       "question": "How is a Preview job's scene and highway built from a mode's notes?",
@@ -1249,7 +1249,7 @@
           "why": "build_scene_and_highway, the owner"
         }
       ],
-      "note": "The first load and the notes reload each used to build their scene and its highway inline. The path-free base has its own owner, build_scene_base, and calls app::build_preview_base instead."
+      "note": "The first load and the notes reload both build their scene and its highway here. The path-free base has its own owner, build_scene_base, and calls app::build_preview_base instead."
     },
     {
       "question": "Is the drawn overlay the selected path's?",
@@ -1321,7 +1321,7 @@
         "src",
         "tests"
       ],
-      "note": "Every test builds its options through track_options too (the J3 join folded the golden and renderer tests), so all of tests is scanned."
+      "note": "Every test builds its options through track_options too, so all of tests is scanned."
     },
     {
       "question": "How wide is a button?",
@@ -1496,7 +1496,7 @@
       "scope": [
         "src"
       ],
-      "note": "The Preview loader shows a time-left line; it checks only its own step and hands its age and its gate to the owner, which never names the gate itself. The startup open's time-left line went with the copy upgrade (D115 task A1-6a). The owner moved to src/app/time_left.h with the batch strip's window (D283, task aoa-t4-build)."
+      "note": "The Preview loader shows a time-left line; it checks only its own step and hands its age and its gate to the owner, which never names the gate itself."
     },
     {
       "question": "How long does a job have left, from the rate over its recent work?",
@@ -1529,7 +1529,7 @@
         "src",
         "tools"
       ],
-      "note": "Time left is the work still to go over the rate in the job's own window: the last 2W finished charts for the batch strip (D283), the last second of bytes for the Preview (D271 item 4). The pattern looks for what is left (a total minus what is done) on the same line as a division, which is how the mean since the start was typed before. The byte rate's old left-over sat on a line of its own and was divided on the next, which a line scan cannot join, so that shape is not caught. A count of what is left with no division is not a time and passes."
+      "note": "Time left is the work still to go over the rate in the job's own window: the last 2W finished charts for the batch strip (D283), the last second of bytes for the Preview (D271 item 4). The pattern looks for what is left (a total minus what is done) on the same line as a division. A left-over worked out on one line and divided on the next is not caught, because a line scan cannot join the two. A count of what is left with no division is not a time and passes."
     },
     {
       "question": "Has a job run long enough for its progress to show?",
@@ -1599,7 +1599,7 @@
       "scope": [
         "src"
       ],
-      "note": "The imgui#9519 workaround: a table that can't reorder asks ImGui to reset its column order after an ini load. Every table calls the one helper; a second inline copy (the Library table had one) fails."
+      "note": "The imgui#9519 workaround: a table that can't reorder asks ImGui to reset its column order after an ini load. Every table calls the one helper; a second inline copy fails."
     },
     {
       "question": "Which flags does a table on the width rule open with?",
@@ -1607,7 +1607,7 @@
       "owner_file": "src/ui/column_widths.cpp",
       "owner_symbol": "table_flags",
       "date": "2026-10-08",
-      "decision": "D103 (report windows), T5 brief (the table uses the Library table's flags); report windows plan, T5 brief (the table uses the Library table's flags); derive-once review of RW-T5 (finding 1); one-column-width-rule plan, Part 1 (table_flags replaces base_table_flags) and Part 4 (after wave 2)",
+      "decision": "D103 (report windows), T5 brief (the table uses the Library table's flags); report windows plan, docs/superpowers/plans/2026-10-08-path-report-window.md (removed; git show 444631e6:docs/superpowers/plans/2026-10-08-path-report-window.md), T5 brief (the table uses the Library table's flags); derive-once review of RW-T5 (finding 1); one-column-width-rule plan, docs/superpowers/plans/2026-10-10-one-column-width-rule.md (removed; git show 444631e6:docs/superpowers/plans/2026-10-10-one-column-width-rule.md), Part 1 (table_flags replaces base_table_flags) and Part 4 (after wave 2)",
       "added_by": "RW-T5",
       "pattern": "\\bImGuiTableFlags_(SizingStretchProp|ScrollX|Hideable|Sortable)\\b",
       "anchor": "ImGuiTableFlags_",
@@ -1673,7 +1673,7 @@
       "scope": [
         "src"
       ],
-      "note": "A table's first frame loads its saved state from hydra_ui.ini after the caller's setup, so code that must win over that state asks table_settled. A second reading of the table's IsInitializing (the report window had its own, the width rule another) fails."
+      "note": "A table's first frame loads its saved state from hydra_ui.ini after the caller's setup, so code that must win over that state asks table_settled. A second reading of the table's IsInitializing fails."
     },
     {
       "question": "Is a report window still showing the result its view was built from?",
@@ -1772,7 +1772,7 @@
       "owner_file": "src/ui/paths_tab.cpp",
       "owner_symbol": "render_backend_table",
       "date": "2026-10-05",
-      "decision": "audit finding 291; phase 6 task J3-3 (D53, D54); one-column-width-rule plan, Part 4 (backend_table_id removed)",
+      "decision": "audit finding 291; phase 6 task J3-3 (D53, D54); one-column-width-rule plan, docs/superpowers/plans/2026-10-10-one-column-width-rule.md (removed; git show 444631e6:docs/superpowers/plans/2026-10-10-one-column-width-rule.md), Part 4 (backend_table_id removed)",
       "added_by": "J3-3",
       "pattern": "##backends",
       "anchor": "##backends",
@@ -1794,7 +1794,7 @@
         "src",
         "tests"
       ],
-      "note": "The id no longer carries the column widths (the width rule sizes the table each frame). It is built once and handed to begin_small_table, which names the same table to table_room and BeginTable."
+      "note": "The id holds no column widths, because the width rule sizes the table each frame. It is built once and handed to begin_small_table, which names the same table to table_room and BeginTable."
     },
     {
       "question": "What text does a Library table cell show?",
@@ -2000,7 +2000,7 @@
       "scope": [
         "src/ui/app_state.cpp"
       ],
-      "note": "The batch confirm and the path report's opening each made the same pair of plans from their own list of rows. A third place that plans by hand could pick its skip list another way, and the run would then differ from the confirm it showed."
+      "note": "The batch confirm and the path report's opening both make their pair of plans through plan_batches, each from its own list of rows. A third place that plans by hand could pick its skip list another way, and the run would then differ from the confirm it showed."
     },
     {
       "question": "What does a batch say while it prepares its chart list?",
@@ -2029,7 +2029,7 @@
       "scope": [
         "src"
       ],
-      "note": "The batch strip and the path report window each showed the batch's preparing state in words of their own. A second spelling would drift from the strip the user sees under the toolbar."
+      "note": "The batch strip and the path report window both show the batch's preparing state with this text. A second spelling would drift from the strip the user sees under the toolbar."
     }
   ]
 }
