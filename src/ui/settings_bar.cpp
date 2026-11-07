@@ -1,7 +1,7 @@
 // The "Analysis settings" button on the action row and the panel it opens:
 // every setting an analysis runs with, for every song. Locked while a batch
 // runs, because a result is filed under the settings it ran with -- changing
-// SP cap mid-run used to hide the result it had just made.
+// SP cap mid-run would hide the result it had just made.
 
 #include "app/config.h"  // Settings::clamp, the one range each box asks
 #include "core/model.h"
@@ -151,7 +151,7 @@ void render_paths_group(AppState& app, bool locked) {
               "How many extra paths below optimal to keep: a number of scores, or of "
               "points. More paths take longer to analyze.");
     // Room for six digits beside the two step buttons (each a frame-height
-    // square after an inner gap), never less than the old 90 px.
+    // square after an inner gap), never less than 90 px.
     const ImGuiStyle& style = ImGui::GetStyle();
     const float six_digits = ImGui::CalcTextSize(widest_digits(6).c_str()).x +
                              style.FramePadding.x * 2.0f +
