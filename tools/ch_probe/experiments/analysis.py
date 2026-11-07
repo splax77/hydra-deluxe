@@ -282,8 +282,8 @@ def group_by_spacing(
 ) -> Dict[float, List[DeltaHitRow]]:
     """Bucket active-probe samples by their spacing.
 
-    Each input row is (spacing, measured_delta, hit). The output maps each
-    spacing to its list of (measured_delta, hit) samples, ready to hand to
+    Each input row is (spacing, delta, hit). The output maps each
+    spacing to its list of (delta, hit) samples, ready to hand to
     `find_window_edge` one spacing at a time.
     """
     buckets: Dict[float, List[DeltaHitRow]] = {}
