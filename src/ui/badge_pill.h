@@ -22,7 +22,7 @@ inline constexpr float kRowPillReachY = 2.0f;   // a pill reaches this far above
 inline constexpr float kPillRadius = 9.0f;      // the pill's corner radius
 
 // The pill's colours, opaque. squeeze_box (paths_tab.cpp) paints its box in
-// the same two.
+// the same two, apart from its warning border, which it owns.
 struct PillRgb {
     unsigned char r, g, b;
 };
