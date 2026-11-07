@@ -4,7 +4,7 @@ Plain version: sp_watch.py writes a CSV of the engine's fields while a song
 plays. This script reads that CSV (columns from overlay_logs.WATCH_COLUMNS)
 and prints two checks, each with a PASS or FAIL line and its numbers:
 
-  * Hit time. Is the field at +0x2E0 the time of the last hit? For each
+  * +0x2E0. Does the field at +0x2E0 change at each chord? For each
     chord in the `hydra_replay score` JSON, take the first row near the
     chord's time in which `hit_time_s` changed, and see how far the new value
     sits from the chord. The verdict uses constants.HIT_TIME_MAX_GAP_MS, the
@@ -44,7 +44,7 @@ from tools.ch_probe.experiments.overlay_logs import (
     WATCH_CLOCK_COLUMNS, WATCH_COLUMNS, WATCH_COLUMNS_WITHOUT_CLOCK)
 
 # How far from a chord's time (song clock, ms) a row may be and still be
-# searched for that chord's hit-time change (the plan's Task A step 4).
+# searched for that chord's +0x2E0 change (the plan's Task A step 4).
 HIT_SEARCH_MS = 50.0
 
 # A pause: two consecutive rows more than PAUSE_MIN_WALL_S apart in wall time
@@ -92,10 +92,13 @@ def load_chords(path: str) -> list[dict]:
         return json.load(f)["chords"]
 
 
-# --- the hit-time check ----------------------------------------------------------
+# --- the +0x2E0 check ------------------------------------------------------------
 
 def hit_time_check(rows: Sequence[dict], chords: Sequence[dict]) -> list[str]:
-    """Whether +0x2E0 (`hit_time_s`) behaves like the time of the last hit.
+    """Whether +0x2E0 (`hit_time_s`) changes at each chord, to a value next to it.
+
+    The name follows OFF_HIT_TIME, whose comment in constants.py says the
+    field is no hit time.
 
     For each chord whose `ms` lies inside the log's clock span, the change
     row is the first row within HIT_SEARCH_MS of the chord in which
@@ -107,7 +110,7 @@ def hit_time_check(rows: Sequence[dict], chords: Sequence[dict]) -> list[str]:
                for i, (prev, cur) in enumerate(zip(rows, rows[1:]), start=1)
                if not same_value(cur["hit_time_s"], prev["hit_time_s"])]
     if not rows:
-        return ["FAIL hit time (+0x2E0): the log has no rows"]
+        return ["FAIL +0x2E0: the log has no rows"]
     first_ms = C.s_to_ms(rows[0]["clock_s"])
     last_ms = C.s_to_ms(rows[-1]["clock_s"])
     in_span = [ch for ch in chords if first_ms <= ch["ms"] <= last_ms]
@@ -123,7 +126,7 @@ def hit_time_check(rows: Sequence[dict], chords: Sequence[dict]) -> list[str]:
             break
         if found is None:
             misses.append(f"  chord {ch['index']} at {ch['ms']:.1f} ms: "
-                          f"no hit-time change within {HIT_SEARCH_MS:g} ms")
+                          f"no +0x2E0 change within {HIT_SEARCH_MS:g} ms")
             continue
         taken.add(found[1])
         gap = found[0] - ch["ms"]
@@ -132,11 +135,11 @@ def hit_time_check(rows: Sequence[dict], chords: Sequence[dict]) -> list[str]:
             counted += 1
         else:
             misses.append(f"  chord {ch['index']} at {ch['ms']:.1f} ms: "
-                          f"hit time {found[0]:.1f} ms, {gap:+.1f} ms away")
+                          f"+0x2E0 {found[0]:.1f} ms, {gap:+.1f} ms away")
 
     ok = bool(in_span) and counted == len(in_span)
-    lines = [f"{'PASS' if ok else 'FAIL'} hit time (+0x2E0): {counted} of "
-             f"{len(in_span)} chords in the log have a hit time within "
+    lines = [f"{'PASS' if ok else 'FAIL'} +0x2E0: {counted} of "
+             f"{len(in_span)} chords in the log have a +0x2E0 value within "
              f"{C.HIT_TIME_MAX_GAP_MS:g} ms ({len(chords) - len(in_span)} "
              f"chords outside the log's clock span)"]
     if gaps:
@@ -186,17 +189,17 @@ def pause_check(rows: Sequence[dict]) -> list[str]:
 def run(argv: Optional[Sequence[str]] = None) -> list[str]:
     """Read the files named in `argv` and return the report lines."""
     parser = argparse.ArgumentParser(
-        description="Hit-time and pause checks on an sp_watch.py log.")
+        description="+0x2E0 and pause checks on an sp_watch.py log.")
     parser.add_argument("watch_csv")
     parser.add_argument("--score", help="hydra_replay score JSON for the "
-                        "hit-time check (auto-player runs only)")
+                        "+0x2E0 check (auto-player runs only)")
     args = parser.parse_args(argv)
     rows = load_watch_rows(args.watch_csv)
     lines = [f"{os.path.basename(args.watch_csv)}: {len(rows)} rows"]
     if args.score:
         lines.extend(hit_time_check(rows, load_chords(args.score)))
     else:
-        lines.append("hit time (+0x2E0): not checked (no --score given)")
+        lines.append("+0x2E0: not checked (no --score given)")
     lines.extend(pause_check(rows))
     return lines
 

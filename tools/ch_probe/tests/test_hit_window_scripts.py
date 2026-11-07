@@ -111,13 +111,9 @@ class LiveHelpersTest(unittest.TestCase):
         self.assertEqual(live.START_LEAD_MS, 150.0)
         self.assertEqual(live.first_note_index([100.0, 149.0, 150.0, 200.0], 0.0), 2)
 
-    def test_hit_offset_prefers_the_engine_hit_time(self):
-        offset, from_engine = live.hit_offset_ms(10000.0, 10004.0, 10.000, 10.010)
-        self.assertAlmostEqual(offset, 10.0)
-        self.assertTrue(from_engine)
-        offset, from_engine = live.hit_offset_ms(10000.0, 10004.0, 10.000, 10.000)
-        self.assertEqual(offset, 4.0)
-        self.assertFalse(from_engine)
+    def test_hit_offset_is_the_send_time_minus_the_note(self):
+        self.assertEqual(live.hit_offset_ms(10000.0, 10004.0), 4.0)
+        self.assertEqual(live.hit_offset_ms(10000.0, 9996.5), -3.5)
 
     def test_window_changed_uses_the_one_tolerance(self):
         self.assertEqual(C.WINDOW_CHANGE_TOLERANCE_MS, 1e-6)
@@ -187,8 +183,17 @@ class WatchWindowTest(unittest.TestCase):
             samples.append(WW.Sample(n["time_ms"] + 8.0, C.WINDOW_CAP_MS, 100 * (i + 1),
                                      n["time_ms"] + 2.0))
         lines = WW.hit_time_report(samples, notes)
+        self.assertEqual(lines[0], "+0x2e0 against the note times:")
         self.assertIn("  +0x2e0 changed 3 times; the score rose 3 times.", lines)
-        self.assertTrue(any("Looks like the hit time" in l for l in lines))
+        self.assertEqual(lines[-1], "  +0x2e0 changed once per hit, within 10 ms of the note.")
+
+    def test_hit_time_report_says_when_the_changes_do_not_fit(self):
+        notes = [{"index": 0, "time_ms": 3000}]
+        samples = [WW.Sample(2900.0, C.WINDOW_CAP_MS, 0, 0.0),
+                   WW.Sample(3008.0, C.WINDOW_CAP_MS, 100, 3011.0)]
+        self.assertEqual(WW.hit_time_report(samples, notes)[-1],
+                         "  +0x2e0 did NOT change once per hit, within 10 ms of the "
+                         "note; read the rows above.")
 
 
 class WalkEdgesTest(unittest.TestCase):
@@ -234,6 +239,29 @@ class WalkEdgesTest(unittest.TestCase):
         clock.read()
         t[0] = 0.51
         self.assertEqual(clock.read(), (1.5, 1.5))
+
+    def test_row_keeps_the_0x2e0_reading_but_measures_from_the_send_time(self):
+        before = live.decode_snapshot(bytes(live.SNAPSHOT_SIZE))
+        raw = bytearray(live.SNAPSHOT_SIZE)
+        struct.pack_into("<d", raw, C.OFF_HIT_TIME, 10.010)
+        struct.pack_into("<I", raw, C.OFF_SCORE, 100)
+        after = live.decode_snapshot(bytes(raw))
+
+        moved = W.row_for(0, 10000.0, 4, 10003.0, 10004.0, before, after)
+        self.assertAlmostEqual(moved.engine_ms, 10.0)
+        self.assertEqual(moved.measured_ms, 4.0)
+        self.assertTrue(moved.hit)
+
+        still = W.row_for(0, 10000.0, 4, 10003.0, 10004.0, before, before)
+        self.assertIsNone(still.engine_ms)
+        self.assertEqual(still.measured_ms, 4.0)
+
+    def test_summary_rows_carry_no_source_marker(self):
+        rows = [W.Row(0, 0.0, 85, 85.2, 85.2, 90.0, True, 85.2),
+                W.Row(0, 0.0, 85, 85.4, 85.4, None, False, 85.4)]
+        lines = W.summarize(rows)
+        self.assertIn("Late side (planned, hits, measured offsets):", lines)
+        self.assertIn("   +85  1/2    +85.2 HIT   +85.4 miss", lines)
 
     def test_summary_brackets_the_edge(self):
         def row(p, m, hit):

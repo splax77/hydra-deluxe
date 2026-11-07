@@ -1,4 +1,4 @@
-"""Tests for watch_checks.py: the hit-time and pause checks on a Star Power
+"""Tests for watch_checks.py: the +0x2E0 and pause checks on a Star Power
 watcher log. Pure logic over hand-written rows and small files; no game."""
 
 from __future__ import annotations
@@ -28,27 +28,27 @@ def row(wall_s, clock_s, **fields):
 
 
 def hit_rows(hit_time_s):
-    """Three rows around a chord at 1000 ms; the middle one changes the hit
-    time to `hit_time_s`."""
+    """Three rows around a chord at 1000 ms; the middle one changes the
+    +0x2E0 column to `hit_time_s`."""
     return [row(10.0, 0.95), row(10.05, 1.0, hit_time_s=hit_time_s),
             row(10.15, 1.1, hit_time_s=hit_time_s)]
 
 
 class HitTimeCheckTest(unittest.TestCase):
-    def test_a_hit_time_9_ms_from_the_chord_counts(self):
+    def test_a_value_9_ms_from_the_chord_counts(self):
         lines = W.hit_time_check(hit_rows(1.009), [{"index": 7, "ms": 1000.0}])
         self.assertEqual(lines[0],
-                         "PASS hit time (+0x2E0): 1 of 1 chords in the log have "
-                         "a hit time within 10 ms (0 chords outside the log's "
+                         "PASS +0x2E0: 1 of 1 chords in the log have "
+                         "a +0x2E0 value within 10 ms (0 chords outside the log's "
                          "clock span)")
 
-    def test_a_hit_time_11_ms_from_the_chord_does_not(self):
+    def test_a_value_11_ms_from_the_chord_does_not(self):
         lines = W.hit_time_check(hit_rows(1.011), [{"index": 7, "ms": 1000.0}])
-        self.assertTrue(lines[0].startswith("FAIL hit time (+0x2E0): 0 of 1 "))
+        self.assertTrue(lines[0].startswith("FAIL +0x2E0: 0 of 1 "))
         self.assertEqual(lines[-1],
-                         "  chord 7 at 1000.0 ms: hit time 1011.0 ms, +11.0 ms away")
+                         "  chord 7 at 1000.0 ms: +0x2E0 1011.0 ms, +11.0 ms away")
 
-    def test_a_hit_time_exactly_10_ms_from_the_chord_counts(self):
+    def test_a_value_exactly_10_ms_from_the_chord_counts(self):
         rows = [row(10.0, 0.95), row(10.05, 0.99, hit_time_s=1.0),
                 row(10.15, 1.1, hit_time_s=1.0)]
         lines = W.hit_time_check(rows, [{"index": 7, "ms": 990.0}])
@@ -60,7 +60,7 @@ class HitTimeCheckTest(unittest.TestCase):
         lines = W.hit_time_check(rows, [{"index": 7, "ms": 1000.0}])
         self.assertTrue(lines[0].startswith("FAIL"))
         self.assertEqual(lines[-1],
-                         "  chord 7 at 1000.0 ms: no hit-time change within 50 ms")
+                         "  chord 7 at 1000.0 ms: no +0x2E0 change within 50 ms")
 
     def test_two_close_chords_each_take_their_own_change(self):
         rows = [row(10.0, 0.95), row(10.05, 1.0, hit_time_s=1.001),
@@ -68,15 +68,15 @@ class HitTimeCheckTest(unittest.TestCase):
                 row(10.15, 1.1, hit_time_s=1.031)]
         chords = [{"index": 1, "ms": 1000.0}, {"index": 2, "ms": 1030.0}]
         self.assertTrue(W.hit_time_check(rows, chords)[0].startswith(
-            "PASS hit time (+0x2E0): 2 of 2 "))
+            "PASS +0x2E0: 2 of 2 "))
 
-    def test_a_nan_hit_time_held_before_the_hit_is_not_a_change(self):
+    def test_a_nan_value_held_before_the_hit_is_not_a_change(self):
         nan = float("nan")
         rows = [row(10.0, 0.9, hit_time_s=nan), row(10.02, 0.93, hit_time_s=nan),
                 row(10.05, 1.0, hit_time_s=1.005),
                 row(10.15, 1.1, hit_time_s=1.005)]
         lines = W.hit_time_check(rows, [{"index": 7, "ms": 1000.0}])
-        self.assertTrue(lines[0].startswith("PASS hit time (+0x2E0): 1 of 1 "))
+        self.assertTrue(lines[0].startswith("PASS +0x2E0: 1 of 1 "))
 
     def test_chords_outside_the_log_are_not_judged(self):
         chords = [{"index": 1, "ms": 500.0}, {"index": 2, "ms": 1000.0}]
@@ -167,7 +167,7 @@ class FilesTest(unittest.TestCase):
             json.dump({"chords": [{"index": 7, "ms": 1000.0}]}, f)
         lines = W.run([csv_path, "--score", score])
         self.assertEqual(lines[0], "watch.csv: 3 rows")
-        self.assertTrue(lines[1].startswith("PASS hit time"))
+        self.assertTrue(lines[1].startswith("PASS +0x2E0"))
         self.assertEqual(lines[-1], "pause: no pause in this log")
 
 

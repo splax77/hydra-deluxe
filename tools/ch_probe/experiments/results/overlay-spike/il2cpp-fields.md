@@ -112,7 +112,7 @@ public struct ʴʻʽʻʲʾʸʵʺʶʲ // TypeDefIndex: 8496
 
 The field at `0x198`, which `engine.py` calls "flags", has the modifiers flag enum as its type (class 8576, shown under "Song, difficulty, modifiers, combo and speed"). It is 4 bytes wide and `readonly`, which fits the modifiers the song was started with. The dump does not show when the field is set or whether it changes after.
 
-The hit-time candidate at `+0x2E0` is a field of the drums class 8255, not of the base class. It is a double:
+The field at `+0x2E0` belongs to the drums class 8255, not to the base class. `docs/clone-hero/03-timing.md`, TM-14, says what it holds. It is a double:
 
 ```
 	private double ʷʷʽʹʷʹʼˁʻʴˁ; // 0x2E0
