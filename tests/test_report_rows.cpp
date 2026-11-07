@@ -953,8 +953,7 @@ TEST_CASE("tier_for over a built table matches the one-argument form") {
 
 // The page lists the current profile only, so a change of the chart mode
 // alone puts an open page out of date (question 2 of
-// docs/superpowers/plans/2026-10-12-one-record-per-chart/part-A2-report-callers.md
-// (removed; `git show 444631e6:docs/superpowers/plans/2026-10-12-one-record-per-chart/part-A2-report-callers.md`)).
+// docs/superpowers/plans/2026-10-12-one-record-per-chart/part-A2-report-callers.md (removed; `git show 444631e6:docs/superpowers/plans/2026-10-12-one-record-per-chart/part-A2-report-callers.md`)).
 TEST_CASE("PageSettings::of differs when only the chart mode changes") {
     const app::Settings before;
     app::Settings mode_only = before;
