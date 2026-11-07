@@ -188,8 +188,8 @@ Each tool sends one command line and returns Hydra's reply text, unchanged excep
 
 | Tool | Sends | Notes |
 |---|---|---|
-| `hydra_start(mode, library_dir=None, keep=False)` | launches the exe | `mode` is `headless` or `window`. Stops any running session first. The reply gives the pid, the engine's scratch folder, the wait cap, the log file and the helper's scratch folder, plus the snapshot list in window mode. `keep=True` keeps the helper's scratch folder after `hydra_stop` |
-| `hydra_stop(keep_window=False)` | `quit` | waits for Hydra to exit, kills it if it does not, and returns the exit code. Then deletes the helper's scratch folder unless `keep` was set. In window mode the reply adds a line naming the real-app record and its commit (see "The real-app record" below), or saying why none was written |
+| `hydra_start(mode, library_dir=None, keep=False)` | launches the exe | `mode` is `headless` or `window`. Stops any running session first. The reply gives the pid, the engine's scratch folder, the wait cap, the log file and the helper's scratch folder, plus the snapshot list in window mode. The helper's scratch folder is `hydra_live_<tag>` in the `claude` folder of the Windows temp folder. `keep=True` keeps it after `hydra_stop`. The SessionStart cleanup sweep removes a kept folder after a week with no writes |
+| `hydra_stop(keep_window=False)` | `quit` | waits for Hydra to exit, kills it if it does not, and returns the exit code. Then deletes the helper's scratch folder unless `keep` was set (see `hydra_start`). In window mode the reply adds a line naming the real-app record and its commit (see "The real-app record" below), or saying why none was written |
 | `hydra_reset()` | `reset` | a fresh library in the same process |
 | `hydra_open_song(title)` | `open <title>` | the way to open a song. Clicking a row's title with the search box empty is refused (see the first guard above) |
 | `hydra_click(ref)` | `click <ref>` | widgets below the toolbar need `**/`; a bare label that finds nothing is retried as `**/<label>`, unless several widgets carry it |
@@ -203,7 +203,7 @@ Each tool sends one command line and returns Hydra's reply text, unchanged excep
 | `hydra_state()` | `state` | |
 | `hydra_dump(window=None, contains=None)` | `dump [<window>] [\| <contains>]` | no `window` means every window |
 | `hydra_rect(ref)` | `rect <ref>` | |
-| `hydra_screenshot(name)` | `screenshot <name>` | give the `.png` yourself. The file lands in the helper's scratch folder, which `hydra_stop` deletes unless `keep` was set |
+| `hydra_screenshot(name)` | `screenshot <name>` | give the `.png` yourself. The file lands in the helper's scratch folder, which `hydra_stop` deletes unless `keep` was set (see `hydra_start`) |
 | `hydra_run(script)` | each line in turn | stops at the first failure with `stopped at line N of M`, counting the script's own lines |
 
 `hydra_run` exists so a known sequence (scan, continue, search, open) costs one tool call instead of five. To open one song, `hydra_open_song` does the search and the click in one call.
@@ -253,7 +253,7 @@ The helper and Hydra talk over a Windows named pipe. The helper picks the pipe's
 
 **Numbers and the wait cap.** The strict number rule above holds in live mode too. On top of it, a live `wait` longer than the timeout in force fails. So no command can run longer than the timeout Hydra last reported, plus the time of one action. The helper waits that long plus `REPLY_MARGIN_S` for each reply, and `HELLO_TIMEOUT_S` for the hello line. All its numbers live at the top of `tools/hydra_ui_mcp.py`.
 
-**A dead or silent Hydra.** The helper reports it and never waits on it. When Hydra has exited, the reply says `Hydra exited with code X`, quotes the last lines of its log, and names the crash dump if one was written. When Hydra is alive but silent past the cap, the reply says `Hydra did not answer within N s`, and the helper kills it. Either way the session is stopped, and the helper's scratch folder is kept so the log can be read.
+**A dead or silent Hydra.** The helper reports it and never waits on it. When Hydra has exited, the reply says `Hydra exited with code X`, quotes the last lines of its log, and names the crash dump if one was written. When Hydra is alive but silent past the cap, the reply says `Hydra did not answer within N s`, and the helper kills it. Either way the session is stopped, and the helper's scratch folder is kept so the log can be read. It lives in the `claude` folder of the Windows temp folder. The SessionStart cleanup sweep removes it after a week with no writes.
 
 **Long replies.** A reply longer than `REPLY_CAP_CHARS` is cut at a line boundary, with a last line saying how many lines were dropped. `contains` on `hydra_text` and `hydra_dump` narrows the output instead.
 
