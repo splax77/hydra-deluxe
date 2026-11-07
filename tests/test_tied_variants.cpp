@@ -1,7 +1,7 @@
 // Tied variants keep their own state (decision D3): a path the search folds
 // into a tied leader keeps its own steps, squeezes, banked bars and early
-// fills. The squeeze rules these folds exposed (D34, D36, D38) are pinned
-// here too, on the hand-made charts in testdata/input/test_folded_sqin.
+// fills. The rules these folds exposed (D34, D36, D38) are pinned here too,
+// on hand-made charts; each case says which chart it reads.
 
 #include "doctest.h"
 
@@ -71,9 +71,10 @@ std::vector<TailNote> midsp_notes(bool with_squeeze) {
     return n;
 }
 
-// Every path of a search's output, each before its variants, is
-// flatten_paths (model.h); the root named s is test::path_named
-// (record_fixtures.h).
+// flatten_paths (model.h) lists every path of a search's output, each before
+// its variants; test::path_named (record_fixtures.h) finds a path by its path
+// string.
+
 // The leader's variant whose own last activation is at `tick`.
 const Path* variant_at(const Path& leader, int64_t tick) {
     for (const Path& v : leader.variants)
@@ -114,7 +115,7 @@ TEST_CASE("tied variants: a variant folded mid-SP takes its leader's steps after
                                               {11904, 14976, SpEndKind::Clamped},
                                               {13056, 16128, SpEndKind::Clamped}});
     // Its own activation step and its own clamp at the fold, then the
-    // leader's clamp at 13056. Today the list stops at the fold: 14976.
+    // leader's clamp at 13056.
     CHECK(steps_of(mine) == std::vector<Step>{{11520, 14592, SpEndKind::Activation},
                                               {11904, 14976, SpEndKind::Clamped},
                                               {13056, 16128, SpEndKind::Clamped}});
@@ -175,20 +176,20 @@ TEST_CASE("tied variants: a variant folded mid-SP takes its leader's closing SqI
         CHECK_MESSAGE(replay_stored_path(song, *p).faithful(), p->pathstring());
 }
 
-// Review finding (Task 17): a variant that banked a phrase before activating
-// can fold into a leader that collected the same phrase in its SP, and the
-// leader can later squeeze that phrase in. The variant holds no step there.
+// A variant that banked a phrase before activating can tie a leader that
+// collected the same phrase in its SP, and the leader can later squeeze that
+// phrase in. The variant holds no step there.
 // The chart is hand-made: 120 BPM, then 4000 BPM from tick 9600, so 500 ms
 // spans several SP bars. '1' activates at 10752 and collects the phrase at
 // 12288; '0 E0' activates at 4608, banks 8448 and 12288, and activates again
 // at 13824. Both end at 16896 with the same score at 13824, and the leader
-// later splits on 12288: '1+' (SqIn) and '1-' (SqOut). Before the activation
-// rule they folded there, and the variant took each of the leader's squeezes.
+// later splits on 12288: '1+' (SqIn) and '1-' (SqOut). A fold at 13824 would
+// give the variant each of the leader's squeezes.
 //
 // '0 E0' banked 12288 before activating at 13824, so it cannot squeeze that
 // phrase in or out (core::activation_can_squeeze), while '1' can. The search
-// groups the two apart (banked_phrase_in_reach), so '0 E0' is never folded
-// into '1+' or '1-' and prices as its own root path with a plain SP end.
+// groups the two apart while SP runs (banked_phrase_in_reach), so '0 E0' keeps
+// a plain SP end and folds into '1+' only after SP.
 TEST_CASE("tied variants: a path that banked its leader's SqIn phrase is not folded into it") {
     const Song song = load_songpath(corpus::root() +
                                         "/test_folded_sqin/folded_sqin.chart",
@@ -203,8 +204,8 @@ TEST_CASE("tied variants: a path that banked its leader's SqIn phrase is not fol
     CHECK(steps_of(in_lead->activations.back()) ==
           std::vector<Step>{{10752, 15360, SpEndKind::Activation}, {12288, 16896, SpEndKind::SqIn}});
     // D32: '1+' ends its SP at 16896, where 12288 is still in the window.
-    // Before D32 that SP end was never taken (the window's chord made it
-    // look like a squeeze choice), so '1+' ran on in SP and scored 7350.
+    // The window's chord does not make that end a squeeze choice, so '1+'
+    // does not run on in SP.
     CHECK(in_lead->totalscore() == 6750);
 
     // '0 E0' is never folded into '1+' while SP runs (the group key keeps
@@ -222,10 +223,9 @@ TEST_CASE("tied variants: a path that banked its leader's SqIn phrase is not fol
 // The same family with the leader's SqIn phrase on the variant's own
 // activation note: phrases at 8448, 9000 and 13824, none at 12288. The
 // leader collects 13824 while its SP runs; the other path banks it on its
-// activation chord. Before the activation rule, the two folded at 13824 and
-// the leader's later SqIn on 13824 met the variant's Activation step there
-// (the "not a collected step" throw). Both hand-made charts must analyze, and
-// every variant on them must price as it does alone.
+// activation chord. A fold at 13824 would make the leader's later SqIn on
+// 13824 meet the variant's Activation step there. Both hand-made charts must
+// analyze, and every variant on them must price as it does alone.
 TEST_CASE("tied variants: the banked-phrase charts analyze and every variant prices as alone") {
     const app::AnalysisSettings cfg = test::scores_settings(4);
     for (const char* name : {"folded_sqin.chart", "relabel_case.chart"}) {
@@ -250,29 +250,16 @@ TEST_CASE("tied variants: the banked-phrase charts analyze and every variant pri
     }
 }
 
-// A folded variant's step on the leader's SqIn phrase can be Clamped: the
-// variant's longer meter let the cap pin its end on that phrase, where the
-// leader collected it. A lone search relabels a Clamped step SqIn too, so the
-// fold must as well. Two fuzzed charts at 2,000 and 4,000 BPM (several SP bars
-// inside 500 ms) reach this at cap 3; before the shared SqIn-step rule they
-// threw "a folded variant's SqIn phrase is not a collected step". They do not
-// check every variant against its lone pricing: at these tempos many variants
-// already differ from it (the review's fuzz found such charts by the hundred),
-// for reasons apart from this fold.
+// Two charts that go from 120 to 4,000 BPM, read at cap 3, put several SP bars
+// inside 500 ms. They check that the charts analyze and that every squeeze-out
+// ends SP at the end its record names. core::offered_phrase picks the phrase
+// an end offers, and a late squeeze-in's moved end is extend_deacts' answer,
+// cap included (D29). They do not check every variant against its lone
+// pricing: at these tempos many variants differ from it, for other reasons.
 //
-// Finding 37 (D29) changed what these charts produce. The pinned variant step
-// ({16128, 20736, SqIn} on chart a, {15744, 20352, SqIn} on chart b) came from
-// a squeeze the old graph offered by mistake: a deact node whose window held
-// the clamped phrase offered it to any path whose end was one plain bar past
-// the node, even when a later phrase, not the clamped one, had put the path's
-// end there (on chart b, 15744 offered at node 20928 to a path whose end
-// 22464 came from collecting 18048). Its squeeze-out then ended SP at a node
-// the record never names. The squeeze choices now read extend_deacts, cap
-// included, so those offers are gone. What these charts still check: they
-// analyze, and every squeeze-out ends SP at the end its record names. The
-// fold this test was written for (a variant's Clamped step on its leader's
-// SqIn phrase, relabelled SqIn) no longer happens on them;
-// test_sp_end_clamp.cpp's "folded variant's Clamped step" case covers it now.
+// A variant's Clamped step on its leader's SqIn phrase, relabelled SqIn, does
+// not happen on these charts; test_sp_end_clamp.cpp's "folded variant's
+// Clamped step" case covers it.
 TEST_CASE("clamped_sqin charts: every squeeze-out ends SP at the end its record names") {
     const app::AnalysisSettings cfg = test::scores_settings(3);
     for (const std::string name : {"clamped_sqin_a.chart", "clamped_sqin_b.chart"}) {
@@ -303,8 +290,9 @@ TEST_CASE("clamped_sqin charts: every squeeze-out ends SP at the end its record 
 // The group key's banked phrase and the squeeze rule draw one line: a phrase
 // is banked exactly when activation_can_squeeze says the activation cannot
 // squeeze it. Here the expected answer comes from that rule by a plain scan,
-// so a banked_phrase_in_reach with its own boundary would drift from it. The
-// chart has a phrase on an activation chord (13824), the edge case.
+// so a banked_phrase_in_reach with its own boundary would drift from it. Every
+// chord takes a turn as the activation, so the chart's phrase chords give the
+// edge case: a phrase on the activation chord itself.
 TEST_CASE("banked_phrase_in_reach banks exactly what activation_can_squeeze refuses") {
     const Song song = load_songpath(
         corpus::root() + "/test_folded_sqin/folded_sqin.chart", ChartReading{});
@@ -341,13 +329,11 @@ static std::string twin_end_chart() {
 // '0' ends at 30720 (19200 plus two bars, plus one bar for the phrase on
 // 23041), and '1' ends at 30721 (the cap pins it to 23041 plus four
 // measures). The phrase on 26000 sits in both ends' windows, and the cap pins
-// each path's end to 26000 plus four measures, 33680, so both ends offer the
-// phrase to the same path. It was squeezed in at the first and in or out again
-// at the second: '0++' and '0+-', '1++' and '1+-'. (The ends one tick apart
-// came from rounding once, when the measure sums were truncated doubles; now
-// the cap's pin is what makes two ends reach one end.) Real charts do this
-// (Thrice - Deadbolt, SoundHaven - Triad). A phrase is squeezed in once, so
-// the second end offers the window's next phrase, and here there is none.
+// each path's end to 26000 plus four measures, 33680, so both ends could offer
+// the phrase to the same path. Real charts do this (Thrice - Deadbolt,
+// SoundHaven - Triad). A phrase is squeezed in once, so the second end offers
+// the window's next phrase, and here there is none: '0+' has no '0++' or '0+-'
+// after it.
 TEST_CASE("squeeze rule: twin SP ends a tick apart squeeze one phrase in once") {
     const Song song = load_songpath(twin_end_chart(), ChartReading{});
     const app::AnalysisSettings cfg = test::scores_settings(2);
@@ -368,9 +354,8 @@ TEST_CASE("squeeze rule: twin SP ends a tick apart squeeze one phrase in once") 
 // moves its end from 30720; '1' activates at 21120 and 26000 moves its end
 // from 30721. Both land on 33680 (the cap's pin, 26000 plus four measures),
 // so both SP ends hold a choice of 26000 for a path whose end is 33680. Each
-// window may squeeze 26000 only at the end its own step moved: before D36 the
-// first matching node, 30720, took '1's squeeze too, so its SqIn or SqOut sat
-// 0.1 ms off and a SqOut ended SP at a node its record never names. Each
+// window may squeeze 26000 only at the end its own step moved, so its SqIn or
+// SqOut sits at that end's offset and a SqOut ends SP at that end. Each
 // window is checked in a targeted search (search_target) of its own
 // activation, so no fold hides it.
 TEST_CASE("squeeze rule: twin SP ends a tick apart each squeeze only their own path") {
@@ -464,9 +449,9 @@ TEST_CASE("tied variants: a variant folded between windows keeps its own banked 
     // variant '0 0', 1100) or never again ('1' and its variant '0', 850).
     // Either way the variant's 2 bars are its own, banked at 5760 and 8448.
     //
-    // The plan's draft had no fill at 9984. Without it the two windows meet
-    // only on the SP node after both activate at 10752, a fold mid-SP, so the
-    // draft's case passed before the fix and tested nothing new.
+    // The fill at 9984 is what makes this a fold between windows. Without it
+    // the two windows meet only on the SP node after both activate at 10752,
+    // a fold mid-SP.
     const Song song = fold_between_windows_song();
     ScoreGraph graph(song, 2);
     const std::vector<Path> roots = run_search(graph, EngineOptions{DepthMode::Scores, 10});
@@ -563,8 +548,8 @@ TEST_CASE("tied variants: a variant's trailing fills are its own") {
 // too late for 9984 (refused), and 49.5 ms late for 10752: an E0, "Early
 // fill: 49.5 ms (required)". Both stand on 9984 with 2 bars, the same score
 // and the same verdict at every fill ahead, so the search folds one into the
-// other there, and the variant used to show its leader's offset and passed
-// fills.
+// other there. The variant keeps its own offset and passed fills, not its
+// leader's.
 TEST_CASE("tied variants: a variant folded between windows keeps its own early fill") {
     const Song song = build_tail_song({{0, true, false}, {768, true, false},
                                        {2304, false, true}, {3072, false, true},
@@ -610,7 +595,7 @@ TEST_CASE("tied variants: a variant folded between windows keeps its own early f
 
 TEST_CASE("tied variants: Don Broco - Actors at depth 40 shows each tied path's own bank") {
     // Audit finding 89: paths 29 '7' and 30 '3' tie at 233,100. '7' ends the
-    // song with 1 bar of SP, '3' with 3. Today both read 1.
+    // song with 1 bar of SP, '3' with 3.
     std::string chart;
     for (const std::string& p : corpus::chart_paths())
         if (p.find("Don Broco - Actors") != std::string::npos) chart = p;
