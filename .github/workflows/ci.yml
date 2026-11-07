@@ -127,6 +127,9 @@ jobs:
       - name: Run the mutation probe self-test
         run: pwsh -NoProfile -File tools/test_mutation_probe.ps1
 
+      - name: Run the build pass self-test
+        run: pwsh -NoProfile -File tools/test_build_pass.ps1
+
   # The GUI tests on their own machine, so they run beside the unit tests
   # instead of after them. Like "Build and test", it runs on every trigger,
   # the nightly one included. It reads the saved build folder but never saves
