@@ -283,13 +283,13 @@ TEST_CASE("field fixture: Dumpweed SqOut end anchored on the deact node") {
     // activation "1-" at m19.1.0 (tick 34560), sp_meter 2. The player
     // collects ONE SP phrase mid-SP, so the search's deact node sits at tick
     // 46080 (act + 6 measures), not the plain act + 4 (42240). The true end
-    // gives early x0.935114. The x0.890911 below is a literal for a scale read
-    // at an end short of that; this tempo map does not produce it.
+    // gives early x0.935114.
     // An FC video shows frontend -74.1 ms + SqOut backend +75.1 ms landing
     // the squeeze on the 143.129 ms gap: 74.1*0.935114 + 75.1 = 144.4 >=
-    // 143.129, while x0.890911 predicts a miss (141.1). DragonDelgar's
-    // published even split of +-74 = 143.129 / (1 + 0.935114) matches the
-    // true end too.
+    // 143.129. A scale read at an end short of the true one would predict a
+    // miss: x0.890911, an example this tempo map does not produce, gives
+    // 141.1. DragonDelgar's published even split of +-74 = 143.129 /
+    // (1 + 0.935114) matches the true end too.
     std::map<int64_t, int64_t> tpm{{0, 1920}};
     std::map<int64_t, double> bpm{{0, 98.0003},
                                   {34560, 97.4999},
@@ -324,8 +324,7 @@ TEST_CASE("field fixture: Dumpweed SqOut end anchored on the deact node") {
     CHECK(gap == doctest::Approx(143.129).epsilon(1e-4));
     const double r = scales->post.early;
     CHECK(effective_backend_ms(gap, r) == doctest::Approx(147.94).epsilon(1e-3));
-    CHECK(74.1 * r + 75.1 > gap);         // the video's successful split
-    CHECK(74.1 * 0.890911 + 75.1 < gap);  // a short end's scale calls it a miss
+    CHECK(74.1 * r + 75.1 > gap);  // the video's successful split
 
     // The same D recovered through a nonzero-offset row (the ms -> tick
     // rounding path): the SqOut phrase note itself, 143.129 ms before D.

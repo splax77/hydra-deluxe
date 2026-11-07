@@ -190,7 +190,7 @@ TEST_CASE("tied variants: a variant folded mid-SP takes its leader's closing SqI
 // phrase in or out (core::activation_can_squeeze), while '1' can. The search
 // groups the two apart while SP runs (banked_phrase_in_reach), so '0 E0' keeps
 // a plain SP end and folds into '1+' only after SP.
-TEST_CASE("tied variants: a path that banked its leader's SqIn phrase is not folded into it") {
+TEST_CASE("tied variants: a path that banked its leader's SqIn phrase folds into it only after SP") {
     const Song song = load_songpath(corpus::root() +
                                         "/test_folded_sqin/folded_sqin.chart",
                                     ChartReading{});
