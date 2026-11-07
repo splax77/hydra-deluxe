@@ -236,6 +236,8 @@ Pass: seven "destroyed" checks ok, "kit gone" ok with no placeholder tag left, e
 
 ### LS-O2: the chained start on Window Map, which is LS-K4 (2 runs, 10 minutes)
 
+Passed by LS-T2 of `docs/superpowers/plans/2026-11-07-ch-run-timing.md`, Run A: the same calls on the same chart gave the first press at chord 0, 142 of 142 and a passing compare at 25,550. The user took that as this step's pass on 2026-11-07 ("try the run", answering whether to count Run A and move to LS-O3). The result is in `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-07\ls-t2-run-a\replies.txt`.
+
 Run 1 on 2026-11-07 failed: 128 of 142 hit. The first press reached chord 0 at 3,000 ms, so the chained start worked. The misses came with stalls and slow frames in the first 40 seconds, and the cause is not proven. The user refused a bare repeat, so run 2 waits on `docs/superpowers/plans/2026-11-07-ch-run-timing.md`. The result is in `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-07\ls-o2-run1\replies.txt`.
 
 Calls: `ch_start(<Window Map folder>, human=True)` (seen: LS-D0 run 1), `ch_run_chart(<Window Map folder>, <windowmap.json>, kit_player="System")` (never tried), `ch_play_status` (seen: LS-D2d run 1), `ch_wait_stats` (seen: LS-D2d run 1), `ch_compare(<stats copy>, <windowmap.json>)` (seen: LS-D2d run 1), `ch_stop` (seen: LS-O1e's passing run)
@@ -243,6 +245,8 @@ Calls: `ch_start(<Window Map folder>, human=True)` (seen: LS-D0 run 1), `ch_run_
 Uses rows P15 and P16. Window Map is plain Drums with 142 plain notes, 13 of them before 5.4 s, so it tests the start and nothing else. Its first gem is at 3.0 s, earlier than Senri's 4.14 s, and the separate calls of LS-D2d took 4.1 s of song time from the attach (-0.56 s) to the watch's first clock read (3.54 s), so this step is a real test of whether the chained call is fast enough, with six more controllers to create than LS-D2d had. `windowmap.json` is the Hydra score file in `ls-d2d-prep`. Pass: LS-K4's own line, 142 hits with the first press at chord 0, the compare's five lines passing (0 accents, 0 ghosts, 0 activations), the frame rate line recorded. Fail: the first-press line names a chord above 0 (the reply's per-part times say which part took the time; they go to the user before any change to the lead); or hits below 142 (the rows with `hit` 0 and their `down_frame`, as LS-K4 says); or 142 hits with a compare line failing (the failing line and both numbers go to the user: T5's `score` line is the first time Window Map's game score is read against Hydra's, so a score mismatch here is a new fact about the score, not a start failure). Run 2 only after a timing fail whose part times name one slow part.
 
 ### LS-O3: declining chord 405 and the early end chords, on Senri (2 runs, 20 minutes)
+
+Run 1 on 2026-11-07 passed all three reads, and its stats read `score` 1,229,730, so it also counts as LS-O5 run 1. `decline_mode` was `kick_only`. The press log's `score_after` equals the target file's `cum.total` less `cum.solo` on every chord but 405, so the step at chord 268, the 20 chords after 405 and the other 7 end chords all read as the file says. Chord 405 reads 260 short at its own row and matches again at 406, because the granted cymbal landed after that row was read. No activation lies between 46.0 and 48.0 s, and `sp_activations` is 8. The result is in `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-07\ls-o3-run1\replies.txt`.
 
 Calls: `ch_start(<Senri folder>, human=True, player="ProDrums,Expert")` (seen: LS-D2d run 1), `ch_run_chart(<Senri folder>, <senri-top.json>, kit_player="System", decline_mode="kick_only", dump_json=<senri-top-dump.json>)` (never tried), `ch_play_status` (seen: LS-D2d run 1), `ch_sp_watch_status` (seen: LS-D2d run 1), `ch_wait_stats` (seen: LS-D2d run 1), `ch_compare(<stats copy>, <senri-top.json>)` (seen: LS-D2d run 1), `ch_stop` (seen: LS-O1e's passing run)
 
@@ -254,11 +258,15 @@ Pass overall: all three, plus `sp_activations` 8 and the compare's activation li
 
 ### LS-O4: the Star Power read from LS-K5 (inside LS-O3's run, or LS-O5's)
 
+Passed inside LS-O3 run 1: no activation between 114,778.9 and 166,544.0 ms, the meter at 14,400 at its highest, and the first ready row with the flag clear at 134,184.4 ms.
+
 Calls: `ch_sp_between(114778.9, 166544.0)` (seen: LS-D2d run 1, read from that run's rows after its `ch_stop`)
 
 Uses row P21. If question 1 accepts LS-K5 from LS-D2d, this is a confirmation and its result is recorded in the same report. Pass: no activation inside and the meter at or above the ready level with the flag clear somewhere in the window, as the LS-D2d rows read. Fail: an activation inside; that would mean the target run activated where the top path does not, and the run's activation list goes to the user.
 
 ### LS-O5: the full run against 1,229,730 (3 runs, 30 minutes)
+
+Passed on run 1, which is LS-O3 run 1, on 2026-11-07. The stats file reads `score` 1229730, `notes_hit` 2996 of 2996, `accent_notes_hit` 368, `ghost_notes_hit` 726 and `sp_activations` 8. The compare passes, the game file's MD5 is unchanged, and every restore line reads "unchanged" or "restored". So the user's goal for this chart is met: an automatic run reproduced Hydra's optimal score.
 
 Calls: `ch_start(<Senri folder>, human=True, player="ProDrums,Expert")` (seen: LS-D2d run 1), `ch_run_chart(<Senri folder>, <senri-top.json>, kit_player="System", decline_mode=<LS-O3's passing mode>, dump_json=<senri-top-dump.json>)` (seen: LS-O3's passing run), `ch_play_status` (seen: LS-D2d run 1), `ch_sp_watch_status` (seen: LS-D2d run 1), `ch_wait_stats` (seen: LS-D2d run 1), `ch_compare(<stats copy>, <senri-top.json>)` (seen: LS-D2d run 1), `ch_sp_between(114778.9, 166544.0)` (seen: LS-D2d run 1), `ch_stop` (seen: LS-O1e's passing run)
 

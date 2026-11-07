@@ -2,7 +2,7 @@
 
 This page covers Star Power phrases, the meter, activation, drain, the Star Power end and squeezes.
 It describes build 1.1 (v1.1.0.6142).
-Last write-back: 2026-11-06.
+Last write-back: 2026-11-07.
 
 The live-run files named below are the `run1_cal0_*` files under tools/ch_probe/experiments/results/overlay-spike/. "Run 1" is the key-press auto-player run on the probe chart Trippin SP Spike (resolution 192), stamped 2026-10-29 00:39 UTC. The engine fields are those of the base engine class #8288, which the drum engine #8255 inherits. `ghidra_decompile_all.txt` and "the decompile" mean Ghidra's full decompile of build 6142, which `code/README.md` describes; it is not in the repo.
 
@@ -340,7 +340,7 @@ Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 Rule: Hydra pays a chord whose time equals the SP end as inside Star Power. In the game the answer depends on the hit's clock and the frame (SP-28, SP-29): the end check turns Star Power off once the clock is at or past the end, and whether a hit at a clock equal to the end is scored before or after that check is not settled.
 Label: Hydra assumes it, never checked
-Evidence: Hydra: `paid_by_sp_walk` (offset at or below 0) and `after_sp_end` (tick strictly after the end) in src/core/backend_value.h lines 28 and 34. D13 (decision log line 31) states the rule as a decision, not in the user's words. No run has placed a hit exactly on an end.
+Evidence: Hydra: `paid_by_sp_walk` (offset at or below 0) and `after_sp_end` (tick strictly after the end) in src/core/backend_value.h lines 28 and 34. D13 (decision log line 31) states the rule as a decision, not in the user's words. No run has placed a hit exactly on an end. LS-O3 run 1 of 2026-11-07 pressed Senri's 8 end chords 12.23 to 14.94 ms before their time and all 8 paid inside, where LS-D2d's on-time presses paid chords 2044 and 2320 outside. So a press early enough is paid inside, and the exact case stays unread (result files in hydra-data, ch-mcp-runs/2026-11-07/ls-o3-run1).
 Game code (6142): RVA `0x20F63B0` and `0x20F4550` (SP-28, SP-29)
 Hydra: `paid_by_sp_walk` in src/core/backend_value.h line 28; `after_sp_end` line 34
 Ruling: none needed: no difference is shown
