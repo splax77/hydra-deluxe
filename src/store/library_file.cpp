@@ -66,15 +66,15 @@ bool lacks_album(TableProbe& probe, const std::set<std::string>& tables) {
     return tables.count("charts") && !probe.has_column("charts", "album");
 }
 
-// The layouts, newest first. Each test reads only what a release wrote; the
+// The layouts, oldest first. Each test reads only what a release wrote; the
 // releases themselves are in testdata/store/README.md.
 LibraryFileKind kind_of(TableProbe& probe) {
     const std::set<std::string> tables = probe.tables();
     if (probe.failed()) return LibraryFileKind::Unreadable;
     if (tables.empty()) return LibraryFileKind::Fresh;
 
-    // Before 2.2.0 a file kept every path's details in their own table; 2.2.0
-    // moved to summaries only and left that table behind.
+    // A paths table holds every path's details. No layout that still converts
+    // has one: those keep summaries only.
     if (tables.count("paths")) return LibraryFileKind::TooOld;
     // A records table without profiles is Hydra 1.6's own, older than results.
     if (tables.count("records") && !probe.has_column("records", "profile_id"))

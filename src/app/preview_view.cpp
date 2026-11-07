@@ -460,9 +460,9 @@ PreviewScene apply_preview_overlay(PreviewScene scene, const Song& song, const P
         // (trailing_skipped_fill_ticks). Every other fill stays hidden. Fills
         // and the stored ticks are all in chart order, so one index walks
         // them.
-        // A taken fill stays taken: a tied variant's later activation can list
-        // a fill the variant activated on, because after the fold it carries
-        // its leader's passed-over fills (finding 97). Each activation keeps
+        // A taken fill stays taken, whatever a later activation lists. A tied
+        // variant's activation lists its own passed fills, then the ones both
+        // paths passed after the fold (docs/adr/0022). Each activation keeps
         // the index of the fill it stands on (taken_fill), whether it marked
         // that fill or an earlier activation did; the highway reads it.
         std::vector<PreviewFill>& fills = scene.fills;
@@ -562,7 +562,7 @@ PreviewTimeBox build_time_box(const PreviewScene& scene, double now_ms,
     box.timestamp = clock_str(now) + " / " + clock_str(len);
 
     // A default-built scene carries no song and so no timing: it reads as tick
-    // 0 at measure 1, beat 1, exactly as it always has.
+    // 0 at measure 1, beat 1.
     const int64_t now_tick = scene.timing ? scene.timing->display_tick_at_ms(now) : 0;
     const int64_t end_tick = scene.timing ? scene.timing->display_tick_at_ms(len) : 0;
     box.position = scene.timing ? format_measure(*scene.timing, now_tick) : first_measure_label();

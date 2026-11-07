@@ -10,10 +10,11 @@
 // (table_room's reset key). No column goes below its header's width; when
 // even the headers do not fit, the table scrolls sideways instead.
 //
-// Two small forms stay outside the rule on purpose (the user's answer 2,
-// 2026-10-14): the batch confirm box's settings table and the Analysis
-// settings panel's form. Each lets ImGui fit its columns to their cells and
-// never cuts. The grey bars a building report draws hold no text.
+// Two small forms stay outside the rule on purpose (the user's answer 2 in
+// docs/superpowers/plans/2026-10-14-column-shares-scroll-left-align.md (removed; git show d6666440:docs/superpowers/plans/2026-10-14-column-shares-scroll-left-align.md)):
+// the batch confirm box's settings table and the Analysis settings panel's
+// form. Each lets ImGui fit its columns to their cells and never cuts. The
+// grey bars a building report draws hold no text.
 //
 // The rule has three steps, and only the last one touches ImGui:
 //
@@ -30,10 +31,10 @@
 // A table's frame, in order:
 //
 //   if (cache.stale()) cache = measure_widths(specs, rows.size(), text);
-//   const TableRoom room = table_room("##id", outer_size.x, specs.size(), reset_key);
+//   const TableRoom room = table_room("##id", size.x, specs.size(), reset_key);
 //   const ColumnLayout layout = place_columns(cache, specs, room);
-//   if (ImGui::BeginTable("##id", n, table_flags(), outer_size, layout.inner_width)) {
-//       for (int c = 0; c < n; ++c) setup_column(specs[c], layout, c, extra_flags[c]);
+//   if (ImGui::BeginTable("##id", n, table_flags(), size, layout.inner_width)) {
+//       for (int c = 0; c < n; ++c) setup_column(specs[c], layout, c, flags[c]);
 //       apply_column_widths(layout);
 //       ...headers and rows...
 //   }

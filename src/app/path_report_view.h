@@ -22,8 +22,8 @@ using report_view::SortSpec;
 // What the count line counts the path report's rows as.
 inline constexpr report_view::CountNoun kNoun{"path", "paths"};
 
-// The fifteen columns, in the page's order. The Timing chip names the Beyond
-// edge (report::beyond_edge_text).
+// The columns, in display order. The Timing chip names the Beyond edge
+// (report::beyond_edge_text).
 std::vector<Column<ReportRow>> path_columns();
 
 // The sort the report opens with.

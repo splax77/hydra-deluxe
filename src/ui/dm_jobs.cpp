@@ -39,7 +39,7 @@ void DmReportJob::run() {
             net::fetch_scores(discord_id_, net::kDefaultApiBase, &cancel_);
         // The fetch only checks cancel between read chunks, so a cancel
         // pressed while the server was waking up arrives here. Stop before
-        // anything is built (audit B3).
+        // anything is built.
         if (is_cancelled()) return false;
         // Join, tally, and framing all live behind generate_dm_report; the
         // job only fetches and hands the result over.

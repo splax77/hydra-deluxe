@@ -11,7 +11,7 @@
 #include "app/html_page.h"  // charts_search_hint
 #include "app/user_messages.h"
 #include "imgui.h"
-#include "ui/app_state.h"  // dm_report_input
+#include "ui/app_state.h"  // AppState
 #include "ui/report_window.h"
 
 namespace hydra::ui {

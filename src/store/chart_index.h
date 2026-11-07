@@ -18,7 +18,7 @@
 namespace hydra::store {
 
 // The one owner of "which charts does the library list, how many copies does
-// each have, and which copy names it" (D51 call 10, D77 item 2). from_rows
+// each have, and which copy names it" (D51 call 10, D77 item 1). from_rows
 // is where those answers are worked out; the other members only read them.
 class ChartIndex {
 public:
@@ -29,8 +29,7 @@ public:
     // Does the library list this chart?
     bool lists(const std::string& song_id) const;
     // How many library rows the chart counts as. A chart the library does
-    // not list still counts once: a page only shows charts it holds a
-    // result for (D77 item 2).
+    // not list counts once, though no page shows one (report::library_lookup).
     int copies(const std::string& song_id) const;
     // The library row that names the chart: its title, artist, charter and
     // notes path. Null when the library does not list the chart.

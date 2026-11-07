@@ -1,7 +1,7 @@
-// The line a command-line tool prints for an option it does not know. Every
-// tool calls unknown_option_line, so they all say it the same way (D271 item
-// 6; the wording is D276 item 5). It lives in core because hydra_precheck
-// links only hydra_core.
+// The line a command-line tool prints for an option it does not know. A tool
+// that refuses unknown options calls unknown_option_line, so they all say it
+// the same way (D271 item 6; the wording is D276 item 5). It lives in core
+// because hydra_precheck links only hydra_core.
 
 #ifndef HYDRA_CORE_UNKNOWN_OPTION_H
 #define HYDRA_CORE_UNKNOWN_OPTION_H

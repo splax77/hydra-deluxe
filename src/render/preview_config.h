@@ -1,10 +1,13 @@
 // The Preview's layout and look as numbers: a struct mirroring Onyx's
 // 3d-config.yml, shipped as assets/preview/3d-config.json. That file is the
 // one source of these numbers (docs/adr/0008): the struct holds none of its
-// own, so a PreviewConfig that was not loaded is all zeros, and a key the file
-// lacks is an error, never a fallback. Every camera, highway, light and timing
-// constant the renderer uses comes from here — never from a literal in the
-// draw code — so the port stays checkable against Onyx's file.
+// own, so a PreviewConfig that was not loaded has zero numbers and Color's
+// default colours, and a key the file lacks is an error, never a fallback. The
+// camera, highway, light and timing values in that file reach the renderer from
+// here, never from a literal in the draw code, so the port stays checkable
+// against Onyx's file. A constant the file has no key for, such as the material
+// specular or the playback speed in preview_renderer.cpp, stays in the draw
+// code.
 //
 // Colours follow Onyx's `stackColor`: "#rrggbb" -> (r/255, g/255, b/255, 1).
 
@@ -83,8 +86,8 @@ struct PreviewConfig {
         // The mark where an active SP window ends (D81): a bright edge across
         // the floor, this deep along the highway, and an upright triangle
         // beside each railing, this wide (base to apex) and this tall (its
-        // base), both in this colour. It is the mark's own colour, not the
-        // SP teal, so it never reads as an SP gem. build_highway_draws
+        // base), both in this colour. It is the mark's own colour (D84), not
+        // the SP teal, so it never reads as an SP gem. build_highway_draws
         // places them.
         Color sp_end_color{};
         float sp_end_edge_depth{};

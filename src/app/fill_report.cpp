@@ -23,13 +23,11 @@ using html::json_escape_into;
 namespace {
 
 // This comparison page's own pieces. The stylesheet and the script that sorts,
-// filters and draws the table are shared with the other report pages
-// (html::page_template, docs/adr/0016). __SUBTITLE__/__FOOTER__/__DATA__ are
-// filled by build_fill_html.
+// filters and draws the table come from html::page_template (docs/adr/0016).
+// __SUBTITLE__/__FOOTER__/__DATA__ are filled by build_fill_html.
 //
-// Every literal here is ASCII: this file compiles into hydra_app, which is
-// not built with /utf-8. Glyphs the page needs go in as HTML entities (markup)
-// or \uXXXX escapes (JavaScript).
+// Every literal here is ASCII. Glyphs the page needs go in as HTML entities
+// (markup) or \uXXXX escapes (JavaScript).
 //
 // __OLD_RULE__ and __NEW_RULE__ are the two fill rules' short names, filled
 // from fill_rule_name when the page shell is built.
@@ -160,8 +158,8 @@ const PAGE = {
 };
 )page";
 
-// The kStatus* constants: each placeholder the dropdown markup carries, and
-// the name the script's STATUS object gives it.
+// Each kStatus* word, with the placeholder the dropdown markup carries for it
+// and the name the script's STATUS object gives it.
 struct StatusSlot {
     const char* placeholder;
     const char* js_name;

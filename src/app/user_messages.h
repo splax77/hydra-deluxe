@@ -93,7 +93,7 @@ std::string plain_error(const std::exception& e);
 // the sentence already quotes the raw text (KindSentence::quotes_raw in
 // user_messages.cpp), so no place shows it twice. Every screen and tool that
 // shows a details line takes it from here, never from the exception's what()
-// (the single-owner row error-detail-owner), and draws nothing when it is
+// (tests/single_owner/rules/app/err-once.json), and draws nothing when it is
 // empty.
 std::string plain_error_detail(const std::exception& e);
 

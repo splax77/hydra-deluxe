@@ -1,7 +1,7 @@
 // The user's own rule choices, in one place. Every value here is a judgment
 // call, not a fact about Clone Hero, so it is configurable through
-// hydra_rules.ini (app/rules_file.h). The defaults are the values Hydra always
-// used, so an absent file changes nothing. A stored record carries a
+// hydra_rules.ini (app/rules_file.h). With no file, every rule keeps its
+// default. A stored record carries a
 // fingerprint of the rules it ran under (docs/adr/0014): fingerprint().
 // In hydra_rules.ini each field is set by its own name, e.g. `max_tied_paths = 4`.
 
@@ -17,7 +17,7 @@
 namespace hydra::core {
 
 // Which notes of a squeezed-out chord lose their SP doubling.
-//   FirstNote  -- only the first note in base-sorted order (Hydra's rule so far).
+//   FirstNote  -- only the first note in base-sorted order (the default).
 //   WholeChord -- every note in the chord.
 enum class SqOutRule { FirstNote, WholeChord };
 
@@ -40,7 +40,7 @@ struct Rules {
     // the next candidate sits after a fill, and how far from a measure line
     // the chosen chord may sit (check_activations adds Clone Hero's one tick).
     // A generated fill starts on its measure line, so its length is not a
-    // rule (fill_length_measures is retired, D115).
+    // rule.
     int fill_cooldown_measures = 4;
     double fill_max_distance_beats = 0.5;
     // Authored-fill placement (place_authored_fills, both parsers): how close

@@ -70,7 +70,7 @@ double activation_fill_deadline_ms(const SongTiming& timing,
         return timing.timecode(tick_E).ms();
     }
 
-    // Clone Hero 1.0, ported operation-for-operation from Python Hydra 1.2.
+    // Clone Hero 1.0.
     // The lead time is the fill's own length plus a sixteenth-of-a-beat pad,
     // measured in real time back from the fill's end, then clamped.
     //
@@ -78,7 +78,7 @@ double activation_fill_deadline_ms(const SongTiming& timing,
     // bit-for-bit scoring surface; the legacy mode is deliberately off that
     // surface. A 1.0 result is stored under its own key, beside the 1.1
     // results (store::Lens::legacy_fills, docs/adr/0010).
-    // The res/16 pad matches Python Hydra 1.2 output; kept fixed (see ADR 0010).
+    // The res/16 pad matches Python Hydra 1.2 (docs/clone-hero/04-fills.md); kept fixed.
     const double res = static_cast<double>(timing.tick_resolution());
     const double fend = timing.ms_index().at(fill_end_tick);
     const double fst = timing.ms_index().at(fill_start_tick(fill_end_tick, fill_length_ticks));
