@@ -97,6 +97,11 @@ OTHER = "other"
 STATE_READS_AS = {2: RUNNING, 1: READY, 3: READY, 7: READY, 5: WAITING}
 READY_STATES = tuple(state for state, word in STATE_READS_AS.items() if word == READY)
 
+# The nameless Idle process. Its threads are the processors' idle threads, which
+# read as ready on every read while no work waits for a CPU, so the run queue
+# leaves them out.
+IDLE_PID = 0
+
 
 def reads_as(state: int) -> str:
     """The word a thread state number reads as."""
@@ -165,7 +170,8 @@ def parse_table(buffer: bytes, base: int = 0, thread_pids: Optional[Iterable[int
     was read at, which the entries' name pointers count from. Only the pids in
     `thread_pids` get their threads parsed (None means all of them), because the
     whole table's threads at every sample would cost more than the recorder's
-    budget (question 15); the thread and ready counts always cover the table."""
+    budget (question 15); the thread and ready counts always cover the table,
+    but for what `IDLE_PID` leaves out of the ready count."""
     wanted = None if thread_pids is None else frozenset(thread_pids)
     processes: Dict[int, Process] = {}
     thread_count = ready = 0
@@ -179,7 +185,8 @@ def parse_table(buffer: bytes, base: int = 0, thread_pids: Optional[Iterable[int
         # A slice with a step reads every thread's state byte without a Python
         # loop. States are small, so the low byte of the ULONG is the whole number.
         states = buffer[first + THREAD_STATE:end:THREAD_ENTRY_SIZE]
-        ready += sum(states.count(state) for state in READY_STATES)
+        if pid != IDLE_PID:
+            ready += sum(states.count(state) for state in READY_STATES)
         name_at = name_pointer - base
         name = buffer[name_at:name_at + name_length].decode("utf-16-le", "replace")
         processes[pid] = Process(
