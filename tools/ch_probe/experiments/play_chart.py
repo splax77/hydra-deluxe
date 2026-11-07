@@ -168,7 +168,14 @@ def declined_chord_indexes(score_path: str, dump_path: str,
     with open(dump_path, encoding="utf-8") as f:
         path = json.load(f)["paths"][path_index]
     with open(score_path, encoding="utf-8") as f:
-        chords = json.load(f)["chords"]
+        score = json.load(f)
+    chords = score["chords"]
+    # A score file made from a path file names the path it read; one made with
+    # --acts has no path_source and cannot be checked.
+    source_index = score.get("path_source", {}).get("index")
+    if source_index is not None and source_index != path_index:
+        raise ValueError(f"{score_path} was made from path {source_index}, "
+                         f"but path_index is {path_index}")
     skipped = {tick for act in path["activations"] for tick in act["skipped_fill_ticks"]}
     missing = skipped - {chord["tick"] for chord in chords}
     if missing:

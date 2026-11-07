@@ -15,6 +15,12 @@
         "src/store/record_store.cpp",
         "src/ui/library_model.cpp"
       ],
+      "exempt": [
+        {
+          "file": "src/pathbuilder/pb_state.cpp",
+          "why": "the Path Builder opens one file with no scan and no library; it names that file in the entry the Preview reads (path builder plan, task PB-1)"
+        }
+      ],
       "must_match": [
         "item.rootfolder = pc.rootfolder;",
         "e.notespath = column_text(s, 4);",

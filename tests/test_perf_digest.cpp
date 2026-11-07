@@ -135,26 +135,33 @@ void check_parse_digest(const app::Settings& st, uint64_t pinned, size_t pinned_
 //  (c) A 1.1 generated fill now starts on its measure line, and the measure
 //      grid restarts at a time-signature change, which moves the 1.1 and
 //      parse digests.
+//
+// The four prepared-row digests were re-pinned again from one run on
+// 2026-10-31 (task PBR4-A3, D302). The summary's hardest_ms now holds the
+// engine's own figure, sign included (engine_hardest_ms), so the prepared row
+// moved; the engine's output folded through record_hash did not, and the
+// results stamp did not move. The two parse digests did not move, so no chart
+// reads differently.
 
 TEST_CASE("the corpus's prepared-row digest is pinned") {
-    check_engine_digest(pinned_settings("Expert", true, true), 0xf226a247e92c871eULL);
+    check_engine_digest(pinned_settings("Expert", true, true), 0xbe3c5149250f3837ULL);
 }
 
 TEST_CASE("the corpus's prepared-row digest is pinned at Hard, Pro Drums off, 2x Bass off") {
-    check_engine_digest(pinned_settings("Hard", false, false), 0x968045ace34f6addULL);
+    check_engine_digest(pinned_settings("Hard", false, false), 0x923d253f2dff5a60ULL);
 }
 
 TEST_CASE("the corpus's prepared-row digest is pinned with the CH 1.0 fill rule") {
     app::Settings s = pinned_settings("Expert", true, true);
     s.legacy_fills = true;
-    check_engine_digest(s, 0x49c7a12c0626c05dULL);
+    check_engine_digest(s, 0x036ebf335a6ab293ULL);
 }
 
 TEST_CASE("the corpus's prepared-row digest is pinned with Note Shuffle on and the ms limit off") {
     app::Settings s = pinned_settings("Expert", true, true);
     s.view_noteshuffle = true;
     s.mslimit_enabled = false;
-    check_engine_digest(s, 0xc2ea4e135256414dULL);
+    check_engine_digest(s, 0x815874f830394eb4ULL);
 }
 
 TEST_CASE("the corpus's parse digest is pinned") {

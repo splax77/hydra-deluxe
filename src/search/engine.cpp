@@ -327,6 +327,9 @@ struct OutPath {
     int32_t var_point, depth, act_begin, act_end;
     // The bars banked after the last window: out_ticks_[bank_begin, bank_end).
     int32_t bank_begin, bank_end;
+    // The fills passed over after the last activation:
+    // out_ticks_[skip_begin, skip_end).
+    int32_t skip_begin, skip_end;
     // On a root path only (depth 0): how many paths the engine folded into it,
     // its own running count for the tie limit. rebuild checks it against the
     // recount of the finished tree (Path::recount_tied_paths), which is the
@@ -621,8 +624,13 @@ private:
     std::optional<int64_t> best_eligible_score(const int32_t* members, int32_t n) const;
 
     void emit_path(const Path& p);
+    // A parent's trailing lists in out_ticks_: its banked bars and its
+    // passed-over fills after its last window.
+    struct Trail {
+        int32_t bank_begin, bank_end, skip_begin, skip_end;
+    };
     void emit_variant(int32_t v, int32_t depth, const std::vector<int32_t>& parent_walk,
-                      int32_t parent_trail_begin, int32_t parent_trail_end);
+                      Trail parent_trail);
     void close_folded_act(int32_t own, int32_t lead, const Variant& var);
     void own_early_fill(const Variant& var, OutAct* next);
     // The deadline of the base-track fill on `tick` (index_fills' list).
@@ -670,6 +678,28 @@ private:
             const int64_t t = out_ticks_[(size_t)k];
             out_ticks_.push_back(t);
         }
+        *end = (int32_t)out_ticks_.size();
+    }
+    // The fills on a leader's list out_ticks_[lead_begin, lead_end) that a
+    // variant folded between windows passed too: those past the fold tick
+    // (D38). Before the fold its passed fills are its own (Variant::
+    // skip_tail). Ticks, not counting, mark the split: the two paths may have
+    // passed different numbers of fills before the fold.
+    std::vector<int64_t> skips_after_fold(const Variant& var, int32_t lead_begin,
+                                          int32_t lead_end) const {
+        std::vector<int64_t> shared;
+        for (int32_t k = lead_begin; k < lead_end; ++k)
+            if (out_ticks_[(size_t)k] > var.fold_tick) shared.push_back(out_ticks_[(size_t)k]);
+        return shared;
+    }
+    // A variant folded between windows: its own passed fills, then the
+    // shared ones (skips_after_fold), into out_ticks_[*begin, *end).
+    void splice_skips(const Variant& var, int32_t lead_begin, int32_t lead_end,
+                      int32_t* begin, int32_t* end) {
+        // Read before the pushes below, which can reallocate out_ticks_.
+        const std::vector<int64_t> shared = skips_after_fold(var, lead_begin, lead_end);
+        emit_ticks(fills_, var.skip_tail, begin, end);
+        for (const int64_t t : shared) out_ticks_.push_back(t);
         *end = (int32_t)out_ticks_.size();
     }
     void emit_ends(int32_t tail, int32_t* begin, int32_t* end) {
@@ -1650,9 +1680,7 @@ void Engine::close_folded_act(int32_t own_i, int32_t lead_i, const Variant& var)
 // (core/model.h) gives its ready time at the first fill it passed, or at the
 // activation's fill when it passed none.
 void Engine::own_early_fill(const Variant& var, OutAct* next) {
-    std::vector<int64_t> shared;
-    for (int32_t k = next->skip_begin; k < next->skip_end; ++k)
-        if (out_ticks_[(size_t)k] > var.fold_tick) shared.push_back(out_ticks_[(size_t)k]);
+    const std::vector<int64_t> shared = skips_after_fold(var, next->skip_begin, next->skip_end);
 
     // The offset at a fill, from the variant's own ready time.
     const auto at_ready = [&](double deadline) {
@@ -1673,13 +1701,11 @@ void Engine::own_early_fill(const Variant& var, OutAct* next) {
         throw std::logic_error("a variant under kSpActivationBars at its fold passed a fill");
     }
 
-    emit_ticks(fills_, var.skip_tail, &next->skip_begin, &next->skip_end);
-    for (const int64_t t : shared) out_ticks_.push_back(t);
-    next->skip_end = (int32_t)out_ticks_.size();
+    splice_skips(var, next->skip_begin, next->skip_end, &next->skip_begin, &next->skip_end);
 }
 
 void Engine::emit_variant(int32_t v, int32_t depth, const std::vector<int32_t>& parent_walk,
-                          int32_t parent_trail_begin, int32_t parent_trail_end) {
+                          Trail parent_trail) {
     std::vector<int32_t> order;
     for (int32_t i = v; i >= 0; i = variants_[(size_t)i].prev)
         order.push_back(i);
@@ -1704,17 +1730,24 @@ void Engine::emit_variant(int32_t v, int32_t depth, const std::vector<int32_t>& 
             close_folded_act(op.act_end - 1, parent_walk[(size_t)var.var_point - 1], var);
         }
 
-        // The variant's banked bars (D3, finding 89). Which are its own
-        // depends on where it folded.
+        // The variant's banked bars (D3, finding 89) and the fills it passed
+        // over after its last window. Which are its own depends on where it
+        // folded; the two lists split the same way.
         if (var.finished) {
-            // Both had finished the song: its bank at the fold is its whole
-            // trailing list, whatever the leader's holds.
+            // Both had finished the song: its lists at the fold are its whole
+            // trailing lists, whatever the leader's hold.
             emit_ticks(banks_, var.bank_tail, &op.bank_begin, &op.bank_end);
+            emit_ticks(fills_, var.skip_tail, &op.skip_begin, &op.skip_end);
         } else if (var.open_sp) {
-            // Folded inside SP, where both banks are empty: every bar banked
-            // later is shared.
-            op.bank_begin = parent_trail_begin;
-            op.bank_end = parent_trail_end;
+            // Folded inside SP, where both banks and both passed-fill lists
+            // are empty (an activation resets them, and only a fill off SP
+            // adds a passed one): everything after is shared.
+            if (var.skip_tail >= 0)
+                throw std::logic_error("a variant folded inside SP passed a fill in it");
+            op.bank_begin = parent_trail.bank_begin;
+            op.bank_end = parent_trail.bank_end;
+            op.skip_begin = parent_trail.skip_begin;
+            op.skip_end = parent_trail.skip_end;
         } else if ((size_t)var.var_point < parent_walk.size()) {
             // Folded between windows, and the leader activated again. That
             // activation spent the variant's own bars up to the fold, so the
@@ -1722,7 +1755,8 @@ void Engine::emit_variant(int32_t v, int32_t depth, const std::vector<int32_t>& 
             // one after. The copy lands right after the variant's own
             // activations (nothing else is pushed to out_acts_ in between),
             // so [act_begin, act_end) stays one range. After it both banks
-            // reset, so later activations stay shared.
+            // and both passed-fill lists reset, so later activations and the
+            // trailing lists stay shared.
             if (op.act_end != (int32_t)out_acts_.size())
                 throw std::logic_error("a variant's activations are not one range");
             OutAct next = out_acts_[(size_t)parent_walk[(size_t)var.var_point]];
@@ -1732,12 +1766,16 @@ void Engine::emit_variant(int32_t v, int32_t depth, const std::vector<int32_t>& 
             out_acts_.push_back(next);
             op.act_end = (int32_t)out_acts_.size();
             op.var_point = var.var_point + 1;
-            op.bank_begin = parent_trail_begin;
-            op.bank_end = parent_trail_end;
+            op.bank_begin = parent_trail.bank_begin;
+            op.bank_end = parent_trail.bank_end;
+            op.skip_begin = parent_trail.skip_begin;
+            op.skip_end = parent_trail.skip_end;
         } else {
             // Folded between windows; the leader never activated again.
-            splice_bank(var.bank_tail, parent_trail_begin, parent_trail_end, &op.bank_begin,
-                        &op.bank_end);
+            splice_bank(var.bank_tail, parent_trail.bank_begin, parent_trail.bank_end,
+                        &op.bank_begin, &op.bank_end);
+            splice_skips(var, parent_trail.skip_begin, parent_trail.skip_end, &op.skip_begin,
+                         &op.skip_end);
         }
         out_paths_.push_back(op);
 
@@ -1747,7 +1785,8 @@ void Engine::emit_variant(int32_t v, int32_t depth, const std::vector<int32_t>& 
         for (int32_t j = op.act_begin; j < op.act_end; ++j) walk.push_back(j);
         for (size_t j = (size_t)op.var_point; j < parent_walk.size(); ++j)
             walk.push_back(parent_walk[j]);
-        emit_variant(var.var_head, depth + 1, walk, op.bank_begin, op.bank_end);
+        emit_variant(var.var_head, depth + 1, walk,
+                     Trail{op.bank_begin, op.bank_end, op.skip_begin, op.skip_end});
     }
 }
 
@@ -1773,12 +1812,13 @@ void Engine::emit_path(const Path& p) {
     op.depth = 0;
     op.tied_count = p.tied_count;
     emit_ticks(banks_, p.bank_tail, &op.bank_begin, &op.bank_end);
+    emit_ticks(fills_, p.skip_tail, &op.skip_begin, &op.skip_end);
     emit_acts(p.act_tail, p.sp_end_time, p.end_tail, &op.act_begin, &op.act_end);
     out_paths_.push_back(op);
 
     std::vector<int32_t> walk;
     for (int32_t j = op.act_begin; j < op.act_end; ++j) walk.push_back(j);
-    emit_variant(p.var_head, 1, walk, op.bank_begin, op.bank_end);
+    emit_variant(p.var_head, 1, walk, Trail{op.bank_begin, op.bank_end, op.skip_begin, op.skip_end});
 }
 
 // --- BFS driver ----------------------------------------------------------
@@ -1959,6 +1999,8 @@ std::vector<MPath> rebuild(const ScoreGraph& graph, const Enum& en,
         path.notecount = note_count;
         path.trailing_bank_ticks.assign(out_ticks.begin() + op.bank_begin,
                                         out_ticks.begin() + op.bank_end);
+        path.trailing_skipped_fill_ticks.assign(out_ticks.begin() + op.skip_begin,
+                                                out_ticks.begin() + op.skip_end);
 
         for (int j = op.act_begin; j < op.act_end; ++j) {
             const OutAct& oa = out_acts[(size_t)j];

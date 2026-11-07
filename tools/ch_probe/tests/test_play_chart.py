@@ -837,6 +837,21 @@ class DeclineListTest(unittest.TestCase):
         dump = {"paths": [{"activations": [{"skipped_fill_ticks": []}]}]}
         self.assertEqual(_declined_list(_FILL_SCORE, dump), [])
 
+    def test_a_score_file_made_from_another_path_is_refused_naming_both(self):
+        score = {**_FILL_SCORE, "path_source": {"file": "p.json", "index": 1}}
+        with self.assertRaises(ValueError) as caught:
+            _declined_list(score, _FILL_DUMP, 0)
+        self.assertIn("path 1", str(caught.exception))
+        self.assertIn("path_index is 0", str(caught.exception))
+
+    def test_a_score_file_from_the_same_path_is_read(self):
+        score = {**_FILL_SCORE, "path_source": {"file": "p.json", "index": 0}}
+        self.assertEqual(_declined_list(score, _FILL_DUMP, 0), [405])
+
+    def test_a_score_file_with_no_path_source_is_not_refused(self):
+        self.assertNotIn("path_source", _FILL_SCORE)
+        self.assertEqual(_declined_list(_FILL_SCORE, _FILL_DUMP, 0), [405])
+
     def test_a_tick_with_no_chord_is_refused_by_name(self):
         dump = {"paths": [{"activations": [{"skipped_fill_ticks": [54481]}]}]}
         with self.assertRaises(ValueError) as caught:

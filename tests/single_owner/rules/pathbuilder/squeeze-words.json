@@ -1,0 +1,52 @@
+{
+  "rules": [
+    {
+      "question": "What words and figure does the Path Builder show for a squeeze?",
+      "owner": "app::activation_badges in src/app/path_view.cpp, the Paths tab's badge words, which the builder reads only through badges_text in src/pathbuilder/pb_text.cpp",
+      "owner_file": "src/app/path_view.cpp",
+      "owner_symbol": "activation_badges",
+      "date": "2026-10-31",
+      "decision": "D302 item 3: every squeeze the builder names uses the Paths tab's badge words; the user, on seeing the builder's own squeeze wording again: \"why do you keep inventing your own text instead of using what already exists?\"",
+      "added_by": "PBR4-B5",
+      "pattern": "\"[^\"]*(?:[Ss]queeze[- ](?:in|out)\\b(?! it was pinned to)|[Ee]arly fill|[Nn]o timing)|\\b(?:difficulty|badge_timings)\\(\\)",
+      "must_match": [
+        "inline constexpr const char* kNoTimingNeededText = \"no timing needed\";",
+        "const std::optional<double> needs = act.difficulty();",
+        "out += t.required ? \" \" + format_ms(t.ms) : \", no timing\";",
+        "\"Squeeze-out: a Star Power phrase ends right where your Star Power runs out; hitting \""
+      ],
+      "must_not_match": [
+        "for (const app::ActivationBadge& b : app::activation_badges(act)) {",
+        "out += b.text;",
+        "return \"This window can't end with the squeeze-out it was pinned to.\";",
+        "require_notes(c.song, c.settings.difficulty, c.settings.prodrums);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/pathbuilder/pb_coach.cpp",
+          "line_text": "const std::optional<double> needs = act.difficulty();",
+          "why": "tight_window_note: the violet Path limit note names the figure the limit is checked against, not a squeeze's words; the plan's Q1 kept the note as it was"
+        }
+      ],
+      "scope": [
+        "src/pathbuilder/main.cpp",
+        "src/pathbuilder/pb_coach.cpp",
+        "src/pathbuilder/pb_coach.h",
+        "src/pathbuilder/pb_files.cpp",
+        "src/pathbuilder/pb_files.h",
+        "src/pathbuilder/pb_menu.cpp",
+        "src/pathbuilder/pb_menu.h",
+        "src/pathbuilder/pb_open.cpp",
+        "src/pathbuilder/pb_open.h",
+        "src/pathbuilder/pb_resource.h",
+        "src/pathbuilder/pb_state.cpp",
+        "src/pathbuilder/pb_state.h",
+        "src/pathbuilder/pb_text.cpp",
+        "src/pathbuilder/pb_text.h",
+        "src/pathbuilder/pb_window.cpp",
+        "src/pathbuilder/pb_window.h"
+      ],
+      "note": "The builder kept writing its own squeeze wording (\"squeeze-in, no timing\", \"no timing needed\", a glossary) beside the Paths tab's badges, so the two screens said different things. Every squeeze and early fill the builder names now comes from the badges through badges_text, which reads activation_badges and so is not flagged. The row flags a builder string that words a squeeze, an early fill or a missing timing itself, and a read of the activation's timing figures, which only the badges should turn into text. impossible_window_text's failure sentence about the squeeze-out a window was pinned to names the player's pinned choice, not a timing or a figure, so the pattern leaves it alone. A scope names a top folder or a single file (OwnerRule::scope), so the row lists each file under src/pathbuilder; a new file there joins the list. Decided by: task B5 of the plan."
+    }
+  ]
+}

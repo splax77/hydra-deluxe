@@ -5,7 +5,8 @@
 //                    button, the analyze progress, and the record states the
 //                    tabs share (the analyze job's lifecycle is AppState::tick)
 // paths_tab.cpp      the Paths tab: the path list and a path's details
-// preview_tab.cpp    the Preview tab: transport row, highway and overlays
+// preview_tab.cpp    the Preview tab: opens the controller and draws the panel
+//                    (the panel itself is ui/preview_panel.h)
 // dynamics_tab.cpp   the Dynamics tab
 // stars_tab.cpp      the Stars tab
 
@@ -41,7 +42,8 @@ void render_path_panel(AppState& app, const Path*& selected_path);
 // start the "Copied!" flash. The Copy path button and Ctrl+C both call it.
 void copy_selected_path(AppState& app);
 
-// preview_tab.cpp. The transport row and the 3D highway for `selected_path`.
+// preview_tab.cpp. The Preview for `selected_path`: it opens the controller,
+// adds Hydra's own rows and draws ui/preview_panel.h's panel.
 void render_preview_panel(AppState& app, const Path* selected_path);
 
 // dynamics_tab.cpp.

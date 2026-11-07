@@ -153,14 +153,17 @@ ActivationRating rate_activation(const Activation& act, double backend_leeway_ms
             out.note_effective_ms.push_back(std::nullopt);
             continue;
         }
-        // A SqIn that needs no timing has its note inside SP
-        // (SPSqueeze::needs_no_timing, D13). Its stored scale is the one at
+        // The side of the scale is where the note sits against the one SP
+        // end (core::paid_by_sp_walk), the same answer the squeezed-out row
+        // above reads. Whether the squeeze needs timing is a different
+        // question (SPSqueeze::needs_no_timing): a SqIn on the end is inside
+        // SP yet still needs 0.0 ms (D302). Its stored scale is the one at
         // its SqIn rank. Its sides go on sqins_read in this same walk, so
         // that list pairs with scales->sqins the way stored_transfer_scales
         // built it: one entry per SqIn, in list order.
         const TransferScale& at_end =
             out.scales->sqins[sqin_rank(act.sqinouts.begin(), it, is_sqin_squeeze)];
-        const NoteRating n = rate_note(sq.offset_ms, sq.needs_no_timing(), at_end);
+        const NoteRating n = rate_note(sq.offset_ms, core::paid_by_sp_walk(sq.offset_ms), at_end);
         mark_read(out.sqins_read.emplace_back(), n);
         out.scale_governs |= n.effective_ms.has_value();
         out.note_effective_ms.push_back(n.effective_ms);

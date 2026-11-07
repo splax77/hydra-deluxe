@@ -58,7 +58,7 @@ void place_record(std::vector<ReportRow>& out, const store::RecordRow& record,
         row.score = p.score;
         row.acts = p.actcount;
         row.skip = p.maxskip;
-        row.ms = p.hardest_ms;
+        row.ms = shown_timing(p.hardest_ms);
         row.efill = p.hardest_efill;
         row.mult = p.avgmult;
         row.sqin = p.sqin_count;

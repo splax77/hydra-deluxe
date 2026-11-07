@@ -582,7 +582,11 @@ std::string scene_difference(const PreviewScene& a, const PreviewScene& b) {
                                x.measure == y.measure && x.chord == y.chord;
                     }))
         return "activations";
+    if (a.ghost_fills != b.ghost_fills) return "ghost_fills";
+    if (a.ghost_windows != b.ghost_windows) return "ghost_windows";
     if (a.trailing_bank_ticks != b.trailing_bank_ticks) return "trailing_bank_ticks";
+    if (a.trailing_skipped_fill_ticks != b.trailing_skipped_fill_ticks)
+        return "trailing_skipped_fill_ticks";
     if (!std::equal(a.beats.begin(), a.beats.end(), b.beats.begin(), b.beats.end(),
                     [](const PreviewBeat& x, const PreviewBeat& y) {
                         return x.tick == y.tick && x.ms == y.ms && x.kind == y.kind;
@@ -885,6 +889,7 @@ TEST_CASE("build_preview_scene: a ghost path lists its own taken fills and nothi
     // A later overlay with no ghost clears the list.
     const PreviewScene cleared = apply_preview_overlay(with, song, &drawn);
     CHECK(cleared.ghost_fills.empty());
+    CHECK(cleared.ghost_windows.empty());
 }
 
 // On a real chart the ghost path's fills are the ones the same path takes when
@@ -901,6 +906,58 @@ TEST_CASE("build_preview_scene: a corpus best path as the ghost lists its taken 
     for (const PreviewActivation& a : drawn.activations)
         if (a.taken_fill) taken.push_back(*a.taken_fill);
     CHECK(scene.ghost_fills == taken);
+
+    // Its windows are the same path's sp_window()s when it is the drawn path,
+    // and a scene with no ghost has none.
+    std::vector<std::pair<double, double>> windows;
+    for (const PreviewActivation& a : drawn.activations)
+        if (const auto w = a.sp_window()) windows.push_back(*w);
+    REQUIRE_FALSE(windows.empty());
+    CHECK(scene.ghost_windows == windows);
+    CHECK(drawn.ghost_windows.empty());
+}
+
+// The fills after a path's last activation: the engine lists the ones the
+// path passed over (Path::trailing_skipped_fill_ticks), and the overlay
+// lights exactly those. On "Missed Injections" at the top 40 scores, cap 4,
+// the path "3" activates once, at 123838, and lists 244800 and 281759.
+TEST_CASE("preview scene: fills after the last activation read Offered when the engine lists them, Hidden otherwise") {
+    const AnalysisSettings cfg = test::scores_settings(4);
+    const std::string chart = corpus::chart_named("Hail The Sun - Missed Injections");
+    REQUIRE_FALSE(chart.empty());
+    const Song& song = corpus::song(chart, cfg.reading(), cfg.rules);
+    const Path* path = nullptr;
+    for (const Path* p : corpus::analyzed(chart, cfg).all_paths())
+        if (p->pathstring() == "3") {
+            path = p;
+            break;
+        }
+    REQUIRE(path != nullptr);
+    REQUIRE(test::act_ticks(*path) == std::vector<int64_t>{123838});
+    REQUIRE(path->trailing_skipped_fill_ticks == std::vector<int64_t>{244800, 281759});
+    const int64_t last_act = test::act_ticks(*path).back();
+
+    const PreviewScene scene = build_preview_scene(song, path, cfg.sp_cap, cfg.rules);
+    CHECK(scene.trailing_skipped_fill_ticks == path->trailing_skipped_fill_ticks);
+    // Each fill after the activation and its state, pinned from one run.
+    std::string after;
+    for (const PreviewFill& f : scene.fills) {
+        if (f.chord_tick <= last_act) continue;
+        after += std::to_string(f.chord_tick) + ":" +
+                 (f.state == PreviewFillState::Offered  ? "O"
+                  : f.state == PreviewFillState::Taken ? "T"
+                                                       : "H") +
+                 " ";
+    }
+    CHECK(after == "157922:H 180960:H 244800:O 281759:O ");
+
+    // The same path without its list draws those fills hidden, as the
+    // Preview did before the engine wrote them down.
+    Path bare = *path;
+    bare.trailing_skipped_fill_ticks.clear();
+    const PreviewScene without = build_preview_scene(song, &bare, cfg.sp_cap, cfg.rules);
+    for (const PreviewFill& f : without.fills)
+        if (f.chord_tick > last_act) CHECK(f.state == PreviewFillState::Hidden);
 }
 
 // The Preview lights a stored passed-over fill by matching its tick to a fill

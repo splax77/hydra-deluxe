@@ -394,6 +394,7 @@ add_library(hydra_app STATIC
     src/app/report_view.cpp
     src/app/path_report_view.cpp
     src/app/report_files.cpp
+    src/app/saved_figure_fill.cpp
     src/app/user_messages.cpp
     src/app/update_verify.cpp
     src/app/ini_errors.h
@@ -511,30 +512,41 @@ target_include_directories(hydra_dm PRIVATE third_party/json)
 # ---- hydra_uibase: the GUI base -------------------------------------------
 # What any of Hydra's GUI programs needs without Hydra's own window: ImGui's
 # set-up and shutdown, the UI scale, the theme, the fonts, the shared widgets,
-# the icons and the folder dialog. Nothing here reads AppState.
+# the icons, the file and folder dialogs, the Preview panel both GUI programs
+# draw (preview_panel.h), the Path Builder timeline's window arithmetic
+# (timeline_view.h) and the main window's Win32 and Direct3D pieces
+# (win32_window.h). Nothing here reads AppState.
 add_library(hydra_uibase STATIC
     src/ui/imgui_setup.cpp
     src/ui/column_widths.cpp
     src/ui/icons.cpp
     src/ui/imgui_files.cpp  # ImGui's file functions (imconfig.h)
     src/ui/list_scroll.cpp
+    src/ui/preview_panel.cpp
+    src/ui/preview_timeline.cpp
     src/ui/theme.cpp
+    src/ui/timeline_view.cpp
     src/ui/win32_dialogs.cpp
+    src/ui/win32_window.cpp
     src/ui/activation_row_layout.h
     src/ui/badge_pill.h
     src/ui/fallback_fonts.h
     src/ui/fonts.h
     src/ui/generation.h
     src/ui/label_layout.h
+    src/ui/preview_panel.h
     src/ui/report_state.h
     src/ui/text_role.h
+    src/ui/timeline_view.h
     src/ui/widgets.h
 )
 # imgui_test_engine goes wherever imgui does: imconfig.h turns the engine's
 # hooks on for every ImGui build (see the imgui_test_engine block above).
 # hydra_render: widgets.h's ellipsize. hydra_audio: the fonts are read through
-# a file map. d3d11 is PUBLIC because icons.h hands out ID3D11 types.
-target_link_libraries(hydra_uibase PUBLIC imgui imgui_test_engine hydra_render hydra_audio d3d11)
+# a file map. hydra_preview: the Preview panel draws a PreviewController.
+# d3d11 is PUBLIC because icons.h hands out ID3D11 types.
+target_link_libraries(hydra_uibase PUBLIC
+    imgui imgui_test_engine hydra_render hydra_audio hydra_preview d3d11)
 # ole32: the folder-picker dialog (COM's IFileOpenDialog). shell32 is not
 # needed here: hydra_app links it for report_files.cpp's ShellExecuteW.
 # hydra_image: icons.cpp decodes its PNGs through the shared stb TU.
@@ -655,6 +667,64 @@ if(HYDRA_UITEST_ATTACHED)
     target_compile_definitions(Hydra PRIVATE HYDRA_UITEST_ATTACHED)
 endif()
 
+# ---- HydraPathBuilder.exe: the Path Builder --------------------------------
+# A second GUI program: open a chart, build a Star Power path by hand and see
+# how it compares with Hydra's best (docs/superpowers/specs/
+# 2026-10-28-path-builder-design.md). Everything but its Win32 window is the
+# hydra_pathbuilder library, which the exe, its headless runner and hydra_tests
+# link. It links the GUI base and the Preview, never hydra_ui, so none of
+# Hydra's own window comes with it.
+add_library(hydra_pathbuilder STATIC
+    src/pathbuilder/pb_state.cpp
+    src/pathbuilder/pb_coach.cpp
+    src/pathbuilder/pb_open.cpp
+    src/pathbuilder/pb_menu.cpp
+    src/pathbuilder/pb_window.cpp
+    src/pathbuilder/pb_resource.h
+    src/pathbuilder/pb_files.cpp
+    src/pathbuilder/pb_text.cpp
+)
+target_link_libraries(hydra_pathbuilder PUBLIC hydra_uibase hydra_preview hydra_app)
+# shell32: the dropped-file calls (DragQueryFileW, DragFinish) in pb_open.cpp.
+target_link_libraries(hydra_pathbuilder PRIVATE shell32 hydra_warnings)
+# hydra_replay_json: the saved path files' JSON shape (pb_files.h).
+target_link_libraries(hydra_pathbuilder PUBLIC hydra_replay_json)
+add_executable(HydraPathBuilder WIN32 src/pathbuilder/main.cpp src/pathbuilder/pathbuilder.rc)
+target_link_libraries(HydraPathBuilder PRIVATE
+    hydra_pathbuilder hydra_replay_json imgui d3d11 dxgi d3dcompiler hydra_warnings)
+target_link_options(HydraPathBuilder PRIVATE /ENTRY:mainCRTStartup)
+# The builder's window title and class name. It sets no AppUserModelID, so
+# Windows gives it a taskbar button of its own (the user's answer, 2026-10-29).
+target_compile_definitions(HydraPathBuilder PRIVATE
+    HYDRA_PATHBUILDER_NAME="${HYDRA_APP_NAME} Path Builder")
+# The fonts, icons and highway art beside the exe, as Hydra's are.
+add_custom_command(TARGET HydraPathBuilder POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_SOURCE_DIR}/resource" "$<TARGET_FILE_DIR:HydraPathBuilder>/resource"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_SOURCE_DIR}/assets" "$<TARGET_FILE_DIR:HydraPathBuilder>/assets"
+)
+
+# ---- hydra_pathbuilder_uitest: the Path Builder's headless GUI runner ------
+# The app-free runner (hydra_uitest_engine) driving the builder's window, with
+# the builder's own tests. docs/agents/ui-testing.md covers the runner.
+add_executable(hydra_pathbuilder_uitest
+    tests/pb_ui/pbtest_main.cpp
+    tests/pb_ui/pbtest_harness.cpp
+    tests/pb_ui/pbtest_window.cpp
+    tests/pb_ui/pbtest_coach.cpp
+    tests/pb_ui/pbtest_build.cpp
+    tests/pb_ui/pbtest_files.cpp
+)
+target_link_libraries(hydra_pathbuilder_uitest PRIVATE
+    hydra_pathbuilder hydra_uitest_engine d3d11 dxgi d3dcompiler hydra_warnings)
+target_compile_definitions(hydra_pathbuilder_uitest PRIVATE
+    HYDRA_TESTDATA_DIR="${CMAKE_SOURCE_DIR}/testdata"
+    HYDRA_INPUT_DIR="${CMAKE_SOURCE_DIR}/testdata/input"
+    HYDRA_ASSET_DIR="${CMAKE_SOURCE_DIR}/assets/preview"
+    HYDRA_RESOURCE_DIR="${CMAKE_SOURCE_DIR}/resource"
+)
+
 # ---- hydra_batch / hydra_fillcompare: the command-line tools -------------
 # Both read the same settings INI and database the GUI uses.
 add_executable(hydra_batch src/cli/batch.cpp src/cli/batch_scope.h)
@@ -685,6 +755,8 @@ add_executable(hydra_tests
 target_link_libraries(hydra_tests PRIVATE
     hydra_ui hydra_dm hydra_audio hydra_render hydra_image d3d11 dxgi d3dcompiler
     hydra_warnings)
+# hydra_pathbuilder: test_pb_state opens corpus charts through the builder's state.
+target_link_libraries(hydra_tests PRIVATE hydra_pathbuilder)
 # test_stem_reader keeps copies of the old whole-file decoders as its reference
 # and re-pages Opus fixtures with libogg, so it needs the codec headers too.
 target_link_libraries(hydra_tests PRIVATE miniaudio stb_vorbis opus ogg)
@@ -769,7 +841,7 @@ set_tests_properties(hydra_uitest PROPERTIES PROCESSORS ${CMAKE_MATCH_1})
 # everything the install() rules below stage, all in one folder.
 # User data (hydra*.db/.ini) is created next to the exe at runtime and never
 # lives in the package, so a rebuilt zip can't clobber anyone's records.
-install(TARGETS Hydra hydra_batch hydra_fillcompare RUNTIME DESTINATION .)
+install(TARGETS Hydra HydraPathBuilder hydra_batch hydra_fillcompare RUNTIME DESTINATION .)
 # Every exe above needs mimalloc's two DLLs beside it to start (see
 # hydra_use_mimalloc). install(FILES) rather than install(TARGETS), so
 # mimalloc's import library stays out of the stage.
@@ -901,8 +973,8 @@ endif()
 # hydra_tests is left out on purpose. Without the manifest Windows refuses a
 # plain long path even where long paths are enabled, so test_long_paths proves
 # Hydra's own handling rather than the machine's setting.
-foreach(hydra_exe Hydra hydra_batch hydra_fillcompare
-                  hydra_uitest hydra_bench hydra_replay)
+foreach(hydra_exe Hydra HydraPathBuilder hydra_batch hydra_fillcompare
+                  hydra_uitest hydra_pathbuilder_uitest hydra_bench hydra_replay)
     target_sources(${hydra_exe} PRIVATE src/app/long_paths.manifest)
 endforeach()
 

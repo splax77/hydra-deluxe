@@ -125,9 +125,9 @@ ActivationsView build_activations(const Path& path, const HydraRecord& record,
                                   bool pro_drums = true);
 
 // The badges on an activation row: one per Activation::badge_timings() entry,
-// in its order, each worded with its ms whole and rounded to nearest
-// (format_ms_whole): "squeeze out 163 ms", "squeeze in 13 ms" for 12.6,
-// "early fill 30 ms". Each is warn-coloured by its own
+// in its order, each worded with its ms as format_ms writes it (D265):
+// "squeeze out 163.0 ms", "squeeze in 12.6 ms", "early fill 30.0 ms".
+// Each is warn-coloured by its own
 // ActivationTiming::difficult. Empty when the activation has no timing.
 std::vector<ActivationBadge> activation_badges(const Activation& act);
 
@@ -181,6 +181,10 @@ struct PathListView {
 PathListView build_path_list(const HydraRecord& record);
 
 // ---- the path list as buttons (the Paths tab and the Preview's list) --------
+
+// What every list calls the best all-0 path: the Paths tab's heading over its
+// section, and the Path Builder's left-list row.
+inline constexpr const char* kBestAllZeroLabel = "Best all-0 path";
 
 // One path as a button in the list.
 struct PathButtonView {

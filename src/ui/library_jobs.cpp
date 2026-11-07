@@ -9,6 +9,7 @@
 #include "app/allocator.h"
 #include "app/config.h"
 #include "app/report.h"
+#include "app/saved_figure_fill.h"
 #include "app/user_messages.h"
 #include "core/error_kind.h"
 #include "parse/song.h"  // display_title, display_artist
@@ -29,6 +30,7 @@ std::string StoreOpenProgress::label() const {
     if (!upgrading) return "Opening your library...";
     switch (step) {
         case Step::ConvertingRecords: return "Updating the results table...";
+        case Step::ReadingSavedPaths: return kReadingSavedPathsLabel;
         case Step::Opening:  // the store reports Opening only before the conversion
         case Step::LoadingLibrary: return "Finishing...";
     }
@@ -97,7 +99,8 @@ bool StoreOpenJob::report(StoreOpenProgress::Step step, uint64_t rows_done, uint
     // its counts too.
     rows_total_.store(rows_total);
     rows_done_.store(rows_done);
-    if (step == Step::ConvertingRecords) upgrading_.store(true);
+    if (step == Step::ConvertingRecords || step == Step::ReadingSavedPaths)
+        upgrading_.store(true);
     step_.store(static_cast<int>(step));
     if (gate_) gate_(snapshot(), [this] { return is_cancelled(); });
     return !is_cancelled();
@@ -133,7 +136,22 @@ void StoreOpenJob::run() {
                                                           rules_, on_step);
             if (store_->set_aside_path())
                 startup_notice_ = app::old_library_set_aside_notice(db_path_);
-            // The conversion's counts stay on the bar while the library is read.
+            // Old rows' hardest figure, before the library reads it. A fill
+            // that fails is the status line's problem, as a failed library
+            // read is: the app still opens, and the next open tries again.
+            bool filled = true;
+            std::string fill_problem;
+            try {
+                filled = app::fill_saved_hardest(
+                    *store_, settings_, [this](uint64_t charts_done, uint64_t charts_total) {
+                        return report(Step::ReadingSavedPaths, charts_done, charts_total);
+                    });
+            } catch (const std::exception& e) {
+                fill_problem = app::plain_error(e);
+            }
+            if (!filled) throw JobCancelled{};
+            // The last counted step's counts stay on the bar while the
+            // library is read.
             if (!report(Step::LoadingLibrary, rows_done_.load(), rows_total_.load()))
                 throw JobCancelled{};
             library_problem_ = read_library(*store_, settings_, library_);
@@ -146,6 +164,7 @@ void StoreOpenJob::run() {
                     library_problem_ = app::plain_error(e);
                 }
             }
+            if (library_problem_.empty()) library_problem_ = fill_problem;
             return true;
         } catch (...) {
             // Kept for main's startup box; a cancel is the app closing, so

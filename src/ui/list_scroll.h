@@ -35,6 +35,14 @@ ScrollTo selection_scroll(SelectionSource source);
 // Applies `how` to the item ImGui drew last (the row's Selectable).
 void scroll_last_row(ScrollTo how);
 
+// Brings a block of the current window fully into view, moving it as little
+// as it can (the top first when the block is taller than the window). It is
+// for a row that opens into more than its Selectable, such as a step that
+// shows its sentence beneath it; the rectangle is in screen coordinates.
+// `how` is selection_scroll's answer, or NearestEdge when the opening itself
+// is what asks for the scroll.
+void scroll_block_into_view(ScrollTo how, float left, float top, float right, float bottom);
+
 // The ImGui scroll flags scroll_last_row passes for NearestEdge. Exposed so a
 // test can pin them.
 extern const int kNearestEdgeScrollFlags;

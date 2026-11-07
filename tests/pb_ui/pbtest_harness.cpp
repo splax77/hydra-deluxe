@@ -1,0 +1,178 @@
+#include "pbtest_harness.h"
+
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <filesystem>
+#include <system_error>
+
+#include "imgui.h"
+#include "imgui_te_context.h"
+#include "imgui_te_internal.h"
+
+#include "../scratch_settings.h"
+#include "../testdata_dirs.h"
+
+#include "app/config.h"
+#include "audio/device.h"
+#include "ui/preview_controller.h"
+#include "ui/preview_timeline.h"  // timeline_fill_id
+
+namespace fs = std::filesystem;
+
+namespace pbtest {
+
+Harness::Harness() {
+    home_ref = std::string("//") + hydra::pathbuilder::kMainWindowName;
+    hooks.draw_frame = [this] {
+        if (app && !app_hidden) app->draw();
+    };
+    hooks.jobs_busy = [this] { return app && app->busy(); };
+    hooks.state_text = [this] {
+        std::string t;
+        if (!app) return t;
+        const hydra::pathbuilder::PbState& s = app->state;
+        t += "chart: " + (s.chart() ? s.chart()->chart_path : std::string("(none)")) + "\n";
+        t += "windows: " + std::to_string(s.history().current().windows.size()) + "\n";
+        if (!s.error().empty()) t += "error: " + s.error() + "\n";
+        return t;
+    };
+    hooks.reset = [this] { reset_app(*this); };
+    // The builder has no library, so no label is a library row's title.
+    hooks.is_library_row_title = [](const std::string&) { return false; };
+}
+
+bool Harness::init() {
+    hydra::ui::ImGuiSetupOptions opts;
+    opts.dpi_scale = 1.0f;
+    opts.ini_file = "-";  // no persisted ImGui layout between runs
+    opts.resource_dir = HYDRA_RESOURCE_DIR;
+    if (!Engine::init(opts)) return false;
+    ini_path = temp_dir + "\\hydra_settings.ini";
+    hydra::app::PathOverrides po;
+    po.ini_path = ini_path;
+    po.db_path = temp_dir + "\\hydra.db";
+    po.rules_path = temp_dir + "\\hydra_rules.ini";
+    po.asset_dir = HYDRA_ASSET_DIR;
+    hydra::app::set_path_overrides(po);
+    return true;
+}
+
+void Harness::stop() {
+    Engine::stop();
+    if (app) app->close_preview();
+    app.reset();
+}
+
+bool Harness::queue(const std::string& what) {
+    if (fs::exists(fs::u8path(what)) && !fs::is_directory(fs::u8path(what))) {
+        script_path = what;
+        uitest::register_script_test(*this);
+        ImGuiTestEngine_QueueTest(engine, ImGuiTestEngine_FindTestByName(engine, "hydra", "script"),
+                                  ImGuiTestRunFlags_RunFromCommandLine);
+        return true;
+    }
+    ImGuiTest* t = ImGuiTestEngine_FindTestByName(engine, "hydra", what.c_str());
+    if (!t || std::strcmp(t->Name, "script") == 0) return false;
+    ImGuiTestEngine_QueueTest(engine, t, ImGuiTestRunFlags_RunFromCommandLine);
+    return true;
+}
+
+void reset_app(Harness& h) {
+    // As Hydra's runner does (uitest_harness.cpp, reset_app): the frame this
+    // runs in still points at the highway's texture, so let it render with
+    // nothing drawn before the texture goes.
+    if (h.app && h.engine && h.engine->TestContext) {
+        h.app_hidden = true;
+        h.engine->TestContext->Yield();
+        h.app_hidden = false;
+        h.context->Flush();
+    }
+    if (h.app) h.app->close_preview();
+    h.app.reset();
+
+    // Hydra's runner clears its rules file here too, so a file a stopped test
+    // or an earlier run left behind never reaches the next test.
+    std::error_code ignored;
+    std::filesystem::remove(std::filesystem::u8path(hydra::app::path_overrides().rules_path),
+                            ignored);
+
+    hydra::audio::set_headless(true);
+    if (!scratch_settings().save_file(h.ini_path)) {
+        std::fprintf(stderr, "hydra_pathbuilder_uitest: could not write \"%s\"\n",
+                     h.ini_path.c_str());
+        std::exit(1);
+    }
+    h.app = std::make_unique<hydra::pathbuilder::PbApp>(h.device.Get(), h.context.Get());
+    if (!h.chart_arg.empty()) h.app->open(h.chart_arg);
+}
+
+bool wait_idle(ImGuiTestContext* ctx, double seconds) {
+    Harness& h = harness(ctx);
+    // A frame first, so a load the last frame asked for has started.
+    ctx->Yield(2);
+    return uitest::wait_until(ctx, [&] { return !h.app || !h.app->busy(); }, seconds);
+}
+
+bool click_fill(ImGuiTestContext* ctx, int64_t act_tick) {
+    hydra::pathbuilder::PbState& s = harness(ctx).app->state;
+    s.decisions().click_fill(s.search_graph(), s.chart()->settings, s.history().current().windows,
+                             act_tick, s.history().generation());
+    return wait_for_edit(ctx);
+}
+
+std::string long_song_notes() {
+    return corpus::root() + "/common/IB24/T5/Symphony X - Set the World on Fire/notes.chart";
+}
+
+std::string any_ref(const std::string& label) { return "**/" + label; }
+
+std::string fill_ref(int64_t tick) { return any_ref(hydra::ui::timeline_fill_id(tick)); }
+
+std::string choice_ref(int64_t tick) { return any_ref("##choice_" + std::to_string(tick)); }
+
+void move_off_timeline(ImGuiTestContext* ctx) {
+    ctx->MouseMove(any_ref(hydra::pathbuilder::kShowBestPathLabel).c_str());
+    ctx->Yield(2);
+}
+
+bool click_step(ImGuiTestContext* ctx, size_t index) {
+    Harness& h = harness(ctx);
+    const std::string steps = h.home_ref + "/##side/##steps";
+    ImGuiWindow* window = ctx->WindowInfo(steps.c_str(), ImGuiTestOpFlags_NoError).Window;
+    if (!window) {
+        ctx->LogError("no steps panel at %s", steps.c_str());
+        return false;
+    }
+    ctx->SetRef(window);
+    ctx->ItemClick(("$$" + std::to_string(index) + "/##step").c_str());
+    ctx->Yield(2);
+    return !ctx->IsError();
+}
+
+bool scroll_side_to(ImGuiTestContext* ctx, const std::string& ref) {
+    Harness& h = harness(ctx);
+    const std::string side_ref = h.home_ref + "/##side";
+    ImGuiWindow* side = ctx->WindowInfo(side_ref.c_str(), ImGuiTestOpFlags_NoError).Window;
+    if (!side) {
+        ctx->LogError("no side panel at %s", side_ref.c_str());
+        return false;
+    }
+    const ImGuiTestItemInfo item = ctx->ItemInfo(ref.c_str());
+    if (item.ID == 0) return false;
+    const float delta = side->InnerClipRect.GetCenter().y - item.RectFull.GetCenter().y;
+    ctx->ScrollToY(side->ID, ImClamp(side->Scroll.y - delta, 0.0f, side->ScrollMax.y));
+    ctx->Yield(2);
+    return !ctx->IsError();
+}
+
+bool wait_for_edit(ImGuiTestContext* ctx) {
+    if (!wait_idle(ctx)) return false;
+    ctx->Yield(2);
+    // The edit's frame asked for the new path's ladder and overlay.
+    if (!wait_idle(ctx)) return false;
+    ctx->Yield(2);
+    return true;
+}
+
+}  // namespace pbtest

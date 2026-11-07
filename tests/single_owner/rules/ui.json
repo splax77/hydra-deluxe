@@ -985,6 +985,10 @@
         {
           "file": "tests/test_column_widths.cpp",
           "why": "the column-width rule's fake-font column widths, not an activation row"
+        },
+        {
+          "file": "tests/test_preview_timeline.cpp",
+          "why": "the Path Builder timeline's pinned x positions, not an activation row"
         }
       ],
       "must_match": [
@@ -1013,8 +1017,8 @@
     },
     {
       "question": "How far does a Preview jump or step move, and what do its controls call it?",
-      "owner": "kJumpSeconds and kStepMs in src/ui/preview_tab.cpp",
-      "owner_file": "src/ui/preview_tab.cpp",
+      "owner": "kJumpSeconds and kStepMs in src/ui/preview_panel.h",
+      "owner_file": "src/ui/preview_panel.h",
       "owner_symbol": "kJumpSeconds",
       "date": "2026-10-05",
       "decision": "D53, D54",
@@ -1034,13 +1038,13 @@
       ],
       "owner_lines": [
         {
-          "file": "src/ui/preview_tab.cpp",
-          "line_text": "constexpr int kJumpSeconds = 5;",
+          "file": "src/ui/preview_panel.h",
+          "line_text": "inline constexpr int kJumpSeconds = 5;",
           "why": "kJumpSeconds, the owner"
         },
         {
-          "file": "src/ui/preview_tab.cpp",
-          "line_text": "constexpr int kStepMs = 10;",
+          "file": "src/ui/preview_panel.h",
+          "line_text": "inline constexpr int kStepMs = 10;",
           "why": "kStepMs, the owner"
         }
       ],
@@ -1051,8 +1055,8 @@
     },
     {
       "question": "How big is each Preview overlay box at a scale?",
-      "owner": "overlay_box_sizes and line_height in src/ui/preview_tab.cpp",
-      "owner_file": "src/ui/preview_tab.cpp",
+      "owner": "overlay_box_sizes and line_height in src/ui/preview_panel.cpp",
+      "owner_file": "src/ui/preview_panel.cpp",
       "owner_symbol": "overlay_box_sizes",
       "date": "2026-10-05",
       "decision": "D53, D54",
@@ -1069,25 +1073,26 @@
       ],
       "owner_lines": [
         {
-          "file": "src/ui/preview_tab.cpp",
+          "file": "src/ui/preview_panel.cpp",
           "line_text": "float line_height(float size) { return size * 1.25f; }",
           "why": "line_height, the owner"
         },
         {
-          "file": "src/ui/preview_tab.cpp",
+          "file": "src/ui/preview_panel.cpp",
           "line_text": "s.big_size = s.size * 1.8f;",
           "why": "overlay_box_sizes, the owner"
         },
         {
-          "file": "src/ui/preview_tab.cpp",
+          "file": "src/ui/preview_panel.cpp",
           "line_text": "auto big_line = [](float sz) { return sz * 1.2f; };",
           "why": "overlay_box_sizes, the owner"
         }
       ],
       "scope": [
+        "src/ui/preview_panel.cpp",
         "src/ui/preview_tab.cpp"
       ],
-      "note": "highway_draw.cpp and overlay_layout.cpp have their own factors under J2-8's rows, so only the tab is scanned. Decided by: audit finding R7.18; phase 6 task J3-5 (D53, D54)"
+      "note": "highway_draw.cpp and overlay_layout.cpp have their own factors under J2-8's rows, so only the Preview panel and tab are scanned. Decided by: audit finding R7.18; phase 6 task J3-5 (D53, D54)"
     },
     {
       "question": "When a Preview scene lands or is dropped, what moves with it?",

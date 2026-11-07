@@ -297,7 +297,7 @@ void test_preview_controls(ImGuiTestContext* ctx) {
     IM_CHECK_FLOAT_NEAR_EQ(pc.position_ms(), pc.playback_end_ms(), 0.001);
 }
 
-// The overlay's boxes as drawn, found by the names preview_tab gives them: no
+// The overlay's boxes as drawn, found by the names preview_panel gives them: no
 // box overlaps another or the gauge, and the next-activation box stands under
 // the drain box (D111 item 3) with their right edges lined up and the left
 // column's gap between them. A box not on screen is left out. Returns how
@@ -781,7 +781,7 @@ void test_preview_path_picker(ImGuiTestContext* ctx) {
     }, 30));
     IM_CHECK(pc.position_ms() > 0.0);
     IM_CHECK_STR_EQ(pc.next_act_box().header.c_str(), "Next: activation 1 of 3");
-    IM_CHECK_STR_EQ(pc.next_act_box().notation.c_str(), "3- (163 ms)");
+    IM_CHECK_STR_EQ(pc.next_act_box().notation.c_str(), "3- (163.0 ms)");
     IM_CHECK(pc.next_act_box().detail.rfind("at m32.1.0", 0) == 0);
 }
 
@@ -1039,7 +1039,7 @@ void test_preview_activation_jumps(ImGuiTestContext* ctx) {
 
     pc.seek_ms(0.0);
     IM_CHECK_STR_EQ(pc.next_act_box().header.c_str(), "Next: activation 1 of 3");
-    IM_CHECK_STR_EQ(pc.next_act_box().notation.c_str(), "3- (163 ms)");
+    IM_CHECK_STR_EQ(pc.next_act_box().notation.c_str(), "3- (163.0 ms)");
     IM_CHECK_STR_EQ(pc.next_act_box().detail.c_str(), "at m32.1.0 \xC2\xB7 [Kick - Green cymbal]");
     // The box with its notation line, for a person to look at.
     ctx->Yield(2);

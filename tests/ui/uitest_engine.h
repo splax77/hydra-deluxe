@@ -167,6 +167,9 @@ void idle_frame(ImGuiTestContext* ctx);
 // (EngineHooks::status_line), for substring checks.
 std::string visible_text(Engine& e);
 
+// True when `s` is somewhere in visible_text.
+bool on_screen(Engine& e, const std::string& s);
+
 // A window drawn last frame whose name holds `part`, or nullptr when none
 // was. A part finds child windows too, whose names ImGui mangles.
 ImGuiWindow* window_named(const char* part);
@@ -202,6 +205,25 @@ std::string item_line(const ImGuiTestItemInfo& it, int depth);
 // it, the whole frame.
 bool screenshot(ImGuiTestContext* ctx, const std::string& file, std::string* saved_to = nullptr,
                 const ImRect* crop = nullptr);
+
+// A GUI test runner's command line, read one flag at a time. Every runner's
+// main reads its flags through it, so a flag's value is found one way.
+class ArgReader {
+public:
+    // `args` as hydra::utf8_argv gives them: the program's path first.
+    explicit ArgReader(std::vector<std::string> args);
+    // Moves to the next flag. False once none is left.
+    bool next();
+    // The flag next moved to.
+    const std::string& flag() const;
+    // Takes the argument after the flag into `out`. False when the flag is
+    // the last argument, which the runner reads as a usage error.
+    bool value(std::string& out);
+
+private:
+    std::vector<std::string> args_;
+    size_t at_ = 0;  // the flag's index; 0 before the first next
+};
 
 // Escape '/' and '#' in a label so it can be used as one path segment of an
 // ImGuiTestRef ("**/" + escape(title)).

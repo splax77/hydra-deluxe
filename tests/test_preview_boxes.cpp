@@ -972,12 +972,12 @@ TEST_CASE("next activation box: the notation line is the activation's own, heade
 
     // One with a SqIn shows the "+" and its timing.
     a.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 100.0});
-    CHECK(box_for(a).notation == "0+ (100 ms)");
+    CHECK(box_for(a).notation == "0+ (100.0 ms)");
 
     // An e-critical one (TwoActs' first) leads with the E and its timing.
     TwoActs t;
     const PreviewNextActBox e = next_act_box_at(t.scene, 0.0, true);
-    CHECK(e.notation == "E0 (0 ms)");
+    CHECK(e.notation == "E0 (0.0 ms)");
     CHECK(e.notation == t.path.activations[0].notationstr_verbose());
     CHECK(e.header == "Next: activation 1 of 2");
     CHECK(e.detail == "at m2.1.0 " + kDot + " [Red snare]");

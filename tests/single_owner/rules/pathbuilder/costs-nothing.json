@@ -1,0 +1,35 @@
+{
+  "rules": [
+    {
+      "question": "Does a fill or an end choice cost nothing, so the Path Builder calls it \"best\"?",
+      "owner": "app::costs_nothing in src/app/path_costs.cpp, the one test for a cost that loses nothing",
+      "owner_file": "src/app/path_costs.cpp",
+      "owner_symbol": "costs_nothing",
+      "date": "2026-10-30",
+      "decision": "docs/superpowers/plans/2026-10-30-path-builder-redesign.md (removed; git show 307d0b5c:docs/superpowers/plans/2026-10-30-path-builder-redesign.md), \"Engine truth\": the best next fill always costs 0; found by the PB-5 review",
+      "added_by": "PB-5-REVIEW",
+      "anchor": "cost",
+      "pattern": "\\bcosts?(?:\\[\\w+\\])?\\s*(?:<=|>)\\s*0\\b",
+      "must_match": [
+        "if (c.cost > 0) continue;",
+        "c.act_tick, c.cost <= 0 ? std::string(kBestFillLabel) : app::format_cost(c.cost),",
+        "label += costs[e] <= 0 ? std::string(kBestFillLabel) : app::format_cost(costs[e]);",
+        "if (numbers->cost <= 0) {"
+      ],
+      "must_not_match": [
+        "if (cost < 0)",
+        "if (cost == 0) return CostTier::Green;",
+        "if (app::costs_nothing(c.cost)) return &c;",
+        "const int64_t cost = best - f;"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/app/path_costs.cpp",
+          "line_text": "bool costs_nothing(int64_t cost) { return cost <= 0; }",
+          "why": "costs_nothing, the owner"
+        }
+      ],
+      "note": "Whether a choice loses nothing is asked once, in costs_nothing; the screen's \"best\" labels, its best-fill lookups and pb_text's cost label and fill card line all call it. cost_tier's own throw on a negative cost and its test for exactly 0 are the tier rule, not this question, and the pattern does not match them."
+    }
+  ]
+}

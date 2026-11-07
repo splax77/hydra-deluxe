@@ -62,6 +62,8 @@ struct PathSummary {
     std::optional<int64_t> score;
     std::optional<int> actcount;
     std::optional<int> maxskip;
+    // The engine's figure, sign included (path_row_of); shown_timing applies
+    // the needs-timing rule.
     std::optional<double> hardest_ms;
     std::optional<double> avgmult;
     std::optional<int> notecount;
@@ -191,7 +193,9 @@ struct PathRow {
     int64_t score = 0;
     int actcount = 0;
     int maxskip = 0;
-    std::optional<double> hardest_ms;     // Path::difficulty()
+    // The engine's figure, sign included (path_row_of); shown_timing applies
+    // the needs-timing rule.
+    std::optional<double> hardest_ms;
     std::optional<double> hardest_efill;  // the path's hardest early fill
     double avgmult = 0.0;  // unrounded; format_avg_mult rounds it for display
     int sqin_count = 0;
@@ -208,6 +212,32 @@ struct PathRow {
                sqout_count == other.sqout_count && optimal == other.optimal;
     }
     bool operator!=(const PathRow& other) const { return !(*this == other); }
+};
+
+// A saved path whose hardest figure an older build may have left empty, so
+// the app can replay it and fill the figure in: one record_paths row, as
+// RecordStore::rows_missing_hardest finds it, with the library copy that
+// names its chart (ChartIndex::naming).
+struct MissingHardestRow {
+    // The row's key: its chart, the profile row it is filed under, its rank.
+    std::string song_id;
+    int64_t profile_id = 0;
+    int rank = 1;
+    // The row's own columns a replay is checked against.
+    std::string path;  // the pathstring
+    int64_t score = 0;
+    int sqin_count = 0;
+    int sqout_count = 0;
+    // The naming copy's chart file and the signature the scan saved for it.
+    std::string notespath;
+    std::string sig;
+};
+
+// One figure RecordStore::set_hardest writes: the engine's figure for the
+// path at `rank`.
+struct HardestFigure {
+    int rank = 1;
+    double hardest_ms = 0.0;
 };
 
 // One record: a chart's saved result under one profile.
@@ -511,6 +541,34 @@ public:
     // record is not counted.
     int64_t record_count();
 
+    // ---- the saved hardest figure (PathRow::hardest_ms) -----------------
+    //
+    // An older build left a path's figure empty where this build saves the
+    // engine's figure. The app fills those rows in once per profile by
+    // replaying their saved paths. The store only says which rows, writes
+    // what the app found and keeps the marker that the fill has run; it
+    // reads no chart.
+
+    // The rows the fill replays under `profile`: every Ready path row with
+    // no saved figure and at least one squeeze-in, whose chart the library
+    // lists. In chart, profile row and rank order. A profile the store holds
+    // no Ready row for has none.
+    std::vector<MissingHardestRow> rows_missing_hardest(const Profile& profile);
+    // Writes `figures` onto chart `song_id`'s path rows under profile row
+    // `profile_id` (MissingHardestRow's key), in one transaction, so a stop
+    // between calls leaves whole charts done. A row that already holds a
+    // figure keeps it, and a rank the record lacks changes nothing.
+    void set_hardest(const std::string& song_id, int64_t profile_id,
+                     const std::vector<HardestFigure>& figures);
+    // Whether the fill has run for `profile`: every Ready profile row of it
+    // carries the marker mark_hardest_figure_filled writes. True when it has
+    // no Ready profile row, since then there is nothing to fill.
+    bool hardest_figure_filled(const Profile& profile);
+    // Marks every Ready profile row of `profile` as filled, in one
+    // transaction. The marker is a meta row in the file, so it survives a
+    // reopen.
+    void mark_hardest_figure_filled(const Profile& profile);
+
     // ---- chart library (scan results) ----------------------------------
 
     // Replaces the whole library with `items`: a scan always fully
@@ -644,6 +702,9 @@ private:
     // or rules: what lookup is asked about to list the Ready ones. The
     // caller holds the lock.
     std::vector<std::string> candidate_song_ids(const Profile& want);
+    // The ids of the profile rows a record is filed under, at `want`'s mode,
+    // cap and lens, that rank_row reads as Ready. The caller holds the lock.
+    std::vector<int64_t> ready_profile_ids(const Profile& want);
     // The id of the profile row for these settings, stamp and rules
     // fingerprint (the rules_fp column's bytes), inserted when there is none.
     // The caller holds the lock and an open transaction.

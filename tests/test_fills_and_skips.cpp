@@ -1,7 +1,8 @@
 // Fills the search spawns, passes over or refuses: a later-ready path that an
 // upcoming fill still spawns for, and the skipped fills each activation
-// stores under the 1.0 and 1.1 deadline rules. The deadline math itself is
-// pinned in test_fill_deadline.cpp.
+// stores under the 1.0 and 1.1 deadline rules, and the fills a path passed
+// over after its last activation. The deadline math itself is pinned in
+// test_fill_deadline.cpp.
 
 #include "doctest.h"
 
@@ -13,7 +14,9 @@
 
 #include "app/analysis.h"
 #include "app/config.h"
+#include "app/preview_view.h"
 #include "core/model.h"
+#include "core/timing.h"
 #include "core/replay.h"
 #include "core/scoring.h"
 #include "corpus_util.h"
@@ -173,3 +176,153 @@ TEST_CASE("Skipped fills: every corpus root passes over real fills in order") {
     }
     CHECK(skipped > 100);  // a floor the user approved (D43)
 }
+
+// ---- the fills a path passed over after its last activation -------------
+// Path::trailing_skipped_fill_ticks. No corpus record at the app's default
+// settings lists any (its best paths spend what they bank), so the corpus
+// cases read the top 40 scores at cap 4 (test::scores_settings), where
+// lower-scoring paths do leave fills behind.
+
+namespace {
+
+// The bars the Preview's meter holds at a chart tick: sp_meter_bars_at over
+// the scene the path draws.
+double bars_at(const app::PreviewScene& scene, const Song& song, int64_t tick) {
+    return app::sp_meter_bars_at(scene.sp_meter, song.timecode(tick).ms());
+}
+
+bool is_scene_fill(const app::PreviewScene& scene, int64_t tick) {
+    return std::any_of(scene.fills.begin(), scene.fills.end(),
+                       [tick](const app::PreviewFill& f) { return f.chord_tick == tick; });
+}
+
+// Each listed tick comes after the path's last activation, in chart order,
+// is a fill in the scene, and the meter there holds at least
+// kSpActivationBars.
+void check_trailing(const Song& song, const Path& p, int sp_cap, const core::Rules& rules) {
+    const ActivationWalk walk = p.walk_activations();
+    const int64_t last_act = walk.size() > 0 ? walk[walk.size() - 1].timecode.ticks() : -1;
+    const app::PreviewScene scene = app::build_preview_scene(song, &p, sp_cap, rules);
+    const std::vector<int64_t>& listed = p.trailing_skipped_fill_ticks;
+    for (size_t k = 0; k < listed.size(); ++k) {
+        const int64_t t = listed[k];
+        CAPTURE(t);
+        CHECK(t > last_act);
+        if (k > 0) CHECK(t > listed[k - 1]);
+        CHECK(is_scene_fill(scene, t));
+        CHECK(bars_at(scene, song, t) >= kSpActivationBars);
+    }
+}
+
+}  // namespace
+
+TEST_CASE("trailing fills: a corpus path lists the fills after its last activation that the meter allows") {
+    const app::AnalysisSettings cfg = test::scores_settings(4);
+
+    // One chart pinned from one run: the highest-ranked path that lists any
+    // activates once, at 123838, and passes two fills after that window.
+    const std::string chart = corpus::chart_named("Hail The Sun - Missed Injections");
+    REQUIRE_FALSE(chart.empty());
+    const Song& song = corpus::song(chart, cfg.reading(), cfg.rules);
+    const Path* first = nullptr;
+    for (const Path* p : corpus::analyzed(chart, cfg).all_paths())
+        if (!p->trailing_skipped_fill_ticks.empty()) {
+            first = p;
+            break;
+        }
+    REQUIRE(first != nullptr);
+    CHECK(first->pathstring() == "3");
+    CHECK(test::act_ticks(*first) == std::vector<int64_t>{123838});
+    CHECK(first->trailing_skipped_fill_ticks == std::vector<int64_t>{244800, 281759});
+    check_trailing(song, *first, cfg.sp_cap, cfg.rules);
+
+    // Every corpus path, tied variants included.
+    int listed = 0;
+    for (const std::string& c : corpus::chart_paths()) {
+        const Song& s = corpus::song(c, cfg.reading(), cfg.rules);
+        if (s.is_empty()) continue;
+        for (const Path* p : corpus::analyzed(c, cfg).all_paths()) {
+            if (p->trailing_skipped_fill_ticks.empty()) continue;
+            CAPTURE(c);
+            CAPTURE(p->pathstring());
+            listed += static_cast<int>(p->trailing_skipped_fill_ticks.size());
+            check_trailing(s, *p, cfg.sp_cap, cfg.rules);
+        }
+    }
+    CHECK(listed > 0);
+}
+
+TEST_CASE("trailing fills: a path whose last window outlasts the chart lists none") {
+    // Its Star Power is still running at the chart's last note, so no fill
+    // after its last activation was passed over. Every such corpus path.
+    const app::AnalysisSettings cfg = test::scores_settings(4);
+    int outlasting = 0, with_fills_after = 0;
+    for (const std::string& chart : corpus::chart_paths()) {
+        const Song& song = corpus::song(chart, cfg.reading(), cfg.rules);
+        if (song.is_empty()) continue;
+        const int64_t last_note = song.sequence.back().timecode.ticks();
+        for (const Path* p : corpus::analyzed(chart, cfg).all_paths()) {
+            const ActivationWalk walk = p->walk_activations();
+            if (walk.size() == 0) continue;
+            const Activation& last = walk[walk.size() - 1];
+            if (last.deact_tick().value_or(0) <= last_note) continue;
+            ++outlasting;
+            CAPTURE(chart);
+            CAPTURE(p->pathstring());
+            CHECK(p->trailing_skipped_fill_ticks.empty());
+            if (std::any_of(song.sequence.begin(), song.sequence.end(), [&](const SongTimestamp& ts) {
+                    return ts.activation_length.has_value() &&
+                           ts.timecode.ticks() > last.timecode.ticks();
+                }))
+                ++with_fills_after;
+        }
+    }
+    MESSAGE("outlasting paths " << outlasting << ", with fills after the last activation "
+                                << with_fills_after);
+    CHECK(outlasting > 0);
+    // Some of them run over fills of the chart's own, which the list must
+    // not hold either.
+    CHECK(with_fills_after > 0);
+}
+
+TEST_CASE("trailing fills: a full pin of a corpus path agrees with the free search") {
+    const app::AnalysisSettings cfg = test::scores_settings(4);
+    int compared = 0;
+    for (const std::string& chart : corpus::chart_paths()) {
+        const Song& song = corpus::song(chart, cfg.reading(), cfg.rules);
+        if (song.is_empty()) continue;
+        for (const Path* p : corpus::analyzed(chart, cfg).all_paths()) {
+            if (p->trailing_skipped_fill_ticks.empty()) continue;
+            CAPTURE(chart);
+            CAPTURE(p->pathstring());
+            const TargetResult t = search_target(song, cfg, pinned_windows(*p));
+            REQUIRE(t.paths.size() == 1);
+            ++compared;
+            CHECK(t.paths[0].trailing_skipped_fill_ticks == p->trailing_skipped_fill_ticks);
+        }
+    }
+    CHECK(compared > 0);
+}
+
+TEST_CASE("trailing fills: the path with no activation lists every fill the meter allows") {
+    // The empty path of the Path Builder's start: search_target over no
+    // windows declines every fill.
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    const std::string chart = corpus::chart_named("Allister - Overrated");
+    REQUIRE_FALSE(chart.empty());
+    const Song& song = corpus::song(chart, cfg.reading(), cfg.rules);
+    const TargetResult t = search_target(song, cfg, std::vector<PinnedWindow>{});
+    REQUIRE(t.paths.size() == 1);
+    const Path& empty = t.paths[0];
+    CHECK(empty.walk_activations().size() == 0);
+    // Eight of the chart's nine fills, pinned from one run.
+    CHECK(empty.trailing_skipped_fill_ticks ==
+          std::vector<int64_t>{55680, 71040, 90240, 105600, 120960, 136320, 151680, 167040});
+    check_trailing(song, empty, cfg.sp_cap, cfg.rules);
+    // The one it does not list, at 36480, comes with one bar saved.
+    const app::PreviewScene scene = app::build_preview_scene(song, &empty, cfg.sp_cap, cfg.rules);
+    REQUIRE(scene.fills.size() == 9);
+    CHECK(scene.fills[0].chord_tick == 36480);
+    CHECK(bars_at(scene, song, 36480) < kSpActivationBars);
+}
+

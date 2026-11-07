@@ -18,6 +18,26 @@ namespace corpus {
 // testdata/input, the chart corpus.
 inline std::string root() { return HYDRA_INPUT_DIR; }
 
+// Green Day - Burnout's notes.mid in the corpus: the real song the GUI tests
+// open, quick to analyze at the scratch settings' depth.
+inline std::string burnout_notes() {
+    return root() + "/common/Summer Blast _25 Setlist/Tier 4/Green Day - Burnout/notes.mid";
+}
+
+// August Burns Red - White Washed's notes.mid in the corpus: its best path
+// has a squeeze tighter than the GUI tests' 10 ms Path limit.
+inline std::string white_washed_notes() {
+    return root() + "/common/IB24/T5/August Burns Red - White Washed/notes.mid";
+}
+
+// Smash Mouth - I'm A Believer's notes.chart in the corpus: its best path's
+// second activation can end two ways, with a squeeze-in or a squeeze-out on
+// the Star Power end.
+inline std::string believer_notes() {
+    return root() +
+           "/common/IB24/T1/Smash Mouth - I_m A Believer (The Monkees cover) [highfine]/notes.chart";
+}
+
 // testdata, the fixtures folder that holds the corpus. A target that leaves
 // HYDRA_TESTDATA_DIR out (CMakeLists.txt says which) gets no testdata_root(),
 // so a caller there fails to compile.

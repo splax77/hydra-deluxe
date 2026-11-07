@@ -43,7 +43,7 @@
           "why": "the number in an activation's circle stays centred (answer 9)"
         },
         {
-          "file": "src/ui/preview_tab.cpp",
+          "file": "src/ui/preview_panel.cpp",
           "line_text": "const float half_text = ImGui::CalcTextSize(key).x * 0.5f;",
           "why": "the Preview's key-cap letters stay centred (answer 9)"
         }

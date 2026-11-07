@@ -60,11 +60,11 @@ The sections below explain each difference.
 
 **Best all-0 path** is the best path that activates at the first chance every time, with no skips. An early fill it lets pass (an E1) doesn't count as a skip. Every squeeze and early fill on it is 0 ms or easier.
 
-**The Preview tab is new.** It plays the chart as a 3D note highway in time with the song's audio, including the audio inside `.srb` bundles. It draws the chosen path on the highway: the Star Power windows, the fills you'd see, a running score, an SP meter and an SP drain timer. During a solo, a solo box like Clone Hero's shows how much of it you have hit. Under the score, a row of seven stars fills in as you earn them, and a line says how many points the next star needs. A box on the highway shows the next activation in path notation with its timings, like `5+ (100 ms)`. The highway itself is a port of Onyx's drum previewer.
+**The Preview tab is new.** It plays the chart as a 3D note highway in time with the song's audio, including the audio inside `.srb` bundles. It draws the chosen path on the highway: the Star Power windows, the fills you'd see, a running score, an SP meter and an SP drain timer. During a solo, a solo box like Clone Hero's shows how much of it you have hit. Under the score, a row of seven stars fills in as you earn them, and a line says how many points the next star needs. A box on the highway shows the next activation in path notation with its timings, like `5+ (100.0 ms)`. The highway itself is a port of Onyx's drum previewer.
 
 ![The Preview tab for Burnout, stopped at its first activation](images/preview-tab.png)
 
-*The Preview stopped at Burnout's first activation. The box on the highway shows `3- (163 ms)`, and the SP meter runs up the right edge.*
+*The Preview stopped at Burnout's first activation. The box on the highway shows `3- (163.0 ms)`, and the SP meter runs up the right edge.*
 
 **The Dynamics tab is new.** It counts ghost and accent notes per pad and for kicks. It also says whether the chart has dynamics turned on, since Clone Hero ignores them in a MIDI chart that doesn't opt in.
 

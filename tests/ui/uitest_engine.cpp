@@ -12,6 +12,7 @@
 #include <cstring>
 #include <filesystem>
 #include <thread>
+#include <utility>
 
 #include "imgui.h"
 #include "imgui_impl_dx11.h"
@@ -287,6 +288,10 @@ std::string visible_text(Engine& e) {
     return s;
 }
 
+bool on_screen(Engine& e, const std::string& s) {
+    return visible_text(e).find(s) != std::string::npos;
+}
+
 namespace {
 
 // The drawn items under `parent` at every depth (-1), because items inside
@@ -451,6 +456,22 @@ std::string escape_ref(const std::string& label) {
         out += c;
     }
     return out;
+}
+
+ArgReader::ArgReader(std::vector<std::string> args) : args_(std::move(args)) {}
+
+bool ArgReader::next() {
+    return ++at_ < args_.size();
+}
+
+const std::string& ArgReader::flag() const {
+    return args_[at_];
+}
+
+bool ArgReader::value(std::string& out) {
+    if (at_ + 1 >= args_.size()) return false;
+    out = args_[++at_];
+    return true;
 }
 
 }  // namespace uitest
