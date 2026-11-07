@@ -1027,7 +1027,7 @@ std::vector<std::string> disco_candidates(char b) {
 
 }  // namespace
 
-TEST_CASE(".chart: disco markers match the regexes they replaced") {
+TEST_CASE(".chart: disco markers match the pinned tables") {
     int checked = 0;
     for (int byte = 0; byte < 256; ++byte) {
         const char b = static_cast<char>(byte);
@@ -1054,7 +1054,7 @@ TEST_CASE(".chart: disco markers match the regexes they replaced") {
     CHECK(checked > 4000);
 }
 
-TEST_CASE(".mid: disco markers match the regexes they replaced") {
+TEST_CASE(".mid: disco markers match the pinned tables") {
     using namespace testmidi;
     int checked = 0;
     for (int byte = 0; byte < 256; ++byte) {
@@ -1084,7 +1084,7 @@ TEST_CASE(".mid: disco markers match the regexes they replaced") {
     CHECK(checked > 4000);
 }
 
-TEST_CASE(".chart: section headers are found as the regex found them") {
+TEST_CASE(".chart: section headers are found as the pinned table says") {
     // The first line outside a section must hold a `[name]`. No header throws
     // ChartFileError; a header that is not [Song] leaves the chart without its
     // [Song] section, which is also a ChartFileError (no Resolution). Each
@@ -1328,7 +1328,7 @@ void check_edge_files(const std::string& expected_name, const app::BatchRun& run
 
 }  // namespace
 
-TEST_CASE("the crafted edge files parse as the old readers did") {
+TEST_CASE("the crafted edge files parse to their pinned lines") {
     SUBCASE("Expert, Pro Drums, 2x Bass") {
         check_edge_files("expected_expert.tsv", edge_run("Expert", true, true));
     }

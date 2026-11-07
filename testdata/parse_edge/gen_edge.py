@@ -9,7 +9,7 @@ The expected digests beside them (expected_expert.tsv, expected_hard.tsv) were
 first captured from the readers as they stood before P1, with hydra_bench
 --parse. Later changes to the readers or the digest re-pinned some lines; git
 log on the two files says which and why. tests/test_song_parse.cpp reads them back
-("the crafted edge files parse as the old readers did").
+("the crafted edge files parse to their pinned lines").
 
     py testdata/parse_edge/gen_edge.py
 """
