@@ -1,4 +1,4 @@
-"""Step 2, task 8: the measured hit-window cap and floor have one home.
+"""The measured hit-window cap and floor have one home.
 
 constants.py holds them with their evidence; the probe scripts read them.
 No game needed: the committed poll_windows.csv is the measurement.

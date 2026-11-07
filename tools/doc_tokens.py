@@ -6,7 +6,7 @@ only and never calls git; whether a name exists is the caller's question.
 
 The interface:
   tokens(text)        -> list of Token(line, text, backticked), in document order
-  shape(token_text)   -> "commit", "branch", "path", "function" or None
+  shape(t)            -> "commit", "branch", "path", "function" or None
   is_commit, is_branch_shape, is_path, is_function: the four shape tests shape() uses
   strip_line_ref(t)   -> the path part of a token such as "src/a.cpp:142"
   function_name(t)    -> the one identifier to search for in a function token

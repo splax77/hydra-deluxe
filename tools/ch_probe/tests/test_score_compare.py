@@ -293,8 +293,8 @@ def _load_text(text):
 
 
 class PressLogHeaderTest(unittest.TestCase):
-    """Hand-written logs: the six-column header written before the kit press,
-    today's ten-column one, and headers that are neither."""
+    """Hand-written logs: each header load_press_log accepts, and headers it
+    refuses."""
 
     def test_a_six_column_log_loads_with_blank_kit_fields(self):
         rows = _load_text(
@@ -338,11 +338,11 @@ class PressLogHeaderTest(unittest.TestCase):
 
     def test_other_headers_are_refused(self):
         for header in (
-            # the six old names in another order
+            # the six-column header's names in another order
             "chart_ms,index,clock_ms_at_press,score_before,score_after,hit",
-            # the old six plus only the first kit column
+            # the six-column header plus only the first kit column
             "index,chart_ms,clock_ms_at_press,score_before,score_after,hit,down_frame",
-            # the old header short one column
+            # the six-column header short one column
             "index,chart_ms,clock_ms_at_press,score_before,score_after",
             # the kit columns in another order
             "index,chart_ms,clock_ms_at_press,score_before,score_after,hit,"

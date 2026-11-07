@@ -153,7 +153,8 @@ def other_repos(text, main):
     return by_line
 
 
-# ---- Looking a name up. Each returns (where, repo, path for CHANGED SINCE) or None.
+# ---- Looking a name up. Each find_ function returns (where, path for CHANGED SINCE) or
+# None; look_up adds the repo.
 
 def find_commit(repo, t):
     full = repo.commit(t)
