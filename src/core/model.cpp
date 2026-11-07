@@ -429,8 +429,8 @@ SqueezeAdvice squeeze_advice(const Chord& chord, int combo) {
     return advice;
 }
 
-// "[YellowCym] and [BlueCym]": each note as its own one-note chord, named in
-// the Pro Drums setting's words (Chord::rowstr).
+// "[Yellow cymbal] and [Blue cymbal]": each note as its own one-note chord,
+// named in the Pro Drums setting's words (Chord::rowstr).
 std::string joined_notes(const std::vector<ChordNote>& notes, bool pro) {
     std::string joined;
     for (const ChordNote& note : notes) {
@@ -522,8 +522,9 @@ std::optional<double> Activation::difficulty() const {
     return h->ms;
 }
 
-// D51 call 4 and D302: hardest() only names a timing that needs hitting, so
-// difficulty() is empty exactly when there is nothing to time.
+// D51 call 4 and D302: hardest() only names a timing that needs hitting, and
+// difficulty() leaves out an optional early fill. So this is false with nothing
+// to time, and false too when an optional early fill is all hardest() names.
 bool Activation::needs_timing() const { return difficulty().has_value(); }
 
 bool Activation::within_ms_limit(double limit_ms) const {
@@ -690,8 +691,8 @@ bool Path::is_difficult() const {
 }
 
 // ---- the SP-end history's readers -----------------------------------------
-// Each one reads sp_end_steps and nothing else (R1). An empty list (a
-// hand-built activation) gives "unset", never a guess.
+// Each one reads the history from sp_end_steps and no other field. An empty
+// list (a hand-built activation) gives "unset", never a guess.
 
 std::optional<int64_t> Activation::deact_tick() const {
     if (sp_end_steps.empty()) return std::nullopt;
@@ -759,7 +760,8 @@ int64_t Activation::refill_tick(size_t step_index) const {
 }
 
 // The note whose timing moves the final SP end D: the latest Clamped step,
-// else the activation (D1). Unset when the history is empty (old records).
+// else the activation (D1). Unset when the history is empty (a hand-built
+// activation).
 std::optional<int64_t> Activation::deact_anchor_tick() const {
     if (sp_end_steps.empty()) return std::nullopt;
     return end_anchor_tick(sp_end_steps.size() - 1);

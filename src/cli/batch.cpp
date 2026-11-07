@@ -1,5 +1,4 @@
 // hydra_batch — batch-analyze many charts straight into the record store.
-// The C++ port of hydra_batch.py.
 //
 //     hydra_batch --whole-library    # every folder in the app's settings; saves the scan as the library
 //     hydra_batch <folder> [...]     # specific folders instead; the library is left alone
@@ -14,12 +13,12 @@
 //
 // Reads difficulty / pro drums / 2x bass / depth / SP cap from the app's
 // settings INI (app/config.h), so results match what the app would produce
-// for the same songs. Safe to interrupt and re-run: charts already stored for
-// the current chartmode and SP cap are skipped unless --redo is given.
+// for the same songs. Safe to interrupt and re-run: a chart that already has a
+// result is skipped unless --redo is given (RecordStore::settled_song_ids
+// decides what counts).
 //
-// Unlike the Python version this analyzes charts across a thread pool (the
-// same pool the GUI's "Analyze library" uses), so lines can complete out of
-// chart-discovery order.
+// Charts are analyzed across a thread pool (the same pool the GUI's "Analyze
+// library" uses), so lines can complete out of chart-discovery order.
 //
 // Which charts a run reads is hydra::cli::batch_scope's answer (batch_scope.h).
 
@@ -50,9 +49,9 @@
 
 namespace {
 
-// Codepoint-safe prefix of a UTF-8 string, mirroring Python's label[:n] which
-// slices characters, not bytes. Multi-byte sequences count as one column —
-// close enough for console alignment.
+// Codepoint-safe prefix of a UTF-8 string: it slices characters, not bytes.
+// Multi-byte sequences count as one column — close enough for console
+// alignment.
 std::string clip_utf8(const std::string& s, size_t max_chars) {
     size_t chars = 0, i = 0;
     while (i < s.size() && chars < max_chars) {
@@ -155,7 +154,7 @@ int batch_main() {
 
     // The scan and the plan it makes. The rescan cache and the scan's list are
     // read only here, so they go when this returns, before the first chart is
-    // analyzed (memory audit fix 4); the plan keeps its own copy of each item.
+    // analyzed; the plan keeps its own copy of each item.
     const hydra::app::BatchPlan plan = [&] {
         std::printf("\nDiscovering charts...\n");
         // The last library scan, if this database has one. A chart whose files
