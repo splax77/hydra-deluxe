@@ -12,10 +12,12 @@ import contextlib
 import csv
 import dataclasses
 import io
+import math
 import os
 import struct
 import sys
 import tempfile
+import time
 import unittest
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -91,6 +93,112 @@ class DecodeSnapshotTest(unittest.TestCase):
         names = {f.name for f in dataclasses.fields(engine.Snapshot)}
         self.assertEqual(
             [c for c in WATCH_COLUMNS if c not in names], ["wall_s"])
+
+
+PLAYER = 0x3_0000_2000
+MANAGER = 0x3_0000_3000
+CLOCK = 0x3_0000_4000
+
+
+def clock_memory(*, listener=PLAYER, manager=MANAGER, clock=CLOCK):
+    """Fake memory holding the walk from the engine to the clock object, with
+    known values at the clock's fields. The offsets are written as literals
+    so the test also pins constants.py. The correction is a float in the game
+    (dump.cs), and 0.25 is exact at that width."""
+    block = bytearray(sp_block())
+    struct.pack_into("<Q", block, 0x1A0, listener)
+    player = bytearray(0x28)
+    struct.pack_into("<Q", player, 0x20, manager)
+    game = bytearray(0xB8)
+    struct.pack_into("<Q", game, 0xB0, clock)
+    sync = bytearray(0x40)
+    struct.pack_into("<f", sync, 0x18, 0.25)
+    struct.pack_into("<d", sync, 0x20, 12.75)
+    struct.pack_into("<d", sync, 0x38, 12.5)
+    return {OBJ: bytes(block), PLAYER + 0x20: bytes(player[0x20:]),
+            MANAGER + 0xB0: bytes(game[0xB0:]), CLOCK: bytes(sync)}
+
+
+def model_on(memory):
+    """An EngineModel on `memory` and the fake memory that records its reads."""
+    proc, mem = fakes.fake_process(memory, BASE, consts=GOOD_CONSTS)
+    model = engine.EngineModel(proc)
+    model.use_object(OBJ)
+    return model, mem
+
+
+class ClockColumnsTest(unittest.TestCase):
+    def test_the_walk_reads_the_three_clock_fields(self):
+        snap = model_on(clock_memory())[0].snapshot()
+        self.assertEqual((snap.audio_s, snap.raw_s, snap.corr_s),
+                         (12.75, 12.5, 0.25))
+
+    def test_a_sample_costs_three_reads_past_the_engine_block(self):
+        model, mem = model_on(clock_memory())
+        model.snapshot()
+        self.assertEqual(mem.reads, [(OBJ, 0x2E8), (PLAYER + 0x20, 8),
+                                     (MANAGER + 0xB0, 8), (CLOCK, 0x40)])
+
+    def test_the_walk_writes_nothing(self):
+        model, mem = model_on(clock_memory())
+        model.snapshot()
+        self.assertEqual(mem.writes, {})
+
+    def assert_blank(self, snap):
+        self.assertTrue(all(math.isnan(v) for v in
+                            (snap.audio_s, snap.raw_s, snap.corr_s)))
+        self.assertEqual(snap.clock_s, 12.5)
+
+    def test_a_null_at_any_hop_leaves_the_columns_blank(self):
+        for hop in ("listener", "manager", "clock"):
+            with self.subTest(hop=hop):
+                self.assert_blank(
+                    model_on(clock_memory(**{hop: 0}))[0].snapshot())
+
+    def test_a_failed_read_past_the_engine_leaves_the_columns_blank(self):
+        for gone in (PLAYER + 0x20, MANAGER + 0xB0, CLOCK):
+            with self.subTest(gone=hex(gone)):
+                memory = clock_memory()
+                del memory[gone]
+                self.assert_blank(model_on(memory)[0].snapshot())
+
+    def test_a_failed_engine_read_still_raises(self):
+        memory = clock_memory()
+        del memory[OBJ]
+        with self.assertRaises(OSError):
+            model_on(memory)[0].snapshot()
+
+    def test_decoding_the_engine_block_alone_leaves_the_columns_blank(self):
+        snap = engine.decode_snapshot(sp_block())
+        self.assertTrue(math.isnan(snap.audio_s))
+
+    def test_a_blank_clock_does_not_end_the_watch(self):
+        memory = clock_memory()
+        del memory[CLOCK]
+        model, _ = model_on(memory)
+        clock = FakeClock()
+        rows = []
+        summary = sp_watch.watch(model.snapshot, rows.append, now=clock.now,
+                                 sleep=clock.sleep)
+        self.assertEqual(
+            summary.reason,
+            "clock frozen at 12.50 s for over 5 s (song quit or paused)")
+        self.assertEqual(summary.rows, 2)
+
+    def test_the_three_reads_cost_under_a_tenth_of_the_poll(self):
+        samples = 1000
+        with_clock = model_on(clock_memory())[0]
+        without = model_on({OBJ: sp_block()})[0]
+
+        def seconds_per_sample(model):
+            start = time.perf_counter()
+            for _ in range(samples):
+                model.snapshot()
+            return (time.perf_counter() - start) / samples
+
+        # The approved test bound: 10 percent of the poll (the plan's T4).
+        extra = seconds_per_sample(with_clock) - seconds_per_sample(without)
+        self.assertLess(extra, 0.10 * sp_watch.POLL_S)
 
 
 def snap_at(clock_s, **fields):
@@ -268,12 +376,29 @@ class RunTest(unittest.TestCase):
         self.assertEqual(len(table), 3)   # header, first row, final row
         self.assertEqual(table[1][1:], ["12.5", "0", "7680", "4294974976",
                                         "6144", "8589940736", "1", "257", "8",
-                                        "520", "61.25", "1", "0.0"])
+                                        "520", "61.25", "1", "0.0",
+                                        "nan", "nan", "nan"])
         text = out.getvalue()
         self.assertIn("  Rows written: 2\n", text)
         self.assertIn("  Engine: 0x200001000\n", text)
         self.assertIn("  First clock: 12.500 s, last clock: 12.500 s\n", text)
         self.assertIn("clock frozen at 12.50 s", text)
+        self.assertEqual(mem.writes, {})
+
+    def test_a_whole_run_logs_the_clock_columns_in_every_row(self):
+        proc, mem = fakes.fake_process(clock_memory(), BASE, consts=GOOD_CONSTS)
+        clock = FakeClock()
+        code = sp_watch.run(["--out", self.out_csv],
+                            opener=self.opener_for(proc),
+                            find_engine=lambda p: OBJ,
+                            now=clock.now, sleep=clock.sleep, out=io.StringIO())
+        self.assertEqual(code, 0)
+        with open(self.out_csv, newline="", encoding="utf-8") as f:
+            table = list(csv.reader(f))
+        self.assertEqual(table[0][-3:], ["audio_s", "raw_s", "corr_s"])
+        self.assertEqual(len(table), 3)   # header, first row, final row
+        for row in table[1:]:
+            self.assertEqual(row[-3:], ["12.75", "12.5", "0.25"])
         self.assertEqual(mem.writes, {})
 
 

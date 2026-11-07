@@ -5,7 +5,9 @@ writes a CSV row each time anything it logs changes. The columns come from
 overlay_logs.WATCH_COLUMNS; each one except `wall_s` is a field of
 engine.Snapshot, so engine.decode_snapshot is the one place that says where a
 field lives and how wide it is. The Star Power offsets are not yet confirmed
-live (see constants.py), which is what this log is for.
+live (see constants.py), which is what this log is for. The columns from the
+clock object are blank (nan) when the walk to it finds nothing; a blank never
+ends the run.
 
 A row is written only on a change, plus one final row when the run ends. So a
 paused game shows as two rows far apart in wall time with the same clock.

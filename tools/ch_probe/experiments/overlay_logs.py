@@ -33,6 +33,9 @@ WATCH_COLUMNS = (
     "sp_end_s",
     "sp_overflow_u32",
     "hit_time_s",
+    "audio_s",
+    "raw_s",
+    "corr_s",
 )
 
 KEYS_PRESS_COLUMNS = (

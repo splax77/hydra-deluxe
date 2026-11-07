@@ -324,3 +324,25 @@ PROBE_SPACINGS_MS: tuple[float, ...] = (
     30, 50, 100, 150, 180, 185, 190, 195, 205, 211, 220, 240, 300,
 )
 PROBE_CHART_NOTE_KICK = 0
+
+# ---- the walk from the engine to the clock object -----------------------
+# docs/clone-hero/03-timing.md, TM-47, gives the walk and its evidence.
+
+# The engine's listener (pointer). In a played song this is the DrumsPlayer.
+OFF_ENGINE_LISTENER = 0x1A0
+
+# The rest are not OFF_ names: tools/ch_mcp/dump_facts.py reads every OFF_* as
+# a field of the drum engine, and these belong to other classes. Page 3 cites
+# each one under its own class, which is what gives it a facts row.
+
+# BasePlayer.gameManager (pointer).
+PLAYER_OFF_GM = 0x20
+
+# GameManager.sync (pointer): the clock object, class #707.
+GM_OFF_CLOCK = 0xB0
+
+# The clock object's correction (float), audio clock (double) and raw clock
+# (double), all in seconds.
+CLOCK_OFF_CORR = 0x18
+CLOCK_OFF_AUDIO = 0x20
+CLOCK_OFF_RAW = 0x38
