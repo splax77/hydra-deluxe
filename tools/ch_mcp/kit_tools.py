@@ -8,7 +8,8 @@ stay minimized and unfocused; while the kit is set up, the Rewired devices in
 KIT_DEVICES are switched off so the user's own keys and mouse reach no player
 (the plan
 docs/superpowers/plans/2026-10-30-ch-mcp-in-game-input.md, "One agent for the
-kit" and "The tools").
+kit" and "The tools"). Placeholder controllers made before it put the kit on
+KIT_REQUIRED_ID, the one id the game grades hit strength for.
 
 The agent holds none of the kit's numbers. This module owns them: the
 definition, the tag, the player, the elements, the bindings the game's map must
@@ -55,10 +56,30 @@ KIT_MAP_CATEGORY_ID = 1
 KIT_MAP_LAYOUT_ID = 2
 # The tag the kit is created with and found by (the plan's owner table).
 KIT_TAG = "hydra-kit"
-# The Rewired player the kit is handed to when ch_kit_setup names none (the
-# probe: Players are Player1 to Player4). Live step LS-D1 of the plan
-# docs/superpowers/plans/2026-10-31-ch-mcp-direct-start.md decides whether it
-# becomes the System player.
+# The id the kit must hold: the literal the game's velocity gate passes to
+# ContainsController (docs/clone-hero/code/6142/lane_velocity_337E10.asm line
+# 53). Only a custom controller with this id has its hit strength read.
+KIT_REQUIRED_ID = 6
+# How many placeholder controllers setup creates before the kit, from the same
+# literal: ids count up from zero in a launch (block IN-81 of
+# docs/clone-hero/07-internals.md), so this many use up every id below it.
+KIT_PLACEHOLDERS = KIT_REQUIRED_ID
+# Why a second setup in one launch cannot reach KIT_REQUIRED_ID, and what does.
+# Destroying a controller does not move the game's id counter (IN-81).
+NEW_LAUNCH_NOTE = ("only a new launch of the game puts the kit back on id "
+                   f"{KIT_REQUIRED_ID}: a teardown does not reset the game's id "
+                   "counter, so a setup after one gets a higher id "
+                   "(docs/clone-hero/07-internals.md, IN-81); ch_stop, then ch_start")
+KIT_ALREADY_SET_UP = ("the kit is already set up. ch_kit_teardown takes it away, but "
+                      "a setup after that in the same launch is refused, because the "
+                      f"kit would not be on id {KIT_REQUIRED_ID}; "
+                      "start the game again (ch_stop, then ch_start) to set it up again")
+# The tag of a placeholder is this text plus its index. It must not start with
+# KIT_TAG, so a placeholder can never be taken for the kit.
+KIT_PLACEHOLDER_TAG = "hydra-placeholder-"
+# The Rewired player the kit is handed to when ch_kit_setup names none. The
+# user kept Player1 (docs/agents/rulings/clone-hero.md, "Keep Player1"); a
+# human launch passes player="System" to ch_kit_setup.
 KIT_PLAYER = "Player1"
 
 # How long a press holds, counted in the game's frames (the user's answer to
@@ -183,14 +204,26 @@ def parse_items(items: Union[str, Sequence[str]]) -> List[str]:
     return names
 
 
+def placeholder_tags() -> List[str]:
+    """The tag of each placeholder controller, in the order setup makes
+    them."""
+    return [f"{KIT_PLACEHOLDER_TAG}{i}" for i in range(KIT_PLACEHOLDERS)]
+
+
 def setup_message(player: Any) -> dict:
     """The setup message, handing the kit to `player` with the map at
-    KIT_MAP_CATEGORY_ID and KIT_MAP_LAYOUT_ID. The name goes to the agent as
-    given: the agent knows the game's players and refuses a name none of
-    them has."""
+    KIT_MAP_CATEGORY_ID and KIT_MAP_LAYOUT_ID, after the placeholders. The
+    name goes to the agent as given: the agent knows the game's players and
+    refuses a name none of them has."""
     return {"type": "setup", "tag": KIT_TAG, "definition_id": KIT_DEFINITION_ID,
             "player": player, "category_id": KIT_MAP_CATEGORY_ID,
-            "layout_id": KIT_MAP_LAYOUT_ID}
+            "layout_id": KIT_MAP_LAYOUT_ID, "placeholder_tags": placeholder_tags()}
+
+
+def teardown_message() -> dict:
+    """The teardown message. It carries the tags so an agent that holds no
+    setup record can still find the kit and the placeholders."""
+    return {"type": "teardown", "tag": KIT_TAG, "placeholder_tags": placeholder_tags()}
 
 
 def given_player_line(player: Any) -> str:
@@ -395,10 +428,26 @@ def devices_problem(reply: dict) -> Optional[str]:
             "input would still reach the game")
 
 
+def placeholder_ids(reply: dict) -> str:
+    """The setup reply's placeholder ids as text, or "none"."""
+    return ", ".join(str(p.get("id")) for p in reply.get("placeholders") or []) or "none"
+
+
+def kit_id_problem(reply: dict) -> Optional[str]:
+    """Why the setup reply's kit does not hold KIT_REQUIRED_ID, naming the
+    ids the placeholders and the kit got, or None when it does."""
+    kit_id = (reply.get("kit") or {}).get("id")
+    if kit_id == KIT_REQUIRED_ID:
+        return None
+    return (f"refused: the kit is controller {kit_id}, not KIT_REQUIRED_ID "
+            f"{KIT_REQUIRED_ID}; placeholder ids: {placeholder_ids(reply)}\n"
+            f"{NEW_LAUNCH_NOTE}")
+
+
 def setup_lines(reply: dict) -> List[str]:
     """The setup reply as lines: the switch, each KIT_DEVICES device, each
-    player's keyboard and mouse flags before and now, the kit, and each map
-    with its bindings."""
+    player's keyboard and mouse flags before and now, the placeholders, the
+    kit, and each map with its bindings."""
     lines = [f"ignoreInputWhenAppNotInFocus: was {_flag_text(reply.get('switch_was'))}, "
              f"now {_flag_text(reply.get('switch_now'))}"]
     lines.extend(f"{device_label(d)}: was {_flag_text(reply.get(f'{d}_was'))}, "
@@ -409,6 +458,8 @@ def setup_lines(reply: dict) -> List[str]:
         lines.append(f"player {p.get('id')} {p.get('name')}: keyboard was "
                      f"{_flag_text(p.get('has_keyboard'))}, now {_flag_text(n.get('has_keyboard'))}; "
                      f"mouse was {_flag_text(p.get('has_mouse'))}, now {_flag_text(n.get('has_mouse'))}")
+    lines.append(f"placeholders: controllers {placeholder_ids(reply)} "
+                 f"({reply.get('placeholders_created')} created)")
     kit = reply.get("kit") or {}
     lines.append(f"kit: controller {kit.get('id')}, tag {kit.get('tag')}, "
                  f"{'created' if kit.get('created') else 'found already made'}, "
@@ -551,11 +602,12 @@ class KitTools:
     def ch_kit_setup(self, player: Optional[str] = None) -> str:
         """Check the attach and settings.ini, take the backup, attach the kit
         agent, send setup, check with devices_problem that the Rewired
-        devices read off, check with map_problems that the map it read back
-        is the one setup_message names, and check that map's bindings against
-        KIT_BINDINGS. A setup that fails, leaves a device on, reads another
-        map or reads other bindings is torn down again, so nothing is left
-        half done.
+        devices read off, check with kit_id_problem that the kit holds
+        KIT_REQUIRED_ID, check with map_problems that the map it read back is
+        the one setup_message names, and check that map's bindings against
+        KIT_BINDINGS. A setup that fails, leaves a device on, gets another
+        id, reads another map or reads other bindings is torn down again, so
+        nothing is left half done.
 
         `player` names the Rewired player the kit is handed to; None hands
         it to KIT_PLAYER. A given name is sent as is, and the reply's first
@@ -571,7 +623,7 @@ class KitTools:
             if not self._frida.is_attached():
                 return NOT_ATTACHED
             if self._ready and self._agent is not None and self._agent.alive:
-                return "the kit is already set up; call ch_kit_teardown first to set it up again"
+                return KIT_ALREADY_SET_UP
             key = game_files.PAUSE_ON_FOCUS_LOST
             want = game_files.PAUSE_ON_FOCUS_LOST_RUN_VALUE
             try:
@@ -617,6 +669,11 @@ class KitTools:
             devices = devices_problem(reply)
             if devices is not None:
                 lines.append(devices)
+                lines.extend(self._teardown_and_detach())
+                return self._reply(lines)
+            wrong_id = kit_id_problem(reply)
+            if wrong_id is not None:
+                lines.append(wrong_id)
                 lines.extend(self._teardown_and_detach())
                 return self._reply(lines)
             map_wrong = map_problems(reply.get("maps"))
@@ -770,9 +827,10 @@ class KitTools:
             return self._reply(lines)
 
     def ch_kit_teardown(self) -> str:
-        """Clear the kit's elements, remove the kit, give every player back
-        the keyboard and mouse flags setup recorded, put the Rewired devices
-        and the switch back, print each check, and detach the kit agent."""
+        """Clear the kit's elements, remove the kit, destroy it and every
+        placeholder, give every player back the keyboard and mouse flags
+        setup recorded, put the Rewired devices and the switch back, print
+        each check, and detach the kit agent."""
         with self._lock:
             if self._play_running():
                 return PLAY_RUNNING
@@ -780,7 +838,7 @@ class KitTools:
                 return "no kit agent attached; nothing to tear down"
             return self._reply(self._teardown_and_detach())
 
-    def kit_press(self) -> Optional[Callable[[Sequence[int]], dict]]:
+    def kit_press(self) -> Optional[Callable[..., dict]]:
         """The auto-player's kit press, or None when the kit is not set up."""
         with self._lock:
             agent = self._ready_agent()
@@ -835,7 +893,7 @@ class KitTools:
             return lines
         try:
             with self._request_lock:
-                reply = agent.request({"type": "teardown", "tag": KIT_TAG}, KIT_SETUP_CAP_S)
+                reply = agent.request(teardown_message(), KIT_SETUP_CAP_S)
         except FA.ReadFailed as e:
             lines.append(f"kit teardown failed on the request: {e}"
                          f"{self._cap_note(e, 'KIT_SETUP_CAP_S')}")

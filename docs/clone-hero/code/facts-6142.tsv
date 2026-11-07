@@ -23,6 +23,8 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	field	176	SongEntry	checksum		0x38	SongEntry.checksum
 6142	field	282	CliGameLauncher	ʲʻʺʲʴʳʼʷʲʸˀ		0x58	#282+0x58
 6142	field	282	CliGameLauncher	ˀʷʾʸʶʺʴʷʼʿʲ		0x60	#282+0x60
+6142	field	3374	Controller	id		0x10	Controller.id
+6142	field	3552	klsJZEbePNFHOElxoemRqoRxlknQ	cwtjUtrzIezHxRjVXouFZmLpzLQK		0xD0	#3552+0xD0
 6142	field	449	GameManager	audioCal		0x6C	GameManager.audioCal
 6142	field	449	GameManager	isSongOver		0x91	GameManager.isSongOver
 6142	field	449	GameManager	practiceSpeed		0xD8	GameManager.practiceSpeed
@@ -127,13 +129,25 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	method	225	HighwayScroll	Update	0x3818E0		HighwayScroll.Update
 6142	method	282	CliGameLauncher	ʴʾʹʶʺˁʼʳʼʾʹ	0x396110		0x396110
 6142	method	282	CliGameLauncher	ʶʷʶʲʽʼʼʾʿʵʵ	0x3968D0		0x3968D0
+6142	method	3312	qsdBhRHZOfeRWePeZLKTjSjCmcvV	CjniIjbuHWGWWlHZeoWhtgdSSoHS	0x1D496C0		0x1D496C0
+6142	method	3374	Controller	.ctor	0x1D5B0E0		0x1D5B0E0
 6142	method	3374	Controller	get_enabled	0x1D5C350		0x1D5C350
 6142	method	3374	Controller	set_enabled	0x1D5D1F0		0x1D5D1F0
+6142	method	3378	ControllerWithAxes	.ctor	0x1D55F10		0x1D55F10
+6142	method	3380	CustomController	.ctor	0x1D5E790		0x1D5E790
+6142	method	3552	klsJZEbePNFHOElxoemRqoRxlknQ	HQgOxvvsYEtMFsCjKomHFlhyfTBK	0x1EE5440		0x1EE5440
+6142	method	3552	klsJZEbePNFHOElxoemRqoRxlknQ	RsQLIVvYuvrPqXXBkNHGsWqCBgKx	0x1EE67B0		0x1EE67B0
+6142	method	3552	klsJZEbePNFHOElxoemRqoRxlknQ	SSVPDrrdHlXhkbGyYpZORexJyieI	0x1EE6D00		0x1EE6D00
+6142	method	3552	klsJZEbePNFHOElxoemRqoRxlknQ	hJrBWRXUUvuNHxSvSUsdatPpYCOE	0x1EE9800		0x1EE9800
+6142	method	3552	klsJZEbePNFHOElxoemRqoRxlknQ	tjPVPVcaqSnNplMNLGtDhsrMuTYmA	0x1EEB3F0		0x1EEB3F0
 6142	method	3686	Player.ControllerHelper.MapHelper	LoadDefaultMaps	0x1F50710		0x1F50710
 6142	method	3686	Player.ControllerHelper.MapHelper	LoadMap	0x1F508C0		0x1F508C0
 6142	method	3710	Player.ControllerHelper	AddController	0x1F2D2B0		0x1F2D2B0
 6142	method	3711	Player	GetButton	0x1F3B730		0x1F3B730
 6142	method	3711	Player	GetButtonDown	0x1F39540		0x1F39540
+6142	method	3740	ReInput.ControllerHelper	CreateCustomController	0x1D6F9C0		0x1D6F9C0
+6142	method	3740	ReInput.ControllerHelper	CreateCustomController	0x1D6FA80		0x1D6FA80
+6142	method	3740	ReInput.ControllerHelper	DestroyCustomController	0x1D6FC70		0x1D6FC70
 6142	method	443		MoveNext	0xD8D80		0xD8D80
 6142	method	449	GameManager	Awake	0xB41A0		0xB41A0
 6142	method	449	GameManager	Awake	0xB41A0		GameManager.Awake

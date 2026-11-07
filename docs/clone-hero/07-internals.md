@@ -820,6 +820,16 @@ Hydra: no owner: Hydra never reads the running game. The tools' key table is `ME
 Ruling: none needed: no Hydra rule reads it.
 Found: 2026-10-31, session 4c48c8e5, from the manual; no run.
 
+### IN-81 A custom controller's id comes from a counter that destroying a controller does not move
+
+Rule: Rewired gives each new custom controller the number in one counter on its controller manager, then adds one to the counter. Destroying a controller leaves the counter alone, so an id is not handed out twice until the counter is reset or wraps. The counter starts at 0, so with nothing made before it, the seventh custom controller of a launch gets id 6, and a kit set up again in the same launch gets a higher id. Two things can put the counter back to 0: the write at line 47 of the listing, which runs only when the new value reaches 0x7FFFFFFF (about 2.1 billion creates, so never in a launch), and the reset at 0x1EEB716, whose trigger is not known. So "only counts up" holds for a launch only if that reset does not run in it.
+Label: Proven in the game's code
+Evidence: `code/6142/create_custom_controller_1EE9800.asm` lines 42 to 47 read the counter and write it back one higher, and line 74 passes the old value on. `code/6142/create_custom_controller_1EE9800.md` follows that value through the three constructors to `Controller.id`, and gives the search of class #3552 that found no change to the counter on the destroy path. The reset to 0 is at 0x1EEB716 in `0x1EEB3F0`, read with tools/ch_mcp/chdis.py on 2026-11-06 with no listing of its own. The start at 0 fits the saved runs: the kit reads id 0 in `kit-2.jsonl` of ls-d1a-run3, ls-d2b-run1's `kit-2.jsonl` and ls-d2d-run1's `kit-3.jsonl`, under `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\`. No saved log was read for a second controller in one launch, so the count past 0 rests on the code alone until LS-O1a of `docs/superpowers/plans/2026-11-06-optimal-score-run.md` runs.
+Game code (6142): #3552, the controller manager: the create method RVA `0x1EE9800`, the counter `#3552+0xD0`, and the public form RVA `0x1D6F9C0` (`dump.cs` line 309950); `code/6142/create_custom_controller_1EE9800.asm` lines 42 to 47 and 74.
+Hydra: no owner: Hydra never reads the running game. The tools rest on this in `KIT_PLACEHOLDERS` and `KIT_REQUIRED_ID` in tools/ch_mcp/kit_tools.py.
+Ruling: none needed: no Hydra rule reads it.
+Found: 2026-11-06, session 5b92c813.
+
 ## Saved score files
 
 ### IN-55 scoredata.bin keeps one best score per chart and instrument
