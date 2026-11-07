@@ -53,7 +53,7 @@ class Sample:
     clock_ms: float
     window_ms: float
     score: int
-    hit_time_ms: float
+    round_start_ms: float
 
 
 # --- Pure analysis (unit-tested) -------------------------------------------
@@ -203,13 +203,10 @@ def window_report(samples: list[Sample], notes: list[dict]) -> list[str]:
     return lines
 
 
-def hit_time_report(samples: list[Sample], notes: list[dict]) -> list[str]:
-    """Check whether +0x2e0 changes once per hit, next to the note (step 4).
-
-    The name follows OFF_HIT_TIME, whose comment in constants.py says the
-    field is no hit time.
-    """
-    hits = changes(samples, "hit_time_ms")[1:]   # [0] is the starting value
+def round_start_report(samples: list[Sample], notes: list[dict]) -> list[str]:
+    """Check whether +0x2e0 (constants.OFF_ROUND_START) changes once per hit,
+    next to the note (step 4)."""
+    hits = changes(samples, "round_start_ms")[1:]   # [0] is the starting value
     score_rises = sum(1 for a, b in zip(samples, samples[1:])
                       if pressed_input_hit(a.score, b.score))
     lines = ["+0x2e0 against the note times:"]
@@ -230,12 +227,12 @@ def hit_time_report(samples: list[Sample], notes: list[dict]) -> list[str]:
     lines.append(f"  +0x2e0 changed {len(hits)} times; the score rose {score_rises} times.")
     lines.append(f"  |diff|: median {statistics.median(abs(d) for d in diffs):.1f} ms, "
                  f"max {max(abs(d) for d in diffs):.1f} ms")
-    if len(hits) == score_rises and max(abs(d) for d in diffs) <= C.HIT_TIME_MAX_GAP_MS:
+    if len(hits) == score_rises and max(abs(d) for d in diffs) <= C.ROUND_START_MAX_GAP_MS:
         lines.append("  +0x2e0 changed once per hit, within "
-                     f"{C.HIT_TIME_MAX_GAP_MS:g} ms of the note.")
+                     f"{C.ROUND_START_MAX_GAP_MS:g} ms of the note.")
     else:
         lines.append("  +0x2e0 did NOT change once per hit, within "
-                     f"{C.HIT_TIME_MAX_GAP_MS:g} ms of the note; read the rows above.")
+                     f"{C.ROUND_START_MAX_GAP_MS:g} ms of the note; read the rows above.")
     return lines
 
 
@@ -336,10 +333,10 @@ def main() -> None:
                 steps.append(C.s_to_ms(s.clock_s - last_clock))
                 last_clock = s.clock_s
 
-            cur = Sample(C.s_to_ms(s.clock_s), s.window_ms, s.score, C.s_to_ms(s.hit_time_s))
+            cur = Sample(C.s_to_ms(s.clock_s), s.window_ms, s.score, C.s_to_ms(s.round_start_s))
             if (last is None or live.window_changed(cur.window_ms, last.window_ms)
                     or cur.score != last.score
-                    or live.window_changed(cur.hit_time_ms, last.hit_time_ms)):
+                    or live.window_changed(cur.round_start_ms, last.round_start_ms)):
                 samples.append(cur)
                 if last is None or live.window_changed(cur.window_ms, last.window_ms):
                     print(f"  {C.ms_to_s(cur.clock_ms):8.3f} s  window {cur.window_ms:7.2f} ms")
@@ -359,7 +356,7 @@ def main() -> None:
     for line in window_report(samples, notes):
         print(line)
     print()
-    for line in hit_time_report(samples, notes):
+    for line in round_start_report(samples, notes):
         print(line)
 
     os.makedirs(RESULTS_DIR, exist_ok=True)
@@ -368,10 +365,10 @@ def main() -> None:
                                      f"{time.strftime('%Y%m%d_%H%M%S')}.csv")
     with open(path, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
-        w.writerow(["clock_ms", "window_ms", "score", "hit_time_ms"])
+        w.writerow(["clock_ms", "window_ms", "score", "round_start_ms"])
         for s in samples:
             w.writerow([f"{s.clock_ms:.3f}", f"{s.window_ms:.4f}", s.score,
-                        f"{s.hit_time_ms:.3f}"])
+                        f"{s.round_start_ms:.3f}"])
     print(f"\nSamples written to {path}")
 
 

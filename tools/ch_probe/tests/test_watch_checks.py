@@ -17,7 +17,8 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 from tools.ch_probe.experiments import watch_checks as W  # noqa: E402
-from tools.ch_probe.experiments.overlay_logs import WATCH_COLUMNS  # noqa: E402
+from tools.ch_probe.experiments.overlay_logs import (  # noqa: E402
+    WATCH_COLUMNS, WATCH_COLUMNS_WITHOUT_CLOCK)
 
 
 def row(wall_s, clock_s, **fields):
@@ -27,69 +28,69 @@ def row(wall_s, clock_s, **fields):
     return r
 
 
-def hit_rows(hit_time_s):
+def hit_rows(round_start_s):
     """Three rows around a chord at 1000 ms; the middle one changes the
-    +0x2E0 column to `hit_time_s`."""
-    return [row(10.0, 0.95), row(10.05, 1.0, hit_time_s=hit_time_s),
-            row(10.15, 1.1, hit_time_s=hit_time_s)]
+    +0x2E0 column to `round_start_s`."""
+    return [row(10.0, 0.95), row(10.05, 1.0, round_start_s=round_start_s),
+            row(10.15, 1.1, round_start_s=round_start_s)]
 
 
-class HitTimeCheckTest(unittest.TestCase):
+class RoundStartCheckTest(unittest.TestCase):
     def test_a_value_9_ms_from_the_chord_counts(self):
-        lines = W.hit_time_check(hit_rows(1.009), [{"index": 7, "ms": 1000.0}])
+        lines = W.round_start_check(hit_rows(1.009), [{"index": 7, "ms": 1000.0}])
         self.assertEqual(lines[0],
                          "PASS +0x2E0: 1 of 1 chords in the log have "
                          "a +0x2E0 value within 10 ms (0 chords outside the log's "
                          "clock span)")
 
     def test_a_value_11_ms_from_the_chord_does_not(self):
-        lines = W.hit_time_check(hit_rows(1.011), [{"index": 7, "ms": 1000.0}])
+        lines = W.round_start_check(hit_rows(1.011), [{"index": 7, "ms": 1000.0}])
         self.assertTrue(lines[0].startswith("FAIL +0x2E0: 0 of 1 "))
         self.assertEqual(lines[-1],
                          "  chord 7 at 1000.0 ms: +0x2E0 1011.0 ms, +11.0 ms away")
 
     def test_a_value_exactly_10_ms_from_the_chord_counts(self):
-        rows = [row(10.0, 0.95), row(10.05, 0.99, hit_time_s=1.0),
-                row(10.15, 1.1, hit_time_s=1.0)]
-        lines = W.hit_time_check(rows, [{"index": 7, "ms": 990.0}])
+        rows = [row(10.0, 0.95), row(10.05, 0.99, round_start_s=1.0),
+                row(10.15, 1.1, round_start_s=1.0)]
+        lines = W.round_start_check(rows, [{"index": 7, "ms": 990.0}])
         self.assertTrue(lines[0].startswith("PASS"))
 
     def test_a_change_more_than_50_ms_from_the_chord_is_not_searched(self):
-        rows = [row(10.0, 0.9), row(10.05, 1.051, hit_time_s=1.0),
-                row(10.15, 1.1, hit_time_s=1.0)]
-        lines = W.hit_time_check(rows, [{"index": 7, "ms": 1000.0}])
+        rows = [row(10.0, 0.9), row(10.05, 1.051, round_start_s=1.0),
+                row(10.15, 1.1, round_start_s=1.0)]
+        lines = W.round_start_check(rows, [{"index": 7, "ms": 1000.0}])
         self.assertTrue(lines[0].startswith("FAIL"))
         self.assertEqual(lines[-1],
                          "  chord 7 at 1000.0 ms: no +0x2E0 change within 50 ms")
 
     def test_two_close_chords_each_take_their_own_change(self):
-        rows = [row(10.0, 0.95), row(10.05, 1.0, hit_time_s=1.001),
-                row(10.08, 1.03, hit_time_s=1.031),
-                row(10.15, 1.1, hit_time_s=1.031)]
+        rows = [row(10.0, 0.95), row(10.05, 1.0, round_start_s=1.001),
+                row(10.08, 1.03, round_start_s=1.031),
+                row(10.15, 1.1, round_start_s=1.031)]
         chords = [{"index": 1, "ms": 1000.0}, {"index": 2, "ms": 1030.0}]
-        self.assertTrue(W.hit_time_check(rows, chords)[0].startswith(
+        self.assertTrue(W.round_start_check(rows, chords)[0].startswith(
             "PASS +0x2E0: 2 of 2 "))
 
     def test_a_nan_value_held_before_the_hit_is_not_a_change(self):
         nan = float("nan")
-        rows = [row(10.0, 0.9, hit_time_s=nan), row(10.02, 0.93, hit_time_s=nan),
-                row(10.05, 1.0, hit_time_s=1.005),
-                row(10.15, 1.1, hit_time_s=1.005)]
-        lines = W.hit_time_check(rows, [{"index": 7, "ms": 1000.0}])
+        rows = [row(10.0, 0.9, round_start_s=nan), row(10.02, 0.93, round_start_s=nan),
+                row(10.05, 1.0, round_start_s=1.005),
+                row(10.15, 1.1, round_start_s=1.005)]
+        lines = W.round_start_check(rows, [{"index": 7, "ms": 1000.0}])
         self.assertTrue(lines[0].startswith("PASS +0x2E0: 1 of 1 "))
 
     def test_chords_outside_the_log_are_not_judged(self):
         chords = [{"index": 1, "ms": 500.0}, {"index": 2, "ms": 1000.0}]
-        lines = W.hit_time_check(hit_rows(1.009), chords)
+        lines = W.round_start_check(hit_rows(1.009), chords)
         self.assertTrue(lines[0].startswith("PASS"))
         self.assertIn("(1 chords outside the log's clock span)", lines[0])
 
 
 class PauseCheckTest(unittest.TestCase):
     def test_a_2_s_wall_gap_with_a_held_clock_reports_the_span(self):
-        rows = [row(10.0, 5.0), row(10.5, 5.4, hit_time_s=5.39),
-                row(12.5, 5.41, hit_time_s=5.39),
-                row(12.6, 5.5, hit_time_s=5.39)]
+        rows = [row(10.0, 5.0), row(10.5, 5.4, round_start_s=5.39),
+                row(12.5, 5.41, round_start_s=5.39),
+                row(12.6, 5.5, round_start_s=5.39)]
         self.assertEqual(W.pause_check(rows), [
             "PASS pause: wall 10.500 to 12.500 s (2.000 s), clock 5.400 to "
             "5.410 s",
@@ -152,6 +153,15 @@ class FilesTest(unittest.TestCase):
         self.assertTrue(all(math.isnan(got[0][c])
                             for c in ("audio_s", "raw_s", "corr_s")))
         self.assertEqual(W.pause_check(got), ["pause: no pause in this log"])
+
+    def test_a_saved_log_with_the_older_hit_time_s_header_loads(self):
+        old = ["hit_time_s" if c == "round_start_s" else c
+               for c in WATCH_COLUMNS_WITHOUT_CLOCK]
+        values = list(range(len(old)))
+        path = self.write_csv(old, [values])
+        got = W.load_watch_rows(path)
+        self.assertEqual(got[0]["round_start_s"], old.index("hit_time_s"))
+        self.assertNotIn("hit_time_s", got[0])
 
     def test_a_wrong_header_is_refused(self):
         path = self.write_csv(("wall_s", "clock_s"), [[1.0, 2.0]])

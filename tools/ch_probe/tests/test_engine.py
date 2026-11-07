@@ -141,7 +141,7 @@ class TestFieldReads(unittest.TestCase):
             "total": C.OFF_TOTAL_WINDOW,
             "back": C.OFF_BACK_WINDOW,
             "front": C.OFF_FRONT_WINDOW,
-            "hit_time": C.OFF_HIT_TIME,
+            "round_start": C.OFF_ROUND_START,
         }
         doubles = {OBJ + offset_of[k]: v for k, v in field_values.items()}
         eng, proc, dbg, mem = make_engine(object_ptr=OBJ, doubles=doubles)
@@ -160,12 +160,11 @@ class TestFieldReads(unittest.TestCase):
         eng = self._engine_with_fields(front=37.5)
         self.assertEqual(eng.front_window(), 37.5)
 
-    def test_hit_time_reads_off_0x2e0(self):
-        # This pins only where the read lands, whatever the method's name says.
-        # OFF_HIT_TIME's comment in constants.py says what +0x2e0 holds.
-        self.assertEqual(C.OFF_HIT_TIME, 0x2E0)
-        eng = self._engine_with_fields(hit_time=12.34)
-        self.assertEqual(eng.hit_time(), 12.34)
+    def test_round_start_reads_off_0x2e0(self):
+        # OFF_ROUND_START's comment in constants.py says what +0x2e0 holds.
+        self.assertEqual(C.OFF_ROUND_START, 0x2E0)
+        eng = self._engine_with_fields(round_start=12.34)
+        self.assertEqual(eng.round_start(), 12.34)
 
     def test_total_is_twice_back_at_construction(self):
         # Not engine logic, just a sanity check the offsets are distinct fields
@@ -240,7 +239,7 @@ class TestSnapshot(unittest.TestCase):
         struct.pack_into("<I", block, C.OFF_SCORE, 1234)
         struct.pack_into("<d", block, C.OFF_SONG_CLOCK, 12.5)
         struct.pack_into("<I", block, C.OFF_FLAGS, C.PRECISION_MODE_BIT)
-        struct.pack_into("<d", block, C.OFF_HIT_TIME, 12.49)
+        struct.pack_into("<d", block, C.OFF_ROUND_START, 12.49)
         eng, proc, dbg, mem = make_engine(memory={OBJ: bytes(block)})
         eng.use_object(OBJ)
         snap = eng.snapshot()
@@ -248,7 +247,7 @@ class TestSnapshot(unittest.TestCase):
         self.assertEqual(snap.score, 1234)
         self.assertEqual(snap.clock_s, 12.5)
         self.assertTrue(snap.precision)
-        self.assertEqual(snap.hit_time_s, 12.49)
+        self.assertEqual(snap.round_start_s, 12.49)
         self.assertEqual(mem.reads, [(OBJ, engine.SNAPSHOT_SIZE)])
 
 

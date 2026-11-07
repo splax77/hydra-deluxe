@@ -42,17 +42,17 @@ class LiveSnapshotTest(unittest.TestCase):
         struct.pack_into("<I", raw, C.OFF_SCORE, 1234)
         struct.pack_into("<d", raw, C.OFF_SONG_CLOCK, 12.5)
         struct.pack_into("<I", raw, C.OFF_FLAGS, C.PRECISION_MODE_BIT)
-        struct.pack_into("<d", raw, C.OFF_HIT_TIME, 12.49)
+        struct.pack_into("<d", raw, C.OFF_ROUND_START, 12.49)
         s = live.decode_snapshot(bytes(raw))
         self.assertAlmostEqual(s.window_ms, C.WINDOW_CAP_MS)
         self.assertEqual(s.score, 1234)
         self.assertEqual(s.clock_s, 12.5)
-        self.assertEqual(s.hit_time_s, 12.49)
+        self.assertEqual(s.round_start_s, 12.49)
         self.assertTrue(s.precision)
 
     def test_live_keeps_no_offsets_or_finder_of_its_own(self):
         for name in ("OFF_WINDOW", "OFF_SCORE", "OFF_CLOCK", "OFF_FLAGS",
-                     "OFF_HIT_TIME", "find_live_engine"):
+                     "OFF_ROUND_START", "find_live_engine"):
             self.assertFalse(hasattr(live, name), name)
 
 
@@ -176,22 +176,22 @@ class WatchWindowTest(unittest.TestCase):
         samples = samples_following(notes, lambda n: 170.0)[1:]
         self.assertIn("The window never changed", WW.window_report(samples, notes)[0])
 
-    def test_hit_time_report_matches_changes_to_notes(self):
+    def test_round_start_report_matches_changes_to_notes(self):
         notes = [{"index": i, "time_ms": 3000 + 1000 * i} for i in range(3)]
         samples = [WW.Sample(2900.0, C.WINDOW_CAP_MS, 0, 0.0)]
         for i, n in enumerate(notes):
             samples.append(WW.Sample(n["time_ms"] + 8.0, C.WINDOW_CAP_MS, 100 * (i + 1),
                                      n["time_ms"] + 2.0))
-        lines = WW.hit_time_report(samples, notes)
+        lines = WW.round_start_report(samples, notes)
         self.assertEqual(lines[0], "+0x2e0 against the note times:")
         self.assertIn("  +0x2e0 changed 3 times; the score rose 3 times.", lines)
         self.assertEqual(lines[-1], "  +0x2e0 changed once per hit, within 10 ms of the note.")
 
-    def test_hit_time_report_says_when_the_changes_do_not_fit(self):
+    def test_round_start_report_says_when_the_changes_do_not_fit(self):
         notes = [{"index": 0, "time_ms": 3000}]
         samples = [WW.Sample(2900.0, C.WINDOW_CAP_MS, 0, 0.0),
                    WW.Sample(3008.0, C.WINDOW_CAP_MS, 100, 3011.0)]
-        self.assertEqual(WW.hit_time_report(samples, notes)[-1],
+        self.assertEqual(WW.round_start_report(samples, notes)[-1],
                          "  +0x2e0 did NOT change once per hit, within 10 ms of the "
                          "note; read the rows above.")
 
@@ -243,7 +243,7 @@ class WalkEdgesTest(unittest.TestCase):
     def test_row_keeps_the_0x2e0_reading_but_measures_from_the_send_time(self):
         before = live.decode_snapshot(bytes(live.SNAPSHOT_SIZE))
         raw = bytearray(live.SNAPSHOT_SIZE)
-        struct.pack_into("<d", raw, C.OFF_HIT_TIME, 10.010)
+        struct.pack_into("<d", raw, C.OFF_ROUND_START, 10.010)
         struct.pack_into("<I", raw, C.OFF_SCORE, 100)
         after = live.decode_snapshot(bytes(raw))
 
