@@ -1,5 +1,5 @@
-// Step 2, T0: the one table of how each difficulty is spelled in a chart
-// file. Every parser rule that depends on the difficulty reads its row.
+// The one table of how each difficulty is spelled in a chart file. Every
+// parser rule that depends on the difficulty reads its row.
 
 #include "doctest.h"
 

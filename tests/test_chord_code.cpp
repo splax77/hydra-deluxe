@@ -67,8 +67,7 @@ TEST_CASE("every chord a chart can express has a code of its own") {
 
 TEST_CASE("a chord's code spells its lanes") {
     // Joe Sibol's Hot Sexy Girls (RBN) hits red, yellow cymbal and green
-    // cymbal together. Before codes were spelled out, a lookup table stopped
-    // at two pads and its re-analysis threw "chord has no encode-table entry".
+    // cymbal together, so a code has to spell three pads at once.
     Chord three;
     three.at(NoteColor::Red) = ChordNote{NoteColor::Red};
     three.at(NoteColor::Yellow) =

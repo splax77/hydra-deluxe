@@ -1,6 +1,5 @@
-// Step 2, T1 (D19, findings 11 and 250): each difficulty reads only its own
-// disco-flip markers, in both formats, and the Pro Drums gate lives in one
-// place.
+// Each difficulty reads only its own disco-flip markers, in both formats, and
+// the Pro Drums gate lives in one place (D19, findings 11 and 250).
 
 #include "doctest.h"
 
@@ -110,13 +109,11 @@ TEST_CASE("disco: dnoflip still closes the section (Hydra's rule, not Clone Hero
 }
 
 TEST_CASE("disco: Band Like That keeps its lower difficulties' hi-hat on yellow") {
-    // This chart marks disco only for Expert ([mix 3 drums0d], 13 sections);
+    // This chart marks disco only for Expert ([mix 3 drums0d], 12 sections);
     // Hard, Medium and Easy carry only `[mix N drums0]` at tick 960. So below
     // Expert, Pro Drums must not move a single red or yellow note: the counts
-    // equal a parse with Pro Drums off, where no flip ever applies. Before D19,
-    // Hard followed Expert's sections and swapped 111 notes each way (finding
-    // 11: 151 red and 40 yellow inside the spans, where Hard has 40 red and 151
-    // yellow as authored).
+    // equal a parse with Pro Drums off, where no flip ever applies (D19,
+    // finding 11).
     using app::DynamicsRow;
     const std::string path =
         corpus::root() + "/common/IB24/T2/fanclubwallet - Band Like That/notes.mid";

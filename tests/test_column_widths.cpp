@@ -50,13 +50,15 @@ CellText cells(const Rows& rows) {
     return [&rows](std::size_t r, std::size_t c) { return rows[r][c]; };
 }
 
-// The Library's five text columns with the user's shares (2026-10-14), in the
-// pretend font. Headers: "Title" 50, "Artist" 60, "Charter" 70, "Folder" 60,
-// "Best path" 90.
+// Five text columns shaped like the Library's, in the pretend font. The shares
+// are this file's own: the Library's real columns and shares are
+// library_column_specs in src/ui/library_table.cpp. Headers: "Title" 50,
+// "Artist" 60, "Charter" 70, "Folder" 60, "Best path" 90.
 const std::vector<ColumnSpec> kLibrarySpecs = {text_spec("Title", 17), text_spec("Artist", 10),
                                                text_spec("Charter", 9), text_spec("Folder", 39),
                                                text_spec("Best path", 25)};
-// The song panel open: Charter and Folder hidden.
+// The song panel open, in these five columns: Charter and Folder hidden. What
+// the real panel hides is render_table's choice, in src/ui/library_table.cpp.
 const std::vector<bool> kPanelOpen = {true, true, false, false, true};
 
 // Short Library rows. Text columns never read them; they are here so the
@@ -146,7 +148,7 @@ TEST_CASE("column_widths: the Library's text columns split the room by their sha
 }
 
 TEST_CASE("column_widths: hidden columns' shares go to the shown ones, lost pixels to the last") {
-    // The song panel hides Charter and Folder. The shown shares 17, 10 and 25
+    // kPanelOpen hides Charter and Folder. The shown shares 17, 10 and 25
     // sum to 52 and split the same 1,000:
     //   Title     1,000 x 17 / 52 = 326.9 -> 326
     //   Artist    1,000 x 10 / 52 = 192.3 -> 192
@@ -396,8 +398,8 @@ ImGuiTable* apply_frame(const ColumnLayout& layout,
 TEST_CASE("column_widths: a column hidden from the start gets the rule's width the frame it shows") {
     HeadlessImGui imgui;
     // The saved settings hide column B at 90 px, so ImGui never lays it out
-    // before it shows (as hydra_ui.ini did to the Library's Charter and
-    // Folder). The table's id comes from a frame that opens only the window.
+    // before it shows (as hydra_ui.ini can do to a Library column). The
+    // table's id comes from a frame that opens only the window.
     ImGui::NewFrame();
     ImGui::Begin("apply test");
     const ImGuiID id = ImGui::GetID("##a");
