@@ -24,14 +24,13 @@ from __future__ import annotations
 
 import csv
 import dataclasses
-import io
 import os
 import threading
 import time
 from typing import Callable, List, Optional
 
 from tools.ch_mcp import bot_run
-from tools.ch_mcp.frida_tools import READ_CAP_S
+from tools.ch_mcp.frida_tools import READ_CAP_S, find_engine_quietly
 from tools.ch_probe import constants as C
 from tools.ch_probe import engine_finder
 from tools.ch_probe.engine import EngineModel, Snapshot
@@ -128,13 +127,6 @@ class _Watch:
         return f"csv: {self.csv_path} (not written: the engine was never found)"
 
 
-def _find_engine_quietly(proc) -> int:
-    """LIVE-ONLY: sp_watch's engine search with its progress dots sent to a
-    buffer that is dropped, because the server's stdout is its protocol
-    channel."""
-    return sp_watch.find_engine_live(proc, out=io.StringIO())
-
-
 def _engine_reader(proc, engine_ptr: int) -> Callable[[], Snapshot]:
     """The live engine's snapshot read. LIVE-ONLY: reads the game's memory
     through EngineModel."""
@@ -156,7 +148,7 @@ class SpTools:
 
     def __init__(self, game, lock, *,
                  opener: Callable[..., object] = open_process,
-                 find_engine: Callable[[object], int] = _find_engine_quietly,
+                 find_engine: Callable[[object], int] = find_engine_quietly,
                  reader: Callable[[object, int], Callable[[], Snapshot]] = _engine_reader,
                  watch: Callable[..., sp_watch.WatchSummary] = sp_watch.watch,
                  now: Callable[[], float] = time.time,

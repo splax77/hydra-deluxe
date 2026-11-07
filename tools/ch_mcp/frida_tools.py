@@ -20,6 +20,7 @@ with game_tools.GameTools; every tool holds it.
 from __future__ import annotations
 
 import functools
+import io
 import json
 import os
 import time
@@ -30,6 +31,7 @@ from tools.ch_mcp import frida_attach as FA
 from tools.ch_mcp import trace_hits as TH
 from tools.ch_probe import constants as C
 from tools.ch_probe.engine import EngineModel
+from tools.ch_probe.experiments import sp_watch
 from tools.ch_probe.process import open_process
 
 # The three Frida caps of the plan's question 5, approved by the user on
@@ -73,12 +75,11 @@ class StateUnread(Exception):
     text is the reason, as ch_state would print it."""
 
 
-def _find_engine(proc) -> int:
-    """LIVE-ONLY: the engine search the Star Power tools use, which keeps the
-    server's stdout clean."""
-    # Imported here because sp_tools imports this module.
-    from tools.ch_mcp.sp_tools import _find_engine_quietly
-    return _find_engine_quietly(proc)
+def find_engine_quietly(proc) -> int:
+    """LIVE-ONLY: sp_watch's engine search with its progress dots sent to a
+    buffer that is dropped, because the server's stdout is its protocol
+    channel. The Star Power tools and ch_snapshot both search through it."""
+    return sp_watch.find_engine_live(proc, out=io.StringIO())
 
 
 def state_words(snapshot: Optional[dict], *, running: bool = True) -> str:
@@ -333,7 +334,7 @@ class FridaTools:
                  now: Callable[[], float] = time.monotonic,
                  sleep: Callable[[float], None] = time.sleep,
                  opener: Callable[..., Any] = open_process,
-                 find_engine: Callable[[Any], int] = _find_engine):
+                 find_engine: Callable[[Any], int] = find_engine_quietly):
         self._game = game
         self._lock = lock
         self._frida_mod = frida_mod
