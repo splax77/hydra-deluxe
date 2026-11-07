@@ -1,10 +1,11 @@
 """Tests for experiments/sp_compare.py on a small hand-written run.
 
 The score JSON is eight chords with three phrase ends and one activation
-(chord 4, tick 768) that ends on chord 6 (tick 1152). The watcher rows are
-built from a short list of events (phrase rises, the activation and its end)
-sampled every 10 ms, the way sp_watch.py would log them. Each test changes
-one event and checks the report's lines, pinned as literals.
+(chord 4, tick 768) that ends on chord 6 (tick 1152). The watcher rows have
+the columns sp_watch.py logs. They are built from a short list of events
+(phrase rises, the activation and its end) sampled at DEFAULT_TIMES, this
+file's own grid and not the watcher's timing. Each test changes one event and
+checks the report's lines, pinned as literals.
 
 Run from the repo root with:
     py -m unittest tools.ch_probe.tests.test_sp_compare

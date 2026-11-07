@@ -11,8 +11,8 @@ gives every file the current time, so every object would look out of date.
 -Prepare decides whether the restored folder can be used. If it can, it
 gives every tracked file one old fixed time and gives "now" only to the files
 changed since the commit the folder was built from, so the build recompiles
-just those. If it can't, it deletes the folder and the build starts cold.
-Which case applies is decided in Invoke-Prepare below; it prints one line
+just those. If it can't, the build starts cold, and some of those cases delete
+the folder first. Which case applies is decided in Invoke-Prepare below; it prints one line
 saying which path it took and why.
 
 -Record runs after the build. It writes the commit just built into the
@@ -20,8 +20,8 @@ folder, for the next run's -Prepare to read.
 
 The build folder is relative to -Repo, which defaults to this script's
 checkout. Any git error stops the script with a message; it never falls
-through to a warm build. The plan was
-docs/superpowers/plans/2026-10-24-ci-build-speed.md (removed; git show 444631e6:docs/superpowers/plans/2026-10-24-ci-build-speed.md).
+through to a warm build. The plan is
+docs/superpowers/plans/2026-10-24-ci-build-speed.md.
 #>
 [CmdletBinding()]
 param(

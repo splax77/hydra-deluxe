@@ -8,7 +8,7 @@
      The exes are instrumented on disk before the tests run, so "collect" needs
      no dynamic instrumentation. Left on, it injects itself into every process
      it starts, which loads ucrtbase.dll before mimalloc-redirect.dll, so malloc
-     stays on the Windows heap and the mimalloc tests fail (CI run 38082177556). -->
+     stays on the Windows heap and the mimalloc tests fail. -->
 <Configuration>
   <CodeCoverage>
     <Sources>
