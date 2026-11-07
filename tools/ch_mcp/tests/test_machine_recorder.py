@@ -135,6 +135,24 @@ class ParseTable(unittest.TestCase):
         table = M.parse_table(fixture_table([{"pid": 1, "name": "a", "threads": threads}]))
         self.assertEqual(table.ready_threads, 3)
 
+    def test_the_idle_process_adds_nothing_to_the_run_queue(self):
+        idle = {"pid": 0, "name": "",
+                "threads": [(0, 0, 0, 0, 3, 0), (0, 0, 0, 0, 3, 0), (0, 0, 0, 0, 3, 0)]}
+        real = {"pid": 4, "name": "real.exe",
+                "threads": [(41, 0, 0, 0, 1, 0), (42, 0, 0, 0, 3, 0), (43, 0, 0, 0, 7, 0)]}
+        table = M.parse_table(fixture_table([idle, real]))
+        self.assertEqual(table.ready_threads, 3)
+        self.assertEqual(table.thread_count, 6)
+        self.assertEqual(list(table.processes), [0, 4])
+
+    def test_each_ready_state_of_a_real_process_counts_beside_the_idle_process(self):
+        idle = {"pid": 0, "name": "", "threads": [(0, 0, 0, 0, 3, 0)]}
+        for state in (1, 3, 7):
+            real = {"pid": 4, "name": "real.exe", "threads": [(41, 0, 0, 0, state, 0)]}
+            with self.subTest(state=state):
+                table = M.parse_table(fixture_table([idle, real]))
+                self.assertEqual(table.ready_threads, 1)
+
 
 class ReadsAs(unittest.TestCase):
     def test_each_state_number(self):
