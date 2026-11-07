@@ -130,10 +130,9 @@ private:
     std::optional<size_t> pending_select_;
     // "Show Hydra's best path".
     bool show_best_ = false;
-    // While the pointer is on a fill or its list row: the fill, and the time
-    // the Preview goes back to, still paused, when the pointer leaves.
+    // While the pointer is on a fill or its list row: the fill, whose row the
+    // list draws lit.
     std::optional<size_t> hovered_fill_;
-    double hover_return_ms_ = 0.0;
     // The fill whose list row the pointer was on last frame; the list is
     // drawn after the timeline, so the timeline reads it a frame later.
     std::optional<size_t> row_hovered_fill_;
@@ -144,11 +143,13 @@ private:
     // (the third mockup's followOff, run backwards): a press of Play turns it
     // on, and a scroll by hand while playing turns it off.
     bool follow_ = true;
-    // The Preview's clock, and whether it was playing, as the hover left
-    // them last frame. The next frame compares against them, so it can tell
-    // a Play press or a jump from the hover's own seeks.
+    // The Preview's clock, and whether it was playing, as the timeline's drag
+    // left them last frame. The next frame compares against them, so it can
+    // tell a Play press or a jump from the drag's own seeks.
     double last_position_ms_ = 0.0;
     bool was_playing_ = false;
+    // A drag on the timeline (ui::TimelineEvents::dragged_ms) is running.
+    bool dragging_ = false;
     // The Preview's volume for this run: the settings file's at the first
     // open (PbState::preview_volume), then the player's slider; never
     // written back (plan Q2).
@@ -176,13 +177,17 @@ private:
     void draw_body(const OpenChart& chart);
     void draw_head(const OpenChart& chart);
     void draw_timeline(const OpenChart& chart);
+    // Says whether a drag on the timeline is holding the song, to dragging_
+    // and to the controller's scrubbing rule.
+    void hold_for_drag(bool held);
     // Moves the window for what the Preview's clock did since last frame:
     // it opens the window at the first frame, follows the playhead while
     // playing, and shows a jump the paused clock made (ui::follow_playing,
-    // ui::show). `length_ms` is the Preview's playback end.
+    // ui::show). `length_ms` is the Preview's playback end. A drag moves
+    // nothing.
     void move_view_with_clock(double length_ms);
     // Centres the window on scene fill `index` when the timeline does not
-    // show it (a list row's hover or click).
+    // show it (a list row's click).
     void scroll_to_fill(const app::PreviewScene& scene, size_t index, double length_ms);
     // The Preview panel, or the controller's error in its place.
     void draw_preview(const OpenChart& chart);

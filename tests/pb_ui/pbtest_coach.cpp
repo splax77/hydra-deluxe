@@ -22,6 +22,7 @@
 #include "pathbuilder/pb_coach.h"
 #include "pathbuilder/pb_files.h"
 #include "pathbuilder/pb_text.h"
+#include "ui/preview_controller.h"
 #include "ui/preview_timeline.h"  // timeline_fill_id
 #include "ui/theme.h"             // chip_color
 
@@ -297,9 +298,8 @@ void test_choose_an_ending(ImGuiTestContext* ctx) {
 
 // The Preview clock's tail on Burnout, the song's length (from one run).
 constexpr const char* kBurnoutClockTail = " / 2:10.088";
-// The first fill's dot as the clock reads it, where a hover or a click on it
-// parks the Preview: the moment its card heading names, "m20 · 0:25.123"
-// (from one run).
+// The first fill's dot as the clock reads it, where a click on it parks the
+// Preview: the moment its card heading names, "m20 · 0:25.123" (from one run).
 constexpr const char* kFirstFillDot = "0:25.123";
 // How long a check waits for a card whose search is still running.
 constexpr double kCardWaitSeconds = 60.0;
@@ -315,38 +315,198 @@ std::string burnout_clock(Harness& h) {
     return text.substr(from, tail + std::string(kBurnoutClockTail).size() - from);
 }
 
-// Burnout playing, then a hover on its first fill: the hover pauses and shows
-// the fill, and moving off puts the clock back and leaves it paused (the third
-// mockup's answers.md, answer 1).
-void test_hover_shows_never_plays(ImGuiTestContext* ctx) {
+// The clock these tests park the paused Preview on, and how it reads.
+constexpr double kParkedMs = 10000.0;
+constexpr const char* kParkedClock = "0:10.000 / 2:10.088";
+
+// Opens Burnout with the paused clock on kParkedClock and the test's ref on
+// the builder's window. False when it did not settle.
+bool open_burnout_parked(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
-    IM_CHECK_RETV(open_chart(ctx, corpus::burnout_notes()), );
+    if (!open_chart(ctx, corpus::burnout_notes())) return false;
     ctx->SetRef(h.home_ref.c_str());
-    // The panel's button reads "Pause" while the Preview plays
-    // (preview_panel.cpp's transport row).
-    ctx->ItemClick(any_ref("Play").c_str());
-    ctx->Yield(2);
-    IM_CHECK_RETV(on_screen(h, "Pause"), );
-
-    ctx->MouseMove(fill_ref(kFirstFillTick).c_str());
-    ctx->Yield(2);
-    IM_CHECK(burnout_clock(h) == std::string(kFirstFillDot) + kBurnoutClockTail);
-    IM_CHECK(on_screen(h, "Play"));
-    IM_CHECK(!on_screen(h, "Pause"));
-
+    // The pointer is wherever the last test left it, maybe on a fill.
     move_off_timeline(ctx);
-    IM_CHECK(on_screen(h, "Play"));
-    IM_CHECK(!on_screen(h, "Pause"));
-    // Nothing resumed: the clock reads the same a quarter second later, and
-    // it is back where it was, not on the fill.
+    h.app->preview()->seek_ms(kParkedMs);
+    ctx->Yield(2);
+    return burnout_clock(h) == kParkedClock;
+}
+
+// The panel's button reads "Pause" while the Preview plays, and "Play" while
+// it does not (preview_panel.cpp's transport row).
+bool reads_paused(Harness& h) { return on_screen(h, "Play") && !on_screen(h, "Pause"); }
+bool reads_playing(Harness& h) { return on_screen(h, "Pause"); }
+
+// True when the clock reads differently a quarter second after the first
+// reading, which only a running Preview does.
+bool clock_runs(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
     const std::string first = burnout_clock(h);
     ctx->SleepNoSkip(0.25f, 1.0f / 60.0f);
-    const std::string second = burnout_clock(h);
-    IM_CHECK(!first.empty());
-    IM_CHECK_STR_EQ(first.c_str(), second.c_str());
-    IM_CHECK(first.find(kFirstFillDot) == std::string::npos);
-    IM_CHECK(on_screen(h, "Play"));
-    IM_CHECK(!on_screen(h, "Pause"));
+    return first != burnout_clock(h);
+}
+
+// A point on the Star Power saved row, `share` of the way across the track.
+ImVec2 saved_row_point(ImGuiTestContext* ctx, float share) {
+    const ImRect rows = ctx->ItemInfo(any_ref("##timeline").c_str()).RectFull;
+    return ImVec2(rows.Min.x + rows.GetWidth() * share, rows.Min.y + rows.GetHeight() * 0.4f);
+}
+
+// A hover moves nothing. Paused, a fill's card shows and a list row lights its
+// fill while the clock and the Play button stay as they were, and they stay so
+// when the pointer leaves. Playing, a hover does not pause.
+void test_hover_moves_nothing(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    IM_CHECK_RETV(open_burnout_parked(ctx), );
+
+    ctx->MouseMove(fill_ref(kFirstFillTick).c_str());
+    IM_CHECK(uitest::wait_until(ctx, [&] { return on_screen(h, "m20 · 0:25.123"); }, 5.0));
+    IM_CHECK_STR_EQ(burnout_clock(h).c_str(), kParkedClock);
+    IM_CHECK(reads_paused(h));
+    move_off_timeline(ctx);
+    IM_CHECK(!on_screen(h, "m20 · 0:25.123"));
+    IM_CHECK_STR_EQ(burnout_clock(h).c_str(), kParkedClock);
+    IM_CHECK(reads_paused(h));
+
+    IM_CHECK_RETV(scroll_side_to(ctx, choice_ref(kFirstFillTick)), );
+    ctx->MouseMove(choice_ref(kFirstFillTick).c_str());
+    ctx->Yield(2);
+    IM_CHECK_STR_EQ(burnout_clock(h).c_str(), kParkedClock);
+    IM_CHECK(reads_paused(h));
+    move_off_timeline(ctx);
+    IM_CHECK_STR_EQ(burnout_clock(h).c_str(), kParkedClock);
+    IM_CHECK(reads_paused(h));
+
+    ctx->ItemClick(any_ref("Play").c_str());
+    ctx->Yield(2);
+    IM_CHECK_RETV(reads_playing(h), );
+    ctx->MouseMove(fill_ref(kFirstFillTick).c_str());
+    ctx->Yield(2);
+    IM_CHECK(reads_playing(h));
+    IM_CHECK(clock_runs(ctx));
+    IM_CHECK_RETV(scroll_side_to(ctx, choice_ref(kFirstFillTick)), );
+    ctx->MouseMove(choice_ref(kFirstFillTick).c_str());
+    ctx->Yield(2);
+    IM_CHECK(reads_playing(h));
+    IM_CHECK(clock_runs(ctx));
+    move_off_timeline(ctx);
+    IM_CHECK(reads_playing(h));
+    ctx->ItemClick(any_ref("Pause").c_str());
+    ctx->Yield(2);
+}
+
+// A press and drag on the Star Power saved row: the clock follows the pointer
+// while held, onto the Fills row too, where no card shows and no fill takes
+// the release, and the release leaves the clock where it is. Paused stays
+// paused. A press while playing holds the song still, and the release plays
+// on. Each clock is from one run.
+void test_drag_moves_the_clock(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    IM_CHECK_RETV(open_burnout_parked(ctx), );
+    hydra::pathbuilder::PbState& s = h.app->state;
+    const uint64_t generation = s.history().generation();
+
+    ctx->MouseMoveToPos(saved_row_point(ctx, 0.25f));
+    ctx->MouseDown(ImGuiMouseButton_Left);
+    ctx->Yield(2);
+    IM_CHECK_STR_EQ(burnout_clock(h).c_str(), "0:32.428 / 2:10.088");
+    ctx->MouseMoveToPos(saved_row_point(ctx, 0.5f));
+    ctx->Yield(2);
+    IM_CHECK_STR_EQ(burnout_clock(h).c_str(), "1:04.981 / 2:10.088");
+    IM_CHECK(reads_paused(h));
+
+    // Down onto the Fills row, on a fill's hit box.
+    const ImRect fill = ctx->ItemInfo(fill_ref(kSecondFillTick).c_str()).RectFull;
+    ctx->MouseMoveToPos(fill.GetCenter());
+    ctx->Yield(2);
+    const std::string on_fills_row = burnout_clock(h);
+    IM_CHECK_STR_EQ(on_fills_row.c_str(), "0:51.459 / 2:10.088");
+    IM_CHECK(!on_screen(h, "Phrases saved"));
+    ctx->MouseUp(ImGuiMouseButton_Left);
+    ctx->Yield(2);
+    IM_CHECK_STR_EQ(burnout_clock(h).c_str(), on_fills_row.c_str());
+    IM_CHECK(reads_paused(h));
+    IM_CHECK_EQ(s.history().generation(), generation);
+
+    // A release back on the row leaves the clock under the pointer too.
+    ctx->MouseMoveToPos(saved_row_point(ctx, 0.25f));
+    ctx->MouseDown(ImGuiMouseButton_Left);
+    ctx->MouseMoveToPos(saved_row_point(ctx, 0.5f));
+    ctx->MouseUp(ImGuiMouseButton_Left);
+    ctx->Yield(2);
+    IM_CHECK_STR_EQ(burnout_clock(h).c_str(), "1:04.981 / 2:10.088");
+    IM_CHECK(reads_paused(h));
+
+    // Playing: held, the song stands still, and the panel's own scrubber call
+    // each frame does not start it again.
+    ctx->ItemClick(any_ref("Play").c_str());
+    ctx->Yield(2);
+    IM_CHECK_RETV(reads_playing(h), );
+    ctx->MouseMoveToPos(saved_row_point(ctx, 0.25f));
+    ctx->MouseDown(ImGuiMouseButton_Left);
+    ctx->Yield(2);
+    IM_CHECK(reads_paused(h));
+    IM_CHECK(!clock_runs(ctx));
+    ctx->MouseUp(ImGuiMouseButton_Left);
+    ctx->Yield(2);
+    IM_CHECK(reads_playing(h));
+    IM_CHECK(clock_runs(ctx));
+    ctx->ItemClick(any_ref("Pause").c_str());
+    ctx->Yield(2);
+}
+
+// A press on the "Your activations" row starts no drag: a press on a fill,
+// moved away along the Star Power saved row and let go there, leaves the clock
+// where it was, and clicks nothing.
+void test_activations_row_never_drags(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    IM_CHECK_RETV(open_burnout_parked(ctx), );
+    const uint64_t generation = h.app->state.history().generation();
+    ctx->MouseMove(fill_ref(kFirstFillTick).c_str());
+    ctx->MouseDown(ImGuiMouseButton_Left);
+    ctx->Yield(2);
+    IM_CHECK_STR_EQ(burnout_clock(h).c_str(), kParkedClock);
+    ctx->MouseMoveToPos(saved_row_point(ctx, 0.75f));
+    ctx->Yield(2);
+    IM_CHECK_STR_EQ(burnout_clock(h).c_str(), kParkedClock);
+    ctx->MouseUp(ImGuiMouseButton_Left);
+    ctx->Yield(2);
+    IM_CHECK_STR_EQ(burnout_clock(h).c_str(), kParkedClock);
+    IM_CHECK_EQ(h.app->state.history().generation(), generation);
+    move_off_timeline(ctx);
+}
+
+// A click on a fill leaves the clock on that fill's dot with the pointer still
+// on it, and it stays when the pointer leaves: on an offered fill, on the
+// taken fill it made, and on a fill clicked while the Preview plays, which
+// stops there.
+void test_fill_click_moves_clock(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    IM_CHECK_RETV(open_burnout_parked(ctx), );
+    const std::string first_dot = std::string(kFirstFillDot) + kBurnoutClockTail;
+    ctx->ItemClick(fill_ref(kFirstFillTick).c_str());
+    IM_CHECK_RETV(wait_for_edit(ctx), );
+    IM_CHECK_STR_EQ(burnout_clock(h).c_str(), first_dot.c_str());
+    move_off_timeline(ctx);
+    IM_CHECK_STR_EQ(burnout_clock(h).c_str(), first_dot.c_str());
+
+    h.app->preview()->seek_ms(kParkedMs);
+    ctx->Yield(2);
+    ctx->ItemClick(fill_ref(kFirstFillTick).c_str());
+    ctx->Yield(2);
+    IM_CHECK_STR_EQ(burnout_clock(h).c_str(), first_dot.c_str());
+    move_off_timeline(ctx);
+    IM_CHECK_STR_EQ(burnout_clock(h).c_str(), first_dot.c_str());
+
+    ctx->ItemClick(any_ref("Play").c_str());
+    ctx->Yield(2);
+    IM_CHECK_RETV(reads_playing(h), );
+    ctx->ItemClick(fill_ref(kSecondFillTick).c_str());
+    IM_CHECK_RETV(wait_for_edit(ctx), );
+    move_off_timeline(ctx);
+    // From one run: the second fill's dot, as row-click-moves-clock pins it.
+    IM_CHECK_STR_EQ(burnout_clock(h).c_str(), "0:51.421 / 2:10.088");
+    IM_CHECK(reads_paused(h));
 }
 
 // The card on Burnout's first fill once its search has landed: the heading,
@@ -401,7 +561,10 @@ void register_coach_tests(Harness& h) {
     uitest::register_test(h, "cant-activate-reason", test_cant_activate_reason);
     uitest::register_test(h, "tight-window-note", test_tight_window_note);
     uitest::register_test(h, "locked-fill-says-left-to-right", test_locked_fill_says_left_to_right);
-    uitest::register_test(h, "hover-shows-never-plays", test_hover_shows_never_plays);
+    uitest::register_test(h, "hover-moves-nothing", test_hover_moves_nothing);
+    uitest::register_test(h, "drag-moves-the-clock", test_drag_moves_the_clock);
+    uitest::register_test(h, "activations-row-never-drags", test_activations_row_never_drags);
+    uitest::register_test(h, "fill-click-moves-clock", test_fill_click_moves_clock);
     uitest::register_test(h, "fill-card", test_fill_card);
     uitest::register_test(h, "row-click-moves-clock", test_row_click_moves_clock);
 }

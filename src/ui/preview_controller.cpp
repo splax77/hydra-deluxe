@@ -251,6 +251,8 @@ void PreviewController::close() {
     rt_h_ = 0;
     active_ = false;
     scrubbing_ = false;
+    slider_held_ = false;
+    timeline_held_ = false;
     resume_after_scrub_ = false;
     open_key_ = PreviewSongKey{};
     error_.clear();
@@ -437,10 +439,12 @@ void PreviewController::step_ms(double delta_ms) {
         hydra::app::step_shown_ms(transport_.now_ms(), playback_end_ms(), delta_ms));
 }
 
-void PreviewController::set_scrubbing(bool held) {
-    if (held == scrubbing_) return;
-    scrubbing_ = held;
-    if (held) {
+void PreviewController::set_scrubbing(bool held, ScrubHold by) {
+    (by == ScrubHold::Slider ? slider_held_ : timeline_held_) = held;
+    const bool any_held = slider_held_ || timeline_held_;
+    if (any_held == scrubbing_) return;
+    scrubbing_ = any_held;
+    if (any_held) {
         resume_after_scrub_ = transport_.playing();
         if (resume_after_scrub_) transport_.pause();
     } else if (resume_after_scrub_) {

@@ -294,6 +294,11 @@ struct TimelineHit {
 };
 TimelineHit timeline_hit(const TimelineLayout& layout, float x, float y);
 
+// The moment under `x`, held to the window on screen: an x past either edge of
+// the track reads as that edge. A Time hit and a drag both read it here. Takes
+// a layout with some width.
+double timeline_ms_at(const TimelineLayout& layout, float x);
+
 // The scrollbar under the rows (line 249): the words in its label column, the
 // two buttons (the glyphs U+25C0 and U+25B6, which Hydra draws from the
 // fallback font, ui/fallback_fonts.h) and their hover hints.
@@ -338,6 +343,12 @@ struct TimelineEvents {
     std::optional<size_t> clicked_fill;
     std::optional<size_t> clicked_band;
     std::optional<double> clicked_ms;  // a click anywhere else on the rows
+    // Every frame of a press and hold that began on a moment (a Time hit): the
+    // moment under the pointer's x (timeline_ms_at), wherever it has wandered
+    // since. None once it is let go. While it lasts, ImGui's active item keeps
+    // every fill and list row from reading as hovered, and the wheel moves no
+    // window.
+    std::optional<double> dragged_ms;
     // The pointer is on the "Your activations" label. The caller draws that
     // hover, because the fill keys belong to it.
     bool hovered_activations_label = false;
@@ -352,7 +363,9 @@ struct TimelineEvents {
 // First the rows: a label column and the rows over timeline_layout, clipped
 // to the rows' rectangle. Each band in view is an InvisibleButton named
 // "##band_<activation index>" and each fill in view one named
-// timeline_fill_id(chord_tick) over its hit box. The saved row's label
+// timeline_fill_id(chord_tick) over its hit box. The rows' own item
+// ("##timeline") takes the clicks and the drags the bands and fills leave
+// (TimelineEvents::dragged_ms). The saved row's label
 // ("##label_saved") shows its marks and words as a tooltip, and the Fills
 // row's label ("##label_activations") reports its hover. A wheel notch over the
 // rows moves the window a wheel() notch (the third mockup, line 729). Then the

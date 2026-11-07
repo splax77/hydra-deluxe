@@ -137,6 +137,22 @@ TEST_CASE("preview timeline: a point in the Fills row names a band it is on, els
     CHECK(ui::timeline_hit(empty, 500.0f, empty_fills.y0 + 5.0f).kind == ui::TimelineHit::Kind::None);
 }
 
+TEST_CASE("preview timeline: the moment under an x stays inside the window, past either edge too") {
+    const app::PreviewScene s = scene_with_fills();
+    // A 6 s window starting at 2 s, so 6 ms a pixel. Pinned from one run.
+    const ui::TimelineLayout l = *ui::timeline_layout(s, kLengthMs, ui::TimelineView{2000.0, 6000.0}, kWidth, metrics());
+    CHECK(ui::timeline_ms_at(l, 100.0f) == doctest::Approx(2600.0));
+    CHECK(ui::timeline_ms_at(l, 0.0f) == doctest::Approx(2000.0));
+    CHECK(ui::timeline_ms_at(l, kWidth) == doctest::Approx(8000.0));
+    CHECK(ui::timeline_ms_at(l, -50.0f) == doctest::Approx(2000.0));
+    CHECK(ui::timeline_ms_at(l, kWidth + 50.0f) == doctest::Approx(8000.0));
+
+    // A Time hit reads the same moment.
+    const ui::TimelineHit hit = ui::timeline_hit(l, 100.0f, l.row(ui::TimelineRow::Saved).y0 + 1.0f);
+    CHECK(hit.kind == ui::TimelineHit::Kind::Time);
+    CHECK(hit.ms == doctest::Approx(2600.0));
+}
+
 TEST_CASE("preview timeline: a fill outside the window has no item and a band half outside keeps its visible half") {
     app::PreviewScene s = scene_with_fills();
     s.sections = {{0, 0.0, "Intro"}, {3000, 3000.0, "Verse"}, {7000, 7000.0, "Chorus"}};

@@ -180,8 +180,10 @@ void test_open_starts_empty(ImGuiTestContext* ctx) {
     ctx->MouseMoveToPos(ImVec2(img.Min.x + p.x, img.Min.y + p.y));
     ctx->MouseClick(ImGuiMouseButton_Left);
     IM_CHECK_RETV(wait_for_edit(ctx), );
-    // From one run: the step's compact row.
+    // From one run: the step's compact row, and the clock on the fill's dot,
+    // where every click on a fill leaves it.
     IM_CHECK(on_screen(h, "m20 → m24 2 phrases −140"));
+    IM_CHECK(on_screen(h, "0:25.123 / 2:10.088"));
 }
 
 // The line of visible text that holds the scrollbar's readout for a song
@@ -213,8 +215,9 @@ void drag(ImGuiTestContext* ctx, ImVec2 from, ImVec2 to) {
 
 // The timeline scrolled by hand on a song longer than its window, nothing
 // playing: the scrollbar's two buttons, a wheel notch over the rows, a drag
-// of the scrollbar's thumb, and the hover of a list row whose fill is off
-// screen. Each step reads the scrollbar's readout, from one run.
+// of the scrollbar's thumb, and the click of a list row whose fill is off
+// screen, whose hover scrolls nothing. Each step reads the scrollbar's
+// readout, from one run.
 void test_scroll_the_timeline(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     h.chart_arg = long_song_notes();
@@ -261,18 +264,62 @@ void test_scroll_the_timeline(ImGuiTestContext* ctx) {
     IM_CHECK(reads("0:36 – 3:36 of 5:59"));
 
     // Hovering the list row of a fill past the window (its chord at 3:58,
-    // from one run) centres the window on that fill, whose own item is then
-    // on the timeline; before the hover it has none.
+    // from one run) moves the window nowhere. A click on the row centres the
+    // window on that fill, whose own item is then on the timeline; before the
+    // click it has none.
     static constexpr int64_t kLateFillTick = 162240;
     ctx->ItemClick(back.c_str());
     IM_CHECK(reads("0:00 – 3:00 of 5:59"));
     IM_CHECK(ctx->ItemInfo(fill_ref(kLateFillTick).c_str(), ImGuiTestOpFlags_NoError).ID == 0);
     ctx->MouseMove(choice_ref(kLateFillTick).c_str());
+    IM_CHECK(reads("0:00 – 3:00 of 5:59"));
+    IM_CHECK(ctx->ItemInfo(fill_ref(kLateFillTick).c_str(), ImGuiTestOpFlags_NoError).ID == 0);
+    ctx->ItemClick(choice_ref(kLateFillTick).c_str());
+    IM_CHECK(wait_for_edit(ctx));
     IM_CHECK(reads("2:28 – 5:28 of 5:59"));
     IM_CHECK(ctx->ItemInfo(fill_ref(kLateFillTick).c_str(), ImGuiTestOpFlags_NoError).ID != 0);
     // The window stays there when the pointer leaves the row.
     move_off_timeline(ctx);
     IM_CHECK(reads("2:28 – 5:28 of 5:59"));
+}
+
+// A press and drag on a song longer than its window: the clock stays inside
+// the window however far past the track the pointer goes, and neither the
+// drag, nor a wheel notch during it, nor the release moves the window. Each
+// clock and readout is from one run.
+void test_drag_stays_in_the_window(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    h.chart_arg = long_song_notes();
+    reset_app(h);
+    IM_CHECK_RETV(wait_idle(ctx), );
+    ctx->Yield(2);
+    ctx->SetRef(h.home_ref.c_str());
+    move_off_timeline(ctx);
+    const std::string window = "0:00 – 3:00 of 5:59";
+    IM_CHECK_RETV(on_screen(h, window), );
+
+    const ImRect rows = ctx->ItemInfo(any_ref("##timeline").c_str()).RectFull;
+    const float saved_y = rows.Min.y + rows.GetHeight() * 0.4f;
+    ctx->MouseMoveToPos(ImVec2(rows.GetCenter().x, saved_y));
+    ctx->MouseDown(ImGuiMouseButton_Left);
+    ctx->MouseMoveToPos(ImVec2(rows.Max.x + 40.0f, saved_y));
+    ctx->Yield(2);
+    IM_CHECK(on_screen(h, "3:00.000 / 5:59.957"));
+    IM_CHECK(on_screen(h, window));
+    ctx->MouseWheelY(-1.0f);
+    ctx->Yield(2);
+    IM_CHECK(on_screen(h, window));
+    ctx->MouseMoveToPos(ImVec2(rows.Min.x - 40.0f, rows.Max.y + 40.0f));
+    ctx->Yield(2);
+    IM_CHECK(on_screen(h, "0:00.000 / 5:59.957"));
+    IM_CHECK(on_screen(h, window));
+    ctx->MouseMoveToPos(ImVec2(rows.GetCenter().x, saved_y));
+    ctx->Yield(2);
+    ctx->MouseUp(ImGuiMouseButton_Left);
+    ctx->Yield(2);
+    IM_CHECK(on_screen(h, "1:29.913 / 5:59.957"));
+    IM_CHECK(on_screen(h, window));
+    move_off_timeline(ctx);
 }
 
 // A chart with notes and no Star Power phrase opens and says there is
@@ -316,6 +363,7 @@ void test_file_open_error(ImGuiTestContext* ctx) {
 void register_tests(Harness& h) {
     uitest::register_test(h, "open-starts-empty", test_open_starts_empty);
     uitest::register_test(h, "scroll-the-timeline", test_scroll_the_timeline);
+    uitest::register_test(h, "drag-stays-in-the-window", test_drag_stays_in_the_window);
     uitest::register_test(h, "no-star-power", test_no_star_power);
     uitest::register_test(h, "file-open-error", test_file_open_error);
 }

@@ -51,6 +51,10 @@ size_t fill_index(const app::PreviewScene& scene, int64_t chord_tick) {
 
 }  // namespace
 
+TEST_CASE("choices hint: a row is clicked, and a hover promises nothing") {
+    CHECK(std::string(hydra::pathbuilder::kChoicesHint) == "Cheapest first. Click a row to activate there.");
+}
+
 TEST_CASE("candidate row: the clock, phrases, end and squeeze of a priced fill") {
     // August Burns Red "White Washed" with the player's path on its best
     // path's first three activations: the fourth's fill is offered next, and

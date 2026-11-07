@@ -189,9 +189,8 @@ void test_build_a_path_by_clicking(ImGuiTestContext* ctx) {
     IM_CHECK_STR_EQ(one_step_score.c_str(), "327,135");
     IM_CHECK_STR_EQ(figure_under(h, kBestReachLabel).c_str(), "378,175");
 
-    // The list names the second fill. Hovering its row moves the Preview's
-    // clock to the fill's dot, the moment its row and card name; moving off
-    // puts it back and leaves the Preview paused, its button still reading
+    // The list names the second fill. Hovering its row leaves the Preview's
+    // clock where it is, and moving off does too, its button still reading
     // Play. From one run: the click on the first fill left the clock on that
     // fill's dot (m20, 0:25.123).
     const std::string clock_after_one = "0:25.123 / 2:10.088";
@@ -200,8 +199,7 @@ void test_build_a_path_by_clicking(ImGuiTestContext* ctx) {
     IM_CHECK_RETV(scroll_side_to(ctx, choice_ref(kSecondFillTick)), );
     ctx->MouseMove(choice_ref(kSecondFillTick).c_str());
     ctx->Yield(2);
-    IM_CHECK(on_screen(h, "0:51.421 / 2:10.088"));
-    IM_CHECK(!on_screen(h, clock_after_one));
+    IM_CHECK(on_screen(h, clock_after_one));
     move_off_timeline(ctx);
     IM_CHECK(on_screen(h, clock_after_one));
     ctx->SetRef(h.home_ref.c_str());

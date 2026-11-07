@@ -233,8 +233,11 @@ public:
     // highway still follows the seeks. Call every frame with the slider's
     // active state. Without this the clock kept running under the held
     // slider and the audio was re-seeked to the held time every frame —
-    // heard as a buzz.
-    void set_scrubbing(bool held);
+    // heard as a buzz. Each control that can hold the song reports for itself
+    // (ScrubHold), so one letting go never ends the other's hold: the song is
+    // held while any of them holds it.
+    enum class ScrubHold { Slider, Timeline };
+    void set_scrubbing(bool held, ScrubHold by = ScrubHold::Slider);
 
     // Playback volume in percent, clamped to the preview_volume setting's
     // range (app::Settings::clamp); applied to the audio as it is served, and
@@ -437,6 +440,8 @@ private:
     int volume_pct_;  // starts at app::Settings' preview_volume default
     bool chart_changed_ = false;  // see chart_changed()
     bool scrubbing_ = false;
+    bool slider_held_ = false;    // ScrubHold::Slider's hold
+    bool timeline_held_ = false;  // ScrubHold::Timeline's hold
     bool resume_after_scrub_ = false;
 
     // Play, pause, seek, the master clock and the audio that follows it.

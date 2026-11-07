@@ -2,7 +2,7 @@
   "rules": [
     {
       "question": "At what moment does the Path Builder put a fill, on its timeline and for the Preview's clock?",
-      "owner": "timeline_fill_ms in src/ui/preview_timeline.cpp, the end of the fill's span, which the Fills row, a list row's scroll to its fill, and every move of the Preview's clock to a fill (a hover, a fill or row click) all read",
+      "owner": "timeline_fill_ms in src/ui/preview_timeline.cpp, the end of the fill's span, which the Fills row, a list row's scroll to its fill, and every move of the Preview's clock to a fill (a fill or row click) all read",
       "owner_file": "src/ui/preview_timeline.cpp",
       "owner_symbol": "timeline_fill_ms",
       "date": "2026-10-31",
@@ -13,16 +13,14 @@
       "must_match": [
         "const double at = scene.fills[index].span.end_ms;",
         "item.x = x_of(f.span.end_ms);",
-        "if (hovered_fill_ != hovered) preview_->seek_ms(scene.fills[*hovered].span.start_ms);",
-        "hover_return_ms_ = f.span.start_ms;",
+        "preview_->seek_ms(f.span.start_ms);",
         "const double at = f.span.start_ms;"
       ],
       "must_not_match": [
         "const double at = ui::timeline_fill_ms(scene.fills[index]);",
         "item.x = x_of(timeline_fill_ms(f));",
-        "if (hovered_fill_ != hovered) preview_->seek_ms(ui::timeline_fill_ms(scene.fills[*hovered]));",
-        "hover_return_ms_ = ui::timeline_fill_ms(f);",
-        "hover_return_ms_ = preview_->position_ms();"
+        "preview_->seek_ms(ui::timeline_fill_ms(f));",
+        "preview_->seek_ms(*ev.dragged_ms);"
       ],
       "owner_lines": [
         {
@@ -48,7 +46,7 @@
         "src/pathbuilder/pb_window.cpp",
         "src/pathbuilder/pb_window.h"
       ],
-      "note": "Where the Path Builder puts a fill is the end of its span: the timeline's dot, and the Preview's clock when a hover or a click moves it to a fill, so the clock line sits on the dot. Reading either end of a fill's span by hand in the builder or the timeline places the fill a second time; the span's start once put the clock at a different moment from the dot. pb_text.cpp reads the end of a span to count saved Star Power bars, a different question, so it is out of scope. A scope names a top folder or a single file (OwnerRule::scope), so the row lists each file under src/pathbuilder but pb_text.cpp; a new file there joins the list."
+      "note": "Where the Path Builder puts a fill is the end of its span: the timeline's dot, and the Preview's clock when a click moves it to a fill, so the clock line sits on the dot. Reading either end of a fill's span by hand in the builder or the timeline places the fill a second time; the span's start once put the clock at a different moment from the dot. pb_text.cpp reads the end of a span to count saved Star Power bars, a different question, so it is out of scope. A scope names a top folder or a single file (OwnerRule::scope), so the row lists each file under src/pathbuilder but pb_text.cpp; a new file there joins the list."
     }
   ]
 }

@@ -111,8 +111,7 @@ std::string badges_after(const Activation& act) {
 }  // namespace
 
 const char* const kChoicesHeading = "Where to activate next";
-const char* const kChoicesHint =
-    "Cheapest first. Hover a row to see it on the highway; click it to activate there.";
+const char* const kChoicesHint = "Cheapest first. Click a row to activate there.";
 const char* const kNoChoicesFinishedText =
     "No fill after your last activation can be activated. Your path is finished.";
 const char* const kNoChoicesText = "No fill can be activated.";

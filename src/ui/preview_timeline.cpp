@@ -580,10 +580,15 @@ TimelineHit timeline_hit(const TimelineLayout& layout, float x, float y) {
         !(layout.width > 0.0f))
         return hit;
     if (layout.row(TimelineRow::Fills).contains(x, y)) return hit;
-    // The share of the width is the share of the window.
     hit.kind = TimelineHit::Kind::Time;
-    hit.ms = ms_at(layout.view, static_cast<double>(x) / static_cast<double>(layout.width));
+    hit.ms = timeline_ms_at(layout, x);
     return hit;
+}
+
+double timeline_ms_at(const TimelineLayout& layout, float x) {
+    // The share of the width is the share of the window.
+    const float on_track = std::clamp(x, 0.0f, layout.width);
+    return ms_at(layout.view, static_cast<double>(on_track) / static_cast<double>(layout.width));
 }
 
 TimelineMetrics timeline_metrics() {
@@ -980,14 +985,20 @@ TimelineEvents PreviewTimeline::draw(const TimelineInput& in) const {
     }
 
     // The rows' own item: the bands and the fills took their clicks above, so
-    // a click here lands on a moment or, in the Fills row, nothing.
+    // a click here lands on a moment or, in the Fills row, nothing. A press
+    // that lands on a moment starts a drag, and the item stays active until
+    // the release, wherever the pointer goes. Whether it did is kept in
+    // ImGui's state storage, as the scrollbar's thumb drag is.
     ImGui::SetCursorScreenPos(t0);
-    if (ImGui::InvisibleButton("##timeline", ImVec2(l.width, l.height()))) {
-        const ImVec2 m = ImGui::GetIO().MousePos;
-        const TimelineHit hit = timeline_hit(l, m.x - t0.x, m.y - t0.y);
-        if (hit.kind == TimelineHit::Kind::Time) ev.clicked_ms = hit.ms;
-    }
+    const bool rows_clicked = ImGui::InvisibleButton("##timeline", ImVec2(l.width, l.height()));
     const ImGuiID rows_id = ImGui::GetItemID();
+    const ImVec2 pointer(ImGui::GetIO().MousePos.x - t0.x, ImGui::GetIO().MousePos.y - t0.y);
+    const TimelineHit pointer_hit = timeline_hit(l, pointer.x, pointer.y);
+    if (rows_clicked && pointer_hit.kind == TimelineHit::Kind::Time) ev.clicked_ms = pointer_hit.ms;
+    ImGuiStorage* const store = ImGui::GetStateStorage();
+    const ImGuiID drag_key = ImHashStr("drag", 0, rows_id);
+    if (ImGui::IsItemActivated()) store->SetBool(drag_key, pointer_hit.kind == TimelineHit::Kind::Time);
+    if (ImGui::IsItemActive() && store->GetBool(drag_key)) ev.dragged_ms = timeline_ms_at(l, pointer.x);
 
     // The playhead, over every row, while it is inside the window (the third
     // mockup's placePlayhead, line 662).
@@ -1012,11 +1023,11 @@ TimelineEvents PreviewTimeline::draw(const TimelineInput& in) const {
     // (line 729), with the fills' items on top of the rows' own. ImGui's
     // wheel is positive upward and the mockup's deltaY positive downward, so
     // a notch up moves the window back. Taking the wheel's key keeps the
-    // window's own scroll from moving too.
+    // window's own scroll from moving too. A drag holds the window still.
     if (ImGui::IsWindowHovered() && ImGui::IsMouseHoveringRect(origin, at(l.width, l.height()))) {
         ImGui::SetKeyOwner(ImGuiKey_MouseWheelY, rows_id);
         const float notches = -ImGui::GetIO().MouseWheel;
-        if (notches != 0.0f) ev.view = wheel(view, notches, in.length_ms);
+        if (notches != 0.0f && !ev.dragged_ms) ev.view = wheel(view, notches, in.length_ms);
     }
 
     // The scrollbar, .3 rem under the rows, then an item over its label

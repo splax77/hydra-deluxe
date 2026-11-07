@@ -245,6 +245,7 @@ void PbApp::take_in_chart() {
     selected_.reset();
     hovered_fill_.reset();
     row_hovered_fill_.reset();
+    hold_for_drag(false);
     view_.reset();
     overlay_built_ = false;
 }
@@ -514,8 +515,15 @@ void PbApp::draw_head(const OpenChart& chart) {
     ImGui::Checkbox(kShowBestPathLabel, &show_best_);
 }
 
+void PbApp::hold_for_drag(bool held) {
+    dragging_ = held;
+    if (preview_) preview_->set_scrubbing(held, ui::PreviewController::ScrubHold::Timeline);
+}
+
 void PbApp::draw_timeline(const OpenChart& chart) {
     if (!preview_ || !preview_->shows_path(overlay_key_)) {
+        // No rows this frame, so a drag has lost its item: ImGui ends it.
+        hold_for_drag(false);
         if (preview_ && preview_->loading()) {
             const ui::PreviewController::LoadProgress p = preview_->load_progress();
             ImGui::ProgressBar(p.fraction, ImVec2(-1, 0), p.label.c_str());
@@ -549,12 +557,7 @@ void PbApp::draw_timeline(const OpenChart& chart) {
     in.best_label = kBestFillLabel;
     const std::optional<size_t> row_hovered = row_hovered_fill_;
     row_hovered_fill_.reset();
-    if (row_hovered && *row_hovered < scene.fills.size()) {
-        in.highlighted = row_hovered;
-        // A row whose fill is off screen brings it into view, and the window
-        // stays there when the pointer leaves (the third mockup's row hover).
-        scroll_to_fill(scene, *row_hovered, length_ms);
-    }
+    if (row_hovered && *row_hovered < scene.fills.size()) in.highlighted = row_hovered;
     in.view = view_;
 
     const ui::TimelineEvents ev = ui::PreviewTimeline{}.draw(in);
@@ -568,27 +571,17 @@ void PbApp::draw_timeline(const OpenChart& chart) {
         if (preview_->playing()) follow_ = false;
     }
 
-    // While the pointer is on a fill, or on its row in the list, the highway
-    // shows it, paused, with the clock on the fill's dot (ui::timeline_fill_ms,
-    // plan 3's "RA-6 changes"), so its note is on the strike line; when the
-    // pointer leaves, the Preview goes back to the time it had and stays
-    // paused, so only Play or Space starts sound (the third mockup's
-    // answers.md, answer 1).
-    const std::optional<size_t> hovered =
-        ev.hovered_fill && *ev.hovered_fill < scene.fills.size() ? ev.hovered_fill : in.highlighted;
-    if (hovered) {
-        if (!hovered_fill_) {
-            hover_return_ms_ = preview_->position_ms();
-            preview_->pause();
-        }
-        if (hovered_fill_ != hovered) preview_->seek_ms(ui::timeline_fill_ms(scene.fills[*hovered]));
-        hovered_fill_ = hovered;
-    } else if (hovered_fill_) {
-        hovered_fill_.reset();
-        preview_->seek_ms(hover_return_ms_);
-    }
-    // The clock as the hover left it: next frame's move_view_with_clock sees
-    // every later change, and none of the hover's own seeks.
+    // The fill under the pointer, on the timeline or by its list row. A hover
+    // only lights things; it never touches the Preview.
+    hovered_fill_ = ev.hovered_fill && *ev.hovered_fill < scene.fills.size() ? ev.hovered_fill : in.highlighted;
+
+    // The drag holds the song through the controller's scrubbing rule, and the
+    // clock follows it.
+    hold_for_drag(ev.dragged_ms.has_value());
+    if (ev.dragged_ms) preview_->seek_ms(*ev.dragged_ms);
+
+    // The clock as the drag left it: next frame's move_view_with_clock sees
+    // every later change, and none of the drag's own seeks.
     last_position_ms_ = preview_->position_ms();
     was_playing_ = preview_->playing();
 
@@ -618,7 +611,6 @@ void PbApp::draw_timeline(const OpenChart& chart) {
         click_fill(chart, *ev.clicked_fill);
     } else if (ev.clicked_band) {
         select_step(*ev.clicked_band);
-        hover_return_ms_ = preview_->position_ms();
     } else if (ev.clicked_ms) {
         preview_->seek_ms(*ev.clicked_ms);
     }
@@ -630,6 +622,8 @@ void PbApp::move_view_with_clock(double length_ms) {
     if (!view_) {
         view_ = ui::open_view(length_ms);
         follow_ = true;
+    } else if (dragging_) {
+        // The pointer is on the window, so the window holds still under it.
     } else if (playing) {
         // A press of Play turns following back on (the third mockup's
         // togglePlay, line 985); the window then turns its pages with the
@@ -656,9 +650,6 @@ void PbApp::click_fill(const OpenChart& chart, size_t index) {
     const app::PreviewScene& scene = preview_->scene();
     if (index >= scene.fills.size()) return;
     const PreviewFill& f = scene.fills[index];
-    // Whatever the click does, the Preview's clock stays on the fill's dot
-    // when the pointer leaves it (draw_timeline's hover block).
-    hover_return_ms_ = ui::timeline_fill_ms(f);
     if (f.state == app::PreviewFillState::Taken) {
         // The step standing on this fill is the one whose taken_fill is it.
         for (size_t k = 0; k < scene.activations.size(); ++k) {
@@ -666,14 +657,17 @@ void PbApp::click_fill(const OpenChart& chart, size_t index) {
             select_step(k);
             break;
         }
-        return;
+    } else if (fill_refusal(scene, index) == FillRefusal::None) {
+        // A refused fill's click makes no window; its hover card says why.
+        const PathHistory& h = state.history();
+        pending_select_ = h.current().windows.size();
+        state.decisions().click_fill(state.search_graph(), chart.settings, h.current().windows,
+                                     f.chord_tick, h.generation());
     }
-    // A refused fill's click does nothing; its hover card says why.
-    if (fill_refusal(scene, index) != FillRefusal::None) return;
-    const PathHistory& h = state.history();
-    pending_select_ = h.current().windows.size();
-    state.decisions().click_fill(state.search_graph(), chart.settings, h.current().windows,
-                                 f.chord_tick, h.generation());
+    // Whatever the click did, the Preview stops on the fill's dot. This comes
+    // last so select_step's seek to the activation does not stand.
+    preview_->pause();
+    preview_->seek_ms(ui::timeline_fill_ms(f));
 }
 
 void PbApp::draw_preview(const OpenChart& chart) {
