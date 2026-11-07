@@ -348,6 +348,18 @@ class GameTools:
         with self._lock:
             return self._run.launched_at if self._run is not None else None
 
+    def song_length_ms(self) -> Optional[int]:
+        """The length ch_start printed for the open run's song, in ms; None
+        with no run or no song on its command line."""
+        with self._lock:
+            return self._run.length_ms if self._run is not None else None
+
+    def song_length_ms(self) -> Optional[int]:
+        """The length ch_start printed for the open run's song, in ms; None
+        with no run or no song on its command line."""
+        with self._lock:
+            return self._run.length_ms if self._run is not None else None
+
     def session_dir(self) -> str:
         """The session's scratch folder, made on the first call. It holds the
         backups, the stats copies, the play logs and the Frida logs."""
@@ -799,7 +811,7 @@ class GameTools:
             lines.append(f"kit setup: ok, {self._seconds_since(began)}")
 
             began = self._env.now()
-            engine, text = parts.sp.watch_for_run(cap_s, find_run_engine)
+            engine, text = parts.sp.watch_for_run(cap_s, find_run_engine, song_folder)
             if engine is None:
                 return self._run_stopped(lines, "watch", began, text,
                                          parts.kit.ch_kit_teardown())

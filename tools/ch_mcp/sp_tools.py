@@ -210,17 +210,19 @@ class SpTools:
             return "\n".join(lines)
 
     def watch_for_run(self, cap_s: float,
-                      find_engine: Callable[[object], int]) -> Tuple[Optional[int], str]:
+                      find_engine: Callable[[object], int],
+                      song_folder: Optional[str] = None) -> Tuple[Optional[int], str]:
         """Start the watch for game_tools' ch_run_chart with `find_engine` as
         its search, and wait for that search, so the auto-player can use the
         same engine. Returns the engine's address and the CSV's line, or None
         and why the watch failed. The wait ends the moment the search does,
         and the search's own cap ends it; READ_CAP_S covers the scan that
-        cap can run over by."""
+        cap can run over by. song_folder gives the song's end for the gap line;
+        with none the open run's length is used."""
         with self._lock:
             if self._watch is not None and self._watch.running():
                 return None, WATCH_RUNNING
-            w = self._launch(cap_s, None, find_engine, self._open_run_length_ms())
+            w = self._launch(cap_s, None, find_engine, self._song_end_ms(song_folder))
             cap = engine_finder.ENGINE_SEARCH_CAP_S + READ_CAP_S
             if w.settled.wait(cap) and w.engine is not None and w.error is None:
                 return w.engine, w.csv_line()
@@ -332,10 +334,9 @@ class SpTools:
 
     def _open_run_length_ms(self) -> Optional[int]:
         """The length ch_start printed for the run it launched, or None with
-        no run or no song on its command line. GameTools has no public reader
-        for it, so this reads the field."""
-        run = self._game._run
-        return run.length_ms if run is not None else None
+        no run or no song on its command line.
+        (GameTools.song_length_ms)."""
+        return self._game.song_length_ms()
 
     def _song_end_ms(self, song_folder: Optional[str]) -> Optional[int]:
         """The song's length for a watch given `song_folder`

@@ -58,6 +58,9 @@ class FakeGame:
         self.cap_calls = []
         self._run = None
 
+    def song_length_ms(self):
+        return self._run.length_ms if self._run is not None else None
+
     def ensure_backup(self):
         self.events.append("backup")
         return BACKUP_LINE if self.events.count("backup") == 1 else ""
@@ -526,6 +529,22 @@ class SpToolsTest(unittest.TestCase):
                          "gaps over 50 ms between samples: 1, longest 60 ms, "
                          "between 3900.0 ms and 3960.0 ms")
 
+    def test_ch_run_charts_watch_takes_the_song_end_from_the_folder_it_was_given(self):
+        # ch_start with no song, then ch_run_chart(song_folder): no open-run length.
+        folder = os.path.join(self.tmp.name, 'song2')
+        os.makedirs(folder)
+        with open(os.path.join(folder, 'song.ini'), 'w', encoding='utf-8') as f:
+            f.write('[song]\nsong_length = 4000\n')
+        script = Script([snap_at(1.0)])
+        tools = self.tools(script)
+        engine_ptr, _text = tools.watch_for_run(5.0, lambda proc: ENGINE, folder)
+        self.assertEqual(engine_ptr, ENGINE)
+        self.assertTrue(script.done.wait(WAIT_S))
+        tools.ch_sp_watch_stop()
+        self.assertEqual(self.gap_line_of_a_finished_watch(tools),
+                         'gaps over 50 ms between samples: 1, longest 60 ms, '
+                         'between 3900.0 ms and 3960.0 ms')
+
     def test_the_song_end_outlives_the_run(self):
         # ch_stop clears the open run, and a status call after it still has
         # the watch's song end.
@@ -562,8 +581,9 @@ class SpToolsTest(unittest.TestCase):
         # The fake above stands in for this field, so this pins its real name.
         game = game_tools.GameTools(None, threading.RLock(), self.tmp.name, driver=object())
         tools = sp_tools.SpTools(game, threading.RLock())
-        self.assertIsNone(tools._open_run_length_ms())
+        self.assertIsNone(game.song_length_ms())
         game._run = types.SimpleNamespace(length_ms=62080)
+        self.assertEqual(game.song_length_ms(), 62080)
         self.assertEqual(tools._open_run_length_ms(), 62080)
 
     def test_the_status_prints_two_gaps_with_the_clocks_around_them(self):

@@ -914,7 +914,7 @@ class GameToolsTest(unittest.TestCase):
         def __init__(self, events, engine):
             self.events, self.engine = events, engine
 
-        def watch_for_run(self, cap_s, find_engine):
+        def watch_for_run(self, cap_s, find_engine, song_folder=None):
             self.events.append(("watch", cap_s, find_engine))
             return self.engine, "csv: w.csv" if self.engine else "watcher ended: no song"
 
