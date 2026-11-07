@@ -351,6 +351,12 @@ public:
     // The click's or end choice's failure: plain sentence and details line.
     const std::string& message() const { return message_; }
     const std::string& detail() const { return detail_; }
+    // Whether message() was made for the player's path as it stands at
+    // `generation` (PathHistory::generation()): it goes once that path
+    // changes.
+    bool message_current(uint64_t generation) const {
+        return !message_.empty() && message_generation_ == generation;
+    }
     // Why the path on screen has no ladder: pinned_windows refused it, or
     // the ladder or the candidate queue threw (Coach::error). Plain sentence
     // and details line; empty when nothing failed.
@@ -395,6 +401,8 @@ private:
     std::vector<std::unique_ptr<WorkJob<ClickResult>>> retired_clicks_;
     std::string message_;
     std::string detail_;
+    // PathHistory::generation() that message_ was made at.
+    uint64_t message_generation_ = 0;
     bool player_changed_ = false;
 
     std::vector<app::CandidateCost> candidates_;

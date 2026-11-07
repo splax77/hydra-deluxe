@@ -109,6 +109,27 @@ TEST_CASE("coach click: an impossible click leaves the path unchanged and says w
     CHECK(r.detail.empty());
 }
 
+TEST_CASE("coach click: a refusal is current only while the player's path stays as it was") {
+    PbState s;
+    open_and_wait(s, corpus::burnout_notes(), scratch_settings());
+    REQUIRE(s.chart() != nullptr);
+    const OpenChart& c = *s.chart();
+    hydra::pathbuilder::DecisionList& d = s.decisions();
+    CHECK_FALSE(d.message_current(s.history().generation()));  // nothing refused yet
+
+    // Tick 0 holds no fill, so the click is refused and the path stays.
+    const uint64_t at_click = s.history().generation();
+    d.click_fill(s.search_graph(), c.settings, s.history().current().windows, 0, at_click);
+    testwait::poll_until_idle(d, "the refused click's search to land", s);
+    REQUIRE_FALSE(d.message().empty());
+    CHECK(s.history().generation() == at_click);
+    CHECK(d.message_current(at_click));
+
+    // Any later edit of the player's path takes the refusal out of date.
+    s.history().edit(hydra::pathbuilder::PlayerPath{});
+    CHECK_FALSE(d.message_current(s.history().generation()));
+}
+
 TEST_CASE("coach rows: a window over the Path limit carries the tight-window note") {
     hydra::app::Settings limited = scratch_settings();
     limited.mslimit_enabled = true;

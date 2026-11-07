@@ -522,10 +522,12 @@ void DecisionList::poll(PbState& state) {
         } else if (!click_job_->ok()) {
             message_ = click_job_->message();
             detail_ = click_job_->error();
+            message_generation_ = click_generation_;
         } else {
             ClickResult& r = click_job_->result();
             message_ = std::move(r.message);
             detail_ = std::move(r.detail);
+            message_generation_ = click_generation_;
             if (r.windows) {
                 PlayerPath next;
                 next.windows = std::move(*r.windows);
@@ -623,6 +625,7 @@ void DecisionList::finish(PbState& state) {
     } catch (const std::exception& e) {
         message_ = app::plain_error(e);
         detail_ = app::plain_error_detail(e);
+        message_generation_ = state.history().generation();
     }
 }
 

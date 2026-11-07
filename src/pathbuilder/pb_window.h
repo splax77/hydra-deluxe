@@ -119,10 +119,6 @@ private:
     std::string refusal_;
     std::string refusal_detail_;
     uint64_t refusal_generation_ = 0;
-    // The history generation the last edit handed to the decision list
-    // started from. DecisionList::message() is about that edit, so it shows
-    // only while the player's path is still at this generation.
-    uint64_t edit_generation_ = 0;
     // The selected step and the history generation it was picked at.
     std::optional<size_t> selected_;
     uint64_t selected_generation_ = 0;

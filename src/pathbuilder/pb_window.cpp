@@ -367,7 +367,7 @@ void PbApp::draw() {
     const uint64_t generation = state.history().generation();
     if (!refusal_.empty() && refusal_generation_ == generation) warning_line(refusal_, refusal_detail_);
     const DecisionList& d = state.decisions();
-    if (!d.message().empty() && edit_generation_ == generation) warning_line(d.message(), d.detail());
+    if (d.message_current(generation)) warning_line(d.message(), d.detail());
     if (const std::string error = d.error(); !error.empty()) warning_line(error, d.error_detail());
     if (state.opening()) ImGui::TextWrapped("Opening %s ...", state.requested_path().c_str());
     if (!state.error().empty()) warning_line(state.error(), state.error_detail());
@@ -506,7 +506,6 @@ void PbApp::draw_head(const OpenChart& chart) {
     ImGui::BeginDisabled(!d.can_finish());
     if (ImGui::Button(kFinishForMeLabel)) {
         pending_select_.reset();
-        edit_generation_ = h.generation();
         d.finish(state);
     }
     ImGui::EndDisabled();
@@ -673,7 +672,6 @@ void PbApp::click_fill(const OpenChart& chart, size_t index) {
     if (fill_refusal(scene, index) != FillRefusal::None) return;
     const PathHistory& h = state.history();
     pending_select_ = h.current().windows.size();
-    edit_generation_ = h.generation();
     state.decisions().click_fill(state.search_graph(), chart.settings, h.current().windows,
                                  f.chord_tick, h.generation());
 }
@@ -872,7 +870,6 @@ void PbApp::draw_steps(const OpenChart& chart) {
                     ImGui::SetCursorPosY(line.y + line_h + ImGui::GetStyle().ItemSpacing.y);
                     if (picked && last) {
                         pending_select_ = i;
-                        edit_generation_ = h.generation();
                         d.choose_end(c.window, h.generation());
                     }
                     ImGui::PopID();
@@ -888,7 +885,6 @@ void PbApp::draw_steps(const OpenChart& chart) {
             }
             if (ImGui::Button(last ? kRemoveLastLabel : kRemoveEarlierLabel)) {
                 pending_select_.reset();
-                edit_generation_ = h.generation();
                 d.click_remove(state.search_graph(), chart.settings, windows, windows[i].act_tick,
                                h.generation());
             }
