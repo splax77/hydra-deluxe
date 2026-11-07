@@ -364,7 +364,7 @@ def build_server(helper: Optional[Helper] = None):
         key run. Start the song with ch_start(song_folder, human=True), or
         from the menus with ch_open_song: a song launched with a bot is
         played by the bot. log, when given, is where
-        the press log goes. song_folder, when given, sets the run cap from
+        the press log goes, row by row as the run goes. song_folder, when given, sets the run cap from
         the song's length; with none the auto-player keeps its own cap.
         decline_mode, "kick_only" or "nothing", says what to send for each
         fill the path passes over, and needs dump_json, the hydra_replay dump
@@ -381,11 +381,13 @@ def build_server(helper: Optional[Helper] = None):
         the auto-player on the kit, with one engine search for the watch and
         the player. Call it right after ch_start(song_folder, human=True),
         with kit_player="System" for such a launch. decline_mode and
-        dump_json are ch_play_chart's. The call returns at the first press,
-        with one line per part, the time it took, and the line "first press
-        chord index k at ms". A part that fails stops the call there: the
-        reply names it and the kit is taken away. Refused while a play
-        session runs. Read the run with ch_play_status and
+        dump_json are ch_play_chart's. It writes a press log, a press-<n>.csv
+        in the session folder, one row at each press as the run goes, and its
+        reply names the file. The call returns at the first press, with one
+        line per part, the time it took, the press log's line, and the line
+        "first press chord index k at ms". A part that fails stops the call
+        there: the reply names it and the kit is taken away. Refused while a
+        play session runs. Read the run with ch_play_status and
         ch_sp_watch_status."""
         return capped(h.game.ch_run_chart(song_folder, score_json, kit_player,
                                           decline_mode, dump_json))
@@ -411,8 +413,10 @@ def build_server(helper: Optional[Helper] = None):
 
     @server.tool()
     def ch_play_status() -> str:
-        """The play session's counts, its stop reason when it ended, and its
-        press rows, newest first."""
+        """The press log's path on the first line when the session has one,
+        then the play session's counts, its stop reason when it ended, and its
+        press rows, newest first. A long reply is cut from its end, so the
+        file holds every row."""
         return capped(h.game.ch_play_status())
 
     @server.tool()
