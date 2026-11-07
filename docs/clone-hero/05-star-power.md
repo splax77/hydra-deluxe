@@ -2,7 +2,7 @@
 
 This page covers Star Power phrases, the meter, activation, drain, the Star Power end and squeezes.
 It describes build 1.1 (v1.1.0.6142).
-Last write-back: 2026-10-30.
+Last write-back: 2026-11-06.
 
 The live-run files named below (`run1_cal0_*` under tools/ch_probe/experiments/results/overlay-spike/) were untracked in git on 2026-10-30; only `il2cpp-fields.md` in that folder is tracked. "Run 1" is the key-press auto-player run on the probe chart Trippin SP Spike (resolution 192), stamped 2026-10-29 00:39 UTC. The engine fields are those of the base engine class #8288, which the drum engine #8255 inherits. `ghidra_decompile_all.txt` and "the decompile" mean Ghidra's full decompile of build 6142, which `code/README.md` describes; it is not in the repo.
 
@@ -72,11 +72,11 @@ Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 Rule: A .chart phrase (`S 2 <len>`) and a .mid phrase (note 116 on and off, length = off minus on) are stored the same way and go through the same membership rule.
 Label: Unknown
-Evidence: listing lost; read 2026-10-03 at `0x213E0C0` (.chart) and `0x2155050` (.mid), session cebf3006 (ch-evidence.md lines 55 to 58 at commit 5fbe71ae). Neither reader was listed again for this row.
+Evidence: listing lost; read 2026-10-03 at `0x213E0C0` (.chart) and `0x2155050` (.mid), session cebf3006 (ch-evidence.md lines 55 to 58 at commit 5fbe71ae). Neither reader was listed again for this row. One side is shown live: LS-D2d of `docs/superpowers/plans/2026-10-31-ch-mcp-direct-start.md`, 2026-11-06, earned all 25 note-116 phrases of a .mid chart (`C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-06\ls-d2d-run1\`). The .chart side and the sameness were not checked by that run.
 Game code (6142): not found: looked in the committed listings for a phrase read in `0x213E0C0` and `0x2155050`; the reference build's working listings were not kept
 Hydra: `close_sp_phrase` in src/parse/song.cpp line 401, called by the .mid reader (line 805) and the .chart reader (line 1414)
 Ruling: none needed: D21 put both parsers on one helper (SP-01)
-Found: 2026-10-03, session cebf3006
+Found: 2026-10-03, session cebf3006; the .mid run, 2026-11-06, session 70bfa33d (LS-D2d)
 
 ### SP-08 A clean-up step drops phrases that hold no note
 

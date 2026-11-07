@@ -2,7 +2,7 @@
 
 This page covers note values, the multiplier and combo, accents and ghosts, the solo bonus, star cutoffs and the score breakdown.
 It describes build 1.1 (v1.1.0.6142).
-Last write-back: 2026-10-30.
+Last write-back: 2026-11-06.
 
 The run files named below are of two kinds. The three bot runs of 2026-10-28 are in C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-10-28\l1\bot\ (outside the repo): Window Map, and Trippin SP Spike on Drums and on ProDrums. "Run 1" is the key-press auto-player run on Trippin SP Spike, `run1_cal0_scorestats.json` under tools/ch_probe/experiments/results/overlay-spike/, untracked in git on 2026-10-30. Engine fields belong to the base engine class #8288; the drum engine is #8255. `ghidra_decompile_all.txt` is Ghidra's full decompile of build 6142, which `code/README.md` describes; it is not in the repo.
 
@@ -146,11 +146,11 @@ Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 Rule: On a key-press run the game counted no accent or ghost as hit, while the bot on the same chart hit them all.
 Label: Proven in a live run
-Evidence: Run 1 (keys, ProDrums): accent_notes_hit 0 of 9, ghost_notes_hit 0 of 34. ProDrums bot on the same chart: 9 of 9 and 34 of 34 (scorestats-Trippin_SP_Spike-20261028-212754.json). One key run only; the code does not show where a key press gets its lane value.
+Evidence: Run 1 (keys, ProDrums): accent_notes_hit 0 of 9, ghost_notes_hit 0 of 34. ProDrums bot on the same chart: 9 of 9 and 34 of 34 (scorestats-Trippin_SP_Spike-20261028-212754.json). One key run only; the code does not show where a key press gets its lane value. A virtual kit press at full value earns none either: LS-D2d of `docs/superpowers/plans/2026-10-31-ch-mcp-direct-start.md`, 2026-11-06, hit 2,985 of 2,996 notes on the Senri chart with accent_notes_hit 0 of 368 and ghost_notes_hit 0 of 726 (stats copy in `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-06\ls-d2d-run1\`). What value a kit pad would need for a dynamic is not known.
 Game code (6142): none beyond SC-13
 Hydra: no owner: Hydra scores a dynamic gem as always played right
 Ruling: open split: see questions page Q-51 (the user said in session 6a549de0: "the code is the source of truth but from experience i can tell you dynamics only work with a real drum kit. keyboard inputs never register dynamics."; that states the game's behaviour, not what Hydra should price)
-Found: 2026-10-30, session b02ab3e6 (the reference build)
+Found: 2026-10-30, session b02ab3e6 (the reference build); the kit press, 2026-11-06, session 70bfa33d (LS-D2d)
 
 ### SC-15 Plain Drums drops accents and ghosts
 
