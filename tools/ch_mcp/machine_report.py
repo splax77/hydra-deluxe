@@ -29,7 +29,7 @@ if __package__ in (None, ""):
     # Run as a script (py -I leaves the repo off sys.path).
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
-from tools.ch_mcp import game_files, quiet  # noqa: E402
+from tools.ch_mcp import game_files, machine_recorder, quiet  # noqa: E402
 from tools.ch_mcp.sp_tools import GAP_MS  # noqa: E402
 from tools.ch_probe import constants as C  # noqa: E402
 from tools.ch_probe.experiments.sp_compare import gap_summary  # noqa: E402
@@ -51,24 +51,23 @@ STEP_PERCENTILE = 99
 # read them.
 SETTINGS_KEYS = ("framerate", "vsync")
 
-SAMPLES_FILE = "samples.csv"
-PROCESSES_FILE = "processes.csv"
-THREADS_FILE = "threads.csv"
-SAMPLE_COLUMNS = ("sample", "wall_s", "sample_ms", "processes", "threads", "ready_threads",
-                  "clock_s", "clock_wall_before_s", "clock_wall_after_s", "recorder_pid",
-                  "period_ms", "stop_reason", "process_time_s")
+# machine_recorder.py owns the three files, their columns and the `reads_as` words.
+SAMPLES_FILE = machine_recorder.SAMPLES_FILE
+PROCESSES_FILE = machine_recorder.PROCESSES_FILE
+THREADS_FILE = machine_recorder.THREADS_FILE
+SAMPLE_COLUMNS = machine_recorder.SAMPLES_COLUMNS
+PROCESS_COLUMNS = machine_recorder.PROCESSES_COLUMNS
+THREAD_COLUMNS = machine_recorder.THREADS_COLUMNS
+READS_READY = machine_recorder.READY
+READS_RUNNING = machine_recorder.RUNNING
 # Empty on an ordinary row of samples.csv, so an empty one is no half row.
 SAMPLE_OPTIONAL = ("clock_s", "clock_wall_before_s", "clock_wall_after_s", "stop_reason",
                    "process_time_s")
-PROCESS_COLUMNS = ("sample", "pid", "parent_pid", "name", "cpu_ms", "read_bytes", "write_bytes",
-                   "hard_faults")
-THREAD_COLUMNS = ("sample", "pid", "tid", "state", "wait_reason", "reads_as", "switches",
-                  "cpu_ms")
-
-READS_READY = "ready"
-READS_RUNNING = "running"
+# The Idle process has no name, so an empty one is no half row either.
+PROCESS_OPTIONAL = ("name",)
 
 NO_ROWS_NAME = "(no rows)"
+NO_NAME = "(no name)"
 
 
 class Refused(Exception):
@@ -169,7 +168,9 @@ def _read_rows(folder: str, file_name: str, columns: Sequence[str],
             rows = list(reader)
     except OSError as e:
         raise Refused(f"refused: could not read {path} ({e})")
-    whole = [row for row in rows if all(row[c] not in (None, "") for c in required)]
+    # A row cut short has None past the cut; an empty cell is whole when its column may be.
+    whole = [row for row in rows if all(row[c] is not None for c in columns)
+             and all(row[c] != "" for c in required)]
     return whole, len(rows) - len(whole)
 
 
@@ -201,7 +202,8 @@ def _thread(row: dict) -> ThreadRow:
 
 def read_recording(folder: str) -> Recording:
     sample_rows, half_samples = _read_rows(folder, SAMPLES_FILE, SAMPLE_COLUMNS, SAMPLE_OPTIONAL)
-    process_rows, half_processes = _read_rows(folder, PROCESSES_FILE, PROCESS_COLUMNS)
+    process_rows, half_processes = _read_rows(folder, PROCESSES_FILE, PROCESS_COLUMNS,
+                                              PROCESS_OPTIONAL)
     thread_rows, half_threads = _read_rows(folder, THREADS_FILE, THREAD_COLUMNS)
     return Recording(_parsed(SAMPLES_FILE, sample_rows, _sample),
                      _parsed(PROCESSES_FILE, process_rows, _process),
@@ -305,8 +307,8 @@ def _worker_lines(rec: Recording, worker: int) -> Tuple[List[str], Optional[int]
         return [f"worker {worker}: its parent is pid {launcher}, which has no row in "
                 f"{PROCESSES_FILE}, so the front is not known"], None
     front = table[launcher].parent_pid
-    front_name = table[front].name if front in table else NO_ROWS_NAME
-    return [f"worker {worker}: its parent is pid {launcher} {table[launcher].name}",
+    front_name = _shown(table[front].name) if front in table else NO_ROWS_NAME
+    return [f"worker {worker}: its parent is pid {launcher} {_shown(table[launcher].name)}",
             f"front: pid {front} {front_name}, the parent of pid {launcher}"], front
 
 
@@ -314,15 +316,28 @@ def _stem(name: str) -> str:
     return os.path.splitext(name)[0].lower()
 
 
+_REPORTED_LOWER = frozenset(name.lower() for name in quiet.REPORTED_NAMES)
+
+
+def _always_listed(name: str) -> bool:
+    """Whether a process name is one of ALWAYS_LISTED_NAMES, by quiet.py's own
+    answers for a compiler and for a reported name."""
+    return quiet.is_compiler(name) or name.lower() in _REPORTED_LOWER
+
+
+def _shown(name: str) -> str:
+    return name or NO_NAME
+
+
 def _cpu_lines(rec: Recording, whole: Window, window: Window, windowed: bool,
                roles: Dict[int, List[str]]) -> List[str]:
     whole_ms = _gained(rec.processes, whole.slices, "cpu_ms")
     window_ms = _gained(rec.processes, window.slices, "cpu_ms")
-    always = {_stem(name) for name in ALWAYS_LISTED_NAMES}
+
 
     listed = {key for key, ms in whole_ms.items() if ms > 0}
     listed |= {(row.pid, row.name) for row in rec.processes
-               if row.pid in roles or _stem(row.name) in always}
+               if row.pid in roles or _always_listed(row.name)}
     listed |= {(pid, NO_ROWS_NAME) for pid in roles
                if not any(key[0] == pid for key in listed)}
     seen = {_stem(key[1]) for key in listed}
@@ -338,7 +353,7 @@ def _cpu_lines(rec: Recording, whole: Window, window: Window, windowed: bool,
         shares = f"{_share(whole_ms.get(key, Fraction(0)), whole.span_ms):6.1f}%"
         if windowed:
             shares += f" {_share(window_ms.get(key, Fraction(0)), window.span_ms):6.1f}%"
-        who = f"pid {pid} {name}" if pid is not None else f"pid - {name}"
+        who = f"pid {pid} {_shown(name)}" if pid is not None else f"pid - {name}"
         label = f" ({' and '.join(roles[pid])})" if pid in roles else ""
         lines.append(f"  {shares}  {who}{label}")
     return lines
@@ -362,7 +377,7 @@ def _stretch_text(stretches: List[List[int]], walls: Dict[int, Fraction],
     longest = max(stretches, key=lambda run: walls[run[-1]] - walls[run[0]])
     rows = [row for number in longest for row in by_sample.get(number, ())]
     gained = _gained(rows, slices, "cpu_ms")
-    who = [f"pid {pid} {name} {float(ms):.1f} ms"
+    who = [f"pid {pid} {_shown(name)} {float(ms):.1f} ms"
            for (pid, name), ms in sorted(gained.items(), key=lambda kv: (-kv[1], kv[0]))
            if ms > 0]
     return (f"longest ready stretch {float(_ms(walls[longest[-1]] - walls[longest[0]])):.1f} ms "
@@ -460,6 +475,8 @@ def _clock_lines(rec: Recording, window: Window) -> List[str]:
     if long_pairs:
         lines.append("largest of those, as detail (one step's excess can be the measurement; "
                      "the lead above judges the game):")
+    else:
+        lines.append("no clock step has an excess that long, so none is listed")
     for pair in sorted(long_pairs, key=lambda p: -abs(p.excess_ms))[:LONGEST_LISTED]:
         lines.append(f"  wall {_wall(pair.later.wall_s)}: step {float(pair.step_ms):.1f} ms, "
                      f"wall gap {float(pair.wall_gap_ms):.1f} ms, "
@@ -477,7 +494,7 @@ def _bytes_lines(rec: Recording, window: Window) -> List[str]:
     both = {key: read.get(key, 0) + wrote.get(key, 0) for key in set(read) | set(wrote)}
     lines = ["bytes by process in the window:"]
     for key in _nonzero_by_process(both):
-        lines.append(f"  pid {key[0]} {key[1]}: read {int(read.get(key, 0))}, "
+        lines.append(f"  pid {key[0]} {_shown(key[1])}: read {int(read.get(key, 0))}, "
                      f"wrote {int(wrote.get(key, 0))}")
     return lines if len(lines) > 1 else lines + ["  none"]
 
@@ -487,7 +504,7 @@ def _fault_lines(rec: Recording, window: Window) -> List[str]:
     # Row P44 of the plan: this column's field is not confirmed yet.
     lines = ["hard faults by process in the window (meaning unchecked):"]
     for key in _nonzero_by_process(faults):
-        lines.append(f"  pid {key[0]} {key[1]}: {int(faults[key])}")
+        lines.append(f"  pid {key[0]} {_shown(key[1])}: {int(faults[key])}")
     return lines if len(lines) > 1 else lines + ["  none"]
 
 

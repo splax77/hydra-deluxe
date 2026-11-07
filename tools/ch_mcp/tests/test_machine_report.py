@@ -10,20 +10,22 @@ import sys
 import tempfile
 import unittest
 
+from tools.ch_mcp import machine_recorder
 from tools.ch_mcp import machine_report as R
-from tools.ch_mcp import quiet, sp_tools
+from tools.ch_probe import constants as C
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 GAME, WORKER, RECORDER, COMPILER = 7, 8, 9, 11
 GAME_TID = 70
 BASE_S = 1000
+COMPILER_SAMPLES = range(50, 60)
 PERIOD_MS = 20
 
 
 def wall_text(ms):
     """A wall time in the file's form, `ms` after the fixture's start."""
-    return f"{BASE_S + ms / 1000:.3f}"
+    return f"{BASE_S + C.ms_to_s(ms):.3f}"
 
 
 class Fixture:
@@ -40,7 +42,7 @@ class Fixture:
         number = len(self.samples)
         clock = ["", "", ""]
         if clock_ms is not None:
-            clock = [f"{clock_ms / 1000:.3f}", wall_text(wall_ms), wall_text(wall_ms + read_ms)]
+            clock = [f"{C.ms_to_s(clock_ms):.3f}", wall_text(wall_ms), wall_text(wall_ms + read_ms)]
         self.samples.append([number, wall_text(wall_ms), 1, 400, 5000, 2] + clock
                             + [RECORDER, PERIOD_MS, "", ""])
         return number
@@ -109,20 +111,29 @@ class Constants(unittest.TestCase):
         self.assertEqual(R.LONG_STEP_FACTOR, 2)
         self.assertEqual(R.READY_STRETCH_MIN, 2)
 
-    def test_owners_are_used_and_not_copied(self):
-        self.assertIs(R.GAP_MS, sp_tools.GAP_MS)
-        self.assertEqual(R.ALWAYS_LISTED_NAMES, quiet.COMPILER_NAMES + quiet.REPORTED_NAMES)
+    def test_the_watchs_gap_threshold_and_the_listed_names(self):
+        self.assertEqual(R.GAP_MS, 50)
+        self.assertEqual(R.ALWAYS_LISTED_NAMES,
+                         ("cl", "link", "MSBuild", "cmake", "ninja", "clang-cl", "lld-link", "rc",
+                          "mt", "tsc", "esbuild", "Spotify.exe", "MsMpEng.exe"))
+
+    def test_the_recorders_files_and_words_are_the_ones_read(self):
+        for name in R.SAMPLE_OPTIONAL:
+            self.assertIn(name, machine_recorder.SAMPLES_COLUMNS)
+        for name in R.PROCESS_OPTIONAL:
+            self.assertIn(name, machine_recorder.PROCESSES_COLUMNS)
+        self.assertEqual((R.READS_READY, R.READS_RUNNING), ("ready", "running"))
 
 
 class CpuShares(ReportCase):
     def fixture(self):
         """100 samples at 20 ms and four processes. The compiler runs only in
-        samples 50 to 59, and the game drops to 5 ms a slice there."""
+        the COMPILER_SAMPLES, and the game drops to 5 ms a slice there."""
         fx = Fixture()
         fx.steady(100)
         for n in range(100):
             fx.thread(n)
-            busy = 50 <= n <= 59
+            busy = n in COMPILER_SAMPLES
             fx.process(n, GAME, "Clone Hero.exe", cpu_ms=5 if busy else 10)
             fx.process(n, WORKER, "python.exe", cpu_ms=2)
             fx.process(n, RECORDER, "python.exe", cpu_ms=3)
@@ -138,14 +149,16 @@ class CpuShares(ReportCase):
         self.assertIn("    15.0%  pid 9 python.exe (recorder)", lines)
 
     def test_the_window_changes_the_shares(self):
-        lines = self.lines(self.fixture(), "--from", wall_text(50 * 20), "--to", wall_text(59 * 20))
+        lines = self.lines(self.fixture(), "--from", wall_text(COMPILER_SAMPLES[0] * 20),
+                           "--to", wall_text(COMPILER_SAMPLES[-1] * 20))
         self.assertIn("window: wall 1001.000 to 1001.180, 200.0 ms of slices", lines)
         self.assertIn("    47.5%   25.0%  pid 7 Clone Hero.exe (game)", lines)
         self.assertIn("    10.1%  100.0%  pid 11 cl.exe", lines)
         self.assertIn("    15.0%   15.0%  pid 9 python.exe (recorder)", lines)
 
     def test_a_process_stamped_on_the_window_edge_is_inside(self):
-        lines = self.lines(self.fixture(), "--from", wall_text(59 * 20), "--to", wall_text(59 * 20))
+        last = wall_text(COMPILER_SAMPLES[-1] * 20)
+        lines = self.lines(self.fixture(), "--from", last, "--to", last)
         self.assertIn("    10.1%  100.0%  pid 11 cl.exe", lines)
 
     def test_the_first_sample_ends_no_slice(self):
@@ -263,6 +276,12 @@ class ClockSteps(ReportCase):
             "  wall 1000.340: step 20.0 ms, wall gap 80.0 ms, excess -60.0 ms",
             "  wall 1000.060: step 70.0 ms, wall gap 20.0 ms, excess +50.0 ms"])
 
+    def test_a_calm_run_says_none_is_listed(self):
+        lines = self.lines(clock_fixture(((20, 20), (21, 20), (19, 20))))
+        self.assertIn("clock steps with an excess over 40 ms by size: 0", lines)
+        self.assertIn("no clock step has an excess that long, so none is listed", lines)
+        self.assertFalse([line for line in lines if line.startswith("  wall ")])
+
     def test_the_late_sample_is_not_listed(self):
         lines = self.lines(clock_fixture(self.SIX_PAIRS))
         self.assertFalse([line for line in lines if "wall 1000.260" in line])
@@ -375,7 +394,7 @@ class SampleGaps(ReportCase):
     def test_a_gap_of_exactly_gap_ms_is_not_over(self):
         fx = Fixture()
         fx.thread(fx.sample(0))
-        fx.sample(sp_tools.GAP_MS)
+        fx.sample(R.GAP_MS)
         self.assertIn("gaps between samples: median 50.0 ms, worst 50.0 ms, 0 over 50 ms "
                       "(the recorder's own stalls)", self.lines(fx))
 
@@ -501,6 +520,36 @@ class TheFront(ReportCase):
 
     def test_no_worker_prints_no_front(self):
         self.assertFalse([line for line in self.lines(self.fixture()) if "front" in line])
+
+
+class ARecordingAsTheRecorderWritesIt(ReportCase):
+    """Sample numbers start at 1, the Idle process has no name, and a process
+    that gained nothing has a row in sample 1 only."""
+
+    def fixture(self):
+        fx = Fixture()
+        for number, ms in ((1, 0), (2, 20), (3, 40), (4, 60)):
+            fx.samples.append([number, wall_text(ms), 1, 400, 5000, 2, "", "", "", RECORDER,
+                               PERIOD_MS, "", ""])
+        fx.thread(1)
+        fx.process(1, 0, "", cpu_ms=0, parent=0)
+        fx.process(2, 0, "", cpu_ms=30, parent=0)
+        fx.process(1, WORKER, "python.exe", parent=30)
+        fx.process(1, 30, "py.exe", parent=31)
+        fx.process(1, 31, "claude.exe", parent=32)
+        fx.process(2, 31, "claude.exe", cpu_ms=2, parent=32)
+        return fx
+
+    def test_a_nameless_process_is_not_a_half_row(self):
+        lines = self.lines(self.fixture())
+        self.assertFalse([line for line in lines if "half-written" in line])
+        self.assertIn("    50.0%  pid 0 (no name)", lines)
+
+    def test_a_parent_with_a_row_only_in_sample_one_names_the_front(self):
+        lines = self.lines(self.fixture(), "--worker", str(WORKER))
+        self.assertIn("worker 8: its parent is pid 30 py.exe", lines)
+        self.assertIn("front: pid 31 claude.exe, the parent of pid 30", lines)
+        self.assertIn("     0.0%  pid 8 python.exe (worker)", lines)
 
 
 class TheRecordingsEnd(ReportCase):
