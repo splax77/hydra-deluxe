@@ -60,7 +60,7 @@ std::vector<Path> read_path_file(const std::string& file, const OpenChart& chart
 // Opens a path file: the first path read_path_file finds becomes the player's
 // path, as one edit of `history`, so undo puts the old path back; the file's
 // other paths are read (so a bad one refuses the file) and left out (the
-// user's answer Q2 in docs/superpowers/plans/2026-10-30-path-builder-redesign.md).
+// user's answer Q2 in docs/superpowers/plans/2026-10-30-path-builder-redesign.md (removed; git show 307d0b5c:docs/superpowers/plans/2026-10-30-path-builder-redesign.md)).
 // When the file cannot be read or does not fit the chart, nothing changes and
 // the refusal says why.
 std::optional<Refusal> open_path_file(PathHistory& history, const OpenChart& chart,

@@ -34,7 +34,7 @@ enum class TextRole {
     AppVersion,      // the version bar's app name and version
     DialogQuestion,  // the batch dialog's question
     // The Path Builder timeline's small text. It follows the user's font size
-    // like the rest of Hydra (plan 2026-10-31-path-builder-redesign-2, Q7).
+    // like the rest of Hydra (D303 item 2, Q7).
     TimelineCost,     // the word under a fill (`.flab`, tabular figures)
     TimelineSection,  // a section's name (`.sec`)
     TimelineAxis,     // a time on the axis (`.axis span`)

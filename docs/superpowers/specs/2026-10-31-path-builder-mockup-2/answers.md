@@ -1,6 +1,6 @@
 # The second Path Builder mockup: what the user approved (2026-10-31)
 
-Session 8bb2c4a3. The mockup answers the six problems from the second real-app check (`docs/handoffs/2026-10-30-path-builder-real-app-check-2-handoff.md`). The spec is `mockup_template.html` in this folder; `path-builder-mockup-2.html` is the same page with its data inside, so it opens on its own.
+Session 8bb2c4a3. The mockup answers the six problems from the second real-app check (`docs/handoffs/2026-10-30-path-builder-real-app-check-2-handoff.md` (removed; `git show 307d0b5c:docs/handoffs/2026-10-30-path-builder-real-app-check-2-handoff.md`)). The spec is `mockup_template.html` in this folder; `path-builder-mockup-2.html` is the same page with its data inside, so it opens on its own.
 
 The user chose the song: asked "The new mockup needs a busy song so the crowding problem shows. Which song should it use?", the user answered "The Reaper (Recommended)". The data is Hydra's engine output for "(Don't Fear) The Reaper (Rh)", Expert Pro Drums, 2x kick, SP cap 4, 10 ms Path limit; `build_data.py` says how to rebuild it.
 

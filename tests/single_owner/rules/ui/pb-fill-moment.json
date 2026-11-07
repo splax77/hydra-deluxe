@@ -6,7 +6,7 @@
       "owner_file": "src/ui/preview_timeline.cpp",
       "owner_symbol": "timeline_fill_ms",
       "date": "2026-10-31",
-      "decision": "docs/superpowers/plans/2026-10-31-path-builder-redesign-3.md, SC-4b, a list row whose fill is off screen scrolls the timeline to it (bar question 5); and the same plan's \"RA-6 changes (2026-10-31)\", one position per fill: the clock line sits exactly on the fill's dot",
+      "decision": "docs/superpowers/plans/2026-10-31-path-builder-redesign-3.md (removed; git show 307d0b5c:docs/superpowers/plans/2026-10-31-path-builder-redesign-3.md), SC-4b, a list row whose fill is off screen scrolls the timeline to it (bar question 5); and D303 item 9, one position per fill: the clock line sits exactly on the fill's dot",
       "added_by": "PBR3-SC4B-REV",
       "pattern": "\\bspan\\.(start|end)_ms\\b",
       "anchor": "span.",

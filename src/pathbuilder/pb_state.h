@@ -44,9 +44,8 @@ struct OpenChart {
     // The path with no activation: search_target over no windows, found once
     // at the open. The screen shows it while the player has no window, so
     // the empty start has a scene, a meter curve and a score from a path
-    // ("The empty path" in docs/superpowers/plans/
-    // 2026-10-30-path-builder-redesign.md). Empty only when the search found
-    // no path at all.
+    // ("The empty path" in docs/superpowers/plans/2026-10-30-path-builder-redesign.md (removed; git show 307d0b5c:docs/superpowers/plans/2026-10-30-path-builder-redesign.md)).
+    // Empty only when the search found no path at all.
     std::optional<Path> empty_path;
 
     // Whether the chart has a Star Power phrase. Without one there is no

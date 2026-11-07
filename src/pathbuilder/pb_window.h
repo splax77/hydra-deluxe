@@ -11,8 +11,7 @@
 // mockup_template.html, answers.md answer 4). Everything drawn about the chart
 // is the Preview's; every sentence is pb_text's. main.cpp and the headless
 // runner (tests/pb_ui) both draw through draw(), so a test sees what the
-// player sees. Plan: docs/superpowers/plans/2026-10-31-path-builder-redesign-2.md,
-// task SC-3b.
+// player sees. The user's answers on this layout are D303.
 
 #ifndef HYDRA_PATHBUILDER_PB_WINDOW_H
 #define HYDRA_PATHBUILDER_PB_WINDOW_H

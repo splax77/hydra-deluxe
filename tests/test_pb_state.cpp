@@ -41,7 +41,7 @@ TEST_CASE("pb state: a corpus chart opens with its record and its graph") {
     CHECK_FALSE(s.history().can_undo());
 }
 
-// "The empty path" in docs/superpowers/plans/2026-10-30-path-builder-redesign.md:
+// "The empty path" in docs/superpowers/plans/2026-10-30-path-builder-redesign.md (removed; git show 307d0b5c:docs/superpowers/plans/2026-10-30-path-builder-redesign.md):
 // the open finds the path with no activation, and the player's own path stays
 // empty (Copy and Save read only that).
 TEST_CASE("pb state: a newly opened chart has its empty path") {

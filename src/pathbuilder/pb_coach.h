@@ -6,8 +6,8 @@
 // the note from Activation::within_ms_limit. Plan: docs/superpowers/plans/
 // 2026-10-28-path-builder.md, task PB-2a. The candidate queue, which prices
 // each fill the player could activate on next (app::candidate_costs), is task
-// CO-2 of docs/superpowers/plans/2026-10-30-path-builder-redesign.md; that
-// plan's Q1 (the player builds left to right) is why a click changes no
+// CO-2 of docs/superpowers/plans/2026-10-30-path-builder-redesign.md (removed; git show 307d0b5c:docs/superpowers/plans/2026-10-30-path-builder-redesign.md);
+// that plan's Q1 (the player builds left to right) is why a click changes no
 // window after it.
 
 #ifndef HYDRA_PATHBUILDER_PB_COACH_H

@@ -6,7 +6,7 @@
       "owner_file": "src/app/path_costs.cpp",
       "owner_symbol": "costs_nothing",
       "date": "2026-10-30",
-      "decision": "docs/superpowers/plans/2026-10-30-path-builder-redesign.md, \"Engine truth\": the best next fill always costs 0; found by the PB-5 review",
+      "decision": "docs/superpowers/plans/2026-10-30-path-builder-redesign.md (removed; git show 307d0b5c:docs/superpowers/plans/2026-10-30-path-builder-redesign.md), \"Engine truth\": the best next fill always costs 0; found by the PB-5 review",
       "added_by": "PB-5-REVIEW",
       "anchor": "cost",
       "pattern": "\\bcosts?(?:\\[\\w+\\])?\\s*(?:<=|>)\\s*0\\b",

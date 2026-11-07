@@ -78,9 +78,9 @@ TEST_CASE("pb files: a saved path file opens back as the same path, as the playe
     check_same_path(*h.current().path, mine);
 }
 
-// The user's answer Q2 (docs/superpowers/plans/
-// 2026-10-30-path-builder-redesign.md): a path file opens its first path as
-// the player's, as one edit, and leaves the rest out.
+// The user's answer Q2 (docs/superpowers/plans/2026-10-30-path-builder-redesign.md (removed; git show 307d0b5c:docs/superpowers/plans/2026-10-30-path-builder-redesign.md)):
+// a path file opens its first path as the player's, as one edit, and leaves
+// the rest out.
 TEST_CASE("pb files: a path file's first path becomes the player's") {
     PbState s;
     const OpenChart& c = open_burnout(s);

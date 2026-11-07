@@ -18,8 +18,8 @@ namespace {
 // Every size and colour below is a mockup's, the spec for this screen. Sizes
 // in rem come from the second mockup,
 // docs/superpowers/specs/2026-10-31-path-builder-mockup-2/mockup_template.html,
-// and are drawn through rem, so they follow the user's font size (plan
-// 2026-10-31-path-builder-redesign-2, Q1, and the rem-sizes answer under it).
+// and are drawn through rem, so they follow the user's font size (D303 item 2,
+// Q1, and the rem-sizes answer in its item 3).
 // Sizes the mockups give in CSS pixels (borders, outlines, strokes) are drawn
 // through px; where the second mockup gives none, the first mockup's,
 // docs/superpowers/specs/2026-10-30-path-builder-mockup/mockup_template.html,

@@ -60,7 +60,7 @@ bool costs_nothing(int64_t cost);
 // One fill the player could activate on next, priced: best_finish is
 // BF(n + f), best_finish's total with the player's n windows pinned whole and
 // this fill pinned by its activation alone. Plan:
-// docs/superpowers/plans/2026-10-30-path-builder-redesign.md, task CO-2.
+// docs/superpowers/plans/2026-10-30-path-builder-redesign.md (removed; git show 307d0b5c:docs/superpowers/plans/2026-10-30-path-builder-redesign.md), task CO-2.
 struct CandidateFinish {
     int64_t act_tick = 0;
     int64_t best_finish = 0;

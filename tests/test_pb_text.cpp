@@ -1,7 +1,5 @@
-// The Path Builder's sentences (pathbuilder/pb_text.h; plan
-// docs/superpowers/plans/2026-10-30-path-builder-redesign.md, task CO-1, and
-// docs/superpowers/plans/2026-10-31-path-builder-redesign-2.md, task SC-3a,
-// and docs/superpowers/plans/2026-10-31-path-builder-redesign-3.md, task TX-3).
+// The Path Builder's sentences (pathbuilder/pb_text.h, whose header names the
+// mockups and the D-records behind them).
 // The corpus cases run at the GUI's default settings, whose Path limit is
 // 10 ms; every sentence is pinned from one run.
 
