@@ -107,7 +107,7 @@ std::optional<std::string> large_range_line(const RangeSize& size) {
 }
 
 std::string summary_line(const std::vector<Item>& sorted, const Range& range) {
-    // Kind counts in letter order, as the script's Group-Object gave them.
+    // Kind counts in letter order.
     std::map<std::string, size_t> per_kind;
     for (const Item& i : sorted) ++per_kind[i.kind];
     std::string counts;

@@ -32,7 +32,7 @@ bool is_py(const std::string& file);
 bool test_file(const std::string& file);
 // Is this one of the scan's own files, whose strings and literals are pattern
 // examples, so no check reads it line by line? Old ranges still add lines to
-// the file the scan's C++ lived in before it moved, so that file counts too.
+// a file of the scan's C++ that main no longer holds, so that file counts too.
 bool skipped_file(const std::string& file);
 
 // The top folders the precheck lists and diffs: the ones the scan walks

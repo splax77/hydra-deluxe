@@ -251,9 +251,8 @@ std::string CatFileBatch::text(const std::string& rev, const std::string& path) 
 }
 
 std::string tip_text_form(const std::string& raw) {
-    // The script read each file as PowerShell reads a program's output: one
-    // line per "\r\n", "\n" or lone "\r", a byte order mark dropped, and the
-    // lines joined with "\n".
+    // One line per "\r\n", "\n" or lone "\r", a byte order mark dropped, and
+    // the lines joined with "\n".
     size_t from = raw.compare(0, 3, "\xEF\xBB\xBF") == 0 ? 3 : 0;
     std::string out;
     out.reserve(raw.size());
