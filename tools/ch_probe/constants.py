@@ -250,6 +250,17 @@ WINDOW_FLOOR_MS = 96.2932
 # not the 85 ms back constant).
 ONE_SIDE_CAP_MS = WINDOW_CAP_MS / 2
 
+# The four values of the normal-mode window formula, as TM-21 on
+# docs/clone-hero/03-timing.md writes them, decoded in the comments of
+# code/6142/hit_window_formula_20DDDA0.asm lines 17 to 35. These are values,
+# not addresses; the RVA_FORMULA_* tables above keep their names (TM-28 says
+# they carry each other's, an open question, Q-34). play_chart.window_side_ms
+# is the one place they are put together.
+WINDOW_FORMULA_NORMAL_LINEAR = 0.0110924369747899
+WINDOW_FORMULA_NORMAL_SQUARE = 2.628539e-05
+WINDOW_FORMULA_NORMAL_SCALE = 170.0
+WINDOW_FORMULA_NORMAL_OFFSET_MS = 20.0
+
 # A note reads the cap when the gaps on both sides are at least this wide
 # (each half-gap at the back constant), and the floor when both are at most
 # this narrow (each half-gap at the front constant).

@@ -905,12 +905,12 @@ class GameToolsTest(unittest.TestCase):
         self.assertEqual([c.declined for c in seen[0]], [False, False])
         self.assertIn("declined (nothing): chords none", reply.splitlines())
 
-    def test_a_mode_other_than_the_two_names_is_refused(self):
+    def test_a_mode_other_than_the_three_names_is_refused(self):
         t, seen = self._decline_rig()
         score, dump = self._decline_files()
         self.assertEqual(t.tools.ch_play_chart(score, route="keys", decline_mode="both",
                                                dump_json=dump),
-                         'unknown decline mode "both"; modes: kick_only, nothing')
+                         'unknown decline mode "both"; modes: kick_only, nothing, all_but_top_pad')
         self.assertIsNone(t.tools._play)
         self.assertEqual(seen, [])
 
@@ -1272,7 +1272,7 @@ class GameToolsTest(unittest.TestCase):
         self.assertEqual(self._run(t, score, decline_mode="nothing"),
                          "decline mode nothing needs dump_json, the path's hydra_replay dump")
         self.assertEqual(self._run(t, score, decline_mode="both", dump_json="d.json"),
-                         'unknown decline mode "both"; modes: kick_only, nothing')
+                         'unknown decline mode "both"; modes: kick_only, nothing, all_but_top_pad')
         self.assertEqual(events, [])
 
     def test_a_score_file_it_cannot_read_stops_before_the_attach(self):
