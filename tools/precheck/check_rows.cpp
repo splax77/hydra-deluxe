@@ -128,8 +128,7 @@ int row_line(const std::string& text, const std::string& question, int nth) {
     return 0;
 }
 
-// Format-RowWhy, Format-KnownCopy and Format-OwnerLineNote of the script
-// this replaces, word for word.
+// The words an item's reason uses for a scan row and for an owner line.
 std::string row_why(const std::string& rules_file, const std::string& owner) {
     return "the scan row in " + rules_file + " gives this question to " + owner;
 }
@@ -241,7 +240,7 @@ RowRun& row_run(Context& ctx) {
 
 std::string row_kind(const std::string& file, const std::string& owner) {
     if (!test_file(file)) return "A";
-    // The script matched the owner without regard to case; so does this.
+    // The owner matches with case ignored.
     const std::string o = hydra::to_lower_ascii(owner);
     if (o.find("tests/source_tree.h") != std::string::npos) return "E";
     for (size_t at = o.find("tests/"); at != std::string::npos; at = o.find("tests/", at + 1))

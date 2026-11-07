@@ -34,7 +34,6 @@ from ctypes import wintypes
 from datetime import datetime
 from pathlib import Path
 
-# The user's answers to the plan's open questions 4 and 5 (2026-10-14).
 # This is the one home of these three numbers.
 REPLY_MARGIN_S = 15.0  # how much longer than the timeout in force to wait for a reply
 HELLO_TIMEOUT_S = 60.0  # how long hydra_start waits for the hello line

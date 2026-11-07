@@ -26,9 +26,9 @@ View make_view(const std::string& text, codelex::Lang lang) {
             blank(v.no_comments, p.begin, p.end);
             blank(v.code, p.begin, p.end);
         } else if (p.kind == codelex::Kind::String) {
-            // The script's Blank-Inner: keep any prefix and the opening
-            // quote, and the last character when it closes the literal (an
-            // unclosed one ends at its line); blank what is between.
+            // Keep any prefix and the opening quote, and the last character
+            // when it closes the literal (an unclosed one ends at its line);
+            // blank what is between.
             const size_t open = text.find_first_of("\"'", p.begin);
             if (open == std::string::npos || open + 1 >= p.end) continue;
             const bool closed = text[p.end - 1] == text[open];

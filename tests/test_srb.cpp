@@ -6,7 +6,7 @@
 // wrapping real corpus charts. A wrapped chart must parse identically to the
 // loose file, and discovery must surface the embedded metadata.
 
-#define _CRT_SECURE_NO_WARNINGS  // _wfopen; matches parse/song.cpp's file open.
+#define _CRT_SECURE_NO_WARNINGS  // Turns off MSVC's C runtime warnings in this file.
 
 #include "doctest.h"
 
@@ -144,10 +144,10 @@ TEST_CASE("srb: a truncated file reads as an unreadable chart") {
 // The fuzzer's testdata/fuzz/srb/endless-zeros.srb. Its notes stream's
 // Huffman table leaves codes unassigned, and miniz decodes an unassigned code
 // as the literal 0 while reading no bits, so the stream makes zero bytes
-// without end. It used to run to the 1 GB cap (kSrbMaxStream) before failing,
-// seconds in a release build and past 30 s in the fuzz build. The inflater now
-// calls it corrupt as soon as the output passes what the bytes read could
-// make (kMaxBytesPerInputByte in parse/srb.cpp owns that limit).
+// without end. Running on to the 1 GB cap (kSrbMaxStream) would take seconds
+// in a release build and past 30 s in the fuzz build, so the inflater calls it
+// corrupt as soon as the output passes what the bytes read could make
+// (kMaxBytesPerInputByte in parse/srb.cpp owns that limit).
 TEST_CASE("srb: a stream that makes bytes from no input is corrupt, not inflated to the cap") {
     const std::vector<uint8_t> file = {0x00, 0x00, 0xBD, 0xBD, 0xBD, 0xBD, 0xBD, 0xBD, 0x01,
                                        0x1F, 0x00, 0x3F, 0x6E, 0x71, 0x73, 0x73, 0x73, 0x73,
@@ -168,9 +168,8 @@ TEST_CASE("srb: the notes entry is found by its exact name, never by its extensi
     using namespace testmidi;
     const std::vector<uint8_t> mid =
         smf_drums(concat({track_name("PART DRUMS"), note_on(96, 100), end_of_track()}));
-    // "song.chart" is not a notes name. Before, the .srb trusted the extension
-    // and read these MIDI bytes as .chart text, which failed. Now the name
-    // decides nothing, so the stream's bytes do, and it loads as MIDI.
+    // "song.chart" is not a notes name. The name decides nothing, so the
+    // stream's bytes do, and it loads as MIDI.
     CHECK(load_songbytes_srb(make_srb(make_metadata("song.chart"), mid), ChartReading{})
               .sequence.size() == 1);
     // The exact names decide, in any case.
@@ -294,14 +293,15 @@ TEST_CASE("srb: core::fits says whether n bytes at pos lie inside the buffer") {
 // D75: the field after the string table that states the song's length. The
 // reader hands the raw number on; app::stated_length_ms decides what counts.
 TEST_CASE("srb: metadata parser reads song_length_ms after the string table") {
-    // Biology.srb stores 196,905 (the user's .srb format reference).
+    // Biology.srb stores 196,905 (docs/srb-format.md).
     SrbMetadata md;
     REQUIRE(srb_parse_metadata(testsrb::make_metadata_with_length("notes.chart", 196905), md));
     CHECK(md.name == "Name");
     REQUIRE(md.song_length_ms.has_value());
     CHECK(*md.song_length_ms == 196905);
 
-    // Two shipped files store 0 (unknown). The raw 0 comes back as it is.
+    // A stored 0 means unknown (SrbMetadata::song_length_ms in parse/srb.h
+    // says how many shipped files have one). The raw 0 comes back as it is.
     SrbMetadata zero;
     REQUIRE(srb_parse_metadata(testsrb::make_metadata_with_length("notes.chart", 0, ""), zero));
     CHECK(zero.song_length_ms == 0);
@@ -359,9 +359,10 @@ TEST_CASE("srb: discovery surfaces the embedded metadata") {
 
 // Clone Hero, its song cache and dmleaderboards key an .srb by the checksum
 // its metadata stores. In 4 of the 30 shipped files that is not the MD5 of
-// the notes stream (No Known Suspects stores c87b09d0..., checked against the
-// game's songcache.bin on 2026-10-09), so the id is read, never recomputed:
-// not the notes' MD5 and not the whole container's.
+// the notes stream (No Known Suspects stores c87b09d0...; CR-11 on
+// docs/clone-hero/01-reading-a-chart.md names the four and how they were
+// checked), so the id is read, never recomputed: not the notes' MD5 and not
+// the whole container's.
 TEST_CASE("srb: a chart's id is the checksum its metadata stores") {
     std::string dir = fixture_dir() + "\\scan_id";
     CreateDirectoryW(utf8_to_wide(dir).c_str(), nullptr);

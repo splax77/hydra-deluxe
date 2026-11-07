@@ -19,12 +19,11 @@ namespace {
 
 std::string trim(const std::string& s) { return hydra::trim(s); }
 
-// Group keys compare with case ignored, as PowerShell's Group-Object did.
+// Group keys compare with case ignored.
 std::string fold(const std::string& s) { return hydra::to_lower_ascii(s); }
 
 // The fix of the first known copy that one of `lines` is, trimmed, in
-// `file`; empty when none is. The line texts compare with case ignored, as
-// the script's -eq did.
+// `file`; empty when none is. The line texts compare with case ignored.
 std::string known_copy_fix(const std::vector<single_owner::KnownCopy>& copies, const std::string& file,
                            const std::vector<std::string>& lines) {
     for (const std::string& l : lines) {

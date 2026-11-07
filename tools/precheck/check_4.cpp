@@ -19,7 +19,8 @@ namespace precheck {
 namespace {
 
 const std::regex& py_reads_tree() {
-    // No row can own this: the scan reads only .cpp and .h files.
+    // No row: "Which test reads the source tree?" and "Which test walks the
+    // source tree?" are C++ rows, so a Python file never meets them.
     static const std::regex walk("(\\bos\\.walk|\\bos\\.listdir|\\.r?glob)\\s*\\([^)]*src", std::regex::icase);
     return walk;
 }

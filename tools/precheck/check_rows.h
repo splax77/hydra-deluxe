@@ -55,8 +55,8 @@ std::vector<AddedRow> added_rows(Context& ctx);
 // The baseline's known copies at the rules revision, read with the rows.
 const std::vector<single_owner::KnownCopy>& known_copies(Context& ctx);
 
-// How an item's reason names the known copy a line is (the script's
-// Format-KnownCopy), without the brackets around it.
+// How an item's reason names the known copy a line is, without the brackets
+// around it.
 std::string known_copy_note(const std::string& fix);
 
 // Prints the warning that no scan rows were applied, when the rules

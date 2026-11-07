@@ -157,13 +157,13 @@ TEST_CASE("user_messages: stale_text names the real cause") {
     CHECK(stale_text(/*build=*/false, /*rules=*/true) ==
           "Out of date: this result came from different rules in hydra_rules.ini. Click the "
           "song or run a batch to refresh it.");
-    // Both causes: the sentence the details panel shows today, unchanged.
+    // Both causes: one sentence names both.
     const std::string both =
         "Out of date: this result came from another Hydra version or from different rules "
         "in hydra_rules.ini. Click the song or run a batch to refresh it.";
     CHECK(stale_text(/*build=*/true, /*rules=*/true) == both);
     // Neither (a caller asking for a row that is not stale): no cause to
-    // name, so today's sentence, never an empty line.
+    // name, so the same sentence, never an empty line.
     CHECK(stale_text(/*build=*/false, /*rules=*/false) == both);
     CHECK(std::string(hydra::app::kNoPathsFound) == "No paths found.");
 }
@@ -335,7 +335,8 @@ TEST_CASE("a network failure's sentence names the server that failed") {
                          std::optional<int> status = std::nullopt) {
         return plain_error(KindedError(kind, "x", status, service));
     };
-    // GitHub: the user's ruling during T3a of the auto-updater plan.
+    // GitHub: the user's ruling during T3a of
+    // docs/superpowers/plans/2026-10-22-auto-updater.md (removed; `git show 444631e6:docs/superpowers/plans/2026-10-22-auto-updater.md`).
     CHECK(with(ErrorKind::NetUnreachable, NetService::GitHub) ==
           "Hydra couldn't reach GitHub. Check your internet connection and try again.");
     CHECK(with(ErrorKind::NetTimeout, NetService::GitHub) ==

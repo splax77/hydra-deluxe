@@ -12,9 +12,8 @@ Proving identical results (the recipe this script belongs to)
 This recipe comes from the speedups plan,
 docs/superpowers/plans/2026-10-06-perf-speedups.md (removed; git show 444631e6:docs/superpowers/plans/2026-10-06-perf-speedups.md),
 section "Proving identical results". Its commands and rules follow, minus the
-list of tables (the script reads them itself) and a warning about hash numbers
-in old notes. Two facts changed after the plan was written, and they come
-first, because they override it.
+list of tables (TABLES below holds them) and a warning about hash numbers in
+old notes. Two rules come first, because they override it.
 
 First, one run is the whole correctness check. A fresh-database hydra_batch
 run, compared table by table with this script against the baseline's fresh
@@ -23,10 +22,10 @@ the writer, so it covers every stored table. Extra engine and parse hashes,
 other-difficulty parses, rescans and real-database re-analyses only re-check
 the same output; below, those are the per-chart hashes, the scan comparison
 and the `--redo` run used as a check. The `--redo` run still times a speedup.
-The user called them "completely unnecessary" (docs/handoffs/2026-10-06-perf-speedups-wave2-handoff.md (removed; git show 444631e6:docs/handoffs/2026-10-06-perf-speedups-wave2-handoff.md),
-"Read this first: how the user wants checks run").
+The user called them "completely unnecessary"
+(docs/agents/rulings/tests-and-runs.md).
 
-Second, hydra_batch given no chart folder now refuses to run unless it also
+Second, hydra_batch given no chart folder refuses to run unless it also
 gets --whole-library (src/cli/batch_scope.h owns that rule). A whole-library
 run needs the user's explicit permission in chat first (CLAUDE.md, agent
 rule 8). That covers every run below over the user's library: the
@@ -98,7 +97,8 @@ stayed busy: do other work and retry.
 What it compares, and what it leaves out on purpose:
 
 - Columns come from PRAGMA table_info, and keys from each table's primary key
-  or unique index, so this script holds no copy of the store's schema.
+  or unique index. The table names and per-file ids are written out in this
+  script (TABLES, SUMMARY_TABLES, OWN_IDS, REFERENCES).
 - result_id is left out. It is only the order the batch's worker threads
   finished in. A results row is matched by its unique key instead, and a
   path_refs row by its result's unique key in place of the result_id.

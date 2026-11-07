@@ -151,7 +151,7 @@ class CheckNormalConstantsTest(unittest.TestCase):
             process.check_normal_constants(0.085 + tol * 2, 0.0375)
 
     def test_values_in_ms_are_refused(self):
-        # The old unit: a build-drift guard that accepted ms would be wrong.
+        # The check reads seconds: a build-drift guard that accepted ms would be wrong.
         with self.assertRaises(process.BuildMismatchError):
             process.check_normal_constants(85.0, 37.5)
 

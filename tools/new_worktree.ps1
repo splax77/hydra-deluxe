@@ -11,22 +11,13 @@
 # build_slot.ps1 holds that rule (how many slots, the lock files, stale-owner
 # takeover, the wait); this script only calls it.
 #
-# Why cold builds and not a copied build folder (P0-4, measured 2026-10-04 on
-# main 876b507, timing configure plus `hydra_tests`, no other compiler running
-# at the start of either run):
-#   Cold: configure 26.2 s + build 72.6 s = 98.8 s (0 compiler processes at
-#     the start, 0 at the end).
-#   Seeded from the main checkout's build-cpp: copy 0.4 s + re-point 5.9 s +
-#     configure 0.6 s + tracking-log rename 0.4 s + build 48.5 s = 55.8 s
-#     (0 compiler processes at the start, 8 at the end). 119 files recompiled.
-# Seeding had to save at least half (49.4 s or less) to be worth its risk. It
-# saved 44 percent. Two things eat the saving. The main checkout's build-cpp
-# trails main (other sessions build only some targets there), so most objects
-# were stale anyway. And every object that bakes in a path #define
-# (HYDRA_TESTDATA_DIR and friends) has to recompile in a new tree: 41 objects,
-# even when the copy comes from a fully built tree at the same commit (that
-# best case took 27.0 s). Seeding also needs surgery on MSBuild's tracking
-# logs, whose mistakes are silent wrong binaries. So this helper only staggers.
+# Why cold builds and not a copied build folder: seeding from the main
+# checkout's build-cpp saves too little to be worth its risk. Two things eat
+# the saving. That folder trails main (other sessions build only some targets
+# there), so most objects are stale anyway. And every object that bakes in a
+# path #define (HYDRA_TESTDATA_DIR and friends) has to recompile in a new tree.
+# Seeding also needs surgery on MSBuild's tracking logs, whose mistakes are
+# silent wrong binaries. So this helper only staggers.
 
 param(
     [Parameter(Mandatory = $true)][ValidatePattern('^[A-Za-z0-9._-]+$')][string]$TaskId,

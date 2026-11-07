@@ -29,16 +29,15 @@ public:
     void add(const std::string& kind, const std::string& file, int line, const std::string& what,
              const std::string& why);
     // Kind order, then file, line and what; an item equal to the one before
-    // it on all four is dropped. Text compares as PowerShell's Sort-Object
-    // compared it (text_before), so the order reads as it always has.
+    // it on all four is dropped. Text compares in text_before's order.
     std::vector<Item> sorted() const;
 
 private:
     std::vector<Item> items_;
 };
 
-// Whether `a` sorts before `b` the way PowerShell 7's Sort-Object put them
-// under en-US: case ignored, punctuation before digits before letters.
+// Whether `a` sorts before `b`. The table in ranks() in items.cpp owns the
+// order.
 bool text_before(const std::string& a, const std::string& b);
 
 // "<kind> <file>:<line>  <what>  -- <why>"

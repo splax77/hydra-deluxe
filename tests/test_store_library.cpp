@@ -76,9 +76,9 @@ TEST_CASE("a library entry filled by position keeps its first seven fields in pl
 }
 
 TEST_CASE("a failed library rebuild keeps the previous scan") {
-    // The rebuild used to drop the table before opening its transaction, so
-    // an insert that failed left the library empty, and took the rescan cache
-    // with it. A trigger that refuses one md5 makes an insert fail partway.
+    // The rebuild's transaction opens before anything changes, so an insert
+    // that fails leaves the library and its rescan cache as they were. A
+    // trigger that refuses one md5 makes an insert fail partway.
     const std::string path = testtemp::temp_path("rebuild_fail", ".db");
     std::remove(path.c_str());
     {
@@ -104,9 +104,9 @@ TEST_CASE("a failed library rebuild keeps the previous scan") {
 }
 
 TEST_CASE("a result's names follow the latest scan") {
-    // User decision 2026-09-26: fixing song.ini reaches the reports. A
-    // result's names come from the library (ChartIndex), so a rescan
-    // after song.ini changed renames it.
+    // Library names win in the reports, so a scan brings a fixed song.ini in:
+    // a result's names come from the library (ChartIndex), and a rescan after
+    // song.ini changed renames it.
     RecordStore store(":memory:");
     ChartLibraryEntry first = library_row("h", "Scanned Title");
     first.album = "Scanned Album";

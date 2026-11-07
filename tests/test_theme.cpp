@@ -57,10 +57,10 @@ TEST_CASE("theme: apply_theme uses the readable shades") {
     ImGui::DestroyContext();
 }
 
-// apply_theme writes the text alignment itself (the user's answer 6 in the
-// 2026-10-14 column-shares plan): a button's label centred, a selectable's
-// text at the left. The style starts off elsewhere so the test sees the
-// write, not ImGui's defaults.
+// apply_theme writes the text alignment itself, by the user's answer 6 in
+// docs/superpowers/plans/2026-10-14-column-shares-scroll-left-align.md (removed; `git show 444631e6:docs/superpowers/plans/2026-10-14-column-shares-scroll-left-align.md`):
+// a button's label centred, a selectable's text at the left. The style starts
+// off elsewhere so the test sees the write, not ImGui's defaults.
 TEST_CASE("theme: apply_theme centres button labels and starts selectable text at the left") {
     ImGui::CreateContext();
     ImGuiStyle& style = ImGui::GetStyle();
@@ -87,7 +87,7 @@ TEST_CASE("theme: a selected row is the dark teal and its text stays readable") 
     const ImVec4& header = ImGui::GetStyle().Colors[ImGuiCol_Header];
     check_same_color("Header", header, kSelectedRowColor);
     ImGui::DestroyContext();
-    // The user's choice of 2026-10-14: (0, 48, 48).
+    // The user's choice: (0, 48, 48).
     CHECK(kSelectedRowColor.y * 255.0f == doctest::Approx(48.0f));
     // Every text colour a Library, report or Paths-tab row draws in: the
     // default and dimmed text, the gold of an optimal path or a Ready song,
@@ -180,7 +180,7 @@ TEST_CASE("theme: the version bar's dots and text read on its background") {
     CHECK(kVersionBarBg.z < kWindowBgColor.z);
 }
 
-// The numbers D48, Q26 names for the Star Power gold.
+// The Star Power gold's numbers, a different gold from kBestPathColor.
 TEST_CASE("theme: the Star Power gold is named") {
     CHECK(kStarPowerColor.x == 255 / 255.0f);
     CHECK(kStarPowerColor.y == 204 / 255.0f);

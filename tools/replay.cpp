@@ -312,7 +312,7 @@ int parse_index(const std::string& v) {
 }
 
 // Read one path out of the JSON `dump` or `target` wrote. The conversion to
-// windows itself lives in core/replay.h so tests can pin it; this only opens
+// windows itself lives in replay_json.h so tests can pin it; this only opens
 // the file and picks the entry out of the "paths" array. Every failure names
 // the file and the index, because "score came out wrong" is much harder to
 // notice than "that file does not have a path 7".
@@ -479,8 +479,8 @@ int cmd_dump(const Args& a, const app::Settings& s) {
         app::analyze_chart_file(a.chart, s.to_analysis_settings());
     const HydraRecord& rec = analysis.record;
 
-    // "source" was "record" or "analyzed" while dump could read a stored row.
-    // It stays in the JSON, always "analyzed", so scripts that read it still work.
+    // "source" is always "analyzed". It stays in the JSON so scripts that read
+    // it still work.
     emit(json{{"hyhash", hyhash},
               {"chartmode", s.chartmode_key()},
               {"source", "analyzed"},
@@ -598,8 +598,8 @@ struct Tally {
 bool g_verbose = false;
 
 void check_chart(const std::string& path, const core::Rules& rules, Tally* tally) {
-    // The GUI's defaults, straight from app::Settings rather than five
-    // hand-written literals, under the rules this run loaded.
+    // The GUI's defaults, straight from app::Settings, under the rules this
+    // run loaded.
     app::Settings defaults;
     defaults.rules = rules;
     const app::AnalysisSettings cfg = defaults.to_analysis_settings();
@@ -685,7 +685,7 @@ void check_chart(const std::string& path, const core::Rules& rules, Tally* tally
             if (chart_fail <= 5) {
                 std::printf("FAIL %s\n     path %d [%s]: %s\n", path.c_str(), i,
                             p->pathstring().c_str(), diffs.c_str());
-                // The windows the replay used, so a mismatch names the
+                // The path's activations, so a mismatch names the
                 // activation whose deactivation node was not recovered.
                 const ActivationWalk acts = p->walk_activations();
                 for (size_t k = 0; k < acts.size(); ++k) {

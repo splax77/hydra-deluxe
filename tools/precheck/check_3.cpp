@@ -295,8 +295,8 @@ OrderedWords context_words(const std::string& code) {
         while (word_byte(at(code, j))) ++j;
         std::string id = code.substr(i, j - i);
         i = j;
-        // The script dropped the k with PowerShell's -replace, which ignores
-        // case, so "kind" loses its k as "kMaxDepth" does.
+        // The leading k goes whatever its case, so "kind" loses its k as
+        // "kMaxDepth" does.
         const char second = at(id, 1);
         if ((id[0] == 'k' || id[0] == 'K') && ((second >= 'A' && second <= 'Z') || (second >= 'a' && second <= 'z')))
             id.erase(0, 1);

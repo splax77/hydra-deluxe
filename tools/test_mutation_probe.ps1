@@ -7,10 +7,11 @@ Self-test for tools/mutation_probe.ps1.
 Part 1 loads the probe's finder from its own text (as a literal, without
 running the script) and runs it on a sample snippet. It needs a built
 hydra_precheck.exe (.\build_cpp.ps1 -Target hydra_precheck), because the
-finder masks comments and strings with it. The snippet has one of
-each edit the probe makes and a trap for each thing it must skip: comments,
-strings, a raw string, a character literal, a preprocessor line, template
-brackets, a shift, an exponent, a digit separator and a "+ 10". The expected
+finder masks comments and strings with it. The snippet has one of each kind
+of edit the probe makes, with three comparison flips standing in for all six,
+and a trap for each thing it must skip: comments, strings, a raw string, a
+character literal, a preprocessor line, template brackets, a shift, an
+exponent, a digit separator and a "+ 10". The expected
 candidates are written out by hand. The snippet is checked with Unix and
 Windows line endings.
 
