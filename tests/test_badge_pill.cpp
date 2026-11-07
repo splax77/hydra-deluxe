@@ -129,7 +129,7 @@ TEST_CASE("badge pill: stacked pills share both edges") {
     }
 }
 
-TEST_CASE("badge pill: one badge alone sits flush right as it always has") {
+TEST_CASE("badge pill: one badge alone sits flush right") {
     // Burnout-sized pieces at the narrowest column with the longest badge:
     // literals from one run, scale 1.
     const ActivationRowLayout l = row({longest_w()}, kNarrowRow, 1.0f, mono(7), kBars3);

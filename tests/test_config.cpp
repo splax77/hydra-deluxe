@@ -731,7 +731,7 @@ TEST_CASE("batch_run bundles one Settings' profile and search settings") {
     CHECK(run.settings.sp_cap == 16);
 }
 
-TEST_CASE("sp_cap: 0 reads 1, auto and junk refuse, pre-1.6 keys are skipped") {
+TEST_CASE("sp_cap: 0 reads 1, auto and junk refuse, retired keys are skipped") {
     const std::string path = testtemp::temp_path("spcap", ".ini");
 
     // A number reads back as that number, and cap_query asks for it exactly.
