@@ -1021,7 +1021,7 @@ class GameToolsTest(unittest.TestCase):
         t = ToolRig(self.tmp, live_play=live_play)
         t.tools.ch_play_chart(self._score_json(), route="keys")
         t.tools._play.thread.join(THREAD_CAP_S)
-        self.assertIn("sent 2 presses for 1 chords, hit 2, misses 0, best streak 2",
+        self.assertIn("sent 2 presses for 1 chord, hit 2, misses 0, best streak 2",
                       t.tools.ch_play_status().splitlines())
 
     def test_every_lane_has_a_word_in_the_reply(self):

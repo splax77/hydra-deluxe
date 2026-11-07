@@ -232,40 +232,34 @@ def squeeze_lines(chords: Sequence[play_chart.Chord]) -> List[str]:
     """What the reply says about the squeezes of `chords`: one line naming each
     squeeze chord and when each of its presses fires against its Star Power
     end, then one line for each activation pressed early for its squeeze-out.
-    None of it is worked out here: press_plan times every press. The end a
-    press is set against is the dump's, moved by however far press_plan moved
-    it when it pressed the activation early; that shift is read off
-    press_plan's own presses, timed once with the squeeze-outs linked to their
-    activations and once without. Empty when no chord squeezes."""
-    squeezed = [chord for chord in chords if chord.squeeze is not None]
-    if not squeezed:
+    None of it is worked out here: press_plan times every press and gives each
+    squeeze press the end it was timed against (Press.end_ms), which is the
+    dump's end moved by however far press_plan moved it when it pressed the
+    activation early. Empty when no chord squeezes."""
+    if not any(chord.squeeze is not None for chord in chords):
         return []
-    linked = _presses_by_index(play_chart.press_plan(chords))
-    unlinked = _presses_by_index(play_chart.press_plan(
-        [dataclasses.replace(chord, sqout_index=None) for chord in chords]))
-    shift = {chord.index: unlinked[chord.sqout_index][-1].at_ms
-             - linked[chord.sqout_index][-1].at_ms
-             for chord in chords if chord.sqout_index is not None}
+    by_index = _presses_by_index(play_chart.press_plan(chords))
 
     items = []
-    for chord in squeezed:
-        end_ms = chord.squeeze.end_ms - shift.get(chord.squeeze.act_index, 0.0)
+    early = []
+    for chord in chords:
+        if chord.squeeze is None:
+            continue
         clauses = []
-        for press in linked[chord.index]:
-            gap_ms = end_ms - press.at_ms
+        for press in by_index[chord.index]:
+            gap_ms = press.end_ms - press.at_ms
             when = (f"{_ms_text(abs(gap_ms))} ms {'before' if gap_ms >= 0 else 'after'}"
                     + ("" if clauses else " the end"))
             gems = "" if chord.squeeze.kind == play_chart.SQUEEZE_IN else _gem_words(press.lanes) + " "
             clauses.append(gems + when)
         kind = "in" if chord.squeeze.kind == play_chart.SQUEEZE_IN else "out"
         items.append(f"chord {chord.index} {kind} ({'; '.join(clauses)})")
-    lines = ["squeezes: " + ", ".join(items)]
-    for chord in chords:
-        if chord.sqout_index is not None and shift[chord.index]:
-            lines.append(f"activation chord {chord.index} pressed "
-                         f"{_ms_text(linked[chord.index][0].lead_ms)} ms early for the "
-                         f"squeeze-out at chord {chord.sqout_index}")
-    return lines
+        moved_ms = chord.squeeze.end_ms - by_index[chord.index][0].end_ms
+        if chord.squeeze.kind == play_chart.SQUEEZE_OUT and moved_ms:
+            early.append(f"activation chord {chord.squeeze.act_index} pressed "
+                         f"{_ms_text(moved_ms)} ms early for the squeeze-out at "
+                         f"chord {chord.index}")
+    return ["squeezes: " + ", ".join(items)] + early
 
 
 def _presses_by_index(presses: Sequence[play_chart.Press]) -> dict:
@@ -1334,7 +1328,8 @@ class GameTools:
                 # makes two, so the line names both counts when they differ.
                 chords_sent = len({r["index"] for r in rows if r["hit"] != play_chart.DECLINED})
                 sent = (f"sent {result.sent}" if jumped or chords_sent == result.sent
-                        else f"sent {result.sent} presses for {chords_sent} chords")
+                        else f"sent {result.sent} presses for {chords_sent} "
+                             f"chord{'' if chords_sent == 1 else 's'}")
                 lines.append(f"{sent}, hit {result.hit}, "
                              f"misses {result.sent - result.hit}, best streak {result.max_streak}"
                              + (f", declined {result.declined}" if result.declined else ""))

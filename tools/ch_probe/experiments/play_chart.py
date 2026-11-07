@@ -181,7 +181,9 @@ class Press:
     (`chart_ms`), the `lead_ms` it is pressed by (negative for a late
     press), the keys it sends with their dynamics and axes, whether the
     chord is `declined`, and `checked`, which says the load-time check
-    reads it."""
+    reads it. `end_ms`, set on a squeeze's presses, is the Star Power end the
+    press is timed against: the dump's end, less any lead press_plan gave the
+    activation."""
     index: int
     chart_ms: float
     lead_ms: float
@@ -190,6 +192,7 @@ class Press:
     axes: Optional[List[float]]
     declined: bool
     checked: bool
+    end_ms: Optional[float] = None
 
     @property
     def at_ms(self) -> float:
@@ -267,11 +270,12 @@ def press_plan(chords: Sequence[Chord]) -> List[Press]:
 
 def _chord_presses(chord: Chord, act_leads: Mapping[int, float]) -> List[Press]:
     """The presses of one chord, for press_plan."""
-    def press(lead_ms: float, gems: Sequence[int], checked: bool) -> Press:
+    def press(lead_ms: float, gems: Sequence[int], checked: bool,
+              end_ms: Optional[float] = None) -> Press:
         return Press(chord.index, chord.ms, lead_ms, [chord.lanes[i] for i in gems],
                      [chord.dynamics[i] for i in gems],
                      None if chord.axes is None else [chord.axes[i] for i in gems],
-                     chord.declined, checked)
+                     chord.declined, checked, end_ms)
 
     every = range(len(chord.lanes))
     squeeze = chord.squeeze
@@ -285,16 +289,16 @@ def _chord_presses(chord: Chord, act_leads: Mapping[int, float]) -> List[Press]:
         inside_lead_ms = chord.ms - (end_ms - SP_END_LEAD_MS)
         if squeeze.kind == SQUEEZE_IN:
             if inside_lead_ms > PRESS_LEAD_MS:
-                return [press(inside_lead_ms, every, True)]
-            return [press(PRESS_LEAD_MS, every, False)]
+                return [press(inside_lead_ms, every, True, end_ms)]
+            return [press(PRESS_LEAD_MS, every, False, end_ms)]
         # The gem Hydra's FirstNote rule pays outside is note 0 of
         # Chord::note_list(true) (src/core/model.cpp), and the score file
         # lists a chord's notes in that order (src/core/replay.cpp), so it is
         # the file's first gem.
-        late = press(chord.ms - (end_ms + SP_OUT_LAG_MS), [0], True)
+        late = press(chord.ms - (end_ms + SP_OUT_LAG_MS), [0], True, end_ms)
         if len(chord.lanes) == 1:
             return [late]
-        return [press(inside_lead_ms, range(1, len(chord.lanes)), True), late]
+        return [press(inside_lead_ms, range(1, len(chord.lanes)), True, end_ms), late]
     if chord.ends_sp and not chord.end_squeezed_out:
         return [press(SP_END_LEAD_MS, every, True)]
     return [press(PRESS_LEAD_MS, every, False)]
