@@ -15,6 +15,10 @@
 # (hundreds of MB) that must never ship. The install() rules in
 # CMakeLists.txt define the exact ship list.
 #
+# Under Claude Code the build step runs on the build pass it is given, in
+# HYDRA_BUILD_PASS; build_cpp.ps1 claims it and gives the slot back. -SkipBuild
+# needs no pass, and neither do the steps after the build, which compile nothing.
+#
 # Prerequisite: Inno Setup 6 (winget install -e --id JRSoftware.InnoSetup).
 
 param(

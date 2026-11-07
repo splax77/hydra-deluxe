@@ -11,6 +11,9 @@
 #
 # CMake and MSVC ship with Visual Studio, so cmake need not be on PATH.
 # tools/find_cmake.ps1 owns where this looks for it.
+#
+# Under Claude Code a build needs a build pass, in HYDRA_BUILD_PASS, and stops
+# before configure without one. tools/build_slot.ps1 owns that rule.
 
 param(
     [switch]$Configure,
@@ -65,7 +68,12 @@ if ($ninja -and -not (Get-Command cl.exe -ErrorAction SilentlyContinue)) {
 # cmake reads CMakePresets.json from the current folder, so run it from the
 # script's own checkout; otherwise a call from another worktree builds that one.
 Push-Location $root
+$pass = $null
 try {
+    # A long-lived shell keeps its process id after this script ends, so the
+    # finally below is what frees the slot, not the owner's death.
+    $pass = & (Join-Path $root "tools\build_slot.ps1") -Claim -Owner $root
+
     # The installer's build always configures, so it always takes its preset's
     # settings (link-time optimization on, GUI tests out), even in a build
     # folder made before a preset changed. It is built rarely; this costs seconds.
@@ -98,23 +106,27 @@ try {
         $all = if ($ninja) { "all" } else { "ALL_BUILD" }
         $buildArgs += @("--target", $all, "hydra_bench", "hydra_replay")
     }
+    # Several full-width builds can run at once under the gate, and low
+    # priority keeps the machine answering. Only MSBuild has the switch.
+    if ($pass.Gated -and -not $ninja) { $buildArgs += @("--", "-lowPriority") }
     & $cmake @buildArgs
     if ($LASTEXITCODE -ne 0) { throw "build failed" }
+
+    Write-Host "Build succeeded. Artifacts in $buildDir\$Config\"
+
+    if ($Package) {
+        # cpack.exe sits next to cmake.exe in the VS bundle.
+        $cpack = Join-Path (Split-Path $cmake) "cpack.exe"
+        Push-Location $buildDir
+        try {
+            & $cpack -G ZIP -C $Config
+            if ($LASTEXITCODE -ne 0) { throw "cpack failed" }
+        } finally {
+            Pop-Location
+        }
+        Write-Host "Package written to $buildDir\package\"
+    }
 } finally {
     Pop-Location
-}
-
-Write-Host "Build succeeded. Artifacts in $buildDir\$Config\"
-
-if ($Package) {
-    # cpack.exe sits next to cmake.exe in the VS bundle.
-    $cpack = Join-Path (Split-Path $cmake) "cpack.exe"
-    Push-Location $buildDir
-    try {
-        & $cpack -G ZIP -C $Config
-        if ($LASTEXITCODE -ne 0) { throw "cpack failed" }
-    } finally {
-        Pop-Location
-    }
-    Write-Host "Package written to $buildDir\package\"
+    if ($pass.Lock) { & (Join-Path $root "tools\build_slot.ps1") -Release $pass.Lock }
 }

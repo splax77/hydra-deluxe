@@ -11,7 +11,7 @@ $images = Join-Path $root 'docs\images'
 $shrink = Join-Path $root 'tools\doc_shots\shrink.py'
 
 if (-not (Test-Path -LiteralPath $exe)) {
-    Write-Error "doc_shots: $exe is missing; build it with .\build_cpp.ps1 -Target hydra_uitest"
+    Write-Error "doc_shots: $exe is missing; ask the main session to build the hydra_uitest target"
     exit 1
 }
 

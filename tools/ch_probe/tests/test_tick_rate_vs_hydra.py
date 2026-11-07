@@ -40,8 +40,8 @@ _RUN_TIMEOUT_S = 60
 
 
 @unittest.skipUnless(os.path.isfile(_REPLAY_EXE),
-                     f"no hydra_replay.exe at {_REPLAY_EXE}; build it with "
-                     "build_cpp.ps1 -Target hydra_replay to run this check")
+                     f"no hydra_replay.exe at {_REPLAY_EXE}; ask the main session "
+                     "to build the hydra_replay target to run this check")
 class TestTickRateMatchesHydra(unittest.TestCase):
     def test_each_chord_ms_matches_ticks_to_ms(self):
         text = chart_text("tick rate check", _NOTE_TICKS, resolution=_RESOLUTION,
