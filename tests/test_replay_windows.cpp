@@ -473,8 +473,8 @@ TEST_CASE("replay: window order does not matter and windows add up, shrunk by Ra
 
     // RapidCheck reads RC_PARAMS once, on its first check. When the caller
     // has not set it, the seed and the number of passing tests are fixed
-    // here; 50 passes is the user's choice of fewer trials
-    // (docs/sessions/2026-10-25-495286b5.md).
+    // here. The user chose fewer trials (docs/sessions/2026-10-25-495286b5.md);
+    // 50 is the number the plan set for that.
     size_t env_len = 0;
     getenv_s(&env_len, nullptr, 0, "RC_PARAMS");
     if (env_len == 0) _putenv_s("RC_PARAMS", "seed=1 max_success=50");
