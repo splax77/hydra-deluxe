@@ -94,7 +94,7 @@ The main session runs a test red only when a brief asks for it. If your brief qu
 
 If only a run can prove a disagreement between two copies, write it under Notes with the input to run. The main session runs it.
 
-If your C++ fix fails the main session's build, a fresh executor fixes it and a fresh reviewer reads only that fix (see "Fix review").
+If your C++ fix fails the main session's build or a test, a fresh executor fixes it and a fresh reviewer reads only that fix (see "Fix review").
 
 **Hook changes: run the gates' own tests.** A change under `~\.claude\gates` is tested with that folder's unit tests, one file at a time, from the worktree root, with `C:\Users\Patrick\AppData\Local\Python\pythoncore-3.14-64\python.exe -I -m unittest discover -t . -s gates/tests -p <file>`, where `<file>` is the test file's name. `C:\Users\Patrick\.claude\gates\README.md` explains why that form. Run only the test files for the scripts the change touches. Each hook is a function that takes the hook's input as a dictionary, so a case you want to check goes into a test, not into a probe that starts a new process per case.
 

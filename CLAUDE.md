@@ -64,7 +64,7 @@ These hold for the main session and every agent it sends out. Each is in short f
 2. Planning agents run on Fable. Code executors run on Opus. Code reviewers run on Sonnet. Read-only scouts run on Sonnet or Haiku. Bulk read-and-fill writers, such as the card writers, run on Haiku.
 3. No work starts without the user's approval. Every plan and every build waits for the user's yes before it begins.
 4. Agents never stall or go quiet for long. When they hit a problem, they fail loudly: stop and say what broke.
-5. One review per change, then done. One fresh reviewer agent reads the change's code and documents, fixes every finding itself, commits its fixes and signs off. One narrow exception: a reviewer's C++ fix that fails the main session's build goes to a fresh executor, and a fresh reviewer reads only that fix.
+5. One review per change, then done. One fresh reviewer agent reads the change's code and documents, fixes every finding itself, commits its fixes and signs off. One narrow exception: a reviewer's C++ fix that fails the main session's build or a test goes to a fresh executor, and a fresh reviewer reads only that fix.
 6. Agents run in parallel, in workflows, while the main session merges. Never queue independent tasks one after another.
 7. Agents write a status line every 5 minutes; only time counts, not calls.
 8. Nobody runs a full library test without the user's explicit permission, asked for in chat first.
