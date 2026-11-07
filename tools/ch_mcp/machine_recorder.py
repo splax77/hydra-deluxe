@@ -45,7 +45,8 @@ RECORDER_CAP_EXTRA_S = 60
 SAMPLES_FILE = "samples.csv"
 PROCESSES_FILE = "processes.csv"
 THREADS_FILE = "threads.csv"
-SAMPLES_COLUMNS = ("sample", "wall_s", "sample_ms", "processes", "threads", "ready_threads",
+WALL_COLUMN = "wall_s"  # the column recorder_link.py reads a recording's progress from
+SAMPLES_COLUMNS = ("sample", WALL_COLUMN, "sample_ms", "processes", "threads", "ready_threads",
                    "clock_s", "clock_wall_before_s", "clock_wall_after_s", "recorder_pid",
                    "period_ms", "stop_reason", "process_time_s")
 PROCESSES_COLUMNS = ("sample", "pid", "parent_pid", "name", "cpu_ms", "read_bytes", "write_bytes",

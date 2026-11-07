@@ -131,7 +131,7 @@ def build_server(helper: Optional[Helper] = None):
         instructions=(
             "Drive Clone Hero as text, with nobody at the keyboard and the game window"
             " never brought to the front. ch_start checks the machine is quiet (about 6 s,"
-            " and it can refuse), backs up the user's files and the"
+            " and it can refuse), starts a machine recorder beside the run, backs up the user's files and the"
             " Rewired registry key, then launches the game minimized (with a song folder"
             " the bot plays it, or with human=True a human player on the virtual kit;"
             " with none the game opens at its menu); ch_stop closes it"
@@ -169,33 +169,38 @@ def build_server(helper: Optional[Helper] = None):
         loader in memory when GameAssembly.dll appears
         (tools/ch_mcp/launch_patch.json), and the game is let go. human=True
         with no song folder is refused. A run already open is stopped and
-        restored first. The reply names the backup folder, the settings line,
-        the command line, the pid and the song length."""
+        restored first. Every run also starts the machine recorder beside the
+        game, after the check and before the launch; a recorder that fails to
+        start is one line and the run goes on. The reply names the recorder's
+        pid and folder, the worker's pid and its parent's, the backup folder,
+        the settings line, the command line, the pid and the song length."""
         return capped(h.game.ch_start(song_folder, player, profile, human=human))
 
     @server.tool()
     def ch_stop() -> str:
-        """Stop any trace, Frida session, kit and play session, then close the
-        game the server started and restore the user's files and the registry
-        key, one line each, after the kit teardown's checks and the count of
-        times the game came to the front. A game the server did not start
-        stays open; its files are restored."""
+        """Stop the machine recorder and any trace, Frida session, kit and
+        play session, then close the game the server started and restore the
+        user's files and the registry key, one line each, after the recorder's
+        line, the kit teardown's checks and the count of times the game came
+        to the front. A game the server did not start stays open; its files
+        are restored."""
         return capped(h.game.ch_stop())
 
     @server.tool()
     def ch_status() -> str:
         """The run, the backup folder, how many times the game came to the
-        front, the play session, the last stats copy, whether Frida is
-        attached and whether a trace runs. For a human launch it also shows
-        the launch agent's patch status, ending with the line "loader ran
-        after patch:" and yes, no or not yet."""
+        front, the machine recorder, the play session, the last stats copy,
+        whether Frida is attached and whether a trace runs. For a human launch
+        it also shows the launch agent's patch status, ending with the line
+        "loader ran after patch:" and yes, no or not yet."""
         return capped(h.ch_status())
 
     @server.tool()
     def ch_open_items() -> str:
         """What the server holds open, one line each: the run and its backup
-        folder, an adopted backup, the Frida state agent, the kit, and a
-        running play session, Star Power watch, method watch or trace. With
+        folder, an adopted backup, the Frida state agent, the kit, the machine
+        recorder while it runs, and a running play session, Star Power watch,
+        method watch or trace. With
         none of them it says "nothing open". ch_stop closes them all."""
         return capped("\n".join(h.open_items()) or "nothing open")
 
@@ -384,7 +389,8 @@ def build_server(helper: Optional[Helper] = None):
         dump_json are ch_play_chart's. It writes a press log, a press-<n>.csv
         in the session folder, one row at each press as the run goes, and its
         reply names the file. The call returns at the first press, with one
-        line per part, the time it took, the press log's line, and the line
+        line per part, the time it took, the machine recorder's samples line
+        after the watch's, the press log's line, and the line
         "first press chord index k at ms". A part that fails stops the call
         there: the reply names it and the kit is taken away. Refused while a
         play session runs. Read the run with ch_play_status and
