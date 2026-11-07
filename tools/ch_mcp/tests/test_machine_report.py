@@ -54,8 +54,8 @@ class Fixture:
     def process(self, sample, pid, name, cpu_ms=0, read=0, wrote=0, faults=0, parent=1):
         self.processes.append([sample, pid, parent, name, cpu_ms, read, wrote, faults])
 
-    def thread(self, sample, pid=GAME, tid=GAME_TID, reads_as="running"):
-        self.threads.append([sample, pid, tid, 2, 0, reads_as, 1, 1])
+    def thread(self, sample, pid=GAME, tid=GAME_TID, reads_as="running", switches=1):
+        self.threads.append([sample, pid, tid, 2, 0, reads_as, switches, 1])
 
     def stop(self, reason, process_time="9.5"):
         self.samples[-1][-2:] = [reason, process_time]
@@ -208,8 +208,9 @@ class ReadyStretches(ReportCase):
         return fx
 
     def test_three_ready_samples_are_one_stretch(self):
-        self.assertIn("  game pid 7 thread 70: running 1, ready 3, longest ready stretch 40.0 ms "
-                      "from wall 1000.060, CPU gained in those samples: "
+        self.assertIn("  game pid 7 thread 70: running 1, ready 3, longest ready stretch: "
+                      "ready in 3 consecutive samples spanning 40.0 ms from wall 1000.060, "
+                      "2 context switches gained inside, CPU gained in those samples: "
                       "pid 11 cl.exe 45.0 ms, pid 12 MsMpEng.exe 12.0 ms", self.lines(self.fixture()))
 
     def test_one_ready_sample_counts_but_is_no_stretch(self):
@@ -221,8 +222,10 @@ class ReadyStretches(ReportCase):
         fx.steady(6)
         fx.thread(2, reads_as="ready")
         fx.thread(3, reads_as="ready")
-        self.assertIn("  game pid 7 thread 70: running 0, ready 2, longest ready stretch 20.0 ms "
-                      "from wall 1000.040, CPU gained in those samples: by nobody", self.lines(fx))
+        self.assertIn("  game pid 7 thread 70: running 0, ready 2, longest ready stretch: "
+                      "ready in 2 consecutive samples spanning 20.0 ms from wall 1000.040, "
+                      "1 context switches gained inside, CPU gained in those samples: by nobody",
+                      self.lines(fx))
 
     def test_a_gap_in_the_samples_breaks_a_stretch(self):
         self.assertEqual(R.ready_stretches([1, 2, 4, 6, 7, 8]), [[1, 2], [6, 7, 8]])
@@ -261,8 +264,61 @@ class ReadyStretches(ReportCase):
                       lines)
 
 
+class StretchesAcrossLateSamples(ReportCase):
+    LATE_MARK = ("across late samples: the span counts the recorder's lateness, "
+                 "so it is an upper bound on any wait")
+
+    def ready_at(self, walls_ms, switches=None):
+        """A thread ready in one sample at each of these times."""
+        fx = Fixture()
+        for at, ms in enumerate(walls_ms):
+            fx.thread(fx.sample(ms), reads_as="ready", switches=switches[at] if switches else 1)
+        return fx
+
+    def stretch_line(self, fx, *args):
+        return next(line for line in self.lines(fx, *args) if "thread 70" in line)
+
+    def four_late_samples(self):
+        return self.ready_at((0, 206, 296, 632), (42, 41, 2, 82))
+
+    def test_four_late_samples(self):
+        self.assertEqual(self.stretch_line(self.four_late_samples()),
+                         "  game pid 7 thread 70: running 0, ready 4, longest ready stretch: "
+                         "ready in 4 consecutive samples spanning 632.0 ms from wall 1000.000, "
+                         f"125 context switches gained inside, {self.LATE_MARK}, "
+                         "CPU gained in those samples: by nobody")
+
+    def test_a_window_counts_switches_from_its_own_first_sample(self):
+        line = self.stretch_line(self.four_late_samples(), "--from", wall_text(206))
+        self.assertIn("ready in 3 consecutive samples spanning 426.0 ms", line)
+        self.assertIn("84 context switches gained inside", line)
+
+    def test_samples_exactly_twice_the_period_apart_carry_no_mark(self):
+        line = self.stretch_line(self.ready_at((0, 2 * PERIOD_MS, 4 * PERIOD_MS)))
+        self.assertIn("spanning 80.0 ms", line)
+        self.assertNotIn("across late samples", line)
+
+    def test_samples_just_over_twice_the_period_apart_carry_the_mark(self):
+        self.assertIn(self.LATE_MARK,
+                      self.stretch_line(self.ready_at((0, 2 * PERIOD_MS + 1))))
+
+    def test_normal_wobble_under_twice_the_period_carries_no_mark(self):
+        line = self.stretch_line(self.ready_at((0, 25, 45, 85)))
+        self.assertNotIn("across late samples", line)
+
+    def test_one_late_gap_among_on_time_ones_carries_the_mark(self):
+        self.assertIn(self.LATE_MARK, self.stretch_line(self.ready_at((0, 20, 40, 100))))
+
+    def test_one_sample_prints_no_stretch_and_no_mark(self):
+        fx = Fixture()
+        fx.steady(2)
+        fx.thread(1, reads_as="ready", switches=9)
+        self.assertEqual(self.stretch_line(fx),
+                         "  game pid 7 thread 70: running 0, ready 1, no ready stretch")
+
+
 class ClockSteps(ReportCase):
-    SIX_PAIRS = ((20, 20), (20, 20), (70, 20), (300, 100), (100, 100), (20, 80))
+    SIX_PAIRS =((20, 20), (20, 20), (70, 20), (300, 100), (100, 100), (20, 80))
 
     def test_six_pairs(self):
         lines = self.lines(clock_fixture(self.SIX_PAIRS))
