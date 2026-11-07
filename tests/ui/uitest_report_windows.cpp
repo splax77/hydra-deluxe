@@ -1500,6 +1500,57 @@ void test_reopen_keeps_filters(ImGuiTestContext* ctx) {
     IM_CHECK(table_sort(ctx) == default_sort);
 }
 
+// A window's state goes with its owner (D308 item 3): rebuilt as the runner
+// builds an AppState per test, the fixture opens both windows fresh. They get
+// back the very results they held, because a new result starts a window over
+// by itself and would prove nothing.
+void test_fresh_state(ImGuiTestContext* ctx) {
+    reset_app(harness(ctx));
+    reset_fixture();
+    Fixture& f = fixture();
+    const std::string typed = boxed("zzz");
+
+    open_dm(ctx);
+    if (ctx->IsError()) return;
+    ctx->ItemInputValue("##search", "zzz");
+    ctx->Yield(2);
+    IM_CHECK(shows("0 of 4 scores"));
+    IM_CHECK(shows(typed));
+    f.dm_open = false;
+
+    open_path_all_rows(ctx);
+    if (ctx->IsError()) return;
+    ctx->ItemInputValue("##search", "zzz");
+    ctx->Yield(2);
+    IM_CHECK(shows("0 of 6 paths"));
+    IM_CHECK(shows(typed));
+    IM_CHECK(!best_only_ticked(ctx));
+    f.path_open = false;
+    ctx->Yield(2);
+
+    const std::shared_ptr<const GeneratedReport> path_result = f.path.result;
+    const std::shared_ptr<const GeneratedDmReport> dm_result = f.dm.result;
+    reset_fixture();
+    f.path.result = path_result;
+    f.dm.result = dm_result;
+
+    open_dm(ctx);
+    if (ctx->IsError()) return;
+    IM_CHECK(shows("4 of 4 scores"));
+    IM_CHECK(shows("Search song, artist, or charter"));
+    IM_CHECK(!shows(typed));
+    f.dm_open = false;
+
+    f.path_open = true;
+    ctx->Yield(3);
+    IM_CHECK_RETV(path_window() != nullptr, );
+    IM_CHECK(shows("Search song, artist, charter, or path notation"));
+    IM_CHECK(!shows(typed));
+    IM_CHECK(best_only_ticked(ctx));
+    f.path_open = false;
+    ctx->Yield(2);
+}
+
 // After a batch the report goes out of date with the batch's time; a setting
 // the report reads gives the settings sentence; Refresh rebuilds and clears
 // the strip.
@@ -1604,6 +1655,7 @@ void register_report_window_tests(Harness& h) {
         {"report-window-cells-left", drawn_by_fixture<test_cells_left>},
         {"report-window-header-narrow", drawn_by_fixture<test_header_narrow>},
         {"report-window-fits-screen", drawn_by_fixture<test_fits_screen>},
+        {"report-window-fresh-state", drawn_by_fixture<test_fresh_state>},
     };
     for (const TestEntry& e : kTests) {
         ImGuiTest* t = IM_REGISTER_TEST(h.engine, "hydra", e.name);
