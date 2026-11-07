@@ -17,8 +17,8 @@ Two ideas keep this file honest:
 
 The raw Windows calls (OpenProcess, ReadProcessMemory, the process/module
 snapshots) live behind small seams so the decode and decision logic can be
-tested with fabricated bytes, no game required. The only part that genuinely
-needs a live Clone Hero is open_process itself.
+tested with fabricated bytes, no game required. Only open_process and the live
+helpers it calls need a running Clone Hero.
 """
 
 from __future__ import annotations
@@ -188,8 +188,7 @@ class Process:
         return decode_u64(self.read(addr, 8))
 
     def read_const_double(self, rva: int) -> float:
-        """Resolve an .rdata RVA to a live address and read the double there.
-        This is the shortcut every constant read uses."""
+        """Resolve an .rdata RVA to a live address and read the double there."""
         return self.read_double(self.resolve(rva))
 
     # The build-drift guard --------------------------------------------------
@@ -430,8 +429,8 @@ def open_process(
     """Open the named Clone Hero process, find where GameAssembly.dll loaded,
     and return a ready-to-use Process.
 
-    LIVE-ONLY: this is the one function that needs a running game. It finds the
-    process by name, opens it with the rights access_mask(read_only) names,
+    LIVE-ONLY: needs a running game. It finds the process by name, opens it
+    with the rights access_mask(read_only) names,
     locates the module base, and wires the ReadProcessMemory backend into a
     Process. The writer is WriteProcessMemory for a full open, and
     read_only_writer for a read-only one. It does NOT call verify_targets for

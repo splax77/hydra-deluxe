@@ -1,9 +1,6 @@
 """Tests for the OCR text parser.
 
-Only the pure parser is testable here. The screen grab and the OCR call in
-ocr.py need a real display and Windows' OCR engine, so they cannot run under the
-unit tests -- they are left uncovered on purpose and marked live-only in the
-source.
+ocr.py holds only the pure parser, so that is all these tests cover.
 
 Run from the repo root:  python -m pytest tools/ch_probe/tests/test_ocr.py -q
 Falls back to:           python -m unittest tools.ch_probe.tests.test_ocr
@@ -57,7 +54,7 @@ class ParseAccuracyTextTests(unittest.TestCase):
         self.assertEqual(parse_accuracy_text("| Accuracy:  -21.0 ms |"), -21.0)
 
     def test_none_input_is_none(self):
-        # A None slips through the empty check; make sure it does not crash.
+        # The empty check catches None too; make sure it does not crash.
         self.assertIsNone(parse_accuracy_text(None))  # type: ignore[arg-type]
 
 

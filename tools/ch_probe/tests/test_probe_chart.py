@@ -16,7 +16,7 @@ import sys
 import unittest
 
 # Make the package importable when this file is run directly (the repo root is
-# two levels up from tools/ch_probe/tests/).
+# three levels up from tools/ch_probe/tests/).
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.abspath(os.path.join(_HERE, "..", "..", ".."))
 if _REPO_ROOT not in sys.path:

@@ -2,10 +2,10 @@
 
 The chords and times come from a `hydra_replay score` JSON: each entry of its
 "chords" list gives the chord's time (`ms`) and its "notes", one per gem, each
-with the gem's color and whether it is a cymbal. One gem is one key: pressing
-a tom and a cymbal key for one gem is an overhit. Waiting for a note, noticing
-the song stopped and picking the first note when a run joins mid-song are
-live.py's.
+with the gem's color and whether it is a cymbal. One gem is one key:
+docs/clone-hero/03-timing.md, TM-46, says what is known about pressing a tom
+and a cymbal key for one gem. Waiting for a note, noticing the song stopped
+and picking the first note when a run joins mid-song are live.py's.
 
 A run is tested on fakes for the song clock, the score and the keys, so no
 test opens the game or sends a key: the press log's rows, the frozen-clock
@@ -43,8 +43,8 @@ from tools.ch_probe.tests import fakes  # noqa: E402
 # (Expert Pro Drums, 2x Bass), one per kind of pad: yellow cymbal, the 2x
 # kick, kick + yellow cymbal + green cymbal, kick + green cymbal, yellow tom,
 # green tom, blue cymbal, and a red accent. Each block's "measure" object is
-# rewritten to the shape the tool prints now ("label" and "decimal"); the
-# labels are the old measure, beat and tick written as the screen writes them.
+# written by hand in the shape the tool prints ("label" and "decimal"); the
+# label is the measure, beat and tick as the screen writes them.
 _DUMP = {"chords": json.loads(r"""[
 {"chord_code": "..N..", "combo_before": 53, "cum": {"accent": 0, "notes": 2715, "combo": 5295, "ghost": 0, "solo": 0, "sp": 0, "total": 8010}, "cum_onscreen_total": 8010, "in_sp": false, "index": 38, "is_fill": false, "is_solo": false, "is_sp_phrase_end": false, "measure": {"decimal": 10.0, "label": "m11.1.0"}, "ms": 13043.48, "multiplier": 4, "multiplier_after": 4, "notes": [{"color": "Yellow", "cymbal": true, "dynamic": "none", "dynamics_bonus": 0, "multiplier": 4, "sp_points": 260}], "points": {"accent": 0, "notes": 65, "combo": 195, "ghost": 0, "solo": 0, "sp": 0}, "tick": 19200},
 {"chord_code": "N....", "combo_before": 56, "cum": {"accent": 0, "notes": 2880, "combo": 5790, "ghost": 0, "solo": 0, "sp": 0, "total": 8670}, "cum_onscreen_total": 8670, "in_sp": false, "index": 41, "is_fill": false, "is_solo": false, "is_sp_phrase_end": false, "measure": {"decimal": 10.4375, "label": "m11.2.360"}, "ms": 13614.132249999999, "multiplier": 4, "multiplier_after": 4, "notes": [{"color": "Kick", "cymbal": false, "dynamic": "none", "dynamics_bonus": 0, "multiplier": 4, "sp_points": 200}], "points": {"accent": 0, "notes": 50, "combo": 150, "ghost": 0, "solo": 0, "sp": 0}, "tick": 20040},

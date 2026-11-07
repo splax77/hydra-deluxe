@@ -46,7 +46,7 @@ def _make_driver():
 class TestBindings(unittest.TestCase):
     def test_defaults_are_present(self):
         driver = InputDriver()
-        # Every lane in the shipped placeholder map is readable.
+        # Every lane in DEFAULT_BINDINGS is readable.
         for lane, vk in DEFAULT_BINDINGS.items():
             self.assertEqual(driver.get_binding(lane), vk)
 

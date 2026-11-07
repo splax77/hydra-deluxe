@@ -62,7 +62,8 @@ MARKER_NOTES = 5
 
 RUN_NOTES = 8  # notes per test run: the middle ones have the same gap both sides
 
-# From the testing notes: step 1 (cap) and step 2 (floor) gaps.
+# Step 1 (cap) and step 2 (floor) gaps, from the testing plan:
+# docs/superpowers/plans/2026-09-25-hit-window-testing.md (removed; `git show 444631e6:docs/superpowers/plans/2026-09-25-hit-window-testing.md`)
 CAP_GAPS_MS = (150, 170, 180, 200, 250, 400)
 FLOOR_GAPS_MS = (30, 40, 50, 60)
 # Step 3: (gap before, gap after) for the middle note of a three-note group.
