@@ -465,8 +465,9 @@ std::vector<DrawCommand> build_highway_draws(const TrackState& state, const Prev
                 x1 = cx + (x1 - cx) * kGhostWidthScale;
                 x2 = cx + (x2 - cx) * kGhostWidthScale;
             }
-            // A kick's box is as deep and tall as half its width (Onyx:
-            // (x2' - x1') / 2); a pad gem's is fixed.
+            // `ref` is half the box's height and depth. A kick's is half its
+            // width (Onyx: (x2' - x1') / 2), so the box is as deep and tall as
+            // it is wide; a pad gem's is fixed.
             const float ref = g.kick ? (x2 - x1) * 0.5f : kPadGemHalfSize;
             DrawCommand c;
             c.mesh = g.kick ? MeshId::Kick : g.cymbal ? MeshId::Cymbal : MeshId::Tom;

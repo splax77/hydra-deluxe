@@ -4,10 +4,11 @@
 // projected on the CPU. It also runs that projection backward, from a pixel
 // on the highway's floor to the chart time drawn there (image_to_floor_time).
 //
-// The highway's size follows the track height, not the image width, so a
-// narrower window leaves less room at its sides. The boxes shrink into that
-// room, never past kOverlayMinScale (below it the text stops being readable,
-// so they overlap instead) and never above 1 (their configured size).
+// The highway's size follows the track height (track_rect). While the image's
+// height sets that track height, a narrower window leaves less room at the
+// highway's sides. The boxes shrink into that room, never past kOverlayMinScale
+// (below it the text stops being readable, so they overlap instead) and never
+// above 1 (their configured size).
 //
 // The next-activation box wraps its lines to the room beside the highway at
 // its lowest row (wrap_right_box) rather than shrink every box to fit its
@@ -212,8 +213,9 @@ std::vector<std::string> wrap_words(const std::string& text, float max_w,
 // characters, never inside one, and drops the spaces it would leave before the
 // "…". When not even one character fits, the result is "…" alone. `width_of`
 // measures a string in the font the box draws with. This is the one rule for
-// cutting a label to fit (D48, Q18): the Preview's path picker, and every
-// ellipsized label in the UI through ui::text_ellipsized.
+// cutting a label to fit (D48, Q18). Most labels reach it through
+// ui::text_ellipsized; a caller that needs the cut string itself calls it
+// directly.
 std::string ellipsize(const std::string& text, float max_w,
                       const std::function<float(const std::string&)>& width_of);
 
