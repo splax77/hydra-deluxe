@@ -252,7 +252,7 @@ class GameToolsTest(unittest.TestCase):
         t.tools.ch_start(t.r.song)
         backup = t.backup_dir()
 
-        def fail(backup_dir, out):
+        def fail(backup_dir, out, leave=()):
             raise G.RestoreError("scoredata.bin", "locked")
 
         with mock.patch.object(G, "restore", fail):
@@ -1433,7 +1433,7 @@ class MarkerTest(unittest.TestCase):
         self.t.tools.ch_start(self.t.r.song)
         backup = self.t.backup_dir()
 
-        def fail(backup_dir, out):
+        def fail(backup_dir, out, leave=()):
             raise G.RestoreError("scoredata.bin", "locked")
 
         with mock.patch.object(G, "restore", fail):
@@ -1503,7 +1503,7 @@ class MarkerTest(unittest.TestCase):
 
         self.t.r.env.launch = boom
 
-        def fail(backup_dir, out):
+        def fail(backup_dir, out, leave=()):
             raise G.RestoreError("scoredata.bin", "locked")
 
         with mock.patch.object(G, "restore", fail):
@@ -1519,10 +1519,71 @@ class MarkerTest(unittest.TestCase):
 
     # -- the next worker adopts ---------------------------------------------------
 
-    def test_the_next_worker_adopts_and_ch_stop_restores_and_deletes_the_marker(self):
+    KEPT = ("profiles.ini", "profiles.bin", "scoredata.bin", "scoresext.bin", "user.bin")
+
+    def age_folder(self, folder, hours):
+        then = time.time() - hours * 3600
+        os.utime(folder, (then, then))
+
+    def assert_partly_restored(self):
+        """settings.ini and scorestats.json are back; the five others still
+        hold what the game wrote."""
+        for name, data in ORIGINAL.items():
+            want = b"changed by the game" if name in self.KEPT else data
+            self.assertEqual(_read(self.t.r.path(name)), want, name)
+
+    def test_a_restore_from_a_marker_leaves_each_score_file_and_says_so(self):
+        self.killed_run()
+        lines = next_worker(self.t).ch_stop().splitlines()
+        for name in self.KEPT:
+            self.assertIn(f"{name}: left as it is, because the backup may be older than your "
+                          "play", lines)
+        self.assertEqual(sum("left as it is" in line for line in lines), 5)
+
+    def test_a_restore_from_a_marker_keeps_a_score_file_changed_after_the_backup(self):
+        self.t.tools.ch_start(self.t.r.song)
+        _write(self.t.r.path("scoredata.bin"), b"the user played after the backup")
+        next_worker(self.t).ch_stop()
+        self.assertEqual(_read(self.t.r.path("scoredata.bin")), b"the user played after the backup")
+
+    def test_a_live_runs_ch_stop_still_restores_every_file(self):
+        self.t.tools.ch_start(self.t.r.song)
+        for name in ORIGINAL:
+            _write(self.t.r.path(name), b"changed by the game")
+        lines = self.t.tools.ch_stop().splitlines()
+        self.t.r.assert_all_restored(self)
+        self.assertFalse(any("left as it is" in line for line in lines))
+
+    def test_an_ordinary_adopted_backup_is_restored_whole_at_shutdown(self):
+        self.t.tools.ensure_backup()
+        for name in ORIGINAL:
+            _write(self.t.r.path(name), b"changed by the game")
+        self.t.tools.shutdown()
+        self.t.r.assert_all_restored(self)
+        self.assertFalse(os.path.exists(self.path))
+
+    def test_the_workers_exit_leaves_a_marker_backup_and_its_marker(self):
         backup = self.killed_run()
         tools = next_worker(self.t)
-        said = f"a previous worker (pid {os.getpid()}) left a backup open: {backup}; ch_stop restores it"
+        reply = tools.shutdown()
+        self.assertIn(backup, reply)
+        self.assertIn(self.path, reply)
+        for name in ORIGINAL:
+            self.assertEqual(_read(self.t.r.path(name)), b"changed by the game", name)
+        self.assert_marker_names(backup)
+        self.assertEqual(tools.open_lines(), [f"adopted backup: {backup}"])
+        tools.ch_stop()
+        self.assert_partly_restored()
+        self.assertFalse(os.path.exists(self.path))
+
+    def test_the_next_worker_adopts_and_ch_stop_restores_and_deletes_the_marker(self):
+        backup = self.killed_run()
+        self.age_folder(backup, 3)
+        tools = next_worker(self.t)
+        said = (f"a previous worker (pid {os.getpid()}) left a backup open: {backup}, 3 hours old; "
+                "ch_stop restores settings.ini, scorestats.json and the Rewired key from it and "
+                "leaves profiles.ini, profiles.bin, scoredata.bin, scoresext.bin, user.bin as "
+                "they are")
         self.assertIn(said, tools.ch_status().splitlines())
         self.assertIn(said, self.t.r.lines)
         self.assertEqual(tools.open_lines(), [f"adopted backup: {backup}"])
@@ -1530,7 +1591,8 @@ class MarkerTest(unittest.TestCase):
             lines = tools.ch_stop().splitlines()
         self.assertEqual(restore_only.call_args.args[0], backup)
         self.assertIn(f"{G.SETTINGS}: restored", lines)
-        self.t.r.assert_all_restored(self)
+        self.assertIn(f"{G.SCORESTATS}: restored", lines)
+        self.assert_partly_restored()
         self.assertFalse(self.t.r.game.stopped)
         self.assertFalse(os.path.exists(self.path))
         self.assertNotIn(said, tools.ch_status().splitlines())
@@ -1550,20 +1612,25 @@ class MarkerTest(unittest.TestCase):
         self.assertIn("rewired registry: restored", next_worker(self.t).ch_stop().splitlines())
         self.assertFalse(os.path.exists(self.path))
 
-    def test_a_ch_start_on_an_adopted_backup_restores_it_first(self):
+    def test_a_ch_start_on_a_marker_backup_refuses_naming_the_folder_and_its_age(self):
         backup = self.killed_run()
+        self.age_folder(backup, 5)
         tools = next_worker(self.t, make_watch=lambda: FakeWatch([]))
-        lines = tools.ch_start(self.t.r.song).splitlines()
-        self.assertEqual(lines[0], "a run was open; stopping it first:")
-        self.assertIn(f"restoring the user files from {backup}", lines)
-        self.assertNotEqual(tools._run.backup_dir, backup)
-        self.assertEqual(GT.read_marker(self.path), (os.getpid(), tools._run.backup_dir))
+        reply = tools.ch_start(self.t.r.song)
+        self.assertEqual(reply, f"refused: a previous worker left a backup open: {backup}, "
+                                "5 hours old; call ch_stop to restore it, then ch_start")
+        self.assertIsNone(tools._run)
+        for name in ORIGINAL:
+            self.assertEqual(_read(self.t.r.path(name)), b"changed by the game", name)
+        self.assert_marker_names(backup)
+        tools.ch_stop()
+        self.assertIn("song length", tools.ch_start(self.t.r.song))
 
     def test_an_adopted_restore_that_fails_keeps_the_marker_and_the_adoption(self):
         backup = self.killed_run()
         tools = next_worker(self.t)
 
-        def fail(backup_dir, out):
+        def fail(backup_dir, out, leave=()):
             raise G.RestoreError("scoredata.bin", "locked")
 
         with mock.patch.object(G, "restore", fail):
@@ -1571,8 +1638,9 @@ class MarkerTest(unittest.TestCase):
         self.assertIn("restore failed on scoredata.bin: locked", lines)
         self.assert_marker_names(backup)
         self.assertEqual(tools._adopted_backup, backup)
+        self.assertIn("refused", tools.ch_start(self.t.r.song))
         tools.ch_stop()
-        self.t.r.assert_all_restored(self)
+        self.assert_partly_restored()
         self.assertFalse(os.path.exists(self.path))
 
     def test_a_backup_that_vanishes_after_adoption_fails_the_stop_without_raising(self):
