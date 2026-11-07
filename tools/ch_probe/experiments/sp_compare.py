@@ -275,14 +275,21 @@ class GapSummary(NamedTuple):
     to_ms: float | None    # the clock of the row after the last gap
 
 
-def gap_summary(rows: list, gap_ms: float) -> GapSummary:
+def gap_summary(rows: list, gap_ms: float,
+                song_end_ms: float | None = None) -> GapSummary:
     """The gaps in wall time between consecutive rows that are longer than
     gap_ms. A gap of exactly gap_ms does not count. The watch writes a row
     only on a change, so a gap is a stretch with no new row, which a stalled
-    watch and a stalled game both make; it also counts the wait before a final
-    row (sp_watch.watch)."""
+    watch and a stalled game both make.
+
+    A gap counts only when both its rows have a clock at or below song_end_ms,
+    the song's end (D255). That leaves out the wait after the song, which ends
+    on the watch's final row for a stopped clock (sp_watch.watch). With no
+    song_end_ms every row counts."""
     gaps = {i: C.s_to_ms(rows[i]["wall_s"] - rows[i - 1]["wall_s"])
-            for i in range(1, len(rows))}
+            for i in range(1, len(rows))
+            if song_end_ms is None
+            or max(_ms(rows[i - 1]), _ms(rows[i])) <= song_end_ms}
     over = [i for i, gap in gaps.items() if gap > gap_ms]
     if not over:
         return GapSummary(0, None, None, None)

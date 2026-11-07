@@ -102,6 +102,9 @@ class _Watch:
     cap_s: float
     # The engine search to use; None uses the tools' own.
     find_engine: Optional[Callable[[object], int]] = None
+    # The song's length in ms, held here because ch_stop clears the open run
+    # and a status call can come after it; None when it was not known.
+    song_end_ms: Optional[int] = None
     thread: Optional[threading.Thread] = None
     stop: threading.Event = dataclasses.field(default_factory=threading.Event)
     # Set when the watch is about to poll, or when it ended before that.
@@ -198,7 +201,7 @@ class SpTools:
                             f"{song_folder}: {type(e).__name__}: {e}")
                 cap_line = f"run cap: {cap_s:g} s (game_tools.run_cap_s for {song_folder})"
             lines = [line for line in (self._game.ensure_backup(),) if line]
-            w = self._launch(cap_s, out)
+            w = self._launch(cap_s, out, song_end_ms=self._song_end_ms(song_folder))
             lines.append("watching: waiting for a moving clock (cap "
                          f"{engine_finder.ENGINE_SEARCH_CAP_S:g} s, "
                          "engine_finder.ENGINE_SEARCH_CAP_S)")
@@ -217,7 +220,7 @@ class SpTools:
         with self._lock:
             if self._watch is not None and self._watch.running():
                 return None, WATCH_RUNNING
-            w = self._launch(cap_s, None, find_engine)
+            w = self._launch(cap_s, None, find_engine, self._open_run_length_ms())
             cap = engine_finder.ENGINE_SEARCH_CAP_S + READ_CAP_S
             if w.settled.wait(cap) and w.engine is not None and w.error is None:
                 return w.engine, w.csv_line()
@@ -242,10 +245,11 @@ class SpTools:
             return "\n".join(lines)
 
     def ch_sp_watch_status(self, since_ms: float = 0) -> str:
-        """The rows so far, the gaps between samples over the whole run (the
-        gap line comes first, so a cut reply keeps it), each activation and
-        each rise of the amount from since_ms on (sp_compare.find_activations
-        and phrase_rises), the engine's address, and how the watch ended."""
+        """The rows so far, the gaps between samples inside the song, whatever
+        since_ms is (the gap line comes first, so a cut reply keeps it), each
+        activation and each rise of the amount from since_ms on
+        (sp_compare.find_activations and phrase_rises), the engine's address,
+        and how the watch ended."""
         with self._lock:
             w = self._watch
             if w is None:
@@ -255,7 +259,7 @@ class SpTools:
                      f"rows: {len(rows)}",
                      "engine: " + (f"{w.engine:#x}" if w.engine is not None
                                    else "not found yet"),
-                     _gap_line(rows)]
+                     _gap_line(rows, w.song_end_ms)]
             acts = [a for a in sp_compare.find_activations(rows)
                     if C.s_to_ms(rows[a.flip_row]["clock_s"]) >= since_ms]
             lines.append(f"activations from {since_ms:g} ms: {len(acts)}")
@@ -326,15 +330,35 @@ class SpTools:
 
     # -- inside ---------------------------------------------------------------------
 
+    def _open_run_length_ms(self) -> Optional[int]:
+        """The length ch_start printed for the run it launched, or None with
+        no run or no song on its command line. GameTools has no public reader
+        for it, so this reads the field."""
+        run = self._game._run
+        return run.length_ms if run is not None else None
+
+    def _song_end_ms(self, song_folder: Optional[str]) -> Optional[int]:
+        """The song's length for a watch given `song_folder`
+        (bot_run.song_length_ms), or the open run's with no folder. None when
+        neither says: a watch still runs on a song with no known length."""
+        if song_folder is None:
+            return self._open_run_length_ms()
+        try:
+            return bot_run.song_length_ms(song_folder)[0]
+        except (OSError, ValueError, bot_run.SongLengthMissing):
+            return None
+
     def _launch(self, cap_s: float, out: Optional[str],
-                find_engine: Optional[Callable[[object], int]] = None) -> _Watch:
+                find_engine: Optional[Callable[[object], int]] = None,
+                song_end_ms: Optional[int] = None) -> _Watch:
         """Start the watch thread. `out` is ch_sp_watch_start's."""
         self._count += 1
         if out:
             csv_path = out if os.path.isabs(out) else os.path.join(self._game.session_dir(), out)
         else:
             csv_path = os.path.join(self._game.session_dir(), f"{CSV_PREFIX}{self._count}.csv")
-        w = _Watch(csv_path=csv_path, cap_s=cap_s, find_engine=find_engine)
+        w = _Watch(csv_path=csv_path, cap_s=cap_s, find_engine=find_engine,
+                   song_end_ms=song_end_ms)
         w.thread = threading.Thread(target=self._body, args=(w,),
                                     name="ch_sp_watch", daemon=True)
         self._watch = w
@@ -411,16 +435,20 @@ class SpTools:
             return "sp watch: " + "; ".join(self._stop_lines(w))
 
 
-def _gap_line(rows: list) -> str:
+def _gap_line(rows: list, song_end_ms: Optional[int]) -> str:
     """sp_compare.gap_summary at GAP_MS as one line. The longest shows a tenth
     of a ms when it has one, so a gap just over the threshold never reads as
-    the threshold itself."""
-    gaps = sp_compare.gap_summary(rows, GAP_MS)
+    the threshold itself. The line says so when the song's end was not known,
+    because the count then holds whatever came after the song."""
+    gaps = sp_compare.gap_summary(rows, GAP_MS, song_end_ms)
     line = f"gaps over {GAP_MS:g} ms between samples: {gaps.count}"
-    if gaps.count == 0:
-        return line
-    return (f"{line}, longest {round(gaps.longest_ms, 1):g} ms, between "
-            f"{sp_compare.format_ms(gaps.from_ms)} and {sp_compare.format_ms(gaps.to_ms)}")
+    if gaps.count > 0:
+        line += (f", longest {round(gaps.longest_ms, 1):g} ms, between "
+                 f"{sp_compare.format_ms(gaps.from_ms)} and "
+                 f"{sp_compare.format_ms(gaps.to_ms)}")
+    if song_end_ms is None:
+        line += " (song length not known: every row counted)"
+    return line
 
 
 def _activation_line(rows: list, act) -> str:

@@ -28,7 +28,7 @@ _REPO_ROOT = os.path.abspath(os.path.join(_HERE, "..", "..", ".."))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from tools.ch_mcp import frida_tools, sp_tools  # noqa: E402
+from tools.ch_mcp import frida_tools, game_tools, sp_tools  # noqa: E402
 from tools.ch_probe import engine  # noqa: E402
 from tools.ch_probe import engine_finder as F  # noqa: E402
 from tools.ch_probe.experiments import sp_watch  # noqa: E402
@@ -48,13 +48,15 @@ def snap_at(clock_s, **fields):
 
 
 class FakeGame:
-    """The four GameTools methods SpTools calls, with every call recorded."""
+    """The four GameTools methods SpTools calls, with every call recorded, and
+    the open run SpTools reads the song's length from."""
 
     def __init__(self, folder, events):
         self.folder = folder
         self.events = events
         self.hooks = []
         self.cap_calls = []
+        self._run = None
 
     def ensure_backup(self):
         self.events.append("backup")
@@ -425,14 +427,144 @@ class SpToolsTest(unittest.TestCase):
 
     # -- the gap line ------------------------------------------------------------------
 
-    def status_over(self, samples, since_ms=0):
+    def status_over(self, samples, since_ms=0, song_end_ms=60000):
         """ch_sp_watch_status's lines over a watch that made these (wall_s,
-        clock_s) rows."""
+        clock_s) rows, of a song `song_end_ms` long."""
         tools = self.tools()
         tools._watch = sp_tools._Watch(csv_path="x.csv", cap_s=1.0, rows=[
             dict(zip(WATCH_COLUMNS, sp_watch.watch_row(wall_s, snap_at(clock_s))))
-            for wall_s, clock_s in samples])
+            for wall_s, clock_s in samples], song_end_ms=song_end_ms)
         return tools.ch_sp_watch_status(since_ms).splitlines()
+
+    def gap_line_of_a_finished_watch(self, tools):
+        """The gap line after a watch of three rows, the last two 60 ms apart
+        on the fake wall clock and the last past 4000 ms."""
+        tools._watch.rows[:] = [
+            dict(zip(WATCH_COLUMNS, sp_watch.watch_row(wall_s, snap_at(clock_s))))
+            for wall_s, clock_s in ((100.0, 3.9), (100.06, 3.96), (100.12, 4.02))]
+        return next(line for line in tools.ch_sp_watch_status().splitlines()
+                    if line.startswith("gaps over"))
+
+    def test_the_gap_line_leaves_out_a_gap_past_the_song_end(self):
+        lines = self.status_over([(100.0, 3.9), (100.06, 3.96), (100.12, 4.02)],
+                                 song_end_ms=4000)
+        self.assertIn("gaps over 50 ms between samples: 1, longest 60 ms, "
+                      "between 3900.0 ms and 3960.0 ms", lines)
+
+    def test_the_gap_line_leaves_out_a_final_frozen_clock_row(self):
+        lines = self.status_over([(100.0, 3.9), (100.004, 4.02), (105.1, 4.02)],
+                                 song_end_ms=4000)
+        self.assertIn("gaps over 50 ms between samples: 0", lines)
+
+    def test_an_unknown_song_length_is_said_on_the_gap_line(self):
+        lines = self.status_over([(100.0, 3.9), (100.06, 3.96)], song_end_ms=None)
+        self.assertIn("gaps over 50 ms between samples: 1, longest 60 ms, between "
+                      "3900.0 ms and 3960.0 ms (song length not known: every row counted)",
+                      lines)
+
+    def test_an_unknown_song_length_is_said_when_no_gap_is_over(self):
+        lines = self.status_over([(100.0, 3.9), (100.004, 3.904)], song_end_ms=None)
+        self.assertIn("gaps over 50 ms between samples: 0 "
+                      "(song length not known: every row counted)", lines)
+
+    def test_the_real_ls_o2_gap_line(self):
+        path = os.path.join(_REPO_ROOT, "testdata", "ch_watch",
+                            "ls-o2-run1-sp_watch-1.csv")
+        with open(path, newline="", encoding="utf-8") as f:
+            rows = [{c: float(r[c]) for c in ("wall_s", "clock_s")}
+                    for r in csv.DictReader(f)]
+        self.assertEqual(sp_tools._gap_line(rows, 62080),
+                         "gaps over 50 ms between samples: 360, longest 243.7 ms, "
+                         "between 2146.8 ms and 40566.2 ms")
+
+    def test_the_song_end_comes_from_the_folder_the_watch_was_given(self):
+        folder = os.path.join(self.tmp.name, "song")
+        os.makedirs(folder)
+        with open(os.path.join(folder, "song.ini"), "w", encoding="utf-8") as f:
+            f.write("[song]\nsong_length = 4000\n")
+        script = Script([snap_at(1.0)])
+        tools = self.tools(script)
+        self.started(tools, folder)
+        self.assertTrue(script.done.wait(WAIT_S))
+        tools.ch_sp_watch_stop()
+        self.assertEqual(self.gap_line_of_a_finished_watch(tools),
+                         "gaps over 50 ms between samples: 1, longest 60 ms, "
+                         "between 3900.0 ms and 3960.0 ms")
+
+    def test_a_folder_with_no_length_leaves_the_song_end_unknown(self):
+        folder = os.path.join(self.tmp.name, "no-length")
+        os.makedirs(folder)
+        self.game._run = types.SimpleNamespace(length_ms=4000)
+        script = Script([snap_at(1.0)])
+        tools = self.tools(script)
+        self.started(tools, folder)
+        self.assertTrue(script.done.wait(WAIT_S))
+        tools.ch_sp_watch_stop()
+        self.assertIn("(song length not known: every row counted)",
+                      self.gap_line_of_a_finished_watch(tools))
+
+    def test_with_no_folder_the_song_end_comes_from_the_open_run(self):
+        self.game._run = types.SimpleNamespace(length_ms=4000)
+        script = Script([snap_at(1.0)])
+        tools = self.tools(script)
+        self.started(tools)
+        self.assertTrue(script.done.wait(WAIT_S))
+        tools.ch_sp_watch_stop()
+        self.assertEqual(self.gap_line_of_a_finished_watch(tools),
+                         "gaps over 50 ms between samples: 1, longest 60 ms, "
+                         "between 3900.0 ms and 3960.0 ms")
+
+    def test_ch_run_charts_watch_takes_the_song_end_from_the_open_run(self):
+        self.game._run = types.SimpleNamespace(length_ms=4000)
+        script = Script([snap_at(1.0)])
+        tools = self.tools(script)
+        engine_ptr, _text = tools.watch_for_run(5.0, lambda proc: ENGINE)
+        self.assertEqual(engine_ptr, ENGINE)
+        self.assertTrue(script.done.wait(WAIT_S))
+        tools.ch_sp_watch_stop()
+        self.assertEqual(self.gap_line_of_a_finished_watch(tools),
+                         "gaps over 50 ms between samples: 1, longest 60 ms, "
+                         "between 3900.0 ms and 3960.0 ms")
+
+    def test_the_song_end_outlives_the_run(self):
+        # ch_stop clears the open run, and a status call after it still has
+        # the watch's song end.
+        self.game._run = types.SimpleNamespace(length_ms=4000)
+        script = Script([snap_at(1.0)])
+        tools = self.tools(script)
+        self.started(tools)
+        self.assertTrue(script.done.wait(WAIT_S))
+        tools.ch_sp_watch_stop()
+        self.game._run = None
+        self.assertNotIn("not known", self.gap_line_of_a_finished_watch(tools))
+
+    def test_a_menu_launch_leaves_the_song_end_unknown(self):
+        # bot_run.Run has no length when no song was on the command line.
+        self.game._run = types.SimpleNamespace(length_ms=None)
+        script = Script([snap_at(1.0)])
+        tools = self.tools(script)
+        self.started(tools)
+        self.assertTrue(script.done.wait(WAIT_S))
+        tools.ch_sp_watch_stop()
+        self.assertIn("(song length not known: every row counted)",
+                      self.gap_line_of_a_finished_watch(tools))
+
+    def test_a_watch_with_no_open_run_leaves_the_song_end_unknown(self):
+        script = Script([snap_at(1.0)])
+        tools = self.tools(script)
+        self.started(tools)
+        self.assertTrue(script.done.wait(WAIT_S))
+        tools.ch_sp_watch_stop()
+        self.assertIn("(song length not known: every row counted)",
+                      self.gap_line_of_a_finished_watch(tools))
+
+    def test_the_real_game_tools_holds_the_run_the_song_end_reads(self):
+        # The fake above stands in for this field, so this pins its real name.
+        game = game_tools.GameTools(None, threading.RLock(), self.tmp.name, driver=object())
+        tools = sp_tools.SpTools(game, threading.RLock())
+        self.assertIsNone(tools._open_run_length_ms())
+        game._run = types.SimpleNamespace(length_ms=62080)
+        self.assertEqual(tools._open_run_length_ms(), 62080)
 
     def test_the_status_prints_two_gaps_with_the_clocks_around_them(self):
         lines = self.status_over([(100.0, 1.0), (100.004, 1.004), (100.064, 1.064),

@@ -478,16 +478,69 @@ class GapSummaryTest(unittest.TestCase):
         self.assertEqual(sp_compare.gap_summary(rows, 62.5).count, 0)
         self.assertEqual(sp_compare.gap_summary(rows, 62.4).count, 1)
 
-    def test_the_real_ls_o2_run(self):
-        # The run folder is hydra-data/ch-mcp-runs/2026-11-07/ls-o2-run1, and
-        # this counts its whole watch CSV. The longest gap is the last pair
-        # of rows: both show the same clock, because the watch writes its
-        # final row once live.StoppedCheck says the clock has stopped.
+    # 1.0625 s is exact in binary, so its clock is exactly 1062.5 ms and these
+    # boundary tests have no rounding left in the comparison.
+
+    def test_a_gap_whose_later_row_sits_exactly_at_the_song_end_counts(self):
+        rows = _samples((0.0, 1.0), (0.1, 1.0625))
+        got = sp_compare.gap_summary(rows, 50, 1062.5)
+        self.assertEqual(got.count, 1)
+        self.assertAlmostEqual(got.to_ms, 1062.5, places=6)
+
+    def test_a_gap_whose_later_row_is_past_the_song_end_does_not_count(self):
+        rows = _samples((0.0, 1.0), (0.1, 1.0625))
+        self.assertEqual(sp_compare.gap_summary(rows, 50, 1062.4),
+                         (0, None, None, None))
+
+    def test_the_row_after_the_song_end_row_is_left_out(self):
+        rows = _samples((0.0, 1.0), (0.1, 1.0625), (0.4, 1.125))
+        got = sp_compare.gap_summary(rows, 50, 1062.5)
+        self.assertEqual(got.count, 1)
+        self.assertAlmostEqual(got.longest_ms, 100.0, places=6)
+        self.assertAlmostEqual(got.to_ms, 1062.5, places=6)
+
+    def test_a_gap_with_both_rows_past_the_song_end_does_not_count(self):
+        rows = _samples((0.0, 2.0), (0.1, 2.5))
+        self.assertEqual(sp_compare.gap_summary(rows, 50, 1000.0),
+                         (0, None, None, None))
+
+    def test_a_final_frozen_clock_row_is_left_out(self):
+        # The last two rows show one clock, past the song's end, five seconds
+        # apart: the shape of a run that ended on a stopped clock.
+        rows = _samples((100.0, 4.9), (100.06, 4.96), (100.064, 5.02), (105.1, 5.02))
+        got = sp_compare.gap_summary(rows, 50, 5000.0)
+        self.assertEqual(got.count, 1)
+        self.assertAlmostEqual(got.longest_ms, 60.0, places=3)
+        self.assertAlmostEqual(got.to_ms, 4960.0, places=6)
+
+    def test_with_no_song_end_every_row_counts(self):
+        rows = _samples((100.0, 4.9), (100.004, 5.02), (105.1, 5.02))
+        got = sp_compare.gap_summary(rows, 50, None)
+        self.assertEqual(got.count, 1)
+        self.assertAlmostEqual(got.longest_ms, 5096.0, places=3)
+
+    @staticmethod
+    def _ls_o2_rows():
         with open(LS_O2_CSV, newline="", encoding="utf-8") as f:
-            rows = [{c: float(r[c]) for c in ("wall_s", "clock_s")}
+            return [{c: float(r[c]) for c in ("wall_s", "clock_s")}
                     for r in csv.DictReader(f)]
+
+    def test_the_real_ls_o2_run_inside_its_song(self):
+        # The run folder is hydra-data/ch-mcp-runs/2026-11-07/ls-o2-run1. Its
+        # ch_start printed "song length: 62080 ms".
+        rows = self._ls_o2_rows()
         self.assertEqual(len(rows), 6240)
-        got = sp_compare.gap_summary(rows, 50)
+        got = sp_compare.gap_summary(rows, 50, 62080)
+        self.assertEqual(got.count, 360)
+        self.assertAlmostEqual(got.longest_ms, 243.7, places=1)
+        self.assertAlmostEqual(got.from_ms, 2146.834, places=3)
+        self.assertAlmostEqual(got.to_ms, 40566.2, delta=0.05)
+
+    def test_the_real_ls_o2_run_with_no_song_end(self):
+        # The longest gap is the last pair of rows: both show the same clock,
+        # because the watch writes its final row once live.StoppedCheck says
+        # the clock has stopped.
+        got = sp_compare.gap_summary(self._ls_o2_rows(), 50)
         self.assertEqual(got.count, 371)
         self.assertAlmostEqual(got.longest_ms, 5084.784, places=3)
         self.assertAlmostEqual(got.from_ms, 2146.834, places=3)
