@@ -1,6 +1,6 @@
 # Session index
 
-One session is kept locally and has no line here.
+3 sessions are kept locally and have no line here.
 
 - 2026-08-09 62055a3c Freeze error diagnosis (2026-08-09) | batch-running, library, path, report-table, performance, tests | Ended with the freeze fixed, the library analyzed to 18,022 records, and a sortable path report with a score column. The conversation shows no commit, so the changes sit in the working tree.
 - 2026-08-10 571ec5d5 Hydra uncapped starpower version (2026-08-10) | sp-cap, path, performance, batch-running | Ended at 12:42 UTC with all six big charts finishing uncapped, the slowest in 98.8 seconds.
@@ -399,7 +399,7 @@ One session is kept locally and has no line here.
 - 2026-10-26 66b184f8 Hydra analyze without scan issue (2026-10-26) | scan, rescan-cache, library-file-upgrade, analysis, review, docs | Ended after the user said push, and main was pushed to GitHub with the rescan-on-open change and the scan window wrap fix. [stale]
 - 2026-10-26 93098c69 App screenshots for user guide (2026-10-26) | docs, preview, release, tests, review | Ended after the user said push, and main was pushed to GitHub from 340d00ba to 78ccbccb. [stale]
 - 2026-10-27 33dc6c01 Run failure diagnosis (2026-10-27) | ci, performance, review, tests | Ended with both CI changes merged to main: the build cap raised, and the coverage job moved to the sccache compiler cache. [stale]
-- 2026-10-27 fba132d1 New release (2026-10-27) | release, installer, update-check, rescan-cache, tests | The session ended with Hydra Deluxe 2.13.2 published on GitHub, with the installer and its signature file attached.
+- 2026-10-27 fba132d1 New release (2026-10-27) | release, installer, update-check, rescan-cache, tests | The session ended with Hydra Deluxe 2.13.2 published on GitHub, with the installer and its signature file attached. [stale]
 - 2026-10-27 03ae1d25 2x kicks chart clarity (2026-10-27) | 2x-kick, optimal-path, rescan-cache, release, docs | The session ended with the 2x kick changes on main, pushed to GitHub, and Hydra Deluxe 2.14.0 published with a forced rescan set up for the user's library. [stale]
 - 2026-10-28 013109ed Matched on folder and charter meaning (2026-10-28) | library-search, library-row, library, docs, tests | The session ended with the library search change pushed to GitHub as commit 2bf91835, after a real-window check on a snapshot copy of the user's library. [stale]
 - 2026-10-28 f756d547 Hydra moonshot improvements (2026-10-28) | clone-hero, planning, agents, review | The session ended after the calibration answers, with a handoff written; Run 3 and the fullscreen check were still to do.
@@ -451,6 +451,15 @@ One session is kept locally and has no line here.
 - 2026-10-31 d1867340 Handoff documentation for LS D1A run 2 (2026-10-31) | clone-hero, agents, planning, tests | Ended with a handoff committed on its own branch, after LS-D1a run 3 passed and every step of the original direct-start plan was built.
 - 2026-10-31 af9055ee Run failure and check prevention (2026-10-31) | tests, ci, review, agents | The session ended with the test fix merged and pushed to main. The CI run that the push started was not checked. [stale]
 - 2026-11-06 08dcb02a Song sorting during analysis (2026-11-06) | library, library-row, analyze, batch-running, selection-scroll | The session ended with the hold-still sort change merged to main, after a real-app check.
+- 2026-11-07 70bfa33d Handoff documentation continuation (2026-11-07) | clone-hero, optimal-path, activation, score-categories, agents | The session ended with a plan handoff for an automatic run that matches Hydra's optimal score on the Senri chart; no such run has happened yet.
+- 2026-11-07 db335b97 Stale comment audit verification plan (2026-11-07) | docs, agents, review, scan | The session ended with a handoff, at the user's request, after waves 0 to 2 finished and wave 3 was approved but never launched.
+- 2026-11-07 65cc5425 Path Builder slimmer top handoff (2026-11-07) | path-builder, builder-timeline, review, docs | The session ended with the Path Builder redesign and its Open in Path Builder button merged to main; nothing was pushed.
+- 2026-11-07 d5d1a440 Fix the leaked hydra_live temp folders (2026-11-07) | tests, docs, agents | The session ended with the fix merged to local main as 676a494b, and the 96 old scratch folders sent to the Recycle Bin.
+- 2026-11-07 3dc9101c Hydra preview audio not playing (2026-11-07) | chart, library, preview, tests, review | The session ended with the test charts renamed, the install tool fixed and merged, and main pushed to GitHub, after the user's yes.
+- 2026-11-07 5b92c813 Optimal score plan handoff (2026-11-07) | clone-hero, planning, review, agents, docs | The session ended with a handoff, at the user's request, after wave 1 of the plan was merged and before the test launch could start.
+- 2026-11-07 70bddae3 Stale comment audit verify waves handoff (2026-11-07) | clone-hero, docs, agents, review, scan | The session ended with a handoff, at the user's request, after the triage script was built and before the closure checkers were launched. [write-back]
+- 2026-11-07 f1fabefd Optimal score launch handoff (2026-11-07) | clone-hero, agents, hooks, planning, review | The session ended with a handoff, after LS-O1 passed on the live game and the reload work merged to main; the user did not give a go for LS-R1 or LS-R2 here.
+- 2026-11-07 91e7fdd7 Stale comment work (2026-11-07) | docs, agents, review, hooks | The session ended with a handoff written and committed on its own branch; no comment was edited and nothing was pushed.
 
 ## Proposed tags
 
