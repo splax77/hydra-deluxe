@@ -1813,3 +1813,10 @@ The slimmer-top plan left a highway click on a fill the player can't take with n
 5. **`watch_checks.py`.** Recommended, and chosen: it stops calling +0x2E0 a hit time, as D306 item 5 ruled for `watch_window.py`, and its test changes with it.
 
 The plan's `hydra_replay` flag test stays a real test, so `hydra_tests` also needs `hydra_replay` built.
+
+**D316 (session 28b91640), 2026-11-07. What the stale comment code tasks turned up.** The user chose the recommended answer to all four.
+
+1. **The tn chip's outline.** D308 item 5 rested on the HTML pages outlining these chips, but no HTML page draws them; the fill comparison page is the only one with chips, and its `.s-same` keeps a border. With that shown, and a before and after capture from the real app, the user chose "Keep outline, merge". The "No timing needed" and "not in library" chips carry the outline.
+2. **The comparison's dim chips.** "no current result", "no paths" and "other speed" are outlined in the window, while the fill page's `.s-only` sets a transparent border. The user chose "Keep window outline". The two stay different.
+3. **`hydra_replay`'s two number readers.** `--cap` reads through `parse_whole_number`, so `--cap 10.0` is accepted. `--ms` and `--depth` read through `--index`'s strict reader, so `--ms 10.0` is refused. The user chose "Keep both as they are".
+4. **LS-1.** The user chose "Go now".
