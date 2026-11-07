@@ -109,6 +109,46 @@ attached GUI tests), stages the ship list via `cmake --install` (so stray user
 data in the build tree can never leak into a release), downloads and caches
 the VC++ redistributable, and compiles `installer\hydra.iss`.
 
+### Building under Claude Code
+
+Under Claude Code, agents never build, and at most three builds run at once
+(agent rule 14, and D314 in `docs/audit/2026-10-03-fix-decisions.md`). So every
+`build_cpp.ps1` command on this page is the main session's to run, and so is
+any command on another page that builds. An agent that needs one says so in
+its report.
+
+A build works like a ticket booth. The main session calls `hydra_build_pass`
+first. The call never waits: it hands back a pass, or a line saying who holds
+the slots. With a pass, the main session runs its command with the pass in
+the environment:
+
+```
+$env:HYDRA_BUILD_PASS='<pass>'; .\build_cpp.ps1 -Target hydra_tests
+```
+
+Any other target or preset goes the same way, and so do
+`installer\build_installer.ps1` and `tools\mutation_probe.ps1`. A session holds
+one pass at a time. `build_cpp.ps1` claims the slot, builds, and gives the slot
+back whether the build passed or failed. Without a pass it stops before
+configure. A pass nobody claims runs out, and a slot whose owner died frees
+itself; `tools\build_slot.ps1` owns those limits.
+`tools\build_slot.ps1 -Repo <worktree>` builds another worktree under the pass
+the caller already holds.
+
+A second lock stops a build that skips `build_cpp.ps1`. `Directory.Build.targets`
+at the repo root makes every Visual Studio project fail without a claimed pass,
+so a hand-run `cmake --build` is refused. Under the limit, Visual Studio builds
+also run at low priority, so hooks and other programs go first.
+
+The limit applies only when `CLAUDECODE` is 1. CI and your own terminal build
+as they always did, and a terminal build does not count toward the three.
+
+The main session runs `hydra_tests.exe` with `-tc=` (test case) or `-sf=`
+(source file) filters. Put quotes around the whole filter, like
+`"-sf=*test_x.cpp"`, because PowerShell splits an unquoted one at its first dot
+and it runs nothing. Give one `-sf=` per command, since doctest keeps only the
+last one.
+
 ### Libraries
 
 Apart from the programs' own source files (src/ui/main.cpp and src/cli/), the
@@ -513,8 +553,9 @@ notices is a "survivor": a spot where a test is missing or too loose.
 The report gives the score (killed out of the edits that compiled) and each
 survivor's line and edit, so a person can write a test for it. The script
 edits source, so it refuses the main checkout; run it in a task worktree
-made with `tools\new_worktree.ps1`. It holds one machine build slot for the
-whole run. Each edit costs a warm rebuild and a test run, so twenty edits
+made with `tools\new_worktree.ps1`. It rebuilds, so the main session runs it,
+and it holds one pass for the whole run (see "Building under Claude Code").
+Each edit costs a warm rebuild and a test run, so twenty edits
 take a few minutes. The script's header lists its options and the kinds of edit it
 makes; `tools\test_mutation_probe.ps1` is its self-test.
 

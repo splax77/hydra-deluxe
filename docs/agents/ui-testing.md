@@ -1,6 +1,6 @@
 # GUI testing: drive the real UI by label, read back text
 
-Hydra's UI is Dear ImGui. The Dear ImGui Test Engine (vendored at `third_party/imgui_test_engine`) can find a widget by its label, click it, type into it, and read what is on screen. `hydra_uitest` runs the whole UI with no window on a software GPU, so an agent can verify a GUI change in about a second and get **plain text** back — not screenshots.
+Hydra's UI is Dear ImGui. The Dear ImGui Test Engine (vendored at `third_party/imgui_test_engine`) can find a widget by its label, click it, type into it, and read what is on screen. `hydra_uitest` runs the whole UI with no window on a software GPU, so the main session can verify a GUI change in about a second and get **plain text** back — not screenshots.
 
 ## Which check a GUI change needs
 
@@ -14,6 +14,8 @@ One rule covers every GUI check. It has three cases, and each case names what th
 
 ## Build and run
 
+The main session builds and runs these; an agent does neither (agent rule 14). `docs/development.md`, "Building under Claude Code", says how to build.
+
 ```bash
 .\build_cpp.ps1 -Target hydra_uitest
 ```
@@ -22,7 +24,7 @@ One rule covers every GUI check. It has three cases, and each case names what th
 .\build-cpp\Release\hydra_uitest.exe --all
 ```
 
-Agents do not run `--all`. They run only the tests for their own change, with `--test <name>`; the rule is in `docs/agents/brief-preamble.md`. The main session runs the merge's tests once; `docs/agents/agent-rules.md`, rule 1, says which.
+Agents do not run `hydra_uitest` at all. The main session runs the tests for a change with `--test <name>`, and the merge's tests once; `docs/agents/agent-rules.md`, rule 1, says which.
 
 | Command | What it does |
 |---|---|
@@ -146,7 +148,7 @@ The second group goes end to end through AppState: the toolbar, the batch strip,
 
 ## The Path Builder's tests
 
-The Path Builder has its own headless runner, `hydra_pathbuilder_uitest`, built on the same engine. Its tests live in `tests/pb_ui`. It has no `--all`; run a test by name with `--test <name>`, and `--list` prints the names. Build it with `.\build_cpp.ps1 -Target hydra_pathbuilder_uitest`.
+The Path Builder has its own headless runner, `hydra_pathbuilder_uitest`, built on the same engine. Its tests live in `tests/pb_ui`. It has no `--all`; run a test by name with `--test <name>`, and `--list` prints the names. The main session builds it with `.\build_cpp.ps1 -Target hydra_pathbuilder_uitest`.
 
 | Item | What it is |
 |---|---|
@@ -180,7 +182,7 @@ Claude reaches live mode through the project's MCP server, `hydra`. MCP (Model C
 
 ### Setting it up
 
-The helper needs Python's `mcp` package, installed once with `py -m pip install mcp`. Claude Code asks the user to approve the server the first time it is used. The helper runs the exes in `build-cpp\Release` and never builds them. When one is missing, its reply names the `build_cpp.ps1` command that makes it.
+The helper needs Python's `mcp` package, installed once with `py -m pip install mcp`. Claude Code asks the user to approve the server the first time it is used. The helper runs the exes in `build-cpp\Release` and never builds them. When one is missing, its reply says to ask the main session, which makes it with `build_cpp.ps1`. The helper starts `hydra_uitest.exe`, so the server is the main session's too (agent rule 14).
 
 ### The two modes
 
@@ -337,7 +339,7 @@ Rules of thumb:
 
 Cases 2 and 3 of the rule at the top run the real dev `Hydra.exe` from a scratch folder of its own. Hydra reads `hydra.db` and `hydra_settings.ini` from the folder its exe sits in (`exe_dir` in `src/app/config.cpp`). It reads `hydra_ui.ini` from the same folder unless `--ui-ini` names another (`setup_imgui` in `src/ui/imgui_setup.cpp`).
 
-1. Build `-Target Hydra` first. A build of only `hydra_tests` or `hydra_uitest` leaves `Hydra.exe` as it was.
+1. The main session builds `-Target Hydra` first. A build of only `hydra_tests` or `hydra_uitest` leaves `Hydra.exe` as it was.
 2. Copy `Hydra.exe`, the two mimalloc DLLs and the `assets` and `resource` folders from `build-cpp\Release` into a fresh scratch folder.
 3. For case 2, copy the user's `hydra.db`, `hydra_settings.ini` and `hydra_ui.ini` from the installed folder, `C:\Program Files\Hydra`, while the installed Hydra is closed. For case 3, copy only `hydra_ui.ini`, and write a `hydra_settings.ini` whose song folder is the repo's `testdata\input`. Then scan, analyze and open the view.
 4. Copy the database and settings files again before each run, because a run saves over them.
@@ -351,9 +353,9 @@ Each trap names the file that owns the behaviour. Read the detail there.
 
 - A third argument to IM_CHECK_FLOAT_EQ_EPS is dropped without an error, because the vendored engine defines that macro as another name for the two-argument IM_CHECK_FLOAT_EQ. Use IM_CHECK_FLOAT_NEAR_EQ for a tolerance (`third_party/imgui_test_engine/imgui_te_context.h`).
 - The vendored test engine carries Hydra's own patches, each marked `// Hydra patch:`, and a refresh of the engine must apply them again. `THIRD_PARTY_NOTICES.txt` lists them. The `engine-wildcard-patches` test fails when either wildcard patch is lost.
-- `hydra_replay` and `hydra_bench` are left out of a plain build (EXCLUDE_FROM_ALL in `CMakeLists.txt`). Build them by `-Target`, or they stay stale.
+- `hydra_replay` and `hydra_bench` are left out of a plain build (EXCLUDE_FROM_ALL in `CMakeLists.txt`). The main session builds them by `-Target`, or they stay stale.
 - `tools/capture_window.ps1` loads its C# code as the type `HydraCaptureV1`, and the PowerShell host keeps a type once it is loaded. A changed C# body under the same name is never loaded, and the script fails with no error. Change the version in the type's name whenever the C# block changes.
-- The `hydra` server runs the build of the checkout its helper file sits in (`REPO` in `tools/hydra_ui_mcp.py`), so it never sees a branch's build. To check a branch, build it in its worktree and run that worktree's own helper from a small `mcp` stdio client script. Pass `keep=True` to `hydra_start`, or `hydra_stop` deletes the screenshots.
+- The `hydra` server runs the build of the checkout its helper file sits in (`REPO` in `tools/hydra_ui_mcp.py`), so it never sees a branch's build. To check a branch, the main session builds it in its worktree and runs that worktree's own helper from a small `mcp` stdio client script. Pass `keep=True` to `hydra_start`, or `hydra_stop` deletes the screenshots.
 - A session's `hydra` server keeps the helper it loaded when the session started, so a change to `tools/hydra_ui_mcp.py` does not reach it. Drive the changed helper from your own `mcp` client script, as for a branch, rather than asking the user to reconnect the server. The user's words: "you created the server, you figure it out".
 - Holding Escape in the live window for a moment sets the test engine's abort flag. `clear_abort` in `tests/ui/uitest_engine.cpp` clears it between commands, so it does not end the session. A live window closes on the engine's stop request, which `engine_stopping` in the same file reads.
 - Dear ImGui publishes no accessibility tree, so Windows UI-automation tools cannot read Hydra. Use `hydra_uitest` or the `hydra` server instead.

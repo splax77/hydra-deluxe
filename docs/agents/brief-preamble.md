@@ -24,7 +24,7 @@ Read files with the Read tool, using `offset` and `limit` for a range. Never use
 
 ## Shells on Windows
 
-Run commands with the PowerShell tool. Keep the Bash tool for POSIX scripts. In Bash, write paths with forward slashes (`C:/Users/...`): Bash strips the backslashes from an unquoted `C:\Users\...`, so the command reaches a path that does not exist. Never wrap PowerShell code in a Bash call (`powershell -Command "..."`); run it with the PowerShell tool instead. Build with `build_cpp.ps1`, because `cmake` is not on PowerShell's PATH.
+Run commands with the PowerShell tool. Keep the Bash tool for POSIX scripts. In Bash, write paths with forward slashes (`C:/Users/...`): Bash strips the backslashes from an unquoted `C:\Users\...`, so the command reaches a path that does not exist. Never wrap PowerShell code in a Bash call (`powershell -Command "..."`); run it with the PowerShell tool instead. The main session builds with `build_cpp.ps1`, because `cmake` is not on PowerShell's PATH.
 
 A hook refuses five shapes in a Bash call, because each one fails or is silently changed on its way through Git Bash. A command over 1,000 characters: write the content to a file with the Write tool and run the file (`bash <file>`, `python -I <file>`). A `git commit`'s own text does not count toward that limit, so a long commit message is fine. A doubled backslash outside double quotes: put the text in a file the same way, or use forward slashes. `cmd` with a slash flag: run it from the PowerShell tool, or put `MSYS_NO_PATHCONV=1` before it. A ref with a slash before `:.` and a dotted path, such as `origin/main:.gitignore`: name a ref with no slash, or run the git command from the PowerShell tool. A Windows path ending in a backslash just before its closing double quote: drop the backslash, or use forward slashes. `bash_windows_rule.py` in the gates folder owns the rule and the number.
 
@@ -38,17 +38,19 @@ Touch only the files your brief owns, plus your scratch folder. Never delete, mo
 
 ## Tests
 
-Run only the tests your brief names. The merge's own test list is not yours to pick: the main session gets it from `build-cpp\Release\hydra_precheck.exe --tests` on your branch after you commit. Use `-tc=` (test case) or `-sf=` (source file) filters on `build-cpp\Release\hydra_tests.exe`. Put quotes around the whole filter, like `"-sf=*test_x.cpp"`, because PowerShell splits an unquoted one at its first dot and it runs nothing. Give one `-sf=` per command, since doctest keeps only the last one. Never run the whole suite. Never run `hydra_uitest --all`; run only the uitest scripts your brief names. Never run all the hook tests. The main session runs the merge's tests (`docs/agents/agent-rules.md`, rule 1, says which); a repeat from you buys nothing and slows every other agent on the machine.
+Run only the tests your brief names. The merge's own test list is not yours to pick: the main session gets it from `build-cpp\Release\hydra_precheck.exe --tests` on your branch after you commit. Never run a test that needs a build; that is the main session's job (agent rule 14). So you never run `hydra_tests.exe`, `hydra_uitest.exe` or `hydra_replay.exe`, not even the main checkout's copies: they test a branch's code and need that branch built. You may run `hydra_precheck.exe` from the main checkout, because it only reads a worktree and tests nothing. The tests left to you need no build, such as the Python tools' tests. Never run all the hook tests. The main session runs the merge's tests (`docs/agents/agent-rules.md`, rule 1, says which); a repeat from you buys nothing and slows every other agent on the machine.
 
 Never run a full library test: no `hydra_batch --whole-library`, and no compare or timing run over the user's whole song library. Only the user can allow one, in chat, and a brief that asks for one without naming that permission is wrong; stop and report it. Two guards back this up. `hydra_batch` given no chart folder refuses to run unless it also gets `--whole-library`. A hook then refuses any shell command that holds `--whole-library`, unless the user has sent exactly `allow library run` in this session; each such message lets one command through. Test on the checked-in corpus in `testdata/input` or on the charts your change touches.
 
 If a timing test fails while the machine is busy, report it once. Do not rerun the suite to chase it.
 
-If your brief asks for a failing-first test, run it red before the fix and keep the exact red output line for your report. The reviewer reuses that line instead of rebuilding the old code to see it fail.
+If your brief asks for a failing-first test, write it and hand it back; you cannot run it red, because that needs a build. The main session runs a test red only when a brief asks for it, and it passes the exact red line to the reviewer. Otherwise the reviewer reads the test and says what would make it fail.
 
 ## Builds
 
-Your brief says how to make your first build. A cold build (one from nothing) takes three to six minutes and competes with every other build on the machine, so start at most one. Later builds are warm and fast. Never build to answer a question a Read or Grep can answer.
+You never build, and you never start anything that builds (agent rule 14). That covers `build_cpp.ps1`, `cmake --build`, MSBuild and any script that calls them. At most three builds run at once on this machine, and only a main session starts one, through a pass from `hydra_build_pass`. A hook refuses that tool to every agent.
+
+So you hand your branch back uncompiled. The main session builds it and runs the tests that need a build. A page that says `.\build_cpp.ps1 -Target x` is telling the main session what to do; if your work needs that build, say so in your report. If the build or a test fails before review, the failure output goes to a fresh executor on the same branch.
 
 ## Committing
 
@@ -78,7 +80,7 @@ If your last two status lines show the same step and no new result, you are not 
 
 ## Review findings
 
-No agent is woken up again after its turn ends. Your job ends with your report. One fresh reviewer then reviews your change, fixes what it finds itself and signs off (D107 in `docs/audit/2026-10-03-fix-decisions.md`). Nothing comes back to you. If you are that reviewer, nobody reviews your fixes; your own sign-off is the last check.
+No agent is woken up again after its turn ends. Your job ends with your report. One fresh reviewer then reviews your change, fixes what it finds itself and signs off (D107 in `docs/audit/2026-10-03-fix-decisions.md`). Nothing comes back to you. If you are that reviewer, nobody reviews your fixes; your own sign-off is the last check. The one exception is a C++ fix of yours that fails the main session's build (agent rule 5).
 
 ## The code is the source of truth
 
