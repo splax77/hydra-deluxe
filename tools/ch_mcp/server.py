@@ -184,7 +184,7 @@ def build_server(helper: Optional[Helper] = None):
 
     @server.tool()
     def ch_compare(stats_path: str, score_json: str) -> str:
-        """Compare a stats copy with a hydra_replay score JSON: three lines,
+        """Compare a stats copy with a hydra_replay score JSON: six lines,
         then pass or fail."""
         return capped(h.game.ch_compare(stats_path, score_json))
 

@@ -421,7 +421,7 @@ class GameTools:
             return "\n".join(lines)
 
     def ch_compare(self, stats_path: str, score_json: str) -> str:
-        """compare_scorestats.compare's three lines for a stats copy against a
+        """compare_scorestats.compare's six lines for a stats copy against a
         hydra_replay score JSON, then pass or fail."""
         with self._lock:
             lines: List[str] = []
