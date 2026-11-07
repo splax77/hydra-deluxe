@@ -24,7 +24,7 @@ If a fold would change a displayed text, a score or a stored record, stop and re
 
 ## Step 3: join the branches
 
-Merge each task branch onto the wave branch in the order your brief gives, one at a time, with `git merge --no-ff --no-commit <task branch>`. Resolve the join, then commit it with separate `-m` arguments and the preamble's trailers, never on stdin. Hold the last task's merge uncommitted until step 4 passes, so the join fixes land in that merge commit.
+Merge each task branch onto the wave branch in the order your brief gives, one at a time, with `git merge --no-ff --no-commit <task branch>`. Resolve the join, then commit it with separate `-m` arguments and the preamble's trailers, never on stdin. Hold the last task's merge uncommitted until the precheck in step 4 is clean, so the join fixes land in that merge commit.
 
 When two tasks both append rows to the same file under `tests/single_owner/rules/`, git merges the appended blocks badly. Rebuild the file as the wave branch's version plus the other task's added rows, relative to the fork. Do the same for any other file two tasks both appended to.
 
@@ -32,27 +32,29 @@ Resolve every conflict inside the merge commit. Never rebase, amend, reset or fo
 
 ## Step 4: check the joined branch
 
-Build the joined branch once with the target your brief names.
+You do not build the joined branch or run its tests; the main session does both (agent rule 14).
 
-Run the precheck: `build-cpp\Release\hydra_precheck.exe --repo <worktree path> --range main...<wave branch>`. Build it first with `.\build_cpp.ps1 -Target hydra_precheck` if it is missing. The main checkout's exe works on any worktree, because `--repo` names the worktree to read. Fix every item it prints that the join caused, and list the rest for the reviewer. If it prints a large-range note, pass the note on in your report; splitting the wave is the main session's call, not yours.
+Run the precheck with the main checkout's exe: `build-cpp\Release\hydra_precheck.exe --repo <worktree path> --range main...<wave branch>`. That exe works on any worktree, because `--repo` names the worktree to read. If the main checkout has none, stop and report it. Fix every item it prints that the join caused, and list the rest for the reviewer. If it prints a large-range note, pass the note on in your report; splitting the wave is the main session's call, not yours.
 
-Run the scan test and the docs test with their filters, and nothing else:
+Then commit the last merge, with a body saying which task's change broke which line and how you fixed it. Your turn ends there.
+
+After you hand over, the main session builds the joined branch once with the target your brief names. It runs the scan test and the docs test with their filters, and any test case your brief names:
 
 - the scan test: `build-cpp\Release\hydra_tests.exe -tc="single-owner*"`;
 - the docs test: `build-cpp\Release\hydra_tests.exe -sf=*docs_match_code*`.
 
-Also run any test case your brief names. Never run the full suite. The main session runs the merge's tests once, after the review: the ones `build-cpp\Release\hydra_precheck.exe --repo <worktree path> --tests main...<wave branch>` prints (`docs/agents/agent-rules.md`, rule 1).
+The main session runs the merge's tests once, after the review: the ones `build-cpp\Release\hydra_precheck.exe --repo <worktree path> --tests main...<wave branch>` prints (`docs/agents/agent-rules.md`, rule 1).
 
-When the scan or docs test fails because one task renamed or moved a name another task's rows or docs still use, fix it in the join, stage the fix by name, and rerun only the failing test. Then commit the last merge, with a body saying which task's change broke which line and how you fixed it. Never loosen a scan row to make it pass.
+When the build, the scan test or the docs test fails, a fresh executor fixes it on the wave branch from the failure output. A common case is one task renaming or moving a name another task's rows or docs still use. Never loosen a scan row to make it pass.
 
 If a join break shows up only after an earlier merge is already committed, fix it in the next merge commit instead. Never amend.
 
 ## Step 5: hand over to the review
 
-Stop changing the tree once step 4 passes. The gate keys a review on the exact tree, so any later commit voids it.
+Stop changing the tree once the last merge is committed. The gate keys a review on the exact tree, so any later commit voids it.
 
-Report the wave branch's head commit hash and the range `main...<head>`. The main session takes the exact key from the gate's message and hands the key, the range and your precheck output to a fresh Sonnet reviewer with `docs/agents/derive-once-review.md`. You are an author of the merge commits, so you cannot review this range yourself.
+Report the wave branch's head commit hash and the range `main...<head>`. Once the branch builds and its scan and docs tests pass, the main session takes the exact key from the gate's message and hands the key, the range and your precheck output to a fresh Sonnet reviewer with `docs/agents/derive-once-review.md`. You are an author of the merge commits, so you cannot review this range yourself.
 
 ## Your report
 
-Give the wave branch, its worktree, and its head commit hash. List each task branch you joined with its merge commit hash. Then, in plain sentences: the owners `main` gained since the fork, any task copy you folded into one of them, each conflict and how you resolved it, the precheck's output, and the exact scan and docs test commands with their pass counts. End with anything you stopped on.
+Give the wave branch, its worktree, and its head commit hash. List each task branch you joined with its merge commit hash. Then, in plain sentences: the owners `main` gained since the fork, any task copy you folded into one of them, each conflict and how you resolved it, and the precheck's output. End with anything you stopped on.

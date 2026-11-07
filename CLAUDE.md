@@ -34,7 +34,7 @@ Before you plan an audit, brief an audit agent, or close any audit finding, read
 
 ### GUI testing
 
-Which check a GUI change needs is the first section of `docs/agents/ui-testing.md`. For behaviour and text, run `hydra_uitest` (headless, drives the real UI by widget label, returns text), or drive the GUI one step at a time with the project's `hydra` MCP server; "Live mode and the MCP server" on that page explains it.
+Which check a GUI change needs is the first section of `docs/agents/ui-testing.md`. For behaviour and text, the main session runs `hydra_uitest` (headless, drives the real UI by widget label, returns text), or drives the GUI one step at a time with the project's `hydra` MCP server; "Live mode and the MCP server" on that page explains it.
 
 ### Rulings and this machine
 
@@ -60,11 +60,11 @@ A finished plan or handoff leaves the repo in the same merge that finishes its w
 
 These hold for the main session and every agent it sends out. Each is in short form; the full text, and which hooks check which rule, is in `docs/agents/agent-rules.md`.
 
-1. Agents never run the full test suite. They run only the tests for their own change.
+1. Agents never run the full test suite, and they run no test that needs a build (rule 14). Any other test an agent runs is for its own change.
 2. Planning agents run on Fable. Code executors run on Opus. Code reviewers run on Sonnet. Read-only scouts run on Sonnet or Haiku. Bulk read-and-fill writers, such as the card writers, run on Haiku.
 3. No work starts without the user's approval. Every plan and every build waits for the user's yes before it begins.
 4. Agents never stall or go quiet for long. When they hit a problem, they fail loudly: stop and say what broke.
-5. One review per change, then done. One fresh reviewer agent reads the change's code and documents, fixes every finding itself, commits its fixes and signs off.
+5. One review per change, then done. One fresh reviewer agent reads the change's code and documents, fixes every finding itself, commits its fixes and signs off. One narrow exception: a reviewer's C++ fix that fails the main session's build goes to a fresh executor, and a fresh reviewer reads only that fix.
 6. Agents run in parallel, in workflows, while the main session merges. Never queue independent tasks one after another.
 7. Agents write a status line every 5 minutes; only time counts, not calls.
 8. Nobody runs a full library test without the user's explicit permission, asked for in chat first.
@@ -73,3 +73,4 @@ These hold for the main session and every agent it sends out. Each is in short f
 11. A question that changes what Hydra does lists what the user will see: every screen that reads the changed value, with its text before and after from a real chart.
 12. A visible change the user's words did not ask for is a question before merge, never an opt-out line in a report. Silence is not a yes.
 13. A commit or release never holds an edit nobody in the session made or was asked to make; found edits wait for the user.
+14. At most three builds run at once. Agents never build. A main session builds, one at a time, through a pass from `hydra_build_pass`, and runs every test that needs a build. A failure before review goes to a fresh executor on the same branch. The main session runs a test red only when a brief asks; otherwise the reviewer reads the test and says what would make it fail. Agents may run `hydra_precheck.exe` from main, but not `hydra_tests.exe`, `hydra_uitest.exe` or `hydra_replay.exe`.
