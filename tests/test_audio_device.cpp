@@ -36,8 +36,8 @@ TEST_CASE("PreviewAudioDevice opens and starts the default output device") {
     REQUIRE(device->started());
 
     // A capped wait for the device thread's first pull. The 2 s cap is the
-    // user's number (test fidelity plan, Task 7): a hang detector, not a
-    // timing test.
+    // plan's recommendation (D297, the plan's item 7): a hang detector, not
+    // a timing test.
     testwait::wait_until([&pulls] { return pulls.load() != 0; },
                          "the device thread to pull audio (it never did)",
                          std::chrono::seconds(2));

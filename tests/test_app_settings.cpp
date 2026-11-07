@@ -1,8 +1,8 @@
 // Tests for ui/app_state's commit_settings (D90), the one place that knows
 // which settings change a record's identity. A widget only mutates `settings`
 // and commits; whether the library's summaries are re-read and the open song
-// analyzed again is decided here and nowhere else. Split from
-// test_app_click.cpp; the shared fixtures are in app_state_fixtures.h.
+// analyzed again is decided here and nowhere else. The shared fixtures are in
+// app_state_fixtures.h.
 
 #include "doctest.h"
 
@@ -113,10 +113,10 @@ TEST_CASE("commit_settings analyzes again when the ms limit or the score range c
     CHECK(app->viewed.ready());
 }
 
-// Ruling 12: a burst of setting changes (a held +/- box) runs one job at a
-// time and ends with one analysis of the final settings. The settings in
-// between are never saved. The first step's job is held at a latch, as a
-// slow parse would hold it, so the test doesn't depend on the machine's speed.
+// A burst of setting changes (a held +/- box) runs one job at a time and ends
+// with one analysis of the final settings. The settings in between are never
+// saved. The first step's job is held at a latch, as a slow parse would hold
+// it, so the test doesn't depend on the machine's speed.
 TEST_CASE("a burst of setting changes ends with one analysis of the final settings") {
     ScratchPaths paths("appstate_burst");
     const ChartLibraryEntry song = corpus_chart("click_burst");
@@ -172,8 +172,8 @@ TEST_CASE("a burst of setting changes ends with one analysis of the final settin
 }
 
 // The number boxes apply each step at once (the open song is analyzed under
-// it) but leave the INI until the edit ends: holding +/- used to rewrite the
-// file every frame.
+// it) but leave the INI until the edit ends, so holding +/- does not rewrite
+// the file every frame.
 TEST_CASE("number boxes apply at once but write the INI only on flush") {
     ScratchPaths paths("appstate_flush");
     const ChartLibraryEntry song = corpus_chart("click_flush");

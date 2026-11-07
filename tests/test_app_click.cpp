@@ -245,8 +245,8 @@ TEST_CASE("clicking a chart edited since the scan re-identifies it and shows the
     CHECK(app->viewed.record->best_path().totalscore() == fresh.record.best_path().totalscore());
 }
 
-// Ruling 15: when the library row cannot take the new hash, the click fails
-// loudly and saves nothing, so no result sits under a hash no row has.
+// When the library row cannot take the new hash, the click fails loudly and
+// saves nothing, so no result sits under a hash no row has.
 TEST_CASE("a click whose re-identify fails shows the error and saves nothing") {
     ScratchPaths paths("appstate_click_reidfail");
     const ChartLibraryEntry scanned = corpus_chart("click_reidfail");
@@ -297,8 +297,8 @@ TEST_CASE("clicking a chart touched since the scan saves its new fingerprint") {
     CHECK(row_of(*app, scanned.md5).status == RecordStatus::Ready);
 }
 
-// D96 keeps ruling 15 for a touched chart: when the fingerprint cannot be
-// saved, the click fails loudly and saves nothing.
+// D96: when a touched chart's fingerprint cannot be saved, the click fails
+// loudly and saves nothing.
 TEST_CASE("a touched chart whose fingerprint save fails shows the error and saves nothing") {
     ScratchPaths paths("appstate_click_touchfail");
     const ChartLibraryEntry scanned = corpus_chart("click_touchfail");
@@ -415,7 +415,7 @@ TEST_CASE("Cancel shows Cancelled and saves nothing; Try again shows the paths")
     CHECK(app->store->lookup_one(song.md5, profile).status == RecordStatus::Ready);
 }
 
-// Ruling 13: closing the panel cancels the click's analysis; nothing is saved
+// D87 item 11: closing the panel cancels the click's analysis; nothing is saved
 // for it.
 TEST_CASE("closing the panel cancels the click's analysis and saves nothing") {
     ScratchPaths paths("appstate_click_close");
@@ -533,7 +533,7 @@ TEST_CASE("a click whose song file can't be opened stores nothing") {
     CHECK(records_and_paths_in(paths) == std::pair<int64_t, int64_t>{0, 0});
 }
 
-// ---- the Dynamics count (ruling 10) ----------------------------------------
+// ---- the Dynamics count ----------------------------------------------------
 
 // The click's count is the Dynamics count's own parse's (load_dynamics_song).
 // With 2x Bass off the analysis drops the 2x kicks, so the count parses
@@ -694,8 +694,9 @@ TEST_CASE("under a bad hydra_rules.ini no stored record reads Ready") {
 
 // ---- the song's length comes from the click --------------------------------
 
-// The length comes from song.ini, not the audio (D75): junk bytes under the
-// audio's name change nothing.
+// This chart has no end event, so the length is song.ini's, not the audio's
+// (D75; song_length_ms owns the rule): junk bytes under the audio's name change
+// nothing.
 TEST_CASE("the click reads a chart's stated length") {
     ScratchPaths paths("appstate_length");
     const std::string notes = audiochart::short_chart_with_long_audio("click_length");
@@ -764,7 +765,7 @@ TEST_CASE("UI timings: Copied!, search re-filter, batch refresh and the progress
 }
 
 // Finding 290: the batch button's narrowed label is built once; the button,
-// its width sample and the GUI tests call it (D115 renamed it).
+// its width sample and the GUI tests call it.
 TEST_CASE("the toolbar's narrowed label comes from one function") {
     CHECK(hydra::ui::detail::analyze_shown_label(1) == "Analyze shown (1)...");
     CHECK(hydra::ui::detail::analyze_shown_label(1234) == "Analyze shown (1,234)...");

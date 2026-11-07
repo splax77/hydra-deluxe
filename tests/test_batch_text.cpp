@@ -81,7 +81,7 @@ TEST_CASE("settings button: lists only the settings that differ from the default
     CHECK(settings_button_label(s, false) == "Analysis settings: defaults");
     CHECK(settings_button_label(s, true) == "Analysis settings: defaults (locked)");
 
-    // Each setting on its own, one phrase per row of the handoff's table.
+    // Each setting on its own gives that setting's one phrase.
     {
         Settings t;
         t.view_difficulty = "Hard";

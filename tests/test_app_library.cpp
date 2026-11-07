@@ -84,7 +84,7 @@ TEST_CASE("a batch result for the open chart refreshes its row, not the panel") 
     GenerationWatcher records;
     records.changed(app->record_generation);
 
-    // The result arrives the way a batch files one (H1's fixture).
+    // The result arrives the way a batch files one (see display_fixtures.h).
     hydra::test::save_batch_record(*app->store, open.md5, Settings{}.sp_cap);
     run_redo_batch_over(*app, open.md5);
 
@@ -962,8 +962,8 @@ TEST_CASE("Analyze library on a database that fails shows the sentence and opens
 }
 
 // D73 item 3: a read that fails while Hydra runs shows the read sentence in
-// the status line, and the screens keep what they showed. Before, the throw
-// left the frame and Hydra closed with no message.
+// the status line, and the screens keep what they showed. The error never
+// leaves the frame, which would close Hydra with no message.
 TEST_CASE("a library reload whose reads fail keeps the library and says so") {
     ScratchPaths paths("appstate_reloadfail");
     std::unique_ptr<AppState> app = app_on(paths);

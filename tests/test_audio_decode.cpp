@@ -158,12 +158,13 @@ TEST_CASE("decode_audio: Ogg-Opus fixture decodes to the 220 Hz sine at 48 kHz")
     CHECK(estimate_freq_hz(out, 0) == doctest::Approx(220.0).epsilon(0.01));
 }
 
-// FNV-1a over the decoded float bytes. It pins the Opus decoder's exact output,
+// FNV-1a with a shortened offset basis (the published one less its last digit)
+// over the decoded float bytes. It pins the Opus decoder's exact output,
 // so reusing one decode buffer cannot change a single sample. If libopus is
 // ever upgraded, re-capture both numbers from a build of the old code first.
 TEST_CASE("decode_audio: Ogg-Opus output is pinned bit for bit") {
-    constexpr int64_t kPinnedFrames = 240648;                 // from the per-packet-buffer decoder
-    constexpr uint64_t kPinnedHash = 10485106968528604345ull; // from the per-packet-buffer decoder
+    constexpr int64_t kPinnedFrames = 240648;                 // pinned from one run
+    constexpr uint64_t kPinnedHash = 10485106968528604345ull; // pinned from one run
 
     const DecodedAudio a = decode_audio(read_fixture("sine220.opus"));
     uint64_t h = 1469598103934665603ull;
