@@ -840,6 +840,25 @@ class KitIdTest(Rig):
                       tools.ch_kit_setup())
         self.assertEqual(self.posted()[-1], TEARDOWN_MESSAGE)
 
+    def test_the_id_refusal_says_a_new_launch_puts_the_kit_back_on_id_6(self):
+        tools = self.tools([STATUS, setup_reply(kit_id=7), TEARDOWN_OK])
+        lines = tools.ch_kit_setup().splitlines()
+        self.assertIn("only a new launch of the game puts the kit back on id 6: a "
+                      "teardown does not reset the game's id counter, so a setup after "
+                      "one gets a higher id (docs/clone-hero/07-internals.md, IN-81); "
+                      "ch_stop, then ch_start", lines)
+
+    def test_a_setup_on_a_kit_already_set_up_does_not_advise_a_teardown_and_setup(self):
+        tools = self.set_up()
+        posted = len(self.posted())
+        said = tools.ch_kit_setup()
+        self.assertEqual(said, "the kit is already set up. ch_kit_teardown takes it "
+                         "away, but a setup after that in the same launch is refused, "
+                         "because the kit would not be on id 6; start the game again "
+                         "(ch_stop, then ch_start) to set it up again")
+        self.assertNotIn("call ch_kit_teardown first", said)
+        self.assertEqual(len(self.posted()), posted)
+
 
 # The fake game for KitAgentTest. It reads one case from stdin, loads the real
 # kit.ts (Node erases its types) with a fake il2cpp bridge around it, posts

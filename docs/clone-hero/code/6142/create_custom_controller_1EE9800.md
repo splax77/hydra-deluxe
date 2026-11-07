@@ -2,7 +2,7 @@ Listing: `create_custom_controller_1EE9800.asm`, build 6142, made 2026-11-06 wit
 
 Plain version: think of a ticket roll. Each new custom controller takes the next ticket as its id, and giving a controller back does not put its ticket back on the roll.
 
-Lines 38 and 39 look up the definition, and a definition that is not found returns null. Lines 42 and 43 read the manager's int at +0xD0 (`#3552+0xD0`) and add one. Line 44 stores the sum back. Lines 45 to 47 set the counter to 0 only when the sum reaches 0x7FFFFFFF. Line 74 stores the value read at line 42, the one before the add, at +0x10 of a new description object. Line 104 calls the `CustomController` constructor with that object.
+Lines 38 and 39 look up the definition, and a definition that is not found returns null. Lines 42 and 43 read the manager's int at +0xD0 (`#3552+0xD0`) and add one. Line 44 stores the sum back. Lines 45 and 46 compare the sum with 0x7FFFFFFF and skip line 47 when it is below, so line 47 sets the counter to 0 only when the sum reaches 0x7FFFFFFF, about 2.1 billion creates from 0. Line 74 stores the value read at line 42, the one before the add, at +0x10 of a new description object. Line 104 calls the `CustomController` constructor with that object.
 
 The constructor hands the number on, read with `tools/ch_mcp/chdis.py` on the same day and not kept as listings. `0x1D5E790` loads the object's +0x10 into `ebp` at 0x1D5E7D9, and passes it as the first argument of `0x1D55F10` at 0x1D5E8E7. `0x1D55F10` keeps it in `esi` at 0x1D55F2D, and passes it to the `Controller` constructor `0x1D5B0E0` at 0x1D560CC. That one keeps it in `ebp` at 0x1D5B0FA and stores it at the object's +0x10 at 0x1D5B26B, which is `Controller.id` (`dump.cs` line 285671).
 

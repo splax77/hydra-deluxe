@@ -64,6 +64,16 @@ KIT_REQUIRED_ID = 6
 # literal: ids count up from zero in a launch (block IN-81 of
 # docs/clone-hero/07-internals.md), so this many use up every id below it.
 KIT_PLACEHOLDERS = KIT_REQUIRED_ID
+# Why a second setup in one launch cannot reach KIT_REQUIRED_ID, and what does.
+# Destroying a controller does not move the game's id counter (IN-81).
+NEW_LAUNCH_NOTE = ("only a new launch of the game puts the kit back on id "
+                   f"{KIT_REQUIRED_ID}: a teardown does not reset the game's id "
+                   "counter, so a setup after one gets a higher id "
+                   "(docs/clone-hero/07-internals.md, IN-81); ch_stop, then ch_start")
+KIT_ALREADY_SET_UP = ("the kit is already set up. ch_kit_teardown takes it away, but "
+                      "a setup after that in the same launch is refused, because the "
+                      f"kit would not be on id {KIT_REQUIRED_ID}; "
+                      "start the game again (ch_stop, then ch_start) to set it up again")
 # The tag of a placeholder is this text plus its index. It must not start with
 # KIT_TAG, so a placeholder can never be taken for the kit.
 KIT_PLACEHOLDER_TAG = "hydra-placeholder-"
@@ -391,7 +401,8 @@ def kit_id_problem(reply: dict) -> Optional[str]:
     if kit_id == KIT_REQUIRED_ID:
         return None
     return (f"refused: the kit is controller {kit_id}, not KIT_REQUIRED_ID "
-            f"{KIT_REQUIRED_ID}; placeholder ids: {placeholder_ids(reply)}")
+            f"{KIT_REQUIRED_ID}; placeholder ids: {placeholder_ids(reply)}\n"
+            f"{NEW_LAUNCH_NOTE}")
 
 
 def setup_lines(reply: dict) -> List[str]:
@@ -571,7 +582,7 @@ class KitTools:
             if not self._frida.is_attached():
                 return NOT_ATTACHED
             if self._ready and self._agent is not None and self._agent.alive:
-                return "the kit is already set up; call ch_kit_teardown first to set it up again"
+                return KIT_ALREADY_SET_UP
             key = game_files.PAUSE_ON_FOCUS_LOST
             want = game_files.PAUSE_ON_FOCUS_LOST_RUN_VALUE
             try:
