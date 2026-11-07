@@ -145,10 +145,10 @@ void test_analyze(ImGuiTestContext* ctx) {
 }
 
 // Switching the SP cap swaps the viewed record mid-frame, after the panel
-// already chose which path to show. That used to leave the details panel
-// reading the freed record (1.5.1 crash: bad_alloc from a garbage vector
-// copy, 0xc0000409 on the UI thread). Each switch now analyzes the song again
-// (D90 item 1), and the record lands from the click's job on the UI thread.
+// already chose which path to show. The panel must not go on reading the
+// freed record: that crashes the UI thread (bad_alloc from a garbage vector
+// copy, 0xc0000409). Each switch analyzes the song again (D90 item 1), and
+// the record lands from the click's job on the UI thread.
 void test_cap_switch(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     reset_app(h);
@@ -416,8 +416,8 @@ void test_dynamics_reopen(ImGuiTestContext* ctx) {
 // At Hard the Dynamics tab counts Hard's own kicks (findings 10, 12, 255).
 // Pathfinder - When The Sunrise Breaks The Darkness has 1,613 Expert 2x kicks
 // (pitch 95) and no Hard ones; 139 of its 972 Hard kicks share a tick with a
-// 95. Before D20 the tab showed 833 kicks, a phantom row of 1,613 "2x kicks"
-// and Totals of 3,287.
+// 95. Those Expert notes must not reach Hard's counts: they add no "2x kicks"
+// row and take no Hard kick away (D20).
 void test_dynamics_hard(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     reset_app(h);
@@ -534,8 +534,8 @@ void test_stars(ImGuiTestContext* ctx) {
 }
 
 // Hiding the details panel by any route tears it down. The "Rescan library"
-// button used to set show_details = false directly, which skipped the
-// teardown: the Preview kept its audio device and kept playing.
+// button sets show_details = false directly and leaves the teardown to
+// tick(). Without it, the Preview would keep its audio device and keep playing.
 void test_details_close_teardown(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     if (!open_preview(ctx)) return;
@@ -665,7 +665,7 @@ void test_panel_open_close(ImGuiTestContext* ctx) {
     if (ctx->IsError()) return;
     IM_CHECK(library_w() < main_w * 0.7f);
     IM_CHECK(ctx->WindowInfo("//Hydra/##songpanel").Window != nullptr);
-    IM_CHECK(!ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId));  // no modal any more
+    IM_CHECK(!ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId));  // the panel is not a modal
 
     ctx->ItemClick("X##closepanel");
     ctx->Yield(3);
@@ -681,8 +681,8 @@ void test_panel_open_close(ImGuiTestContext* ctx) {
 
 // The split beside the panel. A drag of the library's edge is the only thing
 // that changes it: it survives closing and reopening the panel, and a
-// hydra_ui.ini from before the fix, whose library entry holds the largest
-// split, loses to the [Hydra][Layout] share.
+// hydra_ui.ini whose library entry holds the largest split loses to the
+// [Hydra][Layout] share.
 void test_panel_split(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     reset_app(h);
@@ -730,9 +730,8 @@ void test_panel_split(ImGuiTestContext* ctx) {
     if (ctx->IsError()) return;
     IM_CHECK_FLOAT_NEAR_EQ(library()->Size.x, dragged, 1.0f);
 
-    // An old hydra_ui.ini, read while no song is open (as at startup): the
-    // library child's own entry at a huge width (what the bug saved) and a
-    // share. The share wins.
+    // A hydra_ui.ini read while no song is open (as at startup): the library
+    // child's own entry at a huge width, and a share. The share wins.
     close();
     if (ctx->IsError()) return;
     const std::string old_ini = std::string("[Window][") + library()->Name +
@@ -1253,7 +1252,7 @@ void test_view_progress_delay(ImGuiTestContext* ctx) {
 
 // A burst of setting changes with the song open (a held +/- box) ends with
 // one analysis, of the final settings: the caps in between are never saved,
-// and the panel shows the final cap's paths (D90, ruling 12).
+// and the panel shows the final cap's paths (D90 item 2).
 void test_view_setting_burst(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     reset_app(h);

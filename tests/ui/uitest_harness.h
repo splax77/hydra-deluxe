@@ -4,7 +4,7 @@
 // The engine (uitest_engine.h) runs a UI with no window and reads it back;
 // this file hands it Hydra: the AppState it draws, the hooks the command
 // verbs reach Hydra through, the seams, the gates and the helpers every
-// test calls. Tests find widgets by label ("Scan charts"), click them, and
+// test calls. Tests find widgets by label ("Scan library"), click them, and
 // read back the app's state and the text on screen. Everything runs on
 // scratch files in a temp folder; no browser, sound card, or network is
 // touched.
@@ -34,8 +34,7 @@ struct Harness : Engine {
     // Installs the engine's hooks (EngineHooks) on this harness's AppState.
     Harness();
 
-    // Hydra's scratch files, in the engine's temp_dir beside the HTML
-    // reports the jobs write next to the DB.
+    // Hydra's scratch files, in the engine's temp_dir.
     std::string db_path;
     std::string ini_path;
     std::string rules_path;
@@ -127,8 +126,8 @@ inline Harness& harness(ImGuiTestContext* ctx) {
     return static_cast<Harness&>(engine_of(ctx));
 }
 
-// True while any background job (scan, batch, analyze, report, DM fetch/report)
-// or the Preview's load is still running.
+// True while a background job is running. AppState::any_job_running owns which
+// jobs count.
 bool jobs_busy(Harness& h);
 
 // Holds a batch's charts at a gate until the test lets them through. The test
