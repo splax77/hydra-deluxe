@@ -95,6 +95,19 @@ def split_keys(keys: str) -> List[str]:
     return items
 
 
+def decline_refusal(decline_mode: Optional[str], dump_json: Optional[str]) -> Optional[str]:
+    """The refusal for a tool's decline arguments, or None when they can run.
+    The list of chords to decline comes from `dump_json`, so a mode needs it."""
+    if decline_mode is None:
+        return None
+    if decline_mode not in play_chart.DECLINE_MODES:
+        return (f'unknown decline mode "{decline_mode}"; '
+                f'modes: {", ".join(play_chart.DECLINE_MODES)}')
+    if dump_json is None:
+        return f"decline mode {decline_mode} needs dump_json, the path's hydra_replay dump"
+    return None
+
+
 def run_cap_s(song_folder: Optional[str]) -> float:
     """The wall-time cap for a run of the song in `song_folder`:
     bot_run.run_cap_s of its length, or play_chart.RUN_CAP_S when no folder
@@ -525,7 +538,9 @@ class GameTools:
             return self._watch.line() if self._watch is not None else None
 
     def ch_play_chart(self, score_json: str, log: Optional[str] = None,
-                      song_folder: Optional[str] = None, route: Optional[str] = None) -> str:
+                      song_folder: Optional[str] = None, route: Optional[str] = None,
+                      decline_mode: Optional[str] = None, dump_json: Optional[str] = None,
+                      path_index: int = 0) -> str:
         """Start the auto-player (play_chart.live_play) on a hydra_replay score
         JSON in a background thread. `log`, when given, is where the press log
         is written when the run ends; a relative path goes in the session
@@ -533,7 +548,10 @@ class GameTools:
         with none the run keeps live_play's own cap. `route` is ROUTE_KIT
         (presses through the virtual kit inside the game) or ROUTE_KEYS (keys
         to the focused window); None means the kit, and is refused until the
-        kit is set up, so no run takes the keyboard unless asked to."""
+        kit is set up, so no run takes the keyboard unless asked to.
+        `decline_mode`, one of play_chart.DECLINE_MODES, says what to send for
+        each fill path `path_index` of the dump file `dump_json` passes over
+        (play_chart.declined_chord_indexes); None presses every chord."""
         with self._lock:
             if self._play is not None and self._play.running():
                 return "a play session is already running; call ch_play_stop first"
@@ -548,8 +566,18 @@ class GameTools:
                 return (f"route {ROUTE_KIT}: the kit is not set up; call ch_kit_setup first, "
                         f'or pass route="{ROUTE_KEYS}"')
             press = kit_press if route == ROUTE_KIT else None
+            refusal = decline_refusal(decline_mode, dump_json)
+            if refusal is not None:
+                return refusal
+            declined: List[int] = []
+            if decline_mode is not None:
+                try:
+                    declined = play_chart.declined_chord_indexes(score_json, dump_json, path_index)
+                except (OSError, ValueError, KeyError, IndexError, TypeError) as e:
+                    return f"could not read the fills to decline: {type(e).__name__}: {e}"
             try:
-                chords = play_chart.load_dump_chords(score_json)
+                chords = play_chart.load_dump_chords(score_json,
+                                                     dict.fromkeys(declined, decline_mode))
             except (OSError, ValueError, KeyError, TypeError) as e:
                 return f"could not read {score_json}: {type(e).__name__}: {e}"
             if not chords:
@@ -570,6 +598,9 @@ class GameTools:
                          + ("presses through the virtual kit inside the game"
                             if route == ROUTE_KIT else "keys to the focused game window") + ")")
             lines.append(f"run cap: {play_chart.RUN_CAP_S if cap_s is None else cap_s:g} s")
+            if decline_mode is not None:
+                lines.append(f"declined ({decline_mode}): chords "
+                             f"{', '.join(map(str, declined)) or 'none'}")
             lines.append(f"waiting for a moving clock (cap {engine_finder.ENGINE_SEARCH_CAP_S:.0f} s): "
                          "start the song from the game's menu; a song launched with a bot "
                          "is played by the bot, not by keys")
@@ -694,7 +725,7 @@ class GameTools:
         lines = [f"play session: {play.chord_count} chords from {play.score_json}"]
         if play.running():
             lines.append(f"running: {len(rows)} presses so far, "
-                         f"{sum(1 for r in rows if r['hit'])} hit")
+                         f"{sum(1 for r in rows if r['hit'] == 1)} hit")
         else:
             lines.append(f"ended: {self._stop_reason(play)}")
             result = play.result
@@ -704,8 +735,9 @@ class GameTools:
                 if result.message:
                     lines.append(result.message)
                 lines.append(f"sent {result.sent}, hit {result.hit}, "
-                             f"misses {result.sent - result.hit}, best streak {result.max_streak}")
-                if result.sent != len(rows):
+                             f"misses {result.sent - result.hit}, best streak {result.max_streak}"
+                             + (f", declined {result.declined}" if result.declined else ""))
+                if result.sent + result.declined != len(rows):
                     lines.append(f"the song clock jumped back during the run: the counts above "
                                  f"cover the part after the jump; the rows below keep all "
                                  f"{len(rows)} presses")
