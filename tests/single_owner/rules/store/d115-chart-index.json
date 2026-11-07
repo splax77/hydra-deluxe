@@ -24,7 +24,7 @@
           "why": "RecordStore::chart_index, the one scan-order read that feeds the owner"
         }
       ],
-      "note": "The library's rows in scan order are what decide which copy names a chart and how many copies it has. A second scan-order read of the charts table would be a second place working those answers out; it reads chart_index() instead. Decided by: D115 (spec section 8)"
+      "note": "The library's rows in scan order are what decide which copy names a chart and how many copies it has. A second scan-order read of the charts table would be a second place working those answers out; it reads chart_index() instead."
     }
   ]
 }

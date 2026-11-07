@@ -24,7 +24,7 @@
           "why": "kRetiredFillLabelKey, the owner"
         }
       ],
-      "note": "Each record's profile carries its own fill rule, so the file-level label is retired: the conversion deletes its meta row and nothing may read it. The key typed anywhere but its one constant is a reader coming back. Decided by: D115 task A1-6c (2026-10-14)"
+      "note": "Each record's profile carries its own fill rule, so the file-level label is retired: the conversion deletes its meta row and nothing may read it. The key typed anywhere but its one constant is a reader coming back."
     },
     {
       "question": "Which copy names a chart the scan found twice?",
@@ -32,7 +32,7 @@
       "owner_file": "src/store/chart_index.cpp",
       "owner_symbol": "from_rows",
       "date": "2026-10-05",
-      "decision": "D51, D63; D115 A1-5 moved the owner from kNamingCopiesSql to ChartIndex",
+      "decision": "D51, D63; D115 A1-5 moved the owner from kNamingCopiesSql to ChartIndex; D51 call 10 and D63 (task ST2); D115 A1-5 retired the SQL owner",
       "added_by": "M7-2b, moved by D115-A1-5i",
       "pattern": "MIN\\(rowid\\)|GROUP BY md5",
       "must_match": [
@@ -41,7 +41,7 @@
       "must_not_match": [
         "const ChartIndex index = store.chart_index();"
       ],
-      "note": "The charts table grouped by md5 in SQL to pick a copy is a second answer beside ChartIndex, which picks it from the rows in scan order. Decided by: D51 call 10 and D63 (task ST2); D115 A1-5 retired the SQL owner"
+      "note": "The charts table grouped by md5 in SQL to pick a copy is a second answer beside ChartIndex, which picks it from the rows in scan order."
     },
     {
       "question": "What text is a record's best path?",
@@ -49,7 +49,7 @@
       "owner_file": "src/store/record_store.cpp",
       "owner_symbol": "RecordRow::best_path_text",
       "date": "2026-10-04",
-      "decision": "ST1 (audit findings 116 and 132); D115 A1-5 (the owner moved to the record)",
+      "decision": "ST1 (audit findings 116 and 132); D115 A1-5 (the owner moved to the record); ST1 (audit findings 116 and 132); phase 7 M7-1 derive-once review finding 2 (2026-10-04); D115 A1-5 moved the owner to RecordRow",
       "added_by": "M7-1, moved by D115-A1-5f",
       "pattern": "paths\\s*(?:\\.front\\(\\)|\\[0\\]|\\.at\\(0\\))\\.path\\b|best_path\\(\\)\\.pathstring\\(\\)",
       "anchor": ".path",
@@ -73,7 +73,7 @@
           "why": "RecordRow::best_path_text, the owner"
         }
       ],
-      "note": "The library's Best path cell, the fill report, hydra_batch's progress line and hydra_replay's result block all show this text, so they read it from the record. Spelling rank 1 again, by hand on the record or off the analysis, made one copy per screen, each with its own answer for a record that kept no paths. Decided by: ST1 (audit findings 116 and 132); phase 7 M7-1 derive-once review finding 2 (2026-10-04); D115 A1-5 moved the owner to RecordRow"
+      "note": "The library's Best path cell, the fill report, hydra_batch's progress line and hydra_replay's result block all show this text, so they read it from the record. Spelling rank 1 again, by hand on the record or off the analysis, made one copy per screen, each with its own answer for a record that kept no paths."
     },
     {
       "question": "Which fill rule does a record key name?",
@@ -81,7 +81,7 @@
       "owner_file": "src/store/record_store.h",
       "owner_symbol": "from",
       "date": "2026-10-04",
-      "decision": "D53",
+      "decision": "audit finding 240; phase 6 task J2-2 (D53)",
       "added_by": "J2-2",
       "pattern": "legacy_fills\\s*\\?\\s*1\\s*:\\s*0",
       "anchor": "legacy_fills",
@@ -99,7 +99,7 @@
         "src",
         "tests"
       ],
-      "note": "A record key's fill flag is encoded once, by Lens::from. Decided by: audit finding 240; phase 6 task J2-2 (D53)"
+      "note": "A record key's fill flag is encoded once, by Lens::from."
     },
     {
       "question": "Does this result have a scored best path?",
@@ -107,7 +107,7 @@
       "owner_file": "src/store/record_store.h",
       "owner_symbol": "has_scored_best_path",
       "date": "2026-10-05",
-      "decision": "D51",
+      "decision": "D51 call 11; audit finding 88 (phase 7 task LB2)",
       "added_by": "LB2",
       "pattern": "\\bsummary\\.(score|stars)\\.has_value\\(\\)|!\\s*(\\w+\\.)*summary\\.score\\b|\\bsummary\\.(score|stars)\\s*\\?|\\bpaths\\.empty\\(\\)\\s*\\?\\s*\"-\"",
       "owner_files": [
@@ -129,7 +129,7 @@
         "tests",
         "tools"
       ],
-      "note": "A summary's score or stars tested for presence, or a record's paths tested for empty to print a dash: whether the record has a scored best path. Decided by: D51 call 11; audit finding 88 (phase 7 task LB2)"
+      "note": "A summary's score or stars tested for presence, or a record's paths tested for empty to print a dash: whether the record has a scored best path."
     },
     {
       "question": "Why is a stored row Stale?",
@@ -137,7 +137,7 @@
       "owner_file": "src/store/record_store.cpp",
       "owner_symbol": "rank_row",
       "date": "2026-10-05",
-      "decision": "D53",
+      "decision": "audit finding 196, folded under D53 (phase 6 task J3-6)",
       "added_by": "J3-6",
       "pattern": "stale_reasons\\(|layout_is_current\\(",
       "must_match": [
@@ -149,7 +149,7 @@
       "scope": [
         "src"
       ],
-      "note": "A second read of a row's head to say why it is Stale. Decided by: audit finding 196, folded under D53 (phase 6 task J3-6)"
+      "note": "A second read of a row's head to say why it is Stale."
     },
     {
       "question": "Is this still the row the report walk listed?",
@@ -157,7 +157,7 @@
       "owner_file": "src/store/record_store.h",
       "owner_symbol": "operator",
       "date": "2026-10-05",
-      "decision": "D53",
+      "decision": "audit finding 197, folded under D53 (phase 6 task J3-6)",
       "added_by": "J3-6",
       "pattern": "!=\\s*meta\\.(hyhash|chartmode|sp_cap)\\b",
       "anchor": "meta.",
@@ -170,7 +170,7 @@
       "scope": [
         "src"
       ],
-      "note": "One identity column compared at a time instead of a whole Profile. Decided by: audit finding 197, folded under D53 (phase 6 task J3-6)"
+      "note": "One identity column compared at a time instead of a whole Profile."
     },
     {
       "question": "Which PathSummary fields must match? (tests)",
@@ -178,7 +178,7 @@
       "owner_file": "src/store/record_store.h",
       "owner_symbol": "operator",
       "date": "2026-10-05",
-      "decision": "D53",
+      "decision": "audit finding 121, folded under D53 (phase 6 task J3-6)",
       "added_by": "J3-6",
       "pattern": "\\bdiff_summary\\s*\\(",
       "anchor": "diff_summary",
@@ -190,8 +190,7 @@
       ],
       "scope": [
         "tests"
-      ],
-      "note": "Decided by: audit finding 121, folded under D53 (phase 6 task J3-6)"
+      ]
     },
     {
       "question": "Which rows were stored at this SP cap?",
@@ -199,7 +198,7 @@
       "owner_file": "src/store/record_store.cpp",
       "owner_symbol": "cap_match",
       "date": "2026-10-05",
-      "decision": "D53, D54",
+      "decision": "audit finding 252; phase 6 task J4-2 (D53, D54); concept audit M20",
       "added_by": "J4-2",
       "pattern": "sp_cap=\\?",
       "anchor": "sp_cap=?",
@@ -218,7 +217,7 @@
           "why": "cap_match, the owner"
         }
       ],
-      "note": "profile_id_for's find matches the profile's own cap through cap_match too, bound with bind_cap. Decided by: audit finding 252; phase 6 task J4-2 (D53, D54); concept audit M20"
+      "note": "profile_id_for's find matches the profile's own cap through cap_match too, bound with bind_cap."
     },
     {
       "question": "Which columns hold a path summary, and how many?",
@@ -226,7 +225,7 @@
       "owner_file": "src/store/record_store.cpp",
       "owner_symbol": "kSummaryColumnList",
       "date": "2026-10-05",
-      "decision": "D53, D54",
+      "decision": "audit finding 253; phase 6 task J4-2 (D53, D54)",
       "added_by": "J4-2",
       "pattern": "(\\?,){9}\\?",
       "must_match": [
@@ -238,7 +237,7 @@
       "scope": [
         "src"
       ],
-      "note": "convert_results reads an older file's summary slots from the list and its count, so a typed run of the ten placeholders is a second spelling of the list. Decided by: audit finding 253; phase 6 task J4-2 (D53, D54)"
+      "note": "convert_results reads an older file's summary slots from the list and its count, so a typed run of the ten placeholders is a second spelling of the list."
     },
     {
       "question": "Which columns hold a path summary, and how many? (slots)",
@@ -246,7 +245,7 @@
       "owner_file": "src/store/record_store.cpp",
       "owner_symbol": "kSummaryColumnList",
       "date": "2026-10-05",
-      "decision": "D53, D54",
+      "decision": "audit finding 253; phase 6 task J4-2 (D53, D54); the lookup's start slot, J4 join",
       "added_by": "J4-2",
       "pattern": "column_(text|blob|int|int64|opt_i64|opt_f64)\\(s,\\s*1[6-9]\\)|sqlite3_column_\\w+\\(s,\\s*1[6-9]\\)|read_summary\\(s,\\s*\\d",
       "anchor": "(s,",
@@ -263,7 +262,7 @@
       "scope": [
         "src/store/record_store.cpp"
       ],
-      "note": "Where a SELECT's summary starts, and the slots after it, are counted from the column lists. Decided by: audit finding 253; phase 6 task J4-2 (D53, D54); the lookup's start slot, J4 join"
+      "note": "Where a SELECT's summary starts, and the slots after it, are counted from the column lists."
     },
     {
       "question": "Did a database statement's step succeed, and what kind is its failure?",
@@ -341,7 +340,7 @@
       "owner_file": "src/store/library_file.cpp",
       "owner_symbol": "classify_library_file",
       "date": "2026-10-14",
-      "decision": "D115 task A1-6a (user, 2026-10-14: what is an old version is derived once)",
+      "decision": "D115 task A1-6a (user, 2026-10-14: what is an old version is derived once); D115 task A1-6a, replacing the J4-2 schema row (D53, D54)",
       "added_by": "D115-A1-6a",
       "pattern": "\\bhas_(table|column)\\s*\\(|sqlite_(temp_)?(master|schema)|table_(x)?info|table_list|sqlite3_table_column_metadata|user_version|schema_version",
       "owner_files": [
@@ -360,7 +359,7 @@
         "const LibraryFileKind kind = classify_library_file(dbpath);",
         "if (w.sort.empty() || !std::all_of(w.sort.begin(), w.sort.end(), has_column))"
       ],
-      "note": "Every older layout is told apart by its tables, read in one place, so a probe of a file's tables or schema slot anywhere else in shipped code is a second answer. Hydra never writes the user_version slot (D53 item 1). path_report_window's has_column is a report column, not a table's. Decided by: D115 task A1-6a, replacing the J4-2 schema row (D53, D54)"
+      "note": "Every older layout is told apart by its tables, read in one place, so a probe of a file's tables or schema slot anywhere else in shipped code is a second answer. Hydra never writes the user_version slot (D53 item 1). path_report_window's has_column is a report column, not a table's."
     },
     {
       "question": "Where is a library file renamed?",
@@ -393,7 +392,7 @@
       "must_not_match": [
         "if (std::optional<std::string> why = set_aside_old_library(dbpath))"
       ],
-      "note": "The app's open is the only thing that moves a library file, and it moves it to set_aside_path's name; the command-line tools refuse an old file and never rename it. Decided by: D115 task A1-6a"
+      "note": "The app's open is the only thing that moves a library file, and it moves it to set_aside_path's name; the command-line tools refuse an old file and never rename it."
     },
     {
       "question": "What does an open do with a library file too old to convert?",
@@ -421,7 +420,7 @@
         "return std::make_unique<store::RecordStore>(db, store::OldFilePolicy::Refuse, rules);",
         "std::unique_ptr<store::RecordStore> store;"
       ],
-      "note": "The constructor without a policy (it refuses) is for tests only, so shipped code under src/ and tools/ names its policy on the line that opens the store. A store opened over several lines with the policy on a later line is flagged too: put the policy on the opening line. Decided by: D115 task A1-6a"
+      "note": "The constructor without a policy (it refuses) is for tests only, so shipped code under src/ and tools/ names its policy on the line that opens the store. A store opened over several lines with the policy on a later line is flagged too: put the policy on the opening line."
     },
     {
       "question": "Does this chart have a current result under these settings?",
@@ -429,7 +428,7 @@
       "owner_file": "src/store/record_store.cpp",
       "owner_symbol": "RecordStore::lookup",
       "date": "2026-10-05",
-      "decision": "D79; D115 A1-5 moved the owner from get_summaries to lookup",
+      "decision": "D79; D115 A1-5 moved the owner from get_summaries to lookup; D79 item B1 (task COUNT-B); the report-covers-whole-library plan, 2026-10-15 (task REPORT-ALL-T1)",
       "added_by": "COUNT-B, moved by D115-A1-5i",
       "pattern": "==\\s*[\\w.>-]*\\bfixed\\b|rules_fp_bytes\\([^)]*\\bfixed\\b|row_readable_sql\\(\\)\\s*\\+\\s*\"\\s*AND",
       "must_match": [
@@ -452,7 +451,7 @@
       "scope": [
         "src"
       ],
-      "note": "D79 B1: the batch's skip list and the library's Analyzed chip once read two spellings of Ready, one in SQL. A second spelling compares a row's rules with this process's in SQL or by hand. A stored failure is a current result too (CantAnalyze), so the skip list is settled_song_ids, read off lookup. Decided by: D79 item B1 (task COUNT-B); the report-covers-whole-library plan, 2026-10-15 (task REPORT-ALL-T1)"
+      "note": "D79 B1: the batch's skip list and the library's Analyzed chip once read two spellings of Ready, one in SQL. A second spelling compares a row's rules with this process's in SQL or by hand. A stored failure is a current result too (CantAnalyze), so the skip list is settled_song_ids, read off lookup."
     },
     {
       "question": "How many library rows does a chart on a page count as when the library doesn't list it?",
@@ -460,7 +459,7 @@
       "owner_file": "src/store/chart_index.cpp",
       "owner_symbol": "ChartIndex::copies",
       "date": "2026-10-05",
-      "decision": "D77, D79; D115 A1-5 moved the owner from RecordStore::copies_of to ChartIndex::copies",
+      "decision": "D77, D79; D115 A1-5 moved the owner from RecordStore::copies_of to ChartIndex::copies; D77 item 2, D79 item 3 (task COUNT-P)",
       "added_by": "COUNT-P, moved by D115-A1-5i",
       "pattern": "\\bcopies\\s*=\\s*1\\s*;|\\bcopies\\w*\\.(find|end)\\(",
       "anchor": "copies",
@@ -474,7 +473,7 @@
         "int copies = 0;",
         "return it == charts_.end() ? 1 : it->second.copies;"
       ],
-      "note": "A chart on a page that the library doesn't list still counts. One function says how much; a page that looks a chart up in the copies map itself, or starts its count at a default, is a second answer. Decided by: D77 item 2, D79 item 3 (task COUNT-P)"
+      "note": "A chart on a page that the library doesn't list still counts. One function says how much; a page that looks a chart up in the copies map itself, or starts its count at a default, is a second answer."
     },
     {
       "question": "How many charts does a page or its tool count?",
@@ -482,7 +481,7 @@
       "owner_file": "src/store/chart_index.cpp",
       "owner_symbol": "count_charts",
       "date": "2026-10-05",
-      "decision": "D79",
+      "decision": "D79 item 3 (task COUNT-P)",
       "added_by": "COUNT-P",
       "pattern": "\\['Charts',\\s*fmt\\(rows\\.length\\)|rows\\.filter\\(r\\s*=>\\s*r\\.status\\s*===\\s*s\\)\\.length|\\+\\+stats\\.|stats\\.total\\s*=\\s*static_cast<int>\\(rows\\.size\\(\\)\\)",
       "must_match": [
@@ -502,7 +501,7 @@
         "src/app/fill_report.cpp",
         "src/cli/fillcompare.cpp"
       ],
-      "note": "The path report and the fill comparison count charts by adding up each row's copies, in C++ and in the fill page's script alike. Counting rows instead drops every extra copy. The leaderboard comparison counts posted scores, not charts (D79), so it is not scanned. Decided by: D79 item 3 (task COUNT-P)"
+      "note": "The path report and the fill comparison count charts by adding up each row's copies, in C++ and in the fill page's script alike. Counting rows instead drops every extra copy. The leaderboard comparison counts posted scores, not charts (D79), so it is not scanned."
     },
     {
       "question": "When does the WAL checkpoint threshold change, and when is the log emptied?",
@@ -510,7 +509,7 @@
       "owner_file": "src/store/record_store.cpp",
       "owner_symbol": "RecordStore::BatchWrites",
       "date": "2026-10-06",
-      "decision": "D86",
+      "decision": "D86 item 3 (task W1)",
       "added_by": "W1",
       "pattern": "wal_(auto)?checkpoint",
       "anchor": "checkpoint",
@@ -527,7 +526,7 @@
         "const store::RecordStore::BatchWrites batch_writes(store);",
         "exec(\"PRAGMA journal_mode=WAL\");"
       ],
-      "note": "D86 item 3: the checkpoint threshold changes only while a batch runs, and the log is emptied only when it ends. A second place that sets either one is a second answer. Decided by: D86 item 3 (task W1)"
+      "note": "D86 item 3: the checkpoint threshold changes only while a batch runs, and the log is emptied only when it ends. A second place that sets either one is a second answer."
     },
     {
       "question": "Is a transaction still open, or has sqlite already rolled it back?",
@@ -562,7 +561,7 @@
       "owner_file": "src/store/record_store.h",
       "owner_symbol": "sig_can_show_unchanged",
       "date": "2026-10-07",
-      "decision": "D96",
+      "decision": "D96 (an empty fingerprint never shows a chart unchanged) and its follow-up in the audit fix decisions",
       "added_by": "som-d",
       "pattern": "\\b(sig|stored|stored_sig|new_sig|old_sig)(\\.|->)empty\\(\\)|\\bsig\\b\\s*(==|!=)\\s*(\"\"|std::string\\(\\))",
       "must_match": [
@@ -587,7 +586,7 @@
       "scope": [
         "src"
       ],
-      "note": "An empty fingerprint is what a gone file or a folder chart without its song.ini gives, so it can never show a chart unchanged. The cache read, the rescan's test and the click's save all ask store::sig_can_show_unchanged, which sits in store/ so every layer can call it. Only a variable named for a fingerprint is caught, as the three callers name theirs. Decided by: D96 (an empty fingerprint never shows a chart unchanged) and its follow-up in the audit fix decisions"
+      "note": "An empty fingerprint is what a gone file or a folder chart without its song.ini gives, so it can never show a chart unchanged. The cache read, the rescan's test and the click's save all ask store::sig_can_show_unchanged, which sits in store/ so every layer can call it. Only a variable named for a fingerprint is caught, as the three callers name theirs."
     },
     {
       "question": "Which files make up a database on disk?",
@@ -595,7 +594,7 @@
       "owner_file": "src/store/upgrade_files.cpp",
       "owner_symbol": "with_side_files",
       "date": "2026-10-07",
-      "decision": "ADR 0026",
+      "decision": "derive-once review of the DBUP join (F4); ADR 0026, the upgrade",
       "added_by": "DBUP-review",
       "pattern": "\"-(wal|shm)\"",
       "owner_files": [
@@ -613,7 +612,7 @@
         "src",
         "tools"
       ],
-      "note": "A WAL database's log and index sit beside it under SQLite's two suffixes. The upgrade's file rule names them once; code that sweeps or checks a database's files asks it (with_side_files, remove_with_side_files, side_files_present). Decided by: derive-once review of the DBUP join (F4); ADR 0026, the upgrade"
+      "note": "A WAL database's log and index sit beside it under SQLite's two suffixes. The upgrade's file rule names them once; code that sweeps or checks a database's files asks it (with_side_files, remove_with_side_files, side_files_present)."
     }
   ]
 }

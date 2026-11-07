@@ -33,7 +33,7 @@
       "owner_file": "tools/replay_json.cpp",
       "owner_symbol": "read_sqout",
       "date": "2026-10-05",
-      "decision": "D53",
+      "decision": "audit finding 128 (tool half); phase 6 task J2-6 (D53)",
       "added_by": "J2-6",
       "pattern": "act\\[\"sqout_tick\"\\]",
       "anchor": "act[\"sqout_tick\"]",
@@ -64,7 +64,7 @@
       "scope": [
         "tools"
       ],
-      "note": "---- tool text and the stem readers (phase 6 task J2-6) ---- The dump writer's line reads act.sqout_tick off the engine's activation, not the JSON, so it does not match. Decided by: audit finding 128 (tool half); phase 6 task J2-6 (D53)"
+      "note": "---- tool text and the stem readers (phase 6 task J2-6) ---- The dump writer's line reads act.sqout_tick off the engine's activation, not the JSON, so it does not match."
     },
     {
       "question": "Is the text before a \"{\" a namespace head?",
