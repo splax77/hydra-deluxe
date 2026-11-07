@@ -104,7 +104,7 @@ KIT_PREFIX = "kit:"
 class KitElement:
     """One element of the kit: its id and name on the definition, and
     whether it is a button (pressed with true) or a pad axis (pressed with
-    KIT_AXIS_VALUE)."""
+    a pad_axis value)."""
     id: int
     name: str
     button: bool
@@ -199,19 +199,58 @@ def given_player_line(player: Any) -> str:
     return f'kit player: "{player}" as given (KIT_PLAYER is {KIT_PLAYER})'
 
 
+# The words hydra_replay writes in a gem's "dynamic"; dynamic_str in
+# src/core/model.cpp owns them.
+DYNAMIC_NONE = "none"
+DYNAMIC_GHOST = "ghost"
+DYNAMIC_ACCENT = "accent"
+
+
+# The strengths copy the game's own bot and MIDI handler, from the Evidence
+# line of SC-13 in docs/clone-hero/06-scoring.md: the bot's velocity for an
+# accent and for a ghost, and the handler's turning of a velocity into an axis
+# value. A plain gem's velocity is never read, so it presses like an accent.
+def pad_axis(dynamic: str, threshold: Optional[int] = None) -> float:
+    """The axis value that presses a pad gem of this `dynamic`, the one home
+    of the strengths. Only a ghost needs `threshold`, the engine's dynamics
+    threshold (constants.OFF_DYN_THRESHOLD). Raises ValueError for a word
+    hydra_replay does not write, and for a ghost with a `threshold` no
+    velocity can answer."""
+    top_velocity = 127
+
+    def axis(velocity: int) -> float:
+        return 0.5 + velocity / (2 * top_velocity)
+
+    if dynamic in (DYNAMIC_NONE, DYNAMIC_ACCENT):
+        return axis(top_velocity)
+    if dynamic != DYNAMIC_GHOST:
+        raise ValueError(f'unknown gem dynamic "{dynamic}"; make the score file again '
+                         f"with hydra_replay score")
+    if threshold is None or not 1 <= threshold <= top_velocity:
+        raise ValueError(f"no ghost press is possible: the engine's dynamics threshold "
+                         f"(OFF_DYN_THRESHOLD) reads {threshold}, and it must be 1 to "
+                         f"{top_velocity}; start the song, read the field again, and "
+                         f"report the number if it stays outside that range")
+    return axis(threshold - 1)
+
+
 def press_message(elements: Sequence[KitElement], hold_frames: int = KIT_HOLD_FRAMES, *,
                   rewrite: bool = KIT_REWRITE, on_main: bool = KIT_PRESS_ON_MAIN,
-                  read: Sequence[str] = ()) -> dict:
-    """The press message for `elements`, each once, in order. `read` names
-    the game actions the agent reads back on the kit's player during the
-    hold; the message carries it only when it names some."""
-    seen: List[KitElement] = []
-    for e in elements:
-        if e not in seen:
-            seen.append(e)
+                  read: Sequence[str] = (),
+                  values: Optional[Sequence[float]] = None) -> dict:
+    """The press message for `elements`, each once, in order. `values` gives
+    each element's axis value, one per element, and a button ignores its own;
+    None presses every pad as a plain gem. `read` names the game actions the
+    agent reads back on the kit's player during the hold; the message carries
+    it only when it names some."""
+    if values is None:
+        values = [pad_axis(DYNAMIC_NONE)] * len(elements)
+    seen: Dict[KitElement, float] = {}
+    for e, value in zip(elements, values, strict=True):
+        seen.setdefault(e, value)
     message = {"type": "press",
-               "elements": [{"id": e.id, "value": True if e.button else KIT_AXIS_VALUE}
-                            for e in seen],
+               "elements": [{"id": e.id, "value": True if e.button else value}
+                            for e, value in seen.items()],
                "hold_frames": hold_frames, "cap_s": KIT_PRESS_CAP_S,
                "rewrite": rewrite, "on_main": on_main}
     if read:
@@ -433,17 +472,19 @@ def fault_lines(error: FA.LiveAgentError) -> List[str]:
 
 
 def kit_press(agent: FA.LiveAgent, *, request_lock: Optional[threading.Lock] = None,
-              hold_frames: int = KIT_HOLD_FRAMES) -> Callable[[Sequence[int]], dict]:
+              hold_frames: int = KIT_HOLD_FRAMES) -> Callable[..., dict]:
     """The auto-player's press on the kit route: a callable that sends one
-    chord's lanes to the kit agent and returns its reply, which play_chords
-    keeps in the press row. It waits at most KIT_PRESS_CAP_S and raises
+    chord's lanes at their `axes` to the kit agent and returns its reply,
+    which play_chords keeps in the press row. Axes of None press every pad as
+    a plain gem. It waits at most KIT_PRESS_CAP_S and raises
     frida_attach.ReadFailed when no reply comes, which ends the run. A reply
     that carries a native fault puts fault_lines under the error's message,
     since the run reports only that message."""
     lock = request_lock if request_lock is not None else threading.Lock()
 
-    def press(lanes: Sequence[int]) -> dict:
-        message = press_message([lane_element(lane) for lane in lanes], hold_frames)
+    def press(lanes: Sequence[int], axes: Optional[Sequence[float]] = None) -> dict:
+        message = press_message([lane_element(lane) for lane in lanes], hold_frames,
+                                values=axes)
         with lock:
             try:
                 return agent.request(message, KIT_PRESS_CAP_S)
@@ -598,23 +639,27 @@ class KitTools:
     def ch_kit_press(self, items: Union[str, Sequence[str]],
                      hold_frames: Optional[int] = None, rewrite: Optional[bool] = None,
                      on_main: Optional[bool] = None,
-                     read: Union[None, str, Sequence[str]] = None) -> str:
+                     read: Union[None, str, Sequence[str]] = None,
+                     value: Optional[float] = None) -> str:
         """Press one chord of kit items, such as "green,kick" or "start", and
         print the frames it went down and came up on. press_items does the
         work and says what each argument does."""
         return self.press_items(items, hold_frames, rewrite=rewrite, on_main=on_main,
-                                read=read).text
+                                read=read, value=value).text
 
     def press_items(self, items: Union[str, Sequence[str]],
                     hold_frames: Optional[int] = None, *, rewrite: Optional[bool] = None,
                     on_main: Optional[bool] = None,
-                    read: Union[None, str, Sequence[str]] = None) -> PressResult:
+                    read: Union[None, str, Sequence[str]] = None,
+                    value: Optional[float] = None) -> PressResult:
         """Press one chord of kit items (KIT_ELEMENTS names, with or without
         KIT_PREFIX), held `hold_frames` frames (KIT_HOLD_FRAMES when None).
         `rewrite` and `on_main` set the press's rewrite and thread
         (KIT_REWRITE and KIT_PRESS_ON_MAIN when None). `read` names game
         actions, such as "Green", that the agent reads back on the kit's
-        player during the hold; the text then lists each change it saw. The
+        player during the hold; the text then lists each change it saw.
+        `value` is the axis value of this press's pads, from 0 to 1; None
+        presses them as plain gems, and a button is never given one. The
         result says whether the press went out, for the menu driver."""
         with self._lock:
             try:
@@ -626,10 +671,15 @@ class KitTools:
             if isinstance(hold, bool) or not isinstance(hold, int) or hold < 1:
                 return PressResult(False, f"hold_frames is a whole number of 1 or more, "
                                           f"not {hold_frames!r}")
-            for what, value in (("rewrite", rewrite), ("on_main", on_main)):
-                if value is not None and not isinstance(value, bool):
+            for what, flag in (("rewrite", rewrite), ("on_main", on_main)):
+                if flag is not None and not isinstance(flag, bool):
                     return PressResult(False, f"{what} is true, false or left out, "
-                                              f"not {value!r}")
+                                              f"not {flag!r}")
+            if value is not None and (isinstance(value, bool)
+                                      or not isinstance(value, (int, float))
+                                      or not 0 <= value <= 1):
+                return PressResult(False, f"value is a number from 0 to 1 or left out, "
+                                          f"not {value!r}")
             agent = self._ready_agent()
             if agent is None:
                 return PressResult(False, NOT_SET_UP)
@@ -640,7 +690,8 @@ class KitTools:
                 elements, hold,
                 rewrite=KIT_REWRITE if rewrite is None else rewrite,
                 on_main=KIT_PRESS_ON_MAIN if on_main is None else on_main,
-                read=actions)
+                read=actions,
+                values=None if value is None else [value] * len(elements))
             try:
                 with self._request_lock:
                     reply = agent.request(message, KIT_PRESS_CAP_S)
@@ -660,6 +711,8 @@ class KitTools:
             if rewrite is not None or on_main is not None:
                 lines.append(f"rewrite {_flag_text(reply.get('rewrite'))}, main thread "
                              f"{_flag_text(reply.get('on_main'))} (as the agent ran it)")
+            if value is not None:
+                lines.append(f"pads pressed at value {value}")
             lines.extend(seen_lines(reply))
             return PressResult(True, self._reply(lines))
 
@@ -727,7 +780,7 @@ class KitTools:
                 return "no kit agent attached; nothing to tear down"
             return self._reply(self._teardown_and_detach())
 
-    def kit_press(self) -> Optional[Callable[[Sequence[int]], dict]]:
+    def kit_press(self) -> Optional[Callable[..., dict]]:
         """The auto-player's kit press, or None when the kit is not set up."""
         with self._lock:
             agent = self._ready_agent()
