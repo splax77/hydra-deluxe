@@ -22,17 +22,18 @@ file is tried (Select-Spread).
 
 The kinds of edit it makes are Find-MutationCandidates' list below. Edits go
 only into code: Get-CodeMask masks the rest first. Comments and string text
-are hydra_precheck --code-mask's answer (build it with
-.\build_cpp.ps1 -Target hydra_precheck; the probe uses the exe in the
-checkout holding this script); the probe adds preprocessor lines.
+are hydra_precheck --code-mask's answer (the probe uses the exe in the
+checkout holding this script; ask the main session to build the
+hydra_precheck target if it is missing); the probe adds preprocessor lines.
 
 Each run:
   - refuses the main checkout, because it edits source; run it in a task
     worktree (tools\new_worktree.ps1 makes one);
   - refuses a source file that differs from git, so "restored" means "matches
     git";
-  - holds one machine build slot for the whole run (tools\build_slot.ps1
-    owns the slot rule; its functions are loaded from its text, not copied);
+  - holds one machine build slot for the whole run, so every rebuild rides
+    on it. Under Claude Code that means claiming the build pass it is given,
+    so only a main session can run it. tools\build_slot.ps1 owns both rules;
   - builds and tests the unmutated file first, and stops if that fails or
     the filter matches no test case;
   - restores the file after every edit and again at the end, in finally
@@ -80,7 +81,7 @@ $ErrorActionPreference = 'Stop'
 # survive and offsets still line up on Windows line endings.
 function Get-CodeMask([string]$Text, [string]$Exe) {
     if (-not $Exe -or -not (Test-Path -LiteralPath $Exe -PathType Leaf)) {
-        throw "mutation_probe: hydra_precheck.exe is missing at '$Exe'. Build it first: .\build_cpp.ps1 -Target hydra_precheck"
+        throw "mutation_probe: hydra_precheck.exe is missing at '$Exe'. Ask the main session to build the hydra_precheck target."
     }
     $tmp = Join-Path ([IO.Path]::GetTempPath()) ("mutation_probe_mask_" + [guid]::NewGuid().ToString('N') + '.cpp')
     try {
@@ -209,7 +210,7 @@ if (-not (Test-SameBytes $utf8.GetBytes($text) $originalBytes)) {
 }
 $precheckExe = Join-Path $PSScriptRoot '..\build-cpp\Release\hydra_precheck.exe'
 if (-not (Test-Path -LiteralPath $precheckExe -PathType Leaf)) {
-    Fail "hydra_precheck.exe is missing at $([IO.Path]::GetFullPath($precheckExe)); it masks comments and strings. Build it first: .\build_cpp.ps1 -Target hydra_precheck"
+    Fail "hydra_precheck.exe is missing at $([IO.Path]::GetFullPath($precheckExe)); it masks comments and strings. Ask the main session to build the hydra_precheck target."
 }
 $candidates = @(Find-MutationCandidates $text $precheckExe)
 
@@ -248,16 +249,7 @@ if (-not $OutDir) {
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 $pwshPath = (Get-Process -Id $PID).Path
 
-# The build slot functions and settings, loaded from build_slot.ps1's text.
 $slotScript = Join-Path $PSScriptRoot 'build_slot.ps1'
-$slotAst = [System.Management.Automation.Language.Parser]::ParseFile($slotScript, [ref]$null, [ref]$null)
-$slotDefs = $slotAst.FindAll({ param($a)
-        ($a -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $a.Name -in 'Get-BuildSlot', 'Release-BuildSlot') -or
-        ($a -is [System.Management.Automation.Language.AssignmentStatementAst] -and $a.Parent -eq $slotAst.EndBlock -and "$($a.Left)" -like '$BuildSlot*') }, $false)
-if (@($slotDefs | Where-Object { $_ -is [System.Management.Automation.Language.FunctionDefinitionAst] }).Count -ne 2) {
-    Fail "cannot find Get-BuildSlot and Release-BuildSlot in $slotScript"
-}
-. ([scriptblock]::Create((@($slotDefs | ForEach-Object { $_.Extent.Text }) -join "`n")))
 
 # One warm build of hydra_tests; true when it built.
 function Invoke-Build([string]$Log) {
@@ -305,13 +297,17 @@ function Restore-Source {
 $runClock = [Diagnostics.Stopwatch]::StartNew()
 $started = Get-Date
 $results = [System.Collections.Generic.List[object]]::new()
-$slotArgs = @{ Owner = "mutation_probe $Repo" }
-if ($SlotDir) { $slotArgs.Dir = $SlotDir }
+$slotArgs = @{ Hold = $true; Owner = "mutation_probe $Repo" }
+if ($SlotDir) {
+    $slotArgs.SlotDir = $SlotDir
+    # Each rebuild's own claim must read the same folder.
+    $env:HYDRA_BUILD_SLOT_DIR = $SlotDir
+}
 $slot = $null
 $baseline = $null
 $exitCode = 0
 try {
-    $slot = Get-BuildSlot @slotArgs
+    $slot = & $slotScript @slotArgs
     Write-Host "building the unmutated $rel"
     if (-not (Invoke-Build (Join-Path $OutDir 'baseline_build.log'))) { throw "the unmutated source does not build; see $OutDir\baseline_build.log" }
     $baseline = Invoke-Tests (Join-Path $OutDir 'baseline_tests.log') -1
@@ -349,7 +345,7 @@ try {
     $exitCode = 1
 } finally {
     Restore-Source
-    if ($slot) { Release-BuildSlot $slot }
+    if ($slot) { & $slotScript -Release $slot.Lock }
     $same = Test-SameBytes ([IO.File]::ReadAllBytes($sourcePath)) $originalBytes
     $dirty = & git -C $Repo status --porcelain -- $rel
     if (-not $same -or $dirty) {

@@ -1,0 +1,15 @@
+<Project InitialTargets="HydraBuildPassCheck">
+  <!--
+    The second lock on a build under Claude Code. It stops a Visual Studio
+    project that was started without going through build_cpp.ps1, such as a
+    hand-run cmake or MSBuild. MSBuild imports this file by itself, for every
+    project under this folder. tools\build_slot.ps1 owns the rule; this file
+    only asks it. Outside Claude Code the condition is false and nothing runs.
+  -->
+  <Target Name="HydraBuildPassCheck" Condition="'$(CLAUDECODE)' == '1'">
+    <Exec Command="pwsh -NoProfile -File &quot;$(MSBuildThisFileDirectory)tools\build_slot.ps1&quot; -Check" IgnoreExitCode="true">
+      <Output TaskParameter="ExitCode" PropertyName="HydraBuildPassExit" />
+    </Exec>
+    <Error Condition="'$(HydraBuildPassExit)' != '0'" Text="This build has no claimed build pass; see the line above, from tools\build_slot.ps1." />
+  </Target>
+</Project>

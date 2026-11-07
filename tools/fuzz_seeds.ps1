@@ -25,7 +25,7 @@ if (-not $TestsExe) {
 }
 if (-not $TestsExe -or -not (Test-Path $TestsExe)) {
     Write-Error ("fuzz_seeds: no hydra_tests.exe to write the seeds with. " +
-                 "Build one (build_cpp.ps1 -Target hydra_tests) or pass -TestsExe.")
+                 "Ask the main session to build the hydra_tests target, or pass -TestsExe.")
 }
 
 if (Test-Path $OutDir) { Remove-Item -Recurse -Force $OutDir }
