@@ -2,7 +2,7 @@
 
 This page lists the rows only a run of the real game can settle.
 It describes build 1.1 (v1.1.0.6142) unless a check names build 1.0.
-Last write-back: 2026-11-05.
+Last write-back: 2026-11-06.
 
 Each check gives its row id, the question in one line, what a pass and a fail look like, and whether a bot run is enough or the run needs Star Power activation and a menu start. The Star Power plan, `docs/superpowers/plans/2026-10-30-ch-mcp-star-power-and-song-start.md`, takes its live steps from this list. Where one entry covers two or three rows, they share one run.
 
@@ -145,8 +145,6 @@ FL-27, the Ladies Talk check, is the first entry on this page.
 **SC-11.** Question: does the combo carry into the next song of a setlist? Pass: the streak carries; fail: it resets. Needs a menu start and two songs; no Star Power.
 
 **SC-12 and SC-14.** Question: what do the lane bytes (+0x309 to +0x310) and the threshold (+0x2C0) hold for a pad hit hard, a pad hit soft and a key press? Pass: keys give a value that never marks a dynamic, and the marks follow SC-13; fail: otherwise. The key side needs a key-press run; the pad side needs a kit; no Star Power.
-
-**SC-16.** Question: is bit 0x10 of the flags word (+0x198) clear in a normal Quickplay run? Pass: clear; fail: set. A bot run with one snapshot is enough.
 
 **SC-19.** Question: does an accent kick (velocity 127) pay double? Pass: accent_notes_hit counts it and base_score includes the doubling; fail: it does not. A bot run on a .mid with velocity-127 kicks is enough.
 
