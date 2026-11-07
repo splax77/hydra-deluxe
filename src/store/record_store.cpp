@@ -121,9 +121,8 @@ void bind_text(sqlite3_stmt* s, int i, const std::string& v) {
 }
 void bind_blob(sqlite3_stmt* s, int i, const std::vector<uint8_t>& v) {
     // An empty vector's data() may be null, and SQLite binds a null pointer
-    // as NULL. An old file's rules_fp can be the empty blob (cut from a short
-    // structure blob by a release before 2.2.0), which must stay a blob, not
-    // become NULL.
+    // as NULL. An old file's rules_fp can be the empty blob, which must stay a
+    // blob, not become NULL.
     if (v.empty()) sqlite3_bind_zeroblob(s, i, 0);
     else sqlite3_bind_blob(s, i, v.data(), static_cast<int>(v.size()), SQLITE_TRANSIENT);
 }
@@ -365,10 +364,9 @@ constexpr size_t kHashesPerQuery = 10000;
 // ---- which row answers a lookup -------------------------------------------
 //
 // Every lookup answers one question: "which row ran under these settings?".
-// The candidates are the rows with the wanted lens at the wanted cap. An
-// older Hydra's migration left some rows with ms_enabled = -1, meaning "the
-// settings are unknown". No lens has -1, so those rows are never candidates
-// and read as no row at all (user decision 2026-09-26).
+// The candidates are the rows with the wanted lens at the wanted cap. A row
+// with ms_enabled = -1 means "the settings are unknown". No lens has -1, so
+// those rows are never candidates and read as no row at all.
 
 // "the row at alias `a` carries exactly this lens". Five bound parameters, in
 // Lens's field order. `a` is "" or "r.".
@@ -471,9 +469,9 @@ int bind_readable_params(sqlite3_stmt* s, int idx) {
 // Does `a` beat `b`? This version before another, then these rules before
 // the rest, then the later profile. A profile row is made the first time a
 // record is filed under its settings, stamp and rules, so a bigger id means
-// "made later". Since Auto went (2026-09-27) every lookup names one exact cap
-// and lens. A chart holds one record per profile, so it offers one candidate
-// per stamp and set of rules it was analyzed under, and the one made under
+// "made later". Every lookup names one exact cap and lens. A chart holds one
+// record per profile, so it offers one candidate per stamp and set of rules
+// it was analyzed under, and the one made under
 // this build's stamp and this process's rules wins. Two candidates that tie
 // on both are both Stale for the same reasons, so the id only picks which of
 // two identical answers to give.
@@ -710,13 +708,11 @@ int open_sqlite(const std::string& utf8_path, sqlite3** db, int flags) {
 
 namespace {
 
-// "A result with a score and no stars", spelled once in SQL. Such a row was
-// written before the stars column existed. 2.2.0's writer never leaves one,
-// but 2.2.0's own open kept them in a pre-stars file that had no path details,
-// so a Convertible file can still hold some. Filling their stars needed the
-// stored paths, so the
-// conversion leaves them behind, and a click or a batch writes them again. The
-// conversion's row count and its read both use it.
+// "A result with a score and no stars", spelled once in SQL. A Convertible
+// file can hold such rows. Filling their stars needs stored paths, which that
+// file does not have, so the conversion leaves them behind, and a click or a
+// batch writes them again. The conversion's row count and its read both use
+// it.
 constexpr const char* kNoStarsResultSql = "stars IS NULL AND score IS NOT NULL";
 
 // The one integer a counting query returns.
@@ -783,10 +779,10 @@ RecordStore::RecordStore(const std::string& dbpath, OldFilePolicy old_files,
 }
 
 void RecordStore::set_up_schema(LibraryFileKind kind) {
-    // WAL journal mode (orchestrator's call, 2026-09-26 audit plan): a commit
-    // appends to hydra.db-wal instead of rewriting pages in place, and with
-    // synchronous=NORMAL it syncs to disk only at checkpoints, not on every
-    // commit. A power cut can lose the last few commits but never corrupts
+    // WAL journal mode: a commit appends to hydra.db-wal instead of rewriting
+    // pages in place, and with synchronous=NORMAL it syncs to disk only at
+    // checkpoints, not on every commit. A power cut can lose the last few
+    // commits but never corrupts
     // the file, and readers stop blocking the writer
     // (https://www.sqlite.org/wal.html). journal_mode is stored in the file;
     // synchronous and journal_size_limit are per connection, so all three are
@@ -861,9 +857,9 @@ void RecordStore::add_failure_columns() {
     }
 }
 
-// The meta row where 2.2.0 to 2.7.0 kept one fill-rule label for the whole
-// file. Each record's profile carries its own rule (Lens::legacy_fills), so
-// one file holds both rules and the label is retired (D115 A1-6c): the
+// The meta row where a Convertible file keeps one fill-rule label for the
+// whole file. Each record's profile carries its own rule (Lens::legacy_fills),
+// so one file holds both rules and the label is retired (D115): the
 // conversion deletes the row, and nothing reads it.
 constexpr const char* kRetiredFillLabelKey = "engine_mode";
 
@@ -1042,8 +1038,8 @@ void RecordStore::meta_set(const std::string& key, const std::string& value) {
     step_done(s, "meta_set");
 }
 
-// The meta row that holds the charts table's kChartMetaStamp, written once
-// per file by rebuild_chart_library and checked by chart_library_cache.
+// The meta row that holds the charts table's kChartMetaStamp, written by each
+// rebuild_chart_library and checked by chart_meta_current.
 constexpr const char* kChartMetaKey = "chart_meta_version";
 
 template <class F>

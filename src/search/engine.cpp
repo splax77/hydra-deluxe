@@ -320,7 +320,7 @@ struct Path {
     bool over_prefix;
 };
 
-// The decision-log output (was hy_out_*), rebuilt into core Paths (core/model.h) locally.
+// The decision-log output, rebuilt into core Paths (core/model.h) locally.
 struct OutPath {
     int32_t notes_points, score_combo, score_sp, score_solo, score_accents,
         score_ghosts;
@@ -1058,8 +1058,8 @@ int32_t Engine::deactivation_type(const EdgeView& e, const Path& p,
     // sqout_at) and it has not squeezed that phrase in, or, when its end is
     // this node, the first phrase after it that it has not squeezed in
     // (D34). A late SqIn's phrase still ahead of the path (Path::spent)
-    // holds its SqIn step already, so it is skipped (D32: that phrase was
-    // once squeezed in a second time at the next end and the search broke).
+    // holds its SqIn step already, so it is skipped (D32: squeezing that
+    // phrase in a second time at the next end breaks the search).
     // The newest-step rule also tells apart two ends that move to one tick:
     // two clamped to one ceiling, or a plain bar tying it (finding 37), or
     // two ends a tick apart (plusmeasure's rounding). Each offers the phrase
@@ -1084,8 +1084,8 @@ int32_t Engine::deactivation_type(const EdgeView& e, const Path& p,
     // that includes a path whose end is this node while the window holds a
     // chord it could squeeze. At a normal tempo no such path exists: its end
     // sits at least one SP bar past that chord, and one bar outlasts the
-    // squeeze window. When it does not, the path must still end here; before
-    // D32 it ran on past its own end and broke the search.
+    // squeeze window. When it does not, the path must still end here: running
+    // on past its own end breaks the search.
     return p.sp_end_time == node(e.dest).tick ? DEACT_NORMAL : DEACT_NONE;
 }
 
@@ -1445,8 +1445,8 @@ void Engine::reduce_iteration_paths() {
         // time decides (ready_class), not the time itself: branch_activate
         // reads it for the early-fill rule, and a higher-scoring path that
         // became ready later must not knock out one an upcoming fill still
-        // spawns for. The raw time in the key splits paths no fill tells
-        // apart; over the library it grew the frontier 13-22x (2026-10).
+        // spawns for. The raw time in the key would split paths no fill tells
+        // apart, and that grows the frontier.
         // This key found the same best paths (7 higher at cap 2, none at
         // cap 4) with the frontier 0.15% larger at cap 2 and unchanged at 4.
         // While SP runs, the activation's banked phrase in squeeze reach is
@@ -2058,8 +2058,8 @@ std::vector<MPath> rebuild(const ScoreGraph& graph, const Enum& en,
             // for it. The deact edge's backend list is shared by every path
             // that deactivates there, squeezing out or not, so the trim
             // belongs here, per activation (set_sqout does it). This mirrors
-            // the is_after_sqout arm of create_deactivated_path, which
-            // already takes those notes back out of the score. The chord is
+            // the row loop of create_deactivated_path, which already
+            // takes those notes back out of the score. The chord is
             // the one the window was offered (Act::sqout_phrase), not always
             // the window's first.
             if (took_sqout && oa.deact_edge >= 0 && oa.sqout_phrase != NO_TIME) {
@@ -2084,8 +2084,7 @@ std::vector<MPath> rebuild(const ScoreGraph& graph, const Enum& en,
             act.sp_end_steps.assign(out_ends.begin() + oa.end_begin,
                                     out_ends.begin() + oa.end_end);
             // D36: a closed window's record ends on the node SP ended at, tied
-            // variants included (close_folded_act). A squeeze-out that kept a
-            // later phrase's step once broke this by one bar.
+            // variants included (close_folded_act).
             if (oa.deact_edge >= 0 &&
                 act.deact_tick() !=
                     std::optional<int64_t>(en.edges[(size_t)oa.deact_edge]->dest->timecode.ticks()))
