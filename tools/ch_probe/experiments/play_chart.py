@@ -20,7 +20,8 @@ has no strength. kit_tools.pad_axis owns the strengths, and with_axes reads the
 game's dynamics threshold for them when the chart holds a ghost gem.
 
 While the song plays, live.wait_until polls the game's song clock and fires
-each chord PRESS_LEAD_MS early; it also notices the song stopping (clock frozen
+each chord early, by SP_END_LEAD_MS on a chord that ends Star Power and by
+PRESS_LEAD_MS on every other; it also notices the song stopping (clock frozen
 or jumped back). live.first_note_index picks where a run that joins mid-song
 starts. A jump back (a restart or seek) re-syncs to the new clock position and
 starts the counts and the press log over. A run also stops at its cap of
@@ -68,6 +69,11 @@ from tools.ch_probe.experiments.walk_edges import SongClock
 # play_chart presses each chord this many ms before its time (D51: unchanged).
 PRESS_LEAD_MS = 2.0
 
+# A chord that ends Star Power is pressed this many ms before its time, so the
+# hit lands in a frame before the end check. The user set it: question 3 of
+# docs/superpowers/plans/2026-11-06-optimal-score-run.md.
+SP_END_LEAD_MS = 15.0
+
 # The score is read this long after a press: a dense chart's next chord comes
 # sooner than constants.INPUT_SETTLE_MS.
 SCORE_READ_DELAY_S = 0.005
@@ -96,23 +102,60 @@ _KEY_FOR_PAD = {
 class Chord:
     """One chord to press: its `index` in the score JSON, its time, its keys
     and each key's `dynamic`, in the same order. `axes` holds each key's
-    strength once with_axes has worked them out."""
+    strength once with_axes has worked them out. `ends_sp` says the chord's
+    tick is an activation's `deact_tick`."""
     index: int
     ms: float
     lanes: List[int]
     dynamics: List[str]
     axes: Optional[List[float]] = None
+    ends_sp: bool = False
+
+
+def early_side_ms(gap_ms: float) -> float:
+    """How far from a note the game's window reaches on the side of a
+    neighbour `gap_ms` away, in normal mode (TM-18 and TM-19 on
+    docs/clone-hero/03-timing.md)."""
+    return min(max(gap_ms / 2, C.s_to_ms(C.EXPECT_NORMAL_FRONT_S)),
+               C.EXPECT_NORMAL_BACK_MS)
+
+
+def lead_limit_ms(gap_ms: float) -> float:
+    """A lead must stay below this for a chord `gap_ms` after the chord before
+    it. The press must fall inside the chord's own early side, and past the
+    earlier chord's late edge, which is the same half-gap."""
+    side = early_side_ms(gap_ms)
+    return min(side, gap_ms - side)
+
+
+def _refuse_long_leads(chords: Sequence[Chord]) -> None:
+    """Raise ValueError naming every Star Power end chord SP_END_LEAD_MS is too
+    long for. Only those chords are checked: PRESS_LEAD_MS has to work on any
+    chart, and a real chart holds chords closer than a window's clamp. The
+    first chord has no chord before it for a press to reach."""
+    refused = [chord.index for before, chord in zip(chords, chords[1:])
+               if chord.ends_sp and SP_END_LEAD_MS >= lead_limit_ms(chord.ms - before.ms)]
+    if refused:
+        raise ValueError(f"SP_END_LEAD_MS of {SP_END_LEAD_MS:g} ms is too long for chords "
+                         f"{', '.join(map(str, refused))}: an early press would miss "
+                         f"its note or reach the chord before it")
 
 
 def load_dump_chords(path: str) -> List[Chord]:
-    """The file's chords in order, each with its own `index` from the JSON."""
+    """The file's chords in order, each with its own `index` from the JSON.
+    A chord on an activation's end is marked, and a lead too long for such a
+    chord raises _refuse_long_leads's ValueError."""
     with open(path, encoding="utf-8") as f:
         dump = json.load(f)
-    return [Chord(chord["index"], chord["ms"],
-                  [_KEY_FOR_PAD[(gem["color"], gem["cymbal"])]
-                   for gem in chord["notes"]],
-                  [gem["dynamic"] for gem in chord["notes"]])
-            for chord in dump["chords"]]
+    deact_ticks = {act["deact_tick"] for act in dump.get("activations", [])}
+    chords = [Chord(chord["index"], chord["ms"],
+                    [_KEY_FOR_PAD[(gem["color"], gem["cymbal"])]
+                     for gem in chord["notes"]],
+                    [gem["dynamic"] for gem in chord["notes"]],
+                    ends_sp=chord.get("tick") in deact_ticks)
+              for chord in dump["chords"]]
+    _refuse_long_leads(chords)
+    return chords
 
 
 def load_dump_notes(path: str) -> list:
@@ -153,7 +196,8 @@ STOP_NO_ENGINE = "no engine"
 @dataclass
 class RunResult:
     """What one run did. `rows` are the press-log rows, keyed by the names in
-    PRESS_LOG_COLUMNS. `stop` says why the run ended: "done" (every chord
+    PRESS_LOG_COLUMNS, plus `lead_ms`, the lead the press used, which no log
+    column holds. `stop` says why the run ended: "done" (every chord
     pressed), "past_end" (the clock was past the last chord), "frozen",
     "cap", "interrupted", "lost" (the process went away), "stopped" (the
     caller's `should_stop` said so) or STOP_NO_ENGINE (live_play found no
@@ -220,9 +264,10 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
     try:
         while cursor < len(chords):
             chord = chords[cursor]
+            lead_ms = SP_END_LEAD_MS if chord.ends_sp else PRESS_LEAD_MS
             try:
                 raw_ms, _est_ms = live.wait_until(
-                    clock, chord.ms, lead_ms=PRESS_LEAD_MS, stopped=stopped,
+                    clock, chord.ms, lead_ms=lead_ms, stopped=stopped,
                     should_stop=over_cap, now=now, sleep=sleep)
             except live.ClockJumpedBack as e:
                 # A restart or seek: rebuild the cursor from the new clock
@@ -258,6 +303,7 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
                 "index": chord.index,
                 "chart_ms": chord.ms,
                 "clock_ms_at_press": raw_ms,
+                "lead_ms": lead_ms,
                 "score_before": score_before,
                 "score_after": score_after,
                 "hit": int(hit),
@@ -304,9 +350,10 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
 
 def write_press_log(path: str, rows: Sequence[dict]) -> None:
     """Write the press log: the PRESS_LOG_COLUMNS header, then one row per
-    press."""
+    press. A row's other values stay out of the file."""
     with open(path, "w", encoding="utf-8", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=PRESS_LOG_COLUMNS)
+        # lead_ms stays off the log: a row's clock_ms_at_press already shows it.
+        writer = csv.DictWriter(f, fieldnames=PRESS_LOG_COLUMNS, extrasaction="ignore")
         writer.writeheader()
         writer.writerows(rows)
 

@@ -640,13 +640,118 @@ class PressReplyRowTest(unittest.TestCase):
             game.read_score, press, now=wall.now, sleep=wall.sleep, out=io.StringIO())
         self.assertEqual(result.rows[0], {
             "index": 38, "chart_ms": 13043.48, "clock_ms_at_press": result.rows[0]["clock_ms_at_press"],
-            "score_before": 0, "score_after": 100, "hit": 1,
+            "lead_ms": 2.0, "score_before": 0, "score_after": 100, "hit": 1,
             "down_frame": 40, "up_frame": 42, "down_ms": 7, "up_ms": 19})
 
     def test_a_key_press_adds_nothing(self):
         result, _game, _wall = _run({"start_s": 12.0})
         self.assertEqual(set(result.rows[0]), {
-            "index", "chart_ms", "clock_ms_at_press", "score_before", "score_after", "hit"})
+            "index", "chart_ms", "clock_ms_at_press", "lead_ms", "score_before",
+            "score_after", "hit"})
+
+
+# The 8 end chords of Senri's top path and the chord before each, with the
+# path's activations, cut from the `hydra_replay score` file of that path. Each
+# chord keeps only its index, tick, ms and the three fields of each gem
+# load_dump_chords reads.
+_SENRI_END_CHORDS = os.path.join(_HERE, "senri_end_chords.json")
+_END_CHORD_INDEXES = [268, 566, 819, 1019, 1649, 1843, 2044, 2320]
+
+
+def _load_senri(lead_ms=play_chart.SP_END_LEAD_MS):
+    from unittest import mock
+    with mock.patch.object(play_chart, "SP_END_LEAD_MS", lead_ms):
+        return play_chart.load_dump_chords(_SENRI_END_CHORDS)
+
+
+class SpEndLeadTest(unittest.TestCase):
+    """A chord on an activation's end is pressed SP_END_LEAD_MS early, and a
+    lead its gap to the chord before cannot hold is refused at load."""
+
+    def _gaps(self):
+        chords = _load_senri()
+        return {chord.index: chord.ms - before.ms
+                for before, chord in zip(chords, chords[1:]) if chord.ends_sp}
+
+    def test_the_lead_is_the_number_the_user_set(self):
+        self.assertEqual(play_chart.SP_END_LEAD_MS, 15.0)
+
+    def test_the_chords_on_the_deact_ticks_are_marked(self):
+        chords = _load_senri()
+        self.assertEqual(len(chords), 16)
+        self.assertEqual([c.index for c in chords if c.ends_sp], _END_CHORD_INDEXES)
+
+    def test_a_file_with_no_activations_marks_nothing(self):
+        self.assertFalse(any(c.ends_sp for c in _load(play_chart.load_dump_chords)))
+
+    def test_a_fake_clock_run_presses_end_chords_early_and_names_the_lead(self):
+        wall = _FakeTime()
+        game = _FakeGame()
+        chords = _load_senri()
+        result = play_chart.play_chords(
+            chords, _FakeSongClock(wall, start_s=31.0), game.read_score, game.press,
+            now=wall.now, sleep=wall.sleep, out=io.StringIO(), cap_s=300.0)
+        self.assertEqual(result.stop, "done")
+        self.assertEqual(len(result.rows), 16)
+        for row in result.rows:
+            want = 15.0 if row["index"] in _END_CHORD_INDEXES else 2.0
+            self.assertEqual(row["lead_ms"], want, row["index"])
+            # The fake clock moves 1 ms a read, so a press fires inside that
+            # read of its lead.
+            early_ms = row["chart_ms"] - row["clock_ms_at_press"]
+            self.assertLessEqual(early_ms, want, row["index"])
+            self.assertGreater(early_ms, want - 1.5, row["index"])
+
+    def test_a_row_with_a_lead_still_writes_the_press_log(self):
+        result, _game, _wall = _run({"start_s": 12.0})
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "press.csv")
+            play_chart.write_press_log(path, result.rows)
+            with open(path, encoding="utf-8", newline="") as f:
+                self.assertEqual(tuple(next(csv.reader(f))), overlay_logs.PRESS_LOG_COLUMNS)
+
+    def test_the_smallest_margin_is_chord_2320s(self):
+        gaps = self._gaps()
+        self.assertEqual(round(gaps[2320], 1), 68.0)
+        self.assertEqual(play_chart.early_side_ms(gaps[2320]), 37.5)
+        limits = {i: play_chart.lead_limit_ms(gap) for i, gap in gaps.items()}
+        self.assertEqual(round(limits[2320], 1), 30.5)
+        self.assertEqual(min(limits, key=limits.get), 2320)
+
+    def test_chord_566s_early_side(self):
+        self.assertEqual(round(play_chart.early_side_ms(self._gaps()[566]), 1), 38.8)
+
+    def test_the_clamps_hold_at_both_ends(self):
+        self.assertEqual(play_chart.early_side_ms(75.0), 37.5)
+        self.assertEqual(play_chart.early_side_ms(170.0), 85.0)
+        self.assertEqual(play_chart.early_side_ms(400.0), 85.0)
+
+    def test_a_lead_of_15_loads_on_all_8(self):
+        self.assertEqual(len(_load_senri(15.0)), 16)
+
+    def test_a_lead_of_35_is_refused_on_chord_2320(self):
+        with self.assertRaises(ValueError) as caught:
+            _load_senri(35.0)
+        self.assertIn("SP_END_LEAD_MS of 35 ms is too long for chords 2320:",
+                      str(caught.exception))
+
+    def test_a_lead_of_40_is_refused_on_566_and_2320_only(self):
+        with self.assertRaises(ValueError) as caught:
+            _load_senri(40.0)
+        self.assertIn("SP_END_LEAD_MS of 40 ms is too long for chords 566, 2320:",
+                      str(caught.exception))
+
+    def test_a_lead_equal_to_the_limit_is_refused(self):
+        # A lead must be below the limit, so the limit itself fails.
+        limit = play_chart.lead_limit_ms(self._gaps()[2320])
+        with self.assertRaises(ValueError):
+            _load_senri(limit)
+
+    def test_chords_closer_than_the_clamp_load_when_neither_ends_sp(self):
+        dump = {"activations": [], "chords": [
+            {"index": 0, "tick": 0, "ms": 1000.0, "notes": [_gem("Red", "none")]},
+            {"index": 1, "tick": 10, "ms": 1017.241, "notes": [_gem("Green", "none")]}]}
+        self.assertEqual(len(_load_dump(dump)), 2)
 
 
 class LivePressTest(unittest.TestCase):
