@@ -40,6 +40,24 @@ Three Visual Studio installs are on the machine. All three report themselves com
 
 An interrupted update can leave an install incomplete. `vswhere -latest` then lists nothing, and CMake refuses to configure with "instance is not known to the Visual Studio Installer, and no 'version=' field was given". `Find-CMake` falls back to `vswhere -all` for that case. If CMake refuses that way, configure with `-DCMAKE_GENERATOR_INSTANCE="<install folder>,version=<its version>"`, taking both from the table above. The lasting fix is a repair in the Visual Studio Installer, which is the user's to run.
 
+## ETW trace tools
+
+ETW is Windows' own event log of who held the CPU and the disk. Three tools work with it here, and each path and version below was read on the machine on 2026-11-07. WPR records a trace, xperf turns a trace into text, and WPA opens a trace in a window.
+
+| Tool | Version | Path |
+|---|---|---|
+| `wpr.exe` | 10.0.26100.9711 | `C:\Windows\System32\wpr.exe` |
+| `xperf.exe` | 10.0.26100.8249 | `C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit\xperf.exe` |
+| `wpa.exe` | 11.7.395.48728 | `C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit\wpa.exe` |
+
+There is a second `wpr.exe`, version 10.0.26100.8249, in that same Windows Performance Toolkit folder. A bare `wpr` reaches the one in `System32`, because it comes first on the PATH. `tools/ch_mcp/etw/record.ps1` calls `wpr.exe` and `xperf.exe` by full path, so it never depends on the PATH.
+
+Run that script with `pwsh`, which is PowerShell 7.6.9 at `C:\Program Files\PowerShell\7\pwsh.exe`, in an elevated window too. Its execution policy is RemoteSigned. Windows PowerShell (`powershell.exe`) has no policy set here, so a plain call to a script there is refused with "running scripts is disabled on this system".
+
+The shell agents run in is not elevated (it does not have administrator rights switched on). The account is a member of `BUILTIN\Administrators`, but that group is deny-only in this shell, which runs at `Medium Mandatory Level`. `wpr -status` and `wpr -profiles` both answer from it. No `wpr -start` has been tried here yet, so whether it needs an elevated window is not known. Only the user can open one. Whoever tries it first fixes this line.
+
+Clone Hero writes its logs to `C:\Users\Patrick\AppData\LocalLow\srylain Inc_\Clone Hero\`, which holds `Player.log` and `Player-prev.log`.
+
 ## The Opus model behind agents
 
 The global `C:\Users\Patrick\.claude\settings.json` sets the ANTHROPIC_DEFAULT_OPUS_MODEL entry of its `env` block to `claude-opus-5-5`. That entry decides which model the `opus` alias runs, so it decides the model of every agent sent out on Opus. The user picks this model by hand. If agents seem worse after a model release, check this entry first. Do not assume the newest model is the one wanted.
