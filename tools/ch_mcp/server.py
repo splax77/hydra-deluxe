@@ -318,7 +318,9 @@ def build_server(helper: Optional[Helper] = None):
 
     @server.tool()
     def ch_play_chart(score_json: str, log: str | None = None,
-                      song_folder: str | None = None, route: str | None = None) -> str:
+                      song_folder: str | None = None, route: str | None = None,
+                      decline_mode: str | None = None, dump_json: str | None = None,
+                      path_index: int = 0) -> str:
         """Play a hydra_replay score JSON in the background, pressing each
         chord through the virtual kit inside the game. route is "kit" or
         "keys"; left out, the kit is used once ch_kit_setup has built it, and
@@ -328,8 +330,13 @@ def build_server(helper: Optional[Helper] = None):
         from the menus with ch_open_song: a song launched with a bot is
         played by the bot. log, when given, is where
         the press log goes. song_folder, when given, sets the run cap from
-        the song's length; with none the auto-player keeps its own cap."""
-        return capped(h.game.ch_play_chart(score_json, log, song_folder, route))
+        the song's length; with none the auto-player keeps its own cap.
+        decline_mode, "kick_only" or "nothing", says what to send for each
+        fill the path passes over, and needs dump_json, the hydra_replay dump
+        the score file came from; path_index picks the dump's path. With no
+        mode every chord is pressed."""
+        return capped(h.game.ch_play_chart(score_json, log, song_folder, route,
+                                           decline_mode, dump_json, path_index))
 
     @server.tool()
     def ch_press(lanes: str) -> str:

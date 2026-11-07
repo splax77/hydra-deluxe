@@ -121,6 +121,21 @@ class ServerTest(unittest.TestCase):
         self.assertEqual(result.content[0].text, "started")
         self.assertEqual(seen, [(("song", bot_run.DEFAULT_PLAYER, None), {"human": True})])
 
+    def test_ch_play_chart_passes_the_decline_arguments_through(self):
+        schema = self._schema("ch_play_chart")
+        self.assertEqual(schema["decline_mode"]["default"], None)
+        self.assertEqual(schema["dump_json"]["default"], None)
+        self.assertEqual(schema["path_index"]["default"], 0)
+        seen = []
+        self.helper.game.ch_play_chart = lambda *a: seen.append(a) or "playing"
+        server = S.build_server(self.helper)
+        asyncio.run(server.call_tool("ch_play_chart", {"score_json": "s.json"}))
+        asyncio.run(server.call_tool("ch_play_chart", {
+            "score_json": "s.json", "decline_mode": "kick_only",
+            "dump_json": "d.json", "path_index": 2}))
+        self.assertEqual(seen, [("s.json", None, None, None, None, None, 0),
+                                ("s.json", None, None, None, "kick_only", "d.json", 2)])
+
     def test_ch_start_human_with_no_song_folder_is_refused_before_any_launch(self):
         result = asyncio.run(S.build_server(self.helper).call_tool("ch_start", {"human": True}))
         self.assertEqual(result.content[0].text, bot_run.HUMAN_NEEDS_SONG)

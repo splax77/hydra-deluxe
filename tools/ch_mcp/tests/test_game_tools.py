@@ -734,6 +734,131 @@ class GameToolsTest(unittest.TestCase):
         self.assertIsNone(t.tools._play)
         self.assertEqual(seen, [])
 
+    # -- declining a fill ---------------------------------------------------------------
+
+    # The fixture of the decline list itself is in test_play_chart.py; these
+    # two files only carry the arguments through the tool.
+    DECLINE_SCORE = {"chords": [
+        {"index": 0, "ms": 1000.0, "tick": 480,
+         "notes": [{"color": "Red", "cymbal": False, "dynamic": "none"}]},
+        {"index": 1, "ms": 1500.0, "tick": 960,
+         "notes": [{"color": "Kick", "cymbal": False, "dynamic": "none"},
+                   {"color": "Green", "cymbal": True, "dynamic": "none"}]},
+    ]}
+    DECLINE_DUMP = {"paths": [
+        {"activations": [{"skipped_fill_ticks": [960]}]},
+        {"activations": [{"skipped_fill_ticks": []}]},
+    ]}
+
+    def _decline_files(self):
+        score = os.path.join(self.tmp, "decline-score.json")
+        dump = os.path.join(self.tmp, "decline-dump.json")
+        _write(score, json.dumps(self.DECLINE_SCORE).encode())
+        _write(dump, json.dumps(self.DECLINE_DUMP).encode())
+        return score, dump
+
+    def _decline_rig(self):
+        seen = []
+
+        def live_play(chords, **kw):
+            seen.append(chords)
+            return play_chart.RunResult(stop="done")
+
+        return ToolRig(self.tmp, live_play=live_play), seen
+
+    def test_a_decline_mode_reaches_the_chords_and_the_reply_names_them(self):
+        t, seen = self._decline_rig()
+        score, dump = self._decline_files()
+        reply = t.tools.ch_play_chart(score, route="keys", decline_mode="kick_only",
+                                      dump_json=dump)
+        t.tools._play.thread.join(THREAD_CAP_S)
+        self.assertEqual([(c.lanes, c.declined) for c in seen[0]],
+                         [([Lane.RED], False), ([Lane.KICK], True)])
+        self.assertIn("declined (kick_only): chords 1", reply.splitlines())
+
+    def test_mode_nothing_leaves_the_declined_chord_no_lanes(self):
+        t, seen = self._decline_rig()
+        score, dump = self._decline_files()
+        t.tools.ch_play_chart(score, route="keys", decline_mode="nothing", dump_json=dump)
+        t.tools._play.thread.join(THREAD_CAP_S)
+        self.assertEqual(seen[0][1].lanes, [])
+
+    def test_path_index_reaches_the_decline_list(self):
+        t, seen = self._decline_rig()
+        score, dump = self._decline_files()
+        reply = t.tools.ch_play_chart(score, route="keys", decline_mode="nothing",
+                                      dump_json=dump, path_index=1)
+        t.tools._play.thread.join(THREAD_CAP_S)
+        self.assertEqual([c.declined for c in seen[0]], [False, False])
+        self.assertIn("declined (nothing): chords none", reply.splitlines())
+
+    def test_a_mode_other_than_the_two_names_is_refused(self):
+        t, seen = self._decline_rig()
+        score, dump = self._decline_files()
+        self.assertEqual(t.tools.ch_play_chart(score, route="keys", decline_mode="both",
+                                               dump_json=dump),
+                         'unknown decline mode "both"; modes: kick_only, nothing')
+        self.assertIsNone(t.tools._play)
+        self.assertEqual(seen, [])
+
+    def test_a_mode_with_no_dump_is_refused(self):
+        t, seen = self._decline_rig()
+        score, _dump = self._decline_files()
+        self.assertEqual(t.tools.ch_play_chart(score, route="keys", decline_mode="nothing"),
+                         "decline mode nothing needs dump_json, the path's hydra_replay dump")
+        self.assertIsNone(t.tools._play)
+        self.assertEqual(seen, [])
+
+    def test_a_path_the_dump_does_not_have_is_refused(self):
+        t, seen = self._decline_rig()
+        score, dump = self._decline_files()
+        reply = t.tools.ch_play_chart(score, route="keys", decline_mode="nothing",
+                                      dump_json=dump, path_index=2)
+        self.assertTrue(reply.startswith("could not read the fills to decline: IndexError"), reply)
+        self.assertIsNone(t.tools._play)
+
+    def test_with_no_mode_the_dump_is_not_read_and_every_chord_stays_whole(self):
+        t, seen = self._decline_rig()
+        score, _dump = self._decline_files()
+        reply = t.tools.ch_play_chart(score, route="keys",
+                                      dump_json=os.path.join(self.tmp, "no such dump.json"))
+        t.tools._play.thread.join(THREAD_CAP_S)
+        self.assertEqual([len(c.lanes) for c in seen[0]], [1, 2])
+        self.assertNotIn("declined", reply)
+
+    def test_the_status_counts_a_declined_chord_apart_from_the_misses(self):
+        row = {**ROWS[1], "hit": play_chart.DECLINED}
+
+        def live_play(chords, *, on_press, **kw):
+            on_press(ROWS[0])
+            on_press(row)
+            return play_chart.RunResult(stop="done", sent=1, hit=1, declined=1, max_streak=1)
+
+        t = ToolRig(self.tmp, live_play=live_play)
+        t.tools.ch_play_chart(self._score_json(), route="keys")
+        t.tools._play.thread.join(THREAD_CAP_S)
+        lines = t.tools.ch_play_status().splitlines()
+        self.assertIn("sent 1, hit 1, misses 0, best streak 1, declined 1", lines)
+        self.assertIn("  1, 1500.0, 1499.0, 50, 50, declined", lines)
+        self.assertFalse([line for line in lines if "jumped back" in line])
+
+    def test_the_running_status_does_not_count_a_declined_row_as_a_hit(self):
+        release = threading.Event()
+
+        def live_play(chords, *, on_press, **kw):
+            on_press({**ROWS[1], "hit": play_chart.DECLINED})
+            delivered.set()
+            release.wait(THREAD_CAP_S)
+            return play_chart.RunResult(stop="done")
+
+        delivered = threading.Event()
+        t = ToolRig(self.tmp, live_play=live_play)
+        t.tools.ch_play_chart(self._score_json(), route="keys")
+        self.assertTrue(delivered.wait(THREAD_CAP_S))
+        self.assertIn("running: 1 presses so far, 0 hit", t.tools.ch_play_status())
+        release.set()
+        t.tools._play.thread.join(THREAD_CAP_S)
+
     def test_the_status_rows_show_the_kit_columns_only_when_rows_carry_them(self):
         rows = [{**ROWS[0], "down_frame": 10, "up_frame": 12, "down_ms": 100, "up_ms": 113}]
 
