@@ -58,7 +58,7 @@ TEST_CASE("search: a later-ready path never knocks out one an upcoming fill stil
 
 TEST_CASE("Skipped fills: the 1.0 rule's offered fill is the one stored") {
     // Fill A (19200) was shown and passed over; fill B (24960) has the earlier
-    // 1.0 deadline and never spawned. The nearest-fill guess would name B.
+    // 1.0 deadline and never spawned. The fill nearest the activation is B.
     Song song = test::make_ch10_fill_song();
     ScoreGraph graph(song, 4, FillDeadlineRule::Ch10);
     EngineOptions opts;
@@ -144,8 +144,8 @@ TEST_CASE("search: a fill that needs a 70 ms early hit is taken as a required ea
     CHECK(act.e_difficulty() == std::optional<double>{70.0});
 }
 
-// The lasting order checks, on root paths. A tied variant still carries its
-// leader's list until finding 97 gets its own plan (Q3).
+// The lasting order checks, on root paths. A tied variant's list is checked
+// by lone pricing (test::lone_pricing in record_fixtures.h).
 TEST_CASE("Skipped fills: every corpus root passes over real fills in order") {
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
     int skipped = 0;

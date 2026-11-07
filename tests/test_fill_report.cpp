@@ -463,7 +463,7 @@ TEST_CASE("build_fill_html substitutes every placeholder") {
     CHECK(html.find("{k:'p11',     t:'" + new_rule + " path',") != std::string::npos);
     CHECK(html.find("__OLD_RULE__") == std::string::npos);
     CHECK(html.find("__NEW_RULE__") == std::string::npos);
-    // The search box keeps its hint, now written in from html_page.h (M07).
+    // The search box's hint comes from html_page.h.
     CHECK(html.find("placeholder=\"Search song, artist, or charter\">") != std::string::npos);
     CHECK(html.find("__SEARCH_HINT__") == std::string::npos);
     // Counts and deltas go through the page's shared fmt.
@@ -646,8 +646,7 @@ TEST_CASE("collect_fill_rows: a record under both rules with a score under one i
 TEST_CASE("generate_fill_report: a score on one side only is counted, and the parts add up") {
     // The subtitle and the tiles count the "in both" rows as one part, so
     // every chart lands in exactly one part. D114 item 2 words that part "in
-    // both, not both scored" (it was D52's "a score on one side only", which
-    // a chart with no paths on either side made false).
+    // both, not both scored".
     constexpr const char* kOneSided = "dd44ee55ff6677889900aa11bb22cc33";
     store::RecordStore store(":memory:");
     put_ch10(store, kBoth, 1000000, 3, "old-path-G");

@@ -79,8 +79,8 @@ TEST_CASE("fill landing: the extra tick applies on top of a user's slop of 0") {
 }
 
 // Fill B (D30): fills are placed after every chord is read. A fill whose next
-// fill starts before any chord reaches its end used to be forgotten; now both
-// land. Resolution 192: the window is 6 + 1 = 7 ticks.
+// fill starts before any chord reaches its end still lands, and so does the
+// next one. Resolution 192: the window is 6 + 1 = 7 ticks.
 TEST_CASE("fill landing: a fill is placed even when the next fill starts before its end chord (.chart)") {
     const std::vector<uint8_t> data = testchart::chart_bytes(testchart::section(
         "ExpertDrums",
@@ -128,7 +128,7 @@ TEST_CASE("fill landing: a fill is placed even when the next fill starts before 
 TEST_CASE("fill landing: an earlier chord before the fill start is no candidate") {
     // Fill 100-104. The chord at 99 is closer (5 ticks) but before the fill
     // start, so only the chord at 110 (6 ticks, inside the 7-tick window)
-    // can take it. Before D30 the fill was dropped.
+    // can take it.
     const std::vector<uint8_t> data = testchart::chart_bytes(testchart::section(
         "ExpertDrums",
         "  99 = N 1 0\n"
