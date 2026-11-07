@@ -84,8 +84,8 @@ uint64_t read_varlen(const uint8_t* data, size_t& pos, size_t end) {
 
 // mido's MAX_MESSAGE_LENGTH. mido's read_bytes raises for any meta or sysex
 // message longer than this, and nothing catches it, so mido refuses the whole
-// file. Hydra follows mido on broken files (user decision 27, 2026-09-24).
-// The cap also keeps `pos += length` from wrapping the read position.
+// file. Hydra refuses it too (D274 decision 25). The cap also keeps
+// `pos += length` from wrapping the read position.
 constexpr uint64_t kMaxMessageLength = 1000000;
 
 // A meta or sysex length. Throws MidiError, with mido's wording, past the cap.
@@ -102,7 +102,8 @@ uint8_t clip_data_byte(uint8_t b) {
     return b < kMidiDataValues ? b : uint8_t{kMidiDataValues - 1};
 }
 
-// Build the meta events hysong can act on; returns false to skip the rest.
+// Build the meta events the song parser can act on; returns false to skip the
+// rest.
 bool meta_message(int meta_type, const uint8_t* payload, size_t len,
                   int64_t time, Message* out) {
     if (meta_type == kSetTempoMeta && len == 3) {
@@ -117,8 +118,8 @@ bool meta_message(int meta_type, const uint8_t* payload, size_t len,
         out->type = MType::TimeSignature;
         out->time = time;
         out->numerator = payload[0];
-        // Stored as a power of two, as mido. An exponent past 30 has no int
-        // power, so it reads as 0, which the song parser refuses.
+        // Stored as a power of two, as mido. timesig_denominator owns the
+        // conversion and what an out-of-range exponent reads as.
         out->denominator = timesig_denominator(payload[1]);
         return true;
     }
@@ -196,9 +197,9 @@ void walk_chunks(const uint8_t* data, size_t size, int& format, int& ticks_per_b
 
 // The one walk over a track's bytes: deltas, running status, metas, sysex and
 // channel events, with every length check and throw. What to keep is left to
-// the callbacks. on_meta(meta_type, payload, payload_len, pending) sees every
-// meta; on_note(high_nibble, data1, data2, pending) sees every note-on and
-// note-off. Each returns true when it kept the message; the walk then starts
+// the callbacks. on_meta(meta_type, payload, plen, pending) sees every meta;
+// on_note(high, d1, d2, pending) sees every note-on and note-off.
+// Each returns true when it kept the message; the walk then starts
 // a fresh delta, so a dropped message hands its delta to the next kept one
 // and absolute time is preserved.
 template <class OnMeta, class OnNote>
