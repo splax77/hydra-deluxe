@@ -135,6 +135,21 @@ class ServerTest(unittest.TestCase):
         asyncio.run(server.call_tool("ch_kit_setup", {"player": "System"}))
         self.assertEqual(seen, [None, "System"])
 
+    def test_ch_kit_press_takes_value_and_passes_it_through(self):
+        self.assertEqual(self._schema("ch_kit_press")["value"]["default"], None)
+        seen = []
+        self.helper.kit.ch_kit_press = lambda *a: seen.append(a) or "pressed"
+        server = S.build_server(self.helper)
+        asyncio.run(server.call_tool("ch_kit_press", {"items": "green"}))
+        asyncio.run(server.call_tool("ch_kit_press", {"items": "green", "read": "Green",
+                                                      "value": 0.748}))
+        self.assertEqual(seen, [("green", None, None, None, None, None),
+                                ("green", None, None, None, "Green", 0.748)])
+
+    def test_ch_kit_press_says_what_value_does(self):
+        tools = {t.name: t for t in asyncio.run(S.build_server(self.helper).list_tools())}
+        self.assertIn("value sets", tools["ch_kit_press"].description)
+
     def test_status_joins_the_game_and_the_frida_lines(self):
         out = self.helper.ch_status().splitlines()
         self.assertIn("game: no run open, and no backup taken", out)

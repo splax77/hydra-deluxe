@@ -564,6 +564,35 @@ class GameToolsTest(unittest.TestCase):
         t.tools._play.thread.join(THREAD_CAP_S)
         self.assertNotIn("threshold", t.tools.ch_play_status())
 
+    def test_the_status_names_the_first_chord_pressed_from_the_oldest_row(self):
+        def live_play(chords, **kw):
+            for row in ({**ROWS[0], "index": 7, "chart_ms": 5398.0},
+                        {**ROWS[1], "index": 8, "chart_ms": 5600.0}):
+                kw["on_press"](row)
+            return play_chart.RunResult(stop="done", sent=2, hit=1)
+
+        t = ToolRig(self.tmp, live_play=live_play)
+        t.tools.ch_play_chart(self._score_json(), route="keys")
+        t.tools._play.thread.join(THREAD_CAP_S)
+        self.assertIn("first press chord index 7 at 5398.0 ms",
+                      t.tools.ch_play_status().splitlines())
+
+    def test_the_status_names_the_first_chord_while_the_run_goes_on(self):
+        t = ToolRig(self.tmp)
+        t.tools.ch_play_chart(self._score_json(), route="keys")
+        self.assertTrue(t.live_play.delivered.wait(THREAD_CAP_S))
+        self.assertIn("first press chord index 0 at 1000.0 ms",
+                      t.tools.ch_play_status().splitlines())
+        t.tools.ch_play_stop()
+        t.tools._play.thread.join(THREAD_CAP_S)
+
+    def test_the_status_says_when_no_chord_was_pressed(self):
+        t = ToolRig(self.tmp, live_play=lambda chords, **kw: play_chart.RunResult(stop="done"))
+        t.tools.ch_play_chart(self._score_json(), route="keys")
+        t.tools._play.thread.join(THREAD_CAP_S)
+        self.assertIn("first press: none, no chord was pressed",
+                      t.tools.ch_play_status().splitlines())
+
     # -- the auto-player ------------------------------------------------------------------
 
     def _score_json(self) -> str:

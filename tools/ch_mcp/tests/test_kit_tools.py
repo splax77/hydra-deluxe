@@ -229,7 +229,6 @@ class ConstantsTest(unittest.TestCase):
         self.assertEqual(K.KIT_HOLD_FRAMES, 2)
         self.assertEqual(K.KIT_SETUP_CAP_S, 10)
         self.assertEqual(K.KIT_PRESS_CAP_S, 1)
-        self.assertEqual(K.KIT_AXIS_VALUE, 1.0)
         self.assertEqual(K.KIT_WATCH_MAX_S, 60.0)
         self.assertEqual(K.KIT_DEFINITION_ID, 6)
         self.assertEqual(K.KIT_TAG, "hydra-kit")

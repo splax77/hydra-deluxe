@@ -91,9 +91,6 @@ KIT_SETUP_CAP_S = 10
 # How long one press gets to answer (question 3): a press replies once its
 # hold has passed, so a missing reply means the agent is gone or the game froze.
 KIT_PRESS_CAP_S = 1
-# The value a pad press writes to its axis: the probe's value (q8_pad.js).
-# LS-K4's compare says whether the game grades it as a velocity.
-KIT_AXIS_VALUE = 1.0
 # Whether a press writes its values again on every tick of its hold. One
 # write is enough: at live step LS-K1, presses of green held 1, 2 and 3
 # frames with rewrite off each read "Green on" from the frame after the down
