@@ -94,7 +94,7 @@ TEST_CASE("SP past the last note: backends measured from the tracked SP end") {
     const int64_t end_tick = 5376;
     const double end_ms = tick_ms(song, end_tick);
 
-    // The rows exist at all -- the bug this pins showed "Backends: None."
+    // The activation has rows even though its SP end is past the last note.
     REQUIRE(!act.backends.empty());
 
     // Every trailing note is before the SP end, so every offset is negative.
@@ -120,8 +120,8 @@ TEST_CASE("SP past the last note: backends measured from the tracked SP end") {
 TEST_CASE("SP past the last note: a mid-activation phrase extends the end") {
     // Same shape, but the note at 3840 completes an SP phrase during the
     // activation. That pushes the pending deactivation two measures out, from
-    // tick 5376 to 6912 -- an extension the measure-count fallback (2 measures
-    // per SP bar, from a meter still recorded as 2) cannot see.
+    // tick 5376 to 6912 -- an extension that counting 2 measures per SP bar,
+    // from a meter still recorded as 2, cannot see.
     Song song = mid_sp_phrase_song();
 
     ScoreGraph graph(song, 4);
@@ -144,8 +144,8 @@ TEST_CASE("SP past the last note: a mid-activation phrase extends the end") {
     REQUIRE(deact.has_value());
     CHECK(*deact == extended_tick);
     CHECK(*deact != plain_tick);
-    // The activation records no SqIn, so the old fallback would have landed
-    // on the plain end. Pin that the rows, not the reconstruction, answered.
+    // The activation records no SqIn, and a measure count from its meter lands
+    // on the plain end, so the extended end above came from no such count.
     CHECK(act.sqinouts.empty());
     CHECK(song.timing().plusmeasure(act.timecode, 4).ticks() == plain_tick);
 }
@@ -492,7 +492,7 @@ TEST_CASE("SP end history: a late squeeze-in is a SqIn step on its phrase") {
 }
 
 TEST_CASE("SP end history: an early squeeze-in measures from the end before it") {
-    // Part A's A2 case. The SqIn phrase at 5280 sits 250 ms before X = 5376.
+    // The SqIn phrase at 5280 sits 250 ms before the first SP end, 5376.
     Song song = test::sqin_then_collect_song();
     ScoreGraph graph(song, 4);
     const std::vector<Path> paths = run_search(graph, test::wide_search());
@@ -696,8 +696,7 @@ TEST_CASE("SP end history: a squeezed-out phrase leaves no step") {
 
 // A squeeze window can reach back past the activation when 500 ms spans more
 // than one SP bar. The phrases there were banked before SP started, so the
-// activation cannot squeeze them in or out (and before the rule, the SqIn
-// branch found no step to relabel and broke the search).
+// activation cannot squeeze them in or out.
 TEST_CASE("SP end history: no activation squeezes a phrase it banked before it started") {
     Song song = test::banked_phrase_window_song();
     ScoreGraph graph(song, 4);
@@ -711,8 +710,8 @@ TEST_CASE("SP end history: no activation squeezes a phrase it banked before it s
             CHECK(act.timecode.ticks() == 2304);
             CHECK_FALSE(act.sqout_tick.has_value());
             CHECK(act.sqinouts.empty());
-            // D4: the history is never empty, and SP ends where the banked
-            // bars put it.
+            // The history is never empty, and SP ends where the banked bars
+            // put it.
             CHECK((act.sp_end_steps ==
                    std::vector<SpEndStep>{{2304, 6912, SpEndKind::Activation}}));
             CHECK(act.deact_tick() == std::optional<int64_t>(6912));
@@ -757,7 +756,8 @@ TEST_CASE("SP end history: a variant never takes a squeeze on a phrase it banked
     CHECK(saw_late_variant);
 }
 
-// The lasting check on every corpus activation's history (R1, D4).
+// The lasting check on every corpus activation's history
+// (docs/adr/0021-the-sp-end-history-is-stored.md).
 TEST_CASE("SP end history: every corpus activation is consistent") {
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
     int acts = 0;
@@ -773,7 +773,7 @@ TEST_CASE("SP end history: every corpus activation is consistent") {
                 CAPTURE(p->pathstring());
                 CAPTURE(act.timecode.ticks());
                 ++acts;
-                // D4's condition: no fresh record leaves the history out.
+                // No fresh record leaves the history out.
                 REQUIRE_FALSE(act.sp_end_steps.empty());
                 CHECK(act.sp_end_steps.front().kind == SpEndKind::Activation);
                 CHECK(act.sp_end_steps.front().tick == act.timecode.ticks());
@@ -790,8 +790,8 @@ TEST_CASE("SP end history: every corpus activation is consistent") {
                     CHECK(act.refill_tick(k) <= prev.end_tick);
                     CHECK(act.refill_tick(k) >= prev.tick);
                 }
-                // Appendix B's first guarantee and D34: one SqIn step per
-                // SqIn, never repeated or squeezed out (tests/bank_check.h).
+                // D34: one SqIn step per SqIn, never repeated or squeezed out
+                // (tests/bank_check.h).
                 bank_check::check_one_step_per_sqin(act);
             }
         }
@@ -838,9 +838,8 @@ TEST_CASE("Bank: every corpus path banks in order") {
 
 // A deactivation edge keeps no rows of its own: its rows are a range of the
 // graph's one row list, read through ScoreGraph::edge_backends. The three
-// numbers were pinned from one run on c251abd, before the change: one row per
-// chart timestamp, the SP track's deactivation edges, and the rows those
-// edges held as their own copies then.
+// numbers are pinned from one run: one row per chart timestamp, the SP track's
+// deactivation edges, and the rows those edges hold.
 TEST_CASE("graph: a deactivation edge's rows are a range of the graph's rows") {
     const Song& song = corpus::song(corpus::first_chart_with_notes(), ChartReading{});
     const ScoreGraph graph(song, 4);

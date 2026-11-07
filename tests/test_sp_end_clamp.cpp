@@ -90,10 +90,9 @@ doctest::Approx ms(double v) { return doctest::Approx(v).epsilon(1e-9); }
 
 }  // namespace
 
-// D36 rewrote this case: the edge's own sqout_time and clamped flag are
-// gone, because where the end moved now has one answer, the path's own step.
-// So the step's facts are pinned: end 6528, Clamped, moved from 5376, which
-// can give 3456 back.
+// Where the end moved has one answer, the path's own step (D36). So the step's
+// facts are pinned: end 6528, Clamped, moved from 5376, which can give 3456
+// back.
 // Finding 37.
 TEST_CASE("SP end clamp: the squeeze-out edge expects extend_deacts' clamped end") {
     const Song song = build_fast_song(kOneActivation);
@@ -106,7 +105,7 @@ TEST_CASE("SP end clamp: the squeeze-out edge expects extend_deacts' clamped end
     // min(5376 + 1536, 3456 + 4 * 768) = 6528, and the ceiling won.
     const std::optional<SpExtension> x = extension_of(graph, 3456, 5376);
     REQUIRE(x.has_value());
-    CHECK(x->to_tick == 6528);  // was 6912
+    CHECK(x->to_tick == 6528);
     CHECK(x->clamped);
     CHECK(x->sqout_node);
 }
@@ -238,9 +237,9 @@ TEST_CASE("SP end clamp: a plain bar tying the ceiling squeezes out only for its
         const double own_ms = act == 1920 ? -200.0 : -225.0;  // 3456 against own_end
         INFO("activation at " << act);
         const std::vector<SqOutSeen> seen = sqouts_of(paths, 3456);
-        // The 2112 window was once offered the 4992 squeeze-out (-200 ms,
-        // record still 5184), and its SqIn branch then spent 3456, so its
-        // own squeeze-out at 5184 never came.
+        // Each window gets only its own end's squeeze-out. Were the 2112
+        // window offered the 4992 one (-200 ms), its SqIn branch would spend
+        // 3456, and its own squeeze-out at 5184 would never come.
         REQUIRE_FALSE(seen.empty());
         for (const SqOutSeen& s : seen) {
             CHECK(s.act_tick == act);
@@ -248,7 +247,7 @@ TEST_CASE("SP end clamp: a plain bar tying the ceiling squeezes out only for its
             CHECK(s.sqout_ms == ms(own_ms));
         }
         // Every squeeze this window shows, in or out, is 3456 measured from
-        // its own end: the fake SqIn sat at -200 ms on the 2112 window.
+        // its own end.
         for (const Path* p : flatten_paths(paths))
             for (const Activation& a : p->all_activations()) {
                 REQUIRE(a.timecode.ticks() == act);

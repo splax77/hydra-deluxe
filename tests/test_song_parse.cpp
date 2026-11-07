@@ -49,8 +49,9 @@ void check_invariants(const Song& song, const std::string& what,
                       FillCheck fill_check = FillCheck::Check) {
     bool ticks_ok = true, codes_ok = true, fills_ok = true;
     // A generated fill starts on its measure line, so its length may be 0 or
-    // negative (Song::check_activations, user answer 6 of 2026-10-12); the
-    // fill check below is for the chart's own fills only.
+    // negative (Song::check_activations); the fill check below is for the
+    // chart's own fills only. That length is answer 6 in
+    // docs/superpowers/plans/2026-10-12-one-record-per-chart.md (removed; `git show 444631e6:docs/superpowers/plans/2026-10-12-one-record-per-chart.md`).
     const bool generated = std::find(song.features.begin(), song.features.end(),
                                      "Auto-Generated Fills") != song.features.end();
     int64_t prev = -1;
@@ -328,9 +329,8 @@ TEST_CASE(".chart: the last note end is the latest N line's tick plus sustain in
 
 TEST_CASE("corpus: the last note end spans every instrument, through the tempo map") {
     // Neck Deep's bass runs past its drums; one of Chaotrope's other sections
-    // runs past its drums and its stated length. The ms are the plan's
-    // section 3 and 4 numbers (D255; docs/superpowers/plans/2026-10-18-song-length-end-event.md
-    // (removed; git show 444631e6:docs/superpowers/plans/2026-10-18-song-length-end-event.md)).
+    // runs past its drums and its stated length. The ms are the section 3 and
+    // 4 numbers of docs/superpowers/plans/2026-10-18-song-length-end-event.md (D255).
     struct Want {
         const char* file;
         int64_t tick;
@@ -830,7 +830,7 @@ TEST_CASE("a resolution that is 0 or negative is refused in both formats") {
 
 TEST_CASE("mid: kick velocity is read as ghost/accent, like a pad's") {
     // Clone Hero prices a velocity-1 kick as a ghost and a velocity-127 kick
-    // as an accent, both worth double. Hydra used to hand every kick Normal.
+    // as an accent, both worth double.
     auto drums_track = [](bool dynamics) {
         std::vector<std::vector<uint8_t>> ev;
         ev.push_back(testmidi::track_name("PART DRUMS"));
@@ -881,8 +881,8 @@ TEST_CASE("mid: kick velocity is read as ghost/accent, like a pad's") {
 }
 
 TEST_CASE("mid: Won't Get Fooled Again (O) has 36 ghost kicks") {
-    // The chart that proved the bug: Hydra called it 1,134,335 while a real FC
-    // on Hydra's own path scored 1,142,235. 36 velocity-1 kicks, no accents.
+    // A real FC on Hydra's own path scored 1,142,235 on this chart. It holds 36
+    // velocity-1 kicks and no accents.
     const std::string path =
         corpus::testdata_root() + "/midi/wgfa_onyxite/notes.mid";
     Song song = load_songpath(path, ChartReading{Difficulty::Expert});
@@ -900,18 +900,17 @@ TEST_CASE("mid: Won't Get Fooled Again (O) has 36 ghost kicks") {
     CHECK(ghost == 36);
     CHECK(accent == 0);
 
-    // Every chord code still round-trips, which is what the new ghost-kick
-    // codes have to prove. The fill check is skipped: this chart has a fill
-    // that starts on its own last note, so its activation length is 0 (true
-    // before the ghost-kick change and unrelated to it).
+    // Every chord code still round-trips, ghost kicks included. The fill check
+    // is skipped: this chart has a fill that starts on its own last note, so
+    // its activation length is 0.
     check_invariants(song, path, FillCheck::Skip);
 }
 
 TEST_CASE("mid: the marker pitch table is the one list the parser reads") {
-    // The marker pitches typed in the parser's switches before the table.
+    // The solo, flam, tom, SP and fill markers.
     for (int pitch : {103, 109, 110, 111, 112, 116, 120})
         CHECK_MESSAGE(is_midi_marker_pitch(pitch), pitch);
-    // The single and double drum lanes, added with Song::drum_lanes.
+    // The single and double drum lanes (Song::drum_lanes).
     for (int pitch : {126, 127}) CHECK_MESSAGE(is_midi_marker_pitch(pitch), pitch);
     // Expert's 2x kick (95), kick (96) and Green (100), and the pitches on
     // either side of the solo and fill markers.
@@ -969,16 +968,15 @@ TEST_CASE(".chart: [Song] Offset is read in seconds") {
     CHECK_FALSE(plain.chart_offset_s.has_value());
 }
 
-// ---- the parsers' hand matchers against the regexes they replaced ----------
+// ---- the parsers' hand matchers against pinned tables ----------------------
 //
-// The parsers used std::regex for the disco-flip markers and the .chart section
-// header, and still match them exactly as those regexes did. All of them match
-// by hand now, for speed. The disco and section-header cases read their
-// expected answers from tables pinned from those regexes on 2026-10-10 at
-// 013f4c66; the regexes themselves are gone. The dynamics tag is Clone Hero's
-// two exact strings (finding 64, D24), so its cases check against those two
-// strings. Every case drives the real parsers with strings built around every
-// byte value, so any difference in what matches shows up.
+// The parsers match the disco-flip markers and the .chart section header by
+// hand, for speed, and must agree with std::regex patterns that are not in the
+// code. The disco and section-header cases read their expected answers from
+// tables pinned from one run of those patterns. The dynamics tag is Clone
+// Hero's two exact strings (finding 64, D24), so its cases check against those
+// two strings. Every case drives the real parsers with strings built around
+// every byte value, so any difference in what matches shows up.
 
 namespace {
 
@@ -1089,8 +1087,8 @@ TEST_CASE(".mid: disco markers match the regexes they replaced") {
 TEST_CASE(".chart: section headers are found as the regex found them") {
     // The first line outside a section must hold a `[name]`. No header throws
     // ChartFileError; a header that is not [Song] leaves the chart without its
-    // [Song] section, which is also a ChartFileError (no Resolution). Each line's outcome was pinned
-    // from the regex the parser replaced, on 2026-10-10 at 013f4c66.
+    // [Song] section, which is also a ChartFileError (no Resolution). Each
+    // line's outcome is pinned from one run of a std::regex pattern.
     enum class Outcome { NoHeader, SongHeader, OtherHeader };
     struct HeaderCase {
         const char* line;
@@ -1272,8 +1270,8 @@ namespace {
 
 std::string edge_dir() { return corpus::testdata_root() + "/parse_edge/"; }
 
-// One expected line, split at its tabs. The middle field hydra_bench writes
-// (the parse time) was taken out when the file was captured.
+// One expected line, split at its tabs. The expected files leave out the parse
+// time hydra_bench writes after the name.
 struct EdgeExpect {
     std::string file;
     uint64_t hash = 0;
