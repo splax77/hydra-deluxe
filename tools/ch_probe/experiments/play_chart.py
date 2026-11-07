@@ -429,9 +429,10 @@ def write_press_log(path: str, rows: Sequence[dict]) -> None:
 
 # --- the live script ------------------------------------------------------------
 
-def _find_engine(proc, out: Optional[TextIO] = None) -> int:
-    """The playing song's engine object, through the capped finder. The
-    finder's progress dots go to `out` (stdout when None).
+def find_normal_engine(proc, out: Optional[TextIO] = None) -> int:
+    """The playing song's engine object, through the capped finder, over the
+    normal-mode pattern only: the auto-player does not play a precision-mode
+    engine. The finder's progress dots go to `out` (stdout when None).
     LIVE-ONLY: scans the game's memory."""
     return engine_finder.find_live_engine_capped(
         proc, [engine_finder.normal_pattern(proc)], out=out)
@@ -475,7 +476,7 @@ def live_play(chords: Sequence[Chord], *,
     out = sys.stdout if out is None else out
     if find_engine is None:
         def find_engine(proc) -> int:
-            return _find_engine(proc, out=out)
+            return find_normal_engine(proc, out=out)
     print("\nConnecting to Clone Hero...", file=out)
     proc = open_proc(read_only=True)
     try:

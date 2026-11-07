@@ -128,8 +128,15 @@ def find_run_engine(proc) -> int:
     auto-player's search, not the watch's: sp_watch.find_engine_live scans the
     game's memory once for each window pattern, which the first press cannot
     wait for, and the patterns only it scans for are ones the auto-player
-    never plays on."""
-    return play_chart._find_engine(proc, out=io.StringIO())
+    never plays on. A run with no normal-mode engine (no song playing, or a
+    precision-mode one) ends here as the search's timeout, so the reply says
+    which engines were searched."""
+    try:
+        return play_chart.find_normal_engine(proc, out=io.StringIO())
+    except engine_finder.EngineSearchTimeout as e:
+        raise engine_finder.EngineSearchTimeout(
+            f"{e} (ch_run_chart searched normal-mode engines only, as ch_play_chart does; "
+            "a precision-mode engine is not found here)") from e
 
 
 def first_press_line(rows: Sequence[dict]) -> str:
@@ -690,13 +697,20 @@ class GameTools:
             play = _PlaySession(score_json=score_json, chord_count=len(chords), log_path=None,
                                 cap_s=cap_s, press=press, find_engine=lambda _proc: engine)
             self._start_play(play, chords)
-            play.pressed.wait(cap_s)
+            first_press_in_time = play.pressed.wait(cap_s)
             rows = list(play.rows)
             if not rows:
                 play.stop.set()
                 self._wait_thread(play.thread, READ_CAP_S)
-                return self._run_stopped(lines, "play", began, "\n".join(self._play_lines(play)),
-                                         parts.kit.ch_kit_teardown())
+                said = self._play_lines(play)
+                if not first_press_in_time:
+                    said.insert(0, f"no press inside the run cap of {cap_s:g} s; the call "
+                                   "stopped the run")
+                # The watch goes with the kit, so a second ch_run_chart is not
+                # refused for a watch still running.
+                return self._run_stopped(lines, "play", began, "\n".join(said),
+                                         parts.kit.ch_kit_teardown() + "\n"
+                                         + parts.sp.ch_sp_watch_stop())
             lines.append(f"play: ok, {self._seconds_since(began)} to the first press, "
                          f"{len(chords)} chords from {score_json}, run cap {cap_s:g} s")
             if decline_mode is not None:

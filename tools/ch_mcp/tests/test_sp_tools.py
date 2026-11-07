@@ -21,6 +21,7 @@ import threading
 import time
 import types
 import unittest
+from unittest import mock
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.abspath(os.path.join(_HERE, "..", "..", ".."))
@@ -350,6 +351,22 @@ class SpToolsTest(unittest.TestCase):
         engine_ptr, text = self.tools().watch_for_run(300.0, no_song)
         self.assertIsNone(engine_ptr)
         self.assertIn(f"watcher ended: {NO_SONG}", text)
+
+    def test_watch_for_run_stops_a_search_that_outlasts_its_cap_and_says_so(self):
+        release = threading.Event()
+
+        def stuck(proc):
+            release.wait(WAIT_S)
+            raise F.EngineSearchTimeout(NO_SONG)
+
+        tools = self.tools()
+        with mock.patch.object(sp_tools.engine_finder, "ENGINE_SEARCH_CAP_S", 0.05), \
+                mock.patch.object(sp_tools, "READ_CAP_S", 0.05):
+            engine_ptr, text = tools.watch_for_run(300.0, stuck)
+        release.set()
+        self.assertIsNone(engine_ptr)
+        self.assertIn("did not settle in 0.1 s", text)
+        self.assertIn("the watch was stopped", text)
 
     def test_watch_for_run_says_why_when_the_game_cannot_be_opened(self):
         tools = self.tools()

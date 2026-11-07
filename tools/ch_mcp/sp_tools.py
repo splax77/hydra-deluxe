@@ -213,10 +213,13 @@ class SpTools:
             if self._watch is not None and self._watch.running():
                 return None, WATCH_RUNNING
             w = self._launch(cap_s, None, find_engine)
-            w.settled.wait(engine_finder.ENGINE_SEARCH_CAP_S + READ_CAP_S)
-            if w.settled.is_set() and w.engine is not None and w.error is None:
+            cap = engine_finder.ENGINE_SEARCH_CAP_S + READ_CAP_S
+            if w.settled.wait(cap) and w.engine is not None and w.error is None:
                 return w.engine, w.csv_line()
-            return None, "\n".join(self._stop_lines(w))
+            lines = [] if w.settled.is_set() else [
+                f"the watch's engine search did not settle in {cap:g} s "
+                "(engine_finder.ENGINE_SEARCH_CAP_S + READ_CAP_S); the watch was stopped"]
+            return None, "\n".join(lines + self._stop_lines(w))
 
     def ch_sp(self) -> str:
         """The latest read the watcher made, as sp_lines, then the watch's

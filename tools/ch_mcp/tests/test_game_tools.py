@@ -913,6 +913,10 @@ class GameToolsTest(unittest.TestCase):
             self.events.append(("watch", cap_s, find_engine))
             return self.engine, "csv: w.csv" if self.engine else "watcher ended: no song"
 
+        def ch_sp_watch_stop(self):
+            self.events.append("watch stop")
+            return "watcher ended: stopped"
+
     def _chain_rig(self, live_play=None, *, attaches=True, press=None, engine=ENGINE):
         events = []
         seen = {}
@@ -965,7 +969,7 @@ class GameToolsTest(unittest.TestCase):
         self.assertEqual(seen["cap_s"], GT.run_cap_s(t.r.song))
 
     def test_the_search_is_the_auto_players_with_its_dots_kept_off_stdout(self):
-        with mock.patch.object(play_chart, "_find_engine", return_value=self.ENGINE) as find:
+        with mock.patch.object(play_chart, "find_normal_engine", return_value=self.ENGINE) as find:
             self.assertEqual(GT.find_run_engine("a proc"), self.ENGINE)
         self.assertEqual(find.call_args.args, ("a proc",))
         self.assertIsNot(find.call_args.kwargs["out"], None)
@@ -1056,10 +1060,43 @@ class GameToolsTest(unittest.TestCase):
 
         t, events, _seen = self._chain_rig(live_play)
         reply = self._run(t)
-        self.assertEqual(events[-1], "teardown")
+        self.assertEqual(events[-2], "teardown")
         self.assertRegex(reply, r"play: FAILED after .* s; the run stopped at play")
         self.assertIn("first press: none, no chord was pressed", reply)
         self.assertIn("no song", reply)
+
+    def test_a_player_that_ends_with_no_press_stops_the_watch_too(self):
+        def live_play(chords, **kw):
+            return play_chart.RunResult(stop=play_chart.STOP_NO_ENGINE, message="no song")
+
+        t, events, _seen = self._chain_rig(live_play)
+        reply = self._run(t)
+        self.assertEqual(events[-2:], ["teardown", "watch stop"])
+        self.assertTrue(reply.endswith("watcher ended: stopped"), reply)
+
+    def test_a_run_that_never_presses_ends_at_the_run_cap_and_says_so(self):
+        def live_play(chords, *, should_stop, **kw):
+            while not should_stop():
+                time.sleep(0.005)
+            return play_chart.RunResult(stop="stopped")
+
+        t, events, _seen = self._chain_rig(live_play)
+        with mock.patch.object(GT, "run_cap_s", return_value=0.05):
+            reply = t.tools.ch_run_chart(t.r.song, self._score_json(), "System")
+        self.assertIn("no press inside the run cap of 0.05 s; the call stopped the run", reply)
+        self.assertEqual(events[-2:], ["teardown", "watch stop"])
+        self.assertFalse(t.tools._play.running())
+
+    def test_the_search_timeout_names_the_engines_it_searched(self):
+        def times_out(proc, patterns, **kw):
+            raise GT.engine_finder.EngineSearchTimeout("no playing song found in 120 s")
+
+        with mock.patch.object(GT.engine_finder, "find_live_engine_capped", times_out), \
+                mock.patch.object(GT.engine_finder, "normal_pattern", return_value=(b"", b"")):
+            with self.assertRaises(GT.engine_finder.EngineSearchTimeout) as caught:
+                GT.find_run_engine("a proc")
+        self.assertIn("no playing song found in 120 s", str(caught.exception))
+        self.assertIn("normal-mode engines only", str(caught.exception))
 
     def test_a_player_that_raises_is_named_and_tears_the_kit_down(self):
         def live_play(chords, **kw):
@@ -1067,7 +1104,7 @@ class GameToolsTest(unittest.TestCase):
 
         t, events, _seen = self._chain_rig(live_play)
         reply = self._run(t)
-        self.assertEqual(events[-1], "teardown")
+        self.assertEqual(events[-2], "teardown")
         self.assertIn("ended: failed: ValueError: no ghost press is possible", reply)
 
     def test_the_chain_is_refused_while_a_play_session_runs(self):
