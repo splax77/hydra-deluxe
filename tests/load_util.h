@@ -1,7 +1,7 @@
 // The chart loaders as the tests call them. parse/song.h's loaders take the
 // rules and the fill rule with no default, so production code that forgets
-// the fill rule fails to compile (D115 TJ-3: the Preview read 1.1 fills under
-// the "1.0 fills" setting that way). Tests mostly read charts the way the
+// the fill rule fails to compile (D115: the Preview read 1.1 fills under the
+// "1.0 fills" setting that way). Tests mostly read charts the way the
 // app's default settings do, so this header names their fill rule once,
 // kTestFillRule, and gives each loader the shorter forms the tests used
 // before. A test about another game version's fills passes its rule to the

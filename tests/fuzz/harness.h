@@ -3,7 +3,7 @@
 // A fuzzer hands Hydra random bytes. A parser that turns them away with an
 // exception is doing its job; anything else (a crash, an AddressSanitizer
 // report, a hang, an abort) is a bug. Each tests/fuzz/fuzz_<name>.cpp passes
-// its bytes to run_one with one entry from kTargets. A doctest can include
+// its bytes to run_one with its parse_<name> function. A doctest can include
 // this header too and replay saved crash files through the same body, so what
 // counts as "rejected properly" is written once, here.
 //

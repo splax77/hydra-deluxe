@@ -2,9 +2,7 @@
 // testdata/audio lives, its bytes, the FLAC fixture with its length zeroed, a
 // small ID3 tag, a PCM16 WAV writer, a block
 // reader and a sample-difference measure for a MixSource, a rough frequency
-// check for the 220 Hz sine fixtures, and a recognizable stereo ramp. Audit
-// finding 277: test_audio_decode.cpp, test_audio_mixer.cpp and
-// test_stream_mix.cpp each kept their own copies before.
+// check for the 220 Hz sine fixtures, and a recognizable stereo ramp.
 
 #ifndef HYDRA_TESTS_AUDIO_UTIL_H
 #define HYDRA_TESTS_AUDIO_UTIL_H

@@ -1,4 +1,4 @@
-// A tiny .chart carrying four different difficulty sections, shared by the
+// A tiny .chart carrying three different difficulty sections, shared by the
 // parser tests and the container (.sng/.srb) pass-through tests.
 //
 // Expert, Hard and Easy are deliberately different from each other, and there

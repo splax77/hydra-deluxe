@@ -33,10 +33,10 @@ inline bool analyzes(const Song& song, const app::AnalysisSettings& cfg, HydraRe
     }
 }
 
-// The reviewer's fuzz chart shape (review-sqout fuzz.cpp), on a fixed
-// generator so the charts are the same on every build: four measures at
-// 120 BPM with two or three phrases, then 2,000 or 4,000 BPM from a random
-// tick, with 12 to 30 random notes that are phrases, fills or plain.
+// The fuzz chart shape, on a fixed generator so the charts are the same on
+// every build: four measures at 120 BPM with two or three phrases, then 2,000
+// or 4,000 BPM from a random tick, with 12 to 30 random notes that are
+// phrases, fills or plain.
 struct FuzzChart {
     std::string text;
     int cap = 2;
