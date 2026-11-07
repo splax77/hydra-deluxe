@@ -848,7 +848,7 @@
           "why": "chord_text, the owner"
         }
       ],
-      "note": "---- how a SqOut refusal names a chord (REPLAYTIE review) ---- resolve_sqout_note's refusals list chords through one local lambda; a second hand-written format would drift from it."
+      "note": "---- how a SqOut refusal names a chord ----resolve_sqout_note's refusals list chords through one local lambda; a second hand-written format would drift from it."
     },
     {
       "question": "How is a count written next to its noun?",
@@ -886,7 +886,7 @@
           "why": "has_have, the owner"
         }
       ],
-      "note": "---- counts and whole-ms timings (phase 3 task O1) ---- A test on exactly 1 that picks a word, or a number with \" bar\" or \" bars\" typed after it. counted owns the rule and has_have the verb a sentence puts after such a count. \"score higher\" is the verb after a count of charts, not a noun."
+      "note": "---- counts and whole-ms timings ----A test on exactly 1 that picks a word, or a number with \" bar\" or \" bars\" typed after it. counted owns the rule and has_have the verb a sentence puts after such a count. \"score higher\" is the verb after a count of charts, not a noun."
     },
     {
       "question": "How is a timing written in whole ms?",
@@ -1875,7 +1875,7 @@
         "\": set SP cap to \" + cap + \", analyze them, then compare again.\";",
         "\"SP cap 40\""
       ],
-      "note": "---- report pages (phase 7 task RP) ---- Clone Hero's SP cap written as text, where the leaderboard page names it."
+      "note": "---- report pages ----Clone Hero's SP cap written as text, where the leaderboard page names it."
     },
     {
       "question": "What is the hit window?",
@@ -2149,7 +2149,7 @@
       "scope": [
         "src"
       ],
-      "note": "---- phase 6 task J3-2: the graph, the engine and the replay ---- The engine's message \"a variant under kSpActivationBars at its fold passed a fill\" names the constant and is not a comparison."
+      "note": "---- the graph, the engine and the replay ----The engine's message \"a variant under kSpActivationBars at its fold passed a fill\" names the constant and is not a comparison."
     },
     {
       "question": "How is a little-endian number written byte by byte? (any width or name)",
@@ -2254,7 +2254,7 @@
           "why": "BackendSqueeze::offset, the owner"
         }
       ],
-      "note": "---- the J3 join's leftovers (task J3-9) ---- The J3-1 offset row above catches the value_or fallback; this one catches a bare dereference of the same optional. The star must follow an opening, an operator or return, so a product with a local named offset_ms is not flagged. Tests pin stored offsets and stay out of scope."
+      "note": "The J3-1 offset row above catches the value_or fallback; this one catches a bare dereference of the same optional. The star must follow an opening, an operator or return, so a product with a local named offset_ms is not flagged. Tests pin stored offsets and stay out of scope."
     },
     {
       "question": "Which position does a backend row take when the Paths tab prices it?",
@@ -2281,7 +2281,7 @@
       "scope": [
         "src"
       ],
-      "note": "---- phase 6 tasks J3-3, J3-4 and J3-5 ---- A line that asks sqout_position for the position, as Activation::is_sqout_backend does, passes."
+      "note": "A line that asks sqout_position for the position, as Activation::is_sqout_backend does, passes."
     },
     {
       "question": "How is wide text converted to UTF-8 in a test?",

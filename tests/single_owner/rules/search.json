@@ -246,7 +246,7 @@
           "why": "fill_rule_name, the owner: Clone Hero 1.1's two names"
         }
       ],
-      "note": "---- one name per fill rule (phase 3 task O3a) ---- A quoted string (C++ or the reports' JavaScript and HTML) whose first word is a game version's name is a label for a fill rule. A sentence that only mentions the version later on is prose, and a trailing // comment is not a label, so neither is flagged. The \"1.0 fills\" checkbox keeps its own words (docs/adr/0010)."
+      "note": "---- one name per fill rule ----A quoted string (C++ or the reports' JavaScript and HTML) whose first word is a game version's name is a label for a fill rule. A sentence that only mentions the version later on is prose, and a trailing // comment is not a label, so neither is flagged. The \"1.0 fills\" checkbox keeps its own words (docs/adr/0010)."
     },
     {
       "question": "Which fill rule does a legacy_fills flag mean?",
@@ -415,7 +415,7 @@
       "scope": [
         "tests"
       ],
-      "note": "---- phase 6 task J4-5: unit tests read production constants ---- A test that types the 1.1 deadline's tick math again instead of pinning the ms from one run."
+      "note": "---- unit tests read production constants ----A test that types the 1.1 deadline's tick math again instead of pinning the ms from one run."
     },
     {
       "question": "What is the default search depth?",

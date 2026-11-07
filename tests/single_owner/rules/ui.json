@@ -25,7 +25,7 @@
           "why": "kDimTextColor, the owner"
         }
       ],
-      "note": "---- named UI colours (phase 3 task C4b) ---- A colour typed as numbers, in ImVec4 (n / 255.0f) or IM_COL32 form. theme.h names each one once; everything else reads the name."
+      "note": "---- named UI colours ----A colour typed as numbers, in ImVec4 (n / 255.0f) or IM_COL32 form. theme.h names each one once; everything else reads the name."
     },
     {
       "question": "Which teal is the hover colour for buttons, frames and headers?",
@@ -104,7 +104,7 @@
         "now - details_ui.file_checked_at >= kFileCheckSeconds) {",
         "if (copied_at >= 0.0 && ImGui::GetTime() - copied_at < AppState::kCopiedSeconds) {"
       ],
-      "note": "---- named UI timings (phase 3 task C4b) ---- A time-since (now - x, or ImGui::GetTime() - x) compared against a bare number of seconds. AppState names each one beside kFileCheckSeconds; everything else reads the name."
+      "note": "---- named UI timings ----A time-since (now - x, or ImGui::GetTime() - x) compared against a bare number of seconds. AppState names each one beside kFileCheckSeconds; everything else reads the name."
     },
     {
       "question": "What does the Preview say when the chart changed since it was analyzed?",
@@ -243,7 +243,7 @@
           "why": "status_label, the owner"
         }
       ],
-      "note": "---- phase 3 wave C owners (derive-once review of M_C) ---- A status word typed in quotes. The library chips, the Best path cell and the uitest state dump all ask status_label."
+      "note": "A status word typed in quotes. The library chips, the Best path cell and the uitest state dump all ask status_label."
     },
     {
       "question": "What does a status chip's button label read?",
@@ -339,7 +339,7 @@
           "why": "PreviewController::playback_end_ms, the owner"
         }
       ],
-      "note": "---- the Preview, round 2 (derive-once review of M_D, phase 3 task FX2-P) ---- The transport's length read straight off it, beside the accessor that names it as where playback stops."
+      "note": "---- the Preview ----The transport's length read straight off it, beside the accessor that names it as where playback stops."
     },
     {
       "question": "How is a progress bar's percent written?",
@@ -642,7 +642,7 @@
         "src",
         "tests"
       ],
-      "note": "---- app state, jobs and the toolbar (phase 6 task J2-4) ---- A batch or analyze job tested for \"held and not finished\". The scan job's guard is a different job with no owner yet; the GUI harness's dump prints each job's state, a different question."
+      "note": "---- app state, jobs and the toolbar ----A batch or analyze job tested for \"held and not finished\". The scan job's guard is a different job with no owner yet; the GUI harness's dump prints each job's state, a different question."
     },
     {
       "question": "How many charts does the library hold?",
@@ -878,7 +878,7 @@
       "scope": [
         "src"
       ],
-      "note": "---- app state, library screen and toolbar (phase 7 task LB2) ---- A row's notespath compared with the selection's. Tests that check which song a click selected read the selection first and are left alone."
+      "note": "---- app state, library screen and toolbar ----A row's notespath compared with the selection's. Tests that check which song a click selected read the selection first and are left alone."
     },
     {
       "question": "What tells one library row from another?",
