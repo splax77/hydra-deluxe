@@ -44,8 +44,14 @@ SETTINGS = "settings.ini"
 # question 3, answered 2026-10-31: back them up now). The game keeps them in
 # the Documents folder; its LocalLow copies are only read (page 07, IN-70),
 # so they are not backed up.
-DOCUMENTS_FILES = (SETTINGS, SCORESTATS, "profiles.ini", "profiles.bin")
+PROFILE_FILES = ("profiles.ini", "profiles.bin")
+DOCUMENTS_FILES = (SETTINGS, SCORESTATS) + PROFILE_FILES
 LOCALLOW_FILES = ("scoredata.bin", "scoresext.bin", "user.bin")
+# The files a restore of an abandoned run's backup leaves as they are, because
+# the backup may be older than the user's play (the user's ruling on the reload
+# plan's question 9, "Leave score files"). The only home of this set: the
+# restore's lines and game_tools' adoption line both read it.
+KEPT_FILES = PROFILE_FILES + LOCALLOW_FILES
 
 BACKUP_PREFIX = "backup-"
 BACKUP_MANIFEST = "backup.json"
@@ -192,14 +198,21 @@ def _restore_one(backup_dir: str, e: _Entry) -> str:
     return f"{e.name}: absent before the run; the game's new copy moved to {aside}"
 
 
-def restore(backup_dir: str, *, out: Callable[[str], None] = print) -> list[str]:
+def restore(backup_dir: str, *, out: Callable[[str], None] = print,
+            leave: Sequence[str] = ()) -> list[str]:
     """Put every file named in `backup_dir`'s manifest back where it came
-    from, byte for byte, printing one line per file. Stops at the first file
+    from, byte for byte, printing one line per file. A file named in `leave`
+    is not touched and gets a line saying why. Stops at the first file
     that fails, raising RestoreError with its name; the files after it are
     left as they are. The registry entry is not a file: restore_all() puts
     it back too, and bot_run's restore is its only caller."""
     lines = []
     for e in _read_manifest(backup_dir):
+        if e.name in leave:
+            line = f"{e.name}: left as it is, because the backup may be older than your play"
+            out(line)
+            lines.append(line)
+            continue
         try:
             line = _restore_one(backup_dir, e)
         except OSError as err:
@@ -210,12 +223,13 @@ def restore(backup_dir: str, *, out: Callable[[str], None] = print) -> list[str]
 
 
 def restore_all(backup_dir: str, *, run_reg: Optional[RegRunner],
-                out: Callable[[str], None] = print) -> list[str]:
+                out: Callable[[str], None] = print,
+                leave: Sequence[str] = ()) -> list[str]:
     """restore(), then restore_registry(), for a backup that may hold the
     key. With the key in the manifest and no `run_reg` this raises
     RestoreError, so the key is never left out without a word. Stops at the
-    first failure."""
-    lines = restore(backup_dir, out=out)
+    first failure. `leave` is restore()'s."""
+    lines = restore(backup_dir, out=out, leave=leave)
     return lines + restore_registry(backup_dir, run_reg=run_reg, out=out)
 
 

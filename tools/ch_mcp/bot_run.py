@@ -45,7 +45,7 @@ import sys
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Any, Callable, List, Optional, Protocol
+from typing import Any, Callable, List, Optional, Protocol, Sequence
 
 if __package__ in (None, ""):
     # Run as a script (py -I leaves the repo off sys.path).
@@ -810,13 +810,13 @@ def exit_check(run: Run, env: Optional[Env] = None) -> None:
     env.out(f"game exited after {env.now() - start:.0f} s")
 
 
-def _restore(backup_dir: str, env: Env) -> bool:
+def _restore(backup_dir: str, env: Env, leave: Sequence[str] = ()) -> bool:
     """Put the user files back, then the registry key when the backup holds
-    it. On a failure, print the file and the error and return False; the
-    caller then stops."""
+    it; a file named in `leave` stays as it is. On a failure, print the file
+    and the error and return False; the caller then stops."""
     env.out(f"restoring the user files from {backup_dir}")
     try:
-        game_files.restore_all(backup_dir, out=env.out, run_reg=env.run_reg)
+        game_files.restore_all(backup_dir, out=env.out, run_reg=env.run_reg, leave=leave)
     except game_files.RestoreError as e:
         env.out(f"restore failed on {e.name}: {e.error}")
         env.out(f"stopped; the backup is still in {backup_dir}")
@@ -890,9 +890,12 @@ def run_bot(song_dir: str, out_dir: str, *, player: str = DEFAULT_PLAYER,
     return 0 if copied is not None else 1
 
 
-def restore_only(backup_dir: str, env: Optional[Env] = None) -> int:
+def restore_only(backup_dir: str, env: Optional[Env] = None,
+                 leave: Sequence[str] = ()) -> int:
+    """Restore `backup_dir`: 0 when it worked, 2 when a file failed. `leave`
+    is game_files.restore's list of files to skip."""
     env = env or Env()
-    return 0 if _restore(backup_dir, env) else 2
+    return 0 if _restore(backup_dir, env, leave) else 2
 
 
 def main(argv: Optional[list[str]] = None) -> int:

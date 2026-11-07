@@ -62,6 +62,9 @@ def fake_worker(mode: str, settings_path: str | None = None) -> None:
         return
     if mode == "exits_at_start" or settings.get("exit_at_start"):
         os._exit(3)
+    if mode == "raw":
+        raw_worker()
+        return
 
     import asyncio
     import atexit
@@ -143,6 +146,40 @@ def fake_worker(mode: str, settings_path: str | None = None) -> None:
 
     print(WORKER_STDERR_LINE, file=sys.stderr, flush=True)
     server.run("stdio")
+
+
+def raw_worker() -> None:
+    """A hand-written worker, so a test controls every byte on its stdout. The
+    tool `junk_then_reply` writes lines that are not replies and then replies;
+    `close_output` closes stdout, never replies and stays alive."""
+    out = sys.stdout.buffer
+
+    def write(message: dict) -> None:
+        out.write(json.dumps(message).encode("utf-8") + b"\n")
+        out.flush()
+
+    for line in sys.stdin.buffer:
+        message = json.loads(line)
+        method, number = message.get("method"), message.get("id")
+        if method == "initialize":
+            write({"jsonrpc": "2.0", "id": number, "result": {
+                "protocolVersion": "2025-11-25", "capabilities": {"tools": {}},
+                "serverInfo": {"name": "raw", "version": "1"}, "instructions": WORKER_INSTRUCTIONS}})
+        elif method == "tools/list":
+            schema = {"type": "object", "properties": {}}
+            write({"jsonrpc": "2.0", "id": number, "result": {"tools": [
+                {"name": name, "description": name, "inputSchema": schema}
+                for name in ("junk_then_reply", "close_output", "my_pid")]}})
+        elif method == "tools/call":
+            name = message["params"]["name"]
+            if name == "close_output":
+                os.close(1)
+                time.sleep(FAKE_LIFE_S)
+            if name == "junk_then_reply":
+                for junk in (b"not json\n", b"[1]\n", b'{"id": [1]}\n', b"\xff\xfe\n"):
+                    out.write(junk)
+            text = "after junk" if name == "junk_then_reply" else str(os.getpid())
+            write({"jsonrpc": "2.0", "id": number, "result": {"content": [{"type": "text", "text": text}]}})
 
 
 def worker_command(mode: str, python: str = sys.executable, settings: str | None = None) -> list[str]:
@@ -717,6 +754,27 @@ class ChCallTest(FrontCase):
 
         self.write_settings()
         self.assertEqual(front.text("ch_call", {"tool": "ch_state", "args": {}}), "fake state")
+
+
+class WorkerOutputTest(FrontCase):
+    def test_lines_that_are_not_replies_are_skipped_and_the_call_still_answers(self) -> None:
+        front = self.front(worker_command("raw"))
+        front.hello()
+        self.assertEqual(front.call("junk_then_reply")["content"][0]["text"], "after junk")
+        self.assertIn("not JSON-RPC", front.stderr())
+
+    def test_a_worker_that_closes_its_output_fails_the_open_call_and_is_replaced(self) -> None:
+        front = self.front(worker_command("raw"))
+        front.hello()
+        first_pid = front.call("my_pid")["content"][0]["text"]
+
+        result = front.call("close_output")
+
+        self.assertTrue(result["isError"])
+        text = result["content"][0]["text"]
+        self.assertIn("close_output: the worker closed its output while it still ran", text)
+        self.assertIn("started a new worker", text)
+        self.assertNotEqual(front.call("my_pid")["content"][0]["text"], first_pid)
 
 
 class FrontExitTest(FrontCase):

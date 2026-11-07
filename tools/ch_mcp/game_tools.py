@@ -18,6 +18,7 @@ launched_at, session_dir, add_stop_hook and play_snapshot.
 
 from __future__ import annotations
 
+import ctypes
 import dataclasses
 import io
 import json
@@ -42,6 +43,19 @@ from tools.ch_probe.input_driver import (
 INSTALL_CAP_S = 60.0
 
 SCRATCH_PREFIX = "ch_live_"
+# The file under the temp root that names an open backup and the worker holding
+# it, so a worker killed before its restore leaves the next worker a way back to
+# the user's files (docs/superpowers/plans/2026-11-06-ch-server-reload.md, design
+# point 3). read_marker reads it, _write_marker writes it.
+OPEN_RUN_MARKER = "ch_open_run.json"
+
+# What OpenProcess and GetExitCodeProcess answer for pid_running. Both are
+# Windows API values, not project thresholds: ERROR_INVALID_PARAMETER is 87 in
+# winerror.h (OpenProcess sets it for a pid no process has) and STILL_ACTIVE is
+# 259 in Microsoft's GetExitCodeProcess page (the exit code of a process that
+# has not ended).
+_ERROR_INVALID_PARAMETER = 87
+_STILL_ACTIVE = 259
 
 # ch_play_chart's two routes: the virtual kit inside the game, or keys sent to
 # the focused game window (the plan 2026-10-30-ch-mcp-in-game-input.md, "The
@@ -58,6 +72,48 @@ NO_ROUTE_NO_KIT = ("refused: no route given and the kit is not set up; "
 PLAY_ALREADY_RUNNING = "a play session is already running; call ch_play_stop first"
 
 _NOT_RUNNING = f"{C.PROCESS_NAME} is not running"
+
+
+def pid_running(pid: int) -> bool:
+    """LIVE-ONLY: whether process `pid` still runs. os.kill cannot ask this,
+    because on Windows it ends the process. Only a plain no is False: a wrong
+    yes costs a by-hand restore, and a wrong no restores under a live run."""
+    from ctypes import wintypes  # noqa: PLC0415  (Windows only)
+    k32 = bot_run._kernel32()
+    k32.GetExitCodeProcess.argtypes = (wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD))
+    handle = k32.OpenProcess(bot_run._PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+    if not handle:
+        return ctypes.get_last_error() != _ERROR_INVALID_PARAMETER
+    try:
+        code = wintypes.DWORD()
+        if not k32.GetExitCodeProcess(handle, ctypes.byref(code)):
+            return True
+        return code.value == _STILL_ACTIVE
+    finally:
+        k32.CloseHandle(handle)
+
+
+def age_text(seconds: float) -> str:
+    """How old something is, as the largest whole unit: minutes, hours or days."""
+    minutes = max(0, int(seconds // 60))
+    if minutes < 60:
+        return f"{minutes} minute{'' if minutes == 1 else 's'}"
+    hours = minutes // 60
+    if hours < 48:
+        return f"{hours} hour{'' if hours == 1 else 's'}"
+    return f"{hours // 24} days"
+
+
+def read_marker(path: str) -> Tuple[int, str]:
+    """The pid and the backup folder a marker file holds. Raises OSError when
+    the file cannot be read and ValueError when it holds anything else."""
+    with open(path, encoding="utf-8") as f:
+        marker = json.load(f)
+    pid = marker.get("pid") if isinstance(marker, dict) else None
+    folder = marker.get("folder") if isinstance(marker, dict) else None
+    if type(pid) is not int or pid <= 0 or not isinstance(folder, str) or not folder:
+        raise ValueError("it holds no pid and backup folder")
+    return pid, folder
 
 
 def _key_name(vk: int) -> str:
@@ -208,9 +264,12 @@ class GameTools:
     `compare` (compare_scorestats'), `wait_thread` (how ch_install_chart waits
     on its worker), `set_setting` (game_files.set_game_setting),
     `make_watch` (builds the foreground.ForegroundWatch ch_start starts; None
-    builds the real one on `find_window`) and `scratch_root` (the temp root
-    the session folders go under). `lock` is the server's one RLock; this
-    class never makes its own."""
+    builds the real one on `find_window`), `is_pid_running` (pid_running) and
+    `scratch_root` (the temp root the session folders and OPEN_RUN_MARKER go
+    under). `lock` is the server's one RLock; this class never makes its own.
+
+    Building one reads a marker a previous worker left (_read_marker_at_start)
+    and restores nothing: the user's answer to the reload plan's question 9."""
 
     def __init__(self, env: bot_run.Env, lock, scratch_root: Optional[str] = None, *,
                  driver: Optional[InputDriver] = None,
@@ -221,7 +280,8 @@ class GameTools:
                  compare: Callable = compare_scorestats.compare,
                  wait_thread: Callable[[threading.Thread, float], None] = bot_run.join_thread,
                  set_setting: Callable[[str, str, str], None] = game_files.set_game_setting,
-                 make_watch: Optional[Callable[[], foreground.ForegroundWatch]] = None):
+                 make_watch: Optional[Callable[[], foreground.ForegroundWatch]] = None,
+                 is_pid_running: Callable[[int], bool] = pid_running):
         self._env = env
         self._lock = lock
         self._scratch_root = scratch_root or tempfile.gettempdir()
@@ -235,6 +295,7 @@ class GameTools:
         self._set_setting = set_setting
         self._make_watch = make_watch or (lambda: foreground.ForegroundWatch(
             self._find_window, foreground.foreground_window, time.monotonic, time.sleep))
+        self._is_pid_running = is_pid_running
 
         self._run: Optional[bot_run.Run] = None
         # The foreground watch of the run the server started; None otherwise.
@@ -251,6 +312,17 @@ class GameTools:
         self._kit_press_source: Optional[Callable[[], Optional[Callable]]] = None
         # What ch_run_chart chains, handed in by use_run_parts. None until then.
         self._run_parts: Optional[RunParts] = None
+        # The backup folder of the marker this worker wrote or adopted, the only
+        # marker it may delete. A marker it did not take stays another's.
+        self._marked: Optional[str] = None
+        # True while `_adopted_backup` came from a marker. Nothing restores it
+        # without a ch_stop: the user's answer to the reload plan's question 9.
+        self._from_marker = False
+        # What ch_status says about the marker found at start. The adoption
+        # line goes once its backup is restored; the other outcomes stay.
+        self._adoption_line: Optional[str] = None
+        self._marker_line: Optional[str] = None
+        self._read_marker_at_start()
 
     # -- the interface frida_tools builds on ------------------------------------
 
@@ -265,8 +337,10 @@ class GameTools:
             self._adopted_backup = game_files.backup(
                 self._env.documents_dir, self._env.locallow_dir, scratch, stamp=self._env.stamp,
                 run_reg=self._env.run_reg)
-            return (f"backup folder: {self._adopted_backup} (taken now, because the server "
-                    "did not start this game; ch_stop restores it)")
+            lines = [f"backup folder: {self._adopted_backup} (taken now, because the server "
+                     "did not start this game; ch_stop restores it)"]
+            self._write_marker(self._adopted_backup, lines)
+            return "\n".join(lines)
 
     def launched_at(self) -> Optional[float]:
         """When the server launched the open run's game, on env.now; None when
@@ -283,6 +357,21 @@ class GameTools:
     def run_cap_s(self, song_folder: Optional[str]) -> float:
         """The module's run_cap_s, for callers that hold only this object."""
         return run_cap_s(song_folder)
+
+    def open_lines(self) -> List[str]:
+        """What the game side holds open, one line each: the run with its
+        backup folder, an adopted backup, a running play session. The server's
+        Helper.open_items adds the other tools' lines."""
+        with self._lock:
+            lines: List[str] = []
+            if self._run is not None:
+                lines.append(f"run: game pid {self._run.game.pid}, "
+                             f"backup folder {self._run.backup_dir}")
+            elif self._adopted_backup is not None:
+                lines.append(f"adopted backup: {self._adopted_backup}")
+            if self._play is not None and self._play.running():
+                lines.append(f"play session: running, {len(self._play.rows)} presses so far")
+            return lines
 
     def add_stop_hook(self, hook: Callable[[], object]) -> None:
         """Run `hook` at the start of ch_stop and shutdown, before the game is
@@ -321,18 +410,33 @@ class GameTools:
             if refusal is not None:
                 return refusal
             lines: List[str] = []
+            if self._from_marker:
+                return (f"refused: {self._pending_text()}; call ch_stop to restore it, then "
+                        "ch_start")
             if self._run is not None or self._adopted_backup is not None:
                 lines.append("a run was open; stopping it first:")
                 if not self._stop_all(lines):
                     lines.append("the new run was not started")
                     return "\n".join(lines)
             scratch = self._new_scratch()
+            in_scratch = set(os.listdir(scratch))
             env = self._env_into(lines)
+
+            def before_launch() -> None:
+                # start_run takes the backup and launches in one call, so this
+                # is the one moment between them: the backup is whole, and
+                # nothing of the user's has changed yet.
+                self._mark_new_backup(scratch, in_scratch, lines)
+                lines.append(self._pause_setting())
+
             try:
-                run = bot_run.start_run(song_folder, player=player, profile=profile,
-                                        backup_root=scratch, env=env,
-                                        before_launch=lambda: lines.append(self._pause_setting()),
-                                        human=human)
+                try:
+                    run = bot_run.start_run(song_folder, player=player, profile=profile,
+                                            backup_root=scratch, env=env,
+                                            before_launch=before_launch, human=human)
+                except BaseException:
+                    self._settle_failed_start(lines)
+                    raise
             except bot_run.SongLengthMissing as e:
                 lines.append(str(e))
                 return "\n".join(lines)
@@ -365,8 +469,12 @@ class GameTools:
     def shutdown(self) -> str:
         """The server's exit (question 3): the same steps as ch_stop. A game
         the server started is terminated, then the files are restored; for a
-        game it did not start, the files are restored and the game stays."""
-        return self.ch_stop()
+        game it did not start, the files are restored and the game stays. A
+        backup adopted from a marker is left, with its marker, for a ch_stop."""
+        with self._lock:
+            lines: List[str] = []
+            self._stop_all(lines, at_exit=True)
+            return "\n".join(lines)
 
     def _pause_setting(self) -> str:
         """Set settings.ini's pause_on_focus_lost line to its run value and
@@ -402,8 +510,12 @@ class GameTools:
             elif self._adopted_backup is not None:
                 lines.append("game: not started by the server")
                 lines.append(f"backup folder: {self._adopted_backup}")
+                if self._adoption_line is not None:
+                    lines.append(self._adoption_line)
             else:
                 lines.append("game: no run open, and no backup taken")
+            if self._marker_line is not None:
+                lines.append(self._marker_line)
             watch_line = self.foreground_line()
             if watch_line is not None:
                 lines.append(watch_line)
@@ -798,11 +910,141 @@ class GameTools:
         """The server's Env with its printed lines going into `lines`."""
         return dataclasses.replace(self._env, out=lines.append)
 
-    def _stop_all(self, lines: List[str]) -> bool:
+    # -- the open-run marker ----------------------------------------------------------
+
+    def _marker_path(self) -> str:
+        return os.path.join(self._scratch_root, OPEN_RUN_MARKER)
+
+    def _read_marker_at_start(self) -> None:
+        """Act on a marker a previous worker left, saying what happened on
+        env.out and in ch_status. Nothing in the file may stop this worker
+        starting, so anything that goes wrong here leaves it in place."""
+        path = self._marker_path()
+        try:
+            pid, folder = read_marker(path)
+            self._settle_found_marker(path, pid, folder)
+        except FileNotFoundError:
+            return
+        except Exception as e:  # the worker must start whatever the file holds
+            self._marker_line = (f"open-run marker {path} was left in place and nothing was "
+                                 f"adopted: {type(e).__name__}: {e}")
+        said = self._adoption_line or self._marker_line
+        if said is not None:
+            self._env.out(said)
+
+    def _settle_found_marker(self, path: str, pid: int, folder: str) -> None:
+        """Design point 3's three outcomes for a marker holding `pid` and
+        `folder`, and the one it leaves out: a folder restore_only cannot read
+        would make every ch_stop fail, so it is not adopted."""
+        if not os.path.isdir(folder):
+            os.remove(path)
+            self._marker_line = (f"a previous worker (pid {pid}) left a marker for a backup "
+                                 f"that is gone: {folder}; the marker was deleted")
+        elif self._is_pid_running(pid):
+            self._marker_line = (f"process {pid} was running when this worker started, and its "
+                                 f"marker holds a backup open: {folder}; it was not adopted, "
+                                 "because that may be a second session's worker with a live "
+                                 "run; if it is not, restore by hand with "
+                                 f"{bot_run._restore_hint(folder)} and delete {path}")
+        elif not os.path.isfile(os.path.join(folder, game_files.BACKUP_MANIFEST)):
+            self._marker_line = (f"a previous worker (pid {pid}) left a marker, but {folder} "
+                                 f"holds no {game_files.BACKUP_MANIFEST}; it was not adopted "
+                                 f"and {path} was left in place")
+        else:
+            age = age_text(time.time() - os.path.getmtime(folder))
+            restored = [n for n in game_files.DOCUMENTS_FILES + game_files.LOCALLOW_FILES
+                        if n not in game_files.KEPT_FILES]
+            self._adoption_line = (
+                f"a previous worker (pid {pid}) left a backup open: {folder}, {age} old; "
+                f"ch_stop restores {', '.join(restored)} and the Rewired key from it and "
+                f"leaves {', '.join(game_files.KEPT_FILES)} as they are")
+            self._adopted_backup = self._marked = folder
+            self._from_marker = True
+
+    def _pending_text(self) -> str:
+        """What ch_start says about the backup adopted from a marker: its
+        folder and its age from the folder's own time."""
+        folder = self._adopted_backup
+        try:
+            age = f"{age_text(time.time() - os.path.getmtime(folder))} old"
+        except OSError:
+            age = "age unknown"
+        return f"a previous worker left a backup open: {folder}, {age}"
+
+    def _write_marker(self, folder: str, lines: List[str]) -> None:
+        """Name `folder` in the marker, or add a line saying this backup has
+        none. A marker already there is never replaced: it is another worker's
+        open backup, or a file left for the user to read."""
+        path = self._marker_path()
+        temp = f"{path}.{os.getpid()}.tmp"
+        try:
+            with open(temp, "w", encoding="utf-8") as f:
+                json.dump({"pid": os.getpid(), "folder": folder}, f)
+            # On Windows os.rename refuses an existing target, so the check and
+            # the write are one step, and no reader sees half a file.
+            os.rename(temp, path)
+        except OSError as e:
+            try:
+                os.remove(temp)
+            except OSError:
+                pass  # a stray temp file holds nothing a worker reads
+            lines.append(f"open-run marker not written ({type(e).__name__}: {e}); if this worker "
+                         f"is killed, restore by hand with {bot_run._restore_hint(folder)}")
+            return
+        self._marked = folder
+
+    def _mark_new_backup(self, scratch: str, in_scratch: set, lines: List[str]) -> None:
+        """Write the marker for the backup start_run just took in `scratch`,
+        the one folder of its kind that `in_scratch` did not list."""
+        name = next(n for n in os.listdir(scratch)
+                    if n not in in_scratch and n.startswith(game_files.BACKUP_PREFIX))
+        self._write_marker(os.path.join(scratch, name), lines)
+
+    def _delete_marker(self, lines: List[str]) -> None:
+        """Delete the marker this worker holds, after its backup was restored.
+        A file that stays is no longer this worker's to touch, and the line
+        says so, because the next worker would restore that old backup."""
+        if self._marked is None:
+            return
+        folder, self._marked = self._marked, None
+        path = self._marker_path()
+        try:
+            os.remove(path)
+        except FileNotFoundError:
+            pass
+        except OSError as e:
+            lines.append(f"open-run marker {path} was not deleted ({e}); delete it by hand, or "
+                         f"the next worker adopts {folder}, which is already restored")
+
+    def _settle_failed_start(self, lines: List[str]) -> None:
+        """After start_run raised. It restores on the way out but does not say
+        how that went, and the marker may go only after a restore that worked,
+        so restore_only asks: restoring files already back changes nothing. A
+        restore that fails keeps the marker and holds the backup as adopted,
+        so ch_stop tries again and no new run takes a backup of the run's
+        files."""
+        folder = self._marked
+        if folder is None:
+            return
+        said: List[str] = []
+        try:
+            restored = bot_run.restore_only(folder, self._env_into(said)) == 0
+        except Exception as e:  # the failed start's own error goes on after this
+            restored = False
+            said.append(f"restoring failed: {type(e).__name__}: {e}")
+        if restored:
+            self._delete_marker(lines)
+            return
+        self._adopted_backup = folder
+        lines.extend(said)
+        lines.append(f"the user files may not be back; ch_stop tries again from {folder}")
+
+    def _stop_all(self, lines: List[str], at_exit: bool = False) -> bool:
         """The stop hooks, the play stop, the foreground watch's stop and its
         count, then the game and the restore. Returns False when the restore
         failed or the stop raised; the run stays open then, so a later
-        ch_stop tries the restore again."""
+        ch_stop tries the restore again. At the worker's exit a backup
+        adopted from a marker is left alone, with its marker."""
         for hook in list(self._stop_hooks):
             try:
                 said = hook()
@@ -838,14 +1080,28 @@ class GameTools:
                 return False
             self._run = None
             self._watch = None
+            self._delete_marker(lines)
             return True
         if self._adopted_backup is not None:
+            if self._from_marker and at_exit:
+                lines.append(f"{self._pending_text()}; it and its marker {self._marker_path()} "
+                             "stay, and ch_stop in the next session restores it")
+                return True
             lines.append("the server did not start the game, so it does not close it")
-            if bot_run.restore_only(self._adopted_backup, env) != 0:
+            leave = game_files.KEPT_FILES if self._from_marker else ()
+            try:
+                if bot_run.restore_only(self._adopted_backup, env, leave) != 0:
+                    return False
+            except Exception as e:
+                lines.append(f"restoring failed: {type(e).__name__}: {e}; "
+                             f"the backup is still in {self._adopted_backup}")
                 return False
             lines.append("if the game is still running it "
                          + bot_run.late_write_hint(self._adopted_backup))
             self._adopted_backup = None
+            self._adoption_line = None
+            self._from_marker = False
+            self._delete_marker(lines)
             return True
         lines.append("no run is open and no backup was taken; nothing to restore")
         return True

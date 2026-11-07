@@ -112,6 +112,13 @@ class WorkerExited(Exception):
         self.code = proc.returncode
 
 
+def _ended_words(gone: WorkerExited) -> str:
+    """What ended a wait, for a reply's text: an exit code, or a closed output."""
+    if gone.code is None:
+        return "closed its output while it still ran"
+    return f"exited with code {gone.code}"
+
+
 class WorkerStop(NamedTuple):
     """How one worker ended."""
 
@@ -127,6 +134,14 @@ class _Reply:
     def __init__(self) -> None:
         self.arrived = threading.Event()
         self.message: dict[str, Any] = {}
+
+
+class _Pending(dict):
+    """A worker's waiting requests by id. `closed` is set once its reader has
+    stopped, so a request made after that fails instead of waiting for a reply
+    nobody reads."""
+
+    closed = False
 
 
 class WorkerLink:
@@ -172,14 +187,14 @@ class WorkerLink:
                 raise WorkerStartFailed(
                     f"the worker command {self.shown_command} did not run: {error}"
                 ) from error
-            pending: dict[int, _Reply] = {}
+            pending = _Pending()
             threading.Thread(target=self._read_replies, args=(proc, pending), daemon=True).start()
             try:
                 instructions, tools = self._handshake(proc, pending, began + WORKER_START_CAP_S)
             except WorkerExited as gone:
                 self._end(proc, 0)
                 raise WorkerStartFailed(
-                    f"the worker command {self.shown_command} exited with code {gone.code} "
+                    f"the worker command {self.shown_command} {_ended_words(gone)} "
                     "before it answered; its stderr is in the MCP log"
                 ) from gone
             except TimeoutError as capped:
@@ -189,10 +204,11 @@ class WorkerLink:
                     f"WORKER_START_CAP_S ({WORKER_START_CAP_S} s), so the front terminated it; "
                     "its stderr is in the MCP log"
                 ) from capped
-            except ValueError as refused:
+            except (ValueError, KeyError, TypeError, AttributeError) as refused:
                 self._end(proc, 0)
                 raise WorkerStartFailed(
-                    f"the worker command {self.shown_command} {refused}; "
+                    f"the worker command {self.shown_command} sent a malformed handshake "
+                    f"({type(refused).__name__}: {refused}); "
                     "its stderr is in the MCP log"
                 ) from refused
             self._proc, self._pending = proc, pending
@@ -302,6 +318,14 @@ class WorkerLink:
         self._send(proc, {"jsonrpc": "2.0", "id": number, "method": method, "params": params})
         try:
             while True:
+                if pending.closed and not reply.arrived.is_set():
+                    # The reader is gone but the worker may be mid-exit: give it a moment
+                    # so the reply can name an exit code.
+                    try:
+                        proc.wait(FRONT_POLL_S)
+                    except subprocess.TimeoutExpired:
+                        pass
+                    raise WorkerExited(proc)
                 wait_s = FRONT_POLL_S
                 if deadline is not None:
                     wait_s = max(0.0, min(wait_s, deadline - time.monotonic()))
@@ -332,20 +356,26 @@ class WorkerLink:
         """The one reader of a worker's stdout; it hands each reply to its request.
         The worker's notifications are dropped: no tool it serves sends one the
         client needs."""
-        with proc.stdout:
-            for line in proc.stdout:
-                try:
-                    message = json.loads(line)
-                    number = message.get("id")
-                except (ValueError, AttributeError):
-                    _log(f"worker pid {proc.pid} wrote a line that is not JSON-RPC: {line[:200]!r}")
-                    continue
-                reply = pending.get(number)
-                if reply is not None:
-                    reply.message = message
-                    reply.arrived.set()
-                elif "method" in message and number is not None:
-                    _log(f"worker pid {proc.pid} asked {message['method']}; the front answers no requests")
+        try:
+            with proc.stdout:
+                for line in proc.stdout:
+                    try:
+                        message = json.loads(line)
+                        number = message.get("id")
+                        reply = pending.get(number)
+                    except (ValueError, AttributeError, TypeError):
+                        _log(f"worker pid {proc.pid} wrote a line that is not JSON-RPC: {line[:200]!r}")
+                        continue
+                    if reply is not None:
+                        reply.message = message
+                        reply.arrived.set()
+                    elif "method" in message and number is not None:
+                        _log(f"worker pid {proc.pid} asked {message['method']}; the front answers no requests")
+        except Exception as failure:
+            _log(f"the reader of worker pid {proc.pid} stopped: {type(failure).__name__}: {failure}")
+        finally:
+            # Output ended or the reader failed: every waiting request now sees `closed`.
+            pending.closed = True
 
 
 def _close_pipe(pipe: Any) -> None:
@@ -431,8 +461,8 @@ def new_worker_lines(link: WorkerLink) -> list[str]:
 
 
 def worker_died(link: WorkerLink, name: str, gone: WorkerExited) -> CallToolResult:
-    """The reply for a call whose worker exited: a new worker starts at once."""
-    lines = [f"{name}: the worker exited with code {gone.code} before it replied; {link.replace(gone.proc)}"]
+    """The reply for a call whose worker ended: a new worker starts at once."""
+    lines = [f"{name}: the worker {_ended_words(gone)} before it replied; {link.replace(gone.proc)}"]
     text = "\n".join(lines + new_worker_lines(link))
     _log(text)
     return _failed(text)
@@ -452,7 +482,10 @@ def forward(link: WorkerLink, name: str, arguments: dict[str, Any] | None) -> Ca
         return worker_died(link, name, gone)
     if "result" not in message:
         return _failed(f"{name}: the worker refused the call: {message.get('error')}")
-    return CallToolResult.model_validate(message["result"])
+    try:
+        return CallToolResult.model_validate(message["result"])
+    except ValueError as malformed:
+        return _failed(f"{name}: the worker's reply is not a tool result: {malformed}")
 
 
 def call_shape_refusal(arguments: dict[str, Any]) -> str | None:
