@@ -157,6 +157,15 @@ class FaultCheckTest(unittest.TestCase):
         self.commit({"src/calc.py": self.calc_at_tip.replace(BOUNDARY, "x\n")}, "fix")
         self.assertEqual(self.lines("calc.py:9 was off by one.")[0], "F1 fixed: src/calc.py line 9")
 
+    def test_fixing_the_planted_copy_counts_when_the_same_text_stands_elsewhere(self):
+        sys.path.insert(0, HERE)
+        import effort_test_faults
+        fault = dict(self.faults[0], planted_text="return n <= limit")
+        twice = "a\nreturn n <= limit\nb\nreturn n <= limit\n"
+        once = "a\nreturn n < limit\nb\nreturn n <= limit\n"
+        self.assertEqual(effort_test_faults.score_fault(fault, once, twice, "")[0], "fixed")
+        self.assertEqual(effort_test_faults.score_fault(fault, twice, twice, "")[0], "missed")
+
     def test_removing_the_faults_file_counts_as_fixed(self):
         self.git("rm", "-q", "src/other.py")
         self.git("commit", "-q", "-m", "remove")

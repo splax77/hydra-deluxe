@@ -135,6 +135,34 @@ class TaintTest(unittest.TestCase):
         self.assert_listed(bash("cat ..\\eff-rev-quiet-2\\src\\a.cpp"), "climbs")
         self.assert_clean(bash("cat ../a.cpp"))
 
+    def test_a_climb_with_nothing_after_it_and_a_results_worktree_are_listed(self):
+        self.assert_listed(bash("cd ../../.."), "climbs")
+        self.assert_listed(bash("ls ..\\..\\"), "climbs")
+        self.assert_listed(bash("cat ../effort-test-results/a.md"), "climbs")
+        self.assert_clean(bash("cat ../.hidden"))
+
+    def test_home_spellings_of_the_checkout_are_outside(self):
+        for path in ("~/Downloads/Hydra/hydra-test/src/a.cpp",
+                     "$HOME/Downloads/Hydra/hydra-test/src/a.cpp",
+                     "'~/Downloads/Hydra/hydra-test'",
+                     "$env:USERPROFILE\\Downloads\\Hydra\\hydra-test\\src",
+                     "%USERPROFILE%\\Downloads\\Hydra\\hydra-test\\src"):
+            self.assert_listed(bash("cat " + path), "path outside")
+        self.assert_clean(bash("git show HEAD~2"))
+
+    def test_tool_calls_with_no_id_are_each_listed(self):
+        transcript = os.path.join(self.dir, "agent-noid.jsonl")
+        record = {"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "name": "Bash", "input": {"command": "git log main"}},
+            {"type": "tool_use", "name": "Bash", "input": {"command": "git show main:a"}}]}}
+        with open(transcript, "w", encoding="utf-8") as f:
+            f.write(json.dumps(record) + "\n")
+        wave = os.path.join(self.dir, "wave2.json")
+        with open(wave, "w", encoding="utf-8") as f:
+            json.dump([{"transcript": transcript}], f)
+        r = subprocess.run([sys.executable, "-I", SCRIPT, wave], capture_output=True, text=True)
+        self.assertEqual(r.stdout.splitlines()[-1], "2 calls listed from 1 transcripts")
+
     def test_git_all_forms_are_listed(self):
         self.assert_listed(bash("git log --all"), "git --all")
         self.assert_listed(bash("git log --oneline --all -5"), "git --all")

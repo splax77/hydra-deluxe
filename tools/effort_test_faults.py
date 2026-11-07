@@ -147,7 +147,9 @@ def mentions_words(paragraph, fault):
 
 def score_fault(fault, reviewed_text, tip_text, report):
     """The fault's result, and a note for a miss the main session should read."""
-    if reviewed_text is None or fault["planted_text"] not in reviewed_text:
+    # Fewer copies than at the tip, not none: the planted text may also stand elsewhere in the
+    # file, and fixing the planted copy must still count.
+    if reviewed_text is None or reviewed_text.count(fault["planted_text"]) < tip_text.count(fault["planted_text"]):
         return "fixed", ""
     numbers = {fault["line"]}
     numbers.update(n for n, row in enumerate(tip_text.split("\n"), 1) if fault["planted_text"] in row)

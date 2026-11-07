@@ -40,12 +40,17 @@ MAIN_REF = re.compile(
 CLAUDE_BRANCH = re.compile(r"claude/[\w*-]+(?:[./][\w*-]+)*")
 ALL_REFS = re.compile(r"\bgit\b[^;&|\n]*\s--all(?![\w-])")
 BRANCH_ALL = re.compile(r"\bgit\b[^;&|\n]*\sbranch\b[^;&|\n]*\s-[a-zA-Z]*a[a-zA-Z]*(?![\w-])")
-CLIMB = re.compile(r"(?:\.\./){3}|\.\./eff-")
+# Two climbs reach the worktrees folder from a worktree's root, with or without a slash after
+# them. One climb is listed only when it names a worktree of the test (eff-..., effort-...).
+CLIMB = re.compile(r"(?<![\w.])\.\./\.\.(?![\w.])|\.\./eff")
+HOME_FOLDER = "c:/users/patrick"
+HOME_SPELLINGS = re.compile(r"(?<![\w:./-])(?:~|\$home|\$\{home\}|\$env:userprofile|%userprofile%)(?=/|\s|$|['\"])")
 
 
 def fold_path(text):
-    """One spelling for the path forms a tool call can use: Windows, Git Bash, any case."""
+    """One spelling for the path forms a tool call can use: Windows, Git Bash, home, any case."""
     folded = re.sub(r"/{2,}", "/", text.replace("\\", "/").lower())
+    folded = HOME_SPELLINGS.sub(HOME_FOLDER, folded)
     return re.sub(r"(?<![\w:./-])/c/users/", "c:/users/", folded)
 
 
@@ -129,9 +134,10 @@ def tool_calls(transcript):
             for block in content:
                 if not isinstance(block, dict) or block.get("type") != "tool_use":
                     continue
-                if block.get("id") in seen:
-                    continue
-                seen.add(block.get("id"))
+                if block.get("id"):
+                    if block["id"] in seen:
+                        continue
+                    seen.add(block["id"])
                 yield record.get("agentId") or fallback_id, block.get("name"), block.get("input")
 
 
