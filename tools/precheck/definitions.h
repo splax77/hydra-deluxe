@@ -35,8 +35,9 @@ bool is_namespace_head(const std::string& head);
 bool is_cpp_keyword(const std::string& word);
 
 // Is this byte a letter, digit or underscore (word_char), or a letter or
-// underscore (ident_start)? ASCII only, never the locale. The one spelling
-// of "part of a C++ word" in tools/precheck/.
+// underscore (ident_start)? std::isalnum and std::isalpha answer, so it is
+// ASCII only under the default C locale. word_byte in decisions.h and a local
+// ident_start in check_3.cpp also spell "part of a C++ word".
 bool word_char(char c);
 bool ident_start(char c);
 
