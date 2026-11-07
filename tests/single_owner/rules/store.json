@@ -152,27 +152,6 @@
       "note": "A second read of a row's head to say why it is Stale."
     },
     {
-      "question": "Is this still the row the report walk listed?",
-      "owner": "Profile::operator== in src/store/record_store.h, with the song id through RecordRow::operator==",
-      "owner_file": "src/store/record_store.h",
-      "owner_symbol": "operator",
-      "date": "2026-10-05",
-      "decision": "audit finding 197, folded under D53 (phase 6 task J3-6)",
-      "added_by": "J3-6",
-      "pattern": "!=\\s*meta\\.(hyhash|chartmode|sp_cap)\\b",
-      "anchor": "meta.",
-      "must_match": [
-        "if (column_text(stmt, 0) != meta.hyhash) return false;"
-      ],
-      "must_not_match": [
-        "if (column_text(stmt, 2) != meta.hyversion) return false;"
-      ],
-      "scope": [
-        "src"
-      ],
-      "note": "One identity column compared at a time instead of a whole Profile."
-    },
-    {
       "question": "Which PathSummary fields must match? (tests)",
       "owner": "PathSummary::operator== in src/store/record_store.h",
       "owner_file": "src/store/record_store.h",

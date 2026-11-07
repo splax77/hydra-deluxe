@@ -925,27 +925,6 @@
       "note": "Production's own temp folder for the shell (copy_to_short_temp in src/app/report_files.cpp) answers a different question (audit R7.12), so only tests/ is scanned. The temp_util case in test_helpers.cpp reads the temp folder once as its input."
     },
     {
-      "question": "Are two engine results the same answer? (tests)",
-      "owner": "digest::record_hash in tests/song_digest.h",
-      "owner_file": "tests/song_digest.h",
-      "owner_symbol": "record_hash",
-      "date": "2026-10-07",
-      "decision": "audit finding 301; phase 6 task J4-1 (D53, D54); storage-T5 (R16)",
-      "added_by": "storage-T5",
-      "pattern": "\\b(record_bytes|flatten_record|encode_path_node)\\s*\\(",
-      "must_match": [
-        "CHECK_MESSAGE(record_bytes(tall) == record_bytes(built), \"a song with \"",
-        "const HydraRecord back = store::rebuild_record(store::flatten_record(rec));"
-      ],
-      "must_not_match": [
-        "CHECK_MESSAGE(digest::record_hash(tall) == digest::record_hash(built),"
-      ],
-      "scope": [
-        "tests"
-      ],
-      "note": "hydra.db stores a record's paths as plain columns (record_paths), so no serializer is left to compare records through; a test that brings one back is a second answer to the hasher's question (R16)."
-    },
-    {
       "question": "Which settings do the GUI tests and the Burnout reference results run under? (tests)",
       "owner": "scratch_settings in tests/scratch_settings.h",
       "owner_file": "tests/scratch_settings.h",

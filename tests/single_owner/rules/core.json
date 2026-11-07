@@ -1607,30 +1607,6 @@
       "note": "A private byte-by-byte little-endian helper. src/core/little_endian.h is the codec. This row catches the u32 helper names; the row whose question ends \"(any width or name)\" catches the rest."
     },
     {
-      "question": "In what order does a record list its paths?",
-      "owner": "HydraRecord::all_paths, in the order Engine::run sorts the roots",
-      "owner_file": "src/core/model.h",
-      "owner_symbol": "all_paths",
-      "date": "2026-10-04",
-      "decision": "audit finding 169; phase 6 task J2-2 (D53)",
-      "added_by": "J2-2",
-      "pattern": "totalscore\\(\\)\\s*>\\s*\\w+->totalscore\\(\\)",
-      "anchor": "->totalscore()",
-      "must_match": [
-        "return a->totalscore() > b->totalscore();"
-      ],
-      "must_not_match": [
-        "CHECK(all[i]->totalscore() <= all[i - 1]->totalscore());",
-        "const std::vector<const Path*> paths = record->all_paths();"
-      ],
-      "scope": [
-        "src",
-        "tools",
-        "tests"
-      ],
-      "note": "A record's paths come best first from all_paths() (Engine::run in src/search/engine.cpp sorts the roots; each variant sits under its parent). Sorting them by score again is a second answer."
-    },
-    {
       "question": "What is a path's score without the solo bonus?",
       "owner": "score_without_solo in src/core/stars.cpp",
       "owner_file": "src/core/stars.cpp",

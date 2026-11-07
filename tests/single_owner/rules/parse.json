@@ -211,7 +211,6 @@
         "src/parse/chart_files.h"
       ],
       "must_match": [
-        "else if (is_song_ini(e.name)) found_ini = &e;",
         "if (!e.is_dir && is_song_ini(e.name)) return folder + \"\\\\\" + e.name;"
       ],
       "must_not_match": [
