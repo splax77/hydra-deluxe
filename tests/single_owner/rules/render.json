@@ -37,7 +37,7 @@
       "owner_file": "src/render/track_state.h",
       "owner_symbol": "SpanSweep",
       "date": "2026-10-04",
-      "decision": "audit R7.13; D54 (toggle_at deleted, not kept as a test oracle)",
+      "decision": "audit R7.13; phase 6 task J1-3; D54 (toggle_at deleted, not kept as a test oracle)",
       "added_by": "J1-3",
       "pattern": "\\btoggle_at\\s*\\(",
       "anchor": "toggle_at",
