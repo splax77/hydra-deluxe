@@ -2,7 +2,7 @@
 
 Made 2026-10-30 with `tools/ch_mcp/chdis.py` (180 lines). Starts at the method's first instruction (`#8265.PlaceWrittenFills`, static: `(List<chord> notes, #8538 chart, #8661 track)`, returns `List<wrapper>`). 0x20D0061 to 0x20D008D (the slop stretch) is inside it: lines 55 to 62.
 
-Plain words: for every written fill on the track that is not marked "skip", find the chord the fill ends on (using `0x5DE030`), put the activation flag `0x800` on that chord's note, and record a small wrapper object (fill start tick, the chord, an "active" byte). It returns the list of wrappers. The deadline method `0x20DDB70` later clears wrappers and flags that are too close.
+Plain words: for every written fill on the track that is not marked "skip", find the chord the fill ends on (using `0x5DE030`), put the activation flag `0x800` on that chord's note, and record a small wrapper object (fill start tick, the note, an "active" byte). It returns the list of wrappers. The deadline method `0x20DDB70` later clears wrappers and flags that are too close.
 
 - Lines 1 to 35: stack set-up and the one-time generic-slot loads.
 - Lines 36 to 39: clear the enumerator's stack slots.
@@ -16,13 +16,13 @@ Plain words: for every written fill on the track that is not marked "skip", find
 - Lines 83 to 87: `rsi` = the current fill. Line 86 to 87: `cmp byte [fill+0x20], 0; jne` skips a fill whose byte `+0x20` is non-zero (the record calls this the skip flag; what sets it is not in this function).
 - Lines 88 to 96: the call to `0x5DE030`. Arguments: notes list (`r14`), `rdx = [fill+0x18] + [fill+0x10]` = fill end (the fill's tick plus its length, so `+0x10` is the start and `+0x18` the length), `r8 = [fill+0x10]` = fill start, `r9 = end + slop`, then a stack integer 0 (the start index, line 93) and the generic method info (line 92). So the nearest-chord search always starts at index 0 for every written fill.
 - Lines 97 to 98: a null result (no chord) skips the fill: the loop continues.
-- Lines 99 to 105: call `0x20D51D0(chord, -1, 0)` which returns the note that will carry the flag (`docs/audit/drum-lanes/FINDINGS-play-time.md` line 50 says it is the highest-pad note of the chord; that was not re-read here). A null note continues the loop.
+- Lines 99 to 105: call `0x20D51D0(chord, -1, 0)` which returns the note that will carry the flag (`docs/audit/drum-lanes/FINDINGS-play-time.md` line 50 says the flag goes on "the highest-pad note of each fill"; that was not re-read here). A null note continues the loop.
 - Line 106: `or dword [note+0x7c], 0x800`: the activation flag. This is the instruction the drum-lanes findings call 0x20D015E.
 - Lines 107 to 119: make a wrapper object; line 116 converts the fill start tick to seconds with `0x212B9C0`, stored at wrapper `+0x10` (line 119).
 - Lines 120 to 128: wrapper `+0x18` = a float from `0x20CFCE0(chart+0x50 object, fill start, note.[+0x40], ...)`.
-- Lines 129 to 132: wrapper `+0x20` = the note's chord (the object that got the flag).
+- Lines 129 to 132: wrapper `+0x20` = the note (`r14`, the object that got the flag).
 - Lines 133 to 134: wrapper `+0x28` = `[fill+0x10]`, the fill's start tick. The deadline method compares this field.
-- Lines 135 to 138: wrapper `+0x30` = chord tick (`[chord+0x40]`) minus fill start. It may be zero or negative.
+- Lines 135 to 138: wrapper `+0x30` = the note's tick (`[note+0x40]`) minus fill start. It may be zero or negative.
 - Line 139: wrapper `+0x38` = 1 (active).
 - Lines 140 to 147: add the wrapper to the result list; next fill.
 - Lines 148 to 169: dispose the enumerator, return the result list. Lines 170 to 178: null-reference and range exits.
