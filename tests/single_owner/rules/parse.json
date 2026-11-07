@@ -440,7 +440,7 @@
         "filter.note_on[pitch] = midi_note_is_read(pitch, true, base, kick2x);",
         "return (msg.is_note_on() ? note_on : note_off)[msg.note];"
       ],
-      "note": "---- the lean chart and MIDI readers ----The lean MIDI read keeps a drum note only when the song parser can act on it. A filter entry set from anything but the parser's own pitch rules is a second list of pitches."
+      "note": "---- the lean chart and MIDI readers ---- The lean MIDI read keeps a drum note only when the song parser can act on it. A filter entry set from anything but the parser's own pitch rules is a second list of pitches."
     },
     {
       "question": "Is this MIDI note message a note-on?",

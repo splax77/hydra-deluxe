@@ -148,7 +148,7 @@
           "why": "stale_chip_text, beside the owner: the Stale chip's ending (tooltip wording approved 2026-10-10)"
         }
       ],
-      "note": "---- app and UI helper owners ----The out-of-date sentence, by any of its pieces: the cause it names or the \"Re-analyze to refresh\" it ends on. stale_text names the store's real cause; every screen shows its sentence."
+      "note": "---- app and UI helper owners ---- The out-of-date sentence, by any of its pieces: the cause it names or the \"Re-analyze to refresh\" it ends on. stale_text names the store's real cause; every screen shows its sentence."
     },
     {
       "question": "Has a chart file changed since its library row was made?",
@@ -545,7 +545,7 @@
           "why": "last_drawn_note, the owner"
         }
       ],
-      "note": "---- the Preview ----The last drawn note, or the last timestamp's onset, read anywhere but last_drawn_note. The song's length has its own owner (app::song_length_ms, D75), whose backup is listed below."
+      "note": "---- the Preview ---- The last drawn note, or the last timestamp's onset, read anywhere but last_drawn_note. The song's length has its own owner (app::song_length_ms, D75), whose backup is listed below."
     },
     {
       "question": "Is a note struck with the playhead at now?",
@@ -597,7 +597,7 @@
       "scope": [
         "src"
       ],
-      "note": "---- the report pages ----A bare toLocaleString() groups by the browser's own language, so a German browser prints 1.234 under a subtitle that says 1,234. The pages' shared fmt groups with one fixed rule. The pages live in src/app; a scope entry with a slash names one file, so the row scans all of src, where nothing else has one."
+      "note": "---- the report pages ---- A bare toLocaleString() groups by the browser's own language, so a German browser prints 1.234 under a subtitle that says 1,234. The pages' shared fmt groups with one fixed rule. The pages live in src/app; a scope entry with a slash names one file, so the row scans all of src, where nothing else has one."
     },
     {
       "question": "How is a number rounded on a report page?",

@@ -848,7 +848,7 @@
           "why": "chord_text, the owner"
         }
       ],
-      "note": "---- how a SqOut refusal names a chord ----resolve_sqout_note's refusals list chords through one local lambda; a second hand-written format would drift from it."
+      "note": "---- how a SqOut refusal names a chord ---- resolve_sqout_note's refusals list chords through one local lambda; a second hand-written format would drift from it."
     },
     {
       "question": "How is a count written next to its noun?",
@@ -886,7 +886,7 @@
           "why": "has_have, the owner"
         }
       ],
-      "note": "---- counts and whole-ms timings ----A test on exactly 1 that picks a word, or a number with \" bar\" or \" bars\" typed after it. counted owns the rule and has_have the verb a sentence puts after such a count. \"score higher\" is the verb after a count of charts, not a noun."
+      "note": "---- counts and whole-ms timings ---- A test on exactly 1 that picks a word, or a number with \" bar\" or \" bars\" typed after it. counted owns the rule and has_have the verb a sentence puts after such a count. \"score higher\" is the verb after a count of charts, not a noun."
     },
     {
       "question": "How is a timing written in whole ms?",
@@ -1875,7 +1875,7 @@
         "\": set SP cap to \" + cap + \", analyze them, then compare again.\";",
         "\"SP cap 40\""
       ],
-      "note": "---- report pages ----Clone Hero's SP cap written as text, where the leaderboard page names it."
+      "note": "---- report pages ---- Clone Hero's SP cap written as text, where the leaderboard page names it."
     },
     {
       "question": "What is the hit window?",
@@ -2149,7 +2149,7 @@
       "scope": [
         "src"
       ],
-      "note": "---- the graph, the engine and the replay ----The engine's message \"a variant under kSpActivationBars at its fold passed a fill\" names the constant and is not a comparison."
+      "note": "---- the graph, the engine and the replay ---- The engine's message \"a variant under kSpActivationBars at its fold passed a fill\" names the constant and is not a comparison."
     },
     {
       "question": "How is a little-endian number written byte by byte? (any width or name)",

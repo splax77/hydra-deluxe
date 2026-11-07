@@ -64,7 +64,7 @@
       "scope": [
         "tools"
       ],
-      "note": "---- tool text and the stem readers ----The dump writer's line reads act.sqout_tick off the engine's activation, not the JSON, so it does not match."
+      "note": "---- tool text and the stem readers ---- The dump writer's line reads act.sqout_tick off the engine's activation, not the JSON, so it does not match."
     },
     {
       "question": "Is the text before a \"{\" a namespace head?",
