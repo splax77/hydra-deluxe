@@ -397,6 +397,34 @@ class SetupTest(Rig):
         self.assertEqual(lines[-1], "kit agent: detached")
 
 
+class SetupForRunTest(Rig):
+    def test_a_setup_that_passes_gives_the_press_and_the_reply(self):
+        tools = self.tools([STATUS, setup_reply()])
+        press, text = tools.setup_for_run("System")
+        self.assertTrue(callable(press))
+        self.assertEqual(self.posted()[1]["player"], "System")
+        self.assertIn("bindings: all 10 match KIT_BINDINGS", text)
+
+    def test_a_setup_that_is_refused_gives_no_press(self):
+        press, text = self.tools(attached=False).setup_for_run("System")
+        self.assertIsNone(press)
+        self.assertEqual(text, f'{K.given_player_line("System")}\n{FT.NOT_ATTACHED}')
+
+    def test_a_setup_on_the_wrong_id_is_torn_down_and_gives_no_press(self):
+        tools = self.tools([STATUS, setup_reply(kit_id=7), TEARDOWN_OK])
+        press, text = tools.setup_for_run("System")
+        self.assertIsNone(press)
+        self.assertIn("refused: the kit is controller 7", text)
+        self.assertEqual(self.posted()[-1]["type"], "teardown")
+
+    def test_a_kit_already_set_up_gives_no_press_and_stays(self):
+        tools = self.set_up()
+        press, text = tools.setup_for_run("System")
+        self.assertIsNone(press)
+        self.assertIn(K.KIT_ALREADY_SET_UP, text)
+        self.assertIsNotNone(tools.kit_press())
+
+
 class MapProblemsTest(Rig):
     def drum_map(self, **changes):
         return {**setup_reply()["maps"][0], **changes}

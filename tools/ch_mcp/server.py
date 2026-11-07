@@ -34,7 +34,7 @@ if _REPO_ROOT not in sys.path:
 
 from tools.ch_mcp import bot_run  # noqa: E402
 from tools.ch_mcp.frida_tools import FridaTools  # noqa: E402
-from tools.ch_mcp.game_tools import GameTools  # noqa: E402
+from tools.ch_mcp.game_tools import GameTools, RunParts  # noqa: E402
 from tools.ch_mcp.kit_tools import KitTools, read_pause_setting  # noqa: E402
 from tools.ch_mcp.menu_tools import MenuTools  # noqa: E402
 from tools.ch_mcp.method_watch import METHOD_WATCH_CAP_S, MethodWatch  # noqa: E402
@@ -87,6 +87,7 @@ class Helper:
         self.menu = MenuTools(self.game, self.frida, self.lock, kit=self.kit, **menu_kw)
         watch_kw = {"now": self.env.now, **(watch_kw or {})}
         self.method_watch = MethodWatch(self.game, self.frida, self.lock, **watch_kw)
+        self.game.use_run_parts(RunParts(self.frida, self.kit, self.sp))
 
     def ch_status(self) -> str:
         with self.lock:
@@ -118,7 +119,8 @@ def build_server(helper: Optional[Helper] = None):
             " keyboard and mouse off for the run, so the user's own keys and mouse reach"
             " no player. ch_kit_press presses the kit's pads and buttons, ch_open_song"
             " walks the menus to a song with it (the route for a day human=True breaks),"
-            " ch_play_chart plays a chart on it,"
+            " ch_play_chart plays a chart on it, ch_run_chart does the attach, the setup,"
+            " the Star Power watch and the play in one call,"
             " ch_kit_status and ch_kit_watch read it, and ch_kit_teardown takes it away and"
             " switches the keyboard and mouse back (ch_stop does too). ch_key, ch_press and"
             " ch_play_chart with route keys press keys into the focused window, and a"
@@ -337,6 +339,23 @@ def build_server(helper: Optional[Helper] = None):
         mode every chord is pressed."""
         return capped(h.game.ch_play_chart(score_json, log, song_folder, route,
                                            decline_mode, dump_json, path_index))
+
+    @server.tool()
+    def ch_run_chart(song_folder: str, score_json: str, kit_player: str | None = None,
+                     decline_mode: str | None = None, dump_json: str | None = None) -> str:
+        """Start a run in one call, so the first press can beat the first
+        note: ch_attach, ch_kit_setup on kit_player, the Star Power watch and
+        the auto-player on the kit, with one engine search for the watch and
+        the player. Call it right after ch_start(song_folder, human=True),
+        with kit_player="System" for such a launch. decline_mode and
+        dump_json are ch_play_chart's. The call returns at the first press,
+        with one line per part, the time it took, and the line "first press
+        chord index k at ms". A part that fails stops the call there: the
+        reply names it and the kit is taken away. Refused while a play
+        session runs. Read the run with ch_play_status and
+        ch_sp_watch_status."""
+        return capped(h.game.ch_run_chart(song_folder, score_json, kit_player,
+                                          decline_mode, dump_json))
 
     @server.tool()
     def ch_press(lanes: str) -> str:

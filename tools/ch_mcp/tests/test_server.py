@@ -26,8 +26,10 @@ from tools.hydra_ui_mcp import REPLY_CAP_CHARS  # noqa: E402
 # The eighteen tools of the server plan's "The tools" table, then the eleven
 # of the Star Power and song start plan's (task T5), then the five kit tools
 # of the in-game input plan (task K5). The direct-start plan (task D5) adds
-# arguments to ch_start and ch_kit_setup and no tool.
+# arguments to ch_start and ch_kit_setup and no tool. The optimal score run
+# plan (task T4) adds ch_run_chart.
 TOOL_NAMES = {
+    "ch_run_chart",
     "ch_start", "ch_stop", "ch_status", "ch_install_chart", "ch_wait_stats",
     "ch_stats", "ch_compare", "ch_attach", "ch_detach", "ch_state",
     "ch_snapshot", "ch_trace_start", "ch_notes", "ch_trace_stop", "ch_press",
@@ -55,7 +57,7 @@ class ServerTest(unittest.TestCase):
         self.helper = S.Helper(env=env, scratch_root=tmp.name,
                                game_kw={"driver": object()})
 
-    def test_build_server_registers_the_thirty_four_tools(self):
+    def test_build_server_registers_the_thirty_five_tools(self):
         tools = asyncio.run(S.build_server(self.helper).list_tools())
         self.assertEqual({t.name for t in tools}, TOOL_NAMES)
 
@@ -97,6 +99,25 @@ class ServerTest(unittest.TestCase):
         self.assertEqual(result.content[0].text,
                          'route kit: the kit is not set up; call ch_kit_setup first, '
                          'or pass route="keys"')
+
+    def test_ch_run_chart_takes_the_plans_arguments_and_no_lead(self):
+        self.assertEqual(set(self._schema("ch_run_chart")),
+                         {"song_folder", "score_json", "kit_player", "decline_mode", "dump_json"})
+
+    def test_ch_run_chart_passes_its_arguments_through(self):
+        seen = []
+        self.helper.game.ch_run_chart = lambda *a: seen.append(a) or "ran"
+        result = asyncio.run(S.build_server(self.helper).call_tool("ch_run_chart", {
+            "song_folder": "song", "score_json": "top.json", "kit_player": "System",
+            "decline_mode": "kick_only", "dump_json": "dump.json"}))
+        self.assertEqual(result.content[0].text, "ran")
+        self.assertEqual(seen, [("song", "top.json", "System", "kick_only", "dump.json")])
+
+    def test_the_helper_hands_ch_run_chart_its_three_parts(self):
+        parts = self.helper.game._run_parts
+        self.assertIs(parts.frida, self.helper.frida)
+        self.assertIs(parts.kit, self.helper.kit)
+        self.assertIs(parts.sp, self.helper.sp)
 
     def test_the_kit_reads_the_pause_setting_in_the_env_documents_folder(self):
         docs = self.helper.env.documents_dir

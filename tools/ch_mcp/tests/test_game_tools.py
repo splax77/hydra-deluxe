@@ -7,6 +7,7 @@ records its keys, and live_play is a fake that delivers rows.
 
 from __future__ import annotations
 
+import inspect
 import json
 import os
 import sys
@@ -876,6 +877,225 @@ class GameToolsTest(unittest.TestCase):
             "rows, newest first (index, chart_ms, clock_ms_at_press, score_before, score_after, "
             "hit, down_frame, up_frame, down_ms, up_ms):",
             "  0, 1000.0, 998.0, 0, 50, 1, 10, 12, 100, 113"])
+
+    # -- the chained start --------------------------------------------------------------
+
+    ENGINE = 0x2_0000_1000
+
+    class ChainFrida:
+        def __init__(self, events, attaches=True):
+            self.events, self.attaches = events, attaches
+
+        def ch_attach(self):
+            self.events.append("attach")
+            return "attached" if self.attaches else "the game is not running"
+
+        def is_attached(self):
+            return self.attaches
+
+    class ChainKit:
+        def __init__(self, events, press):
+            self.events, self.press = events, press
+
+        def setup_for_run(self, player):
+            self.events.append(("setup", player))
+            return self.press, "setup reply"
+
+        def ch_kit_teardown(self):
+            self.events.append("teardown")
+            return "kit teardown: all checks ok"
+
+    class ChainSp:
+        def __init__(self, events, engine):
+            self.events, self.engine = events, engine
+
+        def watch_for_run(self, cap_s, find_engine):
+            self.events.append(("watch", cap_s, find_engine))
+            return self.engine, "csv: w.csv" if self.engine else "watcher ended: no song"
+
+    def _chain_rig(self, live_play=None, *, attaches=True, press=None, engine=ENGINE):
+        events = []
+        seen = {}
+
+        def played(chords, *, on_press, **kw):
+            events.append("play")
+            seen.update(kw, chords=chords, engine=kw["find_engine"]("a proc"))
+            on_press(ROWS[0])
+            return play_chart.RunResult(stop="done")
+
+        press = press if press is not None else (lambda lanes, axes=None: {})
+        t = ToolRig(self.tmp, live_play=live_play or played)
+        t.tools.use_run_parts(GT.RunParts(self.ChainFrida(events, attaches),
+                                          self.ChainKit(events, press if press != "none" else None),
+                                          self.ChainSp(events, engine)))
+        return t, events, seen
+
+    def _run(self, t, score=None, **kw):
+        reply = t.tools.ch_run_chart(t.r.song, score or self._score_json(), "System", **kw)
+        if t.tools._play is not None:
+            t.tools._play.thread.join(THREAD_CAP_S)
+        return reply
+
+    def test_the_chain_runs_attach_setup_watch_play_in_that_order(self):
+        t, events, _seen = self._chain_rig()
+        self._run(t)
+        self.assertEqual([e if isinstance(e, str) else e[0] for e in events],
+                         ["attach", "setup", "watch", "play"])
+        self.assertEqual(events[1], ("setup", "System"))
+
+    def test_the_watch_gets_the_one_search_and_the_player_its_engine(self):
+        t, events, seen = self._chain_rig()
+        self._run(t)
+        self.assertIs(events[2][2], GT.find_run_engine)
+        self.assertEqual(seen["engine"], self.ENGINE)
+
+    def test_the_players_press_is_the_kit_press_setup_gave_and_it_has_no_driver(self):
+        def press(lanes, axes=None):
+            return {}
+
+        t, _events, seen = self._chain_rig(press=press)
+        self._run(t)
+        self.assertIs(seen["press"], press)
+        self.assertNotIn("driver", seen)
+
+    def test_the_watch_and_the_player_share_the_songs_run_cap(self):
+        t, events, seen = self._chain_rig()
+        self._run(t)
+        self.assertEqual(events[2][1], GT.run_cap_s(t.r.song))
+        self.assertEqual(seen["cap_s"], GT.run_cap_s(t.r.song))
+
+    def test_the_search_is_the_auto_players_with_its_dots_kept_off_stdout(self):
+        with mock.patch.object(play_chart, "_find_engine", return_value=self.ENGINE) as find:
+            self.assertEqual(GT.find_run_engine("a proc"), self.ENGINE)
+        self.assertEqual(find.call_args.args, ("a proc",))
+        self.assertIsNot(find.call_args.kwargs["out"], None)
+
+    def test_the_reply_has_a_line_per_part_and_names_the_first_press(self):
+        t, _events, _seen = self._chain_rig()
+        lines = self._run(t).splitlines()
+        self.assertEqual([line.split(":")[0] for line in lines[:4]],
+                         ["attach", "kit setup", "watch", "play"])
+        self.assertIn(f"engine {self.ENGINE:#x}, csv: w.csv", lines[2])
+        self.assertEqual(lines[-1], "first press chord index 0 at 1000.0 ms")
+        self.assertEqual(len(lines), 5)
+
+    def test_a_later_first_press_is_named(self):
+        def live_play(chords, *, on_press, **kw):
+            on_press(ROWS[1])
+            return play_chart.RunResult(stop="done")
+
+        t, _events, _seen = self._chain_rig(live_play)
+        self.assertEqual(self._run(t).splitlines()[-1],
+                         "first press chord index 1 at 1500.0 ms")
+
+    def test_the_call_returns_at_the_first_press_while_the_run_goes_on(self):
+        release = threading.Event()
+
+        def live_play(chords, *, on_press, **kw):
+            on_press(ROWS[0])
+            release.wait(THREAD_CAP_S)
+            return play_chart.RunResult(stop="done")
+
+        t, _events, _seen = self._chain_rig(live_play)
+        reply = t.tools.ch_run_chart(t.r.song, self._score_json(), "System")
+        self.assertIn("first press chord index 0", reply)
+        self.assertTrue(t.tools._play.running())
+        release.set()
+        t.tools._play.thread.join(THREAD_CAP_S)
+
+    def test_a_decline_reaches_the_chords_and_the_reply_names_them(self):
+        t, _events, seen = self._chain_rig()
+        score, dump = self._decline_files()
+        reply = self._run(t, score, decline_mode="kick_only", dump_json=dump)
+        self.assertEqual([(c.lanes, c.declined) for c in seen["chords"]],
+                         [([Lane.RED], False), ([Lane.KICK], True)])
+        self.assertIn("declined (kick_only): chords 1", reply.splitlines())
+
+    def test_bad_decline_arguments_stop_before_the_attach(self):
+        t, events, _seen = self._chain_rig()
+        score, _dump = self._decline_files()
+        self.assertEqual(self._run(t, score, decline_mode="nothing"),
+                         "decline mode nothing needs dump_json, the path's hydra_replay dump")
+        self.assertEqual(self._run(t, score, decline_mode="both", dump_json="d.json"),
+                         'unknown decline mode "both"; modes: kick_only, nothing')
+        self.assertEqual(events, [])
+
+    def test_a_score_file_it_cannot_read_stops_before_the_attach(self):
+        t, events, _seen = self._chain_rig()
+        reply = self._run(t, os.path.join(self.tmp, "none.json"))
+        self.assertTrue(reply.startswith("could not read "), reply)
+        self.assertEqual(events, [])
+
+    def test_a_failed_attach_stops_there_and_tears_nothing_down(self):
+        t, events, _seen = self._chain_rig(attaches=False)
+        lines = self._run(t).splitlines()
+        self.assertEqual(events, ["attach"])
+        self.assertRegex(lines[0], r"^attach: FAILED after .* s; the run stopped at attach$")
+        self.assertEqual(lines[1], "the game is not running")
+
+    def test_a_failed_setup_stops_before_the_watch_and_the_reply_names_setup(self):
+        t, events, _seen = self._chain_rig(press="none")
+        lines = self._run(t).splitlines()
+        self.assertEqual(events, ["attach", ("setup", "System")])
+        self.assertRegex(lines[1], r"^kit setup: FAILED after .* s; the run stopped at kit setup$")
+        self.assertEqual(lines[2], "setup reply")
+        self.assertIsNone(t.tools._play)
+
+    def test_a_failed_watch_tears_the_kit_down_and_starts_no_player(self):
+        t, events, _seen = self._chain_rig(engine=None)
+        lines = self._run(t).splitlines()
+        self.assertEqual(events[-1], "teardown")
+        self.assertNotIn("play", events)
+        self.assertRegex(lines[2], r"^watch: FAILED after .* s; the run stopped at watch$")
+        self.assertEqual(lines[3:], ["watcher ended: no song", "kit teardown: all checks ok"])
+        self.assertIsNone(t.tools._play)
+
+    def test_a_player_that_ends_with_no_press_tears_the_kit_down(self):
+        def live_play(chords, **kw):
+            return play_chart.RunResult(stop=play_chart.STOP_NO_ENGINE, message="no song")
+
+        t, events, _seen = self._chain_rig(live_play)
+        reply = self._run(t)
+        self.assertEqual(events[-1], "teardown")
+        self.assertRegex(reply, r"play: FAILED after .* s; the run stopped at play")
+        self.assertIn("first press: none, no chord was pressed", reply)
+        self.assertIn("no song", reply)
+
+    def test_a_player_that_raises_is_named_and_tears_the_kit_down(self):
+        def live_play(chords, **kw):
+            raise ValueError("no ghost press is possible")
+
+        t, events, _seen = self._chain_rig(live_play)
+        reply = self._run(t)
+        self.assertEqual(events[-1], "teardown")
+        self.assertIn("ended: failed: ValueError: no ghost press is possible", reply)
+
+    def test_the_chain_is_refused_while_a_play_session_runs(self):
+        release = threading.Event()
+
+        def live_play(chords, *, on_press, **kw):
+            on_press(ROWS[0])
+            release.wait(THREAD_CAP_S)
+            return play_chart.RunResult(stop="done")
+
+        t, events, _seen = self._chain_rig(live_play)
+        t.tools.ch_run_chart(t.r.song, self._score_json(), "System")
+        events.clear()
+        self.assertEqual(t.tools.ch_run_chart(t.r.song, self._score_json(), "System"),
+                         GT.PLAY_ALREADY_RUNNING)
+        self.assertEqual(events, [])
+        release.set()
+        t.tools._play.thread.join(THREAD_CAP_S)
+
+    def test_the_tool_has_no_lead_argument(self):
+        self.assertEqual(list(inspect.signature(GT.GameTools.ch_run_chart).parameters),
+                         ["self", "song_folder", "score_json", "kit_player", "decline_mode",
+                          "dump_json"])
+
+    def test_with_no_parts_handed_in_it_refuses_and_touches_nothing(self):
+        t = ToolRig(self.tmp)
+        self.assertTrue(t.tools.ch_run_chart(t.r.song, self._score_json()).startswith("refused:"))
+        self.assertIsNone(t.tools._play)
 
     def test_foreground_line_is_the_watchs_line_or_none(self):
         t = ToolRig(self.tmp)
