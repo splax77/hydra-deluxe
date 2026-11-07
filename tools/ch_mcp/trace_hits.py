@@ -48,7 +48,7 @@ if _REPO_ROOT not in sys.path:
 
 from tools.ch_mcp import frida_attach as FA  # noqa: E402
 from tools.ch_probe import constants as C  # noqa: E402
-from tools.ch_probe.experiments.play_chart import load_dump_chords  # noqa: E402
+from tools.ch_probe.experiments.play_chart import load_score_times  # noqa: E402
 from tools.ch_probe.probe_songs import song_length_ms  # noqa: E402
 
 DEFAULT_AGENT_NAME = "trace"
@@ -92,9 +92,9 @@ def load_manifest(song_folder: str) -> tuple[str, list[dict]]:
 
 def notes_from_score(score_json_path: str) -> list[dict]:
     """A `hydra_replay score` JSON's chords as notes in the manifest's shape,
-    one per chord. play_chart.load_dump_chords owns reading the file."""
-    return [{"index": chord.index, "time_ms": chord.ms}
-            for chord in load_dump_chords(score_json_path)]
+    one per chord. play_chart.load_score_times owns reading the file."""
+    return [{"index": index, "time_ms": ms}
+            for index, ms in load_score_times(score_json_path)]
 
 
 def song_notes(song_folder: str,

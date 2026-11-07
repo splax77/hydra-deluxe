@@ -1,0 +1,6 @@
+{"paths": [{"index": 0, "pathstring": "1+ 0- 2 0+", "total": 552770, "activations": [
+{"act_tick": 23904, "deact_tick": 30048, "nominal_deact_tick": 28512, "sqout_tick": -1, "sqin_ticks": [28512], "sqinouts": [{"kind": "SqIn", "offset_ms": 0.0}], "skipped_fill_ticks": [17760]},
+{"act_tick": 45408, "deact_tick": 48480, "nominal_deact_tick": 48480, "sqout_tick": 48480, "sqin_ticks": [], "sqinouts": [{"kind": "SqOut", "offset_ms": 0.0}], "skipped_fill_ticks": []},
+{"act_tick": 64608, "deact_tick": 70368, "nominal_deact_tick": 69216, "sqout_tick": -1, "sqin_ticks": [], "sqinouts": [], "skipped_fill_ticks": [56160, 60000]},
+{"act_tick": 81024, "deact_tick": 84480, "nominal_deact_tick": 83328, "sqout_tick": -1, "sqin_ticks": [83328], "sqinouts": [{"kind": "SqIn", "offset_ms": 0.0}], "skipped_fill_ticks": []}
+]}]}
