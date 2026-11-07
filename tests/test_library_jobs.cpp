@@ -2,8 +2,9 @@
 // clock and time-left estimate, the chart being analyzed, the batch's counts,
 // plain failure lines, quiet cancels, and the startup open's step that reads
 // saved paths.
-// The analyzer and the network are fakes; the counts case and the startup
-// open's cases read one corpus chart each, for a result the store can save.
+// The analyzer and the network are fakes; the counts case, the batch hand-back
+// case and the startup open's cases read one corpus chart each, for a result
+// the store can save.
 
 #include "doctest.h"
 
@@ -105,7 +106,7 @@ hydra::app::ChartAnalyzer released_in_turn(std::atomic<int>& released) {
 }  // namespace
 
 // AOA-W3 V9-SN1: an exception out of the scan ends the job with the error as
-// its one problem line, instead of ending the process. It writes no library.
+// its one problem line. It writes no library.
 TEST_CASE("jobs: a scan that throws finishes with its error as a problem") {
     RecordStore store(":memory:");
     const std::runtime_error broke("scan broke");
@@ -391,10 +392,9 @@ TEST_CASE("jobs: the snapshot's counts come from the batch in one piece") {
 }
 
 // D88: every exe runs on mimalloc, this one too. An exe whose link puts
-// mimalloc.dll after another DLL keeps the Windows heap without a word; the
-// memory wave's join did that to every GUI exe. The Debug runtime is never
-// redirected, so only a Release build can tell. A build without mimalloc
-// (HYDRA_MIMALLOC in CMakeLists.txt) has nothing to check.
+// mimalloc.dll after another DLL keeps the Windows heap without a word. The
+// Debug runtime is never redirected, so only a Release build can tell. A build
+// without mimalloc (HYDRA_MIMALLOC in CMakeLists.txt) has nothing to check.
 #if defined(NDEBUG) && defined(HYDRA_MIMALLOC)
 TEST_CASE("allocator: malloc goes to mimalloc") {
     CHECK(hydra::app::malloc_redirected());
@@ -488,7 +488,7 @@ TEST_CASE("jobs: an empty report shows generate_report's reason, or the app's ow
     CHECK_FALSE(nothing.ok());
     CHECK(nothing.message() ==
           hydra::app::plain_error(hydra::KindedError(hydra::ErrorKind::NoRecords, "x")));
-    // The sentence the user approved for an empty database (plan question 3).
+    // The sentence for an empty database (D115 item 5).
     CHECK(nothing.message() ==
           "Nothing is analyzed yet. Click a song or run a batch to analyze it.");
 }
@@ -701,7 +701,7 @@ TEST_CASE("jobs: a failed leaderboard fetch says what to do") {
     CHECK(job.error() == "could not send the request (error 12029)");
 }
 
-// Finding 212: run_guarded and AnalyzeJob::start's thread-start catch record a
+// Finding 212: run_guarded and ViewJob::start's thread-start catch record a
 // failure through one fail(). This job exposes it so the test can call it.
 TEST_CASE("jobs: a failed job records the raw text, the plain message, not ok and finished") {
     struct FailingJob : hydra::ui::ResultJobBase {

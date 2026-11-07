@@ -1,5 +1,7 @@
 // Tests for ui/list_scroll: whether a selection change or a change of row
-// height scrolls the list, and how far (the user's rulings, D242 and D247).
+// height scrolls the list, and how far. D242 rules the click. The rest took
+// the recommended answers under D247; the "answer" numbers in two test names
+// come from those questions, which no record lists.
 
 #include "doctest.h"
 
