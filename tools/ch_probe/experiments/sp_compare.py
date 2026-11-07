@@ -25,8 +25,9 @@ The plan behind every check is "Task S" of the overlay spike plan (removed;
 read it with git show 444631e6:docs/superpowers/plans/2026-10-28-overlay-spike.md).
 
 It also owns the row questions the `ch` MCP server asks of a watch in
-progress: find_activations, phrase_rises, flips_between, ready_between and
-at_ready_level. The server prints their answers and asks nothing itself.
+progress: find_activations, phrase_rises, flips_between, ready_between,
+at_ready_level and gap_summary. The server prints their answers and asks
+nothing itself.
 
 Usage:
     py tools\\ch_probe\\experiments\\sp_compare.py <watch.csv> <score.json>
@@ -53,6 +54,7 @@ _REPO_ROOT = os.path.abspath(
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
+from tools.ch_probe import constants as C
 from tools.ch_probe.experiments.overlay_logs import (
     WATCH_COLUMNS, WATCH_COLUMNS_WITHOUT_CLOCK)
 from tools.ch_probe.experiments.play_chart import PRESS_LEAD_MS, SP_END_LEAD_MS
@@ -263,6 +265,36 @@ def at_ready_level(amount, sp_max) -> bool:
     meter that holds nothing (sp_max 0, a read before the game set it up) is
     never ready."""
     return sp_max > 0 and amount >= READY_FRACTION * sp_max
+
+
+class GapSummary(NamedTuple):
+    """What gap_summary found. With no gap every field but `count` is None."""
+    count: int
+    longest_ms: float | None
+    from_ms: float | None  # the clock of the row before the first gap
+    to_ms: float | None    # the clock of the row after the last gap
+
+
+def gap_summary(rows: list, gap_ms: float,
+                song_end_ms: float | None = None) -> GapSummary:
+    """The gaps in wall time between consecutive rows that are longer than
+    gap_ms. A gap of exactly gap_ms does not count. The watch writes a row
+    only on a change, so a gap is a stretch with no new row, which a stalled
+    watch and a stalled game both make.
+
+    A gap counts only when both its rows have a clock at or below song_end_ms,
+    the song's end (D255). That leaves out the wait after the song, which ends
+    on the watch's final row for a stopped clock (sp_watch.watch). With no
+    song_end_ms every row counts."""
+    gaps = {i: C.s_to_ms(rows[i]["wall_s"] - rows[i - 1]["wall_s"])
+            for i in range(1, len(rows))
+            if song_end_ms is None
+            or max(_ms(rows[i - 1]), _ms(rows[i])) <= song_end_ms}
+    over = [i for i, gap in gaps.items() if gap > gap_ms]
+    if not over:
+        return GapSummary(0, None, None, None)
+    return GapSummary(len(over), max(gaps[i] for i in over),
+                      _ms(rows[over[0] - 1]), _ms(rows[over[-1]]))
 
 
 @dataclass
