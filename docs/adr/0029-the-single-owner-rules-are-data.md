@@ -16,11 +16,13 @@ Five things were wrong with the table, and all five came from the rows being
 C++ rather than data. The counts below are the plan's, taken from the checkout
 and `git log` at commit 784e47cc.
 
-The precheck carried a C++ parser. tools/derive_once_precheck.ps1 needs the
+The precheck carried a C++ parser. tools/derive_once_precheck.ps1 needed the
 rows too, so it read them out of the C++ by brace position, and kept its own
 self-test to notice when a struct member moved. That was a parser for C++
 written in PowerShell, and it existed only because the rules were not data.
-Now it reads the JSON with `ConvertFrom-Json`.
+That script is gone. Today's precheck, `hydra_precheck` (tools/precheck/),
+reads the JSON rows through the scan's own engine
+(tests/single_owner/engine.h).
 
 Every new row recompiled the largest test file. The file had grown to 6,558
 lines, about 5,600 of them the table.

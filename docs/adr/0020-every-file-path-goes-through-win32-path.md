@@ -93,7 +93,7 @@ is missing or the drive keeps no short names, which Windows turns off on most
 drives other than C:. A `\\.\` path also gets nothing, since its short form
 keeps the prefix.
 
-- Open report (`app::open_in_browser`): a path the shell takes goes to the
+- `app::open_in_browser`: a path the shell takes goes to the
   shell as before. Otherwise it goes to the program Windows opens `.html`
   files with, as its short name. The page is copied to `%TEMP%\Hydra` and
   that copy is opened through the shell in two cases. One is when there is
