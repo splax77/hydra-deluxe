@@ -46,7 +46,7 @@
       "scope": [
         "src"
       ],
-      "note": "A raw font pick is any of: reading the mono handle, pushing a font, asking ImGui for the current font to draw with, or measuring through a font pointer. ImGui::CalcTextSize with no font argument is allowed: it measures in whatever font a ScopedFont pushed, so it agrees with the draw by construction. No anchor: the alternatives share no plain text. Decided by: D258."
+      "note": "A raw font pick is any of: reading the mono handle, pushing a font, asking ImGui for the current font to draw with, or measuring through a font pointer. ImGui::CalcTextSize with no font argument is allowed: it measures in whatever font a ScopedFont pushed, so it agrees with the draw by construction. No anchor: the alternatives share no plain text."
     }
   ]
 }
