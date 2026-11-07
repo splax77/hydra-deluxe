@@ -268,7 +268,7 @@ bool try_parse_int(std::string_view s, int64_t& out) {
 
 // The disco markers both formats read are matched by hand. The dynamics marker
 // is Clone Hero's two exact strings (finding 64). The tests "... disco markers
-// match the regexes they replaced" in test_song_parse.cpp check the disco
+// match the pinned tables" in test_song_parse.cpp check the disco
 // markers through both parsers, with every byte value in every position that
 // matters; test_dynamics_tag.cpp pins the dynamics strings.
 //
@@ -1453,7 +1453,7 @@ constexpr int kChartDoubleLanePhrase = 66;
 
 // Sets `bracket` to the first bracketed run in `line`, brackets included. The
 // loop says which '[' and ']' pair up, and the test ".chart: section headers
-// are found as the regex found them" pins it. Returns false when there is none.
+// are found as the pinned table says" pins it. Returns false when there is none.
 bool find_section_header(std::string_view line, std::string_view* bracket) {
     size_t i = line.find('[');
     while (i != std::string_view::npos) {

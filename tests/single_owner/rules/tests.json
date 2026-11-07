@@ -320,7 +320,7 @@
         {
           "file": "tests/test_song_parse.cpp",
           "line_text": "\"[SyncTrack]\\n{\\n  0 = TS 4\\n  0 = B 120000\\n}\\n\";",
-          "why": "\"section headers are found as the regex found them\" puts an arbitrary first line in front of this header, which chart_text cannot write"
+          "why": "\"section headers are found as the pinned table says\" puts an arbitrary first line in front of this header, which chart_text cannot write"
         },
         {
           "file": "tests/test_song_input.cpp",

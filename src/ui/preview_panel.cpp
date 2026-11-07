@@ -150,10 +150,9 @@ void name_box(const char* label, ImVec2 min, ImVec2 max) {
 float line_height(float size) { return size * 1.25f; }
 
 // The next-activation box's notation line over its other lines' size. The
-// user approved the ratio through the Preview mock on 2026-10-10 (option B,
-// in the mock, removed from the repo; read it with
-// git show 444631e6:docs/handoffs/2026-10-10-preview-next-act-stars-mock/preview_mock.html),
-// where the notation line is 17px and the box's other lines 12px (D111).
+// user approved the ratio through the Preview mock (option B, D111), where the
+// notation line is 17px and the box's other lines 12px. The mock:
+// docs/handoffs/2026-10-10-preview-next-act-stars-mock/preview_mock.html (removed; git show 444631e6:docs/handoffs/2026-10-10-preview-next-act-stars-mock/preview_mock.html)
 constexpr float kNextActNotationScale = 17.0f / 12.0f;
 
 // The score box's star row: kMaxStars stars, each as tall as a line of text
@@ -487,7 +486,7 @@ void draw_preview_panel(PreviewController& controller, PreviewPanelState& state,
         // monospace, on a translucent dark panel): the playhead's measure and
         // the one where playback ends, the tempo and signature in force, and the practice
         // section (absent on charts that have none). The clock is beside the
-        // scrubber now.
+        // scrubber.
         const std::string where = box.position + "  of " + box.length;
         const char* lines[3];
         int line_count = 0;
