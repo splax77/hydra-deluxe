@@ -35,8 +35,8 @@ inline bool toggle_on_after(Toggle t) {
 // Hydra marks an SP phrase, a solo or a fill by the tick of its last note;
 // Onyx's span reaches past that note. The drawn edge sits this many ticks
 // after the last note: past it, and short of any note on the next tick, at
-// every resolution and tempo. (A fixed half millisecond was not: at 480 ticks
-// per beat and 300 BPM one tick is 0.417 ms.)
+// every resolution and tempo. (A fixed time can't promise that: at 480 ticks
+// per beat and 300 BPM one tick is only 0.417 ms.)
 constexpr double kSpanEndTicks = 0.5;
 
 // The four pads, left to right. Kick is separate (TrackGem::kick).

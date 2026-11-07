@@ -1,4 +1,4 @@
-// Chart parsing — the C++ port of hydra/hysong.py.
+// Chart parsing.
 //
 // Turns a .mid/.chart/.sng/.srb file into a Song: a tick-ordered sequence of
 // SongTimestamps (a Timecode + Chord + solo/SP/fill flags), plus the tempo and
@@ -101,10 +101,10 @@ public:
 inline constexpr const char* kUnknownTitle = "(unknown)";
 
 // The one fallback for a song's name. A blank name (an empty `name =`, a
-// missing name key, an empty .sng/.srb name) and the "<unknown title>" the
-// metadata readers wrote before this existed both become kUnknownTitle.
-// Library rows from older scans still hold those, so every
-// place that shows a stored name reads it through this.
+// missing name key, an empty .sng/.srb name) and the placeholder
+// "<unknown title>" both become kUnknownTitle. Library rows from older scans
+// still hold those, so every place that shows a stored name reads it through
+// this.
 std::string title_or_unknown(std::string title);
 
 // Removes Clone Hero rich-text tags: <color=...>, </color>, <b>, </b>, <i>,
@@ -164,9 +164,9 @@ inline constexpr const char* kNoteShuffleFreezeDetail =
 // `fills` is the fill rule the song will be scored under: a chart with no
 // fills of its own gets the fills that game version generates
 // (Song::check_activations). A caller holding a setting converts it with
-// search/graph.h's fill_rule_for. No loader has a default for either: the
-// Preview once read 1.1 fills under the "1.0 fills" setting because it
-// left the rule out (D115 TJ-3). Tests name theirs once, in tests/load_util.h.
+// search/graph.h's fill_rule_for. No loader has a default for either, so a
+// caller can't leave the rule out by accident. Tests name theirs once, in
+// tests/load_util.h.
 //
 // kNotesOnlyFills is for a caller that reads only the chords (their pads,
 // times and dynamics), never which chord carries a fill: a fill only marks a
