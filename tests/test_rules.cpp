@@ -147,9 +147,9 @@ TEST_CASE("rules: a whole-number key takes a whole value written as a decimal") 
 }
 
 TEST_CASE("rules: no rules value has the no-rules fingerprint") {
-    // Task 2 opens the store with kNoRulesFingerprint when the file is bad,
-    // so no stored row can read Ready. That only works if no real rules
-    // value ever hashes to it.
+    // AppState opens the store on RulesStamp::none(), which holds
+    // kNoRulesFingerprint, when the file is bad, so no stored row can read
+    // Ready. That only works if no real rules value ever hashes to it.
     CHECK(core::default_rules().fingerprint() != core::kNoRulesFingerprint);
     core::Rules other = core::default_rules();
     other.max_tied_paths = 2;
@@ -441,8 +441,8 @@ TEST_CASE("rules: the generated-fill values come from the rules") {
 }
 
 TEST_CASE("rules: the retired fill_length_measures key is read and ignored") {
-    // D115: a generated fill starts on its measure line, so the key no longer
-    // does anything, but a hydra_rules.ini that still sets it keeps loading.
+    // D115: a generated fill starts on its measure line, so the key does
+    // nothing, but a hydra_rules.ini that still sets it keeps loading.
     core::Rules r = app::load_rules_file(write_rules("retired_fill_length",
         "fill_length_measures = 0.25\n"
         "max_tied_paths = 2\n"));
@@ -451,12 +451,12 @@ TEST_CASE("rules: the retired fill_length_measures key is read and ignored") {
     CHECK(r.fingerprint() == expected.fingerprint());
 }
 
-// ---- the fingerprint's scope (docs/adr/0014, amended 2026-09-26) ----------
+// ---- the fingerprint's scope (docs/adr/0014) ------------------------------
 
 TEST_CASE("rules: the retired Auto keys are read and ignored") {
-    // Auto is gone (2026-09-27), but a hydra_rules.ini that still sets its
-    // two keys must keep loading: an error here would switch analysis off.
-    // Any value is accepted, since the keys no longer do anything.
+    // A hydra_rules.ini that still sets these two keys must keep loading: an
+    // error here would switch analysis off. Any value is accepted, since the
+    // keys do nothing.
     core::Rules r = app::load_rules_file(write_rules("retired",
         "auto_cap_ladder = 32, 16\n"
         "auto_budget_s = banana\n"
@@ -468,10 +468,9 @@ TEST_CASE("rules: the retired Auto keys are read and ignored") {
 }
 
 TEST_CASE("rules: the fingerprint text is pinned") {
-    // Pinned from one run at D115 B2-3, which retired fill_length_measures
-    // (until then the values were 1.8.4's, from 6a1bb49). Every stored result
-    // carries one of these, so a change to the text's names, number form or
-    // line order would read every row Stale.
+    // Pinned from one run. Every stored result carries one of these, so a
+    // change to the text's names, number form or line order would read every
+    // row Stale.
     CHECK(core::default_rules().fingerprint() == 0xaac02b481589a70eull);
     // Every field moved off its default, so each line's name and number form
     // (whole numbers, fractions, the whole_chord word) is in the hash.
@@ -486,8 +485,8 @@ TEST_CASE("rules: the fingerprint text is pinned") {
 }
 
 TEST_CASE("rules: the default stamp is built once and matches a fresh record") {
-    // HydraRecord's default fingerprint used to re-hash the default rules for
-    // every record built, which includes every record decoded.
+    // HydraRecord's default fingerprint reads this stamp, so a record built
+    // or decoded never re-hashes the default rules.
     CHECK(&core::default_stamp() == &core::default_stamp());
     CHECK(core::default_stamp().fixed == core::default_rules().fingerprint());
     CHECK(HydraRecord{}.rules_fingerprint == core::default_stamp().fixed);

@@ -1,4 +1,4 @@
-// Practice-section names as Clone Hero shows them (D115 B2-3). The list is
+// Practice-section names as Clone Hero shows them (D115). The list is
 // Clone Hero 1.1.0.6142's, kept in data/ and turned into
 // src/parse/section_names_table.cpp by tools/gen_section_names.py.
 #include "doctest.h"
@@ -26,7 +26,7 @@ TEST_CASE("section names: the generated table agrees with the TSV row for row") 
         INFO(line);
         CHECK(rows.emplace(line.substr(0, tab), line.substr(tab + 1)).second);
     }
-    // The count the first executor and this task read from the source file.
+    // The count read from the source file.
     CHECK(rows.size() == 2718);
 
     const SectionNameTable table = section_name_table();

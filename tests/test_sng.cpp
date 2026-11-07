@@ -125,7 +125,7 @@ TEST_CASE("sng: unmasking into the caller's buffer undoes the pinned stored byte
     // What the payload does not pin is the stored form: make_sng writes it with
     // its own masking, so a decoder and a writer that drifted together would
     // still round-trip. The first 32 and last 16 stored (masked) bytes of the
-    // file are pinned from one run of make_sng on 2026-10-10 at 013f4c66.
+    // file are pinned from one run of make_sng.
     const std::vector<uint8_t> want_stored_head = {
         0x3B, 0x06, 0x69, 0x3C, 0xD7, 0x92, 0xB5, 0x68, 0x52, 0x3F, 0x00,
         0xD5, 0x4E, 0x6B, 0x8C, 0xA1, 0x79, 0xA4, 0x8B, 0x9E, 0xB5, 0x50,
@@ -192,8 +192,8 @@ TEST_CASE("sng: a header longer than the first read still loads") {
 }
 
 // A file can shrink after it was opened and sized: the source then claims
-// more bytes than its reads hand back. A short read ends the header read;
-// waiting for the claimed size used to loop forever.
+// more bytes than its reads hand back. A short read ends the header read,
+// because waiting for the claimed size would never finish.
 TEST_CASE("sng: a source shorter than its stated size ends the header read") {
     const std::vector<uint8_t> whole = make_sng({{"name", "Song"}}, {{"notes.mid", tiny_mid()}});
     const std::vector<uint8_t> cut(whole.begin(), whole.begin() + 10);
@@ -248,8 +248,8 @@ TEST_CASE("sng: a container parses the same from bytes as from its path") {
 
 // Clone Hero, its song cache and dmleaderboards key a .sng by the MD5 of the
 // notes file inside it, as they key a folder chart by its notes file's MD5
-// (54 of 54 .sng files in the user's songcache.bin, 2026-10-09). The audio
-// and art around the notes never change the id.
+// (54 of 54 .sng files in the user's songcache.bin). The audio and art around
+// the notes never change the id.
 TEST_CASE("sng: a chart's id is the MD5 of the notes file inside it") {
     const std::string dir = testtemp::temp_dir("sng_scan_id");
     const std::string loose = dir + "\\notes.mid";
@@ -308,9 +308,7 @@ TEST_CASE("sng: a container without a notes file is a scan error") {
     CHECK(app::hash_chart_file(path).empty());
 }
 
-// The chart-files pins live here because test_song.cpp belonged to another
-// task when they were written. That file has since split; its own chart_files
-// cases are in test_song_parse.cpp.
+// More chart_files cases are in test_song_parse.cpp.
 TEST_CASE("chart_files: pick_notes_file takes the first notes.mid, else the last notes.chart") {
     const std::optional<NotesFilePick> mid =
         pick_notes_file({"song.ogg", "notes.chart", "NOTES.MID", "notes.chart"});
