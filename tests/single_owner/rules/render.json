@@ -54,7 +54,7 @@
         "tools",
         "tests"
       ],
-      "note": "J1-3 (phase 6): the track state's owners. toggle_at was a second copy of the span rule beside SpanSweep and is deleted (D54)."
+      "note": "The track state's owners. A toggle_at function would be a second copy of the span rule beside SpanSweep."
     },
     {
       "question": "Is a span on after this instant?",
@@ -169,7 +169,7 @@
           "why": "far_time, the owner"
         }
       ],
-      "note": "---- phase 6 task J2-8: render callers and the Onyx numbers ---- The highway's far end is now plus speed times secs_future; time_to_z, z_to_time and the draw list's window all ask far_time."
+      "note": "The highway's far end is now plus speed times secs_future; time_to_z, z_to_time and the draw list's window all ask far_time."
     },
     {
       "question": "Where does the track rectangle sit, and at what size?",
@@ -219,7 +219,7 @@
           "why": "track_rect, the owner"
         }
       ],
-      "note": "The track rectangle: the size floor (below 1 counts as 1), the camera aspect (width over track height) and the bottom anchor (the track's top row is the image height less the track height). The last alternative is the renderer's old fade rectangle, which divided the track height by the image height; it now converts track_rect's top row to screen coordinates."
+      "note": "The track rectangle: the size floor (below 1 counts as 1), the camera aspect (width over track height) and the bottom anchor (the track's top row is the image height less the track height). The last alternative is a fade rectangle that divides the track height by the image height; the renderer converts track_rect's top row to screen coordinates instead."
     },
     {
       "question": "In what order does a polygon become triangles?",
@@ -426,7 +426,7 @@
       "scope": [
         "src"
       ],
-      "note": "The four pad columns listed by hand in each loop, which the draw code did four times before the drum lanes made it five."
+      "note": "The four pad columns listed by hand in a loop, in place of kPads."
     }
   ]
 }

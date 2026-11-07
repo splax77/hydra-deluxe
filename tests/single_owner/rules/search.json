@@ -501,7 +501,7 @@
           "why": "allzero_options, the owner of the 0 ms limit (D85)"
         }
       ],
-      "note": "Was the E3/D85 test case, which pinned the whole line; now a row, so a drift asks for the owner line to be updated. The shortcut that skips the all-0 pass reads the limit from allzero_options."
+      "note": "The owner line pins the whole line, so a drift asks for it to be updated. The shortcut that skips the all-0 pass reads the limit from allzero_options."
     }
   ]
 }
