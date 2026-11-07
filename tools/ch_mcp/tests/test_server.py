@@ -13,6 +13,7 @@ import os
 import sys
 import tempfile
 import unittest
+from types import SimpleNamespace
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.abspath(os.path.join(_HERE, "..", "..", ".."))
@@ -20,16 +21,18 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 from tools.ch_mcp import bot_run  # noqa: E402
+from tools.ch_mcp import game_tools as GT  # noqa: E402
 from tools.ch_mcp import server as S  # noqa: E402
+from tools.ch_mcp import sp_tools as SP  # noqa: E402
 from tools.hydra_ui_mcp import REPLY_CAP_CHARS  # noqa: E402
 
 # The eighteen tools of the server plan's "The tools" table, then the eleven
 # of the Star Power and song start plan's (task T5), then the five kit tools
 # of the in-game input plan (task K5). The direct-start plan (task D5) adds
 # arguments to ch_start and ch_kit_setup and no tool. The optimal score run
-# plan (task T4) adds ch_run_chart.
+# plan (task T4) adds ch_run_chart, and the reload plan (task R3) ch_open_items.
 TOOL_NAMES = {
-    "ch_run_chart",
+    "ch_run_chart", "ch_open_items",
     "ch_start", "ch_stop", "ch_status", "ch_install_chart", "ch_wait_stats",
     "ch_stats", "ch_compare", "ch_attach", "ch_detach", "ch_state",
     "ch_snapshot", "ch_trace_start", "ch_notes", "ch_trace_stop", "ch_press",
@@ -57,9 +60,46 @@ class ServerTest(unittest.TestCase):
         self.helper = S.Helper(env=env, scratch_root=tmp.name,
                                game_kw={"driver": object()})
 
-    def test_build_server_registers_the_thirty_five_tools(self):
+    def test_build_server_registers_the_thirty_six_tools(self):
         tools = asyncio.run(S.build_server(self.helper).list_tools())
         self.assertEqual({t.name for t in tools}, TOOL_NAMES)
+
+    def _open_items(self):
+        result = asyncio.run(S.build_server(self.helper).call_tool("ch_open_items", {}))
+        return result.content[0].text
+
+    def test_ch_open_items_says_so_when_nothing_is_open(self):
+        self.assertEqual(self._open_items(), "nothing open")
+
+    def test_ch_open_items_names_the_run_with_its_backup_folder(self):
+        self.helper.game._run = SimpleNamespace(game=SimpleNamespace(pid=7), backup_dir="the-backup")
+        self.assertEqual(self._open_items(), "run: game pid 7, backup folder the-backup")
+
+    def test_ch_open_items_names_an_adopted_backup(self):
+        self.helper.game._adopted_backup = "the-backup"
+        self.assertEqual(self._open_items(), "adopted backup: the-backup")
+
+    def test_ch_open_items_lists_each_running_thing_on_its_own_line(self):
+        alive = SimpleNamespace(is_alive=lambda: True)
+        self.helper.frida._agent = SimpleNamespace(alive=True)
+        self.helper.kit._agent = object()
+        self.helper.game._play = GT._PlaySession("s.json", 2, None, thread=alive, rows=[{}])
+        self.helper.sp._watch = SP._Watch("w.csv", 1.0, thread=alive)
+        self.helper.method_watch._session = SimpleNamespace(ended=lambda: False)
+        self.helper.frida._trace = SimpleNamespace(ended=lambda: False)
+        self.assertEqual(self._open_items().splitlines(), [
+            "play session: running, 1 presses so far", "frida: state agent attached",
+            "kit: kit agent attached", "star power watch: running", "method watch: running",
+            "trace: running"])
+
+    def test_ch_open_items_leaves_out_what_has_ended(self):
+        dead = SimpleNamespace(is_alive=lambda: False)
+        self.helper.frida._agent = SimpleNamespace(alive=False)
+        self.helper.game._play = GT._PlaySession("s.json", 2, None, thread=dead)
+        self.helper.sp._watch = SP._Watch("w.csv", 1.0, thread=dead)
+        self.helper.method_watch._session = SimpleNamespace(ended=lambda: True)
+        self.helper.frida._trace = SimpleNamespace(ended=lambda: True)
+        self.assertEqual(self._open_items(), "nothing open")
 
     def test_a_long_reply_is_cut_at_a_line_with_the_clone_hero_closing_line(self):
         long_text = "\n".join(f"call {i}: " + "x" * 90 for i in range(200))

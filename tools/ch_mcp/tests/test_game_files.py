@@ -70,6 +70,21 @@ class BackupRestoreTest(unittest.TestCase):
     def test_the_backed_up_files_are_the_safety_rule_list(self):
         self.assertEqual(sorted(G.DOCUMENTS_FILES + G.LOCALLOW_FILES), sorted(ORIGINAL))
 
+    def test_restore_with_a_leave_list_skips_those_files_and_says_so(self):
+        f = Folders(self.tmp)
+        folder = G.backup(f.docs, f.low, f.root)
+        for name in ORIGINAL:
+            _write(f.path(name), b"changed")
+        lines = G.restore(folder, leave=G.KEPT_FILES)
+        for name in ORIGINAL:
+            self.assertEqual(_read(f.path(name)),
+                             b"changed" if name in G.KEPT_FILES else ORIGINAL[name], name)
+        for name in G.KEPT_FILES:
+            self.assertIn(f"{name}: left as it is, because the backup may be older than "
+                          "your play", lines)
+        self.assertEqual(G.KEPT_FILES, ("profiles.ini", "profiles.bin", "scoredata.bin",
+                                        "scoresext.bin", "user.bin"))
+
     def test_the_profiles_files_are_backed_up_from_documents(self):
         # The direct-start plan's question 3, answered 2026-10-31; the game
         # keeps them in the Documents folder (page 07, IN-70).

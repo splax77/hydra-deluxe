@@ -217,7 +217,7 @@ class BotRunTest(unittest.TestCase):
         r = Rig(self.tmp, exits_at=None)
         r.game_writes_stats_at(5)
 
-        def fail(backup_dir, out):
+        def fail(backup_dir, out, leave=()):
             raise G.RestoreError("scoredata.bin", "locked")
 
         with mock.patch.object(B.game_files, "restore", fail):
@@ -228,7 +228,7 @@ class BotRunTest(unittest.TestCase):
     def test_a_restore_failure_on_the_cap_path_runs_no_exit_check(self):
         r = Rig(self.tmp, exits_at=None)
 
-        def fail(backup_dir, out):
+        def fail(backup_dir, out, leave=()):
             raise G.RestoreError("user.bin", "locked")
 
         with mock.patch.object(B.game_files, "restore", fail):
@@ -411,7 +411,7 @@ class RunStepsTest(unittest.TestCase):
         r = Rig(self.tmp, exits_at=None)
         run = self.start(r, r.song)
 
-        def fail(backup_dir, out):
+        def fail(backup_dir, out, leave=()):
             raise G.RestoreError("scoredata.bin", "locked")
 
         with mock.patch.object(B.game_files, "restore", fail):
