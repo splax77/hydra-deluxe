@@ -137,7 +137,7 @@ Label: Proven in the game's code
 Evidence: docs/audit/note-shuffle/step0/open1/midi_reader_2155C00.asm line 218 (the lowercase call at 0x2155FDF), lines 297 to 302 (the "part drums" compare at 0x2156134) and lines 503 to 508 (the "part drum" compare at 0x21564A8).
 Game code (6142): a method of the .mid reader class #8626, RVA `0x2155C00`, the listing above.
 Hydra: `is_drums_track_name` in src/parse/midi.cpp line 446, names in `kDrumsTrackNames` in src/parse/midi.h line 97.
-Ruling: D252 (decision log line 882) states the rule and the addresses; the user's quoted call on it is only the build approval, chose "Yes, build it" (card 2026-10-17-77c0ebab, 00:31 UTC).
+Ruling: D252 states the rule and the addresses; the user's quoted call on it is only the build approval, chose "Yes, build it" (card 2026-10-17-77c0ebab, 00:31 UTC).
 Found: 2026-10-16, session 77c0ebab.
 
 ### CR-14 When two tracks carry a drum name, the first in file order wins
@@ -490,12 +490,12 @@ Hydra: `stated_length_ms` in src/app/song_length.cpp line 13, used in `app::song
 Ruling: D255 item 1: "Option C (Recommended)". The record says: "It matches the game whenever the stated length is the game's own record of the audio."
 Found: 2026-10-18, session b71e9156.
 
-### CR-48 song_length and [music_end] are not read on the song-end path
+### CR-48 Whether song_length and [music_end] are read on the song-end path is not settled
 
-Rule: song.ini `song_length` is never read when the game builds the playing length, and [music_end] is not read at all.
+Rule: nothing read so far shows song.ini `song_length` feeding the playing length, or the game reading [music_end]. Neither is proven absent.
 Label: Unknown
-Evidence: music_end and [music_end] are not among the 23,972 string literals of `stringliteral.json` (searched 2026-10-30), which shows only that no code holds it as a literal; the "never read" part rests on the lost reading of `0xD8D80`.
-Game code (6142): RVA `0xD8D80`; listing lost; read 2026-10-18 in session b71e9156.
+Evidence: music_end and [music_end] are not among the 23,972 string literals of `stringliteral.json` (searched 2026-10-30), which shows only that no code holds it as a literal. The notes `code/6142/gm_load_coroutine_D8D80.md` lines 6 to 10 build the length from the chart, the audio and the end event with no song.ini term, but they leave the listing's lines 101 to 260 and 487 to 700 unread, and the listing was not re-read for this rule.
+Game code (6142): RVA `0xD8D80`, `code/6142/gm_load_coroutine_D8D80.asm` lines 300 to 389; first read 2026-10-18 in session b71e9156.
 Hydra: `is_end_event` in src/parse/song.cpp line 46 accepts only `end`.
 Ruling: none found.
 Found: 2026-10-18, session b71e9156; string search 2026-10-30 in session b02ab3e6 (the reference build).
