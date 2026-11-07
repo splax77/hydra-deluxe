@@ -206,7 +206,7 @@ LS-D2a's stop line already says question 8 must be answered; N4 adds "and LS-N1'
 | P29: The launch agent's `arm` replies `refused` with a reason and `launch_human` kills the game on it, the pattern the net agent copies | code | `tools/ch_mcp/agent/launch.ts` lines 76 to 100, `tools/ch_mcp/bot_run.py` lines 683 to 688 | checked 2026-10-31 |
 | P30: The loader gives the slot the System Player, and the drums input reads that slot's player at each button read | data | `docs/clone-hero/07-internals.md` IN-66 and IN-68 | checked 2026-10-31, both labelled Proven in the game's code |
 | P31: The docs test's Premise map check reads any plan under `docs/superpowers/plans/` that holds a `## Premise map` heading, takes a `### <id>:` heading of any kind as a task id, and counts `(never tried)` markers per step | code | `tests/test_docs_match_code.cpp` lines 1526 to 1536, 1635 to 1648 and 1730 to 1772 | checked 2026-10-31 |
-| P32: With the drum map loaded onto System, kit presses reach the drums input | unchecked | nothing yet; `docs/clone-hero/07-internals.md` IN-68 says this was not checked; the direct-start plan's row P22 | LS-D1a, then the direct-start plan's LS-D1b and LS-D1d |
+| P32: With the drum map loaded onto System, kit presses reach the drums input | run | `hydra-data\ch-mcp-runs\2026-11-06\ls-d1b-run1\replies.txt`; `docs/clone-hero/07-internals.md` IN-77; the direct-start plan's row P22 | checked 2026-11-06, by the direct-start plan's LS-D1b and LS-D1d |
 
 ## Prior art
 

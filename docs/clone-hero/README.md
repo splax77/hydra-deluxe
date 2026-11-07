@@ -2,7 +2,7 @@
 
 This folder is the one home of what the project knows about how Clone Hero works.
 It describes build 1.1 (v1.1.0.6142) unless a page says otherwise; the fills page also covers 1.0 (v1.0.0.4045).
-Last write-back: 2026-11-05.
+Last write-back: 2026-11-06.
 
 This page is the index. It says what each page holds and how the pages are kept honest. It states no rule of the game; the rules live on the area pages.
 
