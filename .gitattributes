@@ -14,6 +14,5 @@
 *.bin binary
 *.sig binary
 
-# The session-card tools record each card's sha, so a card's line endings
-# must not change on checkout.
+# Session cards keep their exact bytes on checkout: no line-ending conversion.
 docs/sessions/*.md -text

@@ -9,8 +9,8 @@
 #   .\build_cpp.ps1 -Preset asan -Target hydra_tests  # AddressSanitizer, in build-asan\
 #   .\build_cpp.ps1 -Package     # build, then zip a release (CPack)
 #
-# CMake and MSVC ship with Visual Studio, so this finds the VS-bundled cmake.exe
-# via vswhere rather than requiring cmake on PATH.
+# CMake and MSVC ship with Visual Studio, so cmake need not be on PATH.
+# tools/find_cmake.ps1 owns where this looks for it.
 
 param(
     [switch]$Configure,
