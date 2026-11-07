@@ -6,7 +6,7 @@
       "owner_file": "src/search/graph.cpp",
       "owner_symbol": "add_act_edge",
       "date": "2026-10-04",
-      "decision": "audit finding 156",
+      "decision": "audit finding 156; step-1 derive-once review findings 8 and 10 (2026-10-04)",
       "added_by": "step-1 derive-once fixes",
       "pattern": "plusmeasure\\([^;]*sp_bars_to_measures\\(",
       "anchor": "sp_bars_to_measures(",
@@ -30,8 +30,7 @@
         "src",
         "tools",
         "tests"
-      ],
-      "note": "Decided by: audit finding 156; step-1 derive-once review findings 8 and 10 (2026-10-04)"
+      ]
     },
     {
       "question": "What points band keeps every path?",
@@ -39,7 +38,7 @@
       "owner_file": "src/search/pather.h",
       "owner_symbol": "kKeepEveryPathBand",
       "date": "2026-10-04",
-      "decision": "audit R7.29",
+      "decision": "audit R7.29; step-1 derive-once review finding 13 (2026-10-04)",
       "added_by": "step-1 derive-once fixes",
       "pattern": "depth_value\\s*=\\s*1'?000'?000('?000)?\\s*;",
       "anchor": "depth_value",
@@ -55,8 +54,7 @@
         "src",
         "tools",
         "tests"
-      ],
-      "note": "Decided by: audit R7.29; step-1 derive-once review finding 13 (2026-10-04)"
+      ]
     },
     {
       "question": "Does a test run its own targeted search?",
@@ -217,7 +215,7 @@
       "owner_file": "src/search/graph.h",
       "owner_symbol": "fill_rule_name",
       "date": "2026-10-04",
-      "decision": "D48",
+      "decision": "audit finding 55; D48, Q13 (phase 3 task O3a)",
       "added_by": "O3a",
       "pattern": "^(?:(?!//).)*[\"'][^\"'\\w]*(Clone Hero|CH) 1\\.[01]\\b",
       "anchor": " 1.",
@@ -248,7 +246,7 @@
           "why": "fill_rule_name, the owner: Clone Hero 1.1's two names"
         }
       ],
-      "note": "---- one name per fill rule (phase 3 task O3a) ---- A quoted string (C++ or the reports' JavaScript and HTML) whose first word is a game version's name is a label for a fill rule. A sentence that only mentions the version later on is prose, and a trailing // comment is not a label, so neither is flagged. The \"1.0 fills\" checkbox keeps its own words (docs/adr/0010). Decided by: audit finding 55; D48, Q13 (phase 3 task O3a)"
+      "note": "---- one name per fill rule (phase 3 task O3a) ---- A quoted string (C++ or the reports' JavaScript and HTML) whose first word is a game version's name is a label for a fill rule. A sentence that only mentions the version later on is prose, and a trailing // comment is not a label, so neither is flagged. The \"1.0 fills\" checkbox keeps its own words (docs/adr/0010)."
     },
     {
       "question": "Which fill rule does a legacy_fills flag mean?",
@@ -256,7 +254,7 @@
       "owner_file": "src/search/graph.h",
       "owner_symbol": "fill_rule_for",
       "date": "2026-10-04",
-      "decision": "D53, D54",
+      "decision": "M_D review finding 3 and round 2 finding 5 (phase 3 tasks FX-R and FX2-R); widened to tests by audit finding 177 / phase 6 task J4-1 (D53, D54)",
       "added_by": "FX2-R",
       "pattern": "legacy\\w*\\s*\\?\\s*(hydra::)?FillDeadlineRule::Ch1[01]",
       "anchor": "FillDeadlineRule::Ch1",
@@ -280,7 +278,7 @@
         "tools",
         "tests"
       ],
-      "note": "A legacy_fills flag (a setting, a Lens or a switch) turned into a rule by a ternary of its own. Decided by: M_D review finding 3 and round 2 finding 5 (phase 3 tasks FX-R and FX2-R); widened to tests by audit finding 177 / phase 6 task J4-1 (D53, D54)"
+      "note": "A legacy_fills flag (a setting, a Lens or a switch) turned into a rule by a ternary of its own."
     },
     {
       "question": "Which legacy_fills flag names a fill rule?",
@@ -315,7 +313,7 @@
         "src",
         "tools"
       ],
-      "note": "A fill rule turned back into the flag by a comparison of its own, or a flag set to a bare 1 or 0 where a rule was meant. fill_report's two lens lines did the second. Left out on purpose: tests, which set the flag to build a case. A bare `if (...legacy_fills)` test cannot be told from the flag's legitimate uses (parsing, storing, showing the checkbox), so a text search leaves it; code that needs the rule calls fill_rule_for. Decided by: D115 task F1 (2026-10-14)"
+      "note": "A fill rule turned back into the flag by a comparison of its own, or a flag set to a bare 1 or 0 where a rule was meant. fill_report's two lens lines did the second. Left out on purpose: tests, which set the flag to build a case. A bare `if (...legacy_fills)` test cannot be told from the flag's legitimate uses (parsing, storing, showing the checkbox), so a text search leaves it; code that needs the rule calls fill_rule_for."
     },
     {
       "question": "What is the best score allowed to eliminate a path in its group?",
@@ -352,7 +350,7 @@
       "owner_file": "src/search/graph.cpp",
       "owner_symbol": "max_sp_bars",
       "date": "2026-10-05",
-      "decision": "D53, D54",
+      "decision": "audit finding 260; phase 6 task J3-2 (D53, D54)",
       "added_by": "J3-2",
       "pattern": "std::min\\([^;]*(cap[^;]*phrase|phrase[^;]*cap)",
       "anchor": "std::min(",
@@ -374,7 +372,7 @@
       "scope": [
         "src"
       ],
-      "note": "graph_build_cap's floor of one is the pather's own and stays there. Decided by: audit finding 260; phase 6 task J3-2 (D53, D54)"
+      "note": "graph_build_cap's floor of one is the pather's own and stays there."
     },
     {
       "question": "What does the engine read when an activation edge has no fill deadline?",
@@ -382,7 +380,7 @@
       "owner_file": "src/search/engine.cpp",
       "owner_symbol": "enumerate",
       "date": "2026-10-05",
-      "decision": "D53, D54",
+      "decision": "audit R7.35; phase 6 task J3-2 (D53, D54)",
       "added_by": "J3-2",
       "pattern": "activation_fill_deadline_ms\\.value_or\\(",
       "anchor": "activation_fill_deadline_ms.value_or(",
@@ -396,7 +394,7 @@
       "scope": [
         "src"
       ],
-      "note": "Only activation edges carry a deadline; the engine refuses one without it instead of filling in a number. Decided by: audit R7.35; phase 6 task J3-2 (D53, D54)"
+      "note": "Only activation edges carry a deadline; the engine refuses one without it instead of filling in a number."
     },
     {
       "question": "By what millisecond must a 1.1 fill spawn? (tests)",
@@ -404,7 +402,7 @@
       "owner_file": "src/search/graph.cpp",
       "owner_symbol": "activation_fill_deadline_ms",
       "date": "2026-10-05",
-      "decision": "D53, D54",
+      "decision": "audit finding 263; phase 6 task J4-5 (D53, D54)",
       "added_by": "J4-5",
       "pattern": "fill_length - 4 \\* res",
       "anchor": "fill_length - 4 * res",
@@ -417,7 +415,7 @@
       "scope": [
         "tests"
       ],
-      "note": "---- phase 6 task J4-5: unit tests read production constants ---- A test that types the 1.1 deadline's tick math again instead of pinning the ms from one run. Decided by: audit finding 263; phase 6 task J4-5 (D53, D54)"
+      "note": "---- phase 6 task J4-5: unit tests read production constants ---- A test that types the 1.1 deadline's tick math again instead of pinning the ms from one run."
     },
     {
       "question": "What is the default search depth?",
@@ -425,7 +423,7 @@
       "owner_file": "src/search/pather.h",
       "owner_symbol": "kDefaultDepthValue",
       "date": "2026-10-05",
-      "decision": "D53, D54",
+      "decision": "audit finding 181; phase 6 task J4-1 (D53, D54)",
       "added_by": "J4-1",
       "pattern": "\\bint\\s+(depth_value|kDefaultDepthValue)\\s*=\\s*4\\s*;",
       "anchor": "alue",
@@ -443,7 +441,7 @@
           "why": "kDefaultDepthValue, the owner"
         }
       ],
-      "note": "A struct default, not a test input: the leading int keeps lines that set a depth on a built options struct out. Decided by: audit finding 181; phase 6 task J4-1 (D53, D54)"
+      "note": "A struct default, not a test input: the leading int keeps lines that set a depth on a built options struct out."
     },
     {
       "question": "Which options make the all-0 search?",
@@ -451,7 +449,7 @@
       "owner_file": "src/search/pather.cpp",
       "owner_symbol": "allzero_options",
       "date": "2026-10-05",
-      "decision": "D53, D54, D85",
+      "decision": "audit finding 284; phase 6 task J4-1 (D53, D54); D85",
       "added_by": "J4-1",
       "pattern": "\\bhard_ms_filter\\s*=\\s*true",
       "anchor": "hard_ms_filter",
@@ -474,8 +472,7 @@
         "src",
         "tools",
         "tests"
-      ],
-      "note": "Decided by: audit finding 284; phase 6 task J4-1 (D53, D54); D85"
+      ]
     },
     {
       "question": "Does this path need any timing, and what is the all-0 list's 0 ms limit?",
@@ -504,7 +501,7 @@
           "why": "allzero_options, the owner of the 0 ms limit (D85)"
         }
       ],
-      "note": "Was the E3/D85 test case, which pinned the whole line; now a row, so a drift asks for the owner line to be updated. The shortcut that skips the all-0 pass reads the limit from allzero_options."
+      "note": "The owner line pins the whole line, so a drift asks for it to be updated. The shortcut that skips the all-0 pass reads the limit from allzero_options."
     }
   ]
 }

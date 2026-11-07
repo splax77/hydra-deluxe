@@ -6,7 +6,7 @@
       "owner_file": "src/render/overlay_layout.cpp",
       "owner_symbol": "ellipsize",
       "date": "2026-10-04",
-      "decision": "D48",
+      "decision": "audit finding 70; D48, Q18 (phase 3 task O3b)",
       "added_by": "O3b",
       "pattern": "RenderTextEllipsis|EllipsisChar|\\\\xE2\\\\x80\\\\xA6|^(?:(?!//).)*\"(?:(?!//)[^\"])*…",
       "must_match": [
@@ -29,7 +29,7 @@
           "why": "ellipsize, the owner: the one ellipsis a cut ends in"
         }
       ],
-      "note": "Cutting a label to end in \"…\": ImGui's own ellipsis renderer, its ellipsis glyph, the \"…\" bytes typed out as escapes, or a \"…\" typed straight into a string before any // comment. ellipsize is the one rule (no trailing space, an exact fit allowed); text_ellipsized cuts through it. The last alternative is built from the three UTF-8 bytes of \"…\", so this file holds no raw one in a pattern. Decided by: audit finding 70; D48, Q18 (phase 3 task O3b)"
+      "note": "Cutting a label to end in \"…\": ImGui's own ellipsis renderer, its ellipsis glyph, the \"…\" bytes typed out as escapes, or a \"…\" typed straight into a string before any // comment. ellipsize is the one rule (no trailing space, an exact fit allowed); text_ellipsized cuts through it. The last alternative is built from the three UTF-8 bytes of \"…\", so this file holds no raw one in a pattern."
     },
     {
       "question": "What state does a span have at an instant?",
@@ -37,7 +37,7 @@
       "owner_file": "src/render/track_state.h",
       "owner_symbol": "SpanSweep",
       "date": "2026-10-04",
-      "decision": "D54",
+      "decision": "audit R7.13; phase 6 task J1-3; D54 (toggle_at deleted, not kept as a test oracle)",
       "added_by": "J1-3",
       "pattern": "\\btoggle_at\\s*\\(",
       "anchor": "toggle_at",
@@ -54,7 +54,7 @@
         "tools",
         "tests"
       ],
-      "note": "J1-3 (phase 6): the track state's owners. toggle_at was a second copy of the span rule beside SpanSweep and is deleted (D54). Decided by: audit R7.13; D54 (toggle_at deleted, not kept as a test oracle)"
+      "note": "The track state's owners. A toggle_at function would be a second copy of the span rule beside SpanSweep."
     },
     {
       "question": "Is a span on after this instant?",
@@ -114,7 +114,7 @@
       "owner_file": "src/render/track_state.cpp",
       "owner_symbol": "LaneSweep",
       "date": "2026-10-04",
-      "decision": "D53",
+      "decision": "audit R7.14 and finding 76; D53 item 3 (two touching taken fills each light their own lane)",
       "added_by": "J1-3",
       "pattern": "\\binst\\.fill_lane_pad\\b",
       "anchor": "inst.fill_lane_pad",
@@ -141,7 +141,7 @@
       "scope": [
         "src"
       ],
-      "note": "The tests read the per-instant pad under other names (i.fill_lane_pad, taken->fill_lane_pad), so the row scans src only. Decided by: audit R7.14 and finding 76; D53 item 3 (two touching taken fills each light their own lane)"
+      "note": "The tests read the per-instant pad under other names (i.fill_lane_pad, taken->fill_lane_pad), so the row scans src only."
     },
     {
       "question": "Where is the far end of the highway?",
@@ -149,7 +149,7 @@
       "owner_file": "src/render/highway_draw.cpp",
       "owner_symbol": "far_time",
       "date": "2026-10-04",
-      "decision": "D54",
+      "decision": "audit finding 224; phase 6 task J2-8 (D54)",
       "added_by": "J2-8",
       "pattern": "\\b(?:speed\\s*\\*\\s*(?:cfg\\.track|T)\\.secs_future|(?:cfg\\.track|T)\\.secs_future\\s*\\*\\s*speed)\\b",
       "anchor": ".secs_future",
@@ -169,7 +169,7 @@
           "why": "far_time, the owner"
         }
       ],
-      "note": "---- phase 6 task J2-8: render callers and the Onyx numbers ---- The highway's far end is now plus speed times secs_future; time_to_z, z_to_time and the draw list's window all ask far_time. Decided by: audit finding 224; phase 6 task J2-8 (D54)"
+      "note": "The highway's far end is now plus speed times secs_future; time_to_z, z_to_time and the draw list's window all ask far_time."
     },
     {
       "question": "Where does the track rectangle sit, and at what size?",
@@ -177,7 +177,7 @@
       "owner_file": "src/render/highway_draw.cpp",
       "owner_symbol": "track_rect",
       "date": "2026-10-04",
-      "decision": "D54",
+      "decision": "audit finding 221; phase 6 task J2-8 (D54)",
       "added_by": "J2-8",
       "pattern": "std::max\\(\\s*1\\s*,\\s*(?:width|height)\\s*\\)|static_cast<float>\\([^()]*\\)\\s*/\\s*static_cast<float>\\((?:\\w+\\.)*(?:th|track_h|track_height)\\)|\\b(?:\\w+\\.)*(?:h|height)\\s*-\\s*(?:\\w+\\.)*(?:th|track_h|track_height)\\b|static_cast<float>\\((?:\\w+\\.)*(?:th|track_h|track_height)\\)\\s*/\\s*static_cast<float>\\(",
       "must_match": [
@@ -219,7 +219,7 @@
           "why": "track_rect, the owner"
         }
       ],
-      "note": "The track rectangle: the size floor (below 1 counts as 1), the camera aspect (width over track height) and the bottom anchor (the track's top row is the image height less the track height). The last alternative is the renderer's old fade rectangle, which divided the track height by the image height; it now converts track_rect's top row to screen coordinates. Decided by: audit finding 221; phase 6 task J2-8 (D54)"
+      "note": "The track rectangle: the size floor (below 1 counts as 1), the camera aspect (width over track height) and the bottom anchor (the track's top row is the image height less the track height). The last alternative is a fade rectangle that divides the track height by the image height; the renderer converts track_rect's top row to screen coordinates instead."
     },
     {
       "question": "In what order does a polygon become triangles?",
@@ -227,7 +227,7 @@
       "owner_file": "src/render/obj_loader.cpp",
       "owner_symbol": "push_fan",
       "date": "2026-10-04",
-      "decision": "D54",
+      "decision": "audit finding 226; phase 6 task J2-8 (D54)",
       "added_by": "J2-8",
       "pattern": "\\.vertices\\.push_back\\(",
       "anchor": ".vertices.push_back(",
@@ -264,7 +264,7 @@
       "scope": [
         "src/render/obj_loader.cpp"
       ],
-      "note": "A polygon becomes triangles as a fan from its first corner (Onyx's triangulate). load_obj's faces and the built flat and box meshes all push their vertices through push_fan. Decided by: audit finding 226; phase 6 task J2-8 (D54)"
+      "note": "A polygon becomes triangles as a fan from its first corner (Onyx's triangulate). load_obj's faces and the built flat and box meshes all push their vertices through push_fan."
     },
     {
       "question": "Which X edge of a railing faces away from the lanes?",
@@ -272,7 +272,7 @@
       "owner_file": "src/render/highway_draw.cpp",
       "owner_symbol": "railing_outer_x",
       "date": "2026-10-06",
-      "decision": "D81",
+      "decision": "SPTRI derive-once review, finding 1 (D81)",
       "added_by": "SPTRI",
       "pattern": "\\bright\\s*\\?\\s*x2\\s*:\\s*x1\\b|railing_x\\(\\s*cfg\\s*,\\s*(?:true|false)\\s*,",
       "must_match": [
@@ -290,7 +290,7 @@
           "why": "railing_outer_x, the owner"
         }
       ],
-      "note": "Which end of a railing's X extent is its outer edge. railing_x owns the extent; railing_outer_x picks the outer end, and the SP end markers and highway_span_at ask it. A railing_x call with a literal side is how a caller picked an end by hand. Decided by: SPTRI derive-once review, finding 1 (D81)"
+      "note": "Which end of a railing's X extent is its outer edge. railing_x owns the extent; railing_outer_x picks the outer end, and the SP end markers and highway_span_at ask it. A railing_x call with a literal side is how a caller picked an end by hand."
     },
     {
       "question": "Where may a line break fall in a Preview text box?",
@@ -298,7 +298,7 @@
       "owner_file": "src/render/overlay_layout.cpp",
       "owner_symbol": "wrap_words",
       "date": "2026-10-04",
-      "decision": "D54",
+      "decision": "audit finding 75; phase 6 task J2-8 (D54)",
       "added_by": "J2-8",
       "pattern": "\\.find\\(\\s*' '",
       "anchor": ".find(",
@@ -318,7 +318,7 @@
       "scope": [
         "src/render/overlay_layout.cpp"
       ],
-      "note": "Where a Preview text box's line may break: wrap_words walks the spaces. Decided by: audit finding 75; phase 6 task J2-8 (D54)"
+      "note": "Where a Preview text box's line may break: wrap_words walks the spaces."
     },
     {
       "question": "Whose numbers does the Preview draw with?",
@@ -326,7 +326,7 @@
       "owner_file": "src/render/preview_config.cpp",
       "owner_symbol": "load_preview_config",
       "date": "2026-10-04",
-      "decision": "D54",
+      "decision": "audit finding 220; phase 6 task J2-8 (D54)",
       "added_by": "J2-8",
       "pattern": "^(?!\\s*float [rx] = ).*(?:\\b\\w+\\s*=\\s*-?\\d|\\w\\{[^}]*\\d)",
       "must_match": [
@@ -346,7 +346,7 @@
       "scope": [
         "src/render/preview_config.h"
       ],
-      "note": "The Preview's numbers live in assets/preview/3d-config.json alone; a PreviewConfig that was not loaded holds zeros. A field set to a number, or a brace initializer holding one, would be a second copy. Color's white and Vec3's origin are the types' own defaults, not Onyx's numbers, so their two member lines are left out. Decided by: audit finding 220; phase 6 task J2-8 (D54)"
+      "note": "The Preview's numbers live in assets/preview/3d-config.json alone; a PreviewConfig that was not loaded holds zeros. A field set to a number, or a brace initializer holding one, would be a second copy. Color's white and Vec3's origin are the types' own defaults, not Onyx's numbers, so their two member lines are left out."
     },
     {
       "question": "Which gem does a Preview note draw as?",
@@ -354,7 +354,7 @@
       "owner_file": "src/render/track_state.cpp",
       "owner_symbol": "pad_of",
       "date": "2026-10-05",
-      "decision": "D53, D54",
+      "decision": "audit finding 190; phase 6 task J3-4 (D53, D54)",
       "added_by": "J3-4",
       "pattern": "n\\.lane == PreviewLane::Kick",
       "anchor": "n.lane == PreviewLane::Kick",
@@ -367,8 +367,7 @@
       ],
       "scope": [
         "src"
-      ],
-      "note": "Decided by: audit finding 190; phase 6 task J3-4 (D53, D54)"
+      ]
     },
     {
       "question": "Where does a highway span end, and how fast does a target glow fade? (tests)",
@@ -376,7 +375,7 @@
       "owner_file": "src/render/track_state.h",
       "owner_symbol": "kSpanEndTicks",
       "date": "2026-10-05",
-      "decision": "D53, D54",
+      "decision": "audit finding 276 (the highway half); phase 6 task J4-5 (D53, D54)",
       "added_by": "J4-5",
       "pattern": "1\\.5005|0\\.1666666",
       "must_match": [
@@ -398,7 +397,7 @@
       "scope": [
         "tests"
       ],
-      "note": "The highway's half-tick span end and the glow's fade length typed into the draw tests as numbers. Decided by: audit finding 276 (the highway half); phase 6 task J4-5 (D53, D54)"
+      "note": "The highway's half-tick span end and the glow's fade length typed into the draw tests as numbers."
     },
     {
       "question": "Which pads does a loop over the highway's pad columns visit?",
@@ -427,7 +426,7 @@
       "scope": [
         "src"
       ],
-      "note": "The four pad columns listed by hand in each loop, which the draw code did four times before the drum lanes made it five. Decided by: D107 review of lanes-render"
+      "note": "The four pad columns listed by hand in a loop, in place of kPads."
     }
   ]
 }

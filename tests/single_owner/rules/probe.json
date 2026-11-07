@@ -226,7 +226,7 @@
       "scope": [
         "tools"
       ],
-      "note": "The test fakes call Process.resolve (tests/fakes.py)."
+      "note": "The test fakes call Process.resolve (tools/ch_probe/tests/fakes.py)."
     },
     {
       "question": "How long does a runner wait before reading a press's result?",
@@ -594,7 +594,7 @@
       "scope": [
         "tools"
       ],
-      "note": "The owner is the named constants, which the pattern (the old inline cut-offs) does not match."
+      "note": "The pattern matches a cut-off typed inline as a number. The owner is the named constants, which it does not match."
     }
   ]
 }

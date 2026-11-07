@@ -18,7 +18,7 @@
       "scope": [
         "src"
       ],
-      "note": "settings_key once lived in src/search/pather.cpp with no caller in src/. It moved to tests/corpus_util.h, its only user; this row flags it coming back. Decided by: concept audit M18."
+      "note": "settings_key is test support and has no caller in src/, so it lives in tests/corpus_util.h; this row flags it appearing in src/."
     }
   ]
 }
