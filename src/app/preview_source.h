@@ -16,7 +16,7 @@
 //     header). extract_srb_audio decrypts these blobs in-memory.
 //
 // The audio bytes/paths produced here are decoded and mixed by the audio engine
-// (Phase 3); this module does no decoding.
+// (src/audio); this module does no decoding.
 
 #ifndef HYDRA_APP_PREVIEW_SOURCE_H
 #define HYDRA_APP_PREVIEW_SOURCE_H
@@ -174,18 +174,20 @@ bool looks_like_audio(const std::vector<uint8_t>& bytes);
 
 // Audio files sitting beside a loose notes file: every song stem in `folder`
 // (is_song_stem), so a standalone "preview" clip is left out, since it is a
-// short clip and not part of the song. Labels are the base filename.
+// short clip and not part of the song. Labels are the filename without its
+// extension.
 std::vector<PreviewAudioStem> find_loose_audio(const std::string& folder);
 
 // Audio blobs embedded in a .sng container: its file table's song stems
 // (is_song_stem), XOR-demasked to their original bytes. A standalone "preview"
 // clip is left out, as in a loose folder, since it is a short clip and not part
-// of the song. Labels are the entries' base filenames.
+// of the song. Labels are the entries' filenames without their extensions.
 std::vector<PreviewAudioStem> extract_sng_audio(const std::string& path);
 
 // Audio from a .srb container's encrypted section.  Walks past the DEFLATE
 // chain (metadata, notes, art), then parses and AES-128-CFB-decrypts the
-// audio blob chain that follows.  Each decrypted Ogg blob becomes a stem.
+// audio blob chain that follows.  Each decrypted blob that looks_like_audio
+// accepts becomes a stem.
 std::vector<PreviewAudioStem> extract_srb_audio(const std::string& path);
 
 }  // namespace hydra::app

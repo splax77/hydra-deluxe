@@ -143,7 +143,7 @@ endif()
 
 # __FILE__ names the source relative to the repo, not by its absolute path.
 # Opus's safety checks (OPUS_HARDENING) store __FILE__ for their error message,
-# which put the builder's folder path into the shipped Hydra.exe 28 times.
+# which would put the builder's folder path into the shipped Hydra.exe.
 # /d1trimfile strips the prefix (MSVC 16.4+); the checks themselves stay on.
 # Spelled with "-": sccache reads an unknown "/" option as a second input file
 # and refuses to cache the compile (mozilla/sccache#1899). cl.exe reads both.
@@ -427,8 +427,7 @@ endif()
 
 # ---- hydra_audio: the Preview audio engine (decode + mix + player) -------
 # Decodes chart stems to float PCM, mixes them, and (GUI-side) drives the
-# output device. It also owns a song's length, the end of its mixed audio
-# (song_audio.cpp, D69). Kept separate from hydra_app so hydra_batch and
+# output device. Kept separate from hydra_app so hydra_batch and
 # hydra_fillcompare never pull in the codec libraries; linked by the GUI
 # libraries (hydra_preview and hydra_uibase below own those links) and by
 # hydra_tests. The decode and mix code is pure and unit-tested; only the
@@ -614,8 +613,8 @@ target_link_libraries(hydra_uitest_engine PUBLIC
 # ---- hydra_uitest_harness: Hydra's GUI tests, compiled once ----------------
 # Hydra's half of the runner (the AppState the engine draws, the seams, the
 # gates), the live mode and the tests. hydra_uitest always links them;
-# Hydra.exe links them when HYDRA_UITEST_ATTACHED is on. The repo paths the
-# tests need are compiled in here and nowhere else.
+# Hydra.exe links them when HYDRA_UITEST_ATTACHED is on. The repo paths these
+# tests need are compiled in here, once for both programs.
 add_library(hydra_uitest_harness STATIC
     tests/ui/uitest_harness.cpp
     tests/ui/uitest_live.cpp
@@ -641,8 +640,7 @@ target_compile_definitions(hydra_uitest_harness PRIVATE
 )
 
 # ---- Hydra.exe: the GUI shell ---------------------------------------------
-# The SP cap (once a separate "Uncapped" build) is a runtime setting, so there
-# is one exe.
+# The SP cap is a runtime setting, so one exe covers every cap.
 add_executable(Hydra WIN32 src/ui/main.cpp src/ui/hydra.rc)
 target_link_libraries(Hydra PRIVATE hydra_ui d3d11 dxgi d3dcompiler hydra_warnings)
 # GUI-subsystem app entered from a standard int main(), like the ImGui example.
@@ -871,9 +869,9 @@ target_compile_definitions(hydra_bench PRIVATE
 )
 
 # ---- hydra_replay: arbitrary-path scorer (not a test; built on demand) ----
-# Prices a hand-written Star Power path chord by chord, dumps a record's
-# stored paths, and self-checks the replay against the engine over the
-# corpus (hence the same corpus_util.h wiring hydra_bench uses).
+# Prices a hand-written Star Power path chord by chord, dumps the paths the
+# engine finds for a chart, and self-checks the replay against the engine over
+# the corpus (hence the same corpus_util.h wiring hydra_bench uses).
 add_executable(hydra_replay EXCLUDE_FROM_ALL tools/replay.cpp)
 target_link_libraries(hydra_replay PRIVATE hydra_app hydra_warnings)
 target_include_directories(hydra_replay PRIVATE tests third_party/json)
@@ -965,15 +963,16 @@ if(HYDRA_FUZZ)
     endforeach()
 endif()
 
-# ---- long-path awareness, for every executable ---------------------------
-# One manifest, merged into each exe by the linker, declares Hydra long-path
-# aware (see src/app/long_paths.manifest). Hydra's own file calls handle long
-# paths through core/winstr regardless; this lets third-party code do the same
-# on machines with long paths enabled.
+# ---- long-path awareness, for the exes listed below ----------------------
+# One manifest, merged into each listed exe by the linker, declares Hydra
+# long-path aware (see src/app/long_paths.manifest). Hydra's own file calls
+# handle long paths through core/winstr regardless; this lets third-party code
+# do the same on machines with long paths enabled.
 #
 # hydra_tests is left out on purpose. Without the manifest Windows refuses a
 # plain long path even where long paths are enabled, so test_long_paths proves
-# Hydra's own handling rather than the machine's setting.
+# Hydra's own handling rather than the machine's setting. hydra_precheck and
+# the fuzz exes are not listed either, so they get no manifest.
 foreach(hydra_exe Hydra HydraPathBuilder hydra_batch hydra_fillcompare
                   hydra_uitest hydra_pathbuilder_uitest hydra_bench hydra_replay)
     target_sources(${hydra_exe} PRIVATE src/app/long_paths.manifest)

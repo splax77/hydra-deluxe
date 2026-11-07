@@ -54,8 +54,8 @@ int64_t ceil_div(int64_t a, int64_t b) { return -floor_div(-a, b); }
 // ---- MsIndex ------------------------------------------------------------
 
 MsIndex::MsIndex(const std::map<int64_t, double>& bpm_map, int64_t tick_r) {
-    // A song's opening tempo is the mark at tick 0; without it the original
-    // walk was a KeyError, so this is too.
+    // A song's opening tempo is the mark at tick 0. check_timing_maps refuses
+    // a chart without one; this throw is the backstop.
     if (bpm_map.find(0) == bpm_map.end())
         throw std::out_of_range("bpm map has no tick-0 entry");
 
@@ -71,8 +71,8 @@ MsIndex::MsIndex(const std::map<int64_t, double>& bpm_map, int64_t tick_r) {
         tps_.push_back(kv.second * static_cast<double>(tick_r) / 60.0);
     }
 
-    // Accumulated section by section, with the same arithmetic as the walk it
-    // replaces so the two agree bit-for-bit.
+    // Accumulated section by section, with the same arithmetic as at(). As with
+    // tps above, reordering these float operations changes the last bit.
     elapsed_.assign(keys_.size(), 0.0);
     for (size_t i = 1; i < keys_.size(); ++i) {
         elapsed_[i] = elapsed_[i - 1] +
@@ -224,9 +224,8 @@ int MeasureCount::span_at(int64_t ticks) const { return index_at(starts_, ticks,
 double MeasureCount::measures_at(double ticks) const {
     const int i = span_at(static_cast<int64_t>(std::floor(ticks)));
     const double tpm = static_cast<double>(tpm_[i]);
-    // Whole measures, then the part measure: on whole ticks this keeps the
-    // values stored before the count was continuous, bit for bit, wherever
-    // meter changes land on measure lines.
+    // Whole measures, then the part measure: on whole ticks this keeps stored
+    // values bit for bit, wherever meter changes land on measure lines.
     const double rel = ticks - static_cast<double>(starts_[i]);
     const double whole = std::floor(rel / tpm);
     return elapsed_[i] + whole + (rel - whole * tpm) / tpm;

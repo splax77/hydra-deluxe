@@ -22,8 +22,7 @@
 
 namespace hydra::audio {
 
-// The format the song's stems are mixed to: what the audio device plays, and
-// what the song's length is counted in.
+// The format the song's stems are mixed to: what the audio device plays.
 inline constexpr int kOutRate = 48000;
 inline constexpr int kOutChannels = 2;
 

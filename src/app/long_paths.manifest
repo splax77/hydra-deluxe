@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<!-- Merged into every Hydra executable (CMakeLists.txt). Declares the app
+<!-- Merged into the executables CMakeLists.txt lists. Declares the app
      long-path aware, so on a machine with long paths enabled (the
      LongPathsEnabled policy) third-party code such as SQLite and the C++ file
      library also lifts the 260-character limit. Hydra's own file calls work at
      any length either way, through core/winstr's win32_path.
-     It also puts every Hydra executable on Windows' segment heap, which
+     It also puts each of them on Windows' segment heap, which
      changes how memory is handed out, never what is computed (D86 item 4). -->
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
   <application xmlns="urn:schemas-microsoft-com:asm.v3">

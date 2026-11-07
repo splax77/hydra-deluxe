@@ -85,7 +85,7 @@ std::vector<Path> search_allzero(const ScoreGraph& graph,
     // hard. A soft filter only prefers paths inside the limit and still
     // reports an over-limit one while nothing outscores it, which in a
     // no-skips search (a tiny candidate set, usually one path per group)
-    // meant the section routinely showed a path needing hundreds of ms.
+    // would put a path needing hundreds of ms in the section.
     std::vector<Path> paths;
     try {
         paths = run_search(graph, allzero_options(), on_progress);
@@ -520,7 +520,7 @@ int graph_build_cap(int sp_cap, int sp_phrase_count) {
 
 HydraRecord analyze_chart(const Song& song, const SearchSettings& settings,
                           const std::function<void(float)>& on_progress) {
-    // Callers check for notes first (require_notes in song.h), because only
+    // Callers check for notes first (require_notes in parse/song.h), because only
     // they know the difficulty and drum mode the user's sentence names. Reaching
     // here with an empty song is a caller bug, not a chart problem.
     if (song.is_empty())

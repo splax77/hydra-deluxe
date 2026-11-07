@@ -6,8 +6,9 @@
 // comma-grouped scores, timings in ms to one decimal (format_ms), the
 // exact +/- squeeze symbols and [KRYBG] slot layout.
 //
-// hydra.db stores no records, only summaries (D87); a record is rebuilt by
-// analyzing the chart.
+// hydra.db keeps one record per chart and profile, with its top paths
+// (docs/adr/0031). The HydraRecord here is the full analysis: it lives in
+// memory only, and a song is analyzed again to get it.
 
 #ifndef HYDRA_CORE_MODEL_H
 #define HYDRA_CORE_MODEL_H
@@ -40,7 +41,7 @@ inline constexpr int kCloneHeroSpCap = 4;
 constexpr bool is_clone_hero_cap(int sp_cap) { return sp_cap == kCloneHeroSpCap; }
 
 // A chart file that does not work. Chord and
-// the parsers raise it; the parsers swallow it per-op exactly as Python does.
+// the parsers raise it; the parsers swallow it per-op.
 // Its kind is ChartUnreadable unless the thrower names another (a refused
 // timing line, or NoNotesError's sentence).
 class ChartFileError : public KindedError {
@@ -80,9 +81,9 @@ struct ChordNote;
 std::string note_label(const ChordNote& note, bool pro);
 
 // ---- squeeze thresholds -------------------------------------------------
-// One home for the ms thresholds that define squeeze semantics. Each used to
-// be a repeated literal; the value is the interface, so a change here is a
-// deliberate rule change, not a stray edit.
+// One home for the ms thresholds that define squeeze semantics. The value is
+// the interface, so a change here is a deliberate rule change, not a stray
+// edit.
 
 // A squeeze (or early fill) tighter than this many ms counts as
 // difficult: it turns on warning colors, and it is the "Normal" floor of the
@@ -94,7 +95,7 @@ constexpr double kDifficultMs = 2.0;
 // is_difficult asks this.
 inline bool past_difficult_floor(double ms) { return ms > kDifficultMs; }
 
-// The backend leeway edge is a user rule now: core::Rules::backend_leeway_ms
+// The backend leeway edge is a user rule: core::Rules::backend_leeway_ms
 // (hydra_rules.ini), read by the engine and BackendSqueeze::summarystr.
 
 // The per-side hit window (the registrable Clone Hero Pro Drums window). One
@@ -212,8 +213,8 @@ public:
     };
 
     // Non-empty notes, in lane order (KRYBG). basesorted uses a *stable* sort
-    // on basescore (Python's list.sort is stable), which the scoring
-    // tie-break depends on. The one owner of a chord's note order.
+    // on basescore, which the scoring tie-break depends on. The one owner of
+    // a chord's note order.
     NoteList note_list(bool basesorted = false) const;
     // note_list copied into a vector.
     std::vector<ChordNote> notes(bool basesorted = false) const;
@@ -451,8 +452,7 @@ struct BackendSqueeze {
 };
 
 // Multiplier squeeze. Construction validates the chord+combo and throws
-// std::invalid_argument when it is not a squeezable situation (mirroring the
-// ValueError that ScoreGraph.store_multsqueeze catches).
+// std::invalid_argument when it is not a squeezable situation.
 class MultSqueeze {
 public:
     MultSqueeze(Chord chord, int combo);
@@ -497,7 +497,7 @@ constexpr SpEndKind kLastSpEndKind = SpEndKind::SqIn;
 
 // Is this step a squeeze-in? The one statement of that rule: the engine's
 // running window (Engine::squeezed_in), the stored list
-// (core::sqin_phrase_ticks) and nth_sqin_step all ask it.
+// (sqin_phrase_ticks) and nth_sqin_step all ask it.
 inline bool is_sqin_kind(SpEndKind kind) { return kind == SpEndKind::SqIn; }
 
 // Is this step a clamp (the cap pinned the end on its phrase)? The one
@@ -579,7 +579,7 @@ struct ActivationTiming {
 
 struct Activation {
     // The search sets these on every activation it makes, so they are
-    // plain values (since path format 6, docs/adr/0017).
+    // plain values (docs/adr/0017).
     Timecode timecode;
     Chord chord;
     int frontend_sp_points = 0;
@@ -597,8 +597,8 @@ struct Activation {
     // The chart tick of the SP phrase chord this activation squeezed out:
     // the phrase its deact edge offered it when the path took the SqOut
     // branch (core::offered_phrase).
-    // Stamped by the search at copy-out (since path format 4, ADR 0014).
-    // Unset when the activation did not squeeze out, or on an older record.
+    // Stamped by the search at copy-out (ADR 0014).
+    // Unset when the activation did not squeeze out.
     // Nothing re-derives it.
     std::optional<int64_t> sqout_tick;
 
@@ -690,7 +690,7 @@ struct Activation {
     // sqinouts order. A fill with time to spare is listed too (D261), its
     // figure below 0 ("early fill -56.2 ms": SP was ready 56.2 ms before the
     // deadline). So is a squeeze that needs no timing
-    // (SPSqueeze::needs_no_timing), as 2.0 showed it (D80); its figure is
+    // (SPSqueeze::needs_no_timing, D80); its figure is
     // below 0 (timing_needs_hitting, D302; "squeeze in -315.8 ms": the note
     // already lands 315.8 ms inside SP). hardest() picks from this list,
     // leaving those two out. The Paths tab's row shows one badge per entry;
@@ -715,7 +715,7 @@ struct Activation {
     bool is_difficult() const;
 
     // Is this backend the note squeezed out of SP? Compares against the
-    // sqout_tick the engine stored (path format 4 on, ADR 0014), so no display re-derives it.
+    // sqout_tick the engine stored (ADR 0014), so no display re-derives it.
     bool is_sqout_backend(const BackendSqueeze& bsq) const;
 
     // The squeezed-out chord's row, or nullptr when the activation did not
@@ -915,9 +915,7 @@ std::string path_identity(const Path& path);
 struct HydraRecord {
     std::optional<double> ms_limit;
     std::optional<int> sp_cap;
-    // Always true since Auto went (2026-09-27): Auto was the only search that
-    // could stop before its score settled. The stored path details that
-    // carried it are gone (D87).
+    // Always true: no search stops before its score settles.
     bool sp_cap_converged = true;
     // The fingerprint of the rules the search ran under: Rules::fingerprint().
     // A saved record's profile stores it in its rules_fp column

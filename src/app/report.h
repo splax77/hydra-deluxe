@@ -148,9 +148,9 @@ struct LibraryLookup {
 LibraryLookup library_lookup(store::RecordStore& store, const store::Profile& profile,
                              const store::ChartIndex& library);
 
-// What "--all-paths" asks for, a count no chart reaches. It is the one answer
-// to "does this page list every path" (finding 86): generate_report's subtitle
-// reads it, so any smaller --paths is written as a count.
+// The max_paths that asks for every path, a count no chart reaches. It is the
+// one answer to "does this page list every path" (finding 86): generate_report's
+// subtitle reads it, so any smaller max_paths is written as a count.
 inline constexpr int64_t kEveryPathSentinel = 1000000000;
 
 struct ReportOptions {

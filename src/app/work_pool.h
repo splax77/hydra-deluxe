@@ -36,8 +36,9 @@ constexpr size_t kWorkPoolWaitingPerWorker = 2;
 // At most kWorkPoolWaitingPerWorker results per worker wait for consume. A
 // worker that finishes while that line is full holds its result until there
 // is room, so a slow consume slows the workers down instead of letting
-// results pile up: a whole-library batch once queued about 6 GB of analyzed
-// charts behind its store writes and ran the machine out of memory.
+// results pile up. Without that limit a whole-library batch queues about 6 GB
+// of analyzed charts behind its store writes and runs the machine out of
+// memory.
 //
 // Once *cancel is set, workers stop taking new items. Items already running
 // finish (work decides how fast) and still reach consume, so consume sees

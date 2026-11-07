@@ -267,7 +267,7 @@ std::optional<uint64_t> open_file_size_bytes(std::FILE* f) {
 uint64_t file_size_bytes(const std::string& utf8_path) {
     // No access asked, metadata only: no sharing clash even with a file
     // someone holds open exclusively. Backup semantics lets a folder open too,
-    // so every path answers as GetFileAttributesExW used to.
+    // so every path answers.
     HANDLE h = CreateFileW(win32_path(utf8_path).c_str(), 0,
                            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
                            OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
@@ -289,8 +289,8 @@ ByteSource file_byte_source(const std::string& utf8_path) {
     if (h == INVALID_HANDLE_VALUE)
         throw KindedError(ErrorKind::SongFileMissing, "cannot open file: " + utf8_path);
     std::shared_ptr<void> file(h, [](void* p) { CloseHandle(static_cast<HANDLE>(p)); });
-    // std::ftell returns a 32-bit long on Windows and fails past 2 GB, which
-    // used to hand back an empty buffer; the 64-bit size has no such limit.
+    // The size comes from the handle in 64 bits, because std::ftell returns a
+    // 32-bit long on Windows and fails past 2 GB.
     const std::optional<uint64_t> size = open_handle_size_bytes(h);
     if (!size) throw KindedError(ErrorKind::SongFileMissing, "cannot read file size: " + utf8_path);
 

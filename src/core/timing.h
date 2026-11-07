@@ -74,7 +74,7 @@ public:
     MsIndex(const std::map<int64_t, double>& bpm_map, int64_t tick_r);
 
     // Milliseconds at an absolute tick (defined for negative ticks too: they
-    // read back at the opening tempo, as the original walk did).
+    // read back at the opening tempo).
     double at(int64_t ticks) const;
 
     // Ticks-per-second of the tempo section containing `ticks` (a tick exactly
@@ -87,7 +87,8 @@ public:
     // Continuous (sub-tick) variants of at(): piecewise-linear, monotone,
     // mutually inverse, and agreeing with at() on integer ticks. NOT part of
     // the bit-for-bit scoring surface (see the header comment) -- never use
-    // them in the graph or the engine's scoring path. tick_at_ms serves
+    // them in the graph or the engine's scoring path, apart from the Clone
+    // Hero 1.0 fill deadline below. tick_at_ms serves
     // SongTiming::display_tick_at_ms, the tick a screen shows at a time,
     // which the Preview's time box, drain box and beat-line end and the Paths
     // timeline's end (app/path_view.cpp) call. ms_at_tick_f
@@ -205,8 +206,8 @@ private:
     std::vector<double> elapsed_;
 };
 
-// A point in time in a song, in multiple representations. Compares/hashes on
-// ticks alone.
+// A point in time in a song, in multiple representations. Compares on ticks
+// alone.
 class Timecode {
 public:
     Timecode() = default;
@@ -252,8 +253,7 @@ constexpr int64_t sp_bars_to_measures(int64_t bars) { return kMeasuresPerSpBar *
 // A song's timing context: resolution plus the three indexes, built once and
 // reused to make Timecodes. The maps must contain a tick-0 entry (as every
 // real chart does), and the time signature map must have the tpm map's keys,
-// or construction throws std::out_of_range — matching the KeyError(0) the
-// Python indexes raise.
+// or construction throws std::out_of_range.
 class SongTiming {
 public:
     SongTiming(int64_t tick_r,
@@ -271,9 +271,8 @@ public:
     }
 
     // The Timecode `add_measures` measures after `tc` on the continuous
-    // count (MeasureCount::tick_after). Star Power's length and the
-    // generated-fill placement read it. Not cached here — the caller caches
-    // if the call volume warrants it.
+    // count (MeasureCount::tick_after). Star Power's length reads it. Not
+    // cached here — the caller caches if the call volume warrants it.
     Timecode plusmeasure(const Timecode& tc, int64_t add_measures) const;
 
     // The BPM and the time signature {numerator, denominator} in force at a

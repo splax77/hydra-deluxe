@@ -1,7 +1,6 @@
 // The WAV / MP3 / FLAC stem readers, on miniaudio's dr_libs.
 //
-// Output is float at the file's own channel count and rate, as the old
-// whole-file decode (ma_decoder) gave.
+// Output is float at the file's own channel count and rate.
 //
 // WAV and FLAC go through ma_decoder; its seeks are exact and instant.
 //
@@ -21,8 +20,8 @@
 // Each seek point also decodes two whole frames before any target, so the
 // decoder's overlap and filter state are settled where the audio starts.
 // After every table seek the reader checks that dr_mp3 landed on the frame
-// the scan predicted. If not (a damaged stream), it falls back to the old
-// exact way: restart and decode forward.
+// the scan predicted. If not (a damaged stream), it falls back to the
+// always-exact way: restart and decode forward.
 
 #include "audio/stem_reader.h"
 
@@ -398,8 +397,7 @@ public:
         if (!seek_points_.empty())
             ma_dr_mp3_bind_seek_table(&mp3_, static_cast<ma_uint32>(seek_points_.size()),
                                       seek_points_.data());
-        // A straight read starts from a freshly reset decoder, exactly as the
-        // old whole-file decode did.
+        // A straight read starts from a freshly reset decoder.
         ok_ = ma_dr_mp3_seek_to_pcm_frame(&mp3_, 0) != MA_FALSE;
     }
 
@@ -547,7 +545,7 @@ std::unique_ptr<StemReader> open_ma_reader(StemBytes bytes, AudioFormat format) 
     if (format == AudioFormat::Mp3) {
         auto mp3 = std::make_unique<Mp3Reader>(std::move(bytes));
         if (mp3->ok()) return mp3;
-        bytes = mp3->take_bytes();  // let ma_decoder try, and report as before
+        bytes = mp3->take_bytes();  // MaReader throws if ma_decoder can't open them
     }
     return std::make_unique<MaReader>(std::move(bytes));
 }

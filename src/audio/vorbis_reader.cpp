@@ -1,12 +1,13 @@
 // The Ogg Vorbis stem reader, on stb_vorbis's pull decoder.
 //
-// The old whole-file decode called stb_vorbis_decode_memory, whose output
-// buffer size is a 32-bit int that doubles as it fills; past 2^29 frames
-// (about 3.1 hours of stereo 48 kHz) it overflowed and the stem played silent.
-// Pulling a few thousand frames at a time never builds that buffer.
+// This reader does not call stb_vorbis_decode_memory, whose output buffer size
+// is a 32-bit int that doubles as it fills; past 2^29 frames (about 3.1 hours
+// of stereo 48 kHz) it overflows and the stem plays silent. Pulling a few
+// thousand frames at a time never builds that buffer.
 //
-// Samples go through int16 exactly as before (stb's short conversion, then
-// / 32768), so a straight-through read is bit-identical to the old decode.
+// Samples go through int16 (stb's short conversion, then / 32768), so a
+// straight-through read is bit-identical to a stb_vorbis_decode_memory decode
+// (tests/test_stem_reader.cpp pins that).
 
 #include "audio/stem_reader.h"
 

@@ -26,7 +26,8 @@ void check_timing_maps(int64_t tick_resolution,
                                            ", and it must be above 0");
     // A song's time is measured from its opening tempo, so a chart without one
     // is refused rather than given a guessed tempo (the user's ruling,
-    // PLAINERR-RES). core/timing.cpp keeps its own throw as a backstop.
+    // docs/sessions/2026-10-24-a124ccd9.md). core/timing.cpp keeps its own
+    // throw as a backstop.
     if (bpm_changes.find(0) == bpm_changes.end())
         throw ChartFileError(kRefused, "it has no tempo at tick 0");
     for (const auto& [tick, len] : tpm_changes)
@@ -131,7 +132,7 @@ constexpr double kCh10FillLengthMeasures = 0.5;
 // later chord. Lines are then taken in order: one whose chord is within
 // resolution x fill_max_distance_beats (no extra tick) gets a fill of
 // kCh10FillLengthMeasures of the grid measure in force at the chord, and the
-// next fill_cooldown_measures lines are skipped.
+// next candidate is fill_cooldown_measures lines on.
 void Song::place_fills_ch10(const core::Rules& rules) {
     const MeasureIndex& grid = timing().measure_index();
 
@@ -171,9 +172,11 @@ void Song::place_fills_ch10(const core::Rules& rules) {
 // the second line (`mov ebx, 1`). Each line takes the chord nearest it, a tie
 // going to the later chord, when that chord is within the distance limit; the
 // fill then starts on the line, so its length is the chord tick minus the
-// line tick and may be 0 or negative for a chord on or before the line (user
-// answer 6, 2026-10-12). The next candidate is rules.fill_cooldown_measures
-// lines on after a fill (`add ebx, 4`), else the next line.
+// line tick and may be 0 or negative for a chord on or before the line
+// (question 6, as recommended, of
+// docs/superpowers/plans/2026-10-12-one-record-per-chart.md (removed; git show 444631e6:docs/superpowers/plans/2026-10-12-one-record-per-chart.md)).
+// The next candidate is rules.fill_cooldown_measures lines on after a fill
+// (`add ebx, 4`), else the next line.
 //
 // The limit is Clone Hero's: the whole ticks of resolution x
 // fill_max_distance_beats, plus one tick (inc at 0x20D2C91), and a chord

@@ -26,8 +26,7 @@ namespace hydra {
 // generator of a chart's own fills from it.
 enum class FillDeadlineRule { Ch11, Ch10 };
 
-// A timecode paired with a chord and gameplay modifiers, mirroring
-// hysong.SongTimestamp.
+// A timecode paired with a chord and gameplay modifiers.
 struct SongTimestamp {
     Timecode timecode;
     Chord chord;
@@ -95,8 +94,7 @@ inline constexpr int kDefaultTimeSigNumerator = 4;
 inline constexpr int kDefaultTimeSigDenominator = 4;
 
 // A parsed chart: the timestamp sequence plus the tempo/meter maps it was built
-// from. Timing is snapshotted once the maps are complete (build_timing), which
-// mirrors Python building timecodes only after the whole tempo track is read.
+// from. Timing is snapshotted once the maps are complete (build_timing).
 class Song {
 public:
     // Starts at the default meter (kDefaultTimeSig*), written by apply_timesig
@@ -122,11 +120,13 @@ public:
     // after at least one ghost- or accent-velocity note, the tag's tick and
     // how many such notes came before it (Clone Hero prices them as plain).
     // nullopt and 0 when the tag came before every marked note, or there is
-    // no tag (dynamics_enabled says which). count_dynamics stores them.
+    // no tag (dynamics_enabled says which). The .mid parser stores them and
+    // count_dynamics reads them.
     std::optional<int64_t> dynamics_late_tag_tick;
     int dynamics_marks_before_tag = 0;
-    // .chart [Song] Offset, in seconds, when the file sets one. Only the
-    // Preview reads it (to line the audio up); scoring works in chart time.
+    // .chart [Song] Offset, in seconds, when the file sets one. The Preview
+    // and app::song_length_ms read it to line the audio up with the chart
+    // (preview_audio_offset_ms); scoring works in chart time.
     std::optional<double> chart_offset_s;
 
     // Practice sections in tick order. A section marker can sit past the last

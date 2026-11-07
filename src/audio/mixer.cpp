@@ -23,8 +23,9 @@ namespace {
 // Convert one decoded stem to `out_channels` at `out_rate`, returning
 // interleaved float. stem_converter_config decides the settings and whether
 // the stem passes through unchanged.
-// Takes the stem by value so a caller that owns it can move it in; a
-// passthrough stem then hands over its samples without a copy.
+// Takes the stem by value. mix_stems, the one caller, holds its stems const,
+// so each stem is copied in; a passthrough stem then hands over the copy's
+// samples without a second copy.
 std::vector<float> convert_stem(DecodedAudio s, int out_rate,
                                 int out_channels) {
     if (s.channels <= 0 || s.samples.empty()) return {};
@@ -56,9 +57,8 @@ std::vector<float> convert_stem(DecodedAudio s, int out_rate,
 }
 
 // Add one converted stem into the running mix, growing the mix with silence
-// when this stem is longer. Every sample still starts at 0.0f and adds the
-// stems in order, the same order as converting them all first, so the sum is
-// bit-identical to the old mixer.
+// when this stem is longer. Every sample starts at 0.0f and adds the stems in
+// order, so the sum is bit-identical to converting them all first.
 void add_into(std::vector<float>& mix, const std::vector<float>& stem) {
     if (stem.size() > mix.size()) mix.resize(stem.size(), 0.0f);
     for (std::size_t i = 0; i < stem.size(); ++i) mix[i] += stem[i];

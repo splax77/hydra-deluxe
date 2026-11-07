@@ -195,8 +195,7 @@ const char* const kOverfillHint =
     "the activation. The ms figures are still measured at the SP end. Only the note whose "
     "timing moves them changes.";
 
-// `record` fed the old footer's "SP meter" line, gone with the old Paths tab;
-// the parameter stays so the callers keep their shape.
+// `record` is unused; the parameter stays so the callers keep their shape.
 ActivationsView build_activations(const Path& path, const HydraRecord& /*record*/,
                                   const SongTiming* timing,
                                   std::optional<double> backend_limit_ms,
