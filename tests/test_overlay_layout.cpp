@@ -306,8 +306,8 @@ TEST_CASE("measure_text_box: the widest line and every line's height, with the i
 
 TEST_CASE("text_box_line_origins: the drain box's lines share one left x") {
     // The drain box's three lines are of three widths; every one starts at
-    // the box's left edge plus the inset (D114 item 27: left-aligned, the
-    // drain box was right-aligned before), one line below the last.
+    // the box's left edge plus the inset (D114 item 27: left-aligned), one
+    // line below the last.
     const TextBox drain = box_of({"SP drain (if activated)", "1 bar / 4.0 s", "full meter 16.0 s"});
     const std::vector<ImagePoint> at = text_box_line_origins(drain, {500.0f, 10.0f}, 10.0f);
     REQUIRE(at.size() == 3);
@@ -420,8 +420,8 @@ TEST_CASE("wrap_right_box: one line a piece when it fits") {
 }
 
 TEST_CASE("wrap_right_box: off the lane at its lowest row, one scale for the whole path") {
-    // The Preview at the song panel's narrowest (820 px at a 1,280 px window):
-    // the drain box 70 px tall at row 10, the next box under it.
+    // The Preview at two narrow widths: the drain box 70 px tall at row 10,
+    // the next box under it.
     PreviewConfig cfg = shipped_preview_config();
     const int h = 450;
     // Every box's inset is the time box's margin (D114 item 27).

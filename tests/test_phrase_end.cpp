@@ -100,8 +100,8 @@ TEST_CASE("phrase end: a phrase running past the last note flags that note") {
 TEST_CASE("phrase end: an unsorted .chart drum section is read in tick order") {
     // The file writes chords at 0, 768, 384, 1536, with an SP phrase and a fill
     // both spanning 0-500. Read in tick order, the last chord inside the
-    // phrase and the chord the fill lands on are the same one: 384. Before
-    // D47 the phrase rule read file order and paid chord 0 instead.
+    // phrase and the chord the fill lands on are the same one: 384. Read in
+    // file order, the phrase rule would pay chord 0 instead.
     const Song song = load_songbytes_chart(
         testchart::chart_bytes(testchart::section("ExpertDrums",
                                                   "  0 = N 0 0\n  0 = S 2 500\n  0 = S 64 500\n"

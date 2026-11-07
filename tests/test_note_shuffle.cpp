@@ -96,7 +96,7 @@ struct GameSong {
 
 TEST_CASE("Note Shuffle: the game-test songs shuffle as the game showed them") {
     // A1, A2, B, C2, D2 and E with Pro Drums on are the runs the game
-    // confirmed (docs/audit/note-shuffle/game-tests/README.md). The Pro Drums
+    // confirmed (docs/audit/note-shuffle/step0/FINDINGS.md). The Pro Drums
     // off rows are the reference's too; the game was not filmed for them.
     const std::vector<GameSong> songs = {
         {"NS A1 tick scale chart192", "notes.chart", true,

@@ -1,7 +1,7 @@
 // Pins the chart corpus's digests, the same ones hydra_bench's --engine
 // and --parse modes print, so a change meant to leave Hydra's output alone
-// (the speedups plan, D86) fails here if it moves a single field of the
-// engine's answer.
+// (D86) fails here if it moves a single field of the engine's answer. "The
+// plan" below is docs/superpowers/plans/2026-10-06-perf-speedups.md (removed; git show 444631e6:docs/superpowers/plans/2026-10-06-perf-speedups.md).
 //
 // Each literal comes from one run of hydra_bench on testdata/input with the
 // engine and parsers unchanged. The digests are tests/song_digest.h's, the
@@ -123,25 +123,7 @@ void check_parse_digest(const app::Settings& st, uint64_t pinned, size_t pinned_
 
 }  // namespace
 
-// All six digests below were re-pinned from one run on 2026-10-14, on the
-// D115 timing branch with main merged in (task TJ-4). The results stamp moved
-// to 2.8.0 for the same three reasons:
-//  (a) B2-3 retired fill_length_measures, so the rules fingerprint that every
-//      prepared-row digest folds changed.
-//  (b) Star Power ends now come from exact whole-number measure sums instead
-//      of truncated doubles. That moves some activation ends 1 or 2 ticks
-//      later on charts with meters other than 4/4, in 1.0 and 1.1 mode alike
-//      (9 of 97 charts in 1.0 mode); no best score or path changed.
-//  (c) A 1.1 generated fill now starts on its measure line, and the measure
-//      grid restarts at a time-signature change, which moves the 1.1 and
-//      parse digests.
-//
-// The four prepared-row digests were re-pinned again from one run on
-// 2026-10-31 (task PBR4-A3, D302). The summary's hardest_ms now holds the
-// engine's own figure, sign included (engine_hardest_ms), so the prepared row
-// moved; the engine's output folded through record_hash did not, and the
-// results stamp did not move. The two parse digests did not move, so no chart
-// reads differently.
+// Each of the six digests below is pinned from one run.
 
 TEST_CASE("the corpus's prepared-row digest is pinned") {
     check_engine_digest(pinned_settings("Expert", true, true), 0xbe3c5149250f3837ULL);
@@ -174,7 +156,7 @@ TEST_CASE("the corpus's parse digest is pinned at Hard, Pro Drums off, 2x Bass o
     CHECK_MESSAGE(got == 0x80f7de7a2baccb54ULL, "parse digest is now " << hex(got));
 }
 
-// Pinned from one run on 2026-10-25 (task TQA-D2), with the parsers unchanged.
+// Pinned from one run, with the parsers unchanged.
 TEST_CASE("the corpus's parse digest is pinned at Medium, Pro Drums off, 2x Bass off") {
     check_parse_digest(pinned_settings("Medium", false, false), 0x4b403ec696f88efeULL, 67);
 }
