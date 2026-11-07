@@ -105,6 +105,7 @@ class ThreadRow:
     pid: int
     tid: int
     reads_as: str
+    switches: int
 
 
 @dataclass(frozen=True)
@@ -197,7 +198,8 @@ def _process(row: dict) -> ProcessRow:
 
 
 def _thread(row: dict) -> ThreadRow:
-    return ThreadRow(int(row["sample"]), int(row["pid"]), int(row["tid"]), row["reads_as"])
+    return ThreadRow(int(row["sample"]), int(row["pid"]), int(row["tid"]), row["reads_as"],
+                     int(row["switches"]))
 
 
 def read_recording(folder: str) -> Recording:
@@ -370,19 +372,33 @@ def ready_stretches(ready_samples: Iterable[int]) -> List[List[int]]:
     return [run for run in runs if len(run) >= READY_STRETCH_MIN]
 
 
+def _across_late_samples(run: List[int], walls: Dict[int, Fraction],
+                         period_ms: Fraction) -> bool:
+    """Whether question 23 of the plan marks this stretch."""
+    return any(_ms(walls[later] - walls[earlier]) > period_ms
+               for earlier, later in zip(run, run[1:]))
+
+
 def _stretch_text(stretches: List[List[int]], walls: Dict[int, Fraction],
-                  by_sample: Dict[int, List[ProcessRow]], slices: Set[int]) -> str:
+                  by_sample: Dict[int, List[ProcessRow]], slices: Set[int],
+                  switches: Dict[int, int], period_ms: Fraction) -> str:
     if not stretches:
         return "no ready stretch"
     longest = max(stretches, key=lambda run: walls[run[-1]] - walls[run[0]])
+    # A sample's gain covers the slice before it, so the first one's came before the stretch.
+    inside = sum(switches[number] for number in longest[1:])
+    late = (", across late samples: the span counts the recorder's lateness, "
+            "so it is an upper bound on any wait"
+            if _across_late_samples(longest, walls, period_ms) else "")
     rows = [row for number in longest for row in by_sample.get(number, ())]
     gained = _gained(rows, slices, "cpu_ms")
     who = [f"pid {pid} {_shown(name)} {float(ms):.1f} ms"
            for (pid, name), ms in sorted(gained.items(), key=lambda kv: (-kv[1], kv[0]))
            if ms > 0]
-    return (f"longest ready stretch {float(_ms(walls[longest[-1]] - walls[longest[0]])):.1f} ms "
-            f"from wall {_wall(walls[longest[0]])}, CPU gained in those samples: "
-            f"{', '.join(who) or 'by nobody'}")
+    return (f"longest ready stretch: ready in {len(longest)} consecutive samples spanning "
+            f"{float(_ms(walls[longest[-1]] - walls[longest[0]])):.1f} ms "
+            f"from wall {_wall(walls[longest[0]])}, {inside} context switches gained inside"
+            f"{late}, CPU gained in those samples: {', '.join(who) or 'by nobody'}")
 
 
 def _thread_lines(rec: Recording, whole: Window, window: Window, pids: Sequence[int],
@@ -402,7 +418,9 @@ def _thread_lines(rec: Recording, whole: Window, window: Window, pids: Sequence[
             mine = [row for row in rows if row.tid == tid]
             running = sum(row.reads_as == READS_RUNNING for row in mine)
             ready = [row.sample for row in mine if row.reads_as == READS_READY]
-            stretch = _stretch_text(ready_stretches(ready), walls, by_sample, whole.slices)
+            switches = {row.sample: row.switches for row in mine}
+            stretch = _stretch_text(ready_stretches(ready), walls, by_sample, whole.slices,
+                                    switches, rec.period_ms)
             lines.append(f"  {label} pid {pid} thread {tid}: running {running}, ready "
                          f"{len(ready)}, {stretch}")
     return lines
