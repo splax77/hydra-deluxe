@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import math
 import os
 import statistics
 import sys
@@ -39,7 +40,8 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 from tools.ch_probe import constants as C
-from tools.ch_probe.experiments.overlay_logs import WATCH_COLUMNS
+from tools.ch_probe.experiments.overlay_logs import (
+    WATCH_CLOCK_COLUMNS, WATCH_COLUMNS, WATCH_COLUMNS_WITHOUT_CLOCK)
 
 # How far from a chord's time (song clock, ms) a row may be and still be
 # searched for that chord's hit-time change (the plan's Task A step 4).
@@ -70,15 +72,17 @@ def same_value(a, b) -> bool:
 
 
 def load_watch_rows(path: str) -> list[dict]:
-    """The watcher log's rows, each a dict keyed by WATCH_COLUMNS. Raises
-    ValueError when the header is not WATCH_COLUMNS."""
+    """The watcher log's rows, each a dict keyed by WATCH_COLUMNS. A log
+    written before the clock columns existed loads with them NaN. Raises
+    ValueError when the header is neither WATCH_COLUMNS nor that older list."""
     with open(path, newline="", encoding="utf-8") as f:
         reader = csv.reader(f)
         header = tuple(next(reader, ()))
-        if header != WATCH_COLUMNS:
+        if header not in (WATCH_COLUMNS, WATCH_COLUMNS_WITHOUT_CLOCK):
             raise ValueError(
                 f"{path}: header {header} is not overlay_logs.WATCH_COLUMNS")
-        return [dict(zip(WATCH_COLUMNS, map(parse_value, row)))
+        blanks = dict.fromkeys(WATCH_CLOCK_COLUMNS, math.nan)
+        return [{**blanks, **dict(zip(header, map(parse_value, row)))}
                 for row in reader]
 
 

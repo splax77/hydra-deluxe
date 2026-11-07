@@ -23,7 +23,7 @@ namespace hydra::store {
 
 template <typename T, size_t N>
 struct StampRule {
-    T written;                  // stamped on every new row
+    T written;                  // the stamp this build writes
     std::array<T, N> accepted;  // every stamp read as current; holds `written`
 
     constexpr bool is_current(const T& stored) const {
@@ -50,32 +50,8 @@ struct StampRule {
 // Stale is for a change in the analysis, and display text reads what the
 // engine already saved (the user's ruling, 2026-10-31). hardest_ms is the
 // example: the store saves the engine's own figure (engine_hardest_ms,
-// core/model.h) and the screens apply shown_timing when they show it.
-//
-// "2.1.0": the engine now stores each activation's SP-end history and
-// re-anchors the transfer scales on it (ADR 0021), and each tied variant
-// keeps its own facts (ADR 0022). Every release from 1.8.4 to 2.0.0 stamped
-// "1.8.2", and those results hold different values, so they read Stale.
-// "2.1.0+allzero": the all-0 list is found under its 0 ms limit again
-// (D85). It is a second bump inside 2.1.0, made before it shipped, an
-// exception to D23's one-bump-per-release rule that the user chose ("Mark
-// all Stale"), so results saved by earlier 2.1.0 builds, which can be
-// missing their all-0 path, read Stale too. The stamp is only compared as a
-// whole string, never parsed.
-// "2.4.0": the chart readers merge a 2x kick and a normal kick on one tick,
-// and 2x Bass off then removes that kick, as Clone Hero does (D105). D105
-// accepted that every saved result reads Stale.
-// "2.8.0": generated fills start on the measure line, as Clone Hero's
-// generator places them; Star Power's length follows Clone Hero's continuous
-// measure count; and the beat grid restarts at a time signature change (D115).
-// "2.8.0+efill85": the search takes an activation whose Star Power comes
-// ready up to the hit window, kHitWindowMs, after the fill's deadline
-// (fill_refuses, src/core/model.h).
-// D250 accepted that every saved result reads Stale.
-// "2.12.1+ch10grid": Clone Hero 1.0 mode's generated fills count measures on
-// the shared grid (MeasureIndex), so a 1.0 fill whose chord sits on a time
-// signature change, or past a mid-measure one, can move. The user chose to
-// mark every saved result Stale (2026-10-24).
+// core/model.h) and the screens apply shown_timing when they show it. The
+// stamp is only compared as a whole string, never parsed.
 inline constexpr StampRule<std::string_view, 1> kResultsStamp{"2.12.1+ch10grid", {"2.12.1+ch10grid"}};
 
 // ---- Scanned chart facts (the charts table) --------------------------------
@@ -89,15 +65,6 @@ inline constexpr StampRule<std::string_view, 1> kResultsStamp{"2.12.1+ch10grid",
 // read from it still hold what this build would read. Stored once per file,
 // as the meta row chart_meta_version. A stale or missing stamp drops the
 // whole rescan cache, so the next scan reads every chart once (D51 call 12).
-// 1 = the first stamp. 2 = the scan also reads each chart's stated length
-// and delay (store::ChartTimingMeta, D75). 3 = a .sng's and an .srb's id
-// became Clone Hero's song id (song_id_read, ADR 0028); before, both were the
-// MD5 of the whole container. Their saved results no longer
-// match any chart and are dropped by the next scan; the user accepted that.
-// 4 = every name field is trimmed once, D114 item 15.
-// 5 = song.ini, .chart and MIDI text is decoded UTF-8 first, else
-// Windows-1252 (decode_chart_text in parse/text_decode.h).
-// 6 = the scan also reads each chart's album.
 inline constexpr StampRule<int, 1> kChartMetaStamp{6, {6}};
 
 // A build always reads back what it writes.

@@ -264,8 +264,7 @@ public:
     // of its analysis stops at its next progress tick and is neither stored
     // nor counted as failed. Works while paused.
     void stop();
-    // The old name for stop(), kept until T13 moves the batch modal's
-    // callers to stop().
+    // Another name for stop().
     void cancel() { stop(); }
 
     // The batch's settings: what its results are filed under, for the report

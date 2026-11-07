@@ -502,7 +502,7 @@ void AppState::update_view_job() {
                 store->reidentify_chart(path, out.new_md5, out.new_sig);
             } catch (const std::exception& e) {
                 // Fail loudly and save nothing: a summary under a hash no
-                // library row has would be an orphan (ruling 15).
+                // library row has would be an orphan.
                 v = ViewedSong{};
                 v.state = ViewedSong::State::Failed;
                 v.message = app::plain_error(e);

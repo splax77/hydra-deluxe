@@ -111,10 +111,9 @@ float library_split_width(float room, float share) {
 namespace {
 
 // The primary window: fixed to the full viewport, no title bar/resize/
-// move/collapse of its own -- mirrors hydra_app.py's
-// dpg.set_primary_window("mainwindow", True), a single window that IS the
-// app rather than a panel floating inside it. The main window and the
-// startup screen both begin it here; the caller ends it.
+// move/collapse of its own -- a single window that IS the app rather than a
+// panel floating inside it. The main window and the startup screen both begin
+// it here; the caller ends it.
 void begin_hydra_window() {
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(viewport->WorkPos);
