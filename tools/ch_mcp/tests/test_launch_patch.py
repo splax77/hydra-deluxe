@@ -6,9 +6,9 @@ and the loader's listing that task D1 of the direct-start plan wrote
 Every expected value below is a literal read once by hand from the listing or
 the DLL; none is worked out again from the file under test. The game is not in
 the repo, so the bytes the agent compares against the game's memory are pinned
-here, and the facts table's header md5 is pinned beside them: a new
-GameAssembly.dll changes that md5, and this test then fails until someone reads
-the bytes again.
+here, and the facts table's header md5 is pinned beside them. This test never
+opens GameAssembly.dll: it fails once the facts table is regenerated from a new
+DLL, and stays failed until someone reads the bytes again.
 """
 
 from __future__ import annotations

@@ -236,7 +236,8 @@ class TraceAgentTest(unittest.TestCase):
             self.assertEqual(by_name_only_findings(fh.read()), [])
 
     def test_only_gamemanager_ts_looks_up_the_game_manager(self):
-        # One owner: the agents call findGameManager; none repeats the lookup.
+        # One owner: gamemanager.ts holds the lookup. These two agents call its
+        # findGameManager and neither repeats the lookup.
         for name in ("clock.ts", "trace.ts"):
             with self.subTest(agent=name):
                 with open(os.path.join(AGENT_DIR, name), encoding="utf-8") as fh:

@@ -1,8 +1,8 @@
 """Tests for mono_facts.py.
 
 Most tests feed build_facts a hand-written copy of what mono_reader.ps1 prints,
-so they never touch the game. One test runs the real reader on a small
-assembly that ships with PowerShell 7.
+so they never touch the game. The test_the_real_reader tests run the real
+reader on assemblies that ship with PowerShell 7.
 """
 
 from __future__ import annotations

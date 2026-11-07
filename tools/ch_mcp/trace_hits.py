@@ -1,5 +1,6 @@
 """Trace the drum engine's methods while a probe song plays, and find the one
-that runs once per note (plan 2026-10-28, Task D and live step L3).
+that runs once per note. The plan's Task D and live step L3 are in
+docs/superpowers/plans/2026-10-28-ch-mcp-feasibility-tests.md (removed; git show d6666440:docs/superpowers/plans/2026-10-28-ch-mcp-feasibility-tests.md).
 
 It runs agent/trace.js through frida_attach.run_agent, then reads the song's
 manifest.json. Count mode prints the methods whose call count equals the
@@ -60,8 +61,9 @@ MODE_ARGS = "args"
 END_STOPPED = "stopped"  # the session's own stop() ended the run
 END_FAILED = "failed"    # run_agent raised instead of returning a result
 
-# The trace's song cap is the song's length plus this margin (plan 2026-10-28,
-# question 5: the same cap as the clock run).
+# The trace's song cap is the song's length plus this margin (question 5 of the
+# feasibility-tests plan this file's header names: the same cap as the clock
+# run).
 TRACE_CAP_MARGIN_S = 30.0
 
 # The wall-clock cap is the song cap plus this room, for a song paused or not

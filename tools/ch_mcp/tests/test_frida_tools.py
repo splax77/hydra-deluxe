@@ -3,7 +3,7 @@ engine lines of ch_snapshot, the trace start and its refusals, ch_notes,
 ch_trace_stop and the stop hook.
 
 No game and no Frida: the fake frida module and its sessions come from
-test_frida_attach, the game side is a fake with the four methods FridaTools
+test_frida_attach, the game side is a fake with the methods FridaTools
 calls, the trace is a fake standing in for trace_hits.TraceSession, the
 engine's memory is a fake process the real EngineModel reads, and the clock
 is a fake that sleeping moves.

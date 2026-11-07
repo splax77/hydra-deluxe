@@ -991,8 +991,8 @@ class DestroyedSkipTest(unittest.TestCase):
         self.assertNotIn(".method(", text)
 
     def test_only_gamemanager_ts_names_the_native_object_field(self):
-        # One owner for "is this Unity object destroyed": the other agents
-        # import isDestroyed and never name the field themselves.
+        # One owner for "is this Unity object destroyed": gamemanager.ts. The
+        # other agents never name the field; menu.ts imports isDestroyed.
         for path in agent_sources():
             name = os.path.basename(path)
             if name == "gamemanager.ts":
@@ -1011,7 +1011,7 @@ class DestroyedSkipTest(unittest.TestCase):
 
 LAUNCH_AGENT = "launch.ts"
 LAUNCH_CORE = "launch_core.ts"
-# A top-level function and its body, up to the first line that is a lone `}`.
+# A top-level function and its body, up to the first line that starts with `}`.
 _TOP_FUNCTION = re.compile(r"^(?:async\s+)?function\s+(\w+)\s*\(.*?^\}",
                            re.MULTILINE | re.DOTALL)
 # A number written in hex, as an address would be.
