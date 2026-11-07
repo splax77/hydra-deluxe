@@ -135,6 +135,11 @@ itself; `tools\build_slot.ps1` owns those limits.
 `tools\build_slot.ps1 -Repo <worktree>` builds another worktree under the pass
 the caller already holds.
 
+A second lock stops a build that skips `build_cpp.ps1`. `Directory.Build.targets`
+at the repo root makes every Visual Studio project fail without a claimed pass,
+so a hand-run `cmake --build` is refused. Under the limit, Visual Studio builds
+also run at low priority, so hooks and other programs go first.
+
 The limit applies only when `CLAUDECODE` is 1. CI and your own terminal build
 as they always did, and a terminal build does not count toward the three.
 
