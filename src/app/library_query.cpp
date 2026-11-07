@@ -468,7 +468,7 @@ std::vector<MatchSpan> match_spans(const LibraryQuery& q, QueryField field,
     return merged;
 }
 
-// Each example is a chart in testdata/input, and the tests parse every one.
+// The tests parse every example.
 // The meanings say what query_matches does with each key.
 const std::vector<SearchTip>& search_tips() {
     static const std::vector<SearchTip> tips = {

@@ -1,6 +1,7 @@
 // Plumbing for the fill comparison's HTML page (app/fill_report.cpp): its
 // stylesheet and script, template substitution, and the escaping helpers it
-// embeds its row data with.
+// embeds its row data with. Also the chip colours and search words that page
+// shares with the report windows and the Library.
 
 #ifndef HYDRA_APP_HTML_PAGE_H
 #define HYDRA_APP_HTML_PAGE_H
@@ -69,9 +70,8 @@ inline const std::string& charts_search_hint() {
 
 // ---- the shared report page -----------------------------------------------
 // The fill page is one stylesheet and one script wrapped around its own
-// title, body markup and PAGE settings (docs/adr/0016). Both stay ASCII: this
-// file compiles into hydra_app, so a glyph goes in as an HTML entity or a
-// \uXXXX JavaScript escape.
+// title, body markup and PAGE settings (docs/adr/0016). Both stay ASCII, so a
+// glyph goes in as an HTML entity or a \uXXXX JavaScript escape.
 // Every rule the fill page uses, with the dark scheme's --t0, --t3 and --tn
 // written from the kChipRgb* colours above.
 const std::string& report_css();
