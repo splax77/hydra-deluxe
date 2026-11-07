@@ -3,8 +3,8 @@
 Everything under `models/` and `textures/` is a byte-for-byte copy from the
 Onyx Music Game Toolkit (mtolly/onyx), release 20251011, taken from
 `C:\Program Files\OnyxToolkit\onyx-resources\`. **Do not edit these files.**
-To update, copy the same names again from a newer Onyx and re-check the
-hashes. Hydra's Preview is a faithful port of Onyx's 3D drum previewer (see
+To update, copy the same names again from a newer Onyx. Hydra's Preview is a
+faithful port of Onyx's 3D drum previewer (see
 `docs/adr/0008`), so the art must stay identical for the golden-image test
 (`tests/test_preview_golden.cpp`) to mean anything.
 

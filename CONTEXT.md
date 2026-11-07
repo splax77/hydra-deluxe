@@ -102,8 +102,8 @@ the all-0 pass the rest (src/search/pather.cpp; D273).
 The engine's full output for one chart under one profile: every kept path
 with its activations, squeeze rows and SP-end history, built each time a
 chart is analyzed and kept in memory only (docs/adr/0026). The type is
-`HydraRecord`; the name is historical, from before records were stored the
-way they are now. A record is what the store keeps of an analysis.
+`HydraRecord`, though it is an analysis and not a record: a record is what
+the store keeps of an analysis.
 _Avoid_: record (for the in-memory output)
 
 **Record**:
@@ -449,7 +449,7 @@ skipped, not refused: `kRetiredSettingsKeys` (src/app/config.h) and
 `kRetiredRulesKeys` (src/app/rules_file.cpp) list them, and
 `is_retired_key` asks. A live key of the same name wins. A retired settings
 key is left out at the next save (D270 call 7). `hit_window_ms` is one of
-them, because the hit window is no longer a setting (Hit window).
+them, because the hit window is a fixed number, not a setting (Hit window).
 A refused hydra_settings.ini throws `SettingsFileError` (kind `SettingsFile`,
 whose app sentence is `kSettingsOffSentence`). In the app, Hydra opens on a
 default `Settings`, analysis is off as for the rules file, no scan starts and
@@ -508,8 +508,8 @@ only" box keeps every optimal path among the ones the record kept (D115).
 
 **Score categories**:
 The six parts a path's score is made of: notes (the notes' own points), combo bonus, Star
-Power, solo bonus, accents and ghosts. The Notes line is `Path::notes_points`.
-D115 renamed it, so the chart's 1x total, `Path::chart_base_score`, is the one
+Power, solo bonus, accents and ghosts. The Notes line is `Path::notes_points`,
+a name of its own, so the chart's 1x total, `Path::chart_base_score`, is the one
 "base score", and a note's own 1x value is `ChordNote::basescore`, the name
 Clone Hero's code uses. `score_total` in src/core/model.h is
 the one sum, in the order `Path` stores them. `ReplayScore` in
@@ -661,8 +661,9 @@ Which Clone Hero version's fill rules a run follows, 1.1 or 1.0:
 `fill_rule_for` in src/search/graph.h, and `legacy_fills_for` reads a rule back
 into the flag. The two are the only crossings. `fill_rule_name` names a rule
 wherever it is shown. A record carries its rule in its profile's lens, so one
-database holds both rules' records; the old label on the whole file
-(`engine_mode`) is retired (D115, docs/adr/0010).
+database holds both rules' records, and no label on the whole file names a
+rule. The conversion deletes the retired `engine_mode` row
+(`kRetiredFillLabelKey` in src/store/record_store.cpp).
 
 **Hit window**:
 The per-side ms window Clone Hero registers a hit in, Clone Hero's Pro Drums

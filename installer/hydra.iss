@@ -4,7 +4,7 @@
 ;   /DHYDRA_VERSION=<x.y.z>   version parsed from CMakeLists.txt
 ;   /DHYDRA_APP_NAME=<name>   the name the app shows, from CMakeLists.txt
 ;   /DHYDRA_APP_USER_MODEL_ID=<id>  the taskbar identity, from CMakeLists.txt
-;   /DHYDRA_STAGE=<dir>       cmake --install staging dir (exes, resource/, docs)
+;   /DHYDRA_STAGE=<dir>       cmake --install staging dir (CMakeLists.txt's install rules)
 ;   /DHYDRA_REDIST=<dir>      dir holding VC_redist.x64.exe
 ;   /DHYDRA_OUTPUT=<dir>      where setup.exe goes (the default preset's
 ;                             build folder + \installer, from CMakePresets.json)
