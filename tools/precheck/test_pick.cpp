@@ -427,9 +427,9 @@ private:
     }
 
     // The exe a main file builds and the tests that run it (the user's ruling
-    // in D299, last paragraph): the first target in
-    // CMakeLists.txt listing the file (and no other target), when its constant
-    // is defined there and some test names it. Nothing for any other file.
+    // in D299, last paragraph): the only target in CMakeLists.txt listing the
+    // file, when its constant is defined there and some test names it. Nothing
+    // for any other file.
     const ExeTests* exe_for(const std::string& file) {
         const auto memo = exe_of_.find(file);
         if (memo != exe_of_.end()) return memo->second ? &*memo->second : nullptr;

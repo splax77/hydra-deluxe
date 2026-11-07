@@ -19,8 +19,9 @@ namespace precheck {
 // The user's three thresholds (D299). They live here and
 // nowhere else.
 
-// Q1: a key that more test files than this mention picks nothing by itself;
-// the user chose 30.
+// Q1: a key that more test files than this mention picks nothing by itself,
+// but when it is a changed name it runs the whole suite (grep_tests in
+// test_pick.cpp); the user chose 30.
 constexpr int kCommonNameLimit = 30;
 // Q2: more picked test files than this runs the whole suite; the user chose 40.
 constexpr int kPickSizeLimit = 40;

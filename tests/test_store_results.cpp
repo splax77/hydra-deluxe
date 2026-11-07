@@ -724,10 +724,9 @@ TEST_CASE("PathSummary equality covers every field, stars included") {
 }
 
 TEST_CASE("a record counts every kept path once") {
-    // Finding 172: the pathcount column is the count the Paths tab shows
-    // ("Paths kept:", HydraRecord::all_paths). The fixture's count is a
-    // literal from one run on the base before the fold, so the two counts are
-    // proven equal on a real record.
+    // Finding 172: the pathcount column counts every path the Paths tab lists
+    // (HydraRecord::all_paths). The fixture's count is a literal from one run,
+    // so the two counts are proven equal on a real record.
     CHECK(record_of("", fixture().record).pathcount == 1);
     // One root with a tied variant, plus a second root: three paths.
     CHECK(record_of("", test::tied_variant_record()).pathcount == 3);

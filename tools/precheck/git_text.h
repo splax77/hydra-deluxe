@@ -69,8 +69,8 @@ private:
     std::unique_ptr<ChildProcess> proc_;
 };
 
-// A file's text as the script's Get-TipText gave it: line breaks are "\n",
-// a leading UTF-8 byte order mark and one final line break are dropped.
+// A file's text in the form every check reads: line breaks are "\n", a
+// leading UTF-8 byte order mark and one final line break are dropped.
 std::string tip_text_form(const std::string& raw);
 
 // A git repository, opened at any folder inside it.

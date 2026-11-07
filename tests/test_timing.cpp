@@ -108,7 +108,7 @@ TEST_CASE("timing: the time signature map must name the tpm map's ticks") {
 }
 
 TEST_CASE("timing: a tick before the first tempo mark reads at the opening tempo") {
-    // 120 BPM, resolution 480 -> 2 ticks/ms, so one beat (480 ticks) = 500 ms.
+    // At resolution 480 one beat is 480 ticks, and at 120 BPM it lasts 500 ms.
     std::map<int64_t, double> bpm{{0, 120.0}};
     hydra::MsIndex ms(bpm, 480);
     CHECK(ms.at(0) == doctest::Approx(0.0));
@@ -325,7 +325,7 @@ TEST_CASE("timing: continuous helpers are exact, inverse, and monotone") {
 TEST_CASE("timing: the measure count runs on through a mid-measure meter change (D115)") {
     // 4/4 (1920 ticks/measure) until tick 2400, 1.25 measures in, then 3/4
     // (1440 ticks/measure). The count keeps the 1.25 measures and goes on in
-    // the new meter, so it no longer jumps at the change; a Timecode gives
+    // the new meter, so it does not jump at the change; a Timecode gives
     // the same number.
     std::map<int64_t, int64_t> tpm{{0, 1920}, {2400, 1440}};
     std::map<int64_t, double> bpm{{0, 120.0}};
@@ -404,7 +404,7 @@ TEST_CASE("timing: one SP bar is two measures") {
     CHECK(hydra::kMeasuresPerSpBar == 2);
     CHECK(hydra::sp_bars_to_measures(1) == 2);
     CHECK(hydra::sp_bars_to_measures(4) == 8);
-    CHECK(hydra::sp_bars_to_measures(-1) == -2);  // one phrase back, as squeeze_rating uses it
+    CHECK(hydra::sp_bars_to_measures(-1) == -2);  // a negative count scales too
 
     // 4/4 at 480 ticks per beat: a measure is 1920 ticks, so two bars of SP
     // run four measures, 7680 ticks.
@@ -444,6 +444,6 @@ TEST_CASE("timing: a new Song and an empty Preview scene read the one default me
     CHECK(none.denominator == hydra::kDefaultTimeSigDenominator);
 }
 
-// "No meter is written by hand outside apply_timesig" and "the Preview's time
-// box keeps no 4/4 literal of its own" are rows in
-// tests/single_owner/rules/parse.json, read by the one scan of the source tree.
+// "Who writes a meter or a signature into Song's maps?" and "Does the Preview
+// type its own 4/4 meter?" are rows in tests/single_owner/rules/parse.json,
+// read by the one scan of the source tree.

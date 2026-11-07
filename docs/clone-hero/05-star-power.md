@@ -4,7 +4,7 @@ This page covers Star Power phrases, the meter, activation, drain, the Star Powe
 It describes build 1.1 (v1.1.0.6142).
 Last write-back: 2026-11-06.
 
-The live-run files named below (`run1_cal0_*` under tools/ch_probe/experiments/results/overlay-spike/) were untracked in git on 2026-10-30; only `il2cpp-fields.md` in that folder is tracked. "Run 1" is the key-press auto-player run on the probe chart Trippin SP Spike (resolution 192), stamped 2026-10-29 00:39 UTC. The engine fields are those of the base engine class #8288, which the drum engine #8255 inherits. `ghidra_decompile_all.txt` and "the decompile" mean Ghidra's full decompile of build 6142, which `code/README.md` describes; it is not in the repo.
+The live-run files named below are the `run1_cal0_*` files under tools/ch_probe/experiments/results/overlay-spike/. "Run 1" is the key-press auto-player run on the probe chart Trippin SP Spike (resolution 192), stamped 2026-10-29 00:39 UTC. The engine fields are those of the base engine class #8288, which the drum engine #8255 inherits. `ghidra_decompile_all.txt` and "the decompile" mean Ghidra's full decompile of build 6142, which `code/README.md` describes; it is not in the repo.
 
 ## Phrase membership
 
@@ -134,7 +134,7 @@ Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 Rule: The byte at +0x130 means "the meter changed, work the end time out again". Every gain sets it. Only the update that runs while Star Power is on clears it, after it has worked the end out again. So it stays set while Star Power is off and the meter holds phrases.
 Label: Proven in the game's code
-Evidence: Set at `code/6142/sp_gain_20F4FA0.asm` lines 44 to 57; read at `code/6142/sp_update_20F6800.asm` lines 77 and 78 and cleared at line 105, on the active path only. Live: in `run1_cal0_sp_watch.csv` the byte is 1 in 22,890 rows, every one with Star Power off and 1,440 or 2,880 in the meter, and 0 whenever Star Power is on or the meter is empty. This explains why the byte is set with no overfill. tools/ch_probe/constants.py names it `OFF_SP_OVERFLOW`, which is the old reading.
+Evidence: Set at `code/6142/sp_gain_20F4FA0.asm` lines 44 to 57; read at `code/6142/sp_update_20F6800.asm` lines 77 and 78 and cleared at line 105, on the active path only. Live: in `run1_cal0_sp_watch.csv` the byte is 1 in 22,890 rows, every one with Star Power off and 1,440 or 2,880 in the meter, and 0 whenever Star Power is on or the meter is empty. This explains why the byte is set with no overfill. tools/ch_probe/constants.py names it `OFF_SP_OVERFLOW`, but it is not an overflow flag.
 Game code (6142): RVA `0x20F4FA0` lines 44 to 57; RVA `0x20F6800`, `code/6142/sp_update_20F6800.asm` lines 69 to 106
 Hydra: no owner: Hydra works out each end directly, not per frame
 Ruling: none needed: an internal flag
@@ -157,7 +157,7 @@ Label: Unknown
 Evidence: Two readings. The end-time listing converts the meter to time through the tempo segments only, with no time-signature list, but its tick formula at `0x20D1D20` reads two segment fields, +0x30 and +0x40, whose meaning was not read, so a time signature could hide there. The 2026-10-12 session read a measure-based clock at `0x20D2930` with constants 4.0, 8.0 and 30.0 (listing lost; read 2026-10-12 at `0x20D2930`, session 28fad19c; docs/superpowers/plans/2026-10-12-one-record-per-chart/part-B2-timing.md line 23, removed; `git show ec91f8d1:docs/superpowers/plans/2026-10-12-one-record-per-chart/part-B2-timing.md`, says "Neither function is in the evidence folder"). The 30 times resolution full bar (SP-11) fits 8 measures of 3.75 times resolution. Run 1 is 4/4 under both compared activations. Hydra's own figure for a 36/4 section at 126 BPM (34.3 s per bar, card 18665965) is arithmetic on Hydra's rule.
 Game code (6142): RVA `0x20F37E0`, `code/6142/sp_end_time_20F37E0.asm` lines 15 to 93; tick formula `0x20D1D20` read, not listed; `0x20D2930` listing lost
 Hydra: `MeasureCount` in src/core/timing.h line 180; `SongTiming::plusmeasure` in src/core/timing.cpp line 321; `sp_bars_to_measures` in src/core/timing.h line 250
-Ruling: D231: the user chose "Adopt CH's rule (Recommended)" to "Clone Hero measures Star Power's length continuously ..." (decision log line 823, card 2026-10-12-28fad19c, 03:14 UTC)
+Ruling: D231: the user chose "Adopt CH's rule (Recommended)" to "Clone Hero measures Star Power's length continuously ..." (card 2026-10-12-28fad19c, 03:14 UTC)
 Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 ## Activation on drums
@@ -292,8 +292,8 @@ Rule: Each frame, the end check runs: if Star Power is on and the clock is at or
 Label: Proven in the game's code
 Evidence: The end check compares clock with end at lines 1 to 3, tests the flag at lines 4 and 5 and jumps to slot 23, the deactivation (SP-25), at line 8. The drum engine's own slot 15 at `0x20DE5A0` is two instructions that jump there (dump.cs line 527475). The event step calls a virtual handler (vtable offset 0x238, slot 16) with the end time when the end lies after the old clock and before the new time (`code/6142/advance_events_20F6A50.asm` lines 219 to 230). The reviewer of this page disassembled slot 16 (tools/ch_mcp/chdis.py on the 6142 DLL, 2026-10-30): dump.cs gives it `Slot: 16` at RVA `0x20F43A0` in the base class and none of the drum engine's classes overrides it. It adds the time to a list of doubles at +0x180 when the list does not hold it yet, and it never touches the flag at +0x42. No listing of it is committed. ch-evidence.md line 197 said "checked once per frame" from a lost listing.
 Game code (6142): RVA `0x20F63B0` (slot 15), `code/6142/sp_end_check_20F63B0.asm` lines 1 to 8; drum override RVA `0x20DE5A0`; event step RVA `0x20F6A50` lines 219 to 230; its handler RVA `0x20F43A0` (slot 16), not listed
-Hydra: one end point: `offset_from_sp_end` in src/core/model.h line 114; `paid_by_sp_walk` in src/core/backend_value.h line 30
-Ruling: D269 call 4: "there should never be two different answers for where star power ends. ever." (decision log line 1049; card 2026-10-30-61cee421)
+Hydra: one end point: `offset_from_sp_end` in src/core/model.h line 114; `paid_by_sp_walk` in src/core/backend_value.h line 28
+Ruling: D269 call 4: "there should never be two different answers for where star power ends. ever." (card 2026-10-30-61cee421)
 Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 ### SP-29 Whether a hit is scored before the end check in each frame
@@ -302,7 +302,7 @@ Rule: In each frame the game first advances its events to the new time, then run
 Label: Unknown
 Evidence: The order of the calls is shown: the frame update calls `0x20F4950` at line 17, slot 9 at line 21, slot 21 at line 33, slot 15 (the end check) at line 37, slot 18 at line 41 and slot 12 (the drain) at line 45; slot n is at vtable offset 0x138 plus 16 n. The reviewer of this page read `0x20F4950` once (tools/ch_mcp/chdis.py on the 6142 DLL, 2026-10-30, no listing committed): it calls the event step (slot 8, SP-28) and `0x20F6FF0` up to three times, then sets the clock; it shows no press handler or score add. Its callers are `0x20A1B0` (three call sites) and `0xFEB4C0`. Where a press is turned into a hit, and with which clock, is not read (SP-30).
 Game code (6142): RVA `0x20F4550`, `code/6142/base_frame_update_20F4550.asm` lines 17 to 45; `0x20F4950` not listed
-Hydra: no frame model: Hydra pays a note by its chart time against one end (`paid_by_sp_walk` in src/core/backend_value.h line 30)
+Hydra: no frame model: Hydra pays a note by its chart time against one end (`paid_by_sp_walk` in src/core/backend_value.h line 28)
 Ruling: none yet: the game's rule is not settled; questions page Q-50 holds the question that follows if hits are scored before the end check
 Found: 2026-10-30, session b02ab3e6 (the reference build); reviewed 2026-10-30
 
@@ -328,9 +328,9 @@ Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 ### SP-32 Hydra puts the end on a whole tick
 
-Rule: Hydra adds whole measures in ticks and rounds down, so its SP end sits on a whole tick. The game stores the end as a decimal time. A public Hydra rounding bug gave -2.7 ms on Shop Theme; Hydra Deluxe shows 0 ms.
+Rule: Hydra adds whole measures in ticks and rounds down, so its SP end sits on a whole tick. The game stores the end as a decimal time.
 Label: Hydra assumes it, never checked
-Evidence: `SongTiming::plusmeasure` in src/core/timing.cpp line 321 and ADR 0014 line 162 ("plusmeasure rounds down"). The Shop Theme reading is in card 2026-10-29-07074f3d; the copy of the public source it read was not kept. The game side is the decimal store in SP-27. One tick is about 1.7 ms at resolution 192 and 186 BPM.
+Evidence: `SongTiming::plusmeasure` in src/core/timing.cpp line 321 and ADR 0014 line 162 ("plusmeasure rounds down"). On Shop Theme, public Hydra's rounding shows -2.7 ms where Hydra Deluxe shows 0 ms. That reading is in card 2026-10-29-07074f3d; the copy of the public source it read was not kept. The game side is the decimal store in SP-27. One tick is about 1.7 ms at resolution 192 and 186 BPM.
 Game code (6142): RVA `0x20F37E0` returns a decimal time (SP-27)
 Hydra: `SongTiming::plusmeasure` in src/core/timing.cpp line 321
 Ruling: none needed: c0e1259d's choice "Exact count in both modes (Recommended)" covers Hydra's whole-tick count
@@ -340,9 +340,9 @@ Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 Rule: Hydra pays a chord whose time equals the SP end as inside Star Power. In the game the answer depends on the hit's clock and the frame (SP-28, SP-29): the end check turns Star Power off once the clock is at or past the end, and whether a hit at a clock equal to the end is scored before or after that check is not settled.
 Label: Hydra assumes it, never checked
-Evidence: Hydra: `paid_by_sp_walk` (offset at or below 0) and `after_sp_end` (tick strictly after the end) in src/core/backend_value.h lines 30 and 36. D13 (decision log line 31) states the rule as a decision, not in the user's words. No run has placed a hit exactly on an end.
+Evidence: Hydra: `paid_by_sp_walk` (offset at or below 0) and `after_sp_end` (tick strictly after the end) in src/core/backend_value.h lines 28 and 34. D13 (decision log line 31) states the rule as a decision, not in the user's words. No run has placed a hit exactly on an end.
 Game code (6142): RVA `0x20F63B0` and `0x20F4550` (SP-28, SP-29)
-Hydra: `paid_by_sp_walk` in src/core/backend_value.h line 30; `after_sp_end` line 36
+Hydra: `paid_by_sp_walk` in src/core/backend_value.h line 28; `after_sp_end` line 34
 Ruling: none needed: no difference is shown
 Found: 2026-10-30, session b02ab3e6 (the reference build)
 
@@ -404,7 +404,7 @@ Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 Rule: Because Star Power length is counted in measures, a timing error at activation moves the SP end by r times the error, where r is the end measure's length over the activation measure's. Early and late can differ at a tempo or time signature change. The scale's direction follows the sign of the difficulty, not the squeeze kind.
 Label: Hydra assumes it, never checked
-Evidence: `frontend_transfer_scales` in src/core/squeeze_rating.cpp line 22 and `transfer_scale_between` in src/core/squeeze_rating.h line 52; tests/test_squeeze_rating.cpp holds the Tom Sawyer shape and the Dumpweed fixture. The scale was checked against five figures by DragonDelgar (public Hydra's developer). The user pasted his Discord messages into session f1784fd5 (2026-08-16). His original messages were not kept, and no repo file holds them. The session's card (docs/sessions/2026-08-16-f1784fd5.md) names the five charts and says the computed scale matched his numbers on all five; the figures below were copied onto this page from the session's own record, which is not kept. Hydra reproduced each one: Tom Sawyer at measure 105.2.360, r = 0.5132, so +50.5 ms at the front is +25.9 ms at the end; Beast and the Harlot at measure 196.0, late r = 0.65376, so +22.0 ms becomes +14.38 ms; Bloom at measure 107.0, late r = 0.4444, giving 81.06 ms against his "81.05"; As I Am at measure 81.0, early r = 0.57888, giving 97.51 ms against his "~97.5" and a 72.53 ms budget against his 72.6; Dumpweed at measure 19.0, a 73.95 ms budget against his "±74". These are Hydra's numbers matching another tool's numbers, so they check Hydra's arithmetic, not the game. The Dumpweed scale was first computed as 0.8909; it was later found to be 0.935114 early and 0.965344 late, because a phrase collected during Star Power moves the real end (SP-34), and the Dumpweed full-combo video's on-screen timings (front -74.1 ms, squeeze-out +75.1 ms, the squeeze succeeded) fit the corrected scale and not the old one (session 9f5a3914, 2026-08-20; video C:\ytdl\Dumpweed Pro Drums FC [eny2KPSHFNg].mkv, outside the repo). The game premise is SP-15, which is open.
+Evidence: `frontend_transfer_scales` in src/core/squeeze_rating.cpp line 22 and `transfer_scale_between` in src/core/squeeze_rating.h line 52; tests/test_squeeze_rating.cpp holds the Tom Sawyer shape and the Dumpweed fixture. The scale was checked against five figures by DragonDelgar (public Hydra's developer). The user pasted his Discord messages into session f1784fd5 (2026-08-16). His original messages were not kept, and no repo file holds them. The session's card (docs/sessions/2026-08-16-f1784fd5.md) names the five charts and says the computed scale matched his numbers on all five; the figures below were copied onto this page from the session's own record, which is not kept. Hydra reproduced each one: Tom Sawyer at measure 105.2.360, r = 0.5132, so +50.5 ms at the front is +25.9 ms at the end; Beast and the Harlot at measure 196.0, late r = 0.65376, so +22.0 ms becomes +14.38 ms; Bloom at measure 107.0, late r = 0.4444, giving 81.06 ms against his "81.05"; As I Am at measure 81.0, early r = 0.57888, giving 97.51 ms against his "~97.5" and a 72.53 ms budget against his 72.6; Dumpweed at measure 19.0, a 73.95 ms budget against his "±74". These are Hydra's numbers matching another tool's numbers, so they check Hydra's arithmetic, not the game. Hydra's Dumpweed scale is 0.935114 early and 0.965344 late (tests/test_squeeze_rating.cpp), because a phrase collected during Star Power moves the real end (SP-34). The on-screen timings of the video Dumpweed Pro Drums FC (YouTube id eny2KPSHFNg), front -74.1 ms and squeeze-out +75.1 ms on a squeeze that succeeded, fit that scale (card docs/sessions/2026-08-20-9f5a3914.md). The game premise is SP-15, which is open.
 Game code (6142): none (rests on SP-15)
 Hydra: `frontend_transfer_scales` in src/core/squeeze_rating.cpp line 22; `transfer_scale_between` in src/core/squeeze_rating.h line 52; `rate_activation` in src/core/squeeze_rating.cpp
 Ruling: none needed: Hydra's model of a game rule still open in SP-15
@@ -436,10 +436,10 @@ Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 Rule: A backend note less than 3 ms after the SP end still counts in the optimal score; exactly 3.0 ms does not. This rule decides only whether a backend row is counted. It does not move where Star Power ends, which is one point (SP-28).
 Label: Hydra assumes it, never checked
-Evidence: Public Hydra at 3b49012c, `git show 3b49012c:hydra/hypath.py` line 678: `is_leeway = be.offset_ms > 0 and be.offset_ms < 3`. Hydra: `counted_without_squeeze` in src/core/backend_value.h line 41 (`offset_ms < leeway_ms`, strict). The game has no such rule (SP-43).
+Evidence: Public Hydra at 3b49012c, `git show 3b49012c:hydra/hypath.py` line 678: `is_leeway = be.offset_ms > 0 and be.offset_ms < 3`. Hydra: `counted_without_squeeze` in src/core/backend_value.h line 39 (true when `paid_by_sp_walk` is, or when `offset_ms < leeway_ms`, strict). The game has no such rule (SP-43).
 Game code (6142): none (a scoring rule, not a game rule)
-Hydra: `Rules::backend_leeway_ms` in src/core/rules.h line 32; `counted_without_squeeze` in src/core/backend_value.h line 41
-Ruling: D269 call 4, the user's words (decision log line 1049; session 61cee421): "there should never be two different answers for where star power ends. ever. the 3ms rule is for whether a backend is included in the optimal score or uncounted. it's an arbitrary number chosen by dragondelgar and i am fine with keeping it so our scores use the same methodology as delgar's hydra". The strict edge at exactly 3.0 ms is D29's record.
+Hydra: `Rules::backend_leeway_ms` in src/core/rules.h line 32; `counted_without_squeeze` in src/core/backend_value.h line 39
+Ruling: D269 call 4, the user's words (session 61cee421): "there should never be two different answers for where star power ends. ever. the 3ms rule is for whether a backend is included in the optimal score or uncounted. it's an arbitrary number chosen by dragondelgar and i am fine with keeping it so our scores use the same methodology as delgar's hydra". The strict edge at exactly 3.0 ms is D29's record.
 Found: 2026-10-30, session 61cee421
 
 ### SP-43 The game's engine holds no 3 ms constant

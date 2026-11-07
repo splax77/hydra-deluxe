@@ -2,7 +2,7 @@
 // downloaded installer must pass, against the committed test key pair in
 // testdata/update/ (made by tools/release_keygen.ps1 -TestKey, with
 // sample.bin.sig made by tools/release_sign.ps1). Also pins that the shipped
-// key in app/update_key.h is no longer the test key.
+// key in app/update_key.h is not the test key.
 
 #include "doctest.h"
 

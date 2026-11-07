@@ -4,7 +4,7 @@ This page covers note values, the multiplier and combo, accents and ghosts, the 
 It describes build 1.1 (v1.1.0.6142).
 Last write-back: 2026-11-06.
 
-The run files named below are of two kinds. The three bot runs of 2026-10-28 are in C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-10-28\l1\bot\ (outside the repo): Window Map, and Trippin SP Spike on Drums and on ProDrums. "Run 1" is the key-press auto-player run on Trippin SP Spike, `run1_cal0_scorestats.json` under tools/ch_probe/experiments/results/overlay-spike/, untracked in git on 2026-10-30. Engine fields belong to the base engine class #8288; the drum engine is #8255. `ghidra_decompile_all.txt` is Ghidra's full decompile of build 6142, which `code/README.md` describes; it is not in the repo.
+The run files named below are of two kinds. The three bot runs of 2026-10-28 are in C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-10-28\l1\bot\ (outside the repo): Window Map, and Trippin SP Spike on Drums and on ProDrums. "Run 1" is the key-press auto-player run on Trippin SP Spike, `run1_cal0_scorestats.json` under tools/ch_probe/experiments/results/overlay-spike/. Engine fields belong to the base engine class #8288; the drum engine is #8255. `ghidra_decompile_all.txt` is Ghidra's full decompile of build 6142, which `code/README.md` describes; it is not in the repo.
 
 ## Note values and the cymbal bonus
 
@@ -15,7 +15,7 @@ Label: Proven in the game's code
 Evidence: The base adder works out the gem count at lines 17 to 38 (stored count at note +0x50, else a popcount of the lane mask). The drum hit routine passes 50 as the base at line 127 of its listing. The game also holds 50 as a named constant of class #8611 (dump.cs line 549143). Live: Window Map's base_score 7,100 is 142 gems times 50.
 Game code (6142): adder RVA `0x20F6EB0`, `code/6142/add_note_score_20F6EB0.asm` lines 17 to 38; drum hit routine RVA `0x20DE770`, `code/6142/note_hit_dynamics_20DE770.asm` line 127
 Hydra: `kNoteBasePoints` in src/core/model.h line 143; `ChordNote::basescore` in src/core/model.cpp line 84
-Ruling: none needed: same rule. No decision names the 50 itself; D51 call 13 (decision log line 156, items in docs/audit/2026-10-04-phase-7-questions.md item 13) records the cymbal's +15, the solo's 100 and the multiplier steps "as they are", not the 50.
+Ruling: none needed: same rule. No decision names the 50 itself; D51 call 13 (items in docs/audit/2026-10-04-phase-7-questions.md item 13) records the cymbal's +15, the solo's 100 and the multiplier steps "as they are", not the 50.
 Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 ### SC-02 A cymbal gem pays 15 more
@@ -25,7 +25,7 @@ Label: Proven in the game's code
 Evidence: The drum score method calls the cymbal test and adds 15 at lines 13 to 16 before tail-calling the base adder at line 31. The cymbal test (RVA `0x214BE30`) is `test word [note+0x80], 0xE0`, as the star base's note says too (`code/6142/star_base_20F4680.md` line 16); the reviewer of this page also read it with tools/ch_mcp/chdis.py on the 6142 DLL, 2026-10-30. The same +15 shape is in the star base (SC-27).
 Game code (6142): RVA `0x20DEEC0` (drum override of slot 6), `code/6142/note_score_add_20DEEC0.asm` lines 13 to 16 and 31
 Hydra: `kCymbalBonusPoints` in src/core/model.h line 144; `ChordNote::basescore` in src/core/model.cpp line 84
-Ruling: none needed: same rule (D51 call 13 records the cymbal's +15 "as they are", decision log line 156)
+Ruling: none needed: same rule (D51 call 13 records the cymbal's +15 "as they are")
 Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 ### SC-03 A hit adds points times the multiplier, with no speed term
@@ -57,7 +57,7 @@ Label: Proven in the game's code
 Evidence: Lines 1 and 2 test the streak at +0x88 against 30; lines 3 to 9 divide by 10 and add 1; lines 11 and 12 store 4 above 30; lines 13 to 16 double it when +0x42 is set. At a streak of exactly 30 the division gives 4 too, so the step is at 30, not 31. Live: run 1's multiplier read only 1, 2, 3, 4 and 8.
 Game code (6142): RVA `0x20F52E0` (slot 10), `code/6142/multiplier_from_streak_20F52E0.asm` lines 1 to 16
 Hydra: `to_multiplier` in src/core/timing.cpp line 12; `kStarPowerMultiplier` in src/core/timing.h line 48
-Ruling: none needed: same rule (D51 call 13 records the steps at combos 10, 20 and 30 "as they are", decision log line 156)
+Ruling: none needed: same rule (D51 call 13 records the steps at combos 10, 20 and 30 "as they are")
 Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 ### SC-06 The streak counts gems, and the multiplier is worked out after each hit
@@ -104,7 +104,7 @@ Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 Rule: When a chord crosses a multiplier step, each gem may pay at the multiplier of its own position, so the order of the hits changes the score. Hydra prices the best order (cheapest gem first).
 Label: Hydra assumes it, never checked
-Evidence: `multsqueeze_gain` in src/core/scoring.cpp line 134. The 15-point "hit-order loss" in The Violation FC report (C:\ytdl\videos\The Violation FC 2x60 [2MqPDMH4-MY].fcreport.md line 46) was declared by hand to explain a residual, not detected. The game's order rule was not read.
+Evidence: `multsqueeze_gain` in src/core/scoring.cpp line 134. The 15-point "hit-order loss" in the report on the video The Violation FC 2x60 (YouTube id 2MqPDMH4-MY) was declared by hand to explain a residual, not detected; the report file was not kept. The game's order rule was not read.
 Game code (6142): none read
 Hydra: `multsqueeze_gain` in src/core/scoring.cpp line 134
 Ruling: card 56ac5b71: "in both cases you have to hit the kick first and cymbals are interchangeable so t doesnt matter which is hit first" (01:54 UTC; the advice wording only)
@@ -186,7 +186,7 @@ Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 Rule: A ghost on the kick pays double like any ghost.
 Label: Proven in a live run
-Evidence: docs/adr/0012-kick-dynamics-are-priced.md line 23: "Ghost kicks are proven by video on this chart." (the Who chart; 36 ghost kicks explain 1,142,235 against 1,143,035). The video is under C:\ytdl\videos and listed in C:\Users\Patrick\Downloads\Hydra\video-tools\refs.json; not re-run for this page.
+Evidence: docs/adr/0012-kick-dynamics-are-priced.md line 23: "Ghost kicks are proven by video on this chart." (the Who chart; 36 ghost kicks explain 1,142,235 against 1,143,035). The video is Won't Get Fooled Again Pro Drums FC (YouTube id T_HRmf0PlQQ), listed in C:\Users\Patrick\Downloads\Hydra\video-tools\refs.json; not re-run for this page.
 Game code (6142): none
 Hydra: `ChordNote::basescore` in src/core/model.cpp line 84
 Ruling: card 528e137d: "velocity 1 is a ghost, 127 is an accent, on both the normal kick and the 2x kick pitch" (02:58 UTC)
@@ -211,7 +211,7 @@ Label: Unknown
 Evidence: listing lost; read 2026-10-16 at the game's solo-end method, sessions 1aaf0ac4 and 5b35957b (no address recorded; card 1aaf0ac4 says the formula "stayed unconfirmed at the end"). The reference build looked in `SoloCounter` (TypeDefIndex 123; its methods hold only "Solo Move" and "frets"), its fields and every string literal containing "solo", and did not find the function. Every saved run has solo_bonus_total 0; run 1's "Guitar Solo" sections are [section] names, not solo markers. Public `3b49012c:hydra/hypath.py` line 65 pays 100 * timestamp.chord.count().
 Game code (6142): not found: looked in `SoloCounter` methods `0x293A30`, `0x294070`, `0x294880`, `0x2946F0`, `0x295190` and `0x2956C0`
 Hydra: `solo_bonus` in src/core/scoring.cpp line 95 with `kSoloBonusPerNote` in src/core/model.h line 146 (full solos only, since Hydra's paths hit every note)
-Ruling: D251: "Like the game" (decision log line 878)
+Ruling: D251: "Like the game"
 Found: 2026-10-16, session 5b35957b
 
 ### SC-21 The solo's note count counts every gem
@@ -228,7 +228,7 @@ Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 Rule: The game pays the solo bonus in one lump when the solo ends, so a score curve trails the per-note total during a solo.
 Label: Proven in a live run
-Evidence: Swim to the Moon video, 2026-08-17 (card e61236dc); C:\Users\Patrick\Downloads\Hydra\video-tools\README.md lines 457 and 458 record it; result file C:\ytdl\videos\Swim to the Moon Pro Drums FC [OoE7PMv-ekk].fcreport.json.
+Evidence: the video Swim to the Moon Pro Drums FC (YouTube id OoE7PMv-ekk), 2026-08-17 (card e61236dc); C:\Users\Patrick\Downloads\Hydra\video-tools\README.md lines 457 and 458 record it. The result file was not kept.
 Game code (6142): none
 Hydra: `chord_score_table` in src/core/scoring.cpp line 99 books it per chord (the totals agree)
 Ruling: none needed: a display difference only
@@ -238,10 +238,10 @@ Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 Rule: The box appears when the player hits the solo's first note, not at the chart's solo marker, and hitting the last note ends the solo. During a solo the game shows trunc(float(h) / float(N) times 100.0f) percent. After the last note it shows a message for 1.5 s and the bonus for 1.5 s. The messages run 100 Perfect, 95+ Awesome, 90+ Great, 80+ Good, 70+ Solid, 69 "nice", 60+ Okay, else Messy, and N minus 1 gives "Awesome Choke!".
 Label: Unknown
-Evidence: listing lost; read 2026-10-16, sessions 1aaf0ac4 and 5b35957b. D251's record (decision log line 876) gives the percent formula, the message and bonus times of 1.5 s each, and "Perfect Solo!" at 100%. Card 1aaf0ac4 (docs/sessions/2026-10-16-1aaf0ac4.md) says the session checked the message list and percent ladder against the game's disassembly. The first-note start, and the rest of the message ladder, come from those sessions' own records, which are not kept, and are in no repo file. Hydra's own box was checked in the real app (card 5b35957b, docs/sessions/2026-10-16-5b35957b.md: 44% = 53 / 119), which checks Hydra, not the game.
+Evidence: listing lost; read 2026-10-16, sessions 1aaf0ac4 and 5b35957b. D251's record gives the percent formula, the message and bonus times of 1.5 s each, and "Perfect Solo!" at 100%. Card 1aaf0ac4 (docs/sessions/2026-10-16-1aaf0ac4.md) says the session checked the message list and percent ladder against the game's disassembly. The first-note start, and the rest of the message ladder, come from those sessions' own records, which are not kept, and are in no repo file. Hydra's own box was checked in the real app (card 5b35957b, docs/sessions/2026-10-16-5b35957b.md: 44% = 53 / 119), which checks Hydra, not the game.
 Game code (6142): not found (as SC-20)
-Hydra: `solo_percent` in src/app/preview_view.cpp; `kSoloResultMs` in src/app/preview_view.h (Hydra shows only "Perfect Solo!")
-Ruling: D251: "Game's look + count" and "Like the game" (decision log lines 877 and 878)
+Hydra: `solo_percent` in src/app/preview_view.cpp; `kSoloResultMs` in src/app/preview_view.h (Hydra shows the percent during the solo, then "Perfect Solo!", then the bonus; no other message, since a Hydra path hits every note)
+Ruling: D251: "Game's look + count" and "Like the game"
 Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 ## Star cutoffs
@@ -335,7 +335,7 @@ Label: Unknown
 Evidence: listing lost; read 2026-10-11 at RVA `0x20F3DC0` (instructions 0x20F425C to 0x20F426F) and at 0x126FD6 and 0x127029, session 1bae448b. The session's card (docs/sessions/2026-10-12-1bae448b.md) records the finding, the Notes line as the 1x total less 50 per ghost or accent hit; the addresses come from the session's own record, which is not kept, and its listings were swept with a scratch folder. Both of those addresses lie inside the `PlayerStatsBox` method that starts at 0x126280 and ends before 0x1270D0 (its bounds from the 6142 dump's script.json, checked 2026-10-31); the dump names its class `PlayerStatsBox`. The same session read the base value 50 passed by the drum hit handler at 0x20DE96C, inside 0x20DE770 (the same record, not kept). Live: the ProDrums bot's note_score 71,370 = base_score 73,520 less 50 x 43, and equals Hydra's Notes. Run 1 (no dynamic performed) has note_score 71,235, 2,285 below base_score; that would be 43 x 50 plus 9 x 15 if 9 of the dynamic gems are cymbals, which was not checked.
 Game code (6142): RVA `0x20F3DC0` (listing lost)
 Hydra: `category_scores` in src/core/scoring.cpp line 26
-Ruling: D208: "we don't need to change anything, matching the game is correct." (decision log line 777)
+Ruling: D208: "we don't need to change anything, matching the game is correct."
 Found: 2026-10-11, session 1bae448b
 
 ### SC-33 The average multiplier is score over base score
@@ -345,7 +345,7 @@ Label: Proven in a live run
 Evidence: 248,550 / 62,850 = 3.95465394 (file 3.95465398); 25,550 / 7,100 = 3.59859155 (3.59859157); 290,975 / 73,520 = 3.95776659 (3.95776653); 365,095 / 73,520 = 4.96592764 (4.9659276). Agreement to float precision, on runs with no solo bonus. With a solo, whether the game's field keeps the bonus in is not measured; Hydra takes it out.
 Game code (6142): none (the writer is not traced)
 Hydra: `Path::avg_mult` in src/core/model.cpp line 837 (total less solo, over the base score)
-Ruling: D222: "change it to Average Multiplier, that's a real stat you see in the game" (decision log line 805)
+Ruling: D222: "change it to Average Multiplier, that's a real stat you see in the game"
 Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 ### SC-34 Off-speed scores are never judged against Hydra's optimum

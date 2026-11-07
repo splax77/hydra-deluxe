@@ -79,7 +79,7 @@ const std::vector<Spelling>& cpp_spellings() {
     return list;
 }
 
-// No row can own these: the scan reads only .cpp and .h files.
+// No row: these too are shapes of test with no single owner.
 const std::vector<Spelling>& py_spellings() {
     static const std::vector<Spelling> list = [] {
         std::vector<Spelling> v;

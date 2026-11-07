@@ -171,8 +171,6 @@ TEST_CASE("store: a new database carries 0 in user_version and reads its own row
 
 // ---- which generation a file is (store/library_file.h) ---------------------
 
-// Written with classify_library_file already in place (task D115-A1-6a), so
-// none of these could run red first.
 TEST_CASE("classify_library_file names each generation of library file") {
     const std::string path = testtemp::temp_path("classify", ".db");
     // A file made fresh by `sql`, run on an empty database.
@@ -244,7 +242,7 @@ TEST_CASE("classify_library_file names each generation of library file") {
     remove_db(path);
 }
 
-// ---- a 2.8.0 file gains the failure columns (REPORT-ALL-T1) ----------------
+// ---- a 2.8.0 file gains the failure columns --------------------------------
 
 TEST_CASE("a 2.8.0 file without the failure columns opens and gains them in place") {
     const std::string path = testtemp::temp_path("lacks_failure_columns", ".db");
@@ -460,10 +458,10 @@ void seed_v220_layout(const std::string& path) {
     exec_on_file(path, kSeedLabelSql);
     // A row from before the stars column: a score and no stars. Its stars
     // needed the stored paths to fill, so the conversion leaves it behind.
-    // The no-paths row has neither, by design, and stays (R17).
+    // The no-paths row has neither, by design, and stays.
     exec_on_file(path, "UPDATE results SET stars = NULL WHERE hyhash = 'nostars'");
     // An id an older build stored in capitals, in both tables: the conversion
-    // lowercases them (ADR 0028), so the chart still reads under "ready".
+    // lowercases them (ADR 0031), so the chart still reads under "ready".
     exec_on_file(path, "UPDATE results SET hyhash = 'READY' WHERE hyhash = 'ready';"
                        "UPDATE charts SET md5 = 'READY' WHERE md5 = 'ready';");
     REQUIRE(scalar_on_file(path, "SELECT COUNT(*) FROM charts") == kSeedCharts);
@@ -591,8 +589,8 @@ TEST_CASE("the first open of a 2.2.0 to 2.7.0 file turns its results into record
 
 // An old row's rules fingerprint can be the empty blob. The conversion files
 // it under a profile whose rules are that empty blob, not NULL, which the
-// profiles table refuses: before bind_blob bound an empty blob as one, the
-// whole open failed on "NOT NULL constraint failed: profiles.rules_fp".
+// profiles table refuses. bind_blob binds an empty blob as one, so the whole
+// open goes through.
 TEST_CASE("the conversion keeps a row whose rules fingerprint is the empty blob") {
     const std::string path = testtemp::temp_path("convert_empty_rules_fp", ".db");
     seed_v220_layout(path);
@@ -868,10 +866,9 @@ void check_v2121_rows(const std::string& path) {
 
 }  // namespace
 
-// The file a v2.12.1 batch wrote, the release users have now. Its charts
-// table predates the album column and its results stamp predates
-// kResultsStamp, so this is the upgrade a user's first open of this build
-// makes.
+// The file a v2.12.1 batch wrote. Its charts table predates the album column
+// and its results stamp predates kResultsStamp, so this is the upgrade a
+// v2.12.1 user's first open of this build makes.
 TEST_CASE("a library file v2.12.1 wrote opens, gains the album column, and keeps its records") {
     const std::string path = copy_of_old_database("v2.12.1_library.db", "v2121_library");
     REQUIRE(classify_library_file(path) == LibraryFileKind::LacksAlbumColumn);
@@ -906,8 +903,9 @@ TEST_CASE("a library file v2.12.1 wrote opens, gains the album column, and keeps
 }
 
 // SQLite switches a feature on when its SQLITE_ENABLE_* macro is defined at
-// all, whatever its value (sqlite.org/compile.html), so the old
-// "SQLITE_ENABLE_FTS5=0" compiled full-text search in. Hydra never uses it.
+// all, whatever its value (sqlite.org/compile.html), so even
+// "SQLITE_ENABLE_FTS5=0" compiles full-text search in. Hydra never uses it,
+// so the build leaves that macro out.
 TEST_CASE("the vendored SQLite is built without FTS5") {
     CHECK(sqlite3_compileoption_used("ENABLE_FTS5") == 0);
 }
@@ -1029,9 +1027,9 @@ void check_read_fails(const std::function<void()>& read) {
 
 }  // namespace
 
-// D72's DB1 found this one: the batch's list of analyzed charts, read on a
-// failing database, answered with no charts, so a batch treated every chart
-// as not analyzed. ready_song_ids is that list now.
+// D73: ready_song_ids is the batch's list of analyzed charts. Read on a
+// failing database, an empty answer would make a batch treat every chart as
+// not analyzed.
 TEST_CASE("a read on a failing database throws instead of answering empty") {
     const std::string path = testtemp::temp_path("read_fail", ".db");
     std::remove(path.c_str());
@@ -1080,9 +1078,9 @@ TEST_CASE("every store read throws a database read error when its step fails") {
     std::remove(path.c_str());
 }
 
-// D86 (build settings): CMakeLists.txt builds the vendored SQLite without its
-// memory-use counters and without shared cache, two options that trim its own
-// CPU. A sibling of the FTS5 case above.
+// CMakeLists.txt builds the vendored SQLite without its memory-use counters
+// and without shared cache, two options that trim its own CPU. A sibling of
+// the FTS5 case above.
 TEST_CASE("the vendored SQLite is built without memory counters or shared cache") {
     CHECK(sqlite3_compileoption_used("DEFAULT_MEMSTATUS=0") == 1);
     CHECK(sqlite3_compileoption_used("OMIT_SHARED_CACHE") == 1);

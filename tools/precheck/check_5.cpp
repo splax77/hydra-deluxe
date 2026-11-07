@@ -47,7 +47,7 @@ struct Record {
 };
 
 // Every other home of one thing: "file:line, file:line", the first line in
-// each file, files in the order the script's Group-Object gave them.
+// each file, files in text_before order.
 std::string other_homes(const std::vector<Home>& homes, const std::string& file) {
     std::vector<std::string> names;
     std::map<std::string, int> first;
