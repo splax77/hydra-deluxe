@@ -24,7 +24,7 @@ REA is a reverse-engineering toolkit that Claude Code reaches as the MCP server 
 
 Ghidra's full decompile of Clone Hero build 6142 lives outside the repo. `docs/clone-hero/code/README.md` names its path and says what it holds.
 
-A tool that reports "not configured" says nothing about what is on disk. An unset variable was once read as "Ghidra is not installed", and the user was told so wrongly. Search the disk and the session cards before you say a tool is missing.
+A tool that reports "not configured" says nothing about what is on disk. An unset variable does not mean Ghidra is not installed. Search the disk and the session cards before you say a tool is missing.
 
 ## Visual Studio and CMake
 
@@ -38,11 +38,11 @@ Three Visual Studio installs are on the machine. All three report themselves com
 
 `cmake` is not on PowerShell's PATH. `build_cpp.ps1` and `installer\build_installer.ps1` both find it through `Find-CMake` in `tools\find_cmake.ps1`, which asks Visual Studio's `vswhere` and uses the CMake bundled with Visual Studio. Today that is the 2026 Build Tools' copy, and the `build-cpp` cache names the 2026 Build Tools as its generator instance.
 
-In August 2026 the Community install was left in an incomplete state, most likely by an interrupted update. `vswhere -latest` then listed nothing, and CMake refused to configure with "instance is not known to the Visual Studio Installer, and no 'version=' field was given". `Find-CMake` falls back to `vswhere -all` for that case. If CMake refuses that way again, configure with `-DCMAKE_GENERATOR_INSTANCE="<install folder>,version=<its version>"`, taking both from the table above. The lasting fix is a repair in the Visual Studio Installer, which is the user's to run.
+An interrupted update can leave an install incomplete. `vswhere -latest` then lists nothing, and CMake refuses to configure with "instance is not known to the Visual Studio Installer, and no 'version=' field was given". `Find-CMake` falls back to `vswhere -all` for that case. If CMake refuses that way, configure with `-DCMAKE_GENERATOR_INSTANCE="<install folder>,version=<its version>"`, taking both from the table above. The lasting fix is a repair in the Visual Studio Installer, which is the user's to run.
 
 ## The Opus model behind agents
 
-The global `C:\Users\Patrick\.claude\settings.json` sets the ANTHROPIC_DEFAULT_OPUS_MODEL entry of its `env` block to `claude-opus-5-5`. That entry decides which model the `opus` alias runs, so it decides the model of every agent sent out on Opus. As the note records it, the user found Opus 5 a big regression from Opus 4.6 and had the entry pinned to Opus 4.6. On 2026-10-05 they judged Opus 5.5 a return to form and had it set to `claude-opus-5-5`. If agents seem worse after a model release, check this entry first. Do not assume the newest model is the one wanted.
+The global `C:\Users\Patrick\.claude\settings.json` sets the ANTHROPIC_DEFAULT_OPUS_MODEL entry of its `env` block to `claude-opus-5-5`. That entry decides which model the `opus` alias runs, so it decides the model of every agent sent out on Opus. The user picks this model by hand. If agents seem worse after a model release, check this entry first. Do not assume the newest model is the one wanted.
 
 ## Looking at the database
 
@@ -62,7 +62,7 @@ The tables today are `charts`, `meta`, `profiles`, `records` and `record_paths` 
 
 `hydra_batch.exe --db <copy> --redo <folder holding one chart>` analyzes that chart again into the copy. It reads the same `hydra_settings.ini` as the app beside it (`load_tool_settings()`). That is the clean way to test what the analysis does on one chart.
 
-A timing that depends on what the database already holds needs a database that holds rows. A fresh `--db` hides any cost that grows with the library. On 2026-10-05 a query that scanned every library row on each save made a whole-library run take 92.4 seconds on a copy of the real library, while the same build took 16.9 seconds on a fresh database. The `charts_by_md5` index fixed it (D76), and the run on the real copy fell to under 20 seconds. But a whole-library `--redo` on a copy of the real library is a full library run. It needs the user's `allow library run` first (CLAUDE.md rule 8). Try the chart corpus in `testdata/input` before you ask.
+A timing that depends on what the database already holds needs a database that holds rows. A fresh `--db` hides any cost that grows with the library, such as a query that scans every library row on each save. The `charts_by_md5` index exists to stop that one (D76). But a whole-library `--redo` on a copy of the real library is a full library run. It needs the user's `allow library run` first (CLAUDE.md rule 8). Try the chart corpus in `testdata/input` before you ask.
 
 ### Quote the numbers the user can see
 

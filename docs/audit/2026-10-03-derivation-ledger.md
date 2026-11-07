@@ -1198,7 +1198,7 @@ Role counts across all rows: none 1216, test 817, owns 580, copies 486, wrapper 
 | 480 | `be16` | 50–52 | parse | none | none | byte helper |
 | 481 | `decode_latin1` | 57–71 | parse | none | none | latin1 decode |
 | 482 | `read_varlen` | 76–84 | parse | none | none | varlen |
-| 483 | `read_message_length` | 93–99 | parse | none | none | message length cap (user decision 27 cited in comment) |
+| 483 | `read_message_length` | 93–99 | parse | none | none | message length cap (D274 decision 25) |
 | 484 | `meta_message` | 103–137 | parse | none | none | meta message builder |
 | 485 | `MidiFile::MidiFile` | 141–143 | parse | none | none | ctor |
 | 486 | `MidiFile::MidiFile` | 145–147 | parse | none | none | ctor |
