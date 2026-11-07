@@ -464,6 +464,9 @@
 - 2026-11-07 b8b2ae58 Stale comment audit handoff (2026-11-07) | docs, hooks, review, agents | Ended in a handoff: wave 1 and eight of wave 2's ten groups were merged to main, and FX-19 and FX-20 were held at the real-app gate. Nothing was pushed.
 - 2026-11-07 e0cb9a19 Stale comment wave 2 handoff (2026-11-07) | hooks, agents, docs, review | Ended at a handoff after waves 3 and 4 were merged, with waves 5 and 6 still to come.
 - 2026-11-07 7d216054 CH run timing build handoff (2026-11-07) | clone-hero, performance, planning, agents | Ended at a handoff: five timing tasks were merged, the no-admin recorder plan was written and approved, and no live step has run since the refused first attempt.
+- 2026-11-07 43eecb1c Agent effort level assignment (2026-11-07) | agents, planning, review, performance, memory | The session ended after the user stopped the test during the reviewer step, and the results were given in chat only.
+- 2026-11-07 aa89806d Stale comment waves handoff (2026-11-07) | agents, review, docs, tests, ci | The session ended with a handoff written and committed, after all six fix waves of the stale comment audit were merged to main.
+- 2026-11-07 b132faae CH Recorder build handoff (2026-11-07) | clone-hero, performance, planning, tests, agents | The session ended with a handoff committed for planning the two fixes, and nothing built for them yet. [write-back]
 
 ## Proposed tags
 
