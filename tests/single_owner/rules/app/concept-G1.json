@@ -14,6 +14,10 @@
         {
           "file": "src/ui/app_state.cpp",
           "why": "The app answers a different question on purpose: it keeps running with analysis off (AppState::rules_error) instead of exiting."
+        },
+        {
+          "file": "src/pathbuilder/pb_window.cpp",
+          "why": "The Path Builder answers a different question on purpose: it refuses the song on its top line and keeps running (D304 item 13), instead of exiting."
         }
       ],
       "must_match": [
@@ -28,7 +32,7 @@
     },
     {
       "question": "What does the user read when hydra_rules.ini is bad?",
-      "owner": "kAnalysisOffSentence and ini_file_tool_text in src/app/user_messages.h and .cpp",
+      "owner": "kAnalysisOffSentence, kRulesRefusedSentence and ini_file_tool_text in src/app/user_messages.h and .cpp",
       "owner_file": "src/app/user_messages.cpp",
       "owner_symbol": "ini_file_tool_text",
       "date": "2026-10-11",

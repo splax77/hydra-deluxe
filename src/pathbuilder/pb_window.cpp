@@ -14,6 +14,7 @@
 #include "app/path_costs.h"      // end_costs
 #include "app/preview_view.h"    // path_overlay_key, fill_index_on_chord
 #include "app/report.h"          // ChipToken
+#include "app/rules_file.h"      // RulesFileError
 #include "app/user_messages.h"
 #include "pathbuilder/pb_files.h"
 #include "pathbuilder/pb_menu.h"
@@ -208,12 +209,19 @@ PbApp::PbApp(ID3D11Device* device, ID3D11DeviceContext* context)
 PbApp::~PbApp() { close_preview(); }
 
 void PbApp::open(const std::string& notespath) {
+    // The player never sees a path built on settings or rules they didn't
+    // choose (D304 items 8 and 13). Nothing has started, and any song open
+    // stays.
+    const auto refuse = [this](const std::exception& e) {
+        set_refusal(app::plain_error(e), app::plain_error_detail(e));
+    };
     try {
         state.open(notespath);
     } catch (const app::SettingsFileError& e) {
-        // The player never sees a path built on settings they didn't choose
-        // (D304 item 8). Nothing has started, and any song open stays.
-        set_refusal(app::plain_error(e), app::plain_error_detail(e));
+        refuse(e);
+        return;
+    } catch (const app::RulesFileError& e) {
+        refuse(e);
         return;
     }
     // The file read, so a refusal of its last read no longer holds.

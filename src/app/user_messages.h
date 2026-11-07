@@ -52,6 +52,11 @@ inline constexpr const char* kAnalysisOffSentence =
     "hydra_rules.ini has an error, so analysis is off until the file is fixed and "
     "Hydra is restarted.";
 
+// What a bad hydra_rules.ini reads as in the Path Builder (D304 item 13): it
+// has no analysis to turn off, so PbApp::open refuses the song instead.
+inline constexpr const char* kRulesRefusedSentence =
+    "hydra_rules.ini has an error, so the song can't open until the file is fixed.";
+
 // What a bad hydra_settings.ini reads as in the app (ErrorKind::SettingsFile,
 // D270 call 4, D276 item 1): Hydra runs on its defaults and saves nothing
 // while it is bad.

@@ -230,6 +230,21 @@ TEST_CASE("a bad settings file reads the builder's own sentence in the builder")
     CHECK(plain_error_detail(bad) == "hydra_settings.ini: sp_cap");
 }
 
+// Hydra turns analysis off; the builder refuses the song, so Hydra's sentence
+// would be false there, and the builder's false in Hydra (D304 item 13).
+TEST_CASE("a bad rules file reads the builder's own sentence in the builder") {
+    const hydra::app::RulesFileError bad("hydra_rules.ini: max_tied_paths");
+    {
+        ProgramScope builder(hydra::app::Program::PathBuilder);
+        CHECK(plain_error(bad) ==
+              "hydra_rules.ini has an error, so the song can't open until the file is fixed.");
+        CHECK(plain_error_detail(bad) == "hydra_rules.ini: max_tied_paths");
+    }
+    CHECK(plain_error(bad) ==
+          "hydra_rules.ini has an error, so analysis is off until the file is fixed and Hydra "
+          "is restarted.");
+}
+
 // The thrower names the kind, so the words of the error don't matter: every
 // kind reads its own sentence from "x".
 TEST_CASE("user_messages: a kinded error reads its kind's sentence, whatever its words") {

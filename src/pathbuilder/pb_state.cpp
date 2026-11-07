@@ -4,6 +4,7 @@
 #include <utility>
 
 #include "app/preview_source.h"
+#include "app/rules_file.h"
 #include "core/winstr.h"  // read_file_bytes
 #include "parse/song.h"
 
@@ -106,7 +107,9 @@ bool PathHistory::redo() {
 }
 
 void PbState::open(const std::string& notespath) {
-    open_with(notespath, app::Settings::load());
+    app::Settings settings = app::Settings::load();
+    settings.rules = app::load_rules_file(app::default_rules_path());
+    open_with(notespath, settings);
 }
 
 void PbState::open_with(const std::string& notespath, const app::Settings& settings) {

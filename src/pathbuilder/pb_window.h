@@ -83,7 +83,7 @@ public:
     HWND owner = nullptr;
 
     // Opens `notespath`, as File > Open, a dropped file and the command line do.
-    // A hydra_settings.ini PbState::open refuses shows as the refusal below.
+    // A settings or rules file PbState::open refuses shows as the refusal below.
     void open(const std::string& notespath);
     // An open or the highway's load is still running.
     bool busy() const;

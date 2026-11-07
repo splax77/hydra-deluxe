@@ -592,6 +592,8 @@ Run `HydraPathBuilder.exe` from the folder Hydra Deluxe is installed in. To open
 
 Each open reads your settings from `hydra_settings.ini`, so the chart opens under the Analysis settings you last set in Hydra Deluxe: the difficulty, Pro Drums, 2x Bass, Note Shuffle, `SP cap`, `1.0 fills`, `Path limit` and the rest. The line under the song's title names the chart mode. To use other settings, change them in Hydra Deluxe and open the chart again. The Path Builder never writes to that file: the volume slider starts at the Preview tab's volume, and a change to it lasts until you close the Path Builder.
 
+Each open also reads `hydra_rules.ini`, so the Path Builder uses the same [scoring rules](#scoring-rules-hydra_rulesini) as Hydra Deluxe. If either file has an error, the song doesn't open, and the top of the window shows the error. A song that's already open stays open. Fix the file and open the chart again. When both files have an error, you see the one in `hydra_settings.ini` first.
+
 A chart with no Star Power phrases still opens and plays. It says `This chart has no Star Power phrases, so there is no path to build.` and shows no timeline.
 
 ### The scores and buttons
@@ -679,7 +681,7 @@ An activation that needs tighter timing than your `Path limit` keeps its cost an
 
 ## Scoring rules (`hydra_rules.ini`)
 
-A few scoring rules are judgment calls, not facts read from Clone Hero. Some start from the public Hydra's rules, such as the backend leeway's 3 ms default, which is DragonDelgar's number. Others are Hydra Deluxe's own, such as how many tied paths to keep. You can change them in `hydra_rules.ini`, a plain text file next to Hydra.exe. The app and every command line tool read the same file.
+A few scoring rules are judgment calls, not facts read from Clone Hero. Some start from the public Hydra's rules, such as the backend leeway's 3 ms default, which is DragonDelgar's number. Others are Hydra Deluxe's own, such as how many tied paths to keep. You can change them in `hydra_rules.ini`, a plain text file next to Hydra.exe. The app, the Path Builder and every command line tool read the same file.
 
 The file is optional. A missing file, or a missing line, means the default below. Each line is `key = value`. A `#` starts a comment, either on a line of its own or after a value on the same line. There are no `[section]` headers.
 

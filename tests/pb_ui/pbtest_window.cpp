@@ -9,8 +9,10 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <filesystem>
 #include <optional>
 #include <string>
+#include <system_error>
 #include <vector>
 
 #include "imgui_te_context.h"
@@ -18,9 +20,11 @@
 #include "../chart_text.h"
 #include "../testdata_dirs.h"
 
+#include "app/config.h"          // path_overrides
 #include "app/display_format.h"  // kFactSeparator
 #include "app/preview_view.h"
-#include "app/user_messages.h"  // kSettingsRefusedSentence
+#include "app/user_messages.h"  // kSettingsRefusedSentence, kRulesRefusedSentence
+#include "core/rules.h"         // default_rules
 #include "core/winstr.h"
 #include "pathbuilder/pb_menu.h"  // kStartOverLabel
 #include "pathbuilder/pb_text.h"
@@ -42,6 +46,18 @@ bool write_file(const std::string& path, const std::string& text) {
     std::fclose(f);
     return true;
 }
+
+// The harness's hydra_rules.ini (path_overrides), which no test leaves behind:
+// the next test runs on the defaults even when this one stops at a failed check.
+struct ScratchRules {
+    std::string path = hydra::app::path_overrides().rules_path;
+    ~ScratchRules() { remove(); }
+    bool write(const std::string& text) const { return write_file(path, text); }
+    void remove() const {
+        std::error_code ignored;
+        std::filesystem::remove(std::filesystem::u8path(path), ignored);
+    }
+};
 
 // Opens the chart from the command line: the screen starts from nothing. The
 // three scores are on screen, the intro, the coach line and the old decision
@@ -462,6 +478,29 @@ void test_file_open_error(ImGuiTestContext* ctx) {
     IM_CHECK(on_screen(h, h.app->state.error_detail()));
 }
 
+// With Burnout open, puts a window on the player's path, writes `bad_text` to
+// `file` and tries another song: the open is refused with `sentence` and
+// `detail`, and Burnout and the path stay.
+void check_open_song_stays(ImGuiTestContext* ctx, Harness& h, const std::string& file,
+                           const std::string& bad_text, const char* sentence,
+                           const std::string& detail) {
+    IM_CHECK_RETV(click_fill(ctx, kFirstFillTick), );
+    const hydra::pathbuilder::OpenChart* open_song = h.app->state.chart();
+    const uint64_t generation = h.app->state.history().generation();
+    IM_CHECK_RETV(h.app->state.history().current().windows.size() == 1, );
+    IM_CHECK_RETV(write_file(file, bad_text), );
+    h.app->open(long_song_notes());
+    IM_CHECK_RETV(wait_idle(ctx), );
+    ctx->Yield(2);
+    IM_CHECK(h.app->state.chart() == open_song);
+    IM_CHECK(h.app->state.history().generation() == generation);
+    IM_CHECK(h.app->state.history().current().windows.size() == 1);
+    IM_CHECK(h.app->state.requested_path() != long_song_notes());
+    IM_CHECK(on_screen(h, "Burnout — Green Day"));
+    IM_CHECK(on_screen(h, sentence));
+    IM_CHECK(on_screen(h, detail));
+}
+
 // A bad settings file refuses the song on the top line (D304 item 8). With no
 // song open the window stays up with none, and a good file opens it and takes
 // the line away. With a song open, the song and the player's path stay. The
@@ -496,22 +535,82 @@ void test_bad_settings_refused(ImGuiTestContext* ctx) {
     IM_CHECK(!on_screen(h, detail));
     IM_CHECK(h.app->refusal().empty());
 
-    // A song open with a window on the player's path; then the file goes bad.
-    IM_CHECK_RETV(click_fill(ctx, kFirstFillTick), );
-    const hydra::pathbuilder::OpenChart* open_song = h.app->state.chart();
-    const uint64_t generation = h.app->state.history().generation();
-    IM_CHECK_RETV(h.app->state.history().current().windows.size() == 1, );
-    IM_CHECK_RETV(write_file(h.ini_path, bad_settings), );
+    check_open_song_stays(ctx, h, h.ini_path, bad_settings,
+                          hydra::app::kSettingsRefusedSentence, detail);
+}
+
+// A bad rules file refuses the song the way a bad settings file does (D304 item
+// 13): no song with none open, a good file opens it, and a song open stays with
+// the player's path. With both files bad, the settings file's error shows,
+// because the settings are read first.
+void test_bad_rules_refused(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    h.chart_arg.clear();
+    reset_app(h);
+    const ScratchRules rules;
+    // The leeway line sits before the bad one, so a read that stopped part way
+    // would have it.
+    const std::string bad_rules = "backend_leeway_ms = 50\nmax_tied_paths = banana\n";
+    const std::string detail = rules.path + ": max_tied_paths = \"banana\" is not a whole number";
+    IM_CHECK_RETV(rules.write(bad_rules), );
+    h.app->open(corpus::burnout_notes());
+    IM_CHECK_RETV(wait_idle(ctx), );
+    ctx->Yield(2);
+    IM_CHECK(h.app->state.chart() == nullptr);
+    IM_CHECK(!h.app->state.opening());
+    IM_CHECK(!h.app->state.preview_volume().has_value());
+    IM_CHECK(on_screen(h, hydra::app::kRulesRefusedSentence));
+    IM_CHECK(on_screen(h, detail));
+    IM_CHECK(!on_screen(h, hydra::app::kAnalysisOffSentence));
+
+    IM_CHECK_RETV(rules.write("max_tied_paths = 4\n"), );
+    h.app->open(corpus::burnout_notes());
+    IM_CHECK_RETV(wait_idle(ctx), );
+    ctx->Yield(2);
+    IM_CHECK_RETV(h.app->state.chart() != nullptr, );
+    IM_CHECK(!on_screen(h, hydra::app::kRulesRefusedSentence));
+    IM_CHECK(!on_screen(h, detail));
+    IM_CHECK(h.app->refusal().empty());
+
+    check_open_song_stays(ctx, h, rules.path, bad_rules, hydra::app::kRulesRefusedSentence,
+                          detail);
+
+    // Both files bad. reset_app writes the settings file back for the next test.
+    IM_CHECK_RETV(write_file(h.ini_path, "sp_cap=banana\n"), );
     h.app->open(long_song_notes());
     IM_CHECK_RETV(wait_idle(ctx), );
     ctx->Yield(2);
-    IM_CHECK(h.app->state.chart() == open_song);
-    IM_CHECK(h.app->state.history().generation() == generation);
-    IM_CHECK(h.app->state.history().current().windows.size() == 1);
-    IM_CHECK(h.app->state.requested_path() != long_song_notes());
-    IM_CHECK(on_screen(h, "Burnout — Green Day"));
     IM_CHECK(on_screen(h, hydra::app::kSettingsRefusedSentence));
-    IM_CHECK(on_screen(h, detail));
+    IM_CHECK(!on_screen(h, hydra::app::kRulesRefusedSentence));
+    IM_CHECK(!on_screen(h, detail));
+}
+
+// A rule from the file reaches what the builder computes, and a later open
+// reads the file again: the same chart under a wider backend leeway, then with
+// the file gone. The figures are from one run; the default's is
+// pbtest_build.cpp's.
+void test_rules_reach_the_builder(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    h.chart_arg.clear();
+    reset_app(h);
+    const ScratchRules rules;
+    IM_CHECK_RETV(rules.write("backend_leeway_ms = 500\n"), );
+    h.app->open(corpus::burnout_notes());
+    IM_CHECK_RETV(wait_idle(ctx), );
+    ctx->Yield(2);
+    IM_CHECK_RETV(h.app->state.chart() != nullptr, );
+    IM_CHECK(h.app->state.chart()->settings.rules.backend_leeway_ms == 500.0);
+    IM_CHECK(on_screen(h, "381,075"));
+    IM_CHECK(!on_screen(h, "378,315"));
+
+    rules.remove();
+    h.app->open(corpus::burnout_notes());
+    IM_CHECK_RETV(wait_idle(ctx), );
+    ctx->Yield(2);
+    IM_CHECK_RETV(h.app->state.chart() != nullptr, );
+    IM_CHECK(h.app->state.chart()->settings.rules.backend_leeway_ms ==
+             hydra::core::default_rules().backend_leeway_ms);
+    IM_CHECK(on_screen(h, "378,315"));
 }
 
 }  // namespace
@@ -524,6 +623,8 @@ void register_tests(Harness& h) {
     uitest::register_test(h, "no-star-power", test_no_star_power);
     uitest::register_test(h, "file-open-error", test_file_open_error);
     uitest::register_test(h, "bad-settings-refused", test_bad_settings_refused);
+    uitest::register_test(h, "bad-rules-refused", test_bad_rules_refused);
+    uitest::register_test(h, "rules-reach-the-builder", test_rules_reach_the_builder);
 }
 
 }  // namespace pbtest

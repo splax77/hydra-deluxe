@@ -33,7 +33,7 @@ struct OpenChart {
 
     std::string chart_path;  // the file opened
     // The settings the chart was read and searched under: Settings::batch_run()
-    // of the hydra_settings.ini read at the open.
+    // of the hydra_settings.ini and hydra_rules.ini read at the open.
     app::AnalysisSettings settings;
     Song song;
     HydraRecord record;
@@ -129,10 +129,11 @@ private:
 // opened) and the player's path on it.
 class PbState {
 public:
-    // Starts opening `notespath`. Reads Settings::load() now, so a change made
-    // in Hydra's settings applies to the next chart opened. A chart still
-    // opening is dropped for the new one. Throws SettingsFileError before
-    // anything here changes, and PbApp::open shows it.
+    // Starts opening `notespath`. Reads Settings::load() and hydra_rules.ini
+    // now, in that order, so a change made in either applies to the next chart
+    // opened. A chart still opening is dropped for the new one. Throws
+    // SettingsFileError or RulesFileError before anything here changes, and
+    // PbApp::open shows it.
     void open(const std::string& notespath);
     // open() with the settings given, for tests and for open().
     void open_with(const std::string& notespath, const app::Settings& settings);

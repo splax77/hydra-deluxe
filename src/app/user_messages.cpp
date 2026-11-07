@@ -43,6 +43,12 @@ std::string song_file_missing_sentence() {
 const char* settings_file_sentence() {
     return g_program.load() == Program::Hydra ? kSettingsOffSentence : kSettingsRefusedSentence;
 }
+
+// The rules file's sentence: Hydra turns analysis off, and the Path Builder
+// refuses the song (D304 item 13).
+const char* rules_file_sentence() {
+    return g_program.load() == Program::Hydra ? kAnalysisOffSentence : kRulesRefusedSentence;
+}
 constexpr const char* kHashFailed =
     "Windows couldn't read a song file to identify it. Restart Hydra and run Scan "
     "library again.";
@@ -184,7 +190,7 @@ std::optional<KindSentence> kind_sentence(const KindedError& e) {
         case ErrorKind::NoScores: return KindSentence{kNoScores};
         case ErrorKind::NoRecords: return KindSentence{kNoRecords};
         case ErrorKind::ReportWrite: return KindSentence{kReportWrite};
-        case ErrorKind::RulesFile: return KindSentence{kAnalysisOffSentence};
+        case ErrorKind::RulesFile: return KindSentence{rules_file_sentence()};
         case ErrorKind::SettingsFile: return KindSentence{settings_file_sentence()};
         case ErrorKind::AudioDecode: return KindSentence{kAudioDecode};
         case ErrorKind::PreviewAssets: return KindSentence{kPreviewAssets};
