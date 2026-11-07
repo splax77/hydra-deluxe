@@ -126,7 +126,7 @@ void test_paths_list(ImGuiTestContext* ctx) {
     IM_CHECK(on_screen(h, "0 4 1"));
     IM_CHECK(on_screen(h, "375,955" + dot + "0 0 0 0"));
     IM_CHECK(on_screen(h, "2,360 below optimal"));
-    // The old list's headings are gone.
+    // Those three are the only headings: these two never show.
     IM_CHECK(!on_screen(h, "Optimal Path"));
     IM_CHECK(!on_screen(h, "More Paths"));
 
@@ -167,7 +167,7 @@ struct DrawnMark {
 // The timeline's marks, read from the vertices the Paths tab drew last frame,
 // left to right. The strip is the only gold above the first activation row in
 // the details column, so its gold vertices give each mark's place; a stroke
-// counts as the mark's when it sits within a few pixels of it.
+// counts as the mark's when it sits within `reach` of it.
 std::vector<DrawnMark> drawn_marks(ImGuiTestContext* ctx) {
     std::vector<DrawnMark> marks;
     ImGuiWindow* details = window_named("##pathdetails");
@@ -249,8 +249,8 @@ void check_marks(ImGuiTestContext* ctx, hydra::ui::AppState& app,
 constexpr double kMarksSongLengthMs = 600000.0;
 
 // The activation rows: one line each, all closed at first, one open at a
-// time, Expand all and Collapse all, and the plain sentence instead of the
-// old line.
+// time, Expand all and Collapse all, and the summary beside the "Activations"
+// heading.
 void test_paths_rows(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     if (!open_burnout(ctx)) return;
@@ -293,8 +293,9 @@ void test_paths_rows(ImGuiTestContext* ctx) {
         IM_CHECK(on_screen(h, "Activation 1  m32.1.0  squeeze out 163.0 ms"));
     }
 
-    // "Show in Preview" asks the Preview for activation 1 (Task 11 consumes it)
-    // and switches to the Preview tab, which starts the Preview.
+    // "Show in Preview" asks the Preview for activation 1 (the Preview tab
+    // reads preview_jump) and switches to the Preview tab, which starts the
+    // Preview.
     ctx->ItemClick("**/Show in Preview >##showact1");
     IM_CHECK(h.app->details_ui.paths_tab.ui().preview_jump == std::optional<size_t>(0));
     IM_CHECK(wait_until(ctx, [&] { return h.app->preview && h.app->preview->active(); }, 10));
@@ -342,7 +343,8 @@ void test_paths_rows(ImGuiTestContext* ctx) {
 // the eff. figure on the report's tiers (D269), and the suffix stays raw.
 constexpr const char* kBurnoutSqOutRating = "Insane+ (eff. 163.5 ms) <-- squeezed out (-260)";
 
-// The backend table folds per activation, and the Backend limit moved here.
+// The backend table folds per activation, and the Backend limit on the Paths
+// tab hides rows from it.
 void test_paths_backend_timings(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     if (!open_burnout(ctx)) return;
@@ -505,9 +507,9 @@ void test_paths_uncounted(ImGuiTestContext* ctx) {
 
 // At the panel's narrowest the Paths tab still fits: with every row, every
 // backend table, both folds under the rows and "Copied!" showing, nothing in
-// the right column runs past its edge, and the path list keeps at least its
-// 240 px (Burnout's optimal row, with its timing beside it, is a little wider
-// than that).
+// the right column runs past its edge, and the path list keeps at least
+// kMinPathListW (Burnout's optimal row, with its timing beside it, is a little
+// wider than that).
 void test_paths_fit_narrow(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     if (!open_burnout(ctx)) return;
@@ -794,7 +796,7 @@ void test_paths_row_layout(ImGuiTestContext* ctx) {
     IM_CHECK_GE(l.badge_lines, 2);  // three don't fit on one line under the measure
 
     // The drawn row: Burnout's row 1 keeps its one-line height while its badge
-    // fits (C3), all in the mono font.
+    // fits, all in the mono font.
     const ImGuiStyle& style = ImGui::GetStyle();
     const ImRect row1_rect = ctx->ItemInfo("**/##act1").RectFull;
     const float one_line = row1_rect.GetHeight();
@@ -811,7 +813,7 @@ void test_paths_row_layout(ImGuiTestContext* ctx) {
         IM_CHECK(row_text_all_mono(ctx, row1_rect, pieces));
     }
     // Three badges of different lengths, the longest among them, on row 1 of
-    // the cached view the tab draws (C4). The cache is only rebuilt when its
+    // the cached view the tab draws. The cache is only rebuilt when its
     // inputs change, so they stay for the frames below and are put back after.
     hydra::app::PathsTabCache::Details* built = const_cast<hydra::app::PathsTabCache::Details*>(
         h.app->details_ui.paths_tab.built_details());

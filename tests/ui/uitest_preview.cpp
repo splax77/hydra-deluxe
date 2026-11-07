@@ -85,8 +85,8 @@ void test_preview(ImGuiTestContext* ctx) {
 
 // A click's analysis that finishes while the Preview tab is visible must
 // still save its summary and reap the job: persistence must not depend on the
-// Paths tab drawing. Pre-fix, the job sat "finished" forever and the record
-// was never stored (the preview-then-analyze 300 s hang).
+// Paths tab drawing. If it did, the job would sit "finished" forever and the
+// record would never be stored.
 void test_analyze_on_preview(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     ViewGate gate;  // the analysis finishes only once the Preview shows
@@ -144,8 +144,8 @@ bool open_chart0_analyzed(ImGuiTestContext* ctx) {
 }
 
 // The path overlay follows the Paths tab's selection. Re-opening the Preview
-// for a chart that was already open used to be a plain no-op, so the overlay
-// stayed on whatever path had been selected the first time -- the record's
+// for a chart that is already open can't be a plain no-op, or the overlay
+// would stay on whatever path was selected the first time -- the record's
 // optimal path. Picking another path must swap the overlay in place: no
 // re-parse, no audio re-decode, and the playhead left where it was.
 void test_preview_path_overlay(ImGuiTestContext* ctx) {
@@ -258,10 +258,10 @@ void test_preview_controls(ImGuiTestContext* ctx) {
     IM_CHECK_EQ(end.stars, hydra::path_stars(*shown));
     IM_CHECK_EQ(end.next_star.empty(), end.stars == hydra::kMaxStars);
 
-    // 5 s jumps, clamped to 0 and to where playback stops (the audio's end,
-    // or the last note when the audio is shorter). The library's charts have
-    // no audio, so here that is the last note; the audio-tail case is pinned
-    // in test_preview_controller.cpp.
+    // 5 s jumps, clamped to 0 and to where playback stops (playback_end_ms,
+    // the song's length). The audio's own length plays no part in it;
+    // test_preview_controller.cpp pins songs that end before and after their
+    // audio.
     pc.seek_ms(10000.0);
     pc.jump_ms(5000.0);
     IM_CHECK_FLOAT_NEAR_EQ(pc.position_ms(), 15000.0, 0.5);
@@ -612,10 +612,10 @@ void test_preview_buttons_keys(ImGuiTestContext* ctx) {
     IM_CHECK(!pc.playing());
 }
 
-// Click-and-hold on the time bar while playing. Onyx pauses playback for the
-// hold; Hydra used to keep playing and re-seek the audio to the held time
-// every frame, which came out as a buzz. The transport must be paused while
-// the mouse is down, sit still at the held time, and resume on release.
+// Click-and-hold on the time bar while playing pauses playback for the hold,
+// as Onyx does. Playing on and re-seeking the audio to the held time every
+// frame would come out as a buzz. The transport must be paused while the
+// mouse is down, sit still at the held time, and resume on release.
 void test_scrub_hold(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     if (!open_preview(ctx)) return;
@@ -642,8 +642,8 @@ void test_scrub_hold(ImGuiTestContext* ctx) {
 }
 
 // A widget must not move under the mouse because a number next to it changed
-// width (the font is proportional). The Vol slider sits after the live time
-// readout; the page arrows straddle the page counter.
+// width (the font is proportional). The number here is the live time readout,
+// at the end of the scrubber's line.
 void test_layout_drift(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     if (!open_preview(ctx)) return;
@@ -692,7 +692,7 @@ bool open_burnout_preview(ImGuiTestContext* ctx) {
 // The "Showing" list: it names the drawn path, lists the all-0 path under its
 // own name, and a pick changes the one selection the Paths tab reads too. A
 // pending "Show in Preview" lands the playhead on its activation. (Clicking
-// the link itself is Task 10's, checked in paths-rows.)
+// the link itself is checked in paths-rows.)
 void test_preview_path_picker(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     if (!open_burnout_preview(ctx)) return;
@@ -785,8 +785,8 @@ void test_preview_path_picker(ImGuiTestContext* ctx) {
     IM_CHECK(pc.next_act_box().detail.rfind("at m32.1.0", 0) == 0);
 }
 
-// "Preview failed: …" wraps inside the panel. A long error used to run on
-// past the panel's edge, cut off with no way to read it.
+// "Preview failed: …" wraps inside the panel. On one line, a long error would
+// run past the panel's edge, cut off with no way to read it.
 void test_preview_error_wraps(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     if (!open_preview(ctx)) return;
@@ -794,7 +794,7 @@ void test_preview_error_wraps(ImGuiTestContext* ctx) {
     // The selection now names a chart whose resolution is 0, so the Preview
     // reloads and fails. The panel prints the plain sentence for it, which
     // quotes the chart's own refusal and so runs long. (A missing file's
-    // plain sentence no longer carries the path and fits on one line.)
+    // plain sentence holds no path and fits on one line, so it can't test this.)
     IM_CHECK(h.app->selected.has_value());
     if (!h.app->selected) return;
     const std::string chart = h.temp_dir + "\\notes.chart";
@@ -820,8 +820,7 @@ void test_preview_error_wraps(ImGuiTestContext* ctx) {
     // The sentence already quotes the chart's refusal, so no details line
     // repeats it (app::plain_error_detail; the user's rule of 2026-10-15).
     IM_CHECK(pc.error_detail().empty());
-    // The song panel's windows, the message's among them. (The rest of the
-    // window is another task's.)
+    // The song panel's windows, the message's among them.
     int checked = 0;
     int overflowing = 0;
     float widest_room = 0.0f;
@@ -982,10 +981,10 @@ void test_settings_change_holds_layout(ImGuiTestContext* ctx) {
     close_settings_panel(ctx);
 }
 
-// The text boxes keep one size all through a path. The next-activation box
-// used to count toward the shared scale with whatever line it showed, so on
-// Burnout's long second chord every box shrank and grew back later. Checked
-// at the default split and with the song panel at its narrowest.
+// The text boxes keep one size all through a path. If the next-activation box
+// counted toward the shared scale with whatever line it showed, every box
+// would shrink on Burnout's long second chord and grow back later. Checked at
+// the default split and with the song panel at its narrowest.
 void test_preview_overlay_steady(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     if (!open_burnout_preview(ctx)) return;
@@ -1078,7 +1077,8 @@ void test_preview_activation_jumps(ImGuiTestContext* ctx) {
     IM_CHECK(pc.time_box().tempo.rfind("BPM ", 0) == 0);
 
     ctx->Yield(2);
-    // The key bar: each group's action is on screen, the old run-on line is gone.
+    // The key bar: each group's action is on screen in its short form, never
+    // the long one.
     const std::string text = visible_text(h);
     for (const char* action : {"Activation", "5 seconds", "10 ms", "Play/pause", "Space"})
         IM_CHECK(text.find(action) != std::string::npos);

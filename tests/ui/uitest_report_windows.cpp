@@ -1,13 +1,16 @@
-// The report windows' GUI tests. The first five (report windows plan, task 5)
+// The report windows' GUI tests. Those in register_report_window_tests
 // open the path report or the comparison window on the sample rows
 // (tests/report_samples.h) through ReportWindowInput, the struct AppState
 // fills in the app, and drive the window by its labels. Their own GUI
 // function draws the windows, and the app's frame leaves them alone meanwhile
 // (drawn_by_fixture); only report-window-states' analysis-off step
-// fills the input from AppState (path_report_input). More work the same way:
-// the column widths and the window's fit to the screen (one column-width rule
-// plan, Part 3), and the cells' and header's alignment (2026-10-14
-// column-shares plan). The rest (task 6)
+// fills the input from AppState (path_report_input). Among them are the
+// column widths and the window's fit to the screen, from the one column-width
+// rule plan,
+// docs/superpowers/plans/2026-10-10-one-column-width-rule.md (removed; git show 444631e6:docs/superpowers/plans/2026-10-10-one-column-width-rule.md),
+// and the cells' and header's alignment, from the column-shares plan,
+// docs/superpowers/plans/2026-10-14-column-shares-scroll-left-align.md (removed; git show 444631e6:docs/superpowers/plans/2026-10-14-column-shares-scroll-left-align.md).
+// Those in report_window_flow_tests
 // run end to end: the app draws both windows itself from run_frame, so they
 // have no GUI function. Under hydra_uitest
 // there is no platform backend, so each report window draws inside the main
@@ -671,8 +674,8 @@ std::optional<float> text_start(const ImGuiTable* table, int c, ImU32 color, flo
 }
 
 // Every cell's text starts at its column's left edge: a number in Score and
-// the dim row number in "#" alike (the user's answer to Change 3 of the
-// 2026-10-14 column-shares plan). The shorter scores show it: right-aligned,
+// the dim row number in "#" alike (Change 3 of the column-shares plan this
+// file's header points at). The shorter scores show it: right-aligned,
 // "77,000" would start a digit's width in from where "250,000" starts.
 void test_cells_left(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
@@ -812,7 +815,7 @@ void test_fits_screen(ImGuiTestContext* ctx) {
     hydra::ui::remember_window_placement(main_before);
 }
 
-// ---- End to end, through AppState (task 6) --------------------------------
+// ---- End to end, through AppState -----------------------------------------
 
 // Library row `row`'s title in quotes, so the word search matches it as one
 // phrase. Read it before any search narrows the rows.
@@ -986,7 +989,7 @@ void test_open_asks(ImGuiTestContext* ctx) {
     IM_CHECK(window_named("Analyze library") == nullptr);
     IM_CHECK(!h.app->batch_confirm_pending);
 
-    // The window's Cancel now stops the report's own batch, as before.
+    // The window's Cancel stops the report's own batch.
     ctx->SetRef(path_window());
     ctx->ItemClick("Cancel");
     ctx->Yield(2);
@@ -1443,8 +1446,8 @@ void test_reopen_keeps_filters(ImGuiTestContext* ctx) {
     IM_CHECK(!best_only_ticked(ctx));
     IM_CHECK(table_sort(ctx) == sort);
 
-    // Refresh starts all four over (the rule before this change). Its batch
-    // is declined too, so the rows stay the same chart's.
+    // Refresh starts all four over. Its batch is declined too, so the rows
+    // stay the same chart's.
     open_path_report_declining_batch(ctx, /*refresh=*/true);
     IM_CHECK_RETV(path_report_ready(ctx), );
     ctx->Yield(1);
