@@ -281,3 +281,12 @@ mockups.
 2026-10-31: the fourth mockup
 (`docs/superpowers/specs/2026-10-31-path-builder-mockup-4/`) is the spec for
 the steps panel. D302 settled the 0 ms rule it rests on.
+
+2026-10-31: the fifth mockup
+(`docs/superpowers/specs/2026-10-31-path-builder-mockup-5/top-mockup.html`) is
+the spec for the top of the screen. D304 is its record.
+
+2026-11-06: no mockup. At the real-app check the user asked for a clickable
+timeline. A hover moves nothing now; a click or a drag on any row but "Your
+activations" moves the song. D304 holds the user's words, and they replace the
+third mockup's hover answer.
