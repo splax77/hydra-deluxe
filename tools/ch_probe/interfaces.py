@@ -166,7 +166,7 @@ class EngineModel(Protocol):
     def front_window(self) -> float:
         ...
 
-    def hit_time(self) -> float:
+    def round_start(self) -> float:
         ...
 
     def note_count(self) -> int:

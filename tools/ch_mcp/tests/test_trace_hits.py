@@ -31,7 +31,7 @@ from tools.ch_probe.probe_songs import WINDOW_MAP  # noqa: E402
 
 ENGINE = {"name": "Eng", "image": "StrikeCore", "parent": "Base<Inputs>",
           "shape": {"sealed": True, "generic_base": True,
-                    "hit_time_double": True, "ctor_rva": True}}
+                    "round_start_double": True, "ctor_rva": True}}
 
 
 def entry(names, count, owner="engine", rva="0x1000"):
@@ -138,12 +138,12 @@ class CommandLineTest(unittest.TestCase):
             "type": "start", "cap_s": 156.0, "song_cap_s": 36.0,
             "mode": "count", "engine_class": "Eng",
             "engine_ctor_rva": C.RVA_DRUMS_ENGINE_CTOR,
-            "hit_time_offset": C.OFF_HIT_TIME, "methods": []}])
+            "round_start_offset": C.OFF_ROUND_START, "methods": []}])
         self.assertEqual(session.detach_calls, 1)
         self.assertEqual(self.lines, [
             "ended: done (agent: song over)",
             "engine: Eng in StrikeCore, base Base<Inputs>",
-            "shape: sealed yes, generic_base yes, hit_time_double yes, "
+            "shape: sealed yes, generic_base yes, round_start_double yes, "
             "ctor_rva yes",
             f"notes in {self.manifest}: 3",
             "hooked: 2 code addresses, 9 calls; no code: 1 methods; "
@@ -364,7 +364,7 @@ class TraceSessionTest(unittest.TestCase):
             "type": "start", "cap_s": 156.0, "song_cap_s": 36.0,
             "mode": "args", "engine_class": "Eng",
             "engine_ctor_rva": C.RVA_DRUMS_ENGINE_CTOR,
-            "hit_time_offset": C.OFF_HIT_TIME, "methods": ["Hit"]}])
+            "round_start_offset": C.OFF_ROUND_START, "methods": ["Hit"]}])
 
     def test_stop_ends_a_run_that_never_ends_and_detaches_once(self):
         fake = FakeSession([sent({"engine": ENGINE, "hooked": 1,

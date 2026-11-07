@@ -42,13 +42,13 @@ An interrupted update can leave an install incomplete. `vswhere -latest` then li
 
 ## The shell is not elevated
 
-The shell agents run in is not elevated (it does not have administrator rights switched on). The account is a member of `BUILTIN\Administrators`, but that group is deny-only in this shell, which runs at `Medium Mandatory Level`.
+The shell agents run in is not elevated (it does not have administrator rights switched on). The account is a member of the built-in Administrators group, but that group is deny-only in this shell, which runs at `Medium Mandatory Level`.
 
 So no Windows trace runs from an agent's shell. `wpr` is Windows' own trace recorder, and `wpr -start` was refused from this shell on 2026-11-07 with error `0xC5585011` (LS-T1 run 1 of `docs/superpowers/plans/2026-11-07-ch-run-timing.md`). The user has ruled that no elevated window is opened.
 
 Run scripts with `pwsh`, which is PowerShell 7.6.9 at `C:\Program Files\PowerShell\7\pwsh.exe`. Its execution policy is RemoteSigned. Windows PowerShell (`powershell.exe`) has no policy set here, so a plain call to a script there is refused with "running scripts is disabled on this system".
 
-Clone Hero writes its logs to `C:\Users\Patrick\AppData\LocalLow\srylain Inc_\Clone Hero\`, which holds `Player.log` and `Player-prev.log`.
+Clone Hero writes its logs to `C:\Users\Patrick\AppData\locallow\srylain Inc_\Clone Hero\`, which holds `Player.log` and `Player-prev.log`.
 
 ## The Opus model behind agents
 
@@ -76,4 +76,4 @@ A timing that depends on what the database already holds needs a database that h
 
 ### Quote the numbers the user can see
 
-The user checks every number in the app. A number read straight out of the database can be one the app never shows. It may belong to another path than the one on screen, or the Paths tab may hide it. So before you quote a stored number, say which path it comes from (the optimal path, a path within the limit, or the best all-0 path) and whether the app displays it. What the Paths tab shows is built by `build_path_buttons()` and `build_activations()` in `src/app/path_view.cpp`. To see it as the user does, read the app as text with the `hydra` MCP server or `hydra_uitest`; `docs/agents/ui-testing.md` says how.
+The user checks every number in the app. A number read straight out of the database can be one the app never shows. It may belong to another path than the one on screen, or the Paths tab may hide it. So before you quote a stored number, say which path it comes from (the optimal path, a path within the limit, or the best all-0 path) and whether the app displays it. What the Paths tab shows is built by `build_path_buttons()` and `build_activations()` in `src/app/path_view.cpp`. To see it as the user does, the main session reads the app as text with the `hydra` MCP server or `hydra_uitest` (agents run neither: agent rule 14); `docs/agents/ui-testing.md` says how.

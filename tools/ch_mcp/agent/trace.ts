@@ -51,7 +51,7 @@ interface Settings {
     mode: "count" | "args";
     engine_class: string;
     engine_ctor_rva: number;
-    hit_time_offset: number;
+    round_start_offset: number;
     methods: string[];
 }
 
@@ -79,8 +79,8 @@ function shapeOf(klass: Il2Cpp.Class, s: Settings) {
     return {
         sealed: (klass.flags & TYPE_ATTRIBUTE_SEALED) !== 0,
         generic_base: parent !== null && parent.isInflated,
-        hit_time_double: klass.fields.some((f) => !f.isStatic
-            && f.offset === s.hit_time_offset
+        round_start_double: klass.fields.some((f) => !f.isStatic
+            && f.offset === s.round_start_offset
             && f.type.enumValue === Il2Cpp.Type.Enum.DOUBLE),
         ctor_rva: klass.methods.some((m) => m.name === ".ctor"
             && !m.virtualAddress.isNull()

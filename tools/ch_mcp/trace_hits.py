@@ -257,7 +257,7 @@ def trace_settings(notes: list[dict], mode: str, engine_class: str,
         "mode": mode,
         "engine_class": engine_class,
         "engine_ctor_rva": engine_ctor_rva,
-        "hit_time_offset": C.OFF_HIT_TIME,
+        "round_start_offset": C.OFF_ROUND_START,
         "methods": list(methods),
     }
 

@@ -90,7 +90,7 @@ def build_rows(times=DEFAULT_TIMES, *, amount0=0, rise_skip=(), act=(3005, 4100)
             "sp_active_byte": int(active), "sp_active_u32": int(active),
             "sp_mult_byte": mult, "sp_mult_u32": mult,
             "sp_end_s": act[1] / 1000 if act is not None and t >= act[0] else 0.0,
-            "sp_overflow_u32": 0, "hit_time_s": 0.0,
+            "sp_overflow_u32": 0, "round_start_s": 0.0,
             "audio_s": math.nan, "raw_s": math.nan, "corr_s": math.nan,
         })
     return rows
@@ -235,6 +235,19 @@ class FilesTest(unittest.TestCase):
         self.assertTrue(all(math.isnan(rows[0][c])
                             for c in ("audio_s", "raw_s", "corr_s")))
 
+    def test_a_saved_log_with_the_older_hit_time_s_header_loads(self):
+        old = ["hit_time_s" if c == "round_start_s" else c
+               for c in WATCH_COLUMNS if c not in ("audio_s", "raw_s", "corr_s")]
+        with tempfile.TemporaryDirectory() as folder:
+            path = os.path.join(folder, "saved.csv")
+            with open(path, "w", newline="", encoding="utf-8") as f:
+                w = csv.writer(f)
+                w.writerow(old)
+                w.writerow(range(len(old)))
+            rows = sp_compare.load_watch_rows(path)
+        self.assertEqual(rows[0]["round_start_s"], old.index("hit_time_s"))
+        self.assertNotIn("hit_time_s", rows[0])
+
     def test_a_log_lacking_another_column_is_still_refused(self):
         with tempfile.TemporaryDirectory() as folder:
             path = os.path.join(folder, "bad.csv")
@@ -325,7 +338,7 @@ def _row(clock_s, amount, *, active=0, sp_max=6144):
         "sp_max_u32": sp_max, "sp_max_u64": sp_max,
         "sp_active_byte": active, "sp_active_u32": active,
         "sp_mult_byte": 1, "sp_mult_u32": 1,
-        "sp_end_s": 0.0, "sp_overflow_u32": 0, "hit_time_s": 0.0,
+        "sp_end_s": 0.0, "sp_overflow_u32": 0, "round_start_s": 0.0,
         "audio_s": math.nan, "raw_s": math.nan, "corr_s": math.nan,
     }
 

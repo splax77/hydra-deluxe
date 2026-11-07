@@ -47,7 +47,7 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	field	8255		ʴʾˁʾʼʹʲʳʾʿʺ		0x120	OFF_SP_END_TIME
 6142	field	8255		ʵʼʿˁʷʹˀʵˁʼˀ		0x68	OFF_SP_AMOUNT
 6142	field	8255		ʷʷʽʹʷʹʼˁʻʴˁ		0x2E0	#8255+0x2E0
-6142	field	8255		ʷʷʽʹʷʹʼˁʻʴˁ		0x2E0	OFF_HIT_TIME
+6142	field	8255		ʷʷʽʹʷʹʼˁʻʴˁ		0x2E0	OFF_ROUND_START
 6142	field	8255		ʸʶʸʵʵʳʾʺʸʷʼ		0x100	OFF_SONG_CLOCK
 6142	field	8255		ʹʿʷʾʹʵʴʹʶʹʶ		0x8C	OFF_NOTE_COUNT
 6142	field	8255		ʺʾʾʿʷʹʳʺʺʽʿ		0x300	#8255+0x300
