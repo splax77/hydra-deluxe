@@ -2,7 +2,7 @@
 
 This page covers note values, the multiplier and combo, accents and ghosts, the solo bonus, star cutoffs and the score breakdown.
 It describes build 1.1 (v1.1.0.6142).
-Last write-back: 2026-11-06.
+Last write-back: 2026-11-07.
 
 The run files named below are of two kinds. The three bot runs of 2026-10-28 are in C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-10-28\l1\bot\ (outside the repo): Window Map, and Trippin SP Spike on Drums and on ProDrums. "Run 1" is the key-press auto-player run on Trippin SP Spike, `run1_cal0_scorestats.json` under tools/ch_probe/experiments/results/overlay-spike/. Engine fields belong to the base engine class #8288; the drum engine is #8255. `ghidra_decompile_all.txt` is Ghidra's full decompile of build 6142, which `code/README.md` describes; it is not in the repo.
 
@@ -109,6 +109,16 @@ Game code (6142): none read
 Hydra: `multsqueeze_gain` in src/core/scoring.cpp line 134
 Ruling: card 56ac5b71: "in both cases you have to hit the kick first and cymbals are interchangeable so t doesnt matter which is hit first" (01:54 UTC; the advice wording only)
 Found: 2026-10-30, session b02ab3e6 (the reference build)
+
+### SC-38 Gems pressed in one frame are scored in the game's order, not Hydra's
+
+Rule: When every gem of a chord is pressed in the same frame, the game scores them in its own order, which put a green cymbal before a kick and a yellow cymbal before a green cymbal. At a multiplier step this moved the step onto the kick, and on an activation chord the gems scored before the activating gem stayed single. Hydra's top path assumes the player chooses the order (SC-10), so a one-frame chord can fall short of it. Whether the order is a fixed lane order, and which gem activates, was not read in the code.
+Label: Proven in a live run
+Evidence: LS-R1b run 1 on Mouths Like Sidewinder Missiles, 2026-11-07, `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-07\ls-r1-run1\press-1.csv` against `refine-prep\mouths-top-score.json` (record in `replies.txt` there). Chord 4 (kick, green cymbal, multiplier 1 to 2) stepped 165, green at x1 plus kick at x2, where Hydra prices 180. Chords 340, 704 and 1208 (kick, yellow cymbal, green cymbal, each an activation) stepped 1,180, yellow single plus green and kick doubled, where Hydra prices 1,440. Chord 927 (kick, green cymbal, an activation) stepped 920, both doubled, as Hydra prices. Together 795 points, the run's whole shortfall (551,975 against 552,770).
+Game code (6142): not looked for
+Hydra: `multsqueeze_gain` in src/core/scoring.cpp line 134 prices the order; the score file's per-gem `multiplier` and `sp_points` carry it
+Ruling: none needed: card 56ac5b71 rules the player picks the order ("you have to hit the kick first"); the open point is the auto-player's press order
+Found: 2026-11-07, session f3d8ce9f
 
 ### SC-11 Whether the combo carries into the next song of a setlist
 
