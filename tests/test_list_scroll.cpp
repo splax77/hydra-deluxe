@@ -1,5 +1,7 @@
 // Tests for ui/list_scroll: whether a selection change or a change of row
-// height scrolls the list, and how far (the user's rulings, D242 and D247).
+// height scrolls the list, and how far. D242 rules the click. The rest took
+// the recommended answers under D247; the "answer" numbers in two test names
+// are questions 4 and 5 of docs/superpowers/plans/2026-10-14-column-shares-scroll-left-align.md (removed; git show 444631e6:docs/superpowers/plans/2026-10-14-column-shares-scroll-left-align.md).
 
 #include "doctest.h"
 

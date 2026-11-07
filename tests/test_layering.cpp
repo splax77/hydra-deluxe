@@ -4,12 +4,11 @@
 // "which library may it include from" (the target_link_libraries lines); this
 // file reads both and owns neither. tests/layering/externals.json says which
 // link line a third-party or system header stands for.
-// tests/layering/known_gaps.json held the wrong-way includes the library
-// split removed one task at a time, in the shape of
-// tests/single_owner/baseline.json, with its dates read by that baseline's
-// reader (parse_dates in tests/single_owner/engine.h). The split is done, so
-// the list is empty, and "layering: no known gap is left" keeps it empty: a
-// new wrong-way include is fixed, never parked. docs/adr/0032 records why.
+// tests/layering/known_gaps.json is a list of wrong-way includes, in the shape
+// of tests/single_owner/baseline.json, with its dates read by that baseline's
+// reader (parse_dates in tests/single_owner/engine.h). The list is empty, and
+// "layering: no known gap is left" keeps it empty: a new wrong-way include is
+// fixed, never parked. docs/adr/0032 records why.
 #include "doctest.h"
 
 #include <algorithm>

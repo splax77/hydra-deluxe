@@ -52,7 +52,7 @@ json event_view(const hydra::MidiFile& mid) {
     return view;
 }
 
-// smf() now lives in midi_util.h so test_song_parse.cpp can build files too.
+// smf() lives in midi_util.h, shared with the other tests that build files.
 using testmidi::smf;
 
 }  // namespace
@@ -162,8 +162,9 @@ TEST_CASE("midi: a recognized track_name wins over an earlier unrecognized one")
     CHECK(mid.tracks[0].name == "PART DRUMS");
 }
 
-// Hydra keeps names at any tick (YARG reads only tick 0), so a recognized
-// name after tick 0 still wins over an unrecognized one at tick 0.
+// Hydra keeps names at any tick (D78 item 3, which also records that YARG
+// reads only tick 0), so a recognized name after tick 0 still wins over an
+// unrecognized one at tick 0.
 TEST_CASE("midi: a recognized track_name after tick 0 still wins") {
     using namespace testmidi;
     hydra::MidiFile mid(smf(concat({track_name("notes"), note_on(96, 100),
@@ -275,9 +276,9 @@ TEST_CASE("midi: sysex and skipped metas do not lose time") {
 }
 
 TEST_CASE("midi: track_name is not exposed as text") {
-    // hysong matches MetaMessage(text=...) for disco/dynamics markers; a
-    // track_name must carry `name`, not `text`, or every title would be offered
-    // to those regexes.
+    // The song parser matches disco and dynamics markers on text metas only
+    // (parse/midi.h); a track_name must carry `name`, not `text`, or every
+    // title would be offered to those checks.
     std::vector<uint8_t> track = {
         0x00, 0xFF, 0x03, 0x0A, 'P', 'A', 'R', 'T', ' ', 'D', 'R', 'U', 'M', 'S',
         0x00, 0x90, 0x60, 0x64,
@@ -703,7 +704,7 @@ TEST_CASE("midi: the lean read keeps the end event") {
         }
         CHECK(end_tick == std::optional<int64_t>(1920));
     }
-    // The notes-only reading the song length reparse uses stores the same tick.
+    // The notes-only reading stores the same tick.
     const hydra::Song song = hydra::load_songbytes_mid(file, hydra::ChartReading{},
                                                        hydra::core::default_rules(),
                                                        hydra::kNotesOnlyFills);
@@ -739,7 +740,7 @@ TEST_CASE("midi: a bass sustain past the last drum note is the last note end; BE
     }
     CHECK(hydra::load_songbytes_mid(file, hydra::ChartReading{}).last_note_end_tick ==
           std::optional<int64_t>(2000));
-    // The notes-only reading the song length reparse uses gives the same tick.
+    // The notes-only reading gives the same tick.
     CHECK(hydra::load_songbytes_mid(file, hydra::ChartReading{}, hydra::core::default_rules(),
                                     hydra::kNotesOnlyFills)
               .last_note_end_tick == std::optional<int64_t>(2000));

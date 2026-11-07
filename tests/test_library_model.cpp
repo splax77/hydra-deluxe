@@ -281,7 +281,7 @@ TEST_CASE("library model: an album draws without its tags, a blank one draws emp
 
 TEST_CASE("library model: each column's position and its user ID are one mapping") {
     // The five shipped IDs keep their values and Album takes 5 while it is
-    // drawn third (the user's call, 2026-10-24).
+    // drawn third.
     using hydra::ui::column_of;
     using hydra::ui::sort_of;
     CHECK(hydra::ui::kLibraryColumnCount == 6);
@@ -334,7 +334,7 @@ TEST_CASE("library model: an empty or placeholder artist or charter reads (unkno
 
 TEST_CASE("library model: a name sorts on the text its cell shows, not the stored text") {
     // D114 item 3. A blank title and a placeholder artist show "(unknown)" and
-    // sort there; a leading space the cell trims no longer moves the row.
+    // sort there; a leading space the cell trims does not move the row.
     LibraryModel m;
     m.set_charts({chart("blank", "", "1 Band", "C", "common"),
                   chart("bang", "!!! Song", "<unknown artist>", "C", "common"),
@@ -811,8 +811,7 @@ TEST_CASE("library model: filtering 20,000 charts keeps the pinned row counts") 
             << std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count()
             << " ms");
 
-    // Each query's row count over the rows built above, pinned from one run
-    // on 2026-10-10 at 3782c333 plus the stars change above.
+    // Each query's row count over the rows built above, pinned from one run.
     struct QueryRows {
         const char* query;
         size_t rows;

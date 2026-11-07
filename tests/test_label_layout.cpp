@@ -1,5 +1,5 @@
 // The timeline's label rule (ui/label_layout.h): no two drawn numbers
-// overlap, the first and last always show, and every label stays on the strip.
+// overlap, the first always shows, and every label stays on the strip.
 
 #include "doctest.h"
 

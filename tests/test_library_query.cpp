@@ -511,7 +511,7 @@ TEST_CASE("library query: every Search tips example parses into the key its entr
         CHECK_FALSE(tip.meaning.empty());
         CHECK(parse_library_query(tip.example).errors.empty());
     }
-    // The order the popup lists them in (the album search plan, decision 10).
+    // The order the popup lists them in (D263 call 10).
     CHECK(examples == std::vector<std::string_view>{"title:actors", "artist:green", "album:dookie",
                                                     "charter:boo", "folder:ib24", "\"tier 4\"",
                                                     "stars:7", "squeeze<=20", "squeeze>20"});
@@ -591,6 +591,6 @@ TEST_CASE("library query: matching 20000 rows finds the pinned hit count") {
         if (query_matches(q, row, none)) ++hits;
     const std::chrono::duration<double, std::milli> took = std::chrono::steady_clock::now() - start;
     MESSAGE("matching 20000 rows: " << took.count() << " ms, " << hits << " hits");
-    // Pinned from one run on 2026-10-10 at 013f4c66.
+    // Pinned from one run.
     CHECK(hits == 189);
 }
