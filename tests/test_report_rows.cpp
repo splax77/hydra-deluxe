@@ -55,11 +55,11 @@ Settings fixture_settings(int cap, bool legacy_fills = false) {
 }
 
 // A library row's notespath that stands for a fixture record instead of a
-// chart file: fixture_analyzer hands back H1's tied-variant record for it.
+// chart file: fixture_analyzer hands back test::tied_variant_record() for it.
 const char* const kTiedFile = "fixture:tied";
 
 // What a batch in these tests analyzes with: a real chart file as the app
-// analyzes it, and kTiedFile as H1's tied-variant record, filed under the
+// analyzes it, and kTiedFile as test::tied_variant_record(), filed under the
 // settings it is asked for.
 AnalysisResult fixture_analyzer(const std::string& path, const AnalysisSettings& settings,
                                 const std::function<void(float)>& on_progress) {
@@ -186,7 +186,7 @@ std::map<std::string, std::vector<std::pair<int64_t, int>>> ranks_by_chart(
     return out;
 }
 
-// Stores H1's tied-variant record for chart `hyhash` under
+// Stores test::tied_variant_record() for chart `hyhash` under
 // fixture_settings(cap, legacy_fills), with a library row (kTiedFile), so the
 // report has three paths to list: two tied at the top score and a lower one.
 void store_tied(store::RecordStore& store, std::vector<store::ChartLibraryEntry>& library,
@@ -683,10 +683,9 @@ TEST_CASE("report lists only the wanted cap and names it") {
                                " fills"));
 }
 
-// What hydra_report's "--legacy-fills database" case pinned, now that the
-// tool is gone: a database filled under the 1.0 rule, as hydra_batch
-// --legacy-fills leaves one, reports its chart under the 1.0 rule when the
-// report is asked for 1.0 fills, and lists nothing under the 1.1 rule.
+// A database filled under the 1.0 rule, as hydra_batch --legacy-fills leaves
+// one, reports its chart under the 1.0 rule when the report is asked for 1.0
+// fills, and lists nothing under the 1.1 rule.
 TEST_CASE("generate_report reports a 1.0-fills database under the 1.0 rule") {
     store::RecordStore store(":memory:");
     const Settings legacy = fixture_settings(4, /*legacy_fills=*/true);
@@ -837,7 +836,7 @@ TEST_CASE("generate_report: one seam frames the report for every entry point") {
           "labels measure how far a hit lands from the Star Power end, so the "
           "two can differ. 'Beyond' means past the 170 ms window.");
 
-    // --all-paths wording.
+    // The every-path wording.
     options.max_paths = report::kEveryPathSentinel;
     CHECK(report::generate_report(store, options)
               .subtitle.find(counted(result.songs, "chart", "charts") + " — every path") !=
@@ -872,13 +871,13 @@ TEST_CASE("generate_report: \"every path\" is the sentinel's, a huge --paths sta
     store::RecordStore store(":memory:");
     REQUIRE(fill_store(store, 4, 1) > 0);
 
-    // --all-paths asks for the sentinel, and only that reads "every path".
+    // Only the sentinel reads "every path".
     report::ReportOptions options = fixture_options(4);
     options.max_paths = report::kEveryPathSentinel;
     CHECK(report::generate_report(store, options).subtitle.find(" — every path — ") !=
           std::string::npos);
 
-    // A large --paths below it lists at most that many, so it says so.
+    // A large max_paths below it lists at most that many, so it says so.
     options.max_paths = 200000000;
     const std::string subtitle = report::generate_report(store, options).subtitle;
     CHECK(subtitle.find("top 200,000,000 paths per chart") != std::string::npos);
@@ -953,7 +952,9 @@ TEST_CASE("tier_for over a built table matches the one-argument form") {
 }
 
 // The page lists the current profile only, so a change of the chart mode
-// alone puts an open page out of date (plan question 2).
+// alone puts an open page out of date (question 2 of
+// docs/superpowers/plans/2026-10-12-one-record-per-chart/part-A2-report-callers.md
+// (removed; `git show 444631e6:docs/superpowers/plans/2026-10-12-one-record-per-chart/part-A2-report-callers.md`)).
 TEST_CASE("PageSettings::of differs when only the chart mode changes") {
     const app::Settings before;
     app::Settings mode_only = before;

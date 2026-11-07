@@ -244,7 +244,7 @@ TEST_CASE("resolve_preview_source: a loose chart parses and finds its audio") {
 TEST_CASE("containers pass the difficulty through to the chart inside") {
     // .sng and .srb are pure containers: they hand the extracted notes to the
     // .mid/.chart loader, so the difficulty has to survive the trip. The
-    // fixture chart has four deliberately different difficulty sections.
+    // fixture chart has three deliberately different difficulty sections.
     const std::vector<uint8_t> notes = multidiff::chart_bytes();
 
     std::string sng = fixture_dir() + "\\multidiff.sng";
@@ -301,8 +301,8 @@ TEST_CASE("preview_audio_offset_ms combines delay and Offset") {
     // Lunaris: delay = 0 in song.ini, Offset = 0.25 in the chart. A delay of 0
     // counts as unset, so the Offset applies (measured +248 ms at the game).
     CHECK(preview_audio_offset_ms(0.0, 0.25) == doctest::Approx(250.0));
-    // The delay-500 copy of Lunaris from Task 17 step 1: both set, and the
-    // nonzero delay replaces the Offset (measured +496 ms at the game).
+    // A delay-500 copy of Lunaris: both set, and the nonzero delay replaces
+    // the Offset (measured +496 ms at the game; docs/clone-hero/03-timing.md).
     CHECK(preview_audio_offset_ms(500.0, 0.25) == doctest::Approx(500.0));
 }
 
@@ -360,8 +360,8 @@ TEST_CASE("resolve_preview_source: a .srb uses its chart's Offset") {
 
 namespace {
 
-// Every Song field written out as text, so two parses compare in one check
-// and a difference names the field.
+// The Song fields listed here written out as text, so two parses compare in
+// one check and a difference names the field. Other fields do not take part.
 std::string song_text(const Song& s) {
     std::string out;
     char num[64];
@@ -468,9 +468,9 @@ TEST_CASE("the song and stem halves share one container read and match the whole
 }
 
 TEST_CASE("container charts give the same Song, stems and offset as the chart inside") {
-    // What the loaders did before the read-once change: decode the notes entry
-    // and parse it with the .mid/.chart byte loader. Each container must still
-    // give exactly that Song, the audio bytes it holds, and the same offset.
+    // The reference: decode the notes entry and parse it with the .mid/.chart
+    // byte loader. Each container must give exactly that Song, the audio bytes
+    // it holds, and the same offset.
     const std::vector<uint8_t> chart = chart_with_offset("0.25");
     const std::vector<uint8_t> mid =
         hydra::read_file_bytes(corpus::first_chart_with_suffix(".mid"));

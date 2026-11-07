@@ -189,8 +189,8 @@ TEST_CASE("tick pauses at the end and pins the time") {
 }
 
 // On a chart whose notes outlast its audio, the playhead pauses itself when
-// the audio runs out while the clock plays on. A jump back used to move the
-// playhead without restarting it: the highway scrolled in silence with the
+// the audio runs out while the clock plays on. A jump back that moved the
+// playhead without restarting it would scroll the highway in silence with the
 // play button lit (finding 73). The clock is the master, so a seek while it
 // plays sets the playhead playing again.
 TEST_CASE("a seek while playing brings the audio back after it ran out") {
