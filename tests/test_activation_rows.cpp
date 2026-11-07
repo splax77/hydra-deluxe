@@ -3,7 +3,8 @@
 // The view-model is the interface, so the cases here pin the exact display
 // strings. The path list is in test_path_list.cpp.
 //
-// A1 to A9 in the comments are acceptance cases from the plan
+// A1 to A9 in the comments are acceptance cases from the plan (A3 since changed
+// by D261: a fill with time to spare gets a grey badge, where the plan said none)
 // docs/superpowers/plans/2026-10-22-squeeze-badge-beside-early-fill.md (removed; git show 444631e6:docs/superpowers/plans/2026-10-22-squeeze-badge-beside-early-fill.md).
 
 #include "doctest.h"
