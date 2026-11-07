@@ -18,15 +18,15 @@ Lines 71 to 81: when the new `profiles.ini` (+0x18) exists and the new `profiles
 
 Lines 85 to 90: when the new `profiles.ini` does not exist and the old one does, copy the old one to the new path (line 90). Lines 94 to 109: when neither new file exists and the old `profiles.bin` does, copy it to the new `.bin` path (line 109). The old files are never written or deleted.
 
-Lines 112 to 121: when the new `profiles.ini` exists, ask the ini class's `0x21150E0` (the call at line 121) for the keys of the ini "profiles"; with no file, jump to line 244.
+Lines 112 to 121: when the new `profiles.ini` exists, ask the ini class's `0x21150E0` (the call at line 121) for the keys of the ini "profiles"; with no file, jump to line 242.
 
-Lines 122 to 172: walk the keys. Line 173 takes each key from its eighth character (Substring with 7) and line 174 parses it as an int.
+Lines 122 to 172: walk the keys. Line 173 takes each key from its eighth character (Substring with 7) and line 176 parses it as an int.
 
 Lines 190 and 191: the ini name is "profiles", or "" when the number is -1. Line 199 builds the profile with the number and that ini name (`0xD8A90`). Line 200: when the number is -1, go back for the next key without adding it. Line 207 adds every other profile to the list, and the count at +0x28 goes up.
 
 Lines 238 to 240: after the walk, call the ini class's `0x2114A80` with "profiles"; it was not read.
 
-Lines 244 to 251: with no `profiles.ini`, call the class's own `0x1CB070` and then the ini class's `0x2112DB0` with no name. Neither was read; on 2026-10-31 neither folder held a `profiles.ini` or a `profiles.bin`, so whatever they do left no file on this machine.
+Lines 242 to 251: with no `profiles.ini`, call the class's own `0x1CB070` and then the ini class's `0x2112DB0` with no name. Neither was read; on 2026-10-31 neither folder held a `profiles.ini` or a `profiles.bin`, so whatever they do left no file on this machine.
 
 The profile clone. The loader's clone `0xD8470` (called at line 253 of `cli_loader_3968D0.asm`) builds a new profile with number -1 and ini name "" (0xD84C9 to 0xD84DE: `mov r8` with the empty string, `mov edx, 0xffffffff`, then the call to `0xD8A90`) and copies the settings across with the setters. The profile constructor `0xD8A90` (`dump.cs` line 25699) keeps the ini name and the section "profile{0}" with the number (0xD8BE5 to 0xD8C1C, through the ini class's `0x2115820`) in the profile's +0xC0. So a profile the load reads belongs to the ini "profiles", and the clone belongs to an ini with an empty name, which no code found registers with a path.
 
