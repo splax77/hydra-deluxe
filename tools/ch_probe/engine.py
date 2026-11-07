@@ -50,8 +50,8 @@ def pressed_input_hit(score_before: int, score_after: int) -> bool:
 
 
 # One read covers every watched field, so a sample is a consistent snapshot.
-# The double at +0x2e0 is the furthest field out.
-SNAPSHOT_SIZE = C.OFF_HIT_TIME + 8
+# The round start is the furthest field out.
+SNAPSHOT_SIZE = C.OFF_ROUND_START + 8
 
 # One read covers the clock object's fields, so the three belong together. The
 # raw clock is the furthest out.
@@ -75,7 +75,7 @@ class Snapshot:
     window_ms: float
     clock_s: float
     score: int
-    hit_time_s: float
+    round_start_s: float
     flags: int
     sp_amount_u32: int
     sp_amount_u64: int
@@ -128,7 +128,7 @@ def decode_snapshot(raw: bytes, clock_raw: Optional[bytes] = None) -> Snapshot:
         window_ms=C.s_to_ms(dbl(C.OFF_TOTAL_WINDOW)),
         clock_s=dbl(C.OFF_SONG_CLOCK),
         score=u32(C.OFF_SCORE),
-        hit_time_s=dbl(C.OFF_HIT_TIME),
+        round_start_s=dbl(C.OFF_ROUND_START),
         flags=u32(C.OFF_FLAGS),
         sp_amount_u32=u32(C.OFF_SP_AMOUNT),
         sp_amount_u64=u64(C.OFF_SP_AMOUNT),
@@ -227,11 +227,9 @@ class EngineModel:
         """Front-window constant (seconds): the min per-side, ~0.0375 in normal mode."""
         return self._process.read_double(self._addr(C.OFF_FRONT_WINDOW))
 
-    def hit_time(self) -> float:
-        """The double at +0x2e0, in seconds. It is not a hit time, whatever this
-        method's name says: docs/clone-hero/03-timing.md, TM-14, says what the
-        engine writes there and when."""
-        return self._process.read_double(self._addr(C.OFF_HIT_TIME))
+    def round_start(self) -> float:
+        """The round start (seconds); constants.OFF_ROUND_START says what it holds."""
+        return self._process.read_double(self._addr(C.OFF_ROUND_START))
 
     def score(self) -> int:
         """The game score. It rises only when a note is hit, which is how

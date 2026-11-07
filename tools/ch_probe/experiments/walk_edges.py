@@ -140,9 +140,9 @@ class Row:
 def row_for(index: int, note_ms: float, planned_ms: int, raw_ms: float, est_ms: float,
             before: live.Snapshot, after: live.Snapshot) -> Row:
     """One walked note's row, its offset from live.hit_offset_ms."""
-    field_changed = after.hit_time_s != before.hit_time_s
+    field_changed = after.round_start_s != before.round_start_s
     return Row(index, note_ms, planned_ms, est_ms - note_ms, raw_ms - note_ms,
-               C.s_to_ms(after.hit_time_s) - note_ms if field_changed else None,
+               C.s_to_ms(after.round_start_s) - note_ms if field_changed else None,
                pressed_input_hit(before.score, after.score),
                live.hit_offset_ms(note_ms, est_ms))
 

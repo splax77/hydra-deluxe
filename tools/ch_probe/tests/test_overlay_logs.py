@@ -25,7 +25,21 @@ class ColumnListsTest(unittest.TestCase):
             "wall_s", "clock_s", "score", "sp_amount_u32", "sp_amount_u64",
             "sp_max_u32", "sp_max_u64", "sp_active_byte", "sp_active_u32",
             "sp_mult_byte", "sp_mult_u32", "sp_end_s", "sp_overflow_u32",
-            "hit_time_s", "audio_s", "raw_s", "corr_s"))
+            "round_start_s", "audio_s", "raw_s", "corr_s"))
+
+    def test_the_saved_watch_logs_headers_read_as_watch_columns(self):
+        # The saved logs keep their own header, hit_time_s included; read
+        # through watch_header, each must be one the readers accept.
+        folder = os.path.join(_REPO_ROOT, "tools", "ch_probe", "experiments",
+                              "results", "overlay-spike")
+        names = sorted(n for n in os.listdir(folder) if n.endswith("_sp_watch.csv"))
+        self.assertEqual(len(names), 4)
+        for name in names:
+            with open(os.path.join(folder, name), encoding="utf-8") as f:
+                header = tuple(f.readline().strip().split(","))
+            self.assertIn("hit_time_s", header, name)
+            self.assertEqual(overlay_logs.watch_header(header),
+                             overlay_logs.WATCH_COLUMNS_WITHOUT_CLOCK, name)
 
     def test_press_log_columns(self):
         self.assertEqual(overlay_logs.PRESS_LOG_COLUMNS, (

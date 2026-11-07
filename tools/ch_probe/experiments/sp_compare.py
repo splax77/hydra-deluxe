@@ -56,7 +56,7 @@ if _REPO_ROOT not in sys.path:
 
 from tools.ch_probe import constants as C
 from tools.ch_probe.experiments.overlay_logs import (
-    WATCH_COLUMNS, WATCH_COLUMNS_WITHOUT_CLOCK)
+    WATCH_COLUMNS, WATCH_COLUMNS_WITHOUT_CLOCK, watch_header)
 from tools.ch_probe.experiments.play_chart import PRESS_LEAD_MS, SP_END_LEAD_MS
 
 # How far from an event a matching change in the watcher log may sit: a
@@ -133,10 +133,12 @@ def _number(text: str):
 
 def load_watch_rows(path: str) -> list:
     """The watcher CSV's rows as dicts of numbers, keyed by WATCH_COLUMNS. A
-    log written before the clock columns existed loads with them NaN."""
+    log written before the clock columns existed loads with them NaN, and a
+    saved log's older column names are read through overlay_logs.watch_header."""
     with open(path, newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
-        have = reader.fieldnames or ()
+        have = watch_header(reader.fieldnames or ())
+        reader.fieldnames = list(have)
         missing = [c for c in WATCH_COLUMNS_WITHOUT_CLOCK if c not in have]
         if missing:
             raise ValueError(f"{path} lacks the watcher columns {missing}")

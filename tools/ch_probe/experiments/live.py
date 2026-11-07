@@ -166,8 +166,8 @@ def first_note_index(notes_ms: Sequence[float], clock_ms: float) -> int:
 def hit_offset_ms(note_ms: float, sent_ms: float) -> float:
     """How far from the note a press landed, in ms (+ is late).
 
-    It uses the estimated send time. The double at +0x2e0 is no hit time:
-    docs/clone-hero/03-timing.md, TM-14, says what it holds.
+    It uses the estimated send time, not the engine's round start
+    (constants.OFF_ROUND_START), which is not a per-hit time.
     """
     return sent_ms - note_ms
 

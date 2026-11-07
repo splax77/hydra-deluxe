@@ -35,7 +35,7 @@ WATCH_COLUMNS = (
     "sp_mult_u32",
     "sp_end_s",
     "sp_overflow_u32",
-    "hit_time_s",
+    "round_start_s",
     "audio_s",
     "raw_s",
     "corr_s",
@@ -47,6 +47,17 @@ WATCH_COLUMNS = (
 WATCH_CLOCK_COLUMNS = ("audio_s", "raw_s", "corr_s")
 WATCH_COLUMNS_WITHOUT_CLOCK = tuple(
     c for c in WATCH_COLUMNS if c not in WATCH_CLOCK_COLUMNS)
+
+# Saved logs under experiments/results/ name some columns differently: each key
+# is a name such a log uses, and its value the WATCH_COLUMNS name for the same
+# field. Both readers pass a log's header through watch_header first.
+WATCH_OLDER_NAMES = {"hit_time_s": "round_start_s"}
+
+
+def watch_header(header) -> tuple:
+    """A watcher log's header, with each name in WATCH_OLDER_NAMES replaced by
+    its WATCH_COLUMNS name."""
+    return tuple(WATCH_OLDER_NAMES.get(c, c) for c in header)
 
 KEYS_PRESS_COLUMNS = (
     "index",

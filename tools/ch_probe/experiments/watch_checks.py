@@ -6,8 +6,8 @@ and prints two checks, each with a PASS or FAIL line and its numbers:
 
   * +0x2E0. Does the field at +0x2E0 change at each chord? For each
     chord in the `hydra_replay score` JSON, take the first row near the
-    chord's time in which `hit_time_s` changed, and see how far the new value
-    sits from the chord. The verdict uses constants.HIT_TIME_MAX_GAP_MS, the
+    chord's time in which `round_start_s` changed, and see how far the new
+    value sits from the chord. The verdict uses constants.ROUND_START_MAX_GAP_MS, the
     same limit experiments/watch_window.py uses. This check means something
     only on an auto-player run: the game's bot may hit exactly on the note's
     time, which would match whatever the field holds.
@@ -41,7 +41,8 @@ if _REPO_ROOT not in sys.path:
 
 from tools.ch_probe import constants as C
 from tools.ch_probe.experiments.overlay_logs import (
-    WATCH_CLOCK_COLUMNS, WATCH_COLUMNS, WATCH_COLUMNS_WITHOUT_CLOCK)
+    WATCH_CLOCK_COLUMNS, WATCH_COLUMNS, WATCH_COLUMNS_WITHOUT_CLOCK,
+    watch_header)
 
 # How far from a chord's time (song clock, ms) a row may be and still be
 # searched for that chord's +0x2E0 change (the plan's Task A step 4).
@@ -73,11 +74,13 @@ def same_value(a, b) -> bool:
 
 def load_watch_rows(path: str) -> list[dict]:
     """The watcher log's rows, each a dict keyed by WATCH_COLUMNS. A log
-    written before the clock columns existed loads with them NaN. Raises
-    ValueError when the header is neither WATCH_COLUMNS nor that older list."""
+    written before the clock columns existed loads with them NaN, and a saved
+    log's older column names are read through overlay_logs.watch_header.
+    Raises ValueError when the header is neither WATCH_COLUMNS nor that list
+    without the clock columns."""
     with open(path, newline="", encoding="utf-8") as f:
         reader = csv.reader(f)
-        header = tuple(next(reader, ()))
+        header = watch_header(next(reader, ()))
         if header not in (WATCH_COLUMNS, WATCH_COLUMNS_WITHOUT_CLOCK):
             raise ValueError(
                 f"{path}: header {header} is not overlay_logs.WATCH_COLUMNS")
@@ -94,21 +97,19 @@ def load_chords(path: str) -> list[dict]:
 
 # --- the +0x2E0 check ------------------------------------------------------------
 
-def hit_time_check(rows: Sequence[dict], chords: Sequence[dict]) -> list[str]:
-    """Whether +0x2E0 (`hit_time_s`) changes at each chord, to a value next to it.
-
-    The name follows OFF_HIT_TIME, whose comment in constants.py says the
-    field is no hit time.
+def round_start_check(rows: Sequence[dict], chords: Sequence[dict]) -> list[str]:
+    """Whether +0x2E0 (`round_start_s`, constants.OFF_ROUND_START) changes at
+    each chord, to a value next to it.
 
     For each chord whose `ms` lies inside the log's clock span, the change
     row is the first row within HIT_SEARCH_MS of the chord in which
-    `hit_time_s` differs from the row before. A row an earlier chord already
+    `round_start_s` differs from the row before. A row an earlier chord already
     took is skipped, so two close chords do not share one change. The chord
-    counts when the new value sits within C.HIT_TIME_MAX_GAP_MS of the chord.
-    PASS when every chord in the span counts."""
-    changes = [(C.s_to_ms(cur["clock_s"]), C.s_to_ms(cur["hit_time_s"]), i)
+    counts when the new value sits within C.ROUND_START_MAX_GAP_MS of the
+    chord. PASS when every chord in the span counts."""
+    changes = [(C.s_to_ms(cur["clock_s"]), C.s_to_ms(cur["round_start_s"]), i)
                for i, (prev, cur) in enumerate(zip(rows, rows[1:]), start=1)
-               if not same_value(cur["hit_time_s"], prev["hit_time_s"])]
+               if not same_value(cur["round_start_s"], prev["round_start_s"])]
     if not rows:
         return ["FAIL +0x2E0: the log has no rows"]
     first_ms = C.s_to_ms(rows[0]["clock_s"])
@@ -131,7 +132,7 @@ def hit_time_check(rows: Sequence[dict], chords: Sequence[dict]) -> list[str]:
         taken.add(found[1])
         gap = found[0] - ch["ms"]
         gaps.append(gap)
-        if abs(gap) <= C.HIT_TIME_MAX_GAP_MS:
+        if abs(gap) <= C.ROUND_START_MAX_GAP_MS:
             counted += 1
         else:
             misses.append(f"  chord {ch['index']} at {ch['ms']:.1f} ms: "
@@ -140,7 +141,7 @@ def hit_time_check(rows: Sequence[dict], chords: Sequence[dict]) -> list[str]:
     ok = bool(in_span) and counted == len(in_span)
     lines = [f"{'PASS' if ok else 'FAIL'} +0x2E0: {counted} of "
              f"{len(in_span)} chords in the log have a +0x2E0 value within "
-             f"{C.HIT_TIME_MAX_GAP_MS:g} ms ({len(chords) - len(in_span)} "
+             f"{C.ROUND_START_MAX_GAP_MS:g} ms ({len(chords) - len(in_span)} "
              f"chords outside the log's clock span)"]
     if gaps:
         lines.append(f"  distance from the chord: median "
@@ -197,7 +198,7 @@ def run(argv: Optional[Sequence[str]] = None) -> list[str]:
     rows = load_watch_rows(args.watch_csv)
     lines = [f"{os.path.basename(args.watch_csv)}: {len(rows)} rows"]
     if args.score:
-        lines.extend(hit_time_check(rows, load_chords(args.score)))
+        lines.extend(round_start_check(rows, load_chords(args.score)))
     else:
         lines.append("+0x2E0: not checked (no --score given)")
     lines.extend(pause_check(rows))

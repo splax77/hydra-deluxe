@@ -100,10 +100,10 @@ OFF_SONG_CLOCK = 0x100
 # Score (u32). Rises only when a note is hit (proven by play_chart.py).
 OFF_SCORE = 0x94
 
-# A double, in seconds. The name is the tools' first guess, and the guess is
-# wrong: it is not a hit time. docs/clone-hero/03-timing.md, TM-14, says what
-# the engine writes here and when.
-OFF_HIT_TIME = 0x2E0
+# Round start (double, seconds): the song clock at the start of a double
+# lane's current round. docs/clone-hero/07-internals.md, IN-12, says when the
+# engine writes it, and docs/clone-hero/03-timing.md, TM-14, what it is not.
+OFF_ROUND_START = 0x2E0
 
 # Star Power fields, from the disassembly.
 # docs/clone-hero/05-star-power.md gives what each one holds and its
@@ -296,9 +296,9 @@ ENGINE_EMPTY_WINDOW_S = 0.001
 # engine_finder.find_live_engine: a clock that moved more than this between
 # its two reads belongs to the song that is playing.
 ENGINE_CLOCK_MOVED_S = 1e-6
-# experiments/watch_window.hit_time_report: the furthest the +0x2e0 double may
-# sit from its nearest note for the report's check to pass.
-HIT_TIME_MAX_GAP_MS = 10.0
+# experiments/watch_window.round_start_report: the furthest the round start
+# (OFF_ROUND_START) may sit from its nearest note for the report's check to pass.
+ROUND_START_MAX_GAP_MS = 10.0
 # experiments/walk_edges.SongClock: a clock change seen within this of the
 # previous read is fresh, so the time since it can be filled in.
 CLOCK_FRESH_S = 0.002
