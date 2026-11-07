@@ -2,7 +2,7 @@
 // shows, and how a page turn, a wheel notch, the playhead or a seek moves it.
 // Pure arithmetic over milliseconds, with no ImGui, so the tests run it with
 // no context. The spec is the third mockup's script
-// (docs/superpowers/specs/2026-10-31-path-builder-mockup-3/mockup_template.html);
+// (docs/superpowers/specs/2026-10-31-path-builder-mockup-3/mockup_template.html (removed; git show 6804353f:docs/superpowers/specs/2026-10-31-path-builder-mockup-3/mockup_template.html));
 // each function names the line it follows. The whole-song share the scrubber
 // uses stays app::song_fraction's.
 #pragma once

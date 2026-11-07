@@ -668,8 +668,8 @@ endif()
 
 # ---- HydraPathBuilder.exe: the Path Builder --------------------------------
 # A second GUI program: open a chart, build a Star Power path by hand and see
-# how it compares with Hydra's best (docs/superpowers/specs/
-# 2026-10-28-path-builder-design.md). Everything but its Win32 window is the
+# how it compares with Hydra's best (docs/superpowers/specs/2026-10-28-path-builder-design.md (removed; git show 6804353f:docs/superpowers/specs/2026-10-28-path-builder-design.md)).
+# Everything but its Win32 window is the
 # hydra_pathbuilder library, which the exe, its headless runner and hydra_tests
 # link. It links the GUI base and the Preview, never hydra_ui, so none of
 # Hydra's own window comes with it.

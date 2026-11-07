@@ -11,7 +11,7 @@
 #
 # The slices are balanced for the AddressSanitizer CI job, where four entries
 # run on four cores. The per-file times they rest on are in
-# docs/superpowers/plans/2026-10-24-asan-ci-speed.md, under "Local per-case
+# docs/superpowers/plans/2026-10-24-asan-ci-speed.md (removed; git show 6804353f:docs/superpowers/plans/2026-10-24-asan-ci-speed.md), under "Local per-case
 # times under ASan". A slice name is only a label; a slice holds whatever files
 # balance it.
 

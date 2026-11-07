@@ -5,10 +5,10 @@
 // Hydra's own Preview panel (ui::draw_preview_panel) with a side column beside
 // it holding "Where to activate next" above "Your activations". The top
 // follows the fifth mockup
-// (docs/superpowers/specs/2026-10-31-path-builder-mockup-5/top-mockup.html),
+// (docs/superpowers/specs/2026-10-31-path-builder-mockup-5/top-mockup.html (removed; git show 6804353f:docs/superpowers/specs/2026-10-31-path-builder-mockup-5/top-mockup.html)),
 // and what lies under the timeline the second
-// (docs/superpowers/specs/2026-10-31-path-builder-mockup-2/
-// mockup_template.html, answers.md answer 4). Everything drawn about the chart
+// (docs/superpowers/specs/2026-10-31-path-builder-mockup-2/mockup_template.html (removed; git show 6804353f:docs/superpowers/specs/2026-10-31-path-builder-mockup-2/mockup_template.html),
+// answers.md answer 4). Everything drawn about the chart
 // is the Preview's; every sentence is pb_text's. main.cpp and the headless
 // runner (tests/pb_ui) both draw through draw(), so a test sees what the
 // player sees. The user's answers on this layout are D303.
