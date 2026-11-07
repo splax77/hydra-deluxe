@@ -18,8 +18,8 @@ note (docs/clone-hero/05-star-power.md, SP-17).
 So a fill the path passes over is declined: declined_chord_indexes reads which
 chords those are from a `hydra_replay dump` file, and load_dump_chords keeps
 only the gems the decline mode sends (design point 4 of
-docs/superpowers/plans/2026-11-06-optimal-score-run.md; the game's side is
-FL-31 on docs/clone-hero/04-fills.md).
+docs/superpowers/plans/2026-11-06-optimal-score-run.md (removed; git show d7e47a20:docs/superpowers/plans/2026-11-06-optimal-score-run.md);
+the game's side is FL-31 on docs/clone-hero/04-fills.md).
 
 The kit press gives each pad gem the strength its `dynamic` asks for; a key
 has no strength. kit_tools.pad_axis owns the strengths, and with_axes reads the
@@ -77,7 +77,7 @@ PRESS_LEAD_MS = 2.0
 
 # A chord that ends Star Power is pressed this many ms before its time, so the
 # hit lands in a frame before the end check. The user set it: question 3 of
-# docs/superpowers/plans/2026-11-06-optimal-score-run.md.
+# docs/superpowers/plans/2026-11-06-optimal-score-run.md (removed; git show d7e47a20:docs/superpowers/plans/2026-11-06-optimal-score-run.md).
 SP_END_LEAD_MS = 15.0
 
 # Which gems a declined chord sends: _kept_gems owns what each mode keeps.

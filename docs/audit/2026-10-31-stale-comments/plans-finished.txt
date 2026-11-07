@@ -104,7 +104,7 @@ Plans live in the order of the ls-tree listing. "Named by" lists every line on m
 - left: none found. The plan's section 8 holds eight questions for the user; I did not check each answer, and its section 7 hand-offs went to HX-P2.
 - named by: none found (git grep for the file name finds no line outside the plan).
 
-## 2026-11-06-optimal-score-run.md
+## 2026-11-06-optimal-score-run.md (removed; git show d7e47a20:docs/superpowers/plans/2026-11-06-optimal-score-run.md)
 - verdict: live
 - evidence: Built today. Merges osr-T2 f7d4087c, osr-T3 (inside d1c2880d), osr-T4 b009b591, osr-T5 10d3308f, osr-T6 4b8f7a40 and e3bbc276, osr-T7 (inside a70c04b4). LS-O1 passed (893950d7). No commit or run record for LS-O2 to LS-O5.
 - left: LS-O2 (chained start on Window Map, which is LS-K4), LS-O3 (declining chord 405), LS-O4 (the LS-K5 read), LS-O5 (full run against 1,229,730), and the user's answer to its section 9 question (accept LS-K5). Named by the plan itself and docs/handoffs/2026-11-06-optimal-score-plan-handoff.md.
