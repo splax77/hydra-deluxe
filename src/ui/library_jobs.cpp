@@ -26,7 +26,7 @@ void set_store_open_gate_for_test(StoreOpenGate gate) { g_store_open_gate = std:
 
 std::string StoreOpenProgress::label() const {
     // A file that needs no conversion reads one line for the open and the
-    // library read alike (DBUP answer 7).
+    // library read alike (D100 item 7).
     if (!upgrading) return "Opening your library...";
     switch (step) {
         case Step::ConvertingRecords: return "Updating the results table...";

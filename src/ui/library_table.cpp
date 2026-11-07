@@ -1,8 +1,7 @@
 // The library pane: the heading, the search box with its hint and errors,
 // the status chips, and the sortable, scrolling table of every chart.
 // What it shows comes from AppState::library (ui/library_model.h); this file
-// draws it and hands clicks back. It replaced the paged table in the 2026-09
-// interface redesign (Task 12).
+// draws it and hands clicks back.
 
 #include "ui/library_parts.h"
 
@@ -227,8 +226,9 @@ void render_search_box(AppState& app) {
     hint("Clear search (Esc)");
 
     // One short line and the Search tips link, then what the box couldn't
-    // read. The keys themselves live in the popup (decision 10 of the
-    // 2026-10-24 album-search plan), so this line never grows.
+    // read. The keys themselves live in the popup (decision 10 of
+    // docs/superpowers/plans/2026-10-24-album-search.md (removed; git show 444631e6:docs/superpowers/plans/2026-10-24-album-search.md)),
+    // so this line never grows.
     const float line_left = ImGui::GetCursorScreenPos().x;
     const float pane_w = ImGui::GetContentRegionAvail().x;
     ImGui::PushTextWrapPos(0.0f);
@@ -364,7 +364,7 @@ void draw_second_line(ImVec2 pos, const SecondLine& line, float max_x) {
 
 // The table's columns as the width rule (ui/column_widths.h) sees them. Each
 // one is text that ends in "…" when its cell is too short, so each may cut,
-// and each takes its share of the room (the user's shares, 2026-10-14).
+// and each takes its share of the room (D263 item 2).
 std::vector<ColumnSpec> library_column_specs() {
     std::vector<ColumnSpec> specs(kLibraryColumnCount);
     specs[kColumnTitle] = {"Title", true, 0.0f, {}, 17};
@@ -399,9 +399,8 @@ void render_table(AppState& app, ImVec2 size) {
     update_column_widths(app);
     LibraryViewState::ColumnWidths& widths = app.library_ui.column_widths;
     const std::vector<ColumnSpec>& columns = widths.specs;
-    // A dragged column holds until the rows reload or the search changes
-    // (decision 5). Both counters only ever go up, so their sum moves
-    // whenever either does.
+    // A dragged column holds until the rows reload or the search changes.
+    // Both counters only ever go up, so their sum moves whenever either does.
     const std::uint64_t reset_key = app.library.rows_version() + app.library.query_version();
     widths.room = table_room("##librarytable", size.x, columns.size(), reset_key);
     const ColumnLayout layout = place_columns(widths.measured, columns, widths.room);

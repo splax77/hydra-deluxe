@@ -1,5 +1,5 @@
-// Song-info icon textures (record/star/pencil/hash), matching hydra_app.py's
-// dpg.add_static_texture loads of the PNGs icon_files() names under resource/.
+// Song-info icon textures (record/star/pencil/hash), loaded from the PNGs
+// icon_files() names under resource/.
 // main.cpp decodes and uploads these once the DX11 device exists; views pull
 // the resulting SRVs from here, the way fonts.h holds the mono font's handle.
 

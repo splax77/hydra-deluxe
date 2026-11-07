@@ -2,7 +2,7 @@
 // consumer-side watcher that compares-then-assigns once per frame. Views key
 // per-event state on these rather than on object addresses — the heap can hand
 // a new job the previous job's freed block, and a pointer compare then carries
-// stale per-job state over (see AppState::analyze_generation).
+// stale per-job state over (see AppState::view_generation).
 
 #ifndef HYDRA_UI_GENERATION_H
 #define HYDRA_UI_GENERATION_H
