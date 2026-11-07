@@ -16,6 +16,7 @@ import contextlib
 import csv
 import io
 import json
+import math
 import os
 import sys
 import tempfile
@@ -89,6 +90,7 @@ def build_rows(times=DEFAULT_TIMES, *, amount0=0, rise_skip=(), act=(3005, 4100)
             "sp_mult_byte": mult, "sp_mult_u32": mult,
             "sp_end_s": act[1] / 1000 if act is not None and t >= act[0] else 0.0,
             "sp_overflow_u32": 0, "hit_time_s": 0.0,
+            "audio_s": math.nan, "raw_s": math.nan, "corr_s": math.nan,
         })
     return rows
 
@@ -218,6 +220,28 @@ class TolerancesTest(unittest.TestCase):
 
 
 class FilesTest(unittest.TestCase):
+    def test_a_log_without_the_clock_columns_loads_with_them_nan(self):
+        old = [c for c in WATCH_COLUMNS if c not in ("audio_s", "raw_s", "corr_s")]
+        with tempfile.TemporaryDirectory() as folder:
+            path = os.path.join(folder, "old.csv")
+            with open(path, "w", newline="", encoding="utf-8") as f:
+                w = csv.writer(f)
+                w.writerow(old)
+                w.writerow([7 for _ in old])
+            rows = sp_compare.load_watch_rows(path)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["score"], 7)
+        self.assertTrue(all(math.isnan(rows[0][c])
+                            for c in ("audio_s", "raw_s", "corr_s")))
+
+    def test_a_log_lacking_another_column_is_still_refused(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = os.path.join(folder, "bad.csv")
+            with open(path, "w", newline="", encoding="utf-8") as f:
+                csv.writer(f).writerow(("wall_s", "clock_s"))
+            with self.assertRaises(ValueError):
+                sp_compare.load_watch_rows(path)
+
     def _write(self, folder, rows):
         csv_path = os.path.join(folder, "watch.csv")
         with open(csv_path, "w", newline="", encoding="utf-8") as f:
@@ -301,6 +325,7 @@ def _row(clock_s, amount, *, active=0, sp_max=6144):
         "sp_active_byte": active, "sp_active_u32": active,
         "sp_mult_byte": 1, "sp_mult_u32": 1,
         "sp_end_s": 0.0, "sp_overflow_u32": 0, "hit_time_s": 0.0,
+        "audio_s": math.nan, "raw_s": math.nan, "corr_s": math.nan,
     }
 
 

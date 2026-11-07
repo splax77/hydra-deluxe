@@ -41,6 +41,7 @@ import argparse
 import bisect
 import csv
 import json
+import math
 import os
 import sys
 from dataclasses import dataclass, field
@@ -52,7 +53,8 @@ _REPO_ROOT = os.path.abspath(
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from tools.ch_probe.experiments.overlay_logs import WATCH_COLUMNS
+from tools.ch_probe.experiments.overlay_logs import (
+    WATCH_COLUMNS, WATCH_COLUMNS_WITHOUT_CLOCK)
 from tools.ch_probe.experiments.play_chart import PRESS_LEAD_MS, SP_END_LEAD_MS
 
 # How far from an event a matching change in the watcher log may sit: a
@@ -126,13 +128,16 @@ def _number(text: str):
 
 
 def load_watch_rows(path: str) -> list:
-    """The watcher CSV's rows as dicts of numbers, keyed by WATCH_COLUMNS."""
+    """The watcher CSV's rows as dicts of numbers, keyed by WATCH_COLUMNS. A
+    log written before the clock columns existed loads with them NaN."""
     with open(path, newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
-        missing = [c for c in WATCH_COLUMNS if c not in (reader.fieldnames or ())]
+        have = reader.fieldnames or ()
+        missing = [c for c in WATCH_COLUMNS_WITHOUT_CLOCK if c not in have]
         if missing:
             raise ValueError(f"{path} lacks the watcher columns {missing}")
-        return [{c: _number(r[c]) for c in WATCH_COLUMNS} for r in reader]
+        return [{c: _number(r[c]) if c in have else math.nan
+                 for c in WATCH_COLUMNS} for r in reader]
 
 
 def load_score(path: str) -> dict:
