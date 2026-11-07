@@ -369,8 +369,8 @@ class Loop(Folder):
                                                                           pid=RECORDER),
                                  dict(TWO_PROCESSES[1], pid=55)]
         loop = FakeLoop(self.folder, tables=tables, inputs=M.Inputs(7))
-        loop.run(cap_s=PERIOD_S)
-        rows = read_rows(self.folder, "processes.csv")
+        loop.run(cap_s=PERIOD_S * 2)
+        rows = [row for row in read_rows(self.folder, "processes.csv") if row["sample"] != "1"]
         self.assertEqual({row["pid"] for row in rows}, {"7", str(PARENT), str(RECORDER)})
 
     def test_until_the_pid_line_no_process_is_left_out_of_the_gains(self):
@@ -381,8 +381,46 @@ class Loop(Folder):
         loop.run(cap_s=PERIOD_S)
         rows = read_rows(self.folder, "processes.csv")
         self.assertEqual([(row["sample"], row["pid"], row["cpu_ms"]) for row in rows],
-                         [("2", "55", "1.0")])
+                         [("1", "55", "0.0"), ("2", "55", "1.0")])
         self.assertEqual(read_rows(self.folder, "threads.csv"), [])
+
+    def test_the_first_sample_lists_every_process_and_later_ones_keep_the_filter(self):
+        idle = [dict(TWO_PROCESSES[1], pid=pid, parent=pid - 1) for pid in (40, 41, 42)]
+        loop = FakeLoop(self.folder, tables=lambda sample: idle)
+        loop.run(cap_s=PERIOD_S * 2)
+        rows = read_rows(self.folder, "processes.csv")
+        self.assertEqual([(row["sample"], row["pid"], row["parent_pid"]) for row in rows],
+                         [("1", "40", "39"), ("1", "41", "40"), ("1", "42", "41")])
+
+    def test_the_before_stamp_is_the_samples_own_wall_stamp(self):
+        # A wall clock that moves 1 s at every call, so a second stamp would show.
+        loop = FakeLoop(self.folder, inputs=M.Inputs(7),
+                        open_reader=lambda pid: lambda address, size: struct.pack("<d", 2.5))
+        loop.inputs.engine = 0x1000
+        calls = []
+
+        def wall():
+            calls.append(1)
+            return float(len(calls))
+
+        seams = M.Seams(loop.read_table, loop.open_reader, wall=wall, monotonic=lambda: loop.time,
+                        sleep=loop.sleep, process_time=lambda: 1.25)
+        files = M.RecorderFiles(self.folder)
+        try:
+            M.record(files, loop.inputs, loop.stop, seams, period_s=PERIOD_S, parent_pid=PARENT,
+                     recorder_pid=RECORDER, cap_s=PERIOD_S)
+        finally:
+            files.close()
+        samples = read_rows(self.folder, "samples.csv")
+        self.assertEqual([(row["wall_s"], row["clock_wall_before_s"], row["clock_wall_after_s"])
+                          for row in samples], [("1.0", "1.0", "2.0"), ("3.0", "3.0", "4.0")])
+
+    def test_a_short_clock_read_leaves_the_column_empty(self):
+        loop = FakeLoop(self.folder, inputs=M.Inputs(7),
+                        open_reader=lambda pid: lambda address, size: b"\0\0\0\0")
+        loop.inputs.engine = 0x1000
+        loop.run(cap_s=PERIOD_S)
+        self.assertEqual({row["clock_s"] for row in read_rows(self.folder, "samples.csv")}, {""})
 
     def test_a_closed_stdin_stops_within_one_period(self):
         seen = {}

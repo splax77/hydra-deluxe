@@ -267,13 +267,16 @@ class RecorderFiles:
 
 
 def write_sample(files: RecorderFiles, row: SampleRow, table: Table,
-                 gains: Dict[int, ProcessGain], listed: FrozenSet[int]) -> None:
+                 gains: Dict[int, ProcessGain], listed: FrozenSet[int],
+                 everyone: bool = False) -> None:
     """Write one sample's rows and flush them together. A process gets a row when
-    it gained something or is in `listed`; a thread gets one when it is not
-    waiting or its context switches moved."""
+    it gained something, is in `listed`, or `everyone` is set (the first sample,
+    so an idle process still has its name and parent pid on file); a thread gets
+    one when it is not waiting or its context switches moved."""
     for pid, gain in gains.items():
         process = table.processes[pid]
-        if pid in listed or gain.cpu_ms or gain.read_bytes or gain.write_bytes or gain.hard_faults:
+        if (everyone or pid in listed or gain.cpu_ms or gain.read_bytes or gain.write_bytes
+                or gain.hard_faults):
             files.processes.writerow((row.sample, pid, process.parent_pid, process.name, gain.cpu_ms,
                                       gain.read_bytes, gain.write_bytes, gain.hard_faults))
         for tid, thread_gain in gain.threads.items():
@@ -339,6 +342,10 @@ def watch_parent(wait: Callable[[], None], stop: Stop) -> None:
     stop.set(STOP_PARENT)
 
 
+# The song clock is one double; decode_double owns its width.
+CLOCK_BYTES = 8
+
+
 class ClockReader:
     """Reads the game's song clock. `open_reader` turns a pid into a reader of
     (address, size) bytes. A failed read is None and the next one tries again."""
@@ -353,9 +360,8 @@ class ClockReader:
             if self._reader is None or self._pid != pid:
                 self._reader = self._open_reader(pid)
                 self._pid = pid
-            data = self._reader(engine + C.OFF_SONG_CLOCK, struct.calcsize("<d"))
-            return struct.unpack("<d", data)[0]
-        except (OSError, struct.error):
+            return P.decode_double(self._reader(engine + C.OFF_SONG_CLOCK, CLOCK_BYTES))
+        except (OSError, ValueError):
             return None
 
 
@@ -393,23 +399,24 @@ def record(files: RecorderFiles, inputs: Inputs, stop: Stop, seams: Seams, *, pe
         clock_s = before = after = None
         if target is not None and engine is not None:
             # First in the sample, so the reading sits next to its wall stamps.
-            read_before = seams.wall()
+            # wall_s is the before stamp: the guard then covers the stamp the
+            # clock's excess is worked from.
             clock_s = clock.read(target, engine)
             if clock_s is not None:
-                before, after = read_before, seams.wall()
+                before, after = wall_s, seams.wall()
         buffer, base = seams.read_table()
         listed = frozenset(pid for pid in (target, parent_pid, recorder_pid) if pid is not None)
         table = parse_table(buffer, base, listed if target is not None else ())
         gains = deltas(previous, table.processes)
         previous = table.processes
         # The row holds its own duration, so the file write itself is not in it.
-        row = SampleRow(number, wall_s, (seams.monotonic() - began) * 1000, len(table.processes),
+        row = SampleRow(number, wall_s, C.s_to_ms(seams.monotonic() - began), len(table.processes),
                         table.thread_count, table.ready_threads, clock_s, before, after,
-                        recorder_pid, period_s * 1000)
+                        recorder_pid, C.s_to_ms(period_s))
         if reason is not None:
             row.stop_reason = reason
             row.process_time_s = seams.process_time()
-        write_sample(files, row, table, gains, listed)
+        write_sample(files, row, table, gains, listed, everyone=number == 1)
         if reason is not None:
             return reason
         # The ticks hold their own pace, and a late sample skips ticks, not bursts.
