@@ -480,8 +480,7 @@ void scan_library(ImGuiTestContext* ctx) {
     ctx->ItemClick("Scan library");
     IM_CHECK(wait_until(ctx, [&] { return h.app->scan_job && h.app->scan_job->snapshot().finished; }, 60));
     ctx->SetRef("//Scanning charts");
-    // State, not the modal's wording: T13 rewrites "chart(s) found" with
-    // real plurals in this same wave.
+    // State, not the modal's wording.
     IM_CHECK(h.app->scan_job->snapshot().charts_found > 0);
     ctx->ItemClick("Continue");
     ctx->Yield(2);

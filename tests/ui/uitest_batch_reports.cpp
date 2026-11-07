@@ -526,7 +526,7 @@ void test_batch_strip_workers(ImGuiTestContext* ctx) {
 }
 
 // The finished strip: the report is ready, Open report opens its window, and
-// there is no Show in folder any more (D103).
+// there is no Show in folder (D103).
 void test_batch_done_strip(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     reset_app(h);
@@ -577,8 +577,8 @@ void test_batch_done_strip(ImGuiTestContext* ctx) {
     IM_CHECK(wait_until(ctx, [&] { return ctx->ItemExists("**/Open path report"); }, 5));
 }
 
-// The report no longer goes through a browser: with Open automatically on,
-// the report's window opens and the strip names no browser problem.
+// The report opens in Hydra's own window, not a browser: with Open
+// automatically on, that window opens and the strip names no browser problem.
 void test_batch_open_failure(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     reset_app(h);

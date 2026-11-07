@@ -49,8 +49,8 @@ void make_sparse(const TempFile& tmp, long long bytes) {
 
 }  // namespace
 
-// ftell returns a 32-bit long on Windows, so a file past 2 GB used to read
-// back as empty.
+// ftell returns a 32-bit long on Windows, so a size taken from it would read
+// a file past 2 GB back as empty.
 TEST_CASE("file_size_bytes reports sizes past 2 GB") {
     TempFile tmp("sparse_test", ".bin");
     make_sparse(tmp, 2'500'000'000LL);
@@ -79,8 +79,8 @@ TEST_CASE("every size helper reports a size past 4 GB, open or not") {
     CloseHandle(h);
 }
 
-// The seek to the end that ImFileGetSize used to do flushed the stream first,
-// so bytes not yet on disk counted. The helper keeps that.
+// The helper flushes the stream first, so bytes not yet on disk count, as a
+// seek to the end would count them.
 TEST_CASE("open_file_size_bytes counts bytes still in a stream's write buffer") {
     TempFile tmp("file_size_buffered", ".bin");
     std::FILE* f = hydra::fopen_utf8(tmp.path, L"wb");
@@ -165,7 +165,7 @@ TEST_CASE("same_folder: one folder in several spellings, and two different folde
     CHECK_FALSE(hydra::same_folder("C:\\Songs", "D:\\Songs"));
 }
 
-// Finding 251's table, the rule the scan's stored rootfolder has always used.
+// Finding 251's table, the rule behind the scan's stored rootfolder.
 TEST_CASE("parent_folder: a file's folder, a trailing slash's parent, and empty for a bare name") {
     CHECK(hydra::parent_folder("C:\\a\\b\\notes.mid") == "C:\\a\\b");
     CHECK(hydra::parent_folder("C:\\a\\b\\") == "C:\\a");
@@ -175,7 +175,7 @@ TEST_CASE("parent_folder: a file's folder, a trailing slash's parent, and empty 
 
 // How a folder and a name join (review of M6-J1a, finding 1): one backslash
 // between them, none added when the folder already ends in either slash, and
-// an empty folder gives the name alone, as the scan's join has always done.
+// an empty folder gives the name alone.
 TEST_CASE("join_folder: no trailing separator, a trailing backslash or slash, an empty folder") {
     CHECK(hydra::join_folder("C:\\a", "song.ini") == "C:\\a\\song.ini");
     CHECK(hydra::join_folder("C:\\a\\", "song.ini") == "C:\\a\\song.ini");

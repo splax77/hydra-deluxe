@@ -225,8 +225,8 @@ private:
     size_t at_ = 0;  // the flag's index; 0 before the first next
 };
 
-// Escape '/' and '#' in a label so it can be used as one path segment of an
-// ImGuiTestRef ("**/" + escape(title)).
+// Escape a label so it can be used as one path segment of an ImGuiTestRef
+// ("**/" + escape(title)).
 std::string escape_ref(const std::string& label);
 
 // The drawn items under the current ref, child windows included, whose label

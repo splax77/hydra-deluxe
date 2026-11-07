@@ -385,9 +385,8 @@ void test_settings_error(ImGuiTestContext* ctx) {
 }
 
 // The library view's own state (the search text, the dmleaderboards filter,
-// the status fade, the folder confirm) belongs to the AppState. When it lived
-// in function statics, the next test's fresh app still showed the last test's
-// search text and filter.
+// the status fade, the folder confirm) belongs to the AppState, so the next
+// test's fresh app never shows the last test's search text and filter.
 void test_library_state_per_app(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     reset_app(h);
@@ -1193,7 +1192,8 @@ void test_library_next_scrolls_just_enough(ImGuiTestContext* ctx) {
 
 // A hydra_ui.ini that only records a sort on Best path (what sorting by it,
 // quitting and restarting leaves) keeps the columns in their order. Dear
-// ImGui (ocornut/imgui#9519) used to move the sorted column to the front.
+// ImGui (ocornut/imgui#9519) moves the sorted column to the front on such a
+// load; keep_table_column_order() is why the columns stay.
 void test_library_column_order(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     reset_app(h);
@@ -1228,11 +1228,12 @@ void test_library_column_order(ImGuiTestContext* ctx) {
 
 // Charter and Folder show with the song panel closed, even when hydra_ui.ini
 // saved them hidden (the column-widths handoff, Finding 1). ImGui reads a
-// table's saved state during its first frame, after the table has said which
-// columns the panel wants, so the saved "hidden" used to win at every start.
+// table's saved state during its first frame, so the library table says which
+// columns the panel wants only once that frame is over. Said any sooner, the
+// saved "hidden" would win at every start.
 // This rebuilds that start: the table is dropped so its next frame is a first
-// one, and the only saved entry hides both columns. Then a saved entry from
-// before the Album column still lands on the columns it named.
+// one, and the only saved entry hides both columns. Then a saved entry with no
+// Album column still lands on the columns it named.
 void test_library_columns_at_start(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     // A first scan draws the table once, for its ID and its columns' IDs.
@@ -1274,7 +1275,7 @@ void test_library_columns_at_start(ImGuiTestContext* ctx) {
     IM_CHECK(table->Columns[hydra::ui::kColumnCharter].IsEnabled);
     IM_CHECK(table->Columns[hydra::ui::kColumnFolder].IsEnabled);
 
-    // A hydra_ui.ini saved before Album existed: five columns, Artist hidden
+    // A hydra_ui.ini with no Album column: five columns, Artist hidden
     // and the sort on Best path, highest first. ImGui keys each saved column
     // by its header label's hash, so the inserted Album takes no saved line:
     // it starts shown, and the old lines land on the columns they named.
@@ -1347,7 +1348,7 @@ std::string write_v220_library(Harness& h) {
     return path;
 }
 
-// The window keeps drawing while the store opens (the DBUP plan, part 1). A
+// The window keeps drawing while the store opens (ADR 0026). A
 // 2.2.0 library file makes the open convert its results to records; an
 // OpenGate holds that open on its worker thread, and the frames still come
 // with the upgrade's screen on them, in the words the user chose for it. Once
@@ -1611,7 +1612,7 @@ void wait_released(const std::atomic<bool>& hold, const std::atomic<bool>* cance
 
 // The updater's seams for one test: Hydra counts as installed, GitHub's reply
 // is `reply`, the download copies sample.bin and serves sample.bin.sig, and
-// the installer "ends early", which is a declined UAC prompt (decision 10).
+// the installer "ends early", which is a declined UAC prompt (D259 call 10).
 // hold_check and hold_download keep the check or the download running until
 // the test clears them. Make it after reset_app, which installs the harness's
 // own fetcher. Its destructor drops the app first, so no job of it calls a
@@ -1681,9 +1682,9 @@ bool item_disabled(ImGuiTestContext* ctx, const char* ref) {
     return (ctx->ItemInfo(ref).ItemFlags & ImGuiItemFlags_Disabled) != 0;
 }
 
-// The version bar across the top of the window, criteria B1 to B7 of the
-// update-check-on-launch plan's T1b. Every check that needs a check to run
-// starts the app again, as a user would.
+// The version bar across the top of the window, criteria B1 to B7 of
+// docs/superpowers/plans/2026-10-23-update-check-on-launch.md (removed; git show 444631e6:docs/superpowers/plans/2026-10-23-update-check-on-launch.md).
+// Every check that needs a check to run starts the app again, as a user would.
 void test_version_bar(ImGuiTestContext* ctx) {
     using Phase = hydra::ui::UpdateState::Phase;
     using Dot = hydra::ui::VersionBarStatus::Dot;
@@ -1795,8 +1796,8 @@ void test_version_bar(ImGuiTestContext* ctx) {
     IM_CHECK(dot_is(Dot::Available));
     notes_show_on_hover();
 
-    // B7 (D3): the resting bar's Update downloads with a Cancel button; the
-    // installer ending early brings decision 10's sentence and the three
+    // B7: the resting bar's Update downloads with a Cancel button; the
+    // installer ending early brings D259 call 10's sentence and the three
     // buttons back.
     seams.hold_download = true;
     ctx->ItemClick("**/Update##update");
@@ -1872,7 +1873,7 @@ void test_version_bar(ImGuiTestContext* ctx) {
     }
     IM_CHECK(wait_until(ctx, [&] { return !jobs_busy(h); }, 120));
 
-    // B7 (A8 on screen): the first start after a version change says so in
+    // B7: the first start after a version change says so in
     // the bar, and OK gives way to the offer the start-up check found.
     seams.reply = update_fixtures::release_reply_at("v9.9.9");
     restart_app(ctx, h, [](Settings& s) {
@@ -1888,7 +1889,7 @@ void test_version_bar(ImGuiTestContext* ctx) {
     IM_CHECK(phase_is(Phase::Offered));
     IM_CHECK(ctx->ItemExists("**/Update##update"));
 
-    // B7 (D5): with nothing newer, OK gives the bar back to Up to date, and
+    // B7: with nothing newer, OK gives the bar back to Up to date, and
     // the next start shows no note.
     seams.reply = update_fixtures::release_reply_at("v" + running);
     restart_app(ctx, h, [](Settings& s) { s.last_run_version = "0.0.1"; });
@@ -1905,8 +1906,8 @@ void test_version_bar(ImGuiTestContext* ctx) {
     IM_CHECK(!on_screen(h, updated));
 }
 
-// Decision 10 of the 2026-10-24 album-search plan: one short line and a
-// "Search tips" link under the search box, and a popup listing every
+// Decision 10 of docs/superpowers/plans/2026-10-24-album-search.md (removed; git show 444631e6:docs/superpowers/plans/2026-10-24-album-search.md):
+// one short line and a "Search tips" link under the search box, and a popup listing every
 // app::search_tips() entry, at the full width and with a song open.
 void test_library_search_tips(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
@@ -1923,7 +1924,7 @@ void test_library_search_tips(ImGuiTestContext* ctx) {
         IM_CHECK(on_screen(h, note));
     };
 
-    // The empty box shows its placeholder; the old hint line is gone.
+    // The empty box shows its placeholder and no hint line.
     IM_CHECK(on_screen(h, "Search song, artist, album, charter, or folder"));
     IM_CHECK(!on_screen(h, "Narrow with"));
     IM_CHECK(on_screen(h, "Type any words, or narrow it down."));
