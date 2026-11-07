@@ -213,7 +213,11 @@ def build_server(helper: Optional[Helper] = None):
     def ch_snapshot() -> str:
         """One fresh read of the game's clock and flags, plus the score after
         the play session's last press and the song clock at that press when a
-        play session has run."""
+        play session has run. While a song is playing it also searches for
+        the engine and prints its flags word, whether bit 0x10 is set, the
+        dynamics threshold and the ghost axis value; the search takes time and
+        the song keeps moving during it. At a menu or paused it says those
+        lines were not read."""
         return capped(h.frida.ch_snapshot())
 
     @server.tool()
