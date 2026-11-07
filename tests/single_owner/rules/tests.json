@@ -78,7 +78,7 @@
       "owner_file": "tests/record_fixtures.h",
       "owner_symbol": "sp_track_start",
       "date": "2026-10-04",
-      "decision": "D36",
+      "decision": "D36 derive-once review finding 3 (2026-10-04)",
       "added_by": "d36-review-fixes",
       "pattern": "branch_edge\\)\\s*\\w+\\s*=\\s*\\w+->branch_edge->dest;",
       "anchor": "->branch_edge->dest;",
@@ -91,8 +91,7 @@
       ],
       "scope": [
         "tests"
-      ],
-      "note": "Decided by: D36 derive-once review finding 3 (2026-10-04)"
+      ]
     },
     {
       "question": "Does every stored path of one record bank in order, in a test?",
@@ -100,7 +99,7 @@
       "owner_file": "tests/bank_check.h",
       "owner_symbol": "check_record_banks",
       "date": "2026-10-04",
-      "decision": "D36",
+      "decision": "D36 derive-once review finding 2 (2026-10-04)",
       "added_by": "d36-review-fixes",
       "pattern": "=\\s*bank_check::phrase_ends\\(\\w+\\);",
       "anchor": "bank_check::phrase_ends(",
@@ -113,8 +112,7 @@
       ],
       "scope": [
         "tests"
-      ],
-      "note": "Decided by: D36 derive-once review finding 2 (2026-10-04)"
+      ]
     },
     {
       "question": "Which ticks does a path activate on, in a test?",
@@ -146,7 +144,7 @@
       "owner_file": "tests/source_tree.h",
       "owner_symbol": "for_each_source_file",
       "date": "2026-10-04",
-      "decision": "this file's own rule (one scan, new rules are rows)",
+      "decision": "this file's own rule (one scan, new rules are rows); step-1 derive-once review finding 12 (2026-10-04); one walker for the docs test too (phase 4 join, 2026-10-04); the walk reads git's file list (scan-tracked-files, 2026-10-28)",
       "added_by": "step-1 derive-once fixes",
       "pattern": "recursive_directory_iterator\\(root\\s*/\\s*sub\\)",
       "anchor": "recursive_directory_iterator(root",
@@ -163,7 +161,7 @@
       "scope": [
         "tests"
       ],
-      "note": "A test that walks a walked folder on disk by hand is a second walker, and it also reads what git ignores (a node_modules under tools/), which the owner's git listing leaves out. Decided by: this file's own rule (one scan, new rules are rows); step-1 derive-once review finding 12 (2026-10-04); one walker for the docs test too (phase 4 join, 2026-10-04); the walk reads git's file list (scan-tracked-files, 2026-10-28)"
+      "note": "A test that walks a walked folder on disk by hand is a second walker, and it also reads what git ignores (a node_modules under tools/), which the owner's git listing leaves out."
     },
     {
       "question": "Which test reads the source tree?",
@@ -171,7 +169,7 @@
       "owner_file": "tests/source_tree.h",
       "owner_symbol": "sourcetree::root",
       "date": "2026-10-04",
-      "decision": "this file's own rule (one scan, new rules are rows)",
+      "decision": "this file's own rule (one scan, new rules are rows); step-1 derive-once review of fb1189b, finding 5 (2026-10-04); one reader for the docs test too (phase 4 join, 2026-10-04)",
       "added_by": "step-1 derive-once fixes round 2",
       "pattern": "\\bHYDRA_SOURCE_DIR\\b",
       "anchor": "HYDRA_SOURCE_DIR",
@@ -187,8 +185,7 @@
       ],
       "scope": [
         "tests"
-      ],
-      "note": "Decided by: this file's own rule (one scan, new rules are rows); step-1 derive-once review of fb1189b, finding 5 (2026-10-04); one reader for the docs test too (phase 4 join, 2026-10-04)"
+      ]
     },
     {
       "question": "Which test reads the test-data folders?",
@@ -196,7 +193,7 @@
       "owner_file": "tests/testdata_dirs.h",
       "owner_symbol": "testdata_root",
       "date": "2026-10-10",
-      "decision": "D296 (the test dedup plan, task 1.8)",
+      "decision": "D296 (the test dedup plan, task 1.8); test dedup plan task 1.8 (2026-10-10)",
       "added_by": "tdn-1-8",
       "pattern": "\\bHYDRA_(INPUT|TESTDATA)_DIR\\b",
       "anchor": "_DIR",
@@ -216,7 +213,7 @@
       "scope": [
         "tests"
       ],
-      "note": "One reader of both folder macros, as source_tree.h is for HYDRA_SOURCE_DIR; each test file used to carry its own #error guard and its own std::string(...) build. Decided by: test dedup plan task 1.8 (2026-10-10)"
+      "note": "One reader of both folder macros, as source_tree.h is for HYDRA_SOURCE_DIR, so a test file calls corpus::root or corpus::testdata_root and types neither macro."
     },
     {
       "question": "Which test names the resource folder for ImGui setup?",
@@ -224,7 +221,7 @@
       "owner_file": "tests/testdata_dirs.h",
       "owner_symbol": "resource_root",
       "date": "2026-10-10",
-      "decision": "D296 (the test dedup plan, task 1.8)",
+      "decision": "D296 (the test dedup plan, task 1.8); test dedup plan task 1.8 (2026-10-10)",
       "added_by": "tdn-1-8-review",
       "pattern": "\"/\\.\\./resource\"",
       "anchor": "/../resource",
@@ -242,7 +239,7 @@
       "scope": [
         "tests"
       ],
-      "note": "Three tests each built the resource folder from testdata_root() on their own. Found by the derive-once review of tdn-1-8. Decided by: test dedup plan task 1.8 (2026-10-10)"
+      "note": "corpus::resource_root builds the resource folder from testdata_root(), so a test that builds it by hand is a second spelling of the path."
     },
     {
       "question": "Which test helper writes MThd/MTrk chunks?",
@@ -250,7 +247,7 @@
       "owner_file": "tests/midi_util.h",
       "owner_symbol": "smf_tracks",
       "date": "2026-10-04",
-      "decision": "audit finding 286",
+      "decision": "audit finding 286; step-2 derive-once review of 11b9d44, finding 3",
       "added_by": "step-2 derive-once fixes",
       "pattern": "'M', 'T', '(h', 'd|r', 'k)'|\"MTrk\"",
       "owner_files": [
@@ -266,7 +263,7 @@
       "scope": [
         "tests"
       ],
-      "note": "Step-2 derive-once review of 11b9d44, finding 3 (audit finding 286). Decided by: audit finding 286; step-2 derive-once review of 11b9d44, finding 3"
+      "note": "Step-2 derive-once review of 11b9d44, finding 3 (audit finding 286)."
     },
     {
       "question": "Which test helper deflates a container stream?",
@@ -274,7 +271,7 @@
       "owner_file": "tests/srb_util.h",
       "owner_symbol": "deflate_raw",
       "date": "2026-10-04",
-      "decision": "audit finding 117",
+      "decision": "audit finding 117; step-2 derive-once review of 11b9d44, finding 4",
       "added_by": "step-2 derive-once fixes",
       "pattern": "tdefl_compress_mem_to_heap",
       "anchor": "tdefl_compress_mem_to_heap",
@@ -291,7 +288,7 @@
       "scope": [
         "tests"
       ],
-      "note": "Step-2 derive-once review of 11b9d44, finding 4 (audit finding 117). Decided by: audit finding 117; step-2 derive-once review of 11b9d44, finding 4"
+      "note": "Step-2 derive-once review of 11b9d44, finding 4 (audit finding 117)."
     },
     {
       "question": "Which test helper writes a .chart [Song] or [SyncTrack] header?",
@@ -299,7 +296,7 @@
       "owner_file": "tests/chart_text.h",
       "owner_symbol": "chart_text",
       "date": "2026-10-04",
-      "decision": "step-2 derive-once review of 11b9d44, finding 6",
+      "decision": "step-2 derive-once review of 11b9d44, finding 6; review of dbeb3a3, finding 1",
       "added_by": "step-2 derive-once fixes round 2",
       "pattern": "\"\\[(Song|SyncTrack)\\]\\\\n",
       "anchor": "]\\n",
@@ -354,7 +351,7 @@
       "scope": [
         "tests"
       ],
-      "note": "Step-2 derive-once review of 11b9d44, finding 6, widened by the review of dbeb3a3, finding 1: any string literal that opens a [Song] or [SyncTrack] section, so a header typed across several source lines, or one that takes its lines as a parameter, is caught on its first line. The test_song_parse.cpp and test_song_input.cpp lines build deliberately malformed charts from raw pieces; the test_app_click.cpp lines write a placeholder file. Decided by: step-2 derive-once review of 11b9d44, finding 6; review of dbeb3a3, finding 1"
+      "note": "Step-2 derive-once review of 11b9d44, finding 6, widened by the review of dbeb3a3, finding 1: any string literal that opens a [Song] or [SyncTrack] section, so a header typed across several source lines, or one that takes its lines as a parameter, is caught on its first line. The test_song_parse.cpp and test_song_input.cpp lines build deliberately malformed charts from raw pieces; the test_app_click.cpp lines write a placeholder file."
     },
     {
       "question": "Which test types a difficulty's kick pitch or other per-difficulty value?",
@@ -416,7 +413,7 @@
       "owner_file": "tests/bank_check.h",
       "owner_symbol": "check_one_step_per_sqin",
       "date": "2026-10-04",
-      "decision": "D34",
+      "decision": "D34; step-1 derive-once review of cc2e1d9, finding 3 (2026-10-04)",
       "added_by": "step-1 derive-once fixes round 4",
       "pattern": "if \\(s\\.kind == (hydra::)?SpEndKind::SqIn\\) (\\+\\+\\w+|\\w+\\.push_back\\(s\\.tick\\));",
       "anchor": "SpEndKind::SqIn) ",
@@ -430,7 +427,7 @@
       "scope": [
         "tests"
       ],
-      "note": "A test that gathers a window's SqIn steps to count or compare them restates D34's check. The check reads the window's SqIn step ticks from sqin_phrase_ticks (src/core/replay.cpp), as check_spent_phrases does, so no line in tests/ matches. Decided by: D34; step-1 derive-once review of cc2e1d9, finding 3 (2026-10-04)"
+      "note": "A test that gathers a window's SqIn steps to count or compare them restates D34's check. The check reads the window's SqIn step ticks from sqin_phrase_ticks (src/core/replay.cpp), as check_spent_phrases does, so no line in tests/ matches."
     },
     {
       "question": "Which paths are tied under any root of this list?",
@@ -466,7 +463,7 @@
       "owner_file": "tests/song_equal.h",
       "owner_symbol": "songs_equal",
       "date": "2026-10-04",
-      "decision": "audit finding 122",
+      "decision": "audit finding 122; container ranged-reads derive-once review of cbd1ee6, finding 1 (2026-10-04)",
       "added_by": "container ranged reads",
       "pattern": "(bool|void)\\s+\\w*(same|equal)\\w*\\(const (hydra::)?Song&|\\.sequence\\[i\\]\\.timecode\\.ticks\\(\\)\\s*==",
       "must_match": [
@@ -485,8 +482,7 @@
       ],
       "scope": [
         "tests"
-      ],
-      "note": "Decided by: audit finding 122; container ranged-reads derive-once review of cbd1ee6, finding 1 (2026-10-04)"
+      ]
     },
     {
       "question": "How do the tests make a D3D11 device?",
@@ -609,7 +605,7 @@
       "owner_file": "tests/sng_util.h",
       "owner_symbol": "make_sng",
       "date": "2026-10-04",
-      "decision": "D53",
+      "decision": "audit finding 117; phase 6 task J1-5 (D53)",
       "added_by": "J1-5",
       "pattern": "\"SNGPKG\"|\\bstd::vector<uint8_t>\\s+make_sng\\s*\\(",
       "owner_files": [
@@ -627,7 +623,7 @@
       "scope": [
         "tests"
       ],
-      "note": "A .sng's magic, or a make_sng definition (the return type right before the name; a call assigns to a variable in between). Decided by: audit finding 117; phase 6 task J1-5 (D53)"
+      "note": "A .sng's magic, or a make_sng definition (the return type right before the name; a call assigns to a variable in between)."
     },
     {
       "question": "What fields does a phrase-end note carry in a hand-built Song?",
@@ -635,7 +631,7 @@
       "owner_file": "tests/record_fixtures.h",
       "owner_symbol": "mark_phrase_end",
       "date": "2026-10-04",
-      "decision": "D53, D54",
+      "decision": "audit finding 300; phase 6 task J1-1 (D53, D54)",
       "added_by": "J1-1",
       "pattern": "\\bflag_sp\\s*=(?!=)",
       "anchor": "flag_sp",
@@ -660,7 +656,7 @@
       "scope": [
         "tests"
       ],
-      "note": "A hand-built phrase end sets the flag and the phrase start together, as the parser's close_sp_phrase does, through one fixture helper. Reads and comparisons of the flag are not assignments. Decided by: audit finding 300; phase 6 task J1-1 (D53, D54)"
+      "note": "A hand-built phrase end sets the flag and the phrase start together, as the parser's close_sp_phrase does, through one fixture helper. Reads and comparisons of the flag are not assignments."
     },
     {
       "question": "Which test helper reads an audio fixture?",
@@ -668,7 +664,7 @@
       "owner_file": "tests/audio_util.h",
       "owner_symbol": "fixture_path",
       "date": "2026-10-04",
-      "decision": "D53",
+      "decision": "audit finding 277, folded under D53 (phase 6 task J1-4)",
       "added_by": "J1-4",
       "pattern": "testdata_root\\(\\) \\+ \"/audio/",
       "anchor": "testdata_root() + \"/audio/",
@@ -690,7 +686,7 @@
       "scope": [
         "tests"
       ],
-      "note": "No closing quote after /audio/, so a build that names the file inside the literal is caught too (review of M6-J1c finding 1). Decided by: audit finding 277, folded under D53 (phase 6 task J1-4)"
+      "note": "No closing quote after /audio/, so a build that names the file inside the literal is caught too (review of M6-J1c finding 1)."
     },
     {
       "question": "Which test helper estimates a tone's frequency?",
@@ -698,7 +694,7 @@
       "owner_file": "tests/audio_util.h",
       "owner_symbol": "estimate_freq_hz",
       "date": "2026-10-04",
-      "decision": "D53",
+      "decision": "audit finding 277, folded under D53 (phase 6 task J1-4)",
       "added_by": "J1-4",
       "pattern": "\\b(double|float|auto)\\s+estimate_freq_hz\\s*\\(",
       "anchor": "estimate_freq_hz",
@@ -718,8 +714,7 @@
       ],
       "scope": [
         "tests"
-      ],
-      "note": "Decided by: audit finding 277, folded under D53 (phase 6 task J1-4)"
+      ]
     },
     {
       "question": "Is this text on screen in a GUI test?",
@@ -781,7 +776,7 @@
       "owner_file": "tests/corpus_util.h",
       "owner_symbol": "charts_with_paths",
       "date": "2026-10-04",
-      "decision": "D53",
+      "decision": "audit finding 277; phase 6 task J2-2 (D53); the return form added by task J4-4",
       "added_by": "J2-2",
       "pattern": "\\.record\\.paths\\.empty\\(\\)\\)\\s*(continue|return)",
       "anchor": ".record.paths.empty())",
@@ -801,7 +796,7 @@
       "scope": [
         "tests"
       ],
-      "note": "Walking the corpus for the first charts that analyze to a path, skipping the rest (continue) or stopping on the first (return). Decided by: audit finding 277; phase 6 task J2-2 (D53); the return form added by task J4-4"
+      "note": "Walking the corpus for the first charts that analyze to a path, skipping the rest (continue) or stopping on the first (return)."
     },
     {
       "question": "What is the contrast of two colours?",
@@ -809,7 +804,7 @@
       "owner_file": "tests/wcag_util.h",
       "owner_symbol": "contrast_ratio",
       "date": "2026-10-04",
-      "decision": "D54",
+      "decision": "audit finding 288; D54 (the WCAG 2.2 threshold, 0.04045); phase 6 task J2-2",
       "added_by": "J2-2",
       "pattern": "0\\.03928|0\\.04045",
       "anchor": "0.0",
@@ -827,7 +822,7 @@
         "src",
         "tests"
       ],
-      "note": "The WCAG relative-luminance formula, typed once with 2.2's threshold. Decided by: audit finding 288; D54 (the WCAG 2.2 threshold, 0.04045); phase 6 task J2-2"
+      "note": "The WCAG relative-luminance formula, typed once with 2.2's threshold."
     },
     {
       "question": "Which test helper builds a small ID3v2 tag?",
@@ -864,7 +859,7 @@
       "owner_file": "tests/ui/uitest_details.cpp",
       "owner_symbol": "test_no_analyze_button",
       "date": "2026-10-07",
-      "decision": "D53, D87",
+      "decision": "audit finding 289; phase 6 task J2-4 (D53); D87 item 6",
       "added_by": "storage-T2",
       "pattern": "(Analyze this song|Re-analyze)\"",
       "anchor": "nalyze",
@@ -884,7 +879,7 @@
         "src",
         "tests"
       ],
-      "note": "The removed Analyze button's two labels typed as text (D87 item 6: a click analyzes). Only the GUI test that checks the button is gone may name them. The closing quote keeps the \"Re-analyze to refresh it.\" sentences out. Decided by: audit finding 289; phase 6 task J2-4 (D53); D87 item 6"
+      "note": "The removed Analyze button's two labels typed as text (D87 item 1: a click analyzes). Only the GUI test that checks the button is gone may name them. The closing quote keeps the \"Re-analyze to refresh it.\" sentences out."
     },
     {
       "question": "How does a test build a per-process scratch path?",
@@ -892,7 +887,7 @@
       "owner_file": "tests/temp_util.h",
       "owner_symbol": "temp_root",
       "date": "2026-10-05",
-      "decision": "D53, D54",
+      "decision": "audit finding 287; phase 6 tasks J4-6 and J4-7 (D53, D54)",
       "added_by": "J4-6",
       "pattern": "\\b(GetTempPath\\w*|GetTempFileName\\w*|temp_directory_path)\\(",
       "anchor": "emp",
@@ -927,7 +922,7 @@
       "scope": [
         "tests"
       ],
-      "note": "Production's own temp folder for the shell (copy_to_short_temp in src/app/report_files.cpp) answers a different question (audit R7.12), so only tests/ is scanned. The temp_util case in test_helpers.cpp reads the temp folder once as its input. Decided by: audit finding 287; phase 6 tasks J4-6 and J4-7 (D53, D54)"
+      "note": "Production's own temp folder for the shell (copy_to_short_temp in src/app/report_files.cpp) answers a different question (audit R7.12), so only tests/ is scanned. The temp_util case in test_helpers.cpp reads the temp folder once as its input."
     },
     {
       "question": "Are two engine results the same answer? (tests)",
@@ -935,7 +930,7 @@
       "owner_file": "tests/song_digest.h",
       "owner_symbol": "record_hash",
       "date": "2026-10-07",
-      "decision": "D53, D54",
+      "decision": "audit finding 301; phase 6 task J4-1 (D53, D54); storage-T5 (R16)",
       "added_by": "storage-T5",
       "pattern": "\\b(record_bytes|flatten_record|encode_path_node)\\s*\\(",
       "must_match": [
@@ -948,7 +943,7 @@
       "scope": [
         "tests"
       ],
-      "note": "hydra.db stores no path details (D87), so no serializer is left to compare records through; a test that brings one back is a second answer to the hasher's question (R16). Decided by: audit finding 301; phase 6 task J4-1 (D53, D54); storage-T5 (R16)"
+      "note": "hydra.db stores a record's paths as plain columns (record_paths), so no serializer is left to compare records through; a test that brings one back is a second answer to the hasher's question (R16)."
     },
     {
       "question": "Which settings do the GUI tests and the Burnout reference results run under? (tests)",
@@ -956,7 +951,7 @@
       "owner_file": "tests/scratch_settings.h",
       "owner_symbol": "scratch_settings",
       "date": "2026-10-05",
-      "decision": "D53, D54",
+      "decision": "audit finding 280; phase 6 task J4-4 (D53, D54)",
       "added_by": "J4-4",
       "pattern": "depth_value\\s*=\\s*2;|\"depth_value=2",
       "anchor": "depth_value",
@@ -978,7 +973,7 @@
         "tests/test_path_list.cpp",
         "tests/test_stars.cpp"
       ],
-      "note": "The GUI harness writes its ini from scratch_settings(), and the Burnout reference cases run through its to_analysis_settings. Other depths in these files are a case's own input. Decided by: audit finding 280; phase 6 task J4-4 (D53, D54)"
+      "note": "The GUI harness writes its ini from scratch_settings(), and the Burnout reference cases run through its to_analysis_settings. Other depths in these files are a case's own input."
     },
     {
       "question": "At what pixel size does ImGui draw text? (tests)",
@@ -986,7 +981,7 @@
       "owner_file": "tests/ui/uitest_harness.cpp",
       "owner_symbol": "drawn_font_size",
       "date": "2026-10-05",
-      "decision": "D53, D54",
+      "decision": "audit finding 295; phase 6 task J4-4 (D53, D54)",
       "added_by": "J4-4",
       "pattern": "FontSizeBase \\*",
       "anchor": "FontSizeBase *",
@@ -1007,7 +1002,7 @@
       "scope": [
         "tests"
       ],
-      "note": "The font size ImGui draws text at, for a GUI test that measures text itself. Decided by: audit finding 295; phase 6 task J4-4 (D53, D54)"
+      "note": "The font size ImGui draws text at, for a GUI test that measures text itself."
     },
     {
       "question": "Which path does the Preview picker's test click?",
@@ -1015,7 +1010,7 @@
       "owner_file": "tests/ui/uitest_preview.cpp",
       "owner_symbol": "pick_preview_path",
       "date": "2026-10-05",
-      "decision": "D53, D54",
+      "decision": "audit finding 352; phase 6 task J4-4 (D53, D54)",
       "added_by": "J4-4",
       "pattern": "pick_preview_path\\(ctx, \\d",
       "anchor": "pick_preview_path(ctx, ",
@@ -1030,7 +1025,7 @@
       "scope": [
         "tests/ui/uitest_preview.cpp"
       ],
-      "note": "pick_preview_path finds the button whose path pointer is the one asked for, so no caller names a place in the list. It lives in an unnamed namespace in uitest_preview.cpp, so only that file can call it. Decided by: audit finding 352; phase 6 task J4-4 (D53, D54)"
+      "note": "pick_preview_path finds the button whose path pointer is the one asked for, so no caller names a place in the list. It lives in an unnamed namespace in uitest_preview.cpp, so only that file can call it."
     },
     {
       "question": "How is one chart's parse digest worked out in a test?",
@@ -1038,7 +1033,7 @@
       "owner_file": "tests/song_digest.h",
       "owner_symbol": "chart_parse_hash",
       "date": "2026-10-06",
-      "decision": "D86",
+      "decision": "the speedups plan, task P1 (D86); derive-once review of P1",
       "added_by": "P1",
       "pattern": "\\b(with_dynamics|failure_hash|song_digest)\\s*\\(",
       "owner_files": [
@@ -1056,7 +1051,7 @@
       "scope": [
         "tests"
       ],
-      "note": "A test that hashes a chart's parse calls chart_parse_hash, so the tests cannot drift from each other when the digest gains a part. tools/bench.cpp keeps its own loop to time the parts apart, and is outside this row's scope. Decided by: the speedups plan, task P1 (D86); derive-once review of P1"
+      "note": "A test that hashes a chart's parse calls chart_parse_hash, so the tests cannot drift from each other when the digest gains a part. tools/bench.cpp keeps its own loop to time the parts apart, and is outside this row's scope."
     },
     {
       "question": "How is a made-up replay window drawn from a song's chords?",
@@ -1064,7 +1059,7 @@
       "owner_file": "tests/replay_windows.h",
       "owner_symbol": "window_over",
       "date": "2026-10-10",
-      "decision": "derive-once review of ct-w2, finding 1 (2026-10-10)",
+      "decision": "derive-once review of ct-w2, finding 1 (2026-10-10); plan 2026-10-10-ci-test-tooling task 7 (removed; git show ec91f8d1:docs/superpowers/plans/2026-10-10-ci-test-tooling.md)",
       "added_by": "ct-w2-review",
       "pattern": "\\b\\w+\\.(act_tick|deact_tick|sqout_tick)\\s*=\\s*[^;]*(sequence\\[|tick_of\\()",
       "anchor": "t_tick",
@@ -1097,7 +1092,7 @@
         "tests",
         "tools"
       ],
-      "note": "A made-up window's ticks read off a song's chords. Windows built from literal ticks are not flagged; only ones read off a sequence. Decided by: derive-once review of ct-w2, finding 1 (2026-10-10); plan 2026-10-10-ci-test-tooling task 7 (removed; git show ec91f8d1:docs/superpowers/plans/2026-10-10-ci-test-tooling.md)"
+      "note": "A made-up window's ticks read off a song's chords. Windows built from literal ticks are not flagged; only ones read off a sequence."
     },
     {
       "question": "How many GUI test processes does the CI runner start at once?",
@@ -1105,7 +1100,7 @@
       "owner_file": "tests/ui/uitest_main.cpp",
       "owner_symbol": "kDefaultJobs",
       "date": "2026-10-10",
-      "decision": "D294, the CI and test tooling plan's decision 3 (2026-10-10)",
+      "decision": "D294, the CI and test tooling plan's decision 3 (2026-10-10); CI and test tooling plan, decision 3 (2026-10-10); derive-once review of ct-t4",
       "added_by": "ct-t4-review",
       "pattern": "hydra_uitest\\S*\\s+.*--jobs\\b",
       "anchor": "hydra_uitest",
@@ -1120,7 +1115,7 @@
       "scope": [
         ".github/workflows/ci.yml"
       ],
-      "note": "A CI step that gives the GUI runner its own --jobs count. The count is kDefaultJobs's, so a step runs plain --all. The walk reads no .yml file, so the case that checks the single files outside it reads ci.yml (the way it reads installer/hydra.iss). Decided by: CI and test tooling plan, decision 3 (2026-10-10); derive-once review of ct-t4"
+      "note": "A CI step that gives the GUI runner its own --jobs count. The count is kDefaultJobs's, so a step runs plain --all. The walk reads no .yml file, so the case that checks the single files outside it reads ci.yml (the way it reads installer/hydra.iss)."
     },
     {
       "question": "Which fuzz targets exist?",
@@ -1194,7 +1189,7 @@
       "scope": [
         "tests"
       ],
-      "note": "The scan's own folder (tests/single_owner/) is outside the walk, so scan.cpp calls the owner without this row checking it. Added by the derive-once review of so-t1, which folded three copies of the mapping (scan.cpp twice, test_docs_match_code.cpp once)."
+      "note": "The scan's own folder (tests/single_owner/) is outside the walk, so scan.cpp reaches the owner through lexer_language in engine.cpp without this row checking it."
     },
     {
       "question": "How many records does a test database hold?",

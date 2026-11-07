@@ -6,7 +6,7 @@
       "owner_file": "src/store/record_store.cpp",
       "owner_symbol": "in_transaction",
       "date": "2026-10-11",
-      "decision": "concept audit M28 (code-only)",
+      "decision": "concept audit M28 (code-only, 2026-10-11)",
       "added_by": "concept-G2",
       "pattern": "exec\\(\"BEGIN\"\\)",
       "owner_lines": [
@@ -24,7 +24,7 @@
         "    in_transaction([&] { write_row(row); });",
         "        ctl(\"BEGIN\");"
       ],
-      "note": "M28 found the begin, work, commit, roll-back-and-rethrow frame written six times. All of them now pass their bodies to in_transaction. The save paths (save_analysis, begin_save_group) open theirs through ctl with savepoints and save groups, another shape, and are not this row's question. Decided by: concept audit M28 (code-only, 2026-10-11)"
+      "note": "Every begin, work, commit, roll-back-and-rethrow frame passes its body to in_transaction. The save paths (in_save_frame, begin_save_group) open theirs through ctl with savepoints and save groups, another shape, and are not this row's question."
     },
     {
       "question": "Which columns does a scanned chart's library row read and write?",
@@ -32,7 +32,7 @@
       "owner_file": "src/store/record_store.cpp",
       "owner_symbol": "kLibraryColumnList",
       "date": "2026-10-11",
-      "decision": "concept audit M21 (code-only)",
+      "decision": "concept audit M21 (code-only, 2026-10-11)",
       "added_by": "concept-G2b",
       "pattern": " FROM charts\\b|INTO charts\\b",
       "anchor": "charts",
@@ -51,7 +51,7 @@
       "scope": [
         "src"
       ],
-      "note": "M21 found the charts table's columns spelled in a cache SELECT, an entry SELECT and the INSERT, each in its own order. The store now builds all three from one list, so SQL that reads or writes the table anywhere outside the store is a second spelling. The Python tools under tools/ open their own databases and are out of scope. Decided by: concept audit M21 (code-only, 2026-10-11)"
+      "note": "M21 found the charts table's columns spelled in a cache SELECT, an entry SELECT and the INSERT, each in its own order. The store now builds all three from one list, so SQL that reads or writes the table anywhere outside the store is a second spelling. The Python tools under tools/ open their own databases and are out of scope."
     }
   ]
 }

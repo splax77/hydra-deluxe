@@ -29,7 +29,7 @@
       "scope": [
         "src"
       ],
-      "note": "A hand add to a running path's SP category, which must move with its running score or emit_path's running-total check throws. advance's per-edge add of an edge's spscore is left out: it is one of the six categories that score_total sums (rules/search/concept-F7.json). Decided by: D115, task B1-2"
+      "note": "A hand add to a running path's SP category, which must move with its running score or emit_path's running-total check throws. advance's per-edge add of an edge's spscore is left out: it is one of the six categories that score_total sums (rules/search/concept-F7.json)."
     }
   ]
 }

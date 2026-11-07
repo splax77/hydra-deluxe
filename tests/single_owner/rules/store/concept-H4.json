@@ -30,7 +30,7 @@
         "if (a.notespath == b.notespath) continue;",
         "items = library_matches();"
       ],
-      "note": "A scan row and a library entry are one type (app::ScanItem is store::ChartLibraryEntry), so nothing copies a path or root folder between them field by field. The scan sets the two fields, the store reads them back from its columns, and the library list moves them into its rows. A field-by-field copy anywhere else is a second conversion coming back. Decided by: concept audit M21."
+      "note": "A scan row and a library entry are one type (app::ScanItem is store::ChartLibraryEntry), so nothing copies a path or root folder between them field by field. The scan sets the two fields, the store reads them back from its columns, and the library list moves them into its rows. A field-by-field copy anywhere else is a second conversion coming back."
     }
   ]
 }

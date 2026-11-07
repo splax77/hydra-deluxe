@@ -29,7 +29,7 @@
           "why": "profile_id_for, the owner"
         }
       ],
-      "note": "A record is filed under the profile row whose mode, cap, lens, stamp and rules all match. A second lookup of that row by its key could match a different set of columns and file a record twice. The write purge's unreadable profiles (a WHERE with a NOT) and the emptied profiles (a NOT EXISTS) are other questions, so those are left alone; any other WHERE on the profiles table is flagged. Decided by: D115 (spec section 2)"
+      "note": "A record is filed under the profile row profile_id_for finds or files. A second lookup of that row by its key could match a different set of columns and file a record twice. The write purge's unreadable profiles (a WHERE with a NOT) and the emptied profiles (a NOT EXISTS) are other questions, so those are left alone; any other WHERE on the profiles table is flagged."
     },
     {
       "question": "Which stored rows belong to a chart no library row lists?",
@@ -37,7 +37,7 @@
       "owner_file": "src/store/record_store.cpp",
       "owner_symbol": "not_in_library",
       "date": "2026-10-07",
-      "decision": "D87",
+      "decision": "D87 items 3 and 4 (task storage-T1 review finding 1)",
       "added_by": "storage-T1",
       "pattern": "charts\\.md5 = ",
       "anchor": "charts.md5 = ",
@@ -56,7 +56,7 @@
           "why": "not_in_library, the owner"
         }
       ],
-      "note": "The scan's purge and reidentify_chart both ask this of the stored records (purge_charts_not_in_library); a second SQL spelling could keep rows the other drops. Moved here from store.json when the records replaced the results table (D115 A1-1). Decided by: D87 items 3 and 4 (task storage-T1 review finding 1)"
+      "note": "The scan's purge and reidentify_chart both ask this of the stored records (purge_charts_not_in_library); a second SQL spelling could keep rows the other drops."
     },
     {
       "question": "How does an analysis become a record and its path rows?",
@@ -105,7 +105,7 @@
           "why": "The benchmark prints how many paths an analysis found; it saves no record through this walk."
         }
       ],
-      "note": "Which paths a record keeps, in what rank, and what each path row says: a second walk of the analysis could rank or count them differently from the saved record. The path report reads the stored rows since D115 A2-2, so it walks no analysis. Decided by: D115 (spec section 5)"
+      "note": "Which paths a record keeps, in what rank, and what each path row says: a second walk of the analysis could rank or count them differently from the saved record. The path report reads the stored rows, so it walks no analysis."
     },
     {
       "question": "Which record does a save replace, and which rows does it purge?",
@@ -142,7 +142,7 @@
           "why": "set_hardest fills in one empty figure on a path row; it replaces and purges no record, so it is not this question"
         }
       ],
-      "note": "A save replaces the chart's record under the same profile and purges the chart's records whose stamp this build cannot read; a second delete of a chart's records could take a readable record made under other rules (D51 call 8) or leave an unreadable one behind. Every delete of records goes through delete_records_where, so a hand-written DELETE on either table is flagged. Decided by: D115 (spec section 5)"
+      "note": "A save replaces the chart's record under the same profile and purges the chart's records whose stamp this build cannot read; a second delete of a chart's records could take a readable record made under other rules (D51 call 8) or leave an unreadable one behind. Every delete of records goes through delete_records_where, so a hand-written DELETE on either table is flagged."
     }
   ]
 }
