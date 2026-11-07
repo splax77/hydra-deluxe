@@ -1,4 +1,4 @@
-// The docs say what the code does. Eight checks over the decision records,
+// The docs say what the code does. Nine checks over the decision records,
 // the guides and the plans:
 //
 // 1. Every backticked code name in them is still a name the code uses (see
@@ -34,6 +34,7 @@
 // 8. Every plan that counts (counts_for_premise_map) holds a Premise map, and
 //    a call list under each live step, in the shape docs/agents/premise-map.md
 //    owns.
+// 9. The README's Stale sentence reads word for word as D310 item 2 ruled.
 //
 // It finds the repo and walks the code through tests/source_tree.h, as the
 // scans in tests/single_owner/ do.
@@ -1998,6 +1999,22 @@ TEST_CASE("docs match code: every picture the public pages link is a shot the ca
 
     INFO(report(problems));
     CHECK(problems.empty());
+}
+
+// ---- check 9: the README's Stale sentence ------------------------------------
+
+// The full stop is part of the match, so a version list added after "again"
+// fails too.
+TEST_CASE("docs match code: the README's Stale sentence reads as D310 item 2 ruled") {
+    const std::string sentence =
+        "A release that changes how charts are analyzed marks them `Stale` until each song is "
+        "analyzed again.";
+    const std::vector<Doc> readme = load_docs({"README.md"});
+    const std::vector<std::string>& lines = readme.front().lines;
+    INFO("README.md should hold: " << sentence);
+    CHECK(std::any_of(lines.begin(), lines.end(), [&](const std::string& line) {
+        return line.find(sentence) != std::string::npos;
+    }));
 }
 
 namespace {
