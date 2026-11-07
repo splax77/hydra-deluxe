@@ -941,6 +941,11 @@ TEST_CASE("a report on results with no chart library says the library is missing
     CHECK(page.paths.empty());
     CHECK(page.empty_reason == report::EmptyReason::NoLibrary);
     CHECK(page.why_empty == std::string(report::kNoChartLibrary));
+    // The ruled words, as a literal, so a change to the constant fails here
+    // (D305 item 5).
+    CHECK(page.why_empty ==
+          "This database has no chart library. Run hydra_batch --whole-library, or scan in Hydra, "
+          "to build one.");
 }
 
 TEST_CASE("tier_for over a built table matches the one-argument form") {
