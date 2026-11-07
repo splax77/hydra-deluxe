@@ -142,6 +142,12 @@ inline float button_slot_width(const char* widest_label) {
     return ImGui::CalcTextSize(widest_label, nullptr, true).x +
            ImGui::GetStyle().FramePadding.x * 2.0f;
 }
+// The width ImGui::Checkbox draws for `label`: the box (a frame-height
+// square), the inner gap, then the label's text up to any "##".
+inline float checkbox_slot_width(const char* label) {
+    return ImGui::GetFrameHeight() + ImGui::GetStyle().ItemInnerSpacing.x +
+           ImGui::CalcTextSize(label, nullptr, true).x;
+}
 inline bool button_in_slot(const char* label, float slot_w) {
     return ImGui::Button(label, ImVec2(slot_w, 0.0f));
 }

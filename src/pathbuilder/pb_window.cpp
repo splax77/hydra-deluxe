@@ -514,9 +514,7 @@ void PbApp::draw_head(const OpenChart& chart) {
     }
     ImGui::EndDisabled();
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", kFinishTooltip);
-    ui::flow_next(ImGui::GetFrameHeight() + style.ItemInnerSpacing.x +
-                      ImGui::CalcTextSize(kShowBestPathLabel, nullptr, true).x,
-                  rem(kBestBoxGapRem));
+    ui::flow_next(ui::checkbox_slot_width(kShowBestPathLabel), rem(kBestBoxGapRem));
     ImGui::Checkbox(kShowBestPathLabel, &show_best_);
 }
 
