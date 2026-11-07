@@ -1,7 +1,7 @@
 // The merge-test picker (tools/precheck/test_pick.h) on fixture repos: one
 // level of callers with the selector values, deleted names, helper headers,
-// changed test files, the three limits and the shared-code paths. The cases
-// are Task 3 (a) to (i) of
+// changed test files, the three limits and the shared-code paths. Cases (j)
+// and (k) follow the user's later rulings (D299). Cases (a) to (i) are Task 3 of
 // docs/superpowers/plans/2026-10-25-merge-test-picker.md (removed; git show 444631e6:docs/superpowers/plans/2026-10-25-merge-test-picker.md).
 #include "doctest.h"
 
@@ -459,8 +459,8 @@ TEST_CASE("precheck pick (i): files under tests/single_owner/ are never picked")
     CHECK(picked_files(p) == std::vector<std::string>{"tests/test_k.cpp"});
 }
 
-// Step 5 under the user's ruling (D299, last paragraph): a
-// test file counts for a name only if it reaches the header declaring it.
+// Step 5 under the user's later ruling on it (D299): a test file counts for a
+// name only if it reaches the header declaring it.
 namespace {
 
 const std::string kOneCpp = "#include \"one.h\"\nvoid run() {\n    int x = 1;\n}\n";

@@ -1,7 +1,7 @@
 // Tests for app/preview_view's scene: the note-highway view-model the Preview
 // tab renders. A hand-built song pins the note/lane/attribute mapping and the
 // shaded spans exactly; the corpus cases confirm the SP-phrase-start the parser
-// now keeps, that an analyzed chart's overlay lines up with its path, and that
+// keeps, that an analyzed chart's overlay lines up with its path, and that
 // the base plus the overlay equals the whole scene. The SP meter has its own
 // file (test_sp_meter_curve.cpp), and so do the overlay boxes
 // (test_preview_boxes.cpp).
@@ -288,7 +288,7 @@ TEST_CASE("build_preview_scene: a fill an activation took stays taken when a lat
 
 TEST_CASE("build_preview_scene: under the 1.0 rule the offered fill is the one the engine charged") {
     // Finding 52. Fill B's 1.0 deadline falls before fill A's, so B never
-    // spawned and A was shown and passed over. The nearest-n guess lit B.
+    // spawned and A was shown and passed over.
     Song song = test::make_ch10_fill_song();
     ScoreGraph graph(song, 4, FillDeadlineRule::Ch10);
     EngineOptions opts;
@@ -453,7 +453,7 @@ TEST_CASE("build_preview_scene: no path means no overlay") {
 
 TEST_CASE("parser keeps the SP-phrase start on the flagged note") {
     // Find the first corpus chart with an SP phrase and confirm every note the
-    // parser flags as an SP-phrase end now also carries its start tick.
+    // parser flags as an SP-phrase end also carries its start tick.
     bool checked_a_chart = false;
     for (const std::string& path : corpus::chart_paths()) {
         Song song = load_songpath(path, ChartReading{});
@@ -658,10 +658,7 @@ std::string scene_difference(const PreviewScene& a, const PreviewScene& b) {
     return "";
 }
 
-// build_preview_scene against base + overlay for one song and path, and the
-// overlay laid over a scene built for `other` (another path, or none): both
-// must equal the whole scene, member by member.
-// The same two checks with the scenes already built: `whole` is
+// The two checks of check_split with the scenes already built: `whole` is
 // build_preview_scene for `path`, `base` is the song's base and `other_scene`
 // is the whole scene for the other path. The overlays go over copies.
 void check_split_over(const Song& song, const Path* path, int sp_cap, const core::Rules& rules,
@@ -677,6 +674,9 @@ void check_split_over(const Song& song, const Path* path, int sp_cap, const core
     CHECK(relaid.empty());
 }
 
+// build_preview_scene against base + overlay for one song and path, and the
+// overlay laid over a scene built for `other` (another path, or none): both
+// must equal the whole scene, member by member.
 void check_split(const Song& song, const Path* path, int sp_cap, const core::Rules& rules,
                  const Path* other, const std::string& what) {
     check_split_over(song, path, sp_cap, rules, build_preview_scene(song, path, sp_cap, rules),

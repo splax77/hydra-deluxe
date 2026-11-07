@@ -31,8 +31,8 @@ using precheck_fixture::commit_texts;
 
 namespace {
 
-// main holds one line in each file the feature edits; the feature adds the
-// lines under test.
+// main holds one file with one line; the feature adds the lines under test,
+// to that file and to new ones.
 struct Fixture {
     std::string dir = testtemp::temp_dir("precheck_check24");
     Fixture() {

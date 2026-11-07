@@ -373,7 +373,7 @@ TEST_CASE("the Preview renderer loads its assets from a non-ASCII folder (WARP)"
     fs::copy(fs::u8path(kAssets), hydra::os_path(dir),
              fs::copy_options::recursive | fs::copy_options::overwrite_existing);
 
-    // Before the fix this threw "PreviewRenderer: missing ...\3d-config.json".
+    // An unread config throws "PreviewRenderer: missing ...\3d-config.json".
     PreviewRenderer r(dev.Get(), ctx.Get(), dir);
     CHECK(r.config().hydra.msaa == 4);
     testtemp::remove_dir(dir);

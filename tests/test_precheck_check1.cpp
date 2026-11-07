@@ -79,8 +79,8 @@ struct Fixture {
         // A member function with that body: not a helper.
         write_fixture_file(dir, "tests/members.cpp",
                    "#include <vector>\n\nstruct Totals {\n" + summing("total_of", "ys", "t", "y") + "};\n");
-        // A namespace whose head is longer than the look-back: read as a
-        // class, so its function is not a helper.
+        // A namespace whose head is longer than the look-back: not seen as a
+        // namespace, so its function is not a helper.
         write_fixture_file(dir, "tests/far_ns.cpp",
                    "#include <vector>\n\nnamespace far\n" + long_comment() + "{\n" +
                        summing("far_sum", "zs", "s", "z") + "}\n");
