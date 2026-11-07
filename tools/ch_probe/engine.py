@@ -50,7 +50,7 @@ def pressed_input_hit(score_before: int, score_after: int) -> bool:
 
 
 # One read covers every watched field, so a sample is a consistent snapshot.
-# The hit-time candidate at +0x2e0 is the furthest field out.
+# The double at +0x2e0 is the furthest field out.
 SNAPSHOT_SIZE = C.OFF_HIT_TIME + 8
 
 # One read covers the clock object's fields, so the three belong together. The
@@ -220,16 +220,17 @@ class EngineModel:
         return self._process.read_double(self._addr(C.OFF_TOTAL_WINDOW))
 
     def back_window(self) -> float:
-        """Back-window constant (seconds): the max per-side, ~85 in normal mode."""
+        """Back-window constant (seconds): the max per-side, ~0.085 in normal mode."""
         return self._process.read_double(self._addr(C.OFF_BACK_WINDOW))
 
     def front_window(self) -> float:
-        """Front-window constant (seconds): the min per-side, ~37.5 in normal mode."""
+        """Front-window constant (seconds): the min per-side, ~0.0375 in normal mode."""
         return self._process.read_double(self._addr(C.OFF_FRONT_WINDOW))
 
     def hit_time(self) -> float:
-        """Song time of the last hit, in seconds, from +0x2e0. The code reading
-        says the game copies the clock here on a hit; not yet confirmed live."""
+        """The double at +0x2e0, in seconds. It is not a hit time, whatever this
+        method's name says: docs/clone-hero/03-timing.md, TM-14, says what the
+        engine writes there and when."""
         return self._process.read_double(self._addr(C.OFF_HIT_TIME))
 
     def score(self) -> int:

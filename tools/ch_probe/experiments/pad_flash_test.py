@@ -1,8 +1,7 @@
 """Game-side reception test: which drum keys does Clone Hero actually see?
 
-The Notepad test proved SendInput delivers all eight keys to the OS. But in a
-real run only A, S, L score; J, K, U, Y, T never do. So the question now is
-narrow: does the GAME'S input layer receive J/K/U/Y/T at all?
+key_delivery_test.py asks whether SendInput delivers all eight keys to the OS.
+This test asks the next question: does the GAME'S input layer receive each key?
 
 This fires each drum key one at a time, slowly, with a long visible hold, into
 the focused Clone Hero window. On the gameplay highway, pressing a lane's key

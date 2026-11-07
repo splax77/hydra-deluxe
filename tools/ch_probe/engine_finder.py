@@ -6,9 +6,7 @@ by side at +0x30 and +0x38. So we search the game's writable memory for those
 engine objects on the heap after a restart, frozen at their last clock, so the
 live one is the only candidate whose song clock moves between two reads.
 
-This is the route play_chart.py proved at the game on 2026-09-25. The memory
-scan moved here from experiments/find_engine.py; the "whose clock moves" check
-from play_chart.py and experiments/live.py. Behaviour is unchanged.
+This is the route play_chart.py proved at the game.
 """
 
 from __future__ import annotations
@@ -148,6 +146,8 @@ def scan_for_engine(proc, back_bytes: bytes, front_bytes: bytes):
 # --- which window constants to look for ---------------------------------------
 
 def _raw(proc, rva: int) -> bytes:
+    """The 8 bytes at one .rdata constant. Nothing here runs verify_targets:
+    that guard sits in each caller, before it asks for a pattern."""
     return proc.read(proc.resolve(rva), 8)
 
 

@@ -2,15 +2,19 @@
 
 ## What this is
 
-We took Clone Hero's drum hit window apart with Ghidra. Static analysis
-answered everything except one question: does the window top out at 85 ms, or
-does it rise to about 89.5 ms at moderate note spacings? The code that might
-clamp the number is reached through a function pointer the decompiler can't
-follow. So the only way to know is to watch the running game.
+We took Clone Hero's drum hit window apart with Ghidra. That left one question:
+does the window top out at 85 ms, or does it rise to about 89.5 ms at moderate
+note spacings? The code that might clamp the number is reached through a
+function pointer the decompiler can't follow, so this tool was built to watch
+the running game.
 
-This tool does that, in Python, off to the side of Hydra's C++ build. The full
-design and every reverse-engineering fact is in [`SPEC.md`](SPEC.md) beside
-this page.
+The question is answered now, and neither number was right. D28 in
+`docs/audit/2026-10-03-fix-decisions.md` records that the game's code and
+`poll_windows.csv` settled it. `docs/clone-hero/03-timing.md` gives the rule:
+TM-19 to TM-21 say where the clamp sits, and TM-22 gives the range a side.
+
+The tool is Python, off to the side of Hydra's C++ build. The full design and
+every reverse-engineering fact is in [`SPEC.md`](SPEC.md) beside this page.
 
 ## The one idea it rests on
 

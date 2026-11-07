@@ -1,8 +1,9 @@
 """Shared live-game pieces for the hit-window experiments.
 
-watch_window.py, walk_edges.py and active_probe.py read the same engine fields,
-load a probe song's manifest, and ask the same small questions while a song
-plays. They share this file so the runners agree on the answers:
+watch_window.py, walk_edges.py and active_probe.py read the same engine fields
+and ask the same small questions while a song plays. They share this file so
+the runners agree on the answers. watch_window.py and walk_edges.py also load a
+probe song's manifest here (load_manifest). The questions:
 
   * when the song clock has reached a target time (wait_until),
   * whether the song has stopped: clock frozen or jumped back (StoppedCheck),

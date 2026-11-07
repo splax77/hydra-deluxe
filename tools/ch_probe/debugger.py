@@ -587,8 +587,9 @@ class Debugger:
 
         LIVE-ONLY. The loop waits a short time for each event so it can keep
         re-checking the `until` predicate even when nothing is happening. Each
-        breakpoint hit runs its callback, then the byte is restored, stepped
-        over, and re-armed (see _handle_exception).
+        breakpoint hit restores the byte and sets the trap flag, then runs its
+        callback; the single-step that follows re-arms it (see
+        _on_our_breakpoint and _handle_exception).
         """
         if self._win32 is None:
             raise RuntimeError("attach before running the debug loop")
@@ -651,9 +652,9 @@ class Debugger:
     def _on_our_breakpoint(self, addr: int, tid: int) -> None:
         """Handle a hit on one of our breakpoints. LIVE-ONLY.
 
-        Restore the real byte, rewind rip to the breakpoint, run the callback,
-        then set the trap flag so the next event is a single-step where we
-        re-arm the 0xCC.
+        Rewind rip to the breakpoint, restore the real byte, set the trap flag
+        so the next event is a single-step where we re-arm the 0xCC, then run
+        the callback. The callback sees the rewound rip.
         """
         handle = self._win32.k32.OpenThread(THREAD_ALL_ACCESS, False, tid)
         if not handle:

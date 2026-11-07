@@ -56,24 +56,24 @@ RVA_HIT_CHECK = 0x100DAB0
 
 # The two drum-engine methods the Frida trace can hook. Source:
 # docs/research/2026-10-28-clone-hero-mcp-feasibility.md, "Test 3: the hit
-# method". Each ran exactly once per note in both bot runs, where every note
-# was hit. Only the score method below has since been traced on a run with
-# misses; what a missed note does to the dynamics method is not known.
+# method". Each runs once per note on a run where every note is hit
+# (docs/clone-hero/07-internals.md, IN-17). What a missed note does to the
+# dynamics method is not known (IN-20).
 # A third method that ran once per note sits on the engine's generic base
 # class and has no constant here: the dump gives that class's methods no RVA,
 # so the tracer cannot find it by name (docs/clone-hero/07-internals.md,
 # IN-17, names all three).
 
 # Adds a hit's points to the score; its arguments are a note and the base
-# points. It fires once per hit note, and not for a missed note or an overhit
-# (docs/clone-hero/07-internals.md, IN-19, holds the live run, 2026-10-29).
+# points. Whether it fires only for hit notes is Unknown
+# (docs/clone-hero/07-internals.md, IN-19, holds the one run's record).
 RVA_NOTE_SCORE_ADD = 0x20DEEC0
 
 # Handles a hit's accent and ghost flags.
 RVA_NOTE_DYNAMICS = 0x20DE770
 
-# The methods ch_trace_start hooks when it is given none: one call per hit note
-# (RVA_NOTE_SCORE_ADD above; docs/clone-hero/07-internals.md, IN-19).
+# The methods ch_trace_start always hooks: RVA_NOTE_SCORE_ADD above. Its
+# with_dynamics option adds RVA_NOTE_DYNAMICS.
 PER_NOTE_DEFAULT_RVAS = (RVA_NOTE_SCORE_ADD,)
 
 
@@ -105,38 +105,38 @@ OFF_SCORE = 0x94
 # the engine writes here and when.
 OFF_HIT_TIME = 0x2E0
 
-# Star Power fields. From the disassembly, docs/audit/ch-evidence.md answer
-# 37; not yet confirmed live. Answer 37 gives no widths. The SP amount and
-# maximum are 64-bit (docs/audit/ch-evidence.md, "Things that surprised me"
-# item 5). The Il2Cpp dump note
+# Star Power fields, from the disassembly.
+# docs/clone-hero/05-star-power.md gives what each one holds and its
+# evidence, under the rule named at each field below. The SP amount and
+# maximum are 64-bit (SP-09). The Il2Cpp dump note
 # (experiments/results/overlay-spike/il2cpp-fields.md) says the active flag
-# and the overflow flag are 1-byte bools and the multiplier a 4-byte int.
+# and the +0x130 byte are 1-byte bools and the multiplier a 4-byte int.
 # engine.decode_snapshot still reads several widths of each, so the live log
 # can confirm that evidence.
 
-# SP amount, a whole number of chart ticks. From the disassembly,
-# docs/audit/ch-evidence.md answer 37; not yet confirmed live.
+# SP amount, a whole number of chart ticks. From the disassembly;
+# docs/clone-hero/05-star-power.md, SP-09.
 OFF_SP_AMOUNT = 0x68
 
 # SP maximum (a full meter), in the same unit as the amount. From the
-# disassembly, docs/audit/ch-evidence.md answer 37; not yet confirmed live.
+# disassembly; docs/clone-hero/05-star-power.md, SP-09 and SP-11.
 OFF_SP_MAX = 0x1B0
 
-# SP-active flag, set by activation. From the disassembly,
-# docs/audit/ch-evidence.md answer 37; not yet confirmed live.
+# SP-active flag, set by activation. From the disassembly;
+# docs/clone-hero/05-star-power.md, SP-19.
 OFF_SP_ACTIVE = 0x42
 
-# Score multiplier, doubled by activation. From the disassembly,
-# docs/audit/ch-evidence.md answer 37; not yet confirmed live.
+# Score multiplier, doubled by activation. From the disassembly;
+# docs/clone-hero/05-star-power.md, SP-19.
 OFF_SP_MULTIPLIER = 0x48
 
 # SP end time (double, song seconds), set by activation. From the
-# disassembly, docs/audit/ch-evidence.md answer 37; not yet confirmed live.
+# disassembly; docs/clone-hero/05-star-power.md, SP-19.
 OFF_SP_END_TIME = 0x120
 
-# Overflow flag, set when a phrase overfills the meter and the amount is
-# clamped. From the disassembly, docs/audit/ch-evidence.md answer 37; not yet
-# confirmed live.
+# A byte. The name is the tools' first reading, and the reading is wrong: it
+# is not an overflow flag. docs/clone-hero/05-star-power.md, SP-13, says what
+# it means and when the engine sets it.
 OFF_SP_OVERFLOW = 0x130
 
 # Flags dword. Bit 0x1000 is PrecisionMode (clear = normal).
@@ -157,9 +157,9 @@ OFF_NOTE_COUNT = 0x8C
 # is VA - GHIDRA_IMAGE_BASE so it can be added straight to module_base.
 
 # Per-side window constants.  Stored as SECONDS in the binary (not ms).
-# Labels were swapped in the original Ghidra analysis; corrected 2026-09-25
-# after live verification: 0x31406C8 holds 0.0375 s (front) and
-# 0x31406E0 holds 0.085 s (back).
+# A live read confirms the normal pair:
+#   0x31406C8 holds 0.0375 s (front)
+#   0x31406E0 holds 0.085 s (back)
 RVA_CONST_NORMAL_BACK = 0x31406E0      # DAT_1831406e0, expect 0.085 s (= 85 ms)
 RVA_CONST_NORMAL_FRONT = 0x31406C8     # DAT_1831406c8, expect 0.0375 s (= 37.5 ms)
 RVA_CONST_PRECISION_BACK = 0x31406D0   # DAT_1831406d0, expect 0.040 s (= 40 ms)
@@ -241,7 +241,7 @@ CONST_MATCH_TOLERANCE_MS = 0.5
 # constants gives 171.4313075 at 170 and 96.2931672 at 75, and
 # experiments/results/poll_windows.csv agrees: it tops out at 171.431308 ms
 # (6 rows) and bottoms out at 96.293167 ms (22 rows). Evidence:
-# docs/audit/ch-evidence.md, section 77.
+# docs/clone-hero/03-timing.md, TM-17 to TM-23.
 # Normal mode only; nobody has read precision mode's cap.
 WINDOW_CAP_MS = 171.4313
 WINDOW_FLOOR_MS = 96.2932
@@ -260,9 +260,9 @@ FLOOR_UP_TO_GAP_MS = 2 * s_to_ms(EXPECT_NORMAL_FRONT_S)   # 75
 # measured values agree with these to 0.00001 ms.
 WINDOW_MATCH_TOLERANCE_MS = 0.01
 
-# How far a stored window (or hit time) must move between two reads to count
-# as a change rather than the same value read again. The game writes these
-# doubles whole, so anything above rounding noise is a real change.
+# How far a stored window (or the +0x2e0 double) must move between two reads
+# to count as a change rather than the same value read again. The game writes
+# these doubles whole, so anything above rounding noise is a real change.
 # experiments/live.window_changed is the one place that compares against it.
 WINDOW_CHANGE_TOLERANCE_MS = 1e-6
 
@@ -296,8 +296,8 @@ ENGINE_EMPTY_WINDOW_S = 0.001
 # engine_finder.find_live_engine: a clock that moved more than this between
 # its two reads belongs to the song that is playing.
 ENGINE_CLOCK_MOVED_S = 1e-6
-# experiments/watch_window.hit_time_report: the furthest a stored hit time may
-# sit from its nearest note for +0x2e0 to look like the hit time.
+# experiments/watch_window.hit_time_report: the furthest the +0x2e0 double may
+# sit from its nearest note for the report's check to pass.
 HIT_TIME_MAX_GAP_MS = 10.0
 # experiments/walk_edges.SongClock: a clock change seen within this of the
 # previous read is fresh, so the time since it can be filled in.
