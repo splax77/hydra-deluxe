@@ -1,11 +1,11 @@
 """Delivery test: does SendInput actually deliver every drum key?
 
-Why this exists. In play_chart.py the keys A, S, L score in Clone Hero but
-J, K, U, Y, T never do -- a clean 100% split on five keys, even though the
-game's own registry map binds all eight correctly and send_key runs the
-SAME code for every key. That should be impossible from the Python side, so
-this test checks delivery OUTSIDE the game: it types the eight drum letters
-into whatever window has focus.
+Why this exists. During an earlier bug hunt in play_chart.py, the keys A, S, L
+scored in Clone Hero but J, K, U, Y, T never did -- a clean 100% split on five
+keys, even though the game's own registry map bound all eight correctly and
+send_key ran the SAME code for every key. That seemed impossible from the
+Python side, so this test was written to check delivery OUTSIDE the game: it
+types the eight drum letters into whatever window has focus.
 
 How to read the result. Put the cursor in an empty Notepad (or any text box),
 run this, and DON'T touch the keyboard during the countdown. It types, with a

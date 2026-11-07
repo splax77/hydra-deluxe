@@ -1625,15 +1625,16 @@ void Engine::close_folded_act(int32_t own_i, int32_t lead_i, const Variant& var)
     // before the fold. branch_deactivate relabels that step SqIn on the
     // leader (relabel_sqin); the variant's own step there gets the same label.
     // The variant always holds that step: it ran SP over the phrase, so the
-    // gauge received it. The step is Collected, or Clamped when the variant's
-    // longer meter let the cap pin its end there (the clamped_sqin test
-    // charts). is_sqin_step accepts both, as relabel_sqin does on a lone
-    // path. A path that banked the phrase before activating cannot squeeze it
-    // (core::activation_can_squeeze), and the search never folds it into one
-    // that can (banked_phrase_ordinal in the group key; the folded_sqin test
-    // charts), so no variant here lacks the step. The n-th SqIn in the
-    // leader's list owns its n-th SqIn step, so the SqIns from the fold on
-    // own the leader's SqIn steps from that rank on.
+    // gauge received it. The step is Collected, or Clamped when the cap pinned
+    // its end there (test_sp_end_clamp.cpp's folded variant case). is_sqin_step
+    // accepts both, as relabel_sqin does on a lone path. A path that banked the
+    // phrase before activating cannot squeeze it
+    // (core::activation_can_squeeze), and while SP runs the group key keeps it
+    // apart from one that can (banked_phrase_ordinal; the folded_sqin test
+    // charts). It can still fold after SP, but that fold is not open_sp, so
+    // its window stays its own and never comes here. So no variant here lacks
+    // the step. The n-th SqIn in the leader's list owns its n-th SqIn step, so
+    // the SqIns from the fold on own the leader's SqIn steps from that rank on.
     const auto lead_sqs = out_sqs_.begin() + lead.sq_begin;
     const size_t sqins_before_fold =
         sqin_rank(lead_sqs, lead_sqs + var.fold_sq_count,
