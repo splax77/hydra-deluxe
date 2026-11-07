@@ -33,7 +33,7 @@
       "scope": [
         "src"
       ],
-      "note": "Each Preview box once drew its own panel and placed its own text with its own inset and alignment, so the four boxes drifted apart. Every text box now goes through draw_text_box, sized by render::measure_text_box. A second translucent panel typed outside it is a box with rules of its own. The gauge's panel is the one allowed copy."
+      "note": "Every Preview text box goes through draw_text_box, sized by render::measure_text_box, so the boxes share one inset and alignment. A second translucent panel typed outside it is a box with rules of its own. The gauge's panel is the one allowed copy."
     }
   ]
 }

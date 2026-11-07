@@ -51,7 +51,7 @@
       "scope": [
         "src"
       ],
-      "note": "Text starts at the left edge of its space and a button's label is centred in its button; apply_theme writes both. The pattern catches a written alignment style, a right-edge helper handed a text width, a padded printf field and a text width halved to centre it. It cannot catch every hand-placed draw, so a reviewer of an alignment change checks the inventory in the plan's Change 3 too."
+      "note": "Text starts at the left edge of its space and a button's label is centred in its button; apply_theme writes both. The pattern catches a written alignment style, a right-edge helper handed a text width, a padded printf field and a text width halved to centre it. It cannot catch every hand-placed draw, so a reviewer of an alignment change checks the list of aligned text under Change 3 of docs/superpowers/plans/2026-10-14-column-shares-scroll-left-align.md (removed; git show 1d8621ad:docs/superpowers/plans/2026-10-14-column-shares-scroll-left-align.md) too."
     }
   ]
 }

@@ -25,7 +25,7 @@
       "scope": [
         "src"
       ],
-      "note": "The Preview's song key is built in one place, from the ChartReading open() is handed. The four choices once travelled as a positional bool list, which has no spelling a search can match; the shared ChartReading value is the real guard, and this row only flags a second place building the key. Tests build keys on purpose, so the scope is src."
+      "note": "The Preview's song key is built in one place, from the ChartReading open() is handed. The shared ChartReading value is the real guard, and this row only flags a second place building the key. Tests build keys on purpose, so the scope is src."
     }
   ]
 }

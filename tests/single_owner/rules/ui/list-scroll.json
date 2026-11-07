@@ -38,7 +38,7 @@
       "scope": [
         "src"
       ],
-      "note": "Every click once centred the clicked row, so the list crept and the next click at the same spot landed on another song. selection_scroll decides from why the selection changed (SelectionSource) and scroll_last_row applies it; row_keeps_place decides when every row changes height and keep_last_row_in_place applies that. A list that scrolls itself any other way is a second answer. The scope is src because a GUI test sets the scroll position by hand to set up its case."
+      "note": "A click leaves the list where it is, because moving it would put another song under the next click at the same spot. selection_scroll decides from why the selection changed (SelectionSource) and scroll_last_row applies it; row_keeps_place decides when every row changes height and keep_last_row_in_place applies that. A list that scrolls itself any other way is a second answer. The scope is src because a GUI test sets the scroll position by hand to set up its case."
     }
   ]
 }

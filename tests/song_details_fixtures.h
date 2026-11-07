@@ -32,7 +32,7 @@ inline const AnalysisResult& burnout() {
     return result;
 }
 
-// The separator the new labels use: a middle dot, U+00B7, in UTF-8.
+// The separator the labels use: a middle dot, U+00B7, in UTF-8.
 inline const std::string kDot = " \xC2\xB7 ";
 
 }  // namespace song_details
