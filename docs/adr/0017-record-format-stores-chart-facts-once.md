@@ -50,8 +50,9 @@ shows afterwards is unchanged.
 
 ## Amendment, 2026-10: format 7
 
-The path format stamp is now 7 itself (kPathFormatStamp, ADR 0021). So
-"record format v7" above means stamp 6, the 1.8.2 to 2.0.0 layout.
+The path format stamp became 7 itself (kPathFormatStamp, ADR 0021; the note
+at the top of this page says that stamp is now gone). So "record format v7"
+above means stamp 6, the 1.8.2 to 2.0.0 layout.
 
 Format 7 changed the activation fields above. A presence byte is one byte
 that says whether a value follows; a field without one is always there.
