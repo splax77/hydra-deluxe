@@ -235,6 +235,11 @@ RangeSize range_size(const Repo& repo, const std::string& base, const std::strin
     return parse_numstat(repo.git({"diff", "--numstat", "--no-color", "--no-ext-diff", "--no-renames", base, tip}));
 }
 
+std::string numstat_path(const std::string& field) {
+    if (field.size() < 2 || field.front() != '"' || field.back() != '"') return field;
+    return field.substr(1, field.size() - 2);
+}
+
 RangeSize parse_numstat(const std::vector<std::string>& numstat_lines) {
     RangeSize s;
     for (const std::string& l : numstat_lines) {
@@ -245,8 +250,7 @@ RangeSize parse_numstat(const std::vector<std::string>& numstat_lines) {
         const std::string a = l.substr(0, t1), d = l.substr(t1 + 1, t2 - t1 - 1);
         if ((!all_digits(a) && a != "-") || (!all_digits(d) && d != "-")) continue;
         if (a == "-") continue;  // a binary file
-        std::string path = l.substr(t2 + 1);
-        path.erase(0, path.find_first_not_of('"'));  // git quotes an unusual path
+        const std::string path = numstat_path(l.substr(t2 + 1));
         const std::vector<std::string>& skip = size_excluded_folders();
         if (std::find(skip.begin(), skip.end(), to_lower_ascii(top_folder(path))) != skip.end()) continue;
         s.added += std::stoll(a);
