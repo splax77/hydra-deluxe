@@ -3,13 +3,15 @@ how to back the user files up before a live step and put them back after it,
 and how to read a song folder's song.ini and change its title.
 
 This module is the one home of those paths, of the list of files a live
-step backs up (the plan's "Safety rules for every live step"), of the
+step backs up (the server plan's "Safety rules for every live step"), of the
 registry key the game's input library saves its bindings under, and of the
-settings.ini line a run changes (set_game_setting).
+settings.ini line a run changes (set_game_setting). The server plan is
+`docs/superpowers/plans/2026-10-28-ch-mcp-server.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-10-28-ch-mcp-server.md`).
 
-backup(), restore() and restore_registry() take their folders and their
-reg.exe runner as arguments, so the tests run on temp folders and a fake
-runner and never touch the real files or the real key.
+backup(), restore(), restore_all() and restore_registry() take their folders
+as arguments, and all but restore() take their reg.exe runner too, so the
+tests run on temp folders and a fake runner and never touch the real files or
+the real key.
 """
 
 from __future__ import annotations
@@ -25,8 +27,8 @@ from typing import Callable, Iterator, Optional, Sequence
 
 from tools.ch_probe.constants import PROCESS_NAME
 
-# The game this machine has (the plan's "What exists today"): its folder here,
-# its file name from ch_probe.constants.PROCESS_NAME.
+# The game this machine has (the server plan's "What exists today"): its
+# folder here, its file name from ch_probe.constants.PROCESS_NAME.
 GAME_DIR = r"C:\Clone Hero\1.1 june\Clone Hero"
 GAME_EXE = os.path.join(GAME_DIR, PROCESS_NAME)
 
@@ -41,9 +43,8 @@ SETTINGS = "settings.ini"
 # The files a live step backs up, by the folder they live in. The two
 # profiles files are there because a human run's loader clones a profile, and
 # whether the game saves that clone is not yet known (the direct-start plan's
-# question 3, answered 2026-10-31: back them up now). The game keeps them in
-# the Documents folder; its LocalLow copies are only read (page 07, IN-70),
-# so they are not backed up.
+# question 3). The game keeps them in the Documents folder; its LocalLow
+# copies are only read (page 07, IN-70), so they are not backed up.
 PROFILE_FILES = ("profiles.ini", "profiles.bin")
 DOCUMENTS_FILES = (SETTINGS, SCORESTATS) + PROFILE_FILES
 LOCALLOW_FILES = ("scoredata.bin", "scoresext.bin", "user.bin")

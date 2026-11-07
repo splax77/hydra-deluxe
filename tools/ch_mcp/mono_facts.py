@@ -41,7 +41,7 @@ GAME_ASSEMBLIES = (
 )
 
 READER_SCRIPT = os.path.join(_HERE, "mono_reader.ps1")
-# The time cap the task brief set for one reader run (5 minutes).
+# The time cap for one reader run, in seconds.
 READER_CAP_S = 300.0
 
 

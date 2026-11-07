@@ -37,7 +37,7 @@
       "expect": "player_screen_active",
       "unproven": true,
       "manual": "How to Play: \"Once you select a song, you are then prompted to select your instrument, the difficulty, and apply modifiers.\"",
-      "guess": "Green picks whatever song the list has selected, which may not be the target: the kit cannot type into the search. The plan starts a chosen song with ch_start_song instead (its task T8)."
+      "guess": "Green picks whatever song the list has selected, which may not be the target: the kit cannot type into the search. ch_start(song_folder, human=True) starts a chosen song instead."
     },
     {
       "name": "ready",
