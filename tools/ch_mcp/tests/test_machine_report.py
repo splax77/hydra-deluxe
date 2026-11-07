@@ -293,13 +293,18 @@ class StretchesAcrossLateSamples(ReportCase):
         self.assertIn("ready in 3 consecutive samples spanning 426.0 ms", line)
         self.assertIn("84 context switches gained inside", line)
 
-    def test_samples_exactly_one_period_apart_carry_no_mark(self):
-        line = self.stretch_line(self.ready_at((0, PERIOD_MS, 2 * PERIOD_MS)))
-        self.assertIn("spanning 40.0 ms", line)
+    def test_samples_exactly_twice_the_period_apart_carry_no_mark(self):
+        line = self.stretch_line(self.ready_at((0, 2 * PERIOD_MS, 4 * PERIOD_MS)))
+        self.assertIn("spanning 80.0 ms", line)
         self.assertNotIn("across late samples", line)
 
-    def test_samples_just_over_one_period_apart_carry_the_mark(self):
-        self.assertIn(self.LATE_MARK, self.stretch_line(self.ready_at((0, PERIOD_MS + 1))))
+    def test_samples_just_over_twice_the_period_apart_carry_the_mark(self):
+        self.assertIn(self.LATE_MARK,
+                      self.stretch_line(self.ready_at((0, 2 * PERIOD_MS + 1))))
+
+    def test_normal_wobble_under_twice_the_period_carries_no_mark(self):
+        line = self.stretch_line(self.ready_at((0, 25, 45, 85)))
+        self.assertNotIn("across late samples", line)
 
     def test_one_late_gap_among_on_time_ones_carries_the_mark(self):
         self.assertIn(self.LATE_MARK, self.stretch_line(self.ready_at((0, 20, 40, 100))))

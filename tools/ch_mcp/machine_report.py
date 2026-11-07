@@ -374,8 +374,9 @@ def ready_stretches(ready_samples: Iterable[int]) -> List[List[int]]:
 
 def _across_late_samples(run: List[int], walls: Dict[int, Fraction],
                          period_ms: Fraction) -> bool:
-    """Whether question 23 of the plan marks this stretch."""
-    return any(_ms(walls[later] - walls[earlier]) > period_ms
+    """Whether question 23 of the plan marks this stretch. It reuses question 14's
+    LONG_STEP_FACTOR: the user ruled that "twice the period" is the same rule of thumb."""
+    return any(_ms(walls[later] - walls[earlier]) > LONG_STEP_FACTOR * period_ms
                for earlier, later in zip(run, run[1:]))
 
 
