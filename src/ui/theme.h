@@ -23,7 +23,7 @@ inline const ImVec4 kStarPowerColor{255 / 255.0f, 204 / 255.0f, 51 / 255.0f, 1.0
 inline constexpr float kStarPowerFillAlpha = 230.0f / 255.0f;
 inline const ImVec4 kWarningColor{255 / 255.0f, 127 / 255.0f, 0 / 255.0f, 1.0f};
 // Light enough for the 4.5:1 WCAG AA minimum for text: (145,145,145) reads as
-// ~4.8:1 against the window background while still clearly "dimmed".
+// ~4.9:1 against the window background while still clearly "dimmed".
 inline const ImVec4 kNewSongColor{145 / 255.0f, 145 / 255.0f, 145 / 255.0f, 1.0f};
 inline const ImVec4 kDefaultTextColor{250 / 255.0f, 250 / 255.0f, 250 / 255.0f, 1.0f};
 inline const ImVec4 kDeleteButtonColor{180 / 255.0f, 5 / 255.0f, 5 / 255.0f, 1.0f};
@@ -63,7 +63,7 @@ inline const ImVec4 kFolderListBg{50 / 255.0f, 50 / 255.0f, 50 / 255.0f, 1.0f};
 // ImGui's default DisabledAlpha fade -- so apply_theme() sets
 // style.DisabledAlpha = 1 and begin_disabled_button()/begin_disabled_input()
 // push these explicitly.
-// (235,235,235) on the (100,100,100) disabled button reaches ~4.9:1, over
+// (235,235,235) on the (100,100,100) disabled button reaches ~5.0:1, over
 // WCAG AA's 4.5:1, and the gray button face still reads as disabled.
 inline const ImVec4 kDisabledButtonTextColor{235 / 255.0f, 235 / 255.0f, 235 / 255.0f, 1.0f};
 inline const ImVec4 kDisabledButtonColor{100 / 255.0f, 100 / 255.0f, 100 / 255.0f, 1.0f};
