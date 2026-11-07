@@ -158,7 +158,7 @@ The Path Builder has its own headless runner, `hydra_pathbuilder_uitest`, built 
 | `##choice_<tick>` | a "Where to activate next" row, by its fill's chord tick |
 | `##end_<tick>` | an opened step's ending line, by the ending's deact tick |
 
-These are under `**/`, because the rows and panels sit in child windows; `any_ref` in `pbtest_harness.h` writes the ref.
+These are under `**/`, because the rows and panels sit in child windows; `any_ref` in `tests/pb_ui/pbtest_harness.h` writes the ref.
 
 Which test pins what, for the timeline's moves: `hover-moves-nothing`, `drag-moves-the-clock`, `drag-stays-in-the-window`, `activations-row-never-drags` and `fill-click-moves-clock`. `choose-an-ending` drives the ending lines.
 
