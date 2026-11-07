@@ -91,7 +91,7 @@
           "why": "Playhead::set_gain, the owner"
         }
       ],
-      "note": "---- audio owners (phase 6 task J1-4) ---- The frame pair's row is phase 3's (\"How many ms do audio frames last...\", above)."
+      "note": "---- audio owners ---- The frame pair's row is phase 3's (\"How many ms do audio frames last...\", above)."
     },
     {
       "question": "How is a stem converted to the output format?",
