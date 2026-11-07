@@ -22,6 +22,7 @@ if ROOT not in sys.path:
 
 from tools.ch_mcp import machine_recorder as M  # noqa: E402
 from tools.ch_probe import constants as C  # noqa: E402
+from tools.ch_probe import process as P  # noqa: E402
 
 SCRIPT = os.path.join(ROOT, "tools", "ch_mcp", "machine_recorder.py")
 PERIOD_S = 1 / 64  # exact in binary, so the fake clock adds up without rounding
@@ -105,7 +106,7 @@ class ParseTable(unittest.TestCase):
         second = fixture_table(TWO_PROCESSES[1:])
         padded = bytearray(first + b"\0" * 8)
         struct.pack_into("<I", padded, M.PROC_NEXT_ENTRY_OFFSET, len(padded))
-        pointer = struct.unpack_from("<Q", second, M.PROC_IMAGE_NAME_BUFFER)[0]
+        pointer = P.decode_u64(second[M.PROC_IMAGE_NAME_BUFFER:M.PROC_IMAGE_NAME_BUFFER + 8])
         moved = bytearray(second)
         struct.pack_into("<Q", moved, M.PROC_IMAGE_NAME_BUFFER, pointer + len(padded))
         table = M.parse_table(bytes(padded) + bytes(moved))
