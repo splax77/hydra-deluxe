@@ -148,7 +148,7 @@ struct ScoreGraphEdge {
     int64_t accentscore = 0;
     int64_t ghostscore = 0;
 
-    // (sp_timecode, extension_map) per SP phrase collected on this advance edge.
+    // A time and an extension map per SP phrase collected on this advance edge.
     // The extension map is from_tick -> where that end moves (and whether the
     // cap pinned it there); the engine scans it by key. Only the SP track moves
     // an SP end, so base-track edges leave the map empty and read the times.
