@@ -629,21 +629,7 @@ void AppState::tick(double /*now*/) {
     }
 }
 
-void AppState::select_chart(const std::string& hyhash, const std::string& chartmode) {
-    if (chartmode != settings.chartmode_key()) {
-        // The bar is off during a batch, so a row can't switch it either.
-        if (settings_locked()) {
-            set_status(kBatchRunningStatus);
-            return;
-        }
-        // Settings::with_chartmode picks the choices, which are then
-        // committed as the bar commits. When it finds none, this build can't
-        // analyze the row's mode, so the row selects nothing.
-        std::optional<Settings> mode = settings.with_chartmode(chartmode);
-        if (!mode) return;
-        settings = std::move(*mode);
-        commit_settings();
-    }
+void AppState::select_chart(const std::string& hyhash) {
     reload_after_scan();  // the copies the store holds now
     // Ids are lowercase hex everywhere (the scan writes them, the store
     // lowercases old ones), so a copy is an exact match.

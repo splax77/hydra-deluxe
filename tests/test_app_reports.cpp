@@ -17,6 +17,7 @@
 
 #include "app/analysis.h"
 #include "app/config.h"
+#include "app/dm_report.h"  // GeneratedDmReport
 #include "app_state_fixtures.h"
 #include "corpus_util.h"
 #include "library_fixtures.h"  // library_entry
@@ -25,7 +26,7 @@
 #include "scratch_paths.h"
 #include "store/record_store.h"
 #include "ui/app_state.h"
-#include "ui/report_window.h"  // path_report_input
+#include "ui/report_window.h"  // path_report_input, dm_report_input
 #include "wait_util.h"
 
 using hydra::app::Settings;
@@ -361,9 +362,7 @@ TEST_CASE("Cancel ends a path report build as cancelled and keeps the last repor
     CHECK(app->path_report.result == kept);
 }
 
-// D103 item 3: a report row's click selects its chart, switching the
-// settings bar to the row's mode first.
-TEST_CASE("select_chart switches the mode first, then selects the first copy") {
+TEST_CASE("select_chart selects the first copy in the bar's mode") {
     ScratchPaths paths("appstate_selectchart");
     std::unique_ptr<AppState> app = app_on(paths);
     // A second copy of chart 7, in another folder, sorting after it by title.
@@ -376,28 +375,44 @@ TEST_CASE("select_chart switches the mode first, then selects the first copy") {
     app->store->rebuild_chart_library(charts);
     app->reload_library();
 
-    Settings target;
-    target.view_difficulty = "Hard";
-    target.view_prodrums = false;
-    target.view_bass2x = true;
-    const std::string mode = target.chartmode_key();
-    REQUIRE(mode != app->settings.chartmode_key());
-
-    app->select_chart("hash007", mode);
-    CHECK(app->settings.chartmode_key() == mode);
-    CHECK(Settings::load_file(paths.ini).chartmode_key() == mode);  // committed
+    app->select_chart("hash007");
     REQUIRE(app->selected.has_value());
     CHECK(app->selected->notespath == library_entry(7).notespath);
 
     // The first copy in the library's order: sorted the other way, the copy.
     app->library.set_sort(hydra::ui::LibrarySort::Title, false);
-    app->select_chart("hash007", mode);
+    app->select_chart("hash007");
     REQUIRE(app->selected.has_value());
     CHECK(app->selected->notespath == copy.notespath);
 
     // A hash the library doesn't list selects nothing new.
-    app->select_chart("not-in-library", mode);
+    app->select_chart("not-in-library");
     CHECK(app->selected->notespath == copy.notespath);
+}
+
+// D310 item 3: a comparison row click opens the song in the bar's mode, even
+// when the comparison was built in another.
+TEST_CASE("a comparison row click selects the chart and keeps the bar's mode") {
+    ScratchPaths paths("appstate_dmrowclick");
+    std::unique_ptr<AppState> app = app_on(paths);
+    const std::string bar = app->settings.chartmode_key();
+
+    Settings built_in;
+    built_in.view_difficulty = "Hard";
+    built_in.view_prodrums = false;
+    built_in.view_bass2x = true;
+    auto result = std::make_shared<hydra::app::dm_report::GeneratedDmReport>();
+    result->chartmode = built_in.chartmode_key();
+    REQUIRE(result->chartmode != bar);
+    result->rows.emplace_back();
+    result->rows.back().identifier = library_entry(7).md5;
+    app->dm_report.result = result;
+
+    hydra::ui::dm_report_input(*app).callbacks.row_click(0);
+    CHECK(app->settings.chartmode_key() == bar);
+    CHECK(Settings::load_file(paths.ini).chartmode_key() == bar);  // nothing committed
+    REQUIRE(app->selected.has_value());
+    CHECK(app->selected->notespath == library_entry(7).notespath);
 }
 
 namespace {
