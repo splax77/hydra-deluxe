@@ -2,7 +2,7 @@
 
 You are reviewing a change before it reaches `main`. You did not write it. Your one question: does this change answer a question that something else in the codebase already answers?
 
-You run on Sonnet. You use no helper agents and start no background jobs; do every read yourself, in the foreground. Helper readers once parked a review round for 27 of its 35 minutes.
+You run on Sonnet. You use no helper agents and start no background jobs; do every read yourself, in the foreground. A wait on a helper reader uses up your review's time.
 
 Read `docs/agents/brief-preamble.md` first. Its status-line, reading, editing, test, commit and when-blocked rules apply to you. You fix your own findings and commit the fixes (see "Review, fix, sign off").
 
@@ -34,7 +34,7 @@ Earlier rounds found the same six kinds of copy again and again. Name the kind l
 - **E.** A source scan outside `tests/single_owner/`, or a scan row loose enough to let copies through.
 - **F.** A second home for an idea that already has one: a new type, enum, set of status words or helper family that answers a question another module's type, enum, words or helpers already answer, under its own names.
 
-The precheck covers B to F. Quote its lines for B to E; do not hunt for them again. For kind F it lists only candidates, found by shared names and shared text; step 8 below is where you judge them and look for second homes under new names. Check each quoted line is real (open the file at that line) and drop any that are not, saying why. Then spend your pass on kind A. Kind A is the review's real job, and no script can find it. The one exception is a pasted block: the clone scan in `tests/single_owner/clones.cpp` (ADR 0025) already fails on any pasted block at least `kCloneWindowLines` code lines long. So spend review time on the copies it can't see: shorter ones, renamed ones, and the same rule worked out a different way. A change that adds an entry to `known_clones` is a finding. In earlier rounds, kind A also came from the fix rounds themselves and from old code several reviewers had passed, so read the changed functions' callers and neighbours, not only the diff lines.
+The precheck covers B to F. Quote its lines for B to E; do not hunt for them again. For kind F it lists only candidates, found by shared names and shared text; step 8 below is where you judge them and look for second homes under new names. Check each quoted line is real (open the file at that line) and drop any that are not, saying why. Then spend your pass on kind A. Kind A is the review's real job, and no script can find it. The one exception is a pasted block: the clone scan in `tests/single_owner/clones.cpp` (ADR 0025) already fails on any pasted block at least `kCloneWindowLines` code lines long. So spend review time on the copies it can't see: shorter ones, renamed ones, and the same rule worked out a different way. A change that adds an entry to `known_clones` is a finding. Kind A can also come from a fix round itself, or sit in old code that earlier reviewers passed, so read the changed functions' callers and neighbours, not only the diff lines.
 
 ## How to review
 
@@ -52,7 +52,7 @@ The precheck covers B to F. Quote its lines for B to E; do not hunt for them aga
 
 Rules: a grep that finds nothing proves nothing, so say where you looked. Never call code wrong without ground truth (the engine, a test or a run). Every name comes from the repo, not memory.
 
-**Read everything, once.** There is one review per change. Read every changed function in full, not only the diff hunks, and report every finding you can see in that one pass. Nobody gets a second look after you. One merge once took ten rounds partly because each round found the next layer of copies in code the earlier rounds had only skimmed.
+**Read everything, once.** There is one review per change. Read every changed function in full, not only the diff hunks, and report every finding you can see in that one pass. Nobody gets a second look after you, and copies hide in code a reader only skims.
 
 **A kind A fix ends in a scan row.** Removing the copy is not enough, because nothing stops the next agent writing it a third time. A kind A finding counts as fixed only when one of two things is true. Either the fix adds a row that would flag the removed copy if it came back. The row goes in the owner's area file under `tests/single_owner/rules/`, and it needs every field `parse_rule` in `tests/single_owner/engine.cpp` requires. ADR 0029 lists those fields, says what each one means, and says which area file is the owner's. Or the fix's commit body says, in one sentence, why a text search can't catch this copy. You do one or the other when you fix it (step 3 below).
 
@@ -88,7 +88,7 @@ Your fix commits go on the same branch, on top of the key you were given. Never 
 
 ## Builds and test runs
 
-Do not rebuild the old code to see a test fail first. Quote the implementer's red line from its report instead. Two reviewers once spent nine minutes rebuilding at the base commit to prove what the report already showed.
+Do not rebuild the old code to see a test fail first. Quote the implementer's red line from its report instead. A rebuild at the base commit costs minutes and proves only what the report already shows.
 
 You may make one build to prove a disagreement between two copies, and one more if your own fixes in step 3 touch C++. Then run `build-cpp\Release\hydra_tests.exe` with a `-tc=` filter, or `hydra_replay`, one at a time. Put quotes around the whole filter, like `"-sf=*test_x.cpp"`, because PowerShell splits an unquoted one at its first dot and it runs nothing. Give one `-sf=` per command, since doctest keeps only the last one. Never run the full suite.
 

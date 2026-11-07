@@ -29,15 +29,15 @@ the same measure count (scaled by tempo; see **Transfer scale** in CONTEXT.md).
 Normally the window starts at the activation, so the activation is the frontend
 lever. But collecting a phrase mid-Star-Power extends the end (+2 measures per
 phrase), and the **SP cap** puts a ceiling on the total. When the ceiling binds,
-the end stops tracking the activation and instead sits a fixed
-`2 * sp_cap` measures past the *collection note* that filled the meter. From that
+the end stops tracking the activation and instead sits a fixed number of
+measures, set by the cap, past the *collection note* that filled the meter. From that
 point on, the activation can be nudged and the end does not move — it is pinned
 to the collection note.
 
-In the engine this is `extend_deacts` (`src/search/graph.cpp`): the end is
-`min(prev_end + 2 measures, plusmeasure(collection_note, 2 * sp_cap))`. When the
-second term is the smaller one, the window is **cap-clamped** and the collection
-note is its anchor.
+In the engine this is `extend_deacts` (`src/search/graph.cpp`): the end is the
+earlier of the extended end and a ceiling measured from the collection note, the
+`sp_timecode` it is handed. When the ceiling is strictly earlier, the window is
+**cap-clamped** and the collection note is its anchor.
 
 ## How Hydra measures it
 
@@ -49,11 +49,12 @@ really moves the end.
 
 ## The case that proved it
 
-Video: `Rolling in the Deep (Dirty Loops) Pro Drums FC [XF1l2c1Pv8Y].mkv`
-(streamer Splax77), Expert Pro Drums, 2x Bass, sp_cap 4. Chart hyhash
+Video: "Rolling in the Deep (Dirty Loops) Pro Drums FC", YouTube id
+`XF1l2c1Pv8Y` (streamer Splax77), Expert Pro Drums, 2x Bass, sp_cap 4. Chart hyhash
 `8a49ee680e10947f4fa28a5da6ef0026`. The player's first activation is identical
 to Hydra's optimal path, so the geometry below is exactly what
-`squeeze_scout.py` reports for that activation.
+`squeeze_scout.py` (in the `squeeze-tools` folder beside the repo, not in the
+repo) reports for that activation.
 
 - Activation at tick 45000. Base SP end `plusmeasure(45000, 8)` = tick 60360.
 - A phrase collected mid-Star-Power completes at tick **48720**. Its ceiling
@@ -81,5 +82,5 @@ predicts. Video-to-song alignment for this file is `song_ms = video_ms − 4114.
 The multiplier disc dropping x8→x4 lands a couple of render frames after Star
 Power actually empties, so it corroborates the direction but is not the precise
 instrument — quote the Accuracy overlay, caught on the frame each note registers,
-not the disc. `squeeze_scout.py --result <id>` rebuilds the window
-engine-exactly and is the source for the tick/ms geometry above.
+not the disc. `squeeze_scout.py --md5 <hyhash>` rebuilds the window from the
+chart file and is the source for the tick/ms geometry above.

@@ -42,7 +42,7 @@ Read the document once. Then write, in your own words and in at most five senten
 
 Where your restatement and the sources disagree, the document is wrong, not your reading. After working on a piece, a writer cannot read it as a first-time reader would [S11, second-hand: the research doc read it through search summaries]. You are the first-time reader. The Federal Plain Language Guidelines recommend a paraphrase test for short documents [S14]. Those pages do not say what the reader does in it; taking it to mean saying the text back in your own words is the research doc's reading, not theirs. Fixing your reading before the sources can reshape it keeps each check apart from the author's framing, which is what lets a second check catch errors instead of repeating them [S19].
 
-The order cold read, trace, drift, style was tried once, in a manual trial review of a 599-line Artifact page on 2026-10-08, and the session that ran the trial reported that it worked well enough to keep. That session also reported that giving the reviewer whole source folders, rather than single files, worked well. Plan section 2, Q2 describes the trial; sections 3.7 and 5 relay those two reports.
+The order cold read, trace, drift, style was tried once, in a manual trial review of an Artifact page, and the session that ran the trial reported that it worked well enough to keep. That session also reported that giving the reviewer whole source folders, rather than single files, worked well. `docs/superpowers/plans/2026-10-08-doc-review-gate.md` (removed; `git show ec91f8d1:docs/superpowers/plans/2026-10-08-doc-review-gate.md`) describes the trial in its section 2, Q2, and its sections 3.7 and 5 relay those two reports.
 
 ## Step 2: trace and recompute
 
