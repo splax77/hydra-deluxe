@@ -157,7 +157,7 @@ bool exists(const std::string& path) { return hydra::file_exists_utf8(path); }
 
 }  // namespace
 
-// ---- A2: every installed start checks; other copies never do ---------------
+// ---- Every installed start checks; other copies never do -------------------
 
 TEST_CASE("every start of the installed exe checks, and a copy never does") {
     UpdateWorld w("update_on_start");
@@ -191,7 +191,7 @@ TEST_CASE("every start of the installed exe checks, and a copy never does") {
     CHECK_FALSE(status.update_button);
 }
 
-// ---- A3, A4: the offer, Later, Skip this version and Up to date ------------
+// ---- The offer, Later, Skip this version and Up to date --------------------
 
 TEST_CASE("a newer release is offered; Later keeps an Update button and writes nothing") {
     UpdateWorld w("update_later");
@@ -286,7 +286,7 @@ TEST_CASE("the same or an older release lands in the resting Up to date") {
     }
 }
 
-// ---- A5: failures ----------------------------------------------------------
+// ---- Failures --------------------------------------------------------------
 
 TEST_CASE("a failed start-up check shows in the resting status with its plain_error") {
     UpdateWorld w("update_fail");
@@ -330,7 +330,7 @@ TEST_CASE("a failed start-up check shows in the resting status with its plain_er
     }
 }
 
-// ---- A8: the Updated note gives way to the offer or the resting status -----
+// ---- The Updated note gives way to the offer or the resting status ---------
 
 TEST_CASE("the Updated note's OK offers a found release, or gives way to the resting status") {
     UpdateWorld w("update_note_then_offer");
@@ -370,13 +370,13 @@ TEST_CASE("the Updated note's OK offers a found release, or gives way to the res
     }
 }
 
-// ---- A6: the one text of a version -----------------------------------------
+// ---- The one text of a version ---------------------------------------------
 
 TEST_CASE("named_version is the app's name and the version") {
     CHECK(hydra::core::named_version(hydra::core::AppVersion{2, 11, 1}) == "Hydra Deluxe 2.11.1");
 }
 
-// ---- A7 (the shipped C7, C8): Update, the installer start and Cancel ------------------------
+// ---- Update, the installer start and Cancel --------------------------------
 
 TEST_CASE("Update downloads, checks and starts the installer; Hydra then waits") {
     UpdateWorld w("update_started");
@@ -488,7 +488,7 @@ TEST_CASE("Cancel during the download goes back to the offer and leaves no part-
     CHECK(w.canned.launched.empty());
 }
 
-// ---- C9: the first start after a version change ----------------------------
+// ---- The first start after a version change --------------------------------
 
 TEST_CASE("the first start after a version change says so once") {
     UpdateWorld w("update_updated");

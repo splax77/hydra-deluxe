@@ -115,7 +115,7 @@ TEST_CASE("set_aside_old_library leaves the file in place when it is held open")
 }
 
 // The earlier set-aside file goes only once the new one has moved: a move
-// that fails leaves both files as they were (D115 task A1-6d).
+// that fails leaves both files as they were (D115).
 TEST_CASE("set_aside_old_library keeps an earlier set-aside file when the move fails") {
     const std::string db = fresh_db("upg_set_aside_keep_earlier");
     const std::string aside = set_aside_path(db);

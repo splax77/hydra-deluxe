@@ -633,8 +633,8 @@ TEST_CASE("build_track_state: spans need the song timing") {
     check_pinned(plain, {"1.000000 R - od=. so=. fi=. ft=. sp=. ln=. pad=-"}, {});
 }
 
-// The renderer asks for this window every frame. It used to be a vector of
-// copies, each instant with its own vector of notes.
+// The renderer asks for this window every frame, so it copies no instant and
+// no notes.
 TEST_CASE("window: a view into the state, not a copy") {
     PreviewScene scene = timed_scene();
     scene.notes = {note(1000.0, PreviewLane::Red), note(2000.0, PreviewLane::Red),
@@ -1022,7 +1022,7 @@ TEST_CASE("rebuild_overlay_fields: equals a full build on random overlays") {
 // Every stored path of every 8th corpus chart with notes, in chart_paths()
 // order. The random-overlay test above covers the property; this one keeps it
 // honest on real charts. A sample, not the whole corpus, because each swap
-// costs about 40 ms and the whole corpus took 20 s (user decision 2026-10-10).
+// costs about 40 ms and the whole corpus took 20 s (user decision).
 TEST_CASE("rebuild_overlay_fields: equals a full build on every 8th corpus chart's stored paths") {
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
     int with_notes = 0, charts = 0, swaps = 0;
