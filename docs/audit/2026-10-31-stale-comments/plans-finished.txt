@@ -1,0 +1,121 @@
+PL-1 result. Read on main 932400b1 (the worktree HEAD is main plus 50 audit commits; docs/superpowers/plans is identical on both).
+Counts: finished 8, live 6, unsure 0. Every plan reached.
+Plans live in the order of the ls-tree listing. "Named by" lists every line on main that names the plan's file name (git grep -n <file name> main --), other plans' own lines included.
+
+## 2026-10-18-song-length-end-event.md
+- verdict: finished
+- evidence: Plan tasks T1 (parsers store the end event), T2a/T2b (one length rule, Preview ends at it), T3 (D-record, user guide) are all on main. Merges ebc9019f (T2a), 78147bab (T2b and T3), version commit 3d4e8666 "Version 2.10.0: a song ends where Clone Hero ends it (D255)". Code: src/app/song_length.cpp:23-34 (end_event_counts, one-beat margin) and src/app/song_length.h; Song::end_event_tick is read in src. D255 is at docs/audit/2026-10-03-fix-decisions.md:1048 and records the user's five answers. The plan's own status line (line 3, "Nothing is built") is stale.
+- left: none built. One caveat: T4 (the real-app check, a check not a build) has no record I could find; no card or commit names it. A later GUI test fix for Burnout's end event is at docs/sessions/2026-10-18-ca9a0f1b.md:11. Open question Q-75 (docs/sessions/2026-10-31-933c3f22.md:44, an end event with spaces around it is skipped by Hydra, accepted by the game) is a new item, not a task of this plan.
+- named by:
+  docs/audit/2026-10-03-fix-decisions.md:1048 (already has the removed form, but the plan is NOT removed)
+  docs/audit/2026-10-29-audit-of-audits/blocks/AOA-W2a.md:71 (already has the removed form)
+  docs/audit/2026-10-29-audit-of-audits/blocks/AOA-W3c.md:74 (plain path, needs the form)
+  docs/handoffs/2026-10-18-song-length-end-event-handoff.md:3 (plain path, needs the form; this handoff is itself a file that may leave)
+  tests/test_song_parse.cpp:332-333 (already has the removed form)
+  docs/clone-hero/01-reading-a-chart.md:477 names the handoff, not the plan (listed for completeness only)
+
+## 2026-10-22-font-role-single-owner.md
+- verdict: finished
+- evidence: User approval is in the plan's line 3: "Approved. Yes to all five recommendations (Q1-Q5)." Tasks T0 to T6 are on main: src/ui/text_role.h exists, tests/test_text_role.cpp, tests/single_owner/rules/ui/text_role.json (T5, commit 047a2315 "one scan row refuses raw font picks outside text_role.h (D258)"), join merges 01a06dde (T1 Paths), 9273487b (T4 reports), 3853bcc2 (T3 Library). T2 and T6: TextRole is used in src/ui/preview_tab.cpp, dynamics_tab.cpp, stars_tab.cpp. git grep "PushFont(" src finds only src/ui/text_role.h:99. D258 is at fix-decisions.md:1081.
+- left: none in the plan. The memory note names open items (Preview clock line, status words) but those are the memory's, not tasks of this plan.
+- named by:
+  docs/audit/2026-10-03-fix-decisions.md:1081
+  src/ui/text_role.h:7
+  tests/single_owner/rules/ui/text_role.json:9 (this line quotes the user's approval; the pointer must keep working)
+
+## 2026-10-24-asan-ci-speed.md
+- verdict: finished
+- evidence: The plan's Results section (lines 266-298) records Task 4 merged f4c87ac8 (asan-gui job), Task 1 merged 8ac67b38 (sweep lookup), Task 3 merged fa4c72ec (sccache, by the user's ruling "Take it forward"), Task 2 merged 833944a5 (user: "Merge on this run"). Task 5 (docs): docs/development.md:595-598 now gives measured asan and asan-gui times and the asan-gui job; grep for "20m41s" in docs/development.md and .github finds nothing. tests/shards.txt holds the four-slice layout; ci.yml has the asan-gui job (line 222).
+- left: none. The plan's "Questions for the user" section is empty by design.
+- named by:
+  .github/workflows/ci.yml:175 (comment)
+  tests/shards.txt:14 (comment, cites "(Task 2)" for the per-file times)
+  (no other line on main names it)
+
+## 2026-10-24-ci-build-speed.md
+- verdict: finished
+- evidence: Results section (line 231 onward) and last line 249: "Merged to main as 556cd6df after the whole suite and the three repo-wide tests passed". Both tasks (CI-WARM saved build folder, CI-JOBS GUI job) are in. The user's answers to both policy questions ("build with recommended") are at line 212; ci.yml lines 32-34 show the concurrency rule (no cancel on main) as answered.
+- left: none. The "Out of scope" note (line 227, headers pulling in many objects) was never a task.
+- named by:
+  docs/superpowers/plans/2026-10-24-asan-ci-speed.md:31 (a plan citing a run id, not the file as a pointer to read)
+  docs/superpowers/plans/2026-10-24-asan-ci-speed.md:70 (plan cites it as "merged 556cd6df"; asan plan is itself finished, so both leave together)
+  tools/ci_build_folder.ps1:24 (already says "removed; git show 444631e6:..." but the plan is NOT removed yet)
+
+## 2026-10-25-hooks-from-scratch.md
+- verdict: live
+- evidence: The hook system was built and cut over (C:\Users\Patrick\.claude\gates\ exists with all the planned hooks, cutover commit 11b80b1 per HX-P2 plan line 249). The last task, T13 "delete the old folder after 14 clean days", is not done: C:\Users\Patrick\.claude\hooks still exists today (2026-11-06). T10 (replay proof) I could not confirm either way.
+- left: T13, which the HX-P2 plan takes over as its task T9 (docs/superpowers/plans/2026-10-31-harness-hooks-and-tools.md:248-262, "blocked until 2026-11-08 and T8"). Named by the HX-P2 plan and the user's 14-day rule in this plan (line 182).
+- named by: not computed (live plan).
+
+## 2026-10-28-hydra-libraries.md
+- verdict: finished
+- evidence: Waves 1 to 5 are on main. CMakeLists.txt has the library blocks (hydra_core, hydra_parse, hydra_search, hydra_store, hydra_app, hydra_audio, hydra_render, hydra_preview, hydra_dm, hydra_uibase, hydra_ui, hydra_image, plus the runner libraries; lines 291-620). The layering test exists (tests/test_layering.cpp, added e453df94). T6: commit 9c9c2330 "Empty the known-gaps list and add the case that keeps it empty"; tests/layering/known_gaps.json is empty. The record: docs/adr/0032-cmake-is-the-one-owner-of-library-membership.md exists. The plan's status line (line 3, "Nothing is built") is stale. I did not run the tests.
+- left: none found.
+- named by:
+  docs/adr/0032-cmake-is-the-one-owner-of-library-membership.md:10 (plain path)
+
+## 2026-10-28-overlay-spike.md
+- verdict: finished
+- evidence: Phase 0 spike. Tasks P, I, A, S, B, C, D merged on 2026-10-28 (merge subjects a356dc3c S, ff739d0b B, d34c3b5f I, 924be297 C). The sitting ran: tools/ch_probe/experiments/results/overlay-spike/run1_cal0_*.csv, run2_cal30_*, run2b_vid30_* exist. Task E write-up: docs/research/2026-10-28-overlay-spike-results.md exists on main (merge 7d94dd2e). The Clone Hero pages cite the results (03-timing.md:135/155, 04-fills.md:256, 07-internals.md:117/261). Passed-over fills, delay, guitar were declared out of scope in the plan (lines 213-222) for a "Phase 1", for which no plan exists on main.
+- left: none of this plan. Phase 1 (the overlay itself) is unplanned.
+- named by:
+  docs/handoffs/2026-10-28-overlay-spike-sitting-handoff.md:3 (plain path "(on main)", needs the form)
+  tools/ch_probe/experiments/results/overlay-spike/il2cpp-fields.md:3 (check the exact form there)
+  tools/ch_probe/experiments/sp_compare.py:25 (already has the removed form, but the plan is NOT removed yet)
+  (docs/clone-hero/*.md lines that say "overlay-spike" name the results folder, not this file)
+
+## 2026-10-30-ch-mcp-in-game-input.md
+- verdict: live
+- evidence: K1 to K10 are merged (K5 at 894e4c37, K10 at 42f2ff24 etc.). LS-K0 and LS-K2 ran (docs/sessions/2026-10-31-a379bc75.md, docs/clone-hero/07-internals.md:795-801). LS-K3 and T8 are struck (plan lines 188, 214; user's answer to question 4 of the direct-start plan). LS-K4 (auto-player on Window Map) and LS-K5 (Senri fill check) have not run: handoff docs/handoffs/2026-11-06-optimal-score-plan-handoff.md:94 says "no ls-k4 or ls-k5 folder exists". The plan's status line (line 5) is dated 2026-10-30 and says K5 is unmerged and the live steps have not run, which is stale.
+- left: LS-K4 and LS-K5. They are named by docs/superpowers/plans/2026-10-31-ch-mcp-direct-start.md:299-309 and by the 2026-11-06 optimal-score plan (its LS-O2 is LS-K4, its LS-O4 is LS-K5, and its section 9 asks the user whether to accept LS-K5).
+- named by: not computed (live plan).
+
+## 2026-10-30-ch-mcp-star-power-and-song-start.md
+- verdict: live
+- evidence: Tasks T1 to T7 are built (ch_sp tools, ch_open_song at tools/ch_mcp/server.py:393, method watch; commits 388dfb59 and the K5 merge). T8 is struck. The in-game-input plan says it replaces the key-driven parts and that "the Star Power parts stand". Its live step LS3 (the Senri fill check) has not run: docs/clone-hero/live-checks.md:13 (FL-27) says "The run that takes it is step LS3 of the Star Power plan", and the direct-start plan's LS-K5 (line 305) is "the old plan's LS3". LS0, LS1, LS-M, LS2, LS4 are struck or replaced by the direct-start route; I found no record that LS0/LS1/LS2 ran as written.
+- left: LS3 (reached through LS-K5, see above); the plan's other live steps are superseded but the plan does not say so.
+- named by: not computed (live plan; docs/clone-hero/live-checks.md:13 depends on it).
+
+## 2026-10-31-ch-mcp-direct-start.md
+- verdict: live
+- evidence: Tasks D1 to D6 and live steps LS-D0 to LS-D3 are done (commits 30207a3c LS-D2a, d2778773 LS-D1b to D1d, e9f26f2a LS-D2d to LS-D3 pass, f64f201d LS-D1a). Left open: LS-K4 and LS-K5 (plan lines 299-309), still unrun (handoff 2026-11-06-optimal-score-plan-handoff.md:94). Premise-map row P40 is recorded as checked in caf69cd9.
+- left: LS-K4 and LS-K5, now taken up by the 2026-11-06 optimal-score plan (LS-O2, LS-O4).
+- named by: not computed (live plan).
+
+## 2026-10-31-ch-mcp-kit-map-and-network-block.md
+- verdict: finished
+- evidence: Only M1 and LS-D1a stood. M1 merged as 85d3648d ("the kit's setup loads the drum map by category and layout"). LS-D1a run 3 passed (f64f201d "IN-76: LS-D1a run 3 passes, LoadMap by hand puts the drum map on System"). The rest is dropped by the user: plan line 7 quotes "all this network stuff is a waste of time. im trying to get functionality up to speed, not add blockers"; that quote is at docs/agents/rulings/clone-hero.md:6 and docs/sessions/2026-10-31-18a26008.md:17 (card line 13 says the block was dropped). Dropped tasks: N1 to N4, LS-N0, LS-N1.
+- left: none.
+- named by:
+  docs/clone-hero/07-internals.md:777 (plain path)
+  docs/superpowers/plans/2026-10-31-ch-mcp-direct-start.md:111 (live plan, plain path; this one must keep working or be rewritten when the plan leaves)
+  docs/superpowers/plans/2026-10-31-ch-mcp-direct-start.md:139 (same)
+  tools/ch_mcp/tests/test_frida_attach.py:900 (plain path, comment)
+
+## 2026-10-31-harness-hooks-and-tools.md
+- verdict: live
+- evidence: T0 to T8 are built and merged in both repos (Hydra: tools/check_handoff.py, tools/check_pointers.py, P2-T5 scroll guard 0534d884, P2-T7 a7ef45ff; hooks repo: P2-T4 d8f912f, P2-T8 b231c51, HF-A to HF-E merges; merge subject dcd5858a "plan ... (HX-P2, built)"). T9 (remove the old hooks\ folder) is not done and is blocked until 2026-11-08 (plan line 248); C:\Users\Patrick\.claude\hooks still exists. T10 and T11 are conditional on the user's answers to Q1, Q4 and Q5. I did not find those answers.
+- left: T9 on or after 2026-11-08; T10 and T11 only if the user said yes (unchecked). The plan's own tasks are named by the 2026-10-25 plan's T13.
+- named by: not computed (live plan).
+
+## 2026-10-31-harness-instructions-and-memory.md
+- verdict: finished
+- evidence: T1 merged d82415e8 (CLAUDE.md is a short map; docs/agents/agent-rules.md), T2 bc408233 (handoff Claims table, .claude/commands/handoff.md), T4a f1e50366 (docs/agents/rulings/), T4b 6eacc246 (docs/agents/this-machine.md), T5 1bd1dba9 (GUI check split, docs/agents/ui-testing.md). Outside the repo: T3 shows in C:\Users\Patrick\.claude (agents/reviewer.md has "Notes heading", agents/scout.md has "own scratch folder", executor.md and planner.md have "Claims table", model-postures.md names handoffs). T4c: the memory index is 1,488 words against the plan's about 1,450 target, the memory folder has an index. Merge subject 685feabd says "(HX-P1, built)". The plan's line 3 ("Nothing here is built yet") is stale. I did not check T3 AC1 (the exact posture sentence) or T3 AC2 (word count).
+- left: none found. The plan's section 8 holds eight questions for the user; I did not check each answer, and its section 7 hand-offs went to HX-P2.
+- named by: none found (git grep for the file name finds no line outside the plan).
+
+## 2026-11-06-optimal-score-run.md
+- verdict: live
+- evidence: Built today. Merges osr-T2 f7d4087c, osr-T3 (inside d1c2880d), osr-T4 b009b591, osr-T5 10d3308f, osr-T6 4b8f7a40 and e3bbc276, osr-T7 (inside a70c04b4). LS-O1 passed (893950d7). No commit or run record for LS-O2 to LS-O5.
+- left: LS-O2 (chained start on Window Map, which is LS-K4), LS-O3 (declining chord 405), LS-O4 (the LS-K5 read), LS-O5 (full run against 1,229,730), and the user's answer to its section 9 question (accept LS-K5). Named by the plan itself and docs/handoffs/2026-11-06-optimal-score-plan-handoff.md.
+- named by: not computed (live plan).
+
+## Side notes
+- Five lines already carry the "(removed; git show 444631e6:...)" form for plans that are still on main: docs/audit/2026-10-03-fix-decisions.md:1048, docs/audit/2026-10-29-audit-of-audits/blocks/AOA-W2a.md:71, tests/test_song_parse.cpp:332-333, tools/ci_build_folder.ps1:24, tools/ch_probe/experiments/sp_compare.py:25. Commit 444631e6 does hold the plans (225 plan files), so `git show` works, but the claim "removed" is false today and the plans never left main (git log --diff-filter=D on the ci-build-speed plan finds no delete). Either a removal was planned and not merged, or these lines came early.
+- docs/handoffs/ still holds handoffs for finished plans (2026-10-18-song-length-end-event-handoff.md, 2026-10-28-overlay-spike-sitting-handoff.md); they are not in my brief but they will name the plans.
+- The plans' own status lines are stale in at least these: song-length line 3, libraries line 3, harness-instructions line 3, ch-mcp-in-game-input line 5.
+- docs/superpowers/plans/2026-10-31-ch-mcp-direct-start.md and 2026-10-30-ch-mcp-star-power-and-song-start.md each still name tasks and live steps that were struck or replaced; if they stay, they will keep misleading.
+- The star-power plan's live steps LS0, LS1, LS2 and LS4: I found no record that they ran as written; they look replaced by the direct-start route but the plan has no line that says so.
+
+## Unchecked
+- none. All 14 plans were reached. The optimal-score plan was judged on its merge and live-step state only, not task by task.
