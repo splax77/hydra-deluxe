@@ -136,7 +136,21 @@ The second group goes end to end through AppState: the toolbar, the batch strip,
 
 ## The Path Builder's tests
 
-The Path Builder has its own headless runner, `hydra_pathbuilder_uitest`, built on the same engine. Its tests live in `tests/pb_ui`. It has no `--all`; run a test by name with `--test <name>`. An opened step's ending lines are the items `##end_<tick>`, named by the ending's deact tick, and `choose-an-ending` drives them.
+The Path Builder has its own headless runner, `hydra_pathbuilder_uitest`, built on the same engine. Its tests live in `tests/pb_ui`. It has no `--all`; run a test by name with `--test <name>`, and `--list` prints the names. Build it with `.\build_cpp.ps1 -Target hydra_pathbuilder_uitest`.
+
+| Item | What it is |
+|---|---|
+| `##fill_<tick>` | a fill on the timeline's "Your activations" row, by its chord tick (`timeline_fill_id`) |
+| `##band_<index>` | an activation's band on the same row, by its index from 0 |
+| `##timeline` | the rows' own item, which takes the clicks and drags the fills and bands leave |
+| `##label_saved`, `##label_activations` | the two row names that show a hover |
+| `##scrollbar` | the bar under the rows (`kTimelineScrollbarId`) |
+| `##choice_<tick>` | a "Where to activate next" row, by its fill's chord tick |
+| `##end_<tick>` | an opened step's ending line, by the ending's deact tick |
+
+These are under `**/`, because the rows and panels sit in child windows; `any_ref` in `pbtest_harness.h` writes the ref.
+
+Which test pins what, for the timeline's moves: `hover-moves-nothing`, `drag-moves-the-clock`, `drag-stays-in-the-window`, `activations-row-never-drags` and `fill-click-moves-clock`. `choose-an-ending` drives the ending lines.
 
 ## Watching it run: attached mode
 

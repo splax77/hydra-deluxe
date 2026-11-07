@@ -924,6 +924,29 @@ docs/superpowers/plans/2026-09-26-codebase-audit-fixes.md (decision 4).
 _Avoid_: player (the whole Preview), scrubber (the UI control only), playhead
 (the audio follower only)
 
+### Path Builder
+
+**Path Builder**:
+The second program, `HydraPathBuilder.exe`: the player builds their own Star
+Power path by clicking fills and sees what each choice costs against the best
+path. `PbApp` in src/pathbuilder/pb_window.h draws its window, and its header
+says in what order. Under the timeline sits Hydra's own Preview panel
+(`ui::draw_preview_panel`), shared code, so the two programs draw one Preview.
+Beside the panel a side column holds the "Where to activate next" list and the
+"Your activations" panel. pb_text.h owns every sentence on the screen.
+
+**Builder timeline**:
+The rows over the Preview, drawn by `ui::PreviewTimeline`, over one stretch of
+the song at a time (`ui::TimelineView`, src/ui/timeline_view.h). One time scale
+runs across every row. The scrollbar under it is the only whole-song control.
+
+**Step**:
+One of the player's activations in the Path Builder: a compact row in the "Your
+activations" panel (`step_short`), which opens to its ending lines
+(`end_choice_text`). Only the last step's ending can change.
+_Avoid_: window (the search's word for the same activation, and the timeline's
+word for the stretch it shows)
+
 ### Code layout
 
 **Code library**:

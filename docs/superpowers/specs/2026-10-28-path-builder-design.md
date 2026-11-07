@@ -1,7 +1,8 @@
 # Path Builder (Coach): design
 
 Date: 2026-10-28. Status: design approved section by section in chat; waiting
-for the user to read this file before a plan is written.
+for the user to read this file before a plan is written. The screen was
+redesigned later; see "Redesign, 2026-10-31" at the end.
 
 The research behind it (web scouts, prior art, timing) is in
 `2026-10-28-path-builder-brainstorm.md` beside this file. Every decision lives
@@ -257,6 +258,25 @@ on the engine option and the main window.
   sends that case to the user; nothing is invented for it.
 
 ## Redesign, 2026-10-31
+
+The user's second real-app check found six problems, so the screen was
+redesigned from clickable mockups. Where this section and "The screen" above
+disagree, this section and the mockups win. The six problems: the "Open in Path
+Builder" button was missing; the cost labels under the fills could not be read;
+the steps panel took up far too much room; none of the Preview's features came
+across, only the highway; a hollow ring meant two different things; and "2
+phrases: enough to activate" read like the answer.
+
+The second mockup (`docs/superpowers/specs/2026-10-31-path-builder-mockup-2/`)
+is the spec for those six: costs as colours plus the "Where to activate next"
+list, a locked look for fills before the last activation, the shaded saved row
+and the whole Preview panel under the timeline.
+
+The third mockup (`docs/superpowers/specs/2026-10-31-path-builder-mockup-3/`)
+is the spec for the short hover card, the bigger hit area and the 3-minute
+window with its scrollbar. Its overview strip was built and then removed at the
+real-app check, so the timeline has one time scale. D303 is the record of both
+mockups.
 
 2026-10-31: the fourth mockup
 (`docs/superpowers/specs/2026-10-31-path-builder-mockup-4/`) is the spec for
