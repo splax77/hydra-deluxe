@@ -35,8 +35,9 @@ try:
 except ImportError:  # pragma: no cover - top-level import, ch_probe on sys.path
     import constants as C  # type: ignore[no-redef]
 
-# How long press_chord holds a chord's keys down: the 3 ms hold play_chart
-# proved at the game, kept as it is (phase 6, task J3-8).
+# How long press_chord holds a chord's keys down: play_chart's hold, recorded
+# as it stood by task J3-8 of
+# `docs/superpowers/plans/2026-10-04-phase-6.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-10-04-phase-6.md`).
 KEY_HOLD_S = 0.003
 
 
@@ -76,7 +77,7 @@ DEFAULT_BINDINGS: Dict[int, int] = {
     Lane.GREEN_CYMBAL: 0x54,   # 'T'
 }
 
-# Short names for printed logs (moved from play_chart.py).
+# Short names for printed logs.
 LANE_NAMES: Dict[int, str] = {
     Lane.GREEN: "Grn", Lane.RED: "Red", Lane.YELLOW: "Yel", Lane.BLUE: "Blu",
     Lane.KICK: "Kick", Lane.YELLOW_CYMBAL: "YCym", Lane.BLUE_CYMBAL: "BCym",

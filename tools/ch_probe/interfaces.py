@@ -1,7 +1,7 @@
-"""The contract between the seven pieces of the probe tool.
+"""The contract between the pieces of the probe tool.
 
-Read this before writing any module. Each piece implements the Protocol named
-for it here. Keeping the signatures fixed is what lets the pieces be built
+Read this before writing any module. Each piece implements the Protocols and
+functions named for it here. Keeping the signatures fixed is what lets the pieces be built
 independently and still snap together: the engine model calls the process and
 debugger through these methods, and the experiment runners call everything
 through them, without anyone having seen anyone else's implementation.
@@ -237,5 +237,5 @@ class InputDriver(Protocol):
 
 # --- ocr.py : the OCR cross-check -------------------------------------------
 #
-# Only the text parser remains (parse_accuracy_text). The screen-capture path
-# had no caller and was deleted in 2026-09; git history has it.
+# Holds only the text parser (parse_accuracy_text), so it has no Protocol here.
+# It captures nothing from the screen.

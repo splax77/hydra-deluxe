@@ -20,9 +20,10 @@ How it runs:
    print the clamp verdict.
 
 The game keeps times in seconds; rows are in milliseconds. +0x20 holds the
-whole window, but whether the formula returns one side or the whole is not
-known until this runs. So the first rows are printed and the verdict is given
-against the measured whole window (constants.WINDOW_CAP_MS) and its half.
+whole window, and constants.py's measured cap and floor take the formula's
+output to be that whole window too. This script checks that against a live
+song: the first rows are printed and the verdict is given against the
+measured whole window (constants.WINDOW_CAP_MS) and its half.
 
     python -m tools.ch_probe.experiments.passive_probe --seconds 20
 """
