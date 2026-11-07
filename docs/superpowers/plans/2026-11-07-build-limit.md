@@ -66,9 +66,11 @@ Asked what one build per session means, the user chose "One at a time (Recommend
 6. How long may a pass sit unclaimed? Recommended: 2 minutes. This is a new number, so it needs the user's yes.
 7. The user said "any tests that require a build are done by the main session, not agents." May an agent still run a test program that already exists, such as `hydra_precheck.exe` built by the main session on main, which reviewers run today on any worktree? Recommended: no for `hydra_tests.exe`, `hydra_uitest.exe` and `hydra_replay.exe`, because they test a branch's code and need that branch built. Yes for `hydra_precheck.exe` from main, which only reads a worktree and tests nothing. The cost is that a reviewer without the precheck output asks the main session for it. The pages T1 and T2 change follow whichever answer the user gives, so they wait on it.
 
+The user answered all seven on 2026-11-07: "Yes, all recommended". Each recommendation above is now the rule, and the pass limit in question 6 is 2 minutes.
+
 ## Tasks
 
-T1 and T2 touch different repos and need nothing from each other, so they run at the same time. Each gets one executor on Opus and one reviewer. Under the new rule neither can build, so the main session builds T1's branch and runs its tests.
+T1 and T2 touch different repos and need nothing from each other, so they run at the same time. T1 is too big for one executor's budget, so it runs as two: T1a owns the scripts and their tests, and T1b owns the pages. Each gets one executor on Opus and one reviewer. Under the new rule neither can build, so the main session builds T1's branch and runs its tests.
 
 ### T1: The pass, both locks and the Hydra docs (Opus)
 
