@@ -8,8 +8,7 @@
 //
 // Both lists come from git (git_listed), not from the disk. A folder git
 // ignores, such as a node_modules an npm install put under tools/, holds
-// vendored code the repo never ships; a disk walk read it and failed the
-// scans on lines nobody here wrote.
+// vendored code the repo never ships, so the scans must not read it.
 #pragma once
 
 #include <algorithm>

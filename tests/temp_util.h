@@ -1,8 +1,8 @@
 // The one place a test builds a per-process scratch path (audit finding 287).
 // Every name lives in the Windows temp folder and carries a tag and this
 // process's id, so two test processes running at once never share a file.
-// The temp-folder lookup here is the only one under tests/ (a single-owner
-// row in tests/single_owner/rules/tests.json checks it).
+// Tests get the temp folder here. A single-owner row in
+// tests/single_owner/rules/tests.json names every lookup allowed under tests/.
 //
 // These functions take and hand back UTF-8, the form every path helper in
 // core/winstr takes; a caller that needs the wide form for a Win32 call converts once
@@ -29,7 +29,7 @@
 namespace testtemp {
 
 // The Windows temp folder, with its trailing backslash, as Windows hands it
-// back. The one temp-folder lookup under tests/.
+// back.
 inline std::string temp_root() {
     wchar_t tmp[MAX_PATH];
     GetTempPathW(MAX_PATH, tmp);

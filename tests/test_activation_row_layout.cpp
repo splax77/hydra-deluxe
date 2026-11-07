@@ -8,6 +8,9 @@
 // GUI harness measures at 9.6 px a character ("m1024.1.120" is 105.6 px), on
 // a 16 px text line. The GUI test paths-row-layout checks the same with the
 // real fonts.
+//
+// B1 and B3 in the test names are acceptance cases from the plan
+// docs/superpowers/plans/2026-10-22-squeeze-badge-beside-early-fill.md (removed; git show 444631e6:docs/superpowers/plans/2026-10-22-squeeze-badge-beside-early-fill.md).
 
 #include "doctest.h"
 
@@ -78,9 +81,9 @@ TEST_CASE("activation row: a short measure keeps the bars at kRowMinBarsX") {
 }
 
 TEST_CASE("activation row: an 11-character measure pushes the bars past it") {
-    // "m1024.1.120" ran into "3 bars" when the bars sat at a fixed kRowMinBarsX.
+    // "m1024.1.120" ends past kRowMinBarsX, so bars at that floor would overlap it.
     const float measure_w = mono(11);
-    CHECK(kRowMeasureX + measure_w > kRowMinBarsX);  // the old overlap
+    CHECK(kRowMeasureX + measure_w > kRowMinBarsX);  // the measure ends past the floor
     const ActivationRowLayout l = layout(measure_w, kBars12, {}, 600.0f);
     CHECK(l.bars_x >= l.measure_x + measure_w + hydra::ui::kRowBarsGap - 0.001f);
     CHECK(l.bars_x > kRowMinBarsX);
