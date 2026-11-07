@@ -366,25 +366,19 @@ class RowChecksTest(unittest.TestCase):
     def test_ready_fraction_is_half_a_meter(self):
         self.assertEqual(sp_compare.READY_FRACTION, 0.5)
 
-    def test_only_an_end_chord_reaches_back_by_the_end_lead(self):
-        from tools.ch_probe.experiments import play_chart
-        score = {"activations": [{"act_tick": 0, "deact_tick": 200}]}
-        ends = sp_compare.end_ticks_of(score)
-        self.assertEqual(sp_compare.early_credit_ms({"tick": 200}, ends),
-                         play_chart.SP_END_LEAD_MS)
-        self.assertEqual(sp_compare.early_credit_ms({"tick": 100}, ends),
-                         play_chart.PRESS_LEAD_MS)
-
     def test_a_flip_goes_to_its_own_chord_not_one_17_ms_after(self):
-        # Chord 1 (tick 100) is pressed 2 ms early and chord 2 (tick 200, an
-        # end chord) 15 ms early, 17.2 ms later. A flip 1 ms after chord 1
-        # belongs to chord 1; the end chord's wider credit must not take it.
-        chords = [{"tick": 100, "ms": 1000.0}, {"tick": 200, "ms": 1017.2}]
+        # Chord 1 is pressed at 998 ms and chord 2, 17.2 ms later, at 1002.2
+        # ms. A flip 1 ms after chord 1 belongs to chord 1; chord 2's earlier
+        # press must not take it.
+        chords = [{"index": 1, "tick": 100, "ms": 1000.0},
+                  {"index": 2, "tick": 200, "ms": 1017.2}]
+        reach = {1: sp_compare.PressReach(998.0, 998.0),
+                 2: sp_compare.PressReach(1002.2, 1002.2)}
         chord_ms = [c["ms"] for c in chords]
-        got = sp_compare._landed_chord(chords, chord_ms, 1001.0, {200})
+        got = sp_compare._landed_chord(chords, chord_ms, 1001.0, reach)
         self.assertIs(got, chords[0])
-        # A flip at 1003 ms is also within the end chord's credit (1002.2).
-        got = sp_compare._landed_chord(chords, chord_ms, 1003.0, {200})
+        # A flip at 1003 ms is after chord 2's press (1002.2).
+        got = sp_compare._landed_chord(chords, chord_ms, 1003.0, reach)
         self.assertIs(got, chords[1])
 
     def test_phrase_rises_gives_each_step_up(self):
@@ -449,6 +443,88 @@ class RowChecksTest(unittest.TestCase):
         got = sp_compare.ready_between([_row(1.0, 3072)], 2000.0, 3000.0, AMOUNT, MAX)
         self.assertEqual((got.rows, got.highest, got.sp_max, got.ready_row),
                          (0, None, None, None))
+
+
+def _fixture(name):
+    return os.path.join(_HERE, name)
+
+
+_MOUTHS = (_fixture("mouths_refine_score.json"), _fixture("mouths_refine_dump.json"))
+_BOMBER = (_fixture("bomber_refine_score.json"), _fixture("bomber_refine_dump.json"))
+
+
+def _rounded(reach):
+    return (round(reach.earliest_ms, 2), round(reach.latest_ms, 2))
+
+
+def _fixture_chords(score_path):
+    """The fixture file's chords as they are: the phrase-end flag, in_sp and
+    multipliers are the refine-prep score file's own."""
+    with open(score_path, encoding="utf-8") as f:
+        return json.load(f)["chords"]
+
+
+def _rise_lines(score_path, reach, rows):
+    report = sp_compare.Report()
+    sp_compare._check_phrase_rises(report, rows, _fixture_chords(score_path),
+                                   AMOUNT, MAX, reach)
+    return report.lines
+
+
+class PressReachTest(unittest.TestCase):
+    """press_reach takes each chord's press times from play_chart.press_plan."""
+
+    def test_mouths_740_reaches_its_late_kick_press(self):
+        reach = sp_compare.press_reach(*_MOUTHS)
+        # The cymbals are pressed 15 ms early, the kick 15 ms after the end.
+        self.assertEqual(_rounded(reach[740]), (118410.95, 118440.95))
+
+    def test_mouths_740_is_credited_at_its_second_press(self):
+        reach = sp_compare.press_reach(*_MOUTHS)
+        rows = [_row(118.300, 0), _row(118.412, 0), _row(118.441, 1536)]
+        self.assertIn("PASS phrase rise after chord 740 (tick 48480, 118426.0 ms): "
+                      "+1536 (0 -> 1536) at 118441.0 ms, full",
+                      _rise_lines(_MOUTHS[0], reach, rows))
+
+    def test_bomber_147_reaches_its_55_ms_early_press(self):
+        reach = sp_compare.press_reach(*_BOMBER)
+        self.assertEqual(_rounded(reach[147]), (27278.33, 27278.33))
+        # A flip after 147's press but before its ms lands on 147, not on
+        # chord 146 83 ms before it.
+        chords = _fixture_chords(_BOMBER[0])
+        chord_ms = [c["ms"] for c in chords]
+        got = sp_compare._landed_chord(chords, chord_ms, 27280.0, reach)
+        self.assertEqual(got["index"], 147)
+
+    def test_bomber_180_reaches_its_late_press(self):
+        reach = sp_compare.press_reach(*_BOMBER)
+        self.assertEqual(_rounded(reach[180]), (32626.67, 32626.67))
+        rows = [_row(32.500, 0), _row(32.640, 1536)]
+        self.assertIn("PASS phrase rise after chord 180 (tick 18768, 32583.3 ms): "
+                      "+1536 (0 -> 1536) at 32640.0 ms, full",
+                      _rise_lines(_BOMBER[0], reach, rows))
+
+    def test_a_squeeze_out_with_no_dump_is_refused(self):
+        with self.assertRaises(ValueError):
+            sp_compare.press_reach(_MOUTHS[0])
+
+    def test_senri_with_no_squeeze_reaches_as_before(self):
+        # Chord 268 ends an activation and is pressed 15 ms early; chord 267
+        # is pressed 2 ms early. Each has one press. test_play_chart's Senri
+        # file adds the red neighbours the load check needs.
+        from tools.ch_probe.tests.test_play_chart import _senri_dump
+        with tempfile.TemporaryDirectory() as folder:
+            path = os.path.join(folder, "senri.json")
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(_senri_dump(), f)
+            reach = sp_compare.press_reach(path)
+        self.assertEqual(_rounded(reach[268]), (31845.68, 31845.68))
+        self.assertEqual(_rounded(reach[267]), (31757.33, 31757.33))
+
+    def test_compare_with_no_reach_reads_the_score_itself(self):
+        rows = build_rows()
+        self.assertEqual(run(rows).text(),
+                         run(rows, reach=sp_compare._score_press_reach(SCORE)).text())
 
 
 def _samples(*pairs):

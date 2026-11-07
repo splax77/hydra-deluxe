@@ -44,8 +44,9 @@ STEPS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "menu_step
 # The kit item the search step presses to move to the next song. No manual
 # page says which pads scroll: the plan only notes that the user's
 # settings.ini has drum_pad_scrolling = 1, and How to Play says the Blue fret
-# opens the search tool. So Blue is a guess, and live step LS-K3 checks what it
-# does. The checked-in menu_steps.json has no search step.
+# opens the search tool. So Blue is a guess: live step LS-K3, which was to
+# check it, was struck before it got that far (menu_steps.json's "about" says
+# so). The checked-in menu_steps.json has no search step.
 SEARCH_NEXT_ITEM = KIT_PREFIX + "blue"
 
 # The menu classes the expect words look at, by the name agent/menu.ts sends.
@@ -112,8 +113,10 @@ def loaded_folder(state: dict) -> Optional[str]:
 # The expect words a step may name, each a test of one read against the
 # target folder. The _live words take a live object for a menu on screen; the
 # _active words take a live object whose GameObject is active. menu_steps.json
-# marks the steps that rest on either "unproven" until live step LS-K3 shows
-# what the reads do on each screen.
+# marks the steps that rest on either "unproven". Live step LS-K3 was to settle
+# those marks and set the file's "verified" true; its two runs stopped on the
+# player screen and it was struck, so the marks and the false flag stand. What
+# those runs read is on Clone Hero page 07 (IN-79).
 EXPECT: Dict[str, Callable[[dict, str], bool]] = {
     "song_select_live": lambda state, target: _class_live(state, SONG_SELECT),
     "selected_folder_is_target": lambda state, target: same_folder(selected_folder(state), target),

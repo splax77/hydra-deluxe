@@ -14,6 +14,7 @@ import contextlib
 import csv
 import dataclasses
 import io
+import json
 import os
 import sys
 import tempfile
@@ -31,9 +32,12 @@ if _REPO_ROOT not in sys.path:
 from tools.ch_mcp import frida_tools, game_tools, sp_tools  # noqa: E402
 from tools.ch_probe import engine  # noqa: E402
 from tools.ch_probe import engine_finder as F  # noqa: E402
-from tools.ch_probe.experiments import sp_watch  # noqa: E402
+from tools.ch_probe.experiments import sp_compare, sp_watch  # noqa: E402
 from tools.ch_probe.experiments.overlay_logs import WATCH_COLUMNS  # noqa: E402
 from tools.ch_probe.tests import fakes  # noqa: E402
+from tools.ch_probe.tests.test_sp_compare import _row  # noqa: E402
+
+_PROBE_TESTS = os.path.join(_REPO_ROOT, "tools", "ch_probe", "tests")
 
 BACKUP_LINE = "backup folder: X (taken now)"
 ENGINE = 0x2_0000_1000
@@ -624,6 +628,55 @@ class SpToolsTest(unittest.TestCase):
         missing = os.path.join(self.tmp.name, "none.csv")
         reply = self.tools().ch_sp_compare(missing, missing)
         self.assertTrue(reply.startswith("compare failed: FileNotFoundError"))
+
+    def _compare_files(self, score, phrase_end, rows):
+        """A watcher CSV of `rows` and a copy of the score file `score`. A
+        chord that lacks the fields compare's checks read (the hand-made Senri
+        file) gets placeholders, with chord `phrase_end` the one phrase end;
+        a chord that has them (the refine-prep fixtures) keeps its own."""
+        chords = [{"is_sp_phrase_end": c["index"] == phrase_end, "in_sp": False,
+                   "multiplier": 4, "multiplier_after": 4, **c} for c in score["chords"]]
+        score_path = os.path.join(self.tmp.name, "score.json")
+        with open(score_path, "w", encoding="utf-8") as f:
+            json.dump({**score, "chords": chords}, f)
+        csv_path = os.path.join(self.tmp.name, "watch.csv")
+        with open(csv_path, "w", newline="", encoding="utf-8") as f:
+            w = csv.writer(f)
+            w.writerow(WATCH_COLUMNS)
+            for r in rows:
+                w.writerow([r[c] for c in WATCH_COLUMNS])
+        return csv_path, score_path
+
+    def _mouths_files(self):
+        with open(os.path.join(_PROBE_TESTS, "mouths_refine_score.json"), encoding="utf-8") as f:
+            score = json.load(f)
+        # test_sp_compare's rows for chord 740: its kick is pressed after the
+        # squeeze-out's end, and the rise lands after that press.
+        rows = [_row(118.300, 0), _row(118.412, 0), _row(118.441, 1536)]
+        return self._compare_files(score, None, rows)
+
+    def test_ch_sp_compare_on_senri_with_no_dump_reports_as_compare_does(self):
+        from tools.ch_probe.tests.test_play_chart import _senri_dump
+        watch_csv, score_json = self._compare_files(
+            _senri_dump(), 268, [_row(31.700, 0), _row(31.860, 1536), _row(31.900, 1536)])
+        want = sp_compare.compare(sp_compare.load_watch_rows(watch_csv),
+                                  sp_compare.load_score(score_json)).text()
+        self.assertTrue(want.startswith("Star Power comparison: 3 watcher rows"), want)
+        self.assertEqual(self.tools().ch_sp_compare(watch_csv, score_json), want)
+
+    def test_ch_sp_compare_reads_the_mouths_dump(self):
+        watch_csv, score_json = self._mouths_files()
+        reply = self.tools().ch_sp_compare(
+            watch_csv, score_json,
+            dump_json=os.path.join(_PROBE_TESTS, "mouths_refine_dump.json"))
+        self.assertIn("PASS phrase rise after chord 740 (tick 48480, 118426.0 ms): "
+                      "+1536 (0 -> 1536) at 118441.0 ms, full", reply)
+
+    def test_ch_sp_compare_refuses_a_squeeze_out_with_no_dump_naming_it(self):
+        watch_csv, score_json = self._mouths_files()
+        reply = self.tools().ch_sp_compare(watch_csv, score_json)
+        self.assertEqual(reply, f"could not read {score_json}: ValueError: {score_json} has a "
+                                f"squeeze-out, whose timing needs the path's dump: pass dump_json")
 
 
 if __name__ == "__main__":

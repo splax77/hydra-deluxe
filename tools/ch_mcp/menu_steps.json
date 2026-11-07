@@ -43,7 +43,7 @@
       "items": ["kit:green"],
       "expect": "game_manager_live",
       "manual": "How to Play, as in step 4. Neither page names the Ready press.",
-      "guess": "Green is guessed for Ready, with the player screen's default instrument and difficulty. ch_menu prints both with their words; the plan's LS-K3 pass line needs ProDrums and Expert."
+      "guess": "Green is guessed for Ready, with the player screen's default instrument and difficulty. ch_menu prints both with their words. No run has pressed Ready: LS-K3 was to press it only on ProDrums and Expert, and it was struck after its second run stopped on the player screen."
     },
     {
       "name": "song loads",

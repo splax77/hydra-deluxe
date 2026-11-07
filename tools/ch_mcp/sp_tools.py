@@ -286,15 +286,27 @@ class SpTools:
     def ch_sp_compare(self, watch_csv: str, score_json: str,
                       resolution: Optional[int] = None,
                       sp_bar_ticks: Optional[int] = None,
-                      width: int = sp_compare.DEFAULT_WIDTH) -> str:
+                      width: int = sp_compare.DEFAULT_WIDTH,
+                      dump_json: Optional[str] = None, path_index: int = 0) -> str:
         """sp_compare.compare's report for a watcher CSV against a
-        hydra_replay score JSON."""
+        hydra_replay score JSON, with each chord's press times from
+        sp_compare.press_reach over path `path_index` of `dump_json`. A score
+        file that press_reach cannot read, such as a squeeze-out with no
+        dump_json, gets one line naming why, the way ch_run_chart's does."""
         with self._lock:
             try:
                 rows = sp_compare.load_watch_rows(watch_csv)
                 score = sp_compare.load_score(score_json)
+            except (OSError, ValueError, KeyError, TypeError) as e:
+                return f"compare failed: {type(e).__name__}: {e}"
+            try:
+                reach = sp_compare.press_reach(score_json, dump_json, path_index)
+            except (OSError, ValueError, KeyError, IndexError, TypeError) as e:
+                return f"could not read {score_json}: {type(e).__name__}: {e}"
+            try:
                 report = sp_compare.compare(rows, score, resolution=resolution,
-                                            sp_bar_ticks=sp_bar_ticks, width=width)
+                                            sp_bar_ticks=sp_bar_ticks, width=width,
+                                            reach=reach)
             except (OSError, ValueError, KeyError, TypeError) as e:
                 return f"compare failed: {type(e).__name__}: {e}"
             return report.text()
