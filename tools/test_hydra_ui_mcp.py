@@ -31,7 +31,7 @@ from datetime import datetime
 from pathlib import Path
 from unittest import mock
 
-HERE =Path(__file__).resolve().parent
+HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
 import fake_hydra_live as fake  # noqa: E402
