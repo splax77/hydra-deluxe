@@ -4,8 +4,7 @@
 // bundles), so tests fabricate one the way parse/srb.h reads it: 16 header
 // bytes, a deflated metadata block, the deflated notes, then any trailing
 // streams (real bundles carry audio and art there, which the notes reader
-// skips). Audit finding 117: test_srb.cpp and test_preview_source.cpp both
-// build theirs through here.
+// skips). Audit finding 117: every test that needs one builds it here.
 
 #ifndef HYDRA_TESTS_SRB_UTIL_H
 #define HYDRA_TESTS_SRB_UTIL_H
@@ -78,7 +77,7 @@ inline std::vector<uint8_t> make_full_metadata(const std::string& notes_filename
     std::vector<uint8_t> meta = make_metadata(notes_filename, name, artist, charter);
     meta.resize(meta.size() - 24);  // drop make_metadata's junk tail
     for (int i = 0; i < 12; ++i) meta.push_back(static_cast<uint8_t>(i));  // difficulties
-    testbytes::put_u32(meta, 30000);                                      // preview_start_ms
+    testbytes::put_u32(meta, 30000);                                      // preview start time
     push_str(meta, icon);
     testbytes::put_u32(meta, 3);  // playlist_track
     testbytes::put_u32(meta, 7);  // album_track

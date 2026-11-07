@@ -1,7 +1,7 @@
 // The one test definition of "the same Song": what a chart read out of a
 // container must match when its notes file is read directly. Audit finding
-// 122: test_sng.cpp and test_srb.cpp each had their own, and the .sng one
-// compared only ticks, so a loader that dropped SP phrases or fills passed.
+// 122: it compares more than ticks, so a loader that drops SP phrases or fills
+// fails.
 
 #ifndef HYDRA_TESTS_SONG_EQUAL_H
 #define HYDRA_TESTS_SONG_EQUAL_H

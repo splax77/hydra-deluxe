@@ -1,9 +1,10 @@
 // Tests for app/path_view's activation rows on the Song Details screen:
 // build_activations, the badges, the squeeze sentences and the backend table.
-// These forms were previously composed inside ui/paths_tab.cpp's draw
-// functions, where no test could reach them; the view-model is the
-// interface, so the cases here pin the exact display strings. The path list
-// is in test_path_list.cpp.
+// The view-model is the interface, so the cases here pin the exact display
+// strings. The path list is in test_path_list.cpp.
+//
+// A1 to A9 in the comments are acceptance cases from the plan
+// docs/superpowers/plans/2026-10-22-squeeze-badge-beside-early-fill.md (removed; git show 444631e6:docs/superpowers/plans/2026-10-22-squeeze-badge-beside-early-fill.md).
 
 #include "doctest.h"
 
@@ -78,15 +79,15 @@ TEST_CASE("build_activations: the early fill reads positive = early on both line
         return v.acts[0];
     };
 
-    // E0: 12.3 ms early. The header already showed +12.3; the details line
-    // used to print the raw offset, -12.3.
+    // E0: 12.3 ms early, a raw offset of -12.3. The badge and the details line
+    // both read 12.3.
     Activation e0;
     test::set_skips(e0, 0);
     test::set_sp_meter(e0, 2);
     e0.e_offset = -12.3;
     ActivationRowView av = view_of(e0);
-    // The fixture sets no timecode, so it sits at tick 0 (m1.1.0); an
-    // activation always has one now (since path format 6, docs/adr/0017).
+    // The fixture sets no timecode, so it sits at tick 0 (m1.1.0); the search
+    // sets one on every activation it makes (docs/adr/0017).
     CHECK(av.notation == "E0");
     CHECK(av.measure == "m1.1.0");
     REQUIRE(av.badges.size() == 1);
@@ -149,7 +150,7 @@ TEST_CASE("build_activations: the scale line shows the multipliers its rows read
     base.e_offset = 300.0;  // not e-critical
 
     // Identity scales: nothing to say, even with a gap past the combined
-    // budget (which trips materiality on its own).
+    // budget.
     Activation overbudget = base;
     overbudget.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 250.0});
     // Stored x1.00, not left unknown (D4).
@@ -292,7 +293,7 @@ TEST_CASE("build_activations: the scale line shows the multipliers its rows read
     CHECK_FALSE(av.scale_warn);
 }
 
-// D17 (wording since rewritten to the tooltip style the user approved on 2026-10-10).
+// D17 rules what the hint covers; this pins its words.
 TEST_CASE("kTransferScaleHint explains the measure scaling") {
     CHECK(std::string(kTransferScaleHint) ==
           "Star Power length is counted in measures, not milliseconds. Where measures at the SP "
@@ -312,7 +313,8 @@ TEST_CASE("build_activations: overfill warning text") {
 
     // clamp_tick says the cap pinned this window's end to the note at tick
     // 960; the SqOut is the frontend-decided squeeze the warning needs to
-    // have something to attach to (see the cap_clamped tests above).
+    // have something to attach to (see the cap_clamped tests in
+    // test_squeeze_rating.cpp).
     Activation act;
     act.timecode = timing.timecode(0);
     test::set_sp_meter(act, 2);
@@ -395,7 +397,7 @@ TEST_CASE("build_activations: the backend limit hides far rows but never "
     CHECK_FALSE(limited[0].warn);
     CHECK(limited[1].timing == "60.0");
     // +60 ms is past the leeway: the engine never counted this chord, so the
-    // row is tagged uncounted and not highlighted (user decision 19).
+    // row is tagged uncounted and not highlighted (D274, decision 19).
     CHECK(limited[1].rating.find("(uncounted) <-- squeezed out") != std::string::npos);
     CHECK_FALSE(limited[1].warn);
     CHECK(at50.backends_label == "3 notes near the SP end \xC2\xB7 1 hidden: 1 before, 0 after");

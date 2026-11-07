@@ -1,6 +1,5 @@
-// The analyzed record the store tests save, look up and relabel. The three
-// store test files (test_store_results.cpp, test_store_library.cpp and
-// test_store_open.cpp) all build their rows from it, so it lives here once.
+// The analyzed record the store tests save, look up and relabel. The store
+// test files all build their rows from it, so it lives here once.
 #ifndef HYDRA_TESTS_STORE_FIXTURES_H
 #define HYDRA_TESTS_STORE_FIXTURES_H
 

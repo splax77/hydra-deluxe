@@ -9,8 +9,8 @@
 // parsed Song: the timing maps, every timestamp's chord and flags, and the
 // display fields. Both are FNV-1a over the raw bytes, so they are stable
 // within one build of one compiler, which is all an A-against-B comparison
-// needs. The speedups plan's "Proving identical results" section is the
-// recipe they serve.
+// needs. "Proving identical results" in docs/development.md is the recipe
+// they serve.
 
 #ifndef HYDRA_TESTS_SONG_DIGEST_H
 #define HYDRA_TESTS_SONG_DIGEST_H
@@ -32,7 +32,8 @@
 
 namespace hydra::digest {
 
-// FNV-1a's 64-bit offset basis and prime.
+// FNV-1a's 64-bit prime, and a seed that is its published offset basis minus
+// the last digit. The pinned digests start from this seed.
 inline constexpr uint64_t kSeed = 1469598103934665603ULL;
 inline constexpr uint64_t kPrime = 1099511628211ULL;
 
@@ -140,12 +141,12 @@ inline uint64_t path_hash(uint64_t h, const Path& p) {
     return fnv_list(h, p.variants, path_hash);
 }
 
-// A whole engine result, field by field from the structs (R16): the record's
+// A whole engine result, field by field from the structs: the record's
 // rules fingerprint, ms limit, SP cap and fill rule, its multiplier
 // squeezes, and every path tree, the all-0 ones included. Two records that
-// hash the same are the same answer. hydra.db no longer stores any of this
-// (D87), so this walk, not a store round trip, is how a test proves a change
-// left the engine's whole answer alone.
+// hash the same are the same answer. hydra.db keeps only a summary of each
+// record (D87), so this walk, not a store round trip, is how a test proves a
+// change left the engine's whole answer alone.
 inline uint64_t record_hash(const HydraRecord& r) {
     uint64_t h = kSeed;
     auto v = [&](const auto& x) { h = fnv(h, &x, sizeof x); };
@@ -167,9 +168,8 @@ inline uint64_t record_hash(const HydraRecord& r) {
 // (RecordRow::best_path_text), its summary (RecordRow::summary) and the whole
 // engine result behind it (record_hash). The record's profile, song id and
 // rules fingerprint (see store::PreparedRecord) are left out: they come from
-// the settings and the build, not from the analysis. The facts and their
-// order are the ones the old results row folded, so the pinned digests in
-// tests/test_perf_digest.cpp still hold.
+// the settings and the build, not from the analysis. The pinned digests in
+// tests/test_perf_digest.cpp rest on these facts and this order.
 inline uint64_t row_hash(const store::PreparedRecord& r, const HydraRecord& record) {
     uint64_t h = record_hash(record);
     h = fnv_str(h, r.record.best_path_text());
