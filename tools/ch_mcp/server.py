@@ -167,7 +167,7 @@ def build_server(helper: Optional[Helper] = None):
     @server.tool()
     def ch_install_chart(chart_folder: str, name: str | None = None) -> str:
         """Copy one chart folder into the probe song folder with a silent
-        audio file, so the game can launch it."""
+        audio file and a title marked as a probe, so the game can launch it."""
         return capped(h.game.ch_install_chart(chart_folder, name))
 
     @server.tool()
