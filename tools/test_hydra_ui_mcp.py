@@ -675,15 +675,10 @@ class SdkClient(unittest.TestCase):
 
 
 def why_no_live():
-    """None when the real layer can run, else why it skips. The marker is
-    --live in the usage line hydra_uitest prints for --help."""
+    """None when the real layer can run, else why it skips."""
     exe = hm.EXE_DIR / hm.HEADLESS_EXE
     if not exe.is_file():
         return f"{exe} is not built"
-    r = subprocess.run([str(exe), "--help"], capture_output=True, text=True,
-                       timeout=hm.HELLO_TIMEOUT_S)
-    if "--live" not in (r.stdout + r.stderr):
-        return "hydra_uitest.exe has no --live yet (task T2)"
     return None
 
 
