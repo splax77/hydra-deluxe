@@ -207,8 +207,8 @@ inline constexpr const char* kNothingToShow = "Nothing to show";
 // library (D89 item 2): the report covers library charts only. The DM
 // comparison and the fill comparison stop with it too (D92).
 inline constexpr const char* kNoChartLibrary =
-    "This database has no chart library. Run hydra_batch without folder arguments, or scan "
-    "in Hydra, to build one.";
+    "This database has no chart library. Run hydra_batch --whole-library, or scan in Hydra, to "
+    "build one.";
 
 // Whether `store` holds results but no chart library to report them on: the
 // one answer every page asks before it says kNoChartLibrary (D89 item 2,
