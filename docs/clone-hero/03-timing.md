@@ -148,6 +148,16 @@ Hydra: no owner
 Ruling: none needed: no Hydra rule depends on it
 Found: 2026-11-07, session 6c03736f
 
+### TM-49 Builds during a song cut the game's frame rate from about 330 a second
+
+Rule: In LS-T3 run 1 of 2026-11-07, two builds were started on purpose at song second 14.3. Before them the game drew about 330 frames a second, its `framerate = 330` cap. In the five-second bands from song second 15 to 25 it drew 53.4 and 60.5 frames a second, and its slowest gaps ran at 2.2 frames a second (two frames in about 0.9 s). The press round trip went from a median of about 8 ms to as much as 974.9 ms, and the run hit 101 of 142 notes. In Run A of the same day, with nothing compiling, every band stayed between 322.2 and 330.0. What starves the game (who held the foreground, or the compilers' priority) is not recorded.
+Label: Proven in a live run
+Evidence: `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-07\ls-t3-run-b\fps.txt`, frames a second from the press frame counters per five song seconds, for both `ls-t2-run-a` and `ls-t3-run-b`; the hit count and the build start are in `docs/superpowers/plans/2026-11-07-ch-run-timing.md`, "What Run B showed".
+Game code (6142): not looked for; the frame cap is `framerate` in `settings.ini`.
+Hydra: no owner
+Ruling: none needed: no Hydra rule depends on it
+Found: 2026-11-07, session b132faae
+
 ### TM-13 The engine's song clock is the double at engine+0x100, in seconds
 
 Rule: The drum engine holds the song clock as a double in seconds at `#8288+0x100`.
