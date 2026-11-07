@@ -245,7 +245,7 @@
           "why": "seek_clamp_or_end, the owner"
         }
       ],
-      "note": "Only a seek that assigns the clamp back to `frame` counts. A stream's own position (pos_ = std::clamp(frame, ...) in stream_mix.cpp and player.cpp) has no end flag to set and answers a different question."
+      "note": "Only a seek that assigns the clamp back to `frame` counts. A stream's own position (pos_ = std::clamp(frame, ...) in stream_mix.cpp, position_ = std::clamp(frame, ...) in player.cpp) has no end flag to set and answers a different question."
     }
   ]
 }

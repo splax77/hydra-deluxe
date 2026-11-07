@@ -435,7 +435,7 @@
           "why": "fill_refuses, the owner of the refusal"
         }
       ],
-      "note": "Split from the one early-fill window row (D35; step-1 derive-once review finding 12, 2026-10-04) when the two sides got their own numbers. The reach is the hit window, kHitWindowMs, which the squeeze budgets and the report also read, so the row flags the window added to or taken from a deadline or an offset, not every read of it."
+      "note": "The reach is the hit window, kHitWindowMs, which the squeeze budgets and the report also read, so the row flags the window added to or taken from a deadline or an offset, not every read of it."
     },
     {
       "question": "Who reads the early-fill slack (how little time to spare still marks an activation E-critical)?",
@@ -466,7 +466,7 @@
           "why": "is_e0, the owner of the E0"
         }
       ],
-      "note": "Split from the one early-fill window row (D35; step-1 derive-once review finding 12, 2026-10-04) when the two sides got their own numbers."
+      "note": "The slack is its own number, separate from the reach in the row above."
     },
     {
       "question": "Who writes an activation's sqout_tick?",
@@ -521,7 +521,7 @@
           "why": "a window read from hydra_replay's JSON (ReplayWindow), not an Activation"
         }
       ],
-      "note": "Was its own walker in test_model.cpp (review finding 12). The replay keeps its own windows (ReplayWindow, and replay.cpp's Window) with a field of the same name; those are always named w or win, and a write to w.sqout_tick or win.sqout_tick is not flagged."
+      "note": "The replay keeps its own windows (ReplayWindow, and replay.cpp's Window) with a field of the same name; those are always named w or win, and a write to w.sqout_tick or win.sqout_tick is not flagged."
     },
     {
       "question": "Is this SP-end step a clamp?",
@@ -601,7 +601,7 @@
           "why": "within_squeeze_window, the owner"
         }
       ],
-      "note": "Was part of a walker in test_squeeze_rating.cpp (review finding 12). An optional namespace prefix (hydra::kSqueezeWindowMs) must not hide a comparison."
+      "note": "An optional namespace prefix (hydra::kSqueezeWindowMs) must not hide a comparison."
     },
     {
       "question": "Is the squeeze window typed as 500?",
@@ -1134,7 +1134,7 @@
         "tools",
         "tests"
       ],
-      "note": "A file can shrink after it was sized, so comparing what was read with the stated size can wait forever (sng_read_head did)."
+      "note": "A file can shrink after it was sized, so comparing what was read with the stated size can wait forever."
     },
     {
       "question": "What are all of a ByteSource's bytes?",
@@ -1246,7 +1246,7 @@
           "why": "to_multiplier, the owner"
         }
       ],
-      "note": "Task E2: the multiplier steps live in to_multiplier only. A combo tested against 10, 20 or 30, or taken mod 10, is a second answer (MultSqueeze::applies held one before D51 call 3)."
+      "note": "The multiplier steps live in to_multiplier only. A combo tested against 10, 20 or 30, or taken mod 10, is a second answer."
     },
     {
       "question": "What text turns an INI setting on or off?",
@@ -1414,7 +1414,7 @@
         "const int64_t first = mi->restart_at(i);",
         "const int i = idx.span_at(static_cast<int64_t>(std::ceil(ticks)));"
       ],
-      "note": "Picking a tick's grid span by ordering it against the spans' restart ticks. span_at answers that through last_at_or_before, so no restart_at ordering is the owner's. An equality test against a restart, and reading a span's bounds, answer other questions. D115 renamed the owner from section_at when the grid became Clone Hero's (a tick on a restart is in the new span)."
+      "note": "Picking a tick's grid span by ordering it against the spans' restart ticks. span_at answers that through last_at_or_before, so no restart_at ordering is the owner's. An equality test against a restart, and reading a span's bounds, answer other questions. A tick on a restart is in the new span."
     },
     {
       "question": "How are a folder and a file name joined? (any name, not only folder)",
@@ -1604,11 +1604,11 @@
       "scope": [
         "src"
       ],
-      "note": "A private byte-by-byte little-endian helper. src/core/little_endian.h is the codec; the store's own read_le/write_le are task J3-6's and are not in this row."
+      "note": "A private byte-by-byte little-endian helper. src/core/little_endian.h is the codec. This row catches the u32 helper names; the row whose question ends \"(any width or name)\" catches the rest."
     },
     {
       "question": "In what order does a record list its paths?",
-      "owner": "HydraRecord::all_paths, in the order pather::read builds",
+      "owner": "HydraRecord::all_paths, in the order Engine::run sorts the roots",
       "owner_file": "src/core/model.h",
       "owner_symbol": "all_paths",
       "date": "2026-10-04",
@@ -1628,7 +1628,7 @@
         "tools",
         "tests"
       ],
-      "note": "A record's paths come best first from all_paths() (pather::read sorts the roots; each variant sits under its parent). Sorting them by score again is a second answer."
+      "note": "A record's paths come best first from all_paths() (Engine::run in src/search/engine.cpp sorts the roots; each variant sits under its parent). Sorting them by score again is a second answer."
     },
     {
       "question": "What is a path's score without the solo bonus?",
@@ -2149,7 +2149,7 @@
       "scope": [
         "src"
       ],
-      "note": "---- phase 6 task J3-2: the graph, the engine and the replay ---- The engine's message \"a variant under 2 bars at its fold passed a fill\" names the number in words and is not a comparison."
+      "note": "---- phase 6 task J3-2: the graph, the engine and the replay ---- The engine's message \"a variant under kSpActivationBars at its fold passed a fill\" names the constant and is not a comparison."
     },
     {
       "question": "How is a little-endian number written byte by byte? (any width or name)",
@@ -2207,7 +2207,7 @@
         "src",
         "tests"
       ],
-      "note": "A hand-written little-endian helper beside the shared codec. The byte-at-a-time shift loop is the form most copies use, whatever the helper is called. A fully unrolled helper with no telling name is not caught. The hash's byte loops store no number, so they are listed as owner lines, not copies (review of J3-6 finding 1). The J2-5 row's question is the same with the u32 helper names; the suffix keeps the two rows' questions apart. Reading moved down to core/ in task J3-9d, because parse/ cannot include store/; the pattern also catches a helper named for its width alone (le32) and the second byte of an unrolled read OR-ed in shifted by 8. A big-endian read (MIDI) and the hash's XOR-ed tail bytes are other questions and are not flagged."
+      "note": "A hand-written little-endian helper beside the shared codec. The byte-at-a-time shift loop is the form most copies use, whatever the helper is called. A fully unrolled helper with no telling name is not caught. The hash's byte loops store no number, so they are listed as owner lines, not copies. The row for the u32 helper names asks the same question; the suffix keeps the two rows' questions apart. The codec lives in core/ because parse/ cannot include store/. The pattern also catches a helper named for its width alone (le32) and the second byte of an unrolled read OR-ed in shifted by 8. A big-endian read (MIDI) and the hash's XOR-ed tail bytes are other questions and are not flagged."
     },
     {
       "question": "How many paths did a record keep?",
@@ -2645,7 +2645,7 @@
       "must_not_match": [
         "return same_folder(here, wide_to_utf8(registered));"
       ],
-      "note": "Two folders spelled with another letter case, slash direction, trailing separator or long-path prefix are one folder. A second comparison of two paths worked out by hand (the way installed_by_setup once did) can disagree with the scan. The test helper is_under_temp in tests/temp_util.h asks whether a path lies below the temp folder, a different question, and is outside this row's scope."
+      "note": "Two folders spelled with another letter case, slash direction, trailing separator or long-path prefix are one folder. A second comparison of two paths worked out by hand can disagree with the scan. The test helper is_under_temp in tests/temp_util.h asks whether a path lies below the temp folder, a different question, and is outside this row's scope."
     }
   ]
 }

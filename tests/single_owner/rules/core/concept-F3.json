@@ -19,7 +19,7 @@
         "const double v = std::strtod(t.c_str(), &end);",
         "return std::stoi(std::string(w));"
       ],
-      "note": "std::stod is the C runtime's strtod, which also reads nan, inf and hex floats; M73 found hydra_rules.ini taking those through it. Number readers with their own documented question (command-line arguments, .obj files, the chart-number rule in parse/song.cpp) use other spellings and are not this row's question."
+      "note": "std::stod is the C runtime's strtod, which also reads nan, inf and hex floats, so a hand-edited value read through it can be one of those. Number readers with their own documented question (command-line arguments, .obj files, the chart-number rule in parse/song.cpp) use other spellings and are not this row's question."
     },
     {
       "question": "What text is a number of seconds in a GUI test command (timeout, wait)?",
@@ -38,7 +38,7 @@
         "const std::optional<double> v = hydra::parse_finite_number(text);",
         "return std::stoi(std::string(w));"
       ],
-      "note": "The test interpreter once had its own from_chars number reader for timeout and wait. A test or tool under tests/ that reads a number from text calls parse_finite_number and adds its own range check after it."
+      "note": "parse_seconds in tests/ui/uitest_commands.cpp reads timeout and wait through parse_finite_number and adds its own range check after it. This row flags only std::from_chars under tests/. Other tests read numbers with std::stoi, std::atoi, std::atof or std::stod, and this row does not flag those."
     }
   ]
 }
