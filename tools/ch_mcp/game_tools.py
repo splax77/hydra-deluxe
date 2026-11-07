@@ -25,7 +25,7 @@ import os
 import tempfile
 import threading
 import time
-from typing import Callable, List, Optional, Sequence, Union
+from typing import Any, Callable, List, Optional, Sequence, Tuple, Union
 
 from tools.ch_mcp import bot_run, compare_scorestats, foreground, game_files, install_chart
 from tools.ch_mcp.frida_tools import READ_CAP_S
@@ -55,6 +55,7 @@ ROUTES = (ROUTE_KIT, ROUTE_KEYS)
 # too").
 NO_ROUTE_NO_KIT = ("refused: no route given and the kit is not set up; "
                    "call ch_kit_setup first")
+PLAY_ALREADY_RUNNING = "a play session is already running; call ch_play_stop first"
 
 _NOT_RUNNING = f"{C.PROCESS_NAME} is not running"
 
@@ -121,6 +122,47 @@ def run_cap_s(song_folder: Optional[str]) -> float:
     return bot_run.run_cap_s(length_ms)
 
 
+def find_run_engine(proc) -> int:
+    """LIVE-ONLY: ch_run_chart's one engine search, with its progress dots
+    dropped, because the server's stdout is its protocol channel. It is the
+    auto-player's search, not the watch's: sp_watch.find_engine_live scans the
+    game's memory once for each window pattern, which the first press cannot
+    wait for, and the patterns only it scans for are ones the auto-player
+    never plays on. A run with no normal-mode engine (no song playing, or a
+    precision-mode one) ends here as the search's timeout, so the reply says
+    which engines were searched."""
+    try:
+        return play_chart.find_normal_engine(proc, out=io.StringIO())
+    except engine_finder.EngineSearchTimeout as e:
+        raise engine_finder.EngineSearchTimeout(
+            f"{e} (ch_run_chart searched normal-mode engines only, as ch_play_chart does; "
+            "a precision-mode engine is not found here)") from e
+
+
+def first_press_line(rows: Sequence[dict]) -> str:
+    """Which chord a run's press rows start at; `rows` holds at least one."""
+    return f"first press chord index {rows[0]['index']} at {rows[0]['chart_ms']} ms"
+
+
+def declined_line(decline_mode: str, declined: Sequence[int]) -> str:
+    """Which chords a run declines."""
+    return f"declined ({decline_mode}): chords {', '.join(map(str, declined)) or 'none'}"
+
+
+class ChordsRefused(Exception):
+    """A score file or decline arguments no run can start from; the text says
+    why."""
+
+
+@dataclasses.dataclass(frozen=True)
+class RunParts:
+    """The tools ch_run_chart chains, which each import this module:
+    frida_tools.FridaTools, kit_tools.KitTools and sp_tools.SpTools."""
+    frida: Any
+    kit: Any
+    sp: Any
+
+
 @dataclasses.dataclass(frozen=True)
 class PressResult:
     """What one press call did. `sent` is True only when the keys went out;
@@ -141,8 +183,12 @@ class _PlaySession:
     cap_s: Optional[float] = None
     # The kit press on the kit route; None presses keys through the driver.
     press: Optional[Callable] = None
+    # The engine search handed to live_play; None leaves live_play's own.
+    find_engine: Optional[Callable[[object], int]] = None
     thread: Optional[threading.Thread] = None
     stop: threading.Event = dataclasses.field(default_factory=threading.Event)
+    # Set at the first press row, or when the run ends with none.
+    pressed: threading.Event = dataclasses.field(default_factory=threading.Event)
     rows: list = dataclasses.field(default_factory=list)
     result: Optional[play_chart.RunResult] = None
     error: Optional[str] = None
@@ -153,7 +199,7 @@ class _PlaySession:
 
 
 class GameTools:
-    """The twelve game-side tools and the session state between them.
+    """The thirteen game-side tools and the session state between them.
 
     Every outside seam is an argument, so the tests swap each for a fake:
     `env` (bot_run.Env: the exe, the user folders, the launch, the clock and
@@ -203,6 +249,8 @@ class GameTools:
         # Where ch_play_chart gets the kit press: kit_tools.KitTools.kit_press,
         # handed in by use_kit_press. None until then.
         self._kit_press_source: Optional[Callable[[], Optional[Callable]]] = None
+        # What ch_run_chart chains, handed in by use_run_parts. None until then.
+        self._run_parts: Optional[RunParts] = None
 
     # -- the interface frida_tools builds on ------------------------------------
 
@@ -531,6 +579,11 @@ class GameTools:
         with self._lock:
             self._kit_press_source = source
 
+    def use_run_parts(self, parts: RunParts) -> None:
+        """Hand in the tools ch_run_chart chains."""
+        with self._lock:
+            self._run_parts = parts
+
     def foreground_line(self) -> Optional[str]:
         """The foreground watch's count line, or None when no watch runs
         (the server did not start the game)."""
@@ -554,7 +607,7 @@ class GameTools:
         (play_chart.declined_chord_indexes); None presses every chord."""
         with self._lock:
             if self._play is not None and self._play.running():
-                return "a play session is already running; call ch_play_stop first"
+                return PLAY_ALREADY_RUNNING
             kit_press = self._kit_press_source() if self._kit_press_source is not None else None
             if route is None:
                 if kit_press is None:
@@ -566,44 +619,103 @@ class GameTools:
                 return (f"route {ROUTE_KIT}: the kit is not set up; call ch_kit_setup first, "
                         f'or pass route="{ROUTE_KEYS}"')
             press = kit_press if route == ROUTE_KIT else None
-            refusal = decline_refusal(decline_mode, dump_json)
-            if refusal is not None:
-                return refusal
-            declined: List[int] = []
-            if decline_mode is not None:
-                try:
-                    declined = play_chart.declined_chord_indexes(score_json, dump_json, path_index)
-                except (OSError, ValueError, KeyError, IndexError, TypeError) as e:
-                    return f"could not read the fills to decline: {type(e).__name__}: {e}"
             try:
-                chords = play_chart.load_dump_chords(score_json,
-                                                     dict.fromkeys(declined, decline_mode))
-            except (OSError, ValueError, KeyError, TypeError) as e:
-                return f"could not read {score_json}: {type(e).__name__}: {e}"
-            if not chords:
-                return f"{score_json} has no chords to play"
+                chords, declined = self._chords_to_play(score_json, decline_mode, dump_json,
+                                                        path_index)
+            except ChordsRefused as e:
+                return str(e)
             lines = [line for line in (self.ensure_backup(),) if line]
             log_path = None
             if log:
                 log_path = log if os.path.isabs(log) else os.path.join(self.session_dir(), log)
             cap_s = None if song_folder is None else run_cap_s(song_folder)
-            play = _PlaySession(score_json=score_json, chord_count=len(chords), log_path=log_path,
-                                cap_s=cap_s, press=press)
-            play.thread = threading.Thread(target=self._play_body, args=(play, chords),
-                                           name="ch_play_chart", daemon=True)
-            self._play = play
-            play.thread.start()
+            self._start_play(_PlaySession(score_json=score_json, chord_count=len(chords),
+                                          log_path=log_path, cap_s=cap_s, press=press), chords)
             lines.append(f"play session started: {len(chords)} chords from {score_json}")
             lines.append(f"route: {route} ("
                          + ("presses through the virtual kit inside the game"
                             if route == ROUTE_KIT else "keys to the focused game window") + ")")
             lines.append(f"run cap: {play_chart.RUN_CAP_S if cap_s is None else cap_s:g} s")
             if decline_mode is not None:
-                lines.append(f"declined ({decline_mode}): chords "
-                             f"{', '.join(map(str, declined)) or 'none'}")
+                lines.append(declined_line(decline_mode, declined))
             lines.append(f"waiting for a moving clock (cap {engine_finder.ENGINE_SEARCH_CAP_S:.0f} s): "
                          "start the song from the game's menu; a song launched with a bot "
                          "is played by the bot, not by keys")
+            return "\n".join(lines)
+
+    def ch_run_chart(self, song_folder: str, score_json: str, kit_player: Optional[str] = None,
+                     decline_mode: Optional[str] = None,
+                     dump_json: Optional[str] = None) -> str:
+        """Start a run in one call: attach, kit setup on `kit_player`
+        (ch_kit_setup's `player`), the Star Power watch and the auto-player on
+        the kit, with one engine search that the watch and the player share.
+        `decline_mode` and `dump_json` are ch_play_chart's. Each part keeps
+        its owner, and this adds no wait of its own before the first press:
+        the arguments are read before the attach, and the player starts the
+        moment the search ends. The call returns at the first press.
+
+        The reply has one line per part with the time it took, then
+        first_press_line. A part that fails stops the call there: the reply
+        names it and gives its own reply, and a kit that part left standing
+        is torn down. A failed attach built no kit, and a failed setup tears
+        down its own."""
+        with self._lock:
+            parts = self._run_parts
+            if parts is None:
+                return "refused: the server did not hand in the run's parts (use_run_parts)"
+            if self._play is not None and self._play.running():
+                return PLAY_ALREADY_RUNNING
+            try:
+                chords, declined = self._chords_to_play(score_json, decline_mode, dump_json)
+                cap_s = run_cap_s(song_folder)
+            except ChordsRefused as e:
+                return str(e)
+            except (OSError, ValueError) as e:
+                return f"could not pick the run cap for {song_folder}: {type(e).__name__}: {e}"
+            lines: List[str] = []
+
+            began = self._env.now()
+            text = parts.frida.ch_attach()
+            if not parts.frida.is_attached():
+                return self._run_stopped(lines, "attach", began, text)
+            lines.append(f"attach: ok, {self._seconds_since(began)}")
+
+            began = self._env.now()
+            press, text = parts.kit.setup_for_run(kit_player)
+            if press is None:
+                return self._run_stopped(lines, "kit setup", began, text)
+            lines.append(f"kit setup: ok, {self._seconds_since(began)}")
+
+            began = self._env.now()
+            engine, text = parts.sp.watch_for_run(cap_s, find_run_engine)
+            if engine is None:
+                return self._run_stopped(lines, "watch", began, text,
+                                         parts.kit.ch_kit_teardown())
+            lines.append(f"watch: ok, {self._seconds_since(began)}, engine {engine:#x}, {text}")
+
+            began = self._env.now()
+            play = _PlaySession(score_json=score_json, chord_count=len(chords), log_path=None,
+                                cap_s=cap_s, press=press, find_engine=lambda _proc: engine)
+            self._start_play(play, chords)
+            first_press_in_time = play.pressed.wait(cap_s)
+            rows = list(play.rows)
+            if not rows:
+                play.stop.set()
+                self._wait_thread(play.thread, READ_CAP_S)
+                said = self._play_lines(play)
+                if not first_press_in_time:
+                    said.insert(0, f"no press inside the run cap of {cap_s:g} s; the call "
+                                   "stopped the run")
+                # The watch goes with the kit, so a second ch_run_chart is not
+                # refused for a watch still running.
+                return self._run_stopped(lines, "play", began, "\n".join(said),
+                                         parts.kit.ch_kit_teardown() + "\n"
+                                         + parts.sp.ch_sp_watch_stop())
+            lines.append(f"play: ok, {self._seconds_since(began)} to the first press, "
+                         f"{len(chords)} chords from {score_json}, run cap {cap_s:g} s")
+            if decline_mode is not None:
+                lines.append(declined_line(decline_mode, declined))
+            lines.append(first_press_line(rows))
             return "\n".join(lines)
 
     def ch_play_status(self) -> str:
@@ -627,6 +739,51 @@ class GameTools:
             return "\n".join(self._play_lines(play) + ["stopped"])
 
     # -- inside ---------------------------------------------------------------------
+
+    @staticmethod
+    def _chords_to_play(score_json: str, decline_mode: Optional[str], dump_json: Optional[str],
+                        path_index: int = 0) -> Tuple[List[play_chart.Chord], List[int]]:
+        """The chords of `score_json` with the decline arguments applied, and
+        the indexes declined. Raises ChordsRefused saying why no run can
+        start from them."""
+        refusal = decline_refusal(decline_mode, dump_json)
+        if refusal is not None:
+            raise ChordsRefused(refusal)
+        declined: List[int] = []
+        if decline_mode is not None:
+            try:
+                declined = play_chart.declined_chord_indexes(score_json, dump_json, path_index)
+            except (OSError, ValueError, KeyError, IndexError, TypeError) as e:
+                raise ChordsRefused(
+                    f"could not read the fills to decline: {type(e).__name__}: {e}") from e
+        try:
+            chords = play_chart.load_dump_chords(score_json, dict.fromkeys(declined, decline_mode))
+        except (OSError, ValueError, KeyError, TypeError) as e:
+            raise ChordsRefused(f"could not read {score_json}: {type(e).__name__}: {e}") from e
+        if not chords:
+            raise ChordsRefused(f"{score_json} has no chords to play")
+        return chords, declined
+
+    def _start_play(self, play: _PlaySession, chords: Sequence[play_chart.Chord]) -> None:
+        """Make `play` the session and start its thread."""
+        play.thread = threading.Thread(target=self._play_body, args=(play, chords),
+                                       name="ch_play_chart", daemon=True)
+        self._play = play
+        play.thread.start()
+
+    def _seconds_since(self, began: float) -> str:
+        """How long a part of ch_run_chart took, on env.now."""
+        return f"{self._env.now() - began:.2f} s"
+
+    def _run_stopped(self, lines: List[str], part: str, began: float, text: str,
+                     teardown: Optional[str] = None) -> str:
+        """ch_run_chart's reply when `part` failed: the parts that passed,
+        the line naming it, its own reply, then the teardown's lines."""
+        lines = lines + [f"{part}: FAILED after {self._seconds_since(began)}; "
+                         f"the run stopped at {part}", text]
+        if teardown is not None:
+            lines.append(teardown)
+        return "\n".join(lines)
 
     def _new_scratch(self) -> str:
         """A new session folder under the temp root. It is never deleted: it
@@ -697,14 +854,20 @@ class GameTools:
         """The play thread: live_play, then the press log. It never takes the
         lock, so a tool holding it never waits on the thread."""
         cap = {} if play.cap_s is None else {"cap_s": play.cap_s}
+        search = {} if play.find_engine is None else {"find_engine": play.find_engine}
         # The kit route hands live_play its press and no driver, so no window
         # is looked up; the keys route keeps the driver.
         route = {"driver": self._driver} if play.press is None else {"press": play.press}
+
+        def on_press(row: dict) -> None:
+            play.rows.append(row)
+            play.pressed.set()
+
         try:
             play.result = self._live_play(chords, **route,
-                                          on_press=play.rows.append,
+                                          on_press=on_press,
                                           should_stop=play.stop.is_set,
-                                          out=io.StringIO(), **cap)
+                                          out=io.StringIO(), **cap, **search)
         except Exception as e:  # reported by ch_play_status
             play.error = f"{type(e).__name__}: {e}"
         if play.log_path:
@@ -713,6 +876,7 @@ class GameTools:
                 play.log_note = f"press log: {play.log_path} ({len(play.rows)} rows)"
             except OSError as e:
                 play.log_note = f"press log not written to {play.log_path}: {e}"
+        play.pressed.set()
 
     @staticmethod
     def _stop_reason(play: _PlaySession) -> str:
@@ -746,8 +910,7 @@ class GameTools:
         if not rows:
             lines.append("first press: none, no chord was pressed")
         else:
-            lines.append(f"first press chord index {rows[0]['index']} "
-                         f"at {rows[0]['chart_ms']} ms")
+            lines.append(first_press_line(rows))
             # The kit press's columns show only when the rows carry them.
             columns = [c for c in PRESS_LOG_COLUMNS if any(c in r for r in rows)]
             lines.append(f"rows, newest first ({', '.join(columns)}):")

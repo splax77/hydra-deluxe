@@ -918,3 +918,13 @@ class KitTools:
         lines = lines + self._said
         self._said.clear()
         return "\n".join(lines)
+
+    def setup_for_run(self, player: Optional[str] = None) -> Tuple[Optional[Callable[..., dict]], str]:
+        """ch_kit_setup for another tool (game_tools' ch_run_chart): the kit
+        press and the setup's reply. The press is None when this call built no
+        kit, which covers a kit already set up: its refusal leaves that kit as
+        it is, and a failed setup has torn its own kit down."""
+        with self._lock:
+            was_ready = self._ready_agent() is not None
+            text = self.ch_kit_setup(player)
+            return (None if was_ready else self.kit_press()), text
