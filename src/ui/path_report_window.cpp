@@ -260,9 +260,9 @@ PathReportInput path_report_input(AppState& app) {
     }
     // The row index is into this frame's result, which the click keeps alive.
     // The page lists one profile, so a click selects the chart and never
-    // switches the chart mode: it asks in the mode the settings already hold.
+    // switches the chart mode.
     in.callbacks.row_click = [&app, result = slot.result](size_t row) {
-        app.select_chart(result->paths[row].hyhash, app.settings.chartmode_key());
+        app.select_chart(result->paths[row].hyhash);
     };
     in.callbacks.refresh = [&app] { app.request_path_report(); };
     in.callbacks.try_again = [&app] { app.request_path_report(); };

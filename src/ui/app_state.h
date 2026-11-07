@@ -392,13 +392,11 @@ public:
     // (D87 item 11). Safe to call when closed.
     void close_details();
 
-    // A report row's click (D103 item 3): switches the analysis settings to
-    // `chartmode` first when it differs, the way the panel's own controls do,
-    // then selects the chart with hash `hyhash`. A chart with several copies
+    // A report row's click: selects the chart with hash `hyhash`, in the mode
+    // the settings already hold (D310 item 3). A chart with several copies
     // selects the first in the library's current order. A hash the library
-    // doesn't list selects nothing. While a batch locks the analysis settings, a
-    // row of another mode selects nothing and the status line says why.
-    void select_chart(const std::string& hyhash, const std::string& chartmode);
+    // doesn't list selects nothing.
+    void select_chart(const std::string& hyhash);
 
     // Whether the selected chart's file exists, as of the last look
     // (cached_file_check).
