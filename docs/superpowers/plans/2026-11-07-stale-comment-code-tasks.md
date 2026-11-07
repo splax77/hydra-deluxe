@@ -58,11 +58,12 @@ Each question names which side owns it.
 3. **Two rule rows D309 item 5 names still catch live code.** (Owner: the rule files under `tests/single_owner/rules/`.) `parse.json`'s "Which file is the folder's song.ini?" row (line 200) looks for `is_song_ini(`; that function exists and is called in `src/parse/chart_files.cpp` line 50, so the row still guards against a second caller. Only its must_match sample at line 214 names a form no code has. `app/concept-H3.json`'s row (line 31) looks for "Nothing matches", "No charts match" and a typed search hint; today those match only the owner, `src/app/html_page.h` line 47, but the row guards one sentence and one hint shape across three screens. Its sample at line 45 quotes the sentence D308 item 1 removed from `smoke.txt`. Options: (a) both rows stay and only the dead sample lines go; (b) both rows go, by the letter of D309 item 5. Recommended: (a). CT-6 does (a) unless told otherwise; the five rows whose patterns match nothing go either way.
 4. **May a rule sample name a dead symbol?** (Owner: the rule files.) SN-216 is `app.json` lines 168 and 170, must_match samples naming `chart_files_unchanged` and `chart_files_sig` in forms no code has; the row's `hash_chart_file` alternative is live (`src/pathbuilder/pb_state.cpp` line 33 is exempt, `tools/replay.cpp` lines 472 and 525 are outside its `src` scope). I-0623 is `store.json` line 235, a must_not_match sample naming `kSummaryColumnCount`, which is gone; the row's pattern still matches the owner's VALUES line. A sample is a self-test of the regex, not a claim about the tree. Options: (a) the samples stay and both rows close with no edit; (b) each dead sample is replaced with a line the tree has. Recommended: (a). No task does this until answered.
 5. **`watch_checks.py` calls +0x2E0 the hit time too.** (Owner: Python, `tools/ch_probe/experiments/watch_checks.py`.) Its `hit_time_check` prints "PASS hit time (+0x2E0): ..." (lines 110, 138, 199) and `tools/ch_probe/tests/test_watch_checks.py` pins those lines. D306 item 5 named only `watch_window.py`. Options: (a) CT-7 rewords those lines the same way; (b) they stay. Recommended: (a). CT-7 does only what the ruling names until answered.
-6. **The live step's song folder.** (Owner: the main session.) LS-1 needs a song the game's library lists. The plan proposes the folder the 2026-10-31 menu-walk run used, which the main session reads from `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-10-31\ls-d1-run1\replies.txt` before the go request. Confirm or name another.
 
 ## Tasks
 
-Every task runs on Opus in its own worktree cut from main by hand (not `isolation: worktree`), finishes inside 100 tool calls and 20 minutes (the caps in `docs/agents/brief-preamble.md`, "Committing"), runs only the tests named here, and stops at its stop condition. Each cites its D-record as question 1 decides. No two parallel tasks own the same file.
+Every task runs on Opus in its own worktree cut from main by hand (not `isolation: worktree`), finishes inside 100 tool calls and 20 minutes (the caps in `docs/agents/brief-preamble.md`, "Committing"), and stops at its stop condition. Each cites its D-record as question 1 decides. No two parallel tasks own the same file.
+
+**Who builds.** Only one C++ build runs at a time, because the user ruled it after six agents' builds swamped the machine on 2026-11-07. A new worktree has no build folder, and each cold build takes all 16 cores. So no executor and no reviewer builds. An executor writes its change and commits. Where a task asks for a test that fails first, it commits that test alone, then the fix. The main session then builds each C++ branch in turn in the one built worktree, `fx-w2`, a warm build each, and runs the tests the task names, at both commits for a failing-first test. CT-7 and CT-8 are Python and run their own tests. CT-6 changes only rule files, so its scan runs on the existing exe.
 
 **Run in parallel, wave A:** CT-1, CT-2, CT-3, CT-6, CT-7, CT-8, CT-9, CT-10. None shares a file with another.
 
@@ -136,13 +137,21 @@ Owns `README.md` and `tests/test_docs_match_code.cpp`. Line 57 of the README tak
 
 ## The live steps
 
-### LS-1: `ch_open_song` still finds the song after CT-8 (2 runs at most, 15 minutes each)
+### LS-1: the game's own folder string still matches after CT-8 (2 runs at most, 15 minutes each)
 
-Waits for CT-8's merge and the user's go. The point: `same_folder` compares the folder the game reports with the folder it was given (`menu_tools.py` lines 118 and 281), and `realpath` could change a match that works today. The run is on the kit route, so the game window never needs focus and the user keeps the machine (`docs/agents/clone-hero-mcp.md` line 51). The caps are mine: two runs because the first may fail on the menu walk rather than on `same_folder`, and 15 minutes because a menu walk plus the game's start is well under that.
+Waits for CT-8's merge and the user's go. The point: `same_folder` compares a folder string the game reports with the folder it was given (`menu_tools.py` lines 118 and 281), and `realpath` could change a match that works today. So this step reads that string from the game and hands it to the merged `same_folder`.
 
-Calls: `ch_start()` with no song folder (seen: `2026-10-31\ls-d1-run1`, P21), `ch_attach` (seen: `2026-10-31\ls-d1-run1`, P21), `ch_kit_setup` with the default player (seen: `2026-10-31\ls-d1-run1`, P21), `ch_menu` (seen: `2026-10-31\ls-d1-run1`, P21), `ch_open_song(<the folder question 6 names>)` (never tried), `ch_kit_status` (seen: `2026-10-31\ls-d1-run1`, P21), `ch_stop` (seen: `2026-10-31\ls-d1-run1`, P21)
+It uses the direct start, not a menu walk. The direct start is proven on this chart (P21). No saved run holds `ch_open_song` or `ch_menu` (P22), and `tools/ch_mcp/menu_steps.json` is unverified, so a walk would chain many untried presses where a step may hold one new call. Nothing is pressed, and the kit keeps the user's keys away from the game, so the user keeps the machine.
 
-Pass: `ch_open_song`'s reply says the loaded folder is the target, `ch_kit_status` and `ch_stop` report a foreground count of 0, and every `ch_stop` check is "ok". Fail: the reply says the `selected_folder_is_target` expect failed or the loaded folder differs; then the executor reverts line 71 to `normpath`, reports the two folder strings the game and the test gave, and the row goes back to the user. After two failed runs, stop and report the same.
+This step covers the loaded-song read at line 281. It does not exercise the Song Select read at line 118, which only a menu walk reaches. No folder on the Window Map path is a link (P34), so the run shows `realpath` does no harm to a plain path. CT-8's junction test shows it resolves a link. The caps are mine: two runs in case the first stops on a launch fault, and 15 minutes because the chart is 62 seconds long and the start takes seconds.
+
+Calls: `ch_start("C:\Clone Hero\songs\Hydra Probe\Window Map", human=True)` (seen: LS-D1b run 1), `ch_attach` (seen: LS-D1b run 1), `ch_kit_setup(player="System")` (seen: LS-D1b run 1), `ch_menu` (never tried), `ch_stop` (seen: LS-D1b run 1)
+
+Pass: `ch_menu` prints a folder on its "GlobalVariables currentSongFolder:" line, `same_folder` on the merged code returns True for that string and the folder given to `ch_start`, every `ch_stop` check is "ok", every file and the registry key are restored or unchanged, and the foreground count is at most 1, at 0.0 s. That one event is the launch; LS-D1b run 1 shows the same (P35).
+
+Fail: `same_folder` returns False. Then line 71 goes back to `normpath` in a new commit, the report gives the two strings, and the row goes back to the user. After two failed runs, stop and report the same.
+
+If that line prints null, the run proves nothing either way (P33). Stop at once and bring the user that result, with no second run.
 
 ## Out of scope (needs the user's yes to leave out)
 
@@ -176,7 +185,8 @@ Pass: `ch_open_song`'s reply says the loaded folder is the target, `ch_kit_statu
 | `hit_offset_ms` never reads +0x2E0 | CT-7 | CT-7 | the rewritten test at `test_hit_window_scripts.py` line 114 |
 | `watch_window.py` prints "+0x2e0" with no "hit time" | CT-7 | CT-7 | the rewritten test at line 191; the Grep in CT-7's stop condition |
 | `same_folder` resolves a junction | CT-8 | CT-8 | the new junction case, red-then-green |
-| The live run needs no focus | LS-1 | LS-1 | `ch_kit_status` and `ch_stop` report a foreground count of 0 |
+| The live run takes no focus past the launch | LS-1 | LS-1 | `ch_stop` reports a foreground count of at most 1, at 0.0 s |
+| Only one C++ build runs at a time | "Who builds" | all | no brief lets an executor or reviewer build; the main session builds each branch in turn in `fx-w2` |
 | A failed live run reverts the line | LS-1 fail line | LS-1 | the report shows the revert diff and the two folder strings |
 | tn chips draw the outline; the word does not change | "What a player sees", second paragraph | CT-9 | the new GUI test's equal vertex counts; the real-app captures shown to the user |
 | The README's Stale sentence has no version list | "What a player sees", fourth paragraph | CT-10 | the new check in `test_docs_match_code.cpp` |
@@ -206,8 +216,8 @@ Pass: `ch_open_song`'s reply says the loaded folder is the target, `ch_kit_statu
 | P18: `app/d115-profile.json`'s pattern matches nothing live in `src` and `tools` | unchecked | `tests/single_owner/rules/app/d115-profile.json` lines 4 to 15, pattern not run | CT-6 |
 | P19: `hydra_replay`'s flags have no test of `--index`'s refusal today | unchecked | Grep of `tests/` for `parse_index` and `--index '` found nothing; where the tool's command-line tests live was not read | CT-2 |
 | P20: The five rows' patterns match nothing in `src`, `tests`, `tools` | code | one Grep of the five patterns over `{src,tests,tools}/**/*.{cpp,h,js,py}` matched only `is_song_ini` (chart_files.cpp 46 and 50, test_song_parse.cpp 927 to 929); `core.json` 1617, `tests.json` 935, `store.json` 162, `ui.json` 781, `app.json` 994 hold the patterns | checked 2026-11-07 |
-| P21: The 2026-10-31 run `ls-d1-run1` was a menu launch with the kit on Player1, so `ch_start()` with no song, `ch_attach`, `ch_kit_setup`, `ch_menu`, `ch_kit_status` and `ch_stop` have run on this kind of launch | unchecked | `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-10-31\ls-d1-run1\replies.txt` holds `ch_kit_setup` (Grep); `docs/agents/clone-hero-mcp.md` line 47 says the menu walk's presses were proven on Player1; the replies were not read | question 6; the main session reads the file before the go request, and LS-1 settles it |
-| P22: `ch_open_song` has never run | code | Grep of `hydra-data\ch-mcp-runs` for `ch_open_song` finds no file | checked 2026-11-07 |
+| P21: `ch_start` on Window Map with `human=True`, `ch_attach`, `ch_kit_setup(player="System")` and `ch_stop` all ran on this target, and the kit's setup passed | run | `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-06\ls-d1b-run1\replies.txt` lines 7, 16, 21 to 32 and 83 | checked 2026-11-07 |
+| P22: No saved run holds `ch_open_song` or `ch_menu` | run | Grep of `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs` for each name finds no file | checked 2026-11-07 |
 | P23: `same_folder` uses `normpath`; `hydra_ui_mcp.py` uses `realpath`; two call sites | code | `tools/ch_mcp/menu_tools.py` lines 66 to 71, 118, 281; `tools/hydra_ui_mcp.py` lines 148 to 151 | checked 2026-11-07 |
 | P24: The DM click passes the comparison's mode; the path report passes the bar's; `select_chart` switches and commits | code | `src/ui/dm_report_window.cpp` line 155; `src/ui/path_report_window.cpp` lines 262 to 265; `src/ui/app_state.cpp` lines 632 to 646 | checked 2026-11-07 |
 | P25: `tests/test_app_reports.cpp` line 366 pins the switch and no test calls `dm_report_input` | code | lines 364 to 401; Grep of `tests/` for `dm_report_input(` finds nothing | checked 2026-11-07 |
@@ -218,3 +228,7 @@ Pass: `ch_open_song`'s reply says the loaded folder is the target, `ch_kit_statu
 | P30: The GUI check cases are as named | code | `docs/agents/ui-testing.md` lines 5 to 13 | checked 2026-11-07 |
 | P31: A render check runs on `testdata/input`, never a whole-library analysis, and the path report analyzes on open | ruling | `docs/agents/ui-testing.md` line 11, the user's words "you dont need a full library run to check the rendering"; D249's analyze-on-open is in the user's memory note only, so CT-9 opens the report on a scratch database, not the user's copy | checked 2026-11-07 |
 | P32: The hooks refuse `--whole-library` in a commit message too, because a commit is a shell command | code | `percall.py` line 44 reads the whole `command` string of any shell tool | checked 2026-11-07 |
+| P33: After a direct start, `ch_menu`'s currentSongFolder line holds the song's folder, not null | unchecked | `tools/ch_mcp/agent/menu.ts` line 324 reads `currentSongEntry`; no run has printed it on a direct start | LS-1 |
+| P34: No folder on the Window Map path is a link | code | `Get-Item` on `C:\Clone Hero`, `C:\Clone Hero\songs`, `C:\Clone Hero\songs\Hydra Probe` and `C:\Clone Hero\songs\Hydra Probe\Window Map` shows an empty LinkType for each | checked 2026-11-07 |
+| P35: A healthy direct start reports one foreground event, at 0.0 s | run | `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-06\ls-d1b-run1\replies.txt` lines 85 and 86 | checked 2026-11-07 |
+| P36: Only one C++ build runs at a time, and a reviewer gets no build of its own | ruling | the user's words "i dont accept that each reviewer needs its own build", from the session the main session's memory note `one-cold-build-at-a-time` records; the main session quotes them in the reviewer's brief and confirms | checked 2026-11-07 |
