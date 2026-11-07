@@ -1,6 +1,7 @@
-// Unit tests for core/squeeze_rating: the deactivation node, the frontend
-// transfer scales computed from it, and the display-layer judgement built on
-// top — materiality, per-row effective ms, and the exact SP-end solver.
+// Unit tests for core/squeeze_rating: the frontend transfer scales read from
+// the stored SP-end steps, and the display-layer judgement built on top: each
+// row's multiplier and effective ms, the activation's flags and the timing
+// tiers.
 
 #include "doctest.h"
 
@@ -19,9 +20,8 @@ using namespace hydra;
 TEST_CASE("frontend_transfer_scales: measure-rate ratio, both directions") {
     // The Tom Sawyer (Onyxite) shape: ten 7/8 measures at 87.35 BPM, then
     // 7/16 at 85.1 -- no boundary at the query points, so early == late.
-    // The activations here carry no backend rows, so this case pins the
-    // measure-count fallback path (the deact-node derivation is covered by
-    // the Dumpweed regression case below).
+    // Each end here is a stored SP-end step, stated as a literal tick (the
+    // Dumpweed field fixture below covers an end past the plain one).
     std::map<int64_t, int64_t> tpm{{0, 1680}, {16800, 840}};
     std::map<int64_t, double> bpm{{0, 87.35}, {16800, 85.1}};
     SongTiming st(480, tpm, bpm, {{0, {7, 8}}, {16800, {7, 16}}});
@@ -68,8 +68,8 @@ TEST_CASE("frontend_transfer_scales: measure-rate ratio, both directions") {
     CHECK(sqout_scales->post.late == doctest::Approx(scales->post.late));
 
 
-    // Has both timecode and sp_meter, but no deact_tick: a pre-v4 record
-    // cannot say where SP ended, and nothing guesses any more.
+    // Has both timecode and sp_meter, but no stored SP-end steps: the record
+    // cannot say where SP ended, and nothing guesses.
     Activation partial;
     partial.timecode = st.timecode(0);
     test::set_sp_meter(partial, 2);
@@ -97,8 +97,8 @@ TEST_CASE("frontend_transfer_scales: each SqIn reads its own stored end") {
     CHECK(scales->post.late == doctest::Approx(0.8).epsilon(1e-9));
     CHECK(scales->post.early == doctest::Approx(0.8).epsilon(1e-9));
 
-    // Nothing is stepped back from D any more: a phrase collected after the
-    // SqIn moves D, and the SqIn's scale does not change.
+    // Nothing is stepped back from D: a phrase collected after the SqIn moves
+    // D, and the SqIn's scale does not change.
     act.sp_end_steps.push_back({13000, 15360, K::Collected});
     auto later = frontend_transfer_scales(act, st);
     REQUIRE(later.has_value());
@@ -282,12 +282,12 @@ TEST_CASE("field fixture: Dumpweed SqOut end anchored on the deact node") {
     // Field-verified: blink-182 - Dumpweed (Hoph2o), Expert Pro Drums 2x,
     // activation "1-" at m19.1.0 (tick 34560), sp_meter 2. The player
     // collects ONE SP phrase mid-SP, so the search's deact node sits at tick
-    // 46080 (act + 6 measures), not the plain act + 4 (42240) -- and a tempo
-    // change on each tick makes the difference visible: the old short-end
-    // reconstruction said early x0.890911, the true end gives x0.935114.
+    // 46080 (act + 6 measures), not the plain act + 4 (42240). The true end
+    // gives early x0.935114. The x0.890911 below is a literal for a scale read
+    // at an end short of that; this tempo map does not produce it.
     // An FC video shows frontend -74.1 ms + SqOut backend +75.1 ms landing
     // the squeeze on the 143.129 ms gap: 74.1*0.935114 + 75.1 = 144.4 >=
-    // 143.129, while the old scale predicts a miss (141.1). DragonDelgar's
+    // 143.129, while x0.890911 predicts a miss (141.1). DragonDelgar's
     // published even split of +-74 = 143.129 / (1 + 0.935114) matches the
     // true end too.
     std::map<int64_t, int64_t> tpm{{0, 1920}};
@@ -325,7 +325,7 @@ TEST_CASE("field fixture: Dumpweed SqOut end anchored on the deact node") {
     const double r = scales->post.early;
     CHECK(effective_backend_ms(gap, r) == doctest::Approx(147.94).epsilon(1e-3));
     CHECK(74.1 * r + 75.1 > gap);         // the video's successful split
-    CHECK(74.1 * 0.890911 + 75.1 < gap);  // the old scale called it a miss
+    CHECK(74.1 * 0.890911 + 75.1 < gap);  // a short end's scale calls it a miss
 
     // The same D recovered through a nonzero-offset row (the ms -> tick
     // rounding path): the SqOut phrase note itself, 143.129 ms before D.
@@ -413,7 +413,7 @@ TEST_CASE("rate_note: the side of the end picks the multiplier") {
 
 TEST_CASE("rate_note: a figure whenever the multiplier is not 1, however close") {
     // Sinner's Vengeance act 3 shape: 187.5 ms at an early scale just under
-    // 1 moves by under 1 ms, which the old 1 ms floor hid. Full precision.
+    // 1 moves by under 1 ms, and it still gets a figure. Full precision.
     const double r = 0.9912;
     NoteRating n = rate_note(-187.5, true, TransferScale{r, 1.0});
     REQUIRE(n.effective_ms.has_value());
@@ -443,7 +443,7 @@ TEST_CASE("rate_activation: every row reads post, by its side of the end") {
     };
     add(1000, -40.0);  // counted, inside SP: early
     add(1001, 0.0);    // counted, on the end: early
-    add(1002, 1.5);    // counted inside the leeway: early (decision 6)
+    add(1002, 1.5);    // counted inside the leeway: early (D290 decision 6)
     add(1003, 50.0);   // uncounted, past the leeway: late
 
     ActivationRating r = rate_activation(act);
@@ -707,8 +707,8 @@ TEST_CASE("timing_tiers: the ladder at the 85 ms hit window") {
 TEST_CASE("display_backends: 500 ms window keeps everything the 500 ms search graph collects") {
     // The display window IS the search graph's squeeze window (one constant,
     // kSqueezeWindowMs), so nothing the graph gathers gets trimmed at
-    // store/display time. 180 and -300 are the regression: both used to fall
-    // outside the old +-170 window and get dropped.
+    // store/display time. 180 and -300 sit past the nominal budget
+    // (nominal_budget_ms), and the window still keeps them.
     CHECK(kSqueezeWindowMs == 500.0);
     std::map<int64_t, int64_t> tpm{{0, 1920}};
     std::map<int64_t, double> bpm{{0, 120.0}};
@@ -804,16 +804,16 @@ TEST_CASE("is_frontend_decided: squeezed out, or not counted without a squeeze")
 }
 
 // The engine counts a plain row less than the leeway past the SP end, so it
-// is not a squeeze the frontend decides. The rating, the late-row warn and
-// the overfill flag all use that same edge (user decision 7).
+// is not a squeeze the frontend decides. The rating's early or late side and
+// the overfill flag both use that same edge (D274 user decision 7).
 TEST_CASE("rate_activation: a plain row inside the leeway is not a frontend squeeze") {
     Activation act;
     test::set_skips(act, 0);
     act.e_offset = 300.0;  // not e-critical
     // The row below sits 2.5 ms past the end; 3077 is any end before it.
     test::set_clamped_window(act, 3072, 3077);
-    // A late scale this small would make a row treated as late material:
-    // 2.5 ms reads as 4.2 ms, past the 1 ms impact floor.
+    // A late scale this small would give a row read on the late side a
+    // figure: 2.5 ms reads as 4.2 ms.
     test::set_transfer(act, TransferScale{}, TransferScale{1.0, 0.2});
     BackendSqueeze row;
     row.timecode = Timecode::raw(3080);
@@ -876,7 +876,8 @@ TEST_CASE("BackendSqueeze::summarystr: a scaled row's word follows its eff. figu
 }
 
 TEST_CASE("squeeze_budget_ms: identity scale is twice the hit window") {
-    // The backend tooltip's "not %.0fms" figure is this call, not 2.0 * W.
+    // The backend tooltip's normal-scale figure, nominal_budget_ms, is this
+    // call at the identity scale.
     CHECK(squeeze_budget_ms(1.0) == 170.0);
 }
 

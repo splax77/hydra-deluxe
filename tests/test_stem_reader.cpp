@@ -1,9 +1,9 @@
 // Tests for audio/stem_reader: the seekable per-format decoders behind the
-// Preview's audio. The reference for every check is a copy of the old
-// whole-file decoders (below, test-only), so the readers are pinned to exactly
-// what the Preview played before they existed. Fixtures: the public-domain
-// 220 Hz sine under testdata/audio in each format (the WAV and FLAC ones were
-// made with ffmpeg's sine generator, 1 s at 44.1 kHz; the FLAC is stereo).
+// Preview's audio. The reference for every check is a test-only whole-file
+// decoder (old_full_decode below), so the readers are pinned to exactly what
+// decoding the whole file gives. Fixtures: the public-domain 220 Hz sine under
+// testdata/audio in each format (the WAV and FLAC ones were made with ffmpeg's
+// sine generator, 1 s at 44.1 kHz; the FLAC is stereo).
 
 #include "doctest.h"
 
@@ -364,7 +364,7 @@ TEST_CASE("StemReader: a chained Opus file plays as one stream") {
 TEST_CASE("StemReader: Opus end trimming stops at the last granule") {
     // The fixture's last page says 240312 samples with a 312 pre-skip, so
     // 240000 frames are real audio; the decoder emits 648 more of padding,
-    // which the Preview has always played (trim_end off, the default).
+    // which the Preview plays (trim_end off, the default).
     std::vector<uint8_t> bytes = read_fixture("sine220.opus");
     detail::OpusReaderOptions trim;
     trim.trim_end = true;
@@ -469,7 +469,7 @@ std::size_t mp3_l3_frame_size(const uint8_t* h) {
     return static_cast<std::size_t>(144000 * kbps[h[2] >> 4] / hz[(h[2] >> 2) & 3] + ((h[2] >> 1) & 1));
 }
 
-// A ~40 s MP3 with no ID3 or Xing tag: the fixture's audio frames, 24 times
+// A ~2 minute MP3 with no ID3 or Xing tag: the fixture's audio frames, 24 times
 // over. With no tag dr_mp3 counts every frame and skips no encoder delay, and
 // a stream this long exercises many seek points.
 std::vector<uint8_t> long_untagged_mp3() {
