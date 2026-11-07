@@ -169,26 +169,30 @@ def build_server(helper: Optional[Helper] = None):
         loader in memory when GameAssembly.dll appears
         (tools/ch_mcp/launch_patch.json), and the game is let go. human=True
         with no song folder is refused. A run already open is stopped and
-        restored first. The reply names the backup folder, the settings line,
-        the command line, the pid and the song length."""
+        restored first. Every run also starts the machine recorder beside the
+        game, after the check and before the launch; a recorder that fails to
+        start is one line and the run goes on. The reply names the recorder's
+        pid and folder, the worker's pid and its parent's, the backup folder,
+        the settings line, the command line, the pid and the song length."""
         return capped(h.game.ch_start(song_folder, player, profile, human=human))
 
     @server.tool()
     def ch_stop() -> str:
-        """Stop any trace, Frida session, kit and play session, then close the
-        game the server started and restore the user's files and the registry
-        key, one line each, after the kit teardown's checks and the count of
-        times the game came to the front. A game the server did not start
-        stays open; its files are restored."""
+        """Stop the machine recorder and any trace, Frida session, kit and
+        play session, then close the game the server started and restore the
+        user's files and the registry key, one line each, after the recorder's
+        line, the kit teardown's checks and the count of times the game came
+        to the front. A game the server did not start stays open; its files
+        are restored."""
         return capped(h.game.ch_stop())
 
     @server.tool()
     def ch_status() -> str:
         """The run, the backup folder, how many times the game came to the
-        front, the play session, the last stats copy, whether Frida is
-        attached and whether a trace runs. For a human launch it also shows
-        the launch agent's patch status, ending with the line "loader ran
-        after patch:" and yes, no or not yet."""
+        front, the machine recorder, the play session, the last stats copy,
+        whether Frida is attached and whether a trace runs. For a human launch
+        it also shows the launch agent's patch status, ending with the line
+        "loader ran after patch:" and yes, no or not yet."""
         return capped(h.ch_status())
 
     @server.tool()

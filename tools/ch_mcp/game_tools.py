@@ -28,7 +28,8 @@ import threading
 import time
 from typing import Any, Callable, List, Optional, Sequence, Tuple, Union
 
-from tools.ch_mcp import bot_run, compare_scorestats, foreground, game_files, install_chart, quiet
+from tools.ch_mcp import (
+    bot_run, compare_scorestats, foreground, game_files, install_chart, quiet, recorder_link)
 from tools.ch_mcp.frida_tools import READ_CAP_S
 from tools.ch_probe import constants as C
 from tools.ch_probe import engine_finder
@@ -268,8 +269,9 @@ class GameTools:
     `compare` (compare_scorestats'), `wait_thread` (how ch_install_chart waits
     on its worker), `set_setting` (game_files.set_game_setting),
     `make_watch` (builds the foreground.ForegroundWatch ch_start starts; None
-    builds the real one on `find_window`), `is_pid_running` (pid_running) and
-    `scratch_root` (the temp root the session folders and OPEN_RUN_MARKER go
+    builds the real one on `find_window`), `make_recorder` (builds the
+    recorder_link.RecorderLink ch_start starts), `is_pid_running` (pid_running)
+    and `scratch_root` (the temp root the session folders and OPEN_RUN_MARKER go
     under). `lock` is the server's one RLock; this class never makes its own.
 
     Building one reads a marker a previous worker left (_read_marker_at_start)
@@ -285,6 +287,7 @@ class GameTools:
                  wait_thread: Callable[[threading.Thread, float], None] = bot_run.join_thread,
                  set_setting: Callable[[str, str, str], None] = game_files.set_game_setting,
                  make_watch: Optional[Callable[[], foreground.ForegroundWatch]] = None,
+                 make_recorder: Callable[[], recorder_link.RecorderLink] = recorder_link.RecorderLink,
                  is_pid_running: Callable[[int], bool] = pid_running):
         self._env = env
         self._lock = lock
@@ -304,6 +307,7 @@ class GameTools:
         self._run: Optional[bot_run.Run] = None
         # The foreground watch of the run the server started; None otherwise.
         self._watch: Optional[foreground.ForegroundWatch] = None
+        self._recorder = make_recorder()
         # The backup taken for a game the server did not start (question 2).
         self._adopted_backup: Optional[str] = None
         self._scratch: Optional[str] = None
@@ -359,12 +363,6 @@ class GameTools:
         with self._lock:
             return self._run.length_ms if self._run is not None else None
 
-    def song_length_ms(self) -> Optional[int]:
-        """The length ch_start printed for the open run's song, in ms; None
-        with no run or no song on its command line."""
-        with self._lock:
-            return self._run.length_ms if self._run is not None else None
-
     def session_dir(self) -> str:
         """The session's scratch folder, made on the first call. It holds the
         backups, the stats copies, the play logs and the Frida logs."""
@@ -377,8 +375,9 @@ class GameTools:
 
     def open_lines(self) -> List[str]:
         """What the game side holds open, one line each: the run with its
-        backup folder, an adopted backup, a running play session. The server's
-        Helper.open_items adds the other tools' lines."""
+        backup folder, an adopted backup, a running play session, a running
+        machine recorder. The server's Helper.open_items adds the other tools'
+        lines."""
         with self._lock:
             lines: List[str] = []
             if self._run is not None:
@@ -388,6 +387,8 @@ class GameTools:
                 lines.append(f"adopted backup: {self._adopted_backup}")
             if self._play is not None and self._play.running():
                 lines.append(f"play session: running, {len(self._play.rows)} presses so far")
+            if self._recorder.running():
+                lines.append(self._recorder.line())
             return lines
 
     def add_stop_hook(self, hook: Callable[[], object]) -> None:
@@ -424,7 +425,9 @@ class GameTools:
         refused before anything runs. An open run is stopped and restored
         first, so its game is not read as load. A machine that is not quiet
         refuses the launch before any backup or folder, and a quiet one puts
-        the report's lines first in the reply."""
+        the report's lines first in the reply. The machine recorder starts
+        after the check and before the launch, with no wait, and hears the
+        game's pid once the launch is back; a launch that fails stops it."""
         with self._lock:
             refusal = bot_run.human_refusal(human, song_folder)
             if refusal is not None:
@@ -446,6 +449,7 @@ class GameTools:
             scratch = self._new_scratch()
             in_scratch = set(os.listdir(scratch))
             env = self._env_into(lines)
+            self._start_recorder(scratch, song_folder, lines)
 
             def before_launch() -> None:
                 # start_run takes the backup and launches in one call, so this
@@ -460,6 +464,7 @@ class GameTools:
                                             backup_root=scratch, env=env,
                                             before_launch=before_launch, human=human)
                 except BaseException:
+                    self._stop_recorder(lines)
                     self._settle_failed_start(lines)
                     raise
             except bot_run.SongLengthMissing as e:
@@ -472,6 +477,7 @@ class GameTools:
                 lines.append(f"could not start the game: {e}")
                 return "\n".join(lines)
             self._run = run
+            self._tell_recorder(f"pid {run.game.pid}", lines)
             self._watch = self._make_watch()
             self._watch.start()
             if run.length_ms is None:
@@ -482,10 +488,10 @@ class GameTools:
             return "\n".join(lines)
 
     def ch_stop(self) -> str:
-        """Run the stop hooks, stop the play session, then stop the game the
-        server started (bot_run.finish_run) and put the user files back, one
-        line per file. A game the server did not start is left running and
-        only the files are restored."""
+        """Stop the machine recorder, run the stop hooks, stop the play
+        session, then stop the game the server started (bot_run.finish_run)
+        and put the user files back, one line per file. A game the server did
+        not start is left running and only the files are restored."""
         with self._lock:
             lines: List[str] = []
             self._stop_all(lines)
@@ -517,8 +523,8 @@ class GameTools:
     def ch_status(self) -> str:
         """The game side of the session: the run, the backup folder, a
         human launch's patch status (bot_run.request_launch_status), the
-        scratch folder, the play session and the last stats copy. The Frida
-        and trace lines are frida_tools'."""
+        scratch folder, the machine recorder, the play session and the last
+        stats copy. The Frida and trace lines are frida_tools'."""
         with self._lock:
             lines: List[str] = []
             run = self._run
@@ -546,6 +552,7 @@ class GameTools:
                 lines.append(watch_line)
             if self._scratch is not None:
                 lines.append(f"scratch folder: {self._scratch}")
+            lines.append(self._recorder.line())
             play = self._play
             if play is None:
                 lines.append("play session: none")
@@ -792,8 +799,10 @@ class GameTools:
         moment the search ends. The call returns at the first press. The
         press rows go to a press-<n>.csv in the session folder as they happen.
 
-        The reply has one line per part with the time it took, the press
-        log's line, then first_press_line. A part that fails stops the call
+        The machine recorder hears the engine's address right after the watch
+        step. The reply has one line per part with the time it took, the
+        recorder's samples line after the watch's, the press log's line, then
+        first_press_line. A part that fails stops the call
         there: the reply names it and gives its own reply, and a kit that part left standing
         is torn down. A failed attach built no kit, and a failed setup tears
         down its own."""
@@ -830,6 +839,10 @@ class GameTools:
                 return self._run_stopped(lines, "watch", began, text,
                                          parts.kit.ch_kit_teardown())
             lines.append(f"watch: ok, {self._seconds_since(began)}, engine {engine:#x}, {text}")
+            self._tell_recorder(f"engine {engine:#x}", lines)
+            samples = self._recorder.samples_line()
+            if samples is not None:
+                lines.append(samples)
 
             began = self._env.now()
             self._press_log_count += 1
@@ -941,6 +954,34 @@ class GameTools:
     def _env_into(self, lines: List[str]) -> bot_run.Env:
         """The server's Env with its printed lines going into `lines`."""
         return dataclasses.replace(self._env, out=lines.append)
+
+    # -- the machine recorder ---------------------------------------------------------
+
+    def _start_recorder(self, scratch: str, song_folder: Optional[str],
+                        lines: List[str]) -> None:
+        """Start the recorder, with no wait, and name the pids the report needs
+        to find the worker and the py launcher behind it. A recorder that does
+        not start is one line, and the run goes on."""
+        try:
+            lines.extend(self._recorder.start(scratch, os.getpid(), run_cap_s(song_folder)))
+        except Exception as e:  # a run never fails for its recording
+            lines.append(recorder_link.start_failed_line(e))
+        lines.append(f"worker pid {os.getpid()}, its parent pid {os.getppid()}")
+
+    def _tell_recorder(self, line: str, lines: List[str]) -> None:
+        """Send `line` to the recorder; a failed write adds one line to the reply."""
+        said = self._recorder.send(line)
+        if said is not None:
+            lines.append(said)
+
+    def _stop_recorder(self, lines: List[str]) -> None:
+        """Stop the recorder, adding its line when there was one to stop."""
+        try:
+            said = self._recorder.stop()
+        except Exception as e:  # the restore after this matters more
+            said = f"stopping the machine recorder failed: {type(e).__name__}: {e}"
+        if said is not None:
+            lines.append(said)
 
     # -- the open-run marker ----------------------------------------------------------
 
@@ -1072,11 +1113,12 @@ class GameTools:
         lines.append(f"the user files may not be back; ch_stop tries again from {folder}")
 
     def _stop_all(self, lines: List[str], at_exit: bool = False) -> bool:
-        """The stop hooks, the play stop, the foreground watch's stop and its
-        count, then the game and the restore. Returns False when the restore
-        failed or the stop raised; the run stays open then, so a later
-        ch_stop tries the restore again. At the worker's exit a backup
-        adopted from a marker is left alone, with its marker."""
+        """The recorder's stop, the stop hooks, the play stop, the foreground
+        watch's stop and its count, then the game and the restore. Returns
+        False when the restore failed or the stop raised; the run stays open
+        then, so a later ch_stop tries the restore again. At the worker's exit
+        a backup adopted from a marker is left alone, with its marker."""
+        self._stop_recorder(lines)
         for hook in list(self._stop_hooks):
             try:
                 said = hook()
