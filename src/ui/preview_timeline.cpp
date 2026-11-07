@@ -36,14 +36,13 @@ constexpr ImU32 with_alpha_of(ImU32 col, ImU32 alpha_of) {
 }
 
 // Row heights, from renderRows' `style="height:...rem"` on each `.row`
-// (second mockup, lines 451 to 476).
-constexpr float kAxisRowRem = 1.2f;         // line 451
-constexpr float kSectionsRowRem = 1.5f;     // line 454
-constexpr float kPhrasesRowRem = 1.4f;      // line 461
-constexpr float kSavedRowRem = 3.9f;        // line 464
-constexpr float kGhostRowRem = 2.0f;        // line 469
-constexpr float kActivationsRowRem = 2.2f;  // line 473
-constexpr float kFillsRowRem = 2.9f;        // line 476
+// (the fifth mockup,
+// docs/superpowers/specs/2026-10-31-path-builder-mockup-5/top-mockup.html).
+constexpr float kAxisRowRem = 1.2f;      // line 533
+constexpr float kSectionsRowRem = 1.5f;  // line 536
+constexpr float kSavedRowRem = 3.9f;     // line 546
+constexpr float kGhostRowRem = 2.0f;     // line 549
+constexpr float kFillsRowRem = 2.9f;     // line 553
 
 // The label column: `.rlab{width:12.5rem; padding-right:.5rem}` (second
 // mockup, line 61), in its `color:var(--muted)`. --muted and --dim are the
@@ -56,6 +55,7 @@ constexpr ImU32 kDimColor = rgba(0x70, 0x75, 0x7e, 1.0f);    // --dim
 // A row's top edge: `.row{border-top:1px solid #2d2f34}` (second mockup,
 // line 59), none on the first (line 60).
 constexpr ImU32 kRowEdgeColor = rgba(0x2d, 0x2f, 0x34, 1.0f);
+constexpr float kRowEdgeW = 1.0f;
 
 // The axis labels: `.axis span{top:.1rem; color:var(--dim)}` (second mockup,
 // line 85).
@@ -73,31 +73,32 @@ constexpr float kSectionPadSideRem = 0.25f;
 
 // The phrase stars: the second mockup's `.star{color:var(--star);
 // font-size:.85rem}` (line 67, --star on line 13), the font size being the
-// star's height. The saved line is drawn in the same --star.
+// star's height. They sit along the top of the saved row, drawn last, as the
+// fifth mockup's drawMeter draws them (line 634). The saved line is drawn in
+// the same --star.
 constexpr ImU32 kStarColor = rgba(0xf2, 0xc9, 0x4c, 1.0f);  // --star
 constexpr float kStarRem = 0.85f;
 
 // The saved row (the second mockup's drawMeter): the curve 5 px in from the
 // top and bottom (`y = n => H - 5 - n / CAP * (H - 10)`, line 528),
 // `stroke-width="2"` (line 550); the activate line `stroke="#7c9"
-// stroke-dasharray="4 4" opacity=".75"` (line 549). The caption's dash sample
-// is the same #7c9 at full opacity (line 63), so both read kActivateColor.
+// stroke-dasharray="4 4" opacity=".75"` (line 549). The hover's dash sample is
+// the same #7c9 at full opacity (line 63), so both read kActivateColor.
 constexpr float kSavedInset = 5.0f;
 constexpr float kSavedLineW = 2.0f;
 constexpr ImU32 kActivateColor = rgba(0x77, 0xcc, 0x99, 1.0f);
 constexpr ImU32 kActivateLineColor = with_alpha_of(kActivateColor, rgba(0, 0, 0, 0.75f));
 constexpr float kActivateDash = 4.0f;
 
-// The saved row's caption, in the label column under the row's name (second
-// mockup, renderRows, lines 464 and 465). Each caption line is
-// `.rlab small{color:var(--dim); margin-top:.1rem}` (line 62). The activate
-// line's sample is `.rlab .dash{width:1.4rem; border-top:2px dashed #7c9;
-// vertical-align:.2rem; margin-right:.3rem}` (line 63): its bottom .2 rem
+// The saved label's hover lines (second mockup, renderRows, lines 464 and 465).
+// Each line is `.rlab small{color:var(--dim); margin-top:.1rem}` (line 62). The
+// activate line's sample is `.rlab .dash{width:1.4rem; border-top:2px dashed
+// #7c9; vertical-align:.2rem; margin-right:.3rem}` (line 63): its bottom .2 rem
 // above the text's baseline. The shading's swatch is `width:1.4rem;
 // height:.6rem; background:rgba(54,208,214,.28); margin-right:.3rem;
 // vertical-align:-.05rem` (line 465): its bottom .05 rem below the baseline.
 constexpr float kCaptionGapRem = 0.1f;
-constexpr float kCaptionMarkRem = 1.4f;     // the sample's and the swatch's width
+constexpr float kCaptionMarkRem = 1.4f;     // the width each line's mark gets
 constexpr float kCaptionMarkGapRem = 0.3f;  // between a mark and its words
 constexpr float kActivateSampleW = 2.0f;
 constexpr float kActivateSampleRiseRem = 0.2f;
@@ -147,40 +148,52 @@ void log_text(ImVec2 at, const char* text) {
     if (ImGui::GetCurrentContext()->LogEnabled) ImGui::LogRenderedText(&at, text);
 }
 
-// The saved row's label: its name, then the activate line's sample and its
-// words, then the shading's swatch and its words, as one block centred
-// between `y0` and `y1` the way the other rows' names are. Each piece of text
-// wraps at `wrap_w` less any mark before it.
-void draw_saved_caption(ImDrawList* dl, float x, float y0, float y1, float wrap_w) {
-    ScopedFont font(TextRole::Label);
-    ImFont* const label_font = font_for(TextRole::Label).font;
-    const float ascent = ImGui::GetFontBaked()->Ascent;
-    const float mark_w = rem(kCaptionMarkRem) + rem(kCaptionMarkGapRem);
-    const std::string needed = std::to_string(kSpActivationBars) + kTimelineActivateLabelTail;
-    const float name_h = ImGui::CalcTextSize(kTimelineSavedLabel, nullptr, false, wrap_w).y;
-    const float needed_h = ImGui::CalcTextSize(needed.c_str(), nullptr, false, wrap_w - mark_w).y;
-    const float enough_h = ImGui::CalcTextSize(kTimelineEnoughLabel, nullptr, false, wrap_w - mark_w).y;
-    const float gap = rem(kCaptionGapRem);
-    float y = (y0 + y1) * 0.5f - (name_h + gap + needed_h + gap + enough_h) * 0.5f;
+// One line of the saved label's hover: room for a mark at the cursor, then
+// `text`. Returns the mark's top-left, where the caller draws the mark. ImGui
+// text, so the tooltip sizes to it and the GUI tests read it.
+ImVec2 saved_hover_line(const char* text) {
+    const ImVec2 mark = ImGui::GetCursorScreenPos();
+    ImGui::Dummy(ImVec2(rem(kCaptionMarkRem), ImGui::GetTextLineHeight()));
+    ImGui::SameLine(0.0f, rem(kCaptionMarkGapRem));
+    ImGui::TextUnformatted(text);
+    return mark;
+}
 
-    dl->AddText(label_font, 0.0f, ImVec2(x, y), kMutedColor, kTimelineSavedLabel, nullptr, wrap_w);
-    log_text(ImVec2(x, y), kTimelineSavedLabel);
-    y += name_h + gap;
+// The saved label's tooltip: each mark the saved row draws beside its words,
+// the star, then the activate line's sample, then the shading's swatch.
+void draw_saved_hover() {
+    ImGui::BeginTooltip();
+    {
+        ScopedFont font(TextRole::Label);
+        ImGui::PushStyleColor(ImGuiCol_Text, kDimColor);
+        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(ImGui::GetStyle().ItemSpacing.x, rem(kCaptionGapRem)));
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+        const float ascent = ImGui::GetFontBaked()->Ascent;
+        const float mark_w = rem(kCaptionMarkRem);
 
-    // The sample's 2 px border is the whole of its box, so its centre line is
-    // half the border above the box's bottom.
-    const float dash_y = y + ascent - rem(kActivateSampleRiseRem) - px(kActivateSampleW) * 0.5f;
-    draw_dashed(dl, {ImVec2(x, dash_y), ImVec2(x + rem(kCaptionMarkRem), dash_y)}, kActivateColor,
-                px(kActivateSampleW));
-    dl->AddText(label_font, 0.0f, ImVec2(x + mark_w, y), kDimColor, needed.c_str(), nullptr, wrap_w - mark_w);
-    log_text(ImVec2(x + mark_w, y), needed.c_str());
-    y += needed_h + gap;
+        // The star stands in the middle of its mark's room.
+        const ImVec2 star = saved_hover_line(kTimelinePhrasesLabel);
+        const float size = rem(kStarRem);
+        draw_star(dl, ImVec2(star.x + (mark_w - size) * 0.5f, star.y + (ImGui::GetTextLineHeight() - size) * 0.5f),
+                  size, true, kStarColor);
 
-    const float swatch_y1 = y + ascent + rem(kEnoughSwatchDropRem);
-    dl->AddRectFilled(ImVec2(x, swatch_y1 - rem(kEnoughSwatchHRem)), ImVec2(x + rem(kCaptionMarkRem), swatch_y1),
-                      kEnoughSwatchColor);
-    dl->AddText(label_font, 0.0f, ImVec2(x + mark_w, y), kDimColor, kTimelineEnoughLabel, nullptr, wrap_w - mark_w);
-    log_text(ImVec2(x + mark_w, y), kTimelineEnoughLabel);
+        // The sample's 2 px border is the whole of its box, so its centre line
+        // is half the border above the box's bottom.
+        const std::string needed = std::to_string(kSpActivationBars) + kTimelineActivateLabelTail;
+        const ImVec2 dash = saved_hover_line(needed.c_str());
+        const float dash_y = dash.y + ascent - rem(kActivateSampleRiseRem) - px(kActivateSampleW) * 0.5f;
+        draw_dashed(dl, {ImVec2(dash.x, dash_y), ImVec2(dash.x + mark_w, dash_y)}, kActivateColor,
+                    px(kActivateSampleW));
+
+        const ImVec2 swatch = saved_hover_line(kTimelineEnoughLabel);
+        const float swatch_y1 = swatch.y + ascent + rem(kEnoughSwatchDropRem);
+        dl->AddRectFilled(ImVec2(swatch.x, swatch_y1 - rem(kEnoughSwatchHRem)), ImVec2(swatch.x + mark_w, swatch_y1),
+                          kEnoughSwatchColor);
+
+        ImGui::PopStyleVar();
+        ImGui::PopStyleColor();
+    }
+    ImGui::EndTooltip();
 }
 
 // The drawn path, bands and taken fills: --sp (kTimelinePathColor). The
@@ -469,12 +482,12 @@ std::optional<TimelineLayout> timeline_layout(const app::PreviewScene& scene, do
         out.ghost_bands.push_back({x_of(w.first), ghost.y0 + metrics.band_inset, x_of(w.second),
                                    ghost.y1 - metrics.band_inset});
 
-    const TimelineRect& acts = out.row(TimelineRow::Activations);
+    const TimelineRect& fr = out.row(TimelineRow::Fills);
     for (size_t i = 0; i < scene.activations.size(); ++i) {
         const std::optional<std::pair<double, double>> w = scene.activations[i].sp_window();
         if (!w) continue;
-        out.bands.push_back({i, {x_of(w->first), acts.y0 + metrics.band_inset, x_of(w->second),
-                                 acts.y1 - metrics.band_inset}});
+        out.bands.push_back({i, {x_of(w->first), fr.y0 + metrics.band_inset, x_of(w->second),
+                                 fr.y1 - metrics.band_inset}});
     }
 
     // Where enough is saved: the saved line read against the activate line
@@ -501,7 +514,6 @@ std::optional<TimelineLayout> timeline_layout(const app::PreviewScene& scene, do
             out.saved_enough.push_back({x0, saved.y0, x1, saved.y1});
     }
 
-    const TimelineRect& fr = out.row(TimelineRow::Fills);
     const float best_w = measure(metrics.cost_width, marks.best_label);
     for (size_t i = 0; i < scene.fills.size(); ++i) {
         const app::PreviewFill& f = scene.fills[i];
@@ -552,16 +564,16 @@ std::optional<TimelineLayout> timeline_layout(const app::PreviewScene& scene, do
 
 TimelineHit timeline_hit(const TimelineLayout& layout, float x, float y) {
     TimelineHit hit;
-    for (const TimelineFillItem& f : layout.fills)
-        if (f.hit.contains(x, y)) {
-            hit.kind = TimelineHit::Kind::Fill;
-            hit.index = f.fill;
-            return hit;
-        }
     for (const TimelineBand& b : layout.bands)
         if (b.rect.contains(x, y)) {
             hit.kind = TimelineHit::Kind::Band;
             hit.index = b.activation;
+            return hit;
+        }
+    for (const TimelineFillItem& f : layout.fills)
+        if (f.hit.contains(x, y)) {
+            hit.kind = TimelineHit::Kind::Fill;
+            hit.index = f.fill;
             return hit;
         }
     if (!(TimelineRect{0.0f, 0.0f, layout.width, layout.height()}.contains(x, y)) ||
@@ -578,10 +590,8 @@ TimelineMetrics timeline_metrics() {
     TimelineMetrics m;
     m.row_h[static_cast<size_t>(TimelineRow::Axis)] = rem(kAxisRowRem);
     m.row_h[static_cast<size_t>(TimelineRow::Sections)] = rem(kSectionsRowRem);
-    m.row_h[static_cast<size_t>(TimelineRow::Phrases)] = rem(kPhrasesRowRem);
     m.row_h[static_cast<size_t>(TimelineRow::Saved)] = rem(kSavedRowRem);
     m.row_h[static_cast<size_t>(TimelineRow::Ghost)] = rem(kGhostRowRem);
-    m.row_h[static_cast<size_t>(TimelineRow::Activations)] = rem(kActivationsRowRem);
     m.row_h[static_cast<size_t>(TimelineRow::Fills)] = rem(kFillsRowRem);
     m.fill_center_y = rem(kFillCenterRem);
     m.band_inset = rem(kBandInsetRem);
@@ -813,21 +823,14 @@ TimelineEvents PreviewTimeline::draw(const TimelineInput& in) const {
     auto at = [&](float x, float y) { return ImVec2(t0.x + x, t0.y + y); };
     ImDrawList* dl = ImGui::GetWindowDrawList();
 
-    // Row edges and the label column. The saved row's label is its caption.
-    const char* const names[kTimelineRowCount] = {nullptr,
-                                                  kTimelineSectionsLabel,
-                                                  kTimelinePhrasesLabel,
-                                                  nullptr,
-                                                  kTimelineGhostLabel,
-                                                  kTimelineActivationsLabel,
-                                                  kTimelineFillsLabel};
+    // Row edges and the label column.
+    const char* const names[kTimelineRowCount] = {nullptr, kTimelineSectionsLabel, kTimelineSavedLabel,
+                                                  kTimelineGhostLabel, kTimelineActivationsLabel};
     for (size_t r = 0; r < kTimelineRowCount; ++r) {
         const TimelineRect& row = l.rows[r];
         if (!(row.y1 > row.y0)) continue;
         if (r > 0)
-            dl->AddRectFilled(ImVec2(origin.x, t0.y + row.y0), at(l.width, row.y0 + px(1.0f)), kRowEdgeColor);
-        if (static_cast<TimelineRow>(r) == TimelineRow::Saved)
-            draw_saved_caption(dl, origin.x, t0.y + row.y0, t0.y + row.y1, label_wrap);
+            dl->AddRectFilled(ImVec2(origin.x, t0.y + row.y0), at(l.width, row.y0 + px(kRowEdgeW)), kRowEdgeColor);
         if (names[r] == nullptr) continue;
         label_block(dl, origin.x, t0.y + row.y0, t0.y + row.y1, label_wrap, names[r], kMutedColor);
     }
@@ -860,16 +863,9 @@ TimelineEvents PreviewTimeline::draw(const TimelineInput& in) const {
         }
     }
 
-    // Star Power phrases: a star at each phrase's start.
-    {
-        const TimelineRect& row = l.row(TimelineRow::Phrases);
-        const float size = rem(kStarRem);
-        const float y = (row.y0 + row.y1) * 0.5f - size * 0.5f;
-        for (float x : l.phrase_x) draw_star(dl, at(x - size * 0.5f, y), size, true, kStarColor);
-    }
-
     // Star Power saved: the shading where enough is saved, the activate line,
-    // then the curve on top.
+    // the curve, then on top a star at each phrase's start, along the row's
+    // top just under its edge line.
     {
         for (const TimelineRect& e : l.saved_enough) dl->AddRectFilled(at(e.x0, e.y0), at(e.x1, e.y1), kEnoughShadeColor);
         const float ay = l.activate_y;
@@ -879,6 +875,9 @@ TimelineEvents PreviewTimeline::draw(const TimelineInput& in) const {
         for (const TimelinePoint& p : l.saved_line) pts.push_back(at(p.x, p.y));
         if (pts.size() >= 2)
             dl->AddPolyline(pts.data(), static_cast<int>(pts.size()), kStarColor, ImDrawFlags_None, px(kSavedLineW));
+        const float size = rem(kStarRem);
+        const float star_y = l.row(TimelineRow::Saved).y0 + px(kRowEdgeW);
+        for (float x : l.phrase_x) draw_star(dl, at(x - size * 0.5f, star_y), size, true, kStarColor);
     }
 
     // The ghost bands: a dashed rounded outline, no fill. The stroke's centre
@@ -895,9 +894,20 @@ TimelineEvents PreviewTimeline::draw(const TimelineInput& in) const {
     }
 
     // The drawn path's activations: numbered bands, the selected one outlined.
+    // Each band's visible part is its own item, before the fills' items, so a
+    // band takes the click and the hover over the fill boxes under it (the
+    // first item under the pointer wins). An item is not clipped as the
+    // drawing is, so it stops at the track's edges.
     {
         ScopedFont font(TextRole::Label);
         for (const TimelineBand& b : l.bands) {
+            const float item_x0 = std::max(b.rect.x0, 0.0f), item_x1 = std::min(b.rect.x1, l.width);
+            if (item_x1 > item_x0) {
+                ImGui::SetCursorScreenPos(at(item_x0, b.rect.y0));
+                const std::string id = "##band_" + std::to_string(b.activation);
+                if (ImGui::InvisibleButton(id.c_str(), ImVec2(item_x1 - item_x0, b.rect.y1 - b.rect.y0)))
+                    ev.clicked_band = b.activation;
+            }
             const ImVec2 mn = at(b.rect.x0, b.rect.y0), mx = at(b.rect.x1, b.rect.y1);
             dl->AddRectFilled(mn, mx, kTimelinePathColor, rem(kBandRoundingRem));
             if (in.selected && *in.selected == b.activation) {
@@ -969,13 +979,12 @@ TimelineEvents PreviewTimeline::draw(const TimelineInput& in) const {
         }
     }
 
-    // The rows' own item: a click off every fill lands on a band, a moment,
-    // or, in the Fills row, nothing.
+    // The rows' own item: the bands and the fills took their clicks above, so
+    // a click here lands on a moment or, in the Fills row, nothing.
     ImGui::SetCursorScreenPos(t0);
     if (ImGui::InvisibleButton("##timeline", ImVec2(l.width, l.height()))) {
         const ImVec2 m = ImGui::GetIO().MousePos;
         const TimelineHit hit = timeline_hit(l, m.x - t0.x, m.y - t0.y);
-        if (hit.kind == TimelineHit::Kind::Band) ev.clicked_band = hit.index;
         if (hit.kind == TimelineHit::Kind::Time) ev.clicked_ms = hit.ms;
     }
     const ImGuiID rows_id = ImGui::GetItemID();
@@ -987,6 +996,17 @@ TimelineEvents PreviewTimeline::draw(const TimelineInput& in) const {
         dl->AddRectFilled(at(x, 0.0f), at(x + px(kPlayheadW), l.height()), kPlayheadColor);
     }
     dl->PopClipRect();
+
+    // The two labels with a hover, each item the whole of its label cell, as
+    // the fifth mockup's `title` sits on the `.rlab` (lines 546 and 553).
+    auto label_hovered = [&](const char* id, TimelineRow r) {
+        const TimelineRect& row = l.row(r);
+        ImGui::SetCursorScreenPos(ImVec2(origin.x, t0.y + row.y0));
+        ImGui::InvisibleButton(id, ImVec2(label_w, row.y1 - row.y0));
+        return ImGui::IsItemHovered();
+    };
+    if (label_hovered("##label_saved", TimelineRow::Saved)) draw_saved_hover();
+    ev.hovered_activations_label = label_hovered("##label_activations", TimelineRow::Fills);
 
     // The wheel over the rows, their labels included, scrolls the window
     // (line 729), with the fills' items on top of the rows' own. ImGui's

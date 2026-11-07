@@ -59,19 +59,18 @@ void dot_item(ImU32 col, float diameter, const char* centred_text = nullptr);
 // renderRows: `s += 30`).
 inline constexpr double kTimelineAxisStepMs = 30000.0;
 
-// The row names in the label column, as the mockup writes them (renderRows'
-// `rlab` cells).
+// The row names in the label column, as the fifth mockup writes them
+// (docs/superpowers/specs/2026-10-31-path-builder-mockup-5/top-mockup.html,
+// renderRows' `rlab` cells, lines 536 to 553).
 inline constexpr const char* kTimelineSectionsLabel = "Section";
-inline constexpr const char* kTimelinePhrasesLabel = "Star Power phrases";
 inline constexpr const char* kTimelineSavedLabel = "Star Power saved";
 inline constexpr const char* kTimelineGhostLabel = "Hydra's best";
 inline constexpr const char* kTimelineActivationsLabel = "Your activations";
-inline constexpr const char* kTimelineFillsLabel = "Fills";
-// The saved row's caption under its name, as the second mockup writes it
-// (docs/superpowers/specs/2026-10-31-path-builder-mockup-2/mockup_template.html,
-// renderRows): the activate line's words after its number, kSpActivationBars
-// ("2 phrases: needed to activate", line 464), and the shading's words
-// (line 465).
+// The saved label's hover text (the fifth mockup, line 546): the stars' words,
+// the activate line's words after its number, kSpActivationBars ("2 phrases:
+// needed to activate"), and the shading's words. Each goes beside the mark it
+// names, drawn as the row draws it.
+inline constexpr const char* kTimelinePhrasesLabel = "Star Power phrases";
 inline constexpr const char* kTimelineActivateLabelTail = " phrases: needed to activate";
 inline constexpr const char* kTimelineEnoughLabel = "enough to activate";
 
@@ -83,9 +82,12 @@ inline constexpr const char* kTimelineEnoughLabel = "enough to activate";
 // keeps showing it.
 inline constexpr const char* kTimelineHiddenSectionName = "End";
 
-// The timeline's rows, top to bottom.
-enum class TimelineRow { Axis, Sections, Phrases, Saved, Ghost, Activations, Fills };
-inline constexpr size_t kTimelineRowCount = 7;
+// The timeline's rows, top to bottom. The phrases' stars sit along the top of
+// the Saved row (the fifth mockup, line 634). The Fills row holds the fills
+// and the activation bands together, under the label
+// kTimelineActivationsLabel (line 553).
+enum class TimelineRow { Axis, Sections, Saved, Ghost, Fills };
+inline constexpr size_t kTimelineRowCount = 5;
 
 // How wide a piece of text draws, in pixels. Empty measures every text as 0
 // wide.
@@ -178,7 +180,7 @@ struct TimelineSection {
     bool shaded = false;
 };
 
-// One activation's window as a band in the Activations row: its index in
+// One activation's window as a band in the Fills row: its index in
 // PreviewScene::activations and the rectangle over its sp_window().
 struct TimelineBand {
     size_t activation = 0;
@@ -279,11 +281,12 @@ std::optional<TimelineLayout> timeline_layout(const app::PreviewScene& scene, do
                                               const TimelineMetrics& metrics,
                                               const TimelineFillMarks& marks = {});
 
-// What a point lands on: a fill's hit box, else an activation band, else,
+// What a point lands on: an activation band, else a fill's hit box, so a band
+// wins over the boxes under it (the fifth mockup's band click, line 588), else,
 // anywhere inside the timeline but the Fills row, the moment under it. The
-// Fills row never names a moment, so a point there with no fill in view lands
-// on nothing (the third mockup's seek listener skips the row, line 592).
-// Outside, nothing.
+// Fills row never names a moment, so a point there off every band with no fill
+// in view lands on nothing (the fifth mockup's seek listener skips the row,
+// line 571). Outside, nothing.
 struct TimelineHit {
     enum class Kind { None, Fill, Band, Time };
     Kind kind = Kind::None;
@@ -336,6 +339,9 @@ struct TimelineEvents {
     std::optional<size_t> clicked_fill;
     std::optional<size_t> clicked_band;
     std::optional<double> clicked_ms;  // a click anywhere else on the rows
+    // The pointer is on the Fills row's label. The caller draws that hover,
+    // because the fills' legend belongs to it.
+    bool hovered_activations_label = false;
     // The window the user asked for this frame through the scrollbar or the
     // wheel over the rows: on a press, a button, a wheel notch, or a thumb
     // drag the pointer moved in, even when the window could not move. The
@@ -345,9 +351,12 @@ struct TimelineEvents {
 
 // The timeline as ImGui items at the cursor, the ImGui window's width wide.
 // First the rows: a label column and the rows over timeline_layout, clipped
-// to the rows' rectangle. Each fill in view is an InvisibleButton named
-// timeline_fill_id(chord_tick) over its hit box. A wheel notch over the rows
-// moves the window a wheel() notch (the third mockup, line 729). Then the
+// to the rows' rectangle. Each band in view is an InvisibleButton named
+// "##band_<activation index>" and each fill in view one named
+// timeline_fill_id(chord_tick) over its hit box. The saved row's label
+// ("##label_saved") shows its marks and words as a tooltip, and the Fills
+// row's label ("##label_activations") reports its hover. A wheel notch over the
+// rows moves the window a wheel() notch (the third mockup, line 729). Then the
 // scrollbar, the one control over the whole song: its label, the back button, the bar
 // (kTimelineScrollbarId), whose thumb drags and where a press beside the thumb
 // moves one window, the forward button and the readout (lines 701 to 714).

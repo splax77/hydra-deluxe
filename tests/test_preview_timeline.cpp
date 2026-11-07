@@ -71,11 +71,13 @@ TEST_CASE("preview timeline: every fill is an item named by its chord tick") {
     CHECK_FALSE(ui::timeline_layout(s, kLengthMs, whole(0.0), kWidth, metrics()).has_value());
 }
 
-TEST_CASE("preview timeline: a point anywhere in the Fills row names the nearest fill, halfway to its neighbours") {
+TEST_CASE("preview timeline: a point in the Fills row names a band it is on, else the nearest fill, halfway to its neighbours") {
     const app::PreviewScene s = scene_with_fills();
+    ui::TimelineMetrics m = metrics();
+    m.band_inset = 2.0f;
     // A 6 s window from the start, so 6 ms a pixel: the fills at 2,000 and
     // 5,000 ms are in view at 333.3 and 833.3 px, the one at 8,000 is not.
-    const ui::TimelineLayout l = *ui::timeline_layout(s, kLengthMs, ui::TimelineView{0.0, 6000.0}, kWidth, metrics());
+    const ui::TimelineLayout l = *ui::timeline_layout(s, kLengthMs, ui::TimelineView{0.0, 6000.0}, kWidth, m);
     const ui::TimelineRect& fills = l.row(ui::TimelineRow::Fills);
     REQUIRE(l.fills.size() == 2);
 
@@ -92,26 +94,32 @@ TEST_CASE("preview timeline: a point anywhere in the Fills row names the nearest
     CHECK(l.fills[0].y == doctest::Approx(fills.y0));
 
     // Just past the midpoint names the second fill; left of the first fill,
-    // near the row's bottom, names the first; right of the last names the last.
+    // near the row's bottom, names the first; right of the last, above the
+    // band there, names the last.
     const ui::TimelineHit past_mid = ui::timeline_hit(l, 590.0f, fills.y0 + 1.0f);
     CHECK(past_mid.kind == ui::TimelineHit::Kind::Fill);
     CHECK(past_mid.index == 1);
     const ui::TimelineHit left = ui::timeline_hit(l, 10.0f, fills.y1 - 1.0f);
     CHECK(left.kind == ui::TimelineHit::Kind::Fill);
     CHECK(left.index == 0);
-    const ui::TimelineHit right = ui::timeline_hit(l, 990.0f, fills.y0 + 5.0f);
+    const ui::TimelineHit right = ui::timeline_hit(l, 990.0f, fills.y0 + 1.0f);
     CHECK(right.kind == ui::TimelineHit::Kind::Fill);
     CHECK(right.index == 1);
 
-    // The Activations row still names a band or a time. The band, 5,000 to
-    // 6,500 ms, starts at 833.3 px.
-    const ui::TimelineRect& acts = l.row(ui::TimelineRow::Activations);
-    const ui::TimelineHit on_band = ui::timeline_hit(l, 900.0f, acts.y0 + 1.0f);
+    // The band, 5,000 to 6,500 ms, starts at 833.3 px and stands 2 px in from
+    // the row. A point on it names the band over the second fill's box; the
+    // same height off the band names the nearest fill.
+    const ui::TimelineHit on_band = ui::timeline_hit(l, 900.0f, fills.y0 + 5.0f);
     CHECK(on_band.kind == ui::TimelineHit::Kind::Band);
     CHECK(on_band.index == 0);
-    const ui::TimelineHit off_band = ui::timeline_hit(l, 100.0f, acts.y0 + 1.0f);
-    CHECK(off_band.kind == ui::TimelineHit::Kind::Time);
-    CHECK(off_band.ms == doctest::Approx(600.0));
+    const ui::TimelineHit off_band = ui::timeline_hit(l, 100.0f, fills.y0 + 5.0f);
+    CHECK(off_band.kind == ui::TimelineHit::Kind::Fill);
+    CHECK(off_band.index == 0);
+
+    // Another row names the moment.
+    const ui::TimelineHit on_saved = ui::timeline_hit(l, 100.0f, l.row(ui::TimelineRow::Saved).y0 + 1.0f);
+    CHECK(on_saved.kind == ui::TimelineHit::Kind::Time);
+    CHECK(on_saved.ms == doctest::Approx(600.0));
 
     const ui::TimelineRect& axis = l.row(ui::TimelineRow::Axis);
     const ui::TimelineHit on_axis = ui::timeline_hit(l, 350.0f, axis.y0 + 1.0f);
@@ -228,18 +236,18 @@ TEST_CASE("preview timeline: the saved line has a point at each segment start an
     s.sp_meter.segments = {{0.0, 3000.0, 2.0, 2.0}, {3000.0, 5000.0, 3.0, 3.0},
                            {5000.0, 8000.0, 3.0, 0.0}};
     const ui::TimelineLayout l = *ui::timeline_layout(s, kLengthMs, whole(kLengthMs), kWidth, metrics());
-    // The saved row is the fourth 10 px row, 30 to 40 px down: none at its
+    // The saved row is the third 10 px row, 20 to 30 px down: none at its
     // bottom, the cap of 4 at its top. Pinned from one run.
     REQUIRE(l.saved_line.size() == 6);
     const float xs[6] = {0.0f, 300.0f, 300.0f, 500.0f, 500.0f, 800.0f};
-    const float ys[6] = {35.0f, 35.0f, 32.5f, 32.5f, 32.5f, 40.0f};
+    const float ys[6] = {25.0f, 25.0f, 22.5f, 22.5f, 22.5f, 30.0f};
     for (size_t i = 0; i < 6; ++i) {
         CAPTURE(i);
         CHECK(l.saved_line[i].x == doctest::Approx(xs[i]));
         CHECK(l.saved_line[i].y == doctest::Approx(ys[i]));
     }
     // kSpActivationBars (2) of 4 is halfway up the row.
-    CHECK(l.activate_y == doctest::Approx(35.0f));
+    CHECK(l.activate_y == doctest::Approx(25.0f));
 }
 
 TEST_CASE("preview timeline: the insets move the bands, the fills and the saved line, and the axis labels every 30 s") {
@@ -258,22 +266,22 @@ TEST_CASE("preview timeline: the insets move the bands, the fills and the saved 
     CHECK(l.axis_ticks[0].ms == doctest::Approx(30000.0));
     CHECK(l.axis_ticks[1].ms == doctest::Approx(60000.0));
     CHECK(l.axis_ticks[1].x == doctest::Approx(923.0769f));
-    // With no ghost the ghost row is 0 tall, so the Activations row is 40 to
-    // 50 px down; its band stands 2 px in.
+    // With no ghost the ghost row is 0 tall, so the Fills row is 30 to 40 px
+    // down; the band sits in it and stands 2 px in.
     REQUIRE(l.bands.size() == 1);
-    CHECK(l.bands[0].rect.y0 == doctest::Approx(42.0f));
-    CHECK(l.bands[0].rect.y1 == doctest::Approx(48.0f));
-    // The Fills row is 50 to 60 px down; a fill's dot is centred 6 px down
-    // it, and its hit box is the row's full height.
+    CHECK(l.bands[0].rect.y0 == doctest::Approx(32.0f));
+    CHECK(l.bands[0].rect.y1 == doctest::Approx(38.0f));
+    // A fill's dot is centred 6 px down the same row, and its hit box is the
+    // row's full height.
     REQUIRE(l.fills.size() == 3);
-    CHECK(l.fills[0].y == doctest::Approx(56.0f));
-    CHECK(l.fills[0].hit.y0 == doctest::Approx(50.0f));
-    CHECK(l.fills[0].hit.y1 == doctest::Approx(60.0f));
-    // The saved row is 30 to 40 px down: none at 39, the cap at 31.
+    CHECK(l.fills[0].y == doctest::Approx(36.0f));
+    CHECK(l.fills[0].hit.y0 == doctest::Approx(30.0f));
+    CHECK(l.fills[0].hit.y1 == doctest::Approx(40.0f));
+    // The saved row is 20 to 30 px down: none at 29, the cap at 21.
     REQUIRE(l.saved_line.size() == 2);
-    CHECK(l.saved_line[0].y == doctest::Approx(39.0f));
-    CHECK(l.saved_line[1].y == doctest::Approx(31.0f));
-    CHECK(l.activate_y == doctest::Approx(35.0f));
+    CHECK(l.saved_line[0].y == doctest::Approx(29.0f));
+    CHECK(l.saved_line[1].y == doctest::Approx(21.0f));
+    CHECK(l.activate_y == doctest::Approx(25.0f));
 }
 
 TEST_CASE("preview timeline: the saved row's enough stretches start after the last activation and split a segment at the line") {
@@ -297,9 +305,9 @@ TEST_CASE("preview timeline: the saved row's enough stretches start after the la
     REQUIRE(l.saved_enough.size() == 1);
     CHECK(l.saved_enough[0].x0 == doctest::Approx(633.3333f));
     CHECK(l.saved_enough[0].x1 == doctest::Approx(1000.0f));
-    // The saved row's full height, 30 to 40 px down.
-    CHECK(l.saved_enough[0].y0 == doctest::Approx(30.0f));
-    CHECK(l.saved_enough[0].y1 == doctest::Approx(40.0f));
+    // The saved row's full height, 20 to 30 px down.
+    CHECK(l.saved_enough[0].y0 == doctest::Approx(20.0f));
+    CHECK(l.saved_enough[0].y1 == doctest::Approx(30.0f));
 }
 
 TEST_CASE("preview timeline: a segment ending exactly on the line is enough") {
@@ -345,32 +353,36 @@ TEST_CASE("preview timeline: the ghost path's windows are bands in their own row
     // move up.
     const ui::TimelineLayout bare = *ui::timeline_layout(s, kLengthMs, whole(kLengthMs), kWidth, m);
     CHECK(bare.ghost_bands.empty());
-    CHECK(bare.row(ui::TimelineRow::Ghost).y0 == doctest::Approx(40.0f));
-    CHECK(bare.row(ui::TimelineRow::Ghost).y1 == doctest::Approx(40.0f));
-    CHECK(bare.row(ui::TimelineRow::Activations).y0 == doctest::Approx(40.0f));
-    CHECK(bare.height() == doctest::Approx(60.0f));
+    CHECK(bare.row(ui::TimelineRow::Saved).y0 == doctest::Approx(20.0f));
+    CHECK(bare.row(ui::TimelineRow::Saved).y1 == doctest::Approx(30.0f));
+    CHECK(bare.row(ui::TimelineRow::Ghost).y0 == doctest::Approx(30.0f));
+    CHECK(bare.row(ui::TimelineRow::Ghost).y1 == doctest::Approx(30.0f));
+    CHECK(bare.row(ui::TimelineRow::Fills).y0 == doctest::Approx(30.0f));
+    CHECK(bare.row(ui::TimelineRow::Fills).y1 == doctest::Approx(40.0f));
+    CHECK(bare.height() == doctest::Approx(40.0f));
 
     // Two ghost windows. Pinned from one run.
     s.ghost_windows = {{1000.0, 2500.0}, {6000.0, 9000.0}};
     const ui::TimelineLayout l = *ui::timeline_layout(s, kLengthMs, whole(kLengthMs), kWidth, m);
     const ui::TimelineRect& ghost = l.row(ui::TimelineRow::Ghost);
-    CHECK(ghost.y0 == doctest::Approx(40.0f));
-    CHECK(ghost.y1 == doctest::Approx(50.0f));
-    CHECK(l.row(ui::TimelineRow::Activations).y0 == doctest::Approx(50.0f));
-    CHECK(l.height() == doctest::Approx(70.0f));
+    CHECK(ghost.y0 == doctest::Approx(30.0f));
+    CHECK(ghost.y1 == doctest::Approx(40.0f));
+    CHECK(l.row(ui::TimelineRow::Fills).y0 == doctest::Approx(40.0f));
+    CHECK(l.row(ui::TimelineRow::Fills).y1 == doctest::Approx(50.0f));
+    CHECK(l.height() == doctest::Approx(50.0f));
     REQUIRE(l.ghost_bands.size() == 2);
     CHECK(l.ghost_bands[0].x0 == doctest::Approx(100.0f));
     CHECK(l.ghost_bands[0].x1 == doctest::Approx(250.0f));
     CHECK(l.ghost_bands[1].x0 == doctest::Approx(600.0f));
     CHECK(l.ghost_bands[1].x1 == doctest::Approx(900.0f));
-    CHECK(l.ghost_bands[0].y0 == doctest::Approx(42.0f));
-    CHECK(l.ghost_bands[0].y1 == doctest::Approx(48.0f));
-    // The drawn path's band keeps its own row, now 50 to 60 px down.
+    CHECK(l.ghost_bands[0].y0 == doctest::Approx(32.0f));
+    CHECK(l.ghost_bands[0].y1 == doctest::Approx(38.0f));
+    // The drawn path's band stays in the Fills row, now 40 to 50 px down.
     REQUIRE(l.bands.size() == 1);
-    CHECK(l.bands[0].rect.y0 == doctest::Approx(52.0f));
+    CHECK(l.bands[0].rect.y0 == doctest::Approx(42.0f));
 
     // A ghost band takes no click: a point on one names the moment under it.
-    const ui::TimelineHit on_ghost = ui::timeline_hit(l, 700.0f, 45.0f);
+    const ui::TimelineHit on_ghost = ui::timeline_hit(l, 700.0f, 35.0f);
     CHECK(on_ghost.kind == ui::TimelineHit::Kind::Time);
     CHECK(on_ghost.ms == doctest::Approx(7000.0));
 }
@@ -450,11 +462,11 @@ TEST_CASE("preview timeline: every fill in best_ticks has a word under it, kept 
     CHECK(l.best_labels[1].fill == 1);
     CHECK(l.best_labels[1].rect.x0 == doctest::Approx(480.0f));
     CHECK(l.best_labels[1].rect.x1 == doctest::Approx(520.0f));
-    // The Fills row starts at 50 px (no ghost row); the word is 3 px down,
+    // The Fills row starts at 30 px (no ghost row); the word is 3 px down,
     // one 5 px line tall, and the row keeps its height.
-    CHECK(l.best_labels[1].rect.y0 == doctest::Approx(53.0f));
-    CHECK(l.best_labels[1].rect.y1 == doctest::Approx(58.0f));
-    CHECK(l.height() == doctest::Approx(60.0f));
+    CHECK(l.best_labels[1].rect.y0 == doctest::Approx(33.0f));
+    CHECK(l.best_labels[1].rect.y1 == doctest::Approx(38.0f));
+    CHECK(l.height() == doctest::Approx(40.0f));
 }
 
 TEST_CASE("preview timeline: looks are Taken, then Locked, then Offered, then Cant") {

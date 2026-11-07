@@ -25,7 +25,7 @@
 #include "pathbuilder/pb_text.h"    // kNoStepsText, kBestFillLabel, locked_message
 #include "pathbuilder/pb_window.h"  // the score and button labels
 #include "ui/preview_panel.h"       // kJumpSeconds, jump_forward_label
-#include "ui/preview_timeline.h"    // timeline_fill_id, kTimelineFillsLabel, the scroll buttons
+#include "ui/preview_timeline.h"    // timeline_fill_id, kTimelineActivationsLabel, the scroll buttons
 #include "ui/timeline_view.h"       // kTimelineWindowMs, open_view, follow_playing, wheel
 
 namespace pbtest {
@@ -89,7 +89,7 @@ std::string figure_under(Harness& h, const std::string& label) {
 // How many times the word kBestFillLabel stands in the line the timeline
 // drew under its Fills row's name, where the words under the fills go.
 size_t best_words_under_fills(Harness& h) {
-    const std::string line = figure_under(h, hydra::ui::kTimelineFillsLabel);
+    const std::string line = figure_under(h, hydra::ui::kTimelineActivationsLabel);
     const std::string word = kBestFillLabel;
     size_t count = 0;
     for (size_t at = line.find(word); at != std::string::npos; at = line.find(word, at + word.size()))
