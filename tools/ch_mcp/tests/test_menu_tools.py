@@ -345,6 +345,15 @@ class OpenSongTest(MenuToolsCase):
         self.assertFalse(MT.same_folder(self.folder, self.other))
         self.assertFalse(MT.same_folder(None, self.folder))
 
+    def test_same_folder_sees_a_junction_as_its_target(self):
+        import _winapi
+        os.mkdir(self.folder)
+        link = os.path.join(self.root, "link")
+        _winapi.CreateJunction(self.folder, link)
+        self.addCleanup(os.rmdir, link)
+        self.assertTrue(MT.same_folder(link, self.folder))
+        self.assertFalse(MT.same_folder(link, self.other))
+
 
 class ExpectWordsTest(unittest.TestCase):
     WORDS = {"profile_screen_active": "PlayerProfileMenu",
