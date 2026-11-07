@@ -71,7 +71,7 @@ inline std::vector<uint8_t> text_event(const std::string& text) {
 }
 
 // A delta-0 set_tempo meta. The song parser needs a tick-0 tempo before it can
-// build a bpm map, so every hand-built drum track starts with one.
+// build a bpm map, so smf_drums puts one on its timing track by default.
 inline std::vector<uint8_t> set_tempo(uint32_t usec_per_beat = 500000) {
     return {0x00, 0xFF, 0x51, 0x03,
             static_cast<uint8_t>(usec_per_beat >> 16),

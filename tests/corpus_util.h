@@ -2,10 +2,6 @@
 // C++ tests. The corpus is enumerated with app::discover_charts — the same
 // discovery the app's library scan uses — so the tests exercise exactly the
 // set of charts a user's scan of this tree would find.
-//
-// (This header replaced tests/golden_util.h when the golden oracle data was
-// removed; the tests assert structural invariants and self-consistency now,
-// not byte parity against stored output.)
 
 #ifndef HYDRA_TESTS_CORPUS_UTIL_H
 #define HYDRA_TESTS_CORPUS_UTIL_H
