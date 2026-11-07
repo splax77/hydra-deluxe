@@ -59,7 +59,7 @@ argument's type, or a stream's `.open`) is not caught. The test also fails on `u
 path could pass through it. The DMBot client is the one exception, because it
 converts a URL.
 
-## The shell: open_in_browser
+## The shell: Open report and Show in folder
 
 The Windows shell (`ShellExecuteW`, Explorer) is the exception. It takes no
 prefixed path and nothing of 260 characters or more. We measured this on
