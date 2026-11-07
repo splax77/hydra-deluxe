@@ -211,6 +211,14 @@ TEST_CASE("precheck: the range size leaves out third_party and testdata") {
     CHECK(g.deleted == 3);
 }
 
+// parse_numstat reads only a path's top folder, which a closing quote never
+// changes, so this asks the helper itself.
+TEST_CASE("precheck: a quoted numstat path loses both quotes") {
+    CHECK(numstat_path("\"tools/n w.py\"") == "tools/n w.py");
+    CHECK(numstat_path("tools/plain.py") == "tools/plain.py");
+    CHECK(numstat_path("\"") == "\"");
+}
+
 TEST_CASE("precheck: items print in kind order, then file, line and text") {
     Items items;
     items.add("B", "src/foo.h", 3, "x", "why b");
