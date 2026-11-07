@@ -26,7 +26,7 @@
           "why": "the one conversion every report view's optional columns call"
         }
       ],
-      "note": "The path view's ms_key and the DM view's own optional_key were two copies of this conversion; both now call the shared one. A column with its own reason to give an empty key (the DM view's posted date, a percent shown only beside an optimal score) writes the condition and calls optional_key or SortKey{} for the empty case, which this row does not flag."
+      "note": "The path view and the DM view both call this one conversion, so a view that writes it out again is a second copy. A column with its own reason to give an empty key (the DM view's posted date, a percent shown only beside an optimal score) writes the condition and calls optional_key or SortKey{} for the empty case, which this row does not flag."
     }
   ]
 }

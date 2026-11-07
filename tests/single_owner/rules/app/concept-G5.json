@@ -6,7 +6,7 @@
       "owner_file": "src/app/report_files.cpp",
       "owner_symbol": "write_file_replacing",
       "date": "2026-10-11",
-      "decision": "D114 item 20 (M74)",
+      "decision": "D114 item 20, concept audit M74",
       "added_by": "concept-audit-G5",
       "pattern": "\\bios(_base)?::trunc\\b",
       "must_match": [
@@ -25,7 +25,7 @@
       "scope": [
         "src"
       ],
-      "note": "A file opened with trunc is written in place, so a stop mid-write leaves half a file. Shipped code writes through write_file_replacing instead; the library file swap (store/upgrade_files.cpp) has its own renames and recovery and opens nothing with trunc. Decided by: D114 item 20, concept audit M74."
+      "note": "A file opened with trunc is written in place, so a stop mid-write leaves half a file. Shipped code writes through write_file_replacing instead; the library file swap (store/upgrade_files.cpp) has its own renames and recovery and opens nothing with trunc."
     },
     {
       "question": "Is the stored score-range int points or scores?",
@@ -53,7 +53,7 @@
       "scope": [
         "src"
       ],
-      "note": "1 is points and any other int is scores; Settings::search_depth_mode says so once and Settings::lens files the result of it, so a reader that re-decides the unit from the raw int would split from the lens. It cannot flag a missing normalisation. Decided by: concept audit M14."
+      "note": "1 is points and any other int is scores; Settings::search_depth_mode says so once and Settings::lens files the result of it, so a reader that re-decides the unit from the raw int would split from the lens. It cannot flag a missing normalisation."
     }
   ]
 }
