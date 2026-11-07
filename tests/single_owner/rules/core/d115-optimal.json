@@ -28,7 +28,7 @@
           "why": "HydraRecord::optimal_score, the owner"
         }
       ],
-      "note": "The Paths tab, the Song Details headline and HydraRecord::is_optimal each read the best path's total for the top score before D115. Reading the best path itself (to draw it) is a different question and passes."
+      "note": "The Paths tab, the Song Details headline and HydraRecord::is_optimal each take the top score from the owner. Reading the best path itself (to draw it) is a different question and passes."
     }
   ]
 }
