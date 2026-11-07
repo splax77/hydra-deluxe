@@ -92,9 +92,9 @@ OFF_BACK_WINDOW = 0x30
 # Front-window constant (double). Min per-side, ~37.5 ms normal.
 OFF_FRONT_WINDOW = 0x38
 
-# Song clock (double, seconds). Proven live on 2026-09-25: play_chart.py reads
-# it continuously and plays whole songs on time. The Ghidra notes called this
-# field "hit time"; the running game shows it is the song clock.
+# Song clock (double, seconds). play_chart.py reads it continuously and plays
+# whole songs on time, so it is the running clock, not a per-hit time. The
+# double at OFF_ROUND_START, further down, is not a per-hit time either.
 OFF_SONG_CLOCK = 0x100
 
 # Score (u32). Rises only when a note is hit (proven by play_chart.py).
