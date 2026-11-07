@@ -32,20 +32,19 @@ void draw_star(ImDrawList* dl, ImVec2 min, float size, bool filled, ImU32 col);
 // Exported so a caller's mark for an activation is the bands' colour.
 inline constexpr ImU32 kTimelinePathColor = IM_COL32(0x5e, 0xc8, 0xff, 0xff);  // the mockup's --sp
 
-// The marks the Path Builder's legend explains, one swatch each: a fill the
-// player can activate on, the player's own activation, a fill they can't, a
-// fill before their last activation, and an offered fill in a caller's
-// colour (Tinted).
+// The marks the Path Builder's "Your activations" hover explains, one swatch
+// each: a fill the player can activate on, the player's own activation, a
+// fill they can't, a fill before their last activation, and an offered fill
+// in a caller's colour (Tinted).
 enum class LegendSwatch { Offered, Activation, Cant, Locked, Tinted };
 
-// One legend swatch of `kind`, drawn in the colours the Fills row draws that
-// mark in, as an item one text line tall at the cursor. `col` is the colour
-// of a Tinted swatch; the other kinds ignore it. The legend's words go after
-// it with ImGui::SameLine(0, 0).
+// One swatch of `kind`, drawn in the colours the "Your activations" row draws
+// that mark in, as an item one text line tall at the cursor. `col` is the
+// colour of a Tinted swatch; the other kinds ignore it. The key's words go
+// after it with ImGui::SameLine(0, 0).
 void legend_swatch(LegendSwatch kind, ImU32 col = 0);
 
-// How wide a legend swatch's item is, for a caller that lays the legend's
-// entries out in lines.
+// How wide a legend swatch's item is.
 float legend_swatch_width();
 
 // A filled circle `diameter` wide in `col`, as an item at the cursor, with
@@ -339,8 +338,8 @@ struct TimelineEvents {
     std::optional<size_t> clicked_fill;
     std::optional<size_t> clicked_band;
     std::optional<double> clicked_ms;  // a click anywhere else on the rows
-    // The pointer is on the Fills row's label. The caller draws that hover,
-    // because the fills' legend belongs to it.
+    // The pointer is on the "Your activations" label. The caller draws that
+    // hover, because the fill keys belong to it.
     bool hovered_activations_label = false;
     // The window the user asked for this frame through the scrollbar or the
     // wheel over the rows: on a press, a button, a wheel notch, or a thumb

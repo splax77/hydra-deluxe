@@ -13,7 +13,7 @@
       "must_match": [
         "if (bars_saved_at(scene, fill) >= kSpActivationBars) offered.push_back(fill.chord_tick);",
         "const bool can = kSpActivationBars <= app::sp_meter_bars_at(scene.sp_meter, ms);",
-        "if (saved == hydra::kSpActivationBars) return kLegendCanText;",
+        "if (saved == hydra::kSpActivationBars) return kGlowColor;",
         "return bars < kSpActivationBars ? kCantColor : kGlowColor;"
       ],
       "must_not_match": [
