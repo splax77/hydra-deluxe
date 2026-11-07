@@ -153,7 +153,7 @@ inline uint64_t record_hash(const HydraRecord& r) {
     v(r.rules_fingerprint);
     h = fnv_opt(h, r.ms_limit);
     h = fnv_opt(h, r.sp_cap);
-    v(r.sp_cap_converged);
+    v(true);  // a fixed byte of the hash input: every pinned digest includes it
     v(r.legacy_fills);
     h = fnv_list(h, r.multsqueezes, [](uint64_t g, const MultSqueeze& m) {
         g = fnv_str(g, m.chord().code());
