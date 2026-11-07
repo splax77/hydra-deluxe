@@ -309,7 +309,7 @@ TEST_CASE("scrubber: with no audio the end is still the song's length") {
     CHECK(transport.length_ms() == doctest::Approx(4000.0));
 }
 
-TEST_CASE("load with no audio offset behaves exactly as before") {
+TEST_CASE("load with no audio offset seeks to the asked position") {
     PreviewTransport transport([] { return 0.0; });
     auto* playhead = new Playhead(make_ramp(48000));
     transport.load(std::unique_ptr<Playhead>(playhead), 0.0);
