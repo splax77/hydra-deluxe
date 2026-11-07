@@ -6,7 +6,7 @@
       "owner_file": "src/app/preview_view.cpp",
       "owner_symbol": "has_song_length",
       "date": "2026-10-11",
-      "decision": "D114 item 22 (M51)",
+      "decision": "D114 item 22, concept audit M51.",
       "added_by": "concept-audit-F5",
       "pattern": "len_s > 0\\.0f",
       "must_match": [
@@ -19,7 +19,7 @@
         "src/ui/preview_panel.cpp",
         "src/ui/preview_tab.cpp"
       ],
-      "note": "The tab once asked 'above zero' of the scrubber's edge on its own float copy. It asks has_song_length of the edge now; the 1 s fallback stays as an ImGui guard. Scoped to the Preview panel and tab: the transport's own 'above zero' answers a different question (is there a playback range to stop at). Decided by: D114 item 22, concept audit M51."
+      "note": "The scrubber asks has_song_length of its edge; the 1 s fallback stays as an ImGui guard. Scoped to the Preview panel and tab: the transport's own 'above zero' answers a different question (is there a playback range to stop at)."
     }
   ]
 }

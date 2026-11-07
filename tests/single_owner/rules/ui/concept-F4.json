@@ -27,7 +27,7 @@
           "why": "ReportSlot::mark_cancelled, the owner"
         }
       ],
-      "note": "Setting a report slot's outcome to Cancelled by hand skips the second write (dropping the out-of-date event that landed during the stopped build). land_report and cancel_dm_report both call mark_cancelled. The row is stricter than the fix-wave brief's wording (which allowed app_state.cpp too): app_state.cpp has no copy left, so it gets none."
+      "note": "Setting a report slot's outcome to Cancelled by hand skips the second write (dropping the out-of-date event that landed during the stopped build). land_report and cancel_dm_report both call mark_cancelled. app_state.cpp gets no exemption, because every cancel there goes through mark_cancelled."
     },
     {
       "question": "What does the open song panel say about its chart after the library is read again?",

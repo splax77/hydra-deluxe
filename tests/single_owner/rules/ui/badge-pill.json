@@ -28,7 +28,7 @@
         "src",
         "tests"
       ],
-      "note": "The badge pill's fill and border were typed twice in paths_tab.cpp, once as IM_COL32 for the pills and once as ImVec4 fractions for the squeeze box. badge_pill.h now owns both colours; anything else, the GUI test that finds pills by their fill included, reads them from there. Decided by: D257 call 6."
+      "note": "badge_pill.h owns the badge pill's fill and border, for the pills and for the squeeze box; anything else, the GUI test that finds pills by their fill included, reads them from there."
     },
     {
       "question": "How is a timing badge drawn: its pill, and where its text sits in it?",
@@ -57,7 +57,7 @@
       "scope": [
         "src"
       ],
-      "note": "Before D262 paths_tab.cpp painted each pill and then placed the badge's text itself. Now draw_badge does both, so a pill painted in the pill's colours, its corner radius, a pill rectangle or a centred badge text anywhere else under src is a second badge drawer. The squeeze box reads the pill's colours through pill_vec4 for its own box shape, which this row lets through. Tests are out of scope: they call pill_rect and centred_text_x to check the owner, and the GUI test reads pill_u32 to find drawn pills. Decided by: D262."
+      "note": "draw_badge paints the pill and places the badge's text, so a pill painted in the pill's colours, its corner radius, a pill rectangle or a centred badge text anywhere else under src is a second badge drawer. The squeeze box reads the pill's colours through pill_vec4 for its own box shape, which this row lets through. Tests are out of scope: they call pill_rect and centred_text_x to check the owner, and the GUI test reads pill_u32 to find drawn pills."
     }
   ]
 }

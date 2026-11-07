@@ -33,7 +33,7 @@
       "owner_file": "src/ui/theme.h",
       "owner_symbol": "kButtonHoveredColor",
       "date": "2026-10-05",
-      "decision": "D74",
+      "decision": "audit finding 218, the code half (phase 3 task C4b); D74 item 1, one hover teal",
       "added_by": "AF1",
       "pattern": "IM_COL32\\(\\s*0\\s*,\\s*10[04]\\s*,\\s*10[04]\\b|\\b0(\\s*/\\s*255\\.0f?)?\\s*,\\s*10[04]\\s*/\\s*255\\.0f?\\s*,\\s*10[04]\\s*/\\s*255\\b",
       "must_match": [
@@ -55,7 +55,7 @@
           "why": "kButtonHoveredColor, the owner"
         }
       ],
-      "note": "The pattern also catches the old frame/header teal, the second hover teal D74 folded into the button one, so it can't come back. Decided by: audit finding 218, the code half (phase 3 task C4b); D74 item 1, one hover teal"
+      "note": "The pattern also catches a near-identical teal, so a second hover shade can't sit beside the button's."
     },
     {
       "question": "Which gold is Star Power?",
@@ -63,7 +63,7 @@
       "owner_file": "src/ui/theme.h",
       "owner_symbol": "kStarPowerColor",
       "date": "2026-10-04",
-      "decision": "D48",
+      "decision": "audit finding 136, the naming half; D48, Q26 (phase 3 task C4b)",
       "added_by": "C4b",
       "pattern": "IM_COL32\\(\\s*255\\s*,\\s*204\\s*,\\s*51\\b|\\b255\\s*/\\s*255\\.0f?\\s*,\\s*204\\s*/\\s*255\\.0f?\\s*,\\s*51\\s*/\\s*255\\b",
       "anchor": "255",
@@ -81,8 +81,7 @@
           "line_text": "inline const ImVec4 kStarPowerColor{255 / 255.0f, 204 / 255.0f, 51 / 255.0f, 1.0f};",
           "why": "kStarPowerColor, the owner"
         }
-      ],
-      "note": "Decided by: audit finding 136, the naming half; D48, Q26 (phase 3 task C4b)"
+      ]
     },
     {
       "question": "How long does a UI confirmation stay, and how often does the UI re-check?",
@@ -90,7 +89,7 @@
       "owner_file": "src/ui/app_state.h",
       "owner_symbol": "AppState",
       "date": "2026-10-04",
-      "decision": "D48",
+      "decision": "audit finding R7.33; D48, Q33 (phase 3 task C4b)",
       "added_by": "C4b",
       "pattern": "\\b(now|GetTime\\(\\))\\s*-\\s*[\\w.:>-]+\\s*[<>]=?\\s*\\d",
       "owner_files": [
@@ -105,7 +104,7 @@
         "now - details_ui.file_checked_at >= kFileCheckSeconds) {",
         "if (copied_at >= 0.0 && ImGui::GetTime() - copied_at < AppState::kCopiedSeconds) {"
       ],
-      "note": "---- named UI timings (phase 3 task C4b) ---- A time-since (now - x, or ImGui::GetTime() - x) compared against a bare number of seconds. AppState names each one beside kFileCheckSeconds; everything else reads the name. Decided by: audit finding R7.33; D48, Q33 (phase 3 task C4b)"
+      "note": "---- named UI timings (phase 3 task C4b) ---- A time-since (now - x, or ImGui::GetTime() - x) compared against a bare number of seconds. AppState names each one beside kFileCheckSeconds; everything else reads the name."
     },
     {
       "question": "What does the Preview say when the chart changed since it was analyzed?",
@@ -113,7 +112,7 @@
       "owner_file": "src/ui/preview_tab.cpp",
       "owner_symbol": "changed",
       "date": "2026-10-07",
-      "decision": "D51, D94",
+      "decision": "D51 call 18; D94 (2026-10-07)",
       "added_by": "storage-cleanup",
       "pattern": "This chart changed since|\\bwas analyzed\\.",
       "must_match": [
@@ -132,7 +131,7 @@
           "why": "the owner (D94)"
         }
       ],
-      "note": "The Preview's line for a chart file that changed after it was analyzed. It is typed once, in preview_tab.cpp; the User Guide quotes it. The owner line pins D94's words. Decided by: D51 call 18; D94 (2026-10-07)"
+      "note": "The Preview's line for a chart file that changed after it was analyzed. It is typed once, in preview_tab.cpp; the User Guide quotes it. The owner line pins D94's words."
     },
     {
       "question": "Is the typed search narrowing the library?",
@@ -169,7 +168,7 @@
       "owner_file": "src/ui/details_panel.cpp",
       "owner_symbol": "detail::draw_held_row",
       "date": "2026-10-09",
-      "decision": "the user's approval in chat 2026-10-09 (the headline and the Showing row hold their space during a re-analysis)",
+      "decision": "the user's approval in chat 2026-10-09 (the headline and the Showing row hold their space during a re-analysis); derive-once review of headline-holds-space (55928d3c), finding 1",
       "added_by": "headline-holds-space",
       "pattern": "(\\.|->)keep\\(|\\.height\\s*=\\s*ImGui::GetItemRectSize\\(\\)|ImGui::Dummy\\(ImVec2\\(0(\\.0f?)?,\\s*\\*",
       "must_match": [
@@ -203,7 +202,7 @@
           "why": "draw_held_row, the owner"
         }
       ],
-      "note": "A song-panel row's hold-and-measure step, any of its three parts: asking a HeldRow for its kept height, filling that height with an empty Dummy, or storing the drawn group's height. draw_held_row does all three for every held row. Decided by: the user's approval in chat 2026-10-09 (the headline and the Showing row hold their space during a re-analysis); derive-once review of headline-holds-space (55928d3c), finding 1"
+      "note": "A song-panel row's hold-and-measure step, any of its three parts: asking a HeldRow for its kept height, filling that height with an empty Dummy, or storing the drawn group's height. draw_held_row does all three for every held row."
     },
     {
       "question": "Which word names a record's status?",
@@ -211,7 +210,7 @@
       "owner_file": "src/ui/library_model.cpp",
       "owner_symbol": "status_label",
       "date": "2026-10-04",
-      "decision": "audit finding 87",
+      "decision": "audit finding 87; derive-once review of M_C (6d86f1c), finding 2 (2026-10-04)",
       "added_by": "M_C fix prod",
       "pattern": "\"(Not analyzed|Analyzed|Stale|Can't analyze)\"",
       "must_match": [
@@ -244,7 +243,7 @@
           "why": "status_label, the owner"
         }
       ],
-      "note": "---- phase 3 wave C owners (derive-once review of M_C) ---- A status word typed in quotes. The library chips, the Best path cell and the uitest state dump all ask status_label. Decided by: audit finding 87; derive-once review of M_C (6d86f1c), finding 2 (2026-10-04)"
+      "note": "---- phase 3 wave C owners (derive-once review of M_C) ---- A status word typed in quotes. The library chips, the Best path cell and the uitest state dump all ask status_label."
     },
     {
       "question": "What does a status chip's button label read?",
@@ -321,7 +320,7 @@
       "owner_file": "src/ui/preview_controller.cpp",
       "owner_symbol": "PreviewController::playback_end_ms",
       "date": "2026-10-04",
-      "decision": "D50, D56",
+      "decision": "D50 item 4 and D56 item 3; derive-once review of M_D round 2, preview finding C (phase 3 task FX2-P)",
       "added_by": "FX2-P",
       "pattern": "\\btransport_?\\.length_ms\\(\\)",
       "anchor": "transport",
@@ -340,7 +339,7 @@
           "why": "PreviewController::playback_end_ms, the owner"
         }
       ],
-      "note": "---- the Preview, round 2 (derive-once review of M_D, phase 3 task FX2-P) ---- The transport's length read straight off it, beside the accessor that names it as where playback stops. Decided by: D50 item 4 and D56 item 3; derive-once review of M_D round 2, preview finding C (phase 3 task FX2-P)"
+      "note": "---- the Preview, round 2 (derive-once review of M_D, phase 3 task FX2-P) ---- The transport's length read straight off it, beside the accessor that names it as where playback stops."
     },
     {
       "question": "How is a progress bar's percent written?",
@@ -427,7 +426,7 @@
       "owner_file": "src/ui/imgui_setup.cpp",
       "owner_symbol": "ui_scale_for_dpi",
       "date": "2026-10-04",
-      "decision": "D54",
+      "decision": "D54 (audit finding 210)",
       "added_by": "J1-2",
       "pattern": "ImGui_ImplWin32_GetDpiScaleFor(Monitor|Hwnd)\\b",
       "anchor": "ImGui_ImplWin32_GetDpiScaleFor",
@@ -438,8 +437,7 @@
       "must_not_match": [
         "const float window_scale = hydra::ui::ui_scale_for_dpi(",
         "ImGui_ImplWin32_EnableDpiAwareness();"
-      ],
-      "note": "Decided by: D54 (audit finding 210)"
+      ]
     },
     {
       "question": "Is a library split share valid?",
@@ -612,7 +610,7 @@
       "owner_file": "src/ui/app_state.cpp",
       "owner_symbol": "batch_running",
       "date": "2026-10-04",
-      "decision": "D53",
+      "decision": "audit finding 254; phase 6 task J2-4 (D53); storage-T2 review finding 3 (the click's job)",
       "added_by": "J2-4",
       "pattern": "\\b(batch_job\\s*&&\\s*!\\s*((a|app)\\.)?batch_job->snapshot\\(\\)\\.finished|view_job\\s*&&\\s*!\\s*((a|app)\\.)?view_job->finished\\(\\))",
       "anchor": "finished",
@@ -644,7 +642,7 @@
         "src",
         "tests"
       ],
-      "note": "---- app state, jobs and the toolbar (phase 6 task J2-4) ---- A batch or analyze job tested for \"held and not finished\". The scan job's guard is a different job with no owner yet; the GUI harness's dump prints each job's state, a different question. Decided by: audit finding 254; phase 6 task J2-4 (D53); storage-T2 review finding 3 (the click's job)"
+      "note": "---- app state, jobs and the toolbar (phase 6 task J2-4) ---- A batch or analyze job tested for \"held and not finished\". The scan job's guard is a different job with no owner yet; the GUI harness's dump prints each job's state, a different question."
     },
     {
       "question": "How many charts does the library hold?",
@@ -652,7 +650,7 @@
       "owner_file": "src/ui/library_model.h",
       "owner_symbol": "rows",
       "date": "2026-10-04",
-      "decision": "D53",
+      "decision": "audit finding 131; phase 6 task J2-4 (D53)",
       "added_by": "J2-4",
       "pattern": "\\blibrary_total\\b",
       "anchor": "library_total",
@@ -666,7 +664,7 @@
         "src",
         "tests"
       ],
-      "note": "A cached copy of the library's chart count. The model's own rows are the count; the cache is gone, so no line may name it. Decided by: audit finding 131; phase 6 task J2-4 (D53)"
+      "note": "A cached copy of the library's chart count. The model's own rows are the count, so no line may name a copy."
     },
     {
       "question": "How long does the UI trust a cached file-exists answer?",
@@ -674,7 +672,7 @@
       "owner_file": "src/ui/app_state.h",
       "owner_symbol": "cached_file_check",
       "date": "2026-10-04",
-      "decision": "D54",
+      "decision": "audit finding 207; D54 (one interval, one caching helper)",
       "added_by": "J2-4",
       "pattern": "\\bkReportCheckSeconds\\b|_checked_at\\s*(<|>=)",
       "anchor": "heck",
@@ -690,7 +688,7 @@
         "details_ui.file_checked_at = -1.0;",
         "library_ui.report_checked_at = -1.0;  // a new report: look at once"
       ],
-      "note": "A \"checked at\" time tested against an interval, or the report check's own interval, which D54 folded into kFileCheckSeconds. Decided by: audit finding 207; D54 (one interval, one caching helper)"
+      "note": "A \"checked at\" time tested against an interval, or a separate interval for the report check. kFileCheckSeconds is the one interval."
     },
     {
       "question": "What does a failed job record?",
@@ -698,7 +696,7 @@
       "owner_file": "src/app/job_base.h",
       "owner_symbol": "fail",
       "date": "2026-10-04",
-      "decision": "D53",
+      "decision": "audit finding 212; phase 6 task J2-4 (D53)",
       "added_by": "J2-4",
       "pattern": "finished_\\.store\\(true\\)",
       "anchor": "finished_.store(true)",
@@ -714,7 +712,7 @@
       "scope": [
         "src"
       ],
-      "note": "Publishing a job's finished flag by hand. Every job ends through run_guarded or fail in job_base.h. Decided by: audit finding 212; phase 6 task J2-4 (D53)"
+      "note": "Publishing a job's finished flag by hand. Every job ends through run_guarded or fail in job_base.h."
     },
     {
       "question": "What does the batch button say while the search or a chip narrows the table?",
@@ -722,7 +720,7 @@
       "owner_file": "src/ui/library_toolbar.cpp",
       "owner_symbol": "analyze_shown_label",
       "date": "2026-10-04",
-      "decision": "D53; D115 renamed the owner when the button began to follow the chip",
+      "decision": "D53; D115 renamed the owner when the button began to follow the chip; audit finding 290; phase 6 task J2-4 (D53); D115 (the label follows the chip too)",
       "added_by": "J2-4",
       "pattern": "\"Analyze shown \\(",
       "anchor": "\"Analyze shown (",
@@ -742,7 +740,7 @@
         "src",
         "tests"
       ],
-      "note": "The batch button's narrowed label typed as text. Decided by: audit finding 290; phase 6 task J2-4 (D53); D115 (the label follows the chip too)"
+      "note": "The batch button's narrowed label typed as text."
     },
     {
       "question": "How does a library entry become a scan row?",
@@ -750,7 +748,7 @@
       "owner_file": "src/app/analysis.h",
       "owner_symbol": "ScanItem",
       "date": "2026-10-04",
-      "decision": "D53; concept audit M21 moved the owner to the alias",
+      "decision": "D53; concept audit M21 moved the owner to the alias; audit finding 256 (the reverse, from the phase 6 ledger); phase 6 task J2-4 (D53); concept audit M21",
       "added_by": "J2-4",
       "pattern": "items_\\.push_back\\(\\s*\\{\\s*\\w+\\.md5|\\bScanItem(\\s+\\w+)?\\s*\\{\\s*\\w+\\.md5\\b",
       "anchor": ".md5",
@@ -770,15 +768,15 @@
         "tools",
         "tests"
       ],
-      "note": "A scan row built from a library entry's fields by position. Since concept audit M21 a scan row is the library entry itself (the ScanItem alias), so the entry is used as it is. The forward direction (a scan row into the library) is the app.json row with the same owner. Decided by: audit finding 256 (the reverse, from the phase 6 ledger); phase 6 task J2-4 (D53); concept audit M21"
+      "note": "A scan row built from a library entry's fields by position. A scan row is the library entry itself (the ScanItem alias), so the entry is used as it is. The forward direction (a scan row into the library) is the app.json row with the same owner."
     },
     {
       "question": "Which charts does a batch analyze?",
-      "owner": "the rows the library screen hands over: AppState::open_batch_confirm and BatchJob's vector constructor (src/ui/app_state.cpp, src/ui/library_jobs.h)",
+      "owner": "the rows the library screen hands over: AppState::open_batch_confirm and BatchJob's plan constructor (src/ui/app_state.cpp, src/ui/library_jobs.h)",
       "owner_file": "src/ui/app_state.cpp",
       "owner_symbol": "rows",
       "date": "2026-10-04",
-      "decision": "D53",
+      "decision": "audit finding 113; phase 6 task J2-4 (D53)",
       "added_by": "J2-4",
       "pattern": "BatchJob\\(std::optional<std::string>|list_chart_library\\(\\s*search",
       "must_match": [
@@ -793,7 +791,7 @@
         "src",
         "tests"
       ],
-      "note": "A batch that picks its own charts with the store's SQL search. The library screen's own search decides which rows match. Decided by: audit finding 113; phase 6 task J2-4 (D53)"
+      "note": "A batch built from a search string, or a store call that filters charts by one. BatchJob takes a plan instead, and on the Analyze button's path the library screen's own search decides which rows match."
     },
     {
       "question": "What locks the analysis settings?",
@@ -824,7 +822,7 @@
       "owner_file": "src/ui/app_state.h",
       "owner_symbol": "kBatchRunningStatus",
       "date": "2026-10-08",
-      "decision": "D51",
+      "decision": "D51 call 24; derive-once review of RW-T4 (key 4979976), finding 2",
       "added_by": "RW-T4",
       "pattern": "\"A batch is running\\.\"",
       "anchor": "\"A batch is running.\"",
@@ -844,7 +842,7 @@
           "why": "AppState::kBatchRunningStatus, the owner"
         }
       ],
-      "note": "The sentence written out where a request is turned away. Tests pin it as a literal, so the row covers src and tools only. Decided by: D51 call 24; derive-once review of RW-T4 (key 4979976), finding 2"
+      "note": "The sentence written out where a request is turned away. Tests pin it as a literal, so the row covers src and tools only."
     },
     {
       "question": "Which library row is the selected one?",
@@ -888,7 +886,7 @@
       "owner_file": "src/ui/library_model.h",
       "owner_symbol": "row_key",
       "date": "2026-10-07",
-      "decision": "audit finding 143",
+      "decision": "audit finding 143; MEM-L review finding 1",
       "added_by": "MEM-L",
       "pattern": "(\\.|->)notespath\\s*(==|!=)\\s*[\\w.\\[\\]()*>-]*notespath\\b|\\.(emplace|find)\\([^;]*\\bentry\\.notespath\\b",
       "anchor": "notespath",
@@ -906,7 +904,7 @@
       "scope": [
         "src"
       ],
-      "note": "Two library rows (or a row and a store entry) told apart by their notespath read straight off, not through the owner's key: a click picking its copy, or a batch matching rows to store entries. Decided by: audit finding 143; MEM-L review finding 1"
+      "note": "Two library rows (or a row and a store entry) told apart by their notespath read straight off, not through the owner's key: a click picking its copy, or a batch matching rows to store entries."
     },
     {
       "question": "May a library scan start now?",
@@ -914,7 +912,7 @@
       "owner_file": "src/ui/app_state.cpp",
       "owner_symbol": "AppState::can_scan",
       "date": "2026-10-05",
-      "decision": "D51",
+      "decision": "audit finding R7.3; D51 call 24 (phase 7 task LB2)",
       "added_by": "LB2",
       "pattern": "chartfolders\\.empty\\(\\)[^;]*scan_job|scan_job[^;]*chartfolders\\.empty\\(\\)|if\\s*\\(\\s*scan_job\\s*&&\\s*!\\s*scan_job->snapshot\\(\\)\\.finished\\)\\s*return;",
       "anchor": "scan_job",
@@ -939,7 +937,7 @@
         "src",
         "tests"
       ],
-      "note": "Song folders and the scan job tested together, or the old scan-only guard in start_scan. Decided by: audit finding R7.3; D51 call 24 (phase 7 task LB2)"
+      "note": "Song folders and the scan job tested together, or a line that returns early because a scan is still running. start_scan asks can_scan for both."
     },
     {
       "question": "Is any background job still running?",
@@ -973,7 +971,7 @@
       "owner_file": "src/ui/activation_row_layout.h",
       "owner_symbol": "kRowMeasureX",
       "date": "2026-10-05",
-      "decision": "D53, D54",
+      "decision": "audit finding 276; phase 6 task J3-3 (D53, D54)",
       "added_by": "J3-3",
       "pattern": "\\b(104|200)\\.0f\\b",
       "anchor": ".0f",
@@ -1012,8 +1010,7 @@
       "scope": [
         "src",
         "tests"
-      ],
-      "note": "Decided by: audit finding 276; phase 6 task J3-3 (D53, D54)"
+      ]
     },
     {
       "question": "How far does a Preview jump or step move, and what do its controls call it?",
@@ -1021,7 +1018,7 @@
       "owner_file": "src/ui/preview_panel.h",
       "owner_symbol": "kJumpSeconds",
       "date": "2026-10-05",
-      "decision": "D53, D54",
+      "decision": "audit finding 215; phase 6 task J3-5 (D53, D54); the step's size in ms by the user's call on 2026-10-16 (PV-10MS)",
       "added_by": "J3-5",
       "pattern": "->(jump_ms|step_ms)\\(\\s*-?\\d|\"[^\"]*\\b5 seconds\\b[^\"]*\"|\"[-+]5s\"|\"(< 10 ms|10 ms >)\"|\"(Back|Forward) 10 ms\\b|[}], \"10 ms\"[}]|\\b(kJumpSeconds|kStepMs)\\s*=\\s*\\d",
       "must_match": [
@@ -1051,7 +1048,7 @@
       "scope": [
         "src"
       ],
-      "note": "A jump through the controller pointer with a number typed in, a quoted control word naming the step, or a second definition of either constant. The tests drive the controller with typed distances (pc.jump_ms(5000.0)) and pin the shown text, so src only. The plain \"10 ms\" word is matched only in a key-bar entry, because the library's path limit also prints \"10 ms\". Decided by: audit finding 215; phase 6 task J3-5 (D53, D54); the step's size in ms by the user's call on 2026-10-16 (PV-10MS)"
+      "note": "A jump through the controller pointer with a number typed in, a quoted control word naming the step, or a second definition of either constant. The tests drive the controller with typed distances (pc.jump_ms(5000.0)) and pin the shown text, so src only. The plain \"10 ms\" word is matched only in a key-bar entry, because the library's path limit also prints \"10 ms\"."
     },
     {
       "question": "How big is each Preview overlay box at a scale?",
@@ -1059,7 +1056,7 @@
       "owner_file": "src/ui/preview_panel.cpp",
       "owner_symbol": "overlay_box_sizes",
       "date": "2026-10-05",
-      "decision": "D53, D54",
+      "decision": "audit finding R7.18; phase 6 task J3-5 (D53, D54)",
       "added_by": "J3-5",
       "pattern": "\\* 1\\.25f|\\* 1\\.8f|\\* 1\\.2f",
       "anchor": "* 1.",
@@ -1092,7 +1089,7 @@
         "src/ui/preview_panel.cpp",
         "src/ui/preview_tab.cpp"
       ],
-      "note": "highway_draw.cpp and overlay_layout.cpp have their own factors under J2-8's rows, so only the Preview panel and tab are scanned. Decided by: audit finding R7.18; phase 6 task J3-5 (D53, D54)"
+      "note": "These factors belong to the Preview's overlay boxes, so only the Preview panel and tab are scanned."
     },
     {
       "question": "When a Preview scene lands or is dropped, what moves with it?",
@@ -1140,7 +1137,7 @@
       "scope": [
         "src/ui/preview_controller.cpp"
       ],
-      "note": "The first load, a notes reload and an overlay build each used to swap their scene in by hand; close() and a failed notes reload dropped it the same way."
+      "note": "The first load, a notes reload and an overlay build all swap their scene in through show_scene; close() and a failed notes reload drop it the same way."
     },
     {
       "question": "What does the Preview controller remember when open() is asked for a path?",
@@ -1189,7 +1186,7 @@
       "scope": [
         "src/ui/preview_controller.cpp"
       ],
-      "note": "open()'s three branches each used to write these by hand. close() only forgets them (clear, reset, the default cap), so it is not a copy."
+      "note": "open()'s three branches and set_ghost_path all write these through record_request. close() only forgets them (clear, reset, the default cap), so it is not a copy."
     },
     {
       "question": "Which path does a Preview build the controller starts draw?",
@@ -1197,7 +1194,7 @@
       "owner_file": "src/ui/preview_controller.cpp",
       "owner_symbol": "PreviewController::path_to_draw",
       "date": "2026-10-09",
-      "decision": "finding 126 (drawn_path)",
+      "decision": "finding 126 (drawn_path); derive-once review of preview-keeps-place (finding 3)",
       "added_by": "preview-keeps-place",
       "pattern": "\\bdrawn_path\\(|std::optional<Path>\\(\\*drawn\\)",
       "anchor": "drawn",
@@ -1225,7 +1222,7 @@
       "scope": [
         "src/ui/preview_controller.cpp"
       ],
-      "note": "The overlay build and the notes reload each used to work this out and copy it inline. The ghost path asks the same owner (path_to_draw(ghost_)), so a changed chart hides it as it hides the path. Decided by: finding 126 (drawn_path); derive-once review of preview-keeps-place (finding 3)"
+      "note": "The overlay build and the notes reload both ask path_to_draw. The ghost path asks the same owner (path_to_draw(ghost_)), so a changed chart hides it as it hides the path."
     },
     {
       "question": "How is a Preview job's scene and highway built from a mode's notes?",
@@ -1252,7 +1249,7 @@
           "why": "build_scene_and_highway, the owner"
         }
       ],
-      "note": "The first load and the notes reload each used to build their scene and its highway inline. The path-free base has its own owner, build_scene_base, and calls app::build_preview_base instead."
+      "note": "The first load and the notes reload both build their scene and its highway here. The path-free base has its own owner, build_scene_base, and calls app::build_preview_base instead."
     },
     {
       "question": "Is the drawn overlay the selected path's?",
@@ -1260,7 +1257,7 @@
       "owner_file": "src/ui/preview_controller.cpp",
       "owner_symbol": "PreviewController::shows_path",
       "date": "2026-10-05",
-      "decision": "D53, D54",
+      "decision": "audit finding 340; phase 6 task J3-5 (D53, D54)",
       "added_by": "J3-5",
       "pattern": "overlay_path_key\\(\\)\\.rfind\\(|rfind\\(\\w*overlay_key\\w*, 0\\)|\\boverlay_key_path_part\\(",
       "anchor": "overlay_",
@@ -1288,7 +1285,7 @@
         "src",
         "tests"
       ],
-      "note": "A prefix test on a drawn overlay key, or a read of the key's path part (overlay_key_path_part) anywhere but shows_path. Tests may still compare two keys whole. Decided by: audit finding 340; phase 6 task J3-5 (D53, D54)"
+      "note": "A prefix test on a drawn overlay key, or a read of the key's path part (overlay_key_path_part) anywhere but shows_path. Tests may still compare two keys whole."
     },
     {
       "question": "Which highway options does the Preview draw with?",
@@ -1296,7 +1293,7 @@
       "owner_file": "src/ui/preview_load_job.h",
       "owner_symbol": "track_options",
       "date": "2026-10-05",
-      "decision": "D53, D54",
+      "decision": "audit finding R7.16; phase 6 task J3-5 (D53, D54); widened to all tests by the J3 join",
       "added_by": "J3-5",
       "pattern": "\\.pro\\s*=\\s*pro_?\\b|\\.pro\\s*[!=]=\\s*\\w+\\.pro\\b",
       "anchor": ".pro",
@@ -1324,7 +1321,7 @@
         "src",
         "tests"
       ],
-      "note": "Every test builds its options through track_options too (the J3 join folded the golden and renderer tests), so all of tests is scanned. Decided by: audit finding R7.16; phase 6 task J3-5 (D53, D54); widened to all tests by the J3 join"
+      "note": "Every test builds its options through track_options too, so all of tests is scanned."
     },
     {
       "question": "How wide is a button?",
@@ -1332,7 +1329,7 @@
       "owner_file": "src/ui/widgets.h",
       "owner_symbol": "button_slot_width",
       "date": "2026-10-05",
-      "decision": "D53, D54",
+      "decision": "audit finding 213; phase 6 task J4-3 (D53, D54)",
       "added_by": "J4-3",
       "pattern": "CalcTextSize\\(.*FramePadding\\.x \\* 2",
       "anchor": "FramePadding.x * 2",
@@ -1353,7 +1350,7 @@
         "tools",
         "tests"
       ],
-      "note": "A button's width is its label's plus the frame padding each side. An input with step buttons adds the buttons too, a different question (the Score range box measures its sample on its own line). Decided by: audit finding 213; phase 6 task J4-3 (D53, D54)"
+      "note": "A button's width is its label's plus the frame padding each side. An input with step buttons adds the buttons too, a different question (the Score range box measures its sample on its own line)."
     },
     {
       "question": "Does the next item fit on this line?",
@@ -1361,7 +1358,7 @@
       "owner_file": "src/ui/widgets.h",
       "owner_symbol": "fits_in_row",
       "date": "2026-10-05",
-      "decision": "D53, D54",
+      "decision": "audit finding 214; phase 6 task J4-3 (D53, D54); the key bar's form added by task J4-4",
       "added_by": "J4-3",
       "pattern": "GetItemRectMax\\(\\)\\.x \\+ \\w+(\\.ItemSpacing\\.x)?\\s*\\+|line_end \\+ .*<= right_edge|\\w+ \\+ \\w+_w > \\w*width\\b",
       "owner_files": [
@@ -1381,7 +1378,7 @@
       "scope": [
         "src"
       ],
-      "note": "Placing an item after the last one and comparing with a right edge. Decided by: audit finding 214; phase 6 task J4-3 (D53, D54); the key bar's form added by task J4-4"
+      "note": "Placing an item after the last one and comparing with a right edge."
     },
     {
       "question": "How wide can six digits get?",
@@ -1389,7 +1386,7 @@
       "owner_file": "src/ui/widgets.h",
       "owner_symbol": "widest_digits",
       "date": "2026-10-05",
-      "decision": "D53, D54",
+      "decision": "audit finding 112; phase 6 task J4-3 (D53 item 2, D54)",
       "added_by": "J4-3",
       "pattern": "\"(0{6}|9{6})\"",
       "must_match": [
@@ -1412,7 +1409,7 @@
         "tools",
         "tests"
       ],
-      "note": "A quoted run of six 0s or 9s is a hand-picked \"widest six digits\". The GUI test's pin is the one measured answer (D42). Decided by: audit finding 112; phase 6 task J4-3 (D53 item 2, D54)"
+      "note": "A quoted run of six 0s or 9s is a hand-picked \"widest six digits\". The GUI test's pin is the one measured answer (D42)."
     },
     {
       "question": "How wide is the library with the song panel open?",
@@ -1420,7 +1417,7 @@
       "owner_file": "src/ui/library_view.cpp",
       "owner_symbol": "library_split_width",
       "date": "2026-10-05",
-      "decision": "D53, D54",
+      "decision": "audit finding 120; phase 6 task J4-3 (D53, D54)",
       "added_by": "J4-3",
       "pattern": "px\\(32[01]\\.0f\\)|room - min_panel|((^|[^.>\\w])\\w+|\\)(\\.x)?)\\s*-\\s*(\\w+::)*px\\((\\w+::)*kMinSongPanelW",
       "must_match": [
@@ -1447,7 +1444,7 @@
         "src",
         "tests"
       ],
-      "note": "The library's floor beside the panel, or the panel's floor taken off the room. The Paths tests' check that the panel sits at its own minimum is a different question. Decided by: audit finding 120; phase 6 task J4-3 (D53, D54)"
+      "note": "The library's floor beside the panel, or the panel's floor taken off the room. The Paths tests' check that the panel sits at its own minimum is a different question."
     },
     {
       "question": "Which position does each of the library's six columns sit at, which user ID does it carry, and how many columns are there?",
@@ -1455,7 +1452,7 @@
       "owner_file": "src/ui/library_model.h",
       "owner_symbol": "kColumnTitle",
       "date": "2026-10-05",
-      "decision": "D53, D54",
+      "decision": "audit finding 297; phase 6 task J4-3 (D53, D54); album task ALB-3 (the user kept the saved IDs, 2026-10-24)",
       "added_by": "J4-3",
       "pattern": "best = [45];|BeginTable\\(\"##librarytable\", \\d|constexpr int kColumn\\w+ = \\d",
       "owner_files": [
@@ -1476,7 +1473,7 @@
         "src",
         "tests"
       ],
-      "note": "A column's position and its user ID (its LibrarySort value, which the sort spec hands back) are two lists; sort_of and column_of are the one place they meet, so no other file casts one to the other. Decided by: audit finding 297; phase 6 task J4-3 (D53, D54); album task ALB-3 (the user kept the saved IDs, 2026-10-24)"
+      "note": "A column's position and its user ID (its LibrarySort value, which the sort spec hands back) are two lists; sort_of and column_of are the one place they meet, so no other file casts one to the other."
     },
     {
       "question": "Is a job old enough, with a known rate, to show its time left, and in what words?",
@@ -1484,7 +1481,7 @@
       "owner_file": "src/app/time_left.h",
       "owner_symbol": "time_left_line",
       "date": "2026-10-07",
-      "decision": "D48",
+      "decision": "D48 Q20 (the words), DBUP answer 4; derive-once review of the DBUP join (F1)",
       "added_by": "DBUP-B",
       "pattern": "\\w+\\s*<\\s*kTimeLeftAfterSeconds\\b",
       "anchor": "kTimeLeftAfterSeconds",
@@ -1499,7 +1496,7 @@
       "scope": [
         "src"
       ],
-      "note": "The Preview loader shows a time-left line; it checks only its own step and hands its age and its gate to the owner, which never names the gate itself. The startup open's time-left line went with the copy upgrade (D115 task A1-6a). The owner moved to src/app/time_left.h with the batch strip's window (D283, task aoa-t4-build). Decided by: D48 Q20 (the words), DBUP answer 4; derive-once review of the DBUP join (F1)"
+      "note": "The Preview loader shows a time-left line; it checks only its own step and hands its age and its gate to the owner, which never names the gate itself."
     },
     {
       "question": "How long does a job have left, from the rate over its recent work?",
@@ -1532,7 +1529,7 @@
         "src",
         "tools"
       ],
-      "note": "Time left is the work still to go over the rate in the job's own window: the last 2W finished charts for the batch strip (D283), the last second of bytes for the Preview (D271 item 4). The pattern looks for what is left (a total minus what is done) on the same line as a division, which is how the mean since the start was typed before. The byte rate's old left-over sat on a line of its own and was divided on the next, which a line scan cannot join, so that shape is not caught. A count of what is left with no division is not a time and passes."
+      "note": "Time left is the work still to go over the rate in the job's own window: the last 2W finished charts for the batch strip (D283), the last second of bytes for the Preview (D271 item 4). The pattern looks for what is left (a total minus what is done) on the same line as a division. A left-over worked out on one line and divided on the next is not caught, because a line scan cannot join the two. A count of what is left with no division is not a time and passes."
     },
     {
       "question": "Has a job run long enough for its progress to show?",
@@ -1540,7 +1537,7 @@
       "owner_file": "src/ui/app_state.h",
       "owner_symbol": "progress_delay_passed",
       "date": "2026-10-07",
-      "decision": "D87",
+      "decision": "D87 item 6 (the 0.15 s delay), DBUP answer 2 (the startup screen follows it); derive-once review of the DBUP join (F2)",
       "added_by": "DBUP-B",
       "pattern": "(>=|<)\\s*kViewProgressDelaySeconds\\b|\\bkViewProgressDelaySeconds\\s*(<=|>)",
       "anchor": "kViewProgressDelaySeconds",
@@ -1565,7 +1562,7 @@
       "scope": [
         "src"
       ],
-      "note": "The click's progress box and the startup screen both wait out the same delay; each works out its own elapsed time and asks the owner. Decided by: D87 item 6 (the 0.15 s delay), DBUP answer 2 (the startup screen follows it); derive-once review of the DBUP join (F2)"
+      "note": "The click's progress box and the startup screen both wait out the same delay; each works out its own elapsed time and asks the owner."
     },
     {
       "question": "Who keeps a table's columns in their set-up order (imgui#9519)?",
@@ -1602,7 +1599,7 @@
       "scope": [
         "src"
       ],
-      "note": "The imgui#9519 workaround: a table that can't reorder asks ImGui to reset its column order after an ini load. Every table calls the one helper; a second inline copy (the Library table had one) fails."
+      "note": "The imgui#9519 workaround: a table that can't reorder asks ImGui to reset its column order after an ini load. Every table calls the one helper; a second inline copy fails."
     },
     {
       "question": "Which flags does a table on the width rule open with?",
@@ -1610,7 +1607,7 @@
       "owner_file": "src/ui/column_widths.cpp",
       "owner_symbol": "table_flags",
       "date": "2026-10-08",
-      "decision": "D103 (report windows), T5 brief (the table uses the Library table's flags)",
+      "decision": "D103 (report windows), T5 brief (the table uses the Library table's flags); report windows plan, docs/superpowers/plans/2026-10-08-path-report-window.md (removed; git show 444631e6:docs/superpowers/plans/2026-10-08-path-report-window.md), T5 brief (the table uses the Library table's flags); derive-once review of RW-T5 (finding 1); one-column-width-rule plan, docs/superpowers/plans/2026-10-10-one-column-width-rule.md (removed; git show 444631e6:docs/superpowers/plans/2026-10-10-one-column-width-rule.md), Part 1 (table_flags replaces base_table_flags) and Part 4 (after wave 2)",
       "added_by": "RW-T5",
       "pattern": "\\bImGuiTableFlags_(SizingStretchProp|ScrollX|Hideable|Sortable)\\b",
       "anchor": "ImGuiTableFlags_",
@@ -1646,7 +1643,7 @@
       "scope": [
         "src"
       ],
-      "note": "A table on the width rule opens with the rule's flags: table_flags, or scroll_fixed_flags plus a tab's own look. A table that lists the rule's flags itself, or the stretch sizing the rule replaced, builds a second flag set that drifts from the rule's. Decided by: report windows plan, T5 brief (the table uses the Library table's flags); derive-once review of RW-T5 (finding 1); one-column-width-rule plan, Part 1 (table_flags replaces base_table_flags) and Part 4 (after wave 2)"
+      "note": "A table on the width rule opens with the rule's flags: table_flags, or scroll_fixed_flags plus a tab's own look. A table that lists the rule's flags itself, or the stretch sizing the rule replaced, builds a second flag set that drifts from the rule's."
     },
     {
       "question": "Is the current table past its first frame?",
@@ -1676,7 +1673,7 @@
       "scope": [
         "src"
       ],
-      "note": "A table's first frame loads its saved state from hydra_ui.ini after the caller's setup, so code that must win over that state asks table_settled. A second reading of the table's IsInitializing (the report window had its own, the width rule another) fails."
+      "note": "A table's first frame loads its saved state from hydra_ui.ini after the caller's setup, so code that must win over that state asks table_settled. A second reading of the table's IsInitializing fails."
     },
     {
       "question": "Is a report window still showing the result its view was built from?",
@@ -1775,7 +1772,7 @@
       "owner_file": "src/ui/paths_tab.cpp",
       "owner_symbol": "render_backend_table",
       "date": "2026-10-05",
-      "decision": "D53, D54",
+      "decision": "audit finding 291; phase 6 task J3-3 (D53, D54); one-column-width-rule plan, docs/superpowers/plans/2026-10-10-one-column-width-rule.md (removed; git show 444631e6:docs/superpowers/plans/2026-10-10-one-column-width-rule.md), Part 4 (backend_table_id removed)",
       "added_by": "J3-3",
       "pattern": "##backends",
       "anchor": "##backends",
@@ -1797,7 +1794,7 @@
         "src",
         "tests"
       ],
-      "note": "The id no longer carries the column widths (the width rule sizes the table each frame). It is built once and handed to begin_small_table, which names the same table to table_room and BeginTable. Decided by: audit finding 291; phase 6 task J3-3 (D53, D54); one-column-width-rule plan, Part 4 (backend_table_id removed)"
+      "note": "The id holds no column widths, because the width rule sizes the table each frame. It is built once and handed to begin_small_table, which names the same table to table_room and BeginTable."
     },
     {
       "question": "What text does a Library table cell show?",
@@ -2003,7 +2000,7 @@
       "scope": [
         "src/ui/app_state.cpp"
       ],
-      "note": "The batch confirm and the path report's opening each made the same pair of plans from their own list of rows. A third place that plans by hand could pick its skip list another way, and the run would then differ from the confirm it showed. Decided by: D79; D249; derive-once review of REPORT-ALL"
+      "note": "The batch confirm and the path report's opening both make their pair of plans through plan_batches, each from its own list of rows. A third place that plans by hand could pick its skip list another way, and the run would then differ from the confirm it showed."
     },
     {
       "question": "What does a batch say while it prepares its chart list?",
@@ -2032,7 +2029,7 @@
       "scope": [
         "src"
       ],
-      "note": "The batch strip and the path report window each showed the batch's preparing state in words of their own. A second spelling would drift from the strip the user sees under the toolbar. Decided by: D249; derive-once review of REPORT-ALL"
+      "note": "The batch strip and the path report window both show the batch's preparing state with this text. A second spelling would drift from the strip the user sees under the toolbar."
     }
   ]
 }
