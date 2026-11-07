@@ -132,7 +132,8 @@ class PbState {
 public:
     // Starts opening `notespath`. Reads Settings::load() now, so a change made
     // in Hydra's settings applies to the next chart opened. A chart still
-    // opening is dropped for the new one.
+    // opening is dropped for the new one. Throws SettingsFileError before
+    // anything here changes, and PbApp::open shows it.
     void open(const std::string& notespath);
     // open() with the settings given, for tests and for open().
     void open_with(const std::string& notespath, const app::Settings& settings);

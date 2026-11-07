@@ -342,8 +342,9 @@ std::string BackendSqueeze::summarystr(bool squeezed_out, std::optional<double> 
     const double off = offset();
     const double needed = backend_row_timing(off, squeezed_out, leeway_ms);
     // The eff. figure is the same need after the frontend scale (rate_note),
-    // so it is banded in place of the raw one. A row that needs nothing reads
-    // the first tier whatever its scale (D276 item 2).
+    // so it is banded in place of the raw one. A figure of 0 or less is banded
+    // as it stands, so the row reads the first tier whatever its scale (D276
+    // item 2); backend_row_timing says what a 0 means on each row.
     const double banded = (needed > 0.0 && effective_ms) ? *effective_ms : needed;
     std::string word = tier_for(banded, timing_tiers()).first;
     // A row the engine does not count says so, squeezed out or not

@@ -20,6 +20,7 @@
 
 #include "app/display_format.h"  // kFactSeparator
 #include "app/preview_view.h"
+#include "app/user_messages.h"  // kSettingsRefusedSentence
 #include "core/winstr.h"
 #include "pathbuilder/pb_menu.h"  // kStartOverLabel
 #include "pathbuilder/pb_text.h"
@@ -461,6 +462,58 @@ void test_file_open_error(ImGuiTestContext* ctx) {
     IM_CHECK(on_screen(h, h.app->state.error_detail()));
 }
 
+// A bad settings file refuses the song on the top line (D304 item 8). With no
+// song open the window stays up with none, and a good file opens it and takes
+// the line away. With a song open, the song and the player's path stay. The
+// open goes through PbApp::open, the one door the command line, a dropped file
+// and File > Open share.
+void test_bad_settings_refused(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    h.chart_arg.clear();
+    reset_app(h);
+    const std::vector<uint8_t> good_bytes = hydra::read_file_bytes(h.ini_path);
+    const std::string good_settings(good_bytes.begin(), good_bytes.end());
+    // The volume line sits before the bad one, so a read that stopped part way
+    // would have it.
+    const std::string bad_settings = "preview_volume=7\nsp_cap=banana\n";
+    const std::string detail = h.ini_path + ": sp_cap = \"banana\" is not a whole number";
+    IM_CHECK_RETV(write_file(h.ini_path, bad_settings), );
+    h.app->open(corpus::burnout_notes());
+    IM_CHECK_RETV(wait_idle(ctx), );
+    ctx->Yield(2);
+    IM_CHECK(h.app->state.chart() == nullptr);
+    IM_CHECK(!h.app->state.opening());
+    IM_CHECK(!h.app->state.preview_volume().has_value());
+    IM_CHECK(on_screen(h, hydra::app::kSettingsRefusedSentence));
+    IM_CHECK(on_screen(h, detail));
+
+    IM_CHECK_RETV(write_file(h.ini_path, good_settings), );
+    h.app->open(corpus::burnout_notes());
+    IM_CHECK_RETV(wait_idle(ctx), );
+    ctx->Yield(2);
+    IM_CHECK_RETV(h.app->state.chart() != nullptr, );
+    IM_CHECK(!on_screen(h, hydra::app::kSettingsRefusedSentence));
+    IM_CHECK(!on_screen(h, detail));
+    IM_CHECK(h.app->refusal().empty());
+
+    // A song open with a window on the player's path; then the file goes bad.
+    IM_CHECK_RETV(click_fill(ctx, kFirstFillTick), );
+    const hydra::pathbuilder::OpenChart* open_song = h.app->state.chart();
+    const uint64_t generation = h.app->state.history().generation();
+    IM_CHECK_RETV(h.app->state.history().current().windows.size() == 1, );
+    IM_CHECK_RETV(write_file(h.ini_path, bad_settings), );
+    h.app->open(long_song_notes());
+    IM_CHECK_RETV(wait_idle(ctx), );
+    ctx->Yield(2);
+    IM_CHECK(h.app->state.chart() == open_song);
+    IM_CHECK(h.app->state.history().generation() == generation);
+    IM_CHECK(h.app->state.history().current().windows.size() == 1);
+    IM_CHECK(h.app->state.requested_path() != long_song_notes());
+    IM_CHECK(on_screen(h, "Burnout — Green Day"));
+    IM_CHECK(on_screen(h, hydra::app::kSettingsRefusedSentence));
+    IM_CHECK(on_screen(h, detail));
+}
+
 }  // namespace
 
 void register_tests(Harness& h) {
@@ -470,6 +523,7 @@ void register_tests(Harness& h) {
     uitest::register_test(h, "drag-stays-in-the-window", test_drag_stays_in_the_window);
     uitest::register_test(h, "no-star-power", test_no_star_power);
     uitest::register_test(h, "file-open-error", test_file_open_error);
+    uitest::register_test(h, "bad-settings-refused", test_bad_settings_refused);
 }
 
 }  // namespace pbtest

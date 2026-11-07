@@ -59,6 +59,11 @@ inline constexpr const char* kSettingsOffSentence =
     "hydra_settings.ini has an error, so Hydra is running on its default settings and "
     "saving nothing until the file is fixed and Hydra is restarted.";
 
+// What a bad hydra_settings.ini reads as in the Path Builder (D304 item 8): it
+// has no defaults to run on, so PbApp::open refuses the song instead.
+inline constexpr const char* kSettingsRefusedSentence =
+    "hydra_settings.ini has an error, so the song can't open until the file is fixed.";
+
 // What a refused update reads as (ErrorKind::UpdateUnverified, D259 call 9).
 // The version bar shows
 // it for every refusal; the details line under it names the check.

@@ -272,12 +272,13 @@ inline double squeeze_difficulty(bool is_sqin, double offset_ms) {
 }
 
 // The timing, in ms, the player needs for one Backend timings row: the one
-// figure its Rating word is banded on (D269). Zero or less means the row
-// needs nothing. The squeezed-out row needs its SqOut's squeeze_difficulty,
-// measured from the one SP end (D269 call 4). A plain row the engine counts
-// (core::counted_without_squeeze) needs nothing; one it does not count
-// needs its offset, the early hit that would win it. The leeway only
-// decides which of those two a plain row is.
+// figure its Rating word is banded on (D269). The squeezed-out row needs its
+// SqOut's squeeze_difficulty, measured from the one SP end (D269 call 4). At 0
+// that is still a timing to hit (timing_needs_hitting, D302), and the row reads
+// the first tier either way. A plain row the engine counts
+// (core::counted_without_squeeze) needs nothing, and only there does 0 mean
+// nothing; one it does not count needs its offset, the early hit that would
+// win it. The leeway only decides which of those two a plain row is.
 inline double backend_row_timing(double offset_ms, bool squeezed_out, double leeway_ms) {
     if (squeezed_out) return squeeze_difficulty(/*is_sqin=*/false, offset_ms);
     return core::counted_without_squeeze(offset_ms, leeway_ms) ? 0.0 : offset_ms;

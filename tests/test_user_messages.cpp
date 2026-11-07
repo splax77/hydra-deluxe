@@ -220,6 +220,16 @@ TEST_CASE("user_messages: the song file sentence names Scan library only in Hydr
     CHECK(plain_error(missing) == kSongFileMissing);
 }
 
+// Hydra runs on its defaults; the builder refuses the song, so Hydra's sentence
+// would be false there (D304 item 8).
+TEST_CASE("a bad settings file reads the builder's own sentence in the builder") {
+    const hydra::app::SettingsFileError bad("hydra_settings.ini: sp_cap");
+    ProgramScope builder(hydra::app::Program::PathBuilder);
+    CHECK(plain_error(bad) ==
+          "hydra_settings.ini has an error, so the song can't open until the file is fixed.");
+    CHECK(plain_error_detail(bad) == "hydra_settings.ini: sp_cap");
+}
+
 // The thrower names the kind, so the words of the error don't matter: every
 // kind reads its own sentence from "x".
 TEST_CASE("user_messages: a kinded error reads its kind's sentence, whatever its words") {

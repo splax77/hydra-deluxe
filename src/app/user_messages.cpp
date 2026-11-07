@@ -37,6 +37,12 @@ std::string song_file_missing_sentence() {
     return std::string(kSongFileMissingStart) +
            (g_program.load() == Program::Hydra ? kSongFileMissingScanAdvice : "") + ".";
 }
+
+// The settings file's sentence: Hydra runs on its defaults, and the Path
+// Builder refuses the song (D304 item 8).
+const char* settings_file_sentence() {
+    return g_program.load() == Program::Hydra ? kSettingsOffSentence : kSettingsRefusedSentence;
+}
 constexpr const char* kHashFailed =
     "Windows couldn't read a song file to identify it. Restart Hydra and run Scan "
     "library again.";
@@ -179,7 +185,7 @@ std::optional<KindSentence> kind_sentence(const KindedError& e) {
         case ErrorKind::NoRecords: return KindSentence{kNoRecords};
         case ErrorKind::ReportWrite: return KindSentence{kReportWrite};
         case ErrorKind::RulesFile: return KindSentence{kAnalysisOffSentence};
-        case ErrorKind::SettingsFile: return KindSentence{kSettingsOffSentence};
+        case ErrorKind::SettingsFile: return KindSentence{settings_file_sentence()};
         case ErrorKind::AudioDecode: return KindSentence{kAudioDecode};
         case ErrorKind::PreviewAssets: return KindSentence{kPreviewAssets};
         case ErrorKind::UpdateUnverified: return KindSentence{kUpdateUnverifiedSentence};

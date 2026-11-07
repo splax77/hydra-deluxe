@@ -208,7 +208,16 @@ PbApp::PbApp(ID3D11Device* device, ID3D11DeviceContext* context)
 PbApp::~PbApp() { close_preview(); }
 
 void PbApp::open(const std::string& notespath) {
-    state.open(notespath);
+    try {
+        state.open(notespath);
+    } catch (const app::SettingsFileError& e) {
+        // The player never sees a path built on settings they didn't choose
+        // (D304 item 8). Nothing has started, and any song open stays.
+        set_refusal(app::plain_error(e), app::plain_error_detail(e));
+        return;
+    }
+    // The file read, so a refusal of its last read no longer holds.
+    set_refusal({}, {});
     // The first open's settings give the run its volume; after that the
     // player's slider is the only thing that moves it (plan Q2).
     if (!volume_from_file_ && state.preview_volume()) {

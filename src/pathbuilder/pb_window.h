@@ -84,6 +84,7 @@ public:
     HWND owner = nullptr;
 
     // Opens `notespath`, as File > Open, a dropped file and the command line do.
+    // A hydra_settings.ini PbState::open refuses shows as the refusal below.
     void open(const std::string& notespath);
     // An open or the highway's load is still running.
     bool busy() const;
@@ -92,9 +93,9 @@ public:
     void close_preview();
 
     ui::PreviewController* preview() { return preview_.get(); }
-    // Why the last paste, path file open or save changed nothing: the plain
-    // sentence and the details line (pb_files.h's Refusal). Empty when none
-    // is showing.
+    // Why the last paste, path file open, save or song open changed nothing:
+    // the plain sentence and the details line (pb_files.h's Refusal). Empty
+    // when none is showing.
     const std::string& refusal() const { return refusal_; }
     const std::string& refusal_detail() const { return refusal_detail_; }
     // The step the player selected (a band, a taken fill or a step row), as
