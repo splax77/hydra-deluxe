@@ -206,8 +206,8 @@ class LiveAgentError(Exception):
 
 
 class AttachFailed(LiveAgentError):
-    """LiveAgent.start found no game, or got no first reply. Nothing stays
-    attached."""
+    """LiveAgent.start found no game, could not load the agent, or got no
+    first reply. Nothing stays attached."""
 
 
 class ReadFailed(LiveAgentError):
@@ -276,7 +276,7 @@ class LiveAgent:
     def start(self, cap_s: float) -> dict:
         """Attach, load the agent and return its answer to the first read,
         waiting at most `cap_s` seconds for it. Raises AttachFailed with the
-        reason, and leaves nothing attached, on any failure."""
+        reason, in the cases that class names."""
         if self._session is not None:
             raise RuntimeError("this LiveAgent has already attached once")
         frida_mod = self._frida_mod

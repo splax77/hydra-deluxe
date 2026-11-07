@@ -47,7 +47,7 @@ KIT_AGENT_NAME = "kit"
 KIT_AGENT_FILE = f"{KIT_AGENT_NAME}.js"
 
 # The Rewired controller definition the kit is built from, "SLInputDrums"
-# (the probe's q4_out.json and the plan's probe facts).
+# (the plan's probe facts).
 KIT_DEFINITION_ID = 6
 # The map setup loads onto the kit's player, by its map category ("Gameplay")
 # and layout ("Drums") in the game's Rewired setup. The fact's home is block
@@ -131,7 +131,7 @@ class KitElement:
 # The one table of what can be pressed on the kit, by the name a caller uses.
 # The pad names are the auto-player's lanes (input_driver.Lane, lower-cased),
 # so a chord's lanes are found here by name. Element ids and names are the
-# definition's (q4_out.json, "def6_elements").
+# definition's (the plan's probe facts).
 KIT_ELEMENTS: Dict[str, KitElement] = {
     "red": KitElement(0, "Snare", False),
     "yellow": KitElement(1, "Tom1", False),
@@ -146,9 +146,9 @@ KIT_ELEMENTS: Dict[str, KitElement] = {
 }
 
 # The bindings the game's drum map must give the kit: element id to the
-# game action's id and name. The action ids are the game's action table
-# (q4_out.json, "actions"); the agent sends each binding's action id, and the
-# check compares those. The names are for the reply only.
+# game action's id and name. The action ids are the game's action table; the
+# agent sends each binding's action id, and the check compares those. The
+# names are for the reply only.
 KIT_BINDINGS: Dict[int, Tuple[int, str]] = {
     0: (1, "Red"),
     1: (2, "Yellow"),

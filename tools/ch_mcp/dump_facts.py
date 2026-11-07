@@ -398,9 +398,9 @@ _RVA_MIN_DIGITS = 5
 _FACT_INDEX_OFFSET_RE = re.compile(rf"^#(?P<idx>\d+)\+(?P<off>{_HEX_ADDRESS})$")
 _FACT_INDEX_MEMBER_RE = re.compile(r"^#(?P<idx>\d+)\.(?P<member>[A-Za-z_]\w*)$", re.ASCII)
 _FACT_NAME_RE = re.compile(r"^(?P<left>[A-Za-z_]\w*)\.(?P<right>[A-Za-z_]\w*)$", re.ASCII)
-# The C++ test's `file_ext` list (code_name_parts in
-# tests/test_docs_match_code.cpp, with the extensions task K5a adds): a span
-# ending in one of these names a file, not a game fact.
+# The C++ test's `file_ext` list (is_file_name in
+# tests/test_docs_match_code.cpp): a span ending in one of these names a file,
+# not a game fact.
 _FILE_EXT_RE = re.compile(
     r"\.(cpp|h|c|md|ini|json|py|ps1|exe|db|txt|mid|chart|sng|srb|opus|ogg|mp3|wav|flac|png|jpg|"
     r"cmake|hlsl|dll|asm|cs|tsv|bin|log|csv|xml|yml|yaml|dat|cfg)$",
@@ -899,10 +899,12 @@ def table_rows(classes: list[dict], build: str, cited: list[Cited], instances: l
 def check_names(classes: list[dict], names: NamesMap) -> tuple[list[str], list[str]]:
     """The errors and warnings in a names map, read against the dump.
 
-    Each row's class and member exist in the dump. Our class name is unique
-    and is no class's real name; our member name is unique within its class
-    and is none of that class's real member names; a member has one name. A
-    row no page span resolved through (`names.used`) is a warning.
+    Each row's class exists in the dump, and so does its member. A member
+    the dump lacks is only a warning in a build with no properties to check
+    it against (`names.has_properties`). Our class name is unique and is no
+    class's real name; our member name is unique within its class and is none
+    of that class's real member names; a member has one name. A row no page
+    span resolved through (`names.used`) is a warning.
     """
     index = _Index(classes)
     errors: list[str] = []

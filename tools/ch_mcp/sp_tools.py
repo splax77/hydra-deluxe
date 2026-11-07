@@ -1,7 +1,7 @@
 """The Clone Hero MCP server's Star Power tools: watch the engine's Star
 Power fields while a song plays, and answer questions about the rows.
 
-The read lives in ch_probe and nothing here reads memory (the plan
+The read lives in ch_probe, and this module only calls it (the plan
 docs/superpowers/plans/2026-10-30-ch-mcp-star-power-and-song-start.md, "Where
 the Star Power read lives, and who calls it"). engine.decode_snapshot says
 where each field is, EngineModel.snapshot reads it, and sp_watch.watch polls
