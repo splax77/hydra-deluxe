@@ -476,9 +476,10 @@ in short; the code named at each step owns the exact rule.
    types, constants and enum values (`changed_names` in
    `tools/precheck/changed_names.h`). A changed comment counts as a change to
    the declaration below it.
-4. It follows one level of callers in `src/`, adding the calling function and
-   any `A::B` value on the call line or on the nearest `if`, `else if` or
-   `case` line above it.
+4. It follows one level of callers in production C++ files (`collect_callers`
+   in `tools/precheck/test_pick.cpp`), adding the calling function and any
+   `A::B` value on the call line or on the nearest `if`, `else if` or `case`
+   line above it.
 5. It finds the test files that name any of those keys. A key in a test helper
    header picks every test that includes the header, and a test file the
    range changes is always picked.

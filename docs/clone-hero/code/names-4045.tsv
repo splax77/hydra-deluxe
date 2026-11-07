@@ -34,7 +34,7 @@ build	typedef_index	class	member	name	what
 4045		ʴʻˁʷʸʶʶʶʿʳʹ		ChordListSearch	The static helper class that searches a chord list by tick; read from fill_generator.cs lines 143 to 193.
 4045		ʴʻˁʷʸʶʶʶʿʳʹ	ʶʲˁʿʹʵˀʺʲˁʿ<T>	NearestChord	Returns the index of the chord nearest a target tick, a tie going to the later chord; read from fill_generator.cs lines 144 to 166.
 4045		ʴʻˁʷʸʶʶʶʿʳʹ	ʼʿˀʹʵˁˁʹʽʸʹ<T>	FirstAfter	Returns the index of the first chord strictly after a tick, or 0; read from fill_generator.cs lines 170 to 180.
-4045		ʴʻˁʷʸʶʶʶʿʳʹ	ʴʶʾˀˁʾʵʼʾʺʽ<T>	LastAtOrBefore	Returns the index of the last chord at or before a tick, or -1; read from fill_generator.cs lines 184 to 193.
+4045		ʴʻˁʷʸʶʶʶʿʳʹ	ʴʶʾˀˁʾʵʼʾʺʽ<T>	LastAtOrBefore	Returns the index of the last chord before a tick, or -1; a true flag argument counts a chord at the tick too; read from fill_generator.cs lines 184 to 193.
 4045		ʴʻˁʷʸʶʶʶʿʳʹ	ʷʾˀʼˀʵʹˁʻʻʷ<T>	NearestChordInRange	Returns the chord nearest a target tick between a low and a high tick, or nothing; called at fill_generator.cs line 93.
 4045		ʵʼʴʿʼʷʷˀʶˁʷ		BitMath	A static class of bit helpers; read from fill_generator.cs lines 125 and 129.
 4045		ʵʼʴʿʼʷʷˀʶˁʷ	ʷʹʾˁʳʸʲʾʴʾʿ	HighestSetBit	Returns the highest set bit of a value; called at fill_generator.cs line 125.
