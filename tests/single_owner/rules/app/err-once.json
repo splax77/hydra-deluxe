@@ -6,7 +6,7 @@
       "owner_file": "src/app/user_messages.cpp",
       "owner_symbol": "plain_error_detail",
       "date": "2026-10-15",
-      "decision": "the user's rule of 2026-10-15: every failure and error line is derived once (task ERR-ONCE); the user, 2026-10-15.",
+      "decision": "the user's rule of 2026-10-15: every failure and error line is derived once (task ERR-ONCE)",
       "added_by": "ERR-ONCE",
       "pattern": "\\.what\\(\\)",
       "owner_files": [
