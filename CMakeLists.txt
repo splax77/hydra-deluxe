@@ -881,12 +881,13 @@ target_compile_definitions(hydra_replay PRIVATE
 
 # ---- CLI end-to-end tests ------------------------------------------------
 # tests/test_cli.cpp (one of the globbed sources above) runs the two console
-# tools as real processes, so building the tests builds the tools first and
-# tells the tests where they are.
-add_dependencies(hydra_tests hydra_batch hydra_fillcompare)
+# tools and hydra_replay as real processes, so building the tests builds the
+# tools first and tells the tests where they are.
+add_dependencies(hydra_tests hydra_batch hydra_fillcompare hydra_replay)
 target_compile_definitions(hydra_tests PRIVATE
     HYDRA_BATCH_EXE="$<TARGET_FILE:hydra_batch>"
     HYDRA_FILLCOMPARE_EXE="$<TARGET_FILE:hydra_fillcompare>"
+    HYDRA_REPLAY_EXE="$<TARGET_FILE:hydra_replay>"
 )
 
 # ---- hydra_precheck: the derive-once precheck (a developer tool) ---------
