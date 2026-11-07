@@ -362,7 +362,8 @@ class GameTools:
 
     def ch_install_chart(self, chart_folder: str, name: Optional[str] = None) -> str:
         """Copy one chart folder into the probe song folder with a silent
-        song.ogg (install_chart.install), waiting at most INSTALL_CAP_S."""
+        song.ogg and a marked title (install_chart.install), waiting at most
+        INSTALL_CAP_S."""
         with self._lock:
             box: dict = {}
 
