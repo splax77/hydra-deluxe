@@ -3,10 +3,8 @@
 // Tests fabricate a .sng the way parse/sng.h reads one. Audit finding 117:
 // every test that builds a .sng builds it through here.
 //
-// Note for task J2-5: test_preview_source.cpp still has its own make_sng,
-// which writes 20 junk bytes in place of the metadata block when it gets no
-// pairs. This one always writes a real metadata block, an empty one when
-// there are no pairs.
+// make_sng always writes a real metadata block, an empty one when there are
+// no pairs.
 
 #ifndef HYDRA_TESTS_SNG_UTIL_H
 #define HYDRA_TESTS_SNG_UTIL_H

@@ -17,8 +17,8 @@ using namespace single_owner;
 // the results stamp. The rule is a comment, which does not compile and which
 // the row scan skips, so this case reads it: the block between the "Results"
 // banner and the kResultsStamp line in src/store/stored_versions.h must name
-// src/parse next to src/search and src/core. Moved here from
-// a stamps test; the repo root comes from tests/source_tree.h.
+// src/parse next to src/search and src/core. The repo root comes from
+// tests/source_tree.h.
 TEST_CASE("single-owner: the results stamp's bump rule names the chart readers (D23)") {
     const std::string text =
         hydra::read_file_text((sourcetree::root() / "src" / "store" / "stored_versions.h").u8string());
