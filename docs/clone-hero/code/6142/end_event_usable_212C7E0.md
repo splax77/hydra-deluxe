@@ -6,8 +6,8 @@ Lines 1 to 2: prologue; the end event pointer at chart+0x108 is tested.
 
 Lines 3 to 6: no end event means the answer is false (`xor al, al; ret`).
 
-Lines 7 to 10: the end event's tick is read into rbx; `ChartLength(addMargin = true)` (`chart_length_212E130`) is called (line 10, `dl = 1` at line 9).
+Lines 7 to 12: the end event's tick is read into rbx (line 11); `ChartLength(addMargin = true)` (`chart_length_212E130`) is called (line 12, `dl = 1` at line 10).
 
-Lines 11 to 13: the answer is true when `end tick >= ChartLength(true)` (`cmp rbx, rax; setge`), so a tick exactly equal counts. `ChartLength(true)` is the last gem end of every instrument track plus the truncated margin at chart+0xB0.
+Lines 13 to 15: the answer is true when `end tick >= ChartLength(true)` (`cmp rbx, rax; setge`), so a tick exactly equal counts. `ChartLength(true)` is the last gem end of every instrument track plus the truncated margin at chart+0xB0.
 
-Lines 14 to 18: epilogue.
+Lines 16 to 18: epilogue.

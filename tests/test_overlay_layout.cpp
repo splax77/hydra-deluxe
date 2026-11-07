@@ -14,6 +14,7 @@
 #include "render/highway_draw.h"
 #include "render/overlay_layout.h"
 #include "render/preview_config.h"
+#include "fixed_pitch.h"  // ten_per_char
 #include "preview_config_util.h"
 
 using namespace hydra::render;
@@ -267,17 +268,6 @@ TEST_CASE("overlay_scale: the solo box shrinks the boxes with the rest") {
 }
 
 namespace {
-// 10 px per character (not per byte), "…" included: a fixed-pitch stand-in
-// for the monospace font the path picker draws with.
-float ten_per_char(const std::string& s) {
-    float w = 0.0f;
-    for (unsigned char c : s)
-        if ((c & 0xC0) != 0x80) w += 10.0f;
-    return w;
-}
-}  // namespace
-
-namespace {
 // A text box of `texts`, each line measured by ten_per_char and 18.75 px tall
 // (a 15 px line).
 TextBox box_of(std::initializer_list<const char*> texts) {
@@ -404,9 +394,9 @@ struct NextBox {
 // Burnout's three boxes (the second's chord is the long one); the third's
 // notation is the User Guide's example, a long one.
 const std::vector<NextBox> kBurnout = {
-    {"Next: activation 1 of 3", "3- (163 ms)", "at m32.1.0 \xC2\xB7 [Kick - GreenCym]"},
+    {"Next: activation 1 of 3", "3- (163.0 ms)", "at m32.1.0 \xC2\xB7 [Kick - GreenCym]"},
     {"Next: activation 2 of 3", "1", "at m58.1.0 \xC2\xB7 [Kick - YellowCym - GreenCym]"},
-    {"Next: activation 3 of 3", "5+ (100 ms)", "at m75.1.0 \xC2\xB7 [Kick - GreenCym]"},
+    {"Next: activation 3 of 3", "5+ (100.0 ms)", "at m75.1.0 \xC2\xB7 [Kick - GreenCym]"},
 };
 }  // namespace
 

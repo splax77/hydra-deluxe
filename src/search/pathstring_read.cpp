@@ -10,9 +10,15 @@
 #include <utility>
 #include <vector>
 
+#include "core/error_kind.h"
+
 namespace hydra {
 
 namespace {
+
+// The error for text that names no path on the chart: the thrower names the
+// kind, and app::plain_error gives it its sentence.
+KindedError refused(const std::string& why) { return KindedError(ErrorKind::PathTextRefused, why); }
 
 // The text split at whitespace: one token per window.
 std::vector<std::string> tokens_of(const std::string& text) {
@@ -104,8 +110,8 @@ std::vector<PinnedWindow> read_short(const Song& song, const SearchSettings& set
             song, settings, fills, next_fill, placed,
             [&](const Activation& act) { return act.notationstr() == tokens[k]; });
         if (!next)
-            throw std::invalid_argument("window " + std::to_string(k + 1) + " (\"" + tokens[k] +
-                                        "\") matches no fill on this chart");
+            throw refused("window " + std::to_string(k + 1) + " (\"" + tokens[k] +
+                          "\") matches no fill on this chart");
         placed = std::move(*next);
     }
     return placed;
@@ -128,9 +134,9 @@ std::string_view windows_section(std::string_view text) {
 
     const std::vector<std::string_view> sections = sections_of(text);
     if (sections.size() != shape.size())
-        throw std::invalid_argument("the path text has " + std::to_string(sections.size()) +
-                                    " sections where Hydra's long Copy path text has " +
-                                    std::to_string(shape.size()));
+        throw refused("the path text has " + std::to_string(sections.size()) +
+                      " sections where Hydra's long Copy path text has " +
+                      std::to_string(shape.size()));
     return trimmed(sections[windows_at]);
 }
 
@@ -142,7 +148,7 @@ std::vector<PinnedWindow> read_long(const Song& song, const SearchSettings& sett
                                     std::string_view windows) {
     std::vector<PinnedWindow> placed;
     if (windows == Path().pathstring()) return placed;
-    if (windows.empty()) throw std::invalid_argument("the path text's windows section is empty");
+    if (windows.empty()) throw refused("the path text's windows section is empty");
 
     const std::vector<int64_t> fills = fill_ticks(song);
     size_t next_fill = 0;
@@ -158,8 +164,8 @@ std::vector<PinnedWindow> read_long(const Song& song, const SearchSettings& sett
                 return fits;
             });
         if (!next)
-            throw std::invalid_argument("window " + std::to_string(k) + " (at \"" +
-                                        std::string(rest) + "\") matches no fill on this chart");
+            throw refused("window " + std::to_string(k) + " (at \"" + std::string(rest) +
+                          "\") matches no fill on this chart");
         placed = std::move(*next);
         rest = trimmed(rest.substr(printed_size));
     }
@@ -170,7 +176,7 @@ std::vector<PinnedWindow> read_long(const Song& song, const SearchSettings& sett
 
 Path paths_from_pathstring(const Song& song, const SearchSettings& settings,
                            const std::string& text) {
-    if (tokens_of(text).empty()) throw std::invalid_argument("the path text is empty");
+    if (tokens_of(text).empty()) throw refused("the path text is empty");
 
     const std::vector<PinnedWindow> placed =
         sections_of(text).size() == 1 ? read_short(song, settings, text)

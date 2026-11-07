@@ -1,10 +1,12 @@
 """Tests for frida_tools: the attach waits and refusals, the state words, the
-trace start and its refusals, ch_notes, ch_trace_stop and the stop hook.
+engine lines of ch_snapshot, the trace start and its refusals, ch_notes,
+ch_trace_stop and the stop hook.
 
 No game and no Frida: the fake frida module and its sessions come from
 test_frida_attach, the game side is a fake with the four methods FridaTools
-calls, the trace is a fake standing in for trace_hits.TraceSession, and the
-clock is a fake that sleeping moves.
+calls, the trace is a fake standing in for trace_hits.TraceSession, the
+engine's memory is a fake process the real EngineModel reads, and the clock
+is a fake that sleeping moves.
 """
 
 from __future__ import annotations
@@ -12,6 +14,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import struct
 import sys
 import tempfile
 import threading
@@ -26,10 +29,14 @@ from tools.ch_mcp import build_facts as B  # noqa: E402
 from tools.ch_mcp import frida_attach as FA  # noqa: E402
 from tools.ch_mcp import frida_tools as FT  # noqa: E402
 from tools.ch_mcp import trace_hits as TH  # noqa: E402
+from tools.ch_mcp.kit_tools import pad_axis  # noqa: E402
 from tools.ch_mcp.tests.test_build_facts import REAL_FACTS  # noqa: E402
 from tools.ch_mcp.tests.test_frida_attach import (  # noqa: E402
     MENU, MENU_ONE_DESTROYED, STATE, FakeFrida, ReplySession, instant_wait)
 from tools.ch_probe import constants as C  # noqa: E402
+from tools.ch_probe import engine_finder  # noqa: E402
+from tools.ch_probe.engine import SNAPSHOT_SIZE  # noqa: E402
+from tools.ch_probe.process import decode_u32  # noqa: E402
 
 VERSION = "v1.1.0.6142-final"
 FACTS = {
@@ -131,6 +138,33 @@ def call(song_time_s):
     return {"call": "AddPoints", "names": ["AddPoints"], "songTime": song_time_s, "args": []}
 
 
+ENGINE = 0x10000
+
+
+class FakeEngineProcess:
+    """The game's memory as the real EngineModel reads it: one block at ENGINE
+    holding the flags word and the dynamics threshold."""
+
+    def __init__(self, flags=0x1000, threshold=64):
+        self.block = bytearray(SNAPSHOT_SIZE)
+        struct.pack_into("<I", self.block, C.OFF_FLAGS, flags)
+        struct.pack_into("<I", self.block, C.OFF_DYN_THRESHOLD, threshold)
+        self.verified = False
+        self.closed = False
+
+    def verify_targets(self):
+        self.verified = True
+
+    def read(self, addr, size):
+        return bytes(self.block[addr - ENGINE:addr - ENGINE + size])
+
+    def read_u32(self, addr):
+        return decode_u32(self.read(addr, 4))
+
+    def close(self):
+        self.closed = True
+
+
 class Rig(unittest.TestCase):
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
@@ -149,6 +183,13 @@ class Rig(unittest.TestCase):
         self.clock = FakeClock()
         self.loads = 0
         self.traces = []
+        self.lock = threading.RLock()
+        self.proc = FakeEngineProcess()
+        self.opens = []
+
+    def open_engine_process(self, **kw):
+        self.opens.append(kw)
+        return self.proc
 
     def load_facts(self):
         self.loads += 1
@@ -159,18 +200,21 @@ class Rig(unittest.TestCase):
         self.traces.append(trace)
         return trace
 
-    def tools(self, replies=(), game=None, load_facts=None, attached=False):
+    def tools(self, replies=(), game=None, load_facts=None, attached=False,
+              opener=None, find_engine=None):
         self.game = game if game is not None else FakeGame()
         self.game.folder = self.tmp
         self.session = ReplySession(list(replies))
         self.frida = FakeFrida(self.session)
         tools = FT.FridaTools(
-            self.game, threading.RLock(),
+            self.game, self.lock,
             frida_mod=self.frida, wait=instant_wait,
             current_build=lambda: VERSION,
             load_facts=load_facts or self.load_facts,
             trace_session=self.make_trace, agent_dir=self.agent_dir,
-            now=self.clock.now, sleep=self.clock.sleep)
+            now=self.clock.now, sleep=self.clock.sleep,
+            opener=opener or self.open_engine_process,
+            find_engine=find_engine or (lambda proc: ENGINE))
         # Detach before the temp folder goes, so Windows can delete the log.
         self.addCleanup(lambda: tools._agent is not None and tools._agent.detach())
         if attached:
@@ -304,6 +348,92 @@ class ReadTest(Rig):
         out = tools.ch_snapshot()
         self.assertIn("score after press 2: 150", out)
         self.assertIn("song clock at that press: 2998.0 ms", out)
+
+
+class SnapshotEngineLinesTest(Rig):
+    def snapshot_lines(self, flags=0x1000, threshold=64, state=STATE, **kw):
+        self.proc = FakeEngineProcess(flags, threshold)
+        tools = self.tools([STATE, state], attached=True, **kw)
+        return tools.ch_snapshot().splitlines()
+
+    def test_the_flags_word_prints_in_hex_with_bit_0x10_set(self):
+        lines = self.snapshot_lines(flags=0x1010)
+        self.assertIn("flags word: 0x1010 (OFF_FLAGS)", lines)
+        self.assertIn("bit 0x10: set", lines)
+
+    def test_bit_0x10_prints_clear_beside_the_precision_bit(self):
+        lines = self.snapshot_lines(flags=0x1000)
+        self.assertIn("flags word: 0x1000 (OFF_FLAGS)", lines)
+        self.assertIn("bit 0x10: clear", lines)
+
+    def test_the_threshold_line_names_the_value_and_the_offsets_constant(self):
+        self.assertIn("dynamics threshold: 64 (OFF_DYN_THRESHOLD, +0x2c0)",
+                      self.snapshot_lines(threshold=64))
+
+    def test_the_ghost_value_is_the_one_pad_axis_gives_at_full_precision(self):
+        lines = self.snapshot_lines(threshold=64)
+        self.assertIn(f"ghost axis value: {pad_axis('ghost', 64)!r} (kit_tools.pad_axis)", lines)
+
+    def test_a_threshold_of_0_prints_it_and_says_no_ghost_value_is_possible(self):
+        lines = self.snapshot_lines(threshold=0)
+        self.assertIn("dynamics threshold: 0 (OFF_DYN_THRESHOLD, +0x2c0)", lines)
+        ghost = [line for line in lines if line.startswith("ghost axis value:")]
+        self.assertEqual(len(ghost), 1)
+        self.assertTrue(ghost[0].startswith("ghost axis value: none is possible ("), ghost[0])
+
+    def test_the_read_opens_the_game_read_only_checks_it_and_closes_it(self):
+        self.snapshot_lines()
+        self.assertEqual(self.opens, [{"read_only": True}])
+        self.assertTrue(self.proc.verified)
+        self.assertTrue(self.proc.closed)
+
+    def test_a_game_not_playing_is_not_searched_and_the_line_says_why(self):
+        # The engine search waits for a moving clock, so a song that is not
+        # playing would hold the tool for the search's whole cap.
+        for state, word in ((MENU, "menu (no live GameManager)"),
+                            ({**STATE, "isPaused": True}, "paused")):
+            with self.subTest(word=word):
+                self.opens.clear()
+                lines = self.snapshot_lines(state=state)
+                self.assertEqual(self.opens, [])
+                self.assertIn(f"engine fields: not read (state: {word}; "
+                              "the engine search needs a playing song)", lines)
+                self.assertFalse([line for line in lines if line.startswith("flags word")])
+
+    def test_a_game_that_will_not_open_says_so_and_the_reply_keeps_its_read(self):
+        def closed(**kw):
+            raise OSError("no process")
+
+        lines = self.snapshot_lines(opener=closed)
+        self.assertIn("songTime: 3.5", lines)
+        self.assertIn("engine fields: not read: OSError: no process", lines)
+
+    def test_a_search_that_finds_no_engine_says_so_and_closes_the_game(self):
+        def no_song(proc):
+            raise engine_finder.EngineSearchTimeout("no playing song found in 120 s")
+
+        lines = self.snapshot_lines(find_engine=no_song)
+        self.assertIn("engine fields: not read: EngineSearchTimeout: "
+                      "no playing song found in 120 s", lines)
+        self.assertTrue(self.proc.closed)
+
+    def test_the_search_runs_without_the_servers_lock(self):
+        seen = []
+
+        def try_the_lock():
+            taken = self.lock.acquire(blocking=False)
+            seen.append(taken)
+            if taken:
+                self.lock.release()
+
+        def finder(proc):
+            other = threading.Thread(target=try_the_lock)
+            other.start()
+            other.join()
+            return ENGINE
+
+        self.snapshot_lines(find_engine=finder)
+        self.assertEqual(seen, [True])
 
 
 # A hand-written menu block in the shape agent/menu.ts sends.

@@ -21,13 +21,14 @@ import threading
 import time
 import types
 import unittest
+from unittest import mock
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.abspath(os.path.join(_HERE, "..", "..", ".."))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from tools.ch_mcp import sp_tools  # noqa: E402
+from tools.ch_mcp import frida_tools, sp_tools  # noqa: E402
 from tools.ch_probe import engine  # noqa: E402
 from tools.ch_probe import engine_finder as F  # noqa: E402
 from tools.ch_probe.experiments import sp_watch  # noqa: E402
@@ -202,7 +203,7 @@ class SpToolsTest(unittest.TestCase):
         stdout = io.StringIO()
         with fakes.searching_for_no_song(F), contextlib.redirect_stdout(stdout):
             with self.assertRaises(F.EngineSearchTimeout):
-                sp_tools._find_engine_quietly(types.SimpleNamespace(module_base=0x1000))
+                frida_tools.find_engine_quietly(types.SimpleNamespace(module_base=0x1000))
         self.assertEqual(stdout.getvalue(), "")
 
     def test_a_finder_timeout_is_the_reason_in_the_status(self):
@@ -312,8 +313,84 @@ class SpToolsTest(unittest.TestCase):
         inside = tools.ch_sp_between(1500.0, 2500.0)
         self.assertIn("activations inside: 1", inside)
         self.assertIn("  activation 1 at 2000.0 ms: multiplier 4 before, 8 on the flip "
-                      "row; end time 10000.0 ms; flag still set at the last row", inside)
+                      "row; end time at the flip 10000.0 ms; flag still set at the last row",
+                      inside)
         self.assertIn("no row inside at the ready level with the flag clear", inside)
+
+    def test_the_status_activation_line_reads_end_time_at_the_flip(self):
+        script = self.flip_script()
+        tools = self.tools(script)
+        self.started(tools)
+        self.assertTrue(script.done.wait(WAIT_S))
+        tools.ch_sp_watch_stop()
+        self.assertIn("  activation 1 at 2000.0 ms: multiplier 4 before, 8 on the flip row; "
+                      "end time at the flip 10000.0 ms; flag still set at the last row",
+                      tools.ch_sp_watch_status().splitlines())
+
+    # -- the watch of a chained run ----------------------------------------------------
+
+    def test_watch_for_run_searches_with_the_given_search_and_returns_its_engine(self):
+        script = Script([snap_at(1.0)])
+        own = []
+        tools = self.tools(script, find_engine=lambda proc: own.append(proc) or 0x1)
+        searched = []
+        engine_ptr, text = tools.watch_for_run(300.0, lambda proc: searched.append(proc) or ENGINE)
+        self.assertEqual(engine_ptr, ENGINE)
+        self.assertEqual(text, f"csv: {os.path.join(self.tmp.name, 'sp_watch-1.csv')}")
+        self.assertEqual(searched, [self.proc])
+        self.assertEqual(own, [])
+        self.assertTrue(script.done.wait(WAIT_S))
+        self.assertEqual(script.engine_ptr, ENGINE)
+        self.assertEqual(self.watch_kw["cap_s"], 300.0)
+        tools.ch_sp_watch_stop()
+
+    def test_watch_for_run_says_why_when_no_engine_is_found(self):
+        def no_song(proc):
+            raise F.EngineSearchTimeout(NO_SONG)
+
+        engine_ptr, text = self.tools().watch_for_run(300.0, no_song)
+        self.assertIsNone(engine_ptr)
+        self.assertIn(f"watcher ended: {NO_SONG}", text)
+
+    def test_watch_for_run_stops_a_search_that_outlasts_its_cap_and_says_so(self):
+        release = threading.Event()
+
+        def stuck(proc):
+            release.wait(WAIT_S)
+            raise F.EngineSearchTimeout(NO_SONG)
+
+        tools = self.tools()
+        with mock.patch.object(sp_tools.engine_finder, "ENGINE_SEARCH_CAP_S", 0.05), \
+                mock.patch.object(sp_tools, "READ_CAP_S", 0.05):
+            engine_ptr, text = tools.watch_for_run(300.0, stuck)
+        release.set()
+        self.assertIsNone(engine_ptr)
+        self.assertIn("did not settle in 0.1 s", text)
+        self.assertIn("the watch was stopped", text)
+
+    def test_watch_for_run_says_why_when_the_game_cannot_be_opened(self):
+        tools = self.tools()
+        tools._opener = lambda **kw: (_ for _ in ()).throw(OSError("no game"))
+        engine_ptr, text = tools.watch_for_run(300.0, lambda proc: ENGINE)
+        self.assertIsNone(engine_ptr)
+        self.assertIn("could not open the game: OSError: no game", text)
+
+    def test_watch_for_run_fails_when_the_csv_cannot_be_made_after_the_search(self):
+        tools = self.tools()
+        tools._game.session_dir = lambda: os.path.join(self.tmp.name, "a file")
+        with open(os.path.join(self.tmp.name, "a file"), "w", encoding="utf-8"):
+            pass
+        engine_ptr, text = tools.watch_for_run(300.0, lambda proc: ENGINE)
+        self.assertIsNone(engine_ptr)
+        self.assertIn("watcher ended: failed:", text)
+
+    def test_watch_for_run_is_refused_while_a_watch_runs(self):
+        script = Script([snap_at(1.0)])
+        tools = self.tools(script)
+        self.started(tools)
+        self.assertEqual(tools.watch_for_run(300.0, lambda proc: ENGINE),
+                         (None, sp_tools.WATCH_RUNNING))
+        tools.ch_sp_watch_stop()
 
     def test_ch_sp_between_with_no_flip_says_so(self):
         script = self.flip_script()

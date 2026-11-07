@@ -1,5 +1,5 @@
 // The Path Builder's cost list (app/path_costs.h; plan
-// docs/superpowers/plans/2026-10-28-path-builder.md, task EN-3). The corpus
+// docs/superpowers/plans/2026-10-28-path-builder.md (removed; git show b29a3c28:docs/superpowers/plans/2026-10-28-path-builder.md), task EN-3). The corpus
 // cases run at the GUI's default settings, whose Path limit is 10 ms; every
 // total is pinned from one run.
 
@@ -12,8 +12,10 @@
 #include <vector>
 
 #include "app/config.h"
+#include "app/display_format.h"
 #include "app/path_costs.h"
 #include "core/model.h"
+#include "corpus_default_cfg.h"
 #include "corpus_util.h"
 #include "record_fixtures.h"
 #include "search/graph.h"
@@ -40,18 +42,10 @@ using hydra::app::build_ladder;
 using hydra::app::cost_list;
 using hydra::app::cost_tier;
 
+using corpus::default_cfg;
+using corpus::song_named;
+
 namespace {
-
-const app::AnalysisSettings& default_cfg() {
-    static const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
-    return cfg;
-}
-
-const Song& song_named(const std::string& name) {
-    const std::string chart = corpus::chart_named(name);
-    REQUIRE_FALSE(chart.empty());
-    return corpus::song(chart, default_cfg().reading());
-}
 
 const HydraRecord& record_named(const std::string& name) {
     return corpus::analyzed(corpus::chart_named(name), default_cfg());
@@ -183,6 +177,31 @@ TEST_CASE("cost tier: a negative cost is a bug") {
     CHECK_THROWS_AS(cost_tier(-1, 1000), std::logic_error);
 }
 
+TEST_CASE("candidate costs: a negative cost is a bug") {
+    // A candidate whose best finish beats BF(n): pinning one more activation
+    // can never do that, so the cost does not get a colour.
+    const std::vector<hydra::app::CandidateFinish> beats = {{100, 1001}};
+    CHECK_THROWS_AS(hydra::app::candidate_costs(1000, 1000, beats), std::logic_error);
+    // Level with BF(n) it is the best next fill.
+    const std::vector<hydra::app::CandidateCost> level =
+        hydra::app::candidate_costs(1000, 1000, {{100, 1000}});
+    REQUIRE(level.size() == 1);
+    CHECK(level[0].act_tick == 100);
+    CHECK(level[0].best_finish == 1000);
+    CHECK(level[0].cost == 0);
+    CHECK(level[0].tier == CostTier::Green);
+}
+
+TEST_CASE("end costs: each end against the best of them, in the order given") {
+    // The best end need not come first: end_choices lists them in
+    // search_target's order.
+    CHECK(hydra::app::end_costs({398210, 412850, 412850, 411616}) ==
+          std::vector<int64_t>{14640, 0, 0, 1234});
+    CHECK(hydra::app::end_costs({}).empty());
+    // The end choices write a cost with the minus sign U+2212, in full.
+    CHECK(hydra::app::format_cost(1234) == "\xE2\x88\x92" "1,234");
+}
+
 TEST_CASE("build ladder: a list the target searches refuse is refused before any search") {
     const Song& song = song_named("Mutemath - Allies");
     const ScoreGraph graph = search_graph(song, default_cfg());
@@ -225,4 +244,10 @@ TEST_CASE("build ladder: stops at the first impossible prefix and names it") {
     CHECK(run.failed_tick == std::optional<int64_t>(22273));
     CHECK(run.failed_reason == "activation");
     CHECK(heard == std::vector<size_t>{1, 2});
+}
+
+TEST_CASE("costs nothing: only a cost of zero is a best choice's") {
+    CHECK(hydra::app::costs_nothing(0));
+    CHECK_FALSE(hydra::app::costs_nothing(1));
+    CHECK_FALSE(hydra::app::costs_nothing(14640));
 }

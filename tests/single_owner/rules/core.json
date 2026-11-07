@@ -136,6 +136,14 @@
           "why": "it converts the startup message box's text, not a path"
         },
         {
+          "file": "src/pathbuilder/main.cpp",
+          "why": "it converts the Path Builder's startup message box text, not a path"
+        },
+        {
+          "file": "src/pathbuilder/pb_open.cpp",
+          "why": "it converts the file dialog's type-list labels and patterns, not a path"
+        },
+        {
           "file": "tools/precheck/code_mask.cpp",
           "why": "it counts the UTF-16 units of source text, not a path"
         },
@@ -924,7 +932,7 @@
           "why": "format_ms_whole, the owner"
         }
       ],
-      "note": "A timing printed as a whole number of ms: printf's %.0f with or without a space before \"ms\", or a cast, round, lround or llround with \" ms\" after it. Decided by: D48, Q2 (audit findings 4 and 18; phase 3 task O1; M_D review round 2, library finding 6)"
+      "note": "A timing printed as a whole number of ms: printf's %.0f with or without a space before \"ms\", or a cast, round, lround or llround with \" ms\" after it. Only a limit the user sets is written this way; a timing a window needs is format_ms's, one decimal (D265). Decided by: D48, Q2 (audit findings 4 and 18; phase 3 task O1; M_D review round 2, library finding 6); D265"
     },
     {
       "question": "What does a tool print for an option it does not know?",

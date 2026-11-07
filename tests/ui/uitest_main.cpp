@@ -262,29 +262,23 @@ int main() {
     std::vector<std::string> passthrough;  // options each --jobs child gets too
     uitest::Harness h;
 
-    const std::vector<std::string> args = hydra::utf8_argv();
-    const int argc = static_cast<int>(args.size());
-    for (int i = 1; i < argc; ++i) {
-        const std::string& a = args[i];
-        auto next = [&](std::string& out) {
-            if (i + 1 >= argc) return false;
-            out = args[++i];
-            return true;
-        };
+    uitest::ArgReader args(hydra::utf8_argv());
+    while (args.next()) {
+        const std::string& a = args.flag();
         std::string v;
         if (a == "--all") wanted.push_back("all");
         else if (a == "--list") list = true;
         else if (a == "--live") live = true;
-        else if (a == "--pipe") { if (!next(h.pipe_name)) return usage(); }
+        else if (a == "--pipe") { if (!args.value(h.pipe_name)) return usage(); }
         else if (a == "--keep-temp") { h.keep_temp = true; passthrough.push_back(a); }
-        else if (a == "--test" || a == "--script") { if (!next(v)) return usage(); wanted.push_back(v); }
+        else if (a == "--test" || a == "--script") { if (!args.value(v)) return usage(); wanted.push_back(v); }
         else if (a == "--shots") {
-            if (!next(h.shots_dir)) return usage();
+            if (!args.value(h.shots_dir)) return usage();
             passthrough.push_back(a);
             passthrough.push_back(h.shots_dir);
         } else if (a == "--db" || a == "--ini") {
             std::string& seed = a == "--db" ? h.seed_db : h.seed_ini;
-            if (!next(seed)) return usage();
+            if (!args.value(seed)) return usage();
             // A mistyped path must not quietly run every test on an empty
             // database, where a "reads Stale" check could still pass, or on
             // the default settings.
@@ -296,7 +290,7 @@ int main() {
             passthrough.push_back(a);
             passthrough.push_back(seed);
         } else if (a == "--jobs") {
-            if (!next(v)) return usage();
+            if (!args.value(v)) return usage();
             jobs = std::atoi(v.c_str());
             if (jobs < 1) return usage();
         } else return usage();

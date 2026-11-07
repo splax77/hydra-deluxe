@@ -20,8 +20,19 @@ namespace hydra {
 
 enum class ChartFormat { None, Mid, Chart, Sng, Srb };
 
-// A path's chart format from its extension, any case: ".mid", ".chart",
-// ".sng", ".srb". Anything else is None.
+// One extension chart_format_of reads, with its leading dot, and the format
+// it names.
+struct ChartExtension {
+    std::string_view extension;
+    ChartFormat format;
+};
+
+// The one list of chart extensions: chart_format_of reads it, and a file
+// picker offers the same ones.
+const std::vector<ChartExtension>& chart_extensions();
+
+// A path's chart format from its extension (chart_extensions), any case.
+// Anything else is None.
 ChartFormat chart_format_of(std::string_view path);
 
 // Whether a chart format is a container: one file that holds the notes and the

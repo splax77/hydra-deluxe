@@ -166,9 +166,9 @@ bool srb_parse_metadata(const std::vector<uint8_t>& meta, SrbMetadata& out) {
     for (std::string* field : fields)
         if (!read_string(field)) return true;
 
-    // The binary fields after the strings, in order (the user's .srb format
-    // reference): twelve difficulty bytes, the preview start (i32), the icon
-    // name (a string), the playlist and album track numbers (i32 each), then
+    // The binary fields after the strings, in order (docs/srb-format.md):
+    // twelve difficulty bytes, the preview start (i32), the icon name (a
+    // string), the playlist and album track numbers (i32 each), then
     // song_length_ms (i32), then the 16-byte checksum. The table of contents
     // that follows is not read.
     uint32_t scratch = 0;

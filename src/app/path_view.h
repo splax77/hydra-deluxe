@@ -2,9 +2,8 @@
 // renders, built here so the derivation is testable without an ImGui frame.
 //
 // Every string below is exactly what the Paths tab shows; the view layer
-// (ui/paths_tab.cpp) only lays these out. The same forms were previously
-// composed inline in the draw functions, where no test could reach them.
-// Resolve the display facts once, render dumb.
+// (ui/paths_tab.cpp) only lays these out. Resolve the display facts once,
+// render dumb.
 //
 
 #ifndef HYDRA_APP_PATH_VIEW_H
@@ -54,7 +53,7 @@ struct BackendRowView {
     std::string tooltip;  // effective-ms explanation; empty when none
     std::string chord;
     std::string points;   // what the engine paid for the row; 0 when uncounted
-    std::string rating;   // summarystr + " (eff. ...)" + " <-- squeezed out (-N)" or " (uncounted)"
+    std::string rating;   // summarystr + " (eff. ...)" + " <-- squeezed out", then " (-N)" if counted
     bool warn = false;    // a squeezed-out row the engine counts (it costs points)
 };
 
@@ -83,7 +82,7 @@ struct ActivationRowView {
     std::string chord;           // Chord::rowstr(pro_drums), e.g. "[Kick - Green cymbal]"
     std::string early_fill;      // "Early fill: " + format_ms(positive = early); empty when not E-critical
     std::vector<TextLine> squeeze_sentences;  // one per SqIn/SqOut, see squeeze_sentences()
-    std::string scale_warning;  // the transfer-scale line; empty when no side a row or squeeze reads is scaled
+    std::string scale_warning;  // the transfer-scale line; empty when the scales are known and no side a row or squeeze reads is scaled
     bool scale_warn = false;    // orange: a shown scale moves a squeeze or backend figure
     std::string overfill_warning;  // cap-clamped anchor prose; empty when not clamped
     // "3 notes near the SP end": every stored row, with the hidden part after
@@ -125,9 +124,9 @@ ActivationsView build_activations(const Path& path, const HydraRecord& record,
                                   bool pro_drums = true);
 
 // The badges on an activation row: one per Activation::badge_timings() entry,
-// in its order, each worded with its ms whole and rounded to nearest
-// (format_ms_whole): "squeeze out 163 ms", "squeeze in 13 ms" for 12.6,
-// "early fill 30 ms". Each is warn-coloured by its own
+// in its order, each worded with its ms as format_ms writes it (D265):
+// "squeeze out 163.0 ms", "squeeze in 12.6 ms", "early fill 30.0 ms".
+// Each is warn-coloured by its own
 // ActivationTiming::difficult. Empty when the activation has no timing.
 std::vector<ActivationBadge> activation_badges(const Activation& act);
 
@@ -155,8 +154,8 @@ extern const char* const kOverfillHint;
 
 // ---- score breakdown -------------------------------------------------------
 
-// The eight lines, leading '\n's included (they reproduce the blank lines the
-// Python app printed).
+// The eight lines, leading '\n's included: they are the only separators
+// between the groups of lines.
 std::vector<std::string> build_score_breakdown(const Path& path);
 
 // ---- path list -------------------------------------------------------------
@@ -182,6 +181,10 @@ PathListView build_path_list(const HydraRecord& record);
 
 // ---- the path list as buttons (the Paths tab and the Preview's list) --------
 
+// What every list calls the best all-0 path: the Paths tab's heading over its
+// section, and the Path Builder's left-list row.
+inline constexpr const char* kBestAllZeroLabel = "Best all-0 path";
+
 // One path as a button in the list.
 struct PathButtonView {
     enum class Group { Optimal, Within, AllZero };
@@ -202,8 +205,8 @@ struct PathButtonView {
     bool timing_warn = false;  // Path::is_difficult()
     // The line under the title: "2,360 below optimal" on the all-0 path;
     // on every path of a record whose cap is below kSpActivationBars
-    // (core/timing.h), "A 1-bar cap can never activate Star Power."; else
-    // empty.
+    // (core/timing.h), the all-0 path included, "A 1-bar cap can never
+    // activate Star Power."; else empty.
     std::string detail;
 };
 
@@ -261,11 +264,10 @@ struct PathsTabUi {
 // ---- the Paths tab's views, kept between frames -----------------------------
 
 // The Paths tab's views, built once and kept until what they show changes.
-// The tab used to rebuild all of them every frame (60 times a second): the
-// list, every row's pathstring, every activation's rating. Each view here is
-// rebuilt only when its inputs move: the record (by its generation number),
-// the selected path, or the two display settings the ratings read. The rules
-// are left out of the key because they only change when Hydra restarts.
+// Each view here is rebuilt only when its inputs move: the record (by its
+// generation number), the selected path, or the display settings it reads.
+// The rules are left out of the key because they only change when Hydra
+// restarts.
 // Pointers inside point into the record, like build_path_list's.
 class PathsTabCache {
 public:

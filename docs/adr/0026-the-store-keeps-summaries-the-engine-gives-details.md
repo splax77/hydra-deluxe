@@ -131,7 +131,7 @@ SQLite read the pages it was throwing away. The window sat frozen and
 unpainted the whole time. The copy reads only the charts, results and meta
 tables and never touches a page of the dropped ones. A prototype of it took
 0.39 s on a cold disk. The merged code, timed with what is now
-`hydra_bench --upgrade` (then a test case in tests/test_store.cpp) on a cold
+`hydra_bench --upgrade` (then a test case that has since been removed) on a cold
 copy of the user's library, took 0.47 s
 for 38,255 rows (0.22 s opening, 0.24 s copying), and the file went from
 292 MB to 13 MB. That is the number to quote. The copy also

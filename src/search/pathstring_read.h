@@ -28,9 +28,9 @@ namespace hydra {
 // its windows section is read, and the multiplier-squeeze and score sections
 // are ignored. There each window is matched the same way, comparing the
 // candidate's Activation::notationstr_verbose with the text where the
-// previous window ended. Throws std::invalid_argument for empty text, for long
-// text whose section count is not the writer's, and for a window no fill can
-// place, naming its position.
+// previous window ended. Throws KindedError(ErrorKind::PathTextRefused) for
+// empty text, for long text whose section count is not the writer's, and for a
+// window no fill can place, naming its position.
 Path paths_from_pathstring(const Song& song, const SearchSettings& settings,
                            const std::string& text);
 

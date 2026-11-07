@@ -8,8 +8,9 @@
 
 #include "app/display_format.h"  // kFactSeparator
 #include "app/dynamics_breakdown.h"  // dynamics_kick2x_fact, fact_separator_dot
+#include "app/launch.h"
 #include "app/path_view.h"
-#include "app/user_messages.h"  // stale_text, kNoPathsFound
+#include "app/user_messages.h"  // stale_text, kNoPathsFound, plain_error_line
 #include "core/model.h"
 #include "imgui.h"
 #include "parse/song.h"  // display_title, display_artist, display_charter
@@ -30,23 +31,44 @@ namespace hydra::ui {
 
 namespace {
 
-// Title, "artist · charted by charter", and hide library / previous / next /
-// close at the right. Clone Hero rich-text tags (<color=...>) are stripped for
-// display; the title is display_title's, the artist display_artist's and the
-// charter display_charter's, so a missing title, artist or charter reads
-// "(unknown)".
+// Starts the Path Builder on the open song's chart file. A builder that
+// won't start leaves its reason on the status line.
+void open_in_path_builder(AppState& app) {
+    try {
+        app::launch_sibling(app::kPathBuilderExe, {app.selected->notespath});
+    } catch (const std::exception& e) {
+        app.set_problem(detail::path_builder_failed_text(e));
+    }
+}
+
+// Title, "artist · charted by charter", and open in Path Builder / hide
+// library / previous / next / close at the right. Clone Hero rich-text tags
+// (<color=...>) are stripped for display; the title is display_title's, the
+// artist display_artist's and the charter display_charter's, so a missing
+// title, artist or charter reads "(unknown)".
 void render_panel_header(AppState& app) {
     const ImGuiStyle& style = ImGui::GetStyle();
     const float button = ImGui::GetFrameHeight();
+    const float builder_w = button_slot_width(detail::kOpenInPathBuilderLabel);
     const float library_w = std::max(button_slot_width("Hide library"),
                                      button_slot_width("Show library"));
-    const float buttons_w = library_w + button * 3.0f + style.ItemSpacing.x * 3.0f;
+    const float buttons_w =
+        builder_w + library_w + button * 3.0f + style.ItemSpacing.x * 4.0f;
     const float left_x = ImGui::GetCursorPosX();
     const float top_y = ImGui::GetCursorPosY();
     const float text_w = ImGui::GetContentRegionAvail().x - buttons_w - style.ItemSpacing.x;
 
     // The buttons first, at the right edge, so the title can take the rest.
     ImGui::SetCursorPosX(left_x + text_w + style.ItemSpacing.x);
+    const bool no_builder = !app::sibling_exe_path(app::kPathBuilderExe);
+    begin_disabled_button(no_builder);
+    if (ImGui::Button(detail::kOpenInPathBuilderLabel, ImVec2(builder_w, button)))
+        open_in_path_builder(app);
+    end_disabled_button(no_builder);
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal | ImGuiHoveredFlags_AllowWhenDisabled))
+        ImGui::SetTooltip("%s", no_builder ? detail::path_builder_missing_hint().c_str()
+                                           : detail::kPathBuilderHint);
+    ImGui::SameLine();
     const bool hidden = library_hidden();
     if (ImGui::Button(hidden ? "Show library" : "Hide library", ImVec2(library_w, button)))
         remember_library_hidden(!hidden);
@@ -202,6 +224,16 @@ void render_view_progress(AppState& app) {
 }  // namespace
 
 namespace detail {
+
+std::string path_builder_missing_hint() {
+    return std::string(app::kPathBuilderExe) +
+           " isn't in Hydra's folder, so the Path Builder can't open. Reinstall Hydra to "
+           "restore it.";
+}
+
+std::string path_builder_failed_text(const std::exception& e) {
+    return "Hydra couldn't start the Path Builder. " + app::plain_error_line(e);
+}
 
 // The states a record-backed tab shows before its own content: the click's
 // progress, its cancel line, its error and "No paths found.". Returns true

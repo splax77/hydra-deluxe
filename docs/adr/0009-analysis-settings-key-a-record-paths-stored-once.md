@@ -5,8 +5,9 @@
 > per settings combination. The paths are no longer stored at all, so the
 > "stored once" half below, with its paths and references tables, is history.
 
-A record is now keyed by chart, chart mode, SP cap, ms limit, and score
-range — the full settings the analysis ran with. Records accumulate: one row
+A record is now keyed by chart, chart mode, SP cap, ms limit, score range and
+fill rule — the full settings the analysis ran with (`Profile` and `Lens` in
+src/store/record_store.h own the list). Records accumulate: one row
 per settings combination, and re-running a combination replaces only its own
 row. Underneath, the paths themselves are stored once each, identified by a
 fingerprint of their content, and every record that kept a path points at the
@@ -43,11 +44,11 @@ time a record loads; the flat payload is the whole truth.
 zero whatever the greyed-out box says, because the engine behaves identically
 either way. Two lensings that cannot differ must not be two keys.
 
-**Auto cap stops guessing.** Auto used to take the chart's newest row above 4
-bars and hope it ran under the current ms and depth settings — a heuristic
-ADR-0003 adopted because the settings were invisible. Now they are columns,
-so Auto matches them exactly: rows above 4 bars with the same ms limit and
-score range, current version first, newest first.
+**Settings are columns, so no lookup guesses.** Auto, a cap mode since
+removed, took the chart's newest row above 4 bars and hoped it ran under the
+current ms and depth settings — a heuristic ADR-0003 adopted because the
+settings were invisible. Now they are columns, so a lookup names the exact
+settings it wants (`RecordStore::lookup`).
 
 **Results survive across settings, not across versions.** When a new Hydra
 version re-analyzes a chart and mode, that chart's old-version rows are
@@ -57,9 +58,9 @@ in one pool would be poison.
 **Old rows migrate as stale, not as answers.** Rows written before this
 schema (including legacy uncapped imports) carry unknown settings, so they
 read Stale — the same thing users see after any release — and are replaced
-on re-analysis. The uncapped import used to restamp rows to Ready; it no
-longer can, because claiming a settings match we cannot verify is the exact
-bug this change removes.
+on re-analysis. The Uncapped import used to restamp rows to Ready. This change
+stopped that, because claiming a settings match we cannot verify is the exact
+bug it removes, and the import itself is gone now (see the note below).
 
 ## What this costs
 

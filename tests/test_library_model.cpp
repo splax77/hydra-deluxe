@@ -691,6 +691,25 @@ TEST_CASE("library model: a Ready row with no paths is Analyzed but has no facts
     CHECK(m.counts().analyzed == 2);
 }
 
+// The saved figure is the engine's, sign included; the squeeze filters read it
+// through shown_timing (facts_of), so a figure below 0 needs no timing.
+TEST_CASE("library model: the squeeze filters read the saved figure as shown") {
+    LibraryModel m;
+    m.set_charts({chart("inside", "Inside", "A", "C", "common"),
+                  chart("onend", "On End", "A", "C", "common")});
+    m.set_summaries({ready(1000, "1", 7, -315.8), ready(1000, "1", 7, 0.0)});
+    // -315.8 needs no timing, which reaches no floor; the raw figure would match.
+    m.set_query("squeeze>-400");
+    CHECK(titles(m) == std::vector<std::string>{"On End"});
+    // 0.0 is a timing to hit: it matches >=0 and <=0 and not the strict <0.
+    m.set_query("squeeze>=0");
+    CHECK(titles(m) == std::vector<std::string>{"On End"});
+    m.set_query("squeeze<=0");
+    CHECK(titles(m) == std::vector<std::string>{"Inside", "On End"});
+    m.set_query("squeeze<0");
+    CHECK(titles(m) == std::vector<std::string>{"Inside"});
+}
+
 TEST_CASE("library model: one chart in two folders gets both rows updated") {
     LibraryModel m;
     m.set_charts({chart("same", "Song", "A", "C", "Pack 1"), chart("same", "Song", "A", "C", "Pack 2")});

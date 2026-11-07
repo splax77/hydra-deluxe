@@ -4,7 +4,7 @@
 ;   /DHYDRA_VERSION=<x.y.z>   version parsed from CMakeLists.txt
 ;   /DHYDRA_APP_NAME=<name>   the name the app shows, from CMakeLists.txt
 ;   /DHYDRA_APP_USER_MODEL_ID=<id>  the taskbar identity, from CMakeLists.txt
-;   /DHYDRA_STAGE=<dir>       cmake --install staging dir (exes, resource/, docs)
+;   /DHYDRA_STAGE=<dir>       cmake --install staging dir (CMakeLists.txt's install rules)
 ;   /DHYDRA_REDIST=<dir>      dir holding VC_redist.x64.exe
 ;   /DHYDRA_OUTPUT=<dir>      where setup.exe goes (the default preset's
 ;                             build folder + \installer, from CMakePresets.json)
@@ -84,8 +84,11 @@ Type: files; Name: "{autoprograms}\Hydra.lnk"
 [Icons]
 ; The AppUserModelID is the one src/core/version.h gives the running process
 ; (both come from CMakeLists.txt), so taskbar pins group with it. CLI tools
-; get no shortcuts.
+; get no shortcuts. The Path Builder's shortcut sets no AppUserModelID, so the
+; builder gets a taskbar button of its own instead of joining Hydra's (the
+; user's answer of 2026-10-29 in docs/superpowers/plans/2026-10-28-path-builder.md (removed; git show b29a3c28:docs/superpowers/plans/2026-10-28-path-builder.md)).
 Name: "{autoprograms}\{#HYDRA_APP_NAME}"; Filename: "{app}\Hydra.exe"; AppUserModelID: "{#HYDRA_APP_USER_MODEL_ID}"
+Name: "{autoprograms}\{#HYDRA_APP_NAME} Path Builder"; Filename: "{app}\HydraPathBuilder.exe"
 
 [Run]
 Filename: "{tmp}\VC_redist.x64.exe"; Parameters: "/install /quiet /norestart"; \

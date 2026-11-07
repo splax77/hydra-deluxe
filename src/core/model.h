@@ -3,11 +3,12 @@
 // The note/chord/path/record types the parser fills and the search produces.
 // The *string* forms here (Path::pathstring/pathstring_verbose,
 // Activation::notationstr) are user-visible and pinned by the tests:
-// comma-grouped scores, whole ms rounded to nearest (format_ms_whole), the
+// comma-grouped scores, timings in ms to one decimal (format_ms), the
 // exact +/- squeeze symbols and [KRYBG] slot layout.
 //
-// hydra.db stores no records, only summaries (D87); a record is rebuilt by
-// analyzing the chart.
+// hydra.db keeps one record per chart and profile, with its top paths
+// (docs/adr/0031). The HydraRecord here is the full analysis: it lives in
+// memory only, and a song is analyzed again to get it.
 
 #ifndef HYDRA_CORE_MODEL_H
 #define HYDRA_CORE_MODEL_H
@@ -40,7 +41,7 @@ inline constexpr int kCloneHeroSpCap = 4;
 constexpr bool is_clone_hero_cap(int sp_cap) { return sp_cap == kCloneHeroSpCap; }
 
 // A chart file that does not work. Chord and
-// the parsers raise it; the parsers swallow it per-op exactly as Python does.
+// the parsers raise it; the parsers swallow it per-op.
 // Its kind is ChartUnreadable unless the thrower names another (a refused
 // timing line, or NoNotesError's sentence).
 class ChartFileError : public KindedError {
@@ -80,9 +81,9 @@ struct ChordNote;
 std::string note_label(const ChordNote& note, bool pro);
 
 // ---- squeeze thresholds -------------------------------------------------
-// One home for the ms thresholds that define squeeze semantics. Each used to
-// be a repeated literal; the value is the interface, so a change here is a
-// deliberate rule change, not a stray edit.
+// One home for the ms thresholds that define squeeze semantics. The value is
+// the interface, so a change here is a deliberate rule change, not a stray
+// edit.
 
 // A squeeze (or early fill) tighter than this many ms counts as
 // difficult: it turns on warning colors, and it is the "Normal" floor of the
@@ -94,7 +95,7 @@ constexpr double kDifficultMs = 2.0;
 // is_difficult asks this.
 inline bool past_difficult_floor(double ms) { return ms > kDifficultMs; }
 
-// The backend leeway edge is a user rule now: core::Rules::backend_leeway_ms
+// The backend leeway edge is a user rule: core::Rules::backend_leeway_ms
 // (hydra_rules.ini), read by the engine and BackendSqueeze::summarystr.
 
 // The per-side hit window (the registrable Clone Hero Pro Drums window). One
@@ -212,8 +213,8 @@ public:
     };
 
     // Non-empty notes, in lane order (KRYBG). basesorted uses a *stable* sort
-    // on basescore (Python's list.sort is stable), which the scoring
-    // tie-break depends on. The one owner of a chord's note order.
+    // on basescore, which the scoring tie-break depends on. The one owner of
+    // a chord's note order.
     NoteList note_list(bool basesorted = false) const;
     // note_list copied into a vector.
     std::vector<ChordNote> notes(bool basesorted = false) const;
@@ -272,12 +273,13 @@ inline double squeeze_difficulty(bool is_sqin, double offset_ms) {
 }
 
 // The timing, in ms, the player needs for one Backend timings row: the one
-// figure its Rating word is banded on (D269). Zero or less means the row
-// needs nothing. The squeezed-out row needs its SqOut's squeeze_difficulty,
-// measured from the one SP end (D269 call 4). A plain row the engine counts
-// (core::counted_without_squeeze) needs nothing; one it does not count
-// needs its offset, the early hit that would win it. The leeway only
-// decides which of those two a plain row is.
+// figure its Rating word is banded on (D269). The squeezed-out row needs its
+// SqOut's squeeze_difficulty, measured from the one SP end (D269 call 4). At 0
+// that is still a timing to hit (timing_needs_hitting, D302), and the row reads
+// the first tier either way. A plain row the engine counts
+// (core::counted_without_squeeze) needs nothing, and only there does 0 mean
+// nothing; one it does not count needs its offset, the early hit that would
+// win it. The leeway only decides which of those two a plain row is.
 inline double backend_row_timing(double offset_ms, bool squeezed_out, double leeway_ms) {
     if (squeezed_out) return squeeze_difficulty(/*is_sqin=*/false, offset_ms);
     return core::counted_without_squeeze(offset_ms, leeway_ms) ? 0.0 : offset_ms;
@@ -324,11 +326,29 @@ inline bool is_e0(double e_offset, int skips) {
 // How hard an E0 activation's early fill is, in ms.
 inline double early_fill_difficulty(double e_offset) { return -e_offset + 0.0; }
 
-// Does an early fill need timing? Only when SP is ready no earlier than the
-// fill's deadline: a fill with time to spare spawns however the player hits
-// the activation. Zero slack counts, like a squeeze-out on the SP end (D51
-// call 4). Activation::hardest and the engine's limit check ask it.
-inline bool early_fill_needs_timing(double e_offset) { return early_fill_difficulty(e_offset) >= 0.0; }
+// Does a timing (a squeeze's or an early fill's difficulty, in ms) need
+// hitting? A figure of 0.0 ms is still a timing to hit, not "no timing"
+// (D302). early_fill_needs_timing and SPSqueeze::needs_no_timing ask it.
+inline bool timing_needs_hitting(double difficulty_ms) { return difficulty_ms >= 0.0; }
+
+// The timing a screen shows for a saved figure (engine_hardest_ms, kept as
+// the library saved it): the figure when it needs hitting
+// (timing_needs_hitting), else none. This is the one place a stored figure
+// becomes a shown timing; Path::difficulty() is the same rule on a live
+// path. The library saves the engine's own figure and applies this when it
+// shows it, so a change to this rule is a display change, not a re-analysis
+// (see the analysis version in store/stored_versions.h).
+inline std::optional<double> shown_timing(std::optional<double> saved) {
+    if (saved && timing_needs_hitting(*saved)) return saved;
+    return std::nullopt;
+}
+
+// Does an early fill need timing (timing_needs_hitting)? A fill with time to
+// spare spawns however the player hits the activation. Activation::hardest
+// and the engine's limit check ask it.
+inline bool early_fill_needs_timing(double e_offset) {
+    return timing_needs_hitting(early_fill_difficulty(e_offset));
+}
 
 // Is an activation's early fill inside a ms limit? An optional fill is never
 // a limit's business, as in Activation::difficulty. The engine's limit checks
@@ -355,8 +375,9 @@ inline bool allzero_activation(double e_offset, int skips) {
 // exactly on a meter/tempo change: an early (-) hit moves into the section
 // before the tick, a late (+) hit into the section at/after it.
 struct TransferScale {
-    double early = 1.0;  // r- : early (-) hits — difficult SqOuts, free SqIns
-    double late = 1.0;   // r+ : late (+) hits — difficult SqIns, free SqOuts,
+    double early = 1.0;  // r- : early (-) hits — notes inside Star Power
+                         //      (core::paid_by_sp_walk)
+    double late = 1.0;   // r+ : late (+) hits — notes past the SP end,
                          //      backend squeezes
     // Plain == on both doubles, no tolerance: a stored scale equals only the
     // same values (not bit-exact: -0.0 equals 0.0 and NaN equals nothing;
@@ -382,14 +403,12 @@ struct SPSqueeze {
     // needs no timing is asked too, by its own figure. The engine's limit
     // checks and Activation::within_ms_limit ask it.
     bool within_limit(double limit_ms) const { return timing_within_limit(difficulty(), limit_ms); }
-    // Whether the squeeze is already done with no frontend timing: the one
-    // answer the rating and the sentence both read. The SP walk pays a note
-    // on the SP end (core::paid_by_sp_walk), so a SqIn there is already in
-    // (D13), and a SqOut there still has to be hit late (D51 call 4).
-    bool needs_no_timing() const {
-        const bool inside_sp = core::paid_by_sp_walk(offset_ms);
-        return kind == SqueezeKind::SqIn ? inside_sp : !inside_sp;
-    }
+    // Whether the squeeze is already done with no frontend timing: its
+    // figure does not need hitting (timing_needs_hitting, D302). The badges,
+    // hardest() and the Paths tab's sentences read it. Which side of the SP
+    // end the note sits on is core::paid_by_sp_walk's question, not this
+    // one.
+    bool needs_no_timing() const { return !timing_needs_hitting(difficulty()); }
     const char* type_name() const {
         return kind == SqueezeKind::SqIn ? "SqIn" : "SqOut";
     }
@@ -433,8 +452,7 @@ struct BackendSqueeze {
 };
 
 // Multiplier squeeze. Construction validates the chord+combo and throws
-// std::invalid_argument when it is not a squeezable situation (mirroring the
-// ValueError that ScoreGraph.store_multsqueeze catches).
+// std::invalid_argument when it is not a squeezable situation.
 class MultSqueeze {
 public:
     MultSqueeze(Chord chord, int combo);
@@ -479,7 +497,7 @@ constexpr SpEndKind kLastSpEndKind = SpEndKind::SqIn;
 
 // Is this step a squeeze-in? The one statement of that rule: the engine's
 // running window (Engine::squeezed_in), the stored list
-// (core::sqin_phrase_ticks) and nth_sqin_step all ask it.
+// (sqin_phrase_ticks) and nth_sqin_step all ask it.
 inline bool is_sqin_kind(SpEndKind kind) { return kind == SpEndKind::SqIn; }
 
 // Is this step a clamp (the cap pinned the end on its phrase)? The one
@@ -551,8 +569,8 @@ struct ActivationTiming {
     // Must the path hit it? A squeeze that needs timing
     // (SPSqueeze::needs_no_timing false) or a required (E0) fill. hardest()
     // weighs these; it weighs an optional fill only when nothing else is, and
-    // never a free squeeze or a fill with time to spare
-    // (early_fill_needs_timing).
+    // never a squeeze that needs no timing or a fill with time to spare
+    // (early_fill_needs_timing). Both ask timing_needs_hitting (D302).
     bool required = false;
     // Warn-coloured on its own: SPSqueeze::is_difficult for a squeeze; for a
     // fill, required and past_difficult_floor.
@@ -561,7 +579,7 @@ struct ActivationTiming {
 
 struct Activation {
     // The search sets these on every activation it makes, so they are
-    // plain values (since path format 6, docs/adr/0017).
+    // plain values (docs/adr/0017).
     Timecode timecode;
     Chord chord;
     int frontend_sp_points = 0;
@@ -579,8 +597,8 @@ struct Activation {
     // The chart tick of the SP phrase chord this activation squeezed out:
     // the phrase its deact edge offered it when the path took the SqOut
     // branch (core::offered_phrase).
-    // Stamped by the search at copy-out (since path format 4, ADR 0014).
-    // Unset when the activation did not squeeze out, or on an older record.
+    // Stamped by the search at copy-out (ADR 0014).
+    // Unset when the activation did not squeeze out.
     // Nothing re-derives it.
     std::optional<int64_t> sqout_tick;
 
@@ -661,20 +679,22 @@ struct Activation {
     // With none of those, an E-critical activation that skipped fills still
     // answers with its optional early fill (D48 Q10): that fill's timing
     // decides whether the first fill shows up at all, which is what the skip
-    // count counts. Only timings that need hitting take part (D51 call 4,
-    // D13): a squeeze that needs no timing (SPSqueeze::needs_no_timing) or a
-    // fill with time to spare never names it.
+    // count counts. Only timings that need hitting take part (D51 call 4;
+    // timing_needs_hitting, D302): a squeeze that needs no timing
+    // (SPSqueeze::needs_no_timing) or a fill with time to spare never names
+    // it.
     // Empty means nothing to time.
     std::optional<HardestTiming> hardest() const;
     // Every timing this activation has, in the notation's order: the early
     // fill first when the activation is E-critical, then each squeeze in
     // sqinouts order. A fill with time to spare is listed too (D261), its
-    // figure below 0 ("early fill -56 ms": SP was ready 56 ms before the
+    // figure below 0 ("early fill -56.2 ms": SP was ready 56.2 ms before the
     // deadline). So is a squeeze that needs no timing
-    // (SPSqueeze::needs_no_timing), as 2.0 showed it (D80); its figure is 0
-    // or less ("squeeze in -316 ms": the note already lands 316 ms inside
-    // SP). hardest() picks from this list, leaving those two out. The Paths
-    // tab's row shows one badge per entry; empty means no badge.
+    // (SPSqueeze::needs_no_timing, D80); its figure is
+    // below 0 (timing_needs_hitting, D302; "squeeze in -315.8 ms": the note
+    // already lands 315.8 ms inside SP). hardest() picks from this list,
+    // leaving those two out. The Paths tab's row shows one badge per entry;
+    // empty means no badge.
     std::vector<ActivationTiming> badge_timings() const;
     // hardest()'s ms when it is a squeeze or a required fill; empty for an
     // optional early fill, so the search, filter and warning colors never
@@ -682,7 +702,7 @@ struct Activation {
     std::optional<double> difficulty() const;
     // Does this activation need any timing at all? The per-activation half of
     // Path::needs_timing. The Paths tab's path button and the stored summary
-    // read Path::difficulty(), which rests on hardest() (D51 call 4, D13). The
+    // read Path::difficulty(), which rests on hardest() (D51 call 4, D302). The
     // row badges alone also show a squeeze that needs no timing
     // (SPSqueeze::needs_no_timing; badge_timings, D80) and a fill with time
     // to spare (D261).
@@ -695,7 +715,7 @@ struct Activation {
     bool is_difficult() const;
 
     // Is this backend the note squeezed out of SP? Compares against the
-    // sqout_tick the engine stored (path format 4 on, ADR 0014), so no display re-derives it.
+    // sqout_tick the engine stored (ADR 0014), so no display re-derives it.
     bool is_sqout_backend(const BackendSqueeze& bsq) const;
 
     // The squeezed-out chord's row, or nullptr when the activation did not
@@ -794,6 +814,13 @@ struct Path {
     // variant's is its own: the engine stores it and the record keeps it per
     // variant (D3, finding 89), so prepare_variants leaves it alone.
     std::vector<int64_t> trailing_bank_ticks;
+    // The fills passed over after the path's last activation, in chart order:
+    // what Activation::skipped_fill_ticks lists before each activation, for
+    // the stretch after the last one. The search's branch_activate decides
+    // which fills count as passed over. A path with no activation lists them
+    // from the start of the song. A variant's is its own, as
+    // trailing_bank_ticks is, so prepare_variants leaves it alone too.
+    std::vector<int64_t> trailing_skipped_fill_ticks;
 
     // Bars left after the last window: one per stored arrival.
     int leftover_sp() const { return static_cast<int>(trailing_bank_ticks.size()); }
@@ -856,6 +883,26 @@ struct Path {
     double avg_mult() const;
 };
 
+// The engine's own hardest figure for a path, sign included: the largest of
+// every squeeze's difficulty() and every E0 fill's e_difficulty() over the
+// activations the path walks, none when it has neither. It does not ask
+// whether a figure needs hitting (timing_needs_hitting), so the library saves
+// it whole and shown_timing applies that rule when the figure is shown. It has
+// two callers, so a saved figure is worked out one way: the store's summary of
+// a fresh analysis (path_row_of) and the one-time fill of rows an older build
+// left empty (app::fill_saved_hardest).
+inline std::optional<double> engine_hardest_ms(const Path& path) {
+    std::optional<double> best;
+    auto take = [&best](double ms) {
+        if (!best || ms > *best) best = ms;
+    };
+    for (const Activation& act : path.walk_activations()) {
+        for (const SPSqueeze& sq : act.sqinouts) take(sq.difficulty());
+        if (const std::optional<double> e = act.e_difficulty()) take(*e);
+    }
+    return best;
+}
+
 // Which path this is, as a string. It names the path by its score and, for
 // every activation the path walks (walk_activations, the variant tail
 // included), that activation's tick and its deact tick. Two paths with the
@@ -868,9 +915,7 @@ std::string path_identity(const Path& path);
 struct HydraRecord {
     std::optional<double> ms_limit;
     std::optional<int> sp_cap;
-    // Always true since Auto went (2026-09-27): Auto was the only search that
-    // could stop before its score settled. The stored path details that
-    // carried it are gone (D87).
+    // Always true: no search stops before its score settles.
     bool sp_cap_converged = true;
     // The fingerprint of the rules the search ran under: Rules::fingerprint().
     // A saved record's profile stores it in its rules_fp column
@@ -937,9 +982,16 @@ std::string counted(int64_t n, const std::string& one, const std::string& many);
 // The verb a sentence puts after such a count: "has" at exactly 1, else "have".
 const char* has_have(int64_t n);
 
-// A timing in whole ms with its unit: 12.4 reads "12 ms", 12.6 reads
-// "13 ms". Rounds to nearest; an exact half rounds away from zero
-// (std::lround), D48 Q2.
+// Every timing a window needs, wherever a screen or the copied path shows
+// it: one decimal, a space, the unit ("163.5 ms", D57 item 1; D265). The
+// caller decides the sign; the early fill passes
+// Activation::e_difficulty(true), which is positive when the fill is hit
+// early.
+std::string format_ms(double ms);
+
+// A ms limit the user sets, in whole ms with its unit: 12.4 reads "12 ms",
+// 12.6 reads "13 ms". Rounds to nearest; an exact half rounds away from zero
+// (std::lround), D48 Q2. A timing a window needs is format_ms's (D265).
 std::string format_ms_whole(double ms);
 
 }  // namespace hydra

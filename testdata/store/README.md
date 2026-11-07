@@ -1,6 +1,6 @@
 # Real old databases
 
-This folder holds databases written by real Hydra releases. Four are too old to convert; the fifth, `v2.12.1_library.db`, is the release users have now and has its own section at the end.
+This folder holds databases written by real Hydra releases. Four are too old to convert; the fifth, `v2.12.1_library.db`, still opens and has its own section at the end.
 
 ## Too-old fixtures
 
@@ -147,7 +147,7 @@ All four files hold these same three rows.
 
 ## v2.12.1_library.db
 
-This file is what the v2.12.1 release's `hydra_batch` wrote. v2.12.1 is the release users have now. Its `charts` table has no `album` column and its records carry an older results stamp, so opening it in this build is the upgrade a user's first launch makes. `tests/test_store_open.cpp` ("a library file v2.12.1 wrote opens, gains the album column, and keeps its records") opens a copy of it the way the app does and checks that the file gains the column, keeps every record, and reads those records as Stale.
+This file is what the v2.12.1 release's `hydra_batch` wrote. Its `charts` table has no `album` column and its records carry an older results stamp, so opening it in this build is the upgrade a v2.12.1 user's first launch makes. `tests/test_store_open.cpp` ("a library file v2.12.1 wrote opens, gains the album column, and keeps its records") opens a copy of it the way the app does and checks that the file gains the column, keeps every record, and reads those records as Stale.
 
 | File | Release | Commit | Bytes |
 |---|---|---|---|

@@ -2,7 +2,7 @@
 
 These rules apply to every agent: implementers, reviewers, integrators and read-only scouts. Your task brief (the file that sent you here) adds the rest. It names your task id, the session id, your owned files, your worktree or checkout, your scratch folder and the tests you may run. Where the brief and this page disagree, stop and report it; do not pick one.
 
-Each rule below exists because an agent lost time to it, or did damage with it, in an earlier round. A few are enforced by hooks: the status line, the call and time budget, the delete rule, the whole-library guard and the commit trailers. The rest are instructions with no hook behind them, and they bind you just the same. The hooks live in `C:\Users\Patrick\.claude\gates\`; its `README.md` says what each one does.
+Each rule below exists because an agent lost time to it, or did damage with it, in an earlier round. A few are enforced by hooks: the status line, the call and time budget, the delete rule, the whole-library guard, the Bash shapes that fail on Windows and the commit trailers. The rest are instructions with no hook behind them, and they bind you just the same. The hooks live in `C:\Users\Patrick\.claude\gates\`; its `README.md` says what each one does.
 
 ## Your agent id
 
@@ -25,6 +25,8 @@ Read files with the Read tool, using `offset` and `limit` for a range. Never use
 ## Shells on Windows
 
 Run commands with the PowerShell tool. Keep the Bash tool for POSIX scripts. In Bash, write paths with forward slashes (`C:/Users/...`): Bash strips the backslashes from an unquoted `C:\Users\...`, so the command reaches a path that does not exist. Never wrap PowerShell code in a Bash call (`powershell -Command "..."`); run it with the PowerShell tool instead. Build with `build_cpp.ps1`, because `cmake` is not on PowerShell's PATH.
+
+A hook refuses five shapes in a Bash call, because each one fails or is silently changed on its way through Git Bash. A command over 1,000 characters: write the content to a file with the Write tool and run the file (`bash <file>`, `python -I <file>`). A `git commit`'s own text does not count toward that limit, so a long commit message is fine. A doubled backslash outside double quotes: put the text in a file the same way, or use forward slashes. `cmd` with a slash flag: run it from the PowerShell tool, or put `MSYS_NO_PATHCONV=1` before it. A ref with a slash before `:.` and a dotted path, such as `origin/main:.gitignore`: name a ref with no slash, or run the git command from the PowerShell tool. A Windows path ending in a backslash just before its closing double quote: drop the backslash, or use forward slashes. `bash_windows_rule.py` in the gates folder owns the rule and the number.
 
 ## Editing files
 
@@ -102,7 +104,7 @@ Before you commit, do the reviewer's first step yourself. List each question you
 
 Every rule in Hydra is worked out in one place. A test pins a literal from one run or calls the production function; it never computes the expected value again. A new number (a threshold, depth, floor or tolerance) needs a user decision your brief names; if it has none, stop and ask.
 
-A comment names where a rule lives; it never restates the rule. "Test files: see `Test-TestFile`" stays true when the code changes. "Files under tools/ named test_*.py" is a second copy of the rule, and it drifts the next time someone edits the pattern. Comments may say why a rule exists, or what it deliberately leaves out, as long as they don't spell out what it matches. The same goes for header comments, help text and docs: point at the owner. Four review rounds in a row once failed on comments like these, most of them written by the fix rounds themselves.
+A comment names where a rule lives; it never restates the rule. "Test files: see `test_file`" stays true when the code changes. "Files under tools/ named test_*.py" is a second copy of the rule, and it drifts the next time someone edits the pattern. Comments may say why a rule exists, or what it deliberately leaves out, as long as they don't spell out what it matches. The same goes for header comments, help text and docs: point at the owner. Four review rounds in a row once failed on comments like these, most of them written by the fix rounds themselves.
 
 ## Plain English
 

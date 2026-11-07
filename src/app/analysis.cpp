@@ -57,12 +57,12 @@ std::string relpath(const std::string& target, const std::string& base) {
     return t;
 }
 
-// ---- MD5 (Windows CNG), mirroring hashlib.file_digest(f, "md5") ----------
+// ---- MD5 (Windows CNG) -----------------------------------------------------
 //
 // The MD5 machinery song_id_read (below) uses; which bytes make a chart's id
 // is song_id_read's rule, not this section's. A file is streamed in chunks
-// (like Python's file_digest) instead of read into one buffer, with the
-// algorithm provider opened once per scan worker instead of once per file.
+// instead of read into one buffer, with the algorithm provider opened once
+// per scan worker instead of once per file.
 
 class Md5Provider {
 public:
@@ -122,19 +122,7 @@ std::string stream_md5(BCRYPT_ALG_HANDLE alg, const std::string& path) {
     return hash.hex();
 }
 
-// What the scan reads from one chart's metadata. The names are empty when
-// missing or blank; discover_charts applies the one fallback for each
-// (title_or_unknown, artist_or_unknown, charter_or_unknown). The album has
-// no fallback: blank stays blank.
-struct ChartMeta {
-    std::string title;
-    std::string artist;
-    std::string charter;
-    std::string album;
-    store::ChartTimingMeta timing;
-};
-
-// ---- song.ini metadata, mirroring ScanItem.get_metadata_ini --------------
+// ---- song.ini metadata -----------------------------------------------------
 //
 // The name, artist, charter, album, song_length and delay keys, read through
 // read_song_ini_keys (the one song.ini reader, shared with the Preview's
@@ -146,8 +134,8 @@ ChartMeta read_metadata_ini(const std::string& path) {
     ChartMeta out;
     if (auto it = ini.find("name"); it != ini.end()) out.title = it->second;
     if (auto it = ini.find("artist"); it != ini.end()) out.artist = it->second;
-    // Only `charter` — Python's get_metadata_ini never reads the `frets`
-    // alias, and some inis carry both with different values.
+    // Only `charter`, never the `frets` alias: some inis carry both with
+    // different values.
     if (auto it = ini.find("charter"); it != ini.end()) out.charter = it->second;
     if (auto it = ini.find("album"); it != ini.end()) out.album = it->second;
     if (auto it = ini.find("song_length"); it != ini.end())
@@ -156,12 +144,11 @@ ChartMeta read_metadata_ini(const std::string& path) {
     return out;
 }
 
-// ---- .sng metadata, mirroring ScanItem.get_metadata_sng -------------------
+// ---- .sng metadata --------------------------------------------------------
 //
 // Parses the metadata block from sng_read_head's bytes (the file's header
-// through its file table), never the audio after it. A truncated buffer
-// degrades exactly like a truncated file did: the bounds checks stop early
-// and missing keys stay empty.
+// through its file table), never the audio after it. On a truncated buffer
+// the bounds checks stop early and missing keys stay empty.
 
 ChartMeta parse_sng_metadata(const std::vector<uint8_t>& buf) {
     ChartMeta out;
@@ -183,7 +170,8 @@ ChartMeta parse_sng_metadata(const std::vector<uint8_t>& buf) {
 // Clone Hero's bundled songs (see parse/srb.h for the reverse-engineered
 // container layout). srb_read_metadata reads the metadata block; the scan
 // reads it once for the song's id and its names (song_id_read), and
-// read_chart_timing_meta for the stated length. A .srb states no delay.
+// read_chart_meta for one chart's names and stated length. A .srb states no
+// delay.
 
 ChartMeta srb_chart_meta(const SrbMetadataRead& read) {
     ChartMeta out;
@@ -198,7 +186,7 @@ ChartMeta srb_chart_meta(const SrbMetadataRead& read) {
     return out;
 }
 
-// For read_chart_timing_meta: any parse failure leaves the fields empty,
+// For read_chart_meta: any parse failure leaves the fields empty,
 // matching the .sng path.
 ChartMeta parse_srb_metadata(const ByteSource& src) {
     try {
@@ -216,7 +204,7 @@ ChartMeta parse_srb_metadata(const ByteSource& src) {
 // folder's pending work. Read: a batch_worker_count() thread pool hashes the
 // chart files and reads their metadata, short-circuiting through the rescan
 // cache when a chart's fingerprint is unchanged (sig_unchanged). Results keep the
-// walk's order, so output ordering matches the old serial scanner.
+// walk's order.
 
 // One chart the walk found, before any of its bytes have been read. Folder
 // charts are a notes.mid/.chart plus a song.ini; .sng and .srb are standalone
@@ -262,14 +250,15 @@ ChartKind chart_kind_of(const std::string& name) {
 // ---- the song id ----------------------------------------------------------
 //
 // A chart's id (its hyhash) is the id Clone Hero gives the song: the one its
-// song cache, its saved scores and dmleaderboards key the song by. Checked
-// against the game's songcache.bin on 2026-10-09 (54 .sng, 30 .srb files):
+// song cache, its saved scores and dmleaderboards key the song by. The checks
+// against the game's songcache.bin are CR-10 to CR-12 in
+// docs/clone-hero/01-reading-a-chart.md:
 //   a folder chart: the MD5 of its notes file;
 //   a .sng:         the MD5 of the notes file inside it (sng_read_notes),
 //                   never of the whole container;
-//   a .srb:         the checksum its metadata stores. It equals the MD5 of
-//                   the notes stream in 26 of the 30 shipped files, so it is
-//                   read, never recomputed.
+//   a .srb:         the checksum its metadata stores. It does not always equal
+//                   the MD5 of the notes stream, so it is read, never
+//                   recomputed.
 
 // What one read of a chart file gives: its id, and for a .sng or .srb the
 // names and timing its metadata holds (a folder chart's come from its
@@ -435,16 +424,19 @@ store::ChartLibraryCache load_scan_cache(store::RecordStore& store) {
     }
 }
 
-store::ChartTimingMeta read_chart_timing_meta(const std::string& notespath) {
+ChartMeta read_chart_meta(const std::string& notespath) {
     switch (chart_kind_of(notespath)) {
-        case ChartKind::Sng:
-            return parse_sng_metadata(sng_read_head(file_byte_source(notespath))).timing;
-        case ChartKind::Srb: return parse_srb_metadata(file_byte_source(notespath)).timing;
+        case ChartKind::Sng: return parse_sng_metadata(sng_read_head(file_byte_source(notespath)));
+        case ChartKind::Srb: return parse_srb_metadata(file_byte_source(notespath));
         case ChartKind::Folder: break;
     }
     const std::string ini = find_song_ini(parent_folder(notespath));
     if (ini.empty()) return {};
-    return read_metadata_ini(ini).timing;
+    return read_metadata_ini(ini);
+}
+
+store::ChartTimingMeta read_chart_timing_meta(const std::string& notespath) {
+    return read_chart_meta(notespath).timing;
 }
 
 store::ChartTimingMeta chart_timing_meta(const std::optional<store::ChartTimingMeta>& scanned,

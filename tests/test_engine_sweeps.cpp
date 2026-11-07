@@ -35,6 +35,7 @@
 #include "search/graph.h"
 #include "search/pather.h"
 #include "song_digest.h"  // record_hash
+#include "store/record_store.h"
 
 using namespace hydra;
 
@@ -571,6 +572,100 @@ TEST_CASE("search_allzero returns only all-0 paths inside the 0 ms limit") {
     MESSAGE("checked " << checks << " charts, " << found << " with an all-0 path, "
                        << zero_ms_charts.size() << " of them with a 0 ms timing, "
                        << e1_charts.size() << " with an E1");
+}
+
+// A squeeze-in whose note sits exactly on the SP end needs 0.0 ms
+// (SPSqueeze::needs_no_timing), and the library saves the engine's own figure
+// (engine_hardest_ms) and shows it through shown_timing. Every count below is
+// pinned from one run at the GUI's default settings, so a change to which
+// timings count, to what the store saves or to the all-0 list shows here.
+TEST_CASE("corpus: squeeze-ins at exactly 0 and what they change") {
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    int charts = 0;
+    // Every kept path, the main search's and the all-0 pass's, as
+    // test_pathstring_read.cpp walks them. An activation is counted once for
+    // each path that walks it, so a shared variant tail counts again.
+    int sqin_at_zero_acts = 0;      // activations with a squeeze-in at offset 0.0
+    int sqin_at_zero_timed = 0;     // ... of them, whose difficulty() is 0.0
+    int best_timed_by_sqin = 0;     // best paths at 0.0 through such a squeeze-in
+    // Every path record_of keeps, read off the PathRow it builds.
+    int saved_rows = 0;
+    std::vector<std::string> shown_differs;  // shown_timing(saved) != difficulty()
+    int saved_negative = 0;         // a figure below 0: saved, shown as none
+    // sqin_count > 0 and difficulty() empty: the rows a fresh analysis leaves
+    // with nothing to time (every squeeze-in inside Star Power). This is not
+    // the count the refill's query takes from an old library. That query
+    // (hardest_ms IS NULL AND sqin_count > 0) also takes the old rows whose
+    // only timing is a squeeze-in at exactly 0.0, which were empty then and
+    // show 0.0 now; counting those needs the old rule, which no longer exists
+    // in the code, so this number is lower than what the query would take.
+    int still_empty_with_sqin = 0;
+    // The all-0 list, as it was on the code before the squeeze-in at 0.0 became
+    // a timing; pinned so a change to it shows.
+    int allzero_charts = 0, allzero_paths = 0;
+
+    for (const std::string& chart : corpus::chart_paths()) {
+        const Song& song = corpus::song(chart, cfg.reading());
+        if (song.is_empty()) continue;
+        const HydraRecord& rec = corpus::analyzed(chart, cfg);
+        ++charts;
+
+        std::vector<const Path*> kept = rec.all_paths();
+        const std::vector<const Path*> allzero = rec.all_allzero_paths();
+        if (!allzero.empty()) ++allzero_charts;
+        allzero_paths += static_cast<int>(allzero.size());
+        kept.insert(kept.end(), allzero.begin(), allzero.end());
+        for (const Path* p : kept)
+            for (const Activation& a : p->walk_activations()) {
+                const bool at_zero = std::any_of(
+                    a.sqinouts.begin(), a.sqinouts.end(), [](const SPSqueeze& sq) {
+                        return sq.kind == SqueezeKind::SqIn && sq.offset_ms == 0.0;
+                    });
+                if (!at_zero) continue;
+                ++sqin_at_zero_acts;
+                if (a.difficulty() == std::optional<double>(0.0)) ++sqin_at_zero_timed;
+            }
+
+        if (rec.paths.empty()) continue;
+        const Path& best = rec.best_path();
+        if (best.difficulty() == std::optional<double>(0.0)) {
+            const ActivationWalk acts = best.walk_activations();
+            const HardestTiming at_zero{TimingPart::SqueezeIn, 0.0};
+            if (std::any_of(acts.begin(), acts.end(),
+                            [&](const Activation& a) { return a.hardest() == at_zero; }))
+                ++best_timed_by_sqin;
+        }
+
+        const store::RecordRow row = store::record_of("", rec);
+        const std::vector<const Path*> ranked = rec.all_paths();
+        for (size_t i = 0; i < row.paths.size(); ++i) {
+            const store::PathRow& saved = row.paths[i];
+            const Path& path = *ranked[i];
+            // record_of keeps all_paths() in order; a row paired with another
+            // path would make the comparison below meaningless.
+            REQUIRE(saved.path == path.pathstring());
+            REQUIRE(saved.score == path.totalscore());
+            ++saved_rows;
+            if (shown_timing(saved.hardest_ms) != path.difficulty())
+                shown_differs.push_back(chart + " " + saved.path);
+            if (saved.hardest_ms && *saved.hardest_ms < 0.0) ++saved_negative;
+            if (saved.sqin_count > 0 && !path.difficulty()) ++still_empty_with_sqin;
+        }
+    }
+
+    for (const std::string& d : shown_differs) CHECK_MESSAGE(false, "shown differs: " << d);
+    CHECK(charts == 97);
+    CHECK(sqin_at_zero_acts == 56);
+    CHECK(sqin_at_zero_timed == 56);
+    CHECK(best_timed_by_sqin == 5);
+    CHECK(saved_rows == 369);
+    // A fresh row shows what Path::difficulty() shows: the check that saving
+    // the engine's figure changed nothing on screen.
+    CHECK(shown_differs.size() == 0);
+    CHECK(saved_negative == 86);
+    CHECK(still_empty_with_sqin == 75);
+    CHECK(allzero_charts == 68);
+    CHECK(allzero_paths == 69);
 }
 
 TEST_CASE("score graph: the backend rows are sized once, one per chord") {

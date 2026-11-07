@@ -1,6 +1,6 @@
 # Hydra Deluxe User Guide
 
-This guide walks through Hydra Deluxe's screen in the order you meet it: the version bar and the toolbar, the analysis settings, the library and its search, the song panel with its four tabs, analyzing the whole library, and last the reports.
+This guide walks through Hydra Deluxe's screen in the order you meet it: the version bar and the toolbar, the analysis settings, the library and its search, the song panel with its four tabs, analyzing the whole library, the reports, and last the Path Builder, a second program.
 
 It covers Hydra Deluxe only. The public Hydra by DragonDelgar has a different screen; see [how the two differ](differences-from-public-hydra.md). For what the path notation and squeezes mean, see the [public Hydra wiki](https://github.com/DragonDelgar/hydra/wiki).
 
@@ -207,10 +207,10 @@ Searching ignores case and accents, so `ALLISTER` finds Allister and `beyonce` f
 | `folder:` | the folder only | `folder:"tier 4"` finds the 5 songs in Tier 4 |
 | `title:` | the title only | `title:everlong` finds Everlong |
 | `stars:N` | songs whose best path earns exactly N stars (0 to 7) | `stars:7` finds Burnout once it is analyzed |
-| `squeeze<=N` | songs whose best path's hardest squeeze or required early fill is N ms or less | `squeeze<=200` keeps Burnout (163 ms); `squeeze<=20` drops it |
-| `squeeze<N` | songs whose best path's hardest squeeze or required early fill is less than N ms | `squeeze<200` keeps Burnout (163 ms); `squeeze<163` drops it |
-| `squeeze>N` | songs whose best path's hardest squeeze or required early fill is more than N ms | `squeeze>20` keeps Burnout (163 ms); `squeeze>163` drops it |
-| `squeeze>=N` | songs whose best path's hardest squeeze or required early fill is N ms or more | `squeeze>=163` keeps Burnout (163 ms); `squeeze>=200` drops it |
+| `squeeze<=N` | songs whose best path's hardest squeeze or required early fill is N ms or less | `squeeze<=200` keeps Burnout (163.0 ms); `squeeze<=20` drops it |
+| `squeeze<N` | songs whose best path's hardest squeeze or required early fill is less than N ms | `squeeze<200` keeps Burnout (163.0 ms); `squeeze<163` drops it |
+| `squeeze>N` | songs whose best path's hardest squeeze or required early fill is more than N ms | `squeeze>20` keeps Burnout (163.0 ms); `squeeze>163` drops it |
+| `squeeze>=N` | songs whose best path's hardest squeeze or required early fill is N ms or more | `squeeze>=163` keeps Burnout (163.0 ms); `squeeze>=200` drops it |
 
 You can mix them: `charter:hoph2o stars:7`. A song at exactly N ms matches `squeeze<=N` and `squeeze>=N`, and drops out of `squeeze<N` and `squeeze>N`. A low and a high squeeze filter together give a range: `squeeze>=10 squeeze<=200` keeps Burnout. A path that needs no timing passes any `squeeze<=` or `squeeze<` limit and never matches `squeeze>` or `squeeze>=`, since it has nothing to squeeze.
 
@@ -225,6 +225,8 @@ The line under the title appears only while you search for words and the `Folder
 Click a song to open its panel beside the library. Opening a song analyzes it under the current settings and shows its paths. The top shows the title, the artist and the charter. The `<` and `>` buttons step to the previous and next song in the list. The `X` button, or `Escape`, closes the panel.
 
 `Hide library`, left of `<`, gives the song panel the whole window. It then reads `Show library`, which puts the library back at the width you left it. `<` and `>` still step through the list while it's hidden. Closing the panel always brings the library back. Hydra Deluxe remembers the choice, so the next song opens the same way, even after a restart.
+
+`Open in Path Builder`, left of `Hide library`, opens the song in the [Path Builder](#path-builder).
 
 Below the header is the headline: the best score, its path, and one line like `Optimal path · 7 stars`. When the chart has 2x kicks, that line also says how many there are and what share of the chart's kick notes they make up, like `Optimal path · 7 stars · 37 2x kicks (8%)` for Acid Romance. The count is the same with 2x Bass on or off. A chart with no 2x kicks shows no such part. Under it are four tabs: `Paths`, `Preview`, `Dynamics` and `Stars`.
 
@@ -256,9 +258,9 @@ The right side starts with a summary, like `Activations 3 · no SP left over`. U
 
 The timeline runs to the end of the song, worked out the way Clone Hero works it out, from the chart's own files. The song usually ends at its stated length: the `song_length` line in song.ini, the same key in a .sng, or the length stored in a .srb. When the chart also has an end event (`[end]` in a .mid, `end` or `[end]` in a .chart), the song ends at whichever of the two comes first. A stated length that ends before the chart's last note ends is wrong, so Hydra Deluxe ignores it, the same as when the chart states no length. Then the song ends at the end event, or, with no end event, where the last note of any instrument and difficulty ends (a sustain counts to its end). An end event less than one beat after that last note doesn't count, as in Clone Hero. Like the game, Hydra Deluxe adds one second after the end. Hydra Deluxe never opens the audio to find the length, so a chart with no audio still gets a timeline. Clone Hero measures the audio where Hydra Deluxe reads the stated length, so when a stated length is wrong but still runs past the last note, your song can end at a different time in the game. A song with a long outro ends its last mark well before the right edge. A chart with no length at all, meaning no stated length, no end event and no notes, shows no marks.
 
-Each activation is one row. It shows the activation's number, its notation, its measure (like `m32.1.0`), the bars of SP banked when you activate (like `1 bar` or `2 bars`), and a badge for each of its timings, like `squeeze out 163 ms` or `early fill 20 ms`; a row with an early fill and a squeeze shows both, the fill first. When the right side is too narrow for a row's badges to fit beside its bars, the badges move under the row's measure, still inside the row. If they don't fit on one line there, they wrap onto more lines. Click a row to open it, or use `Expand all` and `Collapse all`. Every row starts closed.
+Each activation is one row. It shows the activation's number, its notation, its measure (like `m32.1.0`), the bars of SP banked when you activate (like `1 bar` or `2 bars`), and a badge for each of its timings, like `squeeze out 163.0 ms` or `early fill 20.0 ms`; a row with an early fill and a squeeze shows both, the fill first. When the right side is too narrow for a row's badges to fit beside its bars, the badges move under the row's measure, still inside the row. If they don't fit on one line there, they wrap onto more lines. Click a row to open it, or use `Expand all` and `Collapse all`. Every row starts closed.
 
-An activation that skips fills keeps its early fill badge, because that timing decides whether the first fill shows up. An early fill with time to spare still gets a badge, with a figure below 0: `early fill -56 ms` means your Star Power is ready 56 ms before the fill's deadline, so the fill shows up however you hit the activation. This holds while that margin is under 60 ms, the same fills that carry the `E` in the notation; with 60 ms or more to spare the row has no early fill badge. That badge is never orange, and it never counts as a path's hardest timing. A squeeze that happens on its own still gets one too, with a figure of 0 or below: `squeeze in -316 ms` means the phrase's last note already lands 316 ms before Star Power ends.
+An activation that skips fills keeps its early fill badge, because that timing decides whether the first fill shows up. An early fill with time to spare still gets a badge, with a figure below 0: `early fill -56.2 ms` means your Star Power is ready 56.2 ms before the fill's deadline, so the fill shows up however you hit the activation. This holds while that margin is under 60 ms, the same fills that carry the `E` in the notation; with 60 ms or more to spare the row has no early fill badge. That badge is never orange, and it never counts as a path's hardest timing. A squeeze that happens on its own still gets one too, with a figure below 0: `squeeze in -315.8 ms` means the phrase's last note already lands 315.8 ms before Star Power ends.
 
 An open row shows these, in order:
 
@@ -306,7 +308,7 @@ The Preview plays the chart as a 3D note highway, in time with the song's audio.
 
 ![The Preview tab for Burnout, stopped at its first activation](images/preview-tab.png)
 
-*The Preview stopped at Burnout's first activation. The next activation box shows `3- (163 ms)`, and the SP meter runs up the right edge.*
+*The Preview stopped at Burnout's first activation. The next activation box shows `3- (163.0 ms)`, and the SP meter runs up the right edge.*
 
 Where Star Power runs out, a bright teal line crosses the floor and a small teal triangle sits just outside each railing, level with the line. A note just before the end can cover the line, but the triangles stay in view, so you can always see exactly where SP stops.
 
@@ -349,7 +351,7 @@ The SP meter, at the right edge, is a gauge of banked Star Power, one line per b
 
 The drain box, at the top right beside the meter, shows how long one bar of SP lasts at the current tempo, like `1 bar / 2.5 s`. While SP is running on the path it reads `SP drain` and `empties in` the time left, in teal like the floor. Otherwise it reads `SP drain (if activated)` and `full meter`: how long a full meter would last at the current tempo.
 
-The next activation box, at the top right under the drain box, starts with the next activation's number, like `Next: activation 2 of 3`. Under that is the activation in path notation with its timings, like `5+ (100 ms)`, and then where it is and its chord. After the last activation the box goes away. `Copy path` includes the same text for each activation.
+The next activation box, at the top right under the drain box, starts with the next activation's number, like `Next: activation 2 of 3`. Under that is the activation in path notation with its timings, like `5+ (100.0 ms)`, and then where it is and its chord. After the last activation the box goes away. `Copy path` includes the same text for each activation.
 
 The solo box appears right of the highway, a little below the middle, once you hit a solo's first note. It shows how much of the solo you have hit so far, like `85%`, and under that the notes, like `102 / 120 notes`. The percent is worked out the way Clone Hero works it out, so it can read one below the exact share. Hitting the solo's last note ends the solo. The box then shows `Perfect Solo!` for 1.5 seconds, then the solo bonus of 100 points per note, like `+12,000`, for 1.5 seconds, and then goes away. The path hits every note, so a solo always ends in `Perfect Solo!`. If a new solo starts while the box still shows the last one's result, the new solo takes over. The box works before the song is analyzed too.
 
@@ -580,9 +582,110 @@ Clicking a row selects its song, as in the path report. A `Not in your library` 
 
 The comparison goes out of date the same way the path report does, with the same strips. A batch marks it, and so does opening a song that saves a new result. So does a change to the difficulty, Pro Drums, 2x Bass, Note Shuffle, `1.0 fills`, the score range or the path limit, because those decide which of your results it compared against.
 
+## Path Builder
+
+The Path Builder is a second program that comes with Hydra Deluxe. You open a chart, build your own Star Power path by clicking fills, and see what each choice costs against the best path. It answers what Hydra Deluxe's own paths don't: what your path is worth, and where it loses points.
+
+It has no library. It opens one chart at a time and keeps no results after you close it, unless you save your path to a file.
+
+### Opening a chart in the Path Builder
+
+To open the song you have open in Hydra Deluxe, click `Open in Path Builder` at the top of the song panel, left of `Hide library`. If `HydraPathBuilder.exe` isn't in Hydra Deluxe's folder, the button is greyed and its tooltip reads "HydraPathBuilder.exe isn't in Hydra's folder, so the Path Builder can't open. Reinstall Hydra to restore it."
+
+To start the Path Builder on its own, use the `Hydra Deluxe Path Builder` shortcut in the Start Menu, or run `HydraPathBuilder.exe` from the folder Hydra Deluxe is installed in. To open a chart, use `File` > `Open...` (`Ctrl+O`), drag the chart file onto the window, or give the chart file on the command line. It reads the same `.mid`, `.chart`, `.sng` and `.srb` charts as Hydra Deluxe.
+
+Each open reads your settings from `hydra_settings.ini`, so the chart opens under the Analysis settings you last set in Hydra Deluxe: the difficulty, Pro Drums, 2x Bass, Note Shuffle, `SP cap`, `1.0 fills`, `Path limit` and the rest. The line under the song's title names the chart mode. To use other settings, change them in Hydra Deluxe and open the chart again. The Path Builder never writes to that file: the volume slider starts at the Preview tab's volume, and a change to it lasts until you close the Path Builder.
+
+Each open also reads `hydra_rules.ini`, so the Path Builder uses the same [scoring rules](#scoring-rules-hydra_rulesini) as Hydra Deluxe. If either file has an error, the song doesn't open, and the top of the window shows the error. A song that's already open stays open. Fix the file and open the chart again. When both files have an error, you see the one in `hydra_settings.ini` first.
+
+A chart with no Star Power phrases still opens and plays. It says `This chart has no Star Power phrases, so there is no path to build.` and shows no timeline.
+
+### The scores and buttons
+
+Three scores sit beside the song's title. Hover a figure to read what it means.
+
+| Score | What it is |
+|---|---|
+| `Your score` | what your activations so far score |
+| `Best you can still reach` | keeping your activations and playing the rest perfectly |
+| `Best possible` | the best path Hydra Deluxe finds for this chart |
+
+On Burnout, with nothing built, they read `313,635`, `378,315` and `378,315`. Activate at m20 and they read `327,135`, `378,175` and `378,315`. `Best you can still reach` dropped by 140, so that activation's cost is `−140`. Every cost in the Path Builder means the same thing: the points a choice takes off the best you could still reach. A choice that loses nothing reads `best`. Costs are measured against the best path whatever your `Path limit` is.
+
+`Undo` takes back your last change (`Ctrl+Z`), and `Edit` > `Redo` puts it back (`Ctrl+Y`). `Start over` clears your path. `Finish the rest for me` keeps your activations and lets Hydra Deluxe choose the best rest of the path. `Show Hydra's best path` adds a `Hydra's best` row to the timeline and draws that path faintly on the highway.
+
+If Hydra Deluxe can't make the path you asked for, an orange line under the menu says why, and your path stays as it was.
+
+### The timeline
+
+The timeline shows 3 minutes of the song at a time. A song shorter than 3 minutes fills the whole width. From the top, its rows are the time axis, `Section`, `Star Power saved`, `Hydra's best` when you tick it, and `Your activations`.
+
+`Star Power saved` graphs the phrases you have saved through the song. Each star marks the start of a Star Power phrase. The dashed line is the 2<!-- default: kSpActivationBars --> phrases you need to activate, and after your last activation the stretches at or above it are shaded. Hover the row's name to see these marks with their words.
+
+`Your activations` shows your activations as numbered bands, each starting at the fill it was made from, and every fill as a dot. Hover the row's name to see what each look of a fill means:
+
+| Fill | Meaning |
+|---|---|
+| Green, with `best` under it | `Best place to activate` |
+| Yellow | `Costs under 1% of the best score` (the `Best possible` score) |
+| Red | `Costs more` |
+| Blue | `Your activation` |
+| Hollow ring | `Can't activate here (hover to see why)` |
+| Small grey dot | `Before your last activation` |
+
+Costs arrive one fill at a time after each change to your path, earliest fill first. Until its cost arrives, a fill you can activate at has no cost colour.
+
+Hover a fill to read its card. The pointer picks the nearest fill anywhere along the row, so you don't have to land on the dot. On Burnout with nothing built, the card for m20 reads `m20 · 0:25.123`, then `Phrases saved` 2, `Best finish here` 378,175 and `Cost` −140, then `Best choice now is m32 (378,315).` and `Hydra would end it at m24.`
+
+A fill you can't activate at gets a card saying why, like `You have 1 phrase saved here. You need 2 to activate.` You build left to right, so a fill before your last activation says `This is before your last activation. You build left to right; Undo or Remove goes back a step.`
+
+### Moving through the song
+
+Hovering never moves the song. It shows the card and the highlight, and nothing else changes. Only `Play` or `Space` starts sound.
+
+Click the time axis or the `Section`, `Star Power saved` or `Hydra's best` row to move the song there. Hold and drag along them to move through the song, with the highway following. A drag stops at the edge of the timeline, and the timeline doesn't scroll under it. If the song is playing, a press holds it quiet until you let go, then it plays on from there.
+
+The `Your activations` row is for building, so a press there never drags. A click picks the nearest fill:
+
+| You click | What happens |
+|---|---|
+| A fill you can activate at | Makes the activation there, then pauses with the highway on the fill |
+| A fill you can't activate at | Pauses with the highway on the fill and makes no activation |
+| A fill you already activated at | Opens that activation in the `Your activations` panel, then pauses with the highway on the fill |
+
+A click on a fill on the highway does the same. A click on a numbered band opens its activation in the panel and moves the song there.
+
+To see another part of the song, use the `Scroll (or mouse wheel)` row under the timeline. Drag its thumb, click beside the thumb or press ◀ or ▶ to move by what the timeline shows, 3 minutes on a long song. A notch of the mouse wheel over the rows moves a third of that. The readout shows what you're looking at, like `0:00 – 2:10 of 2:10` on Burnout.
+
+While the song plays, the timeline follows it. When the playhead passes three quarters of the way across, the timeline turns the page and puts the playhead a quarter of the way in. If you scroll by hand while it plays, the timeline stops following until you press `Play` again.
+
+Under the timeline sits the same panel as the [Preview tab](#preview-tab), with the same buttons, keys and boxes, and it draws your path.
+
+### Where to activate next
+
+`Where to activate next` lists every fill you can activate at after your last activation, cheapest first. A row shows the fill's measure and clock, the phrases saved there, where Hydra Deluxe would end the activation, any timing it needs and the cost. On Burnout with nothing built, m32 reads `0:40.945 · 3 phrases · ends m38 · squeeze out 163.0 ms` and `best`. A row still waiting for its cost reads `...` and sits below the rows that have one.
+
+Hover a row to light its fill on the timeline. Click a row to activate there: the timeline scrolls to the fill if it's out of view, and the song pauses on it.
+
+When no fill is left, the list says `No fill after your last activation can be activated. Your path is finished.`
+
+### The `Your activations` panel
+
+The `Your activations` panel lists your activations in order. Each row shows where the activation starts and where its Star Power ends, the phrases it spends, its timings in the same words as the Paths tab's badges, and its cost, like `m70 → m78` `3 phrases · squeeze in 0.0 ms` `best` on Smash Mouth's "I'm A Believer".
+
+Click a row to open it, and the song moves to that activation. When an activation can end in more than one place, its open row lists them under `End it at:`, one line each with its cost, and the one you kept is marked. On that same activation the lines read `ends m78 · squeeze in 0.0 ms` with `best` and `ends m76 · squeeze out 0.0 ms` with `−2,680`. Click a line to change where your last activation ends. An earlier activation shows its lines too, greyed and not clickable, because you build left to right.
+
+The open row also has a button: `Remove` on your last activation, and `Remove this and later ones` on an earlier one.
+
+An activation that needs tighter timing than your `Path limit` keeps its cost and gets a violet note in its open row. On White Washed at the default 10 ms<!-- default: Settings::mslimit_value --> limit, one activation of the best path reads `needs 130.4 ms, your limit is 10 ms`.
+
+### Saving and copying a path
+
+`Edit` > `Copy` (`Ctrl+C`) copies your path as the same text Hydra Deluxe's `Copy path` writes. `Edit` > `Paste` (`Ctrl+V`) makes a copied path yours. It reads that text and the short form, like `3- 1 2`. `File` > `Save path...` writes your path to a `.json` file, and `File` > `Open path...` reads one back. `Undo` takes back a paste or an opened file. A path that doesn't fit the chart is refused: an orange line says why, and your path stays as it was.
+
 ## Scoring rules (`hydra_rules.ini`)
 
-A few scoring rules are judgment calls, not facts read from Clone Hero. Some start from the public Hydra's rules, such as the backend leeway's 3 ms default, which is DragonDelgar's number. Others are Hydra Deluxe's own, such as how many tied paths to keep. You can change them in `hydra_rules.ini`, a plain text file next to Hydra.exe. The app and every command line tool read the same file.
+A few scoring rules are judgment calls, not facts read from Clone Hero. Some start from the public Hydra's rules, such as the backend leeway's 3 ms default, which is DragonDelgar's number. Others are Hydra Deluxe's own, such as how many tied paths to keep. You can change them in `hydra_rules.ini`, a plain text file next to Hydra.exe. The app, the Path Builder and every command line tool read the same file.
 
 The file is optional. A missing file, or a missing line, means the default below. Each line is `key = value`. A `#` starts a comment, either on a line of its own or after a value on the same line. There are no `[section]` headers.
 

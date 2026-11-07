@@ -92,7 +92,7 @@ ADR 0031).)
 
 The first version put every rules field into one fingerprint, so any edit to
 hydra_rules.ini made the whole library Stale. Two fields were over-reach
-(user decision 7 of the 2026-09-26 audit plan).
+(D275 item 7).
 
 The Auto time budget is a wall-clock limit. Two runs under the same budget
 can settle on different rungs on a busy machine, so the fingerprint could
@@ -178,8 +178,9 @@ edge (`squeeze_window_phrases`), because the edge is shared by every path.
 The engine picks from that list with `offered_phrase`; "already squeezed in"
 means the window holds an SqIn step on that phrase. The engine remembers
 which phrase each window squeezed out, since it is no longer always the
-window's first. `hydra_replay` asks the same function. A stored path tells it
-which phrases each window squeezed in; a typed window says none.
+window's first. `hydra_replay` reaches the same function through
+`core::sqout_chords`. A stored path tells it which phrases each window
+squeezed in; a typed window says none.
 
 On the library at caps 2 to 4 this changes exactly 7 listed paths on those
 two charts, each losing one "+", and no score. The next-phrase offer never
@@ -221,8 +222,9 @@ deactivation node. T10's clamp-origin guard (finding 37) was this rule
 for Clamped steps only, so it went with the edge's `sqout_time` and
 `clamped` fields.
 
-`hydra_replay` asks the same function. A stored window that ended plainly had
-its end at D, so only the late side applies. A typed window has no history,
+`hydra_replay` reaches the same function through `core::sqout_chords`. A
+stored window that ended plainly had its end at D, so only the late side
+applies. A typed window has no history,
 so it accepts either side's chord.
 
 An early squeeze-in's step is the step on the squeezed-in chord: the
@@ -324,16 +326,17 @@ store broke that promise: its unique key had no rules in it, so saving a
 result under rules A deleted the chart's rules-B row (audit finding 65). The
 promise now holds, and its two sentences stay as they are.
 
-The results table's unique key gains the rules fingerprint, as a `rules_fp`
+The results table's unique key gained the rules fingerprint, as a `rules_fp`
 column. It was filled from the structure blob's head by rules_fp_of, the one
-SQL spelling of "which rules was this row analyzed under". Schema 4 rebuilds
-the table once, in upgrade_results_key, and keeps every row, result id and
-blob, so nothing is analyzed again. A rules-A row and a rules-B row for the
+SQL spelling of "which rules was this row analyzed under". Schema 4 rebuilt
+the table once, in upgrade_results_key, and kept every row, result id and
+blob, so nothing was analyzed again. A rules-A row and a rules-B row for the
 same chart, mode, cap and lens now sit side by side.
 
-Since ADR 0026 (storage-T5) rules_fp_of has one job left. It reads an older
-file's blob while that file upgrades to schema 4, before the upgrade drops the
-blob. Every later read of the fingerprint is the `rules_fp` column.
+ADR 0026 left rules_fp_of one job: reading an older file's blob while that
+file upgraded to schema 4. D115 removed it when those files stopped being
+upgraded (ADR 0026), and upgrade_results_key is gone too. Every read of the
+fingerprint is the `rules_fp` column.
 
 The SQL Ready check stopped being one undivided check here. It became
 row_readable_sql() (this build can read the row) plus the rules part (the

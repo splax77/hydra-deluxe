@@ -24,14 +24,13 @@ from __future__ import annotations
 
 import csv
 import dataclasses
-import io
 import os
 import threading
 import time
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, Tuple
 
 from tools.ch_mcp import bot_run
-from tools.ch_mcp.frida_tools import READ_CAP_S
+from tools.ch_mcp.frida_tools import READ_CAP_S, find_engine_quietly
 from tools.ch_probe import constants as C
 from tools.ch_probe import engine_finder
 from tools.ch_probe.engine import EngineModel, Snapshot
@@ -47,6 +46,7 @@ CSV_PREFIX = "sp_watch-"
 
 NO_WATCH = "no watcher has run; call ch_sp_watch_start"
 NO_READ = "no engine read yet (the watcher is waiting for a moving clock)"
+WATCH_RUNNING = "a Star Power watch is already running; call ch_sp_watch_stop first"
 
 
 def _ms_text(s: float) -> str:
@@ -95,8 +95,12 @@ class _Watch:
     `latest` on every read; `summary` or `error` is set when it ends."""
     csv_path: str
     cap_s: float
+    # The engine search to use; None uses the tools' own.
+    find_engine: Optional[Callable[[object], int]] = None
     thread: Optional[threading.Thread] = None
     stop: threading.Event = dataclasses.field(default_factory=threading.Event)
+    # Set when the watch is about to poll, or when it ended before that.
+    settled: threading.Event = dataclasses.field(default_factory=threading.Event)
     rows: list = dataclasses.field(default_factory=list)
     latest: Optional[Snapshot] = None
     engine: Optional[int] = None
@@ -128,13 +132,6 @@ class _Watch:
         return f"csv: {self.csv_path} (not written: the engine was never found)"
 
 
-def _find_engine_quietly(proc) -> int:
-    """LIVE-ONLY: sp_watch's engine search with its progress dots sent to a
-    buffer that is dropped, because the server's stdout is its protocol
-    channel."""
-    return sp_watch.find_engine_live(proc, out=io.StringIO())
-
-
 def _engine_reader(proc, engine_ptr: int) -> Callable[[], Snapshot]:
     """The live engine's snapshot read. LIVE-ONLY: reads the game's memory
     through EngineModel."""
@@ -156,7 +153,7 @@ class SpTools:
 
     def __init__(self, game, lock, *,
                  opener: Callable[..., object] = open_process,
-                 find_engine: Callable[[object], int] = _find_engine_quietly,
+                 find_engine: Callable[[object], int] = find_engine_quietly,
                  reader: Callable[[object, int], Callable[[], Snapshot]] = _engine_reader,
                  watch: Callable[..., sp_watch.WatchSummary] = sp_watch.watch,
                  now: Callable[[], float] = time.time,
@@ -184,7 +181,7 @@ class SpTools:
         there."""
         with self._lock:
             if self._watch is not None and self._watch.running():
-                return "a Star Power watch is already running; call ch_sp_watch_stop first"
+                return WATCH_RUNNING
             if song_folder is None:
                 cap_s = sp_watch.RUN_CAP_S
                 cap_line = f"run cap: {cap_s:g} s (sp_watch.RUN_CAP_S; no song folder given)"
@@ -196,23 +193,33 @@ class SpTools:
                             f"{song_folder}: {type(e).__name__}: {e}")
                 cap_line = f"run cap: {cap_s:g} s (game_tools.run_cap_s for {song_folder})"
             lines = [line for line in (self._game.ensure_backup(),) if line]
-            self._count += 1
-            if out:
-                csv_path = out if os.path.isabs(out) else os.path.join(self._game.session_dir(), out)
-            else:
-                csv_path = os.path.join(self._game.session_dir(),
-                                        f"{CSV_PREFIX}{self._count}.csv")
-            w = _Watch(csv_path=csv_path, cap_s=cap_s)
-            w.thread = threading.Thread(target=self._body, args=(w,),
-                                        name="ch_sp_watch", daemon=True)
-            self._watch = w
-            w.thread.start()
+            w = self._launch(cap_s, out)
             lines.append("watching: waiting for a moving clock (cap "
                          f"{engine_finder.ENGINE_SEARCH_CAP_S:g} s, "
                          "engine_finder.ENGINE_SEARCH_CAP_S)")
-            lines.append(f"csv: {csv_path}")
+            lines.append(f"csv: {w.csv_path}")
             lines.append(cap_line)
             return "\n".join(lines)
+
+    def watch_for_run(self, cap_s: float,
+                      find_engine: Callable[[object], int]) -> Tuple[Optional[int], str]:
+        """Start the watch for game_tools' ch_run_chart with `find_engine` as
+        its search, and wait for that search, so the auto-player can use the
+        same engine. Returns the engine's address and the CSV's line, or None
+        and why the watch failed. The wait ends the moment the search does,
+        and the search's own cap ends it; READ_CAP_S covers the scan that
+        cap can run over by."""
+        with self._lock:
+            if self._watch is not None and self._watch.running():
+                return None, WATCH_RUNNING
+            w = self._launch(cap_s, None, find_engine)
+            cap = engine_finder.ENGINE_SEARCH_CAP_S + READ_CAP_S
+            if w.settled.wait(cap) and w.engine is not None and w.error is None:
+                return w.engine, w.csv_line()
+            lines = [] if w.settled.is_set() else [
+                f"the watch's engine search did not settle in {cap:g} s "
+                "(engine_finder.ENGINE_SEARCH_CAP_S + READ_CAP_S); the watch was stopped"]
+            return None, "\n".join(lines + self._stop_lines(w))
 
     def ch_sp(self) -> str:
         """The latest read the watcher made, as sp_lines, then the watch's
@@ -312,8 +319,30 @@ class SpTools:
 
     # -- inside ---------------------------------------------------------------------
 
+    def _launch(self, cap_s: float, out: Optional[str],
+                find_engine: Optional[Callable[[object], int]] = None) -> _Watch:
+        """Start the watch thread. `out` is ch_sp_watch_start's."""
+        self._count += 1
+        if out:
+            csv_path = out if os.path.isabs(out) else os.path.join(self._game.session_dir(), out)
+        else:
+            csv_path = os.path.join(self._game.session_dir(), f"{CSV_PREFIX}{self._count}.csv")
+        w = _Watch(csv_path=csv_path, cap_s=cap_s, find_engine=find_engine)
+        w.thread = threading.Thread(target=self._body, args=(w,),
+                                    name="ch_sp_watch", daemon=True)
+        self._watch = w
+        w.thread.start()
+        return w
+
     def _body(self, w: _Watch) -> None:
         """The watch thread. It never takes the lock."""
+        try:
+            self._run_watch(w)
+        finally:
+            w.settled.set()
+
+    def _run_watch(self, w: _Watch) -> None:
+        """Open the game, find the engine and watch it."""
         try:
             proc = self._opener(read_only=True)
         except Exception as e:  # reported by the status tools
@@ -322,7 +351,7 @@ class SpTools:
         try:
             proc.verify_targets()
             try:
-                engine_ptr = self._find_engine(proc)
+                engine_ptr = (w.find_engine or self._find_engine)(proc)
             except engine_finder.EngineSearchTimeout as e:
                 w.no_engine = str(e)
                 return
@@ -347,6 +376,7 @@ class SpTools:
                     f.flush()
                     w.rows.append(dict(zip(WATCH_COLUMNS, row)))
 
+                w.settled.set()
                 w.summary = self._watch_fn(snapshot, write_row, now=self._now,
                                            sleep=self._sleep, cap_s=w.cap_s,
                                            should_stop=w.stop.is_set)
@@ -377,7 +407,7 @@ class SpTools:
 def _activation_line(rows: list, act) -> str:
     """One activation from sp_compare.find_activations, as the rows show it:
     the flip clock, the multiplier on the row before and on the flip row, the
-    end time on the flip row, and when the flag cleared."""
+    end time as the flip row reads it, and when the flag cleared."""
     flip = rows[act.flip_row]
     before = rows[act.flip_row - 1]
     if act.drop_row is None:
@@ -386,4 +416,4 @@ def _activation_line(rows: list, act) -> str:
         cleared = f"cleared at {_ms_text(rows[act.drop_row]['clock_s'])}"
     return (f"  activation {act.number} at {_ms_text(flip['clock_s'])}: multiplier "
             f"{before['sp_mult_u32']} before, {flip['sp_mult_u32']} on the flip row; "
-            f"end time {_ms_text(flip['sp_end_s'])}; flag {cleared}")
+            f"end time at the flip {_ms_text(flip['sp_end_s'])}; flag {cleared}")

@@ -1,7 +1,6 @@
 // Persisted user settings + user file locations, shared by the GUI
-// shells and the command-line tools. Split out of ui/app_state so a console
-// exe can read the same INI the app writes (hydra_batch.py's contract:
-// "results match what the app would produce for the same songs").
+// shells and the command-line tools. Kept apart from ui/app_state so a console
+// exe can read the same INI the app writes.
 //
 
 #ifndef HYDRA_APP_CONFIG_H
@@ -26,7 +25,7 @@ namespace hydra::app {
 
 // Directory containing the running executable (UTF-8): the exe path's
 // parent_folder, or "." in the impossible case of a path with no folder.
-// User files live here, mirroring hymisc.ROOTPATH's app-relative layout.
+// User files live here.
 std::string exe_dir();
 
 // Whether the running exe is the one Hydra's installer put in place: the one
@@ -118,9 +117,8 @@ const PathOverrides& path_overrides();
 // the settings.
 
 // The stored chart mode a reading is filed under: "Expert Pro Drums, 2x
-// Bass", mirroring HyAppUserSettings.chartmode_key. With Note Shuffle on it
-// gains an ending (D104); with it off the key is the one Hydra has always
-// stored.
+// Bass". With Note Shuffle on it gains an ending (D104); with it off it has
+// none.
 std::string chartmode_key(const ChartReading& reading);
 
 // The settings the Analysis settings panel shows, in the panel's order.
@@ -140,9 +138,9 @@ enum class AnalysisSetting {
 // Settings::chartmode_key(), cap_query() or lens().
 enum class KeyPart { ChartMode, Cap, Lens };
 
-// Persisted user settings, mirroring HyAppUserSettings' fields. Loaded once at
-// startup and written back to disk on every change (matching Python's
-// HyAppUserSetting descriptor, which saves on every __set__).
+// Persisted user settings. The app loads them once at startup, and AppState's
+// commit_settings and flush_settings write them back (ui/app_state.h says
+// when).
 struct Settings {
     std::vector<std::string> chartfolders;
     bool is_rescan = false;

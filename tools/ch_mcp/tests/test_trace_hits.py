@@ -274,7 +274,7 @@ def write_json(path, data):
 
 def score_chord(index, ms):
     return {"index": index, "ms": ms,
-            "notes": [{"color": "Red", "cymbal": False}]}
+            "notes": [{"color": "Red", "cymbal": False, "dynamic": "none"}]}
 
 
 class SongNotesTest(unittest.TestCase):

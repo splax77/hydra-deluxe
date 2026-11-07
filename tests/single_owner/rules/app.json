@@ -8,24 +8,43 @@
       "date": "2026-10-04",
       "decision": "ADR 0020",
       "added_by": "gate-fix",
-      "pattern": "ShellExecute|CreateProcess",
+      "pattern": "ShellExecute",
       "owner_files": [
         "src/app/report_files.cpp"
       ],
-      "exempt": [
-        {
-          "file": "tools/precheck/git_text.cpp",
-          "why": "starts git as a child process with pipes; it opens no file or page in the shell"
-        }
-      ],
       "must_match": [
-        "ShellExecuteW(nullptr, L\"open\", p.c_str(), nullptr, nullptr, SW_SHOWNORMAL);",
-        "CreateProcessW(nullptr, cmd.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &pi);"
+        "ShellExecuteW(nullptr, L\"open\", p.c_str(), nullptr, nullptr, SW_SHOWNORMAL);"
       ],
       "must_not_match": [
         "hydra::app::open_in_browser(page);"
       ],
-      "note": "The shell takes no long or prefixed path (fits_shell), so only open_in_browser launches it, with shell_path's short form. Decided by: ADR 0020 (The shell: Open report and Show in folder)"
+      "note": "The shell takes no long or prefixed path (fits_shell), so only open_in_browser launches it, with shell_path's short form. Starting a program of our own is the \"Which code starts a program?\" row. Decided by: ADR 0020 (The shell: Open report and Show in folder)"
+    },
+    {
+      "question": "Which code starts a program?",
+      "owner": "launch_program (src/app/launch.cpp)",
+      "owner_file": "src/app/launch.cpp",
+      "owner_symbol": "launch_program",
+      "date": "2026-10-29",
+      "decision": "plan docs/superpowers/plans/2026-10-28-path-builder.md (removed; git show b29a3c28:docs/superpowers/plans/2026-10-28-path-builder.md), HY-1",
+      "added_by": "HY-1",
+      "pattern": "CreateProcess",
+      "owner_files": [
+        "src/app/launch.cpp"
+      ],
+      "exempt": [
+        {
+          "file": "tools/precheck/git_text.cpp",
+          "why": "starts git as a child process with pipes and reads its output; launch_program starts a program and does not wait for it"
+        }
+      ],
+      "must_match": [
+        "if (!CreateProcessW(exe.c_str(), cmd.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr,"
+      ],
+      "must_not_match": [
+        "launch_program(exe, {page});"
+      ],
+      "note": "launch_program is the one CreateProcessW in src, so the one place a command line is quoted (quote_argument). launch_html_viewer and launch_sibling call it. Decided by: the Path Builder plan, HY-1"
     },
     {
       "question": "Does the path gauge work out an SP fact itself?",
@@ -73,6 +92,10 @@
         {
           "file": "src/cli/fillcompare.cpp",
           "why": "hydra_fillcompare sets each side's fill rule itself (collect_fill_rows in src/app/fill_report.cpp)"
+        },
+        {
+          "file": "src/pathbuilder/pb_state.cpp",
+          "why": "the Path Builder is a GUI beside Hydra and runs under Hydra's own settings, the 1.0 fills box included (path builder spec, How it is built and shipped)"
         }
       ],
       "must_match": [
@@ -152,6 +175,12 @@
       "scope": [
         "src"
       ],
+      "exempt": [
+        {
+          "file": "src/pathbuilder/pb_state.cpp",
+          "why": "the Path Builder has no library row to compare with; it hashes the file it opens to name the chart for the Preview (path builder plan, task PB-1)"
+        }
+      ],
       "note": "Whether a chart file changed since its library row was made. The Preview's load and the click's job both ask chart_changed_since, so the two never disagree; the fingerprint and the hash have no other caller in src or tools. src only: tools/replay.cpp hashes a chart to look it up by path, which is a different question. Decided by: storage-T2 review finding 2 (D87 item 3)"
     },
     {
@@ -175,6 +204,31 @@
         "ImGui::SetTooltip(\"%s\", app::kNotAnalyzedText);"
       ],
       "note": "The not-analyzed row's tooltip. The old copy was split over two source lines, so a rule on the whole sentence missed it; this one matches the sentence's first words, which sit on one line however the rest is split. kNotAnalyzedText is the one place it is typed. Decided by: D91 (2026-10-07)"
+    },
+    {
+      "question": "What does a program say when it can't open a song file?",
+      "owner": "song_file_missing_sentence in src/app/user_messages.cpp",
+      "owner_file": "src/app/user_messages.cpp",
+      "owner_symbol": "song_file_missing_sentence",
+      "date": "2026-10-29",
+      "decision": "D267",
+      "added_by": "PB-1-review",
+      "pattern": "open the song file",
+      "anchor": "open the song file",
+      "owner_files": [
+        "src/app/user_messages.cpp"
+      ],
+      "must_match": [
+        "ImGui::TextWrapped(\"Hydra couldn't open the song file. It may have been moved or deleted.\");",
+        "\"Hydra couldn't open the song file. It may have been moved or deleted\";"
+      ],
+      "must_not_match": [
+        "throw KindedError(ErrorKind::SongFileMissing, \"cannot open file: \" + path);"
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "The song file's sentence is written once, with Hydra's Scan advice added only for Hydra, so the Path Builder (no library) and Hydra never keep two copies of its first half. Every error line reads it through plain_error. Decided by: D267 (2026-10-29)"
     },
     {
       "question": "What text shows where a value is missing?",
@@ -547,7 +601,7 @@
     },
     {
       "question": "How is a number rounded on a report page?",
-      "owner": "the C++ text the payload carries: format_percent and percent_steps, format_avg_mult and format_ms in src/app/display_format.cpp",
+      "owner": "the C++ text the payload carries: format_percent and percent_steps, format_avg_mult in src/app/display_format.cpp, and format_ms in src/core/model.cpp",
       "owner_file": "src/app/display_format.cpp",
       "owner_symbol": "format_percent",
       "date": "2026-10-04",
@@ -1540,6 +1594,66 @@
       "note": "The Preview picker's \"label##index\" id. The library's chip id (\")##\" + c.id) is another widget's and does not fit. Decided by: audit finding 352; phase 6 task J4-4 (D53, D54)"
     },
     {
+      "question": "What does a list call the best all-0 path?",
+      "owner": "kBestAllZeroLabel in src/app/path_view.h",
+      "owner_file": "src/app/path_view.h",
+      "owner_symbol": "kBestAllZeroLabel",
+      "date": "2026-10-29",
+      "decision": "Path Builder plan, task PB-2a (one owner for the label the Paths tab and the Path Builder share)",
+      "added_by": "PB-2a",
+      "pattern": "^[^/]*\"Best all-0 path\"",
+      "anchor": "\"Best all-0 path\"",
+      "must_match": [
+        ": \"Best all-0 path\";",
+        "add(i == 0 ? \"Best all-0 path\" : \"All-0 path \" + std::to_string(i + 1),"
+      ],
+      "must_not_match": [
+        ": app::kBestAllZeroLabel;",
+        "add(i == 0 ? std::string(app::kBestAllZeroLabel) : \"All-0 path \" + std::to_string(i + 1),",
+        "std::string label;  // \"Best path\", \"Path 2\", \"Best all-0 path\", a branch's name"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/app/path_view.h",
+          "line_text": "inline constexpr const char* kBestAllZeroLabel = \"Best all-0 path\";",
+          "why": "kBestAllZeroLabel, the owner"
+        }
+      ],
+      "scope": [
+        "src",
+        "tools"
+      ],
+      "note": "The Paths tab's heading over the all-0 section and the Path Builder's left-list row each typed this name. A line whose literal comes after a // is a comment naming the row, not a copy. Tests are out of scope: a GUI test pins the text it reads on screen."
+    },
+    {
+      "question": "Which code lets go of the parked jobs whose threads have ended?",
+      "owner": "drop_finished_jobs in src/app/job_base.h",
+      "owner_file": "src/app/job_base.h",
+      "owner_symbol": "drop_finished_jobs",
+      "date": "2026-10-29",
+      "decision": "derive-once review of PB-2a (kind A: four sweeps of a parked list, one in each of the Preview, the Path Builder's open, its decision list and the report windows)",
+      "added_by": "PB-2a review",
+      "pattern": "finished\\(\\) \\? .*\\.erase\\(|\\{ return \\w+->finished\\(\\); \\}",
+      "anchor": "finished()",
+      "owner_files": [
+        "src/app/job_base.h"
+      ],
+      "must_match": [
+        "        it = (*it)->finished() ? retired_.erase(it) : it + 1;",
+        "                       [](const std::unique_ptr<ReportJob>& job) { return job->finished(); }),"
+      ],
+      "must_not_match": [
+        "    drop_finished_jobs(parked_reports);",
+        "    ui::drop_finished_jobs(retired_);",
+        "bool Coach::busy() const { return (job_ && !job_->finished()) || !retired_.empty(); }"
+      ],
+      "scope": [
+        "src",
+        "tools"
+      ],
+      "note": "A parked list is swept by erasing the entries whose finished() is true, whether by an iterator loop or by remove_if with a lambda; both spellings are matched. A job asked for its own finished() in a condition is a different question and does not erase."
+    },
+    {
       "question": "How does a command-line tool end on an error?",
       "owner": "tool_error in src/app/user_messages.cpp",
       "owner_file": "src/app/user_messages.cpp",
@@ -1553,6 +1667,10 @@
         {
           "file": "src/ui/main.cpp",
           "why": "the startup message box shows the block in a window (D72 item 1)"
+        },
+        {
+          "file": "src/pathbuilder/main.cpp",
+          "why": "the Path Builder's startup message box, as Hydra's (D72 item 1)"
         }
       ],
       "must_match": [

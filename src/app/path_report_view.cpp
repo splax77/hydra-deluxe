@@ -1,8 +1,8 @@
 #include "app/path_report_view.h"
 
-#include "app/display_format.h"  // format_ms, format_avg_mult, kAverageMultiplierLabel
+#include "app/display_format.h"  // format_avg_mult, kAverageMultiplierLabel
 #include "app/library_query.h"   // search_field
-#include "core/model.h"          // group_thousands
+#include "core/model.h"          // group_thousands, format_ms
 #include "core/squeeze_rating.h" // timing_tiers, beyond_tier, none_tier
 
 namespace hydra::app::path_report_view {

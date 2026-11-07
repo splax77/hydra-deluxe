@@ -74,13 +74,6 @@ void end_overlay(const ImVec2& top, float h) {
     ImGui::Dummy(ImVec2(0.0f, 0.0f));
 }
 
-// Keep the next item, `w` wide, on the last item's line when it fits there;
-// otherwise it starts the next line. A row of variable-length pieces wraps
-// instead of running past the column's edge.
-void flow_next(float w, float spacing) {
-    if (fits_on_line(w, spacing)) ImGui::SameLine(0.0f, spacing);
-}
-
 // ---- the path list ----------------------------------------------------------
 
 // The space between a path's title and its timing.
@@ -148,8 +141,8 @@ bool score_fold(const app::PathButtonView& b) {
     return open;
 }
 
-// The buttons under their headings: Optimal, the "Within N" group, and
-// "Best all-0 path". A heading is drawn where the group changes, and inside
+// The buttons under their headings: Optimal, the "Within N" group, and the
+// all-0 group (app::kBestAllZeroLabel). A heading is drawn where the group changes, and inside
 // Optimal and Within each score gets its own fold, so tied paths sit together
 // and a lower score always starts a new fold.
 void render_path_list(const app::PathButtonsView& list, const Path*& selected_path) {
@@ -168,7 +161,7 @@ void render_path_list(const app::PathButtonsView& list, const Path*& selected_pa
             if (i > 0) ImGui::Spacing();
             const char* heading = b.group == Group::Optimal  ? "Optimal"
                                   : b.group == Group::Within ? list.within_label.c_str()
-                                                             : "Best all-0 path";
+                                                             : app::kBestAllZeroLabel;
             ImGui::TextDisabled("%s", heading);
             if (b.group == Group::AllZero)
                 hint("The best path that activates at the first chance every time "

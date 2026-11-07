@@ -1,5 +1,6 @@
 #include "app/path_costs.h"
 
+#include <algorithm>
 #include <stdexcept>
 #include <utility>
 
@@ -14,6 +15,8 @@ CostList cost_list(const BestFinishLadder& ladder) {
     return out;
 }
 
+bool costs_nothing(int64_t cost) { return cost <= 0; }
+
 CostTier cost_tier(int64_t cost, int64_t bf0) {
     if (cost < 0)
         throw std::logic_error("cost_tier: cost " + std::to_string(cost) +
@@ -22,6 +25,30 @@ CostTier cost_tier(int64_t cost, int64_t bf0) {
     // Whole numbers only (plan Q5): a cost of exactly 1% of BF(0) is red.
     if (100 * cost >= bf0) return CostTier::Red;
     return CostTier::Yellow;
+}
+
+std::vector<CandidateCost> candidate_costs(int64_t bf0, int64_t bf_n,
+                                           const std::vector<CandidateFinish>& candidates) {
+    std::vector<CandidateCost> out;
+    out.reserve(candidates.size());
+    for (const CandidateFinish& c : candidates) {
+        CandidateCost priced;
+        priced.act_tick = c.act_tick;
+        priced.best_finish = c.best_finish;
+        priced.cost = bf_n - c.best_finish;
+        priced.tier = cost_tier(priced.cost, bf0);
+        out.push_back(priced);
+    }
+    return out;
+}
+
+std::vector<int64_t> end_costs(const std::vector<int64_t>& best_finishes) {
+    std::vector<int64_t> out;
+    if (best_finishes.empty()) return out;
+    const int64_t best = *std::max_element(best_finishes.begin(), best_finishes.end());
+    out.reserve(best_finishes.size());
+    for (int64_t f : best_finishes) out.push_back(best - f);
+    return out;
 }
 
 LadderRun build_ladder(const ScoreGraph& graph, const SearchSettings& settings,

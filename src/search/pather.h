@@ -227,7 +227,7 @@ TargetResult best_finish(const Song& song, const SearchSettings& settings,
 // Full analysis for one chart: one pass at settings.sp_cap bars (4 is Clone
 // Hero's rule; any other number is a what-if). Throws std::logic_error when
 // the song has no notes, because that is a caller bug: callers check first
-// with require_notes (song.h), which throws the sentence the user sees.
+// with require_notes (parse/song.h), which throws the sentence the user sees.
 HydraRecord analyze_chart(const Song& song, const SearchSettings& settings,
                           const std::function<void(float)>& on_progress = {});
 

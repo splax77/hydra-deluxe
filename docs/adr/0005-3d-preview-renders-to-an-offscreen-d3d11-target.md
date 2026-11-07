@@ -1,10 +1,11 @@
 # The 3D Preview renders to an offscreen D3D11 target composited into ImGui
 
 Hydra is a single ImGui window backed by one Direct3D 11 device and swap chain
-(`src/ui/main.cpp`), and the Preview lives inside the Song Details modal. Rather
+(`src/ui/main.cpp`), and the Preview is a tab of the details panel
+(`src/ui/details_panel.cpp`). Rather
 than render the 3D highway to the main back buffer behind or around the UI, the
 Preview draws its scene to an **offscreen render target** (a texture with its own
-render-target and depth views) and shows the result inside the modal with
+render-target and depth views) and shows the result inside that tab with
 `ImGui::Image` on the texture's shader-resource view. This keeps the 3D content
 inside the existing ImGui layout — clipped to its panel, sized to the tab, drawn
 in the normal widget order — instead of fighting the UI for the back buffer. The

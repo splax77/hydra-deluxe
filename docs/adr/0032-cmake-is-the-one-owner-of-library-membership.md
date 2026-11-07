@@ -26,7 +26,7 @@ for the chart sync rule, and the GUI's window set-up sat in the same file as
 the code that draws Hydra's whole window. The split fixed those includes and
 gave each part a library of its own, so a new program links only the parts it
 needs. The Path Builder, planned in
-docs/superpowers/plans/2026-10-28-path-builder.md and not built yet, will be
+docs/superpowers/plans/2026-10-28-path-builder.md (removed; git show b29a3c28:docs/superpowers/plans/2026-10-28-path-builder.md) and not built yet, will be
 the first program that does.
 
 ## The libraries

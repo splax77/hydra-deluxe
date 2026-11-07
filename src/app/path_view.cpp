@@ -71,7 +71,7 @@ std::vector<ActivationBadge> activation_badges(const Activation& act) {
     // are difficult; the badges only word them.
     std::vector<ActivationBadge> out;
     for (const ActivationTiming& t : act.badge_timings())
-        out.push_back({badge_word(t.part) + " " + format_ms_whole(t.ms), t.difficult});
+        out.push_back({badge_word(t.part) + " " + format_ms(t.ms), t.difficult});
     return out;
 }
 
@@ -83,13 +83,13 @@ std::string longest_activation_badge() {
     // activation, so its figure is above minus kEarlyFillSlackMs (is_e0),
     // and at most kHitWindowMs (fill_refuses): inside the squeeze window
     // too. A squeeze that needs no timing (SPSqueeze::needs_no_timing) has a
-    // figure of 0 or less (D80), so the widest figure is the window's, minus
+    // figure below 0 (D80, D302), so the widest figure is the window's, minus
     // sign included.
     size_t longest = 0;
     for (size_t i = 1; i < std::size(kBadgeWords); ++i)
         if (std::strlen(kBadgeWords[i].word) > std::strlen(kBadgeWords[longest].word))
             longest = i;
-    return std::string(kBadgeWords[longest].word) + " " + format_ms_whole(-kSqueezeWindowMs);
+    return std::string(kBadgeWords[longest].word) + " " + format_ms(-kSqueezeWindowMs);
 }
 
 std::vector<TextLine> squeeze_sentences(const Activation& act,
@@ -101,8 +101,8 @@ std::vector<TextLine> squeeze_sentences(const Activation& act,
         const SPSqueeze& sq = act.sqinouts[i];
         // timing() is the edge the sentence below prints: a SqOut must be hit
         // later than it, a SqIn earlier than it. Which wording applies
-        // is SPSqueeze::needs_no_timing's answer, the one the rating reads
-        // too (D13).
+        // follows the one owner, SPSqueeze::needs_no_timing (D302); the
+        // eff. figure's scale side is the rating's, a different question.
         const double t = sq.timing();
         const std::string edge = format_ms(std::fabs(t));
         std::string text;
@@ -195,8 +195,7 @@ const char* const kOverfillHint =
     "the activation. The ms figures are still measured at the SP end. Only the note whose "
     "timing moves them changes.";
 
-// `record` fed the old footer's "SP meter" line, gone with the old Paths tab;
-// the parameter stays so the callers keep their shape.
+// `record` is unused; the parameter stays so the callers keep their shape.
 ActivationsView build_activations(const Path& path, const HydraRecord& /*record*/,
                                   const SongTiming* timing,
                                   std::optional<double> backend_limit_ms,

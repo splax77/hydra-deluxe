@@ -1,0 +1,5 @@
+// Embeds the app icon into HydraPathBuilder.exe's PE resources: the taskbar
+// and Explorer read it from here; main.cpp loads it for the live window.
+#include "pb_resource.h"
+
+IDI_PATHBUILDER_ICON ICON "../../resource/icon_app.ico"

@@ -1,7 +1,5 @@
 // What one backend row is worth on one path: the single answer the search,
-// the replay and the details table all read. Before this file each of the
-// three wrote its own copy, and the table's copy ignored the row's offset
-// (docs/audit/2026-09-24-derivation-audit.md, finding 1).
+// the replay and the details table all read.
 //
 // Header-only and inline so the engine's per-edge loop pays no call.
 

@@ -25,7 +25,7 @@ import atexit
 import os
 import sys
 import threading
-from typing import Optional
+from typing import List, Optional
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.abspath(os.path.join(_HERE, "..", ".."))
@@ -34,7 +34,7 @@ if _REPO_ROOT not in sys.path:
 
 from tools.ch_mcp import bot_run  # noqa: E402
 from tools.ch_mcp.frida_tools import FridaTools  # noqa: E402
-from tools.ch_mcp.game_tools import GameTools  # noqa: E402
+from tools.ch_mcp.game_tools import GameTools, RunParts  # noqa: E402
 from tools.ch_mcp.kit_tools import KitTools, read_pause_setting  # noqa: E402
 from tools.ch_mcp.menu_tools import MenuTools  # noqa: E402
 from tools.ch_mcp.method_watch import METHOD_WATCH_CAP_S, MethodWatch  # noqa: E402
@@ -87,10 +87,33 @@ class Helper:
         self.menu = MenuTools(self.game, self.frida, self.lock, kit=self.kit, **menu_kw)
         watch_kw = {"now": self.env.now, **(watch_kw or {})}
         self.method_watch = MethodWatch(self.game, self.frida, self.lock, **watch_kw)
+        self.game.use_run_parts(RunParts(self.frida, self.kit, self.sp))
 
     def ch_status(self) -> str:
         with self.lock:
             return "\n".join([self.game.ch_status()] + self.frida.status_lines())
+
+    def open_items(self) -> List[str]:
+        """One line per thing a restart of this process would lose (the reload
+        plan's design point 2). The Frida, kit, Star Power and method-watch
+        tools have no call that answers this for every case, so their fields
+        are read here, the same fields their stop hooks read."""
+        with self.lock:
+            lines = self.game.open_lines()
+            if self.frida.is_attached():
+                lines.append("frida: state agent attached")
+            if self.kit._agent is not None:
+                lines.append("kit: kit agent attached")
+            watch = self.sp._watch
+            if watch is not None and watch.running():
+                lines.append("star power watch: running")
+            session = self.method_watch._session
+            if session is not None and not session.ended():
+                lines.append("method watch: running")
+            trace = self.frida._trace
+            if trace is not None and not trace.ended():
+                lines.append("trace: running")
+            return lines
 
     def shutdown(self) -> str:
         """Question 3 of the plan, through GameTools.shutdown: its stop hooks
@@ -118,7 +141,8 @@ def build_server(helper: Optional[Helper] = None):
             " keyboard and mouse off for the run, so the user's own keys and mouse reach"
             " no player. ch_kit_press presses the kit's pads and buttons, ch_open_song"
             " walks the menus to a song with it (the route for a day human=True breaks),"
-            " ch_play_chart plays a chart on it,"
+            " ch_play_chart plays a chart on it, ch_run_chart does the attach, the setup,"
+            " the Star Power watch and the play in one call,"
             " ch_kit_status and ch_kit_watch read it, and ch_kit_teardown takes it away and"
             " switches the keyboard and mouse back (ch_stop does too). ch_key, ch_press and"
             " ch_play_chart with route keys press keys into the focused window, and a"
@@ -165,6 +189,14 @@ def build_server(helper: Optional[Helper] = None):
         return capped(h.ch_status())
 
     @server.tool()
+    def ch_open_items() -> str:
+        """What the server holds open, one line each: the run and its backup
+        folder, an adopted backup, the Frida state agent, the kit, and a
+        running play session, Star Power watch, method watch or trace. With
+        none of them it says "nothing open". ch_stop closes them all."""
+        return capped("\n".join(h.open_items()) or "nothing open")
+
+    @server.tool()
     def ch_install_chart(chart_folder: str, name: str | None = None) -> str:
         """Copy one chart folder into the probe song folder with a silent
         audio file and a title marked as a probe, so the game can launch it."""
@@ -184,7 +216,7 @@ def build_server(helper: Optional[Helper] = None):
 
     @server.tool()
     def ch_compare(stats_path: str, score_json: str) -> str:
-        """Compare a stats copy with a hydra_replay score JSON: three lines,
+        """Compare a stats copy with a hydra_replay score JSON: six lines,
         then pass or fail."""
         return capped(h.game.ch_compare(stats_path, score_json))
 
@@ -213,7 +245,11 @@ def build_server(helper: Optional[Helper] = None):
     def ch_snapshot() -> str:
         """One fresh read of the game's clock and flags, plus the score after
         the play session's last press and the song clock at that press when a
-        play session has run."""
+        play session has run. While a song is playing it also searches for
+        the engine and prints its flags word, whether bit 0x10 is set, the
+        dynamics threshold and the ghost axis value; the search takes time and
+        the song keeps moving during it. At a menu or paused it says those
+        lines were not read."""
         return capped(h.frida.ch_snapshot())
 
     @server.tool()
@@ -270,15 +306,18 @@ def build_server(helper: Optional[Helper] = None):
     @server.tool()
     def ch_kit_press(items: str, hold_frames: int | None = None,
                      rewrite: bool | None = None, on_main: bool | None = None,
-                     read: str | None = None) -> str:
+                     read: str | None = None, value: float | None = None) -> str:
         """Press one chord of kit items, such as "green,kick" or "start",
         with or without the kit: prefix, and print the frames it went down
         and came up on. hold_frames, rewrite and on_main override the kit's
         hold, rewrite and thread for this press; left out, the kit's own
         values apply. read names game actions, such as "Green", to read back
-        on the kit's player during the hold. An unknown name is refused with
-        the list of kit items. Needs ch_kit_setup."""
-        return capped(h.kit.ch_kit_press(items, hold_frames, rewrite, on_main, read))
+        on the kit's player during the hold. value sets the axis value of
+        this press's pads, from 0 to 1, such as the ghost value ch_snapshot
+        prints; left out, the pads press as plain gems, and buttons never
+        take one. An unknown name is refused with the list of kit items.
+        Needs ch_kit_setup."""
+        return capped(h.kit.ch_kit_press(items, hold_frames, rewrite, on_main, read, value))
 
     @server.tool()
     def ch_kit_status() -> str:
@@ -311,7 +350,9 @@ def build_server(helper: Optional[Helper] = None):
 
     @server.tool()
     def ch_play_chart(score_json: str, log: str | None = None,
-                      song_folder: str | None = None, route: str | None = None) -> str:
+                      song_folder: str | None = None, route: str | None = None,
+                      decline_mode: str | None = None, dump_json: str | None = None,
+                      path_index: int = 0) -> str:
         """Play a hydra_replay score JSON in the background, pressing each
         chord through the virtual kit inside the game. route is "kit" or
         "keys"; left out, the kit is used once ch_kit_setup has built it, and
@@ -321,8 +362,30 @@ def build_server(helper: Optional[Helper] = None):
         from the menus with ch_open_song: a song launched with a bot is
         played by the bot. log, when given, is where
         the press log goes. song_folder, when given, sets the run cap from
-        the song's length; with none the auto-player keeps its own cap."""
-        return capped(h.game.ch_play_chart(score_json, log, song_folder, route))
+        the song's length; with none the auto-player keeps its own cap.
+        decline_mode, "kick_only" or "nothing", says what to send for each
+        fill the path passes over, and needs dump_json, the hydra_replay dump
+        the score file came from; path_index picks the dump's path. With no
+        mode every chord is pressed."""
+        return capped(h.game.ch_play_chart(score_json, log, song_folder, route,
+                                           decline_mode, dump_json, path_index))
+
+    @server.tool()
+    def ch_run_chart(song_folder: str, score_json: str, kit_player: str | None = None,
+                     decline_mode: str | None = None, dump_json: str | None = None) -> str:
+        """Start a run in one call, so the first press can beat the first
+        note: ch_attach, ch_kit_setup on kit_player, the Star Power watch and
+        the auto-player on the kit, with one engine search for the watch and
+        the player. Call it right after ch_start(song_folder, human=True),
+        with kit_player="System" for such a launch. decline_mode and
+        dump_json are ch_play_chart's. The call returns at the first press,
+        with one line per part, the time it took, and the line "first press
+        chord index k at ms". A part that fails stops the call there: the
+        reply names it and the kit is taken away. Refused while a play
+        session runs. Read the run with ch_play_status and
+        ch_sp_watch_status."""
+        return capped(h.game.ch_run_chart(song_folder, score_json, kit_player,
+                                          decline_mode, dump_json))
 
     @server.tool()
     def ch_press(lanes: str) -> str:

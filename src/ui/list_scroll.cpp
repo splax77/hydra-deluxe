@@ -34,6 +34,17 @@ void scroll_last_row(ScrollTo how) {
     }
 }
 
+void scroll_block_into_view(ScrollTo how, float left, float top, float right, float bottom) {
+    switch (how) {
+        case ScrollTo::None:
+            return;
+        case ScrollTo::NearestEdge:
+            ImGui::ScrollToRect(ImGui::GetCurrentWindow(), ImRect(left, top, right, bottom),
+                                kNearestEdgeScrollFlags);
+            return;
+    }
+}
+
 bool row_keeps_place(const RowPlace& last, float row_h, const std::string& row) {
     // A click never moves the song under the pointer (selection_scroll), and
     // a change of row height alone would.

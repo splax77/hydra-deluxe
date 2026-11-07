@@ -135,6 +135,11 @@
           "file": "src/store/record_store.cpp",
           "line_text": "\"song_id=? AND profile_id=?\",",
           "why": "write_record, the replace of the chart's record under its profile"
+        },
+        {
+          "file": "src/store/record_store.cpp",
+          "line_text": "\" WHERE song_id=? AND profile_id=? AND rank=? AND hardest_ms IS NULL\");",
+          "why": "set_hardest fills in one empty figure on a path row; it replaces and purges no record, so it is not this question"
         }
       ],
       "note": "A save replaces the chart's record under the same profile and purges the chart's records whose stamp this build cannot read; a second delete of a chart's records could take a readable record made under other rules (D51 call 8) or leave an unreadable one behind. Every delete of records goes through delete_records_where, so a hand-written DELETE on either table is flagged. Decided by: D115 (spec section 5)"

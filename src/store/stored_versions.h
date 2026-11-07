@@ -42,13 +42,15 @@ struct StampRule {
 // The analysis version. BUMP IT, to the version of the release that ships the
 // change, whenever analysis output changes in a way the hydra_rules.ini
 // fingerprint doesn't already catch: the engine (src/search), the scoring
-// (src/core), the chart readers (src/parse) when a chart reads differently,
-// or what a summary row holds. Then shrink `accepted` to the new stamp alone.
-// A stale result reads Stale and asks for re-analysis. Changes that ship in
-// the same release share one bump (decision D23, 2026-10-03). The summary
-// columns (bestpath, score, stars, hardest_ms and the rest) are the
-// analysis's own output, so a change that alters any of them is covered by
-// this rule too (record_store.cpp, kSummaryColumnList).
+// (src/core), the chart readers (src/parse) when a chart reads differently:
+// anything a fresh analysis would compute differently. Then shrink `accepted`
+// to the new stamp alone. A stale result reads Stale and asks for
+// re-analysis. Changes that ship in the same release share one bump (decision
+// D23, 2026-10-03). A change to how a saved figure is shown is not a bump:
+// Stale is for a change in the analysis, and display text reads what the
+// engine already saved (the user's ruling, 2026-10-31). hardest_ms is the
+// example: the store saves the engine's own figure (engine_hardest_ms,
+// core/model.h) and the screens apply shown_timing when they show it.
 //
 // "2.1.0": the engine now stores each activation's SP-end history and
 // re-anchors the transfer scales on it (ADR 0021), and each tied variant

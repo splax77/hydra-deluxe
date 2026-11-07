@@ -1,0 +1,538 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Path Builder Mockup</title>
+<style>
+:root{
+  --bg:#18191c;--panel:#212226;--panel2:#2a2c31;--line:#383b42;--text:#e7e7e7;--muted:#a3a9b0;--dim:#6c717a;
+  --teal:#1f8a8f;--glow:#36d0d6;--sp:#5ec8ff;--green:#4fb35a;--yellow:#e0b83c;--red:#e5534b;--star:#f2d06b;--violet:#b48cff;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 "Segoe UI",system-ui,sans-serif}
+button{font:inherit;color:inherit;background:var(--panel2);border:1px solid var(--line);border-radius:5px;padding:5px 12px;cursor:pointer}
+button:hover{border-color:var(--glow)}
+button.primary{background:var(--teal);border-color:var(--teal)}
+button:disabled{opacity:.4;cursor:default;border-color:var(--line)}
+.app{max-width:1360px;margin:0 auto;padding:14px 18px 28px}
+h1{font-size:19px;margin:0;font-weight:600}
+.sub{color:var(--muted);font-size:13px}
+.intro{margin:10px 0 0;color:var(--muted);max-width:900px}
+.bar{display:flex;align-items:flex-end;gap:26px;margin:14px 0 10px;flex-wrap:wrap}
+.num .lab{color:var(--muted);font-size:12px}
+.num .val{font-size:24px;font-weight:600;font-variant-numeric:tabular-nums}
+.num.best .val{color:var(--muted);font-size:18px}
+.num .hint{color:var(--dim);font-size:11.5px;max-width:190px;line-height:1.3}
+.tools{margin-left:auto;display:flex;gap:8px}
+.guide{background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--glow);border-radius:6px;padding:10px 14px;margin-bottom:12px;min-height:48px;display:flex;align-items:center}
+.guide.refuse{border-left-color:var(--red)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:10px 12px}
+.legend{display:flex;gap:18px;color:var(--muted);font-size:13px;margin-bottom:8px;flex-wrap:wrap;align-items:center}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:6px;vertical-align:-1px}
+.lg-use{background:var(--glow);box-shadow:0 0 6px var(--glow)}
+.lg-mine{background:var(--sp)}
+.lg-no{border:2px solid var(--dim)}
+.legend label{margin-left:auto;cursor:pointer}
+#rows{position:relative}
+.row{display:flex;align-items:stretch;border-top:1px solid #2c2e33}
+.row:first-child{border-top:none}
+.rlab{width:110px;flex:none;color:var(--muted);font-size:12.5px;display:flex;align-items:center;padding-right:8px;line-height:1.2}
+.track{position:relative;flex:1;cursor:crosshair}
+.sec{position:absolute;top:0;bottom:0;border-left:1px solid #3a3d44;font-size:11.5px;color:var(--muted);padding:4px 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sec:nth-child(odd){background:#25272b}
+.star{position:absolute;top:50%;transform:translate(-50%,-50%);color:var(--star);font-size:13px;pointer-events:none}
+.band{position:absolute;top:6px;bottom:6px;border-radius:4px;font-size:12px;display:flex;align-items:center;justify-content:center;white-space:nowrap;overflow:hidden}
+.band.mine{background:var(--sp);color:#0d1418;font-weight:600;cursor:pointer}
+.band.mine.sel{outline:2px solid #fff;outline-offset:1px}
+.band.ghost{border:1.5px dashed #bdbdbd;color:#cfcfcf;pointer-events:none}
+.fill{position:absolute;top:16px;width:20px;height:20px;margin:-10px 0 0 -10px;border-radius:50%;border:none;padding:0;cursor:pointer}
+.fill.use{background:var(--glow);box-shadow:0 0 0 3px rgba(54,208,214,.25),0 0 12px rgba(54,208,214,.65)}
+.fill.use:hover{transform:scale(1.2)}
+.fill.mine{background:var(--sp)}
+.fill.no{background:transparent;border:2px solid var(--dim);width:13px;height:13px;margin:-6.5px 0 0 -6.5px}
+.fill:focus-visible{outline:2px solid #fff;outline-offset:2px}
+.flab{position:absolute;top:30px;transform:translateX(-50%);font-size:10.5px;white-space:nowrap;pointer-events:none;font-variant-numeric:tabular-nums}
+.axis span{position:absolute;top:2px;transform:translateX(-50%);font-size:11px;color:var(--dim)}
+.playhead{position:absolute;top:0;bottom:0;width:2px;background:#fff;opacity:.55;pointer-events:none}
+.tip{position:fixed;z-index:10;background:#0f1012;border:1px solid var(--line);border-radius:5px;padding:8px 11px;font-size:13px;max-width:360px;pointer-events:none;display:none;box-shadow:0 4px 14px rgba(0,0,0,.5)}
+.lower{display:grid;grid-template-columns:600px minmax(0,1fr);gap:12px;margin-top:12px}
+@media (max-width:980px){.lower{grid-template-columns:1fr}}
+.hwp{display:flex;flex-direction:column}
+.hwp .top{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.hwp h2,.steps h2{font-size:15px;margin:0;font-weight:600}
+.hwp .where{color:var(--muted);font-size:13px;margin-left:auto;font-variant-numeric:tabular-nums}
+canvas{width:100%;height:520px;border-radius:5px;display:block;background:#0c0d10}
+.hwp .cap{color:var(--dim);font-size:12px;margin-top:6px}
+.step{display:flex;gap:12px;align-items:flex-start;padding:9px 6px;border-top:1px solid #2c2e33;cursor:pointer}
+.step.sel{background:#262a30;border-radius:5px}
+.step .n{flex:none;width:26px;height:26px;border-radius:50%;background:var(--sp);color:#0d1418;font-weight:700;display:flex;align-items:center;justify-content:center}
+.step .txt{flex:1}
+.ok{color:var(--green)}.warn{color:var(--yellow)}.bad{color:var(--red)}.vio{color:var(--violet)}
+.why{color:var(--muted);font-size:13px;margin-top:2px}
+.step .acts{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;align-items:center}
+.step .acts button{font-size:13px;padding:3px 9px}
+.endrow button.cur{border-color:var(--sp)}
+.leftover{padding:9px 6px 2px 44px;color:var(--muted);border-top:1px solid #2c2e33}
+.gloss{color:var(--dim);font-size:12.5px;margin-top:10px;border-top:1px solid #2c2e33;padding-top:8px}
+details{margin-top:16px;color:var(--muted);font-size:13px}
+summary{cursor:pointer}
+</style>
+</head>
+<body>
+<div class="app">
+  <h1 id="song"></h1>
+  <div class="sub" id="mode"></div>
+  <p class="intro">Build your own Star Power path, left to right. Click a glowing fill to activate Star Power there.
+  You need at least two Star Power phrases (<span style="color:var(--star)">★</span>) saved since your last activation.
+  The number under each glowing fill is what activating there costs you. The highway below shows the notes wherever you hover or click.</p>
+
+  <div class="bar">
+    <div class="num"><div class="lab">Your score</div><div class="val" id="sMine"></div><div class="hint">what your activations so far score</div></div>
+    <div class="num best"><div class="lab">Best possible</div><div class="val" id="sBest"></div><div class="hint">Hydra's best path for this chart</div></div>
+    <div class="num best"><div class="lab">Best you can still reach</div><div class="val" id="sReach"></div><div class="hint">keeping your activations and playing the rest perfectly</div></div>
+    <div class="tools">
+      <button id="undo">Undo</button>
+      <button id="clear">Start over</button>
+      <button id="finish" class="primary" title="Keeps your activations and lets Hydra choose the best rest of the path">Finish the rest for me</button>
+    </div>
+  </div>
+
+  <div class="guide" id="guide" aria-live="polite"></div>
+
+  <div class="panel">
+    <div class="legend">
+      <span><i class="lg-use"></i>You can activate here</span>
+      <span><i class="lg-mine"></i>Your activation</span>
+      <span><i class="lg-no"></i>Can't activate here (hover to see why)</span>
+      <span>Click anywhere on the timeline to move the highway there.</span>
+      <label><input type="checkbox" id="showBest"> Show Hydra's best path</label>
+    </div>
+    <div id="rows"></div>
+  </div>
+
+  <div class="lower">
+    <div class="panel hwp">
+      <div class="top"><h2>Highway</h2><button id="play">Play</button><span class="where" id="where"></span></div>
+      <canvas id="hw"></canvas>
+      <div class="cap">Drawn from the chart's notes. White notes are Star Power phrases. The blue glow is your Star Power; the dashed box is a squeezed-out note. The real builder uses Hydra's 3D Preview with audio.</div>
+    </div>
+    <div class="panel steps" id="steps"></div>
+  </div>
+
+  <details>
+    <summary>About this mockup</summary>
+    <p>Every score is Hydra's engine output for this chart under your settings (Expert Pro Drums, 2x kick, SP cap 4, 10 ms Path limit),
+    taken with <code>hydra_replay</code>. The mockup holds <span id="nPaths"></span> engine-priced paths instead of running the search live.
+    Squeeze timings are the engine's own figures, printed the way Hydra prints "needs X ms". The Star Power line is a sketch drawn from the phrases you save.
+    Left out: early-fill timing, Copy and Paste, and Save and Open.</p>
+  </details>
+</div>
+<div class="tip" id="tip"></div>
+
+<script src="medusa-data.js"></script>
+<script>
+"use strict";
+const D = window.MEDUSA;
+const NO_SP = 678815;              // hydra_replay score with no Star Power
+const BF0 = Math.max(...D.paths.map(p => p.total));
+const RED_AT = BF0 * 0.01;         // red at 1% of the best path (design decision 3)
+const LIMIT = D.pathLimitMs;
+
+let W = [], undoStack = [], sel = null, guideMsg = null;
+let focusMs = 0, playing = false, hoverMs = null;
+
+const $ = id => document.getElementById(id);
+const fmt = n => n.toLocaleString("en-US");
+const short = n => n >= 1000 ? (n / 1000).toFixed(1) + "k" : fmt(n);
+const at = t => D.tickAt[t];
+const msOf = t => at(t).ms;
+const meas = t => "m" + (Math.floor(at(t).m) + 1);
+const measAtMs = ms => { let i = 0; while (i + 1 < D.measures.length && D.measures[i + 1] <= ms) i++; return "m" + (i + 1); };
+const clock = ms => { const s = Math.max(0, ms) / 1000; return Math.floor(s / 60) + ":" + String(Math.floor(s % 60)).padStart(2, "0"); };
+const fillByTick = new Map(D.fills.map(f => [f.tick, f]));
+const fname = t => fillByTick.get(t).label.split(".")[0];
+const plural = (n, w) => n + " " + w + (n === 1 ? "" : "s");
+
+function bestMatch(V) {
+  let b = null;
+  for (const p of D.paths) {
+    if (p.w.length < V.length) continue;
+    let ok = true;
+    for (let i = 0; i < V.length; i++) {
+      const v = V[i], w = p.w[i];
+      if (w.a !== v.a || (v.d != null && (w.d !== v.d || w.q !== v.q))) { ok = false; break; }
+    }
+    if (ok && (!b || p.total > b.total)) b = p;
+  }
+  return b;
+}
+const bf = V => V.length ? bestMatch(V).total : BF0;
+const own = V => V.length ? bestMatch(V).own[V.length - 1] : NO_SP;
+const lastEndTick = () => W.length ? W[W.length - 1].d : -1;
+const lastEndMs = () => W.length ? msOf(W[W.length - 1].d) : -1;
+const savedBefore = ms => D.phrases.filter(m => m > lastEndMs() && m < ms).length;
+
+function fillState(f) {
+  const mine = W.findIndex(w => w.a === f.tick);
+  if (mine >= 0) return { s: "mine", i: mine };
+  const on = W.findIndex(w => f.tick > w.a && f.tick <= w.d);
+  if (on >= 0) return { s: "no", why: `Star Power is already on here. Activation ${on + 1} runs until ${meas(W[on].d)}.` };
+  if (f.tick <= lastEndTick()) return { s: "no", why: "This is before your last activation. You build left to right; Undo goes back a step." };
+  const n = savedBefore(f.startMs);
+  if (n < 2) return { s: "no", why: `You have ${plural(n, "phrase")} saved here. You need 2 to activate.` };
+  const p = bestMatch([...W, { a: f.tick, d: null }]);
+  if (!p) return { s: "use", nodata: true, saved: n };
+  return { s: "use", saved: n, total: p.total, cost: bf(W) - p.total, w: p.w[W.length] };
+}
+function bestNext() {
+  let b = null;
+  for (const f of D.fills) { const st = fillState(f); if (st.s === "use" && !st.nodata && (!b || st.total > b.st.total)) b = { f, st }; }
+  return b;
+}
+const costCls = c => c <= 0 ? "ok" : c < RED_AT ? "warn" : "bad";
+const costText = c => c <= 0 ? `<span class="ok">costs nothing</span>` : `<span class="${costCls(c)}">costs ${fmt(c)} points</span>`;
+
+// One squeeze in plain words, with Hydra's "needs X ms" figure.
+function sqText(s) {
+  const what = s.k === "out" ? "a squeeze-out" : "a squeeze-in";
+  if (!s.needs) return `${what} that needs no timing`;
+  const over = s.ms > LIMIT ? ` <span class="vio">(over your ${LIMIT} ms Path limit)</span>` : "";
+  return `${what} that needs <b>${s.ms.toFixed(1)} ms</b>${over}`;
+}
+function endText(w) {
+  return w.sq && w.sq.length ? `, ending with ${w.sq.map(sqText).join(" and ")}` : "";
+}
+
+function push(newW, newSel, msg) { undoStack.push({ W, sel }); W = newW; sel = newSel; guideMsg = msg || null; render(); }
+function clickFill(f) {
+  const st = fillState(f);
+  focusTo(f.ms - 1400);
+  if (st.s === "mine") { sel = st.i; guideMsg = null; render(); return; }
+  if (st.s === "no") { guideMsg = { refuse: true, text: `Can't activate at ${fname(f.tick)}: ${st.why}` }; render(); return; }
+  if (st.nodata) { guideMsg = { refuse: true, text: `The mockup has no engine numbers for activating at ${fname(f.tick)} after these choices.` }; render(); return; }
+  push([...W, { ...st.w }], W.length);
+}
+function chooseEnd(i, e) { push([...W.slice(0, i), { ...W[i], d: e.d, q: e.q, bars: e.bars, sq: e.sq }], i); }
+function removeFrom(i) { push(W.slice(0, i), null, { text: i === W.length - 1 ? "Activation removed." : `Removed activation ${i + 1} and everything after it.` }); }
+function endChoices(i) {
+  const m = new Map();
+  for (const p of D.paths) {
+    if (p.w.length <= i || p.w[i].a !== W[i].a) continue;
+    let ok = true;
+    for (let j = 0; j < i; j++) if (p.w[j].a !== W[j].a || p.w[j].d !== W[j].d || p.w[j].q !== W[j].q) { ok = false; break; }
+    if (!ok) continue;
+    const k = p.w[i].d + ":" + p.w[i].q;
+    if (!m.has(k) || m.get(k).total < p.total) m.set(k, { d: p.w[i].d, q: p.w[i].q, bars: p.w[i].bars, sq: p.w[i].sq, total: p.total });
+  }
+  return [...m.values()].sort((x, y) => y.total - x.total);
+}
+
+function guideText() {
+  if (guideMsg) return guideMsg;
+  const next = D.fills.filter(f => fillState(f).s === "use");
+  if (!W.length) return { text: `<b>Step 1.</b>&nbsp;Click a glowing fill to make your first activation. The earliest you can activate is ${fname(next[0].tick)} (${clock(next[0].ms)}), once you've saved two phrases. Hover a fill to see it on the highway.` };
+  const last = W[W.length - 1];
+  if (!next.length) return { text: `Your Star Power runs until ${meas(last.d)}. No fill after that comes with two saved phrases, so your path is finished. Your score is ${fmt(own(W))}.` };
+  const b = bestNext();
+  return { text: `Your Star Power runs until ${meas(last.d)}. Save two more phrases (<span style="color:var(--star)">★</span>), then activate again. The next glowing fill is ${fname(next[0].tick)}.` +
+    (b ? ` Your best next choice is ${fname(b.f.tick)}.` : "") };
+}
+
+// ---------- rendering ----------
+function render() {
+  hideTip();
+  if (sel != null && sel >= W.length) sel = null;
+  const mine = own(W);
+  $("song").textContent = D.song + " — " + D.artist;
+  $("mode").textContent = D.mode;
+  $("sMine").textContent = fmt(mine);
+  $("sBest").textContent = fmt(BF0);
+  $("sReach").textContent = fmt(bf(W));
+  $("undo").disabled = !undoStack.length;
+  $("clear").disabled = !W.length;
+  $("finish").disabled = bf(W) === mine && W.length > 0;
+  const g = guideText();
+  $("guide").className = "guide" + (g.refuse ? " refuse" : "");
+  $("guide").innerHTML = g.text;
+  renderRows(); renderSteps(); drawHighway();
+}
+
+function renderRows() {
+  const L = D.lengthMs, pct = ms => (ms / L * 100).toFixed(3) + "%";
+  let h = `<div class="row" style="height:18px"><div class="rlab"></div><div class="track axis">`;
+  for (let s = 0; s * 1000 < L; s += 30) h += `<span style="left:${pct(s * 1000)}">${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}</span>`;
+  h += `</div></div>`;
+  h += `<div class="row" style="height:24px"><div class="rlab">Section</div><div class="track">`;
+  D.sections.forEach((s, i) => {
+    if (s.name === "End") return;
+    const end = i + 1 < D.sections.length ? D.sections[i + 1].ms : L;
+    h += `<div class="sec" style="left:${pct(s.ms)};width:${pct(end - s.ms)}" title="${s.name} · ${clock(s.ms)}">${s.name}</div>`;
+  });
+  h += `</div></div>`;
+  h += `<div class="row" style="height:22px"><div class="rlab">Star Power phrases</div><div class="track">`;
+  D.phrases.forEach(m => h += `<span class="star" style="left:${pct(m)}">★</span>`);
+  h += `</div></div>`;
+  h += `<div class="row" style="height:46px"><div class="rlab">Star Power saved</div><div class="track" id="meter"></div></div>`;
+  if ($("showBest").checked) {
+    const best = D.paths.find(p => p.total === BF0);
+    h += `<div class="row" style="height:30px"><div class="rlab">Hydra's best</div><div class="track">`;
+    best.w.forEach(w => h += `<div class="band ghost" style="left:${pct(msOf(w.a))};width:${pct(msOf(w.d) - msOf(w.a))}"></div>`);
+    h += `</div></div>`;
+  }
+  h += `<div class="row" style="height:34px"><div class="rlab">Your activations</div><div class="track">`;
+  W.forEach((w, i) => h += `<div class="band mine${sel === i ? " sel" : ""}" data-i="${i}" style="left:${pct(msOf(w.a))};width:${pct(msOf(w.d) - msOf(w.a))}">${i + 1}</div>`);
+  h += `</div></div>`;
+  h += `<div class="row" style="height:50px"><div class="rlab">Fills<br><span style="color:var(--dim);font-size:11px">and their cost</span></div><div class="track">`;
+  D.fills.forEach(f => {
+    const st = fillState(f);
+    h += `<button class="fill ${st.s}" data-t="${f.tick}" style="left:${pct(f.ms)}" aria-label="Fill at ${fname(f.tick)}"></button>`;
+    if (st.s === "use" && !st.nodata) h += `<span class="flab ${costCls(st.cost)}" style="left:${pct(f.ms)}">${st.cost <= 0 ? "best" : "−" + short(st.cost)}</span>`;
+  });
+  h += `</div></div>`;
+  h += `<div class="playhead" id="ph"></div>`;
+  $("rows").innerHTML = h;
+  drawMeter(); placePlayhead();
+
+  $("rows").querySelectorAll(".track").forEach(tr => tr.addEventListener("click", e => {
+    if (e.target.closest(".fill,.band.mine")) return;
+    const r = tr.getBoundingClientRect();
+    focusTo((e.clientX - r.left) / r.width * D.lengthMs - 500);
+  }));
+  $("rows").querySelectorAll(".fill").forEach(el => {
+    const f = fillByTick.get(+el.dataset.t);
+    el.onclick = () => clickFill(f);
+    el.onmouseenter = () => { hoverMs = f.ms - 1400; drawHighway(); showTip(el, fillTip(f)); };
+    el.onmouseleave = () => { hoverMs = null; drawHighway(); hideTip(); };
+  });
+  $("rows").querySelectorAll(".band.mine").forEach(el => el.onclick = () => { sel = +el.dataset.i; guideMsg = null; focusTo(msOf(W[sel].a) - 1400); render(); });
+}
+
+function fillTip(f) {
+  const st = fillState(f);
+  let t = `<b>Fill at ${fname(f.tick)}</b> · ${clock(f.ms)}<br>`;
+  if (st.s === "mine") return t + "Your activation. Click to see it below.";
+  if (st.s === "no") return t + st.why;
+  if (st.nodata) return t + `You have ${st.saved} phrases saved. (No engine numbers in the mockup for this one.)`;
+  const b = bestNext();
+  t += `You have ${st.saved} phrases saved.<br>`;
+  t += `If you activate here, the best you can still finish with is <b>${fmt(st.total)}</b>.`;
+  if (st.cost <= 0) t += `<br><span class="ok">That is the best choice right now.</span>`;
+  else t += `<br>Your best choice right now is ${fname(b.f.tick)}, which keeps <b>${fmt(b.st.total)}</b>.<br>So activating here ${costText(st.cost)}.`;
+  const sq = st.w.sq && st.w.sq.length ? `<br>Hydra would end it at ${meas(st.w.d)}${endText(st.w)}.` : `<br>Hydra would end it at ${meas(st.w.d)}.`;
+  return t + sq;
+}
+
+function drawMeter() {
+  const m = $("meter"), w = m.clientWidth || 1000, H = 46, L = D.lengthMs;
+  const x = ms => ms / L * w, y = n => H - 6 - n / 4 * (H - 12);
+  const pts = [[0, y(0)]]; let level = 0, on = false;
+  const ev = [...D.phrases.map(ms => ({ ms, k: "p" })), ...W.flatMap(win => [{ ms: msOf(win.a), k: "on" }, { ms: msOf(win.d), k: "off" }])].sort((a, b) => a.ms - b.ms);
+  for (const e of ev) {
+    if (e.k === "p" && !on) { pts.push([x(e.ms), y(level)]); level = Math.min(4, level + 1); pts.push([x(e.ms), y(level)]); }
+    else if (e.k === "on") { pts.push([x(e.ms), y(level)]); on = true; }
+    else if (e.k === "off") { pts.push([x(e.ms), y(0)]); level = 0; on = false; }
+  }
+  pts.push([w, y(level)]);
+  let s = `<svg width="${w}" height="${H}" style="position:absolute;inset:0">`;
+  s += `<line x1="0" x2="${w}" y1="${y(2)}" y2="${y(2)}" stroke="#4a6" stroke-dasharray="4 4" opacity=".7"/>`;
+  s += `<text x="${w - 4}" y="${y(2) - 3}" text-anchor="end" fill="#7c9" font-size="11">2 phrases: enough to activate</text>`;
+  s += `<path d="${pts.map((p, i) => (i ? "L" : "M") + p[0].toFixed(1) + " " + p[1].toFixed(1)).join(" ")}" fill="none" stroke="var(--star)" stroke-width="2"/>`;
+  m.innerHTML = s + "</svg>";
+}
+
+function placePlayhead() {
+  const ph = $("ph"), tr = $("rows").querySelector(".track");
+  if (!ph || !tr) return;
+  const box = $("rows").getBoundingClientRect(), r = tr.getBoundingClientRect();
+  ph.style.left = (r.left - box.left + (focusMs + 900) / D.lengthMs * r.width) + "px";
+  $("where").textContent = `${measAtMs(focusMs + 900)} · ${clock(focusMs + 900)}`;
+}
+
+function renderSteps() {
+  const el = $("steps");
+  let h = `<h2>Your activations</h2>`;
+  if (!W.length) {
+    el.innerHTML = h + `<div style="color:var(--muted);padding:6px">None yet. Each activation you make shows up here: where it starts and ends, any squeeze it needs, and what it cost you.</div>` + glossary();
+    return;
+  }
+  W.forEach((w, i) => {
+    const before = bf(W.slice(0, i)), after = bf(W.slice(0, i + 1)), c = before - after;
+    const saved = D.phrases.filter(m => m > (i ? msOf(W[i - 1].d) : -1) && m < fillByTick.get(w.a).startMs).length;
+    h += `<div class="step${sel === i ? " sel" : ""}" data-i="${i}"><div class="n">${i + 1}</div><div class="txt">
+      Activate at <b>${fname(w.a)}</b> (${clock(msOf(w.a))}) with ${plural(Math.min(saved, 4), "phrase")} saved${saved > 4 ? ` (${saved - 4} more were lost because the meter was full)` : ""}.
+      Star Power runs until ${meas(w.d)}${endText(w)}. This choice ${costText(c)}.`;
+    h += `<div class="why">${c > 0 ? `Before it, the best you could still finish with was ${fmt(before)}. After it, ${fmt(after)}.` : `The best you can still finish with stays at ${fmt(after)}.`}</div>`;
+    if (sel === i) {
+      h += `<div class="acts">`;
+      if (i === W.length - 1) {
+        const ends = endChoices(i);
+        if (ends.length > 1) {
+          h += `<span class="endrow" style="color:var(--muted);font-size:13px">End it at:</span>`;
+          ends.forEach((e, j) => {
+            const sq = e.sq && e.sq.length ? e.sq.map(s => s.needs ? `${s.k === "out" ? "squeeze-out" : "squeeze-in"} needs ${s.ms.toFixed(1)} ms` : "no timing needed").join(", ") : "no timing needed";
+            h += `<span class="endrow"><button class="${e.d === w.d && e.q === w.q ? "cur" : ""}" data-j="${j}">${meas(e.d)} · ${sq} · ${e.total === ends[0].total ? "best" : "−" + fmt(ends[0].total - e.total)}</button></span>`;
+          });
+        }
+      }
+      h += `<button class="rm" data-i="${i}">${i === W.length - 1 ? "Remove" : "Remove this and later ones"}</button></div>`;
+    }
+    h += `</div></div>`;
+  });
+  const left = bf(W) - own(W);
+  h += left > 0 ? `<div class="leftover">You still have Star Power to use. Activating the best way from here would add <b>${fmt(left)}</b> points.</div>`
+                : `<div class="leftover"><span class="ok">Nothing left on the table after your last activation.</span></div>`;
+  el.innerHTML = h + glossary();
+  el.querySelectorAll(".step").forEach(r => r.onclick = e => { if (e.target.closest("button")) return; const i = +r.dataset.i; sel = sel === i ? null : i; guideMsg = null; if (sel != null) focusTo(msOf(W[i].a) - 1400); render(); });
+  el.querySelectorAll(".rm").forEach(b => b.onclick = () => removeFrom(+b.dataset.i));
+  if (sel === W.length - 1) { const ends = endChoices(sel); el.querySelectorAll(".endrow button").forEach(b => b.onclick = () => chooseEnd(sel, ends[+b.dataset.j])); }
+}
+function glossary() {
+  return `<div class="gloss"><b>Cost</b>: how many points a choice takes off the best score you can still reach. ` +
+    `<b>Squeeze-out</b>: a Star Power phrase ends right where your Star Power runs out; hitting its last note late enough saves the phrase for your next activation. ` +
+    `<b>Squeeze-in</b>: hitting a phrase's last note early enough that it still lands inside your Star Power and stretches it. ` +
+    `The ms figure is how much timing it needs, as Hydra's Paths tab shows it.</div>`;
+}
+
+// ---------- highway ----------
+const LA = 2600;   // ms of chart the highway shows ahead of the strike line
+const LANES = ["#e04848", "#e8c33c", "#3f8fe0", "#4caf50"];
+function focusTo(ms) { focusMs = Math.max(-900, Math.min(D.lengthMs - 900, ms)); placePlayhead(); drawHighway(); }
+function inSP(ms) { return W.some(w => ms >= msOf(w.a) && ms <= msOf(w.d)); }
+function inPhrase(ms) { return D.spPhrases.some(p => ms >= p[0] - 1 && ms <= p[1]); }
+
+function drawHighway() {
+  const cv = $("hw"), dpr = devicePixelRatio || 1, Wd = cv.clientWidth, Ht = cv.clientHeight;
+  if (!Wd) return;
+  cv.width = Wd * dpr; cv.height = Ht * dpr;
+  const g = cv.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.fillStyle = "#0c0d10"; g.fillRect(0, 0, Wd, Ht);
+  const now = hoverMs != null ? hoverMs : focusMs;
+  const strikeY = Ht - 70, topY = 30, cx = Wd * 0.36, bw = Wd * 0.30, tw = bw * 0.36, K = 2.2;
+  const sc = z => 1 / (1 + K * z), s0 = sc(0), s1 = sc(1);
+  const P = z => (sc(z) - s1) / (s0 - s1);
+  const Y = z => topY + (strikeY - topY) * P(z);
+  const HW = z => tw + (bw - tw) * P(z);
+  const zOf = ms => (ms - now - 900) / LA;
+  const zMin = -0.18;
+  const quad = (z0, z1, x0f, x1f, fill) => {
+    const a = Math.max(z0, zMin), b = Math.min(z1, 1); if (a >= b) return;
+    g.beginPath();
+    g.moveTo(cx + HW(a) * x0f, Y(a)); g.lineTo(cx + HW(a) * x1f, Y(a));
+    g.lineTo(cx + HW(b) * x1f, Y(b)); g.lineTo(cx + HW(b) * x0f, Y(b)); g.closePath();
+    g.fillStyle = fill; g.fill();
+  };
+  // the highway
+  const hg = g.createLinearGradient(0, topY, 0, strikeY); hg.addColorStop(0, "#15171b"); hg.addColorStop(1, "#262930");
+  quad(zMin, 1, -1, 1, hg);
+  // your Star Power
+  W.forEach((w, i) => {
+    quad(zOf(msOf(w.a)), zOf(msOf(w.d)), -1, 1, "rgba(94,200,255,.16)");
+    quad(zOf(msOf(w.a)), zOf(msOf(w.d)), -1.04, -1, "rgba(94,200,255,.9)");
+    quad(zOf(msOf(w.a)), zOf(msOf(w.d)), 1, 1.04, "rgba(94,200,255,.9)");
+  });
+  // fills
+  D.fills.forEach(f => {
+    const st = fillState(f), z0 = zOf(f.startMs), z1 = zOf(f.ms);
+    if (z1 < zMin || z0 > 1) return;
+    const col = st.s === "use" ? "rgba(54,208,214,.22)" : st.s === "mine" ? "rgba(94,200,255,.25)" : "rgba(160,160,160,.08)";
+    quad(z0, z1, -1, 1, col);
+    if (z1 >= zMin && z1 <= 1) {
+      const y = Y(z1); g.fillStyle = st.s === "no" ? "#8a8f96" : st.s === "mine" ? "#5ec8ff" : "#36d0d6";
+      g.font = "12px Segoe UI"; g.textAlign = "left";
+      const label = st.s === "mine" ? `Your activation ${st.i + 1} (${fname(f.tick)})` : st.s === "use" ? `Fill ${fname(f.tick)}: activate here${st.nodata ? "" : st.cost > 0 ? " (−" + fmt(st.cost) + ")" : " (best)"}` : `Fill ${fname(f.tick)}: can't activate`;
+      g.fillText(label, cx + HW(z1) + 8, y + 4);
+    }
+  });
+  // lane lines and measure lines
+  g.strokeStyle = "rgba(255,255,255,.06)"; g.lineWidth = 1;
+  for (let i = 1; i < 4; i++) { const f = -1 + i * 0.5; g.beginPath(); g.moveTo(cx + HW(zMin) * f, Y(zMin)); g.lineTo(cx + HW(1) * f, Y(1)); g.stroke(); }
+  g.font = "11px Segoe UI"; g.textAlign = "right";
+  D.measures.forEach((m, i) => {
+    const z = zOf(m); if (z < zMin || z > 1) return;
+    g.strokeStyle = "rgba(255,255,255,.22)"; g.beginPath(); g.moveTo(cx - HW(z), Y(z)); g.lineTo(cx + HW(z), Y(z)); g.stroke();
+    g.fillStyle = "#7d828a"; g.fillText("m" + (i + 1), cx - HW(z) - 6, Y(z) + 4);
+  });
+  // Star Power ends and squeezes
+  W.forEach((w, i) => {
+    const z = zOf(msOf(w.d)); if (z < zMin || z > 1) return;
+    g.strokeStyle = "#5ec8ff"; g.lineWidth = 2.5; g.beginPath(); g.moveTo(cx - HW(z) * 1.04, Y(z)); g.lineTo(cx + HW(z) * 1.04, Y(z)); g.stroke(); g.lineWidth = 1;
+    g.fillStyle = "#5ec8ff"; g.textAlign = "left"; g.font = "12px Segoe UI";
+    g.fillText(`Star Power ${i + 1} ends (${meas(w.d)})`, cx + HW(z) + 8, Y(z) + 4);
+    (w.sq || []).forEach((s, k) => {
+      const t = s.k === "out" && w.q >= 0 ? msOf(w.q) : msOf(w.d);
+      const zz = zOf(t); if (zz < zMin || zz > 1) return;
+      g.fillStyle = s.needs && s.ms > LIMIT ? "#b48cff" : "#cfd3d8";
+      g.fillText(`${s.k === "out" ? "Squeeze-out" : "Squeeze-in"}: ${s.needs ? "needs " + s.ms.toFixed(1) + " ms" : "no timing needed"}`, cx + HW(zz) + 8, Y(zz) + 20 + k * 15);
+    });
+  });
+  // notes, far to near
+  const lo = now + 900 + zMin * LA - 50, hi = now + 900 + LA + 50;
+  const vis = D.gems.filter(c => c[0] >= lo && c[0] <= hi).reverse();
+  for (const [ms, bits] of vis) {
+    const z = zOf(ms), y = Y(z), hw = HW(z), sp = inSP(ms), ph = inPhrase(ms), p = P(z);
+    if (bits & 16) {   // kick: a bar across the lanes
+      g.fillStyle = ph ? "#ffd2a0" : "#e8913c";
+      g.fillRect(cx - hw * 0.96, y - 3 * p, hw * 1.92, Math.max(2, 6 * p));
+    }
+    for (let l = 0; l < 4; l++) {
+      if (!(bits & (1 << l))) continue;
+      const lx = cx + hw * (-1 + 0.5 * l + 0.25), gw = hw * 0.40, gh = Math.max(5, 20 * p);
+      const cym = l > 0 && (bits & (16 << l));
+      const base = LANES[l], fill = ph ? "#f4f4f4" : base;
+      g.fillStyle = fill; g.strokeStyle = base; g.lineWidth = 2;
+      g.beginPath();
+      if (cym) { g.ellipse(lx, y, gw * 0.5, gh * 0.55, 0, 0, Math.PI * 2); }
+      else { const r = gh * 0.35; g.roundRect ? g.roundRect(lx - gw / 2, y - gh / 2, gw, gh, r) : g.rect(lx - gw / 2, y - gh / 2, gw, gh); }
+      g.fill(); if (ph) g.stroke();
+      if ((bits & 256) && l === 0) { g.fillStyle = "rgba(0,0,0,.45)"; g.fill(); }
+    }
+  }
+  // the squeezed-out note: a ring round its chord
+  W.forEach(w => {
+    if (w.q < 0) return;
+    const z = zOf(msOf(w.q)); if (z < zMin || z > 1) return;
+    g.strokeStyle = "#b48cff"; g.lineWidth = 2.5; g.setLineDash([5, 4]);
+    g.strokeRect(cx - HW(z) * 1.02, Y(z) - 14 * P(z) - 4, HW(z) * 2.04, 28 * P(z) + 8); g.setLineDash([]);
+  });
+  // strike line
+  for (let l = 0; l < 4; l++) {
+    const lx = cx + bw * (-1 + 0.5 * l + 0.25), gw = bw * 0.36;
+    g.strokeStyle = LANES[l]; g.lineWidth = 3; g.strokeRect(lx - gw / 2, strikeY - 9, gw, 18);
+  }
+  g.fillStyle = "#9aa0a6"; g.textAlign = "center"; g.font = "12px Segoe UI";
+  g.fillText(hoverMs != null ? "Previewing the fill you're pointing at" : playing ? "Playing (no audio in the mockup)" : "Click the timeline or a fill to look somewhere else", cx, Ht - 18);
+}
+
+let lastT = null;
+function tick(t) {
+  if (!playing) { lastT = null; return; }
+  if (lastT != null) focusTo(focusMs + (t - lastT));
+  lastT = t;
+  if (focusMs >= D.lengthMs - 900) { playing = false; $("play").textContent = "Play"; return; }
+  requestAnimationFrame(tick);
+}
+$("play").onclick = () => { playing = !playing; $("play").textContent = playing ? "Pause" : "Play"; if (playing) requestAnimationFrame(tick); };
+
+function showTip(el, html) { const t = $("tip"); t.innerHTML = html; t.style.display = "block"; const r = el.getBoundingClientRect(); t.style.left = Math.min(r.left - 10, innerWidth - 375) + "px"; t.style.top = (r.bottom + 22) + "px"; }
+function hideTip() { $("tip").style.display = "none"; }
+
+$("undo").onclick = () => { if (!undoStack.length) return; ({ W, sel } = undoStack.pop()); guideMsg = null; render(); };
+$("clear").onclick = () => { if (W.length) push([], null, { text: "Started over. Click a glowing fill to make your first activation." }); };
+$("finish").onclick = () => {
+  const p = bestMatch(W), k = W.length;
+  push(p.w.map(w => ({ ...w })), null, { text: k ? `Hydra kept your ${plural(k, "activation")} and added the best rest of the path. Undo takes it back.` : "Hydra built the whole path the best way. Undo takes it back." });
+};
+$("showBest").onchange = render;
+addEventListener("keydown", e => {
+  if (e.ctrlKey && e.key.toLowerCase() === "z") { e.preventDefault(); $("undo").click(); }
+  else if (e.key === "Escape") { sel = null; render(); }
+  else if (e.key === " " && e.target === document.body) { e.preventDefault(); $("play").click(); }
+});
+addEventListener("resize", render);
+$("nPaths").textContent = fmt(D.paths.length);
+focusMs = D.fills[0].ms - 900 - 2500;
+render();
+</script>
+</body>
+</html>

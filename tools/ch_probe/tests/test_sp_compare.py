@@ -327,6 +327,27 @@ class RowChecksTest(unittest.TestCase):
     def test_ready_fraction_is_half_a_meter(self):
         self.assertEqual(sp_compare.READY_FRACTION, 0.5)
 
+    def test_only_an_end_chord_reaches_back_by_the_end_lead(self):
+        from tools.ch_probe.experiments import play_chart
+        score = {"activations": [{"act_tick": 0, "deact_tick": 200}]}
+        ends = sp_compare.end_ticks_of(score)
+        self.assertEqual(sp_compare.early_credit_ms({"tick": 200}, ends),
+                         play_chart.SP_END_LEAD_MS)
+        self.assertEqual(sp_compare.early_credit_ms({"tick": 100}, ends),
+                         play_chart.PRESS_LEAD_MS)
+
+    def test_a_flip_goes_to_its_own_chord_not_one_17_ms_after(self):
+        # Chord 1 (tick 100) is pressed 2 ms early and chord 2 (tick 200, an
+        # end chord) 15 ms early, 17.2 ms later. A flip 1 ms after chord 1
+        # belongs to chord 1; the end chord's wider credit must not take it.
+        chords = [{"tick": 100, "ms": 1000.0}, {"tick": 200, "ms": 1017.2}]
+        chord_ms = [c["ms"] for c in chords]
+        got = sp_compare._landed_chord(chords, chord_ms, 1001.0, {200})
+        self.assertIs(got, chords[0])
+        # A flip at 1003 ms is also within the end chord's credit (1002.2).
+        got = sp_compare._landed_chord(chords, chord_ms, 1003.0, {200})
+        self.assertIs(got, chords[1])
+
     def test_phrase_rises_gives_each_step_up(self):
         rows = [_row(1.0, 0), _row(1.5, 1536), _row(2.0, 1536), _row(2.5, 3072),
                 _row(3.0, 0, active=1), _row(3.5, 1536, active=1)]

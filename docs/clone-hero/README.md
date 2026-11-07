@@ -27,7 +27,7 @@ Every block carries exactly one of these four labels, and the evidence the label
 
 ## What a block may cite
 
-A block's `Evidence:` and `Found:` lines cite only permanent records. Those are files in the repo (a listing under `code/`, a file under `docs/audit/` or `tools/`, Hydra's code, the decision log, an ADR, a session card under `docs/sessions/`), and the game's own files and dumps. They never cite an agent's working notes, such as a claim table an agent kept while it worked, or any file in a session's temporary folder. Those are gone once the session ends, so a reader cannot follow the pointer.
+A block's `Evidence:` and `Found:` lines cite only permanent records. Those are files in the repo (a listing under `code/`, a file under `docs/audit/` or `tools/`, Hydra's code, the decision log, an ADR, a session card under `docs/sessions/`), the game's own files and dumps, Ghidra's decompile of the game (`ghidra_decompile_all.txt`, which `code/README.md` describes), run results under `hydra-data`, and `video-tools`. A video is cited by its title and YouTube id, not a path. A block never cites an agent's working notes, such as a claim table an agent kept while it worked, or any file in a scratch folder, such as a session's temporary folder. Those are gone once the session ends, so a reader cannot follow the pointer.
 
 A session's transcript is not a source either, condensed or not. The user ruled that transcripts "arent kept long term. they shouldnt be expected as a reference". A session card is cited as `docs/sessions/<date>-<id8>.md`. When a fact came from a session but its card does not hold it, the block says the session's own record is not kept, and words the fact no more firmly than that allows.
 
@@ -50,7 +50,7 @@ A `Found:` line gives the date and the session that found the rule, such as `202
 
 ## How many blocks each page holds
 
-These counts were taken from the pages on 2026-11-05, by counting their `###` headings and `Label:` lines.
+These counts were taken from the pages on 2026-11-06, by counting their `###` headings and `Label:` lines.
 
 | Page | Blocks | Proven in the game's code | Proven in a live run | Hydra assumes it, never checked | Unknown |
 |---|---|---|---|---|---|
@@ -59,11 +59,11 @@ These counts were taken from the pages on 2026-11-05, by counting their `###` he
 | 03 timing | 46 | 25 | 3 | 5 | 13 |
 | 04 fills | 45 | 32 | 2 | 4 | 7 |
 | 05 Star Power | 46 | 22 | 3 | 9 | 12 |
-| 06 scoring | 37 | 17 | 7 | 3 | 10 |
-| 07 internals | 80 | 42 | 16 | 0 | 22 |
-| All pages | 379 | 200 | 39 | 34 | 106 |
+| 06 scoring | 37 | 17 | 8 | 3 | 9 |
+| 07 internals | 81 | 43 | 16 | 0 | 22 |
+| All pages | 380 | 201 | 40 | 34 | 105 |
 
-Eleven of page 4's blocks describe build 1.0. The questions page holds 24 open questions, and the live-checks page holds 73 checks covering 83 rows.
+Eleven of page 4's blocks describe build 1.0. The questions page holds 24 open questions, and the live-checks page holds 72 checks covering 82 rows.
 
 ## Names in obfuscated code
 

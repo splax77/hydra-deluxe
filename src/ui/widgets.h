@@ -157,6 +157,12 @@ inline float button_slot_width(const char* widest_label) {
     return ImGui::CalcTextSize(widest_label, nullptr, true).x +
            ImGui::GetStyle().FramePadding.x * 2.0f;
 }
+// The width ImGui::Checkbox draws for `label`: the box (a frame-height
+// square), the inner gap, then the label's text up to any "##".
+inline float checkbox_slot_width(const char* label) {
+    return ImGui::GetFrameHeight() + ImGui::GetStyle().ItemInnerSpacing.x +
+           ImGui::CalcTextSize(label, nullptr, true).x;
+}
 inline bool button_in_slot(const char* label, float slot_w) {
     return ImGui::Button(label, ImVec2(slot_w, 0.0f));
 }
@@ -173,6 +179,13 @@ inline bool fits_in_row(float x, float w, float right) { return x + w <= right; 
 inline bool fits_on_line(float w, float spacing) {
     return fits_in_row(ImGui::GetItemRectMax().x + spacing, w,
                        ImGui::GetCurrentWindow()->WorkRect.Max.x);
+}
+
+// Keeps the next item, `w` wide, on the last item's line when it fits there;
+// otherwise it starts the next line. A row of variable-length pieces wraps
+// instead of running past the window's edge.
+inline void flow_next(float w, float spacing) {
+    if (fits_on_line(w, spacing)) ImGui::SameLine(0.0f, spacing);
 }
 
 // Moves the cursor right so the next control, `w` wide, ends at the right

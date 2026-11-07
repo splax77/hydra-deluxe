@@ -1,7 +1,7 @@
 // The Path Builder's cost list: what each of the player's windows costs
 // against Hydra's best path. Every cost is a difference of two best-finish
 // totals (best_finish and search_target, search/pather.h); nothing here
-// prices a path itself. Plan: docs/superpowers/plans/2026-10-28-path-builder.md,
+// prices a path itself. Plan: docs/superpowers/plans/2026-10-28-path-builder.md (removed; git show b29a3c28:docs/superpowers/plans/2026-10-28-path-builder.md),
 // task EN-3.
 
 #ifndef HYDRA_APP_PATH_COSTS_H
@@ -51,6 +51,42 @@ enum class CostTier { Green, Yellow, Red };
 // search only chooses among the paths the free one could. So a negative cost
 // is a bug upstream and throws std::logic_error rather than getting a colour.
 CostTier cost_tier(int64_t cost, int64_t bf0);
+
+// Whether `cost` is a best choice's: it loses nothing. The one test for the
+// fill or end the screen calls "best" and for the sentences that say a choice
+// costs nothing.
+bool costs_nothing(int64_t cost);
+
+// One fill the player could activate on next, priced: best_finish is
+// BF(n + f), best_finish's total with the player's n windows pinned whole and
+// this fill pinned by its activation alone. Plan:
+// docs/superpowers/plans/2026-10-30-path-builder-redesign.md (removed; git show 307d0b5c:docs/superpowers/plans/2026-10-30-path-builder-redesign.md), task CO-2.
+struct CandidateFinish {
+    int64_t act_tick = 0;
+    int64_t best_finish = 0;
+};
+
+// A candidate fill's cost, BF(n) - BF(n + f): what activating there next
+// loses against the best next choice. The best next fill costs 0.
+struct CandidateCost {
+    int64_t act_tick = 0;
+    int64_t best_finish = 0;
+    int64_t cost = 0;
+    CostTier tier = CostTier::Green;
+};
+
+// The costs of `candidates` against `bf_n`, BF(n) for the player's n windows,
+// in the order given; each tier is cost_tier against `bf0`, BF(0). The one
+// place a candidate's cost is worked out. A negative cost throws as cost_tier
+// does: pinning one more activation never raises the best finish.
+std::vector<CandidateCost> candidate_costs(int64_t bf0, int64_t bf_n,
+                                           const std::vector<CandidateFinish>& candidates);
+
+// The costs of one window's end choices, each against the best of them:
+// `best_finishes` holds each end's best finish (BF with that end pinned), and
+// the cost of an end is the highest of them minus its own, in the order given.
+// The best end costs 0. The one place an end choice's cost is worked out.
+std::vector<int64_t> end_costs(const std::vector<int64_t>& best_finishes);
 
 // One ladder run as it stands. The ladder's bf holds the values landed so
 // far, best[k] is the path behind bf[k] (best_finish's paths.front()), and

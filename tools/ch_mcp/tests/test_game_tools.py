@@ -7,8 +7,10 @@ records its keys, and live_play is a fake that delivers rows.
 
 from __future__ import annotations
 
+import inspect
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import threading
@@ -39,6 +41,9 @@ from tools.ch_probe.input_driver import DEFAULT_BINDINGS, InputDriver, Lane  # n
 WINDOW = 0x1234
 # How long a test waits on a fake's thread before it fails instead of hanging.
 THREAD_CAP_S = 5.0
+# How long a test waits on a real child process before it fails instead of
+# hanging.
+CHILD_CAP_S = 30.0
 
 ROWS = [
     {"index": 0, "chart_ms": 1000.0, "clock_ms_at_press": 998.0,
@@ -47,8 +52,10 @@ ROWS = [
      "score_before": 50, "score_after": 50, "hit": 0},
 ]
 SCORE_JSON = {"chords": [
-    {"index": 0, "ms": 1000.0, "notes": [{"color": "Red", "cymbal": False}]},
-    {"index": 1, "ms": 1500.0, "notes": [{"color": "Kick", "cymbal": False}]},
+    {"index": 0, "ms": 1000.0,
+     "notes": [{"color": "Red", "cymbal": False, "dynamic": "none"}]},
+    {"index": 1, "ms": 1500.0,
+     "notes": [{"color": "Kick", "cymbal": False, "dynamic": "none"}]},
 ]}
 
 
@@ -245,7 +252,7 @@ class GameToolsTest(unittest.TestCase):
         t.tools.ch_start(t.r.song)
         backup = t.backup_dir()
 
-        def fail(backup_dir, out):
+        def fail(backup_dir, out, leave=()):
             raise G.RestoreError("scoredata.bin", "locked")
 
         with mock.patch.object(G, "restore", fail):
@@ -293,7 +300,8 @@ class GameToolsTest(unittest.TestCase):
         self.assertTrue(os.path.isfile(os.path.join(backup, G.BACKUP_MANIFEST)))
         self.assertIsNone(t.tools.launched_at())
         self.assertEqual(t.tools.ensure_backup(), "")
-        self.assertEqual(os.listdir(t.scratch_root), [os.path.basename(t.tools._scratch)])
+        self.assertEqual(sorted(os.listdir(t.scratch_root)),
+                         sorted([os.path.basename(t.tools._scratch), GT.OPEN_RUN_MARKER]))
 
     def test_ensure_backup_takes_none_when_a_run_holds_one(self):
         t = ToolRig(self.tmp)
@@ -362,10 +370,13 @@ class GameToolsTest(unittest.TestCase):
         stats = os.path.join(self.tmp, "stats.json")
         score = os.path.join(self.tmp, "score.json")
         _write(stats, json.dumps({"players": [{"total_notes": 2, "sp_phrases_total": 0,
-                                               "base_score": 100, "note_score": 100}]}).encode())
+                                               "base_score": 100, "note_score": 100,
+                                               "score": 100, "accent_notes_hit": 0,
+                                               "ghost_notes_hit": 0, "sp_activations": 0}]}).encode())
         _write(score, json.dumps({
-            "chords": [{"notes": [{}], "is_sp_phrase_end": False}] * 2,
-            "final": {"notes": 100, "accent": 0, "ghost": 0, "total": 100}}).encode())
+            "chords": [{"notes": [{"dynamic": "none"}], "is_sp_phrase_end": False}] * 2,
+            "final": {"notes": 100, "accent": 0, "ghost": 0, "total": 100},
+            "activations": []}).encode())
         expected = []
         self.assertTrue(compare_scorestats.compare(stats, score, out=expected.append))
         t = ToolRig(self.tmp)
@@ -547,6 +558,50 @@ class GameToolsTest(unittest.TestCase):
         self.assertEqual(seen, [320.504])
         self.assertIn("run cap: 320.504 s", reply.splitlines())
 
+    def test_the_status_prints_the_threshold_the_player_read(self):
+        def live_play(chords, **kw):
+            return play_chart.RunResult(stop="done", dyn_threshold=64)
+
+        t = ToolRig(self.tmp, live_play=live_play)
+        t.tools.ch_play_chart(self._score_json(), route="keys")
+        t.tools._play.thread.join(THREAD_CAP_S)
+        self.assertEqual(t.tools.ch_play_status().splitlines()[2], "dynamics threshold: 64")
+
+    def test_the_status_prints_no_threshold_when_none_was_read(self):
+        t = ToolRig(self.tmp, live_play=lambda chords, **kw: play_chart.RunResult(stop="done"))
+        t.tools.ch_play_chart(self._score_json(), route="keys")
+        t.tools._play.thread.join(THREAD_CAP_S)
+        self.assertNotIn("threshold", t.tools.ch_play_status())
+
+    def test_the_status_names_the_first_chord_pressed_from_the_oldest_row(self):
+        def live_play(chords, **kw):
+            for row in ({**ROWS[0], "index": 7, "chart_ms": 5398.0},
+                        {**ROWS[1], "index": 8, "chart_ms": 5600.0}):
+                kw["on_press"](row)
+            return play_chart.RunResult(stop="done", sent=2, hit=1)
+
+        t = ToolRig(self.tmp, live_play=live_play)
+        t.tools.ch_play_chart(self._score_json(), route="keys")
+        t.tools._play.thread.join(THREAD_CAP_S)
+        self.assertIn("first press chord index 7 at 5398.0 ms",
+                      t.tools.ch_play_status().splitlines())
+
+    def test_the_status_names_the_first_chord_while_the_run_goes_on(self):
+        t = ToolRig(self.tmp)
+        t.tools.ch_play_chart(self._score_json(), route="keys")
+        self.assertTrue(t.live_play.delivered.wait(THREAD_CAP_S))
+        self.assertIn("first press chord index 0 at 1000.0 ms",
+                      t.tools.ch_play_status().splitlines())
+        t.tools.ch_play_stop()
+        t.tools._play.thread.join(THREAD_CAP_S)
+
+    def test_the_status_says_when_no_chord_was_pressed(self):
+        t = ToolRig(self.tmp, live_play=lambda chords, **kw: play_chart.RunResult(stop="done"))
+        t.tools.ch_play_chart(self._score_json(), route="keys")
+        t.tools._play.thread.join(THREAD_CAP_S)
+        self.assertIn("first press: none, no chord was pressed",
+                      t.tools.ch_play_status().splitlines())
+
     # -- the auto-player ------------------------------------------------------------------
 
     def _score_json(self) -> str:
@@ -685,6 +740,131 @@ class GameToolsTest(unittest.TestCase):
         self.assertIsNone(t.tools._play)
         self.assertEqual(seen, [])
 
+    # -- declining a fill ---------------------------------------------------------------
+
+    # The fixture of the decline list itself is in test_play_chart.py; these
+    # two files only carry the arguments through the tool.
+    DECLINE_SCORE = {"chords": [
+        {"index": 0, "ms": 1000.0, "tick": 480,
+         "notes": [{"color": "Red", "cymbal": False, "dynamic": "none"}]},
+        {"index": 1, "ms": 1500.0, "tick": 960,
+         "notes": [{"color": "Kick", "cymbal": False, "dynamic": "none"},
+                   {"color": "Green", "cymbal": True, "dynamic": "none"}]},
+    ]}
+    DECLINE_DUMP = {"paths": [
+        {"activations": [{"skipped_fill_ticks": [960]}]},
+        {"activations": [{"skipped_fill_ticks": []}]},
+    ]}
+
+    def _decline_files(self):
+        score = os.path.join(self.tmp, "decline-score.json")
+        dump = os.path.join(self.tmp, "decline-dump.json")
+        _write(score, json.dumps(self.DECLINE_SCORE).encode())
+        _write(dump, json.dumps(self.DECLINE_DUMP).encode())
+        return score, dump
+
+    def _decline_rig(self):
+        seen = []
+
+        def live_play(chords, **kw):
+            seen.append(chords)
+            return play_chart.RunResult(stop="done")
+
+        return ToolRig(self.tmp, live_play=live_play), seen
+
+    def test_a_decline_mode_reaches_the_chords_and_the_reply_names_them(self):
+        t, seen = self._decline_rig()
+        score, dump = self._decline_files()
+        reply = t.tools.ch_play_chart(score, route="keys", decline_mode="kick_only",
+                                      dump_json=dump)
+        t.tools._play.thread.join(THREAD_CAP_S)
+        self.assertEqual([(c.lanes, c.declined) for c in seen[0]],
+                         [([Lane.RED], False), ([Lane.KICK], True)])
+        self.assertIn("declined (kick_only): chords 1", reply.splitlines())
+
+    def test_mode_nothing_leaves_the_declined_chord_no_lanes(self):
+        t, seen = self._decline_rig()
+        score, dump = self._decline_files()
+        t.tools.ch_play_chart(score, route="keys", decline_mode="nothing", dump_json=dump)
+        t.tools._play.thread.join(THREAD_CAP_S)
+        self.assertEqual(seen[0][1].lanes, [])
+
+    def test_path_index_reaches_the_decline_list(self):
+        t, seen = self._decline_rig()
+        score, dump = self._decline_files()
+        reply = t.tools.ch_play_chart(score, route="keys", decline_mode="nothing",
+                                      dump_json=dump, path_index=1)
+        t.tools._play.thread.join(THREAD_CAP_S)
+        self.assertEqual([c.declined for c in seen[0]], [False, False])
+        self.assertIn("declined (nothing): chords none", reply.splitlines())
+
+    def test_a_mode_other_than_the_two_names_is_refused(self):
+        t, seen = self._decline_rig()
+        score, dump = self._decline_files()
+        self.assertEqual(t.tools.ch_play_chart(score, route="keys", decline_mode="both",
+                                               dump_json=dump),
+                         'unknown decline mode "both"; modes: kick_only, nothing')
+        self.assertIsNone(t.tools._play)
+        self.assertEqual(seen, [])
+
+    def test_a_mode_with_no_dump_is_refused(self):
+        t, seen = self._decline_rig()
+        score, _dump = self._decline_files()
+        self.assertEqual(t.tools.ch_play_chart(score, route="keys", decline_mode="nothing"),
+                         "decline mode nothing needs dump_json, the path's hydra_replay dump")
+        self.assertIsNone(t.tools._play)
+        self.assertEqual(seen, [])
+
+    def test_a_path_the_dump_does_not_have_is_refused(self):
+        t, seen = self._decline_rig()
+        score, dump = self._decline_files()
+        reply = t.tools.ch_play_chart(score, route="keys", decline_mode="nothing",
+                                      dump_json=dump, path_index=2)
+        self.assertTrue(reply.startswith("could not read the fills to decline: IndexError"), reply)
+        self.assertIsNone(t.tools._play)
+
+    def test_with_no_mode_the_dump_is_not_read_and_every_chord_stays_whole(self):
+        t, seen = self._decline_rig()
+        score, _dump = self._decline_files()
+        reply = t.tools.ch_play_chart(score, route="keys",
+                                      dump_json=os.path.join(self.tmp, "no such dump.json"))
+        t.tools._play.thread.join(THREAD_CAP_S)
+        self.assertEqual([len(c.lanes) for c in seen[0]], [1, 2])
+        self.assertNotIn("declined", reply)
+
+    def test_the_status_counts_a_declined_chord_apart_from_the_misses(self):
+        row = {**ROWS[1], "hit": play_chart.DECLINED}
+
+        def live_play(chords, *, on_press, **kw):
+            on_press(ROWS[0])
+            on_press(row)
+            return play_chart.RunResult(stop="done", sent=1, hit=1, declined=1, max_streak=1)
+
+        t = ToolRig(self.tmp, live_play=live_play)
+        t.tools.ch_play_chart(self._score_json(), route="keys")
+        t.tools._play.thread.join(THREAD_CAP_S)
+        lines = t.tools.ch_play_status().splitlines()
+        self.assertIn("sent 1, hit 1, misses 0, best streak 1, declined 1", lines)
+        self.assertIn("  1, 1500.0, 1499.0, 50, 50, declined", lines)
+        self.assertFalse([line for line in lines if "jumped back" in line])
+
+    def test_the_running_status_does_not_count_a_declined_row_as_a_hit(self):
+        release = threading.Event()
+
+        def live_play(chords, *, on_press, **kw):
+            on_press({**ROWS[1], "hit": play_chart.DECLINED})
+            delivered.set()
+            release.wait(THREAD_CAP_S)
+            return play_chart.RunResult(stop="done")
+
+        delivered = threading.Event()
+        t = ToolRig(self.tmp, live_play=live_play)
+        t.tools.ch_play_chart(self._score_json(), route="keys")
+        self.assertTrue(delivered.wait(THREAD_CAP_S))
+        self.assertIn("running: 1 presses so far, 0 hit", t.tools.ch_play_status())
+        release.set()
+        t.tools._play.thread.join(THREAD_CAP_S)
+
     def test_the_status_rows_show_the_kit_columns_only_when_rows_carry_them(self):
         rows = [{**ROWS[0], "down_frame": 10, "up_frame": 12, "down_ms": 100, "up_ms": 113}]
 
@@ -702,6 +882,262 @@ class GameToolsTest(unittest.TestCase):
             "rows, newest first (index, chart_ms, clock_ms_at_press, score_before, score_after, "
             "hit, down_frame, up_frame, down_ms, up_ms):",
             "  0, 1000.0, 998.0, 0, 50, 1, 10, 12, 100, 113"])
+
+    # -- the chained start --------------------------------------------------------------
+
+    ENGINE = 0x2_0000_1000
+
+    class ChainFrida:
+        def __init__(self, events, attaches=True):
+            self.events, self.attaches = events, attaches
+
+        def ch_attach(self):
+            self.events.append("attach")
+            return "attached" if self.attaches else "the game is not running"
+
+        def is_attached(self):
+            return self.attaches
+
+    class ChainKit:
+        def __init__(self, events, press):
+            self.events, self.press = events, press
+
+        def setup_for_run(self, player):
+            self.events.append(("setup", player))
+            return self.press, "setup reply"
+
+        def ch_kit_teardown(self):
+            self.events.append("teardown")
+            return "kit teardown: all checks ok"
+
+    class ChainSp:
+        def __init__(self, events, engine):
+            self.events, self.engine = events, engine
+
+        def watch_for_run(self, cap_s, find_engine):
+            self.events.append(("watch", cap_s, find_engine))
+            return self.engine, "csv: w.csv" if self.engine else "watcher ended: no song"
+
+        def ch_sp_watch_stop(self):
+            self.events.append("watch stop")
+            return "watcher ended: stopped"
+
+    def _chain_rig(self, live_play=None, *, attaches=True, press=None, engine=ENGINE):
+        events = []
+        seen = {}
+
+        def played(chords, *, on_press, **kw):
+            events.append("play")
+            seen.update(kw, chords=chords, engine=kw["find_engine"]("a proc"))
+            on_press(ROWS[0])
+            return play_chart.RunResult(stop="done")
+
+        press = press if press is not None else (lambda lanes, axes=None: {})
+        t = ToolRig(self.tmp, live_play=live_play or played)
+        t.tools.use_run_parts(GT.RunParts(self.ChainFrida(events, attaches),
+                                          self.ChainKit(events, press if press != "none" else None),
+                                          self.ChainSp(events, engine)))
+        return t, events, seen
+
+    def _run(self, t, score=None, **kw):
+        reply = t.tools.ch_run_chart(t.r.song, score or self._score_json(), "System", **kw)
+        if t.tools._play is not None:
+            t.tools._play.thread.join(THREAD_CAP_S)
+        return reply
+
+    def test_the_chain_runs_attach_setup_watch_play_in_that_order(self):
+        t, events, _seen = self._chain_rig()
+        self._run(t)
+        self.assertEqual([e if isinstance(e, str) else e[0] for e in events],
+                         ["attach", "setup", "watch", "play"])
+        self.assertEqual(events[1], ("setup", "System"))
+
+    def test_the_watch_gets_the_one_search_and_the_player_its_engine(self):
+        t, events, seen = self._chain_rig()
+        self._run(t)
+        self.assertIs(events[2][2], GT.find_run_engine)
+        self.assertEqual(seen["engine"], self.ENGINE)
+
+    def test_the_players_press_is_the_kit_press_setup_gave_and_it_has_no_driver(self):
+        def press(lanes, axes=None):
+            return {}
+
+        t, _events, seen = self._chain_rig(press=press)
+        self._run(t)
+        self.assertIs(seen["press"], press)
+        self.assertNotIn("driver", seen)
+
+    def test_the_watch_and_the_player_share_the_songs_run_cap(self):
+        t, events, seen = self._chain_rig()
+        self._run(t)
+        self.assertEqual(events[2][1], GT.run_cap_s(t.r.song))
+        self.assertEqual(seen["cap_s"], GT.run_cap_s(t.r.song))
+
+    def test_the_search_is_the_auto_players_with_its_dots_kept_off_stdout(self):
+        with mock.patch.object(play_chart, "find_normal_engine", return_value=self.ENGINE) as find:
+            self.assertEqual(GT.find_run_engine("a proc"), self.ENGINE)
+        self.assertEqual(find.call_args.args, ("a proc",))
+        self.assertIsNot(find.call_args.kwargs["out"], None)
+
+    def test_the_reply_has_a_line_per_part_and_names_the_first_press(self):
+        t, _events, _seen = self._chain_rig()
+        lines = self._run(t).splitlines()
+        self.assertEqual([line.split(":")[0] for line in lines[:4]],
+                         ["attach", "kit setup", "watch", "play"])
+        self.assertIn(f"engine {self.ENGINE:#x}, csv: w.csv", lines[2])
+        self.assertEqual(lines[-1], "first press chord index 0 at 1000.0 ms")
+        self.assertEqual(len(lines), 5)
+
+    def test_a_later_first_press_is_named(self):
+        def live_play(chords, *, on_press, **kw):
+            on_press(ROWS[1])
+            return play_chart.RunResult(stop="done")
+
+        t, _events, _seen = self._chain_rig(live_play)
+        self.assertEqual(self._run(t).splitlines()[-1],
+                         "first press chord index 1 at 1500.0 ms")
+
+    def test_the_call_returns_at_the_first_press_while_the_run_goes_on(self):
+        release = threading.Event()
+
+        def live_play(chords, *, on_press, **kw):
+            on_press(ROWS[0])
+            release.wait(THREAD_CAP_S)
+            return play_chart.RunResult(stop="done")
+
+        t, _events, _seen = self._chain_rig(live_play)
+        reply = t.tools.ch_run_chart(t.r.song, self._score_json(), "System")
+        self.assertIn("first press chord index 0", reply)
+        self.assertTrue(t.tools._play.running())
+        release.set()
+        t.tools._play.thread.join(THREAD_CAP_S)
+
+    def test_a_decline_reaches_the_chords_and_the_reply_names_them(self):
+        t, _events, seen = self._chain_rig()
+        score, dump = self._decline_files()
+        reply = self._run(t, score, decline_mode="kick_only", dump_json=dump)
+        self.assertEqual([(c.lanes, c.declined) for c in seen["chords"]],
+                         [([Lane.RED], False), ([Lane.KICK], True)])
+        self.assertIn("declined (kick_only): chords 1", reply.splitlines())
+
+    def test_bad_decline_arguments_stop_before_the_attach(self):
+        t, events, _seen = self._chain_rig()
+        score, _dump = self._decline_files()
+        self.assertEqual(self._run(t, score, decline_mode="nothing"),
+                         "decline mode nothing needs dump_json, the path's hydra_replay dump")
+        self.assertEqual(self._run(t, score, decline_mode="both", dump_json="d.json"),
+                         'unknown decline mode "both"; modes: kick_only, nothing')
+        self.assertEqual(events, [])
+
+    def test_a_score_file_it_cannot_read_stops_before_the_attach(self):
+        t, events, _seen = self._chain_rig()
+        reply = self._run(t, os.path.join(self.tmp, "none.json"))
+        self.assertTrue(reply.startswith("could not read "), reply)
+        self.assertEqual(events, [])
+
+    def test_a_failed_attach_stops_there_and_tears_nothing_down(self):
+        t, events, _seen = self._chain_rig(attaches=False)
+        lines = self._run(t).splitlines()
+        self.assertEqual(events, ["attach"])
+        self.assertRegex(lines[0], r"^attach: FAILED after .* s; the run stopped at attach$")
+        self.assertEqual(lines[1], "the game is not running")
+
+    def test_a_failed_setup_stops_before_the_watch_and_the_reply_names_setup(self):
+        t, events, _seen = self._chain_rig(press="none")
+        lines = self._run(t).splitlines()
+        self.assertEqual(events, ["attach", ("setup", "System")])
+        self.assertRegex(lines[1], r"^kit setup: FAILED after .* s; the run stopped at kit setup$")
+        self.assertEqual(lines[2], "setup reply")
+        self.assertIsNone(t.tools._play)
+
+    def test_a_failed_watch_tears_the_kit_down_and_starts_no_player(self):
+        t, events, _seen = self._chain_rig(engine=None)
+        lines = self._run(t).splitlines()
+        self.assertEqual(events[-1], "teardown")
+        self.assertNotIn("play", events)
+        self.assertRegex(lines[2], r"^watch: FAILED after .* s; the run stopped at watch$")
+        self.assertEqual(lines[3:], ["watcher ended: no song", "kit teardown: all checks ok"])
+        self.assertIsNone(t.tools._play)
+
+    def test_a_player_that_ends_with_no_press_tears_the_kit_down(self):
+        def live_play(chords, **kw):
+            return play_chart.RunResult(stop=play_chart.STOP_NO_ENGINE, message="no song")
+
+        t, events, _seen = self._chain_rig(live_play)
+        reply = self._run(t)
+        self.assertEqual(events[-2], "teardown")
+        self.assertRegex(reply, r"play: FAILED after .* s; the run stopped at play")
+        self.assertIn("first press: none, no chord was pressed", reply)
+        self.assertIn("no song", reply)
+
+    def test_a_player_that_ends_with_no_press_stops_the_watch_too(self):
+        def live_play(chords, **kw):
+            return play_chart.RunResult(stop=play_chart.STOP_NO_ENGINE, message="no song")
+
+        t, events, _seen = self._chain_rig(live_play)
+        reply = self._run(t)
+        self.assertEqual(events[-2:], ["teardown", "watch stop"])
+        self.assertTrue(reply.endswith("watcher ended: stopped"), reply)
+
+    def test_a_run_that_never_presses_ends_at_the_run_cap_and_says_so(self):
+        def live_play(chords, *, should_stop, **kw):
+            while not should_stop():
+                time.sleep(0.005)
+            return play_chart.RunResult(stop="stopped")
+
+        t, events, _seen = self._chain_rig(live_play)
+        with mock.patch.object(GT, "run_cap_s", return_value=0.05):
+            reply = t.tools.ch_run_chart(t.r.song, self._score_json(), "System")
+        self.assertIn("no press inside the run cap of 0.05 s; the call stopped the run", reply)
+        self.assertEqual(events[-2:], ["teardown", "watch stop"])
+        self.assertFalse(t.tools._play.running())
+
+    def test_the_search_timeout_names_the_engines_it_searched(self):
+        def times_out(proc, patterns, **kw):
+            raise GT.engine_finder.EngineSearchTimeout("no playing song found in 120 s")
+
+        with mock.patch.object(GT.engine_finder, "find_live_engine_capped", times_out), \
+                mock.patch.object(GT.engine_finder, "normal_pattern", return_value=(b"", b"")):
+            with self.assertRaises(GT.engine_finder.EngineSearchTimeout) as caught:
+                GT.find_run_engine("a proc")
+        self.assertIn("no playing song found in 120 s", str(caught.exception))
+        self.assertIn("normal-mode engines only", str(caught.exception))
+
+    def test_a_player_that_raises_is_named_and_tears_the_kit_down(self):
+        def live_play(chords, **kw):
+            raise ValueError("no ghost press is possible")
+
+        t, events, _seen = self._chain_rig(live_play)
+        reply = self._run(t)
+        self.assertEqual(events[-2], "teardown")
+        self.assertIn("ended: failed: ValueError: no ghost press is possible", reply)
+
+    def test_the_chain_is_refused_while_a_play_session_runs(self):
+        release = threading.Event()
+
+        def live_play(chords, *, on_press, **kw):
+            on_press(ROWS[0])
+            release.wait(THREAD_CAP_S)
+            return play_chart.RunResult(stop="done")
+
+        t, events, _seen = self._chain_rig(live_play)
+        t.tools.ch_run_chart(t.r.song, self._score_json(), "System")
+        events.clear()
+        self.assertEqual(t.tools.ch_run_chart(t.r.song, self._score_json(), "System"),
+                         GT.PLAY_ALREADY_RUNNING)
+        self.assertEqual(events, [])
+        release.set()
+        t.tools._play.thread.join(THREAD_CAP_S)
+
+    def test_the_tool_has_no_lead_argument(self):
+        self.assertEqual(list(inspect.signature(GT.GameTools.ch_run_chart).parameters),
+                         ["self", "song_folder", "score_json", "kit_player", "decline_mode",
+                          "dump_json"])
+
+    def test_with_no_parts_handed_in_it_refuses_and_touches_nothing(self):
+        t = ToolRig(self.tmp)
+        self.assertTrue(t.tools.ch_run_chart(t.r.song, self._score_json()).startswith("refused:"))
+        self.assertIsNone(t.tools._play)
 
     def test_foreground_line_is_the_watchs_line_or_none(self):
         t = ToolRig(self.tmp)
@@ -914,6 +1350,464 @@ class HumanStartTest(unittest.TestCase):
         self.assertIsNone(t.tools._run)
         self.assertEqual(t.watches, [])
         t.r.assert_all_restored(self)
+
+
+def next_worker(t: ToolRig, running: bool = False, **tool_args) -> GT.GameTools:
+    """A second GameTools on the same temp root and user folders, the way a
+    fresh worker comes up after `t`'s was killed: `t.tools` is simply never
+    stopped. `running` is what the fake pid test answers for every pid. Both
+    workers share this test's pid, so a later stamp keeps their backups apart."""
+    t.r.env.stamp = lambda: "20261028-101501"
+    return GT.GameTools(t.r.env, threading.RLock(), t.scratch_root, driver=t.driver,
+                        find_window=lambda: t.hwnd, is_pid_running=lambda pid: running,
+                        **tool_args)
+
+
+class MarkerTest(unittest.TestCase):
+    """The open-run marker: a killed worker's way back to the user's files."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = self._tmp.name
+        self.t = ToolRig(self.tmp)
+        self.path = os.path.join(self.t.scratch_root, GT.OPEN_RUN_MARKER)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def assert_marker_names(self, folder):
+        self.assertEqual(GT.read_marker(self.path), (os.getpid(), folder))
+
+    def killed_run(self):
+        """A run left open with every user file changed; returns its backup."""
+        self.t.tools.ch_start(self.t.r.song)
+        for name in ORIGINAL:
+            _write(self.t.r.path(name), b"changed by the game")
+        return self.t.backup_dir()
+
+    # -- writing and deleting -----------------------------------------------------
+
+    def test_the_marker_sits_under_the_scratch_root_and_never_the_real_temp_folder(self):
+        self.assertEqual(self.t.tools._marker_path(), self.path)
+
+    def test_ch_start_names_the_pid_and_folder_and_ch_stop_deletes_the_marker(self):
+        self.t.tools.ch_start(self.t.r.song)
+        self.assert_marker_names(self.t.backup_dir())
+        self.t.tools.ch_stop()
+        self.assertFalse(os.path.exists(self.path))
+
+    def test_the_marker_is_there_before_the_settings_change_and_the_launch(self):
+        seen = []
+
+        def set_setting(path, key, value):
+            seen.append(("setting", GT.read_marker(self.path)))
+
+        t = self.t
+        t.tools._set_setting = set_setting
+        real_launch = t.r.launch
+        t.r.env.launch = lambda cmd: seen.append(("launch", GT.read_marker(self.path))) or real_launch(cmd)
+        t.tools.ch_start(t.r.song)
+        said = (os.getpid(), t.backup_dir())
+        self.assertEqual(seen, [("setting", said), ("launch", said)])
+
+    def test_a_human_start_has_its_marker_before_the_game_starts(self):
+        wire_human(self.t.r, FakeLaunchAgent([]))
+        seen = []
+        fake_start = self.t.r.env.start_process
+
+        def start(cmd):
+            seen.append(GT.read_marker(self.path))
+            return fake_start(cmd)
+
+        self.t.r.env.start_process = start
+        self.t.tools.ch_start(self.t.r.song, human=True)
+        self.assertEqual(seen, [(os.getpid(), self.t.backup_dir())])
+
+    def test_ensure_backup_writes_the_marker_and_shutdown_deletes_it(self):
+        self.t.tools.ensure_backup()
+        self.assert_marker_names(self.t.backup_dir())
+        self.t.tools.shutdown()
+        self.assertFalse(os.path.exists(self.path))
+
+    def test_a_failed_restore_keeps_the_marker_and_the_next_good_one_deletes_it(self):
+        self.t.tools.ch_start(self.t.r.song)
+        backup = self.t.backup_dir()
+
+        def fail(backup_dir, out, leave=()):
+            raise G.RestoreError("scoredata.bin", "locked")
+
+        with mock.patch.object(G, "restore", fail):
+            self.t.tools.ch_stop()
+        self.assert_marker_names(backup)
+        self.t.tools.ch_stop()
+        self.assertFalse(os.path.exists(self.path))
+
+    def test_a_stop_that_raises_keeps_the_marker(self):
+        self.t.tools.ch_start(self.t.r.song)
+        backup = self.t.backup_dir()
+        with mock.patch.object(B, "finish_run", side_effect=RuntimeError("boom")):
+            self.t.tools.ch_stop()
+        self.assert_marker_names(backup)
+
+    def test_a_second_ch_start_leaves_a_marker_naming_the_new_backup(self):
+        self.t.tools.ch_start(self.t.r.song)
+        first = self.t.backup_dir()
+        self.t.tools.ch_start(self.t.r.song)
+        self.assertNotEqual(self.t.backup_dir(), first)
+        self.assert_marker_names(self.t.backup_dir())
+
+    def test_a_marker_that_cannot_be_deleted_is_named_with_what_it_would_do(self):
+        self.t.tools.ch_start(self.t.r.song)
+        backup = self.t.backup_dir()
+        with mock.patch.object(GT.os, "remove", side_effect=PermissionError("locked")):
+            reply = self.t.tools.ch_stop()
+        self.assertIn(f"open-run marker {self.path} was not deleted (locked); delete it by hand, "
+                      f"or the next worker adopts {backup}, which is already restored",
+                      reply.splitlines())
+
+    def test_a_marker_that_cannot_be_written_is_said_and_the_run_goes_on(self):
+        with mock.patch.object(GT.os, "rename", side_effect=PermissionError("locked")):
+            reply = self.t.tools.ch_start(self.t.r.song)
+        self.assertIn("open-run marker not written (PermissionError: locked)", reply)
+        self.assertIn(B._restore_hint(self.t.backup_dir()), reply)
+        self.assertEqual(os.listdir(self.t.scratch_root), [os.path.basename(self.t.tools._scratch)])
+        self.assertEqual(len(self.t.r.launch.commands), 1)
+
+    # -- a ch_start that fails ----------------------------------------------------
+
+    def test_a_ch_start_that_fails_after_its_backup_leaves_no_marker(self):
+        def boom(cmd):
+            self.assertTrue(os.path.isfile(self.path))
+            raise OSError("no such game")
+
+        self.t.r.env.launch = boom
+        lines = self.t.tools.ch_start(self.t.r.song).splitlines()
+        self.assertEqual(lines[-1], "could not start the game: no such game")
+        self.assertFalse(os.path.exists(self.path))
+        self.assertIsNone(self.t.backup_dir())
+
+    def test_a_failed_human_launch_leaves_no_marker(self):
+        wire_human(self.t.r, FakeLaunchAgent([], statuses=[{"state": "refused"}]))
+        self.t.tools.ch_start(self.t.r.song, human=True)
+        self.assertFalse(os.path.exists(self.path))
+
+    def test_a_song_with_no_length_never_takes_a_backup_or_a_marker(self):
+        with mock.patch.object(B, "song_length_ms", side_effect=B.SongLengthMissing("no length")):
+            self.assertEqual(self.t.tools.ch_start(self.t.r.song), "no length")
+        self.assertFalse(os.path.exists(self.path))
+
+    def test_a_failed_start_whose_restore_fails_keeps_the_marker_for_ch_stop(self):
+        def boom(cmd):
+            _write(self.t.r.path(G.SETTINGS), b"changed before the launch failed")
+            raise OSError("no such game")
+
+        self.t.r.env.launch = boom
+
+        def fail(backup_dir, out, leave=()):
+            raise G.RestoreError("scoredata.bin", "locked")
+
+        with mock.patch.object(G, "restore", fail):
+            lines = self.t.tools.ch_start(self.t.r.song).splitlines()
+        backup = self.t.backup_dir()
+        self.assertIsNotNone(backup)
+        self.assert_marker_names(backup)
+        self.assertIn(f"the user files may not be back; ch_stop tries again from {backup}", lines)
+        self.assertEqual(lines[-1], "could not start the game: no such game")
+        self.t.tools.ch_stop()
+        self.t.r.assert_all_restored(self)
+        self.assertFalse(os.path.exists(self.path))
+
+    # -- the next worker adopts ---------------------------------------------------
+
+    KEPT = ("profiles.ini", "profiles.bin", "scoredata.bin", "scoresext.bin", "user.bin")
+
+    def age_folder(self, folder, hours):
+        then = time.time() - hours * 3600
+        os.utime(folder, (then, then))
+
+    def assert_partly_restored(self):
+        """settings.ini and scorestats.json are back; the five others still
+        hold what the game wrote."""
+        for name, data in ORIGINAL.items():
+            want = b"changed by the game" if name in self.KEPT else data
+            self.assertEqual(_read(self.t.r.path(name)), want, name)
+
+    def test_a_restore_from_a_marker_leaves_each_score_file_and_says_so(self):
+        self.killed_run()
+        lines = next_worker(self.t).ch_stop().splitlines()
+        for name in self.KEPT:
+            self.assertIn(f"{name}: left as it is, because the backup may be older than your "
+                          "play", lines)
+        self.assertEqual(sum("left as it is" in line for line in lines), 5)
+
+    def test_a_restore_from_a_marker_keeps_a_score_file_changed_after_the_backup(self):
+        self.t.tools.ch_start(self.t.r.song)
+        _write(self.t.r.path("scoredata.bin"), b"the user played after the backup")
+        next_worker(self.t).ch_stop()
+        self.assertEqual(_read(self.t.r.path("scoredata.bin")), b"the user played after the backup")
+
+    def test_a_live_runs_ch_stop_still_restores_every_file(self):
+        self.t.tools.ch_start(self.t.r.song)
+        for name in ORIGINAL:
+            _write(self.t.r.path(name), b"changed by the game")
+        lines = self.t.tools.ch_stop().splitlines()
+        self.t.r.assert_all_restored(self)
+        self.assertFalse(any("left as it is" in line for line in lines))
+
+    def test_an_ordinary_adopted_backup_is_restored_whole_at_shutdown(self):
+        self.t.tools.ensure_backup()
+        for name in ORIGINAL:
+            _write(self.t.r.path(name), b"changed by the game")
+        self.t.tools.shutdown()
+        self.t.r.assert_all_restored(self)
+        self.assertFalse(os.path.exists(self.path))
+
+    def test_the_workers_exit_leaves_a_marker_backup_and_its_marker(self):
+        backup = self.killed_run()
+        tools = next_worker(self.t)
+        reply = tools.shutdown()
+        self.assertIn(backup, reply)
+        self.assertIn(self.path, reply)
+        for name in ORIGINAL:
+            self.assertEqual(_read(self.t.r.path(name)), b"changed by the game", name)
+        self.assert_marker_names(backup)
+        self.assertEqual(tools.open_lines(), [f"adopted backup: {backup}"])
+        tools.ch_stop()
+        self.assert_partly_restored()
+        self.assertFalse(os.path.exists(self.path))
+
+    def test_the_next_worker_adopts_and_ch_stop_restores_and_deletes_the_marker(self):
+        backup = self.killed_run()
+        self.age_folder(backup, 3)
+        tools = next_worker(self.t)
+        said = (f"a previous worker (pid {os.getpid()}) left a backup open: {backup}, 3 hours old; "
+                "ch_stop restores settings.ini, scorestats.json and the Rewired key from it and "
+                "leaves profiles.ini, profiles.bin, scoredata.bin, scoresext.bin, user.bin as "
+                "they are")
+        self.assertIn(said, tools.ch_status().splitlines())
+        self.assertIn(said, self.t.r.lines)
+        self.assertEqual(tools.open_lines(), [f"adopted backup: {backup}"])
+        with mock.patch.object(B, "restore_only", wraps=B.restore_only) as restore_only:
+            lines = tools.ch_stop().splitlines()
+        self.assertEqual(restore_only.call_args.args[0], backup)
+        self.assertIn(f"{G.SETTINGS}: restored", lines)
+        self.assertIn(f"{G.SCORESTATS}: restored", lines)
+        self.assert_partly_restored()
+        self.assertFalse(self.t.r.game.stopped)
+        self.assertFalse(os.path.exists(self.path))
+        self.assertNotIn(said, tools.ch_status().splitlines())
+        self.assertEqual(tools.open_lines(), [])
+
+    def test_adopting_restores_nothing_until_ch_stop(self):
+        self.killed_run()
+        tools = next_worker(self.t)
+        tools.ch_status()
+        for name in ORIGINAL:
+            self.assertEqual(_read(self.t.r.path(name)), b"changed by the game", name)
+
+    def test_an_adopted_backup_puts_the_registry_key_back(self):
+        self.t.r.env.run_reg = reg = FakeReg()
+        self.t.tools.ch_start(self.t.r.song)
+        reg.text = b"the game changed this"
+        self.assertIn("rewired registry: restored", next_worker(self.t).ch_stop().splitlines())
+        self.assertFalse(os.path.exists(self.path))
+
+    def test_a_ch_start_on_a_marker_backup_refuses_naming_the_folder_and_its_age(self):
+        backup = self.killed_run()
+        self.age_folder(backup, 5)
+        tools = next_worker(self.t, make_watch=lambda: FakeWatch([]))
+        reply = tools.ch_start(self.t.r.song)
+        self.assertEqual(reply, f"refused: a previous worker left a backup open: {backup}, "
+                                "5 hours old; call ch_stop to restore it, then ch_start")
+        self.assertIsNone(tools._run)
+        for name in ORIGINAL:
+            self.assertEqual(_read(self.t.r.path(name)), b"changed by the game", name)
+        self.assert_marker_names(backup)
+        tools.ch_stop()
+        self.assertIn("song length", tools.ch_start(self.t.r.song))
+
+    def test_an_adopted_restore_that_fails_keeps_the_marker_and_the_adoption(self):
+        backup = self.killed_run()
+        tools = next_worker(self.t)
+
+        def fail(backup_dir, out, leave=()):
+            raise G.RestoreError("scoredata.bin", "locked")
+
+        with mock.patch.object(G, "restore", fail):
+            lines = tools.ch_stop().splitlines()
+        self.assertIn("restore failed on scoredata.bin: locked", lines)
+        self.assert_marker_names(backup)
+        self.assertEqual(tools._adopted_backup, backup)
+        self.assertIn("refused", tools.ch_start(self.t.r.song))
+        tools.ch_stop()
+        self.assert_partly_restored()
+        self.assertFalse(os.path.exists(self.path))
+
+    def test_a_backup_that_vanishes_after_adoption_fails_the_stop_without_raising(self):
+        backup = self.killed_run()
+        tools = next_worker(self.t)
+        os.remove(os.path.join(backup, G.BACKUP_MANIFEST))
+        reply = tools.ch_stop()
+        self.assertIn("restoring failed: FileNotFoundError", reply)
+        self.assert_marker_names(backup)
+
+    def test_a_folder_with_no_manifest_is_not_adopted_and_the_marker_stays(self):
+        backup = self.killed_run()
+        os.remove(os.path.join(backup, G.BACKUP_MANIFEST))
+        tools = next_worker(self.t)
+        self.assertIsNone(tools._adopted_backup)
+        self.assertIn(f"holds no {G.BACKUP_MANIFEST}", tools.ch_status())
+        self.assertIn("nothing to restore", tools.ch_stop())
+        self.assert_marker_names(backup)
+
+    # -- a marker whose pid still runs --------------------------------------------
+
+    def test_a_running_pid_is_not_adopted_and_the_line_gives_the_by_hand_restore(self):
+        backup = self.killed_run()
+        tools = next_worker(self.t, running=True)
+        self.assertIsNone(tools._adopted_backup)
+        status = tools.ch_status()
+        self.assertIn(f"process {os.getpid()} was running", status)
+        self.assertIn(backup, status)
+        self.assertIn(f'py tools/ch_mcp/bot_run.py --restore "{backup}"', status)
+        self.assertIn(self.path, status)
+        self.assertEqual(tools.open_lines(), [])
+
+    def test_a_worker_that_adopted_nothing_never_deletes_anothers_marker(self):
+        backup = self.killed_run()
+        tools = next_worker(self.t, running=True)
+        self.assertIn("nothing to restore", tools.ch_stop())
+        self.assertIn("nothing to restore", tools.shutdown())
+        self.assert_marker_names(backup)
+        self.assertEqual(_read(self.t.r.path(G.SETTINGS)), b"changed by the game")
+
+    def test_a_second_workers_run_leaves_the_first_workers_marker_alone(self):
+        backup = self.killed_run()
+        tools = next_worker(self.t, running=True, make_watch=lambda: FakeWatch([]))
+        reply = tools.ch_start(self.t.r.song)
+        self.assertIn("open-run marker not written (FileExistsError", reply)
+        self.assert_marker_names(backup)
+        tools.ch_stop()
+        self.assert_marker_names(backup)
+        self.assertEqual([n for n in os.listdir(self.t.scratch_root) if n.endswith(".tmp")], [])
+
+    # -- a marker whose folder is gone --------------------------------------------
+
+    def test_a_gone_folder_deletes_the_marker_and_ch_stop_has_nothing_to_restore(self):
+        for running in (False, True):
+            with self.subTest(running=running):
+                gone = os.path.join(self.tmp, "gone")
+                os.makedirs(self.t.scratch_root, exist_ok=True)
+                _write(self.path, json.dumps({"pid": 77, "folder": gone}).encode())
+                tools = next_worker(self.t, running=running)
+                self.assertFalse(os.path.exists(self.path))
+                self.assertIsNone(tools._adopted_backup)
+                self.assertIn(f"a previous worker (pid 77) left a marker for a backup that is "
+                              f"gone: {gone}; the marker was deleted",
+                              tools.ch_status().splitlines())
+                self.assertIn("nothing to restore", tools.ch_stop())
+
+    # -- a marker that cannot be read ---------------------------------------------
+
+    def test_an_unreadable_marker_starts_the_worker_and_stays_byte_for_byte(self):
+        cases = {"garbage": b"{not json", "empty": b"", "not utf-8": b"\xff\xfe\x00",
+                 "a list": b"[1, 2]", "no folder": b'{"pid": 5}', "no pid": b'{"folder": "x"}',
+                 "a true pid": b'{"pid": true, "folder": "x"}',
+                 "a text pid": b'{"pid": "5", "folder": "x"}',
+                 "a zero pid": b'{"pid": 0, "folder": "x"}',
+                 "an empty folder": b'{"pid": 5, "folder": ""}',
+                 "a numeric folder": b'{"pid": 5, "folder": 9}',
+                 "deep nesting": b"[" * 200000}
+        os.makedirs(self.t.scratch_root, exist_ok=True)
+        for name, data in cases.items():
+            with self.subTest(case=name):
+                _write(self.path, data)
+                self.t.r.lines.clear()
+                tools = next_worker(self.t)
+                self.assertIsNone(tools._adopted_backup)
+                said = [line for line in self.t.r.lines if self.path in line]
+                self.assertEqual(len(said), 1, self.t.r.lines)
+                self.assertIn("was left in place and nothing was adopted", said[0])
+                self.assertIn(said[0], tools.ch_status().splitlines())
+                tools.ch_stop()
+                self.assertEqual(_read(self.path), data)
+
+    def test_a_folder_at_the_markers_path_starts_the_worker_and_stays(self):
+        os.makedirs(self.path)
+        tools = next_worker(self.t)
+        self.assertIn(self.path, tools.ch_status())
+        tools.ch_stop()
+        self.assertTrue(os.path.isdir(self.path))
+
+    def test_an_unreadable_marker_is_never_replaced_by_a_new_run(self):
+        os.makedirs(self.t.scratch_root, exist_ok=True)
+        _write(self.path, b"{not json")
+        tools = next_worker(self.t, make_watch=lambda: FakeWatch([]))
+        self.assertIn("open-run marker not written", tools.ch_start(self.t.r.song))
+        tools.ch_stop()
+        self.assertEqual(_read(self.path), b"{not json")
+
+    def test_a_pid_test_that_raises_leaves_the_marker(self):
+        backup = self.killed_run()
+
+        def broken(pid):
+            raise OSError("no answer")
+
+        tools = GT.GameTools(self.t.r.env, threading.RLock(), self.t.scratch_root,
+                             driver=self.t.driver, is_pid_running=broken)
+        self.assertIsNone(tools._adopted_backup)
+        self.assertIn("was left in place and nothing was adopted: OSError: no answer",
+                      tools.ch_status())
+        self.assert_marker_names(backup)
+
+
+class PidRunningTest(unittest.TestCase):
+    def test_this_process_runs(self):
+        self.assertTrue(GT.pid_running(os.getpid()))
+
+    def test_a_process_that_exited_does_not(self):
+        child = subprocess.Popen([sys.executable, "-c", ""])
+        child.wait(CHILD_CAP_S)
+        self.assertFalse(GT.pid_running(child.pid))
+
+    def test_a_pid_no_process_ever_held_does_not(self):
+        self.assertFalse(GT.pid_running(0x7FFFFFFC))
+
+
+# A child that registers an atexit handler writing `sys.argv[1]`, says so on
+# stdout, then stays alive until its stdin ends, so the test holds it open.
+ATEXIT_CHILD = """
+import atexit, sys
+atexit.register(lambda: open(sys.argv[1], "w").close())
+print("ready", flush=True)
+sys.stdin.read()
+"""
+
+
+class AtexitFactTest(unittest.TestCase):
+    """The reload plan's row P5, the fact the marker exists for: a process
+    ended from outside runs no atexit handler, and one that exits normally
+    does."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.flag = os.path.join(self._tmp.name, "atexit-ran")
+        self.child = subprocess.Popen([sys.executable, "-c", ATEXIT_CHILD, self.flag],
+                                      stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+        self.addCleanup(self.child.stdout.close)
+        self.addCleanup(self.child.stdin.close)
+        self.assertEqual(self.child.stdout.readline().strip(), "ready")
+
+    def test_a_terminated_process_runs_no_atexit_handler(self):
+        self.child.terminate()
+        self.child.wait(CHILD_CAP_S)
+        self.assertFalse(os.path.exists(self.flag))
+
+    def test_a_normal_exit_runs_the_atexit_handler(self):
+        self.child.stdin.close()
+        self.child.wait(CHILD_CAP_S)
+        self.assertTrue(os.path.exists(self.flag))
 
 
 if __name__ == "__main__":

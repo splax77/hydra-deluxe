@@ -1,16 +1,13 @@
 // Audio decode layer for the Preview engine.
 //
 // One entry point, decode_audio, turns a chart stem's compressed bytes into
-// interleaved float PCM. It dispatches by the container's own magic, not by a
-// file extension, because container stems (.sng/.srb) carry bytes with no name:
-//   * OggS + a Vorbis identification header -> stb_vorbis
-//   * OggS + an OpusHead header             -> libopus over a libogg demux
-//   * RIFF/WAVE, fLaC, ID3 or an MP3 sync   -> miniaudio's own decoders
-// Two OggS codecs share the container magic, so sniff_format looks past "OggS"
-// for the codec tag; that discrimination is the whole reason this is a distinct,
-// tested step. sniff_format itself lives in core/audio_sniff.h, so the Preview's
-// container extraction asks the same rule. This layer never opens an output device — it is pure and fully
-// testable off a real audio device (see the player for the device side).
+// interleaved float PCM. It picks its decoder from the bytes, not from a file
+// extension, because container stems (.sng/.srb) carry bytes with no name.
+// sniff_format in core/audio_sniff.h owns that rule, so the Preview's container
+// extraction asks the same one.
+//
+// This layer never opens an output device: it is pure and fully testable off a
+// real audio device (see the player for the device side).
 //
 // The decoders themselves are seekable StemReaders (audio/stem_reader.h);
 // decode_audio opens one and reads it start to end.

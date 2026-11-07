@@ -100,11 +100,12 @@ jobs:
 
       # Each saved folder is about 200 MB, and main gets many pushes a day.
       # GitHub evicts only above the repository's 10 GB, least recently used
-      # first, so old build folders would push out the fuzz corpus caches,
-      # which fuzz.yml reads only once a week. Keeping just the two newest
-      # build folders leaves room for them. The list is limited to this run's
-      # own branch, so a manual run on another branch cannot push main's saved
-      # folders out of the two.
+      # first, so old build folders would push out the fuzz corpus caches:
+      # fuzz.yml reads its per-target caches only once a week, though the
+      # fuzz-replay job below reads the combined one far more often. Keeping
+      # just the two newest build folders leaves room for them. The list is
+      # limited to this run's own branch, so a manual run on another branch
+      # cannot push main's saved folders out of the two.
       - name: Delete all but the two newest build folders
         if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
         env:
@@ -133,8 +134,8 @@ jobs:
   gui-tests:
     name: GUI tests (Windows, Release)
     runs-on: windows-2025
-    # The GUI tests took 2 min 13 s on run 40142020665; a cold build adds
-    # about 3 minutes. The cap leaves room for a slow runner.
+    # The cap covers the GUI tests and a cold build, with room for a slow
+    # runner.
     timeout-minutes: 30
     defaults:
       run:
@@ -169,9 +170,9 @@ jobs:
   # The asan preset runs on the Windows heap instead of mimalloc; the build
   # never ships. See "The AddressSanitizer build" in docs/development.md.
   # It is slow, so it runs nightly and on a manual run, not on every push (the
-  # user's call, 2026-10-10; "Continuous integration" in docs/development.md
-  # gives the timing). It builds with the asan-ninja preset, through the
-  # sccache compiler cache kept in GitHub's cache, a trial measured in
+  # user's call; "Continuous integration" in docs/development.md gives the
+  # timing). It builds with the asan-ninja preset, through the sccache
+  # compiler cache kept in GitHub's cache, a trial measured in
   # docs/superpowers/plans/2026-10-24-asan-ci-speed.md (Item 3). The GUI tests
   # built with AddressSanitizer run in "asan-gui" below, beside this job.
   asan:
@@ -256,8 +257,8 @@ jobs:
 
   # A map of which lines of src\ the tests reach. It informs and never blocks
   # (no threshold), and it costs a second full build and test pass, so it runs
-  # nightly and on a manual run, not on every push (the user's call,
-  # 2026-10-24). See "The coverage report" in docs/development.md.
+  # nightly and on a manual run, not on every push (the user's call). See
+  # "The coverage report" in docs/development.md.
   coverage:
     name: Coverage report (Windows, Release)
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
@@ -265,10 +266,9 @@ jobs:
     # The caps here, the job's and each step's, are set from measured runs
     # with room to spare. "Continuous integration" in docs/development.md gives
     # the runs and their times. The build step starts from an empty folder
-    # every night, and the sccache cache decides how long it takes: with an
-    # empty cache (run 40503369133) it took 11 min 17 s, and with a full one
-    # (run 40505915081) 70 s. A slow runner can add minutes to the cold case,
-    # so the step gets 15 minutes and the job 30.
+    # every night, and the sccache cache decides how long it takes. An empty
+    # cache is the slow case, and a slow runner can add minutes to it, so the
+    # build step's cap is sized for that case.
     timeout-minutes: 30
     defaults:
       run:
@@ -324,8 +324,8 @@ jobs:
       # instrumented process the command starts and returns when the command
       # ends, with the command's exit code. No collector outlives its step.
       # The tool's own options go before "--"; everything after it is the
-      # command. (A collector started with --server-mode --background hung
-      # the first run on main, run 38076842216, until it was cancelled.)
+      # command. (A collector started with --server-mode --background can
+      # hang the run until it is cancelled.)
       # The unit-test slices run one at a time here. The GUI runner keeps its
       # own job count (tests/ui/uitest_main.cpp), as in the other jobs.
       - name: Run hydra_tests

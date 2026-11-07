@@ -4,7 +4,7 @@ This page covers the game's classes and fields that the tools read, the per-note
 It describes build 1.1 (v1.1.0.6142), and says where 1.0 (v1.0.0.4045) differs.
 Last write-back: 2026-11-06.
 
-Most rows here are about the game's own layout, which no Hydra rule reads. Their Ruling line says so. The rules these fields feed (timing, Star Power, scoring) live on pages 03, 05 and 06. Paths that start `RUNS` mean `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-10-28\`; `GD` means Ghidra's full decompile `ghidra_decompile_all.txt`, which `code/README.md` describes (it is not in the repo); `dump.cs` is `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-dumps\6142\dump.cs`; `overlay-spike` means `tools/ch_probe/experiments/results/overlay-spike/`, whose result files are untracked today.
+Most rows here are about the game's own layout, which no Hydra rule reads. Their Ruling line says so. The rules these fields feed (timing, Star Power, scoring) live on pages 03, 05 and 06. Paths that start `RUNS` mean `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-10-28\`; `GD` means Ghidra's full decompile `ghidra_decompile_all.txt`, which `code/README.md` describes (it is not in the repo); `dump.cs` is `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-dumps\6142\dump.cs`; `overlay-spike` means `tools/ch_probe/experiments/results/overlay-spike/`, whose result files are in the repo.
 
 ## The game manager
 
@@ -444,9 +444,9 @@ Found: 2026-10-28, feasibility study lines 31 and 119.
 
 ### IN-38 A stats writer names the "is_bot" key in code
 
-Rule: The "is_bot" key is written by code, not by a serializer reading a field name. A JSON stats writer passes the "is_bot" string to the JSON writer's bool call, with the bool from its record's +0xB6. The profile constructor uses the same string to name its "is_bot" setting (IN-65). An earlier scan that found no reference to the string was wrong.
+Rule: The "is_bot" key is written by code, not by a serializer reading a field name. A JSON stats writer passes the "is_bot" string to the JSON writer's bool call, with the bool from its record's +0xB6. The profile constructor uses the same string to name its "is_bot" setting (IN-65).
 Label: Proven in the game's code
-Evidence: read with tools/ch_mcp/chdis.py on 2026-10-31 in `0x1144C0` (`dump.cs` line 30475, a method of class #561 taking a `Utf8JsonWriter`); its listing is `code/6142/score_submit.asm` (lines 101 and 407 to 410). At 0x114703 the method's one-time set-up loads the "is_bot" string slot (`lea rcx, [rip + 0x3ba677e]`, the slot at 0x3CBAE88). At 0x114CC9 it loads the same slot as the property name (`mov rdx, qword ptr [rip + 0x3ba61b8]`), after reading the value byte at 0x114CC1 (`movzx r8d, byte ptr [r14 + 0xb6]`), and calls the JSON writer's WriteBoolean at 0x114CD3; the keys around it are "is_fc", "versus_winner" and "is_pfc". The profile constructor loads the same slot at 0x2123CE3. The writer's text goes into `scorestats.json` (IN-72). The earlier scan's script and output were not kept.
+Evidence: read with tools/ch_mcp/chdis.py on 2026-10-31 in `0x1144C0` (`dump.cs` line 30475, a method of class #561 taking a `Utf8JsonWriter`); its listing is `code/6142/score_submit.asm` (lines 101 and 407 to 410). At 0x114703 the method's one-time set-up loads the "is_bot" string slot (`lea rcx, [rip + 0x3ba677e]`, the slot at 0x3CBAE88). At 0x114CC9 it loads the same slot as the property name (`mov rdx, qword ptr [rip + 0x3ba61b8]`), after reading the value byte at 0x114CC1 (`movzx r8d, byte ptr [r14 + 0xb6]`), and calls the JSON writer's WriteBoolean at 0x114CD3; the keys around it are "is_fc", "versus_winner" and "is_pfc". The profile constructor loads the same slot at 0x2123CE3. The writer's text goes into `scorestats.json` (IN-72).
 Game code (6142): stats writer RVA `0x1144C0`; profile constructor RVA `0x2123890`.
 Hydra: no owner.
 Ruling: none needed: no Hydra rule reads it.
@@ -819,6 +819,16 @@ Game code (6142): not found: no game method was read for this.
 Hydra: no owner: Hydra never reads the running game. The tools' key table is `MENU_KEYS` in tools/ch_probe/input_driver.py.
 Ruling: none needed: no Hydra rule reads it.
 Found: 2026-10-31, session 4c48c8e5, from the manual; no run.
+
+### IN-81 A custom controller's id comes from a counter that destroying a controller does not move
+
+Rule: Rewired gives each new custom controller the number in one counter on its controller manager, then adds one to the counter. Destroying a controller leaves the counter alone, so an id is not handed out twice until the counter is reset or wraps. The counter starts at 0, so with nothing made before it, the seventh custom controller of a launch gets id 6, and a kit set up again in the same launch gets a higher id. Two things can put the counter back to 0: the write at line 47 of the listing, which runs only when the new value reaches 0x7FFFFFFF (about 2.1 billion creates, so never in a launch), and the reset at 0x1EEB716, whose trigger is not known. So "only counts up" holds for a launch only if that reset does not run in it.
+Label: Proven in the game's code
+Evidence: `code/6142/create_custom_controller_1EE9800.asm` lines 42 to 47 read the counter and write it back one higher, and line 74 passes the old value on. `code/6142/create_custom_controller_1EE9800.md` follows that value through the three constructors to `Controller.id`, and gives the search of class #3552 that found no change to the counter on the destroy path. The reset to 0 is at 0x1EEB716 in `0x1EEB3F0`, read with tools/ch_mcp/chdis.py on 2026-11-06 with no listing of its own. The start at 0 fits the saved runs: the kit reads id 0 in `kit-2.jsonl` of ls-d1a-run3, ls-d2b-run1's `kit-2.jsonl` and ls-d2d-run1's `kit-3.jsonl`, under `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\`. LS-O1a of `docs/superpowers/plans/2026-11-06-optimal-score-run.md` showed the count past 0 on 2026-11-06: six placeholders took ids 0 to 5 and the kit took id 6 (`replies.txt` in `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-06\ls-o1-run1\`). So the reset did not run between that launch and that setup; what triggers it is still not known.
+Game code (6142): #3552, the controller manager: the create method RVA `0x1EE9800`, the counter `#3552+0xD0`, and the public form RVA `0x1D6F9C0` (`dump.cs` line 309950); `code/6142/create_custom_controller_1EE9800.asm` lines 42 to 47 and 74.
+Hydra: no owner: Hydra never reads the running game. The tools rest on this in `KIT_PLACEHOLDERS` and `KIT_REQUIRED_ID` in tools/ch_mcp/kit_tools.py.
+Ruling: none needed: no Hydra rule reads it.
+Found: 2026-11-06, session 5b92c813.
 
 ## Saved score files
 

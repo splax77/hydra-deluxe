@@ -50,6 +50,19 @@ void wait_until(Pred done, const std::string& what, std::chrono::milliseconds ca
     }
 }
 
+// Calls `owner.poll(args...)` until `owner.busy()` is false, by wait_until's
+// cap. The one wait for an object that takes its worker threads' answers in
+// through poll().
+template <class Owner, class... Args>
+void poll_until_idle(Owner& owner, const std::string& what, Args&... args) {
+    wait_until(
+        [&] {
+            owner.poll(args...);
+            return !owner.busy();
+        },
+        what);
+}
+
 // Calls `tick` every millisecond until it throws, the way a fake analysis
 // waits for its progress callback to throw once Stop is pressed. Past `cap`
 // it throws WaitTimeout, as wait_until does.

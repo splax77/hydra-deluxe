@@ -322,6 +322,16 @@ TEST_CASE("library query: a row at exactly N ms matches <=N and >=N, not <N or >
     CHECK(matches("squeeze<0", burnout(), analyzed(7, std::nullopt)));
 }
 
+TEST_CASE("squeeze filters: a path whose hardest is 0.0 passes squeeze<=0, matches squeeze>=0, "
+          "fails squeeze<0 and squeeze<=-5") {
+    // A squeeze at exactly 0.0 ms is a timing to hit (D302), so the path is
+    // timed at 0.0 and D266's strict < drops it at the boundary.
+    CHECK(matches("squeeze<=0", burnout(), analyzed(7, 0.0)));
+    CHECK(matches("squeeze>=0", burnout(), analyzed(7, 0.0)));
+    CHECK_FALSE(matches("squeeze<0", burnout(), analyzed(7, 0.0)));
+    CHECK_FALSE(matches("squeeze<=-5", burnout(), analyzed(7, 0.0)));
+}
+
 TEST_CASE("library query: squeeze>N and squeeze>=N keep rows whose hardest timing is above N ms") {
     // A row at exactly N ms matches >=N and not >N.
     CHECK(matches("squeeze>=163", burnout(), analyzed(7, 163.0)));  // Burnout's real 163.0 ms

@@ -19,10 +19,10 @@
 // The one question answered here is which windows can still pay a chord,
 // and hydra_replay's selfcheck is the test that it agrees with the graph.
 //
-// Display and tooling only, like core/squeeze_rating.h: nothing in the
-// search, the store, or a stored record reads any of this. It exists so the
-// hydra_replay CLI and its self-check can price a user's own path and prove
-// the pricing against the engine's own numbers.
+// It exists so the hydra_replay CLI and its self-check can price a user's own
+// path and prove the pricing against the engine's own numbers. The Preview's
+// score box reads it too, search/pather.h turns its windows into pins
+// (pinned_windows), and core/stars.cpp reads ReplayScore.
 
 #ifndef HYDRA_CORE_REPLAY_H
 #define HYDRA_CORE_REPLAY_H
@@ -208,10 +208,11 @@ struct ReplayOptions {
     // Leave each row's chord_code, position and notes empty, and skip the work that
     // builds them. Every score field (points, cum, cum_onscreen_total,
     // multipliers, combo, in_sp) and ReplayResult::final are the same as a
-    // full replay's. Only the Preview sets it: its score box reads ms,
+    // full replay's. The Preview sets it: its score box reads ms,
     // cum_onscreen_total, multiplier_shown, multiplier_after and combo_after
     // off each row, and
     // PathReplay::faithful() reads final (app/preview_view.cpp build_score).
+    // ambiguous_window_warnings and tools/bench.cpp set it too.
     // Set it field by field (`ReplayOptions o; o.scores_only = true;`): the
     // project is C++17, which has no designated initializers.
     bool scores_only = false;
@@ -315,10 +316,7 @@ std::vector<std::string> ambiguous_window_warnings(
 // Not offered: a simulated SP meter and skip count. A straightforward
 // simulation (one bar per phrase completed outside Star Power, capped at 4,
 // kSpActivationBars to activate, a passed fill with that many banked is a
-// skip) was
-// measured against every corpus path and does not reproduce the engine: 37
-// of 1486 activations came out with too few bars, and 224 with the wrong
-// skip count, 201 of them too many. The meter misses bars a squeeze-out
+// skip) does not reproduce the engine. The meter misses bars a squeeze-out
 // leaves behind, and the skip count over-counts fills the engine knew could
 // not actually be summoned in time. Read both off the record instead
 // (Activation::sp_meter / ::skips), which is what `hydra_replay dump` does.

@@ -266,17 +266,15 @@ bool try_parse_int(std::string_view s, int64_t& out) {
     return false;
 }
 
-// The disco markers both formats read are matched by hand, each exactly the
-// whole-string regex it replaced (named beside it). The dynamics marker is not
-// a regex any more: it is Clone Hero's two exact strings (finding 64). The tests
-// "... disco markers match the regexes they replaced" in test_song_parse.cpp
-// check the disco markers through both parsers, with every byte value in every
-// position that matters; test_dynamics_tag.cpp pins the dynamics strings.
+// The disco markers both formats read are matched by hand. The dynamics marker
+// is Clone Hero's two exact strings (finding 64). The tests "... disco markers
+// match the regexes they replaced" in test_song_parse.cpp check the disco
+// markers through both parsers, with every byte value in every position that
+// matters; test_dynamics_tag.cpp pins the dynamics strings.
 //
-// What the regex pieces meant, as std::regex (ECMAScript, char) reads them:
-// `.` is any byte except '\n' and '\r'; `\d` is an ASCII digit; `\[?` and
-// `\]?` are one optional bracket at each end. No marker body starts with '['
-// or ends with ']', so peeling one bracket off each end is never ambiguous.
+// regex_dot and regex_digit mean what `.` and `\d` mean to std::regex
+// (ECMAScript, char). No marker body starts with '[' or ends with ']', so
+// peel_brackets is never ambiguous.
 bool regex_dot(char c) { return c != '\n' && c != '\r'; }
 bool regex_digit(char c) { return c >= '0' && c <= '9'; }
 
@@ -286,10 +284,10 @@ std::string_view peel_brackets(std::string_view s) {
     return s;
 }
 
-// `mix.N.drums`: the 11-byte head both disco markers share, where N is the
-// parsed difficulty's digit (difficulty_chart_codes). A marker naming another
-// difficulty is not a marker here: Clone Hero applies each marker only to the
-// difficulty it names, in both formats (D19; 0x215C750, 0x213D076, 0x2155050).
+// The head both disco markers share. `mix_digit` is the parsed difficulty's
+// digit (difficulty_chart_codes). A marker naming another difficulty is not a
+// marker here: Clone Hero applies each marker only to the difficulty it names,
+// in both formats (D19; 0x215C750, 0x213D076, 0x2155050).
 bool disco_head(std::string_view s, char mix_digit) {
     return s.size() >= 11 && s.substr(0, 3) == "mix" && regex_dot(s[3]) &&
            s[4] == mix_digit && regex_dot(s[5]) && s.substr(6, 5) == "drums";
@@ -303,7 +301,7 @@ bool is_dynamics_marker(std::string_view s) {
     return s == "ENABLE_CHART_DYNAMICS" || s == "[ENABLE_CHART_DYNAMICS]";
 }
 
-// \[?mix.N.drums\d?d\]?, where N is `mix_digit`
+// Whether `s` opens the disco section of the difficulty `mix_digit` names.
 bool is_disco_on_marker(std::string_view s, char mix_digit) {
     s = peel_brackets(s);
     if (!disco_head(s, mix_digit)) return false;
@@ -312,9 +310,10 @@ bool is_disco_on_marker(std::string_view s, char mix_digit) {
     return rest == "d";
 }
 
-// \[?mix.N.drums\d?(dnoflip)?\]?, where N is `mix_digit`. "dnoflip" reads as
-// flip off. Clone Hero turns flip on for it (its classifier at 0x215CD50 looks
-// only at the 7th character); Hydra keeps it off on purpose (D19).
+// Whether `s` closes the disco section of the difficulty `mix_digit` names.
+// "dnoflip" reads as flip off. Clone Hero turns flip on for it (its classifier
+// at 0x215CD50 looks only at the 7th character); Hydra keeps it off on purpose
+// (D19).
 bool is_disco_off_marker(std::string_view s, char mix_digit) {
     s = peel_brackets(s);
     if (!disco_head(s, mix_digit)) return false;
@@ -411,7 +410,7 @@ void close_sp_phrase(Song& song, int64_t start_tick, int64_t end_tick) {
 // Emit the buffered chord as a sequence timestamp, shared by both parsers.
 // apply_flam is true only on the .mid path: MIDI charts carry a flam marker
 // that converts the chord, while the .chart format has no such marker, so
-// ChartParser always passes false (existing behavior, now explicit).
+// ChartParser always passes false.
 // A disco section swaps red and yellow only under Pro Drums. That rule lives
 // here, once, for both parsers (finding 250): `pro` is the Pro Drums setting
 // and `in_disco` says whether this difficulty's disco section is open.
@@ -476,7 +475,7 @@ std::string name_or_unknown(std::string name, std::string_view placeholder) {
 }  // namespace
 
 std::string title_or_unknown(std::string title) {
-    // The placeholder the metadata readers used before kUnknownTitle.
+    // A placeholder library rows from older scans can still hold.
     static constexpr const char* kOldPlaceholder = "<unknown title>";
     return name_or_unknown(std::move(title), kOldPlaceholder);
 }
@@ -583,7 +582,7 @@ enum class MPhase { None, Time, Pre, PreDelayed, Notes, PostDelayed };
 
 // What a MIDI message does to the parser, decided once when the message is
 // classified and carried out later in its phase. A plain tagged struct, so a
-// tick's handlers cost no allocation (they used to be std::function closures).
+// tick's handlers cost no allocation.
 enum class MAct : uint8_t {
     None, Note, Kick, FillStart, StoreFillEnd, SpStart, SpEnd, Tom, Flam,
     Solo, Dynamics, Disco, Tempo, TimeSig, LaneStart, LaneEnd,
@@ -716,9 +715,9 @@ constexpr int lowest_marker_pitch() {
         if (pitch < lowest) lowest = pitch;
     return lowest;
 }
-// The note-off gate (midi_note_is_read) matches the gate it replaced (a
-// note-off below the solo marker is dropped) only while every non-marker
-// pitch is below the solo marker.
+// The solo marker divides the pitches: no marker sits below it and no pad at
+// or above it. So no pad pitch is also a marker, and the note-off gate
+// (midi_note_is_read) drops every pad's note-off.
 static_assert(lowest_marker_pitch() == kSoloMarkerPitch,
               "a marker below the solo marker would change the note-off gate");
 constexpr int highest_pad_pitch() {
@@ -756,7 +755,7 @@ bool is_handled_note(int note, int base, int kick2x) {
 // Message::is_note_on. A note-on acts on any handled pitch, but only a marker
 // acts on a note-off: a pad or 2x kick note-off is dropped (see the
 // static_assert beside kMarkerPitches). MidiParser::optype and the lean read's
-// filter (load_songbytes_mid) both ask here.
+// filter (parse_mid_lean) both ask here.
 bool midi_note_is_read(int pitch, bool on, int base, int kick2x) {
     return on ? is_handled_note(pitch, base, kick2x) : is_midi_marker_pitch(pitch);
 }
@@ -1452,10 +1451,9 @@ private:
 constexpr int kChartSingleLanePhrase = 65;
 constexpr int kChartDoubleLanePhrase = 66;
 
-// The first match of the regex `\[.*\]` searched in `line`, as std::regex finds
-// it: the leftmost '[' that some later ']' closes with only regex_dot bytes
-// between, closed by the last such ']' (`.*` is greedy). Returns false when
-// there is none.
+// Sets `bracket` to the first bracketed run in `line`, brackets included. The
+// loop says which '[' and ']' pair up, and the test ".chart: section headers
+// are found as the regex found them" pins it. Returns false when there is none.
 bool find_section_header(std::string_view line, std::string_view* bracket) {
     size_t i = line.find('[');
     while (i != std::string_view::npos) {
@@ -2028,8 +2026,8 @@ Song load_songbytes_srb(const std::vector<uint8_t>& buf, const ChartReading& rea
 }
 
 // A container on disk is read in pieces: its header, then only the notes. The
-// rest is audio and art (about 1 GB for the largest .sng in the library), which
-// the notes never need.
+// rest is audio and art, which the notes never need. ADR 0024 records how large
+// a container can be: about 1 GB each for three .sng files in the library.
 Song load_songpath_sng(const std::string& path, const ChartReading& reading,
                        const core::Rules& rules, FillDeadlineRule fills) {
     return load_container_sng(file_byte_source(path), reading, rules, fills);

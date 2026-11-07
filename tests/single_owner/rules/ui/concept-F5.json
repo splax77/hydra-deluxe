@@ -16,9 +16,10 @@
         "    const float len_s = hydra::app::has_song_length(scrub_len_ms)"
       ],
       "scope": [
+        "src/ui/preview_panel.cpp",
         "src/ui/preview_tab.cpp"
       ],
-      "note": "The tab once asked 'above zero' of the scrubber's edge on its own float copy. It asks has_song_length of the edge now; the 1 s fallback stays as an ImGui guard. Scoped to the tab: the transport's own 'above zero' answers a different question (is there a playback range to stop at). Decided by: D114 item 22, concept audit M51."
+      "note": "The tab once asked 'above zero' of the scrubber's edge on its own float copy. It asks has_song_length of the edge now; the 1 s fallback stays as an ImGui guard. Scoped to the Preview panel and tab: the transport's own 'above zero' answers a different question (is there a playback range to stop at). Decided by: D114 item 22, concept audit M51."
     }
   ]
 }

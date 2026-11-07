@@ -38,17 +38,17 @@ store's SQL version of the results check is built from the same lists.
   catch: the engine, the scoring, the chart readers, or what a record holds.
   When it changes it is set to the version of the release that ships the
   change, and changes that ship together share one bump.
-- kPathFormatStamp: one number for the structure blob and the nodes it
-  points at. A node is only ever read through its structure, so one number
-  covers both. Its value stays 6, so no stored byte changes.
-- kDynamicsCountStamp and kDynamicsBlobStamp: how notes are counted, and
-  the count blob's layout.
+- kPathFormatStamp, gone since ADR 0026: one number for the structure blob
+  and the nodes it pointed at. A node was only ever read through its
+  structure, so one number covered both.
+- kDynamicsCountStamp and kDynamicsBlobStamp, gone since ADR 0026: how notes
+  were counted, and the count blob's layout.
 
-Dynamics keeps its own counting stamp instead of sharing the results stamp.
-A counting change then costs only a background recount, not a re-analysis
+Dynamics kept its own counting stamp instead of sharing the results stamp.
+A counting change then cost only a background recount, not a re-analysis
 of the whole library (user decision 2026-09-27). The two kinds of data also
-fail differently, on purpose. A stale result reads Stale and asks the user
-to re-analyze. A stale count reads as missing and is recounted in
+failed differently, on purpose. A stale result reads Stale and asks the user
+to re-analyze. A stale count read as missing and was recounted in
 milliseconds.
 
 ## Consequences
@@ -82,3 +82,15 @@ D249 lets a record hold a stored failure (ADR 0031's note of the same date).
 `kResultsStamp` stayed where it was: the engine's output did not change, and
 an existing record only gained two NULL columns, which changes nothing it
 holds.
+
+## Note, 2026-10-31: a figure this build can refill is not a bump
+
+D302 changed what the `hardest_ms` column holds, and `kResultsStamp` stayed
+where it was. The decision above says a change to what a record holds bumps
+the stamp. The user's ruling narrows that: the stamp is for a change in the
+analysis, and a summary figure this build can fill back in from the saved path
+is not a bump. `hardest_ms` is the example. The store saves the engine's own
+figure (`engine_hardest_ms`), `shown_timing` applies the needs-timing rule
+when a screen shows it, and `app::fill_saved_hardest` refills old rows once by
+replaying their saved paths. `src/store/stored_versions.h` owns the wording of
+the rule.

@@ -790,18 +790,9 @@ void AppState::update_background_jobs() {
     collect_dm_report();
 
     // Let go of cancelled jobs once they have returned.
-    parked_reports.erase(
-        std::remove_if(parked_reports.begin(), parked_reports.end(),
-                       [](const std::unique_ptr<ReportJob>& job) { return job->finished(); }),
-        parked_reports.end());
-    parked_dm_fetches.erase(
-        std::remove_if(parked_dm_fetches.begin(), parked_dm_fetches.end(),
-                       [](const std::unique_ptr<DmFetchUsersJob>& job) { return job->finished(); }),
-        parked_dm_fetches.end());
-    parked_dm_reports.erase(
-        std::remove_if(parked_dm_reports.begin(), parked_dm_reports.end(),
-                       [](const std::unique_ptr<DmReportJob>& job) { return job->finished(); }),
-        parked_dm_reports.end());
+    drop_finished_jobs(parked_reports);
+    drop_finished_jobs(parked_dm_fetches);
+    drop_finished_jobs(parked_dm_reports);
 }
 
 void AppState::cancel_dm_fetch() {

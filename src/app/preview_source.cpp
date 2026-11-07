@@ -77,7 +77,7 @@ bool srb_decrypt_blob(const uint8_t* enc, size_t len, const uint8_t* header16,
     }
 
     // Build the ECB input: [IV, enc[0..16], enc[16..32], ...].
-    // Block i's keystream = AES_ECB_encrypt(ecb_input block i).
+    // Block i's keystream = AES_ECB_encrypt(ecb_buf block i).
     size_t n_blocks = (len + 15) / 16;
     size_t ecb_len = n_blocks * 16;
     std::vector<uint8_t> ecb_buf(ecb_len);
@@ -134,8 +134,8 @@ std::vector<PreviewAudioStem> srb_audio_from(const std::vector<uint8_t>& buf,
                                              const KeepGoing& keep_going = nullptr);
 
 // +1: a positive delay or Offset makes the notes come later than the music,
-// so the audio runs ahead of chart time. Confirmed at the game (Task 17
-// step 1, Thornhill "Limbo": delay = 1016 put the notes 1018 ms later).
+// so the audio runs ahead of chart time. Confirmed at the game (Thornhill
+// "Limbo": delay = 1016 put the notes 1018 ms later; docs/clone-hero/03-timing.md).
 constexpr double kOffsetDirection = 1.0;
 
 }  // namespace
@@ -305,9 +305,9 @@ std::optional<double> ini_delay_ms(const std::map<std::string, std::string>& ini
 }
 
 // song.ini's delay replaces the chart's Offset: the delay = 500 copy of
-// Lunaris (Offset = 0.25) moved by 0.5 s at the game (Task 17 step 1). The
-// original Lunaris (delay = 0) still moved by 0.25 s, so a delay of 0 counts
-// as unset.
+// Lunaris (Offset = 0.25) moved by 496 ms at the game. The original Lunaris
+// (delay = 0) still moved by 248 ms, so a delay of 0 counts as unset
+// (docs/clone-hero/03-timing.md).
 double preview_audio_offset_ms(std::optional<double> ini_delay_ms,
                                std::optional<double> chart_offset_s) {
     const bool delay_wins = ini_delay_ms.has_value() && *ini_delay_ms != 0.0;

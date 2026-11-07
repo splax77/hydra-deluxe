@@ -1,7 +1,8 @@
 // Wavefront .obj reader for the Preview's gem models, plus Onyx's two built-in
-// shapes. A port of how Onyx loads its models (Codec.Wavefront + its own
-// triangulation and vertex sort), so the verbatim-copied .obj files in
-// assets/preview/models draw with the same triangles in the same order.
+// shapes and Hydra's own triangle. The reader is a port of how Onyx loads its
+// models (Codec.Wavefront + its own triangulation and vertex sort), so the
+// verbatim-copied .obj files in assets/preview/models draw with the same
+// triangles in the same order.
 //
 // Output is a plain non-indexed triangle list of {position, normal, uv}
 // vertices — the layout Onyx uploads (3 + 3 + 2 floats). Device-free and

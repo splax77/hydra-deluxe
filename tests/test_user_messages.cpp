@@ -18,6 +18,7 @@
 #include "core/model.h"
 #include "load_util.h"
 #include "parse/midi.h"
+#include "program_scope.h"
 #include "parse/song.h"
 
 using hydra::app::plain_error;
@@ -205,6 +206,45 @@ TEST_CASE("user_messages: the not-analyzed tooltip names the click and the batch
           "Not analyzed yet. Click the song or run a batch to analyze it.");
 }
 
+// D267: the Scan library advice is Hydra's; the Path Builder has no library
+// and drops it. The details line is the same for both.
+TEST_CASE("user_messages: the song file sentence names Scan library only in Hydra") {
+    const hydra::KindedError missing(hydra::ErrorKind::SongFileMissing, "cannot open file: x");
+    CHECK(plain_error(missing) == kSongFileMissing);
+    {
+        ProgramScope builder(hydra::app::Program::PathBuilder);
+        CHECK(plain_error(missing) ==
+              "Hydra couldn't open the song file. It may have been moved or deleted.");
+        CHECK(plain_error_detail(missing) == "cannot open file: x");
+    }
+    CHECK(plain_error(missing) == kSongFileMissing);
+}
+
+// Hydra runs on its defaults; the builder refuses the song, so Hydra's sentence
+// would be false there (D304 item 8).
+TEST_CASE("a bad settings file reads the builder's own sentence in the builder") {
+    const hydra::app::SettingsFileError bad("hydra_settings.ini: sp_cap");
+    ProgramScope builder(hydra::app::Program::PathBuilder);
+    CHECK(plain_error(bad) ==
+          "hydra_settings.ini has an error, so the song can't open until the file is fixed.");
+    CHECK(plain_error_detail(bad) == "hydra_settings.ini: sp_cap");
+}
+
+// Hydra turns analysis off; the builder refuses the song, so Hydra's sentence
+// would be false there, and the builder's false in Hydra (D304 item 13).
+TEST_CASE("a bad rules file reads the builder's own sentence in the builder") {
+    const hydra::app::RulesFileError bad("hydra_rules.ini: max_tied_paths");
+    {
+        ProgramScope builder(hydra::app::Program::PathBuilder);
+        CHECK(plain_error(bad) ==
+              "hydra_rules.ini has an error, so the song can't open until the file is fixed.");
+        CHECK(plain_error_detail(bad) == "hydra_rules.ini: max_tied_paths");
+    }
+    CHECK(plain_error(bad) ==
+          "hydra_rules.ini has an error, so analysis is off until the file is fixed and Hydra "
+          "is restarted.");
+}
+
 // The thrower names the kind, so the words of the error don't matter: every
 // kind reads its own sentence from "x".
 TEST_CASE("user_messages: a kinded error reads its kind's sentence, whatever its words") {
@@ -254,6 +294,15 @@ TEST_CASE("user_messages: a kinded error reads its kind's sentence, whatever its
         {ErrorKind::UpdateUnverified,
          "Hydra couldn't verify the update it downloaded, so it was not installed. Try again "
          "later, or download the release from GitHub yourself."},
+        {ErrorKind::PathTextRefused,
+         "This text doesn't match a path on this chart, so your path stays as it was."},
+        {ErrorKind::PathFileRefused,
+         "This file doesn't hold a path for this chart, so your path stays as it was."},
+        {ErrorKind::PathFileUnreadable,
+         "Hydra couldn't read this path file, so your path stays as it was."},
+        {ErrorKind::PathFileWrite,
+         "Hydra couldn't save the path file. Check that the disk isn't full and the folder "
+         "isn't read-only."},
     };
     for (const auto& [kind, sentence] : cases) {
         CAPTURE(static_cast<int>(kind));

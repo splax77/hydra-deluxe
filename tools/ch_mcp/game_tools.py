@@ -18,6 +18,7 @@ launched_at, session_dir, add_stop_hook and play_snapshot.
 
 from __future__ import annotations
 
+import ctypes
 import dataclasses
 import io
 import json
@@ -25,7 +26,7 @@ import os
 import tempfile
 import threading
 import time
-from typing import Callable, List, Optional, Sequence, Union
+from typing import Any, Callable, List, Optional, Sequence, Tuple, Union
 
 from tools.ch_mcp import bot_run, compare_scorestats, foreground, game_files, install_chart
 from tools.ch_mcp.frida_tools import READ_CAP_S
@@ -42,6 +43,19 @@ from tools.ch_probe.input_driver import (
 INSTALL_CAP_S = 60.0
 
 SCRATCH_PREFIX = "ch_live_"
+# The file under the temp root that names an open backup and the worker holding
+# it, so a worker killed before its restore leaves the next worker a way back to
+# the user's files (docs/superpowers/plans/2026-11-06-ch-server-reload.md, design
+# point 3). read_marker reads it, _write_marker writes it.
+OPEN_RUN_MARKER = "ch_open_run.json"
+
+# What OpenProcess and GetExitCodeProcess answer for pid_running. Both are
+# Windows API values, not project thresholds: ERROR_INVALID_PARAMETER is 87 in
+# winerror.h (OpenProcess sets it for a pid no process has) and STILL_ACTIVE is
+# 259 in Microsoft's GetExitCodeProcess page (the exit code of a process that
+# has not ended).
+_ERROR_INVALID_PARAMETER = 87
+_STILL_ACTIVE = 259
 
 # ch_play_chart's two routes: the virtual kit inside the game, or keys sent to
 # the focused game window (the plan 2026-10-30-ch-mcp-in-game-input.md, "The
@@ -55,8 +69,51 @@ ROUTES = (ROUTE_KIT, ROUTE_KEYS)
 # too").
 NO_ROUTE_NO_KIT = ("refused: no route given and the kit is not set up; "
                    "call ch_kit_setup first")
+PLAY_ALREADY_RUNNING = "a play session is already running; call ch_play_stop first"
 
 _NOT_RUNNING = f"{C.PROCESS_NAME} is not running"
+
+
+def pid_running(pid: int) -> bool:
+    """LIVE-ONLY: whether process `pid` still runs. os.kill cannot ask this,
+    because on Windows it ends the process. Only a plain no is False: a wrong
+    yes costs a by-hand restore, and a wrong no restores under a live run."""
+    from ctypes import wintypes  # noqa: PLC0415  (Windows only)
+    k32 = bot_run._kernel32()
+    k32.GetExitCodeProcess.argtypes = (wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD))
+    handle = k32.OpenProcess(bot_run._PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+    if not handle:
+        return ctypes.get_last_error() != _ERROR_INVALID_PARAMETER
+    try:
+        code = wintypes.DWORD()
+        if not k32.GetExitCodeProcess(handle, ctypes.byref(code)):
+            return True
+        return code.value == _STILL_ACTIVE
+    finally:
+        k32.CloseHandle(handle)
+
+
+def age_text(seconds: float) -> str:
+    """How old something is, as the largest whole unit: minutes, hours or days."""
+    minutes = max(0, int(seconds // 60))
+    if minutes < 60:
+        return f"{minutes} minute{'' if minutes == 1 else 's'}"
+    hours = minutes // 60
+    if hours < 48:
+        return f"{hours} hour{'' if hours == 1 else 's'}"
+    return f"{hours // 24} days"
+
+
+def read_marker(path: str) -> Tuple[int, str]:
+    """The pid and the backup folder a marker file holds. Raises OSError when
+    the file cannot be read and ValueError when it holds anything else."""
+    with open(path, encoding="utf-8") as f:
+        marker = json.load(f)
+    pid = marker.get("pid") if isinstance(marker, dict) else None
+    folder = marker.get("folder") if isinstance(marker, dict) else None
+    if type(pid) is not int or pid <= 0 or not isinstance(folder, str) or not folder:
+        raise ValueError("it holds no pid and backup folder")
+    return pid, folder
 
 
 def _key_name(vk: int) -> str:
@@ -95,6 +152,19 @@ def split_keys(keys: str) -> List[str]:
     return items
 
 
+def decline_refusal(decline_mode: Optional[str], dump_json: Optional[str]) -> Optional[str]:
+    """The refusal for a tool's decline arguments, or None when they can run.
+    The list of chords to decline comes from `dump_json`, so a mode needs it."""
+    if decline_mode is None:
+        return None
+    if decline_mode not in play_chart.DECLINE_MODES:
+        return (f'unknown decline mode "{decline_mode}"; '
+                f'modes: {", ".join(play_chart.DECLINE_MODES)}')
+    if dump_json is None:
+        return f"decline mode {decline_mode} needs dump_json, the path's hydra_replay dump"
+    return None
+
+
 def run_cap_s(song_folder: Optional[str]) -> float:
     """The wall-time cap for a run of the song in `song_folder`:
     bot_run.run_cap_s of its length, or play_chart.RUN_CAP_S when no folder
@@ -106,6 +176,47 @@ def run_cap_s(song_folder: Optional[str]) -> float:
     except bot_run.SongLengthMissing:
         return play_chart.RUN_CAP_S
     return bot_run.run_cap_s(length_ms)
+
+
+def find_run_engine(proc) -> int:
+    """LIVE-ONLY: ch_run_chart's one engine search, with its progress dots
+    dropped, because the server's stdout is its protocol channel. It is the
+    auto-player's search, not the watch's: sp_watch.find_engine_live scans the
+    game's memory once for each window pattern, which the first press cannot
+    wait for, and the patterns only it scans for are ones the auto-player
+    never plays on. A run with no normal-mode engine (no song playing, or a
+    precision-mode one) ends here as the search's timeout, so the reply says
+    which engines were searched."""
+    try:
+        return play_chart.find_normal_engine(proc, out=io.StringIO())
+    except engine_finder.EngineSearchTimeout as e:
+        raise engine_finder.EngineSearchTimeout(
+            f"{e} (ch_run_chart searched normal-mode engines only, as ch_play_chart does; "
+            "a precision-mode engine is not found here)") from e
+
+
+def first_press_line(rows: Sequence[dict]) -> str:
+    """Which chord a run's press rows start at; `rows` holds at least one."""
+    return f"first press chord index {rows[0]['index']} at {rows[0]['chart_ms']} ms"
+
+
+def declined_line(decline_mode: str, declined: Sequence[int]) -> str:
+    """Which chords a run declines."""
+    return f"declined ({decline_mode}): chords {', '.join(map(str, declined)) or 'none'}"
+
+
+class ChordsRefused(Exception):
+    """A score file or decline arguments no run can start from; the text says
+    why."""
+
+
+@dataclasses.dataclass(frozen=True)
+class RunParts:
+    """The tools ch_run_chart chains, which each import this module:
+    frida_tools.FridaTools, kit_tools.KitTools and sp_tools.SpTools."""
+    frida: Any
+    kit: Any
+    sp: Any
 
 
 @dataclasses.dataclass(frozen=True)
@@ -128,8 +239,12 @@ class _PlaySession:
     cap_s: Optional[float] = None
     # The kit press on the kit route; None presses keys through the driver.
     press: Optional[Callable] = None
+    # The engine search handed to live_play; None leaves live_play's own.
+    find_engine: Optional[Callable[[object], int]] = None
     thread: Optional[threading.Thread] = None
     stop: threading.Event = dataclasses.field(default_factory=threading.Event)
+    # Set at the first press row, or when the run ends with none.
+    pressed: threading.Event = dataclasses.field(default_factory=threading.Event)
     rows: list = dataclasses.field(default_factory=list)
     result: Optional[play_chart.RunResult] = None
     error: Optional[str] = None
@@ -140,7 +255,7 @@ class _PlaySession:
 
 
 class GameTools:
-    """The twelve game-side tools and the session state between them.
+    """The thirteen game-side tools and the session state between them.
 
     Every outside seam is an argument, so the tests swap each for a fake:
     `env` (bot_run.Env: the exe, the user folders, the launch, the clock and
@@ -149,9 +264,12 @@ class GameTools:
     `compare` (compare_scorestats'), `wait_thread` (how ch_install_chart waits
     on its worker), `set_setting` (game_files.set_game_setting),
     `make_watch` (builds the foreground.ForegroundWatch ch_start starts; None
-    builds the real one on `find_window`) and `scratch_root` (the temp root
-    the session folders go under). `lock` is the server's one RLock; this
-    class never makes its own."""
+    builds the real one on `find_window`), `is_pid_running` (pid_running) and
+    `scratch_root` (the temp root the session folders and OPEN_RUN_MARKER go
+    under). `lock` is the server's one RLock; this class never makes its own.
+
+    Building one reads a marker a previous worker left (_read_marker_at_start)
+    and restores nothing: the user's answer to the reload plan's question 9."""
 
     def __init__(self, env: bot_run.Env, lock, scratch_root: Optional[str] = None, *,
                  driver: Optional[InputDriver] = None,
@@ -162,7 +280,8 @@ class GameTools:
                  compare: Callable = compare_scorestats.compare,
                  wait_thread: Callable[[threading.Thread, float], None] = bot_run.join_thread,
                  set_setting: Callable[[str, str, str], None] = game_files.set_game_setting,
-                 make_watch: Optional[Callable[[], foreground.ForegroundWatch]] = None):
+                 make_watch: Optional[Callable[[], foreground.ForegroundWatch]] = None,
+                 is_pid_running: Callable[[int], bool] = pid_running):
         self._env = env
         self._lock = lock
         self._scratch_root = scratch_root or tempfile.gettempdir()
@@ -176,6 +295,7 @@ class GameTools:
         self._set_setting = set_setting
         self._make_watch = make_watch or (lambda: foreground.ForegroundWatch(
             self._find_window, foreground.foreground_window, time.monotonic, time.sleep))
+        self._is_pid_running = is_pid_running
 
         self._run: Optional[bot_run.Run] = None
         # The foreground watch of the run the server started; None otherwise.
@@ -190,6 +310,19 @@ class GameTools:
         # Where ch_play_chart gets the kit press: kit_tools.KitTools.kit_press,
         # handed in by use_kit_press. None until then.
         self._kit_press_source: Optional[Callable[[], Optional[Callable]]] = None
+        # What ch_run_chart chains, handed in by use_run_parts. None until then.
+        self._run_parts: Optional[RunParts] = None
+        # The backup folder of the marker this worker wrote or adopted, the only
+        # marker it may delete. A marker it did not take stays another's.
+        self._marked: Optional[str] = None
+        # True while `_adopted_backup` came from a marker. Nothing restores it
+        # without a ch_stop: the user's answer to the reload plan's question 9.
+        self._from_marker = False
+        # What ch_status says about the marker found at start. The adoption
+        # line goes once its backup is restored; the other outcomes stay.
+        self._adoption_line: Optional[str] = None
+        self._marker_line: Optional[str] = None
+        self._read_marker_at_start()
 
     # -- the interface frida_tools builds on ------------------------------------
 
@@ -204,8 +337,10 @@ class GameTools:
             self._adopted_backup = game_files.backup(
                 self._env.documents_dir, self._env.locallow_dir, scratch, stamp=self._env.stamp,
                 run_reg=self._env.run_reg)
-            return (f"backup folder: {self._adopted_backup} (taken now, because the server "
-                    "did not start this game; ch_stop restores it)")
+            lines = [f"backup folder: {self._adopted_backup} (taken now, because the server "
+                     "did not start this game; ch_stop restores it)"]
+            self._write_marker(self._adopted_backup, lines)
+            return "\n".join(lines)
 
     def launched_at(self) -> Optional[float]:
         """When the server launched the open run's game, on env.now; None when
@@ -222,6 +357,21 @@ class GameTools:
     def run_cap_s(self, song_folder: Optional[str]) -> float:
         """The module's run_cap_s, for callers that hold only this object."""
         return run_cap_s(song_folder)
+
+    def open_lines(self) -> List[str]:
+        """What the game side holds open, one line each: the run with its
+        backup folder, an adopted backup, a running play session. The server's
+        Helper.open_items adds the other tools' lines."""
+        with self._lock:
+            lines: List[str] = []
+            if self._run is not None:
+                lines.append(f"run: game pid {self._run.game.pid}, "
+                             f"backup folder {self._run.backup_dir}")
+            elif self._adopted_backup is not None:
+                lines.append(f"adopted backup: {self._adopted_backup}")
+            if self._play is not None and self._play.running():
+                lines.append(f"play session: running, {len(self._play.rows)} presses so far")
+            return lines
 
     def add_stop_hook(self, hook: Callable[[], object]) -> None:
         """Run `hook` at the start of ch_stop and shutdown, before the game is
@@ -260,18 +410,33 @@ class GameTools:
             if refusal is not None:
                 return refusal
             lines: List[str] = []
+            if self._from_marker:
+                return (f"refused: {self._pending_text()}; call ch_stop to restore it, then "
+                        "ch_start")
             if self._run is not None or self._adopted_backup is not None:
                 lines.append("a run was open; stopping it first:")
                 if not self._stop_all(lines):
                     lines.append("the new run was not started")
                     return "\n".join(lines)
             scratch = self._new_scratch()
+            in_scratch = set(os.listdir(scratch))
             env = self._env_into(lines)
+
+            def before_launch() -> None:
+                # start_run takes the backup and launches in one call, so this
+                # is the one moment between them: the backup is whole, and
+                # nothing of the user's has changed yet.
+                self._mark_new_backup(scratch, in_scratch, lines)
+                lines.append(self._pause_setting())
+
             try:
-                run = bot_run.start_run(song_folder, player=player, profile=profile,
-                                        backup_root=scratch, env=env,
-                                        before_launch=lambda: lines.append(self._pause_setting()),
-                                        human=human)
+                try:
+                    run = bot_run.start_run(song_folder, player=player, profile=profile,
+                                            backup_root=scratch, env=env,
+                                            before_launch=before_launch, human=human)
+                except BaseException:
+                    self._settle_failed_start(lines)
+                    raise
             except bot_run.SongLengthMissing as e:
                 lines.append(str(e))
                 return "\n".join(lines)
@@ -304,8 +469,12 @@ class GameTools:
     def shutdown(self) -> str:
         """The server's exit (question 3): the same steps as ch_stop. A game
         the server started is terminated, then the files are restored; for a
-        game it did not start, the files are restored and the game stays."""
-        return self.ch_stop()
+        game it did not start, the files are restored and the game stays. A
+        backup adopted from a marker is left, with its marker, for a ch_stop."""
+        with self._lock:
+            lines: List[str] = []
+            self._stop_all(lines, at_exit=True)
+            return "\n".join(lines)
 
     def _pause_setting(self) -> str:
         """Set settings.ini's pause_on_focus_lost line to its run value and
@@ -341,8 +510,12 @@ class GameTools:
             elif self._adopted_backup is not None:
                 lines.append("game: not started by the server")
                 lines.append(f"backup folder: {self._adopted_backup}")
+                if self._adoption_line is not None:
+                    lines.append(self._adoption_line)
             else:
                 lines.append("game: no run open, and no backup taken")
+            if self._marker_line is not None:
+                lines.append(self._marker_line)
             watch_line = self.foreground_line()
             if watch_line is not None:
                 lines.append(watch_line)
@@ -421,7 +594,7 @@ class GameTools:
             return "\n".join(lines)
 
     def ch_compare(self, stats_path: str, score_json: str) -> str:
-        """compare_scorestats.compare's three lines for a stats copy against a
+        """compare_scorestats.compare's six lines for a stats copy against a
         hydra_replay score JSON, then pass or fail."""
         with self._lock:
             lines: List[str] = []
@@ -518,6 +691,11 @@ class GameTools:
         with self._lock:
             self._kit_press_source = source
 
+    def use_run_parts(self, parts: RunParts) -> None:
+        """Hand in the tools ch_run_chart chains."""
+        with self._lock:
+            self._run_parts = parts
+
     def foreground_line(self) -> Optional[str]:
         """The foreground watch's count line, or None when no watch runs
         (the server did not start the game)."""
@@ -525,7 +703,9 @@ class GameTools:
             return self._watch.line() if self._watch is not None else None
 
     def ch_play_chart(self, score_json: str, log: Optional[str] = None,
-                      song_folder: Optional[str] = None, route: Optional[str] = None) -> str:
+                      song_folder: Optional[str] = None, route: Optional[str] = None,
+                      decline_mode: Optional[str] = None, dump_json: Optional[str] = None,
+                      path_index: int = 0) -> str:
         """Start the auto-player (play_chart.live_play) on a hydra_replay score
         JSON in a background thread. `log`, when given, is where the press log
         is written when the run ends; a relative path goes in the session
@@ -533,10 +713,13 @@ class GameTools:
         with none the run keeps live_play's own cap. `route` is ROUTE_KIT
         (presses through the virtual kit inside the game) or ROUTE_KEYS (keys
         to the focused window); None means the kit, and is refused until the
-        kit is set up, so no run takes the keyboard unless asked to."""
+        kit is set up, so no run takes the keyboard unless asked to.
+        `decline_mode`, one of play_chart.DECLINE_MODES, says what to send for
+        each fill path `path_index` of the dump file `dump_json` passes over
+        (play_chart.declined_chord_indexes); None presses every chord."""
         with self._lock:
             if self._play is not None and self._play.running():
-                return "a play session is already running; call ch_play_stop first"
+                return PLAY_ALREADY_RUNNING
             kit_press = self._kit_press_source() if self._kit_press_source is not None else None
             if route is None:
                 if kit_press is None:
@@ -549,30 +732,102 @@ class GameTools:
                         f'or pass route="{ROUTE_KEYS}"')
             press = kit_press if route == ROUTE_KIT else None
             try:
-                chords = play_chart.load_dump_chords(score_json)
-            except (OSError, ValueError, KeyError, TypeError) as e:
-                return f"could not read {score_json}: {type(e).__name__}: {e}"
-            if not chords:
-                return f"{score_json} has no chords to play"
+                chords, declined = self._chords_to_play(score_json, decline_mode, dump_json,
+                                                        path_index)
+            except ChordsRefused as e:
+                return str(e)
             lines = [line for line in (self.ensure_backup(),) if line]
             log_path = None
             if log:
                 log_path = log if os.path.isabs(log) else os.path.join(self.session_dir(), log)
             cap_s = None if song_folder is None else run_cap_s(song_folder)
-            play = _PlaySession(score_json=score_json, chord_count=len(chords), log_path=log_path,
-                                cap_s=cap_s, press=press)
-            play.thread = threading.Thread(target=self._play_body, args=(play, chords),
-                                           name="ch_play_chart", daemon=True)
-            self._play = play
-            play.thread.start()
+            self._start_play(_PlaySession(score_json=score_json, chord_count=len(chords),
+                                          log_path=log_path, cap_s=cap_s, press=press), chords)
             lines.append(f"play session started: {len(chords)} chords from {score_json}")
             lines.append(f"route: {route} ("
                          + ("presses through the virtual kit inside the game"
                             if route == ROUTE_KIT else "keys to the focused game window") + ")")
             lines.append(f"run cap: {play_chart.RUN_CAP_S if cap_s is None else cap_s:g} s")
+            if decline_mode is not None:
+                lines.append(declined_line(decline_mode, declined))
             lines.append(f"waiting for a moving clock (cap {engine_finder.ENGINE_SEARCH_CAP_S:.0f} s): "
                          "start the song from the game's menu; a song launched with a bot "
                          "is played by the bot, not by keys")
+            return "\n".join(lines)
+
+    def ch_run_chart(self, song_folder: str, score_json: str, kit_player: Optional[str] = None,
+                     decline_mode: Optional[str] = None,
+                     dump_json: Optional[str] = None) -> str:
+        """Start a run in one call: attach, kit setup on `kit_player`
+        (ch_kit_setup's `player`), the Star Power watch and the auto-player on
+        the kit, with one engine search that the watch and the player share.
+        `decline_mode` and `dump_json` are ch_play_chart's. Each part keeps
+        its owner, and this adds no wait of its own before the first press:
+        the arguments are read before the attach, and the player starts the
+        moment the search ends. The call returns at the first press.
+
+        The reply has one line per part with the time it took, then
+        first_press_line. A part that fails stops the call there: the reply
+        names it and gives its own reply, and a kit that part left standing
+        is torn down. A failed attach built no kit, and a failed setup tears
+        down its own."""
+        with self._lock:
+            parts = self._run_parts
+            if parts is None:
+                return "refused: the server did not hand in the run's parts (use_run_parts)"
+            if self._play is not None and self._play.running():
+                return PLAY_ALREADY_RUNNING
+            try:
+                chords, declined = self._chords_to_play(score_json, decline_mode, dump_json)
+                cap_s = run_cap_s(song_folder)
+            except ChordsRefused as e:
+                return str(e)
+            except (OSError, ValueError) as e:
+                return f"could not pick the run cap for {song_folder}: {type(e).__name__}: {e}"
+            lines: List[str] = []
+
+            began = self._env.now()
+            text = parts.frida.ch_attach()
+            if not parts.frida.is_attached():
+                return self._run_stopped(lines, "attach", began, text)
+            lines.append(f"attach: ok, {self._seconds_since(began)}")
+
+            began = self._env.now()
+            press, text = parts.kit.setup_for_run(kit_player)
+            if press is None:
+                return self._run_stopped(lines, "kit setup", began, text)
+            lines.append(f"kit setup: ok, {self._seconds_since(began)}")
+
+            began = self._env.now()
+            engine, text = parts.sp.watch_for_run(cap_s, find_run_engine)
+            if engine is None:
+                return self._run_stopped(lines, "watch", began, text,
+                                         parts.kit.ch_kit_teardown())
+            lines.append(f"watch: ok, {self._seconds_since(began)}, engine {engine:#x}, {text}")
+
+            began = self._env.now()
+            play = _PlaySession(score_json=score_json, chord_count=len(chords), log_path=None,
+                                cap_s=cap_s, press=press, find_engine=lambda _proc: engine)
+            self._start_play(play, chords)
+            first_press_in_time = play.pressed.wait(cap_s)
+            rows = list(play.rows)
+            if not rows:
+                play.stop.set()
+                self._wait_thread(play.thread, READ_CAP_S)
+                said = self._play_lines(play)
+                if not first_press_in_time:
+                    said.insert(0, f"no press inside the run cap of {cap_s:g} s; the call "
+                                   "stopped the run")
+                # The watch goes with the kit, so a second ch_run_chart is not
+                # refused for a watch still running.
+                return self._run_stopped(lines, "play", began, "\n".join(said),
+                                         parts.kit.ch_kit_teardown() + "\n"
+                                         + parts.sp.ch_sp_watch_stop())
+            lines.append(f"play: ok, {self._seconds_since(began)} to the first press, "
+                         f"{len(chords)} chords from {score_json}, run cap {cap_s:g} s")
+            if decline_mode is not None:
+                lines.append(declined_line(decline_mode, declined))
+            lines.append(first_press_line(rows))
             return "\n".join(lines)
 
     def ch_play_status(self) -> str:
@@ -597,6 +852,51 @@ class GameTools:
 
     # -- inside ---------------------------------------------------------------------
 
+    @staticmethod
+    def _chords_to_play(score_json: str, decline_mode: Optional[str], dump_json: Optional[str],
+                        path_index: int = 0) -> Tuple[List[play_chart.Chord], List[int]]:
+        """The chords of `score_json` with the decline arguments applied, and
+        the indexes declined. Raises ChordsRefused saying why no run can
+        start from them."""
+        refusal = decline_refusal(decline_mode, dump_json)
+        if refusal is not None:
+            raise ChordsRefused(refusal)
+        declined: List[int] = []
+        if decline_mode is not None:
+            try:
+                declined = play_chart.declined_chord_indexes(score_json, dump_json, path_index)
+            except (OSError, ValueError, KeyError, IndexError, TypeError) as e:
+                raise ChordsRefused(
+                    f"could not read the fills to decline: {type(e).__name__}: {e}") from e
+        try:
+            chords = play_chart.load_dump_chords(score_json, dict.fromkeys(declined, decline_mode))
+        except (OSError, ValueError, KeyError, TypeError) as e:
+            raise ChordsRefused(f"could not read {score_json}: {type(e).__name__}: {e}") from e
+        if not chords:
+            raise ChordsRefused(f"{score_json} has no chords to play")
+        return chords, declined
+
+    def _start_play(self, play: _PlaySession, chords: Sequence[play_chart.Chord]) -> None:
+        """Make `play` the session and start its thread."""
+        play.thread = threading.Thread(target=self._play_body, args=(play, chords),
+                                       name="ch_play_chart", daemon=True)
+        self._play = play
+        play.thread.start()
+
+    def _seconds_since(self, began: float) -> str:
+        """How long a part of ch_run_chart took, on env.now."""
+        return f"{self._env.now() - began:.2f} s"
+
+    def _run_stopped(self, lines: List[str], part: str, began: float, text: str,
+                     teardown: Optional[str] = None) -> str:
+        """ch_run_chart's reply when `part` failed: the parts that passed,
+        the line naming it, its own reply, then the teardown's lines."""
+        lines = lines + [f"{part}: FAILED after {self._seconds_since(began)}; "
+                         f"the run stopped at {part}", text]
+        if teardown is not None:
+            lines.append(teardown)
+        return "\n".join(lines)
+
     def _new_scratch(self) -> str:
         """A new session folder under the temp root. It is never deleted: it
         holds the backups."""
@@ -610,11 +910,141 @@ class GameTools:
         """The server's Env with its printed lines going into `lines`."""
         return dataclasses.replace(self._env, out=lines.append)
 
-    def _stop_all(self, lines: List[str]) -> bool:
+    # -- the open-run marker ----------------------------------------------------------
+
+    def _marker_path(self) -> str:
+        return os.path.join(self._scratch_root, OPEN_RUN_MARKER)
+
+    def _read_marker_at_start(self) -> None:
+        """Act on a marker a previous worker left, saying what happened on
+        env.out and in ch_status. Nothing in the file may stop this worker
+        starting, so anything that goes wrong here leaves it in place."""
+        path = self._marker_path()
+        try:
+            pid, folder = read_marker(path)
+            self._settle_found_marker(path, pid, folder)
+        except FileNotFoundError:
+            return
+        except Exception as e:  # the worker must start whatever the file holds
+            self._marker_line = (f"open-run marker {path} was left in place and nothing was "
+                                 f"adopted: {type(e).__name__}: {e}")
+        said = self._adoption_line or self._marker_line
+        if said is not None:
+            self._env.out(said)
+
+    def _settle_found_marker(self, path: str, pid: int, folder: str) -> None:
+        """Design point 3's three outcomes for a marker holding `pid` and
+        `folder`, and the one it leaves out: a folder restore_only cannot read
+        would make every ch_stop fail, so it is not adopted."""
+        if not os.path.isdir(folder):
+            os.remove(path)
+            self._marker_line = (f"a previous worker (pid {pid}) left a marker for a backup "
+                                 f"that is gone: {folder}; the marker was deleted")
+        elif self._is_pid_running(pid):
+            self._marker_line = (f"process {pid} was running when this worker started, and its "
+                                 f"marker holds a backup open: {folder}; it was not adopted, "
+                                 "because that may be a second session's worker with a live "
+                                 "run; if it is not, restore by hand with "
+                                 f"{bot_run._restore_hint(folder)} and delete {path}")
+        elif not os.path.isfile(os.path.join(folder, game_files.BACKUP_MANIFEST)):
+            self._marker_line = (f"a previous worker (pid {pid}) left a marker, but {folder} "
+                                 f"holds no {game_files.BACKUP_MANIFEST}; it was not adopted "
+                                 f"and {path} was left in place")
+        else:
+            age = age_text(time.time() - os.path.getmtime(folder))
+            restored = [n for n in game_files.DOCUMENTS_FILES + game_files.LOCALLOW_FILES
+                        if n not in game_files.KEPT_FILES]
+            self._adoption_line = (
+                f"a previous worker (pid {pid}) left a backup open: {folder}, {age} old; "
+                f"ch_stop restores {', '.join(restored)} and the Rewired key from it and "
+                f"leaves {', '.join(game_files.KEPT_FILES)} as they are")
+            self._adopted_backup = self._marked = folder
+            self._from_marker = True
+
+    def _pending_text(self) -> str:
+        """What ch_start says about the backup adopted from a marker: its
+        folder and its age from the folder's own time."""
+        folder = self._adopted_backup
+        try:
+            age = f"{age_text(time.time() - os.path.getmtime(folder))} old"
+        except OSError:
+            age = "age unknown"
+        return f"a previous worker left a backup open: {folder}, {age}"
+
+    def _write_marker(self, folder: str, lines: List[str]) -> None:
+        """Name `folder` in the marker, or add a line saying this backup has
+        none. A marker already there is never replaced: it is another worker's
+        open backup, or a file left for the user to read."""
+        path = self._marker_path()
+        temp = f"{path}.{os.getpid()}.tmp"
+        try:
+            with open(temp, "w", encoding="utf-8") as f:
+                json.dump({"pid": os.getpid(), "folder": folder}, f)
+            # On Windows os.rename refuses an existing target, so the check and
+            # the write are one step, and no reader sees half a file.
+            os.rename(temp, path)
+        except OSError as e:
+            try:
+                os.remove(temp)
+            except OSError:
+                pass  # a stray temp file holds nothing a worker reads
+            lines.append(f"open-run marker not written ({type(e).__name__}: {e}); if this worker "
+                         f"is killed, restore by hand with {bot_run._restore_hint(folder)}")
+            return
+        self._marked = folder
+
+    def _mark_new_backup(self, scratch: str, in_scratch: set, lines: List[str]) -> None:
+        """Write the marker for the backup start_run just took in `scratch`,
+        the one folder of its kind that `in_scratch` did not list."""
+        name = next(n for n in os.listdir(scratch)
+                    if n not in in_scratch and n.startswith(game_files.BACKUP_PREFIX))
+        self._write_marker(os.path.join(scratch, name), lines)
+
+    def _delete_marker(self, lines: List[str]) -> None:
+        """Delete the marker this worker holds, after its backup was restored.
+        A file that stays is no longer this worker's to touch, and the line
+        says so, because the next worker would restore that old backup."""
+        if self._marked is None:
+            return
+        folder, self._marked = self._marked, None
+        path = self._marker_path()
+        try:
+            os.remove(path)
+        except FileNotFoundError:
+            pass
+        except OSError as e:
+            lines.append(f"open-run marker {path} was not deleted ({e}); delete it by hand, or "
+                         f"the next worker adopts {folder}, which is already restored")
+
+    def _settle_failed_start(self, lines: List[str]) -> None:
+        """After start_run raised. It restores on the way out but does not say
+        how that went, and the marker may go only after a restore that worked,
+        so restore_only asks: restoring files already back changes nothing. A
+        restore that fails keeps the marker and holds the backup as adopted,
+        so ch_stop tries again and no new run takes a backup of the run's
+        files."""
+        folder = self._marked
+        if folder is None:
+            return
+        said: List[str] = []
+        try:
+            restored = bot_run.restore_only(folder, self._env_into(said)) == 0
+        except Exception as e:  # the failed start's own error goes on after this
+            restored = False
+            said.append(f"restoring failed: {type(e).__name__}: {e}")
+        if restored:
+            self._delete_marker(lines)
+            return
+        self._adopted_backup = folder
+        lines.extend(said)
+        lines.append(f"the user files may not be back; ch_stop tries again from {folder}")
+
+    def _stop_all(self, lines: List[str], at_exit: bool = False) -> bool:
         """The stop hooks, the play stop, the foreground watch's stop and its
         count, then the game and the restore. Returns False when the restore
         failed or the stop raised; the run stays open then, so a later
-        ch_stop tries the restore again."""
+        ch_stop tries the restore again. At the worker's exit a backup
+        adopted from a marker is left alone, with its marker."""
         for hook in list(self._stop_hooks):
             try:
                 said = hook()
@@ -650,14 +1080,28 @@ class GameTools:
                 return False
             self._run = None
             self._watch = None
+            self._delete_marker(lines)
             return True
         if self._adopted_backup is not None:
+            if self._from_marker and at_exit:
+                lines.append(f"{self._pending_text()}; it and its marker {self._marker_path()} "
+                             "stay, and ch_stop in the next session restores it")
+                return True
             lines.append("the server did not start the game, so it does not close it")
-            if bot_run.restore_only(self._adopted_backup, env) != 0:
+            leave = game_files.KEPT_FILES if self._from_marker else ()
+            try:
+                if bot_run.restore_only(self._adopted_backup, env, leave) != 0:
+                    return False
+            except Exception as e:
+                lines.append(f"restoring failed: {type(e).__name__}: {e}; "
+                             f"the backup is still in {self._adopted_backup}")
                 return False
             lines.append("if the game is still running it "
                          + bot_run.late_write_hint(self._adopted_backup))
             self._adopted_backup = None
+            self._adoption_line = None
+            self._from_marker = False
+            self._delete_marker(lines)
             return True
         lines.append("no run is open and no backup was taken; nothing to restore")
         return True
@@ -666,14 +1110,20 @@ class GameTools:
         """The play thread: live_play, then the press log. It never takes the
         lock, so a tool holding it never waits on the thread."""
         cap = {} if play.cap_s is None else {"cap_s": play.cap_s}
+        search = {} if play.find_engine is None else {"find_engine": play.find_engine}
         # The kit route hands live_play its press and no driver, so no window
         # is looked up; the keys route keeps the driver.
         route = {"driver": self._driver} if play.press is None else {"press": play.press}
+
+        def on_press(row: dict) -> None:
+            play.rows.append(row)
+            play.pressed.set()
+
         try:
             play.result = self._live_play(chords, **route,
-                                          on_press=play.rows.append,
+                                          on_press=on_press,
                                           should_stop=play.stop.is_set,
-                                          out=io.StringIO(), **cap)
+                                          out=io.StringIO(), **cap, **search)
         except Exception as e:  # reported by ch_play_status
             play.error = f"{type(e).__name__}: {e}"
         if play.log_path:
@@ -682,6 +1132,7 @@ class GameTools:
                 play.log_note = f"press log: {play.log_path} ({len(play.rows)} rows)"
             except OSError as e:
                 play.log_note = f"press log not written to {play.log_path}: {e}"
+        play.pressed.set()
 
     @staticmethod
     def _stop_reason(play: _PlaySession) -> str:
@@ -694,22 +1145,28 @@ class GameTools:
         lines = [f"play session: {play.chord_count} chords from {play.score_json}"]
         if play.running():
             lines.append(f"running: {len(rows)} presses so far, "
-                         f"{sum(1 for r in rows if r['hit'])} hit")
+                         f"{sum(1 for r in rows if r['hit'] == 1)} hit")
         else:
             lines.append(f"ended: {self._stop_reason(play)}")
             result = play.result
             if result is not None:
+                if result.dyn_threshold is not None:
+                    lines.append(f"dynamics threshold: {result.dyn_threshold}")
                 if result.message:
                     lines.append(result.message)
                 lines.append(f"sent {result.sent}, hit {result.hit}, "
-                             f"misses {result.sent - result.hit}, best streak {result.max_streak}")
-                if result.sent != len(rows):
+                             f"misses {result.sent - result.hit}, best streak {result.max_streak}"
+                             + (f", declined {result.declined}" if result.declined else ""))
+                if result.sent + result.declined != len(rows):
                     lines.append(f"the song clock jumped back during the run: the counts above "
                                  f"cover the part after the jump; the rows below keep all "
                                  f"{len(rows)} presses")
             if play.log_note:
                 lines.append(play.log_note)
-        if rows:
+        if not rows:
+            lines.append("first press: none, no chord was pressed")
+        else:
+            lines.append(first_press_line(rows))
             # The kit press's columns show only when the rows carry them.
             columns = [c for c in PRESS_LOG_COLUMNS if any(c in r for r in rows)]
             lines.append(f"rows, newest first ({', '.join(columns)}):")

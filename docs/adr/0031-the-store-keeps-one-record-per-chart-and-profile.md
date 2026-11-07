@@ -71,8 +71,8 @@ One owner answers each question:
   stays, because it reads Ready again if the rules come back (D51 call 8).
 - `RecordStore::lookup` and `RecordStore::lookup_one` answer Ready, Stale or
   Not analyzed (below). The library's chips, the batch's skip list
-  (`RecordStore::ready_song_ids`), the report and both comparison pages
-  (`RecordStore::ready_records`) read through them.
+  (`RecordStore::settled_song_ids`), the report and both comparison pages
+  (`report::library_lookup`) read through them.
 - `Settings::profile` is the one builder of the current profile. The
   leaderboard comparison asks for `Settings::profile_at_clone_hero_cap` and
   the fill comparison for `Settings::profile_with_fills`. Nobody edits a cap

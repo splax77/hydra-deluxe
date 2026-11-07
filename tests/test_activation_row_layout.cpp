@@ -110,8 +110,8 @@ TEST_CASE("activation row: one badge that fits sits where it always has (B1)") {
     CHECK(l.badge_line[0] == 0);
     // Literals from one run, scale 1: flush right, on the row's own line, in a
     // row as tall as it was before any badge could drop.
-    CHECK(l.pill_x[0] == doctest::Approx(279.6f));
-    CHECK(l.badge_pill_min == doctest::Approx(279.6f));
+    CHECK(l.pill_x[0] == doctest::Approx(260.4f));
+    CHECK(l.badge_pill_min == doctest::Approx(260.4f));
     CHECK(l.badge_y[0] == doctest::Approx(9.0f));
     CHECK(l.text_y == doctest::Approx(9.0f));
     CHECK(l.row_h == doctest::Approx(34.0f));
@@ -138,19 +138,19 @@ TEST_CASE("activation row: a pill that just touches the bars drops under the mea
     CHECK(touch.badge_lines == 1);
     const ActivationRowLayout clear = layout(mono(7), pill_left - bars_x - 1.0f, {100.0f}, 640.0f);
     CHECK(clear.badge_lines == 0);
-    CHECK(clear.badge_pill_min == doctest::Approx(435.6f));  // a literal from one run
+    CHECK(clear.badge_pill_min == doctest::Approx(416.4f));  // a literal from one run
 }
 
 TEST_CASE("activation row: a short badge drops when the longest badge's pill would not fit") {
-    // "early fill 0 ms" (15 characters) beside "m1024.1.120" and "12 bars" on a
-    // 480 px row: its own-width pill would clear the bars, but every pill is
+    // "early fill 0.0 ms" (17 characters) beside "m1024.1.120" and "12 bars" on
+    // a 480 px row: its own-width pill would clear the bars, but every pill is
     // sized for the longest badge, and that one reaches them.
-    const float short_w = mono(15);
+    const float short_w = mono(17);
     const ActivationRowLayout own = layout(mono(11), kBars12, {short_w}, 480.0f, 1.0f, short_w);
     CHECK(own.badge_lines == 0);
     const ActivationRowLayout l = layout(mono(11), kBars12, {short_w}, 480.0f);
     CHECK(l.badge_lines == 1);
-    CHECK(l.pill_w == doctest::Approx(198.4f));  // a literal from one run
+    CHECK(l.pill_w == doctest::Approx(217.6f));  // a literal from one run
 }
 
 TEST_CASE("activation row: badges under the measure clear the bars by the row's top padding") {

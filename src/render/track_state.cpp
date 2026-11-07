@@ -303,8 +303,8 @@ TrackState build_track_state(const PreviewScene& scene, const TrackStateOptions&
         while (hi < events.size() && !(events[lo].t < events[hi].t)) ++hi;
 
         TrackInstant inst;
-        // The time of the group's last moment, as the old per-moment map kept
-        // it (only 0.0 and -0.0 can differ, and they compare equal anyway).
+        // The time of the group's last moment (only 0.0 and -0.0 can differ,
+        // and they compare equal anyway).
         inst.t = events[hi - 1].t;
         size_t n_notes = 0;
         for (size_t k = lo; k < hi; ++k)
@@ -386,10 +386,11 @@ TrackWindow TrackState::window(double near_s, double far_s) const {
     auto lo = first_after(near_s);
     auto hi = lo;
     while (hi != instants_.end() && hi->t < far_s) ++hi;
-    // Onyx writes the synthesized key as `t1 + (t2 + t1) / 2`, which lands
-    // past t2; it never reads that key, only the state (its neighbours'
-    // before/after). We place it at the midpoint so the state is evaluated
-    // strictly inside the window, which is the same state Onyx carries.
+    // Onyx writes the synthesized key as `t1 + (t2 + t1) / 2`, which need not
+    // fall between t1 and t2; it never reads that key, only the state (its
+    // neighbours' before/after). We place it at the midpoint so the state is
+    // evaluated strictly inside the window, which is the same state Onyx
+    // carries.
     if (lo == hi) return TrackWindow(synthesize((near_s + far_s) / 2.0));
     const TrackInstant* base = instants_.data();
     return TrackWindow(base + (lo - instants_.begin()), base + (hi - instants_.begin()));

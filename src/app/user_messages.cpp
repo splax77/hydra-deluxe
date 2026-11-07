@@ -1,5 +1,6 @@
 #include "app/user_messages.h"
 
+#include <atomic>
 #include <cstdio>
 #include <filesystem>
 #include <new>
@@ -25,9 +26,29 @@ constexpr const char* kChartUnreadable =
     "support; try downloading the song again.";
 constexpr const char* kNoteShuffleFreezes =
     "Clone Hero freezes loading this chart with Note Shuffle on.";
-constexpr const char* kSongFileMissing =
-    "Hydra couldn't open the song file. It may have been moved or deleted; run Scan "
-    "library to update the library.";
+std::atomic<Program> g_program{Program::Hydra};
+
+// The song file's sentence. The Scan advice is Hydra's alone: the Path Builder
+// has no library to update (D267).
+constexpr const char* kSongFileMissingStart =
+    "Hydra couldn't open the song file. It may have been moved or deleted";
+constexpr const char* kSongFileMissingScanAdvice = "; run Scan library to update the library";
+std::string song_file_missing_sentence() {
+    return std::string(kSongFileMissingStart) +
+           (g_program.load() == Program::Hydra ? kSongFileMissingScanAdvice : "") + ".";
+}
+
+// The settings file's sentence: Hydra runs on its defaults, and the Path
+// Builder refuses the song (D304 item 8).
+const char* settings_file_sentence() {
+    return g_program.load() == Program::Hydra ? kSettingsOffSentence : kSettingsRefusedSentence;
+}
+
+// The rules file's sentence: Hydra turns analysis off, and the Path Builder
+// refuses the song (D304 item 13).
+const char* rules_file_sentence() {
+    return g_program.load() == Program::Hydra ? kAnalysisOffSentence : kRulesRefusedSentence;
+}
 constexpr const char* kHashFailed =
     "Windows couldn't read a song file to identify it. Restart Hydra and run Scan "
     "library again.";
@@ -82,6 +103,17 @@ constexpr const char* kAudioDecode =
 constexpr const char* kPreviewAssets =
     "Some of Hydra's Preview files are missing. Reinstall Hydra to restore them.";
 constexpr const char* kStopped = "Stopped before it finished.";
+// The Path Builder's paste and path files. The paste sentence is the user's
+// own words (PB-4, 2026-10-29).
+constexpr const char* kPathTextRefused =
+    "This text doesn't match a path on this chart, so your path stays as it was.";
+constexpr const char* kPathFileRefused =
+    "This file doesn't hold a path for this chart, so your path stays as it was.";
+constexpr const char* kPathFileUnreadable =
+    "Hydra couldn't read this path file, so your path stays as it was.";
+constexpr const char* kPathFileWrite =
+    "Hydra couldn't save the path file. Check that the disk isn't full and the folder "
+    "isn't read-only.";
 
 // The two sentences built around a detail.
 std::string http_status_sentence(const char* server, int code) {
@@ -140,7 +172,7 @@ std::optional<KindSentence> kind_sentence(const KindedError& e) {
             return quoting(set_aside_failed_sentence(e.what()));
         case ErrorKind::DatabaseWrite: return KindSentence{kDatabaseWrite};
         case ErrorKind::DatabaseRead: return KindSentence{kDatabaseReadSentence};
-        case ErrorKind::SongFileMissing: return KindSentence{kSongFileMissing};
+        case ErrorKind::SongFileMissing: return KindSentence{song_file_missing_sentence()};
         case ErrorKind::HashFailed: return KindSentence{kHashFailed};
         case ErrorKind::ChartUnreadable: return KindSentence{kChartUnreadable};
         case ErrorKind::ChartTimingRefused: return quoting(timing_refusal_sentence(e.what()));
@@ -158,11 +190,15 @@ std::optional<KindSentence> kind_sentence(const KindedError& e) {
         case ErrorKind::NoScores: return KindSentence{kNoScores};
         case ErrorKind::NoRecords: return KindSentence{kNoRecords};
         case ErrorKind::ReportWrite: return KindSentence{kReportWrite};
-        case ErrorKind::RulesFile: return KindSentence{kAnalysisOffSentence};
-        case ErrorKind::SettingsFile: return KindSentence{kSettingsOffSentence};
+        case ErrorKind::RulesFile: return KindSentence{rules_file_sentence()};
+        case ErrorKind::SettingsFile: return KindSentence{settings_file_sentence()};
         case ErrorKind::AudioDecode: return KindSentence{kAudioDecode};
         case ErrorKind::PreviewAssets: return KindSentence{kPreviewAssets};
         case ErrorKind::UpdateUnverified: return KindSentence{kUpdateUnverifiedSentence};
+        case ErrorKind::PathTextRefused: return KindSentence{kPathTextRefused};
+        case ErrorKind::PathFileRefused: return KindSentence{kPathFileRefused};
+        case ErrorKind::PathFileUnreadable: return KindSentence{kPathFileUnreadable};
+        case ErrorKind::PathFileWrite: return KindSentence{kPathFileWrite};
     }
     return std::nullopt;
 }
@@ -175,6 +211,10 @@ std::optional<KindSentence> kind_sentence_of(const std::exception& e) {
 }
 
 }  // namespace
+
+void set_program(Program program) { g_program.store(program); }
+
+Program current_program() { return g_program.load(); }
 
 std::string plain_error(const std::exception& e) {
     if (dynamic_cast<const std::bad_alloc*>(&e)) return kOutOfMemory;

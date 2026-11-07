@@ -1,5 +1,5 @@
 // paths_from_pathstring: Hydra's path text read back into a path (the Path
-// Builder's paste, plan docs/superpowers/plans/2026-10-28-path-builder.md,
+// Builder's paste, plan docs/superpowers/plans/2026-10-28-path-builder.md (removed; git show b29a3c28:docs/superpowers/plans/2026-10-28-path-builder.md),
 // tasks PB-3 and PB-3b). Every case runs on the corpus (testdata/input) at the GUI's
 // default settings.
 
@@ -7,11 +7,11 @@
 
 #include <cstdint>
 #include <functional>
-#include <stdexcept>
 #include <string>
 #include <vector>
 
 #include "app/config.h"
+#include "core/error_kind.h"
 #include "core/model.h"
 #include "corpus_util.h"
 #include "parse/song.h"
@@ -78,10 +78,26 @@ TEST_CASE("pathstring read: a token no fill can place is refused with its positi
         const std::string text = best.walk_activations()[0].notationstr() + " 99";
         CHECK_THROWS_WITH_AS(paths_from_pathstring(song, cfg, text),
                              "window 2 (\"99\") matches no fill on this chart",
-                             std::invalid_argument);
+                             KindedError);
         return;
     }
     FAIL("no corpus chart's best path has two windows");
+}
+
+// Every refusal names its kind, which gives the paste its own sentence
+// (app::plain_error).
+TEST_CASE("pathstring read: every refusal is ErrorKind::PathTextRefused") {
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    const Song& song = corpus::song(corpus::first_chart_with_notes(), cfg.reading());
+    for (const std::string& text : {std::string("   "), std::string("99")}) {
+        CAPTURE(text);
+        try {
+            paths_from_pathstring(song, cfg, text);
+            FAIL("the text was not refused");
+        } catch (const KindedError& e) {
+            CHECK(e.kind() == ErrorKind::PathTextRefused);
+        }
+    }
 }
 
 // The text Path::pathstring writes for a path with no windows reads back as a
@@ -136,7 +152,7 @@ TEST_CASE("pathstring read: a long-text window no fill can place is refused with
         CAPTURE(text);
         CHECK_THROWS_WITH_AS(paths_from_pathstring(song, cfg, text),
                              "window 2 (at \"99\") matches no fill on this chart",
-                             std::invalid_argument);
+                             KindedError);
         return;
     }
     FAIL("no corpus chart's best path has exactly two windows");
@@ -149,5 +165,5 @@ TEST_CASE("pathstring read: long text with the wrong number of sections is refus
     const Song& song = corpus::song(corpus::first_chart_with_notes(), cfg.reading());
     CHECK_THROWS_WITH_AS(paths_from_pathstring(song, cfg, "2x" + std::string(kPathSectionSeparator) + "1"),
                          "the path text has 2 sections where Hydra's long Copy path text has 3",
-                         std::invalid_argument);
+                         KindedError);
 }

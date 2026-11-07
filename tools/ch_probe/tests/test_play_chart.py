@@ -161,7 +161,7 @@ class _FakeGame:
         self.presses = []
         self.misses = set(misses)
 
-    def press(self, lanes) -> None:
+    def press(self, lanes, _axes=None) -> None:
         self.presses.append(list(lanes))
         if len(self.presses) not in self.misses:
             self.score += 100
@@ -481,7 +481,7 @@ class LivePlayTest(unittest.TestCase):
         def no_window():
             raise AssertionError("find_game_window was called on the press route")
 
-        def kit_press(lanes):
+        def kit_press(lanes, _axes):
             return {}
 
         with mock.patch.object(play_chart, "EngineModel", _FakeEngine), \
@@ -493,6 +493,135 @@ class LivePlayTest(unittest.TestCase):
         self.assertEqual(seen, [kit_press])
 
 
+def _gem(color, dynamic, cymbal=False):
+    return {"color": color, "cymbal": cymbal, "dynamic": dynamic}
+
+
+# One chord of each strength in one press, then a plain chord. The words are
+# the ones hydra_replay writes.
+_DYNAMICS_DUMP = {"chords": [
+    {"index": 3, "ms": 1000.0, "notes": [
+        _gem("Red", "ghost"), _gem("Yellow", "accent", cymbal=True), _gem("Kick", "none")]},
+    {"index": 4, "ms": 1500.0, "notes": [_gem("Green", "none")]},
+]}
+
+
+def _load_dump(dump):
+    with tempfile.TemporaryDirectory() as d:
+        path = os.path.join(d, "dump.json")
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(dump, f)
+        return play_chart.load_dump_chords(path)
+
+
+class _ThresholdEngine:
+    """An engine fake that counts its dynamics threshold reads."""
+
+    threshold = 0
+    reads = 0
+
+    def __init__(self, _proc=None):
+        pass
+
+    def use_object(self, _ptr):
+        pass
+
+    def song_clock(self):
+        return 0.0
+
+    def score(self):
+        return 0
+
+    def dyn_threshold(self):
+        type(self).reads += 1
+        return type(self).threshold
+
+
+class DynamicsTest(unittest.TestCase):
+    """Each gem keeps its dynamic, and live_play reads the threshold for the
+    ghosts it must press."""
+
+    def setUp(self):
+        _ThresholdEngine.reads = 0
+
+    def _live_play(self, chords, threshold):
+        from unittest import mock
+        _ThresholdEngine.threshold = threshold
+        seen, proc, out = [], _FakeProc(), io.StringIO()
+
+        def fake_play_chords(chords, clock, read_score, press, **kwargs):
+            seen.extend(chords)
+            return play_chart.RunResult(stop="done")
+
+        with mock.patch.object(play_chart, "EngineModel", _ThresholdEngine), \
+                mock.patch.object(play_chart, "play_chords", fake_play_chords):
+            try:
+                result = play_chart.live_play(
+                    chords, open_proc=lambda **kw: proc, find_engine=lambda _proc: 0x1000,
+                    press=lambda lanes, axes: {}, out=out)
+            finally:
+                self.assertTrue(proc.closed)
+        return result, seen, out.getvalue()
+
+    def test_chords_carry_each_gems_dynamic_beside_its_lane(self):
+        chords = _load_dump(_DYNAMICS_DUMP)
+        self.assertEqual(chords[0].lanes, [Lane.RED, Lane.YELLOW_CYMBAL, Lane.KICK])
+        self.assertEqual(chords[0].dynamics, ["ghost", "accent", "none"])
+        self.assertEqual(chords[1].dynamics, ["none"])
+
+    def test_a_ghost_chart_reads_the_threshold_once_and_prints_it(self):
+        from tools.ch_mcp.kit_tools import pad_axis
+        result, seen, text = self._live_play(_load_dump(_DYNAMICS_DUMP), 64)
+        self.assertEqual(_ThresholdEngine.reads, 1)
+        self.assertEqual(result.dyn_threshold, 64)
+        self.assertIn("  Dynamics threshold: 64\n", text)
+        self.assertEqual(seen[0].axes, [pad_axis("ghost", 64), pad_axis("accent", 64),
+                                        pad_axis("none", 64)])
+        self.assertEqual(seen[1].axes, [pad_axis("none", 64)])
+
+    def test_a_ghost_chart_with_a_threshold_of_0_raises_naming_the_field(self):
+        with self.assertRaises(ValueError) as caught:
+            self._live_play(_load_dump(_DYNAMICS_DUMP), 0)
+        self.assertIn("OFF_DYN_THRESHOLD", str(caught.exception))
+
+    def test_the_keys_route_reads_no_threshold_even_for_a_ghost_chart(self):
+        from unittest import mock
+        _ThresholdEngine.threshold = 0
+        proc, out = _FakeProc(), io.StringIO()
+        with mock.patch.object(play_chart, "EngineModel", _ThresholdEngine),                 mock.patch.object(play_chart, "play_chords",
+                                  lambda *a, **k: play_chart.RunResult(stop="done")),                 mock.patch.object(play_chart, "find_game_window", lambda: 0),                 mock.patch.object(play_chart, "InputDriver", lambda: object()):
+            result = play_chart.live_play(
+                _load_dump(_DYNAMICS_DUMP), open_proc=lambda **kw: proc,
+                find_engine=lambda _proc: 0x1000, out=out)
+        self.assertEqual(result.stop, "done")
+        self.assertEqual(_ThresholdEngine.reads, 0)
+        self.assertIsNone(result.dyn_threshold)
+
+    def test_a_chart_with_no_ghost_never_reads_the_threshold(self):
+        result, seen, text = self._live_play(_load(play_chart.load_dump_chords), 0)
+        self.assertEqual(result.stop, "done")
+        self.assertEqual(_ThresholdEngine.reads, 0)
+        self.assertIsNone(result.dyn_threshold)
+        self.assertNotIn("threshold", text)
+        self.assertEqual(seen[-1].dynamics, ["accent"])
+        self.assertEqual(len(seen), 8)
+
+    def test_each_chord_reaches_the_press_with_its_axes(self):
+        wall = _FakeTime()
+        game = _FakeGame()
+        seen = []
+
+        def press(lanes, axes):
+            game.press(lanes)
+            seen.append(axes)
+
+        _ThresholdEngine.threshold = 64
+        chords, _threshold = play_chart.with_axes(_load_dump(_DYNAMICS_DUMP), _ThresholdEngine())
+        play_chart.play_chords(chords, _FakeSongClock(wall, start_s=0.5), game.read_score,
+                               press, now=wall.now, sleep=wall.sleep, out=io.StringIO())
+        self.assertEqual(seen, [chords[0].axes, chords[1].axes])
+
+
 class PressReplyRowTest(unittest.TestCase):
     """A press that returns a dict (the kit press) adds the values the press
     log has columns for to the row; a press that returns keys adds none."""
@@ -501,7 +630,7 @@ class PressReplyRowTest(unittest.TestCase):
         wall = _FakeTime()
         game = _FakeGame()
 
-        def press(lanes):
+        def press(lanes, _axes):
             game.press(lanes)
             return {"down_frame": 40, "up_frame": 42, "down_ms": 7, "up_ms": 19,
                     "rewrite": True, "hit": "not this"}
@@ -511,13 +640,323 @@ class PressReplyRowTest(unittest.TestCase):
             game.read_score, press, now=wall.now, sleep=wall.sleep, out=io.StringIO())
         self.assertEqual(result.rows[0], {
             "index": 38, "chart_ms": 13043.48, "clock_ms_at_press": result.rows[0]["clock_ms_at_press"],
-            "score_before": 0, "score_after": 100, "hit": 1,
+            "lead_ms": 2.0, "score_before": 0, "score_after": 100, "hit": 1,
             "down_frame": 40, "up_frame": 42, "down_ms": 7, "up_ms": 19})
 
     def test_a_key_press_adds_nothing(self):
         result, _game, _wall = _run({"start_s": 12.0})
         self.assertEqual(set(result.rows[0]), {
-            "index", "chart_ms", "clock_ms_at_press", "score_before", "score_after", "hit"})
+            "index", "chart_ms", "clock_ms_at_press", "lead_ms", "score_before",
+            "score_after", "hit"})
+
+
+# The 8 end chords of Senri's top path and the chord before each, with the
+# path's activations, cut from the `hydra_replay score` file of that path. Each
+# chord keeps only its index, tick, ms and the three fields of each gem
+# load_dump_chords reads.
+_SENRI_END_CHORDS = os.path.join(_HERE, "senri_end_chords.json")
+_END_CHORD_INDEXES = [268, 566, 819, 1019, 1649, 1843, 2044, 2320]
+
+
+def _load_senri(lead_ms=play_chart.SP_END_LEAD_MS):
+    from unittest import mock
+    with mock.patch.object(play_chart, "SP_END_LEAD_MS", lead_ms):
+        return play_chart.load_dump_chords(_SENRI_END_CHORDS)
+
+
+class SpEndLeadTest(unittest.TestCase):
+    """A chord on an activation's end is pressed SP_END_LEAD_MS early, and a
+    lead its gap to the chord before cannot hold is refused at load."""
+
+    def _gaps(self):
+        chords = _load_senri()
+        return {chord.index: chord.ms - before.ms
+                for before, chord in zip(chords, chords[1:]) if chord.ends_sp}
+
+    def test_the_lead_is_the_number_the_user_set(self):
+        self.assertEqual(play_chart.SP_END_LEAD_MS, 15.0)
+
+    def test_the_chords_on_the_deact_ticks_are_marked(self):
+        chords = _load_senri()
+        self.assertEqual(len(chords), 16)
+        self.assertEqual([c.index for c in chords if c.ends_sp], _END_CHORD_INDEXES)
+
+    def test_a_file_with_no_activations_marks_nothing(self):
+        self.assertFalse(any(c.ends_sp for c in _load(play_chart.load_dump_chords)))
+
+    def test_a_fake_clock_run_presses_end_chords_early_and_names_the_lead(self):
+        wall = _FakeTime()
+        game = _FakeGame()
+        chords = _load_senri()
+        result = play_chart.play_chords(
+            chords, _FakeSongClock(wall, start_s=31.0), game.read_score, game.press,
+            now=wall.now, sleep=wall.sleep, out=io.StringIO(), cap_s=300.0)
+        self.assertEqual(result.stop, "done")
+        self.assertEqual(len(result.rows), 16)
+        for row in result.rows:
+            want = 15.0 if row["index"] in _END_CHORD_INDEXES else 2.0
+            self.assertEqual(row["lead_ms"], want, row["index"])
+            # The fake clock moves 1 ms a read, so a press fires inside that
+            # read of its lead.
+            early_ms = row["chart_ms"] - row["clock_ms_at_press"]
+            self.assertLessEqual(early_ms, want, row["index"])
+            self.assertGreater(early_ms, want - 1.5, row["index"])
+
+    def test_a_row_with_a_lead_still_writes_the_press_log(self):
+        result, _game, _wall = _run({"start_s": 12.0})
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "press.csv")
+            play_chart.write_press_log(path, result.rows)
+            with open(path, encoding="utf-8", newline="") as f:
+                self.assertEqual(tuple(next(csv.reader(f))), overlay_logs.PRESS_LOG_COLUMNS)
+
+    def test_the_smallest_margin_is_chord_2320s(self):
+        gaps = self._gaps()
+        self.assertEqual(round(gaps[2320], 1), 68.0)
+        self.assertEqual(play_chart.early_side_ms(gaps[2320]), 37.5)
+        limits = {i: play_chart.lead_limit_ms(gap) for i, gap in gaps.items()}
+        self.assertEqual(round(limits[2320], 1), 30.5)
+        self.assertEqual(min(limits, key=limits.get), 2320)
+
+    def test_chord_566s_early_side(self):
+        self.assertEqual(round(play_chart.early_side_ms(self._gaps()[566]), 1), 38.8)
+
+    def test_the_clamps_hold_at_both_ends(self):
+        self.assertEqual(play_chart.early_side_ms(75.0), 37.5)
+        self.assertEqual(play_chart.early_side_ms(170.0), 85.0)
+        self.assertEqual(play_chart.early_side_ms(400.0), 85.0)
+
+    def test_a_lead_of_15_loads_on_all_8(self):
+        self.assertEqual(len(_load_senri(15.0)), 16)
+
+    def test_a_lead_of_35_is_refused_on_chord_2320(self):
+        with self.assertRaises(ValueError) as caught:
+            _load_senri(35.0)
+        self.assertIn("SP_END_LEAD_MS of 35 ms is too long for chords 2320:",
+                      str(caught.exception))
+
+    def test_a_lead_of_40_is_refused_on_566_and_2320_only(self):
+        with self.assertRaises(ValueError) as caught:
+            _load_senri(40.0)
+        self.assertIn("SP_END_LEAD_MS of 40 ms is too long for chords 566, 2320:",
+                      str(caught.exception))
+
+    def test_a_lead_equal_to_the_limit_is_refused(self):
+        # A lead must be below the limit, so the limit itself fails.
+        limit = play_chart.lead_limit_ms(self._gaps()[2320])
+        with self.assertRaises(ValueError):
+            _load_senri(limit)
+
+    def test_chords_closer_than_the_clamp_load_when_neither_ends_sp(self):
+        dump = {"activations": [], "chords": [
+            {"index": 0, "tick": 0, "ms": 1000.0, "notes": [_gem("Red", "none")]},
+            {"index": 1, "tick": 10, "ms": 1017.241, "notes": [_gem("Green", "none")]}]}
+        self.assertEqual(len(_load_dump(dump)), 2)
+
+
+# Cut from a real target pair of Senri (hydra_replay score and dump, path 0): all
+# eight activations, each with the fills it passed over, and five chords. Chord
+# 405 is the fill the path passes over. Chords 348 and 458 are fills it does not
+# list, and 404 and 406 are the chords either side of 405.
+_FILL_SCORE = {
+    "activations": [
+        {"act_tick": 26880, "deact_tick": 36960}, {"act_tick": 61200, "deact_tick": 74640},
+        {"act_tick": 95520, "deact_tick": 107040}, {"act_tick": 126240, "deact_tick": 132960},
+        {"act_tick": 193200, "deact_tick": 210000}, {"act_tick": 226800, "deact_tick": 233520},
+        {"act_tick": 247920, "deact_tick": 259440}, {"act_tick": 284400, "deact_tick": 294960}],
+    "chords": [
+        {"index": 348, "ms": 40567.958, "tick": 47040, "is_fill": True,
+         "notes": [_gem("Kick", "none"), _gem("Green", "none", cymbal=True)]},
+        {"index": 404, "ms": 46878.286, "tick": 54360, "is_fill": False,
+         "notes": [_gem("Red", "ghost")]},
+        {"index": 405, "ms": 46981.734, "tick": 54480, "is_fill": True,
+         "notes": [_gem("Kick", "none"), _gem("Green", "none", cymbal=True)]},
+        {"index": 406, "ms": 47395.526, "tick": 54960, "is_fill": False,
+         "notes": [_gem("Red", "none")]},
+        {"index": 458, "ms": 52774.821999999986, "tick": 61200, "is_fill": True,
+         "notes": [_gem("Kick", "none"), _gem("Green", "none", cymbal=True)]},
+    ]}
+_FILL_DUMP = {"paths": [{"index": 0, "activations": [
+    {"act_tick": 26880, "skipped_fill_ticks": []},
+    {"act_tick": 61200, "skipped_fill_ticks": [54480]},
+    {"act_tick": 95520, "skipped_fill_ticks": []},
+    {"act_tick": 126240, "skipped_fill_ticks": []},
+    {"act_tick": 193200, "skipped_fill_ticks": []},
+    {"act_tick": 226800, "skipped_fill_ticks": []},
+    {"act_tick": 247920, "skipped_fill_ticks": []},
+    {"act_tick": 284400, "skipped_fill_ticks": []}]}]}
+
+
+def _with_chord_changes(index, **changes):
+    """_FILL_SCORE with the fields of the chord at `index` replaced."""
+    return {**_FILL_SCORE, "chords": [{**c, **changes} if c["index"] == index else c
+                                      for c in _FILL_SCORE["chords"]]}
+
+
+def _declined_list(score=_FILL_SCORE, dump=_FILL_DUMP, *args):
+    with tempfile.TemporaryDirectory() as d:
+        score_path, dump_path = os.path.join(d, "score.json"), os.path.join(d, "dump.json")
+        for path, content in ((score_path, score), (dump_path, dump)):
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(content, f)
+        return play_chart.declined_chord_indexes(score_path, dump_path, *args)
+
+
+def _load_declining(mode, score=_FILL_SCORE):
+    with tempfile.TemporaryDirectory() as d:
+        path = os.path.join(d, "score.json")
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(score, f)
+        return play_chart.load_dump_chords(path, {405: mode})
+
+
+def _play(chords, misses=()):
+    wall = _FakeTime()
+    game = _FakeGame(misses)
+    out = io.StringIO()
+    result = play_chart.play_chords(
+        chords, _FakeSongClock(wall, start_s=40.0), game.read_score, game.press,
+        now=wall.now, sleep=wall.sleep, out=out)
+    return result, game, out.getvalue()
+
+
+class DeclineListTest(unittest.TestCase):
+    """The list of chords to decline, from the path's own record."""
+
+    def test_the_list_from_the_dump_and_score_file_is_chord_405(self):
+        self.assertEqual(_declined_list(), [405])
+
+    def test_path_index_picks_the_path(self):
+        # A second path, written for this test, passes over chord 348 instead.
+        dump = {"paths": _FILL_DUMP["paths"] + [
+            {"index": 1, "activations": [{"skipped_fill_ticks": [47040]}]}]}
+        self.assertEqual(_declined_list(_FILL_SCORE, dump, 1), [348])
+        self.assertEqual(_declined_list(_FILL_SCORE, dump), [405])
+
+    def test_a_path_that_passes_over_nothing_declines_nothing(self):
+        dump = {"paths": [{"activations": [{"skipped_fill_ticks": []}]}]}
+        self.assertEqual(_declined_list(_FILL_SCORE, dump), [])
+
+    def test_a_score_file_made_from_another_path_is_refused_naming_both(self):
+        score = {**_FILL_SCORE, "path_source": {"file": "p.json", "index": 1}}
+        with self.assertRaises(ValueError) as caught:
+            _declined_list(score, _FILL_DUMP, 0)
+        self.assertIn("path 1", str(caught.exception))
+        self.assertIn("path_index is 0", str(caught.exception))
+
+    def test_a_score_file_from_the_same_path_is_read(self):
+        score = {**_FILL_SCORE, "path_source": {"file": "p.json", "index": 0}}
+        self.assertEqual(_declined_list(score, _FILL_DUMP, 0), [405])
+
+    def test_a_score_file_with_no_path_source_is_not_refused(self):
+        self.assertNotIn("path_source", _FILL_SCORE)
+        self.assertEqual(_declined_list(_FILL_SCORE, _FILL_DUMP, 0), [405])
+
+    def test_a_tick_with_no_chord_is_refused_by_name(self):
+        dump = {"paths": [{"activations": [{"skipped_fill_ticks": [54481]}]}]}
+        with self.assertRaises(ValueError) as caught:
+            _declined_list(_FILL_SCORE, dump)
+        self.assertIn("skipped fill ticks 54481", str(caught.exception))
+
+
+class DeclineModeTest(unittest.TestCase):
+    """What a declined chord sends, and how the run counts it."""
+
+    def test_kick_only_sends_the_kick_lane_alone(self):
+        chords = _load_declining(play_chart.DECLINE_KICK_ONLY)
+        chord = chords[2]
+        self.assertEqual((chord.index, chord.lanes, chord.dynamics, chord.declined),
+                         (405, [Lane.KICK], ["none"], True))
+        _result, game, _text = _play(chords)
+        self.assertEqual(game.presses, [[Lane.KICK, Lane.GREEN_CYMBAL], [Lane.RED], [Lane.KICK],
+                                        [Lane.RED], [Lane.KICK, Lane.GREEN_CYMBAL]])
+
+    def test_kick_only_gives_one_strength_for_its_one_lane(self):
+        _ThresholdEngine.threshold = 64
+        chords, _threshold = play_chart.with_axes(
+            _load_declining(play_chart.DECLINE_KICK_ONLY), _ThresholdEngine())
+        self.assertEqual(len(chords[2].axes), 1)
+
+    def test_kick_only_sends_one_gem_when_the_chord_has_two_kicks(self):
+        score = _with_chord_changes(405, notes=[_gem("Kick", "none"), _gem("Kick", "none"),
+                                                _gem("Green", "none", cymbal=True)])
+        self.assertEqual(_load_declining(play_chart.DECLINE_KICK_ONLY, score)[2].lanes,
+                         [Lane.KICK])
+
+    def test_nothing_sends_no_press_and_the_row_says_declined(self):
+        chords = _load_declining(play_chart.DECLINE_NOTHING)
+        self.assertEqual(chords[2].lanes, [])
+        result, game, text = _play(chords)
+        self.assertEqual(game.presses, [[Lane.KICK, Lane.GREEN_CYMBAL], [Lane.RED], [Lane.RED],
+                                        [Lane.KICK, Lane.GREEN_CYMBAL]])
+        self.assertEqual([(r["index"], r["hit"]) for r in result.rows],
+                         [(348, 1), (404, 1), (405, "declined"), (406, 1), (458, 1)])
+        self.assertIn("declined", text)
+
+    def test_the_press_log_says_declined_in_the_hit_column(self):
+        result, _game, _text = _play(_load_declining(play_chart.DECLINE_NOTHING))
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "press.csv")
+            play_chart.write_press_log(path, result.rows)
+            with open(path, encoding="utf-8", newline="") as f:
+                rows = list(csv.DictReader(f))
+        self.assertEqual(rows[2]["hit"], "declined")
+
+    def test_a_declined_chord_is_neither_a_hit_nor_a_miss(self):
+        for mode in play_chart.DECLINE_MODES:
+            result, _game, _text = _play(_load_declining(mode))
+            self.assertEqual((result.sent, result.hit, result.declined, result.stop),
+                             (4, 4, 1, "done"), mode)
+
+    def test_a_kick_that_scores_does_not_count_as_a_hit(self):
+        result, game, _text = _play(_load_declining(play_chart.DECLINE_KICK_ONLY))
+        self.assertEqual(game.score, 500)
+        self.assertEqual(result.hit, 4)
+
+    def test_a_declined_chord_leaves_the_streak_alone(self):
+        # Press 3 is the declined kick, and it scores nothing.
+        result, _game, _text = _play(_load_declining(play_chart.DECLINE_KICK_ONLY), misses=(3,))
+        self.assertEqual((result.sent, result.hit, result.max_streak), (4, 4, 4))
+
+    def test_an_unknown_mode_raises(self):
+        with self.assertRaises(ValueError) as caught:
+            _load_declining("both")
+        self.assertEqual(str(caught.exception),
+                         'unknown decline mode "both"; modes: kick_only, nothing')
+
+    def test_with_no_declines_every_chord_is_pressed_as_before(self):
+        chords = _load_dump(_FILL_SCORE)
+        self.assertEqual([c.declined for c in chords], [False] * 5)
+        result, game, text = _play(chords)
+        self.assertEqual(game.presses[2], [Lane.KICK, Lane.GREEN_CYMBAL])
+        self.assertEqual((result.sent, result.hit, result.declined), (5, 5, 0))
+        self.assertEqual([r["hit"] for r in result.rows], [1] * 5)
+        self.assertNotIn("declined", text)
+
+
+class DeclineAndLeadTest(unittest.TestCase):
+    """A declined chord keeps what load_dump_chords and the lead rule do."""
+
+    def test_no_chord_of_the_fixture_is_both_declined_and_an_end(self):
+        self.assertEqual([c.ends_sp for c in _load_declining(play_chart.DECLINE_KICK_ONLY)],
+                         [False] * 5)
+
+    def test_a_declined_chord_is_still_the_chord_before_for_the_lead_rule(self):
+        # Chord 406 ends Star Power 20 ms after chord 405. A press 15 ms early
+        # is refused whether or not 405 sends anything: its note is still there.
+        score = _with_chord_changes(406, ms=46981.734 + 20.0, tick=36960)
+        for mode in play_chart.DECLINE_MODES:
+            with self.assertRaises(ValueError) as caught:
+                _load_declining(mode, score)
+            self.assertIn("too long for chords 406", str(caught.exception))
+
+    def test_a_declined_chord_on_an_end_keeps_the_end_lead(self):
+        score = _with_chord_changes(405, tick=36960)
+        chords = _load_declining(play_chart.DECLINE_KICK_ONLY, score)
+        self.assertTrue(chords[2].ends_sp and chords[2].declined)
+        result, _game, _text = _play(chords)
+        self.assertEqual(result.rows[2]["lead_ms"], play_chart.SP_END_LEAD_MS)
+        self.assertEqual(result.rows[3]["lead_ms"], play_chart.PRESS_LEAD_MS)
 
 
 class LivePressTest(unittest.TestCase):

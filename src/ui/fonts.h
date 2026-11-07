@@ -22,6 +22,12 @@ inline ImFont* g_mono_font = nullptr;
 inline float g_ui_scale = 1.0f;
 inline float px(float v) { return v * g_ui_scale; }
 
+// A size in rem: one rem is the current font size, as the second mockup's
+// `html{font-size:15px}` (line 17) makes it there. A size that must follow the
+// user's font size is written with rem(); px() is for sizes that follow only
+// the display.
+inline float rem(float r) { return r * ImGui::GetFontSize(); }
+
 }  // namespace hydra::ui
 
 #endif  // HYDRA_UI_FONTS_H

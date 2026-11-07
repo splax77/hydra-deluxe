@@ -121,9 +121,8 @@ void bind_text(sqlite3_stmt* s, int i, const std::string& v) {
 }
 void bind_blob(sqlite3_stmt* s, int i, const std::vector<uint8_t>& v) {
     // An empty vector's data() may be null, and SQLite binds a null pointer
-    // as NULL. An old file's rules_fp can be the empty blob (cut from a short
-    // structure blob by a release before 2.2.0), which must stay a blob, not
-    // become NULL.
+    // as NULL. An old file's rules_fp can be the empty blob, which must stay a
+    // blob, not become NULL.
     if (v.empty()) sqlite3_bind_zeroblob(s, i, 0);
     else sqlite3_bind_blob(s, i, v.data(), static_cast<int>(v.size()), SQLITE_TRANSIENT);
 }
@@ -365,10 +364,9 @@ constexpr size_t kHashesPerQuery = 10000;
 // ---- which row answers a lookup -------------------------------------------
 //
 // Every lookup answers one question: "which row ran under these settings?".
-// The candidates are the rows with the wanted lens at the wanted cap. An
-// older Hydra's migration left some rows with ms_enabled = -1, meaning "the
-// settings are unknown". No lens has -1, so those rows are never candidates
-// and read as no row at all (user decision 2026-09-26).
+// The candidates are the rows with the wanted lens at the wanted cap. A row
+// with ms_enabled = -1 means "the settings are unknown". No lens has -1, so
+// those rows are never candidates and read as no row at all.
 
 // "the row at alias `a` carries exactly this lens". Five bound parameters, in
 // Lens's field order. `a` is "" or "r.".
@@ -471,9 +469,9 @@ int bind_readable_params(sqlite3_stmt* s, int idx) {
 // Does `a` beat `b`? This version before another, then these rules before
 // the rest, then the later profile. A profile row is made the first time a
 // record is filed under its settings, stamp and rules, so a bigger id means
-// "made later". Since Auto went (2026-09-27) every lookup names one exact cap
-// and lens. A chart holds one record per profile, so it offers one candidate
-// per stamp and set of rules it was analyzed under, and the one made under
+// "made later". Every lookup names one exact cap and lens. A chart holds one
+// record per profile, so it offers one candidate per stamp and set of rules
+// it was analyzed under, and the one made under
 // this build's stamp and this process's rules wins. Two candidates that tie
 // on both are both Stale for the same reasons, so the id only picks which of
 // two identical answers to give.
@@ -581,7 +579,9 @@ PathRow path_row_of(const Path& path, int rank) {
         if (efill && (!row.hardest_efill || *efill > *row.hardest_efill))
             row.hardest_efill = efill;
     }
-    row.hardest_ms = path.difficulty();  // the path's own hardest squeeze or required fill
+    // The engine's own figure, sign included; shown_timing turns it into what
+    // a screen shows.
+    row.hardest_ms = engine_hardest_ms(path);
     row.avgmult = path.avg_mult();
     return row;
 }
@@ -708,13 +708,11 @@ int open_sqlite(const std::string& utf8_path, sqlite3** db, int flags) {
 
 namespace {
 
-// "A result with a score and no stars", spelled once in SQL. Such a row was
-// written before the stars column existed. 2.2.0's writer never leaves one,
-// but 2.2.0's own open kept them in a pre-stars file that had no path details,
-// so a Convertible file can still hold some. Filling their stars needed the
-// stored paths, so the
-// conversion leaves them behind, and a click or a batch writes them again. The
-// conversion's row count and its read both use it.
+// "A result with a score and no stars", spelled once in SQL. A Convertible
+// file can hold such rows. Filling their stars needs stored paths, which that
+// file does not have, so the conversion leaves them behind, and a click or a
+// batch writes them again. The conversion's row count and its read both use
+// it.
 constexpr const char* kNoStarsResultSql = "stars IS NULL AND score IS NOT NULL";
 
 // The one integer a counting query returns.
@@ -781,10 +779,10 @@ RecordStore::RecordStore(const std::string& dbpath, OldFilePolicy old_files,
 }
 
 void RecordStore::set_up_schema(LibraryFileKind kind) {
-    // WAL journal mode (orchestrator's call, 2026-09-26 audit plan): a commit
-    // appends to hydra.db-wal instead of rewriting pages in place, and with
-    // synchronous=NORMAL it syncs to disk only at checkpoints, not on every
-    // commit. A power cut can lose the last few commits but never corrupts
+    // WAL journal mode: a commit appends to hydra.db-wal instead of rewriting
+    // pages in place, and with synchronous=NORMAL it syncs to disk only at
+    // checkpoints, not on every commit. A power cut can lose the last few
+    // commits but never corrupts
     // the file, and readers stop blocking the writer
     // (https://www.sqlite.org/wal.html). journal_mode is stored in the file;
     // synchronous and journal_size_limit are per connection, so all three are
@@ -859,9 +857,9 @@ void RecordStore::add_failure_columns() {
     }
 }
 
-// The meta row where 2.2.0 to 2.7.0 kept one fill-rule label for the whole
-// file. Each record's profile carries its own rule (Lens::legacy_fills), so
-// one file holds both rules and the label is retired (D115 A1-6c): the
+// The meta row where a Convertible file keeps one fill-rule label for the
+// whole file. Each record's profile carries its own rule (Lens::legacy_fills),
+// so one file holds both rules and the label is retired (D115): the
 // conversion deletes the row, and nothing reads it.
 constexpr const char* kRetiredFillLabelKey = "engine_mode";
 
@@ -1040,8 +1038,8 @@ void RecordStore::meta_set(const std::string& key, const std::string& value) {
     step_done(s, "meta_set");
 }
 
-// The meta row that holds the charts table's kChartMetaStamp, written once
-// per file by rebuild_chart_library and checked by chart_library_cache.
+// The meta row that holds the charts table's kChartMetaStamp, written by each
+// rebuild_chart_library and checked by chart_meta_current.
 constexpr const char* kChartMetaKey = "chart_meta_version";
 
 template <class F>
@@ -1423,6 +1421,103 @@ int64_t RecordStore::record_count() {
     Stmt s = prepare_read(db_, "SELECT COUNT(*) FROM records WHERE failure_kind IS NULL");
     if (!step_row(s)) return 0;
     return sqlite3_column_int64(s, 0);
+}
+
+// ---- the saved hardest figure -------------------------------------------
+
+namespace {
+// The meta row that says the fill has run for profile row `profile_id`
+// (mark_hardest_figure_filled).
+std::string hardest_filled_key(int64_t profile_id) {
+    return "hardest_ms_is_engine_figure." + std::to_string(profile_id);
+}
+}  // namespace
+
+std::vector<int64_t> RecordStore::ready_profile_ids(const Profile& want) {
+    // The profile rows lookup's candidates are filed under (candidate_song_ids
+    // reads the same rows); rank_row then says which are Ready.
+    std::string sql =
+        "SELECT DISTINCT p.id, p.hyversion, p.rules_fp FROM records r"
+        " JOIN profiles p ON p.id = r.profile_id WHERE p.chartmode=?";
+    append_candidate_filter(sql, "p.");
+    Stmt s = prepare_read(db_, sql.c_str());
+    bind_text(s, 1, want.chartmode);
+    bind_candidate_filter(s, 2, want.cap, want.lens);
+    const std::vector<uint8_t> fixed_fp = ready_rules_fp(rules_fingerprint_);
+    std::vector<int64_t> out;
+    while (step_row(s)) {
+        const int64_t id = sqlite3_column_int64(s, 0);
+        // rank_row's last fact is a record's (a failure kind a later build
+        // wrote). A profile row holds no failure, and a failure record keeps
+        // no path rows (failure_record), so it is true here.
+        if (rank_row(column_text(s, 1), column_blob(s, 2), id, fixed_fp, /*kind_known=*/true)
+                .ready())
+            out.push_back(id);
+    }
+    return out;
+}
+
+std::vector<MissingHardestRow> RecordStore::rows_missing_hardest(const Profile& profile) {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    std::vector<MissingHardestRow> out;
+    const std::vector<int64_t> ids = ready_profile_ids(profile);
+    if (ids.empty()) return out;
+    // Which charts the library lists, and the copy that names each, are
+    // ChartIndex's answers.
+    const ChartIndex library = chart_index();
+    const std::string sql =
+        "SELECT song_id, profile_id, rank, path, score, sqin_count, sqout_count"
+        " FROM record_paths WHERE profile_id IN (" + placeholders(ids.size()) +
+        ") AND hardest_ms IS NULL AND sqin_count > 0 ORDER BY song_id, profile_id, rank";
+    Stmt s = prepare_read(db_, sql.c_str());
+    for (size_t i = 0; i < ids.size(); ++i) sqlite3_bind_int64(s, static_cast<int>(i + 1), ids[i]);
+    while (step_row(s)) {
+        MissingHardestRow row;
+        row.song_id = column_text(s, 0);
+        const ChartLibraryEntry* copy = library.naming(row.song_id);
+        if (!copy) continue;
+        row.profile_id = sqlite3_column_int64(s, 1);
+        row.rank = sqlite3_column_int(s, 2);
+        row.path = column_text(s, 3);
+        row.score = sqlite3_column_int64(s, 4);
+        row.sqin_count = sqlite3_column_int(s, 5);
+        row.sqout_count = sqlite3_column_int(s, 6);
+        row.notespath = copy->notespath;
+        row.sig = copy->sig;
+        out.push_back(std::move(row));
+    }
+    return out;
+}
+
+void RecordStore::set_hardest(const std::string& song_id, int64_t profile_id,
+                              const std::vector<HardestFigure>& figures) {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    in_transaction([&] {
+        for (const HardestFigure& f : figures) {
+            CachedStmt s = use_write(db_, stmt_cache_,
+                "UPDATE record_paths SET hardest_ms=?"
+                " WHERE song_id=? AND profile_id=? AND rank=? AND hardest_ms IS NULL");
+            sqlite3_bind_double(s, 1, f.hardest_ms);
+            bind_text(s, 2, song_id);
+            sqlite3_bind_int64(s, 3, profile_id);
+            sqlite3_bind_int(s, 4, f.rank);
+            step_done(s, "set_hardest");
+        }
+    });
+}
+
+bool RecordStore::hardest_figure_filled(const Profile& profile) {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    for (int64_t id : ready_profile_ids(profile))
+        if (!meta_get(hardest_filled_key(id))) return false;
+    return true;
+}
+
+void RecordStore::mark_hardest_figure_filled(const Profile& profile) {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    in_transaction([&] {
+        for (int64_t id : ready_profile_ids(profile)) meta_set(hardest_filled_key(id), "1");
+    });
 }
 
 // ---- chart library ------------------------------------------------------

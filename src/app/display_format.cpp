@@ -4,6 +4,8 @@
 #include <cstdio>
 #include <cstdlib>
 
+#include "core/model.h"  // group_thousands
+
 namespace hydra::app {
 
 double py_round3(double v) {
@@ -18,12 +20,6 @@ double py_round3(double v) {
 std::string format_avg_mult(double v) {
     char buf[64];
     std::snprintf(buf, sizeof(buf), "%.3f", py_round3(v));
-    return buf;
-}
-
-std::string format_ms(double ms) {
-    char buf[64];
-    std::snprintf(buf, sizeof(buf), "%.1f ms", ms);
     return buf;
 }
 
@@ -46,6 +42,8 @@ int64_t percent_steps(int64_t part, int64_t total, int decimals) {
     const int64_t steps = (2 * mag + total) / (2 * total);  // a half rounds up
     return negative ? -steps : steps;
 }
+
+std::string format_cost(int64_t cost) { return kCostMinus + group_thousands(cost); }
 
 std::string format_percent(int64_t part, int64_t total, int decimals) {
     const int64_t steps = percent_steps(part, total, decimals);

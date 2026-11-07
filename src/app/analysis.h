@@ -32,10 +32,27 @@ namespace hydra::app {
 // shape for both (concept audit M21), so nothing copies between them.
 using ScanItem = store::ChartLibraryEntry;
 
-// The chart's stated length and delay, read from its files through the same
-// three readers the scan uses: song.ini beside a folder chart (none when
-// there is no song.ini), a .sng's metadata, a .srb's metadata block. Only the
-// metadata is read, never the audio. Throws when a file cannot be read.
+// What the scan reads from one chart's metadata. The names are empty when
+// missing or blank; discover_charts applies the one stored fallback for each
+// (title_or_unknown, artist_or_unknown, charter_or_unknown), and a screen
+// shows them through display_title and its siblings. The album has no
+// fallback: blank stays blank.
+struct ChartMeta {
+    std::string title;
+    std::string artist;
+    std::string charter;
+    std::string album;
+    store::ChartTimingMeta timing;
+};
+
+// One chart's names and timing, read from its files through the same three
+// readers the scan uses: song.ini beside a folder chart (all empty when there
+// is no song.ini), a .sng's metadata, a .srb's metadata block (all empty when
+// it cannot be parsed). Only the metadata is read, never the audio. Throws
+// when a file cannot be read.
+ChartMeta read_chart_meta(const std::string& notespath);
+
+// read_chart_meta's stated length and delay.
 store::ChartTimingMeta read_chart_timing_meta(const std::string& notespath);
 
 // What the scan read for the chart at `notespath`, or, for a library row an
@@ -47,8 +64,7 @@ store::ChartTimingMeta chart_timing_meta(const std::optional<store::ChartTimingM
 // Progress/cancel hooks for the extended scan. Callbacks fire on the calling
 // thread only (never a worker), like run_batch's.
 struct ScanCallbacks {
-    // Running count of folders visited during enumeration (monotonic; the
-    // same values the simple overload's cb_progress sees).
+    // Running count of folders visited during enumeration (monotonic).
     std::function<void(int)> on_folders;
     // Chart-reading progress: fired once with done=0 when the total becomes
     // known (enumeration finished), then per chart processed. `cached` counts
@@ -70,8 +86,7 @@ struct ScanCallbacks {
 // `cache` (load_scan_cache) lets a chart whose fingerprint is unchanged reuse
 // its previous md5/metadata without any file I/O; an empty cache is no help,
 // so every chart is read. A failing chart file is skipped with an error entry;
-// its folder's other charts and subtree still scan (unlike the Python
-// original, which dropped the whole folder).
+// its folder's other charts and subtree still scan.
 std::pair<std::vector<ScanItem>, std::vector<std::string>> discover_charts(
     const std::vector<std::string>& rootfolders, const ScanCallbacks& callbacks,
     const store::ChartLibraryCache& cache);
