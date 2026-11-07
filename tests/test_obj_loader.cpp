@@ -1,5 +1,5 @@
 // Tests for render/obj_loader: Onyx-compatible .obj parsing (fan triangulation,
-// far-first sort), the two built-in shapes, and the real copied drum models.
+// far-first sort), the built-in shapes, and the real copied drum models.
 
 #include "doctest.h"
 

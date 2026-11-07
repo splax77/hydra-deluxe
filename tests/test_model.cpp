@@ -83,9 +83,9 @@ TEST_CASE("category_scores: the squeeze-out cut is basescore at each note's mult
     const std::vector<ChordNote> notes = c.notes(true);
     REQUIRE(notes.size() == 2);
     // The cuts for this chord (a Red tom worth 50 and an accented Yellow
-    // cymbal worth 130), pinned from one run of category_scores on
-    // 2026-10-05, one row per combo before the chord. The combos straddle the
-    // multiplier steps, so the two notes sometimes pay at different ones.
+    // cymbal worth 130), pinned from one run of category_scores, one row per
+    // combo before the chord. The combos straddle the multiplier steps, so
+    // the two notes sometimes pay at different ones.
     struct Row {
         int combo;
         int first_cut;  // first_note: only the Red tom loses its doubling
@@ -184,9 +184,9 @@ TEST_CASE("allzero_activation: no skips, or an E1") {
 
 // The early-fill window has one owner: model.h states both sides of it, the
 // fill that refuses (fill_refuses, read from kHitWindowMs) and the E0
-// (is_e0, read from kEarlyFillSlackMs). That only model.h reads either
-// constant is a row of the single-owner scan
-// (tests/single_owner/rules/core.json); this checks each side's edge.
+// (is_e0, read from kEarlyFillSlackMs). Each side has its own row in the
+// single-owner scan (tests/single_owner/rules/core.json), which says what may
+// read its constant; this checks each side's edge.
 TEST_CASE("early-fill window: the refusal and the E0 edges") {
     CHECK(fill_e_offset(10000.0, 10050.0) == -50.0);
     CHECK_FALSE(fill_refuses(-kHitWindowMs));  // exactly at the reach still spawns
@@ -516,7 +516,7 @@ TEST_CASE("Activation: each end's anchor and each squeeze's end, from the steps"
     Activation a;
     a.timecode = Timecode::raw(2304);
 
-    // Case 3 of the SqIn-plus-clamp table: clamp at C1, SqIn, clamp at C2.
+    // Clamp at C1, SqIn, clamp at C2.
     a.sp_end_steps = {{2304, 5376, K::Activation},
                       {3072, 6144, K::Clamped},     // C1 pins X
                       {6100, 7680, K::SqIn},        // early SqIn: X = 6144
@@ -529,7 +529,7 @@ TEST_CASE("Activation: each end's anchor and each squeeze's end, from the steps"
     CHECK(a.squeeze_anchor_tick(0) == std::optional<int64_t>(3072));  // C1
     CHECK(a.deact_anchor_tick() == std::optional<int64_t>(6912));     // C2
 
-    // Case 2: SqIn, then a clamp. The SqIn's end was the activation's.
+    // SqIn, then a clamp. The SqIn's end was the activation's.
     a.sp_end_steps = {{2304, 5376, K::Activation},
                       {5400, 6912, K::SqIn},        // late SqIn: X = 5376
                       {6144, 12288, K::Clamped}};
@@ -537,8 +537,7 @@ TEST_CASE("Activation: each end's anchor and each squeeze's end, from the steps"
     CHECK(a.squeeze_anchor_tick(0) == std::optional<int64_t>(2304));
     CHECK(a.deact_anchor_tick() == std::optional<int64_t>(6144));
 
-    // Case 1: clamp at C, then a SqIn. X was pinned to C, so both anchors
-    // are C.
+    // Clamp at C, then a SqIn. X was pinned to C, so both anchors are C.
     a.sp_end_steps = {{2304, 5376, K::Activation},
                       {3072, 6144, K::Clamped},
                       {6100, 7680, K::SqIn}};
@@ -656,8 +655,8 @@ TEST_CASE("Path::walk_activations: own activations then the variant tail, in pla
 
 // Backend rows past a squeezed-out note are impossible in game: the sqout note
 // is hit after SP ends, so every note after it is hit outside SP too. The
-// engine trims them at record build; this pins the display-layer guard that
-// keeps records stored before that fix from showing them.
+// engine's copy-out trims them (Activation::set_sqout); this pins the
+// display-layer guard that keeps any list still holding one from showing it.
 TEST_CASE("display_backends drops rows beyond a squeeze out") {
     Activation a;
     const std::vector<double> offsets = {-368.1, -184.0, 0.0, 184.0, 368.1};
@@ -828,10 +827,10 @@ TEST_CASE("backend_row_value: every engine case") {
 
 // D29 (finding 304): the backend leeway's edge is strict. A note less than
 // the leeway after the SP end still scores under Star Power; a note exactly
-// the leeway after it does not. No such constant was found in the engine
-// methods read (no 0.003 in the 126 Clone Hero engine methods read); the
-// 3 ms is Hydra's own setting (Rules::backend_leeway_ms), so the edge is
-// Hydra's call, and this is it.
+// the leeway after it does not. No such constant was found in the game's
+// engine (SP-43 in docs/clone-hero/05-star-power.md says how far that search
+// went). The setting is Hydra's (Rules::backend_leeway_ms) and its 3 ms value
+// is DragonDelgar's (ADR 0023), so the edge is Hydra's call, and this is it.
 TEST_CASE("backend leeway: +2.999 ms is counted, exactly +3.0 ms is not") {
     const double lw = core::default_rules().backend_leeway_ms;
     REQUIRE(lw == 3.0);
@@ -969,7 +968,7 @@ TEST_CASE("no_notes_part reads the missing part back out of no_notes_message's s
 TEST_CASE("title_or_unknown: one fallback for a song with no usable name") {
     CHECK(std::string(kUnknownTitle) == "(unknown)");
     CHECK(title_or_unknown("") == "(unknown)");
-    // What the metadata readers wrote before this fallback existed.
+    // An older scan's stored name, which the rescan cache can still hold.
     CHECK(title_or_unknown("<unknown title>") == "(unknown)");
     CHECK(title_or_unknown("Some Song") == "Some Song");
 }
