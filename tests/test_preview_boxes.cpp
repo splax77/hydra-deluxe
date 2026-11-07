@@ -288,8 +288,8 @@ TEST_CASE("score box: a solo's bonus lands on its last note") {
 
     const ReplayResult r = replay_path(song, {});
     REQUIRE(r.chords[1].points.solo > 0);
-    // replay_path owns the withheld total; 180 was pinned from one run on
-    // 2026-10-05 as a fixed oracle beside it.
+    // replay_path owns the withheld total; 180 was pinned from one run as a
+    // fixed oracle beside it.
     CHECK(scene.score.steps[1].total == r.chords[1].cum_onscreen_total);
     CHECK(scene.score.steps[1].total == 180);
     CHECK(scene.score.steps[2].total == r.chords[2].cum.total());
@@ -383,10 +383,9 @@ TEST_CASE("score box: past the length it reads the moment the time box shows") {
 
 TEST_CASE("score box: a chord exactly on the playhead counts as hit") {
     // The case above: "Act >" from the start lands on the activation chord at
-    // 2500 ms, and the box counts that chord as hit and paid (D48, Q27). The
-    // box already counted it before struck_at existed, so this case guards the
-    // shared rule rather than a fix: make struck_at exclusive and it reads
-    // "x1 · combo 5". The highway's case is the one the fix turned green.
+    // 2500 ms, and the box counts that chord as hit and paid (D48, Q27). This
+    // case guards the shared rule: make struck_at exclusive and it reads
+    // "x1 · combo 5".
     Song song = make_sp_song({1920}, 9600);
     Path path = priced_path(song, {sp_act_at(song, 2400, 1, 6240)});
     PreviewScene scene = build_preview_scene(song, &path);
@@ -457,8 +456,8 @@ TEST_CASE("score box: a path the replay can't reproduce says so") {
     CHECK(box.score == "Score unavailable");
     CHECK(box.detail.empty());
 
-    // An activation with no deactivation node (a record from before blob v4)
-    // yields no window, so the replay can't stand for the path.
+    // An activation with no deactivation node yields no window, so the replay
+    // can't stand for the path.
     Path old;
     old.activations.push_back(act_at(song, 720, {}));
     PreviewScene b = build_preview_scene(song, &old);
@@ -492,7 +491,7 @@ TEST_CASE("score box stars: before the first chord no star is earned") {
     PreviewScoreBox box = score_box_at(scene, 100.0);
     CHECK(box.stars == 0);
     CHECK(box.next_star == "star 1 in " + group_thousands(star_cutoffs(path).cutoffs[0]));
-    // Pinned from one run on 2026-10-10.
+    // Pinned from one run.
     CHECK(box.next_star == "star 1 in 20");
 }
 
@@ -505,8 +504,8 @@ TEST_CASE("score box stars: the analyzed chart ends on the path's own star count
     // path_stars is the number the details header shows.
     CHECK(end.stars == path_stars(best));
     CHECK(end.next_star.empty() == (end.stars == kMaxStars));
-    // Pinned from one run on 2026-10-10: this chart's best path earns all
-    // seven, so the next-star line is gone.
+    // Pinned from one run: this chart's best path earns all seven, so the
+    // next-star line is gone.
     CHECK(end.stars == 7);
     CHECK(end.next_star.empty());
 }
@@ -514,8 +513,8 @@ TEST_CASE("score box stars: the analyzed chart ends on the path's own star count
 TEST_CASE("score box stars: a solo's bonus raises the score but not the stars") {
     // Hand song: chords at 0, 250, 500 and 750 ms. The solo is the chords at
     // 250 and 500 ms, so its whole bonus is paid on the chord at 500 ms. The
-    // literals below were pinned from one run on 2026-10-10. This path's
-    // cutoffs: 3 stars at 380, 4 at 760 (star_cutoffs).
+    // literals below were pinned from one run. This path's cutoffs: 3 stars
+    // at 380, 4 at 760 (star_cutoffs).
     Song song = make_hand_song();
     Path path = priced_path(song, {});
     REQUIRE(path.score_solo == 200);
@@ -676,7 +675,7 @@ TEST_CASE("drain box: empties in reads the stored end, not a recount") {
 }
 
 TEST_CASE("drain box: an activation with no stored end stays idle") {
-    // A pre-v4 record: no deact node, so nothing says SP is running.
+    // No deact node, so nothing says SP is running.
     Song song = make_sp_song({960, 1920}, /*last_tick=*/9600);
     Path path;
     path.activations = {act_at(song, 3840, /*skipped_fills=*/{})};
@@ -851,9 +850,9 @@ TEST_CASE("song_fraction: has_song_length takes only a positive length") {
 // The audio-tail chart: the last note is at 1000 ms and the audio stops 5 s
 // later, at 6000 ms. One activation on the note at tick 1440 (750 ms); one
 // bar of SP runs two measures, so its window ends at tick 5280. The scrubber's
-// marks and the Paths timeline are both placed over the song's length
-// (app::song_length_ms; this chart's length is taken as its 6000 ms), and the
-// two marks must be the same number.
+// marks and the Paths timeline are both placed over the length they are given.
+// This test gives both the chart's audio_end_ms, not app::song_length_ms's
+// answer, and the two marks must be the same number.
 TEST_CASE("scrub marks: an activation sits at the Paths timeline's fraction when the audio outlasts the notes") {
     const test::AudioTailChart c = test::audio_tail_chart();
     Path path;
@@ -872,9 +871,9 @@ TEST_CASE("scrub marks: an activation sits at the Paths timeline's fraction when
     CHECK(marks[0] == *view.acts[0].song_fraction);
 }
 
-// The scrubber's right end is the song's length (here taken as the chart's
-// 6000 ms), so past the last note the thumb keeps following the playhead, all
-// the way to that end.
+// The scrubber's right end is the number it is given (here the chart's
+// audio_end_ms), so past the last note the thumb keeps following the playhead,
+// all the way to that end.
 TEST_CASE("scrub marks: a playhead past the last note parks the thumb at the right end") {
     const test::AudioTailChart c = test::audio_tail_chart();
     const double end = c.audio_end_ms;

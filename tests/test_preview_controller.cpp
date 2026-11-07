@@ -218,7 +218,7 @@ TEST_CASE("the Preview load stops the beat lines at the song's length, not the a
 
     SUBCASE("the song's length and the audio's end agree") {
         // A stated 4 s plus the pad is 5000 ms, where the sine stops: the grid
-        // ends on tick 9600, as it did when it ran to the audio's end.
+        // ends on tick 9600.
         const std::string notes = short_chart_with_long_audio("prevctl_grid_agree");
         audiochart::write_text_file(hydra::parent_folder(notes) + "\\song.ini",
                                     "[song]\nsong_length = 4000\n");
@@ -539,8 +539,8 @@ TEST_CASE("the Preview's playback, time box and scrubber all end at the song's l
     CHECK(pc.position_ms() == doctest::Approx(4000.0));
 }
 
-// Picking another path with the Preview open used to rebuild the scene inside
-// open(), on the UI thread. It now builds on a job and lands on a later poll().
+// Picking another path with the Preview open stays off the UI thread: the new
+// overlay builds on a job and lands on a later poll().
 TEST_CASE("switching paths builds the new overlay off the UI thread") {
     using namespace hydra;
     using namespace hydra::app;
@@ -718,10 +718,9 @@ std::string expert_and_hard_chart_with_audio(const std::string& tag) {
 
 }  // namespace
 
-// With a chart open on the Preview tab, a mode change used to keep the old
-// mode's notes: open() compared only the md5. Each of difficulty, Pro Drums,
-// 2x Bass and Note Shuffle picks another song (D48, Q22; D104 item 1). Once
-// the first load is done, only the notes reload: the audio is not opened
+// With a chart open on the Preview tab, each of difficulty, Pro Drums, 2x Bass
+// and Note Shuffle picks another song (D48, Q22; D104 item 1). Once the first
+// load is done, a mode change reloads only the notes: the audio is not opened
 // again, the playhead stays where it was, and playing stays playing.
 TEST_CASE("a mode change on the open chart reloads only the notes and keeps the playhead") {
     PreviewController pc(nullptr, nullptr);
@@ -859,7 +858,7 @@ TEST_CASE("a second mode change during a notes reload wins") {
     for (const std::string& s : seen) CHECK((s == expert || s == medium));  // Hard's never lands
 }
 
-// An edited chart that was not rescanned used to draw its record's path on
+// An edited chart that was not rescanned must not draw its record's path on
 // the new notes (finding 126). The load hashes the file the way the scan
 // does; a hash that is not the record's hides the path, and the panel says
 // so (D51 call 18).

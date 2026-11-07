@@ -83,7 +83,7 @@ TEST_CASE("the shipped 3d-config.json loads to the Onyx values") {
     CHECK(c.hydra.sp_active_darken == doctest::Approx(0.2));
     CHECK(c.hydra.fill_offered_alpha == doctest::Approx(0.35));
     // The SP end mark's look, as the user approved it (D81), in its own
-    // magenta so it never reads as an SP gem.
+    // magenta (D84) so it never reads as an SP gem.
     check_color(c.hydra.sp_end_color, 0xff / 255.0f, 0x4f / 255.0f, 0xd8 / 255.0f);
     CHECK(c.hydra.sp_end_edge_depth == doctest::Approx(0.1));
     CHECK(c.hydra.sp_end_marker_width == doctest::Approx(0.07));

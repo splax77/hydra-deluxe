@@ -308,8 +308,7 @@ TEST_CASE("a Preview load cancelled while opening a 300 MB Opus stem stops promp
         CHECK(at_stop - at_cancel <= 8ull << 20);
         // The bytes say where the job noticed the cancel, not how long it then
         // took to stop. A stall after that (a teardown waiting on a read) would
-        // freeze the UI thread, so a loose ceiling stays: ten times the old
-        // 200 ms limit, far above load noise.
+        // freeze the UI thread, so a loose ceiling stays, far above load noise.
         CHECK(ms <= 2000.0);
         CHECK(job.error() == "cancelled");
     }
@@ -319,7 +318,7 @@ TEST_CASE("a Preview load cancelled while opening a 300 MB Opus stem stops promp
 }
 
 // A negative chart offset becomes silence in front of the audio, and the job
-// reports offset 0, exactly as the old padded buffer did.
+// reports offset 0.
 TEST_CASE("a Preview load turns a negative chart offset into front silence") {
     const std::string dir = testtemp::temp_dir("loadpad");
     const std::string notes = dir + "\\notes.chart";
@@ -412,7 +411,7 @@ std::vector<std::vector<int64_t>> fill_spans(const hydra::app::PreviewScene& sce
 
 // The "1.0 fills" setting reaches the Preview: the notes it reads carry the
 // Clone Hero 1.0 generator's fills, the same as the chart loaded under that
-// rule directly, and not 1.1's (D115 TJ-3). The chart has no fills of its
+// rule directly, and not 1.1's (D115). The chart has no fills of its
 // own. Both generators count on the same grid and both draw a fill half a
 // measure back from its chord, so the chart sits on the one rule they still
 // differ on: 1.1's distance limit is one tick wider than 1.0's. At resolution

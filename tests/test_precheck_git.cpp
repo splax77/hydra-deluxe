@@ -222,7 +222,7 @@ TEST_CASE("precheck: items print in kind order, then file, line and text") {
     const std::vector<Item> sorted = items.sorted();
     std::vector<std::string> lines;
     for (const Item& i : sorted) lines.push_back(item_line(i));
-    // "_" sorts before "." and case is ignored, as Sort-Object had it.
+    // "_" sorts before "." and case is ignored.
     CHECK(lines == std::vector<std::string>{
                        "C src/z.cpp:9  y  -- why c",
                        "B src/foo_bar.h:7  x  -- why b2",
