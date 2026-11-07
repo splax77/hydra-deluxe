@@ -1215,6 +1215,17 @@ class SqueezeTimingTest(unittest.TestCase):
         self.assertEqual(_leads(presses[448]), [2.0])
         self.assertEqual([(p.declined, p.lanes) for p in presses[854]], [(True, [])])
 
+    def test_a_squeeze_press_carries_the_end_it_was_timed_against(self):
+        # Bomber's activation is pressed 55 ms early, so chord 180's end moves
+        # by 55; Mouths has no early activation, so its ends stay the dump's.
+        for files, index, moved_ms in ((_BOMBER, 180, 55.0), (_BOMBER, 448, 0.0),
+                                       (_MOUTHS, 740, 0.0)):
+            chord = next(c for c in _load_refine(files) if c.index == index)
+            for press in _presses_by_index(files)[index]:
+                self.assertAlmostEqual(chord.squeeze.end_ms - press.end_ms, moved_ms, 6, index)
+        for press in _presses_by_index(_BOMBER)[181]:
+            self.assertIsNone(press.end_ms)
+
     def test_a_fake_clock_run_of_each_fixture_presses_in_time_order(self):
         for name, files in (("mouths", _MOUTHS), ("bomber", _BOMBER)):
             result, _game = _play_refine(files)

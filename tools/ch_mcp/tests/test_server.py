@@ -161,6 +161,11 @@ class ServerTest(unittest.TestCase):
         self.assertEqual(set(self._schema("ch_run_chart")),
                          {"song_folder", "score_json", "kit_player", "decline_mode", "dump_json"})
 
+    def test_ch_play_chart_takes_no_lead_either(self):
+        self.assertEqual(set(self._schema("ch_play_chart")),
+                         {"score_json", "log", "song_folder", "route", "decline_mode",
+                          "dump_json", "path_index"})
+
     def test_ch_run_chart_passes_its_arguments_through(self):
         seen = []
         self.helper.game.ch_run_chart = lambda *a: seen.append(a) or "ran"
