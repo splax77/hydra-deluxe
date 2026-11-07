@@ -295,6 +295,23 @@ struct Memory {
     }
 };
 
+// What both report windows keep between frames about their result: PathWindow
+// and DmWindow (path_report_window.cpp, dm_report_window.cpp) add only their
+// own controls. Result is the report type, Row its rows, Choice its filter's
+// choices.
+template <class Result, class Row, class Choice>
+struct WindowState {
+    std::weak_ptr<const Result> built_from;
+    std::unique_ptr<app::report_view::TableView<Row>> view;
+    // The view's rows measured for the column-width rule; goes with them.
+    MeasuredWidths widths;
+    std::vector<Choice> choices;
+    std::vector<std::string> labels;
+    std::vector<app::report::Tile> tiles;
+    bool tiles_dirty = true;
+    Memory memory;
+};
+
 // Begins the window and draws its header, strips and any state other than
 // Ready with rows. True when the caller should draw the tiles, controls and
 // table. Always pair with end().

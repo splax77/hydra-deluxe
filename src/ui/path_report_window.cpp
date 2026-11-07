@@ -23,22 +23,14 @@ namespace hydra::ui {
 
 // Everything the window keeps between frames. A new result starts it fresh,
 // except one built because the window opened (PathReportInput::keep_filters).
-struct PathWindow {
-    std::weak_ptr<const app::report::GeneratedReport> built_from;
-    std::unique_ptr<app::report_view::TableView<app::report::ReportRow>> view;
-    // The view's rows measured for the column-width rule; goes with them.
-    MeasuredWidths widths;
-    std::vector<app::path_report_view::TimingChoice> choices;
-    std::vector<std::string> labels;
+struct PathWindow : report_frame::WindowState<app::report::GeneratedReport, app::report::ReportRow,
+                                             app::path_report_view::TimingChoice> {
     int timing = app::report_view::kEveryRowChoice;
     bool best_only = true;
     // The view's sort, kept while the window has no rows.
     std::vector<app::report_view::SortSpec> sort;
-    std::vector<app::report::Tile> tiles;
-    bool tiles_dirty = true;
     // The can't-analyze line's Show list is expanded.
     bool list_open = false;
-    report_frame::Memory memory;
 };
 
 std::shared_ptr<PathWindow> new_path_window() { return std::make_shared<PathWindow>(); }

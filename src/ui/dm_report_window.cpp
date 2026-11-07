@@ -17,17 +17,10 @@
 namespace hydra::ui {
 
 // Everything the window keeps between frames. A new result starts it fresh.
-struct DmWindow {
-    std::weak_ptr<const app::dm_report::GeneratedDmReport> built_from;
-    std::unique_ptr<app::report_view::TableView<app::dm_report::DmReportRow>> view;
-    // The view's rows measured for the column-width rule; goes with them.
-    MeasuredWidths widths;
-    std::vector<app::dm_report_view::StatusChoice> choices;
-    std::vector<std::string> labels;
+struct DmWindow : report_frame::WindowState<app::dm_report::GeneratedDmReport,
+                                           app::dm_report::DmReportRow,
+                                           app::dm_report_view::StatusChoice> {
     int status = app::report_view::kEveryRowChoice;
-    std::vector<app::report::Tile> tiles;
-    bool tiles_dirty = true;
-    report_frame::Memory memory;
 };
 
 std::shared_ptr<DmWindow> new_dm_window() { return std::make_shared<DmWindow>(); }
