@@ -21,21 +21,14 @@
 
 namespace hydra::ui {
 
-namespace {
-
-using app::report::GeneratedReport;
-using app::report::ReportRow;
-using app::report_view::TableView;
-namespace view_rules = app::path_report_view;
-
 // Everything the window keeps between frames. A new result starts it fresh,
 // except one built because the window opened (PathReportInput::keep_filters).
 struct PathWindow {
-    std::weak_ptr<const GeneratedReport> built_from;
-    std::unique_ptr<TableView<ReportRow>> view;
+    std::weak_ptr<const app::report::GeneratedReport> built_from;
+    std::unique_ptr<app::report_view::TableView<app::report::ReportRow>> view;
     // The view's rows measured for the column-width rule; goes with them.
     MeasuredWidths widths;
-    std::vector<view_rules::TimingChoice> choices;
+    std::vector<app::path_report_view::TimingChoice> choices;
     std::vector<std::string> labels;
     int timing = app::report_view::kEveryRowChoice;
     bool best_only = true;
@@ -48,10 +41,14 @@ struct PathWindow {
     report_frame::Memory memory;
 };
 
-PathWindow& path_window() {
-    static PathWindow w;
-    return w;
-}
+std::shared_ptr<PathWindow> new_path_window() { return std::make_shared<PathWindow>(); }
+
+namespace {
+
+using app::report::GeneratedReport;
+using app::report::ReportRow;
+using app::report_view::TableView;
+namespace view_rules = app::path_report_view;
 
 // The controls' choices, handed to the view.
 void apply_filters(PathWindow& w) {
@@ -190,8 +187,7 @@ void draw_body(PathWindow& w, const report_frame::Frame& frame, const PathReport
 
 }  // namespace
 
-void draw_path_report_window(bool* open, const PathReportInput& input) {
-    PathWindow& w = path_window();
+void draw_path_report_window(bool* open, const PathReportInput& input, PathWindow& w) {
     if (!*open) {
         w.memory.was_open = false;
         // The view keeps its whole result alive (shared_rows), so a result

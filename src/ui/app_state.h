@@ -42,6 +42,13 @@ namespace hydra::ui {
 
 class PreviewController;
 
+// What each report window keeps between frames (ui/report_window.h). Each
+// struct lives in its window's file, and these make a fresh one.
+struct PathWindow;
+struct DmWindow;
+std::shared_ptr<PathWindow> new_path_window();
+std::shared_ptr<DmWindow> new_dm_window();
+
 // The settings struct itself lives in app/config.h (shared with the CLI
 // exes).
 using Settings = app::Settings;
@@ -439,6 +446,10 @@ public:
     DetailsViewState details_ui;
     // The library view's own per-frame state (see LibraryViewState above).
     LibraryViewState library_ui;
+    // The report windows' own state, here because a static would outlive this
+    // AppState. A shared_ptr needs only the struct's name in this header.
+    std::shared_ptr<PathWindow> path_window_ui = new_path_window();
+    std::shared_ptr<DmWindow> dm_window_ui = new_dm_window();
 
     // The open song as the click's analysis found it (ViewedSong above).
     ViewedSong viewed;

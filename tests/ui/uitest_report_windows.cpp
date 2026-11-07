@@ -70,6 +70,9 @@ struct Fixture {
     bool dm_open = false;
     PathReportInput path;
     DmReportInput dm;
+    // The windows' own state, as AppState holds it in the app.
+    std::shared_ptr<hydra::ui::PathWindow> path_state = hydra::ui::new_path_window();
+    std::shared_ptr<hydra::ui::DmWindow> dm_state = hydra::ui::new_dm_window();
     std::vector<size_t> path_clicks;
     std::vector<size_t> dm_clicks;
     int refreshes = 0;
@@ -193,9 +196,7 @@ void note_chip_vertices() {
 }
 
 // Runs `Test` with the app's frame leaving the report windows to
-// draw_windows. Each window keeps one state for the process, so the app's
-// own call, with AppState's empty input, would otherwise drop the rows the
-// fixture handed it.
+// draw_windows.
 template <void (*Test)(ImGuiTestContext*)>
 void drawn_by_fixture(ImGuiTestContext* ctx) {
     const ScopedHook alone(hydra::ui::set_app_skips_report_windows_for_test, true);
@@ -206,8 +207,8 @@ void drawn_by_fixture(ImGuiTestContext* ctx) {
 void draw_windows(ImGuiTestContext*) {
     Fixture& f = fixture();
     ImGui::LogToBuffer();
-    hydra::ui::draw_path_report_window(&f.path_open, f.path);
-    hydra::ui::draw_dm_report_window(&f.dm_open, f.dm);
+    hydra::ui::draw_path_report_window(&f.path_open, f.path, *f.path_state);
+    hydra::ui::draw_dm_report_window(&f.dm_open, f.dm, *f.dm_state);
     ImGuiContext& g = *ImGui::GetCurrentContext();
     f.text.assign(g.LogBuffer.begin(), g.LogBuffer.end());
     ImGui::LogFinish();

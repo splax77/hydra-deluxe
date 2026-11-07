@@ -207,8 +207,9 @@ void render_main_window(AppState& app) {
     // path report's close then runs AppState::close_path_report through the
     // window's close callback, which ends a question the window was asking.
     if (g_skip_report_windows) return;
-    draw_path_report_window(&app.path_report.window_open, path_report_input(app));
-    draw_dm_report_window(&app.dm_report.window_open, dm_report_input(app));
+    draw_path_report_window(&app.path_report.window_open, path_report_input(app),
+                            *app.path_window_ui);
+    draw_dm_report_window(&app.dm_report.window_open, dm_report_input(app), *app.dm_window_ui);
 }
 
 void set_app_skips_report_windows_for_test(bool skip) { g_skip_report_windows = skip; }
