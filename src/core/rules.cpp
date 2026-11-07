@@ -29,7 +29,7 @@ namespace {
 // Every field that can change a run's answer, one line each, in
 // rules_fields() order. The text is frozen: changing it makes every stored
 // result Stale (docs/adr/0014). A whole number is written in the same %.17g
-// form as a fraction, as it always was.
+// form as a fraction.
 std::string fixed_cap_text(const Rules& r) {
     std::string text;
     for (const RulesField& f : rules_fields()) {
