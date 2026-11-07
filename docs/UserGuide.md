@@ -586,7 +586,7 @@ It has no library. It opens one chart at a time and keeps no results after you c
 
 Run `HydraPathBuilder.exe` from the folder Hydra Deluxe is installed in. To open a chart, use `File` > `Open...` (`Ctrl+O`), drag the chart file onto the window, or give the chart file on the command line. It reads the same `.mid`, `.chart`, `.sng` and `.srb` charts as Hydra Deluxe.
 
-Each open reads your settings from `hydra_settings.ini`, so the chart opens at the difficulty, Pro Drums, 2x Bass, `SP cap` and `Path limit` you last set in Hydra Deluxe. The line under the song's title names the mode. To use other settings, change them in Hydra Deluxe and open the chart again. The Path Builder never writes to that file: the volume slider starts at your Preview volume, and a change to it lasts until you close the Path Builder.
+Each open reads your settings from `hydra_settings.ini`, so the chart opens under the Analysis settings you last set in Hydra Deluxe: the difficulty, Pro Drums, 2x Bass, Note Shuffle, `SP cap`, `1.0 fills`, `Path limit` and the rest. The line under the song's title names the chart mode. To use other settings, change them in Hydra Deluxe and open the chart again. The Path Builder never writes to that file: the volume slider starts at the Preview tab's volume, and a change to it lasts until you close the Path Builder.
 
 A chart with no Star Power phrases still opens and plays. It says `This chart has no Star Power phrases, so there is no path to build.` and shows no timeline.
 
@@ -659,7 +659,7 @@ Hover a row to light its fill on the timeline. Click a row to activate there: th
 
 When no fill is left, the list says `No fill after your last activation can be activated. Your path is finished.`
 
-### The Your activations panel
+### The `Your activations` panel
 
 The `Your activations` panel lists your activations in order. Each row shows where the activation starts and where its Star Power ends, the phrases it spends, its timings in the same words as the Paths tab's badges, and its cost, like `m70 → m78` `3 phrases · squeeze in 0.0 ms` `best` on Smash Mouth's "I'm A Believer".
 
