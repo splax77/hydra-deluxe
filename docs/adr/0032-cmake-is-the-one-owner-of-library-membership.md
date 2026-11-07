@@ -7,7 +7,7 @@ library a file is in is written in one place, the source lists in
 `CMakeLists.txt`. Which libraries a library may use is written there too, in
 its link lines (target_link_libraries). A test, tests/test_layering.cpp, reads both
 and fails when a file includes a header from a library its own library does
-not link. The plan is docs/superpowers/plans/2026-10-28-hydra-libraries.md,
+not link. The plan is docs/superpowers/plans/2026-10-28-hydra-libraries.md (removed; git show 6804353f:docs/superpowers/plans/2026-10-28-hydra-libraries.md),
 and the split was built from it in tasks T3, T1a, T1b, T2, T1c, T5, T4 and T6
 on 2026-10-29.
 
