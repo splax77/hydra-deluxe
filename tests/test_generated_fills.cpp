@@ -1,6 +1,5 @@
 // Tests for generated fills (Song::check_activations, D115). The plan is
-// docs/superpowers/plans/2026-10-12-one-record-per-chart/part-B2-timing.md
-// (removed; git show 444631e6:docs/superpowers/plans/2026-10-12-one-record-per-chart/part-B2-timing.md).
+// docs/superpowers/plans/2026-10-12-one-record-per-chart/part-B2-timing.md (removed; git show 444631e6:docs/superpowers/plans/2026-10-12-one-record-per-chart/part-B2-timing.md).
 //
 // A chart with no fills of its own gets fills placed the way Clone Hero
 // 1.1.0.6142's generator places them (0x20D2B30): on the chord nearest a
