@@ -1,7 +1,7 @@
 Listing: `scorestats_writer_15DC20.asm`, build 6142, made 2026-10-30 with `tools/ch_mcp/chdis.py`. Function: `EndOfSong.Start` (#711), RVA `0x15DC20`, the whole method (1,596 lines). The part that matters for `scorestats.json` is lines 171 to 300.
 
-Lines 1 to 120: one-time loads of every string literal the method uses; line 87 loads `scorestats.json` (slot 0x3CA8B78). The same block loads `botnosave`, `spectatornosave`, `savewarning`, `ScoreDisabledModifier` and `ScoreDisabledPause` (lines 79 to 102); how those are used was not traced.
-Lines 121 to 170: set up the screen (scene-change hook, title text, fade).
+Lines 1 to 103: one-time loads of every string literal the method uses, except the two error texts, which load where they are used (lines 274 and 315); line 87 loads `scorestats.json` (slot 0x3CA8B78). The same block loads `savewarning`, `beatscore`, `botnosave`, `spectatornosave`, `ScoreDisabledModifier` and `ScoreDisabledPause` (lines 77 to 101). Each of those six is passed once to the method at 0x12EE30 (lines 487, 767, 1034, 1059, 1069 and 1079); what that method does with it was not traced.
+Lines 104 to 170: set up the screen (scene-change hook, title text, fade).
 Lines 171 to 181: allocate the stats object (#1037) and run its constructor with a value read from `GlobalVariables` at `+0x54` (the difficulty or mode, not traced); keep it in `this+0xE8`.
 Lines 182 to 207: call `0x252200`, which fills the song fields (song entry, and two ints from the score screen's state).
 Lines 208 to 245: loop over the player list in `GlobalVariables`; for each player that passes the test at `0x337540`, get its data (`0x337D00`) and call `0x251A70` to add a per-player block to the stats object.
