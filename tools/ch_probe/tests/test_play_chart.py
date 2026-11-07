@@ -16,11 +16,15 @@ from __future__ import annotations
 
 import contextlib
 import csv
+import dataclasses
+import inspect
 import io
 import json
 import os
+import statistics
 import sys
 import tempfile
+import time
 import unittest
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -638,16 +642,126 @@ class PressReplyRowTest(unittest.TestCase):
         result = play_chart.play_chords(
             _load(play_chart.load_dump_chords)[:1], _FakeSongClock(wall, start_s=12.0),
             game.read_score, press, now=wall.now, sleep=wall.sleep, out=io.StringIO())
-        self.assertEqual(result.rows[0], {
-            "index": 38, "chart_ms": 13043.48, "clock_ms_at_press": result.rows[0]["clock_ms_at_press"],
+        row = result.rows[0]
+        self.assertEqual(row, {
+            "index": 38, "chart_ms": 13043.48, "clock_ms_at_press": row["clock_ms_at_press"],
             "lead_ms": 2.0, "score_before": 0, "score_after": 100, "hit": 1,
-            "down_frame": 40, "up_frame": 42, "down_ms": 7, "up_ms": 19})
+            "down_frame": 40, "up_frame": 42, "down_ms": 7, "up_ms": 19,
+            "wall_s_at_read": row["wall_s_at_read"], "wall_s_at_reply": row["wall_s_at_reply"]})
 
     def test_a_key_press_adds_nothing(self):
         result, _game, _wall = _run({"start_s": 12.0})
         self.assertEqual(set(result.rows[0]), {
             "index", "chart_ms", "clock_ms_at_press", "lead_ms", "score_before",
-            "score_after", "hit"})
+            "score_after", "hit", "wall_s_at_read", "wall_s_at_reply"})
+
+
+# A wall clock far from the fake `now`, as time.time is from time.perf_counter.
+_WALL_EPOCH_S = 1_700_000_000.0
+_SLOW_PRESS_S = 0.25
+
+
+class WallColumnsTest(unittest.TestCase):
+    """Each row's two wall times come from `wall`, not from `now`."""
+
+    def _run_with_a_slow_press(self, chords):
+        fake = _FakeTime()
+        game = _FakeGame()
+        stamps = []
+
+        def wall():
+            return _WALL_EPOCH_S + fake.t
+
+        def press(lanes, _axes):
+            before = wall()
+            fake.t += _SLOW_PRESS_S
+            game.press(lanes)
+            stamps.append((before, wall()))
+
+        result = play_chart.play_chords(
+            chords, _FakeSongClock(fake, start_s=12.0), game.read_score, press,
+            now=fake.now, sleep=fake.sleep, wall=wall, out=io.StringIO())
+        return result, stamps
+
+    def test_the_columns_are_the_wall_times_around_the_press(self):
+        result, stamps = self._run_with_a_slow_press(_load(play_chart.load_dump_chords)[:3])
+        self.assertEqual(len(stamps), 3)
+        self.assertEqual([(r["wall_s_at_read"], r["wall_s_at_reply"]) for r in result.rows],
+                         stamps)
+
+    def test_the_columns_are_on_the_wall_clocks_scale(self):
+        result, _stamps = self._run_with_a_slow_press(_load(play_chart.load_dump_chords)[:3])
+        for row in result.rows:
+            self.assertGreater(row["wall_s_at_read"], _WALL_EPOCH_S)
+            self.assertGreater(row["wall_s_at_reply"], row["wall_s_at_read"])
+
+    def test_a_chord_that_sends_no_press_stamps_one_moment_twice(self):
+        chords = _load(play_chart.load_dump_chords)[:1]
+        declined = [dataclasses.replace(chords[0], declined=True, lanes=[])]
+        result, stamps = self._run_with_a_slow_press(declined)
+        self.assertEqual(stamps, [])
+        self.assertEqual(result.rows[0]["wall_s_at_read"], result.rows[0]["wall_s_at_reply"])
+
+    def test_the_wall_clock_is_the_watchs_and_now_stays_the_timer(self):
+        parameters = inspect.signature(play_chart.play_chords).parameters
+        self.assertIs(parameters["wall"].default, time.time)
+        self.assertIs(parameters["now"].default, time.perf_counter)
+
+
+def _table(path):
+    with open(path, encoding="utf-8", newline="") as f:
+        return list(csv.reader(f))
+
+
+class AppendPressRowTest(unittest.TestCase):
+    """append_press_row keeps the log on disk row by row, as a run makes it."""
+
+    def setUp(self):
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        self.path = os.path.join(folder.name, "press.csv")
+
+    def test_the_file_grows_with_each_press_of_a_run(self):
+        seen = []
+
+        def on_press(row):
+            play_chart.append_press_row(self.path, row)
+            seen.append(len(_table(self.path)) - 1)
+
+        fake = _FakeTime()
+        game = _FakeGame()
+        result = play_chart.play_chords(
+            _load(play_chart.load_dump_chords)[:3], _FakeSongClock(fake, start_s=12.0),
+            game.read_score, game.press, now=fake.now, sleep=fake.sleep,
+            on_press=on_press, out=io.StringIO())
+        self.assertEqual(result.stop, "done")
+        self.assertEqual(seen, [1, 2, 3])
+        table = _table(self.path)
+        self.assertEqual(tuple(table[0]), overlay_logs.PRESS_LOG_COLUMNS)
+        self.assertEqual([r[0] for r in table[1:]], ["38", "41", "45"])
+
+    def test_a_file_with_its_header_gets_no_second_one(self):
+        play_chart.write_press_log(self.path, [])
+        play_chart.append_press_row(self.path, {"index": 7})
+        self.assertEqual([r[0] for r in _table(self.path)], ["index", "7"])
+
+    def test_it_writes_what_write_press_log_writes(self):
+        rows = [{"index": 1, "lead_ms": 2.0, "hit": 1}, {"index": 2, "hit": 0}]
+        for row in rows:
+            play_chart.append_press_row(self.path, row)
+        whole = self.path + ".whole"
+        play_chart.write_press_log(whole, rows)
+        self.assertEqual(_table(self.path), _table(whole))
+
+    def test_an_append_costs_less_than_the_score_read_sleep(self):
+        # The median, so one scan of the file by another process fails nothing.
+        row = {column: 1 for column in overlay_logs.PRESS_LOG_COLUMNS}
+        took = []
+        for _ in range(100):
+            began = time.perf_counter()
+            play_chart.append_press_row(self.path, row)
+            took.append(time.perf_counter() - began)
+        self.assertLess(statistics.median(took), play_chart.SCORE_READ_DELAY_S)
 
 
 # The 8 end chords of Senri's top path and the chord before each, with the

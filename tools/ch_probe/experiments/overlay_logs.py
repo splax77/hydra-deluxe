@@ -12,8 +12,11 @@ PRESS_LOG_COLUMNS is the auto-player's press log (play_chart.py --log): one
 row per chord it pressed. `index` is the chord's own `index` field in the
 `hydra_replay score` JSON, not a running count. KIT_PRESS_COLUMNS are the
 kit press's reply (tools/ch_mcp/kit_tools.py); a run that presses keys leaves
-them blank. Logs written before the kit press existed hold only
-KEYS_PRESS_COLUMNS.
+them blank. WALL_PRESS_COLUMNS are two times on the watch's `wall_s` clock, so
+a row lines up with the watch and a trace: just after the wait for the chord
+ended, and after the press returned. Logs written before the kit press existed
+hold only KEYS_PRESS_COLUMNS, and logs written before the wall times existed
+hold PRESS_COLUMNS_WITHOUT_WALL.
 """
 
 from __future__ import annotations
@@ -61,4 +64,11 @@ KIT_PRESS_COLUMNS = (
     "up_ms",
 )
 
-PRESS_LOG_COLUMNS = KEYS_PRESS_COLUMNS + KIT_PRESS_COLUMNS
+WALL_PRESS_COLUMNS = (
+    "wall_s_at_read",
+    "wall_s_at_reply",
+)
+
+PRESS_COLUMNS_WITHOUT_WALL = KEYS_PRESS_COLUMNS + KIT_PRESS_COLUMNS
+
+PRESS_LOG_COLUMNS = PRESS_COLUMNS_WITHOUT_WALL + WALL_PRESS_COLUMNS

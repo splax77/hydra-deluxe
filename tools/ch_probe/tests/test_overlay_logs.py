@@ -30,6 +30,12 @@ class ColumnListsTest(unittest.TestCase):
     def test_press_log_columns(self):
         self.assertEqual(overlay_logs.PRESS_LOG_COLUMNS, (
             "index", "chart_ms", "clock_ms_at_press", "score_before",
+            "score_after", "hit", "down_frame", "up_frame", "down_ms", "up_ms",
+            "wall_s_at_read", "wall_s_at_reply"))
+
+    def test_the_press_columns_before_the_wall_times(self):
+        self.assertEqual(overlay_logs.PRESS_COLUMNS_WITHOUT_WALL, (
+            "index", "chart_ms", "clock_ms_at_press", "score_before",
             "score_after", "hit", "down_frame", "up_frame", "down_ms", "up_ms"))
 
 
