@@ -31,7 +31,7 @@ namespace hydra::app {
 std::string exe_dir() {
     const std::string dir = parent_folder(exe_path_utf8());
     // A module path with no folder (Windows never hands one over) keeps the
-    // files beside the exe relative to the working folder, as they always were.
+    // files beside the exe relative to the working folder.
     return dir.empty() ? std::string(".") : dir;
 }
 
@@ -329,9 +329,8 @@ bool Settings::effective_bass2x() const { return view_bass2x; }
 
 std::string chartmode_key(const ChartReading& reading) {
     std::string prodrums = reading.prodrums ? "Pro Drums" : "Drums";
-    // The four Expert keys are byte-for-byte the ones already in the store.
-    // Below Expert a key ends "2x Bass" with the box on since D20; results
-    // stored before that are re-analyzed by step 1's results-stamp bump.
+    // These words are stored with every result, so a new spelling would no
+    // longer find the results already in the store.
     std::string bass = reading.bass2x ? "2x Bass" : "1x Bass";
     std::string key = std::string(difficulty_name(reading.difficulty)) + " " + prodrums + ", " + bass;
     // Only an ending, so a key stored before Note Shuffle existed still names

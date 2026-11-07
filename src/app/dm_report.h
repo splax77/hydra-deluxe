@@ -59,7 +59,7 @@ struct DmReportRow {
     std::string charter;
     std::string identifier;             // Clone Hero's song id (the join key)
     int64_t actual = 0;                 // score the player posted
-    std::optional<int64_t> optimal;     // Hydra best-path score; unset with no current result
+    std::optional<int64_t> optimal;     // Hydra best-path score; unset with no scored best path
     std::optional<int64_t> delta;       // optimal - actual (points left)
     // Actual as a percent of optimal, in whole hundredths of a percent
     // (percent_steps, the number the cell's text is written from: 9901 reads
@@ -74,7 +74,7 @@ struct DmReportRow {
     std::string status;
     // Whether the score beat Hydra's optimal: collect_dm_rows' above-optimal
     // answer, kept even when the status became kStatusOtherSpeed, so an
-    // off-speed row still reads "+N over" on the page (D64).
+    // off-speed row still reads "+N over" in dm_report_view (D64).
     bool above_optimal = false;
 };
 
@@ -116,8 +116,7 @@ std::vector<DmReportRow> collect_dm_rows(store::RecordStore& store,
 
 // ---- generate_dm_report ----------------------------------------------------
 // The whole comparison in one call: join + tally + the standard page framing.
-// The GUI's DmReportJob is an adapter over this seam; the tally previously
-// lived in the job layer, comparing the status literals the tests pin.
+// The GUI's DmReportJob is an adapter over this seam.
 
 struct DmReportStats {
     int total = 0;
@@ -184,13 +183,11 @@ DmReportStats tally_dm_rows(const std::vector<DmReportRow>& rows);
 DmReportStats tally_dm_rows(const std::vector<DmReportRow>& rows,
                             const std::vector<size_t>& shown);
 
-// The colour a row's status chip is drawn in. Takes over the page script's
-// STATUS_CLASS table.
+// The colour a row's status chip is drawn in.
 report::ChipToken status_token(const std::string& status);
 
 // The comparison's nine tiles over the rows a window shows: `shown` holds
-// their indices into `rows`. The counts are tally_dm_rows'. Takes over the
-// page script's `stats`.
+// their indices into `rows`. The counts are tally_dm_rows'.
 std::vector<report::Tile> dm_tiles(const std::vector<DmReportRow>& rows,
                                    const std::vector<size_t>& shown);
 
