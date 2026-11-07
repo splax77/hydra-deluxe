@@ -119,8 +119,8 @@ bool render_state_line(AppState& app) {
 }
 
 // The optimal score and path in gold with one line of facts under it. Stars
-// are the summary row's (T7), never worked out again here. A held row
-// (detail::draw_held_row).
+// are the summary row's (store::PathSummary), never worked out again here. A
+// held row (detail::draw_held_row).
 void render_headline(AppState& app) {
     const float left_x = ImGui::GetCursorPosX();
     const float text_w = ImGui::GetContentRegionAvail().x;
@@ -319,8 +319,8 @@ void render_song_panel(AppState& app) {
     render_panel_notices(app);
     ImGui::Spacing();
 
-    // The tabs, as before. The Preview only renders while its tab is the
-    // active one; leaving it pauses playback.
+    // The tabs. The Preview only renders while its tab is the active one;
+    // leaving it pauses playback.
     if (ImGui::BeginTabBar("##DetailsTabs")) {
         if (ImGui::BeginTabItem("Paths")) {
             if (detail::render_record_state(app))

@@ -92,9 +92,8 @@ void setup_imgui(const ImGuiSetupOptions& options) {
     // windows beside Hydra (D103): a report is something to move to another
     // monitor and keep open while Hydra is in use. Only the report windows
     // opt in, through report_window_class. Everything else stays one primary
-    // window filling the OS window, like hydra_app.py's
-    // dpg.set_primary_window: docking stays off, and popups and tooltips stay
-    // inside the window they open from (D103 item 15; the "Hydra:" block in
+    // window filling the OS window: docking stays off, and popups and tooltips
+    // stay inside the window they open from (D103 item 15; the "Hydra:" block in
     // third_party/imgui/imgui.cpp's WindowSelectViewport). Any other OS window
     // ImGui makes gets no taskbar button. Without a platform backend (the GUI
     // test runner) ImGui turns viewports back off itself.

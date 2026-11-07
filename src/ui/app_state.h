@@ -1,12 +1,8 @@
-// Shared UI state — the C++ port of hydra_app.py's HyAppUserSettings /
-// HyAppRecordBook / HyAppState. One AppState is built at startup and handed
-// to every view's render function each frame.
+// Shared UI state. One AppState is built at startup and handed to every view's
+// render function each frame.
 //
-// Persistence differs from Python on purpose: settings live in their own INI
-// next to the executable (not hymisc.INIPATH's format) and the chart library
-// table now lives on RecordStore (see store/record_store.h) instead of a
-// separate ad hoc scan_library() connection — both were free to redesign,
-// same as the record format itself (Phase 4).
+// Settings live in their own INI next to the executable (app/config.h), and
+// the chart library table lives on RecordStore (see store/record_store.h).
 
 #ifndef HYDRA_UI_APP_STATE_H
 #define HYDRA_UI_APP_STATE_H
@@ -66,11 +62,11 @@ struct HeldRow {
     }
 };
 
-// Per-frame UI state of the Song Details modal. Owned here, not as statics in
-// the draw code: a static outlives this AppState (the UI test runner builds one
-// per test) and a static pointer into `viewed`'s record outlived the record
-// itself (1.5.1 SP-cap crash). Everything in here is derived from, and must be
-// re-synced against, the AppState fields it mirrors.
+// Per-frame UI state of the song panel. Owned here, not as statics in the draw
+// code: a static outlives this AppState (the UI test runner builds one per
+// test) and a static pointer into `viewed`'s record can outlive the record
+// itself. Everything in here is derived from, and must be re-synced against,
+// the AppState fields it mirrors.
 struct DetailsViewState {
     // show_details as of the last tick(); its true->false edge runs
     // close_details() once, whatever closed the panel.
@@ -357,7 +353,7 @@ public:
     // that read fails.
     std::vector<store::ChartLibraryEntry> library_matches() const;
 
-    // Selection / details modal.
+    // Selection / song panel.
     std::optional<store::ChartLibraryEntry> selected;
     bool show_details = false;
     // Why the selection last changed, as the last select() was told. A table
@@ -378,8 +374,7 @@ public:
     bool details_open() const { return show_details; }
 
     // The rows the library currently shows, in order. Next / previous and
-    // the GUI tests walk these. (T12 re-implements the three over its
-    // in-memory model and library_view_order(); callers don't change.)
+    // the GUI tests walk these.
     size_t view_row_count() const;
     const LibraryChart& view_row(size_t i) const;
     store::RecordStatus view_row_status(size_t i) const;
@@ -442,7 +437,7 @@ public:
     // A running batch refreshes the library's results at most this often.
     static constexpr double kBatchRefreshSeconds = 1.0;
 
-    // The details modal's own per-frame state (see DetailsViewState above).
+    // The song panel's own per-frame state (see DetailsViewState above).
     DetailsViewState details_ui;
     // The library view's own per-frame state (see LibraryViewState above).
     LibraryViewState library_ui;
@@ -467,9 +462,9 @@ public:
     void dismiss_view_error();
     // The click's one job, and the generation of the latest request. A
     // finished job whose generation is not the latest is dropped, never
-    // compared by address (memory: analyze-job pointer-reuse bug). The job is
-    // held until it exits, even once cancelled: joining it on the UI thread
-    // would freeze the window until its next progress tick.
+    // compared by address. The job is held until it exits, even once
+    // cancelled: joining it on the UI thread would freeze the window until
+    // its next progress tick.
     std::unique_ptr<ViewJob> view_job;
     Generation view_generation;
     // A request that waits for the cancelled view_job to exit; tick() then
@@ -715,7 +710,7 @@ public:
     void cancel_dm_fetch();
     void cancel_dm_report();
 
-    // Set by the details modal's "Rescan library" remedy, the Song folders'
+    // Set by the song panel's "Rescan library" remedy, the Song folders'
     // "Scan now", startup_notice_closed and the startup open of a library
     // whose scan is out of date: the main window calls start_scan on its next
     // frame (the scan modal belongs to it), which may refuse (start_scan).
@@ -746,15 +741,13 @@ public:
     // a chart's record, and each report's settings_change_touches says which
     // changes reach that report; this compares and asks them. Every widget
     // just mutates `settings` and calls this, so none of them can forget a
-    // refresh. That forgetting is exactly the bug class here: the 1.5.1 SP-cap
-    // crash came
-    // from this path, and the Pro Drums / 2x Bass checkboxes used to refresh
-    // the library page while leaving `viewed` pointing at the old record.
+    // refresh. A forgotten refresh would leave `viewed` pointing at the old
+    // record while the library page moved on.
     void commit_settings();
 
     // The number boxes' form of commit_settings: the same refresh at once,
-    // but the INI waits for flush_settings. A held +/- button changes the
-    // value every frame, and each change used to rewrite the file.
+    // but the INI waits for flush_settings, because a held +/- button changes
+    // the value every frame.
     void edit_settings();
     // Writes the INI if an edit_settings change is not saved yet. run_frame
     // calls it once no widget is active, which is when an edit has ended.

@@ -5,7 +5,8 @@
 // Why in memory and not in SQL: whether a row is Stale or Ready is the store's
 // C++ winner rule, and search folding (accents, colour tags) lives in
 // app/library_query. Writing either again in SQL would be a second copy of the
-// rule. A library of about 20,000 charts filters here in a few milliseconds.
+// rule. tests/test_library_model.cpp prints how long 20,000 charts take to
+// filter here.
 
 #ifndef HYDRA_UI_LIBRARY_MODEL_H
 #define HYDRA_UI_LIBRARY_MODEL_H
@@ -95,7 +96,7 @@ struct LibraryRow {
     bool stale_build = false;             // why a Stale row is Stale (the store's
     bool stale_rules = false;             // RecordLookup); the tooltip names it
     std::string bestpath;                 // set when Ready
-    store::PathSummary summary;           // set when Ready (T7)
+    store::PathSummary summary;           // set when Ready
     // Set when CantAnalyze: the stored failure's kind and raw text
     // (store::RecordLookup). The Best path cell's hover words them through
     // app::stored_failure_text.

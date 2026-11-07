@@ -16,9 +16,9 @@ namespace hydra::ui {
 // [left, right]: a label that would run past `right` moves left to end there.
 // Text starts at its mark, as apply_theme (ui/theme.cpp) has it. Returns each
 // label's left edge when it is drawn, or nothing when it would come within
-// `gap` of the one before. Greedy from the left; the first and the last label
-// always show (the last one drops any earlier ones it would overlap, but
-// never the first).
+// `gap` of the one before. Greedy from the left; the first label always shows.
+// The last one drops any earlier ones it would overlap, but never the first:
+// when it would come within `gap` of the first, it is the one left out.
 inline std::vector<std::optional<float>> spaced_labels(const std::vector<float>& starts,
                                                        const std::vector<float>& widths,
                                                        float left, float right, float gap) {

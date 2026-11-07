@@ -39,9 +39,8 @@ namespace detail {
 namespace {
 
 // The strips' colours. The done and problem backgrounds are the theme's
-// (kDoneStripBg, kProblemStripBg), shared with the report windows. Each text
-// colour was measured on its strip: (250,250,250) is 11.97:1 on the running
-// strip; the secondary lines are 9.47:1, 9.27:1 and 9.38:1 on the running,
+// (kDoneStripBg, kProblemStripBg). Each text colour was measured on its
+// strip: (250,250,250) is 11.97:1 on the running strip; the secondary lines are 9.47:1, 9.27:1 and 9.38:1 on the running,
 // done and problem strips; the teal bar on its track is 6.4:1.
 const ImVec4 kStripBg{22 / 255.0f, 57 / 255.0f, 58 / 255.0f, 1.0f};
 const ImVec4 kStripText2{200 / 255.0f, 230 / 255.0f, 230 / 255.0f, 1.0f};
@@ -157,12 +156,11 @@ const char* empty_library_message(const app::Settings& s) {
 }
 
 // The "Song folders" modal: the folder list with add/remove, opened from the
-// "Manage folders..." button. Folder management moved off the main screen so
-// the library table owns it — setup is a once-in-a-while task, but its list
-// used to sit above the table on every launch.
+// "Manage folders..." button. Folder management lives here so the library
+// table owns the main screen: setup is a once-in-a-while task.
 void render_folder_manager(AppState& app) {
-    // Folder pending removal, confirmed through the nested popup below —
-    // deleting a library source was previously a single un-undoable click.
+    // Folder pending removal, confirmed through the nested popup below, so
+    // one stray click can't remove a library source.
     std::optional<size_t>& confirm_remove = app.library_ui.confirm_remove;
 
     if (!ImGui::BeginPopupModal(kFoldersModalId, nullptr,

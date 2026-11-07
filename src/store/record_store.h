@@ -1,6 +1,5 @@
 // SQLite-backed storage for analysis records (D87, D115). hydra.db keeps the
-// chart library, one record per chart and profile, and `meta`. Old
-// Python-era .db files are not read; a fresh scan populates a new one.
+// chart library, one record per chart and profile, and `meta`.
 //
 //   * `profiles` — one row per set of settings a record is filed under: the
 //     chart mode, the SP cap, the Lens (ms limit, score range and fill rule),
@@ -20,10 +19,9 @@
 // classify_library_file's.
 //
 // Why the full settings and not just the cap: a run under a different ms
-// limit or score range is a different answer, and overwriting one with the
-// other lost the first. Now they coexist, and a lookup asks for the one it
-// wants. The SP cap half of that identity is docs/adr/0003; lookups name the
-// cap with a CapQuery and the rest with a Lens.
+// limit or score range is a different answer, so each keeps its own record,
+// and a lookup asks for the one it wants. The SP cap half of that identity is
+// docs/adr/0003; lookups name the cap with a CapQuery and the rest with a Lens.
 
 #ifndef HYDRA_STORE_RECORD_STORE_H
 #define HYDRA_STORE_RECORD_STORE_H
@@ -92,8 +90,7 @@ struct PathSummary {
 };
 
 // Which cap's record a lookup wants: at(N), the record analyzed at exactly N
-// bars. (Auto, which asked for "the newest row above 4 bars", was removed
-// on 2026-09-27.)
+// bars.
 struct CapQuery {
     int exact = kCloneHeroSpCap;
     static CapQuery at(int cap) { return CapQuery{cap}; }
@@ -110,15 +107,15 @@ struct CapQuery {
 // stores value 0, because the engine ignores the number when the limit is off
 // -- "off at 10" and "off at 42" ran the identical search.
 struct Lens {
-    // 1 = ms limit on, 0 = off. Rows an older Hydra migrated in carry -1
-    // ("settings unknown"); no lens has it, so no lookup finds them.
+    // 1 = ms limit on, 0 = off. No lens carries -1, the store's "settings
+    // unknown", so no lookup finds a row that holds it.
     int ms_enabled = 0;
     int ms_value = 0;
     int depth_mode = 0;  // 0 = scores, 1 = points -- the INI's own ints
     int depth_value = 0;
     // 1 = fills spawn by Clone Hero 1.0's deadline, 0 = by 1.1's, the normal
-    // rule (search/graph.h FillDeadlineRule). Part of the key since the GUI
-    // got a switch for it; docs/adr/0010 has the history.
+    // rule (FillDeadlineRule, core/song.h). Part of the key, so a chart's 1.0
+    // and 1.1 results sit side by side; docs/adr/0010's notes say why.
     int legacy_fills = 0;
 
     // `ms` is Settings::mslimit_value when the limit is on, nullopt when off.
@@ -196,7 +193,7 @@ struct PathRow {
     // The engine's figure, sign included (path_row_of); shown_timing applies
     // the needs-timing rule.
     std::optional<double> hardest_ms;
-    std::optional<double> hardest_efill;  // the path's hardest early fill
+    std::optional<double> hardest_efill;  // the path's hardest E0 early fill
     double avgmult = 0.0;  // unrounded; format_avg_mult rounds it for display
     int sqin_count = 0;
     int sqout_count = 0;

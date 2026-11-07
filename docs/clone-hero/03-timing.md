@@ -2,7 +2,7 @@
 
 This page covers chart Offset and song.ini delay, the song clock, the hit window, calibration and playback speed.
 It describes build 1.1 (v1.1.0.6142).
-Last write-back: 2026-10-30.
+Last write-back: 2026-11-07.
 
 ## Offset and delay
 
@@ -127,6 +127,26 @@ Game code (6142): the clock tick of class #707 (scrambled name), RVA `0x16C650`.
 Hydra: no owner
 Ruling: none needed: no Hydra rule depends on it
 Found: 2026-10-30, session b02ab3e6 (the reference build).
+
+### TM-47 The clock object holds the raw clock, the audio clock and the correction
+
+Rule: The clock object (class #707) keeps the raw clock as a double at `#707+0x38`, the audio clock as a double at `#707+0x20`, the correction as a float at `#707+0x18` and the applied total as a float at `#707+0x1C`, all in seconds. `GameManager.sync` holds the object. Whether the tools' walk from the engine reaches the live object is Unknown until the run LS-T2 of the ch run timing plan reads it.
+Label: Proven in the game's code
+Evidence: `code/6142/clock_tick_16C650.asm` line 75 stores the audio clock, lines 32 and 127 store the raw clock, line 107 stores the correction and line 125 stores the applied total; `code/6142/clock_tick_16C650.md` lines 5 to 11 explain them. The widths are in `dump.cs` lines 38467 to 38474, and `GameManager.sync` is line 25317. The walk was read on 2026-11-07 with tools/ch_mcp/chdis.py, and the listing was not kept. The engine stores its listener at `#8288+0x1A0` in its constructor at RVA `0x20F79E0`. The drum engine's constructor, RVA `0x20DF680`, has one direct caller, the `DrumsPlayer` method at RVA `0x33C560`, and that method passes the player itself as the listener (the helper at RVA `0x11676A0`, 0x11676B1 and 0x116771A). The player reaches the manager through `BasePlayer.gameManager`: `BasePlayer.Update`, RVA `0x20A1B0`, loads it and reads the manager's fields from it at 0x20A270 to 0x20A2BC. `GameManager.Update`, RVA `0xC05A0`, loads `GameManager.sync` at 0xC0827 and calls the clock tick at 0xC0839.
+Game code (6142): the clock tick of class #707, RVA `0x16C650`; fields `#707+0x18`, `#707+0x1C`, `#707+0x20`, `#707+0x38`, `GameManager.sync`, `BasePlayer.gameManager` and `#8288+0x1A0`.
+Hydra: no owner in `src/`; the tools read these through `clock_block` in tools/ch_probe/engine.py, with `OFF_ENGINE_LISTENER`, `PLAYER_OFF_GM`, `GM_OFF_CLOCK`, `CLOCK_OFF_AUDIO`, `CLOCK_OFF_RAW` and `CLOCK_OFF_CORR` in tools/ch_probe/constants.py.
+Ruling: none needed: no Hydra rule depends on it
+Found: 2026-11-07, session 7d216054.
+
+### TM-48 The song clock ran up to 127 ms ahead of wall time in one run
+
+Rule: In LS-O2 run 1 the engine's song clock ran up to 127 ms ahead of wall time, measured against the median offset, at about 38.4 s of song time, and came back by about 39.5 s. The cause is not known.
+Label: Proven in a live run
+Evidence: LS-O2 run 1, 2026-11-07, `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-07\ls-o2-run1\sp_watch-1.csv`, columns `clock_s` and `wall_s`. Taking clock minus wall on each of the 6,240 rows and subtracting the median gives +127.4 ms at clock 38.45 s, and within 3 ms again in the rows from 39.4 s to 39.6 s.
+Game code (6142): field `#8288+0x100`, the clock the log reads; the cause was not looked for in the code. TM-12's pull toward the audio is one way a clock could do this, and nothing has checked it here.
+Hydra: no owner
+Ruling: none needed: no Hydra rule depends on it
+Found: 2026-11-07, session 6c03736f
 
 ### TM-13 The engine's song clock is the double at engine+0x100, in seconds
 
