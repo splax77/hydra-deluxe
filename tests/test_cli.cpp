@@ -239,7 +239,7 @@ TEST_CASE("hydra_batch --legacy-fills writes the tool's own hydra.db under the 1
     // The sandboxed exe's default database is hydra.db beside it, in the
     // sandbox: the file the app itself would read. Each record carries its
     // fill rule in its profile, so 1.0 results may go there, as the app's
-    // "1.0 fills" setting already puts them (D115 task A1-6d).
+    // "1.0 fills" setting already puts them (D115 item 6).
     CliSandbox box("owndb");
     RunResult r = run_exe(box.batch, {"--legacy-fills", box.folder()});
     INFO(r.output);
@@ -260,7 +260,7 @@ TEST_CASE("hydra_batch --legacy-fills writes the tool's own hydra.db under the 1
 }
 
 // A library file from before 2.2.0 stops the run with the one sentence, which
-// names the file once, and the file is left as it was (D115 task A1-6d).
+// names the file once, and the file is left as it was (D115 item 6).
 TEST_CASE("hydra_batch refuses a library file too old to convert in one sentence") {
     CliSandbox box("old_library");
     const std::string old_db = box.db("old.db");
@@ -424,7 +424,7 @@ TEST_CASE("hydra_fillcompare names a bad hydra_settings.ini and stops") {
 
 TEST_CASE("hydra_batch writes a 1.0 run and a 1.1 run into one database") {
     // Each record carries its fill rule in its profile, so one file takes
-    // both runs and each reads back under its own rule (D115 task A1-6c).
+    // both runs and each reads back under its own rule (D115 item 6).
     CliSandbox box("both_rules");
     const std::string db = box.db("both.db");
     RunResult r = run_exe(box.batch, {"--db", db, box.folder()});

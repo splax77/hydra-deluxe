@@ -1,8 +1,7 @@
 // The display owners in src/app/display_format (a percentage and the
 // Preview's clock) and the number-formatting owners in src/core/model.h
 // (thousands commas, counted nouns, whole milliseconds). D48 settled the
-// rounding and plural rules; the percentage and clock cases came with phase 3
-// task O2.
+// rounding and plural rules.
 
 #include "doctest.h"
 
@@ -19,7 +18,7 @@ using hydra::group_thousands;
 using hydra::has_have;
 
 TEST_CASE("format_percent: nearest at the asked decimals") {
-    // 12 of 453 is 2.65%: the Dynamics tab used to cut it to 2%.
+    // 12 of 453 is 2.65%, so the nearest whole percent is 3, not 2.
     CHECK(format_percent(12, 453, 0) == "3%");
     CHECK(format_percent(999, 1000, 0) == "100%");
     // A score 10 points short of optimal, as the leaderboard page shows it.
@@ -28,7 +27,7 @@ TEST_CASE("format_percent: nearest at the asked decimals") {
 }
 
 TEST_CASE("clock_str: the total rounds to whole ms before it splits") {
-    // Half a millisecond before the minute used to read 0:60.000.
+    // 0.4 ms before the minute rounds up to the minute, never to 0:60.000.
     CHECK(clock_str(59999.6) == "1:00.000");
     // The values "build_time_box: timestamp, measure, tempo" pins through the
     // time box.

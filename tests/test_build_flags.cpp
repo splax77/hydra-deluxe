@@ -46,8 +46,8 @@ std::string stored_pdb_path() {
 // file name, which a debugger, the ASan symbolizer and the coverage tool look
 // for beside the exe. Given as the linker's %_PDB%, the Visual Studio
 // generator mangled it to "%%%hydra_tests.pdb%%%" (CMake issue 15865). Debug
-// builds keep the full path, and the coverage tool rewrites the name to the
-// full path of its own hydra_tests.instr.pdb, so neither has anything to check.
+// builds keep the full path, and the coverage tool rewrites the name, so
+// neither has anything to check.
 TEST_CASE("a Release exe stores its .pdb's bare file name") {
 #if defined(NDEBUG) && !defined(HYDRA_COVERAGE)
     CHECK(stored_pdb_path() == "hydra_tests.pdb");

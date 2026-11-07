@@ -365,7 +365,7 @@ TEST_CASE("settings: a # after a value is a comment") {
     CHECK(hard.chartmode_key().rfind("Hard ", 0) == 0);
     CHECK(load_ini_text("hash2", "depth_value=7 # seven\n").depth_value == 7);
     // A folder path is free text: a # inside it is part of the folder's
-    // name, as it always was, so a library folder never changes on load.
+    // name, so a library folder never changes on load.
     CHECK(load_ini_text("hash3", "chartfolder=C:\\Songs\\#1 Hits\n").chartfolders ==
           std::vector<std::string>{"C:\\Songs\\#1 Hits"});
 }
@@ -667,8 +667,8 @@ TEST_CASE("each retired settings key loads silently and is never written back") 
     }
 }
 
-// Every settings file Hydra wrote since the hit window was added holds this
-// line (D270 call 7, D276), so it is named here and not left to the list loop.
+// An older settings file holds this line (D270 call 7, D276), so it is named
+// here and not left to the list loop.
 TEST_CASE("hit_window_ms in an older file is skipped, whatever it says, and dropped on save") {
     for (const char* value : {"85", "85.5", "banana"}) {
         CAPTURE(value);
@@ -741,8 +741,8 @@ TEST_CASE("sp_cap: 0 reads 1, auto and junk refuse, pre-1.6 keys are skipped") {
     CHECK(Settings::load_file(path).sp_cap == 64);
     CHECK(Settings::load_file(path).cap_query().exact == 64);
 
-    // Hydra 1.8.4 wrote "auto" for Auto, which is gone; old versions get no
-    // support (D270 call 6), so it refuses like any junk.
+    // "auto" is not a whole number and old versions get no support (D270
+    // call 6), so it refuses like any junk.
     std::remove(path.c_str());
     CHECK_THROWS_AS(load_ini_text("spcap_auto", "sp_cap=auto\n"), hydra::app::SettingsFileError);
     CHECK_THROWS_AS(load_ini_text("spcap_junk", "sp_cap=banana\n"),
@@ -750,8 +750,8 @@ TEST_CASE("sp_cap: 0 reads 1, auto and junk refuse, pre-1.6 keys are skipped") {
     // 0 lands on the 1-bar floor (D270 call 1).
     CHECK(load_ini_text("spcap_zero", "sp_cap=0\n").sp_cap == 1);
 
-    // The old Uncapped-edition keys, which the main app also used to write as
-    // "off, 8", are retired: skipped, so they never turn a file into 8 bars.
+    // The retired sp_cap_enabled and sp_cap_value keys are skipped, so they
+    // never turn a file into 8 bars.
     CHECK(load_ini_text("spcap_old", "sp_cap_enabled=0\nsp_cap_value=8\n").sp_cap == 4);
 }
 
@@ -806,8 +806,7 @@ TEST_CASE("save_file replaces the settings file through a temp and a rename") {
     std::remove(path.c_str());
 }
 
-// The settings file keeps Windows CRLF line ends, the shape it had before it
-// went through write_file_replacing (D114 item 28).
+// The settings file keeps Windows CRLF line ends (D114 item 28).
 TEST_CASE("save_file writes CRLF line ends and no bare LF") {
     const std::string path = testtemp::temp_path("settings_crlf", ".ini");
     Settings s;
