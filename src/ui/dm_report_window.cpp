@@ -16,31 +16,21 @@
 
 namespace hydra::ui {
 
+// Everything the window keeps between frames. A new result starts it fresh.
+struct DmWindow : report_frame::WindowState<app::dm_report::GeneratedDmReport,
+                                           app::dm_report::DmReportRow,
+                                           app::dm_report_view::StatusChoice> {
+    int status = app::report_view::kEveryRowChoice;
+};
+
+std::shared_ptr<DmWindow> new_dm_window() { return std::make_shared<DmWindow>(); }
+
 namespace {
 
 using app::dm_report::DmReportRow;
 using app::dm_report::GeneratedDmReport;
 using app::report_view::TableView;
 namespace view_rules = app::dm_report_view;
-
-// Everything the window keeps between frames. A new result starts it fresh.
-struct DmWindow {
-    std::weak_ptr<const GeneratedDmReport> built_from;
-    std::unique_ptr<TableView<DmReportRow>> view;
-    // The view's rows measured for the column-width rule; goes with them.
-    MeasuredWidths widths;
-    std::vector<view_rules::StatusChoice> choices;
-    std::vector<std::string> labels;
-    int status = app::report_view::kEveryRowChoice;
-    std::vector<app::report::Tile> tiles;
-    bool tiles_dirty = true;
-    report_frame::Memory memory;
-};
-
-DmWindow& dm_window() {
-    static DmWindow w;
-    return w;
-}
 
 // The controls' choices, handed to the view.
 void apply_filters(DmWindow& w) {
@@ -115,8 +105,7 @@ void draw_body(DmWindow& w, const report_frame::Frame& frame, const DmReportInpu
 
 }  // namespace
 
-void draw_dm_report_window(bool* open, const DmReportInput& input) {
-    DmWindow& w = dm_window();
+void draw_dm_report_window(bool* open, const DmReportInput& input, DmWindow& w) {
     if (!*open) {
         w.memory.was_open = false;
         // The view keeps its whole result alive (shared_rows), so a result
