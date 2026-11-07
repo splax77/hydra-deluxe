@@ -16,9 +16,9 @@
 // frontend_transfer_scales() for the engine's copy-out stamp, read from the
 // stored SP-end steps, so a record's stored ratios and a live recompute
 // agree. The details display also reads is_scaled, kScaleIdentityDigits and
-// nominal_budget_ms. The report and Backend timings rows use the timing tiers.
-// Every other function below is internal, declared only so its own tests can
-// reach it directly. Production code outside this module should not call one.
+// nominal_budget_ms; the report and Backend rows read the timing tiers
+// (timing_tiers, tier_for, beyond_tier, none_tier, beyond_edge_ms). Every
+// other function below is internal, declared only so its own tests can reach.
 
 #ifndef HYDRA_CORE_SQUEEZE_RATING_H
 #define HYDRA_CORE_SQUEEZE_RATING_H
