@@ -19,7 +19,7 @@
         "return {to_multiplier(combo + 1), to_multiplier(combo + note_count)};",
         "const int combo_multiplier = to_multiplier(combo);"
       ],
-      "note": "MultSqueeze::applies compared the first and last notes' multipliers itself before D115; category_scores reads the same two ends from multiplier_step. The owner compares the two ends multiplier_step returns, so it has no line of this shape to list. Which notes of a chord sit past the step (squeeze_advice) is a different question and passes."
+      "note": "MultSqueeze::applies calls the owner; category_scores reads the same two ends from multiplier_step. The owner compares the two ends multiplier_step returns, so it has no line of this shape to list. Which notes of a chord sit past the step (squeeze_advice) is a different question and passes."
     }
   ]
 }

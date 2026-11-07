@@ -6,7 +6,7 @@
       "owner_file": "src/parse/section_names.cpp",
       "owner_symbol": "section_display_name",
       "date": "2026-10-14",
-      "decision": "D115 (plan part B2, task B2-3)",
+      "decision": "D115 (plan part B2, task B2-3: docs/superpowers/plans/2026-10-12-one-record-per-chart/part-B2-timing.md (removed; git show 444631e6:docs/superpowers/plans/2026-10-12-one-record-per-chart/part-B2-timing.md))",
       "added_by": "D115-B2-3",
       "pattern": "rfind\\(\"(section |prc_)\"|\\.substr\\((4|8)\\)",
       "must_match": [
@@ -43,7 +43,7 @@
           "why": "word.substr(8) skips a search word's own prefix, not a section prefix"
         }
       ],
-      "note": "Testing a text event for a section prefix, or cutting the prefix off by its length. The .mid and .chart readers each did both in song.cpp's section_name_of before D115; section_display_name now strips the prefix, looks the name up in Clone Hero's list and spells a miss with spaces, and section_name_of only calls it."
+      "note": "Testing a text event for a section prefix, or cutting the prefix off by its length. section_display_name strips the prefix, looks the name up in Clone Hero's list and spells a miss with spaces. The .mid and .chart readers both go through song.cpp's section_name_of, which calls is_section_marker and then section_display_name."
     },
     {
       "question": "Where does a generated fill start, and which chord takes it?",
@@ -51,7 +51,7 @@
       "owner_file": "src/core/song.cpp",
       "owner_symbol": "Song::check_activations",
       "date": "2026-10-14",
-      "decision": "D115 (plan part B2, task B2-3)",
+      "decision": "D115 (plan part B2, task B2-3: docs/superpowers/plans/2026-10-12-one-record-per-chart/part-B2-timing.md (removed; git show 444631e6:docs/superpowers/plans/2026-10-12-one-record-per-chart/part-B2-timing.md))",
       "added_by": "D115-B2-3",
       "pattern": "(\\.|->)fill_(max_distance_beats|cooldown_measures)\\b",
       "anchor": "fill_",
@@ -88,7 +88,7 @@
           "why": "Song::place_fills_ch10, the Clone Hero 1.0 generator check_activations chooses: how far from a downbeat a chord may sit, with no extra tick"
         }
       ],
-      "note": "Reading either generated-fill rule from a Rules value. Song::check_activations places every generated fill from the measure lines, as Clone Hero's generator does; rules_fields in src/core/rules.cpp names the fields through member pointers, which is loading them, not placing fills. Since D115 TJ-1 check_activations chooses between two generators in core/song.cpp, Clone Hero 1.1's (place_fills_ch11) and 1.0's (place_fills_ch10), and each reads the two fields."
+      "note": "Reading either generated-fill rule from a Rules value. Song::check_activations places every generated fill from the measure lines, as Clone Hero's generator does; rules_fields in src/core/rules.cpp names the fields through member pointers, which is loading them, not placing fills. check_activations chooses between two generators in core/song.cpp, Clone Hero 1.1's (place_fills_ch11) and 1.0's (place_fills_ch10), and each reads the two fields."
     },
     {
       "question": "Which game version's generator places a chart's own fills?",

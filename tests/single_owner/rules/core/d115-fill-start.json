@@ -31,7 +31,7 @@
         "src",
         "tools"
       ],
-      "note": "A fill's start is its chord's tick minus the stored length. The Preview, the search's fill deadline and hydra_replay each wrote that subtraction. Setting the length (the parser's apply_fill_end, which subtracts the other way round) is a different question and passes. The legacy deadline's pad line adds the length to a float before subtracting it from the end; it is left in the 1.0 port's own order (ADR 0010)."
+      "note": "A fill's start is its chord's tick minus the stored length. The Preview, the search's fill deadline and hydra_replay each call the owner for it. Setting the length (the parser's apply_fill_end, which subtracts the other way round) is a different question and passes. The legacy deadline's pad line adds the length to a float before subtracting it from the end; it is left in the 1.0 port's own order (ADR 0010)."
     }
   ]
 }

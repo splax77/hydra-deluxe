@@ -19,7 +19,7 @@
         "return hex_lower(digest, sizeof(digest));",
         "constexpr const char* kId = \"0123456789abcdef0123456789abcdef\";"
       ],
-      "note": "The chart id and the update file's SHA-256 each had their own digit table and loop. Any code that turns bytes into hex calls hex_lower."
+      "note": "The chart id and the update file's SHA-256 are both written by hex_lower. Any code that turns bytes into hex calls hex_lower."
     }
   ]
 }

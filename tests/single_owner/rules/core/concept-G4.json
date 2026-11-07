@@ -21,7 +21,7 @@
       "scope": [
         "src"
       ],
-      "note": "The old name came back. \"Free\" is not a word on screen any more (the Rating cell reads the report's timing tiers), so the squeeze's own test is named for what it asks."
+      "note": "A squeeze test named is_free. \"Free\" is not a word on screen (the Rating cell reads the report's timing tiers), so the squeeze's own test is named for what it asks."
     },
     {
       "question": "Where does this activation's Star Power end (its deactivation tick)?",

@@ -64,7 +64,7 @@
         "src/app/preview_view.h",
         "src/app/preview_view.cpp"
       ],
-      "note": "Was part of the same walker: the Preview's time box reads Song's default meter and keeps no 4/4 of its own. Scoped to its two files."
+      "note": "The Preview's time box reads Song's default meter and keeps no 4/4 of its own. Scoped to its two files."
     },
     {
       "question": "Which tags does Hydra strip from a song name?",
@@ -99,7 +99,7 @@
           "why": "strip_rich_tags' tag table, the owner"
         }
       ],
-      "note": "---- one cleaned song title (phase 3 task O3a) ---- Clone Hero's rich-text tags spelled as text: a tag in angle brackets at the start of a string, a tag name kept in a named constant, or a row of a tag table. Config keys that happen to be called \"color\" or \"size\" are not flagged."
+      "note": "---- one cleaned song title ---- Clone Hero's rich-text tags spelled as text: a tag in angle brackets at the start of a string, a tag name kept in a named constant, or a row of a tag table. Config keys that happen to be called \"color\" or \"size\" are not flagged."
     },
     {
       "question": "Which charter text does a screen show?",
@@ -241,7 +241,7 @@
       "scope": [
         "src/parse/song.cpp"
       ],
-      "note": "A drum-track pitch typed as a bare case label, or the old note-off gate's bare comparison. The marker table names each pitch once and has no case label, so after the fold nothing in song.cpp matches and no owner line is listed."
+      "note": "A drum-track pitch typed as a bare case label, or a note-off gate's bare comparison. The marker table names each pitch once and has no case label, so nothing in song.cpp matches and no owner line is listed."
     },
     {
       "question": "Where does a solo section start and end?",
@@ -265,7 +265,7 @@
       "scope": [
         "src"
       ],
-      "note": "Whether a solo run ends here, read off the next timestamp's flag. The Preview's span join walks the flags without looking ahead, so no one-line pattern tells it apart from any other solo check; J3-4 repoints it."
+      "note": "Whether a solo run ends here, read off the next timestamp's flag. The Preview's solo spans and the replay read Song::solo_sections instead."
     },
     {
       "question": "Which chart format is a test file? (tests)",
@@ -393,7 +393,7 @@
           "why": "Song::note_count"
         }
       ],
-      "note": "The chart's note total: chord note counts added up, or a note total added to as a running sum. A running combo is the row above's question, so it is left out here. Tests stay out of scope: they build records by changing a stored notecount on purpose."
+      "note": "The chart's note total: chord note counts added up, or a note total added to as a running sum. A running combo is the question of core.json's row \"What is the combo after a chord?\", so it is left out here. Tests stay out of scope: they build records by changing a stored notecount on purpose."
     },
     {
       "question": "Where does a solo section start and end? (the scene's join)",
