@@ -27,7 +27,7 @@ Every block carries exactly one of these four labels, and the evidence the label
 
 ## What a block may cite
 
-A block's `Evidence:` and `Found:` lines cite only permanent records. Those are files in the repo (a listing under `code/`, a file under `docs/audit/` or `tools/`, Hydra's code, the decision log, an ADR, a session card under `docs/sessions/`), and the game's own files and dumps. They never cite an agent's working notes, such as a claim table an agent kept while it worked, or any file in a session's temporary folder. Those are gone once the session ends, so a reader cannot follow the pointer.
+A block's `Evidence:` and `Found:` lines cite only permanent records. Those are files in the repo (a listing under `code/`, a file under `docs/audit/` or `tools/`, Hydra's code, the decision log, an ADR, a session card under `docs/sessions/`), the game's own files and dumps, Ghidra's decompile of the game (`ghidra_decompile_all.txt`, which `code/README.md` describes), run results under `hydra-data`, and `video-tools`. A video is cited by its title and YouTube id, not a path. A block never cites an agent's working notes, such as a claim table an agent kept while it worked, or any file in a scratch folder, such as a session's temporary folder. Those are gone once the session ends, so a reader cannot follow the pointer.
 
 A session's transcript is not a source either, condensed or not. The user ruled that transcripts "arent kept long term. they shouldnt be expected as a reference". A session card is cited as `docs/sessions/<date>-<id8>.md`. When a fact came from a session but its card does not hold it, the block says the session's own record is not kept, and words the fact no more firmly than that allows.
 

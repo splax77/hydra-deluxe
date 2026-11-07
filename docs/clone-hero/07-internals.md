@@ -4,7 +4,7 @@ This page covers the game's classes and fields that the tools read, the per-note
 It describes build 1.1 (v1.1.0.6142), and says where 1.0 (v1.0.0.4045) differs.
 Last write-back: 2026-11-06.
 
-Most rows here are about the game's own layout, which no Hydra rule reads. Their Ruling line says so. The rules these fields feed (timing, Star Power, scoring) live on pages 03, 05 and 06. Paths that start `RUNS` mean `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-10-28\`; `GD` means Ghidra's full decompile `ghidra_decompile_all.txt`, which `code/README.md` describes (it is not in the repo); `dump.cs` is `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-dumps\6142\dump.cs`; `overlay-spike` means `tools/ch_probe/experiments/results/overlay-spike/`, whose result files are untracked today.
+Most rows here are about the game's own layout, which no Hydra rule reads. Their Ruling line says so. The rules these fields feed (timing, Star Power, scoring) live on pages 03, 05 and 06. Paths that start `RUNS` mean `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-10-28\`; `GD` means Ghidra's full decompile `ghidra_decompile_all.txt`, which `code/README.md` describes (it is not in the repo); `dump.cs` is `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-dumps\6142\dump.cs`; `overlay-spike` means `tools/ch_probe/experiments/results/overlay-spike/`, whose result files are in the repo.
 
 ## The game manager
 
@@ -444,9 +444,9 @@ Found: 2026-10-28, feasibility study lines 31 and 119.
 
 ### IN-38 A stats writer names the "is_bot" key in code
 
-Rule: The "is_bot" key is written by code, not by a serializer reading a field name. A JSON stats writer passes the "is_bot" string to the JSON writer's bool call, with the bool from its record's +0xB6. The profile constructor uses the same string to name its "is_bot" setting (IN-65). An earlier scan that found no reference to the string was wrong.
+Rule: The "is_bot" key is written by code, not by a serializer reading a field name. A JSON stats writer passes the "is_bot" string to the JSON writer's bool call, with the bool from its record's +0xB6. The profile constructor uses the same string to name its "is_bot" setting (IN-65).
 Label: Proven in the game's code
-Evidence: read with tools/ch_mcp/chdis.py on 2026-10-31 in `0x1144C0` (`dump.cs` line 30475, a method of class #561 taking a `Utf8JsonWriter`); its listing is `code/6142/score_submit.asm` (lines 101 and 407 to 410). At 0x114703 the method's one-time set-up loads the "is_bot" string slot (`lea rcx, [rip + 0x3ba677e]`, the slot at 0x3CBAE88). At 0x114CC9 it loads the same slot as the property name (`mov rdx, qword ptr [rip + 0x3ba61b8]`), after reading the value byte at 0x114CC1 (`movzx r8d, byte ptr [r14 + 0xb6]`), and calls the JSON writer's WriteBoolean at 0x114CD3; the keys around it are "is_fc", "versus_winner" and "is_pfc". The profile constructor loads the same slot at 0x2123CE3. The writer's text goes into `scorestats.json` (IN-72). The earlier scan's script and output were not kept.
+Evidence: read with tools/ch_mcp/chdis.py on 2026-10-31 in `0x1144C0` (`dump.cs` line 30475, a method of class #561 taking a `Utf8JsonWriter`); its listing is `code/6142/score_submit.asm` (lines 101 and 407 to 410). At 0x114703 the method's one-time set-up loads the "is_bot" string slot (`lea rcx, [rip + 0x3ba677e]`, the slot at 0x3CBAE88). At 0x114CC9 it loads the same slot as the property name (`mov rdx, qword ptr [rip + 0x3ba61b8]`), after reading the value byte at 0x114CC1 (`movzx r8d, byte ptr [r14 + 0xb6]`), and calls the JSON writer's WriteBoolean at 0x114CD3; the keys around it are "is_fc", "versus_winner" and "is_pfc". The profile constructor loads the same slot at 0x2123CE3. The writer's text goes into `scorestats.json` (IN-72).
 Game code (6142): stats writer RVA `0x1144C0`; profile constructor RVA `0x2123890`.
 Hydra: no owner.
 Ruling: none needed: no Hydra rule reads it.
