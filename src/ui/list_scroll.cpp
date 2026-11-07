@@ -9,6 +9,8 @@ namespace hydra::ui {
 // window, never the pane or report window around it.
 const int kNearestEdgeScrollFlags = ImGuiScrollFlags_KeepVisibleEdgeY | ImGuiScrollFlags_NoScrollParent;
 
+// The answers named below are the user's, in
+// docs/superpowers/plans/2026-10-14-column-shares-scroll-left-align.md (removed; git show d6666440:docs/superpowers/plans/2026-10-14-column-shares-scroll-left-align.md).
 ScrollTo selection_scroll(SelectionSource source) {
     switch (source) {
         case SelectionSource::Click:

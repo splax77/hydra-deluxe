@@ -177,11 +177,10 @@ int main()
     // An explicit taskbar identity, so pins survive a reinstall to a new path.
     ::SetCurrentProcessExplicitAppUserModelID(hydra::kAppUserModelIDW);
 
-    // App icon, embedded in the exe by src/app/hydra.rc. The pinned-taskbar /
+    // App icon, embedded in the exe by src/ui/hydra.rc. The pinned-taskbar /
     // Explorer icon comes straight from that PE resource; these runtime loads
-    // cover the window class and the live window (WM_SETICON below), and
-    // unlike the old cwd-relative resource/icon_app.ico file load they work
-    // from any working directory.
+    // cover the window class and the live window (WM_SETICON below), and they
+    // work from any working directory.
     HINSTANCE hInstance = ::GetModuleHandleW(nullptr);
     HICON hIconLarge = (HICON)::LoadImageW(hInstance, MAKEINTRESOURCEW(IDI_APPICON),
                                            IMAGE_ICON, 32, 32, 0);
@@ -207,7 +206,7 @@ int main()
     hydra::ui::setup_imgui(imgui_options);
 
     // Reopen where the user left it, unless that spot is on no monitor now
-    // (a monitor was unplugged or rearranged). Otherwise the old default.
+    // (a monitor was unplugged or rearranged). Otherwise the default rectangle.
     const hydra::ui::WindowPlacement saved = hydra::ui::window_placement();
     const bool use_saved =
         saved.valid && hydra::ui::placement_on_screen(saved.normal, monitor_work_areas());
@@ -226,12 +225,10 @@ int main()
     if (!startup.create_device())
         return 1;
 
-    // Song-info icons (record/star/pencil/hash), matching hydra_app.py's
-    // dpg.add_static_texture loads. Best-effort: see icons.h.
+    // Song-info icons (record/star/pencil/hash). Best-effort: see icons.h.
     hydra::ui::load_icons(g_window.device);
 
-    // Window icon, matching dpg.create_viewport's small_icon/large_icon
-    // (loaded from the embedded resource above).
+    // Window icon (loaded from the embedded resource above).
     if (hIconSmall) ::SendMessageW(hwnd, WM_SETICON, ICON_SMALL, (LPARAM)hIconSmall);
     if (hIconLarge) ::SendMessageW(hwnd, WM_SETICON, ICON_BIG, (LPARAM)hIconLarge);
 

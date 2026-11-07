@@ -20,8 +20,7 @@ namespace {
 
 // Each step's share of the loading bar, from timing every step on the
 // blink-182 Discography chart (the stress case: a 625 MB, 8.6-hour
-// song.opus) with a scratch harness on 2026-10-03, measured under load with
-// the file already in the OS cache:
+// song.opus), measured under load with the file already in the OS cache:
 //   read + parse notes.mid  55 ms
 //   open both stems        569 ms  (the Opus page index is nearly all of it)
 //   build the scene         31 ms

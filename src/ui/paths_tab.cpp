@@ -7,6 +7,9 @@
 // Text is drawn with ImGui's Text calls, not the draw list, so hydra_uitest's
 // visible_text sees it. Rows are a full-width Selectable with the text laid
 // over it; only decoration (arrows, circles, the timeline) uses the draw list.
+//
+// The answers named below are the user's, in
+// docs/superpowers/plans/2026-10-14-column-shares-scroll-left-align.md (removed; git show d6666440:docs/superpowers/plans/2026-10-14-column-shares-scroll-left-align.md).
 
 #include "ui/details_parts.h"
 
@@ -122,7 +125,7 @@ bool path_button(size_t i, const app::PathButtonView& b, bool selected) {
 // One score's fold: the score (gold on the optimal one) and, beside it, how
 // many paths share it. Open by default. The id is the score, so a closed fold
 // stays closed when its song is opened again, and another song's folds start
-// open (D101).
+// open unless they share a closed score (D101).
 bool score_fold(const app::PathButtonView& b) {
     const bool optimal = b.group == app::PathButtonView::Group::Optimal;
     const std::string label = b.fold + "##fold";
@@ -384,7 +387,7 @@ std::vector<float> backend_rating_heights(const app::ActivationRowView& a,
     return heights;
 }
 
-// The backend rows of one activation, in the columns the old table had.
+// The backend rows of one activation, in backend_column_specs' columns.
 void render_backend_table(const app::ActivationRowView& a) {
     // What the backend limit hid, as build_activations words it.
     const auto hidden_line = [&a] {
