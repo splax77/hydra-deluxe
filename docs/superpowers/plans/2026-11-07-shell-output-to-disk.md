@@ -1,6 +1,8 @@
 # Shell output to disk: shorter shell results, and failed builds that keep their end
 
-Task SO-PLAN, session 6758ee5e, planned 2026-11-07. The change lives in the hooks repo, `C:\Users\Patrick\.claude`. Build nothing from this plan until the user says yes to it and answers the questions.
+Task SO-PLAN, session 6758ee5e, planned 2026-11-07. The change lives in the hooks repo, `C:\Users\Patrick\.claude`.
+
+User decisions: on 2026-11-07 the user approved this plan and answered all ten questions with "go with recs". So every recommended value under `## Questions` is the user's decision. Question 7's display change is accepted, and for question 8, part 2 stops and part 1 goes ahead if auto mode denies the rewrite.
 
 ## The plain version
 
