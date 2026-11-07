@@ -804,8 +804,8 @@ TEST_CASE("is_frontend_decided: squeezed out, or not counted without a squeeze")
 }
 
 // The engine counts a plain row less than the leeway past the SP end, so it
-// is not a squeeze the frontend decides. The rating, the late-row warn and
-// the overfill flag all use that same edge (D274 user decision 7).
+// is not a squeeze the frontend decides. The rating's early or late side and
+// the overfill flag both use that same edge (D274 user decision 7).
 TEST_CASE("rate_activation: a plain row inside the leeway is not a frontend squeeze") {
     Activation act;
     test::set_skips(act, 0);
