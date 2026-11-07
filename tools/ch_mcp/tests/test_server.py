@@ -219,6 +219,22 @@ class ServerTest(unittest.TestCase):
         self.assertEqual(seen, [("s.json", None, None, None, None, None, 0),
                                 ("s.json", None, None, None, "kick_only", "d.json", 2)])
 
+    def test_ch_sp_compare_passes_the_dump_arguments_through(self):
+        schema = self._schema("ch_sp_compare")
+        self.assertEqual(schema["dump_json"]["default"], None)
+        self.assertEqual(schema["path_index"]["default"], 0)
+        seen = []
+        self.helper.sp.ch_sp_compare = lambda *a: seen.append(a) or "compared"
+        server = S.build_server(self.helper)
+        asyncio.run(server.call_tool("ch_sp_compare", {"watch_csv": "w.csv",
+                                                       "score_json": "s.json"}))
+        asyncio.run(server.call_tool("ch_sp_compare", {
+            "watch_csv": "w.csv", "score_json": "s.json", "dump_json": "d.json",
+            "path_index": 2}))
+        width = schema["width"]["default"]
+        self.assertEqual(seen, [("w.csv", "s.json", None, None, width, None, 0),
+                                ("w.csv", "s.json", None, None, width, "d.json", 2)])
+
     def test_ch_start_human_with_no_song_folder_is_refused_before_any_launch(self):
         result = asyncio.run(S.build_server(self.helper).call_tool("ch_start", {"human": True}))
         self.assertEqual(result.content[0].text, bot_run.HUMAN_NEEDS_SONG)
