@@ -584,6 +584,19 @@ class DynamicsTest(unittest.TestCase):
             self._live_play(_load_dump(_DYNAMICS_DUMP), 0)
         self.assertIn("OFF_DYN_THRESHOLD", str(caught.exception))
 
+    def test_the_keys_route_reads_no_threshold_even_for_a_ghost_chart(self):
+        from unittest import mock
+        _ThresholdEngine.threshold = 0
+        proc, out = _FakeProc(), io.StringIO()
+        with mock.patch.object(play_chart, "EngineModel", _ThresholdEngine),                 mock.patch.object(play_chart, "play_chords",
+                                  lambda *a, **k: play_chart.RunResult(stop="done")),                 mock.patch.object(play_chart, "find_game_window", lambda: 0),                 mock.patch.object(play_chart, "InputDriver", lambda: object()):
+            result = play_chart.live_play(
+                _load_dump(_DYNAMICS_DUMP), open_proc=lambda **kw: proc,
+                find_engine=lambda _proc: 0x1000, out=out)
+        self.assertEqual(result.stop, "done")
+        self.assertEqual(_ThresholdEngine.reads, 0)
+        self.assertIsNone(result.dyn_threshold)
+
     def test_a_chart_with_no_ghost_never_reads_the_threshold(self):
         result, seen, text = self._live_play(_load(play_chart.load_dump_chords), 0)
         self.assertEqual(result.stop, "done")

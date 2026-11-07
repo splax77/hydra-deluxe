@@ -349,8 +349,8 @@ def live_play(chords: Sequence[Chord], *,
     InputDriver when None) to the game window. When no song starts
     inside the finder's cap, the result's `stop` is STOP_NO_ENGINE and its
     `message` is the finder's. with_axes works out each gem's strength once
-    the engine is found, and raises its ValueError before any press when no
-    ghost strength is possible. `on_press`, `should_stop` and `cap_s` go to
+    the engine is found, on the press route only, and raises its ValueError
+    before any press when no ghost strength is possible. `on_press`, `should_stop` and `cap_s` go to
     play_chords. `open_proc` and `find_engine` stand in for open_process and
     the capped finder in tests. With no `find_engine` the real search runs
     and its progress dots go to `out`, so a caller that gives `out` a buffer
@@ -374,7 +374,10 @@ def live_play(chords: Sequence[Chord], *,
         engine.use_object(engine_ptr)
         print(f"  Engine at {engine_ptr:#x}, song clock = {engine.song_clock():.2f}s",
               file=out)
-        chords, threshold = with_axes(chords, engine)
+        # A key has no strength, so the keys route reads no threshold.
+        threshold = None
+        if press is not None:
+            chords, threshold = with_axes(chords, engine)
         if threshold is not None:
             print(f"  Dynamics threshold: {threshold}", file=out)
 

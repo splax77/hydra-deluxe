@@ -780,7 +780,7 @@ class KitTools:
                 return "no kit agent attached; nothing to tear down"
             return self._reply(self._teardown_and_detach())
 
-    def kit_press(self) -> Optional[Callable[[Sequence[int]], dict]]:
+    def kit_press(self) -> Optional[Callable[..., dict]]:
         """The auto-player's kit press, or None when the kit is not set up."""
         with self._lock:
             agent = self._ready_agent()
