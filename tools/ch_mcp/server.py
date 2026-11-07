@@ -25,7 +25,7 @@ import atexit
 import os
 import sys
 import threading
-from typing import Optional
+from typing import List, Optional
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.abspath(os.path.join(_HERE, "..", ".."))
@@ -92,6 +92,28 @@ class Helper:
     def ch_status(self) -> str:
         with self.lock:
             return "\n".join([self.game.ch_status()] + self.frida.status_lines())
+
+    def open_items(self) -> List[str]:
+        """One line per thing a restart of this process would lose (the reload
+        plan's design point 2). The Frida, kit, Star Power and method-watch
+        tools have no call that answers this for every case, so their fields
+        are read here, the same fields their stop hooks read."""
+        with self.lock:
+            lines = self.game.open_lines()
+            if self.frida.is_attached():
+                lines.append("frida: state agent attached")
+            if self.kit._agent is not None:
+                lines.append("kit: kit agent attached")
+            watch = self.sp._watch
+            if watch is not None and watch.running():
+                lines.append("star power watch: running")
+            session = self.method_watch._session
+            if session is not None and not session.ended():
+                lines.append("method watch: running")
+            trace = self.frida._trace
+            if trace is not None and not trace.ended():
+                lines.append("trace: running")
+            return lines
 
     def shutdown(self) -> str:
         """Question 3 of the plan, through GameTools.shutdown: its stop hooks
@@ -165,6 +187,14 @@ def build_server(helper: Optional[Helper] = None):
         the launch agent's patch status, ending with the line "loader ran
         after patch:" and yes, no or not yet."""
         return capped(h.ch_status())
+
+    @server.tool()
+    def ch_open_items() -> str:
+        """What the server holds open, one line each: the run and its backup
+        folder, an adopted backup, the Frida state agent, the kit, and a
+        running play session, Star Power watch, method watch or trace. With
+        none of them it says "nothing open". ch_stop closes them all."""
+        return capped("\n".join(h.open_items()) or "nothing open")
 
     @server.tool()
     def ch_install_chart(chart_folder: str, name: str | None = None) -> str:

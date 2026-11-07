@@ -10,6 +10,7 @@ from __future__ import annotations
 import inspect
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import threading
@@ -40,6 +41,9 @@ from tools.ch_probe.input_driver import DEFAULT_BINDINGS, InputDriver, Lane  # n
 WINDOW = 0x1234
 # How long a test waits on a fake's thread before it fails instead of hanging.
 THREAD_CAP_S = 5.0
+# How long a test waits on a real child process before it fails instead of
+# hanging.
+CHILD_CAP_S = 30.0
 
 ROWS = [
     {"index": 0, "chart_ms": 1000.0, "clock_ms_at_press": 998.0,
@@ -296,7 +300,8 @@ class GameToolsTest(unittest.TestCase):
         self.assertTrue(os.path.isfile(os.path.join(backup, G.BACKUP_MANIFEST)))
         self.assertIsNone(t.tools.launched_at())
         self.assertEqual(t.tools.ensure_backup(), "")
-        self.assertEqual(os.listdir(t.scratch_root), [os.path.basename(t.tools._scratch)])
+        self.assertEqual(sorted(os.listdir(t.scratch_root)),
+                         sorted([os.path.basename(t.tools._scratch), GT.OPEN_RUN_MARKER]))
 
     def test_ensure_backup_takes_none_when_a_run_holds_one(self):
         t = ToolRig(self.tmp)
@@ -1345,6 +1350,396 @@ class HumanStartTest(unittest.TestCase):
         self.assertIsNone(t.tools._run)
         self.assertEqual(t.watches, [])
         t.r.assert_all_restored(self)
+
+
+def next_worker(t: ToolRig, running: bool = False, **tool_args) -> GT.GameTools:
+    """A second GameTools on the same temp root and user folders, the way a
+    fresh worker comes up after `t`'s was killed: `t.tools` is simply never
+    stopped. `running` is what the fake pid test answers for every pid. Both
+    workers share this test's pid, so a later stamp keeps their backups apart."""
+    t.r.env.stamp = lambda: "20261028-101501"
+    return GT.GameTools(t.r.env, threading.RLock(), t.scratch_root, driver=t.driver,
+                        find_window=lambda: t.hwnd, is_pid_running=lambda pid: running,
+                        **tool_args)
+
+
+class MarkerTest(unittest.TestCase):
+    """The open-run marker: a killed worker's way back to the user's files."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = self._tmp.name
+        self.t = ToolRig(self.tmp)
+        self.path = os.path.join(self.t.scratch_root, GT.OPEN_RUN_MARKER)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def assert_marker_names(self, folder):
+        self.assertEqual(GT.read_marker(self.path), (os.getpid(), folder))
+
+    def killed_run(self):
+        """A run left open with every user file changed; returns its backup."""
+        self.t.tools.ch_start(self.t.r.song)
+        for name in ORIGINAL:
+            _write(self.t.r.path(name), b"changed by the game")
+        return self.t.backup_dir()
+
+    # -- writing and deleting -----------------------------------------------------
+
+    def test_the_marker_sits_under_the_scratch_root_and_never_the_real_temp_folder(self):
+        self.assertEqual(self.t.tools._marker_path(), self.path)
+
+    def test_ch_start_names_the_pid_and_folder_and_ch_stop_deletes_the_marker(self):
+        self.t.tools.ch_start(self.t.r.song)
+        self.assert_marker_names(self.t.backup_dir())
+        self.t.tools.ch_stop()
+        self.assertFalse(os.path.exists(self.path))
+
+    def test_the_marker_is_there_before_the_settings_change_and_the_launch(self):
+        seen = []
+
+        def set_setting(path, key, value):
+            seen.append(("setting", GT.read_marker(self.path)))
+
+        t = self.t
+        t.tools._set_setting = set_setting
+        real_launch = t.r.launch
+        t.r.env.launch = lambda cmd: seen.append(("launch", GT.read_marker(self.path))) or real_launch(cmd)
+        t.tools.ch_start(t.r.song)
+        said = (os.getpid(), t.backup_dir())
+        self.assertEqual(seen, [("setting", said), ("launch", said)])
+
+    def test_a_human_start_has_its_marker_before_the_game_starts(self):
+        wire_human(self.t.r, FakeLaunchAgent([]))
+        seen = []
+        fake_start = self.t.r.env.start_process
+
+        def start(cmd):
+            seen.append(GT.read_marker(self.path))
+            return fake_start(cmd)
+
+        self.t.r.env.start_process = start
+        self.t.tools.ch_start(self.t.r.song, human=True)
+        self.assertEqual(seen, [(os.getpid(), self.t.backup_dir())])
+
+    def test_ensure_backup_writes_the_marker_and_shutdown_deletes_it(self):
+        self.t.tools.ensure_backup()
+        self.assert_marker_names(self.t.backup_dir())
+        self.t.tools.shutdown()
+        self.assertFalse(os.path.exists(self.path))
+
+    def test_a_failed_restore_keeps_the_marker_and_the_next_good_one_deletes_it(self):
+        self.t.tools.ch_start(self.t.r.song)
+        backup = self.t.backup_dir()
+
+        def fail(backup_dir, out):
+            raise G.RestoreError("scoredata.bin", "locked")
+
+        with mock.patch.object(G, "restore", fail):
+            self.t.tools.ch_stop()
+        self.assert_marker_names(backup)
+        self.t.tools.ch_stop()
+        self.assertFalse(os.path.exists(self.path))
+
+    def test_a_stop_that_raises_keeps_the_marker(self):
+        self.t.tools.ch_start(self.t.r.song)
+        backup = self.t.backup_dir()
+        with mock.patch.object(B, "finish_run", side_effect=RuntimeError("boom")):
+            self.t.tools.ch_stop()
+        self.assert_marker_names(backup)
+
+    def test_a_second_ch_start_leaves_a_marker_naming_the_new_backup(self):
+        self.t.tools.ch_start(self.t.r.song)
+        first = self.t.backup_dir()
+        self.t.tools.ch_start(self.t.r.song)
+        self.assertNotEqual(self.t.backup_dir(), first)
+        self.assert_marker_names(self.t.backup_dir())
+
+    def test_a_marker_that_cannot_be_deleted_is_named_with_what_it_would_do(self):
+        self.t.tools.ch_start(self.t.r.song)
+        backup = self.t.backup_dir()
+        with mock.patch.object(GT.os, "remove", side_effect=PermissionError("locked")):
+            reply = self.t.tools.ch_stop()
+        self.assertIn(f"open-run marker {self.path} was not deleted (locked); delete it by hand, "
+                      f"or the next worker adopts {backup}, which is already restored",
+                      reply.splitlines())
+
+    def test_a_marker_that_cannot_be_written_is_said_and_the_run_goes_on(self):
+        with mock.patch.object(GT.os, "rename", side_effect=PermissionError("locked")):
+            reply = self.t.tools.ch_start(self.t.r.song)
+        self.assertIn("open-run marker not written (PermissionError: locked)", reply)
+        self.assertIn(B._restore_hint(self.t.backup_dir()), reply)
+        self.assertEqual(os.listdir(self.t.scratch_root), [os.path.basename(self.t.tools._scratch)])
+        self.assertEqual(len(self.t.r.launch.commands), 1)
+
+    # -- a ch_start that fails ----------------------------------------------------
+
+    def test_a_ch_start_that_fails_after_its_backup_leaves_no_marker(self):
+        def boom(cmd):
+            self.assertTrue(os.path.isfile(self.path))
+            raise OSError("no such game")
+
+        self.t.r.env.launch = boom
+        lines = self.t.tools.ch_start(self.t.r.song).splitlines()
+        self.assertEqual(lines[-1], "could not start the game: no such game")
+        self.assertFalse(os.path.exists(self.path))
+        self.assertIsNone(self.t.backup_dir())
+
+    def test_a_failed_human_launch_leaves_no_marker(self):
+        wire_human(self.t.r, FakeLaunchAgent([], statuses=[{"state": "refused"}]))
+        self.t.tools.ch_start(self.t.r.song, human=True)
+        self.assertFalse(os.path.exists(self.path))
+
+    def test_a_song_with_no_length_never_takes_a_backup_or_a_marker(self):
+        with mock.patch.object(B, "song_length_ms", side_effect=B.SongLengthMissing("no length")):
+            self.assertEqual(self.t.tools.ch_start(self.t.r.song), "no length")
+        self.assertFalse(os.path.exists(self.path))
+
+    def test_a_failed_start_whose_restore_fails_keeps_the_marker_for_ch_stop(self):
+        def boom(cmd):
+            _write(self.t.r.path(G.SETTINGS), b"changed before the launch failed")
+            raise OSError("no such game")
+
+        self.t.r.env.launch = boom
+
+        def fail(backup_dir, out):
+            raise G.RestoreError("scoredata.bin", "locked")
+
+        with mock.patch.object(G, "restore", fail):
+            lines = self.t.tools.ch_start(self.t.r.song).splitlines()
+        backup = self.t.backup_dir()
+        self.assertIsNotNone(backup)
+        self.assert_marker_names(backup)
+        self.assertIn(f"the user files may not be back; ch_stop tries again from {backup}", lines)
+        self.assertEqual(lines[-1], "could not start the game: no such game")
+        self.t.tools.ch_stop()
+        self.t.r.assert_all_restored(self)
+        self.assertFalse(os.path.exists(self.path))
+
+    # -- the next worker adopts ---------------------------------------------------
+
+    def test_the_next_worker_adopts_and_ch_stop_restores_and_deletes_the_marker(self):
+        backup = self.killed_run()
+        tools = next_worker(self.t)
+        said = f"a previous worker (pid {os.getpid()}) left a backup open: {backup}; ch_stop restores it"
+        self.assertIn(said, tools.ch_status().splitlines())
+        self.assertIn(said, self.t.r.lines)
+        self.assertEqual(tools.open_lines(), [f"adopted backup: {backup}"])
+        with mock.patch.object(B, "restore_only", wraps=B.restore_only) as restore_only:
+            lines = tools.ch_stop().splitlines()
+        self.assertEqual(restore_only.call_args.args[0], backup)
+        self.assertIn(f"{G.SETTINGS}: restored", lines)
+        self.t.r.assert_all_restored(self)
+        self.assertFalse(self.t.r.game.stopped)
+        self.assertFalse(os.path.exists(self.path))
+        self.assertNotIn(said, tools.ch_status().splitlines())
+        self.assertEqual(tools.open_lines(), [])
+
+    def test_adopting_restores_nothing_until_ch_stop(self):
+        self.killed_run()
+        tools = next_worker(self.t)
+        tools.ch_status()
+        for name in ORIGINAL:
+            self.assertEqual(_read(self.t.r.path(name)), b"changed by the game", name)
+
+    def test_an_adopted_backup_puts_the_registry_key_back(self):
+        self.t.r.env.run_reg = reg = FakeReg()
+        self.t.tools.ch_start(self.t.r.song)
+        reg.text = b"the game changed this"
+        self.assertIn("rewired registry: restored", next_worker(self.t).ch_stop().splitlines())
+        self.assertFalse(os.path.exists(self.path))
+
+    def test_a_ch_start_on_an_adopted_backup_restores_it_first(self):
+        backup = self.killed_run()
+        tools = next_worker(self.t, make_watch=lambda: FakeWatch([]))
+        lines = tools.ch_start(self.t.r.song).splitlines()
+        self.assertEqual(lines[0], "a run was open; stopping it first:")
+        self.assertIn(f"restoring the user files from {backup}", lines)
+        self.assertNotEqual(tools._run.backup_dir, backup)
+        self.assertEqual(GT.read_marker(self.path), (os.getpid(), tools._run.backup_dir))
+
+    def test_an_adopted_restore_that_fails_keeps_the_marker_and_the_adoption(self):
+        backup = self.killed_run()
+        tools = next_worker(self.t)
+
+        def fail(backup_dir, out):
+            raise G.RestoreError("scoredata.bin", "locked")
+
+        with mock.patch.object(G, "restore", fail):
+            lines = tools.ch_stop().splitlines()
+        self.assertIn("restore failed on scoredata.bin: locked", lines)
+        self.assert_marker_names(backup)
+        self.assertEqual(tools._adopted_backup, backup)
+        tools.ch_stop()
+        self.t.r.assert_all_restored(self)
+        self.assertFalse(os.path.exists(self.path))
+
+    def test_a_backup_that_vanishes_after_adoption_fails_the_stop_without_raising(self):
+        backup = self.killed_run()
+        tools = next_worker(self.t)
+        os.remove(os.path.join(backup, G.BACKUP_MANIFEST))
+        reply = tools.ch_stop()
+        self.assertIn("restoring failed: FileNotFoundError", reply)
+        self.assert_marker_names(backup)
+
+    def test_a_folder_with_no_manifest_is_not_adopted_and_the_marker_stays(self):
+        backup = self.killed_run()
+        os.remove(os.path.join(backup, G.BACKUP_MANIFEST))
+        tools = next_worker(self.t)
+        self.assertIsNone(tools._adopted_backup)
+        self.assertIn(f"holds no {G.BACKUP_MANIFEST}", tools.ch_status())
+        self.assertIn("nothing to restore", tools.ch_stop())
+        self.assert_marker_names(backup)
+
+    # -- a marker whose pid still runs --------------------------------------------
+
+    def test_a_running_pid_is_not_adopted_and_the_line_gives_the_by_hand_restore(self):
+        backup = self.killed_run()
+        tools = next_worker(self.t, running=True)
+        self.assertIsNone(tools._adopted_backup)
+        status = tools.ch_status()
+        self.assertIn(f"process {os.getpid()} was running", status)
+        self.assertIn(backup, status)
+        self.assertIn(f'py tools/ch_mcp/bot_run.py --restore "{backup}"', status)
+        self.assertIn(self.path, status)
+        self.assertEqual(tools.open_lines(), [])
+
+    def test_a_worker_that_adopted_nothing_never_deletes_anothers_marker(self):
+        backup = self.killed_run()
+        tools = next_worker(self.t, running=True)
+        self.assertIn("nothing to restore", tools.ch_stop())
+        self.assertIn("nothing to restore", tools.shutdown())
+        self.assert_marker_names(backup)
+        self.assertEqual(_read(self.t.r.path(G.SETTINGS)), b"changed by the game")
+
+    def test_a_second_workers_run_leaves_the_first_workers_marker_alone(self):
+        backup = self.killed_run()
+        tools = next_worker(self.t, running=True, make_watch=lambda: FakeWatch([]))
+        reply = tools.ch_start(self.t.r.song)
+        self.assertIn("open-run marker not written (FileExistsError", reply)
+        self.assert_marker_names(backup)
+        tools.ch_stop()
+        self.assert_marker_names(backup)
+        self.assertEqual([n for n in os.listdir(self.t.scratch_root) if n.endswith(".tmp")], [])
+
+    # -- a marker whose folder is gone --------------------------------------------
+
+    def test_a_gone_folder_deletes_the_marker_and_ch_stop_has_nothing_to_restore(self):
+        for running in (False, True):
+            with self.subTest(running=running):
+                gone = os.path.join(self.tmp, "gone")
+                os.makedirs(self.t.scratch_root, exist_ok=True)
+                _write(self.path, json.dumps({"pid": 77, "folder": gone}).encode())
+                tools = next_worker(self.t, running=running)
+                self.assertFalse(os.path.exists(self.path))
+                self.assertIsNone(tools._adopted_backup)
+                self.assertIn(f"a previous worker (pid 77) left a marker for a backup that is "
+                              f"gone: {gone}; the marker was deleted",
+                              tools.ch_status().splitlines())
+                self.assertIn("nothing to restore", tools.ch_stop())
+
+    # -- a marker that cannot be read ---------------------------------------------
+
+    def test_an_unreadable_marker_starts_the_worker_and_stays_byte_for_byte(self):
+        cases = {"garbage": b"{not json", "empty": b"", "not utf-8": b"\xff\xfe\x00",
+                 "a list": b"[1, 2]", "no folder": b'{"pid": 5}', "no pid": b'{"folder": "x"}',
+                 "a true pid": b'{"pid": true, "folder": "x"}',
+                 "a text pid": b'{"pid": "5", "folder": "x"}',
+                 "a zero pid": b'{"pid": 0, "folder": "x"}',
+                 "an empty folder": b'{"pid": 5, "folder": ""}',
+                 "a numeric folder": b'{"pid": 5, "folder": 9}',
+                 "deep nesting": b"[" * 200000}
+        os.makedirs(self.t.scratch_root, exist_ok=True)
+        for name, data in cases.items():
+            with self.subTest(case=name):
+                _write(self.path, data)
+                self.t.r.lines.clear()
+                tools = next_worker(self.t)
+                self.assertIsNone(tools._adopted_backup)
+                said = [line for line in self.t.r.lines if self.path in line]
+                self.assertEqual(len(said), 1, self.t.r.lines)
+                self.assertIn("was left in place and nothing was adopted", said[0])
+                self.assertIn(said[0], tools.ch_status().splitlines())
+                tools.ch_stop()
+                self.assertEqual(_read(self.path), data)
+
+    def test_a_folder_at_the_markers_path_starts_the_worker_and_stays(self):
+        os.makedirs(self.path)
+        tools = next_worker(self.t)
+        self.assertIn(self.path, tools.ch_status())
+        tools.ch_stop()
+        self.assertTrue(os.path.isdir(self.path))
+
+    def test_an_unreadable_marker_is_never_replaced_by_a_new_run(self):
+        os.makedirs(self.t.scratch_root, exist_ok=True)
+        _write(self.path, b"{not json")
+        tools = next_worker(self.t, make_watch=lambda: FakeWatch([]))
+        self.assertIn("open-run marker not written", tools.ch_start(self.t.r.song))
+        tools.ch_stop()
+        self.assertEqual(_read(self.path), b"{not json")
+
+    def test_a_pid_test_that_raises_leaves_the_marker(self):
+        backup = self.killed_run()
+
+        def broken(pid):
+            raise OSError("no answer")
+
+        tools = GT.GameTools(self.t.r.env, threading.RLock(), self.t.scratch_root,
+                             driver=self.t.driver, is_pid_running=broken)
+        self.assertIsNone(tools._adopted_backup)
+        self.assertIn("was left in place and nothing was adopted: OSError: no answer",
+                      tools.ch_status())
+        self.assert_marker_names(backup)
+
+
+class PidRunningTest(unittest.TestCase):
+    def test_this_process_runs(self):
+        self.assertTrue(GT.pid_running(os.getpid()))
+
+    def test_a_process_that_exited_does_not(self):
+        child = subprocess.Popen([sys.executable, "-c", ""])
+        child.wait(CHILD_CAP_S)
+        self.assertFalse(GT.pid_running(child.pid))
+
+    def test_a_pid_no_process_ever_held_does_not(self):
+        self.assertFalse(GT.pid_running(0x7FFFFFFC))
+
+
+# A child that registers an atexit handler writing `sys.argv[1]`, says so on
+# stdout, then stays alive until its stdin ends, so the test holds it open.
+ATEXIT_CHILD = """
+import atexit, sys
+atexit.register(lambda: open(sys.argv[1], "w").close())
+print("ready", flush=True)
+sys.stdin.read()
+"""
+
+
+class AtexitFactTest(unittest.TestCase):
+    """The reload plan's row P5, the fact the marker exists for: a process
+    ended from outside runs no atexit handler, and one that exits normally
+    does."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.flag = os.path.join(self._tmp.name, "atexit-ran")
+        self.child = subprocess.Popen([sys.executable, "-c", ATEXIT_CHILD, self.flag],
+                                      stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+        self.addCleanup(self.child.stdout.close)
+        self.addCleanup(self.child.stdin.close)
+        self.assertEqual(self.child.stdout.readline().strip(), "ready")
+
+    def test_a_terminated_process_runs_no_atexit_handler(self):
+        self.child.terminate()
+        self.child.wait(CHILD_CAP_S)
+        self.assertFalse(os.path.exists(self.flag))
+
+    def test_a_normal_exit_runs_the_atexit_handler(self):
+        self.child.stdin.close()
+        self.child.wait(CHILD_CAP_S)
+        self.assertTrue(os.path.exists(self.flag))
 
 
 if __name__ == "__main__":
