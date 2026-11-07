@@ -2005,7 +2005,7 @@ TEST_CASE("docs match code: every picture the public pages link is a shot the ca
 
 // The full stop is part of the match, so a version list added after "again"
 // fails too.
-TEST_CASE("docs match code: the README's Stale sentence reads as D310 item 2 ruled") {
+TEST_CASE("docs match code: the README's Stale sentence has no version list") {
     const std::string sentence =
         "A release that changes how charts are analyzed marks them `Stale` until each song is "
         "analyzed again.";
