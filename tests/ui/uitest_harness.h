@@ -211,23 +211,13 @@ std::string canned_dm_scores(const std::vector<std::string>& score_rows);
 // state verb's text (EngineHooks::state_text).
 std::string state_text(Harness& h);
 
-// How wide ImGui draws `s` in `font` (the current font when null), at the
-// size it draws text now: the style's base size times its main and DPI
-// scales. The one place a GUI test measures text.
-float text_width(const char* s, ImFont* font = nullptr);
-
-// The pixel size ImGui draws text at now. text_width and text_measurer use it.
+// The pixel size ImGui draws text at now. text_measurer uses it.
 float drawn_font_size();
 
-// text_width's measuring, as the width rule's WidthOf (ui/column_widths.h),
-// for a test that checks a column against the rule.
+// How wide ImGui draws a string in `font` (the default font when null), at
+// drawn_font_size, as the width rule's WidthOf (ui/column_widths.h), for a
+// test that checks a column against the rule.
 hydra::ui::WidthOf text_measurer(ImFont* font = nullptr);
-
-// The width the production rule gives a one-column table that never cuts, for
-// `cells` under `header`, measured in `font` as text_measurer does. What a
-// test expects of a Dynamics, Stars or backend table column.
-float rule_width(const char* header, const std::vector<std::string>& cells,
-                 ImFont* font = nullptr);
 
 // ---- the checked-in C++ tests ---------------------------------------------
 

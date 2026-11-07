@@ -649,7 +649,6 @@ void test_layout_drift(ImGuiTestContext* ctx) {
     if (!open_preview(ctx)) return;
     ctx->ItemClick("**/Play");
     ImVec2 vol0 = ctx->ItemInfo("**/##volume").RectFull.Min;
-    ImVec2 play0 = ctx->ItemInfo("**/Pause").RectFull.Min;
     ImVec2 scrub0 = ctx->ItemInfo("**/##scrub").RectFull.Min;
     float scrubw0 = ctx->ItemInfo("**/##scrub").RectFull.GetWidth();
     double t0 = h.app->preview->position_ms();
@@ -664,7 +663,6 @@ void test_layout_drift(ImGuiTestContext* ctx) {
     ctx->ItemClick("**/Pause");
     // Play/Pause swap must not shift the scrubber either.
     IM_CHECK_FLOAT_NEAR_EQ(ctx->ItemInfo("**/##scrub").RectFull.Min.x, scrub0.x, 0.01f);
-    (void)play0;
 }
 
 // Burnout analyzed, its Preview open with the optimal path's overlay loaded.

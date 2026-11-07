@@ -10,11 +10,8 @@ using namespace hydra::app;
 
 std::vector<report::ReportRow> sample_path_rows() {
     std::vector<report::ReportRow> paths;
-    // The second argument names a chart mode. A row carries no mode, so the
-    // argument goes unused.
-    auto add_path = [&](const std::string& song, const char* /*mode*/, int rank,
-                        const std::string& path, int64_t score, std::optional<double> ms,
-                        std::optional<double> efill) {
+    auto add_path = [&](const std::string& song, int rank, const std::string& path, int64_t score,
+                        std::optional<double> ms, std::optional<double> efill) {
         report::ReportRow r;
         r.song = song;
         r.artist = "Artist of " + song;
@@ -38,12 +35,12 @@ std::vector<report::ReportRow> sample_path_rows() {
     };
     std::string long_path;
     for (int i = 0; i < 80; ++i) long_path += "1-E2+ ";
-    add_path("Song A", "Expert Pro Drums, 2x Bass", 1, "1-E2+ 0-E1", 123456, 12.5, -3.25);
-    add_path("Song A", "Expert Pro Drums, 2x Bass", 2, "1-E2 0-E1-", 123000, 48.0, std::nullopt);
-    add_path("Song A", "Hard Drums, 1x Bass", 1, "0 0 1", 98000, std::nullopt, std::nullopt);
-    add_path("Song B", "Expert Pro Drums, 2x Bass", 1, long_path, 250000, 171.0, 4.5);
-    add_path("Song B", "Expert Pro Drums, 2x Bass", 2, "2 1-E3", 249500, 1.5, 0.0);
-    add_path("Song C", "Expert Drums, 1x Bass", 1, "1 1 1", 77000, 90.0, std::nullopt);
+    add_path("Song A", 1, "1-E2+ 0-E1", 123456, 12.5, -3.25);
+    add_path("Song A", 2, "1-E2 0-E1-", 123000, 48.0, std::nullopt);
+    add_path("Song A", 1, "0 0 1", 98000, std::nullopt, std::nullopt);
+    add_path("Song B", 1, long_path, 250000, 171.0, 4.5);
+    add_path("Song B", 2, "2 1-E3", 249500, 1.5, 0.0);
+    add_path("Song C", 1, "1 1 1", 77000, 90.0, std::nullopt);
     return paths;
 }
 

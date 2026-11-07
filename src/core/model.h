@@ -915,8 +915,6 @@ std::string path_identity(const Path& path);
 struct HydraRecord {
     std::optional<double> ms_limit;
     std::optional<int> sp_cap;
-    // Always true: no search stops before its score settles.
-    bool sp_cap_converged = true;
     // The fingerprint of the rules the search ran under: Rules::fingerprint().
     // A saved record's profile stores it in its rules_fp column
     // (store::prepare_record).

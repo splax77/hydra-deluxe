@@ -262,10 +262,9 @@ public:
     void resume();
     // Ends the run. Results already stored stay stored. A chart in the middle
     // of its analysis stops at its next progress tick and is neither stored
-    // nor counted as failed. Works while paused.
+    // nor counted as failed. Works while paused, which JobBase::cancel does
+    // not: it wakes no paused worker.
     void stop();
-    // Another name for stop().
-    void cancel() { stop(); }
 
     // The batch's settings: what its results are filed under, for the report
     // that follows it.
