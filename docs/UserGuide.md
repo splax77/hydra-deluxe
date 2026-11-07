@@ -588,7 +588,9 @@ It has no library. It opens one chart at a time and keeps no results after you c
 
 ### Opening a chart in the Path Builder
 
-Run `HydraPathBuilder.exe` from the folder Hydra Deluxe is installed in. To open a chart, use `File` > `Open...` (`Ctrl+O`), drag the chart file onto the window, or give the chart file on the command line. It reads the same `.mid`, `.chart`, `.sng` and `.srb` charts as Hydra Deluxe.
+To open the song you have open in Hydra Deluxe, click `Open in Path Builder` at the top of the song panel, left of `Hide library`. If `HydraPathBuilder.exe` isn't in Hydra Deluxe's folder, the button is greyed and its tooltip reads "HydraPathBuilder.exe isn't in Hydra's folder, so the Path Builder can't open. Reinstall Hydra to restore it."
+
+To start the Path Builder on its own, use the `Hydra Deluxe Path Builder` shortcut in the Start Menu, or run `HydraPathBuilder.exe` from the folder Hydra Deluxe is installed in. To open a chart, use `File` > `Open...` (`Ctrl+O`), drag the chart file onto the window, or give the chart file on the command line. It reads the same `.mid`, `.chart`, `.sng` and `.srb` charts as Hydra Deluxe.
 
 Each open reads your settings from `hydra_settings.ini`, so the chart opens under the Analysis settings you last set in Hydra Deluxe: the difficulty, Pro Drums, 2x Bass, Note Shuffle, `SP cap`, `1.0 fills`, `Path limit` and the rest. The line under the song's title names the chart mode. To use other settings, change them in Hydra Deluxe and open the chart again. The Path Builder never writes to that file: the volume slider starts at the Preview tab's volume, and a change to it lasts until you close the Path Builder.
 
