@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import csv
 import json
+import math
 import os
 import sys
 import tempfile
@@ -137,11 +138,20 @@ class FilesTest(unittest.TestCase):
 
     def test_rows_load_with_64_bit_values_exact(self):
         values = [1000.25, 1.0, 0, 7680, 4294974976, 6144, 8589940736, 1,
-                  257, 8, 520, 61.25, 1, 0.995]
+                  257, 8, 520, 61.25, 1, 0.995, 1.5, 1.25, 0.125]
         path = self.write_csv(WATCH_COLUMNS, [values])
         got = W.load_watch_rows(path)
         self.assertEqual(got, [dict(zip(WATCH_COLUMNS, values))])
         self.assertIsInstance(got[0]["sp_amount_u64"], int)
+
+    def test_a_log_without_the_clock_columns_loads_with_them_nan(self):
+        old = [c for c in WATCH_COLUMNS if c not in ("audio_s", "raw_s", "corr_s")]
+        path = self.write_csv(old, [[7] * len(old)])
+        got = W.load_watch_rows(path)
+        self.assertEqual(got[0]["score"], 7)
+        self.assertTrue(all(math.isnan(got[0][c])
+                            for c in ("audio_s", "raw_s", "corr_s")))
+        self.assertEqual(W.pause_check(got), ["pause: no pause in this log"])
 
     def test_a_wrong_header_is_refused(self):
         path = self.write_csv(("wall_s", "clock_s"), [[1.0, 2.0]])

@@ -38,6 +38,13 @@ WATCH_COLUMNS = (
     "corr_s",
 )
 
+# The watch's columns from the clock object. Logs written before they existed
+# lack them, and the two readers (watch_checks.py, sp_compare.py) still load
+# those logs, with these columns read as NaN.
+WATCH_CLOCK_COLUMNS = ("audio_s", "raw_s", "corr_s")
+WATCH_COLUMNS_WITHOUT_CLOCK = tuple(
+    c for c in WATCH_COLUMNS if c not in WATCH_CLOCK_COLUMNS)
+
 KEYS_PRESS_COLUMNS = (
     "index",
     "chart_ms",
