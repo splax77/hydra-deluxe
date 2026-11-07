@@ -330,7 +330,7 @@ TEST_CASE("dm_tiles: the tiles count only the scores shown") {
           std::vector<std::string>{"0", "0", "0", "0", "0", "0", "0", "—", "0"});
 }
 
-TEST_CASE("status_token: each status's chip colour, as the page's STATUS_CLASS gives it") {
+TEST_CASE("status_token: each status's chip colour") {
     using app::report::ChipToken;
     using app::dm_report::status_token;
     CHECK(status_token("under optimal") == ChipToken::t0);
