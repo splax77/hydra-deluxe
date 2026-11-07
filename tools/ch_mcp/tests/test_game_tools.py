@@ -7,6 +7,7 @@ records its keys, and live_play is a fake that delivers rows.
 
 from __future__ import annotations
 
+import csv
 import inspect
 import json
 import os
@@ -37,6 +38,7 @@ from tools.ch_mcp.tests.test_game_files import FakeReg  # noqa: E402
 from tools.ch_probe import probe_songs  # noqa: E402
 from tools.ch_probe import input_driver  # noqa: E402
 from tools.ch_probe.experiments import play_chart  # noqa: E402
+from tools.ch_probe.experiments.overlay_logs import PRESS_LOG_COLUMNS  # noqa: E402
 from tools.ch_probe.input_driver import DEFAULT_BINDINGS, InputDriver, Lane  # noqa: E402
 
 WINDOW = 0x1234
@@ -1082,7 +1084,145 @@ class GameToolsTest(unittest.TestCase):
                          ["attach", "kit setup", "watch", "play"])
         self.assertIn(f"engine {self.ENGINE:#x}, csv: w.csv", lines[2])
         self.assertEqual(lines[-1], "first press chord index 0 at 1000.0 ms")
-        self.assertEqual(len(lines), 5)
+        self.assertEqual(len(lines), 6)
+
+    # -- the press log file -------------------------------------------------------------
+
+    @staticmethod
+    def _log_table(path):
+        with open(path, encoding="utf-8", newline="") as f:
+            return list(csv.reader(f))
+
+    def _three_row_play(self, seen):
+        """A live_play that records how many rows the session's file holds
+        after each press, read while the run goes on."""
+        def live_play(chords, *, on_press, **kw):
+            for i in range(3):
+                on_press({**ROWS[0], "index": i})
+                seen.append(len(self._log_table(t.tools._play.log_path)) - 1)
+            return play_chart.RunResult(stop="done", sent=3, hit=3)
+
+        t, _events, _seen = self._chain_rig(live_play)
+        return t
+
+    def test_the_rows_reach_the_file_as_they_happen_and_only_once(self):
+        seen = []
+        t = self._three_row_play(seen)
+        self._run(t)
+        self.assertEqual(seen, [1, 2, 3])
+        table = self._log_table(t.tools._play.log_path)
+        self.assertEqual(table[0], list(PRESS_LOG_COLUMNS))
+        self.assertEqual([r[0] for r in table[1:]], ["0", "1", "2"])
+
+    def test_the_reply_names_the_press_file_under_the_session_folder(self):
+        t, _events, _seen = self._chain_rig()
+        lines = self._run(t).splitlines()
+        log = os.path.join(t.tools.session_dir(), "press-1.csv")
+        self.assertEqual(t.tools._play.log_path, log)
+        # The fake's run may already have ended, and then the line counts the rows.
+        self.assertEqual(lines[-2].split(" (")[0], f"press log: {log}")
+
+    def test_each_run_of_a_session_gets_its_own_press_file(self):
+        t, _events, _seen = self._chain_rig()
+        self._run(t)
+        first = t.tools._play.log_path
+        self._run(t)
+        self.assertEqual(os.path.dirname(t.tools._play.log_path), os.path.dirname(first))
+        self.assertEqual(os.path.basename(t.tools._play.log_path), "press-2.csv")
+        self.assertEqual(len(self._log_table(first)), 2)
+
+    def test_the_status_names_the_file_first_while_running_and_after(self):
+        release = threading.Event()
+
+        def live_play(chords, *, on_press, **kw):
+            on_press(ROWS[0])
+            release.wait(THREAD_CAP_S)
+            return play_chart.RunResult(stop="done", sent=1, hit=1)
+
+        t, _events, _seen = self._chain_rig(live_play)
+        t.tools.ch_run_chart(t.r.song, self._score_json(), "System")
+        log = t.tools._play.log_path
+        self.assertEqual(t.tools.ch_play_status().splitlines()[0], f"press log: {log}")
+        release.set()
+        t.tools._play.thread.join(THREAD_CAP_S)
+        lines = t.tools.ch_play_status().splitlines()
+        self.assertEqual(lines[0], f"press log: {log} (1 rows)")
+        self.assertEqual(len([line for line in lines if log in line]), 1)
+
+    def test_a_named_log_is_written_row_by_row_too(self):
+        seen = []
+        path = os.path.join(self.tmp, "named.csv")
+
+        def live_play(chords, *, on_press, **kw):
+            on_press(ROWS[0])
+            seen.append(len(self._log_table(path)) - 1)
+            return play_chart.RunResult(stop="done", sent=1, hit=1)
+
+        t = ToolRig(self.tmp, live_play=live_play)
+        t.tools.ch_play_chart(self._score_json(), log=path, route="keys")
+        t.tools._play.thread.join(THREAD_CAP_S)
+        self.assertEqual(seen, [1])
+
+    def test_a_run_reusing_a_log_name_starts_the_file_over(self):
+        def live_play(chords, *, on_press, **kw):
+            for row in ROWS:
+                on_press(row)
+            return play_chart.RunResult(stop="done", sent=2, hit=1)
+
+        t = ToolRig(self.tmp, live_play=live_play)
+        path = os.path.join(self.tmp, "named.csv")
+        for _ in range(2):
+            t.tools.ch_play_chart(self._score_json(), log=path, route="keys")
+            t.tools._play.thread.join(THREAD_CAP_S)
+        self.assertEqual(len(self._log_table(path)), 3)
+
+    def test_a_run_with_no_press_leaves_a_file_with_the_header(self):
+        t = ToolRig(self.tmp, live_play=lambda chords, **kw: play_chart.RunResult(stop="done"))
+        path = os.path.join(self.tmp, "named.csv")
+        t.tools.ch_play_chart(self._score_json(), log=path, route="keys")
+        t.tools._play.thread.join(THREAD_CAP_S)
+        self.assertEqual(self._log_table(path), [list(PRESS_LOG_COLUMNS)])
+
+    def test_a_failed_append_goes_on_and_the_end_writes_every_row_once(self):
+        path = os.path.join(self.tmp, "named.csv")
+        said = []
+
+        def live_play(chords, *, on_press, **kw):
+            for row in ROWS:
+                on_press(row)
+            said.append(t.tools.ch_play_status().splitlines()[0])
+            return play_chart.RunResult(stop="done", sent=2, hit=1)
+
+        t = ToolRig(self.tmp, live_play=live_play)
+        with mock.patch.object(play_chart, "append_press_row",
+                               side_effect=PermissionError("held open")) as append:
+            t.tools.ch_play_chart(self._score_json(), log=path, route="keys")
+            t.tools._play.thread.join(THREAD_CAP_S)
+        self.assertEqual(append.call_count, 1)
+        self.assertEqual(said, [f"press log not written to {path}: held open"])
+        self.assertEqual([r[0] for r in self._log_table(path)[1:]], ["0", "1"])
+        self.assertEqual(t.tools.ch_play_status().splitlines()[0],
+                         f"press log: {path} (2 rows)")
+
+    def test_a_log_nowhere_writable_is_said_and_the_run_keeps_its_rows(self):
+        path = os.path.join(self.tmp, "no such folder", "named.csv")
+
+        def live_play(chords, *, on_press, **kw):
+            on_press(ROWS[0])
+            return play_chart.RunResult(stop="done", sent=1, hit=1)
+
+        t = ToolRig(self.tmp, live_play=live_play)
+        t.tools.ch_play_chart(self._score_json(), log=path, route="keys")
+        t.tools._play.thread.join(THREAD_CAP_S)
+        lines = t.tools.ch_play_status().splitlines()
+        self.assertTrue(lines[0].startswith(f"press log not written to {path}: "), lines[0])
+        self.assertIn("  0, 1000.0, 998.0, 0, 50, 1", lines)
+
+    def test_with_no_log_the_status_opens_with_the_session_line(self):
+        t = ToolRig(self.tmp, live_play=lambda chords, **kw: play_chart.RunResult(stop="done"))
+        t.tools.ch_play_chart(self._score_json(), route="keys")
+        t.tools._play.thread.join(THREAD_CAP_S)
+        self.assertTrue(t.tools.ch_play_status().startswith("play session: "))
 
     def test_a_later_first_press_is_named(self):
         def live_play(chords, *, on_press, **kw):

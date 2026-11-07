@@ -318,6 +318,19 @@ class PressLogHeaderTest(unittest.TestCase):
             score_compare.Press(3, 2500.0, 2501.0, 280, 380, True, "", "", "", ""),
         ])
 
+    def test_a_twelve_column_log_loads_with_the_wall_times(self):
+        rows = _load_text(
+            ",".join(overlay_logs.PRESS_LOG_COLUMNS) + "\n"
+            "2,2000.0,1998.5,200,280,1,812,813,1998.25,2014.75,1762500000.25,1762500000.5\n"
+            "3,2500.0,2501.0,280,380,1,,,,,1762500000.75,1762500000.75\n")
+        self.assertEqual(rows, [
+            score_compare.Press(2, 2000.0, 1998.5, 200, 280, True,
+                                "812", "813", "1998.25", "2014.75",
+                                "1762500000.25", "1762500000.5"),
+            score_compare.Press(3, 2500.0, 2501.0, 280, 380, True, "", "", "", "",
+                                "1762500000.75", "1762500000.75"),
+        ])
+
     def test_press_has_a_field_for_every_log_column(self):
         self.assertEqual(
             tuple(f.name for f in dataclasses.fields(score_compare.Press)),

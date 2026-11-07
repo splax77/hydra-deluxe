@@ -43,6 +43,8 @@ from tools.ch_probe.input_driver import (
 INSTALL_CAP_S = 60.0
 
 SCRATCH_PREFIX = "ch_live_"
+# ch_run_chart's press logs, numbered in the session folder.
+PRESS_LOG_PREFIX = "press-"
 # The file under the temp root that names an open backup and the worker holding
 # it, so a worker killed before its restore leaves the next worker a way back to
 # the user's files (docs/superpowers/plans/2026-11-06-ch-server-reload.md, design
@@ -248,6 +250,8 @@ class _PlaySession:
     rows: list = dataclasses.field(default_factory=list)
     result: Optional[play_chart.RunResult] = None
     error: Optional[str] = None
+    # What became of the press log: set by a failed write, and when the run
+    # ends. While it holds a failure the rows stop going to the file.
     log_note: Optional[str] = None
 
     def running(self) -> bool:
@@ -306,6 +310,7 @@ class GameTools:
         self._count = 0
         self._last_stats: Optional[str] = None
         self._play: Optional[_PlaySession] = None
+        self._press_log_count = 0
         self._stop_hooks: List[Callable[[], object]] = []
         # Where ch_play_chart gets the kit press: kit_tools.KitTools.kit_press,
         # handed in by use_kit_press. None until then.
@@ -728,9 +733,9 @@ class GameTools:
                       path_index: int = 0) -> str:
         """Start the auto-player (play_chart.live_play) on a hydra_replay score
         JSON in a background thread. `log`, when given, is where the press log
-        is written when the run ends; a relative path goes in the session
-        folder. `song_folder`, when given, sets the run cap through run_cap_s;
-        with none the run keeps live_play's own cap. `route` is ROUTE_KIT
+        is written, row by row as the run goes; a relative path goes in the
+        session folder. `song_folder`, when given, sets the run cap through
+        run_cap_s; with none the run keeps live_play's own cap. `route` is ROUTE_KIT
         (presses through the virtual kit inside the game) or ROUTE_KEYS (keys
         to the focused window); None means the kit, and is refused until the
         kit is set up, so no run takes the keyboard unless asked to.
@@ -784,11 +789,12 @@ class GameTools:
         `decline_mode` and `dump_json` are ch_play_chart's. Each part keeps
         its owner, and this adds no wait of its own before the first press:
         the arguments are read before the attach, and the player starts the
-        moment the search ends. The call returns at the first press.
+        moment the search ends. The call returns at the first press. The
+        press rows go to a press-<n>.csv in the session folder as they happen.
 
-        The reply has one line per part with the time it took, then
-        first_press_line. A part that fails stops the call there: the reply
-        names it and gives its own reply, and a kit that part left standing
+        The reply has one line per part with the time it took, the press
+        log's line, then first_press_line. A part that fails stops the call
+        there: the reply names it and gives its own reply, and a kit that part left standing
         is torn down. A failed attach built no kit, and a failed setup tears
         down its own."""
         with self._lock:
@@ -826,7 +832,10 @@ class GameTools:
             lines.append(f"watch: ok, {self._seconds_since(began)}, engine {engine:#x}, {text}")
 
             began = self._env.now()
-            play = _PlaySession(score_json=score_json, chord_count=len(chords), log_path=None,
+            self._press_log_count += 1
+            log_path = os.path.join(self.session_dir(),
+                                    f"{PRESS_LOG_PREFIX}{self._press_log_count}.csv")
+            play = _PlaySession(score_json=score_json, chord_count=len(chords), log_path=log_path,
                                 cap_s=cap_s, press=press, find_engine=lambda _proc: engine)
             self._start_play(play, chords)
             first_press_in_time = play.pressed.wait(cap_s)
@@ -847,12 +856,15 @@ class GameTools:
                          f"{len(chords)} chords from {score_json}, run cap {cap_s:g} s")
             if decline_mode is not None:
                 lines.append(declined_line(decline_mode, declined))
+            lines.append(self._press_log_line(play))
             lines.append(first_press_line(rows))
             return "\n".join(lines)
 
     def ch_play_status(self) -> str:
-        """The play session's counts, its stop reason when it ended, and every
-        press row, newest first."""
+        """The press log's path when the session has one, the play session's
+        counts, its stop reason when it ended, and every press row, newest
+        first. The server cuts a long reply from its end, so the file is what
+        holds every row."""
         with self._lock:
             play = self._play
             if play is None:
@@ -1127,18 +1139,34 @@ class GameTools:
         return True
 
     def _play_body(self, play: _PlaySession, chords) -> None:
-        """The play thread: live_play, then the press log. It never takes the
-        lock, so a tool holding it never waits on the thread."""
+        """The play thread: live_play, with each press row added to the press
+        log as it is made. It never takes the lock, so a tool holding it never
+        waits on the thread. A log that fails stops being written and the run
+        goes on, because an error raised out of on_press would end the run."""
         cap = {} if play.cap_s is None else {"cap_s": play.cap_s}
         search = {} if play.find_engine is None else {"find_engine": play.find_engine}
         # The kit route hands live_play its press and no driver, so no window
         # is looked up; the keys route keeps the driver.
         route = {"driver": self._driver} if play.press is None else {"press": play.press}
 
+        def log_failed(e: OSError) -> None:
+            play.log_note = f"press log not written to {play.log_path}: {e}"
+
         def on_press(row: dict) -> None:
             play.rows.append(row)
+            if play.log_path and play.log_note is None:
+                try:
+                    play_chart.append_press_row(play.log_path, row)
+                except OSError as e:
+                    log_failed(e)
             play.pressed.set()
 
+        if play.log_path:
+            # Starts the file over, so a reused log name holds this run's rows only.
+            try:
+                play_chart.write_press_log(play.log_path, [])
+            except OSError as e:
+                log_failed(e)
         try:
             play.result = self._live_play(chords, **route,
                                           on_press=on_press,
@@ -1148,10 +1176,13 @@ class GameTools:
             play.error = f"{type(e).__name__}: {e}"
         if play.log_path:
             try:
-                play_chart.write_press_log(play.log_path, list(play.rows))
+                # The rows are already in the file unless a write failed; then
+                # the one whole write replaces what it holds.
+                if play.log_note is not None:
+                    play_chart.write_press_log(play.log_path, list(play.rows))
                 play.log_note = f"press log: {play.log_path} ({len(play.rows)} rows)"
             except OSError as e:
-                play.log_note = f"press log not written to {play.log_path}: {e}"
+                log_failed(e)
         play.pressed.set()
 
     @staticmethod
@@ -1160,9 +1191,15 @@ class GameTools:
             return f"failed: {play.error}"
         return play.result.stop if play.result is not None else "no result"
 
+    @staticmethod
+    def _press_log_line(play: _PlaySession) -> str:
+        """The press log's line: what became of it, else its path."""
+        return play.log_note or f"press log: {play.log_path}"
+
     def _play_lines(self, play: _PlaySession) -> List[str]:
         rows = list(play.rows)
-        lines = [f"play session: {play.chord_count} chords from {play.score_json}"]
+        lines = [self._press_log_line(play)] if play.log_path else []
+        lines.append(f"play session: {play.chord_count} chords from {play.score_json}")
         if play.running():
             lines.append(f"running: {len(rows)} presses so far, "
                          f"{sum(1 for r in rows if r['hit'] == 1)} hit")
@@ -1181,8 +1218,6 @@ class GameTools:
                     lines.append(f"the song clock jumped back during the run: the counts above "
                                  f"cover the part after the jump; the rows below keep all "
                                  f"{len(rows)} presses")
-            if play.log_note:
-                lines.append(play.log_note)
         if not rows:
             lines.append("first press: none, no chord was pressed")
         else:

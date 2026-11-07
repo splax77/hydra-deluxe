@@ -56,7 +56,8 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 from tools.ch_probe.experiments.overlay_logs import (
-    KEYS_PRESS_COLUMNS, KIT_PRESS_COLUMNS, PRESS_LOG_COLUMNS)
+    KEYS_PRESS_COLUMNS, KIT_PRESS_COLUMNS, PRESS_COLUMNS_WITHOUT_WALL,
+    PRESS_LOG_COLUMNS, WALL_PRESS_COLUMNS)
 
 # A run that hits fewer than this percent of its presses is a FAIL (the
 # overlay spike plan, Task B step 3).
@@ -67,14 +68,16 @@ MIN_HIT_PERCENT = 98
 _DYNAMIC_WORDS = ("ghost", "accent")
 
 # Press logs written before the kit press existed hold only
-# KEYS_PRESS_COLUMNS. load_press_log reads them too, with the kit columns
-# blank.
+# KEYS_PRESS_COLUMNS, and those written before the wall times existed hold
+# PRESS_COLUMNS_WITHOUT_WALL. load_press_log reads both too, with the missing
+# columns blank.
 
 
 @dataclass(frozen=True)
 class Press:
-    """One press-log row. The kit fields keep the log's text as written; they
-    are blank for a keys-route run and for a log from before the kit press."""
+    """One press-log row. The kit and wall fields keep the log's text as
+    written; they are blank for a keys-route run (kit fields) and for a log
+    from before the column existed."""
     index: int
     chart_ms: float
     clock_ms_at_press: float
@@ -85,6 +88,8 @@ class Press:
     up_frame: str = ""
     down_ms: str = ""
     up_ms: str = ""
+    wall_s_at_read: str = ""
+    wall_s_at_reply: str = ""
 
 
 @dataclass(frozen=True)
@@ -97,18 +102,20 @@ class HydraChord:
 
 
 def load_press_log(path: str) -> List[Press]:
-    """The press log's rows. Raises ValueError when the header is neither
-    PRESS_LOG_COLUMNS nor KEYS_PRESS_COLUMNS."""
+    """The press log's rows. Raises ValueError when the header is not
+    PRESS_LOG_COLUMNS, PRESS_COLUMNS_WITHOUT_WALL or KEYS_PRESS_COLUMNS."""
+    accepted = (PRESS_LOG_COLUMNS, PRESS_COLUMNS_WITHOUT_WALL, KEYS_PRESS_COLUMNS)
     with open(path, encoding="utf-8", newline="") as f:
         reader = csv.DictReader(f)
-        if tuple(reader.fieldnames or ()) not in (PRESS_LOG_COLUMNS, KEYS_PRESS_COLUMNS):
+        if tuple(reader.fieldnames or ()) not in accepted:
             raise ValueError(
-                f"{path}: header {reader.fieldnames} is not {list(PRESS_LOG_COLUMNS)}"
-                f" or {list(KEYS_PRESS_COLUMNS)}")
+                f"{path}: header {reader.fieldnames} is not "
+                + " or ".join(str(list(a)) for a in accepted))
         return [Press(int(row["index"]), float(row["chart_ms"]),
                       float(row["clock_ms_at_press"]), int(row["score_before"]),
                       int(row["score_after"]), row["hit"] == "1",
-                      **{c: row.get(c) or "" for c in KIT_PRESS_COLUMNS})
+                      **{c: row.get(c) or ""
+                         for c in KIT_PRESS_COLUMNS + WALL_PRESS_COLUMNS})
                 for row in reader]
 
 

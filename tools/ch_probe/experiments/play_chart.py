@@ -281,6 +281,7 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
                 press: Callable[[List[int], Optional[List[float]]], object], *,
                 now: Callable[[], float] = time.perf_counter,
                 sleep: Callable[[float], None] = time.sleep,
+                wall: Callable[[], float] = time.time,
                 on_press: Optional[Callable[[dict], object]] = None,
                 should_stop: Optional[Callable[[], bool]] = None,
                 out: Optional[TextIO] = None,
@@ -291,11 +292,12 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
     engine's score and `press` sends one chord's keys and their `axes`. When
     `press` returns a dict (the kit press of tools/ch_mcp/kit_tools.py), the
     row also keeps its values that PRESS_LOG_COLUMNS names. The live script passes
-    the game's; the tests pass fakes. `now` and `sleep` are the wall clock the
-    stop checks and the waits use. `on_press`, when given, gets each press-log
-    row as it is added; `should_stop`, when given, is asked with the run cap
-    and ends the run as "stopped" when it returns True. `cap_s` is the run
-    cap in wall seconds."""
+    the game's; the tests pass fakes. `now` and `sleep` are the timer the stop
+    checks and the waits use. `wall` stamps each row's wall columns: it is the
+    watch's clock, because `now` shares no zero with the watch or a trace.
+    `on_press`, when given, gets each press-log row as it is added;
+    `should_stop`, when given, is asked with the run cap and ends the run as
+    "stopped" when it returns True. `cap_s` is the run cap in wall seconds."""
     out = sys.stdout if out is None else out
     notes_ms = [c.ms for c in chords]
     result = RunResult()
@@ -349,9 +351,11 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
                     print("\n  Stopped.", file=out)
                     return result
                 continue
+            wall_s_at_read = wall()
 
             # A declined chord in a mode that keeps no gem sends no press.
             pressed = None if chord.declined and not chord.lanes else press(chord.lanes, chord.axes)
+            wall_s_at_reply = wall()
 
             # Check hit through engine.pressed_input_hit.
             sleep(SCORE_READ_DELAY_S)
@@ -376,6 +380,8 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
                 "score_before": score_before,
                 "score_after": score_after,
                 "hit": DECLINED if chord.declined else int(hit),
+                "wall_s_at_read": wall_s_at_read,
+                "wall_s_at_reply": wall_s_at_reply,
             }
             if isinstance(pressed, dict):
                 # A kit press replies with what the game's frames did; the
@@ -421,10 +427,25 @@ def write_press_log(path: str, rows: Sequence[dict]) -> None:
     """Write the press log: the PRESS_LOG_COLUMNS header, then one row per
     press. A row's other values stay out of the file."""
     with open(path, "w", encoding="utf-8", newline="") as f:
-        # lead_ms stays off the log: a row's clock_ms_at_press already shows it.
-        writer = csv.DictWriter(f, fieldnames=PRESS_LOG_COLUMNS, extrasaction="ignore")
+        writer = _press_log_writer(f)
         writer.writeheader()
         writer.writerows(rows)
+
+
+def append_press_row(path: str, row: dict) -> None:
+    """Add one row to the press log, with the header first when the file is
+    new or empty. The file is closed again, so a worker that dies keeps every
+    row so far."""
+    with open(path, "a", encoding="utf-8", newline="") as f:
+        writer = _press_log_writer(f)
+        if f.tell() == 0:
+            writer.writeheader()
+        writer.writerow(row)
+
+
+def _press_log_writer(f: TextIO) -> csv.DictWriter:
+    # lead_ms stays off the log: a row's clock_ms_at_press already shows it.
+    return csv.DictWriter(f, fieldnames=PRESS_LOG_COLUMNS, extrasaction="ignore")
 
 
 # --- the live script ------------------------------------------------------------
