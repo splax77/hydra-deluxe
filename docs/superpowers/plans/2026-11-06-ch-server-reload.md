@@ -69,7 +69,7 @@ A worker that crashes mid-call: the front's wait ends when the worker process ex
 
 ### 4. Tool list changes and the fallback
 
-After a reload the front compares the tool lists. When they differ it sends `tools/list_changed`, if the negotiated protocol let it declare `listChanged` (design point 6). Whether Claude Code then shows the new tool is row P12, settled by LS-R3a. Whatever the answer, `ch_call(tool, args)` in the front reaches any worker tool by name: it refuses a `tool` that is not a string, an `args` that is not an object (so the hook and the front read the same shape and nothing is coerced between them), a name not in the worker's current list (naming the list), and `ch_call` and `ch_reload` as the inner tool, and otherwise forwards `tools/call` and returns the text unchanged. `ch_call` is the fallback for a brand-new tool and for a changed schema; for a tool whose name Claude Code already knows, the direct call goes to the new worker anyway, because the front forwards by name.
+After a reload the front compares the tool lists. When they differ it sends `tools/list_changed`, if the negotiated protocol let it declare `listChanged` (design point 6). Whether Claude Code then shows the new tool is row P12, which stays open because LS-R3a was dropped. Whatever the answer, `ch_call(tool, args)` in the front reaches any worker tool by name: it refuses a `tool` that is not a string, an `args` that is not an object (so the hook and the front read the same shape and nothing is coerced between them), a name not in the worker's current list (naming the list), and `ch_call` and `ch_reload` as the inner tool, and otherwise forwards `tools/call` and returns the text unchanged. `ch_call` is the fallback for a brand-new tool and for a changed schema; for a tool whose name Claude Code already knows, the direct call goes to the new worker anyway, because the front forwards by name.
 
 ### 5. The link to the worker and its caps
 
@@ -111,7 +111,7 @@ Each has the recommended side first. The user took all nine recommended sides on
 
 ## Tasks
 
-Every task runs in its own worktree on its own branch, gets one fresh review, and runs only its own tests. R1, R3 and R4 share no file and launch together. R2 forks from R1's executor commit and has R3 and R4 as blockers, because it names `ch_open_items` and must not merge before the hook knows `ch_call`. R5 runs after LS-R2 has passed, on purpose, so LS-R3a tests `list_changed` on a real new tool.
+Every task runs in its own worktree on its own branch, gets one fresh review, and runs only its own tests. R1, R3 and R4 share no file and launch together. R2 forks from R1's executor commit and has R3 and R4 as blockers, because it names `ch_open_items` and must not merge before the hook knows `ch_call`. R5 was to run after LS-R2 had passed, so LS-R3a could test `list_changed` on a real new tool; both were dropped on 2026-11-07.
 
 ### R1: the front, forwarding and its caps (Opus)
 
@@ -139,6 +139,8 @@ Acceptance (`python.exe -I -m unittest discover -t . -s gates/tests -p test_perc
 
 ### R5: `ch_worker_info`, merged after LS-R2 (Opus)
 
+Dropped on 2026-11-07, not built. LS-R2 read protocol `2026-07-28`, so the front sends no `tools/list_changed` and LS-R3a has nothing to test. The user, session 6c03736f: "Yes, drop them". What it would have been:
+
 Owns `tools/ch_mcp/server.py` (one tool) and `tools/ch_mcp/tests/test_server.py`. Blockers: LS-R2 passed, so that this tool is genuinely new to the running worker when LS-R3a tests the notification. `ch_worker_info` returns the worker's pid and the time it started, in two lines. Acceptance (`py -m pytest tools/ch_mcp/tests/test_server.py -q`): `TOOL_NAMES` gains it; its reply holds the two lines with the fake clock's time.
 
 ## The live steps
@@ -159,15 +161,17 @@ Pass: `ch_reload`'s reply shows two different pids, the step times, equal tool c
 
 ### LS-R3a: does Claude Code see a new tool? (1 run, 10 minutes)
 
+Dropped on 2026-11-07, not run, with R5 and for the same reason. Row P12 stays open. The text below is what the step would have been.
+
 Calls: `ch_reload` (seen: LS-R2), `ToolSearch("select:mcp__ch__ch_worker_info")` (never tried)
 
 Runs after R5 merges, with the worker still the one LS-R2 started (so it lacks `ch_worker_info`). `ch_reload`'s reply must list `ch_worker_info` under added. Then `ToolSearch`. Pass: the schema comes back and a direct `mcp__ch__ch_worker_info` call answers with the two lines; row P12 is then checked and `clone-hero-mcp.md` says a new tool is live after `ch_reload`. Fail: `ToolSearch` finds no such tool, or the call is refused as unknown; row P12 is false for this install, the page says so and names `ch_call` as the way to a new tool until the next reconnect. Either result is a fact, not a bug, and goes on the page. Uses rows P12, P13.
 
 ### LS-R3b: the fallback (1 run, 5 minutes)
 
-Calls: `ch_call("ch_worker_info", {})` (never tried)
+Calls: `ch_call("ch_status", {})` (never tried)
 
-Runs after LS-R3a whatever its result. Pass: the two lines of `ch_worker_info` come back through `ch_call`. Fail: a refusal or a front error, which goes to the user with the front's stderr. Uses row P7 (the hook let a non-key `ch_call` through).
+Changed on 2026-11-07 to call an existing tool, because R5 was dropped. Pass: `ch_status`'s text comes back through `ch_call`. Fail: a refusal or a front error, which goes to the user. Uses row P7 (the hook let a non-key `ch_call` through). It passed on 2026-11-07 (`C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-07\ls-r3b-run1\replies.txt`). It does not show `ch_call` reaching a tool the session does not list; only `test_front` covers that.
 
 ### LS-R4: `ch_reload` refuses while a run is open, and the game behaves from a child process (1 run, 10 minutes)
 
@@ -207,7 +211,7 @@ Claude Code on Windows closes the front's stdin and ends the tree 300 ms later (
 | `ch_call` reads the same shape in the hook and the front, and the lock fails closed on a shape it cannot read | design 4; Q2 | R2, R4 | `test_front`: non-string `tool` and non-object `args` refused; `test_percall_key`: the string-`args` and missing-`args` cases |
 | When the front's stdin ends it waits for the worker's exit up to `FRONT_EXIT_CAP_S` (for a launcher that waits; Claude Code on Windows gives 300 ms) | design 3, 5 | R1 | `test_front`: the slow-exit fake is given the cap, then terminated, with the stderr line |
 | A worker crash mid-call ends the wait and the reply names the tool and exit code, and a new worker starts | design 3, 5 | R1 | `test_front`: the exit-mid-call case |
-| `tools/list_changed` is sent after a reload that changed the list, when the protocol let it be declared | design 4, 6 | R2 | `test_front`: sent on a handshake-era version, "not declared" on 2026-07-28; LS-R3a |
+| `tools/list_changed` is sent after a reload that changed the list, when the protocol let it be declared | design 4, 6 | R2 | `test_front`: sent on a handshake-era version, "not declared" on 2026-07-28; LS-R2's reply read "not declared" live |
 | `ch_call` reaches any current worker tool by name and refuses unknown, nested and reload names | design 4 | R2 | `test_front`: the five `ch_call` cases; LS-R3b |
 | The key lock still refuses `ch_key`, `ch_press` and route keys when they come through `ch_call` | plain version; Q2 | R4 | `test_percall_key`: the named and unnamed cases; `body` denies with `KEY_ALLOW_TEXT`; R2 blocked on R4's merge |
 | Every front wait has a cap and the reply says when the cap ended it | design 5 | R1, R2 | `test_front`: start cap, exit cap, reload stop cap, each with its reply or stderr line |
@@ -216,13 +220,13 @@ Claude Code on Windows closes the front's stdin and ends the tree 300 ms later (
 | No Job Object: a game the worker starts is not killed by the front's exit | design 5; Q1 | R1 | review reads `front.py` for `win32job` and `Job`; the grep test asserts neither word |
 | The worker is spoken to in MCP's own stdio framing and needs no change for it | design 5 | R1 | `test_front`'s fake worker is a real `MCPServer` run over pipes; LS-R1 |
 | `.mcp.json` runs the front with the worker after `--`, no `-I` on either | design 1 | R2 | `McpJsonTest` |
-| The tests on `build_server` keep working | plain version | R3, R5 | `test_server.py` passes in each task with its `TOOL_NAMES` change only |
+| The tests on `build_server` keep working | plain version | R3 | `test_server.py` passes with its `TOOL_NAMES` change only |
 | The game launches the same from a child process | design 3; brief question 6 | none (unchanged code) | LS-R4's `ch_start` lines equal LS-D0's, foreground count read |
 | The protocol version is printed and recorded | design 6 | R2 | `test_front`: the stderr line; LS-R2 writes it to the page |
 | A changed `instructions` string is reported as live at the next reconnect | design 9 | R2 | `test_front`: the changed-instructions case |
 | The docs say how to reload now, and nothing still says the server needs a reconnect for new code | R2 | R2 | the docs check `-tc=docs match code*`; review reads `clone-hero-mcp.md` line 57 and the README |
 | The hook change goes through its own worktree and review | R4 | R4 | the ref gate on the hooks repo's `main`; the brief names the repo root |
-| R5 merges only after LS-R2 so LS-R3a tests a real new tool | Tasks | R5 | R5's Blockers line; LS-R3a's reply lists `ch_worker_info` under added |
+| R5 merges only after LS-R2 so LS-R3a tests a real new tool | Tasks | R5 | dropped on 2026-11-07 with R5 and LS-R3a, so nothing proves it |
 | Every live step has a run cap and a fail line that stops it | the live steps | all LS | each step's heading count and fail line |
 | Nothing in this plan narrows the user's words without a question | plain version | Questions | Q6 (order), Q7 (out of scope), Q8 (the extra tools), Q9 (a run left open) |
 
@@ -235,14 +239,14 @@ Claude Code on Windows closes the front's stdin and ends the tree 300 ms later (
 | P3: All run state lives in one process, in `Helper`'s six tool objects, with daemon threads for the foreground watch, the play session, the Star Power watch and the method watch | code | `tools/ch_mcp/server.py` lines 64 to 90; `tools/ch_mcp/game_tools.py` 239 to 253 and 769; `tools/ch_mcp/foreground.py` 71; `tools/ch_mcp/sp_tools.py` 169 and 331; `tools/ch_mcp/kit_tools.py` 588 to 594; `tools/ch_mcp/method_watch.py` 296; `tools/ch_mcp/frida_tools.py` 351 | checked 2026-11-06 |
 | P4: `ch_stop` and the server's `atexit` shutdown are the same `_stop_all`, which runs every stop hook, stops the play and the watch, detaches the launch agent, stops the game and restores | code | `tools/ch_mcp/game_tools.py` lines 287 to 292, 355 to 369, 801 to 851; `tools/ch_mcp/server.py` 471 to 475 | checked 2026-11-06 |
 | P5: Python runs `atexit` handlers on a normal exit and on an uncaught exception, and not when the process is terminated from outside | unchecked | Python's documented behaviour of `atexit`, not read from a file in either repo; R3's subprocess test proves it on this machine | R3 |
-| P6: The game's launch flags (`SW_SHOWMINNOACTIVE`, `DEVNULL` pipes, `CREATE_SUSPENDED`, the Toolhelp resume, Frida's spawn) behave the same when the launching process is itself a child of the front | unchecked | `tools/ch_mcp/bot_run.py` lines 152 to 181, 229 to 297, 321 to 328 read nothing about the parent, but no run has launched from a grandchild | LS-R4 |
+| P6: The game's launch flags (`SW_SHOWMINNOACTIVE`, `DEVNULL` pipes, `CREATE_SUSPENDED`, the Toolhelp resume, Frida's spawn) behave the same when the launching process is itself a child of the front | run | `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-07\ls-r4-run1\replies.txt`: `ch_start` through the front printed LS-D0's lines, with the foreground count 0 | checked 2026-11-07 |
 | P7: The key lock matches `tool_name` exactly against `KEY_TOOLS` and `KEY_ROUTE_TOOLS`, runs for the main session and agents, and no other hook reads a `ch` tool name | code | `C:\Users\Patrick\.claude\gates\percall.py` lines 14 to 16, 54 to 63, 95, 103; grep over `gates\*.py`, `gates\lib`, `settings.fragment.json`, `README.md` line 13 | checked 2026-11-06 |
 | P8: The mcp stdio client puts the child in a Job Object with `KILL_ON_JOB_CLOSE` and kills the tree 2 s after closing stdin | code | `mcp\client\stdio.py` lines 61, 249 to 268; `mcp\os\win32\utilities.py` lines 198 to 208 (under `C:\Users\Patrick\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages`) | checked 2026-11-06 |
 | P9: The low-level `Server` takes `instructions`, `on_list_tools` and `on_call_tool`, serves until the read side closes, and declares tools `listChanged` from `NotificationOptions` on handshake-era versions and from `subscriptions/listen` on `2026-07-28` | code | `mcp\server\lowlevel\server.py` lines 308 to 330, 469 to 470, 575 to 620, 703 to 725; `mcp_types\version.py` line 41 | checked 2026-11-06 |
 | P10: `ServerSession.send_tool_list_changed` sends the notification | code | `mcp\server\session.py` line 461 | checked 2026-11-06 |
 | P11: `MCPServer.list_tools` and `call_tool` are in-process and `test_server.py` uses them; `add_tool` derives a schema from a function signature | code | `mcp\server\mcpserver\server.py` lines 516 to 548, 618 to 656; `tools/ch_mcp/tests/test_server.py` lines 61, 67, 133 | checked 2026-11-06 |
-| P12: Claude Code, interactive, refreshes a stdio server's tools on `tools/list_changed` so a new tool is reachable through `ToolSearch` mid-session | unchecked | `https://code.claude.com/docs/en/mcp.md` "Dynamic tool updates" says yes; `https://claudeissues.com/issue/65698-bug-mcp-stdio-server-notifications-tools-list-changed-does-not-refresh-the-tool` says no for stdio | LS-R3a |
-| P13: The protocol version Claude Code negotiates with mcp 2.3.0 is a handshake-era one, so `listChanged` can be declared without `subscriptions/listen` | unchecked | `mcp_types\version.py` lists both eras; which one this Claude Code offers is read from no file | LS-R2 |
+| P12: Claude Code, interactive, refreshes a stdio server's tools on `tools/list_changed` so a new tool is reachable through `ToolSearch` mid-session | unchecked | `https://code.claude.com/docs/en/mcp.md` "Dynamic tool updates" says yes; `https://claudeissues.com/issue/65698-bug-mcp-stdio-server-notifications-tools-list-changed-does-not-refresh-the-tool` says no for stdio | LS-R3a, dropped on 2026-11-07, so this row stays open |
+| P13: Claude Code 2.1.317 negotiates `2026-07-28` with the front, not a handshake-era version as this plan first assumed, so `listChanged` cannot be declared without `subscriptions/listen` | run | `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-07\ls-r2-run1\replies.txt`: `ch_reload`'s reply gives the version and says it was not declared | checked 2026-11-07 |
 | P14: `REPLY_CAP_CHARS` and `cap_reply` have one home and the worker applies them to every reply | code | `tools/hydra_ui_mcp.py` lines 41 and 258; `tools/ch_mcp/server.py` lines 43 to 51 | checked 2026-11-06 |
 | P15: The longest worker waits are `run_cap_s` (song length plus 60 s), `ENGINE_SEARCH_CAP_S` 120 s, `EXIT_CHECK_S` 30 s and `KIT_SETUP_CAP_S` 10 s | code | `tools/ch_mcp/bot_run.py` lines 63, 64, 404 to 408; `tools/ch_probe/engine_finder.py` line 40; `tools/ch_mcp/kit_tools.py` line 90 | checked 2026-11-06 |
 | P16: `.mcp.json`'s `ch` entry runs `py tools/ch_mcp/server.py` with no `-I`, pinned by `McpJsonTest`, and the README says why | code | `.mcp.json`; `tools/ch_mcp/tests/test_server.py` lines 196 to 202; `tools/ch_mcp/README.md` line 77 | checked 2026-11-06 |
@@ -258,5 +262,5 @@ Claude Code on Windows closes the front's stdin and ends the tree 300 ms later (
 | P26: LS-O2 has not run and needs `ch_run_chart`, which merged as b009b591 | code | `docs/superpowers/plans/2026-11-06-optimal-score-run.md` lines 237 to 241; `git log --oneline -1` on `main` | checked 2026-11-06 |
 | P28: `create_initialization_options` takes no protocol version and is built before a client connects; on a modern-era connection the server recomputes capabilities from the connection's version, and the `listChanged` flag then comes from whether `subscriptions/listen` is served | code | `mcp\server\lowlevel\server.py` lines 539 to 565 (no version argument), 567 to 600 (the modern branch) and 685 (`get_capabilities(protocol_version=ctx.protocol_version)`) | checked 2026-11-06 |
 | P29: The README's key-route sentence and the exact-name match in `_key_call` are the only place a `ch` tool name is read, so `mcp__ch__ch_call` is unlocked today | code | `C:\Users\Patrick\.claude\gates\percall.py` lines 14 to 16, 54 to 63; README line 13 | checked 2026-11-06 |
-| P30: Claude Code's limit on a stdio server's startup (`MCP_TIMEOUT`) and its default | unchecked | the MCP page names `MCP_TIMEOUT` as the startup limit in its tips list and gives no default in the part read; the 5 s figure an earlier draft cited was not found on the page | LS-R1 times the connect |
+| P30: Claude Code 2.1.317 gives a stdio server 30000 ms to connect, and the front connected in 2271 ms | run | `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-07\ls-r1-run1\replies.txt`: the MCP log's connect lines | checked 2026-11-07 |
 | P27: reloaderoo is a stdio proxy with a `restart_server` tool that rates Claude Code as needing a manual refresh for new tools; mcp-hmr reloads in process and sends `list_changed` by patching `ServerSession` | unchecked | `https://github.com/cameroncooke/reloaderoo` and `https://pypi.org/project/mcp-hmr/`, read 2026-11-06; nothing in the plan is built on them | question 7 |
