@@ -461,7 +461,9 @@ def find_normal_engine(proc, out: Optional[TextIO] = None) -> int:
 
 def live_press(driver: InputDriver, hwnd: int) -> Callable[..., object]:
     """A press that focuses the game window, then sends the chord's keys. A
-    key has no strength, so `axes` goes unused.
+    key has no strength, so `axes` goes unused. This key route needs the game
+    window in focus and the user's typed `allow key run`; the kit press does
+    not.
     LIVE-ONLY: sends input to the game."""
     def press(lanes: List[int], axes: Optional[List[float]] = None) -> object:
         # Keep Clone Hero focused so SendInput reaches it.
@@ -528,8 +530,8 @@ def live_play(chords: Sequence[Chord], *,
             driver = InputDriver() if driver is None else driver
             press = live_press(driver, ch_hwnd)
 
-        # No fill-in between frames: the estimate is the raw clock, which is
-        # what play_chart has always fired on.
+        # No fill-in between frames: the estimate is the raw clock, and the
+        # presses fire on that.
         clock = SongClock(engine.song_clock, max_fill_s=0.0)
         result = play_chords(chords, clock, engine.score, press,
                              on_press=on_press, should_stop=should_stop, out=out,

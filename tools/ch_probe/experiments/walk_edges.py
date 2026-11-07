@@ -23,6 +23,12 @@ raw read can be several ms stale. The driver estimates the time between frames
 from the last clock change it saw (SongClock below) and presses on that
 estimate. Both the raw and estimated send times are logged.
 
+It presses keys through SendInput and has no kit route, so a run needs the game
+window in focus and the user's typed `allow key run`.
+
+The hit-window plan is
+`docs/superpowers/plans/2026-09-25-hit-window-testing.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-09-25-hit-window-testing.md`).
+
 Usage (run it, then start Edge Walk; or start it mid-song):
     python tools\\ch_probe\\experiments\\walk_edges.py [--late 80:92] [--early 80:92] [--reps 3]
 """

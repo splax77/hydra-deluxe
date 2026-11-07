@@ -6,8 +6,9 @@ This script opens the simplest such window: a half-see-through black strip at
 the top centre of the main screen with a white label "HYDRA OVERLAY PROBE
 hh:mm:ss" that ticks once a second. Clicks pass straight through it to the
 game, and it never takes the keyboard focus. It closes itself after
-LIFETIME_S seconds. The user's eyes are the check: the write-up records
-"visible" or "not visible" for each fullscreen setting.
+LIFETIME_S seconds. The user's eyes are the check: the script prints the
+window's handle and extended style, and records nothing about whether the
+window was seen.
 
 It never opens, reads or sends input to the game.
 

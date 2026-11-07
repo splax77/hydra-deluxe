@@ -21,8 +21,8 @@ It prints one PASS or FAIL line per check, with the numbers:
 - the game's multiplier at each chord against Hydra's, up to the first
   activation that parts from the path.
 
-The plan behind every check is "Task S" of the overlay spike plan (removed;
-read it with git show 444631e6:docs/superpowers/plans/2026-10-28-overlay-spike.md).
+The plan behind every check is "Task S" of
+docs/superpowers/plans/2026-10-28-overlay-spike.md.
 
 It also owns the row questions the `ch` MCP server asks of a watch in
 progress: find_activations, phrase_rises, flips_between, ready_between,
@@ -101,8 +101,10 @@ QUARTERS_PER_MEASURE = 4
 READY_FRACTION = SP_ACTIVATION_BARS / SP_CAP_BARS
 
 # Which sp_amount and sp_max columns to read by default. The amount and the
-# maximum are 64-bit by docs/audit/ch-evidence.md ("Things that surprised me",
-# item 5) and the Il2Cpp dump; --width 32 stays for a run that says otherwise.
+# maximum are 64-bit by item 5 of "Things that surprised me" in
+# `git show 5fbe71ae:docs/audit/ch-evidence.md`, and by the Il2Cpp dump
+# (results/overlay-spike/il2cpp-fields.md); --width 32 stays for a run that
+# says otherwise.
 # The flag is read from sp_active_byte because +0x42 is a one-byte bool (the
 # bytes after it are other flags), so sp_active_u32 would mix them in.
 DEFAULT_WIDTH = 64
@@ -220,7 +222,7 @@ def find_activations(rows: list) -> list:
     return found
 
 
-# The name the comparison used before find_activations was public.
+# A second name for find_activations; only test_sp_compare.py reads it.
 _find_activations = find_activations
 
 

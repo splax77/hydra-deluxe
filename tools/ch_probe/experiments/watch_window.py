@@ -1,16 +1,18 @@
 """Watch the hit window against the song clock, then map it to the notes.
 
 It reads the window field (+0x20) and the song clock (+0x100) on every
-sample, so each window value can be tied to a note. (It replaced the old
-poll_windows.py, which logged the window against wall-clock time only.) After
-the song ends it loads the song's manifest.json and prints each test block's
-window values in the order they appeared, next to the notes around them.
+sample, so each window value can be tied to a note. After the song ends it
+loads the song's manifest.json and prints each test block's window values in
+the order they appeared, next to the notes around them.
 
 It also logs the score (+0x94) and the field at +0x2e0, which the code
 reading says holds the song time of the last hit. That makes the same script
 cover step 4 of the hit-window plan: run it on Edge Walk while play_chart.py
 hits the notes, and the report checks whether +0x2e0 changes once per hit and
 sits next to the note time.
+
+The step numbers here and in the report it prints are that plan's:
+`docs/superpowers/plans/2026-09-25-hit-window-testing.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-09-25-hit-window-testing.md`).
 
 Usage (start the song, then run; or run first and it waits for the song):
     python tools\\ch_probe\\experiments\\watch_window.py [<probe song name> | folder]
@@ -115,9 +117,10 @@ def steady_value(chg: list[tuple[float, float]], notes: list[dict],
                  block: str, role: str, inner: slice) -> list[float]:
     """Distinct window values in effect at the inner notes of one role.
 
-    The inner notes have the same gap on both sides and sit two notes away
-    from either end, so the value there is the run's own value whichever gap
-    the engine uses and even if it updates a note early or late.
+    The inner notes have the same gap on both sides. The run calls take notes
+    two away from either end, so the value there is the run's own value
+    whichever gap the engine uses and even if it updates a note early or late.
+    The marker call takes notes one away from either end.
     """
     times = [n["time_ms"] for n in notes if n["block"] == block and n["role"] == role]
     vals = []
@@ -244,7 +247,6 @@ def window_verdict(windows: list[float], back_ms: float) -> list[str]:
     Judged against the measured normal-mode cap and floor (constants.py).
     `back_ms` is the engine's live back constant; when it is not the normal
     85 ms the game is in precision mode, whose cap nobody has read.
-    (Moved here unchanged from the deleted poll_windows.py.)
     """
     tol = C.WINDOW_MATCH_TOLERANCE_MS
     w_min, w_max = min(windows), max(windows)
