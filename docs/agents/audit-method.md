@@ -10,7 +10,7 @@ The short version: past audits were good at finding problems and bad at closing 
 
 A **finding** is one problem an audit confirmed against the code.
 
-A **split** is a finding where two parts of Hydra answer one question differently. The Paths tab's backend rows are an example. A plain row reads "Standard" from -10 ms to under 3 ms, and the squeezed-out row reads "Standard SqOut" from -10 ms to under 10 ms. Both sides of a split are things the user sees or relies on.
+A **split** is a finding where two parts of Hydra answer one question differently. The Paths tab's backend rows were an example until D269 gave them one rule. A plain row read "Standard" from -10 ms to under 3 ms, and the squeezed-out row read "Standard SqOut" from -10 ms to under 10 ms. Both sides of a split are things the user sees or relies on.
 
 An **exit** is the way a finding leaves the audit. There are four, listed in the next section.
 

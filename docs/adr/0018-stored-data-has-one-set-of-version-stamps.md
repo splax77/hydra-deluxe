@@ -38,17 +38,17 @@ store's SQL version of the results check is built from the same lists.
   catch: the engine, the scoring, the chart readers, or what a record holds.
   When it changes it is set to the version of the release that ships the
   change, and changes that ship together share one bump.
-- kPathFormatStamp: one number for the structure blob and the nodes it
-  points at. A node is only ever read through its structure, so one number
-  covers both. Its value stays 6, so no stored byte changes.
-- kDynamicsCountStamp and kDynamicsBlobStamp: how notes are counted, and
-  the count blob's layout.
+- kPathFormatStamp, gone since ADR 0026: one number for the structure blob
+  and the nodes it pointed at. A node was only ever read through its
+  structure, so one number covered both.
+- kDynamicsCountStamp and kDynamicsBlobStamp, gone since ADR 0026: how notes
+  were counted, and the count blob's layout.
 
-Dynamics keeps its own counting stamp instead of sharing the results stamp.
-A counting change then costs only a background recount, not a re-analysis
+Dynamics kept its own counting stamp instead of sharing the results stamp.
+A counting change then cost only a background recount, not a re-analysis
 of the whole library (user decision 2026-09-27). The two kinds of data also
-fail differently, on purpose. A stale result reads Stale and asks the user
-to re-analyze. A stale count reads as missing and is recounted in
+failed differently, on purpose. A stale result reads Stale and asks the user
+to re-analyze. A stale count read as missing and was recounted in
 milliseconds.
 
 ## Consequences
