@@ -352,7 +352,8 @@ TEST_CASE("stars: path_stars counts cutoffs reached without the solo bonus") {
 
 TEST_CASE("stars: Burnout's optimal path earns 7 stars") {
     // Green Day - Burnout at Expert, Pro Drums, 2x Bass, cap 4: optimal
-    // 378,315 against a 7-star cutoff of 335,500 (the plan's reference data).
+    // 378,315 against a 7-star cutoff of 335,500, the reference data of
+    // docs/superpowers/plans/2026-09-27-ui-redesign.md (removed; git show 444631e6:docs/superpowers/plans/2026-09-27-ui-redesign.md).
     const std::string chart = corpus::burnout_notes();
     const app::AnalysisSettings settings = scratch_settings().to_analysis_settings();
     const HydraRecord& record = corpus::analyzed(chart, settings);

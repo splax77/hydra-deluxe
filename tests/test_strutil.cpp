@@ -1,5 +1,4 @@
-// The one owner of Hydra's small string helpers (core/strutil). Every caller
-// that used to carry its own lowercase, trim or suffix check reads these.
+// Tests for core/strutil, Hydra's small string helpers.
 
 #include "doctest.h"
 

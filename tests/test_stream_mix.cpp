@@ -1,10 +1,10 @@
 // Tests for audio/stream_mix: the streaming mix the Preview plays from, and the
 // Playhead's pull from a MixSource.
 //
-// The reference is today's path: decode every stem whole, mix_stems() them,
-// and put the front pad in front. Reading a StreamMix start to end must give
-// the same frames (within float rounding of resampling block by block), and a
-// seek must land on the same audio (within 1e-3, after 20 ms of warm-up).
+// The reference is the whole-stem path: decode every stem whole, mix_stems()
+// them, and put the front pad in front. Reading a StreamMix start to end must
+// give the same frames (within float rounding of resampling block by block),
+// and a seek must land on the same audio (within 1e-3, after 20 ms of warm-up).
 
 #include "doctest.h"
 
@@ -79,7 +79,7 @@ StreamMix make_mix(const std::vector<std::vector<uint8_t>>& stems, int64_t pad) 
     return StreamMix(std::move(readers), 48000, 2, pad);
 }
 
-// Today's path: decode each stem whole, mix, then prepend the pad.
+// The whole-stem path: decode each stem whole, mix, then prepend the pad.
 DecodedAudio reference(const std::vector<std::vector<uint8_t>>& stems, int64_t pad) {
     std::vector<DecodedAudio> decoded;
     for (const auto& b : stems) decoded.push_back(decode_audio(b));
