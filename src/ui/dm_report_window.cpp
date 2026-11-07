@@ -150,9 +150,11 @@ DmReportInput dm_report_input(AppState& app) {
     in.player = app.dm_player_name();
     // The row index is into this frame's result, which the click keeps alive.
     // A score the library doesn't list never calls it (the window's
-    // clickable rule).
+    // clickable rule). A click selects the chart and never switches the chart
+    // mode, whichever mode the comparison was built in (D310 item 3): it asks
+    // in the mode the settings already hold.
     in.callbacks.row_click = [&app, result = slot.result](size_t row) {
-        app.select_chart(result->rows[row].identifier, result->chartmode);
+        app.select_chart(result->rows[row].identifier, app.settings.chartmode_key());
     };
     in.callbacks.refresh = [&app] { app.request_dm_report(); };
     in.callbacks.try_again = [&app] { app.request_dm_report(); };
