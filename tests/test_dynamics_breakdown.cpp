@@ -150,8 +150,6 @@ TEST_CASE("dynamics_breakdown: played_total includes/excludes 2x kick") {
 
 // ---------------------------------------------------------------------------
 // A real chart: Alpha Wolf "Acid Romance" (MIDI, pro, bass2x).
-//
-// Cross-checked with the standalone dyn.py MIDI counter.
 // ---------------------------------------------------------------------------
 
 TEST_CASE("dynamics_breakdown: Alpha Wolf - Acid Romance (real chart)") {
@@ -271,8 +269,8 @@ TEST_CASE("dynamics_breakdown: a row's note is the note the table names") {
 }
 
 TEST_CASE("dynamics_breakdown: the 2x kick line counts its noun from the total") {
-    // Reports finding 5: "1 of 1 kick notes" read wrong; counted names the
-    // noun from the total, as the Library's "N of M charts" does.
+    // counted names the noun from the total, as the Library's "N of M charts"
+    // does, so one kick note reads "1 of 1 kick note".
     DynamicsBreakdown one;
     one.rows[static_cast<size_t>(DynamicsRow::Kick2x)].normal = 1;
     CHECK(dynamics_kick2x_line(one) == "2x kicks: 1 of 1 kick note (100%)");
@@ -373,8 +371,8 @@ TEST_CASE("dynamics_breakdown: which kick rows count") {
 }
 
 TEST_CASE("dynamics_breakdown: one share rule for every Dynamics percent") {
-    // M_D review round 3: the 2x kick line and the tab's "Dynamic notes" line
-    // both read their percent here, so an empty total reads 0% in both.
+    // The 2x kick line and the tab's "Dynamic notes" line both read their
+    // percent here, so an empty total reads 0% in both.
     CHECK(dynamics_share(300, 2000) == "15%");
     CHECK(dynamics_share(1, 3) == "33%");
     CHECK(dynamics_share(0, 0) == "0%");
@@ -433,11 +431,10 @@ TEST_CASE("dynamics_breakdown: dynamic() counts ghosts and accents and not norma
     CHECK_FALSE(zero.has_dynamics());
 }
 
-// Every row's three counts on one corpus chart, pinned from a run on c251abd
-// (before count_dynamics read Chord::note_list). This chart is the corpus's
-// best cover: every row has notes, and it has the most nonzero counts. No
-// corpus chart has ghost kicks as well; the Won't Get Fooled Again fixture in
-// test_song_parse.cpp has those but no 2x kicks.
+// Every row's three counts on one corpus chart, pinned from one run. This
+// chart is the corpus's best cover: every row has notes, and it has the most
+// nonzero counts. No corpus chart has ghost kicks as well; the Won't Get Fooled
+// Again fixture in test_song_parse.cpp has those but no 2x kicks.
 TEST_CASE("dynamics_breakdown: every row's counts on The Decade Of Statues, pinned") {
     const std::string path =
         corpus::root() +

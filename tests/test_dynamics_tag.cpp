@@ -1,4 +1,4 @@
-// Step 2, T5 (finding 64, D24): the .mid dynamics tag counts only in
+// Finding 64, D24: the .mid dynamics tag counts only in
 // Clone Hero 1.1's two exact spellings (0x21557A5, 0x21557BB, no trim), takes
 // effect in file order at a shared tick (the flag is read at each note-on,
 // 0x21555F1), and a late tag is stored so the Dynamics tab can say how many
