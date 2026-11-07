@@ -79,6 +79,21 @@ class ServerTest(unittest.TestCase):
         self.helper.game._adopted_backup = "the-backup"
         self.assertEqual(self._open_items(), "adopted backup: the-backup")
 
+    def _front_reads(self):
+        """What the front's own reader makes of the real ch_open_items reply."""
+        from tools.ch_mcp import front as F
+        text = self._open_items()
+        message = {"result": {"content": [{"type": "text", "text": text}]}}
+        link = SimpleNamespace(request=lambda method, params, cap_s=None: message)
+        return F.open_items(link, 1.0)
+
+    def test_the_front_reads_the_real_nothing_open_as_nothing_open(self):
+        self.assertEqual(self._front_reads(), [])
+
+    def test_the_front_reads_the_real_adopted_backup_line_as_open(self):
+        self.helper.game._adopted_backup = "the-backup"
+        self.assertEqual(self._front_reads(), ["adopted backup: the-backup"])
+
     def test_ch_open_items_lists_each_running_thing_on_its_own_line(self):
         alive = SimpleNamespace(is_alive=lambda: True)
         self.helper.frida._agent = SimpleNamespace(alive=True)
@@ -234,11 +249,11 @@ class ServerTest(unittest.TestCase):
 
 
 class McpJsonTest(unittest.TestCase):
-    def test_the_ch_entry_runs_the_server_without_dash_i(self):
+    def test_the_ch_entry_runs_the_front_and_the_worker_without_dash_i(self):
         with open(os.path.join(_REPO_ROOT, ".mcp.json"), encoding="utf-8") as f:
             entry = json.load(f)["mcpServers"]["ch"]
         self.assertEqual(entry["command"], "py")
-        self.assertEqual(entry["args"], ["tools/ch_mcp/server.py"])
+        self.assertEqual(entry["args"], ["tools/ch_mcp/front.py", "--", "py", "tools/ch_mcp/server.py"])
         self.assertNotIn("-I", entry["args"])
 
 
