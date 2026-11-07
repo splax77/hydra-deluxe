@@ -2,7 +2,7 @@
 
 This page covers the game's classes and fields that the tools read, the per-note hooks, the bot, and how the two builds name things.
 It describes build 1.1 (v1.1.0.6142), and says where 1.0 (v1.0.0.4045) differs.
-Last write-back: 2026-11-06.
+Last write-back: 2026-11-07.
 
 Most rows here are about the game's own layout, which no Hydra rule reads. Their Ruling line says so. The rules these fields feed (timing, Star Power, scoring) live on pages 03, 05 and 06. Paths that start `RUNS` mean `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-10-28\`; `GD` means Ghidra's full decompile `ghidra_decompile_all.txt`, which `code/README.md` describes (it is not in the repo); `dump.cs` is `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-dumps\6142\dump.cs`; `overlay-spike` means `tools/ch_probe/experiments/results/overlay-spike/`, whose result files are in the repo.
 
@@ -300,11 +300,11 @@ Found: 2026-10-30, session b02ab3e6 (the reference build), from the docs survey 
 
 Rule: Nothing yet shows that `GlobalVariables.currentSongEntry` holds the playing song during a song; the dump does not say when the game sets it.
 Label: Unknown
-Evidence: looked in `dump.cs` (layout only) and `overlay-spike/il2cpp-fields.md`; no run has read the route.
+Evidence: looked in `dump.cs` (layout only) and `overlay-spike/il2cpp-fields.md`. One run has read the route: on a command-line start of Window Map, the entry's folder during the song was that song's folder (decision log D316 item 4). That compares the folder, not the checksum `live-checks.md` asks for, and no menu start has been read.
 Game code (6142): `GlobalVariables.currentSongEntry`; no writer read.
 Hydra: no owner.
 Ruling: none needed: no Hydra rule reads it.
-Found: 2026-10-30, session b02ab3e6 (the reference build).
+Found: 2026-10-30, session b02ab3e6 (the reference build). 2026-11-07, session 28b91640 (the folder read).
 
 ## The song-select menu
 
