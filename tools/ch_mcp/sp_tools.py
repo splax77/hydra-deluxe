@@ -6,8 +6,8 @@ docs/superpowers/plans/2026-10-30-ch-mcp-star-power-and-song-start.md, "Where
 the Star Power read lives, and who calls it"). engine.decode_snapshot says
 where each field is, EngineModel.snapshot reads it, and sp_watch.watch polls
 it and decides when a run stops. sp_compare owns every question about the
-rows: activations, rises, flips inside a window and the ready level. This
-module adds only the watch thread, the rows and latest read it keeps in
+rows: activations, rises, flips inside a window, the ready level and the gaps
+between samples. This module adds only the watch thread, the rows and latest read it keeps in
 memory, the CSV it writes as it goes, and sp_lines, the one place a Snapshot
 becomes text.
 
@@ -43,6 +43,11 @@ from tools.ch_probe.process import open_process
 AMOUNT_COL, MAX_COL = sp_compare.column_names()
 
 CSV_PREFIX = "sp_watch-"
+
+# The gap line's threshold: question 7 of the run timing plan
+# (docs/superpowers/plans/2026-11-07-ch-run-timing.md), answered by the user.
+# It is the number LS-O2's hand count used, so the two can be compared.
+GAP_MS = 50
 
 NO_WATCH = "no watcher has run; call ch_sp_watch_start"
 NO_READ = "no engine read yet (the watcher is waiting for a moving clock)"
@@ -237,9 +242,10 @@ class SpTools:
             return "\n".join(lines)
 
     def ch_sp_watch_status(self, since_ms: float = 0) -> str:
-        """The rows so far, each activation and each rise of the amount from
-        since_ms on (sp_compare.find_activations and phrase_rises), the
-        engine's address, and how the watch ended."""
+        """The rows so far, the gaps between samples over the whole run (the
+        gap line comes first, so a cut reply keeps it), each activation and
+        each rise of the amount from since_ms on (sp_compare.find_activations
+        and phrase_rises), the engine's address, and how the watch ended."""
         with self._lock:
             w = self._watch
             if w is None:
@@ -248,7 +254,8 @@ class SpTools:
             lines = [f"watcher {w.ended_line()}", w.csv_line(),
                      f"rows: {len(rows)}",
                      "engine: " + (f"{w.engine:#x}" if w.engine is not None
-                                   else "not found yet")]
+                                   else "not found yet"),
+                     _gap_line(rows)]
             acts = [a for a in sp_compare.find_activations(rows)
                     if C.s_to_ms(rows[a.flip_row]["clock_s"]) >= since_ms]
             lines.append(f"activations from {since_ms:g} ms: {len(acts)}")
@@ -402,6 +409,18 @@ class SpTools:
             if w is None or not w.running():
                 return None
             return "sp watch: " + "; ".join(self._stop_lines(w))
+
+
+def _gap_line(rows: list) -> str:
+    """sp_compare.gap_summary at GAP_MS as one line. The longest shows a tenth
+    of a ms when it has one, so a gap just over the threshold never reads as
+    the threshold itself."""
+    gaps = sp_compare.gap_summary(rows, GAP_MS)
+    line = f"gaps over {GAP_MS:g} ms between samples: {gaps.count}"
+    if gaps.count == 0:
+        return line
+    return (f"{line}, longest {round(gaps.longest_ms, 1):g} ms, between "
+            f"{sp_compare.format_ms(gaps.from_ms)} and {sp_compare.format_ms(gaps.to_ms)}")
 
 
 def _activation_line(rows: list, act) -> str:

@@ -412,5 +412,62 @@ class RowChecksTest(unittest.TestCase):
                          (0, None, None, None))
 
 
+def _samples(*pairs):
+    """Rows holding only the two columns gap_summary reads, from (wall_s,
+    clock_s) pairs."""
+    return [{"wall_s": wall_s, "clock_s": clock_s} for wall_s, clock_s in pairs]
+
+
+# The wall_s and clock_s columns of a real run's watch CSV. The copy reads them
+# by name, because the other columns are left out.
+LS_O2_CSV = os.path.join(_REPO_ROOT, "testdata", "ch_watch", "ls-o2-run1-sp_watch-1.csv")
+
+
+class GapSummaryTest(unittest.TestCase):
+    def test_two_gaps_give_the_count_the_longest_and_the_clocks_around_them(self):
+        got = sp_compare.gap_summary(
+            _samples((100.0, 1.0), (100.004, 1.004), (100.064, 1.064),
+                     (100.068, 1.068), (100.312, 1.312), (100.316, 1.316)), 50)
+        self.assertEqual(got.count, 2)
+        self.assertAlmostEqual(got.longest_ms, 244.0, places=6)
+        self.assertAlmostEqual(got.from_ms, 1004.0, places=6)
+        self.assertAlmostEqual(got.to_ms, 1312.0, places=6)
+
+    def test_rows_with_no_gap_over_give_0(self):
+        rows = _samples((100.0, 1.0), (100.004, 1.004), (100.008, 1.008))
+        self.assertEqual(sp_compare.gap_summary(rows, 50), (0, None, None, None))
+
+    def test_no_rows_and_one_row_give_0(self):
+        self.assertEqual(sp_compare.gap_summary([], 50), (0, None, None, None))
+        self.assertEqual(sp_compare.gap_summary(_samples((100.0, 1.0)), 50),
+                         (0, None, None, None))
+
+    def test_a_gap_of_exactly_the_threshold_does_not_count(self):
+        rows = _samples((0.0, 1.0), (0.05, 1.05))
+        self.assertEqual(sp_compare.gap_summary(rows, 50), (0, None, None, None))
+
+    def test_the_boundary_holds_at_a_real_wall_time(self):
+        # 0.0625 s is exact in binary even on a wall time this large, so this
+        # gap is exactly the threshold, with no rounding left in the subtraction.
+        rows = _samples((1794062016.0, 1.0), (1794062016.0625, 1.0625))
+        self.assertEqual(sp_compare.gap_summary(rows, 62.5).count, 0)
+        self.assertEqual(sp_compare.gap_summary(rows, 62.4).count, 1)
+
+    def test_the_real_ls_o2_run(self):
+        # The run folder is hydra-data/ch-mcp-runs/2026-11-07/ls-o2-run1, and
+        # this counts its whole watch CSV. The longest gap is the last pair
+        # of rows: both show the same clock, because the watch writes its
+        # final row once live.StoppedCheck says the clock has stopped.
+        with open(LS_O2_CSV, newline="", encoding="utf-8") as f:
+            rows = [{c: float(r[c]) for c in ("wall_s", "clock_s")}
+                    for r in csv.DictReader(f)]
+        self.assertEqual(len(rows), 6240)
+        got = sp_compare.gap_summary(rows, 50)
+        self.assertEqual(got.count, 371)
+        self.assertAlmostEqual(got.longest_ms, 5084.784, places=3)
+        self.assertAlmostEqual(got.from_ms, 2146.834, places=3)
+        self.assertAlmostEqual(got.to_ms, 63700.788, places=3)
+
+
 if __name__ == "__main__":
     unittest.main()

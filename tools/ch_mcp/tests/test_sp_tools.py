@@ -423,6 +423,51 @@ class SpToolsTest(unittest.TestCase):
         self.assertIn("rises of sp_amount_u64 from 1600 ms: 0", later)
         self.assertIn("activations from 1600 ms: 1", later)
 
+    # -- the gap line ------------------------------------------------------------------
+
+    def status_over(self, samples, since_ms=0):
+        """ch_sp_watch_status's lines over a watch that made these (wall_s,
+        clock_s) rows."""
+        tools = self.tools()
+        tools._watch = sp_tools._Watch(csv_path="x.csv", cap_s=1.0, rows=[
+            dict(zip(WATCH_COLUMNS, sp_watch.watch_row(wall_s, snap_at(clock_s))))
+            for wall_s, clock_s in samples])
+        return tools.ch_sp_watch_status(since_ms).splitlines()
+
+    def test_the_status_prints_two_gaps_with_the_clocks_around_them(self):
+        lines = self.status_over([(100.0, 1.0), (100.004, 1.004), (100.064, 1.064),
+                                  (100.068, 1.068), (100.312, 1.312), (100.316, 1.316)])
+        self.assertIn("gaps over 50 ms between samples: 2, longest 244 ms, "
+                      "between 1004.0 ms and 1312.0 ms", lines)
+
+    def test_the_longest_gap_keeps_its_tenth_of_a_ms(self):
+        lines = self.status_over([(100.0, 1.0), (100.2437, 1.2437)])
+        self.assertIn("gaps over 50 ms between samples: 1, longest 243.7 ms, "
+                      "between 1000.0 ms and 1243.7 ms", lines)
+
+    def test_the_status_prints_0_when_no_gap_is_over(self):
+        lines = self.status_over([(100.0, 1.0), (100.004, 1.004), (100.008, 1.008)])
+        self.assertIn("gaps over 50 ms between samples: 0", lines)
+
+    def test_a_gap_of_exactly_gap_ms_is_not_printed(self):
+        self.assertEqual(sp_tools.GAP_MS, 50)
+        lines = self.status_over([(0.0, 1.0), (0.05, 1.05)])
+        self.assertIn("gaps over 50 ms between samples: 0", lines)
+
+    def test_a_watch_with_no_rows_prints_0(self):
+        self.assertIn("gaps over 50 ms between samples: 0", self.status_over([]))
+
+    def test_since_ms_does_not_narrow_the_gap_line(self):
+        lines = self.status_over([(100.0, 1.0), (100.06, 1.06)], since_ms=5000)
+        self.assertIn("gaps over 50 ms between samples: 1, longest 60 ms, "
+                      "between 1000.0 ms and 1060.0 ms", lines)
+
+    def test_the_gap_line_comes_before_the_lists_a_cut_reply_can_lose(self):
+        lines = self.status_over([(100.0, 1.0)])
+        gap = next(i for i, line in enumerate(lines) if line.startswith("gaps over"))
+        self.assertLess(gap, next(i for i, line in enumerate(lines)
+                                  if line.startswith("activations from")))
+
     def test_ch_sp_compare_names_a_missing_file(self):
         missing = os.path.join(self.tmp.name, "none.csv")
         reply = self.tools().ch_sp_compare(missing, missing)
