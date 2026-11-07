@@ -21,7 +21,7 @@
         "report::library_lookup(store, options.run->profile, out.library);"
       ],
       "owner_lines": [],
-      "note": "The store lists results the library doesn't list, and every page drops them through ChartIndex::lists. A second loop over the store's records could forget the drop or key the hash another way. The SQL side of the same question (charts.md5 = results.hyhash) is store.json's not_in_library row."
+      "note": "The store lists records the library doesn't list, and every page drops them through ChartIndex::lists. A second loop over the store's records could forget the drop or key the hash another way. The SQL side of the same question (charts.md5 = records.song_id) is the not_in_library row in store/d115-records.json."
     }
   ]
 }

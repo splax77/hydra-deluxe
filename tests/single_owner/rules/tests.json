@@ -213,7 +213,7 @@
       "scope": [
         "tests"
       ],
-      "note": "One reader of both folder macros, as source_tree.h is for HYDRA_SOURCE_DIR; each test file used to carry its own #error guard and its own std::string(...) build."
+      "note": "One reader of both folder macros, as source_tree.h is for HYDRA_SOURCE_DIR, so a test file calls corpus::root or corpus::testdata_root and types neither macro."
     },
     {
       "question": "Which test names the resource folder for ImGui setup?",
@@ -239,7 +239,7 @@
       "scope": [
         "tests"
       ],
-      "note": "Three tests each built the resource folder from testdata_root() on their own. Found by the derive-once review of tdn-1-8."
+      "note": "corpus::resource_root builds the resource folder from testdata_root(), so a test that builds it by hand is a second spelling of the path."
     },
     {
       "question": "Which test helper writes MThd/MTrk chunks?",
@@ -879,7 +879,7 @@
         "src",
         "tests"
       ],
-      "note": "The removed Analyze button's two labels typed as text (D87 item 6: a click analyzes). Only the GUI test that checks the button is gone may name them. The closing quote keeps the \"Re-analyze to refresh it.\" sentences out."
+      "note": "The removed Analyze button's two labels typed as text (D87 item 1: a click analyzes). Only the GUI test that checks the button is gone may name them. The closing quote keeps the \"Re-analyze to refresh it.\" sentences out."
     },
     {
       "question": "How does a test build a per-process scratch path?",
@@ -943,7 +943,7 @@
       "scope": [
         "tests"
       ],
-      "note": "hydra.db stores no path details (D87), so no serializer is left to compare records through; a test that brings one back is a second answer to the hasher's question (R16)."
+      "note": "hydra.db stores a record's paths as plain columns (record_paths), so no serializer is left to compare records through; a test that brings one back is a second answer to the hasher's question (R16)."
     },
     {
       "question": "Which settings do the GUI tests and the Burnout reference results run under? (tests)",
@@ -1189,7 +1189,7 @@
       "scope": [
         "tests"
       ],
-      "note": "The scan's own folder (tests/single_owner/) is outside the walk, so scan.cpp calls the owner without this row checking it. Added by the derive-once review of so-t1, which folded three copies of the mapping (scan.cpp twice, test_docs_match_code.cpp once)."
+      "note": "The scan's own folder (tests/single_owner/) is outside the walk, so scan.cpp reaches the owner through lexer_language in engine.cpp without this row checking it."
     },
     {
       "question": "How many records does a test database hold?",

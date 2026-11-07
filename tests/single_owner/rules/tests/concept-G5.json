@@ -27,7 +27,7 @@
         "tests",
         "tools"
       ],
-      "note": "A key streamed field by field. The app files a stored analysis under store::Lens; this text key is the test cache's only (corpus::analyzed). It moved out of src/search/pather.cpp because nothing in src/ called it (concept audit M18)."
+      "note": "A key streamed field by field. The app files a stored analysis under store::Lens; this text key is the test cache's only (corpus::analyzed)."
     }
   ]
 }

@@ -153,7 +153,7 @@
     },
     {
       "question": "Is this still the row the report walk listed?",
-      "owner": "Profile::operator== in src/store/record_store.h, with the song id (RecordKey::operator== until D115 A1-5)",
+      "owner": "Profile::operator== in src/store/record_store.h, with the song id through RecordRow::operator==",
       "owner_file": "src/store/record_store.h",
       "owner_symbol": "operator",
       "date": "2026-10-05",
@@ -221,7 +221,7 @@
     },
     {
       "question": "Which columns hold a path summary, and how many?",
-      "owner": "kSummaryColumnList and kSummaryColumnCount in src/store/record_store.cpp",
+      "owner": "kSummaryColumnList in src/store/record_store.cpp, counted by count_list_names",
       "owner_file": "src/store/record_store.cpp",
       "owner_symbol": "kSummaryColumnList",
       "date": "2026-10-05",
@@ -237,11 +237,11 @@
       "scope": [
         "src"
       ],
-      "note": "convert_results reads an older file's summary slots from the list and its count, so a typed run of the ten placeholders is a second spelling of the list."
+      "note": "convert_results reads an older file's summary slots through the list, so a typed run of the ten placeholders is a second spelling of the list."
     },
     {
       "question": "Which columns hold a path summary, and how many? (slots)",
-      "owner": "kSummaryColumnList and kSummaryColumnCount in src/store/record_store.cpp",
+      "owner": "kSummaryColumnList in src/store/record_store.cpp, counted by count_list_names",
       "owner_file": "src/store/record_store.cpp",
       "owner_symbol": "kSummaryColumnList",
       "date": "2026-10-05",
