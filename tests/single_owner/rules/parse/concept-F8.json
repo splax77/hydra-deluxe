@@ -24,7 +24,7 @@
           "why": "is_midi_header, the owner"
         }
       ],
-      "note": "The header tag was spelled twice, once as a quoted string in the .srb notes sniff and once as four characters in the reader's header check. Both spellings are caught; the reader's error message names the tag inside a longer string and is not a test. Decided by: D114, concept audit finding M62"
+      "note": "The header tag was spelled twice, once as a quoted string in the .srb notes sniff and once as four characters in the reader's header check. Both spellings are caught; the reader's error message names the tag inside a longer string and is not a test."
     },
     {
       "question": "Which bit does the game give each drum pad, and in what order?",
@@ -51,7 +51,7 @@
       "scope": [
         "src"
       ],
-      "note": "Weak by design: it catches a third table of the cymbal lane bits written beside a colour, not a second rank formula, which has no stable spelling. The shuffle's own two tables (lane_bit and moved_to) live in the owner file. Decided by: D114, concept audit finding M57"
+      "note": "Weak by design: it catches a third table of the cymbal lane bits written beside a colour, not a second rank formula, which has no stable spelling. The shuffle's own two tables (lane_bit and moved_to) live in the owner file."
     }
   ]
 }

@@ -31,7 +31,7 @@
         "src",
         "tools"
       ],
-      "note": "A second copy of \"a timing of 0.0 ms must still be hit\". Call timing_needs_hitting. Tests are out of scope because they pin figures against 0 on purpose. Decided by: D302"
+      "note": "A second copy of \"a timing of 0.0 ms must still be hit\". Call timing_needs_hitting. Tests are out of scope because they pin figures against 0 on purpose."
     }
   ]
 }

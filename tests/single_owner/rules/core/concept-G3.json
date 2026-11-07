@@ -26,7 +26,7 @@
         "src",
         "tools"
       ],
-      "note": "Catches a second audio extension list written as suffix tests. Tests are out of scope because a test of ends_with_ci itself passes an audio extension as plain text. A second byte sniff is a different spelling and lives with sniff_format. Decided by: D114, concept audit finding M64"
+      "note": "Catches a second audio extension list written as suffix tests. Tests are out of scope because a test of ends_with_ci itself passes an audio extension as plain text. A second byte sniff is a different spelling and lives with sniff_format."
     }
   ]
 }

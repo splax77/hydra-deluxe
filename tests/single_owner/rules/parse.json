@@ -6,7 +6,7 @@
       "owner_file": "src/core/song.cpp",
       "owner_symbol": "apply_timesig",
       "date": "2026-10-04",
-      "decision": "D27",
+      "decision": "decision D27 (audit findings 258 and 319: the meter is written once, through apply_timesig); widened to signatures and tools by the step-2 derive-once review of 11b9d44",
       "added_by": "step-2 derive-once fixes",
       "pattern": "(tpm_changes|timesig_changes)\\[[^\\]]*\\]\\s*=[^=]",
       "anchor": "_changes",
@@ -39,7 +39,7 @@
         "tools",
         "tests"
       ],
-      "note": "A hand write into the meter or signature map is `tpm_changes[...] =` or `timesig_changes[...] =` followed by anything but a second `=`. Decided by: decision D27 (audit findings 258 and 319: the meter is written once, through apply_timesig); widened to signatures and tools by the step-2 derive-once review of 11b9d44"
+      "note": "A hand write into the meter or signature map is `tpm_changes[...] =` or `timesig_changes[...] =` followed by anything but a second `=`."
     },
     {
       "question": "Does the Preview type its own 4/4 meter?",
@@ -47,7 +47,7 @@
       "owner_file": "src/core/song.h",
       "owner_symbol": "kDefaultTimeSigNumerator",
       "date": "2026-10-04",
-      "decision": "D27",
+      "decision": "decision D27 (audit findings 258 and 319: one default meter)",
       "added_by": "s2-final merge fixups",
       "pattern": "(numerator|denominator|ts_num|ts_den)\\s*=\\s*4\\b",
       "must_match": [
@@ -64,7 +64,7 @@
         "src/app/preview_view.h",
         "src/app/preview_view.cpp"
       ],
-      "note": "Was part of the same walker: the Preview's time box reads Song's default meter and keeps no 4/4 of its own. Scoped to its two files. Decided by: decision D27 (audit findings 258 and 319: one default meter)"
+      "note": "Was part of the same walker: the Preview's time box reads Song's default meter and keeps no 4/4 of its own. Scoped to its two files."
     },
     {
       "question": "Which tags does Hydra strip from a song name?",
@@ -72,7 +72,7 @@
       "owner_file": "src/parse/song.cpp",
       "owner_symbol": "strip_rich_tags",
       "date": "2026-10-04",
-      "decision": "D48",
+      "decision": "audit findings 8 and 111; D48, Q14 (phase 3 task O3a)",
       "added_by": "O3a",
       "pattern": "\"</?(color|size|b|i|u|s|sub|sup)\\b|=\\s*\"(color|size|sub|sup)\"\\s*;|\\{\\s*\"(color|size|b|i|u|s|sub|sup)\"\\s*,\\s*(true|false)\\s*\\}",
       "calls_owner": "\\b(strip_rich_tags|display_title|display_artist)\\(",
@@ -99,7 +99,7 @@
           "why": "strip_rich_tags' tag table, the owner"
         }
       ],
-      "note": "---- one cleaned song title (phase 3 task O3a) ---- Clone Hero's rich-text tags spelled as text: a tag in angle brackets at the start of a string, a tag name kept in a named constant, or a row of a tag table. Config keys that happen to be called \"color\" or \"size\" are not flagged. Decided by: audit findings 8 and 111; D48, Q14 (phase 3 task O3a)"
+      "note": "---- one cleaned song title (phase 3 task O3a) ---- Clone Hero's rich-text tags spelled as text: a tag in angle brackets at the start of a string, a tag name kept in a named constant, or a row of a tag table. Config keys that happen to be called \"color\" or \"size\" are not flagged."
     },
     {
       "question": "Which charter text does a screen show?",
@@ -128,7 +128,7 @@
       "owner_file": "src/parse/chart_files.cpp",
       "owner_symbol": "pick_notes_file",
       "date": "2026-10-04",
-      "decision": "D53",
+      "decision": "audit finding 186; phase 6 task J1-5 (D53)",
       "added_by": "J1-5",
       "pattern": "\\bfound_mid\\s*\\?|ChartFormat\\s+\\w+\\s*=\\s*notes_file_format\\(\\s*\\w+\\.name\\s*\\)",
       "owner_files": [
@@ -143,7 +143,7 @@
         "const DirEntry* found_mid = nullptr;",
         "const std::optional<NotesFilePick> pick = pick_notes_file(names);"
       ],
-      "note": "The first notes.mid, else the last notes.chart. A loop over a listing that takes a notes file's format from an entry's name, or the scan's \"mid if found, else chart\", writes that preference again. Naming the one .srb notes stream (md.notes_filename) is a different question: there is only one stream to name. Decided by: audit finding 186; phase 6 task J1-5 (D53)"
+      "note": "The first notes.mid, else the last notes.chart. A loop over a listing that takes a notes file's format from an entry's name, or the scan's \"mid if found, else chart\", writes that preference again. Naming the one .srb notes stream (md.notes_filename) is a different question: there is only one stream to name."
     },
     {
       "question": "Which corpus files are notes files?",
@@ -176,7 +176,7 @@
       "owner_file": "src/parse/srb.cpp",
       "owner_symbol": "srb_read_metadata",
       "date": "2026-10-04",
-      "decision": "D53",
+      "decision": "audit finding 188; phase 6 task J1-5 (D53)",
       "added_by": "J1-5",
       "pattern": "\\bkSrbHeaderSize\\s*,",
       "anchor": "kSrbHeaderSize",
@@ -194,7 +194,7 @@
         "if (src.size <= kSrbHeaderSize) throw std::runtime_error(\"Truncated SRB file.\");",
         "if (buf.size() <= kSrbHeaderSize) return stems;"
       ],
-      "note": "An inflate at kSrbHeaderSize is a read of the metadata stream. The streams after it (the notes, the Preview's audio) start at an offset a reader handed back, a different question. Decided by: audit finding 188; phase 6 task J1-5 (D53)"
+      "note": "An inflate at kSrbHeaderSize is a read of the metadata stream. The streams after it (the notes, the Preview's audio) start at an offset a reader handed back, a different question."
     },
     {
       "question": "Which file is the folder's song.ini?",
@@ -202,7 +202,7 @@
       "owner_file": "src/parse/chart_files.cpp",
       "owner_symbol": "find_song_ini",
       "date": "2026-10-04",
-      "decision": "audit finding 189",
+      "decision": "audit finding 189; first match wins (phase 6 task J1-5, decided at launch)",
       "added_by": "J1-5",
       "pattern": "\\bis_song_ini\\s*\\(",
       "anchor": "is_song_ini",
@@ -217,8 +217,7 @@
       "must_not_match": [
         "const std::string ini = find_song_ini(folder);",
         "const DirEntry* ini = find_song_ini(listing);"
-      ],
-      "note": "Decided by: audit finding 189; first match wins (phase 6 task J1-5, decided at launch)"
+      ]
     },
     {
       "question": "Which MIDI pitches does the drum parser act on?",
@@ -226,7 +225,7 @@
       "owner_file": "src/parse/song.cpp",
       "owner_symbol": "marker",
       "date": "2026-10-04",
-      "decision": "D54",
+      "decision": "audit finding R7.19; phase 6 task J2-3 (D54)",
       "added_by": "J2-3",
       "pattern": "\\bcase\\s+(95|103|109|110|111|112|116|120)\\s*:|\\bnote\\s*<\\s*103\\b",
       "must_match": [
@@ -242,7 +241,7 @@
       "scope": [
         "src/parse/song.cpp"
       ],
-      "note": "A drum-track pitch typed as a bare case label, or the old note-off gate's bare comparison. The marker table names each pitch once and has no case label, so after the fold nothing in song.cpp matches and no owner line is listed. Decided by: audit finding R7.19; phase 6 task J2-3 (D54)"
+      "note": "A drum-track pitch typed as a bare case label, or the old note-off gate's bare comparison. The marker table names each pitch once and has no case label, so after the fold nothing in song.cpp matches and no owner line is listed."
     },
     {
       "question": "Where does a solo section start and end?",
@@ -250,7 +249,7 @@
       "owner_file": "src/parse/song.cpp",
       "owner_symbol": "solo_sections",
       "date": "2026-10-04",
-      "decision": "D54",
+      "decision": "audit finding 167; phase 6 task J2-3 (D54)",
       "added_by": "J2-3",
       "pattern": "sequence\\[[^\\]]*\\+\\s*1\\s*\\]\\.flag_solo",
       "anchor": "].flag_solo",
@@ -266,7 +265,7 @@
       "scope": [
         "src"
       ],
-      "note": "Whether a solo run ends here, read off the next timestamp's flag. The Preview's span join walks the flags without looking ahead, so no one-line pattern tells it apart from any other solo check; J3-4 repoints it. Decided by: audit finding 167; phase 6 task J2-3 (D54)"
+      "note": "Whether a solo run ends here, read off the next timestamp's flag. The Preview's span join walks the flags without looking ahead, so no one-line pattern tells it apart from any other solo check; J3-4 repoints it."
     },
     {
       "question": "Which chart format is a test file? (tests)",
@@ -274,7 +273,7 @@
       "owner_file": "src/parse/chart_files.cpp",
       "owner_symbol": "chart_format_of",
       "date": "2026-10-04",
-      "decision": "D54",
+      "decision": "audit finding 119; phase 6 task J2-3 (D54)",
       "added_by": "J2-3",
       "pattern": "\\bends_with\\s*\\(|\\.compare\\([^;]*\\b6\\s*,\\s*\"\\.chart\"\\)",
       "exempt": [
@@ -333,7 +332,7 @@
       "scope": [
         "tests"
       ],
-      "note": "A test telling a file's format from its extension by hand: a case-sensitive ends_with, or a path's last six bytes compared with \".chart\". Every case-sensitive ends_with call in the tests is flagged; the few that check a report's text are listed one by one. Decided by: audit finding 119; phase 6 task J2-3 (D54)"
+      "note": "A test telling a file's format from its extension by hand: a case-sensitive ends_with, or a path's last six bytes compared with \".chart\". Every case-sensitive ends_with call in the tests is flagged; the few that check a report's text are listed one by one."
     },
     {
       "question": "Which chart format is a path?",
@@ -341,7 +340,7 @@
       "owner_file": "src/parse/chart_files.cpp",
       "owner_symbol": "chart_format_of",
       "date": "2026-10-04",
-      "decision": "D53",
+      "decision": "audit findings 187 and R7.17; phase 6 task J2-5 (D53)",
       "added_by": "J2-5",
       "pattern": "ends_with_ci\\(\\s*[^\"\\s].*\"\\.(sng|srb|mid|chart)\"",
       "anchor": "ends_with_ci(",
@@ -364,7 +363,7 @@
         "tools",
         "tests"
       ],
-      "note": "A path's suffix tested against a chart extension. A test of ends_with_ci itself passes a literal as the text, not a path, and asks how the suffix test works, so a literal first argument is not flagged. Decided by: audit findings 187 and R7.17; phase 6 task J2-5 (D53)"
+      "note": "A path's suffix tested against a chart extension. A test of ends_with_ci itself passes a literal as the text, not a path, and asks how the suffix test works, so a literal first argument is not flagged."
     },
     {
       "question": "How many notes does the chart have?",
@@ -372,7 +371,7 @@
       "owner_file": "src/core/song.cpp",
       "owner_symbol": "Song::note_count",
       "date": "2026-10-05",
-      "decision": "D74",
+      "decision": "audit finding 255 (D74)",
       "added_by": "AF2",
       "pattern": "\\b(?!combo)\\w+\\s*\\+=\\s*\\w+(\\.|->)chord\\.count\\(\\)|\\bnotecount\\s*\\+=",
       "anchor": "count",
@@ -394,7 +393,7 @@
           "why": "Song::note_count"
         }
       ],
-      "note": "The chart's note total: chord note counts added up, or a note total added to as a running sum. A running combo is the row above's question, so it is left out here. Tests stay out of scope: they build records by changing a stored notecount on purpose. Decided by: audit finding 255 (D74)"
+      "note": "The chart's note total: chord note counts added up, or a note total added to as a running sum. A running combo is the row above's question, so it is left out here. Tests stay out of scope: they build records by changing a stored notecount on purpose."
     },
     {
       "question": "Where does a solo section start and end? (the scene's join)",
@@ -402,7 +401,7 @@
       "owner_file": "src/core/song.h",
       "owner_symbol": "solo_sections",
       "date": "2026-10-05",
-      "decision": "D53, D54",
+      "decision": "audit finding 167; phase 6 task J3-4 (D53, D54)",
       "added_by": "J3-4",
       "pattern": "\\b(in_solo|solo_start|solo_last)\\b",
       "anchor": "solo",
@@ -419,7 +418,7 @@
       "scope": [
         "src"
       ],
-      "note": "J2-3's row covers the replay's read; this one covers the Preview scene's own join of flagged chords. The parsers read solo markers and build the sections there. Decided by: audit finding 167; phase 6 task J3-4 (D53, D54)"
+      "note": "J2-3's row covers the replay's read; this one covers the Preview scene's own join of flagged chords. The parsers read solo markers and build the sections there."
     },
     {
       "question": "Which drum-track notes does the lean MIDI read keep?",
@@ -427,7 +426,7 @@
       "owner_file": "src/parse/song.cpp",
       "owner_symbol": "load_songbytes_mid",
       "date": "2026-10-06",
-      "decision": "D86",
+      "decision": "the speedups plan, task P1 (D86)",
       "added_by": "P1",
       "pattern": "\\bnote_(on|off)\\s*\\[[^\\]]*\\]\\s*=(?!=)\\s*[^\\s{]",
       "anchor": "note_",
@@ -441,7 +440,7 @@
         "filter.note_on[pitch] = midi_note_is_read(pitch, true, base, kick2x);",
         "return (msg.is_note_on() ? note_on : note_off)[msg.note];"
       ],
-      "note": "---- speedups task P1: the lean chart and MIDI readers ---- The lean MIDI read keeps a drum note only when the song parser can act on it. A filter entry set from anything but the parser's own pitch rules is a second list of pitches. Decided by: the speedups plan, task P1 (D86)"
+      "note": "---- speedups task P1: the lean chart and MIDI readers ---- The lean MIDI read keeps a drum note only when the song parser can act on it. A filter entry set from anything but the parser's own pitch rules is a second list of pitches."
     },
     {
       "question": "Is this MIDI note message a note-on?",
@@ -449,7 +448,7 @@
       "owner_file": "src/parse/midi.h",
       "owner_symbol": "is_note_on",
       "date": "2026-10-06",
-      "decision": "D86",
+      "decision": "the speedups plan, task P1 (D86); derive-once review of P1",
       "added_by": "P1",
       "pattern": "\\bvelocity\\s*(>|==|!=|<=|>=)\\s*0\\b|\\bclip_data_byte\\s*\\(\\s*d2\\s*\\)\\s*(>|==|!=)\\s*0\\b",
       "must_match": [
@@ -469,7 +468,7 @@
           "why": "Message::is_note_on, the owner"
         }
       ],
-      "note": "Whether a note message starts a note is decided once, on the Message. A velocity compared with 0 anywhere else, or a raw data byte tested before the Message is built, is a second copy. Decided by: the speedups plan, task P1 (D86); derive-once review of P1"
+      "note": "Whether a note message starts a note is decided once, on the Message. A velocity compared with 0 anywhere else, or a raw data byte tested before the Message is built, is a second copy."
     },
     {
       "question": "Which .mid drum message opens a new timestamp?",
@@ -539,7 +538,7 @@
       "owner_file": "src/parse/song.cpp",
       "owner_symbol": "midi_note_is_read",
       "date": "2026-10-06",
-      "decision": "D86",
+      "decision": "the speedups plan, task P1 (D86); derive-once review of P1",
       "added_by": "P1",
       "pattern": "\\bis_handled_note\\s*\\(|\\bis_midi_marker_pitch\\s*\\(",
       "anchor": "is_",
@@ -579,7 +578,7 @@
           "why": "midi_note_is_read, the owner"
         }
       ],
-      "note": "Which note messages the MIDI parser acts on is decided once. Its optype and the lean read's filter both ask midi_note_is_read; the pitch rules it reads are called nowhere else. Decided by: the speedups plan, task P1 (D86); derive-once review of P1"
+      "note": "Which note messages the MIDI parser acts on is decided once. Its optype and the lean read's filter both ask midi_note_is_read; the pitch rules it reads are called nowhere else."
     },
     {
       "question": "How is a .chart number read?",
@@ -587,7 +586,7 @@
       "owner_file": "src/parse/song.cpp",
       "owner_symbol": "word_stoi",
       "date": "2026-10-06",
-      "decision": "D86",
+      "decision": "the speedups plan, task P1 (D86)",
       "added_by": "P1",
       "pattern": "\\bfast_leading_int\\s*\\(|\\blean_(stoi|stoll|try_parse_int)\\b",
       "anchor": "lea",
@@ -620,7 +619,7 @@
           "why": "word_stoll"
         }
       ],
-      "note": "The integer fast path lives inside the three readers that answer with std::stoi and std::stoll's rules. A fourth caller, or a lean_ twin beside them, is a second number rule. Decided by: the speedups plan, task P1 (D86)"
+      "note": "The integer fast path lives inside the three readers that answer with std::stoi and std::stoll's rules. A fourth caller, or a lean_ twin beside them, is a second number rule."
     },
     {
       "question": "What does a .chart line say?",
@@ -628,7 +627,7 @@
       "owner_file": "src/parse/song.cpp",
       "owner_symbol": "classify_chart_line",
       "date": "2026-10-06",
-      "decision": "D86",
+      "decision": "the speedups plan, task P1 (D86)",
       "added_by": "P1",
       "pattern": "\\bsplit_ws_view\\s*\\(",
       "anchor": "split_ws_view",
@@ -650,7 +649,7 @@
           "why": "classify_chart_line, the owner"
         }
       ],
-      "note": "What a .chart line says is decided once, for every section. Its words are split only there. Decided by: the speedups plan, task P1 (D86)"
+      "note": "What a .chart line says is decided once, for every section. Its words are split only there."
     },
     {
       "question": "What does a .chart line do to the parser?",
@@ -658,7 +657,7 @@
       "owner_file": "src/parse/song.cpp",
       "owner_symbol": "ChartParser::optype",
       "date": "2026-10-06",
-      "decision": "D86",
+      "decision": "the speedups plan, task P1 (D86)",
       "added_by": "P1",
       "pattern": "\\bCOp\\s+(ChartParser::)?optype\\s*\\(",
       "anchor": "optype",
@@ -681,7 +680,7 @@
           "why": "the owner"
         }
       ],
-      "note": "A .chart line becomes an op in one place, whichever section it came from. Decided by: the speedups plan, task P1 (D86)"
+      "note": "A .chart line becomes an op in one place, whichever section it came from."
     },
     {
       "question": "Which code walks a MIDI track's bytes?",
@@ -689,7 +688,7 @@
       "owner_file": "src/parse/midi.cpp",
       "owner_symbol": "walk_track",
       "date": "2026-10-06",
-      "decision": "D86",
+      "decision": "the speedups plan, task P1 (D86)",
       "added_by": "P1",
       "pattern": "\\bread_varlen\\s*\\(",
       "anchor": "read_varlen",
@@ -716,7 +715,7 @@
           "why": "walk_track, the owner"
         }
       ],
-      "note": "A MIDI track's bytes are walked once, by walk_track, which both the full and the lean read call. Reading a delta anywhere else is a second walker with its own length checks. Decided by: the speedups plan, task P1 (D86)"
+      "note": "A MIDI track's bytes are walked once, by walk_track, which both the full and the lean read call. Reading a delta anywhere else is a second walker with its own length checks."
     },
     {
       "question": "Which MIDI track is the timing track, the drum track or an events track?",
@@ -724,7 +723,7 @@
       "owner_file": "src/parse/midi.h",
       "owner_symbol": "kTimingTrack",
       "date": "2026-10-06",
-      "decision": "D86",
+      "decision": "the speedups plan, task P1 (D86); derive-once review of P1; D252 (the drum names in any case); D253 (track 0 is no instrument, and only the first events track counts)",
       "added_by": "P1",
       "pattern": "\\bkDrumsTrackNames\\b|\\bkEventsTrackName\\b|\\btracks\\s*\\[\\s*0\\s*\\]|\\bis_(?:drums|events)_track_name\\s*\\([^)]*(?:\\.|->)name\\b",
       "anchor": "rack",
@@ -776,7 +775,7 @@
           "why": "MidiFile::events_track, the owner"
         }
       ],
-      "note": "The song parser and the lean read both pick the timing, drum and events tracks, and the reader's track-name pick (D78) recognizes the same names. A track name compared, a name test run over the tracks, or the first track indexed, anywhere but the owners is a second copy of that choice. The lean read's `i == kTimingTrack` has no text a search can tell apart from any other index check, so it names the constant instead. Decided by: the speedups plan, task P1 (D86); derive-once review of P1; D252 (the drum names in any case); D253 (track 0 is no instrument, and only the first events track counts)"
+      "note": "The song parser and the lean read both pick the timing, drum and events tracks, and the reader's track-name pick (D78) recognizes the same names. A track name compared, a name test run over the tracks, or the first track indexed, anywhere but the owners is a second copy of that choice. The lean read's `i == kTimingTrack` has no text a search can tell apart from any other index check, so it names the constant instead."
     },
     {
       "question": "How many values does a MIDI data byte hold?",
@@ -784,7 +783,7 @@
       "owner_file": "src/parse/midi.h",
       "owner_symbol": "kMidiDataValues",
       "date": "2026-10-06",
-      "decision": "D86",
+      "decision": "the speedups plan, task P1 (D86); derive-once review of P1",
       "added_by": "P1",
       "pattern": "[<,]\\s*128\\b|\\[\\s*128\\s*\\]|\\{\\s*127\\s*\\}",
       "must_match": [
@@ -802,7 +801,7 @@
         "src/parse/midi.cpp",
         "src/parse/song.cpp"
       ],
-      "note": "How many values a MIDI data byte holds is named once. A bare 128 as a bound or a size, or a bare 127 as the clip, is a second copy. Clone Hero's accent velocity is a different question and is not a bound, so `velocity == 127` is left alone. Decided by: the speedups plan, task P1 (D86); derive-once review of P1"
+      "note": "How many values a MIDI data byte holds is named once. A bare 128 as a bound or a size, or a bare 127 as the clip, is a second copy. Clone Hero's accent velocity is a different question and is not a bound, so `velocity == 127` is left alone."
     },
     {
       "question": "Which .chart sections does the reader keep by name?",
@@ -810,7 +809,7 @@
       "owner_file": "src/parse/song.cpp",
       "owner_symbol": "kSongSection",
       "date": "2026-10-06",
-      "decision": "D86",
+      "decision": "the speedups plan, task P1 (D86); derive-once review of P1",
       "added_by": "P1",
       "pattern": "\"(Song|SyncTrack|Events)\"",
       "must_match": [
@@ -842,7 +841,7 @@
       "scope": [
         "src/parse/song.cpp"
       ],
-      "note": "The .chart sections the reader keeps by name are named once, so the code that keeps them and the code that reads them back cannot spell them apart. Scoped to song.cpp, where the .chart reader lives; \"Song\" means a title elsewhere. Decided by: the speedups plan, task P1 (D86); derive-once review of P1"
+      "note": "The .chart sections the reader keeps by name are named once, so the code that keeps them and the code that reads them back cannot spell them apart. Scoped to song.cpp, where the .chart reader lives; \"Song\" means a title elsewhere."
     },
     {
       "question": "Who writes or reads the wording of the no-notes sentence?",
@@ -871,7 +870,7 @@
       "scope": [
         "src"
       ],
-      "note": "The sentence for a chart with no notes at the asked difficulty is written by no_notes_message, and the part it names is read back by no_notes_part, both from the same two end pieces. A screen that cuts the sentence apart itself holds a second copy of its wording. Decided by: D249; derive-once review of REPORT-ALL"
+      "note": "The sentence for a chart with no notes at the asked difficulty is written by no_notes_message, and the part it names is read back by no_notes_part, both from the same two end pieces. A screen that cuts the sentence apart itself holds a second copy of its wording."
     }
   ]
 }

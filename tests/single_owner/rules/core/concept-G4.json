@@ -21,7 +21,7 @@
       "scope": [
         "src"
       ],
-      "note": "The old name came back. \"Free\" is not a word on screen any more (the Rating cell reads the report's timing tiers), so the squeeze's own test is named for what it asks. Decided by: D114, concept audit finding M41"
+      "note": "The old name came back. \"Free\" is not a word on screen any more (the Rating cell reads the report's timing tiers), so the squeeze's own test is named for what it asks."
     },
     {
       "question": "Where does this activation's Star Power end (its deactivation tick)?",
@@ -52,7 +52,7 @@
         "src",
         "tools"
       ],
-      "note": "A second reader of the last SP-end step. Call Activation::deact_tick. Tests are out of scope because a few of them move the last step's end on purpose to make a different path. Decided by: D114, concept audit finding M44"
+      "note": "A second reader of the last SP-end step. Call Activation::deact_tick. Tests are out of scope because a few of them move the last step's end on purpose to make a different path."
     },
     {
       "question": "What does squeezing out this row cost?",
@@ -80,7 +80,7 @@
         "tools",
         "tests"
       ],
-      "note": "A squeeze-out's cost worked out again from the row's value. Call core::sqout_cost. Decided by: D114, concept audit finding M45"
+      "note": "A squeeze-out's cost worked out again from the row's value. Call core::sqout_cost."
     }
   ]
 }
