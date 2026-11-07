@@ -199,6 +199,41 @@ def given_player_line(player: Any) -> str:
     return f'kit player: "{player}" as given (KIT_PLAYER is {KIT_PLAYER})'
 
 
+# The words hydra_replay writes in a gem's "dynamic"; dynamic_str in
+# src/core/model.cpp owns them.
+DYNAMIC_NONE = "none"
+DYNAMIC_GHOST = "ghost"
+DYNAMIC_ACCENT = "accent"
+
+
+# The strengths copy the game's own bot and MIDI handler, from the Evidence
+# line of SC-13 in docs/clone-hero/06-scoring.md: the bot's velocity for an
+# accent and for a ghost, and the handler's turning of a velocity into an axis
+# value. A plain gem's velocity is never read, so it presses like an accent.
+def pad_axis(dynamic: str, threshold: Optional[int] = None) -> float:
+    """The axis value that presses a pad gem of this `dynamic`, the one home
+    of the strengths. Only a ghost needs `threshold`, the engine's dynamics
+    threshold (constants.OFF_DYN_THRESHOLD). Raises ValueError for a word
+    hydra_replay does not write, and for a ghost when no velocity is below a
+    `threshold` that is outside what a velocity can reach."""
+    top_velocity = 127
+
+    def axis(velocity: int) -> float:
+        return 0.5 + velocity / (2 * top_velocity)
+
+    if dynamic in (DYNAMIC_NONE, DYNAMIC_ACCENT):
+        return axis(top_velocity)
+    if dynamic != DYNAMIC_GHOST:
+        raise ValueError(f'unknown gem dynamic "{dynamic}"; make the score file again '
+                         f"with hydra_replay score")
+    if threshold is None or not 1 <= threshold <= top_velocity:
+        raise ValueError(f"no ghost press is possible: the engine's dynamics threshold "
+                         f"(OFF_DYN_THRESHOLD) reads {threshold}, and it must be 1 to "
+                         f"{top_velocity}; start the song, read the field again, and "
+                         f"report the number if it stays outside that range")
+    return axis(threshold - 1)
+
+
 def press_message(elements: Sequence[KitElement], hold_frames: int = KIT_HOLD_FRAMES, *,
                   rewrite: bool = KIT_REWRITE, on_main: bool = KIT_PRESS_ON_MAIN,
                   read: Sequence[str] = ()) -> dict:

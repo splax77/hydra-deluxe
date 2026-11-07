@@ -588,6 +588,41 @@ class PressOptionsTest(Rig):
                          "on_main is true, false or left out, not 1")
 
 
+class PadAxisTest(unittest.TestCase):
+    """pad_axis against the byte the game makes of an axis, in
+    code/6142/lane_velocity_337E10.asm."""
+
+    @staticmethod
+    def byte(axis):
+        return round((axis - 0.5) * 254)
+
+    def test_an_accent_and_a_plain_gem_press_at_full_strength_for_any_threshold(self):
+        for threshold in (1, 64, 127):
+            self.assertEqual(K.pad_axis("accent", threshold), 1.0)
+            self.assertEqual(K.pad_axis("none", threshold), 1.0)
+
+    def test_a_plain_or_accent_gem_needs_no_threshold(self):
+        self.assertEqual(K.pad_axis("accent"), 1.0)
+        self.assertEqual(K.pad_axis("none"), 1.0)
+
+    def test_a_ghost_makes_a_byte_of_the_threshold_minus_one(self):
+        self.assertEqual(self.byte(K.pad_axis("ghost", 1)), 0)
+        self.assertEqual(self.byte(K.pad_axis("ghost", 64)), 63)
+        self.assertEqual(self.byte(K.pad_axis("ghost", 127)), 126)
+
+    def test_a_threshold_with_no_ghost_strength_is_refused_naming_the_field(self):
+        for threshold in (0, 128, None):
+            with self.assertRaises(ValueError) as caught:
+                K.pad_axis("ghost", threshold)
+            self.assertIn("OFF_DYN_THRESHOLD", str(caught.exception))
+            self.assertIn(str(threshold), str(caught.exception))
+
+    def test_a_word_hydra_replay_never_writes_is_refused(self):
+        with self.assertRaises(ValueError) as caught:
+            K.pad_axis("loud", 64)
+        self.assertIn('"loud"', str(caught.exception))
+
+
 WATCH_QUIET = {"seconds": 20, "ticks": 3100, "first_frame": 5000, "last_frame": 8200,
                "readers": ["System", "Player1", "controllers"], "true_count": 0, "reads": []}
 
