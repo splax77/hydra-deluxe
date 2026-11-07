@@ -419,9 +419,8 @@ static void dump_db(const std::string& dbpath, const std::string& outpath,
 //   hydra_bench --replay <chart file>
 // Times core::replay_path on one chart (pro drums, 2x bass) with 2,000 made-up
 // windows (testreplay::synthetic_windows, seed 7), best of 3: the full replay,
-// the scores-only one and one with no windows. The blink-182 Discography chart
-// was the stress chart (Task 9 of the 2026-10-03 preview-loading plan). That
-// the scores-only replay matches the full one is test_replay.cpp's job.
+// the scores-only one and one with no windows. That the scores-only replay
+// matches the full one is test_replay.cpp's job.
 static void replay_mode(const std::string& chart) {
     const Song song = load_songpath(chart, ChartReading{}, g_rules, fill_rule_for(g_legacy_fills));
     if (song.is_empty()) {

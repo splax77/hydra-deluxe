@@ -1,6 +1,7 @@
 // The hit-method tracer: hooks every method of the drum engine class and of
 // its base class, and counts the calls, so the method that runs once per note
-// can be picked out (plan 2026-10-28, Task D).
+// can be picked out. This is Task D of the feasibility plan,
+// docs/superpowers/plans/2026-10-28-ch-mcp-feasibility-tests.md (removed; git show 444631e6:docs/superpowers/plans/2026-10-28-ch-mcp-feasibility-tests.md).
 //
 // This agent only reads and traces: every hook is an Interceptor.attach with
 // an onEnter that reads its arguments, and nothing here changes an argument or
@@ -31,14 +32,14 @@ import "frida-il2cpp-bridge";
 import { findGameManager, GAME_MANAGER } from "./gamemanager.js";
 import { decode, targetsOf, Target } from "./hooks_common.js";
 
-// How many calls per method keep their arguments in count mode (plan
-// 2026-10-28, Task D).
+// How many calls per method keep their arguments in count mode (the
+// feasibility plan named at the top of this file, Task D).
 const ARG_SAMPLE_LIMIT = 200;
 
 // How often the end condition is checked: the clock sampling interval the
-// user approved (plan 2026-10-28, question 5). The agent also stops one such
-// interval before the wall-clock cap, so its table reaches the runner before
-// the runner detaches at that cap.
+// user approved (the feasibility plan named at the top of this file, question
+// 5). The agent also stops one such interval before the wall-clock cap, so its
+// table reaches the runner before the runner detaches at that cap.
 const END_POLL_MS = 250;
 
 // The class flag for "sealed" (ECMA-335 partition II, TypeAttributes).

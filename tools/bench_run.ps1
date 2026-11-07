@@ -8,8 +8,8 @@
 # The lock file and bench_log.md live in the hooks state folder
 # (~\.claude\hooks\state\bench), beside the build-slot locks, so the repo never
 # collects logs. Every run is logged there, with how busy the machine was
-# (compiler processes) when it started. The speedups plan's "Proving identical
-# results" section says how the timing runs use it.
+# (compiler processes) when it started. docs/development.md, "Proving identical
+# results", says where it fits.
 param(
     [Parameter(Mandatory)] [string]$Label,
     [Parameter(Mandatory)] [string]$Script,

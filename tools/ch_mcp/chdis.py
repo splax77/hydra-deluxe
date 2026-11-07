@@ -1,8 +1,8 @@
 """Disassemble Clone Hero's GameAssembly.dll by RVA, with method names.
 
-This rewrites the lost capstone wrapper that made the `.asm` listings under
-docs/audit/note-shuffle and docs/audit/drum-lanes, and prints them the same
-way (tests/test_chdis.py pins one). It reads three things: the DLL's PE
+It prints listings in the same form as the `.asm` listings under
+docs/audit/note-shuffle and docs/audit/drum-lanes (tests/test_chdis.py pins
+one). It reads three things: the DLL's PE
 section table (where each section sits in the file and in memory), the
 method names Il2CppDumper wrote to `script.json` in a build's dump folder,
 and the bytes at an RVA (an offset from the DLL's load base). `dis` prints a
