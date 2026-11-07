@@ -14,6 +14,7 @@ stop, the wall-time cap, and main()'s read-only open and capped engine search.
 
 from __future__ import annotations
 
+import contextlib
 import csv
 import io
 import json
@@ -30,6 +31,7 @@ if _REPO_ROOT not in sys.path:
 from tools.ch_probe import engine_finder  # noqa: E402
 from tools.ch_probe.experiments import live, overlay_logs, play_chart  # noqa: E402
 from tools.ch_probe.input_driver import Lane  # noqa: E402
+from tools.ch_probe.tests import fakes  # noqa: E402
 
 
 # Eight chord blocks copied whole from a real run of
@@ -232,6 +234,22 @@ class RunStopsTest(unittest.TestCase):
         self.assertGreaterEqual(wall.t, play_chart.RUN_CAP_S)
         self.assertLess(wall.t, play_chart.RUN_CAP_S + 1.0)
 
+    def test_a_caller_given_cap_ends_the_run_there(self):
+        # The first chord is at 13.04 s on a clock that starts at 12 s, so a
+        # 1 s cap ends the run before any press.
+        wall = _FakeTime()
+        game = _FakeGame()
+        out = io.StringIO()
+        result = play_chart.play_chords(
+            _load(play_chart.load_dump_chords),
+            _FakeSongClock(wall, start_s=12.0), game.read_score, game.press,
+            now=wall.now, sleep=wall.sleep, out=out, cap_s=1)
+        self.assertEqual(result.stop, "cap")
+        self.assertEqual(result.rows, [])
+        self.assertGreaterEqual(wall.t, 1.0)
+        self.assertLess(wall.t, 2.0)
+        self.assertIn("run cap of 1 s reached", out.getvalue())
+
 
 class _FakeProc:
     module_base = 0x10000000
@@ -389,6 +407,117 @@ class LivePlayTest(unittest.TestCase):
         self.assertTrue(proc.verified)
         self.assertTrue(proc.closed)
         self.assertEqual(events, [])
+
+    def test_the_default_engine_search_prints_its_dots_to_out_only(self):
+        # A caller that gives live_play a buffer (the ch MCP server) must get
+        # no stdout from the search: its stdout is the protocol channel.
+        out, stdout = io.StringIO(), io.StringIO()
+        with fakes.searching_for_no_song(engine_finder),                 contextlib.redirect_stdout(stdout):
+            result = play_chart.live_play(
+                _load(play_chart.load_dump_chords),
+                open_proc=lambda **kw: _FakeProc(), driver=_FakeDriver([]),
+                out=out)
+        self.assertEqual(result.stop, play_chart.STOP_NO_ENGINE)
+        self.assertEqual(stdout.getvalue(), "")
+        self.assertIn("....", out.getvalue())
+
+    def _cap_seen_by_play_chords(self, **live_kwargs):
+        from unittest import mock
+
+        class _FakeEngine:
+            def __init__(self, _proc):
+                pass
+
+            def use_object(self, _ptr):
+                pass
+
+            def song_clock(self):
+                return 0.0
+
+            def score(self):
+                return 0
+
+        seen = {}
+
+        def fake_play_chords(*args, **kwargs):
+            seen.update(kwargs)
+            return play_chart.RunResult(stop="done")
+
+        with mock.patch.object(play_chart, "EngineModel", _FakeEngine), \
+                mock.patch.object(play_chart, "find_game_window", lambda: 0), \
+                mock.patch.object(play_chart, "play_chords", fake_play_chords):
+            play_chart.live_play(
+                _load(play_chart.load_dump_chords), open_proc=lambda **kw: _FakeProc(),
+                find_engine=lambda _proc: 0x1000, driver=_FakeDriver([]),
+                out=io.StringIO(), **live_kwargs)
+        return seen["cap_s"]
+
+    def test_the_cap_reaches_play_chords(self):
+        self.assertEqual(self._cap_seen_by_play_chords(cap_s=320.504), 320.504)
+        self.assertEqual(self._cap_seen_by_play_chords(), play_chart.RUN_CAP_S)
+
+    def test_a_given_press_is_used_and_no_window_is_looked_up(self):
+        from unittest import mock
+
+        class _FakeEngine:
+            def __init__(self, _proc):
+                pass
+
+            def use_object(self, _ptr):
+                pass
+
+            def song_clock(self):
+                return 0.0
+
+            def score(self):
+                return 0
+
+        seen = []
+
+        def fake_play_chords(chords, clock, read_score, press, **kwargs):
+            seen.append(press)
+            return play_chart.RunResult(stop="done")
+
+        def no_window():
+            raise AssertionError("find_game_window was called on the press route")
+
+        def kit_press(lanes):
+            return {}
+
+        with mock.patch.object(play_chart, "EngineModel", _FakeEngine), \
+                mock.patch.object(play_chart, "find_game_window", no_window), \
+                mock.patch.object(play_chart, "play_chords", fake_play_chords):
+            play_chart.live_play(
+                _load(play_chart.load_dump_chords), open_proc=lambda **kw: _FakeProc(),
+                find_engine=lambda _proc: 0x1000, press=kit_press, out=io.StringIO())
+        self.assertEqual(seen, [kit_press])
+
+
+class PressReplyRowTest(unittest.TestCase):
+    """A press that returns a dict (the kit press) adds the values the press
+    log has columns for to the row; a press that returns keys adds none."""
+
+    def test_a_dict_reply_rides_into_the_row(self):
+        wall = _FakeTime()
+        game = _FakeGame()
+
+        def press(lanes):
+            game.press(lanes)
+            return {"down_frame": 40, "up_frame": 42, "down_ms": 7, "up_ms": 19,
+                    "rewrite": True, "hit": "not this"}
+
+        result = play_chart.play_chords(
+            _load(play_chart.load_dump_chords)[:1], _FakeSongClock(wall, start_s=12.0),
+            game.read_score, press, now=wall.now, sleep=wall.sleep, out=io.StringIO())
+        self.assertEqual(result.rows[0], {
+            "index": 38, "chart_ms": 13043.48, "clock_ms_at_press": result.rows[0]["clock_ms_at_press"],
+            "score_before": 0, "score_after": 100, "hit": 1,
+            "down_frame": 40, "up_frame": 42, "down_ms": 7, "up_ms": 19})
+
+    def test_a_key_press_adds_nothing(self):
+        result, _game, _wall = _run({"start_s": 12.0})
+        self.assertEqual(set(result.rows[0]), {
+            "index", "chart_ms", "clock_ms_at_press", "score_before", "score_after", "hit"})
 
 
 class LivePressTest(unittest.TestCase):

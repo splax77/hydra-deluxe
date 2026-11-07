@@ -59,11 +59,15 @@ void init_scratch(Harness& h) {
     hydra::app::set_path_overrides(po);
 }
 
-// Whether a wildcard lookup of `label` would scroll the library: the search
-// box is empty and `label` is a row's Title text (the row's Selectable in
+// Whether the library shows every row: the search box is empty.
+// EngineHooks::library_unfiltered, and the first half of library_row_title.
+bool library_unfiltered(const Harness& h) { return h.app && h.app->search.empty(); }
+
+// Whether a lookup of `label` would scroll the library: the library is
+// unfiltered and `label` is a row's Title text (the row's Selectable in
 // library_table.cpp). EngineHooks::is_library_row_title.
 bool library_row_title(const Harness& h, const std::string& label) {
-    if (!h.app || !h.app->search.empty()) return false;
+    if (!library_unfiltered(h)) return false;
     for (const hydra::ui::LibraryRow& row : h.app->library.rows())
         if (hydra::ui::library_cell_text(row, hydra::ui::kColumnTitle) == label) return true;
     return false;
@@ -81,6 +85,7 @@ Harness::Harness() {
     hooks.is_library_row_title = [this](const std::string& label) {
         return library_row_title(*this, label);
     };
+    hooks.library_unfiltered = [this] { return library_unfiltered(*this); };
     hooks.open_song = [](ImGuiTestContext* ctx, const std::string& title, double settle_seconds) {
         return open_titled_reason(ctx, title, title, settle_seconds);
     };
@@ -171,7 +176,8 @@ void Harness::stop() {
     app.reset();
 }
 
-void reset_app(Harness& h, const std::string& rules_text, bool wait_store) {
+void reset_app(Harness& h, const std::string& rules_text, bool wait_store,
+               const std::string& settings_text) {
     // The engine runs this step inside ImGui's end-of-frame hook: the app has
     // drawn this frame and it hasn't rendered yet, so an Image the Preview drew
     // still points at its texture (the warning on PreviewController::close).
@@ -225,9 +231,17 @@ void reset_app(Harness& h, const std::string& rules_text, bool wait_store) {
         }
     };
     if (!h.seed_db.empty()) copy_seed(h.seed_db, h.db_path, {"", "-wal", "-shm"}, "--db");
-    // The settings: --ini's copy, else the GUI tests' settings
-    // (tests/scratch_settings.h), written the way the app writes its own ini.
-    if (!h.seed_ini.empty()) {
+    // The settings: the test's own bytes, else --ini's copy, else the GUI
+    // tests' settings (tests/scratch_settings.h), written the way the app
+    // writes its own ini.
+    if (!settings_text.empty()) {
+        std::ofstream f(fs::u8path(h.ini_path), std::ios::binary | std::ios::trunc);
+        f << settings_text;
+        if (!f) {
+            std::fprintf(stderr, "hydra_uitest: could not write \"%s\"\n", h.ini_path.c_str());
+            std::exit(1);
+        }
+    } else if (!h.seed_ini.empty()) {
         copy_seed(h.seed_ini, h.ini_path, {""}, "--ini");
     } else if (!scratch_settings().save_file(h.ini_path)) {
         std::fprintf(stderr, "hydra_uitest: could not write \"%s\"\n", h.ini_path.c_str());

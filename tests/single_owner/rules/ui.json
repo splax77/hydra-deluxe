@@ -931,7 +931,7 @@
       "owner_lines": [
         {
           "file": "src/ui/app_state.cpp",
-          "line_text": "return !settings.chartfolders.empty() && !scan_job && !batch_running();",
+          "line_text": "return settings_error.empty() && !settings.chartfolders.empty() && !scan_job &&",
           "why": "can_scan, the owner"
         }
       ],
@@ -1238,17 +1238,17 @@
       "pattern": "\\bapp::build_preview_scene\\(",
       "anchor": "app::build_preview_scene(",
       "must_match": [
-        "app::build_preview_scene(ps.song, path, sp_cap_, rules_, audio_end_ms, song_length_ms);",
+        "app::build_preview_scene(ps.song, path, sp_cap_, rules_, song_length_ms);",
         "app::PreviewScene scene = app::build_preview_scene("
       ],
       "must_not_match": [
-        "built->scene = app::build_preview_base(song, audio_end_ms, song_length_ms);",
+        "built->scene = app::build_preview_base(song, song_length_ms);",
         "PreviewScene build_preview_scene(const Song& song, const Path* path, int sp_cap,"
       ],
       "owner_lines": [
         {
           "file": "src/ui/preview_load_job.cpp",
-          "line_text": "built.scene = app::build_preview_scene(song, path, sp_cap, rules, audio_end_ms,",
+          "line_text": "built.scene = app::build_preview_scene(song, path, sp_cap, rules, song_length_ms, ghost);",
           "why": "build_scene_and_highway, the owner"
         }
       ],
@@ -1480,32 +1480,59 @@
     },
     {
       "question": "Is a job old enough, with a known rate, to show its time left, and in what words?",
-      "owner": "gated_time_left_text in src/ui/preview_load_job.cpp",
-      "owner_file": "src/ui/preview_load_job.cpp",
-      "owner_symbol": "gated_time_left_text",
+      "owner": "app::time_left_line in src/app/time_left.h",
+      "owner_file": "src/app/time_left.h",
+      "owner_symbol": "time_left_line",
       "date": "2026-10-07",
       "decision": "D48",
       "added_by": "DBUP-B",
-      "pattern": "elapsed_s\\s*<\\s*kTimeLeftAfterSeconds",
+      "pattern": "\\w+\\s*<\\s*kTimeLeftAfterSeconds\\b",
       "anchor": "kTimeLeftAfterSeconds",
       "must_match": [
-        "if (step != Step::Opening || elapsed_s < kTimeLeftAfterSeconds || !(time_left_s >= 0.0))"
+        "if (step != Step::Opening || elapsed_s < kTimeLeftAfterSeconds || !(time_left_s >= 0.0))",
+        "if (elapsed_s < kTimeLeftAfterSeconds || !(time_left_s >= 0.0)) return \"\";"
       ],
       "must_not_match": [
-        "return gated_time_left_text(elapsed_s, time_left_s);",
+        "return app::time_left_line(elapsed_s, kTimeLeftAfterSeconds, time_left_s);",
         "if (step != Step::Opening) return \"\";"
-      ],
-      "owner_lines": [
-        {
-          "file": "src/ui/preview_load_job.cpp",
-          "line_text": "if (elapsed_s < kTimeLeftAfterSeconds || !(time_left_s >= 0.0)) return \"\";",
-          "why": "gated_time_left_text, the owner: PreviewLoadJob::Progress::time_left_text calls it"
-        }
       ],
       "scope": [
         "src"
       ],
-      "note": "The Preview loader shows a time-left line; it checks only its own step and asks the owner for the rest. The startup open's time-left line went with the copy upgrade (D115 task A1-6a). Decided by: D48 Q20 (the words), DBUP answer 4; derive-once review of the DBUP join (F1)"
+      "note": "The Preview loader shows a time-left line; it checks only its own step and hands its age and its gate to the owner, which never names the gate itself. The startup open's time-left line went with the copy upgrade (D115 task A1-6a). The owner moved to src/app/time_left.h with the batch strip's window (D283, task aoa-t4-build). Decided by: D48 Q20 (the words), DBUP answer 4; derive-once review of the DBUP join (F1)"
+    },
+    {
+      "question": "How long does a job have left, from the rate over its recent work?",
+      "owner": "app::TimeLeftClock in src/app/time_left.h",
+      "owner_file": "src/app/time_left.h",
+      "owner_symbol": "TimeLeftClock",
+      "date": "2026-10-31",
+      "decision": "D283",
+      "added_by": "aoa-t4-build",
+      "pattern": "\\b\\w*total\\w*\\s*-\\s*(\\w+(\\.|->))*\\w*(done|completed|finished)\\w*\\)?.*/|/.*\\b\\w*total\\w*\\s*-\\s*(\\w+(\\.|->))*\\w*(done|completed|finished)",
+      "anchor": "total",
+      "must_match": [
+        "return elapsed_s / completed * (total - completed);",
+        "published_ = rate > 0.0 ? static_cast<double>(bytes_total - bytes_done) / rate : -1.0;",
+        "const double eta = (s.total - s.completed) / rate;"
+      ],
+      "must_not_match": [
+        "const int64_t n = std::min(kBlockFrames, total - done);",
+        "return static_cast<float>(std::clamp(done / total, 0.0, 1.0));",
+        "if (!s.finished && !s.paused) s.eta_s = time_left_.read(s.elapsed_s, s.total);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/app/time_left.h",
+          "line_text": "answer_ = rate > 0.0 ? std::optional<double>((std::max)(0.0, total - done_) / rate)",
+          "why": "TimeLeftClock::read, the owner: the batch strip (BatchJob::snapshot) and the Preview loader (ByteRateClock) read it"
+        }
+      ],
+      "scope": [
+        "src",
+        "tools"
+      ],
+      "note": "Time left is the work still to go over the rate in the job's own window: the last 2W finished charts for the batch strip (D283), the last second of bytes for the Preview (D271 item 4). The pattern looks for what is left (a total minus what is done) on the same line as a division, which is how the mean since the start was typed before. The byte rate's old left-over sat on a line of its own and was divided on the next, which a line scan cannot join, so that shape is not caught. A count of what is left with no division is not a time and passes."
     },
     {
       "question": "Has a job run long enough for its progress to show?",
@@ -1546,7 +1573,7 @@
       "owner_file": "src/ui/widgets.h",
       "owner_symbol": "keep_table_column_order",
       "date": "2026-10-08",
-      "decision": "report windows plan, T5 orchestrator answer 1 (2026-10-08)",
+      "decision": "D103 (report windows), T5 orchestrator answer 1 (2026-10-08)",
       "added_by": "RW-T5",
       "pattern": "\\bIsResetDisplayOrderRequest\\b|\\bIsSettingsRequestLoad\\b",
       "anchor": "Request",
@@ -1583,7 +1610,7 @@
       "owner_file": "src/ui/column_widths.cpp",
       "owner_symbol": "table_flags",
       "date": "2026-10-08",
-      "decision": "report windows plan, T5 brief (the table uses the Library table's flags)",
+      "decision": "D103 (report windows), T5 brief (the table uses the Library table's flags)",
       "added_by": "RW-T5",
       "pattern": "\\bImGuiTableFlags_(SizingStretchProp|ScrollX|Hideable|Sortable)\\b",
       "anchor": "ImGuiTableFlags_",

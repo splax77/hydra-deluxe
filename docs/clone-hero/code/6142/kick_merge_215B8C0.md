@@ -1,0 +1,6 @@
+# kick_merge_215B8C0 (build 6142, RVA 0x215B8C0)
+Method of the track class #8661, rcx = the track; its source-note list is at +0x60. Source note: tick at +0x10, length at +0x18, type at +0x20, flags at +0x24 (class #8569, enum #8567).
+Lines 1 to 22: one-time setup. Lines 23 to 38: outer loop over notes (index r13), take note A; remember its tick (r12) and type (edi).
+Lines 39 to 68: inner scan forward from A: stop at the first note with a later tick (line 54), skip notes of another type (line 57), keep the index of the longest note of the same tick and type (line 68 compare, line 70 cmovg replaces only on strictly longer, so the first wins ties).
+Lines 69 to 128: second pass over every other note of the same tick and type: or the two flag words (lines 108 to 110), clear the low three bits and put back one of tap (4), hopo (2) or strum (1), strongest first (lines 111 to 120), store into the longest note (line 123), append the other note's extra list (line 128). Bits 8 and up (2x kick 8, tom 16, cymbal 32, flam, ghost 512, accent 1024) are kept as an or.
+Lines 129 to 152: loop end and return. It never removes the other notes; the finalizer 0x215C320 calls 0x5DB0C0 right after (open2/f215c320.asm lines 59 to 63) to drop them.

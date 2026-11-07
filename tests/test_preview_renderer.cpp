@@ -333,7 +333,7 @@ TEST_CASE("PreviewRenderer: a missing asset dir is a clear error") {
     }
 }
 
-// The memory audit's one real leak (docs/handoffs/2026-10-07-memory-audit.md):
+// The memory audit's one real leak (D95; docs/handoffs/2026-10-07-memory-audit.md (removed; git show 444631e6:docs/handoffs/2026-10-07-memory-audit.md)):
 // a constructor that throws after building shaders, buffers and meshes must
 // release them. Every D3D object it made holds a reference on the device, so
 // the device's reference count shows anything left behind.

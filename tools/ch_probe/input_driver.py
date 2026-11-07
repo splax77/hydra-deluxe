@@ -1,8 +1,10 @@
 """The input driver: fire drum-lane keystrokes at the running game.
 
 What this does, in one line: it presses and releases a keyboard key for a
-drum lane. Waiting for the song clock to reach a note is not its job; the
-runners do that with experiments/live.wait_until, then call press_chord.
+drum lane. It also presses the non-lane keys in MENU_KEYS and types text,
+for driving the game's menus. Waiting for the song clock to reach a note is
+not its job; the runners do that with experiments/live.wait_until, then call
+press_chord.
 
 Why the timing can be sloppy. Windows cannot deliver a keystroke at an exact
 millisecond -- the scheduler jitters by several ms, which is huge next to an
@@ -12,10 +14,11 @@ back, so what we record is what the engine measured, not what we intended.
 We only have to land the key NEAR the note edge.
 
 One seam here can only be exercised by a live game, and is marked LIVE-ONLY
-in the code: send_key, the real ctypes SendInput call. It needs a real
-desktop and the game window in focus. Unit tests monkeypatch it.
+in the code: send_input, the real ctypes SendInput call. It needs a real
+desktop and the game window in focus. Unit tests monkeypatch it, or send_key
+above it.
 
-Everything else -- the binding map and the press logic -- is plain Python and
+Everything else -- the key tables and the press logic -- is plain Python and
 is unit-tested with fakes.
 """
 
@@ -81,6 +84,30 @@ LANE_NAMES: Dict[int, str] = {
 }
 
 
+# --- The menu keys ---------------------------------------------------------------
+#
+# The one table of keys that are not drum lanes, by the name a caller types
+# (the MCP server's ch_key). The values are Windows virtual-key codes. The
+# menu meanings come from the manual's "Keyboard and Gamepads" page
+# (https://wiki.clonehero.net/books/guitars-drums-controllers/page/keyboard-and-gamepads),
+# read 2026-10-30; a key that page gives no menu meaning says so.
+MENU_KEYS: Dict[str, int] = {
+    "enter": 0x0D,      # VK_RETURN: Start/Pause on that page
+    "escape": 0x1B,     # VK_ESCAPE: no menu meaning on that page
+    "space": 0x20,      # VK_SPACE: opens the control mapper from the main menu, per that page
+    "backspace": 0x08,  # VK_BACK: no menu meaning on that page
+    "tab": 0x09,        # VK_TAB: no menu meaning on that page
+    "up": 0x26,         # VK_UP: Strum Up on that page
+    "down": 0x28,       # VK_DOWN: Strum Down on that page
+    "left": 0x25,       # VK_LEFT: no menu meaning on that page
+    "right": 0x27,      # VK_RIGHT: no menu meaning on that page
+}
+
+# The wait between two menu keys, and between two typed characters (the
+# user's ruling 3 in docs/superpowers/plans/2026-10-30-ch-mcp-star-power-and-song-start.md).
+MENU_KEY_GAP_S = 0.25
+
+
 # --- Win32 SendInput plumbing (used only by the live seam) -------------------
 #
 # The INPUT structure Windows expects for SendInput. We only ever send keyboard
@@ -89,6 +116,9 @@ LANE_NAMES: Dict[int, str] = {
 
 INPUT_KEYBOARD = 1
 KEYEVENTF_KEYUP = 0x0002
+# The event carries a character in wScan instead of a key in wVk: the way
+# SendInput types text whatever the keyboard layout.
+KEYEVENTF_UNICODE = 0x0004
 
 # Pointer-sized unsigned integer, used for the dwExtraInfo field.
 ULONG_PTR = ctypes.c_size_t
@@ -111,6 +141,15 @@ class _INPUTUNION(ctypes.Union):
 
 class _INPUT(ctypes.Structure):
     _fields_ = [("type", wintypes.DWORD), ("u", _INPUTUNION)]
+
+
+def _key_input(vk: int, scan: int, flags: int) -> _INPUT:
+    """One keyboard INPUT: a virtual key in `vk`, or a character in `scan`
+    when `flags` holds KEYEVENTF_UNICODE."""
+    event = _INPUT()
+    event.type = INPUT_KEYBOARD
+    event.u.ki = _KEYBDINPUT(wVk=vk, wScan=scan, dwFlags=flags, time=0, dwExtraInfo=0)
+    return event
 
 
 class InputDriver:
@@ -173,23 +212,49 @@ class InputDriver:
             self.send_key(vk, key_up=True)
         return vks
 
+    def press_key(self, vk: int, *, hold_s: float = KEY_HOLD_S,
+                  sleep: Callable[[float], None] = time.sleep) -> int:
+        """Press one key (a MENU_KEYS code, say): down, hold `hold_s`, up.
+        Returns the key pressed."""
+        self.send_key(vk, key_up=False)
+        sleep(hold_s)
+        self.send_key(vk, key_up=True)
+        return vk
+
+    def type_text(self, text: str, *, gap_s: float,
+                  sleep: Callable[[float], None] = time.sleep) -> int:
+        """Type `text` one character at a time as Unicode key events, waiting
+        `gap_s` between two characters. A character outside the 16-bit range
+        goes as its two UTF-16 halves. Returns the characters typed."""
+        for i, char in enumerate(text):
+            if i:
+                sleep(gap_s)
+            data = char.encode("utf-16-le")
+            for unit in (int.from_bytes(data[j:j + 2], "little")
+                         for j in range(0, len(data), 2)):
+                self.send_unicode(unit, key_up=False)
+                self.send_unicode(unit, key_up=True)
+        return len(text)
+
     def send_key(self, vk: int, key_up: bool) -> None:
-        """LIVE-ONLY seam: one real key event via Win32 SendInput.
+        """One key event for the virtual key `vk`, through send_input.
+        Tests replace this method with a recorder."""
+        self.send_input(_key_input(vk, 0, KEYEVENTF_KEYUP if key_up else 0))
+
+    def send_unicode(self, unit: int, key_up: bool) -> None:
+        """One typed-character event for the UTF-16 code unit `unit`, through
+        send_input."""
+        flags = KEYEVENTF_UNICODE | (KEYEVENTF_KEYUP if key_up else 0)
+        self.send_input(_key_input(0, unit, flags))
+
+    def send_input(self, event: "_INPUT") -> None:
+        """LIVE-ONLY seam: one real keyboard event via Win32 SendInput.
 
         This is the only place that touches the OS. It needs a real desktop and
         the game window in focus, so it cannot run under unit tests -- tests
-        replace this method with a recorder. Everything above it is pure logic.
+        replace this method (or send_key) with a recorder. Everything above it
+        is pure logic.
         """
-        flags = KEYEVENTF_KEYUP if key_up else 0
-        event = _INPUT()
-        event.type = INPUT_KEYBOARD
-        event.u.ki = _KEYBDINPUT(
-            wVk=vk,
-            wScan=0,
-            dwFlags=flags,
-            time=0,
-            dwExtraInfo=0,
-        )
         sent = ctypes.windll.user32.SendInput(
             1, ctypes.byref(event), ctypes.sizeof(_INPUT)
         )

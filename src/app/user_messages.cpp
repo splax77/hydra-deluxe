@@ -44,8 +44,8 @@ constexpr const char* kSearchBroken =
     "The analysis failed on this chart because of a bug in Hydra. Please report it with "
     "the song's name.";
 // The network failure sentences for one server (KindedError::service). The
-// GitHub row is the user's ruling during T3a of
-// docs/superpowers/plans/2026-10-22-auto-updater.md.
+// GitHub row is the user's ruling during the updater's build (D259, "Six
+// rulings during the build", ruling 1).
 struct NetSentences {
     const char* server;  // the server's name in the HTTP status sentence
     const char* unreachable;
@@ -179,6 +179,7 @@ std::optional<KindSentence> kind_sentence(const KindedError& e) {
         case ErrorKind::NoRecords: return KindSentence{kNoRecords};
         case ErrorKind::ReportWrite: return KindSentence{kReportWrite};
         case ErrorKind::RulesFile: return KindSentence{kAnalysisOffSentence};
+        case ErrorKind::SettingsFile: return KindSentence{kSettingsOffSentence};
         case ErrorKind::AudioDecode: return KindSentence{kAudioDecode};
         case ErrorKind::PreviewAssets: return KindSentence{kPreviewAssets};
         case ErrorKind::UpdateUnverified: return KindSentence{kUpdateUnverifiedSentence};
@@ -224,8 +225,8 @@ std::string plain_error_line(const std::exception& e) {
     return plain_error_line(plain_error(e), plain_error_detail(e));
 }
 
-std::string rules_file_tool_text(const std::exception& e) {
-    return std::string("hydra_rules.ini has an error:\n") + e.what();
+std::string ini_file_tool_text(std::string_view file_name, const std::exception& e) {
+    return std::string(file_name) + " has an error:\n" + e.what();
 }
 
 std::string plain_error_block(const std::exception& e) {
@@ -287,9 +288,11 @@ std::string library_rescan_notice() {
            "version adds.";
 }
 
-std::string library_rescan_blocked_notice(const std::string& folder) {
-    return "Your library needs a scan, but " + folder +
-           " cannot be read. Click Scan library when it is back.";
+std::string library_scan_blocked_notice(const std::string& folder, ScanAsker asker) {
+    const std::string first = asker == ScanAsker::Open
+                                  ? "Your library needs a scan, but " + folder + " cannot be read."
+                                  : folder + " cannot be read, so nothing was scanned.";
+    return first + " Click Scan library when it is back.";
 }
 
 std::string stale_chip_text() {

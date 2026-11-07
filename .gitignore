@@ -32,6 +32,7 @@ compile_commands.json
 # Claude Code local state (the shared output style stays tracked).
 .claude/*
 !.claude/output-styles/
+!.claude/commands/
 
 # generated path reports dropped at the repo root
 /hydra_paths.html

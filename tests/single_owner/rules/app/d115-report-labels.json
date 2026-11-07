@@ -6,7 +6,7 @@
       "owner_file": "src/app/display_format.h",
       "owner_symbol": "kAverageMultiplierLabel",
       "date": "2026-10-14",
-      "decision": "D115: one Average Multiplier label for the Paths tab, the Stars tab and the path report (plan 2026-10-12-one-record-per-chart, wave 1, A2-5)",
+      "decision": "D115: one Average Multiplier label for the Paths tab, the Stars tab and the path report",
       "added_by": "D115-A2-5",
       "pattern": "\"(Avg\\.?|Average) [Mm]ultiplier:?\\s*\"|\"Multiplier\"",
       "anchor": "ultiplier",

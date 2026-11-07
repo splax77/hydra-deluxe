@@ -1,0 +1,56 @@
+Read trippin_path3_score_renamed.json: 857 chords
+  First note at 3.40s, last at 177.31s
+
+Connecting to Clone Hero...
+  Waiting for active engine (start/unpause the song)...
+......  Engine at 0x213c82c3540, song clock = -0.77s
+  Clone Hero window handle: 0x44e19ea
+  Song clock at -0.77s; starting at note 1/857 (t=3.40s)
+
+     #  chart_t    clock  diff_ms  lanes       result  streak
+     1     3.40     3.40     -1.8  Kick+BCym   HIT          1
+     2     4.62     4.62     -0.2  Red         HIT          2
+     3     4.75     4.75     -0.5  Red         HIT          3
+     4     4.89     4.89     -0.8  Red         HIT          4
+     5     5.03     5.03     -1.1  Red         HIT          5
+     6     5.16     5.16     -1.5  Red         HIT          6
+     7     5.30     5.30     -1.8  Red         HIT          7
+     8     5.44     5.44     -1.5  Red         HIT          8
+     9     5.57     5.57     -1.2  Red         HIT          9
+    10     5.71     5.71     -1.4  Kick+GCym   HIT         10
+    11     5.98     5.98     -0.8  YCym        HIT         11
+    12     6.12     6.12     -0.7  Kick        HIT         12
+    13     6.26     6.25     -0.5  Red+YCym    HIT         13
+    14     6.53     6.53     +0.1  YCym        HIT         14
+    15     6.66     6.66     +0.2  Kick        HIT         15
+    16     6.80     6.80     +0.6  YCym        HIT         16
+    17     6.94     6.94     +0.6  Red         HIT         17
+    18     7.07     7.07     +0.7  YCym        HIT         18
+    19     7.21     7.21     -1.5  Kick        HIT         19
+    20     7.35     7.34     -1.5  Red+YCym    HIT         20
+    21     7.49     7.49     +0.1  Kick        HIT         21
+    22     7.63     7.63     -1.3  YCym        HIT         22
+    23     7.77     7.77     +0.2  Red         HIT         23
+    24     7.91     7.91     -1.2  Kick+YCym   HIT         24
+    25     8.19     8.19     +0.4  YCym        HIT         25
+    26     8.33     8.32     -2.0  Kick        HIT         26
+    27     8.46     8.46     -1.3  Red+YCym    HIT         27
+    28     8.74     8.74     +0.1  YCym        HIT         28
+    29     8.88     8.88     +0.9  Kick        HIT         29
+    30     9.02     9.02     -1.3  YCym        HIT         30
+    40    10.56    10.56     -1.7  Kick        HIT         40
+    60    13.79    13.79     -1.7  YCym        HIT         60
+    80    16.87    16.87     -0.2  Kick+YCym   HIT         80
+   100    20.23    20.23     -0.9  YCym        HIT        100
+  clock frozen at 22.24 s for over 5 s (song quit or paused). Song ended or paused?
+
+  Stopped.
+
+  Press log: tools/ch_probe/experiments/results/overlay-spike/run2c_vid30_presses.csv (111 rows)
+
+  Notes: 111, Hits: 111, Misses: 0
+  Hit rate: 100.0%
+  Best streak: 111
+Done.
+
+[exited with code 0]

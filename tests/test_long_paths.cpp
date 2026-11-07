@@ -176,7 +176,8 @@ TEST_CASE("settings, reports, and the database work past 260 characters") {
     const fs::path page(hydra::utf8_to_wide(dir.deep + "\\hydra_paths.html"));
     hydra::app::write_report_file(page, "<html>long</html>");
     CHECK(hydra::read_file_text(hydra::wide_to_utf8(page.wstring())) == "<html>long</html>");
-    CHECK_FALSE(hydra::file_exists_utf8(hydra::wide_to_utf8(page.wstring()) + ".tmp"));
+    CHECK_FALSE(hydra::file_exists_utf8(
+        hydra::wide_to_utf8(hydra::app::replacing_temp_path(page).wstring())));
 
     // SQLite writes a -wal and -shm file beside the database, so those go
     // through the same long path too.

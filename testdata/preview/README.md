@@ -69,8 +69,8 @@ Today's render had a worst tile of 6.25 percent, a whole frame of 0.0525
 percent and a mean of 5.688. A render with Pro Drums off, which draws some
 notes differently from the screenshot, had a worst tile of 32.8 percent, a whole frame of 0.125
 percent and a mean of 5.727. The mean barely moved, which is why the tile and
-frame checks exist. The decision and its reasoning are under "User decisions",
-item 3, in `docs/superpowers/plans/2026-10-10-test-fidelity-fixes.md`.
+frame checks exist. The decision and its reasoning are item 3 of D297, copied
+from `docs/superpowers/plans/2026-10-10-test-fidelity-fixes.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-10-10-test-fidelity-fixes.md`).
 
 After a recapture, measure again before changing any of the four keys: run the
 golden test with `HYDRA_PREVIEW_GOLDEN_DUMP` set, read the printed numbers and

@@ -150,6 +150,15 @@ std::string normalize_chart_hash(std::string_view hash);
 std::optional<std::string> save_scan_as_library(store::RecordStore& store,
                                                 const std::vector<ScanItem>& items);
 
+// The first chart folder in `chartfolders` that cannot be read as a folder,
+// or nothing when every one can. A library scan over a folder it cannot list
+// would save a library without that folder's charts and drop their results,
+// so the app's scans and hydra_batch's whole-library run ask here first and
+// refuse (D266 item 4, D268). It reads the disk on every call, so callers ask
+// only when a scan is asked for.
+std::optional<std::string> first_missing_chart_folder(
+    const std::vector<std::string>& chartfolders);
+
 // The last saved scan, as the rescan cache discover_charts takes. A store
 // that cannot be read gives an empty cache: no cache is only a slower scan,
 // not a failed one.
@@ -230,7 +239,6 @@ struct BatchProgress {
     int analyzed = 0;   // rows whose chart was stored
     int skipped = 0;    // plan_batch's skipped rows, known before the first chart
     int failed = 0;
-    std::string current_title;
 };
 
 // A batch's three counts as the app's strip and hydra_batch's closing line

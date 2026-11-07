@@ -1,6 +1,5 @@
-// The one column-width rule every table in the app uses (plan:
-// docs/superpowers/plans/2026-10-14-column-shares-scroll-left-align.md,
-// Change 1). place_columns is its owner.
+// The one column-width rule every table in the app uses (D243 to D245).
+// place_columns is its owner.
 //
 // A column that never cuts is as wide as the widest thing it shows: its
 // header or its widest cell, each measured in the font it draws in

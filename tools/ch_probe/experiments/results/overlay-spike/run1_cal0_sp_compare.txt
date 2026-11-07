@@ -1,0 +1,45 @@
+Star Power comparison: 40922 watcher rows, 857 chords, 5 path activations, width 64
+PASS phrase rise after chord 9 (tick 1920, 5710.1 ms): +1440 (0 -> 1440) at 5715.4 ms, full
+PASS phrase rise after chord 120 (tick 8064, 23566.3 ms): +1440 (1440 -> 2880) at 23568.0 ms, full
+PASS phrase rise after chord 209 (tick 14112, 41487.5 ms): +1440 (0 -> 1440) at 41489.1 ms, full
+PASS phrase rise after chord 304 (tick 20352, 59757.5 ms): +1440 (1440 -> 2880) at 59761.5 ms, full
+PASS phrase rise after chord 386 (tick 24960, 73236.9 ms): +1438 (720 -> 2158) at 73243.7 ms, full, during Star Power
+PASS phrase rise after chord 446 (tick 29472, 86639.4 ms): +1440 (0 -> 1440) at 86642.5 ms, full
+PASS phrase rise after chord 497 (tick 34176, 100484.9 ms): +1440 (1440 -> 2880) at 100488.9 ms, full
+PASS phrase rise after chord 558 (tick 38784, 113986.8 ms): +1438 (2162 -> 3600) at 113991.2 ms, full, during Star Power
+PASS phrase rise after chord 669 (tick 44928, 131873.9 ms): +1440 (0 -> 1440) at 131879.5 ms, full
+PASS phrase rise after chord 751 (tick 50976, 149843.3 ms): +1440 (1440 -> 2880) at 149849.2 ms, full
+PASS phrase rise after chord 799 (tick 55680, 163959.3 ms): +1439 (722 -> 2161) at 163962.3 ms, full, during Star Power
+Full rises: not all the same, sizes 1438, 1439, 1440; sp_max / 4 = 1440
+PASS sp_max constant: 5760; Hydra full meter 6144 (resolution 192 x 32)
+Activation 1 at clock 30347.2 ms:
+PASS   activation 1 multiplier doubles: 4 -> 8 at 30347.2 ms
+PASS   activation 1 end time ahead of the clock: end 39488.3 ms, clock 30347.2 ms
+PASS   activation 1 flag clears at the end: end 39488.3 ms, flag 0 at 39491.1 ms
+PASS   activation 1 multiplier halves at the end: 8 -> 4 at 39491.1 ms
+PASS   activation 1 on the path's chord: chord 162 (tick 10368, 30341.1 ms); game end 39488.3 ms, Hydra deactivation 39485.4 ms (chord 203, tick 13440), difference +2.9 ms
+Activation 2 at clock 66517.7 ms:
+PASS   activation 2 multiplier doubles: 4 -> 8 at 66517.7 ms
+PASS   activation 2 end time ahead of the clock: end 75539.7 ms, clock 66517.7 ms
+  activation 2 end time moved while active: 75539.7 ms at the start, 80099.2 ms at the end
+PASS   activation 2 flag clears at the end: end 80099.2 ms, flag 0 at 80104.0 ms
+PASS   activation 2 multiplier halves at the end: 8 -> 4 at 80104.0 ms
+PASS   activation 2 on the path's chord: chord 345 (tick 22656, 66516.5 ms); game end 80099.2 ms, Hydra deactivation 80098.0 ms (chord 420, tick 27264), difference +1.2 ms
+Activation 3 at clock 111796.7 ms:
+PASS   activation 3 multiplier doubles: 4 -> 8 at 111796.7 ms
+PASS   activation 3 end time ahead of the clock: end 120710.6 ms, clock 111796.7 ms
+  activation 3 end time moved while active: 120710.6 ms at the start, 125202.9 ms at the end
+PASS   activation 3 flag clears at the end: end 125202.9 ms, flag 0 at 125203.8 ms
+PASS   activation 3 multiplier halves at the end: 8 -> 4 at 125203.8 ms
+FAIL   activation 3 not on the path's chord: game tick 38016, path act_tick 34944
+Activation 4 at clock 157020.9 ms:
+PASS   activation 4 multiplier doubles: 4 -> 8 at 157020.9 ms
+PASS   activation 4 end time ahead of the clock: end 166291.0 ms, clock 157020.9 ms
+  activation 4 end time moved while active: 166291.0 ms at the start, 170914.3 ms at the end
+PASS   activation 4 flag clears at the end: end 170914.3 ms, flag 0 at 170916.6 ms
+PASS   activation 4 multiplier halves at the end: 8 -> 4 at 170916.6 ms
+FAIL   activation 4 not on the path's chord: game tick 53376, path act_tick 47232
+FAIL path activation 5 (act_tick 56448): the game made no activation
+PASS multiplier at each chord: 505 of 505 chords match (one chord of lag allowed)
+Multiplier not compared from chord 505 on: the game's activations part from the path at 102747.4 ms
+Summary: 31 PASS, 3 FAIL

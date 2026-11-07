@@ -12,11 +12,11 @@ My recommendation: do not model the lane leniency. Decide separately whether to 
 
 ## How a lane note is marked
 
-The note flag word at note+0x7C carries the lane bits. 0x4000 marks a note in a lane. 0x8000 is added when the lane is double, so a double-lane note has 0xC000. 0x10000 marks the last lit note of the lane. The lane builder sets them (`f20d12c0.asm`, at 0x20D16BA, 0x20D16DB and 0x20D16F8).
+The lane bits on a note's flag word, and who sets them, now live in docs/clone-hero/02-note-list.md (NL-56). The lane builder sets them at 0x20D16BA, 0x20D16DB and 0x20D16F8 (`f20d12c0.asm`).
 
 The builder only flags notes whose pad is in the lane's pad mask (the test at 0x20D168F). A note on an unlit pad inside the lane gets no flag and is an ordinary note.
 
-I scanned the whole code section for instructions that test or set those bits on a note's flag word. Only the lane builder and the drum engine (0x20DC000 to 0x20DF700) use them. The base hit routine (0x20F63F0), the score function (0x20DEEC0), the Star Power code and the star-base code never read them. The scan sees instructions with the bits written into them (`play/flagscan_dword.py`, `play/flagscan_byte.py`). It cannot see a flag word loaded into a register and masked later, so "only these" is strong but not proven.
+I scanned the whole code section for instructions that test or set those bits on a note's flag word. Only the lane builder and the drum engine (0x20DC000 to 0x20DF700) use them. The base hit routine (0x20F63F0), the score function (0x20DEEC0), the Star Power code and the star-base code never read them. The scan sees instructions with the bits written into them (`play/flagscan_dword.py`, `play/flagscan_byte.py`). It cannot see a flag word loaded into a register and masked later, so "only these" is strong but not proven. The rule as the reference states it is docs/clone-hero/02-note-list.md (NL-56).
 
 ## What the engine keeps for a lane
 
@@ -36,14 +36,14 @@ Each update the engine walks the notes that are past the window (`f20f5810_base_
 
 The drum engine overrides that slot at 0x20DCAD0 (`f20dcad0.asm`). A normal miss runs the base miss code at 0x20F3610 (`f20f3610_base_miss.asm`). The override can instead tail-jump to the hit routine (slot 11, at 0x20DCC11). The note becomes a hit when it is on a pad in the lane mask and one of these holds:
 
-- **The grant budget is not used up.** Fewer than 2 grants since the last lane press for a single lane, fewer than 4 for a double lane (0x20DCB1F to 0x20DCB39). Each grant adds one (0x20DCBF1).
-- **A lane pad was pressed in the last 0.075 s.** The engine time minus the last lane press time is under 0.075 s (0x20DCC28 to 0x20DCC44). This path does not spend the budget.
+- **The grant budget is not used up.** This rule now lives in docs/clone-hero/03-timing.md (TM-45).
+- **A lane pad was pressed a moment ago.** This rule now lives in docs/clone-hero/03-timing.md (TM-45). This path does not spend the budget.
 
-Every press on a lane pad zeroes both counters at +0x2E8 and +0x2EC with one 8-byte write (0x20DECF3). So during a roll you can drop a couple of notes and the game still credits them.
+The grant limits and the 0.075 s test are in docs/clone-hero/03-timing.md (TM-45). Every press on a lane pad zeroes both counters at +0x2E8 and +0x2EC with one 8-byte write (0x20DECF3), so during a roll you can drop a couple of notes and the game still credits them. TM-45 holds that reset too.
 
 A missed note on a double lane that is on a pad not yet in the mask joins the mask and is granted as well (0x20DCB3F to 0x20DCBF1). A real miss on a non-kick note that fails both tests clears the lane (0x20DCC46 to 0x20DCC6A).
 
-There is a second grant that is not a lane rule. When Star Power can be activated (`0x20F57F0`: not active, meter at least the activation level), a fill-end note that is missed is hit automatically. The first branch of 0x20DCAD0 does this (0x20DCADE to 0x20DCB00).
+There is a second grant that is not a lane rule: a missed fill-end note is hit for you when Star Power can be activated. It now lives in docs/clone-hero/04-fills.md (FL-31) and docs/clone-hero/05-star-power.md (SP-20).
 
 ## What the flag 0x800 is
 

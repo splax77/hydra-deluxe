@@ -94,7 +94,9 @@ has always played that padding, so playback is unchanged.
 The audio callback never throws, never allocates after its first call, and
 never reads a file directly; it only touches mapped or in-memory bytes.
 
-The reader numbers, confirmed as they are (D48, Q33). A zero-byte Opus packet
+The reader numbers, confirmed as they are. The user saw the 120 ms,
+512-packet, 0.5 s, 4096-frame and 4 GiB values and kept them (D273); the
+others below were confirmed under D48, Q33. A zero-byte Opus packet
 counts as 120 ms, the largest Opus packet, because the decoder conceals a lost
 packet for that whole length (`packet_samples` in src/audio/opus_reader.cpp).
 The Opus reader takes at most 512 packets out of one page, more than an Ogg

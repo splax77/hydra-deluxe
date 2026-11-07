@@ -90,8 +90,7 @@ void apply_theme() {
     // Text alignment, written here and nowhere else (the single-owner row in
     // tests/single_owner/rules/ui/text-alignment.json). Text starts at the
     // left edge of the space it is given. A button's label stays centred in
-    // its button: the user's answer 6 in
-    // docs/superpowers/plans/2026-10-14-column-shares-scroll-left-align.md.
+    // its button: the user's answer, D248.
     // Both values are ImGui's own defaults, written out so the choice is seen
     // in one place.
     style.ButtonTextAlign = ImVec2(0.5f, 0.5f);

@@ -106,7 +106,10 @@ std::string pipe_problem(bool live, const std::string& pipe_name);
 // blocks in AppState::wait_store_open until the store is ready, so the test
 // can click at once, and fails the test if the open failed. Only a test that
 // looks at the startup screen passes false.
-void reset_app(Harness& h, const std::string& rules_text = "", bool wait_store = true);
+// settings_text: the scratch hydra_settings.ini's exact bytes. Empty (the
+// default) means the INI described above.
+void reset_app(Harness& h, const std::string& rules_text = "", bool wait_store = true,
+               const std::string& settings_text = "");
 
 // Register every C++ test (the uitest_<area>.cpp files, in the order
 // uitest_tests.cpp fixes) through register_test (uitest_engine.h). Each

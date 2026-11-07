@@ -72,7 +72,7 @@ bool matches_query(const app::LibraryQuery& q, const LibraryRow& row) {
 
 // Applies one lookup to one row. False when nothing the library shows or
 // filters on changed (LibraryRow::shows_same_as), so a refresh that finds
-// the same answers costs no re-sort.
+// the same answers rebuilds nothing.
 bool apply_summary(LibraryRow& row, const store::RecordLookup& lookup) {
     if (row.shows_same_as(lookup)) return false;
     row.status = lookup.status;
@@ -205,9 +205,12 @@ size_t LibraryModel::set_summary_for(const std::string& md5, const store::Record
 }
 
 void LibraryModel::summaries_changed() {
-    // A new score moves a row only under the Best path sort; a new status
-    // can move it between chips and in or out of a stars:/squeeze filter.
-    if (sort_column_ == LibrarySort::BestPath) resort();
+    // A new summary never moves a row by itself: the list would jump under
+    // the user while analysis runs. Only the Best path sort reads a summary,
+    // so only its order can go out of date, and it waits for
+    // sort_if_out_of_date. A new status can still move a row between chips
+    // and in or out of a stars:/squeeze filter.
+    if (sort_column_ == LibrarySort::BestPath) order_out_of_date_ = true;
     refilter();
 }
 
@@ -216,13 +219,13 @@ void LibraryModel::set_query(std::string_view text) {
     query_text_.assign(text.data(), text.size());
     ++query_version_;
     query_ = app::parse_library_query(text);
-    refilter();
+    if (!sort_if_out_of_date()) refilter();
 }
 
 void LibraryModel::set_chip(StatusChip chip) {
     if (chip == chip_) return;
     chip_ = chip;
-    refilter();
+    if (!sort_if_out_of_date()) refilter();
 }
 
 void LibraryModel::set_sort(LibrarySort column, bool ascending) {
@@ -233,13 +236,21 @@ void LibraryModel::set_sort(LibrarySort column, bool ascending) {
     refilter();
 }
 
+bool LibraryModel::sort_if_out_of_date() {
+    if (!order_out_of_date_) return false;
+    resort();
+    refilter();
+    return true;
+}
+
 void LibraryModel::resort() {
+    order_out_of_date_ = false;
     sorted_.resize(rows_.size());
     std::iota(sorted_.begin(), sorted_.end(), size_t{0});
 
     // Equal keys fall back to title, folder, then file path, always
-    // ascending: one fixed order, so a row never jumps on a refresh. The
-    // folded strings sort without case or accents getting in the way.
+    // ascending: one fixed order, so a re-sort moves only the rows it must.
+    // The folded strings sort without case or accents getting in the way.
     auto name_key = [](const LibraryRow& r, int column) -> const std::string& {
         return r.sort_keys[static_cast<size_t>(column)];
     };

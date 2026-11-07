@@ -9,8 +9,9 @@ each tool call to that pipe. A stand-in Hydra, `tools/fake_hydra_live.py`,
 lets the helper's tests fake a broken Hydra.
 
 The user approved the design on 2026-10-14, in
-docs/superpowers/plans/2026-10-14-hydra-mcp-server.md. The ownership rule
-below came later the same day, as that plan's T8. How to use the server is in
+`docs/superpowers/plans/2026-10-14-hydra-mcp-server.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-10-14-hydra-mcp-server.md`).
+The ownership rule below came later the same day, as that plan's T8; its
+table and the wire protocol are copied below. How to use the server is in
 docs/agents/ui-testing.md, "Live mode and the MCP server".
 
 ## The decision
@@ -36,8 +37,42 @@ an oversized reply. It never answers a command the way Hydra would. Every
 test of what a command does runs against the real headless
 `hydra_uitest --live`.
 
-The plan's T8 table lists each question with its owner. A comment or doc
-names that owner and does not restate its rule.
+The table below, copied from the plan's T8 ("Who owns what"), lists each
+question with its owner. A comment or doc names that owner and does not
+restate its rule.
+
+| Question | Owner |
+|---|---|
+| What a verb does, how its arguments parse, which lines are commands | C++: `run_command`, `command_line` |
+| Whether a number argument is valid | C++: the `timeout` and `wait` verbs, strictly |
+| The timeout in force, and the longest a command may run | C++: `CommandSession`, reported in every reply |
+| Reply wording, ok or failed, including "nothing found" | C++: the live channel, which sends finished text |
+| Line numbers | Script mode: the interpreter. Live mode: none from Hydra; the helper numbers the lines of a `hydra_run` script, the only numbering there |
+| Filtering text and dump output | C++: the `text` and `dump` verbs |
+| Where Hydra writes its log and crash dump | C++, reported in the hello line |
+| The pipe name | The helper (transport). It passes the name with `--pipe <name>`; Hydra uses it and never builds one |
+| Launch, stop, the snapshot, the running-Hydra check, reply caps, truncation, the tool list | The helper |
+| Hang, exit, closed pipe, oversized replies (test only) | The stand-in, and nothing else |
+
+## The wire protocol
+
+This is the plan's "The protocol after T8", in short. A request is one line.
+Hydra opens the pipe named by `--pipe <name>`, which is required with
+`--live`. Every reply is one JSON line:
+`{"ok":<bool>,"text":"<finished text>","timeout":<seconds in force after this command>}`.
+On success `text` is what the verb produced, or `ok` when it produced nothing.
+On failure it is the finished failure: the error, then the engine log lines
+from this command. The helper prints `text` as given, and caps its wait for a
+reply at the last reported `timeout` plus `REPLY_MARGIN_S`. Hydra's first line
+is the hello line,
+`{"ok":true,"hello":{"mode":..., "scratch":..., "pid":..., "timeout":..., "log":..., "crash_dump":...}}`.
+`log` is the log file's path, empty for `hydra_uitest`, whose log is stdout,
+which the helper captures itself. `crash_dump` is where a crash dump would be
+written. `timeout <s>` and `wait <s>` take a finite, non-negative number and
+nothing else: `90s`, `abc` and an empty argument fail with a message naming
+what was given. In live mode a `wait` longer than the timeout in force fails,
+so no command outlasts the cap the helper already knows. The code that owns each part is in the table above; `live_protocol.h` holds
+the line shapes.
 
 ## Why
 

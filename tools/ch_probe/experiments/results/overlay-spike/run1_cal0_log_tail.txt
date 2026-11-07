@@ -1,0 +1,8 @@
+GO 20:36:10.974
+Watching C:\Users\Patrick\Documents\Clone Hero\Logs\Session-2026-10-28_20-34-47.log (from its current end, 2134 bytes); cap 300 s.
+Started at 20:36:11.110.
+20:36:15.244  [Log] Loading Song: Hydra Probe - Trippin SP Spike    <= loading 'Hydra Probe - Trippin SP Spike'
+20:36:15.244  [Warning] <Missing i18n Resource>: nice:en
+Stopped at the 300 s cap.
+
+[exited with code 0]

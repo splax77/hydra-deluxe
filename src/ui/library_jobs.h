@@ -31,6 +31,7 @@
 #include "app/dynamics_breakdown.h"
 #include "app/job_base.h"
 #include "app/report.h"
+#include "app/time_left.h"
 #include "core/model.h"
 #include "store/record_store.h"
 #include "ui/library_model.h"
@@ -72,15 +73,16 @@ struct StoreOpenProgress {
 };
 
 // Reads every chart in the library, then every row's summary under
-// `settings` (its chart mode, SP cap and lens), into `library`: the read at
-// startup and after a scan. Returns the plain sentence of the read that
-// failed, or "" when both worked; a failed read leaves the model's rows as
-// they were (D73 item 3).
+// `settings` (its chart mode, SP cap and lens), into `library`, and leaves it
+// sorted on them: the read at startup and after a scan. Returns the plain
+// sentence of the read that failed, or "" when both worked; a failed read
+// leaves the model's rows as they were (D73 item 3).
 std::string read_library(store::RecordStore& store, const app::Settings& settings,
                          LibraryModel& library);
 // Re-reads every row's summary under `settings`: one store call for the
 // whole library, never per row per frame (the batch workers share the
-// store's lock). Throws when the read fails.
+// store's lock). The rows keep their order (LibraryModel::sort_if_out_of_date).
+// Throws when the read fails.
 void read_library_summaries(store::RecordStore& store, const app::Settings& settings,
                             LibraryModel& library);
 
@@ -195,14 +197,21 @@ public:
     ScanProgress snapshot() const;
 
 private:
-    void run();
+    void run();   // scan() with its exceptions caught
+    void scan();  // the scan itself
 
     std::vector<std::string> rootfolders_;
     store::RecordStore& store_;
+    std::function<void()> hold_;  // set_scan_hold_for_test's hook, taken at construction
 
     mutable std::mutex mu_;
     ScanProgress progress_;
 };
+
+// Test seam: when set, every scan job built from now on calls this on its own
+// thread before it reads anything, so a test can make a scan throw. An empty
+// hook clears it. Only tests set it.
+void set_scan_hold_for_test(std::function<void()> hold);
 
 // ---- BatchJob ---------------------------------------------------------
 
@@ -223,12 +232,10 @@ private:
     double paused_total_ = 0.0;
 };
 
-// How many charts must finish before a time-left estimate shows.
-inline constexpr int kEtaMinFinished = 3;
-
-// Time left: the average wall time per finished chart so far, times the
-// charts still to go. Empty until kEtaMinFinished charts have finished.
-std::optional<double> batch_eta_s(double elapsed_s, int completed, int total);
+// The batch's time-left window is this many rounds of its workers: the last
+// kTimeLeftWorkerRounds * W finished charts, W being the run's worker count
+// (D283). app::TimeLeftClock does the rest.
+inline constexpr int kTimeLeftWorkerRounds = 2;
 
 class BatchJob : public JobBase {
 public:
@@ -277,8 +284,9 @@ public:
         bool paused = false;
         // Wall time since start(), paused time left out; frozen once finished.
         double elapsed_s = 0.0;
-        // Seconds left. Empty until kEtaMinFinished charts finish, while
-        // paused, and once finished.
+        // Seconds left (app::TimeLeftClock over the last
+        // kTimeLeftWorkerRounds rounds of workers). Empty until that window
+        // is full, while paused, and once finished.
         std::optional<double> eta_s;
         // The chart a worker started most recently. Empty once finished.
         std::string current_title;
@@ -329,6 +337,10 @@ private:
     mutable std::mutex mu_;
     Snapshot snap_;     // guarded by mu_
     BatchClock clock_;  // guarded by mu_
+    // Fed each finish on clock_'s time, so paused stretches never count in
+    // its window; read by snapshot(). Its window follows workers_ (see
+    // kTimeLeftWorkerRounds). Guarded by mu_.
+    mutable app::TimeLeftClock time_left_;
 };
 
 // GUI-test seam: when set, every batch the app starts runs this analyzer on
@@ -427,17 +439,14 @@ void set_view_analyzer_for_test(app::ChartAnalyzer analyze);
 class ReportJob : public ResultJobBase {
 public:
     // `run` names the profile the report lists (ReportOptions::run, the
-    // run's profile). hit_window_ms feeds the report's timing-tier bands
-    // (settings.hit_window_ms).
-    ReportJob(store::RecordStore& store, app::BatchRun run,
-              double hit_window_ms = kDefaultHitWindowMs);
+    // run's profile).
+    ReportJob(store::RecordStore& store, app::BatchRun run);
     ~ReportJob() { shutdown(); }
 
     void start();
 
     // What the report is built from, as given to the constructor.
     const store::Profile& profile() const { return run_.profile; }
-    double hit_window_ms() const { return hit_window_ms_; }
 
     // Valid once finished() && ok(): the report, shared with AppState's slot
     // rather than copied.
@@ -448,7 +457,6 @@ private:
 
     store::RecordStore& store_;
     app::BatchRun run_;
-    double hit_window_ms_;
     std::function<void()> hold_;  // the test seam's, copied at construction
     std::shared_ptr<const app::report::GeneratedReport> result_;
 };

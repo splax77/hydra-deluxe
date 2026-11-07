@@ -1,4 +1,5 @@
 #include "core/strutil.h"
+#include "core/winstr.h"
 #include <charconv>
 #include <cmath>
 #include <system_error>
@@ -69,8 +70,12 @@ bool ends_with_ci(std::string_view s, std::string_view suffix) {
 }
 
 std::string relative_slash_path(std::string_view path, std::string_view root) {
-    if (!root.empty() && path.size() > root.size() && starts_with(path, root))
-        path = path.substr(root.size() + 1);
+    if (!root.empty() && path.size() > root.size() && starts_with(path, root)) {
+        if (is_path_separator(root.back()))
+            path = path.substr(root.size());
+        else if (is_path_separator(path[root.size()]))
+            path = path.substr(root.size() + 1);
+    }
     std::string out(path);
     for (char& c : out)
         if (c == '\\') c = '/';

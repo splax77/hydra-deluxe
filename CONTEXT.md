@@ -62,7 +62,9 @@ built by `RecordStore::chart_index` from the rows in scan order, is the one
 answer to which charts the library lists (`ChartIndex::lists`), how many
 copies each has (`ChartIndex::copies`; `ChartIndex::count` adds them up for a
 set of charts) and which copy names it (`ChartIndex::naming`, the first row)
-(D115).
+(D115). The adding-up rule itself is `store::count_charts`, which
+`ChartIndex::count` calls; the path report keeps no index once it is built,
+so its Charts shown tile asks that rule over the copies each row kept (D282).
 
 **Selection scroll**:
 Whether a list moves when its selected row changes, and how far. The owner is
@@ -70,7 +72,12 @@ Whether a list moves when its selected row changes, and how far. The owner is
 changed (`SelectionSource`, recorded by `AppState::select`); `scroll_last_row`
 is the one place that asks ImGui to scroll. A click on a row never scrolls;
 a step or a pick from another window brings the row in at the nearest edge,
-and moves nothing if it is already on screen. It leaves out where a column
+and moves nothing if it is already on screen. The same page owns the other
+case that moves a list: when every row changes height under a selected row
+(the Library's song panel hides Album, which makes rows two lines tall),
+`row_keeps_place` says the selected row goes back to the same height on
+screen, and `keep_last_row_in_place` is the one place that asks ImGui to do
+it. A row that was off screen stays off screen. It leaves out where a column
 sits and how a table is sized.
 
 **Rescan cache**:
@@ -89,7 +96,7 @@ record is missing, Stale or different from the fresh one
 (`AppState::save_view_summary`), and a click that saves marks both open
 reports out of date, as a finished batch does (D115). Its progress bar moves in steps of at least half a percent of the chart
 (src/search/engine.cpp), and the main search owns the first 90% of the bar,
-the all-0 pass the rest (src/search/pather.cpp; D48, Q33).
+the all-0 pass the rest (src/search/pather.cpp; D273).
 
 **Analysis**:
 The engine's full output for one chart under one profile: every kept path
@@ -265,11 +272,14 @@ Search tips popup draws that list.
 
 **Batch time left**:
 The batch strip's estimate of how long the rest of a batch will take: the
-average time per finished chart so far, times the charts still to go. It
-shows only once three charts have finished (`kEtaMinFinished` in
-src/ui/library_jobs.h). Decided in the approved
-docs/superpowers/specs/2026-09-27-ui-redesign-design.md ("The estimate appears
-once three charts have finished").
+charts still to go over the rate across the last 2W finished charts, W being
+the run's worker count (`kTimeLeftWorkerRounds` in src/ui/library_jobs.h). It
+shows nothing until that many have finished, and changes at most once a
+second. Paused time never counts inside the window, because the finishes are
+timed on the batch clock, which leaves pauses out. The rate, the window and
+the hold are `app::TimeLeftClock`'s (src/app/time_left.h), which the Song
+Preview's loading bar reads too, over its own last second of bytes (D271
+item 4, D276 item 8, D283).
 
 **Batch counts**:
 A batch's three counts: analyzed, failed, and skipped (rows that already had a
@@ -296,9 +306,11 @@ fast chart shows its paths with no box and no "Done!" (D87 items 6 and 10).
 Opening the library file at startup waits the same 0.15 s, through the same
 constant (`kViewProgressDelaySeconds` in src/ui/app_state.h): a fast open
 draws an empty window, and the startup screen appears only once the open has
-run that long (D100 item 2). The startup screen's time-left line follows the
-Song Preview's rule (`gated_time_left_text` in src/ui/preview_load_job.h, D100 item 4).
-The "Copied!" flash after Copy path
+run that long (D100 item 2). The startup screen shows no time left; its
+time-left line went with the copy upgrade (D115 task A1-6a). The Song
+Preview's loading bar waits before it shows its time left
+(`kTimeLeftAfterSeconds` in src/ui/preview_load_job.h, checked by
+`app::time_left_line`). The "Copied!" flash after Copy path
 lasts 2 seconds, the library search refilters at most every 0.15 s while
 typing, and a running batch refreshes the library at most once a second
 (src/ui/app_state.cpp, src/ui/paths_tab.cpp, src/ui/library_table.cpp;
@@ -309,7 +321,7 @@ The download of real scores for the leaderboard report. It comes from the
 DMBot API, the backend behind dmleaderboards.com, not from the site itself. It waits at most 15 s to resolve the host, 20 s to connect, 30 s to
 send and 120 s to receive, because the backend cold-starts after idle; it
 checks Cancel every 50 ms; and it accepts only HTTP status 200
-(src/net/dmbot_client.cpp; D48, Q33).
+(src/net/http.cpp; D273).
 
 ### Reports and messages
 
@@ -336,8 +348,12 @@ Whether the analysis settings can be held against dmleaderboards scores, which
 are Clone Hero scores. `dm_report::why_not_comparable` in src/app/dm_report.h
 answers it: empty when they can, otherwise the sentence naming the first rule
 they break. The toolbar's button and `collect_dm_rows` (Refresh, Try again,
-"Compare another player...") both ask it with the real difficulty (D114 item
-6). Whether a cap is Clone Hero's is `is_clone_hero_cap` in src/core/model.h.
+"Compare another player...") both ask it about the profile the page lists, at
+Clone Hero's cap whatever the cap setting, so only the difficulty, fill rule
+and Note Shuffle can refuse a click (D114 item 6, D271 item 8). Whether a cap
+is Clone Hero's is `is_clone_hero_cap` in src/core/model.h. The words that name
+that cap on the page, the tooltip and the gate's sentence come from
+`clone_hero_cap_phrase` in the same file.
 
 **Comparison status**:
 What the comparison page says about one leaderboard score: under, at or above
@@ -369,9 +385,10 @@ builds a text column, `optional_key` sorts a value a row may lack, and empty
 values sink to the bottom whichever way a column sorts. `count_line` writes
 the "X of Y" line. Each filter dropdown keeps every row at `kEveryRowChoice`,
 which Clear filters goes back to. The empty table's sentence
-(`kNothingMatches`) and the search box's hint (`kSearchChartsHint`) live in
-src/app/html_page.h, because the fill page, built without the GUI, shows them
-too.
+(`kNothingMatches`) and `search_hint`, which writes every chart search box's
+hint from the fields that box searches, live in src/app/html_page.h, because
+the fill page, built without the GUI, shows them too. The Library reads the
+same sentence and builds its hint with the same function (D276 item 3).
 
 **Text sort order**:
 How a text column sorts, in the library and in every report: on the text the
@@ -407,10 +424,43 @@ What a bad hydra_rules.ini does. In the app, analysis stays off, and the
 toolbar, the path report window and the song panel all show
 `kAnalysisOffSentence` (src/app/user_messages.h; D114 items 11 and 13). A
 command-line tool stops instead: `app::load_tool_rules` (src/app/rules_file.h)
-loads the rules for every tool and prints `rules_file_tool_text`, the tools'
+loads the rules for every tool and prints `ini_file_tool_text`, the tools'
 sentence and then the loader's line. Numbers in the file are read through
 `parse_finite_number` (src/core/strutil.h), so "nan", "inf" and hex are
-errors (D114 item 8).
+errors (D114 item 8). What the loader refuses, and the wording it shares with
+hydra_settings.ini, is under Settings files.
+
+**Settings files**:
+How hydra_settings.ini and hydra_rules.ini are read, and what a bad
+hydra_settings.ini does (D270). Both files follow one rule: anything the
+loader can't read refuses the whole file, with an error that names the file,
+the key and the value. `Settings::load_file` (src/app/config.h) refuses what
+the rules loader, `load_rules_file` (src/app/rules_file.h), refuses: a line
+with no `=`, an unknown key, and a value its key can't take. In the settings
+file that is a value that is not a whole number, an on/off that is not `0` or
+`1`, or a `view_difficulty` that names no difficulty. Both loaders word those
+lines through `ini_not_key_value_text`, `ini_unknown_key_text` and
+`ini_bad_value_text`, and read whole numbers through `parse_whole_number`, all
+in src/app/ini_errors.h (D270 call 4); a scan row (ini-errors.json) holds
+that. A number outside its range loads at the nearest edge in the settings
+file, so `sp_cap=0` reads 1, where `hydra_rules.ini` refuses a number below
+one of its five floors (D270 calls 1 to 3). A key Hydra used to write is
+skipped, not refused: `kRetiredSettingsKeys` (src/app/config.h) and
+`kRetiredRulesKeys` (src/app/rules_file.cpp) list them, and
+`is_retired_key` asks. A live key of the same name wins. A retired settings
+key is left out at the next save (D270 call 7). `hit_window_ms` is one of
+them, because the hit window is no longer a setting (Hit window).
+A refused hydra_settings.ini throws `SettingsFileError` (kind `SettingsFile`,
+whose app sentence is `kSettingsOffSentence`). In the app, Hydra opens on a
+default `Settings`, analysis is off as for the rules file, no scan starts and
+`save_settings` writes nothing, so the file is never touched
+(`AppState::settings_error`, D276 item 1). `AppState::analysis_off_lines` gives
+the lines for both files, the settings file's first, and the toolbar, the song
+panel and the path report window draw them through `analysis_off_notice`
+(src/ui/widgets.h). A command-line tool stops instead:
+`app::load_tool_settings` (src/app/config.h) loads the settings for every tool
+and prints the error through `ini_file_tool_text`, exit code 2. What a refused
+hydra_rules.ini does is its own entry (Rules file error).
 
 **Job outcome**:
 How a finished background job ended: done, cancelled or failed
@@ -469,24 +519,25 @@ src/core/replay.h holds the same six (`kReplayScoreFields` names each), and
 **Activation**:
 One use of banked Star Power, written in path notation with its skip count and
 squeeze symbols (e.g. `E2+-`). An activation needs
-2<!-- default: kSpActivationBars --> banked bars of Star Power, a Clone Hero
-rule. `kSpActivationBars` in src/core/timing.h owns that number (D54).
+2<!-- default: kSpActivationBars --> banked bars of Star Power.
+`kSpActivationBars` in src/core/timing.h owns that number (D54). The game's
+rule is docs/clone-hero/05-star-power.md (SP-16).
 
 **Skip**:
 A fill an activation deliberately passes over before activating.
 
 **Authored fill**:
 A fill written in the chart. Each one is placed on its own once every chord
-is read: on the last chord at or before its end but not before its start, or
-on the first chord after its end within the landing window
-(`fill_land_slop_beats`, plus one tick). The closer wins, a tie goes to the
-later chord, and a fill with neither is dropped (docs/adr/0023).
+is read, on a chord near its end within the landing window
+(`fill_land_slop_beats`, plus one tick), by `place_authored_fills`. The
+game's rule it copies is docs/clone-hero/04-fills.md (FL-03 to FL-07), and
+the one side where Hydra differs is in docs/adr/0023.
 
 **SP phrase**:
-A chart section that awards a bar of Star Power when hit fully. It covers
-the chords with start <= tick < end, and pays on the last of them; a phrase
-of length zero pays nothing, and one that runs past the last note pays on
-that note (Clone Hero's rule, docs/adr/0023).
+A chart section that awards a bar of Star Power when hit fully. Which
+chords it covers and which one pays is the game's rule, in
+docs/clone-hero/05-star-power.md (SP-01 to SP-04); `close_sp_phrase` is
+Hydra's one owner of it.
 _Avoid_: star power section
 
 **All-0 path**:
@@ -541,11 +592,11 @@ src/core/stars.cpp; D48, Q33).
 
 **Early fill (E)**:
 An activation timing (the `E` notation) near a fill's spawn deadline. The
-window has two sides, each a fixed number of its own, never the hit-window
-setting, because the search reads them (src/core/model.h).
+window has two sides, each a fixed number and never a setting, because the
+search reads them (src/core/model.h).
 On the orange side, Star Power comes ready after the deadline, so you must
-hit early to summon the fill. It reaches 85 ms<!-- default: kEarlyFillReachMs -->
-(`kEarlyFillReachMs`, read by `fill_refuses`): later than that the fill
+hit early to summon the fill. It reaches 85 ms<!-- default: kHitWindowMs -->,
+the hit window (`kHitWindowMs`, read by `fill_refuses`): later than that the fill
 never spawns, and the search drops the activation.
 On the white side, Star Power comes ready before the deadline with less than
 60 ms<!-- default: kEarlyFillSlackMs --> to spare (`kEarlyFillSlackMs`, read
@@ -560,29 +611,26 @@ The latest your SP meter can fill up and still have a fill appear. Clone Hero
 `fill_rule_description` writes it into the sentence the "1.0 fills" tooltip
 and the fill comparison page show. A
 beat here is a quarter note (the chart's resolution) in every meter, 6/8
-included: Clone Hero 1.1.0.6142's code sets the deadline at resolution × 4
-ticks before the fill's start (0x20DF7B7), and only the fill's start tick
-counts (D115; docs/adr/0010, note of 2026-10-15).
+included. The game's rule is docs/clone-hero/04-fills.md (FL-19 and FL-20);
+Hydra adopted it in D115 (docs/adr/0010, note of 2026-10-15).
 
 **Fill spawn deadline (CH 1.0)**:
 The older rule: roughly one fill-length of lead time before the fill, clamped
 to 250..10000 ms. Short fills got stricter in 1.1 and long fills got looser.
 The "1.0 fills" analysis setting, or `hydra_batch --legacy-fills`. Part of a
 record's profile, so a chart's 1.0 and 1.1 records sit side by side in one
-database; `hydra_fillcompare` diffs the two. See docs/adr/0010.
+database; `hydra_fillcompare` diffs the two. See docs/adr/0010. The 1.0
+game's own deadline is docs/clone-hero/04-fills.md (FL-41 and FL-42).
 
 **Generated fill**:
 A fill Hydra places itself on a chart with no authored fills. The "1.0 fills"
 setting picks which game version's generator runs, in one place:
 `Song::check_activations`.
 
-Clone Hero 1.1 (the default) follows the game's own generator (0x20D2B30 in
-1.1.0.6142). It puts the fill on the chord nearest a measure line, if one sits
-within half a beat plus one tick of the line; the fill starts on the line, so
-its length is the chord's distance past the line (0, or negative, when the
-chord sits on or before it). The next line it tries is 4 lines on
-(hydra_rules.ini can change the 4 and the half beat). When two chords sit
-equally near the line, the later one gets the fill.
+Clone Hero 1.1 (the default) follows the game's own generator, whose rules
+are docs/clone-hero/04-fills.md (FL-13 to FL-18). hydra_rules.ini can change
+its 4-line step and its half-beat distance (`fill_cooldown_measures` and
+`fill_max_distance_beats`).
 
 Clone Hero 1.0 mode keeps Hydra's own model of 1.0's fill rule (the user's
 call, 2026-10-14; docs/adr/0023), and counts measures on the same grid as 1.1
@@ -593,7 +641,8 @@ measure long at the chord (`kCh10FillLengthMeasures`, fixed; the old
 the last one. When two chords sit equally near the line, the later one gets
 the fill. The distance and the length are cut down to whole ticks.
 `Song::place_fills_ch10` holds it, and `Song::place_fills_ch11` the 1.1
-generator.
+generator. How the game's own 1.0 generator differs is
+docs/clone-hero/04-fills.md (FL-36).
 
 `Song::generated_fills` records which generator ran (empty for authored
 fills): the one answer to "was this fill generated". The Preview reads it to
@@ -616,12 +665,19 @@ database holds both rules' records; the old label on the whole file
 (`engine_mode`) is retired (D115, docs/adr/0010).
 
 **Hit window**:
-The per-side ms window Clone Hero registers a hit in. A setting; feeds the
-squeeze budgets, ratings, and report tiers, never the search. The report's
-timing tiers are Normal below 2 ms (`kDifficultMs`), then Hard below half a
-hit window, Extreme below one window, Insane below one and a half, Insane+
-below two, and Beyond from two windows up (`timing_tiers` in
-src/core/squeeze_rating.cpp; D48, Q33).
+The per-side ms window Clone Hero registers a hit in, Clone Hero's Pro Drums
+window: 85 ms<!-- default: kHitWindowMs --> (`kHitWindowMs` in
+src/core/model.h). It is one fixed number, not a setting (D270 call 8). The
+search's early fill reach (`fill_refuses`), the squeeze budgets
+(`squeeze_budget_ms`, `nominal_budget_ms`), the Rating words and the report's
+timing tiers all read it. The old `hit_window_ms` key is retired and skipped
+(Settings files). The report's timing tiers are Normal up to 2 ms
+(`kDifficultMs`), then Hard up to half a hit window, Extreme up to one window,
+Insane up to one and a half, Insane+ up to two, and Beyond past two windows;
+each edge belongs to the band below it (`timing_tiers` and `tier_for` in
+src/core/squeeze_rating.cpp; D48, Q3 and Q33). The report's footer and its
+Timing column's tooltip call it "the 85 ms hit window", printed by
+`hit_window_text` (src/app/report.h; D278 item 4).
 
 **Transfer scale**:
 How frontend timing error carries to the SP end. SP length is measured in
@@ -666,10 +722,20 @@ The displayed difficulty judgement of a squeeze: its rating label, its
 effective ms once the transfer scale is applied, and whether the scale is
 material enough to warn about. `rate_activation` in
 src/core/squeeze_rating.cpp works out the scales and effective ms
-(`rate_note` for each row). The Rating cell's word ("Easy", "Hard
+(`rate_note` for each row). The Rating cell's word ("Normal", "Hard
 (uncounted)" and so on) is `BackendSqueeze::summarystr`'s, in
-src/core/model.cpp. That ladder differs from the report's timing tiers
-(`timing_tiers`), and the report's footer says the two can differ.
+src/core/model.cpp, one rule for every row (D269). The figure banded is the
+row's needed timing, `backend_row_timing` (src/core/model.h): a squeezed-out
+row needs its SqOut's `squeeze_difficulty`, a plain row the engine counts
+(`counted_without_squeeze`) needs nothing, and an uncounted plain row needs
+its offset. A row that needs nothing reads Normal whatever its scale; any
+other row with an eff. figure is banded on that figure (D276 item 2). The
+bands are the report's timing tiers (`timing_tiers`, through `tier_for`), so
+the cell and the report share one ladder. "(uncounted)" is added wherever
+`counted_without_squeeze` says the engine pays nothing. The badges and the
+report stay on raw ms (D269 call 5), so a row under a scale can read a
+different word from its path's report tier, and the report's footer says the
+two can differ.
 
 **Needs no timing**:
 A squeeze that is already done with no frontend timing: its difficulty is below
@@ -677,8 +743,7 @@ A squeeze that is already done with no frontend timing: its difficulty is below
 both need 0.0 ms (D302). `SPSqueeze::needs_no_timing` in src/core/model.h is the
 one answer, through `timing_needs_hitting`, and the details sentence reads it.
 The rating does not: it reads which side of the SP end the note sits on
-(`core::paid_by_sp_walk`). The word "Free" in the Rating cell is a different
-test, `BackendSqueeze::summarystr`'s, on a backend row's offset.
+(`core::paid_by_sp_walk`).
 _Avoid_: free (for this test)
 
 **Saved hardest figure**:
@@ -696,9 +761,12 @@ How long after the SP end a note still scores under Star Power without a
 squeeze: less than `backend_leeway_ms`
 (3 ms<!-- default: Rules::backend_leeway_ms --> by default). A note exactly
 3.0 ms<!-- default: Rules::backend_leeway_ms --> after the SP end does not
-score under SP. Hydra's own rule: no such constant was found in the Clone
-Hero engine methods read; the 3 ms<!-- default: Rules::backend_leeway_ms -->
-is Hydra's own setting.
+score under SP. The leeway is not a Clone Hero rule: no such constant was
+found in the Clone Hero engine methods read. The 3 ms<!-- default: Rules::backend_leeway_ms -->
+is DragonDelgar's number, from public Hydra (`hydra/hypath.py`, line 678 at
+his commit 3b49012c), and Hydra Deluxe keeps it so its scores use the same
+method (D269 call 4). It only decides whether a backend counts in the
+optimal score or is uncounted. Star Power still ends at one point.
 
 **Difficulty**:
 A path's or activation's hardest squeeze or required early fill, in raw gap
@@ -741,12 +809,15 @@ counts measures and beats from 1 and the tick from 0.
 _Avoid_: bar (for a measure)
 
 **Beat**:
-One step of Clone Hero's grid: the resolution × 4 ÷ the time signature's
-bottom number, cut down to whole ticks, so a quarter note in 4/4 and an eighth note in 6/8. The beat
-lines and the position text's beat number count these, so they always agree.
+One step of Clone Hero's grid, so a quarter note in 4/4 and an eighth note in
+6/8. The beat lines and the position text's beat number count these, so they
+always agree. The game's grid step and where the grid restarts are
+docs/clone-hero/04-fills.md (FL-26).
 Two rules count quarter notes in every meter instead: the fill spawn deadline
-(CH 1.1) and the generated fill's half-beat distance, both as Clone Hero's
-code does.
+(CH 1.1) and the generated fill's half-beat distance. The game's side of both
+is docs/clone-hero/04-fills.md (FL-19 and FL-20 for the deadline, FL-14 for
+the distance). No run of a 6/8 chart in Clone Hero is on record for either
+rule (FL-20 says so for the deadline).
 
 **Section**:
 A named part of the song from the chart's section markers, such as "Chorus
@@ -918,9 +989,9 @@ music as they do in Clone Hero. A nonzero song.ini `delay` replaces the
 .chart `Offset`; a delay of 0 counts as unset. A positive value makes the
 notes come later than the music. `preview_audio_offset_ms` in
 src/app/preview_source.cpp is the one owner. This was decided in
-docs/superpowers/plans/2026-09-24-derivation-fixes.md (decision 9; Task 17's
-gate was measured at the game) and extended to .sng and .srb by
-docs/superpowers/plans/2026-09-26-codebase-audit-fixes.md (decision 4).
+D274 in docs/audit/2026-10-03-fix-decisions.md (the derivation-fixes plan's
+decision 9; Task 17's gate was measured at the game) and extended to .sng and
+.srb by D275 (item 4).
 _Avoid_: player (the whole Preview), scrubber (the UI control only), playhead
 (the audio follower only)
 

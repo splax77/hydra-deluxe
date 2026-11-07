@@ -1,8 +1,8 @@
 // The clock agent: reads GameManager's song clock by field name and sends one
 // sample per tick until the cap the Python side passes in.
 //
-// It reads only. It writes no game memory and calls no game method; the
-// no-writes check in tests/test_frida_attach.py keeps it that way.
+// It reads fields by name and calls no game method; the checks in
+// tests/test_frida_attach.py keep it that way.
 //
 // frida_attach.run_agent posts the start message with the cap, writes every
 // message this agent sends, and ends the run on the signal ends_run reads.

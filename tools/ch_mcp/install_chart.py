@@ -1,5 +1,6 @@
 """Copy one chart folder into the game's probe song folder with a silent
-song.ogg, so the bot can play it from the command line.
+song.ogg and a title marked as a probe, so the bot can play it from the
+command line.
 
     py -I tools/ch_mcp/install_chart.py <chart folder> [--name <folder name>]
         [--dest <songs folder>]
@@ -7,8 +8,11 @@ song.ogg, so the bot can play it from the command line.
 The chart folder needs a song.ini with a song_length (game_files reads it)
 and a notes.chart or notes.mid. The copy goes into probe_songs.DEFAULT_OUT
 unless --dest says otherwise, and the silent audio comes from
-probe_songs.write_silent_ogg (ffmpeg on PATH). An existing folder is never
-overwritten. Only the one named folder is copied.
+probe_songs.write_silent_ogg (ffmpeg on PATH). The copy's song.ini title takes
+the mark from probe_songs.full_name, so nobody mistakes a song with no audio
+for a real one in the game's or Hydra's list; the source folder keeps its
+title. An existing folder is never overwritten. Only the one named folder is
+copied.
 """
 
 from __future__ import annotations
@@ -16,6 +20,7 @@ from __future__ import annotations
 import argparse
 import os
 import shutil
+import stat
 import sys
 from typing import Callable, Optional
 
@@ -42,11 +47,25 @@ def chart_file(folder: str) -> Optional[str]:
     return None
 
 
+def probe_title(title: str, folder_name: str) -> str:
+    """The title a copy in `folder_name` lists: its own `title`, or the folder
+    name when it has none, marked as a probe once."""
+    title = title or folder_name
+    return title if title.startswith(probe_songs.NAME_PREFIX) else probe_songs.full_name(title)
+
+
+def mark_copy(dest: str) -> None:
+    """Mark the title in the song.ini of the copy at `dest`."""
+    # The copy keeps the source's file mode, and a read-only file can't be edited.
+    os.chmod(os.path.join(dest, game_files.SONG_INI), stat.S_IREAD | stat.S_IWRITE)
+    game_files.set_song_title(dest, lambda title: probe_title(title, os.path.basename(dest)))
+
+
 def install(src: str, *, dest_root: str = probe_songs.DEFAULT_OUT, name: Optional[str] = None,
             write_ogg: Callable[[str, int], None] = probe_songs.write_silent_ogg) -> str:
-    """Copy `src` to `dest_root`/`name` and write its silent song.ogg.
-    Returns the new folder's chart file. Raises InstallRefused, with the
-    reason, before anything is written."""
+    """Copy `src` to `dest_root`/`name`, mark the copy's title and write its
+    silent song.ogg. Returns the new folder's chart file. Raises
+    InstallRefused, with the reason, before anything is written."""
     src = os.path.abspath(src)
     if not os.path.isdir(src):
         raise InstallRefused(f"{src} is not a folder")
@@ -61,6 +80,7 @@ def install(src: str, *, dest_root: str = probe_songs.DEFAULT_OUT, name: Optiona
         raise InstallRefused(f"{dest} already exists; not overwritten")
     try:
         shutil.copytree(src, dest)
+        mark_copy(dest)
         write_ogg(os.path.join(dest, probe_songs.SONG_OGG), length_ms)
     except BaseException:
         # `dest` did not exist a moment ago, so it is ours: a half-made folder

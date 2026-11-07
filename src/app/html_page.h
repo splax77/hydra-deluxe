@@ -5,7 +5,9 @@
 #ifndef HYDRA_APP_HTML_PAGE_H
 #define HYDRA_APP_HTML_PAGE_H
 
+#include <cstddef>
 #include <cstdint>
+#include <initializer_list>
 #include <string>
 #include <string_view>
 
@@ -37,11 +39,33 @@ inline constexpr uint32_t kChipRgbT4 = 0xe07ac0;
 inline constexpr uint32_t kChipRgbT5 = 0xa78bfa;
 inline constexpr uint32_t kChipRgbTn = 0x949aa6;
 
-// ---- words the report windows and the fill page share ---------------------
-// The empty state's sentence and the search box's hint (M07). They live here
-// for the same reason as the colours above.
-inline constexpr const char* kNothingMatches = "Nothing matches those filters.";
-inline constexpr const char* kSearchChartsHint = "Search song, artist, or charter";
+// ---- words every chart search shares --------------------------------------
+// The empty state's sentence and the search boxes' hints (M07, D276 item 3).
+// The report windows, the fill page and the Library all read them. They live
+// here for the same reason as the colours above.
+inline constexpr const char* kNothingMatches = "Nothing matches.";
+
+// A search box's hint: "Search" and then `fields`, the things the box
+// searches, as one list ending in "or". Every chart search box builds its
+// hint here, so each names its own fields and none types the shape.
+inline std::string search_hint(std::initializer_list<std::string_view> fields) {
+    std::string out = "Search";
+    std::size_t i = 0;
+    for (std::string_view field : fields) {
+        out += i == 0 ? " " : ", ";
+        if (i > 0 && i + 1 == fields.size()) out += "or ";
+        out += field;
+        ++i;
+    }
+    return out;
+}
+
+// The comparison window's and the fill page's hint: what search_field folds
+// for their rows (app/dm_report_view.cpp, dm_search_text).
+inline const std::string& charts_search_hint() {
+    static const std::string hint = search_hint({"song", "artist", "charter"});
+    return hint;
+}
 
 // ---- the shared report page -----------------------------------------------
 // The fill page is one stylesheet and one script wrapped around its own

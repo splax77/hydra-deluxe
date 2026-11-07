@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import tempfile
 import threading
@@ -242,6 +243,19 @@ class AttachTest(Rig):
         self.assertIn("state: not attached (session detached: process-terminated)", out)
         self.assertNotIn("not running", out)
 
+    def test_is_attached_follows_the_attach_and_a_dropped_session(self):
+        tools = self.tools([STATE])
+        self.assertFalse(tools.is_attached())
+        tools.ch_attach()
+        self.assertTrue(tools.is_attached())
+        tools._agent._on_detached("process-terminated")
+        self.assertFalse(tools.is_attached())
+
+    def test_is_attached_is_false_after_a_detach(self):
+        tools = self.tools([STATE], attached=True)
+        tools.ch_detach()
+        self.assertFalse(tools.is_attached())
+
     def test_attaching_again_after_the_game_dropped_the_session_closes_the_old_log(self):
         tools = self.tools([STATE, STATE], attached=True)
         old = tools._agent
@@ -290,6 +304,292 @@ class ReadTest(Rig):
         out = tools.ch_snapshot()
         self.assertIn("score after press 2: 150", out)
         self.assertIn("song clock at that press: 2998.0 ms", out)
+
+
+# A hand-written menu block in the shape agent/menu.ts sends.
+MENU_READ = {
+    "classes": {
+        "MainMenu": {"found": True, "live": 1, "destroyed": 0,
+                     "onlineMenuActive": [False]},
+        "SongSelect": {"found": True, "live": 1, "destroyed": 2,
+                       "onlineMenuActive": [True]},
+        "PlayerSelectionMenu": {"found": False, "reason": "PlayerSelectionMenu not found"},
+    },
+    "selectedSong": {"folderPath": "C:\\Songs\\Window Map", "chartName": "notes.chart"},
+    "globals": {"found": True, "currentSongFolder": None, "gameMode": 0, "playerCount": 1},
+}
+MENU_LINES = [
+    "MainMenu: 1 live, 0 destroyed; onlineMenuActive: [false]",
+    "SongSelect: 1 live, 2 destroyed; onlineMenuActive: [true]",
+    "PlayerSelectionMenu: PlayerSelectionMenu not found",
+    "selected song folder: C:\\Songs\\Window Map",
+    "selected song chartName: notes.chart",
+    "GlobalVariables currentSongFolder: null",
+    "GlobalVariables gameMode: 0",
+    "GlobalVariables playerCount: 1",
+]
+
+# One player screen as menu.ts sends it, one value per field for its one live
+# instance: on the Instrument page of a drum profile, with three rows and the
+# third highlighted.
+PLAYER_FIELDS = {
+    "page": [1], "cursor": [1], "scroll": [1], "controllerType": [2],
+    "instrument": [0], "difficulty": [3], "playerIndex": [0], "firstTime": [True],
+    "rowCount": [3], "visibleRows": [5], "isDrums": [True], "networkFlag": [False],
+    "backLock": [False], "rowNames": [["Guitar", "Drums", "Pro Drums"]],
+    "rowInstruments": [[0, 6, 9]],
+}
+
+
+def player_screen(fields, live=1):
+    return {**MENU_READ, "classes": {"PlayerSelectionMenu": {
+        "found": True, "live": live, "destroyed": 0, "active": [True] * live,
+        "fields": fields}}}
+
+
+class MenuFieldsTest(unittest.TestCase):
+    """menu_fields.json parses, and each field and enum it names sits at the
+    dump line it gives, in the dump of the build it names. The dump lives
+    outside the repo, so without it the dump check is skipped."""
+
+    def setUp(self):
+        self.data = FT.menu_fields()
+
+    def enums(self):
+        return [f for f in self.data["fields"] if f.get("kind", FT.ENUM_KIND) == FT.ENUM_KIND]
+
+    def test_it_parses_with_one_table_per_enum_field(self):
+        keys = [f["key"] for f in self.data["fields"]]
+        self.assertEqual(keys, [
+            "page", "cursor", "scroll", "controllerType", "instrument", "difficulty",
+            "playerIndex", "firstTime", "rowCount", "visibleRows", "isDrums",
+            "networkFlag", "backLock", "rowNames", "rowInstruments"])
+        self.assertEqual({f["key"]: f.get("kind") for f in self.data["fields"] if "kind" in f}, {
+            "cursor": "int", "scroll": "int", "playerIndex": "int", "firstTime": "bool",
+            "rowCount": "int", "visibleRows": "int", "isDrums": "bool",
+            "networkFlag": "bool", "backLock": "bool", "rowNames": "string_array",
+            "rowInstruments": "enum_array"})
+        for field in self.data["fields"]:
+            with self.subTest(key=field["key"]):
+                self.assertEqual(field["class"], "PlayerSelectionMenu")
+        for field in self.enums():
+            with self.subTest(key=field["key"]):
+                for number in field["values"]:
+                    int(number)
+
+    def test_the_highlighted_row_keys_are_entries(self):
+        keys = {f["key"]: f.get("kind", FT.ENUM_KIND) for f in self.data["fields"]}
+        self.assertEqual(keys[FT.CURSOR_KEY], "int")
+        self.assertEqual(keys[FT.SCROLL_KEY], "int")
+        self.assertEqual(keys[FT.ROW_NAMES_KEY], "string_array")
+        self.assertEqual(keys[FT.ROW_IDS_KEY], "enum_array")
+
+    def dump_type(self, field):
+        """The type the dump should give the field, from its kind."""
+        kind = field.get("kind", FT.ENUM_KIND)
+        if kind == FT.ENUM_KIND:
+            return field["enum"]
+        if kind == "enum_array":
+            words = next(f for f in self.data["fields"] if f["key"] == field["words_from"])
+            return words["enum"] + "[]"
+        return {"int": "int", "bool": "bool", "string_array": "string[]"}[kind]
+
+    def test_each_name_sits_at_its_dump_line(self):
+        dump = os.path.join(B.DUMPS_ROOT, self.data["build"], "dump.cs")
+        if not os.path.isfile(dump):
+            self.skipTest(f"{dump} is not on this machine")
+        wanted = {}
+        for field in self.data["fields"]:
+            wanted[field["class_dump_line"]] = f"class {field['class']} "
+            wanted[field["dump_line"]] = f" {field['field']}; "
+            if "declared_in" in field:
+                wanted[field["declared_in_dump_line"]] = f"class {field['declared_in']} "
+            if "enum_dump_line" in field:
+                wanted[field["enum_dump_line"]] = f"enum {field['enum']} "
+        found = {}
+        with open(dump, encoding="utf-8") as f:
+            for n, line in enumerate(f, start=1):
+                if n in wanted:
+                    found[n] = line
+                if len(found) == len(wanted):
+                    break
+        for n, text in wanted.items():
+            with self.subTest(line=n):
+                self.assertIn(text, found.get(n, ""))
+        for field in self.data["fields"]:
+            with self.subTest(key=field["key"]):
+                # The field's line names the type its kind reads.
+                self.assertIn(f" {self.dump_type(field)} {field['field']}; ",
+                              found[field["dump_line"]])
+                # A field read on a class it does not declare comes from that
+                # class's parent, and sits inside the parent's body.
+                if "declared_in" in field:
+                    self.assertIn(f"class {field['class']} : {field['declared_in']} ",
+                                  found[field["class_dump_line"]])
+                    self.assertGreater(field["dump_line"], field["declared_in_dump_line"])
+                else:
+                    self.assertGreater(field["dump_line"], field["class_dump_line"])
+
+    def test_each_enum_word_sits_in_its_enum(self):
+        dump = os.path.join(B.DUMPS_ROOT, self.data["build"], "dump.cs")
+        if not os.path.isfile(dump):
+            self.skipTest(f"{dump} is not on this machine")
+        with open(dump, encoding="utf-8") as f:
+            lines = f.readlines()
+        for field in self.enums():
+            start = field["enum_dump_line"] - 1
+            end = lines.index("}\n", start)
+            body = "".join(lines[start:end])
+            consts = dict((value, word) for word, value in re.findall(
+                rf"public const {re.escape(field['enum'])} (\w+) = (-?\d+);", body))
+            with self.subTest(key=field["key"]):
+                self.assertEqual(field["values"], consts)
+
+
+# The player screen's per-frame method that agent/menu.ts hooks, as its
+# literal there.
+_FRAME_RVA = re.compile(r"PLAYER_SCREEN_FRAME_RVA = (0x[0-9A-Fa-f]+);")
+
+
+class PlayerScreenHookTest(unittest.TestCase):
+    """The method menu.ts hooks to record the player screens is an instance
+    method of PlayerSelectionMenu, in the facts of the build menu_fields.json
+    names, and no other class runs its code (a shared body would record other
+    classes' objects as player screens). Skipped without the facts."""
+
+    def test_the_hooked_method_is_the_player_screens_own(self):
+        with open(os.path.join(FT.AGENT_DIR, "menu.ts"), encoding="utf-8") as f:
+            match = _FRAME_RVA.search(f.read())
+        self.assertIsNotNone(match, "menu.ts names no PLAYER_SCREEN_FRAME_RVA")
+        rva = int(match.group(1), 16)
+        path = os.path.join(B.DUMPS_ROOT, FT.menu_fields()["build"], B.FACTS_FILE)
+        if not os.path.isfile(path):
+            self.skipTest(f"{path} is not on this machine")
+        with open(path, encoding="utf-8") as f:
+            facts = json.load(f)
+        owners = [c for c in facts["classes"]
+                  if any(m["rva"] == rva for m in c["methods"])]
+        self.assertEqual([c["name"] for c in owners], ["PlayerSelectionMenu"])
+        methods = [m for m in owners[0]["methods"] if m["rva"] == rva]
+        self.assertEqual([(m["name"], m["static"], m["params"]) for m in methods],
+                         [("ʸʳʼʹʸʽʾˀʴʼʷ", False, [])])
+
+
+class MenuTest(Rig):
+    def test_menu_lines_print_the_block_as_sent(self):
+        self.assertEqual(FT.menu_lines(MENU_READ), MENU_LINES)
+
+    def test_menu_lines_with_no_song_and_no_globals(self):
+        menu = {**MENU_READ, "selectedSong": None,
+                "globals": {"found": False, "reason": "no live GlobalVariables.instance"}}
+        lines = FT.menu_lines(menu)
+        self.assertIn("selected song: none", lines)
+        self.assertEqual(lines[-1], "GlobalVariables: no live GlobalVariables.instance")
+
+    def test_menu_lines_print_the_agents_error(self):
+        self.assertEqual(FT.menu_lines({"error": "reading the menus failed: x"}),
+                         ["menu: reading the menus failed: x"])
+
+    def test_menu_lines_with_no_block(self):
+        self.assertEqual(FT.menu_lines(None),
+                         ["menu: not read (the agent sent no menu block)"])
+
+    def test_ch_menu_prints_the_lines_then_the_state_word(self):
+        tools = self.tools([STATE, {**MENU, "menu": MENU_READ}], attached=True)
+        self.assertEqual(tools.ch_menu().splitlines(),
+                         MENU_LINES + ["state: menu (no live GameManager)"])
+
+    def test_ch_menu_before_attach_says_not_attached(self):
+        self.assertEqual(self.tools().ch_menu(), f"state: not attached; {FT.NOT_ATTACHED}")
+
+    def test_state_leaves_the_menu_block_to_ch_menu(self):
+        tools = self.tools([STATE, {**STATE, "menu": MENU_READ}], attached=True)
+        out = tools.ch_state()
+        self.assertIn("songTime: 3.5", out)
+        self.assertNotIn("menu", out)
+
+    def test_read_state_returns_the_agents_dict(self):
+        reply = {**STATE, "menu": MENU_READ}
+        tools = self.tools([STATE, reply], attached=True)
+        self.assertEqual(tools.read_state(), reply)
+
+    def test_menu_lines_print_active_and_the_player_screen_words(self):
+        def player(instrument, difficulty):
+            return {**MENU_READ, "classes": {"PlayerSelectionMenu": {
+                "found": True, "live": 1, "destroyed": 0, "active": [True],
+                "fields": {"instrument": [instrument], "difficulty": [difficulty]}}}}
+        self.assertEqual(FT.menu_lines(player(9, 3))[:2], [
+            "PlayerSelectionMenu: 1 live, 0 destroyed; active: [true]",
+            "PlayerSelectionMenu[0]: instrument: 9 (ProDrums); difficulty: 3 (Expert)"])
+        line = FT.menu_lines(player(6, 2))[1]
+        self.assertIn("instrument: 6 (Drums)", line)
+        self.assertIn("difficulty: 2 (Hard)", line)
+
+    def test_player_screen_on_the_instrument_page_with_drum_rows(self):
+        self.assertEqual(FT.menu_lines(player_screen(PLAYER_FIELDS))[:3], [
+            "PlayerSelectionMenu: 1 live, 0 destroyed; active: [true]",
+            "PlayerSelectionMenu[0]: page: 1 (Instrument); cursor: 1; scroll: 1; "
+            "highlighted row: 2, name \"Pro Drums\", id 9 (ProDrums); "
+            "controllerType: 2 (Drums); instrument: 0 (Guitar); difficulty: 3 (Expert); "
+            "playerIndex: 0; firstTime: true; rowCount: 3; visibleRows: 5; "
+            "isDrums: true; networkFlag: false; backLock: false",
+            "PlayerSelectionMenu[0] rows: rowNames: [\"Guitar\", \"Drums\", \"Pro Drums\"]; "
+            "rowInstruments: [0 (Guitar), 6 (Drums), 9 (ProDrums)]"])
+
+    def test_player_screen_page_the_enum_does_not_name(self):
+        line = FT.menu_lines(player_screen({**PLAYER_FIELDS, "page": [6]}))[1]
+        self.assertTrue(line.startswith(
+            "PlayerSelectionMenu[0]: page: 6 (not in menu_fields.json); cursor: 1; "), line)
+
+    def test_player_screen_with_null_row_arrays(self):
+        lines = FT.menu_lines(player_screen(
+            {**PLAYER_FIELDS, "rowNames": [None], "rowInstruments": [None]}))
+        self.assertIn("highlighted row: 2, name none (rowNames is null), "
+                      "id none (rowInstruments is null); ", lines[1])
+        self.assertEqual(lines[2], "PlayerSelectionMenu[0] rows: "
+                         "rowNames: null (no array); rowInstruments: null (no array)")
+
+    def test_player_screen_highlight_index_out_of_range(self):
+        line = FT.menu_lines(player_screen({**PLAYER_FIELDS, "scroll": [4]}))[1]
+        self.assertIn("scroll: 4; highlighted row: 5, "
+                      "name none (index 5 is outside the 3 rowNames), "
+                      "id none (index 5 is outside the 3 rowInstruments); ", line)
+        line = FT.menu_lines(player_screen({**PLAYER_FIELDS, "cursor": [-3]}))[1]
+        self.assertIn("highlighted row: -2, name none (index -2 is outside the 3 rowNames), ",
+                      line)
+
+    def test_player_screen_with_an_unread_cursor(self):
+        line = FT.menu_lines(player_screen({**PLAYER_FIELDS, "cursor": ["error: gone"]}))[1]
+        self.assertIn("cursor: error: gone; scroll: 1; "
+                      "highlighted row: not known (cursor or scroll was not read); ", line)
+
+    def test_two_player_screens_get_a_line_pair_each(self):
+        fields = {key: values * 2 for key, values in PLAYER_FIELDS.items()}
+        fields["playerIndex"] = [0, 1]
+        lines = FT.menu_lines(player_screen(fields, live=2))
+        self.assertTrue(lines[3].startswith("PlayerSelectionMenu[1]: page: 1 (Instrument); "))
+        self.assertIn("playerIndex: 1; ", lines[3])
+        self.assertTrue(lines[4].startswith("PlayerSelectionMenu[1] rows: "))
+
+    def test_menu_lines_print_why_the_player_screen_was_not_read(self):
+        menu = {**MENU_READ, "classes": {"PlayerSelectionMenu": {
+            "found": False, "reason": "the player-screen hook has not been placed yet"}}}
+        self.assertEqual(FT.menu_lines(menu)[0],
+                         "PlayerSelectionMenu: the player-screen hook has not been placed yet")
+
+    def test_menu_lines_print_a_field_read_that_is_not_a_known_number_as_sent(self):
+        menu = {**MENU_READ, "classes": {"PlayerSelectionMenu": {
+            "found": True, "live": 2, "destroyed": 0, "active": [None, "error: x"],
+            "fields": {"instrument": [99, "error: boom"], "difficulty": [-1, None]}}}}
+        self.assertEqual(FT.menu_lines(menu)[:3], [
+            "PlayerSelectionMenu: 2 live, 0 destroyed; active: [null, \"error: x\"]",
+            "PlayerSelectionMenu[0]: instrument: 99 (not in menu_fields.json); difficulty: -1 (None)",
+            "PlayerSelectionMenu[1]: instrument: error: boom; difficulty: null"])
+
+    def test_read_state_before_attach_raises_with_the_reason(self):
+        with self.assertRaises(FT.StateUnread) as caught:
+            self.tools().read_state()
+        self.assertEqual(str(caught.exception), f"state: not attached; {FT.NOT_ATTACHED}")
 
 
 class StateWordsTest(unittest.TestCase):

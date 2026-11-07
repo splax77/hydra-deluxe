@@ -6,7 +6,7 @@ Every verifier reads `docs/agents/brief-preamble.md` first, then this page, then
 
 Phases 2 and 3 found candidates: ideas that may have two or more homes in `src/`. The scouts wrote first drafts and did not grade them. You grade them. Your batch is one section of `docs/audit/2026-10-11-concept-audit/candidates.md` (V1 to V9), about nine candidates.
 
-Read these parts of `docs/superpowers/plans/2026-10-11-concept-duplication-audit.md` first: "What counts as a finding", "Phase 4", the `findings.md` shape under "Where the outputs live", and "How findings become decisions". They define the kinds (K1, K2, K3, K0) and the fix classes.
+Read these parts of `docs/superpowers/plans/2026-10-11-concept-duplication-audit.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-10-11-concept-duplication-audit.md`) first: "What counts as a finding", "Phase 4", the `findings.md` shape under "Where the outputs live", and "How findings become decisions". They define the kinds (K1, K2, K3, K0) and the fix classes.
 
 For each candidate:
 

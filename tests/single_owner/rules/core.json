@@ -419,28 +419,26 @@
       "date": "2026-10-15",
       "decision": "D250",
       "added_by": "EF85",
-      "pattern": "\\bkEarlyFillReachMs\\b",
-      "anchor": "kEarlyFillReachMs",
+      "pattern": "[-+]\\s*(hydra::)?kHitWindowMs\\b",
+      "anchor": "kHitWindowMs",
       "must_match": [
-        "if (e_offset < -kEarlyFillReachMs) return false;",
-        "return d - hydra::kEarlyFillReachMs;"
+        "if (e_offset < -kHitWindowMs) return false;",
+        "return d - hydra::kHitWindowMs;",
+        "return ready_ms <= deadline_ms + kHitWindowMs;"
       ],
       "must_not_match": [
-        "if (fill_refuses(e_offset)) return false;"
+        "if (fill_refuses(e_offset)) return false;",
+        "return budget_for_window(transfer_r, kHitWindowMs);",
+        "const double w = kHitWindowMs;"
       ],
       "owner_lines": [
         {
           "file": "src/core/model.h",
-          "line_text": "constexpr double kEarlyFillReachMs = 85.0;",
-          "why": "the constant itself"
-        },
-        {
-          "file": "src/core/model.h",
-          "line_text": "inline bool fill_refuses(double e_offset) { return e_offset < -kEarlyFillReachMs; }",
+          "line_text": "inline bool fill_refuses(double e_offset) { return e_offset < -kHitWindowMs; }",
           "why": "fill_refuses, the owner of the refusal"
         }
       ],
-      "note": "Split from the one early-fill window row (D35; step-1 derive-once review finding 12, 2026-10-04) when the two sides got their own numbers. Decided by: D250"
+      "note": "Split from the one early-fill window row (D35; step-1 derive-once review finding 12, 2026-10-04) when the two sides got their own numbers. The reach is the hit window, kHitWindowMs, which the squeeze budgets and the report also read, so the row flags the window added to or taken from a deadline or an offset, not every read of it. Decided by: D250; D270 call 8"
     },
     {
       "question": "Who reads the early-fill slack (how little time to spare still marks an activation E-critical)?",
@@ -792,7 +790,7 @@
       "pattern": "\\bsqins\\[\\s*[a-z_]\\w*(\\+\\+)?\\s*\\]",
       "anchor": "sqins[",
       "must_match": [
-        "rate_note(sq.offset_ms, sq.needs_no_timing(), out.scales->sqins[j++], hit_window_ms);",
+        "rate_note(sq.offset_ms, sq.needs_no_timing(), out.scales->sqins[j++]);",
         "if (j >= scales->sqins.size() || differs(scales->sqins[j], *sq.transfer)) {"
       ],
       "must_not_match": [
@@ -937,6 +935,35 @@
       "note": "A timing printed as a whole number of ms: printf's %.0f with or without a space before \"ms\", or a cast, round, lround or llround with \" ms\" after it. Only a limit the user sets is written this way; a timing a window needs is format_ms's, one decimal (D265). Decided by: D48, Q2 (audit findings 4 and 18; phase 3 task O1; M_D review round 2, library finding 6); D265"
     },
     {
+      "question": "What does a tool print for an option it does not know?",
+      "owner": "unknown_option_line in src/core/unknown_option.h",
+      "owner_file": "src/core/unknown_option.h",
+      "owner_symbol": "unknown_option_line",
+      "date": "2026-10-30",
+      "decision": "D271 item 6, D276 item 5",
+      "added_by": "T6 (aoa-b6)",
+      "pattern": "\"[^\"]*[Uu]nknown option",
+      "calls_owner": "\\bunknown_option_line\\(",
+      "must_match": [
+        "std::fprintf(stderr, \"Unknown option: %s\\n\", arg.c_str());",
+        "else { std::fprintf(stderr, \"unknown option %s\\n\", k.c_str()); usage(); return 2; }",
+        "else if (!a.empty() && a[0] == '-') throw std::invalid_argument(\"unknown option \" + a);"
+      ],
+      "must_not_match": [
+        "std::fprintf(stderr, \"%s\\n\", hydra::unknown_option_line(arg).c_str());",
+        "else if (!a.empty() && a[0] == '-') throw std::invalid_argument(hydra::unknown_option_line(a));",
+        "throw std::runtime_error(\"unknown chart mode \" + mode);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/core/unknown_option.h",
+          "line_text": "return \"Unknown option: \" + option;",
+          "why": "unknown_option_line, the owner"
+        }
+      ],
+      "note": "Every command-line tool in src and tools prints the same line for an option it does not know, from the one helper. The words typed in a string anywhere else are a second copy. Decided by: D271 item 6 (one line, one helper) and D276 item 5 (the wording)"
+    },
+    {
       "question": "Which tick does a screen show at a time?",
       "owner": "SongTiming::display_tick_at_ms in src/core/timing.cpp",
       "owner_file": "src/core/timing.cpp",
@@ -1006,24 +1033,28 @@
       "date": "2026-10-04",
       "decision": "phase 3 task C4c",
       "added_by": "M_C fix prod",
-      "pattern": "\\b2(\\.0)?\\s*\\*\\s*(w|hit_window\\w*|kDefaultHitWindowMs)\\b|\\b(w|hit_window\\w*|kDefaultHitWindowMs)\\s*\\*\\s*2(\\.0)?\\b|squeeze_budget_ms\\(\\s*(1(\\.0)?|kIdentityScale)\\s*,|\\*\\s*2\\.0\\s*/\\s*\\(1\\.0\\s*\\+",
+      "pattern": "\\b2(\\.0)?\\s*\\*\\s*(w|hit_window\\w*|kHitWindowMs)\\b|\\b(w|hit_window\\w*|kHitWindowMs)\\s*\\*\\s*2(\\.0)?\\b|squeeze_budget_ms\\(\\s*(1(\\.0)?|kIdentityScale)\\s*\\)|budget_for_window\\(\\s*(1(\\.0)?|kIdentityScale)\\s*,\\s*(hydra::)?kHitWindowMs\\b|\\*\\s*2\\.0\\s*/\\s*\\(1\\.0\\s*\\+",
       "must_match": [
         "{\"Insane+\", \"t4\", 2 * w},",
-        "{\"Insane+\", \"t4\", squeeze_budget_ms(1.0, w)},",
-        "const double budget = hit_window_ms * 2;",
+        "{\"Insane+\", \"t4\", squeeze_budget_ms(1.0)},",
+        "{\"Insane+\", \"t4\", budget_for_window(kIdentityScale, kHitWindowMs)},",
+        "const double budget = hit_window * 2;",
+        "const double budget = kHitWindowMs * 2;",
         "return std::abs(offset_ms) * 2.0 / (1.0 + transfer_r);"
       ],
       "must_not_match": [
-        "{\"Insane+\", \"t4\", nominal_budget_ms(w)},"
+        "{\"Insane+\", \"t4\", nominal_budget_ms()},",
+        "return budget_for_window(transfer_r, kHitWindowMs);",
+        "return std::abs(offset_ms) * budget_for_window(kIdentityScale, kUnitWindow) /"
       ],
       "owner_lines": [
         {
           "file": "src/core/squeeze_rating.cpp",
-          "line_text": "return squeeze_budget_ms(kIdentityScale, hit_window_ms);",
+          "line_text": "return squeeze_budget_ms(kIdentityScale);",
           "why": "nominal_budget_ms, the owner"
         }
       ],
-      "note": "The two-hit budget written out as twice the window (either way round), as squeeze_budget_ms at a hand-typed identity scale, or the backend rescale written out as 2 / (1 + r), instead of nominal_budget_ms and squeeze_budget_ms. Decided by: phase 3 task C4c; derive-once review of M_C (6d86f1c), finding 3, and round 2, finding 2 (2026-10-04)"
+      "note": "The two-hit budget written out as twice the window (either way round), as squeeze_budget_ms or budget_for_window at a hand-typed identity scale, or the backend rescale written out as 2 / (1 + r), instead of nominal_budget_ms and squeeze_budget_ms. Decided by: phase 3 task C4c; derive-once review of M_C (6d86f1c), finding 3, and round 2, finding 2 (2026-10-04); D270 call 8 (one window, kHitWindowMs)"
     },
     {
       "question": "How does a ByteSource read its bytes?",
@@ -1516,7 +1547,7 @@
         "tools",
         "tests"
       ],
-      "note": "The root and one more byte cut off a path. relpath in analysis.cpp cuts only after a separator and keeps backslashes: Python's os.path.relpath for the library's stored path, another question. Decided by: audit finding 274; phase 6 task J2-1 (D53, D54)"
+      "note": "The root and the separator after it cut off a path. relpath in analysis.cpp cuts only after a separator and keeps backslashes: Python's os.path.relpath for the library's stored path, another question. Decided by: audit finding 274; phase 6 task J2-1 (D53, D54)"
     },
     {
       "question": "Does a string end with a tail?",
@@ -1840,42 +1871,43 @@
       "date": "2026-10-05",
       "decision": "D51",
       "added_by": "RP",
-      "pattern": "SP cap 4\\b",
-      "anchor": "SP cap 4",
+      "pattern": "SP cap (to )?4\\b",
+      "anchor": "SP cap",
       "must_match": [
         "{k:'optimal', t:'Hydra opt', num:true,  d:'The optimal score Hydra found for the chart at SP cap 4, the Clone Hero rule.'},",
-        "\"at SP cap 4: analyze them, then compare again.\";"
+        "\"at SP cap 4: set SP cap to 4, analyze them, then compare again.\";",
+        "\"Set SP cap to 4 before you analyze.\";"
       ],
       "must_not_match": [
-        "\"at SP cap \" + std::to_string(kCloneHeroSpCap) + \": analyze them, then compare again.\";",
+        "\": set SP cap to \" + cap + \", analyze them, then compare again.\";",
         "\"SP cap 40\""
       ],
       "note": "---- report pages (phase 7 task RP) ---- Clone Hero's SP cap written as text, where the leaderboard page names it. Decided by: audit finding 170, D51's code-only calls (phase 7 task RP)"
     },
     {
-      "question": "What is the hit window's default?",
-      "owner": "kDefaultHitWindowMs in src/core/model.h",
+      "question": "What is the hit window?",
+      "owner": "kHitWindowMs in src/core/model.h",
       "owner_file": "src/core/model.h",
-      "owner_symbol": "kDefaultHitWindowMs",
+      "owner_symbol": "kHitWindowMs",
       "date": "2026-10-05",
-      "decision": "D51",
+      "decision": "D51; D270 call 8",
       "added_by": "LB1",
-      "pattern": "static_cast<int>\\(\\s*(hydra::)?kDefaultHitWindowMs\\s*\\)",
-      "anchor": "kDefaultHitWindowMs",
+      "pattern": "static_cast<int>\\(\\s*(hydra::)?kHitWindowMs\\s*\\)",
+      "anchor": "kHitWindowMs",
       "must_match": [
-        "int hit_window_ms = static_cast<int>(kDefaultHitWindowMs);",
-        "int hit_window_ms = static_cast<int>(kDefaultHitWindowMs));",
-        "CHECK(s.hit_window_ms == static_cast<int>(hydra::kDefaultHitWindowMs));"
+        "int window = static_cast<int>(kHitWindowMs);",
+        "const int w = static_cast<int>(kHitWindowMs));",
+        "CHECK(w == static_cast<int>(hydra::kHitWindowMs));"
       ],
       "must_not_match": [
-        "double hit_window_ms = kDefaultHitWindowMs;",
-        "bool open_when_done, double hit_window_ms = kDefaultHitWindowMs);"
+        "double window = kHitWindowMs;",
+        "std::string hit_window_text() { return whole_ms_text(kHitWindowMs); }"
       ],
       "scope": [
         "src",
         "tests"
       ],
-      "note": "The hit window's default cut to a whole number. The setting, the report job and the report keep its decimal (D51 call 15). Decided by: audit finding 140; D51 call 15 (phase 7 task LB1)"
+      "note": "The hit window cut to a whole number by hand. The reports print it through report::hit_window_text, and everything else reads kHitWindowMs as it is. Decided by: audit finding 140; D51 call 15 (phase 7 task LB1); D270 call 8 (one fixed window)"
     },
     {
       "question": "What does squeezing out a row cost?",
@@ -2549,7 +2581,7 @@
       "owner_file": "src/core/app_version.h",
       "owner_symbol": "parse_version",
       "date": "2026-10-22",
-      "decision": "auto-updater plan, The version rule",
+      "decision": "D259 (docs/development.md, \"The version rule\")",
       "added_by": "UPD-T2a",
       "pattern": "\\bHYDRA_VERSION\\s*(==|!=|<=?([^<]|$)|>=?([^>]|$))|(==|!=|(^|[^<])<=?|(^|[^>])>=?)\\s*HYDRA_VERSION\\b|%[du]\\.%[du]\\.%[du]|\\[\"tag_name\"\\]\\s*(==|!=|<|>)",
       "must_match": [
@@ -2569,7 +2601,7 @@
       "owner_files": [
         "src/core/app_version.h"
       ],
-      "note": "Versions are compared as three numbers, never as text (2.9.1 is older than 2.10.2). Code that compares versions reads both through parse_version (the running one through running_version) and compares AppVersion values. Decided by: the user's yes to the auto-updater plan, The version rule (2026-10-22)"
+      "note": "Versions are compared as three numbers, never as text (2.9.1 is older than 2.10.2). Code that compares versions reads both through parse_version (the running one through running_version) and compares AppVersion values. Decided by: the user's yes to D259; docs/development.md, \"The version rule\" (2026-10-22)"
     },
     {
       "question": "What is the version text the user reads?",
@@ -2600,7 +2632,28 @@
           "why": "named_version, the owner: the version bar's name and every update sentence that names a version call it"
         }
       ],
-      "note": "The app's name and a version are joined in one place, so the bar's name and the update sentences read the same. A name built by hand from HYDRA_APP_NAME and a space, or a literal \"Hydra Deluxe \" before a version, is a second copy. Sentences that name the app without a version (the not-installed line, the window title) are not this question. Decided by: D260, the version bar plan (docs/superpowers/plans/2026-10-23-update-check-on-launch.md, Where the text comes from)"
+      "note": "The app's name and a version are joined in one place, so the bar's name and the update sentences read the same. A name built by hand from HYDRA_APP_NAME and a space, or a literal \"Hydra Deluxe \" before a version, is a second copy. Sentences that name the app without a version (the not-installed line, the window title) are not this question. Decided by: D260"
+    },
+    {
+      "question": "Do these two paths name one folder?",
+      "owner": "same_folder in src/core/winstr.cpp",
+      "owner_file": "src/core/winstr.cpp",
+      "owner_symbol": "same_folder",
+      "date": "2026-10-31",
+      "decision": "AOA-W3 V3-SN5 (the user approved walking a repeated song folder once)",
+      "added_by": "AOA-W3-F3 review",
+      "pattern": "\\bCompareStringOrdinal\\(",
+      "anchor": "CompareStringOrdinal(",
+      "owner_files": [
+        "src/core/winstr.cpp"
+      ],
+      "must_match": [
+        "return CompareStringOrdinal(here.c_str(), static_cast<int>(here.size()), there.c_str(),"
+      ],
+      "must_not_match": [
+        "return same_folder(here, wide_to_utf8(registered));"
+      ],
+      "note": "Two folders spelled with another letter case, slash direction, trailing separator or long-path prefix are one folder. A second comparison of two paths worked out by hand (the way installed_by_setup once did) can disagree with the scan. The test helper is_under_temp in tests/temp_util.h asks whether a path lies below the temp folder, a different question, and is outside this row's scope. Decided by: AOA-W3 V3-SN5 (the Song folders scan lists a repeated folder once)"
     }
   ]
 }

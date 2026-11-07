@@ -23,12 +23,19 @@ from tools.ch_mcp import bot_run  # noqa: E402
 from tools.ch_mcp import server as S  # noqa: E402
 from tools.hydra_ui_mcp import REPLY_CAP_CHARS  # noqa: E402
 
-# The eighteen tools of the plan's "The tools" table.
+# The eighteen tools of the server plan's "The tools" table, then the eleven
+# of the Star Power and song start plan's (task T5), then the five kit tools
+# of the in-game input plan (task K5). The direct-start plan (task D5) adds
+# arguments to ch_start and ch_kit_setup and no tool.
 TOOL_NAMES = {
     "ch_start", "ch_stop", "ch_status", "ch_install_chart", "ch_wait_stats",
     "ch_stats", "ch_compare", "ch_attach", "ch_detach", "ch_state",
     "ch_snapshot", "ch_trace_start", "ch_notes", "ch_trace_stop", "ch_press",
     "ch_play_chart", "ch_play_status", "ch_play_stop",
+    "ch_sp_watch_start", "ch_sp", "ch_sp_watch_status", "ch_sp_watch_stop",
+    "ch_sp_compare", "ch_sp_between", "ch_key", "ch_menu", "ch_open_song",
+    "ch_method_watch_start", "ch_method_watch_stop",
+    "ch_kit_setup", "ch_kit_press", "ch_kit_status", "ch_kit_watch", "ch_kit_teardown",
 }
 
 
@@ -48,7 +55,7 @@ class ServerTest(unittest.TestCase):
         self.helper = S.Helper(env=env, scratch_root=tmp.name,
                                game_kw={"driver": object()})
 
-    def test_build_server_registers_the_eighteen_tools(self):
+    def test_build_server_registers_the_thirty_four_tools(self):
         tools = asyncio.run(S.build_server(self.helper).list_tools())
         self.assertEqual({t.name for t in tools}, TOOL_NAMES)
 
@@ -67,7 +74,8 @@ class ServerTest(unittest.TestCase):
 
     def test_the_trace_texts_say_the_hook_fires_on_hits(self):
         # Live step L2 found the default hook fires only on hit notes (plan
-        # 2026-10-28-ch-mcp-server, "Live results (2026-10-29)").
+        # 2026-10-28-ch-mcp-server, "Live results (2026-10-29)"; removed, read
+        # it with git show ec91f8d1:docs/superpowers/plans/2026-10-28-ch-mcp-server.md).
         server = S.build_server(self.helper)
         tools = {t.name: t for t in asyncio.run(server.list_tools())}
         for name, text in (("instructions", server.instructions),
@@ -75,6 +83,57 @@ class ServerTest(unittest.TestCase):
             with self.subTest(text=name):
                 self.assertIn("each note the player hits", text)
                 self.assertNotIn("processes", text)
+
+    def test_the_kit_is_wired_into_the_menu_driver_and_the_auto_player(self):
+        self.assertIs(self.helper.menu._kit, self.helper.kit)
+        # ch_play_chart's route reaches GameTools, and with no kit set up the
+        # kit press GameTools asks KitTools for is None.
+        server = S.build_server(self.helper)
+        result = asyncio.run(server.call_tool("ch_play_chart",
+                                              {"score_json": "x.json", "route": "pads"}))
+        self.assertEqual(result.content[0].text, 'unknown route "pads"; routes: kit, keys')
+        result = asyncio.run(server.call_tool("ch_play_chart",
+                                              {"score_json": "x.json", "route": "kit"}))
+        self.assertEqual(result.content[0].text,
+                         'route kit: the kit is not set up; call ch_kit_setup first, '
+                         'or pass route="keys"')
+
+    def test_the_kit_reads_the_pause_setting_in_the_env_documents_folder(self):
+        docs = self.helper.env.documents_dir
+        os.makedirs(docs)
+        with open(os.path.join(docs, "settings.ini"), "w", encoding="utf-8") as f:
+            f.write("[game]\npause_on_focus_lost = 1\n")
+        self.helper.frida.is_attached = lambda: True
+        self.assertEqual(self.helper.kit.ch_kit_setup(),
+                         "refused: settings.ini reads pause_on_focus_lost = 1, not 0; "
+                         "start the game with ch_start, which sets it for the run")
+
+    def _schema(self, name):
+        tools = {t.name: t for t in asyncio.run(S.build_server(self.helper).list_tools())}
+        return tools[name].input_schema["properties"]
+
+    def test_ch_start_takes_human_and_passes_it_through(self):
+        self.assertEqual(self._schema("ch_start")["human"]["default"], False)
+        seen = []
+        self.helper.game.ch_start = lambda *a, **kw: seen.append((a, kw)) or "started"
+        result = asyncio.run(S.build_server(self.helper).call_tool(
+            "ch_start", {"song_folder": "song", "human": True}))
+        self.assertEqual(result.content[0].text, "started")
+        self.assertEqual(seen, [(("song", bot_run.DEFAULT_PLAYER, None), {"human": True})])
+
+    def test_ch_start_human_with_no_song_folder_is_refused_before_any_launch(self):
+        result = asyncio.run(S.build_server(self.helper).call_tool("ch_start", {"human": True}))
+        self.assertEqual(result.content[0].text, bot_run.HUMAN_NEEDS_SONG)
+        self.assertEqual(self.printed, [])
+
+    def test_ch_kit_setup_takes_player_and_passes_it_through(self):
+        self.assertEqual(self._schema("ch_kit_setup")["player"]["default"], None)
+        seen = []
+        self.helper.kit.ch_kit_setup = lambda player: seen.append(player) or "set up"
+        server = S.build_server(self.helper)
+        asyncio.run(server.call_tool("ch_kit_setup", {}))
+        asyncio.run(server.call_tool("ch_kit_setup", {"player": "System"}))
+        self.assertEqual(seen, [None, "System"])
 
     def test_status_joins_the_game_and_the_frida_lines(self):
         out = self.helper.ch_status().splitlines()

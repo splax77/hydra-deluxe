@@ -2,7 +2,7 @@
 // compared. The updater asks "is this release newer than the running app"
 // through parse_version and operator<, and the running app's own version
 // (HYDRA_VERSION) is read by the same parse, so both sides follow one rule
-// (docs/superpowers/plans/2026-10-22-auto-updater.md, "The version rule").
+// (docs/development.md, "The version rule").
 
 #ifndef HYDRA_CORE_APP_VERSION_H
 #define HYDRA_CORE_APP_VERSION_H

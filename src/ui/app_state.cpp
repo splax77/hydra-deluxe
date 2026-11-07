@@ -25,9 +25,15 @@ namespace hydra::ui {
 namespace {
 
 // Settings plus hydra_rules.ini. A bad file is not fatal: the app still
-// opens so the user can read the error, but analysis stays off.
+// opens so the user can read the error, but analysis stays off. A bad
+// settings file leaves the defaults (D276 item 1).
 StartupSettings load_startup_settings() {
-    StartupSettings start{Settings::load(), {}};
+    StartupSettings start;
+    try {
+        start.settings = Settings::load();
+    } catch (const app::SettingsFileError& e) {
+        start.settings_error = app::plain_error_detail(e);
+    }
     try {
         start.settings.rules = app::load_rules_file(app::default_rules_path());
     } catch (const app::RulesFileError& e) {
@@ -68,7 +74,8 @@ AppState::AppState() : AppState(load_startup_settings()) {}
 // The store opens on its own thread, so the window draws while an old file
 // upgrades. A bad rules file gates the store on RulesStamp::none(), so no row
 // reads Ready under the defaults the settings still hold.
-AppState::AppState(StartupSettings start) : AppState(std::move(start.settings), nullptr) {
+AppState::AppState(StartupSettings start)
+    : AppState(std::move(start.settings), nullptr, std::move(start.settings_error)) {
     rules_error = std::move(start.rules_error);
     store_open_job = std::make_unique<StoreOpenJob>(
         app::db_path(),
@@ -79,8 +86,14 @@ AppState::AppState(StartupSettings start) : AppState(std::move(start.settings), 
 
 AppState::AppState(app::Settings initial_settings,
                    std::unique_ptr<store::RecordStore> initial_store)
+    : AppState(std::move(initial_settings), std::move(initial_store), std::string()) {}
+
+AppState::AppState(app::Settings initial_settings,
+                   std::unique_ptr<store::RecordStore> initial_store,
+                   std::string initial_settings_error)
     : settings(std::move(initial_settings)),
       store(std::move(initial_store)),
+      settings_error(std::move(initial_settings_error)),
       update_public_key(app::kUpdatePublicKey),
       committed_settings_(settings) {
     // No store: the default constructor's open job brings it, and the
@@ -133,28 +146,26 @@ void AppState::request_rescan_on_open() {
     if (!can_scan()) return;
     // Checked here as well as in start_scan, so the open asks for no scan and
     // its dialog line never waits for one.
-    if (scan_blocked_by_missing_folder()) return;
+    if (scan_blocked_by_missing_folder(app::ScanAsker::Open)) return;
     request_scan = true;
     scan_started_by_open = true;
 }
 
-bool AppState::scan_blocked_by_missing_folder() {
-    for (const std::string& folder : settings.chartfolders) {
-        if (!is_directory_utf8(folder)) {
-            set_problem(app::library_rescan_blocked_notice(folder));
-            return true;
-        }
-    }
-    return false;
+bool AppState::scan_blocked_by_missing_folder(app::ScanAsker asker) {
+    const std::optional<std::string> missing =
+        app::first_missing_chart_folder(settings.chartfolders);
+    if (!missing) return false;
+    set_problem(app::library_scan_blocked_notice(*missing, asker));
+    return true;
 }
 
 void AppState::startup_notice_closed() {
     if (startup_notice_.empty()) return;
     startup_notice_.clear();
     // The fresh library is empty; the chart folders came from the ini, so
-    // the scan finds the same songs. start_scan refuses a scan it cannot
-    // run, as it does for the toolbar's button.
-    request_scan = true;
+    // the scan finds the same songs. Hydra starts this scan on its own, as it
+    // does for an out-of-date library, so it asks the same way (D268).
+    request_rescan_on_open();
 }
 
 void AppState::set_render_device(ID3D11Device* device, ID3D11DeviceContext* context) {
@@ -214,8 +225,13 @@ std::optional<store::ChartLibraryEntry> AppState::read_entry(const std::string& 
     return std::nullopt;
 }
 
-void AppState::refresh_library_summaries() {
+void AppState::read_summaries_in_place() {
     read_store([&] { read_library_summaries(*store, settings, library); });
+}
+
+void AppState::refresh_library_summaries() {
+    read_summaries_in_place();
+    library.sort_if_out_of_date();
 }
 
 bool AppState::refresh_library_row(const std::string& md5) {
@@ -264,10 +280,12 @@ void AppState::tick_library(double now) {
     reload_after_scan();
     // A batch stores results on its own threads. Re-read the summaries at
     // most once per kBatchRefreshSeconds, only when it stored something since
-    // the last read,
-    // and once more when it ends so the last results show.
+    // the last read, and once more when it ends so the last results show.
+    // The rows hold their order through these reads.
+    bool batch_over = true;  // the finished strip's X can let the job go first
     if (batch_job) {
         const BatchJob::Snapshot snap = batch_job->snapshot();
+        batch_over = snap.finished;
         if (snap.completed != batch_seen_completed_ &&
             (snap.finished || now - batch_refreshed_at_ >= kBatchRefreshSeconds)) {
             batch_seen_completed_ = snap.completed;
@@ -275,8 +293,16 @@ void AppState::tick_library(double now) {
             // The open song's panel shows the engine's own result, which a
             // batch under the same settings finds again, so only the rows are
             // read (D87 item 1).
-            refresh_library_summaries();
+            read_summaries_in_place();
         }
+    }
+    // The list sorts once when a batch ends, however it ended. This stands
+    // apart from the read above, which a batch whose last result was already
+    // read never reaches. It goes by the same snapshot as that read, so it
+    // can't run ahead of the last results.
+    if (batch_over && batch_end_sort_due_) {
+        batch_end_sort_due_ = false;
+        library.sort_if_out_of_date();
     }
 }
 
@@ -490,7 +516,7 @@ void AppState::update_view_job() {
             reload_library();  // the panel's entry follows its row (follow_selected_row)
         }
         if (job->analysis_off()) {
-            v.state = ViewedSong::State::RulesBroken;
+            v.state = ViewedSong::State::AnalysisOff;
         } else if (!out.analysis) {
             v.state = ViewedSong::State::Failed;
             v.message = std::move(out.analysis_message);
@@ -564,7 +590,17 @@ template bool AppState::is_selected_row(const store::ChartLibraryEntry& row) con
 template bool AppState::is_selected_row(const LibraryChart& row) const;
 
 bool AppState::can_scan() const {
-    return !settings.chartfolders.empty() && !scan_job && !batch_running();
+    // A scan rewrites the saved library, so a refused settings file, which
+    // saves nothing, scans nothing either (D276 item 1).
+    return settings_error.empty() && !settings.chartfolders.empty() && !scan_job &&
+           !batch_running();
+}
+
+std::vector<AnalysisOffLine> AppState::analysis_off_lines() const {
+    std::vector<AnalysisOffLine> lines;
+    if (!settings_error.empty()) lines.push_back({app::kSettingsOffSentence, settings_error});
+    if (!rules_error.empty()) lines.push_back({app::kAnalysisOffSentence, rules_error});
+    return lines;
 }
 
 bool AppState::can_analyze() const { return !analysis_blocked() && !batch_running(); }
@@ -587,6 +623,10 @@ void AppState::tick(double /*now*/) {
     details_ui.prev_open = show_details;
     update_view_job();
     tick_updates();
+    if (open_report_when_shown_ && path_report_button_shown()) {
+        open_report_when_shown_ = false;
+        show_path_report();
+    }
 }
 
 void AppState::select_chart(const std::string& hyhash, const std::string& chartmode) {
@@ -638,7 +678,10 @@ void AppState::start_scan() {
     }
     // Every scan, the button's included, stops here, so the toolbar's button
     // stays on and the click shows the notice instead (D266).
-    if (scan_blocked_by_missing_folder()) {
+    // The open's own scan keeps the open's sentence (D268). Every other scan,
+    // the one after the set-aside box included, gets the other one.
+    if (scan_blocked_by_missing_folder(scan_started_by_open ? app::ScanAsker::Open
+                                                            : app::ScanAsker::User)) {
         scan_started_by_open = false;
         return;
     }
@@ -706,6 +749,7 @@ void AppState::start_batch(bool redo) {
     report_started = false;
     batch_seen_completed_ = 0;
     batch_refreshed_at_ = -1.0;
+    batch_end_sort_due_ = true;
     batch_finish_seen_ = false;
     apply_app_batch_analyzer_for_test(*batch_job);
     batch_job->start();
@@ -914,7 +958,7 @@ void AppState::launch_path_report(app::BatchRun run, PathReportCause cause) {
         report_job->cancel();
         parked_reports.push_back(std::move(report_job));
     }
-    report_job = std::make_unique<ReportJob>(*store, std::move(run), settings.hit_window_ms);
+    report_job = std::make_unique<ReportJob>(*store, std::move(run));
     path_report_cause_ = cause;
     path_report.out_of_date_during_build = ReportOutOfDate::None;
     report_job->start();
@@ -942,24 +986,31 @@ void AppState::show_path_report() {
 }
 
 void AppState::close_path_report() {
-    // A batch the report waited on keeps running with its strip, and builds
-    // the report when it finishes, as any batch does. A question the window
-    // was asking goes with it, so no popup takes it up in the main window.
-    if (path_report_awaits_confirm()) close_batch_confirm();
+    // Closing only hides the window, as the comparison's close does (D271
+    // item 7). The slot keeps its rows, its outcome and its out-of-date mark,
+    // and a build or a batch wait still running carries on and lands.
+    path_report.window_open = false;
+    // A question the window was asking ends as a "no" that runs nothing
+    // (D276 item 6), so no popup takes it up in the main window, and a
+    // reopen with nothing built asks again.
+    if (!path_report_awaits_confirm()) return;
+    close_batch_confirm();
     report_wait_ = ReportWait::None;
-    // A build still running stops as the window's Cancel stops it. It waits
-    // parked, so neither its rows nor its Cancelled land with the window shut;
-    // one that finished this frame is dropped the same way.
-    cancel_path_report();
-    if (report_job) parked_reports.push_back(std::move(report_job));
-    // The slot starts over as never built: no rows, no outcome, nothing out
-    // of date, so show_path_report builds again.
-    path_report = PathReportSlot{};
 }
 
 bool AppState::path_report_offered() const {
     return !library.rows().empty() && !analysis_blocked();
 }
+
+bool AppState::path_report_button_shown() const {
+    // store_ready: the toolbar is part of the main window, which run_frame
+    // draws only once the store is ready. The rest is D103's: a build under
+    // way or rows in memory, or path_report_offered.
+    return store_ready() && (path_report_build() == ReportBuild::Building ||
+                             path_report.result || path_report_offered());
+}
+
+void AppState::open_path_report_once_shown() { open_report_when_shown_ = true; }
 
 namespace {
 
@@ -1065,6 +1116,9 @@ void AppState::flush_settings() {
 
 void AppState::save_settings() {
     settings_unsaved_ = false;
+    // A refused file keeps its bytes: saving the defaults over it would lose
+    // the user's settings (D276 item 1).
+    if (!settings_error.empty()) return;
     if (!settings.save())
         set_problem("Settings could not be saved — " + app::ini_path() +
                    " is not writable.");

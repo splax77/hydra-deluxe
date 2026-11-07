@@ -15,7 +15,7 @@
 #include "../testdata_dirs.h"  // root
 #include "app/config.h"
 #include "app/user_messages.h"  // old_library_set_aside_notice, library_rescan_notice,
-                                // library_rescan_blocked_notice
+                                // library_scan_blocked_notice
 #include "core/error_kind.h"
 #include "imgui_internal.h"
 #include "parse/song.h"  // NoNotesError
@@ -346,13 +346,42 @@ void test_rules_error(ImGuiTestContext* ctx) {
     open_details(ctx, 0);
     if (ctx->IsError()) return;
     IM_CHECK(wait_until(ctx, [&] {
-        return h.app->viewed.state == hydra::ui::ViewedSong::State::RulesBroken;
+        return h.app->viewed.state == hydra::ui::ViewedSong::State::AnalysisOff;
     }, 60));
     IM_CHECK(!h.app->viewed.record.has_value());
     IM_CHECK(h.app->library_row_at(0).status == hydra::store::RecordStatus::NotAnalyzed);
     // The state refuses as well: a batch starts nothing.
     h.app->start_batch(false);
     IM_CHECK(h.app->batch_job == nullptr);
+}
+
+// A bad hydra_settings.ini: the app opens on its defaults, its sentence and
+// the error naming the key stay under the toolbar, Analyze library is
+// disabled, and an edit in the Analysis settings panel leaves the file's bytes
+// as they were (D276 item 1).
+void test_settings_error(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    const std::string bad = "view_prodrums=yes\n";
+    reset_app(h, "", true, bad);
+    IM_CHECK(h.app->analysis_blocked());
+    IM_CHECK(h.app->settings_error.find("view_prodrums") != std::string::npos);
+
+    IM_CHECK(wait_until(ctx, [&] {
+        return visible_text(h).find(hydra::app::kSettingsOffSentence) != std::string::npos;
+    }, 5));
+    IM_CHECK(visible_text(h).find("view_prodrums = \"yes\"") != std::string::npos);
+    IM_CHECK(!h.app->can_analyze());
+    ctx->SetRef("//Hydra");
+    IM_CHECK((ctx->ItemInfo("Analyze library...").ItemFlags & ImGuiItemFlags_Disabled) != 0);
+
+    const bool prodrums_before = h.app->settings.view_prodrums;
+    open_settings_panel(ctx);
+    if (ctx->IsError()) return;
+    ctx->ItemClick("**/##prodrums");
+    IM_CHECK(wait_until(ctx, [&] { return h.app->settings.view_prodrums != prodrums_before; }, 5));
+    close_settings_panel(ctx);
+    h.app->flush_settings();
+    IM_CHECK(hydra::read_file_text(h.ini_path) == bad);
 }
 
 // The library view's own state (the search text, the dmleaderboards filter,
@@ -593,7 +622,8 @@ void test_library_search(ImGuiTestContext* ctx) {
     // the box is the one way to clear it by mouse, and it brings it all back.
     ctx->ItemInputValue("**/##search", "zzqx");
     IM_CHECK(wait_until(ctx, [&] { return shown() == 0; }, 5));
-    IM_CHECK(visible_text(h).find("No charts match your search.") != std::string::npos);
+    IM_CHECK(visible_text(h).find("Nothing matches.") != std::string::npos);
+    IM_CHECK(visible_text(h).find("No charts match your search.") == std::string::npos);
     IM_CHECK(!ctx->ItemExists("**/Clear search"));
     ctx->ItemClick("**/X##clearsearch");
     IM_CHECK(wait_until(ctx, [&] { return shown() == 97 && h.app->search.empty(); }, 5));
@@ -1019,33 +1049,83 @@ std::optional<size_t> row_in_lower_half(ImGuiTestContext* ctx, const ImGuiWindow
     return std::nullopt;
 }
 
-// A click on a row selects it and leaves the list where it is (the user's
-// rule, 2026-10-14: a click never scrolls). The clicked row sits in the lower
-// half, where centring it would move the list.
-void test_library_click_keeps_scroll(ImGuiTestContext* ctx) {
+// Row k's rect when it is wholly on screen; none otherwise, including when
+// the clipper skipped it. row_rect is the same lookup for a row that must be
+// there.
+std::optional<ImRect> drawn_row_rect(ImGuiTestContext* ctx, size_t k) {
+    Harness& h = harness(ctx);
+    const std::string& title = h.app->library_row_at(k).title;
+    const ImGuiTestItemInfo info =
+        ctx->ItemInfo(("//Hydra/**/" + escape_ref(title)).c_str(), ImGuiTestOpFlags_NoError);
+    if (info.ID == 0 || !fully_shown(library_table_window(), info.RectFull)) return std::nullopt;
+    return info.RectFull;
+}
+
+// A click on a row selects it and opens the song panel. The panel makes the
+// rows two lines tall, and the clicked song stays at the same height on
+// screen; closing the panel makes them one line again, and the song still
+// stays put (the user's rule: a click never moves the song under the
+// pointer). The clicked row sits in the lower half of a list scrolled to its
+// middle, where a list that kept its pixel offset would lose it.
+void test_library_click_keeps_row_in_place(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     reset_app(h);
     scan_library(ctx);
     if (ctx->IsError()) return;
     ctx->Yield(3);
+    ImGuiTable* table = library_table();
     ImGuiWindow* list = library_table_window();
-    IM_CHECK_RETV(list != nullptr, );
+    IM_CHECK_RETV(table != nullptr && list != nullptr, );
     IM_CHECK_GT(list->ScrollMax.y, 0.0f);  // the corpus is taller than the list
     ImGui::SetScrollY(list, IM_TRUNC(list->ScrollMax.y * 0.5f));
     ctx->Yield(3);
-    const float scroll = list->Scroll.y;
-    IM_CHECK_GT(scroll, 0.0f);
+    IM_CHECK_GT(list->Scroll.y, 0.0f);
 
     const std::optional<size_t> k = row_in_lower_half(ctx, list, 0);
     IM_CHECK_RETV(k.has_value(), );
     const std::string title = h.app->library_row_at(*k).title;
+    const ImRect before = row_rect(ctx, *k);
+    const float y_before = before.Min.y - list->InnerRect.Min.y;
+    const float row_h_before = table->RowMinHeight;
+    // ImGui keeps a scroll offset in whole pixels (it rounds the target), so
+    // the row may land up to one pixel from where it was.
+    const float tolerance = 1.0f;
+
+    // The row is found where it sits now, and is the same height on screen.
+    const auto check_in_place = [&](const char* when, bool taller) {
+        const std::optional<ImRect> now = drawn_row_rect(ctx, *k);
+        if (!now) {
+            ctx->LogInfo("%s: the clicked row is not wholly on screen (scroll %.1f)", when,
+                         list->Scroll.y);
+            IM_CHECK_RETV(now.has_value(), );
+        }
+        const float y_now = now->Min.y - list->InnerRect.Min.y;
+        ctx->LogInfo("%s: row top %.1f below the list's top, before the click %.1f; "
+                     "row height %.1f, before %.1f",
+                     when, y_now, y_before, now->GetHeight(), before.GetHeight());
+        if (taller) {
+            IM_CHECK_GT(now->GetHeight(), before.GetHeight());
+        } else {
+            IM_CHECK_EQ(now->GetHeight(), before.GetHeight());
+        }
+        IM_CHECK_LE(ImAbs(y_now - y_before), tolerance);
+    };
+
     ctx->SetRef("//Hydra");
     ctx->ItemClick(("**/" + escape_ref(title)).c_str());
     IM_CHECK(wait_until(ctx, [&] { return h.app->selected && h.app->selected->title == title; },
                         5));
+    // The panel hides Album, which puts it under the artist: two-line rows.
+    IM_CHECK_RETV(wait_until(ctx, [&] { return table->RowMinHeight > row_h_before; }, 5), );
+    ctx->Yield(3);  // the list's new scroll lands a frame after the rows change
+    check_in_place("panel open", true);
+    if (ctx->IsError()) return;
+
+    ctx->ItemClick("**/X##closepanel");
+    IM_CHECK_RETV(wait_until(ctx, [&] { return table->RowMinHeight == row_h_before; }, 5), );
     ctx->Yield(3);
-    ctx->LogInfo("scroll before the click %.1f, after %.1f", scroll, list->Scroll.y);
-    IM_CHECK_EQ(list->Scroll.y, scroll);
+    IM_CHECK(h.app->selected && h.app->selected->title == title);  // still selected
+    check_in_place("panel closed", false);
 }
 
 // Next in the song panel moves the list only for a row that is not wholly on
@@ -1471,6 +1551,7 @@ void test_rescan_on_open_cancel(ImGuiTestContext* ctx) {
 // D266 (user ruling "Refuse, like on open"): a click on Scan library with a
 // chart folder that cannot be read starts no scan, opens no scan window, keeps
 // the library and its saved results, and the status line names the folder.
+// D268 ("Its own sentence"): the line is the manual scan's, not the open's.
 void test_scan_missing_folder(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     reset_app(h);
@@ -1495,14 +1576,16 @@ void test_scan_missing_folder(ImGuiTestContext* ctx) {
     IM_CHECK(h.app->scan_job == nullptr);
     IM_CHECK(!ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId));  // no scan window
     IM_CHECK(h.app->status_is_problem);
-    IM_CHECK(h.app->status_message == hydra::app::library_rescan_blocked_notice(missing));
-    IM_CHECK(on_screen(h, hydra::app::library_rescan_blocked_notice(missing)));
+    const std::string notice =
+        hydra::app::library_scan_blocked_notice(missing, hydra::app::ScanAsker::User);
+    IM_CHECK(h.app->status_message == notice);
+    IM_CHECK(on_screen(h, notice));
     IM_CHECK(h.app->library_shown_count() == rows);
     IM_CHECK(h.app->store->record_count() == records);
 }
 
 // ---- the version bar ----------------------------------------------------------
-// docs/superpowers/plans/2026-10-23-update-check-on-launch.md, task T1b.
+// The bar D260 rules on.
 // Nothing here touches the network: UpdateSeams serves the release reply, the
 // download and the installer start.
 
@@ -1841,7 +1924,7 @@ void test_library_search_tips(ImGuiTestContext* ctx) {
     };
 
     // The empty box shows its placeholder; the old hint line is gone.
-    IM_CHECK(on_screen(h, "Search songs"));
+    IM_CHECK(on_screen(h, "Search song, artist, album, charter, or folder"));
     IM_CHECK(!on_screen(h, "Narrow with"));
     IM_CHECK(on_screen(h, "Type any words, or narrow it down."));
     IM_CHECK(ctx->ItemExists("**/Search tips##searchtips"));
@@ -1898,6 +1981,7 @@ const std::vector<TestEntry>& library_tests() {
         {"engine-wildcard-patches", test_engine_wildcard_patches},
         {"settings-reset", test_settings_reset},
         {"rules-error", test_rules_error},
+        {"settings-error", test_settings_error},
         {"library-state-per-app", test_library_state_per_app},
         {"view-settings", test_view_settings},
         {"library-search", test_library_search},
@@ -1908,7 +1992,7 @@ const std::vector<TestEntry>& library_tests() {
         {"library-layout", test_library_layout},
         {"library-column-widths", test_library_column_widths},
         {"library-widths-hold", test_library_widths_hold},
-        {"library-click-keeps-scroll", test_library_click_keeps_scroll},
+        {"library-click-keeps-row-in-place", test_library_click_keeps_row_in_place},
         {"library-next-scrolls-just-enough", test_library_next_scrolls_just_enough},
         {"library-columns-at-start", test_library_columns_at_start},
         {"library-twin-rows", test_library_twin_rows},

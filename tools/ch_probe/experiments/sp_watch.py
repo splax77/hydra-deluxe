@@ -15,8 +15,9 @@ watch_checks.py and sp_compare.py read the log.
 can be lined up with log_tail.py's wall-clock lines.
 
 The run ends when the song clock stops (live.StoppedCheck: frozen too long,
-or jumped back), when the engine can no longer be read, on Ctrl-C, or at
-RUN_CAP_S of wall time.
+or jumped back), when the engine can no longer be read, on Ctrl-C, at
+RUN_CAP_S of wall time, or when the caller's should_stop says so (the `ch`
+MCP server's ch_sp_watch_stop).
 
 Usage:
     py tools\\ch_probe\\experiments\\sp_watch.py [--out <csv>]
@@ -44,7 +45,7 @@ if _REPO_ROOT not in sys.path:
 from tools.ch_probe import engine_finder
 from tools.ch_probe.engine import EngineModel, Snapshot
 from tools.ch_probe.process import open_process
-from tools.ch_probe.experiments import live
+from tools.ch_probe.experiments import live, play_chart
 from tools.ch_probe.experiments.overlay_logs import WATCH_COLUMNS
 
 # Where the log goes when --out is not given.
@@ -53,14 +54,18 @@ RESULTS_DIR = os.path.join(os.path.dirname(__file__), "results", "overlay-spike"
 # The pause between two reads of the engine (the plan's Task A step 3).
 POLL_S = 0.004
 
-# The longest a run lasts, in seconds of wall time (the plan's Task A step 3).
-RUN_CAP_S = 240.0
+# The longest a run lasts, in seconds of wall time. play_chart owns the
+# number, so a watch and a presser started together share one cap.
+RUN_CAP_S = play_chart.RUN_CAP_S
 
 # The one column that is not a Snapshot field: when the row was read.
 WALL_COLUMN = "wall_s"
 
 # Exit code for "no song started inside the engine search's cap".
 EXIT_NO_SONG = 2
+
+# The reason a run gives when its caller's should_stop said so.
+STOPPED_REASON = "stopped"
 
 
 def watch_row(wall_s: float, snap: Snapshot) -> list:
@@ -98,6 +103,7 @@ def watch(
     sleep: Callable[[float], None] = time.sleep,
     poll_s: float = POLL_S,
     cap_s: float = RUN_CAP_S,
+    should_stop: Optional[Callable[[], bool]] = None,
 ) -> WatchSummary:
     """Poll `snapshot` every `poll_s` seconds and write a row on each change.
 
@@ -105,7 +111,9 @@ def watch(
     differ from the last row written, and once more at the end for the last
     read when it was not written already. The run stops on the first of: the
     clock stopping (live.StoppedCheck raises), a failed read (OSError),
-    Ctrl-C, or `cap_s` seconds of `now()` since the start."""
+    Ctrl-C, `cap_s` seconds of `now()` since the start, or `should_stop`
+    returning True (reason STOPPED_REASON). `should_stop` is asked before
+    each poll, beside the cap."""
     start = now()
     first = snapshot()
     t = now()
@@ -121,6 +129,9 @@ def watch(
         while True:
             if now() - start >= cap_s:
                 reason = f"run cap of {cap_s:g} s reached"
+                break
+            if should_stop is not None and should_stop():
+                reason = STOPPED_REASON
                 break
             sleep(poll_s)
             try:
@@ -151,12 +162,13 @@ def watch(
     return WatchSummary(rows, first.clock_s, latest[1].clock_s, reason)
 
 
-def find_engine_live(proc) -> int:
+def find_engine_live(proc, out: Optional[TextIO] = None) -> int:
     """LIVE-ONLY: the live engine's address, through the one capped search
-    (engine_finder.find_live_engine_capped) over every window pattern.
+    (engine_finder.find_live_engine_capped) over every window pattern. The
+    search's progress dots go to `out` (stdout when None).
     Raises engine_finder.EngineSearchTimeout when no song starts in time."""
     return engine_finder.find_live_engine_capped(
-        proc, engine_finder.all_patterns(proc))
+        proc, engine_finder.all_patterns(proc), out=out)
 
 
 def default_out_path() -> str:
@@ -169,7 +181,7 @@ def run(
     argv: Optional[Sequence[str]] = None,
     *,
     opener: Callable[..., object] = open_process,
-    find_engine: Callable[[object], int] = find_engine_live,
+    find_engine: Optional[Callable[[object], int]] = None,
     now: Callable[[], float] = time.time,
     sleep: Callable[[float], None] = time.sleep,
     out: Optional[TextIO] = None,
@@ -178,8 +190,12 @@ def run(
     engine, watch it, and print what the run did. Returns the exit code.
 
     The defaults reach the running game (LIVE-ONLY); the tests pass fakes for
-    `opener`, `find_engine`, `now` and `sleep`."""
+    `opener`, `find_engine`, `now` and `sleep`. With no `find_engine` the real
+    search runs and its progress dots go to `out`."""
     out = sys.stdout if out is None else out
+    if find_engine is None:
+        def find_engine(proc) -> int:
+            return find_engine_live(proc, out=out)
     parser = argparse.ArgumentParser(
         description="Log the engine's Star Power fields while a song plays.")
     parser.add_argument("--out", help="CSV to write (default: a new file "

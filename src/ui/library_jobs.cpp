@@ -48,6 +48,7 @@ std::string read_library(store::RecordStore& store, const app::Settings& setting
     }
     try {
         read_library_summaries(store, settings, library);
+        library.sort_if_out_of_date();
     } catch (const std::exception& e) {
         return app::plain_error(e);
     }
@@ -177,8 +178,14 @@ void StoreOpenJob::run() {
 
 // ---- ScanJob --------------------------------------------------------------
 
+namespace {
+std::function<void()> g_scan_hold;
+}  // namespace
+
+void set_scan_hold_for_test(std::function<void()> hold) { g_scan_hold = std::move(hold); }
+
 ScanJob::ScanJob(std::vector<std::string> rootfolders, store::RecordStore& store)
-    : rootfolders_(std::move(rootfolders)), store_(store) {}
+    : rootfolders_(std::move(rootfolders)), store_(store), hold_(g_scan_hold) {}
 
 void ScanJob::start() { spawn([this] { run(); }); }
 
@@ -188,6 +195,20 @@ ScanProgress ScanJob::snapshot() const {
 }
 
 void ScanJob::run() {
+    // An exception ends the scan as a problem in its list, as a failed save
+    // does, and the library stays as it was.
+    try {
+        scan();
+    } catch (const std::exception& e) {
+        std::lock_guard<std::mutex> lock(mu_);
+        progress_.errors.push_back(app::plain_error_line(e));
+        progress_.phase = ScanProgress::Phase::Done;
+        progress_.finished = true;
+    }
+}
+
+void ScanJob::scan() {
+    if (hold_) hold_();
     // The previous scan's rows: any chart whose files are unchanged
     // (sig_unchanged) reuses its md5/metadata without being read again.
     const store::ChartLibraryCache cache = app::load_scan_cache(store_);
@@ -276,20 +297,27 @@ double BatchClock::elapsed_s(double now) const {
     return std::max(0.0, end - *started_ - paused_total_);
 }
 
-std::optional<double> batch_eta_s(double elapsed_s, int completed, int total) {
-    if (total <= 0 || completed < kEtaMinFinished || completed > total) return std::nullopt;
-    return elapsed_s / completed * (total - completed);
+namespace {
+
+// The batch's time-left clock for a run on `workers` workers (D283).
+app::TimeLeftClock batch_time_left(int workers) {
+    return app::TimeLeftClock::over_last_units(kTimeLeftWorkerRounds * workers);
 }
+
+}  // namespace
 
 BatchJob::BatchJob(app::BatchPlan plan, app::BatchRun run, store::RecordStore& store)
     : plan_(std::move(plan)),
       run_(std::move(run)),
       store_(store),
-      workers_(app::batch_worker_count()) {}
+      workers_(app::batch_worker_count()),
+      time_left_(batch_time_left(workers_)) {}
 
 void BatchJob::set_analyzer_for_test(app::ChartAnalyzer analyze, int workers) {
     analyze_ = std::move(analyze);
     workers_ = workers;  // stored as given: run_work_pool checks it
+    std::lock_guard<std::mutex> lock(mu_);
+    time_left_ = batch_time_left(workers_);
 }
 
 namespace {
@@ -390,7 +418,7 @@ BatchJob::Snapshot BatchJob::snapshot() const {
     std::lock_guard<std::mutex> lock(mu_);
     Snapshot s = snap_;
     s.elapsed_s = clock_.elapsed_s(steady_seconds());
-    if (!s.finished && !s.paused) s.eta_s = batch_eta_s(s.elapsed_s, s.completed, s.total);
+    if (!s.finished && !s.paused) s.eta_s = time_left_.read(s.elapsed_s, s.total);
     return s;
 }
 
@@ -417,6 +445,9 @@ void BatchJob::run() {
         snap_.analyzed = p.analyzed;
         snap_.skipped = p.skipped;
         snap_.failed = p.failed;
+        // A save group's charts share the time their report lands, on the
+        // batch clock, which leaves paused time out.
+        time_left_.record(clock_.elapsed_s(steady_seconds()), p.completed);
     };
     callbacks.on_error = [this](const std::string& title, const std::string& sentence,
                                 const std::string& error) {
@@ -549,11 +580,8 @@ std::function<void()> g_report_hold;
 
 void set_report_hold_for_test(std::function<void()> hold) { g_report_hold = std::move(hold); }
 
-ReportJob::ReportJob(store::RecordStore& store, app::BatchRun run, double hit_window_ms)
-    : store_(store),
-      run_(std::move(run)),
-      hit_window_ms_(hit_window_ms),
-      hold_(g_report_hold) {}
+ReportJob::ReportJob(store::RecordStore& store, app::BatchRun run)
+    : store_(store), run_(std::move(run)), hold_(g_report_hold) {}
 
 void ReportJob::start() {
     spawn([this] { run(); });
@@ -565,7 +593,6 @@ void ReportJob::run() {
         // generate_report.
         app::report::ReportOptions options;
         options.max_paths = store::kPathsPerRecord;
-        options.hit_window_ms = hit_window_ms_;
         options.db_path = app::db_path();
         // Closing Hydra or the window's Cancel sets this.
         options.cancel = &cancel_;
@@ -582,7 +609,7 @@ void ReportJob::run() {
         // database holds no results, and the app's own sentence says so (D97).
         // A page whose charts all can't be analyzed or have no result is a
         // page, not a failure: the window shows its coverage lines with
-        // why_empty as its empty text (plan 2026-10-15, question 5).
+        // why_empty as its empty text (D249 item 5).
         if (report.rows == 0 && report.empty_reason != app::report::EmptyReason::NothingToShow) {
             if (!report.why_empty.empty())
                 throw KindedError(ErrorKind::AlreadyPlain, report.why_empty);

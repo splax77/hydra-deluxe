@@ -17,6 +17,7 @@ Run:  py -I tools/test_hydra_ui_mcp.py
 
 import asyncio
 import ctypes
+import json
 import os
 import re
 import shutil
@@ -26,7 +27,9 @@ import tempfile
 import time
 import unittest
 from ctypes import wintypes
+from datetime import datetime
 from pathlib import Path
+from unittest import mock
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
@@ -57,6 +60,51 @@ def fake_launcher(exe, args):
     return [sys.executable, "-I", str(FAKE), "--as", exe.name] + list(args)
 
 
+_real_realapp_record = hm.realapp_record
+
+
+def _refuse_the_real_repo(session, repo):
+    # A Helper built without repo= would name this checkout and so write the
+    # real repo's record file; that fails the test instead.
+    assert Path(repo).resolve() != hm.REPO, "a test let a record reach the real repo's file"
+    return _real_realapp_record(session, repo)
+
+
+def setUpModule():
+    hm.realapp_record = _refuse_the_real_repo
+
+
+def tearDownModule():
+    hm.realapp_record = _real_realapp_record
+
+
+def git(repo, *args):
+    return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True,
+                          check=True).stdout.strip()
+
+
+def make_repo(folder):
+    """A fresh git repo with one commit, standing in for the checkout a
+    window session's record names, so no test writes the real repo's
+    record file."""
+    folder.mkdir(parents=True)
+    git(folder, "init", "-q")
+    (folder / "tracked.txt").write_text("one\n")
+    git(folder, "add", "tracked.txt")
+    git(folder, "-c", "user.name=test", "-c", "user.email=test@example.invalid",
+        "commit", "-q", "-m", "fixture")
+    return folder
+
+
+def realapp_lines(repo):
+    """The records in `repo`'s real-app file, oldest first; [] when there is
+    none. A repo make_repo made keeps its git files in .git."""
+    path = repo / ".git" / hm.REALAPP_FILE
+    if not path.is_file():
+        return []
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+
+
 def make_library(folder, with_wal=True):
     """A fake library folder with an old, fixed modification time on every file."""
     folder.mkdir(parents=True)
@@ -72,17 +120,20 @@ def make_library(folder, with_wal=True):
 class TransportLayer(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(prefix="hydra_mcp_test_")
-        self.root = Path(self.tmp.name)
+        # resolve() spells an 8.3 short name in TEMP (C:\Users\RUNNER~1 on CI)
+        # in full, the way git spells the paths the helper reports.
+        self.root = Path(self.tmp.name).resolve()
         self.exe_dir = self.root / "Release"
         self.exe_dir.mkdir()
         for exe in (hm.HEADLESS_EXE, hm.WINDOW_EXE):
             (self.exe_dir / exe).write_bytes(b"")
         self.processes = []
+        self.repo = make_repo(self.root / "repo")
         self.helper = self.new_helper()
 
     def new_helper(self, **kw):
         args = dict(exe_dir=self.exe_dir, launcher=fake_launcher, temp_root=self.root,
-                    process_lister=lambda: self.processes)
+                    process_lister=lambda: self.processes, repo=self.repo)
         args.update(kw)
         return hm.Helper(**args)
 
@@ -224,6 +275,35 @@ class TransportLayer(unittest.TestCase):
         self.assertIn(r".\build_cpp.ps1 -Target hydra_uitest", out)
         self.assertIsNone(self.helper.session)
 
+    # -- where the scratch folder lives -------------------------------------
+
+    def test_the_default_temp_root_is_the_claude_folder_in_the_temp_folder(self):
+        with mock.patch.object(tempfile, "gettempdir", return_value=str(self.root)):
+            helper = self.new_helper(temp_root=None)
+            self.assertEqual(helper.temp_root, Path(tempfile.gettempdir()) / "claude")
+
+    def test_an_explicit_temp_root_wins(self):
+        with mock.patch.object(tempfile, "gettempdir", return_value=str(self.root)):
+            helper = self.new_helper(temp_root=self.root / "mine")
+        self.assertEqual(helper.temp_root, self.root / "mine")
+
+    def test_a_headless_start_makes_a_temp_root_that_does_not_exist_yet(self):
+        missing = self.root / "not made yet"
+        self.helper = self.new_helper(temp_root=missing)
+        out = self.helper.start("headless")
+        self.assertIn("started a headless session", out)
+        s = self.helper.session
+        self.assertEqual(s.scratch.parent, missing)
+        self.assertTrue(s.scratch.name.startswith("hydra_live_"), s.scratch)
+        self.assertTrue(s.scratch.is_dir())
+
+    def test_a_window_start_makes_a_temp_root_that_does_not_exist_yet(self):
+        missing = self.root / "not made yet"
+        self.helper = self.new_helper(temp_root=missing)
+        s = self.start_window()
+        self.assertEqual(s.scratch.parent, missing)
+        self.assertTrue((s.scratch / "hydra.db").is_file())
+
     # -- the snapshot and window mode ---------------------------------------
 
     def test_an_unreadable_process_list_refuses_the_snapshot_and_leaves_no_folder(self):
@@ -333,7 +413,7 @@ class TransportLayer(unittest.TestCase):
             self.assertNotIn("Library Folder Q7", arg)
         for flag in ("--db", "--uitest-log"):
             self.assertTrue(Path(argv[argv.index(flag) + 1]).is_relative_to(s.scratch), flag)
-        self.assertEqual(self.helper.stop(), "Hydra exited with code 0")
+        self.assertEqual(self.helper.stop().splitlines()[0], "Hydra exited with code 0")
 
     def test_keep_window_leaves_the_process_running(self):
         lib = self.root / "lib"
@@ -345,6 +425,164 @@ class TransportLayer(unittest.TestCase):
         self.assertIsNone(proc.poll())
         self.helper.detached[0].pipe.close()
         self.assertEqual(proc.wait(timeout=hm.REPLY_MARGIN_S), 0)
+
+    # -- the real-app record --------------------------------------------------
+
+    def start_window(self):
+        lib = self.root / "lib"
+        make_library(lib)
+        out = self.helper.start("window", library_dir=str(lib))
+        self.assertIn("started a window session", out)
+        return self.helper.session
+
+    def shoot(self, name):
+        """A screenshot through the stand-in, which only echoes: its echo of
+        the line is turned into the reply Hydra's screenshot verb gives."""
+        real = self.helper._read_line
+
+        def as_hydra(s, wait_s):
+            msg = json.loads(real(s, wait_s))
+            msg["text"] = f"screenshot: {s.scratch / name}\n"
+            return json.dumps(msg)
+
+        self.helper._read_line = as_hydra
+        try:
+            return self.helper.send(f"screenshot {name}")
+        finally:
+            del self.helper._read_line
+
+    def head(self):
+        return git(self.repo, "rev-parse", "HEAD")
+
+    def test_window_stop_writes_realapp_record(self):
+        self.start_window()
+        self.helper.send("state")
+        self.helper.send("text")
+        self.assertTrue(self.shoot("shot.png").startswith("screenshot: "))
+        self.helper.stop()
+        [rec] = realapp_lines(self.repo)
+        self.assertEqual(sorted(rec), sorted(
+            ["kind", "commit", "dirty", "commands", "shots", "started", "stopped"]))
+        self.assertEqual(rec["kind"], "realapp")
+        self.assertEqual(rec["commit"], self.head())
+        self.assertIs(rec["dirty"], False)
+        # Every line Hydra answered counts, the screenshot too.
+        self.assertEqual(rec["commands"], 3)
+        self.assertEqual(rec["shots"], 1)
+        started = datetime.fromisoformat(rec["started"])
+        stopped = datetime.fromisoformat(rec["stopped"])
+        self.assertIsNotNone(started.tzinfo)
+        self.assertLessEqual(started, stopped)
+
+    def test_a_failed_screenshot_is_no_shot(self):
+        self.start_window()
+        # The stand-in's echo is not Hydra's screenshot reply.
+        self.helper.send("screenshot shot.png")
+        self.helper.stop()
+        [rec] = realapp_lines(self.repo)
+        self.assertEqual((rec["commands"], rec["shots"]), (1, 0))
+
+    def test_headless_writes_no_record(self):
+        self.helper.start("headless")
+        self.helper.send("state")
+        self.assertEqual(self.helper.stop(), "Hydra exited with code 0")
+        self.assertEqual(realapp_lines(self.repo), [])
+
+    def test_dirty_tree_is_recorded(self):
+        (self.repo / "tracked.txt").write_text("changed\n")
+        self.start_window()
+        self.helper.send("state")
+        self.helper.stop()
+        [rec] = realapp_lines(self.repo)
+        self.assertIs(rec["dirty"], True)
+        self.assertEqual(rec["commit"], self.head())
+
+    def test_an_untracked_file_makes_the_tree_dirty(self):
+        (self.repo / "new.txt").write_text("new\n")
+        self.start_window()
+        self.helper.stop()
+        [rec] = realapp_lines(self.repo)
+        self.assertIs(rec["dirty"], True)
+
+    def test_user_close_writes_record(self):
+        self.start_window()
+        self.helper.send("state")
+        # The stand-in exits 0 with no quit from the helper, as the window
+        # does when the user closes it; the next reply notices.
+        out = self.helper.send("fake-exit 0")
+        self.assertTrue(out.startswith("Hydra's window closed and Hydra exited with code 0"), out)
+        [rec] = realapp_lines(self.repo)
+        self.assertEqual(rec["commands"], 1)
+        self.assertIn(f"real-app record for commit {self.head()} added to", out)
+
+    def test_crash_writes_no_record(self):
+        self.start_window()
+        self.helper.send("state")
+        out = self.helper.send("fake-exit 3")
+        self.assertTrue(out.startswith("Hydra exited with code 3."), out)
+        self.assertIn("no real-app record written", out)
+        self.assertEqual(realapp_lines(self.repo), [])
+
+    def test_a_killed_window_writes_no_record(self):
+        self.helper = self.new_helper(reply_margin_s=1)
+        self.start_window()
+        self.helper.session.timeout = 0  # as if a reply had reported 0
+        out = self.helper.send("fake-hang")
+        self.assertTrue(out.startswith("Hydra did not answer within 1 s"), out)
+        self.assertIn("no real-app record written", out)
+        self.assertEqual(realapp_lines(self.repo), [])
+
+    def test_keep_window_writes_record(self):
+        s = self.start_window()
+        self.helper.send("state")
+        out = self.helper.stop(keep_window=True)
+        self.assertTrue(out.startswith("left the window open"), out)
+        [rec] = realapp_lines(self.repo)
+        self.assertEqual(rec["commands"], 1)
+        s.pipe.close()
+        self.assertEqual(s.proc.wait(timeout=hm.REPLY_MARGIN_S), 0)
+
+    def test_a_new_start_writes_the_old_sessions_record(self):
+        self.start_window()
+        self.helper.send("state")
+        out = self.helper.start("headless")
+        self.assertIn("stopped the running session first: Hydra exited with code 0", out)
+        self.assertEqual(len(realapp_lines(self.repo)), 1)
+
+    def test_helper_exit_writes_record(self):
+        self.start_window()
+        self.helper.send("state")
+        self.helper.shutdown()
+        [rec] = realapp_lines(self.repo)
+        self.assertEqual(rec["commands"], 1)
+
+    def test_helper_exit_after_a_crash_writes_no_record(self):
+        s = self.start_window()
+        self.helper.send("state")
+        # The window died with a nonzero code and no tool call has noticed.
+        s.proc.kill()
+        s.proc.wait()
+        self.helper.shutdown()
+        self.assertEqual(realapp_lines(self.repo), [])
+
+    def test_a_record_for_the_real_repo_is_refused(self):
+        # The guard raises before the real writer runs, so nothing is written.
+        with self.assertRaises(AssertionError):
+            hm.realapp_record(object(), hm.REPO)
+
+    def test_stop_reply_names_record(self):
+        self.start_window()
+        out = self.helper.stop()
+        path = self.repo / ".git" / hm.REALAPP_FILE
+        self.assertEqual(out, f"Hydra exited with code 0\nreal-app record for commit {self.head()}"
+                              f" added to {path}")
+
+    def test_no_repo_says_no_record_and_still_stops(self):
+        self.helper = self.new_helper(repo=self.root / "not a repo")
+        self.start_window()
+        out = self.helper.stop()
+        self.assertTrue(out.startswith("Hydra exited with code 0\nno real-app record written: git "), out)
+        self.assertIsNone(self.helper.session)
 
 
 class SdkClient(unittest.TestCase):
@@ -391,14 +629,14 @@ NO_LIVE = why_no_live()
 # line and the engine's message.
 UNKNOWN_BUTTON = "failed: click No such button\n"
 UNKNOWN_BUTTON_LOG = "Error 'Unable to locate item: '//Hydra/No such button' (0x00000000)'"
-BURNOUT_ROW = "| Burnout | Green Day | Hoph2o | common\\Summer Blast _25 Setlist\\Tier 4 | Not analyzed |\n"
 
 
 @unittest.skipIf(NO_LIVE is not None, NO_LIVE or "")
 class RealExeLayer(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(prefix="hydra_mcp_real_")
-        self.helper = hm.Helper(temp_root=self.tmp.name, process_lister=lambda: [])
+        self.repo = make_repo(Path(self.tmp.name) / "repo")
+        self.helper = hm.Helper(temp_root=self.tmp.name, process_lister=lambda: [], repo=self.repo)
 
     def tearDown(self):
         self.helper.shutdown()
@@ -413,6 +651,13 @@ class RealExeLayer(unittest.TestCase):
         out = self.helper.run("\n".join(lines[:upto]))
         self.assertNotIn("stopped at line", out)
         self.assertIn("charts=97", self.helper.send("state"))
+
+    def burnout_row(self, text):
+        # The library row for the smoke script's Burnout, read from Hydra's own
+        # text reply: the GUI owns the columns, so the test never retypes them.
+        rows = [ln + "\n" for ln in text.split("\n") if ln.startswith("| Burnout |")]
+        self.assertEqual(len(rows), 1, text)
+        return rows[0]
 
     # -- the session --------------------------------------------------------
 
@@ -510,7 +755,8 @@ class RealExeLayer(unittest.TestCase):
     def test_text_and_dump_filters_are_hydras(self):
         self.helper.start("headless")
         self.scan()
-        self.assertEqual(self.helper.send(hm.filtered("text", "Burnout")), BURNOUT_ROW)
+        row = self.burnout_row(self.helper.send("text"))
+        self.assertEqual(self.helper.send(hm.filtered("text", "Burnout")), row)
         self.assertEqual(self.helper.send(hm.filtered("text", "zzqx-none")),
                          '(no line holding "zzqx-none")\n')
         dump = ('window "Hydra" id=0xBAEC0FDA pos=(0,0) size=(1280,800)\n'
@@ -524,7 +770,7 @@ class RealExeLayer(unittest.TestCase):
         self.scan()
         text = self.helper.send("text")
         self.assertNotIn("\r", text)
-        self.assertIn(BURNOUT_ROW, text)
+        self.burnout_row(text)  # the scanned library still lists Burnout, once
         self.assertEqual(self.helper.send("text |"), text)
 
     def test_rect_on_a_missing_ref_fails(self):
@@ -534,16 +780,16 @@ class RealExeLayer(unittest.TestCase):
     def test_a_bare_bar_clears_the_field(self):
         self.helper.start("headless")
         self.scan()
-        no_match = hm.filtered("text", "No charts")
+        no_match = hm.filtered("text", "Nothing matches")
         self.assertEqual(self.helper.send("type **/##search | zzqx"), "ok")
-        self.assertEqual(self.helper.send(no_match), "No charts match your search.\n")
+        self.assertEqual(self.helper.send(no_match), "Nothing matches.\n")
         # The bar with nothing after it, as a client that trims blanks sends it.
         self.assertEqual(self.helper.send("type **/##search |"), "ok")
-        self.assertEqual(self.helper.send(no_match), '(no line holding "No charts")\n')
+        self.assertEqual(self.helper.send(no_match), '(no line holding "Nothing matches")\n')
         # And the helper's own clear, which keeps the trailing blank.
         self.assertEqual(self.helper.send("type **/##search | zzqx"), "ok")
         self.assertEqual(self.helper.send("type **/##search | "), "ok")
-        self.assertEqual(self.helper.send(no_match), '(no line holding "No charts")\n')
+        self.assertEqual(self.helper.send(no_match), '(no line holding "Nothing matches")\n')
 
     def test_failure_carries_hydras_text_and_the_session_survives(self):
         self.helper.start("headless")
@@ -616,12 +862,12 @@ class RealExeLayer(unittest.TestCase):
         --keep-temp, so this session gets it. (tearDown shuts down whichever
         helper self.helper is by then.)"""
         self.helper = hm.Helper(temp_root=self.tmp.name, process_lister=lambda: [],
-                                launcher=keep_temp_launcher)
+                                launcher=keep_temp_launcher, repo=self.repo)
         self.helper.start("headless")
         self.scan()
         engine = self.helper.session.engine_scratch()
         self.assertEqual(self.helper.stop(), "Hydra exited with code 0")
-        self.helper = hm.Helper(temp_root=self.tmp.name, process_lister=lambda: [])
+        self.helper = hm.Helper(temp_root=self.tmp.name, process_lister=lambda: [], repo=self.repo)
         lib = Path(self.tmp.name) / "seed library"
         lib.mkdir()
         try:
@@ -665,7 +911,7 @@ class RealExeLayer(unittest.TestCase):
         out = self.helper.send("state")
         self.assertIn("store=ready", out)
         self.assertIn("store=ready", self.helper.send("state"))
-        self.assertEqual(self.helper.stop(), "Hydra exited with code 0")
+        self.assertEqual(self.helper.stop().splitlines()[0], "Hydra exited with code 0")
 
     @unittest.skipUnless(os.environ.get("HYDRA_LIVE_WINDOW_TEST") == "1",
                          "opens a window; set HYDRA_LIVE_WINDOW_TEST=1")
@@ -683,7 +929,7 @@ class RealExeLayer(unittest.TestCase):
         self.assertIn("charts=97", self.helper.send("state"))
         window_engine = s.engine_scratch()
         self.assertTrue(window_engine.is_dir())
-        self.assertEqual(self.helper.stop(), "Hydra exited with code 0")
+        self.assertEqual(self.helper.stop().splitlines()[0], "Hydra exited with code 0")
         # Live mode deletes its scratch copy of the library on exit.
         self.assertFalse(window_engine.exists())
 

@@ -21,7 +21,7 @@
       "scope": [
         "src"
       ],
-      "note": "The old name came back. The word \"Free\" on screen belongs to BackendSqueeze::summarystr and means a different thing, so the squeeze's own test is named for what it asks. Decided by: D114, concept audit finding M41"
+      "note": "The old name came back. \"Free\" is not a word on screen any more (the Rating cell reads the report's timing tiers), so the squeeze's own test is named for what it asks. Decided by: D114, concept audit finding M41"
     },
     {
       "question": "Where does this activation's Star Power end (its deactivation tick)?",

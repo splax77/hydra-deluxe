@@ -2,7 +2,15 @@
 
 Hydra's UI is Dear ImGui. The Dear ImGui Test Engine (vendored at `third_party/imgui_test_engine`) can find a widget by its label, click it, type into it, and read what is on screen. `hydra_uitest` runs the whole UI with no window on a software GPU, so an agent can verify a GUI change in about a second and get **plain text** back — not screenshots.
 
-Use this instead of launching `Hydra.exe` and taking screenshots. Reach for a screenshot only when something looks visually wrong.
+## Which check a GUI change needs
+
+One rule covers every GUI check. It has three cases, and each case names what the check is for.
+
+1. **Behaviour and text.** `hydra_uitest`, or the `hydra` MCP server that drives the same engine, answers it. It takes the place of launching `Hydra.exe` and taking screenshots. The user asked for it because "repeatedly taking screenshots is very inefficient".
+2. **What the user sees.** A layout, a width, spacing, alignment, or what the screen does when a song opens or closes. Here the headless check is not enough. Before merge the change is also seen in the real dev app, with the user's `hydra_ui.ini` and a copy of their database, and the captures are shown to the user. A headless run starts from a fresh settings file on the test charts, so it misses saved table state, real text lengths and real DPI. This case comes from the column-width rule of 2026-10-10, which passed every headless test and then squeezed every column of the user's real Library. The user's words: "did you never once do a UI test?". If the user says to merge before this check is done, say plainly that it is still owed.
+3. **How a report or other analysis-backed view draws.** Run the real app on `testdata/input`, never a whole-library analysis. Drawing looks the same with a few rows as with the whole library. A copy of the user's database is for the Library view only, never for starting an analysis. The user's words (2026-10-14): "you dont need a full library run to check the rendering".
+
+"Seeing it in the real app" below says how to set up cases 2 and 3.
 
 ## Build and run
 
@@ -14,13 +22,13 @@ Use this instead of launching `Hydra.exe` and taking screenshots. Reach for a sc
 .\build-cpp\Release\hydra_uitest.exe --all
 ```
 
-Agents do not run `--all`. They run only the tests for their own change, with `--test <name>`; the rule is in `docs/agents/brief-preamble.md`. The main session runs the merge's tests once; CLAUDE.md rule 1 says which.
+Agents do not run `--all`. They run only the tests for their own change, with `--test <name>`; the rule is in `docs/agents/brief-preamble.md`. The main session runs the merge's tests once; `docs/agents/agent-rules.md`, rule 1, says which.
 
 | Command | What it does |
 |---|---|
 | `hydra_uitest --all` | run every checked-in test, each in its own process |
 | `hydra_uitest --test scan` | run one test, in this process; give `--test` more than once and each test gets its own process |
-| `--jobs <n>` | how many test processes run at once (default: `kDefaultJobs` in `uitest_main.cpp`) |
+| `--jobs <n>` | how many test processes run at once (default: `kDefaultJobs` in `tests/ui/uitest_main.cpp`) |
 | `hydra_uitest --list` | list the tests |
 | `hydra_uitest --script file.txt` | run a command file (see below) |
 | `hydra_uitest --live --pipe <name>` | take commands one at a time from the named pipe `<name>` (see "Live mode and the MCP server"; `run_live` in `tests/ui/uitest_live.cpp` decides when it ends). The two flags go together, and `--live` runs alone |
@@ -29,7 +37,7 @@ Agents do not run `--all`. They run only the tests for their own change, with `-
 | `--db <file>` | start each test from a copy of this database instead of an empty one (the file itself is never opened). A missing file is an error. Close Hydra first: a database it has open is not a clean copy |
 | `--ini <file>` | start each test from a copy of this settings file instead of the scratch settings. A missing file is an error. Copied the same way as `--db` |
 
-Output is `[PASS]`/`[FAIL]` per test. A failed test prints the engine's log. The log names the check that failed (like `uitest_library.cpp:120`) and every action before it. A run of more than one test ends with an `N of M passed` line. The exit code is 0 only when everything passed. `ctest` runs `--all` too, so ctest, CI and a run by hand all mean the same thing.
+Output is `[PASS]`/`[FAIL]` per test. A failed test prints the engine's log. The log names the check that failed, as a file and line under `tests/ui/` (like uitest_library.cpp:120), and every action before it. A run of more than one test ends with an `N of M passed` line. The exit code is 0 only when everything passed. `ctest` runs `--all` too, so ctest, CI and a run by hand all mean the same thing.
 
 **One run mode.** A run of more than one test gives each test its own `hydra_uitest --test <name>` process, at most `--jobs` at once. Each process has its own scratch folder and a fresh ImGui context, so no test sees another's leftovers, and the order the tests run in does not matter. The results print in registration order. A single `--test`, or a `--script`, runs in the one process instead: a script needs the test engine in that process, and one test is the debugging case. A script runs only on its own, never beside other tests. `hydra_uitest --list` prints the current tests. The full suite took about 90 s at the default job count, measured on 2026-10-10 at commit 4c037634 over 1 run, on a machine whose CPU other builds held at 100%; a quiet machine will be faster.
 
@@ -64,8 +72,8 @@ screenshot stars.png
 | `click <ref>` | click a widget |
 | `check <ref>` / `uncheck <ref>` | set a checkbox |
 | `type <ref> \| <text>` | put text into an input. The text is everything after the first ` \| `, kept exactly, spaces included. A line that ends in a bare ` \|` types nothing, which clears the field |
-| `open <title>` | open a song: type the title into `**/##search`, then open the row whose title is exactly `<title>` (`open_titled_reason` in `uitest_harness.cpp`). When no shown row has that title, it refuses and says what the search shows. It waits for the song's tabs to settle for at most the timeout in force (the `timeout` verb); past that it refuses with `opened "<title>", but its analysis was still running after N s; use wait-idle`, and the song stays open. The ref goes back to `//Hydra` afterwards |
-| `key <keys>` | press a key or a chord, such as `Escape`, `Enter`, `Down`, `Ctrl+W` or `Ctrl+Shift+Tab`. The names it knows are in `key_named` and `parse_chord` in `uitest_commands.cpp`; an unknown name fails |
+| `open <title>` | open a song: type the title into `**/##search`, then open the row whose title is exactly `<title>` (`open_titled_reason` in `tests/ui/uitest_harness.cpp`). When no shown row has that title, it refuses and says what the search shows. It waits for the song's tabs to settle for at most the timeout in force (the `timeout` verb); past that it refuses with `opened "<title>", but its analysis was still running after N s; use wait-idle`, and the song stays open. The ref goes back to `//Hydra` afterwards |
+| `key <keys>` | press a key or a chord, such as `Escape`, `Enter`, `Down`, `Ctrl+W` or `Ctrl+Shift+Tab`. The names it knows are in `key_named` and `parse_chord` in `tests/ui/uitest_commands.cpp`; an unknown name fails |
 | `wait <seconds>` | let frames run |
 | `wait-idle` | wait until every background job has finished; the list is `AppState::any_job_running` |
 | `wait-text <substring>` | wait until the text appears on screen |
@@ -75,18 +83,18 @@ screenshot stars.png
 | `dump [<window>] [\| <substring>]` | print the widget tree of every window whose name holds `<window>`, child windows included, at every depth; each item is listed under its own window: label, id, rect, checked/disabled/opened/inputable. No window means every window. After a bar, only the item lines holding the substring, each under its window's line |
 | `rect <ref>` | print one widget's line, in the dump's shape. A ref that finds nothing fails |
 | `screenshot <file.png> [\| <ref>]` | save the frame, and print `screenshot: <path>`. After a bar, save only that window's or widget's rectangle, clamped to the frame: the ref is tried as a window first, then as a widget, such as `screenshot report.png \| //###pathreport`. A ref that finds neither fails with `screenshot found no window or item "<ref>"` |
-| `timeout <seconds>` | change the wait-text / wait-idle limit (default: `CommandSession::timeout` in `uitest_commands.h`) |
+| `timeout <seconds>` | change the wait-text / wait-idle limit (default: `CommandSession::timeout` in `tests/ui/uitest_commands.h`) |
 | `reset` | a fresh app on a fresh scratch library, with the ref back on `//Hydra`. With `--db` or `--ini`, the seeds are copied again |
 | `quit` | end the run here. In a script that is a pass |
 | `#` | comment |
 
 `timeout` and `wait` take a plain number of seconds, 0 or more, and nothing else. What counts as a plain number is `hydra::parse_finite_number`'s rule (`src/core/strutil.h`). So `timeout 90s`, `wait abc` and a bare `wait` fail, naming what they were given.
 
-A bar with nothing after it (a line ending in ` |`) is the same as a bar with empty text. So `text |` and `dump Hydra |` filter on nothing and keep every line. `split_bar` in `uitest_commands.cpp` is the one place a line is split at its bar.
+A bar with nothing after it (a line ending in ` |`) is the same as a bar with empty text. So `text |` and `dump Hydra |` filter on nothing and keep every line. `split_bar` in `tests/ui/uitest_commands.cpp` is the one place a line is split at its bar.
 
 Lines print as they run. A failed engine action, like a click that finds nothing, prints `!! failed at line N: <line>`. A line the interpreter itself refuses (an unknown verb or key, a bad number, an `expect-text` that does not hold, a `rect` that finds nothing, a wait that ran out) fails the test, and its log names the line as `line N: <reason>`. The script stops at the first failure.
 
-Two guards sit in front of `click`, `check`, `uncheck` and `type`; `item_ref` in `uitest_commands.cpp` owns both. First, a lookup of a library row's title is refused while the search box is empty, because finding a row that is not drawn makes the test engine scroll the whole library; use `open <title>` instead, or type into `**/##search` first. A widget outside the library that is drawn with the same label (a button that shares a song's title) is not refused. Second, a bare label that finds nothing in the current window is tried once more as `**/<label>`, and the reply starts with `used ref **/<label>` so you learn the path that works. The test engine keeps only the last widget a `**/` lookup matches, so the guard counts the drawn widgets under the current window with that label first (`drawn_items_labelled`, the gather `dump` walks) and refuses the retry when two or more carry it, naming them. A ref of several labels is not counted; the engine matches its whole path.
+Three guards keep the commands from scrolling the library or picking the wrong widget. The first two sit in front of `click`, `check`, `uncheck` and `type`; `item_ref` in `tests/ui/uitest_commands.cpp` owns both. First, a lookup of a library row's title is refused while the search box is empty, because finding a row that is not drawn makes the test engine scroll the whole library; use `open <title>` instead, or type into `**/##search` first. An absolute ref (one that starts with `/`) whose last label is a row's title is refused the same way. A widget outside the library that is drawn with the same label (a button that shares a song's title) is not refused. Second, a bare label that finds nothing in the current window is tried once more as `**/<label>`, and the reply starts with `used ref **/<label>` so you learn the path that works. The test engine keeps only the last widget a `**/` lookup matches, so the guard counts the drawn widgets under the current window with that label first (`drawn_items_labelled`, the gather `dump` walks) and refuses the retry when two or more carry it, naming them. A ref of several labels is not counted; the engine matches its whole path. Third, the `key` verb refuses a key that pages a list or jumps to its end, such as `PageDown` or `End`, while the library has the focus and the search box is empty, because it would scroll the whole library. The keys are `kPageKeys` and the check is `library_key_refusal`, both in `tests/ui/uitest_commands.cpp`. The same key in another window, or after a search, goes through, and so do `Up` and `Down`, which move one row. No guard here can stop a shell script that sends wheel or key messages to Hydra's window from outside the command channel. That is a shell command, and no hook reads shell text, so the rule against scrolling the library without the user's yes is the only thing that binds there.
 
 Clicking a song starts its analysis (D87 item 1), and `wait-idle` waits for it. There is no `Done!` flash, so the tabs show as soon as it finishes. A tab click still needs a frame or two before its text shows.
 
@@ -109,8 +117,8 @@ These are the labels the merged app draws. Every GUI test finds widgets by them.
 | Version bar, child `##versionbar` (first in window `Hydra`, above the toolbar) | the name text `Hydra Deluxe <version>` (from `named_version`), which has no click and no hover; then the status from `version_bar_status`: `Up to date`, `Checking for updates...`, `Hydra couldn't check for updates when it started.` with the reason, `Hydra Deluxe <new> is available.` (with `Skipped.` after a skip), or `Only the installed copy of Hydra Deluxe checks for updates.`. Update buttons, by label: `Update##update`, `Skip this version`, `Later`, `Cancel##update` while downloading, `OK##update` on the `Updated to Hydra Deluxe <version>.` note |
 | Toolbar (window `Hydra`) | `Manage folders... (N)`, `Scan library`, `Analyze library...`, or `Analyze shown (N)...` while the search or a status chip narrows the table (N is the heading's count, `analyze_shown_label`), `Compare with dmleaderboards...`, `Open path report` / `Building path report...` |
 | Status line | a problem stays until `X##dismissstatus` |
-| Analysis settings button (window `Hydra`) and its panel | The button is `###analysissettings`; its text is `Analysis settings: <changes>`, made by `settings_button_label` (`src/ui/library_dialogs.cpp`). Clicking it opens the panel, a popup: a top-level window of its own, outside `//Hydra`, that takes focus. One ref reaches a control in it: `//$FOCUSED/**/<label>`. The `**/` is there because the controls sit in tables. (That ref works only through a Hydra patch to the vendored test engine; `THIRD_PARTY_NOTICES.txt` lists the patches.) Each row has the setting's name and its `(?)` on the left and only the control on the right, so the checkboxes have no visible label. Combo `##difficulty`, checkboxes `##prodrums`, `##bass2x` and `##noteshuffle`, input `##spcap`, checkbox `##legacyfills`, input `##depthvalue`, combo `##depthmode`, checkbox `##mslimit`, input `##mslimitvalue`. A `**/` ref can't find a combo, because the test engine files combos with an empty label; find one through a checkbox in its group with `settings_control`. The helpers in `uitest_harness.h` do all this: `open_settings_panel`, `settings_control`, `settings_combo_pick` and `close_settings_panel`. Close the panel before a test clicks anything else or ends: an open popup keeps other windows from being hovered, and it outlives the test. Only a batch locks the settings; the label then ends in ` (locked)` and the panel shows `Stop the batch to change these.` (D90 item 2) |
-| Library, child `##library` | search input `**/##search`, clear button `X##clearsearch`, chips `All (N)##chipall`, `Not analyzed (N)##chipnew`, `Stale (N)##chipstale`, `Analyzed (N)##chipdone`, table `##librarytable` with columns `Title`, `Artist`, `Album`, `Charter`, `Folder`, `Best path` (an open song hides `Album`, `Charter` and `Folder`). A Best path cell reads `Not analyzed`, `Stale`, or `<score>  <path>`. A search that matches nothing shows `No charts match your search.` in place of the table |
+| Analysis settings button (window `Hydra`) and its panel | The button is `###analysissettings`; its text is `Analysis settings: <changes>`, made by `settings_button_label` (`src/ui/library_dialogs.cpp`). Clicking it opens the panel, a popup: a top-level window of its own, outside `//Hydra`, that takes focus. One ref reaches a control in it: `//$FOCUSED/**/<label>`. The `**/` is there because the controls sit in tables. (That ref works only through a Hydra patch to the vendored test engine; `THIRD_PARTY_NOTICES.txt` lists the patches.) Each row has the setting's name and its `(?)` on the left and only the control on the right, so the checkboxes have no visible label. Combo `##difficulty`, checkboxes `##prodrums`, `##bass2x` and `##noteshuffle`, input `##spcap`, checkbox `##legacyfills`, input `##depthvalue`, combo `##depthmode`, checkbox `##mslimit`, input `##mslimitvalue`. A `**/` ref can't find a combo, because the test engine files combos with an empty label; find one through a checkbox in its group with `settings_control`. The helpers in `tests/ui/uitest_harness.h` do all this: `open_settings_panel`, `settings_control`, `settings_combo_pick` and `close_settings_panel`. Close the panel before a test clicks anything else or ends: an open popup keeps other windows from being hovered, and it outlives the test. Only a batch locks the settings; the label then ends in ` (locked)` and the panel shows `Stop the batch to change these.` (D90 item 2) |
+| Library, child `##library` | search input `**/##search`, clear button `X##clearsearch`, chips `All (N)##chipall`, `Not analyzed (N)##chipnew`, `Stale (N)##chipstale`, `Analyzed (N)##chipdone`, table `##librarytable` with columns `Title`, `Artist`, `Album`, `Charter`, `Folder`, `Best path` (an open song hides `Album`, `Charter` and `Folder`). A Best path cell reads `Not analyzed`, `Stale`, or `<score>  <path>`. A search that matches nothing shows `Nothing matches.` in place of the table |
 | Song panel, child `##songpanel` | `Hide library` / `Show library`, `<##prevsong`, `>##nextsong`, `X##closepanel` (Escape does the same). A click's analysis shows `Analyzing chart...` with `Cancel` once it has run 0.15 s; a cancelled one shows `Analysis cancelled.` with `Try again`; a failed one shows its error with `Continue`. Tab bar `##DetailsTabs` with tabs `Paths`, `Preview`, `Dynamics`, `Stars` |
 | Paths tab | path buttons `##path<i>` (0-based), `Expand all` / `Collapse all`, activation rows `##act<i>` (1-based), links `Show in Preview >##showact<i>`, folds `Backend timings##act<i>`, `Multiplier squeeze##mult`, `Score breakdown##breakdown`, button `Copy path` (flashes `Copied!`), checkbox `Hide backend rows beyond##backendlimit`, input `##backendlimitvalue` |
 | Preview tab | text `Showing` beside the combo `##previewpath`, `< Act##prevact`, `Act >##nextact`, transport `-5s`, `< 10 ms`, `Play` / `Pause`, `10 ms >`, `+5s`, sliders `##volume` and `##scrub`. Over the highway, while each is drawn: `##time_box`, `##score_box`, `##drain_box`, `##next_act_box`, `##solo_box` (during a solo and its result) and the gauge `##sp_gauge` |
@@ -128,11 +136,13 @@ When unsure, `dump Hydra` and read the labels off it. The dump lists items at ev
 
 The path report and the dmleaderboards comparison are their own windows (ADR 0027). In the app each one is a separate OS window. `hydra_uitest` has no platform backend, so ImGui turns that off by itself and each report window draws inside the main viewport. The test engine finds windows by name across viewports, so the same refs work in both. A report window's name ends in `###pathreport` or `###dmreport`, so its title can change without moving its saved place. A C++ test points at one with `window_named("###pathreport")` and `ctx->SetRef(...)`; a command file can try `window //###pathreport`.
 
+A script can't click `Open path report` in the real window, so a dev build's `Hydra.exe --open-report` opens the path report once, on a plain launch, the first time the toolbar shows that button (`AppState::open_path_report_once_shown`). To close it from a script, post `WM_CLOSE` to the report's own OS window (class `ImGui Platform`, title `Path report — Hydra`): the Win32 backend turns it into ImGui's close request for that window, which runs the same close as its X.
+
 Their tests live in `tests/ui/uitest_report_windows.cpp`, in two groups.
 
-The first group opens the windows on sample rows, with no AppState. The test's own GUI function (`draw_windows`) draws both windows from a `ReportWindowInput` it fills itself, and records what each button hands back. The rows are the shared samples in `tests/report_samples.{h,cpp}`, the same ones `tests/test_report_page.cpp` pins the tiles on. These tests are `report-window-sort`, `report-window-filters`, `report-window-states`, `report-window-keys` and `report-windows-both`.
+The first group opens the windows on sample rows, with no AppState. The test's own GUI function (`draw_windows`) draws both windows from a `ReportWindowInput` it fills itself, and records what each button hands back. The rows are the shared samples in `tests/report_samples.{h,cpp}`, the same ones `tests/test_report_page.cpp` pins the tiles on. These tests are `report-window-sort`, `report-window-filters`, `report-window-states`, `report-window-keys` and `report-windows-both`. The app's own frame also draws both windows every frame, open or not (`render_main_window`, `src/ui/library_view.cpp`), and each window keeps one state for the process. So these tests run under `drawn_by_fixture`, which turns on the seam `ui::set_app_skips_report_windows_for_test` (declared in `src/ui/report_window.h`) for the test's length and puts it back off at the end. The app never calls the seam, and it is off by default.
 
-The second group goes end to end through AppState: the toolbar, the batch strip, the dm picker and the analysis settings. These are `report-window-open-path`, `report-window-dm-handover`, `report-window-row-click`, `report-window-reopen`, `report-window-reopen-keeps-filters` and `report-window-out-of-date`. They use the canned dmleaderboards API above and never reach the real server.
+The second group goes end to end through AppState: the toolbar, the batch strip, the dm picker and the analysis settings. These are `report-window-open-path`, `report-window-dm-handover`, `report-window-row-click`, `report-window-reopen`, `report-window-hidden-lets-go`, `report-window-reopen-keeps-filters` and `report-window-out-of-date`. `report-window-hidden-lets-go` holds a path report build, hides the window, lets the build land and checks the old result is let go while the window is still hidden (D280). They use the canned dmleaderboards API above and never reach the real server.
 
 ## The Path Builder's tests
 
@@ -196,14 +206,14 @@ Each tool sends one command line and returns Hydra's reply text, unchanged excep
 
 | Tool | Sends | Notes |
 |---|---|---|
-| `hydra_start(mode, library_dir=None, keep=False)` | launches the exe | `mode` is `headless` or `window`. Stops any running session first. The reply gives the pid, the engine's scratch folder, the wait cap, the log file and the helper's scratch folder, plus the snapshot list in window mode. `keep=True` keeps the helper's scratch folder after `hydra_stop` |
-| `hydra_stop(keep_window=False)` | `quit` | waits for Hydra to exit, kills it if it does not, and returns the exit code. Then deletes the helper's scratch folder unless `keep` was set |
+| `hydra_start(mode, library_dir=None, keep=False)` | launches the exe | `mode` is `headless` or `window`. Stops any running session first. The reply gives the pid, the engine's scratch folder, the wait cap, the log file and the helper's scratch folder, plus the snapshot list in window mode. The helper's scratch folder is `hydra_live_<tag>` in the `claude` folder of the Windows temp folder. `keep=True` keeps it after `hydra_stop`. The SessionStart cleanup sweep removes a kept folder after a week with no writes |
+| `hydra_stop(keep_window=False)` | `quit` | waits for Hydra to exit, kills it if it does not, and returns the exit code. Then deletes the helper's scratch folder unless `keep` was set (see `hydra_start`). In window mode the reply adds a line naming the real-app record and its commit (see "The real-app record" below), or saying why none was written |
 | `hydra_reset()` | `reset` | a fresh library in the same process |
-| `hydra_open_song(title)` | `open <title>` | the way to open a song. Clicking a row's title with the search box empty is refused (see the two guards above) |
+| `hydra_open_song(title)` | `open <title>` | the way to open a song. Clicking a row's title with the search box empty is refused (see the first guard above) |
 | `hydra_click(ref)` | `click <ref>` | widgets below the toolbar need `**/`; a bare label that finds nothing is retried as `**/<label>`, unless several widgets carry it |
 | `hydra_type(ref, text)` | `type <ref> \| <text>` | an empty `text` clears the field. The library search is `**/##search`; the same retry applies |
 | `hydra_check(ref, on)` | `check <ref>` or `uncheck <ref>` | |
-| `hydra_key(keys)` | `key <keys>` | |
+| `hydra_key(keys)` | `key <keys>` | refuses `PageUp`, `PageDown`, `Home` and `End` while the library has the focus and the search box is empty (the third guard above); `Up` and `Down` go through |
 | `hydra_window(ref)` | `window <ref>` | |
 | `hydra_wait_idle(timeout=None)` | `wait-idle` | a `timeout` applies to this call only: the helper sends `timeout`, the wait, then the old timeout back |
 | `hydra_wait_text(text, timeout=None)` | `wait-text <text>` | the same one-call `timeout` |
@@ -211,10 +221,32 @@ Each tool sends one command line and returns Hydra's reply text, unchanged excep
 | `hydra_state()` | `state` | |
 | `hydra_dump(window=None, contains=None)` | `dump [<window>] [\| <contains>]` | no `window` means every window |
 | `hydra_rect(ref)` | `rect <ref>` | |
-| `hydra_screenshot(name)` | `screenshot <name>` | give the `.png` yourself. The file lands in the helper's scratch folder, which `hydra_stop` deletes unless `keep` was set |
+| `hydra_screenshot(name)` | `screenshot <name>` | give the `.png` yourself. The file lands in the helper's scratch folder, which `hydra_stop` deletes unless `keep` was set (see `hydra_start`) |
 | `hydra_run(script)` | each line in turn | stops at the first failure with `stopped at line N of M`, counting the script's own lines |
 
 `hydra_run` exists so a known sequence (scan, continue, search, open) costs one tool call instead of five. To open one song, `hydra_open_song` does the search and the click in one call.
+
+### The real-app record
+
+A window session leaves a record that says which commit was checked in the real app. It exists so a gate on merges that change `src/ui/` can tell a real-app check that happened from one that did not. The field names below are that gate's contract, so a change to them is a change to the gate too. Headless sessions write no record.
+
+The helper appends one JSON line per window session to a file named realapp.jsonl in the repo's git common dir. That is the `.git` folder of the main checkout (what `git rev-parse --git-common-dir` prints), so every worktree of the repo writes to the same file and git never tracks it. The "repo" here is the checkout the helper's own code sits in: the one whose `build-cpp\Release` exes it runs.
+
+A line has seven fields:
+
+| Field | What it holds |
+|---|---|
+| `kind` | always `"realapp"` |
+| `commit` | the full hash of that checkout's HEAD when the session ended |
+| `dirty` | `true` when `git status --porcelain` printed anything, untracked files included, so the build may hold changes the commit does not |
+| `commands` | how many command lines Hydra answered in the session, screenshots and the `timeout` lines of a one-call timeout included |
+| `shots` | how many of those answers were a saved screenshot |
+| `started` | when the session started, local time with its UTC offset, to the second |
+| `stopped` | when the helper wrote the record, in the same form |
+
+Four endings write the record: `hydra_stop` when Hydra exits with code 0, `hydra_stop(keep_window=True)`, the stop a new `hydra_start` makes first, and the user closing the window (Hydra exits with code 0 and the next tool call notices). The helper's own exit writes one too, for a window session still open then (or one that already exited with code 0). A crash, a nonzero exit, a silent Hydra the helper killed, or a window that would not quit writes nothing, because a session that died is not a check. The reply says "no real-app record written" in those cases, and also when git cannot say what HEAD is. `realapp_record` in `tools/hydra_ui_mcp.py` writes the line; `REALAPP_FILE` there names the file.
+
+The record has three limits. `Hydra.exe` carries no commit of its own, so the record names the tree's HEAD, not the build: a stale exe is recorded under the current commit. The record shows that a window was opened and used on that commit, not what anyone looked at. And when the user checks a copy of the exe by hand, no helper session runs, so no record is written.
 
 ### An open dialog
 
@@ -235,25 +267,25 @@ The helper and Hydra talk over a Windows named pipe. The helper picks the pipe's
 - `timeout` is the wait cap in force after the command.
 - A failed command does not end the session. The next command runs normally.
 
-`live_protocol.h` writes these lines, and `tests/test_live_protocol.cpp` pins them.
+`tests/ui/live_protocol.h` writes these lines, and `tests/test_live_protocol.cpp` pins them.
 
 **Numbers and the wait cap.** The strict number rule above holds in live mode too. On top of it, a live `wait` longer than the timeout in force fails. So no command can run longer than the timeout Hydra last reported, plus the time of one action. The helper waits that long plus `REPLY_MARGIN_S` for each reply, and `HELLO_TIMEOUT_S` for the hello line. All its numbers live at the top of `tools/hydra_ui_mcp.py`.
 
-**A dead or silent Hydra.** The helper reports it and never waits on it. When Hydra has exited, the reply says `Hydra exited with code X`, quotes the last lines of its log, and names the crash dump if one was written. When Hydra is alive but silent past the cap, the reply says `Hydra did not answer within N s`, and the helper kills it. Either way the session is stopped, and the helper's scratch folder is kept so the log can be read.
+**A dead or silent Hydra.** The helper reports it and never waits on it. When Hydra has exited, the reply says `Hydra exited with code X`, quotes the last lines of its log, and names the crash dump if one was written. When Hydra is alive but silent past the cap, the reply says `Hydra did not answer within N s`, and the helper kills it. Either way the session is stopped, and the helper's scratch folder is kept so the log can be read. It lives in the `claude` folder of the Windows temp folder. The SessionStart cleanup sweep removes it after a week with no writes.
 
 **Long replies.** A reply longer than `REPLY_CAP_CHARS` is cut at a line boundary, with a last line saying how many lines were dropped. `contains` on `hydra_text` and `hydra_dump` narrows the output instead.
 
 ### Who owns what
 
-Hydra's C++ side owns every command rule: what a verb means, how its arguments parse, which numbers it takes, the timeout, line numbers, the reply's wording, the filters, and where the log and crash dump go. The helper only carries messages. It owns launch and stop, the pipe name, the reply caps (worked out only from numbers Hydra reports), the snapshot, the running-Hydra check and the tool list. The stand-in Hydra its tests use, `tools/fake_hydra_live.py`, plays only transport: a hello line, a plain echo, a hang, an exit, a closed pipe and an oversized reply. Every test of what a command does runs on the real headless `hydra_uitest --live` (`RealExeLayer` in `tools/test_hydra_ui_mcp.py`).
+Hydra's C++ side owns every command rule: what a verb means, how its arguments parse, which numbers it takes, the timeout, line numbers, the reply's wording, the filters, and where the log and crash dump go. The helper only carries messages. It owns launch and stop, the pipe name, the reply caps (worked out only from numbers Hydra reports), the snapshot, the running-Hydra check, the real-app record and the tool list. The stand-in Hydra its tests use, `tools/fake_hydra_live.py`, plays only transport: a hello line, a plain echo, a hang, an exit, a closed pipe and an oversized reply. Every test of what a command does runs on the real headless `hydra_uitest --live` (`RealExeLayer` in `tools/test_hydra_ui_mcp.py`).
 
-So a question about a command is answered in C++, never in Python. The full table is in "T8: one owner for every command rule" in `docs/superpowers/plans/2026-10-14-hydra-mcp-server.md`, and the reasons are in `docs/adr/0030-hydra-owns-every-live-command-rule.md`.
+So a question about a command is answered in C++, never in Python. The full table and the reasons are in `docs/adr/0030-hydra-owns-every-live-command-rule.md`.
 
 ## Adding a C++ test
 
-Tests are split by area into four files: `uitest_library.cpp`, `uitest_details.cpp`, `uitest_preview.cpp` and `uitest_batch_reports.cpp`. Each file ends with an entry table (`library_tests()`, `details_tests()`, and so on). Write the test in the file for its area, then add `{"thing", test_thing}` to that file's table. `uitest_paths.cpp` holds the Paths tab tests and registers them itself, from `register_paths_tests`. `uitest_report_windows.cpp` registers its own: the sample-row tests from `register_report_window_tests`, and the end-to-end ones from `report_window_flow_tests()`, which `register_tests` calls last.
+Tests are split by area into four files: `tests/ui/uitest_library.cpp`, `tests/ui/uitest_details.cpp`, `tests/ui/uitest_preview.cpp` and `tests/ui/uitest_batch_reports.cpp`. Each file ends with an entry table (`library_tests()`, `details_tests()`, and so on). Write the test in the file for its area, then add `{"thing", test_thing}` to that file's table. `tests/ui/uitest_paths.cpp` holds the Paths tab tests and registers them itself, from `register_paths_tests`. `tests/ui/uitest_report_windows.cpp` registers its own: the sample-row tests from `register_report_window_tests`, and the end-to-end ones from `report_window_flow_tests()`, which `register_tests` calls last.
 
-`register_tests` in `uitest_tests.cpp` registers the four tables, then the Paths tab and report window tests. Order does not matter, because every run of more than one test gives each test its own process. So a new or renamed test needs no other change.
+`register_tests` in `tests/ui/uitest_tests.cpp` registers the four tables, then the Paths tab and report window tests. Order does not matter, because every run of more than one test gives each test its own process. So a new or renamed test needs no other change.
 
 Template:
 
@@ -295,8 +327,33 @@ Rules of thumb:
 - `tests/ui/uitest_live.cpp` and `tests/ui/live_protocol.h` — the live channel: the pipe, the loop that keeps the app drawing between commands, and the JSON lines.
 - `tools/hydra_ui_mcp.py` — the MCP server; `tools/test_hydra_ui_mcp.py` tests it, and `tools/fake_hydra_live.py` is its stand-in Hydra.
 - `tests/ui/uitest_tests.cpp` — `register_tests`.
-- `tests/ui/uitest_library.cpp`, `uitest_details.cpp`, `uitest_preview.cpp`, `uitest_batch_reports.cpp` — the checked-in tests by area, each with its entry table.
+- `tests/ui/uitest_library.cpp`, `tests/ui/uitest_details.cpp`, `tests/ui/uitest_preview.cpp`, `tests/ui/uitest_batch_reports.cpp` — the checked-in tests by area, each with its entry table.
 - `tests/ui/uitest_paths.cpp` — the Paths tab tests.
 - `tests/ui/uitest_report_windows.cpp` — the report windows' tests; their sample rows are in `tests/report_samples.{h,cpp}`.
 - `tests/ui/uitest_main.cpp` — the CLI and the one-process-per-test runner.
 - `src/ui/app_shell.{h,cpp}` — `run_frame` and Hydra's window placements, shared by `Hydra.exe` and the runner. `src/ui/imgui_setup.{h,cpp}` — `setup_imgui` and the `FrameText` capture that `run_frame` calls around its draw (`begin_frame_text_capture` / `end_frame_text_capture`); `FrameText` holds every string ImGui drew, which is what `text`/`wait-text` read. Callers of `setup_imgui` set `ImGuiSetupOptions::before_ini_load` to `install_placement_handler` (app_shell.h).
+
+## Seeing it in the real app
+
+Cases 2 and 3 of the rule at the top run the real dev `Hydra.exe` from a scratch folder of its own. Hydra reads `hydra.db` and `hydra_settings.ini` from the folder its exe sits in (`exe_dir` in `src/app/config.cpp`). It reads `hydra_ui.ini` from the same folder unless `--ui-ini` names another (`setup_imgui` in `src/ui/imgui_setup.cpp`).
+
+1. Build `-Target Hydra` first. A build of only `hydra_tests` or `hydra_uitest` leaves `Hydra.exe` as it was.
+2. Copy `Hydra.exe`, the two mimalloc DLLs and the `assets` and `resource` folders from `build-cpp\Release` into a fresh scratch folder.
+3. For case 2, copy the user's `hydra.db`, `hydra_settings.ini` and `hydra_ui.ini` from the installed folder, `C:\Program Files\Hydra`, while the installed Hydra is closed. For case 3, copy only `hydra_ui.ini`, and write a `hydra_settings.ini` whose song folder is the repo's `testdata\input`. Then scan, analyze and open the view.
+4. Copy the database and settings files again before each run, because a run saves over them.
+5. Capture with `tools/capture_window.ps1`. Its `Start-Hydra` launches the copy, `Save-WindowShot` draws one window into a PNG with PrintWindow, and `Send-WindowMessage` posts clicks and keys. So the window never has to come to the front.
+
+Window mode of the `hydra` server makes its own copy of the library (see "Live mode and the MCP server"), so use it when Claude drives the check. When the user drives the check themself, use the scratch folder above instead. The live window takes no input from the real mouse (the user, 2026-10-29: "my mouse doesnt work in it").
+
+## Traps
+
+Each trap names the file that owns the behaviour. Read the detail there.
+
+- A third argument to IM_CHECK_FLOAT_EQ_EPS is dropped without an error, because the vendored engine defines that macro as another name for the two-argument IM_CHECK_FLOAT_EQ. Use IM_CHECK_FLOAT_NEAR_EQ for a tolerance (`third_party/imgui_test_engine/imgui_te_context.h`).
+- The vendored test engine carries Hydra's own patches, each marked `// Hydra patch:`, and a refresh of the engine must apply them again. `THIRD_PARTY_NOTICES.txt` lists them. The `engine-wildcard-patches` test fails when either wildcard patch is lost.
+- `hydra_replay` and `hydra_bench` are left out of a plain build (EXCLUDE_FROM_ALL in `CMakeLists.txt`). Build them by `-Target`, or they stay stale.
+- `tools/capture_window.ps1` loads its C# code as the type `HydraCaptureV1`, and the PowerShell host keeps a type once it is loaded. A changed C# body under the same name is never loaded, and the script fails with no error. Change the version in the type's name whenever the C# block changes.
+- The `hydra` server runs the build of the checkout its helper file sits in (`REPO` in `tools/hydra_ui_mcp.py`), so it never sees a branch's build. To check a branch, build it in its worktree and run that worktree's own helper from a small `mcp` stdio client script. Pass `keep=True` to `hydra_start`, or `hydra_stop` deletes the screenshots.
+- A session's `hydra` server keeps the helper it loaded when the session started, so a change to `tools/hydra_ui_mcp.py` does not reach it. Drive the changed helper from your own `mcp` client script, as for a branch, rather than asking the user to reconnect the server. The user's words: "you created the server, you figure it out".
+- Holding Escape in the live window for a moment sets the test engine's abort flag. `clear_abort` in `tests/ui/uitest_engine.cpp` clears it between commands, so it does not end the session. A live window closes on the engine's stop request, which `engine_stopping` in the same file reads.
+- Dear ImGui publishes no accessibility tree, so Windows UI-automation tools cannot read Hydra. Use `hydra_uitest` or the `hydra` server instead.

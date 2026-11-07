@@ -1,6 +1,6 @@
 // What GitHub's "latest release" reply says about an update, read once with
-// the refusal rules of "The signature scheme" in
-// docs/superpowers/plans/2026-10-22-auto-updater.md. A reply that lacks a
+// the refusal rules in docs/development.md, "The version rule" (D259). A
+// reply that lacks a
 // piece the update needs is refused here, before anything is downloaded.
 //
 // It lives in hydra_dm with the other GUI-only network code, so the

@@ -1,5 +1,5 @@
-// hydra_precheck --tests: the merge-test picker's printed lines (plan
-// docs/superpowers/plans/2026-10-25-merge-test-picker.md, Step 7 and Task 4).
+// hydra_precheck --tests: the merge-test picker's printed lines
+// (docs/development.md, "The merge test picker").
 // The line formatter runs directly on hand-made picks; the exe runs as a
 // child process on fixture repos.
 #include "doctest.h"

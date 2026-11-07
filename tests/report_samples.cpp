@@ -25,7 +25,7 @@ std::vector<report::ReportRow> sample_path_rows() {
         r.acts = 3 + rank;
         r.skip = rank - 1;
         r.ms = ms;
-        auto [tier, tok] = report::tier_for(ms, kSampleHitWindowMs);
+        auto [tier, tok] = report::tier_for(ms);
         r.tier = tier;
         r.tok = tok;
         r.efill = efill;
@@ -62,6 +62,12 @@ hydra::store::ChartIndex sample_index(int song_a_copies, int song_b_copies) {
     add("Song B", song_b_copies);
     add("Song C", 1);
     return hydra::store::ChartIndex::from_rows(library);
+}
+
+std::vector<report::ReportRow> counted_against(std::vector<report::ReportRow> rows,
+                                               const hydra::store::ChartIndex& library) {
+    for (report::ReportRow& r : rows) r.copies = library.copies(r.hyhash);
+    return rows;
 }
 
 std::vector<dm_report::DmReportRow> sample_dm_rows() {

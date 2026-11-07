@@ -9,11 +9,11 @@ prints the clock summary.
 
 `LiveAgent` is the long-lived form for a caller that asks questions between
 other work: it stays attached with one request/response agent loaded
-(agent/state.ts) and answers each `read` until it is detached.
+(agent/state.ts, or agent/kit.ts for the virtual kit) and posts each request
+until it is detached.
 
-It reads and traces only. The safety rules it follows are in
-docs/superpowers/plans/2026-10-28-ch-mcp-feasibility-tests.md, "Safety rules
-for every live step". The agents' no-writes check lives in
+The safety rules it follows are in docs/agents/clone-hero-mcp.md, "Safety
+rules". The agents' by-name and allowed-calls checks live in
 tests/test_frida_attach.py.
 
 Run from the repo root, with the game already playing a song. Do not add `-I`:
@@ -196,11 +196,13 @@ def run_agent(agent_path: str, cap_s: float,
 
 class LiveAgentError(Exception):
     """A LiveAgent attach or read that failed. `reason` is one of the END_*
-    reasons; the message is the line to show."""
+    reasons; the message is the line to show. `reply` is the agent's whole
+    error reply, when there was one, so a caller can read its other keys."""
 
-    def __init__(self, reason: str, message: str) -> None:
+    def __init__(self, reason: str, message: str, reply: dict | None = None) -> None:
         super().__init__(message)
         self.reason = reason
+        self.reply = reply
 
 
 class AttachFailed(LiveAgentError):
@@ -209,13 +211,13 @@ class AttachFailed(LiveAgentError):
 
 
 class ReadFailed(LiveAgentError):
-    """LiveAgent.read got no reply: the cap passed, the session dropped, or
-    the agent reported an error."""
+    """LiveAgent.read or LiveAgent.request got no reply: the cap passed, the
+    session dropped, or the agent reported an error."""
 
 
 @dataclass
 class _Pending:
-    """The one read waiting for its reply."""
+    """The one request waiting for its reply."""
     id: int
     event: threading.Event
     reply: Any = None
@@ -225,28 +227,37 @@ class _Pending:
 # The reason `gone_reason` holds after the caller's own detach.
 _DETACHED_BY_CALLER = "detached by the caller"
 
+# The message a read posts, before LiveAgent adds the id.
+_READ = {"type": "read"}
+
 
 class LiveAgent:
     """One attach that stays open, with a request/response agent loaded.
 
     `start(cap_s)` attaches to the game, loads the agent and returns the
-    first read; `read(cap_s)` asks again; `detach()` ends the session. Each
-    read posts `{"type": "read", "id": n}` and takes only the reply carrying
-    the same id, so a reply that comes after its read gave up is logged and
-    dropped, never handed to a later read. Every message the agent sends is
-    written to `log_path`, one JSON line each, as run_agent does.
+    first read; `read(cap_s)` asks again; `request(message, cap_s)` posts
+    any other message; `detach()` ends the session. Each request goes out
+    with the next id, `n`, and takes only the reply carrying the same id, so
+    a reply that comes after its request gave up is logged and dropped, never
+    handed to a later one. A read is the request `{"type": "read"}`. Every
+    message the agent sends is written to `log_path`, one JSON line each, as
+    run_agent does.
 
     `alive` is False once the session has dropped or been detached, and
     `gone_reason` then says why. One LiveAgent attaches once; attach again
-    with a new one. `frida_mod` and `wait` are injectable so the tests run
-    without Frida and without sleeping."""
+    with a new one. With `pid` it attaches to that process id, the game
+    bot_run started paused; without one, to the game by its process name.
+    `frida_mod` and `wait` are injectable so the tests run without Frida and
+    without sleeping."""
 
     def __init__(self, agent_path: str, *, log_path: str,
+                 pid: int | None = None,
                  frida_mod: Any = None,
                  wait: Callable[[threading.Event, float], bool] | None = None,
                  out: Callable[[str], None] = print) -> None:
         self.agent_path = agent_path
         self.log_path = log_path
+        self.pid = pid
         self._frida_mod = frida_mod
         self._wait = wait if wait is not None else _default_wait
         self._out = out
@@ -273,12 +284,15 @@ class LiveAgent:
             frida_mod = _import_frida()
         with open(self.agent_path, encoding="utf-8") as fh:
             source = fh.read()
+        target = PROCESS_NAME if self.pid is None else self.pid
         try:
-            session = frida_mod.attach(PROCESS_NAME)
+            session = frida_mod.attach(target)
         except frida_mod.ProcessNotFoundError:
+            what = (PROCESS_NAME if self.pid is None
+                    else f"process {self.pid}")
             raise AttachFailed(
                 END_NOT_RUNNING,
-                f"{PROCESS_NAME} is not running; nothing attached") from None
+                f"{what} is not running; nothing attached") from None
         self._session = session
         started = False
         try:
@@ -297,7 +311,7 @@ class LiveAgent:
                 if self.gone_reason is None:
                     self.alive = True
             try:
-                first = self._request(cap_s, "the first read")
+                first = self._request(_READ, cap_s, "the first read")
             except ReadFailed as e:
                 raise AttachFailed(e.reason, f"{e}; detached") from e
             started = True
@@ -311,7 +325,18 @@ class LiveAgent:
         most `cap_s` seconds. A `found: false` reply is data, not a failure.
         Raises ReadFailed naming the cap, the detach reason or the agent's
         error."""
-        return self._request(cap_s, "the read")
+        return self._request(_READ, cap_s, "the read")
+
+    def request(self, message: dict, cap_s: float) -> dict:
+        """Post `message` with the next id and return the agent's reply to
+        it, waiting at most `cap_s` seconds. The message names its own
+        `type`; the id is LiveAgent's to give, so a message that carries one
+        is refused. Fails as `read` does, naming the message's type."""
+        if not isinstance(message, dict) or not isinstance(message.get("type"), str):
+            raise ValueError(f"a request is a dict with a text 'type': {message!r}")
+        if "id" in message:
+            raise ValueError(f"a request carries no 'id' of its own: {message!r}")
+        return self._request(message, cap_s, f"the {message['type']} request")
 
     def detach(self) -> str:
         """Detach once and return what happened. A second call detaches
@@ -341,7 +366,7 @@ class LiveAgent:
                     self._log.close()
         return line
 
-    def _request(self, cap_s: float, what: str) -> dict:
+    def _request(self, message: dict, cap_s: float, what: str) -> dict:
         with self._lock:
             if not self.alive:
                 reason = END_DETACHED
@@ -355,7 +380,7 @@ class LiveAgent:
             # Outside the lock: the reply may arrive on Frida's thread
             # before post returns.
             try:
-                script.post({"type": "read", "id": pending.id})
+                script.post({**message, "id": pending.id})
             except Exception as e:  # noqa: BLE001
                 # The game can drop the session between the alive check and
                 # the post; Frida then refuses the post.
@@ -374,7 +399,7 @@ class LiveAgent:
         reply = {k: v for k, v in pending.reply.items() if k != "id"}
         if "error" in reply:
             raise ReadFailed(END_AGENT_ERROR,
-                             f"the agent sent an error: {reply['error']}")
+                             f"the agent sent an error: {reply['error']}", reply)
         return reply
 
     def _on_message(self, message: dict, data: Any) -> None:

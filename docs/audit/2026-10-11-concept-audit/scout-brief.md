@@ -6,7 +6,7 @@ Every scout in this audit reads `docs/agents/brief-preamble.md` first, then this
 
 The audit looks for one idea with two homes in `src/`. An idea is a question in plain words with named inputs: "does Hydra have a result for this chart", "which settings does this page read", "how is an empty cell sorted". A home is a type, an enum, a set of status words, a helper family or a pipeline step that answers it. When two modules each hold a home for one idea, the next change has to be made twice, and one day it will be made once.
 
-Read these parts of the plan before you start: "What is wrong and what this audit looks for", "What counts as a finding" and your phase (2 or 3) in `docs/superpowers/plans/2026-10-11-concept-duplication-audit.md`. They define the kinds:
+Read these parts of the plan before you start: "What is wrong and what this audit looks for", "What counts as a finding" and your phase (2 or 3) in `docs/superpowers/plans/2026-10-11-concept-duplication-audit.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-10-11-concept-duplication-audit.md`). They define the kinds:
 
 - K1: same idea, same rule, two homes. The two tables agree on every input.
 - K2: same word, different rules. The tables differ, and one home is a word the user sees, a stored value or a score.

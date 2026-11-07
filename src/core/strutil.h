@@ -56,16 +56,18 @@ bool ends_with(std::string_view s, std::string_view suffix);
 // Whether s ends with suffix, ignoring ASCII case (".MID" matches ".mid").
 bool ends_with_ci(std::string_view s, std::string_view suffix);
 
-// A scanned path as scan_snapshot.json keys it: when path starts with root
-// and is longer, the root and the one byte after it are dropped, then every
-// backslash becomes a forward slash. "C:\in\a\notes.mid" under "C:\in" is
-// "a/notes.mid". The dropped byte is whatever follows the root, separator or
-// not ("C:/input/x" under "C:/in" is "ut/x", audit finding 274); the snapshot's
-// keys were written that way, so the rule stays. An empty root strips nothing.
+// A scanned path as scan_snapshot.json keys it: the part of path below root,
+// with every backslash turned into a forward slash. "C:\in\a\notes.mid" under
+// "C:\in" or "C:\in\" is "a/notes.mid". A path that is not below root comes
+// back whole, slashes turned: one that does not start with root, one equal to
+// it, and one where root stops partway through a name ("C:/input/x" under
+// "C:/in"). Whole is what a bench dump should show for a path outside its
+// --dump-rel folder; a clipped tail would look like a real key. An empty root
+// strips nothing.
 std::string relative_slash_path(std::string_view path, std::string_view root);
 
 // The number a hand-written text file spells, read one way for every such
-// number (chart and song files, and hydra_rules.ini): spaces at either end are allowed,
+// number (chart and song files, and the INI files): spaces at either end are allowed,
 // then an optional '+', then one finite decimal number and nothing else.
 // Anything else ("500ms", "0.25s", "nan", "inf", "", "0x1F4") is absent.
 // Locale-independent.
@@ -93,13 +95,13 @@ struct IniPair {
 
 // The key and value of an INI line, or nothing for a blank line, a
 // comment-only line, or a line with no = before its comment. Each reader
-// decides what a line with no = means: hydra_settings.ini skips it,
-// hydra_rules.ini refuses it.
+// decides what a line with no = means; both INI files' answer is in
+// app/ini_errors.h.
 std::optional<IniPair> split_ini_line(std::string_view line);
 
 // What text means on or off in an INI file: exactly "1" is on and exactly
 // "0" is off. Anything else ("true", "yes", "", " 1") is absent, and the
-// caller keeps what it had.
+// caller decides what that means.
 std::optional<bool> parse_bool(std::string_view text);
 
 }  // namespace hydra

@@ -1,6 +1,6 @@
 // The names a set of changed lines defines or sits inside: the functions,
 // types and constants a test could reach the change through. The test
-// picker (docs/superpowers/plans/2026-10-25-merge-test-picker.md, Step 3)
+// picker (docs/development.md, "The merge test picker", step 3)
 // greps the tests for these. The one owner of "which names did these lines
 // change" in tools/precheck/. It reads only masked code (View::code), so a
 // name inside a comment or a string never comes out.

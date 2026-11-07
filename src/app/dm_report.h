@@ -42,9 +42,10 @@ inline constexpr const char* kStatusNoPaths = "no paths";
 // cap, kCloneHeroSpCap, for this mode: never analyzed there, or Stale (D114
 // item 1).
 inline constexpr const char* kStatusNoCurrentResult = "no current result";
-// The last scan never found the chart.
+// The last scan never found the chart, whatever speed the score was played at.
 inline constexpr const char* kStatusNotInLibrary = "not in library";
-// Played at a speed other than net::kBaseSpeedPercent: shown, never compared.
+// Played at a speed other than net::kBaseSpeedPercent on a chart the library
+// lists: shown, never compared. collect_dm_rows decides it (D284 item 2).
 inline constexpr const char* kStatusOtherSpeed = "other speed";
 
 // The decimals every comparison percent is written to: DmReportRow::pct_h,
@@ -81,10 +82,20 @@ struct DmReportRow {
 // holds Clone Hero scores, so the comparison needs Clone Hero's rules, and a
 // path its scores can be held against (D104 item 6). Returns an empty string
 // when these settings allow it, and otherwise the sentence that names the
-// first rule they break. The library toolbar's button and collect_dm_rows
-// both ask it.
+// first rule they break. collect_dm_rows asks it of the profile it lists.
 std::string why_not_comparable(Difficulty difficulty, int sp_cap, bool legacy_fills,
                                bool note_shuffle);
+// The same question for the profile a comparison under `settings` lists
+// (Settings::profile_at_clone_hero_cap), so the library toolbar's button asks
+// what collect_dm_rows will ask: the cap setting never refuses (D271 item 8).
+std::string why_not_comparable(const Settings& settings);
+
+// The words that name the cap every comparison runs at, from
+// kCloneHeroSpCap. The gate's cap sentence, the page's line under its header
+// and compare_tooltip all say it (D276 item 7).
+std::string clone_hero_cap_phrase();
+// The library toolbar's Compare button tooltip when the gate lets it on.
+std::string compare_tooltip();
 
 // Joins every fetched score against the store's Ready records under
 // `profile` (report::library_lookup), preferring the leaderboard's own

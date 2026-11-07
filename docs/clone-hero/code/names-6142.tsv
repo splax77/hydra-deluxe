@@ -1,0 +1,42 @@
+# These readable names are ours, not the game's: the obfuscator scrambles them, and this file maps each one to the name in the dump (hydra-data\ch-dumps\6142\dump.cs).
+# Columns are tab-separated. typedef_index is the dump's TypeDefIndex. A row with an empty member names a class. "what" ends with the listing it was read from.
+build	typedef_index	class	member	name	what
+6142	176	SongEntry	ʿʳʴʾʽʻʴʽʿʵʽ	ReadChartSongSection	Scans the [Song] lines of a .chart file for the song's metadata, including Offset; read from chart_song_metadata_35C980.asm lines 1 to 925.
+6142	176	SongEntry	ʿʲʷʹʿʳʾʳʷˀʾ	LoadChart	Loads the song's chart and calls the [Song] scanner; read from gm_load_coroutine_D8D80.asm lines 284 to 291.
+6142	443	GameManager.ʻʵˀʸʷˀʿʸʳʲʲ		LoadSongCoroutine	The compiler-made coroutine class whose MoveNext loads a song; read from gm_load_coroutine_D8D80.asm lines 1 to 700.
+6142	828	ʵʴʺˁʵʽʾʹʸʹˀ	ʻʸʳʶˁʷʵʴʻʾʹ	LoadSongIni	Reads a song's song.ini file into the song metadata object and runs the [song] reader; read from gm_load_coroutine_D8D80.asm lines 272 to 282.
+6142	828	ʵʴʺˁʵʽʾʹʸʹˀ	ʺʻʸʽʿʵʴʾʵʴʲ	ReadIniSongSection	Reads the [song] section of song.ini, including delay; read from ini_song_reader_1EFC60.asm lines 1 to 196.
+6142	828	ʵʴʺˁʵʽʾʹʸʹˀ	ʲʺʾʷʽʻʾʿʳʸʸ	DelaySeconds	Returns the song.ini delay as seconds; read from delay_seconds_1EF1A0.asm lines 1 to 19.
+6142	828	ʵʴʺˁʵʽʾʹʸʹˀ	ˀˀʶˁʹʶʻʻʲʴʻ	DelayOver1582	Divides the same delay int by 1582.0 and has no direct caller, so its purpose is not shown; read from the note delay_seconds_1EF1A0.md line 5.
+6142	1037	ʽʳʿˀʿˁʵʳʾʽʶ	ʽʻʷʶʸʽʼʽʵˀʵ	ToJsonText	Turns the score stats object into the JSON text that EndOfSong.Start writes; read from scorestats_json_252630.asm lines 1 to 353.
+6142	1169	StarProgress	ʺʽʸʺʾˀʲʾʹʲʻ	UpdateStarBar	The per-frame update of the HUD star bar, given the current score; read from star_progress_update_2DF7F0.asm lines 1 to 249.
+6142	8251	ʿˀʻʳʺʻʼʲʷʻʷ		TrackStreamReader	A reader object that holds a stream at +0x10 and reads a track's fills from it into the track (the listing does not show what the stream holds); read from fill_cache_caller_20E49D0.asm lines 1 to 126.
+6142	8251	ʿˀʻʳʺʻʼʲʷʻʷ	ʸʴʼʳʸʼʶʵʺʷʼ	ReadFills	Reads a track's fills from the stream and adds each one through the add-fill twin; read from fill_cache_caller_20E49D0.asm lines 1 to 126.
+6142	8255	ʺʺʸʶʿʵˀʸʲˀʲ	ʸʸʳʽʲʻʿʸʳʸʽ	AddStarPower	The drums engine's override of the Star Power gain: runs the fill deadline check, then tail-jumps to the base method; read from fill_deadline_20DDB70.asm lines 1 to 72.
+6142	8255	ʺʺʸʶʿʵˀʸʲˀʲ	ʹʹʴˁʹʶʲʺʲʲʿ	HitWindowFromGap	Turns a gap in seconds into a whole hit-window width in seconds, with a PrecisionMode branch; read from hit_window_formula_20DDDA0.asm lines 1 to 55.
+6142	8257	ʹʷʽʶʶʸʻʿˁʾʵ	ʴˀʲʸʷʶˁˀʺʶʲ	BuildLines	Builds the whole grid of measure and beat lines for a chart in one pass; read from grid_restart_20DACA0.asm lines 1 to 226.
+6142	8265	ʲʽʶʳʺʹʳˀʾʴʹ	ʹʹʾʴʳʶʼʵʳʼʼ	BuildPlayData	Builds a track's play data: notes, Star Power phrases and fills; read from note_builder_20D2EA0.asm lines 1 to 440.
+6142	8265	ʲʽʶʳʺʹʳˀʾʴʹ	ʸˀʽʸʽʳʳʸʼʾʿ	GenerateFills	Generates drum fills from the measure lines when the track has no written fills; read from fill_generator_20D2B30.asm lines 1 to 195.
+6142	8265	ʲʽʶʳʺʹʳˀʾʴʹ	ʳʷˁʸʵʾʼʷˀʲˁ	PlaceWrittenFills	Places the fills the chart file names and picks each one's activation note; read from fill_to_activation_20CFF60.asm lines 1 to 180.
+6142	8265	ʲʽʶʳʺʹʳˀʾʴʹ	ʸʹʵˁʵʼʾʸʾˀʺ	AssignStarPowerPhrases	Takes the track's notes and its Star Power phrases and marks which notes are in a phrase; read from sp_phrase_assign_20D2440.asm lines 1 to 147.
+6142	8265	ʲʽʶʳʺʹʳˀʾʴʹ	ʴˁʽʳʾʿˁʽʼʸʺ	AdvancePhraseCursor	The compiler-made step that moves the phrase cursor on to the next phrase; read from sp_phrase_advance_20D0330.asm lines 1 to 33.
+6142	8278	ʽʶʸʽʳʼʵʸʺʸʳ	ʷʽʶʽˁʸʻʵʲʴʶ	ClearGhostAccentFlags	Clears the ghost (0x40000) and accent (0x80000) flag bits on every note in the list and changes nothing else (flag names from dump.cs lines 548215 and 548216); read from plain_drums_20EFEE0.asm lines 1 to 35.
+6142	8278	ʽʶʸʽʳʼʵʸʺʸʳ	ʿʾʲʽʻʹʺʶˀʹʽ	FoldCymbalsToToms	Shifts each cymbal note's colour word right by 3, so a cymbal becomes the tom of its lane; read from fold_20F16E0.asm lines 1 to 45.
+6142	8288	ʿʶʴˀʴʾʵʵʶʳʲ		BaseEngine	The engine base class that BasePlayer.engine holds; read from sp_gain_20F4FA0.asm lines 1 to 84.
+6142	8288	ʿʶʴˀʴʾʵʵʶʳʲ	ˁʸʴʵʳʾʽʿʹʷʿ	starPowerActive	The Star Power active flag at +0x42; read from sp_update_20F6800.asm lines 1 to 130.
+6142	8288	ʿʶʴˀʴʾʵʵʶʳʲ	ʸʸʳʽʲʻʿʸʳʸʽ	AddStarPower	Adds an amount to the Star Power meter; read from sp_gain_20F4FA0.asm lines 1 to 84.
+6142	8288	ʿʶʴˀʴʾʵʵʶʳʲ	ʵʺʴʻˀʺˀˁʶʻʷ	FrameUpdate	The engine's per-frame update, given the new time in seconds and a bool kept at +0x290; read from base_frame_update_20F4550.asm lines 1 to 60.
+6142	8288	ʿʶʴˀʴʾʵʵʶʳʲ	ʴʼʶʿʴʲʶʵʼʳˁ	HalfHitWindow	Returns half of a note's hit window, in seconds; read from note_window_20F3A90.asm lines 1 to 74.
+6142	8288	ʿʶʴˀʴʾʵʵʶʳʲ	ˀʵˁʴʾʶʽʺʼʴʹ	ClampedHalfGap	Returns half the gap between two notes, clamped between a minimum and a maximum; read from half_gap_clamp_20F7210.asm lines 1 to 78.
+6142	8298	ʿʲˁʽʹʺʶʳˁʾʼ		ListRange	A static helper class whose generic methods each take a list or span plus a start and an end index (dump.cs, TypeDefIndex 8298) and hand back a walker over that range of indexes; read from first_after_search_2C7CF70.asm lines 18 to 52, which calls its list version.
+6142	8308	ʽʾʺʼʶʺʻʹʹʵʵ		IntSetting	A setting that holds an int value at +0x10; read from speed_ratio_210C090.asm lines 1 to 20.
+6142	8308	ʽʾʺʼʶʺʻʹʹʵʵ	ʸʺˀʳˁʽʸʺʲʻˁ	AsRatio	Returns the setting's int value divided by 100 as a float; read from speed_ratio_210C090.asm lines 10 to 12.
+6142	8538	ˁʿʺʲʲʹˀʴʾʻʻ	ʿʼʿʿʵʵʲʿʷˁʻ	LastGemEndTick	Returns the tick where the chart's last gem ends, with an optional margin; read from chart_length_212E130.asm lines 1 to 102.
+6142	8538	ˁʿʺʲʲʹˀʴʾʻʻ	ʶˁʻʷʼʷʶʻʳʳʿ	EndEventUsable	Says whether the chart's [end] event is allowed to end the song; read from end_event_usable_212C7E0.asm lines 1 to 18.
+6142	8553	ʳʴʾʷʸʼʷʹʴˁˀ		PlayerKind	The enum of player kinds: Player 0, RemotePlayer 1, Bot 2, Replay 3; read from dump.cs line 546294 as cited in sp_update_20F6800.md line 3.
+6142	8611	ʾʲʷˁʸˀʵʾʺˀˁ	ʼʲʺʹʹʽʹʽˁʴʽ	starThresholds	The static table of nine star multipliers (0.1 to 6.0) that the static constructor fills; read from star_table_cctor_214C320.asm lines 20 to 22.
+6142	8661	ʷʿʽʽʵʻʶʹʼʼʺ	ʳˁʾʵˀʿʲʲʼʸʽ	AddFill	Adds one fill to the track, given two longs and a bool; read from add_fill_215BD50.asm lines 1 to 71.
+6142	8661	ʷʿʽʽʵʻʶʹʼʼʺ	ʲʲʲʿʴʴʴʷʲʽʳ	AddFillTwin	A second add-fill method with the same parameters, called by the fills reader; read from add_fill_twin_215B7C0.asm lines 1 to 71.
+6142	8670	ʽʹʽʽˁʹʷʺˀʺˁ		ChordListSearch	The static helper class that searches a chord list by tick; read from nearest_chord_5DE030.asm lines 1 to 122.
+6142	8670	ʽʹʽʽˁʹʷʺˀʺˁ	ʶʲˁʿʹʵˀʺʲˁʿ<T>	NearestChord	Returns the index of the chord nearest a target tick, from a start index; read from nearest_chord_loop_5DDB50.asm lines 1 to 104.
+6142	8670	ʽʹʽʽˁʹʷʺˀʺˁ	ʷʾˀʼˀʵʹˁʻʻʷ<T>	NearestChordInRange	Returns the chord nearest a target tick that lies between a low and a high tick, or nothing; read from nearest_chord_5DE030.asm lines 1 to 122.

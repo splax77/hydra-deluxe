@@ -262,7 +262,7 @@ add_subdirectory(third_party/opus EXCLUDE_FROM_ALL)
 # D88 ships Microsoft's mimalloc as its override DLL: mimalloc.dll replaces
 # malloc/free for the whole process, helped by the prebuilt
 # mimalloc-redirect.dll. These options are the ones the trial measured
-# (docs/handoffs/2026-10-07-mimalloc-trial.md); everything else stays at
+# (docs/development.md, "mimalloc trial numbers"); everything else stays at
 # mimalloc's release defaults. hydra_use_mimalloc (bottom of this file) owns
 # which exes link it and how. HYDRA_MIMALLOC off leaves it out entirely.
 if(HYDRA_MIMALLOC)
@@ -318,6 +318,7 @@ add_library(hydra_core STATIC
     src/core/error_kind.h
     src/core/little_endian.h
     src/core/sqout_chord.h
+    src/core/unknown_option.h
     src/core/version.h
 )
 target_include_directories(hydra_core PUBLIC src)
@@ -396,8 +397,10 @@ add_library(hydra_app STATIC
     src/app/saved_figure_fill.cpp
     src/app/user_messages.cpp
     src/app/update_verify.cpp
+    src/app/ini_errors.h
     src/app/job_base.h
     src/app/preview_clock.h
+    src/app/time_left.h
     src/app/update_key.h
     src/app/work_pool.h
 )
@@ -532,6 +535,7 @@ add_library(hydra_uibase STATIC
     src/ui/generation.h
     src/ui/label_layout.h
     src/ui/preview_panel.h
+    src/ui/report_state.h
     src/ui/text_role.h
     src/ui/timeline_view.h
     src/ui/widgets.h
@@ -575,7 +579,6 @@ add_library(hydra_ui STATIC
     src/ui/details_parts.h
     src/ui/details_view.h
     src/ui/library_parts.h
-    src/ui/report_state.h
     src/ui/resource.h
 )
 # hydra_preview and hydra_uibase bring the renderer and the audio engine with

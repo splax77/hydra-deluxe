@@ -18,6 +18,7 @@
 #include <string>
 #include <vector>
 
+#include "core/unknown_option.h"
 #include "core/winstr.h"
 #include "precheck/git_text.h"
 #include "precheck/items.h"
@@ -496,5 +497,15 @@ TEST_CASE("precheck self-test: a folder that is not a git repository fails by na
     const SelfTestRun run = precheck_on(plain, {});
     CHECK(run.code != 0);
     CHECK(run.err == "not a git repository: " + plain + "\n");
+    testtemp::remove_dir(plain);
+}
+
+// D271 item 6: the precheck prints the one helper's line for an option it
+// does not know, and exits 1 as it does for every error it reports.
+TEST_CASE("precheck self-test: an unknown option prints the one unknown-option line") {
+    const std::string plain = testtemp::temp_dir("precheck_selftest_unknown_option");
+    const SelfTestRun run = precheck_on(plain, {"--bogus"});
+    CHECK(run.code == 1);
+    CHECK(run.err == hydra::unknown_option_line("--bogus") + "\n");
     testtemp::remove_dir(plain);
 }

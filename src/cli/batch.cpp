@@ -42,6 +42,7 @@
 #include "app/user_messages.h"
 #include "cli/batch_scope.h"
 #include "core/model.h"
+#include "core/unknown_option.h"
 #include "core/winstr.h"
 #include "parse/song.h"
 #include "search/graph.h"
@@ -83,7 +84,7 @@ int batch_main() {
         else if (arg == "--db" && i + 1 < argc) dbpath = args[++i];
         else if (arg == "--rules" && i + 1 < argc) rulespath = args[++i];
         else if (arg.rfind("--", 0) == 0) {
-            std::fprintf(stderr, "Unknown option: %s\n", arg.c_str());
+            std::fprintf(stderr, "%s\n", hydra::unknown_option_line(arg).c_str());
             return 2;
         } else {
             folder_args.push_back(arg);
@@ -98,8 +99,24 @@ int batch_main() {
         return 2;
     }
 
-    hydra::app::Settings settings = hydra::app::Settings::load_for_command_line(legacy_fills);
+    // A bad settings file stops the run before the store opens, as a bad
+    // rules file does (D270 call 4).
+    hydra::app::Settings settings;
+    if (const int code = hydra::app::load_tool_settings(settings, legacy_fills)) return code;
     if (const int code = hydra::app::load_tool_rules(rulespath, settings.rules)) return code;
+    // A whole-library run saves its scan as the library, so a chart folder it
+    // cannot read stops it before the store opens, as Scan library stops
+    // (D268). A run over folder arguments leaves the library alone and goes on.
+    if (scope == BatchScope::Library) {
+        if (const std::optional<std::string> missing =
+                hydra::app::first_missing_chart_folder(settings.chartfolders)) {
+            std::fprintf(stderr, "%s\n",
+                         hydra::app::library_scan_blocked_notice(*missing,
+                                                                 hydra::app::ScanAsker::User)
+                             .c_str());
+            return 2;
+        }
+    }
     hydra::app::BatchRun run = settings.batch_run();
     const hydra::app::AnalysisSettings& analysis = run.settings;
     const std::string& chartmode = run.profile.chartmode;

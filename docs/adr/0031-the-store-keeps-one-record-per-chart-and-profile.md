@@ -13,15 +13,16 @@ printed once, on a shelf label (a profile), and each card names its shelf by
 a small number. The card also carries the book's best five pages (the top
 paths), so the path report can read the cards instead of rereading every book.
 
-The design is `docs/superpowers/specs/2026-10-11-one-record-per-chart-and-profile-design.md`,
-and the build followed `docs/superpowers/plans/2026-10-12-one-record-per-chart.md`.
-The user's decisions are D115 in `docs/audit/2026-10-03-fix-decisions.md`.
+The user's decisions are D115 in `docs/audit/2026-10-03-fix-decisions.md`,
+which also names the design and the build plan they came from.
 
 ## Why
 
 The path report was the one slow thing Hydra did. On 2026-10-11 the main
-session profiled the real app on the user's library
-(`docs/handoffs/2026-10-11-path-report-speed-handoff.md`). Building the report
+session profiled the real app on the user's library. D115 records the
+analysis count; the profile's other numbers are in
+`docs/handoffs/2026-10-11-path-report-speed-handoff.md` (removed; `git show 444631e6:docs/handoffs/2026-10-11-path-report-speed-handoff.md`).
+Building the report
 took 41.6 of the session's 62 CPU-seconds and about 17 s of wall time. It ran
 37,691 analyses of 18,907 chart files, because ADR 0026 kept only summaries
 and the report analyzed every chart again to get its top 5 paths.

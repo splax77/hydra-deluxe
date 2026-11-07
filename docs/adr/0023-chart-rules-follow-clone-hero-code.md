@@ -75,8 +75,10 @@ Rules that were already Clone Hero's and are now written down:
   reading of `drumsNeasy`, `drumsNeasynokick` and `drumsd`, which Clone
   Hero's one-character rule reads differently on 5 chart-and-difficulty
   pairs.
-- The backend leeway is Hydra's own rule. No such constant was found in the
-  engine methods read; the 3 ms is Hydra's own setting. A note less than
+- The backend leeway is not a Clone Hero rule. No such constant was found in
+  the engine methods read. The 3 ms is DragonDelgar's number, from public
+  Hydra (`hydra/hypath.py`, line 678 at his commit 3b49012c), kept so Hydra
+  Deluxe scores the same way (decision D269 call 4). A note less than
   `backend_leeway_ms` (3 ms) after the SP end scores under Star Power; a
   note exactly that far after it does not (decision D29).
 - When a fill has a chord on only one side of its end, Clone Hero's
@@ -86,22 +88,11 @@ Rules that were already Clone Hero's and are now written down:
 
 ## Not verified against Clone Hero
 
-These keep Hydra's current rule and are written down as unchecked (decision
-D26). A live Clone Hero session could settle them.
-
-- A generated fill's length, when two or more meter changes fall between two
-  chords. Hydra's walk reads the meter one change late there.
-- How many ticks make a beat in compound meters like 6/8. Hydra counts a
-  beat as a quarter note (the chart's resolution) everywhere, including the
-  4-beat fill deadline.
-- Whether one authored fill turns off generated fills for the whole chart.
-- Whether Clone Hero carries its search position from one fill to the
-  next (its fill search takes a start index).
-- When two chords sit equally near a downbeat, a generated fill goes on the
-  later one (`Song::check_activations`, decision D74).
-- How far from its downbeat a generated fill's chord may sit, and the fill's
-  length, are cut down to whole ticks (`Song::check_activations`, decision
-  D74).
+The fill rules this section listed as unchecked (decision D26), and the two it
+recorded as settled, now live in docs/clone-hero/04-fills.md (FL-04, FL-14 to
+FL-16, FL-20 and FL-26 to FL-28). The ones still open, and the live checks that
+could settle them, are in docs/clone-hero/questions.md and
+docs/clone-hero/live-checks.md.
 
 ## Consequences
 

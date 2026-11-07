@@ -124,12 +124,13 @@ TEST_CASE("strutil: is_ascii_space names the six whitespace bytes") {
     CHECK(lower_ascii(static_cast<char>(0xC3)) == static_cast<char>(0xC3));
 }
 
-TEST_CASE("strutil: relative_slash_path strips the root plus one byte and flips backslashes") {
+TEST_CASE("strutil: relative_slash_path strips the root and its separator and flips backslashes") {
     CHECK(relative_slash_path("C:\\in\\a\\notes.mid", "C:\\in") == "a/notes.mid");
-    // The byte after the root goes whatever it is (audit finding 274's
-    // example, which wrote "put/x"; rel_of's own run drops the "p" too), so
-    // scan_snapshot.json's keys stay where they were.
-    CHECK(relative_slash_path("C:/input/x", "C:/in") == "ut/x");
+    // A root that already ends in a separator strips just itself.
+    CHECK(relative_slash_path("C:\\in\\a\\notes.mid", "C:\\in\\") == "a/notes.mid");
+    // A root that stops partway through a name is not the path's folder, so
+    // the path comes back whole.
+    CHECK(relative_slash_path("C:/input/x", "C:/in") == "C:/input/x");
     CHECK(relative_slash_path("C:\\in\\a", "") == "C:/in/a");
     // Only a longer path is stripped.
     CHECK(relative_slash_path("C:\\in", "C:\\in") == "C:/in");

@@ -1,9 +1,15 @@
 # Shared helpers for scripted captures of a real Hydra window. Dot-source it:
 #
-#   . (Join-Path $PSScriptRoot "..\..\..\tools\capture_window.ps1")
+#   . (Join-Path $PSScriptRoot "..\capture_window.ps1")
 #
-# The capture scripts in docs/handoffs/2026-10-10-maximized-report-stretch/
-# (shot.ps1, steps.ps1, report_shot.ps1) are its callers. Start-Hydra launches
+# The capture scripts in tools/capture/ (shot.ps1, steps.ps1, report_shot.ps1)
+# are its callers. They copy nothing themselves. Their -Dir is a scratch folder
+# holding a copy of build-cpp\Release\Hydra.exe, mimalloc.dll,
+# mimalloc-redirect.dll, assets\ and resource\, plus the hydra_settings.ini,
+# hydra_ui.ini and hydra.db to run on; Hydra reads those next to the exe. A run
+# saves over the ini files and db, so copy them again before each run.
+#
+# Start-Hydra launches
 # a scratch copy of Hydra.exe and fails loudly when no main window shows up;
 # Save-WindowShot draws one window into a PNG with PrintWindow; the rest are
 # thin wrappers over user32 calls, all on window handles of that process.

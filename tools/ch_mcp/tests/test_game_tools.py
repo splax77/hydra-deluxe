@@ -23,11 +23,16 @@ if _REPO_ROOT not in sys.path:
 
 from tools.ch_mcp import bot_run as B  # noqa: E402
 from tools.ch_mcp import compare_scorestats  # noqa: E402
+from tools.ch_mcp import foreground as F  # noqa: E402
 from tools.ch_mcp import game_files as G  # noqa: E402
 from tools.ch_mcp import game_tools as GT  # noqa: E402
 from tools.ch_mcp import install_chart as I  # noqa: E402
-from tools.ch_mcp.tests.test_bot_run import ORIGINAL, Rig, StuckGame, _read, _write  # noqa: E402
+from tools.ch_mcp import frida_attach as FA  # noqa: E402
+from tools.ch_mcp.tests.test_bot_run import (  # noqa: E402
+    ORIGINAL, PATCHED, FakeLaunchAgent, Rig, StuckGame, _read, _write, wire_human)
+from tools.ch_mcp.tests.test_game_files import FakeReg  # noqa: E402
 from tools.ch_probe import probe_songs  # noqa: E402
+from tools.ch_probe import input_driver  # noqa: E402
 from tools.ch_probe.experiments import play_chart  # noqa: E402
 from tools.ch_probe.input_driver import DEFAULT_BINDINGS, InputDriver, Lane  # noqa: E402
 
@@ -78,6 +83,25 @@ class FakeLivePlay:
         return self.result
 
 
+class FakeWatch:
+    """A foreground watch that records start and stop and holds a set count."""
+
+    def __init__(self, events: list, count: int = 0):
+        self._events = events
+        self.count = count
+        self.started = self.stopped = False
+
+    def start(self):
+        self.started = True
+        self._events.append("watch start")
+
+    def stop(self):
+        self.stopped = True
+
+    def line(self):
+        return F.count_line(self.count) + ("" if self.stopped else " so far")
+
+
 class ToolRig:
     """A GameTools wired to test_bot_run's Rig and the fakes above."""
 
@@ -88,8 +112,15 @@ class ToolRig:
         self.hwnd = WINDOW
         self.live_play = FakeLivePlay(play_chart.RunResult(
             sent=2, hit=1, max_streak=1, rows=list(ROWS), stop="stopped"))
+        self.events = []
+        self.watches = []
+
+        def make_watch():
+            self.watches.append(FakeWatch(self.events))
+            return self.watches[-1]
+
         args = dict(driver=self.driver, live_play=self.live_play,
-                    find_window=lambda: self.hwnd)
+                    find_window=lambda: self.hwnd, make_watch=make_watch)
         args.update(tool_args)
         self.tools = GT.GameTools(self.r.env, threading.RLock(), self.scratch_root, **args)
 
@@ -368,6 +399,154 @@ class GameToolsTest(unittest.TestCase):
         self.assertTrue(t.tools.ch_press("red").startswith("no game window found"))
         self.assertEqual(t.driver.events, [])
 
+    # -- menu keys ------------------------------------------------------------------------
+
+    def _key_rig(self):
+        """A ToolRig whose driver records keys, typed characters and sleeps
+        into one list, beside the backup and the focus."""
+        events = []
+
+        class KeyDriver(InputDriver):
+            def send_key(self, vk, key_up):
+                events.append(("key", vk, key_up))
+
+            def send_unicode(self, unit, key_up):
+                events.append(("char", chr(unit), key_up))
+
+            def send_input(self, event):
+                raise AssertionError("a test reached the real SendInput")
+
+        t = ToolRig(self.tmp, driver=KeyDriver())
+        real_backup = t.tools.ensure_backup
+
+        def backup():
+            events.append(("backup",))
+            return real_backup()
+
+        t.tools.ensure_backup = backup
+        real_sleep = t.r.env.sleep
+        t.r.env.sleep = lambda s: (events.append(("sleep", s)), real_sleep(s))
+        return t, events
+
+    def _ch_key(self, keys):
+        t, events = self._key_rig()
+        with mock.patch.object(play_chart, "focus_window",
+                               lambda hwnd: events.append(("focus", hwnd))):
+            reply = t.tools.ch_key(keys)
+        return t, events, reply
+
+    def test_ch_key_backs_up_focuses_once_then_presses_and_types_in_order(self):
+        song = probe_songs.WINDOW_MAP
+        t, events, reply = self._ch_key(f"enter,down,text:{song}")
+        gap = ("sleep", input_driver.MENU_KEY_GAP_S)  # pinned in test_input_driver
+        hold = ("sleep", input_driver.KEY_HOLD_S)
+        enter, down = input_driver.MENU_KEYS["enter"], input_driver.MENU_KEYS["down"]
+        typed = []
+        for i, char in enumerate(song):
+            if i:
+                typed.append(gap)
+            typed += [("char", char, False), ("char", char, True)]
+        self.assertEqual(events, [("backup",), ("focus", WINDOW),
+                                  ("key", enter, False), hold, ("key", enter, True), gap,
+                                  ("key", down, False), hold, ("key", down, True), gap]
+                         + typed)
+        self.assertEqual(reply.splitlines()[-1],
+                         f'keys sent: enter, down, text "{song}" (10 characters)')
+        self.assertTrue(reply.startswith(f"backup folder: {t.backup_dir()} "))
+
+    def test_ch_key_types_a_comma_inside_the_text(self):
+        _t, events, reply = self._ch_key("text:a,b")
+        self.assertEqual([e[1] for e in events if e[0] == "char" and not e[2]], ["a", ",", "b"])
+        self.assertEqual(reply.splitlines()[-1], 'keys sent: text "a,b" (3 characters)')
+
+    def test_ch_key_refuses_an_unknown_key_with_the_list_and_sends_nothing(self):
+        t, events, reply = self._ch_key("f1")
+        self.assertEqual(reply, 'unknown key "f1"; valid keys: enter, escape, space, backspace, '
+                                "tab, up, down, left, right, and text:<string>")
+        self.assertEqual(events, [])
+        self.assertIsNone(t.backup_dir())
+
+    def test_ch_key_checks_every_key_before_sending_any(self):
+        _t, events, reply = self._ch_key("enter,purple")
+        self.assertTrue(reply.startswith('unknown key "purple"'))
+        self.assertEqual(events, [])
+
+    def test_ch_key_with_no_window_says_so(self):
+        t, events = self._key_rig()
+        t.hwnd = 0
+        self.assertTrue(t.tools.ch_key("enter").startswith("no game window found"))
+        self.assertEqual(events, [])
+
+    def test_press_keys_takes_the_list_already_split(self):
+        t, events = self._key_rig()
+        with mock.patch.object(play_chart, "focus_window", lambda hwnd: None):
+            result = t.tools.press_keys(["escape", "text:x,y"])
+        self.assertTrue(result.sent)
+        self.assertEqual(result.text.splitlines()[-1],
+                         'keys sent: escape, text "x,y" (3 characters)')
+
+    def test_press_keys_says_sent_false_for_each_refusal(self):
+        t, events = self._key_rig()
+        unknown = t.tools.press_keys(["enter", "purple"])
+        self.assertFalse(unknown.sent)
+        self.assertTrue(unknown.text.startswith('unknown key "purple"'))
+        self.assertFalse(t.tools.press_keys(["text:"]).sent)
+        self.assertFalse(t.tools.press_keys([]).sent)
+        t.hwnd = 0
+        no_window = t.tools.press_keys(["enter"])
+        self.assertFalse(no_window.sent)
+        self.assertTrue(no_window.text.startswith("no game window found"))
+        self.assertEqual(events, [])
+
+    def test_press_lanes_says_sent_false_for_each_refusal(self):
+        t = ToolRig(self.tmp)
+        unknown = t.tools.press_lanes("purple")
+        self.assertFalse(unknown.sent)
+        self.assertTrue(unknown.text.startswith('unknown lane "purple"'))
+        self.assertFalse(t.tools.press_lanes("").sent)
+        t.hwnd = 0
+        self.assertFalse(t.tools.press_lanes("red").sent)
+
+    def test_press_lanes_says_sent_true_and_ch_press_prints_the_same_text(self):
+        t = ToolRig(self.tmp)
+        with mock.patch.object(play_chart, "focus_window", lambda hwnd: None):
+            result = t.tools.press_lanes("red")
+            self.assertTrue(result.sent)
+            self.assertEqual(t.tools.ch_press("red").splitlines()[-1],
+                             result.text.splitlines()[-1])
+
+    def test_split_keys_keeps_the_text_whole(self):
+        self.assertEqual(GT.split_keys("enter, down ,text:Ladies Talk, fill"),
+                         ["enter", "down", "text:Ladies Talk, fill"])
+        self.assertEqual(GT.split_keys(" text: a "), ["text: a "])
+
+    # -- the run cap ----------------------------------------------------------------------
+
+    def test_run_cap_is_the_song_plus_the_extra_minute_else_240_s(self):
+        t = ToolRig(self.tmp)
+        _write(os.path.join(t.r.song, G.SONG_INI), b"[song]\nsong_length = 260504\n")
+        self.assertEqual(GT.run_cap_s(t.r.song), 320.504)
+        self.assertEqual(t.tools.run_cap_s(t.r.song), 320.504)
+        no_length = os.path.join(self.tmp, "no length")
+        os.makedirs(no_length)
+        _write(os.path.join(no_length, G.SONG_INI), b"[song]\nname = x\n")
+        self.assertEqual(GT.run_cap_s(no_length), 240.0)
+        self.assertEqual(GT.run_cap_s(None), 240.0)
+
+    def test_ch_play_chart_with_a_song_folder_passes_the_cap_to_live_play(self):
+        seen = []
+
+        def live_play(chords, **kw):
+            seen.append(kw.get("cap_s"))
+            return play_chart.RunResult(stop="done")
+
+        t = ToolRig(self.tmp, live_play=live_play)
+        _write(os.path.join(t.r.song, G.SONG_INI), b"[song]\nsong_length = 260504\n")
+        reply = t.tools.ch_play_chart(self._score_json(), song_folder=t.r.song, route="keys")
+        t.tools._play.thread.join(THREAD_CAP_S)
+        self.assertEqual(seen, [320.504])
+        self.assertIn("run cap: 320.504 s", reply.splitlines())
+
     # -- the auto-player ------------------------------------------------------------------
 
     def _score_json(self) -> str:
@@ -378,7 +557,7 @@ class GameToolsTest(unittest.TestCase):
     def test_a_second_ch_play_chart_is_refused_while_one_runs(self):
         t = ToolRig(self.tmp)
         score = self._score_json()
-        first = t.tools.ch_play_chart(score)
+        first = t.tools.ch_play_chart(score, route="keys")
         self.assertIn("play session started: 2 chords", first)
         self.assertIn("waiting for a moving clock (cap 120 s)", first)
         self.assertTrue(t.live_play.delivered.wait(THREAD_CAP_S))
@@ -390,7 +569,7 @@ class GameToolsTest(unittest.TestCase):
 
     def test_ch_play_stop_sets_the_flag_and_ch_play_status_reports_the_result(self):
         t = ToolRig(self.tmp)
-        t.tools.ch_play_chart(self._score_json(), log="press.csv")
+        t.tools.ch_play_chart(self._score_json(), log="press.csv", route="keys")
         self.assertTrue(t.live_play.delivered.wait(THREAD_CAP_S))
         snapshot = t.tools.play_snapshot()
         self.assertEqual(snapshot, {"last_row": ROWS[-1], "press_count": 2, "stop": None})
@@ -421,7 +600,7 @@ class GameToolsTest(unittest.TestCase):
     def test_a_run_with_no_engine_reports_the_finders_message(self):
         t = ToolRig(self.tmp, live_play=lambda chords, **kw: play_chart.RunResult(
             stop=play_chart.STOP_NO_ENGINE, message="no song started within 120 s"))
-        t.tools.ch_play_chart(self._score_json())
+        t.tools.ch_play_chart(self._score_json(), route="keys")
         t.tools._play.thread.join(THREAD_CAP_S)
         lines = t.tools.ch_play_status().splitlines()
         self.assertIn(f"ended: {play_chart.STOP_NO_ENGINE}", lines)
@@ -429,7 +608,7 @@ class GameToolsTest(unittest.TestCase):
 
     def test_ch_stop_tells_a_running_play_session_to_stop(self):
         t = ToolRig(self.tmp)
-        t.tools.ch_play_chart(self._score_json())
+        t.tools.ch_play_chart(self._score_json(), route="keys")
         self.assertTrue(t.live_play.delivered.wait(THREAD_CAP_S))
         reply = t.tools.ch_stop()
         self.assertIn("play session told to stop", reply)
@@ -437,6 +616,304 @@ class GameToolsTest(unittest.TestCase):
         self.assertEqual(t.tools.play_snapshot()["stop"], "stopped")
         # The play run took the adopted game's backup, and ch_stop restored it.
         self.assertIn("settings.ini: unchanged", reply)
+
+    # -- the kit route ----------------------------------------------------------------------
+
+    def _kit_rig(self, kit_press):
+        seen = []
+
+        def live_play(chords, **kw):
+            seen.append(kw)
+            return play_chart.RunResult(stop="done", rows=[])
+
+        t = ToolRig(self.tmp, live_play=live_play)
+        t.tools.use_kit_press(lambda: kit_press)
+        return t, seen
+
+    def test_route_kit_hands_live_play_the_kit_press_and_no_driver(self):
+        def kit_press(lanes):
+            return {}
+
+        t, seen = self._kit_rig(kit_press)
+        reply = t.tools.ch_play_chart(self._score_json(), route="kit")
+        t.tools._play.thread.join(THREAD_CAP_S)
+        self.assertIs(seen[0]["press"], kit_press)
+        self.assertNotIn("driver", seen[0])
+        self.assertIn("route: kit (presses through the virtual kit inside the game)",
+                      reply.splitlines())
+
+    def test_no_route_picks_the_kit_once_it_is_set_up(self):
+        def kit_press(lanes):
+            return {}
+
+        t, seen = self._kit_rig(kit_press)
+        t.tools.ch_play_chart(self._score_json())
+        t.tools._play.thread.join(THREAD_CAP_S)
+        self.assertIs(seen[-1]["press"], kit_press)
+
+    NO_ROUTE_REFUSED = ("refused: no route given and the kit is not set up; "
+                        "call ch_kit_setup first")
+
+    def test_no_route_is_refused_while_the_kit_is_not_set_up(self):
+        t, seen = self._kit_rig(None)
+        self.assertEqual(t.tools.ch_play_chart(self._score_json()), self.NO_ROUTE_REFUSED)
+        self.assertIsNone(t.tools._play)
+        self.assertEqual(seen, [])
+
+    def test_no_route_is_refused_with_no_kit_tools_and_presses_no_key(self):
+        t = ToolRig(self.tmp)
+        self.assertEqual(t.tools.ch_play_chart(self._score_json()), self.NO_ROUTE_REFUSED)
+        self.assertIsNone(t.tools._play)
+        self.assertEqual(t.live_play.calls, [])
+        self.assertEqual(t.driver.events, [])
+
+    def test_route_keys_presses_keys_through_the_driver(self):
+        t, seen = self._kit_rig(None)
+        reply = t.tools.ch_play_chart(self._score_json(), route="keys")
+        t.tools._play.thread.join(THREAD_CAP_S)
+        self.assertIs(seen[-1]["driver"], t.driver)
+        self.assertNotIn("press", seen[-1])
+        self.assertIn("route: keys (keys to the focused game window)", reply.splitlines())
+
+    def test_route_kit_without_a_kit_and_an_unknown_route_are_refused(self):
+        t, seen = self._kit_rig(None)
+        self.assertEqual(t.tools.ch_play_chart(self._score_json(), route="kit"),
+                         'route kit: the kit is not set up; call ch_kit_setup first, '
+                         'or pass route="keys"')
+        self.assertEqual(t.tools.ch_play_chart(self._score_json(), route="pads"),
+                         'unknown route "pads"; routes: kit, keys')
+        self.assertIsNone(t.tools._play)
+        self.assertEqual(seen, [])
+
+    def test_the_status_rows_show_the_kit_columns_only_when_rows_carry_them(self):
+        rows = [{**ROWS[0], "down_frame": 10, "up_frame": 12, "down_ms": 100, "up_ms": 113}]
+
+        def live_play(chords, *, on_press, **kw):
+            for row in rows:
+                on_press(row)
+            return play_chart.RunResult(stop="done", sent=1, hit=1, rows=rows)
+
+        t = ToolRig(self.tmp, live_play=live_play)
+        t.tools.use_kit_press(lambda: (lambda lanes: {}))
+        t.tools.ch_play_chart(self._score_json())
+        t.tools._play.thread.join(THREAD_CAP_S)
+        lines = t.tools.ch_play_status().splitlines()
+        self.assertEqual(lines[-2:], [
+            "rows, newest first (index, chart_ms, clock_ms_at_press, score_before, score_after, "
+            "hit, down_frame, up_frame, down_ms, up_ms):",
+            "  0, 1000.0, 998.0, 0, 50, 1, 10, 12, 100, 113"])
+
+    def test_foreground_line_is_the_watchs_line_or_none(self):
+        t = ToolRig(self.tmp)
+        self.assertIsNone(t.tools.foreground_line())
+        t.tools.ch_start(t.r.song)
+        self.assertEqual(t.tools.foreground_line(), "foreground went to the game 0 times so far")
+        t.tools.ch_stop()
+
+
+# A settings.ini with the run's line in its [game] section.
+USER_SETTINGS = b"[audio]\r\nvolume = 1\r\n\r\n[game]\r\npause_on_focus_lost = 1\r\nnote_speed = 7\r\n"
+
+
+class RunWithoutFocusTest(unittest.TestCase):
+    """ch_start's settings line and foreground watch, and the registry key
+    riding along with the files."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = self._tmp.name
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_ch_start_sets_the_line_after_the_backup_then_launches_then_watches(self):
+        def set_setting(path, key, value):
+            backups = [d for d in os.listdir(t.tools._scratch) if d.startswith(G.BACKUP_PREFIX)]
+            t.events.append(("setting", path, key, value, len(backups)))
+
+        t = ToolRig(self.tmp, set_setting=set_setting)
+        real_launch = t.r.launch
+
+        def launch(cmd):
+            t.events.append("launch")
+            return real_launch(cmd)
+
+        t.r.env.launch = launch
+        lines = t.tools.ch_start(t.r.song).splitlines()
+        self.assertEqual(t.events, [
+            ("setting", t.r.path(G.SETTINGS), "pause_on_focus_lost", "0", 1),
+            "launch", "watch start"])
+        said = "settings.ini: pause_on_focus_lost set to 0 for this run (restored by ch_stop)"
+        self.assertIn(said, lines)
+        self.assertLess(lines.index(f"backup folder: {t.backup_dir()}"), lines.index(said))
+        starting = [i for i, line in enumerate(lines) if line.startswith("starting: ")]
+        self.assertLess(lines.index(said), starting[0])
+
+    def test_the_users_line_is_set_for_the_run_and_put_back_by_ch_stop(self):
+        t = ToolRig(self.tmp)
+        _write(t.r.path(G.SETTINGS), USER_SETTINGS)
+        t.tools.ch_start(t.r.song)
+        self.assertEqual(_read(t.r.path(G.SETTINGS)),
+                         USER_SETTINGS.replace(b"pause_on_focus_lost = 1", b"pause_on_focus_lost = 0"))
+        lines = t.tools.ch_stop().splitlines()
+        self.assertIn("settings.ini: restored", lines)
+        self.assertEqual(_read(t.r.path(G.SETTINGS)), USER_SETTINGS)
+
+    def test_a_settings_file_without_the_line_is_left_alone_and_named(self):
+        t = ToolRig(self.tmp)
+        reply = t.tools.ch_start(t.r.song)
+        self.assertIn("settings.ini: pause_on_focus_lost not set to 0 (no `pause_on_focus_lost` "
+                      "line in the [game] section); the game may pause while it is not in front",
+                      reply.splitlines())
+        self.assertEqual(_read(t.r.path(G.SETTINGS)), ORIGINAL[G.SETTINGS])
+        self.assertEqual(len(t.r.launch.commands), 1)
+
+    def test_ch_status_says_the_count_so_far_and_ch_stop_the_final_count(self):
+        t = ToolRig(self.tmp)
+        self.assertNotIn("foreground", t.tools.ch_status())
+        t.tools.ch_start(t.r.song)
+        watch = t.watches[0]
+        watch.count = 2
+        self.assertIn("foreground went to the game 2 times so far", t.tools.ch_status().splitlines())
+        lines = t.tools.ch_stop().splitlines()
+        self.assertTrue(watch.stopped)
+        self.assertIn("foreground went to the game 2 times", lines)
+        self.assertLess(lines.index("foreground went to the game 2 times"),
+                        lines.index("stopped the game"))
+        self.assertNotIn("foreground", t.tools.ch_status())
+
+    def test_an_adopted_game_starts_no_watch(self):
+        t = ToolRig(self.tmp)
+        t.tools.ensure_backup()
+        self.assertEqual(t.watches, [])
+        self.assertNotIn("foreground", t.tools.shutdown())
+
+    def test_both_backups_carry_the_registry_key_with_the_envs_runner(self):
+        for start in ("ch_start", "ensure_backup"):
+            with self.subTest(start=start):
+                t = ToolRig(os.path.join(self.tmp, start))
+                t.r.env.run_reg = reg = FakeReg()
+                getattr(t.tools, start)(*([t.r.song] if start == "ch_start" else []))
+                self.assertTrue(os.path.isfile(os.path.join(t.backup_dir(), G.REGISTRY_BACKUP)))
+                reg.text = b"the game changed this"
+                self.assertIn("rewired registry: restored", t.tools.ch_stop().splitlines())
+
+
+class HumanStartTest(unittest.TestCase):
+    """ch_start(human=True), ch_status's loader line and ch_stop's detach,
+    on test_bot_run's launch fakes."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = self._tmp.name
+        self.events = []
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def rig(self, agent=None, folder=""):
+        t = ToolRig(os.path.join(self.tmp, folder))
+        agent = agent or FakeLaunchAgent(self.events)
+        wire_human(t.r, agent)
+        return t, agent
+
+    def test_human_with_no_song_folder_is_refused_naming_the_reason(self):
+        t, _agent = self.rig()
+        reply = t.tools.ch_start(human=True)
+        self.assertEqual(reply, B.HUMAN_NEEDS_SONG)
+        self.assertIn("runs only with --song", reply)
+        self.assertIsNone(t.backup_dir())
+        self.assertEqual(self.events, [])
+        self.assertEqual(t.r.launch.commands, [])
+
+    def test_human_takes_the_backup_before_the_paused_start(self):
+        t, agent = self.rig()
+        seen = []
+        fake_start = t.r.env.start_process
+
+        def start(cmd):
+            seen.append([d for d in os.listdir(t.tools._scratch) if d.startswith(G.BACKUP_PREFIX)])
+            return fake_start(cmd)
+
+        t.r.env.start_process = start
+        lines = t.tools.ch_start(t.r.song, player="ProDrums,Expert", human=True).splitlines()
+        self.assertEqual(seen, [[os.path.basename(t.backup_dir())]])
+        self.assertEqual(self.events, ["start", "attach", "load", "arm", "resume", "status"])
+        self.assertIn("game process id: 4242", lines)
+        self.assertIs(t.tools._run.launch.agent, agent)
+        self.assertEqual(t.watches[0].started, True)
+
+    def test_ch_status_prints_the_loader_line_all_three_ways(self):
+        cases = [(dict(loader_runs=1, bytes_at_first_run="BA 00 00 00 00"), "yes"),
+                 (dict(loader_runs=1, bytes_at_first_run="BA 01 00 00 00"), "no"),
+                 (dict(loader_runs=0), "not yet")]
+        for fields, word in cases:
+            with self.subTest(word=word):
+                self.events.clear()
+                later = {**PATCHED, **fields}
+                t, _agent = self.rig(FakeLaunchAgent(self.events, statuses=[PATCHED, later]),
+                                     folder=word)
+                t.tools.ch_start(t.r.song, human=True)
+                lines = t.tools.ch_status().splitlines()
+                self.assertIn("player: human (suspended launch)", lines)
+                self.assertIn(f"loader ran after patch: {word}", lines)
+                self.assertTrue(any(line.startswith("launch patch: patched; at the patch "
+                                                    "BA 01 00 00 00 before and BA 00 00 00 00 after")
+                                    for line in lines), lines)
+                t.tools.ch_stop()
+
+    def test_ch_status_prints_each_of_the_four_states(self):
+        cases = {
+            "idle": ({"state": "idle"}, "the launch agent holds no arm, so it will never patch"),
+            "waiting": ({"state": "waiting", "loader_runs": 0, "reason": None},
+                        "loader ran after patch: not yet"),
+            "patched": (PATCHED, "patched at: 1200 ms on the agent's own clock (Date.now)"),
+            "refused": ({"state": "refused", "before": "BA 01 00 00 00", "after": None,
+                         "loader_runs": 0, "reason": "patching GameAssembly.dll failed: boom"},
+                        "launch agent reason: patching GameAssembly.dll failed: boom"),
+        }
+        for state, (later, want) in cases.items():
+            with self.subTest(state=state):
+                self.events.clear()
+                t, _agent = self.rig(FakeLaunchAgent(self.events, statuses=[PATCHED, later]),
+                                     folder="state-" + state)
+                t.tools.ch_start(t.r.song, human=True)
+                lines = t.tools.ch_status().splitlines()
+                self.assertTrue(any(line.startswith(f"launch patch: {state};") for line in lines),
+                                lines)
+                self.assertIn(want, lines)
+                t.tools.ch_stop()
+
+    def test_ch_status_names_a_status_that_fails(self):
+        t, agent = self.rig()
+        t.tools.ch_start(t.r.song, human=True)
+
+        def failing(message, cap_s):
+            raise FA.ReadFailed(FA.END_DETACHED, "session detached: process-terminated")
+
+        agent.request = failing
+        self.assertIn("launch agent: status failed: session detached: process-terminated",
+                      t.tools.ch_status().splitlines())
+
+    def test_ch_stop_detaches_the_launch_agent_before_it_stops_the_game(self):
+        t, agent = self.rig()
+        t.tools.ch_start(t.r.song, human=True)
+        agent.detach = lambda: (self.events.append(("detach", t.r.game.stopped)), "detached")[1]
+        lines = t.tools.ch_stop().splitlines()
+        self.assertIn(("detach", False), self.events)
+        self.assertLess(lines.index("launch agent: detached"), lines.index("stopped the game"))
+        self.assertTrue(t.r.game.stopped)
+        t.r.assert_all_restored(self)
+
+    def test_a_failed_human_launch_says_so_and_restores_the_files(self):
+        t, _agent = self.rig(FakeLaunchAgent(self.events, statuses=[{"state": "refused"}]))
+        lines = t.tools.ch_start(t.r.song, human=True).splitlines()
+        self.assertTrue(lines[-1].startswith("the human launch failed: launch.ts refused the patch"),
+                        lines)
+        self.assertIn(f"{G.SETTINGS}: unchanged", lines)
+        self.assertIsNone(t.tools._run)
+        self.assertEqual(t.watches, [])
+        t.r.assert_all_restored(self)
 
 
 if __name__ == "__main__":

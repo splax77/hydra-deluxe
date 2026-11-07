@@ -315,7 +315,7 @@ std::vector<std::string> exe_targets_listing(const std::string& cmake, const std
 }
 
 // The compile definition naming an exe target's path in the tests: the
-// user's HYDRA_<TARGET>_EXE (plan, "User decisions", last paragraph).
+// user's HYDRA_<TARGET>_EXE (D299, last paragraph).
 std::string exe_constant(const std::string& target) {
     static const std::string kPrefix = "hydra_";
     std::string name = starts_with(target, kPrefix) ? target.substr(kPrefix.size()) : target;
@@ -427,7 +427,7 @@ private:
     }
 
     // The exe a main file builds and the tests that run it (the user's ruling
-    // in the plan's "User decisions", last paragraph): the first target in
+    // in D299, last paragraph): the first target in
     // CMakeLists.txt listing the file (and no other target), when its constant
     // is defined there and some test names it. Nothing for any other file.
     const ExeTests* exe_for(const std::string& file) {
@@ -575,7 +575,7 @@ private:
     }
 
     // The files whose calls to `callee` can reach the changed function (the
-    // user's ruling in the plan's "User decisions"): the files it changed in,
+    // user's ruling in D299): the files it changed in,
     // and every file that includes a header declaring it, through any chain
     // of includes. A name changed only in a .cpp has no declaring header, so
     // only its own file counts. A declaring header is a changed header
@@ -594,7 +594,7 @@ private:
     }
 
     // The files a test must reach for its mention of `key` to count (the
-    // user's Step 5 ruling in the plan's "User decisions"): every file that
+    // user's Step 5 ruling in D299): every file that
     // reaches a header declaring the key, wherever the key came from. Nothing
     // means the plain-name search: a deleted name, or any source of the key
     // with no declaring header found (see definer_headers). A source that

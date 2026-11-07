@@ -27,6 +27,7 @@
 #include "app/config.h"
 #include "app/dynamics_breakdown.h"
 #include "app/path_view.h"
+#include "app/user_messages.h"  // ScanAsker
 #include "core/rules.h"
 #include "store/record_store.h"
 #include "ui/column_widths.h"
@@ -129,6 +130,9 @@ struct LibraryViewState {
     // only when the selected song changes. Whether and how far it then moves
     // is ui/list_scroll.h's call.
     std::string scrolled_to;
+    // Where the selected row sat on screen last frame, keyed by row_key, so
+    // a change of row height can put it back (ui/list_scroll.h decides).
+    RowPlace row_place;
     // The dmleaderboards picker's name filter.
     char dm_filter[128] = "";
     // The split beside the song panel. The share itself lives in
@@ -167,7 +171,7 @@ struct ViewedSong {
         Cancelled,    // the panel's Cancel stopped it ("Analysis cancelled.")
         Failed,       // `message` and `error` say why
         FileMissing,  // the chart file is gone; the panel's notice says so
-        RulesBroken,  // analysis is off; only the Dynamics count ran
+        AnalysisOff,  // analysis is off; only the Dynamics count ran
     };
     State state = State::None;
     std::optional<HydraRecord> record;     // set only when Ready
@@ -182,7 +186,7 @@ struct ViewedSong {
     std::string message;
     std::string error;
     // The Dynamics count, or why it failed. Set in every state the job
-    // finished in, RulesBroken included.
+    // finished in, AnalysisOff included.
     std::optional<app::DynamicsBreakdown> dynamics;
     std::string dynamics_message;
     std::string dynamics_error;
@@ -214,11 +218,10 @@ struct ReportSlot {
     // An out-of-date event that landed while a build was running. That build
     // read the old library or settings, so its result starts out of date.
     ReportOutOfDate out_of_date_during_build = ReportOutOfDate::None;
-    // `result` was built because its window opened with nothing in memory,
-    // as after a close let the rows go (D103 item 28). The window then keeps
-    // the search, timing, Optimal paths only and sort the user left; a result
-    // from Refresh or a batch starts them over. The path report only;
-    // AppState::collect_path_report sets it.
+    // `result` was built because its window opened with nothing in memory.
+    // The window then keeps the search, timing, Optimal paths only and sort
+    // the user left; a result from Refresh or a batch starts them over. The
+    // path report only; AppState::collect_path_report sets it.
     bool built_on_open = false;
 
     // A build stopped by Cancel. The outcome reads Cancelled, and an
@@ -236,10 +239,12 @@ using PathReportSlot = ReportSlot<app::report::GeneratedReport>;
 using DmReportSlot = ReportSlot<app::dm_report::GeneratedDmReport>;
 
 // What the app reads before it opens the store: the settings, with
-// hydra_rules.ini already loaded, and the loader's error if the file was bad.
+// hydra_rules.ini already loaded, and each loader's error if its file was
+// bad. A bad hydra_settings.ini leaves `settings` default-constructed.
 struct StartupSettings {
     app::Settings settings;
     std::string rules_error;
+    std::string settings_error;
 };
 
 class AppState {
@@ -277,7 +282,8 @@ public:
     // here.
     const std::string& startup_notice() const { return startup_notice_; }
     // The box has closed: forgets the sentence and asks for the scan the
-    // fresh library needs (request_scan), so the scan starts after the box.
+    // fresh library needs, the way the open asks for an out-of-date library's
+    // (request_rescan_on_open), so the scan starts after the box.
     // Does nothing when no sentence is waiting.
     void startup_notice_closed();
     // Where the startup open is, for the startup screen. A default progress
@@ -293,13 +299,24 @@ public:
     void wait_store_open();
     // Set at startup when hydra_rules.ini is bad (the loader's message, which
     // names the key). While set, analysis is off: start_batch does nothing
-    // and a click counts only the Dynamics (ViewedSong::State::RulesBroken).
+    // and a click counts only the Dynamics (ViewedSong::State::AnalysisOff).
     // It clears only on a restart with a fixed file; there is no fallback to
     // the default rules.
     std::string rules_error;
-    // What the screens say above rules_error while analysis is off:
-    // app::kAnalysisOffSentence (D103 item 24, D114 item 11).
-    bool analysis_blocked() const { return !rules_error.empty(); }
+    // Set at startup when hydra_settings.ini is bad (the loader's message,
+    // which names the file, the key and the value). While set, Hydra runs on
+    // a default-constructed Settings, analysis is off as for rules_error, no
+    // scan starts (can_scan) and save_settings writes nothing, so the file is
+    // never touched (D276 item 1). It clears only on a restart with a fixed
+    // file.
+    std::string settings_error;
+    // Whether either file is bad, which turns analysis off.
+    bool analysis_blocked() const { return !rules_error.empty() || !settings_error.empty(); }
+    // What the screens show while analysis is off: for each bad file, its
+    // sentence from app/user_messages.h and the loader's error, the settings
+    // file first (D103 item 24, D114 item 11, D276 item 1). Empty when
+    // analysis is on.
+    std::vector<AnalysisOffLine> analysis_off_lines() const;
 
     // Library browsing: every scanned chart in memory, with its stored
     // summary, filtered by the search and the status chip and sorted by the
@@ -313,15 +330,18 @@ public:
     // Re-reads every chart and summary: at startup and after a scan. The open
     // song panel's entry follows its row (follow_selected_row).
     void reload_library();
-    // Re-reads every row's summary: after a settings change or a batch step.
+    // Re-reads every row's summary and sorts on them at once: after a
+    // settings change.
     void refresh_library_summaries();
-    // Re-reads one chart's summary: after one song's analysis is stored, and
-    // for the open chart on each batch refresh. True when its row changed.
+    // Re-reads one chart's summary: after one song's analysis is stored. Its
+    // row keeps its place until the next re-sort
+    // (LibraryModel::sort_if_out_of_date). True when its row changed.
     bool refresh_library_row(const std::string& md5);
     // Once per frame, from the library pane: reloads after a scan finishes,
     // and re-reads summaries while a batch runs -- at most once per
     // kBatchRefreshSeconds, and only when the batch stored something since
-    // the last look.
+    // the last look. Those reads leave the rows in place; the list sorts once
+    // when the batch ends.
     void tick_library(double now);
 
     // The rows on screen, in order, as indices into library.rows().
@@ -496,13 +516,14 @@ public:
     // line's, and the greyed Scan and Analyze buttons' tooltip (D51 call 24,
     // D114 item 12).
     static constexpr const char* kBatchRunningStatus = "A batch is running.";
-    // Whether a library scan may start now: there are song folders, no scan
-    // job is held (its modal is still up until Continue), and no batch is
-    // running. start_scan enforces it; the toolbar button reads it.
+    // Whether a library scan may start now (the conditions are in its body;
+    // settings_error is one, because a scan rewrites the saved library).
+    // start_scan enforces it; the toolbar button reads it.
     bool can_scan() const;
-    // Whether a batch may start now, whatever it would cover: hydra_rules.ini
-    // is good and no batch is running. start_batch enforces it; the toolbar's
-    // Analyze button and the confirm's Start read it. Each screen asks its own
+    // Whether a batch may start now, whatever it would cover: analysis is not
+    // blocked (analysis_blocked) and no batch is running. start_batch
+    // enforces it; the toolbar's Analyze button and the confirm's Start read
+    // it. Each screen asks its own
     // "is there anything to analyze?" on top, because they count different
     // things (matched rows, rows still to do).
     bool can_analyze() const;
@@ -517,7 +538,8 @@ public:
     // Once per frame, before any view draws (run_frame). Collects the
     // startup open once it finishes. Owns the panel's
     // closing edge and the click's job: saving its summary, re-identifying
-    // an edited chart, and showing its result. `now` is ImGui::GetTime() in
+    // an edited chart, and showing its result. Opens the path report that
+    // open_path_report_once_shown asked for. `now` is ImGui::GetTime() in
     // the app.
     void tick(double now);
 
@@ -539,7 +561,7 @@ public:
     ReportBuild dm_report_build() const;
 
     // Builds the path report under the current settings, analyzing first
-    // (plan 2026-10-15, question 8). It plans a batch over every library row;
+    // (D249 item 8). It plans a batch over every library row;
     // when that plan has rows to run, the batch runs (once the report window
     // asks and the user answers Analyze, when there are more than
     // report_confirm_above rows) and the report builds when it finishes, as
@@ -560,23 +582,29 @@ public:
     // results already stored.
     void cancel_path_report();
     // Opens the path report window: the toolbar's "Open path report", the
-    // finished strip's "Open report". With nothing in memory (never built
-    // this session, or let go by close_path_report) it requests a build whose
-    // result keeps the window's filters (ReportSlot::built_on_open).
+    // finished strip's "Open report". With nothing built this session it
+    // requests a build whose result keeps the window's filters
+    // (ReportSlot::built_on_open); otherwise it shows the slot as it is.
     void show_path_report();
-    // Closes the path report window (D103 item 28): its X, Esc and Ctrl+W
-    // all come here, through the window's close callback. The rows go, a
-    // build still running stops as its Cancel stops it and never lands, and
-    // the slot starts over as never built, so the next show_path_report
-    // builds again. A batch the report waited on keeps running, with its
-    // strip; its finish builds the report as any batch's does. A question
-    // the window was asking goes with it: nothing runs, and no confirm opens
-    // in the main window.
+    // Closes the path report window (D271 item 7): its X, Esc and Ctrl+W
+    // all come here, through the window's close callback. It only hides the
+    // window, as the comparison's close does: the rows, the outcome and a
+    // build or batch wait still running all stay. A question the window was
+    // asking ends as a "no" (D276 item 6): nothing runs, no confirm opens in
+    // the main window, and a reopen with nothing built asks again.
     void close_path_report();
     // Whether the toolbar offers "Open path report" with nothing built: the
     // library has rows and analysis is on, since opening is how a library is
     // analyzed for the report.
     bool path_report_offered() const;
+    // Whether the main window's toolbar shows its path report button this
+    // frame. The toolbar and open_path_report_once_shown both ask here.
+    bool path_report_button_shown() const;
+    // `Hydra.exe --open-report`, a testing aid (docs/agents/ui-testing.md):
+    // the first tick() at which path_report_button_shown holds opens the
+    // window through show_path_report, as a click on the button would. It
+    // opens once per call; a close afterwards stays closed.
+    void open_path_report_once_shown();
     // More rows to run than this and opening the report asks first, in the
     // report window itself (the user's answer 8, 2026-10-15).
     static constexpr int kReportConfirmAbove = 500;
@@ -694,7 +722,8 @@ public:
     bool request_scan = false;
     // True while the scan the app asked for on open (request_rescan_on_open)
     // is pending or its dialog is up: the Scanning charts dialog then opens
-    // with app::library_rescan_notice. The dialog clears it when it closes.
+    // with app::library_rescan_notice, and a refusal of that scan is worded
+    // for app::ScanAsker::Open. The dialog clears it when it closes.
     bool scan_started_by_open = false;
 
     // The status line under the toolbar. set_status is news ("Path report
@@ -713,11 +742,12 @@ public:
     // persisted when they weren't) and then refresh whatever the change
     // invalidated.
     //
-    // This is the single place that knows which settings change a record's
-    // identity — the chart mode, the SP cap, and the lens (the ms limit and
-    // the score range a result ran under). Every widget just mutates
-    // `settings` and calls this, so none of them can forget a refresh. That
-    // forgetting is exactly the bug class here: the 1.5.1 SP-cap crash came
+    // It decides nothing itself: Settings::profile() says which settings name
+    // a chart's record, and each report's settings_change_touches says which
+    // changes reach that report; this compares and asks them. Every widget
+    // just mutates `settings` and calls this, so none of them can forget a
+    // refresh. That forgetting is exactly the bug class here: the 1.5.1 SP-cap
+    // crash came
     // from this path, and the Pro Drums / 2x Bass checkboxes used to refresh
     // the library page while leaving `viewed` pointing at the old record.
     void commit_settings();
@@ -777,23 +807,31 @@ public:
 
 private:
     explicit AppState(StartupSettings start);
+    // The injecting form's work, with settings_error set before it starts:
+    // start_updates saves, and save_settings must already know the file was
+    // refused.
+    AppState(app::Settings settings, std::unique_ptr<store::RecordStore> store,
+             std::string settings_error);
 
     // Moves a finished startup open into place: the store and library, or
     // the failure. tick() and wait_store_open() both collect through it.
     void collect_store_open();
-    // The opened library's scan is out of date (StoreOpenJob::rescan_needed):
-    // asks for a scan (request_scan, scan_started_by_open), or asks for
-    // nothing when scan_blocked_by_missing_folder says no.
+    // The scan the app starts on its own at open: for a library whose scan is
+    // out of date (StoreOpenJob::rescan_needed), and for the fresh library
+    // after the set-aside box (startup_notice_closed). Asks for a scan
+    // (request_scan, scan_started_by_open), or asks for nothing when
+    // scan_blocked_by_missing_folder says no.
     void request_rescan_on_open();
-    // The one check that a chart folder cannot be read, which every scan
-    // makes before it starts (request_rescan_on_open, start_scan). A scan
-    // over a folder it cannot list would write a library without that
-    // folder's charts and drop their results (D266). When one is missing it
-    // sets the status line's problem (app::library_rescan_blocked_notice)
-    // and returns true.
-    bool scan_blocked_by_missing_folder();
+    // Asks app::first_missing_chart_folder before every scan starts
+    // (request_rescan_on_open, start_scan). When it names a folder, this sets
+    // the status line's problem to app::library_scan_blocked_notice for the
+    // scan `asker` asked for, and returns true.
+    bool scan_blocked_by_missing_folder(app::ScanAsker asker);
     std::exception_ptr store_open_error_;
     std::string startup_notice_;  // what startup_notice returns
+    // Set by open_path_report_once_shown; tick() clears it when it opens the
+    // window.
+    bool open_report_when_shown_ = false;
 
     // The click's job lifecycle on the UI thread: drop a late result, then
     // re-identify an edited chart, save the summary when needed and show the
@@ -894,6 +932,7 @@ private:
 
     // An edit_settings change the INI does not have yet.
     bool settings_unsaved_ = false;
+    // The one writer of the INI. Writes nothing while settings_error is set.
     void save_settings();
     // The refresh half of commit_settings.
     void apply_settings();
@@ -902,12 +941,17 @@ private:
     // every frame; a click, previous / next and the batch confirm run it
     // first, so none of them reads rows older than the store.
     bool reload_after_scan();
+    // Re-reads every row's summary and leaves the rows in place. A failed
+    // read is the status line's problem.
+    void read_summaries_in_place();
     // reload_after_scan's memory: whether the current scan's result was read
     // yet. Then tick_library's: the batch's stored count and time at the last
-    // summary read.
+    // summary read, and whether the latest batch still owes the list its one
+    // sort at the end.
     bool scan_reloaded_ = true;
     int batch_seen_completed_ = 0;
     double batch_refreshed_at_ = -1.0;
+    bool batch_end_sort_due_ = false;
 
     // The updater's start-up work, which both constructors run.
     void start_updates();

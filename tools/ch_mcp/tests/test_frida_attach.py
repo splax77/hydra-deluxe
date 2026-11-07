@@ -1,5 +1,7 @@
 """Tests for frida_attach: the attach runner detaches on every path, the clock
-summary is right, and the Frida agents contain nothing that writes to the game.
+summary is right, the Frida agents read fields by name and never by raw
+offset, and every game method an agent calls is named in that agent's own
+ALLOWED_CALLS list.
 
 No game and no Frida: a fake frida module hands back a fake session whose
 script delivers hand-written messages, and a fake wait returns at once.
@@ -23,40 +25,120 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 from tools.ch_mcp import frida_attach as FA  # noqa: E402
+from tools.ch_mcp.tests import test_launch_core as LC  # noqa: E402
 from tools.ch_probe.constants import PROCESS_NAME  # noqa: E402
 
 AGENT_DIR = os.path.join(_REPO_ROOT, "tools", "ch_mcp", "agent")
 
-# ---- the no-writes check ------------------------------------------------
+# ---- the by-name check ----------------------------------------------------
 # The one list of what an agent script may never contain, each with why.
-# Task D's tests call no_write_findings over trace.ts with this same list.
-NO_WRITE_PATTERNS = (
-    (r"Memory\.write", "writes game memory"),
-    (r"\.write[A-Z]\w*\(", "writes game memory through a pointer"),
-    (r"Memory\.(patchCode|protect|copy)\b",
-     "changes game memory, code or page rights"),
-    (r"\.value\s*(?:\+\+|--|(?:[-+*/%&|^]|<<|>>>?|\*\*|&&|\|\||\?\?)?=(?![=>]))",
-     "sets a field"),
-    (r"\.invoke\(", "calls a game method"),
-    (r"new\s+NativeFunction\b", "calls a game function"),
-    (r"\.implementation\s*=(?!=)", "replaces a game method"),
-    (r"Interceptor\.replace", "replaces a game function"),
-    (r"\bretval\.replace\(", "changes a return value"),
-    (r"\bargs\[[^\]]+\]\s*=(?![=>])", "changes a call argument"),
-    (r"\b(?:\w+\.)?(?:context|ctx)\.\w+\s*=(?![=>])", "changes a register"),
+# Writes and method calls are allowed (the user's rulings 2 and 5 of
+# 2026-10-30, D272); reading by raw offset is not. test_trace_hits.py calls
+# by_name_only_findings over trace.ts with this same list.
+BY_NAME_ONLY_PATTERNS = (
     (r"add\(0x", "reads by offset, not by field name"),
 )
 
 
-def no_write_findings(text: str) -> list[tuple[int, str, str]]:
-    """Every line of an agent script that matches NO_WRITE_PATTERNS, as
+def by_name_only_findings(text: str) -> list[tuple[int, str, str]]:
+    """Every line of an agent script that matches BY_NAME_ONLY_PATTERNS, as
     (line number, line, why)."""
     found = []
     for n, line in enumerate(text.splitlines(), start=1):
-        for pattern, why in NO_WRITE_PATTERNS:
+        for pattern, why in BY_NAME_ONLY_PATTERNS:
             if re.search(pattern, line):
                 found.append((n, line.strip(), why))
     return found
+
+
+# ---- the allowed-calls check ----------------------------------------------
+# Every game method an agent calls is named in that file's own ALLOWED_CALLS
+# literal. CALL_SITES is how many `.invoke(` sites each agent holds; a file
+# with no entry holds none. LISTED_AGENTS are the files allowed a list, and
+# each one's list is pinned by a test below: menu.ts's to its names, kit.ts's
+# to KIT_METHODS.
+MENU_AGENT = "menu.ts"
+KIT_AGENT = "kit.ts"
+CALL_SITES = {MENU_AGENT: 1, KIT_AGENT: 43}
+# How many `new NativeFunction` sites each agent holds; a file with no entry
+# holds none. kit.ts's one is setup's LoadMap, which .invoke cannot call
+# (docs/clone-hero/07-internals.md, IN-76); its method is still looked up by
+# a literal name from ALLOWED_CALLS.
+NATIVE_SITES = {KIT_AGENT: 1}
+LISTED_AGENTS = (MENU_AGENT, KIT_AGENT)
+KIT_METHODS = os.path.join(_REPO_ROOT, "tools", "ch_mcp", "kit_methods.json")
+# A method looked up by name, with an optional type argument; group 2 is the
+# name when it is a string literal.
+_METHOD_LOOKUP = re.compile(r"\.(?:method|tryMethod)\s*(?:<[^>]*>)?\s*\(\s*(?:([\"'])(\w+)\1)?")
+_INVOKE = re.compile(r"\.invoke\(")
+_NATIVE_FUNCTION = re.compile(r"new\s+NativeFunction\b")
+_ALLOWED_LIST = re.compile(r"ALLOWED_CALLS\s*=\s*\[([^\]]*)\]")
+
+
+def allowed_calls(agent_text: str) -> list[str]:
+    """The names in one agent's ALLOWED_CALLS literal, or [] for none."""
+    match = _ALLOWED_LIST.search(agent_text)
+    if match is None:
+        return []
+    return re.findall(r"[\"'](\w+)[\"']", match.group(1))
+
+
+def call_findings(texts: dict[str, str]) -> list[str]:
+    """Every call in `texts` (agent file name -> its text) that the file's
+    own allowed list does not cover: a method looked up by a name outside
+    that file's ALLOWED_CALLS or by a name that is not a literal, a
+    NativeFunction past the count NATIVE_SITES gives the file, or a count of
+    `.invoke(` sites other than CALL_SITES gives the file."""
+    found = []
+    for name, text in sorted(texts.items()):
+        allowed = set(allowed_calls(text))
+        if _ALLOWED_LIST.search(text) and name not in LISTED_AGENTS:
+            found.append(f"{name}: holds an ALLOWED_CALLS list, and only "
+                         f"{', '.join(LISTED_AGENTS)} may")
+        invokes = 0
+        natives = 0
+        for n, line in enumerate(text.splitlines(), start=1):
+            for m in _METHOD_LOOKUP.finditer(line):
+                if m.group(2) is None:
+                    found.append(f"{name}:{n}: a method looked up by a name "
+                                 f"that is not a literal: {line.strip()}")
+                elif m.group(2) not in allowed:
+                    found.append(f"{name}:{n}: {m.group(2)} is not in "
+                                 f"{name}'s ALLOWED_CALLS")
+            for _ in _NATIVE_FUNCTION.finditer(line):
+                natives += 1
+                if natives > NATIVE_SITES.get(name, 0):
+                    found.append(f"{name}:{n}: calls a game function: {line.strip()}")
+            invokes += len(_INVOKE.findall(line))
+        if invokes != CALL_SITES.get(name, 0):
+            found.append(f"{name}: {invokes} .invoke( sites, expected "
+                         f"{CALL_SITES.get(name, 0)}")
+    return found
+
+
+def kit_methods_findings(kit_text: str, data: dict) -> list[str]:
+    """Every difference between kit.ts's ALLOWED_CALLS and the method names
+    in kit_methods.json (`data`), each way, plus any name either one lists
+    twice."""
+    listed = allowed_calls(kit_text)
+    named = [m["name"] for m in data["methods"]]
+    found = []
+    for name in sorted(set(listed) - set(named)):
+        found.append(f"{name} is in {KIT_AGENT}'s ALLOWED_CALLS but not in "
+                     "kit_methods.json")
+    for name in sorted(set(named) - set(listed)):
+        found.append(f"{name} is in kit_methods.json but not in "
+                     f"{KIT_AGENT}'s ALLOWED_CALLS")
+    for what, names in ((f"{KIT_AGENT}'s ALLOWED_CALLS", listed),
+                        ("kit_methods.json", named)):
+        for name in sorted({n for n in names if names.count(n) > 1}):
+            found.append(f"{name} is listed twice in {what}")
+    return found
+
+
+def load_kit_methods() -> dict:
+    with open(KIT_METHODS, encoding="utf-8") as fh:
+        return json.load(fh)
 
 
 def agent_sources() -> list[str]:
@@ -451,6 +533,34 @@ class LiveAgentTest(Workspace):
         # Both still reach the log.
         self.assertEqual(self.written()[-2:], [sent(stale), sent(fresh)])
 
+    def test_request_posts_any_message_with_an_id(self):
+        late = {**STATE, "id": 1}
+        reply = {"switch_was": True, "id": 2}
+        agent, session = self.started([STATE, [sent(late), sent(reply)]])
+        self.assertEqual(agent.request({"type": "setup", "tag": "hydra-kit"}, 10.0),
+                         {"switch_was": True})
+        self.assertEqual(session.script.posted[-1],
+                         {"type": "setup", "tag": "hydra-kit", "id": 2})
+        # The late reply to the first read is logged and dropped.
+        self.assertEqual(self.written()[-2:], [sent(late), sent(reply)])
+
+    def test_a_request_with_no_reply_names_its_type_and_the_cap(self):
+        agent, _ = self.started([STATE, None])
+        with self.assertRaises(FA.ReadFailed) as caught:
+            agent.request({"type": "press"}, 1.0)
+        self.assertEqual(str(caught.exception),
+                         "no reply to the press request within the cap of 1 s")
+        self.assertEqual(caught.exception.reason, FA.END_CAP)
+
+    def test_a_request_that_brings_its_own_id_or_no_type_is_refused(self):
+        agent, session = self.started([STATE])
+        for bad in ({"type": "setup", "id": 7}, {"tag": "hydra-kit"},
+                    {"type": 3}, ["setup"]):
+            with self.subTest(message=bad):
+                with self.assertRaises(ValueError):
+                    agent.request(bad, 1.0)
+        self.assertEqual(len(session.script.posted), 1)
+
     def test_read_after_the_game_closes_names_the_reason(self):
         agent, session = self.started([STATE, STATE])
         session.handlers["detached"]("process-terminated", None)
@@ -506,6 +616,17 @@ class LiveAgentTest(Workspace):
                          "reading GameManager failed: boom")
         self.assertEqual(caught.exception.reason, FA.END_AGENT_ERROR)
 
+    def test_an_agent_error_carries_its_whole_reply(self):
+        agent, _ = self.started(
+            [STATE, {"error": "setup failed: boom", "fault": {"type": "access-violation"}}])
+        with self.assertRaises(FA.ReadFailed) as caught:
+            agent.read(5.0)
+        self.assertEqual(caught.exception.reply,
+                         {"error": "setup failed: boom", "fault": {"type": "access-violation"}})
+
+    def test_a_failure_with_no_reply_carries_none(self):
+        self.assertIsNone(FA.ReadFailed(FA.END_CAP, "no reply").reply)
+
     def test_a_script_exception_fails_the_read(self):
         agent, _ = self.started(
             [STATE, [{"type": "error", "description": "TypeError: boom"}]])
@@ -545,6 +666,34 @@ class LiveAgentTest(Workspace):
         self.assertEqual(self.lines, ["detach reported: session is gone"])
         session.script.handlers["message"](sent(MENU), None)
         self.assertEqual(self.written(), [sent({**STATE, "id": 1})])
+
+    def test_a_pid_attaches_to_that_process(self):
+        session = ReplySession([STATE])
+        frida = FakeFrida(session)
+        agent = FA.LiveAgent(self.agent, log_path=self.out_path, pid=1234,
+                             frida_mod=frida, wait=instant_wait,
+                             out=self.lines.append)
+        self.addCleanup(agent.detach)
+        self.assertEqual(agent.start(30.0), STATE)
+        self.assertEqual(frida.attached_to, [1234])
+
+    def test_no_pid_attaches_by_the_process_name(self):
+        frida = FakeFrida(ReplySession([STATE]))
+        self.live(frida).start(30.0)
+        self.assertEqual(frida.attached_to, [PROCESS_NAME])
+
+    def test_a_pid_that_is_not_running_names_the_pid(self):
+        frida = FakeFrida(None)
+        agent = FA.LiveAgent(self.agent, log_path=self.out_path, pid=1234,
+                             frida_mod=frida, wait=instant_wait,
+                             out=self.lines.append)
+        with self.assertRaises(FA.AttachFailed) as caught:
+            agent.start(30.0)
+        self.assertEqual(str(caught.exception),
+                         "process 1234 is not running; nothing attached")
+        self.assertEqual(caught.exception.reason, FA.END_NOT_RUNNING)
+        self.assertEqual(frida.attached_to, [1234])
+        self.assertFalse(os.path.exists(self.out_path))
 
     def test_read_before_start_says_nothing_is_attached(self):
         agent = self.live(FakeFrida(ReplySession([STATE])))
@@ -650,35 +799,22 @@ class SummaryTest(unittest.TestCase):
 
 # ---- the agents ---------------------------------------------------------------
 
-class NoWritesTest(unittest.TestCase):
+class ByNameOnlyTest(unittest.TestCase):
     def test_the_check_catches_every_pattern(self):
         # Without this, a broken pattern would let every agent pass.
         bad = [
-            "Memory.writeDouble(p, 1);",
-            "p.writeU8(1);",
-            "Memory.protect(p, 4096, 'rwx');",
-            "gm.field('songTime').value = 0;",
-            "gm.method('Stop').invoke();",
-            "const f = new NativeFunction(p, 'void', []);",
-            "klass.method('Hit').implementation = function () {};",
-            "Interceptor.replace(p, cb);",
             "gm.handle.add(0x70).readDouble();",
-            "Memory.copy(dst, src, 8);",
-            "gm.field('count').value += 1;",
-            "gm.field('count').value++;",
-            "gm.field('flag').value ??= true;",
-            "retval.replace(ptr(0));",
-            "args[0] = ptr(0);",
-            "args[slot] = ptr(0);",
-            "this.context.rax = ptr(0);",
-            "ctx.xmm0 = buf;",
         ]
         for line in bad:
             with self.subTest(line=line):
-                self.assertTrue(no_write_findings(line))
+                self.assertTrue(by_name_only_findings(line))
 
     def test_reads_and_comparisons_pass(self):
         ok = [
+            # Method calls and field sets are allowed (rulings 2 and 5).
+            "gm.method('Stop').invoke();",
+            "gm.field('count').value = 1;",
+            "Memory.writeU8(p, 1);",
             "const t = gm.field<number>('songTime').value;",
             "if (f.value === true) {}",
             "if (f.value == 1) {}",
@@ -695,16 +831,150 @@ class NoWritesTest(unittest.TestCase):
         ]
         for line in ok:
             with self.subTest(line=line):
-                self.assertEqual(no_write_findings(line), [])
+                self.assertEqual(by_name_only_findings(line), [])
 
-    def test_no_agent_writes_to_the_game(self):
+    def test_no_agent_reads_by_offset(self):
         sources = agent_sources()
         self.assertIn(os.path.join(AGENT_DIR, "clock.ts"), sources)
         self.assertIn(os.path.join(AGENT_DIR, "state.ts"), sources)
+        self.assertIn(os.path.join(AGENT_DIR, MENU_AGENT), sources)
+        self.assertIn(os.path.join(AGENT_DIR, KIT_AGENT), sources)
         for path in sources:
             with self.subTest(agent=os.path.basename(path)):
                 with open(path, encoding="utf-8") as fh:
-                    self.assertEqual(no_write_findings(fh.read()), [])
+                    self.assertEqual(by_name_only_findings(fh.read()), [])
+
+
+class AllowedCallsTest(unittest.TestCase):
+    MENU_TEXT = ('export const ALLOWED_CALLS = ["get_activeInHierarchy"];\n'
+                 'return o.method<boolean>("get_activeInHierarchy").invoke();\n')
+
+    @staticmethod
+    def real_texts():
+        texts = {}
+        for path in agent_sources():
+            with open(path, encoding="utf-8") as fh:
+                texts[os.path.basename(path)] = fh.read()
+        return texts
+
+    def test_agent_calls_only_named_methods(self):
+        texts = self.real_texts()
+        self.assertEqual(allowed_calls(texts[MENU_AGENT]),
+                         ["get_activeInHierarchy", "get_gameObject"])
+        self.assertEqual(call_findings(texts), [])
+
+    def test_only_the_listed_agents_hold_a_list(self):
+        held = sorted(name for name, text in self.real_texts().items()
+                      if _ALLOWED_LIST.search(text))
+        self.assertEqual(held, sorted(LISTED_AGENTS))
+        texts = {"other.ts": 'export const ALLOWED_CALLS = ["SetActive"];\n'}
+        self.assertEqual(call_findings(texts), [
+            f"other.ts: holds an ALLOWED_CALLS list, and only "
+            f"{MENU_AGENT}, {KIT_AGENT} may"])
+
+    def test_a_method_outside_the_list_fails(self):
+        texts = {MENU_AGENT: self.MENU_TEXT,
+                 "other.ts": 'go.method("SetActive");\n'}
+        self.assertEqual(call_findings(texts),
+                         ["other.ts:1: SetActive is not in other.ts's ALLOWED_CALLS"])
+
+    def test_a_name_on_another_files_list_fails(self):
+        # Each file's list covers that file only.
+        texts = {MENU_AGENT: self.MENU_TEXT,
+                 "other.ts": 'go.method("get_activeInHierarchy");\n'}
+        self.assertEqual(call_findings(texts), [
+            "other.ts:1: get_activeInHierarchy is not in other.ts's ALLOWED_CALLS"])
+
+    def test_kit_calls_match_the_data_file(self):
+        data = load_kit_methods()
+        kit = self.real_texts()[KIT_AGENT]
+        self.assertEqual(kit_methods_findings(kit, data), [])
+        for entry in data["methods"]:
+            with self.subTest(method=entry["name"]):
+                self.assertIsInstance(entry["dump_line"], int)
+                self.assertTrue(entry["image"])
+                self.assertTrue(entry["class"])
+                self.assertIn(f" {entry['name']}(", entry["signature"])
+
+    def test_kit_loads_the_map_by_category_and_layout(self):
+        # The plan docs/superpowers/plans/2026-10-31-ch-mcp-kit-map-and-network-block.md,
+        # task M1: LoadMap's five-argument form replaces LoadDefaultMaps.
+        kit = self.real_texts()[KIT_AGENT]
+        self.assertNotIn("LoadDefaultMaps", kit)
+        self.assertEqual(kit.count('"LoadMap", 5'), 1)
+
+    def test_kit_load_map_passes_the_method_pointer(self):
+        # docs/clone-hero/07-internals.md, IN-76: the LoadMap stub writes the
+        # slot of its hidden method pointer, which the bridge's .invoke does
+        # not pass for a non-generic method. The call is the one NativeFunction
+        # in kit.ts; it ends with the overload's own handle and is no .invoke.
+        kit = self.real_texts()[KIT_AGENT]
+        start = kit.index('.method("LoadMap", 5)')
+        call = kit[start:kit.index(";", start)]
+        self.assertNotIn(".invoke(", call)
+        self.assertEqual(len(_NATIVE_FUNCTION.findall(kit)), 1)
+        self.assertIn('["pointer", ...loadMap.parameters.map((p) => p.type.fridaAlias), '
+                      '"pointer"];', kit)
+        self.assertIn("new NativeFunction(loadMap.virtualAddress,\n"
+                      "        loadMap.returnType.fridaAlias as NativeFunctionReturnType, "
+                      "loadMapTypes)", kit)
+        self.assertIn("loadMapCall(maps.handle,\n", kit)
+        self.assertIn("    loadMap.handle);", kit)
+
+    def test_a_kit_list_that_lacks_a_name_it_calls_fails(self):
+        kit = ('export const ALLOWED_CALLS = ["get_id"];\n'
+               'p.method<number>("get_id");\np.method("get_name");\n')
+        findings = call_findings({KIT_AGENT: kit})
+        self.assertIn(f"{KIT_AGENT}:3: get_name is not in {KIT_AGENT}'s "
+                      "ALLOWED_CALLS", findings)
+
+    def test_a_kit_list_name_the_data_file_lacks_fails(self):
+        data = {"methods": [{"name": "get_id"}]}
+        kit = 'export const ALLOWED_CALLS = ["get_id", "SetActive"];\n'
+        self.assertEqual(kit_methods_findings(kit, data), [
+            f"SetActive is in {KIT_AGENT}'s ALLOWED_CALLS but not in "
+            "kit_methods.json"])
+
+    def test_a_data_file_name_the_kit_list_lacks_fails(self):
+        data = {"methods": [{"name": "get_id"}, {"name": "get_name"}]}
+        kit = 'export const ALLOWED_CALLS = ["get_id"];\n'
+        self.assertEqual(kit_methods_findings(kit, data), [
+            f"get_name is in kit_methods.json but not in {KIT_AGENT}'s "
+            "ALLOWED_CALLS"])
+
+    def test_one_more_invoke_in_kit_ts_fails(self):
+        texts = {KIT_AGENT: self.real_texts()[KIT_AGENT] + "m.invoke();\n"}
+        self.assertEqual(call_findings(texts), [
+            f"{KIT_AGENT}: {CALL_SITES[KIT_AGENT] + 1} .invoke( sites, "
+            f"expected {CALL_SITES[KIT_AGENT]}"])
+
+    def test_an_invoke_in_a_second_file_fails(self):
+        texts = {MENU_AGENT: self.MENU_TEXT,
+                 "other.ts": "m.invoke();\n"}
+        self.assertEqual(call_findings(texts),
+                         ["other.ts: 1 .invoke( sites, expected 0"])
+
+    def test_a_second_invoke_in_menu_ts_fails(self):
+        texts = {MENU_AGENT: self.MENU_TEXT + "m.invoke();\n"}
+        self.assertEqual(call_findings(texts),
+                         [f"{MENU_AGENT}: 2 .invoke( sites, expected 1"])
+
+    def test_a_lookup_by_a_name_that_is_not_a_literal_fails(self):
+        texts = {MENU_AGENT: self.MENU_TEXT,
+                 "other.ts": "o.tryMethod(name);\n"}
+        self.assertEqual(len(call_findings(texts)), 1)
+
+    def test_a_native_function_fails(self):
+        texts = {MENU_AGENT: self.MENU_TEXT,
+                 "other.ts": "const f = new NativeFunction(p, 'void', []);\n"}
+        self.assertEqual(len(call_findings(texts)), 1)
+
+    def test_a_second_native_function_in_kit_ts_fails(self):
+        line = "const f = new NativeFunction(p, 'void', []);"
+        texts = {KIT_AGENT: self.real_texts()[KIT_AGENT] + line + "\n"}
+        findings = call_findings(texts)
+        self.assertEqual(len(findings), 1)
+        self.assertTrue(findings[0].endswith(f": calls a game function: {line}"))
 
 
 class DestroyedSkipTest(unittest.TestCase):
@@ -720,11 +990,166 @@ class DestroyedSkipTest(unittest.TestCase):
         self.assertIn("field<NativePointer>(NATIVE_OBJECT_FIELD).value.isNull()", text)
         self.assertNotIn(".method(", text)
 
+    def test_only_gamemanager_ts_names_the_native_object_field(self):
+        # One owner for "is this Unity object destroyed": the other agents
+        # import isDestroyed and never name the field themselves.
+        for path in agent_sources():
+            name = os.path.basename(path)
+            if name == "gamemanager.ts":
+                continue
+            with self.subTest(agent=name):
+                self.assertNotIn("m_CachedPtr", self.read(name))
+        self.assertIn("export function isDestroyed(", self.read("gamemanager.ts"))
+        self.assertIn("isDestroyed", self.read("menu.ts"))
+
     def test_the_state_agent_sends_the_destroyed_count_in_both_replies(self):
         text = self.read("state.ts")
         self.assertIn("lookUpGameManager()", text)
         self.assertIn("destroyed: found.destroyed", text)
         self.assertIn("        destroyed,\n", text)
+
+
+LAUNCH_AGENT = "launch.ts"
+LAUNCH_CORE = "launch_core.ts"
+# A top-level function and its body, up to the first line that is a lone `}`.
+_TOP_FUNCTION = re.compile(r"^(?:async\s+)?function\s+(\w+)\s*\(.*?^\}",
+                           re.MULTILINE | re.DOTALL)
+# A number written in hex, as an address would be.
+_HEX_LITERAL = re.compile(r"\b0x[0-9A-Fa-f]+\b")
+
+
+def top_functions(text: str) -> dict[str, str]:
+    """Each top-level function of an agent file, by name -> its whole text."""
+    return {m.group(1): m.group(0) for m in _TOP_FUNCTION.finditer(text)}
+
+
+def patch_findings(text: str) -> list[str]:
+    """Why `text`, a launch agent, could change the game's code outside the
+    module observer: the observer and the patch must each appear once, the
+    patch must sit in one top-level function, and that function must be
+    called from the observer's callback, from its setImmediate branch, and
+    from nowhere else."""
+    found = []
+    for what in ("Process.attachModuleObserver(", "Memory.patchCode("):
+        n = text.count(what)
+        if n != 1:
+            found.append(f"{n} {what} sites, expected 1")
+    if found:
+        return found
+    holders = [name for name, body in top_functions(text).items()
+               if "Memory.patchCode(" in body]
+    if len(holders) != 1:
+        return [f"Memory.patchCode( sits in {len(holders)} top-level "
+                "functions, expected 1"]
+    patcher = holders[0]
+    observer_at = text.index("Process.attachModuleObserver(")
+    observer = text[observer_at:text.index("\n    });", observer_at)]
+    calls = re.findall(rf"\b{patcher}\(", text)
+    deferred = re.findall(rf"setImmediate\(\(\)\s*=>\s*{patcher}\(", observer)
+    # The definition, the deferred call and the direct call.
+    if len(calls) != 3:
+        found.append(f"{patcher}( appears {len(calls)} times, expected its "
+                     "definition and the observer's two calls")
+    if len(re.findall(rf"\b{patcher}\(", observer)) != 2 or len(deferred) != 1:
+        found.append(f"the observer's callback does not call {patcher} once "
+                     "directly and once through setImmediate")
+    return found
+
+
+class LaunchAgentTest(unittest.TestCase):
+    def read(self, name):
+        with open(os.path.join(AGENT_DIR, name), encoding="utf-8") as fh:
+            return fh.read()
+
+    def test_the_launch_files_are_scanned_with_the_other_agents(self):
+        # The by-name and allowed-calls tests above read every agent_sources
+        # file, so these two get them too, with no .invoke( site allowed.
+        names = [os.path.basename(p) for p in agent_sources()]
+        self.assertIn(LAUNCH_AGENT, names)
+        self.assertIn(LAUNCH_CORE, names)
+        self.assertNotIn(LAUNCH_AGENT, CALL_SITES)
+        self.assertNotIn(LAUNCH_CORE, CALL_SITES)
+
+    def test_the_patch_runs_only_from_the_module_observer(self):
+        text = self.read(LAUNCH_AGENT)
+        self.assertEqual(patch_findings(text), [])
+        self.assertEqual(self.read(LAUNCH_CORE).count("Memory.patchCode("), 0)
+
+    def test_neither_launch_file_holds_an_address(self):
+        # Every RVA arrives in the arm message, from launch_patch.json.
+        for name in (LAUNCH_AGENT, LAUNCH_CORE):
+            with self.subTest(agent=name):
+                self.assertEqual(_HEX_LITERAL.findall(self.read(name)), [])
+
+    def test_the_check_catches_a_patch_outside_the_observer(self):
+        good = self.read(LAUNCH_AGENT)
+        bad = {
+            "a second patch": good + "Memory.patchCode(p, 1, () => {});\n",
+            "a second observer": good + "Process.attachModuleObserver({});\n",
+            "a patch at load": good + "patchModule(armed!, Process.getModuleByName(\"x\"));\n",
+            "no deferred branch": good.replace(
+                "setImmediate(() => patchModule(patch, module));", "return;"),
+        }
+        for what, text in bad.items():
+            with self.subTest(case=what):
+                self.assertNotEqual(patch_findings(text), [])
+
+
+@unittest.skipIf(LC.NODE is None, "node is not on PATH, so launch_core.ts cannot run")
+class LaunchRepliesTest(Workspace):
+    """The statuses launch_core.ts really builds, run through LiveAgent's
+    request path as launch.ts sends them (a copy of the status plus the id).
+    LiveAgent raises on an `error` key, so a status that carried one would
+    fail every poll of bot_run.launch_human."""
+
+    def request_status(self, status):
+        session = ReplySession([{"state": "idle"}, status])
+        agent = FA.LiveAgent(self.agent, log_path=self.out_path,
+                             frida_mod=FakeFrida(session), wait=instant_wait,
+                             out=self.lines.append)
+        self.addCleanup(agent.detach)
+        agent.start(30.0)
+        return agent.request({"type": "status"}, 5.0)
+
+    def test_every_status_the_agent_builds_comes_back_whole(self):
+        statuses = {
+            "waiting": LC.run({"op": "waiting"})["status"],
+            "patched": LC.apply()["status"],
+            "patched, loader ran": LC.apply(loader_runs=2)["status"],
+            "refused, entry differs": LC.apply(
+                {LC.LOADER: [0x48, 0x89, 0x5C], LC.SITE: LC.SITE_BYTES})["status"],
+            "refused, write did not take": LC.apply(write_sticks=False)["status"],
+            "refused, read threw": LC.apply(read_throws=True)["status"],
+        }
+        for what, status in statuses.items():
+            with self.subTest(case=what):
+                self.assertEqual(self.request_status(status), status)
+        self.assertEqual(statuses["refused, entry differs"]["state"], "refused")
+        self.assertIn("nothing was written", statuses["refused, entry differs"]["reason"])
+
+    def test_launch_ts_sends_an_error_key_only_for_a_fault(self):
+        # Its one `error:` site is the catch that answers a message that threw.
+        with open(os.path.join(AGENT_DIR, LAUNCH_AGENT), encoding="utf-8") as fh:
+            code = [line for line in fh.read().splitlines()
+                    if not line.lstrip().startswith("//")]
+        sites = [line.strip() for line in code if re.search(r"\berror\b", line)]
+        self.assertEqual(sites, ["send({ error: `${message.type} failed: ${e}`, id });"])
+        with open(os.path.join(AGENT_DIR, LAUNCH_CORE), encoding="utf-8") as fh:
+            self.assertNotRegex(
+                "\n".join(l for l in fh.read().splitlines()
+                          if not l.lstrip().startswith("//")), r"\berror\s*:")
+
+    def test_an_agent_fault_still_raises_with_its_text(self):
+        session = ReplySession([{"state": "idle"}, {"error": "arm failed: boom"}])
+        agent = FA.LiveAgent(self.agent, log_path=self.out_path,
+                             frida_mod=FakeFrida(session), wait=instant_wait,
+                             out=self.lines.append)
+        self.addCleanup(agent.detach)
+        agent.start(30.0)
+        with self.assertRaises(FA.ReadFailed) as caught:
+            agent.request({"type": "arm", "patch": {}}, 5.0)
+        self.assertEqual(caught.exception.reason, FA.END_AGENT_ERROR)
+        self.assertIn("arm failed: boom", str(caught.exception))
 
 
 class BuildScriptsTest(unittest.TestCase):
@@ -734,7 +1159,8 @@ class BuildScriptsTest(unittest.TestCase):
                   encoding="utf-8") as fh:
             scripts = json.load(fh)["scripts"]
         self.assertEqual(sorted(scripts),
-                         ["build:clock", "build:state", "build:trace"])
+                         ["build:clock", "build:kit", "build:launch",
+                          "build:menuhooks", "build:state", "build:trace"])
         for name, command in scripts.items():
             with self.subTest(script=name):
                 words = command.split()

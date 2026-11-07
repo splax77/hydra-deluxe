@@ -208,8 +208,9 @@ void test_dm_compare_flow(ImGuiTestContext* ctx) {
     if (ctx->IsError()) return;
     ctx->SetRef("//Hydra");
 
-    // The ladder plays by Clone Hero's rules at Expert. Any other cap or
-    // difficulty disables the button.
+    // The ladder plays at Expert, so any other difficulty disables the
+    // button. Any cap leaves it on: the comparison runs at Clone Hero's cap
+    // whatever the setting (D271 item 8).
     auto compare_disabled = [&] {
         return (ctx->ItemInfo("Compare with dmleaderboards...").ItemFlags &
                 ImGuiItemFlags_Disabled) != 0;
@@ -217,7 +218,7 @@ void test_dm_compare_flow(ImGuiTestContext* ctx) {
     h.app->settings.sp_cap = 8;
     h.app->commit_settings();
     ctx->Yield(2);
-    IM_CHECK(compare_disabled());
+    IM_CHECK(!compare_disabled());
     h.app->settings.sp_cap = hydra::kCloneHeroSpCap;
     h.app->commit_settings();
 
@@ -543,16 +544,25 @@ void test_batch_done_strip(ImGuiTestContext* ctx) {
     IM_CHECK(h.app->path_report.window_open);
     ctx->Yield(2);
     IM_CHECK(window_named("###pathreport") != nullptr);
-    // Closing the window lets the report go (D103 item 28), so the strip
-    // drops its "ready" line and its Open report button; the strip stays.
+    // Closing the window only hides it and the report stays (D271 item 7), so
+    // the strip keeps its "ready" line and its Open report button, and the
+    // button opens the window again at once, with no build.
     h.app->close_path_report();
     ctx->Yield(3);
     IM_CHECK(child_window(ctx, "//Hydra/##batchdone") != nullptr);
-    IM_CHECK(visible_text(h).find("The path report is ready.") == std::string::npos);
+    IM_CHECK(visible_text(h).find("The path report is ready.") != std::string::npos);
     ctx->SetRef(child_window(ctx, "//Hydra/##batchdone"));
-    IM_CHECK(!ctx->ItemExists("Open report"));
+    IM_CHECK(ctx->ItemExists("Open report"));
+    ctx->ItemClick("Open report");
+    IM_CHECK(h.app->path_report.window_open);
+    IM_CHECK(h.app->report_job == nullptr);
+    IM_CHECK(h.app->path_report_build() == hydra::ui::ReportBuild::Ready);
+    h.app->close_path_report();
+    ctx->Yield(3);
+    ctx->SetRef(child_window(ctx, "//Hydra/##batchdone"));
     // "Open automatically" is a setting, and the strip is its only place, so
-    // it stays after the close (item 28's 2026-10-09 answer) and still works.
+    // it stays after the close (D103 item 28's 2026-10-09 answer) and still
+    // works.
     IM_CHECK(ctx->ItemExists("Open automatically"));
     ctx->ItemClick("Open automatically");
     IM_CHECK(h.app->settings.auto_open_report);
@@ -633,9 +643,10 @@ void test_analyze_db_fails(ImGuiTestContext* ctx) {
     IM_CHECK(h.frame_text.text.find(sentence) != std::string::npos);
 }
 
-// The comparison only means something at Clone Hero's cap and Expert; off
-// either, the button is disabled (with the reason on hover) instead of
-// posting a refusal after the click.
+// The comparison only means something at Expert; off it, the button is
+// disabled (with the reason on hover) instead of posting a refusal after the
+// click. The cap setting never disables it: the comparison runs at Clone
+// Hero's cap whatever the setting (D271 item 8).
 void test_compare_disabled(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     reset_app(h);
@@ -650,13 +661,13 @@ void test_compare_disabled(ImGuiTestContext* ctx) {
     h.app->settings.sp_cap = 6;
     h.app->commit_settings();
     ctx->Yield(2);
-    IM_CHECK(disabled());
-    h.app->settings.sp_cap = hydra::kCloneHeroSpCap;
+    IM_CHECK(!disabled());
     h.app->settings.view_difficulty = "Hard";
     h.app->commit_settings();
     ctx->Yield(2);
     IM_CHECK(disabled());
     h.app->settings.view_difficulty = "Expert";
+    h.app->settings.sp_cap = hydra::kCloneHeroSpCap;
     h.app->commit_settings();
     ctx->Yield(2);
     IM_CHECK(!disabled());

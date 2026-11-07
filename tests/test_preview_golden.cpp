@@ -148,7 +148,7 @@ std::vector<float> max_channel_deltas(const std::vector<float>& a, const std::ve
     return out;
 }
 
-constexpr int kTile = 16;  // tile side in half-res pixels; the user's decision of 2026-10-10 (plan "User decisions" item 3)
+constexpr int kTile = 16;  // tile side in half-res pixels; the user's decision of 2026-10-10 (D297 item 3)
 
 // For one per-pixel delta D: the share of unmasked pixels whose delta is over D,
 // in the worst kTile by kTile tile and in the whole frame. Edge tiles are

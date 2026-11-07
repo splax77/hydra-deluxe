@@ -28,7 +28,7 @@
         {
           "file": "src/app/analysis.cpp",
           "line_text": "return store::failure_record(std::move(song_id), profile, kinded->kind(), e.what());",
-          "why": "a store site, not a display: the stored failure keeps the error's own words, and plain_error reads them back with the stored kind (plan 2026-10-15)"
+          "why": "a store site, not a display: the stored failure keeps the error's own words, and plain_error reads them back with the stored kind (D249)"
         }
       ],
       "scope": [

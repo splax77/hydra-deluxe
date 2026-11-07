@@ -46,6 +46,14 @@ def decode_double(raw: bytes) -> float:
     return struct.unpack("<d", raw)[0]
 
 
+def decode_f32(raw: bytes) -> float:
+    """Turn 4 raw bytes into a 32-bit float, little-endian. The result is the
+    exact value as a Python float (a double)."""
+    if len(raw) != 4:
+        raise ValueError(f"a float needs exactly 4 bytes, got {len(raw)}")
+    return struct.unpack("<f", raw)[0]
+
+
 def decode_u32(raw: bytes) -> int:
     """Turn 4 raw bytes into an unsigned 32-bit integer, little-endian."""
     if len(raw) != 4:

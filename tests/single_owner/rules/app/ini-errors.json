@@ -1,0 +1,69 @@
+{
+  "rules": [
+    {
+      "question": "How does an INI loader word a line it refuses (no =, unknown key, bad value)?",
+      "owner": "ini_not_key_value_text, ini_unknown_key_text and ini_bad_value_text in src/app/ini_errors.h",
+      "owner_file": "src/app/ini_errors.h",
+      "owner_symbol": "ini_bad_value_text",
+      "date": "2026-10-30",
+      "decision": "D270 call 4",
+      "added_by": "aoa-a3a-review",
+      "pattern": "is not key = value|unknown key \\\\\"\" \\+|\\\\\" is not \" \\+",
+      "owner_files": ["src/app/ini_errors.h"],
+      "must_match": [
+        "    return path + \": unknown key \\\"\" + key + \"\\\"\";",
+        "    throw RulesFileError(where + \": \\\"\" + text + \"\\\" is not key = value\");",
+        "    throw RulesFileError(path + \": \" + key + \" = \\\"\" + value + \"\\\" is not \" + want);"
+      ],
+      "must_not_match": [
+        "        if (!field) throw RulesFileError(ini_unknown_key_text(where, kv->key));",
+        "    if (!i) bad(path, key, v, kWantWholeNumber);"
+      ],
+      "note": "hydra_rules.ini and hydra_settings.ini once each built these three error lines; both call the helper now, so a third loader that builds them by hand is flagged. Decided by: D270 call 4."
+    },
+    {
+      "question": "Is this text a whole number that fits an int?",
+      "owner": "parse_whole_number in src/app/ini_errors.h",
+      "owner_file": "src/app/ini_errors.h",
+      "owner_symbol": "parse_whole_number",
+      "date": "2026-10-30",
+      "decision": "D270 call 4",
+      "added_by": "aoa-a3a-review",
+      "pattern": "!=\\s*std::trunc\\(",
+      "owner_files": ["src/app/ini_errors.h"],
+      "must_match": [
+        "    if (!d || *d != std::trunc(*d) || *d < std::numeric_limits<int>::min() ||"
+      ],
+      "must_not_match": [
+        "    const std::optional<int> i = parse_whole_number(v);"
+      ],
+      "note": "The rules file, the settings file and hydra_replay's --cap each had their own copy of the test (a finite number with no fraction that fits an int); all three call parse_whole_number now. Decided by: D270 call 4."
+    },
+    {
+      "question": "What does a command-line tool do when hydra_settings.ini is refused?",
+      "owner": "load_tool_settings in src/app/config.cpp",
+      "owner_file": "src/app/config.cpp",
+      "owner_symbol": "load_tool_settings",
+      "date": "2026-10-30",
+      "decision": "D270 call 4",
+      "added_by": "aoa-a3b-review",
+      "pattern": "catch \\(const (hydra::)?(app::)?SettingsFileError&",
+      "owner_files": ["src/app/config.cpp"],
+      "exempt": [
+        {
+          "file": "src/ui/app_state.cpp",
+          "why": "The app answers a different question on purpose: it keeps running on the defaults and saves nothing (AppState::settings_error) instead of exiting."
+        }
+      ],
+      "must_match": [
+        "    } catch (const SettingsFileError& e) {",
+        "    } catch (const hydra::app::SettingsFileError& e) {"
+      ],
+      "must_not_match": [
+        "    if (const int code = hydra::app::load_tool_settings(settings, legacy_fills)) return code;",
+        "    } catch (const RulesFileError& e) {"
+      ],
+      "note": "hydra_batch, hydra_fillcompare and hydra_bench each caught the loader's error and printed it on their own. They call load_tool_settings now, as the rules file's tools call load_tool_rules, so a fourth tool that catches it itself is flagged. Decided by: D270 call 4."
+    }
+  ]
+}

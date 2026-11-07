@@ -242,12 +242,14 @@ static void corpus_bench() {
 }
 
 // The settings --engine and --parse run under: hydra_batch's, read through
-// app::Settings::load_for_command_line, under this run's rules. Pointing a run
-// at other settings means a copy of the exe beside another ini.
-static app::Settings ini_settings() {
-    app::Settings st = app::Settings::load_for_command_line(g_legacy_fills);
+// app::load_tool_settings, under this run's rules. Pointing a run at other
+// settings means a copy of the exe beside another ini. Returns the exit code
+// load_tool_settings gives, which the caller returns before its mode opens
+// anything.
+static int ini_settings(app::Settings& st) {
+    if (const int code = app::load_tool_settings(st, g_legacy_fills)) return code;
     st.rules = g_rules;
-    return st;
+    return 0;
 }
 
 // Engine mode, single-threaded:
@@ -257,9 +259,9 @@ static app::Settings ini_settings() {
 // prepare_record. Prints the phase sums and one digest over every prepared
 // record (digest::row_hash); --out writes each chart's md5 and its hash. --cache
 // takes a database's rescan cache, so the scan skips rehashing. A chart that
-// fails is counted and left out of the digest.
-static void engine_mode(const std::string& folder, const std::string& cachedb, int reps,
-                        const std::string& outpath) {
+// fails is counted and left out of the digest. `st` is ini_settings'.
+static void engine_mode(const std::string& folder, const app::Settings& st,
+                        const std::string& cachedb, int reps, const std::string& outpath) {
     store::ChartLibraryCache cache;
     std::unique_ptr<store::RecordStore> cstore;
     if (!cachedb.empty()) {
@@ -268,7 +270,6 @@ static void engine_mode(const std::string& folder, const std::string& cachedb, i
         cache = app::load_scan_cache(*cstore);
     }
     auto [items, errors] = app::discover_charts({folder}, app::ScanCallbacks{}, cache);
-    const app::Settings st = ini_settings();
     const app::AnalysisSettings settings = st.batch_run().settings;
     double t_parse = 0, t_graph = 0, t_an = 0, t_prep = 0, t_gdel = 0;
     int n = 0, failed = 0;
@@ -329,8 +330,9 @@ static void engine_mode(const std::string& folder, const std::string& cachedb, i
 // fails is hashed by its exception's type and message (digest::failure_text).
 // Prints the sums
 // and one digest over every chart; --out writes each path, its best parse
-// time in microseconds, its hash and any failure.
-static void parse_mode(const std::string& arg, int reps, const std::string& outpath, bool dyn) {
+// time in microseconds, its hash and any failure. `st` is ini_settings'.
+static void parse_mode(const std::string& arg, const app::Settings& st, int reps,
+                       const std::string& outpath, bool dyn) {
     std::vector<std::string> paths;
     if (arg.size() > 4 && arg.substr(arg.size() - 4) == ".txt") {
         std::ifstream in(hydra::os_path(arg));
@@ -344,7 +346,7 @@ static void parse_mode(const std::string& arg, int reps, const std::string& outp
         for (const app::ScanItem& it : app::plan_batch(items, {}).todo)
             paths.push_back(it.notespath);
     }
-    const app::AnalysisSettings settings = ini_settings().batch_run().settings;
+    const app::AnalysisSettings settings = st.batch_run().settings;
     double t_parse = 0, t_dyn = 0;
     int n = 0, failed = 0;
     uint64_t all = digest::kSeed;
@@ -540,7 +542,9 @@ static int bench_main() {
             else if (argv[i] == "--reps" && i + 1 < argc) reps = std::stoi(argv[++i]);
             else if (argv[i] == "--out" && i + 1 < argc) outp = argv[++i];
         }
-        engine_mode(argv[2], cachedb, reps, outp);
+        app::Settings st;
+        if (const int code = ini_settings(st)) return code;
+        engine_mode(argv[2], st, cachedb, reps, outp);
         return 0;
     }
     if (argc > 2 && argv[1] == "--parse") {
@@ -552,7 +556,9 @@ static int bench_main() {
             else if (argv[i] == "--out" && i + 1 < argc) outp = argv[++i];
             else if (argv[i] == "--nodyn") dyn = false;
         }
-        parse_mode(argv[2], reps, outp, dyn);
+        app::Settings st;
+        if (const int code = ini_settings(st)) return code;
+        parse_mode(argv[2], st, reps, outp, dyn);
         return 0;
     }
     if (argc > 2 && argv[1] == "--scan") {

@@ -44,7 +44,7 @@ A library file from a version older than 2.2.0 is too old to convert. Hydra Delu
 
 > This library file is from a Hydra version older than 2.2.0, so Hydra set it aside as hydra.db.pre-2.2.0 and started a fresh library.
 
-When you close the box, Hydra Deluxe scans your song folders, which it keeps in `hydra_settings.ini`, next to the program. Your songs come back as `Not analyzed`. This version doesn't read the old results in `hydra.db.pre-2.2.0`, so delete that file yourself if you don't want it.
+When you close the box, Hydra Deluxe scans your song folders, which it keeps in `hydra_settings.ini`, next to the program. Your songs come back as `Not analyzed`. If a song folder can't be read, no scan starts, the list stays empty, and the line under the toolbar says `Your library needs a scan, but <folder> cannot be read. Click Scan library when it is back.` This version doesn't read the old results in `hydra.db.pre-2.2.0`, so delete that file yourself if you don't want it.
 
 If the old file can't be renamed, a message box says so, with the reason from Windows in the middle of the sentence, and Hydra Deluxe closes when you dismiss it:
 
@@ -68,7 +68,7 @@ While an update downloads or installs, the bar shows that step instead, with its
 
 ### Toolbar
 
-The toolbar holds, from left to right, `Manage folders... (N)`, `Scan library`, `Analyze library...`, `Compare with dmleaderboards...` and the `Analysis settings` button. `Open path report` sits at the right edge whenever your library has songs and `hydra_rules.ini` has no error.
+The toolbar holds, from left to right, `Manage folders... (N)`, `Scan library`, `Analyze library...`, `Compare with dmleaderboards...` and the `Analysis settings` button. `Open path report` sits at the right edge whenever your library has songs and neither `hydra_settings.ini` nor `hydra_rules.ini` has an error.
 
 `Manage folders... (N)` opens the `Song folders` window, where you choose which folders Hydra Deluxe reads. N is how many folders you have. Click `Add folder...` and pick your Clone Hero song folder, or any folder of charts. Hydra Deluxe finds every chart in its subfolders too. Each folder in the list has a red `X` that removes it, after you confirm. `Close` closes the window. After you add or remove a folder, and while at least one folder is left, a `Scan now` button appears beside `Close`. It closes the window and starts a scan, because a changed list only takes effect when you scan.
 
@@ -76,17 +76,17 @@ Removing a folder takes its songs out of the list at the next scan, and that sca
 
 Hydra Deluxe reads `notes.mid` or `notes.chart` folders with a `song.ini`, `.sng` archives, and the `.srb` bundles that Clone Hero's built-in setlist ships with. Adding the game's own `Clone Hero_Data\StreamingAssets\songs` folder brings in the default songs too.
 
-`Scan library` reads your folders and updates the song list. A song needs a valid ini file to show up. A song that fails is skipped, and the scan window lists the problems when it finishes. Re-scans are fast, because a chart whose file size and timestamp haven't changed is not read again. You can cancel a scan part-way, and the old library stays as it was. When Hydra Deluxe opens a library that an older version scanned, it starts this scan by itself, and the `Scanning charts` window says `An older version of Hydra scanned this library. Scanning again to read what this version adds.` If you click `Cancel`, the scan starts again the next time you open Hydra Deluxe, and if a song folder can't be read, it waits and a line under the toolbar names the folder. Songs stay in the list as they were until the next scan, even if you changed their files, so scan again after you add, remove or edit songs.
+`Scan library` reads your folders and updates the song list. A song needs a valid ini file to show up. A song that fails is skipped, and the scan window lists the problems when it finishes. Re-scans are fast, because a chart whose file size and timestamp haven't changed is not read again. You can cancel a scan part-way, and the old library stays as it was. When Hydra Deluxe opens a library that an older version scanned, it starts this scan by itself, and the `Scanning charts` window says `An older version of Hydra scanned this library. Scanning again to read what this version adds.` If you click `Cancel`, the scan starts again the next time you open Hydra Deluxe, and if a song folder can't be read, it waits and a line under the toolbar names the folder. A scan you start yourself stops the same way: while a song folder can't be read, clicking `Scan library` scans nothing, your songs and results stay as they were, and the line under the toolbar says `<folder> cannot be read, so nothing was scanned. Click Scan library when it is back.` Songs stay in the list as they were until the next scan, even if you changed their files, so scan again after you add, remove or edit songs.
 
 `Analyze library...` analyzes many songs at once, in the background. While a search or a chip other than `All` narrows the list, the button reads `Analyze shown (N)...` and analyzes only the N songs the table shows. A filter Hydra Deluxe can't read narrows nothing, so with only `stars:9` typed and the `All` chip on, the button still reads `Analyze library...`. See [Analyzing the whole library](#analyzing-the-whole-library).
 
-`Compare with dmleaderboards...` compares a player's leaderboard scores with your stored results. It works only under Expert, an SP cap of 4, `1.0 fills` off and Note Shuffle off. With any other settings the button is greyed out, and hovering it says which setting is in the way. See [Reports](#reports).
+`Compare with dmleaderboards...` compares a player's leaderboard scores with your stored results at SP cap 4, Clone Hero's rule, whatever your `SP cap` setting says. It works only under Expert, with `1.0 fills` off and Note Shuffle off. With any other settings the button is greyed out, and hovering it says which setting is in the way. See [Reports](#reports).
 
 `Analysis settings: ...` shows the settings your analyses run under, and opens the panel where you change them. See [Analysis settings](#analysis-settings).
 
-`Open path report` opens the path report in its own window. When the report has to be built, Hydra Deluxe first analyzes every song that has no current result. The button appears whenever your library has songs and `hydra_rules.ini` has no error, and it stays while a report is open or building. While a report builds, it reads `Building path report...`. You can still click it, and the window shows that the report is building. See [Reports](#reports).
+`Open path report` opens the path report in its own window. When the report has to be built, Hydra Deluxe first analyzes every song that has no current result. The button appears whenever your library has songs and neither `hydra_settings.ini` nor `hydra_rules.ini` has an error, and it stays while a report is open or building. While a report builds, it reads `Building path report...`. You can still click it, and the window shows that the report is building. See [Reports](#reports).
 
-While a batch runs, `Scan library` and `Analyze library...` are greyed out, and hovering them says `A batch is running.` `Scan library` is also greyed out while a scan runs and when you have no folders. `Analyze library...` is also greyed out when there is nothing to analyze, and while `hydra_rules.ini` has an error.
+While a batch runs, `Scan library` and `Analyze library...` are greyed out, and hovering them says `A batch is running.` `Scan library` is also greyed out while a scan runs, when you have no folders, and while `hydra_settings.ini` has an error. `Analyze library...` is also greyed out when there is nothing to analyze, and while `hydra_settings.ini` or `hydra_rules.ini` has an error.
 
 #### When a new version is out
 
@@ -151,7 +151,7 @@ While a batch runs, the settings are locked. The button's label ends in ` (locke
 
 `Note Shuffle` scores the chart the way Clone Hero 1.1's Note Shuffle modifier rearranges it. The game moves notes between pads, and the move is the same every time for a given chart and drum setting. So each Difficulty, Pro Drums and 2x Bass choice gets its own shuffled result, kept beside the unshuffled one. The Paths, Preview, Stars and Dynamics tabs and batches all use the shuffled chart while it's on. If Clone Hero would freeze trying to shuffle a chart, that chart shows no path, and a sentence saying so takes its place. The leaderboard comparison is off while Note Shuffle is on, because leaderboard scores don't say whether it was used.
 
-`SP cap` is the most bars of Star Power the meter can hold during the analysis. 4 is Clone Hero's rule and the default. Leave it at 4 for paths you mean to play. Any other number is a what-if: its scores can't be reached in the game. At 1 bar no path can activate Star Power, and the Paths tab says so. Results are kept per cap, so a 4-bar result and a 16-bar result for the same song sit side by side. The leaderboard comparison only runs at 4 bars.
+`SP cap` is the most bars of Star Power the meter can hold during the analysis. 4 is Clone Hero's rule and the default. Leave it at 4 for paths you mean to play. Any other number is a what-if: its scores can't be reached in the game. At 1 bar no path can activate Star Power, and the Paths tab says so. Results are kept per cap, so a 4-bar result and a 16-bar result for the same song sit side by side. The leaderboard comparison always reads the 4-bar results, whatever this setting says.
 
 `1.0 fills` spawns drum fills by Clone Hero 1.0's rule instead of 1.1's. A fill only appears if your Star Power was ready in time. Clone Hero 1.1 wants it ready 4 beats before the fill. 1.0 wanted it about one fill-length before, so short fills were looser and long fills stricter. Leave it off for current Clone Hero, and check it to price a run played on 1.0. Results are kept per rule, so a song can hold a 1.1 result and a 1.0 result side by side. The leaderboard comparison needs it off. Everywhere else, Hydra Deluxe names the two rules `Clone Hero 1.0` and `Clone Hero 1.1`, or `CH 1.0` and `CH 1.1` in narrow columns.
 
@@ -187,7 +187,7 @@ The chips above the table filter by state: `All`, `Not analyzed`, `Stale`, `Anal
 
 ### The search box
 
-Type in the search box, which reads `Search songs` while it's empty, to narrow the list. `Ctrl+F` jumps to it. `Escape` or its `X` clears it. The heading above shows how many songs match, like `Library 5 of 97 charts`. The text that matched is highlighted in gold.
+Type in the search box, which reads `Search song, artist, album, charter, or folder` while it's empty, to narrow the list. `Ctrl+F` jumps to it. `Escape` or its `X` clears it. The heading above shows how many songs match, like `Library 5 of 97 charts`. The text that matched is highlighted in gold. When no song matches, the list says `Nothing matches.`
 
 ![The search box holding squeeze<=20, with the Search tips list open under it](images/search-tips.png)
 
@@ -272,7 +272,13 @@ An open row shows these, in order:
 
 A backend squeeze means hitting the note at the SP end early, so it lands inside Star Power. In the `Backend timings` table, `Timing` is how far each note sits from the SP end, in ms. A negative figure is before the end, and the note at `0.0 ms` is exactly where SP ends. `Points` is the Star Power score the note adds on this path, and 0 for a note the path doesn't count. If the last activation's SP runs past the end of the chart, the table lists the notes before that end, so every timing is negative.
 
-The rating beside each note is a rough guide to how hard it is to fit into Star Power. A note the path doesn't count is tagged `(uncounted)`, squeeze-out notes included, like `Free SqOut (uncounted)`. For backend squeezes, look for notes from the backend leeway up to the hit window. The leeway is 3 ms<!-- default: Rules::backend_leeway_ms --> by default (`backend_leeway_ms` in `hydra_rules.ini`). The hit window is 85 ms by default (`hit_window_ms`, below).
+The `Rating` beside each note says how much timing that note needs from you, in the same bands as the path report's timing tiers. The bands are steps of the 85 ms hit window, Clone Hero's Pro Drums window, which is fixed and not a setting. A note needing up to 2.0 ms reads `Normal`, up to 42.5 ms `Hard`, up to 85 ms `Extreme`, up to 127.5 ms `Insane`, up to 170 ms `Insane+`, and past that `Beyond`. Each edge belongs to the band below it, so exactly 85 ms is `Extreme`.
+
+Which timing a note needs depends on the row. A note the path counts without a squeeze needs nothing, so it reads `Normal`. A note too late to count needs you to hit it early by its `Timing`, and is tagged `(uncounted)`, like `Hard (uncounted)`. The note the path squeezes out is the exception: it needs the late hit its badge shows. When it already sits past the SP end, it needs nothing and reads `Normal`. It also gets `(uncounted)` once it is past the backend leeway (below), like `Normal (uncounted) <-- squeezed out`. When a row shows an `eff.` figure, the rating follows that figure, because it is the timing you need after the frontend timing scale (below). A note that needs nothing still reads `Normal` whatever its scale.
+
+On Burnout's optimal path, activation 1's squeezed-out yellow note sits 163.0 ms inside Star Power, and its rating reads `Insane+ (eff. 163.5 ms) <-- squeezed out (-260)`. You need about 163.5 ms late, between one and a half and two hit windows. The `(-260)` is how many points the squeeze-out costs. The badges and the path report stay on the raw timing, so that row's badge reads `squeeze out 163 ms`. So when a frontend timing scale applies, a row's rating can fall in a different band from the report's tier for the same squeeze.
+
+A backend note just past the SP end still counts when it lands less than the backend leeway after it, 3 ms<!-- default: Rules::backend_leeway_ms --> by default (`backend_leeway_ms` in `hydra_rules.ini`). So a note 2.5 ms after the end reads `Normal`, and one 20 ms after it reads `Hard (uncounted)`.
 
 ### Frontend timing scale and overfill
 
@@ -293,8 +299,6 @@ Under the activation rows are two folds, `Multiplier squeeze` and `Score breakdo
 `Copy path` copies the selected path's notation. `Ctrl+C` does the same and flashes `Copied!`.
 
 `Hide backend rows beyond` hides backend rows more than this many ms from the SP end. It starts off<!-- default: Settings::backendlimit_enabled -->, with 50 ms<!-- default: Settings::backendlimit_value --> in the box. A note the path squeezes out always shows. When it hides rows, the `Backend timings` line still counts every note and adds how many are hidden on each side of the SP end, like `8 notes near the SP end · 8 hidden: 4 before, 4 after`. The fold says the same with the limit, like `All 8 hidden: 4 before the SP end and 4 after, beyond 50 ms.` This only changes the display. It is not an analysis setting, so changing it never re-analyzes anything.
-
-One more setting feeds these displays: `hit_window_ms` in `hydra_settings.ini` (default 85, the Clone Hero Pro Drums hit window per side). It has no control on screen yet.
 
 ## Preview tab
 
@@ -325,7 +329,7 @@ The transport buttons are `-5s`, `< 10 ms`, `Play`/`Pause`, `10 ms >` and `+5s`,
 
 The same keys are drawn as keycaps in a bar under the highway, in the buttons' order. Each button's tooltip names its key too.
 
-The scrubber under the highway shows where you are. Its gold marks are the path's activations, in the same gold as the next-activation box. The scrubber measures position against the song's length, like the Paths timeline, so an activation sits at the same spot on both. The scrubber ends at the song's end, and so does playback: audio that runs past the end doesn't play. A chart with no length shows no gold marks, and nothing stops playback.<!-- owners: PreviewController::playback_end_ms (the one end), app::song_length_ms (the song's length) --> The beat lines run on to the end of the audio.
+The scrubber under the highway shows where you are. Its gold marks are the path's activations, in the same gold as the next-activation box. The scrubber measures position against the song's length, like the Paths timeline, so an activation sits at the same spot on both. The scrubber ends at the song's end, and so does playback: audio that runs past the end doesn't play. A chart with no length shows no gold marks, and nothing stops playback.<!-- owners: PreviewController::playback_end_ms (the one end), app::song_length_ms (the song's length) --> The beat lines stop at the song's end too, so none is drawn past where playback stops. A chart with no length draws them two measures past its last note.
 
 ### When the settings or the chart change
 
@@ -400,7 +404,7 @@ A batch skips songs that already have a current result under these settings. A `
 
 A `Can't analyze` song counts as one with a result, because its saved failure is its result. A batch skips it and counts it as skipped. When some of the songs in the batch can't be analyzed, the `Analyze library` window adds a dim line: `N of these can't be analyzed. Check the box to try them again.` Checking `Also re-analyze charts that already have a result` tries them again along with the rest.
 
-The batch uses all but one of your CPU cores, and 8 at most. You can keep browsing and open songs while it runs. A strip under the toolbar shows its progress: how many songs are done, the song being analyzed, the time so far and, after a few songs, an estimate of the time left, like `about 1:30 left`. An open song's panel already shows the engine's result, so the batch only updates its library row.
+The batch uses all but one of your CPU cores, and 8 at most. You can keep browsing and open songs while it runs. A strip under the toolbar shows its progress: how many songs are done, the song being analyzed, the time so far and an estimate of the time left, like `about 1:30 left`. The estimate appears once the batch has done twice as many songs as it analyzes at once. That is 16 songs when it analyzes 8 at a time, and fewer on a computer with fewer cores. A batch with fewer songs than that shows no estimate. An open song's panel already shows the engine's result, so the batch only updates its library row.
 
 `Pause` holds the batch, and `Resume` carries on. `Stop` ends it and keeps every result finished so far. The Analysis settings stay locked until the batch ends.
 
@@ -410,8 +414,8 @@ Once the report is built, the summary strip offers these:
 
 | Control | What it does |
 | --- | --- |
-| `Open report` | Opens the path report window. The strip's second line reads `The path report is ready.` Once you close the path report window, the report is gone, so the line and the button go too. The toolbar's `Open path report` still opens it. |
-| `Open automatically` | Opens the path report as soon as it's built. It covers only the path report. The strip is the only place to change it, so it stays after you close the path report window. It hides while a report builds and after a build fails. |
+| `Open report` | Opens the path report window. The strip's second line reads `The path report is ready.` The report stays in memory when you close its window, so the line and the button stay, and the button opens the same report again at once. |
+| `Open automatically` | Opens the path report as soon as it's built. It covers only the path report. The strip is the only place to change it. It hides while a report builds and after a build fails. |
 | `X` | Dismisses the strip. |
 
 If the database holds no results at all once a batch ends, as when every song in your first batch fails, the strip says `The path report could not be built.` and `Nothing is analyzed yet. Click a song or run a batch to analyze it.`
@@ -437,13 +441,13 @@ Both report windows have the same layout. From top to bottom:
 | Table | One row per path or score. Hover a column heading to see what the column means. |
 | Footer | A dim note under the table. |
 
-Click a column heading to sort by it, and click it again to flip the order. Shift+click another heading to add a second sort. Empty values always sink to the bottom. Text columns sort the way the Library does. To hide or show a column, right-click a column heading and pick it from the menu. The row number column always stays. Columns are sized the way the Library's are, and number cells start at the left like the text. A width you drag holds until the report is built again or you change the search.
+Click a column heading to sort by it, and click it again to flip the order. Shift+click another heading to add a second sort. Empty values always sink to the bottom. Text columns sort the way the Library does, apart from the path report's `Timing` column. To hide or show a column, right-click a column heading and pick it from the menu. The row number column always stays. Columns are sized the way the Library's are, and number cells start at the left like the text. A width you drag holds until the report is built again or you change the search.
 
-When no row passes the filters, the window says `Nothing matches those filters.` `Clear filters` then empties the search and sets the dropdown back to its first entry.
+When no row passes the filters, the window says `Nothing matches.` `Clear filters` then empties the search and sets the dropdown back to its first entry.
 
 The window never changes its rows behind your back. After a batch, a report built before it shows a strip: `Your library changed since this report was built (a batch finished at HH:MM).` Opening a song that saves a new result shows the same strip with no time: `Your library changed since this report was built.` Changing a setting the report depends on shows `The settings changed since this report was built.` Each report's section below lists the settings that count for it. The old rows stay readable under the strip. `Refresh` builds the report again and clears the strip.
 
-`Tab` moves through the controls and the table. The `Up` and `Down` arrows move the row selection, and each move selects the song, like a click. `Escape` or `Ctrl+W` closes the window, and so do its `X` and `Close`. While you're typing in the search box, `Escape` doesn't close the window: the first press empties the box, as in the Library's search. Closing a report window doesn't keep the report to show again. The path report is built again when you reopen it, and the comparison fetches the player's scores again when you pick the player again.
+`Tab` moves through the controls and the table. The `Up` and `Down` arrows move the row selection, and each move selects the song, like a click. `Escape` or `Ctrl+W` closes the window, and so do its `X` and `Close`. While you're typing in the search box, `Escape` doesn't close the window: the first press empties the box, as in the Library's search. Closing the path report window only hides it, so opening it again shows the same report at once. The comparison fetches the player's scores again when you pick the player again.
 
 ### The path report
 
@@ -455,9 +459,9 @@ The path report is one table of paths, squeeze timings and scores for the songs 
 
 When you open the report and it needs building, Hydra Deluxe first analyzes every song with no current result under your settings, `Stale` ones included. This is an ordinary batch: the strip under the toolbar shows it, with `Pause` and `Stop`, and the Analysis settings stay locked while it runs. The window's first line reads `Analyzing n of N charts` over a progress bar, with the same counts as the strip. Its `Cancel` button stops the batch the way `Stop` does. A stopped batch builds no report, so the window then shows `Report cancelled.` with `Try again`. If a batch you started yourself was already running, the window shows that batch instead, and `Cancel` leaves it running. When more than 500 songs need analyzing, the report window asks first. Its first line reads `Analyze N charts that have no result yet?`, with `Cancel` and `Analyze` buttons. `Analyze` starts the batch. `Cancel` skips the analysis, and the report builds from the results already saved. At 500 or fewer, the analysis starts at once. When every song already has a result, the report builds straight away.
 
-A finished batch builds the report too. `Open path report` on the toolbar opens it. Hydra Deluxe keeps the report in memory, not in a file. So the first time you open it after starting Hydra Deluxe, it builds a fresh one. Closing the window lets the report go, to save memory, and opening it again builds a fresh one too. The window keeps your search, timing choice, `Optimal paths only` and sort for it. `Refresh` and a batch's new report start them over. If a build is still running when you close the window, it stops. Closing the window during the analysis doesn't stop the batch; use `Cancel` or the strip's `Stop` for that. A report a batch builds while the window is closed waits for you to open it.
+A finished batch builds the report too. `Open path report` on the toolbar opens it. Hydra Deluxe keeps the report in memory, not in a file. So the first time you open it after starting Hydra Deluxe, it builds a fresh one. Closing the window only hides it. The report stays in memory, and opening the window again shows it at once, with your search, timing choice, `Optimal paths only` and sort as you left them. `Refresh` and a batch's new report start those over. If a build is still running when you close the window, it keeps going, and its report is there when you open the window again. A report that was cancelled or failed still shows that when you reopen the window, with `Try again`. Closing the window during the analysis doesn't stop the batch; use `Cancel` or the strip's `Stop` for that. A report a batch builds while the window is closed waits for you to open it.
 
-Once the analysis is done, the report builds. While it builds, the line under the header reads `Building the report from your library...`, with a `Cancel` button and grey placeholder rows. While `hydra_rules.ini` has an error, analysis is off. A window with no report to show then says so instead of building. Cancelling shows `Report cancelled.` with `Try again`. If the build fails, the window says `The path report could not be built.`, with the reason and `Try again`.
+Once the analysis is done, the report builds. While it builds, the line under the header reads `Building the report from your library...`, with a `Cancel` button and grey placeholder rows. While `hydra_settings.ini` or `hydra_rules.ini` has an error, analysis is off. A window with no report to show then says so instead of building. Cancelling shows `Report cancelled.` with `Try again`. If the build fails, the window says `The path report could not be built.`, with the reason and `Try again`.
 
 The window is titled `Path report — Hydra`, and its header reads `Hydra Path Index`. The line under it reads like `N charts — top 5 paths per chart — SP cap 4 bars`, and ends in `— Clone Hero 1.0 fills` when `1.0 fills` is on. A chart you have more than one copy of in your library shows its paths once, but each copy counts in that line and in the `Charts shown` tile.
 
@@ -475,12 +479,12 @@ The five tiles sum up the paths that pass the filters:
 
 The controls are a search box, a timing dropdown and `Optimal paths only`. On the right, a count line says how many paths pass, like `120 of 4,512 paths`.
 
-The timing dropdown starts at `All timing tiers`. Each other entry shows only the paths in one timing tier. A path's tier comes from its `Hardest ms`, measured in steps of your hit window:
+The timing dropdown starts at `All timing tiers`. Each other entry shows only the paths in one timing tier. A path's tier comes from its `Hardest ms`, measured in steps of the 85 ms hit window:
 
 | Entry | Paths it shows |
 | --- | --- |
 | `Normal`, `Hard`, `Extreme`, `Insane`, `Insane+` | Paths whose hardest timing falls in that band, from easiest to hardest. `Normal` takes timings up to 2.0 ms. |
-| `Beyond N ms` | Paths whose hardest timing is past N ms, more than twice the hit window. At the default hit window of 85 ms, N is 170. |
+| `Beyond N ms` | Paths whose hardest timing is past N ms, more than twice the hit window. N is 170. |
 | `No timing needed` | Paths that need no squeeze and no required early fill. |
 
 `Optimal paths only` starts checked. It keeps just the optimal paths among each chart's 5 paths shown. When paths tie for the top score, it keeps every one of them, because each is optimal. `Clear filters` leaves it as it is.
@@ -497,7 +501,7 @@ The table has one row per path and starts sorted by score, highest first. Its co
 | `Acts` | Activations: how many times the path uses Star Power. |
 | `Max skip` | The most fills any one activation passes over before activating. |
 | `Hardest ms` | The hardest squeeze or required early fill the path needs, in ms: the gap at the SP end, or at the fill deadline. It leaves out the frontend timing scale. A dash means it needs none. |
-| `Timing` | The path's timing tier, the bands the timing dropdown lists. |
+| `Timing` | The path's timing tier, the bands the timing dropdown lists. It sorts in the dropdown's order, from `Normal` to `No timing needed`. |
 | `Early fill (ms)` | The hardest early fill on the path (written `E0` in the path): how many ms early you must hit to summon the fill. Negative means slack. A dash means the path has none. |
 | `Average Multiplier` | The score without solo bonuses divided by the base score (every note at 1x). |
 | `SqIn` | SP phrase notes squeezed into an active SP window (`+` in the path). |
@@ -520,11 +524,11 @@ Older versions saved the reports as web pages, `hydra_paths.html` and `hydra_dmc
 
 `Compare with dmleaderboards...` compares a [dmleaderboards.com](https://dmleaderboards.com) player's posted scores with your stored optimals. Pick a player from the searchable list in the `Compare dmleaderboards user` box; Hydra Deluxe remembers the last pick. Picking a player closes the box and opens the comparison in its own window, titled `dmleaderboards: <player> — Hydra`. Hydra Deluxe fetches the player's scores and matches them to your analyzed songs by chart hash.
 
-The comparison needs Expert, an SP cap of 4, `1.0 fills` off and Note Shuffle off. The leaderboard only holds Expert scores played under Clone Hero's rules, and its scores don't say whether Note Shuffle was on. Only songs analyzed under the current settings can match, so analyze your library first for a full comparison.
+The comparison needs Expert, `1.0 fills` off and Note Shuffle off. The leaderboard only holds Expert scores played under Clone Hero's rules, and its scores don't say whether Note Shuffle was on. Any `SP cap` setting works, because the comparison always uses SP cap 4, Clone Hero's rule. Only songs analyzed at SP cap 4 under the rest of the current settings can match, so set `SP cap` to 4 and analyze your library first for a full comparison.
 
 The first request after a while can take tens of seconds, because the leaderboard's server has to wake up. While the scores load, the window says `Fetching scores and building the report...` and `The leaderboard server can take a moment to wake up.`, over a moving bar. The server gives no count, so the bar only shows that work is happening. `Cancel` closes the window and reopens the player list.
 
-The comparison window has the same layout, keyboard and placement as the path report window (see [Report windows](#report-windows)). Its header reads `Hydra vs dmleaderboards`, and its line gives the player's name and total number of scores. Next to `Refresh`, which fetches the player's scores again and rebuilds the comparison, the header has `Compare another player...`, which reopens the box. There is one comparison window, so comparing another player replaces what it shows. Closing the window doesn't keep the comparison: to see it again, pick the player again, which fetches the scores again.
+The comparison window has the same layout, keyboard and placement as the path report window (see [Report windows](#report-windows)). Its header reads `Hydra vs dmleaderboards`. The line under it reads like `<player> — N scores — SP cap 4, Clone Hero's rule`: the player's name, their total number of scores and the cap the comparison uses. Next to `Refresh`, which fetches the player's scores again and rebuilds the comparison, the header has `Compare another player...`, which reopens the box. There is one comparison window, so comparing another player replaces what it shows. Closing the window doesn't keep the comparison: to see it again, pick the player again, which fetches the scores again.
 
 Every row gets one status. The status dropdown shows one status at a time, or `All charts`. These are its entries:
 
@@ -535,10 +539,10 @@ Every row gets one status. The status dropdown shows one status at a time, or `A
 | `Above optimal` | Scores played at 100% speed that are higher than it. |
 | `No current result (in your library)` | Scores for a chart in your library that has no current result for this mode at SP cap 4. |
 | `No paths (analyzed, none kept)` | Scores for a chart that was analyzed, but whose analysis kept no path. |
-| `Not in your library` | Scores for a chart the last scan didn't find. |
-| `Other speed` | Scores played at a speed other than 100%. |
+| `Not in your library` | Scores for a chart the last scan didn't find, at any speed. |
+| `Other speed` | Scores played at a speed other than 100%, for a chart in your library. |
 
-A score played at another speed is always `Other speed`, whatever else is true of it. Hydra Deluxe's optimal is for normal speed. So `Other speed` rows show Hydra Deluxe's numbers when it has them, but aren't compared with its optimal.
+A score played at another speed is `Other speed` whenever its chart is in your library, whatever else is true of it. Hydra Deluxe's optimal is for normal speed. So `Other speed` rows show Hydra Deluxe's numbers when it has them, but aren't compared with its optimal.
 
 Rows above optimal are expected, not errors. Hydra Deluxe's optimal leaves out several score backends on purpose. Many leaderboard scores were also set on older Clone Hero versions, whose fill rules allowed totals that are impossible now.
 
@@ -675,7 +679,7 @@ An activation that needs tighter timing than your `Path limit` keeps its cost an
 
 ## Scoring rules (`hydra_rules.ini`)
 
-A few of Hydra Deluxe's rules are judgment calls, not facts read from Clone Hero. You can change them in `hydra_rules.ini`, a plain text file next to Hydra.exe. The app and every command line tool read the same file.
+A few scoring rules are judgment calls, not facts read from Clone Hero. Some start from the public Hydra's rules, such as the backend leeway's 3 ms default, which is DragonDelgar's number. Others are Hydra Deluxe's own, such as how many tied paths to keep. You can change them in `hydra_rules.ini`, a plain text file next to Hydra.exe. The app and every command line tool read the same file.
 
 The file is optional. A missing file, or a missing line, means the default below. Each line is `key = value`. A `#` starts a comment, either on a line of its own or after a value on the same line. There are no `[section]` headers.
 
@@ -704,8 +708,17 @@ Older files may still have `auto_cap_ladder`, `auto_budget_s` or `fill_length_me
 
 A value Hydra Deluxe can't read, a key it doesn't know, or a line with no `=` is an error. The error names the key, or quotes the line. The command line tools print the error and stop with exit code 2. The app still opens and shows the error, but analysis stays off until you fix the file and restart Hydra Deluxe. Hydra Deluxe never analyzes on the defaults behind your back.
 
+`hydra_settings.ini`, the file next to Hydra.exe that holds your song folders and settings, follows the same rules. A value Hydra Deluxe can't read, a key it doesn't know, or a line with no `=` is an error there too. A whole number outside its range is not an error: it loads at the nearest end of the range, so `sp_cap=0` loads as an SP cap of 1. Older files may still have a `hit_window_ms` line. The hit window is now always 85 ms, so Hydra Deluxe skips that line and leaves it out the next time it saves the file. When the file has an error, the command line tools that read it print the error and stop with exit code 2. The app still opens, on its default settings, and shows two orange lines under the toolbar, like these. The second line starts with the path of your own file, which sits next to Hydra.exe. The example shows the default install folder:
+
+```
+hydra_settings.ini has an error, so Hydra is running on its default settings and saving nothing until the file is fixed and Hydra is restarted.
+C:\Program Files\Hydra\hydra_settings.ini: sp_cap = "abc" is not a whole number
+```
+
+Until you fix the file and restart Hydra Deluxe, analysis and scans stay off and nothing you change is saved, so your file stays as it was. The song panel shows the first line too, and a path report window with no report to show shows both.
+
 Every result remembers the rules it was made with. After you change the file, results made under the old rules show `Stale` until you click the song or run a batch. Switching the rules back brings those results back.
 
 ## For power users: command line tools
 
-You never need these; everything they do is in the app. Two console programs sit next to Hydra.exe and share its settings and library. `hydra_batch` analyzes the library, and `hydra_fillcompare` compares Clone Hero 1.0 and 1.1 fill results. The path report lives only in the app. The [developer page](development.md#command-line-tools) lists their flags.
+You never need these; everything they do is in the app. Two console programs sit next to Hydra.exe and share its settings and library. `hydra_batch` analyzes the library, and `hydra_fillcompare` compares Clone Hero 1.0 and 1.1 fill results. The path report lives only in the app. A `hydra_batch --whole-library` run saves its scan as your library, the way `Scan library` does, so it refuses the same way: if one of your song folders can't be read, it prints `<folder> cannot be read, so nothing was scanned. Click Scan library when it is back.` and stops with exit code 2 before it scans or analyzes anything. The [developer page](development.md#command-line-tools) lists their flags.

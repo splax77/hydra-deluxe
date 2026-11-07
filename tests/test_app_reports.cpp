@@ -117,32 +117,70 @@ TEST_CASE("showing the path report opens its window and builds it only the first
     CHECK(app->report_job == nullptr);  // the rows in memory show; nothing rebuilds
 }
 
-// D103 item 28: closing the window (its X, Esc or Ctrl+W) lets the rows go,
-// and reopening builds the report again.
-TEST_CASE("closing the path report frees its rows, and reopening builds it again") {
+// Hydra.exe --open-report: the window opens at the first tick the toolbar's
+// button shows, once, and a close afterwards stays closed.
+TEST_CASE("--open-report opens the path report once the button shows, and only once") {
+    ScratchPaths paths("appstate_pathopenflag");
+    std::unique_ptr<AppState> app = app_with_result(paths, "pathopenflag");
+    app->open_path_report_once_shown();
+
+    // Before the startup open brings the store, the main window and its
+    // toolbar don't draw, so nothing opens.
+    std::unique_ptr<hydra::store::RecordStore> held = std::move(app->store);
+    REQUIRE_FALSE(app->path_report_button_shown());
+    app->tick(0.0);
+    CHECK_FALSE(app->path_report.window_open);
+    CHECK(app->report_job == nullptr);
+
+    app->store = std::move(held);
+    REQUIRE(app->path_report_button_shown());
+    app->tick(0.0);
+    CHECK(app->path_report.window_open);
+    finish_path_report(*app);
+    CHECK(app->path_report.built_on_open);  // opened as the button opens it
+
+    app->close_path_report();
+    app->tick(0.0);
+    app->tick(0.0);
+    CHECK_FALSE(app->path_report.window_open);
+}
+
+// Without the option, the button showing opens nothing.
+TEST_CASE("the path report stays shut at a tick without --open-report") {
+    ScratchPaths paths("appstate_pathnoflag");
+    std::unique_ptr<AppState> app = app_with_result(paths, "pathnoflag");
+    REQUIRE(app->path_report_button_shown());
+    app->tick(0.0);
+    CHECK_FALSE(app->path_report.window_open);
+    CHECK(app->report_job == nullptr);
+}
+
+// D271 item 7: closing the window (its X, Esc or Ctrl+W) only hides it, as
+// the comparison's close does, so reopening shows the same rows at once.
+TEST_CASE("closing the path report keeps its rows, and reopening shows them without a build") {
     ScratchPaths paths("appstate_pathclose");
     std::unique_ptr<AppState> app = app_with_result(paths, "pathclose");
     app->show_path_report();
     finish_path_report(*app);
     REQUIRE(app->path_report.result != nullptr);
-    const std::weak_ptr<const hydra::app::report::GeneratedReport> rows = app->path_report.result;
+    const hydra::app::report::GeneratedReport* rows = app->path_report.result.get();
 
     app->close_path_report();
     CHECK_FALSE(app->path_report.window_open);
-    CHECK(app->path_report.result == nullptr);
-    CHECK(rows.expired());  // nothing in AppState still holds them
-    CHECK(app->path_report_build() == ReportBuild::None);
+    CHECK(app->path_report.result.get() == rows);
+    CHECK(app->path_report_build() == ReportBuild::Ready);
+    CHECK(app->parked_reports.empty());
 
     app->show_path_report();
     CHECK(app->path_report.window_open);
-    CHECK(app->path_report_build() == ReportBuild::Building);
-    finish_path_report(*app);
+    CHECK(app->report_job == nullptr);  // nothing rebuilds
     CHECK(app->path_report_build() == ReportBuild::Ready);
-    CHECK(app->path_report.result != nullptr);
+    CHECK(app->path_report.result.get() == rows);
 }
 
-// The user's answer to item 28's follow-up (2026-10-09): rows built because
-// the window opened keep its filters; Refresh's start them over.
+// The user's answer to D103 item 28's follow-up (2026-10-09), which D271
+// item 7 keeps: rows built because the window opened keep its filters;
+// Refresh's start them over.
 TEST_CASE("a path report built on opening its window says so; Refresh's does not") {
     ScratchPaths paths("appstate_pathopenkeep");
     std::unique_ptr<AppState> app = app_with_result(paths, "pathopenkeep");
@@ -157,15 +195,16 @@ TEST_CASE("a path report built on opening its window says so; Refresh's does not
     CHECK_FALSE(app->path_report.built_on_open);
     CHECK_FALSE(hydra::ui::path_report_input(*app).keep_filters);
 
-    // Closed and opened again: built on opening once more.
+    // Closed and opened again: the Refresh's rows show, nothing rebuilds.
     app->close_path_report();
-    CHECK_FALSE(app->path_report.built_on_open);
     app->show_path_report();
-    finish_path_report(*app);
-    CHECK(app->path_report.built_on_open);
+    CHECK(app->report_job == nullptr);
+    CHECK_FALSE(app->path_report.built_on_open);
 }
 
-TEST_CASE("closing the path report mid-build cancels the build, and nothing lands") {
+// D271 item 7: a build still running when the window closes is not
+// cancelled. It lands with the window shut, and nothing is parked.
+TEST_CASE("closing the path report mid-build lets the build finish and land") {
     ScratchPaths paths("appstate_pathclosebuild");
     std::atomic<bool> release{false};
     std::unique_ptr<AppState> app = app_with_result(paths, "pathclosebuild");
@@ -177,27 +216,27 @@ TEST_CASE("closing the path report mid-build cancels the build, and nothing land
     REQUIRE(app->path_report_build() == ReportBuild::Building);
 
     app->close_path_report();
-    CHECK(app->path_report_build() == ReportBuild::None);
-    CHECK(app->report_job == nullptr);
-    REQUIRE(app->parked_reports.size() == 1);
-    CHECK(app->parked_reports.front()->is_cancelled());
-
-    // The stopped job finishes; it never lands in the slot.
-    release = true;
-    wait_until([&] { return app->parked_reports.front()->finished(); },
-               "the stopped report job to finish");
-    app->update_background_jobs();
+    CHECK_FALSE(app->path_report.window_open);
+    CHECK(app->path_report_build() == ReportBuild::Building);
+    REQUIRE(app->report_job != nullptr);
+    CHECK_FALSE(app->report_job->is_cancelled());
     CHECK(app->parked_reports.empty());
-    CHECK(app->path_report.result == nullptr);
-    CHECK(app->path_report_build() == ReportBuild::None);
+
+    release = true;
+    finish_path_report(*app);
+    CHECK(app->parked_reports.empty());
+    CHECK(app->path_report_build() == ReportBuild::Ready);
+    CHECK(app->path_report.result != nullptr);
+    CHECK_FALSE(app->path_report.window_open);  // it lands with the window shut
 
     app->show_path_report();
-    CHECK(app->path_report_build() == ReportBuild::Building);
-    finish_path_report(*app);
+    CHECK(app->report_job == nullptr);
     CHECK(app->path_report_build() == ReportBuild::Ready);
 }
 
-TEST_CASE("reopening the path report after a cancelled build builds it again") {
+// D278 item 3: a cancelled report stays cancelled after a close, as the
+// comparison's does. Reopening shows "Report cancelled." with Try again.
+TEST_CASE("reopening the path report after a cancelled build shows it cancelled") {
     ScratchPaths paths("appstate_pathclosecancelled");
     std::atomic<bool> release{false};
     std::unique_ptr<AppState> app = app_with_result(paths, "pathclosecancelled");
@@ -214,7 +253,12 @@ TEST_CASE("reopening the path report after a cancelled build builds it again") {
 
     app->close_path_report();
     app->show_path_report();
-    CHECK(app->path_report_build() == ReportBuild::Building);
+    CHECK(app->report_job == nullptr);  // no new build starts
+    CHECK(app->path_report_build() == ReportBuild::Cancelled);
+    CHECK(hydra::ui::path_report_input(*app).state == ReportBuild::Cancelled);
+
+    // Try again builds it.
+    hydra::ui::path_report_input(*app).callbacks.try_again();
     finish_path_report(*app);
     CHECK(app->path_report_build() == ReportBuild::Ready);
 }
@@ -441,7 +485,7 @@ TEST_CASE("picking a player opens the comparison; Refresh reuses the player") {
         wait_until([&] { return app->dm_fetch_job->finished(); }, "the player list's fetch to finish");
 }
 
-// ---- opening the report analyzes first (plan 2026-10-15, question 8) --------
+// ---- opening the report analyzes first (D249 item 8) --------
 
 namespace {
 
@@ -559,13 +603,12 @@ TEST_CASE("more rows to run than the threshold open the batch confirm first") {
     wait_batch_finished(*app);
     app->update_background_jobs();
     finish_path_report(*app);
-    app->close_path_report();
     app->batch_job.reset();  // the finished strip's X
 
     // Over it, the report window asks on the same plan and nothing runs yet.
     // The question is the report's own: the main window's popup stays shut.
     app->report_confirm_above = kUnanalyzed - 1;
-    app->show_path_report();
+    app->request_path_report();  // the window's Refresh
     CHECK(app->batch_job == nullptr);
     CHECK(app->batch_plan.todo_rows() == kUnanalyzed);
     CHECK(app->path_report_awaits_confirm());
@@ -595,12 +638,11 @@ TEST_CASE("more rows to run than the threshold open the batch confirm first") {
     app->update_background_jobs();
     finish_path_report(*app);
     CHECK(app->path_report_build() == ReportBuild::Ready);
-    app->close_path_report();
     app->batch_job.reset();
 
     // Its Cancel is "don't analyze": nothing runs, and the report builds from
     // the results already stored rather than ending cancelled.
-    app->show_path_report();
+    app->request_path_report();
     REQUIRE(app->path_report_awaits_confirm());
     hydra::ui::path_report_input(*app).callbacks.cancel();
     CHECK_FALSE(app->batch_confirm_pending);
@@ -610,23 +652,30 @@ TEST_CASE("more rows to run than the threshold open the batch confirm first") {
     CHECK(app->batch_job == nullptr);
     finish_path_report(*app);
     CHECK(app->path_report_build() == ReportBuild::Ready);
-    app->close_path_report();
 
-    // Closing the window while it asks drops the question: nothing runs and
-    // no popup takes it up in the main window.
-    app->show_path_report();
+    // Closing the window while it asks ends the question (D276 item 6):
+    // nothing runs, no popup takes it up in the main window, and the rows in
+    // memory stay to show on reopening.
+    const hydra::app::report::GeneratedReport* rows = app->path_report.result.get();
+    REQUIRE(rows != nullptr);
+    app->request_path_report();
     REQUIRE(app->path_report_awaits_confirm());
     app->close_path_report();
     app->update_background_jobs();
+    CHECK_FALSE(app->path_report_awaits_confirm());
     CHECK_FALSE(app->batch_confirm_pending);
     CHECK_FALSE(app->batch_confirm_in_main_window());
     CHECK(app->batch_job == nullptr);
-    CHECK(app->path_report_build() == ReportBuild::None);
+    CHECK(app->report_job == nullptr);
+    CHECK(app->path_report_build() == ReportBuild::Ready);
+    app->show_path_report();
+    CHECK_FALSE(app->path_report_awaits_confirm());
+    CHECK(app->path_report.result.get() == rows);
 
     // The toolbar's Analyze while the window asks: the user's own popup opens,
     // and the window's question counts as declined, so the report builds from
     // what is stored.
-    app->show_path_report();
+    app->request_path_report();
     REQUIRE(app->path_report_awaits_confirm());
     app->open_batch_confirm();
     CHECK_FALSE(app->path_report_awaits_confirm());
@@ -636,6 +685,33 @@ TEST_CASE("more rows to run than the threshold open the batch confirm first") {
     app->close_batch_confirm();
     finish_path_report(*app);
     CHECK(app->path_report_build() == ReportBuild::Ready);
+}
+
+// D276 item 6: closing the window while it asks "Analyze N charts?" means
+// no. With nothing built, reopening asks again.
+TEST_CASE("closing the path report while it asks ends the question, and reopening asks again") {
+    ScratchPaths paths("appstate_pathcloseasks");
+    std::unique_ptr<AppState> app = app_with_unanalyzed(paths, "pathcloseasks");
+    app->report_confirm_above = kUnanalyzed - 1;
+    app->show_path_report();
+    REQUIRE(app->path_report_awaits_confirm());
+    const std::string question = hydra::ui::path_report_input(*app).confirm_question;
+    REQUIRE_FALSE(question.empty());
+
+    app->close_path_report();
+    app->update_background_jobs();
+    CHECK_FALSE(app->path_report.window_open);
+    CHECK_FALSE(app->path_report_awaits_confirm());
+    CHECK_FALSE(app->batch_confirm_pending);
+    CHECK_FALSE(app->batch_confirm_in_main_window());
+    CHECK(app->batch_job == nullptr);
+    CHECK(app->report_job == nullptr);
+    CHECK(app->path_report_build() == ReportBuild::None);
+
+    app->show_path_report();
+    CHECK(app->path_report_awaits_confirm());
+    CHECK(hydra::ui::path_report_input(*app).confirm_question == question);
+    CHECK(app->batch_job == nullptr);
 }
 
 TEST_CASE("a batch already running is waited on, and its finish builds the report") {
@@ -686,7 +762,8 @@ TEST_CASE("the post-batch report lists the batch's cap and lens, not the live se
 // D103 item 28's 2026-10-09 answer: the finished strip shows "Open
 // automatically" from report_started and the build state alone. These pin
 // what the strip reads on the paths that matter: a batch's report cancelled
-// in the window then refreshed, a close, and a new batch.
+// in the window then refreshed, a close (which keeps the report, D271 item
+// 7), and a new batch.
 TEST_CASE("the strip's report_started holds through a cancel, a refresh and a close") {
     ScratchPaths paths("appstate_batchlanded");
     std::atomic<bool> release{false};
@@ -714,7 +791,7 @@ TEST_CASE("the strip's report_started holds through a cancel, a refresh and a cl
     CHECK(app->report_started);
 
     app->close_path_report();
-    CHECK(app->path_report_build() == ReportBuild::None);
+    CHECK(app->path_report_build() == ReportBuild::Ready);
     CHECK(app->report_started);
 
     app->batch_job.reset();  // the finished strip's X

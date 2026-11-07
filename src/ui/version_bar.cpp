@@ -1,6 +1,5 @@
 // The version bar across the top of the main window
-// (docs/superpowers/plans/2026-10-23-update-check-on-launch.md, "The version
-// bar"): the app's name and version, then a dot and the update status, with
+// (D260): the app's name and version, then a dot and the update status, with
 // the update phase's buttons when one shows. Every word comes from
 // AppState::version_bar_status and AppState::update; this only draws them.
 

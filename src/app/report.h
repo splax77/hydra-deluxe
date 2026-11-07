@@ -51,8 +51,14 @@ struct ReportRow {
     int sqin = 0;
     int sqout = 0;
     int notes = 0;
+    // How many library rows the row's chart counts as
+    // (store::ChartIndex::copies), kept so the Charts shown tile counts
+    // without the library's index (D282). collect_rows sets it from
+    // ChartIndex::copies; a row built any other way counts no chart until its
+    // maker sets it.
+    int copies = 0;
     // The chart this row belongs to (its song id). Every chart count on the
-    // page asks store::ChartIndex::count over these ids.
+    // page asks store::count_charts over these ids.
     std::string hyhash;
 };
 
@@ -66,11 +72,10 @@ struct Tile {
 // What a tile or cell shows where a value is missing: the pages' DASH.
 inline constexpr const char* kDash = "—";
 
-// The colour a report chip is drawn in. Each member is named after the pages'
-// CSS variable for it: the timing tiers' --t0 to --t5 and --tn, and the dim
-// --muted. A path row's tier carries its token's name as ReportRow::tok, and
-// dm_report::status_token gives a comparison status's. The theme turns a
-// token into a colour.
+// The colour a report chip is drawn in. A path row's tier carries its token's
+// name as ReportRow::tok, and dm_report::status_token gives a comparison
+// status's. The theme turns a token into a colour (ui::chip_color, which says
+// where each colour comes from).
 enum class ChipToken { t0, t1, t2, t3, t4, t5, tn, muted };
 
 // The token a path row's Timing chip is drawn in, read from the token name
@@ -88,41 +93,28 @@ inline ChipToken tier_token(const std::string& tok) {
 }
 
 // The path report's five tiles over the rows a window shows: `shown` holds
-// their indices into `rows`. `hit_window_ms` is the window the rows' tiers
-// were labeled with (GeneratedReport::hit_window_ms), which names the Beyond
-// edge in the "Past N ms" tile. `library` counts the Charts shown tile
-// (GeneratedReport::library), which reads "<shown> of <library>": the charts
-// with rows shown, of every chart the library lists, both counted in library
-// rows. Takes over the page script's `stats`.
+// their indices into `rows`. The Beyond edge (beyond_edge_text) names the
+// "Past N ms" tile. The Charts shown tile reads "<shown> of <library>": the
+// charts with rows shown, counted over the rows' own copies
+// (ReportRow::copies), of `library_charts`, every chart the library lists
+// (GeneratedReport::library_charts). Both count library rows. Takes over the
+// page script's `stats`.
 std::vector<Tile> path_tiles(const std::vector<ReportRow>& rows,
-                             const std::vector<size_t>& shown, double hit_window_ms,
-                             const store::ChartIndex& library);
+                             const std::vector<size_t>& shown, int64_t library_charts);
 
-// The timing_tiers table's two open bands, the one answer to which entries
-// they are: Beyond, past the last cutoff, and None, a path with no squeeze.
-// tier_for labels rows with them, path_tiles counts the Beyond rows and the
-// path report view names both.
-const TimingTier& beyond_tier(const std::vector<TimingTier>& tiers);
-const TimingTier& none_tier(const std::vector<TimingTier>& tiers);
-
-// (label, token) for a hardest-squeeze value (raw ms), e.g. (Extreme, t2).
-// nullopt -> (None, tn). Bands derive from the two-hit budget
-// (nominal_budget_ms): up to and including kDifficultMs is Normal (an absolute
-// floor), then quarters of the budget, and Beyond past the whole budget. A
-// timing exactly on an edge belongs to the band below it (D48 Q3), so 2.0 ms is
-// Normal and the budget itself is Insane+. At the historical W = 70 this is the
-// original 2/35/70/105/140 ladder.
-std::pair<std::string, std::string> tier_for(const std::optional<double>& ms,
-                                             double hit_window_ms = kDefaultHitWindowMs);
-
-// The same label, read from an already-built timing_tiers table, so a caller
-// labeling many rows builds the table once.
-std::pair<std::string, std::string> tier_for(const std::optional<double>& ms,
-                                             const std::vector<TimingTier>& tiers);
+// (label, token) for a hardest-squeeze value (raw ms), e.g. (Extreme, t2):
+// hydra::tier_for (core/squeeze_rating.h) on a freshly built timing_tiers
+// table. A caller labeling many rows builds the table once and calls
+// hydra::tier_for itself.
+std::pair<std::string, std::string> tier_for(const std::optional<double>& ms);
 
 // The Beyond edge (beyond_edge_ms) as every report prints it, in whole ms:
 // the page's payload, its footer, the Past tile and the Timing chip.
-std::string beyond_edge_text(double hit_window_ms);
+std::string beyond_edge_text();
+
+// The hit window (kHitWindowMs) as the reports print it, in whole ms: the
+// footer's and the timing dropdown's "the N ms hit window" (D278 item 4).
+std::string hit_window_text();
 
 // One library chart whose stored result under the page's profile is a
 // failure (RecordStatus::CantAnalyze), named from the library.
@@ -164,7 +156,6 @@ inline constexpr int64_t kEveryPathSentinel = 1000000000;
 struct ReportOptions {
     // Defaults to every path a record keeps.
     int64_t max_paths = store::kPathsPerRecord;
-    double hit_window_ms = kDefaultHitWindowMs;
     std::string db_path;  // names the footer's source database
     // Set this and generate_report hands back an empty result, with no rows.
     // Closing the app while a report builds goes through here; the CLI never
@@ -177,7 +168,8 @@ struct ReportOptions {
 
 // What collect_rows found: the page's rows, the library they were read
 // against, and the library's charts that gave no rows because they have no
-// Ready record (library_lookup's other two groups).
+// Ready record (library_lookup's other two groups). generate_report counts
+// through the library and then lets it go; only the rows outlive the build.
 struct CollectedRows {
     std::vector<ReportRow> rows;
     store::ChartIndex library;
@@ -188,8 +180,8 @@ struct CollectedRows {
 // The page's rows, read from the store: every Ready record of options.run's
 // profile whose chart the library lists (library_lookup), in the library's
 // scan order, each giving up to options.max_paths rows in its stored rank
-// order. Nothing is analyzed and no chart file is opened. hit_window_ms feeds
-// the tier labels only.
+// order. The row list holds exactly its rows, with no spare capacity (D282).
+// Nothing is analyzed and no chart file is opened.
 CollectedRows collect_rows(store::RecordStore& store, const ReportOptions& options);
 
 // ---- generate_report -------------------------------------------------------
@@ -258,7 +250,7 @@ struct GeneratedReport {
     int64_t songs = 0;
     int64_t rows = 0;
     // Every chart the library lists, in library rows (ChartIndex::count):
-    // the "of" half of the Charts shown tile. With no filters,
+    // the "of" half of the Charts shown tile (path_tiles). With no filters,
     // songs + cant_analyze_charts + no_result_charts == library_charts.
     int64_t library_charts = 0;
     // The library's charts whose stored result is a failure, in library rows,
@@ -283,13 +275,10 @@ struct GeneratedReport {
     // and a cancel keep each caller's own words.
     std::string why_empty;
     // The rows themselves, one per path, in collect_rows' order. Empty when
-    // there is no page.
+    // there is no page. Each carries its chart's copies, so the window
+    // recounts its Charts shown tile from the rows alone (path_tiles); the
+    // report keeps no chart index of its own (D282).
     std::vector<ReportRow> paths;
-    // The library the rows were read against. The window recounts its
-    // Charts shown tile through it (path_tiles).
-    store::ChartIndex library;
-    // The window the rows' tiers were labeled with (ReportOptions::hit_window_ms).
-    double hit_window_ms = kDefaultHitWindowMs;
     // The line under the page's heading and the note at its foot, as the page
     // shows them. Empty when there is no page.
     std::string subtitle;
@@ -307,12 +296,9 @@ GeneratedReport generate_report(store::RecordStore& store, const ReportOptions& 
 // open page outlives a change to them.
 struct PageSettings {
     store::Profile profile;
-    double hit_window_ms = kDefaultHitWindowMs;
 
     static PageSettings of(const Settings& settings);
-    bool operator==(const PageSettings& other) const {
-        return profile == other.profile && hit_window_ms == other.hit_window_ms;
-    }
+    bool operator==(const PageSettings& other) const { return profile == other.profile; }
     bool operator!=(const PageSettings& other) const { return !(*this == other); }
 };
 

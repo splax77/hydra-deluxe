@@ -7,8 +7,9 @@
 #include <limits>
 
 #include "core/backend_value.h"
-#include "core/scoring.h"  // category_scores, multsqueeze_gain
-#include "core/stars.h"    // score_without_solo
+#include "core/scoring.h"         // category_scores, multsqueeze_gain
+#include "core/squeeze_rating.h"  // timing_tiers, tier_for
+#include "core/stars.h"           // score_without_solo
 
 namespace hydra {
 
@@ -336,28 +337,19 @@ double BackendSqueeze::offset() const {
     return *offset_ms;
 }
 
-std::string BackendSqueeze::summarystr(bool squeezed_out, double hit_window_ms,
+std::string BackendSqueeze::summarystr(bool squeezed_out, std::optional<double> effective_ms,
                                        double leeway_ms) const {
     const double off = offset();
-    const double w = hit_window_ms;
-    const double band = kBackendInnerBandMs;
-    if (squeezed_out) {
-        // A row the engine does not count says so, as the plain rows do
-        // (finding 33): the same test, the same tag.
-        const char* tag = core::counted_without_squeeze(off, leeway_ms) ? "" : " (uncounted)";
-        const char* label = off < -w     ? "Insane SqOut"
-                            : off < -band ? "Hard SqOut"
-                            : off < band  ? "Standard SqOut"
-                            : off < w     ? "Easy SqOut"
-                                          : "Free SqOut";
-        return std::string(label) + tag;
-    }
-    if (off < -w) return "Free";
-    if (off < -band) return "Easy";
-    // Counted by the engine with no squeeze: the same edge it prices with.
-    if (core::counted_without_squeeze(off, leeway_ms)) return "Standard";
-    if (off < w) return "Hard (uncounted)";
-    return "Insane (uncounted)";
+    const double needed = backend_row_timing(off, squeezed_out, leeway_ms);
+    // The eff. figure is the same need after the frontend scale (rate_note),
+    // so it is banded in place of the raw one. A row that needs nothing reads
+    // the first tier whatever its scale (D276 item 2).
+    const double banded = (needed > 0.0 && effective_ms) ? *effective_ms : needed;
+    std::string word = tier_for(banded, timing_tiers()).first;
+    // A row the engine does not count says so, squeezed out or not
+    // (finding 33, D48 Q6): the same test the engine prices with.
+    if (!core::counted_without_squeeze(off, leeway_ms)) word += " (uncounted)";
+    return word;
 }
 
 // ---- MultSqueeze --------------------------------------------------------

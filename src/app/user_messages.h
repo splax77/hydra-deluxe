@@ -52,17 +52,25 @@ inline constexpr const char* kAnalysisOffSentence =
     "hydra_rules.ini has an error, so analysis is off until the file is fixed and "
     "Hydra is restarted.";
 
-// What a refused update reads as (ErrorKind::UpdateUnverified, decision 9 of
-// docs/superpowers/plans/2026-10-22-auto-updater.md). The version bar shows
+// What a bad hydra_settings.ini reads as in the app (ErrorKind::SettingsFile,
+// D270 call 4, D276 item 1): Hydra runs on its defaults and saves nothing
+// while it is bad.
+inline constexpr const char* kSettingsOffSentence =
+    "hydra_settings.ini has an error, so Hydra is running on its default settings and "
+    "saving nothing until the file is fixed and Hydra is restarted.";
+
+// What a refused update reads as (ErrorKind::UpdateUnverified, D259 call 9).
+// The version bar shows
 // it for every refusal; the details line under it names the check.
 inline constexpr const char* kUpdateUnverifiedSentence =
     "Hydra couldn't verify the update it downloaded, so it was not installed. Try again "
     "later, or download the release from GitHub yourself.";
 
-// What a command-line tool prints for a bad hydra_rules.ini (D114 item 11):
-// the tools' sentence, then the loader's line from `e`. The tools stop instead
-// of running on (app::load_tool_rules), so the app's sentence does not fit.
-std::string rules_file_tool_text(const std::exception& e);
+// What a command-line tool prints for a bad hydra_rules.ini or
+// hydra_settings.ini (D114 item 11, D270 call 4): the tools' sentence naming
+// `file_name`, then the loader's line from `e`. The tools stop instead of
+// running on (app::load_tool_rules), so the app's sentences do not fit.
+std::string ini_file_tool_text(std::string_view file_name, const std::exception& e);
 
 // What happened and what to do, in at most two short sentences. The sentence
 // comes from the error's kind (core/error_kind.h), through the one switch,
@@ -125,9 +133,21 @@ std::string old_library_set_aside_notice(const std::string& db_path);
 // (store::RecordStore::chart_library_out_of_date).
 std::string library_rescan_notice();
 
-// The status line's problem when the library is out of date but `folder`,
-// one of the chart folders, cannot be read, so the app starts no scan.
-std::string library_rescan_blocked_notice(const std::string& folder);
+// Which scan a missing chart folder stopped (D268).
+enum class ScanAsker {
+    // The scan the app starts by itself when it opens a library whose scan is
+    // out of date (store::RecordStore::chart_library_out_of_date).
+    Open,
+    // Every other scan: one the user asked for in the app, and hydra_batch's
+    // whole-library run.
+    User,
+};
+
+// What Hydra says when `folder`, one of the chart folders
+// (app::first_missing_chart_folder), cannot be read, so the scan `asker`
+// asked for does not run: the app's status line problem, and hydra_batch's
+// refusal.
+std::string library_scan_blocked_notice(const std::string& folder, ScanAsker asker);
 
 // What the library's Stale chip says when hovered. The chip stands for many
 // rows, so it names both causes stale_text can name.

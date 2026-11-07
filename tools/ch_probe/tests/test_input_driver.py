@@ -125,6 +125,61 @@ class TestPressChord(unittest.TestCase):
         self.assertEqual(presses, [(0x4C, False), (0x4C, True)])
 
 
+class TestMenuKeys(unittest.TestCase):
+    """The non-lane keys and the typing path the menus take."""
+
+    def test_the_menu_key_table(self):
+        self.assertEqual(input_driver.MENU_KEYS, {
+            "enter": 0x0D, "escape": 0x1B, "space": 0x20, "backspace": 0x08,
+            "tab": 0x09, "up": 0x26, "down": 0x28, "left": 0x25, "right": 0x27})
+
+    def test_the_menu_key_gap_is_the_ruled_value(self):
+        # Ruling 3 of the 2026-10-30 ch_mcp Star Power plan.
+        self.assertEqual(input_driver.MENU_KEY_GAP_S, 0.25)
+
+    def test_press_key_sends_down_hold_then_up(self):
+        driver, presses = _make_driver()
+        enter = input_driver.MENU_KEYS["enter"]
+        sent = driver.press_key(enter, sleep=lambda s: presses.append(("sleep", s)))
+        self.assertEqual(presses, [(enter, False), ("sleep", input_driver.KEY_HOLD_S),
+                                   (enter, True)])
+        self.assertEqual(sent, enter)
+
+    def test_type_text_sends_unicode_events_with_the_gap_between(self):
+        driver = InputDriver()
+        events = []
+        driver.send_input = lambda event: events.append(
+            (event.type, event.u.ki.wVk, event.u.ki.wScan, event.u.ki.dwFlags))
+        driver.send_key = lambda vk, key_up: self.fail("type_text pressed a virtual key")
+        sleeps = []
+        typed = driver.type_text("Wi", gap_s=0.25, sleep=sleeps.append)
+        down = input_driver.KEYEVENTF_UNICODE
+        up = input_driver.KEYEVENTF_UNICODE | input_driver.KEYEVENTF_KEYUP
+        self.assertEqual(input_driver.KEYEVENTF_UNICODE, 0x0004)
+        kb = input_driver.INPUT_KEYBOARD
+        self.assertEqual(events, [(kb, 0, ord("W"), down), (kb, 0, ord("W"), up),
+                                  (kb, 0, ord("i"), down), (kb, 0, ord("i"), up)])
+        self.assertEqual(sleeps, [0.25])
+        self.assertEqual(typed, 2)
+
+    def test_type_text_sends_a_wide_character_as_its_two_halves(self):
+        driver = InputDriver()
+        units = []
+        driver.send_unicode = lambda unit, key_up: units.append((unit, key_up))
+        driver.type_text("\U0001F941", gap_s=0.25, sleep=lambda s: None)
+        self.assertEqual(units, [(0xD83E, False), (0xD83E, True),
+                                 (0xDD41, False), (0xDD41, True)])
+
+    def test_send_key_still_sends_a_virtual_key_event(self):
+        driver = InputDriver()
+        events = []
+        driver.send_input = lambda event: events.append(
+            (event.u.ki.wVk, event.u.ki.wScan, event.u.ki.dwFlags))
+        driver.tap(Lane.RED)
+        red = DEFAULT_BINDINGS[Lane.RED]
+        self.assertEqual(events, [(red, 0, 0), (red, 0, input_driver.KEYEVENTF_KEYUP)])
+
+
 class TestGameWindow(unittest.TestCase):
     """The one way a runner finds and focuses the game window."""
 

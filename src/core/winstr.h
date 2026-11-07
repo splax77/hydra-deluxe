@@ -65,6 +65,13 @@ bool is_path_separator(char c);
 // gives "C:\a\b"; a path of only separators gives an empty string.
 std::string trim_trailing_separators(std::string path);
 
+// Whether two paths spell one folder: the same once Windows makes each full
+// (GetFullPathNameW), any \\?\ prefix and trailing separators are dropped,
+// and letter case is ignored the way Windows file names ignore it
+// (CompareStringOrdinal). It reads names only, never the disk, so a junction
+// or an 8.3 short name that leads to the same folder is not caught.
+bool same_folder(const std::string& a, const std::string& b);
+
 // A path's parent folder: trailing slashes or backslashes are dropped, then
 // the path is cut at its last one. Empty when no separator is left (a bare
 // name, or an empty path). "C:\a\b\" gives "C:\a", as the library scan has

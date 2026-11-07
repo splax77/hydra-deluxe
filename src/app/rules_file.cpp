@@ -1,14 +1,14 @@
 #include "app/rules_file.h"
 
-#include <cmath>
 #include <cstdio>
 #include <fstream>
-#include <limits>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <variant>
 
 #include "app/config.h"
+#include "app/ini_errors.h"
 #include "app/user_messages.h"
 #include "core/rules.h"
 #include "core/strutil.h"
@@ -29,8 +29,8 @@ constexpr RetiredKey kRetiredRulesKeys[] = {
 };
 
 [[noreturn]] void bad(const std::string& path, const std::string& key,
-                      const std::string& value, const char* want) {
-    throw RulesFileError(path + ": " + key + " = \"" + value + "\" is not " + want);
+                      const std::string& value, std::string_view want) {
+    throw RulesFileError(ini_bad_value_text(path, key, value, want));
 }
 
 // A number at least f.min (above it when f.min_allowed is false).
@@ -48,11 +48,9 @@ double to_double(const std::string& path, const std::string& key, const std::str
 }
 
 int to_int(const std::string& path, const std::string& key, const std::string& v) {
-    const std::optional<double> d = parse_finite_number(v);
-    if (!d || *d != std::trunc(*d) || *d < std::numeric_limits<int>::min() ||
-        *d > std::numeric_limits<int>::max())
-        bad(path, key, v, "a whole number");
-    return static_cast<int>(*d);
+    const std::optional<int> i = parse_whole_number(v);
+    if (!i) bad(path, key, v, kWantWholeNumber);
+    return *i;
 }
 
 // Sets the field `f` of `r` from the file's text `v`, or throws naming it.
@@ -88,14 +86,14 @@ core::Rules load_rules_file(const std::filesystem::path& path) {
             // A blank or comment-only line is fine; any other line needs an =.
             const std::string text(ini_line_text(line));
             if (text.empty()) continue;
-            throw RulesFileError(where + ": \"" + text + "\" is not key = value");
+            throw RulesFileError(ini_not_key_value_text(where, text));
         }
         const core::RulesField* field = nullptr;
         for (const core::RulesField& candidate : core::rules_fields())
             if (kv->key == candidate.name) field = &candidate;
         // A live field wins, so a name brought back is never skipped.
         if (!field && is_retired_key(kRetiredRulesKeys, kv->key)) continue;
-        if (!field) throw RulesFileError(where + ": unknown key \"" + kv->key + "\"");
+        if (!field) throw RulesFileError(ini_unknown_key_text(where, kv->key));
         set_field(where, *field, kv->value, r);
     }
     return r;
@@ -104,14 +102,14 @@ core::Rules load_rules_file(const std::filesystem::path& path) {
 std::filesystem::path default_rules_path() {
     if (!path_overrides().rules_path.empty())
         return std::filesystem::u8path(path_overrides().rules_path);
-    return std::filesystem::u8path(exe_dir()) / "hydra_rules.ini";
+    return std::filesystem::u8path(exe_dir()) / std::filesystem::u8path(kRulesFileName);
 }
 
 int load_tool_rules(const std::optional<std::string>& path, core::Rules& rules) {
     try {
         rules = load_rules_file(path ? std::filesystem::u8path(*path) : default_rules_path());
     } catch (const RulesFileError& e) {
-        std::fprintf(stderr, "%s\n", rules_file_tool_text(e).c_str());
+        std::fprintf(stderr, "%s\n", ini_file_tool_text(kRulesFileName, e).c_str());
         return 2;
     }
     return 0;

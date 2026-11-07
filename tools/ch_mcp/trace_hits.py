@@ -14,7 +14,8 @@ the agent checks along with the rest of the class's shape.
 
 `TraceSession` runs the same args-mode trace in a background thread, so a
 caller such as the MCP server can read the calls while the song plays and stop
-the trace early (plan 2026-10-28-ch-mcp-server, task T4). Its notes come from
+the trace early (plan 2026-10-28-ch-mcp-server, task T4; removed, read it with
+git show ec91f8d1:docs/superpowers/plans/2026-10-28-ch-mcp-server.md). Its notes come from
 `song_notes`: a probe song's manifest, or a `hydra_replay score` JSON.
 
 Run from the repo root, with the game already playing the song. Do not add

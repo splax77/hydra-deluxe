@@ -58,7 +58,7 @@
       "owner_file": "src/app/config.cpp",
       "owner_symbol": "Settings::load_for_command_line",
       "date": "2026-10-07",
-      "decision": "perf follow-up B (docs/handoffs/2026-10-06-perf-speedups-wave2-handoff.md)",
+      "decision": "perf follow-up B, hydra_bench takes the fills setting through the same owner as hydra_batch (docs/handoffs/2026-10-06-perf-speedups-wave2-handoff.md (removed; git show 444631e6:docs/handoffs/2026-10-06-perf-speedups-wave2-handoff.md))",
       "added_by": "perf-bench-fills",
       "pattern": "\\bSettings::load\\(\\)",
       "anchor": "Settings::load()",
@@ -253,28 +253,57 @@
       "pattern": "\\(\\s*beyond_edge_ms\\(",
       "anchor": "beyond_edge_ms(",
       "must_match": [
-        "return std::to_string(static_cast<int64_t>(beyond_edge_ms(hit_window_ms)));",
-        "\"Beyond \" + std::to_string(static_cast<int64_t>(beyond_edge_ms(w))) + \" ms\"",
-        "return format_ms_whole(beyond_edge_ms(w));"
+        "return std::to_string(static_cast<int64_t>(beyond_edge_ms()));",
+        "\"Beyond \" + std::to_string(static_cast<int64_t>(beyond_edge_ms())) + \" ms\"",
+        "return format_ms_whole(beyond_edge_ms());"
       ],
       "must_not_match": [
-        "return \"Beyond \" + report::beyond_edge_text(hit_window_ms) + \" ms\";",
-        "double beyond_edge_ms(double hit_window_ms) {",
+        "return \"Beyond \" + report::beyond_edge_text() + \" ms\";",
+        "double beyond_edge_ms() {",
         "const DATA_EDGE = DATA.beyond_edge_ms;"
       ],
       "owner_lines": [
         {
           "file": "src/app/report.cpp",
-          "line_text": "return std::to_string(static_cast<int64_t>(beyond_edge_ms(hit_window_ms)));",
+          "line_text": "std::string beyond_edge_text() { return whole_ms_text(beyond_edge_ms()); }",
           "why": "beyond_edge_text, the owner"
         }
       ],
       "note": "The Beyond edge handed straight to a cast, a rounding or a formatter is a second way of writing it. format_ms_whole is not a stand-in: the review found the two differ on a fractional edge."
     },
     {
-      "question": "Which timing_tiers entries are the open ones?",
-      "owner": "beyond_tier and none_tier in src/app/report.cpp",
+      "question": "How is the hit window written in ms?",
+      "owner": "hit_window_text in src/app/report.cpp",
       "owner_file": "src/app/report.cpp",
+      "owner_symbol": "hit_window_text",
+      "date": "2026-10-30",
+      "decision": "D278 item 4; D270 call 8",
+      "added_by": "aoa-a1-review",
+      "pattern": "\\b(to_string|format_ms\\w*|whole_ms_text)\\(\\s*(static_cast<[^>]*>\\(\\s*)?(hydra::)?kHitWindowMs\\b",
+      "anchor": "kHitWindowMs",
+      "must_match": [
+        "return std::to_string(static_cast<int64_t>(kHitWindowMs));",
+        "\"the \" + std::to_string(kHitWindowMs) + \" ms hit window\"",
+        "const std::string w = format_ms_whole(kHitWindowMs);"
+      ],
+      "must_not_match": [
+        "return \"the \" + report::hit_window_text() + \" ms hit window\";",
+        "constexpr double kHitWindowMs = 85.0;",
+        "CHECK(*t85[2].cutoff == kHitWindowMs);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/app/report.cpp",
+          "line_text": "std::string hit_window_text() { return whole_ms_text(kHitWindowMs); }",
+          "why": "hit_window_text, the owner"
+        }
+      ],
+      "note": "The hit window handed to a cast or a formatter for the words the reports print (the footer's and the Timing tooltip's \"the N ms hit window\") is a second way of writing it. D278 item 4 words both from the one constant."
+    },
+    {
+      "question": "Which timing_tiers entries are the open ones?",
+      "owner": "beyond_tier and none_tier in src/core/squeeze_rating.cpp",
+      "owner_file": "src/core/squeeze_rating.cpp",
       "owner_symbol": "beyond_tier",
       "date": "2026-10-08",
       "decision": "derive-once review of RW-T3, finding 3 (2026-10-08)",
@@ -287,18 +316,18 @@
         "const TimingTier& none = tiers.back();"
       ],
       "must_not_match": [
-        "if (tier_name == report::beyond_tier(tiers).name)",
-        "if (tier_name == report::none_tier(tiers).name) return \"No squeezes\";",
+        "if (tier_name == beyond_tier(tiers).name)",
+        "if (tier_name == none_tier(tiers).name) return \"No squeezes\";",
         "CHECK(choices[i + 1].tier == std::optional<std::string>(tiers[i].name));"
       ],
       "owner_lines": [
         {
-          "file": "src/app/report.cpp",
+          "file": "src/core/squeeze_rating.cpp",
           "line_text": "return tiers[tiers.size() - 2];",
           "why": "beyond_tier, the owner"
         },
         {
-          "file": "src/app/report.cpp",
+          "file": "src/core/squeeze_rating.cpp",
           "line_text": "const TimingTier& none_tier(const std::vector<TimingTier>& tiers) { return tiers.back(); }",
           "why": "none_tier, the owner"
         }
@@ -582,7 +611,7 @@
       "date": "2026-10-04",
       "decision": "D51",
       "added_by": "SE1",
-      "pattern": "\\b(mslimit_value|backendlimit_value|preview_volume|depth_value|depth_mode|sp_cap|hit_window_ms|volume_pct_)\\s*=\\s*(std::(clamp|max|min)\\(|[^;]*>\\s*100\\s*\\?)|\\b(sp_)?cap\\s*<\\s*1\\b|std::max\\(\\s*1\\s*,[^;]*cap\\b",
+      "pattern": "\\b(mslimit_value|backendlimit_value|preview_volume|depth_value|depth_mode|sp_cap|volume_pct_)\\s*=\\s*(std::(clamp|max|min)\\(|[^;]*>\\s*100\\s*\\?)|\\b(sp_)?cap\\s*<\\s*1\\b|std::max\\(\\s*1\\s*,[^;]*cap\\b",
       "calls_owner": "Settings::clamp\\(",
       "owner_files": [
         "src/app/config.cpp"
@@ -753,7 +782,7 @@
           "why": "normalize_chart_hash, the owner"
         }
       ],
-      "note": "A call to normalize_chart_hash anywhere but the leaderboard boundary. Hydra's own song ids come lowercase from song_id_read (spec section 2, ADR 0028), so nothing inside Hydra lowercases one again: ids are compared as they are. The scan scopes rows by top folder, so this row reads src and tools; the owner's own tests in tests/ are out of scope. Kept as its own row because a row holds one pattern, and the row above must still read dmbot_client.cpp. Decided by: D115, spec docs/superpowers/specs/2026-10-11-one-record-per-chart-and-profile-design.md section 8; plan part A1, task A1-5."
+      "note": "A call to normalize_chart_hash anywhere but the leaderboard boundary. Hydra's own song ids come lowercase from song_id_read (spec section 2, ADR 0028), so nothing inside Hydra lowercases one again: ids are compared as they are. The scan scopes rows by top folder, so this row reads src and tools; the owner's own tests in tests/ are out of scope. Kept as its own row because a row holds one pattern, and the row above must still read dmbot_client.cpp. Decided by: D115 (ADR 0031)."
     },
     {
       "question": "Which files make up a chart's fingerprint?",
@@ -960,11 +989,11 @@
     },
     {
       "question": "How many charts does a path report list?",
-      "owner": "store::ChartIndex::count in src/store/chart_index.cpp",
+      "owner": "store::count_charts in src/store/chart_index.cpp, which ChartIndex::count calls",
       "owner_file": "src/store/chart_index.cpp",
-      "owner_symbol": "ChartIndex::count",
+      "owner_symbol": "count_charts",
       "date": "2026-10-14",
-      "decision": "D53, D77, D115 (task A2-2 moved the owner to ChartIndex::count)",
+      "decision": "D53, D77, D115 (task A2-2 moved the owner to ChartIndex::count), D282 (the rule moved into store::count_charts)",
       "added_by": "RW-T7",
       "pattern": "\\.(insert|emplace)\\([^)]*\\.hyhash|\\.(insert|emplace)\\([^)]*\\)\\.second\\)\\s*[\\w.>-]+\\s*\\+=",
       "must_match": [
@@ -982,13 +1011,13 @@
         {
           "file": "src/store/chart_index.cpp",
           "line_text": "if (seen.insert(id).second) total += copies(id);",
-          "why": "ChartIndex::count, the owner"
+          "why": "count_charts, the owner"
         }
       ],
       "scope": [
         "src"
       ],
-      "note": "The path report's subtitle and its Charts shown tile, and the comparison pages' counts, all ask the library index. A page that adds up each chart's copies itself is a second answer. Decided by: audit finding 242; phase 6 task J2-2 (D53); D77 (copies); D115 (task A2-2)"
+      "note": "The path report's subtitle and its Charts shown tile, and the comparison pages' counts, all ask store::count_charts, through the library index (ChartIndex::count) or, for the path report's tile, over the copies its rows kept. A page that adds up each chart's copies itself is a second answer. Decided by: audit finding 242; phase 6 task J2-2 (D53); D77 (copies); D115 (task A2-2)"
     },
     {
       "question": "Which side of a report comparison is higher?",
@@ -1099,7 +1128,7 @@
       ],
       "must_not_match": [
         "ImGui::SetTooltip(\"%s\", refused.c_str());",
-        "ImGui::SetTooltip(\"Compare a dmleaderboards player's scores against your library.\");"
+        "ImGui::SetTooltip(\"%s\", app::dm_report::compare_tooltip().c_str());"
       ],
       "note": "The Compare button's three refusal sentences typed outside the gate."
     },
@@ -1655,7 +1684,7 @@
         {
           "file": "src/app/user_messages.cpp",
           "line_text": "return plain_error_block(KindedError(kind, text));",
-          "why": "stored_failure_text: the library's Can't analyze tooltip shows a stored failure's block in the GUI, not a tool's exit (plan 2026-10-15)"
+          "why": "stored_failure_text: the library's Can't analyze tooltip shows a stored failure's block in the GUI, not a tool's exit (D249)"
         }
       ],
       "note": "A tool that prints an error's block itself is a second way for a tool to end on an error (D73 review finding 2). Decided by: D72 item 5, D73 item 4"
@@ -2006,7 +2035,7 @@
       "owner_file": "src/app/config.cpp",
       "owner_symbol": "installed_by_setup",
       "date": "2026-10-22",
-      "decision": "auto-updater plan decision 14",
+      "decision": "D259 call 14",
       "added_by": "UPD-T2a",
       "pattern": "638FCDD7-88E0-438D-9C52-388C6C9CF4E3|\\bInstallLocation\\b",
       "must_match": [
@@ -2029,7 +2058,7 @@
           "why": "installed_by_setup, the owner: the value that holds the installed folder"
         }
       ],
-      "note": "Only the installed exe checks for updates, so a second reading of the installer's registry key would be a second, disagreeing answer. Code that needs the answer calls installed_by_setup; tests set it with set_installed_for_test. Decided by: the user's yes to the auto-updater plan, decision 14 (2026-10-22)"
+      "note": "Only the installed exe checks for updates, so a second reading of the installer's registry key would be a second, disagreeing answer. Code that needs the answer calls installed_by_setup; tests set it with set_installed_for_test. Decided by: the user's yes to D259, call 14 (2026-10-22)"
     }
   ]
 }

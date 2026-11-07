@@ -12,9 +12,9 @@ It runs the headless GUI test runner, `hydra_uitest`, on the shot list `tools/do
 
 The shot list scans and analyzes the test charts once, then opens each screen and takes its picture. Before each picture it checks that the thing the caption talks about is on screen, with `expect-text` and `rect` lines. A missing element stops the run with `!! failed at line N`, so a wrong picture is never saved. Every wait in the list is capped by its `timeout` line.
 
-Most pictures are cropped to one window or widget, with the `screenshot <file> | <ref>` form ([ui-testing.md](ui-testing.md) has the verb table). The main screen picture is the whole frame minus the version bar at the top, because the version bar names the build. The shot list marks that with a `rect` line directly before a `screenshot` line that has no ref; the script then keeps only the part of the frame below that rectangle. The comment at the top of `shots.txt` says the same.
+Most pictures are cropped to one window or widget, with the `screenshot <file> | <ref>` form ([ui-testing.md](ui-testing.md) has the verb table). The main screen picture is the whole frame minus the version bar at the top, because the version bar names the build. The shot list marks that with a `rect` line directly before a `screenshot` line that has no ref; the script then keeps only the part of the frame below that rectangle. The comment at the top of `tools/doc_shots/shots.txt` says the same.
 
-Last, the script runs `tools/doc_shots/shrink.py`. It does the crop above, then saves every PNG again with Pillow's `optimize=True`. That keeps every pixel and only makes the file smaller. It prints one `size:` line per file and a `total:` line, and fails when a file or the whole folder is over the user's limits; the constants at the top of `shrink.py` hold them.
+Last, the script runs `tools/doc_shots/shrink.py`. It does the crop above, then saves every PNG again with Pillow's `optimize=True`. That keeps every pixel and only makes the file smaller. It prints one `size:` line per file and a `total:` line, and fails when a file or the whole folder is over the user's limits; the constants at the top of `tools/doc_shots/shrink.py` hold them.
 
 The script stops with a message naming `.\build_cpp.ps1 -Target hydra_uitest` when the runner is not built.
 
@@ -22,7 +22,7 @@ The script stops with a message naming `.\build_cpp.ps1 -Target hydra_uitest` wh
 
 Run it before each release, so the pictures match the app that ships. Also run it after any change to a label or a layout that one of the pictures shows. Then open every changed picture and check it still shows what its caption says, and that no hover tooltip or version text crept in. Commit the changed pictures on a branch and get them reviewed like any other change.
 
-The runner's scratch settings are not all defaults (they keep a smaller score range, for one). The first lines of `shots.txt` open the settings popup and click `Reset to defaults`, then check that the settings button reads `Analysis settings: defaults`, so every picture shows default settings. The runner itself stays as it is.
+The runner's scratch settings are not all defaults (they keep a smaller score range, for one). The first lines of `tools/doc_shots/shots.txt` open the settings popup and click `Reset to defaults`, then check that the settings button reads `Analysis settings: defaults`, so every picture shows default settings. The runner itself stays as it is.
 
 ## The one list of pictures
 

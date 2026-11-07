@@ -1,0 +1,14 @@
+{
+    "about": "The one-byte patch the launch agent (agent/launch.ts) makes in memory when the game maps GameAssembly.dll, so the command-line player loader builds a human player and not the bot. The agent holds no address or byte of its own: this whole file rides in its arm message. It writes only when the loader's first bytes and the patch site both read as listed here, and the game file on disk is never written. launch selects how bot_run starts the game and defer whether the patch waits for setImmediate; the plan is docs/superpowers/plans/2026-10-31-ch-mcp-direct-start.md, \"The launch\" and question 1. The loader's facts are on docs/clone-hero/07-internals.md.",
+    "build": "1.1.0.6142",
+    "dump": "C:\\Users\\Patrick\\Downloads\\Hydra\\hydra-data\\ch-dumps\\6142\\dump.cs",
+    "launch": "suspended",
+    "defer": false,
+    "module": "GameAssembly.dll",
+    "loader_rva": "0x3968D0",
+    "loader_dump_line": 17992,
+    "entry_expect": "40 56 57 41 55 48 81 EC C0 00 00 00",
+    "patch_rva": "0x396EC5",
+    "expect": "BA 01 00 00 00",
+    "write": "BA 00 00 00 00"
+}

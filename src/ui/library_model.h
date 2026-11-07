@@ -151,11 +151,13 @@ public:
     // Each row's chart hash, parallel to rows(): what RecordStore::lookup
     // asks about.
     std::vector<std::string> hashes() const;
-    // `lookups` is parallel to rows(). Returns how many rows changed; the
-    // order and counts are rebuilt only when some did.
+    // `lookups` is parallel to rows(). Returns how many rows changed. The
+    // rows on screen and the counts are rebuilt only when some did, and the
+    // rows keep their order: see sort_if_out_of_date.
     size_t set_summaries(const std::vector<store::RecordLookup>& lookups);
     // One chart's new answer, applied to every row that lists it (a chart can
-    // sit in two folders). Returns how many rows changed.
+    // sit in two folders). Returns how many rows changed. The rows keep their
+    // order, as they do for set_summaries.
     size_t set_summary_for(const std::string& md5, const store::RecordLookup& lookup);
 
     // Changes when set_charts replaces the rows, and at no other time: a new
@@ -169,6 +171,14 @@ public:
     void set_query(std::string_view text);
     void set_chip(StatusChip chip);
     void set_sort(LibrarySort column, bool ascending);
+    // Re-sorts when a new summary left the order out of date. True when it
+    // re-sorted. A new summary fills in where its row sits, so that rows hold
+    // still while analysis runs; this is the one way that order catches up.
+    // A real change of search or chip comes through here, set_sort and
+    // set_charts always sort, and whoever reads summaries in decides the rest
+    // (AppState::tick_library, AppState::refresh_library_summaries,
+    // read_library).
+    bool sort_if_out_of_date();
 
     const std::vector<LibraryRow>& rows() const { return rows_; }
     // The rows shown, as indices into rows(), in sort order: the query and the
@@ -195,7 +205,8 @@ private:
     std::vector<LibraryRow> rows_;
     std::uint64_t rows_version_ = 0;
     std::uint64_t query_version_ = 0;
-    std::vector<size_t> sorted_;  // every row, in sort order
+    std::vector<size_t> sorted_;  // every row, in sort order, as of the last resort
+    bool order_out_of_date_ = false;  // a summary changed what sorted_ was sorted on
     std::vector<size_t> order_;
     std::string query_text_;
     app::LibraryQuery query_;

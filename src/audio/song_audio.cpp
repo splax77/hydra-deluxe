@@ -76,8 +76,6 @@ SongMix mix_song_stems(std::vector<std::unique_ptr<StemReader>> readers, double 
         out.audio_offset_ms = 0.0;
     }
     out.mix = std::make_unique<StreamMix>(std::move(readers), kOutRate, kOutChannels, front_pad);
-    if (out.mix->length_frames() > front_pad)
-        out.end_chart_ms = audio_end_chart_ms(*out.mix, out.audio_offset_ms);
     return out;
 }
 

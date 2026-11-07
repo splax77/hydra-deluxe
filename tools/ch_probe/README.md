@@ -9,8 +9,8 @@ clamp the number is reached through a function pointer the decompiler can't
 follow. So the only way to know is to watch the running game.
 
 This tool does that, in Python, off to the side of Hydra's C++ build. The full
-design and every reverse-engineering fact is in
-[`docs/superpowers/specs/2026-09-17-ch-dynamic-input-probe.md`](../../docs/superpowers/specs/2026-09-17-ch-dynamic-input-probe.md).
+design and every reverse-engineering fact is in [`SPEC.md`](SPEC.md) beside
+this page.
 
 ## The one idea it rests on
 
@@ -33,10 +33,24 @@ a `hydra_replay score` JSON, so it plays exactly the notes Hydra analyzed. It:
 4. presses each chord with `InputDriver.press_chord` (`input_driver.py`),
    using the one key table, `Lane`.
 
+Two things trip up a new runner:
+
+- Start from the clock the game shows now. A restart makes a new engine object
+  rather than winding the old one back to zero, so a runner that waits for the
+  clock to read 0 waits forever. `play_chart.py` reads the clock, skips its note
+  cursor ahead to match, and plays from there; a jump back (a restart or a
+  seek) moves the cursor to the new clock.
+- The key table has no 2X-kick key. The key map in the user's install (the
+  game's Controller Remap screen, 2026-09-25) binds 2X Kick to O, but
+  `DEFAULT_BINDINGS` sends every kick, normal or 2x, on the kick lane (L).
+
 A hit is a score that rose. `experiments/walk_edges.py` and
-`experiments/watch_window.py` (the hit-window plan,
-docs/superpowers/plans/2026-09-25-hit-window-testing.md) run on the same
-pieces.
+`experiments/watch_window.py` run on the same pieces. They were written for
+the hit-window plan (`walk_edges.py` for step 5, `watch_window.py` for steps 1 to 4):
+`docs/superpowers/plans/2026-09-25-hit-window-testing.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-09-25-hit-window-testing.md`).
+D28 in `docs/audit/2026-10-03-fix-decisions.md` records that the plan's steps 1 to 3
+were answered from the game's code and `poll_windows.csv`, and that steps 4
+to 6 were shelved.
 
 ## The pieces
 

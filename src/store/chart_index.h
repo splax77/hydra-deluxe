@@ -8,6 +8,7 @@
 #define HYDRA_STORE_CHART_INDEX_H
 
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -34,8 +35,8 @@ public:
     // The library row that names the chart: its title, artist, charter and
     // notes path. Null when the library does not list the chart.
     const ChartLibraryEntry* naming(const std::string& song_id) const;
-    // How many charts a set of ids counts as: each distinct id's copies,
-    // added once however often the id appears. Zero for an empty set.
+    // How many charts a set of ids counts as, over this index's copies
+    // (count_charts).
     int64_t count(const std::vector<std::string>& song_ids) const;
     // Every chart the library lists, once each, in scan order.
     const std::vector<std::string>& song_ids() const { return song_ids_; }
@@ -48,6 +49,14 @@ private:
     std::unordered_map<std::string, Chart> charts_;
     std::vector<std::string> song_ids_;
 };
+
+// How many charts a set of ids counts as, given each chart's copies: each
+// distinct id's copies, added once however often the id appears. Zero for an
+// empty set. The rule's one home: ChartIndex::count asks it over the index,
+// and the path report's tiles ask it over the copies its rows kept once the
+// index was dropped (D282).
+int64_t count_charts(const std::vector<std::string>& song_ids,
+                     const std::function<int(const std::string&)>& copies);
 
 }  // namespace hydra::store
 

@@ -370,11 +370,6 @@ void rebuild_overlay_fields(TrackState& st, const PreviewScene& scene) {
     st.merge_overlay_edges();
 }
 
-bool note_in_span(const PreviewScene& scene, const PreviewSpan& span, const PreviewNote& note) {
-    SpanSweep sweep(std::vector<Iv>{span_interval(scene, span)});
-    return toggle_on_after(sweep.at(s_of(note.ms)));
-}
-
 TrackInstant TrackState::synthesize(double t) const {
     TrackInstant inst;
     inst.t = t;

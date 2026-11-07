@@ -1,5 +1,5 @@
 // Which test files a merge range should run: the test picker of
-// docs/superpowers/plans/2026-10-25-merge-test-picker.md, Steps 2, 4, 5 and 6.
+// docs/development.md, "The merge test picker", steps 2, 4, 5 and 6.
 // It reads the range's changed names (changed_names.h), follows one level
 // of callers, finds the test files that name any of those keys, and decides
 // when the whole suite runs instead. It prints nothing; the exe's --tests
@@ -16,7 +16,7 @@
 
 namespace precheck {
 
-// The user's three thresholds (plan, "User decisions"). They live here and
+// The user's three thresholds (D299). They live here and
 // nowhere else.
 
 // Q1: a key that more test files than this mention picks nothing by itself;
@@ -97,8 +97,8 @@ std::optional<WholeSuite> shared_code(Repo& repo, const std::string& rev, const 
 // base (a whole-tree range).
 TestPick pick_tests(Repo& repo, const Range& range, const PickLimits& limits = {});
 
-// The lines `hydra_precheck --tests` prints for `pick`, in the plan's Step 7
-// shape: tests, always, names, callers, common, then the why lines.
+// The lines `hydra_precheck --tests` prints for `pick`, in the shape of
+// docs/development.md, "The merge test picker", step 6: tests, always, names, callers, common, then the why lines.
 std::vector<std::string> pick_lines(const TestPick& pick);
 
 }  // namespace precheck

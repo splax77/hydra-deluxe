@@ -1,8 +1,8 @@
 // Tests for the updater's first pieces: the version rule (core/app_version.h),
 // reading GitHub's releases/latest reply (app/update_release) with its
 // refusals, the refusal's plain sentence, and the installed-exe rule
-// (app::installed_by_setup). Plan: docs/superpowers/plans/2026-10-22-auto-updater.md,
-// task T2a, criteria B1 to B5.
+// (app::installed_by_setup). The rules are D259's; docs/development.md,
+// "The version rule", keeps the plan's refusal list.
 
 #include "doctest.h"
 

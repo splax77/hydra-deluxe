@@ -354,9 +354,11 @@ function render() {
   const field = COLS.find(c => c.k === sortKey).sort || sortKey;
   rows.sort((a, b) => {
     let x = a[field], y = b[field];
-    // Nulls always sort to the bottom, whichever direction is active.
-    if (x === null || x === undefined) return 1;
-    if (y === null || y === undefined) return -1;
+    // Missing cells always sort to the bottom, whichever direction is active
+    // (D103 item 17), and two missing cells are equal, so they keep their order.
+    const xMissing = x === null || x === undefined;
+    const yMissing = y === null || y === undefined;
+    if (xMissing || yMissing) return xMissing === yMissing ? 0 : (xMissing ? 1 : -1);
     if (typeof x === 'string') return dir * (x < y ? -1 : (x > y ? 1 : 0));
     return dir * (x - y);
   });

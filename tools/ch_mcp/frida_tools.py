@@ -1,13 +1,15 @@
 """The Clone Hero MCP server's Frida tools: attach to the game, read its
 state, and trace the notes the player hits.
 
-Each tool is a thin call into the module that owns the work (the plan
-docs/superpowers/plans/2026-10-28-ch-mcp-server.md, "The tools" and "Who owns
-which question"): frida_attach.LiveAgent for the attach and the reads,
+Each tool is a thin call into the module that owns the work (the server
+plan's "The tools" and "Who owns which question"; the plan is removed, read it
+with git show 444631e6:docs/superpowers/plans/2026-10-28-ch-mcp-server.md):
+frida_attach.LiveAgent for the attach and the reads,
 build_facts for the build check and the hook names, ch_probe.constants for
 the hook addresses, and trace_hits for the trace and its line-up. This module
 adds only the session state between tool calls (the live agent, the trace,
-the facts loaded once per build) and the state words, which it owns.
+the facts loaded once per build), the state words, which it owns, and the
+menu lines, which print agent/menu.ts's block as sent.
 
 Every tool returns plain text and never prints: an MCP server's stdout is its
 protocol channel. The server (server.py) hands in the one RLock it shares
@@ -16,10 +18,11 @@ with game_tools.GameTools; every tool holds it.
 
 from __future__ import annotations
 
+import functools
 import json
 import os
 import time
-from typing import Any, Callable, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from tools.ch_mcp import build_facts
 from tools.ch_mcp import frida_attach as FA
@@ -47,6 +50,17 @@ NO_GAME_MANAGER = ("no live GameManager: start the song (pause it if you like), 
                    "then call ch_trace_start")
 
 NOT_ATTACHED = "not attached; call ch_attach first"
+
+# The key of state.ts's reply that holds menu.ts's block.
+MENU_BLOCK = "menu"
+# The menu fields menu.ts reads and their enum words; menu.ts bundles the same
+# file at build time.
+MENU_FIELDS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "menu_fields.json")
+
+
+class StateUnread(Exception):
+    """FridaTools.read_state found no attached agent or the read failed; the
+    text is the reason, as ch_state would print it."""
 
 
 def state_words(snapshot: Optional[dict], *, running: bool = True) -> str:
@@ -76,12 +90,191 @@ def _value_text(value: Any) -> str:
 
 
 def _field_lines(snapshot: dict) -> List[str]:
-    """Every field the agent sent, in its order, as `name: value`."""
-    return [f"{key}: {_value_text(value)}" for key, value in snapshot.items()]
+    """Every GameManager field the agent sent, in its order, as `name:
+    value`. The menu block is left out: ch_menu prints it."""
+    return [f"{key}: {_value_text(value)}" for key, value in snapshot.items()
+            if key != MENU_BLOCK]
+
+
+@functools.lru_cache(maxsize=None)
+def menu_fields() -> dict:
+    """menu_fields.json, read once: the fields agent/menu.ts reads, each with
+    its enum table."""
+    with open(MENU_FIELDS_FILE, encoding="utf-8") as f:
+        return json.load(f)
+
+
+# menu_fields.json's kinds that this file prints differently; an entry with no
+# kind is an enum (menu_fields.json's "about" says what each kind means).
+ENUM_KIND = "enum"
+ARRAY_KINDS = ("string_array", "enum_array")
+# The keys the highlighted row is worked out from: the BaseMenu cursor and
+# scroll, and the two row arrays it indexes. highlighted_row_text is the one
+# home of that rule; the agent sends only the raw values.
+CURSOR_KEY = "cursor"
+SCROLL_KEY = "scroll"
+ROW_NAMES_KEY = "rowNames"
+ROW_IDS_KEY = "rowInstruments"
+
+
+def _entry(key: str) -> Optional[dict]:
+    for field in menu_fields()["fields"]:
+        if field["key"] == key:
+            return field
+    return None
+
+
+def _kind(key: str) -> str:
+    entry = _entry(key)
+    return ENUM_KIND if entry is None else entry.get("kind", ENUM_KIND)
+
+
+def _enum_words(key: str) -> Optional[Dict[str, str]]:
+    """The word table for an enum entry, or for an enum_array the table of
+    the entry its words_from names."""
+    entry = _entry(key)
+    if entry is None:
+        return None
+    if "words_from" in entry:
+        return _enum_words(entry["words_from"])
+    return entry.get("values")
+
+
+def _is_number(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _number_text(key: str, value: Any) -> str:
+    """One enum number with its word from menu_fields.json's table; anything
+    else as sent."""
+    if not _is_number(value):
+        return _value_text(value)
+    words = _enum_words(key) or {}
+    return f"{value} ({words.get(str(value), 'not in menu_fields.json')})"
+
+
+def _one_value_text(key: str, value: Any) -> str:
+    """One instance's value of one field, the way its kind prints."""
+    kind = _kind(key)
+    if kind in ARRAY_KINDS:
+        if value is None:
+            return "null (no array)"
+        if not isinstance(value, list):
+            return _value_text(value)
+        if kind == "string_array":
+            return _value_text(value)
+        return "[" + ", ".join(_number_text(key, v) for v in value) + "]"
+    if kind == ENUM_KIND:
+        return _number_text(key, value)
+    return _value_text(value)
+
+
+def _row_text(key: str, rows: Any, index: int) -> str:
+    """One row array's element at `index`, or plain text saying why there is
+    none."""
+    if rows is None:
+        return f"none ({key} is null)"
+    if not isinstance(rows, list):
+        return _value_text(rows)
+    if not 0 <= index < len(rows):
+        return f"none (index {index} is outside the {len(rows)} {key})"
+    value = rows[index]
+    if _kind(key) == "string_array":
+        # Quoted, so a row name never reads as one of these messages.
+        return json.dumps(value, ensure_ascii=False)
+    return _number_text(key, value)
+
+
+def highlighted_row_text(values: Dict[str, Any]) -> str:
+    """The highlighted row of one player screen, from one instance's raw
+    values by key: its index is cursor + scroll, then that row's name and
+    instrument id. The one home of which row is highlighted."""
+    cursor, scroll = values.get(CURSOR_KEY), values.get(SCROLL_KEY)
+    if not (_is_number(cursor) and _is_number(scroll)):
+        return "not known (cursor or scroll was not read)"
+    index = cursor + scroll
+    return (f"{index}, name {_row_text(ROW_NAMES_KEY, values.get(ROW_NAMES_KEY), index)}, "
+            f"id {_row_text(ROW_IDS_KEY, values.get(ROW_IDS_KEY), index)}")
+
+
+def _nth(values: Any, i: int) -> Any:
+    """Instance i's value of one field: the agent sends a list with one value
+    per live instance. Anything that is not a list is printed as sent for
+    every instance."""
+    if not isinstance(values, list):
+        return values
+    return values[i] if i < len(values) else "not sent"
+
+
+def _instance_lines(name: str, fields: dict, count: int) -> List[str]:
+    """One menu class's fields as lines, per live instance: the plain fields
+    on one line in menu_fields.json's order with the highlighted row right
+    after scroll, then the arrays on a `rows` line. Fields the agent sent that
+    menu_fields.json does not name come last, as sent."""
+    listed = [f["key"] for f in menu_fields()["fields"] if f["key"] in fields]
+    keys = listed + [k for k in fields if k not in listed]
+    lines = []
+    for i in range(count):
+        values = {k: _nth(fields[k], i) for k in keys}
+        plain, rows = [], []
+        for key in keys:
+            text = f"{key}: {_one_value_text(key, values[key])}"
+            if _kind(key) in ARRAY_KINDS:
+                rows.append(text)
+                continue
+            plain.append(text)
+            if key == SCROLL_KEY:
+                plain.append(f"highlighted row: {highlighted_row_text(values)}")
+        lines.append(f"{name}[{i}]: " + "; ".join(plain))
+        if rows:
+            lines.append(f"{name}[{i}] rows: " + "; ".join(rows))
+    return lines
+
+
+def menu_lines(menu: Optional[dict]) -> List[str]:
+    """state.ts's menu block as lines: each menu class with its live and
+    destroyed counts, each live instance's active read, and for the menus that
+    hold one each live instance's onlineMenuActive read; then, for a class
+    with fields, each live instance's fields (_instance_lines); then the
+    selected song and GlobalVariables' fields. The agent's values are printed
+    as sent, plus the highlighted row (highlighted_row_text); this names no
+    menu state of its own."""
+    if menu is None:
+        return ["menu: not read (the agent sent no menu block)"]
+    if "error" in menu:
+        return [f"menu: {menu['error']}"]
+    lines: List[str] = []
+    for name, entry in menu.get("classes", {}).items():
+        if not entry.get("found"):
+            lines.append(f"{name}: {entry.get('reason')}")
+            continue
+        line = f"{name}: {entry['live']} live, {entry['destroyed']} destroyed"
+        if "active" in entry:
+            line += f"; active: {_value_text(entry['active'])}"
+        if "onlineMenuActive" in entry:
+            line += f"; onlineMenuActive: {_value_text(entry['onlineMenuActive'])}"
+        lines.append(line)
+        fields = entry.get("fields")
+        if isinstance(fields, dict):
+            lines.extend(_instance_lines(name, fields, entry["live"]))
+    song = menu.get("selectedSong")
+    if song is None:
+        lines.append("selected song: none")
+    else:
+        lines.append(f"selected song folder: {_value_text(song.get('folderPath'))}")
+        lines.append(f"selected song chartName: {_value_text(song.get('chartName'))}")
+    globals_ = menu.get("globals", {})
+    if not globals_.get("found"):
+        lines.append(f"GlobalVariables: {globals_.get('reason')}")
+    else:
+        for key in ("currentSongFolder", "gameMode", "playerCount"):
+            lines.append(f"GlobalVariables {key}: {_value_text(globals_.get(key))}")
+    return lines
 
 
 class FridaTools:
-    """The seven Frida tools and the session state between them.
+    """The eight Frida tools, read_state for menu_tools, and the session
+    state between them.
 
     `game` is the server's game_tools.GameTools (the tests pass a fake with
     the same five methods); its stop hook, registered here, stops the trace
@@ -214,6 +407,35 @@ class FridaTools:
                 lines.append(f"songTime in ms: {C.s_to_ms(song_time):.1f} (GameManager's clock)")
             lines.extend(self._score_lines())
             return self._reply(lines)
+
+    def ch_menu(self) -> str:
+        """One fresh read, printed as the menu block (menu_lines), then the
+        live-GameManager word from the same read."""
+        with self._lock:
+            lines: List[str] = []
+            snapshot = self._read(lines)
+            if snapshot is None:
+                return self._reply(lines)
+            lines.extend(menu_lines(snapshot.get(MENU_BLOCK)))
+            lines.append(f"state: {state_words(snapshot)}")
+            return self._reply(lines)
+
+    def is_attached(self) -> bool:
+        """Whether the state agent is attached and its session is alive, for
+        tools that need an attach before they start (method_watch)."""
+        with self._lock:
+            return self._agent is not None and self._agent.alive
+
+    def read_state(self) -> dict:
+        """One fresh read as the raw dict state.ts sent, menu block included,
+        for menu_tools. Raises StateUnread with the reason when no read came
+        back."""
+        with self._lock:
+            lines: List[str] = []
+            snapshot = self._read(lines)
+            if snapshot is None:
+                raise StateUnread(self._reply(lines))
+            return snapshot
 
     # -- the trace ----------------------------------------------------------------------
 

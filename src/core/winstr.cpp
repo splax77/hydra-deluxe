@@ -67,6 +67,28 @@ bool has_namespace_prefix(const std::wstring& path) {
     return starts_with(path, kLongPrefix) || starts_with(path, kDevicePrefix);
 }
 
+// The path as Windows makes it full (GetFullPathNameW): "." and ".."
+// resolved, '/' turned into '\', a relative path set against the working
+// folder. Nothing when Windows can't.
+std::optional<std::wstring> full_path(const std::wstring& path) {
+    const DWORD need = GetFullPathNameW(path.c_str(), 0, nullptr, nullptr);
+    if (need == 0) return std::nullopt;
+    std::wstring full(need, L'\0');
+    const DWORD got = GetFullPathNameW(path.c_str(), need, &full[0], nullptr);
+    if (got == 0 || got >= need) return std::nullopt;
+    full.resize(got);
+    return full;
+}
+
+// The path without the \\?\ (or \\?\UNC\) that win32_path adds; any other
+// path comes back as it was.
+std::wstring without_long_prefix(const std::wstring& path) {
+    if (starts_with(path, kLongUncPrefix))
+        return std::wstring(kUncLead) + path.substr(kLongUncPrefix.size());
+    if (starts_with(path, kLongPrefix)) return path.substr(kLongPrefix.size());
+    return path;
+}
+
 }  // namespace
 
 std::wstring win32_path(const std::wstring& path) {
@@ -74,12 +96,9 @@ std::wstring win32_path(const std::wstring& path) {
     if (has_namespace_prefix(path)) return path;
     // Make it full first: under the prefix Windows no longer resolves "." or
     // ".." and no longer accepts '/' as a separator.
-    DWORD need = GetFullPathNameW(path.c_str(), 0, nullptr, nullptr);
-    if (need == 0) return path;  // leave it to the caller's own error path
-    std::wstring full(need, L'\0');
-    DWORD got = GetFullPathNameW(path.c_str(), need, &full[0], nullptr);
-    if (got == 0 || got >= need) return path;
-    full.resize(got);
+    const std::optional<std::wstring> made_full = full_path(path);
+    if (!made_full) return path;  // leave it to the caller's own error path
+    const std::wstring& full = *made_full;
     if (has_namespace_prefix(full)) return full;
     if (starts_with(full, kUncLead))  // \\server\share
         return std::wstring(kLongUncPrefix) + full.substr(kUncLead.size());
@@ -108,10 +127,7 @@ std::wstring shell_path(const std::wstring& path) {
     s.resize(got);
     // Drop the \\?\ that win32_path added; a \\.\ path keeps its prefix, so
     // fits_shell below refuses it.
-    if (starts_with(s, kLongUncPrefix))
-        s = std::wstring(kUncLead) + s.substr(kLongUncPrefix.size());
-    else if (starts_with(s, kLongPrefix))
-        s = s.substr(kLongPrefix.size());
+    s = without_long_prefix(s);
     // A drive without short names hands the long path back.
     return fits_shell(s) ? s : L"";
 }
@@ -127,6 +143,29 @@ bool is_path_separator(char c) {
 std::string trim_trailing_separators(std::string path) {
     while (!path.empty() && is_path_separator(path.back())) path.pop_back();
     return path;
+}
+
+namespace {
+
+// The spelling same_folder compares: made full, without the long-path
+// prefix, and with no separator (is_path_separator) at its end. The end is
+// trimmed after the path is made full, since "C:" alone names the working
+// folder on drive C, not C:\.
+std::wstring folder_spelling(const std::string& utf8_path) {
+    const std::wstring wide = utf8_to_wide(utf8_path);
+    std::wstring s = without_long_prefix(full_path(wide).value_or(wide));
+    while (!s.empty() && s.back() < 0x80 && is_path_separator(static_cast<char>(s.back())))
+        s.pop_back();
+    return s;
+}
+
+}  // namespace
+
+bool same_folder(const std::string& a, const std::string& b) {
+    const std::wstring x = folder_spelling(a);
+    const std::wstring y = folder_spelling(b);
+    return CompareStringOrdinal(x.c_str(), static_cast<int>(x.size()), y.c_str(),
+                                static_cast<int>(y.size()), TRUE) == CSTR_EQUAL;
 }
 
 std::string parent_folder(const std::string& path) {

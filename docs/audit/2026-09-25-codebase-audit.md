@@ -41,7 +41,7 @@ The findings fall into four groups: bugs to fix first, dead code, slow spots and
 - `srb_audio_dump/` (169 MB of WAVs)
 - `libvpx_err.txt` (a 50 MB ffmpeg log)
 
-The other loose files are old benchmark logs, and several are empty: the `e*.txt`, `err_*.txt`, `d*.txt`, `fixtureB.json` files and `scratch_ms/`. They should move out of the repo or be deleted, with `.gitignore` guards added.
+The other loose files are old benchmark logs, and several are empty: the `e*.txt`, `err_*.txt`, `d*.txt`, `fixtureB.json` files and the `scratch_ms` folder (not kept; it is no longer in the repo). They should move out of the repo or be deleted, with `.gitignore` guards added.
 
 **`ch_probe` bugs:**
 
@@ -94,7 +94,7 @@ Removing the stored fields needs a node-format bump, so batch that with the next
 
 In ogg it means `doc/` (87 files), `win32/` and the autotools scripts. A few opus files look like junk but must stay: `configure.ac`, `package_version`, all the `*.mk` source lists, and the arm/mips/fixed folders, because the `.mk` lists name their headers.
 
-**Docs.** `docs/archive/CPP_PORT_PLAN.md` is historical and nothing links to it, so git history is enough. The ch_probe spec still says "not yet implemented". The README's command-line section leaves out `hydra_fillcompare`, `--rules` and `--legacy-fills`. ADR 0007 never existed (0006 and 0008 landed in the same commit), yet `image/decode.h` cites it. The two "retired Python-era" lines in `.gitignore` point at folders that no longer exist.
+**Docs.** `docs/archive/CPP_PORT_PLAN.md` (removed; `git show f9a18674:docs/archive/CPP_PORT_PLAN.md`) is historical and nothing links to it, so git history is enough. The ch_probe spec still says "not yet implemented". The README's command-line section leaves out `hydra_fillcompare`, `--rules` and `--legacy-fills`. ADR 0007 never existed (0006 and 0008 landed in the same commit), yet `image/decode.h` cites it. The two "retired Python-era" lines in `.gitignore` point at folders that no longer exist.
 
 **`ch_probe`.**
 

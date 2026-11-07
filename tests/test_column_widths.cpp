@@ -449,7 +449,7 @@ TEST_CASE("column_widths: the report views' real column lists have shares that s
     HeadlessImGui imgui;
     namespace report_frame = hydra::ui::report_frame;
     CHECK(hydra::ui::text_shares_sum_to_100(
-        report_frame::column_specs(hydra::app::path_report_view::path_columns(0.0))));
+        report_frame::column_specs(hydra::app::path_report_view::path_columns())));
     CHECK(hydra::ui::text_shares_sum_to_100(
         report_frame::column_specs(hydra::app::dm_report_view::dm_columns())));
 }

@@ -1,0 +1,9 @@
+Connecting to Clone Hero (read-only)...
+  Waiting for a song to play (start it now)...
+..  Engine at 0x214102b6540. Writing tools/ch_probe/experiments/results/overlay-spike/run1_cal0_sp_watch.csv
+  Stopped: clock frozen at 181.16 s for over 5 s (song quit or paused).
+  Rows written: 40922
+  Engine: 0x214102b6540
+  First clock: 2.207 s, last clock: 181.160 s
+
+[exited with code 0]

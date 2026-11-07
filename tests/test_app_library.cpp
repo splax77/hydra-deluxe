@@ -17,7 +17,7 @@
 
 #include "app/analysis.h"
 #include "app/config.h"
-#include "app/user_messages.h"  // kDatabaseReadSentence, old_library_set_aside_notice, library_rescan_blocked_notice
+#include "app/user_messages.h"  // kDatabaseReadSentence, old_library_set_aside_notice, library_scan_blocked_notice
 #include "app_state_fixtures.h"
 #include "core/error_kind.h"
 #include "db_file_util.h"  // exec_on_file, write_junk_db
@@ -140,6 +140,213 @@ TEST_CASE("refresh_library_row picks up one chart's new result") {
     app->refresh_library_row(fifth.md5);
     CHECK(app->library_row_at(at).status == RecordStatus::Ready);
     CHECK(app->library.counts().analyzed == 2);
+}
+
+// ---- the row order while results arrive -------------------------------------
+
+namespace {
+
+// How many charts the order tests' library holds.
+constexpr int kHeldCharts = 4;
+
+// An analysis whose best path scores `score` under the default settings.
+hydra::HydraRecord scored_record(int64_t score) {
+    hydra::HydraRecord record = hydra::test::empty_analysis_under(Settings{}.profile());
+    hydra::Path best;
+    best.notes_points = score;
+    record.paths.push_back(best);
+    return record;
+}
+
+// A result stored behind the view's back, as one song's analysis stores it.
+void save_scored(AppState& app, int chart, int64_t score) {
+    app.store->save(hydra::store::prepare_record(library_entry(chart).md5, app.settings.profile(),
+                                                 scored_record(score)));
+}
+
+// A library of kHeldCharts charts with no results, under Best path, highest
+// first. With every row unscored they read in title order, library_entry's.
+std::unique_ptr<AppState> app_under_best_path(const ScratchPaths& paths) {
+    std::vector<ChartLibraryEntry> charts;
+    for (int i = 0; i < kHeldCharts; ++i) charts.push_back(library_entry(i));
+    std::unique_ptr<AppState> app = app_with(paths, charts);
+    app->library.set_sort(hydra::ui::LibrarySort::BestPath, false);
+    return app;
+}
+
+// The rows on screen, top to bottom, as library_entry numbers.
+std::vector<int> shown(const AppState& app) {
+    std::vector<int> out;
+    for (size_t i = 0; i < app.library_shown_count(); ++i)
+        for (int chart = 0; chart < kHeldCharts; ++chart)
+            if (app.library_row_at(i).entry.md5 == library_entry(chart).md5) out.push_back(chart);
+    return out;
+}
+
+const std::vector<int> kTitleOrder{0, 1, 2, 3};
+
+// Lets a batch's charts through one at a time, so a test knows exactly what the
+// batch has stored at each tick with no sleep and no race. A chart waits here
+// for its turn; its progress callback throws once Stop is pressed, so a chart
+// still waiting is neither stored nor counted. The n-th chart through scores
+// n * 1000, so each chart outscores the ones before it.
+struct ChartGate {
+    std::atomic<int> started{0};
+    std::atomic<int> allowed{0};
+};
+
+hydra::app::ChartAnalyzer gated_scores(std::shared_ptr<ChartGate> gate) {
+    return [gate](const std::string&, const hydra::app::AnalysisSettings&,
+                  const std::function<void(float)>& on_progress) {
+        const int turn = ++gate->started;
+        wait_until(
+            [&] {
+                on_progress(0.0f);
+                return gate->allowed.load() >= turn;
+            },
+            "the test to let a chart through");
+        return hydra::app::AnalysisResult{scored_record(int64_t{1000} * turn), hydra::Song(192)};
+    };
+}
+
+// Lets `charts` charts in all through the gate and waits until the batch counts
+// them.
+void let_through(AppState& app, ChartGate& gate, int charts) {
+    gate.allowed.store(charts);
+    wait_until([&] { return app.batch_job->snapshot().completed == charts; },
+               "the batch to store its charts");
+}
+
+// A library under Best path whose batch has stored two charts and whose rows
+// have read both: the first chart through still sits above the second, which
+// outscores it.
+struct BatchAfterTwoCharts {
+    std::unique_ptr<AppState> app;
+    std::shared_ptr<ChartGate> gate = std::make_shared<ChartGate>();
+
+    explicit BatchAfterTwoCharts(const ScratchPaths& paths) : app(app_under_best_path(paths)) {
+        start_redo_batch(*app, gated_scores(gate));
+        let_through(*app, *gate, 2);
+        app->tick_library(0.0);
+        REQUIRE(shown(*app) == kTitleOrder);
+    }
+};
+
+}  // namespace
+
+TEST_CASE("a batch refresh fills scores in where the rows sit; the batch's end sorts them") {
+    ScratchPaths paths("appstate_batchhold");
+    BatchAfterTwoCharts batch(paths);
+    AppState& app = *batch.app;
+    CHECK(row_of(app, library_entry(1).md5).best_label().find("2,000") == 0);
+    CHECK(app.library.counts().analyzed == 2);
+
+    let_through(app, *batch.gate, 3);
+    app.tick_library(10.0);
+    CHECK(shown(app) == kTitleOrder);
+    CHECK(app.library.counts().analyzed == 3);
+
+    batch.gate->allowed.store(kHeldCharts);
+    wait_batch_finished(app);
+    app.tick_library(20.0);
+    CHECK(shown(app) == std::vector<int>{3, 2, 1, 0});
+}
+
+// Stop leaves the count where the last refresh read it, so the refresh's own
+// check finds nothing new: the same ending as a batch whose last result was
+// read just before it finished, held still for the test.
+TEST_CASE("a batch whose last result was already read still sorts when it ends") {
+    ScratchPaths paths("appstate_batchreadend");
+    BatchAfterTwoCharts batch(paths);
+    AppState& app = *batch.app;
+    stop_batch(app);
+    REQUIRE(app.batch_job->snapshot().completed == 2);
+    app.tick_library(10.0);
+    CHECK(shown(app) == std::vector<int>{1, 0, 2, 3});
+}
+
+TEST_CASE("a batch's end sorts once, and the next batch sorts when it ends") {
+    ScratchPaths paths("appstate_batchonce");
+    BatchAfterTwoCharts batch(paths);
+    AppState& app = *batch.app;
+    stop_batch(app);
+    app.tick_library(10.0);
+    REQUIRE(shown(app) == std::vector<int>{1, 0, 2, 3});
+
+    // A song's own result after the end holds its place, however many frames
+    // the finished batch stays on its strip.
+    save_scored(app, 3, 5000);
+    REQUIRE(app.refresh_library_row(library_entry(3).md5));
+    app.tick_library(20.0);
+    app.tick_library(30.0);
+    CHECK(shown(app) == std::vector<int>{1, 0, 2, 3});
+
+    start_redo_batch(app, gated_scores(std::make_shared<ChartGate>()));
+    stop_batch(app);
+    app.tick_library(40.0);
+    CHECK(shown(app) == std::vector<int>{3, 1, 0, 2});
+}
+
+// The finished strip's X can let the job go before the frame's tick reads it.
+TEST_CASE("a batch dismissed before a tick saw it finish still sorts") {
+    ScratchPaths paths("appstate_batchdismiss");
+    BatchAfterTwoCharts batch(paths);
+    AppState& app = *batch.app;
+    stop_batch(app);
+    app.batch_job.reset();
+    app.tick_library(10.0);
+    CHECK(shown(app) == std::vector<int>{1, 0, 2, 3});
+}
+
+// A pool of no workers is a run that fails as a whole (BatchJob::finish_failed).
+TEST_CASE("a batch that fails as a whole sorts a held order when it ends") {
+    ScratchPaths paths("appstate_batcherror");
+    std::unique_ptr<AppState> app = app_under_best_path(paths);
+    save_scored(*app, 3, 5000);
+    REQUIRE(app->refresh_library_row(library_entry(3).md5));
+    REQUIRE(shown(*app) == kTitleOrder);
+    {
+        const ScopedHook seam(hydra::ui::set_app_batch_analyzer_for_test,
+                              gated_scores(std::make_shared<ChartGate>()), /*workers=*/0);
+        app->start_batch(true);
+    }
+    REQUIRE(app->batch_job != nullptr);
+    wait_batch_finished(*app);
+    REQUIRE_FALSE(app->batch_job->snapshot().run_error.empty());
+    app->tick_library(0.0);
+    CHECK(shown(*app) == std::vector<int>{3, 0, 1, 2});
+}
+
+// The user's wording: for a single opened song the row stays put until the
+// next re-sort.
+TEST_CASE("one song's stored result keeps its row in place, with no batch running") {
+    ScratchPaths paths("appstate_rowhold");
+    std::unique_ptr<AppState> app = app_under_best_path(paths);
+    save_scored(*app, 3, 5000);
+    REQUIRE(app->refresh_library_row(library_entry(3).md5));
+    CHECK(shown(*app) == kTitleOrder);
+    CHECK(row_of(*app, library_entry(3).md5).best_label().find("5,000") == 0);
+    app->tick_library(0.0);  // no batch, so no end to sort at
+    CHECK(shown(*app) == kTitleOrder);
+}
+
+TEST_CASE("a settings change's re-read of the summaries sorts a held order at once") {
+    ScratchPaths paths("appstate_settingssort");
+    std::unique_ptr<AppState> app = app_under_best_path(paths);
+    save_scored(*app, 3, 5000);
+    REQUIRE(app->refresh_library_row(library_entry(3).md5));
+    app->refresh_library_summaries();
+    CHECK(shown(*app) == std::vector<int>{3, 0, 1, 2});
+}
+
+// A reload replaces every row and then reads their summaries, and the list
+// comes up sorted on them.
+TEST_CASE("a reload comes up sorted under Best path") {
+    ScratchPaths paths("appstate_reloadsort");
+    std::unique_ptr<AppState> app = app_under_best_path(paths);
+    save_scored(*app, 3, 5000);
+    app->reload_library();
+    CHECK(shown(*app) == std::vector<int>{3, 0, 1, 2});
 }
 
 // ---- scans and the batch ----------------------------------------------------
@@ -511,10 +718,48 @@ TEST_CASE("an AppState on a pre-2.2.0 library sets it aside, leaves one notice, 
         app.startup_notice_closed();
         CHECK(app.startup_notice().empty());
         CHECK(app.request_scan);
+        // Hydra starts this scan on its own, like the scan of an out-of-date
+        // library, so it is the open's scan (D268).
+        CHECK(app.scan_started_by_open);
         // Once: a second close asks for nothing more.
         app.request_scan = false;
         app.startup_notice_closed();
         CHECK_FALSE(app.request_scan);
+    }
+    remove_aside();
+}
+
+// D268: the scan after the set-aside box is one Hydra starts itself, so a chart
+// folder it cannot read stops it with the open's sentence, not the manual one.
+TEST_CASE("the scan after the set-aside box says the library needs a scan when a chart folder "
+          "cannot be read") {
+    ScratchPaths paths("appstate_setasidemissing");
+    const std::string aside = hydra::store::set_aside_path(paths.db);
+    auto remove_aside = [&] {
+        for (const std::string& f : hydra::store::with_side_files(aside))
+            std::filesystem::remove(std::filesystem::u8path(f));
+    };
+    remove_aside();
+    const std::string missing = testtemp::temp_path("appstate_setasidemissing", "_nofolder");
+    REQUIRE_FALSE(std::filesystem::exists(std::filesystem::u8path(missing)));
+    Settings s = scratch_settings();
+    s.chartfolders.push_back(missing);
+    REQUIRE(s.save());
+    std::filesystem::copy_file(
+        std::filesystem::u8path(corpus::testdata_root() + "/store/v2.1.0-schema4.db"),
+        std::filesystem::u8path(paths.db), std::filesystem::copy_options::overwrite_existing);
+    {
+        AppState app;
+        app.wait_store_open();
+        REQUIRE(app.store_ready());
+        REQUIRE_FALSE(app.startup_notice().empty());
+        app.startup_notice_closed();
+        CHECK_FALSE(app.request_scan);
+        CHECK_FALSE(app.scan_started_by_open);
+        CHECK(app.scan_job == nullptr);
+        CHECK(app.status_is_problem);
+        CHECK(app.status_message ==
+              hydra::app::library_scan_blocked_notice(missing, hydra::app::ScanAsker::Open));
     }
     remove_aside();
 }
@@ -644,13 +889,15 @@ TEST_CASE("an out-of-date library with a chart folder that cannot be read starts
     CHECK_FALSE(app.scan_started_by_open);
     CHECK(app.scan_job == nullptr);
     CHECK(app.status_is_problem);
-    CHECK(app.status_message == hydra::app::library_rescan_blocked_notice(missing));
+    CHECK(app.status_message ==
+          hydra::app::library_scan_blocked_notice(missing, hydra::app::ScanAsker::Open));
     CHECK(app.library_shown_count() == static_cast<size_t>(kChartCount));
     CHECK(app.store->record_count() == records_before);
 }
 
 // D266 (user ruling "Refuse, like on open"): the scan the user starts stops at
-// a missing chart folder too, with the same notice, and writes nothing.
+// a missing chart folder too, and writes nothing. D268 ("Its own sentence"):
+// it says nothing was scanned, not that the library needs a scan.
 TEST_CASE("start_scan with a chart folder that cannot be read starts no scan and keeps every "
           "result") {
     ScratchPaths paths("appstate_scanmissing");
@@ -676,7 +923,8 @@ TEST_CASE("start_scan with a chart folder that cannot be read starts no scan and
     CHECK(app.scan_job == nullptr);
     CHECK_FALSE(app.scan_started_by_open);
     CHECK(app.status_is_problem);
-    CHECK(app.status_message == hydra::app::library_rescan_blocked_notice(missing));
+    CHECK(app.status_message ==
+          hydra::app::library_scan_blocked_notice(missing, hydra::app::ScanAsker::User));
     app.tick_library(0.0);
     CHECK(app.library_shown_count() == static_cast<size_t>(kChartCount));
     CHECK(app.store->record_count() == records_before);
