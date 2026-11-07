@@ -461,7 +461,7 @@ def _squeezes(score_path: str, score: dict, path: dict):
         if not act["sqinouts"] and act["sqout_tick"] < 0 and not act["sqin_ticks"]:
             continue
         act_index = chord_at(act["act_tick"])["index"]
-        offsets ={kind: [s["offset_ms"] for s in act["sqinouts"] if s["kind"] == kind]
+        offsets = {kind: [s["offset_ms"] for s in act["sqinouts"] if s["kind"] == kind]
                    for kind in (SQUEEZE_IN, SQUEEZE_OUT)}
         sqout_ticks = [act["sqout_tick"]] if act["sqout_tick"] >= 0 else []
         if (len(act["sqinouts"]) != len(offsets[SQUEEZE_IN]) + len(offsets[SQUEEZE_OUT])
@@ -482,6 +482,14 @@ def _squeezes(score_path: str, score: dict, path: dict):
             sqout_of_act[act_index] = chord_at(tick)["index"]
             sqout_deacts.add(act["deact_tick"])
     return squeezes, sqout_of_act, sqout_deacts
+
+
+def load_score_times(path: str) -> List[Tuple[int, float]]:
+    """The score file's chords as (`index`, ms), in order. It reads nothing a
+    squeeze-out's dump would add, so a caller that needs only the times (the
+    trace's note list) gets them for any score file."""
+    with open(path, encoding="utf-8") as f:
+        return [(chord["index"], chord["ms"]) for chord in json.load(f)["chords"]]
 
 
 def load_dump_notes(path: str) -> list:

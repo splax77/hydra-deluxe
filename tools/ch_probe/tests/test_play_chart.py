@@ -86,6 +86,13 @@ class DumpPathTest(unittest.TestCase):
         # The same times and keys load_dump_notes gives.
         self.assertEqual([(c.ms, c.lanes) for c in chords], _load())
 
+    def test_score_times_are_the_chords_index_and_ms(self):
+        # What the trace's note list reads: it needs no dump, so a score file
+        # with a squeeze-out reads here too.
+        chords = _load(play_chart.load_dump_chords)
+        self.assertEqual(_load(play_chart.load_score_times),
+                         [(c.index, c.ms) for c in chords])
+
     def test_chord_codes_are_not_decoded_here(self):
         # The notes say the pads; play_chart never reads the ADR 0015 code.
         self.assertFalse(hasattr(play_chart, "lanes_for_code"))
