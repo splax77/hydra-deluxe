@@ -6,6 +6,7 @@
 #include <fstream>
 #include <functional>
 #include <iterator>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -18,8 +19,11 @@
 #include "app/config.h"
 #include "app/display_format.h"  // kAverageMultiplierLabel
 #include "app/dynamics_breakdown.h"
+#include "app/launch.h"  // set_sibling_dir_for_test, kPathBuilderExe
 #include "core/model.h"
 #include "core/stars.h"
+#include "core/winstr.h"  // join_folder, os_path
+#include "ui/details_parts.h"  // kOpenInPathBuilderLabel and its hints
 #include "imgui_internal.h"
 #include "ui/app_state.h"
 #include "ui/column_widths.h"
@@ -797,6 +801,60 @@ void test_panel_hide_library(ImGuiTestContext* ctx) {
     IM_CHECK_FLOAT_NEAR_EQ(library()->Size.x + panel()->Size.x, room, 1.0f);
 }
 
+// The song panel's "Open in Path Builder" button, with the builder's folder
+// pointed at a scratch folder (the real build folder holds the real builder
+// once it is built). `present` puts an empty file named after the builder's
+// exe there. The button sits on the header's row, left of "Hide library"; it
+// is greyed exactly when the exe is missing, and its hint says which case
+// holds. An empty file is no program, so a click on the enabled button fails
+// to start it, and the status line says so; nothing is launched.
+void check_path_builder_button(ImGuiTestContext* ctx, bool present) {
+    namespace ui = hydra::ui;
+    Harness& h = harness(ctx);
+    reset_app(h);
+    const std::string dir = hydra::join_folder(h.temp_dir, "builder");
+    std::filesystem::create_directories(hydra::os_path(dir));
+    if (present)
+        std::ofstream(hydra::os_path(hydra::join_folder(dir, hydra::app::kPathBuilderExe)));
+    ScopedHook seam(hydra::app::set_sibling_dir_for_test, std::optional<std::string>(dir));
+    scan_library(ctx);
+    if (ctx->IsError()) return;
+    open_details(ctx, 0);
+    if (ctx->IsError()) return;
+    ctx->Yield(2);
+
+    const char* label = ui::detail::kOpenInPathBuilderLabel;
+    const std::string dump = widget_dump(ctx, "##songpanel", label);
+    IM_CHECK(dump.find(std::string("\"") + label + "\"") != std::string::npos);
+    IM_CHECK_EQ(dump.find(" disabled") != std::string::npos, !present);
+
+    const ImGuiTestItemInfo builder = ctx->ItemInfo(label);
+    const ImGuiTestItemInfo hide = ctx->ItemInfo("Hide library");
+    if (ctx->IsError()) return;
+    IM_CHECK_LE(builder.RectFull.Max.x, hide.RectFull.Min.x);
+    IM_CHECK_EQ(builder.RectFull.Min.y, hide.RectFull.Min.y);
+
+    ctx->MouseMove(label, ImGuiTestOpFlags_NoCheckHoveredId);
+    const std::string hint =
+        present ? std::string(ui::detail::kPathBuilderHint) : ui::detail::path_builder_missing_hint();
+    IM_CHECK(wait_until(ctx, [&] { return on_screen(h, hint); }, 5));
+    if (!present) return;
+
+    ctx->ItemClick(label);
+    ctx->Yield(2);
+    IM_CHECK(h.app->status_is_problem);
+    std::fprintf(stderr, "status: %s\n", h.app->status_message.c_str());
+    IM_CHECK(h.app->status_message.find("Path Builder") != std::string::npos);
+}
+
+void test_open_in_path_builder_greyed(ImGuiTestContext* ctx) {
+    check_path_builder_button(ctx, false);
+}
+
+void test_open_in_path_builder_enabled(ImGuiTestContext* ctx) {
+    check_path_builder_button(ctx, true);
+}
+
 // Every window on screen whose content is wider than its room (and that has
 // no horizontal scroll bar to reach the rest): text or buttons running past
 // an edge. Tooltips and ImGui's own debug window aside.
@@ -1306,6 +1364,8 @@ const std::vector<TestEntry>& details_tests() {
         {"panel-open-close", test_panel_open_close},
         {"panel-split", test_panel_split},
         {"panel-hide-library", test_panel_hide_library},
+        {"open-in-path-builder-greyed", test_open_in_path_builder_greyed},
+        {"open-in-path-builder-enabled", test_open_in_path_builder_enabled},
         {"layout-sweep", test_layout_sweep},
         {"long-error-wraps", test_long_error_wraps},
         {"panel-prev-next", test_panel_prev_next},

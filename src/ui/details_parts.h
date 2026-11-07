@@ -13,6 +13,7 @@
 #ifndef HYDRA_UI_DETAILS_PARTS_H
 #define HYDRA_UI_DETAILS_PARTS_H
 
+#include <exception>
 #include <functional>
 #include <string>
 
@@ -33,6 +34,19 @@ bool render_record_state(AppState& app);
 // space instead. A row that knows it has nothing to draw passes no `draw`:
 // then no group is opened, so it takes no room at all unless held.
 void draw_held_row(AppState& app, HeldRow& row, const std::function<void()>& draw = {});
+
+// details_panel.cpp. The song panel header's button that opens the song in
+// the Path Builder, and what it says when hovered: kPathBuilderHint while the
+// builder can start, path_builder_missing_hint() when its exe
+// (app::sibling_exe_path) is not there and the button is greyed.
+inline constexpr const char* kOpenInPathBuilderLabel = "Open in Path Builder";
+inline constexpr const char* kPathBuilderHint =
+    "Build your own Star Power path for this song and see what each choice costs";
+std::string path_builder_missing_hint();
+
+// details_panel.cpp. The status line's problem when the Path Builder will not
+// start: the sentence, then the failure's one line (app::plain_error_line).
+std::string path_builder_failed_text(const std::exception& e);
 
 // paths_tab.cpp. The path list on the left and the selected path's details
 // on the right. A click in the list changes `selected_path`.
