@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <system_error>
 
 #include "imgui.h"
 #include "imgui_te_context.h"
@@ -89,6 +90,12 @@ void reset_app(Harness& h) {
     }
     if (h.app) h.app->close_preview();
     h.app.reset();
+
+    // Hydra's runner clears its rules file here too, so a file a stopped test
+    // or an earlier run left behind never reaches the next test.
+    std::error_code ignored;
+    std::filesystem::remove(std::filesystem::u8path(hydra::app::path_overrides().rules_path),
+                            ignored);
 
     hydra::audio::set_headless(true);
     if (!scratch_settings().save_file(h.ini_path)) {
