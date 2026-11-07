@@ -6,7 +6,7 @@
       "owner_file": "src/app/display_format.h",
       "owner_symbol": "kFactSeparator",
       "date": "2026-10-11",
-      "decision": "concept audit M46 (code-only)",
+      "decision": "concept audit M46 (code-only); concept audit M46.",
       "added_by": "concept-audit-H2",
       "pattern": "\\\\xC2\\\\xB7",
       "must_match": [
@@ -33,7 +33,7 @@
       "scope": [
         "src"
       ],
-      "note": "The middle dot between facts was typed at each use in src/app and src/ui, with path_view.cpp's own kDot beside the literals. kFactSeparator is the one spelling now; a typed escape comes back only through this spelling. One row covers both folders, because a row's scope is a top folder or a single file. Decided by: concept audit M46."
+      "note": "The middle dot between facts was typed at each use in src/app and src/ui, with path_view.cpp's own kDot beside the literals. kFactSeparator is the one spelling now; a typed escape comes back only through this spelling. One row covers both folders, because a row's scope is a top folder or a single file."
     }
   ]
 }
