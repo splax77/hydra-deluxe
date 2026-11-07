@@ -161,7 +161,7 @@ class _FakeGame:
         self.presses = []
         self.misses = set(misses)
 
-    def press(self, lanes) -> None:
+    def press(self, lanes, _axes=None) -> None:
         self.presses.append(list(lanes))
         if len(self.presses) not in self.misses:
             self.score += 100
@@ -481,7 +481,7 @@ class LivePlayTest(unittest.TestCase):
         def no_window():
             raise AssertionError("find_game_window was called on the press route")
 
-        def kit_press(lanes):
+        def kit_press(lanes, _axes):
             return {}
 
         with mock.patch.object(play_chart, "EngineModel", _FakeEngine), \
@@ -493,6 +493,122 @@ class LivePlayTest(unittest.TestCase):
         self.assertEqual(seen, [kit_press])
 
 
+def _gem(color, dynamic, cymbal=False):
+    return {"color": color, "cymbal": cymbal, "dynamic": dynamic}
+
+
+# One chord of each strength in one press, then a plain chord. The words are
+# the ones hydra_replay writes.
+_DYNAMICS_DUMP = {"chords": [
+    {"index": 3, "ms": 1000.0, "notes": [
+        _gem("Red", "ghost"), _gem("Yellow", "accent", cymbal=True), _gem("Kick", "none")]},
+    {"index": 4, "ms": 1500.0, "notes": [_gem("Green", "none")]},
+]}
+
+
+def _load_dump(dump):
+    with tempfile.TemporaryDirectory() as d:
+        path = os.path.join(d, "dump.json")
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(dump, f)
+        return play_chart.load_dump_chords(path)
+
+
+class _ThresholdEngine:
+    """An engine fake that counts its dynamics threshold reads."""
+
+    threshold = 0
+    reads = 0
+
+    def __init__(self, _proc=None):
+        pass
+
+    def use_object(self, _ptr):
+        pass
+
+    def song_clock(self):
+        return 0.0
+
+    def score(self):
+        return 0
+
+    def dyn_threshold(self):
+        type(self).reads += 1
+        return type(self).threshold
+
+
+class DynamicsTest(unittest.TestCase):
+    """Each gem keeps its dynamic, and live_play reads the threshold for the
+    ghosts it must press."""
+
+    def setUp(self):
+        _ThresholdEngine.reads = 0
+
+    def _live_play(self, chords, threshold):
+        from unittest import mock
+        _ThresholdEngine.threshold = threshold
+        seen, proc, out = [], _FakeProc(), io.StringIO()
+
+        def fake_play_chords(chords, clock, read_score, press, **kwargs):
+            seen.extend(chords)
+            return play_chart.RunResult(stop="done")
+
+        with mock.patch.object(play_chart, "EngineModel", _ThresholdEngine), \
+                mock.patch.object(play_chart, "play_chords", fake_play_chords):
+            try:
+                result = play_chart.live_play(
+                    chords, open_proc=lambda **kw: proc, find_engine=lambda _proc: 0x1000,
+                    press=lambda lanes, axes: {}, out=out)
+            finally:
+                self.assertTrue(proc.closed)
+        return result, seen, out.getvalue()
+
+    def test_chords_carry_each_gems_dynamic_beside_its_lane(self):
+        chords = _load_dump(_DYNAMICS_DUMP)
+        self.assertEqual(chords[0].lanes, [Lane.RED, Lane.YELLOW_CYMBAL, Lane.KICK])
+        self.assertEqual(chords[0].dynamics, ["ghost", "accent", "none"])
+        self.assertEqual(chords[1].dynamics, ["none"])
+
+    def test_a_ghost_chart_reads_the_threshold_once_and_prints_it(self):
+        from tools.ch_mcp.kit_tools import pad_axis
+        result, seen, text = self._live_play(_load_dump(_DYNAMICS_DUMP), 64)
+        self.assertEqual(_ThresholdEngine.reads, 1)
+        self.assertEqual(result.dyn_threshold, 64)
+        self.assertIn("  Dynamics threshold: 64\n", text)
+        self.assertEqual(seen[0].axes, [pad_axis("ghost", 64), pad_axis("accent", 64),
+                                        pad_axis("none", 64)])
+        self.assertEqual(seen[1].axes, [pad_axis("none", 64)])
+
+    def test_a_ghost_chart_with_a_threshold_of_0_raises_naming_the_field(self):
+        with self.assertRaises(ValueError) as caught:
+            self._live_play(_load_dump(_DYNAMICS_DUMP), 0)
+        self.assertIn("OFF_DYN_THRESHOLD", str(caught.exception))
+
+    def test_a_chart_with_no_ghost_never_reads_the_threshold(self):
+        result, seen, text = self._live_play(_load(play_chart.load_dump_chords), 0)
+        self.assertEqual(result.stop, "done")
+        self.assertEqual(_ThresholdEngine.reads, 0)
+        self.assertIsNone(result.dyn_threshold)
+        self.assertNotIn("threshold", text)
+        self.assertEqual(seen[-1].dynamics, ["accent"])
+        self.assertEqual(len(seen), 8)
+
+    def test_each_chord_reaches_the_press_with_its_axes(self):
+        wall = _FakeTime()
+        game = _FakeGame()
+        seen = []
+
+        def press(lanes, axes):
+            game.press(lanes)
+            seen.append(axes)
+
+        _ThresholdEngine.threshold = 64
+        chords, _threshold = play_chart.with_axes(_load_dump(_DYNAMICS_DUMP), _ThresholdEngine())
+        play_chart.play_chords(chords, _FakeSongClock(wall, start_s=0.5), game.read_score,
+                               press, now=wall.now, sleep=wall.sleep, out=io.StringIO())
+        self.assertEqual(seen, [chords[0].axes, chords[1].axes])
+
+
 class PressReplyRowTest(unittest.TestCase):
     """A press that returns a dict (the kit press) adds the values the press
     log has columns for to the row; a press that returns keys adds none."""
@@ -501,7 +617,7 @@ class PressReplyRowTest(unittest.TestCase):
         wall = _FakeTime()
         game = _FakeGame()
 
-        def press(lanes):
+        def press(lanes, _axes):
             game.press(lanes)
             return {"down_frame": 40, "up_frame": 42, "down_ms": 7, "up_ms": 19,
                     "rewrite": True, "hit": "not this"}

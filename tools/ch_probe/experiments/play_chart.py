@@ -8,12 +8,16 @@ the same). A `hydra_replay dump` file does not work here: it lists paths, not
 chords. Each entry of the score JSON's "chords" list gives the chord's place
 in the chart (`index`), its time in the chart (`ms`, with no Offset or
 song.ini delay, which is the song clock the game shows) and its "notes", one
-per gem, each with the gem's color and whether it is a cymbal. Whether the 2x
-kick notes are in it follows the run's own settings (--bass2x).
+per gem, each with the gem's color, whether it is a cymbal and its `dynamic`.
+Whether the 2x kick notes are in it follows the run's own settings (--bass2x).
 
 The auto-player presses each chord's own pads and nothing else. It has no
 Star Power key: on drums the game activates from a press on a fill's last
 note (docs/clone-hero/05-star-power.md, SP-17).
+
+The kit press gives each pad gem the strength its `dynamic` asks for; a key
+has no strength. kit_tools.pad_axis owns the strengths, and with_axes reads the
+game's dynamics threshold for them when the chart holds a ghost gem.
 
 While the song plays, live.wait_until polls the game's song clock and fires
 each chord PRESS_LEAD_MS early; it also notices the song stopping (clock frozen
@@ -43,8 +47,8 @@ import json
 import os
 import sys
 import time
-from dataclasses import dataclass, field
-from typing import Callable, List, Optional, Sequence, TextIO
+from dataclasses import dataclass, field, replace
+from typing import Callable, List, Optional, Sequence, TextIO, Tuple
 
 _REPO_ROOT = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..", "..", "..")
@@ -90,10 +94,14 @@ _KEY_FOR_PAD = {
 
 @dataclass(frozen=True)
 class Chord:
-    """One chord to press: its `index` in the score JSON, its time and keys."""
+    """One chord to press: its `index` in the score JSON, its time, its keys
+    and each key's `dynamic`, in the same order. `axes` holds each key's
+    strength once with_axes has worked them out."""
     index: int
     ms: float
     lanes: List[int]
+    dynamics: List[str]
+    axes: Optional[List[float]] = None
 
 
 def load_dump_chords(path: str) -> List[Chord]:
@@ -102,13 +110,30 @@ def load_dump_chords(path: str) -> List[Chord]:
         dump = json.load(f)
     return [Chord(chord["index"], chord["ms"],
                   [_KEY_FOR_PAD[(gem["color"], gem["cymbal"])]
-                   for gem in chord["notes"]])
+                   for gem in chord["notes"]],
+                  [gem["dynamic"] for gem in chord["notes"]])
             for chord in dump["chords"]]
 
 
 def load_dump_notes(path: str) -> list:
     """The file's chords in order, as (ms, the keys its gems press)."""
     return [(chord.ms, chord.lanes) for chord in load_dump_chords(path)]
+
+
+def with_axes(chords: Sequence[Chord], engine) -> Tuple[List[Chord], Optional[int]]:
+    """`chords` with each gem's strength from kit_tools.pad_axis, and the
+    dynamics threshold read for them. The field is read once, and only when a
+    gem is a ghost; otherwise the threshold is None. Every strength is worked
+    out here, so a threshold no ghost can use raises pad_axis's ValueError
+    before the first press."""
+    # Imported here because kit_tools imports game_tools, which imports this
+    # module.
+    from tools.ch_mcp.kit_tools import DYNAMIC_GHOST, pad_axis
+    threshold = None
+    if any(DYNAMIC_GHOST in chord.dynamics for chord in chords):
+        threshold = engine.dyn_threshold()
+    return [replace(chord, axes=[pad_axis(dynamic, threshold) for dynamic in chord.dynamics])
+            for chord in chords], threshold
 
 
 # --- one run ------------------------------------------------------------------
@@ -132,17 +157,19 @@ class RunResult:
     pressed), "past_end" (the clock was past the last chord), "frozen",
     "cap", "interrupted", "lost" (the process went away), "stopped" (the
     caller's `should_stop` said so) or STOP_NO_ENGINE (live_play found no
-    playing song; `message` holds the finder's words)."""
+    playing song; `message` holds the finder's words). `dyn_threshold` is the
+    dynamics threshold live_play read, None when it read none."""
     sent: int = 0
     hit: int = 0
     max_streak: int = 0
     rows: list = field(default_factory=list)
     stop: str = ""
     message: str = ""
+    dyn_threshold: Optional[int] = None
 
 
 def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
-                press: Callable[[List[int]], object], *,
+                press: Callable[[List[int], Optional[List[float]]], object], *,
                 now: Callable[[], float] = time.perf_counter,
                 sleep: Callable[[float], None] = time.sleep,
                 on_press: Optional[Callable[[dict], object]] = None,
@@ -152,9 +179,9 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
     """Press every chord from where the song clock is now, and log each press.
 
     `clock` reads the song clock (live.ReadsSongClock), `read_score` reads the
-    engine's score and `press` sends one chord's keys. When `press` returns a
-    dict (the kit press of tools/ch_mcp/kit_tools.py), the row also keeps its
-    values that PRESS_LOG_COLUMNS names. The live script passes
+    engine's score and `press` sends one chord's keys and their `axes`. When
+    `press` returns a dict (the kit press of tools/ch_mcp/kit_tools.py), the
+    row also keeps its values that PRESS_LOG_COLUMNS names. The live script passes
     the game's; the tests pass fakes. `now` and `sleep` are the wall clock the
     stop checks and the waits use. `on_press`, when given, gets each press-log
     row as it is added; `should_stop`, when given, is asked with the run cap
@@ -213,7 +240,7 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
                     return result
                 continue
 
-            pressed = press(chord.lanes)
+            pressed = press(chord.lanes, chord.axes)
 
             # Check hit through engine.pressed_input_hit.
             sleep(SCORE_READ_DELAY_S)
@@ -294,10 +321,11 @@ def _find_engine(proc, out: Optional[TextIO] = None) -> int:
         proc, [engine_finder.normal_pattern(proc)], out=out)
 
 
-def live_press(driver: InputDriver, hwnd: int) -> Callable[[List[int]], object]:
-    """A press that focuses the game window, then sends the chord's keys.
+def live_press(driver: InputDriver, hwnd: int) -> Callable[..., object]:
+    """A press that focuses the game window, then sends the chord's keys. A
+    key has no strength, so `axes` goes unused.
     LIVE-ONLY: sends input to the game."""
-    def press(lanes: List[int]) -> object:
+    def press(lanes: List[int], axes: Optional[List[float]] = None) -> object:
         # Keep Clone Hero focused so SendInput reaches it.
         focus_window(hwnd)
         return driver.press_chord(lanes)
@@ -308,7 +336,7 @@ def live_play(chords: Sequence[Chord], *,
               open_proc: Callable = open_process,
               find_engine: Optional[Callable[[object], int]] = None,
               driver: Optional[InputDriver] = None,
-              press: Optional[Callable[[List[int]], object]] = None,
+              press: Optional[Callable[..., object]] = None,
               on_press: Optional[Callable[[dict], object]] = None,
               should_stop: Optional[Callable[[], bool]] = None,
               out: Optional[TextIO] = None,
@@ -320,7 +348,9 @@ def live_play(chords: Sequence[Chord], *,
     window, so none is looked up), else sends keys through `driver` (a new
     InputDriver when None) to the game window. When no song starts
     inside the finder's cap, the result's `stop` is STOP_NO_ENGINE and its
-    `message` is the finder's. `on_press`, `should_stop` and `cap_s` go to
+    `message` is the finder's. with_axes works out each gem's strength once
+    the engine is found, and raises its ValueError before any press when no
+    ghost strength is possible. `on_press`, `should_stop` and `cap_s` go to
     play_chords. `open_proc` and `find_engine` stand in for open_process and
     the capped finder in tests. With no `find_engine` the real search runs
     and its progress dots go to `out`, so a caller that gives `out` a buffer
@@ -344,6 +374,9 @@ def live_play(chords: Sequence[Chord], *,
         engine.use_object(engine_ptr)
         print(f"  Engine at {engine_ptr:#x}, song clock = {engine.song_clock():.2f}s",
               file=out)
+        chords, threshold = with_axes(chords, engine)
+        if threshold is not None:
+            print(f"  Dynamics threshold: {threshold}", file=out)
 
         if press is None:
             ch_hwnd = find_game_window()
@@ -357,9 +390,11 @@ def live_play(chords: Sequence[Chord], *,
         # No fill-in between frames: the estimate is the raw clock, which is
         # what play_chart has always fired on.
         clock = SongClock(engine.song_clock, max_fill_s=0.0)
-        return play_chords(chords, clock, engine.score, press,
-                           on_press=on_press, should_stop=should_stop, out=out,
-                           cap_s=cap_s)
+        result = play_chords(chords, clock, engine.score, press,
+                             on_press=on_press, should_stop=should_stop, out=out,
+                             cap_s=cap_s)
+        result.dyn_threshold = threshold
+        return result
     finally:
         proc.close()
 

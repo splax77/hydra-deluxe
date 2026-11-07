@@ -623,6 +623,56 @@ class PadAxisTest(unittest.TestCase):
         self.assertIn('"loud"', str(caught.exception))
 
 
+class StrengthTest(Rig):
+    def test_a_mixed_chord_carries_one_strength_per_lane_and_the_kick_stays_true(self):
+        ghost, accent = K.pad_axis("ghost", 64), K.pad_axis("accent", 64)
+        message = K.press_message(
+            [K.lane_element(Lane.RED), K.lane_element(Lane.YELLOW_CYMBAL),
+             K.lane_element(Lane.KICK)],
+            values=[ghost, accent, K.pad_axis("none", 64)])
+        self.assertEqual(message["elements"], [{"id": 0, "value": ghost},
+                                               {"id": 4, "value": accent},
+                                               {"id": 22, "value": True}])
+        self.assertNotEqual(ghost, accent)
+
+    def test_a_press_with_no_values_presses_pads_as_plain_gems(self):
+        message = K.press_message([K.KIT_ELEMENTS["red"]])
+        self.assertEqual(message["elements"], [{"id": 0, "value": K.pad_axis("none")}])
+
+    def test_a_list_of_values_of_another_length_is_an_error(self):
+        with self.assertRaises(ValueError):
+            K.press_message([K.KIT_ELEMENTS["red"]], values=[0.6, 0.7])
+
+    def test_the_kit_press_sends_the_chords_axes(self):
+        self.set_up([PRESS_REPLY])
+        press = self.game.kit_source()
+        ghost = K.pad_axis("ghost", 64)
+        press([Lane.RED, Lane.KICK], [ghost, K.pad_axis("none", 64)])
+        self.assertEqual(self.posted()[-1]["elements"],
+                         [{"id": 0, "value": ghost}, {"id": 22, "value": True}])
+
+    def test_ch_kit_press_sends_a_given_value_to_the_pads_and_true_to_a_button(self):
+        tools = self.set_up([PRESS_REPLY])
+        lines = tools.ch_kit_press("red,kick", value=0.6).splitlines()
+        self.assertEqual(self.posted()[-1]["elements"],
+                         [{"id": 0, "value": 0.6}, {"id": 22, "value": True}])
+        self.assertEqual(lines[1], "pads pressed at value 0.6")
+
+    def test_a_value_at_either_end_is_sent(self):
+        tools = self.set_up([PRESS_REPLY, PRESS_REPLY])
+        for value in (0, 1):
+            self.assertTrue(tools.press_items("red", value=value).sent)
+            self.assertEqual(self.posted()[-1]["elements"], [{"id": 0, "value": value}])
+
+    def test_a_value_outside_0_to_1_is_refused_and_nothing_is_sent(self):
+        tools = self.set_up()
+        sent = len(self.posted())
+        for bad in (1.5, -0.1, float("nan"), True, "0.6"):
+            self.assertEqual(tools.ch_kit_press("red", value=bad),
+                             f"value is a number from 0 to 1 or left out, not {bad!r}")
+        self.assertEqual(len(self.posted()), sent)
+
+
 WATCH_QUIET = {"seconds": 20, "ticks": 3100, "first_frame": 5000, "last_frame": 8200,
                "readers": ["System", "Player1", "controllers"], "true_count": 0, "reads": []}
 
@@ -697,7 +747,7 @@ class KitPressTest(Rig):
         tools = self.set_up([PRESS_REPLY])
         press = self.game.kit_source()
         wall = _FakeTime()
-        chords = [play_chart.Chord(7, 1000.0, [Lane.GREEN, Lane.KICK])]
+        chords = [play_chart.Chord(7, 1000.0, [Lane.GREEN, Lane.KICK], ["none", "none"])]
         score = iter([0, 50])
         result = play_chart.play_chords(
             chords, _FakeSongClock(wall, start_s=0.5), lambda: next(score), press,

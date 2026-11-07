@@ -699,6 +699,8 @@ class GameTools:
             lines.append(f"ended: {self._stop_reason(play)}")
             result = play.result
             if result is not None:
+                if result.dyn_threshold is not None:
+                    lines.append(f"dynamics threshold: {result.dyn_threshold}")
                 if result.message:
                     lines.append(result.message)
                 lines.append(f"sent {result.sent}, hit {result.hit}, "
