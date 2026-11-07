@@ -1,5 +1,5 @@
 // paths_from_pathstring: Hydra's path text read back into a path (the Path
-// Builder's paste, plan docs/superpowers/plans/2026-10-28-path-builder.md,
+// Builder's paste, plan docs/superpowers/plans/2026-10-28-path-builder.md (removed; git show b29a3c28:docs/superpowers/plans/2026-10-28-path-builder.md),
 // tasks PB-3 and PB-3b). Every case runs on the corpus (testdata/input) at the GUI's
 // default settings.
 

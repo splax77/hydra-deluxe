@@ -1,6 +1,6 @@
 // best_finish: the best path that starts with the player's pinned windows and
 // runs free after them (the Path Builder's BF(k), plan
-// docs/superpowers/plans/2026-10-28-path-builder.md, task EN-2). Every case
+// docs/superpowers/plans/2026-10-28-path-builder.md (removed; git show b29a3c28:docs/superpowers/plans/2026-10-28-path-builder.md), task EN-2). Every case
 // runs on the corpus (testdata/input) at the GUI's default settings.
 
 #include "doctest.h"

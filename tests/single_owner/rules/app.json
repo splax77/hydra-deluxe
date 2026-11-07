@@ -8,24 +8,43 @@
       "date": "2026-10-04",
       "decision": "ADR 0020",
       "added_by": "gate-fix",
-      "pattern": "ShellExecute|CreateProcess",
+      "pattern": "ShellExecute",
       "owner_files": [
         "src/app/report_files.cpp"
       ],
-      "exempt": [
-        {
-          "file": "tools/precheck/git_text.cpp",
-          "why": "starts git as a child process with pipes; it opens no file or page in the shell"
-        }
-      ],
       "must_match": [
-        "ShellExecuteW(nullptr, L\"open\", p.c_str(), nullptr, nullptr, SW_SHOWNORMAL);",
-        "CreateProcessW(nullptr, cmd.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &pi);"
+        "ShellExecuteW(nullptr, L\"open\", p.c_str(), nullptr, nullptr, SW_SHOWNORMAL);"
       ],
       "must_not_match": [
         "hydra::app::open_in_browser(page);"
       ],
-      "note": "The shell takes no long or prefixed path (fits_shell), so only open_in_browser launches it, with shell_path's short form. Decided by: ADR 0020 (The shell: Open report and Show in folder)"
+      "note": "The shell takes no long or prefixed path (fits_shell), so only open_in_browser launches it, with shell_path's short form. Starting a program of our own is the \"Which code starts a program?\" row. Decided by: ADR 0020 (The shell: Open report and Show in folder)"
+    },
+    {
+      "question": "Which code starts a program?",
+      "owner": "launch_program (src/app/launch.cpp)",
+      "owner_file": "src/app/launch.cpp",
+      "owner_symbol": "launch_program",
+      "date": "2026-10-29",
+      "decision": "plan docs/superpowers/plans/2026-10-28-path-builder.md (removed; git show b29a3c28:docs/superpowers/plans/2026-10-28-path-builder.md), HY-1",
+      "added_by": "HY-1",
+      "pattern": "CreateProcess",
+      "owner_files": [
+        "src/app/launch.cpp"
+      ],
+      "exempt": [
+        {
+          "file": "tools/precheck/git_text.cpp",
+          "why": "starts git as a child process with pipes and reads its output; launch_program starts a program and does not wait for it"
+        }
+      ],
+      "must_match": [
+        "if (!CreateProcessW(exe.c_str(), cmd.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr,"
+      ],
+      "must_not_match": [
+        "launch_program(exe, {page});"
+      ],
+      "note": "launch_program is the one CreateProcessW in src, so the one place a command line is quoted (quote_argument). launch_html_viewer and launch_sibling call it. Decided by: the Path Builder plan, HY-1"
     },
     {
       "question": "Does the path gauge work out an SP fact itself?",

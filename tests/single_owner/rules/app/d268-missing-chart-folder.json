@@ -22,6 +22,10 @@
         {
           "file": "src/store/upgrade_files.cpp",
           "why": "tells a file from a folder among the files of a store being upgraded; it reads no chart folder"
+        },
+        {
+          "file": "src/app/launch.cpp",
+          "why": "checks that a program beside Hydra's exe is a file, not a folder, before launching it; it reads no chart folder"
         }
       ],
       "owner_lines": [

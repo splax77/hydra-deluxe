@@ -4,7 +4,7 @@
 // the frame loop over PbApp (pb_window.h). The window and device pieces are
 // the ones Hydra.exe uses too (ui/win32_window.h). The builder sets no
 // AppUserModelID, so Windows gives it a taskbar button of its own (the user's
-// answer, 2026-10-29, in docs/superpowers/plans/2026-10-28-path-builder.md).
+// answer, 2026-10-29, in docs/superpowers/plans/2026-10-28-path-builder.md (removed; git show b29a3c28:docs/superpowers/plans/2026-10-28-path-builder.md)).
 //
 //   HydraPathBuilder.exe [chart file]   opens the chart, if one is given
 
