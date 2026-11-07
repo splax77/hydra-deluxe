@@ -1,0 +1,13 @@
+Listing: `create_custom_controller_1EE9800.asm`, build 6142, made 2026-11-06 with `tools/ch_mcp/chdis.py`. Function: `0x1EE9800` (`dump.cs` line 293284), the method of Rewired's controller manager, class #3552, that builds a custom controller from a definition. Both public `CreateCustomController` forms reach it: `0x1D6F9C0` (`dump.cs` line 309950) calls it and then sets the tag, and `0x1D6FA80` jumps to it. Each takes the manager from the `ReInput` static at +0x18.
+
+Plain version: think of a ticket roll. Each new custom controller takes the next ticket as its id, and giving a controller back does not put its ticket back on the roll.
+
+Lines 38 and 39 look up the definition, and a definition that is not found returns null. Lines 42 and 43 read the manager's int at +0xD0 (`#3552+0xD0`) and add one. Line 44 stores the sum back. Lines 45 to 47 set the counter to 0 only when the sum reaches 0x7FFFFFFF. Line 74 stores the value read at line 42, the one before the add, at +0x10 of a new description object. Line 104 calls the `CustomController` constructor with that object.
+
+The constructor hands the number on, read with `tools/ch_mcp/chdis.py` on the same day and not kept as listings. `0x1D5E790` loads the object's +0x10 into `ebp` at 0x1D5E7D9, and passes it as the first argument of `0x1D55F10` at 0x1D5E8E7. `0x1D55F10` keeps it in `esi` at 0x1D55F2D, and passes it to the `Controller` constructor `0x1D5B0E0` at 0x1D560CC. That one keeps it in `ebp` at 0x1D5B0FA and stores it at the object's +0x10 at 0x1D5B26B, which is `Controller.id` (`dump.cs` line 285671).
+
+Lines 118 to 137 walk the list at +0x20, and lines 138 to 165 add the controller to it. Lines 166 to 171 add it to the list at +0x28. Lines 172 to 177 call `0x1D496C0`, which loops over the controller's templates. No line of this listing calls a method of a player.
+
+Who else touches the counter. All 125 methods of class #3552 (`dump.cs` lines 293113 to 293602) were read with `tools/ch_mcp/chdis.py`, each as far as that tool's listing runs, and searched for `+ 0xd0]`. Three hold it. This one reads and writes it. `0x1EE5440` holds the same read, add and wrap as lines 42 to 47. `0x1EEB3F0` sets it to 0 at 0x1EEB716, and is reached by a jump from `0x1EE67B0`. The destroy path, `0x1D6FC70` and the `0x1EE6D00` it jumps to, is in that class and does not hold it.
+
+What the listing does not show: what calls `0x1EE5440`, since a search of the code section for a direct call or jump to it found none. What the two other callers of this method do, at 0x1EEBE8C and 0x1F2FDE3. When the game runs `0x1EE67B0`, at 0x1F74A15 and 0x1F7726C. Whether anything outside this method hands a new controller to a player. Whether `ContainsController` matches a controller by this id.

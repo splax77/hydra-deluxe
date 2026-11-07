@@ -8,7 +8,8 @@ stay minimized and unfocused; while the kit is set up, the Rewired devices in
 KIT_DEVICES are switched off so the user's own keys and mouse reach no player
 (the plan
 docs/superpowers/plans/2026-10-30-ch-mcp-in-game-input.md, "One agent for the
-kit" and "The tools").
+kit" and "The tools"). Placeholder controllers made before it put the kit on
+KIT_REQUIRED_ID, the one id the game grades hit strength for.
 
 The agent holds none of the kit's numbers. This module owns them: the
 definition, the tag, the player, the elements, the bindings the game's map must
