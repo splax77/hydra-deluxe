@@ -132,19 +132,19 @@ class Row:
     planned_ms: int
     sent_ms: float         # estimated song time at the key-down, minus the note
     sent_raw_ms: float     # raw clock at the key-down, minus the note
-    engine_ms: Optional[float]  # +0x2e0 minus the note, if +0x2e0 changed
+    engine_ms: Optional[float]  # +0x2e0 minus the note, if +0x2e0 changed; a plain reading
     hit: bool
-    measured_ms: float     # live.hit_offset_ms: engine_ms if there is one, else sent_ms
+    measured_ms: float     # live.hit_offset_ms
 
 
 def row_for(index: int, note_ms: float, planned_ms: int, raw_ms: float, est_ms: float,
             before: live.Snapshot, after: live.Snapshot) -> Row:
     """One walked note's row, its offset from live.hit_offset_ms."""
-    measured, from_engine = live.hit_offset_ms(note_ms, est_ms, before.hit_time_s,
-                                               after.hit_time_s)
+    field_changed = after.hit_time_s != before.hit_time_s
     return Row(index, note_ms, planned_ms, est_ms - note_ms, raw_ms - note_ms,
-               measured if from_engine else None,
-               pressed_input_hit(before.score, after.score), measured)
+               C.s_to_ms(after.hit_time_s) - note_ms if field_changed else None,
+               pressed_input_hit(before.score, after.score),
+               live.hit_offset_ms(note_ms, est_ms))
 
 
 def summarize(rows: list[Row]) -> list[str]:
@@ -162,13 +162,11 @@ def summarize(rows: list[Row]) -> list[str]:
         if not side:
             continue
         lines.append("")
-        lines.append(f"{name} side (planned, hits, measured offsets; "
-                     "'e' = engine +0x2e0, 's' = send time):")
+        lines.append(f"{name} side (planned, hits, measured offsets):")
         for p in sorted({r.planned_ms for r in side}, key=abs):
             step = [r for r in side if r.planned_ms == p]
             marks = "  ".join(
-                f"{r.measured_ms:+6.1f}{'e' if r.engine_ms is not None else 's'}"
-                f"{' HIT' if r.hit else ' miss'}" for r in step)
+                f"{r.measured_ms:+6.1f}{' HIT' if r.hit else ' miss'}" for r in step)
             lines.append(f"  {p:+4d}  {sum(r.hit for r in step)}/{len(step)}   {marks}")
 
         hits = [abs(r.measured_ms) for r in side if r.hit]

@@ -163,19 +163,15 @@ def first_note_index(notes_ms: Sequence[float], clock_ms: float) -> int:
     return i
 
 
-def hit_offset_ms(note_ms: float, sent_ms: float, hit_time_before_s: float,
-                  hit_time_after_s: float) -> tuple[float, bool]:
+def hit_offset_ms(note_ms: float, sent_ms: float) -> float:
     """How far from the note a press landed, in ms (+ is late).
 
-    The engine's stored hit time (+0x2e0) is the better number, so it wins when
-    the press changed it. Otherwise it falls back to the estimated send time.
-    Returns (offset_ms, True when the engine's hit time gave it).
+    It uses the estimated send time. The double at +0x2e0 is no hit time:
+    docs/clone-hero/03-timing.md, TM-14, says what it holds.
     """
-    if hit_time_after_s != hit_time_before_s:
-        return C.s_to_ms(hit_time_after_s) - note_ms, True
-    return sent_ms - note_ms, False
+    return sent_ms - note_ms
 
 
 def window_changed(a_ms: float, b_ms: float) -> bool:
-    """Whether two reads of a stored window (or hit time) differ for real."""
+    """Whether two reads of a stored window (or the +0x2e0 double) differ for real."""
     return abs(a_ms - b_ms) > C.WINDOW_CHANGE_TOLERANCE_MS

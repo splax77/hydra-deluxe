@@ -5,9 +5,9 @@ sample, so each window value can be tied to a note. After the song ends it
 loads the song's manifest.json and prints each test block's window values in
 the order they appeared, next to the notes around them.
 
-It also logs the score (+0x94) and the field at +0x2e0, which the code
-reading says holds the song time of the last hit. That makes the same script
-cover step 4 of the hit-window plan: run it on Edge Walk while play_chart.py
+It also logs the score (+0x94) and the field at +0x2e0, which holds the start
+of a double lane's round (docs/clone-hero/03-timing.md, TM-14). The same script
+covers step 4 of the hit-window plan: run it on Edge Walk while play_chart.py
 hits the notes, and the report checks whether +0x2e0 changes once per hit and
 sits next to the note time.
 
@@ -204,11 +204,15 @@ def window_report(samples: list[Sample], notes: list[dict]) -> list[str]:
 
 
 def hit_time_report(samples: list[Sample], notes: list[dict]) -> list[str]:
-    """Check whether +0x2e0 behaves like the hit time (step 4)."""
+    """Check whether +0x2e0 changes once per hit, next to the note (step 4).
+
+    The name follows OFF_HIT_TIME, whose comment in constants.py says the
+    field is no hit time.
+    """
     hits = changes(samples, "hit_time_ms")[1:]   # [0] is the starting value
     score_rises = sum(1 for a, b in zip(samples, samples[1:])
                       if pressed_input_hit(a.score, b.score))
-    lines = ["+0x2e0 (hit time) against the note times:"]
+    lines = ["+0x2e0 against the note times:"]
     if not hits:
         lines.append("  +0x2e0 never changed.")
         lines.append(f"  The score rose {score_rises} times.")
@@ -227,10 +231,11 @@ def hit_time_report(samples: list[Sample], notes: list[dict]) -> list[str]:
     lines.append(f"  |diff|: median {statistics.median(abs(d) for d in diffs):.1f} ms, "
                  f"max {max(abs(d) for d in diffs):.1f} ms")
     if len(hits) == score_rises and max(abs(d) for d in diffs) <= C.HIT_TIME_MAX_GAP_MS:
-        lines.append("  Looks like the hit time: once per hit, within "
+        lines.append("  +0x2e0 changed once per hit, within "
                      f"{C.HIT_TIME_MAX_GAP_MS:g} ms of the note.")
     else:
-        lines.append("  Does NOT look like a clean hit time yet; read the rows above.")
+        lines.append("  +0x2e0 did NOT change once per hit, within "
+                     f"{C.HIT_TIME_MAX_GAP_MS:g} ms of the note; read the rows above.")
     return lines
 
 

@@ -161,8 +161,8 @@ class TestFieldReads(unittest.TestCase):
         self.assertEqual(eng.front_window(), 37.5)
 
     def test_hit_time_reads_off_0x2e0(self):
-        # +0x100 is the song clock (proven live). This pins only where the read
-        # lands; OFF_HIT_TIME's comment in constants.py says what +0x2e0 holds.
+        # This pins only where the read lands, whatever the method's name says.
+        # OFF_HIT_TIME's comment in constants.py says what +0x2e0 holds.
         self.assertEqual(C.OFF_HIT_TIME, 0x2E0)
         eng = self._engine_with_fields(hit_time=12.34)
         self.assertEqual(eng.hit_time(), 12.34)

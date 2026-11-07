@@ -9,8 +9,8 @@ press_chord.
 Why the timing can be sloppy. Windows cannot deliver a keystroke at an exact
 millisecond -- the scheduler jitters by several ms, which is huge next to an
 85 ms hit window. That would be fatal if we needed the input to be precise.
-It is not. The game stores its own hit time and the runners read that number
-back, so what we record is what the engine measured, not what we intended.
+It is not. The runners read the song clock as they send each key and record
+that time, so what we record is when the key went out, not what we intended.
 We only have to land the key NEAR the note edge.
 
 One seam here can only be exercised by a live game, and is marked LIVE-ONLY

@@ -16,8 +16,8 @@ How it runs:
    to the thread that attached.
 4. A second thread presses the keys: the first kick of each pair on time, the
    second at note + offset. Hit = the score rose (proven by play_chart.py).
-   Measured offset = live.hit_offset_ms: the +0x2e0 hit time minus the note
-   when that field changed, else the estimated send time.
+   Measured offset = live.hit_offset_ms, which works from the estimated send
+   time.
 5. Detach (always, even on Ctrl+C), write the rows, and summarise per spacing.
 
 The hit-check breakpoint counts how often the game ran its hit check during
@@ -142,14 +142,14 @@ def drive_inputs(engine: EngineModel, driver: InputDriver, collector: ActiveColl
         wait_for(p.first_ms)
         driver.press_chord([Lane.KICK])                  # first kick, on time
         sent_ms = wait_for(p.second_ms + p.offset_ms)
-        before_score, before_hit = engine.score(), engine.hit_time()
+        before_score = engine.score()
         collector.current_index = p.index
         driver.press_chord([Lane.KICK])                  # second kick, late
         wait_for(max(p.second_ms, p.second_ms + p.offset_ms) + constants.INPUT_SETTLE_MS)
-        after_score, after_hit = engine.score(), engine.hit_time()
+        after_score = engine.score()
         collector.current_index = None
         hit = pressed_input_hit(before_score, after_score)
-        measured, _ = live.hit_offset_ms(p.second_ms, sent_ms, before_hit, after_hit)
+        measured = live.hit_offset_ms(p.second_ms, sent_ms)
         collector.add_row((p.spacing_ms, measured, hit))
         print(f"  {p.index + 1:4d}  {p.spacing_ms:7.0f}  {p.offset_ms:+5.0f}  "
               f"{measured:+8.1f}  {'HIT' if hit else 'miss'}")
