@@ -18,7 +18,7 @@
       "scope": [
         "src"
       ],
-      "note": "PreviewNote::solo was a dead copy of the solo flag with no reader; the Preview's solo spans come from Song::solo_sections. A copy of the flag on a Preview note comes back only through this spelling."
+      "note": "A Preview note carries no solo flag, because the Preview's solo spans come from Song::solo_sections. A copy of the flag on a Preview note comes back only through this spelling."
     }
   ]
 }

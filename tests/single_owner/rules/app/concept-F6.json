@@ -16,7 +16,7 @@
         "const std::string refused = why_not_comparable(mode.difficulty(), kCloneHeroSpCap,",
         "const std::string refused = app::dm_report::why_not_comparable(app.settings);"
       ],
-      "note": "A caller that hands the gate a literal Expert instead of the difficulty it was given. collect_dm_rows did, so the comparison window's Refresh built a Hard page the toolbar refuses."
+      "note": "A caller that hands the gate a literal Expert instead of the difficulty it was given. The gate would then pass a Hard page the toolbar refuses, and the comparison window's rebuild buttons have no other check."
     },
     {
       "question": "Is this SP cap Clone Hero's rule?",
@@ -61,7 +61,7 @@
         "hydra::app::batch_counts_text(last.analyzed, last.failed, last.skipped).c_str(),",
         "return app::batch_counts_text(s.analyzed, s.failed, s.skipped);"
       ],
-      "note": "The skipped count's gloss typed outside its owner. hydra_batch's closing line said \"already stored\" while the app's strip said \"already had a result\"."
+      "note": "The skipped count's gloss typed outside its owner. hydra_batch's closing line and the app's strip both read it from the owner, so a typed copy could word the same count differently."
     },
     {
       "question": "How are a score range and a count of SP bars worded?",
@@ -96,7 +96,7 @@
           "why": "counts a player's leaderboard scores in the player picker, not a score range"
         }
       ],
-      "note": "A score-range unit or the SP bar noun typed beside a count outside its owner. The Paths tab's \"Within\" heading, the batch confirm, the path report's subtitle and the meter's bars each had their own."
+      "note": "A score-range unit or the SP bar noun typed beside a count outside its owner. The Paths tab's \"Within\" heading, the batch confirm, the path report's subtitle and the meter's bars all read the owner."
     }
   ]
 }

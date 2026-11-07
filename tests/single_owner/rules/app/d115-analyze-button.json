@@ -24,7 +24,7 @@
         "src/ui/app_state.cpp",
         "src/ui/library_dialogs.cpp"
       ],
-      "note": "The heading, the button's count and the batch's charts all read the rows on screen, so they agree whatever the search and the chip. The query's matches whatever the chip (the All chip's count, or a second walk over the query) is the old, second answer. The All chip's own label in library_table.cpp reads that count on purpose and is out of scope."
+      "note": "The heading, the button's count and the batch's charts all read the rows on screen, so they agree whatever the search and the chip. The query's matches whatever the chip (the All chip's count, or a second walk over the query) is a second answer that can disagree with them. The All chip's own label in library_table.cpp reads that count on purpose and is out of scope."
     }
   ]
 }

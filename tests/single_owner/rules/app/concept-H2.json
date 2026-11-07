@@ -33,7 +33,7 @@
       "scope": [
         "src"
       ],
-      "note": "The middle dot between facts was typed at each use in src/app and src/ui, with path_view.cpp's own kDot beside the literals. kFactSeparator is the one spelling now; a typed escape comes back only through this spelling. One row covers both folders, because a row's scope is a top folder or a single file."
+      "note": "kFactSeparator is the one spelling of the middle dot between facts in src/app and src/ui; a typed escape comes back only through this spelling. One row covers both folders, because a row's scope is a top folder or a single file."
     }
   ]
 }
