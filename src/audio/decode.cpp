@@ -16,8 +16,7 @@ namespace {
 // the decoder delivers (a fuzzed FLAC asked for hundreds of gigabytes). The
 // output is exactly what the reader yields, so frames past the promise are
 // kept and a stem that ends early is shorter. Which readers report a decode
-// error is said at StemReader::failed(); when one does, this throws, as the
-// old whole-file decoders did.
+// error is said at StemReader::failed(); when one does, this throws.
 DecodedAudio read_all(StemReader& r) {
     DecodedAudio out;
     out.channels = r.channels();

@@ -104,8 +104,8 @@ struct PreviewActivation {
     // ends no fill. The highway's fill-lane colour reads it.
     std::optional<size_t> taken_fill;
     // The deact node: where this activation's SP runs out, read off the
-    // record (the search stamps it). has_sp_end is false only for a record
-    // written before blob v4, which does not carry the node.
+    // record (the search stamps it). has_sp_end is false for an activation
+    // with no SP-end steps, which is a hand-built one (Activation::deact_tick).
     bool has_sp_end = false;
     int64_t sp_end_tick = 0;
     double sp_end_ms = 0.0;
@@ -346,7 +346,7 @@ double last_note_ms(const PreviewScene& scene);
 // The highway's lines from the song's timing alone: every line of the
 // measure grid (MeasureIndex::walk) from tick 0 to last_tick, each with a Half
 // line halfway back to the line before it (none before tick 0). A weak beat
-// is drawn as a Beat (D115, the user's answer 8). ms from the timing's own ms
+// is drawn as a Beat (D115 item 5). ms from the timing's own ms
 // index.
 std::vector<PreviewBeat> build_beat_events(const SongTiming& timing, int64_t last_tick);
 
@@ -558,8 +558,8 @@ double sp_meter_bars_at(const SpMeterCurve& curve, double ms);
 // the beat lines without a length.
 //
 // `ghost_path` (may be null) is a second path drawn faintly beside the first:
-// it fills ghost_fills and ghost_windows and nothing else. Without one the scene is exactly
-// what it was before the ghost existed.
+// it fills ghost_fills and ghost_windows and nothing else. Without one, both
+// stay empty.
 PreviewScene build_preview_scene(const Song& song, const Path* path,
                                  int sp_cap = kCloneHeroSpCap,
                                  const core::Rules& rules = core::default_rules(),

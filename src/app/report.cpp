@@ -263,7 +263,7 @@ std::vector<Tile> path_tiles(const std::vector<ReportRow>& rows,
         // The Hardest ms column's own text (format_ms).
         {"Hardest ms", hardest ? format_ms(*hardest->ms) : std::string(kDash)},
         {"Past " + beyond_edge_text() + " ms", group_thousands(past_edge)},
-        // Written without thousands separators, as the old page wrote it.
+        // Written without thousands separators, unlike the counts above.
         {"Highest skip", std::to_string(highest_skip)},
     };
 }
