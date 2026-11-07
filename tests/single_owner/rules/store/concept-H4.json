@@ -6,7 +6,7 @@
       "owner_file": "src/app/analysis.cpp",
       "owner_symbol": "discover_charts",
       "date": "2026-10-11",
-      "decision": "concept audit M21 (code-only, D114 fix wave, task H4); concept audit M21.",
+      "decision": "concept audit M21 (code-only, D114 fix wave, task H4)",
       "added_by": "concept-H4",
       "pattern": "\\.(rootfolder|notespath)\\s*=[^=]",
       "scope": ["src", "tools"],

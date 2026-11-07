@@ -49,7 +49,7 @@
       "owner_file": "src/store/record_store.cpp",
       "owner_symbol": "RecordRow::best_path_text",
       "date": "2026-10-04",
-      "decision": "ST1 (audit findings 116 and 132); D115 A1-5 (the owner moved to the record); ST1 (audit findings 116 and 132); phase 7 M7-1 derive-once review finding 2 (2026-10-04); D115 A1-5 moved the owner to RecordRow",
+      "decision": "ST1 (audit findings 116 and 132); D115 A1-5 (the owner moved to the record); phase 7 M7-1 derive-once review finding 2 (2026-10-04); D115 A1-5 moved the owner to RecordRow",
       "added_by": "M7-1, moved by D115-A1-5f",
       "pattern": "paths\\s*(?:\\.front\\(\\)|\\[0\\]|\\.at\\(0\\))\\.path\\b|best_path\\(\\)\\.pathstring\\(\\)",
       "anchor": ".path",
