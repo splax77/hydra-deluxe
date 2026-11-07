@@ -211,6 +211,7 @@ exit 0
     New-Case
     Write-Lock 1 "not a number`nnonsense"
     Write-Lock 2 "$PID`nC:\wt\x`npass=bbbb`nsession=s`nexpires=not a date"
+    (Get-Item (Join-Path $script:slots 'slot1.lock')).LastWriteTimeUtc = [DateTime]::UtcNow.AddMinutes(-1)
     New-Pass 'session-a' | Out-Null
     New-Pass 'session-b' | Out-Null
     Check ((New-Pass 'session-c') -ne '') 'a lock full of nonsense was not cleared'
@@ -394,6 +395,24 @@ try { & $Build -Target hydra_tests } catch { "threw: $_" }
     Check ($targets.Project.InitialTargets -eq $target.Name) 'Directory.Build.targets: the check is not an initial target'
     Check ($target.Condition -eq "'`$(CLAUDECODE)' == '1'") "Directory.Build.targets: the condition is '$($target.Condition)'"
     Check ($target.Exec.Command -eq 'pwsh -NoProfile -File "$(MSBuildThisFileDirectory)tools\build_slot.ps1" -Check') "Directory.Build.targets: the command is '$($target.Exec.Command)'"
+
+    # ---------------------------------------------------- an old script's lock being written
+
+    # An old script creates its lock empty and fills it a moment later; the
+    # empty lock counts as a taken slot, so a third live slot is not given away.
+    New-Case
+    $bystander = Start-Bystander
+    try {
+        Write-Lock 1 "$($bystander.Id)`nplain"
+        Write-Lock 2 "$($bystander.Id)`nplain"
+        Write-Lock 3 ''
+        $r = Invoke-Slot @('-NewPass', '-Session', 'young', '-Holder', "$PID")
+        Check ($r.Code -eq 1) "a young empty lock was cleared, and a pass given:`n$($r.Text)"
+        Check (Test-Path (Join-Path $script:slots 'slot3.lock')) 'a young empty lock was deleted'
+        (Get-Item (Join-Path $script:slots 'slot3.lock')).LastWriteTimeUtc = [DateTime]::UtcNow.AddMinutes(-1)
+        $r = Invoke-Slot @('-NewPass', '-Session', 'young', '-Holder', "$PID")
+        Check ($r.Code -eq 0) "an old empty lock still held a slot:`n$($r.Text)"
+    } finally { Stop-Process -Id $bystander.Id -Force -ErrorAction SilentlyContinue }
 
     # ---------------------------------------------------- new_worktree builds nothing
 

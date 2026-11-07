@@ -82,6 +82,8 @@ $BuildPassUnclaimedSeconds = 120
 # turn lasts milliseconds, so running out means something is stuck; the caller
 # stops and says so.
 $BuildSlotFolderWaitMs = 5000
+# How long an empty lock file is taken to be a slot still being written.
+$BuildSlotYoungSeconds = 5
 $BuildPassHowTo = 'Agents never build: hand back, and the main session builds. A main session gets a pass from hydra_build_pass.'
 
 # True when this run is under the gate: the same test the git ref gate uses.
@@ -151,7 +153,10 @@ function Get-LiveBuildSlots([string]$Dir) {
         $f = Get-BuildSlotPath $Dir $i
         if (-not (Test-Path -LiteralPath $f)) { continue }
         $lock = Read-BuildSlot $f
-        if (Test-BuildSlotLive $lock) { $lock } else { Remove-Item -LiteralPath $f -Force -ErrorAction SilentlyContinue }
+        # An old script makes its lock empty and then fills it, so an empty
+        # lock this young is a slot being taken, not a stale one.
+        $young = -not $lock.Holder -and ([DateTime]::UtcNow - (Get-Item -LiteralPath $f -ErrorAction SilentlyContinue).LastWriteTimeUtc).TotalSeconds -lt $BuildSlotYoungSeconds
+        if ((Test-BuildSlotLive $lock) -or $young) { $lock } else { Remove-Item -LiteralPath $f -Force -ErrorAction SilentlyContinue }
     }
 }
 
@@ -275,9 +280,16 @@ function Get-BuildSlot([string]$What, [string]$Dir) {
     }
 }
 
-# Gives a slot back.
+# Gives a slot back. A reader holding the file open for a moment can make the
+# delete fail, and a lock left behind would hold its slot until its owner
+# process died, so it tries again.
 function Release-BuildSlot([string]$Slot) {
-    if ($Slot) { Remove-Item -LiteralPath $Slot -Force -ErrorAction SilentlyContinue }
+    if (-not $Slot) { return }
+    foreach ($try in 1..10) {
+        Remove-Item -LiteralPath $Slot -Force -ErrorAction SilentlyContinue
+        if (-not (Test-Path -LiteralPath $Slot)) { return }
+        Start-Sleep -Milliseconds 200
+    }
 }
 
 # The two ways in for a build. -Claim is for build_cpp.ps1, which outside the
