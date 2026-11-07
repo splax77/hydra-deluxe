@@ -6,7 +6,7 @@
       "owner_file": "src/app/path_view.cpp",
       "owner_symbol": "activation_badges",
       "date": "2026-10-31",
-      "decision": "D302 item 3: every squeeze the builder names uses the Paths tab's badge words; the user, on seeing the builder's own squeeze wording again: \"why do you keep inventing your own text instead of using what already exists?\"",
+      "decision": "D302 item 3: every squeeze the builder names uses the Paths tab's badge words; the user, on seeing the builder's own squeeze wording again: \"why do you keep inventing your own text instead of using what already exists?\"; task B5 of the plan.",
       "added_by": "PBR4-B5",
       "pattern": "\"[^\"]*(?:[Ss]queeze[- ](?:in|out)\\b(?! it was pinned to)|[Ee]arly fill|[Nn]o timing)|\\b(?:difficulty|badge_timings)\\(\\)",
       "must_match": [
@@ -46,7 +46,7 @@
         "src/pathbuilder/pb_window.cpp",
         "src/pathbuilder/pb_window.h"
       ],
-      "note": "The builder kept writing its own squeeze wording (\"squeeze-in, no timing\", \"no timing needed\", a glossary) beside the Paths tab's badges, so the two screens said different things. Every squeeze and early fill the builder names now comes from the badges through badges_text, which reads activation_badges and so is not flagged. The row flags a builder string that words a squeeze, an early fill or a missing timing itself, and a read of the activation's timing figures, which only the badges should turn into text. impossible_window_text's failure sentence about the squeeze-out a window was pinned to names the player's pinned choice, not a timing or a figure, so the pattern leaves it alone. A scope names a top folder or a single file (OwnerRule::scope), so the row lists each file under src/pathbuilder; a new file there joins the list. Decided by: task B5 of the plan."
+      "note": "The builder kept writing its own squeeze wording (\"squeeze-in, no timing\", \"no timing needed\", a glossary) beside the Paths tab's badges, so the two screens said different things. Every squeeze and early fill the builder names now comes from the badges through badges_text, which reads activation_badges and so is not flagged. The row flags a builder string that words a squeeze, an early fill or a missing timing itself, and a read of the activation's timing figures, which only the badges should turn into text. impossible_window_text's failure sentence about the squeeze-out a window was pinned to names the player's pinned choice, not a timing or a figure, so the pattern leaves it alone. A scope names a top folder or a single file (OwnerRule::scope), so the row lists each file under src/pathbuilder; a new file there joins the list."
     }
   ]
 }

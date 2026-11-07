@@ -6,7 +6,7 @@
       "owner_file": "CMakeLists.txt",
       "owner_symbol": "HYDRA_APP_NAME",
       "date": "2026-10-04",
-      "decision": "D53",
+      "decision": "audit finding 257; phase 6 task J2-1 (D53)",
       "added_by": "J2-1",
       "pattern": "Hydra\\.Hydra|Hydra Deluxe",
       "anchor": "Hydra",
@@ -25,7 +25,7 @@
         "src",
         "installer/hydra.iss"
       ],
-      "note": "The two strings typed anywhere but CMakeLists.txt, which the walk does not read (so no owner line is listed). The installer script is checked by the case below this table's scan. Decided by: audit finding 257; phase 6 task J2-1 (D53)"
+      "note": "The two strings typed anywhere but CMakeLists.txt, which the walk does not read (so no owner line is listed). The installer script is checked by the case below this table's scan."
     },
     {
       "question": "Which ctest entries does a hosted CI runner skip?",

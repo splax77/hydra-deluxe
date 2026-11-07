@@ -26,7 +26,7 @@
         "src",
         "tools"
       ],
-      "note": "Catches a second list of the container formats written as an either-or test. A switch that names each format on its own case line spells no pair, so text cannot catch it; the scan's chart_kind_of in app/analysis.cpp is one, and tells the hasher which reader to use. A test of one format alone (is it a .sng) is a different question and is not flagged. Decided by: D114, concept audit finding M63"
+      "note": "Catches a second list of the container formats written as an either-or test. A switch that names each format on its own case line spells no pair, so text cannot catch it; the scan's chart_kind_of in app/analysis.cpp is one, and tells the hasher which reader to use. A test of one format alone (is it a .sng) is a different question and is not flagged."
     }
   ]
 }
