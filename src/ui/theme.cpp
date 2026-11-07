@@ -39,9 +39,10 @@ void apply_theme() {
     ImGuiStyle& style = ImGui::GetStyle();
     ImVec4* colors = style.Colors;
 
-    // ---- DPG's own "Default Theme" baseline, for slots hydra_app.py never
-    // overrides. Values read directly from dpg.show_style_editor(), not
-    // Dear ImGui's StyleColorsDark() (which is meaningfully bluer/darker).
+    // ---- The baseline, for slots the app's own colours below leave alone:
+    // the default colours of DearPyGui, the toolkit the Python Hydra drew
+    // with, so these slots keep that look. Dear ImGui's StyleColorsDark() is
+    // meaningfully bluer and darker.
     ImVec4 dpg_surface(51 / 255.0f, 51 / 255.0f, 55 / 255.0f, 1.0f);
     const ImVec4 dpg_window = kWindowBgColor;
     ImVec4 dpg_border(78 / 255.0f, 78 / 255.0f, 78 / 255.0f, 1.0f);
@@ -56,10 +57,7 @@ void apply_theme() {
     colors[ImGuiCol_ScrollbarGrabHovered] = ImVec4(90 / 255.0f, 90 / 255.0f, 95 / 255.0f, 1.0f);
     colors[ImGuiCol_ScrollbarGrabActive] = ImVec4(90 / 255.0f, 90 / 255.0f, 95 / 255.0f, 1.0f);
 
-    // ---- hydra_app.py's default_theme overrides, applied on top. Full
-    // opacity throughout -- DPG's RGB-tuple add_theme_color calls default to
-    // alpha=255; a few of these were previously (and wrongly) given reduced
-    // alpha here.
+    // ---- The app's own colours, applied on top. Full opacity throughout.
     colors[ImGuiCol_Button] = kButtonColor;
     colors[ImGuiCol_ButtonHovered] = kButtonHoveredColor;
     colors[ImGuiCol_ButtonActive] = kButtonActiveColor;
@@ -74,8 +72,7 @@ void apply_theme() {
     colors[ImGuiCol_PlotHistogram] = ImVec4(0, 200 / 255.0f, 200 / 255.0f, 1.0f);
     colors[ImGuiCol_Text] = kDefaultTextColor;
 
-    // DPG's disabled state is a flat opaque gray (verified: a disabled
-    // button samples as exactly (100,100,100), no fade). ImGui's
+    // A disabled control is a flat opaque gray, with no fade. ImGui's
     // BeginDisabled() instead multiplies style.Alpha by DisabledAlpha
     // (0.60 default), which would wash out the explicit colors
     // begin_disabled_button()/begin_disabled_input() push below -- so
@@ -119,8 +116,7 @@ void begin_disabled_input(bool disabled) {
         ImGui::PushStyleColor(ImGuiCol_FrameBg, kDisabledInputBgColor);
         ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, kDisabledInputBgColor);
         ImGui::PushStyleColor(ImGuiCol_FrameBgActive, kDisabledInputBgColor);
-        // InputInt's +/- step buttons use Button colors, not FrameBg; Python's
-        // mvInputInt(enabled_state=False) component covers this explicitly.
+        // InputInt's +/- step buttons use Button colors, not FrameBg.
         ImGui::PushStyleColor(ImGuiCol_Button, kDisabledInputBgColor);
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered, kDisabledInputBgColor);
         ImGui::PushStyleColor(ImGuiCol_ButtonActive, kDisabledInputBgColor);

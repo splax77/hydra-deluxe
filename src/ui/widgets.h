@@ -5,8 +5,8 @@
 // vanished mid-word with no way to read the rest. These render an ellipsis
 // when the text doesn't fit and put the full text in a hover tooltip — the
 // same affordance the HTML report gives truncated cells via title= attributes.
-// The rest are the hover-hint / warning-color / progress-overlay patterns that
-// used to be hand-rolled at every call site.
+// The rest are the hover-hint / warning-color / progress-overlay patterns the
+// call sites share.
 //
 // Where text sits is apply_theme's rule (ui/theme.cpp): text starts at the
 // left of its space. The helpers here that move the cursor right place
@@ -31,9 +31,6 @@
 
 namespace hydra::ui {
 
-// Delayed tooltip on the last item — the "explain this control on hover"
-// idiom. Sites that need other hover flags, format arguments, or extra
-// conditions still call IsItemHovered/SetTooltip directly.
 // The dimmed details line under an error's sentence, wrapped because it can
 // carry a long file path. `detail` comes from app::plain_error_detail, which
 // is empty when the sentence already quotes it; then nothing is drawn, so no
@@ -48,6 +45,9 @@ inline void error_detail_line(const std::string& detail) {
     error_detail_line(detail, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
 }
 
+// Delayed tooltip on the last item — the "explain this control on hover"
+// idiom. Sites that need other hover flags, format arguments, or extra
+// conditions still call IsItemHovered/SetTooltip directly.
 inline void hint(const char* text) {
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal))
         ImGui::SetTooltip("%s", text);
@@ -191,8 +191,9 @@ inline void flow_next(float w, float spacing) {
 // Moves the cursor right so the next control, `w` wide, ends at the right
 // edge of the space left: the table cell's, or the line's. A control wider
 // than that space stays where it is. It places buttons, never text (the
-// user's answer 7 in the 2026-10-14 column-shares plan); text follows
-// apply_theme in ui/theme.cpp.
+// user's answer 7 in
+// docs/superpowers/plans/2026-10-14-column-shares-scroll-left-align.md (removed; git show 444631e6:docs/superpowers/plans/2026-10-14-column-shares-scroll-left-align.md));
+// text follows apply_theme in ui/theme.cpp.
 inline void place_control_at_right_edge(float w) {
     const float room = ImGui::GetContentRegionAvail().x - w;
     if (room > 0.0f) ImGui::SetCursorPosX(ImGui::GetCursorPosX() + room);
@@ -202,7 +203,7 @@ inline void place_control_at_right_edge(float w) {
 // current line when they fit beside what is already on it (fits_on_line).
 // Otherwise they start a line of their own and sit at its right edge: the
 // buttons stay at the right edge either way (the user's answer 7, and their
-// choice of 2026-10-14 for the wrapped case).
+// choice for the wrapped case in docs/sessions/2026-10-14-d6a46eba.md).
 inline void place_control_at_line_end(float buttons_w) {
     if (fits_on_line(buttons_w, ImGui::GetStyle().ItemSpacing.x)) ImGui::SameLine();
     place_control_at_right_edge(buttons_w);

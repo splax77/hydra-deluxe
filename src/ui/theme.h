@@ -1,14 +1,8 @@
-// Color constants, ported from hydra_app.py's build_main_ui theme blocks
-// (default_theme, bestpath_theme, warning_theme, newsong_theme,
-// songfolder_theme, delete_theme, disabled_text), plus DearPyGui's own
-// baseline "Default Theme" colors -- verified against the real values via
-// DPG's built-in style editor (dpg.show_style_editor()), not guessed --
-// for every slot hydra_app.py leaves at DPG's default rather than
-// overriding (WindowBg, FrameBg, Border/Separator, Scrollbar*). Header is not
-// one of them any more: kSelectedRowColor below owns it.
-// Dear ImGui's own StyleColorsDark() defaults are meaningfully different
-// (bluer, darker) from DPG's, so relying on them for un-overridden slots
-// was the source of several color mismatches.
+// Color constants. The slots the app doesn't colour for itself (WindowBg,
+// FrameBg, Border/Separator, Scrollbar*) keep the default colors of DearPyGui,
+// the toolkit the Python Hydra drew with, so they keep that look. Dear ImGui's
+// own StyleColorsDark() defaults are meaningfully different (bluer, darker),
+// so apply_theme() sets those slots rather than relying on them.
 
 #ifndef HYDRA_UI_THEME_H
 #define HYDRA_UI_THEME_H
@@ -28,34 +22,32 @@ inline const ImVec4 kStarPowerColor{255 / 255.0f, 204 / 255.0f, 51 / 255.0f, 1.0
 // of 255, the look as shipped.
 inline constexpr float kStarPowerFillAlpha = 230.0f / 255.0f;
 inline const ImVec4 kWarningColor{255 / 255.0f, 127 / 255.0f, 0 / 255.0f, 1.0f};
-// Deliberately lighter than the Python app's (100,100,100): that gray sat at
-// ~2.9:1 against the window background, under the 4.5:1 WCAG AA minimum for
-// text. (145,145,145) reads as ~4.8:1 while still clearly "dimmed".
+// Light enough for the 4.5:1 WCAG AA minimum for text: (145,145,145) reads as
+// ~4.9:1 against the window background while still clearly "dimmed".
 inline const ImVec4 kNewSongColor{145 / 255.0f, 145 / 255.0f, 145 / 255.0f, 1.0f};
 inline const ImVec4 kDefaultTextColor{250 / 255.0f, 250 / 255.0f, 250 / 255.0f, 1.0f};
 inline const ImVec4 kDeleteButtonColor{180 / 255.0f, 5 / 255.0f, 5 / 255.0f, 1.0f};
 inline const ImVec4 kDeleteButtonHoveredColor{250 / 255.0f, 50 / 255.0f, 50 / 255.0f, 1.0f};
 inline const ImVec4 kDeleteButtonActiveColor{250 / 255.0f, 100 / 255.0f, 100 / 255.0f, 1.0f};
 inline const ImVec4 kAccentColor{0 / 255.0f, 180 / 255.0f, 180 / 255.0f, 1.0f};
-// Button faces. White text on today's (0,150,150) was 3.5:1 and on its
-// (0,180,180) hover 2.4:1, under WCAG's 4.5:1. These keep (250,250,250) text
-// at 4.95:1, 6.33:1 and 7.93:1; hover and press go darker, since a lighter
-// teal can't hold white text above 4.5:1.
+// Button faces. These keep (250,250,250) text at 4.95:1, 6.33:1 and 7.93:1,
+// over WCAG's 4.5:1; hover and press go darker, since a lighter teal can't
+// hold white text above 4.5:1.
 inline const ImVec4 kButtonColor{0 / 255.0f, 122 / 255.0f, 122 / 255.0f, 1.0f};
 inline const ImVec4 kButtonHoveredColor{0 / 255.0f, 104 / 255.0f, 104 / 255.0f, 1.0f};
 inline const ImVec4 kButtonActiveColor{0 / 255.0f, 88 / 255.0f, 88 / 255.0f, 1.0f};
 // A selected row in any list or table (ImGuiCol_Header). A dark teal, so it
 // stands out from the grey row stripes while every text colour a row uses
-// still reads at 4.5:1 on it (test_theme.cpp checks them); the user chose it
-// over the button teal on 2026-10-14.
+// still reads at 4.5:1 on it (test_theme.cpp checks them); the user chose this
+// teal.
 inline const ImVec4 kSelectedRowColor{0 / 255.0f, 48 / 255.0f, 48 / 255.0f, 1.0f};
 // The hover face of an input frame and of a list or table header. It is the
 // button hover teal (D74), so it names that one rather than spelling a second.
 inline const ImVec4& kFrameHoveredColor = kButtonHoveredColor;
 
-// Surfaces. The window is DPG's baseline (it used to be a local in
-// apply_theme); the song panel sits a shade lighter so it reads as its own
-// area, as in the approved mockup.
+// Surfaces. The window is the baseline gray from the top of this file; the
+// song panel sits a shade lighter so it reads as its own area, as in the
+// approved mockup.
 inline const ImVec4 kWindowBgColor{37 / 255.0f, 37 / 255.0f, 38 / 255.0f, 1.0f};
 inline const ImVec4 kPanelBg{40 / 255.0f, 40 / 255.0f, 42 / 255.0f, 1.0f};
 
@@ -67,26 +59,25 @@ inline const ImVec4 kDimTextColor{160 / 255.0f, 160 / 255.0f, 160 / 255.0f, 1.0f
 inline const ImVec4 kSubtleTextColor{200 / 255.0f, 200 / 255.0f, 200 / 255.0f, 1.0f};
 inline const ImVec4 kFolderListBg{50 / 255.0f, 50 / 255.0f, 50 / 255.0f, 1.0f};
 
-// disabled_text theme + mvButton/mvInputInt(enabled_state=False) components.
-// DPG's disabled state is a flat, fully-opaque gray -- not ImGui's default
-// DisabledAlpha fade -- so apply_theme() sets style.DisabledAlpha = 1 and
-// begin_disabled_button()/begin_disabled_input() push these explicitly.
-// Lighter than the Python app's (200,200,200): that pairing against the
-// (100,100,100) disabled button was ~3.5:1, under WCAG AA; (235,235,235)
-// reaches ~4.9:1 and the gray button face still reads as disabled.
+// Disabled controls. A disabled control is a flat, fully-opaque gray -- not
+// ImGui's default DisabledAlpha fade -- so apply_theme() sets
+// style.DisabledAlpha = 1 and begin_disabled_button()/begin_disabled_input()
+// push these explicitly.
+// (235,235,235) on the (100,100,100) disabled button reaches ~5.0:1, over
+// WCAG AA's 4.5:1, and the gray button face still reads as disabled.
 inline const ImVec4 kDisabledButtonTextColor{235 / 255.0f, 235 / 255.0f, 235 / 255.0f, 1.0f};
 inline const ImVec4 kDisabledButtonColor{100 / 255.0f, 100 / 255.0f, 100 / 255.0f, 1.0f};
-// Was (50,50,50): 1.15:1 on its (40,40,40) face, unreadable. The dimmed grey
-// is 5.64:1 there; the flat dark face still says "off". It is the same grey
-// as dimmed text, so it names that one rather than spelling it again.
+// The dimmed grey is 5.64:1 on the (40,40,40) input face; the flat dark face
+// still says "off". It is the same grey as dimmed text, so it names that one
+// rather than spelling it again.
 inline const ImVec4& kDisabledInputTextColor = kDimTextColor;
 inline const ImVec4 kDisabledInputBgColor{40 / 255.0f, 40 / 255.0f, 40 / 255.0f, 1.0f};
 
 // The strips' backgrounds: the batch's finished strip and the report
 // windows' out-of-date strip (done), and the finished strip after a failed
-// report and the report windows' left-out strip (problem). (250,250,250) text
-// is 12.94:1 on the done strip and 13.73:1 on the problem strip; orange
-// (kWarningColor) on the problem strip is 5.65:1.
+// report (problem). (250,250,250) text is 12.94:1 on the done strip and
+// 13.73:1 on the problem strip; orange (kWarningColor) on the problem strip is
+// 5.65:1.
 inline const ImVec4 kDoneStripBg{31 / 255.0f, 51 / 255.0f, 34 / 255.0f, 1.0f};
 inline const ImVec4 kProblemStripBg{58 / 255.0f, 38 / 255.0f, 18 / 255.0f, 1.0f};
 
@@ -106,28 +97,24 @@ inline const ImVec4 kNeutralDotColor{128 / 255.0f, 128 / 255.0f, 128 / 255.0f, 1
 // app/html_page.h's kChipRgb*, shared with the fill page.
 ImVec4 chip_color(app::report::ChipToken token);
 
-// Applies the app-wide accent (teal buttons/headers, matching
-// build_main_ui's "default_theme") plus DPG's own baseline colors for
-// slots hydra_app.py never overrides. Call once after
-// ImGui::StyleColorsDark().
+// Applies the app-wide accent (teal buttons/headers) plus the baseline colors
+// from the top of this file. Call once after ImGui::StyleColorsDark().
 void apply_theme();
 
 // Wrap a Button (or ArrowButton/etc) that becomes non-interactive under
-// `disabled`, matching mvButton(enabled_state=False)'s flat gray -- use
-// instead of a bare ImGui::BeginDisabled()/EndDisabled() pair whenever the
-// disabled visual should match hydra_app.py exactly.
+// `disabled`, giving it the flat gray disabled look -- use instead of a bare
+// ImGui::BeginDisabled()/EndDisabled() pair, which looks enabled (the
+// invariant in apply_theme).
 void begin_disabled_button(bool disabled);
 void end_disabled_button(bool disabled);
 
-// Same, for an InputInt matching mvInputInt(enabled_state=False).
+// Same, for an InputInt.
 void begin_disabled_input(bool disabled);
 void end_disabled_input(bool disabled);
 
 // Same, for a Checkbox: the box takes the disabled input's flat dark face and
-// the label goes dim. The label uses kDimTextColor rather than the old
-// (50,50,50) disabled_text gray, which on the window background was all but
-// unreadable -- a dimmed label still has to be legible enough to say what is
-// switched off.
+// the label goes dim. The label uses kDimTextColor because a dimmed label
+// still has to be legible enough to say what is switched off.
 void begin_disabled_checkbox(bool disabled);
 void end_disabled_checkbox(bool disabled);
 
