@@ -97,7 +97,7 @@ Claude Code reads a server's `instructions` at connect. A reload that changes `b
 
 ## Questions
 
-Each has the recommended side first. Nothing below starts until the user answers.
+Each has the recommended side first. The user took all nine recommended sides on 2026-11-06, in session f1fabefd: "Yes, take all nine".
 
 1. **The link to the worker.** Recommended: plain `subprocess.Popen` and the front's own forty lines of JSON-RPC over the pipes (design point 5). The other side: the mcp package's `stdio_client` and `ClientSession`, which are already installed and tested, but which put the worker and the game in a Job Object that is hard-killed two seconds after stdin closes, so a front exit with a run open could kill the game before the worker's restore finished.
 2. **The key lock and `ch_call`.** Recommended: `_key_call` in `percall.py` learns to read `mcp__ch__ch_call`'s `tool` and `args` as the inner call (so `ch_call(tool="ch_key")` and `ch_call(tool="ch_play_chart", args={"route": "keys"})` are refused exactly as the direct calls are), and the front merges only after that hook change is on `main`. The lock keeps one home and the user's rule about chokepoints holds. The other side: the front refuses those three names inside `ch_call` itself, which needs no hook change but copies the list.
