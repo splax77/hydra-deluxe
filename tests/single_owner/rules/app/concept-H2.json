@@ -6,7 +6,7 @@
       "owner_file": "src/app/display_format.h",
       "owner_symbol": "kFactSeparator",
       "date": "2026-10-11",
-      "decision": "concept audit M46 (code-only); concept audit M46.",
+      "decision": "concept audit M46 (code-only)",
       "added_by": "concept-audit-H2",
       "pattern": "\\\\xC2\\\\xB7",
       "must_match": [

@@ -6,7 +6,7 @@
       "owner_file": "src/app/report_files.cpp",
       "owner_symbol": "write_file_replacing",
       "date": "2026-10-11",
-      "decision": "D114 item 20 (M74); D114 item 20, concept audit M74.",
+      "decision": "D114 item 20, concept audit M74",
       "added_by": "concept-audit-G5",
       "pattern": "\\bios(_base)?::trunc\\b",
       "must_match": [
@@ -33,7 +33,7 @@
       "owner_file": "src/app/config.cpp",
       "owner_symbol": "search_depth_mode",
       "date": "2026-10-11",
-      "decision": "concept audit M14; concept audit M14.",
+      "decision": "concept audit M14",
       "added_by": "concept-audit-G5-review",
       "pattern": "\\bdepth_mode\\s*==\\s*1\\b",
       "must_match": [

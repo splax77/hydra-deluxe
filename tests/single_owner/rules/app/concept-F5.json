@@ -6,7 +6,7 @@
       "owner_file": "src/core/song.h",
       "owner_symbol": "flag_solo",
       "date": "2026-10-11",
-      "decision": "D114 item 22 (M56); D114 item 22, concept audit M56.",
+      "decision": "D114 item 22, concept audit M56",
       "added_by": "concept-audit-F5",
       "pattern": "\\.solo\\s*=\\s*ts\\.flag_solo",
       "must_match": [

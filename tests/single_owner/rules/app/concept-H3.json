@@ -6,7 +6,7 @@
       "owner_file": "src/app/dm_report.h",
       "owner_symbol": "kStatusWords",
       "date": "2026-10-11",
-      "decision": "D114 items 1 and 2 (M01, M02); D114 items 1 and 2, concept audit M01 and M02.",
+      "decision": "D114 items 1 and 2, concept audit M01 and M02",
       "added_by": "concept-audit-H3",
       "pattern": "\"(Under optimal|At optimal|Above optimal|No current result|No paths|Not in your library|not in your library|Not in library|Other speed|with no paths|at another speed|at other speeds)( \\([^)]*\\))?\"",
       "owner_files": [
@@ -33,7 +33,7 @@
       "owner_file": "src/app/html_page.h",
       "owner_symbol": "kNothingMatches",
       "date": "2026-10-11",
-      "decision": "D114 item 22 (M07, code-only); D271 item 3 and D276 item 3 (one sentence and one hint shape); D114 item 22, concept audit M07; D271 item 3 and D276 item 3.",
+      "decision": "D114 item 22 (M07, code-only); D271 item 3 and D276 item 3 (one sentence and one hint shape); D114 item 22, concept audit M07",
       "added_by": "concept-audit-H3",
       "pattern": "Nothing matches|No charts match|\"Search [a-z]+(, [a-z ]+)+\"",
       "owner_files": [
