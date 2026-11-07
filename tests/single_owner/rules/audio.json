@@ -6,7 +6,7 @@
       "owner_file": "src/audio/frames.h",
       "owner_symbol": "ms_of_frames",
       "date": "2026-10-04",
-      "decision": "audit findings 182 and R7.21",
+      "decision": "audit findings 182 and R7.21; derive-once review of M_D, preview finding 2 (phase 3 task FX-P)",
       "added_by": "FX-P",
       "pattern": "\\*\\s*1000(\\.0)?\\s*/\\s*[\\w.>()-]*([sS]ample_?[rR]ate|[rR]ate)|\\*\\s*[\\w.>-]*([sS]ample_?[rR]ate|[rR]ate)\\w*(\\(\\))?\\s*/\\s*1000(\\.0)?\\b",
       "anchor": "1000",
@@ -33,7 +33,7 @@
           "why": "frames_of_ms, the owner"
         }
       ],
-      "note": "Frames times 1000 over a sample rate, or ms times a rate over 1000, written out instead of calling the frames helpers. Decided by: audit findings 182 and R7.21; derive-once review of M_D, preview finding 2 (phase 3 task FX-P)"
+      "note": "Frames times 1000 over a sample rate, or ms times a rate over 1000, written out instead of calling the frames helpers."
     },
     {
       "question": "How does chart time become audio time, and back?",
@@ -41,7 +41,7 @@
       "owner_file": "src/app/preview_source.h",
       "owner_symbol": "audio_ms_of_chart_ms",
       "date": "2026-10-05",
-      "decision": "D69",
+      "decision": "derive-once review of M7-2c, finding 2 (phase 7 task PV join); moved into hydra_audio by D69 (phase 7 task AL1); moved beside chart_audio_offset_ms in app/preview_source.h by the Hydra libraries plan (task T1b)",
       "added_by": "M7-2c",
       "pattern": "\\w*chart_ms\\s*[+-]\\s*audio_offset_ms|\\bms\\s*[+-]\\s*audio_offset_ms_|-\\s*audio_offset_ms\\b",
       "anchor": "audio_offset_ms",
@@ -66,7 +66,7 @@
           "why": "chart_ms_of_audio_ms, the owner"
         }
       ],
-      "note": "Moving between chart time and audio time with the offset written out, either way, instead of calling the sync rule's two owners. Decided by: derive-once review of M7-2c, finding 2 (phase 7 task PV join); moved into hydra_audio by D69 (phase 7 task AL1); moved beside chart_audio_offset_ms in app/preview_source.h by the Hydra libraries plan (task T1b)"
+      "note": "Moving between chart time and audio time with the offset written out, either way, instead of calling the sync rule's two owners."
     },
     {
       "question": "What is the lowest legal output gain?",
@@ -74,7 +74,7 @@
       "owner_file": "src/audio/player.h",
       "owner_symbol": "set_gain",
       "date": "2026-10-04",
-      "decision": "D53",
+      "decision": "audit finding 225, folded under D53 (phase 6 task J1-4)",
       "added_by": "J1-4",
       "pattern": "gain < 0\\.0f \\? 0\\.0f",
       "anchor": "gain < 0.0f ? 0.0f",
@@ -91,7 +91,7 @@
           "why": "Playhead::set_gain, the owner"
         }
       ],
-      "note": "---- audio owners (phase 6 task J1-4) ---- The frame pair's row is phase 3's (\"How many ms do audio frames last...\", above). Decided by: audit finding 225, folded under D53 (phase 6 task J1-4)"
+      "note": "---- audio owners (phase 6 task J1-4) ---- The frame pair's row is phase 3's (\"How many ms do audio frames last...\", above)."
     },
     {
       "question": "How is a stem converted to the output format?",
@@ -99,7 +99,7 @@
       "owner_file": "src/audio/mixer.cpp",
       "owner_symbol": "stem_converter_config",
       "date": "2026-10-04",
-      "decision": "D54",
+      "decision": "audit finding R7.28; D54 records miniaudio's converter defaults as they are",
       "added_by": "J1-4",
       "pattern": "ma_data_converter_config_init\\(",
       "anchor": "ma_data_converter_config_init(",
@@ -116,8 +116,7 @@
           "line_text": "c.config = ma_data_converter_config_init(",
           "why": "stem_converter_config, the owner"
         }
-      ],
-      "note": "Decided by: audit finding R7.28; D54 records miniaudio's converter defaults as they are"
+      ]
     },
     {
       "question": "How many frames are the Opus packet and pre-roll?",
@@ -125,7 +124,7 @@
       "owner_file": "src/audio/frames.h",
       "owner_symbol": "frames_of_ms",
       "date": "2026-10-05",
-      "decision": "D53",
+      "decision": "audit finding 227; phase 6 task J2-6 (D53)",
       "added_by": "J2-6",
       "pattern": "\\b(5760|19200)\\b",
       "must_match": [
@@ -138,8 +137,7 @@
       ],
       "scope": [
         "src"
-      ],
-      "note": "Decided by: audit finding 227; phase 6 task J2-6 (D53)"
+      ]
     },
     {
       "question": "How many reservoir bytes does an MP3 frame leave?",
@@ -147,7 +145,7 @@
       "owner_file": "src/audio/ma_reader.cpp",
       "owner_symbol": "reservoir_after",
       "date": "2026-10-05",
-      "decision": "D53",
+      "decision": "audit R7.24; phase 6 task J2-6 (D53)",
       "added_by": "J2-6",
       "pattern": "std::min\\(kMaxReservoir",
       "anchor": "std::min(kMaxReservoir",
@@ -167,8 +165,7 @@
       ],
       "scope": [
         "src/audio/ma_reader.cpp"
-      ],
-      "note": "Decided by: audit R7.24; phase 6 task J2-6 (D53)"
+      ]
     },
     {
       "question": "How big is dr_mp3's bit reservoir?",
@@ -176,7 +173,7 @@
       "owner_file": "src/audio/ma_reader.cpp",
       "owner_symbol": "MA_DR_MP3_MAX_BITRESERVOIR_BYTES",
       "date": "2026-10-05",
-      "decision": "D53",
+      "decision": "audit R7.24; phase 6 task J2-6 (D53)",
       "added_by": "J2-6",
       "pattern": "\\b511\\b",
       "anchor": "511",
@@ -201,7 +198,7 @@
       "scope": [
         "src/audio/ma_reader.cpp"
       ],
-      "note": "The copied dr_mp3 declarations are verbatim and guarded by the miniaudio version static_assert, so their two 511s stay. Decided by: audit R7.24; phase 6 task J2-6 (D53)"
+      "note": "The copied dr_mp3 declarations are verbatim and guarded by the miniaudio version static_assert, so their two 511s stay."
     },
     {
       "question": "How big is a Preview stem?",
@@ -209,7 +206,7 @@
       "owner_file": "src/audio/mapped_file.h",
       "owner_symbol": "size",
       "date": "2026-10-05",
-      "decision": "D53, D54",
+      "decision": "audit finding R7.25; phase 6 task J3-5 (D53, D54)",
       "added_by": "J3-5",
       "pattern": "\\bfile_size_bytes\\(\\s*\\w+(\\.|->)path\\b",
       "anchor": "file_size_bytes(",
@@ -222,7 +219,7 @@
       "scope": [
         "src"
       ],
-      "note": "A stem's size read from its path on disk: the load maps every loose stem first and takes the mapped size. Decided by: audit finding R7.25; phase 6 task J3-5 (D53, D54)"
+      "note": "A stem's size read from its path on disk: the load maps every loose stem first and takes the mapped size."
     },
     {
       "question": "Where does a stem reader's seek land when it reaches the end of the stem?",
@@ -230,7 +227,7 @@
       "owner_file": "src/audio/stem_reader.h",
       "owner_symbol": "seek_clamp_or_end",
       "date": "2026-10-10",
-      "decision": "D107",
+      "decision": "derive-once review of so-t5a, finding 1 (2026-10-10); D107",
       "added_by": "so-t5a-review",
       "pattern": "\\bframe = std::clamp<int64_t>\\(frame,",
       "anchor": "frame = std::clamp<int64_t>(frame,",
@@ -248,7 +245,7 @@
           "why": "seek_clamp_or_end, the owner"
         }
       ],
-      "note": "Only a seek that assigns the clamp back to `frame` counts. A stream's own position (pos_ = std::clamp(frame, ...) in stream_mix.cpp and player.cpp) has no end flag to set and answers a different question. Decided by: derive-once review of so-t5a, finding 1 (2026-10-10); D107"
+      "note": "Only a seek that assigns the clamp back to `frame` counts. A stream's own position (pos_ = std::clamp(frame, ...) in stream_mix.cpp and player.cpp) has no end flag to set and answers a different question."
     }
   ]
 }
