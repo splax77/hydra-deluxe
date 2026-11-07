@@ -26,7 +26,7 @@ The game's real rule: `solo` pushes a new solo record and `soloend` pops the mos
 One end: `solo` at 0, `soloend` at 200 (no nesting). Both agree: one solo from 0 to 200.
 Other end: `solo` at 0, `solo` at 100, `soloend` at 200, `soloend` at 300. The game ends the inner solo at 200 and the outer at 300, so ticks 201 to 300 are inside a solo. Hydra turns its flag off at 200, so ticks 201 to 300 are outside any solo. How the score code reads the outer record is unread (CR-35), so the score effect is not yet shown.
 
-What Hydra does today: `flag_solo_` (a plain bool) in src/parse/song.cpp lines 1417, 1643 and 1647. Owner: the .chart reader. Page row CR-34.
+What Hydra does today: `flag_solo_` (a plain bool, line 1442 of src/parse/song.cpp), which `op_solo` sets at line 1417. Lines 1643 and 1647 turn the `solo` and `soloend` events into the operations that reach it. Owner: the .chart reader. Page row CR-34.
 
 ### Q-12 Mix-event spellings: separators and digit forms
 
@@ -173,7 +173,7 @@ What Hydra does today. `category_scores` in src/core/scoring.cpp (the accent and
 
 The game's real rule: `0x100DAB0` is virtual slot 25 of the generic base #8253 instantiated on the 8-byte input struct #8533. The drum engine's own copy of that slot is `0x100DAE0`, on the #8663 instantiation (`dump.cs` lines 527331 to 527338; the drum engine class #8255 derives from the #8663 instantiation at line 527421). The drum copy compares the previous input struct with the current one and calls `0x2176020`, whose body was not read (GD lines 2247 to 2275). Neither copy is shown to be a hit check. Page row IN-22.
 
-One end: a hook at `0x100DAE0` during a drums song fires every frame. `RUNS\l3\trace-wm-count.txt` counts 20,831 calls in a 62 s song with 142 notes, so it is not once per note.
+One end: a hook at `0x100DAE0` during a drums song fires every frame. hydra-data/ch-mcp-runs/2026-10-28/l3/trace-wm-count.txt (outside the repo) counts 20,831 calls in a 62 s song with 142 notes, so it is not once per note.
 Other end: a breakpoint at `0x100DAB0`, where the tool points, never fires in a drums song, because the drum engine never runs that instantiation.
 
 What the tool does today: `RVA_HIT_CHECK = 0x100DAB0` (tools/ch_probe/constants.py line 55), with a comment at lines 52 to 54 calling it the hit-decision comparison, and tools/ch_probe/experiments/active_probe.py line 215 sets a breakpoint there. Owner: tools/ch_probe/constants.py. Nothing in src/ reads it. The question: point the constant at the drum copy `0x100DAE0` with a comment that says what the code shows (a per-frame input compare), or drop the constant and the breakpoint. Q-77 is the same kind of slip and could be fixed in the same change.
@@ -208,11 +208,11 @@ What the tool does today: the normal-window prediction in `predicted_window_norm
 
 ### Q-77 RVA_BASE_ENGINE_CTOR_DRUMS holds the other instantiation's constructor
 
-The game's real rule (`dump.cs` lines 527295 to 527306, `script.json`): `0x100E960` is the `.ctor` of #8253 on #8533 and on #8332; the drum engine's base is #8253 on #8663 (`dump.cs` line 527421), whose `.ctor` is `0x100EAE0`. `RUNS\l3\trace-wm-count.txt` lists ".ctor (base 0x100eae0)" in the drum engine's hooked set.
+The game's real rule (`dump.cs` lines 527295 to 527306, `script.json`): `0x100E960` is the `.ctor` of #8253 on #8533 and on #8332; the drum engine's base is #8253 on #8663 (`dump.cs` line 527421), whose `.ctor` is `0x100EAE0`. hydra-data/ch-mcp-runs/2026-10-28/l3/trace-wm-count.txt (outside the repo) lists ".ctor (base 0x100eae0)" in the drum engine's hooked set.
 
 One end: a hook placed at `0x100E960` during a drums song never fires for the drum engine. Other end: a hook at `0x100EAE0` fires once when the drum engine is built.
 
-What the tool does today: `RVA_BASE_ENGINE_CTOR_DRUMS = 0x100E960` (tools/ch_probe/constants.py line 46). Nothing uses it except a test fixture copy (tools/ch_mcp/tests/test_dump_facts.py line 410). Owner: constants.py. Page row IN-23. Same family as Q-72.
+What the tool does today: `RVA_BASE_ENGINE_CTOR_DRUMS = 0x100E960` (tools/ch_probe/constants.py line 46). Nothing uses it except a test fixture copy (tools/ch_mcp/tests/test_dump_facts.py line 409). Owner: constants.py. Page row IN-23. Same family as Q-72.
 
 ### Q-78 OFF_HIT_TIME (+0x2E0) is labelled the hit time, but the only run that logged it read 0.0 throughout
 
@@ -220,7 +220,7 @@ The game's real layout (`dump.cs` line 527437): #8255 has a private double at +0
 
 One end: if it were the hit time, it would equal the song clock at each hit within 10 ms (`HIT_TIME_MAX_GAP_MS`, constants.py line 297). Other end: it stays 0.0 through hits, as run1_cal0 shows.
 
-What the tool does today: `OFF_HIT_TIME = 0x2E0` (constants.py line 106) with the comment "NOT yet confirmed live" (lines 103 to 106). Owner: constants.py; the comment should say what the run showed, or the constant should go, now that the writer is read: it should say "double-lane round start". Page rows IN-12 and IN-15.
+What the tool does today: `OFF_HIT_TIME = 0x2E0` (constants.py), whose comment says the name is a wrong first guess and points at TM-14. Owner: constants.py. The name still says hit time, and tools/ch_probe/engine.py and tools/ch_mcp/trace_hits.py still read the field under it. The question: should the comment itself say "double-lane round start", or should the constant go? Page rows IN-12 and IN-15.
 
 ### Q-79 OFF_SP_OVERFLOW (+0x130) is described as set only on an overfill, but every gain sets it
 

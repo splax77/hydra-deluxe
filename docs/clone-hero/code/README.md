@@ -11,7 +11,7 @@ The 210 listings below were committed before the reference existed, by the Note 
 
 Every one is from build 1.1.0.6142 (`GameAssembly.dll`). They were made with a capstone wrapper (capstone is a disassembler library) whose first copy was not kept. The same wrapper is now committed as tools/ch_mcp/chdis.py, and it reproduces them: run on 0x20F0B30, it printed the 69 lines of `lanedraw_20f0b30.asm` exactly (checked 2026-10-30). The date is the day git first added the file.
 
-The first column is the function start, read from the listing's own first line. A file that holds several functions lists each start, in the order the file holds them. The role is the name the file was given when it was made; where the file name carries no role, the folder's README or FINDINGS says what the function does. Several functions were listed twice, once by a reading and once by a second pass that tried to refute it (the `-refute` folders), so one address can have two or three rows. The table was generated from the files, not typed, and its 210 rows match the 210 `.asm` files in the two folders.
+The first column is the function start, read from the listing's own first line. A file that holds several functions lists each start, in the order the file holds them. The role is the name the file was given when it was made. Where the file name carries no role, a row says "see the folder notes": that is the README or FINDINGS in the file's folder, or in `docs/audit/drum-lanes/` for a file under its `play/` folder. Those notes name only some of the functions, so a function they miss has no role on record here. The `scout-strings` folder has no notes, and its rows say so. Several functions were listed twice, once by a reading and once by a second pass that tried to refute it (the `-refute` folders), so one address can have two or three rows. The table was generated from the files, not typed, and its 210 rows match the 210 `.asm` files in the two folders.
 
 | Start | Role | File | Build | Date |
 |---|---|---|---|---|
@@ -33,16 +33,16 @@ The first column is the function start, read from the listing's own first line. 
 | 0x20CFD40 | sink | [docs/audit/note-shuffle/step0/open1/sink_20CFD40.asm](../../audit/note-shuffle/step0/open1/sink_20CFD40.asm) | 6142 | 2026-10-09 |
 | 0x20D12C0 | not named in the file name; see the folder notes | [docs/audit/drum-lanes/f20d12c0.asm](../../audit/drum-lanes/f20d12c0.asm) | 6142 | 2026-10-10 |
 | 0x20D2EA0 | build | [docs/audit/note-shuffle/scout-flag/build_20d2ea0.asm](../../audit/note-shuffle/scout-flag/build_20d2ea0.asm) | 6142 | 2026-10-09 |
-| 0x20D2EA0 | not named in the file name; see the folder notes | [docs/audit/note-shuffle/scout-strings/f20D2EA0.asm](../../audit/note-shuffle/scout-strings/f20D2EA0.asm) | 6142 | 2026-10-09 |
+| 0x20D2EA0 | not named in the file name; its folder has no notes | [docs/audit/note-shuffle/scout-strings/f20D2EA0.asm](../../audit/note-shuffle/scout-strings/f20D2EA0.asm) | 6142 | 2026-10-09 |
 | 0x20D2EA0 | not named in the file name; see the folder notes | [docs/audit/note-shuffle/step0/open2-refute/f20D2EA0.asm](../../audit/note-shuffle/step0/open2-refute/f20D2EA0.asm) | 6142 | 2026-10-09 |
 | 0x20D2EA0 | build | [docs/audit/note-shuffle/step0/open2/f20d2ea0_build.asm](../../audit/note-shuffle/step0/open2/f20d2ea0_build.asm) | 6142 | 2026-10-09 |
 | 0x20D2EA0 | builder | [docs/audit/note-shuffle/step0/open34-refute/builder_20d2ea0.asm](../../audit/note-shuffle/step0/open34-refute/builder_20d2ea0.asm) | 6142 | 2026-10-09 |
 | 0x20D2EA0 | builder | [docs/audit/note-shuffle/step0/open34/builder_20d2ea0.asm](../../audit/note-shuffle/step0/open34/builder_20d2ea0.asm) | 6142 | 2026-10-09 |
-| 0x20D36A0 | not named in the file name; see the folder notes | [docs/audit/note-shuffle/scout-strings/f20D36A0.asm](../../audit/note-shuffle/scout-strings/f20D36A0.asm) | 6142 | 2026-10-09 |
+| 0x20D36A0 | not named in the file name; its folder has no notes | [docs/audit/note-shuffle/scout-strings/f20D36A0.asm](../../audit/note-shuffle/scout-strings/f20D36A0.asm) | 6142 | 2026-10-09 |
 | 0x20D36A0 | not named in the file name; see the folder notes | [docs/audit/note-shuffle/step0/open2-refute/f20D36A0.asm](../../audit/note-shuffle/step0/open2-refute/f20D36A0.asm) | 6142 | 2026-10-09 |
 | 0x20D36A0 | lanemap | [docs/audit/note-shuffle/step0/open2/f20d36a0_lanemap.asm](../../audit/note-shuffle/step0/open2/f20d36a0_lanemap.asm) | 6142 | 2026-10-09 |
 | 0x20D36A0 | not named in the file name; see the folder notes | [docs/audit/note-shuffle/step0/open2/f20d36a0.asm](../../audit/note-shuffle/step0/open2/f20d36a0.asm) | 6142 | 2026-10-09 |
-| 0x20D4BE0 | not named in the file name; see the folder notes | [docs/audit/note-shuffle/scout-strings/f20D4BE0.asm](../../audit/note-shuffle/scout-strings/f20D4BE0.asm) | 6142 | 2026-10-09 |
+| 0x20D4BE0 | not named in the file name; its folder has no notes | [docs/audit/note-shuffle/scout-strings/f20D4BE0.asm](../../audit/note-shuffle/scout-strings/f20D4BE0.asm) | 6142 | 2026-10-09 |
 | 0x20D4BE0 | build gamenote | [docs/audit/note-shuffle/step0/open1-refute/build_gamenote_20D4BE0.asm](../../audit/note-shuffle/step0/open1-refute/build_gamenote_20D4BE0.asm) | 6142 | 2026-10-09 |
 | 0x20D4BE0 | build gamenote | [docs/audit/note-shuffle/step0/open1/build_gamenote_20D4BE0.asm](../../audit/note-shuffle/step0/open1/build_gamenote_20D4BE0.asm) | 6142 | 2026-10-09 |
 | 0x20D4BE0 | not named in the file name; see the folder notes | [docs/audit/note-shuffle/step0/open2-refute/f20D4BE0.asm](../../audit/note-shuffle/step0/open2-refute/f20D4BE0.asm) | 6142 | 2026-10-09 |
@@ -80,13 +80,13 @@ The first column is the function start, read from the listing's own first line. 
 | 0x20EF450, 0x20EFF60, 0x20F0320, 0x20F1420, 0x20F16E0, 0x20EFEE0 | drum pretransforms | [docs/audit/note-shuffle/step0/open2/drum_pretransforms_20ef450_20eff60_20f0320_20f1420_20f16e0_20efee0.asm](../../audit/note-shuffle/step0/open2/drum_pretransforms_20ef450_20eff60_20f0320_20f1420_20f16e0_20efee0.asm) | 6142 | 2026-10-09 |
 | 0x20EFEE0 | not named in the file name; see the folder notes | [docs/audit/note-shuffle/step0/open2-refute/f20EFEE0.asm](../../audit/note-shuffle/step0/open2-refute/f20EFEE0.asm) | 6142 | 2026-10-09 |
 | 0x20EFF60 | not named in the file name; see the folder notes | [docs/audit/note-shuffle/step0/open2-refute/f20EFF60.asm](../../audit/note-shuffle/step0/open2-refute/f20EFF60.asm) | 6142 | 2026-10-09 |
-| 0x20F0320 | not named in the file name; see the folder notes | [docs/audit/note-shuffle/scout-strings/f20F0320.asm](../../audit/note-shuffle/scout-strings/f20F0320.asm) | 6142 | 2026-10-09 |
+| 0x20F0320 | not named in the file name; its folder has no notes | [docs/audit/note-shuffle/scout-strings/f20F0320.asm](../../audit/note-shuffle/scout-strings/f20F0320.asm) | 6142 | 2026-10-09 |
 | 0x20F0B30 | lambda | [docs/audit/note-shuffle/scout-flag/lambda_20f0b30.asm](../../audit/note-shuffle/scout-flag/lambda_20f0b30.asm) | 6142 | 2026-10-09 |
-| 0x20F0B30 | not named in the file name; see the folder notes | [docs/audit/note-shuffle/scout-strings/f20F0B30.asm](../../audit/note-shuffle/scout-strings/f20F0B30.asm) | 6142 | 2026-10-09 |
+| 0x20F0B30 | not named in the file name; its folder has no notes | [docs/audit/note-shuffle/scout-strings/f20F0B30.asm](../../audit/note-shuffle/scout-strings/f20F0B30.asm) | 6142 | 2026-10-09 |
 | 0x20F0B30 | lanedraw | [docs/audit/note-shuffle/step0/open34-refute/lanedraw_20f0b30.asm](../../audit/note-shuffle/step0/open34-refute/lanedraw_20f0b30.asm) | 6142 | 2026-10-09 |
 | 0x20F0B30 | lanedraw | [docs/audit/note-shuffle/step0/open34/lanedraw_20f0b30.asm](../../audit/note-shuffle/step0/open34/lanedraw_20f0b30.asm) | 6142 | 2026-10-09 |
 | 0x20F0C30 | shuffle | [docs/audit/note-shuffle/scout-flag/shuffle_20f0c30.asm](../../audit/note-shuffle/scout-flag/shuffle_20f0c30.asm) | 6142 | 2026-10-09 |
-| 0x20F0C30 | not named in the file name; see the folder notes | [docs/audit/note-shuffle/scout-strings/f20F0C30.asm](../../audit/note-shuffle/scout-strings/f20F0C30.asm) | 6142 | 2026-10-09 |
+| 0x20F0C30 | not named in the file name; its folder has no notes | [docs/audit/note-shuffle/scout-strings/f20F0C30.asm](../../audit/note-shuffle/scout-strings/f20F0C30.asm) | 6142 | 2026-10-09 |
 | 0x20F0C30 | shuffle | [docs/audit/note-shuffle/step0/open1-refute/shuffle_20F0C30.asm](../../audit/note-shuffle/step0/open1-refute/shuffle_20F0C30.asm) | 6142 | 2026-10-09 |
 | 0x20F0C30 | not named in the file name; see the folder notes | [docs/audit/note-shuffle/step0/open2-refute/f20F0C30.asm](../../audit/note-shuffle/step0/open2-refute/f20F0C30.asm) | 6142 | 2026-10-09 |
 | 0x20F0C30 | shuffle | [docs/audit/note-shuffle/step0/open2/f20f0c30_shuffle.asm](../../audit/note-shuffle/step0/open2/f20f0c30_shuffle.asm) | 6142 | 2026-10-09 |
@@ -124,7 +124,7 @@ The first column is the function start, read from the listing's own first line. 
 | 0x213D2D0 | trackbuilder dispatch | [docs/audit/note-shuffle/step0/open1-refute/trackbuilder_dispatch_213D2D0.asm](../../audit/note-shuffle/step0/open1-refute/trackbuilder_dispatch_213D2D0.asm) | 6142 | 2026-10-09 |
 | 0x213D2D0 | trackbuilder dispatch | [docs/audit/note-shuffle/step0/open1/trackbuilder_dispatch_213D2D0.asm](../../audit/note-shuffle/step0/open1/trackbuilder_dispatch_213D2D0.asm) | 6142 | 2026-10-09 |
 | 0x213D2D0 | not named in the file name; see the folder notes | [docs/audit/note-shuffle/step0/open2/f213d2d0.asm](../../audit/note-shuffle/step0/open2/f213d2d0.asm) | 6142 | 2026-10-09 |
-| 0x213D620 | not named in the file name; see the folder notes | [docs/audit/note-shuffle/scout-strings/f213D620.asm](../../audit/note-shuffle/scout-strings/f213D620.asm) | 6142 | 2026-10-09 |
+| 0x213D620 | not named in the file name; its folder has no notes | [docs/audit/note-shuffle/scout-strings/f213D620.asm](../../audit/note-shuffle/scout-strings/f213D620.asm) | 6142 | 2026-10-09 |
 | 0x213D620 | trackbuilder addnote | [docs/audit/note-shuffle/step0/open1-refute/trackbuilder_addnote_213D620.asm](../../audit/note-shuffle/step0/open1-refute/trackbuilder_addnote_213D620.asm) | 6142 | 2026-10-09 |
 | 0x213D620 | trackbuilder addnote | [docs/audit/note-shuffle/step0/open1/trackbuilder_addnote_213D620.asm](../../audit/note-shuffle/step0/open1/trackbuilder_addnote_213D620.asm) | 6142 | 2026-10-09 |
 | 0x213D620 | not named in the file name; see the folder notes | [docs/audit/note-shuffle/step0/open2-refute/f213D620.asm](../../audit/note-shuffle/step0/open2-refute/f213D620.asm) | 6142 | 2026-10-09 |
@@ -181,7 +181,7 @@ The first column is the function start, read from the listing's own first line. 
 | 0x215BE50 | not named in the file name; see the folder notes | [docs/audit/note-shuffle/step0/open2/f215be50.asm](../../audit/note-shuffle/step0/open2/f215be50.asm) | 6142 | 2026-10-09 |
 | 0x215C040 | not named in the file name; see the folder notes | [docs/audit/note-shuffle/step0/open2-refute/f215C040.asm](../../audit/note-shuffle/step0/open2-refute/f215C040.asm) | 6142 | 2026-10-09 |
 | 0x215C040 | not named in the file name; see the folder notes | [docs/audit/note-shuffle/step0/open2/f215c040.asm](../../audit/note-shuffle/step0/open2/f215c040.asm) | 6142 | 2026-10-09 |
-| 0x215C320 | not named in the file name; see the folder notes | [docs/audit/note-shuffle/scout-strings/f215C320.asm](../../audit/note-shuffle/scout-strings/f215C320.asm) | 6142 | 2026-10-09 |
+| 0x215C320 | not named in the file name; its folder has no notes | [docs/audit/note-shuffle/scout-strings/f215C320.asm](../../audit/note-shuffle/scout-strings/f215C320.asm) | 6142 | 2026-10-09 |
 | 0x215C320 | not named in the file name; see the folder notes | [docs/audit/note-shuffle/step0/open2-refute/f215C320.asm](../../audit/note-shuffle/step0/open2-refute/f215C320.asm) | 6142 | 2026-10-09 |
 | 0x215C320 | not named in the file name; see the folder notes | [docs/audit/note-shuffle/step0/open2/f215c320.asm](../../audit/note-shuffle/step0/open2/f215c320.asm) | 6142 | 2026-10-09 |
 | 0x215C560 | not named in the file name; see the folder notes | [docs/audit/note-shuffle/step0/open2/f215c560.asm](../../audit/note-shuffle/step0/open2/f215c560.asm) | 6142 | 2026-10-09 |
@@ -189,7 +189,7 @@ The first column is the function start, read from the listing's own first line. 
 | 0x215CD50 | not named in the file name; see the folder notes | [docs/audit/note-shuffle/step0/open2/f215cd50.asm](../../audit/note-shuffle/step0/open2/f215cd50.asm) | 6142 | 2026-10-09 |
 | 0x215D450 | not named in the file name; see the folder notes | [docs/audit/note-shuffle/step0/open2-refute/f215D450.asm](../../audit/note-shuffle/step0/open2-refute/f215D450.asm) | 6142 | 2026-10-09 |
 | 0x215D450 | not named in the file name; see the folder notes | [docs/audit/note-shuffle/step0/open2/f215d450.asm](../../audit/note-shuffle/step0/open2/f215d450.asm) | 6142 | 2026-10-09 |
-| 0x215DA70 | not named in the file name; see the folder notes | [docs/audit/note-shuffle/scout-strings/f215DA70.asm](../../audit/note-shuffle/scout-strings/f215DA70.asm) | 6142 | 2026-10-09 |
+| 0x215DA70 | not named in the file name; its folder has no notes | [docs/audit/note-shuffle/scout-strings/f215DA70.asm](../../audit/note-shuffle/scout-strings/f215DA70.asm) | 6142 | 2026-10-09 |
 | 0x215DA70 | not named in the file name; see the folder notes | [docs/audit/note-shuffle/step0/open2-refute/f215DA70.asm](../../audit/note-shuffle/step0/open2-refute/f215DA70.asm) | 6142 | 2026-10-09 |
 | 0x215DBD0 | not named in the file name; see the folder notes | [docs/audit/note-shuffle/step0/open2/f215dbd0.asm](../../audit/note-shuffle/step0/open2/f215dbd0.asm) | 6142 | 2026-10-09 |
 | 0x215E020 | not named in the file name; see the folder notes | [docs/audit/note-shuffle/step0/open2-refute/f215E020.asm](../../audit/note-shuffle/step0/open2-refute/f215E020.asm) | 6142 | 2026-10-09 |
@@ -201,7 +201,7 @@ The first column is the function start, read from the listing's own first line. 
 | 0x215ED20, 0x215E120, 0x215C040, 0x215B8C0 | finish steps | [docs/audit/note-shuffle/scout-strings/finish_steps.asm](../../audit/note-shuffle/scout-strings/finish_steps.asm) | 6142 | 2026-10-09 |
 | 0x215ED20, 0x215E120, 0x215C040, 0x215B8C0 | finish steps | [docs/audit/note-shuffle/step0/open2/finish_steps_215ed20_215e120_215c040_215b8c0.asm](../../audit/note-shuffle/step0/open2/finish_steps_215ed20_215e120_215c040_215b8c0.asm) | 6142 | 2026-10-09 |
 | 0x215F860 | not named in the file name; see the folder notes | [docs/audit/drum-lanes/f215f860.asm](../../audit/drum-lanes/f215f860.asm) | 6142 | 2026-10-10 |
-| 0x215FE80 | not named in the file name; see the folder notes | [docs/audit/note-shuffle/scout-strings/f215FE80.asm](../../audit/note-shuffle/scout-strings/f215FE80.asm) | 6142 | 2026-10-09 |
+| 0x215FE80 | not named in the file name; its folder has no notes | [docs/audit/note-shuffle/scout-strings/f215FE80.asm](../../audit/note-shuffle/scout-strings/f215FE80.asm) | 6142 | 2026-10-09 |
 | 0x2161760 | chart track parser | [docs/audit/note-shuffle/step0/open1/chart_track_parser_2161760.asm](../../audit/note-shuffle/step0/open1/chart_track_parser_2161760.asm) | 6142 | 2026-10-09 |
 | 0x2161A80 | not named in the file name; see the folder notes | [docs/audit/note-shuffle/step0/open2-refute/f2161A80.asm](../../audit/note-shuffle/step0/open2-refute/f2161A80.asm) | 6142 | 2026-10-09 |
 | 0x2161A80 | not named in the file name; see the folder notes | [docs/audit/note-shuffle/step0/open2/f2161a80.asm](../../audit/note-shuffle/step0/open2/f2161a80.asm) | 6142 | 2026-10-09 |
@@ -325,6 +325,6 @@ The table was generated from the files, not typed. One more file, `code/6142/dru
 | 0x214C320 | star table cctor | [code/6142/star_table_cctor_214C320.asm](6142/star_table_cctor_214C320.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x20CFD40 | track lookup | [code/6142/track_lookup_20CFD40.asm](6142/track_lookup_20CFD40.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x20EFF60 | two x kick drop | [code/6142/two_x_kick_drop_20EFF60.asm](6142/two_x_kick_drop_20EFF60.asm) | 6142 | tools/ch_mcp/chdis.py |
-| 0x20F0320 | listed by mistake (its note says it is the five-lane lane remap, not the 2x-kick drop); no row cites it | [code/6142/two_x_kick_drop_20F0320.asm](6142/two_x_kick_drop_20F0320.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x20F0320 | listed by mistake (its note says it is the five-lane lane remap, not the 2x-kick drop); NL-37 cites the note | [code/6142/two_x_kick_drop_20F0320.asm](6142/two_x_kick_drop_20F0320.asm) | 6142 | tools/ch_mcp/chdis.py |
 | first method: the fill generator's caller, lines 823 to 833 of its class's file in the ilspycmd output | the 1.0 fill generator and where written fills land (eight methods) | [code/4045/fill_generator.cs](4045/fill_generator.cs) | 4045 | ilspycmd |
 | first method: the Star Power half-meter trigger, lines 870 to 877 of DrumsPlayer.cs in the ilspycmd output | the 1.0 fill deadline, when a fill is thrown away (three methods) | [code/4045/fill_deadline.cs](4045/fill_deadline.cs) | 4045 | ilspycmd |
