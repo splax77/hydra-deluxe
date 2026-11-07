@@ -1721,3 +1721,83 @@ One odd sight is not a bug: a squeeze just inside Star Power, say 0.001 ms, prin
 13. **The builder reads the rules file.** The builder never read `hydra_rules.ini`, so a player with a rules file got Hydra's paths under their rules and the builder's under the defaults. Asked what should happen, the user chose "Builder reads it (Rec.)", whose text was "The builder loads hydra_rules.ini the way Hydra does, so one set of rules applies everywhere. A bad rules file refuses the song on the top line, the same as a bad settings file. It's a small task with its own review, and it needs one new sentence for you to approve." `PbState::open` reads the file after the settings, so with both files bad the settings file's error shows. `PbApp::open` owns the refusal, and `kRulesRefusedSentence` is the builder's own sentence: "hydra_rules.ini has an error, so the song can't open until the file is fixed."
 
 The slimmer-top plan left a highway click on a fill the player can't take with no feedback; the moved clock is its feedback now. Nothing stored changes, so no stamp moves.
+
+**D305 (session 91e7fdd7), 2026-11-06. The stale comment audit's first question message.** The full questions, with their lines and options, are `docs/audit/2026-10-31-stale-comments/questions/q1.md`. The user answered all five in two words: "All recommended".
+
+1. **Comments naming the old Python Hydra.** Three kinds of line: naming the source ("the C++ port of hydra/hymidi.py"), explaining a choice by the old app ("lighter than the Python app's (100,100,100)"), and saying the code must match the old code ("ported operation-for-operation from Python Hydra 1.2"). Recommended, and chosen: a mention stays only where matching the old code is why the code is the way it is, and the rest go. Each line takes a judgment.
+2. **Dated "pinned from one run" notes.** Recommended, and chosen: keep "pinned from one run", and drop the date, commit, branch and task.
+3. **"Decided by" tails in a rule's `note`.** 322 rules in 47 files have one, and all have a `decision` field. Recommended, and chosen: the tail leaves the note and its full text moves into `decision`, so nothing is lost.
+4. **Rule-file `owner` lines.** Recommended, and chosen: an owner line names what exists today, so the comment ruling covers it.
+5. **The "no chart library" message.** Before: "This database has no chart library. Run hydra_batch without folder arguments, or scan in Hydra, to build one." After: "This database has no chart library. Run hydra_batch --whole-library, or scan in Hydra, to build one." It shows in the path report window, the library job strip, the DM comparison and the fill comparison. The question did not say that D301 item 2 chose this sentence over an older one; the user was told after answering. This item changes only the command inside the sentence D301 kept.
+
+**D306 (session 91e7fdd7), 2026-11-06. The stale comment audit's second question message.** The full questions are `docs/audit/2026-10-31-stale-comments/questions/q2.md`. The user answered all five: "All recommended".
+
+1. **Rows a sorter found right.** 40 rows that a closure checker reopened, and a sorter then read against the code and found true today. Recommended, and chosen: close all 40 with no edit. The file lists them.
+2. **Comments citing a plan that left the repo.** 17 rows. Recommended, and chosen: a pointer in the file's header is enough where one exists, and every other cite gains the form `<path>` (removed; `git show <commit>:<path>`). A session card's quote stays, because a card is a record.
+3. **What a permanent page may cite outside the repo.** 15 rows. Recommended, and chosen: `docs/clone-hero/README.md`'s list widens to name Ghidra's decompile, `hydra-data` run results and `video-tools`. A video is cited by its title and YouTube id, not a path. Scratch folders and transcripts stay banned. Dated plans keep their cites, by answer 3 of the audit's class questions.
+4. **ADR lines that are wrong today.** 18 rows. Recommended, and chosen: a labelled page or section stays as written, title included, because the label already warns the reader. An unlabelled line that states today's code is corrected. Where a label covers only part of a page, a line it does not name counts as unlabelled.
+5. **The +0x2E0 field.** 16 rows. Page 03's TM-14 proves it is not a hit time. Recommended, and chosen: comments are reworded; `hit_offset_ms` in `tools/ch_probe/experiments/live.py` stops reading the field and always uses the send time; the lines `watch_window.py` prints say "+0x2e0" with no "hit time"; and the test that pins them changes with them. New double-lane offsets won't compare with old runs.
+
+**D307 (session 91e7fdd7), 2026-11-06. The stale comment audit's third question message.** The full questions, and the two sides of each row in item 1, are `docs/audit/2026-10-31-stale-comments/questions/q3.md`. The user answered all five: "All recommended".
+
+1. **Comments that don't say what the code does.** 27 rows, five of them splits. Recommended, and chosen: each is corrected to what the code does, so each split takes the code's side, and two test names change to match their bodies. SN-070 and I-1023 close with no edit.
+2. **Comments and test names that compare with the past or carry a date.** 19 rows. Recommended, and chosen: the reason stays and the date goes, and a test name says what it checks, not what it matches from the past.
+3. **A game fact stated more firmly than anyone can show.** 12 rows. Recommended, and chosen: a comment says no more than its page's label, and a page block with no surviving evidence becomes Unknown.
+4. **Decision-log lines the code has moved past.** Recommended, and chosen: a reversed or amended record gains one pointer to the later record, and nothing else changes. So D103 item 28 points at D271 item 7, and D75 item 4 at D255 item 5. The user's quoted words never change.
+5. **Finished plans still in the tree.** Recommended, and chosen: one Sonnet scout reads the plans against the repo and lists which are finished. The user sees that list before anything leaves the repo. The scout found 8 of the 14 finished (`docs/audit/2026-10-31-stale-comments/plans-finished.txt`), and one has no record of its real-app check. Asked whether to remove the 8 with the fix waves, the user chose "Yes, remove all 8". So `2026-10-18-song-length-end-event.md`, `2026-10-22-font-role-single-owner.md`, `2026-10-24-asan-ci-speed.md`, `2026-10-24-ci-build-speed.md`, `2026-10-28-hydra-libraries.md`, `2026-10-28-overlay-spike.md`, `2026-10-31-ch-mcp-kit-map-and-network-block.md` and `2026-10-31-harness-instructions-and-memory.md` leave `docs/superpowers/plans/`, and every line naming one takes the removed form in the same merge.
+
+**D308 (session 91e7fdd7), 2026-11-06. The stale comment audit's fourth question message.** The full questions are `docs/audit/2026-10-31-stale-comments/questions/q4.md`. The user answered all five: "All recommended".
+
+1. **Six small promises the code doesn't keep.** Recommended, and chosen: `tests/test_store_results.cpp:358`, a check of a call against itself, goes. `tools/precheck/range.cpp` strips both of a path's quotes. `tools/replay.cpp` reads `--ms` and `--depth` with the strict reader `--index` uses. `src/audio/mixer.cpp`'s comment says a stem is copied. `tests/ui/scripts/smoke.txt:27`, a check of a sentence no code holds, goes. The "no --live yet" branch in `tools/test_hydra_ui_mcp.py` goes.
+2. **Code nothing uses.** Recommended, and chosen: `sp_cap_converged`, `BatchJob::cancel`, the unused `/*mode*/` parameter, `text_width` and `rule_width` in the test harness, and `play0` all go, each after the executor confirms it has no caller. `song_digest` digests the constant `true` in place of `sp_cap_converged`, so no pinned digest moves. Third-party `UseClipper` stays.
+3. **The report windows' statics.** Recommended, and chosen: `DmWindow` and `PathWindow` move into `AppState`, because a static outlives an AppState. There is no symptom today.
+4. **The two probe tools that need focus.** Recommended, and chosen: `play_chart.py`'s key route and `walk_edges.py` stay, and each comment says it needs focus and `allow key run`.
+5. **The tn chip's outline.** Before: the report windows draw a tn chip with no outline, and the HTML pages draw it with one. Recommended, and chosen: the window draws the outline, so the two match, and the comment goes. It gets a real-app check before merge. The word on the chip does not change.
+
+**D309 (session 91e7fdd7), 2026-11-06. The stale comment audit's fifth question message.** The full questions, and the two sides of each row in item 1, are `docs/audit/2026-10-31-stale-comments/questions/q5.md`. The user answered all five: "All recommended".
+
+1. **Comments and notes that don't say what the code does.** 31 rows, 14 of them splits. Recommended, and chosen: each is corrected to what the code does, so each split takes the code's side. I-0130 returns to exit 3 and the `pbr3-plan4` list, because `verify-plan.md` T8 sends those rows there.
+2. **Labels and numbers that lead nowhere.** 13 rows. Recommended, and chosen: a cite names a real record by its id, and a label with no record becomes plain words. The executor searches first, and keeps any label it can tie to a record.
+3. **Comments resting on what nobody recorded.** 6 rows. Recommended, and chosen: "the user chose" becomes "the plan's recommendation", since D294 says the plan kept no answers. An outside claim stays, and says where the fact comes from.
+4. **Tool findings that need the game.** 22 rows. Recommended, and chosen: they join the audit's open list, each with the run that settles it, and their comments wait for the result.
+5. **Rule rows with nothing left to catch.** Recommended, and chosen: they go, as D308 item 1 removed a check of the same dead sentence.
+
+**D310 (session 91e7fdd7), 2026-11-06. The stale comment audit's sixth and last question message.** The full questions are `docs/audit/2026-10-31-stale-comments/questions/q6.md`. The user answered all five: "accept all. create handoff."
+
+1. **Three comments, and five rows closed.** Recommended, and chosen: `tests/test_config.cpp`'s comment follows `config.cpp` (only the four Expert keys are already stored), `tests/test_model.cpp`'s says the setting is Hydra's and the 3 ms value DragonDelgar's, and `tests/ui/uitest_library.cpp`'s says the workaround is why the columns stay. I-1058 and SN-091 close with their splits, and SN-211 closes on reading, with no run.
+2. **Public text.** Recommended, and chosen: the three E1 wordings stay. `README.md`'s Stale sentence drops its version list and reads "A release that changes how charts are analyzed marks them `Stale` until each song is analyzed again." "Upgrading keeps your library and settings." joins the open list until an installer run.
+3. **A comparison row click.** Before: a DM comparison row click switches the settings bar to the comparison's mode. Recommended, and chosen: it stops switching, as the path report's does under D115 item 5, and the song opens in the bar's mode. The test that pins the switch changes.
+4. **Where a report row's names come from.** D63 said a one-copy chart keeps the names from its newest analysis, so a fixed song.ini reaches the reports on the next analysis. All three reports now name a row from the library table (`library.naming`). Recommended, and chosen: the code stays, library names win, and a scan brings a fixed song.ini in. This replaces that part of D63 for the reports, and the comment says so. The question said this undoes the user's 2026-09-26 decision.
+5. **The two "same folder" helpers.** Recommended, and chosen: `tools/ch_mcp/menu_tools.py`'s `same_folder` uses `realpath` as `tools/hydra_ui_mcp.py` does. It needs a check on a live run.
+
+**D311 (session 28b91640), 2026-11-07. The stale comment audit's seventh question message.** The full questions are `docs/audit/2026-10-31-stale-comments/questions/q7.md`. The user answered all five: "proceed with recommendations". None of them changes anything a player sees in Hydra.
+
+1. **Six rows reviewers reopened.** Recommended, and chosen: I-0797, I-0861, SN-029, I-0100, SN-244 and SN-188 close with no further edit.
+2. **I-0731 and I-0731/S1.** D310 item 1 told `tests/test_config.cpp`'s comment to follow `config.cpp`'s "only the four Expert keys are already stored", and a later fix removed that sentence. Recommended, and chosen: the test comment stays and both rows close. This replaces D310 item 1 for these two rows.
+3. **I-0800, the gem names.** Recommended, and chosen: the two names have no source in the repo, so they go, and `tests/test_midi.cpp` reads "Pitches 101 and 102 count; 103 does not".
+4. **I-0029, the `Notes.blend` line.** Recommended, and chosen: `drum-tom.obj` stays as it is, and the row closes as not a problem, with a fresh checker confirming it.
+5. **SC-22's label.** Recommended, and chosen: the block keeps "Proven in a live run", and `docs/clone-hero/README.md` now says a public video, cited by its title and YouTube id, counts as the result file.
+
+**D312 (session 28b91640), 2026-11-07. The stale comment audit's eighth question message.** The full questions are `docs/audit/2026-10-31-stale-comments/questions/q8.md`, numbered 6 to 10 as they went out. The user answered all five: "go with recommend". None of them changes anything a player sees in Hydra.
+
+1. **The `----` banners in rule notes.** Recommended, and chosen: the phase and task label goes and the topic words stay.
+2. **I-1098.** Recommended, and chosen: `key_delivery_test.py`'s "Why this exists" paragraph goes into the past tense, and the instructions stay.
+3. **The overlay spike plan.** Recommended, and chosen: it leaves with the other seven under D307 item 5, the write-up task is marked dropped, and the results page stays as the template it is.
+4. **The typed number in `tests/test_squeeze_rating.cpp`.** Recommended, and chosen: the check goes, and the comment keeps the point that a shorter end's scale would predict a miss.
+5. **`tests/test_tied_variants.cpp` and `src/search/engine.cpp`.** Recommended, and chosen: the test name says the path folds only after Star Power ends, and the engine comment says the group key keeps the two apart while SP runs.
+
+**D313 (session 28b91640), 2026-11-07. The stale comment audit's ninth question message.** The full questions are `docs/audit/2026-10-31-stale-comments/questions/q9.md`, numbered 11 to 13 as they went out. The user answered: "all recommendations.  why are you so focused on those videos? nothing there affects this project". None of them changes anything a player sees in Hydra.
+
+1. **The uncommitted edits.** Recommended, and chosen: the `docs/agents/ui-testing.md` line is committed, and the edits in `docs/agents/this-machine.md` and the 2026-10-18 handoff stay uncommitted.
+2. **The `C:\ytdl` folders.** Closed. No page under `docs/clone-hero/` cites them, so nothing changes, and the user says they do not affect this project.
+3. **The leftover fixes.** Recommended, and chosen: one group fixes I-0897, I-0898, I-0900, I-0502 and I-0504, and I-0112 and I-0112/S1 join it now that their file is clean.
+
+**D314 (session 28b91640), 2026-11-07. The stale comment audit's code tasks plan.** The plan and its full questions are `docs/superpowers/plans/2026-11-07-stale-comment-code-tasks.md`. The user answered: "Yes, all recommended".
+
+1. **The order.** Recommended, and chosen: the decision log's D305 to D314 reach `main` before any task merges, so comments and commits can cite them.
+2. **`select_chart`'s mode parameter.** After a DM comparison row click stops switching the mode, both callers pass the bar's own mode. Recommended, and chosen: the parameter and the switch branch go, with its two refusals, and the test that pinned the switch checks selection only.
+3. **Two rule rows that still catch live code.** `parse.json`'s song.ini row and `app/concept-H3.json`'s row stay, and only their dead sample lines go. This narrows D309 item 5 for these two rows.
+4. **Rule samples naming dead symbols.** Recommended, and chosen: the samples stay, and SN-216 and I-0623 close with no edit, because a sample tests the rule's pattern and makes no claim about the code.
+5. **`watch_checks.py`.** Recommended, and chosen: it stops calling +0x2E0 a hit time, as D306 item 5 ruled for `watch_window.py`, and its test changes with it.
+
+The plan's `hydra_replay` flag test stays a real test, so `hydra_tests` also needs `hydra_replay` built.
