@@ -74,13 +74,6 @@ void end_overlay(const ImVec2& top, float h) {
     ImGui::Dummy(ImVec2(0.0f, 0.0f));
 }
 
-// Keep the next item, `w` wide, on the last item's line when it fits there;
-// otherwise it starts the next line. A row of variable-length pieces wraps
-// instead of running past the column's edge.
-void flow_next(float w, float spacing) {
-    if (fits_on_line(w, spacing)) ImGui::SameLine(0.0f, spacing);
-}
-
 // ---- the path list ----------------------------------------------------------
 
 // The space between a path's title and its timing.

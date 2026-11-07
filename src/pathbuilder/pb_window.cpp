@@ -492,18 +492,21 @@ void PbApp::draw_head(const OpenChart& chart) {
 
     PathHistory& h = state.history();
     DecisionList& d = state.decisions();
-    ImGui::SameLine(0.0f, rem(kHeadGapRem));
+    // The title and scores stay put; from here each item flows onto the next
+    // line when it would pass the window's edge.
+    const ImGuiStyle& style = ImGui::GetStyle();
+    ui::flow_next(ui::button_slot_width(kUndoLabel), rem(kHeadGapRem));
     ImGui::BeginDisabled(!h.can_undo());
     if (ImGui::Button(kUndoLabel)) {
         pending_select_.reset();
         h.undo();
     }
     ImGui::EndDisabled();
-    ImGui::SameLine();
+    ui::flow_next(ui::button_slot_width(kStartOverLabel), style.ItemSpacing.x);
     ImGui::BeginDisabled(h.current().windows.empty());
     if (ImGui::Button(kStartOverLabel)) start_over();
     ImGui::EndDisabled();
-    ImGui::SameLine();
+    ui::flow_next(ui::button_slot_width(kFinishForMeLabel), style.ItemSpacing.x);
     ImGui::BeginDisabled(!d.can_finish());
     if (ImGui::Button(kFinishForMeLabel)) {
         pending_select_.reset();
@@ -511,7 +514,9 @@ void PbApp::draw_head(const OpenChart& chart) {
     }
     ImGui::EndDisabled();
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", kFinishTooltip);
-    ImGui::SameLine(0.0f, rem(kBestBoxGapRem));
+    ui::flow_next(ImGui::GetFrameHeight() + style.ItemInnerSpacing.x +
+                      ImGui::CalcTextSize(kShowBestPathLabel, nullptr, true).x,
+                  rem(kBestBoxGapRem));
     ImGui::Checkbox(kShowBestPathLabel, &show_best_);
 }
 

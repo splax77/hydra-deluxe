@@ -21,6 +21,7 @@
 #include "app/display_format.h"  // kFactSeparator
 #include "app/preview_view.h"
 #include "core/winstr.h"
+#include "pathbuilder/pb_menu.h"  // kStartOverLabel
 #include "pathbuilder/pb_text.h"
 #include "pathbuilder/pb_window.h"  // the hover's words
 #include "render/highway_draw.h"      // far_time, time_to_z
@@ -198,6 +199,108 @@ std::string readout_line(Harness& h, const std::string& length) {
     return text.substr(from, end == std::string::npos ? std::string::npos : end - from);
 }
 
+// Lays the frame out `width` wide for as long as it lives, as a real window
+// that size does: the builder reads its width from the main viewport, which
+// Engine::frame sizes from the harness's width. The render target keeps its
+// size, so this is no test of what the frame draws.
+class FrameWidth {
+public:
+    FrameWidth(Harness& h, int width) : h_(h), restore_(h.width) { h_.width = width; }
+    ~FrameWidth() { h_.width = restore_; }
+    FrameWidth(const FrameWidth&) = delete;
+    FrameWidth& operator=(const FrameWidth&) = delete;
+
+private:
+    Harness& h_;
+    int restore_;
+};
+
+// The head row at the test's normal width, then on a window where the last two
+// items wrap, then on one too narrow for any of them beside the scores.
+void test_head_row_wraps(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    h.chart_arg = corpus::burnout_notes();
+    reset_app(h);
+    IM_CHECK(wait_idle(ctx));
+    ctx->Yield(2);
+    ctx->SetRef(h.home_ref.c_str());
+    const std::string undo = any_ref(hydra::pathbuilder::kUndoLabel);
+    const std::string start_over = any_ref(hydra::pathbuilder::kStartOverLabel);
+    const std::string finish = any_ref(hydra::pathbuilder::kFinishForMeLabel);
+    const std::string best = any_ref(hydra::pathbuilder::kShowBestPathLabel);
+    const std::string below = any_ref("##label_activations");
+    const auto rect = [&](const std::string& ref) { return ctx->ItemInfo(ref.c_str()).RectFull; };
+
+    // Everything fits: each place is the one a row that never wraps gives,
+    // from one run of that row.
+    constexpr float kRowY = 32.0f;
+    constexpr float kUndoX = 588.6f;
+    constexpr float kStartOverX = 638.6f;
+    constexpr float kBelowY = 194.8f;
+    const auto check_normal = [&] {
+        IM_CHECK_FLOAT_NEAR_EQ(rect(undo).Min.x, kUndoX, 0.5f);
+        IM_CHECK_FLOAT_NEAR_EQ(rect(start_over).Min.x, kStartOverX, 0.5f);
+        IM_CHECK_FLOAT_NEAR_EQ(rect(finish).Min.x, 714.6f, 0.5f);
+        IM_CHECK_FLOAT_NEAR_EQ(rect(best).Min.x, 864.0f, 0.5f);
+        for (const std::string* item : {&undo, &start_over, &finish, &best})
+            IM_CHECK_FLOAT_NEAR_EQ(rect(*item).Min.y, kRowY, 0.5f);
+        IM_CHECK_FLOAT_NEAR_EQ(rect(below).Min.y, kBelowY, 0.5f);
+    };
+    check_normal();
+    const float best_gap = rect(best).Min.x - rect(finish).Max.x;
+
+    // Every item ends inside the window, and what lies under the row starts
+    // under the lowest of them.
+    const auto check_inside = [&](int width) {
+        const ImGuiWindow* window = ctx->GetWindowByRef(h.home_ref.c_str());
+        IM_CHECK_RETV(window != nullptr, );
+        IM_CHECK_EQ(window->Size.x, static_cast<float>(width));
+        float lowest = 0.0f;
+        for (const std::string* item : {&undo, &start_over, &finish, &best}) {
+            IM_CHECK_LE(rect(*item).Max.x, window->Pos.x + window->Size.x);
+            lowest = (std::max)(lowest, rect(*item).Max.y);
+        }
+        IM_CHECK_GE(rect(below).Min.y, lowest);
+        IM_CHECK_GT(rect(below).Min.y, kBelowY);
+    };
+    const auto left_edge = [&] { return ctx->GetWindowByRef(h.home_ref.c_str())->WorkRect.Min.x; };
+
+    // Undo and Start over keep their places. Finish starts the next line at
+    // the row's left edge, and the checkbox stays beside it at its own gap.
+    {
+        constexpr int kWidth = 800;
+        FrameWidth narrow(h, kWidth);
+        ctx->Yield(3);
+        check_inside(kWidth);
+        IM_CHECK_FLOAT_NEAR_EQ(rect(undo).Min.x, kUndoX, 0.5f);
+        IM_CHECK_FLOAT_NEAR_EQ(rect(start_over).Min.x, kStartOverX, 0.5f);
+        IM_CHECK_FLOAT_NEAR_EQ(rect(start_over).Min.y, kRowY, 0.5f);
+        IM_CHECK_FLOAT_NEAR_EQ(rect(finish).Min.x, left_edge(), 0.5f);
+        IM_CHECK_GT(rect(finish).Min.y, kRowY);
+        IM_CHECK_FLOAT_NEAR_EQ(rect(best).Min.y, rect(finish).Min.y, 0.5f);
+        IM_CHECK_FLOAT_NEAR_EQ(rect(best).Min.x - rect(finish).Max.x, best_gap, 0.5f);
+    }
+
+    // The scores alone reach past the edge, as a long title's row does, so
+    // Undo wraps too. The three buttons share a line and the checkbox takes
+    // the one under it.
+    {
+        constexpr int kWidth = 400;
+        FrameWidth narrow(h, kWidth);
+        ctx->Yield(3);
+        check_inside(kWidth);
+        IM_CHECK_FLOAT_NEAR_EQ(rect(undo).Min.x, left_edge(), 0.5f);
+        IM_CHECK_GT(rect(undo).Min.y, kRowY);
+        IM_CHECK_FLOAT_NEAR_EQ(rect(finish).Min.y, rect(undo).Min.y, 0.5f);
+        IM_CHECK_FLOAT_NEAR_EQ(rect(best).Min.x, left_edge(), 0.5f);
+        IM_CHECK_GT(rect(best).Min.y, rect(finish).Min.y);
+    }
+
+    // Widening the window brings the row back.
+    ctx->Yield(3);
+    check_normal();
+}
+
 // A point `share` of the way across the item `ref`, at its middle height.
 ImVec2 point_across(ImGuiTestContext* ctx, const std::string& ref, float share) {
     const ImRect r = ctx->ItemInfo(ref.c_str()).RectFull;
@@ -362,6 +465,7 @@ void test_file_open_error(ImGuiTestContext* ctx) {
 
 void register_tests(Harness& h) {
     uitest::register_test(h, "open-starts-empty", test_open_starts_empty);
+    uitest::register_test(h, "head-row-wraps", test_head_row_wraps);
     uitest::register_test(h, "scroll-the-timeline", test_scroll_the_timeline);
     uitest::register_test(h, "drag-stays-in-the-window", test_drag_stays_in_the_window);
     uitest::register_test(h, "no-star-power", test_no_star_power);

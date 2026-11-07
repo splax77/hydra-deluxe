@@ -160,6 +160,13 @@ inline bool fits_on_line(float w, float spacing) {
                        ImGui::GetCurrentWindow()->WorkRect.Max.x);
 }
 
+// Keeps the next item, `w` wide, on the last item's line when it fits there;
+// otherwise it starts the next line. A row of variable-length pieces wraps
+// instead of running past the window's edge.
+inline void flow_next(float w, float spacing) {
+    if (fits_on_line(w, spacing)) ImGui::SameLine(0.0f, spacing);
+}
+
 // Moves the cursor right so the next control, `w` wide, ends at the right
 // edge of the space left: the table cell's, or the line's. A control wider
 // than that space stays where it is. It places buttons, never text (the
