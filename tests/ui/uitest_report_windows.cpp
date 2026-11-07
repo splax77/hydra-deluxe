@@ -2,9 +2,7 @@
 // open the path report or the comparison window on the sample rows
 // (tests/report_samples.h) through ReportWindowInput, the struct AppState
 // fills in the app, and drive the window by its labels. Their own GUI
-// function draws the windows, and the app's frame leaves them alone meanwhile
-// (drawn_by_fixture); only report-window-states' analysis-off step
-// fills the input from AppState (path_report_input). Among them are the
+// function draws the windows. Among them are the
 // column widths and the window's fit to the screen, from the one column-width
 // rule plan,
 // docs/superpowers/plans/2026-10-10-one-column-width-rule.md (removed; git show 444631e6:docs/superpowers/plans/2026-10-10-one-column-width-rule.md),
@@ -193,14 +191,6 @@ void note_chip_vertices() {
     f.tn_chip_vertices = chip_vertices(ChipToken::tn);
     f.t0_chip_vertices = chip_vertices(ChipToken::t0);
     ImGui::End();
-}
-
-// Runs `Test` with the app's frame leaving the report windows to
-// draw_windows.
-template <void (*Test)(ImGuiTestContext*)>
-void drawn_by_fixture(ImGuiTestContext* ctx) {
-    const ScopedHook alone(hydra::ui::set_app_skips_report_windows_for_test, true);
-    Test(ctx);
 }
 
 // The test's GUI function: both windows, every frame, with their text kept.
@@ -1643,20 +1633,20 @@ const std::vector<TestEntry>& report_window_flow_tests() {
 
 void register_report_window_tests(Harness& h) {
     static const TestEntry kTests[] = {
-        {"report-window-sort", drawn_by_fixture<test_sort>},
-        {"report-window-filters", drawn_by_fixture<test_filters>},
-        {"report-window-states", drawn_by_fixture<test_states>},
-        {"report-window-keys", drawn_by_fixture<test_keys>},
-        {"report-window-close-button", drawn_by_fixture<test_close_button>},
-        {"report-window-hidden-new-result", drawn_by_fixture<test_hidden_new_result>},
-        {"report-windows-both", drawn_by_fixture<test_both>},
-        {"report-window-chip-label", drawn_by_fixture<test_chip_label>},
-        {"report-window-chip-outline", drawn_by_fixture<test_chip_outline>},
-        {"report-window-column-widths", drawn_by_fixture<test_column_widths>},
-        {"report-window-cells-left", drawn_by_fixture<test_cells_left>},
-        {"report-window-header-narrow", drawn_by_fixture<test_header_narrow>},
-        {"report-window-fits-screen", drawn_by_fixture<test_fits_screen>},
-        {"report-window-fresh-state", drawn_by_fixture<test_fresh_state>},
+        {"report-window-sort", test_sort},
+        {"report-window-filters", test_filters},
+        {"report-window-states", test_states},
+        {"report-window-keys", test_keys},
+        {"report-window-close-button", test_close_button},
+        {"report-window-hidden-new-result", test_hidden_new_result},
+        {"report-windows-both", test_both},
+        {"report-window-chip-label", test_chip_label},
+        {"report-window-chip-outline", test_chip_outline},
+        {"report-window-column-widths", test_column_widths},
+        {"report-window-cells-left", test_cells_left},
+        {"report-window-header-narrow", test_header_narrow},
+        {"report-window-fits-screen", test_fits_screen},
+        {"report-window-fresh-state", test_fresh_state},
     };
     for (const TestEntry& e : kTests) {
         ImGuiTest* t = IM_REGISTER_TEST(h.engine, "hydra", e.name);
