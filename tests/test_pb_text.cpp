@@ -99,7 +99,7 @@ TEST_CASE("candidate row: the clock, phrases, end and squeeze of a priced fill")
           "2:51.485 · 2 phrases · ends m136 · early fill 0.0 ms · squeeze in -0.0 ms · squeeze "
           "out -0.0 ms");
     // A squeeze-in exactly on the SP end needs 0.0 ms, the same as a
-    // squeeze-out there (D301).
+    // squeeze-out there (D302).
     Activation on_end;
     on_end.sp_end_steps.push_back({0, *ends[3].deact_tick(), SpEndKind::Activation});
     on_end.sqinouts = {SPSqueeze{SqueezeKind::SqIn, 0.0}};
@@ -175,7 +175,7 @@ TEST_CASE("end choice text: the end measure and the Paths tab's badge words") {
     CHECK(end_choice_text(timing, acts[0]) == "ends m29");
     // A hand-built end on the same deact node with a squeeze-in inside Star
     // Power, which needs no timing, and one exactly on the SP end, which
-    // needs 0.0 ms (D301). Both read their badge's figure. Each hand-built
+    // needs 0.0 ms (D302). Both read their badge's figure. Each hand-built
     // Activation is an E0 (no skips, early-fill offset 0), so its early fill
     // comes first, as on the Paths tab.
     Activation inside;

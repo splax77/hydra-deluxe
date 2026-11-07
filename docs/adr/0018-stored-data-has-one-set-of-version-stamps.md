@@ -82,3 +82,15 @@ D249 lets a record hold a stored failure (ADR 0031's note of the same date).
 `kResultsStamp` stayed where it was: the engine's output did not change, and
 an existing record only gained two NULL columns, which changes nothing it
 holds.
+
+## Note, 2026-10-31: a figure this build can refill is not a bump
+
+D302 changed what the `hardest_ms` column holds, and `kResultsStamp` stayed
+where it was. The decision above says a change to what a record holds bumps
+the stamp. The user's ruling narrows that: the stamp is for a change in the
+analysis, and a summary figure this build can fill back in from the saved path
+is not a bump. `hardest_ms` is the example. The store saves the engine's own
+figure (`engine_hardest_ms`), `shown_timing` applies the needs-timing rule
+when a screen shows it, and `app::fill_saved_hardest` refills old rows once by
+replaying their saved paths. `src/store/stored_versions.h` owns the wording of
+the rule.

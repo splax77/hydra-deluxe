@@ -21,6 +21,8 @@ Hydra Deluxe can analyze your whole library in the background. It then builds a 
 
 It reads `.mid`, `.chart`, `.sng` and `.srb` charts, on any difficulty, with or without Pro Drums and 2x Bass.
 
+The [Path Builder](docs/UserGuide.md#path-builder), a second program that comes with Hydra Deluxe, lets you build your own path by clicking fills and shows what each choice costs against the best path.
+
 ## Getting started
 
 Hydra Deluxe runs on 64-bit Windows. The installer asks for admin rights, because it installs into `C:\Program Files`.

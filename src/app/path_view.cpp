@@ -83,7 +83,7 @@ std::string longest_activation_badge() {
     // activation, so its figure is above minus kEarlyFillSlackMs (is_e0),
     // and at most kEarlyFillReachMs (fill_refuses): inside the squeeze window
     // too. A squeeze that needs no timing (SPSqueeze::needs_no_timing) has a
-    // figure below 0 (D80, D301), so the widest figure is the window's, minus
+    // figure below 0 (D80, D302), so the widest figure is the window's, minus
     // sign included.
     size_t longest = 0;
     for (size_t i = 1; i < std::size(kBadgeWords); ++i)
@@ -101,7 +101,7 @@ std::vector<TextLine> squeeze_sentences(const Activation& act,
         const SPSqueeze& sq = act.sqinouts[i];
         // timing() is the edge the sentence below prints: a SqOut must be hit
         // later than it, a SqIn earlier than it. Which wording applies
-        // follows the one owner, SPSqueeze::needs_no_timing (D301); the
+        // follows the one owner, SPSqueeze::needs_no_timing (D302); the
         // eff. figure's scale side is the rating's, a different question.
         const double t = sq.timing();
         const std::string edge = format_ms(std::fabs(t));

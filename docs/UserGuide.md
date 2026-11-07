@@ -1,6 +1,6 @@
 # Hydra Deluxe User Guide
 
-This guide walks through Hydra Deluxe's screen in the order you meet it: the version bar and the toolbar, the analysis settings, the library and its search, the song panel with its four tabs, analyzing the whole library, and last the reports.
+This guide walks through Hydra Deluxe's screen in the order you meet it: the version bar and the toolbar, the analysis settings, the library and its search, the song panel with its four tabs, analyzing the whole library, the reports, and last the Path Builder, a second program.
 
 It covers Hydra Deluxe only. The public Hydra by DragonDelgar has a different screen; see [how the two differ](differences-from-public-hydra.md). For what the path notation and squeezes mean, see the [public Hydra wiki](https://github.com/DragonDelgar/hydra/wiki).
 
@@ -258,7 +258,7 @@ The timeline runs to the end of the song, worked out the way Clone Hero works it
 
 Each activation is one row. It shows the activation's number, its notation, its measure (like `m32.1.0`), the bars of SP banked when you activate (like `1 bar` or `2 bars`), and a badge for each of its timings, like `squeeze out 163.0 ms` or `early fill 20.0 ms`; a row with an early fill and a squeeze shows both, the fill first. When the right side is too narrow for a row's badges to fit beside its bars, the badges move under the row's measure, still inside the row. If they don't fit on one line there, they wrap onto more lines. Click a row to open it, or use `Expand all` and `Collapse all`. Every row starts closed.
 
-An activation that skips fills keeps its early fill badge, because that timing decides whether the first fill shows up. An early fill with time to spare still gets a badge, with a figure below 0: `early fill -56.2 ms` means your Star Power is ready 56.2 ms before the fill's deadline, so the fill shows up however you hit the activation. This holds while that margin is under 60 ms, the same fills that carry the `E` in the notation; with 60 ms or more to spare the row has no early fill badge. That badge is never orange, and it never counts as a path's hardest timing. A squeeze that happens on its own still gets one too, with a figure of 0 or below: `squeeze in -315.8 ms` means the phrase's last note already lands 315.8 ms before Star Power ends.
+An activation that skips fills keeps its early fill badge, because that timing decides whether the first fill shows up. An early fill with time to spare still gets a badge, with a figure below 0: `early fill -56.2 ms` means your Star Power is ready 56.2 ms before the fill's deadline, so the fill shows up however you hit the activation. This holds while that margin is under 60 ms, the same fills that carry the `E` in the notation; with 60 ms or more to spare the row has no early fill badge. That badge is never orange, and it never counts as a path's hardest timing. A squeeze that happens on its own still gets one too, with a figure below 0: `squeeze in -315.8 ms` means the phrase's last note already lands 315.8 ms before Star Power ends.
 
 An open row shows these, in order:
 
@@ -575,6 +575,103 @@ The search box matches the song, artist and charter. The table starts sorted by 
 Clicking a row selects its song, as in the path report. A `Not in your library` row has no song to select, so clicking it does nothing, the `Up` and `Down` arrows pass over it, and hovering it says `Not in your library`.
 
 The comparison goes out of date the same way the path report does, with the same strips. A batch marks it, and so does opening a song that saves a new result. So does a change to the difficulty, Pro Drums, 2x Bass, Note Shuffle, `1.0 fills`, the score range or the path limit, because those decide which of your results it compared against.
+
+## Path Builder
+
+The Path Builder is a second program that comes with Hydra Deluxe. You open a chart, build your own Star Power path by clicking fills, and see what each choice costs against the best path. It answers what Hydra Deluxe's own paths don't: what your path is worth, and where it loses points.
+
+It has no library. It opens one chart at a time and keeps no results after you close it, unless you save your path to a file.
+
+### Opening a chart in the Path Builder
+
+Run `HydraPathBuilder.exe` from the folder Hydra Deluxe is installed in. To open a chart, use `File` > `Open...` (`Ctrl+O`), drag the chart file onto the window, or give the chart file on the command line. It reads the same `.mid`, `.chart`, `.sng` and `.srb` charts as Hydra Deluxe.
+
+Each open reads your settings from `hydra_settings.ini`, so the chart opens under the Analysis settings you last set in Hydra Deluxe: the difficulty, Pro Drums, 2x Bass, Note Shuffle, `SP cap`, `1.0 fills`, `Path limit` and the rest. The line under the song's title names the chart mode. To use other settings, change them in Hydra Deluxe and open the chart again. The Path Builder never writes to that file: the volume slider starts at the Preview tab's volume, and a change to it lasts until you close the Path Builder.
+
+A chart with no Star Power phrases still opens and plays. It says `This chart has no Star Power phrases, so there is no path to build.` and shows no timeline.
+
+### The scores and buttons
+
+Three scores sit beside the song's title. Hover a figure to read what it means.
+
+| Score | What it is |
+|---|---|
+| `Your score` | what your activations so far score |
+| `Best you can still reach` | keeping your activations and playing the rest perfectly |
+| `Best possible` | the best path Hydra Deluxe finds for this chart |
+
+On Burnout, with nothing built, they read `313,635`, `378,315` and `378,315`. Activate at m20 and they read `327,135`, `378,175` and `378,315`. `Best you can still reach` dropped by 140, so that activation's cost is `−140`. Every cost in the Path Builder means the same thing: the points a choice takes off the best you could still reach. A choice that loses nothing reads `best`. Costs are measured against the best path whatever your `Path limit` is.
+
+`Undo` takes back your last change (`Ctrl+Z`), and `Edit` > `Redo` puts it back (`Ctrl+Y`). `Start over` clears your path. `Finish the rest for me` keeps your activations and lets Hydra Deluxe choose the best rest of the path. `Show Hydra's best path` adds a `Hydra's best` row to the timeline and draws that path faintly on the highway.
+
+If Hydra Deluxe can't make the path you asked for, an orange line under the menu says why, and your path stays as it was.
+
+### The timeline
+
+The timeline shows 3 minutes of the song at a time. A song shorter than 3 minutes fills the whole width. From the top, its rows are the time axis, `Section`, `Star Power saved`, `Hydra's best` when you tick it, and `Your activations`.
+
+`Star Power saved` graphs the phrases you have saved through the song. Each star marks the start of a Star Power phrase. The dashed line is the 2<!-- default: kSpActivationBars --> phrases you need to activate, and after your last activation the stretches at or above it are shaded. Hover the row's name to see these marks with their words.
+
+`Your activations` shows your activations as numbered bands, each starting at the fill it was made from, and every fill as a dot. Hover the row's name to see what each look of a fill means:
+
+| Fill | Meaning |
+|---|---|
+| Green, with `best` under it | `Best place to activate` |
+| Yellow | `Costs under 1% of the best score` (the `Best possible` score) |
+| Red | `Costs more` |
+| Blue | `Your activation` |
+| Hollow ring | `Can't activate here (hover to see why)` |
+| Small grey dot | `Before your last activation` |
+
+Costs arrive one fill at a time after each change to your path, earliest fill first. Until its cost arrives, a fill you can activate at has no cost colour.
+
+Hover a fill to read its card. The pointer picks the nearest fill anywhere along the row, so you don't have to land on the dot. On Burnout with nothing built, the card for m20 reads `m20 · 0:25.123`, then `Phrases saved` 2, `Best finish here` 378,175 and `Cost` −140, then `Best choice now is m32 (378,315).` and `Hydra would end it at m24.`
+
+A fill you can't activate at gets a card saying why, like `You have 1 phrase saved here. You need 2 to activate.` You build left to right, so a fill before your last activation says `This is before your last activation. You build left to right; Undo or Remove goes back a step.`
+
+### Moving through the song
+
+Hovering never moves the song. It shows the card and the highlight, and nothing else changes. Only `Play` or `Space` starts sound.
+
+Click the time axis or the `Section`, `Star Power saved` or `Hydra's best` row to move the song there. Hold and drag along them to move through the song, with the highway following. A drag stops at the edge of the timeline, and the timeline doesn't scroll under it. If the song is playing, a press holds it quiet until you let go, then it plays on from there.
+
+The `Your activations` row is for building, so a press there never drags. A click picks the nearest fill:
+
+| You click | What happens |
+|---|---|
+| A fill you can activate at | Makes the activation there, then pauses with the highway on the fill |
+| A fill you can't activate at | Pauses with the highway on the fill and makes no activation |
+| A fill you already activated at | Opens that activation in the `Your activations` panel, then pauses with the highway on the fill |
+
+A click on a fill on the highway does the same. A click on a numbered band opens its activation in the panel and moves the song there.
+
+To see another part of the song, use the `Scroll (or mouse wheel)` row under the timeline. Drag its thumb, click beside the thumb or press ◀ or ▶ to move by what the timeline shows, 3 minutes on a long song. A notch of the mouse wheel over the rows moves a third of that. The readout shows what you're looking at, like `0:00 – 2:10 of 2:10` on Burnout.
+
+While the song plays, the timeline follows it. When the playhead passes three quarters of the way across, the timeline turns the page and puts the playhead a quarter of the way in. If you scroll by hand while it plays, the timeline stops following until you press `Play` again.
+
+Under the timeline sits the same panel as the [Preview tab](#preview-tab), with the same buttons, keys and boxes, and it draws your path.
+
+### Where to activate next
+
+`Where to activate next` lists every fill you can activate at after your last activation, cheapest first. A row shows the fill's measure and clock, the phrases saved there, where Hydra Deluxe would end the activation, any timing it needs and the cost. On Burnout with nothing built, m32 reads `0:40.945 · 3 phrases · ends m38 · squeeze out 163.0 ms` and `best`. A row still waiting for its cost reads `...` and sits below the rows that have one.
+
+Hover a row to light its fill on the timeline. Click a row to activate there: the timeline scrolls to the fill if it's out of view, and the song pauses on it.
+
+When no fill is left, the list says `No fill after your last activation can be activated. Your path is finished.`
+
+### The `Your activations` panel
+
+The `Your activations` panel lists your activations in order. Each row shows where the activation starts and where its Star Power ends, the phrases it spends, its timings in the same words as the Paths tab's badges, and its cost, like `m70 → m78` `3 phrases · squeeze in 0.0 ms` `best` on Smash Mouth's "I'm A Believer".
+
+Click a row to open it, and the song moves to that activation. When an activation can end in more than one place, its open row lists them under `End it at:`, one line each with its cost, and the one you kept is marked. On that same activation the lines read `ends m78 · squeeze in 0.0 ms` with `best` and `ends m76 · squeeze out 0.0 ms` with `−2,680`. Click a line to change where your last activation ends. An earlier activation shows its lines too, greyed and not clickable, because you build left to right.
+
+The open row also has a button: `Remove` on your last activation, and `Remove this and later ones` on an earlier one.
+
+An activation that needs tighter timing than your `Path limit` keeps its cost and gets a violet note in its open row. On White Washed at the default 10 ms<!-- default: Settings::mslimit_value --> limit, one activation of the best path reads `needs 130.4 ms, your limit is 10 ms`.
+
+### Saving and copying a path
+
+`Edit` > `Copy` (`Ctrl+C`) copies your path as the same text Hydra Deluxe's `Copy path` writes. `Edit` > `Paste` (`Ctrl+V`) makes a copied path yours. It reads that text and the short form, like `3- 1 2`. `File` > `Save path...` writes your path to a `.json` file, and `File` > `Open path...` reads one back. `Undo` takes back a paste or an opened file. A path that doesn't fit the chart is refused: an orange line says why, and your path stays as it was.
 
 ## Scoring rules (`hydra_rules.ini`)
 

@@ -723,7 +723,7 @@ TEST_CASE("activation badges: one per timing, the fill first, then each squeeze"
     CHECK(badge_texts(free_in) == Texts{"squeeze in -315.8 ms"});
     CHECK(badge_warns(free_in) == Warns{false});
     CHECK_FALSE(free_in.needs_timing());
-    // A squeeze-in exactly on the SP end is not free: it needs 0.0 ms (D301).
+    // A squeeze-in exactly on the SP end is not free: it needs 0.0 ms (D302).
     // Its badge reads the same, grey, but it is required, and the path button
     // shows its 0.0 ms.
     Activation on_end_in = no_timing();
@@ -975,7 +975,7 @@ TEST_CASE("squeeze sentences: SqIn, SqOut, and what a squeeze-out costs") {
     CHECK(s.warn);
 }
 
-// D301: a squeeze exactly on the SP end needs 0.0 ms, a squeeze-in the same
+// D302: a squeeze exactly on the SP end needs 0.0 ms, a squeeze-in the same
 // as a squeeze-out.
 TEST_CASE("squeeze sentences at the SP end: the squeeze-in earns, the squeeze-out earns") {
     HydraRecord rec;

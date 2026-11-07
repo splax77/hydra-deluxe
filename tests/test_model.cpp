@@ -329,7 +329,7 @@ TEST_CASE("Activation::hardest: the part with its ms, a tie names the squeeze") 
     CHECK_FALSE(plain().hardest().has_value());
 }
 
-// D51 Q4; D301.
+// D51 Q4; D302.
 TEST_CASE("Activation::needs_timing: squeezes inside and slack fills need none") {
     auto plain = [] {
         Activation a;
@@ -347,7 +347,7 @@ TEST_CASE("Activation::needs_timing: squeezes inside and slack fills need none")
     CHECK_FALSE(free_in.difficulty().has_value());
 
     // A squeeze-in dead on the SP end still needs 0.0 ms, like the
-    // squeeze-out on the same note (D301).
+    // squeeze-out on the same note (D302).
     Activation on_end_in = plain();
     on_end_in.sqinouts = {SPSqueeze{SqueezeKind::SqIn, 0.0}};
     CHECK(on_end_in.needs_timing());
@@ -847,7 +847,7 @@ TEST_CASE("backend leeway: +2.999 ms is counted, exactly +3.0 ms is not") {
     CHECK(row.summarystr(false, 85.0, lw) == "Hard (uncounted)");
 }
 
-// D301.
+// D302.
 TEST_CASE("SPSqueeze::needs_no_timing: a squeeze at exactly 0 needs 0.0 ms, one inside needs none") {
     // A SqIn needs no timing only once its note is already inside SP, before
     // the end; on the end it needs 0.0 ms.
@@ -862,7 +862,7 @@ TEST_CASE("SPSqueeze::needs_no_timing: a squeeze at exactly 0 needs 0.0 ms, one 
     CHECK(SPSqueeze{SqueezeKind::SqOut, 0.001}.needs_no_timing());
 }
 
-// D301: a timing of 0.0 ms is still a timing to hit.
+// D302: a timing of 0.0 ms is still a timing to hit.
 TEST_CASE("timing_needs_hitting: 0.0 ms and more need hitting, below 0 does not") {
     CHECK_FALSE(timing_needs_hitting(-0.001));
     CHECK(timing_needs_hitting(0.0));
