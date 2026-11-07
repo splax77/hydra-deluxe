@@ -111,13 +111,14 @@ TEST_CASE("app_shell: the [Hydra][Window] text round-trips") {
 
 // ---- Report windows: report_placement --------------------------------------
 //
-// The user's monitor from the 2026-10-10 handoff: 2,560 x 1,440, here with a
-// stand-in 48-pixel taskbar at the bottom, so the work area is 2,560 x 1,392.
+// The user's monitor, 2,560 x 1,440, as the hydra_ui.ini line in the first
+// test below shows. Here it has a stand-in 48-pixel taskbar at the bottom, so
+// the work area is 2,560 x 1,392.
 const std::vector<ScreenRect> kUserMonitor = {{0, 0, 2560, 1392}};
 // The same monitor with a 1,920 x 1,080 one to its right, 40-pixel taskbar.
 const std::vector<ScreenRect> kUserTwoMonitors = {{0, 0, 2560, 1392}, {2560, 0, 4480, 1040}};
 // The frame Windows puts around a report window at 96 DPI. Measured on
-// 2026-10-10 (Windows 11, build 26200) with one call,
+// Windows 11, build 26200, with one call,
 // AdjustWindowRectExForDpi(&r, WS_OVERLAPPEDWINDOW, FALSE, WS_EX_APPWINDOW, 96)
 // on an empty rectangle, which came back {-8, -31, 8, 8}.
 const hydra::ui::FrameInsets kFrame96 = {8, 31, 8, 8};
@@ -408,7 +409,7 @@ TEST_CASE("app_shell: hydra_ui.ini remembers the library split, not the child's 
     const std::filesystem::path dir = hydra::os_path(testtemp::temp_dir("app_shell_split"));
     const std::filesystem::path ini = dir / "hydra_ui.ini";
     {
-        // What the bug left: the library child at the largest split, no share.
+        // A saved library child at the largest split, with no share.
         std::ofstream f(ini);
         f << "[Window][Hydra/##library_06E76512]\nSize=2064,1313\n\n";
     }

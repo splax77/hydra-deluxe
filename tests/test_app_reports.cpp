@@ -1,7 +1,7 @@
 // Tests for ui/app_state's two reports in memory (D103): the path report and
 // the leaderboards comparison, how they build, cancel, close and go out of
-// date, and the report that follows a batch. Split from test_app_click.cpp;
-// the shared fixtures are in app_state_fixtures.h.
+// date, and the report that follows a batch. The shared fixtures are in
+// app_state_fixtures.h.
 
 #include "doctest.h"
 
@@ -278,8 +278,8 @@ TEST_CASE("the path report goes out of date on a batch or a setting it was built
     app->settings.auto_open_report = false;
     app->commit_settings();
 
-    // The chart mode is one it reads: the page lists one profile (D115,
-    // the user's answer 2).
+    // The chart mode is one it reads: the page lists one profile (D115
+    // item 5, the plan's question 2).
     app->settings.view_prodrums = !app->settings.view_prodrums;
     app->commit_settings();
     CHECK(app->path_report.out_of_date == ReportOutOfDate::Settings);
