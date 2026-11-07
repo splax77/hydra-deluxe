@@ -16,9 +16,9 @@ namespace {
 // when the activation has one (-1 or no key means none). Only without it is
 // the SqOut entry's offset read, for dumps written before the tick existed;
 // `score` in tools/replay.cpp resolves that offset with resolve_window_sqout.
-// That bare offset is the one deliberate exception to the record reader's
-// rule (windows_for_path drops a window it cannot name a squeeze-out chord
-// for); only an old or hand-edited JSON carries one, and the CLI prints which
+// That bare offset is the one deliberate exception to the record reader
+// (windows_for_path takes a squeeze-out's tick and offset from one stored
+// row); only an old or hand-edited JSON carries one, and the CLI prints which
 // chord it picked, so the user sees the guess. The writer below still writes
 // both, so an older hydra_replay can read a new dump.
 void read_sqout(const nlohmann::json& act, const std::string& where, ReplayWindow& w) {
@@ -75,13 +75,14 @@ std::vector<ReplayWindow> windows_from_json(const nlohmann::json& path) {
         read_sqout(act, where, w);
 
         // The phrases this window squeezed in (D34). No key (a dump written
-        // before the field) reads as none, as it always did.
+        // before the field) reads as none.
         if (act.contains("sqin_ticks") && act["sqin_ticks"].is_array())
             for (const nlohmann::json& t : act["sqin_ticks"])
                 if (t.is_number()) w.sqin_ticks.push_back(t.get<int64_t>());
 
-        // A dumped window came off a record, so it says how it ended (D36).
-        // No key (an older dump, or a typed list) reads as a typed window.
+        // A dumped window came off a record, so it says how it ended (ADR
+        // 0014). No key (an older dump, or a typed list) reads as a typed
+        // window.
         w.from_record = act.value("from_record", false);
         out.push_back(w);
     }
@@ -95,8 +96,8 @@ nlohmann::json score_json(const ReplayScore& s) {
 }
 
 // The path list `dump` and `target` both print. One shape, so anything that
-// reads dump's JSON reads target's too. The chart timing is no longer read
-// here: nominal_deact_tick comes off the stored history (nominal_end()).
+// reads dump's JSON reads target's too. The chart timing is not read here:
+// nominal_deact_tick comes off the stored history (nominal_end()).
 nlohmann::json paths_json(const std::vector<const Path*>& all, const SongTiming& /*timing*/) {
     nlohmann::json paths = nlohmann::json::array();
     int index = 0;

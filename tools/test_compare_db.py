@@ -1,11 +1,12 @@
 """Tests for tools/compare_db.py, the whole-library "identical results" check.
 
 Each test builds two tiny databases by hand and runs the script on them the
-way a task does, reading its printed lines and its exit code. The tables
-below are a cut-down stand-in for the store's, enough to give compare_db the
-shapes it has to handle: a table keyed by result_id, a table that refers to
-result_id, a plain keyed table and the scan-order charts table. The record
-tables (RECORD_SCHEMA) add a table that refers to profiles by profile_id.
+way a task does, reading its printed lines and its exit code. SCHEMA is a
+cut-down stand-in for an older store layout, which compare_db still has to
+compare. It gives compare_db these shapes: a table keyed by result_id, a table
+that refers to result_id, a plain keyed table and the scan-order charts table.
+The record tables (RECORD_SCHEMA) stand in for the layout the store writes
+today, and add a table that refers to profiles by profile_id.
 """
 
 import sqlite3
@@ -70,7 +71,8 @@ def make_db(path, order, payload_b=b"\x10\x11\x12"):
     con.close()
 
 
-# The summary-only layout: results without structure, and no detail tables.
+# The summary-only layout of ADR 0026: results without structure, and no detail
+# tables. It is newer than SCHEMA, but the store no longer writes it either.
 NEW_SCHEMA = """
 CREATE TABLE results (
   result_id INTEGER PRIMARY KEY, hyhash TEXT NOT NULL, chartmode TEXT NOT NULL,

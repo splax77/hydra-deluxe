@@ -1,9 +1,9 @@
 // The JSON shapes hydra_replay writes and reads: the "paths" array of a `dump`
 // or `target` file, one score split, and the windows read back out of a path.
 //
-// These used to live in core/replay.h, which pulled the whole JSON library
-// into every file that includes the replay, the Preview's among them. Only
-// hydra_replay and tests/test_replay use them, so they live beside the tool.
+// Only hydra_replay and tests/test_replay use them, so they live beside the
+// tool. In core/replay.h they would pull the whole JSON library into every
+// file that includes the replay, the Preview's among them.
 
 #ifndef HYDRA_TOOLS_REPLAY_JSON_H
 #define HYDRA_TOOLS_REPLAY_JSON_H
@@ -24,11 +24,11 @@ namespace hydra {
 // ms. A window with an offset but no sqout_tick must go through
 // resolve_window_sqout before it is replayed.
 //
-// This exists because the only other way to hand a path to `hydra_replay
-// score` was to retype it as an "act:deact,..." string, and that string used
-// to drop the squeeze-out offset. Without the offset the squeezed phrase note
-// is doubled as if it were still inside Star Power, so the score comes out
-// high. Reading the file keeps every field.
+// This exists because the other way to hand a path to `hydra_replay score` is
+// to retype it as an --acts string, where the squeeze-out offset is optional.
+// Without the offset the squeezed phrase note is doubled as if it were still
+// inside Star Power, so the score comes out high. Reading the file keeps
+// every field.
 //
 // Throws std::runtime_error when the JSON is not that shape: no "activations"
 // array, an activation missing act_tick or deact_tick, or a deact_tick of -1,

@@ -624,9 +624,9 @@ def why_no_live():
 SMOKE = hm.REPO / "tests" / "ui" / "scripts" / "smoke.txt"
 NO_LIVE = why_no_live()
 
-# Pinned from the real exe's replies on 2026-10-14. The engine's log lines
-# start with a frame number, which varies, so a failure is pinned by its first
-# line and the engine's message.
+# Pinned from the real exe's replies in one run. The engine's log lines start
+# with a frame number, which varies, so a failure is pinned by its first line
+# and the engine's message.
 UNKNOWN_BUTTON = "failed: click No such button\n"
 UNKNOWN_BUTTON_LOG = "Error 'Unable to locate item: '//Hydra/No such button' (0x00000000)'"
 
