@@ -773,7 +773,7 @@ TEST_CASE("midi: the last note end reads each instrument once, from track 1, by 
     CHECK_FALSE(hydra::is_instrument_track_name("EVENTS"));
 
     // Below the gems: guitar animation (50) is not a note, a vocal note (50)
-    // is. The highest gem (101) and force strum (102) count; 103 does not.
+    // is. Pitches 101 and 102 count; 103 does not.
     const std::vector<uint8_t> low = smf_tracks({
         concat({set_tempo(), end_of_track()}),
         concat({track_name("PART GUITAR"), after(100, note_on(60, 100)), after(100, note_off(60)),

@@ -21,7 +21,7 @@ Where Hydra and the game differ and no ruling covers it, the block points at the
 Every block carries exactly one of these four labels, and the evidence the label asks for.
 
 - **Proven in the game's code:** the function and address, and the annotated file.
-- **Proven in a live run:** the run, its date and its result file.
+- **Proven in a live run:** the run, its date and its result file. A public video, cited by its title and YouTube id, counts as the result file.
 - **Hydra assumes it, never checked:** the Hydra code that holds the assumption.
 - **Unknown.** The block's evidence line says where we looked. A claim nobody checked is Unknown, never a fact.
 
@@ -116,7 +116,7 @@ Every rule is one block with a stable id, so a card, a test or a pointer can nam
 
 Rule: <the rule in plain words, one or two sentences>
 Label: <exactly one of: Proven in the game's code | Proven in a live run | Hydra assumes it, never checked | Unknown>
-Evidence: <for code: the annotated file under code/ and the lines; for a live run: the run, its date, its result file; for assumed: the Hydra code that holds it; for unknown: where we looked>
+Evidence: <for code: the annotated file under code/ and the lines; for a live run: the run, its date, its result file or public video; for assumed: the Hydra code that holds it; for unknown: where we looked>
 Game code (6142): <Class.member or #<TypeDefIndex>.member>, RVA `0x20F6800`, `code/6142/sp_update_20F6800.asm` lines 41 to 58; or "not found: looked in ..."
 Hydra: <owner function or constant, file:line, e.g. `activation_initial_end_times` in src/search/graph.h; or "no owner: <where we looked>">
 Ruling: <D-number or ADR with the user's quoted words, or "open split: see questions page Q-nn", or "none needed: same rule">
