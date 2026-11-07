@@ -1,8 +1,6 @@
-// The main window: settings panel (chart folders, view/search controls,
-// scan/analyze buttons) and the paginated library table. Also owns the two
-// progress modals those buttons kick off (scan, batch analyze). Mirrors
-// hydra_app.py's view_main + build_main_ui's "mainwindowcontent" group plus
-// the "scanprogress"/"batchprogress" modal windows.
+// The main window: the version bar, the toolbar, the batch strips, the library
+// beside the song panel, and the scan, batch confirm and DM picker modals. It
+// also draws the report windows, each its own OS window.
 
 #ifndef HYDRA_UI_LIBRARY_VIEW_H
 #define HYDRA_UI_LIBRARY_VIEW_H

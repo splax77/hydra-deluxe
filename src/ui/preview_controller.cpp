@@ -419,8 +419,9 @@ bool PreviewController::playing() const { return transport_.playing(); }
 double PreviewController::position_ms() const { return transport_.now_ms(); }
 
 // Where playback stops: the song's length, as PreviewTransport::length_ms
-// reads it (app::song_length_ms; D255, the user's answer 5). Every reader in
-// this class asks here.
+// reads it (app::song_length_ms; D255, the user's answer 5). Everything in
+// this class that asks where playback ends asks here; the scene jobs take the
+// transport's song_length_ms() instead.
 double PreviewController::playback_end_ms() const { return transport_.length_ms(); }
 
 void PreviewController::seek_ms(double ms) { transport_.seek_ms(ms); }

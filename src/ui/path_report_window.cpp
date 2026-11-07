@@ -16,7 +16,7 @@
 #include "app/path_report_view.h"
 #include "app/user_messages.h"
 #include "imgui.h"
-#include "ui/app_state.h"  // path_report_input
+#include "ui/app_state.h"  // AppState
 #include "ui/report_window.h"
 
 namespace hydra::ui {

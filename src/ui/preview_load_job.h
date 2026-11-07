@@ -308,7 +308,8 @@ public:
 
     struct Output {
         app::PreviewScene scene;
-        // build_track_state(scene, track_opts), built on the worker.
+        // A copy of the base's timeline with its overlay fields rebuilt
+        // (render::rebuild_overlay_fields) on the worker.
         render::TrackState track_state;
         render::TrackStateOptions track_opts;
         // The base this output was built over: the one the job was given, or
