@@ -125,6 +125,8 @@ Recommendation: accept it from the LS-D2d run. The step's question was whether t
 
 ## Questions
 
+The user answered all seven on 2026-11-06, each with the recommended side: "Yes, take all seven" (session 5b92c813). So LS-K5 is accepted from the LS-D2d run, the six placeholders stay alive, the end-chord lead is 15 ms, chord 405's first try is kick only, and the Out of scope list stands.
+
 1. **LS-K5.** Recommended: accept it from the LS-D2d run, as design point 9 says, and let LS-O5's repeat of `ch_sp_between` confirm it. The other side: run LS-K5 on its own, which costs one more 4.5-minute launch and tells us nothing the LS-D2d rows did not.
 2. **The id-6 route.** Recommended: six placeholder controllers kept alive for the run and destroyed at teardown (design point 1). The other side: the handoff's create-and-destroy six, which depends on how Rewired numbers controllers.
 3. **The end-chord lead.** Recommended: 15 ms early for a chord whose tick equals an activation's end tick, from the 37.5 ms front window (at least, TM-19) and the 3 ms frame. The other side: a smaller lead such as 8 ms, closer to how the run missed, or the late fill press of design point 3. The number is the user's to set; the code's one home is a constant beside `PRESS_LEAD_MS`, and no tool argument repeats it.
