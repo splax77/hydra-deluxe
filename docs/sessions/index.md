@@ -1,6 +1,6 @@
 # Session index
 
-3 sessions are kept locally and have no line here.
+4 sessions are kept locally and have no line here.
 
 - 2026-08-09 62055a3c Freeze error diagnosis (2026-08-09) | batch-running, library, path, report-table, performance, tests | Ended with the freeze fixed, the library analyzed to 18,022 records, and a sortable path report with a score column. The conversation shows no commit, so the changes sit in the working tree.
 - 2026-08-10 571ec5d5 Hydra uncapped starpower version (2026-08-10) | sp-cap, path, performance, batch-running | Ended at 12:42 UTC with all six big charts finishing uncapped, the slowest in 98.8 seconds.
@@ -460,6 +460,10 @@
 - 2026-11-07 70bddae3 Stale comment audit verify waves handoff (2026-11-07) | clone-hero, docs, agents, review, scan | The session ended with a handoff, at the user's request, after the triage script was built and before the closure checkers were launched. [write-back]
 - 2026-11-07 f1fabefd Optimal score launch handoff (2026-11-07) | clone-hero, agents, hooks, planning, review | The session ended with a handoff, after LS-O1 passed on the live game and the reload work merged to main; the user did not give a go for LS-R1 or LS-R2 here.
 - 2026-11-07 91e7fdd7 Stale comment work (2026-11-07) | docs, agents, review, hooks | The session ended with a handoff written and committed on its own branch; no comment was edited and nothing was pushed.
+- 2026-11-07 6c03736f CH reload live steps handoff (2026-11-07) | clone-hero, performance, planning, agents | Ended at a handoff: the reload steps mostly passed, the one-call chart run failed, and a timing plan was reviewed and handed off without being built.
+- 2026-11-07 b8b2ae58 Stale comment audit handoff (2026-11-07) | docs, hooks, review, agents | Ended in a handoff: wave 1 and eight of wave 2's ten groups were merged to main, and FX-19 and FX-20 were held at the real-app gate. Nothing was pushed.
+- 2026-11-07 e0cb9a19 Stale comment wave 2 handoff (2026-11-07) | hooks, agents, docs, review | Ended at a handoff after waves 3 and 4 were merged, with waves 5 and 6 still to come.
+- 2026-11-07 7d216054 CH run timing build handoff (2026-11-07) | clone-hero, performance, planning, agents | Ended at a handoff: five timing tasks were merged, the no-admin recorder plan was written and approved, and no live step has run since the refused first attempt.
 
 ## Proposed tags
 
