@@ -185,7 +185,7 @@ void note_chip_vertices() {
     using hydra::app::report::ChipToken;
     Fixture& f = fixture();
     ImGui::SetNextWindowPos(ImGui::GetMainViewport()->WorkPos);
-    ImGui::SetNextWindowSize(ImVec2(400.0f, 200.0f));
+    ImGui::SetNextWindowSize(ImVec2(400.0f, 160.0f));
     ImGui::Begin("###chipoutline", nullptr, ImGuiWindowFlags_NoSavedSettings);
     f.tn_chip_vertices = chip_vertices(ChipToken::tn);
     f.t0_chip_vertices = chip_vertices(ChipToken::t0);
