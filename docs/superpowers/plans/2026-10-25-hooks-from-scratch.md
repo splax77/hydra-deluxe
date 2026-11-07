@@ -1,6 +1,6 @@
 # Hooks from scratch (2026-10-25)
 
-Task HOOKS-FROM-SCRATCH-PLAN, session dee9c61e. This plan replaces an earlier hook redesign plan, which the user rejected because it grew the system; that plan was never committed, so there is no copy to read. Nothing here is built yet.
+Task HOOKS-FROM-SCRATCH-PLAN, session dee9c61e. This plan replaces an earlier hook redesign plan, which the user rejected because it grew the system; that plan was never merged to main and lives only on the branch `hook-redesign-plan`; read it with `git show 17ff694e:docs/superpowers/plans/2026-10-25-hook-redesign.md`. Nothing here is built yet.
 
 **Approved by the user on 2026-10-25:** "i want to be able to give explicit approval for a full library run. otherwise, approve as reommended and create a hjandoff for the next session to build". So Q1 keeps the typed `allow library run` (section 2 says how), and Q2 to Q8 take the recommendation written under each. The `gh api` deny rule that blocks read-only calls is left for T7 to narrow to the posting forms.
 
