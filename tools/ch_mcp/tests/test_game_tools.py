@@ -30,6 +30,7 @@ from tools.ch_mcp import game_files as G  # noqa: E402
 from tools.ch_mcp import game_tools as GT  # noqa: E402
 from tools.ch_mcp import install_chart as I  # noqa: E402
 from tools.ch_mcp import frida_attach as FA  # noqa: E402
+from tools.ch_mcp import quiet as Q  # noqa: E402
 from tools.ch_mcp.tests.test_bot_run import (  # noqa: E402
     ORIGINAL, PATCHED, FakeLaunchAgent, Rig, StuckGame, _read, _write, wire_human)
 from tools.ch_mcp.tests.test_game_files import FakeReg  # noqa: E402
@@ -57,6 +58,38 @@ SCORE_JSON = {"chords": [
     {"index": 1, "ms": 1500.0,
      "notes": [{"color": "Kick", "cymbal": False, "dynamic": "none"}]},
 ]}
+
+
+class FakeQuiet:
+    """What ch_start's quiet check reads, with a record of every reader called."""
+
+    def __init__(self, cpu=3.0):
+        self.cpu = cpu
+        self.calls = []
+
+    def env(self):
+        def called(name, value):
+            self.calls.append(name)
+            return value
+
+        return Q.QuietEnv(
+            list_processes=lambda: called("processes", []),
+            sample_cpu=lambda seconds: called(("sample", seconds), self.cpu),
+            scan_folders=lambda: called("scan", Q.FolderScan(folders=(), entries=0, took_s=0.0)),
+            free_memory_bytes=lambda: called("memory", 1024 ** 3),
+            power_scheme=lambda: called("power", "Balanced"))
+
+
+_quiet_patch = mock.patch.object(Q, "LIVE_ENV", FakeQuiet().env())
+
+
+def setUpModule():
+    # ch_start's check would otherwise read this machine and wait out its sample.
+    _quiet_patch.start()
+
+
+def tearDownModule():
+    _quiet_patch.stop()
 
 
 class RecordingDriver(InputDriver):
@@ -152,6 +185,69 @@ class GameToolsTest(unittest.TestCase):
         self.assertEqual(t.tools.session_dir(), folder)
         t.tools.ch_start(t.r.song)
         self.assertEqual(os.path.dirname(t.backup_dir()), t.tools.session_dir())
+
+    # -- the quiet check ----------------------------------------------------------
+
+    def test_a_machine_that_is_not_quiet_refuses_with_no_folder_no_backup_no_launch(self):
+        t = ToolRig(self.tmp)
+        with mock.patch.object(Q, "LIVE_ENV", FakeQuiet(cpu=40.0).env()):
+            reply = t.tools.ch_start(t.r.song)
+        self.assertTrue(reply.startswith("refused: the machine is not quiet: "), reply)
+        self.assertIn("CPU: 40.00 percent", reply)
+        self.assertTrue(reply.endswith("; hold the other sessions' builds and call ch_start again"))
+        self.assertFalse(os.path.exists(t.scratch_root))
+        self.assertIsNone(t.tools._scratch)
+        self.assertIsNone(t.tools._run)
+        self.assertEqual(t.r.launch.commands, [])
+        self.assertEqual(t.tools.ch_stop(),
+                         "no run is open and no backup was taken; nothing to restore")
+
+    def test_a_quiet_machine_puts_the_report_before_the_launch_lines(self):
+        t = ToolRig(self.tmp)
+        lines = t.tools.ch_start(t.r.song).splitlines()
+        cpu = lines.index("CPU: 3.00 percent averaged over 5 s (limit 15 percent)")
+        backup = lines.index(f"backup folder: {t.backup_dir()}")
+        starting = next(i for i, line in enumerate(lines) if line.startswith("starting: "))
+        self.assertEqual(lines[0], "no compiler running")
+        self.assertLess(cpu, backup)
+        self.assertLess(backup, starting)
+        self.assertIn("free memory: 1.0 GB", lines)
+        self.assertIn("power scheme: Balanced", lines)
+
+    def test_the_check_runs_once_and_waits_quiet_sample_s(self):
+        fake = FakeQuiet()
+        t = ToolRig(self.tmp)
+        with mock.patch.object(Q, "LIVE_ENV", fake.env()):
+            t.tools.ch_start(t.r.song)
+        self.assertEqual(fake.calls.count(("sample", Q.QUIET_SAMPLE_S)), 1)
+
+    def test_an_open_run_is_stopped_first_so_the_game_is_not_read_as_load(self):
+        t = ToolRig(self.tmp)
+        t.tools.ch_start(t.r.song)
+        scratch = t.tools._scratch
+        in_scratch = os.listdir(scratch)
+        with mock.patch.object(Q, "LIVE_ENV", FakeQuiet(cpu=40.0).env()):
+            lines = t.tools.ch_start(t.r.song).splitlines()
+        self.assertEqual(lines[0], "a run was open; stopping it first:")
+        self.assertIn(f"{G.SETTINGS}: unchanged", lines)
+        self.assertTrue(lines[-1].startswith("refused: the machine is not quiet: "))
+        self.assertIsNone(t.tools._run)
+        self.assertEqual(t.tools._scratch, scratch)
+        self.assertEqual(os.listdir(scratch), in_scratch)
+        self.assertEqual([d for d in os.listdir(t.scratch_root)
+                          if d.startswith(GT.SCRATCH_PREFIX)], [os.path.basename(scratch)])
+        self.assertFalse(os.path.exists(os.path.join(t.scratch_root, GT.OPEN_RUN_MARKER)))
+
+    def test_a_refusal_with_no_need_of_the_machine_takes_no_sample(self):
+        fake = FakeQuiet()
+        t = ToolRig(self.tmp)
+        with mock.patch.object(Q, "LIVE_ENV", fake.env()):
+            self.assertEqual(t.tools.ch_start(human=True), B.HUMAN_NEEDS_SONG)
+        self.assertEqual(fake.calls, [])
+
+    def test_ch_start_has_no_argument_that_skips_the_check(self):
+        self.assertEqual(list(inspect.signature(GT.GameTools.ch_start).parameters),
+                         ["self", "song_folder", "player", "profile", "human"])
 
     # -- ch_start ----------------------------------------------------------------
 
@@ -1129,6 +1225,15 @@ class GameToolsTest(unittest.TestCase):
         release.set()
         t.tools._play.thread.join(THREAD_CAP_S)
 
+    def test_the_chain_makes_no_call_into_the_quiet_check_and_no_sampler_wait(self):
+        t, _events, _seen = self._chain_rig()
+        fake = FakeQuiet()
+        with mock.patch.object(Q, "LIVE_ENV", fake.env()), \
+                mock.patch.object(Q, "quiet_report") as check:
+            self._run(t)
+        check.assert_not_called()
+        self.assertEqual(fake.calls, [])
+
     def test_the_tool_has_no_lead_argument(self):
         self.assertEqual(list(inspect.signature(GT.GameTools.ch_run_chart).parameters),
                          ["self", "song_folder", "score_json", "kit_player", "decline_mode",
@@ -1493,7 +1598,7 @@ class MarkerTest(unittest.TestCase):
 
     def test_a_song_with_no_length_never_takes_a_backup_or_a_marker(self):
         with mock.patch.object(B, "song_length_ms", side_effect=B.SongLengthMissing("no length")):
-            self.assertEqual(self.t.tools.ch_start(self.t.r.song), "no length")
+            self.assertEqual(self.t.tools.ch_start(self.t.r.song).splitlines()[-1], "no length")
         self.assertFalse(os.path.exists(self.path))
 
     def test_a_failed_start_whose_restore_fails_keeps_the_marker_for_ch_stop(self):

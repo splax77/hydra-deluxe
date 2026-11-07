@@ -28,7 +28,7 @@ import threading
 import time
 from typing import Any, Callable, List, Optional, Sequence, Tuple, Union
 
-from tools.ch_mcp import bot_run, compare_scorestats, foreground, game_files, install_chart
+from tools.ch_mcp import bot_run, compare_scorestats, foreground, game_files, install_chart, quiet
 from tools.ch_mcp.frida_tools import READ_CAP_S
 from tools.ch_probe import constants as C
 from tools.ch_probe import engine_finder
@@ -397,14 +397,17 @@ class GameTools:
 
     def ch_start(self, song_folder: Optional[str] = None, player: str = bot_run.DEFAULT_PLAYER,
                  profile: Optional[str] = None, human: bool = False) -> str:
-        """Back up the user files, set settings.ini's pause_on_focus_lost
+        """Check the machine is quiet (quiet.quiet_report), back up the user
+        files, set settings.ini's pause_on_focus_lost
         line for the run (the backup puts the user's line back), then start
         the game minimized and start the foreground watch: with a song folder
         the bot plays it from the command line; with none the game opens at
         its menu. With `human` and a song folder a human player plays it
         instead (bot_run.launch_human), and `human` with no song folder is
         refused before anything runs. An open run is stopped and restored
-        first."""
+        first, so its game is not read as load. A machine that is not quiet
+        refuses the launch before any backup or folder, and a quiet one puts
+        the report's lines first in the reply."""
         with self._lock:
             refusal = bot_run.human_refusal(human, song_folder)
             if refusal is not None:
@@ -418,6 +421,11 @@ class GameTools:
                 if not self._stop_all(lines):
                     lines.append("the new run was not started")
                     return "\n".join(lines)
+            report = quiet.quiet_report(quiet.LIVE_ENV)
+            if not report.quiet:
+                lines.append(quiet.refusal_text(report))
+                return "\n".join(lines)
+            lines.extend(report.lines)
             scratch = self._new_scratch()
             in_scratch = set(os.listdir(scratch))
             env = self._env_into(lines)

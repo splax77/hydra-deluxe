@@ -130,7 +130,8 @@ def build_server(helper: Optional[Helper] = None):
         "ch",
         instructions=(
             "Drive Clone Hero as text, with nobody at the keyboard and the game window"
-            " never brought to the front. ch_start backs up the user's files and the"
+            " never brought to the front. ch_start checks the machine is quiet (about 6 s,"
+            " and it can refuse), backs up the user's files and the"
             " Rewired registry key, then launches the game minimized (with a song folder"
             " the bot plays it, or with human=True a human player on the virtual kit;"
             " with none the game opens at its menu); ch_stop closes it"
@@ -156,8 +157,10 @@ def build_server(helper: Optional[Helper] = None):
     @server.tool()
     def ch_start(song_folder: str | None = None, player: str = bot_run.DEFAULT_PLAYER,
                  profile: str | None = None, human: bool = False) -> str:
-        """Back up the user's game files and the Rewired registry key, set
-        settings.ini's pause_on_focus_lost line for the run, then start Clone
+        """Check the machine is quiet (about 6 s; a machine that is not quiet
+        refuses the launch and the reply says why). Back up the user's game
+        files and the Rewired registry key, set settings.ini's
+        pause_on_focus_lost line for the run, then start Clone
         Hero minimized and watch whether its window ever comes to the front.
         With a song folder the game plays it with a bot from the command line;
         with none it opens at its menu. human=True with a song folder starts
@@ -452,8 +455,9 @@ def build_server(helper: Optional[Helper] = None):
     @server.tool()
     def ch_sp_watch_status(since_ms: float = 0) -> str:
         """The watch's rows so far, every activation and every rise of the
-        amount from since_ms on, the engine's address, and how the watch
-        ended."""
+        amount from since_ms on, the engine's address, how the watch ended,
+        and a line with the gaps over 50 ms between samples, inside the
+        song."""
         return capped(h.sp.ch_sp_watch_status(since_ms))
 
     @server.tool()
