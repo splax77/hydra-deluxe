@@ -278,7 +278,7 @@ TEST_CASE("replay: the open-window walk pins every row on hand-built windows") {
                  "5 t3256 m5.1.184 c10->12 x2/2 notes=100 combo=100 sp=0 -- shown=x2 cum=1150"},
                 "near");
     // Together each chord's SP points are the five windows' sum: chord 2 is
-    // 100 from four windows, chord 4 150 from late, plain and tick.
+    // 100 from all five, chord 4 150 from late, plain and tick.
     const std::vector<std::string> all_rows = {
         "0 t0 m1.1.0 c0->2 x1/1 notes=100 combo=0 sp=200 SP shown=x2 cum=300",
         "1 t768 m2.1.0 c2->4 x1/1 notes=100 combo=0 sp=300 SP shown=x2 cum=700",
@@ -340,8 +340,7 @@ TEST_CASE("replay: the open-window walk pins every row on hand-built windows") {
 
 // Two windows that never overlap, each ending on a one-note chord it squeezes
 // out on its deactivation node. SP pays that chord nothing, so under D2 its
-// disc stays plain, while the chords inside each window are paid. (The old
-// rule, which counted any window that reached the chord, doubled it.)
+// disc stays plain, while the chords inside each window are paid.
 TEST_CASE("replay: disjoint windows that squeeze out a one-note chord on D") {
     Song song(192);
     song.bpm_changes[0] = 120.0;
@@ -389,8 +388,8 @@ TEST_CASE("replay: window order does not matter and SP points add up window by w
     const std::vector<ReplayWindow> wl = synthetic_windows(*longest, 2000, 1);
     std::vector<ReplayWindow> reversed(wl.rbegin(), wl.rend());
     // The first 120 windows for the window-by-window sum: 120 replays each.
-    // All 2,000 took 5.6 s against 0.5 s for 120 (2026-10-04), so 120 is a
-    // test limit, like the others in D43.
+    // All 2,000 took 5.6 s against 0.5 s for 120, so 120 is a test limit,
+    // like the others in D43.
     const std::vector<ReplayWindow> few(wl.begin(), wl.begin() + 120);
     const std::vector<core::Rules> variants = leeway_variants();
     const TablesByRule tables(*longest, variants);
@@ -421,8 +420,9 @@ void showValue(const ReplayWindow& w, std::ostream& os) {
 // ec91f8d1:docs/superpowers/plans/2026-10-10-ci-test-tooling.md). The same three checks run on made-up
 // windows over the same chart, one leeway variant per test, and a failure is
 // shrunk to the fewest, smallest windows that still break a check. The seed
-// is fixed so the suite runs the same tests every time (decision 7); a
-// failure prints the RC_PARAMS line that replays it.
+// is fixed so the suite runs the same tests every time (the plan's
+// recommendation on its question 7); a failure prints the RC_PARAMS line that
+// replays it.
 TEST_CASE("replay: window order does not matter and windows add up, shrunk by RapidCheck") {
     std::string longest_path;
     const Song& song = longest_corpus_song(longest_path);
@@ -473,8 +473,8 @@ TEST_CASE("replay: window order does not matter and windows add up, shrunk by Ra
 
     // RapidCheck reads RC_PARAMS once, on its first check. When the caller
     // has not set it, the seed and the number of passing tests are fixed
-    // here; 50 passes is the user's choice (plan 2026-10-25-asan-slow-cases,
-    // Question 2).
+    // here. The user chose fewer trials (docs/sessions/2026-10-25-495286b5.md);
+    // 50 is the number the plan set for that.
     size_t env_len = 0;
     getenv_s(&env_len, nullptr, 0, "RC_PARAMS");
     if (env_len == 0) _putenv_s("RC_PARAMS", "seed=1 max_success=50");

@@ -1,8 +1,8 @@
 // Replay invariants: core/replay.h must price a path exactly as the engine
 // priced it.
 //
-// The engine sums scores along graph edges and never looks at a chord; the
-// replay walks chords and never looks at the graph. Both read their chord
+// The engine sums scores along graph edges, priced when the graph is built;
+// the replay walks chords and never looks at the graph. Both read their chord
 // points from chord_score_table (core/scoring.h) and their doubling from
 // core::backend_row_value (core/backend_value.h). If the two agree on all
 // six score categories, for every path of every corpus chart, then the
@@ -301,11 +301,11 @@ TiedVariantCount check_tied_variants(const app::AnalysisSettings& cfg) {
 // mechanism on purpose-built charts; this guard catches any later case they do
 // not shape.
 //
-// The app's defaults (cap 4, score range 4) hold few ties, and none of them
-// folded while SP ran or banked bars at different ticks from its leader. So
-// the guard also runs at score range 40, at cap 4 and at cap 2. Those two
-// hold hundreds of variants, and with either D3 fix taken out of the engine
-// dozens of them store their leader's facts instead of their own.
+// The app's defaults (kCloneHeroSpCap, kDefaultDepthValue) hold few ties, and
+// none of them folded while SP ran or banked bars at different ticks from its
+// leader. So the guard also runs at score range 40, at cap 4 and at cap 2.
+// Those two hold hundreds of variants, and with either D3 fix taken out of the
+// engine dozens of them store their leader's facts instead of their own.
 TEST_CASE("every tied variant stores what a search pricing it alone stores") {
     // `skipped` is pinned exactly: the variants with no lone root to compare
     // against. Each is printed with its reason. If the count moves, read
@@ -451,12 +451,12 @@ TEST_CASE("replay: a squeezed-out chord SP pays nothing shows the plain multipli
     CHECK(r2.chords[4].multiplier_shown == r2.chords[4].multiplier_after * kStarPowerMultiplier);
 }
 
-// ambiguous_window_warnings reads in_sp, so D2 changed it a little: a chord that
-// no window pays anything for is no longer "paid" just because a squeezed-out
-// window reached it. Here window A has no squeeze-out offset and ends on tick
-// 768; the phrase chord 250 ms later is one note, and only window B (which
-// squeezes it out, so it pays 0) reaches it. A pays nothing for it, so there is
-// nothing for the warning to say. The old every-window gate flagged it.
+// ambiguous_window_warnings reads in_sp, so a chord that no window pays
+// anything for does not count as paid just because a squeezed-out window
+// reached it. Here window A has no squeeze-out offset and ends on tick 768; the
+// phrase chord 250 ms later is one note, and only window B (which squeezes it
+// out, so it pays 0) reaches it. A pays nothing for it, so there is nothing for
+// the warning to say.
 TEST_CASE("replay: the squeeze-out warning ignores a chord only a zero-paying window reached") {
     Song song(192);
     song.bpm_changes[0] = 120.0;
@@ -602,11 +602,10 @@ TEST_CASE("windows read from a path JSON match the ones read from the record") {
 // D34: a window never squeezes out a phrase it already squeezed in, and the
 // replay's squeeze-out lookup and warnings skip those phrases
 // (ReplayWindow::sqin_ticks). `score --path <dump>` reads its windows from the
-// dump, so the dump has to carry each window's SqIn phrases. Without them the
-// replay fell back to "the window's first phrase": on spent_then_next.chart at
-// cap 2, path '0++' warned that 17360 might have been squeezed out, though it
-// was squeezed in. A dump written before the field reads as no SqIns, as
-// before.
+// dump, so the dump has to carry each window's SqIn phrases. Without them, on
+// spent_then_next.chart at cap 2, path '0++' would warn that 17360 might have
+// been squeezed out, though it was squeezed in. A dump without the field reads
+// as no SqIns.
 TEST_CASE("a dump carries each window's SqIn phrases back to the replay") {
     const Song song = load_songpath(
         corpus::root() + "/test_fast_tempo/spent_then_next.chart", ChartReading{});
@@ -903,7 +902,7 @@ TEST_CASE("a typed squeeze-out offset resolves to the phrase chord") {
     exact.sqout_tick = 3036;
     CHECK(replay_path(song, {typed}).final == replay_path(song, {exact}).final);
 
-    // No phrase chord within 500 ms of the SP end: nothing to resolve to.
+    // No phrase chord inside the SP end's squeeze window: nothing to resolve to.
     const Song bare = song_with({{0, false}, {3072, false}});
     CHECK_THROWS(resolve_sqout_note(bare, typed));
 
@@ -919,9 +918,8 @@ TEST_CASE("a typed squeeze-out offset resolves to the phrase chord") {
 // before the SP end, or the first one after it (D36): a phrase hit earlier
 // than a later one cannot be hit after SP ran out while the later one is
 // hit before. A typed offset that lands on an older one names a squeeze-out
-// the search can never produce, so it is refused and nothing is priced (plan
-// decision 20 of 2026-09-24). Before D36 the roles were the other way round:
-// the first chord in the window was the engine's.
+// the search can never produce, so it is refused and nothing is priced
+// (D274 item 20).
 TEST_CASE("a typed squeeze-out on a chord the engine never squeezes out is refused") {
     // Phrase chords 375 ms (tick 2928) and 93.75 ms (tick 3036) before D.
     const Song two = song_with({{0, false}, {768, false}, {2928, true},
@@ -975,7 +973,7 @@ TEST_CASE("a typed squeeze-out offset halfway between two phrase chords is refus
 
 // A phrase chord at or before the activation was banked before Star Power
 // started, so that window cannot squeeze it out, even when it sits inside the
-// 500 ms window around the SP end. The replay refuses the typed offset and
+// squeeze window around the SP end. The replay refuses the typed offset and
 // warns about no such chord, as the engine never offers it.
 TEST_CASE("a typed squeeze-out on a phrase banked before the activation is refused") {
     // Phrase chord at 2928, 375 ms before D = 3072; the window starts at 3000.
@@ -1056,7 +1054,7 @@ TEST_CASE("the squeeze-out warning names the chord the graph would squeeze") {
     stored.from_record = true;
     CHECK(ambiguous_window_warnings(two, r, {stored}, rules).empty());
 
-    // Exactly 500 ms before D is outside the graph's window: no warning.
+    // On the window's edge before D is outside (within_squeeze_window): no warning.
     const Song edge = song_with({{0, false}, {768, false}, {2880, true},
                                  {3072, false}});
     const ReplayResult re = replay_path(edge, {w});
@@ -1140,7 +1138,7 @@ TEST_CASE("squeeze_window_phrases: the phrase chords strictly inside the window,
     CHECK(ticks(core::squeeze_window_phrases(two, two.timecode(3072))) ==
           std::vector<int64_t>{2928, 3036});
 
-    // Exactly 500 ms before D is outside.
+    // On the window's edge before D is outside (within_squeeze_window).
     const Song edge = song_with({{0, false}, {2880, true}, {3072, false}});
     CHECK(core::squeeze_window_phrases(edge, edge.timecode(3072)).empty());
 
@@ -1259,8 +1257,7 @@ TEST_CASE("category_scores prices a dynamic cymbal's bonus at its own note") {
 
 TEST_CASE("replay reports the multipliers category_scores applied") {
     // Eight Red singles, a Red+Kick chord that straddles 10, then eleven more
-    // singles so a later chord crosses 20 on its own. The audit's Evans Blue,
-    // Beg case is the single-note crossing: paid at 2x, reported as 1.
+    // singles so a later chord crosses 20 on its own.
     std::vector<std::vector<NoteColor>> chords(8, {NoteColor::Red});
     chords.push_back({NoteColor::Red, NoteColor::Kick});
     for (int i = 0; i < 11; ++i) chords.push_back({NoteColor::Red});
@@ -1280,7 +1277,7 @@ TEST_CASE("replay reports the multipliers category_scores applied") {
     // The chord before it leaves the disc at 1x.
     CHECK(r.chords[7].multiplier_after == 1);
 
-    // A single note that is the 20th: paid at 3x. The old field said 2.
+    // A single note that is the 20th: paid at 3x.
     const ReplayChord& third = r.chords[18];
     CHECK(third.combo_before == 19);
     CHECK(third.multiplier == 3);
@@ -1424,7 +1421,7 @@ TEST_CASE("replay multipliers agree with the combo on every corpus chord") {
             CHECK(c.multiplier == c.notes.front().multiplier);
             CHECK(c.multiplier_after == c.notes.back().multiplier);
             // What the disc shows after this chord is what the next chord
-            // starts from: the old field's value on the next chord.
+            // starts from.
             if (i + 1 < r.chords.size())
                 CHECK(c.multiplier_after == to_multiplier(r.chords[i + 1].combo_before));
             // A note's dynamics bonus is part of what it pays, never more.
