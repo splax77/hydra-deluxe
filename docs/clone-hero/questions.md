@@ -161,7 +161,7 @@ What Hydra does today. Hydra has no frame model. It pays a note by its chart tim
 
 ### Q-51 Hydra pays every accent and ghost; the game pays one only when the hit is marked as performed
 
-The game's real rule. The drum score method (RVA 0x20DEEC0, `code/6142/note_score_add_20DEEC0.asm` lines 19 to 24) doubles a gem's value only when bit 4 of note +0x84 is set (`call` the bit test, `lea r8d,[rbx+rbx]`, `cmove`). The hit handler (RVA 0x20DE770, `code/6142/note_hit_dynamics_20DE770.asm` lines 29 to 102) sets that mark by comparing the lane's signed byte (engine +0x309 to +0x310) with the threshold at +0x2C0: an accent when the byte is at least 0 and below the threshold, a ghost when it is at or above it, nothing when it is negative.
+The game's real rule. The drum score method (RVA 0x20DEEC0, `code/6142/note_score_add_20DEEC0.asm` lines 19 to 24) doubles a gem's value only when bit 4 of note +0x84 is set (`call` the bit test, `lea r8d,[rbx+rbx]`, `cmove`). The hit handler (RVA 0x20DE770, `code/6142/note_hit_dynamics_20DE770.asm` lines 29 to 102) sets that mark by comparing the lane's signed byte (engine +0x309 to +0x310) with the threshold at +0x2C0: a ghost when the byte is at least 0 and below the threshold, an accent when it is at or above it, nothing when it is negative.
 
 Example from one end: the ProDrums bot on Trippin SP Spike hit all 9 accents and 34 ghosts as performed (scorestats-Trippin_SP_Spike-20261028-212754.json: accent_notes_hit 9, ghost_notes_hit 34), so its score 290,975 equals Hydra's.
 
