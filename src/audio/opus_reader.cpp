@@ -23,10 +23,10 @@
 // from the first one ends the stream there (rare; a mixer can't change channel
 // count mid-stem).
 //
-// Straight-through output is bit-identical to the old whole-file decoder: the
-// same packets go through the same opus_decode_float calls into a 120 ms
-// (kMaxFrame) buffer, the pre-skip is dropped from each link's start, and nothing is
-// scaled when the gain is zero.
+// Straight-through output is bit-identical to decoding the whole file at once
+// (tests/test_stem_reader.cpp pins that): every packet goes through
+// opus_decode_float into a 120 ms (kMaxFrame) buffer, the pre-skip is dropped
+// from each link's start, and nothing is scaled when the gain is zero.
 
 #include "audio/stem_reader.h"
 
@@ -91,7 +91,8 @@ struct Link {
 };
 
 // One pass over the bytes: the page index and the links. Throws on a stream
-// whose first link isn't a mono/stereo OpusHead, as the old decoder did.
+// whose first link has no OpusHead. OpusReader's constructor checks that
+// link's channel count.
 void build_index(const uint8_t* d, std::size_t size, const OpenProgress& progress,
                  std::vector<PageEntry>& pages, std::vector<Link>& links) {
     uint64_t next_report = kProgressStep;
@@ -326,9 +327,9 @@ private:
         const Link& l = links_[link_];
         while (next_page_ < l.end_page) {
             const PageEntry& pe = pages_[next_page_++];
-            // libogg checks each page's CRC as the old sync-layer decode did; a
-            // damaged page is skipped. The check rewrites the header, so it runs
-            // on a copy (the bytes may be a read-only map).
+            // libogg recomputes each page's CRC; a damaged page is skipped. The
+            // check rewrites the header, so it runs on a copy (the bytes may be
+            // a read-only map).
             std::memcpy(page_buf_.data(), bytes_.data() + pe.offset, pe.length);
             ogg_page og;
             og.header = page_buf_.data();

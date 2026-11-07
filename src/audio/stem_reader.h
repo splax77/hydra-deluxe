@@ -3,12 +3,14 @@
 // A StemReader is a bookmark in a compressed audio file plus a way to move the
 // bookmark. It unpacks only the frames it is asked for, so an 8-hour stem
 // costs no more to open than a short one. open_stem_reader picks the decoder
-// from the bytes' own magic (sniff_format), exactly as decode_audio always has:
+// from the bytes' own magic (sniff_format):
 //   * Ogg Opus   -> a page index + libopus over libogg (opus_reader.cpp)
 //   * Ogg Vorbis -> stb_vorbis's pull decoder (vorbis_reader.cpp)
-//   * WAV/MP3/FLAC -> miniaudio's ma_decoder (ma_reader.cpp)
-// Reading a stem start to end gives exactly the samples the old whole-file
-// decoders gave; tests/test_stem_reader.cpp pins that against copies of them.
+//   * MP3        -> dr_mp3 (ma_reader.cpp)
+//   * WAV/FLAC   -> miniaudio's ma_decoder (ma_reader.cpp)
+// Reading a stem start to end gives exactly the samples a whole-file decode
+// gives; tests/test_stem_reader.cpp pins that against whole-file decoders of
+// its own.
 
 #ifndef HYDRA_AUDIO_STEM_READER_H
 #define HYDRA_AUDIO_STEM_READER_H
@@ -55,8 +57,7 @@ public:
     virtual void seek(int64_t frame) = 0;
     // True once any decode error has ended the stem early, and stays true for
     // the reader's life, even after a seek plays the stem again. decode_audio
-    // uses it to keep failing loudly on a damaged stream, as the old decoders
-    // did.
+    // uses it to keep failing loudly on a damaged stream.
     //
     // Only MaReader and OpusReader report it. Mp3Reader and VorbisReader keep
     // this default, so a damaged MP3 or Ogg Vorbis stem just ends short and
@@ -99,8 +100,8 @@ namespace detail {
 struct OpusReaderOptions {
     // Stop each link at its last page's granule position minus pre-skip (end
     // trimming, RFC 7845 section 4.4) instead of playing the encoder's padding
-    // at the very end. Off by default: the Preview has always played the
-    // padding, and the pinned decode test holds that output.
+    // at the very end. Off by default: the Preview plays the padding, and the
+    // pinned decode test holds that output.
     bool trim_end = false;
 };
 

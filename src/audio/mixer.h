@@ -6,8 +6,8 @@
 // converts each to a common output format and adds it into the mix, one stem
 // at a time.
 // The mixed length is the longest stem's; shorter stems contribute silence past
-// their end. Summing can push peaks past [-1, 1]; clamping is the player's job,
-// not the mixer's, so the raw sum is preserved here for testability.
+// their end. Summing can push peaks past [-1, 1]. The mixer keeps the raw sum,
+// for testability, and the player does not clamp it either.
 //
 // The Preview itself plays a StreamMix (audio/stream_mix.h), which does the
 // same mix while playing, straight from the compressed stems, with no decoded
