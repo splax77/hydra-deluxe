@@ -300,7 +300,8 @@ class StuckGame(FakeGame):
 
 
 class RunStepsTest(unittest.TestCase):
-    """The four steps the server calls one at a time."""
+    """The steps the server calls one at a time: start_run, wait_stats and
+    finish_run."""
 
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -371,7 +372,7 @@ class RunStepsTest(unittest.TestCase):
         self.assertEqual(_read(copy), NEW_STATS)
         self.assertIn(f"scorestats.json changed after 5 s; copied to {copy}", r.lines)
 
-    def test_finish_run_with_stop_stops_the_game_and_restores_all_five_files(self):
+    def test_finish_run_with_stop_stops_the_game_and_restores_every_backed_up_file(self):
         r = Rig(self.tmp, exits_at=None)
         run = self.start(r, r.song)
         for name in ORIGINAL:

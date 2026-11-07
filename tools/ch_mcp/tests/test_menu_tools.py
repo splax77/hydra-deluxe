@@ -90,8 +90,8 @@ class FakeKit:
 
 
 class FakeFrida:
-    """read_state as `script(presses_so_far, reads_so_far)`; None raises
-    StateUnread."""
+    """read_state returns what `script` gives for the count of presses and the
+    count of reads so far; None raises StateUnread."""
 
     def __init__(self, kit, script):
         self.kit = kit

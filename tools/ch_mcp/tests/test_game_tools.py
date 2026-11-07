@@ -104,8 +104,9 @@ class RecordingDriver(InputDriver):
 
 
 class FakeLivePlay:
-    """Delivers ROWS through on_press, then runs until should_stop says so
-    (or THREAD_CAP_S passes) and returns `result`."""
+    """Delivers ROWS through on_press, then runs until should_stop says so and
+    returns `result`. If THREAD_CAP_S passes first, it returns a "test cap"
+    stop instead."""
 
     def __init__(self, result: play_chart.RunResult):
         self.result = result
