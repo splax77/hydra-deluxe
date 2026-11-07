@@ -26,7 +26,7 @@
 
 using namespace hydra;
 
-// ---- parser cases moved in from the deleted grab bag (wave B, task 2.2) ----
+// ---- parser cases -----------------------------------------------------------
 
 // Finding R7.7; D27; D253. The time box checks stay with the parse: the
 // Preview reads the parser's order, and a copy of this fixture in
@@ -133,7 +133,7 @@ TEST_CASE(".chart: an Offset that is not a plain number is absent") {
     CHECK(offset("0.25") == 0.25);
     CHECK(offset("1") == 1.0);
     CHECK(offset("-0.5") == -0.5);
-    CHECK_FALSE(offset("500ms").has_value());  // 500 seconds before this change
+    CHECK_FALSE(offset("500ms").has_value());  // not 500 seconds
     CHECK_FALSE(offset("0.25s").has_value());
     CHECK_FALSE(offset("nan").has_value());
 }
@@ -151,14 +151,14 @@ TEST_CASE("song.ini: a delay that is not a plain number is absent") {
         return app::read_ini_delay_ms(ini.u8string());
     };
     CHECK(delay("1016") == 1016.0);
-    CHECK_FALSE(delay("nan").has_value());  // NaN before, and it beat the Offset
+    CHECK_FALSE(delay("nan").has_value());  // absent, so the Offset applies
     CHECK_FALSE(delay("inf").has_value());
     CHECK_FALSE(delay("250ms").has_value());
     fs::remove_all(dir);
 }
 
-// Malformed .chart lines keep the handling they have always had. Each case
-// was checked against the regex-era reader before it was replaced.
+// Malformed .chart lines: each case pins what the reader does with one kind
+// of bad line.
 TEST_CASE(".chart: malformed lines keep their handling") {
     const std::string song = "[Song]\n{\n  Resolution = 192\n}\n";
     const std::string sync = "[SyncTrack]\n{\n  0 = TS 4\n  0 = B 120000\n}\n";

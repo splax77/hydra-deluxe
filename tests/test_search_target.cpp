@@ -92,19 +92,15 @@ Path made(int label, std::vector<int64_t> ticks) {
 // the named activations, and keeps the ones that took them all. On fuzz seed
 // 5, told to activate at 3168 and 12864, the engine also returns paths that
 // take only 3168 (SP still runs at 12864's fill); search_target drops those.
-// Before D45 the one short path made it report the whole set unrealizable.
 // The kept paths are pinned as read from one run.
-// Step 1 read four kept paths here. Step 2 reads five: D21 (a phrase that
-// runs past the last note pays on that note) awards seed 5's last phrase, at
-// 22848. That brings back '0+- 0++', which takes 3168 and 12864 as a tied
-// variant of a root that took only 3168, so search_target promotes it to a
-// result of its own (the next test's case). Two other path strings gain a
-// sign for that phrase ('0++- E0+' reads '0++- E0++'); no total moves.
-// T10 (finding 37, D44 addendum) reads six: the squeeze choices now offer a
-// squeeze at the cap's ceiling, where a full meter pins the SP end when a
-// phrase is hit mid-SP. Seed 5's second window starts full, so it gains
-// '0- 0+-' (in place of '0- 0', same 6,750), '0- 0++' (a tied variant at
-// 7,150) and '0- 0-' (6,550). The best, 7,550, is unchanged.
+// D21 (a phrase that runs past the last note pays on that note) awards seed
+// 5's last phrase, at 22848. That gives '0+- 0++', which takes 3168 and 12864
+// as a tied variant of a root that took only 3168, so search_target promotes
+// it to a result of its own (the next test's case).
+// The squeeze choices offer a squeeze at the cap's ceiling (finding 37, D44
+// addendum), where a full meter pins the SP end when a phrase is hit mid-SP.
+// Seed 5's second window starts full, which gives '0- 0+-' (6,750), '0- 0++'
+// (a tied variant at 7,150) and '0- 0-' (6,550).
 TEST_CASE("search_target: a path missing a named activation is dropped, the rest kept") {
     const FuzzChart fc = fuzz_chart(5);
     const std::vector<uint8_t> bytes(fc.text.begin(), fc.text.end());
@@ -136,16 +132,12 @@ TEST_CASE("search_target: a path missing a named activation is dropped, the rest
 // every named activation under a tied root that missed one. search_target
 // drops that root but keeps the variant, as a result of its own (the first
 // such variant leads, the rest stay its tied variants). The chart is fuzz
-// seed 5 with one more note after its last phrase, so that phrase is
-// awarded: root '0++++-' takes only 3168, and its tied variant '0+- 0++'
-// takes 3168 and 12864. Before the fix the variant went with the root.
-// Under step 2, D21 already awards that phrase on seed 5 alone (the test
-// above promotes '0+- 0++' too). The extra note stays: with it, every value
-// pinned below reads the same as under step 1, except the list of results:
-// T10 (finding 37, D44 addendum) offers squeezes at the cap's ceiling, so
-// seed 5 gains '0- 0+-' (in place of '0- 0', same 6,950), '0- 0++' (a tied
-// variant at 7,350) and '0- 0-' (6,750), as in the test above. The best,
-// 7,750, is unchanged.
+// seed 5 with one more note after its last phrase: root '0++++-' takes only
+// 3168, and its tied variant '0+- 0++' takes 3168 and 12864.
+// D21 awards that phrase with or without the extra note (the test above
+// promotes '0+- 0++' too). Every value below is pinned with the note in the
+// chart. Squeezes at the cap's ceiling give '0- 0+-' (6,950), '0- 0++' (a
+// tied variant at 7,350) and '0- 0-' (6,750), as in the test above.
 TEST_CASE("search_target: a variant that took every named activation outlives its dropped root") {
     FuzzChart fc = fuzz_chart(5);
     const std::string last_phrase = "  22848 = N 1 0\n";
@@ -201,9 +193,8 @@ TEST_CASE("search_target: a variant that took every named activation outlives it
 // returns has exactly the named activations. On fuzz seed 199, told to
 // activate at 4896, 12288 and 21792, the engine ties '0+- E0++++' (it takes
 // only 4896 and 12288) under the root '0++- E0++- 0', which takes all three,
-// and '0- 0+++-' under '0++- E0- 0'. Both are dropped and their roots kept;
-// before the addendum they stayed in brackets. The answer is pinned as read
-// from one run.
+// and '0- 0+++-' under '0++- E0- 0'. Both are dropped and their roots kept.
+// The answer is pinned as read from one run.
 TEST_CASE("search_target: a kept root's tied variant that missed a named activation is dropped") {
     const FuzzChart fc = fuzz_chart(199);
     const std::vector<uint8_t> bytes(fc.text.begin(), fc.text.end());
@@ -349,8 +340,8 @@ TEST_CASE("search_target: a full pin no path realizes names its window and why")
 
 // Activation pins alone ask what the tick list asks: search_target over them
 // returns what search_target over the ticks returns (D45's answer above).
-// D45's unrealizable set still fails on 12865, a tick that is no fill node,
-// now found by the binary search over the prefix length.
+// D45's unrealizable set fails on 12865, a tick that is no fill node, found
+// by the binary search over the prefix length.
 TEST_CASE("search_target: activation pins return the tick search's paths and its failing tick") {
     const FuzzChart fc = fuzz_chart(5);
     const std::vector<uint8_t> bytes(fc.text.begin(), fc.text.end());

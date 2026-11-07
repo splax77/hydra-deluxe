@@ -26,7 +26,7 @@ using testaudio::read_fixture;
 namespace {
 
 // Byte sizes of the two fixtures the cases below map, pinned from one run
-// (Get-Item) on 2026-10-10 at 013f4c66.
+// (Get-Item).
 constexpr uint64_t kSine220OggBytes = 11402;  // testdata/audio/sine220.ogg
 constexpr uint64_t kSine220Mp3Bytes = 26441;  // testdata/audio/sine220.mp3
 

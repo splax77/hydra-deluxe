@@ -1,6 +1,6 @@
 // The report windows' shared table (app/report_view.h) and each report's
 // columns, cells and keep-rules (app/path_report_view.h,
-// app/dm_report_view.h). The literals are what the HTML pages showed for the
+// app/dm_report_view.h). The literals are what each report shows for the
 // same rows.
 
 #include "doctest.h"
@@ -344,7 +344,7 @@ TEST_CASE("report view sort: Timing sorts in ladder order, not by name") {
 }
 
 // User-chosen wording: "Hardest ms" (D48 Q7), "hardest squeeze or required early fill" (D51 call 5), definitions as hover text (D103 item 4).
-// The page lists one profile, so it has no Mode column (D115 A2-2).
+// The report lists one profile, so it has no Mode column (D115).
 TEST_CASE("path report columns: the page's fourteen, in order, word for word") {
     const auto cols = path_report_view::path_columns();
     CHECK(ids(cols) == std::vector<std::string>{"song", "artist", "charter", "path", "score",
@@ -376,7 +376,7 @@ TEST_CASE("path report columns: the page's fourteen, in order, word for word") {
         "SP phrase notes squeezed out of an active SP window (- in the path).",
         "Notes in the chart.",
     });
-    // The page's cell classes.
+    // Each column's look.
     CHECK(cols[0].look.truncate);
     CHECK_FALSE(cols[0].look.dim);
     CHECK(cols[1].look.dim);
@@ -422,8 +422,8 @@ TEST_CASE("path report cells read as the page wrote them") {
     ReportRow far = path_row("Halo", "Beyonce", "Someone", "1", 100, 500.0, false);
     CHECK(cols[8].cell(far) == "Beyond 170 ms");
 
-    // Each column sorts on the number or text the page sorted on, except
-    // Timing, which sorts on its tier's place in the ladder (D284 item 1).
+    // Each column sorts on its row's number or text, except Timing, which
+    // sorts on its tier's place in the ladder (D284 item 1).
     CHECK(std::get<double>(cols[4].sort_key(r)) == 1234567.0);
     CHECK(std::get<double>(cols[7].sort_key(r)) == 12.34);
     CHECK(std::get<double>(cols[8].sort_key(r)) == 1.0);  // Hard, the second tier

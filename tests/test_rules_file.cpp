@@ -25,9 +25,8 @@ hydra::core::Rules load_rules_text(const std::string& text) {
 }  // namespace
 
 TEST_CASE("each retired rules key loads silently, whatever it says") {
-    // Pinned: the keys Hydra 1.9.0 stopped reading when Auto was removed, and
-    // the one 2.8.0 stopped reading when a generated fill's length stopped
-    // being a rule (D115).
+    // Pinned: the keys in kRetiredRulesKeys (app/rules_file.cpp), which owns
+    // why each one retired.
     for (const char* key : {"auto_cap_ladder", "auto_budget_s", "fill_length_measures"}) {
         CAPTURE(key);
         hydra::core::Rules r;
