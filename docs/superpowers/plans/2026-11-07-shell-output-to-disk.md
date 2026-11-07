@@ -190,25 +190,25 @@ Calls: `Write` of the runner (seen: SO-PLAN's writes on this machine), `PowerShe
 
 A PostToolUse hook on `Bash|PowerShell` that trims as design point 3 says and saves below the ceiling. Passing 40,000-character and 6,000-character outputs in both shells. One of the 2 runs keeps `CLAUDE_CODE_ENTRYPOINT=claude-desktop` in the child's environment, the way probe run D did, so the PostToolUse input's `scratchpad_dir` and `transcript_path` are seen (settles P43); the other runs without it, which is the branch design point 4 says LS-S1 exercises. Records the `tool_response` keys seen (settles P22), that dropping the `persistedOutput` keys shows the hook's text rather than Claude Code's preview (P23), the shown length, and that the saved file holds the last line.
 
-Calls: `Write` of the hook (seen: SO-PLAN's writes), `PowerShell` running `py -I <runner> trim` (never tried), `Read` of its output (seen).
+Calls: `Write` of the hook (seen: SO-PLAN's writes), `PowerShell` running `py -I <runner> trim` (never tried), `Read` of its output (seen: SO-PLAN's reads).
 
 ### LS-S2: the rewrite on a failing command (2 runs, 10 minutes)
 
 The PreToolUse hook appends the tails from design point 2 with no `permissionDecision`; the PostToolUse hook from LS-S1 adds the `COMMAND FAILED` line. Failing 40,000-character output in both shells. Records whether the result was marked an error, its length, whether the first line, the error line and the last line survived, and the exit code shown. Settles P20 and P21.
 
-Calls: `Write` of the hook change (seen), `PowerShell` running `py -I <runner> rewrite` (never tried), `Read` of its output (seen).
+Calls: `Write` of the hook change (seen: SO-PLAN's writes), `PowerShell` running `py -I <runner> rewrite` (never tried), `Read` of its output (seen: SO-PLAN's reads).
 
 ### LS-S3: the rewrite in auto mode (2 runs, 10 minutes)
 
 The LS-S2 hooks, with `--permission-mode auto` on the `claude -p` call, and one failing build-like command (a Python launcher with `-m unittest` on a failing test file) in each shell. Records whether the call ran, and the denial text if it did not. Settles P28. A denial here stops part 2 (design point 7, question 8).
 
-Calls: `PowerShell` running `py -I <runner> auto` (never tried), `Read` of its output (seen).
+Calls: `PowerShell` running `py -I <runner> auto` (never tried), `Read` of its output (seen: SO-PLAN's reads).
 
 ### LS-S4: awkward shapes (2 runs, 10 minutes)
 
 The LS-S2 hooks. One run each of: a command with a trailing `# comment`; `exit 3`; `Get-Item` on a missing file in PowerShell; `a && b` where `a` fails; a `claude -p` with `--allowedTools "Bash(python gen.py:*)"` and a rewritten `python gen.py`; and a hook output that carries `additionalContext` and `updatedInput` in one `hookSpecificOutput`; and a `claude -p` with a throwaway `permissions.deny` rule `Bash(python blocked.py*)` in the probe's settings file and a rewritten `python blocked.py` (a file that does nothing), the same prefix shape as the user's `gh` rules but running nothing real. Records what each showed. Settles P27, P29, P30 and P39.
 
-Calls: `Write` of the hook change (seen), `PowerShell` running `py -I <runner> shapes` (never tried), `Read` of its output (seen).
+Calls: `Write` of the hook change (seen: SO-PLAN's writes), `PowerShell` running `py -I <runner> shapes` (never tried), `Read` of its output (seen: SO-PLAN's reads).
 
 ## Out of scope (needs the user's yes to leave out)
 
@@ -293,6 +293,6 @@ Calls: `Write` of the hook change (seen), `PowerShell` running `py -I <runner> s
 | P39: Claude Code's `permissions.deny` prefix rules still refuse a command whose input a PreToolUse hook rewrote by appending a tail | unchecked | `C:\Users\Patrick\.claude\settings.json` `permissions.deny` holds only prefix rules on `gh`; no source says which input they judge | SO-0, step LS-S4 |
 | P40: a PostToolUse `updatedToolOutput` changes what the model gets; whether the user's tool display shows the hook's text or the original is unknown | unchecked | the hooks page `https://code.claude.com/docs/en/hooks`, "PostToolUse decision control", says it replaces the output "sent to Claude" and names no display | question 1 |
 | P41: `claude -p` accepts `--permission-mode auto` and `--allowedTools` together with `--settings`, and `auto` there judges calls as the desktop session does | unchecked | `gates\tests\probe_results.md` "How the live probes ran" used `bypassPermissions` only | SO-0, step LS-S3 |
-| P42: at an 8,000 cap 145 of 2,972 main-session shell results are trimmed and 4.1% removed; at 2,000, 816 and 17.0%; shell results are 35.5% and 18.1% of tool-result characters, Read 44.5% and 63.8%; 111 `tool-results` folders hold 838 files and 169 MB | unchecked | the two size scripts and a folder listing run by SO-PLAN on 2026-11-07, never committed | SO-0 |
+| P42: at an 8,000 cap 145 of 2,972 main-session shell results are trimmed and 4.1% removed; at 2,000, 816 and 17.0%; shell results are 35.5% and 18.1% of tool-result characters, Read 44.5% and 63.8%; 111 `tool-results` folders hold 838 files and 169 MB | unchecked | the two size scripts and a listing of `C:\Users\Patrick\.claude\projects\C--Users-Patrick-Downloads-Hydra-hydra-test`, run by SO-PLAN on 2026-11-07, never committed | SO-0 |
 | P43: a PostToolUse hook's input carries `transcript_path` and, in a desktop-hosted session, `scratchpad_dir`, like PreToolUse | unchecked | `gates\tests\probe_results.md` probe 3 saw `scratchpad_dir` on PreToolUse, SubagentStart, SubagentStop and Stop only; no PostToolUse record was captured | SO-0, step LS-S1 |
 | P38: the user chose "Hook and build rewrite" and ruled "so instead of saving you want to waste even more usage? no. unacceptable." | ruling | the `SO-PLAN` brief, as the main session quotes the user; the main session confirms at review | checked 2026-11-07 |
