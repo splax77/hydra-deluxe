@@ -17,6 +17,7 @@
 
 #include "app/analysis.h"
 #include "app/config.h"
+#include "app/dm_report.h"  // GeneratedDmReport
 #include "app_state_fixtures.h"
 #include "corpus_util.h"
 #include "library_fixtures.h"  // library_entry
@@ -25,7 +26,7 @@
 #include "scratch_paths.h"
 #include "store/record_store.h"
 #include "ui/app_state.h"
-#include "ui/report_window.h"  // path_report_input
+#include "ui/report_window.h"  // path_report_input, dm_report_input
 #include "wait_util.h"
 
 using hydra::app::Settings;
@@ -398,6 +399,31 @@ TEST_CASE("select_chart switches the mode first, then selects the first copy") {
     // A hash the library doesn't list selects nothing new.
     app->select_chart("not-in-library", mode);
     CHECK(app->selected->notespath == copy.notespath);
+}
+
+// D310 item 3: a comparison row click opens the song in the bar's mode, even
+// when the comparison was built in another.
+TEST_CASE("a comparison row click selects the chart and keeps the bar's mode") {
+    ScratchPaths paths("appstate_dmrowclick");
+    std::unique_ptr<AppState> app = app_on(paths);
+    const std::string bar = app->settings.chartmode_key();
+
+    Settings built_in;
+    built_in.view_difficulty = "Hard";
+    built_in.view_prodrums = false;
+    built_in.view_bass2x = true;
+    auto result = std::make_shared<hydra::app::dm_report::GeneratedDmReport>();
+    result->chartmode = built_in.chartmode_key();
+    REQUIRE(result->chartmode != bar);
+    result->rows.emplace_back();
+    result->rows.back().identifier = library_entry(7).md5;
+    app->dm_report.result = result;
+
+    hydra::ui::dm_report_input(*app).callbacks.row_click(0);
+    CHECK(app->settings.chartmode_key() == bar);
+    CHECK(Settings::load_file(paths.ini).chartmode_key() == bar);  // nothing committed
+    REQUIRE(app->selected.has_value());
+    CHECK(app->selected->notespath == library_entry(7).notespath);
 }
 
 namespace {
