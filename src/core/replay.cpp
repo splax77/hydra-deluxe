@@ -112,8 +112,8 @@ ReplayResult replay_path(const Song& song, std::vector<ReplayWindow> windows,
     //   - The chord is the squeezed-out chord and its sqout_sp_points are 0 (a
     //     one-note chord under the first-note rule). Every later chord is
     //     past it, so sqout_position(...) == After from then on.
-    // So the sum below visits exactly the windows the old every-window loop
-    // paid, and sums the same integers (order does not change an int sum).
+    // So the sum below visits every window that pays the chord, and the order
+    // it visits them in does not change an int sum.
     std::vector<size_t> open;
     size_t next_win = 0;
 
