@@ -17,12 +17,12 @@ namespace {
 
 // Every size and colour below is a mockup's, the spec for this screen. Sizes
 // in rem come from the second mockup,
-// docs/superpowers/specs/2026-10-31-path-builder-mockup-2/mockup_template.html,
+// docs/superpowers/specs/2026-10-31-path-builder-mockup-2/mockup_template.html (removed; git show 6804353f:docs/superpowers/specs/2026-10-31-path-builder-mockup-2/mockup_template.html),
 // and are drawn through rem, so they follow the user's font size (D303 item 2,
 // Q1, and the rem-sizes answer in its item 3).
 // Sizes the mockups give in CSS pixels (borders, outlines, strokes) are drawn
 // through px; where the second mockup gives none, the first mockup's,
-// docs/superpowers/specs/2026-10-30-path-builder-mockup/mockup_template.html,
+// docs/superpowers/specs/2026-10-30-path-builder-mockup/mockup_template.html (removed; git show 6804353f:docs/superpowers/specs/2026-10-30-path-builder-mockup/mockup_template.html),
 // stands. Text draws at the user's font size (Q7), so a mockup font size is
 // not copied. Each comment names the rule or line it comes from.
 
@@ -37,7 +37,7 @@ constexpr ImU32 with_alpha_of(ImU32 col, ImU32 alpha_of) {
 
 // Row heights, from renderRows' `style="height:...rem"` on each `.row`
 // (the fifth mockup,
-// docs/superpowers/specs/2026-10-31-path-builder-mockup-5/top-mockup.html).
+// docs/superpowers/specs/2026-10-31-path-builder-mockup-5/top-mockup.html (removed; git show 6804353f:docs/superpowers/specs/2026-10-31-path-builder-mockup-5/top-mockup.html)).
 constexpr float kAxisRowRem = 1.2f;      // line 533
 constexpr float kSectionsRowRem = 1.5f;  // line 536
 constexpr float kSavedRowRem = 3.9f;     // line 546
@@ -619,7 +619,7 @@ TimelineMetrics timeline_metrics() {
 namespace {
 
 // The scrollbar, from the third mockup,
-// docs/superpowers/specs/2026-10-31-path-builder-mockup-3/mockup_template.html.
+// docs/superpowers/specs/2026-10-31-path-builder-mockup-3/mockup_template.html (removed; git show 6804353f:docs/superpowers/specs/2026-10-31-path-builder-mockup-3/mockup_template.html).
 // --line, --text and --muted are its line 11.
 constexpr ImU32 kLineColor = rgba(0x3a, 0x3d, 0x44, 1.0f);  // --line
 constexpr ImU32 kTextColor = rgba(0xe8, 0xe8, 0xe8, 1.0f);  // --text

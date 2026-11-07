@@ -1,7 +1,7 @@
 // The launch agent's decision, with no Frida in it, so plain Node can run it
 // (tests/test_launch_core.py). launch.ts is the glue: it hands this file the
 // game's memory as an Io and answers the messages. The plan is
-// docs/superpowers/plans/2026-10-31-ch-mcp-direct-start.md, "The launch".
+// docs/superpowers/plans/2026-10-31-ch-mcp-direct-start.md (removed; git show 6804353f:docs/superpowers/plans/2026-10-31-ch-mcp-direct-start.md), "The launch".
 //
 // It holds no address and no byte of its own. Every RVA and every byte string
 // comes in the arm message, from tools/ch_mcp/launch_patch.json, which owns

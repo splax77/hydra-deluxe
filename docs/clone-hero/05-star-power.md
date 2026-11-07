@@ -72,7 +72,7 @@ Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 Rule: A .chart phrase (`S 2 <len>`) and a .mid phrase (note 116 on and off, length = off minus on) are stored the same way and go through the same membership rule.
 Label: Unknown
-Evidence: listing lost; read 2026-10-03 at `0x213E0C0` (.chart) and `0x2155050` (.mid), session cebf3006 (ch-evidence.md lines 55 to 58 at commit 5fbe71ae). Neither reader was listed again for this row. One side is shown live: LS-D2d of `docs/superpowers/plans/2026-10-31-ch-mcp-direct-start.md`, 2026-11-06, earned all 25 note-116 phrases of a .mid chart (`C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-06\ls-d2d-run1\`). The .chart side and the sameness were not checked by that run.
+Evidence: listing lost; read 2026-10-03 at `0x213E0C0` (.chart) and `0x2155050` (.mid), session cebf3006 (ch-evidence.md lines 55 to 58 at commit 5fbe71ae). Neither reader was listed again for this row. One side is shown live: LS-D2d of `docs/superpowers/plans/2026-10-31-ch-mcp-direct-start.md (removed; git show 6804353f:docs/superpowers/plans/2026-10-31-ch-mcp-direct-start.md)`, 2026-11-06, earned all 25 note-116 phrases of a .mid chart (`C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-06\ls-d2d-run1\`). The .chart side and the sameness were not checked by that run.
 Game code (6142): not found: looked in the committed listings for a phrase read in `0x213E0C0` and `0x2155050`; the reference build's working listings were not kept
 Hydra: `close_sp_phrase` in src/parse/song.cpp line 401, called by the .mid reader (line 805) and the .chart reader (line 1414)
 Ruling: none needed: D21 put both parsers on one helper (SP-01)

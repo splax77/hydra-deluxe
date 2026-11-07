@@ -3,8 +3,8 @@
 Claude Code starts this server (see .mcp.json at the repo root) and calls its
 tools. The plans are the first server plan (removed; read it with git show
 444631e6:docs/superpowers/plans/2026-10-28-ch-mcp-server.md) and
-docs/superpowers/plans/2026-10-30-ch-mcp-star-power-and-song-start.md, and
-docs/superpowers/plans/2026-10-30-ch-mcp-in-game-input.md for the virtual kit.
+docs/superpowers/plans/2026-10-30-ch-mcp-star-power-and-song-start.md (removed; git show 6804353f:docs/superpowers/plans/2026-10-30-ch-mcp-star-power-and-song-start.md), and
+docs/superpowers/plans/2026-10-30-ch-mcp-in-game-input.md (removed; git show 6804353f:docs/superpowers/plans/2026-10-30-ch-mcp-in-game-input.md) for the virtual kit.
 The game-side tools live in game_tools.py, the Frida tools in frida_tools.py,
 the Star Power tools in sp_tools.py, the virtual kit in kit_tools.py, the menu
 driver in menu_tools.py and the method watch in method_watch.py; this file only
@@ -371,10 +371,15 @@ def build_server(helper: Optional[Helper] = None):
         played by the bot. log, when given, is where
         the press log goes, row by row as the run goes. song_folder, when given, sets the run cap from
         the song's length; with none the auto-player keeps its own cap.
-        decline_mode, "kick_only" or "nothing", says what to send for each
-        fill the path passes over, and needs dump_json, the hydra_replay dump
-        the score file came from; path_index picks the dump's path. With no
-        mode every chord is pressed."""
+        decline_mode, one of the auto-player's decline modes (a wrong one is
+        refused with the list), says what to send for each fill the path
+        passes over, and needs dump_json, the hydra_replay dump the score file
+        came from; path_index picks the dump's path. With no mode every chord
+        is pressed. The same path of dump_json times the Star Power squeezes,
+        so a score file with a squeeze-out is refused without it. The reply
+        names each declined chord with what it sends, each squeeze chord with
+        when its presses fire against the end, and each activation pressed
+        early for a squeeze-out."""
         return capped(h.game.ch_play_chart(score_json, log, song_folder, route,
                                            decline_mode, dump_json, path_index))
 
@@ -386,11 +391,12 @@ def build_server(helper: Optional[Helper] = None):
         the auto-player on the kit, with one engine search for the watch and
         the player. Call it right after ch_start(song_folder, human=True),
         with kit_player="System" for such a launch. decline_mode and
-        dump_json are ch_play_chart's. It writes a press log, a press-<n>.csv
-        in the session folder, one row at each press as the run goes, and its
-        reply names the file. The call returns at the first press, with one
-        line per part, the time it took, the machine recorder's samples line
-        after the watch's, the press log's line, and the line
+        dump_json are ch_play_chart's, on the dump's path 0. It writes a press
+        log, a press-<n>.csv in the session folder, one row at each press as
+        the run goes, and its reply names the file. The call returns at the
+        first press, with one line per part, the time it took, the machine
+        recorder's samples line after the watch's, ch_play_chart's declined
+        and squeeze lines, the press log's line, and the line
         "first press chord index k at ms". A part that fails stops the call
         there: the reply names it and the kit is taken away. Refused while a
         play session runs. Read the run with ch_play_status and
@@ -421,7 +427,8 @@ def build_server(helper: Optional[Helper] = None):
     def ch_play_status() -> str:
         """The press log's path on the first line when the session has one,
         then the play session's counts, its stop reason when it ended, and its
-        press rows, newest first. A long reply is cut from its end, so the
+        press rows, newest first. The counts are of presses; when a chord was
+        pressed in two parts, the count line also says how many chords. A long reply is cut from its end, so the
         file holds every row."""
         return capped(h.game.ch_play_status())
 

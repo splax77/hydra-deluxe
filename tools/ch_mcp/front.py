@@ -3,7 +3,7 @@
 The front starts the worker command given after `--`, copies the worker's tool
 list and instructions, and forwards every tool call to it. So a worker can be
 replaced without Claude Code's connection dropping. The plan is
-docs/superpowers/plans/2026-11-06-ch-server-reload.md; its design points 1 to 6
+docs/superpowers/plans/2026-11-06-ch-server-reload.md (removed; git show 6804353f:docs/superpowers/plans/2026-11-06-ch-server-reload.md); its design points 1 to 6
 and 9 say why the front is shaped this way.
 
 Run it as:  py tools/ch_mcp/front.py -- py tools/ch_mcp/server.py

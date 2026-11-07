@@ -18,7 +18,7 @@ At handoff `main` was 35 commits ahead of `origin/main`, counting other sessions
 
 ## 1. Q7 waits on a live Clone Hero check
 
-Q7 asks whether a chart's written fills stop Hydra generating its own. It is not a question for the user any more. It waits on live step LS3 of the Clone Hero server, which plays Senri Kawaguchi's "Ladies Talk" with every note hit and asks whether Star Power can turn on inside its drum solo. The steps and the chart's numbers are in `docs/handoffs/2026-10-30-ch-mcp-star-power-build-handoff.md` and `docs/handoffs/2026-10-30-ch-mcp-live-steps-handoff.md`. That work belongs to the Clone Hero sessions. When LS3 runs, record its result against D271 item 2.
+Q7 asks whether a chart's written fills stop Hydra generating its own. It is not a question for the user any more. It waits on live step LS3 of the Clone Hero server, which plays Senri Kawaguchi's "Ladies Talk" with every note hit and asks whether Star Power can turn on inside its drum solo. The steps and the chart's numbers are in `docs/handoffs/2026-10-30-ch-mcp-star-power-build-handoff.md` (removed; `git show 6804353f:docs/handoffs/2026-10-30-ch-mcp-star-power-build-handoff.md`) and `docs/handoffs/2026-10-30-ch-mcp-live-steps-handoff.md` (removed; `git show 6804353f:docs/handoffs/2026-10-30-ch-mcp-live-steps-handoff.md`). That work belongs to the Clone Hero sessions. When LS3 runs, record its result against D271 item 2.
 
 ## 2. What the audit never reached
 

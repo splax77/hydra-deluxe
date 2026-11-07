@@ -54,12 +54,12 @@ float legend_swatch_width();
 void dot_item(ImU32 col, float diameter, const char* centred_text = nullptr);
 
 // The axis puts a time label every 30 s, as the mockup does
-// (docs/superpowers/specs/2026-10-30-path-builder-mockup/mockup_template.html,
+// (docs/superpowers/specs/2026-10-30-path-builder-mockup/mockup_template.html (removed; git show 6804353f:docs/superpowers/specs/2026-10-30-path-builder-mockup/mockup_template.html),
 // renderRows: `s += 30`).
 inline constexpr double kTimelineAxisStepMs = 30000.0;
 
 // The row names in the label column, as the fifth mockup writes them
-// (docs/superpowers/specs/2026-10-31-path-builder-mockup-5/top-mockup.html,
+// (docs/superpowers/specs/2026-10-31-path-builder-mockup-5/top-mockup.html (removed; git show 6804353f:docs/superpowers/specs/2026-10-31-path-builder-mockup-5/top-mockup.html),
 // renderRows' `rlab` cells, lines 536 to 553).
 inline constexpr const char* kTimelineSectionsLabel = "Section";
 inline constexpr const char* kTimelineSavedLabel = "Star Power saved";

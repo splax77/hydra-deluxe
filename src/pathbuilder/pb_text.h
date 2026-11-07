@@ -1,17 +1,17 @@
 // Every sentence the Path Builder's redesigned screen says, as plain
 // functions over plain values. The wording is the approved mockups'
-// (docs/superpowers/specs/2026-10-30-path-builder-mockup/mockup_template.html,
-// then docs/superpowers/specs/2026-10-31-path-builder-mockup-2/
-// mockup_template.html with answers.md beside it); every figure in it comes
+// (docs/superpowers/specs/2026-10-30-path-builder-mockup/mockup_template.html (removed; git show 6804353f:docs/superpowers/specs/2026-10-30-path-builder-mockup/mockup_template.html),
+// then docs/superpowers/specs/2026-10-31-path-builder-mockup-2/mockup_template.html (removed; git show 6804353f:docs/superpowers/specs/2026-10-31-path-builder-mockup-2/mockup_template.html)
+// with answers.md beside it); every figure in it comes
 // from its owner, and this file works out no game fact of its own. Plan:
 // docs/superpowers/plans/2026-10-30-path-builder-redesign.md (removed; git show 307d0b5c:docs/superpowers/plans/2026-10-30-path-builder-redesign.md), task CO-1.
 // The user's answers on the second mockup are D303.
 // The fill card follows the third mockup
-// (docs/superpowers/specs/2026-10-31-path-builder-mockup-3/), D303.
+// (docs/superpowers/specs/2026-10-31-path-builder-mockup-3/, removed; git show 6804353f:docs/superpowers/specs/2026-10-31-path-builder-mockup-3/), D303.
 // The step rows and ending lines follow the fourth mockup
-// (docs/superpowers/specs/2026-10-31-path-builder-mockup-4/), D302.
+// (docs/superpowers/specs/2026-10-31-path-builder-mockup-4/, removed; git show 6804353f:docs/superpowers/specs/2026-10-31-path-builder-mockup-4/), D302.
 // The top of the screen follows the fifth mockup
-// (docs/superpowers/specs/2026-10-31-path-builder-mockup-5/top-mockup.html),
+// (docs/superpowers/specs/2026-10-31-path-builder-mockup-5/top-mockup.html (removed; git show 6804353f:docs/superpowers/specs/2026-10-31-path-builder-mockup-5/top-mockup.html)),
 // D304: the head row, then the timeline.
 
 #ifndef HYDRA_PATHBUILDER_PB_TEXT_H

@@ -897,7 +897,7 @@ class AllowedCallsTest(unittest.TestCase):
                 self.assertIn(f" {entry['name']}(", entry["signature"])
 
     def test_kit_loads_the_map_by_category_and_layout(self):
-        # The plan docs/superpowers/plans/2026-10-31-ch-mcp-kit-map-and-network-block.md,
+        # The plan docs/superpowers/plans/2026-10-31-ch-mcp-kit-map-and-network-block.md (removed; git show 6804353f:docs/superpowers/plans/2026-10-31-ch-mcp-kit-map-and-network-block.md),
         # task M1: LoadMap's five-argument form replaces LoadDefaultMaps.
         kit = self.real_texts()[KIT_AGENT]
         self.assertNotIn("LoadDefaultMaps", kit)

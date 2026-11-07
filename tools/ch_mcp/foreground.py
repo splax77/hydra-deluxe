@@ -1,7 +1,7 @@
 """Watch whether the Clone Hero window ever comes to the front during a run.
 
 A live run must leave the user's window in front the whole time (the plan
-docs/superpowers/plans/2026-10-30-ch-mcp-in-game-input.md, "Launch without
+docs/superpowers/plans/2026-10-30-ch-mcp-in-game-input.md (removed; git show 6804353f:docs/superpowers/plans/2026-10-30-ch-mcp-in-game-input.md), "Launch without
 focus, and nothing ever shown"). ForegroundWatch reads which window is in
 front every FOREGROUND_POLL_S on a daemon thread, from ch_start to ch_stop,
 and counts each time the game's window becomes the front one. That count is

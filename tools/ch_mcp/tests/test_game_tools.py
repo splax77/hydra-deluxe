@@ -64,6 +64,23 @@ SCORE_JSON = {"chords": [
      "notes": [{"color": "Kick", "cymbal": False, "dynamic": "none"}]},
 ]}
 
+# The Mouths and Bomber fixtures test_play_chart.py reads, and the reply lines
+# they give in decline mode all_but_top_pad. The Mouths lines are the ones
+# design point 7 and task T3 of
+# docs/superpowers/plans/2026-11-07-player-refinements.md quote; the Bomber
+# squeezes and declined lines are pinned from a run of these files.
+_PROBE_TESTS = os.path.join(_HERE, "..", "..", "ch_probe", "tests")
+MOUTHS_DECLINED = ("declined (all_but_top_pad): chords 221 (nothing sent), "
+                   "801 (kick, yellow tom), 845 (nothing sent)")
+MOUTHS_SQUEEZES = ("squeezes: chord 431 in (15 ms before the end), chord 740 out "
+                   "(yellow cymbal, green cymbal 15 ms before the end; kick 15 ms after), "
+                   "chord 1240 in (15 ms before the end)")
+BOMBER_DECLINED = ("declined (all_but_top_pad): chords 624 (kick), 684 (kick), "
+                   "854 (nothing sent), 874 (kick), 919 (kick)")
+BOMBER_SQUEEZES = ("squeezes: chord 180 out (red 15 ms after the end), "
+                   "chord 448 in (85.33 ms before the end)")
+BOMBER_ACTIVATION = "activation chord 147 pressed 55 ms early for the squeeze-out at chord 180"
+
 
 class FakeQuiet:
     """What ch_start's quiet check reads, with a record of every reader called."""
@@ -851,7 +868,9 @@ class GameToolsTest(unittest.TestCase):
 
     # The fixture of the decline list itself is in test_play_chart.py; these
     # two files only carry the arguments through the tool.
-    DECLINE_SCORE = {"chords": [
+    # One activation with no squeeze, on chord 0, ending past the last chord.
+    DECLINE_ACT = {"act_tick": 480, "deact_tick": 1440, "sqout_tick": -1}
+    DECLINE_SCORE = {"activations": [DECLINE_ACT], "chords": [
         {"index": 0, "ms": 1000.0, "tick": 480,
          "notes": [{"color": "Red", "cymbal": False, "dynamic": "none"}]},
         {"index": 1, "ms": 1500.0, "tick": 960,
@@ -859,8 +878,10 @@ class GameToolsTest(unittest.TestCase):
                    {"color": "Green", "cymbal": True, "dynamic": "none"}]},
     ]}
     DECLINE_DUMP = {"paths": [
-        {"activations": [{"skipped_fill_ticks": [960]}]},
-        {"activations": [{"skipped_fill_ticks": []}]},
+        {"activations": [{**DECLINE_ACT, "sqin_ticks": [], "sqinouts": [],
+                          "skipped_fill_ticks": [960]}]},
+        {"activations": [{**DECLINE_ACT, "sqin_ticks": [], "sqinouts": [],
+                          "skipped_fill_ticks": []}]},
     ]}
 
     def _decline_files(self):
@@ -887,14 +908,24 @@ class GameToolsTest(unittest.TestCase):
         t.tools._play.thread.join(THREAD_CAP_S)
         self.assertEqual([(c.lanes, c.declined) for c in seen[0]],
                          [([Lane.RED], False), ([Lane.KICK], True)])
-        self.assertIn("declined (kick_only): chords 1", reply.splitlines())
+        self.assertIn("declined (kick_only): chords 1 (kick)", reply.splitlines())
 
     def test_mode_nothing_leaves_the_declined_chord_no_lanes(self):
         t, seen = self._decline_rig()
         score, dump = self._decline_files()
-        t.tools.ch_play_chart(score, route="keys", decline_mode="nothing", dump_json=dump)
+        reply = t.tools.ch_play_chart(score, route="keys", decline_mode="nothing",
+                                      dump_json=dump)
         t.tools._play.thread.join(THREAD_CAP_S)
         self.assertEqual(seen[0][1].lanes, [])
+        self.assertIn("declined (nothing): chords 1 (nothing sent)", reply.splitlines())
+
+    def test_all_but_top_pad_names_the_gems_it_sends(self):
+        t, seen = self._decline_rig()
+        score, dump = self._decline_files()
+        reply = t.tools.ch_play_chart(score, route="keys", decline_mode="all_but_top_pad",
+                                      dump_json=dump)
+        t.tools._play.thread.join(THREAD_CAP_S)
+        self.assertIn("declined (all_but_top_pad): chords 1 (kick)", reply.splitlines())
 
     def test_path_index_reaches_the_decline_list(self):
         t, seen = self._decline_rig()
@@ -930,14 +961,76 @@ class GameToolsTest(unittest.TestCase):
         self.assertTrue(reply.startswith("could not read the fills to decline: IndexError"), reply)
         self.assertIsNone(t.tools._play)
 
-    def test_with_no_mode_the_dump_is_not_read_and_every_chord_stays_whole(self):
+    def test_with_no_mode_every_chord_stays_whole(self):
         t, seen = self._decline_rig()
-        score, _dump = self._decline_files()
-        reply = t.tools.ch_play_chart(score, route="keys",
-                                      dump_json=os.path.join(self.tmp, "no such dump.json"))
+        score, dump = self._decline_files()
+        reply = t.tools.ch_play_chart(score, route="keys", dump_json=dump)
         t.tools._play.thread.join(THREAD_CAP_S)
         self.assertEqual([len(c.lanes) for c in seen[0]], [1, 2])
         self.assertNotIn("declined", reply)
+        self.assertNotIn("squeezes", reply)
+
+    def test_with_no_mode_a_dump_given_is_still_read_for_the_squeezes(self):
+        t, seen = self._decline_rig()
+        score, _dump = self._decline_files()
+        missing = os.path.join(self.tmp, "no such dump.json")
+        reply = t.tools.ch_play_chart(score, route="keys", dump_json=missing)
+        self.assertTrue(reply.startswith(f"could not read {score}: FileNotFoundError"), reply)
+        self.assertIsNone(t.tools._play)
+
+    # -- the squeezes, on the two fixtures of the 2026-11-07 player plan --------------
+
+    def _refine_play(self, name, decline_mode="all_but_top_pad", dump=True):
+        score = os.path.join(_PROBE_TESTS, f"{name}_refine_score.json")
+        dump_json = os.path.join(_PROBE_TESTS, f"{name}_refine_dump.json") if dump else None
+        t, seen = self._decline_rig()
+        reply = t.tools.ch_play_chart(score, route="keys", decline_mode=decline_mode,
+                                      dump_json=dump_json)
+        if t.tools._play is not None:
+            t.tools._play.thread.join(THREAD_CAP_S)
+        return reply, t
+
+    def test_the_mouths_reply_names_the_squeezes_and_the_declined_fills(self):
+        lines = self._refine_play("mouths")[0].splitlines()
+        self.assertIn(MOUTHS_DECLINED, lines)
+        self.assertIn(MOUTHS_SQUEEZES, lines)
+        self.assertEqual(lines[lines.index(MOUTHS_DECLINED) + 1], MOUTHS_SQUEEZES)
+        self.assertFalse([line for line in lines if line.startswith("activation chord")])
+
+    def test_the_bomber_reply_names_the_early_activation(self):
+        lines = self._refine_play("bomber")[0].splitlines()
+        self.assertIn(BOMBER_SQUEEZES, lines)
+        self.assertEqual(lines[lines.index(BOMBER_SQUEEZES) + 1], BOMBER_ACTIVATION)
+        self.assertIn(BOMBER_DECLINED, lines)
+
+    def test_a_squeeze_out_with_no_dump_json_is_refused_naming_it(self):
+        reply, t = self._refine_play("mouths", decline_mode=None, dump=False)
+        self.assertTrue(reply.startswith("could not read "), reply)
+        self.assertIn("pass dump_json", reply)
+        self.assertIsNone(t.tools._play)
+
+    def test_the_status_says_presses_and_chords_when_a_chord_is_split(self):
+        # Two press rows of chord 740, as press_plan splits it.
+        rows = [{**ROWS[0], "index": 740}, {**ROWS[1], "index": 740, "hit": 1}]
+
+        def live_play(chords, *, on_press, **kw):
+            for row in rows:
+                on_press(row)
+            return play_chart.RunResult(stop="done", sent=2, hit=2, max_streak=2)
+
+        t = ToolRig(self.tmp, live_play=live_play)
+        t.tools.ch_play_chart(self._score_json(), route="keys")
+        t.tools._play.thread.join(THREAD_CAP_S)
+        self.assertIn("sent 2 presses for 1 chord, hit 2, misses 0, best streak 2",
+                      t.tools.ch_play_status().splitlines())
+
+    def test_every_lane_has_a_word_in_the_reply(self):
+        self.assertEqual(set(GT._LANE_WORDS), set(Lane))
+
+    def test_ch_play_chart_has_no_lead_argument(self):
+        self.assertEqual(list(inspect.signature(GT.GameTools.ch_play_chart).parameters),
+                         ["self", "score_json", "log", "song_folder", "route", "decline_mode",
+                          "dump_json", "path_index"])
 
     def test_the_status_counts_a_declined_chord_apart_from_the_misses(self):
         row = {**ROWS[1], "hit": play_chart.DECLINED}
@@ -1264,7 +1357,34 @@ class GameToolsTest(unittest.TestCase):
         reply = self._run(t, score, decline_mode="kick_only", dump_json=dump)
         self.assertEqual([(c.lanes, c.declined) for c in seen["chords"]],
                          [([Lane.RED], False), ([Lane.KICK], True)])
-        self.assertIn("declined (kick_only): chords 1", reply.splitlines())
+        self.assertIn("declined (kick_only): chords 1 (kick)", reply.splitlines())
+
+    def _refine_run_lines(self, name):
+        """The reply lines after the play's line of a chained run of a fixture."""
+        t, _events, _seen = self._chain_rig()
+        lines = self._run(t, os.path.join(_PROBE_TESTS, f"{name}_refine_score.json"),
+                          decline_mode="all_but_top_pad",
+                          dump_json=os.path.join(_PROBE_TESTS, f"{name}_refine_dump.json"))
+        lines = lines.splitlines()
+        start = next(i for i, line in enumerate(lines) if line.startswith("play: ok"))
+        return lines[start + 1:]
+
+    def test_the_mouths_run_reply_names_its_squeezes_after_the_declined_line(self):
+        lines = self._refine_run_lines("mouths")
+        self.assertEqual(lines[:2], [MOUTHS_DECLINED, MOUTHS_SQUEEZES])
+        self.assertTrue(lines[2].startswith("press log: "), lines[2])
+
+    def test_the_bomber_run_reply_names_its_early_activation(self):
+        lines = self._refine_run_lines("bomber")
+        self.assertEqual(lines[:3], [BOMBER_DECLINED, BOMBER_SQUEEZES, BOMBER_ACTIVATION])
+        self.assertTrue(lines[3].startswith("press log: "), lines[3])
+
+    def test_a_squeeze_out_with_no_dump_json_stops_before_the_attach(self):
+        t, events, _seen = self._chain_rig()
+        reply = self._run(t, os.path.join(_PROBE_TESTS, "mouths_refine_score.json"))
+        self.assertTrue(reply.startswith("could not read "), reply)
+        self.assertIn("pass dump_json", reply)
+        self.assertEqual(events, [])
 
     def test_bad_decline_arguments_stop_before_the_attach(self):
         t, events, _seen = self._chain_rig()

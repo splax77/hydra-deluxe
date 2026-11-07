@@ -4,13 +4,13 @@ This page lists the rows only a run of the real game can settle.
 It describes build 1.1 (v1.1.0.6142) unless a check names build 1.0.
 Last write-back: 2026-11-06.
 
-Each check gives its row id, the question in one line, what a pass and a fail look like, and whether a bot run is enough or the run needs Star Power activation and a menu start. The Star Power plan, `docs/superpowers/plans/2026-10-30-ch-mcp-star-power-and-song-start.md`, takes its live steps from this list. Where one entry covers two or three rows, they share one run.
+Each check gives its row id, the question in one line, what a pass and a fail look like, and whether a bot run is enough or the run needs Star Power activation and a menu start. The Star Power plan, `docs/superpowers/plans/2026-10-30-ch-mcp-star-power-and-song-start.md` (removed; `git show 6804353f:docs/superpowers/plans/2026-10-30-ch-mcp-star-power-and-song-start.md`), took its live steps from this list. Where one entry covers two or three rows, they share one run.
 
 A "bot run" is a song the game's own bot plays from a command-line start; the bot never gains or spends Star Power. A "menu start" is a song started from the game's menus. The entries below say when they need one, which is mostly for a modifier or for key-press play.
 
 ## First: the Ladies Talk fill check (FL-27)
 
-**FL-27.** Question: does Clone Hero offer a fill inside the second drum solo of "Ladies Talk", where no fill is written? The run that takes it is step LS3 of the Star Power plan.
+**FL-27.** Question: does Clone Hero offer a fill inside the second drum solo of "Ladies Talk", where no fill is written? The check is still open. The Star Power plan planned the run as its step LS3, and that plan has left the repo, so read the step with `git show 6804353f:docs/superpowers/plans/2026-10-30-ch-mcp-star-power-and-song-start.md`.
 
 The chart is `testdata/input/common/IB24/T6/Senri Kawaguchi - Ladies Talk [Kiyo Sen] (Drumeo Performance)/notes.mid`, at 480 ticks a beat. Both sources agree on the ticks. In the chart, the last written fill before the gap runs from tick 131,520 to 132,960, the next from 191,760 to 193,200, and the solo from 140,400 to 186,480. LS3 reads them from Hydra's score file: the fill before the solo ends on chord 1019 at tick 132,960 (114,628.9 ms, measure m76), and the fill after ends on chord 1514 at tick 193,200 (166,546.0 ms, m108). LS3's window is those two times moved inward, 114,778.9 to 166,544.0 ms.
 

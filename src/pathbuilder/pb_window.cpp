@@ -36,7 +36,7 @@ namespace {
 
 // The second mockup's sizes, each in rem: a multiple of the font size
 // (ui::rem), as the user's answer to plan Q1 chose. Each names its line
-// of docs/superpowers/specs/2026-10-31-path-builder-mockup-2/mockup_template.html.
+// of docs/superpowers/specs/2026-10-31-path-builder-mockup-2/mockup_template.html (removed; git show 6804353f:docs/superpowers/specs/2026-10-31-path-builder-mockup-2/mockup_template.html).
 // The side column beside the Preview and the gap before it: line 91,
 // `.lower{grid-template-columns:minmax(0,1fr) 27rem;gap:.6rem}`.
 constexpr float kSideColumnRem = 27.0f;
@@ -48,11 +48,11 @@ constexpr float kScoresGapRem = 1.6f;
 // How wide the hover tooltip may grow before it wraps: line 87, `.tip{max-width:24rem}`.
 constexpr float kTooltipRem = 24.0f;
 // The gap before "Show Hydra's best path" in the head row:
-// docs/superpowers/specs/2026-10-31-path-builder-mockup-5/top-mockup.html
+// docs/superpowers/specs/2026-10-31-path-builder-mockup-5/top-mockup.html (removed; git show 6804353f:docs/superpowers/specs/2026-10-31-path-builder-mockup-5/top-mockup.html)
 // line 42, `.bestbox{margin-left:.8rem}`.
 constexpr float kBestBoxGapRem = 0.8f;
 // The gap between a fill card's labels and its figures:
-// docs/superpowers/specs/2026-10-31-path-builder-mockup-3/mockup_template.html
+// docs/superpowers/specs/2026-10-31-path-builder-mockup-3/mockup_template.html (removed; git show 6804353f:docs/superpowers/specs/2026-10-31-path-builder-mockup-3/mockup_template.html)
 // line 90, `.tip .kv{...column-gap:1.4rem}`.
 constexpr float kCardColumnGapRem = 1.4f;
 // How tall the list may grow before it scrolls: line 126, `.choices{max-height:21rem}`.
@@ -62,7 +62,7 @@ constexpr float kTierDotRem = 0.7f;
 // A step's numbered disc: line 136, `.step .n{width:1.6rem}`.
 constexpr float kStepDiscRem = 1.6f;
 // How strongly an earlier step draws an ending it did not keep:
-// docs/superpowers/specs/2026-10-31-path-builder-mockup-4/step-panel-mockup.html
+// docs/superpowers/specs/2026-10-31-path-builder-mockup-4/step-panel-mockup.html (removed; git show 6804353f:docs/superpowers/specs/2026-10-31-path-builder-mockup-4/step-panel-mockup.html)
 // line 30, `.end.fixed:not(.on){opacity:0.45}`.
 constexpr float kFixedEndAlpha = 0.45f;
 

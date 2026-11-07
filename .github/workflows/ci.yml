@@ -176,7 +176,7 @@ jobs:
   # user's call; "Continuous integration" in docs/development.md gives the
   # timing). It builds with the asan-ninja preset, through the sccache
   # compiler cache kept in GitHub's cache, a trial measured in
-  # docs/superpowers/plans/2026-10-24-asan-ci-speed.md (Item 3). The GUI tests
+  # docs/superpowers/plans/2026-10-24-asan-ci-speed.md (removed; git show 6804353f:docs/superpowers/plans/2026-10-24-asan-ci-speed.md), Item 3. The GUI tests
   # built with AddressSanitizer run in "asan-gui" below, beside this job.
   asan:
     name: AddressSanitizer (Windows, Release)

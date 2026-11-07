@@ -330,7 +330,8 @@ TEST_CASE(".chart: the last note end is the latest N line's tick plus sustain in
 TEST_CASE("corpus: the last note end spans every instrument, through the tempo map") {
     // Neck Deep's bass runs past its drums; one of Chaotrope's other sections
     // runs past its drums and its stated length. The ms are the section 3 and
-    // 4 numbers of docs/superpowers/plans/2026-10-18-song-length-end-event.md (D255).
+    // 4 numbers of the D255 plan, which was removed; read it with
+    // git show 6804353f:docs/superpowers/plans/2026-10-18-song-length-end-event.md.
     struct Want {
         const char* file;
         int64_t tick;
