@@ -4,7 +4,7 @@ The `ch` server lets an agent drive Clone Hero as text. It can start the game, s
 
 ## When to use it
 
-Use it when a question needs the real game: how Clone Hero scores a chart, whether a note fires a hook, what the game's clock says while a song plays. Use Hydra's own tools for anything Hydra can answer alone. A live run needs nobody at the keyboard and never takes it: the game is launched minimized, never shown, and driven from inside through a virtual drum kit, so the user keeps using the machine while it runs. The user says in chat when a run may start, and the server's backup and restore undo the files and the registry key.
+Use it when a question needs the real game: how Clone Hero scores a chart, whether a note fires a hook, what the game's clock says while a song plays. Use Hydra's own tools for anything Hydra can answer alone. A live run needs nobody at the keyboard and never takes it: the game is launched minimized, never shown, and driven from inside through a virtual drum kit, so the user keeps using the machine while it runs. The user says in chat when a run may start, and the server's backup and restore undo the files and the registry key. Some steps below use `hydra_replay` output, such as a score JSON or a dump. An agent never runs `hydra_replay` (agent rule 14), so the main session makes that file first and the brief names it.
 
 ## The tools
 
