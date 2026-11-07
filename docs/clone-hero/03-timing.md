@@ -140,7 +140,7 @@ Found: 2026-11-07, session 7d216054.
 
 ### TM-48 The song clock ran up to 127 ms ahead of wall time in one run
 
-Rule: In LS-O2 run 1 the engine's song clock ran up to 127 ms ahead of wall time, measured against the median offset, at about 38.4 s of song time, and came back by about 39.5 s. The cause is not known.
+Rule: In LS-O2 run 1 the engine's song clock ran up to 127 ms ahead of wall time, measured against the median offset, at about 38.4 s of song time, and came back by about 39.5 s. In LS-T3 run 1 of 2026-11-07, with two builds started on purpose during the song, the same measure read from 137.3 ms ahead to 355.5 ms behind, and it stayed within 2 ms before the builds began (result files in hydra-data, ch-mcp-runs/2026-11-07/ls-t3-run-b). So heavy load on the machine can move it; whether that was also the cause in LS-O2 is not proven.
 Label: Proven in a live run
 Evidence: LS-O2 run 1, 2026-11-07, `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-07\ls-o2-run1\sp_watch-1.csv`, columns `clock_s` and `wall_s`. Taking clock minus wall on each of the 6,240 rows and subtracting the median gives +127.4 ms at clock 38.45 s, and within 3 ms again in the rows from 39.4 s to 39.6 s.
 Game code (6142): field `#8288+0x100`, the clock the log reads; the cause was not looked for in the code. TM-12's pull toward the audio is one way a clock could do this, and nothing has checked it here.
