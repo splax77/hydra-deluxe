@@ -74,8 +74,8 @@ TEST_CASE("collect_dm_rows joins scores to records and labels them") {
         app::dm_report::collect_dm_rows(store, scores, testdm::profile());
     REQUIRE(rows.size() == 4);
 
-    // These exact strings are load-bearing: the page's status filter and chip
-    // classes key on them. A score under optimal is never called "matched".
+    // These exact strings are load-bearing: status_token and kStatusWords key
+    // on them. No row's status reads "matched".
     CHECK(rows[0].status == "under optimal");
     CHECK(rows[1].status == "at optimal");
     CHECK(rows[2].status == "above optimal");
@@ -333,8 +333,6 @@ TEST_CASE("dm_tiles: the tiles count only the scores shown") {
 TEST_CASE("status_token: each status's chip colour, as the page's STATUS_CLASS gives it") {
     using app::report::ChipToken;
     using app::dm_report::status_token;
-    // s-matched is drawn in --t0, s-above in --t1, s-notanalyzed and
-    // s-otherspeed in --muted, and s-unmatched in --tn.
     CHECK(status_token("under optimal") == ChipToken::t0);
     CHECK(status_token("at optimal") == ChipToken::t0);
     CHECK(status_token("above optimal") == ChipToken::t1);
@@ -342,7 +340,7 @@ TEST_CASE("status_token: each status's chip colour, as the page's STATUS_CLASS g
     CHECK(status_token("no paths") == ChipToken::muted);
     CHECK(status_token("other speed") == ChipToken::muted);
     CHECK(status_token("not in library") == ChipToken::tn);
-    // The page draws a status it doesn't know as s-unmatched.
+    // A status status_token doesn't know takes the tn chip.
     CHECK(status_token("something else") == ChipToken::tn);
 }
 
@@ -454,8 +452,7 @@ TEST_CASE("dm comparison: a percent rounds once") {
 
 TEST_CASE("dm comparison: the average tile reads a percent the way the cells do") {
     // 198,010 of 200,000 is exactly 99.005%. format_percent rounds the half
-    // up, so the cell reads 99.01%. The page's old tile rounded the float
-    // 99.00499999... with toFixed(2) and read 99.00%.
+    // up, so the cell reads 99.01%.
     CHECK(app::format_percent(198010, 200000, 2) == "99.01%");
     CHECK(app::percent_steps(198010, 200000, 2) == 9901);
 

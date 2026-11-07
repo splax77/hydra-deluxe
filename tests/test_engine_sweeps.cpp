@@ -443,9 +443,8 @@ TEST_CASE("stored transfer scales match the display-layer recomputation") {
                                        }))
                 return "a SqIn's stored scale diverges from recomputation";
 
-            // Copy-out stamps deact_tick on every activation it produces
-            // (blob v4), so a record fresh off the engine should never be
-            // missing it.
+            // Copy-out stamps deact_tick on every activation it produces, so
+            // a record fresh off the engine should never be missing it.
             if (!act.deact_tick().has_value()) return "activation missing deact_tick";
 
             // A backend row's offset_ms is the gap from the deactivation
@@ -489,8 +488,8 @@ TEST_CASE("no activation keeps backends past its squeezed-out note") {
             if (!has_sqout) return "";
             ++sqout_acts;
 
-            // The engine stamps the squeezed-out chord's tick (record
-            // v6); everything is compared by tick, never by ms.
+            // The engine stamps the squeezed-out chord's tick; everything is
+            // compared by tick, never by ms.
             if (!act.sqout_tick) return "squeeze-out activation missing sqout_tick";
             int on_sqout = 0;
             for (const BackendSqueeze& b : act.backends) {
@@ -746,8 +745,8 @@ TEST_CASE("allzero_options: no skips, a hard 0 ms limit, everything else default
 TEST_CASE("settings_key: the text for SearchSettings{} is pinned, and every field moves it") {
     const SearchSettings plain{};
     const std::string key = corpus::settings_key(plain);
-    // The number is the default rules' fingerprint, which moved at D115 B2-3
-    // when fill_length_measures was retired (test_rules.cpp pins it in hex).
+    // The number is the default rules' fingerprint (test_rules.cpp pins it in
+    // hex).
     CHECK(key == "4|0|4|none|0|12303881770575177486|");
 
     std::vector<SearchSettings> changed(6, plain);
@@ -763,12 +762,11 @@ TEST_CASE("settings_key: the text for SearchSettings{} is pinned, and every fiel
     }
 }
 
-// analyze_chart used to run Clone Hero's 4 bars down its own branch, with the
-// graph built a flat 4 bars tall. Every other fixed cap builds the graph only
-// as tall as the song has phrases (graph_build_cap). Both give the same
-// answer: a song with p phrases never holds more than p bars, so a p-bar
-// ceiling clamps nothing a 4-bar ceiling would not. This pins it field by
-// field (digest::record_hash) before the branches fold into one.
+// analyze_chart builds the graph for Clone Hero's 4 bars only as tall as the
+// song has phrases (graph_build_cap). A graph built a flat 4 bars tall gives
+// the same answer: a song with p phrases never holds more than p bars, so a
+// p-bar ceiling clamps nothing a 4-bar ceiling would not. This pins it field by
+// field (digest::record_hash).
 TEST_CASE("a 4-bar graph built at the song's phrase count stores the same paths") {
     std::vector<Song> songs;
     // Hand-built, three phrases, one of them collected mid-SP.

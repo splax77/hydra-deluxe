@@ -192,12 +192,11 @@ void add_words(const std::string& text, size_t begin, size_t end, std::set<std::
     }
 }
 
-// The words check 1 accepts as real code names. The user chose this level on
-// 2026-10-10 (the single-owner redesign plan, question 7): a comment never
-// vouches for a name, and a test's string literal never does either, because
-// production strings name real INI keys, chart tags and stored columns while
-// test strings name made-up ones. This file is left out: its allow-list would
-// otherwise vouch for the names it lists.
+// The words check 1 accepts as real code names. A comment never vouches for a
+// name, and a test's string literal never does either, because production
+// strings name real INI keys, chart tags and stored columns while test strings
+// name made-up ones. This file is left out: its allow-list would otherwise
+// vouch for the names it lists.
 std::set<std::string> code_words() {
     std::set<std::string> words;
     sourcetree::for_each_source_file([&](const fs::path& path, const std::string& rel) {
@@ -280,7 +279,7 @@ const std::vector<Allowed>& allowed() {
         // again for D115's record writer, so it needs no entry.)
         {"docs/adr/0017", "read_record", "ADR 0017 records that it is gone"},
         // ADR 0015's decision names it, and its dated line records that it
-        // was removed later (34137fb).
+        // is gone.
         {"docs/adr/0015", "from_code", "ADR 0015 records that it is gone"},
         // hydra_report, the command-line report tool, was deleted when the
         // reports became Hydra windows (D103 item 5). ADR 0027 records the
@@ -331,7 +330,8 @@ const std::map<std::string, KnownDefault>& known_defaults() {
         out["kEarlyFillSlackMs"] = {false, hydra::kEarlyFillSlackMs};
         out["kDefaultDepthValue"] = {false, static_cast<double>(hydra::kDefaultDepthValue)};
         out["kSpActivationBars"] = {false, static_cast<double>(hydra::kSpActivationBars)};
-        // One marker per star: kStarMultipliers[1] is the 1-star factor.
+        // One marker per star, numbered from 1 as the docs number them: the
+        // marker kStarMultipliers[1] is the 1-star factor, the array's index 0.
         for (int stars = 1; stars <= hydra::kMaxStars; ++stars)
             out["kStarMultipliers[" + std::to_string(stars) + "]"] = {
                 false, static_cast<double>(hydra::kStarMultipliers[stars - 1]), true};
@@ -696,8 +696,9 @@ bool has_row(const FactsTable& t, const std::string& span) {
     return false;
 }
 
-// The seven fixed lines of a rule block, from "The page template" in the
-// plan. A Game code line names its build in the parentheses.
+// The seven fixed lines of a rule block, from "The page template" in
+// docs/clone-hero/README.md. A Game code line names its build in the
+// parentheses.
 constexpr const char* kFixedLines[] = {"Rule:", "Label:", "Evidence:", "Game code (", "Hydra:", "Ruling:",
                                        "Found:"};
 
@@ -721,8 +722,8 @@ constexpr const char* kNotAreaPages[] = {"README.md", "questions.md", "live-chec
 constexpr const char* kQuestionsPage = "questions.md";
 
 // The RVA_ names in tools/ch_probe/constants.py that are data addresses in
-// the DLL's .rdata section, not methods, so no dump line names them (plan
-// question 2). Every other RVA_ name there is a method.
+// the DLL's .rdata section, not methods, so no dump line names them
+// (docs/clone-hero/README.md). Every other RVA_ name there is a method.
 constexpr const char* kDataAddressNames[] = {
     "RVA_CONST_NORMAL_BACK", "RVA_CONST_NORMAL_FRONT", "RVA_CONST_PRECISION_BACK",
     "RVA_CONST_PRECISION_FRONT", "RVA_FORMULA_NORMAL", "RVA_FORMULA_PRECISION",
@@ -862,8 +863,7 @@ CloneHeroCheck check_clone_hero(const std::vector<Doc>& pages) {
         for (const RuleBlock& b : scans.back().blocks) out.blocks += b.rule ? 1 : 0;
         check_ascii_spans(scans.back(), out.problems);
     }
-    // This branch lands on main before task J1 writes the facts tables, over
-    // the skeleton pages, so with no rule block anywhere nothing is checked.
+    // With no rule block on any page, nothing is checked.
     if (out.blocks == 0) return out;
 
     std::vector<std::string>& problems = out.problems;
