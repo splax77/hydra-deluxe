@@ -3,8 +3,8 @@
 Claude Code starts this server (see .mcp.json at the repo root) and calls its
 tools. The plans are the first server plan (removed; read it with git show
 444631e6:docs/superpowers/plans/2026-10-28-ch-mcp-server.md) and
-docs/superpowers/plans/2026-10-30-ch-mcp-star-power-and-song-start.md, and
-docs/superpowers/plans/2026-10-30-ch-mcp-in-game-input.md for the virtual kit.
+docs/superpowers/plans/2026-10-30-ch-mcp-star-power-and-song-start.md (removed; git show 6804353f:docs/superpowers/plans/2026-10-30-ch-mcp-star-power-and-song-start.md), and
+docs/superpowers/plans/2026-10-30-ch-mcp-in-game-input.md (removed; git show 6804353f:docs/superpowers/plans/2026-10-30-ch-mcp-in-game-input.md) for the virtual kit.
 The game-side tools live in game_tools.py, the Frida tools in frida_tools.py,
 the Star Power tools in sp_tools.py, the virtual kit in kit_tools.py, the menu
 driver in menu_tools.py and the method watch in method_watch.py; this file only

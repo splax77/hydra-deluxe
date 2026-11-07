@@ -26,7 +26,7 @@ start_run with human=True plays the song as a human player instead of the
 bot: launch_human starts the game paused, attaches agent/launch.ts, arms it,
 resumes the game and waits for the agent to say the loader's bot byte is
 patched in memory (the direct-start plan,
-docs/superpowers/plans/2026-10-31-ch-mcp-direct-start.md, "The launch").
+docs/superpowers/plans/2026-10-31-ch-mcp-direct-start.md (removed; git show 6804353f:docs/superpowers/plans/2026-10-31-ch-mcp-direct-start.md), "The launch").
 Nothing here writes the game's files on disk.
 
 The file paths and the backup list live in game_files.py; the caps are the

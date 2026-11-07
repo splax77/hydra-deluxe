@@ -3,9 +3,9 @@ song by pressing the virtual kit's pads and buttons that menu_steps.json
 lists, reading the game after every press to see where it is. Nothing it does
 touches the keyboard or the window.
 
-The plan is docs/superpowers/plans/2026-10-30-ch-mcp-in-game-input.md, task K4
+The plan is docs/superpowers/plans/2026-10-30-ch-mcp-in-game-input.md (removed; git show 6804353f:docs/superpowers/plans/2026-10-30-ch-mcp-in-game-input.md), task K4
 ("Menus without seeing"); it replaces the key presses of task T6 of
-docs/superpowers/plans/2026-10-30-ch-mcp-star-power-and-song-start.md. Each
+docs/superpowers/plans/2026-10-30-ch-mcp-star-power-and-song-start.md (removed; git show 6804353f:docs/superpowers/plans/2026-10-30-ch-mcp-star-power-and-song-start.md). Each
 question has one owner, and this module calls it: kit_tools.KitTools.press_items
 presses a kit item and kit_tools.KIT_ELEMENTS names them;
 game_tools.GameTools.ensure_backup takes the backup;

@@ -1,10 +1,10 @@
 {
   "verified": false,
-  "about": "The kit presses ch_open_song makes to walk from the title screen to a loaded song, written from the manual, the plan's probe facts and the plan, and not yet tried on the game. Every item is a press on the virtual kit inside the game; the kit route presses no keys and cannot type, so no step searches. Live step LS-K3 of docs/superpowers/plans/2026-10-30-ch-mcp-in-game-input.md presses them one at a time, corrects this file in a one-file data commit, sets verified to true and settles each unproven mark. menu_tools.py says how a step is read.",
+  "about": "The kit presses ch_open_song makes to walk from the title screen to a loaded song, written from the manual, the plan's probe facts and the plan, and not yet tried on the game. Every item is a press on the virtual kit inside the game; the kit route presses no keys and cannot type, so no step searches. Live step LS-K3 of docs/superpowers/plans/2026-10-30-ch-mcp-in-game-input.md (removed; git show 6804353f:docs/superpowers/plans/2026-10-30-ch-mcp-in-game-input.md) presses them one at a time, corrects this file in a one-file data commit, sets verified to true and settles each unproven mark. menu_tools.py says how a step is read.",
   "sources": [
     "https://wiki.clonehero.net/books/guitars-drums-controllers/page/keyboard-and-gamepads",
     "https://wiki.clonehero.net/books/clone-hero-manual/page/how-to-play",
-    "docs/superpowers/plans/2026-10-30-ch-mcp-in-game-input.md"
+    "docs/superpowers/plans/2026-10-30-ch-mcp-in-game-input.md (removed; git show 6804353f:docs/superpowers/plans/2026-10-30-ch-mcp-in-game-input.md)"
   ],
   "steps": [
     {

@@ -1,7 +1,7 @@
 """The method watch: hook the menu and song-start methods that
 start_candidates.json names, log every call, and show which call came just
 before each scene load (the plan
-docs/superpowers/plans/2026-10-30-ch-mcp-star-power-and-song-start.md, task
+docs/superpowers/plans/2026-10-30-ch-mcp-star-power-and-song-start.md (removed; git show 6804353f:docs/superpowers/plans/2026-10-30-ch-mcp-star-power-and-song-start.md), task
 T7 and live step LS-M).
 
 `MethodWatch` holds the two tools, ch_method_watch_start and

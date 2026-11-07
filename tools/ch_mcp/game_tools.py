@@ -48,7 +48,7 @@ SCRATCH_PREFIX = "ch_live_"
 PRESS_LOG_PREFIX = "press-"
 # The file under the temp root that names an open backup and the worker holding
 # it, so a worker killed before its restore leaves the next worker a way back to
-# the user's files (docs/superpowers/plans/2026-11-06-ch-server-reload.md, design
+# the user's files (docs/superpowers/plans/2026-11-06-ch-server-reload.md (removed; git show 6804353f:docs/superpowers/plans/2026-11-06-ch-server-reload.md), design
 # point 3). read_marker reads it, _write_marker writes it.
 OPEN_RUN_MARKER = "ch_open_run.json"
 
@@ -61,7 +61,7 @@ _ERROR_INVALID_PARAMETER = 87
 _STILL_ACTIVE = 259
 
 # ch_play_chart's two routes: the virtual kit inside the game, or keys sent to
-# the focused game window (the plan 2026-10-30-ch-mcp-in-game-input.md, "The
+# the focused game window (the plan docs/superpowers/plans/2026-10-30-ch-mcp-in-game-input.md (removed; git show 6804353f:docs/superpowers/plans/2026-10-30-ch-mcp-in-game-input.md), "The
 # tools").
 ROUTE_KIT = "kit"
 ROUTE_KEYS = "keys"

@@ -2,7 +2,7 @@
 
 Each planted fault comes out fixed, named or missed, and every edit away from a planted line is
 a false finding. The key's shape and what the test does with these results are in the plan,
-docs/superpowers/plans/2026-11-07-agent-effort-test.md, task T3.
+docs/superpowers/plans/2026-11-07-agent-effort-test.md (removed; git show 6804353f:docs/superpowers/plans/2026-11-07-agent-effort-test.md), task T3.
 
 Run it with:
     py -I tools/effort_test_faults.py <fault-key.json> <repo> <reviewer tip> <report.txt>

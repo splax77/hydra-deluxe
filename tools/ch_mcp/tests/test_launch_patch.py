@@ -1,7 +1,7 @@
 """Tests for tools/ch_mcp/launch_patch.json, the one-byte patch the launch
 agent makes in memory, checked against the rest of the repo: the facts table
 and the loader's listing that task D1 of the direct-start plan wrote
-(docs/superpowers/plans/2026-10-31-ch-mcp-direct-start.md, task D5).
+(docs/superpowers/plans/2026-10-31-ch-mcp-direct-start.md (removed; git show 6804353f:docs/superpowers/plans/2026-10-31-ch-mcp-direct-start.md), task D5).
 
 Every expected value below is a literal read once by hand from the listing or
 the DLL; none is worked out again from the file under test. The game is not in

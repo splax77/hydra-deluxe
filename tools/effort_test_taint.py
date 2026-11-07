@@ -1,7 +1,7 @@
 """Lists the tool calls in one wave of effort-test runs that may have read the finished solution.
 
-The plan's "Global constraints" says what counts: docs/superpowers/plans/2026-11-07-agent-effort-test.md
-until that plan leaves the repo, then the results note. This script only lists. The main session
+The plan's "Global constraints" says what counts. The plan was removed; read it with
+git show 6804353f:docs/superpowers/plans/2026-11-07-agent-effort-test.md. This script only lists. The main session
 reads each listed call and rules on it, so the script prints no verdict and always exits 0 once
 it has read every transcript. It exits 2 when it cannot read one, because a skipped transcript
 would look like a clean run.

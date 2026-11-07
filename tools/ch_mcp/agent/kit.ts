@@ -11,7 +11,7 @@
 // hit strength for; tools/ch_mcp/kit_tools.py says which id and checks it.
 // A placeholder is never given to a player, and teardown destroys each one.
 //
-// The plan is docs/superpowers/plans/2026-10-30-ch-mcp-in-game-input.md
+// The plan is docs/superpowers/plans/2026-10-30-ch-mcp-in-game-input.md (removed; git show 6804353f:docs/superpowers/plans/2026-10-30-ch-mcp-in-game-input.md)
 // ("One agent for the kit"). The user allowed method calls and field sets
 // where a feature needs them (D272 rulings 2 and 5).
 //
