@@ -457,17 +457,16 @@ def _rounded(reach):
     return (round(reach.earliest_ms, 2), round(reach.latest_ms, 2))
 
 
-def _fixture_chords(score_path, phrase_end):
-    """The fixture's chords, with only chord `phrase_end` a phrase end: the
-    fields _check_phrase_rises reads that the cut-down fixture lacks."""
+def _fixture_chords(score_path):
+    """The fixture file's chords as they are: the phrase-end flag, in_sp and
+    multipliers are the refine-prep score file's own."""
     with open(score_path, encoding="utf-8") as f:
-        chords = json.load(f)["chords"]
-    return [{**c, "is_sp_phrase_end": c["index"] == phrase_end} for c in chords]
+        return json.load(f)["chords"]
 
 
-def _rise_lines(score_path, reach, phrase_end, rows):
+def _rise_lines(score_path, reach, rows):
     report = sp_compare.Report()
-    sp_compare._check_phrase_rises(report, rows, _fixture_chords(score_path, phrase_end),
+    sp_compare._check_phrase_rises(report, rows, _fixture_chords(score_path),
                                    AMOUNT, MAX, reach)
     return report.lines
 
@@ -485,14 +484,14 @@ class PressReachTest(unittest.TestCase):
         rows = [_row(118.300, 0), _row(118.412, 0), _row(118.441, 1536)]
         self.assertIn("PASS phrase rise after chord 740 (tick 48480, 118426.0 ms): "
                       "+1536 (0 -> 1536) at 118441.0 ms, full",
-                      _rise_lines(_MOUTHS[0], reach, 740, rows))
+                      _rise_lines(_MOUTHS[0], reach, rows))
 
     def test_bomber_147_reaches_its_55_ms_early_press(self):
         reach = sp_compare.press_reach(*_BOMBER)
         self.assertEqual(_rounded(reach[147]), (27278.33, 27278.33))
         # A flip after 147's press but before its ms lands on 147, not on
         # chord 146 83 ms before it.
-        chords = _fixture_chords(_BOMBER[0], None)
+        chords = _fixture_chords(_BOMBER[0])
         chord_ms = [c["ms"] for c in chords]
         got = sp_compare._landed_chord(chords, chord_ms, 27280.0, reach)
         self.assertEqual(got["index"], 147)
@@ -503,7 +502,7 @@ class PressReachTest(unittest.TestCase):
         rows = [_row(32.500, 0), _row(32.640, 1536)]
         self.assertIn("PASS phrase rise after chord 180 (tick 18768, 32583.3 ms): "
                       "+1536 (0 -> 1536) at 32640.0 ms, full",
-                      _rise_lines(_BOMBER[0], reach, 180, rows))
+                      _rise_lines(_BOMBER[0], reach, rows))
 
     def test_a_squeeze_out_with_no_dump_is_refused(self):
         with self.assertRaises(ValueError):

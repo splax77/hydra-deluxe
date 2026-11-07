@@ -630,11 +630,12 @@ class SpToolsTest(unittest.TestCase):
         self.assertTrue(reply.startswith("compare failed: FileNotFoundError"))
 
     def _compare_files(self, score, phrase_end, rows):
-        """A watcher CSV of `rows` and a copy of the score file `score` with
-        the fields compare's checks read that the cut-down fixtures lack,
-        chord `phrase_end` the one phrase end."""
-        chords = [{**c, "is_sp_phrase_end": c["index"] == phrase_end, "in_sp": False,
-                   "multiplier": 4, "multiplier_after": 4} for c in score["chords"]]
+        """A watcher CSV of `rows` and a copy of the score file `score`. A
+        chord that lacks the fields compare's checks read (the hand-made Senri
+        file) gets placeholders, with chord `phrase_end` the one phrase end;
+        a chord that has them (the refine-prep fixtures) keeps its own."""
+        chords = [{"is_sp_phrase_end": c["index"] == phrase_end, "in_sp": False,
+                   "multiplier": 4, "multiplier_after": 4, **c} for c in score["chords"]]
         score_path = os.path.join(self.tmp.name, "score.json")
         with open(score_path, "w", encoding="utf-8") as f:
             json.dump({**score, "chords": chords}, f)
@@ -652,7 +653,7 @@ class SpToolsTest(unittest.TestCase):
         # test_sp_compare's rows for chord 740: its kick is pressed after the
         # squeeze-out's end, and the rise lands after that press.
         rows = [_row(118.300, 0), _row(118.412, 0), _row(118.441, 1536)]
-        return self._compare_files(score, 740, rows)
+        return self._compare_files(score, None, rows)
 
     def test_ch_sp_compare_on_senri_with_no_dump_reports_as_compare_does(self):
         from tools.ch_probe.tests.test_play_chart import _senri_dump
