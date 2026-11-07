@@ -12,13 +12,13 @@
 // onto every activation it produces, and everything below reads it through
 // Activation::deact_tick.
 //
-// Two functions are the module's entries:
-//   rate_activation()          -- the details display's only interface.
-//   frontend_transfer_scales() -- the engine's copy-out stamp, read from the
-//                                 stored SP-end steps, so a record's stored
-//                                 ratios and a live recompute agree.
-// Everything else below is an internal piece, declared only so its own tests
-// can reach it directly. No production caller should use them.
+// Production code calls rate_activation() for the details display and
+// frontend_transfer_scales() for the engine's copy-out stamp, read from the
+// stored SP-end steps, so a record's stored ratios and a live recompute
+// agree. The details display also reads is_scaled, kScaleIdentityDigits and
+// nominal_budget_ms; the report and Backend rows read the timing tiers
+// (timing_tiers, tier_for, beyond_tier, none_tier, beyond_edge_ms). Every
+// other function below is internal, declared only so its own tests can reach.
 
 #ifndef HYDRA_CORE_SQUEEZE_RATING_H
 #define HYDRA_CORE_SQUEEZE_RATING_H
@@ -200,11 +200,11 @@ ActivationRating rate_activation(
 
 // The report's timing tiers: raw squeeze ms banded against the two-hit
 // budget (nominal_budget_ms), quarters of it after the kDifficultMs
-// "Normal" floor (at the historical W = 70 this is the 2/35/70/105/140
-// ladder). In payload order. `cutoff` is the band's upper edge, and a timing
-// exactly on it belongs to this band, not the next (D48 Q3): 2.0 ms is Normal,
-// and a timing exactly on the two-hit budget is Insane+. It is unset for the
-// open "Beyond" band and the "None" (no squeeze) entry.
+// "Normal" floor. kHitWindowMs sets those quarters. In payload order.
+// `cutoff` is the band's upper edge, and a timing exactly on it belongs to
+// this band, not the next (D48 Q3): 2.0 ms is Normal, and a timing exactly
+// on the two-hit budget is Insane+. It is unset for the open "Beyond" band
+// and the "None" (no squeeze) entry.
 struct TimingTier { const char* name; const char* tok; std::optional<double> cutoff; };
 std::vector<TimingTier> timing_tiers();
 
