@@ -43,6 +43,7 @@ overlay_logs.PRESS_LOG_COLUMNS names. score_compare.py reads that file.
 
 Usage:
     python tools\\ch_probe\\experiments\\play_chart.py <score.json> [--log <press.csv>]
+        [--dump <dump.json> [--path-index N]]
 
 Run this, then start the song (or start it mid-song).
 """
