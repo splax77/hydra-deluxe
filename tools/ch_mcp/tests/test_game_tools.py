@@ -32,6 +32,7 @@ from tools.ch_mcp import game_tools as GT  # noqa: E402
 from tools.ch_mcp import install_chart as I  # noqa: E402
 from tools.ch_mcp import frida_attach as FA  # noqa: E402
 from tools.ch_mcp import quiet as Q  # noqa: E402
+from tools.ch_mcp import machine_recorder as MR  # noqa: E402
 from tools.ch_mcp import recorder_link as R  # noqa: E402
 from tools.ch_mcp.tests.test_recorder_link import FakePopen  # noqa: E402
 from tools.ch_mcp.tests.test_bot_run import (  # noqa: E402
@@ -1088,11 +1089,12 @@ class GameToolsTest(unittest.TestCase):
     def test_the_reply_has_a_line_per_part_and_names_the_first_press(self):
         t, _events, _seen = self._chain_rig()
         lines = self._run(t).splitlines()
-        self.assertEqual([line.split(":")[0] for line in lines[:4]],
-                         ["attach", "kit setup", "watch", "play"])
+        self.assertEqual([line.split(":")[0] for line in lines[:5]],
+                         ["attach", "kit setup", "watch", "machine recorder", "play"])
         self.assertIn(f"engine {self.ENGINE:#x}, csv: w.csv", lines[2])
         self.assertEqual(lines[-1], "first press chord index 0 at 1000.0 ms")
-        self.assertEqual(len(lines), 6)
+        self.assertEqual(len(lines), 7)
+        self.assertEqual(lines[3], "machine recorder: none; this run is not recorded")
 
     # -- the press log file -------------------------------------------------------------
 
@@ -2177,7 +2179,7 @@ class RecorderTest(unittest.TestCase):
     def test_the_reply_holds_the_samples_line_after_the_watch_line(self):
         self.chain([])
         self.t.tools.ch_start(self.t.r.song)
-        with open(os.path.join(self.folder(), R.SAMPLES_NAME), "wb") as f:
+        with open(os.path.join(self.folder(), MR.SAMPLES_FILE), "wb") as f:
             f.write(b"sample,wall_s\n0,1000.25\n1,1000.27\n")
         lines = self.run_chart().splitlines()
         at = lines.index("machine recorder: 2 samples so far, last at 1000.27")
@@ -2273,7 +2275,8 @@ class RecorderTest(unittest.TestCase):
         self.t.tools.ch_start(self.t.r.song)
         folder = self.folder()
         self.popen.procs[0].returncode = 3
-        said = f"machine recorder: exited by itself, pid 777, exit code 3, folder {folder}"
+        said = (f"machine recorder: exited by itself, pid 777, exit code 3, folder {folder}, "
+                f"log {os.path.join(folder, R.LOG_NAME)}")
         self.assertNotIn(said, self.t.tools.open_lines())
         self.assertEqual(len(self.t.tools.open_lines()), 1)
         self.assertIn(said, self.t.tools.ch_status().splitlines())

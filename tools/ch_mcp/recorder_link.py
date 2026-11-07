@@ -16,18 +16,17 @@ import sys
 import threading
 from typing import Callable, List, Optional
 
+from tools.ch_mcp import machine_recorder
+
 # How long stop() waits after closing the recorder's stdin, and again after
 # terminating it (the run timing plan's question 18).
 RECORDER_EXIT_CAP_S = 2
 
-RECORDER_SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "machine_recorder.py")
+RECORDER_SCRIPT = os.path.abspath(machine_recorder.__file__)
 # Each recording's folder under the session folder, numbered from 1.
 FOLDER_PREFIX = "machine-"
 # Where the recorder's stdout and stderr go, in its folder.
 LOG_NAME = "recorder.log"
-# The file and column samples_line reads. machine_recorder.py writes them.
-SAMPLES_NAME = "samples.csv"
-WALL_COLUMN = "wall_s"
 
 _LINE_PREFIX = "machine recorder: "
 
@@ -59,9 +58,10 @@ def samples_text(path: str) -> str:
         return f"no samples yet in {path}"
     header, last = (row.decode("ascii", "replace").strip().split(",") for row in (rows[0], rows[-1]))
     try:
-        wall = last[header.index(WALL_COLUMN)]
+        wall = last[header.index(machine_recorder.WALL_COLUMN)]
     except (ValueError, IndexError):
-        return f"{len(rows) - 1} samples so far, but no {WALL_COLUMN} in the last row of {path}"
+        return (f"{len(rows) - 1} samples so far, but no {machine_recorder.WALL_COLUMN} "
+                f"in the last row of {path}")
     return f"{len(rows) - 1} samples so far, last at {wall}"
 
 
@@ -87,8 +87,12 @@ class RecorderLink:
         if stopped is not None:
             lines.append(stopped)
         self._said = None
-        self._count += 1
-        folder = os.path.join(session_dir, f"{FOLDER_PREFIX}{self._count}")
+        # The recorder opens its files create-only, so the folder must be new.
+        while True:
+            self._count += 1
+            folder = os.path.join(session_dir, f"{FOLDER_PREFIX}{self._count}")
+            if not os.path.exists(folder):
+                break
         # sys.executable leaves no py launcher between the worker and the
         # recorder, so --parent is the recorder's real parent. The pipe and the
         # log keep it off the worker's own stdin and stdout, for the reason
@@ -96,7 +100,7 @@ class RecorderLink:
         command = [sys.executable, "-I", RECORDER_SCRIPT, "--out", folder,
                    "--parent", str(worker_pid), "--run-cap-s", str(cap_s)]
         try:
-            os.makedirs(folder, exist_ok=True)
+            os.makedirs(folder)
             with open(os.path.join(folder, LOG_NAME), "wb") as log:
                 self._proc = self._popen(command, stdin=subprocess.PIPE, stdout=log,
                                          stderr=subprocess.STDOUT,
@@ -146,18 +150,18 @@ class RecorderLink:
             return f"{_LINE_PREFIX}running, pid {self._proc.pid}"
         return self._exited_line(self._proc)
 
-    def samples_line(self) -> Optional[str]:
+    def samples_line(self) -> str:
         """How far the recording has got, read from its file with no wait.
-        With no recorder held, what became of the last one; None when no start
-        was ever tried, as on a game the server did not start."""
+        With no recorder held, what became of the last one, or that none
+        was ever started, as on a game the server did not start."""
         if self._proc is None:
-            return self._said
-        text = samples_text(os.path.join(self._folder, SAMPLES_NAME))
+            return self._said or f"{_LINE_PREFIX}none; this run is not recorded"
+        text = samples_text(os.path.join(self._folder, machine_recorder.SAMPLES_FILE))
         return f"{_LINE_PREFIX}{text}" if self.running() else f"{self.line()}; {text}"
 
     def _exited_line(self, proc: subprocess.Popen) -> str:
         return (f"{_LINE_PREFIX}exited by itself, pid {proc.pid}, exit code {proc.returncode}, "
-                f"folder {self._folder}")
+                f"folder {self._folder}, log {os.path.join(self._folder, LOG_NAME)}")
 
     def _wait_out(self, proc: subprocess.Popen) -> str:
         """Wait for `proc` to end after its stdin closed, terminating it at the cap."""

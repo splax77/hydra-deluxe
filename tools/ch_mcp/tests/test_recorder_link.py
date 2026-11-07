@@ -15,13 +15,13 @@ _REPO_ROOT = os.path.abspath(os.path.join(_HERE, "..", "..", ".."))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
+from tools.ch_mcp import machine_recorder as MR  # noqa: E402
 from tools.ch_mcp import recorder_link as R  # noqa: E402
 
 # How long a fake waits for the close thread before the test fails.
 THREAD_CAP_S = 5.0
 
-HEADER = (b"sample,wall_s,sample_ms,processes,threads,ready_threads,clock_s,clock_wall_before_s,"
-          b"clock_wall_after_s,recorder_pid,period_ms,stop_reason,process_time_s\n")
+HEADER = (",".join(MR.SAMPLES_COLUMNS) + "\n").encode()
 
 
 def sample_row(number: int, wall: str) -> bytes:
@@ -107,12 +107,13 @@ class RecorderLinkTest(unittest.TestCase):
         self.popen = FakePopen()
         self.link = R.RecorderLink(popen=self.popen)
         self.folder = os.path.join(self.session, "machine-1")
+        self.log = os.path.join(self.folder, R.LOG_NAME)
 
     def start(self):
         return self.link.start(self.session, 55, 120.5)
 
     def samples(self, data: bytes) -> None:
-        with open(os.path.join(self.folder, "samples.csv"), "wb") as f:
+        with open(os.path.join(self.folder, MR.SAMPLES_FILE), "wb") as f:
             f.write(data)
 
     def test_the_exit_cap_is_the_users_two_seconds(self):
@@ -150,6 +151,11 @@ class RecorderLinkTest(unittest.TestCase):
             "machine recorder: started, pid 778, folder "
             + os.path.join(self.session, "machine-2")])
         self.assertTrue(self.link.running())
+
+    def test_a_folder_that_already_holds_a_recording_is_skipped(self):
+        os.makedirs(os.path.join(self.session, "machine-1"))
+        self.assertEqual(self.start(), [
+            f"machine recorder: started, pid 777, folder {os.path.join(self.session, 'machine-2')}"])
 
     def test_a_start_that_raises_says_so_in_line_and_samples_line(self):
         self.popen.error = OSError("no python")
@@ -230,7 +236,8 @@ class RecorderLinkTest(unittest.TestCase):
         self.start()
         proc = self.popen.procs[0]
         proc.returncode = 3
-        said = f"machine recorder: exited by itself, pid 777, exit code 3, folder {self.folder}"
+        said = (f"machine recorder: exited by itself, pid 777, exit code 3, folder {self.folder}, "
+                f"log {self.log}")
         self.assertFalse(self.link.running())
         self.assertEqual(self.link.line(), said)
         self.assertEqual(self.link.stop(), said)
@@ -247,8 +254,8 @@ class RecorderLinkTest(unittest.TestCase):
         self.start()
         self.assertEqual(self.link.line(), "machine recorder: running, pid 777")
 
-    def test_samples_line_is_none_when_no_start_was_tried(self):
-        self.assertIsNone(self.link.samples_line())
+    def test_samples_line_says_the_run_is_not_recorded_when_no_start_was_tried(self):
+        self.assertEqual(self.link.samples_line(), "machine recorder: none; this run is not recorded")
 
     def test_samples_line_with_no_file_yet(self):
         self.start()
@@ -293,7 +300,7 @@ class RecorderLinkTest(unittest.TestCase):
         self.popen.procs[0].returncode = 3
         self.assertEqual(self.link.samples_line(),
                          f"machine recorder: exited by itself, pid 777, exit code 3, folder "
-                         f"{self.folder}; 1 samples so far, last at 1000.25")
+                         f"{self.folder}, log {self.log}; 1 samples so far, last at 1000.25")
 
     def test_samples_line_after_the_stop_is_the_stop_line(self):
         self.start()

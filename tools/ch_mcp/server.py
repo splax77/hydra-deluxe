@@ -131,7 +131,7 @@ def build_server(helper: Optional[Helper] = None):
         instructions=(
             "Drive Clone Hero as text, with nobody at the keyboard and the game window"
             " never brought to the front. ch_start checks the machine is quiet (about 6 s,"
-            " and it can refuse), backs up the user's files and the"
+            " and it can refuse), starts a machine recorder beside the run, backs up the user's files and the"
             " Rewired registry key, then launches the game minimized (with a song folder"
             " the bot plays it, or with human=True a human player on the virtual kit;"
             " with none the game opens at its menu); ch_stop closes it"
@@ -198,8 +198,9 @@ def build_server(helper: Optional[Helper] = None):
     @server.tool()
     def ch_open_items() -> str:
         """What the server holds open, one line each: the run and its backup
-        folder, an adopted backup, the Frida state agent, the kit, and a
-        running play session, Star Power watch, method watch or trace. With
+        folder, an adopted backup, the Frida state agent, the kit, the machine
+        recorder while it runs, and a running play session, Star Power watch,
+        method watch or trace. With
         none of them it says "nothing open". ch_stop closes them all."""
         return capped("\n".join(h.open_items()) or "nothing open")
 
@@ -388,7 +389,8 @@ def build_server(helper: Optional[Helper] = None):
         dump_json are ch_play_chart's. It writes a press log, a press-<n>.csv
         in the session folder, one row at each press as the run goes, and its
         reply names the file. The call returns at the first press, with one
-        line per part, the time it took, the press log's line, and the line
+        line per part, the time it took, the machine recorder's samples line
+        after the watch's, the press log's line, and the line
         "first press chord index k at ms". A part that fails stops the call
         there: the reply names it and the kit is taken away. Refused while a
         play session runs. Read the run with ch_play_status and

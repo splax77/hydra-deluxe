@@ -840,9 +840,7 @@ class GameTools:
                                          parts.kit.ch_kit_teardown())
             lines.append(f"watch: ok, {self._seconds_since(began)}, engine {engine:#x}, {text}")
             self._tell_recorder(f"engine {engine:#x}", lines)
-            samples = self._recorder.samples_line()
-            if samples is not None:
-                lines.append(samples)
+            lines.append(self._recorder.samples_line())
 
             began = self._env.now()
             self._press_log_count += 1
