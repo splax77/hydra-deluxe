@@ -2563,12 +2563,6 @@ class AtexitFactTest(unittest.TestCase):
         self.assertTrue(os.path.exists(self.flag))
 
 
-def _leads_stub(*leads):
-    """A patch that makes play_chart.activation_leads return `leads`, for
-    made-up chords whose files carry no end_scale_* to solve a lead from."""
-    return mock.patch.object(play_chart, "activation_leads", lambda chords: list(leads))
-
-
 class PlayerLimitsLinesTest(unittest.TestCase):
     """The reply lines and the edge probe of the 2026-11-07 player-limits
     plan, task T4: design points 1, 8 and 9."""
