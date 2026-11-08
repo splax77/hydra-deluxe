@@ -263,15 +263,6 @@ def trace_settings(notes: list[dict], mode: str, engine_class: str,
     }
 
 
-def agent_missing_line(agent_path: str, agent_name: str = DEFAULT_AGENT_NAME) -> str:
-    """What to say when a compiled agent is not there. `agent_name` is the
-    agent's name in tools/ch_mcp/agent/package.json (build:<name>); the
-    trace agent's by default. A loader that checks the build stamp says
-    build_stamp.check's line instead."""
-    return (f"{agent_path} not found; run npm run build:{agent_name} in "
-            f"tools/ch_mcp/agent first")
-
-
 class AgentMissing(Exception):
     """The compiled trace agent is missing or stale (build_stamp.check); the
     message says how to build it."""

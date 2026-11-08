@@ -212,9 +212,7 @@ class Rig(unittest.TestCase):
         self.addCleanup(tmp.cleanup)
         self.tmp = tmp.name
         self.agent_dir = os.path.join(self.tmp, "agent")
-        os.makedirs(self.agent_dir)
-        with open(os.path.join(self.agent_dir, K.KIT_AGENT_FILE), "w", encoding="utf-8") as f:
-            f.write("// fake kit agent\n")
+        make_built_agent(self.agent_dir, K.KIT_AGENT_NAME)
         self.events = []
         self.clock = FakeClock()
 
@@ -321,6 +319,20 @@ class SetupTest(Rig):
         self.assertTrue(reply.startswith("refused: could not read pause_on_focus_lost"))
         self.assertIn("ch_start", reply)
         self.assertEqual(self.events, [])
+
+    def test_a_stale_or_missing_kit_agent_is_refused_before_any_attach(self):
+        path = os.path.join(self.agent_dir, K.KIT_AGENT_FILE)
+        with open(os.path.join(self.agent_dir, "kit.ts"), "a", encoding="utf-8") as f:
+            f.write("// an edit after the build\n")
+        reply = self.tools([STATUS, setup_reply()]).ch_kit_setup()
+        self.assertEqual(reply.splitlines()[-1],
+                         f"{path} is stale: kit.ts changed since it was built; "
+                         "run npm run build:kit in tools/ch_mcp/agent first")
+        os.remove(BS.stamp_path(path))
+        reply = self.tools([STATUS, setup_reply()]).ch_kit_setup()
+        self.assertEqual(reply.splitlines()[-1], BS.check(path))
+        self.assertIn("has no build stamp", reply)
+        self.assertNotIn("attach", self.events)
 
     def test_backup_then_attach_then_setup_and_the_flags_are_printed(self):
         tools = self.tools([STATUS, setup_reply()])

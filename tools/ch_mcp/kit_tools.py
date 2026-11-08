@@ -36,9 +36,9 @@ import threading
 import time
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
+from tools.ch_mcp import build_stamp
 from tools.ch_mcp import frida_attach as FA
 from tools.ch_mcp import game_files
-from tools.ch_mcp import trace_hits as TH
 from tools.ch_mcp.frida_tools import AGENT_DIR, ATTACH_CAP_S, NOT_ATTACHED, READ_CAP_S
 from tools.ch_mcp.game_tools import PressResult
 from tools.ch_probe.input_driver import Lane
@@ -719,8 +719,9 @@ class KitTools:
                         f"not {want}; start the game with ch_start, which sets it for the run")
             lines = [line for line in (self._game.ensure_backup(),) if line]
             path = os.path.join(self._agent_dir, KIT_AGENT_FILE)
-            if not os.path.isfile(path):
-                lines.append(TH.agent_missing_line(path, KIT_AGENT_NAME))
+            refusal = build_stamp.check(path)
+            if refusal is not None:
+                lines.append(refusal)
                 return self._reply(lines)
             if self._agent is not None:
                 # A session the game dropped: detach closes its log file.
