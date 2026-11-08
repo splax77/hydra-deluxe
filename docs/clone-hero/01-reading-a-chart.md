@@ -2,7 +2,7 @@
 
 This page covers how Clone Hero finds and reads a chart: the notes file, the song id, tracks, song.ini keys, sections, solos and the song end.
 It describes build 1.1 (v1.1.0.6142).
-Last write-back: 2026-10-31.
+Last write-back: 2026-11-08.
 
 ## Finding the notes file
 
@@ -10,9 +10,9 @@ Last write-back: 2026-10-31.
 
 Rule: Hydra takes the first `notes.mid` it finds, else the last `notes.chart`; the game's own choice has never been read.
 Label: Hydra assumes it, never checked
-Evidence: Hydra's rule is `pick_notes_file` in src/parse/chart_files.cpp line 28, the same order public Hydra used (3b49012c, hydra/hysong.py lines 174 to 189). The derivation ledger (docs/audit/2026-10-03-derivation-ledger.md lines 4064 and 4713) says the old tools/ch_probe player preferred `.chart`, the opposite; that was not re-checked.
+Evidence: Hydra's rule is `pick_notes_file` in src/parse/chart_files.cpp line 36, the same order public Hydra used (3b49012c, hydra/hysong.py lines 174 to 189). The derivation ledger (docs/audit/2026-10-03-derivation-ledger.md lines 4064 and 4713) says the old tools/ch_probe player preferred `.chart`, the opposite; that was not re-checked.
 Game code (6142): not found: no session read the game's folder scan or its .sng reader.
-Hydra: `pick_notes_file` in src/parse/chart_files.cpp line 28; `notes_file_format` line 21.
+Hydra: `pick_notes_file` in src/parse/chart_files.cpp line 36; `notes_file_format` line 29.
 Ruling: none found.
 Found: 2026-10-30, session b02ab3e6 (the reference build).
 
@@ -20,7 +20,7 @@ Found: 2026-10-30, session b02ab3e6 (the reference build).
 
 Rule: Hydra finds `notes.mid`, `notes.chart` and `song.ini` whatever their letter case; whether the game does the same has not been read.
 Label: Hydra assumes it, never checked
-Evidence: `notes_file_format` and `is_song_ini` in src/parse/chart_files.cpp lines 21 and 38. Public Hydra compared the names exactly (3b49012c, hydra/hyutil.py lines 153 to 157), so this is a Hydra Deluxe change.
+Evidence: `notes_file_format` and `is_song_ini` in src/parse/chart_files.cpp lines 29 and 46. Public Hydra compared the names exactly (3b49012c, hydra/hyutil.py lines 153 to 157), so this is a Hydra Deluxe change.
 Game code (6142): not found: the game's file-name test was never read.
 Hydra: `notes_file_format` and `is_song_ini` in src/parse/chart_files.cpp.
 Ruling: none found.
@@ -80,9 +80,9 @@ Found: 2026-09-15, session 450488b5.
 
 Rule: Hydra reads such an entry by sniffing the chart bytes for `MThd` rather than refusing it; the game's handling is unread, and none of the 30 shipped bundles has such a name.
 Label: Hydra assumes it, never checked
-Evidence: `load_songpath_srb` in src/parse/song.cpp line 2038 holds the sniff; docs/audit/2026-10-29-audit-of-audits/questions.md lines 63 to 75 found no real container with an odd name. The audit's Q5 quotes the chat batch behind D27 as saying ".sng and .srb would find their notes file the same way" (D27 itself says "one container-entry rule (61)") and shows the two differ today.
+Evidence: `load_songpath_srb` in src/parse/song.cpp line 2036 holds the sniff; docs/audit/2026-10-29-audit-of-audits/questions.md lines 63 to 75 found no real container with an odd name. The audit's Q5 quotes the chat batch behind D27 as saying ".sng and .srb would find their notes file the same way" (D27 itself says "one container-entry rule (61)") and shows the two differ today.
 Game code (6142): not found: not read.
-Hydra: `load_songpath_srb` in src/parse/song.cpp line 2038.
+Hydra: `load_songpath_srb` in src/parse/song.cpp line 2036.
 Ruling: none found.
 Found: 2026-10-30, session b02ab3e6 (the reference build).
 
@@ -102,11 +102,11 @@ Found: 2026-10-30, session b02ab3e6 (the reference build).
 
 Rule: Clone Hero's song id (the key of the player's saved scores) is the MD5 of the notes file for a folder chart, the MD5 of the unmasked notes file for a .sng, and the 16-byte checksum stored in the .srb's song info for a .srb; a revised chart gets a new id.
 Label: Proven in a live run
-Evidence: on 2026-10-30 the game's own `songcache.bin` (8,221,087 bytes, written 2026-10-28 20:35 by the game) held the stored checksum of 30 of 30 bundles and the whole-file MD5 of none of them. The .sng half (54 of 54) and the folder half rest on the 2026-10-09 and 2026-10-10 checks written out in CR-12 and were not re-run.
+Evidence: on 2026-10-30 the game's own `songcache.bin` (8,221,087 bytes, written 2026-10-28 20:35 by the game) held the stored checksum of 30 of 30 bundles and the whole-file MD5 of none of them. The folder half is also seen in a run of 2026-11-08: the game's score file C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-08\ls-m2-run1\scorestats-The_Who_-_Won_t_Get_Fooled_Again_O-20261108-122918.json has `checksum` AF44D5C8D941BB33444D18E7871CDC77, and that is the MD5 of the chart it played, The Who - Won't Get Fooled Again (O), notes.mid (hashed 2026-11-08). The .sng half (54 of 54) rests on the 2026-10-09 check written out in CR-12 and was not re-run.
 Game code (6142): not found: the checksum route through `SongEntry` is page 7's; no listing.
-Hydra: `song_id_read` in src/app/analysis.cpp line 285; `hash_chart_file` in src/app/analysis.h line 83.
+Hydra: `song_id_read` in src/app/analysis.cpp line 274; `hash_chart_file` in src/app/analysis.h line 103.
 Ruling: D170: "yes, go ahead, let the 84 results drop" (session bc0144a4, 03:59 UTC).
-Found: 2026-10-10, session bc0144a4; re-checked 2026-10-30 in session b02ab3e6 (the reference build).
+Found: 2026-10-10, session bc0144a4; re-checked 2026-10-30 in session b02ab3e6 (the reference build); 2026-11-08, session 77057df2 (docs-gaps search).
 
 ### CR-11 A .srb's stored checksum is the chart stream's MD5 in 26 of 30 bundles
 
@@ -114,7 +114,7 @@ Rule: for 26 of the 30 shipped bundles the stored checksum equals the MD5 of the
 Label: Proven in a live run
 Evidence: re-run on 2026-10-30 over the 30 real files against the game's `songcache.bin`; the four names match the 2026-10-10 record (ADR 0028 as it stood at commit 5fbe71ae, lines 41 to 45). Card 7c71d4dd ruled out line endings, byte-order marks and dropped MIDI tracks as the cause.
 Game code (6142): not found: data, not code.
-Hydra: `song_id_read` in src/app/analysis.cpp line 285 reads the stored checksum and never recomputes it.
+Hydra: `song_id_read` in src/app/analysis.cpp line 274 reads the stored checksum and never recomputes it.
 Ruling: D170 (as CR-10).
 Found: 2026-09-29, session 7c71d4dd; re-run 2026-10-30 in session b02ab3e6 (the reference build).
 
@@ -124,7 +124,7 @@ Rule: the checks of 2026-10-09 and 2026-10-10 looked for a chart's 16 id bytes a
 Label: Unknown
 Evidence: this is the record in ADR 0028 as it stood at commit 5fbe71ae, lines 12 to 45, now cut down to a pointer here. Not checked: it would need the two checks re-run; no tool or result file for either is in the repo (a grep of tools/ for `songcache` finds nothing).
 Game code (6142): not found: data, not code.
-Hydra: `song_id_read` in src/app/analysis.cpp line 285.
+Hydra: `song_id_read` in src/app/analysis.cpp line 274.
 Ruling: D170 (as CR-10).
 Found: 2026-10-10, session bc0144a4 (ADR 0028).
 
@@ -136,7 +136,7 @@ Rule: the game lowercases each track name and compares it exactly with "part dru
 Label: Proven in the game's code
 Evidence: docs/audit/note-shuffle/step0/open1/midi_reader_2155C00.asm line 218 (the lowercase call at 0x2155FDF), lines 297 to 302 (the "part drums" compare at 0x2156134) and lines 503 to 508 (the "part drum" compare at 0x21564A8).
 Game code (6142): a method of the .mid reader class #8626, RVA `0x2155C00`, the listing above.
-Hydra: `is_drums_track_name` in src/parse/midi.cpp line 446, names in `kDrumsTrackNames` in src/parse/midi.h line 97.
+Hydra: `is_drums_track_name` in src/parse/midi.cpp line 447, names in `kDrumsTrackNames` in src/parse/midi.h line 98.
 Ruling: D252 states the rule and the addresses; the user's quoted call on it is only the build approval, chose "Yes, build it" (card 2026-10-17-77c0ebab, 00:31 UTC).
 Found: 2026-10-16, session 77c0ebab.
 
@@ -146,7 +146,7 @@ Rule: the game adds each instrument it reads to a set, and a later track of an i
 Label: Proven in the game's code
 Evidence: docs/audit/note-shuffle/step0/open1/midi_reader_2155C00.asm lines 509 to 516: the set's Add call at 0x21564D7, and a false return jumps to the next track at 0x2156665.
 Game code (6142): RVA `0x2155C00`, lines 509 to 516.
-Hydra: `MidiFile::drums_track` in src/parse/midi.cpp line 489.
+Hydra: `MidiFile::drums_track` in src/parse/midi.cpp line 490.
 Ruling: D252 (as CR-13; the record states the rule, "the first drum-named track in file order wins, as in the game").
 Found: 2026-10-16, session 77c0ebab.
 
@@ -156,7 +156,7 @@ Rule: the instrument loop starts at track index 1, so a drum track in track 0 (a
 Label: Proven in the game's code
 Evidence: docs/audit/note-shuffle/step0/open1/midi_reader_2155C00.asm lines 197 to 201 (the loop counter set to 1 at 0x2155F8D).
 Game code (6142): RVA `0x2155C00`, line 198.
-Hydra: `MidiFile::kFirstInstrumentTrack` in src/parse/midi.h line 200, used by `MidiFile::drums_track`.
+Hydra: `MidiFile::kFirstInstrumentTrack` in src/parse/midi.h line 199, used by `MidiFile::drums_track`.
 Ruling: D253 item 1: "Match the game (Recommended)".
 Found: 2026-10-16, session cfb159b5.
 
@@ -166,7 +166,7 @@ Rule: the game plays Hormone's Echo with drums, whose drum track carries two nam
 Label: Hydra assumes it, never checked
 Evidence: the user reported the game reads it; no agent checked. The .mid reader listing only consumes each track's finished name (midi_reader_2155C00.asm line 170); the code that builds that name from several name events was not read.
 Game code (6142): not found: the name-building step was not read (mtrk_read_214F6D0.asm exists and was not traced for it).
-Hydra: `TrackNamePick` in src/parse/midi.cpp line 273; `recognized_track_name` line 25.
+Hydra: `TrackNamePick` in src/parse/midi.cpp line 274; `recognized_track_name` line 25.
 Ruling: D78: "clone hero is able to read hormone's echo correctly, hydra should also support it." (card 2026-10-06-d3bdb873, 00:16 UTC). It sets the target, not which name the game picks.
 Found: 2026-10-05, session d3bdb873.
 
@@ -198,7 +198,7 @@ Rule: the game searches from track 0 for a name equal to "events" ignoring case,
 Label: Proven in the game's code
 Evidence: docs/audit/note-shuffle/step0/open1/midi_reader_2155C00.asm lines 154 to 181: the loop starts at 0, the compare with comparison type 5 (ignore case) is at 0x2155F36, and a match leaves the loop at 0x2155F3D.
 Game code (6142): RVA `0x2155C00`, lines 154 to 181.
-Hydra: `MidiFile::events_track` in src/parse/midi.cpp line 495; `is_events_track_name` line 451.
+Hydra: `MidiFile::events_track` in src/parse/midi.cpp line 496; `is_events_track_name` line 452.
 Ruling: D253 item 2: "Match the game (Recommended)".
 Found: 2026-10-16, session cfb159b5.
 
@@ -208,7 +208,7 @@ Rule: the .chart E handler reads the rest of the line up to LF or CRLF, trims bo
 Label: Proven in the game's code
 Evidence: `code/6142/chart_e_handler_213CAF0.asm` lines 65 to 112 (end of line and the trim), 116 to 168 (the two starts-with tests), 169 to 230 (the solo compares); decompile lines 24441 to 24700 give the same four literals in the same order.
 Game code (6142): a method of the .chart line class #8615, RVA `0x213CAF0`, the listing above.
-Hydra: `classify_chart_line` in src/parse/song.cpp lines 1237 to 1259, with `trim_view`.
+Hydra: `classify_chart_line` in src/parse/song.cpp lines 1236 to 1268, with `trim_view`.
 Ruling: none needed: same rule.
 Found: 2026-10-03, session cebf3006; listed 2026-10-30 in session b02ab3e6 (the reference build).
 
@@ -218,7 +218,7 @@ Rule: the .chart line dispatcher sends a line to the E, N or S handler by its fi
 Label: Proven in the game's code
 Evidence: decompile lines 24907 to 24950 (FUN_18213d2d0); a listing of the same function is committed as docs/audit/note-shuffle/step0/open1/trackbuilder_dispatch_213D2D0.asm, not re-read for this row.
 Game code (6142): RVA `0x213D2D0`, decompile lines 24844 to 24968.
-Hydra: `classify_chart_line` in src/parse/song.cpp lines 1239 to 1278 compares the first whitespace-split word.
+Hydra: `classify_chart_line` in src/parse/song.cpp lines 1236 to 1278 compares the first whitespace-split word.
 Ruling: none needed: same rule for normal files.
 Found: 2026-10-03, session cebf3006; re-read 2026-10-30 in session b02ab3e6 (the reference build).
 
@@ -228,7 +228,7 @@ Rule: when the line state's scanning byte is set, the E handler returns before r
 Label: Proven in the game's code
 Evidence: `code/6142/chart_e_handler_213CAF0.asm` lines 113 to 115; `code/6142/chart_n_handler_213D620.asm` lines 27 to 59. The flag-only branch runs only when the track's note list already holds more than one item and a test at `0x215FE80` returns true. What sets the scanning byte was not read.
 Game code (6142): RVAs `0x213CAF0` and `0x213D620`, the listings above.
-Hydra: no owner: Hydra has no flag-only pass (the `CPhase` passes in src/parse/song.cpp lines 1329 to 1340).
+Hydra: no owner: Hydra has no flag-only pass (the `CPhase` passes in src/parse/song.cpp lines 1323 to 1340).
 Ruling: none found.
 Found: 2026-10-30, session b02ab3e6 (the reference build).
 
@@ -258,7 +258,7 @@ Rule: both readers store each note's own 64-bit file tick unchanged, whatever th
 Label: Proven in the game's code
 Evidence: the chain of stores: docs/audit/note-shuffle/step0/open1/trackbuilder_addnote_213D620.asm line 141, mtrk_read_214F6D0.asm lines 175 and 208, songnote_init_214D240.asm line 18, build_gamenote_20D4BE0.asm lines 253 and 261, gamenote_ctor_214BF10.asm line 19, ending at docs/audit/note-shuffle/step0/open34/shuffle_20f0c30.asm lines 84 and 85, which multiplies by that tick. docs/audit/note-shuffle/step0/FINDINGS.md lines 11 to 15 say the same.
 Game code (6142): RVAs `0x213D620`, `0x214F6D0`, `0x214D240`, `0x20D4BE0`, `0x214BF10`, `0x20F0C30`, the listings above.
-Hydra: `apply_note_shuffle` in src/parse/note_shuffle.cpp line 127 reads the chord's own ticks.
+Hydra: `apply_note_shuffle` in src/parse/note_shuffle.cpp line 121 reads the chord's own ticks.
 Ruling: none needed: same rule.
 Found: 2026-10-09, session 30beeb6e.
 
@@ -270,7 +270,7 @@ Rule: one function reads `delay` (whole number, default 0), hopo_frequency (limi
 Label: Proven in the game's code
 Evidence: `code/6142/ini_song_reader_1EFC60.asm` lines 15 to 33 (the key literals), 38 to 47 (`delay`), 49 onward (hopo_frequency), 77 (five_lane_drums), 84 (`pro_drums`) and 91 (eighthnote_hopo).
 Game code (6142): a method of class #828, RVA `0x1EFC60`, the listing above.
-Hydra: `ini_delay_ms` in src/app/preview_source.cpp line 301 and the `song_length` read in src/app/analysis.cpp line 153; no owner for the other keys (a grep of src/ for each key name finds none).
+Hydra: `ini_delay_ms` in src/app/preview_source.cpp line 301 and the `song_length` read in src/app/analysis.cpp line 141; no owner for the other keys (a grep of src/ for each key name finds none).
 Ruling: none found.
 Found: 2026-10-30, session b02ab3e6 (the reference build).
 
@@ -320,21 +320,21 @@ Found: 2026-10-12, session 28fad19c.
 
 Rule: Hydra looks a key up with its exact case, so `Intro` typed by hand misses where `intro` hits; the game's key compare was never read.
 Label: Hydra assumes it, never checked
-Evidence: the comment in src/parse/section_names.cpp lines 32 to 34; the game's lookup comparer (FUN_1813ff9d0, decompile lines 42110 to 42125) was not read.
+Evidence: the comment in src/parse/section_names.cpp lines 27 and 28; the game's lookup comparer (FUN_1813ff9d0, decompile lines 42110 to 42125) was not read.
 Game code (6142): not found: the lookup's comparer was not read.
-Hydra: `section_display_name` in src/parse/section_names.cpp lines 32 to 39.
+Hydra: `section_display_name` in src/parse/section_names.cpp lines 25 to 39.
 Ruling: none found.
 Found: 2026-10-30, session b02ab3e6 (the reference build).
 
-### CR-32 A .chart section name drops one pair of quotes
+### CR-32 A .chart event's text is what lies between its first and last double quote
 
-Rule: in a .chart, a practice-section name loses one pair of quotes, as the format writes it.
-Label: Hydra assumes it, never checked
-Evidence: ADR 0023 lines 65 and 66; the game's .chart events reader `0x2163170` was not traced for this.
-Game code (6142): not found: not traced.
-Hydra: `section_name_of` in src/parse/song.cpp near line 30, which calls `section_display_name`.
-Ruling: none found.
-Found: 2026-10-30, session b02ab3e6 (the reference build).
+Rule: the game's .chart [Events] reader takes an event's text from just after the first double quote on the line to just before the last one, and tests that text for a section. Hydra trims the text after `E` and takes one pair of quotes off only when the text both starts and ends with one. The two agree on a line written `E "section intro"`. They can differ when text sits outside the quotes on the line; no chart with such a line has been tried in the game.
+Label: Proven in the game's code
+Evidence: the Ghidra decompile C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-10-28\ch-dynamics-2\out26.c (outside the repo), function FUN_182163170 from line 412. Lines 685 to 689 scan forward to the first double quote (0x22, line 687). Lines 722 to 727 search back from the end of the line for the last one (line 727), and lines 728 to 745 cut the text between them. The text then goes to the starts-with tests at lines 797 and 826 and the section table lookup at line 847. What the game does with a line that has only one quote was not worked out. ADR 0023 lines 65 and 66 state Hydra's side.
+Game code (6142): the .chart events reader, RVA `0x2163170`, out26.c lines 685 to 745; no listing is committed.
+Hydra: `classify_chart_line` in src/parse/song.cpp lines 1264 to 1266 takes the quotes off; `section_name_of` line 34 then calls `section_display_name`.
+Ruling: none found. The user ruled that out26.c counts as the game's code: "Yes, cite them (Recommended)" (2026-11-08, session 77057df2; no card yet). The difference outside the quotes has not been asked about.
+Found: 2026-10-30, session b02ab3e6 (the reference build); 2026-11-08, session 77057df2 (docs-gaps search).
 
 ## Solos
 
@@ -344,7 +344,7 @@ Rule: `solo` and `soloend` count only when the whole trimmed E text equals them 
 Label: Proven in the game's code
 Evidence: `code/6142/chart_e_handler_213CAF0.asm` lines 169 to 230 call the compare `0x20FE510` with ignore-case 0; decompile lines 58780 to 58830 show that compare checks the lengths and then every 16-bit character, and the handler has no quote-stripping step.
 Game code (6142): RVA `0x213CAF0` lines 169 to 230; compare RVA `0x20FE510`, decompile lines 58780 to 58845.
-Hydra: `classify_chart_line` in src/parse/song.cpp lines 1252 to 1255.
+Hydra: `classify_chart_line` in src/parse/song.cpp lines 1251 to 1254.
 Ruling: none needed: same rule.
 Found: 2026-10-03, session cebf3006; listed 2026-10-30 in session b02ab3e6 (the reference build).
 
@@ -354,7 +354,7 @@ Rule: in the game `solo` pushes a new solo record onto the track's solo list and
 Label: Proven in the game's code
 Evidence: `code/6142/chart_e_handler_213CAF0.asm` lines 231 to 250 (the pop, and the length at lines 247 to 249) and lines 251 to 306 (the push and the list Add); decompile lines 24641 to 24680.
 Game code (6142): RVA `0x213CAF0`, lines 231 to 306.
-Hydra: `flag_solo_` in src/parse/song.cpp lines 1417, 1643 and 1647.
+Hydra: `flag_solo_` in src/parse/song.cpp lines 1416, 1641 and 1645.
 Ruling: open split: see questions page Q-11.
 Found: 2026-10-30, session b02ab3e6 (the reference build).
 
@@ -364,7 +364,7 @@ Rule: whether a note on the `soloend` tick is inside the solo, and whether the p
 Label: Unknown
 Evidence: not checked: it would need the solo list's readers in the score code read. CR-37 reads the note-list side of the same list.
 Game code (6142): not found: looked only in the chart readers whose listings this page cites (CR-17 to CR-22, CR-33 and CR-34); the solo list's readers in the score code were not opened.
-Hydra: `E soloend` is applied after the tick's notes (src/parse/song.cpp line 1647).
+Hydra: `E soloend` is applied after the tick's notes (src/parse/song.cpp line 1645).
 Ruling: none found.
 Found: 2026-10-30, session b02ab3e6 (the reference build).
 
@@ -374,7 +374,7 @@ Rule: the .mid drum reader sends note 103 to a sink that appends a (start tick, 
 Label: Proven in the game's code
 Evidence: docs/audit/note-shuffle/step0/open2/f2155050.asm lines 225 to 233 (the compare with 0x67, then a call to 0x20CF1B0 (a function the dump does not list as a method)); docs/audit/note-shuffle/step0/open1/midi_sink_20CF1B0.asm lines 18 to 66 (the Add to the list at +0x78); `code/6142/solo_flags_20D18F0.asm` lines 45 to 157 read that list. dump.cs lines 551830 and 551859 give the list's type.
 Game code (6142): sink RVA 0x20CF1B0 (a function the dump does not list as a method), builder step RVA `0x20D18F0`, the listings above.
-Hydra: `kSoloMarkerPitch` in src/parse/song.cpp line 678; `find_solo_sections` line 63.
+Hydra: `kSoloMarkerPitch` in src/parse/song.cpp line 677; `find_solo_sections` line 63.
 Ruling: none needed: same rule.
 Found: 2026-10-30, session b02ab3e6 (the reference build).
 
@@ -384,7 +384,7 @@ Rule: a note is in a solo when its tick is at or after the solo's start and stri
 Label: Proven in the game's code
 Evidence: `code/6142/solo_flags_20D18F0.asm` lines 72 to 74 (the start compare), 82 to 85 (the end compare leaves at start plus length), 91 and 92 (no covered note, no flag), 120 (SoloBegin) and 157 (SoloEnd); flag values from dump.cs lines 548206 and 548207. Lines 34 to 39 limit it to instrument 6 or 9; what the test at `0x214BCC0` checks was not read.
 Game code (6142): a static method of class #8265, RVA `0x20D18F0`, called from the builder `0x20D2EA0`.
-Hydra: `find_solo_sections` in src/parse/song.cpp line 63, with the comment at lines 953 to 956 that the note-off tick is outside the solo.
+Hydra: `find_solo_sections` in src/parse/song.cpp line 63, with the comment at lines 952 to 955 that the note-off tick is outside the solo.
 Ruling: none needed: same rule.
 Found: 2026-10-30, session b02ab3e6 (the reference build).
 
@@ -396,7 +396,7 @@ Rule: the .mid events reader reads the song's end event from the text `[end]` on
 Label: Proven in the game's code
 Evidence: the literal `[end]` in the events-track function (decompile lines 41771 to 42120, the call to the setter at line 42051); the setter's own decompile, lines 15845 to 15867, stores only when the field at +0x108 is empty.
 Game code (6142): events reader RVA `0x21544E0` (docs/audit/note-shuffle/step0/open1/midi_events_track_21544E0.asm); setter RVA `0x212E310`, decompile lines 15845 to 15867.
-Hydra: `is_end_event` in src/parse/song.cpp line 46 (`kEndEventBody` line 41); the .mid pass at lines 1126 to 1135 keeps the first.
+Hydra: `is_end_event` in src/parse/song.cpp line 46 (`kEndEventBody` line 41); the .mid pass at lines 1125 to 1134 keeps the first.
 Ruling: none needed: same rule.
 Found: 2026-10-18, session c433b17f; re-read 2026-10-30 in session b02ab3e6 (the reference build).
 
@@ -406,19 +406,19 @@ Rule: the game trims the white space off both ends of a .mid events-track text, 
 Label: Proven in the game's code
 Evidence: docs/audit/note-shuffle/step0/open1/midi_events_track_21544E0.asm line 98 trims the text (the MemoryExtensions Trim call) into registers rbx, r15d and edi (lines 99 to 101). Line 218 loads the `[end]` literal; lines 234 to 243 pass the SequenceEqual metamethod to the compare shim at 0x182C61850 and, when it returns true, jump to line 319 and the end setter of CR-38. The two tests before it, at lines 100 to 126 and 191 to 214, are the starts-with tests for `[section` and `[prc`; those use the StartsWith metamethod (0x3D09CF0) with the shim at 0x182C61990. The decompile has the same order: lines 41924 and 41953 are those two starts-with tests, and line 41981 is the `[end]` equality test (FUN_182c61850 with DAT_183d09b78 and the literal DAT_183d008e8). SequenceEqual on two character spans is an ordinal compare, which is .NET's definition of it; the shim's own body was not read.
 Game code (6142): the events reader, RVA `0x21544E0`, the listing above; the end setter, RVA `0x212E310`.
-Hydra: `is_end_event` in src/parse/song.cpp line 46 needs the bracket body to equal "end"; the .mid pass at lines 1126 to 1135 first requires the whole text to start with "[" and end with "]", with no trim.
+Hydra: `is_end_event` in src/parse/song.cpp line 46 needs the bracket body to equal "end"; the .mid pass at lines 1125 to 1134 first requires the whole text to start with "[" and end with "]", with no trim.
 Ruling: open split: see questions page Q-75.
 Found: 2026-10-30, session b02ab3e6 (the reference build); the compare re-read in the decompile and the listing by the review of this page on 2026-10-31.
 
-### CR-40 A .chart end event strips one pair of brackets
+### CR-40 A .chart event drops a leading "[", and then a closing "]" if there is one
 
-Rule: the .chart [Events] reader strips one pair of brackets, so `end` and `[end]` both count, and the first wins.
-Label: Unknown
-Evidence: the bracket compares and the call to the end setter sit in a listing of `0x2163170` (hydra-data/ch-fill-evidence-2026-10-11/f2163170.asm lines 297 to 304 and 692) that is not committed; the `end` compare itself and a settings flag the handoff says skips it were not opened.
-Game code (6142): RVA `0x2163170`; listing uncommitted (hydra-data/ch-fill-evidence-2026-10-11/f2163170.asm).
-Hydra: the .chart events pass in src/parse/song.cpp lines 1580 to 1591 strips one bracket pair, then asks `is_end_event`.
-Ruling: none needed: same rule as far as read.
-Found: 2026-10-18, session c433b17f.
+Rule: when a .chart event's text (CR-32) starts with "[", the game drops that "[" always, and drops the last character only when it is "]". So `end` and `[end]` read the same. Hydra takes the brackets off only when both are there, so a malformed event such as `[end`, with no closing bracket, is `end` to the game and stays `[end` to Hydra. A well-formed chart never shows the difference. The first end event the setter gets wins (CR-38).
+Label: Proven in the game's code
+Evidence: the Ghidra decompile C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-10-28\ch-dynamics-2\out26.c (outside the repo), function FUN_182163170. Line 750 tests for a leading "[" (0x5b). Lines 751 to 757 keep the length less one when the last character is "]" (0x5d) and the full length otherwise, then take one off, and line 761 steps past the "[". The call to the end setter `0x212E310` is at line 1054, behind a compare at line 1014 whose literal the decompile does not name, so which text counts as the end event is not shown here. An older listing of this function, hydra-data/ch-fill-evidence-2026-10-11/f2163170.asm, is not committed and was not re-read.
+Game code (6142): the .chart events reader, RVA `0x2163170`, out26.c lines 750 to 761 and 1014 to 1054; no listing is committed.
+Hydra: the .chart events pass in src/parse/song.cpp lines 1585 and 1586 takes the brackets off only when both are there, then asks `is_end_event` at line 1587.
+Ruling: asked as question 3 of the docs-gaps search (2026-11-08, session 77057df2; no card yet), the user chose "Record it, no fix (Recommended)", so the `[end` case is a recorded malformed-chart edge case and Hydra keeps its rule.
+Found: 2026-10-18, session c433b17f; 2026-11-08, session 77057df2 (docs-gaps search).
 
 ### CR-41 An end event counts only at or past the last note end plus one beat
 
@@ -446,7 +446,7 @@ Rule: the chart's length is the largest note start plus sustain over every track
 Label: Proven in the game's code
 Evidence: `code/6142/chart_length_212E130.asm` lines 33 to 63 (the loop over the track list and the running maximum); the helper's decompile, lines 50458 to 50507, reads only the list at +0x60.
 Game code (6142): RVA `0x212E130`, the listing above; helper RVA `0x215FED0`, decompile lines 50474 to 50507.
-Hydra: `Song::last_note_end_tick` in src/core/song.h line 147, set in src/parse/song.cpp lines 1141 (.mid) and 1884 (.chart).
+Hydra: `Song::last_note_end_tick` in src/core/song.h line 147, set in src/parse/song.cpp lines 1140 (.mid) and 1882 (.chart).
 Ruling: D255 item 3: "All instruments".
 Found: 2026-10-18, session c433b17f; listed 2026-10-30 in session b02ab3e6 (the reference build).
 
@@ -456,35 +456,35 @@ Rule: the .mid vocals method writes its pitches and phrase markers only to the c
 Label: Proven in the game's code
 Evidence: decompile lines 43955 to 44246 (FUN_1821579b0): its calls to 0x2152CC0 (a function the dump does not list as a method) are at lines 44067 to 44231, and no direct call to the gem adder (0x20CEC60, the "midi sink" function, listed in docs/audit/note-shuffle/step0/open1/midi_sink_20CEC60.asm) appears in lines 43900 to 44300; that function writes the lyric list (decompile lines 40632 to 40655). Two other callees, the track lookup at 0x20CFD40 (line 44151) and FUN_18212d1e0 (lines 44227 and 44239, not in the decompile), were not read. The .chart vocals and the binary note-stream loaders were not checked. No listing was made.
 Game code (6142): .mid vocals method RVA `0x21579B0`, decompile lines 43955 to 44246; lyric adder RVA 0x2152CC0 (a function the dump does not list as a method).
-Hydra: `MidiFile::last_note_end_tick` in src/parse/midi.cpp lines 464 to 487 counts vocals pitches 36 to 57 (`kVocalsTrackName` in src/parse/midi.h line 122).
+Hydra: `MidiFile::last_note_end_tick` in src/parse/midi.cpp lines 465 to 488 counts vocals pitches 36 to 57 (`kVocalsTrackName` in src/parse/midi.h line 123).
 Ruling: open split: see questions page Q-74.
 Found: 2026-10-18, session b71e9156 (inferred); read in the decompile 2026-10-30 in session b02ab3e6 (the reference build).
 
 ### CR-45 The song ends when the clock reaches the game's song length
 
-Rule: the game ends the song when its song clock reaches GameManager's songLength field (+0x50); song.ini `song_length` is not read on that path.
+Rule: the game ends the song when its song clock reaches GameManager's songLength field (+0x50). Nothing read so far shows song.ini `song_length` read on that path, and nothing proves it absent either (CR-48).
 Label: Unknown
 Evidence: the frame update at `0xC05A0` is not in the decompile and no listing survives; dump.cs line 25298 confirms the field at +0x50.
 Game code (6142): GameManager's Update, RVA `0xC05A0`; listing lost; read 2026-10-18 in session b71e9156.
 Hydra: `app::song_length_ms` in src/app/song_length.cpp line 28 is the one end.
 Ruling: D255 item 5: "the problem is that we have two different rules. there should one rule that every function uses. we already know how clone hero decides the end of the song, we don't need different places deriving different rules."
-Found: 2026-10-18, session b71e9156.
+Found: 2026-10-18, session b71e9156; 2026-11-08, session 77057df2 (docs-gaps search).
 
 ### CR-46 The length is Min(end event, Max(audio length, last note end)) plus 1 second
 
-Rule: the load coroutine builds the song length as the earlier of the end event and the later of the audio length and the last note end, plus 1 second; an unusable end event drops the Min.
-Label: Unknown
-Evidence: the 1 second is the double 1.0 at RVA 0x3063DC0 in the DLL's read-only data (a constant, not a method; it has no `constants.py` name yet); `code/6142/gm_load_coroutine_D8D80.asm` line 388 adds it to the length. That listing was not re-read for the Min and Max in this pass, the Min and Max helpers were not opened, and the 2026-10-18 disassembly survives only as about ten lines quoted in docs/handoffs/2026-10-18-song-length-end-event-handoff.md lines 164 to 186 (removed; git show 6804353f:docs/handoffs/2026-10-18-song-length-end-event-handoff.md).
-Game code (6142): load coroutine RVA `0xD8D80`; listing `code/6142/gm_load_coroutine_D8D80.asm`; first read 2026-10-18 in session b71e9156.
-Hydra: `app::song_length_ms` in src/app/song_length.cpp line 28; `kSongEndPadMs` in src/app/song_length.h line 37.
+Rule: the load coroutine builds the song length as the earlier of the end event and the later of the audio length and the last note end, plus 1 second; an unusable end event drops the Min. Both chart times are first multiplied by a setting's ratio (its value divided by 100), which the listing's notes read as the playback speed. This is one branch of the coroutine; on the other branch it reuses a length it already stored.
+Label: Proven in the game's code
+Evidence: `code/6142/gm_load_coroutine_D8D80.asm`, re-read 2026-11-08. Line 316 calls `0x210C090`, the ratio getter of page 3's TM-39 (`code/6142/speed_ratio_210C090.asm` lines 10 to 13), on a setting loaded at lines 310 to 312; that this setting is `song_speed` is what `code/6142/gm_load_coroutine_D8D80.md` line 7 says, and it was not re-traced. Lines 324 to 342 take the last note end (`0x212E130`, CR-43), turn it into seconds with `0x212B9C0` and multiply it by the ratio. Line 343 reads the audio length from the audio manager, and line 351 takes System.Math.Max of the two. Line 357 asks whether the end event counts (`0x212C7E0`, CR-41); when it does, lines 363 to 377 turn the end event into seconds times the ratio, and line 380 takes System.Math.Min. Line 388 adds the double 1.0 at RVA 0x3063DC0 in the DLL's read-only data (a constant, not a method; it has no `constants.py` name yet), and line 389 stores the result. Lines 300 to 309 are the other branch: when a byte flag is clear, it loads the stored length and jumps past the build. What sets that flag was not read.
+Game code (6142): load coroutine RVA `0xD8D80`, `code/6142/gm_load_coroutine_D8D80.asm` lines 300 to 389; first read 2026-10-18 in session b71e9156.
+Hydra: `app::song_length_ms` in src/app/song_length.cpp line 28; `kSongEndPadMs` in src/app/song_length.h line 37. Hydra applies no ratio; it scores at 1x only (TM-44).
 Ruling: D255 item 2: "Copy the pad (Recommended)".
-Found: 2026-10-18, session b71e9156.
+Found: 2026-10-18, session b71e9156; 2026-11-08, session 77057df2 (docs-gaps search).
 
 ### CR-47 The game's audio length is the longest stem; Hydra uses the stated length
 
 Rule: the game's audio length is the longest loaded audio stem; Hydra never opens audio, so it puts the song's stated length (song.ini or the .srb field, moved into chart time by the delay or Offset) in that seat.
 Label: Unknown
-Evidence: the audio manager method `0x36B700` is not in the decompile and has no listing; Hydra's side is src/app/song_length.h lines 40 to 50.
+Evidence: the audio manager method `0x36B700` is not in the decompile and has no listing; Hydra's side is src/app/song_length.h lines 45 to 57.
 Game code (6142): RVA `0x36B700`; listing lost; read 2026-10-18 in session b71e9156.
 Hydra: `stated_length_ms` in src/app/song_length.cpp line 13, used in `app::song_length_ms` line 38.
 Ruling: D255 item 1: "Option C (Recommended)". The record says: "It matches the game whenever the stated length is the game's own record of the audio."
