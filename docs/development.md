@@ -453,6 +453,23 @@ nowhere else; back come that path's squeeze variants with their windows, meter
 and skips stamped the engine's way. The search folds equal-scoring paths into
 one another, so a real player's path is often not in any record no matter how
 deep the search; this is how you get its number anyway.
+`hydra_replay schedule` plans every press of one path for the auto-player in
+`tools/ch_probe`, so the player only has to send them. Give it the chart, the
+file `dump` wrote and a path index (`--chart`, `--path`, `--index`, `--out`).
+For each fill the path passes over it sends every gem but the fill's
+activation note. It replays the path the way `score` does and writes one JSON
+file. For every chord the file gives its window side: the game's own hit window for that note at
+100% speed, which the gaps to the chords either side set
+(docs/clone-hero/03-timing.md, TM-18 to TM-22 and TM-51). For every press it
+gives the aim, how far early or late, the latest song clock at which it may
+still be sent, and the Star Power end it assumes. For every squeeze it names
+the chord whose press moves the end, splits the room between the two presses,
+says whether the game can make it at 100% speed, and writes what the player
+should do if the end the game really stores crosses a threshold. A path it
+cannot plan comes back as a list of refusals in the file, each in plain words.
+The window formula and every timing constant the plan uses live once, in
+tools/replay_schedule.cpp. No screen reads that code: Hydra's own judging keeps
+the fixed 85 ms window (`kHitWindowMs`).
 `hydra_replay selfcheck` is what keeps the numbers honest: it re-analyzes
 every corpus chart, replays every path the engine found, and fails if the
 replay's six score categories disagree with the engine's own by a single

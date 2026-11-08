@@ -546,6 +546,21 @@ in src/core/model.h: no skips, or an E1, D102) and whose every squeeze and
 early fill is 0 ms or easier (`allzero_options` in src/search/pather.cpp;
 D85).
 
+**Press schedule**:
+The plan the Clone Hero auto-player follows for one path: each press's gems,
+its aim, the latest song clock it may be sent at and the Star Power end it
+assumes; which chord's press leads each squeeze and by how much; a fallback,
+written ahead of time, for when the end the game stores crosses a threshold;
+and whether each squeeze can be made at 100% speed. `hydra_replay schedule`
+writes it (docs/development.md). tools/replay_schedule.cpp is the one owner of
+every press's timing and of the hit window the player uses: the game's own
+per-note window, which the chords either side set
+(docs/clone-hero/03-timing.md, TM-18 to TM-22 and TM-51). No screen reads it;
+Hydra's own judging keeps the fixed Hit window. The player in tools/ch_probe
+is to only send the presses, read the end and pick the written fallback
+(docs/adr/0030; the player tasks of
+docs/superpowers/plans/2026-11-08-replay-press-schedule.md build that).
+
 ### Squeezes
 
 **Squeeze**:
