@@ -63,11 +63,6 @@ constexpr double kChordOrderGapMs = 8.0;
 // question 2 of docs/superpowers/plans/2026-11-08-player-freak-fixes.md.
 constexpr double kRoomMarginMs = 3.0;
 
-// The pad colours, highest first: the order FL-09 on
-// docs/clone-hero/04-fills.md reads the game's pick of a fill's flagged note.
-constexpr NoteColor kTopPadOrder[] = {NoteColor::Green, NoteColor::Blue, NoteColor::Yellow,
-                                      NoteColor::Red};
-
 nlohmann::json constants_json() {
     return nlohmann::json{
         {"window_front_ms", kWindowFrontMs},
@@ -184,10 +179,11 @@ std::string decline_mode_list() {
 }
 
 // kick_only sends at most one gem, the first kick. all_but_top_pad sends
-// every gem but the highest pad by kTopPadOrder, so a chord with no pad gem
-// sends nothing; two gems of that pad's colour are refused, because which one
-// the game flags is not known.
-KeptGems kept_gems(DeclineMode mode, const std::vector<ReplayNote>& notes) {
+// every gem but the chord's activation note (Chord::activation_note owns the
+// pad order, the one FL-09 on docs/clone-hero/04-fills.md reads), so a chord
+// whose activation note is its kick has no pad gem and sends nothing. A Chord
+// holds one note per colour, so the top pad is never ambiguous.
+KeptGems kept_gems(DeclineMode mode, const Chord& chord, const std::vector<ReplayNote>& notes) {
     KeptGems out;
     if (mode == DeclineMode::Nothing) return out;
     if (mode == DeclineMode::KickOnly) {
@@ -198,22 +194,12 @@ KeptGems kept_gems(DeclineMode mode, const std::vector<ReplayNote>& notes) {
             }
         return out;
     }
-    for (NoteColor top : kTopPadOrder) {
-        std::vector<size_t> on_top;
-        for (size_t k = 0; k < notes.size(); ++k)
-            if (notes[k].color == top) on_top.push_back(k);
-        if (on_top.empty()) continue;
-        if (on_top.size() > 1) {
-            out.refusal = "two " + color_str(top) +
-                          " gems: which one the game flags is not known, so all_but_top_pad "
-                          "cannot say which to leave out";
-            return out;
-        }
-        for (size_t k = 0; k < notes.size(); ++k)
-            if (k != on_top.front()) out.places.push_back(k);
-        return out;
-    }
-    return out;  // no pad gem: nothing is sent
+    if (notes.empty()) return out;
+    const NoteColor top = chord.activation_note().colortype;
+    if (top == NoteColor::Kick) return out;  // no pad gem: nothing is sent
+    for (size_t k = 0; k < notes.size(); ++k)
+        if (notes[k].color != top) out.places.push_back(k);
+    return out;
 }
 
 // ---- the file --------------------------------------------------------------
@@ -374,10 +360,7 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
                            {"declined", is_declined},
                            {"paid_by", paid}};
         if (is_declined) {
-            const KeptGems kept = kept_gems(mode, c.notes);
-            row["kept_gems"] = kept.places;
-            if (kept.refusal)
-                refusals.push_back("declined chord " + std::to_string(c.index) + ": " + *kept.refusal);
+            row["kept_gems"] = kept_gems(mode, song.sequence[i].chord, c.notes).places;
         }
         chord_list.push_back(std::move(row));
     }

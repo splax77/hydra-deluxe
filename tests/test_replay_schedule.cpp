@@ -47,11 +47,22 @@ Song plain_song(const std::vector<int64_t>& ticks) {
     return song;
 }
 
-ReplayNote gem(NoteColor color, bool cymbal = false) {
-    ReplayNote n;
-    n.color = color;
-    n.cymbal = cymbal;
-    return n;
+// The colours a declined chord of `colours` sends under `mode`: the chord is
+// built for real, so its notes come in Chord::note_list(true) order and its
+// activation note is the engine's.
+std::set<NoteColor> kept_colours(schedule::DeclineMode mode, const std::set<NoteColor>& colours) {
+    Chord chord;
+    for (NoteColor c : colours) chord.add_note(c);
+    std::vector<ReplayNote> notes;
+    const Chord::NoteList ordering = chord.note_list(true);
+    for (size_t k = 0; k < ordering.size(); ++k) {
+        ReplayNote r;
+        r.color = ordering[k].colortype;
+        notes.push_back(r);
+    }
+    std::set<NoteColor> out;
+    for (size_t k : schedule::kept_gems(mode, chord, notes).places) out.insert(notes[k].color);
+    return out;
 }
 
 // A side at the floor and at the cap: half of TM-21's whole window at a
@@ -197,22 +208,18 @@ TEST_CASE("schedule: paid_by matches in_sp on every corpus path") {
 TEST_CASE("schedule: declined chords are the skipped fill ticks") {
     // The mode's rule, on Freak's two shapes (plan question 4): chord 162
     // (kick, blue cymbal, green cymbal) and chord 51 (kick, blue tom).
-    const std::vector<ReplayNote> c162 = {gem(NoteColor::Kick), gem(NoteColor::Blue, true),
-                                          gem(NoteColor::Green, true)};
-    const std::vector<ReplayNote> c51 = {gem(NoteColor::Kick), gem(NoteColor::Blue)};
     using schedule::DeclineMode;
-    CHECK(schedule::kept_gems(DeclineMode::AllButTopPad, c162).places == std::vector<size_t>{0, 1});
-    CHECK(schedule::kept_gems(DeclineMode::KickOnly, c162).places == std::vector<size_t>{0});
-    CHECK(schedule::kept_gems(DeclineMode::Nothing, c162).places.empty());
-    CHECK(schedule::kept_gems(DeclineMode::AllButTopPad, c51).places == std::vector<size_t>{0});
-    CHECK(schedule::kept_gems(DeclineMode::KickOnly, c51).places == std::vector<size_t>{0});
-    CHECK(schedule::kept_gems(DeclineMode::Nothing, c51).places.empty());
-    // No pad gem: nothing; two of the top pad's colour: refused.
-    CHECK(schedule::kept_gems(DeclineMode::AllButTopPad, {gem(NoteColor::Kick)}).places.empty());
-    const schedule::KeptGems two =
-        schedule::kept_gems(DeclineMode::AllButTopPad, {gem(NoteColor::Green), gem(NoteColor::Green, true)});
-    CHECK(two.places.empty());
-    CHECK(two.refusal.has_value());
+    using Colours = std::set<NoteColor>;
+    const Colours c162 = {NoteColor::Kick, NoteColor::Blue, NoteColor::Green};
+    const Colours c51 = {NoteColor::Kick, NoteColor::Blue};
+    CHECK(kept_colours(DeclineMode::AllButTopPad, c162) == Colours{NoteColor::Kick, NoteColor::Blue});
+    CHECK(kept_colours(DeclineMode::KickOnly, c162) == Colours{NoteColor::Kick});
+    CHECK(kept_colours(DeclineMode::Nothing, c162).empty());
+    CHECK(kept_colours(DeclineMode::AllButTopPad, c51) == Colours{NoteColor::Kick});
+    CHECK(kept_colours(DeclineMode::KickOnly, c51) == Colours{NoteColor::Kick});
+    CHECK(kept_colours(DeclineMode::Nothing, c51).empty());
+    // No pad gem: nothing is sent.
+    CHECK(kept_colours(DeclineMode::AllButTopPad, Colours{NoteColor::Kick}).empty());
     // The names: one home, read and written there.
     CHECK(schedule::decline_mode_from_name("kick_only") == DeclineMode::KickOnly);
     CHECK(schedule::decline_mode_from_name("nothing") == DeclineMode::Nothing);
@@ -243,7 +250,9 @@ TEST_CASE("schedule: declined chords are the skipped fill ticks") {
                 marked.insert(row["tick"].get<int64_t>());
                 const ReplayChord& c = pr.result.chords[row["index"].get<size_t>()];
                 CHECK(row["kept_gems"].get<std::vector<size_t>>() ==
-                      schedule::kept_gems(DeclineMode::AllButTopPad, c.notes).places);
+                      schedule::kept_gems(DeclineMode::AllButTopPad, song.sequence[static_cast<size_t>(c.index)].chord,
+                                          c.notes)
+                          .places);
             }
             INFO(path);
             CHECK(marked == skipped);

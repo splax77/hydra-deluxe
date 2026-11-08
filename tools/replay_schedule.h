@@ -62,13 +62,11 @@ std::optional<DeclineMode> decline_mode_from_name(std::string_view name);
 std::string decline_mode_list();
 
 // The gems of a declined chord the mode sends, by their place in `notes`
-// (Chord::note_list(true) order, as ReplayChord::notes). `refusal` is set,
-// and `places` empty, when the mode cannot say which gem to leave out.
+// (`chord`'s Chord::note_list(true) order, as ReplayChord::notes).
 struct KeptGems {
     std::vector<size_t> places;
-    std::optional<std::string> refusal;
 };
-KeptGems kept_gems(DeclineMode mode, const std::vector<ReplayNote>& notes);
+KeptGems kept_gems(DeclineMode mode, const Chord& chord, const std::vector<ReplayNote>& notes);
 
 // ---- the file --------------------------------------------------------------
 
