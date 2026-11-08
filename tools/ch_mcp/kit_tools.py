@@ -1,9 +1,9 @@
 """The Clone Hero MCP server's kit tools: a virtual drum kit inside the game.
 
 The kit agent (agent/kit.ts, built to kit.js) builds one Rewired custom
-controller from the game's own drum definition, hands it to a player with the
-game's drum map (KIT_MAP_CATEGORY_ID, KIT_MAP_LAYOUT_ID), presses its pads
-and buttons on request and takes it away again. It sends no key presses and never touches the window, so the game can
+controller from the game's own drum definition (KIT_DEFINITION_ID), hands it
+to a player with the game's drum map (KIT_MAP_CATEGORY_ID, KIT_MAP_LAYOUT_ID),
+presses its pads, kick, Start and Select on request and takes it away again. It sends no key presses and never touches the window, so the game can
 stay minimized and unfocused; while the kit is set up, the Rewired devices in
 KIT_DEVICES are switched off so the user's own keys and mouse reach no player
 (the plan
@@ -46,9 +46,14 @@ from tools.ch_probe.input_driver import Lane
 KIT_AGENT_NAME = "kit"
 KIT_AGENT_FILE = f"{KIT_AGENT_NAME}.js"
 
-# The Rewired controller definition the kit is built from, "SLInputDrums"
-# (the plan's probe facts).
-KIT_DEFINITION_ID = 6
+# The Rewired controller definition the kit is built from: the one the game's
+# MIDIInputManager builds a real MIDI drum kit from, so the kit's kick is an
+# axis like a real kit's. The game ships it in Clone Hero_Data\level1 with ten
+# elements, all axes and no buttons, and a map at KIT_MAP_CATEGORY_ID and
+# KIT_MAP_LAYOUT_ID that binds them to the actions in KIT_BINDINGS (rows P7
+# and P9 of docs/superpowers/plans/2026-11-08-kick-axis-bind.md).
+KIT_DEFINITION_ID = 1
+KIT_DEFINITION_NAME = "MIDI Drums"
 # The map setup loads onto the kit's player, by its map category ("Gameplay")
 # and layout ("Drums") in the game's Rewired setup. The fact's home is block
 # IN-76 of docs/clone-hero/07-internals.md.
@@ -120,29 +125,33 @@ KIT_PREFIX = "kit:"
 
 @dataclasses.dataclass(frozen=True)
 class KitElement:
-    """One element of the kit: its id and name on the definition, and
-    whether it is a button (pressed with true) or a pad axis (pressed with
-    a pad_axis value)."""
+    """One element of the kit: its id and name on the definition, and the
+    axis value it is always pressed at. Every element is an axis. A
+    `strength` of None means the element takes the press's value (the pads
+    and the kick); a number means it is always written at that value."""
     id: int
     name: str
-    button: bool
+    strength: Optional[float]
 
 
 # The one table of what can be pressed on the kit, by the name a caller uses.
-# The pad names are the auto-player's lanes (input_driver.Lane, lower-cased),
-# so a chord's lanes are found here by name. Element ids and names are the
-# definition's (the plan's probe facts).
+# The pad and kick names are the auto-player's lanes (input_driver.Lane,
+# lower-cased), so a chord's lanes are found here by name. Element ids and
+# names are KIT_DEFINITION_ID's (row P7 of
+# docs/superpowers/plans/2026-11-08-kick-axis-bind.md). Start and Select are
+# written at full, as the game's MIDI pump writes a real kit's StartPad and
+# SelectPad (row P6 there).
 KIT_ELEMENTS: Dict[str, KitElement] = {
-    "red": KitElement(0, "Snare", False),
-    "yellow": KitElement(1, "Tom1", False),
-    "blue": KitElement(2, "Tom2", False),
-    "green": KitElement(3, "Tom3", False),
-    "yellow_cymbal": KitElement(4, "Cymbal1", False),
-    "blue_cymbal": KitElement(5, "Cymbal2", False),
-    "green_cymbal": KitElement(6, "Cymbal3", False),
-    "start": KitElement(20, "Start", True),
-    "select": KitElement(21, "Select", True),
-    "kick": KitElement(22, "Kick", True),
+    "red": KitElement(0, "Snare", None),
+    "yellow": KitElement(1, "Tom1", None),
+    "blue": KitElement(2, "Tom2", None),
+    "green": KitElement(3, "Tom3", None),
+    "yellow_cymbal": KitElement(4, "Cymbal1", None),
+    "blue_cymbal": KitElement(5, "Cymbal2", None),
+    "green_cymbal": KitElement(6, "Cymbal3", None),
+    "start": KitElement(18, "StartPad", 1.0),
+    "select": KitElement(19, "SelectPad", 1.0),
+    "kick": KitElement(7, "Kick", None),
 }
 
 # The bindings the game's drum map must give the kit: element id to the
@@ -157,10 +166,20 @@ KIT_BINDINGS: Dict[int, Tuple[int, str]] = {
     4: (37, "YellowCymbal"),
     5: (38, "BlueCymbal"),
     6: (39, "GreenCymbal"),
-    20: (16, "Start"),
-    21: (6, "Select"),
-    22: (4, "Orange"),
+    7: (4, "Orange"),
+    18: (16, "Start"),
+    19: (6, "Select"),
 }
+
+# The numbers of Rewired's ControllerElementType, which the setup reply gives
+# each binding as its element_type (dump.cs of build 6142, lines 290899 to
+# 290906).
+ELEMENT_TYPE_AXIS = 0
+ELEMENT_TYPE_BUTTON = 1
+# The elements whose bindings' element type the setup check reads. Every
+# element is checked, and each must be an axis, because KIT_DEFINITION_ID
+# holds no buttons.
+KIT_TYPE_CHECKED = tuple(KIT_ELEMENTS)
 
 NOT_SET_UP = "the kit is not set up; call ch_kit_setup first"
 PLAY_RUNNING = "a play session is running; call ch_play_stop first"
@@ -241,8 +260,8 @@ DYNAMIC_ACCENT = "accent"
 # accent and for a ghost, and the handler's turning of a velocity into an axis
 # value. A plain gem's velocity is never read, so it presses like an accent.
 def pad_axis(dynamic: str, threshold: Optional[int] = None) -> float:
-    """The axis value that presses a pad gem of this `dynamic`, the one home
-    of the strengths. Only a ghost needs `threshold`, the engine's dynamics
+    """The axis value that presses a gem of this `dynamic`, on a pad or the
+    kick, the one home of the strengths. Only a ghost needs `threshold`, the engine's dynamics
     threshold (constants.OFF_DYN_THRESHOLD). Raises ValueError for a word
     hydra_replay does not write, and for a ghost with a `threshold` no
     velocity can answer."""
@@ -270,9 +289,11 @@ def press_message(elements: Sequence[KitElement], hold_frames: int = KIT_HOLD_FR
                   values: Optional[Sequence[float]] = None,
                   then: Sequence[Tuple[Sequence[KitElement], Optional[Sequence[float]],
                                        float]] = ()) -> dict:
-    """The press message for `elements`, each once, in order. `values` gives
-    each element's axis value, one per element, and a button ignores its own;
-    None presses every pad as a plain gem. `read` names the game actions the
+    """The press message for `elements`, each once, in order. Every element
+    is written as an axis value. `values` gives each element's value, one per
+    element, and an element with a `strength` ignores its own and is written
+    at its strength; None presses the pads and the kick as plain gems. `read`
+    names the game actions the
     agent reads back on the kit's player during the hold; the message carries
     it only when it names some.
 
@@ -291,7 +312,8 @@ def press_message(elements: Sequence[KitElement], hold_frames: int = KIT_HOLD_FR
         seen: Dict[KitElement, float] = {}
         for e, value in zip(group, group_values, strict=True):
             seen.setdefault(e, value)
-        return [{"id": e.id, "value": True if e.button else value} for e, value in seen.items()]
+        return [{"id": e.id, "value": value if e.strength is None else e.strength}
+                for e, value in seen.items()]
 
     message = {"type": "press", "elements": element_list(elements, values),
                "hold_frames": hold_frames, "cap_s": KIT_PRESS_CAP_S,
@@ -407,17 +429,21 @@ def map_problems(maps: Any) -> List[str]:
 def binding_problems(maps: Any) -> List[str]:
     """How the setup reply's maps differ from KIT_BINDINGS, one line per
     element; empty when they match. Only bindings in enabled maps count,
-    because a disabled map's bindings never fire."""
+    because a disabled map's bindings never fire. A KIT_TYPE_CHECKED
+    element's bindings must also all be axis bindings (_type_problem)."""
     if not isinstance(maps, list) or not maps:
         return ["the setup reply holds no map for the kit"]
     got: Dict[int, set] = {}
+    types: Dict[int, set] = {}
     for m in maps:
         if not m.get("enabled"):
             continue
         for b in m.get("bindings") or []:
             got.setdefault(b.get("element_id"), set()).add(b.get("action_id"))
+            types.setdefault(b.get("element_id"), set()).add(b.get("element_type"))
     problems: List[str] = []
     names = {e.id: e.name for e in KIT_ELEMENTS.values()}
+    checked = {KIT_ELEMENTS[n].id for n in KIT_TYPE_CHECKED}
     for element_id, (action_id, action_name) in KIT_BINDINGS.items():
         actions = got.pop(element_id, set())
         label = f"{names.get(element_id, '?')} (element {element_id})"
@@ -425,10 +451,34 @@ def binding_problems(maps: Any) -> List[str]:
             found = ", ".join(str(a) for a in sorted(actions, key=str)) or "none"
             problems.append(f"{label}: expected action {action_id} ({action_name}), "
                             f"the map gives {found}")
+        elif element_id in checked:
+            problem = _type_problem(label, types.get(element_id, set()))
+            if problem:
+                problems.append(problem)
     for element_id, actions in sorted(got.items(), key=lambda kv: str(kv[0])):
         problems.append(f"element {element_id}: not in KIT_BINDINGS, the map gives "
                         + ", ".join(str(a) for a in sorted(actions, key=str)))
     return problems
+
+
+def _type_text(element_type: Any) -> str:
+    kind = {ELEMENT_TYPE_AXIS: "axis", ELEMENT_TYPE_BUTTON: "button"}.get(element_type)
+    return f"{element_type} ({kind})" if kind else str(element_type)
+
+
+def _type_problem(label: str, found: set) -> Optional[str]:
+    """Why the element types of one element's bindings are not all
+    ELEMENT_TYPE_AXIS, or None when they are."""
+    if found == {ELEMENT_TYPE_AXIS}:
+        return None
+    if ELEMENT_TYPE_BUTTON in found:
+        given = ", ".join(_type_text(t) for t in sorted(found, key=str))
+        return (f"{label}: the map binds it as a button (element type {given}), but the "
+                f"kit is built from definition {KIT_DEFINITION_ID} ({KIT_DEFINITION_NAME}), "
+                f"whose elements are all axes, so a button binding is another "
+                f"definition's map")
+    given = ", ".join(_type_text(t) for t in sorted(found, key=str)) or "none"
+    return f"{label}: expected element type {_type_text(ELEMENT_TYPE_AXIS)}, the map gives {given}"
 
 
 def _flag_text(value: Any) -> str:
@@ -486,7 +536,8 @@ def setup_lines(reply: dict) -> List[str]:
     lines.append(f"placeholders: controllers {placeholder_ids(reply)} "
                  f"({reply.get('placeholders_created')} created)")
     kit = reply.get("kit") or {}
-    lines.append(f"kit: controller {kit.get('id')}, tag {kit.get('tag')}, "
+    lines.append(f"kit: controller {kit.get('id')}, definition {KIT_DEFINITION_ID} "
+                 f"({KIT_DEFINITION_NAME}), tag {kit.get('tag')}, "
                  f"{'created' if kit.get('created') else 'found already made'}, "
                  f"on {kit.get('player')}")
     if not reply.get("first_setup", True):
@@ -747,9 +798,10 @@ class KitTools:
         (KIT_REWRITE and KIT_PRESS_ON_MAIN when None). `read` names game
         actions, such as "Green", that the agent reads back on the kit's
         player during the hold; the text then lists each change it saw.
-        `value` is the axis value of this press's pads, from 0 to 1; None
-        presses them as plain gems, and a button is never given one. The
-        result says whether the press went out, for the menu driver."""
+        `value` is the axis value of this press's pads and kick, from 0 to 1;
+        None presses them as plain gems. Start and Select always press at
+        their KitElement strength, whatever `value` says. The result says
+        whether the press went out, for the menu driver."""
         with self._lock:
             try:
                 names = parse_items(items)
@@ -801,7 +853,7 @@ class KitTools:
                 lines.append(f"rewrite {_flag_text(reply.get('rewrite'))}, main thread "
                              f"{_flag_text(reply.get('on_main'))} (as the agent ran it)")
             if value is not None:
-                lines.append(f"pads pressed at value {value}")
+                lines.append(f"pads and kick pressed at value {value}")
             lines.extend(seen_lines(reply))
             return PressResult(True, self._reply(lines))
 

@@ -42,7 +42,14 @@ STATUS = {"frame": 1000, "focused": False, "switch_now": True, "keyboard_now": T
           "kit_tag": "hydra-kit", "kit_exists": False, "kit_id": None,
           "players": [{"id": 0, "name": "Player1", "has_keyboard": True, "has_mouse": False}]}
 
-# The ten bindings the probe read off the game's default map for the kit.
+# The kit is built from the game's MIDI Drums definition (definition 1), so
+# its kick is element 7, Start and Select are elements 18 and 19, and every
+# element is an axis pressed with a number, never True; the tests that once
+# named the kick as button element 22 use these numbers now
+# (docs/superpowers/plans/2026-11-08-kick-axis-bind.md, task T1).
+#
+# The ten bindings of the game's map 2 for definition 1, as level1 ships
+# them (row P9 of that plan), every one an axis binding.
 BINDINGS = [
     {"element_id": 0, "element_name": "Snare", "action_id": 1, "action_name": "Red"},
     {"element_id": 1, "element_name": "Tom1", "action_id": 2, "action_name": "Yellow"},
@@ -51,9 +58,22 @@ BINDINGS = [
     {"element_id": 4, "element_name": "Cymbal1", "action_id": 37, "action_name": "YellowCymbal"},
     {"element_id": 5, "element_name": "Cymbal2", "action_id": 38, "action_name": "BlueCymbal"},
     {"element_id": 6, "element_name": "Cymbal3", "action_id": 39, "action_name": "GreenCymbal"},
-    {"element_id": 20, "element_name": "Start", "action_id": 16, "action_name": "Start"},
-    {"element_id": 21, "element_name": "Select", "action_id": 6, "action_name": "Select"},
-    {"element_id": 22, "element_name": "Kick", "action_id": 4, "action_name": "Orange"},
+    {"element_id": 7, "element_name": "Kick", "action_id": 4, "action_name": "Orange"},
+    {"element_id": 18, "element_name": "StartPad", "action_id": 16, "action_name": "Start"},
+    {"element_id": 19, "element_name": "SelectPad", "action_id": 6, "action_name": "Select"},
+]
+BINDINGS = [{**b, "element_type": 0} for b in BINDINGS]
+
+# The map ls-d2b-run1 read back for a kit built from the SLInputDrums
+# definition: the same pads, but Start 20, Select 21 and Kick 22 bound as
+# buttons (row P10 of the plan).
+OLD_BINDINGS = BINDINGS[:7] + [
+    {"element_id": 20, "element_name": "Start", "action_id": 16, "action_name": "Start",
+     "element_type": 1},
+    {"element_id": 21, "element_name": "Select", "action_id": 6, "action_name": "Select",
+     "element_type": 1},
+    {"element_id": 22, "element_name": "Kick", "action_id": 4, "action_name": "Orange",
+     "element_type": 1},
 ]
 
 
@@ -230,7 +250,8 @@ class ConstantsTest(unittest.TestCase):
         self.assertEqual(K.KIT_SETUP_CAP_S, 10)
         self.assertEqual(K.KIT_PRESS_CAP_S, 1)
         self.assertEqual(K.KIT_WATCH_MAX_S, 60.0)
-        self.assertEqual(K.KIT_DEFINITION_ID, 6)
+        self.assertEqual(K.KIT_DEFINITION_ID, 1)
+        self.assertEqual(K.KIT_DEFINITION_NAME, "MIDI Drums")
         self.assertEqual(K.KIT_TAG, "hydra-kit")
         self.assertEqual(K.KIT_PLAYER, "Player1")
 
@@ -241,8 +262,20 @@ class ConstantsTest(unittest.TestCase):
 
     def test_the_setup_message_carries_the_maps_ids(self):
         self.assertEqual(K.setup_message("System"), {
-            "type": "setup", "tag": K.KIT_TAG, "definition_id": 6, "player": "System",
+            "type": "setup", "tag": K.KIT_TAG, "definition_id": 1, "player": "System",
             "category_id": 1, "layout_id": 2, "placeholder_tags": PLACEHOLDER_TAGS})
+
+    def test_every_element_is_an_axis_of_definition_1(self):
+        self.assertEqual({n: (e.id, e.name, e.strength) for n, e in K.KIT_ELEMENTS.items()}, {
+            "red": (0, "Snare", None), "yellow": (1, "Tom1", None),
+            "blue": (2, "Tom2", None), "green": (3, "Tom3", None),
+            "yellow_cymbal": (4, "Cymbal1", None), "blue_cymbal": (5, "Cymbal2", None),
+            "green_cymbal": (6, "Cymbal3", None), "kick": (7, "Kick", None),
+            "start": (18, "StartPad", 1.0), "select": (19, "SelectPad", 1.0)})
+        self.assertEqual({k: v[0] for k, v in K.KIT_BINDINGS.items()}, {
+            0: 1, 1: 2, 2: 3, 3: 0, 4: 37, 5: 38, 6: 39, 7: 4, 18: 16, 19: 6})
+        self.assertEqual((K.ELEMENT_TYPE_AXIS, K.ELEMENT_TYPE_BUTTON), (0, 1))
+        self.assertEqual(set(K.KIT_TYPE_CHECKED), set(K.KIT_ELEMENTS))
 
     def test_the_gates_id_and_the_placeholder_count_are_pinned(self):
         # The literal the gate passes: lane_velocity_337E10.asm line 53.
@@ -257,7 +290,7 @@ class ConstantsTest(unittest.TestCase):
 
     def test_every_auto_player_lane_has_a_kit_element(self):
         self.assertEqual({lane: K.lane_element(lane).id for lane in Lane}, {
-            Lane.GREEN: 3, Lane.RED: 0, Lane.YELLOW: 1, Lane.BLUE: 2, Lane.KICK: 22,
+            Lane.GREEN: 3, Lane.RED: 0, Lane.YELLOW: 1, Lane.BLUE: 2, Lane.KICK: 7,
             Lane.YELLOW_CYMBAL: 4, Lane.BLUE_CYMBAL: 5, Lane.GREEN_CYMBAL: 6})
 
     def test_items_take_the_kit_prefix_and_refuse_unknown_names(self):
@@ -293,7 +326,7 @@ class SetupTest(Rig):
         self.assertEqual(self.events, ["backup", "attach"])
         self.assertEqual(self.posted(), [
             {"type": "read"},
-            {"type": "setup", "tag": "hydra-kit", "definition_id": 6, "player": "Player1",
+            {"type": "setup", "tag": "hydra-kit", "definition_id": 1, "player": "Player1",
              "category_id": 1, "layout_id": 2, "placeholder_tags": PLACEHOLDER_TAGS}])
         self.assertEqual(lines[0], BACKUP_LINE)
         self.assertIn("ignoreInputWhenAppNotInFocus: was on, now off", lines)
@@ -301,19 +334,20 @@ class SetupTest(Rig):
         self.assertIn("Mouse.enabled: was on, now off", lines)
         self.assertIn("player 9999999 System: keyboard was on, now off; mouse was on, now off", lines)
         self.assertIn("player 0 Player1: keyboard was on, now off; mouse was off, now off", lines)
-        self.assertIn("kit: controller 6, tag hydra-kit, created, on Player1", lines)
+        self.assertIn("kit: controller 6, definition 1 (MIDI Drums), tag hydra-kit, created, "
+                      "on Player1", lines)
         self.assertIn("map: category 1, layout 2, enabled, 10 bindings", lines)
-        self.assertIn("  Kick (element 22) -> Orange (action 4)", lines)
+        self.assertIn("  Kick (element 7) -> Orange (action 4)", lines)
         self.assertEqual(lines[-1], "bindings: all 10 match KIT_BINDINGS")
         self.assertIsNotNone(self.game.kit_source())
 
     def test_a_map_that_differs_is_refused_naming_the_element_and_torn_down(self):
-        wrong = [b if b["element_id"] != 22 else {**b, "action_id": 0, "action_name": "Green"}
+        wrong = [b if b["element_id"] != 7 else {**b, "action_id": 0, "action_name": "Green"}
                  for b in BINDINGS]
         tools = self.tools([STATUS, setup_reply(wrong), TEARDOWN_OK])
         lines = tools.ch_kit_setup().splitlines()
         self.assertIn("refused: the kit's bindings differ from KIT_BINDINGS:", lines)
-        self.assertIn("  Kick (element 22): expected action 4 (Orange), the map gives 0", lines)
+        self.assertIn("  Kick (element 7): expected action 4 (Orange), the map gives 0", lines)
         self.assertEqual(self.posted()[-1], TEARDOWN_MESSAGE)
         self.assertIn("kit teardown: all checks ok", lines)
         self.assertEqual(lines[-1], "kit agent: detached")
@@ -387,6 +421,60 @@ class SetupTest(Rig):
         missing = K.binding_problems(setup_reply(BINDINGS[1:])["maps"])
         self.assertEqual(missing, ["Snare (element 0): expected action 1 (Red), the map gives none"])
         self.assertEqual(K.binding_problems([]), ["the setup reply holds no map for the kit"])
+
+    def test_the_definition_1_map_passes_both_checks(self):
+        maps = setup_reply()["maps"]
+        self.assertEqual(sorted(b["element_id"] for b in maps[0]["bindings"]),
+                         [0, 1, 2, 3, 4, 5, 6, 7, 18, 19])
+        self.assertEqual({b["element_type"] for b in maps[0]["bindings"]}, {0})
+        self.assertEqual(K.map_problems(maps), [])
+        self.assertEqual(K.binding_problems(maps), [])
+
+    def test_the_ls_d2b_run1_map_is_refused_naming_kick_7_and_element_22(self):
+        problems = K.binding_problems(setup_reply(OLD_BINDINGS)["maps"])
+        self.assertIn("Kick (element 7): expected action 4 (Orange), the map gives none", problems)
+        self.assertIn("element 22: not in KIT_BINDINGS, the map gives 4", problems)
+        self.assertEqual(problems, [
+            "Kick (element 7): expected action 4 (Orange), the map gives none",
+            "StartPad (element 18): expected action 16 (Start), the map gives none",
+            "SelectPad (element 19): expected action 6 (Select), the map gives none",
+            "element 20: not in KIT_BINDINGS, the map gives 16",
+            "element 21: not in KIT_BINDINGS, the map gives 6",
+            "element 22: not in KIT_BINDINGS, the map gives 4"])
+
+    def test_a_button_binding_on_the_kick_is_refused_naming_button_and_definition_1(self):
+        button = [{**b, "element_type": 1} if b["element_id"] == 7 else b for b in BINDINGS]
+        tools = self.tools([STATUS, setup_reply(button), TEARDOWN_OK])
+        lines = tools.ch_kit_setup().splitlines()
+        self.assertIn("refused: the kit's bindings differ from KIT_BINDINGS:", lines)
+        self.assertIn(
+            "  Kick (element 7): the map binds it as a button (element type 1 (button)), but "
+            "the kit is built from definition 1 (MIDI Drums), whose elements are all axes, so "
+            "a button binding is another definition's map", lines)
+        self.assertNotIn("bindings: all 10 match KIT_BINDINGS", lines)
+        self.assertEqual(self.posted()[-1], TEARDOWN_MESSAGE)
+        self.assertIsNone(self.game.kit_source())
+
+    def test_every_element_is_type_checked_not_only_the_kick(self):
+        button = [{**b, "element_type": 1} if b["element_id"] in (0, 18) else b
+                  for b in BINDINGS]
+        problems = K.binding_problems(setup_reply(button)["maps"])
+        self.assertEqual([p.split(":")[0] for p in problems],
+                         ["Snare (element 0)", "StartPad (element 18)"])
+        self.assertTrue(all("binds it as a button" in p for p in problems))
+
+    def test_a_binding_with_no_element_type_is_refused(self):
+        untyped = [{k: v for k, v in b.items() if k != "element_type"} if b["element_id"] == 7
+                   else b for b in BINDINGS]
+        self.assertEqual(K.binding_problems(setup_reply(untyped)["maps"]), [
+            "Kick (element 7): expected element type 0 (axis), the map gives None"])
+
+    def test_an_element_bound_as_both_kinds_is_refused_as_a_button(self):
+        both = BINDINGS + [{**BINDINGS[7], "element_type": 1}]
+        self.assertEqual(K.binding_problems(setup_reply(both)["maps"]), [
+            "Kick (element 7): the map binds it as a button (element type 0 (axis), "
+            "1 (button)), but the kit is built from definition 1 (MIDI Drums), whose "
+            "elements are all axes, so a button binding is another definition's map"])
 
     def test_a_setup_with_no_reply_ends_at_its_cap_and_tears_down(self):
         tools = self.tools([STATUS, None, TEARDOWN_OK])
@@ -481,7 +569,7 @@ class SetupPlayerTest(Rig):
         tools = self.tools([STATUS, setup_reply()])
         lines = tools.ch_kit_setup().splitlines()
         self.assertEqual(self.setup_posted(), [
-            {"type": "setup", "tag": "hydra-kit", "definition_id": 6, "player": "Player1",
+            {"type": "setup", "tag": "hydra-kit", "definition_id": 1, "player": "Player1",
              "category_id": 1, "layout_id": 2, "placeholder_tags": PLACEHOLDER_TAGS}])
         self.assertEqual(lines[0], BACKUP_LINE)
 
@@ -491,11 +579,12 @@ class SetupPlayerTest(Rig):
         tools = self.tools([STATUS, reply])
         lines = tools.ch_kit_setup(player="System").splitlines()
         self.assertEqual(self.setup_posted(), [
-            {"type": "setup", "tag": "hydra-kit", "definition_id": 6, "player": "System",
+            {"type": "setup", "tag": "hydra-kit", "definition_id": 1, "player": "System",
              "category_id": 1, "layout_id": 2, "placeholder_tags": PLACEHOLDER_TAGS}])
         self.assertEqual(lines[0], 'kit player: "System" as given (KIT_PLAYER is Player1)')
         self.assertEqual(lines[1], BACKUP_LINE)
-        self.assertIn("kit: controller 6, tag hydra-kit, created, on System", lines)
+        self.assertIn("kit: controller 6, definition 1 (MIDI Drums), tag hydra-kit, created, "
+                      "on System", lines)
         self.assertEqual(lines[-1], "bindings: all 10 match KIT_BINDINGS")
 
     def test_a_name_no_player_has_is_printed_as_the_agents_refusal(self):
@@ -560,20 +649,25 @@ class SetupPlayerTest(Rig):
 
 
 class PressTest(Rig):
-    def test_green_and_kick_send_elements_3_and_22_with_the_hold(self):
+    def test_green_and_kick_send_elements_3_and_7_with_the_hold(self):
         tools = self.set_up([PRESS_REPLY])
         reply = tools.ch_kit_press("green,kick")
         self.assertEqual(self.posted()[-1], {
-            "type": "press", "elements": [{"id": 3, "value": 1.0}, {"id": 22, "value": True}],
+            "type": "press", "elements": [{"id": 3, "value": 1.0}, {"id": 7, "value": 1.0}],
             "hold_frames": 2, "cap_s": 1, "rewrite": False, "on_main": False})
-        self.assertEqual(reply, "pressed green, kick (elements 3, 22) for 2 frames: down at frame "
+        # True equals 1.0 in Python, so the kick's type is read on its own:
+        # kit.ts writes a number with its axis write and true with its button
+        # write.
+        self.assertIs(type(self.posted()[-1]["elements"][1]["value"]), float)
+        self.assertEqual(reply, "pressed green, kick (elements 3, 7) for 2 frames: down at frame "
                                 "1200, up at frame 1202 (2 frames apart, 13 ms by the agent's clock)")
 
     def test_a_given_hold_is_sent(self):
         tools = self.set_up([PRESS_REPLY])
         self.assertTrue(tools.press_items(["kit:start"], hold_frames=5).sent)
         self.assertEqual(self.posted()[-1]["hold_frames"], 5)
-        self.assertEqual(self.posted()[-1]["elements"], [{"id": 20, "value": True}])
+        self.assertEqual(self.posted()[-1]["elements"], [{"id": 18, "value": 1.0}])
+        self.assertIs(type(self.posted()[-1]["elements"][0]["value"]), float)
 
     def test_a_reply_that_never_comes_ends_at_the_press_cap(self):
         tools = self.set_up([None])
@@ -675,16 +769,48 @@ class PadAxisTest(unittest.TestCase):
 
 
 class StrengthTest(Rig):
-    def test_a_mixed_chord_carries_one_strength_per_lane_and_the_kick_stays_true(self):
+    def test_a_mixed_chord_carries_one_strength_per_lane_the_kick_included(self):
         ghost, accent = K.pad_axis("ghost", 64), K.pad_axis("accent", 64)
         message = K.press_message(
             [K.lane_element(Lane.RED), K.lane_element(Lane.YELLOW_CYMBAL),
              K.lane_element(Lane.KICK)],
-            values=[ghost, accent, K.pad_axis("none", 64)])
-        self.assertEqual(message["elements"], [{"id": 0, "value": ghost},
+            values=[accent, accent, ghost])
+        self.assertEqual(message["elements"], [{"id": 0, "value": accent},
                                                {"id": 4, "value": accent},
-                                               {"id": 22, "value": True}])
+                                               {"id": 7, "value": ghost}])
         self.assertNotEqual(ghost, accent)
+
+    def test_a_red_ghost_and_a_kick_ghost_give_elements_0_and_7_at_the_ghost_value(self):
+        ghost = K.pad_axis("ghost", 100)
+        message = K.press_message([K.lane_element(Lane.RED), K.lane_element(Lane.KICK)],
+                                  values=[ghost, ghost])
+        self.assertEqual(message["elements"], [{"id": 0, "value": ghost},
+                                               {"id": 7, "value": ghost}])
+
+    def test_a_kick_with_no_value_gives_element_7_at_the_plain_value(self):
+        message = K.press_message([K.lane_element(Lane.KICK)])
+        self.assertEqual(message["elements"], [{"id": 7, "value": K.pad_axis("none")}])
+        self.assertEqual(K.pad_axis("none"), 1.0)
+
+    def test_start_and_select_press_at_full_whatever_value_is_given(self):
+        message = K.press_message([K.KIT_ELEMENTS["start"], K.KIT_ELEMENTS["select"]],
+                                  values=[0.6, 0.6])
+        self.assertEqual(message["elements"], [{"id": 18, "value": 1.0},
+                                               {"id": 19, "value": 1.0}])
+
+    def test_no_press_message_writes_true(self):
+        # Every element alone and all of them together, with no values, a
+        # given value and each end, in the first group and in a later one.
+        groups = [[e] for e in K.KIT_ELEMENTS.values()] + [list(K.KIT_ELEMENTS.values())]
+        for group in groups:
+            for values in (None, [0.6] * len(group), [0] * len(group), [1] * len(group)):
+                for message in (K.press_message(group, values=values),
+                                K.press_message([], then=[(group, values, 8.0)])):
+                    written = message["elements"] + [
+                        e for g in message.get("then", []) for e in g["elements"]]
+                    self.assertTrue(written)
+                    for element in written:
+                        self.assertNotIsInstance(element["value"], bool, (group, values))
 
     def test_a_press_with_no_values_presses_pads_as_plain_gems(self):
         message = K.press_message([K.KIT_ELEMENTS["red"]])
@@ -698,7 +824,7 @@ class StrengthTest(Rig):
         message = K.press_message(
             [K.lane_element(Lane.KICK)], 2,
             then=[([K.lane_element(Lane.GREEN_CYMBAL)], [0.6], 8.0)])
-        self.assertEqual(message["elements"], [{"id": 22, "value": True}])
+        self.assertEqual(message["elements"], [{"id": 7, "value": K.pad_axis("none")}])
         self.assertEqual(message["then"], [{"elements": [{"id": K.lane_element(
             Lane.GREEN_CYMBAL).id, "value": 0.6}], "after_ms": 8.0}])
         self.assertNotIn("then", K.press_message([K.lane_element(Lane.KICK)]))
@@ -723,16 +849,17 @@ class StrengthTest(Rig):
         self.set_up([PRESS_REPLY])
         press = self.game.kit_source()
         ghost = K.pad_axis("ghost", 64)
-        press([Lane.RED, Lane.KICK], [ghost, K.pad_axis("none", 64)])
+        press([Lane.RED, Lane.KICK], [K.pad_axis("none", 64), ghost])
         self.assertEqual(self.posted()[-1]["elements"],
-                         [{"id": 0, "value": ghost}, {"id": 22, "value": True}])
+                         [{"id": 0, "value": K.pad_axis("none", 64)}, {"id": 7, "value": ghost}])
 
-    def test_ch_kit_press_sends_a_given_value_to_the_pads_and_true_to_a_button(self):
+    def test_ch_kit_press_sends_a_given_value_to_the_pads_and_kick_and_full_to_start(self):
         tools = self.set_up([PRESS_REPLY])
-        lines = tools.ch_kit_press("red,kick", value=0.6).splitlines()
+        lines = tools.ch_kit_press("red,kick,start", value=0.6).splitlines()
         self.assertEqual(self.posted()[-1]["elements"],
-                         [{"id": 0, "value": 0.6}, {"id": 22, "value": True}])
-        self.assertEqual(lines[1], "pads pressed at value 0.6")
+                         [{"id": 0, "value": 0.6}, {"id": 7, "value": 0.6},
+                          {"id": 18, "value": 1.0}])
+        self.assertEqual(lines[1], "pads and kick pressed at value 0.6")
 
     def test_a_value_at_either_end_is_sent(self):
         tools = self.set_up([PRESS_REPLY, PRESS_REPLY])
@@ -831,7 +958,7 @@ class KitPressTest(Rig):
             now=wall.now, sleep=wall.sleep, out=io.StringIO())
         self.assertEqual(result.stop, "done")
         self.assertEqual(self.posted()[-1]["elements"],
-                         [{"id": 3, "value": 1.0}, {"id": 22, "value": True}])
+                         [{"id": 3, "value": 1.0}, {"id": 7, "value": 1.0}])
         row = result.rows[0]
         self.assertEqual((row["down_frame"], row["up_frame"], row["down_ms"], row["up_ms"]),
                          (1200, 1202, 5000, 5013))
@@ -954,7 +1081,8 @@ class KitIdTest(Rig):
         tools = self.tools([STATUS, setup_reply()])
         lines = tools.ch_kit_setup().splitlines()
         self.assertIn("placeholders: controllers 0, 1, 2, 3, 4, 5 (6 created)", lines)
-        self.assertIn("kit: controller 6, tag hydra-kit, created, on Player1", lines)
+        self.assertIn("kit: controller 6, definition 1 (MIDI Drums), tag hydra-kit, created, "
+                      "on Player1", lines)
         self.assertEqual(lines[-1], "bindings: all 10 match KIT_BINDINGS")
         self.assertIsNotNone(self.game.kit_source())
 
@@ -1016,9 +1144,12 @@ let creates = 0;
 const t0 = Date.now();
 const frame = () => 1000 + (c.frame_ms ? Math.floor((Date.now() - t0) / c.frame_ms) : 0);
 const writes = [];
-const keep = (id, value) => { writes.push([id, value, frame(), Date.now() - t0]); };
+const keep = (kind) => (id, value) => {
+    writes.push([id, value, frame(), Date.now() - t0, kind]);
+};
 function controller(tag) {
-    const made = obj({SetAxisValueById: keep, SetButtonValueById: keep}, {id: nextId++});
+    const made = obj({SetAxisValueById: keep("axis"), SetButtonValueById: keep("button")},
+                     {id: nextId++});
     made.tag = tag;
     live.push(made);
     return made;
@@ -1154,7 +1285,7 @@ class KitAgentTest(unittest.TestCase):
         out = self.run_agent([K.setup_message("System")])
         reply = out["replies"][0]
         self.assertEqual(self.of(out, "create"),
-                         [[6, tag] for tag in PLACEHOLDER_TAGS] + [[6, "hydra-kit"]])
+                         [[1, tag] for tag in PLACEHOLDER_TAGS] + [[1, "hydra-kit"]])
         self.assertEqual(reply["placeholders"],
                          [{"id": i, "tag": tag} for i, tag in enumerate(PLACEHOLDER_TAGS)])
         self.assertEqual(reply["placeholders_created"], 6)
@@ -1226,7 +1357,7 @@ class KitAgentTest(unittest.TestCase):
     def test_a_setup_after_a_throw_keeps_the_placeholders_it_finds(self):
         out = self.run_agent([K.setup_message("System"), K.setup_message("System")],
                              fail_on_create=4)
-        self.assertEqual(self.of(out, "create").count([6, "hydra-placeholder-0"]), 1)
+        self.assertEqual(self.of(out, "create").count([1, "hydra-placeholder-0"]), 1)
         self.assertEqual(out["replies"][1]["placeholders_created"], 3)
         self.assertEqual(len(out["replies"][1]["placeholders"]), 6)
 
@@ -1247,10 +1378,18 @@ class KitAgentTest(unittest.TestCase):
             self.assertGreaterEqual(group["up_frame"] - group["down_frame"], 2)
         self.assertEqual(second["after_ms"], 8.0)
         writes = out["writes"]
-        self.assertEqual([(w[0], w[1]) for w in writes[:2]], [(0, K.pad_axis("none")), (22, True)])
+        # Each element's first write is its down. Red's release may come
+        # before the kick's down, so the writes are read per element.
+        first_writes = {}
+        for w in writes:
+            first_writes.setdefault(w[0], w[1])
+        self.assertEqual(first_writes, {0: K.pad_axis("none"), 7: K.pad_axis("none")})
+        self.assertEqual(writes[0][:2], [0, K.pad_axis("none")])
+        # Every element goes through the agent's axis write, down and up.
+        self.assertEqual({w[4] for w in writes}, {"axis"})
         # Every element's last write is its release.
         last = {w[0]: w[1] for w in writes}
-        self.assertEqual(last, {0: 0, 22: False})
+        self.assertEqual(last, {0: 0, 7: 0})
 
     def test_a_press_with_no_later_groups_replies_with_no_groups(self):
         out = self.run_agent([K.setup_message("System"),
@@ -1261,7 +1400,7 @@ class KitAgentTest(unittest.TestCase):
 
     def test_a_later_group_without_a_gap_is_an_error(self):
         message = {**K.press_message([K.KIT_ELEMENTS["red"]], 2),
-                   "then": [{"elements": [{"id": 22, "value": True}]}]}
+                   "then": [{"elements": [{"id": 7, "value": 1.0}]}]}
         out = self.run_agent([K.setup_message("System"), message], frame_ms=3)
         self.assertIn('a press "then" group needs an "after_ms" above 0',
                       out["replies"][1]["error"])
