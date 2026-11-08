@@ -2,4 +2,4 @@ Listing: `band_stars_21104F0.asm`, build 6142, made 2026-11-08 with `tools/ch_mc
 
 Lines 110 to 117: for each player, add its `+0x14` to `+0x18`, its `+0x10` to `+0x10`, its `+0x18` to `+0x14` and its `+0x1C` to `+0x1C`.
 Line 174: call the star counter `0x210DD00` with the score argument `ecx` = `+0x18` and the base argument `edx` = `+0x10`; the count goes to `+0x20` on the next line.
-Lines 176 to 181: only after that, add `+0x14` (the solo bonus) and then `+0x1C` (the clean-play bonus) into `+0x18`
+Lines 176 to 181: only after that, add `+0x14` (the solo bonus) and then `+0x1C` (the clean-play bonus) into `+0x18`.
