@@ -22,6 +22,8 @@ The closure checker reopened L07 and L47: the ruling picks who owns the planning
 
 **L12, retiming with no recheck of the window.** Question 3 of the freak-fixes plan ruled what happens when the read end leaves a squeeze-out's late gem no room: "the gem joins the last inside group and the row says `retimed=inside`", under "Yes, start it" (`2026-11-08-replay-press-schedule.md` line 33). The replay plan's TP2 owns `retime_from_end` and re-makes that room check, with tests at both edges (lines 146 and 230 to 238). Not built yet.
 
+**L75's Ready level.** `sp_compare.at_ready_level` decides from the game's live meter whether Star Power can be activated, with its own copy of Hydra's numbers (`READY_FRACTION = SP_ACTIVATION_BARS / SP_CAP_BARS`, `sp_compare.py:122` and `:288-292`), and it differs from the game's rounded half for an odd `sp_max` (SP-16). Hydra's engine already answers "is this path ready to activate here" (`kSpActivationBars` in `src/core/timing.h:51`, the path's `sp_ready_ms` in `src/search/engine.cpp`). L44's ruling names both sides: "why is the python still doing its own thing? the whole point of this plan is to hand off all the starpower planning to hydra which already knows what to do" (`docs/superpowers/plans/2026-11-08-replay-press-schedule.md` line 29), and D319 item 2 (Q7, "Judge vs Hydra (Recommended)") has the Star Power checks judge against Hydra. When the main session first wrote this up as a new question, the user wrote: "why are you still trying to invent your own rules? hydra already knows how starpower works" (2026-11-08, session 274bd9dd). So the Python test goes, and the judge compares the game's state with Hydra's ready point. `hydra_replay` does not write that point today, so the fix plan adds it.
+
 ### Exit 4, second round
 
 **L56, the far-press refusal on every pad.** TM-50 on `docs/clone-hero/03-timing.md` is now proven in the game's code (commit `fb1be3cd`): the press handler gives a press to the earliest unjudged note on its pad in the window, on every pad. `far_press_refusal` (`tools/replay_schedule.cpp:392`) answers "which earlier or later same-pad note would this press reach", and the game's handler answers "which note this press hits". They now agree on every pad. The second closure check reopened two branches of the refusal that are stricter than the handler (Q16, below).
@@ -84,7 +86,7 @@ These rows have no verifier verdict yet, or rest on a run nobody has done. None 
 | L03 | whether one missed gem in a Star Power phrase cancels its award (the rule is inferred from `ls-m2-run1`; no page block says it): a run with only the kick held back, or the game's miss handler read |
 | L62 | who brought the window forward at 43.9 s: a run with a window-event log |
 | L67, L68, L69, L70, L71, L72, L73, L83, L84 | no verifier opened them (each row's Source ids) |
-| L75 (Ready level) | no exit yet, and no question: `sp_compare.at_ready_level` tests `amount >= 0.5 * sp_max` in floats, and the game tests against a rounded half (`+0x1B8`, SP-16). They differ for an odd `sp_max`. It needs a question to the user (a split), or a run with an odd `sp_max`. |
+| L75 (Ready level) | left by exit 3; see "L75's Ready level" above the tables. Not yet checked by a fresh agent. |
 | L77 | the `statistics.quantiles` part rests on the Python docs from memory, not a run: one call in Python 3.14 |
 | L10, L32, L40 | a run on the rebuilt `kit.js` with split chords under load; a real long `ch_sp_compare` reply; a `hydra_replay` run to diff its output against the 11:14 exe's |
 
