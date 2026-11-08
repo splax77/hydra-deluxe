@@ -333,7 +333,7 @@ Label: Proven in the game's code
 Evidence: the Ghidra decompile C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-10-28\ch-dynamics-2\out26.c (outside the repo), function FUN_182163170 from line 412. Lines 685 to 689 scan forward to the first double quote (0x22, line 687). Lines 722 to 727 search back from the end of the line for the last one (line 727), and lines 728 to 745 cut the text between them. The text then goes to the starts-with tests at lines 797 and 826 and the section table lookup at line 847. What the game does with a line that has only one quote was not worked out. ADR 0023 lines 65 and 66 state Hydra's side.
 Game code (6142): the .chart events reader, RVA `0x2163170`, out26.c lines 685 to 745; no listing is committed.
 Hydra: `classify_chart_line` in src/parse/song.cpp lines 1264 to 1266 takes the quotes off; `section_name_of` line 34 then calls `section_display_name`.
-Ruling: none found. The user ruled that out26.c counts as the game's code: "Yes, cite them (Recommended)" (2026-11-08, session 77057df2; no card yet). The difference outside the quotes has not been asked about.
+Ruling: none found. The user ruled that out26.c counts as the game's code: "Yes, cite them (Recommended)" (2026-11-08, session 77057df2; no card yet). The difference outside the quotes is open: see questions page Q-16.
 Found: 2026-10-30, session b02ab3e6 (the reference build); 2026-11-08, session 77057df2 (docs-gaps search).
 
 ## Solos
@@ -556,8 +556,8 @@ Found: 2026-09-25, session 2a88c065.
 
 ## Rows waiting on a live run
 
-CR-01, CR-02, CR-08, CR-16, CR-23, CR-24, CR-29, CR-31, CR-34, CR-44, CR-46, CR-47. Each is listed on the live-checks page.
+CR-01, CR-02, CR-08, CR-16, CR-23, CR-24, CR-29, CR-31, CR-34, CR-44, CR-47. Each is listed on the live-checks page.
 
 ## Open splits
 
-CR-29 (Q-15), CR-34 (Q-11), CR-39 (Q-75), CR-44 (Q-74). Each is written up on the questions page.
+CR-29 (Q-15), CR-32 (Q-16), CR-34 (Q-11), CR-39 (Q-75), CR-44 (Q-74). Each is written up on the questions page.

@@ -762,7 +762,7 @@ Found: 2026-10-31, session b478542c.
 
 ## Rows waiting on a live run
 
-NL-12, NL-13, NL-14, NL-15, NL-16, NL-19, NL-22, NL-30, NL-32, NL-34, NL-37, NL-38, NL-39, NL-42, NL-57, NL-58, NL-65, NL-69. Each is listed on the live-checks page.
+NL-12, NL-13, NL-14, NL-15, NL-16, NL-19, NL-30, NL-32, NL-34, NL-39, NL-42, NL-57, NL-58, NL-65, NL-69. Each is listed on the live-checks page.
 
 ## Open splits
 

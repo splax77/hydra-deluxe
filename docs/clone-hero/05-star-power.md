@@ -498,7 +498,7 @@ Found: 2026-08-17, session e61236dc
 
 ## Rows waiting on a live run
 
-SP-06, SP-14, SP-15, SP-18, SP-21, SP-24, SP-29, SP-30, SP-31, SP-33, SP-35, SP-36, SP-37, SP-46. Each is on the live-checks page.
+SP-06, SP-14, SP-15, SP-18, SP-24, SP-29, SP-30, SP-31, SP-33, SP-35, SP-36, SP-37, SP-46. Each is on the live-checks page.
 
 ## Open splits
 
