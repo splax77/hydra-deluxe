@@ -455,7 +455,7 @@ The top-level keys are written by the serialiser of SC-36; where each value come
 
 ## Rows waiting on a live run
 
-SC-07, SC-08, SC-10, SC-11, SC-12, SC-14, SC-20 (the exactly-half case and the .5 rounding), SC-29, SC-30. Each is on the live-checks page.
+SC-07, SC-08, SC-10, SC-11, SC-12, SC-14, SC-20 (the exactly-half case, the .5 rounding and a missed solo-end note), SC-29, SC-30. Each is on the live-checks page.
 
 ## Open splits
 

@@ -54,16 +54,16 @@ These counts were taken from the pages on 2026-11-08, by counting their `###` he
 
 | Page | Blocks | Proven in the game's code | Proven in a live run | Hydra assumes it, never checked | Unknown |
 |---|---|---|---|---|---|
-| 01 reading a chart | 53 | 23 | 4 | 9 | 17 |
-| 02 note list | 72 | 39 | 4 | 4 | 25 |
-| 03 timing | 51 | 28 | 7 | 5 | 11 |
+| 01 reading a chart | 53 | 26 | 4 | 8 | 15 |
+| 02 note list | 73 | 47 | 3 | 2 | 21 |
+| 03 timing | 52 | 30 | 7 | 5 | 10 |
 | 04 fills | 45 | 32 | 2 | 4 | 7 |
-| 05 Star Power | 47 | 22 | 4 | 9 | 12 |
-| 06 scoring | 38 | 17 | 9 | 3 | 9 |
-| 07 internals | 86 | 48 | 16 | 0 | 22 |
-| All pages | 392 | 209 | 46 | 34 | 103 |
+| 05 Star Power | 47 | 23 | 4 | 9 | 11 |
+| 06 scoring | 38 | 17 | 13 | 2 | 6 |
+| 07 internals | 92 | 50 | 16 | 0 | 26 |
+| All pages | 400 | 225 | 49 | 30 | 96 |
 
-Eleven of page 4's blocks describe build 1.0. The questions page holds 23 open questions, and the live-checks page holds 71 checks covering 81 rows.
+Eleven of page 4's blocks describe build 1.0. The questions page holds 24 open questions, and the live-checks page holds 70 checks covering 75 rows.
 
 ## Names in obfuscated code
 
