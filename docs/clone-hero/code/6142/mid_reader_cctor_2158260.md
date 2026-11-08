@@ -1,0 +1,2 @@
+# mid_reader_cctor_2158260 (build 6142, RVA 0x2158260)
+The static constructor of the .mid reader class #8626. Lines 37 to 47: it builds the `ThreadLocal<bool>` with a `Func<bool>` factory (a method of the compiler-made class `<>c`, RVA 0x6D40, not listed) and stores it in static field +0. Line 52: it sets static field +8 to 0xF, the mask of all four difficulties that `mid_alt_path_2154180` waits for.
