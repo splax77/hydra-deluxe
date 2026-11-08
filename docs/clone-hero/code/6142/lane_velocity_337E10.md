@@ -2,6 +2,6 @@ Listing: `lane_velocity_337E10.asm`, build 6142, made 2026-11-06 with `tools/ch_
 
 Plain version: the game looks at a hit's strength only for a player on a MIDI kit, or a player holding a custom controller with id 6. For anyone else, and for any lane not pressed this frame, the answer is -1.
 
-The first check asks whether MIDIInputManager exists, and if so whether the player's slot is in its list of registered kits. The second is ContainsController with type 20 (Custom) and controller id 6. If GetButtonDown is true for the action and either check holds, the value is round((GetAxis - 0.5) * 2 * 127). Otherwise it is 0xFF, which is -1 as a signed byte.
+The first check asks whether MIDIInputManager exists, and if so whether the player's slot is a slot in MIDIInputManager's device list (lines 33 to 41; the method at RVA 0x21F790, `midi_slot_check_21F790.md`). The second is ContainsController with type 20 (Custom) and 6 (lines 51 to 55). Its second argument is a controller id, not a definition id: the dump's signature is ContainsController(ControllerType controllerType, int controllerId) (`dump.cs` line 306725). If GetButtonDown is true for the action and either check holds, the value is round((GetAxis - 0.5) * 2 * 127). Otherwise it is 0xFF, which is -1 as a signed byte.
 
 What the listing does not show: why the game tests id 6, and how Rewired numbers a custom controller.
