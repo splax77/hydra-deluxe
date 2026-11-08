@@ -322,7 +322,9 @@ Pass as LS-S2's seven reads. This settles L02: the four misses at chords 153 and
 
 ### LS-A4: whether one missed gem cancels a phrase's award (L03; a code read, no game)
 
-Calls: `rea` decompile of the game's note-miss handler for drums, by the address TM-50's listing names as the miss path (never tried)
+Calls: `rea` decompile of the game's note-miss handler for drums (never tried)
+
+The handler is found from the miss path that TM-50's listing names.
 
 Pass: the listing shows whether a missed note inside a phrase clears the phrase flag; the fact goes to `docs/clone-hero/05-star-power.md` as a new block with its label. Fail: the handler is not found from TM-50's listing in 10 minutes; stop and offer the kick-held-back run as a second step with its own call list.
 
@@ -422,7 +424,7 @@ Where the waiting work fits: `kit.js` is rebuilt in LS-A1; LS-M2 reruns as LS-A2
 | P28: the game stores its half at engine `+0x1B8` (SP-16) | data | `docs/clone-hero/05-star-power.md` lines 107, 169 | checked 2026-11-08 |
 | P29: `sp_tools` calls `at_ready_level` and prints `READY_FRACTION` | code | `tools/ch_mcp/sp_tools.py` lines 71 to 83; `tests/test_sp_tools.py` lines 293, 302 | checked 2026-11-08 |
 | P30: `edge_probe` is imported by `game_tools.py`, not `server.py` (exits.md L84 is wrong on this) | code | `tools/ch_mcp/game_tools.py` line 36; `git grep edge_probe tools/ch_mcp/server.py` finds nothing | checked 2026-11-08 |
-| P31: the Python length readers are `bot_run.song_length_ms`, `game_files.song_ini_length_ms`, `game_tools.run_cap_s`, `sp_tools` (two), `install_chart.install` line 72, `probe_songs.song_length_ms` lines 201 to 203 | code | the lines named, read 2026-11-08 | checked 2026-11-08 |
+| P31: the Python length readers are `bot_run.song_length_ms`, `game_files.song_ini_length_ms`, `game_tools.run_cap_s`, `sp_tools` (two), `install_chart.install` line 72, `probe_songs.song_length_ms` lines 201 to 203 | code | `tools/ch_mcp/bot_run.py`, `tools/ch_mcp/game_files.py`, `tools/ch_mcp/game_tools.py`, `tools/ch_mcp/sp_tools.py`, `tools/ch_mcp/install_chart.py` line 72, `tools/ch_probe/probe_songs.py` lines 201 to 203 | checked 2026-11-08 |
 | P32: which chart LS-M2 run 1 played | unchecked | `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-08\ls-m2-run1\` exists; `replies.txt` not opened | LS-A2's go request |
 | P33: whether the C++ build already stamps a git hash the exe can print | unchecked | `CMakeLists.txt` not read for it | F1 |
 | P34: `ch_open_song`'s wrong-song line is an ordinary reply at `menu_tools.py` line 287 | code | `tools/ch_mcp/menu_tools.py` line 287 | checked 2026-11-08 |
