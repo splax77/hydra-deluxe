@@ -402,12 +402,12 @@
 - 2026-10-27 fba132d1 New release (2026-10-27) | release, installer, update-check, rescan-cache, tests | The session ended with Hydra Deluxe 2.13.2 published on GitHub, with the installer and its signature file attached. [stale]
 - 2026-10-27 03ae1d25 2x kicks chart clarity (2026-10-27) | 2x-kick, optimal-path, rescan-cache, release, docs | The session ended with the 2x kick changes on main, pushed to GitHub, and Hydra Deluxe 2.14.0 published with a forced rescan set up for the user's library. [stale]
 - 2026-10-28 013109ed Matched on folder and charter meaning (2026-10-28) | library-search, library-row, library, docs, tests | The session ended with the library search change pushed to GitHub as commit 2bf91835, after a real-window check on a snapshot copy of the user's library. [stale]
-- 2026-10-28 f756d547 Hydra moonshot improvements (2026-10-28) | clone-hero, planning, agents, review | The session ended after the calibration answers, with a handoff written; Run 3 and the fullscreen check were still to do.
-- 2026-10-28 856d0fac Clone Hero MCP feasibility study (2026-10-28) | clone-hero, planning, review, docs, tests | Ended with a handoff for the next session, after the study and the four-test plan were reviewed and signed off. Nothing is built or merged.
-- 2026-10-29 6a549de0 MCP feasibility tests handoff (2026-10-29) | clone-hero, tests, agents, review, docs | The session ended after all four feasibility tests had results, the write-up was merged on main, and the handoff and worktree cleanup were done.
+- 2026-10-28 f756d547 Hydra moonshot improvements (2026-10-28) | clone-hero, planning, agents, review | The session ended after the calibration answers, with a handoff written; Run 3 and the fullscreen check were still to do. [stale]
+- 2026-10-28 856d0fac Clone Hero MCP feasibility study (2026-10-28) | clone-hero, planning, review, docs, tests | Ended with a handoff for the next session, after the study and the four-test plan were reviewed and signed off. Nothing is built or merged. [stale]
+- 2026-10-29 6a549de0 MCP feasibility tests handoff (2026-10-29) | clone-hero, tests, agents, review, docs | The session ended after all four feasibility tests had results, the write-up was merged on main, and the handoff and worktree cleanup were done. [stale]
 - 2026-10-29 d9bea2e5 Interactive path builder for Hydra (2026-10-29) | planning, library, preview, agents, docs | The session ended with the spec and two build plans written, reviewed once each, and waiting for the user's yes; nothing was built. [stale]
-- 2026-10-29 12d82c30 Fix three small ch_mcp tool faults (2026-10-29) | clone-hero, tests, review | The session ended with the three ch_mcp fixes merged to local main in the two commits listed in the header, and the always-run scans green; main was not pushed.
-- 2026-10-29 0885daad Single-owner scan: skip gitignored files (2026-10-29) | tests, scan, review, agents | Ended with the fix merged to local main at 18825c8a, after the precheck's test list passed on the merged result.
+- 2026-10-29 12d82c30 Fix three small ch_mcp tool faults (2026-10-29) | clone-hero, tests, review | The session ended with the three ch_mcp fixes merged to local main in the two commits listed in the header, and the always-run scans green; main was not pushed. [stale]
+- 2026-10-29 0885daad Single-owner scan: skip gitignored files (2026-10-29) | tests, scan, review, agents | Ended with the fix merged to local main at 18825c8a, after the precheck's test list passed on the merged result. [stale]
 - 2026-10-29 af7dd926 MCP results handoff documentation (2026-10-29) | clone-hero, planning, agents, review, tests, docs | Ended with the Clone Hero `ch` MCP server built, merged to main and checked at the game, and with the UI-helper test fix merged to main. Nothing is pushed to GitHub.
 - 2026-10-29 bea11e68 Squeeze timing discrepancy (2026-10-29) | squeeze, analysis, chart, record | The session ended with the squeeze tool working again and merged into the squeeze-tools repo's main; the commit hash is not recorded here. [stale]
 - 2026-10-29 07074f3d Hydra squeeze discrepancy (2026-10-29) | squeeze, sp-phrase, tick, measure, tempo | Ended with a written answer after about seven minutes: our 0 ms is right, and public Hydra's -2.7 ms comes from a rounding and truncation bug in its measure maths. [stale]
@@ -457,7 +457,7 @@
 - 2026-11-07 d5d1a440 Fix the leaked hydra_live temp folders (2026-11-07) | tests, docs, agents | The session ended with the fix merged to local main as 676a494b, and the 96 old scratch folders sent to the Recycle Bin.
 - 2026-11-07 3dc9101c Hydra preview audio not playing (2026-11-07) | chart, library, preview, tests, review | The session ended with the test charts renamed, the install tool fixed and merged, and main pushed to GitHub, after the user's yes.
 - 2026-11-07 5b92c813 Optimal score plan handoff (2026-11-07) | clone-hero, planning, review, agents, docs | The session ended with a handoff, at the user's request, after wave 1 of the plan was merged and before the test launch could start.
-- 2026-11-07 70bddae3 Stale comment audit verify waves handoff (2026-11-07) | clone-hero, docs, agents, review, scan | The session ended with a handoff, at the user's request, after the triage script was built and before the closure checkers were launched.
+- 2026-11-07 70bddae3 Stale comment audit verify waves handoff (2026-11-07) | clone-hero, docs, agents, review, scan | The session ended with a handoff, at the user's request, after the triage script was built and before the closure checkers were launched. [write-back]
 - 2026-11-07 f1fabefd Optimal score launch handoff (2026-11-07) | clone-hero, agents, hooks, planning, review | The session ended with a handoff, after LS-O1 passed on the live game and the reload work merged to main; the user did not give a go for LS-R1 or LS-R2 here.
 - 2026-11-07 91e7fdd7 Stale comment work (2026-11-07) | docs, agents, review, hooks | The session ended with a handoff written and committed on its own branch; no comment was edited and nothing was pushed.
 - 2026-11-07 6c03736f CH reload live steps handoff (2026-11-07) | clone-hero, performance, planning, agents | Ended at a handoff: the reload steps mostly passed, the one-call chart run failed, and a timing plan was reviewed and handed off without being built.
@@ -466,20 +466,22 @@
 - 2026-11-07 7d216054 CH run timing build handoff (2026-11-07) | clone-hero, performance, planning, agents | Ended at a handoff: five timing tasks were merged, the no-admin recorder plan was written and approved, and no live step has run since the refused first attempt.
 - 2026-11-07 43eecb1c Agent effort level assignment (2026-11-07) | agents, planning, review, performance, memory | The session ended after the user stopped the test during the reviewer step, and the results were given in chat only.
 - 2026-11-07 aa89806d Stale comment waves handoff (2026-11-07) | agents, review, docs, tests, ci | The session ended with a handoff written and committed, after all six fix waves of the stale comment audit were merged to main.
-- 2026-11-07 b132faae CH Recorder build handoff (2026-11-07) | clone-hero, performance, planning, tests, agents | The session ended with a handoff committed for planning the two fixes, and nothing built for them yet.
+- 2026-11-07 b132faae CH Recorder build handoff (2026-11-07) | clone-hero, performance, planning, tests, agents | The session ended with a handoff committed for planning the two fixes, and nothing built for them yet. [write-back]
 - 2026-11-07 28b91640 Stale comment waves handoff (2026-11-07) | docs, review, tests, clone-hero, agents, planning | The session ended with all ten code tasks and the three leftover branches merged to main, after the user's last yes, with nothing pushed.
 - 2026-11-07 e3e9069c Limit how many Hydra builds run at once (2026-11-07) | hooks, agents, performance, planning, review | The three-build limit is merged to main and to the hooks repo, and nothing is pushed.
 - 2026-11-07 490d6781 Cont v (2026-11-07) | clone-hero, performance, planning, review, docs, agents | The session ended with the Senri run at the optimal score, the player refinements plan signed off and handed off, and the plan removal waiting on a build pass.
 - 2026-11-07 f3d8ce9f Player refinements handoff (2026-11-07) | clone-hero, agents, review, hooks, docs | The session ended in a handoff, written and committed on its own branch, while Mouths run 2 was still waiting for the user's go.
 - 2026-11-08 d13589d3 Reviewer fixes land on the reviewed branch (2026-11-08) | hooks, review, agents, docs | The session ended with the change merged: a reviewer's fixes now land on the branch they review.
-- 2026-11-08 d0a3868c Player refinements handoff (2026-11-08) | clone-hero, activation, hit-window, transfer-scale, planning, review | The session ended when the user asked it to stop and write a handoff, and the handoff was committed on its own branch, not merged.
+- 2026-11-08 d0a3868c Player refinements handoff (2026-11-08) | clone-hero, activation, hit-window, transfer-scale, planning, review | The session ended when the user asked it to stop and write a handoff, and the handoff was committed on its own branch, not merged. [stale] [write-back]
+- 2026-11-08 6341c618 Player limits handoff (2026-11-08) | clone-hero, squeeze, planning, review, agents | The session ended with a findings handoff, written at the user's request, and the kit fix was not started.
+- 2026-11-08 31e4f22f Playing code audit (2026-11-08) | clone-hero, agents, tests, review, planning | The session ended with every audit finding given an exit and two handoffs committed. No code was changed, and nothing was merged or pushed.
 
 ## Proposed tags
 
 - alignment (1)
 - app-icon (1)
 - assets (1)
-- audit (1)
+- audit (2)
 - benchmark (1)
 - build (1)
 - claude-code-settings (1)
