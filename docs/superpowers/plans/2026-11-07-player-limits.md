@@ -149,13 +149,15 @@ The main session runs these; a planning agent calls no `ch_*` tool. Before each 
 
 ### LS-L0: the inputs (main session; not a game run)
 
-Calls: `py -I tools/ch_probe/prep_inputs.py --chart <path> --out <dated folder>` (never tried), once each for Rescued, Ghost Of Indecision, Get Ur Freak On, Yandere Complex and `Hydra Probe\Edge Walk`
+Calls: `py -I tools/ch_probe/prep_inputs.py --chart <path> --out <dated folder>` (never tried)
+
+The call runs once each for Rescued, Ghost Of Indecision, Get Ur Freak On, Yandere Complex and `Hydra Probe\Edge Walk`.
 
 Uses rows P1, P3, P10, P27. Pass: each run prints both file names and either "loads" with its lines or a refusal that names a chord and a reason; Rescued and Ghost print "loads" with the leads of design point 2; Watashi is not run (it is refused by design, and T2's test holds the refusal). Fail: a refusal on Rescued or Ghost (the fixture numbers were wrong: stop, report the line, no run). Yandere's lines decide whether LS-Y runs: "loads" with a late lead, or a refusal naming its activation's late side, which the report carries to the user with no run.
 
 ### LS-E: the window edges and the matching rule (2 runs, 10 minutes)
 
-Calls: `ch_start(<Edge Walk folder>, human=True, player="ProDrums,Expert")` (seen: the Window Map run `ls-t2-run-a`, a human direct start on a probe chart), `ch_edge_probe(<Edge Walk folder>, <edge-score.json>, <probes.json>)` (never tried), `ch_play_status` (seen: `ls-t2-run-a`), `ch_wait_stats` (seen: LS-R2b run 1), `ch_stop` (seen: LS-R2b run 1)
+Calls: `ch_start(<Edge Walk folder>, human=True, player="ProDrums,Expert")` (seen: the Window Map run `ls-t2-run-a`, a human direct start on a probe chart), `ch_edge_probe(<Edge Walk folder>, <edge-score.json>, <probes.json>)` (never tried), `ch_play_status` (seen: the Window Map run `ls-t2-run-a`), `ch_wait_stats` (seen: LS-R2b run 1), `ch_stop` (seen: LS-R2b run 1)
 
 Uses rows P12, P13, P14, P27, P28. The probes file names eight isolated notes, two for each of side minus 3 early, side plus 3 early, side minus 3 late and side plus 3 late (eight presses), and the pair's first note at 60 ms late. Reads: each probe row's `hit`; for the pair, the second note's row (step and `hit`) and the stats' `notes_hit`. Pass: the eight edge rows give hit inside and miss outside on both sides (TM-27 and TM-26 written as proven live), and the pair's rows show which note the 60 ms press took (either answer passes; it is written as the matching rule's block). Fail: a probe row marked `probe` is missing (the tool skipped it: stop, no second run), or an inside press misses on one side only (TM-26's flag; the rows go to the user and the page before Rescued runs). Run 2 only for a machine not held.
 
@@ -187,15 +189,27 @@ Uses rows P4 to P9, P11, P16 to P19, P21, P22. The new behaviours: r not 1 (1.00
 
 Pass: all six reads. Fail, first read: the game's end differs from the planned end by more than 6 ms (the ratio or the frame rule is wrong for a chart with markers at the ticks: the two numbers and the flip row go to the user, SP-39 is written with them, no run 2). Fail, second read: chord 931 `hit` 0 and 932 `hit` 1 with 931's points missing (the press went to 932: the matching rule is "nearest", LS-E's reading was wrong or the pair was different; stop, to the user); or 931 `hit` 1 with step doubled (the game's end was later than read: SP-29's late side; stop). Fail, fifth read: the subtraction and the first differing chord. Run 2 only when a fail line names it or the machine was not held.
 
-### LS-G1a and LS-G1b: Ghost Of Indecision against 662,945 (backup; 2 runs each)
+### LS-G1a: the Ghost Of Indecision launch (backup; 2 runs, 10 minutes)
 
-Calls (a): `ch_start(<Ghost folder>, human=True, player="ProDrums,Expert")` (never tried). Calls (b): `ch_run_chart(<Ghost folder>, <ghost-score.json>, kit_player="System", decline_mode="all_but_top_pad", dump_json=<ghost-dump.json>)` (never tried), then the same five seen calls as LS-R1b.
+Calls: `ch_start(<Ghost folder>, human=True, player="ProDrums,Expert")` (never tried)
+
+Runs only when LS-G1b's condition below holds. Pass and fail as LS-F1a. LS-G1b starts at once.
+
+### LS-G1b: Ghost Of Indecision against 662,945 (inside LS-G1a's run; 2 runs)
+
+Calls: `ch_run_chart(<Ghost folder>, <ghost-score.json>, kit_player="System", decline_mode="all_but_top_pad", dump_json=<ghost-dump.json>)` (never tried), `ch_play_status` (seen: LS-F1b's passing run), `ch_sp_watch_status` (seen: LS-F1b's passing run), `ch_wait_stats` (seen: LS-F1b's passing run), `ch_compare(<stats copy>, <ghost-score.json>)` (seen: LS-F1b's passing run), `ch_stop` (seen: LS-F1b's passing run)
 
 Runs only if LS-R1b fails on a read that does not name the ratio or the frame rule (Ghost has no same-pad neighbour at its squeeze-out and one marker at each tick), or after LS-R1b passes if the user wants a second chart. Uses rows P4 to P9, P16, P17, P18, P21. Reads: chord 0 (2,087.72 ms); chord 661 (86,959.09 ms; kick and blue cymbal) led 60.2 to 63.2 ms (63.15 planned), its end line within 6 ms; chord 756 (97,515.36 ms, yellow cymbal) late at the read end plus 15 (about 60.3 ms late, inside 66.34), `hit` 1, undoubled; the two declined chords' `scored_between`; `score` 662945 and `ch_compare` passing. Fail lines as LS-R1b's first, second and fifth.
 
-### LS-Y1a and LS-Y1b: Yandere Complex, the late activation (only if LS-L0 said "loads"; 2 runs each)
+### LS-Y1a: the Yandere Complex launch (only if LS-L0 said "loads"; 2 runs, 10 minutes)
 
-Calls (a): `ch_start(<Yandere folder>, human=True, player="ProDrums,Expert")` (never tried). Calls (b): `ch_run_chart(<Yandere folder>, <yandere-score.json>, kit_player="System", decline_mode="all_but_top_pad", dump_json=<yandere-dump.json>)` (never tried), then the five seen calls.
+Calls: `ch_start(<Yandere folder>, human=True, player="ProDrums,Expert")` (never tried)
+
+Pass and fail as LS-F1a. LS-Y1b starts at once.
+
+### LS-Y1b: Yandere Complex, the late activation (inside LS-Y1a's run; 2 runs)
+
+Calls: `ch_run_chart(<Yandere folder>, <yandere-score.json>, kit_player="System", decline_mode="all_but_top_pad", dump_json=<yandere-dump.json>)` (never tried), `ch_play_status` (seen: LS-F1b's passing run), `ch_sp_watch_status` (seen: LS-F1b's passing run), `ch_wait_stats` (seen: LS-F1b's passing run), `ch_compare(<stats copy>, <yandere-score.json>)` (seen: LS-F1b's passing run), `ch_stop` (seen: LS-F1b's passing run)
 
 Uses rows P4 to P9, P16, P17, P23. Reads: the activation chord at tick 195760 pressed late by the solved lead (the prep script's number, plus or minus 3), the end line's game end later than the dump's by the lead times `end_scale_late` within 6 ms; the squeeze-in chord at tick 203520 pressed at the read end minus 15, `hit` 1, step doubled, and the watch's `sp_end_s` moving later within a few samples (SP-34); the final score equal to the file's. Fail: the end did not move later by the lead (row P23 false: a late activation is stamped differently; to the user), or the squeeze-in paid undoubled (pressed outside: the row and the end to the user, no lag change).
 
@@ -207,7 +221,7 @@ Uses rows P1, P2, P26. Pass and fail as LS-F1a. The main session first confirms 
 
 ### LS-K1b: the kick as an axis, the setup and the run (inside LS-K1a's run; 2 runs)
 
-Calls: `ch_run_chart(<the .mid chart's folder>, <score.json>, kit_player="System", decline_mode="all_but_top_pad", dump_json=<dump.json>)` (never tried: the call is proven on other charts, and what is new is the kit definition inside its `ch_kit_setup`, an axis kick, so this one call is the step's only never-tried piece), `ch_play_status` (seen: LS-F1b's passing run), `ch_wait_stats` (seen: LS-F1b's passing run), `ch_compare(<stats copy>, <score.json>)` (seen: LS-F1b's passing run), `ch_stop` (seen: LS-F1b's passing run)
+Calls: `ch_run_chart(<the .mid chart's folder>, <score.json>, kit_player="System", decline_mode="all_but_top_pad", dump_json=<dump.json>)` (never tried), `ch_play_status` (seen: LS-F1b's passing run), `ch_wait_stats` (seen: LS-F1b's passing run), `ch_compare(<stats copy>, <score.json>)` (seen: LS-F1b's passing run), `ch_stop` (seen: LS-F1b's passing run)
 
 Uses rows P24, P25, P26, P30. Reads, in order. First: the kit setup line accepts the axis binding on element 22 (if it refuses, the step ends there: the refusal text to the user, no run 2). Second: every kick row hits, the stats' `ghost_notes_hit` and `accent_notes_hit` count the chart's kick dynamics as the file does, and the score equals the file's. Pass: both reads. Fail: kicks miss (an axis write does not fire the button action: row P30's other half; the kit goes back to a button and the user hears it), or the counts leave out the kicks (the velocity is not read for action 4 after all; the listing's reading was wrong; to the page). Run 2 only when a fail line names it or the machine was not held.
 
@@ -269,20 +283,22 @@ Uses rows P24, P25, P26, P30. Reads, in order. First: the kit setup line accepts
 | P14: a press matches a note on its own pad; which note when two unhit notes are in window is not written anywhere | unchecked | `docs/audit/drum-lanes/FINDINGS-play-time.md` line 56 says only that a matching press hits a window note | LS-E (the pair) |
 | P15: Get Ur Freak On is not one tempo (several markers between 172 and 186 BPM after a 120 BPM start); at its activation ticks 65280, 126720 and 188160 the tempo just before the activation and just before the end are the same, so the early ratio is 1.0 | chart | `C:\Clone Hero\songs\synchotic\Sync Charts\Drummer's Monthly Drive\Tournaments\Summer Blast 2025 Setlist\Tier 8\Eric Moore - Get Ur Freak On [Missy Elliot]\notes.chart` `[SyncTrack]` (first 18 markers read; the rest not opened); `limits-prep\freak-dump.json` activations | checked 2026-11-07 for the 188160 activation (177.999 BPM before both ticks); the other two and the late ratio are read from the dump's ratios in LS-L0 |
 | P16: at r = 1, an activation press moves the stored end by the chord time minus the clock of the frame that read the press | run | `ls-r2ab-run1\sp_watch-2.csv` rows at 27.2826 s and 32.6128 s | checked 2026-11-07 |
-| P16b: at r not 1, the same move is multiplied by the early ratio | unchecked | no run has pressed an activation early across a tempo change | LS-R1b, first read |
+| P16b: at r not 1, the same move is multiplied by the early ratio | unchecked | `ls-r2ab-run1\sp_watch-2.csv` shows the move at r = 1 only; no run has pressed an activation early across a tempo change | LS-R1b, first read |
 | P17: activation stores the clock as the start time and tick; the end is one stored time worked out through the tempo map | data | `docs/clone-hero/05-star-power.md` SP-19, SP-27 (Proven in the game's code) | checked 2026-11-07 |
-| P18: Star Power ends in the first frame whose clock reaches the end; a press 15 ms after it pays undoubled; a phrase is credited at the last gem hit | data and run | SP-28 (Proven); `ls-r1-run2\press-1.csv` chord 740 (lead -16.2, step 200) and `replies.txt` line 8 | checked 2026-11-07 |
-| P19: a green press 55.7 ms after Rescued chord 931, 44 ms before chord 932, is matched to 931 | unchecked | nothing: P14's gap | LS-E, then LS-R1b second read |
+| P18: Star Power ends in the first frame whose clock reaches the end | data | SP-28 (Proven) on `docs/clone-hero/05-star-power.md` | checked 2026-11-07 |
+| P18b: a press 15 ms after the end pays undoubled, and a phrase is credited at the last gem hit | run | `ls-r1-run2\press-1.csv` chord 740 (lead -16.2, step 200) and `ls-r1-run2\replies.txt` line 8 | checked 2026-11-07 |
+| P19: a green press 55.7 ms after Rescued chord 931, 44 ms before chord 932, is matched to 931 | unchecked | `limits-prep\rescued-score.json` chords 931 and 932 (two greens 100 ms apart); no page holds the matching rule (P14's gap) | LS-E, then LS-R1b second read |
 | P20: a chord at 2.0 s is pressed when the run starts from `ch_run_chart` | run | `ls-r2ab-run1\press-2.csv` chord 0 at 1999.77 ms | checked 2026-11-07 |
 | P21: the game flags a fill chord's highest pad; a kick-only chord sends nothing and is granted; a three-gem fill's unflagged gems are pressed and the flagged one granted | run | `ls-r1-run2\press-1.csv` rows 221, 222, 801, 802 and `replies.txt` line 9 | checked 2026-11-07 |
 | P22: a red press 43 ms after a note with an 53 ms side is matched to it | run | `ls-r2ab-run1\press-2.csv` chord 180 (lead -44.57, hit 1, step 200) | checked 2026-11-07 |
-| P23: a late activation press moves the end later by the late ratio times the lateness | unchecked | SP-39 (Hydra assumes it); no run pressed an activation late on purpose | LS-Y1b |
+| P23: a late activation press moves the end later by the late ratio times the lateness | unchecked | SP-39 on `docs/clone-hero/05-star-power.md` (Hydra assumes it); no run pressed an activation late on purpose | LS-Y1b |
 | P24: the drums input method reads the kick lane's velocity through the helper at 0x337E10 with action 4 | code | `docs/clone-hero/code/6142/drums_input_source.asm` lines 184 to 187; `docs/clone-hero/code/6142/lane_velocity_337E10.md` | checked 2026-11-07 |
 | P25: the helper's velocity is round((GetAxis - 0.5) x 2 x 127) for a player holding the custom controller with id 6 | code | `docs/clone-hero/code/6142/lane_velocity_337E10.md` paragraph 3 | checked 2026-11-07 |
 | P26: a `.mid` chart with velocity-1 or velocity-127 kicks exists in the library (I Am Ahab, 33 accent kicks) | unchecked | `docs/clone-hero/live-checks.md` line 49 names it; the db copy was not queried for it | LS-K1a's go request (a db query by the main session) |
 | P27: `C:\Clone Hero\songs\Hydra Probe\Edge Walk` is a chart of single kick notes 1,000 ms apart (125 BPM, 480 ticks a beat, one note every 1,000 ticks from tick 3000), so each note's side is the 85.72 ms maximum (TM-22); it holds no pair of same-pad notes close together | chart | `C:\Clone Hero\songs\Hydra Probe\Edge Walk\notes.chart` `[ExpertDrums]` first 40 lines | checked 2026-11-07 for the isolated notes; T4's executor adds the pair |
 | P28: `ch_start` on a human direct start of a probe chart ran | run | `ls-t2-run-a\replies.txt` (Window Map) | checked 2026-11-07 |
-| P29: `QUIET_CPU_PCT` is 15 over 5 s; three launches were refused at 15.51, 18.94 and 26.68 percent, none with a compiler | code and run | `tools/ch_mcp/quiet.py` lines 29 and 30; `ls-r1-run2\replies.txt` lines 3 to 5; `ls-r2ab-run1\replies.txt` lines 3 and 4 | checked 2026-11-07 |
+| P29: `QUIET_CPU_PCT` is 15 over 5 s | code | `tools/ch_mcp/quiet.py` lines 29 and 30 | checked 2026-11-07 |
+| P29b: three launches were refused at 15.51, 18.94 and 26.68 percent, none with a compiler | run | `ls-r1-run2\replies.txt` lines 3 to 5; `ls-r2ab-run1\replies.txt` lines 3 and 4 | checked 2026-11-07 |
 | P30: a pressed button element reads 1.0 from GetAxis, so the game reads velocity 127 for today's kick, and an axis write on an axis element fires GetButtonDown for a button action | unchecked | Rewired's behaviour is not in any page or listing; `kit_tools.py` line 242 says only that a plain gem's velocity is never read | LS-K1b |
 | P31: four library charts have a positive squeeze-in in path 0, Yandere Complex at +80.6 ms the smallest | chart | the 478 dumps in this session's scratch folder, path 0 `sqinouts`; chart names from the copy of `C:\Program Files\Hydra\hydra.db` read 2026-11-07 (not citable after the session; the prep script remakes Yandere's dump in LS-L0) | checked 2026-11-07 |
 | P32: profile 39 has 18,926 rank-1 paths, 1,301 with `hardest_ms` over 85 | data | the copy of `C:\Program Files\Hydra\hydra.db` read 2026-11-07, `record_paths` | checked 2026-11-07 |
