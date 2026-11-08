@@ -75,6 +75,29 @@ std::set<NoteColor> kept_colours(const std::set<NoteColor>& colours) {
 const doctest::Approx kFloorSide = doctest::Approx(96.2931672 / 2);
 const doctest::Approx kCapSide = doctest::Approx(171.4313075 / 2);
 
+// Every stored path of every corpus chart that has notes under `cfg`:
+// replayed, and its schedule built by schedule::schedule_json.
+// `check` gets the chart's path, its song, the path's activations in walk
+// order, the replay and the schedule.
+using ScheduleCheck = std::function<void(const std::string& path, const Song& song,
+                                         const std::vector<const Activation*>& acts,
+                                         const PathReplay& pr, const json& sch)>;
+
+void for_each_corpus_schedule(const app::AnalysisSettings& cfg, const ScheduleCheck& check) {
+    for (const std::string& path : corpus::chart_paths()) {
+        const Song& song = corpus::song(path, cfg.reading());
+        if (song.is_empty()) continue;
+        const HydraRecord& rec = corpus::analyzed(path, cfg);
+        for (const Path* p : rec.all_paths()) {
+            std::vector<const Activation*> acts;
+            for (const Activation& a : p->walk_activations()) acts.push_back(&a);
+            const PathReplay pr = replay_stored_path(song, *p, cfg.rules);
+            const json sch = schedule::schedule_json(song, acts, pr.result, cfg.rules);
+            check(path, song, acts, pr, sch);
+        }
+    }
+}
+
 }  // namespace
 
 TEST_CASE("schedule: every end step names its anchor") {
@@ -217,32 +240,24 @@ TEST_CASE("schedule: declined chords are the skipped fill ticks") {
     // each one's kept gems are kept_gems'.
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
     int declined_rows = 0;
-    for (const std::string& path : corpus::chart_paths()) {
-        const Song& song = corpus::song(path, cfg.reading());
-        if (song.is_empty()) continue;
-        const HydraRecord& rec = corpus::analyzed(path, cfg);
-        for (const Path* p : rec.all_paths()) {
-            std::vector<const Activation*> acts;
-            std::set<int64_t> skipped;
-            for (const Activation& a : p->walk_activations()) {
-                acts.push_back(&a);
-                skipped.insert(a.skipped_fill_ticks.begin(), a.skipped_fill_ticks.end());
-            }
-            const PathReplay pr = replay_stored_path(song, *p, cfg.rules);
-            const json s = schedule::schedule_json(song, acts, pr.result, cfg.rules);
-            std::set<int64_t> marked;
-            for (const json& row : s["chords"]) {
-                if (!row["declined"].get<bool>()) continue;
-                ++declined_rows;
-                marked.insert(row["tick"].get<int64_t>());
-                const ReplayChord& c = pr.result.chords[row["index"].get<size_t>()];
-                CHECK(row["kept_gems"].get<std::vector<size_t>>() ==
-                      schedule::kept_gems(song.sequence[static_cast<size_t>(c.index)].chord, c.notes).places);
-            }
-            INFO(path);
-            CHECK(marked == skipped);
+    for_each_corpus_schedule(cfg, [&](const std::string& path, const Song& song,
+                                      const std::vector<const Activation*>& acts, const PathReplay& pr,
+                                      const json& s) {
+        std::set<int64_t> skipped;
+        for (const Activation* a : acts)
+            skipped.insert(a->skipped_fill_ticks.begin(), a->skipped_fill_ticks.end());
+        std::set<int64_t> marked;
+        for (const json& row : s["chords"]) {
+            if (!row["declined"].get<bool>()) continue;
+            ++declined_rows;
+            marked.insert(row["tick"].get<int64_t>());
+            const ReplayChord& c = pr.result.chords[row["index"].get<size_t>()];
+            CHECK(row["kept_gems"].get<std::vector<size_t>>() ==
+                  schedule::kept_gems(song.sequence[static_cast<size_t>(c.index)].chord, c.notes).places);
         }
-    }
+        INFO(path);
+        CHECK(marked == skipped);
+    });
     CHECK(declined_rows > 0);
 }
 
@@ -784,29 +799,6 @@ core::Rules rules_with(core::SqOutRule rule) {
     core::Rules r = core::default_rules();
     r.sqout_rule = rule;
     return r;
-}
-
-// Every stored path of every corpus chart that has notes under `cfg`:
-// replayed, and its schedule built by schedule::schedule_json.
-// `check` gets the chart's path, its song, the path's activations in walk
-// order, the replay and the schedule.
-using ScheduleCheck = std::function<void(const std::string& path, const Song& song,
-                                         const std::vector<const Activation*>& acts,
-                                         const PathReplay& pr, const json& sch)>;
-
-void for_each_corpus_schedule(const app::AnalysisSettings& cfg, const ScheduleCheck& check) {
-    for (const std::string& path : corpus::chart_paths()) {
-        const Song& song = corpus::song(path, cfg.reading());
-        if (song.is_empty()) continue;
-        const HydraRecord& rec = corpus::analyzed(path, cfg);
-        for (const Path* p : rec.all_paths()) {
-            std::vector<const Activation*> acts;
-            for (const Activation& a : p->walk_activations()) acts.push_back(&a);
-            const PathReplay pr = replay_stored_path(song, *p, cfg.rules);
-            const json sch = schedule::schedule_json(song, acts, pr.result, cfg.rules);
-            check(path, song, acts, pr, sch);
-        }
-    }
 }
 
 }  // namespace
