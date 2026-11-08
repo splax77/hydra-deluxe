@@ -414,7 +414,7 @@ Found: 2026-10-31, session 5cc1cc07, from a decompile of build 6142.
 
 Rule: The tools treat a method of `PlayerSelectionMenu` at RVA 0x32F590 as the player screen's per-frame method, and watch it to tell that the screen is running. That it runs once a frame is not proven.
 Label: Unknown
-Evidence: `dump.cs` line 73000 shows the method itself: a public instance method returning bool (its name is obfuscated, with no readable name in the names table), on of `PlayerSelectionMenu` (class header at line 72822), at RVA 0x32F590 (line 72999). Its code was not read. The once-a-frame claim is the comment at tools/ch_mcp/agent/menu.ts lines 49 to 54, which says LS-K3's method watch saw it called once a frame while the screen ran; no output of that watch is kept. The lead for a check is that comment and the constant `PLAYER_SCREEN_FRAME_RVA` at line 54.
+Evidence: `dump.cs` line 73000 shows the method itself: a public instance method of `PlayerSelectionMenu` that returns bool (its name is obfuscated) (class header at line 72822), at RVA 0x32F590 (line 72999). Its code was not read. The once-a-frame claim is the comment at tools/ch_mcp/agent/menu.ts lines 49 to 54, which says LS-K3's method watch saw it called once a frame while the screen ran; no output of that watch is kept. The lead for a check is that comment and the constant `PLAYER_SCREEN_FRAME_RVA` at line 54.
 Game code (6142): `PlayerSelectionMenu` method RVA 0x32F590 (`dump.cs` line 73000); not read.
 Hydra: no owner: Hydra never reads the running game. The tools use it as `PLAYER_SCREEN_FRAME_RVA` in tools/ch_mcp/agent/menu.ts line 54.
 Ruling: none needed: no Hydra rule reads it.
