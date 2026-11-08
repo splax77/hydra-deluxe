@@ -52,15 +52,16 @@ TEST_CASE("scoring: sqout_late_notes is what category_scores pays outside") {
     for (const std::string& path : corpus::chart_paths()) {
         const Song& song = corpus::song(path, cfg.reading());
         if (song.is_empty()) continue;
-        int combo = 0;
+        // The running combo before each chord is the table's (chord_score_table).
+        const ChordScoreTable table = chord_score_table(song, core::SqOutRule::FirstNote);
         for (size_t i = 0; i < song.sequence.size(); ++i) {
             const hydra::Chord& chord = song.sequence[i].chord;
+            const int combo = table.rows[i].combo_before;
             ++chords;
             for (core::SqOutRule rule : kBothRules) {
                 if (sqout_late_notes(chord, rule) != paid_outside(chord, combo, rule) && first_bad.empty())
                     first_bad = path + ": chord " + std::to_string(i) + " under " + core::sqout_rule_name(rule);
             }
-            combo = category_scores(chord, combo).combo_after;
         }
     }
     CHECK(chords > 0);
