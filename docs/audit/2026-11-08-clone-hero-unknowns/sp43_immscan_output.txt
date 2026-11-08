@@ -1,0 +1,28 @@
+class #8253: 19 method starts, 4960 bytes
+  int 3 in #8255 method 0x20ddd20 at 0x20ddd3a: bt r9w, 3
+  int 3 in #8255 method 0x20ddff0 at 0x20ddff7: shr cx, 3
+  int 3 in #8255 method 0x20de070 at 0x20de16b: shr cx, 3
+  int 3 in #8255 method 0x20de070 at 0x20de1e9: shr ax, 3
+  int 3 in #8255 method 0x20de770 at 0x20de7b3: cmp eax, 3
+  int 3 in #8255 method 0x20df4c0 at 0x20df52b: test byte ptr [rbx + 0x2f4], 3
+  int 3 in #8255 method 0x20df4c0 at 0x20df5b8: mov r9d, 3
+class #8255: 37 method starts, 11696 bytes
+  int 3 in #8288 method 0x20f4950 at 0x20f4a45: cmp edi, 3
+  int 3 in #8288 method 0x20f5330 at 0x20f5425: cmp edi, 3
+  int 3 in #8288 method 0x20f7610 at 0x20f7778: mov r8d, 3
+  int 3 in #8288 method 0x20f7610 at 0x20f7809: add eax, 3
+  int 3 in #8288 method 0x20f79e0 at 0x20f7ce1: sar edx, 3
+  int 3 in #8288 method 0x20f79e0 at 0x20f7cfc: and edx, 3
+class #8288: 80 method starts, 19872 bytes
+class #8544: 159 method starts, 81648 bytes
+instructions 28823, immediate operands 8740, rip-relative reads 1792
+integer immediates equal to 3: 13, equal to 3000: 0
+HIT class #8288 method 0x20f3c30 at 0x20f3cb4: mulss xmm1, dword ptr [rip + 0xf7014c] (rip-load float 3.0)
+HIT class #8288 method 0x20f4680 at 0x20f472d: divsd xmm0, qword ptr [rip + 0xf702c3] (rip-load double 3.0)
+HIT class #8288 method 0x20f5810 at 0x20f595c: movsd xmm8, qword ptr [rip + 0xf6f093] (rip-load double 3.0)
+HIT class #8544 method 0xfadb40 at 0xfadb8f: divsd xmm6, qword ptr [rip + 0x20b6e61] (rip-load double 3.0)
+HIT class #8544 method 0xfadb40 at 0xfadbe0: divsd xmm6, qword ptr [rip + 0x20b6e10] (rip-load double 3.0)
+HIT class #8544 method 0xfb2db0 at 0xfb3a53: divsd xmm6, qword ptr [rip + 0x20b0f9d] (rip-load double 3.0)
+HIT class #8544 method 0xfbca30 at 0xfbca56: divsd xmm2, qword ptr [rip + 0x20a7f9a] (rip-load double 3.0)
+HIT class #8544 method 0xfbca30 at 0xfbca63: divsd xmm0, qword ptr [rip + 0x20a7f8d] (rip-load double 3.0)
+8 hits
