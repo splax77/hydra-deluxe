@@ -292,23 +292,33 @@ Found: 2026-10-03, drum-lanes FINDINGS-play-time.md.
 
 ### TM-26 The early and the late side of a note's window
 
-Rule: The engine compares (note time - clock) with `#8288+0x10` on one side and a mirrored copy at `+0x18` on the other, and a flag at `+0x195` sets the early side to 0 and the late side to the full window.
-Label: Unknown
-Evidence: not checked: it needs a listing of the compares in `0x20F5810` and `0x20F6A50` and a trace of what sets `+0x195`; only decompile lines 52945 to 52955 and 53619 to 53639 were read.
+Rule: Measured at the song clock the player read just before it sent a press, the two sides are not the same: the early side reaches further than the late side. In LS-E run 1 of 2026-11-07, on notes 1,000 ms from both neighbours (so 85.72 ms a side by TM-22's formula), presses sent 80.91, 82.48, 87.85 and 88.43 ms early all hit, and presses sent 84.92, 85.46, 89.01 and 91.65 ms late all missed. So the early side reaches past 88.43 ms and the late side ends before 84.92 ms. Both fit one 85.72 ms side judged a few ms after the press is sent (TM-27). Not checked in the code: that the engine compares (note time - clock) with `#8288+0x10` on one side and a mirrored copy at `+0x18` on the other, and that a flag at `+0x195` sets the early side to 0 and the late side to the full window.
+Label: Proven in a live run
+Evidence: LS-E run 1, 2026-11-07, `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-07\ls-e-run1\press-1.csv`, the rows of chords 10, 20, 30, 40, 50, 60, 70 and 80 (the ones with a `probe` value): `chart_ms` minus `clock_ms_at_press` gives each press's lead, and `hit` gives the verdict. The asked leads are in `probes.json` there, and `replies.txt` there lists the eight results. The code part needs a listing of the compares in `0x20F5810` and `0x20F6A50` and a trace of what sets `+0x195`; only decompile lines 52945 to 52955 and 53619 to 53639 were read.
 Game code (6142): RVAs `0x20F5810` and `0x20F6A50`, no listing.
 Hydra: one number for both sides, `kHitWindowMs` in src/core/model.h line 104.
 Ruling: none found
-Found: 2026-10-30, session b02ab3e6 (the reference build).
+Found: 2026-10-30, session b02ab3e6 (the reference build); the live result 2026-11-07, session d0a3868c.
 
 ### TM-27 Whether the hit check enforces the stored window
 
-Rule: Whether a press is accepted up to half the stored window (about 48 to 86 ms a side), or by some other limit, is not known. One screenshot showed a late hit at +85.9 ms, 0.2 ms past the 85.72 ms the formula allows at most.
-Label: Unknown
-Evidence: no run ever walked presses across the edge: the edge scripts `walk_edges.py` and `watch_window.py` have no result file, and the hit-window plan's steps 4 to 6 were shelved by D28. The +85.9 ms screenshot is not in the repo. The hit-compare candidates `0x100DAE0` and `0x20DE770` have no annotated listing of the comparison.
+Rule: Measured at the song clock the player read just before it sent a press, the hit check does not stop at the formula's side. On notes with an 85.72 ms side, a press sent 88.43 ms early hit, and one sent 84.92 ms late missed (TM-26 has all eight). That fits the check holding a press to the 85.72 ms side at a game frame that reads the press some time after it is sent: the early hit needs that lag to be at least 2.71 ms, and the late miss needs it to be more than 0.80 ms. Not proven: the lag itself (no row records the frame that judged a press); that the stored window held 85.72 ms on those notes (the run did not read it); and the edge on notes with closer neighbours, whose side is smaller. One screenshot showed a late hit at +85.9 ms, which is not in the repo.
+Label: Proven in a live run
+Evidence: LS-E run 1, 2026-11-07, `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-07\ls-e-run1\press-1.csv`: chord 60 (chart 63,000 ms, sent at clock 62,911.57, hit 1) and chord 70 (chart 73,000 ms, sent at clock 73,084.92, hit 0, score unchanged at 6,550). The chart is `C:\Clone Hero\songs\Hydra Probe\Edge Walk Pair\notes.chart`, every note a kick 1,000 ms from the next except the last pair. The hit-compare candidates `0x100DAE0` and `0x20DE770` have no annotated listing of the comparison.
 Game code (6142): not found: looked at `0x100DAE0` and `0x20DE770`.
 Hydra: `kHitWindowMs` in src/core/model.h line 104: every note at a fixed 85 ms a side.
 Ruling: open split: see questions page Q-32
-Found: 2026-09-25, session 28e6f29d.
+Found: 2026-09-25, session 28e6f29d; the live result 2026-11-07, session d0a3868c.
+
+### TM-50 A press inside two unhit same-pad notes' windows goes to the earlier note
+
+Rule: When a press lands inside the windows of two notes on its pad that are both still unhit, the game gives it to the earlier note, even when the later note is nearer. In LS-E run 1 of 2026-11-07, chord 119 (a kick at 122,000 ms) was pressed 60.30 ms late, 39.70 ms before chord 120 (a kick at 122,100 ms). That is inside 119's 76.57 ms side, and inside 120's window, because no side is smaller than 48.15 ms (TM-22). The press scored for 119, and 120's own press, 0.30 ms early, then hit as well. A second run, LS-F1 run 1 of 2026-11-07 on Get Ur Freak On, shows the next note taken by a press past its own note's window: after a 131.5 ms stall in the player's own process, chord 153 (a yellow cymbal and a kick, 33,663.09 ms) was pressed 107.47 ms late, outside any side (85.72 ms at most, TM-22), and 61.07 ms before chord 154, a yellow cymbal at 33,831.63 ms. The press scored 65, and 154, whose own press came 0.83 ms early, missed (hit 0, score unchanged), so the late press took the next note on its pad. Not proven: whether an early press inside two windows also goes to the earlier note; any pad but the kick for the two-window case; any pair but these; and which gem the 65 points were for (the run did not read what each press hit).
+Label: Proven in a live run
+Evidence: LS-E run 1, 2026-11-07, `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-07\ls-e-run1\press-1.csv`: the row of chord 119 (sent at clock 122,060.30, hit 1, score 11,750 to 11,950) and of chord 120 (sent at clock 122,099.70, hit 1, score 11,950 to 12,150). Had the press gone to 120, 119 would have missed and 120's own press would have found no note. The stats file `scorestats-Edge_Walk_Pair-20261107-233205.json` there gives 117 notes hit of 121, and `replies.txt` there names the four misses as the four late probes of TM-26 and gives 119's side. The LS-F1 facts are in `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-07\ls-f1-run1\press-2.csv` (rows 153 and 154: `chart_ms`, `clock_ms_at_press`, `score_before`, `score_after`, `hit`) and `sp_watch-1.csv` there (the 131.5 ms gap), with `replies.txt` there. The chart is `C:\Clone Hero\songs\Hydra Probe\Edge Walk Pair\notes.chart`; its last two notes are kicks 100 ms apart, and the note before them is 1,000 ms earlier.
+Game code (6142): not found: the press handler, RVA `0x20DEAA0` (`docs/audit/drum-lanes/play/f20deaa0.asm`), hits a window note the press matches (docs/audit/drum-lanes/FINDINGS-play-time.md line 56); which note it takes when two match was not read.
+Hydra: no owner in `src/`; the player's load check `_refuse_far_presses` in tools/ch_probe/experiments/play_chart.py lets a press reach a later same-pad note the player presses.
+Ruling: none needed: no Hydra rule depends on it
+Found: 2026-11-07, session d0a3868c.
 
 ### TM-28 The formula tables in constants.py carry each other's names
 

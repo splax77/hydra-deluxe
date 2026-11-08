@@ -1363,16 +1363,15 @@ class ChordOrderTest(unittest.TestCase):
                          [([Lane.GREEN_CYMBAL], 2.0), ([Lane.KICK], -6.0),
                           ([Lane.RED], -14.0)])
 
-    def test_a_later_press_reaching_the_next_kick_is_refused(self):
+    def test_a_later_press_reaching_the_next_kick_loads(self):
         # Chord 0's kick goes 6 ms after its time, inside the window of the
-        # kick on chord 1 10 ms later.
+        # kick on chord 1 10 ms later; the game gives it to chord 0, the
+        # earlier note (the matching rule on docs/clone-hero/03-timing.md).
         score, _dump = _made_up(
             [(0, 0, 1000.0, [_gem("Kick", "none"), _gem("Green", "none", cymbal=True)]),
              (1, 4, 1010.0, [_gem("Kick", "none")]), (2, 384, 3000.0, [_gem("Red", "none")])],
             activations=[{"act_tick": 0, "deact_tick": 384}])
-        with self.assertRaises(ValueError) as caught:
-            _load_dump(score)
-        self.assertIn("for chords 0 (", str(caught.exception))
+        self.assertEqual(len(_load_dump(score)), 3)
 
     def test_a_declined_chord_at_a_step_splits_its_kept_gems_by_multiplier(self):
         # Design point 5 of the player-limits plan: the kept kick and red go
@@ -1618,6 +1617,32 @@ class LaneAwareCheckTest(unittest.TestCase):
     """The load check uses the game's window and matches a press to a note on
     its own pad (design point 5 of the 2026-11-07 plan)."""
 
+    @staticmethod
+    def _kick_pair_check(press_index, lead_ms, later_declined=False):
+        # Two kicks 10 ms apart; one checked press on chord `press_index`.
+        later = (play_chart.Chord(1, 1010.0, [], [], declined=True, chart_lanes=[Lane.KICK])
+                 if later_declined else play_chart.Chord(1, 1010.0, [Lane.KICK], ["none"]))
+        chords = [play_chart.Chord(0, 1000.0, [Lane.KICK], ["none"]), later]
+        press = play_chart.Press(press_index, chords[press_index].ms, lead_ms, [Lane.KICK],
+                                 ["none"], None, declined=False, checked=True)
+        play_chart._refuse_far_presses(chords, [press])
+
+    def test_a_press_reaching_only_a_later_pressed_kick_passes(self):
+        # 6 ms late on chord 0: inside chord 1's window too, 4 ms before it.
+        self._kick_pair_check(0, -6.0)
+
+    def test_a_press_reaching_an_earlier_unhit_kick_is_refused(self):
+        # 6 ms early on chord 1, before chord 0 has any press: chord 0 would
+        # take it.
+        with self.assertRaises(ValueError) as caught:
+            self._kick_pair_check(1, 6.0)
+        self.assertIn("for chords 1 (", str(caught.exception))
+
+    def test_a_press_reaching_a_later_declined_kick_is_refused(self):
+        with self.assertRaises(ValueError) as caught:
+            self._kick_pair_check(0, -6.0, later_declined=True)
+        self.assertIn("for chords 0 (", str(caught.exception))
+
     def test_mouths_loads_at_15_with_465_and_431_checked(self):
         chords = _load_refine(_MOUTHS)
         checked = {p.index for p in play_chart.press_plan(chords) if p.checked}
@@ -1718,18 +1743,9 @@ def _read_json(path):
         return json.load(f)
 
 
-def _load_unchecked(files):
-    """The chords of `files` as _load_refine gives them, with the load check
-    of _refuse_far_presses left out: Rescued and Ghost stop there today
-    (question 4 of the player-limits plan decides that check after LS-E)."""
-    from unittest import mock
-    with mock.patch.object(play_chart, "_refuse_far_presses", lambda _chords, _presses: None):
-        return _load_refine(files)
-
-
-def _load_changed(files, change, check=True):
-    """_load_refine (or _load_unchecked) over a copy of `files` whose dump
-    `change` edits in place."""
+def _load_changed(files, change):
+    """_load_refine over a copy of `files` whose dump `change` edits in
+    place."""
     score, dump = _read_json(files[0]), _read_json(files[1])
     change(dump)
     with tempfile.TemporaryDirectory() as d:
@@ -1737,7 +1753,7 @@ def _load_changed(files, change, check=True):
         for path, content in zip(paths, (score, dump)):
             with open(path, "w", encoding="utf-8") as f:
                 json.dump(content, f)
-        return _load_refine(paths) if check else _load_unchecked(paths)
+        return _load_refine(paths)
 
 
 def _without_end_fields(dump):
@@ -1764,7 +1780,7 @@ class SolvedLeadTest(unittest.TestCase):
         self.assertEqual(play_chart.ACT_LEAD_MARGIN_MS, 6.0)
 
     def test_rescued_820_and_530_are_led_early_through_the_dumps_ratios(self):
-        chords = _load_unchecked(_RESCUED)
+        chords = _load_refine(_RESCUED)
         leads = _leads_by_act(chords)
         self.assertEqual(sorted(leads), [530, 820])
         lead = leads[820]
@@ -1779,7 +1795,7 @@ class SolvedLeadTest(unittest.TestCase):
         self.assertAlmostEqual(lead.planned_end_ms, 126233.85, delta=0.01)
 
     def test_rescued_931_is_pressed_15_ms_after_the_planned_end(self):
-        chords = _load_unchecked(_RESCUED)
+        chords = _load_refine(_RESCUED)
         planned_ms = _leads_by_act(chords)[820].planned_end_ms
         (late,) = _presses_of(chords, 931)
         self.assertAlmostEqual(late.at_ms, planned_ms + play_chart.SP_OUT_LAG_MS, places=6)
@@ -1787,18 +1803,19 @@ class SolvedLeadTest(unittest.TestCase):
         self.assertAlmostEqual(late.at_ms - late.chart_ms, 55.92, delta=0.01)
         self.assertAlmostEqual(play_chart.window_sides(chords)[931], 61.94, delta=0.01)
 
-    def test_rescued_stops_at_the_load_check_on_chord_931(self):
-        # 931's late green lands 44 ms before chord 932, a green inside its
-        # window: the same-pad check the plan's question 4 leaves to LS-E.
-        with self.assertRaises(ValueError) as caught:
-            _load_refine(_RESCUED)
-        self.assertEqual(str(caught.exception),
-                         "a press would miss its note or reach another note on its pad for "
-                         "chords 931 (SP_END_LEAD_MS 15 ms, SP_OUT_LAG_MS 15 ms, "
-                         "ACT_LEAD_MARGIN_MS 6 ms)")
+    def test_rescued_931_loads_though_its_late_green_reaches_chord_932(self):
+        # 931's late green lands 44 ms before chord 932, a green the player
+        # presses, inside its window: the game gives the press to 931, the
+        # earlier note (the matching rule on docs/clone-hero/03-timing.md).
+        chords = _load_refine(_RESCUED)
+        (late,) = _presses_of(chords, 931)
+        (next_green,) = [c for c in chords if c.index == 932]
+        self.assertIn(Lane.GREEN, next_green.lanes)
+        self.assertLessEqual(next_green.ms - late.at_ms,
+                             play_chart.window_sides(chords)[932])
 
     def test_ghost_661_is_led_early_and_756_pressed_late_inside_its_side(self):
-        chords = _load_unchecked(_GHOST)
+        chords = _load_refine(_GHOST)
         leads = _leads_by_act(chords)
         self.assertEqual(sorted(leads), [661])
         self.assertEqual(leads[661].squeeze_index, 756)
@@ -1808,12 +1825,15 @@ class SolvedLeadTest(unittest.TestCase):
         self.assertAlmostEqual(late.at_ms - late.chart_ms, 60.26, delta=0.01)
         self.assertAlmostEqual(play_chart.window_sides(chords)[756], 66.34, delta=0.01)
 
-    def test_ghost_stops_at_the_load_check_on_chord_756(self):
+    def test_ghost_756_loads_though_its_late_cymbal_reaches_chord_757(self):
         # 756's late yellow cymbal lands 49 ms before chord 757, which holds
-        # a yellow cymbal too.
-        with self.assertRaises(ValueError) as caught:
-            _load_refine(_GHOST)
-        self.assertIn("for chords 756 (", str(caught.exception))
+        # a yellow cymbal the player presses too.
+        chords = _load_refine(_GHOST)
+        (late,) = _presses_of(chords, 756)
+        (next_chord,) = [c for c in chords if c.index == 757]
+        self.assertIn(Lane.YELLOW_CYMBAL, next_chord.lanes)
+        self.assertLessEqual(next_chord.ms - late.at_ms,
+                             play_chart.window_sides(chords)[757])
 
     def test_freak_loads_with_1062_led_by_the_formula_and_387_needing_none(self):
         chords = _load_refine(_FREAK)
@@ -1842,7 +1862,7 @@ class SolvedLeadTest(unittest.TestCase):
                 if act["act_tick"] == 83712:
                     act["steady_ms_before_act"] = 50.0
         with self.assertRaises(ValueError) as caught:
-            _load_changed(_RESCUED, short, check=False)
+            _load_changed(_RESCUED, short)
         self.assertIn("activation chord 820", str(caught.exception))
         self.assertIn("steady_ms_before_act is 50.00 ms", str(caught.exception))
 

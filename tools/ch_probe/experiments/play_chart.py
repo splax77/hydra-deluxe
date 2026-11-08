@@ -620,26 +620,35 @@ def _timed_presses(chord: Chord, leads: Mapping[int, ActLead],
 
 def _refuse_far_presses(chords: Sequence[Chord], presses: Sequence[Press]) -> None:
     """Raise ValueError naming every chord with a checked press the game may
-    not match to it: one outside its own note's window, or inside the window
-    of the nearest other note on one of its pads, before or after (design
-    point 5 of the 2026-11-07 plan; the press handler matches a press to a
-    note on its own pad). A plain PRESS_LEAD_MS press is not checked: it has
-    to work on any chart, and a real chart holds notes on one pad closer than
-    a window."""
+    not match to it: one outside its own note's window, inside the window of
+    the nearest earlier note on one of its pads, or inside the window of the
+    nearest later note on one of its pads when the player sends no press for
+    that note (a declined gem). A press inside a later note's window that the
+    player does press is let through, because the game gives a press inside
+    two unhit same-pad windows to the earlier note (the matching rule on
+    docs/clone-hero/03-timing.md; question 4 of the 2026-11-07 player-limits
+    plan). A plain PRESS_LEAD_MS press is not checked: it has to work on any
+    chart, and a real chart holds notes on one pad closer than a window."""
     sides = window_sides(chords)
     place = {chord.index: i for i, chord in enumerate(chords)}
 
     def inside(chord: Chord, at_ms: float) -> bool:
         return abs(at_ms - chord.ms) <= sides[chord.index]
 
+    def nearest_on(lane: Lane, side: range) -> Optional[Chord]:
+        return next((chords[i] for i in side
+                     if lane in (chords[i].chart_lanes or chords[i].lanes)), None)
+
     def reaches_a_neighbour(press: Press) -> bool:
         here = place[press.index]
         for lane in press.lanes:
-            for side in (range(here - 1, -1, -1), range(here + 1, len(chords))):
-                other = next((chords[i] for i in side
-                              if lane in (chords[i].chart_lanes or chords[i].lanes)), None)
-                if other is not None and inside(other, press.at_ms):
-                    return True
+            earlier = nearest_on(lane, range(here - 1, -1, -1))
+            if earlier is not None and inside(earlier, press.at_ms):
+                return True
+            later = nearest_on(lane, range(here + 1, len(chords)))
+            # A chord's `lanes` are the gems the player sends.
+            if later is not None and lane not in later.lanes and inside(later, press.at_ms):
+                return True
         return False
 
     refused = sorted({press.index for press in presses
