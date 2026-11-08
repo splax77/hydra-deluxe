@@ -1299,5 +1299,82 @@ class FrozenClockDropTest(unittest.TestCase):
         self.assertIn("dropped", out.getvalue())
 
 
+class _ScriptedSongClock:
+    """A song clock that reads `values_s` in turn and then holds the last;
+    each read costs 1 ms of wall time."""
+
+    def __init__(self, wall: _FakeTime, values_s) -> None:
+        self.wall, self.values_s = wall, list(values_s)
+
+    def read(self):
+        self.wall.t += 0.001
+        song_s = self.values_s.pop(0) if len(self.values_s) > 1 else self.values_s[0]
+        return song_s, song_s
+
+
+def _clock_s_at(bound_ms):
+    """A clock read, in song seconds, whose ms is `bound_ms` exactly in
+    floats: the boundary of the drop check."""
+    import math
+    from tools.ch_probe import constants as C
+    raw_s = C.ms_to_s(bound_ms)
+    for _ in range(256):
+        ms = C.s_to_ms(raw_s)
+        if ms == bound_ms:
+            return raw_s
+        raw_s = math.nextafter(raw_s, math.inf if ms < bound_ms else -math.inf)
+    raise AssertionError(f"no clock read gives exactly {bound_ms} ms")
+
+
+class DropBoundaryTest(unittest.TestCase):
+    """play_chords sends a message read exactly at its first press's
+    last_send_ms and drops one read 0.01 ms past it, with every group of it
+    (design point 5 of the player-freak-fixes plan). The hand-built
+    schedules put last_send_ms 50 ms after the chord."""
+
+    def _run(self, chords, past_ms, press):
+        from tools.ch_probe import constants as C
+        wall = _FakeTime()
+        bound_ms = chords[0].presses[0].last_send_ms
+        raw_s = _clock_s_at(bound_ms)
+        if past_ms:
+            raw_s = C.ms_to_s(C.s_to_ms(raw_s) + past_ms)
+        scores = iter([0, 0, 100])
+        result = play_chart.play_chords(
+            chords, _ScriptedSongClock(wall, [0.5, raw_s]), lambda: next(scores), press,
+            now=wall.now, sleep=wall.sleep, out=io.StringIO())
+        self.assertEqual(result.stop, "done")
+        return result
+
+    def _kick(self):
+        return _load_chords({"chords": [{"index": 7, "ms": 1000.0,
+                                         "notes": [_gem("Kick", "none")]}]})
+
+    def test_read_at_the_last_send_is_sent(self):
+        press = _SplitReplyPress()
+        result = self._run(self._kick(), 0.0, press)
+        self.assertEqual(press.calls, [([Lane.KICK], [])])
+        self.assertEqual([r["hit"] for r in result.rows], [1])
+        self.assertEqual((result.sent, result.dropped), (1, 0))
+
+    def test_read_0_01_ms_past_the_last_send_is_dropped(self):
+        press = _SplitReplyPress()
+        result = self._run(self._kick(), 0.01, press)
+        self.assertEqual(press.calls, [])
+        self.assertEqual([r["hit"] for r in result.rows], ["dropped"])
+        self.assertEqual((result.sent, result.dropped), (0, 1))
+
+    def test_a_split_chord_past_its_last_send_sends_nothing_and_drops_every_group(self):
+        press = _SplitReplyPress()
+        chords = _split_chords()
+        (head, later), = play_chart.press_messages(play_chart.press_plan(chords))
+        self.assertEqual(len(later), 1)
+        result = self._run(chords, 10.0, press)
+        self.assertEqual(press.calls, [])
+        self.assertEqual([(r["index"], r["hit"]) for r in result.rows],
+                         [(7, "dropped"), (7, "dropped")])
+        self.assertEqual((result.sent, result.hit, result.dropped), (0, 0, 1))
+
+
 if __name__ == "__main__":
     unittest.main()
