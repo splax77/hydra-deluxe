@@ -267,24 +267,52 @@ def pad_axis(dynamic: str, threshold: Optional[int] = None) -> float:
 def press_message(elements: Sequence[KitElement], hold_frames: int = KIT_HOLD_FRAMES, *,
                   rewrite: bool = KIT_REWRITE, on_main: bool = KIT_PRESS_ON_MAIN,
                   read: Sequence[str] = (),
-                  values: Optional[Sequence[float]] = None) -> dict:
+                  values: Optional[Sequence[float]] = None,
+                  then: Sequence[Tuple[Sequence[KitElement], Optional[Sequence[float]],
+                                       float]] = ()) -> dict:
     """The press message for `elements`, each once, in order. `values` gives
     each element's axis value, one per element, and a button ignores its own;
     None presses every pad as a plain gem. `read` names the game actions the
     agent reads back on the kit's player during the hold; the message carries
-    it only when it names some."""
-    if values is None:
-        values = [pad_axis(DYNAMIC_NONE)] * len(elements)
-    seen: Dict[KitElement, float] = {}
-    for e, value in zip(elements, values, strict=True):
-        seen.setdefault(e, value)
-    message = {"type": "press",
-               "elements": [{"id": e.id, "value": True if e.button else value}
-                            for e, value in seen.items()],
+    it only when it names some.
+
+    `then` holds a chord's later order groups, each (elements, values,
+    after_ms): the agent puts each group down in the first frame at or after
+    `after_ms` from the first group's down, and holds each group
+    `hold_frames` frames from its own down (design point 4 of
+    docs/superpowers/plans/2026-11-07-player-limits.md). The message carries
+    `then` only when it holds some. Raises ValueError for an element in two
+    groups, since one group's release would lift the other's, and for an
+    `after_ms` that is not a number above 0."""
+    def element_list(group: Sequence[KitElement],
+                     group_values: Optional[Sequence[float]]) -> List[dict]:
+        if group_values is None:
+            group_values = [pad_axis(DYNAMIC_NONE)] * len(group)
+        seen: Dict[KitElement, float] = {}
+        for e, value in zip(group, group_values, strict=True):
+            seen.setdefault(e, value)
+        return [{"id": e.id, "value": True if e.button else value} for e, value in seen.items()]
+
+    message = {"type": "press", "elements": element_list(elements, values),
                "hold_frames": hold_frames, "cap_s": KIT_PRESS_CAP_S,
                "rewrite": rewrite, "on_main": on_main}
     if read:
         message["read"] = list(read)
+    if then:
+        used = {e.id for e in elements}
+        later = []
+        for group, group_values, after_ms in then:
+            if (isinstance(after_ms, bool) or not isinstance(after_ms, (int, float))
+                    or not after_ms > 0):
+                raise ValueError(f"a later group's after_ms is a number above 0, not {after_ms!r}")
+            twice = sorted(used & {e.id for e in group})
+            if twice:
+                raise ValueError(f"kit elements {', '.join(map(str, twice))} are in two groups "
+                                 f"of one press")
+            used |= {e.id for e in group}
+            later.append({"elements": element_list(group, group_values),
+                          "after_ms": float(after_ms)})
+        message["then"] = later
     return message
 
 
@@ -524,15 +552,22 @@ def kit_press(agent: FA.LiveAgent, *, request_lock: Optional[threading.Lock] = N
     """The auto-player's press on the kit route: a callable that sends one
     chord's lanes at their `axes` to the kit agent and returns its reply,
     which play_chords keeps in the press row. Axes of None press every pad as
-    a plain gem. It waits at most KIT_PRESS_CAP_S and raises
+    a plain gem. `then` holds a split chord's later groups as play_chords
+    gives them, each (lanes, axes, after_ms), and goes in the same message
+    (press_message), so the agent replies once, with a `groups` entry per
+    group. It waits at most KIT_PRESS_CAP_S and raises
     frida_attach.ReadFailed when no reply comes, which ends the run. A reply
     that carries a native fault puts fault_lines under the error's message,
     since the run reports only that message."""
     lock = request_lock if request_lock is not None else threading.Lock()
 
-    def press(lanes: Sequence[int], axes: Optional[Sequence[float]] = None) -> dict:
-        message = press_message([lane_element(lane) for lane in lanes], hold_frames,
-                                values=axes)
+    def press(lanes: Sequence[int], axes: Optional[Sequence[float]] = None,
+              then: Sequence[Tuple[Sequence[int], Optional[Sequence[float]], float]] = ()
+              ) -> dict:
+        message = press_message(
+            [lane_element(lane) for lane in lanes], hold_frames, values=axes,
+            then=[([lane_element(lane) for lane in group], group_axes, after_ms)
+                  for group, group_axes, after_ms in then])
         with lock:
             try:
                 return agent.request(message, KIT_PRESS_CAP_S)

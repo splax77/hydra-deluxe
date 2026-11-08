@@ -799,7 +799,8 @@ class KitPressTest(Rig):
         press = self.game.kit_source()
         wall = _FakeTime()
         chords = [play_chart.Chord(7, 1000.0, [Lane.GREEN, Lane.KICK], ["none", "none"])]
-        score = iter([0, 50])
+        # The start read, the fresh read before the press, the read after it.
+        score = iter([0, 0, 50])
         result = play_chart.play_chords(
             chords, _FakeSongClock(wall, start_s=0.5), lambda: next(score), press,
             now=wall.now, sleep=wall.sleep, out=io.StringIO())

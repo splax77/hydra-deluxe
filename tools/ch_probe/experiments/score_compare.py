@@ -1,8 +1,8 @@
 """Compare the game's score in a press log with Hydra's running total.
 
 Inputs: the press log play_chart.py writes with --log (its columns are
-overlay_logs.PRESS_LOG_COLUMNS; load_press_log also reads logs written before
-the kit columns existed) and the `hydra_replay score --path` JSON the run
+overlay_logs.PRESS_LOG_COLUMNS; load_press_log also reads the older logs
+overlay_logs names) and the `hydra_replay score --path` JSON the run
 played. Pure logic: no process, no game.
 
 The score check. For each press, the game's `score_after` is set against
@@ -56,8 +56,8 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 from tools.ch_probe.experiments.overlay_logs import (
-    KEYS_PRESS_COLUMNS, KIT_PRESS_COLUMNS, PRESS_COLUMNS_WITHOUT_WALL,
-    PRESS_LOG_COLUMNS, WALL_PRESS_COLUMNS)
+    KEYS_PRESS_COLUMNS, KIT_PRESS_COLUMNS, PLAYER_PRESS_COLUMNS, PRESS_COLUMNS_WITHOUT_PLAYER,
+    PRESS_COLUMNS_WITHOUT_WALL, PRESS_LOG_COLUMNS, WALL_PRESS_COLUMNS)
 
 # A run that hits fewer than this percent of its presses is a FAIL (the
 # overlay spike plan, Task B step 3).
@@ -67,17 +67,17 @@ MIN_HIT_PERCENT = 98
 # accent; dynamic_str in src/core/model.cpp owns them.
 _DYNAMIC_WORDS = ("ghost", "accent")
 
-# Press logs written before the kit press existed hold only
-# KEYS_PRESS_COLUMNS, and those written before the wall times existed hold
-# PRESS_COLUMNS_WITHOUT_WALL. load_press_log reads both too, with the missing
-# columns blank.
+# The older press logs overlay_logs names (KEYS_PRESS_COLUMNS,
+# PRESS_COLUMNS_WITHOUT_WALL, PRESS_COLUMNS_WITHOUT_PLAYER) load too, with
+# the missing columns blank.
 
 
 @dataclass(frozen=True)
 class Press:
-    """One press-log row. The kit and wall fields keep the log's text as
-    written; they are blank for a keys-route run (kit fields) and for a log
-    from before the column existed."""
+    """One press-log row. The kit, wall and player fields keep the log's
+    text as written; they are blank for a keys-route run (kit fields), for a
+    row they do not apply to (player fields) and for a log from before the
+    column existed. The score check reads none of the player fields."""
     index: int
     chart_ms: float
     clock_ms_at_press: float
@@ -90,6 +90,9 @@ class Press:
     up_ms: str = ""
     wall_s_at_read: str = ""
     wall_s_at_reply: str = ""
+    scored_between: str = ""
+    end_read_ms: str = ""
+    probe: str = ""
 
 
 @dataclass(frozen=True)
@@ -103,8 +106,9 @@ class HydraChord:
 
 def load_press_log(path: str) -> List[Press]:
     """The press log's rows. Raises ValueError when the header is not
-    PRESS_LOG_COLUMNS, PRESS_COLUMNS_WITHOUT_WALL or KEYS_PRESS_COLUMNS."""
-    accepted = (PRESS_LOG_COLUMNS, PRESS_COLUMNS_WITHOUT_WALL, KEYS_PRESS_COLUMNS)
+    PRESS_LOG_COLUMNS or one of the older headers this module names."""
+    accepted = (PRESS_LOG_COLUMNS, PRESS_COLUMNS_WITHOUT_PLAYER, PRESS_COLUMNS_WITHOUT_WALL,
+                KEYS_PRESS_COLUMNS)
     with open(path, encoding="utf-8", newline="") as f:
         reader = csv.DictReader(f)
         if tuple(reader.fieldnames or ()) not in accepted:
@@ -115,7 +119,8 @@ def load_press_log(path: str) -> List[Press]:
                       float(row["clock_ms_at_press"]), int(row["score_before"]),
                       int(row["score_after"]), row["hit"] == "1",
                       **{c: row.get(c) or ""
-                         for c in KIT_PRESS_COLUMNS + WALL_PRESS_COLUMNS})
+                         for c in KIT_PRESS_COLUMNS + WALL_PRESS_COLUMNS
+                         + PLAYER_PRESS_COLUMNS})
                 for row in reader]
 
 

@@ -164,18 +164,21 @@ class _FakeSongClock:
 
 
 class _FakeGame:
-    """The score: 100 points per press, except the presses numbered in
-    `misses` (1-based)."""
+    """The score: 100 points per group pressed, except the presses numbered
+    in `misses` (1-based). A split chord's later groups (`then`) are one
+    press with the first; `messages` keeps each call's groups."""
 
     def __init__(self, misses=()) -> None:
         self.score = 0
         self.presses = []
+        self.messages = []
         self.misses = set(misses)
 
-    def press(self, lanes, _axes=None) -> None:
+    def press(self, lanes, _axes=None, then=()) -> None:
         self.presses.append(list(lanes))
+        self.messages.append([list(lanes)] + [list(group) for group, _axes, _after in then])
         if len(self.presses) not in self.misses:
-            self.score += 100
+            self.score += 100 * (1 + len(then))
 
     def read_score(self) -> int:
         return self.score
@@ -662,6 +665,7 @@ class PressReplyRowTest(unittest.TestCase):
         self.assertEqual(row, {
             "index": 38, "chart_ms": 13043.48, "clock_ms_at_press": row["clock_ms_at_press"],
             "lead_ms": 2.0, "score_before": 0, "score_after": 100, "hit": 1,
+            "scored_between": 0,
             "down_frame": 40, "up_frame": 42, "down_ms": 7, "up_ms": 19,
             "wall_s_at_read": row["wall_s_at_read"], "wall_s_at_reply": row["wall_s_at_reply"]})
 
@@ -669,7 +673,7 @@ class PressReplyRowTest(unittest.TestCase):
         result, _game, _wall = _run({"start_s": 12.0})
         self.assertEqual(set(result.rows[0]), {
             "index", "chart_ms", "clock_ms_at_press", "lead_ms", "score_before",
-            "score_after", "hit", "wall_s_at_read", "wall_s_at_reply"})
+            "score_after", "hit", "scored_between", "wall_s_at_read", "wall_s_at_reply"})
 
 
 # A wall clock far from the fake `now`, as time.time is from time.perf_counter.
@@ -1038,8 +1042,8 @@ class DeclineListTest(unittest.TestCase):
 class DeclineModeTest(unittest.TestCase):
     """What a declined chord sends, and how the run counts it. Chord 458 is on
     an activation's act tick, so press_plan presses its green cymbal first and
-    its kick in a second press: each run has one press more than it has
-    chords."""
+    its kick in a second group of the same message: each run has one row more
+    than it has chords, and one message per chord."""
 
     def test_kick_only_sends_the_kick_lane_alone(self):
         chords = _load_declining(play_chart.DECLINE_KICK_ONLY)
@@ -1047,8 +1051,9 @@ class DeclineModeTest(unittest.TestCase):
         self.assertEqual((chord.index, chord.lanes, chord.dynamics, chord.declined),
                          (405, [Lane.KICK], ["none"], True))
         _result, game, _text = _play(chords)
-        self.assertEqual(game.presses, [[Lane.KICK, Lane.GREEN_CYMBAL], [Lane.RED], [Lane.KICK],
-                                        [Lane.RED], [Lane.GREEN_CYMBAL], [Lane.KICK]])
+        self.assertEqual(game.messages, [[[Lane.KICK, Lane.GREEN_CYMBAL]], [[Lane.RED]],
+                                         [[Lane.KICK]], [[Lane.RED]],
+                                         [[Lane.GREEN_CYMBAL], [Lane.KICK]]])
 
     def test_kick_only_gives_one_strength_for_its_one_lane(self):
         _ThresholdEngine.threshold = 64
@@ -1066,8 +1071,8 @@ class DeclineModeTest(unittest.TestCase):
         chords = _load_declining(play_chart.DECLINE_NOTHING)
         self.assertEqual(chords[2].lanes, [])
         result, game, text = _play(chords)
-        self.assertEqual(game.presses, [[Lane.KICK, Lane.GREEN_CYMBAL], [Lane.RED], [Lane.RED],
-                                        [Lane.GREEN_CYMBAL], [Lane.KICK]])
+        self.assertEqual(game.messages, [[[Lane.KICK, Lane.GREEN_CYMBAL]], [[Lane.RED]],
+                                         [[Lane.RED]], [[Lane.GREEN_CYMBAL], [Lane.KICK]]])
         self.assertEqual([(r["index"], r["hit"]) for r in result.rows],
                          [(348, 1), (404, 1), (405, "declined"), (406, 1), (458, 1), (458, 1)])
         self.assertIn("declined", text)
@@ -1085,17 +1090,17 @@ class DeclineModeTest(unittest.TestCase):
         for mode in play_chart.DECLINE_MODES:
             result, _game, _text = _play(_load_declining(mode))
             self.assertEqual((result.sent, result.hit, result.declined, result.stop),
-                             (5, 5, 1, "done"), mode)
+                             (4, 4, 1, "done"), mode)
 
     def test_a_kick_that_scores_does_not_count_as_a_hit(self):
         result, game, _text = _play(_load_declining(play_chart.DECLINE_KICK_ONLY))
         self.assertEqual(game.score, 600)
-        self.assertEqual(result.hit, 5)
+        self.assertEqual(result.hit, 4)
 
     def test_a_declined_chord_leaves_the_streak_alone(self):
         # Press 3 is the declined kick, and it scores nothing.
         result, _game, _text = _play(_load_declining(play_chart.DECLINE_KICK_ONLY), misses=(3,))
-        self.assertEqual((result.sent, result.hit, result.max_streak), (5, 5, 5))
+        self.assertEqual((result.sent, result.hit, result.max_streak), (4, 4, 4))
 
     def test_an_unknown_mode_raises(self):
         with self.assertRaises(ValueError) as caught:
@@ -1109,7 +1114,7 @@ class DeclineModeTest(unittest.TestCase):
         self.assertEqual([c.declined for c in chords], [False] * 5)
         result, game, text = _play(chords)
         self.assertEqual(game.presses[2], [Lane.KICK, Lane.GREEN_CYMBAL])
-        self.assertEqual((result.sent, result.hit, result.declined), (6, 6, 0))
+        self.assertEqual((result.sent, result.hit, result.declined), (5, 5, 0))
         self.assertEqual([r["hit"] for r in result.rows], [1] * 6)
         self.assertNotIn("declined", text)
 
@@ -1369,22 +1374,218 @@ class ChordOrderTest(unittest.TestCase):
             _load_dump(score)
         self.assertIn("for chords 0 (", str(caught.exception))
 
-    def test_a_declined_chord_at_a_step_is_refused(self):
+    def test_a_declined_chord_at_a_step_splits_its_kept_gems_by_multiplier(self):
+        # Design point 5 of the player-limits plan: the kept kick and red go
+        # in multiplier order with the plain lead; the top-pad green stays
+        # out.
         score = _with_chord_changes(405, notes=[
             {**_gem("Kick", "none"), "multiplier": 1}, {**_gem("Red", "none"), "multiplier": 2},
             {**_gem("Green", "none", cymbal=True), "multiplier": 2}])
-        with self.assertRaises(ValueError) as caught:
-            _load_declining(play_chart.DECLINE_ALL_BUT_TOP_PAD, score)
-        self.assertIn("chord 405 is pressed in order groups", str(caught.exception))
+        chords = _load_declining(play_chart.DECLINE_ALL_BUT_TOP_PAD, score)
+        self.assertEqual(_lanes_and_leads(_presses_of(chords, 405)),
+                         [([Lane.KICK], 2.0), ([Lane.RED], -6.0)])
 
-    def test_a_squeeze_out_at_a_step_is_refused(self):
+    def test_a_squeeze_out_whose_late_gem_pays_less_is_refused_naming_the_order(self):
         score, dump = LaneAwareCheckTest._far_squeeze_out(None)
         score["chords"][2]["notes"] = [{**_gem("Kick", "none"), "multiplier": 1},
                                        {**_gem("Red", "none"), "multiplier": 2}]
         with self.assertRaises(ValueError) as caught:
             _load_made_up(score, dump)
-        self.assertIn("chord 2 is pressed in order groups and is also a squeeze-out",
+        self.assertIn("chord 2 is a squeeze-out whose late gem pays x1 and an inside gem x2",
                       str(caught.exception))
+        self.assertIn("Hydra assumes an order", str(caught.exception))
+
+
+def _x(gem, multiplier):
+    return {**gem, "multiplier": multiplier}
+
+
+class SplitRulesTest(unittest.TestCase):
+    """A declined fill or a squeeze-out that is also split by multiplier
+    (design point 5 of docs/superpowers/plans/2026-11-07-player-limits.md and
+    the user's answer (a) to its question 5)."""
+
+    def test_a_declined_kick_x3_and_yellow_x4_go_8_ms_apart_with_the_plain_lead(self):
+        # all_but_top_pad keeps the kick and the yellow and leaves the green.
+        score = _with_chord_changes(405, notes=[
+            _x(_gem("Kick", "none"), 3), _x(_gem("Yellow", "none"), 4),
+            _x(_gem("Green", "none", cymbal=True), 4)])
+        presses = _presses_of(_load_declining(play_chart.DECLINE_ALL_BUT_TOP_PAD, score), 405)
+        self.assertEqual(_lanes_and_leads(presses),
+                         [([Lane.KICK], play_chart.PRESS_LEAD_MS),
+                          ([Lane.YELLOW], play_chart.PRESS_LEAD_MS - 8.0)])
+        self.assertEqual([p.declined for p in presses], [True, True])
+        self.assertEqual([p.after_ms for p in presses], [None, 8.0])
+        self.assertAlmostEqual(presses[1].at_ms - presses[0].at_ms, 8.0, places=9)
+        (message,) = [m for m in play_chart.press_messages(presses)]
+        self.assertEqual((message[0], message[1]), (presses[0], [presses[1]]))
+
+    def _squeeze_out(self, notes):
+        score, dump = LaneAwareCheckTest._far_squeeze_out(None)
+        score["chords"][2]["notes"] = notes
+        return score, dump
+
+    def test_a_late_kick_x3_under_an_inside_cymbal_x4_is_refused_by_name(self):
+        score, dump = self._squeeze_out([_x(_gem("Kick", "none"), 3),
+                                         _x(_gem("Yellow", "none", cymbal=True), 4)])
+        with self.assertRaises(ValueError) as caught:
+            _load_made_up(score, dump)
+        self.assertIn("chord 2 is a squeeze-out", str(caught.exception))
+        self.assertIn("Hydra assumes an order", str(caught.exception))
+
+    def test_a_late_gem_at_the_higher_multiplier_goes_after_the_inside_groups(self):
+        score, dump = self._squeeze_out([_x(_gem("Kick", "none"), 4),
+                                         _x(_gem("Green", "none", cymbal=True), 3),
+                                         _x(_gem("Red", "none"), 2)])
+        chords = _load_made_up(score, dump)
+        presses = _presses_of(chords, 2)
+        self.assertEqual([p.lanes for p in presses],
+                         [[Lane.RED], [Lane.GREEN_CYMBAL], [Lane.KICK]])
+        self.assertEqual([p.after_ms for p in presses], [None, 8.0, None])
+        inside, second, late = presses
+        self.assertAlmostEqual(inside.at_ms, inside.end_ms - play_chart.SP_END_LEAD_MS, places=6)
+        self.assertAlmostEqual(second.at_ms - inside.at_ms, 8.0, places=6)
+        self.assertAlmostEqual(late.at_ms, late.end_ms + play_chart.SP_OUT_LAG_MS, places=6)
+        self.assertEqual({p.end_act_index for p in presses}, {0})
+        messages = [m for m in play_chart.press_messages(play_chart.press_plan(chords))
+                    if m[0].index == 2]
+        self.assertEqual([(head.lanes, [p.lanes for p in later]) for head, later in messages],
+                         [([Lane.RED], [[Lane.GREEN_CYMBAL]]), ([Lane.KICK], [])])
+
+    def test_a_squeeze_out_with_one_inside_multiplier_is_pressed_as_before(self):
+        score, dump = self._squeeze_out([_x(_gem("Kick", "none"), 4),
+                                         _x(_gem("Red", "none"), 4)])
+        presses = _presses_of(_load_made_up(score, dump), 2)
+        self.assertEqual([(p.lanes, p.after_ms) for p in presses],
+                         [([Lane.RED], None), ([Lane.KICK], None)])
+
+
+class _SplitReplyPress:
+    """A kit press whose agent replies per group, as kit.ts does for a press
+    with later groups; it keeps each call's arguments."""
+
+    def __init__(self) -> None:
+        self.calls = []
+
+    def __call__(self, lanes, axes=None, then=()):
+        self.calls.append((list(lanes), list(then)))
+        groups = [{"down_frame": 500 + 3 * k, "up_frame": 502 + 3 * k,
+                   "down_ms": 9000 + 9 * k, "up_ms": 9006 + 9 * k} for k in range(1 + len(then))]
+        reply = {**groups[0], "hold_frames": 2}
+        if then:
+            reply["groups"] = groups
+        return reply
+
+
+class SplitSendTest(unittest.TestCase):
+    """play_chords sends a split chord as one message and writes a row per
+    group (design points 4 and 9 of the player-limits plan)."""
+
+    def _run(self, chords, scores, press):
+        wall = _FakeTime()
+        reads = iter(scores)
+        result = play_chart.play_chords(
+            chords, _FakeSongClock(wall, start_s=0.5), lambda: next(reads), press,
+            now=wall.now, sleep=wall.sleep, out=io.StringIO())
+        self.assertEqual(result.stop, "done")
+        return result
+
+    def test_a_two_group_reply_gives_two_rows_with_their_own_frames_and_one_hit(self):
+        chord = play_chart.Chord(7, 1000.0, [Lane.KICK, Lane.GREEN_CYMBAL], ["none", "none"],
+                                 multipliers=[1, 2])
+        press = _SplitReplyPress()
+        # The start read, the fresh read before the press, the read after it.
+        result = self._run([chord], [0, 0, 250], press)
+        self.assertEqual(press.calls, [([Lane.KICK], [([Lane.GREEN_CYMBAL], None, 8.0)])])
+        rows = result.rows
+        self.assertEqual([(r["index"], r["down_frame"], r["up_frame"], r["down_ms"], r["up_ms"])
+                          for r in rows], [(7, 500, 502, 9000, 9006), (7, 503, 505, 9009, 9015)])
+        self.assertEqual([(r["score_before"], r["score_after"], r["hit"]) for r in rows],
+                         [(0, 250, 1), (0, 250, 1)])
+        self.assertEqual([round(r["lead_ms"], 2) for r in rows], [2.0, -6.0])
+        self.assertEqual(rows[0]["clock_ms_at_press"], rows[1]["clock_ms_at_press"])
+        self.assertEqual(rows[0]["scored_between"], 0)
+        self.assertNotIn("scored_between", rows[1])
+        self.assertEqual((result.sent, result.hit), (1, 1))
+
+    def test_a_chord_of_one_group_is_sent_with_no_then(self):
+        press = _SplitReplyPress()
+        chord = play_chart.Chord(7, 1000.0, [Lane.KICK, Lane.RED], ["none", "none"],
+                                 multipliers=[2, 2])
+        result = self._run([chord], [0, 0, 100], press)
+        self.assertEqual(press.calls, [([Lane.KICK, Lane.RED], [])])
+        self.assertEqual(len(result.rows), 1)
+
+    def test_the_mouths_fixture_sends_one_message_per_split_chord(self):
+        result, game = _play_refine(_MOUTHS)
+        self.assertTrue(any(len(groups) == 2 for groups in game.messages))
+        plan =play_chart.press_messages(play_chart.press_plan(_load_refine(_MOUTHS)))
+        sent = [m for m in plan if m[0].lanes or not m[0].declined]
+        self.assertEqual(len(game.messages), len(sent))
+        self.assertEqual(sum(1 + len(later) for _head, later in plan), len(result.rows))
+        rows_4 = _rows_of(result, 4)
+        self.assertEqual([round(r["lead_ms"], 2) for r in rows_4], [2.0, -6.0])
+        self.assertEqual(len({r["score_after"] for r in rows_4}), 1)
+
+    def test_a_later_group_with_no_first_press_is_a_bug_said_by_name(self):
+        lone = play_chart.Press(3, 1000.0, -6.0, [Lane.RED], ["none"], None, False, True,
+                                after_ms=8.0)
+        with self.assertRaises(ValueError) as caught:
+            play_chart.press_messages([lone])
+        self.assertIn("chord 3 has an order group 8 ms after no press of its own",
+                      str(caught.exception))
+
+
+class ScoredBetweenTest(unittest.TestCase):
+    """The points the game scores between presses go in the later row's
+    `scored_between`, and the row's own step starts from the fresh read
+    (design point 9 of the player-limits plan)."""
+
+    def _chords(self, declined):
+        return [play_chart.Chord(854, 1000.0, [] if declined else [Lane.RED], ["none"] if not
+                                 declined else [], declined=declined,
+                                 chart_lanes=[Lane.KICK, Lane.GREEN]),
+                play_chart.Chord(855, 1200.0, [Lane.RED], ["none"])]
+
+    def _run(self, declined):
+        wall = _FakeTime()
+        # Start; 854's fresh read and its read after; 855's fresh read, which
+        # holds 854's grant of 200, and its read after.
+        reads = iter([0, 0, 0 if declined else 50, 200, 400])
+        return play_chart.play_chords(
+            self._chords(declined), _FakeSongClock(wall, start_s=0.5), lambda: next(reads),
+            lambda lanes, axes=None: None, now=wall.now, sleep=wall.sleep, out=io.StringIO())
+
+    def test_a_rise_between_presses_is_the_later_rows_scored_between(self):
+        result = self._run(declined=True)
+        self.assertEqual([(r["index"], r["scored_between"], r["score_before"], r["score_after"])
+                          for r in result.rows], [(854, 0, 0, 0), (855, 200, 200, 400)])
+        self.assertEqual(result.rows[1]["hit"], 1)
+
+    def test_the_status_credits_the_pending_declined_chord(self):
+        from tools.ch_mcp import game_tools
+        result = self._run(declined=True)
+        self.assertEqual(game_tools.scored_between_lines(result.rows),
+                         ["scored between presses: chord 854 granted 200 before chord 855"])
+
+    def test_a_rise_with_no_declined_chord_is_unexplained(self):
+        from tools.ch_mcp import game_tools
+        result = self._run(declined=False)
+        self.assertEqual([r["scored_between"] for r in result.rows], [0, 150])
+        self.assertEqual(game_tools.scored_between_lines(result.rows),
+                         ["scored between presses: 150 unexplained before chord 855"])
+
+    def test_the_new_columns_reach_the_press_log(self):
+        result = self._run(declined=True)
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "press.csv")
+            play_chart.write_press_log(path, result.rows)
+            with open(path, encoding="utf-8", newline="") as f:
+                table = list(csv.DictReader(f))
+        self.assertEqual([r["scored_between"] for r in table], ["0", "200"])
+        self.assertEqual([r["end_read_ms"] for r in table], ["", ""])
+        for column in ("scored_between", "end_read_ms", "probe"):
+            self.assertIn(column, overlay_logs.PRESS_LOG_COLUMNS)
 
 
 # The end fields of a made-up activation at one tempo (tools/replay_json.cpp

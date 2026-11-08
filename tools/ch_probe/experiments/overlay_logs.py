@@ -14,9 +14,15 @@ row per chord it pressed. `index` is the chord's own `index` field in the
 kit press's reply (tools/ch_mcp/kit_tools.py); a run that presses keys leaves
 them blank. WALL_PRESS_COLUMNS are two times on the watch's `wall_s` clock, so
 a row lines up with the watch and a trace: just after the wait for the chord
-ended, and after the press returned. Logs written before the kit press existed
-hold only KEYS_PRESS_COLUMNS, and logs written before the wall times existed
-hold PRESS_COLUMNS_WITHOUT_WALL.
+ended, and after the press returned. PLAYER_PRESS_COLUMNS are what the player
+reads around a press: the points the game scored between the last press and
+this one (`scored_between`, which play_chart.play_chords works out), the Star
+Power end the game stored after an activation's press (`end_read_ms`), and the
+lead a probe press asked for (`probe`, edge_probe.py); each is blank on a row
+it does not apply to. Logs written before the kit press existed hold only
+KEYS_PRESS_COLUMNS, logs written before the wall times existed hold
+PRESS_COLUMNS_WITHOUT_WALL, and logs written before the player's columns
+existed hold PRESS_COLUMNS_WITHOUT_PLAYER.
 """
 
 from __future__ import annotations
@@ -80,6 +86,14 @@ WALL_PRESS_COLUMNS = (
     "wall_s_at_reply",
 )
 
+PLAYER_PRESS_COLUMNS = (
+    "scored_between",
+    "end_read_ms",
+    "probe",
+)
+
 PRESS_COLUMNS_WITHOUT_WALL = KEYS_PRESS_COLUMNS + KIT_PRESS_COLUMNS
 
-PRESS_LOG_COLUMNS = PRESS_COLUMNS_WITHOUT_WALL + WALL_PRESS_COLUMNS
+PRESS_COLUMNS_WITHOUT_PLAYER = PRESS_COLUMNS_WITHOUT_WALL + WALL_PRESS_COLUMNS
+
+PRESS_LOG_COLUMNS = PRESS_COLUMNS_WITHOUT_PLAYER + PLAYER_PRESS_COLUMNS
