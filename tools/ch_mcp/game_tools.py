@@ -1505,13 +1505,22 @@ class GameTools:
                     lines.append(f"dynamics threshold: {result.dyn_threshold}")
                 if result.message:
                     lines.append(result.message)
-                jumped = result.sent + result.declined != len(rows)
-                # The counts are of presses; a split chord (play_chart.press_plan)
-                # makes two, so the line names both counts when they differ.
+                # play_chords counts a message per chord (a split chord's order
+                # groups go in one) and logs a row per press, so the rows it
+                # logged this run, not the counts, say whether the song clock
+                # jumped back and the earlier rows are not in the counts. A
+                # result with no rows of its own counts one row per message.
+                logged = len(result.rows) if result.rows else result.sent + result.declined
+                jumped = logged != len(rows)
+                presses_sent = sum(1 for r in rows if r["hit"] != play_chart.DECLINED)
                 chords_sent = len({r["index"] for r in rows if r["hit"] != play_chart.DECLINED})
-                sent = (f"sent {result.sent}" if jumped or chords_sent == result.sent
-                        else f"sent {result.sent} presses for {chords_sent} "
-                             f"chord{'' if chords_sent == 1 else 's'}")
+                chords = f"{chords_sent} chord{'' if chords_sent == 1 else 's'}"
+                if jumped or chords_sent == result.sent == presses_sent:
+                    sent = f"sent {result.sent}"
+                elif presses_sent == result.sent:
+                    sent = f"sent {result.sent} presses for {chords}"
+                else:
+                    sent = f"sent {result.sent} messages ({presses_sent} presses) for {chords}"
                 lines.append(f"{sent}, hit {result.hit}, "
                              f"misses {result.sent - result.hit}, best streak {result.max_streak}"
                              + (f", declined {result.declined}" if result.declined else ""))

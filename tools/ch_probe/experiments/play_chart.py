@@ -588,8 +588,13 @@ def _timed_presses(chord: Chord, leads: Mapping[int, ActLead],
         late = press(chord.ms - (end_ms + SP_OUT_LAG_MS), [0], True, end_ms, squeeze.act_index)
         if len(chord.lanes) == 1:
             return [late]
-        return in_order(inside_lead_ms, True, end_ms, squeeze.act_index,
-                        _squeeze_out_inside_groups(chord)) + [late]
+        # The last inside group goes down at the inside time, SP_END_LEAD_MS
+        # before the end, so no later group can land close to the end check
+        # and pay outside; the earlier groups go down CHORD_ORDER_GAP_MS
+        # apart before it.
+        inside = _squeeze_out_inside_groups(chord)
+        return in_order(inside_lead_ms + (len(inside) - 1) * CHORD_ORDER_GAP_MS, True, end_ms,
+                        squeeze.act_index, inside) + [late]
     # Design point 3 of the player-limits plan: an end moved earlier puts the
     # chords before it at risk; one moved later leaves them inside already.
     end_side_shift_ms = min(end_shift_ms(chord.sp_act_index), 0.0)

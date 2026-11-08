@@ -1443,7 +1443,8 @@ class SplitRulesTest(unittest.TestCase):
                          [[Lane.RED], [Lane.GREEN_CYMBAL], [Lane.KICK]])
         self.assertEqual([p.after_ms for p in presses], [None, 8.0, None])
         inside, second, late = presses
-        self.assertAlmostEqual(inside.at_ms, inside.end_ms - play_chart.SP_END_LEAD_MS, places=6)
+        # The last inside group is at the inside time; the first is 8 ms before.
+        self.assertAlmostEqual(second.at_ms, second.end_ms - play_chart.SP_END_LEAD_MS, places=6)
         self.assertAlmostEqual(second.at_ms - inside.at_ms, 8.0, places=6)
         self.assertAlmostEqual(late.at_ms, late.end_ms + play_chart.SP_OUT_LAG_MS, places=6)
         self.assertEqual({p.end_act_index for p in presses}, {0})
