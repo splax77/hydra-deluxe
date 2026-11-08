@@ -46,6 +46,7 @@ _REPO_ROOT = os.path.abspath(os.path.join(_HERE, "..", ".."))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
+from tools.ch_mcp import build_stamp  # noqa: E402
 from tools.ch_mcp import frida_attach as FA  # noqa: E402
 from tools.ch_probe import constants as C  # noqa: E402
 from tools.ch_probe.experiments.play_chart import load_score_times  # noqa: E402
@@ -262,17 +263,9 @@ def trace_settings(notes: list[dict], mode: str, engine_class: str,
     }
 
 
-def agent_missing_line(agent_path: str, agent_name: str = DEFAULT_AGENT_NAME) -> str:
-    """What to say when a compiled agent is not there. `agent_name` is the
-    agent's name in tools/ch_mcp/agent/package.json (build:<name>); the
-    trace agent's by default. frida_tools says it for the state agent too."""
-    return (f"{agent_path} not found; run npm run build:{agent_name} in "
-            f"tools/ch_mcp/agent first")
-
-
 class AgentMissing(Exception):
-    """The compiled trace agent is not built; the message says how to build
-    it."""
+    """The compiled trace agent is missing or stale (build_stamp.check); the
+    message says how to build it."""
 
 
 class TraceSession:
@@ -296,8 +289,9 @@ class TraceSession:
                  out: Callable[[str], None] | None = None) -> None:
         if not methods:
             raise ValueError("a trace session needs at least one method")
-        if not os.path.isfile(agent_path):
-            raise AgentMissing(agent_missing_line(agent_path))
+        refusal = build_stamp.check(agent_path)
+        if refusal is not None:
+            raise AgentMissing(refusal)
         self.notes = notes
         self.out_path = out_path
         self.agent_path = agent_path
@@ -429,8 +423,9 @@ def main(argv: list[str] | None = None, *, frida_mod: Any = None,
         ap.error("--mode args needs at least one --method")
     if args.mode == MODE_COUNT and args.method:
         ap.error("--method is for --mode args; count mode traces every method")
-    if not os.path.isfile(args.agent):
-        out(agent_missing_line(args.agent))
+    refusal = build_stamp.check(args.agent)
+    if refusal is not None:
+        out(refusal)
         return 1
 
     notes_path, notes = load_manifest(args.song)

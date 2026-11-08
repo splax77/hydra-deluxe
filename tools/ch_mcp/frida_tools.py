@@ -27,6 +27,7 @@ import time
 from typing import Any, Callable, Dict, List, Optional
 
 from tools.ch_mcp import build_facts
+from tools.ch_mcp import build_stamp
 from tools.ch_mcp import frida_attach as FA
 from tools.ch_mcp import trace_hits as TH
 from tools.ch_probe import constants as C
@@ -374,8 +375,9 @@ class FridaTools:
                 return f"{e}\nnothing attached"
             lines.append(f"build: {version} (facts: {build_facts.facts_path(version)})")
             path = os.path.join(self._agent_dir, STATE_AGENT_FILE)
-            if not os.path.isfile(path):
-                lines.append(TH.agent_missing_line(path, STATE_AGENT_NAME))
+            refusal = build_stamp.check(path)
+            if refusal is not None:
+                lines.append(refusal)
                 return "\n".join(lines)
             launched = self._game.launched_at()
             if launched is None:

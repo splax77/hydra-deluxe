@@ -33,9 +33,9 @@ import time
 from typing import Any, Callable, Iterable, List, Optional
 
 from tools.ch_mcp import build_facts
+from tools.ch_mcp import build_stamp
 from tools.ch_mcp import frida_attach as FA
 from tools.ch_mcp import frida_tools as FT
-from tools.ch_mcp import trace_hits as TH
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -434,8 +434,9 @@ class MethodWatch:
             except (CandidatesError, build_facts.BuildFactsError) as e:
                 return f"{e}\nno method watch started"
             agent_path = os.path.join(self._agent_dir, AGENT_FILE)
-            if not os.path.isfile(agent_path):
-                return TH.agent_missing_line(agent_path, AGENT_NAME)
+            refusal = build_stamp.check(agent_path)
+            if refusal is not None:
+                return refusal
             lines: List[str] = []
             # The hooks are the first touch of the game, so the backup comes
             # after every refusal above and just before them.
