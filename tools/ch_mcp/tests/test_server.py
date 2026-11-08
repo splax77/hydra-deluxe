@@ -30,11 +30,11 @@ from tools.hydra_ui_mcp import REPLY_CAP_CHARS  # noqa: E402
 # of the Star Power and song start plan's (task T5), then the five kit tools
 # of the in-game input plan (task K5). The direct-start plan (task D5)
 # registers the changed ch_start and ch_kit_setup and adds no tool. The optimal
-# score run plan (task T4) adds ch_run_chart, and the reload plan (task R3)
-# ch_open_items. The server plan is
+# score run plan (task T4) adds ch_run_chart, the reload plan (task R3)
+# ch_open_items, and the player-limits plan (task T4) ch_edge_probe. The server plan is
 # docs/superpowers/plans/2026-10-28-ch-mcp-server.md (removed; git show ec91f8d1:docs/superpowers/plans/2026-10-28-ch-mcp-server.md).
 TOOL_NAMES = {
-    "ch_run_chart", "ch_open_items",
+    "ch_run_chart", "ch_open_items", "ch_edge_probe",
     "ch_start", "ch_stop", "ch_status", "ch_install_chart", "ch_wait_stats",
     "ch_stats", "ch_compare", "ch_attach", "ch_detach", "ch_state",
     "ch_snapshot", "ch_trace_start", "ch_notes", "ch_trace_stop", "ch_press",
@@ -62,7 +62,7 @@ class ServerTest(unittest.TestCase):
         self.helper = S.Helper(env=env, scratch_root=tmp.name,
                                game_kw={"driver": object()})
 
-    def test_build_server_registers_the_thirty_six_tools(self):
+    def test_build_server_registers_the_thirty_seven_tools(self):
         tools = asyncio.run(S.build_server(self.helper).list_tools())
         self.assertEqual({t.name for t in tools}, TOOL_NAMES)
 
@@ -165,6 +165,18 @@ class ServerTest(unittest.TestCase):
         self.assertEqual(set(self._schema("ch_play_chart")),
                          {"score_json", "log", "song_folder", "route", "decline_mode",
                           "dump_json", "path_index"})
+
+    def test_ch_edge_probe_takes_its_leads_from_the_probes_file_only(self):
+        self.assertEqual(set(self._schema("ch_edge_probe")),
+                         {"song_folder", "score_json", "probes_json"})
+
+    def test_ch_edge_probe_passes_its_arguments_through(self):
+        seen = []
+        self.helper.game.ch_edge_probe = lambda *a: seen.append(a) or "probing"
+        result = asyncio.run(S.build_server(self.helper).call_tool("ch_edge_probe", {
+            "song_folder": "song", "score_json": "s.json", "probes_json": "p.json"}))
+        self.assertEqual(result.content[0].text, "probing")
+        self.assertEqual(seen, [("song", "s.json", "p.json")])
 
     def test_ch_run_chart_passes_its_arguments_through(self):
         seen = []
