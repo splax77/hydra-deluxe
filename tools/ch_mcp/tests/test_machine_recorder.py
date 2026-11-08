@@ -788,5 +788,27 @@ class RealRun(Folder):
         self.assertIn("OpenProcess failed for parent pid", stderr)
 
 
+class ClockRange(Folder):
+    def test_a_nonfinite_clock_is_no_clock_and_a_negative_one_is_kept(self):
+        # The game's clock is below zero through every song's lead-in (TM-11), so a
+        # negative read is a real clock (D325).
+        for value, written in ((float("nan"), ""), (float("inf"), ""), (float("-inf"), ""),
+                               (-1.0, "-1.0"), (12.5, "12.5")):
+            with self.subTest(value=value):
+                folder = os.path.join(self.folder, repr(value))
+                os.mkdir(folder)
+                inputs = M.Inputs(7)
+                inputs.engine = 0x1000
+                raw = struct.pack("<d", value)
+                loop = FakeLoop(folder, inputs=inputs,
+                                open_reader=lambda pid, raw=raw: lambda address, size: raw)
+                loop.run(cap_s=PERIOD_S)
+                samples = read_rows(folder, "samples.csv")
+                self.assertEqual([row["clock_s"] for row in samples], [written, written])
+                stamped = written != ""
+                self.assertEqual([row["clock_wall_before_s"] != "" for row in samples],
+                                 [stamped, stamped])
+
+
 if __name__ == "__main__":
     unittest.main()
