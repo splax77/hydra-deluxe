@@ -177,6 +177,46 @@ One needs your word: L81, the song length. D255 holds your words: "there should 
 - (b) Make the seven fixes. Leave L81 as it is, and record the difference.
 
 Recommended: (a). D255's words already ask for one end everywhere, and the player is the one place left that has its own. The case against: it adds a field to `hydra_replay`'s output, which means a build and a test, and probe songs today take their length from `tools/ch_probe/probe_songs.py:201-203` (last note plus 3,000 ms), which would also have to read Hydra's end.
+## Batch 5: what the second closure check reopened
+
+The fresh closure checker of 2026-11-08 (session 274bd9dd) passed L06, L46's window split, L56's page split, L18's two clocks, L78 and L80, and reopened three things. The main session read each one in the code before writing it here.
+
+### Q16. The far-press refusal is stricter than the game (L56)
+
+TM-50 on page 03 is now proven in the game's code: a press goes to the earliest note on its pad that is still unhit and whose window holds the press. `far_press_refusal` (`tools/replay_schedule.cpp:392-422`, the same rule as `_refuse_far_presses` in `play_chart.py:632-665`) refuses a press in two other cases:
+
+- **An earlier note.** It refuses a press that lands inside the window of the nearest earlier chord on its pad (`replay_schedule.cpp:403-409`), whether or not that note is already hit. The game skips a hit note, so a press there is safe once the earlier note's own press has gone in. It matters only when that earlier note is still unhit when the press lands: it has no press (a skipped fill's left-out gem, Q3), or its own press is sent later than this one.
+- **A later note.** It refuses a press that lands inside the window of the next chord on its pad when the player sends no press on that pad for it (`:411-419`). The game gives such a press to the press's own note, which is earlier and unhit, so the later note is never touched.
+
+Example: two snares 100 ms apart, each with an 85 ms side, both pressed on time. A press of the first sent 20 ms late lands inside the second's window. Today the schedule lets it through, because the second is pressed. If the second were a gem the player leaves out, the schedule would refuse it, though the game gives the press to the first snare either way. No run reads the schedule yet, so no refusal has stopped a run.
+
+- (a) The refusal follows TM-50 exactly: refuse a press only when an earlier note on its pad whose window holds it will still be unhit when it lands, because the player sends it no press or sends that press later. The later-note branch goes.
+- (b) Keep the rule as it is, stricter than the game.
+
+Recommended: (a). Every refusal left would be a press the game really gives to the wrong note, and no run stops on a press that would have worked. The case against: (b) leaves a margin if a press is dropped at run time. Under Q6 a dropped press already fails the run.
+
+### Q17. A press moved earlier by the read end is never checked against its window (L12)
+
+When the game's real Star Power end comes earlier than planned, `retime_from_end` moves every press timed from the end earlier by the same ms (`play_chart.py:449-459`). Nothing checks that the moved press is still inside its window. Freak-fixes question 3, which you approved with "Yes, start it", covers only the other direction: a late end that leaves no room. The replay plan's TP2 tests only that side and the drop past the latest send (`2026-11-08-replay-press-schedule.md` lines 230 to 238).
+
+What the game does with a press sent before its note's window opens: by TM-50 it goes to an earlier unhit note on that pad if one is in its window. If none is, it is an overhit, which breaks the combo (`docs/audit/drum-lanes/FINDINGS-play-time.md` line 60).
+
+The end reads so far came 3 to 4 ms later than planned (Freak run 1), never earlier, so this has not happened.
+
+- (a) TP2's room check also tests the early edge. A press the shift would send before its window opens is sent at the window's opening instead, and its row says so. That is still after the real end, because the end moved earlier.
+- (b) The run stops, with a line naming the chord, the way Q2 stops on missing input.
+- (c) Leave it.
+
+Recommended: (a). It keeps the run going, and the press stays both inside its window and after the end. The case against: it is a new rule, for a case no run has shown.
+
+### Q18. The probes keep a third copy of the window formula (L46)
+
+The window formula has three homes. The player's Python copy (`window_sides`, `note_window_ms`) goes in TP1. The C++ schedule's copy stays as the one the player reads. The third is `predicted_window_normal` in `tools/ch_probe/experiments/analysis.py:227`. It is read only by the probes `active_probe.py`, `passive_probe.py` and `walk_edges.py`, and no play run imports it. Your scope answer, "Yes, recommended scope", left out the probe scripts no play run imports. So this copy was never audited, and nothing has ruled that it may stay.
+
+- (a) Fold it into the fix plan: the probes call the schedule's formula, with the constants they decode from the game's memory passed in.
+- (b) Leave it out, as your scope answer did, and list it for a later probe audit.
+
+Recommended: (b). Your scope answer drew this line, and the probes are not used in play runs. The case against: it is a copy of a rule that two homes already share, and your words "why are you still letting different areas do their own thing? this is why everything needs to be derived once" (2026-10-14, `docs/agents/rulings/code-and-engine.md`) ask for one home.
 ## Answers
 
 - Q1: "Refuse stale (Recommended)" (2026-11-08): loaders refuse a stale built agent by a build stamp; run folders record the stamps and the `hydra_replay` build; tests run the built file.

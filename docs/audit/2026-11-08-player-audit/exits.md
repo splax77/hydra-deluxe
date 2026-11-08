@@ -34,6 +34,12 @@ The closure checker reopened L07 and L47: the ruling picks who owns the planning
 
 L04 and L05 left by Q8's answer, not as closures.
 
+### What the second closure check returned
+
+A fresh checker (session 274bd9dd) passed L06, L46's fixed-against-dynamic window split, L56's page split, L18's two clocks, L78 and L80. It reopened three parts, now questions: L56's two refusal branches that are stricter than the game (Q16), L12's early edge (Q17; the late edge stays closed by freak-fixes question 3), and L46's probe copy in `analysis.py` (Q18). L12's other listed split, the frame model, left by Q8's answer (one frame, one constant both sides read). It also noted that "Yes, start it" is quoted only in plan text, because session 6341c618 has no card yet.
+
+**L18's other half, the stop check.** `live.StoppedCheck` (`live.py:61-99`) answers "has the song stopped or gone back" (5 s with no clock change, 1 s back). Whether one press is late is answered per press by the drop check, which Q8 sets to one frame. Not yet checked by a fresh agent.
+
 ## Exit 4: not a problem
 
 **L58, the kit's action ids.** `kit_tools.py:161-172` `KIT_BINDINGS` and block IN-82 on `docs/clone-hero/07-internals.md` lines 837-839 give the same ids for the same actions. The code and the page answer one question the same way.
@@ -64,6 +70,9 @@ The closure checker (`reports/S5-closures.md`) passed L58, L79, L63 and this one
 | L61, L62, L64 | Q13 the keys route and the 43.9 s window event |
 | L31, L32, L34, L35, L74, L41, L42, L43 | Q14 report and launch lines that can say the wrong thing |
 | L13, L15, L33, L75, L76, L81, L82, L85 | Q15 the smaller items, as one list of fixes (L12 by exit 3; L18, L78, L80 by exit 4) |
+| L56 (two branches) | Q16 the far-press refusal is stricter than the game |
+| L12 (early edge) | Q17 a press moved earlier by the read end is never checked against its window |
+| L46 (probe copy) | Q18 the probes keep a third copy of the window formula |
 
 ## Open: needs a verifier or a live run
 
