@@ -694,6 +694,31 @@ class StrengthTest(Rig):
         with self.assertRaises(ValueError):
             K.press_message([K.KIT_ELEMENTS["red"]], values=[0.6, 0.7])
 
+    def test_two_groups_carry_then_with_after_ms_8(self):
+        message = K.press_message(
+            [K.lane_element(Lane.KICK)], 2,
+            then=[([K.lane_element(Lane.GREEN_CYMBAL)], [0.6], 8.0)])
+        self.assertEqual(message["elements"], [{"id": 22, "value": True}])
+        self.assertEqual(message["then"], [{"elements": [{"id": K.lane_element(
+            Lane.GREEN_CYMBAL).id, "value": 0.6}], "after_ms": 8.0}])
+        self.assertNotIn("then", K.press_message([K.lane_element(Lane.KICK)]))
+
+    def test_a_bad_later_group_is_refused_before_anything_is_sent(self):
+        red = K.lane_element(Lane.RED)
+        with self.assertRaisesRegex(ValueError, "are in two groups of one press"):
+            K.press_message([red], then=[([red], None, 8.0)])
+        for bad in (0, -1.0, True, "8"):
+            with self.assertRaisesRegex(ValueError, "after_ms is a number above 0"):
+                K.press_message([red], then=[([K.lane_element(Lane.KICK)], None, bad)])
+
+    def test_the_kit_press_sends_a_split_chord_in_one_message(self):
+        self.set_up([PRESS_REPLY])
+        press = self.game.kit_source()
+        sent = len(self.posted())
+        press([Lane.KICK], None, then=[([Lane.GREEN_CYMBAL], None, 8.0)])
+        self.assertEqual(len(self.posted()), sent + 1)
+        self.assertEqual(self.posted()[-1]["then"][0]["after_ms"], 8.0)
+
     def test_the_kit_press_sends_the_chords_axes(self):
         self.set_up([PRESS_REPLY])
         press = self.game.kit_source()
@@ -986,8 +1011,14 @@ const calls = [];
 const live = [];
 let nextId = c.first_id ?? 0;
 let creates = 0;
+// With a case's frame_ms the frame count moves on one frame per frame_ms of
+// Node's clock, and every kit write is kept with its frame and time.
+const t0 = Date.now();
+const frame = () => 1000 + (c.frame_ms ? Math.floor((Date.now() - t0) / c.frame_ms) : 0);
+const writes = [];
+const keep = (id, value) => { writes.push([id, value, frame(), Date.now() - t0]); };
 function controller(tag) {
-    const made = obj({SetAxisValueById() {}, SetButtonValueById() {}}, {id: nextId++});
+    const made = obj({SetAxisValueById: keep, SetButtonValueById: keep}, {id: nextId++});
     made.tag = tag;
     live.push(made);
     return made;
@@ -1053,7 +1084,7 @@ const classes = {
         get_players: () => obj({get_AllPlayers: () => list(players)}),
     }),
     "Rewired.ControllerType": obj({}, {Custom: 20}),
-    "UnityEngine.Time": obj({get_frameCount: () => 1000}),
+    "UnityEngine.Time": obj({get_frameCount: frame}),
     "UnityEngine.Application": obj({get_isFocused: () => false}),
 };
 for (const tag of c.already_there ?? []) { controller(tag); }
@@ -1080,7 +1111,7 @@ for (const [i, m] of c.messages.entries()) {
     handler = null;
     replies.push(await new Promise((go) => { answered = go; fn({...m, id: i}); }));
 }
-console.log(JSON.stringify({replies, calls, live: live.map((x) => x.tag)}));
+console.log(JSON.stringify({replies, calls, writes, live: live.map((x) => x.tag)}));
 """
 NODE = shutil.which("node")
 # One driver run is a fresh Node start; this is its stop.
@@ -1198,6 +1229,42 @@ class KitAgentTest(unittest.TestCase):
         self.assertEqual(self.of(out, "create").count([6, "hydra-placeholder-0"]), 1)
         self.assertEqual(out["replies"][1]["placeholders_created"], 3)
         self.assertEqual(len(out["replies"][1]["placeholders"]), 6)
+
+    def test_a_later_group_goes_down_at_or_after_its_gap_and_each_holds_its_own_frames(self):
+        # Design point 4 of docs/superpowers/plans/2026-11-07-player-limits.md,
+        # question 2 (a): the gap is a floor. The fake frame is 3 ms.
+        message = K.press_message([K.KIT_ELEMENTS["red"]], 2,
+                                  then=[([K.KIT_ELEMENTS["kick"]], None, 8.0)])
+        out = self.run_agent([K.setup_message("System"), message], frame_ms=3)
+        reply = out["replies"][1]
+        self.assertNotIn("error", reply)
+        first, second = reply["groups"]
+        self.assertEqual((reply["down_frame"], reply["down_ms"], reply["up_frame"]),
+                         (first["down_frame"], first["down_ms"], first["up_frame"]))
+        self.assertGreaterEqual(second["down_ms"] - first["down_ms"], 8)
+        self.assertGreater(second["down_frame"], first["down_frame"])
+        for group in (first, second):
+            self.assertGreaterEqual(group["up_frame"] - group["down_frame"], 2)
+        self.assertEqual(second["after_ms"], 8.0)
+        writes = out["writes"]
+        self.assertEqual([(w[0], w[1]) for w in writes[:2]], [(0, K.pad_axis("none")), (22, True)])
+        # Every element's last write is its release.
+        last = {w[0]: w[1] for w in writes}
+        self.assertEqual(last, {0: 0, 22: False})
+
+    def test_a_press_with_no_later_groups_replies_with_no_groups(self):
+        out = self.run_agent([K.setup_message("System"),
+                              K.press_message([K.KIT_ELEMENTS["red"]], 2)], frame_ms=3)
+        reply = out["replies"][1]
+        self.assertNotIn("groups", reply)
+        self.assertGreaterEqual(reply["up_frame"] - reply["down_frame"], 2)
+
+    def test_a_later_group_without_a_gap_is_an_error(self):
+        message = {**K.press_message([K.KIT_ELEMENTS["red"]], 2),
+                   "then": [{"elements": [{"id": 22, "value": True}]}]}
+        out = self.run_agent([K.setup_message("System"), message], frame_ms=3)
+        self.assertIn('a press "then" group needs an "after_ms" above 0',
+                      out["replies"][1]["error"])
 
     def test_a_teardown_with_no_setup_record_finds_the_controllers_by_tag(self):
         out = self.run_agent([K.teardown_message()],
