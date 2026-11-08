@@ -1705,6 +1705,15 @@ class MovedEndTest(unittest.TestCase):
         (press,) = _presses_of(self._far_squeeze_out_with_a_chord_near_the_end(False), 3)
         self.assertEqual((press.lead_ms, press.checked, press.end_ms), (2.0, False, None))
 
+    def test_an_in_sp_chord_before_an_end_no_lead_moved_is_plain(self):
+        # Design point 3 acts on an end moved earlier; here no activation has
+        # a lead, so the chord 10 ms before the end keeps its plain press.
+        act = play_chart.Chord(0, 1000.0, [Lane.KICK], ["none"],
+                               act_end=play_chart.ActEnd(2000.0), sp_act_index=0)
+        near = play_chart.Chord(1, 1990.0, [Lane.RED], ["none"], sp_act_index=0)
+        (press,) = [p for p in play_chart.press_plan([act, near]) if p.index == 1]
+        self.assertEqual((press.lead_ms, press.checked, press.end_ms), (2.0, False, None))
+
     def _late_squeeze_in(self, neighbour_ms=None):
         # Chord 2 squeezes in 140 ms after the end its activation on chord 0
         # stores; the end's chord 3 comes after the phrase extends it.

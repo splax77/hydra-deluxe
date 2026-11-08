@@ -546,11 +546,11 @@ def _timed_presses(chord: Chord, leads: Mapping[int, ActLead],
         shift_ms = end_side_shift_ms
         return in_order(SP_END_LEAD_MS - shift_ms, True, chord.ms + shift_ms,
                         chord.sp_act_index)
-    if (chord.sp_act_index is not None and chord.sp_act_index != chord.index
-            and not chord.ends_sp):
+    if (end_side_shift_ms < 0 and chord.sp_act_index is not None
+            and chord.sp_act_index != chord.index and not chord.ends_sp):
         # A chord Hydra pays inside Star Power is pressed SP_END_LEAD_MS
-        # before the end, moved by the activation's lead, when its own plain
-        # press would come later than that.
+        # before an end a lead moved earlier, when its own plain press would
+        # come later than that. An end no lead moved leaves it plain.
         act_end = act_ends.get(chord.sp_act_index)
         if act_end is not None and act_end.end_ms is not None:
             end_ms = act_end.end_ms + end_side_shift_ms

@@ -262,16 +262,12 @@ def activation_lead_lines(chords: Sequence[play_chart.Chord],
 
 def planned_ends(chords: Sequence[play_chart.Chord]) -> dict:
     """The Star Power end each activation with a squeeze is planned to have,
-    by the `index` of its activation chord: the lead's planned end when
-    play_chart.activation_leads gives one, else the dump's end the squeeze
-    chord carries (Squeeze.end_ms)."""
-    ends = {}
-    for chord in chords:
-        if chord.squeeze is not None:
-            ends.setdefault(chord.squeeze.act_index, chord.squeeze.end_ms)
-    for lead in _activation_leads(chords):
-        ends[lead.act_index] = lead.planned_end_ms
-    return ends
+    by the `index` of its activation chord: the end play_chart.press_plan
+    puts on the activation's first press (Press.stored_end_ms), the one
+    play_chords reads the game's end against. Activations whose files give no
+    stored end are left out."""
+    return {press.index: press.stored_end_ms for press in play_chart.press_plan(chords)
+            if press.stored_end_ms is not None}
 
 
 def _number(value) -> Optional[float]:

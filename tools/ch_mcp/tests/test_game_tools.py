@@ -2557,14 +2557,18 @@ class PlayerLimitsLinesTest(unittest.TestCase):
         lines = self._bomber_lines()
         self.assertEqual(lines[lines.index(BOMBER_SQUEEZES) + 1], BOMBER_ACTIVATION)
 
-    def test_planned_ends_take_the_leads_end_over_the_dumps(self):
-        chords = [play_chart.Chord(5, 900.0, [Lane.KICK], ["none"]),
+    def test_planned_ends_are_the_stored_end_press_plan_puts_on_the_activation(self):
+        # Chord 5's activation stores 994 (a lead moved it); chord 7's stores
+        # 1980, which is not the end its squeeze is timed against (1990).
+        ends = {5: play_chart.ActEnd(None, stored_end_ms=994.0),
+                7: play_chart.ActEnd(None, stored_end_ms=1980.0)}
+        chords = [play_chart.Chord(5, 900.0, [Lane.KICK], ["none"], act_end=ends[5]),
                   play_chart.Chord(6, 1000.0, [Lane.KICK], ["none"],
                                    squeeze=play_chart.Squeeze(play_chart.SQUEEZE_IN, 990.0, 5)),
+                  play_chart.Chord(7, 1900.0, [Lane.KICK], ["none"], act_end=ends[7]),
                   play_chart.Chord(8, 2000.0, [Lane.KICK], ["none"],
                                    squeeze=play_chart.Squeeze(play_chart.SQUEEZE_IN, 1990.0, 7))]
-        with _leads_stub(play_chart.ActLead(5, 6, "late", 4.0, 994.0, 1.0)):
-            self.assertEqual(GT.planned_ends(chords), {5: 994.0, 7: 1990.0})
+        self.assertEqual(GT.planned_ends(chords), {5: 994.0, 7: 1980.0})
 
     # -- the read end and the points between presses ---------------------------------------
 
@@ -2612,7 +2616,7 @@ class PlayerLimitsLinesTest(unittest.TestCase):
             return play_chart.RunResult(stop="done", sent=2, hit=1)
 
         t = ToolRig(self.tmp, live_play=live_play)
-        with _leads_stub(play_chart.ActLead(0, 1, "early", 10.0, 1000.0, 1.0)):
+        with mock.patch.object(GT, "planned_ends", lambda chords: {0: 1000.0}):
             t.tools.ch_play_chart(self._json("score.json", SCORE_JSON), route="keys")
         t.tools._play.thread.join(THREAD_CAP_S)
         lines = t.tools.ch_play_status().splitlines()
