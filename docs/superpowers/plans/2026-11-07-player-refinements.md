@@ -197,6 +197,17 @@ Pass: the zeroth read and all six. Fail, first read: `sp_end_s` near 32.667 s wi
 6. A chord whose first gem is less than `START_LEAD_MS` (150 ms) ahead of the song clock when the player starts; the zeroth reads check this for the two charts' chord 0 (row P24).
 7. Pushing `main`.
 
+## Amendment after LS-R1b run 1
+
+LS-R1b run 1 on Mouths scored 551,975, 795 short of Hydra's 552,770. The auto-player pressed every gem of a chord in one frame, and the game then scored the gems in its own order. SC-38 on `docs/clone-hero/06-scoring.md` holds the finding, and the run record is `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-07\ls-r1-run1\replies.txt`. Chord 4 (kick and green cymbal, at the step from x1 to x2) lost 15 points: the green took x1 and the kick x2. Chords 340, 704 and 1208 (kick, yellow cymbal and green cymbal, each an activation) lost 260 each, because the yellow was scored before the green that turned Star Power on. Hydra's path assumes the player picks the order (SC-10).
+
+The user answered two questions in chat on 2026-11-07. Asked which chords to split, the user said "Only where it matters". Asked how far apart the presses go, the user said "8 ms". So the player now splits two kinds of chord, and leaves every other chord as one press:
+
+1. A chord whose gems pay at more than one multiplier in the score file (each gem's own `multiplier` in its `notes`) presses the gems at the lower multiplier first.
+2. An activation's chord presses its activating gem first. That gem is the one `all_but_top_pad` already leaves out (row P36).
+
+A chord of both kinds presses the activating gem first, then the rest by multiplier. The first press keeps the chord's own lead, and each later press comes `CHORD_ORDER_GAP_MS` (8.0 ms, the user's "8 ms") after the one before. The constant lives beside the others in `tools/ch_probe/experiments/play_chart.py`, and `_order_groups` there says which chords split. The load check reads every later press. A split chord that is also a squeeze-out or a declined fill is refused at load, because no rule times both; neither chart has one. The reply gains an `order:` line after the squeeze lines, naming each split chord; past ten chords it gives the count and the first ten. On the two top paths, Mouths splits five chords (chord 4 by multiplier; 340, 704, 927 and 1208 as activations) and Bomber splits five activations (147, 265, 412, 716 and 988). The next run's reads rest on rows P35 to P37.
+
 ## Promise map
 
 | Promise | Plan line | Task | Check |
@@ -259,3 +270,6 @@ Pass: the zeroth read and all six. Fail, first read: `sp_end_s` near 32.667 s wi
 | P34: Bomber's song length is 216589 ms and Mouths' 226372 ms | data | `song.ini` `song_length` of the two folders named in P13 and `...\Drummer's Monthly Drive\highfine\The Fall of Troy\The Fall of Troy - Mouths Like Sidewinder Missiles [highfine]\song.ini` (read 2026-11-07) | checked 2026-11-07 |
 | P31: a human run plays only the test chart until page 07 answers the posting question | code | `docs/agents/clone-hero-mcp.md` line 31 | checked 2026-11-07 |
 | P32: a plan's premise map and live-step call list have the shape this plan uses | code | `docs/agents/premise-map.md` | checked 2026-11-07 |
+| P35: the game scores a gem pressed in a later frame after the gems pressed in an earlier one, so a press 8 ms later is scored second | unchecked | SC-38 on `docs/clone-hero/06-scoring.md` shows the order inside one frame only; no run pressed a chord's gems in two frames | LS-R1b run 2 |
+| P36: the game's flagged gem on an activation's chord is its highest pad (green, then blue, yellow, red; the kick when there is no pad), the same pick as a fill's | unchecked | P22's row: `docs/clone-hero/04-fills.md` FL-09 ("highest pad"), the evidence `_flagged_gem` in `tools/ch_probe/experiments/play_chart.py` reuses; SC-38 on `docs/clone-hero/06-scoring.md` shows the green cymbal activating on chords 340, 704 and 1208 | LS-R1b run 2 |
+| P37: the score file gives each gem its own `multiplier`, and Mouths chord 4 pays its kick at x1 and its green cymbal at x2 | code | `tools/replay.cpp` line 428 writes each note's `multiplier`; `refine-prep/mouths-top-score.json` chord 4 | checked 2026-11-07 |
