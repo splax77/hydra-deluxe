@@ -198,7 +198,7 @@
         },
         {
           "file": "src/core/replay.cpp",
-          "line_text": "return a.act_tick < b.act_tick;",
+          "line_text": "if (a.act_tick != b.act_tick) return a.act_tick < b.act_tick;",
           "why": "orders replay_path's own Window records, not a PinnedWindow list"
         }
       ],

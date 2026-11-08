@@ -211,9 +211,9 @@ struct ReplayChord {
     int64_t cum_onscreen_total = 0;
 
     // Every window whose core::paid_by_sp is true for this chord, in the
-    // order replay_path opens the windows: the same loop that sets in_sp
-    // fills it, so it
-    // is non-empty exactly when in_sp is true. hydra_replay's schedule
+    // order replay_path sorts its windows, which does not depend on the
+    // caller's order: the same loop that sets in_sp fills it, so it is
+    // non-empty exactly when in_sp is true. hydra_replay's schedule
     // command reads it. Filled with scores_only too.
     std::vector<ReplayPayment> paid_by;
 };

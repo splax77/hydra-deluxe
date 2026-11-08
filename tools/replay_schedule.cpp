@@ -42,7 +42,7 @@ constexpr double kPressLeadMs = 2.0;
 
 // A chord that ends Star Power is pressed this many ms before its time, so
 // the hit lands in a frame before the end check. The user set it: question 3
-// of docs/superpowers/plans/2026-11-06-optimal-score-run.md (removed; git show
+// of the optimal-score run plan, which has left the tree (removed; git show
 // d7e47a20:docs/superpowers/plans/2026-11-06-optimal-score-run.md).
 constexpr double kSpEndLeadMs = 15.0;
 
