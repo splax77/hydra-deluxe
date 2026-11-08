@@ -54,6 +54,10 @@ Each question has both sides quoted. Q1 to Q5 come first; Q6 to Q10 follow in a 
 - Q2: "Yes, cite them (Recommended)". Rows resting on `out26.c` and `dump.cs` earn Proven in the game's code, citing the file and line outside the repo.
 - Q3: "Record it, no fix (Recommended)". CR-40 records the game's rule and Hydra's difference as a malformed-chart edge case.
 - Q4 and Q5: "Soften all three (Recommended)". The `model.cpp` comment and `docs/UserGuide.md` lines 388 and 396 are reworded to say the game's side is not proven. Hydra's behaviour does not change.
+- Q6: "Relabel until data is kept (Recommended)". NL-28 and NL-33 drop the live label to what committed sources show; a frame reading of the videos can be committed as data later.
+- Q7: "Yes, scout it (Recommended)". One read-only scout reads each solo's note count and the press CSVs.
+- Q8: "Record as open exception (Recommended)". SP-34 keeps its label and notes the LS-M2 case with both possible causes.
+- Q9 and Q10: "Fix tags, scout the marker (Recommended)". The six tags are repointed, line 17 gets the typed words back, line 19 is marked a tool setting; a read-only scout checks Hydra's marker code against `f215dbd0.asm` lines 117 to 136.
 
 ## Covered by a ruling
 
