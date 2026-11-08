@@ -2,7 +2,7 @@
 
 This page covers Star Power phrases, the meter, activation, drain, the Star Power end and squeezes.
 It describes build 1.1 (v1.1.0.6142).
-Last write-back: 2026-11-07.
+Last write-back: 2026-11-08.
 
 The live-run files named below are the `run1_cal0_*` files under tools/ch_probe/experiments/results/overlay-spike/. "Run 1" is the key-press auto-player run on the probe chart Trippin SP Spike (resolution 192), stamped 2026-10-29 00:39 UTC. The engine fields are those of the base engine class #8288, which the drum engine #8255 inherits. `ghidra_decompile_all.txt` and "the decompile" mean Ghidra's full decompile of build 6142, which `code/README.md` describes; it is not in the repo.
 
@@ -345,6 +345,16 @@ Game code (6142): RVA `0x20F63B0` and `0x20F4550` (SP-28, SP-29)
 Hydra: `paid_by_sp_walk` in src/core/backend_value.h line 28; `after_sp_end` line 34
 Ruling: none needed: no difference is shown
 Found: 2026-10-30, session b02ab3e6 (the reference build)
+
+### SP-47 The end is stamped from the frame that reads the press
+
+Rule: When an activation is pressed, the game stores the Star Power end as if the press came one frame after the song clock the player read just before it sent the press. On four live activations the stored end sat 2.98 to 3.03 ms later than that clock read gives, which is one frame at the game's about 330 frames a second (TM-49). So the game judges a press in the frame after the one whose clock the player read.
+Label: Proven in a live run
+Evidence: Two runs of 2026-11-07. Bomber, chord 147: `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-07\ls-r2ab-run1\replies.txt` says "the end moved 50.8 ms for a 53.78 ms early press", 2.98 ms short of the lead the clock read gives (the reply rounds the move to 0.1 ms). Get Ur Freak On, chords 232, 633 and 1062: `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-07\ls-f1-run1\press-2.csv`. The time the game judged each press is its `end_read_ms`, less the stored end the path's dump gives (57,932.89, 98,444.63 and 141,656.25 ms, the time of `nominal_deact_tick` in the `ls-l0` dump as `load_dump_chords` reads it), plus its `chart_ms`. That time is 3.03 ms after `clock_ms_at_press` on all three (3.030, 3.029 and 3.032). The arithmetic takes the end to move by the press's error times r, and r is 1.0 at all four activations (`end_scale_early` and `end_scale_late` in the `ls-l0` dump and in tools/ch_probe/tests/bomber_refine_dump.json), so these runs check nothing about r and SP-39 keeps its label. Not proven: other frame rates, and which code takes the press in that frame (SP-30).
+Game code (6142): the stored end `#8288+0x120` (`OFF_SP_END_TIME` in tools/ch_probe/constants.py) read live; the frame step itself was not found in the code (SP-30)
+Hydra: no frame model in `src/` (SP-29); the player's `retime_from_end` in tools/ch_probe/experiments/play_chart.py moves the late presses by the end it reads after the activation
+Ruling: none needed: no Hydra rule depends on it
+Found: 2026-11-08, session 6341c618, from the runs of session d0a3868c
 
 ## Phrases collected during Star Power
 
