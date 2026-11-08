@@ -212,8 +212,8 @@ struct ReplayChord {
 
     // Every window whose core::paid_by_sp is true for this chord, ordered by
     // act_tick then deact_tick: the same loop that sets in_sp fills it, so it
-    // is non-empty exactly when in_sp is true. hydra_replay schedule reads it
-    // (tools/replay_schedule.h). Filled with scores_only too.
+    // is non-empty exactly when in_sp is true. hydra_replay's schedule
+    // command reads it. Filled with scores_only too.
     std::vector<ReplayPayment> paid_by;
 };
 
