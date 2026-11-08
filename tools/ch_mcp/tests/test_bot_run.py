@@ -27,9 +27,11 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 from tools.ch_mcp import bot_run as B  # noqa: E402
+from tools.ch_mcp import build_stamp as BS  # noqa: E402
 from tools.ch_mcp import frida_attach as FA  # noqa: E402
 from tools.ch_mcp import game_files as G  # noqa: E402
 from tools.ch_mcp import install_chart as I  # noqa: E402
+from tools.ch_mcp.tests.test_build_stamp import make_built_agent  # noqa: E402
 from tools.ch_mcp.tests.test_game_files import FakeReg  # noqa: E402
 from tools.ch_probe import probe_songs  # noqa: E402
 from tools.ch_probe.constants import PROCESS_NAME  # noqa: E402
@@ -592,8 +594,7 @@ def wire_human(r: Rig, agent: FakeLaunchAgent, patch: dict = PATCH) -> list:
     root = os.path.dirname(r.docs)
     r.env.launch_patch_path = os.path.join(root, "launch_patch.json")
     _write(r.env.launch_patch_path, json.dumps(patch).encode())
-    r.env.launch_agent_path = os.path.join(root, "launch.js")
-    _write(r.env.launch_agent_path, b"// the built agent")
+    r.env.launch_agent_path = make_built_agent(os.path.join(root, "agent"), "launch")
     events = agent.events
     attaches = []
 
@@ -813,6 +814,28 @@ class HumanLaunchTest(unittest.TestCase):
         self.assertIn("npm run build:launch", str(cm.exception))
         self.assertEqual(self.events, [])
 
+    def test_a_stale_stamp_refuses_naming_the_file_and_the_build_command(self):
+        agent = FakeLaunchAgent(self.events)
+        wire_human(self.r, agent)
+        path = self.r.env.launch_agent_path
+        source = os.path.join(os.path.dirname(path), "launch.ts")
+        with open(source, "a", encoding="utf-8") as f:
+            f.write("// an edit after the build\n")
+        with self.assertRaises(B.LaunchFailed) as cm:
+            B.launch_human(["exe"], self.r.env, os.path.join(self.tmp, "l.jsonl"))
+        self.assertEqual(str(cm.exception),
+                         f"the launch agent may not load: {BS.check(path)}; nothing was started")
+        self.assertIn(path, str(cm.exception))
+        self.assertIn("launch.ts changed since it was built", str(cm.exception))
+        self.assertIn("npm run build:launch", str(cm.exception))
+        self.assertEqual(self.events, [])
+        os.remove(BS.stamp_path(path))
+        with self.assertRaises(B.LaunchFailed) as cm:
+            B.launch_human(["exe"], self.r.env, os.path.join(self.tmp, "l.jsonl"))
+        self.assertIn("has no build stamp", str(cm.exception))
+        self.assertIn("npm run build:launch", str(cm.exception))
+        self.assertEqual(self.events, [])
+
     def test_the_real_env_uses_the_real_seams_and_files(self):
         env = B.Env()
         self.assertIs(env.start_process, B._real_start_suspended)
@@ -875,6 +898,20 @@ class LoaderLineTest(unittest.TestCase):
                                              bytes_at_first_run="BA 01 00 00 00"), PATCH), "no")
         self.assertEqual(B.loader_ran(status("patched", loader_runs=0), PATCH), "not yet")
         self.assertEqual(B.loader_ran(status("waiting"), PATCH), "not yet")
+
+    def test_ch_status_warns_when_the_loader_read_no(self):
+        def lines_for(bytes_seen):
+            agent = FakeLaunchAgent([])
+            agent.statuses = [{**PATCHED, "loader_runs": 1, "bytes_at_first_run": bytes_seen}]
+            launch = B.HumanLaunch(game=None, agent=agent, patch=PATCH, form="suspended")
+            return B.request_launch_status(launch, 1.0)
+
+        said_no = lines_for("BA 01 00 00 00")
+        self.assertIn(B.LOADER_LINE + "no", said_no)
+        self.assertEqual(said_no[-1], B.LOADER_NO_WARNING)
+        said_yes = lines_for(PATCH["write"])
+        self.assertIn(B.LOADER_LINE + "yes", said_yes)
+        self.assertEqual([line for line in said_yes if line.startswith("warning")], [])
 
     def test_a_list_of_numbers_reads_like_the_same_hex_text(self):
         self.assertEqual(B.loader_ran(status("patched", loader_runs=1,

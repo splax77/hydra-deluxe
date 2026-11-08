@@ -52,6 +52,7 @@ if __package__ in (None, ""):
     # Run as a script (py -I leaves the repo off sys.path).
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
+from tools.ch_mcp import build_stamp  # noqa: E402
 from tools.ch_mcp import frida_attach as FA  # noqa: E402
 from tools.ch_mcp import game_files  # noqa: E402
 from tools.ch_mcp.frida_tools import AGENT_DIR  # noqa: E402
@@ -552,6 +553,10 @@ LOADER_LINE = "loader ran after patch: "
 LOADER_YES = "yes"
 LOADER_NO = "no"
 LOADER_NOT_YET = "not yet"
+# ch_status's line after a LOADER_NO (D321 item 1, L41).
+LOADER_NO_WARNING = ("warning: the game's command-line loader ran after the patch but read "
+                     "other bytes than the patch writes (launch_patch.json), so this launch "
+                     "may not have taken the patch")
 
 
 def loader_ran(status: dict, patch: dict) -> str:
@@ -594,7 +599,10 @@ def request_launch_status(launch: HumanLaunch, cap_s: float) -> List[str]:
         status = launch.agent.request({"type": "status"}, cap_s)
     except FA.ReadFailed as e:
         return [f"launch agent: status failed: {e}"]
-    return launch_status_lines(status, launch.patch)
+    lines = launch_status_lines(status, launch.patch)
+    if loader_ran(status, launch.patch) == LOADER_NO:
+        lines.append(LOADER_NO_WARNING)
+    return lines
 
 
 def _refused_text(status: dict, patch: dict) -> str:
@@ -628,9 +636,9 @@ def launch_human(cmd: list[str], env: Env, log_path: str) -> HumanLaunch:
     log goes to `log_path`."""
     patch = _read_patch(env.launch_patch_path)
     form = patch["launch"]
-    if not os.path.isfile(env.launch_agent_path):
-        raise LaunchFailed(f"the launch agent is not built: no {env.launch_agent_path}; run "
-                           "npm run build:launch in tools/ch_mcp/agent; nothing was started")
+    refusal = build_stamp.check(env.launch_agent_path)
+    if refusal is not None:
+        raise LaunchFailed(f"the launch agent may not load: {refusal}; nothing was started")
     said: List[str] = []
     start = env.spawn_process if form == LAUNCH_SPAWN else env.start_process
     game = start(cmd)
