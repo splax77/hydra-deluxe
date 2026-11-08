@@ -8,7 +8,6 @@ records its keys, and live_play is a fake that delivers rows.
 from __future__ import annotations
 
 import csv
-import dataclasses
 import inspect
 import json
 import os
@@ -80,7 +79,8 @@ BOMBER_DECLINED = ("declined (all_but_top_pad): chords 624 (kick), 684 (kick), "
                    "854 (nothing sent), 874 (kick), 919 (kick)")
 BOMBER_SQUEEZES = ("squeezes: chord 180 out (red 15 ms after the end), "
                    "chord 448 in (85.33 ms before the end)")
-BOMBER_ACTIVATION = "activation chord 147 pressed 55 ms early for the squeeze-out at chord 180"
+BOMBER_ACTIVATION = ("activation chord 147 pressed 51.3 ms early for the squeeze-out at "
+                     "chord 180 (end planned 32,615.4 ms, ratio 1.0000)")
 # The order lines, pinned from a run of these files: the amendment after
 # LS-R1b run 1 of the same plan.
 MOUTHS_ORDER = ("order: chords 4 (kick, then green cymbal 8 ms later), "
@@ -2508,23 +2508,10 @@ class AtexitFactTest(unittest.TestCase):
         self.assertTrue(os.path.exists(self.flag))
 
 
-@dataclasses.dataclass(frozen=True)
-class _ActLead:
-    """play_chart.ActLead's fields, as task T2 of
-    docs/superpowers/plans/2026-11-07-player-limits.md gives them, for a stub
-    of play_chart.activation_leads while that function is not on this branch."""
-    act_index: int
-    squeeze_index: int
-    direction: str
-    lead_ms: float
-    planned_end_ms: float
-    ratio: float
-
-
 def _leads_stub(*leads):
-    """A patch that gives play_chart an activation_leads returning `leads`."""
-    return mock.patch.object(play_chart, "activation_leads", lambda chords: list(leads),
-                             create=True)
+    """A patch that makes play_chart.activation_leads return `leads`, for
+    made-up chords whose files carry no end_scale_* to solve a lead from."""
+    return mock.patch.object(play_chart, "activation_leads", lambda chords: list(leads))
 
 
 class PlayerLimitsLinesTest(unittest.TestCase):
@@ -2547,7 +2534,8 @@ class PlayerLimitsLinesTest(unittest.TestCase):
         out = play_chart.Chord(931, 186404.8, [Lane.KICK], ["none"],
                                squeeze=play_chart.Squeeze(play_chart.SQUEEZE_OUT, 186408.0, 820))
         self.assertEqual(
-            GT.activation_lead_lines([out], [_ActLead(820, 931, "early", 58.82, 186348.9, 1.0045)]),
+            GT.activation_lead_lines(
+                [out], [play_chart.ActLead(820, 931, "early", 58.82, 186348.9, 1.0045)]),
             ["activation chord 820 pressed 58.8 ms early for the squeeze-out at chord 931 "
              "(end planned 186,348.9 ms, ratio 1.0045)"])
 
@@ -2555,7 +2543,8 @@ class PlayerLimitsLinesTest(unittest.TestCase):
         late = play_chart.Chord(77, 5000.0, [Lane.RED], ["none"],
                                 squeeze=play_chart.Squeeze(play_chart.SQUEEZE_IN, 4919.4, 70))
         self.assertEqual(
-            GT.activation_lead_lines([late], [_ActLead(70, 77, "late", 33.4, 4952.8, 1.0)]),
+            GT.activation_lead_lines(
+                [late], [play_chart.ActLead(70, 77, "late", 33.4, 4952.8, 1.0)]),
             ["activation chord 70 pressed 33.4 ms late for the squeeze-in at chord 77 "
              "(end planned 4,952.8 ms, ratio 1.0000)"])
 
@@ -2564,17 +2553,8 @@ class PlayerLimitsLinesTest(unittest.TestCase):
                                  "all_but_top_pad",
                                  os.path.join(_PROBE_TESTS, "bomber_refine_dump.json"))[1]
 
-    def test_with_activation_leads_the_lead_line_replaces_the_moved_end_line(self):
-        with _leads_stub(_ActLead(147, 180, "early", 51.27, 32615.4, 1.0)):
-            lines = self._bomber_lines()
-        self.assertEqual(lines[lines.index(BOMBER_SQUEEZES) + 1],
-                         "activation chord 147 pressed 51.3 ms early for the squeeze-out at "
-                         "chord 180 (end planned 32,615.4 ms, ratio 1.0000)")
-        self.assertNotIn(BOMBER_ACTIVATION, lines)
-
-    def test_with_no_activation_leads_in_play_chart_the_lines_stay_as_they_were(self):
-        with mock.patch.object(play_chart, "activation_leads", None, create=True):
-            lines = self._bomber_lines()
+    def test_the_bomber_lead_line_follows_the_squeeze_line(self):
+        lines = self._bomber_lines()
         self.assertEqual(lines[lines.index(BOMBER_SQUEEZES) + 1], BOMBER_ACTIVATION)
 
     def test_planned_ends_take_the_leads_end_over_the_dumps(self):
@@ -2583,7 +2563,7 @@ class PlayerLimitsLinesTest(unittest.TestCase):
                                    squeeze=play_chart.Squeeze(play_chart.SQUEEZE_IN, 990.0, 5)),
                   play_chart.Chord(8, 2000.0, [Lane.KICK], ["none"],
                                    squeeze=play_chart.Squeeze(play_chart.SQUEEZE_IN, 1990.0, 7))]
-        with _leads_stub(_ActLead(5, 6, "late", 4.0, 994.0, 1.0)):
+        with _leads_stub(play_chart.ActLead(5, 6, "late", 4.0, 994.0, 1.0)):
             self.assertEqual(GT.planned_ends(chords), {5: 994.0, 7: 1990.0})
 
     # -- the read end and the points between presses ---------------------------------------
@@ -2632,7 +2612,7 @@ class PlayerLimitsLinesTest(unittest.TestCase):
             return play_chart.RunResult(stop="done", sent=2, hit=1)
 
         t = ToolRig(self.tmp, live_play=live_play)
-        with _leads_stub(_ActLead(0, 1, "early", 10.0, 1000.0, 1.0)):
+        with _leads_stub(play_chart.ActLead(0, 1, "early", 10.0, 1000.0, 1.0)):
             t.tools.ch_play_chart(self._json("score.json", SCORE_JSON), route="keys")
         t.tools._play.thread.join(THREAD_CAP_S)
         lines = t.tools.ch_play_status().splitlines()

@@ -228,13 +228,12 @@ def declined_line(decline_mode: str, chords: Sequence[play_chart.Chord]) -> str:
     return f"declined ({decline_mode}): chords {', '.join(items) or 'none'}"
 
 
-def _activation_leads(chords: Sequence[play_chart.Chord]) -> Optional[list]:
+def _activation_leads(chords: Sequence[play_chart.Chord]) -> List[play_chart.ActLead]:
     """play_chart.activation_leads of `chords`: each activation pressed early
     or late for its squeezes, with the end that lead plans and the ratio it
-    was worked out from. None when play_chart has no such function. This is
-    the one place that asks for it."""
-    leads = getattr(play_chart, "activation_leads", None)
-    return None if leads is None else list(leads(chords))
+    was worked out from. This is the one place in this module that asks for
+    it."""
+    return play_chart.activation_leads(chords)
 
 
 def _squeeze_word(chords: Sequence[play_chart.Chord], index: int, direction: str) -> str:
@@ -248,7 +247,8 @@ def _squeeze_word(chords: Sequence[play_chart.Chord], index: int, direction: str
     return "squeeze-in" if kind == play_chart.SQUEEZE_IN else "squeeze-out"
 
 
-def activation_lead_lines(chords: Sequence[play_chart.Chord], leads: Sequence) -> List[str]:
+def activation_lead_lines(chords: Sequence[play_chart.Chord],
+                          leads: Sequence[play_chart.ActLead]) -> List[str]:
     """One line per activation `leads` (play_chart.activation_leads) presses
     early or late: how far, for which squeeze chord, the end that plans and
     the ratio of end shift to lead it came from. Every number is the lead's."""
@@ -269,7 +269,7 @@ def planned_ends(chords: Sequence[play_chart.Chord]) -> dict:
     for chord in chords:
         if chord.squeeze is not None:
             ends.setdefault(chord.squeeze.act_index, chord.squeeze.end_ms)
-    for lead in _activation_leads(chords) or []:
+    for lead in _activation_leads(chords):
         ends[lead.act_index] = lead.planned_end_ms
     return ends
 
@@ -344,14 +344,12 @@ def squeeze_lines(chords: Sequence[play_chart.Chord]) -> List[str]:
     squeezes. None of it is worked out here: press_plan times every press and
     gives each squeeze press the end it was timed against (Press.end_ms), and
     the activation lines are activation_lead_lines of
-    play_chart.activation_leads. Without that function the activation lines
-    say how far press_plan moved the end. Empty when no chord squeezes."""
+    play_chart.activation_leads. Empty when no chord squeezes."""
     if not any(chord.squeeze is not None for chord in chords):
         return []
     by_index = _presses_by_index(play_chart.press_plan(chords))
 
     items = []
-    early = []
     for chord in chords:
         if chord.squeeze is None:
             continue
@@ -364,14 +362,8 @@ def squeeze_lines(chords: Sequence[play_chart.Chord]) -> List[str]:
             clauses.append(gems + when)
         kind = "in" if chord.squeeze.kind == play_chart.SQUEEZE_IN else "out"
         items.append(f"chord {chord.index} {kind} ({'; '.join(clauses)})")
-        moved_ms = chord.squeeze.end_ms - by_index[chord.index][0].end_ms
-        if chord.squeeze.kind == play_chart.SQUEEZE_OUT and moved_ms:
-            early.append(f"activation chord {chord.squeeze.act_index} pressed "
-                         f"{_ms_text(moved_ms)} ms early for the squeeze-out at "
-                         f"chord {chord.index}")
-    leads = _activation_leads(chords)
     return (["squeezes: " + ", ".join(items)]
-            + (early if leads is None else activation_lead_lines(chords, leads)))
+            + activation_lead_lines(chords, _activation_leads(chords)))
 
 
 def order_lines(chords: Sequence[play_chart.Chord]) -> List[str]:

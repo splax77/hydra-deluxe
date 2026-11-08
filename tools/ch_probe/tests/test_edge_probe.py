@@ -111,11 +111,15 @@ class EdgeProbeTest(unittest.TestCase):
             edge_probe.probe_chords(self._chords(), [edge_probe.Probe(9, 10.0)])
 
     def test_a_squeeze_chord_timed_from_its_end_is_refused(self):
-        # Chord 1 squeezes in at an end 50 ms before it, so press_plan times
-        # its press from the end, not from the chord's own time.
+        # Chord 1 squeezes in at an end 10 ms before it, so press_plan times
+        # its press from the end, not from the chord's own time. The end is
+        # close enough that the press lands in the chord's window with the
+        # activation pressed on time, so activation_leads asks for no lead
+        # and the refusal is the probe's own.
         chords = self._chords()
         chords[1] = play_chart.Chord(1, 4000.0, chords[1].lanes, chords[1].dynamics,
-                                     squeeze=play_chart.Squeeze(play_chart.SQUEEZE_IN, 3950.0, 0))
+                                     squeeze=play_chart.Squeeze(play_chart.SQUEEZE_IN, 3990.0, 0))
+        self.assertEqual(play_chart.activation_leads(chords), [])
         with self.assertRaisesRegex(ValueError, "probe chords 1 are timed by another rule"):
             edge_probe.probe_chords(chords, [edge_probe.Probe(1, 10.0)])
 
