@@ -64,7 +64,7 @@ Finders split by family of questions, not by folder, as the method says. There a
 
 Every agent below is a read-only scout on Sonnet (agent rule 2), started with the `Agent` tool. Every brief starts with `docs/agents/brief-preamble.md`, then carries the items in "What every audit brief carries" in `docs/agents/audit-method.md`, the status rule, and its caps. No agent builds, runs `hydra_tests.exe`, `hydra_uitest.exe` or `hydra_replay.exe`, starts the game, or runs over the library. The audit needs no live run. A claim that only a run can settle goes on the open list with the run that would settle it, and that run waits for the user's go.
 
-Each agent's cap is 120 tool calls or 30 minutes, whichever comes first. At the cap it stops and reports what it read, what it found, and what it did not reach. Unread files go on the open list; they are never assumed clean.
+Each agent's cap is 100 tool calls or 20 minutes, the point where the agent hook warns, whichever comes first. At the cap it stops and reports what it read, what it found, and what it did not reach. Unread files go on the open list; they are never assumed clean.
 
 ### S1: Calibrate (1 agent)
 
