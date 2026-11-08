@@ -292,7 +292,7 @@ Rule: The drums star base is the sum over notes of (50, plus 15 for a cymbal) ti
 Label: Proven in the game's code
 Evidence: Star base lines 68 (drums branch), 87 to 101 (cymbal and the two flag tests), 103 to 118 (gem count) and 120 to 123 (the sum); lines 68 to 80 and 147 to 149 leave the sustain term at 0. The non-drums term is lines 29 to 39 (the value divided by 3.0), 73 to 82 (the length test) and 139 to 149 (the total divided by the value over 25.0); that the value at chart record +0xB8 is the resolution is session 9168b711's reading (card line 24 says "sustains at 25 points per beat"), not shown by name in the dump. The constructor picks the drums branch for 6 or 9 at lines 183 to 189, calls it at line 196 and stores the result at line 202. That the two flags are accent and ghost is named by the dump: 0x40000 is `DrumsGhostHit` and 0x80000 is `DrumsAccentHit` (dump.cs lines 548215 and 548216). Live: the game's base_score is 73,520 on Trippin SP Spike ProDrums, 62,850 on its plain Drums run (1,257 gems times 50, no cymbals or dynamics) and 7,100 on Window Map (142 gems times 50). Hydra's totals for the same charts are in `trippin.json`, `trippin-normal.json` and `window-map.json`, one folder above the bot files. On ProDrums Hydra's notes, accent and ghost totals sum to the game's base (71,370 + 450 + 1,700 = 73,520). On Window Map Hydra's notes total is 7,100 with no dynamics. On plain Drums the game's 62,850 equals Hydra's notes total only, because Hydra still prices 450 + 1,700 for dynamics there and the game drops them (SC-15).
 Game code (6142): RVA `0x20F4680`, `code/6142/star_base_20F4680.asm` lines 68 to 149; constructor RVA `0x20F79E0`, `code/6142/engine_ctor_20F79E0.asm` lines 183 to 202
-Hydra: `Path::chart_base_score` in src/core/model.cpp line 837
+Hydra: `Path::chart_base_score` in src/core/model.cpp line 839
 Ruling: none needed: same rule (a Hydra note holds one dynamic type, so the both-flags case does not arise)
 Found: 2026-10-30, session b02ab3e6 (the reference build)
 
@@ -354,7 +354,7 @@ Rule: The game's avg_multiplier is score less solo_bonus_total, divided by base_
 Label: Proven in a live run
 Evidence: with no solo: 248,550 / 62,850 = 3.95465394 (file 3.95465398); 25,550 / 7,100 = 3.59859155 (3.59859157); 290,975 / 73,520 = 3.95776659 (3.95776653); 365,095 / 73,520 = 4.96592764 (4.9659276). With a solo, the four runs of SC-20: LS-D2d run 1 (900,870 less 56,020) / 222,935 = 3.78966963 (file 3.78966975, where score over base would be 4.04095364); LS-O1 run 1 (1,198,410 less 49,700) / 222,935 = 5.15266782 (5.152668); LS-O3 run 1 (1,229,730 less 58,000) / 222,935 = 5.25592662 (5.25592661); LS-M2 run 1 (1,063,755 less 12,100) / 214,640 = 4.89962262 (4.89962244). Each agrees to the file's float precision, and the same holds in all 16 files under the run folder (checked with a short Python script on 2026-11-08).
 Game code (6142): none (the writer is not traced)
-Hydra: `Path::avg_mult` in src/core/model.cpp lines 841 to 845 (total less solo, over the base score)
+Hydra: `Path::avg_mult` in src/core/model.cpp lines 843 to 847 (total less solo, over the base score)
 Ruling: D222: "change it to Average Multiplier, that's a real stat you see in the game"
 Found: 2026-10-30, session b02ab3e6 (the reference build); the solo runs, 2026-11-08, session 77057df2 (docs-gaps search)
 
