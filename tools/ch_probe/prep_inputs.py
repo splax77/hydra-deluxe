@@ -45,7 +45,8 @@ DEFAULT_MS = "10"
 DEFAULT_EXE = os.path.join(_REPO_ROOT, "build-cpp", "Release", "hydra_replay.exe")
 
 # The longest one hydra_replay call may take before the script gives up on it.
-REPLAY_CAP_S = 600.0
+# The user chose 120 s ("Use 120 s", 2026-11-07, session d0a3868c).
+REPLAY_CAP_S = 120.0
 
 EXIT_LOADS = 0
 EXIT_REFUSED = 1
