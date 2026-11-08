@@ -262,12 +262,6 @@ def squeeze_lines(chords: Sequence[play_chart.Chord]) -> List[str]:
     return ["squeezes: " + ", ".join(items)] + early
 
 
-# The order line names at most this many chords; past that it gives the count
-# first. The amendment after LS-R1b run 1 in
-# docs/superpowers/plans/2026-11-07-player-refinements.md asks for it.
-_ORDER_LINE_CHORDS = 10
-
-
 def order_lines(chords: Sequence[play_chart.Chord]) -> List[str]:
     """What the reply says about the chords press_plan presses in order
     groups (play_chart._order_groups): one line naming each such chord, its
@@ -288,9 +282,6 @@ def order_lines(chords: Sequence[play_chart.Chord]) -> List[str]:
         items.append(f"{chord.index} ({', '.join([_gem_words(first.lanes)] + later)})")
     if not items:
         return []
-    if len(items) > _ORDER_LINE_CHORDS:
-        return [f"order: {len(items)} chords, the first {_ORDER_LINE_CHORDS}: "
-                + ", ".join(items[:_ORDER_LINE_CHORDS])]
     return ["order: chords " + ", ".join(items)]
 
 

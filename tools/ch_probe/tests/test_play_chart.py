@@ -1211,6 +1211,16 @@ class SqueezeTimingTest(unittest.TestCase):
             _load_declining(play_chart.DECLINE_ALL_BUT_TOP_PAD, score)
         self.assertIn("two Green gems", str(caught.exception))
 
+    def test_an_activation_chord_with_two_gems_of_its_top_color_is_refused_by_index(self):
+        score, _dump = _made_up(
+            [(0, 0, 1000.0, [_gem("Green", "none"), _gem("Green", "none", cymbal=True)]),
+             (1, 384, 3000.0, [_gem("Kick", "none")])],
+            activations=[{"act_tick": 0, "deact_tick": 384}])
+        with self.assertRaises(ValueError) as caught:
+            _load_dump(score)
+        self.assertIn("chord 0 starts an activation: a chord holds two Green gems",
+                      str(caught.exception))
+
     def test_bomber_activation_lead_and_late_squeeze_out(self):
         presses = _presses_by_index(_BOMBER)
         # 147 is an activation's chord: its yellow cymbal keeps the early

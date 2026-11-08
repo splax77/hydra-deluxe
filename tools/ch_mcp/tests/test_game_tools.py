@@ -1023,7 +1023,7 @@ class GameToolsTest(unittest.TestCase):
         bomber = self._refine_play("bomber")[0].splitlines()
         self.assertEqual(bomber[bomber.index(BOMBER_ACTIVATION) + 1], BOMBER_ORDER)
 
-    def test_a_long_order_line_gives_the_count_and_the_first_ten(self):
+    def test_a_long_order_line_names_every_split_chord(self):
         # Twelve made-up activation chords, a second apart, each a kick and a
         # green cymbal.
         acts = [{"act_tick": 192 * i, "deact_tick": 192 * i + 96} for i in range(12)]
@@ -1034,9 +1034,9 @@ class GameToolsTest(unittest.TestCase):
                     {"color": "Green", "cymbal": True, "dynamic": "none"}]}
                 for i in range(12)]}))
         self.assertEqual(GT.order_lines(chords),
-                         ["order: 12 chords, the first 10: "
+                         ["order: chords "
                           + ", ".join(f"{i} (green cymbal, then kick 8 ms later)"
-                                      for i in range(10))])
+                                      for i in range(12))])
 
     def test_a_chart_with_no_split_chord_gives_no_order_line(self):
         chords = play_chart.load_dump_chords(self._score_file({"chords": [

@@ -500,7 +500,10 @@ def load_dump_chords(path: str, declines: Optional[Mapping[int, str]] = None,
                        if all("multiplier" in gem for gem in gems) else None)
         activating_gem = None
         if tick in act_ticks:
-            flagged = _flagged_gem(gems)
+            try:
+                flagged = _flagged_gem(gems)
+            except ValueError as e:
+                raise ValueError(f"chord {chord['index']} starts an activation: {e}") from e
             # A chord with no pad is all kicks, and its kick is the flagged gem.
             activating_gem = 0 if flagged is None else flagged
         chords.append(Chord(chord["index"], chord["ms"], [lanes[i] for i in kept],
