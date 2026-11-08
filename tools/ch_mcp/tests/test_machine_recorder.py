@@ -94,9 +94,9 @@ def fake_table(processes, base=0):
 # numbers below come from that read, and the thread counts from Windows'
 # Get-Process at the same moment, not from the parser.
 SAMPLE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "recorder_sample.bin")
-SAMPLE_BASE = 2170157575808  # the address the table was read at
 SAMPLE_SIZE = 41_744
 SYSTEM_AT = 4464  # where the second entry, System, starts
+SYSTEM_NAME_AT = 41728  # where System's name text starts in the sample
 IDLE_THREADS = 48  # Get-Process -Id 0
 SYSTEM_THREADS = 458  # Get-Process -Id 4
 # System's threads: (index, byte where the entry starts, tid, state, wait reason,
@@ -111,6 +111,13 @@ SYSTEM_THREAD_ROWS = (
 def read_sample():
     with open(SAMPLE_PATH, "rb") as file:
         return file.read()
+
+
+def sample_base(sample):
+    """The address the table was read at: System's ImageName Buffer (byte 0x40 of its
+    entry, read by hand) is an address in that read, and the name text sits at
+    SYSTEM_NAME_AT in the file."""
+    return P.decode_u64(sample[SYSTEM_AT + 0x40:SYSTEM_AT + 0x48]) - SYSTEM_NAME_AT
 
 
 TWO_PROCESSES = [
@@ -142,7 +149,8 @@ class CapturedTable(unittest.TestCase):
         self.sample = read_sample()
 
     def parse(self, sample=None, **options):
-        return M.parse_table(self.sample if sample is None else sample, SAMPLE_BASE, **options)
+        return M.parse_table(self.sample if sample is None else sample,
+                             sample_base(self.sample), **options)
 
     def u32(self, at):
         return P.decode_u32(self.sample[at:at + 4])
@@ -160,9 +168,9 @@ class CapturedTable(unittest.TestCase):
         self.assertEqual((self.u64(SYSTEM_AT + 0x50), self.u64(SYSTEM_AT + 0x58)), (4, 0))
         # System's ImageName: Length, a USHORT (byte 0x38), and Buffer (byte 0x40).
         length = int.from_bytes(self.sample[SYSTEM_AT + 0x38:SYSTEM_AT + 0x3A], "little")
-        pointer = self.u64(SYSTEM_AT + 0x40)
-        self.assertEqual((length, pointer - SAMPLE_BASE), (12, 41728))
-        self.assertEqual(self.sample[41728:41740].decode("utf-16-le"), "System")
+        self.assertEqual(length, 12)
+        self.assertEqual(self.sample[SYSTEM_NAME_AT:SYSTEM_NAME_AT + length].decode("utf-16-le"),
+                         "System")
         for index, at, tid, state, reason, switches, ticks in SYSTEM_THREAD_ROWS:
             with self.subTest(thread=index):
                 self.assertEqual(at, SYSTEM_AT + 0x100 + index * 0x50)
@@ -220,7 +228,7 @@ class CapturedTable(unittest.TestCase):
 
     def test_names_count_from_the_address_the_table_was_read_at(self):
         self.assertEqual(self.parse().processes[4].name, "System")
-        moved = M.parse_table(self.sample, SAMPLE_BASE - 2)
+        moved = M.parse_table(self.sample, sample_base(self.sample) - 2)
         self.assertNotEqual(moved.processes[4].name, "System")
 
     def test_an_unnamed_process_reads_as_empty(self):
