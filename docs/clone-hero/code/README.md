@@ -228,7 +228,7 @@ The first column is the function start, read from the listing's own first line. 
 
 ## New listings
 
-The 88 listings below were made for the reference on 2026-10-30, in session b02ab3e6 (the reference build), except seven: the cli loader, the player kind, the drums input source, the profile save and the score submit were added on 2026-10-31, in session b15bb484, and the lane velocity and the create custom controller were added on 2026-11-06. There are 86 `.asm` files under `code/6142/` and 2 `.cs` files under `code/4045/`, and each has a `.md` beside it that explains its branches in plain words.
+The 91 listings below were made for the reference on 2026-10-30, in session b02ab3e6 (the reference build), except ten: the cli loader, the player kind, the drums input source, the profile save and the score submit were added on 2026-10-31, in session b15bb484, the lane velocity and the create custom controller were added on 2026-11-06, and the midi register, the midi slot check and the midi pump were added on 2026-11-08, in session 6341c618. There are 89 `.asm` files under `code/6142/` and 2 `.cs` files under `code/4045/`, and each has a `.md` beside it that explains its branches in plain words.
 
 The `.asm` files are from build 1.1.0.6142 (`GameAssembly.dll`), made with tools/ch_mcp/chdis.py. The start is the RVA in the file name, and for every file it matches the address on the listing's first line (or the `; function` line some listings open with). The role is the file name with the RVA taken off. Three file names carry no RVA (the drums input source, the profile save and the score submit, each named for the question it answers); for those the start is the address on the first line.
 
@@ -287,6 +287,9 @@ The table was generated from the files, not typed. One more file, `code/6142/dru
 | 0x337E10 | lane velocity | [code/6142/lane_velocity_337E10.asm](6142/lane_velocity_337E10.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x2155050 | mid drum reader | [code/6142/mid_drum_reader_2155050.asm](6142/mid_drum_reader_2155050.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x20CEDC0 | mid fill reader | [code/6142/mid_fill_reader_20CEDC0.asm](6142/mid_fill_reader_20CEDC0.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x21E420 | midi pump | [code/6142/midi_pump_21E420.asm](6142/midi_pump_21E420.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x21CDE0 | midi register | [code/6142/midi_register_21CDE0.asm](6142/midi_register_21CDE0.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x21F790 | midi slot check | [code/6142/midi_slot_check_21F790.asm](6142/midi_slot_check_21F790.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x210D990 | mix digit map | [code/6142/mix_digit_map_210D990.asm](6142/mix_digit_map_210D990.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x215C750 | mix parser | [code/6142/mix_parser_215C750.asm](6142/mix_parser_215C750.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x20F52E0 | multiplier from streak | [code/6142/multiplier_from_streak_20F52E0.asm](6142/multiplier_from_streak_20F52E0.asm) | 6142 | tools/ch_mcp/chdis.py |
