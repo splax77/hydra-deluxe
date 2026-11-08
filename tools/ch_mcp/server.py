@@ -140,7 +140,7 @@ def build_server(helper: Optional[Helper] = None):
             " note the player hits. Presses and menus go through the virtual kit inside"
             " the game. ch_kit_setup builds the kit after ch_attach and switches Rewired's"
             " keyboard and mouse off for the run, so the user's own keys and mouse reach"
-            " no player. ch_kit_press presses the kit's pads and buttons, ch_open_song"
+            " no player. ch_kit_press presses the kit's pads, kick, Start and Select, ch_open_song"
             " walks the menus to a song with it (the route for a day human=True breaks),"
             " ch_play_chart plays a chart on it, ch_run_chart does the attach, the setup,"
             " the Star Power watch and the play in one call,"
@@ -349,7 +349,7 @@ def build_server(helper: Optional[Helper] = None):
 
     @server.tool()
     def ch_kit_teardown() -> str:
-        """Take the kit away: clear its pads and buttons, remove it, put back
+        """Take the kit away: clear its elements, remove it, put back
         every player's keyboard and mouse, switch Rewired's keyboard and
         mouse back to what ch_kit_setup recorded, put back the other settings
         it changed, print each check, and detach the kit agent. ch_stop runs
