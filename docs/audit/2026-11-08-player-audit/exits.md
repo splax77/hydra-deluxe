@@ -113,7 +113,9 @@ These rows have no verifier verdict yet, or rest on a run nobody has done. None 
 |---|---|
 | L02 | the 4 Freak misses not caused by the stale agent (chords 153 and 154, 803, 1144): a run on a rebuilt `kit.js`, to see whether the stalls repeat |
 | L03 | whether one missed gem in a Star Power phrase cancels its award (the rule is inferred from `ls-m2-run1`; no page block says it): a run with only the kick held back, or the game's miss handler read |
-| L75 (Ready level) | reopened by the closure checker; waits for the user's word (see "L75's Ready level" above the tables) |
+| L75 (Ready level) | Q19, answered (D323 item 1) |
+| L69 (empty chord list) | Q20, answered (D323 item 2) |
+| L71 (not-hooked lines) | Q21, answered (D323 item 3) |
 | L10, L32, L40 | a run on the rebuilt `kit.js` with split chords under load; a real long `ch_sp_compare` reply; a `hydra_replay` run to diff its output against the 11:14 exe's |
 
 Q16 to Q18 answered on 2026-11-08 (`questions.md` "## Answers"). Q17 leaves L12's early edge with no rule: the plan includes the judging frame once TP1 lands.
