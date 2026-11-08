@@ -29,6 +29,7 @@
 #include "app/analysis.h"
 #include "app/config.h"
 #include "app/user_messages.h"  // kDatabaseOpenSentence
+#include "chart_text.h"           // chart_text, section, line
 #include "cli/batch_scope.h"
 #include "core/unknown_option.h"
 #include "core/winstr.h"
@@ -679,13 +680,11 @@ TEST_CASE("hydra_replay score writes act_ms and deact_ms for each window") {
     const fs::path replay = box.copy_tool(HYDRA_REPLAY_EXE);
     const fs::path chart = box.dir / "tempo_change.chart";
     {
+        std::string notes;
+        for (int64_t tick = 0; tick <= 3840; tick += 192) notes += testchart::line(tick, "N 1 0");
+        const std::string sync = testchart::kSync44At120 + testchart::line(1536, "B 60000");
         std::ofstream f(chart, std::ios::binary);
-        f << "[Song]\n{\n  Resolution = 192\n  Offset = 0\n}\n"
-             "[SyncTrack]\n{\n  0 = TS 4\n  0 = B 120000\n  1536 = B 60000\n}\n"
-             "[Events]\n{\n}\n"
-             "[ExpertDrums]\n{\n";
-        for (int tick = 0; tick <= 3840; tick += 192) f << "  " << tick << " = N 1 0\n";
-        f << "}\n";
+        f << testchart::chart_text(testchart::section("ExpertDrums", notes), 192, "", sync);
     }
     const std::string out = (box.dir / "score.json").u8string();
     const RunResult r =
