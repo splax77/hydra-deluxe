@@ -27,6 +27,8 @@
 
 #include "core/model.h"
 #include "core/replay.h"
+#include "core/rules.h"
+#include "store/record_store.h"  // ChartTimingMeta
 #include "core/squeeze_rating.h"  // SteadySpans
 #include "parse/song.h"
 #include "search/pather.h"
@@ -144,12 +146,14 @@ std::vector<std::vector<size_t>> press_groups(const std::vector<int>& multiplier
                                               const std::vector<size_t>& places,
                                               std::optional<size_t> first);
 
-// A squeeze-out chord's inside groups, every gem but the late one (place 0),
-// lowest multiplier first. Unset, with a line in `refusals`, when the late
-// gem pays less than an inside gem: the late gem goes last, so no press gives
-// that order.
+// A squeeze-out chord's inside groups, every gem but the late ones (`late`,
+// the places sqout_late_notes in core/scoring.h names), lowest multiplier
+// first. Empty when every gem is late. Unset, with a line in `refusals`, when
+// a late gem pays less than an inside gem: the late gems go last, so no press
+// gives that order.
 std::optional<std::vector<std::vector<size_t>>> squeeze_out_inside_groups(
-    int chord, const std::vector<int>& multipliers, std::vector<std::string>& refusals);
+    int chord, const std::vector<int>& multipliers, const std::vector<size_t>& late,
+    std::vector<std::string>& refusals);
 
 // A drum pad: a gem's colour and whether it is a cymbal.
 using Pad = std::pair<NoteColor, bool>;
@@ -188,7 +192,17 @@ struct ChordIndex {
 };
 ChordIndex chord_index(const Song& song);
 
-// One activation's geometry: its chord, nominal and final ends, every
+// The build of the code that writes these files: the compile date and time of
+// replay_schedule.cpp. CMake stamps no git hash today, so there is none to add.
+// schedule_json and `hydra_replay dump` write it as "hydra_replay_build".
+const char* replay_build();
+
+// "song_length_ms" for a chart whose metadata is `meta`: Hydra's one song end,
+// app::song_length_ms (D255), or null when it gives none.
+nlohmann::json song_length_json(const store::ChartTimingMeta& meta, const Song& song);
+
+// One activation's geometry: its chord, nominal and final ends, the point the
+// meter reached the activation level (Activation::sp_ready_tick), every
 // SP-end step with its anchor (Activation::end_anchor_tick), the chord the
 // player reads the end after (read_end_after, the final end's anchor) and
 // every squeeze with its own end, anchor, stored ratios and steady spans.
@@ -204,8 +218,10 @@ nlohmann::json activation_json(const Activation& act, const ChordIndex& chords,
 // timed from an end names the activation ("timed_from_end"), the read it is
 // retimed from ("end_read_after") and the end its aim assumed in that read's
 // terms ("aim_end_ms"). `replay` is replay_path over the same path's windows.
+// `rules` are the rules the path was priced under: a squeeze-out's late press
+// holds the gems they pay outside (sqout_late_notes).
 nlohmann::json schedule_json(const Song& song, const std::vector<const Activation*>& acts,
-                             const ReplayResult& replay, DeclineMode mode);
+                             const ReplayResult& replay, const core::Rules& rules, DeclineMode mode);
 
 // ---- the command's refusals ------------------------------------------------
 
@@ -223,7 +239,8 @@ std::optional<std::string> decline_flag_refusal(const std::optional<std::string>
 // The schedule of the path `windows` names (read off a dump, as `score --path`
 // reads it): the windows are pinned through search_target so the engine's
 // own Activation records come back, then replayed. Throws std::runtime_error
-// with a plain line when the engine cannot realize the windows.
+// with a plain line when the engine cannot realize the windows. The rules are
+// `settings.rules`, the ones the search and the replay price under.
 nlohmann::json schedule_for_windows(const Song& song, const SearchSettings& settings,
                                     const std::vector<ReplayWindow>& windows,
                                     DeclineMode mode);

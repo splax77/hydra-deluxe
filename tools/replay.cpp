@@ -509,10 +509,13 @@ int cmd_dump(const Args& a, const app::Settings& s) {
 
     // "source" is always "analyzed". It stays in the JSON so scripts that read
     // it still work.
-    emit(json{{"hyhash", hyhash},
+    emit(json{{"hydra_replay_build", schedule::replay_build()},
+              {"hyhash", hyhash},
               {"chartmode", s.chartmode_key()},
               {"source", "analyzed"},
               {"sp_cap", rec.sp_cap ? *rec.sp_cap : -1},
+              {"song_length_ms", schedule::song_length_json(
+                                     app::chart_timing_meta(std::nullopt, a.chart), analysis.song)},
               {"result", result_json(rec)},
               {"paths", paths_json(rec.all_paths(), analysis.song.timing())}},
          a.out, a.pretty);
@@ -649,6 +652,7 @@ int cmd_schedule(const Args& a, const app::Settings& s) {
     out["chart"] = a.chart;
     out["chartmode"] = s.chartmode_key();
     out["path_source"] = json{{"file", a.path}, {"index", a.index}};
+    out["song_length_ms"] = schedule::song_length_json(app::chart_timing_meta(std::nullopt, a.chart), song);
     emit(out, a.out, a.pretty);
     return 0;
 }

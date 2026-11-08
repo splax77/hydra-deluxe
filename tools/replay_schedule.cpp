@@ -7,6 +7,8 @@
 #include <stdexcept>
 #include <tuple>
 
+#include "app/song_length.h"     // song_length_ms, the one song end (D255)
+#include "core/scoring.h"         // sqout_late_notes
 #include "core/squeeze_rating.h"  // steady_spans
 
 namespace hydra::schedule {
@@ -370,17 +372,24 @@ std::vector<std::vector<size_t>> press_groups(const std::vector<int>& multiplier
 // all, so a late gem the score file pays at a lower multiplier than an inside
 // gem is an order no press gives." Design point 5 of
 // docs/superpowers/plans/2026-11-07-player-limits.md and the user's answer to
-// its question 5 say why that is Hydra's question, not the player's.
+// its question 5 say why that is Hydra's question, not the player's. The
+// late gems are the ones the loaded rules pay outside (sqout_late_notes), not
+// a fixed place.
 std::optional<std::vector<std::vector<size_t>>> squeeze_out_inside_groups(
-    int chord, const std::vector<int>& multipliers, std::vector<std::string>& refusals) {
+    int chord, const std::vector<int>& multipliers, const std::vector<size_t>& late,
+    std::vector<std::string>& refusals) {
     std::vector<size_t> inside;
-    for (size_t p = 1; p < multipliers.size(); ++p) inside.push_back(p);
+    for (size_t p = 0; p < multipliers.size(); ++p)
+        if (std::find(late.begin(), late.end(), p) == late.end()) inside.push_back(p);
     if (inside.empty()) return std::vector<std::vector<size_t>>{};
-    int highest = multipliers[0];
+    if (late.empty()) return press_groups(multipliers, inside, std::nullopt);
+    int lowest_late = multipliers[late.front()];
+    for (size_t p : late) lowest_late = std::min(lowest_late, multipliers[p]);
+    int highest = lowest_late;
     for (size_t p : inside) highest = std::max(highest, multipliers[p]);
-    if (highest > multipliers[0]) {
+    if (highest > lowest_late) {
         refusals.push_back("chord " + std::to_string(chord) + " is a squeeze-out whose late gem pays x" +
-                           std::to_string(multipliers[0]) + " and an inside gem x" + std::to_string(highest) +
+                           std::to_string(lowest_late) + " and an inside gem x" + std::to_string(highest) +
                            ": Hydra assumes an order no press gives, since the late gem goes last; this is a "
                            "question about Hydra's path for the user, not a player bug");
         return std::nullopt;
@@ -468,6 +477,11 @@ nlohmann::json activation_json(const Activation& act, const ChordIndex& chords,
     const std::optional<int64_t> deact = act.deact_tick();
     const std::optional<int64_t> read_after = act.deact_anchor_tick();
     if (!deact) refusals.push_back(who + " has no SP-end steps, so its end is not known");
+    const std::optional<int64_t> ready = act.sp_ready_tick();
+    if (!ready)
+        refusals.push_back(who + " has " + std::to_string(act.sp_meter()) +
+                           " stored bar arrivals, fewer than the activation level of " +
+                           std::to_string(kSpActivationBars) + ", so when its meter was ready is not known");
 
     nlohmann::json squeezes = nlohmann::json::array();
     for (size_t k = 0; k < act.sqinouts.size(); ++k) {
@@ -515,6 +529,8 @@ nlohmann::json activation_json(const Activation& act, const ChordIndex& chords,
     return nlohmann::json{
         {"act_tick", act_tick},
         {"chord", or_null(chords.at(act_tick))},
+        {"sp_ready_tick", ready ? nlohmann::json(*ready) : nlohmann::json(nullptr)},
+        {"sp_ready_ms", ready ? nlohmann::json(ms_of(*ready)) : nlohmann::json(nullptr)},
         {"nominal_end_tick", nominal ? nlohmann::json(*nominal) : nlohmann::json(nullptr)},
         {"nominal_end_ms", nominal ? nlohmann::json(ms_of(*nominal)) : nlohmann::json(nullptr)},
         {"deact_tick", deact ? nlohmann::json(*deact) : nlohmann::json(nullptr)},
@@ -528,8 +544,15 @@ nlohmann::json activation_json(const Activation& act, const ChordIndex& chords,
     };
 }
 
+const char* replay_build() { return __DATE__ " " __TIME__; }
+
+nlohmann::json song_length_json(const store::ChartTimingMeta& meta, const Song& song) {
+    const std::optional<double> ms = app::song_length_ms(meta, song);
+    return ms ? nlohmann::json(*ms) : nlohmann::json(nullptr);
+}
+
 nlohmann::json schedule_json(const Song& song, const std::vector<const Activation*>& acts,
-                             const ReplayResult& replay, DeclineMode mode) {
+                             const ReplayResult& replay, const core::Rules& rules, DeclineMode mode) {
     const ChordIndex chords = chord_index(song);
     std::vector<std::string> refusals;
 
@@ -842,11 +865,13 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
             // Thresholds in the same terms as the read.
             const double terms = *aim_end - s.aim_end_ms;
             if (t.g.kind == SqueezeKind::SqOut) {
-                // _timed_presses in play_chart.py, moved: "The gem Hydra's
-                // FirstNote rule pays outside is note 0 of
-                // Chord::note_list(true)", so the late gem is place 0.
+                // The late gems are the ones the rules pay outside, by their
+                // place in Chord::note_list(true), the order of
+                // ReplayChord::notes.
+                const std::vector<size_t> late_gems =
+                    sqout_late_notes(song.sequence[i].chord, rules.sqout_rule);
                 const std::optional<std::vector<std::vector<size_t>>> inside =
-                    squeeze_out_inside_groups(ci, mults[i], refusals);
+                    squeeze_out_inside_groups(ci, mults[i], late_gems, refusals);
                 if (!inside) continue;
                 // "The last inside group goes down at the inside time,
                 // SP_END_LEAD_MS before the end, so no later group can land
@@ -858,7 +883,7 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
                     add_groups(i, *inside, first_inside_aim, true, "squeeze_out_inside", a, anchor, *aim_end);
                 Press late;
                 late.chord = i;
-                late.gems = {0};
+                late.gems = late_gems;
                 late.aim_ms = s.squeeze_aim_ms;
                 late.rule = "squeeze_out_late";
                 late.act = a;
@@ -958,7 +983,8 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
         press_list.push_back(std::move(row));
     }
 
-    return nlohmann::json{{"constants", constants_json()},
+    return nlohmann::json{{"hydra_replay_build", replay_build()},
+                          {"constants", constants_json()},
                           {"decline", decline_mode_name(mode)},
                           {"activations", act_list},
                           {"chords", chord_list},
@@ -997,7 +1023,7 @@ nlohmann::json schedule_for_windows(const Song& song, const SearchSettings& sett
     std::vector<const Activation*> acts;
     for (const Activation& act : path.walk_activations()) acts.push_back(&act);
     const ReplayResult replay = replay_path(song, windows_for_path(path), settings.rules);
-    return schedule_json(song, acts, replay, mode);
+    return schedule_json(song, acts, replay, settings.rules, mode);
 }
 
 }  // namespace hydra::schedule

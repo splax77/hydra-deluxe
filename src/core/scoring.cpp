@@ -23,6 +23,21 @@ NoteValue note_value(const ChordNote& note, int multiplier) {
 
 }  // namespace
 
+// The squeeze-out rule's one body: which notes the game pays outside Star
+// Power when a chord is squeezed out. FirstNote takes note 0 only; WholeChord
+// takes every note.
+bool sqout_pays_outside(size_t place, core::SqOutRule sqout_rule) {
+    return place == 0 || sqout_rule == core::SqOutRule::WholeChord;
+}
+
+std::vector<size_t> sqout_late_notes(const Chord& chord, core::SqOutRule sqout_rule) {
+    std::vector<size_t> out;
+    const size_t count = chord.note_list(true).size();
+    for (size_t place = 0; place < count; ++place)
+        if (sqout_pays_outside(place, sqout_rule)) out.push_back(place);
+    return out;
+}
+
 CategoryScores category_scores(const Chord& chord, int combo,
                                 std::vector<CategoryScores>* per_note,
                                 core::SqOutRule sqout_rule) {
@@ -52,10 +67,9 @@ CategoryScores category_scores(const Chord& chord, int combo,
         // Star Power multiplies the whole paid value by kStarPowerMultiplier,
         // so its own share is that many copies less the one already paid.
         const int sp = (kStarPowerMultiplier - 1) * value.paid;
-        // SqOut: the notes that lose their SP doubling. FirstNote takes note 0
-        // only; WholeChord takes every note. A lost doubling is the note's
-        // paid value.
-        const bool loses_sp = i == 0 || sqout_rule == core::SqOutRule::WholeChord;
+        // SqOut: the notes that lose their SP doubling (sqout_pays_outside).
+        // A lost doubling is the note's paid value.
+        const bool loses_sp = sqout_pays_outside(i, sqout_rule);
         const int note_sqout = loses_sp ? value.paid : 0;
 
         out.notes += notes_share;
