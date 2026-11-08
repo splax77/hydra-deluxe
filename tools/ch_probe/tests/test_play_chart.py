@@ -644,6 +644,25 @@ class DynamicsTest(unittest.TestCase):
                                press, now=wall.now, sleep=wall.sleep, out=io.StringIO())
         self.assertEqual(seen, [chords[0].axes, chords[1].axes])
 
+    def test_a_ghost_or_accent_kick_gets_the_axis_a_pad_gets(self):
+        # T2 of docs/superpowers/plans/2026-11-08-kick-axis-bind.md: the kit
+        # presses the kick as an axis, so with_axes must hand a kick its
+        # pad_axis strength exactly as it hands a pad one.
+        from tools.ch_mcp.kit_tools import pad_axis
+        _ThresholdEngine.threshold = 64
+        dump = {"chords": [
+            {"index": 0, "ms": 1000.0, "notes": [_gem("Kick", "ghost")]},
+            {"index": 1, "ms": 1500.0, "notes": [_gem("Kick", "accent"), _gem("Red", "ghost")]},
+        ]}
+        chords, threshold = play_chart.with_axes(_load_dump(dump), _ThresholdEngine())
+        self.assertEqual(threshold, 64)
+        self.assertEqual(chords[0].lanes, [Lane.KICK])
+        self.assertEqual(chords[0].axes, [pad_axis("ghost", 64)])
+        self.assertLess(chords[0].axes[0], 1.0)
+        self.assertEqual(chords[1].lanes, [Lane.KICK, Lane.RED])
+        self.assertEqual(chords[1].axes, [pad_axis("accent", 64), pad_axis("ghost", 64)])
+        self.assertNotEqual(pad_axis("ghost", 64), pad_axis("accent", 64))
+
 
 class PressReplyRowTest(unittest.TestCase):
     """A press that returns a dict (the kit press) adds the values the press
