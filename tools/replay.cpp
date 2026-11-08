@@ -87,7 +87,6 @@ struct Args {
     std::string path;   // a dump/target JSON file to read a path out of
     int index = 0;      // which entry of that file's "paths" array
     std::string ticks;
-    std::optional<std::string> decline;  // schedule's --decline; the names are schedule::DeclineMode's
     bool pretty = false;
     bool legacy_fills = false;
     std::optional<std::string> rules_path;  // --rules; unset = app::default_rules_path()
@@ -110,14 +109,14 @@ void usage() {
         "                     [--out <json>] [--pretty] [--prodrums 0|1] [--bass2x 0|1]\n"
         "                     [--difficulty expert|hard|medium|easy] [--legacy-fills]\n"
         "  hydra_replay schedule --chart <file> --path <dump-or-target.json> [--index N]\n"
-        "                     --decline <mode> [--out <json>] [--pretty]\n"
+        "                     [--out <json>] [--pretty]\n"
         "                     [--prodrums 0|1] [--bass2x 0|1] [--legacy-fills]\n"
         "  hydra_replay selfcheck [--chart <file>] [--verbose]\n\n"
         "schedule writes the press schedule the auto-player sends for one path of\n"
         "a dump: each activation's SP-end steps and the chord each end moves with,\n"
         "each squeeze's end, anchor and stored ratios, and each chord's window side,\n"
-        "gems and the windows that paid it (tools/replay_schedule.h). --decline\n"
-        "says what a declined chord sends: %s.\n"
+        "gems and the windows that paid it (tools/replay_schedule.h). A skipped\n"
+        "fill's chord sends the gems kept_gems there names.\n"
         "Omitting both --acts and --path scores the chart with no Star Power\n"
         "anywhere. --path reads a path straight out of a file dump or target\n"
         "wrote, so nothing is retyped and no field is lost -- in particular the\n"
@@ -158,7 +157,7 @@ void usage() {
         "Every command takes --rules <file>: the rule choices to price under\n"
         "(default: hydra_rules.ini next to the exe). A bad file exits with 2.\n"
         "JSON is printed compact by default; --pretty indents it.\n",
-        schedule::decline_mode_list().c_str(), kSqueezeWindowMs);
+        kSqueezeWindowMs);
 }
 
 // ---- strict flag numbers -------------------------------------------------
@@ -624,9 +623,6 @@ int cmd_schedule(const Args& a, const app::Settings& s) {
         throw std::runtime_error(*r);
     if (!a.acts.empty())
         throw std::runtime_error("schedule reads its path from --path, not --acts");
-    if (const std::optional<std::string> r = schedule::decline_flag_refusal(a.decline))
-        throw std::runtime_error(*r);
-    const schedule::DeclineMode mode = *schedule::decline_mode_from_name(*a.decline);
 
     {
         std::ifstream in(hydra::os_path(a.path), std::ios::binary);
@@ -648,7 +644,7 @@ int cmd_schedule(const Args& a, const app::Settings& s) {
     }
 
     const std::vector<ReplayWindow> windows = windows_from_args(a, song);
-    json out = schedule::schedule_for_windows(song, s.to_analysis_settings(), windows, mode);
+    json out = schedule::schedule_for_windows(song, s.to_analysis_settings(), windows);
     out["chart"] = a.chart;
     out["chartmode"] = s.chartmode_key();
     out["path_source"] = json{{"file", a.path}, {"index", a.index}};
@@ -841,7 +837,6 @@ int main() {
             // quietly price the wrong path instead of saying anything.
             else if (k == "--index") a.index = parse_index(next());
             else if (k == "--ticks") a.ticks = next();
-            else if (k == "--decline") a.decline = next();
             else if (k == "--verbose") g_verbose = true;
             else if (k == "--prodrums") a.prodrums = next_on_off();
             else if (k == "--bass2x") a.bass2x = next_on_off();
