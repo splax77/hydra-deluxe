@@ -302,13 +302,15 @@ def build_server(helper: Optional[Helper] = None):
         the backup, attach the kit agent, let the game listen while it is
         not in focus, switch Rewired's keyboard and mouse off for the run so
         the user's own input reaches no player, take the keyboard and mouse
-        from every player, hand the kit to its player with the game's own
-        drum map, and check the bindings it reads back against
-        kit_tools.KIT_BINDINGS. player names the Rewired player the kit goes
+        from every player, build the kit from the game's MIDI Drums
+        definition (kit_tools.KIT_DEFINITION_ID, every element an axis, as a
+        real MIDI kit's), hand it to its player with the game's own drum map,
+        and check the bindings it reads back against kit_tools.KIT_BINDINGS,
+        each an axis binding. player names the Rewired player the kit goes
         to; left out, it goes to kit_tools.KIT_PLAYER, and a given name is
         sent as is and named in the reply's first line. A setup that fails,
-        leaves the keyboard or the mouse on, or reads other bindings is torn
-        down again. Needs ch_attach."""
+        leaves the keyboard or the mouse on, or reads other bindings or a
+        button binding is torn down again. Needs ch_attach."""
         return capped(h.kit.ch_kit_setup(player))
 
     @server.tool()
@@ -321,9 +323,9 @@ def build_server(helper: Optional[Helper] = None):
         hold, rewrite and thread for this press; left out, the kit's own
         values apply. read names game actions, such as "Green", to read back
         on the kit's player during the hold. value sets the axis value of
-        this press's pads, from 0 to 1, such as the ghost value ch_snapshot
-        prints; left out, the pads press as plain gems, and buttons never
-        take one. An unknown name is refused with the list of kit items.
+        this press's pads and kick, from 0 to 1, such as the ghost value
+        ch_snapshot prints; left out, they press as plain gems. Start and
+        Select always press at full, whatever value says. An unknown name is refused with the list of kit items.
         Needs ch_kit_setup."""
         return capped(h.kit.ch_kit_press(items, hold_frames, rewrite, on_main, read, value))
 
