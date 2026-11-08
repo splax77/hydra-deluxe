@@ -23,6 +23,7 @@ if ROOT not in sys.path:
 
 from tools.ch_mcp import machine_recorder as M  # noqa: E402
 from tools.ch_probe import constants as C  # noqa: E402
+from tools.ch_probe import process as P  # noqa: E402
 
 SCRIPT = os.path.join(ROOT, "tools", "ch_mcp", "machine_recorder.py")
 PERIOD_S = 1 / 64  # exact in binary, so the fake clock adds up without rounding
@@ -143,27 +144,34 @@ class CapturedTable(unittest.TestCase):
     def parse(self, sample=None, **options):
         return M.parse_table(self.sample if sample is None else sample, SAMPLE_BASE, **options)
 
+    def u32(self, at):
+        return P.decode_u32(self.sample[at:at + 4])
+
+    def u64(self, at):
+        return P.decode_u64(self.sample[at:at + 8])
+
     def test_the_sample_is_the_table_that_was_captured(self):
         self.assertEqual(len(self.sample), SAMPLE_SIZE)
         # NextEntryOffset (byte 0 of an entry) and NumberOfThreads (byte 4), by hand.
-        self.assertEqual(struct.unpack_from("<II", self.sample, 0), (SYSTEM_AT, IDLE_THREADS))
-        self.assertEqual(struct.unpack_from("<II", self.sample, SYSTEM_AT), (0, SYSTEM_THREADS))
+        self.assertEqual((self.u32(0), self.u32(4)), (SYSTEM_AT, IDLE_THREADS))
+        self.assertEqual((self.u32(SYSTEM_AT), self.u32(SYSTEM_AT + 4)), (0, SYSTEM_THREADS))
         # UniqueProcessId (byte 0x50) and InheritedFromUniqueProcessId (byte 0x58).
-        self.assertEqual(struct.unpack_from("<QQ", self.sample, 0x50), (0, 0))
-        self.assertEqual(struct.unpack_from("<QQ", self.sample, SYSTEM_AT + 0x50), (4, 0))
-        # System's ImageName: Length (byte 0x38) and Buffer (byte 0x40).
-        length, = struct.unpack_from("<H", self.sample, SYSTEM_AT + 0x38)
-        pointer, = struct.unpack_from("<Q", self.sample, SYSTEM_AT + 0x40)
+        self.assertEqual((self.u64(0x50), self.u64(0x58)), (0, 0))
+        self.assertEqual((self.u64(SYSTEM_AT + 0x50), self.u64(SYSTEM_AT + 0x58)), (4, 0))
+        # System's ImageName: Length, a USHORT (byte 0x38), and Buffer (byte 0x40).
+        length = int.from_bytes(self.sample[SYSTEM_AT + 0x38:SYSTEM_AT + 0x3A], "little")
+        pointer = self.u64(SYSTEM_AT + 0x40)
         self.assertEqual((length, pointer - SAMPLE_BASE), (12, 41728))
         self.assertEqual(self.sample[41728:41740].decode("utf-16-le"), "System")
         for index, at, tid, state, reason, switches, ticks in SYSTEM_THREAD_ROWS:
             with self.subTest(thread=index):
                 self.assertEqual(at, SYSTEM_AT + 0x100 + index * 0x50)
-                kernel, user = struct.unpack_from("<qq", self.sample, at)
-                self.assertEqual(struct.unpack_from("<QQ", self.sample, at + 0x28), (4, tid))
-                self.assertEqual(struct.unpack_from("<III", self.sample, at + 0x40),
+                # KernelTime (byte 0), UserTime (8), ClientId (0x28: pid, then tid at
+                # 0x30), ContextSwitches (0x40), ThreadState (0x44), WaitReason (0x48).
+                self.assertEqual((self.u64(at + 0x28), self.u64(at + 0x30)), (4, tid))
+                self.assertEqual((self.u32(at + 0x40), self.u32(at + 0x44), self.u32(at + 0x48)),
                                  (switches, state, reason))
-                self.assertEqual(kernel + user, ticks)
+                self.assertEqual(self.u64(at) + self.u64(at + 8), ticks)
 
     def test_the_parser_reads_the_captured_table(self):
         table = self.parse()
@@ -235,8 +243,7 @@ class CapturedTable(unittest.TestCase):
 
     def test_the_idle_process_adds_nothing_to_the_run_queue(self):
         # Idle's own entries hold 18 in state 3 (standby), byte 0x44 of each.
-        states = [struct.unpack_from("<I", self.sample, 0x100 + n * 0x50 + 0x44)[0]
-                  for n in range(IDLE_THREADS)]
+        states = [self.u32(0x100 + n * 0x50 + 0x44) for n in range(IDLE_THREADS)]
         self.assertEqual(states.count(3), 18)
         self.assertEqual(self.parse().ready_threads, 0)
 
@@ -278,7 +285,7 @@ class FakeTable(unittest.TestCase):
         second = fake_table(TWO_PROCESSES[1:])
         padded = bytearray(first + b"\0" * 8)
         struct.pack_into("<I", padded, 0x00, len(padded))
-        pointer, = struct.unpack_from("<Q", second, 0x40)
+        pointer = P.decode_u64(second[0x40:0x48])
         moved = bytearray(second)
         struct.pack_into("<Q", moved, 0x40, pointer + len(padded))
         table = M.parse_table(bytes(padded) + bytes(moved))
