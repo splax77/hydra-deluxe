@@ -1027,7 +1027,10 @@ class DeclineListTest(unittest.TestCase):
 
 
 class DeclineModeTest(unittest.TestCase):
-    """What a declined chord sends, and how the run counts it."""
+    """What a declined chord sends, and how the run counts it. Chord 458 is on
+    an activation's act tick, so press_plan presses its green cymbal first and
+    its kick in a second press: each run has one press more than it has
+    chords."""
 
     def test_kick_only_sends_the_kick_lane_alone(self):
         chords = _load_declining(play_chart.DECLINE_KICK_ONLY)
@@ -1036,7 +1039,7 @@ class DeclineModeTest(unittest.TestCase):
                          (405, [Lane.KICK], ["none"], True))
         _result, game, _text = _play(chords)
         self.assertEqual(game.presses, [[Lane.KICK, Lane.GREEN_CYMBAL], [Lane.RED], [Lane.KICK],
-                                        [Lane.RED], [Lane.KICK, Lane.GREEN_CYMBAL]])
+                                        [Lane.RED], [Lane.GREEN_CYMBAL], [Lane.KICK]])
 
     def test_kick_only_gives_one_strength_for_its_one_lane(self):
         _ThresholdEngine.threshold = 64
@@ -1055,9 +1058,9 @@ class DeclineModeTest(unittest.TestCase):
         self.assertEqual(chords[2].lanes, [])
         result, game, text = _play(chords)
         self.assertEqual(game.presses, [[Lane.KICK, Lane.GREEN_CYMBAL], [Lane.RED], [Lane.RED],
-                                        [Lane.KICK, Lane.GREEN_CYMBAL]])
+                                        [Lane.GREEN_CYMBAL], [Lane.KICK]])
         self.assertEqual([(r["index"], r["hit"]) for r in result.rows],
-                         [(348, 1), (404, 1), (405, "declined"), (406, 1), (458, 1)])
+                         [(348, 1), (404, 1), (405, "declined"), (406, 1), (458, 1), (458, 1)])
         self.assertIn("declined", text)
 
     def test_the_press_log_says_declined_in_the_hit_column(self):
@@ -1073,17 +1076,17 @@ class DeclineModeTest(unittest.TestCase):
         for mode in play_chart.DECLINE_MODES:
             result, _game, _text = _play(_load_declining(mode))
             self.assertEqual((result.sent, result.hit, result.declined, result.stop),
-                             (4, 4, 1, "done"), mode)
+                             (5, 5, 1, "done"), mode)
 
     def test_a_kick_that_scores_does_not_count_as_a_hit(self):
         result, game, _text = _play(_load_declining(play_chart.DECLINE_KICK_ONLY))
-        self.assertEqual(game.score, 500)
-        self.assertEqual(result.hit, 4)
+        self.assertEqual(game.score, 600)
+        self.assertEqual(result.hit, 5)
 
     def test_a_declined_chord_leaves_the_streak_alone(self):
         # Press 3 is the declined kick, and it scores nothing.
         result, _game, _text = _play(_load_declining(play_chart.DECLINE_KICK_ONLY), misses=(3,))
-        self.assertEqual((result.sent, result.hit, result.max_streak), (4, 4, 4))
+        self.assertEqual((result.sent, result.hit, result.max_streak), (5, 5, 5))
 
     def test_an_unknown_mode_raises(self):
         with self.assertRaises(ValueError) as caught:
@@ -1097,8 +1100,8 @@ class DeclineModeTest(unittest.TestCase):
         self.assertEqual([c.declined for c in chords], [False] * 5)
         result, game, text = _play(chords)
         self.assertEqual(game.presses[2], [Lane.KICK, Lane.GREEN_CYMBAL])
-        self.assertEqual((result.sent, result.hit, result.declined), (5, 5, 0))
-        self.assertEqual([r["hit"] for r in result.rows], [1] * 5)
+        self.assertEqual((result.sent, result.hit, result.declined), (6, 6, 0))
+        self.assertEqual([r["hit"] for r in result.rows], [1] * 6)
         self.assertNotIn("declined", text)
 
 
@@ -1135,7 +1138,9 @@ class DeclineAndLeadTest(unittest.TestCase):
 # docs/superpowers/plans/2026-11-07-player-refinements.md names with their
 # neighbours (each activation's chord, end and skipped fills too). Each chord
 # keeps its index, tick, ms and the three fields of each gem load_dump_chords
-# reads.
+# reads. The Mouths file also keeps each gem's own `multiplier`, and chords 3
+# to 5, the multiplier step LS-R1b run 1 lost points on (SC-38 on
+# docs/clone-hero/06-scoring.md).
 _MOUTHS = (os.path.join(_HERE, "mouths_refine_score.json"),
            os.path.join(_HERE, "mouths_refine_dump.json"))
 _BOMBER = (os.path.join(_HERE, "bomber_refine_score.json"),
@@ -1208,7 +1213,9 @@ class SqueezeTimingTest(unittest.TestCase):
 
     def test_bomber_activation_lead_and_late_squeeze_out(self):
         presses = _presses_by_index(_BOMBER)
-        self.assertEqual(_leads(presses[147]), [55.0])
+        # 147 is an activation's chord: its yellow cymbal keeps the early
+        # lead and its kick follows CHORD_ORDER_GAP_MS later.
+        self.assertEqual(_leads(presses[147]), [55.0, 47.0])
         self.assertEqual([round(p.at_ms, 2) for p in presses[180]], [32626.67])
         self.assertEqual(_leads(presses[180]), [-43.33])
         self.assertEqual(_leads(presses[181]), [2.0])
@@ -1263,6 +1270,99 @@ class SqueezeTimingTest(unittest.TestCase):
         self.assertEqual(play_chart.press_plan(with_dump), play_chart.press_plan(_load_senri()))
 
 
+def _lanes_and_leads(presses):
+    return [(p.lanes, round(p.lead_ms, 2)) for p in presses]
+
+
+class ChordOrderTest(unittest.TestCase):
+    """press_plan presses a chord in groups where the game's own order would
+    cost points (the amendment after LS-R1b run 1 of the 2026-11-07 plan)."""
+
+    def test_the_gap_is_the_number_the_user_set(self):
+        self.assertEqual(play_chart.CHORD_ORDER_GAP_MS, 8.0)
+
+    def test_mouths_chord_4_presses_the_x1_kick_then_the_x2_cymbal(self):
+        presses = _presses_by_index(_MOUTHS)[4]
+        self.assertEqual(_lanes_and_leads(presses),
+                         [([Lane.KICK], 2.0), ([Lane.GREEN_CYMBAL], -6.0)])
+        self.assertEqual([round(p.at_ms, 2) for p in presses], [5005.96, 5013.96])
+
+    def test_mouths_three_gem_activations_press_the_green_cymbal_first(self):
+        presses = _presses_by_index(_MOUTHS)
+        for index in (340, 704, 1208):
+            self.assertEqual(_lanes_and_leads(presses[index]),
+                             [([Lane.GREEN_CYMBAL], 2.0),
+                              ([Lane.KICK, Lane.YELLOW_CYMBAL], -6.0)], index)
+
+    def test_mouths_chord_927_presses_the_green_cymbal_then_the_kick(self):
+        self.assertEqual(_lanes_and_leads(_presses_by_index(_MOUTHS)[927]),
+                         [([Lane.GREEN_CYMBAL], 2.0), ([Lane.KICK], -6.0)])
+
+    def test_mouths_neighbours_stay_one_press(self):
+        presses = _presses_by_index(_MOUTHS)
+        chords = {c.index: c for c in _load_refine(_MOUTHS)}
+        for index in (3, 5, 339, 341, 703, 705, 926, 928, 1207, 1209):
+            self.assertEqual(_lanes_and_leads(presses[index]),
+                             [(chords[index].lanes, 2.0)], index)
+
+    def test_only_the_later_presses_are_checked(self):
+        presses = _presses_by_index(_MOUTHS)
+        for index in (4, 340, 927):
+            self.assertEqual([p.checked for p in presses[index]], [False, True], index)
+
+    def test_bomber_activation_147_keeps_its_early_lead_on_the_yellow_cymbal(self):
+        self.assertEqual(_lanes_and_leads(_presses_by_index(_BOMBER)[147]),
+                         [([Lane.YELLOW_CYMBAL], 55.0), ([Lane.KICK], 47.0)])
+
+    def test_senri_chords_stay_one_press_each(self):
+        chords = _load_senri()
+        self.assertEqual(len(play_chart.press_plan(chords)), len(chords))
+
+    def test_a_fake_run_writes_a_row_per_press_of_chord_4(self):
+        result, _game = _play_refine(_MOUTHS)
+        rows = [row for row in result.rows if row["index"] == 4]
+        self.assertEqual([round(row["lead_ms"], 2) for row in rows], [2.0, -6.0])
+
+    def test_an_activation_at_a_step_presses_the_flagged_gem_then_by_multiplier(self):
+        gems = [{**_gem("Kick", "none"), "multiplier": 1},
+                {**_gem("Red", "none"), "multiplier": 2},
+                {**_gem("Green", "none", cymbal=True), "multiplier": 2}]
+        chords = _load_dump(_made_up(
+            [(0, 0, 1000.0, gems), (1, 384, 3000.0, [_gem("Kick", "none")])],
+            activations=[{"act_tick": 0, "deact_tick": 384}])[0])
+        self.assertEqual(_lanes_and_leads(play_chart.press_plan(chords)[:3]),
+                         [([Lane.GREEN_CYMBAL], 2.0), ([Lane.KICK], -6.0),
+                          ([Lane.RED], -14.0)])
+
+    def test_a_later_press_reaching_the_next_kick_is_refused(self):
+        # Chord 0's kick goes 6 ms after its time, inside the window of the
+        # kick on chord 1 10 ms later.
+        score, _dump = _made_up(
+            [(0, 0, 1000.0, [_gem("Kick", "none"), _gem("Green", "none", cymbal=True)]),
+             (1, 4, 1010.0, [_gem("Kick", "none")]), (2, 384, 3000.0, [_gem("Red", "none")])],
+            activations=[{"act_tick": 0, "deact_tick": 384}])
+        with self.assertRaises(ValueError) as caught:
+            _load_dump(score)
+        self.assertIn("for chords 0 (", str(caught.exception))
+
+    def test_a_declined_chord_at_a_step_is_refused(self):
+        score = _with_chord_changes(405, notes=[
+            {**_gem("Kick", "none"), "multiplier": 1}, {**_gem("Red", "none"), "multiplier": 2},
+            {**_gem("Green", "none", cymbal=True), "multiplier": 2}])
+        with self.assertRaises(ValueError) as caught:
+            _load_declining(play_chart.DECLINE_ALL_BUT_TOP_PAD, score)
+        self.assertIn("chord 405 is pressed in order groups", str(caught.exception))
+
+    def test_a_squeeze_out_at_a_step_is_refused(self):
+        score, dump = LaneAwareCheckTest._far_squeeze_out(None)
+        score["chords"][2]["notes"] = [{**_gem("Kick", "none"), "multiplier": 1},
+                                       {**_gem("Red", "none"), "multiplier": 2}]
+        with self.assertRaises(ValueError) as caught:
+            _load_made_up(score, dump)
+        self.assertIn("chord 2 is pressed in order groups and is also a squeeze-out",
+                      str(caught.exception))
+
+
 def _made_up(chords, activations=(), path_activations=None):
     """A score file of `chords` (index, tick, ms, gems) and its dump."""
     score = {"activations": list(activations), "chords": [
@@ -1297,7 +1397,11 @@ class LaneAwareCheckTest(unittest.TestCase):
         sides = play_chart.window_sides(chords)
         self.assertEqual(round(sides[147], 2), 73.58)
         self.assertEqual(round(sides[180], 2), 53.06)
-        presses = {p.index: p for p in play_chart.press_plan(chords) if p.checked}
+        presses = {}
+        for p in play_chart.press_plan(chords):
+            if p.checked:
+                presses.setdefault(p.index, p)
+        # The first of 147's two presses carries the activation's lead.
         self.assertEqual((round(presses[147].lead_ms, 2), round(presses[180].lead_ms, 2)),
                          (55.0, -43.33))
 

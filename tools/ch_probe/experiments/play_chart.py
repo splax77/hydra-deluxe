@@ -92,6 +92,14 @@ SP_OUT_LAG_MS = 15.0
 # set it: question 3 of the same plan. press_plan says when it is used.
 SQOUT_ACT_LEAD_MS = 55.0
 
+# A chord whose gems the game would score in an order that costs points is
+# pressed in groups, each this many ms after the one before (SC-38 on
+# docs/clone-hero/06-scoring.md says why). The user set it ("8 ms"), and said
+# to split "Only where it matters": the amendment after LS-R1b run 1 in
+# docs/superpowers/plans/2026-11-07-player-refinements.md. _order_groups says
+# which chords split and in what order.
+CHORD_ORDER_GAP_MS = 8.0
+
 # The dump's words for a squeeze's kind: SPSqueeze::type_name in
 # src/core/model.h writes them.
 SQUEEZE_IN = "SqIn"
@@ -161,7 +169,11 @@ class Chord:
     gems a declined chord leaves out too (None: the same as `lanes`).
     `end_squeezed_out` says the activation this chord ends has a squeeze-out.
     `squeeze` is set on a chord the dump names as a squeeze. `sqout_index`,
-    on an activation's chord, is the `index` of its squeeze-out chord."""
+    on an activation's chord, is the `index` of its squeeze-out chord.
+    `multipliers` is the score file's per-gem `multiplier` for each key in
+    `lanes` (None when the file gives none). `activating_gem`, on an
+    activation's chord, is the place in `lanes` of the gem the game flags
+    (_flagged_gem)."""
     index: int
     ms: float
     lanes: List[int]
@@ -173,6 +185,8 @@ class Chord:
     end_squeezed_out: bool = False
     squeeze: Optional[Squeeze] = None
     sqout_index: Optional[int] = None
+    multipliers: Optional[List[int]] = None
+    activating_gem: Optional[int] = None
 
 
 @dataclass(frozen=True)
@@ -248,7 +262,8 @@ def press_plan(chords: Sequence[Chord]) -> List[Press]:
     works out when each gem is pressed (design point 1 of
     docs/superpowers/plans/2026-11-07-player-refinements.md says why each
     rule is what it is). A squeezed-out chord with more than one gem gives
-    two presses. Raises ValueError for a chord two rules would time."""
+    two presses, and a chord _order_groups splits gives one per group.
+    Raises ValueError for a chord two rules would time."""
     by_index = {chord.index: chord for chord in chords}
     sides = window_sides(chords)
     # An activation is pressed early only when the late press of its
@@ -268,6 +283,25 @@ def press_plan(chords: Sequence[Chord]) -> List[Press]:
     return sorted(presses, key=lambda p: p.at_ms)
 
 
+def _order_groups(chord: Chord) -> List[List[int]]:
+    """The groups `chord` is pressed in, in firing order, each as places in
+    its `lanes`: one group for most chords. An activation's chord presses its
+    `activating_gem` first; the rest go in groups by `multipliers`, the lower
+    multiplier first. The user's "Only where it matters" (the amendment after
+    LS-R1b run 1 of the 2026-11-07 plan) is why every other chord stays one
+    group."""
+    every = list(range(len(chord.lanes)))
+    first = [] if chord.activating_gem is None else [chord.activating_gem]
+    rest = [i for i in every if i not in first]
+    if chord.multipliers is None:
+        by_multiplier = [rest]
+    else:
+        by_multiplier = [[i for i in rest if chord.multipliers[i] == m]
+                         for m in sorted({chord.multipliers[i] for i in rest})]
+    # A declined chord that sends nothing is still one press, of no keys.
+    return [group for group in [first] + by_multiplier if group] or [every]
+
+
 def _chord_presses(chord: Chord, act_leads: Mapping[int, float]) -> List[Press]:
     """The presses of one chord, for press_plan."""
     def press(lead_ms: float, gems: Sequence[int], checked: bool,
@@ -277,20 +311,32 @@ def _chord_presses(chord: Chord, act_leads: Mapping[int, float]) -> List[Press]:
                      None if chord.axes is None else [chord.axes[i] for i in gems],
                      chord.declined, checked, end_ms)
 
-    every = range(len(chord.lanes))
+    groups = _order_groups(chord)
     squeeze = chord.squeeze
+    if len(groups) > 1 and (chord.declined or (squeeze is not None
+                                               and squeeze.kind == SQUEEZE_OUT)):
+        raise ValueError(f"chord {chord.index} is pressed in order groups and is also "
+                         f"{'a fill the path passes over' if chord.declined else 'a squeeze-out'}"
+                         f"; no rule times both")
+
+    def in_order(lead_ms: float, checked: bool, end_ms: Optional[float] = None) -> List[Press]:
+        # The first group keeps the chord's lead; a later group is a press
+        # off the chord's own time, so the load check reads it.
+        return [press(lead_ms - k * CHORD_ORDER_GAP_MS, gems, checked or k > 0, end_ms)
+                for k, gems in enumerate(groups)]
+
     if chord.index in act_leads:
         if squeeze is not None or chord.ends_sp:
             raise ValueError(f"chord {chord.index} starts an activation pressed early "
                              f"and is also a squeeze or an end; no rule times both")
-        return [press(act_leads[chord.index], every, True)]
+        return in_order(act_leads[chord.index], True)
     if squeeze is not None:
         end_ms = squeeze.end_ms - act_leads.get(squeeze.act_index, 0.0)
         inside_lead_ms = chord.ms - (end_ms - SP_END_LEAD_MS)
         if squeeze.kind == SQUEEZE_IN:
             if inside_lead_ms > PRESS_LEAD_MS:
-                return [press(inside_lead_ms, every, True, end_ms)]
-            return [press(PRESS_LEAD_MS, every, False, end_ms)]
+                return in_order(inside_lead_ms, True, end_ms)
+            return in_order(PRESS_LEAD_MS, False, end_ms)
         # The gem Hydra's FirstNote rule pays outside is note 0 of
         # Chord::note_list(true) (src/core/model.cpp), and the score file
         # lists a chord's notes in that order (src/core/replay.cpp), so it is
@@ -300,8 +346,8 @@ def _chord_presses(chord: Chord, act_leads: Mapping[int, float]) -> List[Press]:
             return [late]
         return [press(inside_lead_ms, range(1, len(chord.lanes)), True, end_ms), late]
     if chord.ends_sp and not chord.end_squeezed_out:
-        return [press(SP_END_LEAD_MS, every, True)]
-    return [press(PRESS_LEAD_MS, every, False)]
+        return in_order(SP_END_LEAD_MS, True)
+    return in_order(PRESS_LEAD_MS, False)
 
 
 def _refuse_far_presses(chords: Sequence[Chord], presses: Sequence[Press]) -> None:
@@ -387,14 +433,27 @@ def _kept_gems(mode: str, gems: Sequence[Mapping]) -> List[int]:
     if mode == DECLINE_KICK_ONLY:
         return [i for i, gem in enumerate(gems) if _KEY_FOR_PAD[(gem["color"], gem["cymbal"])]
                 == Lane.KICK][:1]
+    top = _flagged_gem(gems)
+    if top is None:
+        return []
+    return [i for i in range(len(gems)) if i != top]
+
+
+def _flagged_gem(gems: Sequence[Mapping]) -> Optional[int]:
+    """The place in a chord (the score file's "notes") of the gem the game
+    flags: its highest pad by _TOP_PAD_ORDER, or None for a chord with no pad
+    gem. all_but_top_pad leaves this gem out, and an activation's chord
+    presses it first. Raises ValueError for a chord with two gems of its
+    highest pad's color, because which one the game flags is not known."""
     top = next((color for color in _TOP_PAD_ORDER
                 if any(gem["color"] == color for gem in gems)), None)
     if top is None:
-        return []
-    if sum(gem["color"] == top for gem in gems) > 1:
-        raise ValueError(f"a declined chord holds two {top} gems; which one the game "
+        return None
+    places = [i for i, gem in enumerate(gems) if gem["color"] == top]
+    if len(places) > 1:
+        raise ValueError(f"a chord holds two {top} gems; which one the game "
                          f"flags is not known")
-    return [i for i, gem in enumerate(gems) if gem["color"] != top]
+    return places[0]
 
 
 def load_dump_chords(path: str, declines: Optional[Mapping[int, str]] = None,
@@ -412,6 +471,7 @@ def load_dump_chords(path: str, declines: Optional[Mapping[int, str]] = None,
     with open(path, encoding="utf-8") as f:
         score = json.load(f)
     score_acts = score.get("activations", [])
+    act_ticks = {act["act_tick"] for act in score_acts}
     deact_ticks = {act["deact_tick"] for act in score_acts}
     if dump_path is None:
         if any(act.get("sqout_tick", -1) >= 0 for act in score_acts):
@@ -431,14 +491,24 @@ def load_dump_chords(path: str, declines: Optional[Mapping[int, str]] = None,
         tick = chord.get("tick")
         squeeze = squeezes.get(tick)
         sqout_index = sqout_of_act.get(chord["index"])
-        if declined and (squeeze is not None or sqout_index is not None):
+        if declined and (squeeze is not None or sqout_index is not None
+                         or tick in act_ticks):
             raise ValueError(f"chord {chord['index']} is a fill the path passes over and "
-                             f"also a squeeze or a squeeze-out's activation")
+                             f"also a squeeze or an activation")
+        # A score file whose gems carry no `multiplier` splits no chord by it.
+        multipliers = ([gems[i]["multiplier"] for i in kept]
+                       if all("multiplier" in gem for gem in gems) else None)
+        activating_gem = None
+        if tick in act_ticks:
+            flagged = _flagged_gem(gems)
+            # A chord with no pad is all kicks, and its kick is the flagged gem.
+            activating_gem = 0 if flagged is None else flagged
         chords.append(Chord(chord["index"], chord["ms"], [lanes[i] for i in kept],
                             [dynamics[i] for i in kept], ends_sp=tick in deact_ticks,
                             declined=declined, chart_lanes=lanes,
                             end_squeezed_out=tick in sqout_deacts, squeeze=squeeze,
-                            sqout_index=sqout_index))
+                            sqout_index=sqout_index, multipliers=multipliers,
+                            activating_gem=activating_gem))
     _refuse_far_presses(chords, press_plan(chords))
     return chords
 
