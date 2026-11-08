@@ -1,0 +1,4 @@
+# songentry_hash_chart_35F6E0 (build 6142, RVA 0x35F6E0)
+A `SongEntry` method (one optional bool argument, returns a bool) that fills the song's `checksum` field at +0x38. Line 21 tests `isSng` at +0xB3.
+For a folder chart (lines 23 to 40), it takes `get_ChartPath`, reads that one file through `0x1313F0` (a static method that returns a byte array and a count), and hashes that many bytes. For a .sng (lines 46 to 56), it takes `get_Sng` and calls `0x262100` with the song's `chartName` field (+0x78); that method returns the named file's bytes from inside the .sng, and the whole array is hashed. Both branches meet at line 61, the MD5 call `0x20FA8F0` (song_hash_md5_20FA8F0.md), which writes the result into +0x38.
+Lines 62 to 66 copy the 16 bytes into the object at +0x60, and lines 67 to 71 clear the field at +0x48. Which objects those are was not read.

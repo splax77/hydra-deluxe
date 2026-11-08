@@ -1,0 +1,3 @@
+# song_hash_md5_20FA8F0 (build 6142, RVA 0x20FA8F0)
+A method of the 16-byte checksum struct, class #8286, the type of `SongEntry.checksum`. It takes a byte array and a count. Line 15 makes an `MD5`, and lines 24 to 27 call `ComputeHash(array, 0, count)`. Lines 28 to 31 hand the result to the struct's own method `0x20FA1E0` (not listed) with the struct as its target. So a song's checksum is the MD5 of the first `count` bytes of the array it is given; that `0x20FA1E0` copies the 16 bytes unchanged was not read.
+Direct callers only (byte scan of call instructions): `SongEntry` methods 0x35C110, 0x35F6E0 and 0x35F8B0, and a method of class #1136 (the song cache) at 0x27EE20.
