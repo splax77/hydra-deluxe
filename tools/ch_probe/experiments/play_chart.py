@@ -537,10 +537,13 @@ def _timed_presses(chord: Chord, leads: Mapping[int, ActLead],
             return [late]
         return [press(inside_lead_ms, range(1, len(chord.lanes)), True, end_ms,
                       squeeze.act_index), late]
+    # Design point 3 of the player-limits plan: an end moved earlier puts the
+    # chords before it at risk; one moved later leaves them inside already.
+    end_side_shift_ms = min(end_shift_ms(chord.sp_act_index), 0.0)
     if chord.ends_sp and not chord.end_squeezed_out:
         # The chord sits on the end, so its own time is the end the lead
         # moves, and its lead is SP_END_LEAD_MS less that move.
-        shift_ms = end_shift_ms(chord.sp_act_index)
+        shift_ms = end_side_shift_ms
         return in_order(SP_END_LEAD_MS - shift_ms, True, chord.ms + shift_ms,
                         chord.sp_act_index)
     if (chord.sp_act_index is not None and chord.sp_act_index != chord.index
@@ -550,7 +553,7 @@ def _timed_presses(chord: Chord, leads: Mapping[int, ActLead],
         # press would come later than that.
         act_end = act_ends.get(chord.sp_act_index)
         if act_end is not None and act_end.end_ms is not None:
-            end_ms = act_end.end_ms + end_shift_ms(chord.sp_act_index)
+            end_ms = act_end.end_ms + end_side_shift_ms
             inside_lead_ms = chord.ms - (end_ms - SP_END_LEAD_MS)
             if inside_lead_ms > PRESS_LEAD_MS:
                 return in_order(inside_lead_ms, True, end_ms, chord.sp_act_index)

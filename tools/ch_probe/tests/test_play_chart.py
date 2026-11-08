@@ -1189,8 +1189,8 @@ class SqueezeTimingTest(unittest.TestCase):
 
     def test_the_lag_and_the_margin_are_the_numbers_the_user_set(self):
         # SP_OUT_LAG_MS: question 2 of the 2026-11-07 player-refinements
-        # plan. ACT_LEAD_MARGIN_MS: question 1 of the player-limits plan,
-        # which replaced the fixed 55 ms activation lead.
+        # plan. ACT_LEAD_MARGIN_MS: question 1 of the player-limits plan;
+        # activation_leads solves each lead, so no fixed lead is left.
         self.assertEqual(play_chart.SP_OUT_LAG_MS, 15.0)
         self.assertEqual(play_chart.ACT_LEAD_MARGIN_MS, 6.0)
         self.assertFalse(hasattr(play_chart, "SQOUT_ACT_LEAD_MS"))
@@ -1237,8 +1237,7 @@ class SqueezeTimingTest(unittest.TestCase):
     def test_bomber_activation_lead_and_late_squeeze_out(self):
         presses = _presses_by_index(_BOMBER)
         # 147 is an activation's chord: its yellow cymbal keeps the solved
-        # early lead (the fixed lead before it was 55 ms) and its kick follows
-        # CHORD_ORDER_GAP_MS later.
+        # early lead and its kick follows CHORD_ORDER_GAP_MS later.
         self.assertEqual(_leads(presses[147]), [51.28, 43.28])
         self.assertEqual([round(p.at_ms, 2) for p in presses[180]], [32630.39])
         self.assertEqual(_leads(presses[180]), [-47.06])
@@ -1481,13 +1480,364 @@ class LaneAwareCheckTest(unittest.TestCase):
                       "does not move it", str(caught.exception))
 
     def test_a_far_squeeze_out_loads_with_the_solved_lead(self):
-        # The fixed 55 ms lead this replaced gave -43.33 at chord 2.
         presses = {p.index: p for p in play_chart.press_plan(
             _load_made_up(*self._far_squeeze_out()))}
         self.assertEqual(round(presses[0].lead_ms, 2), 51.28)
         self.assertEqual(round(presses[2].lead_ms, 2), -47.06)
         # The end chord is outside Star Power in Hydra's path, so it is plain.
         self.assertEqual((presses[3].lead_ms, presses[3].checked), (2.0, False))
+
+
+# Cut from the limits-prep-v2 `hydra_replay dump` and `score` files of path 0
+# of Rescued, Ghost Of Indecision, Get Ur Freak On and Watashi (the main
+# session's prep for docs/superpowers/plans/2026-11-07-player-limits.md):
+# every activation, each activation's chord, end, squeezes and skipped fills
+# with two neighbours on each side, and every phrase collected inside Star
+# Power. Watashi keeps only its first activation with a squeeze-out. Each
+# chord keeps its index, tick, ms, in_sp, is_sp_phrase_end and each gem's
+# color, cymbal, dynamic and multiplier.
+_RESCUED = (os.path.join(_HERE, "rescued_limits_score.json"),
+            os.path.join(_HERE, "rescued_limits_dump.json"))
+_GHOST = (os.path.join(_HERE, "ghost_limits_score.json"),
+          os.path.join(_HERE, "ghost_limits_dump.json"))
+_FREAK = (os.path.join(_HERE, "freak_limits_score.json"),
+          os.path.join(_HERE, "freak_limits_dump.json"))
+_WATASHI = (os.path.join(_HERE, "watashi_limits_score.json"),
+            os.path.join(_HERE, "watashi_limits_dump.json"))
+
+# The dump's end fields (tools/replay_json.cpp writes them).
+_END_FIELDS = ("end_anchor_tick", "end_scale_early", "end_scale_late",
+               "steady_ms_before_act", "steady_ms_after_act",
+               "steady_ms_before_end", "steady_ms_after_end")
+
+
+def _read_json(path):
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _load_unchecked(files):
+    """The chords of `files` as _load_refine gives them, with the load check
+    of _refuse_far_presses left out: Rescued and Ghost stop there today
+    (question 4 of the player-limits plan decides that check after LS-E)."""
+    from unittest import mock
+    with mock.patch.object(play_chart, "_refuse_far_presses", lambda _chords, _presses: None):
+        return _load_refine(files)
+
+
+def _load_changed(files, change, check=True):
+    """_load_refine (or _load_unchecked) over a copy of `files` whose dump
+    `change` edits in place."""
+    score, dump = _read_json(files[0]), _read_json(files[1])
+    change(dump)
+    with tempfile.TemporaryDirectory() as d:
+        paths = (os.path.join(d, "score.json"), os.path.join(d, "dump.json"))
+        for path, content in zip(paths, (score, dump)):
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(content, f)
+        return _load_refine(paths) if check else _load_unchecked(paths)
+
+
+def _without_end_fields(dump):
+    for act in dump["paths"][0]["activations"]:
+        for name in _END_FIELDS:
+            act.pop(name, None)
+
+
+def _leads_by_act(chords):
+    return {lead.act_index: lead for lead in play_chart.activation_leads(chords)}
+
+
+def _presses_of(chords, index):
+    return [p for p in play_chart.press_plan(chords) if p.index == index]
+
+
+class SolvedLeadTest(unittest.TestCase):
+    """activation_leads solves each activation's lead from its squeezes
+    (design point 2 of docs/superpowers/plans/2026-11-07-player-limits.md);
+    the worked leads are that plan's."""
+
+    def test_the_margin_is_the_users_number(self):
+        # Question 1 of the player-limits plan: the user chose 6 ms.
+        self.assertEqual(play_chart.ACT_LEAD_MARGIN_MS, 6.0)
+
+    def test_rescued_820_and_530_are_led_early_through_the_dumps_ratios(self):
+        chords = _load_unchecked(_RESCUED)
+        leads = _leads_by_act(chords)
+        self.assertEqual(sorted(leads), [530, 820])
+        lead = leads[820]
+        self.assertEqual((lead.squeeze_index, lead.direction), (931, play_chart.EARLY))
+        self.assertAlmostEqual(lead.lead_ms, 58.82, delta=0.01)
+        self.assertAlmostEqual(lead.ratio, 1.0045, places=4)
+        self.assertAlmostEqual(lead.planned_end_ms, 186348.95, delta=0.01)
+        lead = leads[530]
+        self.assertEqual((lead.squeeze_index, lead.direction), (561, play_chart.EARLY))
+        self.assertAlmostEqual(lead.lead_ms, 57.12, delta=0.01)
+        self.assertAlmostEqual(lead.ratio, 1.0284, places=4)
+        self.assertAlmostEqual(lead.planned_end_ms, 126233.85, delta=0.01)
+
+    def test_rescued_931_is_pressed_15_ms_after_the_planned_end(self):
+        chords = _load_unchecked(_RESCUED)
+        planned_ms = _leads_by_act(chords)[820].planned_end_ms
+        (late,) = _presses_of(chords, 931)
+        self.assertAlmostEqual(late.at_ms, planned_ms + play_chart.SP_OUT_LAG_MS, places=6)
+        # 55.92 ms after chord 931, inside its 61.94 ms side by 6.
+        self.assertAlmostEqual(late.at_ms - late.chart_ms, 55.92, delta=0.01)
+        self.assertAlmostEqual(play_chart.window_sides(chords)[931], 61.94, delta=0.01)
+
+    def test_rescued_stops_at_the_load_check_on_chord_931(self):
+        # 931's late green lands 44 ms before chord 932, a green inside its
+        # window: the same-pad check the plan's question 4 leaves to LS-E.
+        with self.assertRaises(ValueError) as caught:
+            _load_refine(_RESCUED)
+        self.assertEqual(str(caught.exception),
+                         "a press would miss its note or reach another note on its pad for "
+                         "chords 931 (SP_END_LEAD_MS 15 ms, SP_OUT_LAG_MS 15 ms, "
+                         "ACT_LEAD_MARGIN_MS 6 ms)")
+
+    def test_ghost_661_is_led_early_and_756_pressed_late_inside_its_side(self):
+        chords = _load_unchecked(_GHOST)
+        leads = _leads_by_act(chords)
+        self.assertEqual(sorted(leads), [661])
+        self.assertEqual(leads[661].squeeze_index, 756)
+        self.assertAlmostEqual(leads[661].lead_ms, 63.15, delta=0.01)
+        self.assertAlmostEqual(leads[661].ratio, 1.0133, places=4)
+        (late,) = _presses_of(chords, 756)
+        self.assertAlmostEqual(late.at_ms - late.chart_ms, 60.26, delta=0.01)
+        self.assertAlmostEqual(play_chart.window_sides(chords)[756], 66.34, delta=0.01)
+
+    def test_ghost_stops_at_the_load_check_on_chord_756(self):
+        # 756's late yellow cymbal lands 49 ms before chord 757, which holds
+        # a yellow cymbal too.
+        with self.assertRaises(ValueError) as caught:
+            _load_refine(_GHOST)
+        self.assertIn("for chords 756 (", str(caught.exception))
+
+    def test_freak_loads_with_1062_led_by_the_formula_and_387_needing_none(self):
+        chords = _load_refine(_FREAK)
+        leads = _leads_by_act(chords)
+        # The fixed lead this replaced was 55 ms.
+        self.assertEqual(sorted(leads), [1062])
+        self.assertEqual(leads[1062].squeeze_index, 1144)
+        self.assertAlmostEqual(leads[1062].lead_ms, 51.68, delta=0.01)
+        # 387 squeezes out of the activation on chord 232, which needs no
+        # lead: its late press 15 ms after the dump's end is inside its side.
+        (late,) = _presses_of(chords, 387)
+        self.assertEqual(late.end_act_index, 232)
+        self.assertAlmostEqual(late.at_ms - late.end_ms, play_chart.SP_OUT_LAG_MS, places=6)
+        self.assertAlmostEqual(late.at_ms - late.chart_ms, 43.09, delta=0.01)
+
+    def test_watashi_541_is_refused_naming_the_lead_it_needs(self):
+        with self.assertRaises(ValueError) as caught:
+            _load_refine(_WATASHI)
+        text = str(caught.exception)
+        self.assertIn("chord 541", text)
+        self.assertIn("371 ms", text)
+
+    def test_a_steady_span_shorter_than_the_lead_is_refused_naming_it(self):
+        def short(dump):
+            for act in dump["paths"][0]["activations"]:
+                if act["act_tick"] == 83712:
+                    act["steady_ms_before_act"] = 50.0
+        with self.assertRaises(ValueError) as caught:
+            _load_changed(_RESCUED, short, check=False)
+        self.assertIn("activation chord 820", str(caught.exception))
+        self.assertIn("steady_ms_before_act is 50.00 ms", str(caught.exception))
+
+    def test_bomber_147_is_led_by_the_formula(self):
+        # 51.27 in the plan; the fixed lead before it was 55 ms.
+        lead = _leads_by_act(_load_refine(_BOMBER))[147]
+        self.assertEqual((lead.squeeze_index, lead.direction, lead.ratio),
+                         (180, play_chart.EARLY, 1.0))
+        self.assertAlmostEqual(lead.lead_ms, 51.27, delta=0.01)
+
+    def test_mouths_needs_no_lead(self):
+        self.assertEqual(play_chart.activation_leads(_load_refine(_MOUTHS)), [])
+
+    def test_a_dump_without_the_ratios_loads_mouths_and_refuses_rescued(self):
+        self.assertTrue(_load_changed(_MOUTHS, _without_end_fields))
+        with self.assertRaises(ValueError) as caught:
+            _load_changed(_RESCUED, _without_end_fields)
+        self.assertIn("end_scale_early", str(caught.exception))
+        self.assertIn("hydra_replay dump", str(caught.exception))
+
+    def test_an_end_anchored_on_another_chord_is_refused(self):
+        def anchored(dump):
+            dump["paths"][0]["activations"][0]["end_anchor_tick"] = 18768
+        with self.assertRaises(ValueError) as caught:
+            _load_changed(_BOMBER, anchored)
+        self.assertIn("chord 147's end is anchored on chord 180; pressing the activation "
+                      "early does not move it", str(caught.exception))
+
+
+class MovedEndTest(unittest.TestCase):
+    """Chords near an end that a lead moved (design points 3 and 6 of the
+    player-limits plan)."""
+
+    def _far_squeeze_out_with_a_chord_near_the_end(self, in_sp):
+        # LaneAwareCheckTest's far squeeze-out, with a green chord 10 ms
+        # before the end the activation's lead moves it to.
+        step = 250 / 3
+        score, dump = _made_up(
+            [(0, 0, 1000.0, [_gem("Kick", "none")]),
+             (1, 48, 1000.0 + step, [_gem("Yellow", "none")]),
+             (2, 96, 1000.0 + 2 * step, [_gem("Red", "none")]),
+             (3, 110, 1186.3066211680307, [_gem("Green", "none")]),
+             (4, 144, 1000.0 + 3 * step, [_gem("Blue", "none")])],
+            activations=[{"act_tick": 0, "deact_tick": 144, "sqout_tick": 96}],
+            path_activations=[{"act_tick": 0, "deact_tick": 144, "nominal_deact_tick": 144,
+                               "sqout_tick": 96, "sqin_ticks": [], "skipped_fill_ticks": [],
+                               "sqinouts": [{"kind": "SqOut", "offset_ms": -step}],
+                               **_STEADY_ONE_TEMPO}])
+        score["chords"][3]["in_sp"] = in_sp
+        return _load_made_up(score, dump)
+
+    def test_an_in_sp_chord_10_ms_before_a_moved_end_gets_the_end_lead(self):
+        chords = self._far_squeeze_out_with_a_chord_near_the_end(True)
+        lead = _leads_by_act(chords)[0]
+        (press,) = _presses_of(chords, 3)
+        self.assertAlmostEqual(press.end_ms, lead.planned_end_ms, places=6)
+        self.assertAlmostEqual(press.at_ms, press.end_ms - play_chart.SP_END_LEAD_MS, places=6)
+        self.assertAlmostEqual(press.lead_ms, 5.0, places=6)
+        self.assertEqual((press.checked, press.end_act_index), (True, 0))
+
+    def test_the_same_chord_outside_star_power_is_plain(self):
+        (press,) = _presses_of(self._far_squeeze_out_with_a_chord_near_the_end(False), 3)
+        self.assertEqual((press.lead_ms, press.checked, press.end_ms), (2.0, False, None))
+
+    def _late_squeeze_in(self, neighbour_ms=None):
+        # Chord 2 squeezes in 140 ms after the end its activation on chord 0
+        # stores; the end's chord 3 comes after the phrase extends it.
+        chords = [(0, 0, 1000.0, [_gem("Kick", "none")])]
+        if neighbour_ms is not None:
+            chords.append((1, 10, neighbour_ms, [_gem("Green", "none")]))
+        chords += [(2, 384, 2000.0, [_gem("Red", "none")]),
+                   (3, 768, 3000.0, [_gem("Blue", "none")])]
+        return _made_up(
+            chords, activations=[{"act_tick": 0, "deact_tick": 768}],
+            path_activations=[{"act_tick": 0, "deact_tick": 768, "nominal_deact_tick": 300,
+                               "sqout_tick": -1, "sqin_ticks": [384], "skipped_fill_ticks": [],
+                               "sqinouts": [{"kind": "SqIn", "offset_ms": 140.0}],
+                               **_STEADY_ONE_TEMPO}])
+
+    def test_a_squeeze_in_after_the_end_leads_its_activation_late(self):
+        chords = _load_made_up(*self._late_squeeze_in())
+        (lead,) = play_chart.activation_leads(chords)
+        self.assertEqual((lead.act_index, lead.squeeze_index, lead.direction),
+                         (0, 2, play_chart.LATE))
+        self.assertAlmostEqual(lead.lead_ms, 75.28, delta=0.01)
+        # The end the activation stores, 1860 ms, moved later by the lead.
+        self.assertAlmostEqual(lead.planned_end_ms, 1860.0 + lead.lead_ms, places=6)
+        (act,) = _presses_of(chords, 0)
+        self.assertAlmostEqual(act.lead_ms, -lead.lead_ms, places=6)
+        self.assertAlmostEqual(act.stored_end_ms, lead.planned_end_ms, places=6)
+        (sqin,) = _presses_of(chords, 2)
+        self.assertAlmostEqual(sqin.at_ms, lead.planned_end_ms - play_chart.SP_END_LEAD_MS,
+                               places=6)
+        # A later end leaves the end's chord inside already.
+        (end,) = _presses_of(chords, 3)
+        self.assertEqual(end.lead_ms, play_chart.SP_END_LEAD_MS)
+
+    def test_a_late_lead_past_the_activations_side_is_refused(self):
+        # A green 75 ms after the activation shrinks its window to 72 ms.
+        with self.assertRaises(ValueError) as caught:
+            _load_made_up(*self._late_squeeze_in(1075.0))
+        self.assertIn("chord 2 needs activation chord 0 pressed 69 ms late", str(caught.exception))
+        self.assertIn("its window is 72 ms", str(caught.exception))
+
+
+def _play_reading_ends(files, read_sp_end):
+    chords = _load_refine(files)
+    wall = _FakeTime()
+    game = _FakeGame()
+    result = play_chart.play_chords(
+        chords, _FakeSongClock(wall, start_s=chords[0].ms / 1000 - 1.0), game.read_score,
+        game.press, now=wall.now, sleep=wall.sleep, out=io.StringIO(), cap_s=600.0,
+        read_sp_end=read_sp_end)
+    return result
+
+
+def _rows_of(result, index):
+    return [row for row in result.rows if row["index"] == index]
+
+
+class ReadEndTest(unittest.TestCase):
+    """play_chords reads the game's end after an activation with squeezes and
+    retime_from_end moves the presses timed against it (design point 1 of the
+    player-limits plan)."""
+
+    def _stored_ends(self, files):
+        return [p.stored_end_ms for p in play_chart.press_plan(_load_refine(files))
+                if p.stored_end_ms is not None]
+
+    def test_an_end_3_ms_later_moves_the_squeeze_presses_by_3(self):
+        later = iter([(ms + 3.0) / 1000 for ms in self._stored_ends(_BOMBER)])
+        result = _play_reading_ends(_BOMBER, lambda: next(later))
+        self.assertEqual(result.stop, "done")
+        first = _rows_of(result, 147)[0]
+        self.assertAlmostEqual(first["end_read_ms"], 32618.39, delta=0.01)
+        self.assertEqual([round(r["lead_ms"], 2) for r in _rows_of(result, 180)], [-50.06])
+        # 466 ends the activation on chord 412, whose end also read 3 ms late.
+        self.assertEqual([round(r["lead_ms"], 2) for r in _rows_of(result, 466)], [12.0])
+        # Rows not timed against an end keep their leads, and no other row
+        # holds a read.
+        self.assertEqual([round(r["lead_ms"], 2) for r in _rows_of(result, 181)], [2.0])
+        self.assertEqual([r["index"] for r in result.rows if "end_read_ms" in r], [147, 412])
+
+    def test_a_clear_active_byte_leaves_the_plan_and_says_so(self):
+        result = _play_reading_ends(_BOMBER, lambda: None)
+        self.assertEqual(_rows_of(result, 147)[0]["end_read_ms"], play_chart.NO_ACTIVATION_READ)
+        self.assertEqual(play_chart.NO_ACTIVATION_READ, "no activation read")
+        self.assertEqual([round(r["lead_ms"], 2) for r in _rows_of(result, 180)], [-47.06])
+
+    def test_retime_from_end_moves_only_that_activations_presses(self):
+        def press(index, chart_ms, lead_ms, end_act=None):
+            return play_chart.Press(index, chart_ms, lead_ms, [Lane.RED], ["none"], None,
+                                    False, True, None if end_act is None else 1000.0, end_act)
+        plan = [press(1, 990.0, 0.0, 7), press(2, 991.0, 0.0), press(3, 1200.0, 0.0, 8)]
+        moved = play_chart.retime_from_end(plan, 7, 1000.0, 1002.0)
+        self.assertEqual([(p.index, p.at_ms, p.end_ms) for p in moved],
+                         [(2, 991.0, None), (1, 992.0, 1002.0), (3, 1200.0, 1000.0)])
+
+
+class SpEndTest(unittest.TestCase):
+    """EngineModel.sp_end reads the stored end and the active byte in one read."""
+
+    def _engine(self, active):
+        import struct
+        from tools.ch_probe import constants as C
+        from tools.ch_probe.engine import EngineModel
+        engine_ptr = 0x5000_0000
+        block = bytearray(C.OFF_SP_END_TIME + 8 - C.OFF_SP_ACTIVE)
+        block[0] = active
+        struct.pack_into("<d", block, C.OFF_SP_END_TIME - C.OFF_SP_ACTIVE, 32.61592)
+        proc, _seen = fakes.fake_process({engine_ptr + C.OFF_SP_ACTIVE: bytes(block)},
+                                         0x1_4000_0000)
+        engine = EngineModel(proc)
+        engine.use_object(engine_ptr)
+        return engine
+
+    def test_the_end_in_song_seconds_while_active(self):
+        self.assertEqual(self._engine(1).sp_end(), 32.61592)
+
+    def test_none_while_the_byte_is_clear(self):
+        self.assertIsNone(self._engine(0).sp_end())
+
+    def test_live_play_hands_play_chords_the_engines_reader(self):
+        from unittest import mock
+        seen = {}
+
+        def fake_play_chords(chords, clock, read_score, press, **kwargs):
+            seen.update(kwargs)
+            return play_chart.RunResult(stop="done")
+
+        with mock.patch.object(play_chart, "EngineModel", _ThresholdEngine), \
+                mock.patch.object(play_chart, "play_chords", fake_play_chords):
+            play_chart.live_play(
+                _load(play_chart.load_dump_chords), open_proc=lambda **kw: _FakeProc(),
+                find_engine=lambda _proc: 0x1000, press=lambda lanes, axes: {},
+                out=io.StringIO())
+        self.assertEqual(seen["read_sp_end"].__func__, _ThresholdEngine.sp_end)
 
 
 class LivePressTest(unittest.TestCase):
