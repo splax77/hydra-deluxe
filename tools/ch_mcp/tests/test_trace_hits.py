@@ -22,10 +22,12 @@ _REPO_ROOT = os.path.abspath(os.path.join(_HERE, "..", "..", ".."))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
+from tools.ch_mcp import build_stamp as BS  # noqa: E402
 from tools.ch_mcp import trace_hits as TH  # noqa: E402
 from tools.ch_mcp import frida_attach as FA  # noqa: E402
 from tools.ch_mcp.tests.test_frida_attach import (  # noqa: E402
     AGENT_DIR, FakeFrida, FakeSession, instant_wait, by_name_only_findings, sent)
+from tools.ch_mcp.tests.test_build_stamp import make_built_agent  # noqa: E402
 from tools.ch_probe import constants as C  # noqa: E402
 from tools.ch_probe.probe_songs import WINDOW_MAP  # noqa: E402
 
@@ -111,9 +113,7 @@ class CommandLineTest(unittest.TestCase):
         self.manifest = os.path.join(self.song, "manifest.json")
         with open(self.manifest, "w", encoding="utf-8") as fh:
             json.dump({"song": "Song", "notes": notes_at(1000, 2000, 3000)}, fh)
-        self.agent = os.path.join(self.tmp.name, "trace.js")
-        with open(self.agent, "w", encoding="utf-8") as fh:
-            fh.write("// fake trace\n")
+        self.agent = make_built_agent(self.tmp.name, "trace")
         self.out_path = os.path.join(self.tmp.name, "trace.jsonl")
         self.lines = []
 
@@ -218,9 +218,17 @@ class CommandLineTest(unittest.TestCase):
         os.remove(self.agent)
         code = self.run_main(["--mode", "count"], FakeSession([]))
         self.assertEqual(code, 1)
+        self.assertEqual(self.lines, [BS.check(self.agent)])
+        self.assertTrue(self.lines[0].startswith(f"{self.agent} not found; "))
+
+    def test_a_stale_agent_runs_nothing(self):
+        with open(os.path.join(self.tmp.name, "trace.ts"), "a", encoding="utf-8") as fh:
+            fh.write("// an edit after the build\n")
+        code = self.run_main(["--mode", "count"], FakeSession([]))
+        self.assertEqual(code, 1)
         self.assertEqual(self.lines, [
-            f"{self.agent} not found; run npm run build:trace in "
-            "tools/ch_mcp/agent first"])
+            f"{self.agent} is stale: trace.ts changed since it was built; "
+            "run npm run build:trace in tools/ch_mcp/agent first"])
 
     def test_the_modes_refuse_the_wrong_method_flags(self):
         for extra in (["--mode", "args"], ["--mode", "count", "--method", "X"]):
@@ -331,9 +339,7 @@ class TraceSessionTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
-        self.agent = os.path.join(self.tmp.name, "trace.js")
-        with open(self.agent, "w", encoding="utf-8") as fh:
-            fh.write("// fake trace\n")
+        self.agent = make_built_agent(self.tmp.name, "trace")
         self.out_path = os.path.join(self.tmp.name, "trace.jsonl")
         self.in_wait = threading.Event()
 
@@ -472,13 +478,8 @@ class TraceSessionTest(unittest.TestCase):
         with self.assertRaises(TH.AgentMissing) as raised:
             TH.TraceSession(self.NOTES, "Eng", ["Hit"], self.out_path,
                             agent_path=self.agent)
-        self.assertEqual(str(raised.exception), TH.agent_missing_line(self.agent))
-
-    def test_the_missing_agent_line_names_the_agents_own_build_script(self):
-        self.assertEqual(TH.agent_missing_line("a.js"),
-                         "a.js not found; run npm run build:trace in tools/ch_mcp/agent first")
-        self.assertEqual(TH.agent_missing_line("b.js", "state"),
-                         "b.js not found; run npm run build:state in tools/ch_mcp/agent first")
+        self.assertEqual(str(raised.exception), BS.check(self.agent))
+        self.assertTrue(str(raised.exception).startswith(f"{self.agent} not found; "))
 
     def test_a_session_needs_a_method(self):
         with self.assertRaises(ValueError):
