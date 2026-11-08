@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <iterator>
 #include <optional>
 #include <set>
@@ -785,6 +786,29 @@ core::Rules rules_with(core::SqOutRule rule) {
     return r;
 }
 
+// Every stored path of every corpus chart that has notes under `cfg`:
+// replayed, and its schedule built by schedule::schedule_json.
+// `check` gets the chart's path, its song, the path's activations in walk
+// order, the replay and the schedule.
+using ScheduleCheck = std::function<void(const std::string& path, const Song& song,
+                                         const std::vector<const Activation*>& acts,
+                                         const PathReplay& pr, const json& sch)>;
+
+void for_each_corpus_schedule(const app::AnalysisSettings& cfg, const ScheduleCheck& check) {
+    for (const std::string& path : corpus::chart_paths()) {
+        const Song& song = corpus::song(path, cfg.reading());
+        if (song.is_empty()) continue;
+        const HydraRecord& rec = corpus::analyzed(path, cfg);
+        for (const Path* p : rec.all_paths()) {
+            std::vector<const Activation*> acts;
+            for (const Activation& a : p->walk_activations()) acts.push_back(&a);
+            const PathReplay pr = replay_stored_path(song, *p, cfg.rules);
+            const json sch = schedule::schedule_json(song, acts, pr.result, cfg.rules);
+            check(path, song, acts, pr, sch);
+        }
+    }
+}
+
 }  // namespace
 
 TEST_CASE("schedule: song_length_ms is app::song_length_ms") {
@@ -850,30 +874,23 @@ TEST_CASE("schedule: sp_ready_tick is the second bank arrival") {
     // kSpActivationBars-th arrival, in ticks and through the tempo map.
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
     int acts_seen = 0;
-    for (const std::string& path : corpus::chart_paths()) {
-        const Song& s = corpus::song(path, cfg.reading());
-        if (s.is_empty()) continue;
-        const HydraRecord& rec = corpus::analyzed(path, cfg);
-        for (const Path* p : rec.all_paths()) {
-            std::vector<const Activation*> acts;
-            for (const Activation& a : p->walk_activations()) acts.push_back(&a);
-            const PathReplay pr = replay_stored_path(s, *p, cfg.rules);
-            const json sch = schedule::schedule_json(s, acts, pr.result, cfg.rules);
-            REQUIRE(sch["activations"].size() == acts.size());
-            for (size_t k = 0; k < acts.size(); ++k) {
-                INFO(path << " activation " << k);
-                const Activation& a = *acts[k];
-                ++acts_seen;
-                // A real activation spends at least kSpActivationBars bars.
-                REQUIRE(a.bank_rise_ticks.size() >= static_cast<size_t>(kSpActivationBars));
-                const int64_t want = a.bank_rise_ticks.at(static_cast<size_t>(kSpActivationBars) - 1);
-                const json& row = sch["activations"][k];
-                CHECK(row["sp_ready_tick"].get<int64_t>() == want);
-                CHECK(row["sp_ready_ms"].get<double>() == s.timing().timecode(want).ms());
-                CHECK(want <= a.timecode.ticks());
-            }
+    for_each_corpus_schedule(cfg, [&](const std::string& path, const Song& s,
+                                      const std::vector<const Activation*>& acts, const PathReplay&,
+                                      const json& sch) {
+        REQUIRE(sch["activations"].size() == acts.size());
+        for (size_t k = 0; k < acts.size(); ++k) {
+            INFO(path << " activation " << k);
+            const Activation& a = *acts[k];
+            ++acts_seen;
+            // A real activation spends at least kSpActivationBars bars.
+            REQUIRE(a.bank_rise_ticks.size() >= static_cast<size_t>(kSpActivationBars));
+            const int64_t want = a.bank_rise_ticks.at(static_cast<size_t>(kSpActivationBars) - 1);
+            const json& row = sch["activations"][k];
+            CHECK(row["sp_ready_tick"].get<int64_t>() == want);
+            CHECK(row["sp_ready_ms"].get<double>() == s.timing().timecode(want).ms());
+            CHECK(want <= a.timecode.ticks());
         }
-    }
+    });
     CHECK(acts_seen > 0);
 }
 
@@ -959,27 +976,19 @@ TEST_CASE("schedule: first_note writes the same schedule as before") {
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
     REQUIRE(cfg.rules.sqout_rule == core::SqOutRule::FirstNote);
     int late_rows = 0;
-    for (const std::string& path : corpus::chart_paths()) {
-        const Song& song = corpus::song(path, cfg.reading());
-        if (song.is_empty()) continue;
-        const HydraRecord& rec = corpus::analyzed(path, cfg);
-        for (const Path* p : rec.all_paths()) {
-            std::vector<const Activation*> acts;
-            for (const Activation& a : p->walk_activations()) acts.push_back(&a);
-            const PathReplay pr = replay_stored_path(song, *p, cfg.rules);
-            const json sch = schedule::schedule_json(song, acts, pr.result, cfg.rules);
-            for (const json& press : sch["presses"]) {
-                INFO(path << " chord " << press["chord"].get<int>());
-                const std::vector<size_t> gems = press["gems"].get<std::vector<size_t>>();
-                if (press["rule"] == "squeeze_out_late") {
-                    ++late_rows;
-                    CHECK(gems == std::vector<size_t>{0});
-                } else if (press["rule"] == "squeeze_out_inside") {
-                    CHECK(std::find(gems.begin(), gems.end(), size_t{0}) == gems.end());
-                }
+    for_each_corpus_schedule(cfg, [&](const std::string& path, const Song&, const std::vector<const Activation*>&,
+                                      const PathReplay&, const json& sch) {
+        for (const json& press : sch["presses"]) {
+            INFO(path << " chord " << press["chord"].get<int>());
+            const std::vector<size_t> gems = press["gems"].get<std::vector<size_t>>();
+            if (press["rule"] == "squeeze_out_late") {
+                ++late_rows;
+                CHECK(gems == std::vector<size_t>{0});
+            } else if (press["rule"] == "squeeze_out_inside") {
+                CHECK(std::find(gems.begin(), gems.end(), size_t{0}) == gems.end());
             }
         }
-    }
+    });
     // The corpus may hold no timed squeeze-out; the overfill literals above
     // then carry the pin alone.
     WARN(late_rows > 0);
@@ -1234,29 +1243,21 @@ TEST_CASE("schedule: every skip writes a refusal and a flag") {
     // no press is flagged refused, and a flag always comes with a line.
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
     int rows = 0;
-    for (const std::string& path : corpus::chart_paths()) {
-        const Song& song = corpus::song(path, cfg.reading());
-        if (song.is_empty()) continue;
-        const HydraRecord& rec = corpus::analyzed(path, cfg);
-        for (const Path* p : rec.all_paths()) {
-            std::vector<const Activation*> acts;
-            for (const Activation& a : p->walk_activations()) acts.push_back(&a);
-            const PathReplay pr = replay_stored_path(song, *p, cfg.rules);
-            const json s = schedule::schedule_json(song, acts, pr.result, cfg.rules);
-            std::set<int> pressed;
-            for (const json& press : s["presses"]) pressed.insert(press["chord"].get<int>());
-            bool any_refused = false;
-            for (const json& row : s["chords"]) {
-                ++rows;
-                const int idx = row["index"].get<int>();
-                INFO(path << " chord " << idx);
-                const bool refused = row["refused"].get<bool>();
-                any_refused = any_refused || refused;
-                CHECK(refused == (pressed.count(idx) == 0));
-            }
-            if (any_refused) CHECK_FALSE(s["refusals"].empty());
+    for_each_corpus_schedule(cfg, [&](const std::string& path, const Song&, const std::vector<const Activation*>&,
+                                      const PathReplay&, const json& s) {
+        std::set<int> pressed;
+        for (const json& press : s["presses"]) pressed.insert(press["chord"].get<int>());
+        bool any_refused = false;
+        for (const json& row : s["chords"]) {
+            ++rows;
+            const int idx = row["index"].get<int>();
+            INFO(path << " chord " << idx);
+            const bool refused = row["refused"].get<bool>();
+            any_refused = any_refused || refused;
+            CHECK(refused == (pressed.count(idx) == 0));
         }
-    }
+        if (any_refused) CHECK_FALSE(s["refusals"].empty());
+    });
     CHECK(rows > 0);
 }
 
@@ -1390,34 +1391,27 @@ TEST_CASE("schedule: the first press group is the activation note") {
     // activation note alone.
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
     int seen = 0;
-    for (const std::string& path : corpus::chart_paths()) {
-        const Song& song = corpus::song(path, cfg.reading());
-        if (song.is_empty()) continue;
-        const HydraRecord& rec = corpus::analyzed(path, cfg);
-        for (const Path* p : rec.all_paths()) {
-            std::vector<const Activation*> acts;
-            for (const Activation& a : p->walk_activations()) acts.push_back(&a);
-            const PathReplay pr = replay_stored_path(song, *p, cfg.rules);
-            const json s = schedule::schedule_json(song, acts, pr.result, cfg.rules);
-            for (const json& a : s["activations"]) {
-                if (a["chord"].is_null()) continue;
-                const int ci = a["chord"].get<int>();
-                const json* first = nullptr;
-                for (const json& press : s["presses"])
-                    if (press["chord"].get<int>() == ci) {
-                        first = &press;
-                        break;
-                    }
-                if (!first || (first->at("rule") != "plain" && first->at("rule") != "anchor")) continue;
-                INFO(path << " chord " << ci);
-                ++seen;
-                const ReplayChord& c = pr.result.chords[static_cast<size_t>(ci)];
-                const NoteColor top = song.sequence[static_cast<size_t>(ci)].chord.activation_note().colortype;
-                const std::vector<size_t> gems = first->at("gems").get<std::vector<size_t>>();
-                REQUIRE(gems.size() == 1);
-                CHECK(c.notes[gems[0]].color == top);
-            }
+    for_each_corpus_schedule(cfg, [&](const std::string& path, const Song& song,
+                                      const std::vector<const Activation*>&, const PathReplay& pr,
+                                      const json& s) {
+        for (const json& a : s["activations"]) {
+            if (a["chord"].is_null()) continue;
+            const int ci = a["chord"].get<int>();
+            const json* first = nullptr;
+            for (const json& press : s["presses"])
+                if (press["chord"].get<int>() == ci) {
+                    first = &press;
+                    break;
+                }
+            if (!first || (first->at("rule") != "plain" && first->at("rule") != "anchor")) continue;
+            INFO(path << " chord " << ci);
+            ++seen;
+            const ReplayChord& c = pr.result.chords[static_cast<size_t>(ci)];
+            const NoteColor top = song.sequence[static_cast<size_t>(ci)].chord.activation_note().colortype;
+            const std::vector<size_t> gems = first->at("gems").get<std::vector<size_t>>();
+            REQUIRE(gems.size() == 1);
+            CHECK(c.notes[gems[0]].color == top);
         }
-    }
+    });
     CHECK(seen > 0);
 }
