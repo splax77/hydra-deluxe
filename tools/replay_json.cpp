@@ -137,6 +137,7 @@ nlohmann::json paths_json(const std::vector<const Path*>& all, const SongTiming&
             // engine did (D34).
             const nlohmann::json sqins = sqin_phrase_ticks(act);
             const std::optional<int64_t> anchor = act.deact_anchor_tick();
+            const std::optional<int64_t> ready = act.sp_ready_tick();
             nlohmann::json end_anchor = nullptr;
             nlohmann::json end_scale_early = nullptr;
             nlohmann::json end_scale_late = nullptr;
@@ -156,6 +157,11 @@ nlohmann::json paths_json(const std::vector<const Path*>& all, const SongTiming&
                 {"sqout_tick", act.sqout_tick ? *act.sqout_tick : -1},
                 {"nominal_deact_tick", nominal},
                 {"sp_meter", act.sp_meter()},
+                // Activation::sp_ready_tick; null when too few bars are
+                // stored to reach the activation level.
+                {"sp_ready_tick", ready ? nlohmann::json(*ready) : nlohmann::json(nullptr)},
+                {"sp_ready_ms", ready ? nlohmann::json(timing.timecode(*ready).ms())
+                                      : nlohmann::json(nullptr)},
                 {"skips", act.skips()},
                 // The stored list the engine wrote, never recomputed: under
                 // the 1.0 fill rule it need not be the fills nearest the act.

@@ -38,7 +38,7 @@ Pass: no Star Power flip inside the window, although Star Power is ready there w
 
 **CR-44.** Vocals running past the last drum note, no end event, short audio. Pass: songLength follows the drums (the game's code). Fail: it follows the vocals. A bot start is enough.
 
-**CR-46 and CR-47.** songLength against Min(end, Max(audio, last note)) plus 1 s, on a chart with known numbers and real audio. Pass: equal. Fail: any other value. A bot start is enough.
+**CR-47.** Question: is the game's audio length the longest audio stem? CR-46's formula is now read in the game's code, so this check asks only which audio length goes into it. Use a song whose stems differ in length, whose longest stem ends after the last note, whose song.ini length differs from every stem, and which has no end event. Pass: songLength less 1 s equals the longest stem's length. Fail: it equals the song.ini length or a shorter stem. A bot start is enough.
 
 ## Page 2: building the note list
 
@@ -52,15 +52,13 @@ Pass: no Star Power flip inside the window, although Star Power is ready there w
 
 **NL-19.** `E [mix 3 drums0d]` with spaces in a .chart. Pass: the pads flip in the game (compare lanes in ch_notes). Fail: no flip. A bot run is enough.
 
-**NL-22.** Does plain Drums skip the disco flip? Pass: the plain-Drums total equals Hydra's with no flip. Fail: it equals the flipped total. A bot run is enough.
-
 **NL-30.** A 2x kick and a normal kick on one tick in both file orders, 2x off and on. Pass: total_notes and score equal Hydra's for both orders. A bot run is enough.
 
 **NL-32.** Two red note-ons on one tick, velocity 127 then 1, under the tag. Pass: one red note with both marks counted (accent and ghost totals). Fail: only the first mark. A bot run is enough.
 
 **NL-34.** A .chart chord written against colour order, Note Shuffle on. Pass: the shuffled pads match the colour-order row. Fail: the file-order row. Needs a menu start (Note Shuffle is a modifier).
 
-**NL-37, NL-38 and NL-39.** Flam cases: a .mid flam on a single pad and on a two-pad chord, a green cymbal flam, and a .chart single-pad chord. Pass: total_notes rises by one for the single pad only, the cymbal gems show as Hydra predicts, and the .chart gets no copy. A bot run is enough.
+**NL-39.** Can the game flam a .chart note? The .mid flam cases of NL-37 and NL-38 are now read in the game's code, so only the .chart case is left. Pass: a .chart with single-pad chords gives the same total_notes as its note count, so no chord gets a copy. Fail: total_notes is higher. A bot run is enough.
 
 **NL-42.** Does plain Drums draw only red and the toms under Note Shuffle? Pass: shuffled chords of song A1 with Pro Drums off match the "Pro Drums off" rows in docs/audit/note-shuffle/game-tests/predictions.json. Fail: any cymbal. Needs a menu start (Note Shuffle); a bot run once started.
 
@@ -114,8 +112,6 @@ FL-27, the Ladies Talk check, is the first entry on this page.
 
 **SP-18.** Question: can drums activate Star Power without a fill note? Pass: pressing every pad with banked Star Power and no fill never activates; fail: Star Power turns on. Needs Star Power banked and a menu start (key-press run).
 
-**SP-21.** Question: is the activating note scored x8 or x4? Pass: x8 (the score jump on that chord is double); fail: x4. Run 1's `run1_cal0_sp_watch.csv` (score and multiplier columns around chord 162) may answer it with no new run; otherwise needs Star Power activation.
-
 **SP-24.** Question: when a phrase overfills the meter during Star Power, does the end move to one full bar after the collecting moment? Pass: meter stops at +0x1B0 and the end equals collecting time plus a full bar; fail: the end keeps extending or does not move. Needs Star Power activation with four phrases banked and a fifth collected, and a menu start.
 
 **SP-29.** Question: does a hit just past the SP end, inside the frame that first reaches the end, score doubled? Pass: a backend note a few ms after the end, hit on time, pays doubled while the frame is that long; fail: it pays single. Needs Star Power activation and a menu start, with the clock and score logged per hit.
@@ -144,11 +140,9 @@ FL-27, the Ladies Talk check, is the first entry on this page.
 
 **SC-12 and SC-14.** Question: what do the lane bytes (+0x309 to +0x310) and the threshold (+0x2C0) hold for a pad hit hard, a pad hit soft and a key press? Pass: keys give a value that never marks a dynamic, and the marks follow SC-13; fail: otherwise. The key side needs a key-press run; the pad side needs a kit; no Star Power.
 
-**SC-19.** Question: does an accent kick (velocity 127) pay double? Pass: accent_notes_hit counts it and base_score includes the doubling; fail: it does not. A bot run on a .mid with velocity-127 kicks is enough.
+**SC-20.** Question: what does the solo bonus pay at its edge cases? Live runs have now shown a full solo, a partly hit solo and one under half, and SC-21's gem count. Three cases are left: a solo hit at exactly half its notes, a hit count whose formula value ends in .5, and a solo whose solo-end note is missed. Pass: solo_bonus_total equals the SC-20 formula in each case. Fail: any other number. Each needs a key-press run that skips chosen notes; no Star Power.
 
-**SC-20 and SC-21.** Question: what is the solo bonus for a full solo and for a partly hit one, and does N count gems or chords? Pass: a full solo pays 100 per gem, a partial one follows the SC-20 formula; fail: any other number. The full case is a bot run on a chart with a solo marker and multi-gem chords; the partial case needs a key-press run that skips notes; no Star Power.
-
-**SC-29 and SC-33.** Question: does band_stars ignore the solo bonus, and is avg_multiplier times base_score equal to score less solo_bonus_total? Pass: both; fail: either differs. A bot run on a chart with a solo, scored near a cutoff; no Star Power.
+**SC-29.** Question: does band_stars ignore the solo bonus? SC-33's average multiplier is now proven in live runs, so only the star count is left. None of the four saved solo runs has a bonus that carries the score across a star cutoff, so they cannot settle it. Pass: on a run where the score is below a cutoff without the bonus and above it with the bonus, band_stars is the lower count. Fail: it is the higher count. A run on a chart with a solo, scored so the bonus crosses a cutoff; no Star Power.
 
 **SC-30.** Question: which HUD star-bar copy runs (slot 0 at 0.1 times base, or slot 1 at 0.5)? Pass: the StarProgress cutoff array's slot 0 is ceil(0.1 x base); fail: slot 0 is 0. A bot run read after the first frame.
 

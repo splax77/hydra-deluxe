@@ -288,7 +288,9 @@ bool Chord::apply_2x_bass(bool bass2x) {
 // A cymbal, ghost or accent marker with no note of its colour under it is a
 // malformed line, like a duplicate note. It raises ChartFileError, which the
 // .chart parser's per-op catch drops, so the rest of the chart loads. Clone
-// Hero skips such a marker too (0x215DDB0).
+// Hero keeps a marker's flag only on a note whose field matches the marker's
+// (0x214CEE0, docs/audit/note-shuffle/step0/open2/f214cee0.asm lines 46 to
+// 48). That field is taken to be the colour; the listing does not name it.
 void Chord::apply_cymbal(NoteColor color) {
     if (!at(color)) throw ChartFileError("cymbal marker with no note under it");
     at(color)->cymbaltype = NoteCymbalType::Cymbal;
@@ -688,6 +690,12 @@ bool Path::within_ms_limit(double limit_ms) const {
 bool Path::is_difficult() const {
     const std::optional<double> d = difficulty();
     return d && past_difficult_floor(*d);
+}
+
+std::optional<int64_t> Activation::sp_ready_tick() const {
+    const size_t ready = static_cast<size_t>(kSpActivationBars);
+    if (bank_rise_ticks.size() < ready) return std::nullopt;
+    return bank_rise_ticks[ready - 1];
 }
 
 // ---- the SP-end history's readers -----------------------------------------

@@ -26,11 +26,13 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 from tools.ch_mcp import build_facts as B  # noqa: E402
+from tools.ch_mcp import build_stamp as BS  # noqa: E402
 from tools.ch_mcp import frida_attach as FA  # noqa: E402
 from tools.ch_mcp import frida_tools as FT  # noqa: E402
 from tools.ch_mcp import trace_hits as TH  # noqa: E402
 from tools.ch_mcp.kit_tools import pad_axis  # noqa: E402
 from tools.ch_mcp.tests.test_build_facts import REAL_FACTS  # noqa: E402
+from tools.ch_mcp.tests.test_build_stamp import make_built_agent  # noqa: E402
 from tools.ch_mcp.tests.test_frida_attach import (  # noqa: E402
     MENU, MENU_ONE_DESTROYED, STATE, FakeFrida, ReplySession, instant_wait)
 from tools.ch_probe import constants as C  # noqa: E402
@@ -171,10 +173,8 @@ class Rig(unittest.TestCase):
         self.addCleanup(tmp.cleanup)
         self.tmp = tmp.name
         self.agent_dir = os.path.join(self.tmp, "agent")
-        os.makedirs(self.agent_dir)
-        for name in (FT.STATE_AGENT_FILE, os.path.basename(TH.DEFAULT_AGENT)):
-            with open(os.path.join(self.agent_dir, name), "w", encoding="utf-8") as f:
-                f.write("// fake agent\n")
+        for name in (FT.STATE_AGENT_NAME, TH.DEFAULT_AGENT_NAME):
+            make_built_agent(self.agent_dir, name)
         self.song = os.path.join(self.tmp, "song")
         os.makedirs(self.song)
         with open(TH.manifest_path(self.song), "w", encoding="utf-8") as f:
@@ -313,10 +313,52 @@ class AttachTest(Rig):
         os.remove(os.path.join(self.agent_dir, FT.STATE_AGENT_FILE))
         out = self.tools([STATE]).ch_attach()
         path = os.path.join(self.agent_dir, FT.STATE_AGENT_FILE)
-        self.assertEqual(out.splitlines()[-1],
-                         TH.agent_missing_line(path, FT.STATE_AGENT_NAME))
+        self.assertEqual(out.splitlines()[-1], BS.check(path))
+        self.assertIn(f"{path} not found", out)
         self.assertIn("npm run build:state", out)
         self.assertEqual(self.frida.attached_to, [])
+
+    def test_a_stale_stamp_refuses_naming_the_file_and_the_build_command(self):
+        path = os.path.join(self.agent_dir, FT.STATE_AGENT_FILE)
+        with open(os.path.join(self.agent_dir, "state.ts"), "a", encoding="utf-8") as f:
+            f.write("// an edit after the build\n")
+        out = self.tools([STATE]).ch_attach()
+        self.assertEqual(out.splitlines()[-1],
+                         f"{path} is stale: state.ts changed since it was built; "
+                         "run npm run build:state in tools/ch_mcp/agent first")
+        self.assertEqual(self.frida.attached_to, [])
+        os.remove(BS.stamp_path(path))
+        out = self.tools([STATE]).ch_attach()
+        self.assertEqual(out.splitlines()[-1],
+                         f"{path} has no build stamp (state.stamp.json); "
+                         "run npm run build:state in tools/ch_mcp/agent first")
+        self.assertEqual(self.frida.attached_to, [])
+
+    def test_a_stale_trace_agent_starts_no_trace(self):
+        # ch_trace_start reaches trace_hits.TraceSession, the trace loader.
+        path = os.path.join(self.agent_dir, os.path.basename(TH.DEFAULT_AGENT))
+        with open(os.path.join(self.agent_dir, "trace.ts"), "a", encoding="utf-8") as f:
+            f.write("// an edit after the build\n")
+        with self.assertRaises(TH.AgentMissing) as raised:
+            TH.TraceSession([{"index": 0, "time_ms": 1000}], "Eng", ["AddPoints"],
+                            os.path.join(self.tmp, "t.jsonl"), agent_path=path)
+        self.assertEqual(str(raised.exception),
+                         f"{path} is stale: trace.ts changed since it was built; "
+                         "run npm run build:trace in tools/ch_mcp/agent first")
+        os.remove(BS.stamp_path(path))
+        with self.assertRaises(TH.AgentMissing) as raised:
+            TH.TraceSession([{"index": 0, "time_ms": 1000}], "Eng", ["AddPoints"],
+                            os.path.join(self.tmp, "t.jsonl"), agent_path=path)
+        self.assertIn("has no build stamp", str(raised.exception))
+        out = []
+        self.assertEqual(TH.main(["--song", self.song, "--mode", TH.MODE_COUNT,
+                                  "--engine-class", "Eng", "--agent", path,
+                                  "--out", os.path.join(self.tmp, "t.jsonl")], out=out.append), 1)
+        self.assertEqual(out, [BS.check(path)])
+        make_built_agent(self.agent_dir, TH.DEFAULT_AGENT_NAME)
+        session = TH.TraceSession([{"index": 0, "time_ms": 1000}], "Eng", ["AddPoints"],
+                                  os.path.join(self.tmp, "t.jsonl"), agent_path=path)
+        self.assertEqual(session.agent_path, path)
 
 
 class ReadTest(Rig):

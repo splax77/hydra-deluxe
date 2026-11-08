@@ -39,6 +39,7 @@ _REPO_ROOT = os.path.abspath(os.path.join(_HERE, "..", ".."))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
+from tools.ch_mcp import build_stamp  # noqa: E402
 from tools.ch_probe.constants import PROCESS_NAME  # noqa: E402
 
 # How a run ended. RunResult.reason holds one of these.
@@ -471,6 +472,10 @@ def main(argv: list[str] | None = None, *, frida_mod: Any = None,
     args = ap.parse_args(argv)
     if args.cap <= 0:
         ap.error("--cap must be more than 0 seconds")
+    refusal = build_stamp.check(args.agent)
+    if refusal is not None:
+        out(refusal)
+        return 1
 
     result = run_agent(args.agent, args.cap, ends_run, args.out,
                        frida_mod=frida_mod, wait=wait, out=out)

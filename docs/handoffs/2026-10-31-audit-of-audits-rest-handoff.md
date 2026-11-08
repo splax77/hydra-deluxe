@@ -28,7 +28,7 @@ The biggest piece is about a dozen second claims inside concept-audit findings t
 
 D114 items 17 and 18 answered questions about the Preview's playback range before D255 item 5 replaced that rule. They need a check against D255.
 
-Three side notes are open. The note about `note_shuffle`'s `prev_tick = 0` needs a live Clone Hero run, so it also belongs with the Clone Hero work. The note about `Playhead::read_frames` may be moot, because the class is gone; confirm and close it. The audio headers' "throws std::runtime_error" wording was checked only for `device.h`.
+Three side notes are open. The note about `note_shuffle`'s `prev_tick = 0` needs no live run: NL-72 in `docs/clone-hero/02-note-list.md` already proves it in the game's code, where the shuffle zeroes its previous-tick register before the first note (`docs/audit/note-shuffle/step0/open34/shuffle_20f0c30.asm` line 40). The note about `Playhead::read_frames` may be moot, because the class is gone; confirm and close it. The audio headers' "throws std::runtime_error" wording was checked only for `device.h`.
 
 Five PASSes are weak: M16, M34, M36, M37 and M48. Their closures were read from the finding's own tables and never re-checked in the code.
 

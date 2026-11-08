@@ -20,9 +20,11 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 from tools.ch_mcp import build_facts  # noqa: E402
+from tools.ch_mcp import build_stamp as BS  # noqa: E402
 from tools.ch_mcp import frida_attach as FA  # noqa: E402
 from tools.ch_mcp import frida_tools as FT  # noqa: E402
 from tools.ch_mcp import method_watch as MW  # noqa: E402
+from tools.ch_mcp.tests.test_build_stamp import make_built_agent  # noqa: E402
 
 BACKUP_LINE = "backup: taken"
 
@@ -140,9 +142,7 @@ class WatchTestBase(unittest.TestCase):
         self.addCleanup(tmp.cleanup)
         self.folder = tmp.name
         self.agent_dir = os.path.join(self.folder, "agent")
-        os.mkdir(self.agent_dir)
-        with open(os.path.join(self.agent_dir, MW.AGENT_FILE), "w", encoding="utf-8") as fh:
-            fh.write("// compiled agent stand-in\n")
+        make_built_agent(self.agent_dir, MW.AGENT_NAME)
         self.events = []
         self.game = FakeGame(self.folder, self.events)
         self.watches = []
@@ -254,7 +254,18 @@ class StartTest(WatchTestBase):
         watch, _ = self.make([SUMMARY])
         os.remove(os.path.join(self.agent_dir, MW.AGENT_FILE))
         reply = watch.ch_method_watch_start()
+        self.assertEqual(reply, BS.check(os.path.join(self.agent_dir, MW.AGENT_FILE)))
         self.assertIn("npm run build:menuhooks", reply)
+        self.assertEqual(self.events, [])
+
+    def test_a_stale_agent_starts_no_watch(self):
+        watch, _ = self.make([SUMMARY])
+        with open(os.path.join(self.agent_dir, "menuhooks.ts"), "a", encoding="utf-8") as fh:
+            fh.write("// an edit after the build\n")
+        self.assertEqual(watch.ch_method_watch_start(),
+                         f"{os.path.join(self.agent_dir, MW.AGENT_FILE)} is stale: menuhooks.ts "
+                         "changed since it was built; run npm run build:menuhooks in "
+                         "tools/ch_mcp/agent first")
         self.assertEqual(self.events, [])
 
 
@@ -386,7 +397,8 @@ class SettingsTest(unittest.TestCase):
         with open(os.path.join(FT.AGENT_DIR, "package.json"), encoding="utf-8") as fh:
             scripts = json.load(fh)["scripts"]
         self.assertEqual(scripts[f"build:{MW.AGENT_NAME}"],
-                         f"frida-compile -o {MW.AGENT_FILE} {MW.AGENT_NAME}.ts")
+                         f"frida-compile -o {MW.AGENT_FILE} {MW.AGENT_NAME}.ts"
+                         f" && py -I ../build_stamp.py {MW.AGENT_FILE}")
 
 
 class CandidatesAgainstFactsTest(unittest.TestCase):

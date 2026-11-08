@@ -2,9 +2,9 @@
 
 This page covers note values, the multiplier and combo, accents and ghosts, the solo bonus, star cutoffs and the score breakdown.
 It describes build 1.1 (v1.1.0.6142).
-Last write-back: 2026-11-07.
+Last write-back: 2026-11-08.
 
-The run files named below are of two kinds. The three bot runs of 2026-10-28 are in C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-10-28\l1\bot\ (outside the repo): Window Map, and Trippin SP Spike on Drums and on ProDrums. "Run 1" is the key-press auto-player run on Trippin SP Spike, `run1_cal0_scorestats.json` under tools/ch_probe/experiments/results/overlay-spike/. Engine fields belong to the base engine class #8288; the drum engine is #8255. `ghidra_decompile_all.txt` is Ghidra's full decompile of build 6142, which `code/README.md` describes; it is not in the repo.
+The run files named below are of three kinds. The three bot runs of 2026-10-28 are in C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-10-28\l1\bot\ (outside the repo): Window Map, and Trippin SP Spike on Drums and on ProDrums. "Run 1" is the key-press auto-player run on Trippin SP Spike, `run1_cal0_scorestats.json` under tools/ch_probe/experiments/results/overlay-spike/. The virtual kit runs of 2026-11-06 to 2026-11-08 each have a folder under C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\<date>\, named by its run (such as ls-o3-run1), holding the run's scorestats file. With the bot files that makes 16 scorestats files under that folder. Engine fields belong to the base engine class #8288; the drum engine is #8255. `ghidra_decompile_all.txt` is Ghidra's full decompile of build 6142, which `code/README.md` describes; it is not in the repo.
 
 ## Note values and the cymbal bonus
 
@@ -14,7 +14,7 @@ Rule: Each gem pays a base of 50 points. A chord pays the base once for each gem
 Label: Proven in the game's code
 Evidence: The base adder works out the gem count at lines 17 to 38 (stored count at note +0x50, else a popcount of the lane mask). The drum hit routine passes 50 as the base at line 127 of its listing. The game also holds 50 as a named constant of class #8611 (dump.cs line 549143). Live: Window Map's base_score 7,100 is 142 gems times 50.
 Game code (6142): adder RVA `0x20F6EB0`, `code/6142/add_note_score_20F6EB0.asm` lines 17 to 38; drum hit routine RVA `0x20DE770`, `code/6142/note_hit_dynamics_20DE770.asm` line 127
-Hydra: `kNoteBasePoints` in src/core/model.h line 143; `ChordNote::basescore` in src/core/model.cpp line 84
+Hydra: `kNoteBasePoints` in src/core/model.h line 144; `ChordNote::basescore` in src/core/model.cpp line 84
 Ruling: none needed: same rule. No decision names the 50 itself; D51 call 13 (items in docs/audit/2026-10-04-phase-7-questions.md item 13) records the cymbal's +15, the solo's 100 and the multiplier steps "as they are", not the 50.
 Found: 2026-10-30, session b02ab3e6 (the reference build)
 
@@ -24,7 +24,7 @@ Rule: A gem on a cymbal lane pays 65 instead of 50. The test is any of three lan
 Label: Proven in the game's code
 Evidence: The drum score method calls the cymbal test and adds 15 at lines 13 to 16 before tail-calling the base adder at line 31. The cymbal test (RVA `0x214BE30`) is `test word [note+0x80], 0xE0`, as the star base's note says too (`code/6142/star_base_20F4680.md` line 16); the reviewer of this page also read it with tools/ch_mcp/chdis.py on the 6142 DLL, 2026-10-30. The same +15 shape is in the star base (SC-27).
 Game code (6142): RVA `0x20DEEC0` (drum override of slot 6), `code/6142/note_score_add_20DEEC0.asm` lines 13 to 16 and 31
-Hydra: `kCymbalBonusPoints` in src/core/model.h line 144; `ChordNote::basescore` in src/core/model.cpp line 84
+Hydra: `kCymbalBonusPoints` in src/core/model.h line 145; `ChordNote::basescore` in src/core/model.cpp line 84
 Ruling: none needed: same rule (D51 call 13 records the cymbal's +15 "as they are")
 Found: 2026-10-30, session b02ab3e6 (the reference build)
 
@@ -114,11 +114,11 @@ Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 Rule: When every gem of a chord is pressed in the same frame, the game scores them in its own order, which put a green cymbal before a kick and a yellow cymbal before a green cymbal. At a multiplier step this moved the step onto the kick, and on an activation chord the gems scored before the activating gem stayed single. Hydra's top path assumes the player chooses the order (SC-10), so a one-frame chord can fall short of it. Whether the order is a fixed lane order, and which gem activates, was not read in the code.
 Label: Proven in a live run
-Evidence: LS-R1b run 1 on Mouths Like Sidewinder Missiles, 2026-11-07, `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-07\ls-r1-run1\press-1.csv` against `refine-prep\mouths-top-score.json` (record in `replies.txt` there). Chord 4 (kick, green cymbal, multiplier 1 to 2) stepped 165, green at x1 plus kick at x2, where Hydra prices 180. Chords 340, 704 and 1208 (kick, yellow cymbal, green cymbal, each an activation) stepped 1,180, yellow single plus green and kick doubled, where Hydra prices 1,440. Chord 927 (kick, green cymbal, an activation) stepped 920, both doubled, as Hydra prices. Together 795 points, the run's whole shortfall (551,975 against 552,770).
+Evidence: LS-R1b run 1 on Mouths Like Sidewinder Missiles, 2026-11-07, `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-07\ls-r1-run1\press-1.csv` against `refine-prep\mouths-top-score.json` (record in `replies.txt` there). Chord 4 (kick, green cymbal, multiplier 1 to 2) stepped 165, green at x1 plus kick at x2, where Hydra prices 180. Chords 340, 704 and 1208 (kick, yellow cymbal, green cymbal, each an activation) stepped 1,180, yellow single plus green and kick doubled, where Hydra prices 1,440. Chord 927 (kick, green cymbal, an activation) stepped 920, both doubled, as Hydra prices. Together 795 points, the run's whole shortfall (551,975 against 552,770). The rerun, LS-R1 run 2 on the same chart (2026-11-07, `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-07\ls-r1-run2\scorestats-The_Fall_of_Troy_-_Mouths_Like_Sidewinder_Missiles_highfine-20261107-205346.json`), scored 552,770, equal to Hydra, closing the 795-point gap.
 Game code (6142): not looked for
 Hydra: `multsqueeze_gain` in src/core/scoring.cpp line 134 prices the order; the score file's per-gem `multiplier` and `sp_points` carry it
 Ruling: none needed: card 56ac5b71 rules the player picks the order ("you have to hit the kick first"); the open point is the auto-player's press order
-Found: 2026-11-07, session f3d8ce9f
+Found: 2026-11-07, session f3d8ce9f; the rerun, 2026-11-08, session 77057df2 (docs-gaps search)
 
 ### SC-11 Whether the combo carries into the next song of a setlist
 
@@ -146,7 +146,7 @@ Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 Rule: The hit handler picks a signed byte per lane and compares it with an engine threshold. A ghost is marked when the byte is at least 0 and below the threshold; an accent is marked when it is at or above it. A negative byte marks neither. Each mark also bumps a counter: +0xD8 for a ghost and +0xDC for an accent. The byte is the hit's velocity, so a hard hit is the accent side. It comes from a helper at RVA 0x337E10 (no dump line names it), which gives -1 unless the player is on a registered MIDI kit or holds custom controller id 6.
 Label: Proven in the game's code
-Evidence: Lines 29 to 61 pick the lane byte (one byte each at +0x309 to +0x310); lines 72 to 83 are the path for the flag the getter `0x214BE10` tests (note +0x7C bit 0x80000, `DrumsAccentHit` at dump.cs line 548216): mark and bump +0xDC, the accent counter. Lines 91 to 102 are the path for `0x214B6C0` (bit 0x40000, `DrumsGhostHit`, dump.cs line 548215): mark and bump +0xD8, the ghost counter. Both getters were read in the 6142 DLL with tools/ch_mcp/chdis.py on 2026-10-31 (each is one `test dword ptr [rcx + 0x7c]` against that bit). ghidra_decompile_all.txt lines 1163 to 1181 read the same. `code/6142/lane_velocity_337E10.asm` shows what fills the bytes: round((GetAxis - 0.5) * 2 * 127) on a pressed lane that passes the gate, else -1. The MIDI handler turns velocity v into axis 0.5 + v / 254 (RVA `0x21E420`), and the register method makes the controller from definition 1 (RVA `0x21CDE0`). The bot writes 127 for an accent and the threshold minus 1 for a ghost (RVA `0x33A880` is the live input; the bot branch sits near 0x33B64F). The threshold read 100 live, with the song playing, in LS-O1b of `docs/superpowers/plans/2026-11-06-optimal-score-run.md` (removed; `git show d7e47a20:docs/superpowers/plans/2026-11-06-optimal-score-run.md`) on 2026-11-06 (`replies.txt` in `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-06\ls-o1-run1\`), and the same run's player read 100 again. That is one chart and one player; what writes the field was not found. In that run the gate passed with the kit on custom controller id 6 and no MIDI kit: see SC-14.
+Evidence: Lines 29 to 61 pick the lane byte (one byte each at +0x309 to +0x310); lines 72 to 83 are the path for the flag the getter `0x214BE10` tests (note +0x7C bit 0x80000, `DrumsAccentHit` at dump.cs line 548216): mark and bump +0xDC, the accent counter. Lines 91 to 102 are the path for `0x214B6C0` (bit 0x40000, `DrumsGhostHit`, dump.cs line 548215): mark and bump +0xD8, the ghost counter. Both getters were read in the 6142 DLL with tools/ch_mcp/chdis.py on 2026-10-31 (each is one `test dword ptr [rcx + 0x7c]` against that bit). ghidra_decompile_all.txt lines 1163 to 1181 read the same. `code/6142/lane_velocity_337E10.asm` shows what fills the bytes: round((GetAxis - 0.5) * 2 * 127) on a pressed lane that passes the gate, else -1. The MIDI handler turns velocity v into axis 0.5 + v / 254 (RVA `0x21E420`), and the register method makes the controller from definition 1 (RVA `0x21CDE0`). The bot writes 127 for an accent and the threshold minus 1 for a ghost (RVA `0x33A880` is the live input; the bot branch sits near 0x33B64F). The threshold read 100 live, with the song playing, in LS-O1b of `docs/superpowers/plans/2026-11-06-optimal-score-run.md` (removed; `git show d7e47a20:docs/superpowers/plans/2026-11-06-optimal-score-run.md`) on 2026-11-06 (`replies.txt` in `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-06\ls-o1-run1\`), and the same run's player read 100 again. That is one chart and one player. The drum engine's constructor writes the field from the high half of the 8 bytes at +0x18 of its set-up argument (`code/6142/engine_ctor_20DF680.asm` lines 51 to 53, page 07 IN-90); where the argument gets that value was not traced. In that run the gate passed with the kit on custom controller id 6 and no MIDI kit: see SC-14.
 Game code (6142): RVA `0x20DE770` (slot 11), `code/6142/note_hit_dynamics_20DE770.asm` lines 29 to 102; threshold `#8255+0x2C0`
 Hydra: no owner: Hydra has no velocity or threshold
 Ruling: none needed for the comparison; the paid-or-not question is Q-51
@@ -205,34 +205,34 @@ Found: 2026-10-30, session b02ab3e6 (the reference build)
 ### SC-19 An accent kick pays double
 
 Rule: An accent on the kick pays double like any accent.
-Label: Hydra assumes it, never checked
-Evidence: ADR 0012 lines 26 to 30: "Accent kicks are assumed, not proven." No saved run has a kick accent.
-Game code (6142): none
+Label: Proven in a live run
+Evidence: LS-M0 run 1 on I Am Ahab, 2026-11-08, `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-08\ls-m0-run1\scorestats-Mastodon_-_Leviathan_-_02_-_I_Am_Ahab-20261108-121738.json`: every note hit, accent_notes_hit 166 of 166, score 525,555 and base_score 132,295. Hydra's score file for the same chart, `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-08\kick-prep\ahab\Mastodon - Leviathan - 02 - I Am Ahab-score.json`, gives a final total of 525,555 and a final accent total of 8,300 (166 times 50), and 33 of its 166 accents are on the kick. The game's score and base equal Hydra's, which pays every one of those kick accents double, so the game does too. One chart only. ADR 0012 lines 26 to 30 still say "Accent kicks are assumed, not proven"; that line predates this run.
+Game code (6142): none read; the scorer doubles any note with the performed flag and has no kick test (SC-12, `code/6142/note_score_add_20DEEC0.asm` lines 19 to 24)
 Hydra: `ChordNote::basescore` in src/core/model.cpp line 84
-Ruling: card 528e137d: "The symmetric rule is the sensible default, but it needs a video of a chart with velocity-127 kicks before we trust it." (02:58 UTC)
-Found: 2026-10-30, session b02ab3e6 (the reference build)
+Ruling: card 528e137d: "The symmetric rule is the sensible default, but it needs a video of a chart with velocity-127 kicks before we trust it." (02:58 UTC); the run above stands in for that video
+Found: 2026-10-30, session b02ab3e6 (the reference build); the live run, 2026-11-08, session 77057df2 (docs-gaps search)
 
 ## The solo bonus
 
 ### SC-20 The solo bonus at a full solo is 100 per note
 
-Rule: A solo hit in full pays 100 points per note, once, with no multiplier and no Star Power. Below 50 percent it pays nothing, and between 50 and 100 percent it follows 10 times round(((h / N) minus 0.5) times 2 times h times 10) in 64-bit float, rounding half to even, paid at the solo-end note even when that note is missed.
-Label: Unknown
-Evidence: listing lost; read 2026-10-16 at the game's solo-end method, sessions 1aaf0ac4 and 5b35957b (no address recorded; card 1aaf0ac4 says the formula "stayed unconfirmed at the end"). The reference build looked in `SoloCounter` (TypeDefIndex 123; its methods hold only "Solo Move" and "frets"), its fields and every string literal containing "solo", and did not find the function. Every saved run has solo_bonus_total 0; run 1's "Guitar Solo" sections are [section] names, not solo markers. Public `3b49012c:hydra/hypath.py` line 65 pays 100 * timestamp.chord.count().
+Rule: Each solo is scored on its own, and the file's solo_bonus_total is the sum over the chart's solos. A solo of N notes with h of them hit pays nothing when h is below half of N. Otherwise it pays 10 times round(((h / N) minus 0.5) times 2 times h times 10), which is 100 per note when every note is hit. The bonus has no multiplier and no Star Power. Not yet seen in a run: the case of exactly half, the rounding of a value ending in .5 (the earlier reading said half to even, in 64-bit float), and whether the bonus is paid at the solo-end note even when that note is missed.
+Label: Proven in a live run
+Evidence: four virtual kit runs, their scorestats files in the run folders named here. The Ladies Talk chart (`C:\Clone Hero\songs\Hydra Probe\Ladies Talk fill check\notes.mid`, MD5 9569049A5F3100D1EB759359E6EAAEF5, equal to the `checksum` in all three of its runs' files, resolution 480) has two solo markers on note 103 of PART DRUMS: ticks 5,760 to 13,440 holding 83 gems, and ticks 140,400 to 186,480 holding 497 gems, each counted from the start tick up to but not including the end tick (read with a short Python MIDI reader on 2026-11-08). LS-O3 run 1 (2026-11-07, ls-o3-run1) hit every note: 8,300 plus 49,700 is its 58,000. LS-D2d run 1 (2026-11-06, ls-d2d-run1) missed 11 notes, all in the Intro section (section_stats Intro 76 of 87, every other section full): 76 of 83 gives 6,320, and 6,320 plus 49,700 is its 56,020; h = 75 would give 6,050 and h = 77 would give 6,590, so 76 is the only fit. LS-O1 run 1 (2026-11-06, ls-o1-run1) hit 16 of the Intro's 87, so at most 16 of the first solo's 83, under half: 0 plus 49,700 is its 49,700. LS-M2 run 1 on Won't Get Fooled Again (2026-11-08, ls-m2-run1; chart `C:\Clone Hero\songs\synchotic\Sync Charts\BirdmanExe Drive\Onyxite\The Who\The Who - Won't Get Fooled Again (O)\notes.mid`, MD5 AF44D5C8D941BB33444D18E7871CDC77, equal to its file's `checksum`) has one solo of 121 gems, ticks 491,520 to 505,920, and its Drum solo section reads 121 of 121: 12,100. No press CSV was kept for LS-D2d or LS-O1, so their misses were not checked note by note. The formula was first read 2026-10-16 at the game's solo-end method, sessions 1aaf0ac4 and 5b35957b; that listing is lost and no address was recorded. The reference build looked in `SoloCounter` (TypeDefIndex 123; its methods hold only "Solo Move" and "frets"), its fields and every string literal containing "solo", and did not find the function. Public `3b49012c:hydra/hypath.py` line 65 pays 100 * timestamp.chord.count().
 Game code (6142): not found: looked in `SoloCounter` methods `0x293A30`, `0x294070`, `0x294880`, `0x2946F0`, `0x295190` and `0x2956C0`
-Hydra: `solo_bonus` in src/core/scoring.cpp line 95 with `kSoloBonusPerNote` in src/core/model.h line 146 (full solos only, since Hydra's paths hit every note)
+Hydra: `solo_bonus` in src/core/scoring.cpp line 95 with `kSoloBonusPerNote` in src/core/model.h line 147 (full solos only, since Hydra's paths hit every note)
 Ruling: D251: "Like the game"
-Found: 2026-10-16, session 5b35957b
+Found: 2026-10-16, session 5b35957b; the four runs, 2026-11-08, session 77057df2 (docs-gaps search)
 
 ### SC-21 The solo's note count counts every gem
 
-Rule: Hydra counts every gem of a chord in a solo's note total. The game's count is not settled. Session 1aaf0ac4 (2026-10-16) first wrote that every gem counts, citing the Swim to the Moon video in which a 236-note solo paid 23,600 points (SC-22); a later agent in the same session reported that the game merges same-tick drum gems into one note.
-Label: Unknown
-Evidence: not checked: no listing. The session's card (docs/sessions/2026-10-16-1aaf0ac4.md, open threads) records the later report that the game merges same-tick gems, and that it was not confirmed. The first statement and its video figure come from the session's own record, which is not kept; no repo file holds either. The video's 236 may itself count gems or chords, so it does not settle the question.
+Rule: The game counts every gem of a chord in a solo's note total, the same as Hydra, so a full solo pays 100 per gem, not per chord. With the DoubleKick modifier on, a 2x kick gem counts too. Same-tick gems are not merged into one note.
+Label: Proven in a live run
+Evidence: the runs of SC-20, all with the DoubleKick modifier. On Ladies Talk the two solos hold 83 and 497 gems but 74 and 389 chords, and 458 of the second solo's gems are left once the 2x kick pitch (95) is dropped. LS-O3 run 1 hit every note and its solo_bonus_total is 58,000, which is 100 times the 580 gems; the chord count would give 46,300, and leaving out the 2x kick would give 54,100. On Won't Get Fooled Again the solo holds 121 gems in 78 chords, and LS-M2 run 1's solo_bonus_total is 12,100. Session 1aaf0ac4 (2026-10-16) had first written that every gem counts; a later agent in that session reported that the game merges same-tick gems (card docs/sessions/2026-10-16-1aaf0ac4.md, open threads, not confirmed). These runs settle it against the merge.
 Game code (6142): none
 Hydra: `solo_note_count` in src/core/scoring.cpp line 91
-Ruling: none yet: the game's rule is not settled
-Found: 2026-10-30, session b02ab3e6 (the reference build)
+Ruling: none needed: same rule
+Found: 2026-10-30, session b02ab3e6 (the reference build); the runs, 2026-11-08, session 77057df2 (docs-gaps search)
 
 ### SC-22 The bonus is paid as one lump at the solo's end
 
@@ -292,7 +292,7 @@ Rule: The drums star base is the sum over notes of (50, plus 15 for a cymbal) ti
 Label: Proven in the game's code
 Evidence: Star base lines 68 (drums branch), 87 to 101 (cymbal and the two flag tests), 103 to 118 (gem count) and 120 to 123 (the sum); lines 68 to 80 and 147 to 149 leave the sustain term at 0. The non-drums term is lines 29 to 39 (the value divided by 3.0), 73 to 82 (the length test) and 139 to 149 (the total divided by the value over 25.0); that the value at chart record +0xB8 is the resolution is session 9168b711's reading (card line 24 says "sustains at 25 points per beat"), not shown by name in the dump. The constructor picks the drums branch for 6 or 9 at lines 183 to 189, calls it at line 196 and stores the result at line 202. That the two flags are accent and ghost is named by the dump: 0x40000 is `DrumsGhostHit` and 0x80000 is `DrumsAccentHit` (dump.cs lines 548215 and 548216). Live: the game's base_score is 73,520 on Trippin SP Spike ProDrums, 62,850 on its plain Drums run (1,257 gems times 50, no cymbals or dynamics) and 7,100 on Window Map (142 gems times 50). Hydra's totals for the same charts are in `trippin.json`, `trippin-normal.json` and `window-map.json`, one folder above the bot files. On ProDrums Hydra's notes, accent and ghost totals sum to the game's base (71,370 + 450 + 1,700 = 73,520). On Window Map Hydra's notes total is 7,100 with no dynamics. On plain Drums the game's 62,850 equals Hydra's notes total only, because Hydra still prices 450 + 1,700 for dynamics there and the game drops them (SC-15).
 Game code (6142): RVA `0x20F4680`, `code/6142/star_base_20F4680.asm` lines 68 to 149; constructor RVA `0x20F79E0`, `code/6142/engine_ctor_20F79E0.asm` lines 183 to 202
-Hydra: `Path::chart_base_score` in src/core/model.cpp line 833
+Hydra: `Path::chart_base_score` in src/core/model.cpp line 839
 Ruling: none needed: same rule (a Hydra note holds one dynamic type, so the both-flags case does not arise)
 Found: 2026-10-30, session b02ab3e6 (the reference build)
 
@@ -310,11 +310,11 @@ Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 Rule: Hydra compares a score without the solo bonus with the cutoffs. Whether the game's count does the same is not read.
 Label: Unknown
-Evidence: not checked: four other callers of the star counter (`0x210E2A0`, `0x210F140`, `0x21104F0`, `0x2110920`, all in #8351) were found and not opened. Session 9168b711 (2026-09-27) read the count's score as leaving out two bonus totals that are added after the stars are counted. The two fields have scrambled names, so which one is the solo bonus came from CHOpt (another optimizer), which names them the solo bonus and the clean-play bonus, and from the game's changelog, which says solos stopped counting toward stars in v0.20; neither came from the code. That reading comes from the session's own record, which is not kept, and no repo file holds the listing; the changelog line was not re-read for this page. The session's card (docs/sessions/2026-09-27-9168b711.md) records only the question the user answered ("Clone Hero counts stars on your score *without* the solo bonus ...") and that the official wiki (wiki.clonehero.net, "How to play") and CHOpt agree with the game's cutoffs for 3 to 7 stars. No saved run has a solo.
+Evidence: not checked: four other callers of the star counter (`0x210E2A0`, `0x210F140`, `0x21104F0`, `0x2110920`, all in #8351) were found and not opened. Session 9168b711 (2026-09-27) read the count's score as leaving out two bonus totals that are added after the stars are counted. The two fields have scrambled names, so which one is the solo bonus came from CHOpt (another optimizer), which names them the solo bonus and the clean-play bonus, and from the game's changelog, which says solos stopped counting toward stars in v0.20; neither came from the code. That reading comes from the session's own record, which is not kept, and no repo file holds the listing; the changelog line was not re-read for this page. The session's card (docs/sessions/2026-09-27-9168b711.md) records only the question the user answered ("Clone Hero counts stars on your score *without* the solo bonus ...") and that the official wiki (wiki.clonehero.net, "How to play") and CHOpt agree with the game's cutoffs for 3 to 7 stars. Four saved runs have a solo bonus (SC-20), but in none of them does the bonus carry the score across a cutoff: their stars are the same with it or without it (worked from SC-24's table on 2026-11-08), so they do not settle the question.
 Game code (6142): callers of RVA `0x210DD00`, not opened
 Hydra: `score_without_solo` in src/core/stars.h line 51; `path_stars` line 59
 Ruling: none yet: the game's rule is not settled
-Found: 2026-10-30, session b02ab3e6 (the reference build)
+Found: 2026-10-30, session b02ab3e6 (the reference build); the solo runs, 2026-11-08, session 77057df2 (docs-gaps search)
 
 ### SC-30 The HUD star bar keeps its own cutoffs
 
@@ -330,39 +330,39 @@ Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 ### SC-31 The score is the sum of the breakdown fields
 
-Rule: In the game's file, score equals note_score plus combo_score plus sp_score plus 50 for each accent or ghost hit. squeezed_score is not part of the sum.
+Rule: In the game's file, score equals note_score plus combo_score plus sp_score plus solo_bonus_total plus 50 for each accent or ghost hit. squeezed_score is not part of the sum.
 Label: Proven in a live run
-Evidence: ProDrums bot: 71,370 + 217,455 + 0 + 50 x 43 = 290,975. Plain Drums bot: 62,850 + 185,700 = 248,550. Window Map: 7,100 + 18,450 = 25,550. Run 1: 71,235 + 210,600 + 83,260 = 365,095, with squeezed_score 1,385 left out. solo_bonus_total is 0 in all four, so the solo term is unchecked.
+Evidence: ProDrums bot: 71,370 + 217,455 + 0 + 50 x 43 = 290,975. Plain Drums bot: 62,850 + 185,700 = 248,550. Window Map: 7,100 + 18,450 = 25,550. Run 1: 71,235 + 210,600 + 83,260 = 365,095, with squeezed_score 1,385 left out. The sum holds in all 16 scorestats files under the run folder (checked with a short Python script on 2026-11-08). Four of them have a solo bonus, so the solo term is checked: LS-O3 run 1, 168,235 + 665,075 + 283,720 + 58,000 + 50 x 1,094 = 1,229,730. squeezed_score is nonzero in eight of the 16 (from 380 on LS-F1 run 1 to 3,940 on LS-O3 run 1) and is in none of the sums.
 Game code (6142): none (the per-player writer is not traced, SC-35)
-Hydra: `score_total` in src/core/model.h line 151
+Hydra: `score_total` in src/core/model.h line 152
 Ruling: none needed: same sum
-Found: 2026-10-30, session b02ab3e6 (the reference build)
+Found: 2026-10-30, session b02ab3e6 (the reference build); the 16 files, 2026-11-08, session 77057df2 (docs-gaps search)
 
 ### SC-32 The Notes line is the 1x total less 50 per dynamic hit
 
-Rule: The results screen's Notes line is the plain-points total less 50 for each accent or ghost hit, so a dynamic cymbal's extra 15 stays in Notes. The Accent and Ghost lines are the hits times 50.
-Label: Unknown
-Evidence: listing lost; read 2026-10-11 at RVA `0x20F3DC0` (instructions 0x20F425C to 0x20F426F) and at 0x126FD6 and 0x127029, session 1bae448b. The session's card (docs/sessions/2026-10-12-1bae448b.md) records the finding, the Notes line as the 1x total less 50 per ghost or accent hit; the addresses come from the session's own record, which is not kept, and its listings were swept with a scratch folder. Both of those addresses lie inside the `PlayerStatsBox` method that starts at 0x126280 and ends before 0x1270D0 (its bounds from the 6142 dump's script.json, checked 2026-10-31); the dump names its class `PlayerStatsBox`. The same session read the base value 50 passed by the drum hit handler at 0x20DE96C, inside 0x20DE770 (the same record, not kept). Live: the ProDrums bot's note_score 71,370 = base_score 73,520 less 50 x 43, and equals Hydra's Notes. Run 1 (no dynamic performed) has note_score 71,235, 2,285 below base_score; that would be 43 x 50 plus 9 x 15 if 9 of the dynamic gems are cymbals, which was not checked.
+Rule: The file's note_score, and the results screen's Notes line, is the plain-points total less 50 for each accent or ghost hit, so a dynamic cymbal's extra 15 stays in Notes. The Accent and Ghost lines are the hits times 50. The runs prove the file's field; that the screen's line shows the same total rests on the lost listing below.
+Label: Proven in a live run
+Evidence: in every one of the 16 scorestats files under the run folder that hit every note, base_score less note_score is exactly 50 per accent or ghost hit (nine files, checked with a short Python script on 2026-11-08). For example LS-M0 run 1 (2026-11-08): 132,295 less 115,645 is 16,650, which is 50 times its 333 accent and ghost hits; LS-O3 run 1 (2026-11-07): 222,935 less 168,235 is 54,700, 50 times 1,094. The screen's side: listing lost; read 2026-10-11 at RVA `0x20F3DC0` (instructions 0x20F425C to 0x20F426F) and at 0x126FD6 and 0x127029, session 1bae448b. The session's card (docs/sessions/2026-10-12-1bae448b.md) records the finding, the Notes line as the 1x total less 50 per ghost or accent hit; the addresses come from the session's own record, which is not kept, and its listings were swept with a scratch folder. Both of those addresses lie inside the `PlayerStatsBox` method that starts at 0x126280 and ends before 0x1270D0 (its bounds from the 6142 dump's script.json, checked 2026-10-31); the dump names its class `PlayerStatsBox`. The same session read the base value 50 passed by the drum hit handler at 0x20DE96C, inside 0x20DE770 (the same record, not kept). Live: the ProDrums bot's note_score 71,370 = base_score 73,520 less 50 x 43, and equals Hydra's Notes. Run 1 (no dynamic performed) has note_score 71,235, 2,285 below base_score; that would be 43 x 50 plus 9 x 15 if 9 of the dynamic gems are cymbals, which was not checked.
 Game code (6142): RVA `0x20F3DC0` (listing lost)
 Hydra: `category_scores` in src/core/scoring.cpp line 26
 Ruling: D208: "we don't need to change anything, matching the game is correct."
-Found: 2026-10-11, session 1bae448b
+Found: 2026-10-11, session 1bae448b; the 16 files, 2026-11-08, session 77057df2 (docs-gaps search)
 
-### SC-33 The average multiplier is score over base score
+### SC-33 The average multiplier is score less the solo bonus, over base score
 
-Rule: The game's avg_multiplier is score divided by base_score.
+Rule: The game's avg_multiplier is score less solo_bonus_total, divided by base_score. On a chart with no solo that is score over base_score.
 Label: Proven in a live run
-Evidence: 248,550 / 62,850 = 3.95465394 (file 3.95465398); 25,550 / 7,100 = 3.59859155 (3.59859157); 290,975 / 73,520 = 3.95776659 (3.95776653); 365,095 / 73,520 = 4.96592764 (4.9659276). Agreement to float precision, on runs with no solo bonus. With a solo, whether the game's field keeps the bonus in is not measured; Hydra takes it out.
+Evidence: with no solo: 248,550 / 62,850 = 3.95465394 (file 3.95465398); 25,550 / 7,100 = 3.59859155 (3.59859157); 290,975 / 73,520 = 3.95776659 (3.95776653); 365,095 / 73,520 = 4.96592764 (4.9659276). With a solo, the four runs of SC-20: LS-D2d run 1 (900,870 less 56,020) / 222,935 = 3.78966963 (file 3.78966975, where score over base would be 4.04095364); LS-O1 run 1 (1,198,410 less 49,700) / 222,935 = 5.15266782 (5.152668); LS-O3 run 1 (1,229,730 less 58,000) / 222,935 = 5.25592662 (5.25592661); LS-M2 run 1 (1,063,755 less 12,100) / 214,640 = 4.89962262 (4.89962244). Each agrees to the file's float precision, and the same holds in all 16 files under the run folder (checked with a short Python script on 2026-11-08).
 Game code (6142): none (the writer is not traced)
-Hydra: `Path::avg_mult` in src/core/model.cpp line 837 (total less solo, over the base score)
+Hydra: `Path::avg_mult` in src/core/model.cpp lines 843 to 847 (total less solo, over the base score)
 Ruling: D222: "change it to Average Multiplier, that's a real stat you see in the game"
-Found: 2026-10-30, session b02ab3e6 (the reference build)
+Found: 2026-10-30, session b02ab3e6 (the reference build); the solo runs, 2026-11-08, session 77057df2 (docs-gaps search)
 
 ### SC-34 Off-speed scores are never judged against Hydra's optimum
 
 Rule: Hydra's optimum is for normal speed only, and a score above it is labelled "above optimal", never "impossible", because Hydra's optimum leaves out many backends and the old fill-spawn logic.
 Label: Hydra assumes it, never checked
-Evidence: src/app/dm_report.cpp lines 107 to 122. The dmleaderboards site (a community leaderboard for drum scores) ranks every speed on one board per chart. The user said so on 2026-10-10 (D206, card 35360d51 line 18: "dmleaderboards does not use separate leaderboards for different speeds."); the public DMBot source and a user screenshot backed it, neither committed. The Clone Hero v1.1 leaderboard announcement (https://clonehero.net/2024/11/10/clonehero-leaderboards.html) says the game's own leaderboards show only scores for the selected modifiers and speed (ch-evidence.md question 222 at commit 5fbe71ae; not re-read for this page).
+Evidence: src/app/dm_report.cpp lines 125 to 149. The dmleaderboards site (a community leaderboard for drum scores) ranks every speed on one board per chart. The user said so on 2026-10-10 (D206, card 35360d51 line 18: "dmleaderboards does not use separate leaderboards for different speeds."); the public DMBot source and a user screenshot backed it, neither committed. The Clone Hero v1.1 leaderboard announcement (https://clonehero.net/2024/11/10/clonehero-leaderboards.html) says the game's own leaderboards show only scores for the selected modifiers and speed (ch-evidence.md question 222 at commit 5fbe71ae; not re-read for this page).
 Game code (6142): none (outside the game)
 Hydra: `is_base_speed` in src/net/dmbot_client.h line 36
 Ruling: card e3a57d11: "do not label above optimal as impossible." and "just note them as above optimal." (02:24 UTC)
@@ -394,68 +394,68 @@ Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 Rule: Each player entry holds 46 keys, one of them a list of sections with 3 keys each. Every key is a string literal in the game, and every run wrote them all. Which engine counter feeds each key is not traced: the per-player serialiser was not opened. The table below gives, per key, the observed values and what writes it.
 Label: Unknown
-Evidence: stringliteral.json holds every key name; the four saved files show the same key set. The per-player writer is another class: `0x251A70` only adds an object and `0x112490` copies another stats object.
+Evidence: stringliteral.json holds every key name. All 16 scorestats files under the run folder, and run 1's file, show the same top-level keys, the same 46 per-player keys and the same three section keys (checked with a short Python script on 2026-11-08). The per-player writer is another class: `0x251A70` only adds an object and `0x112490` copies another stats object.
 Game code (6142): per-player serialiser: not found (looked in `0x251A70` and `0x112490`)
 Hydra: no owner in src/
 Ruling: none yet: the writers are not traced
-Found: 2026-10-30, session b02ab3e6 (the reference build)
+Found: 2026-10-30, session b02ab3e6 (the reference build); the observed values, 2026-11-08, session 77057df2 (docs-gaps search)
 
-Per-player keys. "Unknown" means no code was read that writes the key; a named field is a candidate the value matches, never a traced writer.
+Per-player keys. "Unknown" means no code was read that writes the key; a named field is a candidate the value matches, never a traced writer. The observed column covers the 16 files under the run folder, read on 2026-11-08: three bot runs and 13 virtual kit runs, each with one player. Run 1's file is named where it differs.
 
 | key | observed | what writes it |
 |---|---|---|
-| instrument | Drums or ProDrums | Unknown |
-| difficulty | Expert | Unknown |
-| profile_name | empty for bots, Guest for run 1 | Unknown |
-| modifiers | ["DoubleKick"] | Unknown |
-| remote_network_player | false | Unknown (the engine's player kind at #8288+0x190 is a candidate) |
-| lefty_flip | false | Unknown |
-| no_fail | true | Unknown |
-| video_calibration | 0.03 on bots, 0 on run 1 | Unknown |
-| audio_calibration | 0 | Unknown |
-| controller_type | Drums | Unknown |
-| score | the final score | Unknown (equals the engine score at #8288+0x94, SC-03, and band_score) |
-| base_score | the star base | Unknown (equals the star base at #8288+0x1D0, SC-27) |
-| solo_bonus_total | 0 in every run | Unknown |
-| squeezed_score | 0, or 1,385 on run 1 | Unknown (the fourth total at #8288+0xD0, SC-09, is a candidate) |
-| clean_play_bonus | 0 in every run | Unknown (no reader found; Hydra has no such category) |
+| instrument | Drums in five files, ProDrums in eleven | Unknown |
+| difficulty | Expert in every file | Unknown |
+| profile_name | empty in every file; Guest on run 1 | Unknown |
+| modifiers | ["DoubleKick"] in every file | Unknown |
+| remote_network_player | false in every file | Unknown (the engine's player kind at #8288+0x190 is a candidate) |
+| lefty_flip | false in every file | Unknown |
+| no_fail | true in every file | Unknown |
+| video_calibration | 0.03 in every file (written 0.0299999993); 0 on run 1 | Unknown |
+| audio_calibration | 0 in every file | Unknown |
+| controller_type | Drums in every file | Unknown |
+| score | the final score, 9,400 to 1,229,730 | Unknown (equals the engine score at #8288+0x94, SC-03, and band_score) |
+| base_score | the star base, 6,050 to 222,935 | Unknown (equals the star base at #8288+0x1D0, SC-27) |
+| solo_bonus_total | 0 in twelve files; 56,020, 49,700, 58,000 and 12,100 on the four runs of charts with solos (SC-20) | Unknown |
+| squeezed_score | 0 in eight files, 380 to 3,940 in the other eight; 1,385 on run 1 | Unknown (the fourth total at #8288+0xD0, SC-09, is a candidate) |
+| clean_play_bonus | 0 in every file | Unknown (no reader found; Hydra has no such category) |
 | note_score | SC-32 | Unknown |
-| sustain_score | 0 | Unknown (the second adder's total at #8288+0xC4, SC-04, is a candidate) |
-| sp_score | 0, or 83,260 on run 1 | Unknown (the Star Power share at #8288+0xCC, SC-08) |
-| combo_score | equals Hydra's Combo with no Star Power | Unknown (the Combo share at #8288+0xC8, SC-08) |
-| notes_hit | gems hit (1,257 on Trippin SP Spike) | Unknown (the hit count at +0x9C, SC-06, is a candidate) |
-| total_notes | gems in the chart | Unknown |
-| max_streak | the gem count (1,257 on Trippin SP Spike, 142 on Window Map) | Unknown (the best streak at +0x98, SC-06) |
-| end_streak | the gem count, as max_streak | Unknown |
-| excess_hits | 0 in all four runs named above; 10 on one earlier key-press run with misses (card e9b04efc; that run's file was not kept) | Unknown |
-| sp_phrases_earned | 0 on bots, 11 on run 1 | Unknown |
-| sp_phrases_total | 11 | Unknown |
-| sp_activations | 0 on bots, 4 on run 1 | Unknown (the activation counter at +0xB4, page 5 SP-19) |
-| time_in_sp | 0, or 50.03 s on run 1 | Unknown (the time total at +0xB8, page 5 SP-25) |
-| sp_ticks_accumulated | 0, or 15,840 on run 1 (11 x 1,440) | Unknown (the running gain total at +0x80, page 5 SP-12) |
-| sp_bar_ticks | 5,760 at resolution 192, 14,400 at 480 | Unknown (equals the full bar at #8288+0x1B0, page 5 SP-11) |
-| stars | 5 to 7 | Unknown (agrees with SC-28) |
-| avg_multiplier | score over base_score | Unknown (SC-33) |
-| squeezed_notes | 0, or 7 on run 1 | Unknown (the squeeze counter at +0xE8, page 5 SP-36, is a candidate) |
-| squeeze_note_losses | 0, or 1 on run 1 | Unknown (the counter at +0xEC, page 5 SP-36, is a candidate) |
-| frets_ghosted | 0 | Unknown |
-| accent_notes_hit | 9 of 9 on the ProDrums bot, 0 on run 1 | Unknown (the accent counter at +0xDC, SC-13, is a candidate) |
-| accent_notes_total | 9 | Unknown |
-| ghost_notes_hit | 34 of 34 on the ProDrums bot, 0 on run 1 | Unknown (the ghost counter at +0xD8, SC-13, is a candidate) |
-| ghost_notes_total | 34 | Unknown |
-| is_fc | true | Unknown |
-| is_pfc | true | Unknown |
-| versus_winner | true | Unknown |
-| is_bot | true on bots, false on run 1 | Unknown (a stats writer writes the key from a record byte at +0xB6, page 7 IN-38; where that byte is set was not traced) |
-| failed_in_run_time | -1 | Unknown |
-| section_count | 7, or 10 on Window Map (no [section] events, a game fallback of "0% - 10%" sections) | Unknown |
+| sustain_score | 0 in every file | Unknown (the second adder's total at #8288+0xC4, SC-04, is a candidate) |
+| sp_score | 0 in the eight files with no activation, 96,070 to 283,720 in the other eight; 83,260 on run 1 | Unknown (the Star Power share at #8288+0xCC, SC-08) |
+| combo_score | 4,350 to 665,075; equals Hydra's Combo with no Star Power (SC-07) | Unknown (the Combo share at #8288+0xC8, SC-08) |
+| notes_hit | gems hit, 101 to 3,753 (1,257 on Trippin SP Spike) | Unknown (the hit count at +0x9C, SC-06, is a candidate) |
+| total_notes | gems in the chart, 121 to 3,767 | Unknown |
+| max_streak | the longest streak in gems: the gem count on the nine full-combo files, 38 to 2,985 on the seven with misses | Unknown (the best streak at +0x98, SC-06) |
+| end_streak | the streak at the song's end: equal to max_streak on the full-combo files, 12 to 2,985 on the others | Unknown |
+| excess_hits | 0 in eleven files; 1 on LS-O1 run 1, 4 on LS-E and LS-F1, 11 on LS-O2 and 21 on LS-T3 run b | Unknown |
+| sp_phrases_earned | 0 on the two Trippin SP Spike bot runs (of 11) and on the charts with no phrases; 14 to 30 on the others (15 of 16 on LS-F1, 30 of 31 on LS-M2); 11 on run 1 | Unknown |
+| sp_phrases_total | 0, 11, 14, 16, 25 or 31, by chart | Unknown |
+| sp_activations | 0, 4, 5, 8 or 9; 4 on run 1 | Unknown (the activation counter at +0xB4, page 5 SP-19) |
+| time_in_sp | 0, or 37.81 to 106.66 s; 50.03 s on run 1 | Unknown (the time total at +0xB8, page 5 SP-25) |
+| sp_ticks_accumulated | 0; 20,160 (14 x 1,440) and 23,040 (16 x 1,440) on the 5,760-bar charts; 90,000 (25 x 3,600) and 108,000 (30 x 3,600) on the 14,400-bar charts; 53,925 on LS-F1 run 1 (15 phrases earned, 75 short of 15 x 3,600); 15,840 on run 1 (11 x 1,440) | Unknown (the running gain total at +0x80, page 5 SP-12) |
+| sp_bar_ticks | 5,760 in five files, 14,400 in eleven; the two charts of SC-20, both at resolution 480, read 14,400 | Unknown (equals the full bar at #8288+0x1B0, page 5 SP-11) |
+| stars | 3 to 7 | Unknown (agrees with SC-28) |
+| avg_multiplier | score less solo_bonus_total, over base_score (SC-33), 1.32 to 5.26 | Unknown (SC-33) |
+| squeezed_notes | 0 to 18; 7 on run 1 | Unknown (the squeeze counter at +0xE8, page 5 SP-36, is a candidate) |
+| squeeze_note_losses | 0, 1, 3, 6 or 8; 1 on run 1 | Unknown (the counter at +0xEC, page 5 SP-36, is a candidate) |
+| frets_ghosted | 0 in every file | Unknown |
+| accent_notes_hit | up to 368 of 368 (LS-O3 run 1); 0 of 368 on LS-D2d run 1 and 0 of 9 on run 1 (SC-14) | Unknown (the accent counter at +0xDC, SC-13, is a candidate) |
+| accent_notes_total | 0 to 368, by chart | Unknown |
+| ghost_notes_hit | up to 726 of 726 (LS-O3 run 1); 0 of 726 on LS-D2d run 1 and 0 of 34 on run 1 (SC-14) | Unknown (the ghost counter at +0xD8, SC-13, is a candidate) |
+| ghost_notes_total | 0 to 726, by chart | Unknown |
+| is_fc | true in the nine files that hit every note, false in the seven with misses | Unknown |
+| is_pfc | equal to is_fc in every file | Unknown |
+| versus_winner | true in every file | Unknown |
+| is_bot | true on the three bot runs, false on the 13 virtual kit runs and on run 1 | Unknown (a stats writer writes the key from a record byte at +0xB6, page 7 IN-38; where that byte is set was not traced) |
+| failed_in_run_time | -1 in fourteen files; 5,991 on LS-O1 run 1 and 28,076 on LS-T3 run b, both with no_fail on | Unknown |
+| section_count | 7 to 35; 10 on the charts with no [section] events (Window Map, Edge Walk Pair, Get Ur Freak On), a game fallback of "0% - 10%" sections | Unknown |
 | section_stats | a list of section_name, notes_hit and notes_count | Unknown |
 
-The top-level keys are written by the serialiser of SC-36; where each value comes from is Unknown. Observed: playback_speed 100, game_mode "Quickplay", band_score equal to the player's score and band_stars equal to stars in these one-player runs. The online score record `ScoreData` (dump.cs line 18833) is a different structure, the leaderboard upload.
+The top-level keys are written by the serialiser of SC-36; where each value comes from is Unknown. Observed in all 16 files: game_version "v1.1.0.6142-final", playback_speed 100, game_mode "Quickplay", player_count 1, band_score equal to the player's score and band_stars equal to stars. The online score record `ScoreData` (dump.cs line 18833) is a different structure, the leaderboard upload.
 
 ## Rows waiting on a live run
 
-SC-07, SC-08, SC-10, SC-11, SC-12, SC-14, SC-19, SC-20, SC-21, SC-29, SC-30, SC-33. Each is on the live-checks page.
+SC-07, SC-08, SC-10, SC-11, SC-12, SC-14, SC-20 (the exactly-half case, the .5 rounding and a missed solo-end note), SC-29, SC-30. Each is on the live-checks page.
 
 ## Open splits
 

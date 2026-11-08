@@ -7,6 +7,8 @@
 #include <stdexcept>
 #include <tuple>
 
+#include "app/song_length.h"     // song_length_ms, the one song end (D255)
+#include "core/scoring.h"         // sqout_late_notes
 #include "core/squeeze_rating.h"  // steady_spans
 
 namespace hydra::schedule {
@@ -34,10 +36,10 @@ constexpr double kFormulaOffsetMs = 20.0;
 // set it: question 1 of docs/superpowers/plans/2026-11-08-player-freak-fixes.md.
 constexpr double kFrameMs = 3.0;
 
-// A press is judged between one and two frames after the clock the player
-// read when it sent it (TM-27 on docs/clone-hero/03-timing.md, SP-47).
+// A press is judged one frame after the clock the player read when it sent
+// it (SP-47 on docs/clone-hero/05-star-power.md). Every rule here reads this
+// one frame: the user chose "One frame", D319 item 3.
 constexpr double kJudgeEarlyMs = 1 * kFrameMs;
-constexpr double kJudgeLateMs = 2 * kFrameMs;
 
 // Each chord is pressed this many ms before its time (D51).
 constexpr double kPressLeadMs = 2.0;
@@ -75,7 +77,6 @@ nlohmann::json constants_json() {
         {"formula_offset_ms", kFormulaOffsetMs},
         {"frame_ms", kFrameMs},
         {"judge_early_ms", kJudgeEarlyMs},
-        {"judge_late_ms", kJudgeLateMs},
         {"press_lead_ms", kPressLeadMs},
         {"sp_end_lead_ms", kSpEndLeadMs},
         {"sp_out_lag_ms", kSpOutLagMs},
@@ -154,51 +155,15 @@ std::vector<double> chord_sides_ms(const std::vector<double>& chord_ms) {
     return sides;
 }
 
-// ---- the decline mode ------------------------------------------------------
+// ---- a declined chord ------------------------------------------------------
 
-const char* decline_mode_name(DeclineMode mode) {
-    switch (mode) {
-        case DeclineMode::KickOnly: return "kick_only";
-        case DeclineMode::Nothing: return "nothing";
-        case DeclineMode::AllButTopPad: return "all_but_top_pad";
-    }
-    return "unknown";
-}
-
-std::optional<DeclineMode> decline_mode_from_name(std::string_view name) {
-    for (DeclineMode m : kDeclineModes)
-        if (name == decline_mode_name(m)) return m;
-    return std::nullopt;
-}
-
-std::string decline_mode_list() {
-    std::string out;
-    for (DeclineMode m : kDeclineModes) {
-        if (!out.empty()) out += ", ";
-        out += decline_mode_name(m);
-    }
-    return out;
-}
-
-// kick_only sends at most one gem, the first kick. all_but_top_pad sends
-// every gem but the chord's activation note (Chord::activation_note owns the
-// pad order, the one FL-09 on docs/clone-hero/04-fills.md reads), so a chord
-// whose activation note is its kick has no pad gem and sends nothing. A Chord
-// holds one note per colour, so the top pad is never ambiguous.
-KeptGems kept_gems(DeclineMode mode, const Chord& chord, const std::vector<ReplayNote>& notes) {
+// Chord::activation_note owns the pad order (the one FL-09 on
+// docs/clone-hero/04-fills.md reads). A Chord holds one note per colour, so
+// the gem it names is never ambiguous.
+KeptGems kept_gems(const Chord& chord, const std::vector<ReplayNote>& notes) {
     KeptGems out;
-    if (mode == DeclineMode::Nothing) return out;
-    if (mode == DeclineMode::KickOnly) {
-        for (size_t k = 0; k < notes.size(); ++k)
-            if (notes[k].color == NoteColor::Kick) {
-                out.places.push_back(k);
-                break;
-            }
-        return out;
-    }
     if (notes.empty()) return out;
     const NoteColor top = chord.activation_note().colortype;
-    if (top == NoteColor::Kick) return out;  // no pad gem: nothing is sent
     for (size_t k = 0; k < notes.size(); ++k)
         if (notes[k].color != top) out.places.push_back(k);
     return out;
@@ -221,51 +186,48 @@ double anchor_end_shift_ms(SqueezeKind kind, double ratio, double lead_ms, doubl
 }
 }  // namespace
 
-// Question 1 (a) of the plan, equal room: both presses keep the same room in
-// the worst frame case. A squeeze-out (design point 4): the anchor goes L
-// early, judged kJudgeEarlyMs to kJudgeLateMs later, so the end lands at most
-// r(L - jl) early; the late gem goes kSpOutLagMs after that end and is judged
-// up to jl later. Solving side_a - L = side_s - (gap + lag - r(L - jl)) - jl
-// gives L = (side_a - side_s + gap + lag) / (1 + r) + jl.
+// Question 1 (a) of the plan, equal room: both presses keep the same room,
+// each judged one frame (j, kJudgeEarlyMs) after it is sent. A squeeze-out
+// (design point 4): the anchor goes L early and is judged j later, so its
+// room is side_a - L and the end lands r(L - j) early; the late gem goes
+// kSpOutLagMs after that end and is judged j later. Solving
+// side_a - L = side_s - (gap + lag - r(L - j)) - j gives
+// L = (side_a - side_s + gap + lag) / (1 + r) + j.
 //
-// A squeeze-in is the mirror: the anchor goes L late, judged up to jl later,
-// so its room is side_a - L - jl and the end lands at least r(L + je) late;
-// the squeeze press goes kSpEndLeadMs before that end, and its room is
-// side_s minus how far before the chord that aim is. Solving
-// side_a - L - jl = side_s - (gap + lead - r(L + je)) gives
-// L = (side_a - side_s + gap + lead - jl - r je) / (1 + r), gap being how far
+// A squeeze-in is the mirror: the anchor goes L late and is judged j later,
+// so its room is side_a - L - j and the end lands r(L + j) late; the squeeze
+// press goes kSpEndLeadMs before that end, and its room is side_s minus how
+// far before the chord that aim is. Solving
+// side_a - L - j = side_s - (gap + lead - r(L + j)) gives
+// L = (side_a - side_s + gap + lead - j - r j) / (1 + r), gap being how far
 // the chord sits past the end.
 double equal_room_lead_ms(const SqueezeGeometry& g) {
     const double r = moving_ratio(g);
     if (g.kind == SqueezeKind::SqOut) {
         const double gap = g.end_ms - g.squeeze_ms;
-        return (g.anchor_side_ms - g.squeeze_side_ms + gap + kSpOutLagMs) / (1.0 + r) + kJudgeLateMs;
+        return (g.anchor_side_ms - g.squeeze_side_ms + gap + kSpOutLagMs) / (1.0 + r) + kJudgeEarlyMs;
     }
     const double gap = g.squeeze_ms - g.end_ms;
-    return (g.anchor_side_ms - g.squeeze_side_ms + gap + kSpEndLeadMs - kJudgeLateMs - r * kJudgeEarlyMs) /
+    return (g.anchor_side_ms - g.squeeze_side_ms + gap + kSpEndLeadMs - kJudgeEarlyMs - r * kJudgeEarlyMs) /
            (1.0 + r);
 }
 
 double press_room_ms(double aim_ms, double side_ms) {
-    return side_ms - std::max(std::abs(aim_ms), std::abs(aim_ms + kJudgeLateMs));
+    return side_ms - std::max(std::abs(aim_ms), std::abs(aim_ms + kJudgeEarlyMs));
 }
 
 SqueezeSplit split_at_lead(const SqueezeGeometry& g, double lead_ms) {
     const double r = moving_ratio(g);
     SqueezeSplit s;
-    if (g.kind == SqueezeKind::SqOut) {
-        s.anchor_aim_ms = -lead_ms;
-        s.planned_end_ms = g.end_ms + anchor_end_shift_ms(g.kind, r, lead_ms, kJudgeEarlyMs);
-        // The latest the end can land: the anchor judged two frames late.
-        s.aim_end_ms = g.end_ms + anchor_end_shift_ms(g.kind, r, lead_ms, kJudgeLateMs);
+    s.anchor_aim_ms = g.kind == SqueezeKind::SqOut ? -lead_ms : lead_ms;
+    // The end once the anchor is judged one frame after its aim; the squeeze
+    // press's aim assumes that same end.
+    s.planned_end_ms = g.end_ms + anchor_end_shift_ms(g.kind, r, lead_ms, kJudgeEarlyMs);
+    s.aim_end_ms = s.planned_end_ms;
+    if (g.kind == SqueezeKind::SqOut)
         s.squeeze_aim_ms = s.aim_end_ms + kSpOutLagMs - g.squeeze_ms;
-    } else {
-        s.anchor_aim_ms = lead_ms;
-        // The earliest the end can land: the anchor judged one frame late.
-        s.planned_end_ms = g.end_ms + anchor_end_shift_ms(g.kind, r, lead_ms, kJudgeEarlyMs);
-        s.aim_end_ms = s.planned_end_ms;
+    else
         s.squeeze_aim_ms = s.aim_end_ms - kSpEndLeadMs - g.squeeze_ms;
-    }
     s.anchor_room_ms = press_room_ms(s.anchor_aim_ms, g.anchor_side_ms);
     s.squeeze_room_ms = press_room_ms(s.squeeze_aim_ms, g.squeeze_side_ms);
     s.feasible = s.anchor_room_ms >= kRoomMarginMs && s.squeeze_room_ms >= kRoomMarginMs;
@@ -328,10 +290,10 @@ std::optional<double> anchor_lead_ms(const std::vector<SqueezeGeometry>& on_one_
 
 double last_send_ms(double chord_ms, double side_ms) { return chord_ms + side_ms - kJudgeEarlyMs; }
 
-// The late press goes kSpOutLagMs after the read end and is judged up to
-// kJudgeLateMs later.
+// The late press goes kSpOutLagMs after the read end and is judged one frame
+// later.
 double sqout_fallback_after_ms(double chord_ms, double side_ms) {
-    return chord_ms + side_ms - kSpOutLagMs - kJudgeLateMs;
+    return chord_ms + side_ms - kSpOutLagMs - kJudgeEarlyMs;
 }
 
 // Design point 5's threshold as the plan writes it: the press goes
@@ -370,17 +332,24 @@ std::vector<std::vector<size_t>> press_groups(const std::vector<int>& multiplier
 // all, so a late gem the score file pays at a lower multiplier than an inside
 // gem is an order no press gives." Design point 5 of
 // docs/superpowers/plans/2026-11-07-player-limits.md and the user's answer to
-// its question 5 say why that is Hydra's question, not the player's.
+// its question 5 say why that is Hydra's question, not the player's. The
+// late gems are the ones the loaded rules pay outside (sqout_late_notes), not
+// a fixed place.
 std::optional<std::vector<std::vector<size_t>>> squeeze_out_inside_groups(
-    int chord, const std::vector<int>& multipliers, std::vector<std::string>& refusals) {
+    int chord, const std::vector<int>& multipliers, const std::vector<size_t>& places,
+    const std::vector<size_t>& late, std::vector<std::string>& refusals) {
     std::vector<size_t> inside;
-    for (size_t p = 1; p < multipliers.size(); ++p) inside.push_back(p);
+    for (size_t p : places)
+        if (std::find(late.begin(), late.end(), p) == late.end()) inside.push_back(p);
     if (inside.empty()) return std::vector<std::vector<size_t>>{};
-    int highest = multipliers[0];
+    if (late.empty()) return press_groups(multipliers, inside, std::nullopt);
+    int lowest_late = multipliers[late.front()];
+    for (size_t p : late) lowest_late = std::min(lowest_late, multipliers[p]);
+    int highest = lowest_late;
     for (size_t p : inside) highest = std::max(highest, multipliers[p]);
-    if (highest > multipliers[0]) {
+    if (highest > lowest_late) {
         refusals.push_back("chord " + std::to_string(chord) + " is a squeeze-out whose late gem pays x" +
-                           std::to_string(multipliers[0]) + " and an inside gem x" + std::to_string(highest) +
+                           std::to_string(lowest_late) + " and an inside gem x" + std::to_string(highest) +
                            ": Hydra assumes an order no press gives, since the late gem goes last; this is a "
                            "question about Hydra's path for the user, not a player bug");
         return std::nullopt;
@@ -388,34 +357,39 @@ std::optional<std::vector<std::vector<size_t>>> squeeze_out_inside_groups(
     return press_groups(multipliers, inside, std::nullopt);
 }
 
-// _refuse_far_presses in play_chart.py, moved, for one press.
+// TM-50: the game gives a press inside two unhit same-pad windows to the
+// earlier note. So a press is safe from an earlier chord only when that
+// chord's own press on the pad was sent before it; one sent at the same
+// clock lands with it, while the earlier note is still unhit.
 std::optional<std::string> far_press_refusal(const std::vector<PadChord>& chords, size_t place,
                                              double send_ms, const std::vector<Pad>& pads) {
     const PadChord& own = chords[place];
-    auto inside = [&](const PadChord& c) { return std::abs(send_ms - c.ms) <= c.side_ms; };
+    const double judged_ms = send_ms + kJudgeEarlyMs;
+    auto inside = [&](const PadChord& c) { return std::abs(judged_ms - c.ms) <= c.side_ms; };
     auto has = [](const std::vector<Pad>& list, const Pad& p) {
         return std::find(list.begin(), list.end(), p) != list.end();
     };
+    // No chord's side is wider than one with no neighbours (TM-19), so the
+    // walk back stops at the first chord that far from the judged time.
+    const double widest_side = window_side_ms(std::nullopt, std::nullopt);
     const std::string who = "a press of chord " + std::to_string(own.index) + " sent at " +
                             std::to_string(send_ms) + " ms";
     if (!inside(own))
         return who + " leaves its own window (" + std::to_string(own.side_ms) + " ms a side)";
     for (const Pad& pad : pads) {
         for (size_t i = place; i-- > 0;) {
-            if (!has(chords[i].chart_pads, pad)) continue;
-            if (inside(chords[i]))
-                return who + " lands inside the window of chord " + std::to_string(chords[i].index) +
-                       ", the note before it on its " + color_str(pad.first) + (pad.second ? " cymbal" : "") +
-                       " pad";
-            break;
-        }
-        for (size_t i = place + 1; i < chords.size(); ++i) {
-            if (!has(chords[i].chart_pads, pad)) continue;
-            if (!has(chords[i].sent_pads, pad) && inside(chords[i]))
-                return who + " lands inside the window of chord " + std::to_string(chords[i].index) +
-                       ", the next note on its " + color_str(pad.first) + (pad.second ? " cymbal" : "") +
-                       " pad, which the player does not press";
-            break;
+            const PadChord& before = chords[i];
+            if (judged_ms - before.ms > widest_side) break;
+            if (!has(before.chart_pads, pad) || !inside(before)) continue;
+            std::optional<double> pressed_ms;
+            for (const PadSend& s : before.sends)
+                if (s.pad == pad && (!pressed_ms || s.send_ms < *pressed_ms)) pressed_ms = s.send_ms;
+            if (pressed_ms && *pressed_ms < send_ms) continue;
+            const std::string pad_name = color_str(pad.first) + std::string(pad.second ? " cymbal" : "");
+            return who + " lands inside the window of chord " + std::to_string(before.index) +
+                   ", an earlier note on its " + pad_name + " pad that is still unhit then: " +
+                   (pressed_ms ? "the player presses it at " + std::to_string(*pressed_ms) + " ms, no earlier"
+                               : std::string("the player sends it no press on that pad"));
         }
     }
     return std::nullopt;
@@ -468,6 +442,11 @@ nlohmann::json activation_json(const Activation& act, const ChordIndex& chords,
     const std::optional<int64_t> deact = act.deact_tick();
     const std::optional<int64_t> read_after = act.deact_anchor_tick();
     if (!deact) refusals.push_back(who + " has no SP-end steps, so its end is not known");
+    const std::optional<int64_t> ready = act.sp_ready_tick();
+    if (!ready)
+        refusals.push_back(who + " has " + std::to_string(act.sp_meter()) +
+                           " stored bar arrivals, fewer than the activation level of " +
+                           std::to_string(kSpActivationBars) + ", so when its meter was ready is not known");
 
     nlohmann::json squeezes = nlohmann::json::array();
     for (size_t k = 0; k < act.sqinouts.size(); ++k) {
@@ -515,6 +494,8 @@ nlohmann::json activation_json(const Activation& act, const ChordIndex& chords,
     return nlohmann::json{
         {"act_tick", act_tick},
         {"chord", or_null(chords.at(act_tick))},
+        {"sp_ready_tick", ready ? nlohmann::json(*ready) : nlohmann::json(nullptr)},
+        {"sp_ready_ms", ready ? nlohmann::json(ms_of(*ready)) : nlohmann::json(nullptr)},
         {"nominal_end_tick", nominal ? nlohmann::json(*nominal) : nlohmann::json(nullptr)},
         {"nominal_end_ms", nominal ? nlohmann::json(ms_of(*nominal)) : nlohmann::json(nullptr)},
         {"deact_tick", deact ? nlohmann::json(*deact) : nlohmann::json(nullptr)},
@@ -528,10 +509,25 @@ nlohmann::json activation_json(const Activation& act, const ChordIndex& chords,
     };
 }
 
+const char* replay_build() { return __DATE__ " " __TIME__; }
+
+nlohmann::json song_length_json(const store::ChartTimingMeta& meta, const Song& song) {
+    const std::optional<double> ms = app::song_length_ms(meta, song);
+    return ms ? nlohmann::json(*ms) : nlohmann::json(nullptr);
+}
+
 nlohmann::json schedule_json(const Song& song, const std::vector<const Activation*>& acts,
-                             const ReplayResult& replay, DeclineMode mode) {
+                             const ReplayResult& replay, const core::Rules& rules) {
     const ChordIndex chords = chord_index(song);
     std::vector<std::string> refusals;
+    // The chords the schedule writes no press for. Every branch that drops
+    // one goes through refuse_chord, so its row says refused and a line
+    // says why.
+    std::set<size_t> refused;
+    auto refuse_chord = [&](size_t chord, std::string line) {
+        refusals.push_back(std::move(line));
+        refused.insert(chord);
+    };
 
     nlohmann::json act_list = nlohmann::json::array();
     std::map<int64_t, size_t> act_number;  // act tick -> place in path order
@@ -569,11 +565,10 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
             pc.chart_pads.push_back({note.color, note.cymbal});
         }
         if (declined.count(c.tick) > 0) {
-            sent[i] = kept_gems(mode, song.sequence[i].chord, c.notes).places;
+            sent[i] = kept_gems(song.sequence[i].chord, c.notes).places;
         } else {
             for (size_t k = 0; k < c.notes.size(); ++k) sent[i].push_back(k);
         }
-        for (size_t k : sent[i]) pc.sent_pads.push_back(pc.chart_pads[k]);
     }
 
     nlohmann::json chord_list = nlohmann::json::array();
@@ -633,12 +628,29 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
     for (size_t a = 0; a < acts.size(); ++a) {
         const Activation& act = *acts[a];
         for (size_t k = 0; k < act.sqinouts.size(); ++k) {
-            // activation_json read these off the engine; a null was refused there.
+            // activation_json read these off the engine and wrote a line for
+            // each null. A squeeze chord with no end or anchor is not pressed
+            // at all, rather than pressed as if it were no squeeze.
             const nlohmann::json& q = act_list[a]["squeezes"][k];
-            if (q["chord"].is_null() || q["anchor_chord"].is_null() || q["end_tick"].is_null()) continue;
+            const std::string what = "the activation at " + tick_text(act.timecode.ticks()) + "'s squeeze " +
+                                     std::to_string(k);
+            if (q["chord"].is_null() || q["anchor_chord"].is_null() || q["end_tick"].is_null()) {
+                if (!q["chord"].is_null() && valid(q["chord"].get<int>()))
+                    refuse_chord(q["chord"].get<size_t>(),
+                                 "chord " + std::to_string(q["chord"].get<int>()) + " is " + what +
+                                     ", which has no end or anchor in the record, so it is not pressed");
+                continue;
+            }
             const int cs = q["chord"].get<int>();
             const int ca = q["anchor_chord"].get<int>();
-            if (!valid(cs) || !valid(ca)) continue;
+            if (!valid(cs) || !valid(ca)) {
+                const std::string line = "chord " + std::to_string(cs) + " is " + what + ", led by chord " +
+                                         std::to_string(ca) + ", and one of them is not among the replay's " +
+                                         std::to_string(n) + " chords, so the two inputs are not of one chart";
+                if (valid(cs)) refuse_chord(static_cast<size_t>(cs), line);
+                else refusals.push_back(line);
+                continue;
+            }
             if (squeeze_at.count(cs) > 0) {
                 refusals.push_back("chord " + std::to_string(cs) + " is two squeezes; no rule times both");
                 continue;
@@ -722,7 +734,12 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
         for (const Timed& t : timed)
             if (t.act == a) read_chords.insert(t.g.anchor_chord);
         for (int x : read_chords) {
-            if (!valid(x)) continue;
+            if (!valid(x)) {
+                refusals.push_back("the end of the activation at " + tick_text(act.timecode.ticks()) +
+                                   " is read after chord " + std::to_string(x) + ", which is not among the replay's " +
+                                   std::to_string(n) + " chords, so that read is not planned");
+                continue;
+            }
             const int64_t tick = replay.chords[static_cast<size_t>(x)].tick;
             std::optional<double> stored;
             for (const SpEndStep& st : act.sp_end_steps)
@@ -809,6 +826,7 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
     };
 
     for (size_t i = 0; i < n; ++i) {
+        if (refused.count(i) > 0) continue;  // its line is written already
         const ReplayChord& c = replay.chords[i];
         const int ci = static_cast<int>(i);
         const double side = sides[i];
@@ -817,8 +835,8 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
 
         if (lead_of.count(ci) > 0) {
             if (squeeze_at.count(ci) > 0 || on_end) {
-                refusals.push_back("chord " + std::to_string(ci) +
-                                   " leads a squeeze and is also a squeeze or an end; no rule times both");
+                refuse_chord(i, "chord " + std::to_string(ci) +
+                                    " leads a squeeze and is also a squeeze or an end; no rule times both");
                 continue;
             }
             const double l = lead_of[ci];
@@ -833,21 +851,50 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
                 add_groups(i, groups, -kPressLeadMs, false, "needs_no_timing");
                 continue;
             }
-            if (it == timed_of.end() || !timed[it->second].split) continue;  // refused above
+            if (it == timed_of.end() || !timed[it->second].split) {
+                // A line above says why: no stored ratio, or no lead for its
+                // anchor.
+                refuse_chord(i, "chord " + std::to_string(ci) +
+                                    " is a squeeze the schedule could not split, so it is not pressed");
+                continue;
+            }
             const Timed& t = timed[it->second];
             const SqueezeSplit& s = *t.split;
             const int anchor = t.g.anchor_chord;
             const std::optional<double> aim_end = in_read_terms(a, anchor, s.aim_end_ms - t.g.end_ms);
-            if (!aim_end) continue;  // the read's refusal names it
+            if (!aim_end) {
+                refuse_chord(i, "chord " + std::to_string(ci) + " is a squeeze timed from the end read after chord " +
+                                    std::to_string(anchor) + ", and that read is not planned, so it is not pressed");
+                continue;
+            }
             // Thresholds in the same terms as the read.
             const double terms = *aim_end - s.aim_end_ms;
             if (t.g.kind == SqueezeKind::SqOut) {
-                // _timed_presses in play_chart.py, moved: "The gem Hydra's
-                // FirstNote rule pays outside is note 0 of
-                // Chord::note_list(true)", so the late gem is place 0.
+                // The late gems are the ones the rules pay outside, by their
+                // place in Chord::note_list(true), the order of
+                // ReplayChord::notes.
+                const std::vector<size_t> late_gems =
+                    sqout_late_notes(song.sequence[i].chord, rules.sqout_rule);
+                // A squeeze-out that is also a skipped fill sends only its
+                // kept gems (kept_gems). When the gem the fill leaves out is
+                // a late one, no press both skips the fill and pays the gem
+                // outside.
+                const bool late_left_out = std::any_of(late_gems.begin(), late_gems.end(), [&](size_t g) {
+                    return std::find(sent[i].begin(), sent[i].end(), g) == sent[i].end();
+                });
+                if (late_left_out) {
+                    refuse_chord(i, "chord " + std::to_string(ci) +
+                                        " is a squeeze-out and a skipped fill, and its late gem is the "
+                                        "activation note the fill leaves out, so no press both skips the fill "
+                                        "and pays that gem outside Star Power");
+                    continue;
+                }
                 const std::optional<std::vector<std::vector<size_t>>> inside =
-                    squeeze_out_inside_groups(ci, mults[i], refusals);
-                if (!inside) continue;
+                    squeeze_out_inside_groups(ci, mults[i], sent[i], late_gems, refusals);
+                if (!inside) {
+                    refused.insert(i);  // squeeze_out_inside_groups wrote the line
+                    continue;
+                }
                 // "The last inside group goes down at the inside time,
                 // SP_END_LEAD_MS before the end, so no later group can land
                 // close to the end check and pay outside."
@@ -858,7 +905,7 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
                     add_groups(i, *inside, first_inside_aim, true, "squeeze_out_inside", a, anchor, *aim_end);
                 Press late;
                 late.chord = i;
-                late.gems = {0};
+                late.gems = late_gems;
                 late.aim_ms = s.squeeze_aim_ms;
                 late.rule = "squeeze_out_late";
                 late.act = a;
@@ -931,19 +978,36 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
     std::stable_sort(presses.begin(), presses.end(), [&](const Press& x, const Press& y) {
         return replay.chords[x.chord].ms + x.aim_ms < replay.chords[y.chord].ms + y.aim_ms;
     });
-    std::set<size_t> far_refused;
-    nlohmann::json press_list = nlohmann::json::array();
-    for (const Press& p : presses) {
-        const ReplayChord& c = replay.chords[p.chord];
-        const double side = sides[p.chord];
-        if (p.checked && !p.gems.empty() && far_refused.count(p.chord) == 0) {
+    // A refused press drops its whole chord, and a dropped chord no longer
+    // hits its own notes, which can leave a later press inside an unhit
+    // window. So the check runs again on what is left until it refuses
+    // nothing more: each pass that refuses drops at least one chord, so it
+    // runs at most once per chord, plus one.
+    for (bool more = true; more;) {
+        more = false;
+        for (PadChord& pc : pad_chords) pc.sends.clear();
+        for (const Press& p : presses) {
+            if (refused.count(p.chord) > 0) continue;
+            for (size_t g : p.gems)
+                pad_chords[p.chord].sends.push_back({pad_chords[p.chord].chart_pads[g],
+                                                     replay.chords[p.chord].ms + p.aim_ms});
+        }
+        for (const Press& p : presses) {
+            if (!p.checked || p.gems.empty() || refused.count(p.chord) > 0) continue;
             std::vector<Pad> pads;
             for (size_t g : p.gems) pads.push_back(pad_chords[p.chord].chart_pads[g]);
-            if (const std::optional<std::string> r = far_press_refusal(pad_chords, p.chord, c.ms + p.aim_ms, pads)) {
-                refusals.push_back(*r);
-                far_refused.insert(p.chord);
+            if (std::optional<std::string> r =
+                    far_press_refusal(pad_chords, p.chord, replay.chords[p.chord].ms + p.aim_ms, pads)) {
+                refuse_chord(p.chord, std::move(*r));
+                more = true;
             }
         }
+    }
+    nlohmann::json press_list = nlohmann::json::array();
+    for (const Press& p : presses) {
+        if (refused.count(p.chord) > 0) continue;  // a refused far press is never written
+        const ReplayChord& c = replay.chords[p.chord];
+        const double side = sides[p.chord];
         nlohmann::json row{{"chord", c.index},
                            {"gems", p.gems},
                            {"aim_ms", p.aim_ms},
@@ -957,9 +1021,10 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
         if (!p.fallback.is_null()) row["fallback"] = p.fallback;
         press_list.push_back(std::move(row));
     }
+    for (size_t i = 0; i < n; ++i) chord_list[i]["refused"] = refused.count(i) > 0;
 
-    return nlohmann::json{{"constants", constants_json()},
-                          {"decline", decline_mode_name(mode)},
+    return nlohmann::json{{"hydra_replay_build", replay_build()},
+                          {"constants", constants_json()},
                           {"activations", act_list},
                           {"chords", chord_list},
                           {"presses", press_list},
@@ -980,16 +1045,8 @@ std::optional<std::string> no_path_refusal(const nlohmann::json& doc, const std:
     return "--path file " + path_file + " holds no path, so the chart has no Star Power path to plan";
 }
 
-std::optional<std::string> decline_flag_refusal(const std::optional<std::string>& name) {
-    if (!name)
-        return "schedule needs --decline <mode>, what a declined chord sends: " + decline_mode_list();
-    if (decline_mode_from_name(*name)) return std::nullopt;
-    return "unknown decline mode \"" + *name + "\"; modes: " + decline_mode_list();
-}
-
 nlohmann::json schedule_for_windows(const Song& song, const SearchSettings& settings,
-                                    const std::vector<ReplayWindow>& windows,
-                                    DeclineMode mode) {
+                                    const std::vector<ReplayWindow>& windows) {
     TargetResult found = search_target(song, settings, pinned_windows(song, windows));
     if (found.paths.empty())
         throw std::runtime_error("the engine cannot realize this path: " + found.failed_reason);
@@ -997,7 +1054,7 @@ nlohmann::json schedule_for_windows(const Song& song, const SearchSettings& sett
     std::vector<const Activation*> acts;
     for (const Activation& act : path.walk_activations()) acts.push_back(&act);
     const ReplayResult replay = replay_path(song, windows_for_path(path), settings.rules);
-    return schedule_json(song, acts, replay, mode);
+    return schedule_json(song, acts, replay, settings.rules);
 }
 
 }  // namespace hydra::schedule

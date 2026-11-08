@@ -24,7 +24,9 @@ _REPO_ROOT = os.path.abspath(os.path.join(_HERE, "..", "..", ".."))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
+from tools.ch_mcp import build_stamp as BS  # noqa: E402
 from tools.ch_mcp import frida_attach as FA  # noqa: E402
+from tools.ch_mcp.tests.test_build_stamp import make_built_agent  # noqa: E402
 from tools.ch_mcp.tests import test_launch_core as LC  # noqa: E402
 from tools.ch_probe.constants import PROCESS_NAME  # noqa: E402
 
@@ -381,13 +383,37 @@ class NotRunningTest(Workspace):
         self.assertFalse(os.path.exists(self.out_path))
 
     def test_the_command_line_exits_1_when_not_running(self):
-        code = FA.main(["--agent", self.agent, "--cap", "93",
+        agent = make_built_agent(os.path.join(self.tmp.name, "built"), "clock")
+        code = FA.main(["--agent", agent, "--cap", "93",
                         "--out", self.out_path],
                        frida_mod=FakeFrida(None), wait=instant_wait,
                        out=self.lines.append)
         self.assertEqual(code, 1)
         self.assertEqual(self.lines,
                          ["Clone Hero.exe is not running; nothing attached"])
+
+    def test_the_command_line_refuses_a_stale_or_missing_agent_before_attaching(self):
+        folder = os.path.join(self.tmp.name, "built")
+        agent = make_built_agent(folder, "clock")
+        with open(os.path.join(folder, "clock.ts"), "a", encoding="utf-8") as fh:
+            fh.write("// an edit after the build\n")
+        session = FakeSession([sent(sample(1.0))])
+        code = FA.main(["--agent", agent, "--cap", "93", "--out", self.out_path],
+                       frida_mod=FakeFrida(session), wait=instant_wait,
+                       out=self.lines.append)
+        self.assertEqual(code, 1)
+        self.assertEqual(self.lines, [
+            f"{agent} is stale: clock.ts changed since it was built; "
+            "run npm run build:clock in tools/ch_mcp/agent first"])
+        os.remove(agent)
+        self.lines.clear()
+        code = FA.main(["--agent", agent, "--cap", "93", "--out", self.out_path],
+                       frida_mod=FakeFrida(session), wait=instant_wait,
+                       out=self.lines.append)
+        self.assertEqual(code, 1)
+        self.assertEqual(self.lines, [BS.check(agent)])
+        self.assertEqual(session.detach_calls, 0)
+        self.assertFalse(os.path.exists(self.out_path))
 
 
 # ---- the long-lived agent -----------------------------------------------------
@@ -741,9 +767,7 @@ class SummaryTest(unittest.TestCase):
 
     def test_the_command_line_prints_the_summary(self):
         with tempfile.TemporaryDirectory() as tmp:
-            agent = os.path.join(tmp, "clock.js")
-            with open(agent, "w", encoding="utf-8") as fh:
-                fh.write("// fake\n")
+            agent = make_built_agent(tmp, "clock")
             out_path = os.path.join(tmp, "clock.jsonl")
             session = FakeSession([sent(sample(1.0)), sent(sample(2.0)),
                                    sent({"done": "cap", "samples": 2})])
@@ -767,9 +791,7 @@ class SummaryTest(unittest.TestCase):
         # The runner's own detach after the cap must not turn the cap end
         # into a "session detached" error.
         with tempfile.TemporaryDirectory() as tmp:
-            agent = os.path.join(tmp, "clock.js")
-            with open(agent, "w", encoding="utf-8") as fh:
-                fh.write("// fake\n")
+            agent = make_built_agent(tmp, "clock")
             out_path = os.path.join(tmp, "clock.jsonl")
             session = FakeSession([sent(sample(1.0)), sent(sample(2.0))])
             lines = []
