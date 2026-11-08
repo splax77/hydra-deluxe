@@ -5,6 +5,7 @@
 #include <stdexcept>
 #include <string>
 
+#include "core/squeeze_rating.h"  // transfer_scale_between
 #include "core/timing.h"  // SongTiming
 #include "store/record_store.h"  // record_of, RecordRow::best_path_text
 
@@ -96,9 +97,13 @@ nlohmann::json score_json(const ReplayScore& s) {
 }
 
 // The path list `dump` and `target` both print. One shape, so anything that
-// reads dump's JSON reads target's too. The chart timing is not read here:
-// nominal_deact_tick comes off the stored history (nominal_end()).
-nlohmann::json paths_json(const std::vector<const Path*>& all, const SongTiming& /*timing*/) {
+// reads dump's JSON reads target's too. nominal_deact_tick comes off the
+// stored history (nominal_end()). The chart timing is read only for
+// end_scale_early and end_scale_late: how far the end moves per ms of early
+// or late activation, which transfer_scale_between (core/squeeze_rating.h)
+// owns. They are null when the activation has no deact tick or that function
+// gives no scale.
+nlohmann::json paths_json(const std::vector<const Path*>& all, const SongTiming& timing) {
     nlohmann::json paths = nlohmann::json::array();
     int index = 0;
     for (const Path* p : all) {
@@ -116,6 +121,15 @@ nlohmann::json paths_json(const std::vector<const Path*>& all, const SongTiming&
             // The phrases it squeezed in, so `score --path` skips them as the
             // engine did (D34).
             const nlohmann::json sqins = sqin_phrase_ticks(act);
+            nlohmann::json end_scale_early = nullptr;
+            nlohmann::json end_scale_late = nullptr;
+            if (d) {
+                if (const std::optional<TransferScale> s =
+                        transfer_scale_between(act_tick, *d, timing)) {
+                    end_scale_early = s->early;
+                    end_scale_late = s->late;
+                }
+            }
 
             acts.push_back(nlohmann::json{
                 {"act_tick", act_tick},
@@ -131,6 +145,8 @@ nlohmann::json paths_json(const std::vector<const Path*>& all, const SongTiming&
                 {"sqinouts", sq},
                 {"sqin_ticks", sqins},
                 {"from_record", true},
+                {"end_scale_early", end_scale_early},
+                {"end_scale_late", end_scale_late},
             });
         }
         paths.push_back(nlohmann::json{
