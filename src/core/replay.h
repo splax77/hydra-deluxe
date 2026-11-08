@@ -160,6 +160,19 @@ struct ReplayNote {
     NoteDynamicType dynamic = NoteDynamicType::Normal;
 };
 
+// One window that paid a chord's doubling (ReplayChord::paid_by): the window's
+// two ticks, which name it whatever order the caller listed the windows in,
+// and the chord's offset from that window's SP end (offset_from_sp_end).
+struct ReplayPayment {
+    int64_t act_tick = 0;
+    int64_t deact_tick = 0;
+    double offset_ms = 0.0;
+    bool operator==(const ReplayPayment& o) const {
+        return act_tick == o.act_tick && deact_tick == o.deact_tick && offset_ms == o.offset_ms;
+    }
+    bool operator!=(const ReplayPayment& o) const { return !(*this == o); }
+};
+
 // One scored chord.
 struct ReplayChord {
     int index = 0;
@@ -196,6 +209,13 @@ struct ReplayChord {
     // The running total as the game's counter shows it: a solo's bonus is
     // withheld until the last chord of that solo run, then paid in full.
     int64_t cum_onscreen_total = 0;
+
+    // Every window whose core::paid_by_sp is true for this chord, in the
+    // order replay_path sorts its windows, which does not depend on the
+    // caller's order: the same loop that sets in_sp fills it, so it is
+    // non-empty exactly when in_sp is true. hydra_replay's schedule
+    // command reads it. Filled with scores_only too.
+    std::vector<ReplayPayment> paid_by;
 };
 
 struct ReplayResult {

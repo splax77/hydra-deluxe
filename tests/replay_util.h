@@ -70,6 +70,7 @@ inline std::string first_row_difference(const ReplayChord& a, const ReplayChord&
     if (!(a.points == b.points)) return "points";
     if (!(a.cum == b.cum)) return "cum";
     if (a.cum_onscreen_total != b.cum_onscreen_total) return "cum_onscreen_total";
+    if (a.paid_by != b.paid_by) return "paid_by";
     return "";
 }
 
