@@ -104,7 +104,7 @@ Rule: once the dynamics tag is on, the .mid reader sets the ghost bit for veloci
 Label: Proven in the game's code
 Evidence: `code/6142/mid_drum_reader_2155050.asm` lines 325 to 333 (the tag byte test, then velocity 1 sets bit 9 and velocity 127 sets bit 10); docs/audit/drum-lanes/play/f2155200_mid_reader_lane_case.asm lines 245 to 253 show the lane code is tested only after the velocity test.
 Game code (6142): RVA `0x2155050`, the listing above.
-Hydra: `vel_dyn` in src/parse/song.cpp lines 896 to 903; `op_note` and `op_kick` lines 823 to 841; `mop_kick` line 620.
+Hydra: `vel_dyn` in src/parse/song.cpp lines 899 to 903; `op_note` and `op_kick` lines 822 to 840; `mop_kick` line 619.
 Ruling: D24 (record text): "The dynamics tag counts only in Clone Hero's two exact spellings".
 Found: 2026-10-03, session cebf3006; listed 2026-10-30 in session b02ab3e6 (the reference build).
 
@@ -114,7 +114,7 @@ Rule: dynamics turn on only at a drum-track text event equal to `ENABLE_CHART_DY
 Label: Proven in the game's code
 Evidence: `code/6142/mid_drum_reader_2155050.asm` line 100 (the flag starts 0 at 0x215524D), lines 363 to 368 (the event text loaded straight from the event) and 420 to 433 (two exact-equality compares at 0x21557A5 and 0x21557BB, then the flag set at 0x21557CD). Public Hydra accepted one-bracket forms (3b49012c, hydra/hysong.py line 273).
 Game code (6142): RVA `0x2155050`, the listing above.
-Hydra: `is_dynamics_marker` in src/parse/song.cpp lines 302 to 304; `dynamics_enabled_` reset at line 1098.
+Hydra: `is_dynamics_marker` in src/parse/song.cpp lines 300 to 302; `dynamics_enabled_` reset at line 1097.
 Ruling: D24: chose "Exact spellings (Recommended)" (card 2026-10-04-bbf41dc4, 01:57 UTC).
 Found: 2026-10-03, session cebf3006; listed 2026-10-30 in session b02ab3e6 (the reference build).
 
@@ -124,7 +124,7 @@ Rule: the reader does not trim the tag text (NL-11), so a tag with a trailing sp
 Label: Unknown
 Evidence: no trim call between the text load and the compare in the reader; mtrk_read_event_2150010.asm and mtrk_read_214F6D0.asm under docs/audit/note-shuffle/step0/open1/ hold no trim either. The events-track reader does trim (midi_events_track_21544E0.asm, at 0x21546E3), but that is a different track. Where the drum track's text is built was not found.
 Game code (6142): not found: looked in the listings named above.
-Hydra: `is_dynamics_marker` in src/parse/song.cpp line 302 compares the raw text.
+Hydra: `is_dynamics_marker` in src/parse/song.cpp line 300 compares the raw text.
 Ruling: D24 (record text): "caveat: assumes Clone Hero does not trim the text first".
 Found: 2026-10-30, session b02ab3e6 (the reference build).
 
@@ -134,39 +134,39 @@ Rule: Hydra lets file order decide at a shared tick, so a note written before th
 Label: Unknown
 Evidence: not checked: it would need the code that builds and sorts the drum track's event list. The reader walks a passed-in list in order (`code/6142/mid_drum_reader_2155050.asm` lines 110 to 123).
 Game code (6142): RVA `0x2155050`, lines 110 to 123; the list builder was not read.
-Hydra: `kick_mark_before_tag_` and the note pass in src/parse/song.cpp lines 877 and 973 to 976.
+Hydra: `kick_mark_before_tag_` and the note pass in src/parse/song.cpp lines 876 and 972 to 975.
 Ruling: D24 (record text): "at a shared tick file order decides".
 Found: 2026-10-03, session cebf3006.
 
 ### NL-14 A ghost kick scores double in the game
 
-Rule: a velocity-1 kick under the dynamics tag scores double, as a ghost pad does.
+Rule: a velocity-1 kick under the dynamics tag scores double, as a ghost pad does. The game counts ghost kicks as ghosts; that it pays them double is not yet shown.
 Label: Unknown
-Evidence: not checked: ADR 0012 lines 14 to 24 call it proven by video (Won't Get Fooled Again (O), 36 ghost kicks, a full combo of 1,142,235), but no video or result file for that run was found. The reader side is NL-10.
-Game code (6142): not found: the scoring side was not read.
-Hydra: `mop_kick` and `op_kick` in src/parse/song.cpp lines 620 and 835.
+Evidence: the count half is shown. In run hydra-data/ch-mcp-runs/2026-11-08/ls-m2-run1, outside the repo, the scorestats file for Won't Get Fooled Again (O) gives ghost_notes_total 160. Hydra's score file for that chart, hydra-data/ch-mcp-runs/2026-11-08/kick-prep/who/The Who - Won't Get Fooled Again (O)-score.json, holds 124 pad ghosts and 36 kick ghosts, which sum to 160. The pay half is not shown: that run's score does not match Hydra's for other reasons, so it does not test the doubling. The scorer doubles any note whose +0x84 mark bit is set, with no kick test (`code/6142/note_score_add_20DEEC0.asm` lines 17 to 24), but what sets that bit on a kick is unread. ADR 0012 lines 14 to 24 call it proven by video (a full combo of 1,142,235), and no video or result file for that run was found. The reader side is NL-10.
+Game code (6142): the scorer, RVA `0x20DEEC0`, the listing above; the code that sets the kick's mark bit was not found.
+Hydra: `mop_kick` and `op_kick` in src/parse/song.cpp lines 619 and 834.
 Ruling: none found.
-Found: ADR 0012.
+Found: ADR 0012; the ghost count and the scorer read 2026-11-08, session 77057df2 (docs-gaps search).
 
 ### NL-15 An accent kick scores double in the game
 
 Rule: a velocity-127 kick under the dynamics tag scores double, as an accent pad does.
-Label: Hydra assumes it, never checked
-Evidence: ADR 0012 lines 26 to 30 call it "assumed, not proven". The reader sets the accent bit on a kick (NL-10); the scorer was not read.
-Game code (6142): not found: looked in the reader listing only.
-Hydra: `mop_kick` in src/parse/song.cpp lines 620, 904 and 912.
+Label: Proven in a live run
+Evidence: run hydra-data/ch-mcp-runs/2026-11-08/ls-m0-run1, outside the repo, 2026-11-08, on I Am Ahab (Mastodon). Its scorestats file gives band_score 525,555, with 166 of 166 accents and 167 of 167 ghosts hit. Its base_score (132,295) less its note_score (115,645) is 16,650, which is 50 for each of the 333 ghost and accent hits. Hydra's score file for that chart, hydra-data/ch-mcp-runs/2026-11-08/kick-prep/ahab/Mastodon - Leviathan - 02 - I Am Ahab-score.json, gives a final total of 525,555 and a final accent bonus of 8,300 (166 times 50), and 33 of its 166 accents are on the kick. The game's score equals Hydra's, so the game paid the 33 accent kicks double. This is one chart. The scorer doubles any note whose +0x84 mark bit is set, with no kick test (`code/6142/note_score_add_20DEEC0.asm` lines 17 to 24); what sets that bit on a kick is unread.
+Game code (6142): the scorer, RVA `0x20DEEC0`, the listing above.
+Hydra: `mop_kick` in src/parse/song.cpp lines 619, 903 and 911.
 Ruling: none found.
-Found: ADR 0012.
+Found: ADR 0012; the live result read 2026-11-08, session 77057df2 (docs-gaps search).
 
 ### NL-16 A note with both a ghost and an accent mark plays as an accent
 
 Rule: when one note carries both marks (as a merged kick can, NL-29), the game plays it as an accent.
-Label: Unknown
-Evidence: docs/audit/note-shuffle/step0/open2/f20d4be0_notelist.asm lines 141 to 153 test one flag getter first and skip the other when it is set; which getter is accent and which ghost was read in session 27b9bbc4, and that reading was not kept. The merge itself decides nothing (it or-s both bits, NL-29).
-Game code (6142): RVA `0x20D4BE0`; listing lost; read 2026-10-09 in session 27b9bbc4.
-Hydra: `add_dynamic_mark` in src/core/model.cpp lines 250 to 258.
+Label: Proven in the game's code
+Evidence: docs/audit/note-shuffle/step0/open2/f20d4be0_notelist.asm lines 141 to 153. The builder first calls the getter 0x214DC90; when it returns true, it sets play-note bit 0x13 and skips the second test. Only when it returns false does it call the getter 0x214C8B0, and then it sets bit 0x12. The getters are in docs/audit/note-shuffle/step0/open2/getters.asm: 0x214DC90 reads bit 10 of the note's +0x24 flags (lines 19 to 23), and 0x214C8B0 reads bit 9 (lines 25 to 29). The .mid reader sets bit 10 for velocity 127 and bit 9 for velocity 1 (NL-10), so bit 10 is the accent and wins. The merge itself decides nothing (it ORs both bits, NL-29).
+Game code (6142): the note-list builder, RVA `0x20D4BE0`, the listing above.
+Hydra: `add_dynamic_mark` in src/core/model.cpp lines 256 to 259.
 Ruling: "go with the games rule" (card 2026-10-09-27b9bbc4).
-Found: 2026-10-09, session 27b9bbc4.
+Found: 2026-10-09, session 27b9bbc4; the listing cited 2026-11-08, session 77057df2 (docs-gaps search).
 
 ## Disco flip
 
