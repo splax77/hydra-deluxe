@@ -176,7 +176,7 @@ One needs your word: L81, the song length. D255 holds your words: "there should 
 - (a) Make the seven fixes. For L81, `hydra_replay` writes Hydra's song end into its output, and the run cap and silent audio read it, per D255.
 - (b) Make the seven fixes. Leave L81 as it is, and record the difference.
 
-Recommended: (a). D255's words already ask for one end everywhere, and the player is the one place left that has its own. The case against: it adds a field to `hydra_replay`'s output, which means a build and a test, and probe songs today take their length from `probe_songs.py:201` (last note plus 3,000 ms), which would also have to read Hydra's end.
+Recommended: (a). D255's words already ask for one end everywhere, and the player is the one place left that has its own. The case against: it adds a field to `hydra_replay`'s output, which means a build and a test, and probe songs today take their length from `tools/ch_probe/probe_songs.py:201-203` (last note plus 3,000 ms), which would also have to read Hydra's end.
 ## Answers
 
 - Q1: "Refuse stale (Recommended)" (2026-11-08): loaders refuse a stale built agent by a build stamp; run folders record the stamps and the `hydra_replay` build; tests run the built file.
