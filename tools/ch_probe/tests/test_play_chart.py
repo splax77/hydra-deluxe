@@ -2105,5 +2105,196 @@ class LivePressTest(unittest.TestCase):
         self.assertIs(play_chart.focus_window, input_driver.focus_window)
 
 
+# --- a press past its window is dropped (design point 5 of
+# docs/superpowers/plans/2026-11-08-player-freak-fixes.md) -----------------------
+
+class _JumpingSongClock(_FakeSongClock):
+    """_FakeSongClock that jumps `jump_s` song seconds ahead once it reaches
+    `jump_at_s`, as the game's clock did after its stall in Freak run 1."""
+
+    def __init__(self, wall: _FakeTime, start_s: float, jump_at_s: float,
+                 jump_s: float) -> None:
+        super().__init__(wall, start_s)
+        self.jump_at_s, self.jump_s = jump_at_s, jump_s
+
+    def read(self):
+        song_s, _est = super().read()
+        if song_s >= self.jump_at_s:
+            song_s += self.jump_s
+        return song_s, song_s
+
+
+class _ScriptedSongClock:
+    """A song clock that reads `values_s` in turn and then holds the last;
+    each read costs 1 ms of wall time."""
+
+    def __init__(self, wall: _FakeTime, values_s) -> None:
+        self.wall, self.values_s = wall, list(values_s)
+
+    def read(self):
+        self.wall.t += 0.001
+        song_s = self.values_s.pop(0) if len(self.values_s) > 1 else self.values_s[0]
+        return song_s, song_s
+
+
+def _clock_s_judged_at(bound_ms):
+    """A clock read, in song seconds, whose ms plus one frame is `bound_ms`
+    exactly in floats: the boundary of the drop check."""
+    import math
+    from tools.ch_probe import constants as C
+    raw_s = C.ms_to_s(bound_ms - play_chart.FRAME_MS)
+    for _ in range(256):
+        judged = C.s_to_ms(raw_s) + play_chart.FRAME_MS
+        if judged == bound_ms:
+            return raw_s
+        raw_s = math.nextafter(raw_s, math.inf if judged < bound_ms else -math.inf)
+    raise AssertionError(f"no clock read lands one frame before {bound_ms!r}")
+
+
+class FrameTest(unittest.TestCase):
+    def test_a_frame_is_3_ms(self):
+        # The user set it: question 1 of
+        # docs/superpowers/plans/2026-11-08-player-freak-fixes.md.
+        self.assertEqual(play_chart.FRAME_MS, 3.0)
+
+    def test_a_dropped_row_says_dropped(self):
+        # Question 4 of the same plan.
+        self.assertEqual(play_chart.DROPPED, "dropped")
+
+
+class FrozenClockDropTest(unittest.TestCase):
+    """The game stalls during the wait for chord 41, so the run reaches it
+    about 107 ms late, as Freak run 1 reached chord 153."""
+
+    def _run(self):
+        chords = _load(play_chart.load_dump_chords)
+        wall = _FakeTime()
+        game = _FakeGame()
+        # Chord 41 fires at 13,612.13 ms; the clock jumps 131 ms 22 ms before.
+        clock = _JumpingSongClock(wall, start_s=12.0, jump_at_s=13.590, jump_s=0.131)
+        result = play_chart.play_chords(
+            chords, clock, game.read_score, game.press,
+            now=wall.now, sleep=wall.sleep, out=io.StringIO())
+        return chords, result, game
+
+    def test_the_late_chord_is_dropped_and_the_next_is_pressed_and_hit(self):
+        chords, result, game = self._run()
+        self.assertEqual(result.stop, "done")
+        (row,) = _rows_of(result, 41)
+        late_ms = row["clock_ms_at_press"] - row["chart_ms"]
+        self.assertGreater(late_ms, 100.0)
+        self.assertLess(late_ms, 110.0)
+        # The precondition: the game would judge it past its window.
+        side_ms = play_chart.window_sides(chords)[41]
+        self.assertGreater(row["clock_ms_at_press"] + play_chart.FRAME_MS,
+                           row["chart_ms"] + side_ms)
+        self.assertEqual(row["hit"], "dropped")
+        self.assertEqual(row["score_before"], row["score_after"])
+        for column in ("down_frame", "up_frame", "down_ms", "up_ms", "end_read_ms"):
+            self.assertNotIn(column, row)
+        # Chord 41 is the lone kick: every press but its own was sent.
+        expected = [list(lanes) for ms, lanes in _load() if ms != chords[1].ms]
+        self.assertEqual(game.presses, expected)
+        self.assertEqual(_rows_of(result, 45)[0]["hit"], 1)
+
+    def test_the_counts_leave_the_drop_out_and_the_streak_starts_over(self):
+        _chords, result, _game = self._run()
+        self.assertEqual((result.sent, result.hit, result.dropped, result.declined),
+                         (7, 7, 1, 0))
+        # 38 hits, 41 is dropped, the six after it hit: a streak that did not
+        # start over would reach 7.
+        self.assertEqual(result.max_streak, 6)
+
+    def test_the_printed_line_says_dropped(self):
+        chords = _load(play_chart.load_dump_chords)
+        wall = _FakeTime()
+        game = _FakeGame()
+        out = io.StringIO()
+        play_chart.play_chords(
+            chords, _JumpingSongClock(wall, 12.0, 13.590, 0.131), game.read_score,
+            game.press, now=wall.now, sleep=wall.sleep, out=out)
+        self.assertIn("dropped", out.getvalue())
+
+
+class DropBoundaryTest(unittest.TestCase):
+    """A press the game would judge exactly at its window's edge is inside
+    (TM-27 on docs/clone-hero/03-timing.md); one 0.01 ms further is not."""
+
+    def _run(self, chord, judged_past_ms, press):
+        from tools.ch_probe import constants as C
+        wall = _FakeTime()
+        bound_ms = chord.ms + play_chart.window_sides([chord])[chord.index]
+        raw_s = _clock_s_judged_at(bound_ms)
+        if judged_past_ms:
+            raw_s = C.ms_to_s(C.s_to_ms(raw_s) + judged_past_ms)
+        scores = iter([0, 0, 100])
+        result = play_chart.play_chords(
+            [chord], _ScriptedSongClock(wall, [0.5, raw_s]), lambda: next(scores), press,
+            now=wall.now, sleep=wall.sleep, out=io.StringIO())
+        self.assertEqual(result.stop, "done")
+        return result
+
+    def test_judged_at_the_edge_is_sent(self):
+        press = _SplitReplyPress()
+        chord = play_chart.Chord(7, 1000.0, [Lane.KICK], ["none"])
+        result = self._run(chord, 0.0, press)
+        self.assertEqual(press.calls, [([Lane.KICK], [])])
+        self.assertEqual([r["hit"] for r in result.rows], [1])
+        self.assertEqual((result.sent, result.dropped), (1, 0))
+
+    def test_judged_0_01_ms_past_the_edge_is_dropped(self):
+        press = _SplitReplyPress()
+        chord = play_chart.Chord(7, 1000.0, [Lane.KICK], ["none"])
+        result = self._run(chord, 0.01, press)
+        self.assertEqual(press.calls, [])
+        self.assertEqual([r["hit"] for r in result.rows], ["dropped"])
+        self.assertEqual((result.sent, result.dropped), (0, 1))
+
+    def test_a_split_chord_past_its_window_sends_nothing_and_drops_every_group(self):
+        press = _SplitReplyPress()
+        chord = play_chart.Chord(7, 1000.0, [Lane.KICK, Lane.GREEN_CYMBAL], ["none", "none"],
+                                 multipliers=[1, 2])
+        # The same chord inside its window goes as two groups (SplitSendTest).
+        (head, later), = play_chart.press_messages(play_chart.press_plan([chord]))
+        self.assertEqual(len(later), 1)
+        result = self._run(chord, 10.0, press)
+        self.assertEqual(press.calls, [])
+        self.assertEqual([(r["index"], r["hit"]) for r in result.rows],
+                         [(7, "dropped"), (7, "dropped")])
+        self.assertEqual((result.sent, result.hit, result.dropped), (0, 0, 1))
+
+
+class SqueezeOutDropTest(unittest.TestCase):
+    """A squeeze-out's late press goes through the same check: Bomber's
+    activation on chord 147 reads an end far later than planned, which moves
+    chord 180's late press past its window."""
+
+    def test_a_late_press_moved_past_its_window_is_dropped(self):
+        from tools.ch_probe import constants as C
+        chords = _load_refine(_BOMBER)
+        side_ms = play_chart.window_sides(chords)[180]
+        ends = [p.stored_end_ms for p in play_chart.press_plan(chords)
+                if p.stored_end_ms is not None]
+        # 147's end read 30 ms late; 412's as planned.
+        reads = iter([C.ms_to_s(ends[0] + 30.0), C.ms_to_s(ends[1])])
+        wall = _FakeTime()
+        game = _FakeGame()
+        calls_at_row = []
+        result = play_chart.play_chords(
+            chords, _FakeSongClock(wall, start_s=chords[0].ms / 1000 - 1.0), game.read_score,
+            game.press, now=wall.now, sleep=wall.sleep, out=io.StringIO(), cap_s=600.0,
+            read_sp_end=lambda: next(reads),
+            on_press=lambda row: calls_at_row.append((row["index"], len(game.messages))))
+        self.assertEqual(result.stop, "done")
+        (row,) = _rows_of(result, 180)
+        self.assertGreater(row["clock_ms_at_press"] + play_chart.FRAME_MS,
+                           row["chart_ms"] + side_ms)
+        self.assertEqual(row["hit"], "dropped")
+        self.assertEqual(result.dropped, 1)
+        # No press went out between the row before 180's and 180's own.
+        place = [i for i, (index, _n) in enumerate(calls_at_row) if index == 180][0]
+        self.assertEqual(calls_at_row[place][1], calls_at_row[place - 1][1])
+
+
 if __name__ == "__main__":
     unittest.main()

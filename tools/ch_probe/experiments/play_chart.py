@@ -94,6 +94,12 @@ SP_OUT_LAG_MS = 15.0
 # how it is used.
 ACT_LEAD_MARGIN_MS = 6.0
 
+# The game's frame period: a press is judged in the frame after the one whose
+# clock the player read when it sent it. The user set it: question 1 of
+# docs/superpowers/plans/2026-11-08-player-freak-fixes.md. play_chords' drop
+# check counts in it.
+FRAME_MS = 3.0
+
 # The two ways an activation is moved, as ActLead.direction says them.
 EARLY = "early"
 LATE = "late"
@@ -126,6 +132,11 @@ _TOP_PAD_ORDER = ("Green", "Blue", "Yellow", "Red")
 
 # What a declined chord's press row and printed line say in place of a result.
 DECLINED = "declined"
+
+# What the press row and printed line of a press play_chords did not send,
+# because the game would judge it past its chord's window, say in place of a
+# result: question 4 of docs/superpowers/plans/2026-11-08-player-freak-fixes.md.
+DROPPED = "dropped"
 
 # What an activation's press row says in `end_read_ms` when the game's Star
 # Power was off right after the press, so the plan's times stand.
@@ -959,10 +970,12 @@ class RunResult:
     """What one run did. `rows` are the press-log rows, keyed by the names in
     PRESS_LOG_COLUMNS, plus `lead_ms`, the lead the press used, which no log
     column holds. A split chord (press_plan) has a row per press, all with
-    its `index`. A declined chord's row says DECLINED in `hit`. `sent`, `hit`
+    its `index`. A declined chord's row says DECLINED in `hit`, and a message
+    play_chords dropped says DROPPED on each of its rows. `sent`, `hit`
     and `max_streak` count the messages play_chords sends (press_messages:
-    a chord's order groups are one) and leave declined chords out, so a
-    declined chord is no miss; `declined` counts them. `stop` says why the run ended: "done" (every chord
+    a chord's order groups are one) and leave declined chords and dropped
+    messages out, so a declined chord is no miss; `declined` and `dropped`
+    count them. `stop` says why the run ended: "done" (every chord
     pressed), "past_end" (the clock was past the last chord), "frozen",
     "cap", "interrupted", "lost" (the process went away), "stopped" (the
     caller's `should_stop` said so) or STOP_NO_ENGINE (live_play found no
@@ -971,6 +984,7 @@ class RunResult:
     sent: int = 0
     hit: int = 0
     declined: int = 0
+    dropped: int = 0
     max_streak: int = 0
     rows: list = field(default_factory=list)
     stop: str = ""
@@ -1015,6 +1029,12 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
     `score_before`. The score is read once after the reply, so every row of
     a split chord holds the same `score_after` and the same `hit`.
 
+    A message the game would judge past its first press's window is not
+    sent (design point 5 of
+    docs/superpowers/plans/2026-11-08-player-freak-fixes.md): it reads no end
+    and no score after, its rows say DROPPED in `hit` with the clock it was
+    dropped at, and the streak starts over.
+
     The live script passes the game's; the tests pass fakes. `now` and
     `sleep` are the timer the stop checks and the waits use. `wall` stamps
     each row's wall columns: it is the watch's clock, because `now` shares no
@@ -1024,6 +1044,7 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
     is the run cap in wall seconds."""
     out = sys.stdout if out is None else out
     plan = press_messages(press_plan(chords))
+    sides = window_sides(chords)
     presses = list(plan)
     notes_ms = [head.at_ms for head, _later in presses]
     result = RunResult()
@@ -1086,8 +1107,15 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
             wall_s_at_read = wall()
             score_before = read_score()
 
+            # A message whose first press the game would judge past its
+            # chord's window is not sent, later groups and all: design point 5
+            # of docs/superpowers/plans/2026-11-08-player-freak-fixes.md says
+            # why raw_ms is the read it is judged from.
+            sends = not (chord.declined and not chord.lanes)
+            dropped = sends and raw_ms + FRAME_MS > chord.chart_ms + sides[chord.index]
+
             # A declined chord in a mode that keeps no gem sends no press.
-            if chord.declined and not chord.lanes:
+            if not sends or dropped:
                 pressed = None
             elif later:
                 pressed = press(chord.lanes, chord.axes,
@@ -1097,7 +1125,7 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
             wall_s_at_reply = wall()
 
             end_read = None
-            if chord.stored_end_ms is not None and read_sp_end is not None:
+            if chord.stored_end_ms is not None and read_sp_end is not None and not dropped:
                 end_s = read_sp_end()
                 if end_s is None:
                     end_read = NO_ACTIVATION_READ
@@ -1109,12 +1137,20 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
                         rest, chord.index, chord.stored_end_ms, end_read))
                     notes_ms = [head.at_ms for head, _later in presses]
 
-            # Check hit through engine.pressed_input_hit.
-            sleep(SCORE_READ_DELAY_S)
-            score_after = read_score()
-            hit = not chord.declined and pressed_input_hit(score_before, score_after)
+            # Check hit through engine.pressed_input_hit. Nothing was sent for
+            # a dropped message, so the fresh read stands.
+            if dropped:
+                score_after = score_before
+            else:
+                sleep(SCORE_READ_DELAY_S)
+                score_after = read_score()
+            hit = not chord.declined and not dropped and pressed_input_hit(
+                score_before, score_after)
 
-            if chord.declined:
+            if dropped:
+                result.dropped += 1
+                streak = 0
+            elif chord.declined:
                 result.declined += 1
             else:
                 result.sent += 1
@@ -1139,7 +1175,7 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
                     "lead_ms": part.lead_ms,
                     "score_before": score_before,
                     "score_after": score_after,
-                    "hit": DECLINED if part.declined else int(hit),
+                    "hit": DROPPED if dropped else DECLINED if part.declined else int(hit),
                     "wall_s_at_read": wall_s_at_read,
                     "wall_s_at_reply": wall_s_at_reply,
                 }
@@ -1158,7 +1194,8 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
             diff_ms = raw_ms - chord.chart_ms
             lane_str = " then ".join("+".join(LANE_NAMES.get(l, "?") for l in part.lanes)
                                      for part in [chord, *later])
-            tag = DECLINED if chord.declined else "HIT" if hit else "MISS"
+            tag = (DROPPED if dropped else DECLINED if chord.declined
+                   else "HIT" if hit else "MISS")
             if result.sent <= 30 or result.sent % 20 == 0 or not hit:
                 print(f"  {result.sent:4d}  {C.ms_to_s(chord.chart_ms):7.2f}  "
                       f"{C.ms_to_s(raw_ms):7.2f}  {diff_ms:+7.1f}  {lane_str:10}  "
