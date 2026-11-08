@@ -412,7 +412,12 @@ int cmd_score(const Args& a, const app::Settings& s) {
 
     json acts = json::array();
     for (const ReplayWindow& w : windows) {
-        json one{{"act_tick", w.act_tick}, {"deact_tick", w.deact_tick}};
+        // Each tick's time too, through the chart's own timing, so a reader
+        // with no chord on the end still has the end's time.
+        json one{{"act_tick", w.act_tick},
+                 {"deact_tick", w.deact_tick},
+                 {"act_ms", song.timing().timecode(w.act_tick).ms()},
+                 {"deact_ms", song.timing().timecode(w.deact_tick).ms()}};
         if (w.sqout_offset_ms) one["sqout_offset_ms"] = *w.sqout_offset_ms;
         if (w.sqout_tick) one["sqout_tick"] = *w.sqout_tick;
         acts.push_back(one);

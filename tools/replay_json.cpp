@@ -5,6 +5,7 @@
 #include <stdexcept>
 #include <string>
 
+#include "core/squeeze_rating.h"  // steady_spans
 #include "core/timing.h"  // SongTiming
 #include "store/record_store.h"  // record_of, RecordRow::best_path_text
 
@@ -95,10 +96,29 @@ nlohmann::json score_json(const ReplayScore& s) {
     return j;
 }
 
+namespace {
+
+nlohmann::json or_null(const std::optional<double>& v) {
+    return v ? nlohmann::json(*v) : nlohmann::json(nullptr);
+}
+
+}  // namespace
+
 // The path list `dump` and `target` both print. One shape, so anything that
-// reads dump's JSON reads target's too. The chart timing is not read here:
-// nominal_deact_tick comes off the stored history (nominal_end()).
-nlohmann::json paths_json(const std::vector<const Path*>& all, const SongTiming& /*timing*/) {
+// reads dump's JSON reads target's too. nominal_deact_tick comes off the
+// stored history (nominal_end()). The end fields, each null when the
+// activation has no deact tick:
+//   end_anchor_tick         - the note whose timing moves the end
+//                             (Activation::deact_anchor_tick).
+//   end_scale_early / _late - how far the end moves per ms of early or late
+//                             activation: the transfer_post the search stored,
+//                             never worked out again here; null when the
+//                             search stored none.
+//   steady_ms_before_act / _after_act - from end_anchor_tick, and
+//   steady_ms_before_end / _after_end - from deact_tick: how far the ratios
+//                             stay exact (steady_spans, core/squeeze_rating.h).
+//                             null on a side means no change on that side.
+nlohmann::json paths_json(const std::vector<const Path*>& all, const SongTiming& timing) {
     nlohmann::json paths = nlohmann::json::array();
     int index = 0;
     for (const Path* p : all) {
@@ -116,6 +136,19 @@ nlohmann::json paths_json(const std::vector<const Path*>& all, const SongTiming&
             // The phrases it squeezed in, so `score --path` skips them as the
             // engine did (D34).
             const nlohmann::json sqins = sqin_phrase_ticks(act);
+            const std::optional<int64_t> anchor = act.deact_anchor_tick();
+            nlohmann::json end_anchor = nullptr;
+            nlohmann::json end_scale_early = nullptr;
+            nlohmann::json end_scale_late = nullptr;
+            SteadySpans spans;
+            if (d && anchor) {
+                end_anchor = *anchor;
+                if (act.transfer_post) {
+                    end_scale_early = act.transfer_post->early;
+                    end_scale_late = act.transfer_post->late;
+                }
+                spans = steady_spans(*anchor, *d, timing);
+            }
 
             acts.push_back(nlohmann::json{
                 {"act_tick", act_tick},
@@ -131,6 +164,13 @@ nlohmann::json paths_json(const std::vector<const Path*>& all, const SongTiming&
                 {"sqinouts", sq},
                 {"sqin_ticks", sqins},
                 {"from_record", true},
+                {"end_anchor_tick", end_anchor},
+                {"end_scale_early", end_scale_early},
+                {"end_scale_late", end_scale_late},
+                {"steady_ms_before_act", or_null(spans.before_anchor_ms)},
+                {"steady_ms_after_act", or_null(spans.after_anchor_ms)},
+                {"steady_ms_before_end", or_null(spans.before_end_ms)},
+                {"steady_ms_after_end", or_null(spans.after_end_ms)},
             });
         }
         paths.push_back(nlohmann::json{

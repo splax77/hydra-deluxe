@@ -4,6 +4,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iterator>
+#include <tuple>
 
 namespace hydra {
 
@@ -52,6 +54,54 @@ std::optional<ActTransferScales> stored_transfer_scales(const Activation& act) {
         s.sqins.push_back(*sq.transfer);
     }
     return s;
+}
+
+namespace {
+
+// Every tick past 0 where the tempo or the count's ticks per measure takes a
+// new value, sorted. A marker that repeats the value in force changes
+// nothing, so it is left out; the opening entries at tick 0 start the song
+// and change nothing either.
+std::vector<int64_t> measure_length_changes(const SongTiming& timing) {
+    std::vector<int64_t> out;
+    const MsIndex& ms = timing.ms_index();
+    for (const int64_t k : ms.change_ticks())
+        if (k > 0 && ms.bpm_at(k) != ms.bpm_at(k - 1)) out.push_back(k);
+    const MeasureCount& count = timing.measure_count();
+    for (int i = 1; i < count.count(); ++i)
+        if (count.tpm_at(i) != count.tpm_at(i - 1)) out.push_back(count.start_at(i));
+    std::sort(out.begin(), out.end());
+    out.erase(std::unique(out.begin(), out.end()), out.end());
+    return out;
+}
+
+// One tick's two sides: back to the last change before it, and on to the
+// first change after it (see SteadySpans for why a change on the tick bounds
+// neither).
+std::pair<std::optional<double>, std::optional<double>> spans_at(
+    int64_t tick, const std::vector<int64_t>& changes, const MsIndex& ms) {
+    const auto self = [](int64_t t) { return t; };
+    const auto none = changes.end();
+    std::optional<double> before;
+    std::optional<double> after;
+    // The early side is in force at tick - 1, the late side at the tick.
+    const auto early = last_at_or_before(changes.begin(), none, tick - 1, self);
+    if (early != none) before = ms.at(tick) - ms.at(*early);
+    const auto late = last_at_or_before(changes.begin(), none, tick, self);
+    const auto next = late == none ? changes.begin() : std::next(late);
+    if (next != none) after = ms.at(*next) - ms.at(tick);
+    return {before, after};
+}
+
+}  // namespace
+
+SteadySpans steady_spans(int64_t anchor_tick, int64_t end_tick, const SongTiming& timing) {
+    const std::vector<int64_t> changes = measure_length_changes(timing);
+    SteadySpans out;
+    std::tie(out.before_anchor_ms, out.after_anchor_ms) =
+        spans_at(anchor_tick, changes, timing.ms_index());
+    std::tie(out.before_end_ms, out.after_end_ms) = spans_at(end_tick, changes, timing.ms_index());
+    return out;
 }
 
 namespace {
