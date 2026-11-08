@@ -194,14 +194,6 @@ ReplayResult replay_path(const Song& song, std::vector<ReplayWindow> windows,
             if (paid || !past_deact) open[kept++] = open[k];
         }
         open.resize(kept);
-        // `wins` ties on act_tick in no fixed order, so the list is put in
-        // the order ReplayChord::paid_by promises, whatever order the caller
-        // gave the windows in.
-        std::sort(row.paid_by.begin(), row.paid_by.end(),
-                  [](const ReplayPayment& a, const ReplayPayment& b) {
-                      return a.act_tick != b.act_tick ? a.act_tick < b.act_tick
-                                                      : a.deact_tick < b.deact_tick;
-                  });
         row.in_sp = sp_paid > 0;
         row.multiplier_shown = shown_multiplier(row.multiplier_after, row.in_sp);
 

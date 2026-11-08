@@ -24,6 +24,7 @@
 #include "corpus_util.h"
 #include "parse/song.h"
 #include "replay_schedule.h"
+#include "source_tree.h"  // for_each_source_file, the shared walk of the repo
 
 using namespace hydra;
 using json = nlohmann::json;
@@ -53,8 +54,10 @@ ReplayNote gem(NoteColor color, bool cymbal = false) {
     return n;
 }
 
-// Within half of the last printed digit of a two-decimal literal.
-bool near2(double got, double want) { return std::fabs(got - want) < 0.005; }
+// A side at the floor and at the cap: half of TM-21's whole window at a
+// summed gap of 75 and of 170 (TM-22 prints them as 48.15 and 85.72).
+const doctest::Approx kFloorSide = doctest::Approx(96.2931672 / 2);
+const doctest::Approx kCapSide = doctest::Approx(171.4313075 / 2);
 
 }  // namespace
 
@@ -255,15 +258,15 @@ TEST_CASE("schedule: the window formula and clamps are pinned") {
     CHECK(schedule::whole_window_ms(75.0) == doctest::Approx(96.2932).epsilon(1e-6));
     CHECK(schedule::whole_window_ms(80.0) == doctest::Approx(102.2586).epsilon(1e-6));
     // TM-22: the floor and the cap of a side.
-    CHECK(near2(schedule::window_side_ms(1.0, 1.0), 48.15));
-    CHECK(near2(schedule::window_side_ms(10000.0, 10000.0), 85.72));
+    CHECK(schedule::window_side_ms(1.0, 1.0) == kFloorSide);
+    CHECK(schedule::window_side_ms(10000.0, 10000.0) == kCapSide);
     // TM-19: a missing neighbour, or one at the same time, gives the back.
     CHECK(schedule::half_gap_ms(std::nullopt) == 85.0);
     CHECK(schedule::half_gap_ms(0.0) == 85.0);
     CHECK(schedule::half_gap_ms(10.0) == 37.5);
     CHECK(schedule::half_gap_ms(100.0) == 50.0);
     // Freak's chord 263: 56.18 ms from both neighbours.
-    CHECK(near2(schedule::window_side_ms(56.18, 56.18), 48.15));
+    CHECK(schedule::window_side_ms(56.18, 56.18) == kFloorSide);
 
     const Song song = plain_song({0, 768});
     const ReplayResult r = replay_path(song, {});
@@ -290,7 +293,7 @@ TEST_CASE("schedule: sides come from the whole chart") {
         const ReplayResult r = replay_path(song, {});
         const json s = schedule::schedule_json(song, {}, r, schedule::DeclineMode::Nothing);
         REQUIRE(s["chords"].size() == 3);
-        CHECK(near2(s["chords"][1]["side_ms"].get<double>(), 48.15));
+        CHECK(s["chords"][1]["side_ms"].get<double>() == kFloorSide);
     }
     // Chords 917 ticks (2,388 ms) and 2,999 ticks (7,810 ms) either side of
     // the middle one: both half-gaps clamp to the back, so the side is the cap.
@@ -299,7 +302,7 @@ TEST_CASE("schedule: sides come from the whole chart") {
         const ReplayResult r = replay_path(song, {});
         const json s = schedule::schedule_json(song, {}, r, schedule::DeclineMode::Nothing);
         REQUIRE(s["chords"].size() == 3);
-        CHECK(near2(s["chords"][1]["side_ms"].get<double>(), 85.72));
+        CHECK(s["chords"][1]["side_ms"].get<double>() == kCapSide);
     }
     // A chord's own gems are not each other's neighbours (TM-51): a
     // two-gem chord between far neighbours still gets the cap.
@@ -309,7 +312,7 @@ TEST_CASE("schedule: sides come from the whole chart") {
         const ReplayResult r = replay_path(song, {});
         const json s = schedule::schedule_json(song, {}, r, schedule::DeclineMode::Nothing);
         REQUIRE(s["chords"][1]["gems"].size() == 2);
-        CHECK(near2(s["chords"][1]["side_ms"].get<double>(), 85.72));
+        CHECK(s["chords"][1]["side_ms"].get<double>() == kCapSide);
     }
 }
 
@@ -340,27 +343,23 @@ TEST_CASE("schedule: a chart with no path refuses by name") {
 }
 
 TEST_CASE("schedule: nothing under src/ reads the schedule") {
-    const fs::path src = fs::u8path(HYDRA_SOURCE_DIR) / "src";
-    REQUIRE(fs::is_directory(src));
     int files = 0;
     std::string first_hit;
-    for (const fs::directory_entry& e : fs::recursive_directory_iterator(src)) {
-        if (!e.is_regular_file()) continue;
-        const std::string ext = e.path().extension().u8string();
-        if (ext != ".h" && ext != ".cpp") continue;
+    std::string model_h;
+    sourcetree::for_each_source_file([&](const fs::path& path, const std::string& rel) {
+        if (rel.rfind("src/", 0) != 0) return;
         ++files;
-        std::ifstream in(e.path(), std::ios::binary);
+        std::ifstream in(path, std::ios::binary);
         const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        if (rel == "src/core/model.h") model_h = text;
         for (const char* name : {"replay_schedule.h", "kFrameMs", "kRoomMarginMs"})
             if (text.find(name) != std::string::npos && first_hit.empty())
-                first_hit = e.path().u8string() + " names " + name;
-    }
+                first_hit = rel + " names " + name;
+    });
     CHECK(files > 0);
     CHECK_MESSAGE(first_hit.empty(), first_hit);
 
     // The screens keep Hydra's own two numbers (plan rule 11).
-    std::ifstream model(src / "core" / "model.h", std::ios::binary);
-    const std::string text((std::istreambuf_iterator<char>(model)), std::istreambuf_iterator<char>());
-    CHECK(text.find("constexpr double kHitWindowMs = 85.0;") != std::string::npos);
-    CHECK(text.find("constexpr double kSqueezeWindowMs = 500.0;") != std::string::npos);
+    CHECK(model_h.find("constexpr double kHitWindowMs = 85.0;") != std::string::npos);
+    CHECK(model_h.find("constexpr double kSqueezeWindowMs = 500.0;") != std::string::npos);
 }
