@@ -81,7 +81,7 @@ class StampTest(unittest.TestCase):
     def test_the_stamp_holds_each_local_source_the_map_names(self):
         stamp = BS.read_stamp(self.js)
         self.assertEqual(sorted(stamp["sources"]),
-                         ["../menu_fields.json", "menu.ts", "state.ts"])
+                         ["../menu_fields.json", "menu.ts", "package.json", "state.ts"])
         self.assertEqual(stamp["js"], "state.js")
         self.assertTrue(os.path.isfile(os.path.join(self.agent, "state.stamp.json")))
 
@@ -95,6 +95,12 @@ class StampTest(unittest.TestCase):
     def test_an_edited_json_the_compile_read_makes_it_stale(self):
         self.edit("../menu_fields.json", '{"x": 1}\n')
         self.assertIn("../menu_fields.json changed since it was built", BS.check(self.js))
+
+    def test_a_changed_package_json_makes_it_stale(self):
+        # A moved dependency version changes the bundle without touching a .ts.
+        with open(os.path.join(self.agent, "package.json"), "a", encoding="utf-8") as f:
+            f.write("\n")
+        self.assertIn("package.json changed since it was built", BS.check(self.js))
 
     def test_a_gone_source_makes_it_stale(self):
         os.remove(os.path.join(self.agent, "menu.ts"))

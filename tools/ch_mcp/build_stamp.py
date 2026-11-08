@@ -12,8 +12,9 @@ Which files the stamp covers is `sources_of`. It reads the list from the
 bundle's own source map, so the list is the compiler's, not a second copy
 of the import rules. A new import changes the text of the file that holds
 it, so that file's hash no longer matches and the stamp reads stale until
-the next build lists the new file too. Packages are left out because
-package.json pins their versions.
+the next build lists the new file too. Packages are left out, but the
+files that pin them and set the compile (`BUILD_INPUTS`) are covered, so
+a changed dependency or compiler setting reads stale too.
 
 Only the standard library is imported here, so the script runs on its own.
 """
@@ -35,6 +36,9 @@ PACKAGE_JSON = "package.json"
 BUNDLE_MAGIC = "📦\n"
 BUNDLE_SEPARATOR = "\n✄\n"
 NODE_MODULES = "node_modules"
+# Files in the agent folder that decide what the compile produces without
+# being imported: the package versions and the compiler settings.
+BUILD_INPUTS = ("package.json", "package-lock.json", "tsconfig.json")
 # What builds_record writes when the schedule holds no build stamp.
 NO_REPLAY_BUILD = ("not in the schedule: it has no hydra_replay_build field, so the "
                    "hydra_replay that wrote it is unknown")
@@ -141,10 +145,13 @@ def sources_of(js_path: str) -> List[str]:
 
 
 def make_stamp(js_path: str) -> Dict[str, Any]:
-    """The stamp for a just-built agent: the hash of the `.js` and of each
-    local source its source map names."""
+    """The stamp for a just-built agent: the hash of the `.js`, of each
+    local source its source map names and of each BUILD_INPUTS file."""
     folder = os.path.dirname(os.path.abspath(js_path))
     hashes = {}
+    for name in BUILD_INPUTS:
+        if os.path.isfile(os.path.join(folder, name)):
+            hashes[name] = _sha256_file(os.path.join(folder, name))
     for source in sources_of(js_path):
         path = os.path.normpath(os.path.join(folder, source))
         if not os.path.isfile(path):
