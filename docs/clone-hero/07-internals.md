@@ -144,17 +144,17 @@ Found: 2026-09-25, session 8157f2dc; the listings, 2026-11-08, session 77057df2 
 
 Rule: The game leaves old engine objects in memory, frozen at their last clock and score; a restarted song makes a new one, so the live engine is the one whose clock changes between two reads.
 Label: Unknown
-Evidence: looked in `overlay-spike/*_stdout.txt`, the results folder and the engine finder's tests; the multi-engine read was printed in session 8157f2dc and its output folder no longer exists.
+Evidence: looked in `overlay-spike/*_stdout.txt`, the results folder and the engine finder's tests; the multi-engine read was printed in session 8157f2dc and its output folder no longer exists. The restart half is also stated in tools/ch_probe/README.md lines 42 to 43 ("A restart makes a new engine object rather than winding the old one back to zero"), which is tool prose, not a run record; it is the lead for a check, not proof.
 Game code (6142): not found: no code that frees or keeps engines was read.
-Hydra: no owner. The tool relies on it in `find_live_engine` (tools/ch_probe/engine_finder.py).
+Hydra: no owner. The tool relies on it in `find_live_engine` (tools/ch_probe/engine_finder.py line 169).
 Ruling: none needed: no Hydra rule reads it.
-Found: 2026-09-25, session 8157f2dc.
+Found: 2026-09-25, session 8157f2dc; the README lead, 2026-11-08, session 77057df2 (docs-gaps search).
 
 ### IN-15 The hit-threshold constant is a double lane's 0.75 s round timer
 
 Rule: The constant the tools name `RVA_HITCHECK_THRESHOLD` (a double, 0.75, in the DLL's data) is not a hit grade. The drum engine compares the song clock minus the round start at +0x2E0 (IN-12) with it, and when the time is over 0.75 s while a round is pending it calls the combo break (virtual slot 20, IN-87) and clears the round state.
 Label: Proven in the game's code
-Evidence: `RVA_HITCHECK_THRESHOLD = 0x31406E8` (tools/ch_probe/constants.py line 195); the virtual call is `call qword ptr [rax + 0x278]` at `docs/audit/drum-lanes/play/f20ddec0.asm` line 45, which is slot 20 (the vtable starts at +0x138 and each slot takes 0x10, as the slot arithmetic at `docs/audit/drum-lanes/play/f20f4b60_combo_break.asm` lines 77 to 84 shows). `dump.cs` line 530260 gives slot 20 of #8288 as RVA `0x20F4B60`, and no override of slot 20 appears in the drum engine's or its generic base's method lines (dump.cs lines 527280 to 527700, searched 2026-11-08). The same slot is called on the overhit path (`docs/audit/drum-lanes/play/f20de9a0.asm` line 43), as page 02's NL-59 says. the listings annotate the address as `[0x31406e8] xmm dbl=(0.75, 12.0)`. Its two users are `docs/audit/drum-lanes/play/f20ddec0.asm` lines 30 to 45 (clock at +0x100 minus +0x2E0, compared with it; the break needs +0x2C4 and +0x2C8 non-zero and the byte at +0x2F1 zero, then clears +0x2EC, +0x2C4, +0x2C8 and +0x2F0) and its twin `f20de5b0.asm` lines 17 to 19, a copy with no known caller. Session 8157f2dc (2026-09-25) printed the value 0.75 earlier; that printout is not kept, and it showed only the value.
+Evidence: `RVA_HITCHECK_THRESHOLD = 0x31406E8` (tools/ch_probe/constants.py line 195); the virtual call is `call qword ptr [rax + 0x278]` at `docs/audit/drum-lanes/play/f20ddec0.asm` line 45, which is slot 20 (the vtable starts at +0x138 and each slot takes 0x10, as the slot arithmetic at `docs/audit/drum-lanes/play/f20f4b60_combo_break.asm` lines 77 to 84 shows). `dump.cs` line 530260 gives slot 20 of #8288 as RVA `0x20F4B60`, and no override of slot 20 appears in the drum engine's or its generic base's method lines (dump.cs lines 527280 to 527700, searched 2026-11-08). The same slot is called on the overhit path (`docs/audit/drum-lanes/play/f20de9a0.asm` line 43), as page 02's NL-59 says. the listings annotate the address as `[0x31406e8] xmm dbl=(0.75, 12.0)`. Its two users are `docs/audit/drum-lanes/play/f20ddec0.asm` lines 30 to 45 (clock at +0x100 minus +0x2E0, compared with it; the break needs +0x2C4 and +0x2C8 non-zero and the byte at +0x2F1 zero, then clears +0x2EC, +0x2C4, +0x2C8 and +0x2F0) and its twin `f20de5b0.asm` lines 17 to 19, a copy with no known caller. That rests on a search of 2026-11-08: no committed listing under `docs/audit` or `docs/clone-hero/code` calls the virtual address 1820de5b0, and `dump.cs` line 527574 gives the method as private with no vtable slot, so only a direct call could reach it. The DLL itself was not searched for one; `docs/audit/drum-lanes/play/xref_callers.py` names it, but its output was not kept. Session 8157f2dc (2026-09-25) printed the value 0.75 earlier; that printout is not kept, and it showed only the value.
 Game code (6142): engine methods at RVA `0x20DDEC0` and `0x20DE5B0`, the listings above; slot 20, RVA `0x20F4B60`.
 Hydra: no owner.
 Ruling: none needed: no Hydra rule reads it.
@@ -410,6 +410,16 @@ Hydra: no owner: Hydra never reads the running game. The tools print these field
 Ruling: none needed: no Hydra rule reads it.
 Found: 2026-10-31, session 5cc1cc07, from a decompile of build 6142.
 
+### IN-91 Whether the player screen's method at 0x32F590 runs once a frame
+
+Rule: The tools treat a method of `PlayerSelectionMenu` at RVA 0x32F590 as the player screen's per-frame method, and watch it to tell that the screen is running. That it runs once a frame is not proven.
+Label: Unknown
+Evidence: `dump.cs` line 73000 shows the method itself: `public bool ʸʳʼʹʸʽʾˀʴʼʷ()`, an instance method of `PlayerSelectionMenu` (class header at line 72822), at RVA 0x32F590 (line 72999). Its code was not read. The once-a-frame claim is the comment at tools/ch_mcp/agent/menu.ts lines 49 to 54, which says LS-K3's method watch saw it called once a frame while the screen ran; no output of that watch is kept. The lead for a check is that comment and the constant `PLAYER_SCREEN_FRAME_RVA` at line 54.
+Game code (6142): `PlayerSelectionMenu` method RVA 0x32F590 (`dump.cs` line 73000); not read.
+Hydra: no owner: Hydra never reads the running game. The tools use it as `PLAYER_SCREEN_FRAME_RVA` in tools/ch_mcp/agent/menu.ts line 54.
+Ruling: none needed: no Hydra rule reads it.
+Found: 2026-11-08, session 77057df2 (docs-gaps search), from tool code.
+
 ## The bot
 
 ### IN-31 The bot never gains Star Power
@@ -436,11 +446,11 @@ Found: 2026-10-30, session b02ab3e6 (the reference build); the kind method and t
 
 Rule: When the player kind is RemotePlayer, the engine's two score adds return at once and its per-update Star Power method skips the drain step (it still runs the clamp after it); Player, Bot and Replay engines run all of them.
 Label: Proven in the game's code
-Evidence: `code/6142/add_note_score_20F6EB0.asm` lines 13 to 14, `code/6142/add_points_20F5F70.asm` line 1 and `code/6142/sp_update_20F6800.asm` lines 37 to 38 (each compares +0x190 with 1; the first two jump to their return, the third jumps past the drain to the clamp, listing line 69); the enum at `dump.cs` line 546294. Two more sites test the same kind: the combo break skips its streak reset for a remote player (`docs/audit/drum-lanes/play/f20f4b60_combo_break.asm` line 24, IN-87), and the hit routine skips a call for one (`docs/audit/drum-lanes/play/f20deaa0.asm` line 115).
-Game code (6142): RVA `0x20F6EB0`, RVA `0x20F5F70`, RVA `0x20F6800`; field `#8288+0x190`.
+Evidence: `code/6142/add_note_score_20F6EB0.asm` lines 13 to 14, `code/6142/add_points_20F5F70.asm` line 1 and `code/6142/sp_update_20F6800.asm` lines 37 to 38 (each compares +0x190 with 1; the first two jump to their return, the third jumps past the drain to the clamp, listing line 69); the enum at `dump.cs` line 546294. Two more sites test the same kind: the combo break skips its streak reset for a remote player (`docs/audit/drum-lanes/play/f20f4b60_combo_break.asm` line 24, IN-87), and the hit routine skips a call for one (`docs/audit/drum-lanes/play/f20deaa0.asm` line 115). The method at 0x20F3610, which its listing's file name calls the base miss, tests it too: after its slot-20 call (line 31, `call qword ptr [rax + 0x278]`), `cmp dword ptr [rbx + 0x190], 1` at `docs/audit/drum-lanes/play/f20f3610_base_miss.asm` line 32 jumps past lines 34 to 53 to line 54, so a remote player's miss skips the two calls there, to 0x20F62C0 (line 43) and `0x20F7610` (line 53). What those two calls do was not read.
+Game code (6142): RVA `0x20F6EB0`, RVA `0x20F5F70`, RVA `0x20F6800`; the base miss method at 0x20F3610 (`docs/audit/drum-lanes/play/f20f3610_base_miss.asm` lines 32 to 54); field `#8288+0x190`.
 Hydra: no owner: Hydra has no network player.
 Ruling: none needed: no Hydra rule reads it.
-Found: 2026-10-30, session b02ab3e6 (the reference build).
+Found: 2026-10-30, session b02ab3e6 (the reference build); the base miss site, 2026-11-08, session 77057df2 (docs-gaps search).
 
 ### IN-34 A bot run's total matches Hydra's
 
@@ -518,11 +528,11 @@ Found: 2026-10-30, session b02ab3e6 (the reference build).
 
 Rule: Keys sent with SendInput reach Clone Hero for all eight drum keys, and a pad flash lasts about one video frame at 60 fps.
 Label: Unknown
-Evidence: not checked: the Notepad test and the 60 fps measurement are in session 8157f2dc's transcript only, and the video was not opened. Later key-press runs hit every chord with the same keys (`overlay-spike/run1_cal0_play_chart.txt`, not re-opened for this page).
+Evidence: one part is proven in a live run. In `overlay-spike/run1_cal0_play_chart.txt` lines 83 to 87, a key-press run on a chart of 857 notes reads "Notes: 857, Hits: 857, Misses: 0" and a best streak of 857, so the injected keys reached the game for every note of that chart. That file does not say the keys were sent with SendInput, and it does not show which of the eight keys the chart used. The rest stays unchecked: the Notepad test and the 60 fps measurement are in session 8157f2dc's transcript only, and the video was not opened. The eight keys themselves are `DEFAULT_BINDINGS` at tools/ch_probe/input_driver.py line 69, whose comment says they were read off the game's Controller Remap screen on 2026-09-25; no kept file shows that screen, so the key map is Unknown too.
 Game code (6142): none (input arrives through the game's Rewired input system).
-Hydra: no owner. The tool's key map is `DEFAULT_BINDINGS` (tools/ch_probe/experiments/key_delivery_test.py and the ch_mcp tests).
+Hydra: no owner. The tool's key map is `DEFAULT_BINDINGS` (tools/ch_probe/input_driver.py line 69, used by tools/ch_probe/experiments/key_delivery_test.py and the ch_mcp tests).
 Ruling: none needed: no Hydra rule reads it.
-Found: 2026-09-25, session 8157f2dc.
+Found: 2026-09-25, session 8157f2dc; the 857-of-857 run file and the key map's source, 2026-11-08, session 77057df2 (docs-gaps search).
 
 ### IN-42 Whether the kick key scores a 2x kick gem
 
@@ -563,6 +573,16 @@ Game code (6142): not read.
 Hydra: no owner.
 Ruling: none needed: no Hydra rule reads it.
 Found: 2026-10-28, feasibility study lines 56 and 158.
+
+### IN-92 Where the game keeps its key bindings and settings, from tool code and the study
+
+Rule: Not settled by the game's code. The tools take it that Rewired saves the game's bindings under the registry key `HKCU\Software\srylain Inc.\Clone Hero`, with a dot in "Inc." unlike the LocalLow folder. The feasibility study says `settings.ini` comes with a `settings_schema.json` that gives every setting's default, minimum and maximum, and that `settings.ini` holds `poll_rate = 656`, the clock the game polls input on.
+Label: Unknown
+Evidence: each part comes from tool code or prose only. The registry key is `REGISTRY_KEY` at tools/ch_mcp/game_files.py line 70, whose comment names it as Rewired's; no game method that writes it was read. The schema file is named at docs/research/2026-10-28-clone-hero-mcp-feasibility.md line 35, and `poll_rate = 656` at line 84 of the same study; neither file is kept in the repo, and no game method that reads `poll_rate`, or what its unit is, was read. These three lines are the leads for a check.
+Game code (6142): not found: no game method was read for any part.
+Hydra: no owner: Hydra never reads the running game. The tools back the registry key up and restore it in tools/ch_mcp/game_files.py.
+Ruling: none needed: no Hydra rule reads it.
+Found: 2026-11-08, session 77057df2 (docs-gaps search), from tool code and the feasibility study.
 
 ## Naming across the two builds
 
@@ -928,11 +948,11 @@ Found: 2026-11-08, session 6341c618 (the kick plan).
 
 Rule: The player's saved score file, `scoredata.bin` in the game's LocalLow\srylain Inc_\Clone Hero folder (`LOCALLOW_DIR` in tools/ch_mcp/game_files.py line 39), holds one best score per chart per instrument and a play count per song. It stores the chart's hash next to each score, with no song title or artist. A human run changes it (and `scoresext.bin`); the tools restore both after a run.
 Label: Unknown
-Evidence: no reader of the file's format is committed and the game's writer was not read. Session c8856afd (2026-10-10) decoded the user's copy with a one-off script that was not kept; its finding that the file "stores only the chart hash next to each score, with no title or artist" comes from the session's own record, which is not kept. Session e8435f64 (2026-10-09) states the one-best-score rule from the dmleaderboards backend, which reads the uploaded file; its card (docs/sessions/2026-10-09-e8435f64.md) says dmleaderboards keeps only the best run per chart and copies play_count from the game's save file. That a human run changes both files is from session 6a549de0's own record, which is not kept. No repo file holds any of these.
+Evidence: no reader of the file's format is committed and the game's writer was not read. Session c8856afd (2026-10-10) decoded the user's copy with a one-off script that was not kept; its finding that the file "stores only the chart hash next to each score, with no title or artist" comes from the session's own record, which is not kept. Session e8435f64 (2026-10-09) states the one-best-score rule from the dmleaderboards backend, which reads the uploaded file; its card (docs/sessions/2026-10-09-e8435f64.md) says dmleaderboards keeps only the best run per chart and copies play_count from the game's save file. That a human run changes both files is from session 6a549de0's own record, which is not kept. No repo file holds any of these. Whether `play_count` also counts plays on other instruments is not answered by any data: the same card leaves it open (docs/sessions/2026-10-09-e8435f64.md line 22), and no kept file or run tests it.
 Game code (6142): not found: the writer was not looked for.
 Hydra: no owner. The chart hash is Clone Hero's song id (page 01, CR-10); the tools back the file up and restore it in tools/ch_mcp/game_files.py.
 Ruling: none needed: no Hydra rule reads it.
-Found: 2026-10-10, session c8856afd; 2026-10-09, session e8435f64
+Found: 2026-10-10, session c8856afd; 2026-10-09, session e8435f64; the open play-count question, 2026-11-08, session 77057df2 (docs-gaps search).
 
 ## Rows waiting on a live run
 
