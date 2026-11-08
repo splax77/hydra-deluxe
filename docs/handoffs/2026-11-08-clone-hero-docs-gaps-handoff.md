@@ -16,8 +16,8 @@ All of the below is by reading, in session 31e4f22f.
 
 - **SP-29 and SP-30** (`docs/clone-hero/05-star-power.md`) are labelled Unknown. They say `0x20F4950` and `0x20F6FF0` are "not listed". Both listings are committed, as `play/f20f4950_step_loop.asm` and `play/f20f6ff0_next_event.asm`. FINDINGS (the paragraph under "When does a granted hit happen?") says the engine queues its own times and steps its clock to each one in order: each note's window start and end, and the Star Power times.
 - **SP-36** has the Star Power test in the hit routine. FINDINGS line 98 says the same thing in plain words: a note counts in Star Power by the clock it is hit at.
-- **TM-25** has the window edge as a miss test. FINDINGS adds that a press is valid up to and including the window end, and that a granted hit lands at the window end within one rounding step.
-- **TM-50** is proven only in live runs. The press handler listing `play/f20deaa0.asm` is committed, and FINDINGS lines 52 and 56 describe it. Nobody has written down from it which note a press goes to when two unhit same-pad notes are both in their windows. This is a real problem, not an edge case: Freak run 1's chord 154 missed this way.
+- **TM-25** has the window edge as a miss test, and its Rule line already says a press is valid up to and including the window end (page 03 line 295). What FINDINGS adds is that a granted hit lands at the window end within one rounding step, and the rounding-tie case (FINDINGS line 104: a grant that lands one scheduled time later). That is the only part TM-25 lacks.
+- **TM-50** is proven only in live runs on main. The press handler listing `play/f20deaa0.asm` is committed, and FINDINGS lines 52 and 56 describe it. Later the same day, commit `fb1be3cd` on `claude/player-audit-plan` (session 274bd9dd, not merged) rewrote TM-50 as Proven in the game's code from that listing and the base update listing, so the rule is written down on that branch; it still needs a check against the listings. This is a real problem, not an edge case: Freak run 1's chord 154 missed this way.
 - **FINDINGS line 108** names one thing it did not trace: the caller of `0x100E0D0`, which would show whether a press is processed at its own timestamp. SP-47's one-frame model is measured live and works in practice, so tracing it is optional.
 - **Run results the pages lack.** FL-31 cites one run, and LS-M2 (`C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-08\ls-m2-run1`) adds nine granted fill chords. TM-50 does not name Freak chord 803.
 
@@ -67,7 +67,8 @@ The player audit (`docs/handoffs/2026-11-08-player-audit-continue-handoff.md`) n
 
 ## Checker output
 
-```nok | path | docs/clone-hero/README.md | the index of the Clone Hero reference and its four labels
+```
+ok | path | docs/clone-hero/README.md | the index of the Clone Hero reference and its four labels
 ok | path | docs/clone-hero/05-star-power.md | SP-29 and SP-30 labelled Unknown, saying `0x20F4950` and `0x20F6FF0` are not listed
 ok | path | docs/clone-hero/03-timing.md | TM-25 (window edge) and TM-50 (two-note press, live runs only)
 ok | path | docs/audit/drum-lanes/FINDINGS-play-time.md | the step loop, the hit clock, the window edge and the press handler, with line 108's untraced caller

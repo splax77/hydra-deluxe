@@ -38,7 +38,7 @@ The user's answers so far are recorded under "## Answers" in `questions.md`:
 
 Q10 folded into earlier rulings; `questions.md` says how.
 
-**Q11 is not settled.** The user asked whether the facts were really unknown. The main session then found that most of them are documented in `docs/audit/drum-lanes/FINDINGS-play-time.md` and its committed listings. Two items are left:
+**Q11 was not settled when this handoff was written; the branch answered it later the same day (commit `fb1be3cd`, see the state row in Claims).** The user asked whether the facts were really unknown. The main session then found that most of them are documented in `docs/audit/drum-lanes/FINDINGS-play-time.md` and its committed listings. Two items are left:
 
 1. Which note a press goes to when two unhit same-pad notes are both in their windows. This is real: Freak run 1's chord 154 missed this way. The committed press handler `docs/audit/drum-lanes/play/f20deaa0.asm` can settle it.
 2. Whether a press is processed at its own timestamp. It is optional, because the measured one-frame model already covers it in practice.
@@ -98,7 +98,7 @@ The search for documentation missing from `docs/clone-hero/` is its own task, in
 | state | the approved audit plan is `docs/superpowers/plans/2026-11-08-player-audit.md`, on `claude/player-audit-plan` only | as written | `git show claude/player-audit-plan:docs/superpowers/plans/2026-11-08-player-audit.md` |
 | state | the audit folder `docs/audit/2026-11-08-player-audit/` holds `ledger.md`, `exits.md`, `questions.md` and `reports/` | on `claude/player-audit-plan` only | `git ls-tree -r --name-only claude/player-audit-plan docs/audit/2026-11-08-player-audit` |
 | state | the ledger has 85 rows, L01 to L85, and every row has an exit in `exits.md` | as written | grep the two files on the branch |
-| state | Q11's two-note press rule and Q14 and Q15 are not answered; L06 and L46 closures are not yet checked by a fresh agent | as written | `questions.md` "## Answers" on the branch |
+| state | as written when the handoff was made: Q11's two-note press rule and Q14 and Q15 were not answered. Later the same day the branch answered Q11 (commit `fb1be3cd`, TM-50 rewritten as Proven in the game's code, which still needs a check against the listings) and Q14 and Q15 (commit `ccb32ac9`), and the branch tip moved to `1fd85238` | as written | `questions.md` "## Answers" on the branch |
 | path | `C:\Users\Patrick\Downloads\Hydra\hydra-test\tools\ch_mcp\agent\kit.js` | the stale built kit agent, 2026-11-06 21:31, with no `after_ms` or `groupsOf` | `Get-Item` and `Select-String` |
 | function | `Chord::activation_note` | Hydra's one rule for the gem that activates: first of Green, Blue, Yellow, Red, Kick, in `src/core/model.cpp` | `git grep -n "Chord::activation_note"` |
 | function | `_kept_gems()` | the Python decline modes the Q3 ruling removes, in `tools/ch_probe/experiments/play_chart.py` | `git grep -n "def _kept_gems"` |
@@ -129,7 +129,8 @@ The search for documentation missing from `docs/clone-hero/` is its own task, in
 
 ## Checker output
 
-```nok | branch | claude/player-audit-plan | holds the audit plan and the audit folder; not merged
+```
+ok | branch | claude/player-audit-plan | holds the audit plan and the audit folder; not merged
 not-on-main | commit | 3404e324d630e286c7848164e6e110c8880c3fec | the reviewer's fix to the audit plan, signed off clean; not on main
 not-on-main | commit | 98a03d773755e49c0c372b32de4614a829aa181d | the audit branch's tip: answers to Q5 to Q13 and the Q11 follow-up; not on main
 manual | state | docs/superpowers/plans/2026-11-08-player-audit.md | as written
