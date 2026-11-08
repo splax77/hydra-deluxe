@@ -97,6 +97,8 @@ No screen changes. F1 adds one accessor to `Activation` and one function to `sco
 
 ## Questions
 
+Answered 2026-11-08, every one (a): "All four (Recommended)", "Remove the flag (Recommended)", "Tool runs dump (Recommended)", "Drop that half (Recommended)". Recorded as D324 in `docs/audit/2026-10-03-fix-decisions.md`.
+
 1. **Which files Q18 removes.** The user said "remove the old probe scripts, we dont need them anymore". The four candidates and what names each, from `git grep` across the repo (docs included) on 2026-11-08:
 
    - `tools/ch_probe/experiments/analysis.py` (holds `predicted_window_normal`, `find_window_edge`). Imported by `active_probe.py` line 50, `passive_probe.py` line 50, `walk_edges.py` line 56, `tests/test_analysis.py` line 22. Cited by `tools/ch_probe/README.md`, `tools/ch_probe/constants.py` (comments), `tests/single_owner/rules/probe.json` (a single-owner scan rule that names the probe files; the rule must drop them or the docs check fails), `docs/clone-hero/03-timing.md`, `07-internals.md`, `docs/clone-hero/questions.md`, and past audits under `docs/audit/` (history, not edited).
