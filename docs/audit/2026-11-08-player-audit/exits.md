@@ -24,7 +24,11 @@ The closure checker reopened L07 and L47: the ruling picks who owns the planning
 
 **L75's Ready level.** `sp_compare.at_ready_level` decides from the game's live meter whether Star Power can be activated, with its own copy of Hydra's numbers (`READY_FRACTION = SP_ACTIVATION_BARS / SP_CAP_BARS`, `sp_compare.py:122` and `:288-292`), and it differs from the game's rounded half for an odd `sp_max` (SP-16). Hydra's engine already answers "is this path ready to activate here" (`kSpActivationBars` in `src/core/timing.h:51`, the path's `sp_ready_ms` in `src/search/engine.cpp`). L44's ruling names both sides: "why is the python still doing its own thing? the whole point of this plan is to hand off all the starpower planning to hydra which already knows what to do" (`docs/superpowers/plans/2026-11-08-replay-press-schedule.md` line 29), and D319 item 2 (Q7, "Judge vs Hydra (Recommended)") has the Star Power checks judge against Hydra. When the main session first wrote this up as a new question, the user wrote: "why are you still trying to invent your own rules? hydra already knows how starpower works" (2026-11-08, session 274bd9dd). So the Python test goes, and the judge compares the game's state with Hydra's ready point. `hydra_replay` does not write that point today, so the fix plan adds it.
 
+**L62, the 43.9 s window event.** Q13 asked about the keys route and the window coming to the front, and its option (a) said "Finding the 43.9 s cause waits for a run with a window-event log, on your go." The user: "i care about the runs working, not the window coming into focus" (D320 item 4). The words name the window event and say it is not pursued. Not yet checked by a fresh agent.
+
 ### Exit 4, second round
+
+**L77, `machine_report` crashing on `statistics.quantiles`.** On this machine's Python 3.14.5, `statistics.quantiles([5.0], n=20)` returns a list, and only an empty list raises "must have at least one data point" (run by the main session, 2026-11-08). The call at `machine_report.py:486` runs only after `if not pairs: return` at `:483`, so it never gets an empty list. The `_share` division needs two samples, which `:541` requires. Not yet checked by a fresh agent.
 
 **L56, the far-press refusal on every pad.** TM-50 on `docs/clone-hero/03-timing.md` is now proven in the game's code (commit `fb1be3cd`): the press handler gives a press to the earliest unjudged note on its pad in the window, on every pad. `far_press_refusal` (`tools/replay_schedule.cpp:392`) answers "which earlier or later same-pad note would this press reach", and the game's handler answers "which note this press hits". They now agree on every pad. The second closure check reopened two branches of the refusal that are stricter than the handler (Q16, below).
 
@@ -84,10 +88,8 @@ These rows have no verifier verdict yet, or rest on a run nobody has done. None 
 |---|---|
 | L02 | the 4 Freak misses not caused by the stale agent (chords 153 and 154, 803, 1144): a run on a rebuilt `kit.js`, to see whether the stalls repeat |
 | L03 | whether one missed gem in a Star Power phrase cancels its award (the rule is inferred from `ls-m2-run1`; no page block says it): a run with only the kick held back, or the game's miss handler read |
-| L62 | who brought the window forward at 43.9 s: a run with a window-event log |
 | L67, L68, L69, L70, L71, L72, L73, L83, L84 | no verifier opened them (each row's Source ids) |
 | L75 (Ready level) | left by exit 3; see "L75's Ready level" above the tables. Not yet checked by a fresh agent. |
-| L77 | the `statistics.quantiles` part rests on the Python docs from memory, not a run: one call in Python 3.14 |
 | L10, L32, L40 | a run on the rebuilt `kit.js` with split chords under load; a real long `ch_sp_compare` reply; a `hydra_replay` run to diff its output against the 11:14 exe's |
 
 Q16 to Q18 answered on 2026-11-08 (`questions.md` "## Answers"). Q17 leaves L12's early edge with no rule: the plan includes the judging frame once TP1 lands.
