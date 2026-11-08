@@ -176,7 +176,7 @@ Rule: a mix event goes only to the track of the difficulty it names, in a .mid a
 Label: Proven in the game's code
 Evidence: .chart: `code/6142/chart_e_handler_213CAF0.asm` lines 333 to 385 (the difficulty compare with the track's byte at +0x59, then the record). .mid: `code/6142/mid_drum_reader_2155050.asm` lines 363 to 418 (two starts-with tests on the raw text, the mix parser call, the track lookup by the parsed difficulty, the Add).
 Game code (6142): RVAs `0x213CAF0` and `0x2155050`, the listings above.
-Hydra: `is_disco_on_marker` and `is_disco_off_marker` in src/parse/song.cpp lines 307 and 318, given the difficulty's `mix_digit`.
+Hydra: `is_disco_on_marker` and `is_disco_off_marker` in src/parse/song.cpp lines 305 and 317, given the difficulty's `mix_digit`.
 Ruling: D19: chose "Per difficulty (Recommended)" (card 2026-10-04-bbf41dc4, 01:50 UTC).
 Found: 2026-10-03, session cebf3006; listed 2026-10-30 in session b02ab3e6 (the reference build).
 
@@ -186,7 +186,7 @@ Rule: the game's mix parser trims the text, drops one leading [ and a trailing ]
 Label: Proven in the game's code
 Evidence: `code/6142/mix_parser_215C750.asm` lines 59 (trim), 64 to 84 (brackets), 98 to 174 (underscore to space at lines 167 to 169), 140 to 184 (first word), 204 to 248 (integer parse and the map) and 263 to 290 (starts with "drums"); `code/6142/mix_digit_map_210D990.asm` lines 1 to 18.
 Game code (6142): RVAs `0x215C750` and `0x210D990`, the listings above.
-Hydra: `disco_head` in src/parse/song.cpp lines 293 to 296; `peel_brackets` lines 283 to 287.
+Hydra: `disco_head` in src/parse/song.cpp lines 291 to 294; `peel_brackets` lines 281 to 285.
 Ruling: open split: see questions page Q-12.
 Found: 2026-10-30, session b02ab3e6 (the reference build).
 
@@ -194,9 +194,9 @@ Found: 2026-10-30, session b02ab3e6 (the reference build).
 
 Rule: a .chart E text that starts with `[mix` or `mix` goes whole to the mix parser, so `E [mix 3 drums0d]` with ordinary spaces is a marker in the game; Hydra reads an E line as a marker only when it is one word.
 Label: Proven in the game's code
-Evidence: `code/6142/chart_e_handler_213CAF0.asm` lines 116 to 168 (the two starts-with tests) and 319 to 330 (the parser call); NL-18 for the parser. Hydra's check is `t.count == 2` in src/parse/song.cpp lines 1252 to 1259. The corpus file testdata/parse_edge/c20_disco.chart holds one spaced form; the library was not searched.
+Evidence: `code/6142/chart_e_handler_213CAF0.asm` lines 116 to 168 (the two starts-with tests) and 319 to 330 (the parser call); NL-18 for the parser. Hydra's check is `t.count == 2` in src/parse/song.cpp lines 1255 to 1258. The corpus file testdata/parse_edge/c20_disco.chart holds one spaced form; the library was not searched.
 Game code (6142): RVA `0x213CAF0`, the listing above.
-Hydra: `classify_chart_line` in src/parse/song.cpp lines 1252 to 1259.
+Hydra: `classify_chart_line` in src/parse/song.cpp lines 1255 to 1258.
 Ruling: open split: see questions page Q-10.
 Found: 2026-10-30, session b02ab3e6 (the reference build).
 
@@ -206,7 +206,7 @@ Rule: a mix event whose text after the difficulty is 7 or more characters with d
 Label: Proven in the game's code
 Evidence: `code/6142/disco_apply_215CD50.asm` lines 98 to 116 (length and 7th character), 152 to 161 (same difficulty, next event), 220 to 223 (starts with drums, length 6), 243 to 255 (the range search) and 272 to 289 (types 14 and 15, the flag edit). The exact edge of the tick range lives in a helper that was not read.
 Game code (6142): RVA `0x215CD50`, the listing above.
-Hydra: `is_disco_on_marker` and `is_disco_off_marker` in src/parse/song.cpp lines 307 to 324; `emit_chord_timestamp` lines 419 to 421.
+Hydra: `is_disco_on_marker` and `is_disco_off_marker` in src/parse/song.cpp lines 305 to 323; `emit_chord_timestamp` lines 417 to 420.
 Ruling: D19 (record text): "Clone Hero's one-letter on/off rule (A+) is not adopted."
 Found: 2026-10-30, session b02ab3e6 (the reference build).
 
@@ -216,7 +216,7 @@ Rule: in the game `drums0dnoflip` counts as a span start (its 7th character is d
 Label: Proven in the game's code
 Evidence: `code/6142/disco_apply_215CD50.asm` lines 105 and 107 (the 7th character and the length 13), 137 to 148 (the compare with "dnoflip"), 223 (the end needs length 6) and 282 to 289 (Disco set, or the 0x40 flag only when Disco is clear); decompile lines 48364 to 48476. A video of a human full-combo run backs it: on 2026-09-27 a Pro Drums run of Periphery's Marigold scored 693,780 against Hydra's optimal of 664,700. A copy of the chart with the marker renamed (the copy was not kept), so flip stays on, matched the on-screen score at 101 readings, and its optimal is 693,980, 200 above the run (card 2026-09-28-1b0a7cd8). The run left no result file.
 Game code (6142): RVA `0x215CD50`, the listing above.
-Hydra: `is_disco_off_marker` in src/parse/song.cpp lines 318 to 324.
+Hydra: `is_disco_off_marker` in src/parse/song.cpp lines 317 to 323.
 Ruling: deliberate difference: "this is a bug in clone hero, not an intentional feature. it will be fixed in a future update." (card 2026-09-28-1b0a7cd8, 03:43 UTC); D19: "`drums0dnoflip` stays off (Hydra does not copy Clone Hero's bug)."
 Found: 2026-09-27, session 1b0a7cd8; re-read 2026-10-30 in session b02ab3e6 (the reference build).
 
@@ -224,11 +224,11 @@ Found: 2026-09-27, session 1b0a7cd8; re-read 2026-10-30 in session b02ab3e6 (the
 
 Rule: Hydra flips a disco section only under Pro Drums; which game function performs the flip, and whether plain Drums skips it, has not been found.
 Label: Hydra assumes it, never checked
-Evidence: the builder listing docs/audit/note-shuffle/step0/open2/f20d2ea0_build.asm lines 150 to 270 was read and no disco-bit test was found in it.
-Game code (6142): not found: looked in the builder listing; candidates `0x20EF450` and `0x20F1420` were not read for the flip.
-Hydra: `emit_chord_timestamp` in src/parse/song.cpp lines 418 to 427; `Chord::apply_disco_flip` in src/core/model.cpp line 211.
+Evidence: the builder listing docs/audit/note-shuffle/step0/open2/f20d2ea0_build.asm lines 150 to 270 was read and no disco-bit test was found in it. The two candidates are listed in docs/audit/note-shuffle/step0/open2-refute/ (f20EF450.asm and f20F1420.asm). In f20F1420.asm, lines 29 to 61 rewrite a note's +0x80 type word (2 becomes 0x20, and 4 or 0x20 becomes 2) behind a flag test at 0x214B780. No listing shows that this flag is the disco bit or that the step is gated on Pro Drums, so the flip stays unfound.
+Game code (6142): not found: looked in the builder listing and in the listings of `0x20EF450` and `0x20F1420` named above.
+Hydra: `emit_chord_timestamp` in src/parse/song.cpp lines 417 to 426; `Chord::apply_disco_flip` in src/core/model.cpp line 212.
 Ruling: D19 (record text): "The 'flip only with Pro Drums' gate moves to one place."
-Found: 2026-10-30, session b02ab3e6 (the reference build).
+Found: 2026-10-30, session b02ab3e6 (the reference build); the two candidate listings cited 2026-11-08, session 77057df2 (docs-gaps search).
 
 ### NL-23 How many charts carry drums0dnoflip
 
@@ -248,7 +248,7 @@ Rule: the 2x kick is pitch 59 on Easy, 71 Medium, 83 Hard and 95 Expert; it gets
 Label: Proven in the game's code
 Evidence: `code/6142/mid_drum_reader_2155050.asm` lines 316 to 324: the pitch minus 59 is tested against the mask 0x1001001001, whose bits 0, 12, 24 and 36 are those four pitches; docs/audit/drum-lanes/play/f2155200_mid_reader_lane_case.asm lines 236 to 243 agree.
 Game code (6142): RVA `0x2155050`, the listing above.
-Hydra: `DifficultyChartCodes::kick2x_pitch` in src/parse/song.h line 61; `kDifficultyChartCodes` in src/parse/song.cpp lines 654 to 659.
+Hydra: `DifficultyChartCodes::kick2x_pitch` in src/parse/song.h line 61; `kDifficultyChartCodes` in src/parse/song.cpp lines 653 to 658.
 Ruling: D20: chose "A: own pitch, box everywhere" (card 2026-10-04-bbf41dc4, 01:53 UTC).
 Found: 2026-10-03, session cebf3006; listed 2026-10-30 in session b02ab3e6 (the reference build).
 
@@ -258,7 +258,7 @@ Rule: pitches 58 to 66 are Easy, 70 to 78 Medium, 82 to 90 Hard and 94 to 102 Ex
 Label: Proven in the game's code
 Evidence: `code/6142/pitch_difficulty_map_210D9C0.asm` lines 1 to 24; the type map in docs/audit/note-shuffle/step0/open2/f210d7b0.asm.
 Game code (6142): RVAs `0x210D9C0` and `0x210D7B0`.
-Hydra: `kDifficultyChartCodes` in src/parse/song.cpp lines 654 to 659; `MidiParser::optype` lines 905 to 909.
+Hydra: `kDifficultyChartCodes` in src/parse/song.cpp lines 653 to 658; `MidiParser::optype` lines 904 to 908.
 Ruling: none needed for the four pads; the fifth pad is NL-04.
 Found: 2026-10-30, session b02ab3e6 (the reference build).
 
@@ -268,7 +268,7 @@ Rule: every difficulty section that holds an N 32 gets a 2x kick at read time; t
 Label: Proven in the game's code
 Evidence: `code/6142/chart_n_handler_213D620.asm` lines 95 to 109 branch on the lane value only; decompile lines 25098 to 25110.
 Game code (6142): RVA `0x213D620`, the listing above.
-Hydra: `ChartParser::note_optype` case 32 in src/parse/song.cpp line 1699.
+Hydra: `ChartParser::note_optype` case 32 in src/parse/song.cpp line 1697.
 Ruling: D20 (as NL-24).
 Found: 2026-10-03, session cebf3006; listed 2026-10-30 in session b02ab3e6 (the reference build).
 
@@ -278,19 +278,19 @@ Rule: the builder's only gate on 2x kicks is bit 2 of its modifier byte, at ever
 Label: Proven in the game's code
 Evidence: docs/audit/note-shuffle/step0/open2/f20d2ea0_build.asm lines 231 to 236 (the bit test and the call); `code/6142/two_x_kick_drop_20EFF60.asm` lines 37 to 140 (the test call, the unlink at lines 46 to 93, the blanked slot at line 98, the RemoveAll at line 140); `code/6142/double_kick_test_214B850.asm` line 1 tests 0x100000 (DrumsDoubleKick in dump.cs line 548217). That bit 2 is the player's Double Kick setting comes from the live run in NL-28, not a listing.
 Game code (6142): builder RVA `0x20D2EA0`; removal step RVA `0x20EFF60` of class #8278; test RVA `0x214B850`.
-Hydra: `Chord::apply_2x_bass` in src/core/model.cpp line 280, called with `mode_bass2x_` in src/parse/song.cpp line 847.
+Hydra: `Chord::apply_2x_bass` in src/core/model.cpp line 281, called with `mode_bass2x_` in src/parse/song.cpp lines 846 and 1750.
 Ruling: D20 (as NL-24); D105: chose "Match the game, test first (Recommended)" (card 2026-10-09-30beeb6e).
 Found: 2026-10-09, session 30beeb6e; listed 2026-10-30 in session b02ab3e6 (the reference build).
 
 ### NL-28 Live: a 2x kick on a normal kick's tick leaves no kick with Double Kick off
 
 Rule: on songs F1 (.mid) and F2 (.chart), with 2x kick off the game showed a kick on chords 1 and 9 only and counted 11 notes; with it on, one kick on chords 1, 3, 5, 7 and 9 and 14 notes.
-Label: Proven in a live run
-Evidence: docs/audit/note-shuffle/step0/FINDINGS.md line 53 records the run of 2026-10-09; the recordings are C:\Users\Patrick\Videos\group 1.mp4 and group 2.mp4 (they exist today; the main session re-checked the F1 frames, card 30beeb6e). The reference build did not view them. Hydra pins it in tests/test_kick2x.cpp line 131.
-Game code (6142): builder RVA `0x20D2EA0` (NL-27).
-Hydra: `Chord::add_kick` in src/core/model.cpp lines 263 to 276; `Chord::apply_2x_bass` line 280.
+Label: Unknown
+Evidence: the mechanism is in the game's code. The finalizer merges the two kicks into one that carries the 2x flag (NL-29), and the builder removes every note with that flag when its bit 2 is clear (NL-27). That bit 2 is the Double Kick setting, and the chord and note counts above, are recorded only in prose: docs/audit/note-shuffle/step0/FINDINGS.md line 53, for the run of 2026-10-09. Its recordings, C:\Users\Patrick\Videos\group 1.mp4 and group 2.mp4, are not committed, and no data reading of them is kept, so the live result is not a permanent record. Hydra pins the expected counts in tests/test_kick2x.cpp lines 130 to 136.
+Game code (6142): builder RVA `0x20D2EA0` (NL-27) and the merge, RVA `0x215B8C0` (NL-29).
+Hydra: `Chord::add_kick` in src/core/model.cpp lines 264 to 277; `Chord::apply_2x_bass` line 281.
 Ruling: D105: chose "Match the game, test first (Recommended)" (card 2026-10-09-30beeb6e).
-Found: 2026-10-09, session 30beeb6e.
+Found: 2026-10-09, session 30beeb6e; relabelled 2026-11-08, session 77057df2 (docs-gaps search), because the video results live only in prose and uncommitted video.
 
 ### NL-29 A 2x kick and a normal kick on one tick merge into one kick with every mark
 
@@ -298,7 +298,7 @@ Rule: both readers keep each kick as its own note; the track finalizer then merg
 Label: Proven in the game's code
 Evidence: the readers: `code/6142/mid_drum_reader_2155050.asm` lines 341 to 354 and `code/6142/chart_n_handler_213D620.asm` lines 119 to 174 (one note per event). The merge: `code/6142/kick_merge_215B8C0.asm` lines 54 and 94 (same tick), 57 and 97 (same type), 68 and 69 (longest kept), 102 to 123 (the flag merge, low three bits at line 110). The finalizer docs/audit/note-shuffle/step0/open2/f215c320.asm lines 59 to 63 calls it.
 Game code (6142): a method of the track class #8661, RVA `0x215B8C0`, the listing above.
-Hydra: `Chord::add_kick` in src/core/model.cpp line 263.
+Hydra: `Chord::add_kick` in src/core/model.cpp line 264.
 Ruling: D105: chose "Match the game, test first (Recommended)" (card 2026-10-09-30beeb6e); "go with the games rule" and "that is the source of truth here" (card 2026-10-09-27b9bbc4).
 Found: 2026-10-09, session 30beeb6e; listed 2026-10-30 in session b02ab3e6 (the reference build).
 
@@ -306,11 +306,11 @@ Found: 2026-10-09, session 30beeb6e; listed 2026-10-30 in session b02ab3e6 (the 
 
 Rule: Hydra merges a 2x kick and a normal kick on one tick in either file order; the game's finalizer or-s flags whatever the order, but whether songs F1 and F2 held both orders was not checked.
 Label: Unknown
-Evidence: not checked: it would need a run with both file orders. Hydra's side is src/core/model.cpp lines 272 to 275.
-Game code (6142): RVA `0x215B8C0` (NL-29).
-Hydra: `Chord::add_kick` in src/core/model.cpp lines 263 to 276.
+Evidence: the merge is read in full, but no run with both file orders was kept. In `code/6142/kick_merge_215B8C0.asm`, lines 54 to 70 keep the longest note of the tick and type, and a later note replaces it only when strictly longer (the conditional move at line 70), so on a length tie the lower list index is kept. Lines 102 to 123 OR the high flag bits of both notes and keep the highest of the low three, which gives the same flags in either order. Line 128 appends the other note's +0x38 list to the kept one. So the flags do not depend on file order, but which object survives, and the order of its +0x38 list, can. The 2026-10-09 run of songs F1 and F2 (chord 3 with the normal kick first, chord 5 the other way round) is recorded only in prose, docs/audit/note-shuffle/step0/FINDINGS.md line 53, with uncommitted video. Hydra's side is src/core/model.cpp lines 273 to 276.
+Game code (6142): RVA `0x215B8C0` (NL-29), the listing above.
+Hydra: `Chord::add_kick` in src/core/model.cpp lines 264 to 277.
 Ruling: D105 (as NL-29).
-Found: 2026-10-30, session b02ab3e6 (the reference build).
+Found: 2026-10-30, session b02ab3e6 (the reference build); the tie rule read 2026-11-08, session 77057df2 (docs-gaps search).
 
 ### NL-31 The kick key scores a 2x-kick gem, and the Slipping layout
 
@@ -318,7 +318,7 @@ Rule: pressing the kick key scores a 2x-kick gem; in Synovial's Slipping `notes.
 Label: Unknown
 Evidence: not checked: the 2026-10-29 run's `scorestats.json` (tools/ch_probe/experiments/results/overlay-spike/run1_cal0_scorestats.json) shows DoubleKick on and 1,257 of 1,257 notes hit, but the press log has no kick-type column, and the Slipping counts come from a transcript, not a recount.
 Game code (6142): not found: not read.
-Hydra: `mop_kick` in src/parse/song.cpp line 912.
+Hydra: `mop_kick` in src/parse/song.cpp line 911.
 Ruling: none found.
 Found: 2026-09-25, session 8157f2dc.
 
@@ -328,7 +328,7 @@ Found: 2026-09-25, session 8157f2dc.
 
 Rule: the merge in NL-29 applies to every note type, so two red notes on one tick become one red note holding both notes' flags; Hydra's second `Chord::add_note` throws "Duplicate note." and the per-op catch drops that note with its marks.
 Label: Proven in the game's code
-Evidence: `code/6142/kick_merge_215B8C0.asm` lines 54 to 128 compare tick and type only, with no kick test; docs/audit/note-shuffle/step0/open2/f215b8c0.asm lines 38 to 128 agree. Hydra: src/core/model.cpp line 244 throws, and the catches in src/parse/song.cpp lines 1019 and 1746 drop the op (checked 2026-10-30).
+Evidence: `code/6142/kick_merge_215B8C0.asm` lines 54 to 128 compare tick and type only, with no kick test; docs/audit/note-shuffle/step0/open2/f215b8c0.asm lines 38 to 128 agree. Hydra: src/core/model.cpp line 244 throws, and the catches in src/parse/song.cpp lines 1018 and 1744 drop the op (checked 2026-10-30).
 Game code (6142): RVA `0x215B8C0`, the listing above.
 Hydra: `Chord::add_note` in src/core/model.cpp line 242.
 Ruling: open split: see questions page Q-14.
@@ -336,31 +336,31 @@ Found: 2026-10-30, session b02ab3e6 (the reference build); Hydra side checked by
 
 ### NL-33 In a .mid, a tick's notes are ordered kick, red, yellow, blue, green
 
-Rule: before any builder step the game orders each tick's notes by note type (kick, red, yellow, blue, green); a cymbal is a flag, not a slot, so a yellow cymbal sits in the yellow slot, and file order is discarded.
-Label: Proven in a live run
-Evidence: docs/audit/note-shuffle/step0/FINDINGS.md line 55 records song B (.mid) matching the colour-order row with Note Shuffle on, 2026-10-09 (C:\Users\Patrick\Videos\group 3.mp4, not viewed in the reference build). The sort's compares are in docs/audit/note-shuffle/step0/open2/f215c040.asm lines 64, 65 and 143 to 149; its direction was not traced.
-Game code (6142): RVAs `0x215C040`, `0x215E020` and `0x215C320` (the sort was not traced in full).
-Hydra: `NoteColor` order in src/core/model.h line 55; `Chord::note_list` in src/core/model.cpp lines 155 to 158.
+Rule: before any builder step the game orders each tick's notes by note type, lowest first, and breaks a tie by the flags word, lowest first. The type numbers put the kick first, then red, yellow and blue, then the fourth pad (Hydra's green). A cymbal is a flag, not a slot, so a yellow cymbal sits in the yellow slot, and file order is discarded.
+Label: Proven in the game's code
+Evidence: the track finalizer docs/audit/note-shuffle/step0/open2/f215c320.asm calls the sort 0x215C040 at line 56. In docs/audit/note-shuffle/step0/open2/f215c040.asm, lines 64 and 65 compare the notes' +0x10 tick, and lines 144 to 155 are the sort's compare: when two notes have the same +0x20 type it swaps them only if the earlier one's +0x24 flags are greater, and otherwise only if the earlier one's type is greater. The other path calls 0x215E020 (line 95), whose listing docs/audit/note-shuffle/step0/open2/f215e020.asm makes the same compare at lines 37 to 48. The type numbers (kick 13, red 14, yellow 15, blue 16, the fourth pad 18, the fifth pad 17) are in `code/6142/chart_n_handler_213D620.md`. A live check is recorded only in prose: docs/audit/note-shuffle/step0/FINDINGS.md line 55 says song B (.mid) matched the colour-order row with Note Shuffle on, 2026-10-09, but its video, C:\Users\Patrick\Videos\group 3.mp4, is not committed and no data reading of it is kept.
+Game code (6142): the sort, RVA `0x215C040`, with `0x215E020`, called from the finalizer `0x215C320`, the listings above.
+Hydra: `NoteColor` order in src/core/model.h line 56; `Chord::note_list` in src/core/model.cpp lines 156 to 159.
 Ruling: none needed: same rule.
-Found: 2026-10-09, session 30beeb6e.
+Found: 2026-10-09, session 30beeb6e; the sort direction read and the label moved to code 2026-11-08, session 77057df2 (docs-gaps search).
 
 ### NL-34 A .chart's tick order is the same as a .mid's
 
-Rule: both parsers end in the same track finalizer, so a .chart's within-tick order should equal the .mid's; no .chart was played to check it.
-Label: Unknown
-Evidence: not checked: it would need the two call sites of the finalizer `0x215C320` opened (from `0x2155050` and `0x2161A80`) and a .chart chord-order run. FINDINGS.md lines 61 to 63 say "code reading only".
-Game code (6142): RVAs `0x215C320`, `0x2155050` and `0x2161A80`; call sites not opened.
-Hydra: `Chord::note_list` in src/core/model.cpp line 155.
+Rule: both parsers end in the same track finalizer, so a .chart's within-tick order equals the .mid's (NL-33). No .chart was played to check it.
+Label: Proven in the game's code
+Evidence: all three parser listings call the finalizer 0x215C320: docs/audit/note-shuffle/step0/open2/f2161a80.asm line 221 (the .chart parser), f2155050.asm line 557 (the .mid parser) and f2156990.asm line 655, all in docs/audit/note-shuffle/step0/open2/. The finalizer calls the sort (NL-33). Only the live .chart test is missing: docs/audit/note-shuffle/step0/FINDINGS.md lines 61 to 63 say the .chart order is "code reading only".
+Game code (6142): the finalizer, RVA `0x215C320`, called from `0x2161A80`, `0x2155050` and `0x2156990`, the listings above.
+Hydra: `Chord::note_list` in src/core/model.cpp line 156.
 Ruling: none needed.
-Found: 2026-10-09, session 30beeb6e.
+Found: 2026-10-09, session 30beeb6e; the call sites read 2026-11-08, session 77057df2 (docs-gaps search).
 
 ### NL-35 Every chord a chart holds is stored and scored, three-pad chords included
 
 Rule: Hydra never decides a chord is unplayable; the game's handling of three pads at once was not read.
 Label: Hydra assumes it, never checked
-Evidence: `Chord::code` in src/core/model.cpp line 107; ADR 0015.
+Evidence: `Chord::code` in src/core/model.cpp line 108; ADR 0015.
 Game code (6142): not found: not read.
-Hydra: `Chord::code` in src/core/model.cpp line 107.
+Hydra: `Chord::code` in src/core/model.cpp line 108.
 Ruling: "if it exists hydra should score it" (card 9405caaa, 03:07 UTC).
 Found: session 9405caaa (Hot Sexy Girls, 21 three-pad chords).
 
