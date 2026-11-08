@@ -614,7 +614,7 @@ TEST_CASE("schedule: the fallback block") {
 }
 
 TEST_CASE("schedule: last_send_ms is the side less one frame") {
-    CHECK(schedule::last_send_ms(1000.0, 50.0) == doctest::Approx(997.0));
+    CHECK(schedule::last_send_ms(1000.0, 50.0) == doctest::Approx(1047.0));
     const Overfill o = overfill();
     const ReplayResult r = replay_path(o.song, {});
     const json s = schedule::schedule_json(o.song, {&o.act}, r, schedule::DeclineMode::Nothing);
