@@ -32,7 +32,7 @@ Rule: The load coroutine reads `song.ini` first and the chart second. The chart'
 Label: Proven in the game's code
 Evidence: `code/6142/chart_song_metadata_35C980.asm` lines 87, 103, 562 to 586 and 634 to 663 (the skip when `+0x24` is nonzero at line 636, Single.TryParse at line 651, the multiply at line 659, the call to the C runtime's ceiling helper at line 661, the store at line 663); that helper jumps to a one-instruction round toward plus infinity. The order is in `code/6142/gm_load_coroutine_D8D80.asm` lines 272 to 291. The three measured points of the 2026-09-24 recording (TM-05) all agree with this reading; their scripts and result files were not kept.
 Game code (6142): `SongEntry` chart metadata reader (scrambled member), RVA `0x35C980`, and the load coroutine `GameManager` (scrambled `MoveNext`), RVA `0xD8D80`, listings as above.
-Hydra: `preview_audio_offset_ms` in src/app/preview_source.cpp lines 311 to 316 makes the same choice (the delay wins when present and nonzero, else Offset x 1000), with the Offset parsed into `chart_offset_s` at src/parse/song.cpp line 1825. Hydra keeps fractional milliseconds and does not round up.
+Hydra: `preview_audio_offset_ms` in src/app/preview_source.cpp lines 311 to 316 makes the same choice (the delay wins when present and nonzero, else Offset x 1000), with the Offset parsed into `chart_offset_s` at src/parse/song.cpp line 1823. Hydra keeps fractional milliseconds and does not round up.
 Ruling: The choice is ruled: D274 item 6, "Check the game, then honor (Recommended)" for the Preview's audio delay and Offset. The rounding up is not named in it: open split: see questions page Q-31
 Found: 2026-10-30, session b02ab3e6 (the reference build); the measurements 2026-09-25, session 2a88c065.
 
@@ -102,11 +102,11 @@ Found: 2026-10-28, session f756d547; listed 2026-10-30, session b02ab3e6 (the re
 
 Rule: `GameManager.Update` stores the first getter's result as `GameManager.songTime` (+0x70) and the second as `GameManager.songTimeVideoTime` (+0x78) every frame, and the player passes `songTime` to the engine, which writes it to the engine clock.
 Label: Unknown
-Evidence: listing lost: read 2026-10-28 in session f756d547 and re-read from the DLL on 2026-10-30 (the calls at 0xC085B and 0xC0877, the stores at 0xC0867 and 0xC0880), but no listing was kept. The player hop was not re-checked.
-Game code (6142): `GameManager.Update`, RVA `0xC05A0`; fields from `dump.cs` lines 25298 to 25305.
+Evidence: the `Update` listing was not kept: it was read 2026-10-28 in session f756d547 and re-read from the DLL on 2026-10-30 (the calls at 0xC085B and 0xC0877, the stores at 0xC0867 and 0xC0880). The committed load coroutine, which is not `Update`, makes the same two calls and stores once at song start: `code/6142/gm_load_coroutine_D8D80.asm` line 483 calls `0x16C480` and lines 484 and 485 store the result at `+0x70` and `+0x88` of the manager; line 490 calls `0x16C490` and line 491 stores it at `+0x78`. That shows the fields, not the per-frame store. The player hop was not re-checked.
+Game code (6142): `GameManager.Update`, RVA `0xC05A0`, no listing; the load coroutine, RVA `0xD8D80`, `code/6142/gm_load_coroutine_D8D80.asm` lines 483 to 491; fields from `dump.cs` lines 25298 to 25305.
 Hydra: no owner: the Preview and Paths use chart time and never read the game clock.
 Ruling: none needed: no Hydra rule depends on it
-Found: 2026-10-28, session f756d547.
+Found: 2026-10-28, session f756d547; 2026-11-08, session 77057df2 (docs-gaps search).
 
 ### TM-11 The raw clock starts at least one second before chart time 0
 
@@ -206,7 +206,7 @@ Rule: The drums engine constructor sets the byte at `#8255+0x41` to 1 in both no
 Label: Proven in the game's code
 Evidence: `code/6142/engine_ctor_20DF680.asm` line 78 (`mov byte ptr [rbx + 0x41], 1`) and `code/6142/note_window_20F3A90.asm` lines 4 and 9.
 Game code (6142): the drums engine constructor, RVA `0x20DF680`; the per-note window routine of class #8288 (scrambled name), RVA `0x20F3A90`.
-Hydra: no owner for a per-note window: Hydra holds one fixed number, `kHitWindowMs` in src/core/model.h line 104.
+Hydra: no owner for a per-note window: Hydra holds one fixed number, `kHitWindowMs` in src/core/model.h line 105.
 Ruling: open split: see questions page Q-32
 Found: 2026-10-30, session b02ab3e6 (the reference build).
 
@@ -216,7 +216,7 @@ Rule: With bit 0x1000 of the engine flags at `#8288+0x198` clear, the constructo
 Label: Proven in the game's code
 Evidence: `code/6142/engine_ctor_20DF680.asm` lines 78 to 91 (the four constants read at lines 80, 81, 83 and 84, the stores at lines 85, 87 and 91). The decompile `ghidra_decompile_all.txt` lines 1807 to 1822 agree. The four constants are `RVA_CONST_NORMAL_FRONT`, `RVA_CONST_NORMAL_BACK`, `RVA_CONST_PRECISION_FRONT` and `RVA_CONST_PRECISION_BACK` in tools/ch_probe/constants.py. `dump.cs` line 547692 names the bit `PrecisionMode = 4096`.
 Game code (6142): the drums engine constructor, RVA `0x20DF680`, `code/6142/engine_ctor_20DF680.asm` lines 78 to 91.
-Hydra: no owner. `kHitWindowMs` (src/core/model.h line 104) is a separate number that equals the normal back value.
+Hydra: no owner. `kHitWindowMs` (src/core/model.h line 105) is a separate number that equals the normal back value.
 Ruling: open split: see questions page Q-32
 Found: 2026-09-25, session 8157f2dc; listed 2026-10-30, session b02ab3e6 (the reference build).
 
@@ -264,9 +264,9 @@ Found: 2026-09-25, session 28e6f29d; listed 2026-10-30, session b02ab3e6 (the re
 
 Rule: In normal mode the formula's input is held between 75 and 170 ms, so the whole window runs from 96.2932 to 171.4313 ms, and each side gets half: from 48.15 ms when both neighbours are close to 85.72 ms when both are far. A note whose neighbours are both 80 ms away gets 102.26 ms, 51.13 ms a side. Hydra judges every note at a fixed 85 ms a side, which is the game's back clamp for one half-gap, not its per-side window.
 Label: Proven in the game's code
-Evidence: TM-19 to TM-21 by arithmetic. Hydra's side: `kHitWindowMs` (src/core/model.h line 104) is read by the badges, Ratings, timing tiers and the search (TM-29).
+Evidence: TM-19 to TM-21 by arithmetic. Hydra's side: `kHitWindowMs` (src/core/model.h line 105) is read by the badges, Ratings, timing tiers and the search (TM-29).
 Game code (6142): RVAs `0x20F3A90`, `0x20F7210` and `0x20DDDA0`, the three listings above.
-Hydra: `kHitWindowMs` in src/core/model.h line 104.
+Hydra: `kHitWindowMs` in src/core/model.h line 105.
 Ruling: open split: see questions page Q-32. D270 item 8 ("yes it should use one nuimbers eerywhere", and "Fixed 85, no setting (Recommended)") rules on Hydra's own two numbers, and D28 records the game's cap and floor with "Steps 4-6 are shelved"; neither names both the game's per-note window and Hydra's fixed 85.
 Found: 2026-10-03, session cebf3006; re-read 2026-10-30 in session b02ab3e6 (the reference build).
 
@@ -282,13 +282,23 @@ Found: 2026-09-25, session 8157f2dc.
 
 ### TM-24 The per-frame routines store the half-window and the whole window
 
-Rule: The per-frame routines store the half-window at `#8288+0x10` and twice that at `+0x20`, so the stored total is the formula's output. A second routine, `0x20F6A50`, also calls the per-note window routine.
+Rule: The per-frame routine stores the half-window at `#8288+0x10`, minus the half-window at `+0x18` and twice the half-window at `+0x20`, so the stored total is the formula's output. When the byte at `+0x195` is set, it stores 0 at `+0x10` and minus the whole window at `+0x18` instead. A second routine, `0x20F6A50`, also calls the per-note window routine (TM-52).
 Label: Proven in the game's code
-Evidence: decompile `ghidra_decompile_all.txt` lines 52946 to 52950 (in `0x20F5810`) and line 53619 (in `0x20F6A50`); no listing was made.
-Game code (6142): RVAs `0x20F5810` and `0x20F6A50`, decompiled lines as above.
+Evidence: committed listing `docs/audit/drum-lanes/play/f20f5810_base_update.asm` lines 74 to 85: line 74 calls the per-note window routine, line 78 stores the result at `+0x10`, lines 79 and 80 store its negative at `+0x18`, lines 76, 77 and 81 store twice it at `+0x20`, and lines 75, 82 to 85 are the `+0x195` branch. The decompile lines 52946 to 52950 agree. The call in `0x20F6A50` is `docs/audit/drum-lanes/play/f20f6a50_advance_schedule.asm` line 51. What sets `+0x195` was not read.
+Game code (6142): the base engine update, RVA `0x20F5810`, `docs/audit/drum-lanes/play/f20f5810_base_update.asm` lines 74 to 85; RVA `0x20F6A50`, `docs/audit/drum-lanes/play/f20f6a50_advance_schedule.asm` line 51.
 Hydra: no owner (see TM-17).
 Ruling: none needed: no Hydra rule depends on it
-Found: 2026-10-30, session b02ab3e6 (the reference build).
+Found: 2026-10-30, session b02ab3e6 (the reference build); 2026-11-08, session 77057df2 (docs-gaps search).
+
+### TM-52 The engine queues each note's window start and end and steps the clock to them
+
+Rule: For each note, the event step works out the window's start (note time minus the half-window) and end (note time plus the half-window). It queues each one that falls after the current clock and before the step's limit, in a list of times that holds each time once. The next-event routine sorts that list, takes out the times inside the step and calls the frame update at each one. When the byte at `+0x290` is set, the step loop moves the clock to up to three of those queued times before the frame's own time, running the engine at each. So a window edge can be acted on between frames. When the start or end does not give back the half-window exactly, it goes through a helper whose effect was not read.
+Label: Proven in the game's code
+Evidence: committed listings under `docs/audit/drum-lanes/play/`. `f20f6a50_advance_schedule.asm` line 51 calls the per-note window routine, lines 57 to 60 and 72 to 75 work out the end and the start from the note time at `+0x28`, lines 61 to 70 and 76 to 85 pass either through the helper at 0x180F96AA0 (a VA, not listed) when the check fails, and lines 87 to 126 queue the start and the end through virtual slot 16 (vtable offset 0x238) when each is after the clock at `+0x100`. `f20f43a0_add_event.asm` lines 31 to 73 add a time to the list at `+0x180` only when no entry equals it. `f20f6ff0_next_event.asm` lines 44 to 76 sort the list ascending, and lines 77 to 106 walk it from the end, take out each time inside the step and call `0x20F4550` with it (line 103). `f20f4950_step_loop.asm` line 18 tests `+0x290`, lines 29 to 60 call `0x20F6FF0` and set the clock at `+0x100` to its result up to three times, and line 61 puts the clock back. Not read: what sets `+0x290`, the helper at 0x180F96AA0, and what the step's limit is. IN-17 and IN-18 (page 7) count per-note calls and do not touch this queue.
+Game code (6142): the event step, RVA `0x20F6A50`; slot 16, RVA `0x20F43A0` (`dump.cs` line 530212); the next-event routine, RVA `0x20F6FF0`; the step loop, RVA `0x20F4950`; listings as above.
+Hydra: no owner: Hydra has no frame or event model (SP-29).
+Ruling: none needed: no Hydra rule depends on it
+Found: 2026-11-08, session 77057df2 (docs-gaps search).
 
 ### TM-25 A note is missed only when the clock is strictly past its window end
 
@@ -302,23 +312,23 @@ Found: 2026-10-03, drum-lanes FINDINGS-play-time.md.
 
 ### TM-26 The early and the late side of a note's window
 
-Rule: Measured at the song clock the player read just before it sent a press, the two sides are not the same: the early side reaches further than the late side. In LS-E run 1 of 2026-11-07, on notes 1,000 ms from both neighbours (so 85.72 ms a side by TM-22's formula), presses sent 80.91, 82.48, 87.85 and 88.43 ms early all hit, and presses sent 84.92, 85.46, 89.01 and 91.65 ms late all missed. So the early side reaches past 88.43 ms and the late side ends before 84.92 ms. Both fit one 85.72 ms side judged a few ms after the press is sent (TM-27). Not checked in the code: that the engine compares (note time - clock) with `#8288+0x10` on one side and a mirrored copy at `+0x18` on the other, and that a flag at `+0x195` sets the early side to 0 and the late side to the full window.
+Rule: Measured at the song clock the player read just before it sent a press, the two sides are not the same: the early side reaches further than the late side. In LS-E run 1 of 2026-11-07, on notes 1,000 ms from both neighbours (so 85.72 ms a side by TM-22's formula), presses sent 80.91, 82.48, 87.85 and 88.43 ms early all hit, and presses sent 84.92, 85.46, 89.01 and 91.65 ms late all missed. So the early side reaches past 88.43 ms and the late side ends before 84.92 ms. Both fit one 85.72 ms side judged a few ms after the press is sent (TM-27). In the code, the per-frame update compares (note time - clock) with `#8288+0x10` on the early side and with its mirror at `+0x18` on the late side, and when the byte at `+0x195` is set the early side is 0 and the late side the whole window (TM-24). What sets `+0x195` was not read.
 Label: Proven in a live run
-Evidence: LS-E run 1, 2026-11-07, `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-07\ls-e-run1\press-1.csv`, the rows of chords 10, 20, 30, 40, 50, 60, 70 and 80 (the ones with a `probe` value): `chart_ms` minus `clock_ms_at_press` gives each press's lead, and `hit` gives the verdict. The asked leads are in `probes.json` there, and `replies.txt` there lists the eight results. The code part needs a listing of the compares in `0x20F5810` and `0x20F6A50` and a trace of what sets `+0x195`; only decompile lines 52945 to 52955 and 53619 to 53639 were read.
-Game code (6142): RVAs `0x20F5810` and `0x20F6A50`, no listing.
-Hydra: one number for both sides, `kHitWindowMs` in src/core/model.h line 104.
+Evidence: LS-E run 1, 2026-11-07, `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-07\ls-e-run1\press-1.csv`, the rows of chords 10, 20, 30, 40, 50, 60, 70 and 80 (the ones with a `probe` value): `chart_ms` minus `clock_ms_at_press` gives each press's lead, and `hit` gives the verdict. The asked leads are in `probes.json` there, and `replies.txt` there lists the eight results. The code part is the committed listing `docs/audit/drum-lanes/play/f20f5810_base_update.asm`: line 59 loads the clock at `+0x100`, lines 69 and 72 take the note time at `+0x28` minus the clock, lines 74 to 85 store the two sides, and lines 98 to 102 admit the note only when that difference is not above `+0x10` and not below `+0x18`.
+Game code (6142): the base engine update, RVA `0x20F5810`, `docs/audit/drum-lanes/play/f20f5810_base_update.asm` lines 59 to 102.
+Hydra: one number for both sides, `kHitWindowMs` in src/core/model.h line 105.
 Ruling: none found
-Found: 2026-10-30, session b02ab3e6 (the reference build); the live result 2026-11-07, session d0a3868c.
+Found: 2026-10-30, session b02ab3e6 (the reference build); the live result 2026-11-07, session d0a3868c; the listing 2026-11-08, session 77057df2 (docs-gaps search).
 
 ### TM-27 Whether the hit check enforces the stored window
 
 Rule: Measured at the song clock the player read just before it sent a press, the hit check does not stop at the formula's side. On notes with an 85.72 ms side, a press sent 88.43 ms early hit, and one sent 84.92 ms late missed (TM-26 has all eight). That fits the check holding a press to the 85.72 ms side at a game frame that reads the press some time after it is sent: the early hit needs that lag to be at least 2.71 ms, and the late miss needs it to be more than 0.80 ms. Not proven: the lag itself (no row records the frame that judged a press); that the stored window held 85.72 ms on those notes (the run did not read it); and the edge on notes with closer neighbours, whose side is smaller. One screenshot showed a late hit at +85.9 ms, which is not in the repo.
 Label: Proven in a live run
-Evidence: LS-E run 1, 2026-11-07, `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-07\ls-e-run1\press-1.csv`: chord 60 (chart 63,000 ms, sent at clock 62,911.57, hit 1) and chord 70 (chart 73,000 ms, sent at clock 73,084.92, hit 0, score unchanged at 6,550). The chart is `C:\Clone Hero\songs\Hydra Probe\Edge Walk Pair\notes.chart`, every note a kick 1,000 ms from the next except the last pair. The hit-compare candidates `0x100DAE0` and `0x20DE770` have no annotated listing of the comparison.
-Game code (6142): not found: looked at `0x100DAE0` and `0x20DE770`.
-Hydra: `kHitWindowMs` in src/core/model.h line 104: every note at a fixed 85 ms a side.
+Evidence: LS-E run 1, 2026-11-07, `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-07\ls-e-run1\press-1.csv`: chord 60 (chart 63,000 ms, sent at clock 62,911.57, hit 1) and chord 70 (chart 73,000 ms, sent at clock 73,084.92, hit 0, score unchanged at 6,550). The chart is `C:\Clone Hero\songs\Hydra Probe\Edge Walk Pair\notes.chart`, every note a kick 1,000 ms from the next except the last pair. In the code, the per-frame update admits a note to its window list only while (note time - clock) lies inside the stored sides (TM-26): `docs/audit/drum-lanes/play/f20f5810_base_update.asm` lines 98 to 102 test the sides, lines 127 and 131 append the note to the list at `+0x58` and count it at `+0x8C`. That the press handler takes notes only from that list was not read.
+Game code (6142): the base engine update, RVA `0x20F5810`, `docs/audit/drum-lanes/play/f20f5810_base_update.asm` lines 98 to 131; the press-side compare not found: looked at `0x100DAE0` and `0x20DE770`.
+Hydra: `kHitWindowMs` in src/core/model.h line 105: every note at a fixed 85 ms a side.
 Ruling: open split: see questions page Q-32
-Found: 2026-09-25, session 28e6f29d; the live result 2026-11-07, session d0a3868c.
+Found: 2026-09-25, session 28e6f29d; the live result 2026-11-07, session d0a3868c; the listing 2026-11-08, session 77057df2 (docs-gaps search).
 
 ### TM-50 A press inside two unhit same-pad notes' windows goes to the earlier note
 
@@ -334,31 +344,31 @@ Found: 2026-11-07, session d0a3868c.
 
 Rule: In tools/ch_probe/constants.py the table named `RVA_FORMULA_NORMAL` holds the constants the game uses when the precision bit is set, and `RVA_FORMULA_PRECISION` holds the ones it uses when the bit is clear. `predicted_window_normal` in the probe's analysis.py is fed from the first, so it predicts the wrong curve.
 Label: Proven in the game's code
-Evidence: the decompile lines 767 to 781 against constants.py lines 166 to 180: the bit-clear branch uses the four addresses that constants.py lines 175 to 180 call precision. With those constants the bit-clear shape gives 171.43 ms at 170 and 96.29 ms at 75, which matches `poll_windows.csv`; the other table gives -242 and -78. The cards for sessions 1ac71f52 and ea0b884c already said "labels are swapped".
+Evidence: the decompile lines 767 to 781 against constants.py lines 170 to 184: the bit-clear branch uses the four addresses that constants.py lines 179 to 184 call precision. With those constants the bit-clear shape gives 171.43 ms at 170 and 96.29 ms at 75, which matches `poll_windows.csv`; the other table gives -242 and -78. The cards for sessions 1ac71f52 and ea0b884c already said "labels are swapped".
 Game code (6142): RVA `0x20DDDA0`, `code/6142/hit_window_formula_20DDDA0.asm` lines 11 to 54.
-Hydra: no owner in `src/`; the tool names are `RVA_FORMULA_NORMAL` and `RVA_FORMULA_PRECISION` in tools/ch_probe/constants.py lines 166 and 175.
+Hydra: no owner in `src/`; the tool names are `RVA_FORMULA_NORMAL` and `RVA_FORMULA_PRECISION` in tools/ch_probe/constants.py lines 170 and 179.
 Ruling: open split: see questions page Q-34
-Found: 2026-09-25, session 28e6f29d.
+Found: 2026-09-25, session 28e6f29d; line cites re-pinned 2026-11-08, session 77057df2 (docs-gaps search).
 
 ### TM-29 Hydra uses one fixed 85 ms for badges, ratings, tiers and the search
 
 Rule: Hydra judges every note at a fixed 85 ms a side, and the badges, Rating words, the report's timing tiers and the early-fill reach all read that one constant.
 Label: Hydra assumes it, never checked
-Evidence: `kHitWindowMs = 85.0` at src/core/model.h line 104; `fill_refuses` at line 316 reads it as the reach; `timing_tiers` and `squeeze_budget_ms` in src/core/squeeze_rating.cpp. The single `kHitWindowMs` is what D270 item 8 asked for.
+Evidence: `kHitWindowMs = 85.0` at src/core/model.h line 105; `fill_refuses` at line 318 reads it as the reach; `timing_tiers` and `squeeze_budget_ms` in src/core/squeeze_rating.cpp. The single `kHitWindowMs` is what D270 item 8 asked for.
 Game code (6142): see TM-22.
-Hydra: `kHitWindowMs` in src/core/model.h line 104.
+Hydra: `kHitWindowMs` in src/core/model.h line 105.
 Ruling: D270 item 8: the user asked "why are there two different numbers for hit window? who approved that? did you ever tell me you were using two different numbers?", then "yes it should use one nuimbers eerywhere", and chose "Fixed 85, no setting (Recommended)".
 Found: 2026-10-30, session 9a82ff65.
 
-### TM-30 The 0.75 constant that constants.py calls the hit threshold, as a hit-grade fraction
+### TM-30 The 0.75 constant that constants.py calls the hit threshold is a double lane's round timer
 
-Rule: The `.rdata` value read as 0.75 and called "hit threshold" in constants.py is a hit-grade fraction.
-Label: Unknown
-Evidence: not checked: it needs a search of the decompile for the code that reads the constant. The only source is a guess in a 2026-09-25 transcript ("probably the fraction") and the constants.py comment.
-Game code (6142): not found: where the value is read was not searched.
+Rule: The `.rdata` value read as 0.75 and named `RVA_HITCHECK_THRESHOLD` in constants.py is not a hit-grade fraction. The drum engine compares the song clock minus a double lane's round start with it: it is the 0.75 s round timer of NL-59 and IN-15. The earlier guess that it is a hit-grade fraction is wrong for this reader.
+Label: Proven in the game's code
+Evidence: committed listing `docs/audit/drum-lanes/play/f20ddec0.asm` lines 30 to 33: line 30 loads the clock at `+0x100`, line 31 subtracts the round start at `+0x2E0`, and line 32 compares the result with the double at the address constants.py names `RVA_HITCHECK_THRESHOLD` (the listing's comment reads it as 0.75). The old reading came from a guess in a 2026-09-25 transcript ("probably the fraction") and the constants.py comment at line 193. Other readers of the constant were not searched.
+Game code (6142): the drum engine's slot 9, RVA `0x20DDEC0`, `docs/audit/drum-lanes/play/f20ddec0.asm` lines 30 to 33.
 Hydra: no owner
 Ruling: none needed: no Hydra rule depends on it
-Found: 2026-09-25, session 8157f2dc.
+Found: 2026-09-25, session 8157f2dc; the reader 2026-11-08, session 77057df2 (docs-gaps search).
 
 ## Precision mode
 
@@ -376,7 +386,7 @@ Found: 2026-10-30, session b02ab3e6 (the reference build).
 
 Rule: Whether the player's Precision Mode option sets bit 0x1000, and whether a live precision-mode window runs from 50.44 to 84.89 ms, is not known.
 Label: Unknown
-Evidence: the enum name `PrecisionMode = 4096` is in `dump.cs` line 547692, but no code that sets the field from a menu was traced, and `tools/ch_probe/experiments/results/` holds no precision-mode run. constants.py line 241 says "nobody has read precision mode's cap".
+Evidence: the enum name `PrecisionMode = 4096` is in `dump.cs` line 547692, but no code that sets the field from a menu was traced, and `tools/ch_probe/experiments/results/` holds no precision-mode run. constants.py line 245 says "nobody has read precision mode's cap".
 Game code (6142): field `#8288+0x198`; its writer was not read.
 Hydra: no owner
 Ruling: open split: see questions page Q-32
@@ -386,9 +396,9 @@ Found: 2026-10-30, session b02ab3e6 (the reference build).
 
 Rule: Hydra's fixed 85 ms window is used for every chart whatever the player's precision setting, while the game's precision windows are narrower (TM-31).
 Label: Hydra assumes it, never checked
-Evidence: `kHitWindowMs` at src/core/model.h line 104; a grep of `src/` finds no precision-mode input.
+Evidence: `kHitWindowMs` at src/core/model.h line 105; a grep of `src/` finds no precision-mode input.
 Game code (6142): see TM-18 and TM-31.
-Hydra: `kHitWindowMs` in src/core/model.h line 104.
+Hydra: `kHitWindowMs` in src/core/model.h line 105.
 Ruling: open split: see questions page Q-32
 Found: 2026-10-30, session b02ab3e6 (the reference build).
 
@@ -418,11 +428,11 @@ Found: 2026-10-28, session f756d547; listed 2026-10-30, session b02ab3e6 (the re
 
 Rule: Nothing that judges a hit reads the video time; video calibration moves only what is drawn.
 Label: Unknown
-Evidence: not checked: it needs every reader of the getter at `0x16C490` traced. The overlay handoff's session found two drawing readers, `HighwayScroll.Update` and `DrumsNoteRenderer.Update` (this row is now their only home); about 30 readers were never all traced. TM-15's bot run shows the engine clock does not move, which is consistent.
-Game code (6142): RVA `0x16C490`, readers not all traced.
+Evidence: not checked: it needs every reader of the getter at `0x16C490` traced. The overlay handoff's session found two drawing readers, `HighwayScroll.Update` and `DrumsNoteRenderer.Update` (this row is now their only home); about 30 readers were never all traced. A third reader does not draw: the load coroutine calls the getter at `code/6142/gm_load_coroutine_D8D80.asm` line 490 and stores the result in the manager at line 491 (TM-10), so "only drawn" is not shown. TM-15's bot run shows the engine clock does not move, which is consistent.
+Game code (6142): RVA `0x16C490`, readers not all traced; the load coroutine's call, RVA `0xD8D80`, `code/6142/gm_load_coroutine_D8D80.asm` lines 490 and 491.
 Hydra: no owner
 Ruling: none needed: no Hydra rule depends on it
-Found: 2026-10-28, session f756d547.
+Found: 2026-10-28, session f756d547; 2026-11-08, session 77057df2 (docs-gaps search).
 
 ### TM-37 The calibration screen classes
 
@@ -500,7 +510,7 @@ Found: 2026-10-30, session b02ab3e6 (the reference build).
 
 Rule: Hydra scores every chart as if played at 100 percent. It only sets apart leaderboard scores played at another speed, and no score or timing rule uses a speed.
 Label: Hydra assumes it, never checked
-Evidence: `kBaseSpeedPercent` and `is_base_speed` in src/net/dmbot_client.h lines 35 and 36, read by src/app/dm_report.cpp line 110.
+Evidence: `kBaseSpeedPercent` and `is_base_speed` in src/net/dmbot_client.h lines 35 and 36, read by src/app/dm_report.cpp line 128.
 Game code (6142): see TM-39.
 Hydra: `kBaseSpeedPercent` in src/net/dmbot_client.h line 35.
 Ruling: D25: "Off-speed leaderboard scores get their own "other speed" status and leave the Matched, Above optimal and Points left on table totals." (the decision log's words; no user quote is in the record)
@@ -510,13 +520,13 @@ Found: 2026-10-03, D25.
 
 ### TM-45 A missed lane note is granted after a recent lane press
 
-Rule: A missed lane note is granted a hit when fewer than 2 grants (single lane) or 4 (double lane) have happened since the last lane press, or when a lane pad was pressed in the last 0.075 s of engine time (song clock at +0x100 minus the last lane press at `+0x2D0`). That 0.075 s is a different timer from a double lane's 0.75 s round timer, which breaks the combo (NL-59). The grant lands at the window's end, to within a rounding step, so lanes open no new squeeze timing. Every press of a note that carries a lane flag zeroes both grant counters (at `+0x2E8` and `+0x2EC`) with one 8-byte write at 0x20DECF3 and stores the press time at `+0x2D0`, so during a roll a few dropped notes are still credited.
+Rule: A missed lane note is granted a hit when fewer than 2 grants (single lane) or 4 (double lane) have happened since the last lane press, or when its pad is in the lane and a lane pad was pressed in the last 0.075 s of engine time (song clock at +0x100 minus the last lane press at `+0x2D0`). That 0.075 s is a different timer from a double lane's 0.75 s round timer, which breaks the combo (NL-59). The grant lands at the window's end, to within a rounding step, so lanes open no new squeeze timing. Every press of a note that carries a lane flag zeroes both grant counters (at `+0x2E8` and `+0x2EC`) with one 8-byte write at 0x20DECF3 and stores the press time at `+0x2D0`, so during a roll a few dropped notes are still credited.
 Label: Proven in the game's code
-Evidence: committed listing `docs/audit/drum-lanes/f20dcad0.asm` lines 22 to 27 (the grant check), 57 (the grant counter increment) and 69 to 73 (clock minus the last lane press against 0.075; line 71 loads the double 0.075). The limits 2 and 4 themselves were not opened. The reset is `docs/audit/drum-lanes/play/f20deaa0.asm` lines 131 to 138: the test for the lane bits 0xC000 on the note (line 131), the 8-byte store of a zero register over `+0x2E8` (line 133, with the register zeroed at line 23) and the press-time store (line 138); the same three steps repeat at lines 179 to 186 (0x20DEDC3 to 0x20DEDF4). Read from the listing by the reviewer of this page's move out of the drum-lanes findings; no run has shown it.
+Evidence: committed listing `docs/audit/drum-lanes/f20dcad0.asm` lines 22 to 27 (the grant check: line 22 tests the double-lane byte at `+0x2C8`, lines 23 to 25 pick 4 when it is set and 2 when it is clear, and line 26 compares the grant counter at `+0x2E8` with that limit), 57 (the grant counter increment) and 66 to 73 (the 0.075 s grant: lines 66 to 68 skip it unless the note's pad is in the lane mask at `+0x2C4`, then lines 69 to 73 compare clock minus the last lane press with 0.075; line 71 loads the double 0.075). Lines 45 to 48 set the `+0x2C8` byte from the note's double-lane flag 0x8000. The reset is `docs/audit/drum-lanes/play/f20deaa0.asm` lines 131 to 138: the test for the lane bits 0xC000 on the note (line 131), the 8-byte store of a zero register over `+0x2E8` (line 133, with the register zeroed at line 23) and the press-time store (line 138); the same three steps repeat at lines 179 to 186 (0x20DEDC3 to 0x20DEDF4). Read from the listing by the reviewer of this page's move out of the drum-lanes findings; no run has shown it.
 Game code (6142): RVA `0x20DCAD0`, `docs/audit/drum-lanes/f20dcad0.asm` lines 22 to 73; the press handler RVA `0x20DEAA0`, `docs/audit/drum-lanes/play/f20deaa0.asm` lines 131 to 138.
 Hydra: no owner: a grep of `src/` for "0.075", "lane_press", "press_window" and "grant" finds nothing; Hydra's paths assume every note is hit.
 Ruling: none needed: no Hydra rule depends on it
-Found: drum-lanes FINDINGS-play-time.md.
+Found: drum-lanes FINDINGS-play-time.md; the limits and the lane-mask test 2026-11-08, session 77057df2 (docs-gaps search).
 
 ## Overhits
 
@@ -524,11 +534,11 @@ Found: drum-lanes FINDINGS-play-time.md.
 
 Rule: pressing the tom key and the cymbal key of one colour for a single gem counts as an overhit, and the gem is missed.
 Label: Unknown
-Evidence: session 8157f2dc (2026-09-25). Its card (docs/sessions/2026-09-25-8157f2dc.md, the roadblock "Cymbal notes missed from about note 40 on") records that the bot's cymbal notes missed while its parser fired two keys for each such gem, and that they hit once the parser pressed one key per gem. That the session read this as an overhit comes from its own record, which is not kept. No run isolated the two-keys cause, no result file is in the repo, and the overhit path was not read in the game's code.
-Game code (6142): not found: the overhit path was not read.
+Evidence: session 8157f2dc (2026-09-25). Its card (docs/sessions/2026-09-25-8157f2dc.md, the roadblock "Cymbal notes missed from about note 40 on") records that the bot's cymbal notes missed while its parser fired two keys for each such gem, and that they hit once the parser pressed one key per gem. That the session read this as an overhit comes from its own record, which is not kept. No run isolated the two-keys cause, and no result file is in the repo. The overhit path itself is readable: in the press handler, the pressed pads left over after the matching notes are taken go to the overhit method (`docs/audit/drum-lanes/play/f20deaa0.asm` lines 201 to 209), and that method, unless one of its lane or `+0x308` exits applies, clears the lane state, makes one virtual call and adds one to the overhit counter at `+0xB0` (`docs/audit/drum-lanes/play/f20de9a0.asm` lines 24 to 44). Whether a tom key and a cymbal key of one colour leave a pad over for one gem is not shown, because which pad bits each key sets was not read, so the block stays Unknown.
+Game code (6142): the press handler, RVA `0x20DEAA0`, `docs/audit/drum-lanes/play/f20deaa0.asm` lines 201 to 209; the overhit method at 0x20DE9A0, `docs/audit/drum-lanes/play/f20de9a0.asm` lines 24 to 44.
 Hydra: none: Hydra's paths press only the notes in the chart.
 Ruling: none needed.
-Found: 2026-09-25, session 8157f2dc.
+Found: 2026-09-25, session 8157f2dc; the overhit path 2026-11-08, session 77057df2 (docs-gaps search).
 
 ## Rows waiting on a live run
 
