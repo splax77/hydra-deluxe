@@ -86,3 +86,5 @@ These rows have no verifier verdict yet, or rest on a run nobody has done. None 
 | L67, L68, L69, L70, L71, L72, L73, L83, L84 | no verifier opened them (each row's Source ids) |
 | L77 | the `statistics.quantiles` part rests on the Python docs from memory, not a run: one call in Python 3.14 |
 | L10, L32, L40 | a run on the rebuilt `kit.js` with split chords under load; a real long `ch_sp_compare` reply; a `hydra_replay` run to diff its output against the 11:14 exe's |
+
+Q16 to Q18 answered on 2026-11-08 (`questions.md` "## Answers"). Q17 leaves L12's early edge with no rule: the plan includes the judging frame once TP1 lands.
