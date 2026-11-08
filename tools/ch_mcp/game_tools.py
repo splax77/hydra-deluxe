@@ -155,19 +155,6 @@ def split_keys(keys: str) -> List[str]:
     return items
 
 
-def decline_refusal(decline_mode: Optional[str], dump_json: Optional[str]) -> Optional[str]:
-    """The refusal for a tool's decline arguments, or None when they can run.
-    The list of chords to decline comes from `dump_json`, so a mode needs it."""
-    if decline_mode is None:
-        return None
-    if decline_mode not in play_chart.DECLINE_MODES:
-        return (f'unknown decline mode "{decline_mode}"; '
-                f'modes: {", ".join(play_chart.DECLINE_MODES)}')
-    if dump_json is None:
-        return f"decline mode {decline_mode} needs dump_json, the path's hydra_replay dump"
-    return None
-
-
 def run_cap_s(song_folder: Optional[str]) -> float:
     """The wall-time cap for a run of the song in `song_folder`:
     bot_run.run_cap_s of its length, or play_chart.RUN_CAP_S when no folder
@@ -221,11 +208,15 @@ def _ms_text(ms: float) -> str:
     return f"{ms:.2f}".rstrip("0").rstrip(".")
 
 
-def declined_line(decline_mode: str, chords: Sequence[play_chart.Chord]) -> str:
-    """Which chords a run declines, each with the gems it still sends."""
-    items = [f"{chord.index} ({_gem_words(chord.lanes) or 'nothing sent'})"
+def declined_line(chords: Sequence[play_chart.Chord], doc: dict) -> str:
+    """Which chords the schedule `doc` declines (its rows marked `declined`),
+    each with the gems its `kept_gems` still sends. `chords` are the same
+    file's, as play_chart.load_schedule read them."""
+    kept = {row["index"]: row["kept_gems"] for row in doc["chords"] if row["declined"]}
+    items = [f"{chord.index} "
+             f"({_gem_words([chord.lanes[k] for k in kept[chord.index]]) or 'nothing sent'})"
              for chord in chords if chord.declined]
-    return f"declined ({decline_mode}): chords {', '.join(items) or 'none'}"
+    return f"declined: chords {', '.join(items) or 'none'}"
 
 
 def dropped_line(rows: Sequence[dict]) -> str:
@@ -236,46 +227,50 @@ def dropped_line(rows: Sequence[dict]) -> str:
     return f"dropped: chords {', '.join(items)}" if items else "dropped: none"
 
 
-def _activation_leads(chords: Sequence[play_chart.Chord]) -> List[play_chart.ActLead]:
-    """play_chart.activation_leads of `chords`: each activation pressed early
-    or late for its squeezes, with the end that lead plans and the ratio it
-    was worked out from. This is the one place in this module that asks for
-    it."""
-    return play_chart.activation_leads(chords)
+# The schedule's names for the two squeeze kinds (`kind` of a squeeze in
+# schedule_json, tools/replay_schedule.cpp), and the words a reply says for
+# each.
+_SQUEEZE_WORDS = {"SqIn": ("in", "squeeze-in"), "SqOut": ("out", "squeeze-out")}
 
 
-def _squeeze_word(chords: Sequence[play_chart.Chord], index: int, direction: str) -> str:
-    """"squeeze-in" or "squeeze-out" for the squeeze chord `index`: its own
-    kind from the dump, else the kind a lead in `direction` serves."""
-    chord = next((c for c in chords if c.index == index), None)
-    if chord is not None and chord.squeeze is not None:
-        kind = chord.squeeze.kind
-    else:
-        kind = play_chart.SQUEEZE_OUT if direction == "early" else play_chart.SQUEEZE_IN
-    return "squeeze-in" if kind == play_chart.SQUEEZE_IN else "squeeze-out"
+def _squeezes(doc: dict) -> List[dict]:
+    """Every squeeze of the schedule `doc`, in activation order."""
+    return [q for act in doc["activations"] for q in act["squeezes"]]
 
 
-def activation_lead_lines(chords: Sequence[play_chart.Chord],
-                          leads: Sequence[play_chart.ActLead]) -> List[str]:
-    """One line per activation `leads` (play_chart.activation_leads) presses
-    early or late: how far, for which squeeze chord, the end that plans and
-    the ratio of end shift to lead it came from. Every number is the lead's."""
-    return [f"activation chord {lead.act_index} pressed {lead.lead_ms:.1f} ms "
-            f"{lead.direction} for the "
-            f"{_squeeze_word(chords, lead.squeeze_index, lead.direction)} at chord "
-            f"{lead.squeeze_index} (end planned {lead.planned_end_ms:,.1f} ms, "
-            f"ratio {lead.ratio:.4f})"
-            for lead in leads]
+def _ratio_text(ratio: dict) -> str:
+    """A squeeze's `ratio` (end shift per ms of lead, early and late) as the
+    reply prints it: one number when the two are the same, else both."""
+    if ratio["early"] == ratio["late"]:
+        return f"ratio {ratio['early']:.4f}"
+    return f"ratio {ratio['early']:.4f} early, {ratio['late']:.4f} late"
 
 
-def planned_ends(chords: Sequence[play_chart.Chord]) -> dict:
-    """The Star Power end each activation with a squeeze is planned to have,
-    by the `index` of its activation chord: the end play_chart.press_plan
-    puts on the activation's first press (Press.stored_end_ms), the one
-    play_chords reads the game's end against. Activations whose files give no
-    stored end are left out."""
-    return {press.index: press.stored_end_ms for press in play_chart.press_plan(chords)
-            if press.stored_end_ms is not None}
+def _room_text(anchor_room_ms: float, squeeze_room_ms: float) -> str:
+    """A squeeze's two rooms as the reply prints them, to one place: once
+    when they print the same, else each."""
+    anchor, squeeze = f"{anchor_room_ms:.1f}", f"{squeeze_room_ms:.1f}"
+    if anchor == squeeze:
+        return f"room {anchor} ms both presses"
+    return f"anchor room {anchor} ms, squeeze room {squeeze} ms"
+
+
+def anchor_lines(doc: dict) -> List[str]:
+    """One line per timed squeeze of the schedule `doc`: which chord leads
+    it (`anchor_chord`), by how much and which way (`anchor_aim_ms`), the end
+    that plans (`planned_end_ms`), the squeeze's `ratio` and both presses'
+    rooms. Every number is the file's."""
+    lines = []
+    for q in _squeezes(doc):
+        if q["needs_no_timing"]:
+            continue
+        aim = q["anchor_aim_ms"]
+        lines.append(f"chord {q['anchor_chord']} pressed {abs(aim):.1f} ms "
+                     f"{'early' if aim < 0 else 'late'} for the "
+                     f"{_SQUEEZE_WORDS[q['kind']][1]} at chord {q['chord']} "
+                     f"(end planned {q['planned_end_ms']:,.1f} ms, {_ratio_text(q['ratio'])}, "
+                     f"{_room_text(q['anchor_room_ms'], q['squeeze_room_ms'])})")
+    return lines
 
 
 def _number(value) -> Optional[float]:
@@ -341,48 +336,49 @@ def scored_between_lines(rows: Sequence[dict]) -> List[str]:
     return ["scored between presses: " + ", ".join(items)] if items else []
 
 
-def squeeze_lines(chords: Sequence[play_chart.Chord]) -> List[str]:
-    """What the reply says about the squeezes of `chords`: one line naming each
-    squeeze chord and when each of its presses fires against its Star Power
-    end, then one line for each activation pressed early or late for its
-    squeezes. None of it is worked out here: press_plan times every press and
-    gives each squeeze press the end it was timed against (Press.end_ms), and
-    the activation lines are activation_lead_lines of
-    play_chart.activation_leads. Empty when no chord squeezes."""
-    if not any(chord.squeeze is not None for chord in chords):
+def squeeze_lines(chords: Sequence[play_chart.Chord], doc: dict) -> List[str]:
+    """What the reply says about the squeezes of the schedule `doc`: one line
+    naming each squeeze chord and when each of its presses fires against the
+    end the schedule timed it from (Press.aim_end_ms), or that it needs no
+    timing, then anchor_lines. `chords` are the same file's, as
+    play_chart.load_schedule read them. Nothing is worked out here but the
+    gap between a press and its end. Empty when the file has no squeeze."""
+    squeezes = _squeezes(doc)
+    if not squeezes:
         return []
     by_index = _presses_by_index(play_chart.press_plan(chords))
 
     items = []
-    for chord in chords:
-        if chord.squeeze is None:
+    for q in squeezes:
+        short, _word = _SQUEEZE_WORDS[q["kind"]]
+        if q["needs_no_timing"]:
+            items.append(f"chord {q['chord']} {short} (needs no timing)")
             continue
         clauses = []
-        for press in by_index[chord.index]:
-            gap_ms = press.end_ms - press.at_ms
+        for press in by_index[q["chord"]]:
+            gap_ms = press.aim_end_ms - press.at_ms
             when = (f"{_ms_text(abs(gap_ms))} ms {'before' if gap_ms >= 0 else 'after'}"
                     + ("" if clauses else " the end"))
-            gems = "" if chord.squeeze.kind == play_chart.SQUEEZE_IN else _gem_words(press.lanes) + " "
+            gems = "" if q["kind"] == "SqIn" else _gem_words(press.lanes) + " "
             clauses.append(gems + when)
-        kind = "in" if chord.squeeze.kind == play_chart.SQUEEZE_IN else "out"
-        items.append(f"chord {chord.index} {kind} ({'; '.join(clauses)})")
-    return (["squeezes: " + ", ".join(items)]
-            + activation_lead_lines(chords, _activation_leads(chords)))
+        items.append(f"chord {q['chord']} {short} ({'; '.join(clauses)})")
+    return ["squeezes: " + ", ".join(items)] + anchor_lines(doc)
 
 
-def order_lines(chords: Sequence[play_chart.Chord]) -> List[str]:
-    """What the reply says about the chords press_plan presses in order
-    groups (play_chart._order_groups): one line naming each such chord, its
-    first press's gems, then each later press's gems and how long after the
-    first it fires. Every time is read off press_plan's presses. A
-    squeeze-out's two presses are the squeeze line's, not this one's. Empty
-    when no chord is split."""
+def order_lines(chords: Sequence[play_chart.Chord], doc: dict) -> List[str]:
+    """What the reply says about the chords the schedule `doc` presses in
+    order groups (presses with an `after_ms`): one line naming each such
+    chord, its first press's gems, then each later press's gems and how long
+    after the first it fires. Every time is read off the schedule's presses.
+    A timed squeeze-out's presses are the squeeze line's, not this one's.
+    Empty when no chord is split."""
     by_index = _presses_by_index(play_chart.press_plan(chords))
+    squeeze_outs = {q["chord"] for q in _squeezes(doc)
+                    if q["kind"] == "SqOut" and not q["needs_no_timing"]}
     items = []
     for chord in chords:
         presses = by_index.get(chord.index, [])
-        if len(presses) < 2 or (chord.squeeze is not None
-                                and chord.squeeze.kind == play_chart.SQUEEZE_OUT):
+        if len(presses) < 2 or chord.index in squeeze_outs:
             continue
         first = presses[0]
         later = [f"then {_gem_words(p.lanes)} {_ms_text(p.at_ms - first.at_ms)} ms later"
@@ -403,39 +399,36 @@ def _presses_by_index(presses: Sequence[play_chart.Press]) -> dict:
 
 
 class ChordsRefused(Exception):
-    """A score file or decline arguments no run can start from; the text says
-    why."""
+    """A schedule file no run can start from; the text says why."""
 
 
-def chords_to_play(score_json: str, decline_mode: Optional[str], dump_json: Optional[str],
-                   path_index: int = 0) -> Tuple[List[play_chart.Chord], List[str]]:
-    """The chords of `score_json` with the decline arguments applied and the
-    squeezes of path `path_index` of `dump_json` timed, and the reply's lines
-    about them: declined_line when a mode is given, then squeeze_lines, then
-    order_lines. ch_play_chart, ch_run_chart, ch_edge_probe and
-    tools/ch_probe/prep_inputs.py all load through here. Raises ChordsRefused
-    saying why no run can start from them, a squeeze-out with no dump_json
-    among them."""
-    refusal = decline_refusal(decline_mode, dump_json)
-    if refusal is not None:
-        raise ChordsRefused(refusal)
-    declined: List[int] = []
-    if decline_mode is not None:
-        try:
-            declined = play_chart.declined_chord_indexes(score_json, dump_json, path_index)
-        except (OSError, ValueError, KeyError, IndexError, TypeError) as e:
-            raise ChordsRefused(
-                f"could not read the fills to decline: {type(e).__name__}: {e}") from e
+def chords_to_play(schedule_json: str) -> Tuple[List[play_chart.Chord], List[str]]:
+    """The chords of the hydra_replay schedule `schedule_json`, as
+    play_chart.load_schedule reads them, and the reply's lines about them:
+    declined_line, then squeeze_lines, then order_lines. ch_play_chart,
+    ch_run_chart, ch_edge_probe and tools/ch_probe/prep_inputs.py all load
+    through here. Raises ChordsRefused saying why no run can start from the
+    file: load_schedule's refusal in its own words, a file that cannot be
+    read, or one with no chords."""
     try:
-        chords = play_chart.load_dump_chords(score_json, dict.fromkeys(declined, decline_mode),
-                                             dump_json, path_index)
-        lines = [declined_line(decline_mode, chords)] if decline_mode is not None else []
-        lines.extend(squeeze_lines(chords))
-        lines.extend(order_lines(chords))
-    except (OSError, ValueError, KeyError, IndexError, TypeError) as e:
-        raise ChordsRefused(f"could not read {score_json}: {type(e).__name__}: {e}") from e
+        with open(schedule_json, encoding="utf-8") as f:
+            doc = json.load(f)
+    except (OSError, ValueError) as e:
+        raise ChordsRefused(f"could not read {schedule_json}: {type(e).__name__}: {e}") from e
+    try:
+        chords = play_chart.load_schedule(schedule_json).chords
+    except ValueError as e:
+        raise ChordsRefused(str(e)) from e
+    except (OSError, KeyError, IndexError, TypeError) as e:
+        raise ChordsRefused(f"could not read {schedule_json}: {type(e).__name__}: {e}") from e
     if not chords:
-        raise ChordsRefused(f"{score_json} has no chords to play")
+        raise ChordsRefused(f"{schedule_json} has no chords to play")
+    try:
+        lines = [declined_line(chords, doc)]
+        lines.extend(squeeze_lines(chords, doc))
+        lines.extend(order_lines(chords, doc))
+    except (KeyError, IndexError, TypeError) as e:
+        raise ChordsRefused(f"could not read {schedule_json}: {type(e).__name__}: {e}") from e
     return chords, lines
 
 
@@ -480,8 +473,9 @@ class _PlaySession:
     # What became of the press log: set by a failed write, and when the run
     # ends. While it holds a failure the rows stop going to the file.
     log_note: Optional[str] = None
-    # Each squeezed activation's planned end by its chord's index
-    # (planned_ends), which the status's end lines set against the game's.
+    # The end the schedule plans for each chord the game's end is read after
+    # (Press.planned_end_ms), by that chord's index, which the status's end
+    # lines set against the game's.
     planned_ends: dict = dataclasses.field(default_factory=dict)
     # Called on each press row before it is kept: ch_edge_probe's
     # edge_probe.ProbeRun.mark_row. None keeps the rows as they come.
@@ -966,26 +960,23 @@ class GameTools:
         with self._lock:
             return self._watch.line() if self._watch is not None else None
 
-    def ch_play_chart(self, score_json: str, log: Optional[str] = None,
-                      song_folder: Optional[str] = None, route: Optional[str] = None,
-                      decline_mode: Optional[str] = None, dump_json: Optional[str] = None,
-                      path_index: int = 0) -> str:
-        """Start the auto-player (play_chart.live_play) on a hydra_replay score
-        JSON in a background thread. `log`, when given, is where the press log
+    def ch_play_chart(self, score_json: str, schedule_json: str, log: Optional[str] = None,
+                      song_folder: Optional[str] = None, route: Optional[str] = None) -> str:
+        """Start the auto-player (play_chart.live_play) in a background thread
+        on `schedule_json`, the hydra_replay schedule of one path of the chart
+        whose score JSON is `score_json`; ch_compare checks a run against that
+        score. `log`, when given, is where the press log
         is written, row by row as the run goes; a relative path goes in the
         session folder. `song_folder`, when given, sets the run cap through
         run_cap_s; with none the run keeps live_play's own cap. `route` is ROUTE_KIT
         (presses through the virtual kit inside the game) or ROUTE_KEYS (keys
         to the focused window); None means the kit, and is refused until the
         kit is set up, so no run takes the keyboard unless asked to.
-        `decline_mode`, one of play_chart.DECLINE_MODES, says what to send for
-        each fill path `path_index` of the dump file `dump_json` passes over
-        (play_chart.declined_chord_indexes); None presses every chord. The
-        same path of `dump_json`, when given, times the squeezes
-        (play_chart.press_plan); a score file with a squeeze-out and no
-        dump_json is refused. The reply's declined_line, squeeze_lines and
-        order_lines say what the path declines, how its squeezes are pressed
-        and which chords are pressed in groups."""
+        The schedule says which gems each press sends and when, a declined
+        fill's kept gems among them; a schedule load_schedule refuses is
+        refused here in its words (chords_to_play). The reply's declined_line,
+        squeeze_lines and order_lines say what the path declines, how its
+        squeezes are pressed and which chords are pressed in groups."""
         with self._lock:
             if self._play is not None and self._play.running():
                 return PLAY_ALREADY_RUNNING
@@ -1001,8 +992,7 @@ class GameTools:
                         f'or pass route="{ROUTE_KEYS}"')
             press = kit_press if route == ROUTE_KIT else None
             try:
-                chords, plan_lines = chords_to_play(score_json, decline_mode, dump_json,
-                                                    path_index)
+                chords, plan_lines = chords_to_play(schedule_json)
             except ChordsRefused as e:
                 return str(e)
             lines = [line for line in (self.ensure_backup(),) if line]
@@ -1023,14 +1013,12 @@ class GameTools:
                          "is played by the bot, not by keys")
             return "\n".join(lines)
 
-    def ch_run_chart(self, song_folder: str, score_json: str, kit_player: Optional[str] = None,
-                     decline_mode: Optional[str] = None,
-                     dump_json: Optional[str] = None) -> str:
+    def ch_run_chart(self, song_folder: str, score_json: str, schedule_json: str,
+                     kit_player: Optional[str] = None) -> str:
         """Start a run in one call: attach, kit setup on `kit_player`
         (ch_kit_setup's `player`), the Star Power watch and the auto-player on
         the kit, with one engine search that the watch and the player share.
-        `decline_mode` and `dump_json` are ch_play_chart's, on the dump's
-        path 0. Each part keeps
+        `score_json` and `schedule_json` are ch_play_chart's. Each part keeps
         its owner, and this adds no wait of its own before the first press:
         the arguments are read before the attach, and the player starts the
         moment the search ends. The call returns at the first press. The
@@ -1051,7 +1039,7 @@ class GameTools:
             if self._play is not None and self._play.running():
                 return PLAY_ALREADY_RUNNING
             try:
-                chords, plan_lines = chords_to_play(score_json, decline_mode, dump_json)
+                chords, plan_lines = chords_to_play(schedule_json)
                 cap_s = run_cap_s(song_folder)
             except ChordsRefused as e:
                 return str(e)
@@ -1108,10 +1096,11 @@ class GameTools:
             lines.append(first_press_line(rows))
             return "\n".join(lines)
 
-    def ch_edge_probe(self, song_folder: str, score_json: str, probes_json: str) -> str:
+    def ch_edge_probe(self, song_folder: str, score_json: str, schedule_json: str,
+                      probes_json: str) -> str:
         """Start the window-edge probe (tools/ch_probe/experiments/edge_probe.py)
         in the background: the auto-player on the kit, as ch_play_chart plays
-        with no decline mode and no dump, except that each chord
+        `schedule_json`, except that each chord
         `probes_json` names is pressed at the lead it gives (positive early,
         negative late), with no window check, and its press row is marked in
         edge_probe.PROBE_COLUMN. A probe chord edge_probe.probe_chords
@@ -1126,7 +1115,7 @@ class GameTools:
             if kit_press is None:
                 return "refused: the kit is not set up; call ch_kit_setup first"
             try:
-                chords, plan_lines = chords_to_play(score_json, None, None)
+                chords, plan_lines = chords_to_play(schedule_json)
                 cap_s = run_cap_s(song_folder)
             except ChordsRefused as e:
                 return str(e)
@@ -1180,7 +1169,9 @@ class GameTools:
 
     def _start_play(self, play: _PlaySession, chords: Sequence[play_chart.Chord]) -> None:
         """Make `play` the session and start its thread."""
-        play.planned_ends = planned_ends(chords)
+        play.planned_ends = {press.index: press.planned_end_ms
+                             for chord in chords for press in chord.presses
+                             if press.planned_end_ms is not None}
         play.thread = threading.Thread(target=self._play_body, args=(play, chords),
                                        name="ch_play_chart", daemon=True)
         self._play = play

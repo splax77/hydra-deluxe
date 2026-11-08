@@ -1,15 +1,16 @@
-"""Make the auto-player's two input files for one chart, and say whether a
-run can start from them.
+"""Make the auto-player's input files for one chart, and say whether a run
+can start from them.
 
     py -I tools/ch_probe/prep_inputs.py --chart <notes.chart or notes.mid>
         --out <folder> [--exe <hydra_replay.exe>] [--cap 4] [--ms 10]
 
 It runs `hydra_replay dump` on the chart, then `hydra_replay score --path
-<dump> --index 0`, and writes `<name>-dump.json` and `<name>-score.json` into
-the folder, where <name> is the chart's folder name. Then it loads the two
-files the way ch_run_chart does, with decline mode all_but_top_pad
-(game_tools.chords_to_play), and prints the lines that run would print, or the
-loader's refusal. It prints the exe's file date first, so a stale build shows.
+<dump> --index 0`, then `hydra_replay schedule --path <dump> --index 0`, and
+writes `<name>-dump.json`, `<name>-score.json` and `<name>-schedule.json` into
+the folder, where <name> is the chart's folder name. Then it loads the
+schedule the way ch_run_chart does (game_tools.chords_to_play), and prints the
+lines that run would print, or the loader's refusal. It prints the exe's file
+date first, so a stale build shows.
 
 Design point 10 of docs/superpowers/plans/2026-11-07-player-limits.md is why
 it exists: the files were made by hand before, with scripts nobody kept.
@@ -33,7 +34,6 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 from tools.ch_mcp import game_tools  # noqa: E402
-from tools.ch_probe.experiments import play_chart  # noqa: E402
 
 # Profile 39's cap and ms settings (Expert Pro Drums, 2x Bass, cap 4, ms 10),
 # as the README of the 2026-11-07 limits-prep folder under
@@ -54,10 +54,11 @@ EXIT_REPLAY_FAILED = 2
 
 
 def file_names(chart: str, out_dir: str):
-    """The dump and score file paths for `chart` in `out_dir`."""
+    """The dump, score and schedule file paths for `chart` in `out_dir`."""
     name = os.path.basename(os.path.dirname(os.path.abspath(chart)))
     return (os.path.join(out_dir, f"{name}-dump.json"),
-            os.path.join(out_dir, f"{name}-score.json"))
+            os.path.join(out_dir, f"{name}-score.json"),
+            os.path.join(out_dir, f"{name}-schedule.json"))
 
 
 def _exe_date(exe: str) -> str:
@@ -71,9 +72,10 @@ def main(argv: Optional[Sequence[str]] = None, *, out: Optional[TextIO] = None,
     the exit code. `run` stands in for subprocess.run in tests."""
     out = sys.stdout if out is None else out
     parser = argparse.ArgumentParser(
-        description="Make a chart's hydra_replay dump and score files and dry-load them.")
+        description="Make a chart's hydra_replay dump, score and schedule files and "
+                    "dry-load the schedule.")
     parser.add_argument("--chart", required=True, help="the chart's notes.chart or notes.mid")
-    parser.add_argument("--out", required=True, help="the folder the two files go in")
+    parser.add_argument("--out", required=True, help="the folder the three files go in")
     parser.add_argument("--exe", default=DEFAULT_EXE, help="hydra_replay.exe to run")
     parser.add_argument("--cap", default=DEFAULT_CAP, help="dump's --cap")
     parser.add_argument("--ms", default=DEFAULT_MS, help="dump's --ms")
@@ -84,13 +86,15 @@ def main(argv: Optional[Sequence[str]] = None, *, out: Optional[TextIO] = None,
         return EXIT_REPLAY_FAILED
     print(f"hydra_replay: {args.exe}, file date {_exe_date(args.exe)}", file=out)
     os.makedirs(args.out, exist_ok=True)
-    dump, score = file_names(args.chart, args.out)
+    dump, score, schedule = file_names(args.chart, args.out)
 
     commands = [
         [args.exe, "dump", "--chart", args.chart, "--cap", args.cap, "--ms", args.ms,
          "--out", dump],
         [args.exe, "score", "--chart", args.chart, "--path", dump, "--index", "0",
          "--out", score],
+        [args.exe, "schedule", "--chart", args.chart, "--path", dump, "--index", "0",
+         "--out", schedule],
     ]
     for command in commands:
         try:
@@ -108,10 +112,10 @@ def main(argv: Optional[Sequence[str]] = None, *, out: Optional[TextIO] = None,
             return EXIT_REPLAY_FAILED
     print(f"dump: {dump}", file=out)
     print(f"score: {score}", file=out)
+    print(f"schedule: {schedule}", file=out)
 
     try:
-        chords, lines = game_tools.chords_to_play(score, play_chart.DECLINE_ALL_BUT_TOP_PAD,
-                                                  dump)
+        chords, lines = game_tools.chords_to_play(schedule)
     except game_tools.ChordsRefused as e:
         print(f"refused: {e}", file=out)
         return EXIT_REFUSED
