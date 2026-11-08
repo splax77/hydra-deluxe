@@ -82,6 +82,9 @@ class PrepInputsTest(unittest.TestCase):
     def test_the_defaults_are_profile_39s_cap_4_and_ms_10(self):
         self.assertEqual((prep_inputs.DEFAULT_CAP, prep_inputs.DEFAULT_MS), ("4", "10"))
 
+    def test_each_hydra_replay_call_is_capped_at_the_users_120_s(self):
+        self.assertEqual(prep_inputs.REPLAY_CAP_S, 120.0)
+
     def test_it_runs_dump_with_cap_4_and_ms_10_then_score_on_path_0_of_that_dump(self):
         self._main(self._stub())
         dump, score = (os.path.join(self.out_dir, "Some Song-dump.json"),
