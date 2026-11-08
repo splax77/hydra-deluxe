@@ -434,21 +434,21 @@ Found: 2026-10-09, session 6c19d0ef.
 
 Rule: the shuffle draws from pads 1 to 7 (N = 8) with Pro Drums and from pads 1 to 4 (N = 5) on plain Drums, and never draws the kick.
 Label: Unknown
-Evidence: the six N targets are in docs/audit/note-shuffle/step0/open34/shuffle_20f0c30.asm lines 117 to 135, but the two jump tables that pick a target by instrument (at 0x20F11CC and 0x20F1208) show only as raw bytes at lines 350 and 351; their decode survives only as prose in docs/audit/note-shuffle/step0/agent-results.json line 300. Pro Drums matches the filmed runs; plain Drums was never filmed (tests/test_note_shuffle.cpp lines 98 to 100).
-Game code (6142): RVA `0x20F0C30`; the jump-table decode is lost (read 2026-10-09, session 30beeb6e).
+Evidence: the six N targets are in docs/audit/note-shuffle/step0/open34/shuffle_20f0c30.asm lines 117 to 135, but the two jump tables that pick a target by instrument (at 0x20F11CC and 0x20F1208) show only as raw bytes at lines 350 and 351. The script that decoded them is committed: docs/audit/note-shuffle/step0/open34-refute/jumptables.py reads both tables from the game's DLL and maps each entry to a target through labels written by hand (lines 15 to 19). It needs the DLL and a scratch helper path to run, and no saved output of it is kept, so the per-instrument result rests on docs/audit/note-shuffle/step0/agent-results.json line 300. Pro Drums matches the filmed runs; plain Drums was never filmed (tests/test_note_shuffle.cpp lines 98 to 100).
+Game code (6142): RVA `0x20F0C30`; the jump tables at 0x20F11CC and 0x20F1208, decoded by the script above with no saved output.
 Hydra: `apply_note_shuffle` in src/parse/note_shuffle.cpp lines 131 and 132.
 Ruling: none found.
-Found: 2026-10-09, session 30beeb6e.
+Found: 2026-10-09, session 30beeb6e; the decoder script cited 2026-11-08, session 77057df2 (docs-gaps search).
 
 ### NL-43 The shuffle runs last among the drum steps, only with Note Shuffle on
 
 Rule: the shuffle runs only when modifier bit 0x40 is set, after the flam step, the 2x-kick removal (when bit 2 is clear), the cymbal fold or Pro step, and the dynamics clear; so each drum setting gets its own shuffled chart.
 Label: Proven in the game's code
-Evidence: docs/audit/note-shuffle/step0/open34/builder_20d2ea0.asm lines 153 to 162 (instruments 6 and 9 take the drum path) and 228 to 259 (the step calls in order, then the 0x40 test and the call at 0x20D3315). The names of the steps before the shuffle come from docs/audit/note-shuffle/step0/open2/README.md lines 9 and 24 (2026-10-09). Whether the disco flip runs before the shuffle was not read: the builder listing holds no disco test (NL-22), so the disco flip is not among the steps named here.
+Evidence: docs/audit/note-shuffle/step0/open34/builder_20d2ea0.asm lines 153 to 162 (instruments 6 and 9 take the drum path) and 228 to 259 (the step calls in order, then the 0x40 test and the call at 0x20D3315). The names of the steps before the shuffle come from docs/audit/note-shuffle/step0/open2/README.md lines 9 and 24 (2026-10-09). The disco flip runs before the shuffle on Pro Drums, because it is the Pro step (NL-22). The shuffle is also called for instruments other than drums: in docs/audit/note-shuffle/scout-flag/build_20d2ea0.asm, lines 153 to 156 send instruments 6 and 9 to the drum path, and for any other instrument lines 157 to 162 call the shuffle at 0x20D31B1 when bit 0x40 is set. docs/audit/note-shuffle/step0/open34/callers.txt lines 5 and 6 list both call sites, 0x20D31B1 and 0x20D3315. What the shuffle does to a non-drum chart was not read.
 Game code (6142): builder RVA `0x20D2EA0`, the listing above.
-Hydra: `apply_shuffle_switch` in src/parse/song.cpp lines 1931 to 1935 and `finish_loaded_song` lines 1943 to 1946, after `emit_chord_timestamp` and `Chord::apply_2x_bass`.
+Hydra: `apply_shuffle_switch` in src/parse/song.cpp lines 1929 to 1933 and `finish_loaded_song` lines 1941 to 1946, after `emit_chord_timestamp` and `Chord::apply_2x_bass`.
 Ruling: D104 item 3 (record text): "Pro Drums off gets its own row too."
-Found: 2026-10-09, session 6c19d0ef.
+Found: 2026-10-09, session 6c19d0ef; the non-drum call added 2026-11-08, session 77057df2 (docs-gaps search).
 
 ### NL-44 Kicks never move and are skipped by the draw
 
@@ -474,11 +474,11 @@ Found: 2026-10-09, session 30beeb6e.
 
 Rule: when a chord's pad pattern equals the pattern two chords back, its first note copies the pad of the same rank in that chord's output; a later note in the chord compares with the chord one back.
 Label: Proven in the game's code
-Evidence: docs/audit/note-shuffle/step0/open34/shuffle_20f0c30.asm lines 209 to 284 (the same-tick test, the two pattern slots, the rank search through two bit helpers, the slot rotation). The helper bodies were not opened. A probe that drops the rule matches 5 of 22 filmed ticks (card 2026-10-09-cfb6f1fa).
-Game code (6142): RVA `0x20F0C30`; helpers `0x20FC610` and `0x20FC5F0`.
+Evidence: docs/audit/note-shuffle/step0/open34/shuffle_20f0c30.asm lines 209 to 284 (the same-tick test, the two pattern slots, the rank search through two bit helpers, the slot rotation). The helper bodies are in docs/audit/note-shuffle/scout-flag/helpers.asm. The chord's pattern comes from 0x214BCD0 (called at line 215), which ORs the +0x80 lane mask of every note in the chord (helpers.asm line 73). The rank search calls `0x20FC610` (line 242), which saves the mask and clears its lowest set bit (helpers.asm lines 85 to 94), and then `0x20FC5F0` (line 247), which returns the old mask XOR the new one, that is the bit just cleared (helpers.asm lines 97 to 99). So the set bits are walked lowest first. A probe that drops the rule matches 5 of 22 filmed ticks (card 2026-10-09-cfb6f1fa).
+Game code (6142): RVA `0x20F0C30`; helpers `0x20FC610` and `0x20FC5F0`, and the pattern helper 0x214BCD0, the listings above.
 Hydra: `apply_note_shuffle` in src/parse/note_shuffle.cpp lines 154 to 159 and 173 to 176.
 Ruling: none needed: same rule.
-Found: 2026-10-09, session 30beeb6e.
+Found: 2026-10-09, session 30beeb6e; the helper bodies read 2026-11-08, session 77057df2 (docs-gaps search).
 
 ### NL-47 The redraw loop has no cap, so two cases freeze the game
 
@@ -494,11 +494,11 @@ Found: 2026-10-09, session 30beeb6e.
 
 Rule: the generator reaches every pad from any non-zero state, so the loop ends whenever a pad is free.
 Label: Unknown
-Evidence: not checked: it would need docs/audit/note-shuffle/probes/reach/reach_check.py run (its header says it proves the full period and measured a worst case of 94 draws).
-Game code (6142): RVA `0x20F0B30`.
+Evidence: the check is written but its result is not kept. docs/audit/note-shuffle/probes/reach/reach_check.py steps the generator with the shifts 23, 17 and 26 (lines 10 to 14), the same step as docs/audit/note-shuffle/step0/open34/lanedraw_20f0b30.asm lines 12 to 52 (NL-41). Its header (lines 1 to 6) says part 1 proves the full period with a GF(2) order test and part 2 samples worst cases from real-style seeds. No output of a run is committed, so "the full period" is the script's claim, not a kept result, and the worst case is sampled only.
+Game code (6142): RVA `0x20F0B30`, the listing above.
 Hydra: `apply_note_shuffle` in src/parse/note_shuffle.cpp lines 164 to 168 (no cap, by design).
 Ruling: none found.
-Found: 2026-10-09, session 30beeb6e.
+Found: 2026-10-09, session 30beeb6e; the script read 2026-11-08, session 77057df2 (docs-gaps search).
 
 ### NL-49 The shuffle writes only the lane mask, so marks stay with the note
 
@@ -524,11 +524,11 @@ Found: 2026-10-09, session 6c19d0ef.
 
 Rule: the star cutoffs are computed from the shuffled lane masks, so they count the cymbals the shuffle creates.
 Label: Proven in the game's code
-Evidence: docs/audit/note-shuffle/step0/open34/starbase_20f4680.asm line 105 reads the lane mask; engine_ctor_20f79e0.asm line 196 calls it, and baseplayer_208870.asm lines 55 and 103 call the builder before the engine. "Only direct caller" rests on a 2026-10-09 scan not re-run. The cymbal bonus inside the star base is page 6's.
+Evidence: docs/audit/note-shuffle/step0/open34/starbase_20f4680.asm line 105 reads the lane mask; engine_ctor_20f79e0.asm line 196 calls it, and baseplayer_208870.asm lines 55 and 103 call the builder before the engine. "Only direct caller" rests on a 2026-10-09 scan not re-run. That scan's output is docs/audit/note-shuffle/step0/open34/callers.txt: lines 1 to 4 list four callers of the builder `0x20D2EA0` (in `0x208870`, in 0x235AD0, and in two generic constructors at 0xFEBB30 and 0xFEBCB0), and line 8 lists one caller of the star base, in the engine constructor `0x20F79E0`. The cymbal bonus inside the star base is page 6's.
 Game code (6142): RVAs `0x20F4680`, `0x20F79E0` and `0x208870`, the listings above.
-Hydra: `finish_loaded_song` in src/parse/song.cpp line 1944; `Path::chart_base_score` in src/core/model.h line 846.
+Hydra: `finish_loaded_song` in src/parse/song.cpp line 1942; `Path::chart_base_score` in src/core/model.h line 878.
 Ruling: none needed: same rule.
-Found: 2026-10-09, session 30beeb6e.
+Found: 2026-10-09, session 30beeb6e; the builder's four callers added 2026-11-08, session 77057df2 (docs-gaps search).
 
 ### NL-52 The filmed Note Shuffle runs of 2026-10-09
 
