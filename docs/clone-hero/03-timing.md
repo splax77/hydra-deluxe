@@ -222,13 +222,23 @@ Found: 2026-09-25, session 8157f2dc; listed 2026-10-30, session b02ab3e6 (the re
 
 ### TM-19 Each half-gap is held between the front and the back
 
-Rule: For each side of a note, the game halves the gap to the neighbour and clamps it between the front and the back. A missing neighbour, or one at the same time, gives the back value.
+Rule: For each side of a note, the game halves the gap to the neighbour and clamps it between the front and the back. A missing neighbour, or one at the same time, gives the back value. The per-note window routine never hands the clamp a neighbour at the note's own time (TM-51), so the same-time exit is not reached for another gem of the same chord.
 Label: Proven in the game's code
 Evidence: `code/6142/half_gap_clamp_20F7210.asm` lines 13 to 22 (null or zero gap exit), 23 to 33 (the half-gap), 51 to 62 (min and max) and 72 to 77 (a missing neighbour returns the back); `code/6142/note_window_20F3A90.asm` lines 38 to 53 pass the front as the minimum and the back as the maximum. The decompile lines 53871 to 53907 agree.
 Game code (6142): the clamp of class #8288 (scrambled name), RVA `0x20F7210`, `code/6142/half_gap_clamp_20F7210.asm` lines 13 to 77.
 Hydra: no owner (see TM-17).
 Ruling: open split: see questions page Q-32
 Found: 2026-10-03, session cebf3006; listed 2026-10-30, session b02ab3e6 (the reference build).
+
+### TM-51 A note's neighbours are the nearest notes at another time, so a chord's window is set by the chords either side
+
+Rule: The per-note window routine finds a note's two neighbours by its tick: the first note strictly later, and the first note strictly earlier. A note at the same tick, such as another gem of the same chord, is never returned, so every gem of a chord gets the window that the gaps to the chords before and after it give. Freak's chord 1062 (kick and green cymbal at 133,520.37 ms, with chord 1061 84.27 ms before it and chord 1063 340.91 ms after it) gets half-gaps of 42.14 and 85 ms (the back clamp), a sum of 127.14 ms and 73.76 ms a side; it never gets the 85.72 ms that two back values would give.
+Label: Proven in the game's code
+Evidence: `code/6142/note_window_20F3A90.asm` lines 21 to 37 call both lookups on the note list at `this+0x1e0` with the note's tick (`note+0x40`) and its index (`note+0x20`), and line 31 (`xor r9d, r9d`) passes false for the backward lookup's same-tick flag. `code/6142/note_after_lookup_5DD8D0.asm` lines 60 to 65 read each note's tick and keep walking while it is at or before the target (`cmp rax, rsi; jle`), so lines 66 to 72 return the first note strictly later. `code/6142/note_before_lookup_5DDED0.asm` lines 63 to 68 return a note strictly earlier (`jl`), and lines 69 to 77 accept one at the same tick only when the flag byte is set (`cmovle edx, ebp`, with `ebp` the flag from line 9). `dump.cs` lines 552885 and 552894 give the two signatures, the second with its flag defaulting to false. That `note+0x40` is the tick is from `code/6142/sp_phrase_assign_20D2440.md` line 3 and the tick read 0x182C44210 from `code/6142/nearest_chord_5DE030.md` line 16. The 1062 example's times are the `ms` of chords 1061 to 1063 in `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-07\ls-l0\Eric Moore - Get Ur Freak On [Missy Elliot]-score.json` (the same `chart_ms` as rows 1061 to 1063 of `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-07\ls-f1-run1\press-2.csv`), put through TM-19 to TM-21.
+Game code (6142): the two list helpers of class #8670 (scrambled names), RVAs `0x5DD8D0` and `0x5DDED0`, `code/6142/note_after_lookup_5DD8D0.asm` lines 47 to 79 and `code/6142/note_before_lookup_5DDED0.asm` lines 50 to 93; their caller, RVA `0x20F3A90`, lines 21 to 37.
+Hydra: `window_sides` in tools/ch_probe/experiments/play_chart.py line 335 takes the chords either side, the same rule. Hydra's own judging uses no neighbours (see TM-17).
+Ruling: none needed: same rule
+Found: 2026-11-08, session 6341c618.
 
 ### TM-20 The two half-gaps feed the formula, and the note gets half its output
 

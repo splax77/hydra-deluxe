@@ -422,7 +422,9 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	method	8661		ʿʷˁʹʹʴʵˁʴʸʼ	0x215FE80		0x215FE80
 6142	method	8661		ʿʼʿʿʵʵʲʿʷˁʻ	0x215FED0		0x215FED0
 6142	method	8663		ʴʻʲʿʳˀʿʽʼʴʾ	0x2176020		0x2176020
+6142	method	8670		ʵʵʹʶʿˀʹʸʸʸˀ<object>	0x5DD8D0		0x5DD8D0
 6142	method	8670		ʶʲˁʿʹʵˀʺʲˁʿ<object>	0x5DDB50		0x5DDB50
+6142	method	8670		ʷʹʲʿʷʿʲˁʴʷʲ<object>	0x5DDED0		0x5DDED0
 6142	method	8670		ʷʾˀʼˀʵʹˁʻʻʷ<object>	0x5DE030		0x5DE030
 6142	method	901	BasePlayer	Update	0x20A1B0		0x20A1B0
 6142	method	901	BasePlayer	Update	0x20A1B0		BasePlayer.Update
