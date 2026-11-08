@@ -379,7 +379,7 @@ def build_server(helper: Optional[Helper] = None):
         so a score file with a squeeze-out is refused without it. The reply
         names each declined chord with what it sends, each squeeze chord with
         when its presses fire against the end, each activation pressed
-        early for a squeeze-out, and each chord pressed in more than one
+        early or late for its squeezes, and each chord pressed in more than one
         group, in the order its gems are pressed."""
         return capped(h.game.ch_play_chart(score_json, log, song_folder, route,
                                            decline_mode, dump_json, path_index))
@@ -406,6 +406,23 @@ def build_server(helper: Optional[Helper] = None):
                                           decline_mode, dump_json))
 
     @server.tool()
+    def ch_edge_probe(song_folder: str, score_json: str, probes_json: str) -> str:
+        """The window-edge probe: play a hydra_replay score JSON in the
+        background on the kit, as ch_play_chart does with no decline mode,
+        except that each chord the probes file names is pressed at the lead
+        it gives, with no window check. probes_json is a JSON list of
+        {"index": <chord index>, "lead_ms": <ms>}; a positive lead presses
+        early, a negative one late. Each probe's press row is marked in the
+        probe column with its asked lead, and ch_play_status adds one line per
+        probe row with the asked lead, the lead the row shows and hit or miss.
+        A probe chord not in the score file, or one timed from a Star Power
+        end rather than its own time, is refused before anything runs. song_folder sets
+        the run cap from the song's length. The press rows go to a
+        press-<n>.csv in the session folder as they happen, and the reply
+        names it. Needs ch_kit_setup; refused while a play session runs."""
+        return capped(h.game.ch_edge_probe(song_folder, score_json, probes_json))
+
+    @server.tool()
     def ch_press(lanes: str) -> str:
         """The key route: press one chord of drum lanes, such as "red,kick",
         as keys after bringing the game window to the front. A hook refuses
@@ -429,7 +446,11 @@ def build_server(helper: Optional[Helper] = None):
         """The press log's path on the first line when the session has one,
         then the play session's counts, its stop reason when it ended, and its
         press rows, newest first. The counts are of presses; when a chord was
-        pressed in two parts, the count line also says how many chords. A long reply is cut from its end, so the
+        pressed in two parts, the count line also says how many chords. Rows
+        that carry them add a line per activation with its planned and read
+        Star Power end, one line crediting the points scored between presses
+        to the declined chords before them ("unexplained" when none waits),
+        and a line per edge-probe row. A long reply is cut from its end, so the
         file holds every row."""
         return capped(h.game.ch_play_status())
 
