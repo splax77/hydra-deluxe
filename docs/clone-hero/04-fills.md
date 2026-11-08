@@ -3,7 +3,7 @@
 This page covers written fills, the fills the game generates, their deadlines, and when a fill shows up.
 It describes build 1.1 (v1.1.0.6142), and build 1.0 (v1.0.0.4045) under its own heading.
 "The decompile" on this page means Ghidra's full decompile of build 6142, which `code/README.md` describes; it is not in the repo.
-Last write-back: 2026-11-07.
+Last write-back: 2026-11-08.
 
 ## Written fills
 
@@ -13,7 +13,7 @@ Rule: The game adds a written fill at four places: the `.chart` reader (event ty
 Label: Proven in the game's code
 Evidence: the callers of the fill initialiser `0x20FB9A0`, found by a call scan: in 0x20CEDC0, `0x20E5E70`, `0x213E0C0`, `0x215B7C0` and `0x215BD50`. The `.mid` reader tests the event byte against 0x78 (note 120) before it calls 0x20CEDC0; the `.chart` reader's test is in the decompile lines 25570 to 25594. That two of the paths read a cache is the game survey's reading, not checked.
 Game code (6142): the `.mid` fill helper 0x20CEDC0, listed at `code/6142/mid_fill_reader_20CEDC0.asm`; the `.chart` reader `0x213E0C0`; the cache reader `0x20E49D0`, listed at `code/6142/fill_cache_caller_20E49D0.asm`.
-Hydra: `kFillMarkerPitch` in src/parse/song.cpp line 684; both parsers end in `place_authored_fills`.
+Hydra: `kFillMarkerPitch` in src/parse/song.cpp line 683; both parsers end in `place_authored_fills`.
 Ruling: none needed: same rule
 Found: 2026-10-30, session b02ab3e6 (the reference build).
 
@@ -23,7 +23,7 @@ Rule: `0x215BD50` takes a fill object from the track's pool, fills in its start 
 Label: Proven in the game's code
 Evidence: `code/6142/add_fill_215BD50.asm` lines 17 to 30 (the pool at `+0x30` and the constructor call) and 31 to 66 (the append). A scan of every direct call and jump, the `.data` pointers and the metadata slots found no caller; a delegate call would not show in such a scan, so who calls it stays open. Its body is the same as `0x215B7C0`, listed at `code/6142/add_fill_twin_215B7C0.asm`.
 Game code (6142): the add-fill method of class #8661 (scrambled name), RVA `0x215BD50`, `code/6142/add_fill_215BD50.asm` lines 17 to 66.
-Hydra: no owner: Hydra has no add-fill step; `place_authored_fills` (src/parse/song.cpp line 363) places each fill.
+Hydra: no owner: Hydra has no add-fill step; `place_authored_fills` (src/parse/song.cpp line 362) places each fill.
 Ruling: none needed: same rule
 Found: 2026-10-30, session b02ab3e6 (the reference build).
 
@@ -89,13 +89,13 @@ Found: 2026-10-30, session b02ab3e6 (the reference build).
 
 ### FL-09 A landed fill flags one note of its chord
 
-Rule: A landed written fill sets the activation flag 0x800 on one note of its chord and makes a record: the fill start tick at `+0x28`, the chord at `+0x20`, the chord tick minus the fill start at `+0x30`, and an "active" byte at `+0x38` set to 1. The flagged note is picked by `0x20D51D0`, which the drum-lanes notes read as the highest-pad note.
+Rule: A landed written fill sets the activation flag 0x800 on one note of its chord and makes a record: the fill start tick at `+0x28`, the chord at `+0x20`, the chord tick minus the fill start at `+0x30`, and an "active" byte at `+0x38` set to 1. The flagged note is picked by `0x20D51D0`: it keeps the highest set bit of the chord's lane pattern and returns the first note whose type word holds that bit, which is the note on the highest pad.
 Label: Proven in the game's code
-Evidence: `code/6142/fill_to_activation_20CFF60.asm` line 106 (`or dword ptr [rax + 0x7c], 0x800`) and lines 129 to 139 (the record fields). That `0x20D51D0` returns the highest-pad note comes from `docs/audit/drum-lanes/FINDINGS-play-time.md` line 50 only.
-Game code (6142): RVA `0x20CFF60`, `code/6142/fill_to_activation_20CFF60.asm` lines 99 to 147.
-Hydra: `SongTimestamp::activation_length` (src/core/song.h line 36) on the chord, and `Chord::activation_note` for the note; Hydra keeps no per-note flag.
+Evidence: `code/6142/fill_to_activation_20CFF60.asm` line 106 (`or dword ptr [rax + 0x7c], 0x800`) and lines 129 to 139 (the record fields). Lines 99 to 102 call `0x20D51D0` with an all-ones mask (0xffffffff in edx). In `docs/audit/drum-lanes/f20d51d0.asm`, lines 29 to 31 AND that mask with the chord's pattern, lines 33 to 47 smear the bits down and keep only the highest one, and lines 71 to 74 return the first note whose `+0x80` word holds it.
+Game code (6142): RVA `0x20CFF60`, `code/6142/fill_to_activation_20CFF60.asm` lines 99 to 147; the pad pick RVA `0x20D51D0`, `docs/audit/drum-lanes/f20d51d0.asm` lines 29 to 74.
+Hydra: `SongTimestamp::activation_length` (src/core/song.h line 35) on the chord, and `Chord::activation_note` for the note; Hydra keeps no per-note flag.
 Ruling: none needed: same rule
-Found: 2026-10-30, session b02ab3e6 (the reference build).
+Found: 2026-10-30, session b02ab3e6 (the reference build); 2026-11-08, session 77057df2 (docs-gaps search).
 
 ### FL-10 Two written fills that pick the same chord
 
@@ -115,7 +115,7 @@ Rule: The generator `0x20D2B30` has one direct caller, the note builder `0x20D2E
 Label: Proven in the game's code
 Evidence: a scan of every direct call in the DLL finds one reference to `0x20D2B30`, at 0x20D33A4; `code/6142/note_builder_20D2EA0.asm` line 296 is the call, lines 153 to 156 the instrument tests, line 228 the only path to line 278. The enum values are in `dump.cs` lines 533184 to 533197. The four builder call sites match the committed `docs/audit/note-shuffle/step0/open34/callers.txt` lines 1 to 4.
 Game code (6142): the note builder of class #8265 (scrambled name), RVA `0x20D2EA0`, `code/6142/note_builder_20D2EA0.asm` lines 153 to 296; the generator, RVA `0x20D2B30`.
-Hydra: `Song::check_activations` in src/core/song.cpp line 105 is the one place that picks the generator; Hydra loads drums only.
+Hydra: `Song::check_activations` in src/core/song.cpp line 106 is the one place that picks the generator; Hydra loads drums only.
 Ruling: none needed: same rule
 Found: 2026-10-30, session b02ab3e6 (the reference build).
 
@@ -125,7 +125,7 @@ Rule: Written fills and generated fills reach the engine as the same record type
 Label: Proven in the game's code
 Evidence: `dump.cs` lines 528351 and 528413 (both steps return a list of #8322); `code/6142/note_builder_20D2EA0.asm` lines 289 to 299, 358 to 365, 393 and 424. `code/6142/fill_generator_20D2B30.asm` lines 49 to 63 (the empty return) and 153 to 179 (its only stores).
 Game code (6142): RVA `0x20D2EA0` and RVA `0x20D2B30`, lines as above.
-Hydra: `SongTimestamp::activation_length` (src/core/song.h line 36) holds written and generated fills alike; `Song::check_activations` returns on an empty chord list (src/core/song.cpp line 111).
+Hydra: `SongTimestamp::activation_length` (src/core/song.h line 35) holds written and generated fills alike; `Song::check_activations` returns on an empty chord list (src/core/song.cpp line 111).
 Ruling: none needed: same rule
 Found: 2026-10-30, session b02ab3e6 (the reference build).
 
@@ -235,7 +235,7 @@ Rule: Hydra is said to clear a fill when its ready time is at or past fill start
 Label: Unknown
 Evidence: not checked: it needs a read of how the sign of `fill_e_offset` maps to "usable" in src/search/engine.cpp lines 772 to 830 and 970.
 Game code (6142): RVA `0x20DDB70`, `code/6142/fill_deadline_20DDB70.asm` line 45.
-Hydra: `activation_fill_deadline_ms` in src/search/graph.cpp line 62; `fill_e_offset` in src/core/model.h line 314.
+Hydra: `activation_fill_deadline_ms` in src/search/graph.cpp line 62; `fill_e_offset` in src/core/model.h line 316.
 Ruling: none found
 Found: 2026-10-30, session b02ab3e6 (the reference build).
 
@@ -243,9 +243,9 @@ Found: 2026-10-30, session b02ab3e6 (the reference build).
 
 Rule: The game's deadline is an exact tick compare with no millisecond allowance. Hydra's early-fill reach, 85 ms on the orange side (Star Power ready after the deadline), and its 60 ms white slack are Hydra's own model of an early hit moving the Star Power ready moment.
 Label: Hydra assumes it, never checked
-Evidence: the game side has no millisecond term (`code/6142/fill_deadline_20DDB70.asm` lines 24 to 51). Hydra: `fill_refuses` refuses when the offset is below `-kHitWindowMs` and `is_e0` reads `kEarlyFillSlackMs = 60.0` (src/core/model.h lines 316, 320 and 135). The reach is `kHitWindowMs` (D270 item 8). Whether the game's own hit timing reaches that far is TM-27's question.
+Evidence: the game side has no millisecond term (`code/6142/fill_deadline_20DDB70.asm` lines 24 to 51). Hydra: `fill_refuses` refuses when the offset is below `-kHitWindowMs` and `is_e0` reads `kEarlyFillSlackMs = 60.0` (src/core/model.h lines 318, 322 and 136). The reach is `kHitWindowMs` (D270 item 8). Whether the game's own hit timing reaches that far is TM-27's question.
 Game code (6142): RVA `0x20DDB70`; the fill-end grant in FL-31.
-Hydra: `fill_refuses` and `is_e0` in src/core/model.h lines 316 and 320.
+Hydra: `fill_refuses` and `is_e0` in src/core/model.h lines 318 and 322.
 Ruling: D250: the user asked to "change the early fill search to allow orange timing up to 85ms", and on the charts that gained an E fill said "Keep them. The extra E fills in the notation are fine." D270 item 8 then made the reach the one hit window number.
 Found: 2026-10-15, session c35a4b7d.
 
@@ -255,7 +255,7 @@ Rule: On Trippin SP Spike, the game did not offer path 3's E0 fill at tick 34944
 Label: Proven in a live run
 Evidence: `tools/ch_probe/experiments/results/overlay-spike/run1_cal0_sp_compare.txt` line 34, `run2_cal30_sp_compare.txt` line 34 and `run2b_vid30_sp_compare.txt` line 32 each say "FAIL activation 3 not on the path's chord: game tick 38016, path act_tick 34944". The bot hit notes a median 0.42 ms early, not 85 ms early. The cause is not known; the observation itself is the live result.
 Game code (6142): not found: no function decides this one alone.
-Hydra: `is_e0` and `fill_refuses` in src/core/model.h lines 320 and 316.
+Hydra: `is_e0` and `fill_refuses` in src/core/model.h lines 322 and 318.
 Ruling: none found
 Found: 2026-10-28, session f756d547.
 
@@ -267,7 +267,7 @@ Rule: The grid is built beat by beat from tick 0 to the song's end, each step tr
 Label: Proven in the game's code
 Evidence: `code/6142/grid_restart_20DACA0.asm` lines 24 to 33 (the song-end call), 66 to 106 (the signature in force), 107 to 126 (the change test and the reset), 127 to 136 (the wrap), 185 to 192 (the step) and 193 and 194 (the stop); `code/6142/grid_add_line_20CF2B0.asm` lines 107 to 119 (only kind 0 adds a measure line). The 4.0 is a `.rdata` value with no name in `constants.py`, and the kinds 1 and 2 as "beat" and "sub-beat" are a reading of how the code uses them, not checked. The address 0x20CF2B0 is a compiler-generated helper with no dump entry.
 Game code (6142): the grid builder of class #8257 (scrambled name), RVA `0x20DACA0`, `code/6142/grid_restart_20DACA0.asm` lines 24 to 198; RVA 0x20CF2B0 lines 107 to 119.
-Hydra: `MeasureIndex` in src/core/timing.h line 120 and `MeasureIndex::first_measure_line_at_or_after` in src/core/timing.cpp line 196; `Song::place_fills_ch11` stops at the last reachable chord.
+Hydra: `MeasureIndex` in src/core/timing.h line 125 and `MeasureIndex::first_measure_line_at_or_after` in src/core/timing.cpp line 196; `Song::place_fills_ch11` stops at the last reachable chord.
 Ruling: D230: chose "CH's grid, everywhere (Recommended)" to "Hydra has one measure grid ...".
 Found: 2026-10-12, session 28fad19c; listed 2026-10-30, session b02ab3e6 (the reference build).
 
@@ -287,9 +287,9 @@ Found: 2026-10-30, session b02ab3e6 (the reference build).
 
 Rule: The game counts the written fills before any of them lands on a chord, so a written fill that finds no chord still stops generation. Hydra tests whether any chord ended up holding a fill, after the landing step has dropped some. On a chart whose only written fills reach no chord, Hydra generates fills across the chart and the game generates none.
 Label: Proven in the game's code
-Evidence: `code/6142/note_builder_20D2EA0.asm` lines 285 to 299: the count test comes before the landing call to `0x20CFF60`. Hydra side: `place_authored_fills` drops a fill with no chord (src/parse/song.cpp line 363 on), then `Song::check_activations` tests the landed chords (src/core/song.cpp lines 106 and 107).
+Evidence: `code/6142/note_builder_20D2EA0.asm` lines 285 to 299: the count test comes before the landing call to `0x20CFF60`. Hydra side: `place_authored_fills` drops a fill with no chord (src/parse/song.cpp line 362 on), then `Song::check_activations` tests the landed chords (src/core/song.cpp lines 106 and 107).
 Game code (6142): RVA `0x20D2EA0`, `code/6142/note_builder_20D2EA0.asm` lines 280 to 299.
-Hydra: `place_authored_fills` in src/parse/song.cpp line 363; `Song::check_activations` in src/core/song.cpp line 105.
+Hydra: `place_authored_fills` in src/parse/song.cpp line 362; `Song::check_activations` in src/core/song.cpp line 106.
 Ruling: open split: see questions page Q-37
 Found: 2026-10-30, session b02ab3e6 (the reference build).
 
@@ -299,7 +299,7 @@ Rule: The list the builder tests belongs to one (instrument, difficulty) track. 
 Label: Unknown
 Evidence: `code/6142/note_builder_20D2EA0.asm` lines 36 to 62 and `code/6142/track_lookup_20CFD40.asm` lines 31 to 44 (index = instrument x a static + difficulty); the `.chart` side is the decompile lines 25570 to 25594. The per-track list is proven; the block stays Unknown because the `.mid` half, which most charts use, was not read, and Hydra's side was not checked.
 Game code (6142): the track lookup 0x20CFD40; the `.chart` reader `0x213E0C0`; the `.mid` reader `0x2155050`, not read for this.
-Hydra: `Song::check_activations` in src/core/song.cpp line 105 runs once per loaded difficulty; whether the `.mid` parser hands every difficulty the same fills was not checked.
+Hydra: `Song::check_activations` in src/core/song.cpp line 106 runs once per loaded difficulty; whether the `.mid` parser hands every difficulty the same fills was not checked.
 Ruling: none found
 Found: 2026-10-30, session b02ab3e6 (the reference build).
 
@@ -321,13 +321,13 @@ The search position of the written-fill search is FL-04, and the generator's is 
 
 ### FL-31 A missed fill-end note is hit for you when Star Power can activate
 
-Rule: When Star Power can be activated, a missed fill-end note is granted as a hit (the first branch of the miss handler). A correct press on a fill-end note while Star Power can activate first makes a virtual call, which the drum-lanes notes read as activating Star Power, then hits the note.
+Rule: When Star Power can be activated, a missed fill-end note is granted as a hit (the first branch of the miss handler). A correct press on a fill-end note while Star Power can activate first calls the engine's slot 14, ActivateStarPower, then hits the note.
 Label: Proven in the game's code
-Evidence: committed listing `docs/audit/drum-lanes/f20dcad0.asm` lines 6 to 16 (the call to `0x20F57F0`, the Star Power ready test, then the flag getter `0x214BB50` on the note, then the branch). The press side is `docs/audit/drum-lanes/play/f20deaa0.asm` lines 120 to 130; that its vtable call is the activation is the FINDINGS file's reading, and the slot was not resolved. The grant jumps through the class slot at +0x1E8. `code/6142/note_hit_dynamics_20DE770.md` puts slot 6 at +0x198 and calls RVA `0x20DE770` slot 11, so at 16 bytes a slot the grant reaches that plain hit handler, not the press handler. So a missed fill-end note should score as a hit without activating, read from the slot spacing. LS-O3 run 1 of 2026-11-07 tried it on Senri's chord 405: the kick was pressed and the cymbal left alone, the cymbal scored 260 points just after the press, no activation came between 46.0 and 48.0 s, and the run's `notes_hit` read 2996 of 2996 (result files in hydra-data, ch-mcp-runs/2026-11-07/ls-o3-run1).
+Evidence: committed listing `docs/audit/drum-lanes/f20dcad0.asm` lines 6 to 16 (the call to `0x20F57F0`, the Star Power ready test, then the flag getter `0x214BB50` on the note, then the branch). The press side is `docs/audit/drum-lanes/play/f20deaa0.asm` lines 120 to 130: the same ready test and flag getter, then a call through the class at +0x218. At 16 bytes a slot from slot 6 at +0x198, that is slot 14, and the il2cpp dump C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-dumps\6142\dump.cs (outside the repo) line 530185 puts `0x20F5640` at slot 14; page 5 reads that method as the activation. Live runs back the grant: in ls-r1-run2 of 2026-11-07 (C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-07\ls-r1-run2), chords 221 and 845 are single-gem fill ends (Hydra's C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-07\refine-prep\mouths-top-score.json marks both as fills, at 200 points a gem). The player sent nothing for either (replies.txt line 6). In `press-1.csv` the score did not move at the press, and the next row rose by 400, its own 200 plus the gem's. In `sp_watch-1.csv` the gem's 200 lands 64 ms (chord 221) and 84 ms (chord 845) after the gem's chart time, with the meter at 2,880 and 4,320 of 5,760 and no Star Power active after. Chord 801, a three-gem fill end with two gems pressed, shows the same: its third gem's 200 lands 87 ms after its chart time with the meter at 2,880. The grant jumps through the class slot at +0x1E8. `code/6142/note_hit_dynamics_20DE770.md` puts slot 6 at +0x198 and calls RVA `0x20DE770` slot 11, so at 16 bytes a slot the grant reaches that plain hit handler, not the press handler. So a missed fill-end note should score as a hit without activating, read from the slot spacing. LS-O3 run 1 of 2026-11-07 tried it on Senri's chord 405: the kick was pressed and the cymbal left alone, the cymbal scored 260 points just after the press, no activation came between 46.0 and 48.0 s, and the run's `notes_hit` read 2996 of 2996 (result files in hydra-data, ch-mcp-runs/2026-11-07/ls-o3-run1).
 Game code (6142): RVA `0x20DCAD0`, `docs/audit/drum-lanes/f20dcad0.asm` lines 6 to 16; the press handler RVA `0x20DEAA0`.
 Hydra: no owner: a grep of `src/` for a fill-end grant finds nothing; Hydra's paths hit every note.
 Ruling: none needed: Hydra's paths hit every note, so the grant changes nothing they score
-Found: drum-lanes FINDINGS-play-time.md.; the grant's slot, 2026-11-06, session 70bfa33d
+Found: drum-lanes FINDINGS-play-time.md.; the grant's slot, 2026-11-06, session 70bfa33d; 2026-11-08, session 77057df2 (docs-gaps search)
 
 ## When a fill shows up
 
@@ -355,9 +355,9 @@ Found: card 7bd3ac91.
 
 Rule: An activation that passed over only its own early fill still fits the best all-0 path. This is a Hydra rule, not a game fact.
 Label: Hydra assumes it, never checked
-Evidence: `allzero_activation` in src/core/model.h line 347.
+Evidence: `allzero_activation` in src/core/model.h line 367.
 Game code (6142): none: not a game rule.
-Hydra: `allzero_activation` in src/core/model.h line 347.
+Hydra: `allzero_activation` in src/core/model.h line 367.
 Ruling: D102, the user's words: "allow E1 paths. if you dont get the early fill you arent skipping anything, you still activate immediately"
 Found: 2026-10-07, D102.
 
@@ -377,9 +377,9 @@ Found: 2026-10-30, session b02ab3e6 (the reference build).
 
 Rule: The 1.0 generator tries the second measure line first and then every fourth line, and after a line with no chord close enough it tries the very next line. A chord counts as close enough within 0.25 seconds of real time of the line. The fill starts half way, in real time, between the previous measure line and the chosen line, and ends one 64th note (resolution x 12 / 192 ticks) after the chord's activation note. Hydra's 1.0 generator keeps the nearest chord per line, does not start at the second line, uses a limit of half a beat, and makes the fill half a grid measure long.
 Label: Proven in the game's code
-Evidence: `code/4045/fill_generator.cs` lines 30 to 77: line 40 (`i = 1`), 44 to 49 and 53 to 56 (`i += 4`; `i -= 3` on a miss), line 53 (`num5 > 0.25f`), lines 39, 42, 43 and 58 to 74 (the fill's start and end). Hydra's side: `Song::place_fills_ch10` in src/core/song.cpp lines 135 to 167 and `kCh10FillLengthMeasures` at line 123.
+Evidence: `code/4045/fill_generator.cs` lines 30 to 77: line 40 (`i = 1`), 44 to 49 and 53 to 56 (`i += 4`; `i -= 3` on a miss), line 53 (`num5 > 0.25f`), lines 39, 42, 43 and 58 to 74 (the fill's start and end). Hydra's side: `Song::place_fills_ch10` in src/core/song.cpp lines 135 to 167 and `kCh10FillLengthMeasures` at line 124.
 Game code (4045): the 1.0 generator (scrambled name), `code/4045/fill_generator.cs` lines 30 to 77.
-Hydra: `Song::place_fills_ch10` in src/core/song.cpp line 135.
+Hydra: `Song::place_fills_ch10` in src/core/song.cpp line 136.
 Ruling: open split: see questions page Q-38. D115 item 6 says "Clone Hero 1.0 mode keeps its old fill generator exactly." (the decision log's words), and card c0e1259d has the user choosing "Keep 1.0 exactly as before (Recommended)"; neither names the game's side.
 Found: 2026-10-30, session b02ab3e6 (the reference build).
 
@@ -397,9 +397,9 @@ Found: 2026-10-30, session b02ab3e6 (the reference build).
 
 Rule: A 1.0 written fill is attached to the chord nearest its end tick, no earlier than the fill start and no later than the end plus a 32nd note (resolution x 6 / 192 ticks). A tie goes to the later chord, a fill with no chord is dropped, and its length is rebuilt to end one 64th note after the activation note. Hydra places written fills the same way under 1.0 and 1.1, with 1.1's +1 tick.
 Label: Proven in the game's code
-Evidence: `code/4045/fill_generator.cs` lines 80 to 113 and the helper at lines 144 to 193. Hydra's side: `place_authored_fills` takes only a slop and has no rule argument (src/parse/song.cpp line 363, called by both parsers).
+Evidence: `code/4045/fill_generator.cs` lines 80 to 113 and the helper at lines 144 to 193. Hydra's side: `place_authored_fills` takes only a slop and has no rule argument (src/parse/song.cpp line 362, called by both parsers).
 Game code (4045): a scrambled method of the 1.0 note builder, `code/4045/fill_generator.cs` lines 80 to 113.
-Hydra: `place_authored_fills` in src/parse/song.cpp line 363.
+Hydra: `place_authored_fills` in src/parse/song.cpp line 362.
 Ruling: open split: see questions page Q-39
 Found: 2026-10-30, session b02ab3e6 (the reference build).
 
