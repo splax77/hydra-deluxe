@@ -372,3 +372,392 @@ TEST_CASE("schedule: nothing under src/ reads the schedule") {
     CHECK(model_h.find("constexpr double kHitWindowMs = 85.0;") != std::string::npos);
     CHECK(model_h.find("constexpr double kSqueezeWindowMs = 500.0;") != std::string::npos);
 }
+
+// ---- TC2: the aims, rooms, fallbacks and refusals ---------------------------
+
+namespace {
+
+// A squeeze-out's geometry from the plan's table (design point 6): the two
+// sides, the gap from the squeeze chord to the end, and the early ratio. The
+// late ratio is one no squeeze-out reads, so reading the wrong side shows.
+schedule::SqueezeGeometry sqout(double anchor_side, double squeeze_ms, double squeeze_side, double end_ms,
+                                double early_ratio) {
+    schedule::SqueezeGeometry g;
+    g.kind = SqueezeKind::SqOut;
+    g.anchor_chord = 1;
+    g.anchor_side_ms = anchor_side;
+    g.squeeze_chord = 2;
+    g.squeeze_ms = squeeze_ms;
+    g.squeeze_side_ms = squeeze_side;
+    g.end_ms = end_ms;
+    g.ratio = TransferScale{early_ratio, 2.0};
+    return g;
+}
+
+bool within_cent(double got, double want) { return std::abs(got - want) < 0.01; }
+
+// The presses of chord `chord` the schedule `s` writes under `rule`.
+std::vector<json> presses_of(const json& s, int chord, const std::string& rule) {
+    std::vector<json> out;
+    for (const json& p : s["presses"])
+        if (p["chord"].get<int>() == chord && p["rule"] == rule) out.push_back(p);
+    return out;
+}
+
+// Freak's overfill shape on a hand-built chart (120 BPM, 2.604 ms a tick):
+// Red chords at ticks 0, 768, 1536, 2304, 3072 and 3840; the activation on
+// chord 1, the cap clamping on chord 2's phrase, and chord 4 (Red and Kick)
+// squeezed out of the final end at tick 3082, 26.04 ms after it. Every chord
+// is 2,000 ms from its neighbours, so every side is the cap.
+struct Overfill {
+    Song song;
+    Activation act;
+};
+Overfill overfill() {
+    Overfill o{plain_song({0, 768, 1536, 2304, 3072, 3840}), Activation{}};
+    o.song.sequence[4].chord.add_note(NoteColor::Kick);
+    o.act.timecode = o.song.timecode(768);
+    o.act.sp_end_steps = {{768, 3000, SpEndKind::Activation}, {1536, 3082, SpEndKind::Clamped}};
+    SPSqueeze out{};
+    out.kind = SqueezeKind::SqOut;
+    out.offset_ms = -26.04;
+    o.act.sqinouts.push_back(out);
+    o.act.sqout_tick = 3072;
+    o.act.transfer_post = TransferScale{1.0, 1.0};
+    return o;
+}
+
+}  // namespace
+
+TEST_CASE("schedule: the equal-room split on Freak's clamped squeeze") {
+    // Chord 387 at 60,545.26 (side 53.59), the end at 60,573.35, anchor chord
+    // 263 (side 48.15), ratio 1.0.
+    const schedule::SqueezeGeometry g = sqout(48.15, 60545.26, 53.59, 60573.35, 1.0);
+    const schedule::SqueezeSplit s = schedule::split_squeeze(g);
+    CHECK(within_cent(s.anchor_aim_ms, -24.82));
+    CHECK(within_cent(s.squeeze_aim_ms, 24.27));
+    CHECK(within_cent(s.anchor_room_ms, 23.32));
+    CHECK(within_cent(s.squeeze_room_ms, 23.32));
+    CHECK(within_cent(s.planned_end_ms, 60551.53));
+    CHECK(within_cent(s.aim_end_ms, 60554.53));
+    CHECK(within_cent(schedule::sqout_fallback_after_ms(60545.26, 53.59), 60577.85));
+    CHECK(within_cent(s.aim_end_ms + s.squeeze_room_ms, 60577.85));
+    CHECK(s.feasible);
+    // The cap's side on 263 (the pruned fixture's 85.72) gives another lead.
+    CHECK_FALSE(within_cent(schedule::split_squeeze(sqout(85.72, 60545.26, 53.59, 60573.35, 1.0)).anchor_aim_ms, -24.82));
+
+    // The whole file on the overfill shape: the lead goes on chord 2, the
+    // chord the clamp anchors the end on, never on the activation's chord 1.
+    const Overfill o = overfill();
+    const ReplayResult r = replay_path(o.song, {});
+    const json sch = schedule::schedule_json(o.song, {&o.act}, r, schedule::DeclineMode::Nothing);
+    INFO(sch["refusals"].dump());
+    CHECK(sch["refusals"].empty());  // and no "not planned yet" line
+    const std::vector<json> anchor = presses_of(sch, 2, "anchor");
+    REQUIRE(anchor.size() == 1);
+    CHECK(within_cent(anchor[0]["aim_ms"].get<double>(), -26.52));
+    REQUIRE(presses_of(sch, 1, "plain").size() == 1);
+    CHECK(presses_of(sch, 1, "plain")[0]["aim_ms"].get<double>() == -2.0);
+    // The read after chord 2 sees the clamped end, 8,026.04 ms, planned
+    // 23.52 ms earlier (the lead less one frame).
+    const json& reads = sch["chords"][2]["reads"];
+    REQUIRE(reads.size() == 1);
+    CHECK(within_cent(reads[0]["stored_end_ms"].get<double>(), 8026.04));
+    CHECK(within_cent(reads[0]["planned_end_ms"].get<double>(), 8002.52));
+    // The squeeze-out chord: the late gem (place 0) 20.52 ms late, assuming
+    // the end at 8,005.52, retimed from the read after chord 2.
+    const std::vector<json> late = presses_of(sch, 4, "squeeze_out_late");
+    REQUIRE(late.size() == 1);
+    CHECK(late[0]["gems"].get<std::vector<size_t>>() == std::vector<size_t>{0});
+    CHECK(within_cent(late[0]["aim_ms"].get<double>(), 20.52));
+    CHECK(within_cent(late[0]["aim_end_ms"].get<double>(), 8005.52));
+    CHECK(late[0]["end_read_after"].get<int>() == 2);
+    CHECK(late[0]["timed_from_end"].get<size_t>() == 0);
+    const json& q = sch["activations"][0]["squeezes"][0];
+    CHECK(q["feasible"].get<bool>());
+    CHECK(within_cent(q["anchor_room_ms"].get<double>(), q["squeeze_room_ms"].get<double>()));
+}
+
+TEST_CASE("schedule: Freak 1144, Rescued 561 and 931, Ghost 756") {
+    struct Row {
+        const char* name;
+        double anchor_side, squeeze_side, gap, ratio, anchor_aim, squeeze_aim, room;
+    };
+    const Row rows[] = {
+        {"Freak 1144", 73.76, 53.59, 84.27, 1.0, -65.72, 39.55, 8.04},
+        {"Rescued 561", 75.93, 61.47, 99.04, 1.0284, -69.36, 48.89, 6.58},
+        {"Rescued 931", 76.49, 61.94, 100.00, 1.0045, -70.63, 50.08, 5.86},
+        {"Ghost 756", 78.75, 66.34, 109.25, 1.0133, -73.88, 55.47, 4.87},
+    };
+    for (const Row& row : rows) {
+        INFO(row.name);
+        const double end = 100000.0;
+        const schedule::SqueezeSplit s =
+            schedule::split_squeeze(sqout(row.anchor_side, end - row.gap, row.squeeze_side, end, row.ratio));
+        CHECK(within_cent(s.anchor_aim_ms, row.anchor_aim));
+        CHECK(within_cent(s.squeeze_aim_ms, row.squeeze_aim));
+        CHECK(within_cent(s.anchor_room_ms, row.room));
+        CHECK(within_cent(s.squeeze_room_ms, row.room));
+        CHECK(within_cent(s.anchor_room_ms, s.squeeze_room_ms));
+        CHECK(s.anchor_room_ms > 0.0);
+        CHECK(s.feasible);
+    }
+}
+
+TEST_CASE("schedule: a squeeze that needs no timing is pressed plain") {
+    // Freak 717's shape: a squeeze-in whose chord already sits 84.27 ms
+    // inside its end.
+    const Song song = plain_song({0, 768, 1536, 2304, 3072, 3840});
+    Activation act;
+    act.timecode = song.timecode(768);
+    act.sp_end_steps = {{768, 3500, SpEndKind::Activation}, {3072, 3900, SpEndKind::SqIn}};
+    SPSqueeze in{};
+    in.kind = SqueezeKind::SqIn;
+    in.offset_ms = -84.27;
+    in.transfer = TransferScale{1.0, 1.0};
+    act.sqinouts.push_back(in);
+    act.transfer_post = TransferScale{1.0, 1.0};
+    const ReplayResult r = replay_path(song, {});
+    const json s = schedule::schedule_json(song, {&act}, r, schedule::DeclineMode::Nothing);
+    const json& q = s["activations"][0]["squeezes"][0];
+    CHECK(q["needs_no_timing"].get<bool>());
+    CHECK(q["feasible"].get<bool>());
+    const std::vector<json> p = presses_of(s, 4, "needs_no_timing");
+    REQUIRE(p.size() == 1);
+    CHECK(p[0]["aim_ms"].get<double>() == -2.0);
+    CHECK_FALSE(p[0].contains("fallback"));
+    CHECK(presses_of(s, 1, "plain").size() == 1);  // no lead on the activation
+}
+
+TEST_CASE("schedule: a squeeze the game cannot make is not feasible") {
+    // A 200 ms gap against two 53.59 ms sides: both rooms negative, and that
+    // is a feasibility, not a refusal.
+    const schedule::SqueezeGeometry too_wide = sqout(53.59, 1000.0, 53.59, 1200.0, 1.0);
+    const schedule::SqueezeSplit s = schedule::split_squeeze(too_wide);
+    CHECK_FALSE(s.feasible);
+    CHECK(s.anchor_room_ms < 0.0);
+    CHECK(s.squeeze_room_ms < 0.0);
+    std::vector<std::string> refusals;
+    CHECK(schedule::anchor_lead_ms({too_wide}, refusals).has_value());
+    CHECK(refusals.empty());
+    // kRoomMarginMs: a 25 ms gap and 29 ms sides leave 3.0 ms of room each
+    // (feasible); 28.9 ms sides leave 2.9 (not).
+    const schedule::SqueezeSplit three = schedule::split_squeeze(sqout(29.0, 1000.0, 29.0, 1025.0, 1.0));
+    CHECK(three.anchor_room_ms == doctest::Approx(3.0));
+    CHECK(three.squeeze_room_ms == doctest::Approx(3.0));
+    CHECK(three.feasible);
+    const schedule::SqueezeSplit short_room = schedule::split_squeeze(sqout(28.9, 1000.0, 28.9, 1025.0, 1.0));
+    CHECK(short_room.anchor_room_ms == doctest::Approx(2.9));
+    CHECK_FALSE(short_room.feasible);
+}
+
+TEST_CASE("schedule: the fallback block") {
+    // Freak 1144 (141,571.98 ms, side 53.59): past 141,604.57 the late gem
+    // joins the inside group.
+    CHECK(within_cent(schedule::sqout_fallback_after_ms(141571.98, 53.59), 141604.57));
+    // A squeeze-in pressed before a moved end: chord.ms - side + 15 + 3.
+    CHECK(schedule::sqin_fallback_before_ms(1000.0, 50.0) == doctest::Approx(968.0));
+
+    // The overfill shape's two-gem squeeze-out: the late press's block names
+    // the last inside group's gems.
+    {
+        const Overfill o = overfill();
+        const ReplayResult r = replay_path(o.song, {});
+        const json s = schedule::schedule_json(o.song, {&o.act}, r, schedule::DeclineMode::Nothing);
+        const std::vector<json> late = presses_of(s, 4, "squeeze_out_late");
+        const std::vector<json> inside = presses_of(s, 4, "squeeze_out_inside");
+        REQUIRE(late.size() == 1);
+        REQUIRE(inside.size() == 1);
+        const json& fb = late[0]["fallback"];
+        CHECK(fb["action"] == "join_group");
+        CHECK(fb["retimed"] == "inside");
+        CHECK(fb["join_gems"] == inside[0]["gems"]);
+        const json& row = s["chords"][4];
+        CHECK(fb["if_end_after_ms"].get<double>() ==
+              doctest::Approx(schedule::sqout_fallback_after_ms(row["ms"].get<double>(), row["side_ms"].get<double>())));
+        // A plain press carries no block.
+        REQUIRE(presses_of(s, 0, "plain").size() == 1);
+        CHECK_FALSE(presses_of(s, 0, "plain")[0].contains("fallback"));
+    }
+
+    // A hand-built timed squeeze-in: chord 4 at tick 3010 sits 26.04 ms past
+    // the activation's end at tick 3000; question 3 (a) presses it plain.
+    {
+        const Song song = plain_song({0, 768, 1536, 2304, 3010, 3840});
+        Activation act;
+        act.timecode = song.timecode(768);
+        act.sp_end_steps = {{768, 3000, SpEndKind::Activation}, {3010, 3600, SpEndKind::SqIn}};
+        SPSqueeze in{};
+        in.kind = SqueezeKind::SqIn;
+        in.offset_ms = 26.04;
+        in.transfer = TransferScale{1.0, 1.0};
+        act.sqinouts.push_back(in);
+        act.transfer_post = TransferScale{1.0, 1.0};
+        const ReplayResult r = replay_path(song, {});
+        const json s = schedule::schedule_json(song, {&act}, r, schedule::DeclineMode::Nothing);
+        const std::vector<json> p = presses_of(s, 4, "squeeze_in");
+        REQUIRE(p.size() == 1);
+        const json& fb = p[0]["fallback"];
+        CHECK(fb["action"] == "plain");
+        CHECK(fb["retimed"] == "plain");
+        CHECK(fb["aim_ms"].get<double>() == -2.0);
+        const json& row = s["chords"][4];
+        CHECK(fb["if_end_before_ms"].get<double>() ==
+              doctest::Approx(schedule::sqin_fallback_before_ms(row["ms"].get<double>(), row["side_ms"].get<double>())));
+        // The activation leads it late.
+        REQUIRE(presses_of(s, 1, "anchor").size() == 1);
+        CHECK(presses_of(s, 1, "anchor")[0]["aim_ms"].get<double>() > 0.0);
+    }
+}
+
+TEST_CASE("schedule: last_send_ms is the side less one frame") {
+    CHECK(schedule::last_send_ms(1000.0, 50.0) == doctest::Approx(997.0));
+    const Overfill o = overfill();
+    const ReplayResult r = replay_path(o.song, {});
+    const json s = schedule::schedule_json(o.song, {&o.act}, r, schedule::DeclineMode::Nothing);
+    REQUIRE(!s["presses"].empty());
+    for (const json& p : s["presses"]) {
+        const json& row = s["chords"][p["chord"].get<size_t>()];
+        CHECK(p["last_send_ms"].get<double>() ==
+              doctest::Approx(schedule::last_send_ms(row["ms"].get<double>(), row["side_ms"].get<double>())));
+    }
+    // TM-27: a press sent exactly on its side's edge is inside.
+    std::vector<schedule::PadChord> one(1);
+    one[0].index = 0;
+    one[0].ms = 1000.0;
+    one[0].side_ms = 50.0;
+    one[0].chart_pads = {{NoteColor::Red, false}};
+    one[0].sent_pads = one[0].chart_pads;
+    CHECK_FALSE(schedule::far_press_refusal(one, 0, 1050.0, one[0].chart_pads).has_value());
+    CHECK(schedule::far_press_refusal(one, 0, 1050.5, one[0].chart_pads).has_value());
+}
+
+TEST_CASE("schedule: an activation that needs both directions is refused naming both chords") {
+    schedule::SqueezeGeometry out = sqout(60.0, 1000.0, 60.0, 1030.0, 1.0);
+    out.anchor_chord = 5;
+    out.squeeze_chord = 17;
+    schedule::SqueezeGeometry in = out;
+    in.kind = SqueezeKind::SqIn;
+    in.squeeze_chord = 23;
+    in.squeeze_ms = 1040.0;
+    std::vector<std::string> refusals;
+    CHECK_FALSE(schedule::anchor_lead_ms({out, in}, refusals).has_value());
+    REQUIRE(refusals.size() == 1);
+    CHECK(refusals[0].find("anchor chord 5") != std::string::npos);
+    CHECK(refusals[0].find("early for chord 17") != std::string::npos);
+    CHECK(refusals[0].find("late for chord 23") != std::string::npos);
+}
+
+TEST_CASE("schedule: a lead across a steady span is refused naming the span") {
+    // Freak 387's split leads the anchor 24.82 ms early; a tempo change 10 ms
+    // before the anchor breaks the ratio.
+    schedule::SqueezeGeometry g = sqout(48.15, 60545.26, 53.59, 60573.35, 1.0);
+    g.steady.before_anchor_ms = 10.0;
+    std::vector<std::string> refusals;
+    CHECK_FALSE(schedule::anchor_lead_ms({g}, refusals).has_value());
+    REQUIRE(refusals.size() == 1);
+    CHECK(refusals[0].find("before_anchor_ms") != std::string::npos);
+    CHECK(refusals[0].find("tempo or time signature change") != std::string::npos);
+    // One the lead stays inside passes.
+    g.steady.before_anchor_ms = 30.0;
+    refusals.clear();
+    CHECK(schedule::anchor_lead_ms({g}, refusals).has_value());
+    CHECK(refusals.empty());
+}
+
+TEST_CASE("schedule: a press that reaches a neighbour on its pad is refused naming both chords") {
+    // The Edge Walk Pair shape: two kicks 100 ms apart, chords 10 and 11.
+    const std::vector<double> sides = schedule::chord_sides_ms({1000.0, 1100.0});
+    std::vector<schedule::PadChord> pair(2);
+    for (size_t i = 0; i < 2; ++i) {
+        pair[i].index = 10 + static_cast<int>(i);
+        pair[i].ms = 1000.0 + 100.0 * static_cast<double>(i);
+        pair[i].side_ms = sides[i];
+        pair[i].chart_pads = {{NoteColor::Kick, false}};
+        pair[i].sent_pads = pair[i].chart_pads;
+    }
+    const std::vector<schedule::Pad> kick = {{NoteColor::Kick, false}};
+    // Chord 11 pressed 60 ms early lands inside chord 10's window.
+    const std::optional<std::string> r = schedule::far_press_refusal(pair, 1, 1040.0, kick);
+    REQUIRE(r.has_value());
+    CHECK(r->find("chord 11") != std::string::npos);
+    CHECK(r->find("chord 10") != std::string::npos);
+    // Chord 10 pressed 60 ms late reaches chord 11, which the player presses:
+    // the game gives the press to the earlier note, so it passes.
+    CHECK_FALSE(schedule::far_press_refusal(pair, 0, 1060.0, kick).has_value());
+    // Declined (no kick sent), chord 11 would take the press: refused.
+    pair[1].sent_pads.clear();
+    const std::optional<std::string> d = schedule::far_press_refusal(pair, 0, 1060.0, kick);
+    REQUIRE(d.has_value());
+    CHECK(d->find("chord 10") != std::string::npos);
+    CHECK(d->find("chord 11") != std::string::npos);
+}
+
+TEST_CASE("schedule: a late gem that pays less than an inside gem is refused") {
+    std::vector<std::string> refusals;
+    CHECK_FALSE(schedule::squeeze_out_inside_groups(7, {1, 2}, refusals).has_value());
+    REQUIRE(refusals.size() == 1);
+    CHECK(refusals[0].find("chord 7") != std::string::npos);
+    CHECK(refusals[0].find("late gem pays x1 and an inside gem x2") != std::string::npos);
+    refusals.clear();
+    const auto ok = schedule::squeeze_out_inside_groups(7, {2, 2, 1}, refusals);
+    REQUIRE(ok.has_value());
+    CHECK(refusals.empty());
+    CHECK(*ok == std::vector<std::vector<size_t>>{{2}, {1}});
+}
+
+TEST_CASE("schedule: press groups") {
+    // Places: 0 the flagged green cymbal (x2), 1 an x1 gem, 2 an x2 gem.
+    CHECK(schedule::press_groups({2, 1, 2}, {0, 1, 2}, size_t{0}) ==
+          std::vector<std::vector<size_t>>{{0}, {1}, {2}});
+    // No flagged gem and one multiplier: one group.
+    CHECK(schedule::press_groups({1, 1}, {0, 1}, std::nullopt) == std::vector<std::vector<size_t>>{{0, 1}});
+    // A declined chord that sends nothing is still one press.
+    CHECK(schedule::press_groups({1, 1}, {}, std::nullopt) == std::vector<std::vector<size_t>>(1));
+
+    // In the file: an activation chord of Red, Green and Kick at one
+    // multiplier presses Green (its activation note) first, then the rest
+    // 8 ms after.
+    Overfill o = overfill();
+    o.song.sequence[1].chord.add_note(NoteColor::Green);
+    o.song.sequence[1].chord.add_note(NoteColor::Kick);
+    const ReplayResult r = replay_path(o.song, {});
+    const json s = schedule::schedule_json(o.song, {&o.act}, r, schedule::DeclineMode::Nothing);
+    const std::vector<json> act = presses_of(s, 1, "plain");
+    REQUIRE(act.size() == 2);
+    const json& gems = s["chords"][1]["gems"];
+    CHECK(gems[act[0]["gems"][0].get<size_t>()]["color"] == "Green");
+    CHECK(act[0]["after_ms"].is_null());
+    CHECK(act[1]["after_ms"].get<double>() == 8.0);
+    CHECK(act[1]["aim_ms"].get<double>() == doctest::Approx(-2.0 + 8.0));
+    // The two-gem squeeze-out: the inside gem 15 ms before the assumed end
+    // (8,005.52 - 15 - 8,000 = -9.48), the late gem last.
+    const std::vector<json> inside = presses_of(s, 4, "squeeze_out_inside");
+    REQUIRE(inside.size() == 1);
+    CHECK(within_cent(inside[0]["aim_ms"].get<double>(), -9.48));
+    size_t inside_at = 0, late_at = 0;
+    for (size_t k = 0; k < s["presses"].size(); ++k) {
+        const json& p = s["presses"][k];
+        if (p["chord"].get<int>() != 4) continue;
+        (p["rule"] == "squeeze_out_inside" ? inside_at : late_at) = k;
+    }
+    CHECK(inside_at < late_at);
+}
+
+TEST_CASE("schedule: the planned end counts one frame") {
+    // A plain activation: the nominal end plus one frame less the 2 ms lead.
+    const Song song = plain_song({0, 768, 1536});
+    Activation act;
+    act.timecode = song.timecode(768);
+    act.sp_end_steps = {{768, 3000, SpEndKind::Activation}};
+    act.transfer_post = TransferScale{1.0, 1.0};
+    const ReplayResult r = replay_path(song, {});
+    const json s = schedule::schedule_json(song, {&act}, r, schedule::DeclineMode::Nothing);
+    const json& reads = s["chords"][1]["reads"];
+    REQUIRE(reads.size() == 1);
+    CHECK(within_cent(reads[0]["stored_end_ms"].get<double>(), 7812.5));
+    CHECK(within_cent(reads[0]["planned_end_ms"].get<double>(), 7813.5));
+    // A led anchor: the stored end moved by ratio x (lead - one frame);
+    // Freak 263's 24.82 ms lead at ratio 1.0 plans 60,551.53.
+    CHECK(within_cent(schedule::split_squeeze(sqout(48.15, 60545.26, 53.59, 60573.35, 1.0)).planned_end_ms, 60551.53));
+}
