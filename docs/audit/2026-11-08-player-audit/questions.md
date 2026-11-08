@@ -129,6 +129,54 @@ The player's command line has a keys route that sends keys with `SendInput` afte
 
 - (a) Remove the keys route from play runs, so play is kit only. Key tools that remain refuse when no window is found or focus fails. The watch saves its events to the run folder. Finding the 43.9 s cause waits for a run with a window-event log, on your go.
 - (b) Keep the keys route, but have it refuse when the window is missing or focus fails.
+## Batch 4: lines that say the wrong thing, and the small fixes
+
+Three read-only scouts checked every row below against the code, the rulings, the D-records, the Clone Hero pages, the plans and the session cards on 2026-11-08. No ruling, card or plan covers any Q14 row. TP1 deletes none of this code.
+
+### Q14. Report and launch lines that can say the wrong thing (L31, L32, L34, L35, L74, L41, L42, L43)
+
+Each of these prints a line that is wrong, or says less than it seems to. No number the player acts on is wrong. Each fix changes only what a line says.
+
+- L31. The report says "Clock at press minus chart ms" (`score_compare.py:304`). The number is the clock the player read just before it sent the press, not the moment the game judged it (TM-27 says the same). After: "Clock at the read before the send minus chart ms". The numbers stay the same.
+- L32. Every `ch_*` reply is cut at 12,000 characters, keeping the start (`hydra_ui_mcp.py:45`, `server.py:46-51`). `ch_sp_compare` prints its "Summary: N PASS, M FAIL" last (`sp_compare.py:633`), so a long report loses its verdict. A cut has already happened in a run: "The reply cut at 12,000 characters, so rows for chords 0 to 16 were not read." (`ls-o2-run1\replies.txt` line 25, a status reply). The cut hint also points at `ch_notes`, which does not apply to `ch_sp_compare`. After: the summary is the first line. The Hydra GUI tools had the same bug and were fixed the same way (`docs/sessions/2026-10-24-dacea5a6.md`).
+- L34. `trace_hits` prints "calls within 85 ms of their nearest note: N of M", where M counts calls, not notes (`trace_hits.py:224-246`, `frida_tools.py:553-570`). A missed note fires no call (`docs/agents/clone-hero-mcp.md:53`), so it never shows. A real trace says "284 of 284" for 142 notes (`2026-10-28\l3\trace-wm-args.txt`). After: one added line, "notes with no call within 85 ms: 0 of 142". The flat 85 ms stays. It is the widest side the game allows, and the line is true as worded.
+- L35. The machine recorder writes whatever 8 bytes it reads at engine `+0x100` as the clock, even NaN or a negative value (`machine_recorder.py:356-373`). After: such a read becomes "no clock" for that sample. Real runs so far look sane (largest step +1.6 ms in `ls-t3-run-b\report-a.txt`).
+- L74. With no song length for a folder, `ch_sp_watch_start` prints "run cap: 240 s (game_tools.run_cap_s for <folder>)", as if the 240 came from the song (`sp_tools.py:197-202`; `run_cap_s` falls back to `RUN_CAP_S` itself, `game_tools.py:171-181`). After: "run cap: 240 s (default; no song length for <folder>)".
+- L41. A launch whose loader check reads "no" (the loader ran, and the bytes differ) prints that word and goes on (`bot_run.py:556-566, 701-716`). `ch_status` does re-read the line later (`bot_run.py:590-597`), so the ledger's "nothing re-reads it" is out of date. After: `ch_status` adds a plain warning line when the word is "no". "No" has never appeared in a saved run.
+- L42 and L43. `docs/agents/clone-hero-mcp.md:74` says "If the game is updated, every Frida tool refuses until a dump of the new build exists". That holds for `ch_attach` and the trace tools (`build_facts.load_facts`). It does not hold for the launch agent, which never calls `load_facts` and rests on its byte checks (`launch_core.ts:160-182`). The recorder reads an address the Star Power watch has already checked. After: the sentence says the launch agent is guarded by its byte checks. No code changes.
+
+Left out, because each would be a new rule that nothing in the repo states: failing a launch on "no", comparing `launch_patch.json`'s "build" with the installed version, and having the recorder catch a frozen or restarted clock.
+
+- (a) Make all seven changes above.
+- (b) Make only L31 and L32, the two that show in today's runs, and leave the rest.
+
+Recommended: (a). Each is a text change, and each line would then say the true thing. The case against: five of the seven have never shown in a saved run.
+
+### Q15. The smaller items, as one list of fixes (L12, L13, L15, L18, L33, L75, L76, L78, L80, L81, L82, L85)
+
+Four rows need nothing:
+
+- L12. The room check in `retime_from_end` already belongs to the replay plan's TP2, with tests at both edges (`2026-11-08-replay-press-schedule.md`, lines 146 and 230 to 238).
+- L18. The player reads the raw clock, and the walk-edges probe reads a filled one. They are two tools with separate jobs, and the comments say so. A late press after a short stall is already caught by the drop check, and Q8 makes that one frame.
+- L78. The recorder's report prints `settings.ini` lines from any section, and `game_files` reads only `[game]`. The comment at `machine_report.py:49-52` says why: framerate and vsync sit in `[video]`.
+- L80. When the recorder falls behind, it skips ticks, and the report prints the gaps (`machine_report.py:280-284`).
+
+Seven are small fixes, each with no new rule:
+
+- L13. Chords less than 150 ms ahead of the clock at start are skipped, and nothing says so (`live.py:152-163`). The refinements plan lists this as out of scope pending your yes (`2026-11-07-player-refinements.md:197`). After: the start line adds "skipped 1 chord before 2.00 s", and the same after a restart. The skip itself stays.
+- L15. An empty chord, or two gems on one kit element, slips through quietly (`play_chart.py:157-166`, `kit_tools.py:312-316`). The Q3 and Q4 ruling already removes the empty declined chord. After: the loader refuses a chord with no notes, and the kit refuses a repeated element, the way Q2 refuses a bad score file. No real `hydra_replay` file has either shape.
+- L33. `find_activations` starts at row 1, so an activation already on when the watch starts is never reported (`sp_compare.py:229-245`). After: it is reported as "already on at the first row". Every run so far started the watch before activating.
+- L75. `sp_compare._ms` repeats `constants.s_to_ms`. After: it calls `s_to_ms`. The numbers are the same.
+- L76. `ch_open_items` reads four tools' private fields (`server.py:104-112`), so renaming any of them would break it. After: each tool gets a small public check that `ch_open_items` calls instead. You see nothing change. The row's other sub-items were never opened by a verifier, so they stay out.
+- L82. `ch_install_chart` joins `--name` onto the probe folder unchecked, so a `..` writes outside it, and a failed install then deletes that outside folder (`install_chart.py:78-89`). It also copies the source's other audio files, which the game will play. After: a name that is not a plain folder name is refused with a "refused:" line, and the source's other audio files are left out of the copy.
+- L85. Run by hand, `trace_hits` with an empty manifest crashes with a traceback (`trace_hits.py:119, 157`); the MCP route already guards this (`frida_tools.py:520`). After: one plain line, the same as the MCP route's.
+
+One needs your word: L81, the song length. D255 holds your words: "there should one rule that every function uses. we already know how clone hero decides the end of the song, we don't need different places deriving different rules." (`docs/audit/2026-10-03-fix-decisions.md:1059`). The Python player does not follow it. Its run cap and `ch_install_chart`'s silent audio read `song.ini`'s `song_length` directly (`game_files.py:357-367`, `bot_run.py:387-403`, `install_chart.py:72`). Where `song.ini` has two `song_length` lines, the player takes the first and Hydra's reader the last (`analysis.cpp:328-365`). Hydra's one end, `app::song_length_ms` (`src/app/song_length.cpp:28`), never reaches the player, because `hydra_replay` does not write it. Which of two lines the game takes is not on the Clone Hero pages (CR-45 to CR-48 on page 01). No chart in `testdata/input` has two lines.
+
+- (a) Make the seven fixes. For L81, `hydra_replay` writes Hydra's song end into its output, and the run cap and silent audio read it, per D255.
+- (b) Make the seven fixes. Leave L81 as it is, and record the difference.
+
+Recommended: (a). D255's words already ask for one end everywhere, and the player is the one place left that has its own. The case against: it adds a field to `hydra_replay`'s output, which means a build and a test, and probe songs today take their length from `probe_songs.py:201` (last note plus 3,000 ms), which would also have to read Hydra's end.
 ## Answers
 
 - Q1: "Refuse stale (Recommended)" (2026-11-08): loaders refuse a stale built agent by a build stamp; run folders record the stamps and the `hydra_replay` build; tests run the built file.
