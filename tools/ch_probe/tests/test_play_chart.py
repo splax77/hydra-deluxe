@@ -1771,7 +1771,8 @@ class ReadEndTest(unittest.TestCase):
                 if p.stored_end_ms is not None]
 
     def test_an_end_3_ms_later_moves_the_squeeze_presses_by_3(self):
-        later = iter([(ms + 3.0) / 1000 for ms in self._stored_ends(_BOMBER)])
+        from tools.ch_probe import constants as C
+        later = iter([C.ms_to_s(ms + 3.0) for ms in self._stored_ends(_BOMBER)])
         result = _play_reading_ends(_BOMBER, lambda: next(later))
         self.assertEqual(result.stop, "done")
         first = _rows_of(result, 147)[0]
