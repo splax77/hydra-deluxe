@@ -47,6 +47,14 @@ Each question has both sides quoted. Q1 to Q5 come first; Q6 to Q10 follow in a 
 
 **Q10. A game marker spans a range of notes (NL-07).** When the lookup at `0x215DDB0` finds a range, the game adds the marker to every note in it (`f215dbd0.asm` lines 117 to 136). Hydra's handling was not checked. Send a scout to read Hydra's marker code against this before any claim?
 
+## The user's answers
+
+2026-11-08, this session, chosen labels as the user picked them:
+- Q1: "Match the game (Recommended)". NL-55 records the game's rule. Changing Hydra is a separate plan that lists every screen showing lit lanes, before and after, for the user's yes.
+- Q2: "Yes, cite them (Recommended)". Rows resting on `out26.c` and `dump.cs` earn Proven in the game's code, citing the file and line outside the repo.
+- Q3: "Record it, no fix (Recommended)". CR-40 records the game's rule and Hydra's difference as a malformed-chart edge case.
+- Q4 and Q5: "Soften all three (Recommended)". The `model.cpp` comment and `docs/UserGuide.md` lines 388 and 396 are reworded to say the game's side is not proven. Hydra's behaviour does not change.
+
 ## Covered by a ruling
 
 - **NL-58, the lane drop rule (S1-4).** The game drops a lane whose first non-kick chord lands later than start plus a run-time tolerance (`docs/audit/drum-lanes/f20d12c0.asm` lines 74 to 104, 145 to 147). Hydra counts any note inside the lane. The user chose "Any note inside the lane (Recommended)" for "Clone Hero drops a lane when its first note lands too late after the lane's start" (card `docs/sessions/2026-10-11-14ef4882.md` line 17; page 02 line 602). The block's "no listing" sentence is still a write-back.
