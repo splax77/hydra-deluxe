@@ -362,7 +362,7 @@ Found: 2026-10-30, session 9a82ff65.
 
 ### TM-30 The 0.75 constant that constants.py calls the hit threshold is a double lane's round timer
 
-Rule: The `.rdata` value read as 0.75 and named `RVA_HITCHECK_THRESHOLD` in constants.py is not a hit-grade fraction. The drum engine compares the song clock minus a double lane's round start with it: it is the 0.75 s round timer of NL-59 and IN-15. The earlier guess that it is a hit-grade fraction is wrong for this reader.
+Rule: The `.rdata` value read as 0.75 and named `RVA_HITCHECK_THRESHOLD` in constants.py has one reader found, and that reader does not use it as a hit-grade fraction. The drum engine compares the song clock minus a double lane's round start with it: it is the 0.75 s round timer of NL-59 and IN-15. The earlier guess that it is a hit-grade fraction is wrong for this reader.
 Label: Proven in the game's code
 Evidence: committed listing `docs/audit/drum-lanes/play/f20ddec0.asm` lines 30 to 33: line 30 loads the clock at `+0x100`, line 31 subtracts the round start at `+0x2E0`, and line 32 compares the result with the double at the address constants.py names `RVA_HITCHECK_THRESHOLD` (the listing's comment reads it as 0.75). The old reading came from a guess in a 2026-09-25 transcript ("probably the fraction") and the constants.py comment at line 193. Other readers of the constant were not searched.
 Game code (6142): the drum engine's slot 9, RVA `0x20DDEC0`, `docs/audit/drum-lanes/play/f20ddec0.asm` lines 30 to 33.
