@@ -557,8 +557,9 @@ every press's timing and of the hit window the player uses: the game's own
 per-note window, which the chords either side set
 (docs/clone-hero/03-timing.md, TM-18 to TM-22 and TM-51). No screen reads it;
 Hydra's own judging keeps the fixed Hit window. The player in tools/ch_probe
-only sends the presses, reads the end and picks the written fallback
-(docs/adr/0030).
+is to only send the presses, read the end and pick the written fallback
+(docs/adr/0030; the player tasks of
+docs/superpowers/plans/2026-11-08-replay-press-schedule.md build that).
 
 ### Squeezes
 
