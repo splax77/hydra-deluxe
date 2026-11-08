@@ -30,7 +30,7 @@ docs/clone-hero/06-scoring.md (SC-19). We apply the pads' rule to the kick too;
 if it ever turns out the game special-cases the kick's top velocity, this is
 the assumption to revisit.
 
-Update, 2026-11-08: accent kicks are now proven on one chart. In a bot run of
+Update, 2026-11-08: accent kicks are now proven on one chart. In a run played on the ch tool's virtual kit of
 Mastodon's "I Am Ahab" (`ls-m0-run1`), the game's scorestats file gives a
 band score of 525,555 with all 166 accents hit. Hydra's score file for that
 chart (`kick-prep\ahab`) gives the same 525,555, and 33 of its 166 accents
