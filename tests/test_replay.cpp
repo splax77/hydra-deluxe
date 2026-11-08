@@ -670,7 +670,8 @@ TEST_CASE("paths_json writes every field the dump readers use") {
         REQUIRE(!p0["activations"].empty());
         const json& a0 = p0["activations"][0];
         for (const char* k : {"act_tick", "deact_tick", "sqout_tick", "nominal_deact_tick",
-                              "sp_meter", "skips", "skipped_fill_ticks", "chord_code", "sqinouts",
+                              "sp_meter", "sp_ready_tick", "sp_ready_ms", "skips", "skipped_fill_ticks",
+                              "chord_code", "sqinouts",
                               "sqin_ticks", "end_anchor_tick", "end_scale_early", "end_scale_late",
                               "steady_ms_before_act", "steady_ms_after_act",
                               "steady_ms_before_end", "steady_ms_after_end"})

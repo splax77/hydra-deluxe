@@ -194,6 +194,8 @@ ChordIndex chord_index(const Song& song);
 
 // The build of the code that writes these files: the compile date and time of
 // replay_schedule.cpp. CMake stamps no git hash today, so there is none to add.
+// A build that changed only replay.cpp or replay_json.cpp keeps the older
+// stamp: it tells builds apart by that file, not by every source.
 // schedule_json and `hydra_replay dump` write it as "hydra_replay_build".
 const char* replay_build();
 
