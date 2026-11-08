@@ -385,7 +385,7 @@ This tab shows the score you need for each star. A star counts once your score, 
 
 *The Stars tab for Burnout. The chart has a solo bonus of 11,800, so the table has a `With full solo bonus` column.*
 
-Above the table, `Base score` is every note hit once at 1x, with no Star Power. When the chart has a solo, `Solo bonus` is its full solo bonus. The solo bonus does not count toward stars, because Clone Hero compares your score without it.
+Above the table, `Base score` is every note hit once at 1x, with no Star Power. When the chart has a solo, `Solo bonus` is its full solo bonus. Hydra leaves the solo bonus out when it counts stars. Whether Clone Hero does the same has not been checked in the game.
 
 The table has one row for each of stars 1 to 7:
 
@@ -393,7 +393,7 @@ The table has one row for each of stars 1 to 7:
 |---|---|
 | `Stars` | the star |
 | `Average Multiplier` | the average multiplier a path needs for that star; the cutoff is the base score times this factor: 0.1<!-- default: kStarMultipliers[1] -->, 0.5<!-- default: kStarMultipliers[2] -->, 1.0<!-- default: kStarMultipliers[3] -->, 2.0<!-- default: kStarMultipliers[4] -->, 2.8<!-- default: kStarMultipliers[5] -->, 3.6<!-- default: kStarMultipliers[6] --> and 4.4<!-- default: kStarMultipliers[7] --> |
-| `Cutoff` | the score that earns the star, rounded up |
+| `Cutoff` | the score that earns the star. Hydra rounds it up to a whole point; how Clone Hero rounds it has not been checked in the game. |
 | `With full solo bonus` | the cutoff plus the whole solo bonus: what the results screen shows at that cutoff if you also collect every solo bonus. This column shows only when the chart has a solo. |
 
 ## Analyzing the whole library

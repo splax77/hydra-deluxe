@@ -466,13 +466,13 @@
 - 2026-11-07 7d216054 CH run timing build handoff (2026-11-07) | clone-hero, performance, planning, agents | Ended at a handoff: five timing tasks were merged, the no-admin recorder plan was written and approved, and no live step has run since the refused first attempt.
 - 2026-11-07 43eecb1c Agent effort level assignment (2026-11-07) | agents, planning, review, performance, memory | The session ended after the user stopped the test during the reviewer step, and the results were given in chat only.
 - 2026-11-07 aa89806d Stale comment waves handoff (2026-11-07) | agents, review, docs, tests, ci | The session ended with a handoff written and committed, after all six fix waves of the stale comment audit were merged to main.
-- 2026-11-07 b132faae CH Recorder build handoff (2026-11-07) | clone-hero, performance, planning, tests, agents | The session ended with a handoff committed for planning the two fixes, and nothing built for them yet. [write-back]
+- 2026-11-07 b132faae CH Recorder build handoff (2026-11-07) | clone-hero, performance, planning, tests, agents | The session ended with a handoff committed for planning the two fixes, and nothing built for them yet.
 - 2026-11-07 28b91640 Stale comment waves handoff (2026-11-07) | docs, review, tests, clone-hero, agents, planning | The session ended with all ten code tasks and the three leftover branches merged to main, after the user's last yes, with nothing pushed.
 - 2026-11-07 e3e9069c Limit how many Hydra builds run at once (2026-11-07) | hooks, agents, performance, planning, review | The three-build limit is merged to main and to the hooks repo, and nothing is pushed.
 - 2026-11-07 490d6781 Cont v (2026-11-07) | clone-hero, performance, planning, review, docs, agents | The session ended with the Senri run at the optimal score, the player refinements plan signed off and handed off, and the plan removal waiting on a build pass.
 - 2026-11-07 f3d8ce9f Player refinements handoff (2026-11-07) | clone-hero, agents, review, hooks, docs | The session ended in a handoff, written and committed on its own branch, while Mouths run 2 was still waiting for the user's go.
 - 2026-11-08 d13589d3 Reviewer fixes land on the reviewed branch (2026-11-08) | hooks, review, agents, docs | The session ended with the change merged: a reviewer's fixes now land on the branch they review.
-- 2026-11-08 d0a3868c Player refinements handoff (2026-11-08) | clone-hero, activation, hit-window, transfer-scale, planning, review | The session ended when the user asked it to stop and write a handoff, and the handoff was committed on its own branch, not merged. [write-back]
+- 2026-11-08 d0a3868c Player refinements handoff (2026-11-08) | clone-hero, activation, hit-window, transfer-scale, planning, review | The session ended when the user asked it to stop and write a handoff, and the handoff was committed on its own branch, not merged.
 
 ## Proposed tags
 
