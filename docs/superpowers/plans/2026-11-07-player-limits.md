@@ -1,6 +1,6 @@
 # Player limits: reach Hydra's top score on charts the player refuses today
 
-Written 2026-11-07, session d0a3868c, task PL-LIMITS. Nothing here is built or run before the user's yes. The user's words that set the goal: "we should address these limits instead of accepting them" (the main session's brief for this plan, quoting the user, 2026-11-07).
+Written 2026-11-07, session d0a3868c, task PL-LIMITS. Nothing here is built or run before the user's yes. The user's words that set the goal: "we should address these limits instead of accepting them" (the main session's brief for this plan, quoting the user, 2026-11-07). Approved 2026-11-07 with every question's recommended answer: the user chose "Yes, all recommended". Run order on approval: T1 first; then T2 and T4 together; then T3, because T2 and T3 both write `play_chart.py` and `test_play_chart.py`; then T5, because it shares `kit_tools.py` with T3.
 
 ## The plain version
 
