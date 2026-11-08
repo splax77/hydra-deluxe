@@ -57,6 +57,7 @@
 #include "core/unknown_option.h"
 #include "core/winstr.h"
 #include "replay_json.h"
+#include "replay_schedule.h"
 #include "corpus_util.h"
 #include "parse/song.h"
 #include "search/pather.h"
@@ -86,6 +87,7 @@ struct Args {
     std::string path;   // a dump/target JSON file to read a path out of
     int index = 0;      // which entry of that file's "paths" array
     std::string ticks;
+    std::optional<std::string> decline;  // schedule's --decline; the names are schedule::DeclineMode's
     bool pretty = false;
     bool legacy_fills = false;
     std::optional<std::string> rules_path;  // --rules; unset = app::default_rules_path()
@@ -107,7 +109,15 @@ void usage() {
         "                     [--path <dump-or-target.json>] [--index N] [--cap N]\n"
         "                     [--out <json>] [--pretty] [--prodrums 0|1] [--bass2x 0|1]\n"
         "                     [--difficulty expert|hard|medium|easy] [--legacy-fills]\n"
+        "  hydra_replay schedule --chart <file> --path <dump-or-target.json> [--index N]\n"
+        "                     --decline <mode> [--out <json>] [--pretty]\n"
+        "                     [--prodrums 0|1] [--bass2x 0|1] [--legacy-fills]\n"
         "  hydra_replay selfcheck [--chart <file>] [--verbose]\n\n"
+        "schedule writes the press schedule the auto-player sends for one path of\n"
+        "a dump: each activation's SP-end steps and the chord each end moves with,\n"
+        "each squeeze's end, anchor and stored ratios, and each chord's window side,\n"
+        "gems and the windows that paid it (tools/replay_schedule.h). --decline\n"
+        "says what a declined chord sends: %s.\n"
         "Omitting both --acts and --path scores the chart with no Star Power\n"
         "anywhere. --path reads a path straight out of a file dump or target\n"
         "wrote, so nothing is retyped and no field is lost -- in particular the\n"
@@ -148,7 +158,7 @@ void usage() {
         "Every command takes --rules <file>: the rule choices to price under\n"
         "(default: hydra_rules.ini next to the exe). A bad file exits with 2.\n"
         "JSON is printed compact by default; --pretty indents it.\n",
-        kSqueezeWindowMs);
+        schedule::decline_mode_list().c_str(), kSqueezeWindowMs);
 }
 
 // ---- strict flag numbers -------------------------------------------------
@@ -425,14 +435,9 @@ int cmd_score(const Args& a, const app::Settings& s) {
 
     json chords = json::array();
     for (const ReplayChord& c : r.chords) {
+        // One gem's JSON, the same writer the schedule uses.
         json notes = json::array();
-        for (const ReplayNote& n : c.notes)
-            notes.push_back(json{{"color", color_str(n.color)},
-                                 {"cymbal", n.cymbal},
-                                 {"sp_points", n.sp_points},
-                                 {"multiplier", n.multiplier},
-                                 {"dynamics_bonus", n.dynamics_bonus},
-                                 {"dynamic", dynamic_str(n.dynamic)}});
+        for (const ReplayNote& n : c.notes) notes.push_back(schedule::replay_note_json(n));
         json cum = score_json(c.cum);
         cum["total"] = c.cum.total();
         json chord{
@@ -601,6 +606,50 @@ int cmd_target(const Args& a, const app::Settings& s) {
               {"failed_reason", found.failed_reason},
               {"realized_prefix", found.realized_prefix}},
          a.out, a.pretty);
+    return 0;
+}
+
+// ---- schedule ------------------------------------------------------------
+
+// `s` is settings_from(a). The path comes off the dump the way score reads
+// it (windows_from_args); schedule::schedule_for_windows pins it through the
+// engine and writes the file. Each refusal is one line, which main prints as
+// "error: ..." with exit 1.
+int cmd_schedule(const Args& a, const app::Settings& s) {
+    if (a.chart.empty()) { usage(); return 2; }
+    if (const std::optional<std::string> r = schedule::path_flag_refusal(a.path))
+        throw std::runtime_error(*r);
+    if (!a.acts.empty())
+        throw std::runtime_error("schedule reads its path from --path, not --acts");
+    if (const std::optional<std::string> r = schedule::decline_flag_refusal(a.decline))
+        throw std::runtime_error(*r);
+    const schedule::DeclineMode mode = *schedule::decline_mode_from_name(*a.decline);
+
+    {
+        std::ifstream in(hydra::os_path(a.path), std::ios::binary);
+        if (!in) throw std::runtime_error("cannot read --path file: " + a.path);
+        json doc;
+        try {
+            in >> doc;
+        } catch (const std::exception& e) {
+            throw std::runtime_error("--path file " + a.path + " is not valid JSON: " + e.what());
+        }
+        if (const std::optional<std::string> r = schedule::no_path_refusal(doc, a.path))
+            throw std::runtime_error(*r);
+    }
+
+    Song song = load_songpath(a.chart, s.reading(), s.rules, fill_rule_for(s.legacy_fills));
+    if (song.is_empty()) {
+        std::fprintf(stderr, "chart has no notes: %s\n", a.chart.c_str());
+        return 1;
+    }
+
+    const std::vector<ReplayWindow> windows = windows_from_args(a, song);
+    json out = schedule::schedule_for_windows(song, s.to_analysis_settings(), windows, mode);
+    out["chart"] = a.chart;
+    out["chartmode"] = s.chartmode_key();
+    out["path_source"] = json{{"file", a.path}, {"index", a.index}};
+    emit(out, a.out, a.pretty);
     return 0;
 }
 
@@ -788,6 +837,7 @@ int main() {
             // quietly price the wrong path instead of saying anything.
             else if (k == "--index") a.index = parse_index(next());
             else if (k == "--ticks") a.ticks = next();
+            else if (k == "--decline") a.decline = next();
             else if (k == "--verbose") g_verbose = true;
             else if (k == "--prodrums") a.prodrums = next_on_off();
             else if (k == "--bass2x") a.bass2x = next_on_off();
@@ -818,6 +868,7 @@ int main() {
         if (a.command == "score") return cmd_score(a, s);
         if (a.command == "dump") return cmd_dump(a, s);
         if (a.command == "target") return cmd_target(a, s);
+        if (a.command == "schedule") return cmd_schedule(a, s);
         if (a.command == "selfcheck") return cmd_selfcheck(a);
     } catch (const std::exception& e) {
         std::fprintf(stderr, "error: %s\n", e.what());

@@ -187,12 +187,21 @@ ReplayResult replay_path(const Song& song, std::vector<ReplayWindow> windows,
                 ++sp_paid;
                 sp_points += core::backend_row_value(offset, sg.sp, sg.sqout_sp, pos,
                                                      rules.backend_leeway_ms);
+                row.paid_by.push_back(ReplayPayment{w.act_tick, w.deact_tick, offset});
             }
             // Erase-remove in place: keep the window unless it is past its
             // deactivation node and paid nothing here (see `open` above).
             if (paid || !past_deact) open[kept++] = open[k];
         }
         open.resize(kept);
+        // `wins` ties on act_tick in no fixed order, so the list is put in
+        // the order ReplayChord::paid_by promises, whatever order the caller
+        // gave the windows in.
+        std::sort(row.paid_by.begin(), row.paid_by.end(),
+                  [](const ReplayPayment& a, const ReplayPayment& b) {
+                      return a.act_tick != b.act_tick ? a.act_tick < b.act_tick
+                                                      : a.deact_tick < b.deact_tick;
+                  });
         row.in_sp = sp_paid > 0;
         row.multiplier_shown = shown_multiplier(row.multiplier_after, row.in_sp);
 
