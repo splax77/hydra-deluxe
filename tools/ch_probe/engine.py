@@ -236,6 +236,18 @@ class EngineModel:
         play_chart.py tells a hit from a miss."""
         return self._process.read_u32(self._addr(C.OFF_SCORE))
 
+    def sp_end(self) -> Optional[float]:
+        """The Star Power end the game stored (song seconds), or None while
+        the active byte is clear. Both fields come from one read, so they
+        belong to one frame. play_chart reads it after an activation's press
+        (design point 1 of docs/superpowers/plans/2026-11-07-player-limits.md)."""
+        size = C.OFF_SP_END_TIME + 8 - C.OFF_SP_ACTIVE
+        raw = self._process.read(self._addr(C.OFF_SP_ACTIVE), size)
+        if raw[0] == 0:
+            return None
+        end = C.OFF_SP_END_TIME - C.OFF_SP_ACTIVE
+        return decode_double(raw[end:end + 8])
+
     def dyn_threshold(self) -> int:
         """The dynamics threshold a hit's velocity is compared with
         (docs/clone-hero/06-scoring.md, SC-13)."""

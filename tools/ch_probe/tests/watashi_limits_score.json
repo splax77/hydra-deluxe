@@ -1,0 +1,13 @@
+{"path_source": {"index": 0}, "activations": [{"act_ms": 78068.88047031657, "act_tick": 33984, "deact_ms": 85153.32142768426, "deact_tick": 37056, "sqout_tick": 36864}], "chords": [
+{"index": 495, "tick": 33888, "ms": 77851.81319393204, "in_sp": false, "is_sp_phrase_end": false, "notes": [{"color": "Yellow", "cymbal": true, "dynamic": "none", "multiplier": 4}]},
+{"index": 496, "tick": 33936, "ms": 77960.34683212431, "in_sp": false, "is_sp_phrase_end": false, "notes": [{"color": "Red", "cymbal": false, "dynamic": "ghost", "multiplier": 4}]},
+{"index": 497, "tick": 33984, "ms": 78068.88047031657, "in_sp": true, "is_sp_phrase_end": false, "notes": [{"color": "Kick", "cymbal": false, "dynamic": "none", "multiplier": 4}, {"color": "Blue", "cymbal": true, "dynamic": "none", "multiplier": 4}]},
+{"index": 498, "tick": 34080, "ms": 78291.31689057311, "in_sp": true, "is_sp_phrase_end": false, "notes": [{"color": "Yellow", "cymbal": true, "dynamic": "none", "multiplier": 4}]},
+{"index": 499, "tick": 34176, "ms": 78513.75331082965, "in_sp": true, "is_sp_phrase_end": false, "notes": [{"color": "Red", "cymbal": false, "dynamic": "none", "multiplier": 4}, {"color": "Yellow", "cymbal": true, "dynamic": "none", "multiplier": 4}]},
+{"index": 539, "tick": 36720, "ms": 84380.15971170706, "in_sp": true, "is_sp_phrase_end": false, "notes": [{"color": "Blue", "cymbal": false, "dynamic": "none", "multiplier": 4}]},
+{"index": 540, "tick": 36768, "ms": 84490.61138541809, "in_sp": true, "is_sp_phrase_end": false, "notes": [{"color": "Red", "cymbal": false, "dynamic": "none", "multiplier": 4}]},
+{"index": 541, "tick": 36864, "ms": 84711.51473284015, "in_sp": true, "is_sp_phrase_end": true, "notes": [{"color": "Kick", "cymbal": false, "dynamic": "none", "multiplier": 4}, {"color": "Yellow", "cymbal": true, "dynamic": "accent", "multiplier": 4}]},
+{"index": 542, "tick": 37056, "ms": 85153.32142768426, "in_sp": false, "is_sp_phrase_end": false, "notes": [{"color": "Kick", "cymbal": false, "dynamic": "none", "multiplier": 4}, {"color": "Blue", "cymbal": true, "dynamic": "none", "multiplier": 4}]},
+{"index": 543, "tick": 37728, "ms": 86697.43907474309, "in_sp": false, "is_sp_phrase_end": false, "notes": [{"color": "Yellow", "cymbal": true, "dynamic": "accent", "multiplier": 4}]},
+{"index": 544, "tick": 37824, "ms": 86918.0273100372, "in_sp": false, "is_sp_phrase_end": false, "notes": [{"color": "Kick", "cymbal": false, "dynamic": "none", "multiplier": 4}, {"color": "Blue", "cymbal": true, "dynamic": "none", "multiplier": 4}]}
+]}

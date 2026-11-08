@@ -1,0 +1,3 @@
+{"paths": [{"index": 0, "pathstring": "0 0- 1- 2 0", "total": 589195, "activations": [
+{"act_tick": 33984, "deact_tick": 37056, "nominal_deact_tick": 37056, "sqout_tick": 36864, "sqin_ticks": [], "sqinouts": [{"kind": "SqOut", "offset_ms": -441.8066948441119}], "skipped_fill_ticks": [], "end_anchor_tick": 33984, "end_scale_early": 1.0176722677937642, "end_scale_late": 0.9916911764705884, "steady_ms_before_act": 1736.5382110762148, "steady_ms_after_act": 1779.491362052344, "steady_ms_before_end": 1767.2267793764622, "steady_ms_after_end": 7058.823529411762}
+]}]}

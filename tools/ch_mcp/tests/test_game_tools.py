@@ -79,7 +79,8 @@ BOMBER_DECLINED = ("declined (all_but_top_pad): chords 624 (kick), 684 (kick), "
                    "854 (nothing sent), 874 (kick), 919 (kick)")
 BOMBER_SQUEEZES = ("squeezes: chord 180 out (red 15 ms after the end), "
                    "chord 448 in (85.33 ms before the end)")
-BOMBER_ACTIVATION = "activation chord 147 pressed 55 ms early for the squeeze-out at chord 180"
+BOMBER_ACTIVATION = ("activation chord 147 pressed 51.3 ms early for the squeeze-out at "
+                     "chord 180 (end planned 32,615.4 ms, ratio 1.0000)")
 # The order lines, pinned from a run of these files: the amendment after
 # LS-R1b run 1 of the same plan.
 MOUTHS_ORDER = ("order: chords 4 (kick, then green cymbal 8 ms later), "
@@ -2505,6 +2506,196 @@ class AtexitFactTest(unittest.TestCase):
         self.child.stdin.close()
         self.child.wait(CHILD_CAP_S)
         self.assertTrue(os.path.exists(self.flag))
+
+
+def _leads_stub(*leads):
+    """A patch that makes play_chart.activation_leads return `leads`, for
+    made-up chords whose files carry no end_scale_* to solve a lead from."""
+    return mock.patch.object(play_chart, "activation_leads", lambda chords: list(leads))
+
+
+class PlayerLimitsLinesTest(unittest.TestCase):
+    """The reply lines and the edge probe of the 2026-11-07 player-limits
+    plan, task T4: design points 1, 8 and 9."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.tmp = self._tmp.name
+
+    def _json(self, name, value):
+        path = os.path.join(self.tmp, name)
+        _write(path, json.dumps(value).encode())
+        return path
+
+    # -- the activation lead line -------------------------------------------------------
+
+    def test_the_lead_line_reads_as_the_plan_gives_it(self):
+        out = play_chart.Chord(931, 186404.8, [Lane.KICK], ["none"],
+                               squeeze=play_chart.Squeeze(play_chart.SQUEEZE_OUT, 186408.0, 820))
+        self.assertEqual(
+            GT.activation_lead_lines(
+                [out], [play_chart.ActLead(820, 931, "early", 58.82, 186348.9, 1.0045)]),
+            ["activation chord 820 pressed 58.8 ms early for the squeeze-out at chord 931 "
+             "(end planned 186,348.9 ms, ratio 1.0045)"])
+
+    def test_a_late_lead_names_the_squeeze_in(self):
+        late = play_chart.Chord(77, 5000.0, [Lane.RED], ["none"],
+                                squeeze=play_chart.Squeeze(play_chart.SQUEEZE_IN, 4919.4, 70))
+        self.assertEqual(
+            GT.activation_lead_lines(
+                [late], [play_chart.ActLead(70, 77, "late", 33.4, 4952.8, 1.0)]),
+            ["activation chord 70 pressed 33.4 ms late for the squeeze-in at chord 77 "
+             "(end planned 4,952.8 ms, ratio 1.0000)"])
+
+    def _bomber_lines(self):
+        return GT.chords_to_play(os.path.join(_PROBE_TESTS, "bomber_refine_score.json"),
+                                 "all_but_top_pad",
+                                 os.path.join(_PROBE_TESTS, "bomber_refine_dump.json"))[1]
+
+    def test_the_bomber_lead_line_follows_the_squeeze_line(self):
+        lines = self._bomber_lines()
+        self.assertEqual(lines[lines.index(BOMBER_SQUEEZES) + 1], BOMBER_ACTIVATION)
+
+    def test_planned_ends_are_the_stored_end_press_plan_puts_on_the_activation(self):
+        # Chord 5's activation stores 994 (a lead moved it); chord 7's stores
+        # 1980, which is not the end its squeeze is timed against (1990).
+        ends = {5: play_chart.ActEnd(None, stored_end_ms=994.0),
+                7: play_chart.ActEnd(None, stored_end_ms=1980.0)}
+        chords = [play_chart.Chord(5, 900.0, [Lane.KICK], ["none"], act_end=ends[5]),
+                  play_chart.Chord(6, 1000.0, [Lane.KICK], ["none"],
+                                   squeeze=play_chart.Squeeze(play_chart.SQUEEZE_IN, 990.0, 5)),
+                  play_chart.Chord(7, 1900.0, [Lane.KICK], ["none"], act_end=ends[7]),
+                  play_chart.Chord(8, 2000.0, [Lane.KICK], ["none"],
+                                   squeeze=play_chart.Squeeze(play_chart.SQUEEZE_IN, 1990.0, 7))]
+        self.assertEqual(GT.planned_ends(chords), {5: 994.0, 7: 1980.0})
+
+    # -- the read end and the points between presses ---------------------------------------
+
+    def test_the_end_line_sets_the_games_end_against_the_planned_one(self):
+        rows = [{**ROWS[0], "index": 820, "end_read_ms": 186352.1},
+                {**ROWS[1], "index": 820, "end_read_ms": 186352.1},
+                {**ROWS[1], "index": 900, "end_read_ms": ""},
+                {**ROWS[1], "index": 1000, "end_read_ms": "no activation read"}]
+        self.assertEqual(GT.activation_end_lines(rows, {820: 186349.0, 1000: 200000.0}), [
+            "activation chord 820: end planned 186,349.0 ms, game 186,352.1 ms (3.1 later)",
+            "activation chord 1000: end planned 200,000.0 ms, game end not read "
+            "(no activation read)"])
+
+    def test_rows_without_the_new_columns_give_no_lines(self):
+        self.assertEqual(GT.activation_end_lines(ROWS, {0: 1000.0}), [])
+        self.assertEqual(GT.scored_between_lines(ROWS), [])
+
+    def test_points_between_presses_go_to_the_declined_chord_before_them(self):
+        # Bomber's chords 854 (declined) and 855, from press-2.csv of the
+        # ls-r2ab-run1 run as the plan reads it, with the column T3 adds.
+        rows = [{"index": 853, "hit": 1, "scored_between": 0},
+                {"index": 854, "hit": play_chart.DECLINED, "scored_between": 0},
+                {"index": 855, "hit": 1, "scored_between": 200},
+                {"index": 856, "hit": 1, "scored_between": "50"}]
+        self.assertEqual(GT.scored_between_lines(rows), [
+            "scored between presses: chord 854 granted 200 before chord 855, "
+            "50 unexplained before chord 856"])
+
+    def test_a_split_declined_chord_waits_once(self):
+        rows = [{"index": 801, "hit": play_chart.DECLINED},
+                {"index": 801, "hit": play_chart.DECLINED, "scored_between": 0},
+                {"index": 802, "hit": 1, "scored_between": 200},
+                {"index": 803, "hit": 1, "scored_between": 200}]
+        self.assertEqual(GT.scored_between_lines(rows), [
+            "scored between presses: chord 801 granted 200 before chord 802, "
+            "200 unexplained before chord 803"])
+
+    def test_the_play_status_carries_the_end_and_between_lines(self):
+        rows = [{**ROWS[0], "end_read_ms": 1003.1, "scored_between": 0},
+                {**ROWS[1], "scored_between": 40}]
+
+        def live_play(chords, *, on_press, **kw):
+            for row in rows:
+                on_press(row)
+            return play_chart.RunResult(stop="done", sent=2, hit=1)
+
+        t = ToolRig(self.tmp, live_play=live_play)
+        with mock.patch.object(GT, "planned_ends", lambda chords: {0: 1000.0}):
+            t.tools.ch_play_chart(self._json("score.json", SCORE_JSON), route="keys")
+        t.tools._play.thread.join(THREAD_CAP_S)
+        lines = t.tools.ch_play_status().splitlines()
+        self.assertIn("activation chord 0: end planned 1,000.0 ms, game 1,003.1 ms (3.1 later)",
+                      lines)
+        self.assertIn("scored between presses: 40 unexplained before chord 1", lines)
+
+    # -- the edge probe ------------------------------------------------------------------
+
+    def _probe_rig(self, kit=True):
+        seen = {}
+
+        def live_play(chords, *, on_press, **kw):
+            # One row per press, at exactly the time press_plan gives it.
+            seen.update(kw, chords=list(chords))
+            for press in play_chart.press_plan(chords):
+                on_press({"index": press.index, "chart_ms": press.chart_ms,
+                          "clock_ms_at_press": press.at_ms, "lead_ms": press.lead_ms,
+                          "score_before": 0, "score_after": 50, "hit": 1})
+            return play_chart.RunResult(stop="done", sent=2, hit=2)
+
+        t = ToolRig(self.tmp, live_play=live_play)
+        if kit:
+            t.tools.use_kit_press(lambda: (lambda lanes, axes=None: {}))
+        return t, seen
+
+    def _probe(self, t, probes):
+        reply = t.tools.ch_edge_probe(t.r.song, self._json("score.json", SCORE_JSON),
+                                      self._json("probes.json", probes))
+        if t.tools._play is not None:
+            t.tools._play.thread.join(THREAD_CAP_S)
+        return reply
+
+    def test_the_probe_presses_its_chord_at_its_lead_and_marks_only_that_row(self):
+        t, seen = self._probe_rig()
+        reply = self._probe(t, [{"index": 1, "lead_ms": -60}])
+        self.assertIn("probes: chord 1 60 ms late", reply.splitlines())
+        self.assertIn("press", seen)
+        rows = {row["index"]: row for row in t.tools._play.rows}
+        self.assertEqual(rows[1]["chart_ms"], 1500.0)
+        self.assertAlmostEqual(rows[1]["chart_ms"] - rows[1]["clock_ms_at_press"], -60.0)
+        self.assertEqual(rows[1]["probe"], -60.0)
+        self.assertNotIn("probe", rows[0])
+        self.assertAlmostEqual(rows[0]["chart_ms"] - rows[0]["clock_ms_at_press"],
+                               play_chart.PRESS_LEAD_MS)
+        self.assertIn("probe chord 1: asked 60.00 ms late, pressed 60.00 ms late, hit",
+                      t.tools.ch_play_status().splitlines())
+
+    def test_the_probe_writes_a_press_log_in_the_session_folder(self):
+        t, _seen = self._probe_rig()
+        reply = self._probe(t, [{"index": 0, "lead_ms": 80}])
+        log = os.path.join(t.tools.session_dir(), "press-1.csv")
+        self.assertEqual(t.tools._play.log_path, log)
+        self.assertIn(f"press log: {log}", [line.split(" (")[0] for line in reply.splitlines()])
+
+    def test_a_probe_chord_not_in_the_file_is_refused_and_nothing_runs(self):
+        t, seen = self._probe_rig()
+        reply = self._probe(t, [{"index": 7, "lead_ms": 80}])
+        self.assertEqual(reply, "refused: ValueError: probe chords 7 are not in the score file")
+        self.assertIsNone(t.tools._play)
+        self.assertEqual(seen, {})
+
+    def test_the_probe_needs_the_kit(self):
+        t, _seen = self._probe_rig(kit=False)
+        self.assertEqual(self._probe(t, [{"index": 1, "lead_ms": 80}]),
+                         "refused: the kit is not set up; call ch_kit_setup first")
+        self.assertIsNone(t.tools._play)
+
+    def test_the_probe_tool_takes_the_plans_three_arguments(self):
+        self.assertEqual(list(inspect.signature(GT.GameTools.ch_edge_probe).parameters),
+                         ["self", "song_folder", "score_json", "probes_json"])
+
+    def test_no_play_tool_takes_a_lead_argument(self):
+        # The lead is press_plan's (and a probe file's), never a tool argument.
+        for tool in (GT.GameTools.ch_run_chart, GT.GameTools.ch_play_chart,
+                     GT.GameTools.ch_edge_probe):
+            with self.subTest(tool=tool.__name__):
+                self.assertFalse([name for name in inspect.signature(tool).parameters
+                                  if "lead" in name])
 
 
 if __name__ == "__main__":
