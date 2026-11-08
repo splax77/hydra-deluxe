@@ -1,0 +1,20 @@
+Output of docs/audit/note-shuffle/step0/open34-refute/jumptables.py, run 2026-11-08 by task CH-UNK-W5 against the installed game's GameAssembly.dll (build 6142), exit code 0.
+The script's own path lines point at a scratch folder that no longer exists, and its folder holds a dis.py that shadows Python's own module, so it was run from the repo root as:
+  C:\Python314\python.exe -c "import sys, runpy; sys.path.insert(0, 'tools/ch_mcp'); runpy.run_path('docs/audit/note-shuffle/step0/open34-refute/jumptables.py', run_name='__main__')"
+with PYTHONIOENCODING=utf-8. `import chdis` then loads the repo's tools/ch_mcp/chdis.py. The labels after each address are the script's own, written by hand; the "?" target 0x20F0E40 is the inc in the middle of the N=6 case (shuffle_20f0c30.asm line 122), so it gives N = edx + 1.
+
+instrument  0: table1 -> 0x20f0e3b N=6 | table2 -> 0x20f0e82 si=1 (excl bit 1), di=1
+instrument  1: table1 -> 0x20f0e3b N=6 | table2 -> 0x20f0e82 si=1 (excl bit 1), di=1
+instrument  2: table1 -> 0x20f0e3b N=6 | table2 -> 0x20f0e82 si=1 (excl bit 1), di=1
+instrument  3: table1 -> 0x20f0e3b N=6 | table2 -> 0x20f0e82 si=1 (excl bit 1), di=1
+instrument  4: table1 -> 0x20f0e55 N=7 | table2 -> 0x20f0e82 si=1 (excl bit 1), di=1
+instrument  5: table1 -> 0x20f0e55 N=7 | table2 -> 0x20f0e82 si=1 (excl bit 1), di=1
+instrument  6: table1 -> 0x20f0e2e N=5 | table2 -> 0x20f0e8c si=1, di=1 (same)
+instrument  7: table1 -> 0x20f0e3b N=6 | table2 -> 0x20f0e82 si=1 (excl bit 1), di=1
+instrument  8: table1 -> 0x20f0e40 ? | table2 -> 0x20f0e99 si=0, di=1
+instrument  9: table1 -> 0x20f0e48 N=8 | table2 -> 0x20f0e8c si=1, di=1 (same)
+instrument 10: table1 -> 0x20f0e55 N=7 | table2 -> 0x20f0e82 si=1 (excl bit 1), di=1
+instrument 11: table1 -> 0x20f0e55 N=7 | table2 -> 0x20f0e82 si=1 (excl bit 1), di=1
+instrument 12: table1 -> 0x20f0e40 ? | table2 -> 0x20f0e99 si=0, di=1
+instrument 13: table1 -> 0x20f0e40 ? | table2 -> 0x20f0e99 si=0, di=1
+instrument 14: table1 -> 0x20f0e55 N=7 | table2 -> 0x20f0e82 si=1 (excl bit 1), di=1

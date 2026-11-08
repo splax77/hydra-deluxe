@@ -1,0 +1,7 @@
+Output of: py -I docs/audit/note-shuffle/probes/order_probe.py docs/audit/note-shuffle/scout-strings
+Run 2026-11-08 by task CH-UNK-W5 from the repo root, Python 3 isolated mode, exit code 0.
+The probe's chart and the filmed result ("seen") are typed into the probe itself (lines 17 to 23).
+
+lane                         raw ticks: 22/22   ticks x0.4: 11/22
+reverse                      raw ticks: 22/22   ticks x0.4: 11/22
+kick-first-pads-reversed     raw ticks: 22/22   ticks x0.4: 11/22
