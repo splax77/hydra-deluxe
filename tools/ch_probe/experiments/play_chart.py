@@ -267,7 +267,10 @@ class Press:
     `stored_end_ms`, on the first press of an activation with squeezes, is
     the end the game should store once it fires; play_chords reads the
     game's end after this press and retime_from_end moves the presses timed
-    against it."""
+    against it. `after_ms`, on a later order group of a chord (_order_groups),
+    is how long after its chord's first group of the same message it goes
+    down; the kit agent makes that gap inside the game (press_messages says
+    which presses share a message). None on every other press."""
     index: int
     chart_ms: float
     lead_ms: float
@@ -279,6 +282,7 @@ class Press:
     end_ms: Optional[float] = None
     end_act_index: Optional[int] = None
     stored_end_ms: Optional[float] = None
+    after_ms: Optional[float] = None
 
     @property
     def at_ms(self) -> float:
@@ -444,6 +448,32 @@ def retime_from_end(presses: Sequence[Press], act_index: int, planned_end_ms: fl
     return sorted(moved, key=lambda p: p.at_ms)
 
 
+def press_messages(presses: Sequence[Press]) -> List[Tuple[Press, List[Press]]]:
+    """`presses` in firing order as the messages play_chords sends: each a
+    first press and the later order groups (Press.after_ms) that go down
+    with it in one message, in the order their first presses fire. A later
+    group goes with its chord's press that fires `after_ms` before it.
+    Raises ValueError for a later group with no such press, which would be a
+    bug in press_plan."""
+    messages: List[Tuple[Press, List[Press]]] = []
+    for press in sorted(presses, key=lambda p: p.at_ms):
+        if press.after_ms is None:
+            messages.append((press, []))
+            continue
+        head = next((m for m in reversed(messages) if m[0].index == press.index
+                     and abs(m[0].at_ms + press.after_ms - press.at_ms) < _SAME_MS), None)
+        if head is None:
+            raise ValueError(f"chord {press.index} has an order group {press.after_ms:g} ms "
+                             f"after no press of its own")
+        head[1].append(press)
+    return messages
+
+
+# How close two press times must be to count as one: press_plan's times are
+# sums of the same numbers, so anything past float rounding is another time.
+_SAME_MS = 1e-6
+
+
 def _order_groups(chord: Chord) -> List[List[int]]:
     """The groups `chord` is pressed in, in firing order, each as places in
     its `lanes`: one group for most chords. An activation's chord presses its
@@ -463,16 +493,40 @@ def _order_groups(chord: Chord) -> List[List[int]]:
     return [group for group in [first] + by_multiplier if group] or [every]
 
 
+def _squeeze_out_inside_groups(chord: Chord) -> List[List[int]]:
+    """The groups a squeeze-out chord's inside gems are pressed in, in firing
+    order, each as places in its `lanes`: every gem but the late one (place
+    0, as _timed_presses says), the lower multiplier first. The late gem goes
+    after them all, so a late gem the score file pays at a lower multiplier
+    than an inside gem is an order no press gives. Design point 5 of
+    docs/superpowers/plans/2026-11-07-player-limits.md and the user's answer
+    to its question 5 say why that is refused as Hydra's question, not the
+    player's."""
+    inside = list(range(1, len(chord.lanes)))
+    if chord.multipliers is None:
+        return [inside]
+    late_m = chord.multipliers[0]
+    higher = sorted({chord.multipliers[i] for i in inside if chord.multipliers[i] > late_m})
+    if higher:
+        raise ValueError(f"chord {chord.index} is a squeeze-out whose late gem pays x{late_m} "
+                         f"and an inside gem x{higher[-1]}: Hydra assumes an order no press "
+                         f"gives, since the late gem goes last; this is a question about "
+                         f"Hydra's path for the user, not a player bug")
+    return [[i for i in inside if chord.multipliers[i] == m]
+            for m in sorted({chord.multipliers[i] for i in inside})]
+
+
 def _chord_presses(chord: Chord, leads: Mapping[int, ActLead],
                    act_ends: Mapping[int, ActEnd], squeezed: set) -> List[Press]:
     """The presses of one chord, for press_plan: `leads` and `act_ends` by
     activation chord, and `squeezed`, the activation chords with a squeeze."""
     def press(lead_ms: float, gems: Sequence[int], checked: bool,
-              end_ms: Optional[float] = None, end_act: Optional[int] = None) -> Press:
+              end_ms: Optional[float] = None, end_act: Optional[int] = None,
+              after_ms: Optional[float] = None) -> Press:
         return Press(chord.index, chord.ms, lead_ms, [chord.lanes[i] for i in gems],
                      [chord.dynamics[i] for i in gems],
                      None if chord.axes is None else [chord.axes[i] for i in gems],
-                     chord.declined, checked, end_ms, end_act)
+                     chord.declined, checked, end_ms, end_act, after_ms=after_ms)
 
     def end_shift_ms(act_index: Optional[int]) -> float:
         lead = leads.get(act_index)
@@ -497,21 +551,20 @@ def _timed_presses(chord: Chord, leads: Mapping[int, ActLead],
     `press` builds one, and `end_shift_ms` says how far an activation's lead
     moves its end."""
 
+    # A declined chord's kept gems split by multiplier like any chord's
+    # (design point 5 of docs/superpowers/plans/2026-11-07-player-limits.md);
+    # it starts no activation, so no gem of it goes first.
     groups = _order_groups(chord)
     squeeze = chord.squeeze
-    if len(groups) > 1 and (chord.declined or (squeeze is not None
-                                               and squeeze.kind == SQUEEZE_OUT)):
-        raise ValueError(f"chord {chord.index} is pressed in order groups and is also "
-                         f"{'a fill the path passes over' if chord.declined else 'a squeeze-out'}"
-                         f"; no rule times both")
 
     def in_order(lead_ms: float, checked: bool, end_ms: Optional[float] = None,
-                 end_act: Optional[int] = None) -> List[Press]:
+                 end_act: Optional[int] = None,
+                 order: Optional[List[List[int]]] = None) -> List[Press]:
         # The first group keeps the chord's lead; a later group is a press
         # off the chord's own time, so the load check reads it.
         return [press(lead_ms - k * CHORD_ORDER_GAP_MS, gems, checked or k > 0, end_ms,
-                      end_act)
-                for k, gems in enumerate(groups)]
+                      end_act, k * CHORD_ORDER_GAP_MS if k > 0 else None)
+                for k, gems in enumerate(groups if order is None else order)]
 
     if chord.index in leads:
         if squeeze is not None or chord.ends_sp:
@@ -535,8 +588,13 @@ def _timed_presses(chord: Chord, leads: Mapping[int, ActLead],
         late = press(chord.ms - (end_ms + SP_OUT_LAG_MS), [0], True, end_ms, squeeze.act_index)
         if len(chord.lanes) == 1:
             return [late]
-        return [press(inside_lead_ms, range(1, len(chord.lanes)), True, end_ms,
-                      squeeze.act_index), late]
+        # The last inside group goes down at the inside time, SP_END_LEAD_MS
+        # before the end, so no later group can land close to the end check
+        # and pay outside; the earlier groups go down CHORD_ORDER_GAP_MS
+        # apart before it.
+        inside = _squeeze_out_inside_groups(chord)
+        return in_order(inside_lead_ms + (len(inside) - 1) * CHORD_ORDER_GAP_MS, True, end_ms,
+                        squeeze.act_index, inside) + [late]
     # Design point 3 of the player-limits plan: an end moved earlier puts the
     # chords before it at risk; one moved later leaves them inside already.
     end_side_shift_ms = min(end_shift_ms(chord.sp_act_index), 0.0)
@@ -891,9 +949,10 @@ STOP_NO_ENGINE = "no engine"
 class RunResult:
     """What one run did. `rows` are the press-log rows, keyed by the names in
     PRESS_LOG_COLUMNS, plus `lead_ms`, the lead the press used, which no log
-    column holds. A split chord (press_plan) has a row per press, both with
+    column holds. A split chord (press_plan) has a row per press, all with
     its `index`. A declined chord's row says DECLINED in `hit`. `sent`, `hit`
-    and `max_streak` count presses and leave declined chords out, so a
+    and `max_streak` count the messages play_chords sends (press_messages:
+    a chord's order groups are one) and leave declined chords out, so a
     declined chord is no miss; `declined` counts them. `stop` says why the run ended: "done" (every chord
     pressed), "past_end" (the clock was past the last chord), "frozen",
     "cap", "interrupted", "lost" (the process went away), "stopped" (the
@@ -911,7 +970,7 @@ class RunResult:
 
 
 def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
-                press: Callable[[List[int], Optional[List[float]]], object], *,
+                press: Callable[..., object], *,
                 now: Callable[[], float] = time.perf_counter,
                 sleep: Callable[[float], None] = time.sleep,
                 wall: Callable[[], float] = time.time,
@@ -921,29 +980,43 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
                 cap_s: float = RUN_CAP_S,
                 read_sp_end: Optional[Callable[[], Optional[float]]] = None) -> RunResult:
     """Fire press_plan's presses of `chords` from where the song clock is
-    now, in the order they fire, and log each press.
+    now, in the order they fire, as press_messages groups them, and log a
+    row per press.
 
     `read_sp_end`, when given, reads the game's Star Power end in song
-    seconds, None while Star Power is off (EngineModel.sp_end). After a press
-    that carries Press.stored_end_ms it is read once: the row's `end_read_ms`
-    holds the end in ms and retime_from_end moves the later presses timed
-    against that activation's end, or the row says NO_ACTIVATION_READ and the
-    plan stands.
+    seconds, None while Star Power is off (EngineModel.sp_end). After a
+    message whose first press carries Press.stored_end_ms it is read once:
+    the first row's `end_read_ms` holds the end in ms and retime_from_end
+    moves the later presses timed against that activation's end, or the row
+    says NO_ACTIVATION_READ and the plan stands.
 
     `clock` reads the song clock (live.ReadsSongClock), `read_score` reads the
-    engine's score and `press` sends one chord's keys and their `axes`. When
-    `press` returns a dict (the kit press of tools/ch_mcp/kit_tools.py), the
-    row also keeps its values that PRESS_LOG_COLUMNS names. The live script passes
-    the game's; the tests pass fakes. `now` and `sleep` are the timer the stop
-    checks and the waits use. `wall` stamps each row's wall columns: it is the
-    watch's clock, because `now` shares no zero with the watch or a trace.
-    `on_press`, when given, gets each press-log row as it is added;
-    `should_stop`, when given, is asked with the run cap and ends the run as
-    "stopped" when it returns True. `cap_s` is the run cap in wall seconds."""
+    engine's score and `press` sends one chord's keys and their `axes`. A
+    chord split in order groups is one call, with `then=` a list of
+    (lanes, axes, after_ms) for its later groups; every other press is
+    called with the keys and axes alone. When `press` returns a dict (the
+    kit press of tools/ch_mcp/kit_tools.py), each row also keeps its values
+    that PRESS_LOG_COLUMNS names, from the reply's `groups` entry for its
+    group when the reply has them.
+
+    Design point 9 of docs/superpowers/plans/2026-11-07-player-limits.md
+    says how a row's score is read: the score is read fresh just before each
+    message, its rise since the last row's `score_after` goes in the first
+    row's `scored_between`, and that fresh read is every row's
+    `score_before`. The score is read once after the reply, so every row of
+    a split chord holds the same `score_after` and the same `hit`.
+
+    The live script passes the game's; the tests pass fakes. `now` and
+    `sleep` are the timer the stop checks and the waits use. `wall` stamps
+    each row's wall columns: it is the watch's clock, because `now` shares no
+    zero with the watch or a trace. `on_press`, when given, gets each
+    press-log row as it is added; `should_stop`, when given, is asked with
+    the run cap and ends the run as "stopped" when it returns True. `cap_s`
+    is the run cap in wall seconds."""
     out = sys.stdout if out is None else out
-    plan = press_plan(chords)
+    plan = press_messages(press_plan(chords))
     presses = list(plan)
-    notes_ms = [p.at_ms for p in presses]
+    notes_ms = [head.at_ms for head, _later in presses]
     result = RunResult()
     start_s = now()
 
@@ -964,9 +1037,10 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
         result.stop = "past_end"
         return result
     print(f"  Song clock at {raw_s:.2f}s; starting at press {cursor + 1}/{len(presses)} "
-          f"(t={C.ms_to_s(presses[cursor].chart_ms):.2f}s)", file=out)
+          f"(t={C.ms_to_s(presses[cursor][0].chart_ms):.2f}s)", file=out)
 
-    score_before = read_score()
+    # The score the last row ended on: what scored_between is counted from.
+    last_score = read_score()
     streak = 0
 
     print(f"\n  {'#':>4}  {'chart_t':>7}  {'clock':>7}  {'diff_ms':>7}  {'lanes':10}  "
@@ -974,8 +1048,9 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
 
     try:
         while cursor < len(presses):
-            # One press of press_plan's: a chord, or one part of a split one.
-            chord = presses[cursor]
+            # One message: a chord, with any later order groups of it, or one
+            # part of a squeezed-out chord.
+            chord, later = presses[cursor]
             lead_ms = chord.lead_ms
             try:
                 raw_ms, _est_ms = live.wait_until(
@@ -989,9 +1064,9 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
                 stopped = live.StoppedCheck(raw_s, now())
                 # The song starts over, so a retimed plan does too.
                 presses = list(plan)
-                notes_ms = [p.at_ms for p in presses]
+                notes_ms = [head.at_ms for head, _later in presses]
                 cursor = live.first_note_index(notes_ms, C.s_to_ms(raw_s))
-                score_before = read_score()
+                last_score = read_score()
                 result = RunResult()
                 streak = 0
                 if cursor >= len(presses):
@@ -1000,9 +1075,16 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
                     return result
                 continue
             wall_s_at_read = wall()
+            score_before = read_score()
 
             # A declined chord in a mode that keeps no gem sends no press.
-            pressed = None if chord.declined and not chord.lanes else press(chord.lanes, chord.axes)
+            if chord.declined and not chord.lanes:
+                pressed = None
+            elif later:
+                pressed = press(chord.lanes, chord.axes,
+                                then=[(p.lanes, p.axes, p.after_ms) for p in later])
+            else:
+                pressed = press(chord.lanes, chord.axes)
             wall_s_at_reply = wall()
 
             end_read = None
@@ -1012,9 +1094,11 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
                     end_read = NO_ACTIVATION_READ
                 else:
                     end_read = C.s_to_ms(end_s)
-                    presses[cursor + 1:] = retime_from_end(
-                        presses[cursor + 1:], chord.index, chord.stored_end_ms, end_read)
-                    notes_ms = [p.at_ms for p in presses]
+                    rest = [p for head, rest_later in presses[cursor + 1:]
+                            for p in [head, *rest_later]]
+                    presses[cursor + 1:] = press_messages(retime_from_end(
+                        rest, chord.index, chord.stored_end_ms, end_read))
+                    notes_ms = [head.at_ms for head, _later in presses]
 
             # Check hit through engine.pressed_input_hit.
             sleep(SCORE_READ_DELAY_S)
@@ -1031,37 +1115,47 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
                     result.max_streak = max(result.max_streak, streak)
                 else:
                     streak = 0
-            row = {
-                "index": chord.index,
-                "chart_ms": chord.chart_ms,
-                "clock_ms_at_press": raw_ms,
-                "lead_ms": lead_ms,
-                "score_before": score_before,
-                "score_after": score_after,
-                "hit": DECLINED if chord.declined else int(hit),
-                "wall_s_at_read": wall_s_at_read,
-                "wall_s_at_reply": wall_s_at_reply,
-            }
-            if end_read is not None:
-                row["end_read_ms"] = end_read
-            if isinstance(pressed, dict):
-                # A kit press replies with what the game's frames did; the
-                # row keeps the parts the press log has columns for.
-                row.update((k, pressed[k]) for k in PRESS_LOG_COLUMNS
-                           if k in pressed and k not in row)
-            result.rows.append(row)
-            if on_press is not None:
-                on_press(row)
+            # A kit press replies with what the game's frames did, per group
+            # for a message with later groups.
+            replies = [pressed] if isinstance(pressed, dict) else []
+            if replies and later and isinstance(pressed.get("groups"), list):
+                replies = pressed["groups"]
+            for k, part in enumerate([chord, *later]):
+                row = {
+                    "index": part.index,
+                    "chart_ms": part.chart_ms,
+                    # The clock read that sent the message; a later group's
+                    # own moment is its reply's down_ms.
+                    "clock_ms_at_press": raw_ms,
+                    "lead_ms": part.lead_ms,
+                    "score_before": score_before,
+                    "score_after": score_after,
+                    "hit": DECLINED if part.declined else int(hit),
+                    "wall_s_at_read": wall_s_at_read,
+                    "wall_s_at_reply": wall_s_at_reply,
+                }
+                if k == 0:
+                    row["scored_between"] = score_before - last_score
+                    if end_read is not None:
+                        row["end_read_ms"] = end_read
+                if k < len(replies) and isinstance(replies[k], dict):
+                    # The row keeps the parts the press log has columns for.
+                    row.update((key, replies[k][key]) for key in PRESS_LOG_COLUMNS
+                               if key in replies[k] and key not in row)
+                result.rows.append(row)
+                if on_press is not None:
+                    on_press(row)
 
             diff_ms = raw_ms - chord.chart_ms
-            lane_str = "+".join(LANE_NAMES.get(l, "?") for l in chord.lanes)
+            lane_str = " then ".join("+".join(LANE_NAMES.get(l, "?") for l in part.lanes)
+                                     for part in [chord, *later])
             tag = DECLINED if chord.declined else "HIT" if hit else "MISS"
             if result.sent <= 30 or result.sent % 20 == 0 or not hit:
                 print(f"  {result.sent:4d}  {C.ms_to_s(chord.chart_ms):7.2f}  "
                       f"{C.ms_to_s(raw_ms):7.2f}  {diff_ms:+7.1f}  {lane_str:10}  "
                       f"{tag:6}  {streak:6}", file=out)
 
-            score_before = score_after
+            last_score = score_after
             cursor += 1
         result.stop = "done"
 
@@ -1124,12 +1218,20 @@ def live_press(driver: InputDriver, hwnd: int) -> Callable[..., object]:
     """A press that focuses the game window, then sends the chord's keys. A
     key has no strength, so `axes` goes unused. This key route needs the game
     window in focus and the user's typed `allow key run`; the kit press does
-    not.
+    not. A key route has no frame clock to time a later order group by, so
+    each group in `then` is sent once its `after_ms` has passed on this
+    process's clock, counted from the first group's send.
     LIVE-ONLY: sends input to the game."""
-    def press(lanes: List[int], axes: Optional[List[float]] = None) -> object:
+    def press(lanes: List[int], axes: Optional[List[float]] = None,
+              then: Sequence[Tuple[List[int], Optional[List[float]], float]] = ()) -> object:
         # Keep Clone Hero focused so SendInput reaches it.
         focus_window(hwnd)
-        return driver.press_chord(lanes)
+        start_s = time.perf_counter()
+        sent = driver.press_chord(lanes)
+        for later_lanes, _axes, after_ms in then:
+            time.sleep(max(0.0, start_s + C.ms_to_s(after_ms) - time.perf_counter()))
+            driver.press_chord(later_lanes)
+        return sent
     return press
 
 

@@ -1073,6 +1073,25 @@ class GameToolsTest(unittest.TestCase):
         self.assertIn("sent 2 presses for 1 chord, hit 2, misses 0, best streak 2",
                       t.tools.ch_play_status().splitlines())
 
+    def test_the_status_of_a_chord_sent_as_one_message_is_no_clock_jump(self):
+        # play_chords sends a split chord's two order groups as one message:
+        # two rows, one `sent`.
+        rows = [{**ROWS[0], "index": 740, "hit": 1}, {**ROWS[1], "index": 740, "hit": 1}]
+
+        def live_play(chords, *, on_press, **kw):
+            for row in rows:
+                on_press(row)
+            return play_chart.RunResult(stop="done", sent=1, hit=1, max_streak=1,
+                                        rows=list(rows))
+
+        t = ToolRig(self.tmp, live_play=live_play)
+        t.tools.ch_play_chart(self._score_json(), route="keys")
+        t.tools._play.thread.join(THREAD_CAP_S)
+        lines = t.tools.ch_play_status().splitlines()
+        self.assertIn("sent 1 messages (2 presses) for 1 chord, hit 1, misses 0, best streak 1",
+                      lines)
+        self.assertFalse([line for line in lines if "jumped back" in line])
+
     def test_every_lane_has_a_word_in_the_reply(self):
         self.assertEqual(set(GT._LANE_WORDS), set(Lane))
 

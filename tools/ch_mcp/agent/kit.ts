@@ -485,19 +485,61 @@ function readBack(player: Il2Cpp.Object, names: string[], frame: number,
     }
 }
 
-// Sets every element, waits until the frame count has moved on by the hold,
-// writing the values again each tick when `rewrite` is true, then clears
-// every element. The release runs even when the wait fails. Each step runs on
-// the main thread when `on_main` is true, else on Frida's own thread. With a
-// "read" list, each step also reads those actions on the kit's player, and
-// the reply's `seen` holds each change.
+// One group of a press: its elements, how long after the first group's down
+// it goes down, and the frame and time it went down and came up (-1 until
+// then).
+interface Group {
+    elements: Element[];
+    afterMs: number;
+    downFrame: number;
+    downMs: number;
+    upFrame: number;
+    upMs: number;
+}
+
+// The press's groups: its own elements first, then each group of its
+// optional "then" list, each {elements, after_ms} with after_ms above 0.
+function groupsOf(m: Message): Group[] {
+    const fresh = (elements: Element[], afterMs: number): Group =>
+        ({ elements, afterMs, downFrame: -1, downMs: -1, upFrame: -1, upMs: -1 });
+    const groups = [fresh(elementsOf(m), 0)];
+    const raw = m.then;
+    if (raw === undefined || raw === null) {
+        return groups;
+    }
+    if (!Array.isArray(raw)) {
+        throw new Error(`a press "then" is a list of {elements, after_ms}: ${JSON.stringify(raw)}`);
+    }
+    for (const g of raw) {
+        const afterMs = typeof g === "object" && g !== null ? g.after_ms : undefined;
+        if (typeof afterMs !== "number" || !(afterMs > 0)) {
+            throw new Error(`a press "then" group needs an "after_ms" above 0: ${JSON.stringify(g)}`);
+        }
+        groups.push(fresh(elementsOf({ type: m.type, id: m.id, elements: g.elements }), afterMs));
+    }
+    return groups;
+}
+
+// Sets the first group's elements, then on each tick puts down each later
+// group once `after_ms` has passed since the first group's down, so it lands
+// in the first frame at or after that time. Each group is held until the
+// frame count has moved on by the hold from its own down, writing the values
+// again each tick when `rewrite` is true. A group whose hold has passed comes
+// up in that tick while another group is still to go down or held; the last
+// ones come up in the release, which clears every element and runs even when
+// the wait fails. Each step runs on the main thread when `on_main` is true,
+// else on Frida's own thread. With a "read" list, each step also reads those
+// actions on the kit's player, and the reply's `seen` holds each change. A
+// press with later groups replies with each group's frames and times in
+// `groups`.
 async function press(m: Message) {
     const rec = recorded;
     if (rec === null || rec.kit === null) {
         throw new Error("no kit: send setup first");
     }
     const kit = rec.kit;
-    const elements = elementsOf(m);
+    const groups = groupsOf(m);
+    const first = groups[0];
     const hold = needInteger(m, "hold_frames");
     const capS = m.cap_s;
     if (typeof capS !== "number" || !(capS > 0)) {
@@ -519,38 +561,56 @@ async function press(m: Message) {
             readBack(reader, names, frame, last, seen);
         }
     };
-    for (const e of elements) {
-        touched.set(e.id, typeof e.value === "boolean");
+    for (const g of groups) {
+        for (const e of g.elements) {
+            touched.set(e.id, typeof e.value === "boolean");
+        }
     }
     const start = Date.now();
-    let downFrame = -1;
-    let downMs = start;
     let upFrame = -1;
-    let upMs = start;
     let failure: Error | null = null;
+    // A group is held once it is down and the frame count has moved on by
+    // the hold from its own down.
+    const held = (g: Group, frame: number) => g.downFrame >= 0 && frame >= g.downFrame + hold;
     // The down write sits inside the try too: a write that fails half-way has
     // already put some elements down, and the release below clears them all.
     try {
-        downFrame = await settled(() => {
-            write(kit, elements, false);
+        first.downFrame = await settled(() => {
+            write(kit, first.elements, false);
             const f = frameCount();
             look(f);
             return f;
         }, where);
-        downMs = Date.now();
-        let frame = downFrame;
-        while (frame < downFrame + hold) {
+        first.downMs = Date.now();
+        let frame = first.downFrame;
+        while (!groups.every((g) => held(g, frame))) {
             if (Date.now() - start >= capS * 1000) {
                 failure = new Error(`the hold of ${hold} frames did not pass within the cap of `
-                    + `${capS} s: down at frame ${downFrame}, last frame seen ${frame}`);
+                    + `${capS} s: down at frame ${first.downFrame}, last frame seen ${frame}`);
                 break;
             }
             await sleep(TICK_MS);
             frame = await settled(() => {
-                if (rewrite) {
-                    write(kit, elements, false);
-                }
                 const f = frameCount();
+                const t = Date.now();
+                for (const g of groups) {
+                    if (g.downFrame < 0 && t >= first.downMs + g.afterMs) {
+                        write(kit, g.elements, false);
+                        g.downFrame = f;
+                        g.downMs = t;
+                    } else if (rewrite && g.downFrame >= 0 && g.upFrame < 0) {
+                        write(kit, g.elements, false);
+                    }
+                }
+                if (!groups.every((g) => held(g, f))) {
+                    for (const g of groups) {
+                        if (g.upFrame < 0 && held(g, f)) {
+                            write(kit, g.elements, true);
+                            g.upFrame = f;
+                            g.upMs = t;
+                        }
+                    }
+                }
                 look(f);
                 return f;
             }, where);
@@ -559,15 +619,24 @@ async function press(m: Message) {
         failure = e instanceof Error ? e : new Error(`${e}`);
     }
     // The release runs on every path: after the hold, after a failed wait and
-    // at the cap. Its read is the last one the reply carries.
+    // at the cap. It clears every group, and its read is the last one the
+    // reply carries.
     try {
         upFrame = await settled(() => {
-            write(kit, elements, true);
+            for (const g of groups) {
+                write(kit, g.elements, true);
+            }
             const f = frameCount();
             look(f);
             return f;
         }, where);
-        upMs = Date.now();
+        const upMs = Date.now();
+        for (const g of groups) {
+            if (g.upFrame < 0) {
+                g.upFrame = upFrame;
+                g.upMs = upMs;
+            }
+        }
     } catch (e) {
         throw new Error(`${failure === null ? "" : `${failure.message}; and `}the release failed, `
             + `so a pad may still be down (send teardown): ${e}`);
@@ -576,9 +645,15 @@ async function press(m: Message) {
         throw new Error(`${failure.message}; released at frame ${upFrame}`);
     }
     const reply: { [key: string]: unknown } = {
-        down_frame: downFrame, up_frame: upFrame, down_ms: downMs, up_ms: upMs,
-        hold_frames: hold, rewrite, on_main: onMain,
+        down_frame: first.downFrame, up_frame: first.upFrame, down_ms: first.downMs,
+        up_ms: first.upMs, hold_frames: hold, rewrite, on_main: onMain,
     };
+    if (groups.length > 1) {
+        reply.groups = groups.map((g) => ({
+            down_frame: g.downFrame, up_frame: g.upFrame, down_ms: g.downMs, up_ms: g.upMs,
+            after_ms: g.afterMs,
+        }));
+    }
     if (names.length > 0) {
         reply.read = names;
         reply.seen = seen;
