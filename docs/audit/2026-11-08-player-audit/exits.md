@@ -24,7 +24,7 @@ The closure checker reopened L07 and L47: the ruling picks who owns the planning
 
 ### Exit 4, second round
 
-**L56, the far-press refusal on every pad.** TM-50 on `docs/clone-hero/03-timing.md` is now proven in the game's code (commit `fb1be3cd`): the press handler gives a press to the earliest unjudged note on its pad in the window, on every pad. `far_press_refusal` (`tools/replay_schedule.cpp:392`) answers "which earlier or later same-pad note would this press reach", and the game's handler answers "which note this press hits". They now agree on every pad.
+**L56, the far-press refusal on every pad.** TM-50 on `docs/clone-hero/03-timing.md` is now proven in the game's code (commit `fb1be3cd`): the press handler gives a press to the earliest unjudged note on its pad in the window, on every pad. `far_press_refusal` (`tools/replay_schedule.cpp:392`) answers "which earlier or later same-pad note would this press reach", and the game's handler answers "which note this press hits". They now agree on every pad. The second closure check reopened two branches of the refusal that are stricter than the handler (Q16, below).
 
 **L18, two clocks.** The player reads the raw song clock to time its presses (`play_chart.py:1344`, `max_fill_s=0.0`). The walk-edges probe reads a filled estimate to step through window edges (`constants.py:315-318`). They answer different questions for different tools.
 
@@ -38,7 +38,7 @@ L04 and L05 left by Q8's answer, not as closures.
 
 A fresh checker (session 274bd9dd) passed L06, L46's fixed-against-dynamic window split, L56's page split, L18's two clocks, L78 and L80. It reopened three parts, now questions: L56's two refusal branches that are stricter than the game (Q16), L12's early edge (Q17; the late edge stays closed by freak-fixes question 3), and L46's probe copy in `analysis.py` (Q18). L12's other listed split, the frame model, left by Q8's answer (one frame, one constant both sides read). It also noted that "Yes, start it" is quoted only in plan text, because session 6341c618 has no card yet.
 
-**L18's other half, the stop check.** `live.StoppedCheck` (`live.py:61-99`) answers "has the song stopped or gone back" (5 s with no clock change, 1 s back). Whether one press is late is answered per press by the drop check, which Q8 sets to one frame. Not yet checked by a fresh agent.
+**L18's other half, the stop check.** `live.StoppedCheck` (`live.py:61-99`) answers "has the song stopped or gone back" (5 s with no clock change, 1 s back). Whether one press is late is answered per press by the drop check, which Q8 sets to one frame. Checked by a fresh agent (the doc reviewer of this range, 2026-11-08), who read `live.py:55-100` and the drop check at `play_chart.py:1115` (`raw_ms + FRAME_MS > chord.chart_ms + sides[chord.index]`) and agreed: a stall shorter than 5 s passes `StoppedCheck` and every chord it makes late is dropped by the drop check; a stall longer than 5 s raises `ClockFrozen`; a jump back of more than 1 s raises `ClockJumpedBack` and the run re-syncs.
 
 ## Exit 4: not a problem
 
@@ -69,7 +69,7 @@ The closure checker (`reports/S5-closures.md`) passed L58, L79, L63 and this one
 | L49, L50, L51, L52, L53, L54, L55, L66 | Q12 the schedule's silent skips and untested branches, before TP1 reads it |
 | L61, L62, L64 | Q13 the keys route and the 43.9 s window event |
 | L31, L32, L34, L35, L74, L41, L42, L43 | Q14 report and launch lines that can say the wrong thing |
-| L13, L15, L33, L75, L76, L81, L82, L85 | Q15 the smaller items, as one list of fixes (L12 by exit 3; L18, L78, L80 by exit 4) |
+| L13, L15, L33, L75 (the `_ms` copy only), L76, L81, L82, L85 | Q15 the smaller items, as one list of fixes (L12 by exit 3; L18, L78, L80 by exit 4) |
 | L56 (two branches) | Q16 the far-press refusal is stricter than the game |
 | L12 (early edge) | Q17 a press moved earlier by the read end is never checked against its window |
 | L46 (probe copy) | Q18 the probes keep a third copy of the window formula |
@@ -84,6 +84,7 @@ These rows have no verifier verdict yet, or rest on a run nobody has done. None 
 | L03 | whether one missed gem in a Star Power phrase cancels its award (the rule is inferred from `ls-m2-run1`; no page block says it): a run with only the kick held back, or the game's miss handler read |
 | L62 | who brought the window forward at 43.9 s: a run with a window-event log |
 | L67, L68, L69, L70, L71, L72, L73, L83, L84 | no verifier opened them (each row's Source ids) |
+| L75 (Ready level) | no exit yet, and no question: `sp_compare.at_ready_level` tests `amount >= 0.5 * sp_max` in floats, and the game tests against a rounded half (`+0x1B8`, SP-16). They differ for an odd `sp_max`. It needs a question to the user (a split), or a run with an odd `sp_max`. |
 | L77 | the `statistics.quantiles` part rests on the Python docs from memory, not a run: one call in Python 3.14 |
 | L10, L32, L40 | a run on the rebuilt `kit.js` with split chords under load; a real long `ch_sp_compare` reply; a `hydra_replay` run to diff its output against the 11:14 exe's |
 
