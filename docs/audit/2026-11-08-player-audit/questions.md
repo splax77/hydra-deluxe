@@ -72,3 +72,79 @@ What you would see: today a wrong song, speed or modifier runs and is judged as 
 - (b) Only add the song-folder check before the first press.
 
 Recommended: (a). Each piece closes a way a run can be judged against the wrong thing. The case against: (a) touches four tools at once, and `ch_open_song` has no live proof yet (LS-K3 was struck), so its new checks need a live run.
+
+## Batch 2: how a run is judged, and the late edge
+
+Q5 is as written above.
+
+### Q6. What counts as a hit, and when a run passes (L22, L23, L24, L28, L29, L30)
+
+Today the player marks a chord hit when the score rose at all after the press, and copies that to every part of a split chord (`play_chart.py:1145-1148`). `score_compare` passes a run at 98 % of rows hit (`MIN_HIT_PERCENT = 98`, `score_compare.py:64`). It forgives any difference at a chord with a ghost or accent (`elif chord.ghost_or_accent or change_may_show: status = "ghost_accent"`, `:188`), a rule written for keyboard presses. `ch_compare` prints "pass" for `total_notes`, `sp_phrases_total` and `sp_activations`, which are chart facts, and never compares the game's `notes_hit` or `sp_phrases_earned` (`compare_scorestats.py:94-125`). The command line prints "Done." and exits 0 for every stop reason but one (`play_chart.py:1382-1396`).
+
+LS-M2 today: "PASS hit rate 99.6% (2141 of 2150)", with 12 chords marked hit that lost a gem, 39 chords forgiven as ghost or accent, and three "pass" lines, while the game hit 3,753 of 3,767 notes. LS-M0 today: 1,478 chords equal, PASS.
+
+- (a) Judge by the source facts. A chord passes when the game's score step equals Hydra's points for that chord (the score file). A run passes only when every chord passes, and the game's own `notes_hit` equals `total_notes`, `sp_phrases_earned` equals Hydra's phrases, and the score equals Hydra's total. The 98 % floor and the hit-by-any-rise go. The ghost and accent forgiveness stays only on the keys route. A stop other than the song's end is a failure. LS-M2 would fail at chord 3. LS-M0 would still pass.
+- (b) Keep today's checks, and add `notes_hit` and `sp_phrases_earned` lines.
+
+### Q7. The Star Power checks that cannot fail (L25, L26, L27)
+
+In `sp_compare.py`, "activation N on the path's chord" calls `report.check(True, text)` whenever the activation lands on the right chord (`:523-534`). The end difference is only printed: LS-M2's activation 2 ended 3,544 ms early, on a PASS line. "Flag clears at the end" compares the game with its own end time. The multiplier check prints PASS for "0 of 0" chords compared. `sp_max` passes whenever it is the same on every row, whatever its value. `ch_compare` passes `total_notes` if it equals either the gem count or the chord count.
+
+- (a) The end check fails when the last chord the game pays inside Star Power is not Hydra's deactivation chord. The flag check compares with Hydra's end. "0 of 0" is a failure. `sp_max` is checked against the game's value for the chart (30 times its resolution, SP-11). `total_notes` is compared with the gem count only (LS-M2: 3,767 gems).
+- (b) Print the end difference as its own FAIL line past a fixed number of ms, and leave the rest.
+
+### Q8. How late a press may be sent: 0, 1 or 2 frames (L48, L05)
+
+The schedule gives four answers to one question. `press_room_ms` allows 2 frames of late judging (`replay_schedule.cpp:249-251`). `last_send_ms` allows 1 frame (`:329`). `far_press_refusal` allows none (`:392-402`). The two fallbacks use 2 and 1 (`:333-341`). The player's drop check uses 1 (`play_chart.py:1115`). Example, from the schedule's own numbers: a 50 ms side and a chord at 1,000 ms give a latest send of 1,047, a far-press limit of 1,050, and a room limit of 1,044. The game fact SP-47 (four end reads, 2.98 to 3.03 ms) says one frame. No page block says two. No run uses the schedule yet.
+
+- (a) One frame everywhere, from SP-47, as one constant the schedule and the player both read.
+- (b) Read the game's code for the judge lag first (TM-27 is not proven), then pick.
+## Batch 3: the squeeze split, game facts, the schedule's skips, the keys route
+
+### Q9. How a squeeze's timing is shared between its two presses (L07, L47)
+
+Hydra rates a squeeze by the one number it needs, and gives the frontend transfer scale (`SPSqueeze`, `src/core/model.h:371-420`). It does not say how that need is shared between the anchor press and the squeeze press. The two player copies share it differently. The Python gives the anchor `need / ratio + 6` and the squeeze press none (`play_chart.py:347-428`). The C++ gives both presses equal room inside their windows (`equal_room_lead_ms`, `replay_schedule.cpp:224-327`). Example: equal 85.72 ms sides, a 130 ms chord-to-end gap and ratio 1 give a Python lead of 65.28 and a C++ lead of 78.5. The replay plan's question 1 offered (a) equal room, (b) your "-45/+45", and (c) the minimal lead, and recommended (a). TC2 built (a). In session 6341c618 you said "rebuild and go with recommendations", but no record says which plan's recommendations that took. On a refusal, the Python stops at the first bad press, and the C++ writes one refusal per chord and has fallback rows.
+
+- (a) Equal room, as TC2 built it. The schedule lists every refusal, and under Q2 the run does not start on any.
+- (b) Your -45/+45. The plan shows it fails on a 100 ms squeeze such as Rescued 931.
+- (c) The minimal lead.
+
+### Q11. Rules that rest on unproven or contradicting game facts (L11, L56, L57, L60)
+
+The squeeze-out late gem is pressed 15 ms after the end. Its value is your batch yes ("yes all create handoff"), but the game facts behind it, SP-29 and SP-30, are Unknown. The far-press refusal applies to every pad (`replay_schedule.h:169-174`). TM-50 proves it only for a kick pair, and its Ruling line says "no Hydra rule depends on it". A comment in `kit_tools.py:258-261` says a plain gem's velocity is never read, which SC-13 does not say. Pages lag the code: FL-31 cites one run where LS-M2 adds nine more chords, TM-50 does not name Freak chord 803, and SP-47's Hydra line says there is no frame model.
+
+- (a) Read the game's code for SP-29, SP-30 and the two-window rule on every pad. Fix the comment, and write the run results back to FL-31, TM-50 and SP-47.
+- (b) Only write back and fix the comment, and leave the unproven rules as they are.
+
+### Q12. The schedule's silent skips and untested branches, before the player reads it (L49 to L55, L66)
+
+Several branches of `replay_schedule.cpp` drop a chord from the press list. Some write a refusal sentence (`:818-823`, `:850`) and some write none (`:638`, `:641`, `:725`). A refused far-press is still written as a press row (`:939-958`). A declined chord with nothing to send gives a row with no gems. A squeeze-out chord presses all its gems, not the declined chord's kept gems (`:848-860`); the Python refuses that pairing (`play_chart.py:785-788`). Two of the schedule's rules and about ten refusals have no test.
+
+- (a) Every skip writes a refusal and a flag on its row. A squeeze-out chord that is also a passed fill uses Hydra's activation-note rule (Q3), or is refused. Each branch gets a test before TP1 lets the player read the schedule.
+- (b) Fix the silent skips only, and leave the tests for later.
+
+### Q13. The keys route, and the window coming to the front (L61, L62, L64)
+
+The player's command line has a keys route that sends keys with `SendInput` after `SetForegroundWindow`, drops that call's result, and only warns when no game window is found (`input_driver.py:284-291`, `play_chart.py:1333-1340`). Your ruling: "yes we need to do autonomous runs. that waws the whole point of this" (`docs/agents/rulings/clone-hero.md:10`). The kit route needs no focus. LS-M0's window came to the front at 43.9 s with no cause found in code. The foreground watch polls every 0.1 s and keeps its events only in memory.
+
+- (a) Remove the keys route from play runs, so play is kit only. Key tools that remain refuse when no window is found or focus fails. The watch saves its events to the run folder. Finding the 43.9 s cause waits for a run with a window-event log, on your go.
+- (b) Keep the keys route, but have it refuse when the window is missing or focus fails.
+## Answers
+
+- Q1: "Refuse stale (Recommended)" (2026-11-08): loaders refuse a stale built agent by a build stamp; run folders record the stamps and the `hydra_replay` build; tests run the built file.
+- Q2: "Stop the run (Recommended)" (2026-11-08): stop on a reply missing what was asked for; refuse a score file missing a key the play depends on; fakes send the real reply shape.
+- Q3: not answered as asked. The user: "why are there three modes? who came up with this rule? what is the exact text i was presented with? there is only one way to correctly handle a skip and hydra's engine already knows it".
+- Q4: not answered as asked. The user: "that was about multiplier squeezes. hydra's engine already knows how to handle activations. you keep trying to reinvent new rules instead of reading what we already have".
+- Q3 and Q4 ruling: the main session named Hydra's `Chord::activation_note()` (`src/core/model.cpp:307`: first of Green, Blue, Yellow, Red, Kick) as the one rule, for the gem a skipped fill leaves out and the gem an activation chord presses first, with every gem of an activation chord paid at the Star Power multiplier (`category_scores`, `src/core/scoring.cpp`; `add_act_edge(sg.sp, ...)`, `src/search/graph.cpp:207`). The user: "Yes, that rule" (2026-11-08). So the player reads that gem from Hydra; `kick_only`, `nothing` and the Python `_TOP_PAD_ORDER` go.
+- Q5: not yet sent.
+
+- Q5: "All of it (Recommended)" (2026-11-08).
+- Q6: "Source facts (Recommended)" (2026-11-08).
+- Q7: "Judge vs Hydra (Recommended)" (2026-11-08).
+- Q8: "One frame (Recommended)" (2026-11-08).
+- Q9: the user: "i provided 45 as an example. why do you keep carrying it forward as if it was a rule? hydra already knows what timing you need and it can be split equally" (2026-11-08). So the squeeze's need, as Hydra rates it, is split equally between the two presses (equal room, as TC2 built it); -45/+45 is not an option.
+- Q12: "Flag and test all (Recommended)" (2026-11-08).
+- Q13: the user: "i care about the runs working, not the window coming into focus" (2026-11-08). No change is made for focus; the 43.9 s window event is not pursued.
+- Q11: the user: "are the facts actually unknown or did you never check what we already have documented?" (2026-11-08). The main session then read the pages: the squeeze-out press rests on SP-28 (Proven in the game's code), SP-31 (Proven in a live run), SP-36 (Proven in the game's code) and SP-47, not on SP-29 and SP-30, which only concern a hit judged in the exact end frame; the velocity path is IN-86 and NL-10 (Proven in the game's code); the far-press rule on other pads is the one gap, and the base hit routine it needs is already committed at `docs/audit/drum-lanes/play/f20f63f0_base_hit.asm`.
+- Q10 was not sent. L04 and L05 follow the Q8 answer (one frame, which also fits TM-26's early and late edges on an 85.72 ms side). L06's 3.0 ms frame is freak-fixes question 1 (a) under "Yes, start it". L46's copies follow L44's ruling, and Hydra's fixed 85 ms is the user's "hydra does not currently account for the dynamic hit window, although that is a good idea for a new feature" (`docs/superpowers/plans/2026-11-08-replay-press-schedule.md:31`). L12 moves to Q15.
+- Q11 follow-up: the user: "you said that "most" is already documented. what do you need that isnt documented? that looks like a lot we already have that you didnt check" (2026-11-08). The main session then read `docs/audit/drum-lanes/FINDINGS-play-time.md`: the step loop and next-event functions SP-29 and SP-30 call "not listed" are committed (`docs/audit/drum-lanes/play/f20f4950_step_loop.asm`, `f20f6ff0_next_event.asm`) and explained there; the hit routine counts a note in Star Power by its hit clock (line 98); a press is valid up to and including the window end. Two things stay undocumented: (1) which note a press goes to when two unhit same-pad notes are both in their windows, which the committed press handler `docs/audit/drum-lanes/play/f20deaa0.asm` can settle (real: Freak run 1 chord 154 missed this way, TM-50); (2) whether a press is processed at its own timestamp (the untraced caller of `0x100E0D0`, FINDINGS line 108), which the measured one-frame model (SP-47) already covers in practice and is optional. The user then asked for a handoff to search for other documentation missing from `docs/clone-hero/`.
