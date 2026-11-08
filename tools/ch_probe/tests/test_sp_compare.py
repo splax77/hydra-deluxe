@@ -486,21 +486,22 @@ class PressReachTest(unittest.TestCase):
                       "+1536 (0 -> 1536) at 118441.0 ms, full",
                       _rise_lines(_MOUTHS[0], reach, rows))
 
-    def test_bomber_147_reaches_its_55_ms_early_press(self):
+    def test_bomber_147_reaches_its_solved_early_press(self):
         reach = sp_compare.press_reach(*_BOMBER)
-        # 147 is an activation, so press_plan presses it in two groups:
-        # the yellow cymbal 55 ms early, then the kick CHORD_ORDER_GAP_MS later.
-        self.assertEqual(_rounded(reach[147]), (27278.33, 27286.33))
+        # 147 is an activation, so press_plan presses it in two groups: the
+        # yellow cymbal early by the lead activation_leads solves for chord
+        # 180's squeeze-out, then the kick CHORD_ORDER_GAP_MS later.
+        self.assertEqual(_rounded(reach[147]), (27282.06, 27290.06))
         # A flip after 147's press but before its ms lands on 147, not on
         # chord 146 83 ms before it.
         chords = _fixture_chords(_BOMBER[0])
         chord_ms = [c["ms"] for c in chords]
-        got = sp_compare._landed_chord(chords, chord_ms, 27280.0, reach)
+        got = sp_compare._landed_chord(chords, chord_ms, 27285.0, reach)
         self.assertEqual(got["index"], 147)
 
     def test_bomber_180_reaches_its_late_press(self):
         reach = sp_compare.press_reach(*_BOMBER)
-        self.assertEqual(_rounded(reach[180]), (32626.67, 32626.67))
+        self.assertEqual(_rounded(reach[180]), (32630.39, 32630.39))
         rows = [_row(32.500, 0), _row(32.640, 1536)]
         self.assertIn("PASS phrase rise after chord 180 (tick 18768, 32583.3 ms): "
                       "+1536 (0 -> 1536) at 32640.0 ms, full",
