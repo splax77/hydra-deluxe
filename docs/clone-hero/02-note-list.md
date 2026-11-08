@@ -2,7 +2,7 @@
 
 This page covers how Clone Hero turns the chart's drum notes into the note list it scores.
 It describes build 1.1 (v1.1.0.6142).
-Last write-back: 2026-10-31.
+Last write-back: 2026-11-08.
 
 ## Cymbals and toms
 
