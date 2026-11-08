@@ -457,8 +457,8 @@ deep the search; this is how you get its number anyway.
 `tools/ch_probe`, so the player only has to send them. Give it the chart, the
 file `dump` wrote and a path index (`--chart`, `--path`, `--index`, `--out`).
 For each fill the path passes over it sends every gem but the fill's
-activation note. It replays the path the way `score` does and writes one JSON file. For every chord
-the file gives its window side: the game's own hit window for that note at
+activation note. It replays the path the way `score` does and writes one JSON
+file. For every chord the file gives its window side: the game's own hit window for that note at
 100% speed, which the gaps to the chords either side set
 (docs/clone-hero/03-timing.md, TM-18 to TM-22 and TM-51). For every press it
 gives the aim, how far early or late, the latest song clock at which it may
