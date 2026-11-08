@@ -14,6 +14,26 @@ The audit changed no code, so no finding leaves as exit 1 (fixed) here. A findin
 
 The closure checker reopened L07 and L47: the ruling picks who owns the planning, but not the lead formula (L07) or the press rules' behaviour (L47). Both are now Q9.
 
+### Second round of closures (Q10 not sent, and Q11 and Q15 follow-ups)
+
+**L06, the fixed 3 ms frame.** Question 1 of `docs/superpowers/plans/2026-11-08-player-freak-fixes.md` (line 84) offered "(a) 3.0 ms, one frame at TM-49's about 330 a second ...; (b) 3.03 (1000/330); (c) read it live from the kit agent's frame rate each run", recommended (a). The user approved every recommended answer of that plan with "Yes, start it", recorded in `docs/superpowers/plans/2026-11-08-replay-press-schedule.md` line 33. The question names the fixed value and the live read.
+
+**L46, the hit-window copies.** The copies of the window follow L44's ruling: Hydra's schedule is the one the player reads. Hydra's fixed 85 ms against the game's dynamic window is the user's "hydra does not currently account for the dynamic hit window, although that is a good idea for a new feature" (`docs/superpowers/plans/2026-11-08-replay-press-schedule.md` line 31). The quote names both: Hydra's fixed window, and the game's dynamic one.
+
+**L12, retiming with no recheck of the window.** Question 3 of the freak-fixes plan ruled what happens when the read end leaves a squeeze-out's late gem no room: "the gem joins the last inside group and the row says `retimed=inside`", under "Yes, start it" (`2026-11-08-replay-press-schedule.md` line 33). The replay plan's TP2 owns `retime_from_end` and re-makes that room check, with tests at both edges (lines 146 and 230 to 238). Not built yet.
+
+### Exit 4, second round
+
+**L56, the far-press refusal on every pad.** TM-50 on `docs/clone-hero/03-timing.md` is now proven in the game's code (commit `fb1be3cd`): the press handler gives a press to the earliest unjudged note on its pad in the window, on every pad. `far_press_refusal` (`tools/replay_schedule.cpp:392`) answers "which earlier or later same-pad note would this press reach", and the game's handler answers "which note this press hits". They now agree on every pad.
+
+**L18, two clocks.** The player reads the raw song clock to time its presses (`play_chart.py:1344`, `max_fill_s=0.0`). The walk-edges probe reads a filled estimate to step through window edges (`constants.py:315-318`). They answer different questions for different tools.
+
+**L78, two settings.ini readers.** `game_files.get_game_setting` answers "what is this `[game]` setting"; `machine_report._settings_lines` answers "which lines in the file mention this key", so it can show framerate and vsync from `[video]` (`machine_report.py:49-52`).
+
+**L80, the recorder falling behind.** A late sample skips ticks (`machine_recorder.py:430-432`), and the report prints the median gap, the worst gap and the count over `GAP_MS` (`machine_report.py:280-284`). The lag is reported, not silent.
+
+L04 and L05 left by Q8's answer, not as closures.
+
 ## Exit 4: not a problem
 
 **L58, the kit's action ids.** `kit_tools.py:161-172` `KIT_BINDINGS` and block IN-82 on `docs/clone-hero/07-internals.md` lines 837-839 give the same ids for the same actions. The code and the page answer one question the same way.
@@ -37,14 +57,13 @@ The closure checker (`reports/S5-closures.md`) passed L58, L79, L63 and this one
 | L16, L17, L20, L21 | Q5 check that the run plays the song, path and settings the files are for |
 | L22, L23, L28, L29, L30 | Q6 what counts as a hit, and when a run passes |
 | L24, L25, L26, L27 | Q7 judging rules that cannot fail or excuse a miss |
-| L48, L05 | Q8 how late a press may be sent: 0, 1 or 2 frames |
+| L48, L05, L04 | Q8 how late a press may be sent: 0, 1 or 2 frames (L04 joined from Q10) |
 | L07, L47 | Q9 the activation lead formula (Python 65.28 ms against C++ 78.5 ms in one example), and how the press rules refuse or fall back |
-| L04, L06, L12, L46 | Q10 the hit window's two sides, the fixed 3 ms frame, and retiming |
-| L11, L56, L57, L60 | Q11 rules that rest on unproven or contradicting game facts |
+| L11, L57, L60 | Q11 rules that rest on unproven or contradicting game facts (L56 left by exit 4; Q10 was never sent, its rows are above) |
 | L49, L50, L51, L52, L53, L54, L55, L66 | Q12 the schedule's silent skips and untested branches, before TP1 reads it |
 | L61, L62, L64 | Q13 the keys route and the 43.9 s window event |
 | L31, L32, L34, L35, L74, L41, L42, L43 | Q14 report and launch lines that can say the wrong thing |
-| L13, L15, L18, L33, L75, L76, L78, L80, L81, L82, L85 | Q15 the smaller items, as one list of fixes |
+| L13, L15, L33, L75, L76, L81, L82, L85 | Q15 the smaller items, as one list of fixes (L12 by exit 3; L18, L78, L80 by exit 4) |
 
 ## Open: needs a verifier or a live run
 
