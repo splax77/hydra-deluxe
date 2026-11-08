@@ -80,6 +80,18 @@ BOMBER_DECLINED = ("declined (all_but_top_pad): chords 624 (kick), 684 (kick), "
 BOMBER_SQUEEZES = ("squeezes: chord 180 out (red 15 ms after the end), "
                    "chord 448 in (85.33 ms before the end)")
 BOMBER_ACTIVATION = "activation chord 147 pressed 55 ms early for the squeeze-out at chord 180"
+# The order lines, pinned from a run of these files: the amendment after
+# LS-R1b run 1 of the same plan.
+MOUTHS_ORDER = ("order: chords 4 (kick, then green cymbal 8 ms later), "
+                "340 (green cymbal, then kick, yellow cymbal 8 ms later), "
+                "704 (green cymbal, then kick, yellow cymbal 8 ms later), "
+                "927 (green cymbal, then kick 8 ms later), "
+                "1208 (green cymbal, then kick, yellow cymbal 8 ms later)")
+BOMBER_ORDER = ("order: chords 147 (yellow cymbal, then kick 8 ms later), "
+                "265 (yellow cymbal, then kick 8 ms later), "
+                "412 (blue cymbal, then kick 8 ms later), "
+                "716 (blue cymbal, then kick 8 ms later), "
+                "988 (green cymbal, then kick 8 ms later)")
 
 
 class FakeQuiet:
@@ -1003,6 +1015,42 @@ class GameToolsTest(unittest.TestCase):
         self.assertEqual(lines[lines.index(BOMBER_SQUEEZES) + 1], BOMBER_ACTIVATION)
         self.assertIn(BOMBER_DECLINED, lines)
 
+    def test_the_mouths_order_line_follows_the_squeeze_line(self):
+        mouths = self._refine_play("mouths")[0].splitlines()
+        self.assertEqual(mouths[mouths.index(MOUTHS_SQUEEZES) + 1], MOUTHS_ORDER)
+
+    def test_the_bomber_order_line_follows_the_early_activation_line(self):
+        bomber = self._refine_play("bomber")[0].splitlines()
+        self.assertEqual(bomber[bomber.index(BOMBER_ACTIVATION) + 1], BOMBER_ORDER)
+
+    def test_a_long_order_line_names_every_split_chord(self):
+        # Twelve made-up activation chords, a second apart, each a kick and a
+        # green cymbal.
+        acts = [{"act_tick": 192 * i, "deact_tick": 192 * i + 96} for i in range(12)]
+        chords = play_chart.load_dump_chords(self._score_file(
+            {"activations": acts, "chords": [
+                {"index": i, "tick": 192 * i, "ms": 1000.0 * (i + 1), "notes": [
+                    {"color": "Kick", "cymbal": False, "dynamic": "none"},
+                    {"color": "Green", "cymbal": True, "dynamic": "none"}]}
+                for i in range(12)]}))
+        self.assertEqual(GT.order_lines(chords),
+                         ["order: chords "
+                          + ", ".join(f"{i} (green cymbal, then kick 8 ms later)"
+                                      for i in range(12))])
+
+    def test_a_chart_with_no_split_chord_gives_no_order_line(self):
+        chords = play_chart.load_dump_chords(self._score_file({"chords": [
+            {"index": 0, "tick": 0, "ms": 1000.0, "notes": [
+                {"color": "Kick", "cymbal": False, "dynamic": "none"},
+                {"color": "Green", "cymbal": True, "dynamic": "none"}]}]}))
+        self.assertEqual(GT.order_lines(chords), [])
+
+    def _score_file(self, score):
+        path = os.path.join(self.tmp, "order score.json")
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(score, f)
+        return path
+
     def test_a_squeeze_out_with_no_dump_json_is_refused_naming_it(self):
         reply, t = self._refine_play("mouths", decline_mode=None, dump=False)
         self.assertTrue(reply.startswith("could not read "), reply)
@@ -1371,13 +1419,14 @@ class GameToolsTest(unittest.TestCase):
 
     def test_the_mouths_run_reply_names_its_squeezes_after_the_declined_line(self):
         lines = self._refine_run_lines("mouths")
-        self.assertEqual(lines[:2], [MOUTHS_DECLINED, MOUTHS_SQUEEZES])
-        self.assertTrue(lines[2].startswith("press log: "), lines[2])
+        self.assertEqual(lines[:3], [MOUTHS_DECLINED, MOUTHS_SQUEEZES, MOUTHS_ORDER])
+        self.assertTrue(lines[3].startswith("press log: "), lines[3])
 
     def test_the_bomber_run_reply_names_its_early_activation(self):
         lines = self._refine_run_lines("bomber")
-        self.assertEqual(lines[:3], [BOMBER_DECLINED, BOMBER_SQUEEZES, BOMBER_ACTIVATION])
-        self.assertTrue(lines[3].startswith("press log: "), lines[3])
+        self.assertEqual(lines[:4], [BOMBER_DECLINED, BOMBER_SQUEEZES, BOMBER_ACTIVATION,
+                                     BOMBER_ORDER])
+        self.assertTrue(lines[4].startswith("press log: "), lines[4])
 
     def test_a_squeeze_out_with_no_dump_json_stops_before_the_attach(self):
         t, events, _seen = self._chain_rig()

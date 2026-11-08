@@ -378,8 +378,9 @@ def build_server(helper: Optional[Helper] = None):
         is pressed. The same path of dump_json times the Star Power squeezes,
         so a score file with a squeeze-out is refused without it. The reply
         names each declined chord with what it sends, each squeeze chord with
-        when its presses fire against the end, and each activation pressed
-        early for a squeeze-out."""
+        when its presses fire against the end, each activation pressed
+        early for a squeeze-out, and each chord pressed in more than one
+        group, in the order its gems are pressed."""
         return capped(h.game.ch_play_chart(score_json, log, song_folder, route,
                                            decline_mode, dump_json, path_index))
 
@@ -395,8 +396,8 @@ def build_server(helper: Optional[Helper] = None):
         log, a press-<n>.csv in the session folder, one row at each press as
         the run goes, and its reply names the file. The call returns at the
         first press, with one line per part, the time it took, the machine
-        recorder's samples line after the watch's, ch_play_chart's declined
-        and squeeze lines, the press log's line, and the line
+        recorder's samples line after the watch's, ch_play_chart's declined,
+        squeeze and order lines, the press log's line, and the line
         "first press chord index k at ms". A part that fails stops the call
         there: the reply names it and the kit is taken away. Refused while a
         play session runs. Read the run with ch_play_status and

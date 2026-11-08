@@ -262,6 +262,29 @@ def squeeze_lines(chords: Sequence[play_chart.Chord]) -> List[str]:
     return ["squeezes: " + ", ".join(items)] + early
 
 
+def order_lines(chords: Sequence[play_chart.Chord]) -> List[str]:
+    """What the reply says about the chords press_plan presses in order
+    groups (play_chart._order_groups): one line naming each such chord, its
+    first press's gems, then each later press's gems and how long after the
+    first it fires. Every time is read off press_plan's presses. A
+    squeeze-out's two presses are the squeeze line's, not this one's. Empty
+    when no chord is split."""
+    by_index = _presses_by_index(play_chart.press_plan(chords))
+    items = []
+    for chord in chords:
+        presses = by_index.get(chord.index, [])
+        if len(presses) < 2 or (chord.squeeze is not None
+                                and chord.squeeze.kind == play_chart.SQUEEZE_OUT):
+            continue
+        first = presses[0]
+        later = [f"then {_gem_words(p.lanes)} {_ms_text(p.at_ms - first.at_ms)} ms later"
+                 for p in presses[1:]]
+        items.append(f"{chord.index} ({', '.join([_gem_words(first.lanes)] + later)})")
+    if not items:
+        return []
+    return ["order: chords " + ", ".join(items)]
+
+
 def _presses_by_index(presses: Sequence[play_chart.Press]) -> dict:
     """press_plan's presses grouped by chord `index`, each group in firing
     order."""
@@ -814,8 +837,9 @@ class GameTools:
         (play_chart.declined_chord_indexes); None presses every chord. The
         same path of `dump_json`, when given, times the squeezes
         (play_chart.press_plan); a score file with a squeeze-out and no
-        dump_json is refused. The reply's declined_line and squeeze_lines say
-        what the path declines and how its squeezes are pressed."""
+        dump_json is refused. The reply's declined_line, squeeze_lines and
+        order_lines say what the path declines, how its squeezes are pressed
+        and which chords are pressed in groups."""
         with self._lock:
             if self._play is not None and self._play.running():
                 return PLAY_ALREADY_RUNNING
@@ -968,7 +992,7 @@ class GameTools:
         """The chords of `score_json` with the decline arguments applied and
         the squeezes of path `path_index` of `dump_json` timed, and the
         reply's lines about them: declined_line when a mode is given, then
-        squeeze_lines. Raises ChordsRefused saying why no run can start from
+        squeeze_lines, then order_lines. Raises ChordsRefused saying why no run can start from
         them, a squeeze-out with no dump_json among them."""
         refusal = decline_refusal(decline_mode, dump_json)
         if refusal is not None:
@@ -985,6 +1009,7 @@ class GameTools:
                                                  dump_json, path_index)
             lines = [declined_line(decline_mode, chords)] if decline_mode is not None else []
             lines.extend(squeeze_lines(chords))
+            lines.extend(order_lines(chords))
         except (OSError, ValueError, KeyError, IndexError, TypeError) as e:
             raise ChordsRefused(f"could not read {score_json}: {type(e).__name__}: {e}") from e
         if not chords:

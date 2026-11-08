@@ -488,7 +488,9 @@ class PressReachTest(unittest.TestCase):
 
     def test_bomber_147_reaches_its_55_ms_early_press(self):
         reach = sp_compare.press_reach(*_BOMBER)
-        self.assertEqual(_rounded(reach[147]), (27278.33, 27278.33))
+        # 147 is an activation, so press_plan presses it in two groups:
+        # the yellow cymbal 55 ms early, then the kick CHORD_ORDER_GAP_MS later.
+        self.assertEqual(_rounded(reach[147]), (27278.33, 27286.33))
         # A flip after 147's press but before its ms lands on 147, not on
         # chord 146 83 ms before it.
         chords = _fixture_chords(_BOMBER[0])
