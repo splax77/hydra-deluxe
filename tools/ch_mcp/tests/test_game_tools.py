@@ -2717,5 +2717,68 @@ class PlayerLimitsLinesTest(unittest.TestCase):
                                   if "lead" in name])
 
 
+class DroppedStatusTest(unittest.TestCase):
+    """ch_play_status with a dropped press: design point 5 and question 4 of
+    docs/superpowers/plans/2026-11-08-player-freak-fixes.md, task T1."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.tmp = self._tmp.name
+
+    def _status(self, rows, result):
+        score = os.path.join(self.tmp, "score.json")
+        _write(score, json.dumps(SCORE_JSON).encode())
+
+        def live_play(chords, *, on_press, **kw):
+            for row in rows:
+                on_press(row)
+            return result
+
+        t = ToolRig(self.tmp, live_play=live_play)
+        t.tools.ch_play_chart(score, route="keys")
+        t.tools._play.thread.join(THREAD_CAP_S)
+        return t.tools.ch_play_status().splitlines()
+
+    def test_a_dropped_row_is_out_of_the_sent_counts_and_no_clock_jump(self):
+        rows = [{**ROWS[0], "index": 152},
+                {**ROWS[1], "index": 153, "score_after": 50, "hit": play_chart.DROPPED}]
+        lines = self._status(rows, play_chart.RunResult(
+            stop="done", sent=1, hit=1, dropped=1, max_streak=1, rows=list(rows)))
+        self.assertIn("sent 1, hit 1, misses 0, best streak 1", lines)
+        self.assertFalse([line for line in lines if "jumped back" in line])
+        self.assertIn("dropped: chords 153", lines)
+        # The dropped line comes right after the counts.
+        self.assertEqual(lines[lines.index("sent 1, hit 1, misses 0, best streak 1") + 1],
+                         "dropped: chords 153")
+
+    def test_a_result_with_no_rows_of_its_own_counts_the_drop_as_logged(self):
+        rows = [{**ROWS[0], "index": 152},
+                {**ROWS[1], "index": 153, "hit": play_chart.DROPPED}]
+        lines = self._status(rows, play_chart.RunResult(
+            stop="done", sent=1, hit=1, dropped=1, max_streak=1))
+        self.assertFalse([line for line in lines if "jumped back" in line])
+
+    def test_a_split_chord_dropped_is_named_once(self):
+        rows = [{**ROWS[0], "index": 152},
+                {**ROWS[1], "index": 153, "hit": play_chart.DROPPED},
+                {**ROWS[1], "index": 153, "hit": play_chart.DROPPED}]
+        lines = self._status(rows, play_chart.RunResult(
+            stop="done", sent=1, hit=1, dropped=1, max_streak=1, rows=list(rows)))
+        self.assertIn("sent 1, hit 1, misses 0, best streak 1", lines)
+        self.assertIn("dropped: chords 153", lines)
+
+    def test_no_dropped_row_says_none(self):
+        lines = self._status(list(ROWS), play_chart.RunResult(
+            stop="done", sent=2, hit=1, max_streak=1, rows=list(ROWS)))
+        self.assertIn("dropped: none", lines)
+
+    def test_the_dropped_line_from_rows(self):
+        self.assertEqual(GT.dropped_line(ROWS), "dropped: none")
+        self.assertEqual(GT.dropped_line([{**ROWS[0], "index": 153,
+                                           "hit": play_chart.DROPPED}]),
+                         "dropped: chords 153")
+
+
 if __name__ == "__main__":
     unittest.main()
