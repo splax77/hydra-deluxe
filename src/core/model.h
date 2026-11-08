@@ -624,6 +624,11 @@ struct Activation {
     // Bars of SP this activation spends: one per stored arrival.
     int sp_meter() const { return static_cast<int>(bank_rise_ticks.size()); }
 
+    // Where the meter reached the activation level (kSpActivationBars): that
+    // bar's stored arrival in bank_rise_ticks. Unset when fewer bars are
+    // stored (a hand-built activation), never a guess.
+    std::optional<int64_t> sp_ready_tick() const;
+
     // The fills the path was shown and passed over before this activation,
     // in chart order. The search charges a skip only on a fill it could have
     // taken (enough SP, deadline open) and stamps that fill's tick here.

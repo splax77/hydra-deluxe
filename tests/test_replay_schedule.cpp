@@ -4,6 +4,7 @@
 
 #include "doctest.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
@@ -19,8 +20,11 @@
 
 #include "app/analysis.h"
 #include "app/config.h"
+#include "app/song_length.h"
 #include "core/model.h"
 #include "core/replay.h"
+#include "core/rules.h"
+#include "core/scoring.h"
 #include "corpus_util.h"
 #include "parse/song.h"
 #include "replay_schedule.h"
@@ -78,6 +82,7 @@ TEST_CASE("schedule: every end step names its anchor") {
 
     Activation act;
     act.timecode = song.timecode(768);
+    act.bank_rise_ticks = {0, 768};  // two bars, so the ready point is known
     act.sp_end_steps = {{768, 3840, SpEndKind::Activation},
                         {1536, 4608, SpEndKind::Collected},
                         {2304, 4800, SpEndKind::Clamped},
@@ -126,6 +131,7 @@ TEST_CASE("schedule: a squeeze carries its own end, anchor and stored ratio") {
     // ratio is a value no recompute would give, so a recompute shows.
     Activation act;
     act.timecode = song.timecode(768);
+    act.bank_rise_ticks = {0, 768};  // two bars, so the ready point is known
     act.sp_end_steps = {{768, 3000, SpEndKind::Activation},
                         {2304, 3500, SpEndKind::Clamped},
                         {3072, 3900, SpEndKind::SqIn}};
@@ -242,7 +248,7 @@ TEST_CASE("schedule: declined chords are the skipped fill ticks") {
                 skipped.insert(a.skipped_fill_ticks.begin(), a.skipped_fill_ticks.end());
             }
             const PathReplay pr = replay_stored_path(song, *p, cfg.rules);
-            const json s = schedule::schedule_json(song, acts, pr.result, DeclineMode::AllButTopPad);
+            const json s = schedule::schedule_json(song, acts, pr.result, cfg.rules, DeclineMode::AllButTopPad);
             std::set<int64_t> marked;
             for (const json& row : s["chords"]) {
                 if (!row["declined"].get<bool>()) continue;
@@ -279,7 +285,7 @@ TEST_CASE("schedule: the window formula and clamps are pinned") {
 
     const Song song = plain_song({0, 768});
     const ReplayResult r = replay_path(song, {});
-    const json c = schedule::schedule_json(song, {}, r, schedule::DeclineMode::Nothing)["constants"];
+    const json c = schedule::schedule_json(song, {}, r, core::default_rules(), schedule::DeclineMode::Nothing)["constants"];
     CHECK(c["frame_ms"].get<double>() == 3.0);
     CHECK(c["judge_early_ms"].get<double>() == 3.0);
     CHECK(c["judge_late_ms"].get<double>() == 6.0);
@@ -300,7 +306,7 @@ TEST_CASE("schedule: sides come from the whole chart") {
     {
         const Song song = plain_song({0, 20, 40});
         const ReplayResult r = replay_path(song, {});
-        const json s = schedule::schedule_json(song, {}, r, schedule::DeclineMode::Nothing);
+        const json s = schedule::schedule_json(song, {}, r, core::default_rules(), schedule::DeclineMode::Nothing);
         REQUIRE(s["chords"].size() == 3);
         CHECK(s["chords"][1]["side_ms"].get<double>() == kFloorSide);
     }
@@ -309,7 +315,7 @@ TEST_CASE("schedule: sides come from the whole chart") {
     {
         const Song song = plain_song({0, 917, 917 + 2999});
         const ReplayResult r = replay_path(song, {});
-        const json s = schedule::schedule_json(song, {}, r, schedule::DeclineMode::Nothing);
+        const json s = schedule::schedule_json(song, {}, r, core::default_rules(), schedule::DeclineMode::Nothing);
         REQUIRE(s["chords"].size() == 3);
         CHECK(s["chords"][1]["side_ms"].get<double>() == kCapSide);
     }
@@ -319,7 +325,7 @@ TEST_CASE("schedule: sides come from the whole chart") {
         Song song = plain_song({0, 917, 917 + 2999});
         song.sequence[1].chord.add_note(NoteColor::Kick);
         const ReplayResult r = replay_path(song, {});
-        const json s = schedule::schedule_json(song, {}, r, schedule::DeclineMode::Nothing);
+        const json s = schedule::schedule_json(song, {}, r, core::default_rules(), schedule::DeclineMode::Nothing);
         REQUIRE(s["chords"][1]["gems"].size() == 2);
         CHECK(s["chords"][1]["side_ms"].get<double>() == kCapSide);
     }
@@ -420,6 +426,7 @@ Overfill overfill() {
     Overfill o{plain_song({0, 768, 1536, 2304, 3072, 3840}), Activation{}};
     o.song.sequence[4].chord.add_note(NoteColor::Kick);
     o.act.timecode = o.song.timecode(768);
+    o.act.bank_rise_ticks = {0, 768};  // two bars, so the ready point is known
     o.act.sp_end_steps = {{768, 3000, SpEndKind::Activation}, {1536, 3082, SpEndKind::Clamped}};
     SPSqueeze out{};
     out.kind = SqueezeKind::SqOut;
@@ -453,7 +460,7 @@ TEST_CASE("schedule: the equal-room split on Freak's clamped squeeze") {
     // chord the clamp anchors the end on, never on the activation's chord 1.
     const Overfill o = overfill();
     const ReplayResult r = replay_path(o.song, {});
-    const json sch = schedule::schedule_json(o.song, {&o.act}, r, schedule::DeclineMode::Nothing);
+    const json sch = schedule::schedule_json(o.song, {&o.act}, r, core::default_rules(), schedule::DeclineMode::Nothing);
     INFO(sch["refusals"].dump());
     CHECK(sch["refusals"].empty());  // and no "not planned yet" line
     const std::vector<json> anchor = presses_of(sch, 2, "anchor");
@@ -521,7 +528,7 @@ TEST_CASE("schedule: a squeeze that needs no timing is pressed plain") {
     act.sqinouts.push_back(in);
     act.transfer_post = TransferScale{1.0, 1.0};
     const ReplayResult r = replay_path(song, {});
-    const json s = schedule::schedule_json(song, {&act}, r, schedule::DeclineMode::Nothing);
+    const json s = schedule::schedule_json(song, {&act}, r, core::default_rules(), schedule::DeclineMode::Nothing);
     const json& q = s["activations"][0]["squeezes"][0];
     CHECK(q["needs_no_timing"].get<bool>());
     CHECK(q["feasible"].get<bool>());
@@ -566,7 +573,7 @@ TEST_CASE("schedule: the fallback block") {
     {
         const Overfill o = overfill();
         const ReplayResult r = replay_path(o.song, {});
-        const json s = schedule::schedule_json(o.song, {&o.act}, r, schedule::DeclineMode::Nothing);
+        const json s = schedule::schedule_json(o.song, {&o.act}, r, core::default_rules(), schedule::DeclineMode::Nothing);
         const std::vector<json> late = presses_of(s, 4, "squeeze_out_late");
         const std::vector<json> inside = presses_of(s, 4, "squeeze_out_inside");
         REQUIRE(late.size() == 1);
@@ -597,7 +604,7 @@ TEST_CASE("schedule: the fallback block") {
         act.sqinouts.push_back(in);
         act.transfer_post = TransferScale{1.0, 1.0};
         const ReplayResult r = replay_path(song, {});
-        const json s = schedule::schedule_json(song, {&act}, r, schedule::DeclineMode::Nothing);
+        const json s = schedule::schedule_json(song, {&act}, r, core::default_rules(), schedule::DeclineMode::Nothing);
         const std::vector<json> p = presses_of(s, 4, "squeeze_in");
         REQUIRE(p.size() == 1);
         const json& fb = p[0]["fallback"];
@@ -617,7 +624,7 @@ TEST_CASE("schedule: last_send_ms is the side less one frame") {
     CHECK(schedule::last_send_ms(1000.0, 50.0) == doctest::Approx(1047.0));
     const Overfill o = overfill();
     const ReplayResult r = replay_path(o.song, {});
-    const json s = schedule::schedule_json(o.song, {&o.act}, r, schedule::DeclineMode::Nothing);
+    const json s = schedule::schedule_json(o.song, {&o.act}, r, core::default_rules(), schedule::DeclineMode::Nothing);
     REQUIRE(!s["presses"].empty());
     for (const json& p : s["presses"]) {
         const json& row = s["chords"][p["chord"].get<size_t>()];
@@ -698,12 +705,12 @@ TEST_CASE("schedule: a press that reaches a neighbour on its pad is refused nami
 
 TEST_CASE("schedule: a late gem that pays less than an inside gem is refused") {
     std::vector<std::string> refusals;
-    CHECK_FALSE(schedule::squeeze_out_inside_groups(7, {1, 2}, refusals).has_value());
+    CHECK_FALSE(schedule::squeeze_out_inside_groups(7, {1, 2}, {0}, refusals).has_value());
     REQUIRE(refusals.size() == 1);
     CHECK(refusals[0].find("chord 7") != std::string::npos);
     CHECK(refusals[0].find("late gem pays x1 and an inside gem x2") != std::string::npos);
     refusals.clear();
-    const auto ok = schedule::squeeze_out_inside_groups(7, {2, 2, 1}, refusals);
+    const auto ok = schedule::squeeze_out_inside_groups(7, {2, 2, 1}, {0}, refusals);
     REQUIRE(ok.has_value());
     CHECK(refusals.empty());
     CHECK(*ok == std::vector<std::vector<size_t>>{{2}, {1}});
@@ -725,7 +732,7 @@ TEST_CASE("schedule: press groups") {
     o.song.sequence[1].chord.add_note(NoteColor::Green);
     o.song.sequence[1].chord.add_note(NoteColor::Kick);
     const ReplayResult r = replay_path(o.song, {});
-    const json s = schedule::schedule_json(o.song, {&o.act}, r, schedule::DeclineMode::Nothing);
+    const json s = schedule::schedule_json(o.song, {&o.act}, r, core::default_rules(), schedule::DeclineMode::Nothing);
     const std::vector<json> act = presses_of(s, 1, "plain");
     REQUIRE(act.size() == 2);
     const json& gems = s["chords"][1]["gems"];
@@ -755,7 +762,7 @@ TEST_CASE("schedule: the planned end counts one frame") {
     act.sp_end_steps = {{768, 3000, SpEndKind::Activation}};
     act.transfer_post = TransferScale{1.0, 1.0};
     const ReplayResult r = replay_path(song, {});
-    const json s = schedule::schedule_json(song, {&act}, r, schedule::DeclineMode::Nothing);
+    const json s = schedule::schedule_json(song, {&act}, r, core::default_rules(), schedule::DeclineMode::Nothing);
     const json& reads = s["chords"][1]["reads"];
     REQUIRE(reads.size() == 1);
     CHECK(within_cent(reads[0]["stored_end_ms"].get<double>(), 7812.5));
@@ -790,4 +797,233 @@ TEST_CASE("schedule: the equal-room split of a squeeze-in is the mirror of a squ
     CHECK(s.planned_end_ms == doctest::Approx(1031.0));
     CHECK(s.aim_end_ms == doctest::Approx(1031.0));
     CHECK(s.feasible);
+}
+
+// ---- F1: the song end, the ready point, the late gems and the build -------
+// docs/superpowers/plans/2026-11-08-player-audit-fixes.md, task F1.
+
+namespace {
+
+// The rules with the squeeze-out rule set to `rule`, everything else default.
+core::Rules rules_with(core::SqOutRule rule) {
+    core::Rules r = core::default_rules();
+    r.sqout_rule = rule;
+    return r;
+}
+
+}  // namespace
+
+TEST_CASE("schedule: song_length_ms is app::song_length_ms") {
+    // On the corpus, the field is the owner's answer for the chart's own
+    // metadata, the call `hydra_replay schedule` and `dump` make.
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    int with_length = 0;
+    for (const std::string& path : corpus::chart_paths()) {
+        const Song& song = corpus::song(path, cfg.reading());
+        if (song.is_empty()) continue;
+        INFO(path);
+        const store::ChartTimingMeta meta = app::chart_timing_meta(std::nullopt, path);
+        const std::optional<double> want = app::song_length_ms(meta, song);
+        const json got = schedule::song_length_json(meta, song);
+        if (!want) {
+            CHECK(got.is_null());
+            continue;
+        }
+        ++with_length;
+        REQUIRE(got.is_number());
+        CHECK(got.get<double>() == *want);
+    }
+    CHECK(with_length > 0);
+
+    // A hand-built song with no notes' end, no end event and no stated
+    // length has no length: null, never a guess.
+    const Song bare = plain_song({0, 768});
+    REQUIRE_FALSE(app::song_length_ms(store::ChartTimingMeta{}, bare).has_value());
+    CHECK(schedule::song_length_json(store::ChartTimingMeta{}, bare).is_null());
+}
+
+TEST_CASE("schedule: sp_ready_tick is the second bank arrival") {
+    // Hand-built: three arrivals that are neither the activation's tick nor
+    // any SP-end step's tick, so a value read from sp_end_steps or the
+    // phrases shows. kSpActivationBars is 2 (core/timing.h), so the second
+    // arrival, tick 384, is the ready point.
+    const Song song = plain_song({0, 192, 384, 768, 1536});
+    const schedule::ChordIndex chords = schedule::chord_index(song);
+    Activation act;
+    act.timecode = song.timecode(768);
+    act.bank_rise_ticks = {192, 384, 576};
+    act.sp_end_steps = {{768, 3840, SpEndKind::Activation}, {1536, 4608, SpEndKind::Collected}};
+    act.transfer_post = TransferScale{1.0, 1.0};
+    REQUIRE(act.sp_ready_tick() == std::optional<int64_t>(384));
+    std::vector<std::string> refusals;
+    const json j = schedule::activation_json(act, chords, song.timing(), refusals);
+    CHECK(j["sp_ready_tick"].get<int64_t>() == 384);
+    // 384 ticks at 120 BPM and 192 ticks a beat: two beats, 1,000 ms.
+    CHECK(j["sp_ready_ms"].get<double>() == doctest::Approx(1000.0));
+    CHECK(refusals.empty());
+
+    // One arrival: null, and a refusal naming the activation.
+    act.bank_rise_ticks = {384};
+    CHECK_FALSE(act.sp_ready_tick().has_value());
+    const json one = schedule::activation_json(act, chords, song.timing(), refusals);
+    CHECK(one["sp_ready_tick"].is_null());
+    CHECK(one["sp_ready_ms"].is_null());
+    REQUIRE(refusals.size() == 1);
+    CHECK(refusals[0].find("the activation at") != std::string::npos);
+    CHECK(refusals[0].find("ready") != std::string::npos);
+
+    // On every corpus path: each activation's field is its stored
+    // kSpActivationBars-th arrival, in ticks and through the tempo map.
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    int acts_seen = 0;
+    for (const std::string& path : corpus::chart_paths()) {
+        const Song& s = corpus::song(path, cfg.reading());
+        if (s.is_empty()) continue;
+        const HydraRecord& rec = corpus::analyzed(path, cfg);
+        for (const Path* p : rec.all_paths()) {
+            std::vector<const Activation*> acts;
+            for (const Activation& a : p->walk_activations()) acts.push_back(&a);
+            const PathReplay pr = replay_stored_path(s, *p, cfg.rules);
+            const json sch = schedule::schedule_json(s, acts, pr.result, cfg.rules, schedule::DeclineMode::Nothing);
+            REQUIRE(sch["activations"].size() == acts.size());
+            for (size_t k = 0; k < acts.size(); ++k) {
+                INFO(path << " activation " << k);
+                const Activation& a = *acts[k];
+                ++acts_seen;
+                // A real activation spends at least kSpActivationBars bars.
+                REQUIRE(a.bank_rise_ticks.size() >= static_cast<size_t>(kSpActivationBars));
+                const int64_t want = a.bank_rise_ticks.at(static_cast<size_t>(kSpActivationBars) - 1);
+                const json& row = sch["activations"][k];
+                CHECK(row["sp_ready_tick"].get<int64_t>() == want);
+                CHECK(row["sp_ready_ms"].get<double>() == s.timing().timecode(want).ms());
+                CHECK(want <= a.timecode.ticks());
+            }
+        }
+    }
+    CHECK(acts_seen > 0);
+}
+
+TEST_CASE("schedule: the late press holds sqout_late_notes") {
+    // The overfill shape (Freak 387's): chord 4, Red and Kick, squeezed out.
+    const Overfill o = overfill();
+    const ReplayResult r = replay_path(o.song, {});
+    const Chord& chord4 = o.song.sequence[4].chord;
+
+    // first_note: the late press holds place 0, the inside press place 1.
+    const json first = schedule::schedule_json(o.song, {&o.act}, r, rules_with(core::SqOutRule::FirstNote),
+                                               schedule::DeclineMode::Nothing);
+    INFO(first["refusals"].dump());
+    CHECK(first["refusals"].empty());
+    const std::vector<json> late_first = presses_of(first, 4, "squeeze_out_late");
+    const std::vector<json> inside_first = presses_of(first, 4, "squeeze_out_inside");
+    REQUIRE(late_first.size() == 1);
+    REQUIRE(inside_first.size() == 1);
+    CHECK(late_first[0]["gems"].get<std::vector<size_t>>() == std::vector<size_t>{0});
+    CHECK(inside_first[0]["gems"].get<std::vector<size_t>>() == std::vector<size_t>{1});
+    CHECK(late_first[0]["gems"].get<std::vector<size_t>>() ==
+          sqout_late_notes(chord4, core::SqOutRule::FirstNote));
+
+    // whole_chord: the late press holds every place, and no gem is pressed
+    // inside.
+    const json whole = schedule::schedule_json(o.song, {&o.act}, r, rules_with(core::SqOutRule::WholeChord),
+                                               schedule::DeclineMode::Nothing);
+    INFO(whole["refusals"].dump());
+    CHECK(whole["refusals"].empty());
+    const std::vector<json> late_whole = presses_of(whole, 4, "squeeze_out_late");
+    REQUIRE(late_whole.size() == 1);
+    CHECK(late_whole[0]["gems"].get<std::vector<size_t>>() == std::vector<size_t>{0, 1});
+    CHECK(late_whole[0]["gems"].get<std::vector<size_t>>() ==
+          sqout_late_notes(chord4, core::SqOutRule::WholeChord));
+    CHECK(presses_of(whole, 4, "squeeze_out_inside").empty());
+    // The late press's aim is the squeeze's, under either rule.
+    CHECK(late_whole[0]["aim_ms"] == late_first[0]["aim_ms"]);
+}
+
+TEST_CASE("schedule: a whole_chord chord with no inside group has an empty inside list and an empty join_gems") {
+    // Under whole_chord, the overfill's two-gem chord 4 ...
+    const Overfill o = overfill();
+    const json whole = schedule::schedule_json(o.song, {&o.act}, replay_path(o.song, {}),
+                                               rules_with(core::SqOutRule::WholeChord),
+                                               schedule::DeclineMode::Nothing);
+    // ... and, under first_note, the same shape with a one-gem chord 4.
+    Overfill single = overfill();
+    single.song.sequence[4].chord = Chord{};
+    single.song.sequence[4].chord.add_note(NoteColor::Red);
+    const json one_gem = schedule::schedule_json(single.song, {&single.act}, replay_path(single.song, {}),
+                                                 rules_with(core::SqOutRule::FirstNote),
+                                                 schedule::DeclineMode::Nothing);
+    for (const json* s : {&whole, &one_gem}) {
+        INFO((*s)["refusals"].dump());
+        CHECK(presses_of(*s, 4, "squeeze_out_inside").empty());
+        const std::vector<json> late = presses_of(*s, 4, "squeeze_out_late");
+        REQUIRE(late.size() == 1);
+        const json& fb = late[0]["fallback"];
+        CHECK(fb["action"] == "join_group");
+        CHECK(fb["join_gems"].is_array());
+        CHECK(fb["join_gems"].empty());
+    }
+    CHECK(presses_of(one_gem, 4, "squeeze_out_late")[0]["gems"].get<std::vector<size_t>>() ==
+          std::vector<size_t>{0});
+}
+
+TEST_CASE("schedule: first_note writes the same schedule as before") {
+    // The overfill shape's literals, pinned before F1 in "the equal-room
+    // split on Freak's clamped squeeze" and "press groups", under the rules
+    // passed by name.
+    const Overfill o = overfill();
+    const ReplayResult r = replay_path(o.song, {});
+    const json s = schedule::schedule_json(o.song, {&o.act}, r, rules_with(core::SqOutRule::FirstNote),
+                                           schedule::DeclineMode::Nothing);
+    const std::vector<json> late = presses_of(s, 4, "squeeze_out_late");
+    const std::vector<json> inside = presses_of(s, 4, "squeeze_out_inside");
+    REQUIRE(late.size() == 1);
+    REQUIRE(inside.size() == 1);
+    CHECK(late[0]["gems"].get<std::vector<size_t>>() == std::vector<size_t>{0});
+    CHECK(within_cent(late[0]["aim_ms"].get<double>(), 20.52));
+    CHECK(within_cent(late[0]["aim_end_ms"].get<double>(), 8005.52));
+    CHECK(within_cent(inside[0]["aim_ms"].get<double>(), -9.48));
+    CHECK(late[0]["fallback"]["join_gems"] == inside[0]["gems"]);
+
+    // On the corpus under the app's default rules (first_note): every late
+    // press holds place 0 alone, and no inside press holds place 0, as the
+    // schedule did before the rules reached it.
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    REQUIRE(cfg.rules.sqout_rule == core::SqOutRule::FirstNote);
+    int late_rows = 0;
+    for (const std::string& path : corpus::chart_paths()) {
+        const Song& song = corpus::song(path, cfg.reading());
+        if (song.is_empty()) continue;
+        const HydraRecord& rec = corpus::analyzed(path, cfg);
+        for (const Path* p : rec.all_paths()) {
+            std::vector<const Activation*> acts;
+            for (const Activation& a : p->walk_activations()) acts.push_back(&a);
+            const PathReplay pr = replay_stored_path(song, *p, cfg.rules);
+            const json sch = schedule::schedule_json(song, acts, pr.result, cfg.rules, schedule::DeclineMode::Nothing);
+            for (const json& press : sch["presses"]) {
+                INFO(path << " chord " << press["chord"].get<int>());
+                const std::vector<size_t> gems = press["gems"].get<std::vector<size_t>>();
+                if (press["rule"] == "squeeze_out_late") {
+                    ++late_rows;
+                    CHECK(gems == std::vector<size_t>{0});
+                } else if (press["rule"] == "squeeze_out_inside") {
+                    CHECK(std::find(gems.begin(), gems.end(), size_t{0}) == gems.end());
+                }
+            }
+        }
+    }
+    // The corpus may hold no timed squeeze-out; the overfill literals above
+    // then carry the pin alone.
+    WARN(late_rows > 0);
+}
+
+TEST_CASE("schedule: hydra_replay_build is written") {
+    const Song song = plain_song({0, 768});
+    const json s = schedule::schedule_json(song, {}, replay_path(song, {}), core::default_rules(),
+                                           schedule::DeclineMode::Nothing);
+    REQUIRE(s.contains("hydra_replay_build"));
+    const std::string build = s["hydra_replay_build"].get<std::string>();
+    CHECK_FALSE(build.empty());
+    CHECK(build == std::string(schedule::replay_build()));
+    // __DATE__ " " __TIME__: "Mmm dd yyyy hh:mm:ss".
+    CHECK(build.size() == 20);
 }

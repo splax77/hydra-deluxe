@@ -7,6 +7,7 @@
 #ifndef HYDRA_CORE_SCORING_H
 #define HYDRA_CORE_SCORING_H
 
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
@@ -53,11 +54,21 @@ struct CategoryScores {
 // that same order, holding each note's own share of the six totals below.
 // This is only for display/tooling use — it does not change the aggregate
 // that gets returned.
-// sqout_rule decides which notes' SP doubling sqout_reduction takes: only
-// note 0 (FirstNote, Hydra's rule so far) or every note (WholeChord).
+// sqout_rule decides which notes' SP doubling sqout_reduction takes: the
+// notes sqout_pays_outside names.
 CategoryScores category_scores(const Chord& chord, int combo,
                                 std::vector<CategoryScores>* per_note = nullptr,
                                 core::SqOutRule sqout_rule = core::SqOutRule::FirstNote);
+
+// Whether the note at `place` in a chord's Chord::note_list(true) order is
+// paid outside Star Power when the chord is squeezed out under `sqout_rule`:
+// the squeeze-out rule's one body. category_scores asks it per note.
+bool sqout_pays_outside(size_t place, core::SqOutRule sqout_rule);
+
+// Every place in `chord`'s Chord::note_list(true) order that
+// sqout_pays_outside names, in order: the gems a squeeze-out's late press
+// holds (hydra_replay schedule).
+std::vector<size_t> sqout_late_notes(const Chord& chord, core::SqOutRule sqout_rule);
 
 // How many of a chord's notes count toward a solo: all of them when the chord
 // is in a solo section (flag_solo), else none. solo_bonus pays for these.

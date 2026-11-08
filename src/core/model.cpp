@@ -692,6 +692,12 @@ bool Path::is_difficult() const {
     return d && past_difficult_floor(*d);
 }
 
+std::optional<int64_t> Activation::sp_ready_tick() const {
+    const size_t ready = static_cast<size_t>(kSpActivationBars);
+    if (bank_rise_ticks.size() < ready) return std::nullopt;
+    return bank_rise_ticks[ready - 1];
+}
+
 // ---- the SP-end history's readers -----------------------------------------
 // Each one reads the history from sp_end_steps and no other field. An empty
 // list (a hand-built activation) gives "unset", never a guess.
