@@ -1,0 +1,27 @@
+# Unknowns plan: the user's answers (2026-11-08), to write into the plan's Questions section
+
+Approval: clicked "Approve, my answers"; then typed "i clicked on the approve option you presented to me".
+Q1: "Proven in code" (a fact measured from the game's own files or dumps).
+Q2: "Code first, then ask".
+Q3: "Yes, once".
+Q5: "why are you presenting this to me? this isnt a fact about the game" -> README rule decides: a local video is not a record; NL-71 needs a run with kept output (depends on Q4).
+Q7: "Yes, capture".
+Q10: "Retry once".
+Q12: "Keep Unknown".
+Q13: "Capture once".
+Decided by the main session under "every claim labeled unknown should be checked" (not the user's call): Q6 TM-16 checked by measurement if code adds no delay, not reworded; Q8 yes, a complete scan is code proof, worded as what was scanned; Q11 the block claims what the read shows; Q14 fallback text search allowed, marked "direct callers only".
+Q4 settled by code + ruling: cli_args_parse_395C10.asm shows no modifier/speed option (only --replay carries modifiers); the 2026-10-30 ruling "Allow writes too" covers a setter route, so modifier runs set the field through a game setter in a live step with its Calls line. Not a user question.
+P14 / Q14: main session tried rea on GameAssembly.dll (1.1 june): open_binary ok, xrefs timed out at 330 s in Ghidra analysis. Agents never get rea tools. All callers are byte scans, marked "direct callers only".
+Round 1 pace: about 4 blocks per agent per 20 min, not 8. Plan rounds 2 and 3 at 4 blocks per agent.
+Possible DIFFERS so far: CR-51 (game refuses .srb version != 20210228; Hydra never checks). NL-73 is FiveLaneDrums only (Hydra has no five-lane mode; not a split on four-lane).
+DIFFERS answers (round 1):
+- CR-51 (.srb version 20210228 check): "Record it only" -> questions.md entry.
+- CR-24 _ENDOFSONG veto: user picked "Search, then ask"; search found 31 .mid files with "[section _ENDOFSONG]" (e.g. The Cure - Fascination Street, WoR: Hydra's last section " ENDOFSONG" at 311,982 ms after "Chorus Out" 273,514 ms, via hydra_replay score sections). Then "Match the game" -> separate code plan (section_names.cpp marker_name). The no-space form "[section_intro]" (9 files) is CR-29, live step LS-U1; game's name extraction unread.
+Round 2 DIFFERS (all three passed a fresh checker; examples from one approved read-only search of notes.mid / notes.chart under C:\Clone Hero\songs: 15,025 .mid, 4,427 .chart):
+- NL-58 lane cut-off: the game drops a lane whose first non-kick pad chord, searched from one tick before the lane start, lands more than round(resolution * 12 / 192) ticks after the start (strict). 75 lanes in 50 charts (e.g. Job for a Cowboy - Embedded, double lane at 273,840, first pad chord 240 ticks in). User: "Record it only".
+- FL-08 coda: the game skips every written fill starting on or after the first coda ([coda] or coda, trimmed, case-sensitive). 327 charts. Example: The Smashing Pumpkins - Cherub Rock (RB1), coda 200,640; Hydra lands that fill at m109.3.180 (tick 207,540). User asked: "what is a coda event? does this change any scores?" Main session checked Cherub Rock with hydra_replay dump: best path's last activation is 192,960, none of the top five paths uses the post-coda fill, so no score change there. Open: run the path finder on all 327 charts (asked, no answer yet).
+- FL-10 two fills on one chord: the game's deadline comes from the earlier-starting fill, Hydra's from the later; Hydra is later by the gap between starts. 2 charts. Pangaea - A Gateway to Nothing: best path uses no Star Power. RAT KING - Open Hands to the Void (.chart, res 960): best path activates at 117,120, a chord with fills at 115,200 and 115,231 (31 ticks apart). User asked: "does this change any scores". Open: whether SP-ready falls in that 31-tick window.
+- SP-06 / SP-08 overlapping phrases (not yet checked by a fresh checker, not yet asked): the game dedupes phrases per start tick keeping the longest, trims an earlier phrase at a later one's start and stretches the later one, then drops phrases with no note; Hydra keeps one open phrase and a new one replaces it.
+- FL-23 equality boundary (W7b): Hydra keeps a fill when SP is ready up to 85 ms after the deadline; the game clears at the deadline. Rests on the user's fill ruling "85 ms both sides"; check that ruling before any question.
+- NL-69: Hydra models none of the three modifier steps (not a split).
+Open: Q9 (SC-11 route: code first, then setlist menu walk).
