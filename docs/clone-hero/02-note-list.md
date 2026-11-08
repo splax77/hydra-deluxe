@@ -222,13 +222,13 @@ Found: 2026-09-27, session 1b0a7cd8; re-read 2026-10-30 in session b02ab3e6 (the
 
 ### NL-22 Disco flip swaps red and yellow only with Pro Drums on
 
-Rule: Hydra flips a disco section only under Pro Drums; which game function performs the flip, and whether plain Drums skips it, has not been found.
-Label: Hydra assumes it, never checked
-Evidence: the builder listing docs/audit/note-shuffle/step0/open2/f20d2ea0_build.asm lines 150 to 270 was read and no disco-bit test was found in it. The two candidates are listed in docs/audit/note-shuffle/step0/open2-refute/ (f20EF450.asm and f20F1420.asm). In f20F1420.asm, lines 29 to 61 rewrite a note's +0x80 type word (2 becomes 0x20, and 4 or 0x20 becomes 2) behind a flag test at 0x214B780. No listing shows that this flag is the disco bit or that the step is gated on Pro Drums, so the flip stays unfound.
-Game code (6142): not found: looked in the builder listing and in the listings of `0x20EF450` and `0x20F1420` named above.
-Hydra: `emit_chord_timestamp` in src/parse/song.cpp lines 417 to 426; `Chord::apply_disco_flip` in src/core/model.cpp line 212.
+Rule: the game flips a disco note only on Pro Drums, in the builder's Pro Drums step `0x20F1420`. For each note with the Disco flag, red becomes the yellow cymbal, and the yellow tom or yellow cymbal becomes red. Plain Drums runs the cymbal fold and the dynamics clear instead (NL-61), so it never flips. Hydra does the same: it flips only under Pro Drums.
+Label: Proven in the game's code
+Evidence: the builder `code/6142/note_builder_20D2EA0.asm` lines 245 to 249 call 0x20F1420 only when the instrument byte is 9 (Pro Drums), and call the fold otherwise. In docs/audit/note-shuffle/step0/open2-refute/f20F1420.asm, line 29 calls the getter 0x214B780 for each note and lines 30 and 31 skip the note when it returns false. That getter is `test dword ptr [rcx + 0x7c], 0x1000` (docs/audit/note-shuffle/scout-flag/note_getters.txt line 11), and 0x1000 is DrumsDisco (C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-dumps\6142\dump.cs line 548209). Lines 38 to 61 then rewrite the lane mask at +0x80: 2 (red) becomes 0x20 (line 48), and 4 or 0x20 becomes 2 (line 61). The lane bits are NL-50's. Which notes carry the Disco flag is NL-20. The builder listing docs/audit/note-shuffle/step0/open2/f20d2ea0_build.asm lines 150 to 270 holds no disco test of its own, because the test sits inside this step. No run has checked it live.
+Game code (6142): the Pro Drums step, RVA `0x20F1420`, called from the builder `0x20D2EA0`, the listings above.
+Hydra: `emit_chord_timestamp` in src/parse/song.cpp lines 417 to 420 calls the flip only when `pro` is set; `Chord::apply_disco_flip` in src/core/model.cpp lines 212 to 227 swaps red and yellow, red becoming a cymbal and yellow a tom.
 Ruling: D19 (record text): "The 'flip only with Pro Drums' gate moves to one place."
-Found: 2026-10-30, session b02ab3e6 (the reference build); the two candidate listings cited 2026-11-08, session 77057df2 (docs-gaps search).
+Found: 2026-10-30, session b02ab3e6 (the reference build); the Pro Drums step read as the flip 2026-11-08, session 77057df2 (docs-gaps search).
 
 ### NL-23 How many charts carry drums0dnoflip
 
@@ -379,32 +379,32 @@ Found: 2026-10-30, session b02ab3e6 (the reference build).
 ### NL-37 A flam copies a single-pad chord's note one pad up
 
 Rule: a .mid flam marker (pitch 109) on a chord with exactly one pad (a kick may be with it) adds a copy one pad up, right after it, and the copy counts toward the shuffle seed; for green, Hydra keeps green and copies blue, while the game moves the source to blue and copies green, which gives the same pair.
-Label: Unknown
-Evidence: not checked: only the first 50 lines of the flam step in docs/audit/note-shuffle/step0/open2/drum_pretransforms_20ef450_20eff60_20f0320_20f1420_20f16e0_20efee0.asm were read, not the single-pad test or the insert. FINDINGS.md line 21 says the pads agree.
-Game code (6142): RVA `0x20EF450`, the flam step; the single-pad test was not read. The address 0x20F0320 in the same listing is not the flam: it rewrites note types in place and inserts nothing (code/6142/two_x_kick_drop_20F0320.md), and FINDINGS.md names no address for it.
-Hydra: `Chord::apply_flam_conversion` in src/core/model.cpp lines 228 to 239; `kFlamMarkerPitch` in src/parse/song.cpp line 679.
+Label: Proven in the game's code
+Evidence: the flam step is read in full in docs/audit/note-shuffle/step0/open2/drum_pretransforms_20ef450_20eff60_20f0320_20f1420_20f16e0_20efee0.asm. Line 29 loads the mask 0xFFFE, which leaves the kick bit out. Lines 61 to 70 count the chord's other pads and skip the chord when there are two or more. Lines 77 and 78 go on only when the note's flag word at +0x7C holds 0x20000, which is DrumsFlam (C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-dumps\6142\dump.cs line 548214). Lines 104 to 157 pick the pads from the lane mask at +0x80: red gives a yellow copy, yellow a blue copy, blue a green copy, and the cymbals step up the same way. For green the source moves down to blue and the copy gets green: lines 111 to 122 do it for the green cymbal (0x80 becomes 0x40, the copy 0x80), and lines 124 to 133 with 154 to 156 for the green tom (0x10 becomes 8, the copy 0x10). Lines 175 to 180 insert the copy into the note list at the source's index plus 1, so it comes right after the source. The pads match FINDINGS.md line 21. That the copy counts toward the shuffle seed follows from the seed reading the note list (NL-40).
+Game code (6142): the flam step, RVA `0x20EF450`, the listing above. The address 0x20F0320 in the same listing is not the flam: it is the type rewrite in NL-73.
+Hydra: `Chord::apply_flam_conversion` in src/core/model.cpp lines 229 to 240; `kFlamMarkerPitch` in src/parse/song.cpp line 678.
 Ruling: none found.
-Found: 2026-10-09, session 30beeb6e.
+Found: 2026-10-09, session 30beeb6e; the flam step read in full 2026-11-08, session 77057df2 (docs-gaps search).
 
 ### NL-38 What a flam copy does with a cymbal flag or a ghost or accent mark
 
-Rule: Hydra copies the source note whole, so a green cymbal flam gives a blue cymbal and a green cymbal; the game's flag handling of the pair is unread.
-Label: Unknown
-Evidence: looked in FINDINGS.md line 21 and docs/audit/note-shuffle/step0/open2/README.md line 20; the flam step's flag handling was not read.
-Game code (6142): RVA `0x20EF450`; flag handling not read.
-Hydra: `Chord::apply_flam_conversion` in src/core/model.cpp lines 228 to 239.
-Ruling: none found.
-Found: 2026-10-30, session b02ab3e6 (the reference build).
+Rule: both the game and Hydra copy the source note whole, so the copy keeps the source's cymbal state and its ghost or accent mark. A green cymbal flam gives a blue cymbal and a green cymbal in both.
+Label: Proven in the game's code
+Evidence: in docs/audit/note-shuffle/step0/open2/drum_pretransforms_20ef450_20eff60_20f0320_20f1420_20f16e0_20efee0.asm, line 85 ORs 3 into the source's flag word at +0x7C, and then line 97 builds the copy by calling 0x214BE70 with the source note. That call's listing, docs/audit/note-shuffle/step0/open1-refute/gamenote_clone_214BE70.asm, copies the lane mask at +0x80 (lines 18 and 19) and the whole flag word at +0x7C (lines 20 and 21). The ghost and accent bits live in that word (DrumsGhostHit 0x40000 and DrumsAccentHit 0x80000, dump.cs lines 548215 and 548216, cleared from +0x7C by NL-62's listing). The flam step then sets only the lane mask (NL-37), and a cymbal is a lane-mask bit (NL-50), so the green cymbal pair is blue cymbal plus green cymbal.
+Game code (6142): the flam step, RVA `0x20EF450`, and the note copy, RVA 0x214BE70, the listings above.
+Hydra: `Chord::apply_flam_conversion` in src/core/model.cpp lines 229 to 240.
+Ruling: none needed: same rule.
+Found: 2026-10-30, session b02ab3e6 (the reference build); the copy read 2026-11-08, session 77057df2 (docs-gaps search).
 
 ### NL-39 Whether the game can flam a .chart note
 
 Rule: Hydra never flams a .chart, which has no flam marker; the game's flam step runs on the builder's note list for any format, and where its trigger flag comes from in a .chart is unread.
 Label: Unknown
-Evidence: the step is called for any format (docs/audit/note-shuffle/step0/open34/builder_20d2ea0.asm lines 228 to 230); the .chart modifier map has no flam note number (decompile lines 24750 to 24825), but a flag source in `0x215E280` was not traced.
-Game code (6142): RVAs `0x20EF450` and `0x215E280`; the flag source was not read.
-Hydra: `emit_chord_timestamp` in src/parse/song.cpp lines 418 to 420 flams only on the .mid path.
+Evidence: the step is called for any format (docs/audit/note-shuffle/step0/open34/builder_20d2ea0.asm lines 228 to 230). Half of the .chart side is read. The .chart modifier decoder, `code/6142/chart_modifier_decode_213D160.asm`, handles only N 5 and 6 (lines 68 to 77), N 34 to 44 through a jump table (lines 13 to 51) and N 66 to 68 (lines 52 to 67); every other value gets kind 0 at line 78. None of its kinds is a flam, so no .chart N number sets the flam flag through it. Whether `0x215E280` sets the flam flag 0x20000 some other way was not traced.
+Game code (6142): the decoder, RVA `0x213D160`, the listing above; the flam step `0x20EF450`; the unread flag source `0x215E280`.
+Hydra: `emit_chord_timestamp` in src/parse/song.cpp lines 417 to 419 flams only on the .mid path.
 Ruling: none found.
-Found: 2026-10-30, session b02ab3e6 (the reference build).
+Found: 2026-10-30, session b02ab3e6 (the reference build); the decoder cited 2026-11-08, session 77057df2 (docs-gaps search).
 
 ## Note Shuffle
 
