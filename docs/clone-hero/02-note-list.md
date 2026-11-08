@@ -546,21 +546,21 @@ Found: 2026-10-09, session 30beeb6e.
 
 Rule: a .mid lane is a note-on of pitch 126 (single) or 127 (double) on the drum track; its velocity names the lowest difficulty that shows it, by compares at 21, 31, 41 and 51.
 Label: Proven in the game's code
-Evidence: docs/audit/drum-lanes/play/f2155200_mid_reader_lane_case.asm lines 85 and 118 (the two pitches) and 93 to 99 and 126 to 132 (the four velocity compares). Which compare is Easy, Medium or Hard is D112's text; the branch targets were not traced.
+Evidence: docs/audit/drum-lanes/play/f2155200_mid_reader_lane_case.asm lines 85 and 118 (the two pitches). Lines 93 to 107 map the velocity to a value: 51 and up gives 3, 41 to 50 gives 2, 31 to 40 gives 1, 21 to 30 gives 0, and under 21 gives 3 (the borrow at line 100 masked with 3). Lines 126 to 140 make the same mapping for pitch 127. That the value names the lowest difficulty (0 Easy to 3 Expert) is D112's reading; the listing does not show where the value is used.
 Game code (6142): RVA `0x2155050`, the lane case.
-Hydra: `kSingleLaneMarkerPitch` and `kDoubleLaneMarkerPitch` in src/parse/song.cpp lines 688 and 689.
+Hydra: `kSingleLaneMarkerPitch` and `kDoubleLaneMarkerPitch` in src/parse/song.cpp lines 687 and 688.
 Ruling: D112: "go with clone hero" (card 2026-10-11-14ef4882, 00:36 UTC).
-Found: 2026-10-10, D112.
+Found: 2026-10-10, D112; the velocity mapping read 2026-11-08, session 77057df2 (docs-gaps search).
 
 ### NL-54 A .chart lane is S 65 or S 66
 
-Rule: a .chart lane is special phrase S 65 (single) or S 66 (double) in a difficulty's section.
+Rule: a .chart lane is special phrase S 65 (single) or S 66 (double) in a difficulty's section. The game's code treats the two types differently; that the difference is single against double is not shown in one listing.
 Label: Unknown
-Evidence: not checked: docs/audit/drum-lanes/spec_213e0c0.asm holds no compare with 0x41 or 0x42 (probably a jump table) and was not read.
-Game code (6142): RVA `0x213E0C0`, not read.
-Hydra: the lane ops in src/parse/song.cpp line 589.
+Evidence: docs/audit/drum-lanes/spec_213e0c0.asm tests the type with a subtract chain, not a compare with 0x41 or 0x42. Line 65 subtracts 0x40, and type 64 goes to a different call (line 66). Lines 67 and 68 send type 65 to lines 86 to 91, which pass 0 as the fourth argument; lines 69 and 74 pass 1 for type 66. Both then call 0x20CEEC0 at line 79. So the two types reach the same call with a different last argument. The lane object keeps a byte from its constructor's fourth argument at +0x21 (docs/audit/drum-lanes/lane_ctor_2116390.asm line 6), and the lane builder adds the double flag 0x8000 only when that byte is set (docs/audit/drum-lanes/f20d12c0.asm lines 207, 208 and 215). That 0x20CEEC0 hands its argument on to that constructor was not read.
+Game code (6142): RVA `0x213E0C0`, the listing above; the call 0x20CEEC0 and the lane constructor 0x2116390.
+Hydra: `kChartSingleLanePhrase` and `kChartDoubleLanePhrase` in src/parse/song.cpp lines 1451 and 1452; the S line handler that records the lane, line 1403.
 Ruling: D112 (as NL-53).
-Found: 2026-10-10, D112.
+Found: 2026-10-10, D112; the type test read 2026-11-08, session 77057df2 (docs-gaps search).
 
 ### NL-55 Which pads a lane lights
 
@@ -574,23 +574,23 @@ Found: 2026-10-10, D112; the listings read 2026-11-08, session 77057df2 (docs-ga
 
 ### NL-56 Only the lane builder and the drum engine read the lane flags
 
-Rule: the flag bits 0x4000 (in a lane), 0x8000 (double) and 0x10000 (last note) are set by the lane builder and read only by the drum engine. A note in a double lane carries 0xC000, because 0x8000 is added to 0x4000.
+Rule: the flag bits 0x4000 (in a lane), 0x8000 (double) and 0x10000 (last note) are set by the lane builder and read only by the drum engine. The builder sets them only on notes whose lane mask overlaps the lane's lit pads, and 0x10000 only on the last such note. A note in a double lane carries 0xC000, because 0x8000 is added to 0x4000.
 Label: Unknown
-Evidence: docs/audit/drum-lanes/FINDINGS-play-time.md line 19 says its instruction scan "cannot see a flag word loaded into a register and masked later, so 'only these' is strong but not proven".
+Evidence: how they are set is read: in docs/audit/drum-lanes/f20d12c0.asm, line 205 tests the note's +0x80 lane mask against the lit pads and line 206 skips the note when they do not overlap. Lines 207 and 208 test the lane's double byte at +0x21, line 215 ORs in 0x8000 and line 222 ORs in 0x4000. Line 223 remembers the note's index, and line 230 ORs 0x10000 into the note at the last remembered index. The names are DrumsLane, DrumsLaneDouble and DrumsLaneEnd (C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-dumps\6142\dump.cs lines 548211 to 548213). Who reads them is not proven: docs/audit/drum-lanes/FINDINGS-play-time.md line 19 says its instruction scan "cannot see a flag word loaded into a register and masked later, so 'only these' is strong but not proven".
 Game code (6142): RVA `0x20D12C0` sets them; exclusivity not proven.
 Hydra: none: Hydra reads no lane flag in scoring.
 Ruling: "lanes only affect how lenient the engine is, it doesnt change the underlying notes." (card 2026-10-11-27bb17bc, 03:52 UTC).
-Found: 2026-10-10, docs/audit/drum-lanes.
+Found: 2026-10-10, docs/audit/drum-lanes; the setting lines read 2026-11-08, session 77057df2 (docs-gaps search).
 
 ### NL-57 With Note Shuffle on, how the game draws a lane
 
 Rule: the user saw the game draw only the blue column for a lane on Glide with Note Shuffle on; Hydra's Preview lights every pad the lane's notes land on, on purpose. The game's lane-draw routine has never been read. What is known is what a lane stores: references to the lane's chords, not colours.
 Label: Unknown
-Evidence: the user's report, and D112's record says "The routine that draws a lane was not read". The listings show the lane stores references: `docs/audit/drum-lanes/f20d12c0.asm` writes the first chord's reference into the lane at +0x20 (line 268) and, for a double lane, the second chord's at +0x28 (line 272; a single lane stores null there), and the shuffle rewrites each note's 16-bit lane word in place (`docs/audit/note-shuffle/step0/open2/f20f0c30_shuffle.asm` line 317). So the lane's notes are recoloured after the lane is built; that the drawn strip follows them is unread (decision log, D112's correction of 2026-10-17, line 539).
-Game code (6142): not found: looked in docs/audit/drum-lanes (none of its listings is the draw routine).
+Evidence: the user's report, and D112's record says "The routine that draws a lane was not read". The listings show the lane stores references: `docs/audit/drum-lanes/f20d12c0.asm` writes the first chord's reference into the lane at +0x20 (line 268) and, for a double lane, the second chord's at +0x28 (line 272; a single lane stores null there), and the shuffle rewrites each note's 16-bit lane word in place (`docs/audit/note-shuffle/step0/open2/f20f0c30_shuffle.asm` line 317). So the lane's notes are recoloured after the lane is built; that the drawn strip follows them is unread (decision log, D112's correction of 2026-10-17, line 539). The two lane objects are read. The lane as parsed is built by docs/audit/drum-lanes/lane_ctor_2116390.asm lines 1 to 7: two references at +0x10 and +0x18, a byte at +0x20 and the double byte at +0x21. The lane the builder makes (f20d12c0.asm lines 262 to 290) holds a float at +0x18, the two chord references at +0x20 and +0x28, the parsed lane's +0x10 value at +0x30 (its start tick: line 284 subtracts it from a chord's tick), a tick length at +0x38 and the double byte, copied from +0x21, at +0x40. When a lane is added to the list, docs/audit/drum-lanes/f215e4f0.asm lines 41 to 86 put a single lane in front of the double lanes that share its +0x10 value, so a single lane goes before a double at one tick.
+Game code (6142): not found: looked in docs/audit/drum-lanes (none of its listings is the draw routine). The lane constructor is 0x2116390 and the list insert 0x215E4F0, the listings above.
 Hydra: `light_drum_lanes` in src/parse/song.cpp lines 192 to 202, called at line 1944.
 Ruling: deliberate difference, D254: "clone hero only draws the blue. this will be an intentional deviation from the game. it looks better with both."; items "Every pad its notes use." and "Only with Note Shuffle on."
-Found: 2026-10-17, session 65b16299.
+Found: 2026-10-17, session 65b16299; the lane layouts and lane order read 2026-11-08, session 77057df2 (docs-gaps search).
 
 ### NL-58 The game drops a lane whose first note starts too late
 
@@ -606,11 +606,11 @@ Found: 2026-10-10, D112; the listing lines cited 2026-11-08, session 77057df2 (d
 
 Rule: for a player who hits every note, lanes change no score, except a double lane's round timer, which Hydra does not model. A round is one press on every pad of the lane. When more than 0.75 s of song clock passes since the current round started, and the lane is double and not finished, the engine breaks the combo and clears the lane. A press on a lane pad crosses that pad off the round; when the last pad is crossed off, the round restarts at that press. A single lane has no such timer. This is a different timer from the 0.075 s grant window of TM-45. The engine keeps the open lane's pad mask at +0x2C4, the pads still owed this round at +0x2C6, a double-lane byte at +0x2C8 and the round's start time at +0x2E0.
 Label: Proven in the game's code
-Evidence: docs/audit/drum-lanes/play/f20ddec0.asm lines 30 to 50: the song clock at +0x100 minus the round start at +0x2E0 is compared with 0.75 (line 32); the call goes ahead only when the pad mask at +0x2C4 is set (line 34), the double byte at +0x2C8 is set (line 36) and the finished byte at +0x2F1 is clear (line 38); it then makes the virtual call at line 45 and zeroes the lane fields (lines 46 to 50). The twin update `docs/audit/drum-lanes/play/f20de5b0.asm` line 19 makes the same 0.75 compare. The round restart is `docs/audit/drum-lanes/play/f20deaa0.asm` lines 134 to 142: the pressed pad's bit is cleared from +0x2C6, and when nothing is left the clock goes to +0x2E0 and +0x2C6 is refilled from +0x2C4. docs/audit/drum-lanes/FINDINGS-play-time.md lines 25 to 27 name the fields and lines 66 to 73 read the virtual call as the combo breaker (vtable slot 20, `0x20F4B60`). The il2cpp dump confirms slot 20 is that method: C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-dumps\6142\dump.cs line 530260 reads "RVA: 0x20F4B60 ... Slot: 20". The 0.75 sits in the same .rdata slot the probe calls `RVA_HITCHECK_THRESHOLD`. That the game breaks the combo has not been seen in a run; docs/audit/drum-lanes/FINDINGS-play-time.md line 140 says no Expert double lane in the library trips the timer.
+Evidence: docs/audit/drum-lanes/play/f20ddec0.asm lines 30 to 50: the song clock at +0x100 minus the round start at +0x2E0 is compared with 0.75 (line 32); the call goes ahead only when the pad mask at +0x2C4 is set (line 34), the double byte at +0x2C8 is set (line 36) and the finished byte at +0x2F1 is clear (line 38); it then makes the virtual call at line 45 and zeroes the lane fields (lines 46 to 50). The twin update `docs/audit/drum-lanes/play/f20de5b0.asm` line 19 makes the same 0.75 compare. The round restart is `docs/audit/drum-lanes/play/f20deaa0.asm` lines 134 to 142: the pressed pad's bit is cleared from +0x2C6, and when nothing is left the clock goes to +0x2E0 and +0x2C6 is refilled from +0x2C4. docs/audit/drum-lanes/FINDINGS-play-time.md lines 25 to 27 name the fields and lines 66 to 73 read the virtual call as the combo breaker (vtable slot 20, `0x20F4B60`). The il2cpp dump confirms slot 20 is that method: C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-dumps\6142\dump.cs line 530260 reads "RVA: 0x20F4B60 ... Slot: 20". The 0.75 sits in the same .rdata slot the probe calls `RVA_HITCHECK_THRESHOLD`. That the game breaks the combo has not been seen in a run; docs/audit/drum-lanes/FINDINGS-play-time.md line 140 says no Expert double lane in the library trips the timer. How a lane fills and clears is read too. The join, docs/audit/drum-lanes/f20de420.asm, takes a lane note whose pads are not yet in +0x2C4, sets the double byte from the note's 0x8000 flag, ORs its pads into +0x2C4 and +0x2C6 and restarts the round clock at +0x2E0; a finished lane is first cleared. A press on lane pads that matches no note crosses them off the round the same way (docs/audit/drum-lanes/play/f20de9a0.asm lines 6 to 9 and 48 to 57). Three hits in a row on notes outside the lane, while it is open, clear it (docs/audit/drum-lanes/f20de770.asm lines 8 to 23: a non-kick note without 0xC000 bumps +0x2EC, and at 3 the lane fields are zeroed). A missed note that is not a kick clears it too (docs/audit/drum-lanes/f20dcad0.asm lines 74 to 80). A finished lane clears once the song clock is past the time at +0x2D8 by a constant (docs/audit/drum-lanes/play/f20ddec0.asm lines 17 to 29); FINDINGS-play-time.md line 70 reads it as 0.5 s after the last lit note's hit, and the listing does not show the constant's value.
 Game code (6142): the lane update RVA `0x20DDEC0` (`docs/audit/drum-lanes/play/f20ddec0.asm`) and its twin; the press handler RVA `0x20DEAA0`.
 Hydra: no owner: lanes are display-only in Hydra.
 Ruling: "lanes only affect how lenient the engine is, it doesnt change the underlying notes." and "if not then it doesnt matter" (card 2026-10-11-27bb17bc, 03:52 and 03:55 UTC).
-Found: 2026-10-10, docs/audit/drum-lanes; the slot 20 link to dump.cs added 2026-11-08, session 77057df2 (docs-gaps search).
+Found: 2026-10-10, docs/audit/drum-lanes; the slot 20 link to dump.cs, the join and the clears added 2026-11-08, session 77057df2 (docs-gaps search).
 
 ### NL-60 An activated fill lights only its activation note's lane
 
