@@ -1,0 +1,2 @@
+# lane_draw_1166890.asm
+A BaseNoteRenderer method that DrumsNoteRenderer's Update calls every frame (drums_note_renderer_update_1370A0.asm line 267). Lines 44 and 64 fetch the engine's lane list through 0x20F4E20 (the engine base class 8288, dump.cs line 530102), line 51 passes it to the search helper 0x41B5C0 (not listed here), and line 78 hands the list to the sprite loop 0x41BE70 (lane_sprite_spawn_41BE70.asm). Lines 113 to 119 switch off pooled sprites left over. Page 2's NL-57 cites this listing.
