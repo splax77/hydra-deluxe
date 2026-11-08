@@ -510,10 +510,11 @@ def build_server(helper: Optional[Helper] = None):
         """Compare a watcher CSV with a hydra_replay score JSON and print
         sp_compare's report, one PASS or FAIL line per check. resolution,
         when given, also prints Hydra's full meter beside the game's.
-        dump_json and path_index are ch_play_chart's: the checks look for
-        each chord where the auto-player pressed it, and a squeeze-out's
-        press times come from that path of the dump, so a score file with a
-        squeeze-out is refused without dump_json."""
+        The checks look for each chord where the auto-player pressed it, and
+        a squeeze-out's press times come from path path_index of dump_json,
+        the hydra_replay dump, so a score file with a squeeze-out is refused
+        without dump_json. ch_play_chart no longer takes either: it plays a
+        schedule_json, and this tool follows it in a later task."""
         return capped(h.sp.ch_sp_compare(watch_csv, score_json, resolution,
                                          sp_bar_ticks, width, dump_json, path_index))
 
