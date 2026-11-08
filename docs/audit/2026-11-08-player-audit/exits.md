@@ -28,6 +28,29 @@ The fresh closure checker reopened this: the Python test answers "was the game's
 
 **L62, the 43.9 s window event.** Q13 asked about the keys route and the window coming to the front, and its option (a) said "Finding the 43.9 s cause waits for a run with a window-event log, on your go." The user: "i care about the runs working, not the window coming into focus" (D320 item 4). The words name the window event and say it is not pursued. Checked by a fresh agent: PASS. Its caveat: the event lined up with a 30 ms stall and one late press, and stalls are a run matter (L02), which stays open.
 
+### Third round: the nine rows no verifier had opened (L67 to L73, L83, L84)
+
+Two fresh verifiers (session 274bd9dd, task ids player-audit-verify-A and -B) read every claim. Their verdicts are summed up here; the rows themselves are unchanged in `ledger.md`. None of these exits has been checked by a fresh closure checker yet.
+
+**Exit 3, covered by a ruling:**
+
+- **L67's fakes.** The fake replies that never send `groups`, and the tests that never run a built agent, are D318 item 1 ("the tests also run the built file") and item 2 ("the test fakes send the real reply shape"). The recorder's fake, built from the parser's own offset constants (`test_machine_recorder.py:34-73`), is a test that cannot fail on a wrong offset; its fix changes nothing anyone sees, and it goes in the fix plan's list.
+- **L68's copies of Hydra's rules.** `_TOP_PAD_ORDER` and the decline modes go by D318 item 3. The strings `SQUEEZE_IN` and `SQUEEZE_OUT` (`play_chart.py:117-118`) copy `SPSqueeze::type_name`, and the five timing constants copy the C++ ones; both go by L44's ruling and L45. The Python also hard-codes the squeeze-out's late gem as the chord's first note (`play_chart.py:595-599`), while Hydra's rules file can set `SqOutRule::WholeChord` (`src/core/rules.h:22`). That is Star Power planning the Python does itself, so L44's ruling ("hand off all the starpower planning to hydra which already knows what to do") covers it: `hydra_replay` writes which gems the late press holds, and the player reads it. `hydra_replay` does not write the rule today.
+- **L70, the kit's reply is its own writes.** A reply that is not a dict, or lacks the down and up values, is D318 item 2 (stop on a reply missing what was asked). A press the game ignored shows up as a failed chord under D319 item 1 (each chord's score step against Hydra's).
+
+**Exit 4, not a problem:**
+
+- **L67's menu, bot-run and SP-watch fakes.** The menu fake matches `menu.ts`'s reply (`test_menu_tools.py:35-56`), the `PATCHED` fake has `launch_core.ts`'s keys (`test_bot_run.py:539-541`), and the drift check the SP-watch fake skips is tested in `test_process.py:126-180`.
+- **L68's first-note gem.** `play_chart.py:595-599` takes gem 0, and Hydra's `Chord::note_list(true)` sorts so that gem 0 is the squeeze-out note `category_scores` uses (`src/core/model.cpp:156-174`, `src/core/scoring.cpp:58`). They agree under the default rule; the rules-file case is above.
+- **L72's engine search.** `find_run_engine` (`game_tools.py:184-198`) answers "which normal-mode engine does the player play on"; `sp_watch.find_engine_live` answers "which engine is playing", over every window pattern. Inside `ch_run_chart` the watch is handed the player's engine (`game_tools.py:1075`). The row's blank-cell claim is struck (the watch writes "nan", which loads), and the lost press log is retried once at the end of the run (`game_tools.py:1485-1499`).
+- **L73's timing notes.** The spin thresholds, the 250 ms clock sample and the three song-time reads each serve one tool, and no two are compared in code. That the engine's clock copies `GameManager.songTime` is TM-10, labelled Unknown.
+- **L83, `edge_probe`.** Its file holds two leads that answer two questions, the asked lead (`probe`) and the measured one (`clock_ms_at_press` minus `chart_ms`); the third lives in memory only and equals the asked one by construction (`test_edge_probe.py:148`). The KeyError cannot happen: `press_plan` gives every chord at least one press (`play_chart.py:503-504`).
+- **L84, `find_window_edge` and `overlay_logs`.** The edge finder's tie at a midpoint (`analysis.py:98-109`) matters only to the old probes that import it, and they go under D322 item 3 if the user confirms the list. `overlay_logs.py` is the live player's column owner, not an old script.
+
+**For the Q18 list:** `edge_probe.py` and `overlay_logs.py` are live (imported by `game_tools.py`, `server.py`, `play_chart.py` and others). Only `analysis.py`, with `active_probe.py`, `passive_probe.py`, `walk_edges.py` and their tests, is old.
+
+**Questions (exit 2):** L69's empty chord list (Q20), L71's trace lines (Q21), with L75's Ready level (Q19).
+
 ### Exit 4, second round
 
 **L77, `machine_report` crashing on `statistics.quantiles`.** On this machine's Python 3.14.5, `statistics.quantiles` on one point returns a list, also in the form the report uses (`n=100, method="inclusive"`, 99 values), and only an empty list raises "must have at least one data point" (run by the main session and by the closure checker, 2026-11-08). The call at `machine_report.py:487` runs only after `if not pairs: return` at `:483-484`, so it never gets an empty list. The `_share` division (`:242-243`) divides by the window's span, which is zero only if two samples carry the same wall stamp; `window_of` (`:216-229`) does not forbid that, but real clock stamps do not repeat. The closure rests on the Python in use being 3.13 or later (3.14.5 for `py`, 3.14.7 for `python`). Checked by a fresh agent: PASS. Not yet checked by a fresh agent.
@@ -90,7 +113,6 @@ These rows have no verifier verdict yet, or rest on a run nobody has done. None 
 |---|---|
 | L02 | the 4 Freak misses not caused by the stale agent (chords 153 and 154, 803, 1144): a run on a rebuilt `kit.js`, to see whether the stalls repeat |
 | L03 | whether one missed gem in a Star Power phrase cancels its award (the rule is inferred from `ls-m2-run1`; no page block says it): a run with only the kick held back, or the game's miss handler read |
-| L67, L68, L69, L70, L71, L72, L73, L83, L84 | no verifier opened them (each row's Source ids) |
 | L75 (Ready level) | reopened by the closure checker; waits for the user's word (see "L75's Ready level" above the tables) |
 | L10, L32, L40 | a run on the rebuilt `kit.js` with split chords under load; a real long `ch_sp_compare` reply; a `hydra_replay` run to diff its output against the 11:14 exe's |
 

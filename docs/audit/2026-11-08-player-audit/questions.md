@@ -217,6 +217,40 @@ The window formula has three homes. The player's Python copy (`window_sides`, `n
 - (b) Leave it out, as your scope answer did, and list it for a later probe audit.
 
 Recommended: (b). Your scope answer drew this line, and the probes are not used in play runs. The case against: it is a copy of a rule that two homes already share, and your words "why are you still letting different areas do their own thing? this is why everything needs to be derived once" (2026-10-14, `docs/agents/rulings/code-and-engine.md`) ask for one home.
+## Batch 6: what the third round left
+
+The main session searched Hydra's engine, `hydra_replay`, the Clone Hero pages and the D-records for each of these before writing it here.
+
+### Q19. Where the Star Power watch's "ready" test gets its answers (L75)
+
+`sp_compare.at_ready_level` (`tools/ch_probe/experiments/sp_compare.py:288-292`) decides from each row of the game's live meter whether Star Power could be activated: `amount >= READY_FRACTION * sp_max`, where `READY_FRACTION` is the Python's copy of Hydra's 2 bars of 4 (`:122`). Two questions sit in that one line, and neither should be answered by the Python:
+
+- **When** the meter should reach the activation level. Hydra's engine knows this from the chart: `kSpActivationBars` (`src/core/timing.h:51`) and each path's `sp_ready_ms` (`src/search/engine.cpp`). `hydra_replay` does not write it today.
+- **Whether** the game's meter has reached it. The game stores its own rounded half at `+0x1B8` (SP-16 on page 05). The Python's float half differs from it by one when `sp_max` is odd. Every chart tested so far has an even one (Freak: 14,400).
+
+- (a) The watch takes "when" from Hydra, through `hydra_replay`, and "whether" from the game's own `+0x1B8`. The Python's half-meter test and its copies of the bar counts go.
+- (b) Keep the Python test as it is.
+
+Recommended: (a). It is the L44 rule applied to the judge: Hydra says what should happen, the game says what did. The case against: reading `+0x1B8` is one more field the watch reads from the game each row.
+
+### Q20. An empty chord list: two entry points, two answers (L69)
+
+A score file with no chords is refused by `ch_play_chart` (`tools/ch_mcp/game_tools.py:437-438`: "has no chords to play", a refusal). The command line `play_chart.py` prints the same words and exits 0, which reads as success (`play_chart.py:1375-1377`). Hydra's `hydra_replay` never writes an empty list for a real path, so only a broken or hand-made file gets here.
+
+- (a) The command line refuses too, with the same line and a non-zero exit.
+- (b) Leave both as they are.
+
+Recommended: (a). D318 item 2 already has the run stop on a file missing what the play needs, and D319 item 1 makes any stop before the song's end a failure; an empty run is both.
+
+### Q21. Two trace lines that can say the wrong thing (L71)
+
+- `trace.ts` sends `hooked` as the number of target methods before it attaches any (`tools/ch_mcp/agent/trace.ts:139`), and a method whose attach fails goes into `not_hooked` (`:159-161`). The count report prints "not hooked: N" and each failure (`trace_hits.py:208-213`).
+- The args report, the one `ch_notes` and `trace_hits` print in args mode (`trace_hits.py:228` onward), prints nothing about `not_hooked`. So a method that failed to attach gives the same "0 calls" picture as a method the game never called.
+
+- (a) The args report adds the "not hooked: N" line and each failure, as the count report does.
+- (b) Leave it.
+
+Recommended: (a). It is the kind of line Q14's "All seven" already fixed, and the count report already prints it.
 ## Answers
 
 - Q1: "Refuse stale (Recommended)" (2026-11-08): loaders refuse a stale built agent by a build stamp; run folders record the stamps and the `hydra_replay` build; tests run the built file.
