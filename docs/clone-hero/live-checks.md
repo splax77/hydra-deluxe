@@ -2,7 +2,7 @@
 
 This page lists the rows only a run of the real game can settle.
 It describes build 1.1 (v1.1.0.6142) unless a check names build 1.0.
-Last write-back: 2026-11-06.
+Last write-back: 2026-11-08.
 
 Each check gives its row id, the question in one line, what a pass and a fail look like, and whether a bot run is enough or the run needs Star Power activation and a menu start. The Star Power plan, `docs/superpowers/plans/2026-10-30-ch-mcp-star-power-and-song-start.md` (removed; `git show 6804353f:docs/superpowers/plans/2026-10-30-ch-mcp-star-power-and-song-start.md`), took its live steps from this list. Where one entry covers two or three rows, they share one run.
 
@@ -78,9 +78,7 @@ Pass: no Star Power flip inside the window, although Star Power is ready there w
 
 **TM-03.** Question: does `Offset = 0.2504` read as 251 ms? Pass: 251 at `+0x24`. Bot run.
 
-**TM-22 and TM-27.** Question: where is the hit/miss boundary on notes with gaps of 75, 120 and 170 ms? Pass: at half the stored window (48.1, about 60, 85.7 ms). Fail: 85 ms for all. Bot run with a custom press offset is enough; no Star Power.
-
-**TM-26.** Question: are the early and late sides of a note's window the same? Pass: an early and a late press at the same offset get the same verdict. Bot run with custom offsets.
+**TM-22 and TM-27.** Question: where is the hit/miss boundary on notes with gaps of 75 and 120 ms? LS-E run 1 of 2026-11-07 answered the 170 ms case: on notes with an 85.72 ms side, the check holds a press to that side, judged about one frame after the player's clock read (TM-26, TM-27, SP-47). Pass: at half the stored window (48.1 and about 71.0 ms) once that frame is allowed for. Fail: 85 ms for all. Bot run with a custom press offset is enough; no Star Power.
 
 **TM-32.** Question: does the menu's Precision Mode set bit 0x1000, and does the window poll read 50.44 to 84.89 ms? Needs a menu start; bot run; no Star Power.
 

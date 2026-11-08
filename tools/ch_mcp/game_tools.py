@@ -228,6 +228,14 @@ def declined_line(decline_mode: str, chords: Sequence[play_chart.Chord]) -> str:
     return f"declined ({decline_mode}): chords {', '.join(items) or 'none'}"
 
 
+def dropped_line(rows: Sequence[dict]) -> str:
+    """Which chords play_chart dropped (a row saying DROPPED in `hit`), each
+    once, in the order the rows hold them."""
+    items = list(dict.fromkeys(str(r["index"]) for r in rows
+                               if r.get("hit") == play_chart.DROPPED))
+    return f"dropped: chords {', '.join(items)}" if items else "dropped: none"
+
+
 def _activation_leads(chords: Sequence[play_chart.Chord]) -> List[play_chart.ActLead]:
     """play_chart.activation_leads of `chords`: each activation pressed early
     or late for its squeezes, with the end that lead plans and the ratio it
@@ -1510,10 +1518,12 @@ class GameTools:
                 # logged this run, not the counts, say whether the song clock
                 # jumped back and the earlier rows are not in the counts. A
                 # result with no rows of its own counts one row per message.
-                logged = len(result.rows) if result.rows else result.sent + result.declined
+                logged = (len(result.rows) if result.rows
+                          else result.sent + result.declined + result.dropped)
                 jumped = logged != len(rows)
-                presses_sent = sum(1 for r in rows if r["hit"] != play_chart.DECLINED)
-                chords_sent = len({r["index"] for r in rows if r["hit"] != play_chart.DECLINED})
+                unsent = (play_chart.DECLINED, play_chart.DROPPED)
+                presses_sent = sum(1 for r in rows if r["hit"] not in unsent)
+                chords_sent = len({r["index"] for r in rows if r["hit"] not in unsent})
                 chords = f"{chords_sent} chord{'' if chords_sent == 1 else 's'}"
                 if jumped or chords_sent == result.sent == presses_sent:
                     sent = f"sent {result.sent}"
@@ -1524,6 +1534,7 @@ class GameTools:
                 lines.append(f"{sent}, hit {result.hit}, "
                              f"misses {result.sent - result.hit}, best streak {result.max_streak}"
                              + (f", declined {result.declined}" if result.declined else ""))
+                lines.append(dropped_line(rows))
                 if jumped:
                     lines.append(f"the song clock jumped back during the run: the counts above "
                                  f"cover the part after the jump; the rows below keep all "
