@@ -12,7 +12,7 @@ Rule: the .mid drum reader gives red the Tom flag, the kick neither flag, and ye
 Label: Proven in the game's code
 Evidence: `code/6142/mid_drum_reader_2155050.asm` lines 334 to 340 (red gets 0x10, the kick is skipped, any other pad gets 0x20) and lines 244 to 294 (pitches 110 to 112 build Tom modifier records on yellow, blue and green). How far a marker reaches (Hydra holds it from note-on to note-off) was not read in the game, and the 2026-09-25 play run that settled "a marked gem is a tom" left no result file.
 Game code (6142): the .mid drum reader, a method of class #8626, RVA `0x2155050`, the listing above.
-Hydra: `kYellowTomMarkerPitch`, `kBlueTomMarkerPitch` and `kGreenTomMarkerPitch` in src/parse/song.cpp lines 680 to 682; `flag_cymbals_` set at lines 1092 to 1097.
+Hydra: `kYellowTomMarkerPitch`, `kBlueTomMarkerPitch` and `kGreenTomMarkerPitch` in src/parse/song.cpp lines 679 to 681; `flag_cymbals_` set at lines 1091 to 1096.
 Ruling: none needed: same rule.
 Found: 2026-09-25, session 8157f2dc; listed 2026-10-30 in session b02ab3e6 (the reference build).
 
@@ -22,7 +22,7 @@ Rule: pitch 109 makes a Flam modifier, pitches 110 to 112 a Tom modifier (raisin
 Label: Proven in the game's code
 Evidence: `code/6142/mid_drum_reader_2155050.asm` lines 151 to 243 (the compares and the jump table at 0x2155B2C) and 244 to 294 (the flam and tom records). The four sinks' bodies were not read.
 Game code (6142): RVA `0x2155050`, lines 151 to 294.
-Hydra: `kFlamMarkerPitch` to `kDoubleLaneMarkerPitch` in src/parse/song.cpp lines 678 to 689; the `MidiParser::optype` switch at lines 913 to 937.
+Hydra: `kFlamMarkerPitch` to `kDoubleLaneMarkerPitch` in src/parse/song.cpp lines 678 to 689; the `MidiParser::optype` switch at lines 912 to 936.
 Ruling: none needed: same pitches.
 Found: 2026-10-30, session b02ab3e6 (the reference build).
 
@@ -32,7 +32,7 @@ Rule: N 0 is the kick; N 1 to 4 are red, yellow, blue and the fourth pad (Hydra'
 Label: Proven in the game's code
 Evidence: `code/6142/chart_n_handler_213D620.asm` lines 71 to 109 (the drum table, decoded through the jump table at 0x213DB10) and lines 95 to 107 (N 32); decompile lines 25098 to 25110 agree.
 Game code (6142): the .chart N handler of class #8615, RVA `0x213D620`, the listing above.
-Hydra: `ChartParser::note_optype` in src/parse/song.cpp lines 1683 to 1699; `chart_pad_color` at line 1668.
+Hydra: `ChartParser::note_optype` in src/parse/song.cpp lines 1681 to 1708; `chart_pad_color` at line 1666.
 Ruling: none needed: same rule for N 0 to 4 and N 32.
 Found: 2026-10-03, session cebf3006; listed 2026-10-30 in session b02ab3e6 (the reference build).
 
@@ -42,7 +42,7 @@ Rule: the game reads .chart N 5 and .mid pitches 65, 77, 89 and 101 as a fifth p
 Label: Proven in the game's code
 Evidence: `code/6142/chart_n_handler_213D620.asm` lines 99 to 105 (type 0x11 raises +0xA1); `code/6142/pitch_difficulty_map_210D9C0.asm` lines 1 to 24 with the type map in docs/audit/note-shuffle/step0/open2/f210d7b0.asm; `code/6142/chart_modifier_decode_213D160.asm` lines 11 to 80 (N 38 and N 44 on that lane). How many library charts hold such lines was not counted (no library run).
 Game code (6142): RVAs `0x213D620`, `0x210D9C0`, `0x210D7B0` and `0x213D160`, the listings above.
-Hydra: `chart_pad_color` in src/parse/song.cpp lines 1668 to 1676 (pads 1 to 4) and `ChartParser::note_optype` lines 1700 to 1708 (34 to 37 and 40 to 43 only).
+Hydra: `chart_pad_color` in src/parse/song.cpp lines 1666 to 1674 (pads 1 to 4) and `ChartParser::note_optype` lines 1698 to 1705 (34 to 37 and 40 to 43 only).
 Ruling: open split: see questions page Q-13.
 Found: 2026-10-30, session b02ab3e6 (the reference build).
 
@@ -52,7 +52,7 @@ Rule: N 34 to 38 make an accent and N 40 to 44 a ghost on red, yellow, blue, the
 Label: Proven in the game's code
 Evidence: `code/6142/chart_modifier_decode_213D160.asm` lines 11 to 80; `code/6142/chart_n_handler_213D620.asm` lines 212 to 278 (the call, the cymbal kind raising +0xA2, the record written with the tick twice); decompile lines 24747 to 24840.
 Game code (6142): RVAs `0x213D160` and `0x213D620`, the listings above.
-Hydra: `ChartParser::note_optype` in src/parse/song.cpp lines 1690 to 1709, with `kChartCymbalMarkerBase`; `allows_cymbals` in src/core/model.cpp line 17.
+Hydra: `ChartParser::note_optype` in src/parse/song.cpp lines 1681 to 1707, with `kChartCymbalMarkerBase`; `allows_cymbals` in src/core/model.cpp line 18.
 Ruling: none needed: same rule for the four pads (the fifth is NL-04).
 Found: 2026-10-03, session cebf3006; listed 2026-10-30 in session b02ab3e6 (the reference build).
 
@@ -62,7 +62,7 @@ Rule: the .chart finish step applies the cymbal, tom, flam, ghost and accent mod
 Label: Proven in the game's code
 Evidence: docs/audit/note-shuffle/step0/open2/f215e280.asm lines 23 to 45: five unconditional calls to the apply routine with kinds 7, 6, 8, 10 and 9. That the apply routine itself, docs/audit/note-shuffle/step0/open2/f215dbd0.asm, reads no dynamics flag was read on 2026-10-03 and not re-read since. Three other functions hold the string `ENABLE_CHART_DYNAMICS` (`0x211BAD0`, `0x211C270` and `0x211E4C0`); they take a whole string and look like a writer, not the .chart reader, and nobody has opened them (ch-evidence.md question 320 at commit 5fbe71ae).
 Game code (6142): RVA `0x215E280` calling `0x215DBD0`, the listings above.
-Hydra: the ghost and accent cases of `ChartParser::note_optype` in src/parse/song.cpp lines 1700 to 1707, and the comment at lines 1889 to 1892.
+Hydra: the ghost and accent cases of `ChartParser::note_optype` in src/parse/song.cpp lines 1698 to 1705, and the comment at lines 1887 to 1891.
 Ruling: none needed: same rule.
 Found: 2026-10-03, session cebf3006; re-read 2026-10-30 in session b02ab3e6 (the reference build).
 
@@ -72,19 +72,19 @@ Rule: a cymbal, ghost or accent marker whose tick holds no note is skipped, and 
 Label: Proven in the game's code
 Evidence: docs/audit/note-shuffle/step0/open2/f215dbd0.asm lines 104 to 110: the range lookup returns -1 and jumps to the exit.
 Game code (6142): RVA `0x215DBD0`, lines 104 to 110.
-Hydra: `Chord::apply_cymbal` and the ghost and accent appliers throw `ChartFileError`, which the per-op catch drops (src/core/model.cpp lines 287 to 304; src/parse/song.cpp line 1746).
+Hydra: `Chord::apply_cymbal` and the ghost and accent appliers throw `ChartFileError`, which the per-op catch drops (src/core/model.cpp lines 288 to 305; src/parse/song.cpp line 1744).
 Ruling: none needed: same rule.
 Found: 2026-10-03, session cebf3006; re-read 2026-10-30 in session b02ab3e6 (the reference build).
 
 ### NL-08 A .chart marker on a chord with no note of its colour
 
-Rule: Hydra drops a marker whose chord has notes but none of its colour; whether the game does the same is not known.
-Label: Unknown
-Evidence: only docs/audit/note-shuffle/step0/open2/f215dbd0.asm lines 84 to 130 were read; the per-colour check after the range lookup was not.
-Game code (6142): RVA `0x215DBD0`; the colour check was not read.
-Hydra: `Chord::apply_cymbal` and its siblings in src/core/model.cpp lines 291 to 304.
-Ruling: none found.
-Found: 2026-10-30, session b02ab3e6 (the reference build).
+Rule: a marker on a tick whose notes are all of other colours sets nothing, in the game and in Hydra. The game works in two steps. First it adds the marker to every note in the marker's tick range, whatever the note's colour. Then a second pass keeps the marker's flag on a note only when the marker's +0x14 field equals the note's +0x20 field.
+Label: Proven in the game's code
+Evidence: a .chart N line makes a one-tick marker: docs/audit/note-shuffle/step0/open2/f213d620_chart_N_line.asm lines 253 and 254 store one register as both ends. The apply routine adds the marker to every note in the range it finds, with no colour test, in docs/audit/note-shuffle/step0/open2/f215dbd0.asm lines 117 to 135. The flag pass is docs/audit/note-shuffle/step0/open2/f214cee0.asm, called from docs/audit/note-shuffle/step0/open2/f215e280.asm line 69. It switches on the marker's kind byte at +0x18 (lines 35 to 45). For kinds 10, 9, 7 and 6 it compares the marker's +0x14 with the note's +0x20 and skips the note when they differ (lines 46 to 48, 53 to 55, 62 to 64 and 69 to 71). Kind 8 sets flag 0x100 with no such test (line 60). Three points stay Unknown. That +0x14 and +0x20 are the colour is inferred, not shown. Which kind number is cymbal, ghost or accent is not shown in this listing. The range bounds come from the helper 0x18213E310 (called at f215dbd0.asm line 86) and the lookup 0x1805FAD90 (line 103), and neither body was read.
+Game code (6142): the apply routine, RVA `0x215DBD0`, and the flag pass at 0x214CEE0, the listings above.
+Hydra: `Chord::apply_cymbal`, `Chord::apply_ghost` and `Chord::apply_accent` in src/core/model.cpp lines 292 to 305 throw `ChartFileError` when the chord has no note of the marker's colour. The .chart parser's per-op catch at src/parse/song.cpp lines 1742 to 1745 drops the marker.
+Ruling: none needed: same rule.
+Found: 2026-10-30, session b02ab3e6 (the reference build); the colour test read 2026-11-08, session 77057df2 (docs-gaps search).
 
 ### NL-09 A .chart kick has no ghost or accent marker
 
@@ -92,7 +92,7 @@ Rule: the .chart modifier map has no case that targets the kick, so a .chart kic
 Label: Proven in the game's code
 Evidence: decompile lines 24750 to 24825 (only note numbers 34 to 38, 40 to 44 and 66 to 68 have cases; every other value returns lane 0); `code/6142/chart_modifier_decode_213D160.asm` lines 11 to 80.
 Game code (6142): RVA `0x213D160`, the listing above.
-Hydra: `ChartParser::note_optype` has no kick modifier case (src/parse/song.cpp lines 1695 to 1709); `op_kick` passes a normal kick at line 1419.
+Hydra: `ChartParser::note_optype` has no kick modifier case (src/parse/song.cpp lines 1693 to 1707); `op_kick` passes a normal kick at line 1418.
 Ruling: none needed: same rule.
 Found: 2026-10-04, session 9f4f8eb5 (ADR 0012); re-read 2026-10-30 in session b02ab3e6 (the reference build).
 
