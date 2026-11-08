@@ -1185,6 +1185,31 @@ TEST_CASE("schedule: every skip writes a refusal and a flag") {
         CHECK(refusal_says(s, {"chord 4", "could not split"}));
     }
 
+    // A squeeze whose anchor's read is not planned: the replay has the same
+    // chord count but its chord 2 sits at tick 1540, not the 1536 the
+    // activation's SP-end step names, so no step matches the replay's chord
+    // 2 and the end read after it cannot be planned. The squeeze chord 4 is
+    // timed from that read: refused, not pressed.
+    {
+        const Overfill o = overfill();
+        const Song moved = plain_song({0, 768, 1540, 2304, 3072, 3840});
+        const json s = schedule::schedule_json(o.song, {&o.act}, replay_path(moved, {}), core::default_rules());
+        INFO(s["refusals"].dump());
+        CHECK(s["chords"][4]["refused"].get<bool>());
+        CHECK_FALSE(has_press(s, 4));
+        CHECK(refusal_says(s, {"chord 4", "read after chord 2", "not planned"}));
+    }
+
+    // A skipped fill with no chord under it: the two inputs are not of one
+    // chart. The line is written; there is no chord row to flag.
+    {
+        Overfill o = overfill();
+        o.act.skipped_fill_ticks = {3000};
+        const json s = schedule::schedule_json(o.song, {&o.act}, replay_path(o.song, {}), core::default_rules());
+        INFO(s["refusals"].dump());
+        CHECK(refusal_says(s, {"no chord at skipped fill"}));
+    }
+
     // A refused far press is not written as a press row. The overfill shape
     // with chord 3 moved to tick 3060, 31.25 ms before the squeezed-out
     // chord 4 (Red and Kick), and chord 3 (Red alone) a skipped fill: its
