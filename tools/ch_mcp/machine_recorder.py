@@ -374,7 +374,7 @@ class ClockReader:
             value = P.decode_double(self._reader(engine + C.OFF_SONG_CLOCK, CLOCK_BYTES))
         except (OSError, ValueError):
             return None
-        return value if math.isfinite(value) and value >= 0 else None
+        return value if math.isfinite(value) else None
 
 
 @dataclasses.dataclass

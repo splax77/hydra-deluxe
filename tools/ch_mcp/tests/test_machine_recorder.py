@@ -789,9 +789,11 @@ class RealRun(Folder):
 
 
 class ClockRange(Folder):
-    def test_a_nonfinite_or_negative_clock_is_no_clock(self):
-        for value, written in ((float("nan"), ""), (-1.0, ""), (float("inf"), ""),
-                               (12.5, "12.5")):
+    def test_a_nonfinite_clock_is_no_clock_and_a_negative_one_is_kept(self):
+        # The game's clock is below zero through every song's lead-in (TM-11), so a
+        # negative read is a real clock (D325).
+        for value, written in ((float("nan"), ""), (float("inf"), ""), (float("-inf"), ""),
+                               (-1.0, "-1.0"), (12.5, "12.5")):
             with self.subTest(value=value):
                 folder = os.path.join(self.folder, repr(value))
                 os.mkdir(folder)
