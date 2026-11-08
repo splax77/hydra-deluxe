@@ -25,11 +25,13 @@ _REPO_ROOT = os.path.abspath(os.path.join(_HERE, "..", "..", ".."))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
+from tools.ch_mcp import build_stamp as BS  # noqa: E402
 from tools.ch_mcp import frida_tools as FT  # noqa: E402
 from tools.ch_mcp import game_files as G  # noqa: E402
 from tools.ch_mcp import kit_tools as K  # noqa: E402
 from tools.ch_mcp.tests.test_frida_attach import (  # noqa: E402
     FakeFrida, ReplySession, instant_wait)
+from tools.ch_mcp.tests.test_build_stamp import make_built_agent  # noqa: E402
 from tools.ch_probe.experiments import play_chart  # noqa: E402
 from tools.ch_probe.input_driver import Lane  # noqa: E402
 from tools.ch_probe.tests.test_play_chart import _FakeSongClock, _FakeTime  # noqa: E402
@@ -1126,8 +1128,8 @@ class KitIdTest(Rig):
         self.assertEqual(len(self.posted()), posted)
 
 
-# The fake game for KitAgentTest. It reads one case from stdin, loads the real
-# kit.ts (Node erases its types) with a fake il2cpp bridge around it, posts
+# The fake game for KitAgentTest. It reads one case from stdin, loads the
+# built kit.js's own code (built_kit_module) with a fake il2cpp bridge, posts
 # each message the way Frida would, and prints the replies, every create,
 # destroy and AddController call, and the controllers left in the fake game.
 # Ids come from a counter that destroying never moves, as the game's does
@@ -1247,24 +1249,73 @@ console.log(JSON.stringify({replies, calls, writes, live: live.map((x) => x.tag)
 NODE = shutil.which("node")
 # One driver run is a fresh Node start; this is its stop.
 NODE_CAP_S = 30
+# The built kit agent the game loads; the Node tests run this file, so they
+# test what a run would load.
+KIT_JS = os.path.join(_REPO_ROOT, "tools", "ch_mcp", "agent", K.KIT_AGENT_FILE)
+# esbuild's comment line that opens kit.ts's own code in the bundle. What
+# comes before it is the il2cpp bridge, which needs a real Frida; the driver
+# sets the global the bridge defines.
+KIT_CODE_MARKER = "// kit.ts\n"
 
 
-@unittest.skipIf(NODE is None, "node is not on PATH")
+def built_kit_module(js_path):
+    """kit.ts's code as the built bundle holds it, the bridge left out."""
+    text = BS.bundle_module(js_path)
+    at = text.find(KIT_CODE_MARKER)
+    if at < 0:
+        raise BS.StampError(f"{js_path}: no {KIT_CODE_MARKER.strip()!r} line in the bundle")
+    return text[at:]
+
+
+def kit_skip_reason(js_path):
+    """Why the Node tests cannot run the built file, or None when they can."""
+    if NODE is None:
+        return "node is not on PATH"
+    refusal = BS.check(js_path)
+    if refusal is not None:
+        return f"the built kit agent may not run: {refusal}"
+    return None
+
+
+KIT_SKIP = kit_skip_reason(KIT_JS)
+
+
+class KitBuiltFileTest(unittest.TestCase):
+    """Which file KitAgentTest runs, and why it skips."""
+
+    def test_the_kit_tests_run_the_built_file(self):
+        self.assertEqual(os.path.basename(KIT_JS), "kit.js")
+        with tempfile.TemporaryDirectory() as d:
+            folder = os.path.join(d, "agent")
+            js = make_built_agent(folder, "kit", module_text="var bridge = 1;\n"
+                                  "// kit.ts\nvar ALLOWED_CALLS = [];\n")
+            self.assertEqual(built_kit_module(js), "// kit.ts\nvar ALLOWED_CALLS = [];\n")
+            if NODE is not None:
+                self.assertIsNone(kit_skip_reason(js))
+            with open(os.path.join(folder, "kit.ts"), "a", encoding="utf-8") as f:
+                f.write("// an edit after the build\n")
+            if NODE is not None:
+                self.assertEqual(kit_skip_reason(js),
+                                 f"the built kit agent may not run: {js} is stale: kit.ts "
+                                 "changed since it was built; run npm run build:kit in "
+                                 "tools/ch_mcp/agent first")
+            os.remove(js)
+            if NODE is not None:
+                self.assertEqual(kit_skip_reason(js),
+                                 f"the built kit agent may not run: {js} not found; run "
+                                 "npm run build:kit in tools/ch_mcp/agent first")
+
+
+@unittest.skipIf(KIT_SKIP is not None, str(KIT_SKIP))
 class KitAgentTest(unittest.TestCase):
-    """The real kit.ts, run in Node against a fake game."""
+    """The built kit.js, run in Node against a fake game."""
 
     def run_agent(self, messages, **case):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
-        with open(os.path.join(_REPO_ROOT, "tools", "ch_mcp", "agent", "kit.ts"),
-                  encoding="utf-8") as f:
-            source = f.read()
-        # The one line Node cannot load; the driver sets the global it defines.
-        bridge = 'import "frida-il2cpp-bridge";\n'
-        self.assertIn(bridge, source)
-        agent = os.path.join(tmp.name, "kit.mts")
+        agent = os.path.join(tmp.name, "kit.mjs")
         with open(agent, "w", encoding="utf-8") as f:
-            f.write(source.replace(bridge, ""))
+            f.write(built_kit_module(KIT_JS))
         driver = os.path.join(tmp.name, "driver.mjs")
         with open(driver, "w", encoding="utf-8") as f:
             f.write(AGENT_DRIVER % {"kit_url": json.dumps(pathlib.Path(agent).as_uri())})
