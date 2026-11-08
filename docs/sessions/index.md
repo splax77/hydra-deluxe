@@ -1,6 +1,6 @@
 # Session index
 
-4 sessions are kept locally and have no line here.
+6 sessions are kept locally and have no line here.
 
 - 2026-08-09 62055a3c Freeze error diagnosis (2026-08-09) | batch-running, library, path, report-table, performance, tests | Ended with the freeze fixed, the library analyzed to 18,022 records, and a sortable path report with a score column. The conversation shows no commit, so the changes sit in the working tree.
 - 2026-08-10 571ec5d5 Hydra uncapped starpower version (2026-08-10) | sp-cap, path, performance, batch-running | Ended at 12:42 UTC with all six big charts finishing uncapped, the slowest in 98.8 seconds.
@@ -467,6 +467,9 @@
 - 2026-11-07 43eecb1c Agent effort level assignment (2026-11-07) | agents, planning, review, performance, memory | The session ended after the user stopped the test during the reviewer step, and the results were given in chat only.
 - 2026-11-07 aa89806d Stale comment waves handoff (2026-11-07) | agents, review, docs, tests, ci | The session ended with a handoff written and committed, after all six fix waves of the stale comment audit were merged to main.
 - 2026-11-07 b132faae CH Recorder build handoff (2026-11-07) | clone-hero, performance, planning, tests, agents | The session ended with a handoff committed for planning the two fixes, and nothing built for them yet. [write-back]
+- 2026-11-07 28b91640 Stale comment waves handoff (2026-11-07) | docs, review, tests, clone-hero, agents, planning | The session ended with all ten code tasks and the three leftover branches merged to main, after the user's last yes, with nothing pushed.
+- 2026-11-07 e3e9069c Limit how many Hydra builds run at once (2026-11-07) | hooks, agents, performance, planning, review | The three-build limit is merged to main and to the hooks repo, and nothing is pushed.
+- 2026-11-07 490d6781 Cont v (2026-11-07) | clone-hero, performance, planning, review, docs, agents | The session ended with the Senri run at the optimal score, the player refinements plan signed off and handed off, and the plan removal waiting on a build pass.
 
 ## Proposed tags
 
