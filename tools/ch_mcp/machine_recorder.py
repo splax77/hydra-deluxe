@@ -22,6 +22,7 @@ import argparse
 import csv
 import ctypes
 import dataclasses
+import math
 import os
 import struct
 import sys
@@ -356,7 +357,9 @@ CLOCK_BYTES = 8
 
 class ClockReader:
     """Reads the game's song clock. `open_reader` turns a pid into a reader of
-    (address, size) bytes. A failed read is None and the next one tries again."""
+    (address, size) bytes. A failed read is None and the next one tries again.
+    A read no song clock could hold is None too, because it means the engine
+    address is stale or wrong, and a wrong clock must not pass for one."""
 
     def __init__(self, open_reader: Callable[[int], Callable[[int, int], bytes]]):
         self._open_reader = open_reader
@@ -368,9 +371,10 @@ class ClockReader:
             if self._reader is None or self._pid != pid:
                 self._reader = self._open_reader(pid)
                 self._pid = pid
-            return P.decode_double(self._reader(engine + C.OFF_SONG_CLOCK, CLOCK_BYTES))
+            value = P.decode_double(self._reader(engine + C.OFF_SONG_CLOCK, CLOCK_BYTES))
         except (OSError, ValueError):
             return None
+        return value if math.isfinite(value) and value >= 0 else None
 
 
 @dataclasses.dataclass

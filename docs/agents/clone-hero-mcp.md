@@ -71,4 +71,4 @@ The agents now skip any `GameManager` the game has destroyed. Every Unity object
 
 The one live run that checked this skip (2026-10-29) is recorded in docs/clone-hero/07-internals.md (IN-03). If a later read at the menu still says "song over" with `destroyed: 0`, the game kept a `GameManager` alive, and the skip would not tell them apart.
 
-If the game is updated, every Frida tool refuses until a dump of the new build exists; the refusal names the scripts to run.
+If the game is updated, `ch_attach` refuses until a dump of the new build exists, and the refusal names the scripts to run. That check reads only the version the game's `version.json` gives, so a changed game that keeps its version string passes it. The launch agent (`tools/ch_mcp/agent/launch.ts`) checks no build at all; it rests on its two byte checks. It writes its one byte only when the loader's first bytes and the patch site both read as `tools/ch_mcp/launch_patch.json` lists them, and otherwise it refuses with nothing written (`applyPatch` in `tools/ch_mcp/agent/launch_core.ts`).
