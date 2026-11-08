@@ -246,11 +246,11 @@ Found: 2026-09-27, session 1b0a7cd8.
 
 Rule: the 2x kick is pitch 59 on Easy, 71 Medium, 83 Hard and 95 Expert; it gets the 2x flag and the kick's note type.
 Label: Proven in the game's code
-Evidence: `code/6142/mid_drum_reader_2155050.asm` lines 316 to 324: the pitch minus 59 is tested against the mask 0x1001001001, whose bits 0, 12, 24 and 36 are those four pitches; docs/audit/drum-lanes/play/f2155200_mid_reader_lane_case.asm lines 236 to 243 agree.
+Evidence: `code/6142/mid_drum_reader_2155050.asm` lines 316 to 324: the pitch minus 59 is tested against the mask 0x1001001001, whose bits 0, 12, 24 and 36 are those four pitches; docs/audit/drum-lanes/play/f2155200_mid_reader_lane_case.asm lines 236 to 243 agree. The pitch test starts at instruction 0x21555CD (line 316), and the dynamics-tag test of NL-10 is at 0x21555F1 (line 325); Hydra's comments in tests/test_kick2x.cpp line 25, tests/test_dynamics_tag.cpp line 4 and src/parse/song.cpp lines 747 and 974 name those two addresses.
 Game code (6142): RVA `0x2155050`, the listing above.
 Hydra: `DifficultyChartCodes::kick2x_pitch` in src/parse/song.h line 61; `kDifficultyChartCodes` in src/parse/song.cpp lines 653 to 658.
 Ruling: D20: chose "A: own pitch, box everywhere" (card 2026-10-04-bbf41dc4, 01:53 UTC).
-Found: 2026-10-03, session cebf3006; listed 2026-10-30 in session b02ab3e6 (the reference build).
+Found: 2026-10-03, session cebf3006; listed 2026-10-30 in session b02ab3e6 (the reference build); the two instruction addresses named 2026-11-08, session 77057df2 (docs-gaps search).
 
 ### NL-25 The .mid pitch-to-difficulty and pitch-to-pad maps
 
@@ -618,7 +618,7 @@ Rule: Hydra's Preview lights only the lane of a fill's activation note, as the u
 Label: Hydra assumes it, never checked
 Evidence: docs/audit/drum-lanes/FINDINGS-play-time.md line 50 says the activation flag "is not a lane flag"; the screenshot was not saved.
 Game code (6142): not found.
-Hydra: the activation lane in src/app/preview_view.cpp line 428, from `Chord::activation_note`.
+Hydra: the activation lane in src/app/preview_view.cpp lines 435 and 436, from `Chord::activation_note`.
 Ruling: "match the clone hero style of highlighting only the lane the activation note is on" (card ee38a528, 20:32 UTC).
 Found: session ee38a528.
 
@@ -629,8 +629,8 @@ Found: session ee38a528.
 Rule: when the instrument is not 9 (Pro Drums) the builder runs the cymbal fold and then the dynamics clear; Pro Drums runs a different step instead.
 Label: Proven in the game's code
 Evidence: docs/audit/note-shuffle/step0/open2-refute/f20D2EA0.asm lines 245 to 253 (the compare with 9 and the two calls); a caller scan on 2026-10-30 found no other call site for either step; its output was not kept.
-Game code (6142): builder RVA `0x20D2EA0`; fold `0x20F16E0`; clear `0x20EFEE0`; Pro step `0x20F1420`.
-Hydra: `ChartReading::prodrums` in src/parse/chart_reading.h line 24, read in src/parse/song.cpp line 1955.
+Game code (6142): builder RVA `0x20D2EA0`; fold `0x20F16E0`; clear `0x20EFEE0`; Pro step `0x20F1420`, which is the disco flip (NL-22).
+Hydra: `ChartReading::prodrums` in src/parse/chart_reading.h line 24, read in src/parse/song.cpp lines 1953 and 1962.
 Ruling: none needed for the trigger; the clear is NL-62.
 Found: 2026-10-28, session 6a549de0; listed 2026-10-30 in session b02ab3e6 (the reference build).
 
@@ -668,11 +668,11 @@ Found: 2026-10-28, session 6a549de0.
 
 Rule: both readers feed the same builder, so a .mid should lose its dynamics on plain Drums too; this was read from the code, not run.
 Label: Unknown
-Evidence: not checked: it would need the builder's callers traced for the source format, or a .mid bot run on plain Drums.
+Evidence: in the builder, `code/6142/note_builder_20D2EA0.asm` lines 245 to 253, the clear is chosen by the instrument byte alone: anything but 9 runs the fold and then the clear. No test of the source format is in those lines, and both parsers end in the same finalizer (NL-34). Still not checked: the builder's callers were not traced for the source format, and no .mid bot run on plain Drums was made.
 Game code (6142): RVAs `0x20D2EA0` and `0x215C320`.
 Hydra: as NL-62.
 Ruling: as NL-62.
-Found: 2026-10-28, session 6a549de0.
+Found: 2026-10-28, session 6a549de0; the builder lines cited 2026-11-08, session 77057df2 (docs-gaps search).
 
 ### NL-66 On plain Drums every cymbal becomes its tom
 
@@ -680,7 +680,7 @@ Rule: the fold shifts the lane mask right by 3 for any note with a cymbal bit, s
 Label: Proven in the game's code
 Evidence: `code/6142/fold_20F16E0.asm` lines 25 and 26 (the cymbal-bit test) and 33 to 35 (the shift and store).
 Game code (6142): RVA `0x20F16E0`, the listing above.
-Hydra: `cymbal_counts` in src/core/song.cpp line 73 returns true only when Pro Drums is on.
+Hydra: `cymbal_counts` in src/core/song.cpp line 74 returns true only when Pro Drums is on.
 Ruling: none needed: same rule.
 Found: 2026-10-30, session b02ab3e6 (the reference build); Hydra side checked by writer W1.
 
@@ -716,6 +716,16 @@ Hydra: no owner.
 Ruling: none found.
 Found: 2026-10-30, session b02ab3e6 (the reference build).
 
+### NL-73 A builder step rewrites yellow toms and blue cymbals when one byte is 3
+
+Rule: when a byte the builder reads equals 3, it runs 0x20F0320 after the 2x-kick removal. That step moves a yellow tom to the blue tom, or to red when the chord already holds a blue tom or blue cymbal. It moves a blue cymbal to the green cymbal, or to the yellow cymbal when the chord already holds a green tom or green cymbal. It is not the 2x-kick drop, despite its file name. What the byte means is not known.
+Label: Unknown
+Evidence: the step's listing, `code/6142/two_x_kick_drop_20F0320.asm`, reads each note's +0x80 lane mask. Line 29 tests for 4 (the yellow tom); lines 39 to 51 read the chord's pattern through 0x214BCD0 (the OR of its notes' lane masks, NL-46) and test bits 8 and 0x40; line 60 writes 8 and line 70 writes 2. Line 73 tests for 0x40 (the blue cymbal); lines 83 to 95 test the pattern for 0x10 and, by a sign test, 0x80; line 104 writes 0x80 and line 113 writes 0x20. The builder `code/6142/note_builder_20D2EA0.asm` loads the byte at offset 2 of the object in r14 at line 50, and lines 237 to 242 call the step only when that byte is 3. The lane bits are NL-50's. The rewrite is proven in the game's code; the label is Unknown because the byte's meaning, and so when a player meets this step, is not read.
+Game code (6142): the step 0x20F0320 and the builder `0x20D2EA0`, the listings above.
+Hydra: no owner: Hydra has no step like it.
+Ruling: none found.
+Found: 2026-11-08, session 77057df2 (docs-gaps search).
+
 ## Side files in a song folder
 
 ### NL-70 An expert+.mid beside notes.mid folds the 2x kicks into normal kicks
@@ -734,11 +744,11 @@ Found: 2026-09-25, session 8157f2dc.
 
 Rule: a bot run on a 480-resolution .mid with Note Shuffle on scored 180 points more than Hydra's unshuffled number, all from toms that became cymbals. The decoded shuffle (NL-40 to NL-46), fed the file's own ticks, put all 22 of the video chart's notes in their filmed positions. Scaling the ticks to 192 per beat matched 11 of 22, and dropping the rule that a new chord's first note avoids the previous chord's colours matched 5 of 22.
 Label: Unknown
-Evidence: two scouts in session 6c19d0ef decoded the shuffle separately, and both references put all 22 notes of the video's chart ("turkish man yelling meow at an egg", Expert Pro Drums with 2x Kick and Note Shuffle) where the video shows them; its card (docs/sessions/2026-10-09-6c19d0ef.md) says the run was a bot run and all 22 matched. The same session's own record, which is not kept, gives the score gap: the video scored 2,725 against Hydra's 2,545 for the unshuffled chart, because the shuffle turned seven toms into cymbals, two hit at 1x and five at 2x, which is exactly 180. Session cfb6f1fa (2026-10-08) then ran the three probe checks against the same video: the file's own ticks match 22 of 22, ticks scaled to 192 per beat match 11 of 22, and dropping the previous-colours rule matches 5 of 22. Its card (docs/sessions/2026-10-09-cfb6f1fa.md) records all three results. The video is C:/Users/Patrick/Videos/2026-10-08 21-52-37.mp4 (it exists today; the reference build did not watch it), and the probe scripts were not kept.
+Evidence: two scouts in session 6c19d0ef decoded the shuffle separately, and both references put all 22 notes of the video's chart ("turkish man yelling meow at an egg", Expert Pro Drums with 2x Kick and Note Shuffle) where the video shows them; its card (docs/sessions/2026-10-09-6c19d0ef.md) says the run was a bot run and all 22 matched. The same session's own record, which is not kept, gives the score gap: the video scored 2,725 against Hydra's 2,545 for the unshuffled chart, because the shuffle turned seven toms into cymbals, two hit at 1x and five at 2x, which is exactly 180. Session cfb6f1fa (2026-10-08) then ran the three probe checks against the same video: the file's own ticks match 22 of 22, ticks scaled to 192 per beat match 11 of 22, and dropping the previous-colours rule matches 5 of 22. Its card (docs/sessions/2026-10-09-cfb6f1fa.md) records all three results. The video is C:/Users/Patrick/Videos/2026-10-08 21-52-37.mp4 (it exists today; the reference build did not watch it). One probe is committed: docs/audit/note-shuffle/probes/order_probe.py runs the reference on the video chart with each chord's notes in lane order and in reverse, and with the ticks rescaled from 480 to 192 per beat (its header, lines 1 to 9). Its header asks whether the 22-tick check can tell chord orders apart; no output of it is kept, so its answer is not on record. No committed script makes the 5-of-22 check.
 Game code (6142): not found: a filmed run, not code; the algorithm is NL-40 to NL-46.
 Hydra: `apply_note_shuffle` in src/parse/note_shuffle.cpp pins rows from later runs (NL-52); no test uses this video.
 Ruling: none needed.
-Found: 2026-10-08, session 6c19d0ef.
+Found: 2026-10-08, session 6c19d0ef; the order probe cited 2026-11-08, session 77057df2 (docs-gaps search).
 
 ### NL-72 The previous chord's tick starts at 0, so a first note on tick 0 joins a chord
 
