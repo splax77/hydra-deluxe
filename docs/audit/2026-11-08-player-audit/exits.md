@@ -30,7 +30,7 @@ The fresh closure checker reopened this: the Python test answers "was the game's
 
 ### Third round: the nine rows no verifier had opened (L67 to L73, L83, L84)
 
-Two fresh verifiers (session 274bd9dd, task ids player-audit-verify-A and -B) read every claim. Their verdicts are summed up here; the rows themselves are unchanged in `ledger.md`. None of these exits has been checked by a fresh closure checker yet.
+Two fresh verifiers (session 274bd9dd, task ids player-audit-verify-A and -B) read every claim. Their verdicts are summed up here; the rows themselves are unchanged in `ledger.md`. A fresh closure checker has since checked every exit below; "What the third closure check returned", after this section, gives its verdicts.
 
 **Exit 3, covered by a ruling:**
 
@@ -47,9 +47,21 @@ Two fresh verifiers (session 274bd9dd, task ids player-audit-verify-A and -B) re
 - **L83, `edge_probe`.** Its file holds two leads that answer two questions, the asked lead (`probe`) and the measured one (`clock_ms_at_press` minus `chart_ms`); the third lives in memory only and equals the asked one by construction (`test_edge_probe.py:148`). The KeyError cannot happen: `press_plan` gives every chord at least one press (`play_chart.py:503-504`).
 - **L84, `find_window_edge` and `overlay_logs`.** The edge finder's tie at a midpoint (`analysis.py:98-109`) matters only to the old probes that import it, and they go under D322 item 3 if the user confirms the list. `overlay_logs.py` is the live player's column owner, not an old script.
 
-**For the Q18 list:** `edge_probe.py` and `overlay_logs.py` are live (imported by `game_tools.py`, `server.py`, `play_chart.py` and others). Only `analysis.py`, with `active_probe.py`, `passive_probe.py`, `walk_edges.py` and their tests, is old.
+**For the Q18 list:** `edge_probe.py` and `overlay_logs.py` are live (`edge_probe` is imported by `game_tools.py`; `overlay_logs` by `game_tools.py`, `play_chart.py` and others). `analysis.py`, `active_probe.py` and `passive_probe.py`, with their tests, are old. `walk_edges.py` is old except for `SongClock`, which the live player imports from it (`play_chart.py:75`, pinned by `test_play_chart.py:126-130`), so `SongClock` moves before the file can go.
 
 **Questions (exit 2):** L69's empty chord list (Q20), L71's trace lines (Q21), with L75's Ready level (Q19).
+
+### What the third closure check returned
+
+A fresh checker (session 0963d03d, task id player-audit-closures-3) read every exit above against the code and the cited rulings. The main session then grepped each exit 3 quote in its cited file, and every one is there.
+
+It passed L67's reply fakes and built-file tests, L68's copies, L70, L67's menu, bot-run and SP-watch fakes, L68's first-note gem, L72, L73, L83 and L84.
+
+It reopened L67's recorder fake. No ruling names it: D318 item 2 is about the agent's reply shape, and the recorder reads a Windows table, not a reply. "Its fix changes nothing anyone sees" is the code-only reason `audit-method.md` says is not an exit. It leaves by exit 1 once the fix plan's task lands.
+
+It found one more split, inside Hydra. `tools/replay_schedule.cpp:861` sets the squeeze-out's late press to gem 0 and never reads the rules file, while `src/core/scoring.cpp:58` takes SP from every note of the chord under `SqOutRule::WholeChord`. L44's ruling settles who owns the choice. How the player presses a squeeze-out under `WholeChord` has no ruling, so it goes to the fix plan.
+
+Two smaller notes: `sp_watch.py:9` says the writer leaves a blank cell, but it writes "nan"; and this section's Q18 note listed `server.py` as an `edge_probe` importer, which it is not (fixed above).
 
 ### Exit 4, second round
 
