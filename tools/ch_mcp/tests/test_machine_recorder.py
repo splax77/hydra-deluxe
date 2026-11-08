@@ -1,5 +1,6 @@
-"""The machine recorder: the table parser on fixture bytes, the gains, the files,
-the loop on fakes, and short real runs of the module as its own process."""
+"""The machine recorder: the table parser on one table captured from Windows, the
+gains, the files, the loop on fakes, and short real runs of the module as its own
+process."""
 
 from __future__ import annotations
 
@@ -22,7 +23,6 @@ if ROOT not in sys.path:
 
 from tools.ch_mcp import machine_recorder as M  # noqa: E402
 from tools.ch_probe import constants as C  # noqa: E402
-from tools.ch_probe import process as P  # noqa: E402
 
 SCRIPT = os.path.join(ROOT, "tools", "ch_mcp", "machine_recorder.py")
 PERIOD_S = 1 / 64  # exact in binary, so the fake clock adds up without rounding
@@ -31,46 +31,85 @@ RECORDER = 901
 SUBPROCESS_CAP_S = 30
 
 
-def fixture_table(processes, base=0):
-    """Table bytes built from the module's offsets. Each process is a dict of
-    pid, parent, name, user, kernel, read, write, faults and threads; each thread
-    is (tid, kernel, user, switches, state, wait_reason)."""
+# Windows' 64-bit layout of one process entry and one thread entry, written here
+# as numbers from geoffchappell.com/studies/windows/km/ntoskrnl/api/ex/sysinfo/
+# (process.htm and thread.htm), never taken from the parser: each field is
+# (offset, struct format code). CapturedTable checks the parser against them and
+# against bytes Windows wrote.
+PROCESS_SIZE = 0x100
+PROCESS_LAYOUT = {
+    "next": (0x00, "I"), "threads": (0x04, "I"), "faults": (0x10, "I"), "user": (0x28, "q"),
+    "kernel": (0x30, "q"), "name_length": (0x38, "H"), "name_buffer": (0x40, "Q"),
+    "pid": (0x50, "Q"), "parent": (0x58, "Q"), "read": (0xE8, "q"), "write": (0xF0, "q"),
+}
+THREAD_SIZE = 0x50
+THREAD_LAYOUT = {
+    "kernel": (0x00, "q"), "user": (0x08, "q"), "tid": (0x30, "Q"), "switches": (0x40, "I"),
+    "state": (0x44, "I"), "wait_reason": (0x48, "I"),
+}
+
+
+def fake_table(processes, base=0):
+    """Table bytes built from the literal layout above, for the tests of the gains,
+    the files and the loop. Each process is a dict of pid, parent, name, user,
+    kernel, read, write, faults and threads; each thread is (tid, kernel, user,
+    switches, state, wait_reason). No test of the parser's offsets reads it."""
+    def put(entry, layout, field, at, value):
+        offset, code = layout[field]
+        struct.pack_into("<" + code, entry, at + offset, value)
+
     chunks = []
     at = 0
-    sizes = []
-    for process in processes:
-        name = process["name"].encode("utf-16-le")
-        sizes.append(M.PROCESS_ENTRY_SIZE + len(process["threads"]) * M.THREAD_ENTRY_SIZE
-                     + len(name))
+    sizes = [PROCESS_SIZE + len(process["threads"]) * THREAD_SIZE
+             + len(process["name"].encode("utf-16-le")) for process in processes]
     for index, process in enumerate(processes):
         name = process["name"].encode("utf-16-le")
         threads = process["threads"]
-        name_at = M.PROCESS_ENTRY_SIZE + len(threads) * M.THREAD_ENTRY_SIZE
+        name_at = PROCESS_SIZE + len(threads) * THREAD_SIZE
         entry = bytearray(sizes[index])
         last = index == len(processes) - 1
-        struct.pack_into("<I", entry, M.PROC_NEXT_ENTRY_OFFSET, 0 if last else sizes[index])
-        struct.pack_into("<I", entry, M.PROC_NUMBER_OF_THREADS, len(threads))
-        struct.pack_into("<I", entry, M.PROC_HARD_FAULT_COUNT, process.get("faults", 0))
-        struct.pack_into("<q", entry, M.PROC_USER_TIME, process.get("user", 0))
-        struct.pack_into("<q", entry, M.PROC_KERNEL_TIME, process.get("kernel", 0))
-        struct.pack_into("<H", entry, M.PROC_IMAGE_NAME_LENGTH, len(name))
-        struct.pack_into("<Q", entry, M.PROC_IMAGE_NAME_BUFFER, base + at + name_at)
-        struct.pack_into("<Q", entry, M.PROC_UNIQUE_PROCESS_ID, process["pid"])
-        struct.pack_into("<Q", entry, M.PROC_INHERITED_FROM_PID, process.get("parent", 0))
-        struct.pack_into("<q", entry, M.PROC_READ_TRANSFER_COUNT, process.get("read", 0))
-        struct.pack_into("<q", entry, M.PROC_WRITE_TRANSFER_COUNT, process.get("write", 0))
+        for field, value in (("next", 0 if last else sizes[index]), ("threads", len(threads)),
+                             ("faults", process.get("faults", 0)), ("user", process.get("user", 0)),
+                             ("kernel", process.get("kernel", 0)), ("name_length", len(name)),
+                             ("name_buffer", base + at + name_at), ("pid", process["pid"]),
+                             ("parent", process.get("parent", 0)), ("read", process.get("read", 0)),
+                             ("write", process.get("write", 0))):
+            put(entry, PROCESS_LAYOUT, field, 0, value)
         for number, (tid, kernel, user, switches, state, reason) in enumerate(threads):
-            first = M.PROCESS_ENTRY_SIZE + number * M.THREAD_ENTRY_SIZE
-            struct.pack_into("<q", entry, first + M.THREAD_KERNEL_TIME, kernel)
-            struct.pack_into("<q", entry, first + M.THREAD_USER_TIME, user)
-            struct.pack_into("<Q", entry, first + M.THREAD_UNIQUE_THREAD, tid)
-            struct.pack_into("<I", entry, first + M.THREAD_CONTEXT_SWITCHES, switches)
-            struct.pack_into("<I", entry, first + M.THREAD_STATE, state)
-            struct.pack_into("<I", entry, first + M.THREAD_WAIT_REASON, reason)
+            first = PROCESS_SIZE + number * THREAD_SIZE
+            for field, value in (("kernel", kernel), ("user", user), ("tid", tid),
+                                 ("switches", switches), ("state", state),
+                                 ("wait_reason", reason)):
+                put(entry, THREAD_LAYOUT, field, first, value)
         entry[name_at:] = name
         chunks.append(bytes(entry))
         at += sizes[index]
     return b"".join(chunks)
+
+
+# One real table: NtQuerySystemInformation class 5, read on this machine with
+# machine_recorder.read_table on 2026-11-08 and trimmed to its first two entries
+# (the second entry's NextEntryOffset set to 0, no other byte changed). The
+# numbers below come from that read, and the thread counts from Windows'
+# Get-Process at the same moment, not from the parser.
+SAMPLE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "recorder_sample.bin")
+SAMPLE_BASE = 2170157575808  # the address the table was read at
+SAMPLE_SIZE = 41_744
+SYSTEM_AT = 4464  # where the second entry, System, starts
+IDLE_THREADS = 48  # Get-Process -Id 0
+SYSTEM_THREADS = 458  # Get-Process -Id 4
+# System's threads: (index, byte where the entry starts, tid, state, wait reason,
+# context switches, kernel + user time in 100 ns ticks), read by hand.
+SYSTEM_THREAD_ROWS = (
+    (0, 4720, 12, 5, 0, 43, 0),
+    (1, 4800, 16, 5, 0, 3995, 8_906_250),
+    (457, 41280, 33572, 5, 15, 55747, 20_937_500),
+)
+
+
+def read_sample():
+    with open(SAMPLE_PATH, "rb") as file:
+        return file.read()
 
 
 TWO_PROCESSES = [
@@ -82,12 +121,148 @@ TWO_PROCESSES = [
 ]
 
 
-class ParseTable(unittest.TestCase):
-    def test_two_processes_with_three_threads(self):
-        table = M.parse_table(fixture_table(TWO_PROCESSES))
+def layout_of(fields):
+    """The parser's struct layout for a {name: (offset, code)} dict."""
+    return M._layout(fields.values())
+
+
+def with_system_states(sample, states):
+    """The sample with System's first threads set to `states`, by literal offsets."""
+    changed = bytearray(sample)
+    for index, state in enumerate(states):
+        struct.pack_into("<I", changed, SYSTEM_AT + 0x100 + index * 0x50 + 0x44, state)
+    return bytes(changed)
+
+
+class CapturedTable(unittest.TestCase):
+    """The parser on bytes Windows wrote. Every expected value is a literal."""
+
+    def setUp(self):
+        self.sample = read_sample()
+
+    def parse(self, sample=None, **options):
+        return M.parse_table(self.sample if sample is None else sample, SAMPLE_BASE, **options)
+
+    def test_the_sample_is_the_table_that_was_captured(self):
+        self.assertEqual(len(self.sample), SAMPLE_SIZE)
+        # NextEntryOffset (byte 0 of an entry) and NumberOfThreads (byte 4), by hand.
+        self.assertEqual(struct.unpack_from("<II", self.sample, 0), (SYSTEM_AT, IDLE_THREADS))
+        self.assertEqual(struct.unpack_from("<II", self.sample, SYSTEM_AT), (0, SYSTEM_THREADS))
+        # UniqueProcessId (byte 0x50) and InheritedFromUniqueProcessId (byte 0x58).
+        self.assertEqual(struct.unpack_from("<QQ", self.sample, 0x50), (0, 0))
+        self.assertEqual(struct.unpack_from("<QQ", self.sample, SYSTEM_AT + 0x50), (4, 0))
+        # System's ImageName: Length (byte 0x38) and Buffer (byte 0x40).
+        length, = struct.unpack_from("<H", self.sample, SYSTEM_AT + 0x38)
+        pointer, = struct.unpack_from("<Q", self.sample, SYSTEM_AT + 0x40)
+        self.assertEqual((length, pointer - SAMPLE_BASE), (12, 41728))
+        self.assertEqual(self.sample[41728:41740].decode("utf-16-le"), "System")
+        for index, at, tid, state, reason, switches, ticks in SYSTEM_THREAD_ROWS:
+            with self.subTest(thread=index):
+                self.assertEqual(at, SYSTEM_AT + 0x100 + index * 0x50)
+                kernel, user = struct.unpack_from("<qq", self.sample, at)
+                self.assertEqual(struct.unpack_from("<QQ", self.sample, at + 0x28), (4, tid))
+                self.assertEqual(struct.unpack_from("<III", self.sample, at + 0x40),
+                                 (switches, state, reason))
+                self.assertEqual(kernel + user, ticks)
+
+    def test_the_parser_reads_the_captured_table(self):
+        table = self.parse()
+        self.assertEqual(list(table.processes), [0, 4])
+        self.assertEqual(table.thread_count, IDLE_THREADS + SYSTEM_THREADS)
+        self.assertEqual(table.thread_count, 506)
+        # Idle's threads are left out of the run queue, and every System thread waits.
+        self.assertEqual(table.ready_threads, 0)
+        idle, system = table.processes[0], table.processes[4]
+        self.assertEqual((idle.pid, idle.parent_pid, idle.name, idle.cpu_ticks, idle.read_bytes,
+                          idle.write_bytes, idle.hard_faults),
+                         (0, 0, "", 8_630_397_031_250, 0, 0, 0))
+        self.assertEqual((system.pid, system.parent_pid, system.name, system.cpu_ticks,
+                          system.read_bytes, system.write_bytes, system.hard_faults),
+                         (4, 0, "System", 97_909_843_750, 121_967_916, 2_250_372_155, 124))
+        # System's thread ids are all distinct, so its dict holds every thread.
+        self.assertEqual(len(system.threads), SYSTEM_THREADS)
+        for index, at, tid, state, reason, switches, ticks in SYSTEM_THREAD_ROWS:
+            with self.subTest(thread=index):
+                self.assertEqual(system.threads[tid], M.Thread(tid, state, reason, switches, ticks))
+        self.assertEqual(idle.threads[32], M.Thread(32, 3, 0, 101_772, 625_000))
+        # Idle holds 48 entries, 16 of them (one per processor here) with thread id
+        # 0, so its dict, keyed by thread id, keeps 33.
+        self.assertEqual(len(idle.threads), 33)
+
+    def test_the_parser_layout_is_windows_layout(self):
+        self.assertEqual(M._PROCESS_FIELDS.format, layout_of(PROCESS_LAYOUT).format)
+        self.assertEqual(M._THREAD_FIELDS.format, layout_of(THREAD_LAYOUT).format)
+        self.assertEqual((M.PROCESS_ENTRY_SIZE, M.THREAD_ENTRY_SIZE, M.THREAD_STATE),
+                         (PROCESS_SIZE, THREAD_SIZE, 0x44))
+
+    def test_an_offset_moved_by_4_reads_a_wrong_table(self):
+        # The parser reads the entries through _PROCESS_FIELDS and _THREAD_FIELDS,
+        # so a wrong offset is one of those layouts built with the offset moved.
+        moved_parent = dict(PROCESS_LAYOUT, parent=(0x58 + 4, "Q"))
+        with unittest.mock.patch.object(M, "_PROCESS_FIELDS", layout_of(moved_parent)):
+            table = self.parse()
+        # The read takes the high half of the parent pid and HandleCount (byte 0x60).
+        self.assertEqual(table.processes[4].parent_pid, 7509 << 32)
+        self.assertNotEqual(table.processes[4].parent_pid, 0)
+        moved_tid = dict(THREAD_LAYOUT, tid=(0x30 + 4, "Q"))
+        with unittest.mock.patch.object(M, "_THREAD_FIELDS", layout_of(moved_tid)):
+            table = self.parse()
+        self.assertNotIn(33572, table.processes[4].threads)
+        self.assertNotIn(12, table.processes[4].threads)
+
+    def test_names_count_from_the_address_the_table_was_read_at(self):
+        self.assertEqual(self.parse().processes[4].name, "System")
+        moved = M.parse_table(self.sample, SAMPLE_BASE - 2)
+        self.assertNotEqual(moved.processes[4].name, "System")
+
+    def test_an_unnamed_process_reads_as_empty(self):
+        self.assertEqual(self.parse().processes[0].name, "")
+
+    def test_the_filter_keeps_counts_for_the_whole_table(self):
+        table = self.parse(thread_pids=[4])
+        self.assertEqual(len(table.processes[4].threads), SYSTEM_THREADS)
+        self.assertEqual(table.processes[0].threads, {})
+        self.assertEqual((table.thread_count, table.ready_threads), (506, 0))
+
+    def test_an_empty_filter_parses_no_threads(self):
+        table = self.parse(thread_pids=())
+        self.assertEqual((table.processes[0].threads, table.processes[4].threads), ({}, {}))
+        self.assertEqual(table.thread_count, 506)
+
+    def test_every_ready_state_counts_toward_the_run_queue(self):
+        table = self.parse(with_system_states(self.sample, (1, 2, 3, 4, 5, 6, 7)))
+        self.assertEqual(table.ready_threads, 3)
+
+    def test_the_idle_process_adds_nothing_to_the_run_queue(self):
+        # Idle's own entries hold 18 in state 3 (standby), byte 0x44 of each.
+        states = [struct.unpack_from("<I", self.sample, 0x100 + n * 0x50 + 0x44)[0]
+                  for n in range(IDLE_THREADS)]
+        self.assertEqual(states.count(3), 18)
+        self.assertEqual(self.parse().ready_threads, 0)
+
+    def test_each_ready_state_of_a_real_process_counts_beside_the_idle_process(self):
+        for state in (1, 3, 7):
+            with self.subTest(state=state):
+                table = self.parse(with_system_states(self.sample, (state,)))
+                self.assertEqual(table.ready_threads, 1)
+
+    def test_no_test_builds_bytes_from_the_parser_offsets(self):
+        with open(os.path.abspath(__file__), encoding="utf-8") as file:
+            text = file.read()
+        for name in ("M." + "PROC_", "M." + "THREAD_KERNEL", "M." + "THREAD_USER",
+                     "M." + "THREAD_UNIQUE", "M." + "THREAD_CONTEXT", "M." + "THREAD_WAIT",
+                     "fixture" + "_table"):
+            with self.subTest(name=name):
+                self.assertNotIn(name, text)
+
+
+class FakeTable(unittest.TestCase):
+    """The literal-layout fake the loop tests use, and what only a fake can show."""
+
+    def test_the_fake_reads_back(self):
+        table = M.parse_table(fake_table(TWO_PROCESSES))
         self.assertEqual(list(table.processes), [7, 8])
-        self.assertEqual(table.thread_count, 3)
-        self.assertEqual(table.ready_threads, 1)
+        self.assertEqual((table.thread_count, table.ready_threads), (3, 1))
         game = table.processes[7]
         self.assertEqual((game.name, game.parent_pid, game.cpu_ticks, game.read_bytes,
                           game.write_bytes, game.hard_faults),
@@ -96,62 +271,18 @@ class ParseTable(unittest.TestCase):
             71: M.Thread(71, 2, 0, 5, 30_000),
             72: M.Thread(72, 5, 6, 6, 70_000),
         })
-        other = table.processes[8]
-        self.assertEqual((other.name, other.parent_pid, other.cpu_ticks), ("other.exe", 7, 3))
-        self.assertEqual(other.threads, {81: M.Thread(81, 1, 0, 3, 3)})
 
     def test_the_next_entry_offset_finds_the_next_process(self):
         # Windows may pad an entry; only NextEntryOffset says where the next one is.
-        first = fixture_table(TWO_PROCESSES[:1])
-        second = fixture_table(TWO_PROCESSES[1:])
+        first = fake_table(TWO_PROCESSES[:1])
+        second = fake_table(TWO_PROCESSES[1:])
         padded = bytearray(first + b"\0" * 8)
-        struct.pack_into("<I", padded, M.PROC_NEXT_ENTRY_OFFSET, len(padded))
-        pointer = P.decode_u64(second[M.PROC_IMAGE_NAME_BUFFER:M.PROC_IMAGE_NAME_BUFFER + 8])
+        struct.pack_into("<I", padded, 0x00, len(padded))
+        pointer, = struct.unpack_from("<Q", second, 0x40)
         moved = bytearray(second)
-        struct.pack_into("<Q", moved, M.PROC_IMAGE_NAME_BUFFER, pointer + len(padded))
+        struct.pack_into("<Q", moved, 0x40, pointer + len(padded))
         table = M.parse_table(bytes(padded) + bytes(moved))
         self.assertEqual(table.processes[8].name, "other.exe")
-
-    def test_names_count_from_the_address_the_table_was_read_at(self):
-        table = M.parse_table(fixture_table(TWO_PROCESSES, base=0x10000), 0x10000)
-        self.assertEqual(table.processes[8].name, "other.exe")
-
-    def test_an_unnamed_process_reads_as_empty(self):
-        idle = [{"pid": 0, "name": "", "threads": []}]
-        self.assertEqual(M.parse_table(fixture_table(idle)).processes[0].name, "")
-
-    def test_the_filter_keeps_counts_for_the_whole_table(self):
-        table = M.parse_table(fixture_table(TWO_PROCESSES), thread_pids=[7])
-        self.assertEqual(sorted(table.processes[7].threads), [71, 72])
-        self.assertEqual(table.processes[8].threads, {})
-        self.assertEqual((table.thread_count, table.ready_threads), (3, 1))
-
-    def test_an_empty_filter_parses_no_threads(self):
-        table = M.parse_table(fixture_table(TWO_PROCESSES), thread_pids=())
-        self.assertEqual(table.processes[7].threads, {})
-
-    def test_every_ready_state_counts_toward_the_run_queue(self):
-        threads = [(n, 0, 0, 0, state, 0) for n, state in enumerate((1, 2, 3, 4, 5, 6, 7))]
-        table = M.parse_table(fixture_table([{"pid": 1, "name": "a", "threads": threads}]))
-        self.assertEqual(table.ready_threads, 3)
-
-    def test_the_idle_process_adds_nothing_to_the_run_queue(self):
-        idle = {"pid": 0, "name": "",
-                "threads": [(0, 0, 0, 0, 3, 0), (0, 0, 0, 0, 3, 0), (0, 0, 0, 0, 3, 0)]}
-        real = {"pid": 4, "name": "real.exe",
-                "threads": [(41, 0, 0, 0, 1, 0), (42, 0, 0, 0, 3, 0), (43, 0, 0, 0, 7, 0)]}
-        table = M.parse_table(fixture_table([idle, real]))
-        self.assertEqual(table.ready_threads, 3)
-        self.assertEqual(table.thread_count, 6)
-        self.assertEqual(list(table.processes), [0, 4])
-
-    def test_each_ready_state_of_a_real_process_counts_beside_the_idle_process(self):
-        idle = {"pid": 0, "name": "", "threads": [(0, 0, 0, 0, 3, 0)]}
-        for state in (1, 3, 7):
-            real = {"pid": 4, "name": "real.exe", "threads": [(41, 0, 0, 0, state, 0)]}
-            with self.subTest(state=state):
-                table = M.parse_table(fixture_table([idle, real]))
-                self.assertEqual(table.ready_threads, 1)
 
 
 class ReadsAs(unittest.TestCase):
@@ -163,10 +294,10 @@ class ReadsAs(unittest.TestCase):
 
 class Deltas(unittest.TestCase):
     def test_gains_and_a_vanished_process(self):
-        before = M.parse_table(fixture_table(TWO_PROCESSES)).processes
+        before = M.parse_table(fake_table(TWO_PROCESSES)).processes
         later = [dict(TWO_PROCESSES[0], user=256_250, read=111, write=222, faults=34,
                       threads=[(71, 10_000, 30_000, 9, 2, 0), (72, 30_000, 40_000, 6, 5, 6)])]
-        after = M.parse_table(fixture_table(later)).processes
+        after = M.parse_table(fake_table(later)).processes
         gains = M.deltas(before, after)
         self.assertEqual(list(gains), [7])
         self.assertEqual(gains[7].cpu_ms, 15.625)
@@ -175,20 +306,20 @@ class Deltas(unittest.TestCase):
         self.assertEqual(gains[7].threads, {71: M.ThreadGain(4, 1.0), 72: M.ThreadGain(0, 0.0)})
 
     def test_a_process_first_seen_gains_nothing(self):
-        current = M.parse_table(fixture_table(TWO_PROCESSES)).processes
+        current = M.parse_table(fake_table(TWO_PROCESSES)).processes
         gains = M.deltas({}, current)
         self.assertEqual(gains[7][:4], (0, 0, 0, 0))
         self.assertEqual(gains[7].threads[71], M.ThreadGain(0, 0.0))
 
     def test_a_thread_first_seen_gains_nothing(self):
-        before = M.parse_table(fixture_table(TWO_PROCESSES), thread_pids=()).processes
-        after = M.parse_table(fixture_table(TWO_PROCESSES)).processes
+        before = M.parse_table(fake_table(TWO_PROCESSES), thread_pids=()).processes
+        after = M.parse_table(fake_table(TWO_PROCESSES)).processes
         self.assertEqual(M.deltas(before, after)[7].threads[72], M.ThreadGain(0, 0.0))
 
     def test_a_reused_pid_gains_nothing(self):
-        before = M.parse_table(fixture_table(TWO_PROCESSES)).processes
+        before = M.parse_table(fake_table(TWO_PROCESSES)).processes
         reborn = [dict(TWO_PROCESSES[0], name="new.exe", user=999_999_999)]
-        after = M.parse_table(fixture_table(reborn)).processes
+        after = M.parse_table(fake_table(reborn)).processes
         self.assertEqual(M.deltas(before, after)[7].cpu_ms, 0)
 
 
@@ -215,7 +346,7 @@ class WriteSample(unittest.TestCase):
         self.addCleanup(self.files.close)
 
     def write(self, processes, gains, listed=frozenset()):
-        table = M.parse_table(fixture_table(processes))
+        table = M.parse_table(fake_table(processes))
         M.write_sample(self.files, sample_row(), table, gains, listed)
 
     def test_the_columns_are_pinned_with_one_header_per_file(self):
@@ -243,11 +374,11 @@ class WriteSample(unittest.TestCase):
                 gain = quiet._replace(**{field: value})
                 folder = tempfile.mkdtemp(dir=self.folder)
                 files = M.RecorderFiles(folder)
-                table = M.parse_table(fixture_table(TWO_PROCESSES), thread_pids=())
+                table = M.parse_table(fake_table(TWO_PROCESSES), thread_pids=())
                 M.write_sample(files, sample_row(), table, {7: gain, 8: quiet}, frozenset())
                 files.close()
                 self.assertEqual([row["pid"] for row in read_rows(folder, "processes.csv")], ["7"])
-        table = M.parse_table(fixture_table(TWO_PROCESSES), thread_pids=())
+        table = M.parse_table(fake_table(TWO_PROCESSES), thread_pids=())
         M.write_sample(self.files, sample_row(), table, {7: quiet, 8: quiet}, frozenset({8}))
         rows = read_csv(self.folder, "processes.csv")
         self.assertEqual(rows[1:], [["1", "8", "7", "other.exe", "0.0", "0", "0", "0"]])
@@ -297,7 +428,7 @@ class FakeLoop:
         self.sample += 1
         if self.on_table:
             self.on_table(self.sample)
-        return fixture_table(self.tables(self.sample)), 0
+        return fake_table(self.tables(self.sample)), 0
 
     def sleep(self, seconds):
         self.time += seconds
