@@ -576,9 +576,9 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
         }
         nlohmann::json paid = nlohmann::json::array();
         for (const ReplayPayment& p : c.paid_by) {
-            const auto n = act_number.find(p.act_tick);
+            const auto act_place = act_number.find(p.act_tick);
             paid.push_back(nlohmann::json{
-                {"activation", n != act_number.end() ? nlohmann::json(n->second) : nlohmann::json(nullptr)},
+                {"activation", act_place != act_number.end() ? nlohmann::json(act_place->second) : nlohmann::json(nullptr)},
                 {"act_tick", p.act_tick},
                 {"offset_ms", p.offset_ms}});
         }
