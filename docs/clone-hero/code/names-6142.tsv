@@ -40,3 +40,5 @@ build	typedef_index	class	member	name	what
 6142	8670	ʽʹʽʽˁʹʷʺˀʺˁ		ChordListSearch	The static helper class that searches a chord list by tick; read from nearest_chord_5DE030.asm lines 1 to 122.
 6142	8670	ʽʹʽʽˁʹʷʺˀʺˁ	ʶʲˁʿʹʵˀʺʲˁʿ<T>	NearestChord	Returns the index of the chord nearest a target tick, from a start index; read from nearest_chord_loop_5DDB50.asm lines 1 to 104.
 6142	8670	ʽʹʽʽˁʹʷʺˀʺˁ	ʷʾˀʼˀʵʹˁʻʻʷ<T>	NearestChordInRange	Returns the chord nearest a target tick that lies between a low and a high tick, or nothing; read from nearest_chord_5DE030.asm lines 1 to 122.
+6142	8670	ʽʹʽʽˁʹʷʺˀʺˁ	ʵʵʹʶʿˀʹʸʸʸˀ<T>	NoteAfter	Returns the first element of a list whose tick is later than a target tick, walking up from a start index, or nothing; read from note_after_lookup_5DD8D0.asm lines 1 to 82.
+6142	8670	ʽʹʽʽˁʹʷʺˀʺˁ	ʷʹʲʿʷʿʲˁʴʷʲ<T>	NoteBefore	Returns the first element of a list, walking down from a start index, whose tick is earlier than a target tick (or equal to it when its bool is true), or nothing; read from note_before_lookup_5DDED0.asm lines 1 to 95.

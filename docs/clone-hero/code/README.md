@@ -228,7 +228,7 @@ The first column is the function start, read from the listing's own first line. 
 
 ## New listings
 
-The 91 listings below were made for the reference on 2026-10-30, in session b02ab3e6 (the reference build), except ten: the cli loader, the player kind, the drums input source, the profile save and the score submit were added on 2026-10-31, in session b15bb484, the lane velocity and the create custom controller were added on 2026-11-06, and the midi register, the midi slot check and the midi pump were added on 2026-11-08, in session 6341c618. There are 89 `.asm` files under `code/6142/` and 2 `.cs` files under `code/4045/`, and each has a `.md` beside it that explains its branches in plain words.
+The 93 listings below were made for the reference on 2026-10-30, in session b02ab3e6 (the reference build), except twelve: the cli loader, the player kind, the drums input source, the profile save and the score submit were added on 2026-10-31, in session b15bb484, the lane velocity and the create custom controller were added on 2026-11-06, and the midi register, the midi slot check, the midi pump, the note after lookup and the note before lookup were added on 2026-11-08, in session 6341c618. There are 91 `.asm` files under `code/6142/` and 2 `.cs` files under `code/4045/`, and each has a `.md` beside it that explains its branches in plain words.
 
 The `.asm` files are from build 1.1.0.6142 (`GameAssembly.dll`), made with tools/ch_mcp/chdis.py. The start is the RVA in the file name, and for every file it matches the address on the listing's first line (or the `; function` line some listings open with). The role is the file name with the RVA taken off. Three file names carry no RVA (the drums input source, the profile save and the score submit, each named for the question it answers); for those the start is the address on the first line.
 
@@ -295,6 +295,8 @@ The table was generated from the files, not typed. One more file, `code/6142/dru
 | 0x20F52E0 | multiplier from streak | [code/6142/multiplier_from_streak_20F52E0.asm](6142/multiplier_from_streak_20F52E0.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x5DE030 | nearest chord | [code/6142/nearest_chord_5DE030.asm](6142/nearest_chord_5DE030.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x5DDB50 | nearest chord loop | [code/6142/nearest_chord_loop_5DDB50.asm](6142/nearest_chord_loop_5DDB50.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x5DD8D0 | note after lookup | [code/6142/note_after_lookup_5DD8D0.asm](6142/note_after_lookup_5DD8D0.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x5DDED0 | note before lookup | [code/6142/note_before_lookup_5DDED0.asm](6142/note_before_lookup_5DDED0.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x20D2EA0 | note builder | [code/6142/note_builder_20D2EA0.asm](6142/note_builder_20D2EA0.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x20DE770 | note hit dynamics | [code/6142/note_hit_dynamics_20DE770.asm](6142/note_hit_dynamics_20DE770.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x214BB50 | note is activation | [code/6142/note_is_activation_214BB50.asm](6142/note_is_activation_214BB50.asm) | 6142 | tools/ch_mcp/chdis.py |
