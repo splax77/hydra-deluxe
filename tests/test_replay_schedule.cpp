@@ -394,6 +394,9 @@ schedule::SqueezeGeometry sqout(double anchor_side, double squeeze_ms, double sq
     return g;
 }
 
+// The tolerance TC2's acceptance in
+// docs/superpowers/plans/2026-11-08-replay-press-schedule.md gives ("within
+// 0.01"): the plan's figures are printed to two places.
 bool within_cent(double got, double want) { return std::abs(got - want) < 0.01; }
 
 // The presses of chord `chord` the schedule `s` writes under `rule`.
