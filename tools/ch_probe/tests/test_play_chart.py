@@ -448,6 +448,9 @@ class LivePlayTest(unittest.TestCase):
             def score(self):
                 return 0
 
+            def sp_end(self):
+                return None
+
         seen = {}
 
         def fake_play_chords(*args, **kwargs):
@@ -482,6 +485,9 @@ class LivePlayTest(unittest.TestCase):
 
             def score(self):
                 return 0
+
+            def sp_end(self):
+                return None
 
         seen = []
 
@@ -542,6 +548,9 @@ class _ThresholdEngine:
 
     def score(self):
         return 0
+
+    def sp_end(self):
+        return None
 
     def dyn_threshold(self):
         type(self).reads += 1
@@ -1178,9 +1187,13 @@ class SqueezeTimingTest(unittest.TestCase):
     """press_plan times the squeezes from the dump (design point 1 of the
     2026-11-07 plan)."""
 
-    def test_the_two_new_numbers_are_the_ones_the_user_set(self):
+    def test_the_lag_and_the_margin_are_the_numbers_the_user_set(self):
+        # SP_OUT_LAG_MS: question 2 of the 2026-11-07 player-refinements
+        # plan. ACT_LEAD_MARGIN_MS: question 1 of the player-limits plan,
+        # which replaced the fixed 55 ms activation lead.
         self.assertEqual(play_chart.SP_OUT_LAG_MS, 15.0)
-        self.assertEqual(play_chart.SQOUT_ACT_LEAD_MS, 55.0)
+        self.assertEqual(play_chart.ACT_LEAD_MARGIN_MS, 6.0)
+        self.assertFalse(hasattr(play_chart, "SQOUT_ACT_LEAD_MS"))
 
     def test_mouths_squeeze_ins_and_end_are_pressed_15_ms_early(self):
         presses = _presses_by_index(_MOUTHS)
@@ -1223,23 +1236,25 @@ class SqueezeTimingTest(unittest.TestCase):
 
     def test_bomber_activation_lead_and_late_squeeze_out(self):
         presses = _presses_by_index(_BOMBER)
-        # 147 is an activation's chord: its yellow cymbal keeps the early
-        # lead and its kick follows CHORD_ORDER_GAP_MS later.
-        self.assertEqual(_leads(presses[147]), [55.0, 47.0])
-        self.assertEqual([round(p.at_ms, 2) for p in presses[180]], [32626.67])
-        self.assertEqual(_leads(presses[180]), [-43.33])
+        # 147 is an activation's chord: its yellow cymbal keeps the solved
+        # early lead (the fixed lead before it was 55 ms) and its kick follows
+        # CHORD_ORDER_GAP_MS later.
+        self.assertEqual(_leads(presses[147]), [51.28, 43.28])
+        self.assertEqual([round(p.at_ms, 2) for p in presses[180]], [32630.39])
+        self.assertEqual(_leads(presses[180]), [-47.06])
         self.assertEqual(_leads(presses[181]), [2.0])
         self.assertEqual(_leads(presses[448]), [2.0])
         self.assertEqual([(p.declined, p.lanes) for p in presses[854]], [(True, [])])
 
     def test_a_squeeze_press_carries_the_end_it_was_timed_against(self):
-        # Bomber's activation is pressed 55 ms early, so chord 180's end moves
-        # by 55; Mouths has no early activation, so its ends stay the dump's.
-        for files, index, moved_ms in ((_BOMBER, 180, 55.0), (_BOMBER, 448, 0.0),
+        # Bomber's activation is pressed 51.28 ms early at a ratio of 1, so
+        # chord 180's end moves by that; Mouths has no early activation, so
+        # its ends stay the dump's.
+        for files, index, moved_ms in ((_BOMBER, 180, 51.277586), (_BOMBER, 448, 0.0),
                                        (_MOUTHS, 740, 0.0)):
             chord = next(c for c in _load_refine(files) if c.index == index)
             for press in _presses_by_index(files)[index]:
-                self.assertAlmostEqual(chord.squeeze.end_ms - press.end_ms, moved_ms, 6, index)
+                self.assertAlmostEqual(chord.squeeze.end_ms - press.end_ms, moved_ms, 5, index)
         for press in _presses_by_index(_BOMBER)[181]:
             self.assertIsNone(press.end_ms)
 
@@ -1322,7 +1337,7 @@ class ChordOrderTest(unittest.TestCase):
 
     def test_bomber_activation_147_keeps_its_early_lead_on_the_yellow_cymbal(self):
         self.assertEqual(_lanes_and_leads(_presses_by_index(_BOMBER)[147]),
-                         [([Lane.YELLOW_CYMBAL], 55.0), ([Lane.KICK], 47.0)])
+                         [([Lane.YELLOW_CYMBAL], 51.28), ([Lane.KICK], 43.28)])
 
     def test_senri_chords_stay_one_press_each(self):
         chords = _load_senri()
@@ -1373,6 +1388,14 @@ class ChordOrderTest(unittest.TestCase):
                       str(caught.exception))
 
 
+# The end fields of a made-up activation at one tempo (tools/replay_json.cpp
+# writes them): the end moves ms for ms, and no tempo or meter change bounds
+# a lead (null). The anchor is the activation at tick 0.
+_STEADY_ONE_TEMPO = {"end_anchor_tick": 0, "end_scale_early": 1.0, "end_scale_late": 1.0,
+                     "steady_ms_before_act": None, "steady_ms_after_act": None,
+                     "steady_ms_before_end": None, "steady_ms_after_end": None}
+
+
 def _made_up(chords, activations=(), path_activations=None):
     """A score file of `chords` (index, tick, ms, gems) and its dump."""
     score = {"activations": list(activations), "chords": [
@@ -1413,7 +1436,7 @@ class LaneAwareCheckTest(unittest.TestCase):
                 presses.setdefault(p.index, p)
         # The first of 147's two presses carries the activation's lead.
         self.assertEqual((round(presses[147].lead_ms, 2), round(presses[180].lead_ms, 2)),
-                         (55.0, -43.33))
+                         (51.28, -47.06))
 
     def _two_chords(self, second_gem):
         # Two chords 40 ms apart, the second on an activation's end.
@@ -1443,21 +1466,26 @@ class LaneAwareCheckTest(unittest.TestCase):
             activations=[{"act_tick": 0, "deact_tick": 144, "sqout_tick": 96}],
             path_activations=[{"act_tick": 0, "deact_tick": 144, "nominal_deact_tick": 144,
                                "sqout_tick": 96, "sqin_ticks": [], "skipped_fill_ticks": [],
-                               "sqinouts": [{"kind": "SqOut", "offset_ms": -step}]}])
+                               "sqinouts": [{"kind": "SqOut", "offset_ms": -step}],
+                               **_STEADY_ONE_TEMPO}])
         return score, dump
 
-    def test_a_far_squeeze_out_is_refused_with_no_activation_lead(self):
-        from unittest import mock
-        with mock.patch.object(play_chart, "SQOUT_ACT_LEAD_MS", 0.0):
-            with self.assertRaises(ValueError) as caught:
-                _load_made_up(*self._far_squeeze_out())
-        self.assertIn("for chords 2 (", str(caught.exception))
+    def test_a_far_squeeze_out_is_refused_when_the_activation_cannot_move(self):
+        # The same chords with the end anchored on chord 1, as a cap's
+        # collecting note would anchor it.
+        score, dump = self._far_squeeze_out()
+        dump["paths"][0]["activations"][0]["end_anchor_tick"] = 48
+        with self.assertRaises(ValueError) as caught:
+            _load_made_up(score, dump)
+        self.assertIn("chord 0's end is anchored on chord 1; pressing the activation early "
+                      "does not move it", str(caught.exception))
 
-    def test_a_far_squeeze_out_loads_at_55(self):
+    def test_a_far_squeeze_out_loads_with_the_solved_lead(self):
+        # The fixed 55 ms lead this replaced gave -43.33 at chord 2.
         presses = {p.index: p for p in play_chart.press_plan(
             _load_made_up(*self._far_squeeze_out()))}
-        self.assertEqual(round(presses[0].lead_ms, 2), 55.0)
-        self.assertEqual(round(presses[2].lead_ms, 2), -43.33)
+        self.assertEqual(round(presses[0].lead_ms, 2), 51.28)
+        self.assertEqual(round(presses[2].lead_ms, 2), -47.06)
         # The end chord is outside Star Power in Hydra's path, so it is plain.
         self.assertEqual((presses[3].lead_ms, presses[3].checked), (2.0, False))
 

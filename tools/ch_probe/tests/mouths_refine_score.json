@@ -1,9 +1,4 @@
-{"path_source": {"index": 0}, "activations": [
-{"act_tick": 23904, "deact_tick": 30048},
-{"act_tick": 45408, "deact_tick": 48480, "sqout_tick": 48480},
-{"act_tick": 64608, "deact_tick": 70368},
-{"act_tick": 81024, "deact_tick": 84480}
-], "chords": [
+{"path_source": {"index": 0}, "activations": [{"act_tick": 23904, "deact_tick": 30048, "act_ms": 57417.33288997213, "deact_ms": 72806.67050662979}, {"act_tick": 45408, "deact_tick": 48480, "sqout_tick": 48480, "act_ms": 110617.8940486308, "deact_ms": 118425.95080264665}, {"act_tick": 64608, "deact_tick": 70368, "act_ms": 160660.05154336957, "deact_ms": 175941.8312335919}, {"act_tick": 81024, "deact_tick": 84480, "act_ms": 203509.4336864837, "deact_ms": 212580.49781692587}], "chords": [
 {"index": 3, "tick": 2304, "ms": 4292.841996359909, "is_sp_phrase_end": false, "in_sp": false, "multiplier": 1, "multiplier_after": 1, "notes": [{"color": "Kick", "cymbal": false, "dynamic": "none", "multiplier": 1}, {"color": "Green", "cymbal": true, "dynamic": "none", "multiplier": 1}]},
 {"index": 4, "tick": 2688, "ms": 5007.957755723456, "is_sp_phrase_end": false, "in_sp": false, "multiplier": 1, "multiplier_after": 2, "notes": [{"color": "Kick", "cymbal": false, "dynamic": "none", "multiplier": 1}, {"color": "Green", "cymbal": true, "dynamic": "none", "multiplier": 2}]},
 {"index": 5, "tick": 3072, "ms": 5736.5994461721775, "is_sp_phrase_end": false, "in_sp": false, "multiplier": 2, "multiplier_after": 2, "notes": [{"color": "Kick", "cymbal": false, "dynamic": "none", "multiplier": 2}, {"color": "Green", "cymbal": true, "dynamic": "none", "multiplier": 2}]},
