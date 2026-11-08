@@ -207,7 +207,9 @@ Each step names its chart, its probe and its pass line, and lists its calls. Bef
 
 Chart: a new probe .mid under `C:\Clone Hero\songs\Hydra Probe\` with one `[sectionX]` text event and a few notes, made by the main session with the tool that made Window Map (premise P7). Probe: a bot run from the command line; copy the stats before the stop. Pass: section_stats holds a section whose name is `X` or empty, as the game cuts from character 9. Fail: the fallback "0% - 10%" sections only. Uses P7 and P8.
 
-Calls: `ch_start(song_folder)` (seen: the 2026-10-28 bot runs, whose stats copies are in hydra-data/ch-mcp-runs/2026-10-28/l1/bot), `ch_wait_stats` (seen: the same runs), `ch_stop` (seen: the same runs). The new piece is the probe chart, not a call.
+Calls: `ch_start(song_folder)` (seen: the 2026-10-28 bot runs, whose stats copies are in hydra-data/ch-mcp-runs/2026-10-28/l1/bot), `ch_wait_stats` (seen: the same runs), `ch_stop` (seen: the same runs)
+
+Every call in this step has been seen before. The new piece is the probe chart.
 
 ### LS-U2a: NL-28 and NL-30, song F1
 
@@ -237,7 +239,7 @@ Calls: `ch_start(song_folder, human=True)` (seen: LS-E run 1, hydra-data/ch-mcp-
 
 Chart: Edge Walk Pair. Probe: LS-E run 1's own `probes.json` (hydra-data/ch-mcp-runs/2026-11-07/ls-e-run1), which pressed four chords about 83 to 89 ms late (they missed) and the rest on time (117 of 121 hit), with the hit trace on the score method. A run where every note misses would pass even with a dead hook, so the mix is what tells "fires only for hit notes" from "does not fire". Pass: the trace's call count equals notes_hit (117) and misses are 4. Fail: any other count. IN-20 is the same run shape a second time with the trace on the dynamics method (`with_dynamics=True`), and runs only after this one passes. Uses P6.
 
-Calls: `ch_start(song_folder, human=True)` (seen: LS-E run 1), `ch_attach` (seen: LS-E run 1), `ch_kit_setup(player="System")` (seen: LS-E run 1), `ch_trace_start` (never tried on the kit route; seen on the key route, hydra-data/ch-mcp-runs/2026-10-28/l3), `ch_edge_probe` (seen: LS-E run 1), `ch_trace_stop` (seen: hydra-data/ch-mcp-runs/2026-10-28/l3), `ch_wait_stats` (seen: LS-E run 1), `ch_stop` (seen: LS-E run 1)
+Calls: `ch_start(song_folder, human=True)` (seen: LS-E run 1), `ch_attach` (seen: LS-E run 1), `ch_kit_setup(player="System")` (seen: LS-E run 1), `ch_trace_start` (never tried) on the kit route (the key route used it in hydra-data/ch-mcp-runs/2026-10-28/l3), `ch_edge_probe` (seen: LS-E run 1), `ch_trace_stop` (seen: hydra-data/ch-mcp-runs/2026-10-28/l3), `ch_wait_stats` (seen: LS-E run 1), `ch_stop` (seen: LS-E run 1)
 
 Fallback live steps for NL-12, NL-13, NL-39, SP-06, SP-15, SP-18, SP-30, SC-29 and CR-47 are written only if their code route leaves them Unknown; each would be a bot run or a chart load as live-checks.md already describes, and gets its own `Calls:` line before it is proposed.
 
