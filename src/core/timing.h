@@ -99,6 +99,10 @@ public:
     double ms_at_tick_f(double ticks) const;
     double tick_at_ms(double ms) const;
 
+    // The tick of every entry in the bpm map, sorted: where each tempo
+    // section starts, the opening one included.
+    const std::vector<int64_t>& change_ticks() const { return keys_; }
+
 private:
     int span_at(int64_t ticks) const;
 

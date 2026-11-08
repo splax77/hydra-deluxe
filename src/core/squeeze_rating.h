@@ -17,8 +17,9 @@
 // stored SP-end steps, so a record's stored ratios and a live recompute
 // agree. The details display also reads is_scaled, kScaleIdentityDigits and
 // nominal_budget_ms; the report and Backend rows read the timing tiers
-// (timing_tiers, tier_for, beyond_tier, none_tier, beyond_edge_ms). Every
-// other function below is internal, declared only so its own tests can reach.
+// (timing_tiers, tier_for, beyond_tier, none_tier, beyond_edge_ms); the
+// replay dump reads steady_spans. Every other function below is internal,
+// declared only so its own tests can reach.
 
 #ifndef HYDRA_CORE_SQUEEZE_RATING_H
 #define HYDRA_CORE_SQUEEZE_RATING_H
@@ -65,6 +66,23 @@ std::optional<ActTransferScales> frontend_transfer_scales(const Activation& act,
 // SqIn's transfer), or nothing when any one is unknown: all or nothing, so a
 // reader never mixes a stored scale with a missing one (D4).
 std::optional<ActTransferScales> stored_transfer_scales(const Activation& act);
+
+// How far, in ms, a transfer scale between an anchor tick and an end tick
+// stays exact: on each side of each tick, the distance to the nearest tick
+// where the measure length in ms (ms_per_measure_at's two inputs, the tempo
+// and the count's ticks per measure) changes value. transfer_scale_between
+// probes the late side at the tick and the early side at tick - 1, so a
+// change exactly on the tick starts the late side's section: it bounds
+// neither side, and each side measures to the next change past the tick. A
+// side with no change on it is unset. The dump writes these beside the end's
+// ratios (tools/replay_json.cpp).
+struct SteadySpans {
+    std::optional<double> before_anchor_ms;
+    std::optional<double> after_anchor_ms;
+    std::optional<double> before_end_ms;
+    std::optional<double> after_end_ms;
+};
+SteadySpans steady_spans(int64_t anchor_tick, int64_t end_tick, const SongTiming& timing);
 
 // ---- rating pieces --------------------------------------------------------
 

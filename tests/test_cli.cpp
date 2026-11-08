@@ -24,6 +24,8 @@
 #include <utility>
 #include <vector>
 
+#include "json.hpp"
+
 #include "app/analysis.h"
 #include "app/config.h"
 #include "app/user_messages.h"  // kDatabaseOpenSentence
@@ -665,6 +667,41 @@ TEST_CASE("hydra_replay refuses --ms and --depth values that are not whole numbe
         INFO(flags[1] << " printed: " << r.output);
         CHECK(r.exit_code == 0);
     }
+}
+
+// `hydra_replay score` writes each window's two times beside its ticks, read
+// through the chart's own tempo map, so a reader with no chord on the end
+// still has the end's time. A made-up chart at resolution 192: 120 BPM, then
+// 60 BPM from tick 1536. Tick 768 is 4 beats at 120 BPM, 2000 ms; tick 3072
+// adds 8 beats at 60 BPM, 4000 + 8000 = 12000 ms.
+TEST_CASE("hydra_replay score writes act_ms and deact_ms for each window") {
+    CliSandbox box("replay_score_ms");
+    const fs::path replay = box.copy_tool(HYDRA_REPLAY_EXE);
+    const fs::path chart = box.dir / "tempo_change.chart";
+    {
+        std::ofstream f(chart, std::ios::binary);
+        f << "[Song]\n{\n  Resolution = 192\n  Offset = 0\n}\n"
+             "[SyncTrack]\n{\n  0 = TS 4\n  0 = B 120000\n  1536 = B 60000\n}\n"
+             "[Events]\n{\n}\n"
+             "[ExpertDrums]\n{\n";
+        for (int tick = 0; tick <= 3840; tick += 192) f << "  " << tick << " = N 1 0\n";
+        f << "}\n";
+    }
+    const std::string out = (box.dir / "score.json").u8string();
+    const RunResult r =
+        run_exe(replay, {"score", "--chart", chart.u8string(), "--acts", "768:3072", "--out", out});
+    INFO("hydra_replay score printed: " << r.output);
+    REQUIRE(r.exit_code == 0);
+
+    std::ifstream in(fs::u8path(out), std::ios::binary);
+    REQUIRE(in);
+    const nlohmann::json doc = nlohmann::json::parse(in);
+    REQUIRE(doc["activations"].size() == 1);
+    const nlohmann::json& a = doc["activations"][0];
+    CHECK(a["act_tick"].get<int64_t>() == 768);
+    CHECK(a["deact_tick"].get<int64_t>() == 3072);
+    CHECK(a["act_ms"].get<double>() == doctest::Approx(2000.0));
+    CHECK(a["deact_ms"].get<double>() == doctest::Approx(12000.0));
 }
 
 // The network code lives in hydra_dm, which only the GUI links (CMakeLists.txt),

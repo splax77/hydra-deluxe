@@ -32,6 +32,7 @@
 #include "replay_util.h"
 #include "core/scoring.h"
 #include "core/sqout_chord.h"
+#include "core/squeeze_rating.h"  // frontend_transfer_scales, the copy-out's stamp
 #include "core/timing.h"
 #include "corpus_util.h"
 #include "parse/song.h"
@@ -670,8 +671,15 @@ TEST_CASE("paths_json writes every field the dump readers use") {
         const json& a0 = p0["activations"][0];
         for (const char* k : {"act_tick", "deact_tick", "sqout_tick", "nominal_deact_tick",
                               "sp_meter", "skips", "skipped_fill_ticks", "chord_code", "sqinouts",
-                              "sqin_ticks", "end_scale_early", "end_scale_late"})
+                              "sqin_ticks", "end_anchor_tick", "end_scale_early", "end_scale_late",
+                              "steady_ms_before_act", "steady_ms_after_act",
+                              "steady_ms_before_end", "steady_ms_after_end"})
             CHECK_MESSAGE(a0.contains(k), k);
+        // The real search stores the end's ratio on every activation it
+        // returns, so a fresh dump never writes it null.
+        CHECK(a0["end_anchor_tick"].is_number());
+        CHECK(a0["end_scale_early"].is_number());
+        CHECK(a0["end_scale_late"].is_number());
 
         checked = true;
         break;  // one chart's first path is the whole contract
@@ -681,15 +689,22 @@ TEST_CASE("paths_json writes every field the dump readers use") {
 
 namespace {
 
-// One hand-built path on a made-up timing: an activation at `act_tick` whose
-// Star Power ends at `end_tick`, or one with no end at all when `end_tick` is
-// empty. paths_json is the dump's real writer, so the fields come out as a
-// dump prints them.
-json dump_one_activation(const SongTiming& timing, int64_t act_tick,
-                         std::optional<int64_t> end_tick) {
+// A hand-built activation at `act_tick` on a made-up timing, with no SP-end
+// history yet.
+Activation act_at(const SongTiming& timing, int64_t act_tick) {
     Activation a;
     a.timecode = timing.timecode(act_tick);
-    if (end_tick) test::set_plain_window(a, *end_tick);
+    return a;
+}
+
+// `a` dumped alone, as the dump prints it: paths_json is the dump's real
+// writer. With `stamp`, the end's ratio is stored first the way the search's
+// copy-out stores it, through frontend_transfer_scales; without, the test has
+// set transfer_post itself.
+json dump_alone(const SongTiming& timing, Activation a, bool stamp = true) {
+    if (stamp)
+        if (const std::optional<ActTransferScales> s = frontend_transfer_scales(a, timing))
+            a.transfer_post = s->post;
     Path p;
     p.activations = {a};
     const json dumped = paths_json({&p}, timing);
@@ -698,25 +713,47 @@ json dump_one_activation(const SongTiming& timing, int64_t act_tick,
     return dumped[0]["activations"][0];
 }
 
+// An activation at `act_tick` whose Star Power ends at `end_tick`, or one with
+// no end at all when `end_tick` is empty, dumped with its ratio stamped.
+json dump_one_activation(const SongTiming& timing, int64_t act_tick,
+                         std::optional<int64_t> end_tick) {
+    Activation a = act_at(timing, act_tick);
+    if (end_tick) test::set_plain_window(a, *end_tick);
+    return dump_alone(timing, a);
+}
+
 double rounded_4(double v) { return std::round(v * 1e4) / 1e4; }
+
+const char* const kSteadyFields[] = {"steady_ms_before_act", "steady_ms_after_act",
+                                     "steady_ms_before_end", "steady_ms_after_end"};
 
 }  // namespace
 
-// The dump's end ratios come from transfer_scale_between. On one steady tempo
-// and meter the end moves exactly as far as the activation, both ways.
-TEST_CASE("paths_json: a constant tempo gives end ratios of 1 both ways") {
-    const SongTiming timing(192, {{0, 768}}, {{0, 120.0}}, {{0, {4, 4}}});
+// On one steady tempo and meter the end moves exactly as far as the
+// activation, both ways, and no change lies on either side of either tick. A
+// marker that repeats the tempo or meter in force is no change.
+TEST_CASE("paths_json: a constant tempo gives end ratios of 1 and no change on any side") {
+    const SongTiming timing(192, {{0, 768}, {1536, 768}}, {{0, 120.0}, {768, 120.0}},
+                            {{0, {4, 4}}, {1536, {4, 4}}});
     const json a = dump_one_activation(timing, 3840, 9984);
+    CHECK(a["end_anchor_tick"].get<int64_t>() == 3840);
     REQUIRE(a["end_scale_early"].is_number());
     REQUIRE(a["end_scale_late"].is_number());
     CHECK(a["end_scale_early"].get<double>() == doctest::Approx(1.0));
     CHECK(a["end_scale_late"].get<double>() == doctest::Approx(1.0));
+    for (const char* k : kSteadyFields) {
+        REQUIRE_MESSAGE(a.contains(k), k);
+        CHECK_MESSAGE(a[k].is_null(), k);
+    }
 }
 
 // Rescued's shape: a tempo marker sits on the activation tick itself (150.67
 // BPM before it, 155.656 from it), and the end's tick follows 150 BPM. An
 // early hit lands in the segment before the marker, so the early ratio reads
-// that segment's tempo, not the marker's.
+// that segment's tempo, not the marker's, and the early side stays exact back
+// to the marker at 83520: one beat at 150.67 BPM, about 398 ms. The end's
+// early side reaches back to the 150 BPM marker at 89000: 856 ticks at 150
+// BPM. Nothing changes after the end.
 TEST_CASE("paths_json: a tempo marker on the activation tick gives the earlier segment's ratio") {
     const SongTiming timing(192, {{0, 768}},
                             {{0, 120.0}, {83520, 150.67}, {83712, 155.656}, {89000, 150.0}},
@@ -726,11 +763,37 @@ TEST_CASE("paths_json: a tempo marker on the activation tick gives the earlier s
     REQUIRE(a["end_scale_late"].is_number());
     CHECK(rounded_4(a["end_scale_early"].get<double>()) == doctest::Approx(1.0045));
     CHECK(rounded_4(a["end_scale_late"].get<double>()) == doctest::Approx(1.0377));
+    REQUIRE(a["steady_ms_before_act"].is_number());
+    CHECK(a["steady_ms_before_act"].get<double>() == doctest::Approx(398.22).epsilon(1e-4));
+    REQUIRE(a["steady_ms_before_end"].is_number());
+    CHECK(a["steady_ms_before_end"].get<double>() == doctest::Approx(1783.33).epsilon(1e-5));
+    CHECK(a["steady_ms_after_end"].is_null());
+}
+
+// A change exactly on the tick starts the late side's section, so it bounds
+// neither side: the early side measures back to the change before (768, 768
+// ticks at 60 BPM = 4000 ms) and the late side on to the change after (2304,
+// 768 ticks at 120 BPM = 2000 ms), never 0. The end at 3840 reaches back to
+// 2304 (1536 ticks at 60 BPM = 8000 ms) with nothing after it.
+TEST_CASE("paths_json: a change on the tick bounds neither of its steady spans") {
+    const SongTiming timing(192, {{0, 768}},
+                            {{0, 120.0}, {768, 60.0}, {1536, 120.0}, {2304, 60.0}},
+                            {{0, {4, 4}}});
+    const json a = dump_one_activation(timing, 1536, 3840);
+    REQUIRE(a["steady_ms_before_act"].is_number());
+    CHECK(a["steady_ms_before_act"].get<double>() == doctest::Approx(4000.0));
+    REQUIRE(a["steady_ms_after_act"].is_number());
+    CHECK(a["steady_ms_after_act"].get<double>() == doctest::Approx(2000.0));
+    REQUIRE(a["steady_ms_before_end"].is_number());
+    CHECK(a["steady_ms_before_end"].get<double>() == doctest::Approx(8000.0));
+    CHECK(a["steady_ms_after_end"].is_null());
 }
 
 // A meter change between the activation and its end changes the measure
 // length while the tempo stays put, so the ratio is the measure ratio (3/4
-// against 4/4), not the BPM ratio of 1.
+// against 4/4), not the BPM ratio of 1. The meter change bounds the spans the
+// way a tempo change does: 768 ticks at 120 BPM after the activation, 1536
+// before the end.
 TEST_CASE("paths_json: a time signature change between the ticks gives the measure ratio") {
     const SongTiming timing(192, {{0, 768}, {1536, 576}}, {{0, 120.0}},
                             {{0, {4, 4}}, {1536, {3, 4}}});
@@ -740,18 +803,65 @@ TEST_CASE("paths_json: a time signature change between the ticks gives the measu
     CHECK(a["end_scale_early"].get<double>() == doctest::Approx(0.75));
     CHECK(a["end_scale_late"].get<double>() == doctest::Approx(0.75));
     CHECK(a["end_scale_early"].get<double>() != doctest::Approx(1.0));
+    CHECK(a["steady_ms_before_act"].is_null());
+    REQUIRE(a["steady_ms_after_act"].is_number());
+    CHECK(a["steady_ms_after_act"].get<double>() == doctest::Approx(2000.0));
+    REQUIRE(a["steady_ms_before_end"].is_number());
+    CHECK(a["steady_ms_before_end"].get<double>() == doctest::Approx(4000.0));
+    CHECK(a["steady_ms_after_end"].is_null());
+}
+
+// When the cap pinned the end to a collecting note, that note's timing moves
+// the end, not the activation's: end_anchor_tick names it and the "act" spans
+// are measured from it. Here the clamp at 1536 sits 768 ticks at 60 BPM past
+// the change at 768; from the activation at 384 there would be no change
+// before at all.
+TEST_CASE("paths_json: a clamped end is anchored on its collecting note") {
+    const SongTiming timing(192, {{0, 768}}, {{0, 120.0}, {768, 60.0}}, {{0, {4, 4}}});
+    Activation a = act_at(timing, 384);
+    test::set_clamped_window(a, 1536, 3072);
+    const json d = dump_alone(timing, a);
+    CHECK(d["act_tick"].get<int64_t>() == 384);
+    CHECK(d["end_anchor_tick"].get<int64_t>() == 1536);
+    REQUIRE(d["steady_ms_before_act"].is_number());
+    CHECK(d["steady_ms_before_act"].get<double>() == doctest::Approx(4000.0));
+    CHECK(d["steady_ms_after_act"].is_null());
+}
+
+// The ratios are the ones the search stored, never worked out again in the
+// writer: a stored pair that no timing would give comes out as stored, and an
+// activation the search stored none for writes null ratios beside its spans.
+TEST_CASE("paths_json writes the end ratio the search stored") {
+    const SongTiming timing(192, {{0, 768}}, {{0, 120.0}}, {{0, {4, 4}}});
+    Activation a = act_at(timing, 3840);
+    test::set_plain_window(a, 9984);
+    a.transfer_post = TransferScale{0.5, 2.0};
+    const json stored = dump_alone(timing, a, false);
+    CHECK(stored["end_scale_early"].get<double>() == 0.5);
+    CHECK(stored["end_scale_late"].get<double>() == 2.0);
+
+    a.transfer_post.reset();
+    const json unknown = dump_alone(timing, a, false);
+    CHECK(unknown["end_anchor_tick"].get<int64_t>() == 3840);
+    CHECK(unknown["end_scale_early"].is_null());
+    CHECK(unknown["end_scale_late"].is_null());
+    for (const char* k : kSteadyFields) CHECK_MESSAGE(unknown.contains(k), k);
 }
 
 // An activation with no deactivation node has no end to move, so every end
 // field the dump writes for it is null, and its deact_tick is -1 as before.
-TEST_CASE("paths_json: an activation with no deact tick writes null end ratios") {
-    const SongTiming timing(192, {{0, 768}}, {{0, 120.0}}, {{0, {4, 4}}});
+TEST_CASE("paths_json: an activation with no deact tick writes every end field null") {
+    const SongTiming timing(192, {{0, 768}}, {{0, 120.0}, {768, 60.0}}, {{0, {4, 4}}});
     const json a = dump_one_activation(timing, 3840, std::nullopt);
     CHECK(a["deact_tick"].get<int64_t>() == -1);
-    REQUIRE(a.contains("end_scale_early"));
-    REQUIRE(a.contains("end_scale_late"));
-    CHECK(a["end_scale_early"].is_null());
-    CHECK(a["end_scale_late"].is_null());
+    for (const char* k : {"end_anchor_tick", "end_scale_early", "end_scale_late"}) {
+        REQUIRE_MESSAGE(a.contains(k), k);
+        CHECK_MESSAGE(a[k].is_null(), k);
+    }
+    for (const char* k : kSteadyFields) {
+        REQUIRE_MESSAGE(a.contains(k), k);
+        CHECK_MESSAGE(a[k].is_null(), k);
+    }
 }
 
 // dump and target print one "result" block. A record with no paths has no best
