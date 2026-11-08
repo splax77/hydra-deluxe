@@ -290,31 +290,31 @@ Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 Rule: Each frame, the end check runs: if Star Power is on and the clock is at or past the stored end time, it calls the deactivation. A clock exactly equal to the end already ends it. The end is a time, not "the meter reached zero". The engine's event step also calls a handler with the end time when the end falls inside its step, but that handler only records the time and does not end Star Power.
 Label: Proven in the game's code
-Evidence: The end check compares clock with end at lines 1 to 3, tests the flag at lines 4 and 5 and jumps to slot 23, the deactivation (SP-25), at line 8. The drum engine's own slot 15 at `0x20DE5A0` is two instructions that jump there (dump.cs line 527475). The event step calls a virtual handler (vtable offset 0x238, slot 16) with the end time when the end lies after the old clock and before the new time (`code/6142/advance_events_20F6A50.asm` lines 219 to 230). The reviewer of this page disassembled slot 16 (tools/ch_mcp/chdis.py on the 6142 DLL, 2026-10-30): dump.cs gives it `Slot: 16` at RVA `0x20F43A0` in the base class and none of the drum engine's classes overrides it. It adds the time to a list of doubles at +0x180 when the list does not hold it yet, and it never touches the flag at +0x42. No listing of it is committed. ch-evidence.md line 197 said "checked once per frame" from a lost listing.
-Game code (6142): RVA `0x20F63B0` (slot 15), `code/6142/sp_end_check_20F63B0.asm` lines 1 to 8; drum override RVA `0x20DE5A0`; event step RVA `0x20F6A50` lines 219 to 230; its handler RVA `0x20F43A0` (slot 16), not listed
+Evidence: The end check compares clock with end at lines 1 to 3, tests the flag at lines 4 and 5 and jumps to slot 23, the deactivation (SP-25), at line 8. The drum engine's own slot 15 at `0x20DE5A0` is two instructions that jump there (dump.cs line 527475). The event step calls a virtual handler (vtable offset 0x238, slot 16) with the end time when the end lies after the old clock and before the new time (`code/6142/advance_events_20F6A50.asm` lines 219 to 230). The reviewer of this page disassembled slot 16 (tools/ch_mcp/chdis.py on the 6142 DLL, 2026-10-30): dump.cs gives it `Slot: 16` at RVA `0x20F43A0` in the base class and none of the drum engine's classes overrides it. It adds the time to a list of doubles at +0x180 when the list does not hold it yet, and it never touches the flag at +0x42: the committed listing `docs/audit/drum-lanes/play/f20f43a0_add_event.asm` lines 31 to 73 shows the duplicate test and the add. The end check also runs at those queued times between frames: `docs/audit/drum-lanes/play/f20f6ff0_next_event.asm` line 103 calls the frame update `0x20F4550` at each queued time it takes out, and that update calls the end check at `code/6142/base_frame_update_20F4550.asm` line 37 (page 3, TM-52). ch-evidence.md line 197 said "checked once per frame" from a lost listing.
+Game code (6142): RVA `0x20F63B0` (slot 15), `code/6142/sp_end_check_20F63B0.asm` lines 1 to 8; drum override RVA `0x20DE5A0`; event step RVA `0x20F6A50` lines 219 to 230; its handler RVA `0x20F43A0` (slot 16), `docs/audit/drum-lanes/play/f20f43a0_add_event.asm` lines 31 to 73; RVA `0x20F6FF0`, `docs/audit/drum-lanes/play/f20f6ff0_next_event.asm` line 103
 Hydra: one end point: `offset_from_sp_end` in src/core/model.h line 115; `paid_by_sp_walk` in src/core/backend_value.h line 28
 Ruling: D269 call 4: "there should never be two different answers for where star power ends. ever." (card 2026-10-30-61cee421)
-Found: 2026-10-30, session b02ab3e6 (the reference build)
+Found: 2026-10-30, session b02ab3e6 (the reference build); the queued checks 2026-11-08, session 77057df2 (docs-gaps search)
 
 ### SP-29 Whether a hit is scored before the end check in each frame
 
 Rule: In each frame the game first advances its events to the new time, then runs the end check, then the drain. If a hit is scored inside that first step, a hit handled in the frame whose clock first reaches the end is still scored with Star Power on, even when its clock is past the end. Whether hits are scored there, or in an input callback outside this function, was not read.
 Label: Unknown
-Evidence: The order of the calls is shown: the frame update calls `0x20F4950` at line 17, slot 9 at line 21, slot 21 at line 33, slot 15 (the end check) at line 37, slot 18 at line 41 and slot 12 (the drain) at line 45; slot n is at vtable offset 0x138 plus 16 n. The reviewer of this page read `0x20F4950` once (tools/ch_mcp/chdis.py on the 6142 DLL, 2026-10-30, no listing committed): it calls the event step (slot 8, SP-28) and `0x20F6FF0` up to three times, then sets the clock; it shows no press handler or score add. Its callers are `0x20A1B0` (three call sites) and `0xFEB4C0`. Where a press is turned into a hit, and with which clock, is not read (SP-30).
-Game code (6142): RVA `0x20F4550`, `code/6142/base_frame_update_20F4550.asm` lines 17 to 45; `0x20F4950` not listed
+Evidence: The order of the calls is shown: the frame update calls `0x20F4950` at line 17, slot 9 at line 21, slot 21 at line 33, slot 15 (the end check) at line 37, slot 18 at line 41 and slot 12 (the drain) at line 45; slot n is at vtable offset 0x138 plus 16 n. The step `0x20F4950` is committed as `docs/audit/drum-lanes/play/f20f4950_step_loop.asm`: when the byte at +0x290 is set it calls `0x20F6FF0` and moves the clock to its result up to three times (lines 18 to 60), running slot 8 at each (line 57), then puts the clock back (line 61); it shows no press handler or score add. `0x20F6FF0` is `docs/audit/drum-lanes/play/f20f6ff0_next_event.asm` (page 3, TM-52). What sets +0x290 was not read. Its callers are `0x20A1B0` (three call sites) and `0xFEB4C0`. Where a press is turned into a hit, and with which clock, is not read (SP-30).
+Game code (6142): RVA `0x20F4550`, `code/6142/base_frame_update_20F4550.asm` lines 17 to 45; RVA `0x20F4950`, `docs/audit/drum-lanes/play/f20f4950_step_loop.asm` lines 18 to 61
 Hydra: no frame model: Hydra pays a note by its chart time against one end (`paid_by_sp_walk` in src/core/backend_value.h line 28)
 Ruling: none yet: the game's rule is not settled; questions page Q-50 holds the question that follows if hits are scored before the end check
-Found: 2026-10-30, session b02ab3e6 (the reference build); reviewed 2026-10-30
+Found: 2026-10-30, session b02ab3e6 (the reference build); reviewed 2026-10-30; the step listing 2026-11-08, session 77057df2 (docs-gaps search)
 
 ### SP-30 Whether a hit is judged at a clock between frames
 
 Rule: The clock a hit is judged at may be the frame clock or one of up to three sub-step clocks between frames.
 Label: Unknown
-Evidence: not checked: `0x20F4950` sets the clock field up to three times from the result of `0x20F6FF0` before the final set to the frame time; what `0x20F6FF0` returns was not read. Neither function is listed.
-Game code (6142): RVA `0x20F4950` and `0x20F6FF0`, not listed
+Evidence: both functions are committed. `docs/audit/drum-lanes/play/f20f4950_step_loop.asm` lines 18 to 60 set the clock up to three times, when +0x290 is set, from the result of `0x20F6FF0`. `docs/audit/drum-lanes/play/f20f6ff0_next_event.asm` lines 44 to 106 sort the queued times, take out those inside the step and return the latest one taken (page 3, TM-52). So the clock is stepped to queued window edges and Star Power ends between frames. Whether a press is judged at those clocks is not shown, because neither listing reads input.
+Game code (6142): RVA `0x20F4950` and `0x20F6FF0`, the listings above
 Hydra: no owner
 Ruling: none yet: the game's rule is not settled
-Found: 2026-10-30, session b02ab3e6 (the reference build)
+Found: 2026-10-30, session b02ab3e6 (the reference build); the listings 2026-11-08, session 77057df2 (docs-gaps search)
 
 ### SP-31 Hydra's end lands within 3 ms of the game's
 
@@ -340,11 +340,11 @@ Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 Rule: Hydra pays a chord whose time equals the SP end as inside Star Power. In the game the answer depends on the hit's clock and the frame (SP-28, SP-29): the end check turns Star Power off once the clock is at or past the end, and whether a hit at a clock equal to the end is scored before or after that check is not settled.
 Label: Hydra assumes it, never checked
-Evidence: Hydra: `paid_by_sp_walk` (offset at or below 0) and `after_sp_end` (tick strictly after the end) in src/core/backend_value.h lines 28 and 34. D13 (decision log line 31) states the rule as a decision, not in the user's words. No run has placed a hit exactly on an end. LS-O3 run 1 of 2026-11-07 pressed Senri's 8 end chords 12.23 to 14.94 ms before their time and all 8 paid inside, where LS-D2d's on-time presses paid chords 2044 and 2320 outside. So a press early enough is paid inside, and the exact case stays unread (result files in hydra-data, ch-mcp-runs/2026-11-07/ls-o3-run1).
+Evidence: Hydra: `paid_by_sp_walk` (offset at or below 0) and `after_sp_end` (tick strictly after the end) in src/core/backend_value.h lines 28 and 34. D13 (decision log line 31) states the rule as a decision, not in the user's words. No run has placed a hit exactly on an end. LS-O3 run 1 of 2026-11-07 pressed Senri's 8 end chords 12.23 to 14.94 ms before their time and all 8 paid inside, where LS-D2d's on-time presses paid chords 2044 and 2320 outside. So a press early enough is paid inside, and the exact case stays unread (result files in hydra-data, ch-mcp-runs/2026-11-07/ls-o3-run1). The late side is shown at one offset: in LS-R1 run 2 of 2026-11-07, chord 740's second press came at clock 118,442.16 ms, 15.27 ms after the stored end of 118.42689 s, and paid 200, not doubled (`C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-07\ls-r1-run2\press-1.csv`, the second row of chord 740, score 301,670 to 301,870). In `sp_watch-1.csv` there the multiplier reads 4 from 118.4270 s on, and the meter steps from 0 to 1,440 at 118.4452 s, so the phrase was credited after the end.
 Game code (6142): RVA `0x20F63B0` and `0x20F4550` (SP-28, SP-29)
 Hydra: `paid_by_sp_walk` in src/core/backend_value.h line 28; `after_sp_end` line 34
 Ruling: none needed: no difference is shown
-Found: 2026-10-30, session b02ab3e6 (the reference build)
+Found: 2026-10-30, session b02ab3e6 (the reference build); the LS-R1 late press 2026-11-08, session 77057df2 (docs-gaps search)
 
 ### SP-47 The end is stamped from the frame that reads the press
 
@@ -456,11 +456,11 @@ Found: 2026-10-30, session 61cee421
 
 Rule: No 3 ms (0.003 s) constant is used by the drum engine or its base classes.
 Label: Unknown
-Evidence: A byte search of `GameAssembly.dll` found the double and the float 0.003 once each in .rdata; a scan of every instruction for references to them found six, in static methods of class #182 (`0x3738B0`, `0x373A40`, `0x373F30`, `0x374310`) and two compares in class #707 at `0x16C650`, none in #8288, #8253, #8255 or #8544. A scan of 18,340 operands in the engine address ranges for values near 0.003, or exactly 3.0 or 3000.0, found only scale factors. Constants held as immediate operands were not searched, so the absence is not shown. The 2026-10-03 claim over 126 engine methods rests on a lost listing.
+Evidence: A byte search of `GameAssembly.dll` found the double and the float 0.003 once each in .rdata; a scan of every instruction for references to them found six, in static methods of class #182 (`0x3738B0`, `0x373A40`, `0x373F30`, `0x374310`) and two compares in class #707 at `0x16C650`, none in #8288, #8253, #8255 or #8544. The two compares (`code/6142/clock_tick_16C650.asm` lines 105 and 116) test the gap between the audio clock and the raw clock, and line 107 stores the correction when it is over 0.003 s (page 3, TM-12 and TM-47), so they are the clock's drift threshold, not a scoring leeway. A scan of 18,340 operands in the engine address ranges for values near 0.003, or exactly 3.0 or 3000.0, found only scale factors. Constants held as immediate operands were not searched, so the absence is not shown. The 2026-10-03 claim over 126 engine methods rests on a lost listing.
 Game code (6142): not found: looked as described in the Evidence line
 Hydra: `Rules::backend_leeway_ms` in src/core/rules.h line 32 (Hydra's own rule, SP-42)
 Ruling: none needed: SP-42's ruling covers the leeway
-Found: 2026-10-30, session b02ab3e6 (the reference build)
+Found: 2026-10-30, session b02ab3e6 (the reference build); the two compares 2026-11-08, session 77057df2 (docs-gaps search)
 
 ## The bot
 
