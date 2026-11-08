@@ -12,7 +12,7 @@ One step runs first and alone, before any fan-out: TM-50's two-note rule. While 
 
 ## Before anything runs
 
-No scout or verifier starts until the user approves this plan and answers its three questions. "Yes, plan it" was a yes to planning, not to launching. Once the user approves, T0 runs alone and the main session reads its result before T1 starts. Scouts read this plan's worktree (the Clone Hero pages and listings there match main), write only to their report and their scratch folder, and never build or run the game.
+No scout or verifier starts until the user approves this plan and answers its three questions. "Yes, plan it" was a yes to planning, not to launching. The user approved on 2026-11-08 ("approve but every fact must be checked against the real code"), with the three questions answered as recommended; "The finding row" below says what that rule means for each row. Once the user approves, T0 runs alone and the main session reads its result before T1 starts. Scouts read this plan's worktree (the Clone Hero pages and listings there match main), write only to their report and their scratch folder, and never build or run the game.
 
 ## What was checked, and how
 
@@ -78,7 +78,7 @@ Only the main session picks an exit. Scouts and verifiers never do. Scouts write
 
 Every candidate, from any scout, is one row with these seven cells. Page and block id, or "new" with the page it belongs on. Source file and line (or run folder and result file and row). The label the evidence earns, one of the README's four. What the page says today, quoted, or "no block". One sentence of what to write. The kind: missing, under-labelled, contradicted, or stale (the page cites a file or session that the source shows changed). The exit is blank; the main session fills it.
 
-A row whose source is a session card, a handoff, a plan or a memory note is a lead, not proof: the row names the file the lead points at, and if that file is not in the repo or in hydra-data, the row's earned label is Unknown and its sentence says where we looked. A row whose source is a transcript is dropped.
+The user approved this plan with one rule (2026-11-08, this session): "plans are another agent's summary and should not be treated as authoritative facts. the code is the source of truth. approve but every fact must be checked against the real code." So every row's source cell names the real thing: a line of a committed game listing (`.asm`), a row of a run's own data file (a press CSV, a Star Power watch CSV, a score-stats JSON), or a line of Hydra's code. Prose is never the source, whoever wrote it. That covers plans, FINDINGS files, notes files, `code/` `.md` write-ups, session cards, handoffs, memory notes, the decision log, a run's `replies.txt` summary lines, the other branch's TM-50 text, and the Clone Hero pages themselves. Prose is a lead: the scout follows it to the listing or data it names and quotes that line. A fact whose lead names no listing or data, or whose listing or data does not show it, earns Unknown, and its sentence says where we looked. A row whose source is a transcript is dropped. Verifiers in T4 reopen the named listing or data line, never the lead.
 
 ### Caps and the stop rule
 
