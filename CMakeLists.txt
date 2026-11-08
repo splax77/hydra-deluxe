@@ -937,7 +937,7 @@ target_compile_definitions(hydra_tests PRIVATE
 # hydra_replay writes and reads these, and tests/test_replay pins them. The
 # app never reads a path as JSON, so this stays out of hydra_app, and core/
 # stays free of the JSON library.
-add_library(hydra_replay_json STATIC tools/replay_json.cpp)
+add_library(hydra_replay_json STATIC tools/replay_json.cpp tools/replay_schedule.cpp)
 target_include_directories(hydra_replay_json PUBLIC tools third_party/json)
 target_link_libraries(hydra_replay_json PUBLIC hydra_app PRIVATE hydra_warnings)
 target_link_libraries(hydra_replay PRIVATE hydra_replay_json)

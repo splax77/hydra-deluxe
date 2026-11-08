@@ -55,8 +55,14 @@ ReplayResult replay_path(const Song& song, std::vector<ReplayWindow> windows,
         win.sqout_tick = w.sqout_tick;
         wins.push_back(win);
     }
+    // Windows that share an activation tick are put in a fixed order too, so
+    // ReplayChord::paid_by, which names each window by its two ticks, is the
+    // same whatever order the caller listed them in. Windows that share both
+    // ticks write the same ReplayPayment, so their order among themselves
+    // never shows.
     std::sort(wins.begin(), wins.end(), [](const Window& a, const Window& b) {
-        return a.act_tick < b.act_tick;
+        if (a.act_tick != b.act_tick) return a.act_tick < b.act_tick;
+        return a.deact_tick < b.deact_tick;
     });
 
     ReplayResult out;
@@ -187,6 +193,7 @@ ReplayResult replay_path(const Song& song, std::vector<ReplayWindow> windows,
                 ++sp_paid;
                 sp_points += core::backend_row_value(offset, sg.sp, sg.sqout_sp, pos,
                                                      rules.backend_leeway_ms);
+                row.paid_by.push_back(ReplayPayment{w.act_tick, w.deact_tick, offset});
             }
             // Erase-remove in place: keep the window unless it is past its
             // deactivation node and paid nothing here (see `open` above).
