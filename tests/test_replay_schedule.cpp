@@ -764,3 +764,30 @@ TEST_CASE("schedule: the planned end counts one frame") {
     // Freak 263's 24.82 ms lead at ratio 1.0 plans 60,551.53.
     CHECK(within_cent(schedule::split_squeeze(sqout(48.15, 60545.26, 53.59, 60573.35, 1.0)).planned_end_ms, 60551.53));
 }
+
+TEST_CASE("schedule: the equal-room split of a squeeze-in is the mirror of a squeeze-out's") {
+    // No chart in the corpus has a timed squeeze-in, so this is hand-built: the
+    // anchor (side 60) goes late for a chord (side 50) 40 ms past the end at
+    // 1,000 ms, ratio 1.0 on the late side (the early side, 2.0, is one a
+    // squeeze-in never reads). Worked by hand from the split rule in
+    // replay_schedule.cpp: L = (60 - 50 + 40 + 15 - 6 - 3) / 2 = 28; the end
+    // lands at 1,000 + 1 x (28 + 3) = 1,031; the chord is pressed at
+    // 1,031 - 15 - 1,040 = -24; both rooms are 26.
+    schedule::SqueezeGeometry g;
+    g.kind = SqueezeKind::SqIn;
+    g.anchor_chord = 1;
+    g.anchor_side_ms = 60.0;
+    g.squeeze_chord = 2;
+    g.squeeze_ms = 1040.0;
+    g.squeeze_side_ms = 50.0;
+    g.end_ms = 1000.0;
+    g.ratio = TransferScale{2.0, 1.0};
+    const schedule::SqueezeSplit s = schedule::split_squeeze(g);
+    CHECK(s.anchor_aim_ms == doctest::Approx(28.0));
+    CHECK(s.squeeze_aim_ms == doctest::Approx(-24.0));
+    CHECK(s.anchor_room_ms == doctest::Approx(26.0));
+    CHECK(s.squeeze_room_ms == doctest::Approx(26.0));
+    CHECK(s.planned_end_ms == doctest::Approx(1031.0));
+    CHECK(s.aim_end_ms == doctest::Approx(1031.0));
+    CHECK(s.feasible);
+}

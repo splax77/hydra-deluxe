@@ -210,6 +210,17 @@ double moving_ratio(const SqueezeGeometry& g) {
     return g.kind == SqueezeKind::SqOut ? g.ratio.early : g.ratio.late;
 }
 
+// How far an anchor press of `lead_ms` moves the end once the game has judged
+// it `judged_ms` after the send: earlier by r(lead - judged) for a squeeze-out,
+// later by r(lead + judged) for a squeeze-in (design point 4). The one place
+// the end's shift is worked out; the splits, the reads and the final-end
+// chord's lead all call it.
+namespace {
+double anchor_end_shift_ms(SqueezeKind kind, double ratio, double lead_ms, double judged_ms) {
+    return kind == SqueezeKind::SqOut ? -ratio * (lead_ms - judged_ms) : ratio * (lead_ms + judged_ms);
+}
+}  // namespace
+
 // Question 1 (a) of the plan, equal room: both presses keep the same room in
 // the worst frame case. A squeeze-out (design point 4): the anchor goes L
 // early, judged kJudgeEarlyMs to kJudgeLateMs later, so the end lands at most
@@ -244,14 +255,14 @@ SqueezeSplit split_at_lead(const SqueezeGeometry& g, double lead_ms) {
     SqueezeSplit s;
     if (g.kind == SqueezeKind::SqOut) {
         s.anchor_aim_ms = -lead_ms;
-        s.planned_end_ms = g.end_ms - r * (lead_ms - kJudgeEarlyMs);
+        s.planned_end_ms = g.end_ms + anchor_end_shift_ms(g.kind, r, lead_ms, kJudgeEarlyMs);
         // The latest the end can land: the anchor judged two frames late.
-        s.aim_end_ms = g.end_ms - r * (lead_ms - kJudgeLateMs);
+        s.aim_end_ms = g.end_ms + anchor_end_shift_ms(g.kind, r, lead_ms, kJudgeLateMs);
         s.squeeze_aim_ms = s.aim_end_ms + kSpOutLagMs - g.squeeze_ms;
     } else {
         s.anchor_aim_ms = lead_ms;
         // The earliest the end can land: the anchor judged one frame late.
-        s.planned_end_ms = g.end_ms + r * (lead_ms + kJudgeEarlyMs);
+        s.planned_end_ms = g.end_ms + anchor_end_shift_ms(g.kind, r, lead_ms, kJudgeEarlyMs);
         s.aim_end_ms = s.planned_end_ms;
         s.squeeze_aim_ms = s.aim_end_ms - kSpEndLeadMs - g.squeeze_ms;
     }
@@ -725,8 +736,7 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
             double shift = 0.0;
             if (lead_of.count(x) > 0) {
                 const double l = lead_of[x];
-                shift = way_of[x] == SqueezeKind::SqOut ? -ratio_of[x] * (l - kJudgeEarlyMs)
-                                                        : ratio_of[x] * (l + kJudgeEarlyMs);
+                shift = anchor_end_shift_ms(way_of[x], ratio_of[x], l, kJudgeEarlyMs);
             } else if (act.transfer_post) {
                 shift = act.transfer_post->late * (kJudgeEarlyMs - kPressLeadMs);
             } else {
@@ -744,7 +754,8 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
         // docs/superpowers/plans/2026-11-07-player-limits.md).
         if (final_anchor[a] && lead_of.count(*final_anchor[a]) > 0 &&
             way_of[*final_anchor[a]] == SqueezeKind::SqOut)
-            final_shift[a] = -ratio_of[*final_anchor[a]] * (lead_of[*final_anchor[a]] - kJudgeEarlyMs);
+            final_shift[a] = anchor_end_shift_ms(SqueezeKind::SqOut, ratio_of[*final_anchor[a]],
+                                                 lead_of[*final_anchor[a]], kJudgeEarlyMs);
     }
 
     // ---- the presses, chord by chord
