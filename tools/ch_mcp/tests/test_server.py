@@ -229,21 +229,23 @@ class ServerTest(unittest.TestCase):
         self.assertEqual(seen, [("s.json", "sched.json", None, None, None),
                                 ("s.json", "sched.json", "p.csv", "song", "keys")])
 
-    def test_ch_sp_compare_passes_the_dump_arguments_through(self):
+    def test_ch_sp_compare_passes_the_schedule_through_and_takes_no_dump(self):
         schema = self._schema("ch_sp_compare")
-        self.assertEqual(schema["dump_json"]["default"], None)
-        self.assertEqual(schema["path_index"]["default"], 0)
+        self.assertNotIn("default", schema["schedule_json"])
+        self.assertNotIn("dump_json", schema)
+        self.assertNotIn("path_index", schema)
         seen = []
         self.helper.sp.ch_sp_compare = lambda *a: seen.append(a) or "compared"
         server = S.build_server(self.helper)
         asyncio.run(server.call_tool("ch_sp_compare", {"watch_csv": "w.csv",
-                                                       "score_json": "s.json"}))
+                                                       "score_json": "s.json",
+                                                       "schedule_json": "sched.json"}))
         asyncio.run(server.call_tool("ch_sp_compare", {
-            "watch_csv": "w.csv", "score_json": "s.json", "dump_json": "d.json",
-            "path_index": 2}))
+            "watch_csv": "w.csv", "score_json": "s.json", "schedule_json": "sched.json",
+            "resolution": 192}))
         width = schema["width"]["default"]
-        self.assertEqual(seen, [("w.csv", "s.json", None, None, width, None, 0),
-                                ("w.csv", "s.json", None, None, width, "d.json", 2)])
+        self.assertEqual(seen, [("w.csv", "s.json", "sched.json", None, None, width),
+                                ("w.csv", "s.json", "sched.json", 192, None, width)])
 
     def test_ch_start_human_with_no_song_folder_is_refused_before_any_launch(self):
         result = asyncio.run(S.build_server(self.helper).call_tool("ch_start", {"human": True}))

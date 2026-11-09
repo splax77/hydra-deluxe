@@ -503,20 +503,19 @@ def build_server(helper: Optional[Helper] = None):
         return capped(h.sp.ch_sp_watch_stop())
 
     @server.tool()
-    def ch_sp_compare(watch_csv: str, score_json: str, resolution: int | None = None,
+    def ch_sp_compare(watch_csv: str, score_json: str, schedule_json: str,
+                      resolution: int | None = None,
                       sp_bar_ticks: int | None = None,
-                      width: int = sp_compare.DEFAULT_WIDTH,
-                      dump_json: str | None = None, path_index: int = 0) -> str:
+                      width: int = sp_compare.DEFAULT_WIDTH) -> str:
         """Compare a watcher CSV with a hydra_replay score JSON and print
         sp_compare's report, one PASS or FAIL line per check. resolution,
         when given, also prints Hydra's full meter beside the game's.
-        The checks look for each chord where the auto-player pressed it, and
-        a squeeze-out's press times come from path path_index of dump_json,
-        the hydra_replay dump, so a score file with a squeeze-out is refused
-        without dump_json. ch_play_chart no longer takes either: it plays a
-        schedule_json, and this tool follows it in a later task."""
-        return capped(h.sp.ch_sp_compare(watch_csv, score_json, resolution,
-                                         sp_bar_ticks, width, dump_json, path_index))
+        The checks look for each chord where the auto-player pressed it,
+        which schedule_json, the same path's hydra_replay schedule (the file
+        ch_play_chart plays), says. A schedule that refuses its path is
+        refused with the schedule's words."""
+        return capped(h.sp.ch_sp_compare(watch_csv, score_json, schedule_json,
+                                         resolution, sp_bar_ticks, width))
 
     @server.tool()
     def ch_sp_between(start_ms: float, end_ms: float) -> str:
