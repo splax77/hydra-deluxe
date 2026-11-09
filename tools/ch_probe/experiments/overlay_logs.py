@@ -19,10 +19,13 @@ reads around a press: the points the game scored between the last press and
 this one (`scored_between`, which play_chart.play_chords works out), the Star
 Power end the game stored after an activation's press (`end_read_ms`), and the
 lead a probe press asked for (`probe`, edge_probe.py); each is blank on a row
-it does not apply to. Logs written before the kit press existed hold only
-KEYS_PRESS_COLUMNS, logs written before the wall times existed hold
-PRESS_COLUMNS_WITHOUT_WALL, and logs written before the player's columns
-existed hold PRESS_COLUMNS_WITHOUT_PLAYER.
+it does not apply to. RETIME_PRESS_COLUMNS hold what the retime after an
+end read did to a timed press (`retimed`, the Press.retimed word in
+play_chart.py: late, inside or plain), blank on every other row. Logs written before the kit
+press existed hold only KEYS_PRESS_COLUMNS, logs written before the wall times
+existed hold PRESS_COLUMNS_WITHOUT_WALL, logs written before the player's
+columns existed hold PRESS_COLUMNS_WITHOUT_PLAYER, and logs written before
+the retime column existed hold PRESS_COLUMNS_WITHOUT_RETIME.
 """
 
 from __future__ import annotations
@@ -92,8 +95,14 @@ PLAYER_PRESS_COLUMNS = (
     "probe",
 )
 
+RETIME_PRESS_COLUMNS = (
+    "retimed",
+)
+
 PRESS_COLUMNS_WITHOUT_WALL = KEYS_PRESS_COLUMNS + KIT_PRESS_COLUMNS
 
 PRESS_COLUMNS_WITHOUT_PLAYER = PRESS_COLUMNS_WITHOUT_WALL + WALL_PRESS_COLUMNS
 
-PRESS_LOG_COLUMNS = PRESS_COLUMNS_WITHOUT_PLAYER + PLAYER_PRESS_COLUMNS
+PRESS_COLUMNS_WITHOUT_RETIME = PRESS_COLUMNS_WITHOUT_PLAYER + PLAYER_PRESS_COLUMNS
+
+PRESS_LOG_COLUMNS = PRESS_COLUMNS_WITHOUT_RETIME + RETIME_PRESS_COLUMNS

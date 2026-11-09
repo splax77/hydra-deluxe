@@ -57,7 +57,8 @@ if _REPO_ROOT not in sys.path:
 
 from tools.ch_probe.experiments.overlay_logs import (
     KEYS_PRESS_COLUMNS, KIT_PRESS_COLUMNS, PLAYER_PRESS_COLUMNS, PRESS_COLUMNS_WITHOUT_PLAYER,
-    PRESS_COLUMNS_WITHOUT_WALL, PRESS_LOG_COLUMNS, WALL_PRESS_COLUMNS)
+    PRESS_COLUMNS_WITHOUT_RETIME, PRESS_COLUMNS_WITHOUT_WALL, PRESS_LOG_COLUMNS,
+    RETIME_PRESS_COLUMNS, WALL_PRESS_COLUMNS)
 
 # A run that hits fewer than this percent of its presses is a FAIL (the
 # overlay spike plan, Task B step 3).
@@ -68,16 +69,17 @@ MIN_HIT_PERCENT = 98
 _DYNAMIC_WORDS = ("ghost", "accent")
 
 # The older press logs overlay_logs names (KEYS_PRESS_COLUMNS,
-# PRESS_COLUMNS_WITHOUT_WALL, PRESS_COLUMNS_WITHOUT_PLAYER) load too, with
-# the missing columns blank.
+# PRESS_COLUMNS_WITHOUT_WALL, PRESS_COLUMNS_WITHOUT_PLAYER,
+# PRESS_COLUMNS_WITHOUT_RETIME) load too, with the missing columns blank.
 
 
 @dataclass(frozen=True)
 class Press:
-    """One press-log row. The kit, wall and player fields keep the log's
-    text as written; they are blank for a keys-route run (kit fields), for a
-    row they do not apply to (player fields) and for a log from before the
-    column existed. The score check reads none of the player fields."""
+    """One press-log row. The kit, wall, player and retime fields keep the
+    log's text as written; they are blank for a keys-route run (kit fields),
+    for a row they do not apply to (player and retime fields) and for a log
+    from before the column existed. The score check reads none of the player
+    or retime fields."""
     index: int
     chart_ms: float
     clock_ms_at_press: float
@@ -93,6 +95,7 @@ class Press:
     scored_between: str = ""
     end_read_ms: str = ""
     probe: str = ""
+    retimed: str = ""
 
 
 @dataclass(frozen=True)
@@ -107,8 +110,8 @@ class HydraChord:
 def load_press_log(path: str) -> List[Press]:
     """The press log's rows. Raises ValueError when the header is not
     PRESS_LOG_COLUMNS or one of the older headers this module names."""
-    accepted = (PRESS_LOG_COLUMNS, PRESS_COLUMNS_WITHOUT_PLAYER, PRESS_COLUMNS_WITHOUT_WALL,
-                KEYS_PRESS_COLUMNS)
+    accepted = (PRESS_LOG_COLUMNS, PRESS_COLUMNS_WITHOUT_RETIME, PRESS_COLUMNS_WITHOUT_PLAYER,
+                PRESS_COLUMNS_WITHOUT_WALL, KEYS_PRESS_COLUMNS)
     with open(path, encoding="utf-8", newline="") as f:
         reader = csv.DictReader(f)
         if tuple(reader.fieldnames or ()) not in accepted:
@@ -120,7 +123,7 @@ def load_press_log(path: str) -> List[Press]:
                       int(row["score_after"]), row["hit"] == "1",
                       **{c: row.get(c) or ""
                          for c in KIT_PRESS_COLUMNS + WALL_PRESS_COLUMNS
-                         + PLAYER_PRESS_COLUMNS})
+                         + PLAYER_PRESS_COLUMNS + RETIME_PRESS_COLUMNS})
                 for row in reader]
 
 
