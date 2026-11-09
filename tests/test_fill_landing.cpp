@@ -58,17 +58,10 @@ int64_t mid_landing(uint8_t after) {
 }
 
 // Whether the chord at `tick` carries a fill.
-bool fill_at(const Song& song, int64_t tick) {
+bool chord_has_fill(const Song& song, int64_t tick) {
     for (const SongTimestamp& ts : song.sequence)
         if (ts.timecode.ticks() == tick) return ts.has_activation();
     return false;
-}
-
-// A MIDI delta time, most significant group first.
-std::vector<uint8_t> vlq(uint32_t v) {
-    std::vector<uint8_t> out{static_cast<uint8_t>(v & 0x7F)};
-    while (v >>= 7) out.insert(out.begin(), static_cast<uint8_t>(0x80 | (v & 0x7F)));
-    return out;
 }
 
 // An EVENTS track holding one text meta per (tick, text), in tick order.
@@ -76,10 +69,8 @@ std::vector<uint8_t> events_track(const std::vector<std::pair<uint32_t, std::str
     std::vector<uint8_t> t = testmidi::track_name("EVENTS");
     uint32_t at = 0;
     for (const auto& [tick, text] : texts) {
-        const std::vector<uint8_t> delta = vlq(tick - at);
-        t.insert(t.end(), delta.begin(), delta.end());
-        t.insert(t.end(), {0xFF, 0x01, static_cast<uint8_t>(text.size())});
-        t.insert(t.end(), text.begin(), text.end());
+        const std::vector<uint8_t> ev = testmidi::after(tick - at, testmidi::text_event(text));
+        t.insert(t.end(), ev.begin(), ev.end());
         at = tick;
     }
     const std::vector<uint8_t> end = testmidi::end_of_track();
@@ -110,7 +101,7 @@ Song mid_coda(const std::vector<std::pair<uint32_t, std::string>>& texts,
     const Song song =
         load_songbytes_mid(testmidi::smf_tracks({timing, drums, events_track(texts)}),
                            ChartReading{}, core::default_rules(), rule);
-    REQUIRE(fill_at(song, 360));
+    REQUIRE(chord_has_fill(song, 360));
     return song;
 }
 
@@ -126,7 +117,7 @@ Song chart_coda(const std::string& before, const std::string& after,
                            in_drums + line(576, "N 2 0") + line(774, "N 3 0"));
     const Song song = load_songbytes_chart(testchart::chart_bytes(before + drums + after),
                                            ChartReading{Difficulty::Expert});
-    REQUIRE(fill_at(song, 72));
+    REQUIRE(chord_has_fill(song, 72));
     return song;
 }
 
@@ -259,64 +250,64 @@ TEST_CASE("fill landing: a fill past the last note keeps its start bound, not Cl
 // never lands, as Clone Hero 1.1 marks it (place_authored_fills). Fill B
 // starts at 960 (.mid) or 384 (.chart); the coda sits on it or one tick after.
 TEST_CASE("fill landing: a .mid fill that starts on the coda tick never lands") {
-    CHECK_FALSE(fill_at(mid_coda({{960, "coda"}}), 1935));
-    CHECK_FALSE(fill_at(mid_coda({{960, "[coda]"}}), 1935));
+    CHECK_FALSE(chord_has_fill(mid_coda({{960, "coda"}}), 1935));
+    CHECK_FALSE(chord_has_fill(mid_coda({{960, "[coda]"}}), 1935));
 }
 
 TEST_CASE("fill landing: a .mid fill that starts one tick before the coda lands") {
-    CHECK(fill_at(mid_coda({{961, "coda"}}), 1935));
-    CHECK(fill_at(mid_coda({}), 1935));  // no coda: nothing is skipped
+    CHECK(chord_has_fill(mid_coda({{961, "coda"}}), 1935));
+    CHECK(chord_has_fill(mid_coda({}), 1935));  // no coda: nothing is skipped
 }
 
 TEST_CASE("fill landing: a .mid coda is trimmed, then compared whole and case-sensitively") {
-    CHECK_FALSE(fill_at(mid_coda({{960, " coda "}}), 1935));
-    CHECK(fill_at(mid_coda({{960, "[CODA]"}}), 1935));
-    CHECK(fill_at(mid_coda({{960, "[coda"}}), 1935));  // 0x21544E0 compares whole
+    CHECK_FALSE(chord_has_fill(mid_coda({{960, " coda "}}), 1935));
+    CHECK(chord_has_fill(mid_coda({{960, "[CODA]"}}), 1935));
+    CHECK(chord_has_fill(mid_coda({{960, "[coda"}}), 1935));  // 0x21544E0 compares whole
 }
 
 TEST_CASE("fill landing: only the first .mid coda counts") {
-    CHECK_FALSE(fill_at(mid_coda({{960, "coda"}, {2400, "coda"}}), 1935));
+    CHECK_FALSE(chord_has_fill(mid_coda({{960, "coda"}, {2400, "coda"}}), 1935));
 }
 
 // Q-40: Clone Hero 1.0 skips only the fill on the coda tick.
 TEST_CASE("fill landing: in 1.0 mode only a fill on the coda tick is skipped") {
-    CHECK_FALSE(fill_at(mid_coda({{959, "coda"}}, FillDeadlineRule::Ch11), 1935));
-    CHECK(fill_at(mid_coda({{959, "coda"}}, FillDeadlineRule::Ch10), 1935));
-    CHECK_FALSE(fill_at(mid_coda({{960, "coda"}}, FillDeadlineRule::Ch11), 1935));
-    CHECK_FALSE(fill_at(mid_coda({{960, "coda"}}, FillDeadlineRule::Ch10), 1935));
+    CHECK_FALSE(chord_has_fill(mid_coda({{959, "coda"}}, FillDeadlineRule::Ch11), 1935));
+    CHECK(chord_has_fill(mid_coda({{959, "coda"}}, FillDeadlineRule::Ch10), 1935));
+    CHECK_FALSE(chord_has_fill(mid_coda({{960, "coda"}}, FillDeadlineRule::Ch11), 1935));
+    CHECK_FALSE(chord_has_fill(mid_coda({{960, "coda"}}, FillDeadlineRule::Ch10), 1935));
 }
 
 TEST_CASE("fill landing: a .chart fill that starts on the coda tick never lands") {
     using testchart::line;
-    CHECK_FALSE(fill_at(chart_coda(chart_events(line(384, "E \"coda\"")), ""), 774));
-    CHECK_FALSE(fill_at(chart_coda(chart_events(line(384, "E \"[coda]\"")), ""), 774));
+    CHECK_FALSE(chord_has_fill(chart_coda(chart_events(line(384, "E \"coda\"")), ""), 774));
+    CHECK_FALSE(chord_has_fill(chart_coda(chart_events(line(384, "E \"[coda]\"")), ""), 774));
     // [Events] after the drum section in the file.
-    CHECK_FALSE(fill_at(chart_coda("", chart_events(line(384, "E \"coda\""))), 774));
+    CHECK_FALSE(chord_has_fill(chart_coda("", chart_events(line(384, "E \"coda\""))), 774));
 }
 
 TEST_CASE("fill landing: a .chart fill that starts one tick before the coda lands") {
     using testchart::line;
-    CHECK(fill_at(chart_coda(chart_events(line(385, "E \"coda\"")), ""), 774));
-    CHECK(fill_at(chart_coda("", ""), 774));  // no coda: nothing is skipped
+    CHECK(chord_has_fill(chart_coda(chart_events(line(385, "E \"coda\"")), ""), 774));
+    CHECK(chord_has_fill(chart_coda("", ""), 774));  // no coda: nothing is skipped
 }
 
 TEST_CASE("fill landing: a .chart coda is trimmed and loses a leading bracket, then compared exactly") {
     using testchart::line;
-    CHECK_FALSE(fill_at(chart_coda(chart_events(line(384, "E \" coda \"")), ""), 774));
-    CHECK(fill_at(chart_coda(chart_events(line(384, "E \"[CODA]\"")), ""), 774));
+    CHECK_FALSE(chord_has_fill(chart_coda(chart_events(line(384, "E \" coda \"")), ""), 774));
+    CHECK(chord_has_fill(chart_coda(chart_events(line(384, "E \"[CODA]\"")), ""), 774));
     // 0x2151830 takes off a leading '[' even with no ']' after it.
-    CHECK_FALSE(fill_at(chart_coda(chart_events(line(384, "E \"[coda\"")), ""), 774));
+    CHECK_FALSE(chord_has_fill(chart_coda(chart_events(line(384, "E \"[coda\"")), ""), 774));
 }
 
 TEST_CASE("fill landing: only the first .chart coda counts, across [Events] sections") {
     using testchart::line;
-    CHECK_FALSE(fill_at(
+    CHECK_FALSE(chord_has_fill(
         chart_coda(chart_events(line(384, "E \"coda\"") + line(2400, "E \"coda\"")), ""), 774));
-    CHECK_FALSE(fill_at(chart_coda(chart_events(line(384, "E \"coda\"")),
+    CHECK_FALSE(chord_has_fill(chart_coda(chart_events(line(384, "E \"coda\"")),
                                    chart_events(line(2400, "E \"coda\""))),
                         774));
 }
 
 TEST_CASE("fill landing: a coda event inside the drum section skips nothing") {
-    CHECK(fill_at(chart_coda("", "", testchart::line(384, "E coda")), 774));
+    CHECK(chord_has_fill(chart_coda("", "", testchart::line(384, "E coda")), 774));
 }
