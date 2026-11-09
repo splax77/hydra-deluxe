@@ -351,6 +351,7 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	method	8351		ʾʷʵʶʵˁʿʺʷʷˁ	0x2110920		0x2110920
 6142	method	8354		.ctor	0x2116210		0x2116210
 6142	method	838	PlayerProfileMenu	ʼʼʿʻʴˁʼʲʳʲʽ	0x1E68D0		0x1E68D0
+6142	method	8500		.ctor	0x211BA30		0x211BA30
 6142	method	8501		ʲʺʷʼʴˀʳʴʲʵʾ	0x211BAD0		0x211BAD0
 6142	method	8501		ʵʽʼʿʹʹˀʸʻʵʺ	0x211C270		0x211C270
 6142	method	8501		ʼʴˁʼʻʹʾʹʷʹʿ	0x211E4C0		0x211E4C0
@@ -417,10 +418,12 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	method	8661		ʴʻʳʶʷʷʽʶʼʽʽ	0x215C320		0x215C320
 6142	method	8661		ʴʼʻʹʾʲʼʹʷʸʳ	0x215C750		0x215C750
 6142	method	8661		ʵʲʷʿʺʼˁˀʷʽʵ	0x215CD50		0x215CD50
+6142	method	8661		ʶʸʼʺʹʻʶʲʺʴʷ	0x215DA70		0x215DA70
 6142	method	8661		ʶʹʵʼʶʳʾʸʷʹʵ	0x215DBD0		0x215DBD0
 6142	method	8661		ʷʻʻʷʲʺˀʷˁʴʹ	0x215E020		0x215E020
 6142	method	8661		ʸʸʺʴʻʸʹʺʺʽˁ	0x215E280		0x215E280
 6142	method	8661		ʻʳʷˀʷʾʵʻˀʷʷ<object, object>	0x5DB320		0x5DB320
+6142	method	8661		ʽˁʴʸʹʾʸʲˀʵʷ	0x215F610		0x215F610
 6142	method	8661		ʿʷˁʹʹʴʵˁʴʸʼ	0x215FE80		0x215FE80
 6142	method	8661		ʿʼʿʿʵʵʲʿʷˁʻ	0x215FED0		0x215FED0
 6142	method	8663		ʴʻʲʿʳˀʿʽʼʴʾ	0x2176020		0x2176020

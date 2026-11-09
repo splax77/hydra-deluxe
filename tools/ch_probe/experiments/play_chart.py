@@ -1,38 +1,30 @@
-"""Play the chords Hydra analyzed by reading the song clock and sending inputs.
+"""Play the presses Hydra planned, by reading the song clock and sending inputs.
 
-The notes come from a `hydra_replay score` JSON, so the auto-player presses
-exactly the chords, pads and times Hydra scored. Make one with
-    hydra_replay score --chart <notes.chart or notes.mid> --acts "" --out <dump.json>
-(or --path <a dump's JSON> --index N to walk one of its paths; the chords are
-the same). A `hydra_replay dump` file does not work here: it lists paths, not
-chords. Each entry of the score JSON's "chords" list gives the chord's place
-in the chart (`index`), its time in the chart (`ms`, with no Offset or
-song.ini delay, which is the song clock the game shows) and its "notes", one
-per gem, each with the gem's color, whether it is a cymbal and its `dynamic`.
-Whether the 2x kick notes are in it follows the run's own settings (--bass2x).
+The presses come from a `hydra_replay schedule` JSON, which says, for every
+chord of one path, which gems go down, when, and by when a press must be sent.
+Make one with
+    hydra_replay schedule --chart <notes.chart or notes.mid> --path <dump.json> --index N --out <schedule.json>
+tools/replay_schedule.cpp (schedule_json) owns every field of that file and
+every timing number in it. load_schedule reads the file as written and
+press_plan returns its presses in firing order; this script works out no
+window, lead, end or split of its own.
 
 The auto-player presses each chord's own pads and nothing else. It has no
 Star Power key: on drums the game activates from a press on a fill's last
-note (docs/clone-hero/05-star-power.md, SP-17).
-
-So a fill the path passes over is declined: declined_chord_indexes reads which
-chords those are from a `hydra_replay dump` file, and load_dump_chords keeps
-only the gems the decline mode sends (design point 4 of
-docs/superpowers/plans/2026-11-06-optimal-score-run.md (removed; git show d7e47a20:docs/superpowers/plans/2026-11-06-optimal-score-run.md);
-the game's side is FL-31 on docs/clone-hero/04-fills.md).
+note (docs/clone-hero/05-star-power.md, SP-17). So a fill the path passes over
+is declined; the schedule marks its chord `declined` and its press sends the
+gems the schedule's `kept_gems` names.
 
 The kit press gives each pad gem the strength its `dynamic` asks for; a key
 has no strength. kit_tools.pad_axis owns the strengths, and with_axes reads the
-game's dynamics threshold for them when the chart holds a ghost gem.
+game's dynamics threshold for them when a press holds a ghost gem.
 
 While the song plays, live.wait_until polls the game's song clock and fires
-each press at the time press_plan gives it (a lead before the chord's time,
-or after it for a squeeze-out); it also notices the song stopping (clock frozen
-or jumped back). load_dump_chords refuses at load a press the game may not
-match to its note. live.first_note_index picks where a run that joins mid-song
+each press at its time; it also notices the song stopping (clock frozen or
+jumped back). live.first_note_index picks where a run that joins mid-song
 starts. A jump back (a restart or seek) re-syncs to the new clock position and
-starts the counts and the press log over. A run also stops at its cap of
-wall time: RUN_CAP_S, unless the caller passes a longer one.
+starts the counts and the press log over. A run also stops at its cap of wall
+time: RUN_CAP_S, unless the caller passes a longer one.
 
 The game is opened read-only and the engine is found with
 engine_finder.find_live_engine_capped; when no song starts inside its cap the
@@ -42,8 +34,7 @@ With --log, the script writes one CSV row per press, with the columns
 overlay_logs.PRESS_LOG_COLUMNS names. score_compare.py reads that file.
 
 Usage:
-    python tools\\ch_probe\\experiments\\play_chart.py <score.json> [--log <press.csv>]
-        [--dump <dump.json> [--path-index N]]
+    python tools\\ch_probe\\experiments\\play_chart.py <schedule.json> [--log <press.csv>]
 
 Run this, then start the song (or start it mid-song).
 """
@@ -74,62 +65,6 @@ from tools.ch_probe.experiments import live
 from tools.ch_probe.experiments.overlay_logs import PRESS_LOG_COLUMNS
 from tools.ch_probe.experiments.walk_edges import SongClock
 
-# play_chart presses each chord this many ms before its time (D51: unchanged).
-PRESS_LEAD_MS = 2.0
-
-# A chord that ends Star Power is pressed this many ms before its time, so the
-# hit lands in a frame before the end check. The user set it: question 3 of
-# docs/superpowers/plans/2026-11-06-optimal-score-run.md (removed; git show d7e47a20:docs/superpowers/plans/2026-11-06-optimal-score-run.md).
-SP_END_LEAD_MS = 15.0
-
-# A squeezed-out chord's late gem is pressed this many ms after the Star Power
-# end, so the hit lands after the frame that ends it. The user set it:
-# question 2 of docs/superpowers/plans/2026-11-07-player-refinements.md.
-SP_OUT_LAG_MS = 15.0
-
-# An activation pressed early or late for a squeeze is moved this many ms more
-# than the squeeze's bare need, and its press must stay this far inside its own
-# window. The user set it: question 1 of
-# docs/superpowers/plans/2026-11-07-player-limits.md. activation_leads says
-# how it is used.
-ACT_LEAD_MARGIN_MS = 6.0
-
-# The game's frame period: a press is judged in the frame after the one whose
-# clock the player read when it sent it. The user set it: question 1 of
-# docs/superpowers/plans/2026-11-08-player-freak-fixes.md. play_chords' drop
-# check counts in it.
-FRAME_MS = 3.0
-
-# The two ways an activation is moved, as ActLead.direction says them.
-EARLY = "early"
-LATE = "late"
-
-# A chord whose gems the game would score in an order that costs points is
-# pressed in groups, each this many ms after the one before (SC-38 on
-# docs/clone-hero/06-scoring.md says why). The user set it ("8 ms"), and said
-# to split "Only where it matters": the amendment after LS-R1b run 1 in
-# docs/superpowers/plans/2026-11-07-player-refinements.md. _order_groups says
-# which chords split and in what order.
-CHORD_ORDER_GAP_MS = 8.0
-
-# The dump's words for a squeeze's kind: SPSqueeze::type_name in
-# src/core/model.h writes them.
-SQUEEZE_IN = "SqIn"
-SQUEEZE_OUT = "SqOut"
-
-# Which gems a declined chord sends: _kept_gems owns what each mode keeps.
-# Question 4 of the 2026-11-06 plan says which is tried first; question 5 of
-# the 2026-11-07 plan added all_but_top_pad.
-DECLINE_KICK_ONLY = "kick_only"
-DECLINE_NOTHING = "nothing"
-DECLINE_ALL_BUT_TOP_PAD = "all_but_top_pad"
-DECLINE_MODES = (DECLINE_KICK_ONLY, DECLINE_NOTHING, DECLINE_ALL_BUT_TOP_PAD)
-
-# The pad colors, highest first, in the order FL-09 on
-# docs/clone-hero/04-fills.md reads the game's pick of a fill's flagged note.
-# Row P22 of the 2026-11-07 plan: unchecked until a run shows it.
-_TOP_PAD_ORDER = ("Green", "Blue", "Yellow", "Red")
-
 # What a declined chord's press row and printed line say in place of a result.
 DECLINED = "declined"
 
@@ -142,6 +77,16 @@ DROPPED = "dropped"
 # Power was off right after the press, so the plan's times stand.
 NO_ACTIVATION_READ = "no activation read"
 
+# What a press row says in `retimed` about a press the schedule gave a
+# `fallback` (design point 5 of
+# docs/superpowers/plans/2026-11-08-replay-press-schedule.md): a squeeze-out's
+# late gem kept after the read end, that gem moved in with its chord's last
+# inside group (the block's `join_group`), or a squeeze-in pressed plain (the
+# block's `plain`). A squeeze-in that keeps its squeeze press leaves it blank.
+RETIMED_LATE = "late"
+RETIMED_INSIDE = "inside"
+RETIMED_PLAIN = "plain"
+
 # The score is read this long after a press: a dense chart's next chord comes
 # sooner than constants.INPUT_SETTLE_MS.
 SCORE_READ_DELAY_S = 0.005
@@ -150,7 +95,7 @@ SCORE_READ_DELAY_S = 0.005
 # (the overlay spike plan, Task B step 1), when its caller gives no cap.
 RUN_CAP_S = 240.0
 
-# The key for each gem in a chord's "notes" list, by the gem's color (Kick,
+# The key for each gem in a chord's "gems" list, by the gem's color (Kick,
 # Red, Yellow, Blue, Green) and whether it is a cymbal, as hydra_replay writes
 # them. A 2x kick is the kick pad, and a ghost or accent hits the same pad as
 # a plain gem.
@@ -167,296 +112,214 @@ _KEY_FOR_PAD = {
 
 
 @dataclass(frozen=True)
-class Squeeze:
-    """What the dump says about a chord that squeezes at a Star Power end.
-    `kind` is SQUEEZE_IN or SQUEEZE_OUT. `end_ms` is the end's time, the
-    chord's time less the dump's `offset_ms` (note minus end: `offset_ms` in
-    src/core/model.h). `act_index` is the `index` of the chord the
-    activation started on."""
-    kind: str
-    end_ms: float
-    act_index: int
-
-
-# The dump's names for the fields of an activation that say how its end moves
-# (tools/replay_json.cpp, paths_json, owns what each means).
-_END_SCALE = {EARLY: "end_scale_early", LATE: "end_scale_late"}
-_STEADY_ACT = {EARLY: "steady_ms_before_act", LATE: "steady_ms_after_act"}
-_STEADY_END = {EARLY: "steady_ms_before_end", LATE: "steady_ms_after_end"}
-
-
-@dataclass(frozen=True)
-class ActEnd:
-    """What the files say about where an activation's Star Power ends, kept
-    on the activation's chord. `end_ms` is the end Hydra's path reaches (the
-    score file's `deact_ms`, or its end chord's time), None when neither file
-    gives it. `stored_end_ms` is the end the game stores when the activation
-    fires, before any phrase extends it (the time of the dump's
-    `nominal_deact_tick`), None when no file gives that time.
-    `anchor_index` is the `index` of the chord on the dump's
-    `end_anchor_tick`, None when the dump names none. `fields` holds the
-    dump's end_scale_* and steady_ms_* values by name, each only when the dump
-    wrote the key (a written null stays None)."""
-    end_ms: Optional[float]
-    stored_end_ms: Optional[float] = None
-    anchor_index: Optional[int] = None
-    fields: Mapping[str, Optional[float]] = field(default_factory=dict)
-
-
-@dataclass(frozen=True)
-class ActLead:
-    """How far one activation is pressed off its chord's time so its squeezes
-    land: activation_leads works it out. `act_index` is the activation's
-    chord, `squeeze_index` the chord whose need set the lead, `direction`
-    EARLY or LATE, `lead_ms` how far, `ratio` the dump's end_scale_* for that
-    direction, and `planned_end_ms` the end the game should store once the
-    activation fires: the stored end moved by `lead_ms` times `ratio`."""
-    act_index: int
-    squeeze_index: int
-    direction: str
-    lead_ms: float
-    planned_end_ms: float
-    ratio: float
-
-    @property
-    def end_shift_ms(self) -> float:
-        """How far the end moves: negative for an early activation."""
-        moved = self.lead_ms * self.ratio
-        return -moved if self.direction == EARLY else moved
-
-    @property
-    def press_lead_ms(self) -> float:
-        """The activation press's lead as Press.lead_ms holds it."""
-        return self.lead_ms if self.direction == EARLY else -self.lead_ms
-
-
-@dataclass(frozen=True)
-class Chord:
-    """One chord to press: its `index` in the score JSON, its time, its keys
-    and each key's `dynamic`, in the same order. `axes` holds each key's
-    strength once with_axes has worked them out. `ends_sp` says the chord's
-    tick is an activation's `deact_tick`. `declined` says the path passes this
-    fill over, so `lanes` holds only what the decline mode sends.
-
-    The rest is what press_plan reads. `chart_lanes` is every gem's key, the
-    gems a declined chord leaves out too (None: the same as `lanes`).
-    `end_squeezed_out` says the activation this chord ends has a squeeze-out.
-    `squeeze` is set on a chord the dump names as a squeeze. `sqout_index`,
-    on an activation's chord, is the `index` of its squeeze-out chord.
-    `multipliers` is the score file's per-gem `multiplier` for each key in
-    `lanes` (None when the file gives none). `activating_gem`, on an
-    activation's chord, is the place in `lanes` of the gem the game flags
-    (_flagged_gem). `act_end`, on an activation's chord, is its ActEnd.
-    `sp_act_index` is the `index` of the activation chord whose Star Power
-    this chord ends, or pays inside when the score file says `in_sp`."""
-    index: int
-    ms: float
-    lanes: List[int]
-    dynamics: List[str]
-    axes: Optional[List[float]] = None
-    ends_sp: bool = False
-    declined: bool = False
-    chart_lanes: Optional[List[int]] = None
-    end_squeezed_out: bool = False
-    squeeze: Optional[Squeeze] = None
-    sqout_index: Optional[int] = None
-    multipliers: Optional[List[int]] = None
-    activating_gem: Optional[int] = None
-    act_end: Optional[ActEnd] = None
-    sp_act_index: Optional[int] = None
-
-
-@dataclass(frozen=True)
 class Press:
-    """One press press_plan works out: the chord's `index` and time
-    (`chart_ms`), the `lead_ms` it is pressed by (negative for a late
-    press), the keys it sends with their dynamics and axes, whether the
-    chord is `declined`, and `checked`, which says the load-time check
-    reads it. `end_ms`, set on a press timed against a Star Power end, is
-    that end: the files' end, moved by any lead activation_leads gave the
-    activation, and `end_act_index` is that activation's chord.
-    `stored_end_ms`, on the first press of an activation with squeezes, is
-    the end the game should store once it fires; play_chords reads the
-    game's end after this press and retime_from_end moves the presses timed
-    against it. `after_ms`, on a later order group of a chord (_order_groups),
-    is how long after its chord's first group of the same message it goes
-    down; the kit agent makes that gap inside the game (press_messages says
-    which presses share a message). None on every other press."""
+    """One entry of the schedule's `presses` list, as hydra_replay schedule
+    wrote it (schedule_json in tools/replay_schedule.cpp says what each field
+    means). `index` is the entry's `chord` and `chart_ms` that chord's `ms`.
+    `lanes` and `dynamics` are the keys and dynamics of the entry's `gems`,
+    in the same order, and `axes` their strengths once with_axes has worked
+    them out. `declined` is the chord's. `planned_end_ms`, on the first press
+    of a chord whose `reads` names an activation, is that read's
+    `planned_end_ms`: play_chords reads the game's end after it. `retimed`
+    is what retime_from_end did with the press's `fallback` (a RETIMED_
+    word), None until it ran on a press with one. The other fields are the
+    entry's own, under the same names."""
     index: int
     chart_ms: float
-    lead_ms: float
+    aim_ms: float
     lanes: List[int]
     dynamics: List[str]
     axes: Optional[List[float]]
     declined: bool
-    checked: bool
-    end_ms: Optional[float] = None
-    end_act_index: Optional[int] = None
-    stored_end_ms: Optional[float] = None
+    last_send_ms: float
+    rule: str
     after_ms: Optional[float] = None
+    timed_from_end: Optional[int] = None
+    end_read_after: Optional[int] = None
+    aim_end_ms: Optional[float] = None
+    fallback: Optional[Mapping] = None
+    planned_end_ms: Optional[float] = None
+    retimed: Optional[str] = None
+
+    @property
+    def lead_ms(self) -> float:
+        """How far before its chord's time the press fires: the schedule's
+        `aim_ms` (negative for an early press) with its sign turned, as
+        live.wait_until takes it."""
+        return -self.aim_ms
 
     @property
     def at_ms(self) -> float:
         """The song clock the press fires at."""
-        return self.chart_ms - self.lead_ms
+        return self.chart_ms + self.aim_ms
 
 
-def half_gap_ms(gap_ms: Optional[float]) -> float:
-    """The game's clamped half-gap to a neighbour `gap_ms` away, in normal
-    mode; None means there is no neighbour. TM-18 and TM-19 on
-    docs/clone-hero/03-timing.md say what a missing neighbour, or one at the
-    same time, gives."""
-    if gap_ms is None or gap_ms == 0:
-        return C.EXPECT_NORMAL_BACK_MS
-    return min(max(gap_ms / 2, C.s_to_ms(C.EXPECT_NORMAL_FRONT_S)),
-               C.EXPECT_NORMAL_BACK_MS)
+@dataclass(frozen=True)
+class Chord:
+    """One entry of the schedule's `chords` list: its `index`, `tick` and
+    `ms`, the keys (`lanes`) and `dynamics` of all its gems in order, whether
+    it is `declined` and `ends_sp`, and `presses`, the schedule's presses of
+    it in the file's order."""
+    index: int
+    tick: int
+    ms: float
+    lanes: List[int]
+    dynamics: List[str]
+    declined: bool = False
+    ends_sp: bool = False
+    presses: Tuple[Press, ...] = ()
 
 
-def window_side_ms(summed_ms: float) -> float:
-    """How far from a note the game's window reaches on each side, given the
-    sum of its two clamped half-gaps: half the normal-mode formula's output
-    (TM-20 and TM-21; the constants are constants.WINDOW_FORMULA_NORMAL_*).
-    The page leaves open whether the two sides differ (TM-26) and whether the
-    hit check enforces this window (TM-27); the player assumes both sides
-    are this one."""
-    whole_ms = ((summed_ms * C.WINDOW_FORMULA_NORMAL_LINEAR
-                 - summed_ms ** 2 * C.WINDOW_FORMULA_NORMAL_SQUARE)
-                * C.WINDOW_FORMULA_NORMAL_SCALE - C.WINDOW_FORMULA_NORMAL_OFFSET_MS)
-    return whole_ms / 2
+@dataclass(frozen=True)
+class Activation:
+    """One entry of the schedule's `activations` list: its `index`, the
+    `chord` it starts on, the chord it reads its end after
+    (`read_end_after`), and `sp_ready_ms`, when Hydra has the meter ready
+    for it (None when the file gives none)."""
+    index: int
+    chord: Optional[int]
+    read_end_after: Optional[int]
+    sp_ready_ms: Optional[float]
 
 
-def note_window_ms(gap_before_ms: Optional[float], gap_after_ms: Optional[float]) -> float:
-    """The game's window, each side, for a note `gap_before_ms` after the
-    note before it and `gap_after_ms` before the note after it (None where
-    there is none)."""
-    return window_side_ms(half_gap_ms(gap_before_ms) + half_gap_ms(gap_after_ms))
+@dataclass(frozen=True)
+class Schedule:
+    """What load_schedule reads from a schedule file: its chords in order,
+    its activations, and `song_length_ms`, Hydra's song end
+    (app::song_length_ms, D255), None when the file wrote null."""
+    chords: List[Chord]
+    activations: List[Activation]
+    song_length_ms: Optional[float]
 
 
-def window_sides(chords: Sequence[Chord]) -> dict:
-    """Each chord's window, each side, by its `index`: note_window_ms over the
-    gaps to the chords either side in `chords`, which are in time order. A
-    declined chord counts, because its notes are still in the chart."""
-    sides = {}
-    for i, chord in enumerate(chords):
-        before = chord.ms - chords[i - 1].ms if i > 0 else None
-        after = chords[i + 1].ms - chord.ms if i + 1 < len(chords) else None
-        sides[chord.index] = note_window_ms(before, after)
-    return sides
-
-
-def activation_leads(chords: Sequence[Chord]) -> List[ActLead]:
-    """The lead of each activation of `chords` that one of its squeezes
-    needs, in chart order; empty when none does. press_plan reads its leads
-    here and nowhere else. Design points 2 and 6 of
-    docs/superpowers/plans/2026-11-07-player-limits.md say why: a squeeze-out
-    whose late gem would land past its window needs the end earlier, so the
-    activation early; a squeeze-in after the end whose press before the end
-    would land before its window needs the end later, so the activation late.
-    The lead meets the largest need, through the dump's ratio, plus
-    ACT_LEAD_MARGIN_MS. Raises ValueError, naming the chords, for an
-    activation that needs both, one whose lead does not fit, and one the
-    files cannot time (_solve_lead)."""
-    sides = window_sides(chords)
-    by_index = {chord.index: chord for chord in chords}
-    needs: dict = {}
-    for chord in chords:
-        squeeze = chord.squeeze
-        if squeeze is None:
-            continue
-        if squeeze.kind == SQUEEZE_OUT:
-            direction = EARLY
-            need_ms = squeeze.end_ms + SP_OUT_LAG_MS - chord.ms - sides[chord.index]
-        else:
-            direction = LATE
-            need_ms = chord.ms + SP_END_LEAD_MS - squeeze.end_ms - sides[chord.index]
-        if need_ms > 0:
-            needs.setdefault(squeeze.act_index, []).append((direction, need_ms, chord.index))
-    leads = [_solve_lead(by_index[act_index], act_needs, sides[act_index])
-             for act_index, act_needs in needs.items()]
-    return sorted(leads, key=lambda lead: by_index[lead.act_index].ms)
-
-
-def _solve_lead(act: Chord, needs: Sequence[Tuple[str, float, int]],
-                side_ms: float) -> ActLead:
-    """The ActLead of activation chord `act` for its squeezes' `needs`, each
-    (direction, how far the end must move in ms, the squeeze chord's
-    `index`); `side_ms` is the activation chord's own window. Raises
-    ValueError in plain words when no lead works."""
-    directions = {direction for direction, _need, _index in needs}
-    if len(directions) > 1:
-        early = next(i for d, _n, i in needs if d == EARLY)
-        late = next(i for d, _n, i in needs if d == LATE)
-        raise ValueError(f"activation chord {act.index} would have to be pressed early for "
-                         f"chord {early} and late for chord {late}; no press does both")
-    direction = directions.pop()
-    need_ms, squeeze_index = max((need, index) for _d, need, index in needs)
-    end = act.act_end if act.act_end is not None else ActEnd(None)
-    scale_name = _END_SCALE[direction]
-    if scale_name not in end.fields:
-        raise ValueError(f"chord {squeeze_index} needs activation chord {act.index} pressed "
-                         f"{direction}, and the dump has no {scale_name}: remake it with "
-                         f"hydra_replay dump")
-    if end.anchor_index != act.index:
-        anchor = ("no chord" if end.anchor_index is None
-                  else f"chord {end.anchor_index}")
-        raise ValueError(f"chord {act.index}'s end is anchored on {anchor}; pressing the "
-                         f"activation {direction} does not move it (chord {squeeze_index} "
-                         f"needs it moved)")
-    ratio = end.fields[scale_name]
-    if ratio is None:
-        raise ValueError(f"chord {squeeze_index} needs activation chord {act.index} pressed "
-                         f"{direction}, and the dump's {scale_name} for it is null")
-    if end.stored_end_ms is None:
-        raise ValueError(f"chord {squeeze_index} needs activation chord {act.index} pressed "
-                         f"{direction}, and no file gives the end the game stores when it "
-                         f"fires")
-    bare_ms = need_ms / ratio
-    lead_ms = bare_ms + ACT_LEAD_MARGIN_MS
-    if lead_ms > side_ms - ACT_LEAD_MARGIN_MS:
-        raise ValueError(f"chord {squeeze_index} needs activation chord {act.index} pressed "
-                         f"{bare_ms:.0f} ms {direction} ({lead_ms:.0f} ms with "
-                         f"ACT_LEAD_MARGIN_MS); its window is {side_ms:.0f} ms, and the press "
-                         f"stays {ACT_LEAD_MARGIN_MS:g} ms inside it")
-    for span_name, span_lead_ms in ((_STEADY_ACT[direction], lead_ms),
-                                    (_STEADY_END[direction], lead_ms * ratio)):
-        span_ms = end.fields.get(span_name)
-        if span_ms is not None and span_lead_ms > span_ms:
-            raise ValueError(f"activation chord {act.index} pressed {lead_ms:.2f} ms "
-                             f"{direction} for chord {squeeze_index} moves past a tempo or "
-                             f"time signature change: {span_name} is {span_ms:.2f} ms")
-    lead = ActLead(act.index, squeeze_index, direction, lead_ms, 0.0, ratio)
-    return replace(lead, planned_end_ms=end.stored_end_ms + lead.end_shift_ms)
+def load_schedule(path: str) -> Schedule:
+    """The schedule file at `path`, read as written. Raises ValueError,
+    quoting the file, when its `refusals` list is not empty or a squeeze in
+    it is not `feasible` (question 5 of
+    docs/superpowers/plans/2026-11-08-replay-press-schedule.md), and when a
+    chord reads the game's end for more than one activation, which no
+    play_chords read covers."""
+    with open(path, encoding="utf-8") as f:
+        doc = json.load(f)
+    if doc["refusals"]:
+        raise ValueError(f"{path} refuses to play this path: " + "; ".join(doc["refusals"]))
+    infeasible = [f"chord {q['chord']} (activation {act['index']}, {q['kind']}, "
+                  f"anchor room {q['anchor_room_ms']:g} ms, squeeze room "
+                  f"{q['squeeze_room_ms']:g} ms)"
+                  for act in doc["activations"] for q in act["squeezes"]
+                  if not q["feasible"]]
+    if infeasible:
+        raise ValueError(f"{path} holds a squeeze the game cannot make at 100% speed: "
+                         + "; ".join(infeasible))
+    rows = doc["chords"]
+    by_index = {row["index"]: row for row in rows}
+    presses_of: dict = {row["index"]: [] for row in rows}
+    for entry in doc["presses"]:
+        row = by_index[entry["chord"]]
+        gems = [row["gems"][g] for g in entry["gems"]]
+        presses_of[row["index"]].append(Press(
+            index=row["index"], chart_ms=row["ms"], aim_ms=entry["aim_ms"],
+            lanes=[_KEY_FOR_PAD[(gem["color"], gem["cymbal"])] for gem in gems],
+            dynamics=[gem["dynamic"] for gem in gems], axes=None,
+            declined=row["declined"], last_send_ms=entry["last_send_ms"],
+            rule=entry["rule"], after_ms=entry["after_ms"],
+            timed_from_end=entry["timed_from_end"],
+            end_read_after=entry["end_read_after"], aim_end_ms=entry["aim_end_ms"],
+            fallback=entry.get("fallback")))
+    chords = []
+    for row in rows:
+        presses = presses_of[row["index"]]
+        reads = row["reads"]
+        if len(reads) > 1:
+            raise ValueError(f"{path}: chord {row['index']} reads the end of "
+                             f"{len(reads)} activations; play_chords reads one")
+        if reads and presses:
+            first = min(range(len(presses)), key=lambda k: presses[k].at_ms)
+            presses[first] = replace(presses[first], planned_end_ms=reads[0]["planned_end_ms"])
+        chords.append(Chord(
+            index=row["index"], tick=row["tick"], ms=row["ms"],
+            lanes=[_KEY_FOR_PAD[(gem["color"], gem["cymbal"])] for gem in row["gems"]],
+            dynamics=[gem["dynamic"] for gem in row["gems"]],
+            declined=row["declined"], ends_sp=row["ends_sp"], presses=tuple(presses)))
+    activations = [Activation(act["index"], act["chord"], act["read_end_after"],
+                              act["sp_ready_ms"]) for act in doc["activations"]]
+    return Schedule(chords, activations, doc["song_length_ms"])
 
 
 def press_plan(chords: Sequence[Chord]) -> List[Press]:
-    """Every press of `chords`, in the order they fire: the one place that
-    works out when each gem is pressed (design point 1 of
-    docs/superpowers/plans/2026-11-07-player-refinements.md and design points
-    2, 3 and 6 of docs/superpowers/plans/2026-11-07-player-limits.md say why
-    each rule is what it is). A squeezed-out chord with more than one gem
-    gives two presses, and a chord _order_groups splits gives one per group.
-    Raises ValueError for a chord two rules would time, and
-    activation_leads's for an activation no lead works for."""
-    leads = {lead.act_index: lead for lead in activation_leads(chords)}
-    squeezed = {chord.squeeze.act_index for chord in chords if chord.squeeze is not None}
-    act_ends = {chord.index: chord.act_end for chord in chords if chord.act_end is not None}
-    presses = []
-    for chord in chords:
-        presses.extend(_chord_presses(chord, leads, act_ends, squeezed))
-    return sorted(presses, key=lambda p: p.at_ms)
+    """Every press of `chords`, in the order they fire. The schedule worked
+    each one out; this only sorts them by the clock they fire at."""
+    return sorted((p for chord in chords for p in chord.presses), key=lambda p: p.at_ms)
 
 
-def retime_from_end(presses: Sequence[Press], act_index: int, planned_end_ms: float,
-                    read_end_ms: float) -> List[Press]:
-    """`presses` in firing order, with every press timed against activation
-    chord `act_index`'s end (Press.end_act_index) moved by how far the end the
-    game stored, `read_end_ms`, is from `planned_end_ms`. Design point 1 of
+def retime_from_end(presses: Sequence[Press], read_after: int, read_end_ms: float,
+                    chord_lanes: Optional[Mapping[int, Sequence[int]]] = None) -> List[Press]:
+    """`presses` in firing order, with every press the schedule times from
+    the end read after chord `read_after` (Press.end_read_after) moved by how
+    far the end the game stored, `read_end_ms`, is from that press's own
+    `aim_end_ms`. Design point 1 of
     docs/superpowers/plans/2026-11-07-player-limits.md says why: the game
-    stamps an activation with the clock of the frame that read the press."""
-    delta_ms = read_end_ms - planned_end_ms
-    moved = [replace(p, lead_ms=p.lead_ms - delta_ms, end_ms=p.end_ms + delta_ms)
-             if p.end_act_index == act_index else p for p in presses]
-    return sorted(moved, key=lambda p: p.at_ms)
+    stamps an activation with the clock of the frame that read the press.
+
+    A moved press with a `fallback` then does what the block says (design
+    point 5 of docs/superpowers/plans/2026-11-08-replay-press-schedule.md),
+    and Press.retimed says which. A read end past `if_end_after_ms` makes
+    the late gem `join_group`: it goes down `before_end_ms` before the read
+    end, in one press with its chord's group of `join_gems` (indexes into
+    the chord's lanes, from `chord_lanes` by chord index) when that names
+    any. A read end before `if_end_before_ms` makes the press `plain`, at
+    the block's `aim_ms`. A read end equal to a threshold keeps the press.
+    Raises ValueError for a moved press with no `aim_end_ms`, a block with
+    another action, or a `join_gems` group no press holds, each a bug in
+    the schedule."""
+    moved = []
+    for p in presses:
+        if p.end_read_after != read_after:
+            moved.append(p)
+            continue
+        if p.aim_end_ms is None:
+            raise ValueError(f"chord {p.index} is timed from the end read after chord "
+                             f"{read_after} but has no aim_end_ms")
+        delta_ms = read_end_ms - p.aim_end_ms
+        moved.append(replace(p, aim_ms=p.aim_ms + delta_ms, aim_end_ms=read_end_ms))
+    out: List[Press] = []
+    joins: List[Tuple[Press, Mapping]] = []
+    for p in moved:
+        block = p.fallback
+        if p.end_read_after != read_after or block is None:
+            out.append(p)
+        elif block.get("action") == "join_group":
+            if read_end_ms > block["if_end_after_ms"]:
+                joins.append((replace(p, aim_ms=read_end_ms - block["before_end_ms"] - p.chart_ms,
+                                      retimed=block["retimed"]), block))
+            else:
+                out.append(replace(p, retimed=RETIMED_LATE))
+        elif block.get("action") == "plain":
+            if read_end_ms < block["if_end_before_ms"]:
+                out.append(replace(p, aim_ms=block["aim_ms"], retimed=block["retimed"]))
+            else:
+                out.append(p)
+        else:
+            raise ValueError(f"chord {p.index}'s fallback has action {block.get('action')!r}, "
+                             f"which play_chords does not know")
+    for late, block in joins:
+        if not block["join_gems"]:
+            out.append(late)
+            continue
+        lanes = chord_lanes[late.index] if chord_lanes is not None else None
+        want = None if lanes is None else sorted(lanes[g] for g in block["join_gems"])
+        k = next((k for k, q in enumerate(out) if q.index == late.index
+                  and q.end_read_after == read_after and sorted(q.lanes) == want), None)
+        if k is None:
+            raise ValueError(f"chord {late.index}'s late gem joins gems {block['join_gems']}, "
+                             f"which no press of it holds")
+        group = out[k]
+        axes = (None if group.axes is None or late.axes is None
+                else list(group.axes) + list(late.axes))
+        out[k] = replace(group, lanes=list(group.lanes) + list(late.lanes),
+                         dynamics=list(group.dynamics) + list(late.dynamics), axes=axes,
+                         retimed=late.retimed)
+    return sorted(out, key=lambda p: p.at_ms)
 
 
 def press_messages(presses: Sequence[Press]) -> List[Tuple[Press, List[Press]]]:
@@ -465,7 +328,7 @@ def press_messages(presses: Sequence[Press]) -> List[Tuple[Press, List[Press]]]:
     with it in one message, in the order their first presses fire. A later
     group goes with its chord's press that fires `after_ms` before it.
     Raises ValueError for a later group with no such press, which would be a
-    bug in press_plan."""
+    bug in the schedule."""
     messages: List[Tuple[Press, List[Press]]] = []
     for press in sorted(presses, key=lambda p: p.at_ms):
         if press.after_ms is None:
@@ -480,446 +343,9 @@ def press_messages(presses: Sequence[Press]) -> List[Tuple[Press, List[Press]]]:
     return messages
 
 
-# How close two press times must be to count as one: press_plan's times are
+# How close two press times must be to count as one: the schedule's times are
 # sums of the same numbers, so anything past float rounding is another time.
 _SAME_MS = 1e-6
-
-
-def _order_groups(chord: Chord) -> List[List[int]]:
-    """The groups `chord` is pressed in, in firing order, each as places in
-    its `lanes`: one group for most chords. An activation's chord presses its
-    `activating_gem` first; the rest go in groups by `multipliers`, the lower
-    multiplier first. The user's "Only where it matters" (the amendment after
-    LS-R1b run 1 of the 2026-11-07 plan) is why every other chord stays one
-    group."""
-    every = list(range(len(chord.lanes)))
-    first = [] if chord.activating_gem is None else [chord.activating_gem]
-    rest = [i for i in every if i not in first]
-    if chord.multipliers is None:
-        by_multiplier = [rest]
-    else:
-        by_multiplier = [[i for i in rest if chord.multipliers[i] == m]
-                         for m in sorted({chord.multipliers[i] for i in rest})]
-    # A declined chord that sends nothing is still one press, of no keys.
-    return [group for group in [first] + by_multiplier if group] or [every]
-
-
-def _squeeze_out_inside_groups(chord: Chord) -> List[List[int]]:
-    """The groups a squeeze-out chord's inside gems are pressed in, in firing
-    order, each as places in its `lanes`: every gem but the late one (place
-    0, as _timed_presses says), the lower multiplier first. The late gem goes
-    after them all, so a late gem the score file pays at a lower multiplier
-    than an inside gem is an order no press gives. Design point 5 of
-    docs/superpowers/plans/2026-11-07-player-limits.md and the user's answer
-    to its question 5 say why that is refused as Hydra's question, not the
-    player's."""
-    inside = list(range(1, len(chord.lanes)))
-    if chord.multipliers is None:
-        return [inside]
-    late_m = chord.multipliers[0]
-    higher = sorted({chord.multipliers[i] for i in inside if chord.multipliers[i] > late_m})
-    if higher:
-        raise ValueError(f"chord {chord.index} is a squeeze-out whose late gem pays x{late_m} "
-                         f"and an inside gem x{higher[-1]}: Hydra assumes an order no press "
-                         f"gives, since the late gem goes last; this is a question about "
-                         f"Hydra's path for the user, not a player bug")
-    return [[i for i in inside if chord.multipliers[i] == m]
-            for m in sorted({chord.multipliers[i] for i in inside})]
-
-
-def _chord_presses(chord: Chord, leads: Mapping[int, ActLead],
-                   act_ends: Mapping[int, ActEnd], squeezed: set) -> List[Press]:
-    """The presses of one chord, for press_plan: `leads` and `act_ends` by
-    activation chord, and `squeezed`, the activation chords with a squeeze."""
-    def press(lead_ms: float, gems: Sequence[int], checked: bool,
-              end_ms: Optional[float] = None, end_act: Optional[int] = None,
-              after_ms: Optional[float] = None) -> Press:
-        return Press(chord.index, chord.ms, lead_ms, [chord.lanes[i] for i in gems],
-                     [chord.dynamics[i] for i in gems],
-                     None if chord.axes is None else [chord.axes[i] for i in gems],
-                     chord.declined, checked, end_ms, end_act, after_ms=after_ms)
-
-    def end_shift_ms(act_index: Optional[int]) -> float:
-        lead = leads.get(act_index)
-        return 0.0 if lead is None else lead.end_shift_ms
-
-    presses = _timed_presses(chord, leads, act_ends, press, end_shift_ms)
-    # The first press of an activation with squeezes says what end the game
-    # should store, so play_chords reads the game's end after it.
-    if chord.index in squeezed:
-        stored_ms = (leads[chord.index].planned_end_ms if chord.index in leads
-                     else act_ends[chord.index].stored_end_ms
-                     if chord.index in act_ends else None)
-        if stored_ms is not None:
-            presses[0] = replace(presses[0], stored_end_ms=stored_ms)
-    return presses
-
-
-def _timed_presses(chord: Chord, leads: Mapping[int, ActLead],
-                   act_ends: Mapping[int, ActEnd], press: Callable[..., Press],
-                   end_shift_ms: Callable[[Optional[int]], float]) -> List[Press]:
-    """The presses of one chord before _chord_presses marks an activation's:
-    `press` builds one, and `end_shift_ms` says how far an activation's lead
-    moves its end."""
-
-    # A declined chord's kept gems split by multiplier like any chord's
-    # (design point 5 of docs/superpowers/plans/2026-11-07-player-limits.md);
-    # it starts no activation, so no gem of it goes first.
-    groups = _order_groups(chord)
-    squeeze = chord.squeeze
-
-    def in_order(lead_ms: float, checked: bool, end_ms: Optional[float] = None,
-                 end_act: Optional[int] = None,
-                 order: Optional[List[List[int]]] = None) -> List[Press]:
-        # The first group keeps the chord's lead; a later group is a press
-        # off the chord's own time, so the load check reads it.
-        return [press(lead_ms - k * CHORD_ORDER_GAP_MS, gems, checked or k > 0, end_ms,
-                      end_act, k * CHORD_ORDER_GAP_MS if k > 0 else None)
-                for k, gems in enumerate(groups if order is None else order)]
-
-    if chord.index in leads:
-        if squeeze is not None or chord.ends_sp:
-            raise ValueError(f"chord {chord.index} starts an activation pressed "
-                             f"{leads[chord.index].direction} and is also a squeeze or an "
-                             f"end; no rule times both")
-        return in_order(leads[chord.index].press_lead_ms, True)
-    if squeeze is not None:
-        end_ms = squeeze.end_ms + end_shift_ms(squeeze.act_index)
-        inside_lead_ms = chord.ms - (end_ms - SP_END_LEAD_MS)
-        if squeeze.kind == SQUEEZE_IN:
-            if inside_lead_ms > PRESS_LEAD_MS:
-                return in_order(inside_lead_ms, True, end_ms, squeeze.act_index)
-            # A plain press is not timed against the end, so the game's end
-            # does not move it.
-            return in_order(PRESS_LEAD_MS, False, end_ms)
-        # The gem Hydra's FirstNote rule pays outside is note 0 of
-        # Chord::note_list(true) (src/core/model.cpp), and the score file
-        # lists a chord's notes in that order (src/core/replay.cpp), so it is
-        # the file's first gem.
-        late = press(chord.ms - (end_ms + SP_OUT_LAG_MS), [0], True, end_ms, squeeze.act_index)
-        if len(chord.lanes) == 1:
-            return [late]
-        # The last inside group goes down at the inside time, SP_END_LEAD_MS
-        # before the end, so no later group can land close to the end check
-        # and pay outside; the earlier groups go down CHORD_ORDER_GAP_MS
-        # apart before it.
-        inside = _squeeze_out_inside_groups(chord)
-        return in_order(inside_lead_ms + (len(inside) - 1) * CHORD_ORDER_GAP_MS, True, end_ms,
-                        squeeze.act_index, inside) + [late]
-    # Design point 3 of the player-limits plan: an end moved earlier puts the
-    # chords before it at risk; one moved later leaves them inside already.
-    end_side_shift_ms = min(end_shift_ms(chord.sp_act_index), 0.0)
-    if chord.ends_sp and not chord.end_squeezed_out:
-        # The chord sits on the end, so its own time is the end the lead
-        # moves, and its lead is SP_END_LEAD_MS less that move.
-        shift_ms = end_side_shift_ms
-        return in_order(SP_END_LEAD_MS - shift_ms, True, chord.ms + shift_ms,
-                        chord.sp_act_index)
-    if (end_side_shift_ms < 0 and chord.sp_act_index is not None
-            and chord.sp_act_index != chord.index and not chord.ends_sp):
-        # A chord Hydra pays inside Star Power is pressed SP_END_LEAD_MS
-        # before an end a lead moved earlier, when its own plain press would
-        # come later than that. An end no lead moved leaves it plain.
-        act_end = act_ends.get(chord.sp_act_index)
-        if act_end is not None and act_end.end_ms is not None:
-            end_ms = act_end.end_ms + end_side_shift_ms
-            inside_lead_ms = chord.ms - (end_ms - SP_END_LEAD_MS)
-            if inside_lead_ms > PRESS_LEAD_MS:
-                return in_order(inside_lead_ms, True, end_ms, chord.sp_act_index)
-    return in_order(PRESS_LEAD_MS, False)
-
-
-def _refuse_far_presses(chords: Sequence[Chord], presses: Sequence[Press]) -> None:
-    """Raise ValueError naming every chord with a checked press the game may
-    not match to it: one outside its own note's window, inside the window of
-    the nearest earlier note on one of its pads, or inside the window of the
-    nearest later note on one of its pads when the player sends no press for
-    that note (a declined gem). A press inside a later note's window that the
-    player does press is let through, because the game gives a press inside
-    two unhit same-pad windows to the earlier note (the matching rule on
-    docs/clone-hero/03-timing.md; question 4 of the 2026-11-07 player-limits
-    plan). A plain PRESS_LEAD_MS press is not checked: it has to work on any
-    chart, and a real chart holds notes on one pad closer than a window."""
-    sides = window_sides(chords)
-    place = {chord.index: i for i, chord in enumerate(chords)}
-
-    def inside(chord: Chord, at_ms: float) -> bool:
-        return abs(at_ms - chord.ms) <= sides[chord.index]
-
-    def nearest_on(lane: Lane, side: range) -> Optional[Chord]:
-        return next((chords[i] for i in side
-                     if lane in (chords[i].chart_lanes or chords[i].lanes)), None)
-
-    def reaches_a_neighbour(press: Press) -> bool:
-        here = place[press.index]
-        for lane in press.lanes:
-            earlier = nearest_on(lane, range(here - 1, -1, -1))
-            if earlier is not None and inside(earlier, press.at_ms):
-                return True
-            later = nearest_on(lane, range(here + 1, len(chords)))
-            # A chord's `lanes` are the gems the player sends.
-            if later is not None and lane not in later.lanes and inside(later, press.at_ms):
-                return True
-        return False
-
-    refused = sorted({press.index for press in presses
-                      if press.checked and press.lanes
-                      and (not inside(chords[place[press.index]], press.at_ms)
-                           or reaches_a_neighbour(press))})
-    if refused:
-        raise ValueError(f"a press would miss its note or reach another note on its pad "
-                         f"for chords {', '.join(map(str, refused))} (SP_END_LEAD_MS "
-                         f"{SP_END_LEAD_MS:g} ms, SP_OUT_LAG_MS {SP_OUT_LAG_MS:g} ms, "
-                         f"ACT_LEAD_MARGIN_MS {ACT_LEAD_MARGIN_MS:g} ms)")
-
-
-def _dump_path(score_path: str, score: dict, dump_path: str, path_index: int) -> dict:
-    """Path `path_index` of the dump at `dump_path`. Raises ValueError when
-    the score file says it was made from another path."""
-    with open(dump_path, encoding="utf-8") as f:
-        path = json.load(f)["paths"][path_index]
-    # A score file made from a path file names the path it read; one made with
-    # --acts has no path_source and cannot be checked.
-    source_index = score.get("path_source", {}).get("index")
-    if source_index is not None and source_index != path_index:
-        raise ValueError(f"{score_path} was made from path {source_index}, "
-                         f"but path_index is {path_index}")
-    return path
-
-
-def declined_chord_indexes(score_path: str, dump_path: str,
-                           path_index: int = 0) -> List[int]:
-    """The `index` of each chord in the score file whose tick is a fill the
-    dump's path `path_index` passed over. The dump's `skipped_fill_ticks` are
-    the only record of those: the score file holds no meter. Raises ValueError
-    for a tick the score file has no chord on, which means the two files are
-    not of one chart."""
-    with open(score_path, encoding="utf-8") as f:
-        score = json.load(f)
-    path = _dump_path(score_path, score, dump_path, path_index)
-    chords = score["chords"]
-    skipped = {tick for act in path["activations"] for tick in act["skipped_fill_ticks"]}
-    missing = skipped - {chord["tick"] for chord in chords}
-    if missing:
-        raise ValueError(f"no chord in {score_path} at skipped fill ticks "
-                         f"{', '.join(map(str, sorted(missing)))}")
-    return [chord["index"] for chord in chords if chord["tick"] in skipped]
-
-
-def _kept_gems(mode: str, gems: Sequence[Mapping]) -> List[int]:
-    """Which of a declined chord's gems (the score file's "notes") it sends
-    in decline mode `mode`, by their place in the chord. kick_only sends at
-    most one gem, the first kick; all_but_top_pad sends every gem but the
-    highest pad, so a chord with no pad gem sends nothing. Raises ValueError
-    for a mode not in DECLINE_MODES, and in all_but_top_pad for a chord with
-    two gems of its highest pad's color, because which one the game flags is
-    not known."""
-    if mode not in DECLINE_MODES:
-        raise ValueError(f'unknown decline mode "{mode}"; modes: {", ".join(DECLINE_MODES)}')
-    if mode == DECLINE_NOTHING:
-        return []
-    if mode == DECLINE_KICK_ONLY:
-        return [i for i, gem in enumerate(gems) if _KEY_FOR_PAD[(gem["color"], gem["cymbal"])]
-                == Lane.KICK][:1]
-    top = _flagged_gem(gems)
-    if top is None:
-        return []
-    return [i for i in range(len(gems)) if i != top]
-
-
-def _flagged_gem(gems: Sequence[Mapping]) -> Optional[int]:
-    """The place in a chord (the score file's "notes") of the gem the game
-    flags: its highest pad by _TOP_PAD_ORDER, or None for a chord with no pad
-    gem. all_but_top_pad leaves this gem out, and an activation's chord
-    presses it first. Raises ValueError for a chord with two gems of its
-    highest pad's color, because which one the game flags is not known."""
-    top = next((color for color in _TOP_PAD_ORDER
-                if any(gem["color"] == color for gem in gems)), None)
-    if top is None:
-        return None
-    places = [i for i, gem in enumerate(gems) if gem["color"] == top]
-    if len(places) > 1:
-        raise ValueError(f"a chord holds two {top} gems; which one the game "
-                         f"flags is not known")
-    return places[0]
-
-
-def load_dump_chords(path: str, declines: Optional[Mapping[int, str]] = None,
-                     dump_path: Optional[str] = None, path_index: int = 0) -> List[Chord]:
-    """The score file's chords in order, each with its own `index` from the
-    JSON. A chord on an activation's end is marked. `dump_path` and
-    `path_index` name the path's `hydra_replay dump` file, whose squeeze data
-    press_plan times the squeezes by; a score file with a squeeze-out and no
-    dump raises ValueError naming `dump_json`, because the squeeze-out's
-    timing needs it. A press the game may not match to its note raises
-    _refuse_far_presses's ValueError. `declines` maps a chord's `index` to
-    its decline mode. A declined chord stays in the list with its time,
-    because its notes are still in the chart for a neighbour's window."""
-    declines = {} if declines is None else declines
-    with open(path, encoding="utf-8") as f:
-        score = json.load(f)
-    score_acts = score.get("activations", [])
-    act_ticks = {act["act_tick"] for act in score_acts}
-    deact_ticks = {act["deact_tick"] for act in score_acts}
-    if dump_path is None:
-        if any(act.get("sqout_tick", -1) >= 0 for act in score_acts):
-            raise ValueError(f"{path} has a squeeze-out, whose timing needs the path's "
-                             f"dump: pass dump_json")
-        dump_path_entry = None
-        squeezes, sqout_of_act, sqout_deacts = {}, {}, set()
-    else:
-        dump_path_entry = _dump_path(path, score, dump_path, path_index)
-        squeezes, sqout_of_act, sqout_deacts = _squeezes(path, score, dump_path_entry)
-    act_ends = _act_ends(path, score, dump_path_entry, squeezes)
-    sp_acts = _sp_acts(score)
-    chords = []
-    for chord in score["chords"]:
-        gems = chord["notes"]
-        lanes = [_KEY_FOR_PAD[(gem["color"], gem["cymbal"])] for gem in gems]
-        dynamics = [gem["dynamic"] for gem in gems]
-        declined = chord["index"] in declines
-        kept = _kept_gems(declines[chord["index"]], gems) if declined else range(len(gems))
-        tick = chord.get("tick")
-        squeeze = squeezes.get(tick)
-        sqout_index = sqout_of_act.get(chord["index"])
-        if declined and (squeeze is not None or sqout_index is not None
-                         or tick in act_ticks):
-            raise ValueError(f"chord {chord['index']} is a fill the path passes over and "
-                             f"also a squeeze or an activation")
-        # A score file whose gems carry no `multiplier` splits no chord by it.
-        multipliers = ([gems[i]["multiplier"] for i in kept]
-                       if all("multiplier" in gem for gem in gems) else None)
-        activating_gem = None
-        if tick in act_ticks:
-            try:
-                flagged = _flagged_gem(gems)
-            except ValueError as e:
-                raise ValueError(f"chord {chord['index']} starts an activation: {e}") from e
-            # A chord with no pad is all kicks, and its kick is the flagged gem.
-            activating_gem = 0 if flagged is None else flagged
-        chords.append(Chord(chord["index"], chord["ms"], [lanes[i] for i in kept],
-                            [dynamics[i] for i in kept], ends_sp=tick in deact_ticks,
-                            declined=declined, chart_lanes=lanes,
-                            end_squeezed_out=tick in sqout_deacts, squeeze=squeeze,
-                            sqout_index=sqout_index, multipliers=multipliers,
-                            activating_gem=activating_gem, act_end=act_ends.get(tick),
-                            sp_act_index=sp_acts.get(chord["index"])))
-    _refuse_far_presses(chords, press_plan(chords))
-    return chords
-
-
-def _sp_acts(score: dict) -> dict:
-    """The `index` of the activation chord for each chord of the score file
-    that ends an activation or that the file says is `in_sp`, by the chord's
-    `index`: the activation whose ticks hold it."""
-    by_tick = {chord.get("tick"): chord for chord in score["chords"]}
-    acts = [(act["act_tick"], act["deact_tick"], by_tick[act["act_tick"]]["index"])
-            for act in score.get("activations", []) if act["act_tick"] in by_tick]
-    out = {}
-    for chord in score["chords"]:
-        tick = chord.get("tick")
-        for act_tick, deact_tick, act_index in acts:
-            if tick == deact_tick or (chord.get("in_sp") and act_tick <= tick <= deact_tick):
-                out[chord["index"]] = act_index
-    return out
-
-
-def _act_ends(score_path: str, score: dict, path: Optional[dict], squeezes: dict) -> dict:
-    """Each activation's ActEnd by its `act_tick`, from the score file and,
-    when given, the dump's `path`. Raises ValueError for an anchor tick the
-    score file has no chord on."""
-    chords = score["chords"]
-    by_tick = {chord.get("tick"): chord for chord in chords}
-    dump_acts = {act["act_tick"]: act for act in (path or {}).get("activations", [])}
-    names = (*_END_SCALE.values(), *_STEADY_ACT.values(), *_STEADY_END.values())
-    out = {}
-    for act in score.get("activations", []):
-        deact = by_tick.get(act["deact_tick"])
-        end_ms = act.get("deact_ms", None if deact is None else deact["ms"])
-        dump_act = dump_acts.get(act["act_tick"])
-        if dump_act is None:
-            out[act["act_tick"]] = ActEnd(end_ms)
-            continue
-        anchor_tick = dump_act.get("end_anchor_tick")
-        if anchor_tick is not None and anchor_tick not in by_tick:
-            raise ValueError(f"no chord in {score_path} at end_anchor_tick {anchor_tick}")
-        out[act["act_tick"]] = ActEnd(
-            end_ms, _stored_end_ms(act, dump_act, chords, by_tick, end_ms, squeezes),
-            None if anchor_tick is None else by_tick[anchor_tick]["index"],
-            {name: dump_act[name] for name in names if name in dump_act})
-    return out
-
-
-def _stored_end_ms(act: Mapping, dump_act: Mapping, chords: Sequence[Mapping],
-                   by_tick: Mapping, end_ms: Optional[float],
-                   squeezes: Mapping[int, Squeeze]) -> Optional[float]:
-    """The time of the end the game stores when activation `act` fires, the
-    dump's `nominal_deact_tick`, read off the files with no tempo map: the
-    path's end when no phrase extended it, or a chord on that tick, or the
-    end the activation's first squeeze is timed against when no phrase was
-    collected in its Star Power before that squeeze (the score file's
-    `in_sp` and `is_sp_phrase_end`). None when none of those holds."""
-    nominal = dump_act.get("nominal_deact_tick")
-    if nominal is None:
-        return None
-    if nominal == act["deact_tick"]:
-        return end_ms
-    if nominal in by_tick:
-        return by_tick[nominal]["ms"]
-    sq_ticks = sorted(set(dump_act.get("sqin_ticks", []))
-                      | ({dump_act["sqout_tick"]} if dump_act.get("sqout_tick", -1) >= 0
-                         else set()))
-    if not sq_ticks or sq_ticks[0] not in squeezes:
-        return None
-    first = sq_ticks[0]
-    collected = any(chord.get("in_sp") and chord.get("is_sp_phrase_end")
-                    and act["act_tick"] < chord.get("tick") < first for chord in chords)
-    return None if collected else squeezes[first].end_ms
-
-
-def _squeezes(score_path: str, score: dict, path: dict):
-    """The dump path's squeezes, read against the score file's chords: each
-    squeeze chord's Squeeze by its tick, each squeeze-out chord's `index` by
-    its activation chord's `index`, and the deact ticks of the activations
-    with a squeeze-out. Raises ValueError when the two files do not describe
-    one path, or a squeeze list does not match its ticks."""
-    by_tick = {chord.get("tick"): chord for chord in score["chords"]}
-    path_deacts = [act["deact_tick"] for act in path["activations"]]
-    if path_deacts != [act["deact_tick"] for act in score.get("activations", [])]:
-        raise ValueError(f"the dump's path ends its activations at ticks {path_deacts}, "
-                         f"which {score_path} does not")
-
-    def chord_at(tick: int) -> dict:
-        if tick not in by_tick:
-            raise ValueError(f"no chord in {score_path} at squeeze tick {tick}")
-        return by_tick[tick]
-
-    squeezes, sqout_of_act, sqout_deacts = {}, {}, set()
-    for act in path["activations"]:
-        if not act["sqinouts"] and act["sqout_tick"] < 0 and not act["sqin_ticks"]:
-            continue
-        act_index = chord_at(act["act_tick"])["index"]
-        offsets = {kind: [s["offset_ms"] for s in act["sqinouts"] if s["kind"] == kind]
-                   for kind in (SQUEEZE_IN, SQUEEZE_OUT)}
-        sqout_ticks = [act["sqout_tick"]] if act["sqout_tick"] >= 0 else []
-        if (len(act["sqinouts"]) != len(offsets[SQUEEZE_IN]) + len(offsets[SQUEEZE_OUT])
-                or len(offsets[SQUEEZE_IN]) != len(act["sqin_ticks"])
-                or len(offsets[SQUEEZE_OUT]) != len(sqout_ticks)):
-            raise ValueError(f"the activation at tick {act['act_tick']} has sqinouts "
-                             f"{act['sqinouts']}, which do not match its sqin_ticks "
-                             f"{act['sqin_ticks']} and sqout_tick {act['sqout_tick']}")
-        pairs = ([(SQUEEZE_IN, tick, offset)
-                  for tick, offset in zip(act["sqin_ticks"], offsets[SQUEEZE_IN])]
-                 + [(SQUEEZE_OUT, tick, offset)
-                    for tick, offset in zip(sqout_ticks, offsets[SQUEEZE_OUT])])
-        for kind, tick, offset in pairs:
-            if tick in squeezes:
-                raise ValueError(f"two squeezes on the chord at tick {tick}")
-            squeezes[tick] = Squeeze(kind, chord_at(tick)["ms"] - offset, act_index)
-        for tick in sqout_ticks:
-            sqout_of_act[act_index] = chord_at(tick)["index"]
-            sqout_deacts.add(act["deact_tick"])
-    return squeezes, sqout_of_act, sqout_deacts
 
 
 def load_score_times(path: str) -> List[Tuple[int, float]]:
@@ -930,24 +356,21 @@ def load_score_times(path: str) -> List[Tuple[int, float]]:
         return [(chord["index"], chord["ms"]) for chord in json.load(f)["chords"]]
 
 
-def load_dump_notes(path: str) -> list:
-    """The file's chords in order, as (ms, the keys its gems press)."""
-    return [(chord.ms, chord.lanes) for chord in load_dump_chords(path)]
-
-
 def with_axes(chords: Sequence[Chord], engine) -> Tuple[List[Chord], Optional[int]]:
-    """`chords` with each gem's strength from kit_tools.pad_axis, and the
-    dynamics threshold read for them. The field is read once, and only when a
-    gem is a ghost; otherwise the threshold is None. Every strength is worked
-    out here, so a threshold no ghost can use raises pad_axis's ValueError
-    before the first press."""
+    """`chords` with each press's gem strengths from kit_tools.pad_axis, and
+    the dynamics threshold read for them. The field is read once, and only
+    when a pressed gem is a ghost; otherwise the threshold is None. Every
+    strength is worked out here, so a threshold no ghost can use raises
+    pad_axis's ValueError before the first press."""
     # Imported here because kit_tools imports game_tools, which imports this
     # module.
     from tools.ch_mcp.kit_tools import DYNAMIC_GHOST, pad_axis
     threshold = None
-    if any(DYNAMIC_GHOST in chord.dynamics for chord in chords):
+    if any(DYNAMIC_GHOST in p.dynamics for chord in chords for p in chord.presses):
         threshold = engine.dyn_threshold()
-    return [replace(chord, axes=[pad_axis(dynamic, threshold) for dynamic in chord.dynamics])
+    return [replace(chord, presses=tuple(
+                replace(p, axes=[pad_axis(dynamic, threshold) for dynamic in p.dynamics])
+                for p in chord.presses))
             for chord in chords], threshold
 
 
@@ -1008,10 +431,13 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
 
     `read_sp_end`, when given, reads the game's Star Power end in song
     seconds, None while Star Power is off (EngineModel.sp_end). After a
-    message whose first press carries Press.stored_end_ms it is read once:
-    the first row's `end_read_ms` holds the end in ms and retime_from_end
-    moves the later presses timed against that activation's end, or the row
-    says NO_ACTIVATION_READ and the plan stands.
+    message whose first press carries Press.planned_end_ms (the first press
+    of each chord the schedule's `reads` names, so the activation's chord and
+    its `read_end_after` chord each get a read) it is read once: the first
+    row's `end_read_ms` holds the end in ms, and retime_from_end moves the
+    later presses timed from the end read after that chord and applies their
+    fallbacks; or the row says NO_ACTIVATION_READ and the plan stands. A row
+    of a press retime_from_end marked says so in `retimed`.
 
     `clock` reads the song clock (live.ReadsSongClock), `read_score` reads the
     engine's score and `press` sends one chord's keys and their `axes`. A
@@ -1029,8 +455,8 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
     `score_before`. The score is read once after the reply, so every row of
     a split chord holds the same `score_after` and the same `hit`.
 
-    A message the game would judge past its first press's window is not
-    sent (design point 5 of
+    A message read past its first press's Press.last_send_ms is not sent
+    (design point 5 of
     docs/superpowers/plans/2026-11-08-player-freak-fixes.md): it reads no end
     and no score after, its rows say DROPPED in `hit` with the clock it was
     dropped at, and the streak starts over.
@@ -1044,7 +470,7 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
     is the run cap in wall seconds."""
     out = sys.stdout if out is None else out
     plan = press_messages(press_plan(chords))
-    sides = window_sides(chords)
+    chord_lanes = {c.index: c.lanes for c in chords}
     presses = list(plan)
     notes_ms = [head.at_ms for head, _later in presses]
     result = RunResult()
@@ -1112,7 +538,7 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
             # of docs/superpowers/plans/2026-11-08-player-freak-fixes.md says
             # why raw_ms is the read it is judged from.
             sends = not (chord.declined and not chord.lanes)
-            dropped = sends and raw_ms + FRAME_MS > chord.chart_ms + sides[chord.index]
+            dropped = sends and raw_ms > chord.last_send_ms
 
             # A declined chord in a mode that keeps no gem sends no press.
             if not sends or dropped:
@@ -1125,7 +551,7 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
             wall_s_at_reply = wall()
 
             end_read = None
-            if chord.stored_end_ms is not None and read_sp_end is not None and not dropped:
+            if chord.planned_end_ms is not None and read_sp_end is not None and not dropped:
                 end_s = read_sp_end()
                 if end_s is None:
                     end_read = NO_ACTIVATION_READ
@@ -1134,7 +560,7 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
                     rest = [p for head, rest_later in presses[cursor + 1:]
                             for p in [head, *rest_later]]
                     presses[cursor + 1:] = press_messages(retime_from_end(
-                        rest, chord.index, chord.stored_end_ms, end_read))
+                        rest, chord.index, end_read, chord_lanes))
                     notes_ms = [head.at_ms for head, _later in presses]
 
             # Check hit through engine.pressed_input_hit. Nothing was sent for
@@ -1179,6 +605,8 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
                     "wall_s_at_read": wall_s_at_read,
                     "wall_s_at_reply": wall_s_at_reply,
                 }
+                if part.retimed is not None:
+                    row["retimed"] = part.retimed
                 if k == 0:
                     row["scored_between"] = score_before - last_score
                     if end_read is not None:
@@ -1355,27 +783,22 @@ def main(argv: Optional[Sequence[str]] = None, *,
          open_proc: Callable = open_process,
          find_engine: Optional[Callable[[object], int]] = None,
          out: Optional[TextIO] = None) -> int:
-    """Play a score JSON against the running game. Returns the exit code.
+    """Play a schedule JSON against the running game. Returns the exit code.
 
     LIVE-ONLY: the run itself is live_play's. `open_proc` and `find_engine`
     stand in for open_process and the capped finder in tests."""
     out = sys.stdout if out is None else out
     parser = argparse.ArgumentParser(
-        description="Play a hydra_replay score JSON in Clone Hero.")
-    parser.add_argument("score_json", help="a hydra_replay score JSON")
+        description="Play a hydra_replay schedule JSON in Clone Hero.")
+    parser.add_argument("schedule_json", help="a hydra_replay schedule JSON")
     parser.add_argument("--log", help="write one CSV row per press here")
-    parser.add_argument("--dump", help="the path's hydra_replay dump JSON, which times "
-                                       "its squeezes (needed for a squeeze-out)")
-    parser.add_argument("--path-index", type=int, default=0,
-                        help="the path of --dump the score JSON was made from")
     args = parser.parse_args(argv)
 
-    chords = load_dump_chords(args.score_json, dump_path=args.dump,
-                              path_index=args.path_index)
+    chords = load_schedule(args.schedule_json).chords
     if not chords:
-        print(f"  {args.score_json} has no chords to play.", file=out)
+        print(f"  {args.schedule_json} has no chords to play.", file=out)
         return 0
-    print(f"Read {os.path.basename(args.score_json)}: {len(chords)} chords", file=out)
+    print(f"Read {os.path.basename(args.schedule_json)}: {len(chords)} chords", file=out)
     print(f"  First note at {C.ms_to_s(chords[0].ms):.2f}s, "
           f"last at {C.ms_to_s(chords[-1].ms):.2f}s", file=out)
 

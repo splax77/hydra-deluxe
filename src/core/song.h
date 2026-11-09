@@ -166,6 +166,15 @@ public:
     // the Preview draws a generated fill's span from it.
     std::optional<FillDeadlineRule> generated_fills;
 
+    // Whether the chart wrote a fill that the coda skipped, set by
+    // place_authored_fills in parse/song.cpp, which owns the skip. Such a
+    // fill places no chord, yet it still stops check_activations from
+    // generating: Clone Hero 1.1's note builder runs its generator only when
+    // the track's fill list is empty (0x20D3375), and a skipped fill stays in
+    // that list (FL-27 and FL-08 on docs/clone-hero/04-fills.md). A written
+    // fill that lands on no chord does not set it (FL-28).
+    bool coda_skipped_fill = false;
+
     // Snapshot the timing indexes from the current maps. Called once the tempo
     // track has been fully mapped and before any timecode is made. Timing
     // that can't measure time is refused here (check_timing_maps).

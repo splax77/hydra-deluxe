@@ -331,6 +331,35 @@ class PressLogHeaderTest(unittest.TestCase):
                                 "1762500000.75", "1762500000.75"),
         ])
 
+    def test_a_fifteen_column_log_from_before_the_retime_column_loads(self):
+        rows = _load_text(
+            "index,chart_ms,clock_ms_at_press,score_before,score_after,hit,"
+            "down_frame,up_frame,down_ms,up_ms,wall_s_at_read,wall_s_at_reply,"
+            "scored_between,end_read_ms,probe\n"
+            "180,32583.33,32627.39,500,600,1,,,,,1.25,1.5,0,,\n")
+        self.assertEqual(rows, [
+            score_compare.Press(180, 32583.33, 32627.39, 500, 600, True, "", "", "", "",
+                                "1.25", "1.5", "0", "", "", "")])
+
+    def test_a_sixteen_column_log_keeps_the_retime_word(self):
+        rows = _load_text(
+            "index,chart_ms,clock_ms_at_press,score_before,score_after,hit,"
+            "down_frame,up_frame,down_ms,up_ms,wall_s_at_read,wall_s_at_reply,"
+            "scored_between,end_read_ms,probe,retimed\n"
+            "180,32583.33,32624.39,500,600,1,,,,,1.25,1.5,0,,,inside\n"
+            "181,32666.67,32665.39,600,700,1,,,,,1.75,2.0,0,,,\n")
+        self.assertEqual([p.retimed for p in rows], ["inside", ""])
+
+    def test_the_retime_word_play_chart_writes_reads_back(self):
+        rows = [{"index": 180, "chart_ms": 32583.33, "clock_ms_at_press": 32627.39,
+                 "score_before": 500, "score_after": 600, "hit": 1,
+                 "retimed": play_chart.RETIMED_LATE}]
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "press.csv")
+            play_chart.write_press_log(path, rows)
+            (press,) = score_compare.load_press_log(path)
+        self.assertEqual(press.retimed, "late")
+
     def test_press_has_a_field_for_every_log_column(self):
         self.assertEqual(
             tuple(f.name for f in dataclasses.fields(score_compare.Press)),

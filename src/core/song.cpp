@@ -103,7 +103,10 @@ int Song::note_count() const {
 // rule the run is scored under (FillDeadlineRule; search/graph.h's
 // fill_rule_for reads it off a setting). Both generators count measures on
 // the song's grid (MeasureIndex); each keeps its own game version's fill rule.
+// A written fill the coda skipped counts as the chart's own (coda_skipped_fill
+// in core/song.h says why).
 void Song::check_activations(const core::Rules& rules, FillDeadlineRule fills) {
+    if (coda_skipped_fill) return;  // chart wrote fills; the coda skipped them.
     for (const SongTimestamp& ts : sequence)
         if (ts.has_activation()) return;  // chart already has fills.
 

@@ -14,7 +14,7 @@ Rule: A note belongs to a Star Power phrase when the phrase start is at or befor
 Label: Proven in the game's code
 Evidence: The start test is at lines 72 to 74 and the end test at lines 93 to 97 of the listing; the end is start plus length at lines 54 to 57. The 2026-10-03 reading of the same function (ch-evidence.md question 21, lines 41 to 66 at commit 5fbe71ae) said the same; its listing was lost.
 Game code (6142): RVA `0x20D2440` (class #8265, scrambled name), `code/6142/sp_phrase_assign_20D2440.asm` lines 54 to 57, 72 to 74 and 93 to 97
-Hydra: `close_sp_phrase` in src/parse/song.cpp line 400 (both parsers call it, lines 804 and 1413)
+Hydra: `close_sp_phrase` in src/parse/song.cpp line 429 (both parsers call it, lines 833 and 1462)
 Ruling: D21. The user chose "Yes, one helper (Recommended)" to "SP phrase edges: should .chart use Clone Hero's rule ..." (card 2026-10-04-bbf41dc4, 01:53 UTC). Hydra and the game agree.
 Found: 2026-10-30, session b02ab3e6 (the reference build)
 
@@ -24,7 +24,7 @@ Rule: A phrase of length 0 marks no note, so it awards nothing, even with a chor
 Label: Proven in the game's code
 Evidence: With length 0 the start test (lines 72 to 74) and the end test (lines 93 to 97) can never both pass.
 Game code (6142): RVA `0x20D2440`, `code/6142/sp_phrase_assign_20D2440.asm` lines 72 to 74 and 93 to 97
-Hydra: `close_sp_phrase` in src/parse/song.cpp line 400 (its test is never true at length 0)
+Hydra: `close_sp_phrase` in src/parse/song.cpp line 429 (its test is never true at length 0)
 Ruling: none needed: same rule (D21, as in SP-01)
 Found: 2026-10-03, session cebf3006 (first reading); 2026-10-30, session b02ab3e6 (the reference build)
 
@@ -34,7 +34,7 @@ Rule: When a note inside a phrase has no next note, it counts as the phrase's la
 Label: Proven in the game's code
 Evidence: Lines 75 to 84 leave the next note empty on the last note; lines 99 to 100 skip the "next note is still inside" exit when it is empty; lines 104 to 133 mark the last chord.
 Game code (6142): RVA `0x20D2440`, `code/6142/sp_phrase_assign_20D2440.asm` lines 75 to 84 and 99 to 103
-Hydra: `close_sp_phrase` in src/parse/song.cpp line 400, called once more after the last tick
+Hydra: `close_sp_phrase` in src/parse/song.cpp line 429, called once more after the last tick
 Ruling: none needed: same rule (D21, as in SP-01)
 Found: 2026-10-30, session b02ab3e6 (the reference build)
 
@@ -44,7 +44,7 @@ Rule: Every note inside a phrase gets flag 0x80. Every note of the phrase's last
 Label: Proven in the game's code
 Evidence: Line 98 sets 0x80; lines 99 to 103 are the "not last" exit; lines 104 to 133 walk the chord and set 0x100 on each member at line 128.
 Game code (6142): RVA `0x20D2440`, `code/6142/sp_phrase_assign_20D2440.asm` lines 98 to 133
-Hydra: `close_sp_phrase` in src/parse/song.cpp line 400 marks the last chord's timestamp
+Hydra: `close_sp_phrase` in src/parse/song.cpp line 429 marks the last chord's timestamp
 Ruling: none needed: same rule
 Found: 2026-10-30, session b02ab3e6 (the reference build)
 
@@ -54,7 +54,7 @@ Rule: The game walks the notes and the phrases together. When a note sits at or 
 Label: Proven in the game's code
 Evidence: One increment and one call to the advance helper, then one re-test, at lines 85 to 97; the helper leaves the cursor alone past the last phrase at its lines 14 to 17 and 24 to 27.
 Game code (6142): RVA `0x20D2440` lines 85 to 97; helper RVA `0x20D0330`, `code/6142/sp_phrase_advance_20D0330.asm` lines 14 to 27
-Hydra: no owner: `close_sp_phrase` (src/parse/song.cpp line 400) closes each phrase on its own and keeps no cursor
+Hydra: no owner: `close_sp_phrase` (src/parse/song.cpp line 429) closes each phrase on its own and keeps no cursor
 Ruling: none needed: no chart is shown to differ (see SP-06)
 Found: 2026-10-30, session b02ab3e6 (the reference build)
 
@@ -64,7 +64,7 @@ Rule: Because the cursor steps one phrase per note (SP-05), a phrase that sits i
 Label: Unknown
 Evidence: not checked: it needs the sort order of the track's phrase list, which the loader and the clean-up at `0x5DB320` would show; neither was opened.
 Game code (6142): RVA `0x20D2440` (the step, SP-05); the sort order: not found
-Hydra: `close_sp_phrase` in src/parse/song.cpp line 400 (awards every phrase independently)
+Hydra: `close_sp_phrase` in src/parse/song.cpp line 429 (awards every phrase independently)
 Ruling: none yet: the game's rule is not settled, so no difference is shown
 Found: 2026-10-30, session b02ab3e6 (the reference build)
 
@@ -74,7 +74,7 @@ Rule: A .chart phrase (`S 2 <len>`) and a .mid phrase (note 116 on and off, leng
 Label: Unknown
 Evidence: the 2026-10-03 listings were not kept (read at `0x213E0C0` (.chart) and `0x2155050` (.mid), session cebf3006, ch-evidence.md lines 55 to 58 at commit 5fbe71ae). The committed `.chart` special-event listing `docs/audit/drum-lanes/spec_213e0c0.asm` lines 20 to 59 shows type 2 building an item through the method at 0x20D5E60 (line 43) and adding it to a list (lines 47 to 59); what the item holds and that it is the phrase list were not read. One side is shown live: LS-D2d of `docs/superpowers/plans/2026-10-31-ch-mcp-direct-start.md (removed; git show 6804353f:docs/superpowers/plans/2026-10-31-ch-mcp-direct-start.md)`, 2026-11-06, earned all 25 note-116 phrases of a .mid chart (`C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-06\ls-d2d-run1\`). The .chart side and the sameness were not checked by that run.
 Game code (6142): the `.chart` type-2 branch, RVA `0x213E0C0`, `docs/audit/drum-lanes/spec_213e0c0.asm` lines 20 to 59; no phrase read found in `0x2155050`; the reference build's working listings were not kept
-Hydra: `close_sp_phrase` in src/parse/song.cpp line 400, called by the .mid reader (line 804) and the .chart reader (line 1413)
+Hydra: `close_sp_phrase` in src/parse/song.cpp line 429, called by the .mid reader (line 833) and the .chart reader (line 1462)
 Ruling: none needed: D21 put both parsers on one helper (SP-01)
 Found: 2026-10-03, session cebf3006; the .mid run, 2026-11-06, session 70bfa33d (LS-D2d); the type-2 listing 2026-11-08, session 77057df2 (docs-gaps search)
 
@@ -178,7 +178,7 @@ Rule: On drums, Star Power activates only inside a hit. Five hit handlers each t
 Label: Proven in the game's code
 Evidence: The flag test is lines 1 to 3 of the listing (test of note +0x7C against 0x800). The five call sites were found by a search for the activation's virtual slot and read in the decompile at lines 149 to 154, 347 to 352, 568 to 573, 1343 to 1348 and 1566 to 1571. The committed press handler docs/audit/drum-lanes/play/f20deaa0.asm lines 112 to 130 shows the same order. The dynamics hit handler `0x20DE770` does not test the flag itself: its ten calls in `code/6142/note_hit_dynamics_20DE770.asm` (lines 64 to 136) include none to `0x214BB50`.
 Game code (6142): handlers RVA `0x20DCC90`, `0x20DD190`, `0x20DD700`, `0x20DEAA0` and `0x20DEFF0`; flag test RVA `0x214BB50`, `code/6142/note_is_activation_214BB50.asm` lines 1 to 3; the dynamics handler RVA `0x20DE770`, `code/6142/note_hit_dynamics_20DE770.asm`
-Hydra: `Song::check_activations` in src/core/song.cpp line 106 places the fills; the search picks the activation chord
+Hydra: `Song::check_activations` in src/core/song.cpp line 108 places the fills; the search picks the activation chord
 Ruling: none needed: same rule
 Found: 2026-10-30, session b02ab3e6 (the reference build); the dynamics handler 2026-11-08, session 77057df2 (docs-gaps search)
 
@@ -352,7 +352,7 @@ Rule: When an activation is pressed, the game stores the Star Power end as if th
 Label: Proven in a live run
 Evidence: Two runs of 2026-11-07. Bomber, chord 147: `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-07\ls-r2ab-run1\replies.txt` says "the end moved 50.8 ms for a 53.78 ms early press", 2.98 ms short of the lead the clock read gives (the reply rounds the move to 0.1 ms). Get Ur Freak On, chords 232, 633 and 1062: `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-07\ls-f1-run1\press-2.csv`. The time the game judged each press is its `end_read_ms`, less the stored end the path's dump gives (57,932.89, 98,444.63 and 141,656.25 ms, the time of `nominal_deact_tick` in the `ls-l0` dump), plus its `chart_ms`. That time is 3.03 ms after `clock_ms_at_press` on all three (3.030, 3.029 and 3.032). The end is read straight after the activation's own press, before a later phrase can extend it, so the chord the dump anchors the final end on (`end_anchor_tick`, chord 263 for chord 232) does not enter the sum. The arithmetic takes the end to move by the press's error times r, and r is 1.0 at all four activations (`end_scale_early` and `end_scale_late` in the `ls-l0` dump and in tools/ch_probe/tests/bomber_refine_dump.json), so these runs check nothing about r and SP-39 keeps its label. Not proven: other frame rates, and which code takes the press in that frame (SP-30).
 Game code (6142): the stored end `#8288+0x120` (`OFF_SP_END_TIME` in tools/ch_probe/constants.py) read live; the frame step itself was not found in the code (SP-30)
-Hydra: no frame model in `src/` (SP-29); the press schedule's frame model (`kFrameMs` and `kJudgeEarlyMs` in tools/replay_schedule.cpp) plans each end from a press judged one frame after it was sent, and the player's `retime_from_end` in tools/ch_probe/experiments/play_chart.py moves the late presses by the end it reads after the activation
+Hydra: no frame model in `src/` (SP-29); the press schedule's frame model (`kFrameMs` and `kJudgeEarlyMs` in tools/replay_schedule.cpp) plans each end from a press judged one frame after it was sent, and the player's `retime_from_end` in tools/ch_probe/experiments/play_chart.py moves each press timed from an end read (after the activation, or after the chord the schedule names) by that read minus the end the press was aimed at
 Ruling: none needed: no Hydra rule depends on it
 Found: 2026-11-08, session 6341c618, from the runs of session d0a3868c
 
@@ -374,7 +374,7 @@ Rule: A phrase is credited when its last chord is hit, using that hit's own Star
 Label: Unknown
 Evidence: The only decompiled caller of the gain method is the fill deadline `0x20DDB70` (ghidra_decompile_all.txt line 681). The label "Star Power phrase: 0x20F6719 to 0x20F6738" in docs/audit/drum-lanes/FINDINGS-play-time.md line 87 is unproven: the callee there, `0x20F7610`, writes +0xA0 from a hit ratio and never writes the meter in the 67 lines read. A virtual call with the engine's quarter bar after the 0x100 flag is cleared, in docs/audit/drum-lanes/play/f20f63f0_base_hit.asm lines 206 to 216, is the likely route; its target was not read.
 Game code (6142): gain RVA `0x20F4FA0`; the crediting call: not found (looked in the base hit listing and the decompile)
-Hydra: `close_sp_phrase` in src/parse/song.cpp line 400 marks the crediting chord
+Hydra: `close_sp_phrase` in src/parse/song.cpp line 429 marks the crediting chord
 Ruling: none yet: the game's rule is not settled
 Found: 2026-10-30, session b02ab3e6 (the reference build)
 

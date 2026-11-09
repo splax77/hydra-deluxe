@@ -45,6 +45,17 @@ constexpr std::string_view kEndEventBody = "end";
 // compare is. Both readers ask here; each says which brackets it takes off.
 bool is_end_event(std::string_view body) { return body == kEndEventBody; }
 
+// The body of the text event that marks the coda. The first one in a chart
+// gives the coda tick that place_authored_fills skips fills from.
+constexpr std::string_view kCodaEventBody = "coda";
+
+// Whether a text event's body, already trimmed and with its brackets taken
+// off, is the coda. The match is exact and case-sensitive, as Clone Hero's own
+// compare is (0x21544E0 for a .mid, 0x2151830 for a .chart). Both readers ask
+// here; each says what it trims and which brackets it takes off, because the
+// game's two readers differ there.
+bool is_coda_event(std::string_view body) { return body == kCodaEventBody; }
+
 // Practice sections in tick order, the order Song promises. A .chart's
 // [Events] need not be sorted. A .mid's events track (MidiFile::events_track)
 // is read in tick order already, but both parsers call this once at the end,
@@ -359,8 +370,17 @@ void apply_fill_end(Song& song, size_t index, int64_t starttick) {
 // 0x20D008D), and a chord exactly at its edge still lands (0x5DE17D; D22).
 // The +1 sits on top of the rules value, so a hydra_rules.ini slop of 0 still
 // lands a chord one tick late.
+//
+// A fill the coda skips is never placed. `coda_tick` is the chart's first coda
+// event, which each reader finds through is_coda_event. Clone Hero 1.1's track
+// finish marks the fills from the coda on (0x215DA70, the setge at 0x215DB6D)
+// and the landing step passes over a marked fill (0x20CFF60). Build 1.0 skips
+// only a fill on the coda tick (code/4045/fill_generator.cs line 88), and
+// FillDeadlineRule::Ch10 follows it (FL-08, FL-39, Q-40). A skipped fill
+// still marks the song (Song::coda_skipped_fill), so no fill is generated.
 void place_authored_fills(Song& song, const std::vector<AuthoredFill>& fills,
-                          double slop_beats) {
+                          double slop_beats, std::optional<int64_t> coda_tick,
+                          FillDeadlineRule fills_rule) {
     if (fills.empty() || song.sequence.empty()) return;
     // The chord list with its ticks. Both parsers emit chords in tick order
     // (.mid by its event times, .chart by D47's one sort in ChartParser), so
@@ -373,6 +393,15 @@ void place_authored_fills(Song& song, const std::vector<AuthoredFill>& fills,
         static_cast<int64_t>(song.tick_resolution() * slop_beats) + 1;
 
     for (const AuthoredFill& f : fills) {
+        if (coda_tick.has_value()) {
+            const bool skipped = fills_rule == FillDeadlineRule::Ch10
+                                     ? f.start == *coda_tick
+                                     : f.start >= *coda_tick;
+            if (skipped) {
+                song.coda_skipped_fill = true;
+                continue;
+            }
+        }
         const auto it = std::upper_bound(
             order.begin(), order.end(), f.end,
             [](int64_t t, const std::pair<int64_t, size_t>& c) { return t < c.first; });
@@ -1081,6 +1110,26 @@ Song MidiParser::parse(const MidiFile& mid, bool pro, bool bass2x,
     }
     song.build_timing();
 
+    // The coda tick, before the drum pass places fills, because the events
+    // track may come after the drum track in the file. Clone Hero's events
+    // reader (0x21544E0) trims the text and keeps the first coda; a body in
+    // brackets loses one pair. Pass 3 reads the same track for other events.
+    std::optional<int64_t> coda_tick;
+    if (const MidiTrack* const events = mid.events_track()) {
+        int64_t at = 0;
+        for (const Message& msg : events->messages) {
+            at += msg.time;
+            if (msg.str_attr != Message::StrAttr::Text) continue;
+            std::string_view body = trim_view(msg.str);
+            if (body.size() >= 2 && body.front() == '[' && body.back() == ']')
+                body = body.substr(1, body.size() - 2);
+            if (is_coda_event(body)) {
+                coda_tick = at;
+                break;
+            }
+        }
+    }
+
     // Pass 2: the drum track.
     if (const MidiTrack* const drums = mid.drums_track()) {
         const MidiTrack& track = *drums;
@@ -1115,7 +1164,7 @@ Song MidiParser::parse(const MidiFile& mid, bool pro, bool bass2x,
             msg_buffer_.push_back(&msg);
         }
         push_timestamp(elapsed);
-        place_authored_fills(song, fills_, rules_.fill_land_slop_beats);
+        place_authored_fills(song, fills_, rules_.fill_land_slop_beats, coda_tick, fills_rule_);
         song.dynamics_enabled = dynamics_enabled_;
     }
 
@@ -1433,6 +1482,10 @@ private:
     std::optional<std::vector<SongSection>> event_sections_;
     // The events section's first end event (Song::end_event_tick).
     std::optional<int64_t> event_end_tick_;
+    // The first coda event of any events section, which place_authored_fills
+    // reads. Clone Hero keeps it on the chart, so a later [Events] section
+    // never replaces it (0x2151830's null test at 0x21523A7).
+    std::optional<int64_t> coda_tick_;
     // The latest note end over every section (Song::last_note_end_tick).
     std::optional<int64_t> last_note_end_tick_;
 
@@ -1586,6 +1639,16 @@ void ChartParser::load_sections(const std::vector<uint8_t>& data, char mix_digit
                         body = body.substr(1, body.size() - 2);
                     if (l.kind == LineKind::Event && is_end_event(body) && !events_end.has_value())
                         events_end = l.tick;
+                    // Clone Hero's [Events] reader trims the quoted text,
+                    // then takes off a leading '[' and, when there is one,
+                    // the closing ']' (0x2151830 at 0x2151D36 to 0x2151D9C).
+                    std::string_view coda_body = trim_view(event);
+                    if (!coda_body.empty() && coda_body.front() == '[') {
+                        coda_body.remove_prefix(1);
+                        if (!coda_body.empty() && coda_body.back() == ']') coda_body.remove_suffix(1);
+                    }
+                    if (l.kind == LineKind::Event && is_coda_event(coda_body) && !coda_tick_.has_value())
+                        coda_tick_ = l.tick;
                 } else {
                     const ChartLine l = classify_chart_line(lhs, rhs, mix_digit, nullptr);
                     take_note_end(l);
@@ -1869,7 +1932,7 @@ Song ChartParser::parse(const std::vector<uint8_t>& data, bool pro,
         // a .mid.
         if (sp_end_tick_.has_value())
             op_sp_end(sp_start_tick_.value_or(0), *sp_end_tick_);
-        place_authored_fills(song, fills_, rules_.fill_land_slop_beats);
+        place_authored_fills(song, fills_, rules_.fill_land_slop_beats, coda_tick_, fills_rule_);
     }
 
     // Practice sections, in the file's order, which is not required to be

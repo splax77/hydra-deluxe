@@ -38,6 +38,8 @@ from tools.ch_probe.tests import fakes  # noqa: E402
 from tools.ch_probe.tests.test_sp_compare import _row  # noqa: E402
 
 _PROBE_TESTS = os.path.join(_REPO_ROOT, "tools", "ch_probe", "tests")
+# Mouths path 0's hydra_replay schedule, beside its score file.
+_MOUTHS_SCHEDULE = os.path.join(_PROBE_TESTS, "mouths_refine_schedule.json")
 
 BACKUP_LINE = "backup folder: X (taken now)"
 ENGINE = 0x2_0000_1000
@@ -626,19 +628,14 @@ class SpToolsTest(unittest.TestCase):
 
     def test_ch_sp_compare_names_a_missing_file(self):
         missing = os.path.join(self.tmp.name, "none.csv")
-        reply = self.tools().ch_sp_compare(missing, missing)
+        reply = self.tools().ch_sp_compare(missing, missing, missing)
         self.assertTrue(reply.startswith("compare failed: FileNotFoundError"))
 
-    def _compare_files(self, score, phrase_end, rows):
-        """A watcher CSV of `rows` and a copy of the score file `score`. A
-        chord that lacks the fields compare's checks read (the hand-made Senri
-        file) gets placeholders, with chord `phrase_end` the one phrase end;
-        a chord that has them (the refine-prep fixtures) keeps its own."""
-        chords = [{"is_sp_phrase_end": c["index"] == phrase_end, "in_sp": False,
-                   "multiplier": 4, "multiplier_after": 4, **c} for c in score["chords"]]
+    def _compare_files(self, score, rows):
+        """A watcher CSV of `rows` and a copy of the score file `score`."""
         score_path = os.path.join(self.tmp.name, "score.json")
         with open(score_path, "w", encoding="utf-8") as f:
-            json.dump({**score, "chords": chords}, f)
+            json.dump(score, f)
         csv_path = os.path.join(self.tmp.name, "watch.csv")
         with open(csv_path, "w", newline="", encoding="utf-8") as f:
             w = csv.writer(f)
@@ -653,30 +650,36 @@ class SpToolsTest(unittest.TestCase):
         # test_sp_compare's rows for chord 740: its kick is pressed after the
         # squeeze-out's end, and the rise lands after that press.
         rows = [_row(118.300, 0), _row(118.412, 0), _row(118.441, 1536)]
-        return self._compare_files(score, None, rows)
+        return self._compare_files(score, rows)
 
-    def test_ch_sp_compare_on_senri_with_no_dump_reports_as_compare_does(self):
-        from tools.ch_probe.tests.test_play_chart import _senri_dump
-        watch_csv, score_json = self._compare_files(
-            _senri_dump(), 268, [_row(31.700, 0), _row(31.860, 1536), _row(31.900, 1536)])
-        want = sp_compare.compare(sp_compare.load_watch_rows(watch_csv),
-                                  sp_compare.load_score(score_json)).text()
-        self.assertTrue(want.startswith("Star Power comparison: 3 watcher rows"), want)
-        self.assertEqual(self.tools().ch_sp_compare(watch_csv, score_json), want)
-
-    def test_ch_sp_compare_reads_the_mouths_dump(self):
+    def test_ch_sp_compare_on_mouths_reports_as_compare_does(self):
         watch_csv, score_json = self._mouths_files()
-        reply = self.tools().ch_sp_compare(
-            watch_csv, score_json,
-            dump_json=os.path.join(_PROBE_TESTS, "mouths_refine_dump.json"))
+        want = sp_compare.compare(sp_compare.load_watch_rows(watch_csv),
+                                  sp_compare.load_score(score_json),
+                                  reach=sp_compare.press_reach(_MOUTHS_SCHEDULE)).text()
+        self.assertTrue(want.startswith("Star Power comparison: 3 watcher rows"), want)
+        self.assertEqual(self.tools().ch_sp_compare(watch_csv, score_json, _MOUTHS_SCHEDULE),
+                         want)
+
+    def test_ch_sp_compare_reads_the_mouths_schedule(self):
+        watch_csv, score_json = self._mouths_files()
+        reply = self.tools().ch_sp_compare(watch_csv, score_json, _MOUTHS_SCHEDULE)
         self.assertIn("PASS phrase rise after chord 740 (tick 48480, 118426.0 ms): "
                       "+1536 (0 -> 1536) at 118441.0 ms, full", reply)
 
-    def test_ch_sp_compare_refuses_a_squeeze_out_with_no_dump_naming_it(self):
+    def test_ch_sp_compare_refuses_a_schedule_that_refuses_its_path_naming_it(self):
         watch_csv, score_json = self._mouths_files()
-        reply = self.tools().ch_sp_compare(watch_csv, score_json)
-        self.assertEqual(reply, f"could not read {score_json}: ValueError: {score_json} has a "
-                                f"squeeze-out, whose timing needs the path's dump: pass dump_json")
+        with open(_MOUTHS_SCHEDULE, encoding="utf-8") as f:
+            doc = json.load(f)
+        doc["refusals"] = ["chord 740 is a squeeze the schedule could not split, "
+                           "so it is not pressed"]
+        schedule_json = os.path.join(self.tmp.name, "schedule.json")
+        with open(schedule_json, "w", encoding="utf-8") as f:
+            json.dump(doc, f)
+        reply = self.tools().ch_sp_compare(watch_csv, score_json, schedule_json)
+        self.assertEqual(reply, f"could not read {schedule_json}: ValueError: {schedule_json} "
+                                f"refuses to play this path: chord 740 is a squeeze the "
+                                f"schedule could not split, so it is not pressed")
 
 
 if __name__ == "__main__":

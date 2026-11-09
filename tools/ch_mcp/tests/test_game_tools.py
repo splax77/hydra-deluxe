@@ -42,6 +42,7 @@ from tools.ch_probe import probe_songs  # noqa: E402
 from tools.ch_probe import input_driver  # noqa: E402
 from tools.ch_probe.experiments import play_chart  # noqa: E402
 from tools.ch_probe.experiments.overlay_logs import PRESS_LOG_COLUMNS  # noqa: E402
+from tools.ch_probe.tests.test_play_chart import _schedule_of  # noqa: E402
 from tools.ch_probe.input_driver import DEFAULT_BINDINGS, InputDriver, Lane  # noqa: E402
 
 WINDOW = 0x1234
@@ -63,36 +64,59 @@ SCORE_JSON = {"chords": [
     {"index": 1, "ms": 1500.0,
      "notes": [{"color": "Kick", "cymbal": False, "dynamic": "none"}]},
 ]}
+# A hand-built schedule of SCORE_JSON's two chords, one plain press each
+# (test_play_chart._schedule_of).
+SCHEDULE_JSON = _schedule_of(SCORE_JSON)
 
-# The Mouths and Bomber fixtures test_play_chart.py reads, and the reply lines
-# they give in decline mode all_but_top_pad. The Mouths lines are the ones
-# design point 7 and task T3 of
-# docs/superpowers/plans/2026-11-07-player-refinements.md quote; the Bomber
-# squeezes and declined lines are pinned from a run of these files.
+# The schedule fixtures under tools/ch_probe/tests (hydra_replay schedule of
+# each chart, path 0) and the reply lines they give. Every number below is
+# read off the fixture file: a declined chord's `kept_gems`, a squeeze's
+# `anchor_chord`, `anchor_aim_ms`, `planned_end_ms`, `ratio`, `anchor_room_ms`
+# and `squeeze_room_ms`, and a squeeze press's `aim_ms` against its
+# `aim_end_ms` (15 ms either side of the end on every timed squeeze here).
 _PROBE_TESTS = os.path.join(_HERE, "..", "..", "ch_probe", "tests")
-MOUTHS_DECLINED = ("declined (all_but_top_pad): chords 221 (nothing sent), "
-                   "801 (kick, yellow tom), 845 (nothing sent)")
+FREAK_DECLINED = ("declined: chords 51 (kick), 103 (kick), 134 (nothing sent), "
+                  "162 (kick, blue cymbal), 196 (nothing sent), 548 (kick, blue cymbal), "
+                  "582 (kick), 959 (nothing sent), 1001 (kick)")
+FREAK_SQUEEZES = ("squeezes: chord 387 out (red 15 ms after the end), "
+                  "chord 717 in (needs no timing), "
+                  "chord 1144 out (yellow tom 15 ms after the end)")
+# Chord 263's anchor_aim_ms is -21.824, its planned_end_ms 60,554.527, both
+# rooms 26.322 (freak_limits_schedule.json).
+FREAK_ANCHORS = [
+    "chord 263 pressed 21.8 ms early for the squeeze-out at chord 387 "
+    "(end planned 60,554.5 ms, ratio 1.0000, room 26.3 ms both presses)",
+    "chord 1062 pressed 62.7 ms early for the squeeze-out at chord 1144 "
+    "(end planned 141,596.5 ms, ratio 1.0000, room 11.0 ms both presses)"]
+MOUTHS_DECLINED = "declined: chords 221 (nothing sent), 801 (kick, yellow tom), 845 (nothing sent)"
 MOUTHS_SQUEEZES = ("squeezes: chord 431 in (15 ms before the end), chord 740 out "
                    "(yellow cymbal, green cymbal 15 ms before the end; kick 15 ms after), "
                    "chord 1240 in (15 ms before the end)")
-BOMBER_DECLINED = ("declined (all_but_top_pad): chords 624 (kick), 684 (kick), "
-                   "854 (nothing sent), 874 (kick), 919 (kick)")
+# Mouths's ratios differ early and late, and chord 340's two rooms differ.
+MOUTHS_ANCHORS = [
+    "chord 340 pressed 16.6 ms late for the squeeze-in at chord 431 "
+    "(end planned 68,991.0 ms, ratio 1.0148 early, 1.0262 late, "
+    "anchor room 66.1 ms, squeeze room 52.9 ms)",
+    "chord 704 pressed 10.4 ms early for the squeeze-out at chord 740 "
+    "(end planned 118,418.3 ms, ratio 1.0287 early, 0.6207 late, room 75.3 ms both presses)",
+    "chord 1208 pressed 4.5 ms late for the squeeze-in at chord 1240 "
+    "(end planned 209,577.9 ms, ratio 0.9976 early, 0.9989 late, room 78.2 ms both presses)"]
+BOMBER_DECLINED = ("declined: chords 624 (kick), 684 (kick), 854 (nothing sent), "
+                   "874 (kick), 919 (kick)")
 BOMBER_SQUEEZES = ("squeezes: chord 180 out (red 15 ms after the end), "
-                   "chord 448 in (85.33 ms before the end)")
-BOMBER_ACTIVATION = ("activation chord 147 pressed 51.3 ms early for the squeeze-out at "
-                     "chord 180 (end planned 32,615.4 ms, ratio 1.0000)")
-# The order lines, pinned from a run of these files: the amendment after
-# LS-R1b run 1 of the same plan.
+                   "chord 448 in (needs no timing)")
+BOMBER_ANCHOR = ("chord 147 pressed 62.4 ms early for the squeeze-out at chord 180 "
+                 "(end planned 32,607.2 ms, ratio 1.0000, room 11.2 ms both presses)")
+# The start of each order line: the first split chords of the schedule's
+# presses (`after_ms` 8 on the later group). The whole line names every split
+# chord of the chart, too long to pin here.
 MOUTHS_ORDER = ("order: chords 4 (kick, then green cymbal 8 ms later), "
                 "340 (green cymbal, then kick, yellow cymbal 8 ms later), "
-                "704 (green cymbal, then kick, yellow cymbal 8 ms later), "
-                "927 (green cymbal, then kick 8 ms later), "
-                "1208 (green cymbal, then kick, yellow cymbal 8 ms later)")
+                "704 (green cymbal, then kick, yellow cymbal 8 ms later), ")
 BOMBER_ORDER = ("order: chords 147 (yellow cymbal, then kick 8 ms later), "
                 "265 (yellow cymbal, then kick 8 ms later), "
                 "412 (blue cymbal, then kick 8 ms later), "
-                "716 (blue cymbal, then kick 8 ms later), "
-                "988 (green cymbal, then kick 8 ms later)")
+                "716 (blue cymbal, then kick 8 ms later), ")
 
 
 class FakeQuiet:
@@ -690,7 +714,7 @@ class GameToolsTest(unittest.TestCase):
 
         t = ToolRig(self.tmp, live_play=live_play)
         _write(os.path.join(t.r.song, G.SONG_INI), b"[song]\nsong_length = 260504\n")
-        reply = t.tools.ch_play_chart(self._score_json(), song_folder=t.r.song, route="keys")
+        reply = t.tools.ch_play_chart(self._score_json(), self._schedule_json(),song_folder=t.r.song, route="keys")
         t.tools._play.thread.join(THREAD_CAP_S)
         self.assertEqual(seen, [320.504])
         self.assertIn("run cap: 320.504 s", reply.splitlines())
@@ -700,13 +724,13 @@ class GameToolsTest(unittest.TestCase):
             return play_chart.RunResult(stop="done", dyn_threshold=64)
 
         t = ToolRig(self.tmp, live_play=live_play)
-        t.tools.ch_play_chart(self._score_json(), route="keys")
+        t.tools.ch_play_chart(self._score_json(), self._schedule_json(),route="keys")
         t.tools._play.thread.join(THREAD_CAP_S)
         self.assertEqual(t.tools.ch_play_status().splitlines()[2], "dynamics threshold: 64")
 
     def test_the_status_prints_no_threshold_when_none_was_read(self):
         t = ToolRig(self.tmp, live_play=lambda chords, **kw: play_chart.RunResult(stop="done"))
-        t.tools.ch_play_chart(self._score_json(), route="keys")
+        t.tools.ch_play_chart(self._score_json(), self._schedule_json(),route="keys")
         t.tools._play.thread.join(THREAD_CAP_S)
         self.assertNotIn("threshold", t.tools.ch_play_status())
 
@@ -718,14 +742,14 @@ class GameToolsTest(unittest.TestCase):
             return play_chart.RunResult(stop="done", sent=2, hit=1)
 
         t = ToolRig(self.tmp, live_play=live_play)
-        t.tools.ch_play_chart(self._score_json(), route="keys")
+        t.tools.ch_play_chart(self._score_json(), self._schedule_json(),route="keys")
         t.tools._play.thread.join(THREAD_CAP_S)
         self.assertIn("first press chord index 7 at 5398.0 ms",
                       t.tools.ch_play_status().splitlines())
 
     def test_the_status_names_the_first_chord_while_the_run_goes_on(self):
         t = ToolRig(self.tmp)
-        t.tools.ch_play_chart(self._score_json(), route="keys")
+        t.tools.ch_play_chart(self._score_json(), self._schedule_json(),route="keys")
         self.assertTrue(t.live_play.delivered.wait(THREAD_CAP_S))
         self.assertIn("first press chord index 0 at 1000.0 ms",
                       t.tools.ch_play_status().splitlines())
@@ -734,7 +758,7 @@ class GameToolsTest(unittest.TestCase):
 
     def test_the_status_says_when_no_chord_was_pressed(self):
         t = ToolRig(self.tmp, live_play=lambda chords, **kw: play_chart.RunResult(stop="done"))
-        t.tools.ch_play_chart(self._score_json(), route="keys")
+        t.tools.ch_play_chart(self._score_json(), self._schedule_json(),route="keys")
         t.tools._play.thread.join(THREAD_CAP_S)
         self.assertIn("first press: none, no chord was pressed",
                       t.tools.ch_play_status().splitlines())
@@ -746,14 +770,19 @@ class GameToolsTest(unittest.TestCase):
         _write(path, json.dumps(SCORE_JSON).encode())
         return path
 
+    def _schedule_json(self) -> str:
+        path = os.path.join(self.tmp, "schedule.json")
+        _write(path, json.dumps(SCHEDULE_JSON).encode())
+        return path
+
     def test_a_second_ch_play_chart_is_refused_while_one_runs(self):
         t = ToolRig(self.tmp)
         score = self._score_json()
-        first = t.tools.ch_play_chart(score, route="keys")
+        first = t.tools.ch_play_chart(score, self._schedule_json(), route="keys")
         self.assertIn("play session started: 2 chords", first)
         self.assertIn("waiting for a moving clock (cap 120 s)", first)
         self.assertTrue(t.live_play.delivered.wait(THREAD_CAP_S))
-        self.assertEqual(t.tools.ch_play_chart(score),
+        self.assertEqual(t.tools.ch_play_chart(score, self._schedule_json()),
                          "a play session is already running; call ch_play_stop first")
         self.assertEqual(len(t.live_play.calls), 1)
         t.tools.ch_play_stop()
@@ -761,7 +790,7 @@ class GameToolsTest(unittest.TestCase):
 
     def test_ch_play_stop_sets_the_flag_and_ch_play_status_reports_the_result(self):
         t = ToolRig(self.tmp)
-        t.tools.ch_play_chart(self._score_json(), log="press.csv", route="keys")
+        t.tools.ch_play_chart(self._score_json(), self._schedule_json(),log="press.csv", route="keys")
         self.assertTrue(t.live_play.delivered.wait(THREAD_CAP_S))
         snapshot = t.tools.play_snapshot()
         self.assertEqual(snapshot, {"last_row": ROWS[-1], "press_count": 2, "stop": None})
@@ -792,7 +821,7 @@ class GameToolsTest(unittest.TestCase):
     def test_a_run_with_no_engine_reports_the_finders_message(self):
         t = ToolRig(self.tmp, live_play=lambda chords, **kw: play_chart.RunResult(
             stop=play_chart.STOP_NO_ENGINE, message="no song started within 120 s"))
-        t.tools.ch_play_chart(self._score_json(), route="keys")
+        t.tools.ch_play_chart(self._score_json(), self._schedule_json(),route="keys")
         t.tools._play.thread.join(THREAD_CAP_S)
         lines = t.tools.ch_play_status().splitlines()
         self.assertIn(f"ended: {play_chart.STOP_NO_ENGINE}", lines)
@@ -800,7 +829,7 @@ class GameToolsTest(unittest.TestCase):
 
     def test_ch_stop_tells_a_running_play_session_to_stop(self):
         t = ToolRig(self.tmp)
-        t.tools.ch_play_chart(self._score_json(), route="keys")
+        t.tools.ch_play_chart(self._score_json(), self._schedule_json(),route="keys")
         self.assertTrue(t.live_play.delivered.wait(THREAD_CAP_S))
         reply = t.tools.ch_stop()
         self.assertIn("play session told to stop", reply)
@@ -827,7 +856,7 @@ class GameToolsTest(unittest.TestCase):
             return {}
 
         t, seen = self._kit_rig(kit_press)
-        reply = t.tools.ch_play_chart(self._score_json(), route="kit")
+        reply = t.tools.ch_play_chart(self._score_json(), self._schedule_json(),route="kit")
         t.tools._play.thread.join(THREAD_CAP_S)
         self.assertIs(seen[0]["press"], kit_press)
         self.assertNotIn("driver", seen[0])
@@ -839,7 +868,7 @@ class GameToolsTest(unittest.TestCase):
             return {}
 
         t, seen = self._kit_rig(kit_press)
-        t.tools.ch_play_chart(self._score_json())
+        t.tools.ch_play_chart(self._score_json(), self._schedule_json())
         t.tools._play.thread.join(THREAD_CAP_S)
         self.assertIs(seen[-1]["press"], kit_press)
 
@@ -848,20 +877,20 @@ class GameToolsTest(unittest.TestCase):
 
     def test_no_route_is_refused_while_the_kit_is_not_set_up(self):
         t, seen = self._kit_rig(None)
-        self.assertEqual(t.tools.ch_play_chart(self._score_json()), self.NO_ROUTE_REFUSED)
+        self.assertEqual(t.tools.ch_play_chart(self._score_json(), self._schedule_json()), self.NO_ROUTE_REFUSED)
         self.assertIsNone(t.tools._play)
         self.assertEqual(seen, [])
 
     def test_no_route_is_refused_with_no_kit_tools_and_presses_no_key(self):
         t = ToolRig(self.tmp)
-        self.assertEqual(t.tools.ch_play_chart(self._score_json()), self.NO_ROUTE_REFUSED)
+        self.assertEqual(t.tools.ch_play_chart(self._score_json(), self._schedule_json()), self.NO_ROUTE_REFUSED)
         self.assertIsNone(t.tools._play)
         self.assertEqual(t.live_play.calls, [])
         self.assertEqual(t.driver.events, [])
 
     def test_route_keys_presses_keys_through_the_driver(self):
         t, seen = self._kit_rig(None)
-        reply = t.tools.ch_play_chart(self._score_json(), route="keys")
+        reply = t.tools.ch_play_chart(self._score_json(), self._schedule_json(),route="keys")
         t.tools._play.thread.join(THREAD_CAP_S)
         self.assertIs(seen[-1]["driver"], t.driver)
         self.assertNotIn("press", seen[-1])
@@ -869,40 +898,38 @@ class GameToolsTest(unittest.TestCase):
 
     def test_route_kit_without_a_kit_and_an_unknown_route_are_refused(self):
         t, seen = self._kit_rig(None)
-        self.assertEqual(t.tools.ch_play_chart(self._score_json(), route="kit"),
+        self.assertEqual(t.tools.ch_play_chart(self._score_json(), self._schedule_json(),route="kit"),
                          'route kit: the kit is not set up; call ch_kit_setup first, '
                          'or pass route="keys"')
-        self.assertEqual(t.tools.ch_play_chart(self._score_json(), route="pads"),
+        self.assertEqual(t.tools.ch_play_chart(self._score_json(), self._schedule_json(),route="pads"),
                          'unknown route "pads"; routes: kit, keys')
         self.assertIsNone(t.tools._play)
         self.assertEqual(seen, [])
 
     # -- declining a fill ---------------------------------------------------------------
 
-    # The fixture of the decline list itself is in test_play_chart.py; these
-    # two files only carry the arguments through the tool.
-    # One activation with no squeeze, on chord 0, ending past the last chord.
-    DECLINE_ACT = {"act_tick": 480, "deact_tick": 1440, "sqout_tick": -1}
-    DECLINE_SCORE = {"activations": [DECLINE_ACT], "chords": [
+    # Which gems a declined chord keeps is the schedule's (tools/
+    # replay_schedule.cpp); these tests only carry its file through the tool.
+    # A chord 1 of a kick and a green cymbal, declined in the schedule with
+    # `kept` as its kept gems.
+    DECLINE_SCORE = {"chords": [
         {"index": 0, "ms": 1000.0, "tick": 480,
          "notes": [{"color": "Red", "cymbal": False, "dynamic": "none"}]},
         {"index": 1, "ms": 1500.0, "tick": 960,
          "notes": [{"color": "Kick", "cymbal": False, "dynamic": "none"},
                    {"color": "Green", "cymbal": True, "dynamic": "none"}]},
     ]}
-    DECLINE_DUMP = {"paths": [
-        {"activations": [{**DECLINE_ACT, "sqin_ticks": [], "sqinouts": [],
-                          "skipped_fill_ticks": [960]}]},
-        {"activations": [{**DECLINE_ACT, "sqin_ticks": [], "sqinouts": [],
-                          "skipped_fill_ticks": []}]},
-    ]}
 
-    def _decline_files(self):
+    def _decline_files(self, kept=(0,)):
+        schedule = _schedule_of(self.DECLINE_SCORE)
+        if kept is not None:
+            schedule["chords"][1].update(declined=True, kept_gems=list(kept))
+            schedule["presses"][1]["gems"] = list(kept)
         score = os.path.join(self.tmp, "decline-score.json")
-        dump = os.path.join(self.tmp, "decline-dump.json")
+        path = os.path.join(self.tmp, "decline-schedule.json")
         _write(score, json.dumps(self.DECLINE_SCORE).encode())
-        _write(dump, json.dumps(self.DECLINE_DUMP).encode())
-        return score, dump
+        _write(path, json.dumps(schedule).encode())
+        return score, path
 
     def _decline_rig(self):
         seen = []
@@ -913,150 +940,152 @@ class GameToolsTest(unittest.TestCase):
 
         return ToolRig(self.tmp, live_play=live_play), seen
 
-    def test_a_decline_mode_reaches_the_chords_and_the_reply_names_them(self):
+    def test_a_declined_chord_sends_its_kept_gems_and_the_reply_names_them(self):
         t, seen = self._decline_rig()
-        score, dump = self._decline_files()
-        reply = t.tools.ch_play_chart(score, route="keys", decline_mode="kick_only",
-                                      dump_json=dump)
+        score, schedule = self._decline_files(kept=(0,))
+        reply = t.tools.ch_play_chart(score, schedule, route="keys")
         t.tools._play.thread.join(THREAD_CAP_S)
-        self.assertEqual([(c.lanes, c.declined) for c in seen[0]],
-                         [([Lane.RED], False), ([Lane.KICK], True)])
-        self.assertIn("declined (kick_only): chords 1 (kick)", reply.splitlines())
+        self.assertEqual([c.declined for c in seen[0]], [False, True])
+        self.assertEqual([p.lanes for p in seen[0][1].presses], [[Lane.KICK]])
+        self.assertIn("declined: chords 1 (kick)", reply.splitlines())
 
-    def test_mode_nothing_leaves_the_declined_chord_no_lanes(self):
+    def test_a_declined_chord_that_keeps_no_gem_says_nothing_sent(self):
         t, seen = self._decline_rig()
-        score, dump = self._decline_files()
-        reply = t.tools.ch_play_chart(score, route="keys", decline_mode="nothing",
-                                      dump_json=dump)
+        score, schedule = self._decline_files(kept=())
+        reply = t.tools.ch_play_chart(score, schedule, route="keys")
         t.tools._play.thread.join(THREAD_CAP_S)
-        self.assertEqual(seen[0][1].lanes, [])
-        self.assertIn("declined (nothing): chords 1 (nothing sent)", reply.splitlines())
+        self.assertEqual([p.lanes for p in seen[0][1].presses], [[]])
+        self.assertIn("declined: chords 1 (nothing sent)", reply.splitlines())
 
-    def test_all_but_top_pad_names_the_gems_it_sends(self):
+    def test_a_schedule_with_no_declined_chord_says_none(self):
         t, seen = self._decline_rig()
-        score, dump = self._decline_files()
-        reply = t.tools.ch_play_chart(score, route="keys", decline_mode="all_but_top_pad",
-                                      dump_json=dump)
-        t.tools._play.thread.join(THREAD_CAP_S)
-        self.assertIn("declined (all_but_top_pad): chords 1 (kick)", reply.splitlines())
-
-    def test_path_index_reaches_the_decline_list(self):
-        t, seen = self._decline_rig()
-        score, dump = self._decline_files()
-        reply = t.tools.ch_play_chart(score, route="keys", decline_mode="nothing",
-                                      dump_json=dump, path_index=1)
+        score, schedule = self._decline_files(kept=None)
+        reply = t.tools.ch_play_chart(score, schedule, route="keys")
         t.tools._play.thread.join(THREAD_CAP_S)
         self.assertEqual([c.declined for c in seen[0]], [False, False])
-        self.assertIn("declined (nothing): chords none", reply.splitlines())
-
-    def test_a_mode_other_than_the_three_names_is_refused(self):
-        t, seen = self._decline_rig()
-        score, dump = self._decline_files()
-        self.assertEqual(t.tools.ch_play_chart(score, route="keys", decline_mode="both",
-                                               dump_json=dump),
-                         'unknown decline mode "both"; modes: kick_only, nothing, all_but_top_pad')
-        self.assertIsNone(t.tools._play)
-        self.assertEqual(seen, [])
-
-    def test_a_mode_with_no_dump_is_refused(self):
-        t, seen = self._decline_rig()
-        score, _dump = self._decline_files()
-        self.assertEqual(t.tools.ch_play_chart(score, route="keys", decline_mode="nothing"),
-                         "decline mode nothing needs dump_json, the path's hydra_replay dump")
-        self.assertIsNone(t.tools._play)
-        self.assertEqual(seen, [])
-
-    def test_a_path_the_dump_does_not_have_is_refused(self):
-        t, seen = self._decline_rig()
-        score, dump = self._decline_files()
-        reply = t.tools.ch_play_chart(score, route="keys", decline_mode="nothing",
-                                      dump_json=dump, path_index=2)
-        self.assertTrue(reply.startswith("could not read the fills to decline: IndexError"), reply)
-        self.assertIsNone(t.tools._play)
-
-    def test_with_no_mode_every_chord_stays_whole(self):
-        t, seen = self._decline_rig()
-        score, dump = self._decline_files()
-        reply = t.tools.ch_play_chart(score, route="keys", dump_json=dump)
-        t.tools._play.thread.join(THREAD_CAP_S)
-        self.assertEqual([len(c.lanes) for c in seen[0]], [1, 2])
-        self.assertNotIn("declined", reply)
+        self.assertEqual([len(p.lanes) for c in seen[0] for p in c.presses], [1, 2])
+        self.assertIn("declined: chords none", reply.splitlines())
         self.assertNotIn("squeezes", reply)
 
-    def test_with_no_mode_a_dump_given_is_still_read_for_the_squeezes(self):
+    def test_decline_mode_and_dump_json_are_no_longer_arguments(self):
+        # D324 item 2 of docs/audit/2026-10-03-fix-decisions.md and question 6
+        # of docs/superpowers/plans/2026-11-08-replay-press-schedule.md: a
+        # call that still passes either fails at once.
         t, seen = self._decline_rig()
-        score, _dump = self._decline_files()
-        missing = os.path.join(self.tmp, "no such dump.json")
-        reply = t.tools.ch_play_chart(score, route="keys", dump_json=missing)
-        self.assertTrue(reply.startswith(f"could not read {score}: FileNotFoundError"), reply)
+        score, schedule = self._decline_files()
+        for extra in ({"decline_mode": "nothing"}, {"dump_json": schedule},
+                      {"path_index": 0}):
+            with self.assertRaises(TypeError):
+                t.tools.ch_play_chart(score, schedule, route="keys", **extra)
+        self.assertIsNone(t.tools._play)
+        self.assertEqual(seen, [])
+
+    def test_a_schedule_with_a_refusal_is_refused_in_its_words(self):
+        t, seen = self._decline_rig()
+        score, path = self._decline_files()
+        schedule = _schedule_of(self.DECLINE_SCORE)
+        schedule["refusals"] = ["chord 1 is two squeezes; no rule times both"]
+        _write(path, json.dumps(schedule).encode())
+        self.assertEqual(t.tools.ch_play_chart(score, path, route="keys"),
+                         f"{path} refuses to play this path: "
+                         "chord 1 is two squeezes; no rule times both")
+        self.assertIsNone(t.tools._play)
+        self.assertEqual(seen, [])
+
+    def test_a_missing_schedule_is_refused(self):
+        t, seen = self._decline_rig()
+        score, _schedule = self._decline_files()
+        missing = os.path.join(self.tmp, "no such schedule.json")
+        reply = t.tools.ch_play_chart(score, missing, route="keys")
+        self.assertTrue(reply.startswith(f"could not read {missing}: FileNotFoundError"), reply)
         self.assertIsNone(t.tools._play)
 
     # -- the squeezes, on the two fixtures of the 2026-11-07 player plan --------------
 
-    def _refine_play(self, name, decline_mode="all_but_top_pad", dump=True):
-        score = os.path.join(_PROBE_TESTS, f"{name}_refine_score.json")
-        dump_json = os.path.join(_PROBE_TESTS, f"{name}_refine_dump.json") if dump else None
+    def _refine_play(self, name):
+        score = os.path.join(_PROBE_TESTS, f"{name}_score.json")
+        schedule = os.path.join(_PROBE_TESTS, f"{name}_schedule.json")
         t, seen = self._decline_rig()
-        reply = t.tools.ch_play_chart(score, route="keys", decline_mode=decline_mode,
-                                      dump_json=dump_json)
+        reply = t.tools.ch_play_chart(score, schedule, route="keys")
         if t.tools._play is not None:
             t.tools._play.thread.join(THREAD_CAP_S)
         return reply, t
 
+    def test_the_freak_reply_names_both_anchors_off_the_schedule(self):
+        lines = self._refine_play("freak_limits")[0].splitlines()
+        start = lines.index(FREAK_DECLINED)
+        self.assertEqual(lines[start + 1:start + 4], [FREAK_SQUEEZES] + FREAK_ANCHORS)
+
     def test_the_mouths_reply_names_the_squeezes_and_the_declined_fills(self):
-        lines = self._refine_play("mouths")[0].splitlines()
-        self.assertIn(MOUTHS_DECLINED, lines)
-        self.assertIn(MOUTHS_SQUEEZES, lines)
-        self.assertEqual(lines[lines.index(MOUTHS_DECLINED) + 1], MOUTHS_SQUEEZES)
-        self.assertFalse([line for line in lines if line.startswith("activation chord")])
+        lines = self._refine_play("mouths_refine")[0].splitlines()
+        start = lines.index(MOUTHS_DECLINED)
+        self.assertEqual(lines[start + 1:start + 5], [MOUTHS_SQUEEZES] + MOUTHS_ANCHORS)
 
-    def test_the_bomber_reply_names_the_early_activation(self):
-        lines = self._refine_play("bomber")[0].splitlines()
-        self.assertIn(BOMBER_SQUEEZES, lines)
-        self.assertEqual(lines[lines.index(BOMBER_SQUEEZES) + 1], BOMBER_ACTIVATION)
-        self.assertIn(BOMBER_DECLINED, lines)
+    def test_the_bomber_reply_names_the_early_anchor(self):
+        lines = self._refine_play("bomber_refine")[0].splitlines()
+        start = lines.index(BOMBER_DECLINED)
+        self.assertEqual(lines[start + 1:start + 3], [BOMBER_SQUEEZES, BOMBER_ANCHOR])
 
-    def test_the_mouths_order_line_follows_the_squeeze_line(self):
-        mouths = self._refine_play("mouths")[0].splitlines()
-        self.assertEqual(mouths[mouths.index(MOUTHS_SQUEEZES) + 1], MOUTHS_ORDER)
+    def test_the_mouths_order_line_follows_the_anchor_lines(self):
+        lines = self._refine_play("mouths_refine")[0].splitlines()
+        line = lines[lines.index(MOUTHS_ANCHORS[-1]) + 1]
+        self.assertTrue(line.startswith(MOUTHS_ORDER), line[:200])
 
-    def test_the_bomber_order_line_follows_the_early_activation_line(self):
-        bomber = self._refine_play("bomber")[0].splitlines()
-        self.assertEqual(bomber[bomber.index(BOMBER_ACTIVATION) + 1], BOMBER_ORDER)
+    def test_the_bomber_order_line_follows_the_anchor_line(self):
+        lines = self._refine_play("bomber_refine")[0].splitlines()
+        line = lines[lines.index(BOMBER_ANCHOR) + 1]
+        self.assertTrue(line.startswith(BOMBER_ORDER), line[:200])
 
     def test_a_long_order_line_names_every_split_chord(self):
-        # Twelve made-up activation chords, a second apart, each a kick and a
-        # green cymbal.
-        acts = [{"act_tick": 192 * i, "deact_tick": 192 * i + 96} for i in range(12)]
-        chords = play_chart.load_dump_chords(self._score_file(
-            {"activations": acts, "chords": [
-                {"index": i, "tick": 192 * i, "ms": 1000.0 * (i + 1), "notes": [
-                    {"color": "Kick", "cymbal": False, "dynamic": "none"},
-                    {"color": "Green", "cymbal": True, "dynamic": "none"}]}
-                for i in range(12)]}))
-        self.assertEqual(GT.order_lines(chords),
+        # Twelve made-up chords, a second apart, each a green cymbal then a
+        # kick 8 ms later: two presses per chord, hand-built.
+        schedule = _schedule_of({"chords": [
+            {"index": i, "ms": 1000.0 * (i + 1), "notes": [
+                {"color": "Kick", "cymbal": False, "dynamic": "none"},
+                {"color": "Green", "cymbal": True, "dynamic": "none"}]}
+            for i in range(12)]})
+        presses = []
+        for press in schedule["presses"]:
+            presses.append({**press, "gems": [1]})
+            presses.append({**press, "gems": [0], "after_ms": 8.0, "aim_ms": press["aim_ms"] + 8.0})
+        schedule["presses"] = presses
+        chords, lines = GT.chords_to_play(self._schedule_file(schedule))
+        self.assertEqual(GT.order_lines(chords, schedule),
                          ["order: chords "
                           + ", ".join(f"{i} (green cymbal, then kick 8 ms later)"
                                       for i in range(12))])
+        self.assertEqual(lines, ["declined: chords none"] + GT.order_lines(chords, schedule))
 
     def test_a_chart_with_no_split_chord_gives_no_order_line(self):
-        chords = play_chart.load_dump_chords(self._score_file({"chords": [
-            {"index": 0, "tick": 0, "ms": 1000.0, "notes": [
+        schedule = _schedule_of({"chords": [
+            {"index": 0, "ms": 1000.0, "notes": [
                 {"color": "Kick", "cymbal": False, "dynamic": "none"},
-                {"color": "Green", "cymbal": True, "dynamic": "none"}]}]}))
-        self.assertEqual(GT.order_lines(chords), [])
+                {"color": "Green", "cymbal": True, "dynamic": "none"}]}]})
+        chords, _lines = GT.chords_to_play(self._schedule_file(schedule))
+        self.assertEqual(GT.order_lines(chords, schedule), [])
 
-    def _score_file(self, score):
-        path = os.path.join(self.tmp, "order score.json")
+    def _schedule_file(self, schedule):
+        path = os.path.join(self.tmp, "order schedule.json")
         with open(path, "w", encoding="utf-8") as f:
-            json.dump(score, f)
+            json.dump(schedule, f)
         return path
 
-    def test_a_squeeze_out_with_no_dump_json_is_refused_naming_it(self):
-        reply, t = self._refine_play("mouths", decline_mode=None, dump=False)
-        self.assertTrue(reply.startswith("could not read "), reply)
-        self.assertIn("pass dump_json", reply)
+    def test_an_infeasible_squeeze_is_refused_naming_it(self):
+        # Freak's schedule with its first squeeze marked not feasible:
+        # load_schedule's refusal comes back whole, and no run starts.
+        with open(os.path.join(_PROBE_TESTS, "freak_limits_schedule.json"),
+                  encoding="utf-8") as f:
+            schedule = json.load(f)
+        schedule["activations"][0]["squeezes"][0]["feasible"] = False
+        path = self._schedule_file(schedule)
+        t, seen = self._decline_rig()
+        reply = t.tools.ch_play_chart(os.path.join(_PROBE_TESTS, "freak_limits_score.json"),
+                                      path, route="keys")
+        self.assertTrue(reply.startswith(
+            f"{path} holds a squeeze the game cannot make at 100% speed: chord 387 "
+            "(activation 0, SqOut, "), reply)
         self.assertIsNone(t.tools._play)
+        self.assertEqual(seen, [])
 
     def test_the_status_says_presses_and_chords_when_a_chord_is_split(self):
         # Two press rows of chord 740, as press_plan splits it.
@@ -1068,7 +1097,7 @@ class GameToolsTest(unittest.TestCase):
             return play_chart.RunResult(stop="done", sent=2, hit=2, max_streak=2)
 
         t = ToolRig(self.tmp, live_play=live_play)
-        t.tools.ch_play_chart(self._score_json(), route="keys")
+        t.tools.ch_play_chart(self._score_json(), self._schedule_json(),route="keys")
         t.tools._play.thread.join(THREAD_CAP_S)
         self.assertIn("sent 2 presses for 1 chord, hit 2, misses 0, best streak 2",
                       t.tools.ch_play_status().splitlines())
@@ -1085,7 +1114,7 @@ class GameToolsTest(unittest.TestCase):
                                         rows=list(rows))
 
         t = ToolRig(self.tmp, live_play=live_play)
-        t.tools.ch_play_chart(self._score_json(), route="keys")
+        t.tools.ch_play_chart(self._score_json(), self._schedule_json(),route="keys")
         t.tools._play.thread.join(THREAD_CAP_S)
         lines = t.tools.ch_play_status().splitlines()
         self.assertIn("sent 1 messages (2 presses) for 1 chord, hit 1, misses 0, best streak 1",
@@ -1094,11 +1123,6 @@ class GameToolsTest(unittest.TestCase):
 
     def test_every_lane_has_a_word_in_the_reply(self):
         self.assertEqual(set(GT._LANE_WORDS), set(Lane))
-
-    def test_ch_play_chart_has_no_lead_argument(self):
-        self.assertEqual(list(inspect.signature(GT.GameTools.ch_play_chart).parameters),
-                         ["self", "score_json", "log", "song_folder", "route", "decline_mode",
-                          "dump_json", "path_index"])
 
     def test_the_status_counts_a_declined_chord_apart_from_the_misses(self):
         row = {**ROWS[1], "hit": play_chart.DECLINED}
@@ -1109,7 +1133,7 @@ class GameToolsTest(unittest.TestCase):
             return play_chart.RunResult(stop="done", sent=1, hit=1, declined=1, max_streak=1)
 
         t = ToolRig(self.tmp, live_play=live_play)
-        t.tools.ch_play_chart(self._score_json(), route="keys")
+        t.tools.ch_play_chart(self._score_json(), self._schedule_json(),route="keys")
         t.tools._play.thread.join(THREAD_CAP_S)
         lines = t.tools.ch_play_status().splitlines()
         self.assertIn("sent 1, hit 1, misses 0, best streak 1, declined 1", lines)
@@ -1127,7 +1151,7 @@ class GameToolsTest(unittest.TestCase):
 
         delivered = threading.Event()
         t = ToolRig(self.tmp, live_play=live_play)
-        t.tools.ch_play_chart(self._score_json(), route="keys")
+        t.tools.ch_play_chart(self._score_json(), self._schedule_json(),route="keys")
         self.assertTrue(delivered.wait(THREAD_CAP_S))
         self.assertIn("running: 1 presses so far, 0 hit", t.tools.ch_play_status())
         release.set()
@@ -1143,7 +1167,7 @@ class GameToolsTest(unittest.TestCase):
 
         t = ToolRig(self.tmp, live_play=live_play)
         t.tools.use_kit_press(lambda: (lambda lanes: {}))
-        t.tools.ch_play_chart(self._score_json())
+        t.tools.ch_play_chart(self._score_json(), self._schedule_json())
         t.tools._play.thread.join(THREAD_CAP_S)
         lines = t.tools.ch_play_status().splitlines()
         self.assertEqual(lines[-2:], [
@@ -1207,8 +1231,9 @@ class GameToolsTest(unittest.TestCase):
                                           self.ChainSp(events, engine)))
         return t, events, seen
 
-    def _run(self, t, score=None, **kw):
-        reply = t.tools.ch_run_chart(t.r.song, score or self._score_json(), "System", **kw)
+    def _run(self, t, score=None, schedule=None, **kw):
+        reply = t.tools.ch_run_chart(t.r.song, score or self._score_json(),
+                                     schedule or self._schedule_json(), "System", **kw)
         if t.tools._play is not None:
             t.tools._play.thread.join(THREAD_CAP_S)
         return reply
@@ -1254,7 +1279,10 @@ class GameToolsTest(unittest.TestCase):
                          ["attach", "kit setup", "watch", "machine recorder", "play"])
         self.assertIn(f"engine {self.ENGINE:#x}, csv: w.csv", lines[2])
         self.assertEqual(lines[-1], "first press chord index 0 at 1000.0 ms")
-        self.assertEqual(len(lines), 7)
+        # The five parts, the schedule's declined line, the press log's line
+        # and the first press.
+        self.assertEqual(lines[5], "declined: chords none")
+        self.assertEqual(len(lines), 8)
         self.assertEqual(lines[3], "machine recorder: none; this run is not recorded")
 
     # -- the press log file -------------------------------------------------------------
@@ -1311,7 +1339,7 @@ class GameToolsTest(unittest.TestCase):
             return play_chart.RunResult(stop="done", sent=1, hit=1)
 
         t, _events, _seen = self._chain_rig(live_play)
-        t.tools.ch_run_chart(t.r.song, self._score_json(), "System")
+        t.tools.ch_run_chart(t.r.song, self._score_json(), self._schedule_json(), "System")
         log = t.tools._play.log_path
         self.assertEqual(t.tools.ch_play_status().splitlines()[0], f"press log: {log}")
         release.set()
@@ -1330,7 +1358,7 @@ class GameToolsTest(unittest.TestCase):
             return play_chart.RunResult(stop="done", sent=1, hit=1)
 
         t = ToolRig(self.tmp, live_play=live_play)
-        t.tools.ch_play_chart(self._score_json(), log=path, route="keys")
+        t.tools.ch_play_chart(self._score_json(), self._schedule_json(),log=path, route="keys")
         t.tools._play.thread.join(THREAD_CAP_S)
         self.assertEqual(seen, [1])
 
@@ -1343,14 +1371,14 @@ class GameToolsTest(unittest.TestCase):
         t = ToolRig(self.tmp, live_play=live_play)
         path = os.path.join(self.tmp, "named.csv")
         for _ in range(2):
-            t.tools.ch_play_chart(self._score_json(), log=path, route="keys")
+            t.tools.ch_play_chart(self._score_json(), self._schedule_json(),log=path, route="keys")
             t.tools._play.thread.join(THREAD_CAP_S)
         self.assertEqual(len(self._log_table(path)), 3)
 
     def test_a_run_with_no_press_leaves_a_file_with_the_header(self):
         t = ToolRig(self.tmp, live_play=lambda chords, **kw: play_chart.RunResult(stop="done"))
         path = os.path.join(self.tmp, "named.csv")
-        t.tools.ch_play_chart(self._score_json(), log=path, route="keys")
+        t.tools.ch_play_chart(self._score_json(), self._schedule_json(),log=path, route="keys")
         t.tools._play.thread.join(THREAD_CAP_S)
         self.assertEqual(self._log_table(path), [list(PRESS_LOG_COLUMNS)])
 
@@ -1367,7 +1395,7 @@ class GameToolsTest(unittest.TestCase):
         t = ToolRig(self.tmp, live_play=live_play)
         with mock.patch.object(play_chart, "append_press_row",
                                side_effect=PermissionError("held open")) as append:
-            t.tools.ch_play_chart(self._score_json(), log=path, route="keys")
+            t.tools.ch_play_chart(self._score_json(), self._schedule_json(),log=path, route="keys")
             t.tools._play.thread.join(THREAD_CAP_S)
         self.assertEqual(append.call_count, 1)
         self.assertEqual(said, [f"press log not written to {path}: held open"])
@@ -1383,7 +1411,7 @@ class GameToolsTest(unittest.TestCase):
             return play_chart.RunResult(stop="done", sent=1, hit=1)
 
         t = ToolRig(self.tmp, live_play=live_play)
-        t.tools.ch_play_chart(self._score_json(), log=path, route="keys")
+        t.tools.ch_play_chart(self._score_json(), self._schedule_json(),log=path, route="keys")
         t.tools._play.thread.join(THREAD_CAP_S)
         lines = t.tools.ch_play_status().splitlines()
         self.assertTrue(lines[0].startswith(f"press log not written to {path}: "), lines[0])
@@ -1391,7 +1419,7 @@ class GameToolsTest(unittest.TestCase):
 
     def test_with_no_log_the_status_opens_with_the_session_line(self):
         t = ToolRig(self.tmp, live_play=lambda chords, **kw: play_chart.RunResult(stop="done"))
-        t.tools.ch_play_chart(self._score_json(), route="keys")
+        t.tools.ch_play_chart(self._score_json(), self._schedule_json(),route="keys")
         t.tools._play.thread.join(THREAD_CAP_S)
         self.assertTrue(t.tools.ch_play_status().startswith("play session: "))
 
@@ -1413,7 +1441,7 @@ class GameToolsTest(unittest.TestCase):
             return play_chart.RunResult(stop="done")
 
         t, _events, _seen = self._chain_rig(live_play)
-        reply = t.tools.ch_run_chart(t.r.song, self._score_json(), "System")
+        reply = t.tools.ch_run_chart(t.r.song, self._score_json(), self._schedule_json(), "System")
         self.assertIn("first press chord index 0", reply)
         self.assertTrue(t.tools._play.running())
         release.set()
@@ -1421,53 +1449,49 @@ class GameToolsTest(unittest.TestCase):
 
     def test_a_decline_reaches_the_chords_and_the_reply_names_them(self):
         t, _events, seen = self._chain_rig()
-        score, dump = self._decline_files()
-        reply = self._run(t, score, decline_mode="kick_only", dump_json=dump)
-        self.assertEqual([(c.lanes, c.declined) for c in seen["chords"]],
-                         [([Lane.RED], False), ([Lane.KICK], True)])
-        self.assertIn("declined (kick_only): chords 1 (kick)", reply.splitlines())
+        score, schedule = self._decline_files(kept=(0,))
+        reply = self._run(t, score, schedule)
+        self.assertEqual([c.declined for c in seen["chords"]], [False, True])
+        self.assertEqual([p.lanes for p in seen["chords"][1].presses], [[Lane.KICK]])
+        self.assertIn("declined: chords 1 (kick)", reply.splitlines())
 
     def _refine_run_lines(self, name):
         """The reply lines after the play's line of a chained run of a fixture."""
         t, _events, _seen = self._chain_rig()
-        lines = self._run(t, os.path.join(_PROBE_TESTS, f"{name}_refine_score.json"),
-                          decline_mode="all_but_top_pad",
-                          dump_json=os.path.join(_PROBE_TESTS, f"{name}_refine_dump.json"))
+        lines = self._run(t, os.path.join(_PROBE_TESTS, f"{name}_score.json"),
+                          os.path.join(_PROBE_TESTS, f"{name}_schedule.json"))
         lines = lines.splitlines()
         start = next(i for i, line in enumerate(lines) if line.startswith("play: ok"))
         return lines[start + 1:]
 
     def test_the_mouths_run_reply_names_its_squeezes_after_the_declined_line(self):
-        lines = self._refine_run_lines("mouths")
-        self.assertEqual(lines[:3], [MOUTHS_DECLINED, MOUTHS_SQUEEZES, MOUTHS_ORDER])
-        self.assertTrue(lines[3].startswith("press log: "), lines[3])
+        lines = self._refine_run_lines("mouths_refine")
+        self.assertEqual(lines[:5], [MOUTHS_DECLINED, MOUTHS_SQUEEZES] + MOUTHS_ANCHORS)
+        self.assertTrue(lines[5].startswith(MOUTHS_ORDER), lines[5][:200])
+        self.assertTrue(lines[6].startswith("press log: "), lines[6])
 
-    def test_the_bomber_run_reply_names_its_early_activation(self):
-        lines = self._refine_run_lines("bomber")
-        self.assertEqual(lines[:4], [BOMBER_DECLINED, BOMBER_SQUEEZES, BOMBER_ACTIVATION,
-                                     BOMBER_ORDER])
+    def test_the_freak_run_reply_names_its_anchors(self):
+        lines = self._refine_run_lines("freak_limits")
+        self.assertEqual(lines[:4], [FREAK_DECLINED, FREAK_SQUEEZES] + FREAK_ANCHORS)
+
+    def test_the_bomber_run_reply_names_its_early_anchor(self):
+        lines = self._refine_run_lines("bomber_refine")
+        self.assertEqual(lines[:3], [BOMBER_DECLINED, BOMBER_SQUEEZES, BOMBER_ANCHOR])
+        self.assertTrue(lines[3].startswith(BOMBER_ORDER), lines[3][:200])
         self.assertTrue(lines[4].startswith("press log: "), lines[4])
 
-    def test_a_squeeze_out_with_no_dump_json_stops_before_the_attach(self):
+    def test_decline_mode_and_dump_json_are_not_run_arguments(self):
         t, events, _seen = self._chain_rig()
-        reply = self._run(t, os.path.join(_PROBE_TESTS, "mouths_refine_score.json"))
-        self.assertTrue(reply.startswith("could not read "), reply)
-        self.assertIn("pass dump_json", reply)
+        for extra in ({"decline_mode": "nothing"}, {"dump_json": "d.json"}):
+            with self.assertRaises(TypeError):
+                self._run(t, **extra)
         self.assertEqual(events, [])
 
-    def test_bad_decline_arguments_stop_before_the_attach(self):
+    def test_a_schedule_it_cannot_read_stops_before_the_attach(self):
         t, events, _seen = self._chain_rig()
-        score, _dump = self._decline_files()
-        self.assertEqual(self._run(t, score, decline_mode="nothing"),
-                         "decline mode nothing needs dump_json, the path's hydra_replay dump")
-        self.assertEqual(self._run(t, score, decline_mode="both", dump_json="d.json"),
-                         'unknown decline mode "both"; modes: kick_only, nothing, all_but_top_pad')
-        self.assertEqual(events, [])
-
-    def test_a_score_file_it_cannot_read_stops_before_the_attach(self):
-        t, events, _seen = self._chain_rig()
-        reply = self._run(t, os.path.join(self.tmp, "none.json"))
-        self.assertTrue(reply.startswith("could not read "), reply)
+        missing = os.path.join(self.tmp, "none.json")
+        reply = self._run(t, schedule=missing)
+        self.assertTrue(reply.startswith(f"could not read {missing}: FileNotFoundError"), reply)
         self.assertEqual(events, [])
 
     def test_a_failed_attach_stops_there_and_tears_nothing_down(self):
@@ -1522,7 +1546,7 @@ class GameToolsTest(unittest.TestCase):
 
         t, events, _seen = self._chain_rig(live_play)
         with mock.patch.object(GT, "run_cap_s", return_value=0.05):
-            reply = t.tools.ch_run_chart(t.r.song, self._score_json(), "System")
+            reply = t.tools.ch_run_chart(t.r.song, self._score_json(), self._schedule_json(), "System")
         self.assertIn("no press inside the run cap of 0.05 s; the call stopped the run", reply)
         self.assertEqual(events[-2:], ["teardown", "watch stop"])
         self.assertFalse(t.tools._play.running())
@@ -1556,9 +1580,9 @@ class GameToolsTest(unittest.TestCase):
             return play_chart.RunResult(stop="done")
 
         t, events, _seen = self._chain_rig(live_play)
-        t.tools.ch_run_chart(t.r.song, self._score_json(), "System")
+        t.tools.ch_run_chart(t.r.song, self._score_json(), self._schedule_json(), "System")
         events.clear()
-        self.assertEqual(t.tools.ch_run_chart(t.r.song, self._score_json(), "System"),
+        self.assertEqual(t.tools.ch_run_chart(t.r.song, self._score_json(), self._schedule_json(), "System"),
                          GT.PLAY_ALREADY_RUNNING)
         self.assertEqual(events, [])
         release.set()
@@ -1573,14 +1597,23 @@ class GameToolsTest(unittest.TestCase):
         check.assert_not_called()
         self.assertEqual(fake.calls, [])
 
-    def test_the_tool_has_no_lead_argument(self):
-        self.assertEqual(list(inspect.signature(GT.GameTools.ch_run_chart).parameters),
-                         ["self", "song_folder", "score_json", "kit_player", "decline_mode",
-                          "dump_json"])
+    def test_the_tools_take_schedule_json_and_no_dump_json(self):
+        # Question 6 (a) of docs/superpowers/plans/2026-11-08-replay-press-
+        # schedule.md and D324 item 2: schedule_json replaces dump_json, and
+        # no decline mode, path index or lead is an argument.
+        signatures = {name: list(inspect.signature(getattr(GT.GameTools, name)).parameters)
+                      for name in ("ch_play_chart", "ch_run_chart", "ch_edge_probe")}
+        self.assertEqual(signatures, {
+            "ch_play_chart": ["self", "score_json", "schedule_json", "log", "song_folder",
+                              "route"],
+            "ch_run_chart": ["self", "song_folder", "score_json", "schedule_json",
+                             "kit_player"],
+            "ch_edge_probe": ["self", "song_folder", "score_json", "schedule_json",
+                              "probes_json"]})
 
     def test_with_no_parts_handed_in_it_refuses_and_touches_nothing(self):
         t = ToolRig(self.tmp)
-        self.assertTrue(t.tools.ch_run_chart(t.r.song, self._score_json()).startswith("refused:"))
+        self.assertTrue(t.tools.ch_run_chart(t.r.song, self._score_json(), self._schedule_json()).startswith("refused:"))
         self.assertIsNone(t.tools._play)
 
     def test_foreground_line_is_the_watchs_line_or_none(self):
@@ -2244,7 +2277,10 @@ class RecorderTest(unittest.TestCase):
         score = os.path.join(self._tmp.name, "score.json")
         with open(score, "w", encoding="utf-8") as f:
             json.dump(SCORE_JSON, f)
-        reply = self.t.tools.ch_run_chart(self.t.r.song, score, "System")
+        schedule = os.path.join(self._tmp.name, "schedule.json")
+        with open(schedule, "w", encoding="utf-8") as f:
+            json.dump(SCHEDULE_JSON, f)
+        reply = self.t.tools.ch_run_chart(self.t.r.song, score, schedule, "System")
         self.t.tools._play.thread.join(THREAD_CAP_S)
         return reply
 
@@ -2527,12 +2563,6 @@ class AtexitFactTest(unittest.TestCase):
         self.assertTrue(os.path.exists(self.flag))
 
 
-def _leads_stub(*leads):
-    """A patch that makes play_chart.activation_leads return `leads`, for
-    made-up chords whose files carry no end_scale_* to solve a lead from."""
-    return mock.patch.object(play_chart, "activation_leads", lambda chords: list(leads))
-
-
 class PlayerLimitsLinesTest(unittest.TestCase):
     """The reply lines and the edge probe of the 2026-11-07 player-limits
     plan, task T4: design points 1, 8 and 9."""
@@ -2549,45 +2579,47 @@ class PlayerLimitsLinesTest(unittest.TestCase):
 
     # -- the activation lead line -------------------------------------------------------
 
-    def test_the_lead_line_reads_as_the_plan_gives_it(self):
-        out = play_chart.Chord(931, 186404.8, [Lane.KICK], ["none"],
-                               squeeze=play_chart.Squeeze(play_chart.SQUEEZE_OUT, 186408.0, 820))
-        self.assertEqual(
-            GT.activation_lead_lines(
-                [out], [play_chart.ActLead(820, 931, "early", 58.82, 186348.9, 1.0045)]),
-            ["activation chord 820 pressed 58.8 ms early for the squeeze-out at chord 931 "
-             "(end planned 186,348.9 ms, ratio 1.0045)"])
+    # -- the anchor line -----------------------------------------------------------------
 
-    def test_a_late_lead_names_the_squeeze_in(self):
-        late = play_chart.Chord(77, 5000.0, [Lane.RED], ["none"],
-                                squeeze=play_chart.Squeeze(play_chart.SQUEEZE_IN, 4919.4, 70))
-        self.assertEqual(
-            GT.activation_lead_lines(
-                [late], [play_chart.ActLead(70, 77, "late", 33.4, 4952.8, 1.0)]),
-            ["activation chord 70 pressed 33.4 ms late for the squeeze-in at chord 77 "
-             "(end planned 4,952.8 ms, ratio 1.0000)"])
+    def _squeeze(self, **fields):
+        # A hand-built timed squeeze of the schedule's shape; the numbers are
+        # test inputs.
+        return {"chord": 931, "kind": "SqOut", "needs_no_timing": False, "feasible": True,
+                "anchor_chord": 820, "anchor_aim_ms": -58.82, "planned_end_ms": 186348.9,
+                "ratio": {"early": 1.0045, "late": 1.0045},
+                "anchor_room_ms": 20.04, "squeeze_room_ms": 20.04, **fields}
 
-    def _bomber_lines(self):
-        return GT.chords_to_play(os.path.join(_PROBE_TESTS, "bomber_refine_score.json"),
-                                 "all_but_top_pad",
-                                 os.path.join(_PROBE_TESTS, "bomber_refine_dump.json"))[1]
+    def test_the_anchor_line_reads_every_number_off_the_squeeze(self):
+        doc = {"activations": [{"squeezes": [self._squeeze()]}]}
+        self.assertEqual(GT.anchor_lines(doc), [
+            "chord 820 pressed 58.8 ms early for the squeeze-out at chord 931 "
+            "(end planned 186,348.9 ms, ratio 1.0045, room 20.0 ms both presses)"])
 
-    def test_the_bomber_lead_line_follows_the_squeeze_line(self):
-        lines = self._bomber_lines()
-        self.assertEqual(lines[lines.index(BOMBER_SQUEEZES) + 1], BOMBER_ACTIVATION)
+    def test_a_late_anchor_names_the_squeeze_in_and_each_ratio_and_room(self):
+        doc = {"activations": [{"squeezes": [self._squeeze(
+            chord=77, kind="SqIn", anchor_chord=70, anchor_aim_ms=33.4, planned_end_ms=4952.8,
+            ratio={"early": 0.99, "late": 1.0}, anchor_room_ms=40.0, squeeze_room_ms=12.5)]}]}
+        self.assertEqual(GT.anchor_lines(doc), [
+            "chord 70 pressed 33.4 ms late for the squeeze-in at chord 77 "
+            "(end planned 4,952.8 ms, ratio 0.9900 early, 1.0000 late, "
+            "anchor room 40.0 ms, squeeze room 12.5 ms)"])
 
-    def test_planned_ends_are_the_stored_end_press_plan_puts_on_the_activation(self):
-        # Chord 5's activation stores 994 (a lead moved it); chord 7's stores
-        # 1980, which is not the end its squeeze is timed against (1990).
-        ends = {5: play_chart.ActEnd(None, stored_end_ms=994.0),
-                7: play_chart.ActEnd(None, stored_end_ms=1980.0)}
-        chords = [play_chart.Chord(5, 900.0, [Lane.KICK], ["none"], act_end=ends[5]),
-                  play_chart.Chord(6, 1000.0, [Lane.KICK], ["none"],
-                                   squeeze=play_chart.Squeeze(play_chart.SQUEEZE_IN, 990.0, 5)),
-                  play_chart.Chord(7, 1900.0, [Lane.KICK], ["none"], act_end=ends[7]),
-                  play_chart.Chord(8, 2000.0, [Lane.KICK], ["none"],
-                                   squeeze=play_chart.Squeeze(play_chart.SQUEEZE_IN, 1990.0, 7))]
-        self.assertEqual(GT.planned_ends(chords), {5: 994.0, 7: 1980.0})
+    def test_a_squeeze_that_needs_no_timing_has_no_anchor_line(self):
+        doc = {"activations": [{"squeezes": [{"chord": 717, "kind": "SqIn",
+                                              "needs_no_timing": True, "feasible": True}]}]}
+        self.assertEqual(GT.anchor_lines(doc), [])
+
+    def test_the_planned_ends_are_the_schedules_on_each_chord_read_after(self):
+        # Freak reads its first activation's end after chords 232 and 263
+        # (each chord's `reads` in freak_limits_schedule.json).
+        chords, _lines = GT.chords_to_play(os.path.join(_PROBE_TESTS,
+                                                        "freak_limits_schedule.json"))
+        t = ToolRig(self.tmp, live_play=lambda chords, **kw: play_chart.RunResult(stop="done"))
+        play = GT._PlaySession(score_json="s.json", chord_count=len(chords), log_path=None)
+        t.tools._start_play(play, chords)
+        play.thread.join(THREAD_CAP_S)
+        self.assertEqual(play.planned_ends[232], 57933.88726341159)
+        self.assertEqual(play.planned_ends[263], 60554.52732830211)
 
     # -- the read end and the points between presses ---------------------------------------
 
@@ -2597,8 +2629,8 @@ class PlayerLimitsLinesTest(unittest.TestCase):
                 {**ROWS[1], "index": 900, "end_read_ms": ""},
                 {**ROWS[1], "index": 1000, "end_read_ms": "no activation read"}]
         self.assertEqual(GT.activation_end_lines(rows, {820: 186349.0, 1000: 200000.0}), [
-            "activation chord 820: end planned 186,349.0 ms, game 186,352.1 ms (3.1 later)",
-            "activation chord 1000: end planned 200,000.0 ms, game end not read "
+            "end read after chord 820: end planned 186,349.0 ms, game 186,352.1 ms (3.1 later)",
+            "end read after chord 1000: end planned 200,000.0 ms, game end not read "
             "(no activation read)"])
 
     def test_rows_without_the_new_columns_give_no_lines(self):
@@ -2635,11 +2667,15 @@ class PlayerLimitsLinesTest(unittest.TestCase):
             return play_chart.RunResult(stop="done", sent=2, hit=1)
 
         t = ToolRig(self.tmp, live_play=live_play)
-        with mock.patch.object(GT, "planned_ends", lambda chords: {0: 1000.0}):
-            t.tools.ch_play_chart(self._json("score.json", SCORE_JSON), route="keys")
+        # The game's end is read after chord 0, planned at a hand-picked 1000.
+        schedule = _schedule_of(SCORE_JSON)
+        schedule["chords"][0]["reads"] = [{"activation": 0, "planned_end_ms": 1000.0,
+                                           "stored_end_ms": 1000.0}]
+        t.tools.ch_play_chart(self._json("score.json", SCORE_JSON),
+                              self._json("schedule.json", schedule), route="keys")
         t.tools._play.thread.join(THREAD_CAP_S)
         lines = t.tools.ch_play_status().splitlines()
-        self.assertIn("activation chord 0: end planned 1,000.0 ms, game 1,003.1 ms (3.1 later)",
+        self.assertIn("end read after chord 0: end planned 1,000.0 ms, game 1,003.1 ms (3.1 later)",
                       lines)
         self.assertIn("scored between presses: 40 unexplained before chord 1", lines)
 
@@ -2664,6 +2700,7 @@ class PlayerLimitsLinesTest(unittest.TestCase):
 
     def _probe(self, t, probes):
         reply = t.tools.ch_edge_probe(t.r.song, self._json("score.json", SCORE_JSON),
+                                      self._json("schedule.json", SCHEDULE_JSON),
                                       self._json("probes.json", probes))
         if t.tools._play is not None:
             t.tools._play.thread.join(THREAD_CAP_S)
@@ -2679,8 +2716,8 @@ class PlayerLimitsLinesTest(unittest.TestCase):
         self.assertAlmostEqual(rows[1]["chart_ms"] - rows[1]["clock_ms_at_press"], -60.0)
         self.assertEqual(rows[1]["probe"], -60.0)
         self.assertNotIn("probe", rows[0])
-        self.assertAlmostEqual(rows[0]["chart_ms"] - rows[0]["clock_ms_at_press"],
-                               play_chart.PRESS_LEAD_MS)
+        # SCHEDULE_JSON's hand-picked aim of 2 ms early (_schedule_of).
+        self.assertAlmostEqual(rows[0]["chart_ms"] - rows[0]["clock_ms_at_press"], 2.0)
         self.assertIn("probe chord 1: asked 60.00 ms late, pressed 60.00 ms late, hit",
                       t.tools.ch_play_status().splitlines())
 
@@ -2703,10 +2740,6 @@ class PlayerLimitsLinesTest(unittest.TestCase):
         self.assertEqual(self._probe(t, [{"index": 1, "lead_ms": 80}]),
                          "refused: the kit is not set up; call ch_kit_setup first")
         self.assertIsNone(t.tools._play)
-
-    def test_the_probe_tool_takes_the_plans_three_arguments(self):
-        self.assertEqual(list(inspect.signature(GT.GameTools.ch_edge_probe).parameters),
-                         ["self", "song_folder", "score_json", "probes_json"])
 
     def test_no_play_tool_takes_a_lead_argument(self):
         # The lead is press_plan's (and a probe file's), never a tool argument.
@@ -2735,8 +2768,10 @@ class DroppedStatusTest(unittest.TestCase):
                 on_press(row)
             return result
 
+        schedule = os.path.join(self.tmp, "schedule.json")
+        _write(schedule, json.dumps(SCHEDULE_JSON).encode())
         t = ToolRig(self.tmp, live_play=live_play)
-        t.tools.ch_play_chart(score, route="keys")
+        t.tools.ch_play_chart(score, schedule, route="keys")
         t.tools._play.thread.join(THREAD_CAP_S)
         return t.tools.ch_play_status().splitlines()
 
