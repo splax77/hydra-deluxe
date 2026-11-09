@@ -57,13 +57,13 @@ These counts were taken from the pages on 2026-11-08, by counting their `###` he
 | 01 reading a chart | 53 | 26 | 4 | 8 | 15 |
 | 02 note list | 73 | 47 | 3 | 2 | 21 |
 | 03 timing | 52 | 30 | 7 | 5 | 10 |
-| 04 fills | 45 | 32 | 2 | 4 | 7 |
+| 04 fills | 45 | 33 | 2 | 4 | 6 |
 | 05 Star Power | 47 | 23 | 4 | 9 | 11 |
 | 06 scoring | 38 | 17 | 13 | 2 | 6 |
 | 07 internals | 92 | 50 | 16 | 0 | 26 |
-| All pages | 400 | 225 | 49 | 30 | 96 |
+| All pages | 400 | 226 | 49 | 30 | 95 |
 
-Eleven of page 4's blocks describe build 1.0. The questions page holds 24 open questions, and the live-checks page holds 70 checks covering 75 rows.
+Eleven of page 4's blocks describe build 1.0. The questions page holds 23 open questions, and the live-checks page holds 70 checks covering 75 rows.
 
 ## Names in obfuscated code
 

@@ -77,15 +77,15 @@ Hydra: `place_authored_fills` in src/parse/song.cpp lines 379 to 387 drop the fi
 Ruling: D30: "Clone Hero's unbounded one-side fallback (B2) is not adopted." It does not say which chord the game takes on this side, but Hydra drops the fill on both sides, so the ruling covers it.
 Found: 2026-10-30, session b02ab3e6 (the reference build).
 
-### FL-08 What the written fill's skip byte means
+### FL-08 A written fill that starts on or after the coda never lands
 
-Rule: What the byte at a written fill's `+0x20` means, and what sets it, is not known.
-Label: Unknown
-Evidence: it is read only at `code/6142/fill_to_activation_20CFF60.asm` line 86; the constructor-like method `0x20FB9A0` that the add-fill method calls was not read.
-Game code (6142): not found: looked in the eight fill listings under `code/6142/` (`plain_drums_20EFEE0`, `fold_20F16E0`, `fill_to_activation_20CFF60`, `nearest_chord_5DE030`, `fill_generator_20D2B30`, `fill_deadline_20DDB70`, `grid_restart_20DACA0` and `add_fill_215BD50`) and in `docs/audit/ch-evidence.md`.
-Hydra: no owner: Hydra's written fill has no such field.
-Ruling: none found
-Found: 2026-10-30, session b02ab3e6 (the reference build).
+Rule: A written fill's one own field, the byte at `+0x20`, says the fill is skipped. The track finish sets it to "fill start >= the tick of the chart's first coda event", and the landing step passes over a fill whose byte is set. So a fill that starts exactly on the coda tick is skipped, a fill that starts one tick earlier lands, and a chart with no coda event skips nothing. In both formats the coda is read before any track finish runs.
+Label: Proven in the game's code
+Evidence: The skip: `code/6142/fill_skip_from_coda_215DA70.asm` lines 20 to 24 (no coda, no change) and 46 to 55 (line 54 is `setge`, line 55 stores the byte). The landing step's test: `code/6142/fill_to_activation_20CFF60.asm` lines 86 and 87. The byte is the fill's only own field: `code/6142/fill_init_20FB9A0.asm` line 4, and its `.md`. The `.mid` coda: `code/6142/mid_events_coda_21544E0.asm` line 98 trims the event text, lines 245 to 297 compare the trimmed text whole with `[coda]` and then `coda` (an ordinal, case-sensitive SequenceEqual, so `[CODA]` does not count), line 300 skips a second coda, and lines 310 and 312 build and store the first. The `.mid` reader `0x2155C00` reads the events track before the drum tracks (`docs/audit/note-shuffle/step0/open1/midi_reader_2155C00.asm` line 190 calls `0x21544E0`, line 526 calls the drum reader), so the coda is set before the skip runs. The `.chart` coda: the `[Events]` reader 0x2151830 (`code/6142/events_section_2151830.asm`; the dump lists no method at that address) trims the quoted text of an `E` line, takes off one `[ ]` pair, compares it exactly with `coda`, and stores only the first (the null test at line 668, the constructor at line 677, the store at line 679). The `.chart` loader `0x2161A80` parses every section first (`code/6142/chart_loader_2161a80.asm` line 148 calls the section loop, which sends `Events` to 0x2151830 at `code/6142/section_loop_2150c00.asm` line 131), then runs each track's finish (line 221 calls `0x215C320`), so the coda is set wherever `[Events]` sits in the file. The finish's call to the skip is `docs/audit/note-shuffle/step0/open2/f215c320.asm` line 37. Three `.chart` cases are not read: an unquoted `E coda` line in `[Events]`, the byte `[ctx+0x2c]` that gates both the coda store and the finish (a normal full load takes both), and a twin reader `0x2163170` with no direct caller. A track-local `E coda` inside a drum section sets no coda, because the track event handler `0x213CAF0` loads no coda string (`code/6142/chart_e_handler_213CAF0.asm` holds none). Skipped fills stay in the list; whether they still stop generated fills (FL-27, FL-28) was not traced. The mirror method `0x215F610` (`code/6142/fill_skip_before_215F610.asm`, `setl`) has no direct caller. Caller lists are direct calls only (byte scan).
+Game code (6142): the skip method of class #8661 (scrambled name), RVA `0x215DA70`, `code/6142/fill_skip_from_coda_215DA70.asm` lines 20 to 55; the `.mid` events reader `0x21544E0`, `code/6142/mid_events_coda_21544E0.asm` lines 98 and 245 to 312; the fill initialiser `0x20FB9A0`; the `.chart` loader `0x2161A80` and `[Events]` reader 0x2151830, `code/6142/events_section_2151830.asm` lines 668 to 679; the landing step `0x20CFF60`, `code/6142/fill_to_activation_20CFF60.asm` lines 86 to 87.
+Hydra: `place_authored_fills` in src/parse/song.cpp, which both readers call with the coda tick they find.
+Ruling: the user, 2026-11-08: "Match the game" (`docs/agents/rulings/clone-hero.md`, the 2026-11-08 line for FL-08), so Hydra skips a written fill that starts at or after the first coda tick, in both formats.
+Found: 2026-10-30, session b02ab3e6 (the reference build); 2026-11-08, session 7b39835b.
 
 ### FL-09 A landed fill flags one note of its chord
 
@@ -397,7 +397,7 @@ Found: 2026-10-30, session b02ab3e6 (the reference build).
 
 Rule: A 1.0 written fill is attached to the chord nearest its end tick, no earlier than the fill start and no later than the end plus a 32nd note (resolution x 6 / 192 ticks). A tie goes to the later chord, a fill with no chord is dropped, and its length is rebuilt to end one 64th note after the activation note. Hydra places written fills the same way under 1.0 and 1.1, with 1.1's +1 tick.
 Label: Proven in the game's code
-Evidence: `code/4045/fill_generator.cs` lines 80 to 113 and the helper at lines 144 to 193. Hydra's side: `place_authored_fills` takes only a slop and has no rule argument (src/parse/song.cpp line 362, called by both parsers).
+Evidence: `code/4045/fill_generator.cs` lines 80 to 113 and the helper at lines 144 to 193. Hydra's side: `place_authored_fills` uses one landing window under both rules (src/parse/song.cpp, called by both parsers); its rule argument decides only the coda skip (FL-39).
 Game code (4045): a scrambled method of the 1.0 note builder, `code/4045/fill_generator.cs` lines 80 to 113.
 Hydra: `place_authored_fills` in src/parse/song.cpp line 362.
 Ruling: open split: see questions page Q-39
@@ -409,9 +409,9 @@ Rule: A 1.0 written fill that starts on the same tick as the chart's "coda" even
 Label: Proven in the game's code
 Evidence: `code/4045/fill_generator.cs` lines 88 to 91; the coda object is made from an event named "coda" in the 1.0 decompile.
 Game code (4045): a scrambled method of the 1.0 note builder, `code/4045/fill_generator.cs` lines 88 to 91.
-Hydra: no owner: a case-insensitive grep of `src/` for `coda` finds no chart rule.
-Ruling: open split: see questions page Q-40
-Found: 2026-10-30, session b02ab3e6 (the reference build).
+Hydra: `place_authored_fills` in src/parse/song.cpp. In 1.0 mode (`FillDeadlineRule::Ch10`) it skips a written fill only when it starts exactly on the first coda tick, as here; in 1.1 mode it skips one that starts at or after it (FL-08).
+Ruling: the user, 2026-11-08, answering whether 1.0 mode keeps 1.0's own coda rule: "1.0's own rule (Recommended)". That settled the open split this row used to name; its heading has left the questions page and its id stays retired. The 1.1 rule follows FL-08's ruling, "Match the game".
+Found: 2026-10-30, session b02ab3e6 (the reference build); 2026-11-08, session 7b39835b.
 
 ### FL-40 The 1.0 measure lines restart at every meter change
 
@@ -479,4 +479,4 @@ FL-18, FL-24, FL-25, FL-27, FL-28, FL-29, FL-32. See `live-checks.md`.
 
 ## Open splits
 
-FL-18 (Q-36), FL-28 (Q-37), FL-36 and FL-42 (Q-38), FL-38 (Q-39), FL-39 (Q-40). See `questions.md`.
+FL-18 (Q-36), FL-28 (Q-37), FL-36 and FL-42 (Q-38), FL-38 (Q-39). See `questions.md`.

@@ -147,15 +147,6 @@ Other end: a chord exactly res/32 + 1 ticks after the end: 1.1 and Hydra land it
 
 Hydra today: `place_authored_fills` (src/parse/song.cpp line 363) uses 1.1's +1 under both rules.
 
-### Q-40 A 1.0 written fill on the coda tick
-
-The game's rule (1.0): a written fill that starts on the tick of the chart's "coda" event is skipped (code/4045/fill_generator.cs lines 88 to 91; row FL-39).
-
-One end: a chart with no coda event: nothing differs.
-Other end: a chart with a written fill starting on the coda tick: 1.0 drops that fill, Hydra keeps it. Whether 1.1 does the same was not read.
-
-Hydra today: no rule; a grep of `src/` for `coda` finds no chart rule.
-
 ### Q-50 Does a hit up to one frame past the Star Power end still score under Star Power in the game (not settled)
 
 Reviewer correction, 2026-10-30. What the listing proves is the call order in the frame update (events step, end check, drain) and that the end check turns Star Power off once clock >= end. It does not prove that a hit is scored inside the first step: `0x20F4950` shows only the event step (slot 8), `0x20F6FF0` and the clock set, with no press handler or score add. The paragraph below states the consequence if hits are scored there; page 5 SP-29 is labelled Unknown for this reason, and live check SP-29 settles it.
