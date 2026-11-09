@@ -1,4 +1,4 @@
-# events_section_2151830.asm (build 6142, RVA `0x2151830`)
+# events_section_2151830.asm (build 6142, RVA 0x2151830)
 
 Made 2026-11-08 with `tools/ch_mcp/chdis.py` (868 lines). Starts at the method's first instruction, the `.chart` reader for one line of an `[Events]` section.
 
@@ -11,4 +11,4 @@ Plain words: for an `E "..."` line, take the text between the first quote and th
 - Lines 639 to 664: the `coda` compare (`MemoryExtensions.SequenceEqual<char>`, line 662, an ordinal compare). A mismatch jumps on (line 664).
 - Lines 665 to 679: the first-only store. `cmp qword ptr [rsi + 0x100], 0` (line 668, 0x21523A7) skips the store when the chart already holds a coda. Otherwise line 677 calls the coda object's constructor `0x211BA30` with the string `coda`, and line 679 (0x21523E0) stores it at `[chart + 0x100]`.
 
-Callers (direct callers only, byte scan on 2026-11-08 with a `call rel32`/`jmp rel32` scan of the `.text` and `il2cpp` sections): `0x2150DFB` in the section dispatcher `0x2150C00` (`section_loop_2150c00.asm` line 131), and `0x216195B` in a twin dispatcher that was not read here.
+Callers (direct callers only, byte scan on 2026-11-08 with a `call rel32`/`jmp rel32` scan of the `.text` and `il2cpp` sections): 0x2150DFB in the section dispatcher 0x2150C00 (`section_loop_2150c00.asm` line 131), and 0x216195B in a twin dispatcher that was not read here.

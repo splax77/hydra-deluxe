@@ -17,7 +17,7 @@ The game's real rule: the .chart E handler tests the trimmed text with "starts w
 One end: `E [mix_3_drums0d]` (one word). Both the game and Hydra read it as Expert disco on.
 Other end: `E [mix 3 drums0d]` (four words). The game flips red and yellow on Expert from that tick; Hydra sees a plain text event and flips nothing.
 
-What Hydra does today: `classify_chart_line` in src/parse/song.cpp lines 1255 to 1258 reads an E line as a disco marker only when the line splits into exactly two words (`t.count == 2`). Owner: the .chart reader in src/parse/song.cpp. The corpus file testdata/parse_edge/c20_disco.chart holds one spaced form and 18 files use underscores; the library was not searched. Page row NL-19.
+What Hydra does today: `classify_chart_line` in src/parse/song.cpp lines 1300 to 1303 reads an E line as a disco marker only when the line splits into exactly two words (`t.count == 2`). Owner: the .chart reader in src/parse/song.cpp. The corpus file testdata/parse_edge/c20_disco.chart holds one spaced form and 18 files use underscores; the library was not searched. Page row NL-19.
 
 ### Q-11 Nested .chart solos: a stack in the game, one flag in Hydra
 
@@ -26,7 +26,7 @@ The game's real rule: `solo` pushes a new solo record and `soloend` pops the mos
 One end: `solo` at 0, `soloend` at 200 (no nesting). Both agree: one solo from 0 to 200.
 Other end: `solo` at 0, `solo` at 100, `soloend` at 200, `soloend` at 300. The game ends the inner solo at 200 and the outer at 300, so ticks 201 to 300 are inside a solo. Hydra turns its flag off at 200, so ticks 201 to 300 are outside any solo. How the score code reads the outer record is unread (CR-35), so the score effect is not yet shown.
 
-What Hydra does today: `flag_solo_` (a plain bool, line 1442 of src/parse/song.cpp), which `op_solo` sets at line 1417. Lines 1643 and 1647 turn the `solo` and `soloend` events into the operations that reach it. Owner: the .chart reader. Page row CR-34.
+What Hydra does today: `flag_solo_` (a plain bool, line 1442 of src/parse/song.cpp), which `op_solo` sets at line 1462. Lines 1643 and 1647 turn the `solo` and `soloend` events into the operations that reach it. Owner: the .chart reader. Page row CR-34.
 
 ### Q-12 Mix-event spellings: separators and digit forms
 
@@ -35,7 +35,7 @@ The game's real rule: the mix parser drops one [ and ], turns underscores into s
 One end: `[mix.3.drums0d]` or `[mix-3-drums0d]`. Hydra reads them as markers (the corpus file c20_disco.chart line 63 uses `mix.2.drums1d`); the game finds no space and rejects them.
 Other end: `[mix  3  drums0d]` (two spaces) or `[mix 03 drums0d]`. The game accepts them; Hydra's fixed byte positions reject them.
 
-What Hydra does today: `disco_head` in src/parse/song.cpp lines 293 to 296 needs "mix", one byte of any kind, the difficulty digit, one byte, then "drums"; `peel_brackets` lines 283 to 287. Owner: the disco marker matchers in src/parse/song.cpp. Related and ruled: D19's on/off letter rule. Page row NL-18.
+What Hydra does today: `disco_head` in src/parse/song.cpp lines 304 to 307 needs "mix", one byte of any kind, the difficulty digit, one byte, then "drums"; `peel_brackets` lines 294 to 298. Owner: the disco marker matchers in src/parse/song.cpp. Related and ruled: D19's on/off letter rule. Page row NL-18.
 
 ### Q-13 The fifth drum pad
 
@@ -44,14 +44,14 @@ The game's real rule: .chart N 5 is a note of type 17 with the Tom flag and rais
 One end: a chart with only N 0 to 4. Both agree.
 Other end: an Expert section with `N 5 0` lines and `N 38` accents. The game holds one more note on those ticks; Hydra's chord has one gem fewer and no mark.
 
-What Hydra does today: `chart_pad_color` in src/parse/song.cpp lines 1668 to 1676 knows N 1 to 4, and `ChartParser::note_optype` lines 1700 to 1708 knows 34 to 37 and 40 to 43; the .mid reader takes `note <= base_ + 4`. Owner: the two readers in src/parse/song.cpp. No library count (no library run). Page row NL-04.
+What Hydra does today: `chart_pad_color` in src/parse/song.cpp lines 1727 to 1735 knows N 1 to 4, and `ChartParser::note_optype` lines 1759 to 1767 knows 34 to 37 and 40 to 43; the .mid reader takes `note <= base_ + 4`. Owner: the two readers in src/parse/song.cpp. No library count (no library run). Page row NL-04.
 
 ### Q-14 Two pads of one colour on one tick
 
 The game's real rule: the track finalizer merges notes with the same tick and the same note type into the longest one (first on a tie), or-ing every flag bit except the low three (code/6142/kick_merge_215B8C0.asm lines 54 to 128); nothing limits it to kicks.
 
 One end: a 2x kick and a normal kick on one tick. Hydra merges them too (`Chord::add_kick`, D105), so both agree.
-Other end: a .mid with two red note-ons on one tick under the dynamics tag, velocity 127 then velocity 1. The game keeps one red note carrying both the accent and the ghost bit. Hydra's second `Chord::add_note` throws "Duplicate note." (src/core/model.cpp line 244) before the mark is set, and the per-op catch (src/parse/song.cpp line 1018 for .mid, 1744 for .chart) drops it, so Hydra keeps one red note with only the accent.
+Other end: a .mid with two red note-ons on one tick under the dynamics tag, velocity 127 then velocity 1. The game keeps one red note carrying both the accent and the ghost bit. Hydra's second `Chord::add_note` throws "Duplicate note." (src/core/model.cpp line 244) before the mark is set, and the per-op catch (src/parse/song.cpp line 1043 for .mid, 1803 for .chart) drops it, so Hydra keeps one red note with only the accent.
 
 What Hydra does today: `Chord::add_note` in src/core/model.cpp line 242. Owner: the chord model in src/core/model.cpp. Page row NL-32.
 
@@ -71,7 +71,7 @@ The game's real rule: the .chart [Events] reader takes the event's text from jus
 One end: `E "section intro"`. The game and Hydra both read the text `section intro`, so both make a section.
 Other end: a hand-edited line with text outside the quotes. For `E "section intro" x` the decompile has the game read `section intro`, which would make a section; Hydra keeps the whole `"section intro" x`, which does not start with "section ", so it makes none. For `E intro "x"` the game reads `x` and Hydra reads `intro "x"`; neither is a section, but the two texts differ. No chart with such a line has been tried in the game.
 
-What Hydra does today: `classify_chart_line` in src/parse/song.cpp lines 1264 to 1266 trims the text after `E` and takes one pair of quotes off only when the trimmed text both starts and ends with a quote; otherwise it keeps the text whole. That text then goes to `section_name_of` (line 1580) and to the end-event test (lines 1584 to 1588). Owner: the .chart reader in src/parse/song.cpp. No library count (no library run), so how many charts hold such a line is not known. The question: should Hydra's .chart reader take the text between the first and last quote, as the game does, or keep its whole-text rule? Page row CR-32.
+What Hydra does today: `classify_chart_line` in src/parse/song.cpp lines 1309 to 1311 trims the text after `E` and takes one pair of quotes off only when the trimmed text both starts and ends with a quote; otherwise it keeps the text whole. That text then goes to `section_name_of` (line 1629) and to the end-event test (lines 1633 to 1637). Owner: the .chart reader in src/parse/song.cpp. No library count (no library run), so how many charts hold such a line is not known. The question: should Hydra's .chart reader take the text between the first and last quote, as the game does, or keep its whole-text rule? Page row CR-32.
 
 ### Q-30 A song.ini delay with a decimal point
 
@@ -127,7 +127,7 @@ The game's rule: the note builder compares the track's written-fill list count w
 One end: a chart whose written fills all land: neither generates fills, same result.
 Other end: a chart whose only written fills reach no chord: Hydra generates fills across the chart, the game generates none.
 
-Hydra today: `place_authored_fills` (src/parse/song.cpp line 363) drops the unlanded fills, then `Song::check_activations` (src/core/song.cpp lines 106 and 107) returns only if a chord holds one.
+Hydra today: `place_authored_fills` (src/parse/song.cpp line 381) drops the unlanded fills, then `Song::check_activations` (src/core/song.cpp lines 106 and 107) returns only if a chord holds one.
 
 ### Q-38 The 1.0 generator against Hydra's 1.0 generator
 
@@ -145,7 +145,7 @@ The game's rule (1.0): a written fill lands no later than end + resolution x 6 /
 One end: a chord inside res/32: both builds and Hydra land it.
 Other end: a chord exactly res/32 + 1 ticks after the end: 1.1 and Hydra land it, 1.0 drops the fill.
 
-Hydra today: `place_authored_fills` (src/parse/song.cpp line 363) uses 1.1's +1 under both rules.
+Hydra today: `place_authored_fills` (src/parse/song.cpp line 381) uses 1.1's +1 under both rules.
 
 ### Q-50 Does a hit up to one frame past the Star Power end still score under Star Power in the game (not settled)
 
@@ -194,7 +194,7 @@ The game's real rule: the .mid events reader (RVA `0x21544E0`) trims the white s
 One end: a text event `[end]`, or `[END]`, or `[end] x`. The game and Hydra agree on each: the first ends the song, the other two do not.
 Other end: a text event `[end] ` (one trailing space) or ` [end]`. The game trims it and ends the song there; Hydra's .mid pass requires the whole text to start with "[" and end with "]", so it sees a plain text event and finds no end event.
 
-What Hydra does today: the .mid pass at src/parse/song.cpp lines 1126 to 1135 skips any text that does not start with "[" and end with "]" before it calls `is_end_event` (line 46), and the text reader in src/parse/midi.cpp (line 131) trims nothing. Owner: src/parse/song.cpp. No library count (no library run), so how many charts hold a padded end event is not known. The question: should Hydra's .mid end test trim the text first, as the game does?
+What Hydra does today: the .mid pass at src/parse/song.cpp lines 1171 to 1180 skips any text that does not start with "[" and end with "]" before it calls `is_end_event` (line 46), and the text reader in src/parse/midi.cpp (line 131) trims nothing. Owner: src/parse/song.cpp. No library count (no library run), so how many charts hold a padded end event is not known. The question: should Hydra's .mid end test trim the text first, as the game does?
 
 ### Q-76 The two window-formula tables in constants.py carry each other's names
 

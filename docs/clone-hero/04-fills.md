@@ -13,7 +13,7 @@ Rule: The game adds a written fill at four places: the `.chart` reader (event ty
 Label: Proven in the game's code
 Evidence: the callers of the fill initialiser `0x20FB9A0`, found by a call scan: in 0x20CEDC0, `0x20E5E70`, `0x213E0C0`, `0x215B7C0` and `0x215BD50`. The `.mid` reader tests the event byte against 0x78 (note 120) before it calls 0x20CEDC0; the `.chart` reader's test is in the decompile lines 25570 to 25594. That two of the paths read a cache is the game survey's reading, not checked.
 Game code (6142): the `.mid` fill helper 0x20CEDC0, listed at `code/6142/mid_fill_reader_20CEDC0.asm`; the `.chart` reader `0x213E0C0`; the cache reader `0x20E49D0`, listed at `code/6142/fill_cache_caller_20E49D0.asm`.
-Hydra: `kFillMarkerPitch` in src/parse/song.cpp line 683; both parsers end in `place_authored_fills`.
+Hydra: `kFillMarkerPitch` in src/parse/song.cpp line 708; both parsers end in `place_authored_fills`.
 Ruling: none needed: same rule
 Found: 2026-10-30, session b02ab3e6 (the reference build).
 
@@ -23,7 +23,7 @@ Rule: `0x215BD50` takes a fill object from the track's pool, fills in its start 
 Label: Proven in the game's code
 Evidence: `code/6142/add_fill_215BD50.asm` lines 17 to 30 (the pool at `+0x30` and the constructor call) and 31 to 66 (the append). A scan of every direct call and jump, the `.data` pointers and the metadata slots found no caller; a delegate call would not show in such a scan, so who calls it stays open. Its body is the same as `0x215B7C0`, listed at `code/6142/add_fill_twin_215B7C0.asm`.
 Game code (6142): the add-fill method of class #8661 (scrambled name), RVA `0x215BD50`, `code/6142/add_fill_215BD50.asm` lines 17 to 66.
-Hydra: no owner: Hydra has no add-fill step; `place_authored_fills` (src/parse/song.cpp line 362) places each fill.
+Hydra: no owner: Hydra has no add-fill step; `place_authored_fills` (src/parse/song.cpp line 380) places each fill.
 Ruling: none needed: same rule
 Found: 2026-10-30, session b02ab3e6 (the reference build).
 
@@ -33,7 +33,7 @@ Rule: A written fill may land on a chord up to trunc(resolution x 0.03125) + 1 t
 Label: Proven in the game's code
 Evidence: `code/6142/fill_to_activation_20CFF60.asm` lines 55 and 56 (the resolution at `[chart+0xb8]` times 0.03125), 61 (the truncating convert) and 62 (`inc rdi`); `code/6142/engine_ctor_20DF680.asm` line 57 shows `[chart+0xb8]` is the resolution.
 Game code (6142): the fill-to-activation step of class #8265 (scrambled name), RVA `0x20CFF60`, `code/6142/fill_to_activation_20CFF60.asm` lines 55 to 63.
-Hydra: `place_authored_fills` in src/parse/song.cpp lines 372 and 373, with the default `Rules::fill_land_slop_beats` of 1/32 in src/core/rules.h line 51; a user's `hydra_rules.ini` may change the 1/32, never the +1.
+Hydra: `place_authored_fills` in src/parse/song.cpp lines 391 and 392, with the default `Rules::fill_land_slop_beats` of 1/32 in src/core/rules.h line 51; a user's `hydra_rules.ini` may change the 1/32, never the +1.
 Ruling: none needed: same rule. D22 records it: "The fill landing window is floor(resolution x slop) + 1 ticks, as Clone Hero computes it (0x20D0088-0x20D008D). The +1 applies on top of a user's `hydra_rules.ini` slop too." (the decision log's words)
 Found: 2026-10-03, session cebf3006; listed 2026-10-30, session b02ab3e6 (the reference build).
 
@@ -43,7 +43,7 @@ Rule: The game searches for each written fill's chord on its own, always from ch
 Label: Proven in the game's code
 Evidence: `code/6142/fill_to_activation_20CFF60.asm` lines 83 to 87 (the skip test), 92 to 96 (the arguments: a constant 0 stored to the stack at line 93, then the call to `0x5DE030`) and 147 (the loop back). This answers D30's open sentence.
 Game code (6142): RVA `0x20CFF60`, `code/6142/fill_to_activation_20CFF60.asm` lines 78 to 98 and 147.
-Hydra: `place_authored_fills` in src/parse/song.cpp lines 375 to 388 (a fresh search over the whole chord list per fill).
+Hydra: `place_authored_fills` in src/parse/song.cpp lines 394 to 413 (a fresh search over the whole chord list per fill).
 Ruling: none needed: same rule. D30 had left it open: "Open: the search takes a start index, so Clone Hero may carry position between fills; not traced."
 Found: 2026-10-30, session b02ab3e6 (the reference build).
 
@@ -53,7 +53,7 @@ Rule: The game takes the first chord strictly after the fill's end and the last 
 Label: Proven in the game's code
 Evidence: `code/6142/nearest_chord_5DE030.asm` lines 28 (the forward search), 39 (the backward search), 90 to 99 (the strict "outside" tests) and 100 to 113 (`tick(after) - target <= target - tick(before)` returns the after chord); the helpers' meanings are in `code/6142/first_after_search_2C7CF70.asm` lines 65 and 66 and `code/6142/back_search_2C7CE00.asm` lines 69 to 79. The addresses 0x2C7CF70 and 0x2C7CE00 are compiler-generated helpers with no dump entry.
 Game code (6142): the nearest-chord helper, RVA `0x5DE030`, `code/6142/nearest_chord_5DE030.asm` lines 28 to 117.
-Hydra: `place_authored_fills` in src/parse/song.cpp lines 376 to 388.
+Hydra: `place_authored_fills` in src/parse/song.cpp lines 401 to 412.
 Ruling: none needed: same rule. D30: "Each fill takes the last chord at or before its end, but not before its start, or the first chord after its end within the slop. A tie goes to the later chord, and a fill with no chord in bounds is dropped." (the decision log's words)
 Found: 2026-10-03, session cebf3006; listed 2026-10-30, session b02ab3e6 (the reference build).
 
@@ -63,7 +63,7 @@ Rule: When no chord sits at or before a written fill's end, the game takes the f
 Label: Proven in the game's code
 Evidence: `code/6142/nearest_chord_5DE030.asm` lines 40 to 60: the before side is -1, so the after chord is returned with no bound test.
 Game code (6142): RVA `0x5DE030`, `code/6142/nearest_chord_5DE030.asm` lines 40 to 60.
-Hydra: `place_authored_fills` in src/parse/song.cpp lines 381 and 382 apply the bounds on every side.
+Hydra: `place_authored_fills` in src/parse/song.cpp lines 406 and 407 apply the bounds on every side.
 Ruling: D30: "Clone Hero's unbounded one-side fallback (B2) is not adopted." ADR 0023 lists it under deliberate differences.
 Found: 2026-10-03, session cebf3006; listed 2026-10-30, session b02ab3e6 (the reference build).
 
@@ -73,7 +73,7 @@ Rule: When no chord sits after a written fill's end, the game's backward search 
 Label: Proven in the game's code
 Evidence: `code/6142/nearest_chord_5DE030.asm` lines 28 to 32 (the start index swapped in when the after side is -1) and 61 to 69 (the before chord returned with no bound test); `code/6142/back_search_2C7CE00.asm` lines 20 to 34; the start index is the constant 0 at `code/6142/fill_to_activation_20CFF60.asm` line 93. The address 0x2C7CE00 is a compiler-generated helper with no dump entry. This is a reading of a loop nobody ran.
 Game code (6142): RVA `0x5DE030` lines 28 to 69; the backward helper 0x2C7CE00 lines 20 to 34.
-Hydra: `place_authored_fills` in src/parse/song.cpp lines 379 to 387 drop the fill: with no chord after, only the bounded chord before can be picked.
+Hydra: `place_authored_fills` in src/parse/song.cpp lines 404 to 412 drop the fill: with no chord after, only the bounded chord before can be picked.
 Ruling: D30: "Clone Hero's unbounded one-side fallback (B2) is not adopted." It does not say which chord the game takes on this side, but Hydra drops the fill on both sides, so the ruling covers it.
 Found: 2026-10-30, session b02ab3e6 (the reference build).
 
@@ -103,7 +103,7 @@ Rule: When two written fills pick one chord, Hydra keeps only the later fill's l
 Label: Unknown
 Evidence: not checked: it needs a trace of how two fills reach one chord in `0x20CFF60`. Only the deadline loop's clear was read, in the decompile lines 693 to 705.
 Game code (6142): RVA `0x20DDB70`, `code/6142/fill_deadline_20DDB70.asm`.
-Hydra: `place_authored_fills` in src/parse/song.cpp line 387 and its comment at line 355.
+Hydra: `place_authored_fills` in src/parse/song.cpp line 412 and its comment at line 366.
 Ruling: none found
 Found: 2026-10-30, session b02ab3e6 (the reference build).
 
@@ -287,9 +287,9 @@ Found: 2026-10-30, session b02ab3e6 (the reference build).
 
 Rule: The game counts the written fills before any of them lands on a chord, so a written fill that finds no chord still stops generation. Hydra tests whether any chord ended up holding a fill, after the landing step has dropped some. On a chart whose only written fills reach no chord, Hydra generates fills across the chart and the game generates none.
 Label: Proven in the game's code
-Evidence: `code/6142/note_builder_20D2EA0.asm` lines 285 to 299: the count test comes before the landing call to `0x20CFF60`. Hydra side: `place_authored_fills` drops a fill with no chord (src/parse/song.cpp line 362 on), then `Song::check_activations` tests the landed chords (src/core/song.cpp lines 107 and 108).
+Evidence: `code/6142/note_builder_20D2EA0.asm` lines 285 to 299: the count test comes before the landing call to `0x20CFF60`. Hydra side: `place_authored_fills` drops a fill with no chord (src/parse/song.cpp line 380 on), then `Song::check_activations` tests the landed chords (src/core/song.cpp lines 107 and 108).
 Game code (6142): RVA `0x20D2EA0`, `code/6142/note_builder_20D2EA0.asm` lines 280 to 299.
-Hydra: `place_authored_fills` in src/parse/song.cpp line 362; `Song::check_activations` in src/core/song.cpp line 106.
+Hydra: `place_authored_fills` in src/parse/song.cpp line 380; `Song::check_activations` in src/core/song.cpp line 106.
 Ruling: open split: see questions page Q-37
 Found: 2026-10-30, session b02ab3e6 (the reference build).
 
@@ -399,7 +399,7 @@ Rule: A 1.0 written fill is attached to the chord nearest its end tick, no earli
 Label: Proven in the game's code
 Evidence: `code/4045/fill_generator.cs` lines 80 to 113 and the helper at lines 144 to 193. Hydra's side: `place_authored_fills` uses one landing window under both rules (src/parse/song.cpp, called by both parsers); its rule argument decides only the coda skip (FL-39).
 Game code (4045): a scrambled method of the 1.0 note builder, `code/4045/fill_generator.cs` lines 80 to 113.
-Hydra: `place_authored_fills` in src/parse/song.cpp line 362.
+Hydra: `place_authored_fills` in src/parse/song.cpp line 380.
 Ruling: open split: see questions page Q-39
 Found: 2026-10-30, session b02ab3e6 (the reference build).
 
