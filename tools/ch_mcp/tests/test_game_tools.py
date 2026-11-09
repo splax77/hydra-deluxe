@@ -2629,8 +2629,8 @@ class PlayerLimitsLinesTest(unittest.TestCase):
                 {**ROWS[1], "index": 900, "end_read_ms": ""},
                 {**ROWS[1], "index": 1000, "end_read_ms": "no activation read"}]
         self.assertEqual(GT.activation_end_lines(rows, {820: 186349.0, 1000: 200000.0}), [
-            "activation chord 820: end planned 186,349.0 ms, game 186,352.1 ms (3.1 later)",
-            "activation chord 1000: end planned 200,000.0 ms, game end not read "
+            "end read after chord 820: end planned 186,349.0 ms, game 186,352.1 ms (3.1 later)",
+            "end read after chord 1000: end planned 200,000.0 ms, game end not read "
             "(no activation read)"])
 
     def test_rows_without_the_new_columns_give_no_lines(self):
@@ -2675,7 +2675,7 @@ class PlayerLimitsLinesTest(unittest.TestCase):
                               self._json("schedule.json", schedule), route="keys")
         t.tools._play.thread.join(THREAD_CAP_S)
         lines = t.tools.ch_play_status().splitlines()
-        self.assertIn("activation chord 0: end planned 1,000.0 ms, game 1,003.1 ms (3.1 later)",
+        self.assertIn("end read after chord 0: end planned 1,000.0 ms, game 1,003.1 ms (3.1 later)",
                       lines)
         self.assertIn("scored between presses: 40 unexplained before chord 1", lines)
 
