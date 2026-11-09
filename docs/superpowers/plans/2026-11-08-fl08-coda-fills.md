@@ -32,6 +32,10 @@ The changed value is which chords are activation points, and so the best path an
 - Path report window (`###pathreport`) and the Path Builder: Caravan's row and timeline show the new path and score.
 - `hydra_replay dump` and `hydra_batch` text: the same four charts' scores change; every other chart's output is byte-identical.
 
+## User decisions
+
+On 2026-11-08 the user answered both questions below and approved the plan. Question 1: "Bump the stamp", so T1 edits `kResultsStamp`. Question 2: "1.0's own rule (Recommended)", so 1.0 mode uses `==` and Q-40 closes. Approval: "Approve".
+
 ## Questions
 
 1. **Bump the results stamp?** `kResultsStamp` in `src/store/stored_versions.h` (line 55, `2.12.1+ch10grid`) says to bump when a chart reads differently, so a stale saved result reads Stale and re-analyses. Sides: (a) bump to the release that ships this, so every saved result in the library re-analyses on next open (D249 analyses the whole library on open); (b) no bump, so the four charts keep their old `Best path` score until the user re-analyses them or a later release bumps. Precedent, for context only: on 2026-10-17 the user chose "No bump (Recommended)" for the events-track reading change. The stamp covers the whole library, not just the coda charts. What you would see: under (a) every row in the Library reads Stale until it is re-analysed (D249 does that on open), and Caravan then reads 2,360,430; under (b) Caravan keeps reading 2,361,350 until you re-analyse it, while a fresh analysis of the same chart reads 2,360,430, so one chart can show two numbers on one machine until then. Recommended: (b), following the precedent, because 323 of the 327 coda charts compute the same score, so a whole-library re-analysis buys four corrected numbers. If (a), T1 also edits line 55.
