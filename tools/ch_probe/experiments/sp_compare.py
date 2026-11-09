@@ -1,11 +1,13 @@
 """Compare the game's live Star Power fields with Hydra's score for one path.
 
-Pure logic: it opens no process. It reads two files from an overlay-spike run:
+Pure logic: it opens no process. It reads three files from an overlay-spike run:
 
 - the Star Power watcher's CSV (sp_watch.py), whose columns are
   overlay_logs.WATCH_COLUMNS, one row each time a field changed;
 - the `hydra_replay score --path <dump.json> --index N` JSON of the path the
-  run was meant to play.
+  run was meant to play;
+- the `hydra_replay schedule` JSON of the same path, which says when the
+  auto-player presses each chord (press_reach).
 
 Each chord's `ms` in the JSON is taken as the chord's time on the game's song
 clock (`clock_s` in the CSV), so the comparison is the same for an
@@ -32,7 +34,7 @@ nothing itself.
 Usage:
     py tools\\ch_probe\\experiments\\sp_compare.py <watch.csv> <score.json>
         [--resolution 192] [--sp-bar-ticks 14400] [--width 64|32]
-        [--dump <dump.json>] [--path-index N]
+        --schedule <schedule.json>
 
 Exit code 0 when every check passed, 1 when any printed FAIL.
 """
@@ -46,7 +48,6 @@ import json
 import math
 import os
 import sys
-import tempfile
 from dataclasses import dataclass, field
 from typing import NamedTuple
 
@@ -71,7 +72,7 @@ EVENT_WINDOW_MS = 100.0
 LANDING_WINDOW_MS = 150.0
 
 # The game credits a chord when the auto-player presses it, which is not at
-# the chord's own ms: play_chart.press_plan is the one place that says when
+# the chord's own ms: the path's schedule (tools/replay_schedule.cpp) says when
 # each gem is pressed, early or late, and a chord can have two presses. So a
 # rise or an activation flag can show on a row whose clock is that far from the
 # chord, and the searches reach that far for that chord only. A wider reach for
@@ -82,29 +83,17 @@ class PressReach(NamedTuple):
     latest_ms: float
 
 
-def press_reach(score_path: str, dump_path: str | None = None,
-                path_index: int = 0) -> dict:
+def press_reach(schedule_path: str) -> dict:
     """Each chord's PressReach by its `index`, from press_plan over
-    play_chart.load_dump_chords of the score file. `dump_path` and
-    `path_index` name the path's dump, which the loader needs for a
-    squeeze-out and raises ValueError without."""
-    chords = play_chart.load_dump_chords(score_path, dump_path=dump_path,
-                                         path_index=path_index)
+    play_chart.load_schedule of the path's `hydra_replay schedule` file.
+    load_schedule's ValueError, for a schedule that refuses the path, is
+    passed on."""
+    chords = play_chart.load_schedule(schedule_path).chords
     reach = {}
     for press in play_chart.press_plan(chords):
         lo, hi = reach.get(press.index, (press.at_ms, press.at_ms))
         reach[press.index] = PressReach(min(lo, press.at_ms), max(hi, press.at_ms))
     return reach
-
-
-def _score_press_reach(score: dict) -> dict:
-    """press_reach for a score JSON already read, with no dump: for a caller
-    that holds the file's contents but not its path."""
-    with tempfile.TemporaryDirectory() as folder:
-        path = os.path.join(folder, "score.json")
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(score, f)
-        return press_reach(path)
 
 # Hydra's own constants, copied because this script cannot read C++. The
 # owners are kStarPowerMultiplier in src/core/timing.h, kMeasuresPerSpBar in
@@ -604,11 +593,10 @@ def _check_multipliers(report: Report, rows: list, chords: list,
 
 def compare(rows: list, score: dict, *, resolution: int | None = None,
             sp_bar_ticks: int | None = None, width: int = DEFAULT_WIDTH,
-            reach: dict | None = None) -> Report:
+            reach: dict) -> Report:
     """Every check over the watcher rows and the score JSON, as a Report.
     With no resolution, Hydra's full meter is left out of the sp_max line.
-    `reach` is press_reach of the score file; with none it is worked out
-    from `score` with no dump, which a path with a squeeze-out refuses."""
+    `reach` is press_reach of the same path's schedule file."""
     amount_col, max_col = column_names(width)
     chords = score["chords"]
     report = Report()
@@ -624,8 +612,6 @@ def compare(rows: list, score: dict, *, resolution: int | None = None,
                         f"the checks assume one pass through the song")
             break
 
-    if reach is None:
-        reach = _score_press_reach(score)
     _check_phrase_rises(report, rows, chords, amount_col, max_col, reach)
     _check_sp_max(report, rows, max_col, resolution, sp_bar_ticks)
     parted_ms = _check_activations(report, rows, score, reach)
@@ -645,16 +631,13 @@ def main(argv=None) -> int:
                     help="sp_bar_ticks from the game's scorestats.json")
     ap.add_argument("--width", type=int, choices=(32, 64), default=DEFAULT_WIDTH,
                     help="which sp_amount and sp_max columns to read")
-    ap.add_argument("--dump", default=None,
-                    help="the path's hydra_replay dump JSON, which a path with a "
-                         "squeeze-out needs for its press times")
-    ap.add_argument("--path-index", type=int, default=0,
-                    help="which path of the dump the score file was made from")
+    ap.add_argument("--schedule", required=True,
+                    help="the same path's hydra_replay schedule JSON, which gives "
+                         "each chord's press times")
     args = ap.parse_args(argv)
     report = compare(load_watch_rows(args.watch_csv), load_score(args.score_json),
                      resolution=args.resolution, sp_bar_ticks=args.sp_bar_ticks,
-                     width=args.width,
-                     reach=press_reach(args.score_json, args.dump, args.path_index))
+                     width=args.width, reach=press_reach(args.schedule))
     print(report.text())
     return 1 if report.fails else 0
 

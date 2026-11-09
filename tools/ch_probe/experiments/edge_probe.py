@@ -9,11 +9,12 @@ page says which of two same-pad notes in window a press hits. The older
 walk_edges.py plays the same chart, but it sends keys to the focused game,
 which the 2026-10-30 ruling rules out, and it writes no result file.
 
-Nothing here times a press. play_chart.press_plan times every press; this
-module only moves a probe chord's time so press_plan's own press for it fires
-at the probe's lead, checks that the move changed nothing else, and puts the
-chord's real time back on its press row. The probe chords skip the loader's
-window check on purpose: pressing past the window is the point.
+Nothing here times a press. The schedule (play_chart.load_schedule) times
+every press; this module only moves a probe chord and its presses so the
+schedule's own first press for it fires at the probe's lead, checks that the
+move changed nothing else, and puts the chord's real time back on its press
+row. The move carries each press's `last_send_ms` with it, so play_chords
+never drops a probe press: pressing past the window is the point.
 
 The probes file is a JSON list of {"index": <chord index>, "lead_ms": <ms>}.
 A positive lead presses early, a negative one late, as play_chart's leads do.
@@ -109,30 +110,35 @@ def probe_chords(chords: Sequence[play_chart.Chord],
                  probes: Sequence[Probe]) -> Tuple[List[play_chart.Chord], ProbeRun]:
     """`chords` with each probe chord moved so press_plan presses it at the
     probe's lead, and the ProbeRun that puts the real times back on the rows.
-    Raises ValueError for a probe chord not in `chords`, for one whose press
-    does not follow the chord's own time (a squeeze's press is timed from its
-    Star Power end), and for a move that would shift another chord's press."""
+    Raises ValueError for a probe chord not in `chords`, for one with a press
+    the schedule times from a Star Power end (Press.timed_from_end) or that
+    the move does not land at the probe's lead, and for a move that would
+    shift another chord's press."""
     by_index = {chord.index: chord for chord in chords}
     missing = [p.index for p in probes if p.index not in by_index]
     if missing:
         raise ValueError(f"probe chords {', '.join(map(str, missing))} are not in the "
                          f"score file")
+    from_end = sorted(p.index for p in probes
+                      if any(press.timed_from_end is not None
+                             for press in by_index[p.index].presses))
+    if from_end:
+        raise ValueError(_timed_by_another_rule(from_end))
     first = _first_presses(chords)
     leads = {p.index: p.lead_ms for p in probes}
-    # A press fires at the chord's time less its lead, so moving the chord by
-    # (its own lead - the probe's) moves the press to the probe's lead.
+    # A press fires at its chord's time plus its aim, so moving the chord and
+    # its presses by (the first press's lead - the probe's) moves that press
+    # to the probe's lead.
     shifts = {p.index: p.lead_ms - first[p.index].lead_ms for p in probes}
-    moved = [dataclasses.replace(chord, ms=chord.ms - shifts[chord.index])
-             if chord.index in shifts else chord for chord in chords]
+    moved = [_moved(chord, shifts[chord.index]) if chord.index in shifts else chord
+             for chord in chords]
 
     before, after = _fire_times(chords), _fire_times(moved)
     wrong = sorted(index for index in after
                    if index in shifts
                    and abs(after[index][0] - (by_index[index].ms - leads[index])) > _SAME_MS)
     if wrong:
-        raise ValueError(f"probe chords {', '.join(map(str, wrong))} are timed by another "
-                         f"rule, not from their own time (a squeeze is timed from its "
-                         f"Star Power end), so no probe lead can be given to them")
+        raise ValueError(_timed_by_another_rule(wrong))
     changed = sorted(index for index in before
                      if index not in shifts
                      and (len(before[index]) != len(after.get(index, []))
@@ -142,6 +148,22 @@ def probe_chords(chords: Sequence[play_chart.Chord],
         raise ValueError(f"the probes would move the presses of chords "
                          f"{', '.join(map(str, changed))}, which are not probes")
     return moved, ProbeRun(leads, shifts)
+
+
+def _moved(chord: play_chart.Chord, shift_ms: float) -> play_chart.Chord:
+    """`chord` and its presses `shift_ms` earlier: the chord's `ms`, and each
+    press's `chart_ms` and `last_send_ms`."""
+    return dataclasses.replace(
+        chord, ms=chord.ms - shift_ms,
+        presses=tuple(dataclasses.replace(p, chart_ms=p.chart_ms - shift_ms,
+                                          last_send_ms=p.last_send_ms - shift_ms)
+                      for p in chord.presses))
+
+
+def _timed_by_another_rule(indexes: Sequence[int]) -> str:
+    return (f"probe chords {', '.join(map(str, indexes))} are timed by another "
+            f"rule, not from their own time (a squeeze is timed from its "
+            f"Star Power end), so no probe lead can be given to them")
 
 
 def probe_lines(probes: Sequence[Probe]) -> List[str]:

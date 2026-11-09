@@ -359,11 +359,10 @@ def build_server(helper: Optional[Helper] = None):
     # -- the auto-player and the key route (game_tools) --------------------------------
 
     @server.tool()
-    def ch_play_chart(score_json: str, log: str | None = None,
-                      song_folder: str | None = None, route: str | None = None,
-                      decline_mode: str | None = None, dump_json: str | None = None,
-                      path_index: int = 0) -> str:
-        """Play a hydra_replay score JSON in the background, pressing each
+    def ch_play_chart(score_json: str, schedule_json: str, log: str | None = None,
+                      song_folder: str | None = None, route: str | None = None) -> str:
+        """Play a hydra_replay schedule JSON (hydra_replay schedule, one path
+        of the chart score_json scores) in the background, pressing each
         chord through the virtual kit inside the game. route is "kit" or
         "keys"; left out, the kit is used once ch_kit_setup has built it, and
         the call is refused until then. "keys" presses keys into the focused
@@ -373,28 +372,24 @@ def build_server(helper: Optional[Helper] = None):
         played by the bot. log, when given, is where
         the press log goes, row by row as the run goes. song_folder, when given, sets the run cap from
         the song's length; with none the auto-player keeps its own cap.
-        decline_mode, one of the auto-player's decline modes (a wrong one is
-        refused with the list), says what to send for each fill the path
-        passes over, and needs dump_json, the hydra_replay dump the score file
-        came from; path_index picks the dump's path. With no mode every chord
-        is pressed. The same path of dump_json times the Star Power squeezes,
-        so a score file with a squeeze-out is refused without it. The reply
+        The schedule says which gems each press sends and when, a fill the
+        path passes over among them; a schedule that holds a refusal or a
+        squeeze the game cannot make is refused in its own words. The reply
         names each declined chord with what it sends, each squeeze chord with
-        when its presses fire against the end, each activation pressed
-        early or late for its squeezes, and each chord pressed in more than one
-        group, in the order its gems are pressed."""
-        return capped(h.game.ch_play_chart(score_json, log, song_folder, route,
-                                           decline_mode, dump_json, path_index))
+        when its presses fire against the end, each chord pressed early or
+        late for a squeeze, and each chord pressed in more than one group, in
+        the order its gems are pressed."""
+        return capped(h.game.ch_play_chart(score_json, schedule_json, log, song_folder, route))
 
     @server.tool()
-    def ch_run_chart(song_folder: str, score_json: str, kit_player: str | None = None,
-                     decline_mode: str | None = None, dump_json: str | None = None) -> str:
+    def ch_run_chart(song_folder: str, score_json: str, schedule_json: str,
+                     kit_player: str | None = None) -> str:
         """Start a run in one call, so the first press can beat the first
         note: ch_attach, ch_kit_setup on kit_player, the Star Power watch and
         the auto-player on the kit, with one engine search for the watch and
         the player. Call it right after ch_start(song_folder, human=True),
-        with kit_player="System" for such a launch. decline_mode and
-        dump_json are ch_play_chart's, on the dump's path 0. It writes a press
+        with kit_player="System" for such a launch. score_json and
+        schedule_json are ch_play_chart's. It writes a press
         log, a press-<n>.csv in the session folder, one row at each press as
         the run goes, and its reply names the file. The call returns at the
         first press, with one line per part, the time it took, the machine
@@ -404,25 +399,25 @@ def build_server(helper: Optional[Helper] = None):
         there: the reply names it and the kit is taken away. Refused while a
         play session runs. Read the run with ch_play_status and
         ch_sp_watch_status."""
-        return capped(h.game.ch_run_chart(song_folder, score_json, kit_player,
-                                          decline_mode, dump_json))
+        return capped(h.game.ch_run_chart(song_folder, score_json, schedule_json, kit_player))
 
     @server.tool()
-    def ch_edge_probe(song_folder: str, score_json: str, probes_json: str) -> str:
-        """The window-edge probe: play a hydra_replay score JSON in the
-        background on the kit, as ch_play_chart does with no decline mode,
-        except that each chord the probes file names is pressed at the lead
+    def ch_edge_probe(song_folder: str, score_json: str, schedule_json: str,
+                      probes_json: str) -> str:
+        """The window-edge probe: play a hydra_replay schedule JSON in the
+        background on the kit, as ch_play_chart does, except that each chord
+        the probes file names is pressed at the lead
         it gives, with no window check. probes_json is a JSON list of
         {"index": <chord index>, "lead_ms": <ms>}; a positive lead presses
         early, a negative one late. Each probe's press row is marked in the
         probe column with its asked lead, and ch_play_status adds one line per
         probe row with the asked lead, the lead the row shows and hit or miss.
-        A probe chord not in the score file, or one timed from a Star Power
+        A probe chord not in the schedule, or one timed from a Star Power
         end rather than its own time, is refused before anything runs. song_folder sets
         the run cap from the song's length. The press rows go to a
         press-<n>.csv in the session folder as they happen, and the reply
         names it. Needs ch_kit_setup; refused while a play session runs."""
-        return capped(h.game.ch_edge_probe(song_folder, score_json, probes_json))
+        return capped(h.game.ch_edge_probe(song_folder, score_json, schedule_json, probes_json))
 
     @server.tool()
     def ch_press(lanes: str) -> str:
@@ -508,19 +503,19 @@ def build_server(helper: Optional[Helper] = None):
         return capped(h.sp.ch_sp_watch_stop())
 
     @server.tool()
-    def ch_sp_compare(watch_csv: str, score_json: str, resolution: int | None = None,
+    def ch_sp_compare(watch_csv: str, score_json: str, schedule_json: str,
+                      resolution: int | None = None,
                       sp_bar_ticks: int | None = None,
-                      width: int = sp_compare.DEFAULT_WIDTH,
-                      dump_json: str | None = None, path_index: int = 0) -> str:
+                      width: int = sp_compare.DEFAULT_WIDTH) -> str:
         """Compare a watcher CSV with a hydra_replay score JSON and print
         sp_compare's report, one PASS or FAIL line per check. resolution,
         when given, also prints Hydra's full meter beside the game's.
-        dump_json and path_index are ch_play_chart's: the checks look for
-        each chord where the auto-player pressed it, and a squeeze-out's
-        press times come from that path of the dump, so a score file with a
-        squeeze-out is refused without dump_json."""
-        return capped(h.sp.ch_sp_compare(watch_csv, score_json, resolution,
-                                         sp_bar_ticks, width, dump_json, path_index))
+        The checks look for each chord where the auto-player pressed it,
+        which schedule_json, the same path's hydra_replay schedule (the file
+        ch_play_chart plays), says. A schedule that refuses its path is
+        refused with the schedule's words."""
+        return capped(h.sp.ch_sp_compare(watch_csv, score_json, schedule_json,
+                                         resolution, sp_bar_ticks, width))
 
     @server.tool()
     def ch_sp_between(start_ms: float, end_ms: float) -> str:

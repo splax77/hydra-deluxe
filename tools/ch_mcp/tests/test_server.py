@@ -149,43 +149,44 @@ class ServerTest(unittest.TestCase):
         # kit press GameTools asks KitTools for is None.
         server = S.build_server(self.helper)
         result = asyncio.run(server.call_tool("ch_play_chart",
-                                              {"score_json": "x.json", "route": "pads"}))
+                                              {"score_json": "x.json",
+                                               "schedule_json": "y.json", "route": "pads"}))
         self.assertEqual(result.content[0].text, 'unknown route "pads"; routes: kit, keys')
         result = asyncio.run(server.call_tool("ch_play_chart",
-                                              {"score_json": "x.json", "route": "kit"}))
+                                              {"score_json": "x.json",
+                                               "schedule_json": "y.json", "route": "kit"}))
         self.assertEqual(result.content[0].text,
                          'route kit: the kit is not set up; call ch_kit_setup first, '
                          'or pass route="keys"')
 
-    def test_ch_run_chart_takes_the_plans_arguments_and_no_lead(self):
+    def test_the_play_tools_take_schedule_json_and_no_dump_json(self):
+        # Question 6 (a) of docs/superpowers/plans/2026-11-08-replay-press-
+        # schedule.md and D324 item 2: schedule_json replaces dump_json, and
+        # no decline mode, path index or lead is an argument.
         self.assertEqual(set(self._schema("ch_run_chart")),
-                         {"song_folder", "score_json", "kit_player", "decline_mode", "dump_json"})
-
-    def test_ch_play_chart_takes_no_lead_either(self):
+                         {"song_folder", "score_json", "schedule_json", "kit_player"})
         self.assertEqual(set(self._schema("ch_play_chart")),
-                         {"score_json", "log", "song_folder", "route", "decline_mode",
-                          "dump_json", "path_index"})
-
-    def test_ch_edge_probe_takes_its_leads_from_the_probes_file_only(self):
+                         {"score_json", "schedule_json", "log", "song_folder", "route"})
         self.assertEqual(set(self._schema("ch_edge_probe")),
-                         {"song_folder", "score_json", "probes_json"})
+                         {"song_folder", "score_json", "schedule_json", "probes_json"})
 
     def test_ch_edge_probe_passes_its_arguments_through(self):
         seen = []
         self.helper.game.ch_edge_probe = lambda *a: seen.append(a) or "probing"
         result = asyncio.run(S.build_server(self.helper).call_tool("ch_edge_probe", {
-            "song_folder": "song", "score_json": "s.json", "probes_json": "p.json"}))
+            "song_folder": "song", "score_json": "s.json", "schedule_json": "sched.json",
+            "probes_json": "p.json"}))
         self.assertEqual(result.content[0].text, "probing")
-        self.assertEqual(seen, [("song", "s.json", "p.json")])
+        self.assertEqual(seen, [("song", "s.json", "sched.json", "p.json")])
 
     def test_ch_run_chart_passes_its_arguments_through(self):
         seen = []
         self.helper.game.ch_run_chart = lambda *a: seen.append(a) or "ran"
         result = asyncio.run(S.build_server(self.helper).call_tool("ch_run_chart", {
-            "song_folder": "song", "score_json": "top.json", "kit_player": "System",
-            "decline_mode": "kick_only", "dump_json": "dump.json"}))
+            "song_folder": "song", "score_json": "top.json", "schedule_json": "sched.json",
+            "kit_player": "System"}))
         self.assertEqual(result.content[0].text, "ran")
-        self.assertEqual(seen, [("song", "top.json", "System", "kick_only", "dump.json")])
+        self.assertEqual(seen, [("song", "top.json", "sched.json", "System")])
 
     def test_the_helper_hands_ch_run_chart_its_three_parts(self):
         parts = self.helper.game._run_parts
@@ -216,36 +217,35 @@ class ServerTest(unittest.TestCase):
         self.assertEqual(result.content[0].text, "started")
         self.assertEqual(seen, [(("song", bot_run.DEFAULT_PLAYER, None), {"human": True})])
 
-    def test_ch_play_chart_passes_the_decline_arguments_through(self):
-        schema = self._schema("ch_play_chart")
-        self.assertEqual(schema["decline_mode"]["default"], None)
-        self.assertEqual(schema["dump_json"]["default"], None)
-        self.assertEqual(schema["path_index"]["default"], 0)
+    def test_ch_play_chart_passes_its_arguments_through(self):
         seen = []
         self.helper.game.ch_play_chart = lambda *a: seen.append(a) or "playing"
         server = S.build_server(self.helper)
-        asyncio.run(server.call_tool("ch_play_chart", {"score_json": "s.json"}))
+        asyncio.run(server.call_tool("ch_play_chart", {"score_json": "s.json",
+                                                       "schedule_json": "sched.json"}))
         asyncio.run(server.call_tool("ch_play_chart", {
-            "score_json": "s.json", "decline_mode": "kick_only",
-            "dump_json": "d.json", "path_index": 2}))
-        self.assertEqual(seen, [("s.json", None, None, None, None, None, 0),
-                                ("s.json", None, None, None, "kick_only", "d.json", 2)])
+            "score_json": "s.json", "schedule_json": "sched.json", "log": "p.csv",
+            "song_folder": "song", "route": "keys"}))
+        self.assertEqual(seen, [("s.json", "sched.json", None, None, None),
+                                ("s.json", "sched.json", "p.csv", "song", "keys")])
 
-    def test_ch_sp_compare_passes_the_dump_arguments_through(self):
+    def test_ch_sp_compare_passes_the_schedule_through_and_takes_no_dump(self):
         schema = self._schema("ch_sp_compare")
-        self.assertEqual(schema["dump_json"]["default"], None)
-        self.assertEqual(schema["path_index"]["default"], 0)
+        self.assertNotIn("default", schema["schedule_json"])
+        self.assertNotIn("dump_json", schema)
+        self.assertNotIn("path_index", schema)
         seen = []
         self.helper.sp.ch_sp_compare = lambda *a: seen.append(a) or "compared"
         server = S.build_server(self.helper)
         asyncio.run(server.call_tool("ch_sp_compare", {"watch_csv": "w.csv",
-                                                       "score_json": "s.json"}))
+                                                       "score_json": "s.json",
+                                                       "schedule_json": "sched.json"}))
         asyncio.run(server.call_tool("ch_sp_compare", {
-            "watch_csv": "w.csv", "score_json": "s.json", "dump_json": "d.json",
-            "path_index": 2}))
+            "watch_csv": "w.csv", "score_json": "s.json", "schedule_json": "sched.json",
+            "resolution": 192}))
         width = schema["width"]["default"]
-        self.assertEqual(seen, [("w.csv", "s.json", None, None, width, None, 0),
-                                ("w.csv", "s.json", None, None, width, "d.json", 2)])
+        self.assertEqual(seen, [("w.csv", "s.json", "sched.json", None, None, width),
+                                ("w.csv", "s.json", "sched.json", 192, None, width)])
 
     def test_ch_start_human_with_no_song_folder_is_refused_before_any_launch(self):
         result = asyncio.run(S.build_server(self.helper).call_tool("ch_start", {"human": True}))

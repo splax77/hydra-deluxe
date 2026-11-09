@@ -30,6 +30,7 @@ if _REPO_ROOT not in sys.path:
 
 from tools.ch_probe.experiments import sp_compare  # noqa: E402
 from tools.ch_probe.experiments.overlay_logs import WATCH_COLUMNS  # noqa: E402
+from tools.ch_probe.tests.test_play_chart import _schedule_of  # noqa: E402
 
 
 def _chord(index, tick, ms, multiplier, *, in_sp=False, phrase_end=False, fill=False):
@@ -96,8 +97,23 @@ def build_rows(times=DEFAULT_TIMES, *, amount0=0, rise_skip=(), act=(3005, 4100)
     return rows
 
 
+def _write_schedule(folder):
+    """SCORE's hand-built schedule (test_play_chart._schedule_of: one plain
+    press per chord), written to `folder`; its path."""
+    path = os.path.join(folder, "schedule.json")
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(_schedule_of(SCORE), f)
+    return path
+
+
+def _score_reach():
+    with tempfile.TemporaryDirectory() as folder:
+        return sp_compare.press_reach(_write_schedule(folder))
+
+
 def run(rows, **kwargs):
     kwargs.setdefault("resolution", 192)
+    kwargs.setdefault("reach", _score_reach())
     return sp_compare.compare(rows, SCORE, **kwargs)
 
 
@@ -269,10 +285,19 @@ class FilesTest(unittest.TestCase):
         return csv_path, json_path
 
     def _main(self, argv):
+        # Every run names SCORE's schedule; a file of one folder is enough.
         out = io.StringIO()
-        with contextlib.redirect_stdout(out):
-            code = sp_compare.main(argv)
+        with tempfile.TemporaryDirectory() as folder:
+            with contextlib.redirect_stdout(out):
+                code = sp_compare.main(argv + ["--schedule", _write_schedule(folder)])
         return code, out.getvalue()
+
+    def test_main_needs_the_schedule(self):
+        with tempfile.TemporaryDirectory() as folder:
+            csv_path, json_path = self._write(folder, build_rows())
+            with contextlib.redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit):
+                    sp_compare.main([csv_path, json_path])
 
     def test_main_reads_the_files_and_exits_0(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -449,8 +474,9 @@ def _fixture(name):
     return os.path.join(_HERE, name)
 
 
-_MOUTHS = (_fixture("mouths_refine_score.json"), _fixture("mouths_refine_dump.json"))
-_BOMBER = (_fixture("bomber_refine_score.json"), _fixture("bomber_refine_dump.json"))
+# Each path's score file and its hydra_replay schedule file.
+_MOUTHS = (_fixture("mouths_refine_score.json"), _fixture("mouths_refine_schedule.json"))
+_BOMBER = (_fixture("bomber_refine_score.json"), _fixture("bomber_refine_schedule.json"))
 
 
 def _rounded(reach):
@@ -472,26 +498,31 @@ def _rise_lines(score_path, reach, rows):
 
 
 class PressReachTest(unittest.TestCase):
-    """press_reach takes each chord's press times from play_chart.press_plan."""
+    """press_reach takes each chord's press times from the schedule file:
+    each press's chord `ms` plus its `aim_ms`. Every reach below is those two
+    fields of the fixture, added and rounded to 0.01 ms."""
 
     def test_mouths_740_reaches_its_late_kick_press(self):
-        reach = sp_compare.press_reach(*_MOUTHS)
-        # The cymbals are pressed 15 ms early, the kick 15 ms after the end.
-        self.assertEqual(_rounded(reach[740]), (118410.95, 118440.95))
+        reach = sp_compare.press_reach(_MOUTHS[1])
+        # Chord 740 is at 118425.95080264665 ms. Its cymbals are aimed
+        # -22.60600950299704 ms (squeeze_out_inside), its kick
+        # 7.39399049700296 ms (squeeze_out_late).
+        self.assertEqual(_rounded(reach[740]), (118403.34, 118433.34))
 
     def test_mouths_740_is_credited_at_its_second_press(self):
-        reach = sp_compare.press_reach(*_MOUTHS)
+        reach = sp_compare.press_reach(_MOUTHS[1])
         rows = [_row(118.300, 0), _row(118.412, 0), _row(118.441, 1536)]
         self.assertIn("PASS phrase rise after chord 740 (tick 48480, 118426.0 ms): "
                       "+1536 (0 -> 1536) at 118441.0 ms, full",
                       _rise_lines(_MOUTHS[0], reach, rows))
 
     def test_bomber_147_reaches_its_solved_early_press(self):
-        reach = sp_compare.press_reach(*_BOMBER)
-        # 147 is an activation, so press_plan presses it in two groups: the
-        # yellow cymbal early by the lead activation_leads solves for chord
-        # 180's squeeze-out, then the kick CHORD_ORDER_GAP_MS later.
-        self.assertEqual(_rounded(reach[147]), (27282.06, 27290.06))
+        reach = sp_compare.press_reach(_BOMBER[1])
+        # 147 is an activation and chord 180's squeeze anchor, so the
+        # schedule presses it in two groups: the yellow cymbal aimed
+        # -62.42936351273587 ms from 27333.333333333332 ms, then the kick
+        # 8 ms later (after_ms 8.0).
+        self.assertEqual(_rounded(reach[147]), (27270.90, 27278.90))
         # A flip after 147's press but before its ms lands on 147, not on
         # chord 146 83 ms before it.
         chords = _fixture_chords(_BOMBER[0])
@@ -500,34 +531,32 @@ class PressReachTest(unittest.TestCase):
         self.assertEqual(got["index"], 147)
 
     def test_bomber_180_reaches_its_late_press(self):
-        reach = sp_compare.press_reach(*_BOMBER)
-        self.assertEqual(_rounded(reach[180]), (32630.39, 32630.39))
+        reach = sp_compare.press_reach(_BOMBER[1])
+        # Chord 180 is at 32583.333333333336 ms, aimed 38.903969820592465 ms
+        # (squeeze_out_late).
+        self.assertEqual(_rounded(reach[180]), (32622.24, 32622.24))
         rows = [_row(32.500, 0), _row(32.640, 1536)]
         self.assertIn("PASS phrase rise after chord 180 (tick 18768, 32583.3 ms): "
                       "+1536 (0 -> 1536) at 32640.0 ms, full",
                       _rise_lines(_BOMBER[0], reach, rows))
 
-    def test_a_squeeze_out_with_no_dump_is_refused(self):
-        with self.assertRaises(ValueError):
-            sp_compare.press_reach(_MOUTHS[0])
-
-    def test_senri_with_no_squeeze_reaches_as_before(self):
-        # Chord 268 ends an activation and is pressed 15 ms early; chord 267
-        # is pressed 2 ms early. Each has one press. test_play_chart's Senri
-        # file adds the red neighbours the load check needs.
-        from tools.ch_probe.tests.test_play_chart import _senri_dump
-        with tempfile.TemporaryDirectory() as folder:
-            path = os.path.join(folder, "senri.json")
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(_senri_dump(), f)
-            reach = sp_compare.press_reach(path)
+    def test_senri_with_no_squeeze_reaches_its_one_press(self):
+        # Chord 268 (31860.680000000004 ms) ends an activation and is aimed
+        # -15.0 ms (sp_end); chord 267 (31759.329000000005 ms) is aimed
+        # -2.0 ms (plain). Each has one press.
+        reach = sp_compare.press_reach(_fixture("senri_schedule.json"))
         self.assertEqual(_rounded(reach[268]), (31845.68, 31845.68))
         self.assertEqual(_rounded(reach[267]), (31757.33, 31757.33))
 
-    def test_compare_with_no_reach_reads_the_score_itself(self):
-        rows = build_rows()
-        self.assertEqual(run(rows).text(),
-                         run(rows, reach=sp_compare._score_press_reach(SCORE)).text())
+    def test_a_schedule_that_refuses_its_path_is_refused(self):
+        doc = _schedule_of(SCORE)
+        doc["refusals"] = ["chord 3 is a squeeze the schedule could not split, so it is not pressed"]
+        with tempfile.TemporaryDirectory() as folder:
+            path = os.path.join(folder, "schedule.json")
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(doc, f)
+            with self.assertRaisesRegex(ValueError, "refuses to play this path"):
+                sp_compare.press_reach(path)
 
 
 def _samples(*pairs):
