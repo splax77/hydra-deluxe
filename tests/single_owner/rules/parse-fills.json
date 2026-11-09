@@ -106,7 +106,7 @@
         "Song song = load_songpath(path, reading, rules, kNotesOnlyFills);"
       ],
       "must_not_match": [
-        "place_authored_fills(song, fills_, rules_.fill_land_slop_beats);",
+        "place_authored_fills(song, fills_, rules_.fill_land_slop_beats, coda_tick_, fills_rule_);",
         "check_timing_maps(tick_resolution_, tpm_changes, bpm_changes);",
         "Song song = load_songpath(a.chart, s.reading(), s.rules, fill_rule_for(s.legacy_fills));"
       ],
@@ -178,6 +178,43 @@
         }
       ],
       "note": "Running a fill generator, or choosing between them, anywhere but the parser. The parser picks the generator from the FillDeadlineRule its caller passes to the parse/song.h loaders; a caller holding a setting converts it with search/graph.h's fill_rule_for. kNotesOnlyFills (parse/song.h) is the one fixed rule allowed, for a caller that reads only the chords; every use is an owner line here, so a caller that reads fills cannot pick it up unnoticed."
+    },
+    {
+      "question": "Which written fills does the coda skip?",
+      "owner": "place_authored_fills in src/parse/song.cpp",
+      "owner_file": "src/parse/song.cpp",
+      "owner_symbol": "place_authored_fills",
+      "date": "2026-11-08",
+      "decision": "FL-08 (user, 2026-11-08: \"Match the game\") and Q-40 (user, 2026-11-08: \"1.0's own rule\"), task FL08-T1",
+      "added_by": "FL08-T1",
+      "pattern": "\\*?\\bcoda\\w*\\b\\s*(==|>=|<=|!=|\\s[<>]\\s)|(==|>=|<=|!=|\\s[<>]\\s)\\s*\\*?\\bcoda\\w*\\b",
+      "anchor": "coda",
+      "must_match": [
+        "? f.start == *coda_tick",
+        ": f.start >= *coda_tick;",
+        "if (start < coda) continue;",
+        "return coda_tick_ <= fill.start;"
+      ],
+      "must_not_match": [
+        "std::optional<int64_t> coda_tick;",
+        "if (l.kind == LineKind::Event && is_coda_event(coda_body) && !coda_tick_.has_value())",
+        "bool is_coda_event(std::string_view body) { return body == kCodaEventBody; }",
+        "if (!coda_body.empty() && coda_body.front() == '[') {",
+        "place_authored_fills(song, fills_, rules_.fill_land_slop_beats, coda_tick, fills_rule_);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/parse/song.cpp",
+          "line_text": "? f.start == *coda_tick",
+          "why": "place_authored_fills, the owner: Clone Hero 1.0 mode skips only the fill on the coda tick"
+        },
+        {
+          "file": "src/parse/song.cpp",
+          "line_text": ": f.start >= *coda_tick;",
+          "why": "place_authored_fills, the owner: Clone Hero 1.1 skips every fill from the coda on"
+        }
+      ],
+      "note": "Comparing a fill's tick with the coda tick. The readers only find the coda tick, through song.cpp's is_coda_event, and hand it to place_authored_fills, which alone decides which fills it skips."
     }
   ]
 }

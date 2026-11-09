@@ -228,7 +228,7 @@ The first column is the function start, read from the listing's own first line. 
 
 ## New listings
 
-The 93 listings below were made for the reference on 2026-10-30, in session b02ab3e6 (the reference build), except twelve: the cli loader, the player kind, the drums input source, the profile save and the score submit were added on 2026-10-31, in session b15bb484, the lane velocity and the create custom controller were added on 2026-11-06, and the midi register, the midi slot check, the midi pump, the note after lookup and the note before lookup were added on 2026-11-08, in session 6341c618. There are 91 `.asm` files under `code/6142/` and 2 `.cs` files under `code/4045/`, and each has a `.md` beside it that explains its branches in plain words.
+The 100 listings below were made for the reference on 2026-10-30, in session b02ab3e6 (the reference build), except nineteen: the cli loader, the player kind, the drums input source, the profile save and the score submit were added on 2026-10-31, in session b15bb484, the lane velocity and the create custom controller were added on 2026-11-06, and the midi register, the midi slot check, the midi pump, the note after lookup and the note before lookup were added on 2026-11-08, in session 6341c618, and the chart loader, the events section, the section loop, the fill init, the two fill skips and the mid events coda were added on 2026-11-08, in session 7b39835b. There are 98 `.asm` files under `code/6142/` and 2 `.cs` files under `code/4045/`, and each has a `.md` beside it that explains its branches in plain words.
 
 The `.asm` files are from build 1.1.0.6142 (`GameAssembly.dll`), made with tools/ch_mcp/chdis.py. The start is the RVA in the file name, and for every file it matches the address on the listing's first line (or the `; function` line some listings open with). The role is the file name with the RVA taken off. Three file names carry no RVA (the drums input source, the profile save and the score submit, each named for the question it answers); for those the start is the address on the first line.
 
@@ -251,6 +251,7 @@ The table was generated from the files, not typed. One more file, `code/6142/dru
 | 0x210C1F0 | cal ms to s | [code/6142/cal_ms_to_s_210C1F0.asm](6142/cal_ms_to_s_210C1F0.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x213CAF0 | chart e handler | [code/6142/chart_e_handler_213CAF0.asm](6142/chart_e_handler_213CAF0.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x212E130 | chart length | [code/6142/chart_length_212E130.asm](6142/chart_length_212E130.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x2161A80 | chart loader | [code/6142/chart_loader_2161a80.asm](6142/chart_loader_2161a80.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x213D160 | chart modifier decode | [code/6142/chart_modifier_decode_213D160.asm](6142/chart_modifier_decode_213D160.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x213D620 | chart n handler | [code/6142/chart_n_handler_213D620.asm](6142/chart_n_handler_213D620.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x35C980 | chart song metadata | [code/6142/chart_song_metadata_35C980.asm](6142/chart_song_metadata_35C980.asm) | 6142 | tools/ch_mcp/chdis.py |
@@ -267,9 +268,13 @@ The table was generated from the files, not typed. One more file, `code/6142/dru
 | 0x212C7E0 | end event usable | [code/6142/end_event_usable_212C7E0.asm](6142/end_event_usable_212C7E0.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x20DF680 | engine ctor | [code/6142/engine_ctor_20DF680.asm](6142/engine_ctor_20DF680.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x20F79E0 | engine ctor | [code/6142/engine_ctor_20F79E0.asm](6142/engine_ctor_20F79E0.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x2151830 | events section | [code/6142/events_section_2151830.asm](6142/events_section_2151830.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x20E49D0 | fill cache caller | [code/6142/fill_cache_caller_20E49D0.asm](6142/fill_cache_caller_20E49D0.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x20DDB70 | fill deadline | [code/6142/fill_deadline_20DDB70.asm](6142/fill_deadline_20DDB70.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x20D2B30 | fill generator | [code/6142/fill_generator_20D2B30.asm](6142/fill_generator_20D2B30.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x20FB9A0 | fill init | [code/6142/fill_init_20FB9A0.asm](6142/fill_init_20FB9A0.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x215F610 | fill skip before | [code/6142/fill_skip_before_215F610.asm](6142/fill_skip_before_215F610.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x215DA70 | fill skip from coda | [code/6142/fill_skip_from_coda_215DA70.asm](6142/fill_skip_from_coda_215DA70.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x20CFF60 | fill to activation | [code/6142/fill_to_activation_20CFF60.asm](6142/fill_to_activation_20CFF60.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x2C7CF70 | first after search | [code/6142/first_after_search_2C7CF70.asm](6142/first_after_search_2C7CF70.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x20F16E0 | fold | [code/6142/fold_20F16E0.asm](6142/fold_20F16E0.asm) | 6142 | tools/ch_mcp/chdis.py |
@@ -286,6 +291,7 @@ The table was generated from the files, not typed. One more file, `code/6142/dru
 | 0x215B8C0 | kick merge | [code/6142/kick_merge_215B8C0.asm](6142/kick_merge_215B8C0.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x337E10 | lane velocity | [code/6142/lane_velocity_337E10.asm](6142/lane_velocity_337E10.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x2155050 | mid drum reader | [code/6142/mid_drum_reader_2155050.asm](6142/mid_drum_reader_2155050.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x21544E0 | mid events coda | [code/6142/mid_events_coda_21544E0.asm](6142/mid_events_coda_21544E0.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x20CEDC0 | mid fill reader | [code/6142/mid_fill_reader_20CEDC0.asm](6142/mid_fill_reader_20CEDC0.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x21E420 | midi pump | [code/6142/midi_pump_21E420.asm](6142/midi_pump_21E420.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x21CDE0 | midi register | [code/6142/midi_register_21CDE0.asm](6142/midi_register_21CDE0.asm) | 6142 | tools/ch_mcp/chdis.py |
@@ -309,6 +315,7 @@ The table was generated from the files, not typed. One more file, `code/6142/dru
 | 0x1144C0 | score submit | [code/6142/score_submit.asm](6142/score_submit.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x252630 | scorestats json | [code/6142/scorestats_json_252630.asm](6142/scorestats_json_252630.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x15DC20 | scorestats writer | [code/6142/scorestats_writer_15DC20.asm](6142/scorestats_writer_15DC20.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x2150C00 | section loop | [code/6142/section_loop_2150c00.asm](6142/section_loop_2150c00.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x2116210 | setting base ctor | [code/6142/setting_base_ctor_2116210.asm](6142/setting_base_ctor_2116210.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x210C470 | setting int ctor | [code/6142/setting_int_ctor_210C470.asm](6142/setting_int_ctor_210C470.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x374D50 | settings load | [code/6142/settings_load_374D50.asm](6142/settings_load_374D50.asm) | 6142 | tools/ch_mcp/chdis.py |
