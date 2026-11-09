@@ -475,6 +475,9 @@
 - 2026-11-08 d0a3868c Player refinements handoff (2026-11-08) | clone-hero, activation, hit-window, transfer-scale, planning, review | The session ended when the user asked it to stop and write a handoff, and the handoff was committed on its own branch, not merged. [stale] [write-back]
 - 2026-11-08 6341c618 Player limits handoff (2026-11-08) | clone-hero, squeeze, planning, review, agents | The session ended with a findings handoff, written at the user's request, and the kit fix was not started.
 - 2026-11-08 31e4f22f Playing code audit (2026-11-08) | clone-hero, agents, tests, review, planning | The session ended with every audit finding given an exit and two handoffs committed. No code was changed, and nothing was merged or pushed.
+- 2026-11-08 274bd9dd Player audit continuation (2026-11-08) | clone-hero, press-schedule, review, docs, agents | The player audit was merged to main and the docs test passed, but the fix plan was not started; a handoff for the plan was written on its own branch.
+- 2026-11-08 77057df2 Clone Hero docs gaps (2026-11-08) | clone-hero, docs, agents, planning, review | Ended on the user's stop order: the Unknowns checks were halted part way and written up as a handoff. [write-back]
+- 2026-11-08 0963d03d Player audit fix plan (2026-11-08) | press-schedule, planning, review, agents, docs | The fix plan was merged to main, and its first four tasks (F1, F3, F8 and F9) were built, reviewed and merged; about two thirds of the plan is left.
 
 ## Proposed tags
 
