@@ -125,6 +125,50 @@ std::string chart_events(const std::string& lines) {
     return testchart::section("Events", lines);
 }
 
+// mid_coda without fill A: fill B (960 to 1920) is the chart's only written
+// fill, or there is none when `written_fill` is false. The blue at 1935 is 15
+// ticks after the measure line at 1920, so the generator, when it runs, puts
+// a fill on it.
+Song mid_lone_fill(const std::vector<std::pair<uint32_t, std::string>>& texts,
+                   FillDeadlineRule rule, bool written_fill = true) {
+    const std::vector<uint8_t> drums =
+        written_fill ? testmidi::concat({
+                           testmidi::track_name("PART DRUMS"),
+                           {0x87, 0x40, 0x90, 120, 100},  // tick 960: fill B on
+                           {0x83, 0x60, 0x90, 98, 100},   // tick 1440: yellow, inside B
+                           {0x83, 0x60, 0x90, 120, 0},    // tick 1920: fill B off
+                           {0x0F, 0x90, 99, 100},         // tick 1935: blue
+                           testmidi::end_of_track(),
+                       })
+                     : testmidi::concat({
+                           testmidi::track_name("PART DRUMS"),
+                           {0x8B, 0x20, 0x90, 98, 100},  // tick 1440: yellow
+                           {0x83, 0x6F, 0x90, 99, 100},  // tick 1935: blue
+                           testmidi::end_of_track(),
+                       });
+    const std::vector<uint8_t> timing =
+        testmidi::concat({testmidi::set_tempo(), testmidi::end_of_track()});
+    return load_songbytes_mid(testmidi::smf_tracks({timing, drums, events_track(texts)}),
+                              ChartReading{}, core::default_rules(), rule);
+}
+
+// chart_coda without fill A: fill B (384 to 768) is the only written fill, or
+// there is none when `written_fill` is false. The chord at 774 is 6 ticks
+// after the measure line at 768, so the generator, when it runs, fills it.
+Song chart_lone_fill(const std::string& before, FillDeadlineRule rule,
+                     bool written_fill = true) {
+    using testchart::line;
+    const std::string drums = testchart::section(
+        "ExpertDrums", (written_fill ? line(384, "S 64 384") : std::string()) +
+                           line(576, "N 2 0") + line(774, "N 3 0"));
+    return load_songbytes_chart(testchart::chart_bytes(before + drums),
+                                ChartReading{Difficulty::Expert}, core::default_rules(), rule);
+}
+
+bool no_fill_at_all(const Song& song) {
+    return activation_tick(song) == -1 && !song.generated_fills.has_value();
+}
+
 }  // namespace
 
 TEST_CASE("fill landing: .chart window is trunc(res/32) + 1 ticks") {
@@ -310,4 +354,44 @@ TEST_CASE("fill landing: only the first .chart coda counts, across [Events] sect
 
 TEST_CASE("fill landing: a coda event inside the drum section skips nothing") {
     CHECK(chord_has_fill(chart_coda("", "", testchart::line(384, "E coda")), 774));
+}
+
+// FL-27 and FL-08: a fill the coda skipped stays in Clone Hero's fill list, so
+// the generator does not run (0x20D3375). A chart whose only written fill the
+// coda skipped gets no fill at all, under both fill rules.
+TEST_CASE("fill landing: a chart whose only written fill the coda skipped gets no generated fill") {
+    for (const FillDeadlineRule rule : {FillDeadlineRule::Ch11, FillDeadlineRule::Ch10}) {
+        CAPTURE(static_cast<int>(rule));
+        CHECK(no_fill_at_all(mid_lone_fill({{960, "coda"}}, rule)));
+        CHECK(no_fill_at_all(
+            chart_lone_fill(chart_events(testchart::line(384, "E \"coda\"")), rule)));
+    }
+}
+
+TEST_CASE("fill landing: a lone written fill one tick before the coda still lands") {
+    for (const FillDeadlineRule rule : {FillDeadlineRule::Ch11, FillDeadlineRule::Ch10}) {
+        CAPTURE(static_cast<int>(rule));
+        const Song mid = mid_lone_fill({{961, "coda"}}, rule);
+        CHECK(chord_has_fill(mid, 1935));
+        CHECK_FALSE(mid.generated_fills.has_value());
+        const Song chart =
+            chart_lone_fill(chart_events(testchart::line(385, "E \"coda\"")), rule);
+        CHECK(chord_has_fill(chart, 774));
+        CHECK_FALSE(chart.generated_fills.has_value());
+    }
+}
+
+// The same shapes with no written fill still generate one, so the case above
+// tests the coda skip and not a chart the generator would leave empty.
+TEST_CASE("fill landing: the lone-fill shapes with no written fill still generate") {
+    for (const FillDeadlineRule rule : {FillDeadlineRule::Ch11, FillDeadlineRule::Ch10}) {
+        CAPTURE(static_cast<int>(rule));
+        const Song mid = mid_lone_fill({{960, "coda"}}, rule, false);
+        CHECK(chord_has_fill(mid, 1935));
+        CHECK(mid.generated_fills == rule);
+        const Song chart =
+            chart_lone_fill(chart_events(testchart::line(384, "E \"coda\"")), rule, false);
+        CHECK(chord_has_fill(chart, 774));
+        CHECK(chart.generated_fills == rule);
+    }
 }

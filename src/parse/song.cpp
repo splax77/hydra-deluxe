@@ -376,7 +376,8 @@ void apply_fill_end(Song& song, size_t index, int64_t starttick) {
 // finish marks the fills from the coda on (0x215DA70, the setge at 0x215DB6D)
 // and the landing step passes over a marked fill (0x20CFF60). Build 1.0 skips
 // only a fill on the coda tick (code/4045/fill_generator.cs line 88), and
-// FillDeadlineRule::Ch10 follows it (FL-08, FL-39, Q-40).
+// FillDeadlineRule::Ch10 follows it (FL-08, FL-39, Q-40). A skipped fill
+// still marks the song (Song::coda_skipped_fill), so no fill is generated.
 void place_authored_fills(Song& song, const std::vector<AuthoredFill>& fills,
                           double slop_beats, std::optional<int64_t> coda_tick,
                           FillDeadlineRule fills_rule) {
@@ -396,7 +397,10 @@ void place_authored_fills(Song& song, const std::vector<AuthoredFill>& fills,
             const bool skipped = fills_rule == FillDeadlineRule::Ch10
                                      ? f.start == *coda_tick
                                      : f.start >= *coda_tick;
-            if (skipped) continue;
+            if (skipped) {
+                song.coda_skipped_fill = true;
+                continue;
+            }
         }
         const auto it = std::upper_bound(
             order.begin(), order.end(), f.end,
