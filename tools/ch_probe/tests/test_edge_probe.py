@@ -2,7 +2,9 @@
 play_chart's own plan and play loop.
 
 The chords are made-up kicks a second apart, as on the Edge Walk probe chart,
-loaded through play_chart.load_dump_chords. A run is played by
+in a hand-built schedule (test_play_chart._schedule_of) loaded through
+play_chart.load_schedule. The squeeze cases read freak_limits_schedule.json,
+hydra_replay schedule's file for Freak path 0. A run is played by
 play_chart.play_chords on a fake clock and score, so no test opens the game.
 """
 
@@ -21,6 +23,9 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 from tools.ch_probe.experiments import edge_probe, play_chart  # noqa: E402
+from tools.ch_probe.tests.test_play_chart import _schedule_of  # noqa: E402
+
+_FREAK_SCHEDULE = os.path.join(_HERE, "freak_limits_schedule.json")
 
 KICK = {"color": "Kick", "cymbal": False, "dynamic": "none"}
 # Chords 0 to 4, a second apart from 3 s.
@@ -73,7 +78,7 @@ class EdgeProbeTest(unittest.TestCase):
         return path
 
     def _chords(self, score=SCORE):
-        return play_chart.load_dump_chords(self._file("score.json", score))
+        return play_chart.load_schedule(self._file("schedule.json", _schedule_of(score))).chords
 
     # -- the probes file ------------------------------------------------------------
 
@@ -111,23 +116,33 @@ class EdgeProbeTest(unittest.TestCase):
             edge_probe.probe_chords(self._chords(), [edge_probe.Probe(9, 10.0)])
 
     def test_a_squeeze_chord_timed_from_its_end_is_refused(self):
-        # Chord 1 squeezes in at an end 10 ms before it, so press_plan times
-        # its press from the end, not from the chord's own time. The end is
-        # close enough that the press lands in the chord's window with the
-        # activation pressed on time, so activation_leads asks for no lead
-        # and the refusal is the probe's own.
-        chords = self._chords()
-        chords[1] = play_chart.Chord(1, 4000.0, chords[1].lanes, chords[1].dynamics,
-                                     squeeze=play_chart.Squeeze(play_chart.SQUEEZE_IN, 3990.0, 0))
-        self.assertEqual(play_chart.activation_leads(chords), [])
-        with self.assertRaisesRegex(ValueError, "probe chords 1 are timed by another rule"):
-            edge_probe.probe_chords(chords, [edge_probe.Probe(1, 10.0)])
+        # Freak's chord 387 is a squeeze-out whose press the schedule times
+        # from activation 0's end (timed_from_end 0, rule squeeze_out_late).
+        chords = play_chart.load_schedule(_FREAK_SCHEDULE).chords
+        with self.assertRaisesRegex(ValueError, "probe chords 387 are timed by another rule"):
+            edge_probe.probe_chords(chords, [edge_probe.Probe(387, 10.0)])
+
+    def test_a_plain_chord_of_a_real_schedule_is_pressed_at_its_lead(self):
+        # Freak's chord 386, just before that squeeze, is a plain press; its
+        # ms is 60460.99135388401 in the file.
+        chords = play_chart.load_schedule(_FREAK_SCHEDULE).chords
+        moved, _run = edge_probe.probe_chords(chords, [edge_probe.Probe(386, -60.0)])
+        at = {p.index: p.at_ms for p in play_chart.press_plan(moved)}
+        plain = {p.index: p.at_ms for p in play_chart.press_plan(chords)}
+        self.assertAlmostEqual(at[386], 60460.99135388401 + 60.0)
+        self.assertEqual({i: t for i, t in at.items() if i != 386},
+                         {i: t for i, t in plain.items() if i != 386})
 
     # -- the rows -------------------------------------------------------------------
 
     def test_a_run_presses_the_probes_at_their_leads_and_marks_only_their_rows(self):
+        # Chord 3's probe is 82.72 ms late, past its last_send_ms (50 ms after
+        # the chord in _schedule_of), so the run sends it only because the
+        # move carries last_send_ms along.
+        chords = self._chords()
+        plain_lead = chords[0].presses[0].lead_ms
         moved, run = edge_probe.probe_chords(
-            self._chords(), [edge_probe.Probe(1, 88.72), edge_probe.Probe(3, -82.72)])
+            chords, [edge_probe.Probe(1, 88.72), edge_probe.Probe(3, -82.72)])
         wall, game = _Wall(), _Game()
         result = play_chart.play_chords(moved, _Clock(wall), game.read_score, game.press,
                                         now=wall.now, sleep=wall.sleep, on_press=run.mark_row,
@@ -138,7 +153,7 @@ class EdgeProbeTest(unittest.TestCase):
                          {i: 3000.0 + 1000.0 * i for i in range(5)})
         self.assertEqual({i: row.get(edge_probe.PROBE_COLUMN) for i, row in rows.items()},
                          {0: None, 1: 88.72, 2: None, 3: -82.72, 4: None})
-        for index, asked in ((1, 88.72), (3, -82.72), (0, play_chart.PRESS_LEAD_MS)):
+        for index, asked in ((1, 88.72), (3, -82.72), (0, plain_lead)):
             with self.subTest(index=index):
                 read = rows[index]["chart_ms"] - rows[index]["clock_ms_at_press"]
                 # The fake clock moves 1 ms a read, and a press fires at the
