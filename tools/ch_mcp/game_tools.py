@@ -284,11 +284,13 @@ def _number(value) -> Optional[float]:
 
 
 def activation_end_lines(rows: Sequence[dict], ends: dict) -> List[str]:
-    """One line per activation whose row carries the end the game stored
-    (`end_read_ms`, which play_chart writes after the activation's press):
-    the planned end from `ends` (planned_ends), the game's, and how far
-    apart they are. A value that is not a number is printed as the row gives
-    it. Rows without the column give nothing."""
+    """One line per read of the game's Star Power end, keyed by the chord it
+    was read after: the first row of that chord carries the end the game
+    stored (`end_read_ms`, which play_chart.play_chords writes after each
+    chord the schedule's `reads` names). Each line gives the planned end
+    from `ends` (planned_ends), the game's, and how far apart they are. A
+    value that is not a number is printed as the row gives it. Rows without
+    the column give nothing."""
     lines = []
     seen = set()
     for row in rows:
@@ -297,7 +299,7 @@ def activation_end_lines(rows: Sequence[dict], ends: dict) -> List[str]:
             continue
         seen.add(row["index"])
         planned = ends.get(row["index"])
-        head = f"activation chord {row['index']}: " + (
+        head = f"end read after chord {row['index']}: " + (
             "" if planned is None else f"end planned {planned:,.1f} ms, ")
         game = _number(value)
         if game is None:

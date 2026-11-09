@@ -77,6 +77,16 @@ DROPPED = "dropped"
 # Power was off right after the press, so the plan's times stand.
 NO_ACTIVATION_READ = "no activation read"
 
+# What a press row says in `retimed` about a press the schedule gave a
+# `fallback` (design point 5 of
+# docs/superpowers/plans/2026-11-08-replay-press-schedule.md): a squeeze-out's
+# late gem kept after the read end, that gem moved in with its chord's last
+# inside group (the block's `join_group`), or a squeeze-in pressed plain (the
+# block's `plain`). A squeeze-in that keeps its squeeze press leaves it blank.
+RETIMED_LATE = "late"
+RETIMED_INSIDE = "inside"
+RETIMED_PLAIN = "plain"
+
 # The score is read this long after a press: a dense chart's next chord comes
 # sooner than constants.INPUT_SETTLE_MS.
 SCORE_READ_DELAY_S = 0.005
@@ -110,8 +120,10 @@ class Press:
     in the same order, and `axes` their strengths once with_axes has worked
     them out. `declined` is the chord's. `planned_end_ms`, on the first press
     of a chord whose `reads` names an activation, is that read's
-    `planned_end_ms`: play_chords reads the game's end after it. The other
-    fields are the entry's own, under the same names."""
+    `planned_end_ms`: play_chords reads the game's end after it. `retimed`
+    is what retime_from_end did with the press's `fallback` (a RETIMED_
+    word), None until it ran on a press with one. The other fields are the
+    entry's own, under the same names."""
     index: int
     chart_ms: float
     aim_ms: float
@@ -127,6 +139,7 @@ class Press:
     aim_end_ms: Optional[float] = None
     fallback: Optional[Mapping] = None
     planned_end_ms: Optional[float] = None
+    retimed: Optional[str] = None
 
     @property
     def lead_ms(self) -> float:
@@ -239,19 +252,74 @@ def press_plan(chords: Sequence[Chord]) -> List[Press]:
     return sorted((p for chord in chords for p in chord.presses), key=lambda p: p.at_ms)
 
 
-def retime_from_end(presses: Sequence[Press], read_after: int, planned_end_ms: float,
-                    read_end_ms: float) -> List[Press]:
+def retime_from_end(presses: Sequence[Press], read_after: int, read_end_ms: float,
+                    chord_lanes: Optional[Mapping[int, Sequence[int]]] = None) -> List[Press]:
     """`presses` in firing order, with every press the schedule times from
     the end read after chord `read_after` (Press.end_read_after) moved by how
-    far the end the game stored, `read_end_ms`, is from `planned_end_ms`.
-    Design point 1 of docs/superpowers/plans/2026-11-07-player-limits.md
-    says why: the game stamps an activation with the clock of the frame that
-    read the press."""
-    delta_ms = read_end_ms - planned_end_ms
-    moved = [replace(p, aim_ms=p.aim_ms + delta_ms,
-                     aim_end_ms=None if p.aim_end_ms is None else p.aim_end_ms + delta_ms)
-             if p.end_read_after == read_after else p for p in presses]
-    return sorted(moved, key=lambda p: p.at_ms)
+    far the end the game stored, `read_end_ms`, is from that press's own
+    `aim_end_ms`. Design point 1 of
+    docs/superpowers/plans/2026-11-07-player-limits.md says why: the game
+    stamps an activation with the clock of the frame that read the press.
+
+    A moved press with a `fallback` then does what the block says (design
+    point 5 of docs/superpowers/plans/2026-11-08-replay-press-schedule.md),
+    and Press.retimed says which. A read end past `if_end_after_ms` makes
+    the late gem `join_group`: it goes down `before_end_ms` before the read
+    end, in one press with its chord's group of `join_gems` (indexes into
+    the chord's lanes, from `chord_lanes` by chord index) when that names
+    any. A read end before `if_end_before_ms` makes the press `plain`, at
+    the block's `aim_ms`. A read end equal to a threshold keeps the press.
+    Raises ValueError for a moved press with no `aim_end_ms`, a block with
+    another action, or a `join_gems` group no press holds, each a bug in
+    the schedule."""
+    moved = []
+    for p in presses:
+        if p.end_read_after != read_after:
+            moved.append(p)
+            continue
+        if p.aim_end_ms is None:
+            raise ValueError(f"chord {p.index} is timed from the end read after chord "
+                             f"{read_after} but has no aim_end_ms")
+        delta_ms = read_end_ms - p.aim_end_ms
+        moved.append(replace(p, aim_ms=p.aim_ms + delta_ms, aim_end_ms=read_end_ms))
+    out: List[Press] = []
+    joins: List[Tuple[Press, Mapping]] = []
+    for p in moved:
+        block = p.fallback
+        if p.end_read_after != read_after or block is None:
+            out.append(p)
+        elif block.get("action") == "join_group":
+            if read_end_ms > block["if_end_after_ms"]:
+                joins.append((replace(p, aim_ms=read_end_ms - block["before_end_ms"] - p.chart_ms,
+                                      retimed=block["retimed"]), block))
+            else:
+                out.append(replace(p, retimed=RETIMED_LATE))
+        elif block.get("action") == "plain":
+            if read_end_ms < block["if_end_before_ms"]:
+                out.append(replace(p, aim_ms=block["aim_ms"], retimed=block["retimed"]))
+            else:
+                out.append(p)
+        else:
+            raise ValueError(f"chord {p.index}'s fallback has action {block.get('action')!r}, "
+                             f"which play_chords does not know")
+    for late, block in joins:
+        if not block["join_gems"]:
+            out.append(late)
+            continue
+        lanes = chord_lanes[late.index] if chord_lanes is not None else None
+        want = None if lanes is None else sorted(lanes[g] for g in block["join_gems"])
+        k = next((k for k, q in enumerate(out) if q.index == late.index
+                  and q.end_read_after == read_after and sorted(q.lanes) == want), None)
+        if k is None:
+            raise ValueError(f"chord {late.index}'s late gem joins gems {block['join_gems']}, "
+                             f"which no press of it holds")
+        group = out[k]
+        axes = (None if group.axes is None or late.axes is None
+                else list(group.axes) + list(late.axes))
+        out[k] = replace(group, lanes=list(group.lanes) + list(late.lanes),
+                         dynamics=list(group.dynamics) + list(late.dynamics), axes=axes,
+                         retimed=late.retimed)
+    return sorted(out, key=lambda p: p.at_ms)
 
 
 def press_messages(presses: Sequence[Press]) -> List[Tuple[Press, List[Press]]]:
@@ -363,10 +431,13 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
 
     `read_sp_end`, when given, reads the game's Star Power end in song
     seconds, None while Star Power is off (EngineModel.sp_end). After a
-    message whose first press carries Press.planned_end_ms it is read once:
-    the first row's `end_read_ms` holds the end in ms and retime_from_end
-    moves the later presses timed against that activation's end, or the row
-    says NO_ACTIVATION_READ and the plan stands.
+    message whose first press carries Press.planned_end_ms (the first press
+    of each chord the schedule's `reads` names, so the activation's chord and
+    its `read_end_after` chord each get a read) it is read once: the first
+    row's `end_read_ms` holds the end in ms, and retime_from_end moves the
+    later presses timed from the end read after that chord and applies their
+    fallbacks; or the row says NO_ACTIVATION_READ and the plan stands. A row
+    of a press retime_from_end marked says so in `retimed`.
 
     `clock` reads the song clock (live.ReadsSongClock), `read_score` reads the
     engine's score and `press` sends one chord's keys and their `axes`. A
@@ -399,6 +470,7 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
     is the run cap in wall seconds."""
     out = sys.stdout if out is None else out
     plan = press_messages(press_plan(chords))
+    chord_lanes = {c.index: c.lanes for c in chords}
     presses = list(plan)
     notes_ms = [head.at_ms for head, _later in presses]
     result = RunResult()
@@ -488,7 +560,7 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
                     rest = [p for head, rest_later in presses[cursor + 1:]
                             for p in [head, *rest_later]]
                     presses[cursor + 1:] = press_messages(retime_from_end(
-                        rest, chord.index, chord.planned_end_ms, end_read))
+                        rest, chord.index, end_read, chord_lanes))
                     notes_ms = [head.at_ms for head, _later in presses]
 
             # Check hit through engine.pressed_input_hit. Nothing was sent for
@@ -533,6 +605,8 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
                     "wall_s_at_read": wall_s_at_read,
                     "wall_s_at_reply": wall_s_at_reply,
                 }
+                if part.retimed is not None:
+                    row["retimed"] = part.retimed
                 if k == 0:
                     row["scored_between"] = score_before - last_score
                     if end_read is not None:
