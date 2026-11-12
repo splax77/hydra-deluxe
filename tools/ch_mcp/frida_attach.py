@@ -28,6 +28,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import queue
 import sys
 import threading
 import time
@@ -40,7 +41,7 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 from tools.ch_mcp import build_stamp  # noqa: E402
-from tools.ch_probe.constants import PROCESS_NAME  # noqa: E402
+from tools.ch_probe.constants import LOG_WRITER_CAP_S, PROCESS_NAME  # noqa: E402
 
 # How a run ended. RunResult.reason holds one of these.
 END_DONE = "done"            # the agent said it was finished
@@ -231,6 +232,9 @@ _DETACHED_BY_CALLER = "detached by the caller"
 # The message a read posts, before LiveAgent adds the id.
 _READ = {"type": "read"}
 
+# What detach puts on the log writer's queue after the last line.
+_LOG_END = object()
+
 
 class LiveAgent:
     """One attach that stays open, with a request/response agent loaded.
@@ -242,7 +246,8 @@ class LiveAgent:
     a reply that comes after its request gave up is logged and dropped, never
     handed to a later one. A read is the request `{"type": "read"}`. Every
     message the agent sends is written to `log_path`, one JSON line each, as
-    run_agent does.
+    run_agent does. A writer thread does the writing, so a slow disk never
+    holds up a reply; `detach` waits for it up to LOG_WRITER_CAP_S.
 
     `alive` is False once the session has dropped or been detached, and
     `gone_reason` then says why. One LiveAgent attaches once; attach again
@@ -262,12 +267,17 @@ class LiveAgent:
         self._frida_mod = frida_mod
         self._wait = wait if wait is not None else _default_wait
         self._out = out
-        # Frida calls the handlers on its own thread; this lock guards the
-        # log and every field below.
+        # Frida calls the handlers on its own thread; this lock guards every
+        # field below. The log file itself belongs to the writer thread.
         self._lock = threading.Lock()
         self._session: Any = None
         self._script: Any = None
         self._log: Any = None
+        # The lines waiting for the writer; None until the log opens, and
+        # None again once detach has queued _LOG_END, after which a message
+        # is dropped.
+        self._log_queue: queue.Queue | None = None
+        self._writer: threading.Thread | None = None
         self._next_id = 0
         self._pending: _Pending | None = None
         self._detach_called = False
@@ -298,6 +308,15 @@ class LiveAgent:
         started = False
         try:
             self._log = open(self.log_path, "w", encoding="utf-8")
+            lines: queue.Queue = queue.Queue()
+            # A daemon, so a write stuck past detach's cap cannot keep the
+            # process from exiting.
+            self._writer = threading.Thread(
+                target=self._write_log, args=(self._log, lines),
+                name="LiveAgent log writer", daemon=True)
+            self._writer.start()
+            with self._lock:
+                self._log_queue = lines
             session.on("detached", self._on_detached)
             try:
                 script = session.create_script(source)
@@ -341,7 +360,10 @@ class LiveAgent:
 
     def detach(self) -> str:
         """Detach once and return what happened. A second call detaches
-        nothing and says the session was already detached."""
+        nothing and says the session was already detached. The log writer
+        is then given LOG_WRITER_CAP_S to write what is queued and close the
+        file; past that, the line says the log may lack its last lines and
+        the writer finishes on its own."""
         with self._lock:
             if self._detach_called:
                 return f"already detached ({self.gone_reason})"
@@ -363,9 +385,47 @@ class LiveAgent:
             self._out(f"detach reported: {e}")
         finally:
             with self._lock:
-                if self._log is not None:
-                    self._log.close()
+                lines, self._log_queue = self._log_queue, None
+                if lines is not None:
+                    lines.put(_LOG_END)
+            writer = self._writer
+            if writer is not None:
+                writer.join(LOG_WRITER_CAP_S)
+                if writer.is_alive():
+                    line += ("; the log may lack its last lines: its writer "
+                             f"was still busy {LOG_WRITER_CAP_S:g} s after "
+                             "the detach")
         return line
+
+    def _write_log(self, log: Any, lines: queue.Queue) -> None:
+        """The writer thread: write each queued line and flush it before the
+        next, so a crash keeps every line written so far, then close the
+        file at _LOG_END. A write that fails stops the log there and says so
+        through `out`; the requests go on, and later lines are dropped."""
+        failed = False
+        try:
+            while True:
+                text = lines.get()
+                try:
+                    if text is _LOG_END:
+                        return
+                    if not failed:
+                        log.write(text)
+                        log.flush()
+                except Exception as e:  # noqa: BLE001
+                    failed = True
+                    self._out(f"writing {self.log_path} failed: {e}; the log "
+                              "stops here and the requests go on")
+                finally:
+                    # Lets a caller wait on the queue (Queue.join) for every
+                    # line taken so far.
+                    lines.task_done()
+        finally:
+            try:
+                log.close()
+            except Exception as e:  # noqa: BLE001
+                if not failed:
+                    self._out(f"closing {self.log_path} failed: {e}")
 
     def _request(self, message: dict, cap_s: float, what: str) -> dict:
         with self._lock:
@@ -404,25 +464,33 @@ class LiveAgent:
         return reply
 
     def _on_message(self, message: dict, data: Any) -> None:
+        # Frida's thread. The reply is handed over first and the line only
+        # queued, so no file call stands between a reply and its request.
+        # Queuing under the lock keeps the lines in arrival order.
         with self._lock:
-            if self._log is None or self._log.closed:
+            lines = self._log_queue
+            if lines is None:
                 return
-            self._log.write(json.dumps(message) + "\n")
-            self._log.flush()
-            pending = self._pending
-            if pending is None or pending.event.is_set():
-                return
-            kind = message.get("type")
-            if kind == "send":
-                payload = message.get("payload")
-                if isinstance(payload, dict) and payload.get("id") == pending.id:
-                    pending.reply = payload
-                    pending.event.set()
-            elif kind == "error":
-                pending.failure = ReadFailed(
-                    END_SCRIPT_ERROR,
-                    f"{END_SCRIPT_ERROR}: {message.get('description')}")
+            self._hand_over(message)
+            lines.put(json.dumps(message) + "\n")
+
+    def _hand_over(self, message: dict) -> None:
+        """Give `message` to the waiting request, when it is that request's
+        reply or a script error. The caller holds the lock."""
+        pending = self._pending
+        if pending is None or pending.event.is_set():
+            return
+        kind = message.get("type")
+        if kind == "send":
+            payload = message.get("payload")
+            if isinstance(payload, dict) and payload.get("id") == pending.id:
+                pending.reply = payload
                 pending.event.set()
+        elif kind == "error":
+            pending.failure = ReadFailed(
+                END_SCRIPT_ERROR,
+                f"{END_SCRIPT_ERROR}: {message.get('description')}")
+            pending.event.set()
 
     def _on_detached(self, reason: Any, *_rest: Any) -> None:
         with self._lock:

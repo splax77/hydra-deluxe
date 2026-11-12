@@ -16,6 +16,7 @@ import re
 import sys
 import tempfile
 import threading
+import time
 import unittest
 import unittest.mock
 
@@ -457,14 +458,43 @@ MENU = {"found": False, "reason": "no live GameManager", "destroyed": 0}
 MENU_ONE_DESTROYED = {**MENU, "destroyed": 1}
 
 
+def settle(agent, cap_s=5.0):
+    """Wait until the agent's log writer has taken every queued line. The
+    writer runs on its own thread, so a test reads the log only after this
+    (or after detach, which waits for it)."""
+    lines = agent._log_queue
+    if lines is None:
+        return
+    deadline = time.monotonic() + cap_s
+    while lines.unfinished_tasks:
+        if time.monotonic() > deadline:
+            raise AssertionError(f"the log writer still had lines after {cap_s} s")
+        time.sleep(0.005)
+
+
 class LiveAgentTest(Workspace):
+    def setUp(self):
+        super().setUp()
+        self.agents = []
+
     def live(self, frida, wait=instant_wait):
         agent = FA.LiveAgent(self.agent, log_path=self.out_path,
                              frida_mod=frida, wait=wait, out=self.lines.append)
         # Runs before the temp folder's cleanup, so Windows can delete the
         # log; detach is safe to call again.
         self.addCleanup(agent.detach)
+        self.agents.append(agent)
         return agent
+
+    def written(self):
+        for agent in self.agents:
+            settle(agent)
+        return super().written()
+
+    def raw_lines(self):
+        """The log's lines as text, read through a second handle."""
+        with open(self.out_path, encoding="utf-8") as fh:
+            return fh.readlines()
 
     def started(self, replies):
         session = ReplySession(replies)
@@ -720,6 +750,114 @@ class LiveAgentTest(Workspace):
         self.assertEqual(caught.exception.reason, FA.END_NOT_RUNNING)
         self.assertEqual(frida.attached_to, [1234])
         self.assertFalse(os.path.exists(self.out_path))
+
+    def blocked_writes(self, agent):
+        """Make every later write to the agent's log wait until the returned
+        event is set. The cleanup sets it, before the detach that `live`
+        registered, so a failed test still lets the writer finish."""
+        release = threading.Event()
+        log = agent._log
+        real_write = log.write
+
+        def blocked_write(text):
+            release.wait(10.0)
+            return real_write(text)
+
+        log.write = blocked_write
+        self.addCleanup(release.set)
+        return release
+
+    def test_a_blocked_log_write_does_not_hold_up_the_reply(self):
+        agent, _ = self.started([STATE, {"pressed": True}])
+        release = self.blocked_writes(agent)
+        replies = []
+        asker = threading.Thread(
+            target=lambda: replies.append(agent.request({"type": "press"}, 5.0)),
+            daemon=True)
+        asker.start()
+        asker.join(2.0)
+        answered = not asker.is_alive()
+        release.set()
+        asker.join(10.0)
+        self.assertTrue(answered, "the reply waited for the blocked log write")
+        self.assertEqual(replies, [{"pressed": True}])
+
+    def test_every_message_reaches_the_log_in_order_once(self):
+        agent, session = self.started([STATE])
+        for n in range(200):
+            session.script.handlers["message"](sent({"n": n}), None)
+        self.assertEqual(agent.detach(), "detached")
+        lines = self.raw_lines()
+        self.assertEqual(len(lines), 201)
+        # The form _on_message has always written: json.dumps's default
+        # separators, one message per line.
+        self.assertEqual(lines[1], '{"type": "send", "payload": {"n": 0}}\n')
+        self.assertEqual([json.loads(line)["payload"]["n"] for line in lines[1:]],
+                         list(range(200)))
+
+    def test_every_line_is_on_disk_before_detach(self):
+        agent, session = self.started([STATE])
+        for n in range(3):
+            session.script.handlers["message"](sent({"n": n}), None)
+        settle(agent)
+        self.assertTrue(agent.alive)
+        self.assertEqual([json.loads(line) for line in self.raw_lines()],
+                         [sent({**STATE, "id": 1}), sent({"n": 0}),
+                          sent({"n": 1}), sent({"n": 2})])
+
+    def test_detach_waits_for_the_writer_and_says_so_when_the_cap_passes(self):
+        # A normal detach: each write is slow, well inside the cap, and the
+        # detach still waits for every line.
+        agent, session = self.started([STATE])
+        log = agent._log
+        real_write = log.write
+
+        def slow_write(text):
+            time.sleep(0.05)
+            return real_write(text)
+
+        log.write = slow_write
+        for n in range(3):
+            session.script.handlers["message"](sent({"n": n}), None)
+        self.assertEqual(agent.detach(), "detached")
+        self.assertEqual(len(self.raw_lines()), 4)
+
+        # A writer held past the cap: detach returns at the cap and says so.
+        self.out_path = os.path.join(self.tmp.name, "held.jsonl")
+        held, session = self.started([STATE])
+        release = self.blocked_writes(held)
+        session.script.handlers["message"](sent({"n": 0}), None)
+        with unittest.mock.patch.object(FA, "LOG_WRITER_CAP_S", 0.05):
+            line = held.detach()
+        self.assertEqual(line, "detached; the log may lack its last lines: its "
+                               "writer was still busy 0.05 s after the detach")
+        release.set()
+        held._writer.join(10.0)
+        self.assertFalse(held._writer.is_alive())
+        self.assertEqual(len(self.raw_lines()), 2)
+
+    def test_a_failed_log_write_stops_the_log_and_not_the_reply(self):
+        agent, session = self.started([STATE, {"pressed": True}, {"pressed": False}])
+        settle(agent)
+
+        def refuse(text):
+            raise OSError("the disk is full")
+
+        agent._log.write = refuse
+        self.assertEqual(agent.request({"type": "press"}, 5.0), {"pressed": True})
+        self.assertEqual(agent.request({"type": "press"}, 5.0), {"pressed": False})
+        self.assertEqual(agent.detach(), "detached")
+        self.assertEqual(self.lines, [
+            f"writing {self.out_path} failed: the disk is full; the log stops "
+            "here and the requests go on"])
+        self.assertEqual(self.written(), [sent({**STATE, "id": 1})])
+
+    def test_a_message_after_the_log_closed_is_dropped(self):
+        agent, session = self.started([STATE])
+        self.assertEqual(agent.detach(), "detached")
+        session.script.handlers["message"](sent({"n": 0}), None)
+        self.assertEqual(self.written(), [sent({**STATE, "id": 1})])
+        self.assertEqual(self.lines, [])
 
     def test_read_before_start_says_nothing_is_attached(self):
         agent = self.live(FakeFrida(ReplySession([STATE])))
