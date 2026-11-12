@@ -99,13 +99,13 @@ Found: 2026-10-30, session b02ab3e6 (the reference build); 2026-11-08, session 7
 
 ### FL-10 Two written fills that pick the same chord
 
-Rule: When two written fills pick one chord, Hydra keeps only the later fill's length; the game is said to keep both in its list, and its deadline loop clears the flag for whichever is due first.
-Label: Unknown
-Evidence: not checked: it needs a trace of how two fills reach one chord in `0x20CFF60`. Only the deadline loop's clear was read, in the decompile lines 693 to 705.
-Game code (6142): RVA `0x20DDB70`, `code/6142/fill_deadline_20DDB70.asm`.
-Hydra: `place_authored_fills` in src/parse/song.cpp line 416 and its comment at line 366.
-Ruling: none found
-Found: 2026-10-30, session b02ab3e6 (the reference build).
+Rule: When two written fills pick one chord, the game keeps a record for each fill, and both records point at the same note. The note's activation flag (0x800) is cleared at the earlier-starting fill's deadline. Hydra keeps only the later fill's length, so Hydra's deadline is later than the game's by the gap between the two fill starts. Example at resolution 480: fills from 9600 and from 10080 both end on a chord at 10560. The game clears the flag when the current tick plus four beats (1920 ticks) reaches 9600, at current tick 7680. Hydra prices the deadline at 10080, at current tick 8160. Between those two ticks the game offers no activation there and Hydra does. When the two fills start on the same tick, both sides agree.
+Label: Proven in the game's code
+Evidence: `code/6142/fill_to_activation_20CFF60.asm` makes one record per fill and never looks for an earlier record on the same note: it ORs 0x800 into the note's flags (line 106), stores the note at +0x20 (line 129), the fill start at +0x28 (line 134), the length at +0x30 (lines 135 to 138) and active = 1 at +0x38 (line 139), then appends the record (line 145). The deadline loop in `code/6142/fill_deadline_20DDB70.asm` adds the lead at +0x300 to the current tick at +0x108 (lines 24 to 26; +0x108 is FL-22), takes records in list order and stops at the first whose start is past that sum (line 46), and clears the record's active byte and the note's 0x800 (lines 48 to 51). The lead is four times the resolution, set in the drum engine's constructor (`code/6142/engine_ctor_20DF680.asm` lines 57 and 68 to 69). Two things are not settled: which of the two flags the activation reads (the note's 0x800 or the record's active byte), and the reading assumes the fill list is in start order. Hydra side: `place_authored_fills` calls `apply_fill_end` for each fill (src/parse/song.cpp line 416), and `apply_fill_end` overwrites `activation_length` with the chord tick minus that fill's start (line 355), so the later fill's start wins. A scan of the library with Hydra's landing rule found 2 charts with two fills on one chord (Pangaea - A Gateway to Nothing and RAT KING - Open Hands to the Void). Keeping only the earlier fill on each shared chord changed neither best score, 722,900 and 260,970 (`docs/audit/2026-11-08-clone-hero-unknowns/user-answers.md`, the FL-10 lines).
+Game code (6142): RVA `0x20CFF60`, `code/6142/fill_to_activation_20CFF60.asm` lines 106 to 145; RVA `0x20DDB70`, `code/6142/fill_deadline_20DDB70.asm` lines 24 to 51.
+Hydra: `place_authored_fills` in src/parse/song.cpp line 416 and `apply_fill_end` at line 352.
+Ruling: the user, 2026-11-08: "Record it only". Hydra keeps the later fill's deadline, and this block records the difference.
+Found: 2026-10-30, session b02ab3e6 (the reference build); the landing step and the library scan 2026-11-08, sessions 7b39835b and 428cf079.
 
 ## Build 1.1 generated fills and the deadline
 
@@ -221,23 +221,23 @@ Found: 2026-10-30, session b02ab3e6 (the reference build).
 
 ### FL-22 What the long at engine+0x108 holds
 
-Rule: The deadline adds `+0x300` to the engine field at #8288+0x108. One reading calls that field the current tick; another reads it as the song clock in whole milliseconds.
-Label: Unknown
-Evidence: only the add at `code/6142/fill_deadline_20DDB70.asm` lines 24 to 26. `+0x108` is not among the fields named in `tools/ch_probe/experiments/results/overlay-spike/il2cpp-fields.md`, and its writer was not looked for. The current-tick reading is the D115 timing plan's (session 08261223, 2026-10-12): read from an annotated disassembly kept locally outside the repo (drums.ann lines 887 to 955), it said every fill whose start tick is at or below the current tick plus `+0x300` loses its flag, and it named no writer for the field. The whole-milliseconds reading comes from session 8157f2dc on 2026-09-25; that session's card does not mention it, and its own record is not kept. A tick compare against fill start ticks fits the current-tick reading; neither is proven.
-Game code (6142): field #8288+0x108; its writer was not read.
-Hydra: no owner
+Rule: The deadline adds `+0x300` (four beats of ticks) to the engine field at #8288+0x108, and that field is the chart tick of the engine's current time, rounded toward zero. It is not the song clock in whole milliseconds. The field is the second half of a 16-byte pair at +0x100: the current time in seconds, then its tick. The engine starts with the pair (-2.0 s, tick 0).
+Label: Proven in the game's code
+Evidence: the il2cpp dump C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-dumps\6142\dump.cs (outside the repo) puts a 16-byte struct of class 8496 at +0x100, a `double` then a `long` (lines 540411 and 540412), so +0x108 is the struct's `long`. A scan of every method of the base engine class 8288 and the classes under it for stores to +0x100 or +0x108 found only whole-pair stores, in four methods. The constructor stores a pair whose tick is 0 (`code/6142/engine_ctor_20F79E0.asm` lines 36, 42 and 44). Each other store builds the pair from a time and that time's tick, or puts back a saved pair (`code/6142/engine_set_clock_20F4310.asm` lines 6 to 22; `code/6142/engine_clock_update_20F4950.asm` lines 22, 42 to 55, 61 and 74 to 85). The tick comes from the chart method in `code/6142/time_to_tick_212BCC0.asm`, which turns seconds into a tick: tempo entry tick + truncate((time - entry time) x resolution x tempo / 60) (lines 74 to 92). The clock update then passes +0x108 to the tempo-segment lookup (`code/6142/engine_clock_update_20F4950.asm` lines 92 to 97), which takes a tick. The deadline compares fill start ticks with it (`code/6142/fill_deadline_20DDB70.asm` lines 24 to 46), so the units agree. The scan covers stores in those classes' own code only; a store from another class, or through a pointer to the field, was not searched. Result file: `docs/audit/2026-11-08-clone-hero-unknowns/W6.md`, section FL-22.
+Game code (6142): field #8288+0x108, the tick half of the pair at +0x100; writers in `code/6142/engine_set_clock_20F4310.asm` and `code/6142/engine_clock_update_20F4950.asm`; the tick formula `code/6142/time_to_tick_212BCC0.asm` lines 74 to 92.
+Hydra: no owner: Hydra's deadline rule is FL-23 and does not read this field
 Ruling: none needed: no Hydra rule depends on it
-Found: 2026-10-30, session b02ab3e6 (the reference build).
+Found: 2026-10-30, session b02ab3e6 (the reference build); the field's writers 2026-11-11, session 428cf079.
 
 ### FL-23 Hydra's exact boundary at the deadline
 
-Rule: Hydra is said to clear a fill when its ready time is at or past fill start - 4 x resolution and keep it one tick before, which is the game's boundary.
-Label: Unknown
-Evidence: not checked: it needs a read of how the sign of `fill_e_offset` maps to "usable" in src/search/engine.cpp: `index_fills` and `ready_class` at lines 798 to 869, and the refusal test in `branch_activate` at lines 1000 and 1001.
-Game code (6142): RVA `0x20DDB70`, `code/6142/fill_deadline_20DDB70.asm` line 45.
-Hydra: `activation_fill_deadline_ms` in src/search/graph.cpp line 62; `fill_e_offset` in src/core/model.h line 316.
-Ruling: none found
-Found: 2026-10-30, session b02ab3e6 (the reference build).
+Rule: The game clears a fill when the current tick plus four beats reaches the fill's start tick; a fill that starts exactly on that sum is cleared. Hydra does not clear at that tick. It keeps the fill until Star Power's ready time passes the deadline by more than 85 ms (the hit window), and at exactly 85 ms past the deadline it still keeps it. So at the edge the two differ: Hydra offers a fill the game has already cleared, whenever Star Power becomes ready after the deadline and no more than 85 ms after it. How often this changes a real chart was not measured.
+Label: Proven in the game's code
+Evidence: game side: `code/6142/fill_deadline_20DDB70.asm` adds the lead to the current tick (lines 24 to 26) and jumps past the clear with `jg` when the fill's start is greater than the sum (line 46), so a start equal to it is cleared (lines 48 to 51). Hydra side: `fill_refuses` refuses only when `fill_e_offset` is below `-kHitWindowMs` (src/core/model.h lines 316 and 318). tests/test_model.cpp lines 191 and 192 pin that exactly `-kHitWindowMs` still spawns and 0.1 ms more refuses, and tests/test_fills_and_skips.cpp tests the same edge on a chart at line 110. The fill-comparison ruling "85 ms both sides" (`docs/agents/rulings/clone-hero.md` line 24) is about the fill-comparison tool and does not name this edge.
+Game code (6142): RVA `0x20DDB70`, `code/6142/fill_deadline_20DDB70.asm` lines 24 to 51.
+Hydra: `activation_fill_deadline_ms` in src/search/graph.cpp line 62; `fill_e_offset` and `fill_refuses` in src/core/model.h lines 316 and 318.
+Ruling: the user chose to record this difference, 2026-11-11 (session 428cf079: "Approve the moves"); Hydra keeps its 85 ms reach (FL-24, D250).
+Found: 2026-10-30, session b02ab3e6 (the reference build); the edge 2026-11-11, session 428cf079.
 
 ### FL-24 The game's deadline is an exact tick compare; Hydra's early fill is its own model
 
@@ -297,7 +297,7 @@ Found: 2026-10-30, session b02ab3e6 (the reference build).
 
 Rule: The list the builder tests belongs to one (instrument, difficulty) track. A fill written for Expert only does not stop generation on Hard, unless the reader also adds it to Hard's track. The `.chart` reader adds a fill to its own section's track; what the `.mid` reader does with note 120 across the four difficulties is not known.
 Label: Unknown
-Evidence: `code/6142/note_builder_20D2EA0.asm` lines 36 to 62 and `code/6142/track_lookup_20CFD40.asm` lines 31 to 44 (index = instrument x a static + difficulty); the `.chart` side is the decompile lines 25570 to 25594. The per-track list is proven; the block stays Unknown because the `.mid` half, which most charts use, was not read, and Hydra's side was not checked.
+Evidence: `code/6142/note_builder_20D2EA0.asm` lines 36 to 62 and `code/6142/track_lookup_20CFD40.asm` lines 31 to 44 (index = instrument x a static + difficulty); the `.chart` side is the decompile lines 25570 to 25594. The per-track list is proven. The `.mid` half was then read in the 2026-11-11 audit (`docs/audit/2026-11-08-clone-hero-unknowns/W6.md`, section FL-29). The drum reader asks for the Expert track first (`code/6142/mid_drum_reader_2155050.asm` lines 90 to 95, difficulty 3 kept in `r13`), adds a pitch-120 fill to that track only (lines 154 to 163), and after the event loop copies Expert's lists into every other difficulty's track with `AddRange` (lines 469 to 490, the fill list at +0x88; `code/6142/track_slice_2152B20.asm` lines 27 to 69 returns the tracks). So a `.mid` fill would count on all four difficulties. That reading's checker did not check it in depth and found nothing against it, so the block stays Unknown until a fresh check passes it. The Hydra side was read in the same audit as "every difficulty is parsed from the same file and records the same fill spans", but the src/parse/song.cpp line numbers it gave no longer match the file, so it is not cited here.
 Game code (6142): the track lookup 0x20CFD40; the `.chart` reader `0x213E0C0`; the `.mid` reader `0x2155050`, not read for this.
 Hydra: `Song::check_activations` in src/core/song.cpp line 108 runs once per loaded difficulty; whether the `.mid` parser hands every difficulty the same fills was not checked.
 Ruling: none found
@@ -335,7 +335,7 @@ Found: drum-lanes FINDINGS-play-time.md.; the grant's slot, 2026-11-06, session 
 
 Rule: When the game draws a fill on the highway, as against when it sets the activation flag, is not known.
 Label: Unknown
-Evidence: looked in the builder, the generator's record fields, the decompile, `docs/audit/ch-evidence.md` and `docs/audit/drum-lanes/FINDINGS-play-time.md`; no fill-draw function is named. The list's consumer is the drum engine, not read for drawing.
+Evidence: looked in the builder, the generator's record fields, the decompile, `docs/audit/ch-evidence.md` and `docs/audit/drum-lanes/FINDINGS-play-time.md`; no fill-draw function is named. The list's consumer is the drum engine, not read for drawing. The 2026-11-11 audit searched further (`docs/audit/2026-11-08-clone-hero-unknowns/W6.md`, section FL-32). In the il2cpp dump (C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-dumps\6142\dump.cs, outside the repo) it read the renderer classes by name (DrumsNoteRenderer at line 33333, HighwayScroll at line 14587, TrackFadeManager at line 36754). It scanned the 25 methods of DrumsNoteRenderer for loads of its field activationModel (+0x158, line 33341), the 0x800 flag, the note flags at +0x7C and calls to GameObject.SetActive, and read one of the seven methods that toggle that model in full; that one is set-up only. None of the 25 tests 0x800 or reads +0x7C. Its checker added a lead: the 0x800 flag is read by the note accessor `0x214BB50`, which is called from a helper struct of class 1138 (DrumNoteSprites, from 0x2B09A0, five methods) and from six methods of class 8255. Those callers were not read. A screen-capture run is the other route, and W6.md lists what it must measure.
 Game code (6142): not found: looked in `0x20D2EA0`, `0x20D2B30` and the decompile.
 Hydra: the Preview's own rule is FL-33.
 Ruling: none needed: no game rule known
@@ -467,7 +467,7 @@ Found: 2026-10-30, session b02ab3e6 (the reference build).
 
 Rule: Hydra's 1.0 generator counts measures on Clone Hero's grid. Colors (BTBAM), played on 1.0.0.4080, used 57 activations under both rules, so it carries no fill-rule evidence.
 Label: Unknown
-Evidence: not checked: the card's "11 of 97 corpus charts changed fills, no best score moved" needs a recount, and the Colors numbers (8,409,815 played; 8,729,975 under 1.0 and 8,727,795 under 1.1, card f520253b lines 20 and 21) need the run's `refs.json` entry opened. The code side was read: src/core/song.cpp line 140 takes `measure_index`, and lines 150 and 152 read each chord's measure and line from it.
+Evidence: not checked: the card's "11 of 97 corpus charts changed fills, no best score moved" needs a recount, and the Colors numbers (8,409,815 played; 8,729,975 under 1.0 and 8,727,795 under 1.1, card f520253b lines 20 and 21) need the run's `refs.json` entry opened. The code side was read: src/core/song.cpp line 140 takes `measure_index`, and lines 150 and 152 read each chord's measure and line from it. The 2026-11-11 audit of Unknown blocks did not rerun the corpus: the recount needs a build of Hydra, so the main session runs it, and the block stays Unknown until then.
 Game code (4045): see FL-40.
 Hydra: `Song::place_fills_ch10` in src/core/song.cpp line 139.
 Ruling: card a124ccd9, the user: "Yes. Move the 1.0 generator onto MeasureIndex/MeasureCount, keep only its own fill rule, and show me which test-corpus charts' 1.0 fills and scores move before merging."
