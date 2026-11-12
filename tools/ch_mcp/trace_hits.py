@@ -17,7 +17,9 @@ the agent checks along with the rest of the class's shape.
 caller such as the MCP server can read the calls while the song plays and stop
 the trace early (plan 2026-10-28-ch-mcp-server, task T4; removed, read it with
 git show ec91f8d1:docs/superpowers/plans/2026-10-28-ch-mcp-server.md). Its notes come from
-`song_notes`: a probe song's manifest, or a `hydra_replay score` JSON.
+`song_notes`: a probe song's manifest, or a `hydra_replay score` JSON. Both
+the command line and `TraceSession` cap the trace at Hydra's song end for the
+folder's chart (`song_end_ms`), which runs one `hydra_replay dump`.
 
 Run from the repo root, with the game already playing the song. Do not add
 `-I`: the frida module lives in the user's site-packages, which `-I` skips.
@@ -48,9 +50,9 @@ if _REPO_ROOT not in sys.path:
 
 from tools.ch_mcp import build_stamp  # noqa: E402
 from tools.ch_mcp import frida_attach as FA  # noqa: E402
+from tools.ch_mcp import hydra_end, install_chart  # noqa: E402
 from tools.ch_probe import constants as C  # noqa: E402
 from tools.ch_probe.experiments.play_chart import load_score_times  # noqa: E402
-from tools.ch_probe.probe_songs import song_length_ms  # noqa: E402
 
 DEFAULT_AGENT_NAME = "trace"
 DEFAULT_AGENT = os.path.join(_HERE, "agent", f"{DEFAULT_AGENT_NAME}.js")
@@ -62,9 +64,9 @@ MODE_ARGS = "args"
 END_STOPPED = "stopped"  # the session's own stop() ended the run
 END_FAILED = "failed"    # run_agent raised instead of returning a result
 
-# The trace's song cap is the song's length plus this margin (question 5 of the
-# feasibility-tests plan this file's header names: the same cap as the clock
-# run).
+# The trace's song cap is Hydra's song end for the traced folder's chart plus
+# this margin (question 5 of the feasibility-tests plan this file's header
+# names: the same cap as the clock run; the end is D331's).
 TRACE_CAP_MARGIN_S = 30.0
 
 # The wall-clock cap is the song cap plus this room, for a song paused or not
@@ -113,17 +115,30 @@ def song_notes(song_folder: str,
                        f"{manifest}, and {score}")
 
 
-def trace_cap_s(notes: list[dict]) -> float:
-    """The song cap: the song's length (probe_songs.song_length_ms) plus the
-    margin. The agent counts it in song time played, so pauses do not use it
-    up."""
-    return C.ms_to_s(song_length_ms(notes[-1]["time_ms"])) + TRACE_CAP_MARGIN_S
+def song_end_ms(song_folder: str) -> tuple[float, str]:
+    """Hydra's song end for the chart file in `song_folder`
+    (install_chart.chart_file picks it, hydra_end.chart_song_length_ms reads
+    its end through one hydra_replay dump), and where it came from. Raises
+    hydra_end.SongEndMissing when the folder has no chart file or the dump
+    names no end."""
+    chart = install_chart.chart_file(song_folder)
+    if chart is None:
+        raise hydra_end.SongEndMissing(
+            f"{song_folder} has no {' or '.join(install_chart.CHART_FILES)}, so Hydra has "
+            "no song end to cap the trace at")
+    return hydra_end.chart_song_length_ms(chart)
 
 
-def wall_cap_s(notes: list[dict]) -> float:
+def trace_cap_s(end_ms: float) -> float:
+    """The song cap: Hydra's song end `end_ms` (song_end_ms) plus the margin.
+    The agent counts it in song time played, so pauses do not use it up."""
+    return C.ms_to_s(end_ms) + TRACE_CAP_MARGIN_S
+
+
+def wall_cap_s(end_ms: float) -> float:
     """The wall-clock cap: the song cap plus WALL_CAP_PAUSE_S. The runner
     detaches on it, so a song that never starts or stays paused still ends."""
-    return trace_cap_s(notes) + WALL_CAP_PAUSE_S
+    return trace_cap_s(end_ms) + WALL_CAP_PAUSE_S
 
 
 # ---- reading the results ---------------------------------------------------------
@@ -268,12 +283,12 @@ def args_report(result: FA.RunResult, manifest_path: str,
 
 # ---- starting a trace ----------------------------------------------------------------
 
-def trace_settings(notes: list[dict], mode: str, engine_class: str,
+def trace_settings(end_ms: float, mode: str, engine_class: str,
                    engine_ctor_rva: int, methods: list[str]) -> dict:
     """The settings trace.ts gets in its start message, beside the runner's
-    own `type` and `cap_s`."""
+    own `type` and `cap_s`. `end_ms` is Hydra's song end (song_end_ms)."""
     return {
-        "song_cap_s": trace_cap_s(notes),
+        "song_cap_s": trace_cap_s(end_ms),
         "mode": mode,
         "engine_class": engine_class,
         "engine_ctor_rva": engine_ctor_rva,
@@ -294,12 +309,14 @@ class TraceSession:
     The thread runs frida_attach.run_agent with a wait that returns when the
     run ends on its own or when stop() is called, so stop() makes run_agent
     detach in its own `finally`. The wall cap (wall_cap_s) still ends a run
-    nobody stops. `frida_mod`, `wait` and `now` are injectable so the tests
-    run without Frida and without sleeping; `wait(event, timeout_s)` has
-    run_agent's shape and defaults to its wait."""
+    nobody stops. `song_end_ms` is Hydra's song end for the traced chart
+    (song_end_ms), which both caps start from. `frida_mod`, `wait` and `now`
+    are injectable so the tests run without Frida and without sleeping;
+    `wait(event, timeout_s)` has run_agent's shape and defaults to its wait."""
 
     def __init__(self, notes: list[dict], engine_class: str,
                  methods: list[str], out_path: str, *,
+                 song_end_ms: float,
                  engine_ctor_rva: int = C.RVA_DRUMS_ENGINE_CTOR,
                  agent_path: str = DEFAULT_AGENT,
                  frida_mod: Any = None,
@@ -314,8 +331,8 @@ class TraceSession:
         self.notes = notes
         self.out_path = out_path
         self.agent_path = agent_path
-        self.cap_s = wall_cap_s(notes)
-        self.settings = trace_settings(notes, MODE_ARGS, engine_class,
+        self.cap_s = wall_cap_s(song_end_ms)
+        self.settings = trace_settings(song_end_ms, MODE_ARGS, engine_class,
                                        engine_ctor_rva, methods)
         # The runner's own lines (the cap, a refused detach, not running).
         # They are kept here, not printed: an MCP server's stdout is its
@@ -426,7 +443,7 @@ def main(argv: list[str] | None = None, *, frida_mod: Any = None,
                     "find the one that runs once per note.")
     ap.add_argument("--mode", required=True, choices=[MODE_COUNT, MODE_ARGS])
     ap.add_argument("--song", required=True,
-                    help="the probe song folder holding manifest.json")
+                    help="the probe song folder holding manifest.json and its chart file")
     ap.add_argument("--engine-class", required=True,
                     help="the engine class's name in the dump")
     ap.add_argument("--engine-ctor-rva", type=lambda s: int(s, 0),
@@ -451,9 +468,14 @@ def main(argv: list[str] | None = None, *, frida_mod: Any = None,
     if not notes:
         out(f"{notes_path} holds no notes, so there is nothing to line calls up with")
         return 1
-    settings = trace_settings(notes, args.mode, args.engine_class,
+    try:
+        end_ms, _source = song_end_ms(args.song)
+    except hydra_end.SongEndMissing as e:
+        out(f"{e}; nothing traced")
+        return 1
+    settings = trace_settings(end_ms, args.mode, args.engine_class,
                               args.engine_ctor_rva, args.method)
-    result = FA.run_agent(args.agent, wall_cap_s(notes), FA.ends_run,
+    result = FA.run_agent(args.agent, wall_cap_s(end_ms), FA.ends_run,
                           args.out, start=settings, frida_mod=frida_mod,
                           wait=wait, out=out)
     if result.reason == FA.END_NOT_RUNNING:

@@ -5,14 +5,17 @@ command line.
     py -I tools/ch_mcp/install_chart.py <chart folder> [--name <folder name>]
         [--dest <songs folder>]
 
-The chart folder needs a song.ini with a song_length (game_files reads it)
-and a notes.chart or notes.mid. The copy goes into probe_songs.DEFAULT_OUT
-unless --dest says otherwise, and the silent audio comes from
-probe_songs.write_silent_ogg (ffmpeg on PATH). The copy's song.ini title takes
-the mark from probe_songs.full_name, so nobody mistakes a song with no audio
-for a real one in the game's or Hydra's list; the source folder keeps its
-title. An existing folder is never overwritten. Only the one named folder is
-copied.
+The chart folder needs a song.ini and a chart file (CHART_FILES). The silent
+audio is as long as Hydra's song end for that chart (hydra_end, which runs
+hydra_replay dump, so only a main session runs this script; agent rule 14).
+Only the song.ini and the chart file are copied, so none of the source's own
+audio comes along for the game to play. The copy goes into
+probe_songs.DEFAULT_OUT unless --dest says otherwise, in a folder named by
+--name, which must be a plain folder name (plain_name_refusal), and the
+silent audio comes from probe_songs.write_silent_ogg (ffmpeg on PATH). The
+copy's song.ini title takes the mark from probe_songs.full_name, so nobody
+mistakes a song with no audio for a real one in the game's or Hydra's list;
+the source folder keeps its title. An existing folder is never overwritten.
 """
 
 from __future__ import annotations
@@ -28,7 +31,7 @@ if __package__ in (None, ""):
     # Run as a script (py -I leaves the repo off sys.path).
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
-from tools.ch_mcp import game_files  # noqa: E402
+from tools.ch_mcp import game_files, hydra_end  # noqa: E402
 from tools.ch_probe import probe_songs  # noqa: E402
 
 CHART_FILES = ("notes.chart", "notes.mid")
@@ -44,6 +47,15 @@ def chart_file(folder: str) -> Optional[str]:
         path = os.path.join(folder, name)
         if os.path.isfile(path):
             return path
+    return None
+
+
+def plain_name_refusal(name: str) -> Optional[str]:
+    """Why `name` cannot be the copy's folder name, or None when it is a
+    plain folder name, one a path join cannot carry out of the songs folder."""
+    if name in ("", os.curdir, os.pardir) or os.path.basename(name) != name:
+        return (f"{name!r} is not a plain folder name, so the copy could land outside "
+                "the songs folder")
     return None
 
 
@@ -63,23 +75,34 @@ def mark_copy(dest: str) -> None:
 
 def install(src: str, *, dest_root: str = probe_songs.DEFAULT_OUT, name: Optional[str] = None,
             write_ogg: Callable[[str, int], None] = probe_songs.write_silent_ogg) -> str:
-    """Copy `src` to `dest_root`/`name`, mark the copy's title and write its
-    silent song.ogg. Returns the new folder's chart file. Raises
+    """Copy `src`'s song.ini and chart file to `dest_root`/`name`, mark the
+    copy's title and write its silent song.ogg, as long as Hydra's song end
+    for the chart. Returns the new folder's chart file. Raises
     InstallRefused, with the reason, before anything is written."""
     src = os.path.abspath(src)
     if not os.path.isdir(src):
         raise InstallRefused(f"{src} is not a folder")
-    length_ms = game_files.song_ini_length_ms(src)
-    if length_ms is None:
-        raise InstallRefused(f"{src} has no song.ini with a song_length; the silent audio "
-                             "would have no length")
-    if chart_file(src) is None:
+    folder_name = os.path.basename(src) if name is None else name
+    refusal = plain_name_refusal(folder_name)
+    if refusal is not None:
+        raise InstallRefused(refusal)
+    chart = chart_file(src)
+    if chart is None:
         raise InstallRefused(f"{src} has no {' or '.join(CHART_FILES)}")
-    dest = os.path.join(dest_root, name or os.path.basename(src))
+    ini = os.path.join(src, game_files.SONG_INI)
+    if not os.path.isfile(ini):
+        raise InstallRefused(f"{src} has no {game_files.SONG_INI}")
+    dest = os.path.join(dest_root, folder_name)
     if os.path.exists(dest):
         raise InstallRefused(f"{dest} already exists; not overwritten")
     try:
-        shutil.copytree(src, dest)
+        length_ms, _source = hydra_end.chart_song_length_ms(chart)
+    except hydra_end.SongEndMissing as e:
+        raise InstallRefused(f"{e}; the silent audio would have no length") from e
+    try:
+        os.makedirs(dest)
+        for path in (ini, chart):
+            shutil.copy2(path, dest)
         mark_copy(dest)
         write_ogg(os.path.join(dest, probe_songs.SONG_OGG), length_ms)
     except BaseException:

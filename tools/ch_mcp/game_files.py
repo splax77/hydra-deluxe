@@ -405,17 +405,6 @@ def set_song_title(folder: str, title_for: Callable[[str], str]) -> None:
         f.write(b"".join(lines))
 
 
-def song_ini_length_ms(folder: str) -> Optional[int]:
-    """song.ini's `song_length` in ms, or None when it is missing, not a
-    whole number, or not above zero."""
-    value = read_song_ini(folder).get("song_length")
-    try:
-        ms = int(value) if value is not None else 0
-    except ValueError:
-        return None
-    return ms if ms > 0 else None
-
-
 def song_ini_pro_drums(folder: str) -> bool:
     """Whether song.ini says `pro_drums = True`."""
     return read_song_ini(folder).get("pro_drums", "").lower() in ("true", "1")

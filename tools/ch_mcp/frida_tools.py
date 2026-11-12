@@ -29,6 +29,7 @@ from typing import Any, Callable, Dict, List, Optional
 from tools.ch_mcp import build_facts
 from tools.ch_mcp import build_stamp
 from tools.ch_mcp import frida_attach as FA
+from tools.ch_mcp import hydra_end
 from tools.ch_mcp import trace_hits as TH
 from tools.ch_probe import constants as C
 from tools.ch_probe.engine import EngineModel
@@ -54,6 +55,8 @@ STATE_AGENT_FILE = f"{STATE_AGENT_NAME}.js"
 # ch_trace_start's refusal when the state read finds no live GameManager.
 NO_GAME_MANAGER = ("no live GameManager: start the song (pause it if you like), "
                    "then call ch_trace_start")
+# ch_trace_start's refusal while a trace runs.
+TRACE_RUNNING = "a trace is already running; call ch_trace_stop first"
 
 NOT_ATTACHED = "not attached; call ch_attach first"
 
@@ -496,10 +499,14 @@ class FridaTools:
                        with_dynamics: bool = False) -> str:
         """Hook the engine method that runs once per hit note (and the
         dynamics one with with_dynamics=True) in a background trace, after
-        one state read shows a live GameManager."""
+        one state read shows a live GameManager. Both caps start from Hydra's
+        song end for the song folder's chart (trace_hits.song_end_ms), so a
+        folder with no chart, or one whose dump fails, starts no trace. That
+        dump runs after the other refusals and outside the lock, so the other
+        tools still answer while it runs."""
         with self._lock:
             if self._trace is not None and not self._trace.ended():
-                return "a trace is already running; call ch_trace_stop first"
+                return TRACE_RUNNING
             try:
                 _, facts = self._facts_now()
                 engine, ctor_rva = build_facts.engine_class(facts)
@@ -528,11 +535,22 @@ class FridaTools:
             if not notes:
                 lines.append(f"no notes in {notes_path}; no trace started")
                 return self._reply(lines)
+        try:
+            end_ms, _source = TH.song_end_ms(song_folder)
+        except hydra_end.SongEndMissing as e:
+            with self._lock:
+                lines.append(f"{e}; no trace started")
+                return self._reply(lines)
+        with self._lock:
+            # Another call may have started a trace while the dump ran.
+            if self._trace is not None and not self._trace.ended():
+                return TRACE_RUNNING
             self._count += 1
             out_path = os.path.join(self._game.session_dir(), f"trace-{self._count}.jsonl")
             agent_path = os.path.join(self._agent_dir, os.path.basename(TH.DEFAULT_AGENT))
             try:
                 session = self._trace_session(notes, engine, methods, out_path,
+                                              song_end_ms=end_ms,
                                               engine_ctor_rva=ctor_rva,
                                               agent_path=agent_path,
                                               frida_mod=self._frida_mod)

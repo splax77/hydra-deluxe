@@ -433,11 +433,6 @@
           "why": "a test that checks the written song.ini names the file"
         },
         {
-          "file": "tools/ch_probe/tests/test_probe_songs.py",
-          "line_text": "self.assertEqual(calls, [(os.path.join(root, \"x\", \"song.ogg\"), 4000)])",
-          "why": "a test that checks where the silent audio is written"
-        },
-        {
           "file": "tools/ch_probe/tests/test_probe_chart.py",
           "line_text": "music_stream=\"song.ogg\")",
           "why": "a test that passes the name in, to check the chart writes it"

@@ -202,8 +202,10 @@ def build_server(helper: Optional[Helper] = None):
 
     @server.tool()
     def ch_install_chart(chart_folder: str, name: str | None = None) -> str:
-        """Copy one chart folder into the probe song folder with a silent
-        audio file and a title marked as a probe, so the game can launch it."""
+        """Copy one chart folder's song.ini and chart (nothing else) into the
+        probe song folder, with a silent audio file as long as Hydra's song end
+        for the chart and a title marked as a probe, so the game can launch it.
+        Refuses a name that is not a plain folder name."""
         return capped(h.game.ch_install_chart(chart_folder, name))
 
     @server.tool()
@@ -277,7 +279,10 @@ def build_server(helper: Optional[Helper] = None):
         """Start tracing, in the background, each note the player hits: the
         default hook fires once per hit note and never for a missed note or
         an overhit. The notes come from the song folder's manifest, else from
-        score_json.
+        score_json. The trace is capped at Hydra's song end for the song
+        folder's chart plus a margin, found by one hydra_replay dump that can
+        take up to prep_inputs.REPLAY_CAP_S; a folder with no chart, or a failed dump,
+        starts no trace.
         with_dynamics=True also hooks the accent and ghost method. Needs
         ch_attach and a started song."""
         return capped(h.frida.ch_trace_start(song_folder, score_json, with_dynamics))
@@ -373,7 +378,7 @@ def build_server(helper: Optional[Helper] = None):
         from the menus with ch_open_song: a song launched with a bot is
         played by the bot. log, when given, is where
         the press log goes, row by row as the run goes. song_folder, when given, sets the run cap from
-        the song's length; with none the auto-player keeps its own cap.
+        the schedule's song end (not the folder's); with none the auto-player keeps its own cap.
         path_index is the path of the dump the schedule was made from, as
         hydra_replay schedule's --index; a schedule made from another path,
         or one that does not say, is refused.
@@ -424,8 +429,8 @@ def build_server(helper: Optional[Helper] = None):
         probe column with its asked lead, and ch_play_status adds one line per
         probe row with the asked lead, the lead the row shows and hit or miss.
         A probe chord not in the schedule, or one timed from a Star Power
-        end rather than its own time, is refused before anything runs. song_folder sets
-        the run cap from the song's length. The press rows go to a
+        end rather than its own time, is refused before anything runs. The run cap
+        comes from the schedule's song end. The press rows go to a
         press-<n>.csv in the session folder as they happen, and the reply
         names it. Needs ch_kit_setup; refused while a play session runs."""
         return capped(h.game.ch_edge_probe(song_folder, score_json, schedule_json, probes_json))
