@@ -1,0 +1,5 @@
+READ  at 1AEE40: mov rdx, qword ptr [rcx + 0xc0]  in 1AE1F0 GameplaySettingsMenu$$ʵˁʺʻʲʹˁʻʹʺʳ
+READ  at 1AFD51: mov rdi, qword ptr [rcx + 0xc0]  in 1AF540 GameplaySettingsMenu$$ʹʵʵʷʾʿʶʵʻʹˁ
+READ  at 2331AB: mov rdx, qword ptr [rdx + 0xc0]  in 232E90 GlobalVariables$$Start
+READ  at 35C3C8: movaps xmmword ptr [rsp + 0xc0], xmm6  in 35C110 SongEntry$$ʿʲʷʹʿʳʾʳʷˀʾ
+WRITE at 37703B: mov qword ptr [rcx + 0xc0], rdi  in 374D50 ʹʺʽˁʽˁˀʼʶʷʼ$$ʺʷʻʲʴʺʷʺʺʶʴ

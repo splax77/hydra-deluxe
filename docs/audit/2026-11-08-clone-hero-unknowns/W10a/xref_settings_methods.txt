@@ -1,0 +1,12 @@
+== target 377FC0 (3 hits)
+  CALL   at 2346B0 [c9e8] in 2344B0 GlobalVariables$$ʵʳʳʻʺʻˀʾʲʵʹ
+  RIPREF at 3696FE [4883] in 369670 BassAudioManager$$ʹˁˀʾʳˁˁʽʷʳʸ
+  PTR    at 3C42C78 [file+3C40E78] in 2BF4C30 System.__Il2CppComDelegate$$Finalize
+== target 164810 (3 hits)
+  CALL   at 1644FC [c9e8] in 1641D0 GameInit$$PreUnityInit
+  CALL   at 36201C [c9e8] in 361C60 UnpackingScene.ʸʳʳˀʵʻʴʸʽʽˀ$$MoveNext
+  PTR    at 3C4CE08 [file+3C4B008] in 2BF4C30 System.__Il2CppComDelegate$$Finalize
+== target 1EB800 (1 hits)
+  PTR    at 3C4F560 [file+3C4D760] in 2BF4C30 System.__Il2CppComDelegate$$Finalize
+== target 232E90 (1 hits)
+  PTR    at 3C53F38 [file+3C52138] in 2BF4C30 System.__Il2CppComDelegate$$Finalize
