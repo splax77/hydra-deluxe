@@ -55,6 +55,11 @@ struct CommandResult {
 // a drawing start ended; a start without `drawing` reads as done.
 DrawnStart start_session(ImGuiTestContext* ctx, bool drawing = false, double seconds = 0);
 
+// The seconds a timeout or wait argument gives: the number
+// hydra::parse_finite_number reads, 0 or more. False for anything else. The
+// one parse both verbs and the live channel's HYDRA_UITEST_HOLD_OPEN_S share.
+bool parse_seconds(const std::string& text, double& seconds);
+
 // Run one command line ("verb rest"), as command_line hands it over: not
 // blank and not a comment.
 CommandResult run_command(ImGuiTestContext* ctx, CommandSession& session, const std::string& line);

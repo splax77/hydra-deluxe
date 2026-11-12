@@ -119,14 +119,16 @@ bool split_bar(const std::string& line, std::string& head, std::string& tail) {
     return true;
 }
 
-// The seconds a timeout or wait argument gives: the number
-// hydra::parse_finite_number reads, 0 or more. The one parse both verbs share.
+}  // namespace
+
 bool parse_seconds(const std::string& text, double& seconds) {
     const std::optional<double> v = hydra::parse_finite_number(text);
     if (!v || *v < 0) return false;
     seconds = *v == 0 ? 0.0 : *v;  // "-0" reads as 0
     return true;
 }
+
+namespace {
 
 // printf into a string, for the interpreter's messages, at whatever length
 // the message has: a first pass measures it, a second writes it.

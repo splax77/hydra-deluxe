@@ -19,10 +19,12 @@
 #include <deque>
 #include <fstream>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
 #include <vector>
 
+#include "../env_util.h"
 #include "../temp_util.h"
 #include "../wait_util.h"
 #include "core/winstr.h"
@@ -241,6 +243,10 @@ bool seed_refused(const Harness& h) {
     return false;
 }
 
+// The environment variable that holds a live session's first open
+// (run_live). Dev only; docs/agents/ui-testing.md documents it.
+constexpr const char* kHoldOpenVar = "HYDRA_UITEST_HOLD_OPEN_S";
+
 // Start the live session's app, drawing while its library opens, for at most
 // `cap`. Returns why it did not start, or "" when the library is open or the
 // engine is stopping. The hello line goes out only after this, so every
@@ -276,9 +282,24 @@ void run_live(ImGuiTestContext* ctx) {
     eio.ConfigWatchdogWarning = FLT_MAX;
     eio.ConfigWatchdogKillTest = FLT_MAX;
 
+    // Dev only: HYDRA_UITEST_HOLD_OPEN_S holds the session's first open at
+    // the library read, after a startup frame is drawn, for at least that many
+    // seconds, so a slow open can be watched and photographed. Its number is
+    // read the way the timeout verb reads one.
+    std::optional<OpenGate> hold;
+    if (const std::optional<std::string> value = read_env(kHoldOpenVar)) {
+        double seconds = 0;
+        if (!parse_seconds(*value, seconds)) {
+            IM_ERRORF("%s needs a number of seconds, 0 or more, and nothing else; got \"%s\"",
+                      kHoldOpenVar, value->c_str());
+            return;
+        }
+        hold.emplace(OpenHold::StartupDrawn, seconds);
+    }
     // The session's start is capped like the wait for a client below.
-    if (const std::string why = start_live_session(ctx, testwait::kUitestProcessCap);
-        !why.empty()) {
+    const std::string why = start_live_session(ctx, testwait::kUitestProcessCap);
+    hold.reset();
+    if (!why.empty()) {
         IM_ERRORF("%s", why.c_str());
         return;
     }
