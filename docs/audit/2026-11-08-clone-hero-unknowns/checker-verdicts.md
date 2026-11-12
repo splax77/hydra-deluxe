@@ -88,7 +88,7 @@ Nine fresh read-only checkers, each on a result it did not write. Every caller s
 - IN-89 PASS split: the bit each getter tests is Proven in the game's code; the names from dump.cs take question 1's label; the three +0x80 getters stay Unknown.
 
 ## W9a (on 14a58c7b) and W9b (on 67ac329e)
-- Highlighted row CONFIRMED: the game reads the cursor alone on Confirm (0x32E3F7) and Difficulty (0x32E2C0), cursor plus scroll on Instrument and Modifiers. tools/ch_mcp/frida_tools.py line 232 always adds the scroll. They agree when scroll is 0; whether it can be non-zero there is unread. Tools only, no Hydra owner.
+- Highlighted row CONFIRMED: the game reads the cursor alone on Confirm (0x32E3F7) and Difficulty (0x32E2C0), cursor plus scroll on Instrument and Modifiers. tools/ch_mcp/frida_tools.py line 236 always adds the scroll. They agree when scroll is 0; whether it can be non-zero there is unread. Tools only, no Hydra owner.
 - IN-29 PASS narrowed (store before any use; whole-song hold Unknown). IN-39 PASS once worded: a player must pass 0x337540 as well as the is_bot test; "two writers were found", not "the only two". A third store in EndOfSong 0x161C70 seems to write 0 when a bot is present (unproven).
 - IN-91 PASS. IN-59 PASS narrowed ("not on cursor moves"; the fields change on a confirm).
 - IN-60 PASS with W9b's three corrections.
