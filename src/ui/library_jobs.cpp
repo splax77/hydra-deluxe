@@ -5,7 +5,9 @@
 #include <cstddef>
 #include <filesystem>
 #include <stdexcept>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "app/allocator.h"
 #include "app/config.h"
@@ -98,16 +100,28 @@ void read_library_summaries(store::RecordStore& store, const app::Settings& sett
         library.set_summaries(store.lookup(hashes, settings.profile()));
         return;
     }
+    // The slices are cut in hash order, the order the results tables are kept
+    // in, so each slice reads one stretch of them and the slices together read
+    // each page about once. Slices of rows in stored order would each reach
+    // across the whole of each table, and SQLite's page cache is too small to
+    // keep it between slices (hydra_bench --open times both orders).
+    std::vector<size_t> by_hash(hashes.size());
+    for (size_t i = 0; i < by_hash.size(); ++i) by_hash[i] = i;
+    std::stable_sort(by_hash.begin(), by_hash.end(),
+                     [&](size_t a, size_t b) { return hashes[a] < hashes[b]; });
     const size_t slice = std::max<size_t>(slice_charts, 1);
-    std::vector<store::RecordLookup> answers;
-    answers.reserve(hashes.size());
-    for (size_t from = 0; from < hashes.size(); from += slice) {
-        const size_t to = std::min(hashes.size(), from + slice);
-        const std::vector<std::string> part(hashes.begin() + static_cast<std::ptrdiff_t>(from),
-                                            hashes.begin() + static_cast<std::ptrdiff_t>(to));
-        for (store::RecordLookup& answer : store.lookup(part, settings.profile()))
-            answers.push_back(std::move(answer));
-        if (!on_slice(static_cast<uint64_t>(answers.size()))) throw JobCancelled{};
+    std::vector<store::RecordLookup> answers(hashes.size());  // parallel to the rows
+    std::vector<std::string> part;
+    for (size_t from = 0; from < by_hash.size(); from += slice) {
+        const size_t to = std::min(by_hash.size(), from + slice);
+        part.clear();
+        for (size_t i = from; i < to; ++i) part.push_back(hashes[by_hash[i]]);
+        std::vector<store::RecordLookup> found = store.lookup(part, settings.profile());
+        if (found.size() != part.size())
+            throw std::runtime_error("the results read gave " + std::to_string(found.size()) +
+                                     " answers for " + std::to_string(part.size()) + " charts");
+        for (size_t i = from; i < to; ++i) answers[by_hash[i]] = std::move(found[i - from]);
+        if (!on_slice(static_cast<uint64_t>(to))) throw JobCancelled{};
     }
     library.set_summaries(answers);
 }
