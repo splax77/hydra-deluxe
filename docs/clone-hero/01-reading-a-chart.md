@@ -266,11 +266,11 @@ Found: 2026-10-09, session 30beeb6e.
 
 ### CR-26 The game reads ten chart keys from song.ini's [song] section
 
-Rule: one function reads `delay` (whole number, default 0), hopo_frequency (limited to 0 to 65535), five_lane_drums, `pro_drums`, eighthnote_hopo, multiplier_note, video_start_time, sustain_cutoff_threshold, chord_snap_threshold and loading_phrase into a settings object. Hydra reads only `song_length` and `delay`. How the game lets `delay` and the chart Offset combine is page 3's.
+Rule: one function reads `delay` (whole number, default 0), hopo_frequency (limited to 0 to 65535), five_lane_drums, `pro_drums`, eighthnote_hopo, multiplier_note, video_start_time, sustain_cutoff_threshold, chord_snap_threshold and loading_phrase into a settings object. Hydra reads `song_length`, `delay`, `five_lane_drums` and `pro_drums`. How the game lets `delay` and the chart Offset combine is page 3's.
 Label: Proven in the game's code
 Evidence: `code/6142/ini_song_reader_1EFC60.asm` lines 15 to 33 (the key literals), 38 to 47 (`delay`), 49 onward (hopo_frequency), 77 (five_lane_drums), 84 (`pro_drums`) and 91 (eighthnote_hopo).
 Game code (6142): a method of class #828, RVA `0x1EFC60`, the listing above.
-Hydra: `ini_delay_ms` in src/app/preview_source.cpp line 301 and the `song_length` read in src/app/analysis.cpp line 141; no owner for the other keys (a grep of src/ for each key name finds none).
+Hydra: `ini_delay_ms` in src/app/preview_source.cpp line 301 and the `song_length` read in src/app/analysis.cpp line 141; `ini_drum_key_is_true` in src/parse/song.cpp for the two drum keys (CR-18); no owner for the other keys (a grep of src/ for each key name finds none).
 Ruling: none found.
 Found: 2026-10-30, session b02ab3e6 (the reference build).
 

@@ -2275,8 +2275,8 @@ std::optional<int32_t> dotnet_int32(std::string_view text) {
 
 // A song.ini's two drum keys. Clone Hero reads both through one bool getter
 // (0x1D4480, called from ini_song_reader_1EFC60.asm lines 77 to 89, CR-18).
-// This is that getter's text rule. Hydra trims blanks around the word too;
-// whether the game's ini reader does is not yet read.
+// This is that getter's text rule. The game's ini parser trims each value
+// before the getter sees it (ini_parse_21695E0.md), so this trims too.
 bool ini_drum_key_is_true(std::string_view value) {
     if (const std::optional<int32_t> number = dotnet_int32(value)) return *number != 0;
     return equals_ci(trim_view(value), "true");

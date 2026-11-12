@@ -37,13 +37,13 @@ HYDRA_SPACE = ' \t\r\n'
 
 
 def old_key_read(value):
-    """Main today: `drum_key_is_true` before the plan's T2."""
+    """Main's old rule, before `ini_drum_key_is_true` and `sng_drum_key_is_true` in src/parse/song.cpp."""
     return value is not None and value.strip(HYDRA_SPACE).lower() == 'true'
 
 
 def new_key_read(value):
     """The game's getter, as the plan's "How the game reads the two keys"
-    section and T2 have it; Hydra keeps its trim until Gap 2 is settled."""
+    section and T2 have it; the game's ini parser trims each value first."""
     if value is None:
         return False
     m = re.fullmatch(r'[%s]*([+-]?[0-9]+)[%s]*' % (re.escape(DOTNET_WHITE), re.escape(DOTNET_WHITE)),
