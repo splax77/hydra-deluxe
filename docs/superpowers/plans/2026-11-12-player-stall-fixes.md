@@ -130,7 +130,7 @@ Acceptance:
 
 Owns: `tools/ch_probe/experiments/stall_harness.py` (new), `tools/ch_probe/tests/test_stall_harness.py` (new), and a paragraph in `docs/agents/this-machine.md` on how to run it. Uses rows P10 and P11.
 
-The harness runs the real `play_chords` on a real schedule file with no game. Its song clock is the wall clock. Its press goes through the checkout's real `LiveAgent` (`tools/ch_mcp/frida_attach.py`) with a fake Frida script that answers each post after 7 ms (the median kit press call in LS-A2 was 7.6 ms, row P10), on another thread by calling `_on_message`, as Frida does, so the kit log's write is in the loop; it writes `kit-<n>.jsonl` into the harness's own folder. Its row sink is one of three: `writer` (PS2's `PressLogWriter`), `per-row` (open, append one row, close, on the player's thread, the shape main has today) or `none`. A watchdog thread watches which step the player is in. When a step runs past the threshold, it writes every thread's Python stack with `faulthandler` to a `stall-<n>.txt`, with the step's name and how long it has run. For the first stall of a run only, it then starts `cdb -pv` on its own process and saves that output too, with a line saying whether the stall was still on when `cdb` attached. `cdb` pauses the process while attached, so one attach per run keeps the rest of the run's timing clean. `--force-stall-ms` makes the sink block once, so the watchdog itself can be tested. `--minutes` caps the run. `--load` starts the file-reading process of question 2 and stops it at the end. `--no-cdb` skips the `cdb` attach, so the Python dump can be tried alone. The step names the watchdog reports are the ones PS3's columns use, with the kit log's write falling inside `press`.
+The harness runs the real `play_chords` on a real schedule file with no game. Its song clock is the wall clock. Its press goes through the checkout's real `LiveAgent` (`tools/ch_mcp/frida_attach.py`) with a fake Frida script that answers each post after 7.6 ms (the median kit press call in LS-A2, row P10), on another thread by calling `_on_message`, as Frida does, so the kit log's write is in the loop; it writes `kit-<n>.jsonl` into the harness's own folder. Its row sink is one of three: `writer` (PS2's `PressLogWriter`), `per-row` (the harness's own `per_row_append`: open, append one row, close, on the player's thread, the shape main had before PS2 removed `append_press_row`) or `none`. A watchdog thread watches which step the player is in. When a step runs past the threshold, it writes every thread's Python stack with `faulthandler` to a `stall-<n>.txt`, with the step's name and how long it has run. For the first stall of a run only, it then starts `cdb -pv` on its own process and saves that output too, with a line saying whether the stall was still on when `cdb` attached. `cdb` pauses the process while attached, so one attach per run keeps the rest of the run's timing clean. `--force-stall-ms` makes the sink block once, so the watchdog itself can be tested. `--minutes` caps the run, and `--threshold-ms` and `--hunt-run` are its other numbers. `--load` starts the file-reading process of question 2 and stops it at the end. `--no-cdb` skips the `cdb` attach, so the Python dump can be tried alone. The harness runs by its file path (`py -I tools/ch_probe/experiments/stall_harness.py`), because `-m` cannot find `tools` under `-I`; its docstring says how to run it. The step names the watchdog reports are the ones PS3's columns use, with the kit log's write falling inside `press`.
 
 Acceptance:
 - `test_a_forced_stall_writes_a_dump_that_names_the_sink`: with `--force-stall-ms` and the `per-row` sink, a `stall-1.txt` exists and its text holds the sink function's name and the step name `handoff`.
@@ -139,9 +139,9 @@ Acceptance:
 - `test_a_clean_run_says_no_stall`: the summary line reads "no stall over N ms in M minutes" with the two numbers it was given.
 - `test_a_missing_cdb_is_said_and_the_run_goes_on`: with no `cdb` found, the stall file says so and the Python dump is still written. The `cdb` path comes from the lookup in `docs/agents/this-machine.md`, never a typed path.
 - `test_a_second_stall_in_one_run_starts_no_second_cdb`: two stalls reach the watchdog, with a fake `cdb` launcher; the launcher is called once and both Python dumps are written. This is the "one attach per run" promise.
-- `test_a_stall_inside_the_agent_log_write_shows_as_the_press_step`: the fake Frida script's log file blocks once; the dump names the `press` step and holds `_on_message`.
+- `test_a_blocked_agent_log_write_does_not_stall_the_press`: PS5 has merged, so the kit log is written on `LiveAgent`'s writer thread; the fake Frida script's log file blocks once, and the run has no stall file and no dropped chord.
 - `test_the_load_process_is_stopped_at_the_end`, on every way out, the cap included.
-- The threshold and the cap have no default in the code; the harness refuses to start without them, so the numbers stay question 2's.
+- `test_the_defaults_are_the_users_numbers`: the threshold, the run's length and the hunt's run count default to `STALL_THRESHOLD_MS`, `STALL_RUN_MINUTES` and `STALL_HUNT_RUNS_MAX` in `tools/ch_probe/constants.py`, the user's numbers from D335 item 3 (40 ms, 10 minutes, three runs), and `test_a_hunt_run_past_the_most_is_refused`: `--hunt-run` above 3 exits with an error. The numbers have one home, `constants.py`.
 
 ### PS5: the kit log's write leaves the press reply's path (Python; Opus; cut from main)
 
@@ -157,41 +157,44 @@ Acceptance:
 - `test_a_failed_log_write_stops_the_log_and_not_the_reply`.
 - `test_a_message_after_the_log_closed_is_dropped`: pins today's rule.
 
+## Test limits
+
+The harness's fake Frida script answers each kit press call after 7.6 ms, the median kit press call of LS-A2 (row P10): a stand-in for the real call, not a rule the player follows.
+
 ## The live steps
 
 The main session runs these, in order, each after the task it names has merged. LS-P0 to LS-P2 start no game. Each is capped as its text says. No step scans the song library, and nobody focuses a window.
 
 ### LS-P0: the harness's first run, with a forced stall (no game; after PS4)
 
-Calls: `py -I -m tools.ch_probe.experiments.stall_harness <The Who schedule> --sink per-row --load --force-stall-ms 900 --minutes 1 --threshold-ms <question 2> --no-cdb` (never tried)
+Calls: `py -I tools/ch_probe/experiments/stall_harness.py <The Who schedule> --sink per-row --load --force-stall-ms 900 --minutes 1 --threshold-ms <question 2> --no-cdb` (never tried)
 
-The one new piece is the harness on this machine, with its load process. LS-P0 to LS-P2 run on PS4's branch tip, which holds PS1 to PS3 but not PS5, so the kit log is still written on the reply path, as on main today. Pass: one `stall-1.txt` whose Python stack shows the player's thread inside the sink, a press log with dropped chords after the forced stall, and the load process gone when the run ends. Fail: no stall file, or the run does not end at its 1 minute cap; the output goes to the user. Cap: 2 runs.
+The one new piece is the harness on this machine, with its load process. LS-P0 to LS-P2 run on PS4's branch tip, which holds PS1 to PS3 and PS5, so the kit log is written on `LiveAgent`'s writer thread, off the reply path. Pass: one `stall-1.txt` whose Python stack shows the player's thread inside the sink (`per_row_append`), a press log with dropped chords after the forced stall, and the load process gone when the run ends. Fail: no stall file, or the run does not end at its 1 minute cap; the output goes to the user. Cap: 2 runs.
 
 ### LS-P0b: the harness with the writer sink (no game; after LS-P0 passes)
 
-Calls: `py -I -m tools.ch_probe.experiments.stall_harness <The Who schedule> --sink writer --load --force-stall-ms 900 --minutes 1 --threshold-ms <question 2> --no-cdb` (never tried)
+Calls: `py -I tools/ch_probe/experiments/stall_harness.py <The Who schedule> --sink writer --load --force-stall-ms 900 --minutes 1 --threshold-ms <question 2> --no-cdb` (never tried)
 
 The one new piece is PS2's writer on this machine. Pass: the run drops no chord and writes no stall file for the player's thread, and its press log holds every row. Fail: any dropped chord; the output goes to the user. Cap: 2 runs.
 
 ### LS-P1: one `cdb` attach to the harness (no game; after LS-P0b passes)
 
-Calls: `py -I -m tools.ch_probe.experiments.stall_harness <The Who schedule> --sink per-row --force-stall-ms 2000 --minutes 1 --threshold-ms <question 2>` (seen: LS-P0's passing run), `cdb -pv -p <the harness's pid> -c "~*kc 40; qd"` started by the harness (never tried)
+Calls: `py -I tools/ch_probe/experiments/stall_harness.py <The Who schedule> --sink per-row --force-stall-ms 2000 --minutes 1 --threshold-ms <question 2>` (seen: LS-P0's passing run), `cdb -pv -p <the harness's pid> -c "~*kc 40; qd"` started by the harness (never tried)
 
 The one new piece is `cdb` on a Python process; it has been seen only on Hydra's own (`docs/agents/this-machine.md`). Uses row P11 (unchecked). The forced stall is 2,000 ms, the longest gap of the real run, to give the attach its best chance. Pass: the saved output holds a stack for every thread, the stall file says how long the attach took, and whether the stall was still on. Fail: `cdb` is refused or prints no stacks; then LS-P2 runs with the Python dump alone, and the report says so. Cap: 2 runs.
 
 ### LS-P2: the hunt for the real blocking call (no game; after LS-P1; needs question 2's yes)
 
-Calls: `py -I -m tools.ch_probe.experiments.stall_harness <The Who schedule> --sink per-row --load --minutes <question 2> --threshold-ms <question 2>` (seen: LS-P0's passing run), the same with `--sink writer` (seen: LS-P0b's passing run), `cdb -pv` started by the harness (seen: LS-P1's passing run)
+Calls: `py -I tools/ch_probe/experiments/stall_harness.py <The Who schedule> --sink per-row --load --minutes <question 2> --threshold-ms <question 2> --hunt-run 1` (seen: LS-P0's passing run), the same with `--sink writer` and `--hunt-run 2` (seen: LS-P0b's passing run), `cdb -pv` started by the harness (seen: LS-P1's passing run)
 
-Uses rows P12 and P13 (unchecked): this step is what checks them. The first run writes the log the way main does today; the second uses PS2's writer, under the same load for the same time; both on PS4's branch tip, where the kit log is still written on the reply path. A third run, the `writer` sink on a tip that also holds PS5, runs only when the second one stalls in `press`. There are five ways it can end, and each has its report:
+Uses rows P12 and P13 (unchecked): this step is what checks them. The first run writes the log the way main does today; the second uses PS2's writer, under the same load for the same time; both on PS4's branch tip, which holds PS5, so the kit log is off the reply path in both. There are four ways it can end, and each has its report:
 
 - The `per-row` run stalls in `handoff` and the `writer` run drops nothing: the dump's line (open, write or close) is the blocking call, and the fix is shown to hold. Go to LS-P3's go request.
-- The `per-row` or the `writer` run stalls in `press`, with `_on_message` in the dump: the kit log's write is a blocking call too. Run the third run on the PS5 tip; if it drops nothing, go to LS-P3's go request.
-- Neither run stalls within the cap: the report says "not reproduced in N minutes". The user decides whether LS-P3 runs on PS2, PS3 and PS5 alone.
+- Neither run stalls within the cap: the report says "not reproduced in N minutes". The user decides whether LS-P3 runs on PS1 to PS5 alone.
 - A run stalls in another step (the sleep, the clock read): the cause is wider than the file writes. Stop. The stall files go to the user before any live run, and this plan gains a task for what they show.
 - A run fails to start or to stop at its cap: stop and report the output.
 
-Cap: one run of each sink, a third only as the second bullet says, and 2 tries if a run fails to start.
+Cap: one run of each sink, and 2 tries if a run fails to start.
 
 ### LS-P3: The Who again on the kit route (the game; only on the user's yes)
 
@@ -228,7 +231,7 @@ Pass: `press-<n>.csv` has no `dropped` row, every first row of a message carries
 | The kit log keeps one line per message, in order, flushed per line | PS5 | PS5 | `test_every_message_reaches_the_log_in_order_once`, `test_every_line_is_on_disk_before_detach` |
 | The detach's wait for the kit-log writer is capped and says when it passed | PS5, question 5 | PS5 | `test_detach_waits_for_the_writer_and_says_so_when_the_cap_passes` |
 | A failed kit-log write stops the log, not the reply | PS5 | PS5 | `test_a_failed_log_write_stops_the_log_and_not_the_reply` |
-| A stall in the kit log's write shows as the `press` step in the harness | PS4 | PS4 | `test_a_stall_inside_the_agent_log_write_shows_as_the_press_step` |
+| A block in the kit log's write leaves the `press` step on time in the harness | PS4, PS5 | PS4 | `test_a_blocked_agent_log_write_does_not_stall_the_press` |
 | A stall in any of the seven steps shows in that step's column | PS3 | PS3 | `test_a_stall_in_each_step_shows_in_that_steps_column` |
 | A dropped row still carries its wait times | PS3 | PS3 | `test_a_dropped_row_carries_its_wait_times` |
 | Only a message's first row carries the times | PS3 | PS3 | `test_only_the_first_row_of_a_split_chord_carries_the_times` |
@@ -240,9 +243,9 @@ Pass: `press-<n>.csv` has no `dropped` row, every first row of a message carries
 | Every harness run is capped and says how it ended | PS4 | PS4 | `test_the_cap_ends_the_run_and_says_so`, `test_a_clean_run_says_no_stall` |
 | A missing `cdb` is said, never silent | PS4 | PS4 | `test_a_missing_cdb_is_said_and_the_run_goes_on` |
 | The load process never outlives the harness | PS4 | PS4 | `test_the_load_process_is_stopped_at_the_end` |
-| The harness holds no threshold or cap of its own | PS4, question 2 | PS4 | the refusal to start without them, tested in `test_the_cap_ends_the_run_and_says_so`'s setup and read by the reviewer |
+| The harness's threshold, run length and run count are the user's numbers, from one home | PS4, question 2 | PS4 | `test_the_defaults_are_the_users_numbers`, `test_a_hunt_run_past_the_most_is_refused` |
 | `cdb` attaches once per run at most | PS4 | PS4 | `test_a_second_stall_in_one_run_starts_no_second_cdb` |
-| The real blocking call is looked for offline before any live run | LS-P2 | LS-P2 | the two or three run folders and their summary lines, shown in LS-P3's go request |
+| The real blocking call is looked for offline before any live run | LS-P2 | LS-P2 | the two run folders and their summary lines, shown in LS-P3's go request |
 | The harness, its load and the writer sink are each tried once on their own before the hunt | LS-P0, LS-P0b | LS-P0, LS-P0b | each step's pass line |
 | No game run before the user's yes | Rulings, LS-P3 | LS-P3 | the go request; LS-P0 to LS-P2 name no `ch_` call |
 | Chord 1426's expected drop is settled before LS-P3 | question 4, LS-P3 | LS-P3 | the go request carries the answer |
