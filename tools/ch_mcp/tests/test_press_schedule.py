@@ -201,6 +201,21 @@ class PressScheduleTest(unittest.TestCase):
             {"kind": "skipped", "seqs": [1, 2, 3], "count": 3, "clock_ms": 900.0}])
         self.assertEqual(written(out[0]), [])
 
+    def test_a_first_frame_that_skips_every_entry_stops_as_past_end(self):
+        out = run(play([entry(1, 1000.0), entry(2, 1020.0, KICK, after_ms=20.0, after_seq=1)]),
+                  [step(10, 900.0, 5000.0)])
+        self.assertEqual(kinds(out[0]), [("skipped", None), ("stop", "past_end")])
+        self.assertEqual(out[0]["events"][0]["seqs"], [1, 2])
+
+    def test_a_dropped_head_drops_its_later_group_on_the_same_frame(self):
+        out = run(play([entry(1, 1000.0, SNARE, last_send_ms=1010.0),
+                        entry(2, 1010.0, KICK, index=1, after_ms=10.0, after_seq=1)]), [
+            step(10, 800.0, 5000.0),
+            step(11, 1500.0, 5900.0),
+        ])
+        self.assertEqual(written(out[1]), [])
+        self.assertEqual(kinds(out[1]), [("dropped", 1), ("dropped", 2), ("stop", "done")])
+
     def test_a_retime_replaces_only_entries_not_yet_fired(self):
         out = run(play([entry(1, 1000.0, SNARE), entry(2, 1100.0, TOM),
                         entry(3, 1200.0, KICK)]), [

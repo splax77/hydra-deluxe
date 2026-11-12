@@ -43,7 +43,8 @@
 //   events          the reports below, in the order they happened
 //
 // The event kinds, each with `kind` set to its name:
-//   "skipped"  once, on the first frame: seqs (the skipped entries' seqs),
+//   "skipped"  once, on the first frame: seqs (the skipped entries' seqs,
+//              ascending),
 //              count (how many), clock_ms (the first frame's clock)
 //   "sent"     one per entry that was written, once its score after is read
 //              or play stopped: seq, index, clock_ms_at_press (the clock of
@@ -279,7 +280,7 @@ export class PressSchedule {
         this.jumpBackMs = needNumber(c, "jump_back_ms", "play");
         this.readScore = readScore;
         const entries = readEntries(c.entries);
-        this.slots = new Map(entries.map((e) => [e.seq, freshSlot(e)]));
+        this.slots = new Map(entries.map((e): [number, Slot] => [e.seq, freshSlot(e)]));
         this.checkHeads(this.slots);
         this.retimedReads = new Set();
         this.held = new Map();
@@ -474,17 +475,24 @@ export class PressSchedule {
     skipAtLoad(clockMs: number, out: Step): void {
         const seqs: number[] = [];
         const pending = [...this.slots.values()].sort(byPlan);
-        for (const s of pending) {
-            const e = s.entry;
-            const skip = e.after_seq === null
-                ? e.at_ms < clockMs + this.startLeadMs
-                : (this.slots.get(e.after_seq) as Slot).outcome === "skipped";
-            if (skip) {
-                s.state = "done";
-                s.outcome = "skipped";
-                seqs.push(e.seq);
+        // Heads first, so a later group never looks at a head not yet judged.
+        for (const heads of [true, false]) {
+            for (const s of pending) {
+                const e = s.entry;
+                if ((e.after_seq === null) !== heads) {
+                    continue;
+                }
+                const skip = e.after_seq === null
+                    ? e.at_ms < clockMs + this.startLeadMs
+                    : (this.slots.get(e.after_seq) as Slot).outcome === "skipped";
+                if (skip) {
+                    s.state = "done";
+                    s.outcome = "skipped";
+                    seqs.push(e.seq);
+                }
             }
         }
+        seqs.sort((a, b) => a - b);
         out.events.push({ kind: "skipped", seqs, count: seqs.length, clock_ms: clockMs });
     }
 
