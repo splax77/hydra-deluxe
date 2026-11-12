@@ -260,7 +260,9 @@ Song load_songpath_with_notes(const std::string& path, const ChartReading& readi
 // The one dispatch on the extension of `path`, its bytes read from `src`:
 // load_songpath passes the file (file_byte_source), load_songpath_from_bytes
 // the bytes in hand. A .mid or .chart is read whole; a .sng or .srb only in
-// the pieces its notes need. Tests pass a counting source to prove that.
+// the pieces its notes need. Tests pass a counting source to prove that. A
+// .mid or .chart takes its drum keys from the song.ini beside `path`
+// (chart_drum_keys_beside), never from `src`.
 Song load_songpath_reading(const ByteSource& src, const std::string& path,
                            const ChartReading& reading, const core::Rules& rules,
                            FillDeadlineRule fills);

@@ -2408,8 +2408,12 @@ Song load_songpath_from_bytes(const std::string& path, const std::vector<uint8_t
 Song load_songpath_reading(const ByteSource& src, const std::string& path,
                            const ChartReading& reading, const core::Rules& rules, FillDeadlineRule fills) {
     switch (chart_format_of(path)) {
-        case ChartFormat::Mid: return load_songbytes_mid(read_all(src), reading, rules, fills);
-        case ChartFormat::Chart: return load_songbytes_chart(read_all(src), reading, rules, fills);
+        case ChartFormat::Mid:
+            return load_songbytes_mid(read_all(src), chart_drum_keys_beside(path), reading, rules,
+                                      fills);
+        case ChartFormat::Chart:
+            return load_songbytes_chart(read_all(src), chart_drum_keys_beside(path), reading,
+                                        rules, fills);
         case ChartFormat::Sng: return load_container_sng(src, reading, rules, fills);
         case ChartFormat::Srb: return load_container_srb(src, reading, rules, fills);
         case ChartFormat::None: break;
