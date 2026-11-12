@@ -113,6 +113,11 @@ KIT_WATCH_MAX_S = 60.0
 # ch_kit_status counts frames over this long to give the frame rate (the
 # plan's "Where the schedule runs").
 KIT_RATE_WINDOW_S = 1.0
+# How long play_chart.play_in_game waits on the agent's event queue before it
+# looks at should_stop and the agent's session again. It times no press: the
+# agent fires every press on the game's frames, and only a stop asked for
+# while no event comes waits on it.
+KIT_EVENT_WAIT_S = 0.05
 
 # The Rewired devices kit.ts switches off for the run, by the name its setup
 # and status replies key each one's read-back with (the user's rulings of

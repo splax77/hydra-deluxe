@@ -1107,6 +1107,7 @@ class GameTools:
         The schedule says which gems each press sends and when, a declined
         fill's kept gems among them; a schedule load_schedule refuses is
         refused here in its words (chords_to_play). The reply's declined_line,
+        squeeze_lines and order_lines say what the path declines, how its
         squeezes are pressed and which chords are pressed in groups.
         `timing` is TIMING_PYTHON (None means it) or TIMING_GAME, which
         needs the kit route (timing_refusal)."""
@@ -1268,7 +1269,15 @@ class GameTools:
             began = self._env.now()
             log_path = os.path.join(self.session_dir(),
                                     f"{PRESS_LOG_PREFIX}{self._press_log_count}.csv")
-            player = parts.kit.game_player() if timing == TIMING_GAME else None
+            player = None
+            if timing == TIMING_GAME:
+                player = parts.kit.game_player()
+                if player is None:
+                    return self._run_stopped(
+                        lines, "play", began,
+                        f'timing "{TIMING_GAME}": the kit agent the setup built is not '
+                        f"ready; nothing pressed",
+                        parts.kit.ch_kit_teardown() + "\n" + parts.sp.ch_sp_watch_stop())
             play = _PlaySession(score_json=score_json, chord_count=len(chords), log_path=log_path,
                                 cap_s=cap_s, press=press, find_engine=lambda _proc: engine,
                                 player=player)

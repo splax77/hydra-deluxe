@@ -827,10 +827,6 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
 
 # --- in-game timing -------------------------------------------------------------
 
-# How often play_in_game looks at should_stop and the agent's session while no
-# event comes. It decides no press time: the agent fires every press.
-_EVENT_POLL_S = 0.05
-
 
 def engine_addresses(engine) -> Tuple[int, int]:
     """The song clock's and the score's addresses on `engine`, which the
@@ -926,7 +922,7 @@ def play_in_game(chords: Sequence[Chord], player, *, clock_addr: int, score_addr
 
     while True:
         try:
-            event = player.events.get(timeout=_EVENT_POLL_S)
+            event = player.events.get(timeout=K.KIT_EVENT_WAIT_S)
         except queue.Empty:
             if not player.alive():
                 result.stop, result.message = "lost", "lost the kit agent's session"
