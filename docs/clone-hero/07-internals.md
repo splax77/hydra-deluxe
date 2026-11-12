@@ -504,23 +504,23 @@ Found: 2026-10-30, session b02ab3e6 (the reference build); corrected 2026-10-31,
 
 ### IN-39 Why scores are switched off is kept in GlobalVariables
 
-Rule: `GlobalVariables.scoreDisabled` (+0x7C) is an enum (#727) with the values None 0, Modifier 1, Bot 2, Pause 3; who writes Bot in 1.1 was not traced.
-Label: Unknown
-Evidence: not checked: the enum and field are `dump.cs` lines 39726 to 39733 and 55827 (metadata only); in 1.0 the writes are in the 4045 decompile's GameManager.cs lines 465 and 2252 and EndOfSong.cs line 386, not copied.
-Game code (6142): `GlobalVariables.scoreDisabled`; no writer read.
+Rule: `GlobalVariables.scoreDisabled` (+0x7C) is an enum (#727) with the values None 0, Modifier 1, Bot 2, Pause 3. Two writers of Bot were found: the GameManager load coroutine and `EndOfSong.Start`. Each writes Bot only when the `GlobalVariables` method `0x235A40` returns true, which needs some player in `playerList` to pass both `0x337540` (it has a Rewired player, or its remote byte is set) and the "is_bot" test `0x13F8B0`. The game also writes a fifth value, 4, which the enum does not name: the GameManager pause method writes it when scores are not already off, practice is not on, more than three pauses have been taken and the two GameManager times at +0x70 and +0x118 are less than 1185.0 apart.
+Label: Proven in the game's code
+Evidence: the enum and field are `dump.cs` lines 39726 to 39733 and 55827. The test: `code/6142/globals_any_bot_235A40.asm` lines 19 to 32 (the two tests `0x337540` and `0x13F8B0` were read with tools/ch_mcp/chdis.py and not kept; `code/6142/globals_any_bot_235A40.md` describes them). The first writer: `code/6142/gm_load_coroutine_D8D80.asm` line 547 (the call), line 549 (the false branch) and line 560 (the store of 2). The second: `code/6142/end_of_song_start_15DC20.asm` line 729 (the call) and line 742 (the store of 2). The value 4: `code/6142/gm_score_disabled_4_B5F90.asm` lines 126 to 196. A field-write scan for +0x7C over every named method that loads GlobalVariables' type info (`docs/audit/2026-11-08-clone-hero-unknowns/W9a/globals_writes_28_7C.txt`) found seven stores. The other four were not read: 0 and 1 in `BasePlayer` `0x209C70`, 3 in `GameManager` `0xB9680`, and a register value in `EndOfSong` `0x161C70`, which seems to write 0 when a bot is present (not shown). In 1.0 the writes are in the 4045 decompile's GameManager.cs lines 465 and 2252 and EndOfSong.cs line 386, not copied.
+Game code (6142): `GlobalVariables.scoreDisabled`; test RVA `0x235A40`; load coroutine RVA `0xD8D80`; `EndOfSong.Start` RVA `0x15DC20`; pause method RVA `0xB5F90`.
 Hydra: no owner.
 Ruling: none needed: no Hydra rule reads it.
-Found: 2026-10-30, session b02ab3e6 (the reference build).
+Found: 2026-10-30, session b02ab3e6 (the reference build); the writers, 2026-11-08, session 428cf079 (unknowns audit).
 
-### IN-40 Whether the 1.0 bot earns Star Power
+### IN-40 The 1.0 bot earns no Star Power
 
-Rule: In 1.0 the gain method skips a remote player and any player for which a scrambled test method returns true; what that method tests was not found, so whether the 1.0 bot earns Star Power is not known.
-Label: Unknown
-Evidence: not checked: the test method is called at the 4045 decompile's BasePlayer.cs lines 636, 755 and 1104 and GameManager.cs line 355, and its body was not located.
-Game code (4045): the BasePlayer gain method, `code/4045/fill_deadline.cs` lines 34 to 57 (line 36 is the skip).
+Rule: In 1.0 the gain method skips a remote player and the bot. Its test method returns the profile's `isBot` setting, and a command-line start sets that setting to 1, so the 1.0 bot never earns Star Power. In network play, BasePlayer sets `isBot` to 0.
+Label: Proven in the game's code
+Evidence: `code/4045/bot_test.cs`, explained in `code/4045/bot_test.md`, made with ilspycmd from the 1.0 `Assembly-CSharp.dll`. Section B1 is the whole test method: it returns the profile's `isBot`. Section B2 is the gain method's opening, BasePlayer.cs line 755: its whole body is inside `if (!isRemotePlayer && !IsBot())`. Section B3 is CliGameLauncher.cs line 684, which sets `isBot.CurrentValue = 1` on the profile it makes. Section B4 lists every write to the meter field in BasePlayer.cs: the only add is line 759, inside B2's test, and all three callers of the gain method go through it. The network-play write is BasePlayer.cs line 1108 of the same decompile, not copied into the listing. The test method's other call sites are BasePlayer.cs lines 636 and 1104 and GameManager.cs line 355. `isBot` is declared in `BasePlayerProfile`, outside Assembly-CSharp, which was not decompiled.
+Game code (4045): the BasePlayer gain method, `code/4045/fill_deadline.cs` lines 34 to 57 (line 36 is the skip); the test, `code/4045/bot_test.cs` section B1.
 Hydra: no owner.
 Ruling: none needed: no Hydra rule reads it.
-Found: 2026-10-30, session b02ab3e6 (the reference build).
+Found: 2026-10-30, session b02ab3e6 (the reference build); the test method, 2026-11-08, session 428cf079 (unknowns audit).
 
 ## Input and logs
 
@@ -538,31 +538,31 @@ Found: 2026-09-25, session 8157f2dc; the 857-of-857 run file and the key map's s
 
 Rule: The tools press the kick key for both kicks and assume it scores a 2x kick gem.
 Label: Unknown
-Evidence: not checked: `overlay-spike/run1_cal0_scorestats.json` shows the DoubleKick modifier and 1,257 of 1,257 notes hit, but whether that chart holds any 2x kick gem was not checked.
+Evidence: `overlay-spike/run1_cal0_scorestats.json` shows the DoubleKick modifier and 1,257 of 1,257 notes hit. That run cannot show it, because its chart holds no 2x kick gem: Trippin SP Spike's [ExpertDrums] has 402 notes N 0 (kick) and no N 32 (2x kick), and Hydra's replay output for it counts 402 Kick. A 2x kick would also be counted as Kick there, so the chart itself is the proof. The record of that check is the IN-42 line of `docs/audit/2026-11-08-clone-hero-unknowns/checker-verdicts.md` (line 108), which names neither the chart's path nor the replay file. A check needs a run on a chart with 2x kick gems.
 Game code (6142): not found.
 Hydra: the 2x kick read is page 02's.
 Ruling: none needed: no Hydra rule reads it.
-Found: 2026-09-25, session 8157f2dc.
+Found: 2026-09-25, session 8157f2dc; the chart check, 2026-11-11, session 428cf079 (unknowns audit).
 
 ### IN-43 A command-line song logs only its loading line at first
 
-Rule: A song started from the command line writes only its "Loading Song" line to the session log at first, so waiting for "OnCountdownStart" never works; the tools attach about 5 s after launch.
-Label: Unknown
-Evidence: not checked: no session-log file was kept; the record is the study's Test 2 text and the L1 live run of 2026-10-29 (session e9b04efc), in which the attach waited 4.8 s so that it came 5 s after the launch, then attached in 1.2 s and read the state "playing".
+Rule: In one bot run, the session log got only the "Loading Song" line and one warning in 300 s while the song played, and no "OnCountdownStart" line appeared in that time; so waiting for "OnCountdownStart" does not work, and the tools attach about 5 s after launch. That a command-line start is the cause was not checked, because no kept file records that run's launch arguments.
+Label: Proven in a live run
+Evidence: `tools/ch_probe/experiments/results/overlay-spike/run1_cal0_log_tail.txt` (the 2026-10-29 bot run) watched `Session-2026-10-28_20-34-47.log` from its end for 300 s (lines 2 and 3). It got two lines, both at 20:36:15.244: "[Log] Loading Song: Hydra Probe - Trippin SP Spike" and a missing-text warning (lines 4 and 5), then stopped at the 300 s cap (line 6). The song played meanwhile: `overlay-spike/run1_cal0_sp_watch.csv` reads the clock rising from 2.207 s to 181.160 s. The two Unity `Player.log` files kept from runs (`RUNS\2026-11-07\ls-t2-run-a\Player.log` and `RUNS\2026-11-07\ls-t3-run-b\Player.log`) show "Loading Song" and no line holding "countdown" over a whole run; they have no time stamps, so they cannot show what came first. The 5 s attach is from the study's Test 2 text and the L1 live run of 2026-10-29 (session e9b04efc), in which the attach waited 4.8 s so that it came 5 s after the launch, then attached in 1.2 s and read the state "playing".
 Game code (6142): not found.
 Hydra: no owner. The tool's delay is `ATTACH_DELAY_S` (tools/ch_mcp/frida_tools.py).
 Ruling: none needed: no Hydra rule reads it.
-Found: 2026-10-28, feasibility study line 139.
+Found: 2026-10-28, feasibility study line 139; the kept log tail, 2026-11-08, session 428cf079 (unknowns audit).
 
-### IN-44 The empty hit-detection logs may have a switch
+### IN-44 The hit-detection logs are made at start-up and keep only tagged entries
 
-Rule: The game ships empty `HitDetection-Standard.log` and `HitDetection-Validation.log` files; a setting or flag that fills them was suspected and never found.
-Label: Unknown
-Evidence: looked in the feasibility study (lines 33 and 109) and docs/handoffs/2026-10-28-ch-mcp-results-handoff.md line 39 (removed; `git show 444631e6:docs/handoffs/2026-10-28-ch-mcp-results-handoff.md`); nothing was tested.
-Game code (6142): not found.
+Rule: The game makes `HitDetection-Standard.log` and `HitDetection-Validation.log` itself at start-up, and writes to each only log entries tagged "GuitarEngine" or "GuitarEngineValidator". No setting is read on the way. Whether the shipped build ever makes a tagged entry is not known: no direct caller of the log writers was found.
+Label: Proven in the game's code
+Evidence: GameInit.PreUnityInit calls `0x213040` with no test in front of it (the call at 0x1646F0). `code/6142/fast_logger_setup_213040.asm` checks only whether it already ran (lines 55 to 63), makes the `Logs` folder (lines 196 to 218) and adds three log targets at level 4, Trace (lines 239, 259 and 279); two are file sinks, one for `HitDetection-Standard.log` tagged "GuitarEngine" (line 248) and one for `HitDetection-Validation.log` tagged "GuitarEngineValidator" (line 268). The sink's write method writes an entry only when the entry's tag string at +0x40 equals the sink's tag, compared ordinally (`code/6142/log_file_sink_write_2158DF0.asm` lines 27 to 42); the tag is the fifth argument of the logger's writer (`code/6142/log_writer_2128F10.asm` lines 93 and 94). Unity's `Debug.Log` does not reach these files: the setup's line 165 sets Unity's logger to class #981, which hands lines to Unity's own log. No direct caller found (byte scan of il2cpp and .text) for the writers `0x2128F10` and `0x2128B70` or the dispatch method `0x2128770`. A byte scan cannot see calls from generic method instances, and the generic Log instances have compiled bodies (for example `0x604210`), so this does not show that no entry is ever made. The empty files are reported in the feasibility study (lines 33 and 109) and docs/handoffs/2026-10-28-ch-mcp-results-handoff.md line 39 (removed; `git show 444631e6:docs/handoffs/2026-10-28-ch-mcp-results-handoff.md`); no run has tested whether play fills them.
+Game code (6142): logger setup RVA `0x213040`; file sink write RVA `0x2158DF0`; logger writer RVA `0x2128F10`.
 Hydra: no owner.
 Ruling: none needed: no Hydra rule reads it.
-Found: 2026-10-28, feasibility study lines 33 and 109.
+Found: 2026-10-28, feasibility study lines 33 and 109; the listings, 2026-11-08, session 77057df2 (unknowns audit).
 
 ### IN-45 The game's text strings are plain
 
