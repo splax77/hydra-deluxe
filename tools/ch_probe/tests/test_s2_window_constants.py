@@ -37,8 +37,7 @@ class MeasuredConstantsTest(unittest.TestCase):
         self.assertLess(abs(min(w) - C.WINDOW_FLOOR_MS), C.WINDOW_MATCH_TOLERANCE_MS)
 
     def test_derived_rules_come_from_the_per_side_constants(self):
-        # Pinned values, not the formulas: half the cap, and the two gap edges.
-        self.assertAlmostEqual(C.ONE_SIDE_CAP_MS, 85.71565, places=9)
+        # Pinned values, not the formulas: the two gap edges.
         self.assertAlmostEqual(C.CAP_FROM_GAP_MS, 170.0, places=9)
         self.assertAlmostEqual(C.FLOOR_UP_TO_GAP_MS, 75.0, places=9)
 
@@ -54,7 +53,6 @@ class ProbeSettingsHaveOneHomeTest(unittest.TestCase):
         # constants.py derives the ms edges from the seconds values the game
         # stores; these pin what that gives.
         self.assertEqual(C.EXPECT_NORMAL_BACK_MS, 85.0)
-        self.assertEqual(C.EXPECT_PRECISION_BACK_MS, 40.0)
         self.assertEqual(C.s_to_ms(0.085), 85.0)
 
 

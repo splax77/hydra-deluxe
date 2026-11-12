@@ -223,9 +223,8 @@ EXPECT_NORMAL_BACK_S = 0.085
 EXPECT_NORMAL_FRONT_S = 0.0375
 EXPECT_PRECISION_BACK_S = 0.040
 
-# The back-window edges in ms, which the passive probe's clamp verdict uses.
+# The normal-mode back-window edge in ms.
 EXPECT_NORMAL_BACK_MS = s_to_ms(EXPECT_NORMAL_BACK_S)
-EXPECT_PRECISION_BACK_MS = s_to_ms(EXPECT_PRECISION_BACK_S)
 
 # Tolerance (ms) for calling a live-read constant "the value we expected".
 CONST_MATCH_TOLERANCE_MS = 0.5
@@ -245,10 +244,6 @@ CONST_MATCH_TOLERANCE_MS = 0.5
 # Normal mode only; nobody has read precision mode's cap.
 WINDOW_CAP_MS = 171.4313
 WINDOW_FLOOR_MS = 96.2932
-
-# Half the whole window: the per-side reach at the widest spacing (85.72 ms,
-# not the 85 ms back constant).
-ONE_SIDE_CAP_MS = WINDOW_CAP_MS / 2
 
 # A note reads the cap when the gaps on both sides are at least this wide
 # (each half-gap at the back constant), and the floor when both are at most
@@ -305,13 +300,6 @@ CLOCK_FRESH_S = 0.002
 # experiments/live.SongClock: the most time it fills in past a fresh
 # change, so a pause cannot run the estimate away.
 CLOCK_MAX_FILL_S = 0.05
-# clamp_verdict in tools/ch_probe/experiments/analysis.py (removed;
-# `git show a081f660:tools/ch_probe/experiments/analysis.py`): how close two
-# window values must be to count as equal.
-CLAMP_TOLERANCE_MS = 1.0
-# The same removed clamp_verdict: the share of above-cap notes that must
-# agree before the verdict is called.
-CLAMP_DECISIVE_FRACTION = 0.8
 
 # The runners read a press's result this long after its note (D54).
 INPUT_SETTLE_MS = 250
