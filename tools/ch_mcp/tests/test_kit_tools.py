@@ -1039,10 +1039,6 @@ class FrameProbeTest(Rig):
         # D339 item 3: the frame probe of LS-G1 runs 5 s.
         self.assertEqual(K.FRAME_PROBE_SECONDS, 5.0)
 
-    def test_the_frame_rate_floor_is_the_users_322_2(self):
-        # D339 item 3: the frame probe's floor is 322.2 frames a second.
-        self.assertEqual(K.FRAME_PROBE_MIN_FPS, 322.2)
-
     def test_the_probe_sends_frame_probe_with_the_engines_clock_address(self):
         tools = self.set_up([self.probe_reply()])
         tools.ch_kit_frame_probe(5)
@@ -1060,7 +1056,7 @@ class FrameProbeTest(Rig):
             f"rows: 11, frames 1000 to 1010; rows saved to {path}",
             "frame steps: all 10 rose by exactly 1",
             "frame rate: 333.3 frames a second (10 frames in 30 ms of wall time); "
-            "floor 322.2 (FRAME_PROBE_MIN_FPS, D339 item 3)",
+            "not part of the pass line",
             "press: down on frame 1000, up on frame 1002",
             "Green read-back: first read pressed on frame 1001 (frames after the down frame: 1)",
             "any_button: first read pressed on frame 1001 (frames after the down frame: 1)",
@@ -1069,8 +1065,8 @@ class FrameProbeTest(Rig):
             "hook_out: True",
             "failure: none",
             "managers: 1; probe wall time: 5003 ms",
-            "PASS against LS-G1's pass line: every frame stepped by 1, no fault, the rate "
-            "is at or above 322.2, the press read back as pressed, and the hook is out"])
+            "PASS against LS-G1's pass line: every frame stepped by 1, no fault, "
+            "the press read back as pressed, and the hook is out"])
 
     def test_the_whole_reply_is_saved_to_a_new_file_each_probe(self):
         reply = self.probe_reply()
@@ -1089,12 +1085,13 @@ class FrameProbeTest(Rig):
         self.assertEqual(lines[-1], "FAIL against LS-G1's pass line: "
                                     "frame steps (1 of 10 did not rise by exactly 1)")
 
-    def test_a_rate_under_the_floor_fails(self):
-        # 10 frames in 40 ms is 250 frames a second.
-        lines = self.probe(self.probe_reply(ms_per_frame=4))
-        self.assertTrue(lines[3].startswith("frame rate: 250.0 frames a second"))
-        self.assertEqual(lines[-1], "FAIL against LS-G1's pass line: "
-                                    "frame rate (250.0 is under 322.2)")
+    def test_any_frame_rate_passes(self):
+        # D341: the frame rate is printed and never decides the pass line.
+        # 10 frames in 170 ms is 58.8 frames a second, the rate of a build.
+        lines = self.probe(self.probe_reply(ms_per_frame=17))
+        self.assertEqual(lines[3], "frame rate: 58.8 frames a second (10 frames in "
+                                   "170 ms of wall time); not part of the pass line")
+        self.assertTrue(lines[-1].startswith("PASS"))
 
     def test_a_read_back_that_never_reads_pressed_fails(self):
         lines = self.probe(self.probe_reply(green=False))
@@ -1133,7 +1130,6 @@ class FrameProbeTest(Rig):
         lines = self.probe(reply)
         self.assertEqual(lines[-1], "FAIL against LS-G1's pass line: "
                                     "too few rows to check the frame steps; "
-                                    "frame rate (not measurable); "
                                     "read-back (the press was never written)")
 
     def test_more_than_five_seconds_is_refused_before_anything_is_sent(self):
