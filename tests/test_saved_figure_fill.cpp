@@ -310,17 +310,25 @@ TEST_CASE("the fill hands every row of one chart the same graph") {
     const CorpusChart chart = named_chart(kSmashMouth);
     save_old(store, chart, {1, 2, 3});
 
+    // Both the graph's own address and the address of its first node are kept:
+    // a graph rebuilt per row could reuse the stack slot of the one before it,
+    // but its nodes are heap-allocated, so the node address is a second sign
+    // (not a proof: freed heap blocks can be handed out again).
     std::vector<const hydra::ScoreGraph*> seen;
+    std::vector<const hydra::ScoreGraphNode*> seen_start;
     const hydra::app::PathReplay replay = [&](const hydra::Song& song,
                                               const hydra::ScoreGraph& graph,
                                               const std::string& text) {
         seen.push_back(&graph);
+        seen_start.push_back(graph.start());
         return hydra::paths_from_pathstring_on_graph(song, graph, text);
     };
     CHECK(hydra::app::fill_saved_hardest(store, fill_settings(), {}, replay, 1));
     REQUIRE(seen.size() == 3);
     CHECK(seen[1] == seen[0]);
     CHECK(seen[2] == seen[0]);
+    CHECK(seen_start[1] == seen_start[0]);
+    CHECK(seen_start[2] == seen_start[0]);
     // The figures are the ones the first case pins.
     CHECK(figures_of(store, chart.entry.md5) ==
           std::vector<std::optional<double>>{0.0, 0.0, 0.0, std::nullopt, 0.0});
