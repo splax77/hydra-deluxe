@@ -1,0 +1,5 @@
+CloneHero.dll	9814 of 14885 methods scrambled; 9618 of 14601 among those with an address (RVA line not -1)
+StrikeCore.dll	3700 of 4209 methods scrambled; 3019 of 3338 among those with an address (RVA line not -1)
+CHNet.Core.dll	1701 of 1906 methods scrambled; 1560 of 1730 among those with an address (RVA line not -1)
+CHNet.Server.dll	304 of 320 methods scrambled; 304 of 320 among those with an address (RVA line not -1)
+mscorlib.dll	0 of 13234 methods scrambled; 0 of 11459 among those with an address (RVA line not -1)
