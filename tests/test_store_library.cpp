@@ -1,7 +1,8 @@
 // Tests for the library table in store/record_store.{h,cpp}: a scan rebuilds
 // it whole or not at all, a result takes its names from it, its rescan cache
-// is read only under a current stamp, and a chart the scan no longer lists
-// loses its stored rows.
+// is read only under a current stamp, a chart the scan no longer lists
+// loses its stored rows, and a chart list read reports its rows and can be
+// stopped.
 
 #include "doctest.h"
 
@@ -12,6 +13,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "core/error_kind.h"  // Cancelled
 #include "core/model.h"
 #include "db_file_util.h"  // exec_on_file, scalar_on_file
 #include "display_fixtures.h"  // save_old_build_record, other_rules_record
@@ -406,4 +408,56 @@ TEST_CASE("a scan that fails partway through its deletes keeps the dropped chart
     }
     CHECK(results_of(path, "b") == 1);
     std::remove(path.c_str());
+}
+
+namespace {
+
+// The md5s of `rows`, in the order they came.
+std::vector<std::string> md5s_of(const std::vector<ChartLibraryEntry>& rows) {
+    std::vector<std::string> out;
+    for (const ChartLibraryEntry& e : rows) out.push_back(e.md5);
+    return out;
+}
+
+}  // namespace
+
+TEST_CASE("store: the chart list reports each row it reads") {
+    RecordStore store(":memory:");
+    store.rebuild_chart_library({library_row("d", "D"), library_row("b", "B"),
+                                 library_row("a", "A"), library_row("c", "C")});
+    const std::vector<ChartLibraryEntry> plain = store.list_chart_library(0, -1);
+
+    std::vector<int64_t> reported;
+    const std::vector<ChartLibraryEntry> counted =
+        store.list_chart_library(0, -1, [&](int64_t rows_read) {
+            reported.push_back(rows_read);
+            return true;
+        });
+    CHECK(reported == std::vector<int64_t>{1, 2, 3, 4});
+    CHECK(static_cast<int64_t>(counted.size()) == store.chart_library_count());
+    // The count changes nothing about the rows or their order.
+    CHECK(md5s_of(counted) == md5s_of(plain));
+    CHECK(md5s_of(plain) == std::vector<std::string>{"a", "b", "c", "d"});
+}
+
+TEST_CASE("store: a chart list read that is told to stop stops") {
+    RecordStore store(":memory:");
+    store.rebuild_chart_library({library_row("a", "A"), library_row("b", "B"),
+                                 library_row("c", "C"), library_row("d", "D")});
+
+    std::vector<int64_t> reported;
+    bool cancelled = false;
+    try {
+        store.list_chart_library(0, -1, [&](int64_t rows_read) {
+            reported.push_back(rows_read);
+            return rows_read < 2;
+        });
+    } catch (const Cancelled& e) {
+        cancelled = e.kind() == ErrorKind::Cancelled;
+    }
+    CHECK(cancelled);
+    CHECK(reported == std::vector<int64_t>{1, 2});
+    // The stopped read left the store able to answer the next one.
+    CHECK(store.list_chart_library(0, -1).size() == 4);
+    CHECK(store.chart_library_count() == 4);
 }
