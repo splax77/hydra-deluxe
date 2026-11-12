@@ -13,6 +13,7 @@
 #include "core/model.h"  // engine_hardest_ms
 #include "parse/song.h"
 #include "search/graph.h"  // fill_rule_for
+#include "search/pather.h"  // search_graph
 #include "search/pathstring_read.h"
 
 namespace hydra::app {
@@ -47,11 +48,11 @@ struct ProfileFigures {
     std::vector<HardestFigure> figures;
 };
 
-// The figures for one chart's rows, `first` to `last`, read off `song`, one
-// entry per profile row. Each row gets a figure only when its replay matches
-// it; a row whose text the reader refuses gets none. Throws anything else
-// `replay` or the comparison throws.
-std::vector<ProfileFigures> replayed_figures(const Song& song, const AnalysisSettings& settings,
+// The figures for one chart's rows, `first` to `last`, read off `song` on its
+// one `graph`, one entry per profile row. Each row gets a figure only when its
+// replay matches it; a row whose text the reader refuses gets none. Throws
+// anything else `replay` or the comparison throws.
+std::vector<ProfileFigures> replayed_figures(const Song& song, const ScoreGraph& graph,
                                              const PathReplay& replay,
                                              std::vector<MissingHardestRow>::const_iterator first,
                                              std::vector<MissingHardestRow>::const_iterator last) {
@@ -63,7 +64,7 @@ std::vector<ProfileFigures> replayed_figures(const Song& song, const AnalysisSet
             out.push_back(ProfileFigures{it->profile_id, {}});
         std::optional<Path> replayed;
         try {
-            replayed = replay(song, settings, it->path);
+            replayed = replay(song, graph, it->path);
         } catch (const KindedError& e) {
             if (e.kind() != ErrorKind::PathTextRefused) throw;
             continue;
@@ -83,9 +84,9 @@ struct ChartFigures {
 };
 
 // The figures for one chart's rows, `first` to `last`. Runs on a pool worker,
-// so it never throws (run_work_pool). The chart is read and every row
-// replayed before any figure is kept, so a chart that throws there keeps all
-// its rows as they are.
+// so it never throws (run_work_pool). The chart is read, its graph built once
+// (search_graph) and every row replayed on that graph before any figure is
+// kept, so a chart that throws there keeps all its rows as they are.
 ChartFigures chart_figures(size_t chart, const AnalysisSettings& settings,
                            const PathReplay& replay,
                            std::vector<MissingHardestRow>::const_iterator first,
@@ -96,7 +97,8 @@ ChartFigures chart_figures(size_t chart, const AnalysisSettings& settings,
         if (!chart_still_there(*first)) return out;
         const Song song = load_songpath(first->notespath, settings.reading(), settings.rules,
                                         fill_rule_for(settings.legacy_fills));
-        out.found = replayed_figures(song, settings, replay, first, last);
+        const ScoreGraph graph = search_graph(song, settings);
+        out.found = replayed_figures(song, graph, replay, first, last);
     } catch (...) {
         // A chart whose files can't be checked or read, or whose replay throws,
         // keeps its rows empty, as a gone one does. The fault is the song's,

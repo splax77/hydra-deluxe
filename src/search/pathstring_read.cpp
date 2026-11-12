@@ -74,8 +74,7 @@ std::optional<Path> window_printing(const std::vector<Path>& paths, const Accept
 // `next_fill` moves past the fills tried. Empty when no fill's window is
 // accepted.
 template <class Accepts>
-std::optional<std::vector<PinnedWindow>> place_next(const Song& song,
-                                                    const SearchSettings& settings,
+std::optional<std::vector<PinnedWindow>> place_next(const ScoreGraph& graph,
                                                     const std::vector<int64_t>& fills,
                                                     size_t& next_fill,
                                                     const std::vector<PinnedWindow>& placed,
@@ -84,7 +83,7 @@ std::optional<std::vector<PinnedWindow>> place_next(const Song& song,
         std::vector<PinnedWindow> windows = placed;
         windows.push_back(PinnedWindow{fills[next_fill]});
         const std::optional<Path> found =
-            window_printing(search_target(song, settings, windows).paths, prints);
+            window_printing(search_target(graph, windows).paths, prints);
         if (found) {
             ++next_fill;
             return pinned_windows(*found);
@@ -95,7 +94,7 @@ std::optional<std::vector<PinnedWindow>> place_next(const Song& song,
 
 // The windows Path::pathstring's text names, each token compared with
 // Activation::notationstr.
-std::vector<PinnedWindow> read_short(const Song& song, const SearchSettings& settings,
+std::vector<PinnedWindow> read_short(const Song& song, const ScoreGraph& graph,
                                      const std::string& text) {
     const std::vector<std::string> tokens = tokens_of(text);
     std::vector<PinnedWindow> placed;
@@ -107,7 +106,7 @@ std::vector<PinnedWindow> read_short(const Song& song, const SearchSettings& set
     size_t next_fill = 0;
     for (size_t k = 0; k < tokens.size(); ++k) {
         std::optional<std::vector<PinnedWindow>> next = place_next(
-            song, settings, fills, next_fill, placed,
+            graph, fills, next_fill, placed,
             [&](const Activation& act) { return act.notationstr() == tokens[k]; });
         if (!next)
             throw refused("window " + std::to_string(k + 1) + " (\"" + tokens[k] +
@@ -144,7 +143,7 @@ std::string_view windows_section(std::string_view text) {
 // hold spaces of their own, so the section is not split: each window is the
 // one whose Activation::notationstr_verbose is the text at the front of what
 // is left, followed by whitespace or the end.
-std::vector<PinnedWindow> read_long(const Song& song, const SearchSettings& settings,
+std::vector<PinnedWindow> read_long(const Song& song, const ScoreGraph& graph,
                                     std::string_view windows) {
     std::vector<PinnedWindow> placed;
     if (windows == Path().pathstring()) return placed;
@@ -156,7 +155,7 @@ std::vector<PinnedWindow> read_long(const Song& song, const SearchSettings& sett
     for (size_t k = 1; !rest.empty(); ++k) {
         size_t printed_size = 0;
         std::optional<std::vector<PinnedWindow>> next =
-            place_next(song, settings, fills, next_fill, placed, [&](const Activation& act) {
+            place_next(graph, fills, next_fill, placed, [&](const Activation& act) {
                 const std::string printed = act.notationstr_verbose();
                 const bool fits = rest.substr(0, printed.size()) == printed &&
                                   (rest.size() == printed.size() || is_space(rest[printed.size()]));
@@ -176,13 +175,18 @@ std::vector<PinnedWindow> read_long(const Song& song, const SearchSettings& sett
 
 Path paths_from_pathstring(const Song& song, const SearchSettings& settings,
                            const std::string& text) {
+    return paths_from_pathstring_on_graph(song, search_graph(song, settings), text);
+}
+
+Path paths_from_pathstring_on_graph(const Song& song, const ScoreGraph& graph,
+                                    const std::string& text) {
     if (tokens_of(text).empty()) throw refused("the path text is empty");
 
     const std::vector<PinnedWindow> placed =
-        sections_of(text).size() == 1 ? read_short(song, settings, text)
-                                       : read_long(song, settings, windows_section(text));
+        sections_of(text).size() == 1 ? read_short(song, graph, text)
+                                       : read_long(song, graph, windows_section(text));
 
-    const TargetResult whole = search_target(song, settings, placed);
+    const TargetResult whole = search_target(graph, placed);
     if (whole.paths.empty())
         throw std::logic_error("the windows read from the path text did not come back pinned in "
                                "full: the window at tick " +
