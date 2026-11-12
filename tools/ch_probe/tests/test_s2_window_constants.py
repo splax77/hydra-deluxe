@@ -17,8 +17,8 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 from tools.ch_probe import constants as C  # noqa: E402
+from tools.ch_probe import probe_chart  # noqa: E402
 from tools.ch_probe import probe_songs as P  # noqa: E402
-from tools.ch_probe.experiments import passive_probe  # noqa: E402
 from tools.ch_probe.experiments import watch_window as WW  # noqa: E402
 
 _CSV = os.path.join(_REPO_ROOT, "tools", "ch_probe", "experiments", "results",
@@ -43,13 +43,19 @@ class MeasuredConstantsTest(unittest.TestCase):
         self.assertAlmostEqual(C.FLOOR_UP_TO_GAP_MS, 75.0, places=9)
 
 
-class PassiveEdgesTest(unittest.TestCase):
-    def test_normal_mode_is_judged_against_the_measured_cap(self):
-        self.assertEqual(passive_probe.clamp_edges(precision=False),
-                         [("one side", C.ONE_SIDE_CAP_MS), ("whole window", C.WINDOW_CAP_MS)])
+class ProbeSettingsHaveOneHomeTest(unittest.TestCase):
+    def test_probe_chart_spacings_and_note_come_from_constants(self):
+        self.assertEqual(tuple(probe_chart.DEFAULT_SPACINGS_MS), tuple(C.PROBE_SPACINGS_MS))
+        # A .chart note, not an input lane: 0 is the kick in a .chart.
+        self.assertEqual(probe_chart.DRUM_NOTE_KICK, 0)
+        self.assertEqual(C.PROBE_CHART_NOTE_KICK, 0)
 
-    def test_precision_mode_has_no_measured_cap(self):
-        self.assertEqual(passive_probe.clamp_edges(precision=True), [])
+    def test_normal_back_ms_is_derived_from_the_seconds_value(self):
+        # constants.py derives the ms edges from the seconds values the game
+        # stores; these pin what that gives.
+        self.assertEqual(C.EXPECT_NORMAL_BACK_MS, 85.0)
+        self.assertEqual(C.EXPECT_PRECISION_BACK_MS, 40.0)
+        self.assertEqual(C.s_to_ms(0.085), 85.0)
 
 
 class PollVerdictTest(unittest.TestCase):

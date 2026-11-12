@@ -162,11 +162,11 @@ Found: 2026-09-25, session 8157f2dc; the slot-20 target, 2026-11-08, session 770
 
 ### IN-16 The tool's two window-formula tables carry each other's names
 
-Rule: The window formula's normal branch (flags bit 0x1000 clear) reads the four constants that tools/ch_probe/constants.py files under `RVA_FORMULA_PRECISION`, and the precision branch reads the four filed under `RVA_FORMULA_NORMAL`. So the tool's normal-mode prediction runs on the precision constants.
+Rule: The window formula's normal branch (flags bit 0x1000 clear) reads the four constants that tools/ch_probe/constants.py files under `RVA_FORMULA_PRECISION`, and the precision branch reads the four filed under `RVA_FORMULA_NORMAL`. So the tool's normal-mode prediction ran on the precision constants, until it was removed with the rest of the old probe scripts.
 Label: Proven in the game's code
 Evidence: GD lines 767 to 781, read again for this page: the bit-clear branch (lines 772 to 774) multiplies by the addresses listed at constants.py lines 179 to 184, and the bit-set branch (lines 779 to 781) by those at lines 170 to 175. The arithmetic fits the live run: the comment above `WINDOW_CAP_MS` in tools/ch_probe/constants.py (lines 240 to 243) records that the formula with the DLL's constants gives 171.4313075 ms at an input of 170 and 96.2931672 ms at 75, and `tools/ch_probe/experiments/results/poll_windows.csv` holds 171.431308 and 96.293167 as its largest and smallest totals. Session 8157f2dc (2026-09-25) printed the constants' values and found these totals came from the bit-clear table, while the other table gives -242 and -78; that printout is not kept.
 Game code (6142): window formula, RVA `0x20DDDA0`; flags field `#8288+0x198`.
-Hydra: no owner in src/; the two tables are `RVA_FORMULA_NORMAL` (constants.py line 170) and `RVA_FORMULA_PRECISION` (line 179), and the tool's normal-window prediction (`predicted_window_normal` in tools/ch_probe/experiments/analysis.py, fed by `normal_formula_constants` at lines 312 to 316) reads the first.
+Hydra: no owner in src/; the two tables are `RVA_FORMULA_NORMAL` (constants.py line 170) and `RVA_FORMULA_PRECISION` (line 179), and the constants read in tools/ch_probe/engine.py (EngineModel's constants method) files each table's values under that table's name. The tool's normal-window prediction read the first; it lived in tools/ch_probe/experiments/analysis.py (removed; `git show a081f660:tools/ch_probe/experiments/analysis.py`).
 Ruling: open split: see questions page Q-76
 Found: 2026-10-30, session b02ab3e6 (the reference build).
 
@@ -268,7 +268,7 @@ Rule: `0x100DAB0` is virtual slot 25 of the generic base #8253 instantiated on t
 Label: Proven in the game's code
 Evidence: `dump.cs` lines 527331 to 527338 (the slot 25 instantiation list: `0x100DAB0` on #8533, `0x100DC80` on #8332, `0x100DAE0` on #8663) and line 527421 (#8255 derives from the #8663 instantiation); `script.json` names agree. Live: `RUNS\l3\trace-wm-count.txt` gives `0x100DAE0` 20,831 calls in a 62 s song with 142 notes. GD lines 2247 to 2275 hold both bodies; the drum copy calls `0x2176020`, a method of #8663 (`dump.cs` lines 552242 to 552243), whose body was not read, so "input changed" is a reading of the compare, not a name.
 Game code (6142): #8253 slot 25, RVA `0x100DAB0` (on #8533) and RVA `0x100DAE0` (on #8663); callee RVA `0x2176020`.
-Hydra: no owner in src/. The tool names `0x100DAB0` `RVA_HIT_CHECK` (tools/ch_probe/constants.py line 55, comment lines 52 to 54), and tools/ch_probe/experiments/active_probe.py line 215 sets a breakpoint there.
+Hydra: no owner in src/. The tool names `0x100DAB0` `RVA_HIT_CHECK` (tools/ch_probe/constants.py line 55, comment lines 52 to 54). The runner that set a breakpoint there was tools/ch_probe/experiments/active_probe.py (removed; `git show a081f660:tools/ch_probe/experiments/active_probe.py`), line 215.
 Ruling: open split: see questions page Q-72
 Found: 2026-10-28, session 6a549de0 (feasibility tests handoff line 41); dump checked 2026-10-30, session b02ab3e6 (the reference build).
 
@@ -288,7 +288,7 @@ Rule: On 2026-09-25, writing breakpoint bytes into the game's code with the debu
 Label: Unknown
 Evidence: looked in tools/ch_probe/ and the results folder: no crash record and no result file; the test scripts are not in the repo. The only record is session 8157f2dc's transcript.
 Game code (6142): not found.
-Hydra: no owner. The tool still has a breakpoint route (tools/ch_probe/debugger.py; active_probe.py line 215).
+Hydra: no owner. The tool still has a breakpoint route (tools/ch_probe/debugger.py). The runner that wrote breakpoints into the game's code was tools/ch_probe/experiments/active_probe.py (removed; `git show a081f660:tools/ch_probe/experiments/active_probe.py`), line 215.
 Ruling: none needed: no Hydra rule reads it.
 Found: 2026-09-25, session 8157f2dc.
 

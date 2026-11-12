@@ -6,8 +6,10 @@ on one pad are both in reach.
 Design point 8 of docs/superpowers/plans/2026-11-07-player-limits.md says why
 it exists: TM-26 and TM-27 on docs/clone-hero/03-timing.md are open, and no
 page says which of two same-pad notes in window a press hits. The older
-walk_edges.py plays the same chart, but it sends keys to the focused game,
-which the 2026-10-30 ruling rules out, and it writes no result file.
+tools/ch_probe/experiments/walk_edges.py (removed;
+`git show a081f660:tools/ch_probe/experiments/walk_edges.py`) played the same
+chart, but it sent keys to the focused game, which the 2026-10-30 ruling rules
+out, and it wrote no result file.
 
 Nothing here times a press. The schedule (play_chart.load_schedule) times
 every press; this module only moves a probe chord and its presses so the

@@ -253,11 +253,12 @@ class SharedPiecesTest(unittest.TestCase):
         self.assertIs(play_chart.find_game_window, input_driver.find_game_window)
 
     def test_waiting_and_the_start_cursor_come_from_live(self):
-        from tools.ch_probe.experiments import walk_edges
         self.assertIs(play_chart.live, live)
         self.assertIs(play_chart.live.wait_until, live.wait_until)
         self.assertIs(play_chart.live.first_note_index, live.first_note_index)
-        self.assertIs(play_chart.SongClock, walk_edges.SongClock)
+
+    def test_songclock_lives_in_live(self):
+        self.assertIs(play_chart.SongClock, live.SongClock)
 
 
 # --- a run against fakes: no process, no keys -----------------------------------
