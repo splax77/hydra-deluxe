@@ -41,7 +41,7 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 from tools.ch_mcp import build_stamp  # noqa: E402
-from tools.ch_probe.constants import PROCESS_NAME  # noqa: E402
+from tools.ch_probe.constants import LOG_WRITER_CAP_S, PROCESS_NAME  # noqa: E402
 
 # How a run ended. RunResult.reason holds one of these.
 END_DONE = "done"            # the agent said it was finished
@@ -231,11 +231,6 @@ _DETACHED_BY_CALLER = "detached by the caller"
 
 # The message a read posts, before LiveAgent adds the id.
 _READ = {"type": "read"}
-
-# How long LiveAgent.detach waits for its log writer to finish: the user's
-# answer to question 5 of the player stall fix plan (D335, "Start them, 5 s
-# cap (Recommended)").
-LOG_WRITER_CAP_S = 5.0
 
 # What detach puts on the log writer's queue after the last line.
 _LOG_END = object()
