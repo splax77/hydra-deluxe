@@ -1016,7 +1016,8 @@ class FrameProbeTest(Rig):
         lines = tools.ch_kit_frame_probe(5).splitlines()
         self.assertEqual(self.posted()[-1], {
             "type": "frame_probe", "seconds": 5, "clock_addr": self.CLOCK_ADDR,
-            "elements": [{"id": 3, "value": 1.0}], "hold_frames": 2, "cap_s": 6})
+            "elements": [{"id": 3, "value": 1.0}], "read": ["Green"], "hold_frames": 2,
+            "cap_s": 6})
         self.assertEqual(lines, [f"frame probe on the engine clock at {self.CLOCK_ADDR:#x}",
                                  "frames: 3 entries", "pressed_frame: 2"])
         self.assertEqual(self.events.count("find clock"), 1)
@@ -1097,6 +1098,15 @@ class GamePlayerTest(unittest.TestCase):
         while not player.events.empty():
             got.append(player.events.get_nowait())
         self.assertEqual(got, [first, *batch, last])
+
+    def test_a_batch_with_an_error_queues_the_error_after_its_events(self):
+        agent = FakeListenAgent()
+        player = K.GamePlayer(agent)
+        agent.listener({"type": K.PLAY_EVENTS_TYPE, "events": [],
+                        "error": "the stall check failed: boom"})
+        self.assertEqual(player.events.get_nowait(),
+                         {"kind": K.EVENT_ERROR, "error": "the stall check failed: boom"})
+        self.assertTrue(player.events.empty())
 
     def test_post_waits_the_press_cap_and_close_stops_the_listener(self):
         agent = FakeListenAgent()

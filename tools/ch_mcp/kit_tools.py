@@ -683,7 +683,7 @@ def kit_press(agent: FA.LiveAgent, *, request_lock: Optional[threading.Lock] = N
 #               yet fired; one goes after every end read, even one that moves
 #               nothing, because its arrival clears retime_missed for it)
 #   stop_play   (no fields)
-#   frame_probe seconds, clock_addr, elements, hold_frames, cap_s
+#   frame_probe seconds, clock_addr, elements, read, hold_frames, cap_s
 # An entry: seq, index (the chord), at_ms, last_send_ms, elements (each id and
 # value, as a press message's), after_ms and after_seq (both null on a head),
 # end_read_after (null when the entry is timed from no end read).
@@ -696,8 +696,12 @@ def kit_press(agent: FA.LiveAgent, *, request_lock: Optional[threading.Lock] = N
 #            up_ms, score_before, score_after (null when play stopped first),
 #            frame_gap_ms (null on the first frame), agent_note
 #   dropped  the same fields, the down and up ones null
-#   stop     reason, frame, clock_ms, wall_ms   (always last)
-# agent_note is "" or retime_missed.
+#   stop     reason, frame, clock_ms, wall_ms, cause (null, or what stopped
+#            the play from outside the scheduler), lift_error (null unless
+#            lifting the pads failed)   (always last)
+# agent_note is "" or retime_missed. A batch may also carry `error` (the
+# agent's own failure outside any play step, with no stop after it): GamePlayer
+# turns it into an EVENT_ERROR event.
 PLAY_TYPE = "play"
 RETIME_TYPE = "retime"
 STOP_PLAY_TYPE = "stop_play"
@@ -707,6 +711,8 @@ EVENT_SKIPPED = "skipped"
 EVENT_SENT = "sent"
 EVENT_DROPPED = "dropped"
 EVENT_STOP = "stop"
+# Made here from a batch's `error`; the agent sends no event of this kind.
+EVENT_ERROR = "agent_error"
 NOTE_RETIME_MISSED = "retime_missed"
 STOP_REASON_DONE = "done"
 STOP_REASON_PAST_END = "past_end"
@@ -767,9 +773,13 @@ def stop_play_message() -> dict:
 
 def frame_probe_message(seconds: float, clock_addr: int) -> dict:
     """The `frame_probe` message for LS-G1: log every frame for `seconds`,
-    pressing FRAME_PROBE_ITEM once for the kit's hold."""
+    pressing FRAME_PROBE_ITEM once for the kit's hold. `read` names that
+    pad's own game action (KIT_BINDINGS), so each frame's row also holds
+    that action's read-back beside the any-button one."""
+    element = KIT_ELEMENTS[FRAME_PROBE_ITEM]
     return {"type": FRAME_PROBE_TYPE, "seconds": seconds, "clock_addr": clock_addr,
-            "elements": press_message([KIT_ELEMENTS[FRAME_PROBE_ITEM]])["elements"],
+            "elements": press_message([element])["elements"],
+            "read": [KIT_BINDINGS[element.id][1]],
             "hold_frames": KIT_HOLD_FRAMES, "cap_s": watch_cap_s(seconds)}
 
 
@@ -791,6 +801,8 @@ class GamePlayer:
         if payload.get("type") == PLAY_EVENTS_TYPE:
             for event in payload.get("events") or []:
                 self.events.put(event)
+            if payload.get("error"):
+                self.events.put({"kind": EVENT_ERROR, "error": payload["error"]})
         elif "kind" in payload:
             self.events.put(payload)
 

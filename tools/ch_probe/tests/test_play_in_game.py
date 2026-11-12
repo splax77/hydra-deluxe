@@ -141,27 +141,47 @@ class PlayInGameTest(unittest.TestCase):
         self.assertIn("chords 1", result.message)
 
     def test_an_end_read_posts_one_retime_of_retime_from_ends_output(self):
-        head = press(0, 1000.0, [Lane.RED], planned_end_ms=1500.0)
-        other = press(1, 1500.0, [Lane.RED])
-        timed = press(2, 2000.0, [Lane.BLUE], end_read_after=0, aim_end_ms=1500.0)
+        head = press(0, 1000.0, [Lane.RED], planned_end_ms=1500.0, seq=0)
+        other = press(1, 1500.0, [Lane.RED], seq=1)
+        timed = press(2, 2000.0, [Lane.BLUE], end_read_after=0, aim_end_ms=1500.0, seq=2)
         chords = [chord(0, 1000.0, head), chord(1, 1500.0, other), chord(2, 2000.0, timed)]
         player = FakePlayer({
             K.PLAY_TYPE: [[started(), sent_event(0, 0, 1001.0, 0, 50)]],
             K.RETIME_TYPE: [[sent_event(1, 1, 1501.0, 50, 100),
-                             sent_event(3, 2, 2021.0, 100, 150),
+                             sent_event(2, 2, 2021.0, 100, 150),
                              stopped(K.STOP_REASON_DONE)]]})
         result = run(chords, player, read_sp_end=lambda: 1.52)
         retimes = [m for m in player.posted if m["type"] == K.RETIME_TYPE]
         self.assertEqual(len(retimes), 1)
-        # Every entry not yet reported goes, the one kept as it was with its
-        # own seq and the moved one with a new seq.
+        # Every entry not yet reported goes, the moved one under the seq it
+        # had in the play message: a press that already fired, whose event is
+        # still unread, is then ignored by the agent, not fired a second time.
         kept, moved = P.retime_from_end([other, timed], 0, 1520.0)
         self.assertIs(kept, other)
+        self.assertEqual(moved.seq, 2)
         self.assertEqual(retimes[0], K.retime_message(
-            0, [K.play_entry(1, kept, None), K.play_entry(3, moved, None)]))
+            0, [K.play_entry(1, kept, None), K.play_entry(2, moved, None)]))
         self.assertEqual(retimes[0]["entries"][1]["at_ms"], 2020.0)
+        self.assertEqual([e["seq"] for e in player.posted[0]["entries"]], [0, 1, 2])
         self.assertEqual(result.rows[0]["end_read_ms"], 1520.0)
         self.assertEqual(result.stop, P.STOP_DONE)
+
+    def test_a_later_group_in_a_retime_names_its_heads_seq(self):
+        head = press(0, 1000.0, [Lane.RED], planned_end_ms=1500.0)
+        timed = press(1, 2000.0, [Lane.BLUE], end_read_after=0, aim_end_ms=1500.0)
+        later = press(1, 2000.0, [Lane.GREEN], end_read_after=0, aim_end_ms=1500.0,
+                      aim_ms=5.0, after_ms=5.0)
+        chords = [chord(0, 1000.0, head), chord(1, 2000.0, timed, later)]
+        player = FakePlayer({
+            K.PLAY_TYPE: [[started(), sent_event(0, 0, 1001.0, 0, 50)]],
+            K.RETIME_TYPE: [[sent_event(1, 1, 2021.0, 50, 100),
+                             sent_event(2, 1, 2026.0, 50, 100),
+                             stopped(K.STOP_REASON_DONE)]]})
+        result = run(chords, player, read_sp_end=lambda: 1.52)
+        (retime,) = [m for m in player.posted if m["type"] == K.RETIME_TYPE]
+        self.assertEqual([(e["seq"], e["after_seq"], e["after_ms"]) for e in retime["entries"]],
+                         [(1, None, None), (2, 1, 5.0)])
+        self.assertEqual(result.stop, P.STOP_DONE, result.message)
 
     def test_an_end_read_with_star_power_off_still_posts_a_retime(self):
         head = press(0, 1000.0, [Lane.RED], planned_end_ms=1500.0)
@@ -173,7 +193,8 @@ class PlayInGameTest(unittest.TestCase):
                              stopped(K.STOP_REASON_DONE)]]})
         result = run(chords, player, read_sp_end=lambda: None)
         retimes = [m for m in player.posted if m["type"] == K.RETIME_TYPE]
-        self.assertEqual(retimes, [K.retime_message(0, [K.play_entry(1, timed, None)])])
+        self.assertEqual(retimes, [K.retime_message(
+            0, [K.play_entry(1, P.replace(timed, seq=1), None)])])
         self.assertEqual(result.rows[0]["end_read_ms"], P.NO_ACTIVATION_READ)
 
     def test_an_unknown_seq_stops_the_run_as_reply(self):
@@ -226,6 +247,32 @@ class PlayInGameTest(unittest.TestCase):
         self.assertEqual([r["index"] for r in result.rows], [0, 1, 2, 3])
         self.assertEqual(result.dropped, 0)
         self.assertEqual(result.stop, P.STOP_DONE)
+
+    def test_a_stop_events_cause_and_lift_error_are_in_the_message(self):
+        chords = [chord(0, 1000.0, press(0, 1000.0, [Lane.RED]))]
+        stop = dict(stopped(K.STOP_REASON_STOPPED), cause="no frame came for 5000 ms",
+                    lift_error="the pad write failed")
+        result = run(chords, FakePlayer({K.PLAY_TYPE: [[started(), stop]]}))
+        self.assertEqual(result.stop, "stopped")
+        self.assertIn("no frame came for 5000 ms", result.message)
+        self.assertIn("the pad write failed", result.message)
+
+    def test_a_done_that_carries_a_cause_is_not_a_clean_done(self):
+        chords = [chord(0, 1000.0, press(0, 1000.0, [Lane.RED]))]
+        stop = dict(stopped(K.STOP_REASON_DONE), cause="a kit write failed: boom")
+        player = FakePlayer({K.PLAY_TYPE: [[started(), sent_event(0, 0, 1001.0, 0, 50), stop]]})
+        result = run(chords, player)
+        self.assertEqual(result.stop, "reply")
+        self.assertIn("a kit write failed: boom", result.message)
+
+    def test_an_error_the_agent_reports_stops_the_run_as_reply(self):
+        chords = [chord(0, 1000.0, press(0, 1000.0, [Lane.RED]))]
+        error = {"kind": K.EVENT_ERROR, "error": "the stall check failed: boom"}
+        player = FakePlayer({K.PLAY_TYPE: [[started(), error]]})
+        result = run(chords, player)
+        self.assertEqual(result.stop, "reply")
+        self.assertIn("the stall check failed: boom", result.message)
+        self.assertEqual(player.posted[-1], K.stop_play_message())
 
     def test_a_split_chords_rows_match_play_chords_rows_but_the_timing_columns(self):
         first = press(0, 1000.0, [Lane.RED])
