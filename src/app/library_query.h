@@ -27,6 +27,12 @@ namespace hydra::app {
 // byte; nothing is dropped and nothing throws.
 std::string fold_for_search(std::string_view text);
 
+// fold_for_search's text, made by the traced fold match_spans uses, which
+// also maps each folded byte back to the shown text and so takes none of the
+// plain fold's shortcuts. The two must agree byte for byte; the tests
+// compare them.
+std::string traced_fold_for_search(std::string_view text);
+
 // One character fold_for_search changes, and what it becomes. Both are UTF-8.
 struct FoldEntry {
     std::string from;
@@ -84,6 +90,16 @@ struct SearchableRow {
 SearchableRow make_searchable(std::string_view title, std::string_view artist,
                               std::string_view charter, std::string_view folder,
                               std::string_view album = {});
+
+// SearchableRow's five fields before the fold: each is strip_rich_tags(x)
+// alone, the text make_searchable then folds. Never a query's input.
+using StrippedRow = SearchableRow;
+// make_searchable that also hands back the stripped text it folded. A caller
+// whose own text equals a stripped field can take the matching folded field
+// instead of folding that text again (the library's sort keys do).
+SearchableRow make_searchable(std::string_view title, std::string_view artist,
+                              std::string_view charter, std::string_view folder,
+                              std::string_view album, StrippedRow& stripped);
 
 // A report row's search text: the fields make_searchable folds and strips,
 // joined by single spaces, with empty fields left out. A report keeps a row

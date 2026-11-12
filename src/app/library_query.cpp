@@ -143,6 +143,24 @@ void fold_into(std::string_view text, std::string& out, std::vector<SourceRange>
     bool in_space = false;
     size_t i = 0;
     while (i < text.size()) {
+        // With no map to fill, a run of plain ASCII bytes takes only the
+        // whitespace and ASCII steps below, without the look-ahead the other
+        // characters need. The output is the same, byte for byte (the tests
+        // compare it with traced_fold_for_search).
+        if (!map) {
+            while (i < text.size() && static_cast<unsigned char>(text[i]) < 0x80) {
+                const char c = text[i++];
+                if (is_ascii_space(c)) {
+                    if (!in_space) out.push_back(' ');
+                    in_space = true;
+                } else {
+                    out.push_back(lower_ascii(c));
+                    in_space = false;
+                }
+            }
+            if (i == text.size()) break;
+        }
+
         const unsigned char c0 = byte_at(text, i);
         const unsigned char c1 = byte_at(text, i + 1);
         const unsigned char c2 = byte_at(text, i + 2);
@@ -318,6 +336,13 @@ std::string fold_for_search(std::string_view text) {
     return out;
 }
 
+std::string traced_fold_for_search(std::string_view text) {
+    std::string out;
+    std::vector<SourceRange> map;
+    fold_into(text, out, &map);
+    return out;
+}
+
 std::vector<FoldEntry> search_fold_table() {
     // Every character of the fold's three runs, kept when the fold changes
     // it. Whitespace is left to the page, which splits the query on it.
@@ -389,14 +414,26 @@ LibraryQuery parse_library_query(std::string_view text) {
 
 SearchableRow make_searchable(std::string_view title, std::string_view artist,
                               std::string_view charter, std::string_view folder,
-                              std::string_view album) {
+                              std::string_view album, StrippedRow& stripped) {
+    // One field: its stored text with the tags stripped, kept in `kept`, then folded.
+    auto fold_stripped = [](std::string_view stored, std::string& kept) {
+        kept = strip_rich_tags(stored);
+        return fold_for_search(kept);
+    };
     SearchableRow row;
-    row.title = fold_for_search(strip_rich_tags(title));
-    row.artist = fold_for_search(strip_rich_tags(artist));
-    row.album = fold_for_search(strip_rich_tags(album));
-    row.charter = fold_for_search(strip_rich_tags(charter));
-    row.folder = fold_for_search(strip_rich_tags(folder));
+    row.title = fold_stripped(title, stripped.title);
+    row.artist = fold_stripped(artist, stripped.artist);
+    row.album = fold_stripped(album, stripped.album);
+    row.charter = fold_stripped(charter, stripped.charter);
+    row.folder = fold_stripped(folder, stripped.folder);
     return row;
+}
+
+SearchableRow make_searchable(std::string_view title, std::string_view artist,
+                              std::string_view charter, std::string_view folder,
+                              std::string_view album) {
+    StrippedRow stripped;
+    return make_searchable(title, artist, charter, folder, album, stripped);
 }
 
 std::string search_field(std::string_view song, std::string_view artist,
