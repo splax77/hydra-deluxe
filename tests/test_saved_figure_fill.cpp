@@ -20,8 +20,13 @@
 #include "app/saved_figure_fill.h"
 #include "core/model.h"  // shown_timing
 #include "corpus_util.h"
+#include "db_file_util.h"     // scalar_on_file
+#include "display_fixtures.h"  // save_old_build_record
+#include "search/graph.h"      // ScoreGraph
+#include "search/pathstring_read.h"
 #include "store/record_store.h"
 #include "store_fixtures.h"  // save_as_old_build, saved_figures
+#include "temp_util.h"       // ScopedFile
 
 using hydra::app::Settings;
 using hydra::store::ChartLibraryEntry;
@@ -184,13 +189,13 @@ TEST_CASE("a chart whose replay throws keeps its rows empty, and the fill goes o
     const std::string throwing_text = "1 2 3+";
     int thrown = 0;
     const hydra::app::PathReplay replay = [&](const hydra::Song& song,
-                                              const hydra::SearchSettings& settings,
+                                              const hydra::ScoreGraph& graph,
                                               const std::string& text) {
         if (text == throwing_text) {
             ++thrown;
             throw std::logic_error("a replay that breaks");
         }
-        return hydra::paths_from_pathstring(song, settings, text);
+        return hydra::paths_from_pathstring_on_graph(song, graph, text);
     };
     CHECK(store.lookup_one(throws.entry.md5, fill_settings().profile()).record.paths[0].path ==
           throwing_text);
@@ -244,11 +249,12 @@ TEST_CASE("the fill on several workers writes the same figures as on one") {
         for (const PreparedRecord& p : saved) store.save(p);
         if (stopped) {
             CHECK_FALSE(hydra::app::fill_saved_hardest(store, fill_settings(), stopped->fn(),
-                                                       hydra::paths_from_pathstring, workers));
+                                                       hydra::paths_from_pathstring_on_graph,
+                                                       workers));
             CHECK_FALSE(store.hardest_figure_filled(fill_settings().profile()));
         }
         CHECK(hydra::app::fill_saved_hardest(store, fill_settings(), counter.fn(),
-                                             hydra::paths_from_pathstring, workers));
+                                             hydra::paths_from_pathstring_on_graph, workers));
         CHECK(store.hardest_figure_filled(fill_settings().profile()));
         std::vector<std::vector<std::optional<double>>> out;
         for (const ChartLibraryEntry& e : entries) out.push_back(figures_of(store, e.md5));
@@ -293,4 +299,98 @@ TEST_CASE("an inside-Star-Power squeeze-in fills a negative figure that shows as
     REQUIRE(figure.has_value());
     CHECK(*figure == -189.83750000002328);
     CHECK_FALSE(hydra::shown_timing(figure).has_value());
+}
+
+// The fill reads one chart's rows on one graph: a replay that keeps the
+// address of the graph it is handed sees the same one for every row of the
+// chart. Smash Mouth's ranks 1 to 3 are the rows it reads, as in the first
+// case above.
+TEST_CASE("the fill hands every row of one chart the same graph") {
+    RecordStore store(":memory:");
+    const CorpusChart chart = named_chart(kSmashMouth);
+    save_old(store, chart, {1, 2, 3});
+
+    std::vector<const hydra::ScoreGraph*> seen;
+    const hydra::app::PathReplay replay = [&](const hydra::Song& song,
+                                              const hydra::ScoreGraph& graph,
+                                              const std::string& text) {
+        seen.push_back(&graph);
+        return hydra::paths_from_pathstring_on_graph(song, graph, text);
+    };
+    CHECK(hydra::app::fill_saved_hardest(store, fill_settings(), {}, replay, 1));
+    REQUIRE(seen.size() == 3);
+    CHECK(seen[1] == seen[0]);
+    CHECK(seen[2] == seen[0]);
+    // The figures are the ones the first case pins.
+    CHECK(figures_of(store, chart.entry.md5) ==
+          std::vector<std::optional<double>>{0.0, 0.0, 0.0, std::nullopt, 0.0});
+}
+
+// A result this build saves through the store's own save never leaves the
+// fill a row to read: every saved path with a squeeze-in holds its figure
+// (store::PathRow::hardest_ms, set where the store builds the row), and the
+// store's own question for the fill (rows_missing_hardest) finds none.
+TEST_CASE("a result this build saves holds a saved figure on every path with a squeeze-in") {
+    RecordStore store(":memory:");
+    const CorpusChart smash = named_chart(kSmashMouth);
+    const CorpusChart everlong = named_chart(kEverlong);
+    store.rebuild_chart_library({smash.entry, everlong.entry});
+    const hydra::store::Profile profile = fill_settings().profile();
+    int squeezed = 0;
+    for (const CorpusChart* chart : {&smash, &everlong}) {
+        store.save(hydra::store::prepare_record(
+            chart->entry.md5, profile,
+            corpus::analyzed(chart->file, fill_settings().to_analysis_settings())));
+        const hydra::store::RecordLookup found = store.lookup_one(chart->entry.md5, profile);
+        REQUIRE(found.status == hydra::store::RecordStatus::Ready);
+        for (const hydra::store::PathRow& p : found.record.paths) {
+            if (p.sqin_count == 0) continue;
+            ++squeezed;
+            CAPTURE(chart->entry.md5);
+            CAPTURE(p.rank);
+            CHECK(p.hardest_ms.has_value());
+        }
+    }
+    CHECK(squeezed > 0);
+    CHECK(store.rows_missing_hardest(profile).empty());
+}
+
+// A row saved under a results stamp this build does not accept is never read
+// by the fill, even with an empty figure and a squeeze-in: the fill reads no
+// chart, calls neither the progress callback nor the replay, and the row is
+// as it was. Smash Mouth's ranks 1 to 3 are the rows the first case above
+// fills under the current stamp; here they sit under an older one.
+TEST_CASE("a row under an older stamp is left alone by the fill") {
+    const testtemp::ScopedFile db("older_stamp_fill", ".db");
+    const CorpusChart chart = named_chart(kSmashMouth);
+    const std::string empty_rows =
+        "SELECT COUNT(*) FROM record_paths WHERE hardest_ms IS NULL AND sqin_count > 0";
+    int replays = 0;
+    Counter counter;
+    {
+        RecordStore store(db.path);
+        store.rebuild_chart_library({chart.entry});
+        PreparedRecord prepared = hydra::store::prepare_record(
+            chart.entry.md5, fill_settings().profile(),
+            corpus::analyzed(chart.file, fill_settings().to_analysis_settings()));
+        for (int rank : {1, 2, 3})
+            prepared.record.paths.at(static_cast<size_t>(rank - 1)).hardest_ms.reset();
+        hydra::test::save_old_build_record(store, prepared);
+        REQUIRE(store.lookup_one(chart.entry.md5, fill_settings().profile()).status ==
+                hydra::store::RecordStatus::Stale);
+        REQUIRE(hydra::test::scalar_on_file(db.path, empty_rows) == 3);
+
+        const hydra::app::PathReplay replay = [&](const hydra::Song& song,
+                                                  const hydra::ScoreGraph& graph,
+                                                  const std::string& text) {
+            ++replays;
+            return hydra::paths_from_pathstring_on_graph(song, graph, text);
+        };
+        CHECK(hydra::app::fill_saved_hardest(store, fill_settings(), counter.fn(), replay));
+        CHECK(store.lookup_one(chart.entry.md5, fill_settings().profile()).status ==
+              hydra::store::RecordStatus::Stale);
+    }
+    CHECK(counter.calls == 0);
+    CHECK(replays == 0);
+    CHECK(hydra::test::scalar_on_file(db.path, empty_rows) == 3);
 }

@@ -158,6 +158,55 @@ TEST_CASE("pathstring read: a long-text window no fill can place is refused with
     FAIL("no corpus chart's best path has exactly two windows");
 }
 
+// The entry point that takes a graph already built reads the same path as the
+// one that takes the settings. Every kept path on every corpus chart, in both
+// texts, is read through each, on one graph per chart (search_graph). The
+// figure compared is engine_hardest_ms's, the one place it is worked out.
+TEST_CASE("pathstring read: the graph entry point reads the same path as the settings one") {
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    int paths = 0;
+    for (const std::string& chart : corpus::chart_paths()) {
+        const Song& song = corpus::song(chart, cfg.reading());
+        if (song.is_empty()) continue;
+        const HydraRecord& rec = corpus::analyzed(chart, cfg);
+        const ScoreGraph graph = search_graph(song, cfg);
+        std::vector<const Path*> kept = rec.all_paths();
+        for (const Path* p : rec.all_allzero_paths()) kept.push_back(p);
+        for (const Path* p : kept) {
+            for (const std::string& text : {p->pathstring(), p->pathstring_verbose(rec.multsqueezes)}) {
+                ++paths;
+                CAPTURE(chart);
+                CAPTURE(text);
+                const Path by_settings = paths_from_pathstring(song, cfg, text);
+                const Path by_graph = paths_from_pathstring_on_graph(song, graph, text);
+                CHECK(path_identity(by_graph) == path_identity(by_settings));
+                CHECK(engine_hardest_ms(by_graph) == engine_hardest_ms(by_settings));
+            }
+        }
+    }
+    CHECK(paths > 0);
+}
+
+// The graph entry point refuses what the settings one refuses, with the same
+// text: the first corpus chart whose best path has two windows keeps its
+// first window and gets a second no chart offers.
+TEST_CASE("pathstring read: the graph entry point refuses a token no fill can place") {
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    for (const std::string& chart : corpus::chart_paths()) {
+        const Song& song = corpus::song(chart, cfg.reading());
+        if (song.is_empty()) continue;
+        const Path& best = corpus::analyzed(chart, cfg).best_path();
+        if (best.walk_activations().size() < 2) continue;
+        CAPTURE(chart);
+        const std::string text = best.walk_activations()[0].notationstr() + " 99";
+        CHECK_THROWS_WITH_AS(paths_from_pathstring_on_graph(song, search_graph(song, cfg), text),
+                             "window 2 (\"99\") matches no fill on this chart",
+                             KindedError);
+        return;
+    }
+    FAIL("no corpus chart's best path has two windows");
+}
+
 // Text holding the long form's section separator but not the writer's number
 // of sections is refused.
 TEST_CASE("pathstring read: long text with the wrong number of sections is refused") {
