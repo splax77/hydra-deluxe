@@ -8,13 +8,15 @@ Three savings are already measured. The counted bar costs 66.7 ms more than the 
 
 One more is large but not split yet. `set_charts` spends 47.1 ms folding text (24.6 ms for the search text plus 22.5 ms for the sort keys). The code shows it folds nearly the same text twice. How much each fix saves is not measured, so a task measures each before anything is built.
 
+Two questions are yours at the end of this plan: threads (question 1) and which hidden copy of a chart opens (question 2).
+
 ## Every saving, in one table
 
-"Available" is the measured cost today, read from `open_bench.txt`. "Saving" is what a fix would give back, and it is a number only where Hydra's C++ has timed the faster way.
+"Available" is the measured cost today, read from `open_bench.txt`. "Saving" is what a fix would give back, and it is a number only where Hydra's C++ has timed the faster way. Rounded medians can differ by 0.1 ms from the differences the bench prints; the plan quotes the bench's own figures.
 
 | What | Available today | Saving | Task |
 |---|---|---|---|
-| The counted bar: results read in 500-chart slices | 66.7 ms (250.9 counted minus 184.1 uncounted) | not measured; T2 times the fix's prototype, T3 builds it | T2, T3 |
+| The counted bar: results read in 500-chart slices | 66.7 ms (the bench's difference of 250.9 counted and 184.1 uncounted) | not measured; T2 times the fix's prototype, T3 builds it | T2, T3 |
 | Chart list read with no `ORDER BY name` | 46.6 ms sorted, on the bench's own connection | 33.4 ms (46.6 minus 13.2) | T4 |
 | Chart list on 2 threads, after T4 | 13.2 ms unsorted on one thread | 4.4 ms (13.2 minus 8.8) | T7, only on your yes (question 1) |
 | Chart list on 4 threads, after T4 | 13.2 ms | 7.3 ms (13.2 minus 5.9) | T7, only on your yes (question 1) |
@@ -40,15 +42,17 @@ SQLite keeps recently read pages of the file in a small memory area (its page ca
 
 One call sorts every chart's hash and asks for them in that order (`lookup` sorts `distinct`, P5). The results tables are keyed by hash (P6). So one call walks each table once, front to back, and reads each page once.
 
-The counted read slices the rows in the order `set_charts` left them, which is title order (P4, P10). The 500 charts of one slice have hashes scattered across the whole table. `lookup` sorts them, but the slice still reaches from one end of each table to the other. Forty slices mean forty sweeps over both tables. Each sweep pushes the last sweep's pages out of the 2 MB cache, so most pages are read from Windows again on every slice.
+The counted read slices the rows in the order `set_charts` was given them, which is the chart list's stored order (P4, P10): today the store's `ORDER BY name`, and after T4 the table's own order. Neither has anything to do with hashes. The 500 charts of one slice have hashes scattered across the whole table. `lookup` sorts them, but the slice still reaches from one end of each table to the other. Forty slices mean forty sweeps over both tables. Each sweep pushes the last sweep's pages out of the 2 MB cache, so most pages are read from Windows again on every slice.
 
 That is the mechanism the code supports. It is `unchecked` (P11) until T2 times it. The fix, if T2 confirms it, is small: sort the rows by hash once, cut that sorted list into slices of 500, and put each answer back on its own row. Each slice then covers one stretch of each table, and all forty together read each page once, like the single call.
 
-**Does that keep your ruling?** Yes. D336 item 4 says the results are read "500 charts" at a time and the bar moves once per slice (P3). The slices are still 500 charts each and the bar still moves once per slice, counting 500, 1,000 and so on up to the total. Only which 500 charts come first changes, and the screen never showed which. No words on the screen change. So this plan asks no question about the ruling.
+**Does that keep your ruling?** Yes. D336 item 3 says the bar moves once per slice, and item 4 sets the slice at "500 charts" (P3). The slices are still 500 charts each and the bar still moves once per slice, counting 500, 1,000 and so on up to the total. Only which 500 charts come first changes, and the screen never showed which. No words on the screen change. So this plan asks no question about the ruling.
 
 Two other per-slice costs are in the code. T2 times one of them. First, the SQL text holds one `?` per hash, and Hydra keeps one compiled statement per distinct text (P12). The second read's count is the slice's Ready charts, which differs from slice to slice, so most slices compile a new statement. Second, each slice builds its own winner table and answer map; this is small work and is not timed separately.
 
 `ready_profile_ids`, named in the brief as a suspect, is not called by `lookup` (P13). `ready_rules_fp` is called once per slice and only copies eight bytes (P13).
+
+Prior art, searched 2026-11-12. SQLite's own page-cache default is 2,000 KiB per connection, and write-ups agree that a larger `cache_size` or an `mmap_size` helps read-heavy work only when the working set fits, with gains reported from under 3% to about 8%, so it must be measured (sources: sqlite.org's mmap page and its forum; dev.to and oneuptime.com tuning posts). A search for sorted-key batched `IN` lookups found one mailing-list benchmark where sorting the keys changed per-row lookups by about 2% and batching all the keys into one statement was the large win; it found no SQLite source that shows sorting helps. So the sorted-slice idea has no support or contradiction in prior art, which is why T2 measures it before T3 is built. The fold's ASCII fast path (T5 change 3) matches what GitHub's engineering blog reports for case folding code at memory speed: a branchless ASCII run, with the per-character table only for other text. Nothing found suggests another cheap way to fold search text.
 
 If T2 shows hash-order slices are no faster, T3 does not start. The main session reports T2's numbers to you with the options left: a larger page cache (a new number, yours to pick) or progress reported from inside one `lookup` call (a change to how the slices are made, yours to rule on).
 
@@ -69,7 +73,9 @@ Any visible change an executor finds it cannot avoid is a question to you before
 
 ## The tasks
 
-Order: T1 first, alone. Then T2 and T4 together (they own different files). Then T3 and T5 together, once T2's numbers are in this plan. T6 and T7 run only on your yes to question 1. T8 can run beside T3 and T5 only if T2 has merged, because T2 and T8 both own `tools/bench.cpp`. T9 is last.
+Order: T1 first, alone. Then T2 and T4 together (they own different files; T4 also waits for your answer to question 2). Then T3 and T5 together, once T2's numbers are in this plan and T4 has merged. Waiting for T4 is what stops T3 and T4 from both editing `library_jobs.cpp` at once: T3's branch is cut from `main` after T4's merge, so no hand merge is needed. If question 2 stays open, T3 does not wait for it: T3's branch is cut from `main` without T4, and the main session merges whichever of T3 and T4 comes second by hand (they edit different functions of one file). T6 and T7 run only on your yes to question 1. T8 can run beside T3 and T5 only if T2 has merged, because T2 and T8 both own `tools/bench.cpp`. T9 is last.
+
+The bench's "parts" lines (section 1) copy `read_library`'s steps by hand until T9 updates them (P15), so after T3 or T4 the "total of the parts above" line may no longer match the real read. T3 and T4 do not check it; T9 does.
 
 The bench command, used by every task below, is the one the main session ran today:
 
@@ -81,7 +87,7 @@ Branch `claude/exec-open-bench`, tip ee02e710. A fresh reviewer (Sonnet) reads i
 
 The reviewer looks hardest at three things. First, the store header now shows seven helpers that were private to the store (`Stmt`, `prepare_read`, `step_row`, `library_entry_select`, `read_library_entries`, `path_row_columns`, `read_path_row`) and `ready_rules_fp` (P14); each must still have one definition and no second copy in the bench. Second, `--as-ready` rewrites profile rows, so the check that runs before the file is opened (`open_mode`, P15) must refuse the real library. Third, `hydra_bench` now links `hydra_ui`; it must open no window.
 
-`hydra_precheck.exe`, run on this plan's branch on 2026-11-12, lists five items in `tools/bench.cpp`: two places that compile and step a statement themselves (lines 904 and 912), two that move a chart's path and folder (lines 1377 and 1378), and one bare number (line 1455). It also warns that the change is 1,027 lines, over its 400-line mark. The reviewer settles each item, by calling the owner or by the scan's own way of recording an allowed use.
+`hydra_precheck.exe`, run on this plan's branch on 2026-11-12, lists five items in `tools/bench.cpp`: two places that compile and step a statement themselves (lines 904 and 912), two that move a chart's path and folder (lines 1377 and 1378), and one bare number (line 1455). It also warns that the bench branch is 1,027 lines without this plan, over its 400-line mark. The reviewer settles each item, by calling the owner or by the scan's own way of recording an allowed use.
 
 Acceptance criteria:
 
@@ -99,9 +105,9 @@ Every new line calls Hydra's public functions and checks its rows against today'
 
 New lines under section 5:
 
-- "results in 500-chart slices, title order": today's loop, on its own store. This is the before figure.
+- "results in 500-chart slices, stored order": today's loop, on its own store, over the hashes in the order `read_library` leaves them. This is the before figure.
 - "results in 500-chart slices, hash order": the row indexes sorted by hash, cut into `ui::kResultsSliceCharts` slices, each sent to `lookup`, answers put back by index. This settles P11.
-- "results in 500-chart slices, title order, second pass on the same store": the same loop run again without reopening. Every statement is compiled by then, so the first pass minus this is the cost of compiling (P12's share).
+- "results in 500-chart slices, stored order, second pass on the same store": the same loop run again without reopening. Every statement is compiled by then, so the first pass minus this is the cost of compiling (P12's share).
 
 New lines under section 6:
 
@@ -116,7 +122,7 @@ Acceptance criteria:
 
 ### T3: The counted results read asks in hash order
 
-Owned files: `src/ui/library_jobs.cpp` (only `read_library_summaries`), `src/ui/library_jobs.h` (its comment), `tests/test_library_jobs.cpp`. Depends on T2. Uses P11: it starts only if T2's "hash order" median is lower than its "title order" median. If it is not, stop and report, as the section above says.
+Owned files: `src/ui/library_jobs.cpp` (only `read_library_summaries`), `src/ui/library_jobs.h` (its comment), `tests/test_library_jobs.cpp`. Depends on T2, and on T4 having merged unless question 2 is still open (see the order above). Uses P11: it starts only if T2's "hash order" median is lower than its "stored order" median. If it is not, stop and report, as the section above says.
 
 `read_library_summaries`, when it has an `on_slice`, sorts the row indexes by hash, sends the store `kResultsSliceCharts` of them at a time, and writes each answer to its own row's place. It still tells `on_slice` the rows answered so far after each slice, and still hands the model all answers in one call. The read with no callback is untouched. `kResultsSliceCharts` stays 500.
 
@@ -125,18 +131,18 @@ Acceptance criteria:
 1. Every row gets the same answer as the one-call read, when the rows' hash order differs from their row order and one hash sits on rows in two different slices. Check: the existing sliced-against-whole case in `tests/test_library_jobs.cpp`, extended with such a fixture at a slice size of 2. It fails if an answer lands on the wrong row.
 2. The bar's counts are unchanged: one report per slice, each `slice_charts` more than the last, the final one equal to the row count. Check: a `CHECK` on the reported values in the same case. It fails if a slice is skipped or reported twice.
 3. A false return from `on_slice` still stops the read. Check: the existing cancel case, unchanged and passing.
-4. The counted read costs less. Check: the bench command; the line "the counted bar's cost (1's read_library minus 2's)" is below the 66.7 ms of P1, and "read_library as one call, counted" is below 250.9 ms. The main session writes both into this plan.
+4. The counted read costs less. Check: the bench command; the line "the counted bar's cost (1's read_library minus 2's)" is below the 66.7 ms of P1, and "read_library as one call, counted" is below 250.9 ms. If T4 merged first, the main session first re-runs the bench on `main` and compares against that run's two lines instead, because T4 changes the order the slices start from. It writes both figures into this plan.
 5. The startup screen's text is unchanged. Check: the existing held-open startup uitest, run by the main session.
 
 ### T4: Read the chart list unsorted at startup
 
-Owned files: `src/store/record_store.h`, `src/store/record_store.cpp`, `src/ui/library_jobs.cpp` (only `read_library`), `tests/test_library_model.cpp`, `tests/test_store_library.cpp`. Depends on T1. T3 and T4 both edit `library_jobs.cpp`, in different functions; the second to merge is merged by hand by the main session.
+Owned files: `src/store/record_store.h`, `src/store/record_store.cpp`, `src/ui/library_jobs.cpp` (only `read_library`), `src/ui/app_state.cpp` (only `select_chart`, if question 2 asks for it), `tests/test_library_model.cpp`, `tests/test_store_library.cpp`, `tests/test_app_reports.cpp` (the file that holds the `select_chart` cases). Depends on T1 and on your answer to question 2. T3 and T4 both edit `library_jobs.cpp`, in different functions; T4 merges first so T3 starts from it (see the order above).
 
 `read_library` asks the store for the chart list in table order. The store's other two callers (`app_state.cpp:258` and `:905`, P18) keep the name order. `set_charts` already sorts the rows itself, by the chosen column, then title, then folder, then file path (P10).
 
 The tie-break ends on the file path, so the shown order is fixed whenever no two rows share a path. On your library none do: the bench prints "0 rows with a path shared by another row" (P1). The `charts` table has no rule that forbids it (P19). Two rows with the same path, title and folder would tie, and their order would follow the read order; the task says so in its comment and does not claim more.
 
-One fact is not checked yet (P20): four places in `app_state.cpp` walk the model's rows in stored order, not shown order. The executor reads each before changing anything. If any of them shows the user something in that order, that is a visible change: stop and report it as a question.
+Four places in `app_state.cpp` walk the model's rows in stored order, not shown order. The reviewer of this plan read all four (P20, P25). Three find a row by its file path (`row_key`), which is one row each, so the read order cannot change their answer: `follow_selected_row` (line 205), `library_row_for` (line 214) and `library_matches` (line 256, whose answer follows the shown order). The fourth, `select_chart`'s second loop (line 646), picks the first copy of a chart in stored order when every copy is hidden by the search or the chip. Today stored order is name order; after T4 it is the table's own order. A chart's copies can carry different names: on the copy of your library, 601 charts have more than one copy and 47 of them have copies with different names (a count of rows, read from the scratch copy, not a timing). So which hidden copy opens could change for those. That is question 2, and T4 does not start until you answer it.
 
 Acceptance criteria:
 
@@ -144,7 +150,7 @@ Acceptance criteria:
 2. No two corpus rows share a file path. Check: a `CHECK` in the same case.
 3. The unsorted read returns the same rows as the sorted one, and still reports each row and stops when told. Check: new case in `tests/test_store_library.cpp` comparing the two as sets, with the existing per-row and cancel cases run against the unsorted read too.
 4. The other two callers still get name order. Check: the existing `test_store_library.cpp` order case, unchanged and passing.
-5. P20 is settled. Check: the executor's report lists the four places and what each does with the order; the reviewer confirms.
+5. `select_chart` follows your answer to question 2. Check: a new case in `tests/test_app_reports.cpp` with two copies of one chart in two folders, both hidden by a search, that selects the copy your answer names. If you answer "accept scan order", the case pins the scan-order copy. It fails if the loop picks the other copy.
 6. The read is faster. Check: the bench command; "read_library as one call, no callback" is below 184.1 ms (P1). The main session writes it into this plan.
 
 ### T5: Fold each row's text once
@@ -232,6 +238,8 @@ The program-load part of a cold start (see T8).
 
 1. **Should the open use extra threads at all (T6 and T7)?** Today the whole read runs on one background thread, with one database connection behind one lock; that is the real rule (P21). At one end, T7 gives a measured 4.4 ms on 2 threads or 7.3 ms on 4, out of a read of about 184 ms, and costs extra connections, a shared counter for the bar and a new way for the open to fail. At the other end, T6 works on 47.1 ms, needs no database connection at all, and its saving is not measured until T2 runs. My recommendation: no to T7, because 4 to 7 ms does not pay for the new failure paths. Decide T6 after T2 prints its two thread lines; if you say yes then, the thread count (2 or 4) is yours, from those lines.
 
+2. **When a chart has several copies and the search hides every one, which copy should it open?** The rule today (`select_chart`, `src/ui/app_state.cpp:646`): after the table's visible rows, take the first copy in the order the store handed the rows over, which is `ORDER BY name`. T4's faster read hands them over in the table's own order, the order the scan wrote them. The two orders differ only for charts whose copies carry different names: 47 charts in the copy of your library. Everything else is unchanged. Example from the first end: two copies, "Song" in folder A and "Song (Remaster)" in folder B, both hidden. Today the name order opens "Song". With the faster read, the scan order opens whichever copy the scan wrote first. Example from the other end: two copies with the same name open the same copy either way. The options: (a) accept scan order and pin it with a test (my recommendation: nothing promises a hidden copy's pick, and scan order is stable); (b) skip T4 and keep the 33.4 ms; (c) open the copy the table would show first with no search, a new small rule that needs the model to keep its unfiltered order. The strongest case against (a): the 47 charts' hidden pick changes without any word on screen saying so.
+
 ## Promise map
 
 | Promise | Plan line | Task | The check that proves it |
@@ -253,7 +261,7 @@ The program-load part of a cold start (see T8).
 | The Library's shown order does not depend on read order | T4 | T4 | T4 criteria 1 and 2 |
 | The unsorted read returns the same rows, reports each, and stops when told | T4 | T4 | T4 criterion 3 |
 | The other callers keep name order | T4 | T4 | T4 criterion 4 |
-| Anything shown in stored-row order is a question, not a silent change | T4 | T4 | T4 criterion 5 |
+| Anything shown in stored-row order is a question, not a silent change | T4; question 2 | T4 | T4 criterion 5 |
 | Search text and sort keys are byte-for-byte unchanged | T5 | T5 | T5 criteria 1 to 3 |
 | A change whose line did not drop is reverted | T5 | T5 | T5 criterion 4 |
 | Threaded folding gives identical rows, and small libraries load | T6 | T6 | T6 criteria 1 and 2 |
@@ -271,22 +279,24 @@ The program-load part of a cold start (see T8).
 | P2: The bench's own-connection and thread reads ran beside an open store | code | `tools/bench.cpp:1285` to `:1298` | checked 2026-11-12 |
 | P3: D336 rules the startup text, two counted steps out of `chart_library_count()`, and slices of "500 charts" held in `kResultsSliceCharts` | code | `docs/audit/2026-10-03-fix-decisions.md:1918` to `:1923` and `src/ui/library_jobs.h:100` | checked 2026-11-12 |
 | P4: With a callback, `read_library_summaries` sends the store the model's hashes in stored row order, a slice at a time; with none it makes one call | code | `src/ui/library_jobs.cpp:93` to `:113` | checked 2026-11-12 |
-| P5: `lookup` sorts and de-duplicates the hashes it is given, reads `records` then `record_paths` for them, up to 10,000 hashes per statement | code | `src/store/record_store.cpp:1264` to `:1365` and `:368` | checked 2026-11-12 |
+| P5: `lookup` sorts and de-duplicates the hashes it is given, reads `records` then `record_paths` for them, up to 10,000 hashes per statement | code | `src/store/record_store.cpp:1264` to `:1365` and `:368` (the sort is line 1273 on this branch, 1263 on `main` until T1 merges) | checked 2026-11-12 |
 | P6: `records` and `record_paths` are keyed by song id first and store their rows inside that key | code | `src/store/record_store.cpp:254` to `:277` | checked 2026-11-12, the key lines |
 | P7: The store sets journal mode, synchronous and journal size, and no cache size or memory map | code | `src/store/record_store.cpp:801` to `:805`, and a search of `src/store` for `cache_size` and `mmap` that found nothing else | checked 2026-11-12 |
 | P8: The vendored SQLite 3.46.0 defaults to a 2,000 KiB page cache, 4,096-byte pages and no memory map | code | `third_party/sqlite/sqlite3.c:13864`, `:13917` and `:15125` | checked 2026-11-12 |
 | P9: The library copy is 23,216,128 bytes | code | `C:\Users\Patrick\AppData\Local\Temp\claude\b8c40ac9d5b73501\c8b70230-d47d-4a13-ba2e-f4c7048d9ab4\scratchpad\startup-bar\bench\hydra.db`, its size in a directory listing | checked 2026-11-12 |
 | P10: `set_charts` keeps the rows in the order it is given and sorts an index by the chosen column, then title, folder and file path | code | `src/ui/library_model.cpp:159` to `:181` and `:246` to `:293` | checked 2026-11-12 |
-| P11: The slices cost more because each one sweeps both result tables and the 2 MB cache cannot hold a sweep | unchecked | `src/store/record_store.cpp:1272` shows the per-call sort the reasoning rests on; nothing has timed it | T2 |
+| P11: The slices cost more because each one sweeps both result tables and the 2 MB cache cannot hold a sweep | unchecked | `src/store/record_store.cpp:1273` shows the per-call sort the reasoning rests on; nothing has timed it | T2 |
 | P12: The store keeps one compiled statement per distinct SQL text, and `lookup`'s text holds one `?` per hash | code | `src/store/record_store.cpp:83` to `:91` and `:1293` to `:1351` | checked 2026-11-12 |
 | P13: `lookup` does not call `ready_profile_ids`; it calls `ready_rules_fp`, which copies one 64-bit value | code | `src/store/record_store.cpp:1264` to `:1365` and `:401` to `:413` | checked 2026-11-12 |
 | P14: The bench branch changes four files and adds seven helpers and `ready_rules_fp` to the store's header | code | `git diff main...claude/exec-open-bench`, read for `src/store/record_store.h` and `CMakeLists.txt` | checked 2026-11-12 |
-| P15: `open_mode` runs a check before the file opens, and section 1 of the bench repeats `read_library`'s steps by hand | code | `tools/bench.cpp:934` to `:940` and `:1156` to `:1204` | checked 2026-11-12; what the check refuses was not read, T1's reviewer reads it |
+| P15: `open_mode` runs a check before the file opens, and section 1 of the bench repeats `read_library`'s steps by hand | code | `tools/bench.cpp:934` to `:940` and `:1156` to `:1204` | checked 2026-11-12; the refusal (`refused_db`, `tools/bench.cpp:846` to `:861`) rejects a file in the installed Hydra's folder or the library beside the exe; T1's reviewer reads it too |
 | P16: Each row is folded ten times: five in `make_searchable` after `strip_rich_tags`, five for the sort keys through `library_cell_text`, which returns a copy | code | `src/app/library_query.cpp:390` to `:400`, `src/ui/library_model.cpp:135` to `:176` and `src/parse/song.cpp:558` to `:596` | checked 2026-11-12 |
 | P17: Reusing the search text for the sort key is faster than folding again | unchecked | `src/ui/library_model.cpp:175` is the fold it would skip; nothing has timed the reuse | T2 |
 | P18: `list_chart_library` has three callers in `src` | code | `src/ui/library_jobs.cpp:69`, `src/ui/app_state.cpp:258` and `:905` | checked 2026-11-12 |
 | P19: The `charts` table has no uniqueness rule on `path` | code | `src/store/record_store.cpp:807` to `:829` | checked 2026-11-12 |
-| P20: Nothing the user sees depends on the model's stored row order | unchecked | `src/ui/app_state.cpp:205`, `:214`, `:256` and `:636` walk `library.rows()` and were not read | T4 |
+| P20: Three of the four `app_state.cpp` row walks find a row by file path, and the fourth, `select_chart`'s second loop, picks a hidden copy by stored order | code | `src/ui/app_state.cpp:205`, `:214`, `:256` and `:646`, and `src/ui/library_model.h:83` (`row_key` is the notes path) | checked 2026-11-12, all four read |
+| P26: On the copy of the library, 601 hashes sit in more than one `charts` row and 47 of those rows carry more than one distinct `name` | code | `C:\Users\Patrick\AppData\Local\Temp\claude\b8c40ac9d5b73501\c8b70230-d47d-4a13-ba2e-f4c7048d9ab4\scratchpad\startup-bar\bench\hydra.db`, a read-only count by `md5` | checked 2026-11-12 |
+| P25: Today's stored order is the store's `ORDER BY name`, with ties in an order SQLite does not promise (the index `charts_by_name` would give rowid order) | unchecked | `src/store/record_store.cpp:1658` and `:826` | unchecked: the query and index were read, the plan SQLite picks for ties was not run; question 2 |
 | P21: The store reads through one connection behind one lock | code | `src/store/record_store.cpp:1290` and `:1654`, and `src/store/record_store.h:674` | checked 2026-11-12 |
 | P22: Parallel first reads with no other connection open fail "database is locked" | unchecked | `tools/bench.cpp:1285` to `:1289` is a comment that reports it; no run output was read | T7 |
 | P23: Opening a file with buffering off makes Windows drop its cached pages | unchecked | `tools/bench.cpp` holds no such code today; the behaviour is reported, not documented | T8 |
