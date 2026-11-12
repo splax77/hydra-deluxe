@@ -2273,44 +2273,53 @@ std::optional<int32_t> dotnet_int32(std::string_view text) {
     return static_cast<int32_t>(value);
 }
 
-// Clone Hero reads both keys through one bool getter (0x1D4480, called from
-// ini_song_reader_1EFC60.asm lines 77 to 89, CR-18). This is that getter's
-// text rule. Hydra trims blanks around the word too; whether the game's ini
-// reader does is not yet read.
-bool drum_key_is_true(std::string_view value) {
+// A song.ini's two drum keys. Clone Hero reads both through one bool getter
+// (0x1D4480, called from ini_song_reader_1EFC60.asm lines 77 to 89, CR-18).
+// This is that getter's text rule. Hydra trims blanks around the word too;
+// whether the game's ini reader does is not yet read.
+bool ini_drum_key_is_true(std::string_view value) {
     if (const std::optional<int32_t> number = dotnet_int32(value)) return *number != 0;
     return equals_ci(trim_view(value), "true");
 }
 
-// The two keys from a key -> value lookup, whatever spells the keys.
+// A .sng's two drum keys. Clone Hero reads both through its .sng bool getter
+// (0x2642C0, called from sng_meta_reader_1EFF90.asm lines 46 to 56), which
+// takes .NET's Boolean.TryParse and nothing else. This is that rule.
+bool sng_drum_key_is_true(std::string_view value) { return equals_ci(trim_view(value), "true"); }
+
+// The two keys from a key -> value lookup, whatever spells the keys, each
+// read by `is_true`, the rule of the getter that reads that source.
 template <typename Find>
-ChartDrumKeys drum_keys_from(const Find& find) {
+ChartDrumKeys drum_keys_from(const Find& find, bool (*is_true)(std::string_view)) {
     ChartDrumKeys keys;
     if (const std::optional<std::string_view> v = find("five_lane_drums"))
-        keys.five_lane_drums = drum_key_is_true(*v);
-    if (const std::optional<std::string_view> v = find("pro_drums"))
-        keys.pro_drums = drum_key_is_true(*v);
+        keys.five_lane_drums = is_true(*v);
+    if (const std::optional<std::string_view> v = find("pro_drums")) keys.pro_drums = is_true(*v);
     return keys;
 }
 
 }  // namespace
 
 ChartDrumKeys chart_drum_keys(const std::map<std::string, std::string>& ini) {
-    return drum_keys_from([&](std::string_view key) -> std::optional<std::string_view> {
-        const auto it = ini.find(std::string(key));
-        if (it == ini.end()) return std::nullopt;
-        return std::string_view(it->second);
-    });
+    return drum_keys_from(
+        [&](std::string_view key) -> std::optional<std::string_view> {
+            const auto it = ini.find(std::string(key));
+            if (it == ini.end()) return std::nullopt;
+            return std::string_view(it->second);
+        },
+        ini_drum_key_is_true);
 }
 
 ChartDrumKeys chart_drum_keys(const std::vector<std::pair<std::string, std::string>>& sng_metadata) {
-    return drum_keys_from([&](std::string_view key) -> std::optional<std::string_view> {
-        // The last pair of a key wins, as a song.ini's last line does.
-        std::optional<std::string_view> found;
-        for (const auto& [k, v] : sng_metadata)
-            if (equals_ci(k, key)) found = std::string_view(v);
-        return found;
-    });
+    return drum_keys_from(
+        [&](std::string_view key) -> std::optional<std::string_view> {
+            // The last pair of a key wins, as a song.ini's last line does.
+            std::optional<std::string_view> found;
+            for (const auto& [k, v] : sng_metadata)
+                if (equals_ci(k, key)) found = std::string_view(v);
+            return found;
+        },
+        sng_drum_key_is_true);
 }
 
 ChartDrumKeys chart_drum_keys_beside(const std::string& notespath) {

@@ -457,12 +457,42 @@ TEST_CASE("five-lane all-toms: a .chart with neither flag up reads as before") {
 }
 
 TEST_CASE("five-lane all-toms: a .mid inside a .sng follows its metadata's pro_drums") {
+    // Clone Hero's .sng bool getter (0x2642C0) reads pro_drums = 1 as unset,
+    // where a song.ini's getter reads it as set.
     const Song bare = load_songbytes_sng(testsng::make_sng({}, {{"notes.mid", no_pro_mid()}}), kPro);
     CHECK(chord_codes(bare) == kNoProToms);
     CHECK(cymbal_count(bare) == 0);
     const Song pro = load_songbytes_sng(
-        testsng::make_sng({{"pro_drums", "1"}}, {{"notes.mid", no_pro_mid()}}), kPro);
+        testsng::make_sng({{"pro_drums", "True"}}, {{"notes.mid", no_pro_mid()}}), kPro);
     CHECK(chord_codes(pro) == kNoProCymbals);
+    const Song one = load_songbytes_sng(
+        testsng::make_sng({{"pro_drums", "1"}}, {{"notes.mid", no_pro_mid()}}), kPro);
+    CHECK(chord_codes(one) == kNoProToms);
+    CHECK(cymbal_count(one) == 0);
+}
+
+TEST_CASE("five-lane all-toms: a .sng's two keys read yes or no by the game's .sng bool getter") {
+    // The rows follow Clone Hero's .sng bool getter at 0x2642C0, which reads
+    // both keys through .NET's Boolean.TryParse.
+    struct Row {
+        const char* text;
+        bool set;
+    };
+    const Row rows[] = {
+        {"true", true}, {"TRUE", true}, {" True ", true}, {"1", false},     {"-1", false},
+        {"yes", false}, {"", false},    {"0", false},     {"false", false},
+    };
+    for (const Row& row : rows) {
+        CAPTURE(std::string(row.text));
+        const ChartDrumKeys keys = chart_drum_keys(std::vector<std::pair<std::string, std::string>>{
+            {"five_lane_drums", row.text}, {"pro_drums", row.text}});
+        CHECK(keys.five_lane_drums == row.set);
+        CHECK(keys.pro_drums == row.set);
+    }
+    const ChartDrumKeys missing =
+        chart_drum_keys(std::vector<std::pair<std::string, std::string>>{});
+    CHECK_FALSE(missing.five_lane_drums);
+    CHECK_FALSE(missing.pro_drums);
 }
 
 TEST_CASE("five-lane all-toms: a .mid inside an .srb with no tom marker has no cymbal") {
