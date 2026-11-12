@@ -1094,7 +1094,7 @@ class InstallChartTest(unittest.TestCase):
                         out.getvalue())
 
     def test_install_copies_no_other_audio(self):
-        for name in ("song.ogg", "drums.ogg", "guitar.opus", "song.mp3", "crowd.wav"):
+        for name in (probe_songs.SONG_OGG, "drums.ogg", "guitar.opus", "song.mp3", "crowd.wav"):
             _write(os.path.join(self.src, name), b"audio")
         I.install(self.src, dest_root=self.dest_root, write_ogg=self.fake_ogg)
         dest = os.path.join(self.dest_root, "Some Song")
