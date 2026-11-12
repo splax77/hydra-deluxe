@@ -1,0 +1,12 @@
+%USERPROFILE%\AppData\LocalLow\srylain Inc_\Clone Hero\scoredata.bin: 80 bytes, version 20211009, 2 chart records
+  chart 0: 1 entries, play count 1, byte after play count 0
+    ProDrums Expert: byte+0x14 100, bool+0x8 1, short+0xA 100, byte+0xC 7, modifiers 0x2
+  chart 1: 1 entries, play count 2, byte after play count 0
+    ProDrums Expert: byte+0x14 100, bool+0x8 1, short+0xA 100, byte+0xC 7, modifiers 0x2
+  parsed 80 of 80 bytes
+%USERPROFILE%\AppData\Local\Temp\ch_live_34488_3\backup-20261108-122036\scoredata.bin: 80 bytes, version 20211009, 2 chart records
+  chart 0: 1 entries, play count 1, byte after play count 0
+    ProDrums Expert: byte+0x14 100, bool+0x8 1, short+0xA 100, byte+0xC 7, modifiers 0x2
+  chart 1: 1 entries, play count 2, byte after play count 0
+    ProDrums Expert: byte+0x14 100, bool+0x8 1, short+0xA 100, byte+0xC 7, modifiers 0x2
+  parsed 80 of 80 bytes
