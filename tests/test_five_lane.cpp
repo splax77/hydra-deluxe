@@ -1,5 +1,5 @@
 // Five-lane drum charts read the way Clone Hero 1.1 converts them at load.
-// The plan is docs/superpowers/plans/2026-11-12-five-lane-drums.md (task T2),
+// The plan was docs/superpowers/plans/2026-11-12-five-lane-drums.md (removed; `git show d98fa569:docs/superpowers/plans/2026-11-12-five-lane-drums.md`), task T2,
 // and the game's rule is its "What the game does" section. These tests were
 // written before the readers change, so every one but the unchanged-chart test
 // fails on the readers as they stood (each says why in one line).
