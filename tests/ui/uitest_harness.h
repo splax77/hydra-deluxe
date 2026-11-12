@@ -205,8 +205,10 @@ enum class OpenHold {
     LibraryRead,
     // At the library read, until a frame with the startup screen's words on
     // it has been drawn (OpenGate::note_startup_drawn) and the gate's
-    // minimum hold has passed. Code that blocks while the store opens draws
-    // no such frame, so the open is held until the gate's own wait gives up.
+    // minimum hold has passed. It holds once, at the read's first report;
+    // every later report goes through. Code that blocks while the store
+    // opens draws no such frame, so the open is held until the gate's own
+    // wait gives up.
     StartupDrawn,
 };
 

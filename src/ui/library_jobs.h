@@ -48,20 +48,22 @@ inline constexpr const char* kReadingSavedPathsLabel = "Reading saved paths...";
 // first two steps are the store's own (store::OpenStep; it reports them while
 // it opens and, for a convertible file, converts it). ReadingSavedPaths is the
 // job's one-time fill of old rows' hardest figure (app::fill_saved_hardest),
-// reported only when the fill has charts to read. LoadingLibrary is the job's
-// read of the chart list and its summaries once the store is open.
+// reported only when the fill has charts to read. ReadingCharts and
+// ReadingResults are the job's read of the library once the store is open
+// (read_library): its chart list, then each row's saved result.
 struct StoreOpenProgress {
-    enum class Step { Opening, ConvertingRecords, ReadingSavedPaths, LoadingLibrary };
+    enum class Step { Opening, ConvertingRecords, ReadingSavedPaths, ReadingCharts, ReadingResults };
     Step step = Step::Opening;
     // The current step's counts: rows converted out of the rows the
     // conversion converts, as the store counted them (store::OpenProgress),
-    // or charts read out of the charts the fill reads. 0 of 0 until the first
-    // counted step begins, and on a file that needs none.
+    // charts read out of the charts the fill reads, or library rows read or
+    // answered out of the library's chart count (read_library). 0 of 0 until
+    // the first counted step begins.
     uint64_t rows_done = 0;
     uint64_t rows_total = 0;
     // Whether this open has converted the file or filled old rows at any step
-    // so far. It stays set through LoadingLibrary, so the screen keeps its
-    // upgrade heading and full bar until the library appears.
+    // so far. It stays set through the library read, so the screen keeps its
+    // upgrade heading until the library appears.
     bool upgrading = false;
     // Seconds since the job started.
     double elapsed_s = 0.0;
@@ -72,19 +74,45 @@ struct StoreOpenProgress {
     std::string label() const;
 };
 
+// Told where the library read is: ReadingCharts or ReadingResults, with the
+// rows read or answered out of the library's chart count. A false return
+// stops the read (read_library).
+using LibraryReadFn = std::function<bool(StoreOpenProgress::Step step, uint64_t rows_done,
+                                         uint64_t rows_total)>;
+
 // Reads every chart in the library, then every row's summary under
 // `settings` (its chart mode, SP cap and lens), into `library`, and leaves it
 // sorted on them: the read at startup and after a scan. Returns the plain
 // sentence of the read that failed, or "" when both worked; a failed read
 // leaves the model's rows as they were (D73 item 3).
+//
+// `progress`, when set, is told each step's start at 0, then each row the
+// chart list reads, then each slice of results answered, every report out of
+// one total, the store's chart_library_count(). When it returns false the read
+// throws Cancelled (core/error_kind.h), which this lets through instead of
+// returning it as a sentence. Empty for a caller with nothing to show: then
+// the read asks for no count and reads the results in one call.
 std::string read_library(store::RecordStore& store, const app::Settings& settings,
-                         LibraryModel& library);
-// Re-reads every row's summary under `settings`: one store call for the
-// whole library, never per row per frame (the batch workers share the
-// store's lock). The rows keep their order (LibraryModel::sort_if_out_of_date).
-// Throws when the read fails.
+                         LibraryModel& library, const LibraryReadFn& progress = {});
+
+// How many library rows one slice of the counted results read asks the store
+// about: the user's answer of 2026-11-12, "500 charts".
+inline constexpr size_t kResultsSliceCharts = 500;
+
+// Told after each slice of results with the rows answered so far. A false
+// return stops the read (read_library_summaries).
+using RowsAnsweredFn = std::function<bool(uint64_t rows_answered)>;
+
+// Re-reads every row's summary under `settings`: never per row per frame (the
+// batch workers share the store's lock). The rows keep their order
+// (LibraryModel::sort_if_out_of_date). With no `on_slice` it is one store call
+// for the whole library. With one, the store is asked `slice_charts` rows at a
+// time (a slice of 0 reads as 1), `on_slice` is told after each, and the joined
+// answers go to the model in one call, so the table is filtered once either
+// way. Throws when the read fails, and Cancelled when `on_slice` returns false.
 void read_library_summaries(store::RecordStore& store, const app::Settings& settings,
-                            LibraryModel& library);
+                            LibraryModel& library, const RowsAnsweredFn& on_slice = {},
+                            size_t slice_charts = kResultsSliceCharts);
 
 // The startup open's test gate (set_store_open_gate_for_test below).
 using StoreOpenGate =

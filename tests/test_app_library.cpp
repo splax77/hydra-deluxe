@@ -6,6 +6,7 @@
 #include "doctest.h"
 
 #include <atomic>
+#include <cstdint>
 #include <exception>
 #include <filesystem>
 #include <functional>
@@ -606,16 +607,23 @@ TEST_CASE("the startup open runs on its own thread and tick collects the store a
     ScratchPaths paths("appstate_startopen");
     seeded_store(paths.db).reset();
 
+    using Step = hydra::ui::StoreOpenProgress::Step;
+    // One report's step and counts.
+    struct Seen {
+        Step step;
+        uint64_t done;
+        uint64_t total;
+    };
     // Hold the open at its first report, as the GUI test's gate does.
     std::mutex mu;
     std::atomic<bool> open{false};
-    std::vector<hydra::ui::StoreOpenProgress::Step> steps;
+    std::vector<Seen> seen;
     const ScopedHook gate(
         hydra::ui::set_store_open_gate_for_test,
         [&](const hydra::ui::StoreOpenProgress& p, const std::function<bool()>& cancelled) {
             {
                 std::lock_guard<std::mutex> lock(mu);
-                steps.push_back(p.step);
+                seen.push_back({p.step, p.rows_done, p.rows_total});
             }
             wait_until([&] { return open.load() || cancelled(); },
                        "the test to let the open go on");
@@ -640,11 +648,30 @@ TEST_CASE("the startup open runs on its own thread and tick collects the store a
     CHECK_FALSE(app.any_job_running());
     CHECK(app.library_shown_count() == static_cast<size_t>(kChartCount));
     CHECK(app.status_message.empty());
-    // A file that needs no upgrade reports the open, then the library read.
+    // A file that needs no upgrade reports the open, then the chart list row
+    // by row, then the results slice by slice, every count out of the
+    // library's one chart count, which is the rows the model holds.
+    const uint64_t charts = static_cast<uint64_t>(app.store->chart_library_count());
+    CHECK(charts == static_cast<uint64_t>(kChartCount));
+    CHECK(charts == app.library.rows().size());
     std::lock_guard<std::mutex> lock(mu);
-    CHECK(steps == std::vector<hydra::ui::StoreOpenProgress::Step>{
-                       hydra::ui::StoreOpenProgress::Step::Opening,
-                       hydra::ui::StoreOpenProgress::Step::LoadingLibrary});
+    std::vector<Step> steps;
+    std::vector<uint64_t> charts_done;
+    std::vector<uint64_t> results_done;
+    for (const Seen& s : seen) {
+        if (steps.empty() || steps.back() != s.step) steps.push_back(s.step);
+        if (s.step == Step::ReadingCharts) charts_done.push_back(s.done);
+        if (s.step == Step::ReadingResults) results_done.push_back(s.done);
+        if (s.step != Step::Opening) CHECK(s.total == charts);
+    }
+    CHECK(steps == std::vector<Step>{Step::Opening, Step::ReadingCharts, Step::ReadingResults});
+    // 0 before the first row, then once per row read.
+    std::vector<uint64_t> every_row;
+    for (uint64_t i = 0; i <= charts; ++i) every_row.push_back(i);
+    CHECK(charts_done == every_row);
+    // The library fits in one results slice: 0 before it, all once it is read.
+    REQUIRE(charts < hydra::ui::kResultsSliceCharts);
+    CHECK(results_done == std::vector<uint64_t>{0, charts});
 }
 
 TEST_CASE("an AppState closed during its startup open stops the open") {
@@ -668,11 +695,11 @@ TEST_CASE("a library read that fails after the startup open is the status line's
     ScratchPaths paths("appstate_startreadfail");
     seeded_store(paths.db).reset();
     // Dropped once the store is open (it would make a missing table again),
-    // just before the library read.
+    // at the chart list's first report, before any row is read.
     const ScopedHook gate(
         hydra::ui::set_store_open_gate_for_test,
         [&](const hydra::ui::StoreOpenProgress& p, const std::function<bool()>&) {
-            if (p.step == hydra::ui::StoreOpenProgress::Step::LoadingLibrary)
+            if (p.step == hydra::ui::StoreOpenProgress::Step::ReadingCharts && p.rows_done == 0)
                 hydra::test::exec_on_file(paths.db, "DROP TABLE charts; DROP TABLE records;");
         });
     AppState app;
@@ -934,14 +961,19 @@ TEST_CASE("the startup screen's line names what the open is doing") {
     using hydra::ui::StoreOpenProgress;
     StoreOpenProgress p;
     CHECK(p.label() == "Opening your library...");
-    p.step = StoreOpenProgress::Step::LoadingLibrary;
-    CHECK(p.label() == "Opening your library...");
+    p.step = StoreOpenProgress::Step::ReadingCharts;
+    CHECK(p.label() == "Reading your charts...");
+    p.step = StoreOpenProgress::Step::ReadingResults;
+    CHECK(p.label() == "Reading your results...");
 
+    // An upgrade names the library read's steps in the same words.
     p.upgrading = true;
     p.step = StoreOpenProgress::Step::ConvertingRecords;
     CHECK(p.label() == "Updating the results table...");
-    p.step = StoreOpenProgress::Step::LoadingLibrary;
-    CHECK(p.label() == "Finishing...");
+    p.step = StoreOpenProgress::Step::ReadingCharts;
+    CHECK(p.label() == "Reading your charts...");
+    p.step = StoreOpenProgress::Step::ReadingResults;
+    CHECK(p.label() == "Reading your results...");
 }
 
 // D72 item 4: the Analyze-library click asks the store which charts already

@@ -377,6 +377,9 @@ namespace {
 std::atomic<bool> g_open_gate_open{true};
 std::atomic<int> g_open_gate_started{0};
 std::atomic<bool> g_open_gate_startup_drawn{false};
+// Set once a StartupDrawn hold has let go: that hold ends on its own timer,
+// not through open(), so without it every later report would hold again.
+std::atomic<bool> g_open_gate_held_once{false};
 }  // namespace
 
 OpenGate::OpenGate(OpenHold hold, double min_hold_s)
@@ -387,9 +390,12 @@ OpenGate::OpenGate(OpenHold hold, double min_hold_s)
                 // The conversion is where the upgrade's screen has all its
                 // words; the library read is the step every open reaches.
                 const Step at = hold == OpenHold::Conversion ? Step::ConvertingRecords
-                                                             : Step::LoadingLibrary;
+                                                             : Step::ReadingCharts;
                 if (progress.step != at) return;
                 if (g_open_gate_open.load()) return;
+                // The library read reports once per row; a StartupDrawn gate
+                // holds at the first of them (0 of N) and lets the rest through.
+                if (hold == OpenHold::StartupDrawn && g_open_gate_held_once.load()) return;
                 ++g_open_gate_started;
                 const auto held_from = std::chrono::steady_clock::now();
                 const auto min_hold = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -401,10 +407,12 @@ OpenGate::OpenGate(OpenHold hold, double min_hold_s)
                 };
                 testwait::wait_until(let_go, "the test to open the startup open's gate",
                                      testwait::kWaitCap + min_hold);
+                if (hold == OpenHold::StartupDrawn) g_open_gate_held_once = true;
             }) {
     g_open_gate_open = false;
     g_open_gate_started = 0;
     g_open_gate_startup_drawn = false;
+    g_open_gate_held_once = false;
 }
 
 // The gate opens here; seam_ removes the seam after.
