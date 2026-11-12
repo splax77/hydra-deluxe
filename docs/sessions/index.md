@@ -482,9 +482,9 @@
 - 2026-11-09 b37f362d Replay schedule chain handoff (2026-11-09) | press-schedule, agents, review, tests, planning, clone-hero | The session ended at the user's request, after TP2 merged to main as 44200a63 and the replay plan was finished, and a handoff was written.
 - 2026-11-09 7b39835b Clone Hero unknowns quantification (2026-11-09) | clone-hero, fill-rule, generated-fill, fill-spawn-deadline-ch-1-0, agents, review | The session ended with the coda-fill rule (FL-08) merged to main as 5fe26cb8, and a handoff written for the rest of the unknowns audit.
 - 2026-11-12 428cf079 Clone Hero unknowns REST handoff (2026-11-12) | clone-hero, docs, agents, review, planning, tests | Ended with the audit merged to main, and with CR-24 and the handoff still unmerged on their branches.
-- 2026-11-12 a828b0ca Replay plan handoff (2026-11-12) | clone-hero, agents, review, planning, tests, docs | The session ended when the user stopped all live runs after a regression, and a handoff for the next session was committed on its own handoff branch. [write-back]
+- 2026-11-12 a828b0ca Replay plan handoff (2026-11-12) | clone-hero, agents, review, planning, tests, docs | The session ended when the user stopped all live runs after a regression, and a handoff for the next session was committed on its own handoff branch.
 - 2026-11-12 d35f086a Memory maintenance best practices (2026-11-12) | memory, docs, agents, hooks | The session ended with the memory trim applied: live memories went from 86 to 44, and the index shrank from 88 lines to 46.
-- 2026-11-12 a09f66ea LS A2 regression handoff (2026-11-12) | clone-hero, performance, press-schedule | The session ended while an 8-minute offline repro was still running, so the stall cause is not proven and no fix was made. [write-back]
+- 2026-11-12 a09f66ea LS A2 regression handoff (2026-11-12) | clone-hero, performance, press-schedule | The session ended while an 8-minute offline repro was still running, so the stall cause is not proven and no fix was made.
 - 2026-11-12 c8b70230 Blank live window and CR24 handoff (2026-11-12) | clone-hero, chart, performance, library, agents, review | The session ended with the open-savings plan finished and merged to main (b82527ff), after the earlier fixes had each merged.
 
 ## Proposed tags

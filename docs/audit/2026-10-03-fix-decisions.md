@@ -1958,4 +1958,9 @@ After T7 the counted read is faster than the read with no callback. The code sho
 3. "Accept all four (Recommended)": the frame probe runs 5 s, its frame-rate floor is 322.2 frames a second, the agent sends one report batch per frame with no cap, and a gap under 100 ms between a Star Power end read and the first press it moves sends the retime design back to the user.
 4. "Allow the two reads (Recommended)": an exception to D272 ruling 5 ("agents read fields by name, never by raw offset") for the kit agent's song clock read at engine+0x100 and its score read, at addresses Python passes in. Every other agent read stays by name.
 
-The plan's questions 2 (when a press fires, asked again with IG0's number) and 4 (whether IG6 removes the Python loop from the kit route) are still open.
+The plan's question 4 (whether IG6 removes the Python loop from the kit route) is still open; it is asked after LS-G4.
+
+Two more answers came after IG0's readings, asked in one dialog:
+
+5. "Fire at the schedule time (Recommended)": the plan's question 2. A press goes down on the first frame whose clock is at or past `chart_ms` plus its aim, with no offset added back. On LS-P3's 2,128 first-group rows today's press went down a median of -0.47 ms from Python's clock read, so in-game presses land up to one frame (about 3 ms at 330 frames a second) later, about 1.5 ms on average.
+6. "Leave all five out (Recommended)": the plan does not write the fallback's own plan, explain the Star Power watch thread's 70 to 90 ms, answer the stall plan's question 3, write the kit from Rewired's `InputSourceUpdateEvent`, or change the keys route.
