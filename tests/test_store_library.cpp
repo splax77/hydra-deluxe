@@ -472,6 +472,18 @@ std::vector<std::string> md5_set_of(const std::vector<ChartLibraryEntry>& rows) 
     return out;
 }
 
+// Checks two reads of one row gave the same row, field for field.
+void check_same_entry(const ChartLibraryEntry& n, const ChartLibraryEntry& e) {
+    CHECK(n.title == e.title);
+    CHECK(n.artist == e.artist);
+    CHECK(n.charter == e.charter);
+    CHECK(n.album == e.album);
+    CHECK(n.notespath == e.notespath);
+    CHECK(n.rootfolder == e.rootfolder);
+    CHECK(n.sig == e.sig);
+    CHECK(n.timing == e.timing);
+}
+
 }  // namespace
 
 TEST_CASE("store: the unsorted chart list read returns the rows the read by name does") {
@@ -497,14 +509,7 @@ TEST_CASE("store: the unsorted chart list read returns the rows the read by name
         for (const ChartLibraryEntry& n : by_name) {
             if (n.md5 != e.md5) continue;
             found = true;
-            CHECK(n.title == e.title);
-            CHECK(n.artist == e.artist);
-            CHECK(n.charter == e.charter);
-            CHECK(n.album == e.album);
-            CHECK(n.notespath == e.notespath);
-            CHECK(n.rootfolder == e.rootfolder);
-            CHECK(n.sig == e.sig);
-            CHECK(n.timing == e.timing);
+            check_same_entry(n, e);
         }
         CHECK(found);
     }
@@ -532,6 +537,166 @@ TEST_CASE("store: an unsorted chart list read that is told to stop stops") {
     CHECK(reported == std::vector<int64_t>{1, 2});
     CHECK(store.list_chart_library(0, -1, {}, LibraryOrder::Unsorted).size() == 4);
     CHECK(store.chart_library_count() == 4);
+}
+
+namespace {
+
+// A library file with more rows than kLibraryOpenThreads, so the whole
+// unsorted read of it reads on every thread. A ":memory:" store reads on one
+// connection, since no other connection can open it.
+constexpr int kThreadedRows = 40;
+static_assert(kThreadedRows > static_cast<int>(kLibraryOpenThreads),
+              "every thread needs a share of the rows");
+
+std::string threaded_library_file(const char* name) {
+    const std::string path = testtemp::temp_path(name, ".db");
+    std::remove(path.c_str());
+    std::vector<ChartLibraryEntry> rows;
+    for (int i = 0; i < kThreadedRows; ++i) {
+        const std::string id = "c" + std::to_string(i);
+        rows.push_back(library_row(id, "Song " + std::to_string(kThreadedRows - i)));
+    }
+    RecordStore store(path);
+    store.rebuild_chart_library(rows);
+    return path;
+}
+
+}  // namespace
+
+TEST_CASE("store: the chart list read on threads returns the rows the one-connection read does") {
+    const std::string path = threaded_library_file("threaded_rows");
+    {
+        RecordStore store(path);
+        // The read by name stays on the store's one connection.
+        const std::vector<ChartLibraryEntry> one = store.list_chart_library(0, -1);
+        const std::vector<ChartLibraryEntry> threaded =
+            store.list_chart_library(0, -1, {}, LibraryOrder::Unsorted);
+        REQUIRE(one.size() == static_cast<size_t>(kThreadedRows));
+        CHECK(md5_set_of(threaded) == md5_set_of(one));
+        // The same rows, field for field.
+        for (const ChartLibraryEntry& e : threaded) {
+            CAPTURE(e.md5);
+            int found = 0;
+            for (const ChartLibraryEntry& n : one) {
+                if (n.md5 != e.md5) continue;
+                ++found;
+                check_same_entry(n, e);
+            }
+            CHECK(found == 1);
+        }
+    }
+    std::remove(path.c_str());
+}
+
+TEST_CASE("store: the chart list read on threads counts up to the row count once") {
+    const std::string path = threaded_library_file("threaded_count");
+    {
+        RecordStore store(path);
+        std::vector<int64_t> reported;
+        const std::vector<ChartLibraryEntry> rows = store.list_chart_library(
+            0, -1,
+            [&](int64_t rows_read) {
+                reported.push_back(rows_read);
+                return true;
+            },
+            LibraryOrder::Unsorted);
+        CHECK(rows.size() == static_cast<size_t>(kThreadedRows));
+        // Every count from 1 to the row count, once each and in order, as
+        // the one-connection read reports them.
+        std::vector<int64_t> every_row;
+        for (int64_t i = 1; i <= store.chart_library_count(); ++i) every_row.push_back(i);
+        CHECK(reported == every_row);
+    }
+    std::remove(path.c_str());
+}
+
+TEST_CASE("store: a chart list read on threads that is told to stop stops every thread") {
+    const std::string path = threaded_library_file("threaded_stop");
+    {
+        RecordStore store(path);
+        std::vector<int64_t> reported;
+        bool cancelled = false;
+        try {
+            store.list_chart_library(
+                0, -1,
+                [&](int64_t rows_read) {
+                    reported.push_back(rows_read);
+                    return false;  // stop at the first report
+                },
+                LibraryOrder::Unsorted);
+        } catch (const Cancelled& e) {
+            cancelled = e.kind() == ErrorKind::Cancelled;
+        }
+        CHECK(cancelled);
+        CHECK(reported.size() == 1);
+        // The store answers the next calls.
+        CHECK(store.chart_library_count() == kThreadedRows);
+        CHECK(store.list_chart_library(0, -1, {}, LibraryOrder::Unsorted).size() ==
+              static_cast<size_t>(kThreadedRows));
+    }
+    std::remove(path.c_str());
+}
+
+TEST_CASE("store: a chart list read on threads stops at whichever count asks") {
+    const std::string path = threaded_library_file("threaded_stop_mid");
+    {
+        RecordStore store(path);
+        // A stop at the second count, a middle one and the last one each end
+        // the read as a cancel, with every count up to the stop told and
+        // none past it.
+        for (int64_t stop_at : {int64_t{2}, int64_t{kThreadedRows / 2}, int64_t{kThreadedRows}}) {
+            CAPTURE(stop_at);
+            std::vector<int64_t> reported;
+            bool cancelled = false;
+            try {
+                store.list_chart_library(
+                    0, -1,
+                    [&](int64_t rows_read) {
+                        reported.push_back(rows_read);
+                        return rows_read < stop_at;
+                    },
+                    LibraryOrder::Unsorted);
+            } catch (const Cancelled& e) {
+                cancelled = e.kind() == ErrorKind::Cancelled;
+            }
+            CHECK(cancelled);
+            std::vector<int64_t> up_to_stop;
+            for (int64_t i = 1; i <= stop_at; ++i) up_to_stop.push_back(i);
+            CHECK(reported == up_to_stop);
+        }
+    }
+    std::remove(path.c_str());
+}
+
+TEST_CASE("store: a chart list read on threads whose connection fails to open fails whole") {
+    const std::string path = threaded_library_file("threaded_open_fails");
+    {
+        RecordStore store(path);
+        store.fail_chart_list_reader_open_for_test(2);
+        std::vector<int64_t> reported;
+        std::vector<ChartLibraryEntry> rows;
+        bool failed_read = false;
+        try {
+            rows = store.list_chart_library(
+                0, -1,
+                [&](int64_t rows_read) {
+                    reported.push_back(rows_read);
+                    return true;
+                },
+                LibraryOrder::Unsorted);
+        } catch (const KindedError& e) {
+            failed_read = e.kind() == ErrorKind::DatabaseRead;
+        }
+        // The store's plain failed read, with no rows: nothing was read and
+        // nothing was counted.
+        CHECK(failed_read);
+        CHECK(rows.empty());
+        CHECK(reported.empty());
+        // The forced failure was for one read only; the next one reads it all.
+        CHECK(store.list_chart_library(0, -1, {}, LibraryOrder::Unsorted).size() ==
+              static_cast<size_t>(kThreadedRows));
+    }
+    std::remove(path.c_str());
 }
 
 TEST_CASE("store: rows read by name compare byte for byte, and one name keeps scan order") {

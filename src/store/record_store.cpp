@@ -6,10 +6,14 @@
 #include <atomic>
 #include <cctype>
 #include <cstdlib>
+#include <exception>
+#include <limits>
 #include <map>
+#include <memory>
 #include <new>
 #include <stdexcept>
 #include <string_view>
+#include <thread>
 
 #include "core/error_kind.h"
 #include "core/little_endian.h"
@@ -1656,12 +1660,193 @@ bool RecordStore::chart_library_out_of_date() {
     return chart_library_count() > 0 && !chart_meta_current();
 }
 
+namespace {
+
+// A connection of the threaded chart list read's own, closed when it goes.
+struct CloseDb {
+    void operator()(sqlite3* db) const { sqlite3_close(db); }
+};
+using ReaderDb = std::unique_ptr<sqlite3, CloseDb>;
+
+// Opens `path` read-only for one share of the threaded chart list read. A
+// failed open is a failed read (D73), worded with SQLite's own message.
+ReaderDb open_reader(const std::string& path) {
+    sqlite3* db = nullptr;
+    const int rc = open_sqlite(path, &db, SQLITE_OPEN_READONLY);
+    ReaderDb owned(db);  // open_sqlite sets *db even on failure
+    if (rc != SQLITE_OK)
+        throw KindedError(ErrorKind::DatabaseRead,
+                          std::string("opening a reader of the chart list failed: ") +
+                              (db ? sqlite3_errmsg(db) : "unknown error"));
+    return owned;
+}
+
+}  // namespace
+
+std::vector<ChartLibraryEntry> RecordStore::read_chart_library_on_threads(
+    const std::string& path, int64_t max_rowid, size_t shares, bool timing_read,
+    const RowsReadFn& on_row) {
+    // Every connection opens here, on the calling thread, before any share
+    // reads, so an open that fails fails the whole read with nothing read.
+    // The store's own connection stays open all the while: with no connection
+    // open, the new connections' first reads race to rebuild the WAL index
+    // and fail with "database is locked" (tools/bench.cpp's section 4 met it).
+    const int fail_at = fail_chart_list_reader_open_for_test_;
+    fail_chart_list_reader_open_for_test_ = 0;
+    std::vector<ReaderDb> readers;
+    readers.reserve(shares);
+    for (size_t k = 0; k < shares; ++k) {
+        const bool forced = fail_at > 0 && static_cast<size_t>(fail_at) == k + 1;
+        // The forced failure opens a file that is not there, so the open fails
+        // as a real one does, with SQLite's own words.
+        readers.push_back(open_reader(forced ? path + "-not-there" : path));
+    }
+
+    const std::string sql = library_entry_select() + " WHERE rowid > ? AND rowid <= ?";
+    const int64_t n = static_cast<int64_t>(shares);
+    // Rows read so far over every share, counted only when on_row is set.
+    std::atomic<int64_t> rows_read{0};
+    // Set by a share that failed or by an on_row that asked to stop; every
+    // share checks it before each row and stops.
+    std::atomic<bool> stop{false};
+    // Helpers still reading; the calling thread reports until it is 0.
+    std::atomic<size_t> helpers_reading{shares - 1};
+    std::vector<std::vector<ChartLibraryEntry>> parts(shares);
+    std::vector<std::exception_ptr> failures(shares);
+
+    auto read_share = [&](size_t k, const RowsReadFn& on_share_row) {
+        // The first share starts below every rowid and the last ends above
+        // them all, so no row falls outside the shares.
+        const int64_t kk = static_cast<int64_t>(k);
+        const int64_t after = k == 0 ? std::numeric_limits<int64_t>::min() : max_rowid * kk / n;
+        const int64_t upto =
+            k + 1 == shares ? std::numeric_limits<int64_t>::max() : max_rowid * (kk + 1) / n;
+        Stmt s = prepare_read(readers[k].get(), sql.c_str());
+        sqlite3_bind_int64(s, 1, after);
+        sqlite3_bind_int64(s, 2, upto);
+        parts[k] = read_library_entries(s, timing_read, on_share_row);
+    };
+
+    // The helpers' shares: count each row, and stop when told. A Cancelled
+    // here only means another share set `stop`, so it is no failure of its own.
+    const bool counting = static_cast<bool>(on_row);
+    const RowsReadFn helper_row = [&](int64_t) {
+        if (stop.load(std::memory_order_relaxed)) return false;
+        if (counting) rows_read.fetch_add(1, std::memory_order_relaxed);
+        return true;
+    };
+    auto run_helper = [&](size_t k) {
+        try {
+            read_share(k, helper_row);
+        } catch (const Cancelled&) {
+        } catch (...) {
+            failures[k] = std::current_exception();
+            stop.store(true);
+        }
+        helpers_reading.fetch_sub(1);
+    };
+
+    // Only the calling thread tells on_row anything, so on_row runs on the
+    // thread that called, as the one-connection read's does. It tells every
+    // count from the last one told up to `now`, one call each, so on_row sees
+    // the counts it would see from one connection (RowsReadFn). False means
+    // on_row asked to stop: every share is then told to stop.
+    int64_t reported = 0;
+    const auto report_up_to = [&](int64_t now) {
+        while (reported < now) {
+            if (!on_row(++reported)) {
+                stop.store(true);
+                return false;
+            }
+        }
+        return true;
+    };
+
+    // The calling thread's share. After each of its rows it reports every
+    // row read so far, its own and the helpers'.
+    bool stopped_by_other = false;
+    const RowsReadFn caller_row = [&](int64_t) {
+        if (stop.load(std::memory_order_relaxed)) {
+            stopped_by_other = true;
+            return false;
+        }
+        if (!counting) return true;
+        rows_read.fetch_add(1, std::memory_order_relaxed);
+        return report_up_to(rows_read.load(std::memory_order_relaxed));
+    };
+
+    std::vector<std::thread> helpers;
+    helpers.reserve(shares - 1);
+    // A helper that could not start leaves those that did to stop and join.
+    try {
+        for (size_t k = 1; k < shares; ++k) helpers.emplace_back(run_helper, k);
+    } catch (...) {
+        stop.store(true);
+        for (std::thread& t : helpers) t.join();
+        throw;
+    }
+    try {
+        read_share(0, caller_row);
+        // Its own share done, the calling thread goes on reporting the
+        // helpers' rows while they read, so the count keeps moving and a
+        // stop asked for now still stops them. It yields between looks
+        // rather than sleeping, so it waits no set time.
+        if (counting) {
+            while (helpers_reading.load() > 0 && !stop.load(std::memory_order_relaxed)) {
+                if (!report_up_to(rows_read.load(std::memory_order_relaxed)))
+                    throw Cancelled("reading the chart list was stopped");
+                std::this_thread::yield();
+            }
+        }
+    } catch (...) {
+        // A stop another share's failure set is that share's failure, below.
+        if (!stopped_by_other) failures[0] = std::current_exception();
+        stop.store(true);
+    }
+    for (std::thread& t : helpers) t.join();
+    // The calling thread's own failure or stop first, then the first helper's.
+    for (const std::exception_ptr& failure : failures)
+        if (failure) std::rethrow_exception(failure);
+
+    // Every helper has finished: the rows they read since the last look.
+    if (counting && !report_up_to(rows_read.load()))
+        throw Cancelled("reading the chart list was stopped");
+
+    size_t count = 0;
+    for (const std::vector<ChartLibraryEntry>& part : parts) count += part.size();
+    std::vector<ChartLibraryEntry> out;
+    out.reserve(count);
+    for (std::vector<ChartLibraryEntry>& part : parts)
+        for (ChartLibraryEntry& row : part) out.push_back(std::move(row));
+    return out;
+}
+
 std::vector<ChartLibraryEntry> RecordStore::list_chart_library(int offset, int limit,
                                                                const RowsReadFn& on_row,
                                                                LibraryOrder order) {
     std::lock_guard<std::recursive_mutex> lock(mutex_);
 
     const bool timing_read = chart_meta_current();
+    // The whole library unsorted reads on threads, one connection each, split
+    // by rowid. It needs a file the other connections can open (a ":memory:"
+    // store has none), and no transaction open on this connection, whose
+    // writes the others would not see.
+    const char* file = sqlite3_db_filename(db_, "main");
+    if (order == LibraryOrder::Unsorted && offset == 0 && limit < 0 && file && *file &&
+        !transaction_open(db_)) {
+        int64_t max_rowid = 0;
+        {
+            Stmt s = prepare_read(db_, "SELECT max(rowid) FROM charts");
+            if (step_row(s)) max_rowid = sqlite3_column_int64(s, 0);
+        }
+        // One share per rowid at most, so no share is empty by its range.
+        const size_t shares =
+            max_rowid > 0 ? static_cast<size_t>(std::min<int64_t>(
+                                static_cast<int64_t>(kLibraryOpenThreads), max_rowid))
+                          : 1;
+        if (shares > 1)
+            return read_chart_library_on_threads(file, max_rowid, shares, timing_read, on_row);
+    }
     // Unsorted asks for no order, so SQLite reads the table without a sort.
     const char* order_by = order == LibraryOrder::Unsorted ? "" : kByName;
     Stmt s = prepare_read(

@@ -855,7 +855,7 @@ TEST_CASE("library model: each row's search text and sort keys are pinned") {
 
 TEST_CASE("library model: rows built on threads match the one-thread rows, in the same order") {
     // Seven copies of the pinned rows: 35 rows, more than set_charts has
-    // threads (kRowBuildThreads in library_model.cpp) and not a multiple of
+    // threads (store::kLibraryOpenThreads in store/record_store.h) and not a multiple of
     // them, so the shares are uneven. Each copy gets its own hash.
     constexpr int kCopies = 7;
     std::vector<ChartLibraryEntry> charts;

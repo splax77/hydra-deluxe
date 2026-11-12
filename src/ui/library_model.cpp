@@ -192,12 +192,6 @@ SearchField search_field_of(const app::StrippedRow& stripped, const app::Searcha
     return {stripped.folder, folded.folder};
 }
 
-// How many threads build rows at once, the calling thread included: it builds
-// the first share and 7 helpers build the rest. The count is the user's ruling
-// "8 threads" (docs/agents/rulings/code-and-engine.md); hydra_bench --open
-// counts threads the same way.
-constexpr size_t kRowBuildThreads = 8;
-
 // One scanned chart's row. It touches only `entry` (read, then emptied), `row`
 // and `stripped` (the caller's scratch, reused across rows), so rows build on
 // several threads at once.
@@ -229,8 +223,9 @@ void LibraryModel::set_charts(std::vector<store::ChartLibraryEntry> charts) {
     rows_.clear();
     rows_.resize(n);
     // Each thread builds one contiguous share of the rows and writes only
-    // those rows. The calling thread builds the first share itself.
-    const size_t threads = std::min(kRowBuildThreads, n);
+    // those rows. The calling thread builds the first share itself
+    // (store::kLibraryOpenThreads says how many threads).
+    const size_t threads = std::min(store::kLibraryOpenThreads, n);
     auto build_share = [&](size_t t) {
         app::StrippedRow stripped;
         const size_t end = n * (t + 1) / threads;
