@@ -60,6 +60,10 @@ $p = (Get-AppxPackage -Name Microsoft.WinDbg).InstallLocation; Join-Path (Join-P
 
 `cdb` attaches from this unelevated shell, unlike `wpr`. A non-invasive attach (`-pv`) reads every thread's stack without stopping the process for good. Pass the build's symbol folder with `-y`, not `.sympath` inside `-c`, because `.sympath` takes the rest of the line as its path. For example, `cdb -pv -y <build-cpp\Release> -p <pid> -c "~*kc 40; qd"` prints each thread's call stack and detaches. Each attach pauses the process while it runs, so keep samples short. On 2026-11-11 this showed why a live window started blank: its window thread waited in `AppState::wait_store_open` while eight workers ran `fill_saved_hardest`.
 
+## The offline stall harness
+
+`tools/ch_probe/experiments/stall_harness.py` plays a real schedule through the real player loop with no game, and writes a stack dump when one step of the loop runs long. It reads only this checkout's `testdata` and `.git` as load, never the song library, and it never starts Clone Hero. Run it from the checkout's root by its file path, not with `-m`; the docstring at the top of the file says how, and which numbers default to the user's. It attaches `cdb` the way "Debugger: WinDbg and cdb" above does, at most once per run.
+
 ## The Opus model behind agents
 
 The global `C:\Users\Patrick\.claude\settings.json` sets the ANTHROPIC_DEFAULT_OPUS_MODEL entry of its `env` block to `claude-opus-5-5`. That entry decides which model the `opus` alias runs, so it decides the model of every agent sent out on Opus. The user picks this model by hand. If agents seem worse after a model release, check this entry first. Do not assume the newest model is the one wanted.
