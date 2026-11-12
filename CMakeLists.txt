@@ -863,6 +863,11 @@ include(CPack)
 # ---- hydra_bench: engine timing harness (not a test; built on demand) ----
 add_executable(hydra_bench EXCLUDE_FROM_ALL tools/bench.cpp)
 target_link_libraries(hydra_bench PRIVATE hydra_app hydra_warnings)
+# hydra_ui: --open times the app's own library read (read_library) into the
+# app's LibraryModel. It opens no window and no device; d3d11, dxgi and
+# d3dcompiler are there because hydra_ui's libraries name them, as in
+# hydra_tests.
+target_link_libraries(hydra_bench PRIVATE hydra_ui d3d11 dxgi d3dcompiler)
 target_include_directories(hydra_bench PRIVATE tests third_party/json)
 target_compile_definitions(hydra_bench PRIVATE
     HYDRA_INPUT_DIR="${CMAKE_SOURCE_DIR}/testdata/input"

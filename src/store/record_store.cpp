@@ -22,29 +22,21 @@
 
 namespace hydra::store {
 
-namespace {
-
-// RAII wrapper so every query site finalizes even on an early throw. Movable
-// but not copyable: a copy would finalize the same handle twice.
-struct Stmt {
-    sqlite3_stmt* p = nullptr;
-    Stmt() = default;
-    Stmt(Stmt&& other) noexcept : p(other.p) { other.p = nullptr; }
-    Stmt& operator=(Stmt&& other) noexcept {
-        if (this != &other) {
-            if (p) sqlite3_finalize(p);
-            p = other.p;
-            other.p = nullptr;
-        }
-        return *this;
-    }
-    Stmt(const Stmt&) = delete;
-    Stmt& operator=(const Stmt&) = delete;
-    ~Stmt() {
+// Stmt (record_store.h): every query site finalizes even on an early throw.
+Stmt::Stmt(Stmt&& other) noexcept : p(other.p) { other.p = nullptr; }
+Stmt& Stmt::operator=(Stmt&& other) noexcept {
+    if (this != &other) {
         if (p) sqlite3_finalize(p);
+        p = other.p;
+        other.p = nullptr;
     }
-    operator sqlite3_stmt*() const { return p; }
-};
+    return *this;
+}
+Stmt::~Stmt() {
+    if (p) sqlite3_finalize(p);
+}
+
+namespace {
 
 // Compiles a statement. A read that fails to compile is a failed read, and a
 // write a failed write (D73), so each call site says which it is through
@@ -60,7 +52,13 @@ Stmt prepare_as(sqlite3* db, const char* sql, bool read) {
                                " was prepared as the other kind: " + sql);
     return s;
 }
+
+}  // namespace
+
 Stmt prepare_read(sqlite3* db, const char* sql) { return prepare_as(db, sql, true); }
+
+namespace {
+
 Stmt prepare_write(sqlite3* db, const char* sql) { return prepare_as(db, sql, false); }
 
 // A statement borrowed from the store's cache (RecordStore::stmt_cache_). At
@@ -98,6 +96,8 @@ CachedStmt use_write(sqlite3* db, StmtCache& cache, const std::string& sql) {
     return use_stmt(db, cache, sql, false);
 }
 
+}  // namespace
+
 // Steps a read. True: a row is ready. False: the query has finished. Any
 // other answer throws, so a failed read never passes for an empty one (D73).
 bool step_row(sqlite3_stmt* s) {
@@ -107,6 +107,8 @@ bool step_row(sqlite3_stmt* s) {
     throw KindedError(ErrorKind::DatabaseRead, std::string("reading the database failed: ") +
                                                    sqlite3_errmsg(sqlite3_db_handle(s)));
 }
+
+namespace {
 
 // Steps a write to its end. `what` names the write in the raw text: "<what>
 // failed: <sqlite's message>".
@@ -283,6 +285,8 @@ constexpr const char* kPathRowColumnList =
 static_assert(count_list_names(kPathRowColumnList) == 10,
               "write_record and read_path_row walk ten slots: grow them with the list");
 
+}  // namespace
+
 // kPathRowColumnList with every name as `a` + name.
 std::string path_row_columns(const char* a) {
     return each_column(kPathRowColumnList, a, "", ", ");
@@ -306,6 +310,8 @@ std::optional<PathRow> read_path_row(sqlite3_stmt* s, int idx, int rank) {
     p.optimal = sqlite3_column_int(s, idx + 9) != 0;
     return p;
 }
+
+namespace {
 
 // A record's own columns after song_id, in the order write_record binds them
 // and read_record_columns reads them.
@@ -1534,6 +1540,8 @@ static_assert(count_list_names(kLibraryColumnList) == 10,
               "rebuild_chart_library and read_library_entries walk ten slots: grow them "
               "with the list");
 
+}  // namespace
+
 // The query read_library_entries reads; callers add a WHERE or an ORDER BY.
 std::string library_entry_select() {
     return std::string("SELECT ") + kLibraryColumnList + " FROM charts";
@@ -1544,7 +1552,7 @@ std::string library_entry_select() {
 // (RecordStore::chart_meta_current) says which rows those are. `on_row`, when
 // set, is told each row as it is read (RowsReadFn).
 std::vector<ChartLibraryEntry> read_library_entries(sqlite3_stmt* s, bool timing_read,
-                                                    const RowsReadFn& on_row = {}) {
+                                                    const RowsReadFn& on_row) {
     std::vector<ChartLibraryEntry> out;
     while (step_row(s)) {
         ChartLibraryEntry e;
@@ -1563,8 +1571,6 @@ std::vector<ChartLibraryEntry> read_library_entries(sqlite3_stmt* s, bool timing
     }
     return out;
 }
-
-}  // namespace
 
 void RecordStore::rebuild_chart_library(const std::vector<ChartLibraryEntry>& items) {
     std::lock_guard<std::recursive_mutex> lock(mutex_);

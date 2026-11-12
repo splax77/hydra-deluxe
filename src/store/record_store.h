@@ -417,6 +417,32 @@ using OpenProgressFn = std::function<bool(const OpenProgress&)>;
 // Cancelled (core/error_kind.h) and the store answers later calls as before.
 using RowsReadFn = std::function<bool(int64_t rows_read)>;
 
+// ---- the store's own statement and row readers ------------------------------
+// RecordStore compiles, steps and reads its rows through these. They are
+// declared here so hydra_bench's --open mode can build the same row objects
+// from connections of its own (tools/bench.cpp). Their comments in
+// record_store.cpp say what each does.
+
+// A compiled statement, finalized when it goes. Movable but not copyable: a
+// copy would finalize the same handle twice.
+struct Stmt {
+    sqlite3_stmt* p = nullptr;
+    Stmt() = default;
+    Stmt(Stmt&& other) noexcept;
+    Stmt& operator=(Stmt&& other) noexcept;
+    Stmt(const Stmt&) = delete;
+    Stmt& operator=(const Stmt&) = delete;
+    ~Stmt();
+    operator sqlite3_stmt*() const { return p; }
+};
+Stmt prepare_read(sqlite3* db, const char* sql);
+bool step_row(sqlite3_stmt* s);
+std::string library_entry_select();
+std::vector<ChartLibraryEntry> read_library_entries(sqlite3_stmt* s, bool timing_read,
+                                                    const RowsReadFn& on_row = {});
+std::string path_row_columns(const char* a);
+std::optional<PathRow> read_path_row(sqlite3_stmt* s, int idx, int rank);
+
 class ChartIndex;  // store/chart_index.h
 
 class RecordStore {
