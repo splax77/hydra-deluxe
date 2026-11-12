@@ -241,7 +241,7 @@
       "language": "py",
       "must_match": [
         "SETTLE_MS = 250        # wait this long past the note before reading the result",
-        "SETTLE_MS = 250   # read the result this long after the note (as walk_edges.py)"
+        "SETTLE_MS = 250   # read the result this long after the note (as the other runner does)"
       ],
       "must_not_match": [
         "wait_for(max(p.second_ms, p.second_ms + p.offset_ms) + constants.INPUT_SETTLE_MS)"
@@ -474,35 +474,6 @@
           "file": "tools/ch_probe/probe_chart.py",
           "line_text": "return resolution * bpm / 60000.0",
           "why": "_ticks_per_ms, the owner"
-        }
-      ],
-      "scope": [
-        "tools"
-      ]
-    },
-    {
-      "question": "What window does the formula predict?",
-      "owner": "_scaled_term in tools/ch_probe/experiments/analysis.py",
-      "owner_file": "tools/ch_probe/experiments/analysis.py",
-      "owner_symbol": "_scaled_term",
-      "date": "2026-10-05",
-      "decision": "J3-8 (findings 232 to 236, 238, 239, 273, 328)",
-      "added_by": "J3-8",
-      "pattern": "\\*\\*\\s*exponent\\b",
-      "anchor": "exponent",
-      "language": "py",
-      "must_match": [
-        "return ((t * c1 - (t ** exponent) * c2) * c3 - c4) / divisor",
-        "return (c0 - (t * c1 - (t ** exponent) * c2) * c3) / divisor"
-      ],
-      "must_not_match": [
-        "exponent=exponent) - c4) / divisor"
-      ],
-      "owner_lines": [
-        {
-          "file": "tools/ch_probe/experiments/analysis.py",
-          "line_text": "return (t * c1 - (t ** exponent) * c2) * c3",
-          "why": "_scaled_term, the owner"
         }
       ],
       "scope": [

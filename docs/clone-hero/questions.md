@@ -107,7 +107,7 @@ This is the same finding as Q-76, raised from page 3.
 The game's rule: the formula at 0x20DDDA0 uses one constant set when bit 0x1000 is clear and the other when it is set (decompile lines 767 to 781, row TM-28).
 
 One end: `RVA_FORMULA_PRECISION` (tools/ch_probe/constants.py line 175) holds the bit-clear constants, which reproduce the live 96.29 to 171.43 ms.
-Other end: `RVA_FORMULA_NORMAL` (line 166) holds the bit-set constants, and `predicted_window_normal` in the probe's analysis.py is fed from it, giving -242 and -78 ms.
+Other end: `RVA_FORMULA_NORMAL` (line 166) holds the bit-set constants. The probe's normal-window prediction was fed from it, giving -242 and -78 ms; it lived in tools/ch_probe/experiments/analysis.py (removed; `git show a081f660:tools/ch_probe/experiments/analysis.py`).
 
 Hydra today: no `src/` owner; the fix is a rename in the tool.
 
@@ -176,7 +176,7 @@ The game's real rule: `0x100DAB0` is virtual slot 25 of the generic base #8253 i
 One end: a hook at `0x100DAE0` during a drums song fires every frame. hydra-data/ch-mcp-runs/2026-10-28/l3/trace-wm-count.txt (outside the repo) counts 20,831 calls in a 62 s song with 142 notes, so it is not once per note.
 Other end: a breakpoint at `0x100DAB0`, where the tool points, never fires in a drums song, because the drum engine never runs that instantiation.
 
-What the tool does today: `RVA_HIT_CHECK = 0x100DAB0` (tools/ch_probe/constants.py line 55), with a comment at lines 52 to 54 calling it the hit-decision comparison, and tools/ch_probe/experiments/active_probe.py line 215 sets a breakpoint there. Owner: tools/ch_probe/constants.py. Nothing in src/ reads it. The question: point the constant at the drum copy `0x100DAE0` with a comment that says what the code shows (a per-frame input compare), or drop the constant and the breakpoint. Q-77 is the same kind of slip and could be fixed in the same change.
+What the tool does today: `RVA_HIT_CHECK = 0x100DAB0` (tools/ch_probe/constants.py line 55), with a comment at lines 52 to 54 calling it the hit-decision comparison. The runner that set a breakpoint there was tools/ch_probe/experiments/active_probe.py (removed; `git show a081f660:tools/ch_probe/experiments/active_probe.py`), line 215. Owner: tools/ch_probe/constants.py. Nothing in src/ reads it. The question: point the constant at the drum copy `0x100DAE0` with a comment that says what the code shows (a per-frame input compare), or drop the constant and the breakpoint. Q-77 is the same kind of slip and could be fixed in the same change.
 
 ### Q-74 Vocal notes move Hydra's song end, but not the game's
 
@@ -204,7 +204,7 @@ The game's real rule (GD lines 768 to 781, the window formula at RVA `0x20DDDA0`
 
 One end: with the constants under `RVA_FORMULA_PRECISION` fed into the normal shape, an input of 170 ms gives 171.43126 ms and 75 ms gives 96.29316 ms, the two ends of `tools/ch_probe/experiments/results/poll_windows.csv`. Other end: the table now named normal gives -242 and -78 ms, which no run ever stored.
 
-What the tool does today: the normal-window prediction in `predicted_window_normal` in tools/ch_probe/experiments/analysis.py (lines 227 to 251, fed by `normal_formula_constants` at lines 312 to 316) reads `RVA_FORMULA_NORMAL`, so it predicts the wrong curve. Owner: tools/ch_probe/constants.py (a swap of the two table names). Nothing in src/ reads it. Page row IN-16.
+What the tool does today: no tool predicts a window now. The normal-window prediction read `RVA_FORMULA_NORMAL`, so it predicted the wrong curve; it lived in tools/ch_probe/experiments/analysis.py (removed; `git show a081f660:tools/ch_probe/experiments/analysis.py`), lines 227 to 251. The constants read in tools/ch_probe/engine.py still files each table's values under that table's name. Owner: tools/ch_probe/constants.py (a swap of the two table names). Nothing in src/ reads it. Page row IN-16.
 
 ### Q-77 RVA_BASE_ENGINE_CTOR_DRUMS holds the other instantiation's constructor
 

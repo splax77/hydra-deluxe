@@ -48,10 +48,10 @@ Two things trip up a new runner:
   game's Controller Remap screen, 2026-09-25) binds 2X Kick to O, but
   `DEFAULT_BINDINGS` sends every kick, normal or 2x, on the kick lane (L).
 
-A hit is a score that rose. `experiments/walk_edges.py` and
-`experiments/watch_window.py` run on the same pieces. They were written for
-the hit-window plan (`walk_edges.py` for step 5, `watch_window.py` for steps 1 to 4):
+A hit is a score that rose. `experiments/watch_window.py` runs on the same
+pieces. It was written for steps 1 to 4 of the hit-window plan:
 `docs/superpowers/plans/2026-09-25-hit-window-testing.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-09-25-hit-window-testing.md`).
+Step 5's runner was `tools/ch_probe/experiments/walk_edges.py` (removed; `git show a081f660:tools/ch_probe/experiments/walk_edges.py`).
 D28 in `docs/audit/2026-10-03-fix-decisions.md` records that the plan's steps 1 to 3
 were answered from the game's code and `poll_windows.csv`, and that steps 4
 to 6 were shelved.
@@ -76,12 +76,15 @@ to 6 were shelved.
 - `probe_chart.py`, `probe_songs.py`: write probe charts and playable probe
   song folders.
 - `ocr.py`: parses "Accuracy: X ms" text (the screen capture was removed).
-- `experiments/`: the runners. `passive_probe.py` and `active_probe.py` use
-  the debugger. `walk_edges.py`, `watch_window.py` and `play_chart.py` don't.
-  `live.py` holds what the runners share: the snapshot read, the wait for a
-  song time, the "has the song stopped" check, the start note and the hit
-  offset. `analysis.py` turns their rows into answers. `milestone1.py`,
+- `experiments/`: the runners. None of them uses the debugger.
+  `live.py` holds what the runners share: the snapshot read, the song clock
+  between frames (`SongClock`), the wait for a song time, the "has the song
+  stopped" check, the start note and the hit offset. `milestone1.py`,
   `pad_flash_test.py` and `key_delivery_test.py` are small setup checks.
+  The two debugger probes and the module that turned their rows into answers
+  are gone: `tools/ch_probe/experiments/passive_probe.py` (removed; `git show a081f660:tools/ch_probe/experiments/passive_probe.py`),
+  `tools/ch_probe/experiments/active_probe.py` (removed; `git show a081f660:tools/ch_probe/experiments/active_probe.py`)
+  and `tools/ch_probe/experiments/analysis.py` (removed; `git show a081f660:tools/ch_probe/experiments/analysis.py`).
 
 ## What runs here, and what needs the game
 
