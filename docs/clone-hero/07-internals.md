@@ -566,23 +566,23 @@ Found: 2026-10-28, feasibility study lines 33 and 109; the listings, 2026-11-08,
 
 ### IN-45 The game's text strings are plain
 
-Rule: The game's 23,972 text strings are not encrypted, the metadata lists 776 source file paths, and the "combo: {0}" string is used by a static BasePlayer method at 0x1168290 for drum inputs.
-Label: Unknown
-Evidence: not checked: the counts were not redone and the method was not read. The scan that IN-38 corrects did find code references to the "combo: {0}" string at that method; its script and output were not kept.
-Game code (6142): not read.
+Rule: The game has 23,972 text strings, all distinct, which Il2CppDumper reads as plain text. The metadata holds 1,346 distinct `.cs` source paths, of which 776 start with `\Assets`. The literal "combo: {0}" plus a newline is one line of a player's results summary: the static `BasePlayer<T>` method at 0x1168290, one of four compiled copies, builds about forty such lines and writes them to Unity's log. That 0x1168290 is the copy for drum inputs is not shown.
+Label: Proven in the game's code
+Evidence: the counts are from `docs/audit/2026-11-08-clone-hero-unknowns/W8c/count_strings_paths.py`, whose output is `W8c/count_strings_paths.out.txt` beside it; it reads `stringliteral.json`, `dump.cs` and the game's `global-metadata.dat`. That the strings are not encrypted rests on Il2CppDumper reading them as plain text; it was not checked another way. The literal is at `stringliteral.json` lines 42695 and 42696. The method: `code/6142/base_player_combo_text_1168290.asm` lines 23 to 94 load the formats (line 43 the combo one), lines 173 to 181 format the combo line and line 591 logs. `dump.cs` lines 53245 to 53258 list the four copies. All four use the string, and so do `PracticeSectionDisplay` `0x2E98A0` and method `0x3B0910`; no direct caller of 0x1168290 was found (byte scan of il2cpp and .text, `W8c/xref_IN-45.out.txt`). Its type argument is struct #8663, whose second field is eight sbytes (struct #8688, `dump.cs` lines 553483 to 553494); no name in `dump.cs` says drums.
+Game code (6142): `BasePlayer<T>` method copy RVA `0x1168290`.
 Hydra: no owner.
 Ruling: none needed: no Hydra rule reads it.
-Found: 2026-10-28, feasibility study lines 56 and 158.
+Found: 2026-10-28, feasibility study lines 56 and 158; the counts and the method, 2026-11-11, session 428cf079 (unknowns audit).
 
-### IN-92 Where the game keeps its key bindings and settings, from tool code and the study
+### IN-92 Where the game keeps its key bindings and settings
 
-Rule: Not settled by the game's code. The tools take it that Rewired saves the game's bindings under the registry key `HKCU\Software\srylain Inc.\Clone Hero`, with a dot in "Inc." unlike the LocalLow folder. The feasibility study says `settings.ini` comes with a `settings_schema.json` that gives every setting's default, minimum and maximum, and that `settings.ini` holds `poll_rate = 656`, the clock the game polls input on.
-Label: Unknown
-Evidence: each part comes from tool code or prose only. The registry key is `REGISTRY_KEY` at tools/ch_mcp/game_files.py line 70, whose comment names it as Rewired's; no game method that writes it was read. The schema file is named at docs/research/2026-10-28-clone-hero-mcp-feasibility.md line 35, and `poll_rate = 656` at line 84 of the same study; neither file is kept in the repo, and no game method that reads `poll_rate`, or what its unit is, was read. These three lines are the leads for a check.
-Game code (6142): not found: no game method was read for any part.
-Hydra: no owner: Hydra never reads the running game. The tools back the registry key up and restore it in tools/ch_mcp/game_files.py.
+Rule: Rewired keeps the game's bindings in Unity's PlayerPrefs, which a Windows player keeps under the registry key `HKCU\Software\srylain Inc.\Clone Hero`, with a dot in "Inc." unlike the LocalLow folder. The game's own code writes PlayerPrefs too, so the key holds more than the bindings. `poll_rate` in `settings.ini` is Rewired's joystick refresh rate: a whole-number setting whose default is four times the screen's refresh rate, clamped into 60 to 1000. The game builds the paths of `settings.ini` and `settings_schema.json` at start-up; this machine's `settings_schema.json` gives `poll_rate` the default 656, minimum 60 and maximum 1000, and who writes that file was not read.
+Label: Proven in the game's code
+Evidence: the bindings: Rewired's `UserDataStore_PlayerPrefs` (`dump.cs` line 4278) is the only caller of `PlayerPrefs.SetString` and `PlayerPrefs.Save` inside Rewired's code (direct callers only, byte scan of il2cpp and .text, `docs/audit/2026-11-08-clone-hero-unknowns/W10a/xref_playerprefs.txt`), and the same scan finds callers in `MainMenu`, `News`, `BuildCheck`, `CliGameLauncher` and one scrambled class. Unity's "PlayerPrefs" Scripting API page (https://docs.unity3d.com/ScriptReference/PlayerPrefs.html) gives the registry path from the company and product names, which the game's `Clone Hero_Data\app.info` gives as "srylain Inc." and "Clone Hero"; this machine's key holds Rewired's controller maps. `poll_rate`: `code/6142/settings_load_374D50.asm` lines 1637 to 1671 read `Screen.currentResolution` (line 1639), divide its refresh-rate ratio (lines 1644 and 1658 to 1664), truncate and multiply by 4 (lines 1665 and 1666), with minimum 60 (line 1660) and maximum 1000 (line 1657), and store the setting at the settings statics' +0xC0 (line 1671). `code/6142/poll_rate_to_rewired_233198.asm` lines 1 to 12: `GlobalVariables.Start` hands the value to Rewired's `ReInput.ConfigHelper.set_joystickRefreshRate`; the unit is Rewired's, from documentation that was not fetched. Two more readers of `poll_rate` in `GameplaySettingsMenu` were not read. The paths: `code/6142/settings_ini_path_377FC0.asm` lines 12 to 28 and `code/6142/settings_schema_path_164940.asm` lines 4 to 38. The tools' key is `REGISTRY_KEY` at tools/ch_mcp/game_files.py line 70.
+Game code (6142): settings loader RVA `0x374D50`; settings path RVA `0x377FC0`; schema path RVA `0x164940`; the call in `GlobalVariables.Start`, `code/6142/poll_rate_to_rewired_233198.asm` lines 1 to 12.
+Hydra: no owner: Hydra never reads the running game. The tools back the registry key up and restore it in tools/ch_mcp/game_files.py, so the non-Rewired values in it are backed up too.
 Ruling: none needed: no Hydra rule reads it.
-Found: 2026-11-08, session 77057df2 (docs-gaps search), from tool code and the feasibility study.
+Found: 2026-11-08, session 77057df2 (docs-gaps search), from tool code and the feasibility study; the game's code, 2026-11-08, session 428cf079 (unknowns audit).
 
 ## Naming across the two builds
 
@@ -596,15 +596,15 @@ Hydra: no owner.
 Ruling: none needed: no Hydra rule reads it.
 Found: 2026-10-28, feasibility study lines 41 to 50; recounted 2026-10-30, session b02ab3e6 (the reference build).
 
-### IN-47 The scrambled method counts per assembly were not recounted
+### IN-47 The scrambled method counts per assembly
 
-Rule: The study gives scrambled method counts of 7,941 of 11,926, 3,095 of 3,577, 1,426 of 1,614 and 288 of 303 for the four assemblies.
-Label: Unknown
-Evidence: not checked: it needs a recount of the method lines per image in `dump.cs`.
-Game code (6142): method metadata, not counted.
+Rule: Counting every method line in the dump, the four scrambled assemblies have 9,814 of 14,885 methods scrambled (CloneHero.dll), 3,700 of 4,209 (StrikeCore.dll), 1,701 of 1,906 (CHNet.Core.dll) and 304 of 320 (CHNet.Server.dll). Counting only methods with code of their own, the figures are 9,618 of 14,601, 3,019 of 3,338, 1,560 of 1,730 and 304 of 320. The feasibility study's counts (7,941 of 11,926, 3,095 of 3,577, 1,426 of 1,614 and 288 of 303) are not reproduced by either count.
+Label: Proven in the game's code
+Evidence: `docs/audit/2026-11-08-clone-hero-unknowns/W10b/count_methods.py` counted `dump.cs`, with its output in `W10b/method_counts.txt` beside it. It puts each type in an image by the image list at the top of `dump.cs`, counts each method line of a type's methods block, and calls a method scrambled when its name holds a non-ASCII letter, the same test IN-46 used for types. The second count keeps only methods whose RVA line is not -1. mscorlib.dll, counted as a control, has 0 scrambled. The study (docs/research/2026-10-28-clone-hero-mcp-feasibility.md line 52) says its counts came from a regex and are "close, not exact"; that regex is not kept, so the gap cannot be traced.
+Game code (6142): method metadata, counted.
 Hydra: no owner.
 Ruling: none needed: no Hydra rule reads it.
-Found: 2026-10-28, feasibility study lines 47 to 50.
+Found: 2026-10-28, feasibility study lines 47 to 50; recounted 2026-11-08, session 428cf079 (unknowns audit).
 
 ### IN-48 Only 164 of 1.0's 539 scrambled class names survive into 1.1
 
@@ -628,13 +628,13 @@ Found: 2026-10-28, feasibility study line 164.
 
 ### IN-50 The drum engine's 1.1 name and the shared GameManager field names
 
-Rule: The study says 1.1's drum engine name does not appear in 1.0 at all, and that only 13 GameManager field names appear in both builds.
-Label: Unknown
-Evidence: not checked: it needs a search of the 4045 `facts.json` for the 1.1 engine name and a field-by-field compare of the two GameManager classes. The compare file's line 5 count of 13 is about classes that appear more than once in a file, not about these fields.
-Game code (6142): not checked.
+Rule: 1.1's drum engine name (class #8255) appears nowhere in 1.0's dump of its five assemblies. Of 1.1's 60 GameManager fields and 1.0's 63, exactly 13 field names appear in both, and all 13 are scrambled names; none of 1.1's readable field names is among them. The names are scrambled anew for each build, so a shared scrambled name does not show a shared field (IN-48).
+Label: Proven in the game's code
+Evidence: `docs/audit/2026-11-08-clone-hero-unknowns/W11b/in50_compare.py`, with its output in `W11b/in50_compare_output.txt` beside it. It reads the 6142 `facts.json` (the drum engine's name, the class at `dump.cs` line 527421), the field lines of 6142's `GameManager` (`dump.cs` line 25284 up to its methods), and the 4045 `facts.json`: every class, field and method name of its 1,020 classes, its one GameManager class and the file's raw text. The engine name is not any of 4045's 10,415 distinct names, and not in that file's text in plain or JSON-escaped spelling. The 4045 `facts.json` covers the five assemblies its `dump_file` names (Assembly-CSharp, Assembly-CSharp-firstpass, StrikeCore, CHNet.Core and CHNet.Server), so "nowhere in 1.0" means nowhere in those five. The compare file's line 5 count of 13 is about classes that appear more than once in a file, not about these fields. The study now holds the claim at docs/research/2026-10-28-clone-hero-mcp-feasibility.md line 139.
+Game code (6142): class #8255 and `GameManager` field metadata, counted against 4045's.
 Hydra: no owner.
 Ruling: none needed: no Hydra rule reads it.
-Found: 2026-10-28, feasibility study line 164.
+Found: 2026-10-28, feasibility study (line 164 at commit f1b568bd); counted 2026-11-08, session 428cf079 (unknowns audit).
 
 ### IN-51 Build 1.0 is a Mono build with plain .NET code
 
