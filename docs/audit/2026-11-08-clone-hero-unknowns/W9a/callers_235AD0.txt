@@ -1,0 +1,5 @@
+== target 0x235AD0
+   dump.cs line 55969: GlobalVariables :: public bool ʺʵʸʸʽʶʾˀʶʺʺ(SongEntry ʺʴʸʺˁʷʿʽʵʾʺ, ˁʻʽʷʽʻʾʵʷˀʶ ʿʼʶˁˀʵʵʲʼˁʲ, out string ʸʲʲʶʾʼʵʳʻʷʾ, out string ʳʳʸˀʲʽʽʽʳʹʺ, out string ʼʸʺʺʶˀʿʽʵʸʽ) { }
+   call at 0x2983C3 in 0x297240 SongOptions :: public override void ʵˁʺʻʲʹˁʻʹʺʳ() { } (dump.cs 7083)
+   call at 0x3BD88C in 0x3BD710 ʲʻʳʶʲʼʸʴʾʲʳ.ˁʸˁʵʽʵʾʹʲʶʼ :: private void MoveNext() { } (dump.cs 19032)
+   pointer at file 0x3C521E8 (section .data, rva 0x3C53FE8)

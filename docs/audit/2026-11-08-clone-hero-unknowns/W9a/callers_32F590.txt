@@ -1,0 +1,9 @@
+== target 0x32F590
+   dump.cs line 73000: PlayerSelectionMenu :: public bool ʸʳʼʹʸʽʾˀʴʼʷ() { }
+   call at 0xCFB1D in 0xCFA60 PlayerSelectionCanvas :: private void ʹʵʲʻʵʳʹʼʿʵʺ() { } (dump.cs 25753)
+   call at 0xD00EF in 0xD0030 PlayerSelectionCanvas :: private void ʻʼʽʹʳʳʾʴʸʲʲ() { } (dump.cs 25786)
+   call at 0xD0B38 in 0xD0A80 PlayerSelectionCanvas :: private void ˀʵʼʳʳʷʹʲˀʼʻ() { } (dump.cs 25744)
+   call at 0xD0EFF in 0xD0E20 PlayerSelectionCanvas :: private void Update() { } (dump.cs 25774)
+   call at 0x1E2BE9 in 0x1E2AE0 PlayerProfileMenu :: public void ʷʹʿʼʼʷˀʹʷʴʵ() { } (dump.cs 45806)
+   call at 0x1E6F29 in 0x1E6E20 PlayerProfileMenu :: public void ʼʾʾʷʹʼˁʽˁʿʽ() { } (dump.cs 45915)
+   pointer at file 0x3C59270 (section .data, rva 0x3C5B070)
