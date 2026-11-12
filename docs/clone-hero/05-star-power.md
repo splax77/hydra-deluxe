@@ -2,7 +2,7 @@
 
 This page covers Star Power phrases, the meter, activation, drain, the Star Power end and squeezes.
 It describes build 1.1 (v1.1.0.6142).
-Last write-back: 2026-11-08.
+Last write-back: 2026-11-12.
 
 The live-run files named below are the `run1_cal0_*` files under tools/ch_probe/experiments/results/overlay-spike/. "Run 1" is the key-press auto-player run on the probe chart Trippin SP Spike (resolution 192), stamped 2026-10-29 00:39 UTC. The engine fields are those of the base engine class #8288, which the drum engine #8255 inherits. `ghidra_decompile_all.txt` and "the decompile" mean Ghidra's full decompile of build 6142, which `code/README.md` describes; it is not in the repo.
 
@@ -377,6 +377,16 @@ Game code (6142): gain RVA `0x20F4FA0`; the crediting call in the base hit RVA `
 Hydra: `close_sp_phrase` in src/parse/song.cpp line 429 marks the crediting chord, the phrase's last chord, as the game's flag 0x100 does
 Ruling: none needed: same rule
 Found: 2026-10-30, session b02ab3e6 (the reference build)
+
+### SP-48 One missed gem inside a phrase strips the phrase's award
+
+Rule: When the player misses a note that belongs to a Star Power phrase, the game takes the phrase marks off the notes ahead, up to and including the phrase's last chord. That chord loses its award flag 0x100 (SP-04), so hitting it later credits nothing. One missed gem is enough, even when the rest of its chord is hit.
+Label: Proven in the game's code
+Evidence: The chain runs through five listings. The drum engine's miss method, slot 4, hands a plain note's miss to the base miss method at `docs/audit/drum-lanes/f20dcad0.asm` line 87. Lane notes and notes with flag 0x800 can leave by other routes (lines 7 to 16 and 28 to 73), which were not followed. The base miss, `docs/audit/drum-lanes/play/f20f3610_base_miss.asm`, stores the missed note's 0x80 test (the getter at line 30 of `docs/audit/note-shuffle/scout-flag/note_getters.txt`) in the engine's byte +0x46 at lines 22 to 25, then calls slot 20 through `[vtable+0x278]` at lines 26 to 31. Slot 20 is the combo break. When +0x46 is set it calls slot 22 through `[vtable+0x298]`, then clears +0x46 (`docs/audit/drum-lanes/play/f20f4b60_combo_break.asm` lines 17 to 23). Slot 22 walks the notes forward from the engine's cursor at +0x50, clears 0x80 on each note, and on the first note with 0x100 clears 0x80 and 0x100 on every note of its chord (`code/6142/sp_phrase_strip_20F5D90.asm` lines 17 to 112). On the hit side, the base hit credits a phrase only when the hit note still has 0x100 (the getter at line 2 of `docs/audit/note-shuffle/scout-flag/note_getters.txt`) and +0x46 is set (`docs/audit/drum-lanes/play/f20f63f0_base_hit.asm` lines 199 to 216, SP-35). A slot number is the vtable offset less 0x138, over 16. The il2cpp dump C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-dumps\6142\dump.cs (outside the repo) puts `0x20F3610` at slot 4, `0x20F4B60` at slot 20 and `0x20F5D90` at slot 22 of the base engine (lines 530080, 530260 and 530287). The drum classes #8253 and #8255 (lines 527281 to 527585) override slot 4 with `0x20DCAD0` (line 527508) and override neither slot 20 nor slot 22. Live, LS-M2 run 1 of 2026-11-08 on Won't Get Fooled Again agrees. Its chart's notes.mid holds a drum phrase from tick 168,960 to 170,759, so chord 609 (tick 168,960, the activation chord) is its first chord and chord 618 (tick 170,640) its last. In `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-08\ls-m2-run1\press-2.csv`, chord 609's second row has no `down_frame`, so its kick was never pressed, and the chord scored +520. Chord 618 was hit for +400. In `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-08\ls-m2-run1\sp_watch-2.csv` the full bar is 14,400, so a phrase adds 3,600 (SP-10), and the meter only drains, from 5,652 at clock 157.900 s to 5,604 at 157.949 s, with no rise. That is the open exception in SP-34. Not read: where the cursor at +0x50 sits when slot 22 runs; the base miss's early exit when the note has flag 0x4 at +0x7C (the getter 0x214BCC0, lines 17 to 21); what the hit side's r14b and the byte +0x196 stand for (lines 206 to 209); and the two callees the strip's chord walk uses. That the walk runs forward and covers one chord rests on the code's shape.
+Game code (6142): the strip, slot 22 of #8288 (scrambled name), RVA `0x20F5D90`, `code/6142/sp_phrase_strip_20F5D90.asm` lines 17 to 112; the base miss RVA `0x20F3610`, lines 17 to 31; the combo break RVA `0x20F4B60`, lines 17 to 23; the drum miss override RVA `0x20DCAD0`, line 87; the base hit RVA `0x20F63F0`, lines 193 to 218
+Hydra: no owner: Hydra's paths assume every note is hit and never model a miss. `close_sp_phrase` in src/parse/song.cpp line 429 marks the award chord as `flag_sp`, and the replay reports it as `is_sp_phrase_end` (src/core/replay.cpp line 141) whatever the player missed.
+Ruling: none needed: no Hydra rule depends on it
+Found: 2026-11-12, session a828b0ca (live step LS-A4, a code read; docs/sessions/2026-11-12-a828b0ca.md); the strip's listing 2026-11-12, session 07d9b035; the LS-M2 run 2026-11-08, session 6341c618
 
 ## Squeezes
 

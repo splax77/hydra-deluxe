@@ -2,7 +2,7 @@
 
 This page covers chart Offset and song.ini delay, the song clock, the hit window, calibration and playback speed.
 It describes build 1.1 (v1.1.0.6142).
-Last write-back: 2026-11-11.
+Last write-back: 2026-11-12.
 
 ## Offset and delay
 
@@ -157,6 +157,16 @@ Game code (6142): not looked for; the frame cap is `framerate` in `settings.ini`
 Hydra: no owner
 Ruling: none needed: no Hydra rule depends on it
 Found: 2026-11-07, session b132faae
+
+### TM-53 The song clock kept pace with wall time through ten player stalls
+
+Rule: In LS-A2 run 1 the player stopped ten times, for 424 to 2,045 ms each, and dropped the chord that came due. Each time, the engine's song clock moved forward by the wall time that passed, within 5.4 ms. So a stall in the player neither paused nor slowed the game's clock. Two readings stand apart. Before chord 839 the clock ran about 10.7 ms ahead of wall time. Near chord 430 the watch file's clock reads are stale, because the watch thread itself paused for 135 ms there.
+Label: Proven in a live run
+Evidence: LS-A2 run 1, started 22:38 local on 2026-11-11, `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-11\ls-a2-run1\press-1.csv` and `sp_watch-1.csv` in the same folder. A stall runs from the `wall_s_at_reply` of the row before a dropped chord to the `wall_s_at_read` of that chord's row. The ten stalls come before chords 128, 150, 165, 215, 1453, 1900, 1922, 1941, 1991 and 2103, and last 1,103.4, 827.9, 530.2, 423.8, 484.0, 959.4, 933.8, 739.6, 575.2 and 2,045.2 ms. They are the only dropped rows whose gap is above 400 ms. Across each one, the press log's `clock_ms_at_press` moved, read to read, between 0.09 and 5.38 ms less than `wall_s_at_read` did; the 5.38 ms is chord 2103's, over 2,054.8 ms. The watch file's `clock_s`, interpolated at each stall's two wall times, agrees within 3.71 ms. At chord 165 the watch thread had its own 462.8 ms gap, and `clock_s` rose 463.6 ms across it. Chord 1426's row, marked dropped, was read 3,747.5 ms after the reply to chord 1425, with the rows of chords 1427 to 1443 between them in the file; over that span the clock and wall time agree within 0.01 ms in the press log and 0.24 ms in the watch. The exceptions: before chord 839 (a 263.1 ms gap) the press log's clock moved 10.70 ms more than wall time, and the watch shows 12.63 ms across a 118.7 ms gap in its own rows. Before chord 430, the watch has a 135.2 ms gap in which `clock_s` rose only from 121.9209 to 121.9269 s, so its interpolated reads there are about 130 ms stale; the press log over the same 318.3 ms gap agrees within 1.12 ms. The script that measured these, in session 07d9b035, was not kept. Which field the press log's `clock_ms_at_press` reads was not checked.
+Game code (6142): field `#8288+0x100`, the clock the watch file reads (TM-13); the cause was not looked for in the code. TM-12's frame-timer clock fits it, and nothing has checked it here.
+Hydra: no owner
+Ruling: none needed: no Hydra rule depends on it
+Found: the run 2026-11-11, session a828b0ca (LS-A2; docs/sessions/2026-11-12-a828b0ca.md); the stalls 2026-11-12, session a09f66ea (docs/sessions/2026-11-12-a09f66ea.md); the numbers above 2026-11-12, session 07d9b035
 
 ### TM-13 The engine's song clock is the double at engine+0x100, in seconds
 
