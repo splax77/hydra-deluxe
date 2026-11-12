@@ -17,6 +17,7 @@
 #include <cfloat>
 #include <chrono>
 #include <deque>
+#include <fstream>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -577,6 +578,99 @@ void test_command_wait_text_reply(ImGuiTestContext* ctx) {
     IM_CHECK(!ctx->IsError());
 }
 
+// ---------------------------------------------------------------------------
+// A live reset while the store opens. An OpenGate holds the open on its
+// worker thread, so the tests see what a slow library shows.
+
+// Whether the state verb's text says the store is `word` ("ready",
+// "opening"), in state_text's own line.
+bool store_state_is(ImGuiTestContext* ctx, CommandSession& session, const std::string& word) {
+    const CommandResult r = run_command(ctx, session, "state");
+    return r.ok && r.text.find("store=" + word + "\n") != std::string::npos;
+}
+
+// The frames keep coming while a live reset waits for the store. The gate
+// lets the open go only once a frame with the startup screen's words is drawn
+// (OpenHold::StartupDrawn), so a reset that blocks never gets past it.
+void test_live_reset_draws_while_opening(ImGuiTestContext* ctx) {
+    start_session(ctx);
+    if (ctx->IsError()) return;
+    CommandSession session;
+    session.live = true;
+    OpenGate gate(OpenHold::StartupDrawn);
+    const CommandResult r = run_command(ctx, session, "reset");
+    IM_CHECK_STR_EQ(r.text.c_str(), "");
+    IM_CHECK(r.ok);
+    IM_CHECK(gate.started() > 0);
+    IM_CHECK(store_state_is(ctx, session, "ready"));
+}
+
+// A live reset never outlasts the timeout in force. Past it, the reply says
+// the library is still opening; the open goes on, and wait-idle waits for it.
+void test_live_reset_open_outlasts_timeout(ImGuiTestContext* ctx) {
+    start_session(ctx);
+    if (ctx->IsError()) return;
+    CommandSession session;
+    session.live = true;
+    CommandResult r = run_command(ctx, session, "timeout 0.4");
+    IM_CHECK(r.ok);
+    OpenGate gate(OpenHold::LibraryRead);
+    r = run_command(ctx, session, "reset");
+    IM_CHECK(!r.ok);
+    IM_CHECK_STR_EQ(r.text.c_str(), "the library was still opening after 0.4 s; use wait-idle");
+    IM_CHECK(store_state_is(ctx, session, "opening"));
+
+    gate.open();
+    session.timeout = CommandSession{}.timeout;
+    r = run_command(ctx, session, "wait-idle");
+    IM_CHECK_STR_EQ(r.text.c_str(), "");
+    IM_CHECK(r.ok);
+    IM_CHECK(store_state_is(ctx, session, "ready"));
+}
+
+// A file of junk bytes where the database should be, so the store's open
+// fails. The same bytes as write_junk_db (tests/db_file_util.h), which this
+// runner cannot include: that header needs doctest.
+std::string write_junk_library(const Harness& h) {
+    const std::string path = h.temp_dir + "\\junk_library.db";
+    std::ofstream f(hydra::os_path(path), std::ios::binary | std::ios::trunc);
+    f << std::string(4096, 'x');
+    return f ? path : "";
+}
+
+// A failed open reads the same from the live reset, which waits by drawing,
+// and from the reset a script runs, which blocks: one function words it.
+void test_live_reset_open_failed(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    start_session(ctx);
+    if (ctx->IsError()) return;
+    const std::string junk = write_junk_library(h);
+    IM_CHECK_RETV(!junk.empty(), );
+    const std::string seed_before = h.seed_db;
+    h.seed_db = junk;
+
+    CommandSession live;
+    live.live = true;
+    const CommandResult live_reply = run_command(ctx, live, "reset");
+    // A failure the script's reset records is the expected result here, not
+    // the test's.
+    recover_for_next_command(ctx);
+    const size_t log_start = static_cast<size_t>(ctx->TestOutput->Log.Buffer.size());
+    CommandSession script;
+    const CommandResult script_reply = run_command(ctx, script, "reset");
+    const bool script_failed = ctx->IsError();
+    const std::string script_log = log_since(ctx, log_start);
+    recover_for_next_command(ctx);
+    h.seed_db = seed_before;
+
+    const char* sentence = "The scratch library did not open";
+    IM_CHECK(!live_reply.ok);
+    IM_CHECK(live_reply.text.find(sentence) != std::string::npos);
+    IM_CHECK(!script_reply.ok);
+    IM_CHECK(script_failed);
+    IM_CHECK(script_log.find(sentence) != std::string::npos);
+}
+
 }  // namespace
 
 const std::vector<TestEntry>& command_tests() {
@@ -592,6 +686,9 @@ const std::vector<TestEntry>& command_tests() {
         {"command-bare-ref-missing", test_command_bare_ref_missing},
         {"command-modal-named", test_command_modal_named},
         {"command-wait-text-reply", test_command_wait_text_reply},
+        {"live-reset-draws-while-opening", test_live_reset_draws_while_opening},
+        {"live-reset-open-outlasts-timeout", test_live_reset_open_outlasts_timeout},
+        {"live-reset-open-failed", test_live_reset_open_failed},
     };
     return entries;
 }

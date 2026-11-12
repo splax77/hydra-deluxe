@@ -177,21 +177,43 @@ private:
     ScopedHook seam_;
 };
 
+// Where an OpenGate holds the open, and what lets it go besides open().
+enum class OpenHold {
+    // At the conversion to records, until open(). Only an old library file
+    // reaches that step.
+    Conversion,
+    // At the library read, which every open reaches, until open().
+    LibraryRead,
+    // At the library read, until a frame with the startup screen's words on
+    // it has been drawn (OpenGate::note_startup_drawn) and the gate's
+    // minimum hold has passed. Code that blocks while the store opens draws
+    // no such frame, so the open is held until the gate's own wait gives up.
+    StartupDrawn,
+};
+
 // Holds the app's store open on its worker thread until the test lets it
 // through. A scratch library opens in a blink, so a test that looks at the
 // startup screen would race it. While a gate lives, the open's progress waits
-// at the gate once it reaches the conversion to records, until open(). started()
-// counts the opens that reached it. Make it BEFORE reset_app (the open starts
-// in AppState's constructor) and pass wait_store=false; its destructor opens
+// at the gate once it reaches the step `hold` names, until open() or what
+// `hold` says. `min_hold_s` is for StartupDrawn only: the least time, in
+// seconds, the gate holds before it lets go, counted from when it starts
+// holding. The gate's own wait is testwait::kWaitCap on top of that hold;
+// past it, the open fails. started() counts the opens that reached it. Make
+// it BEFORE reset_app (the open starts in AppState's constructor) and pass
+// wait_store=false, or reset through a wait that draws; its destructor opens
 // it and removes the seam. Only one gate can exist at a time.
 class OpenGate {
 public:
-    OpenGate();
+    explicit OpenGate(OpenHold hold = OpenHold::Conversion, double min_hold_s = 0);
     ~OpenGate();
     OpenGate(const OpenGate&) = delete;
     OpenGate& operator=(const OpenGate&) = delete;
     void open();
     int started() const;
+    // A frame with the startup screen's words on it has been drawn: what
+    // lets a StartupDrawn gate go. The wait that draws while the store opens
+    // calls it; nothing else does.
+    static void note_startup_drawn();
 
 private:
     ScopedHook seam_;

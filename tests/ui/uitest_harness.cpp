@@ -349,23 +349,35 @@ namespace {
 // and can outlive the OpenGate.
 std::atomic<bool> g_open_gate_open{true};
 std::atomic<int> g_open_gate_started{0};
+std::atomic<bool> g_open_gate_startup_drawn{false};
 }  // namespace
 
-OpenGate::OpenGate()
+OpenGate::OpenGate(OpenHold hold, double min_hold_s)
     : seam_(hydra::ui::set_store_open_gate_for_test,
-            [](const hydra::ui::StoreOpenProgress& progress,
-               const std::function<bool()>& cancelled) {
-                // Hold at the conversion, where the upgrade's screen has all
-                // its words.
-                if (progress.step != hydra::ui::StoreOpenProgress::Step::ConvertingRecords)
-                    return;
+            [hold, min_hold_s](const hydra::ui::StoreOpenProgress& progress,
+                               const std::function<bool()>& cancelled) {
+                using Step = hydra::ui::StoreOpenProgress::Step;
+                // The conversion is where the upgrade's screen has all its
+                // words; the library read is the step every open reaches.
+                const Step at = hold == OpenHold::Conversion ? Step::ConvertingRecords
+                                                             : Step::LoadingLibrary;
+                if (progress.step != at) return;
                 if (g_open_gate_open.load()) return;
                 ++g_open_gate_started;
-                testwait::wait_until([&] { return g_open_gate_open.load() || cancelled(); },
-                                     "the test to open the startup open's gate");
+                const auto held_from = std::chrono::steady_clock::now();
+                const auto min_hold = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::duration<double>(hold == OpenHold::StartupDrawn ? min_hold_s : 0));
+                const auto let_go = [&] {
+                    if (g_open_gate_open.load() || cancelled()) return true;
+                    return hold == OpenHold::StartupDrawn && g_open_gate_startup_drawn.load() &&
+                           std::chrono::steady_clock::now() - held_from >= min_hold;
+                };
+                testwait::wait_until(let_go, "the test to open the startup open's gate",
+                                     testwait::kWaitCap + min_hold);
             }) {
     g_open_gate_open = false;
     g_open_gate_started = 0;
+    g_open_gate_startup_drawn = false;
 }
 
 // The gate opens here; seam_ removes the seam after.
@@ -374,6 +386,8 @@ OpenGate::~OpenGate() { g_open_gate_open = true; }
 void OpenGate::open() { g_open_gate_open = true; }
 
 int OpenGate::started() const { return g_open_gate_started.load(); }
+
+void OpenGate::note_startup_drawn() { g_open_gate_startup_drawn = true; }
 
 size_t count_on_screen(Harness& h, const std::string& s) {
     const std::string all = visible_text(h);
