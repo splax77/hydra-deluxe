@@ -384,15 +384,15 @@ class SpTools:
 
     # -- inside ---------------------------------------------------------------------
 
-    def _open_run_length_ms(self) -> Optional[int]:
+    def _open_run_length_ms(self) -> Optional[float]:
         """The length ch_start printed for the run it launched, or None with
         no run or no song on its command line.
         (GameTools.song_length_ms)."""
         return self._game.song_length_ms()
 
-    def _song_end_ms(self, song_folder: Optional[str]) -> Optional[int]:
-        """The song's length for a watch given `song_folder`
-        (bot_run.song_length_ms), or the open run's with no folder. None when
+    def _song_end_ms(self, song_folder: Optional[str]) -> Optional[float]:
+        """The song's length for a watch given `song_folder`, Hydra's song end
+        through bot_run.song_length_ms, or the open run's with no folder. None when
         neither says: a watch still runs on a song with no known length."""
         if song_folder is None:
             return self._open_run_length_ms()

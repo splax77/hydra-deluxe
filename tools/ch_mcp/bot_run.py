@@ -54,10 +54,9 @@ if __package__ in (None, ""):
 
 from tools.ch_mcp import build_stamp  # noqa: E402
 from tools.ch_mcp import frida_attach as FA  # noqa: E402
-from tools.ch_mcp import game_files  # noqa: E402
+from tools.ch_mcp import game_files, hydra_end, install_chart  # noqa: E402
 from tools.ch_mcp.frida_tools import AGENT_DIR  # noqa: E402
 from tools.ch_probe import constants as C  # noqa: E402
-from tools.ch_probe import probe_songs  # noqa: E402
 
 DEFAULT_PLAYER = "Drums,Expert"
 # The user's caps for the live steps: question 5 of the feasibility plan,
@@ -72,7 +71,6 @@ EXIT_CHECK_S = 30.0
 STOPPED_LINE = "stopped the game"
 STOPPED_BY_FLAG_LINE = f"{STOPPED_LINE} (--stop)"
 
-MANIFEST = "manifest.json"
 PRO_DRUMS_INSTRUMENT = "ProDrums"
 
 # Win32's ShowWindow value for "minimized, not activated"; subprocess names
@@ -385,23 +383,22 @@ class Env:
     launch_patch_path: str = LAUNCH_PATCH_FILE
 
 
-def song_length_ms(song_dir: str) -> tuple[int, str]:
-    """The song's length in ms and where it came from: song.ini's
-    song_length, else the probe manifest's last note through
-    probe_songs.song_length_ms."""
-    ms = game_files.song_ini_length_ms(song_dir)
-    if ms is not None:
-        return ms, f"song_length in {os.path.join(song_dir, game_files.SONG_INI)}"
-    path = os.path.join(song_dir, MANIFEST)
-    if os.path.isfile(path):
-        with open(path, encoding="utf-8") as f:
-            notes = json.load(f).get("notes") or []
-        if notes:
-            return (probe_songs.song_length_ms(int(notes[-1]["time_ms"])),
-                    f"last note in {path} plus probe_songs.SILENCE_MS")
-    raise SongLengthMissing(
-        f"{song_dir}: no song_length in song.ini and no notes in manifest.json; "
-        "the stats wait has no cap, so nothing was started")
+def song_length_ms(song_dir: str) -> tuple[float, str]:
+    """The song's length in ms and where it came from: Hydra's song end for
+    the folder's chart file (hydra_end.chart_song_length_ms). Raises
+    SongLengthMissing when the folder has no chart file or Hydra names no
+    end for it."""
+    chart = install_chart.chart_file(song_dir)
+    if chart is None:
+        raise SongLengthMissing(
+            f"{song_dir} has no {' or '.join(install_chart.CHART_FILES)}, so Hydra has no "
+            "song end for it; the stats wait has no cap, so nothing was started")
+    try:
+        ms, dump = hydra_end.chart_song_length_ms(chart)
+    except hydra_end.SongEndMissing as e:
+        raise SongLengthMissing(
+            f"{song_dir}: {e}; the stats wait has no cap, so nothing was started") from e
+    return ms, hydra_end.source_text(dump)
 
 
 def run_cap_s(length_ms: int) -> float:

@@ -33,12 +33,21 @@ from tools.ch_mcp import game_files as G  # noqa: E402
 from tools.ch_mcp import install_chart as I  # noqa: E402
 from tools.ch_mcp.tests.test_build_stamp import make_built_agent  # noqa: E402
 from tools.ch_mcp.tests.test_game_files import FakeReg  # noqa: E402
+from tools.ch_mcp.tests.test_hydra_end import FAKE  # noqa: E402
 from tools.ch_probe import probe_songs  # noqa: E402
 from tools.ch_probe.constants import PROCESS_NAME  # noqa: E402
 
 ORIGINAL = {name: f"original {name}".encode() for name in G.DOCUMENTS_FILES + G.LOCALLOW_FILES}
 NEW_STATS = json.dumps({"players": [{"is_bot": True}]}).encode()
-SONG_LENGTH_MS = 4000  # the fake song's song.ini song_length; the cap tests pin 64 s
+SONG_LENGTH_MS = 4000  # the fake song's song end in its fake dump; the cap tests pin 64 s
+
+
+def setUpModule():
+    FAKE.start()
+
+
+def tearDownModule():
+    FAKE.stop()
 
 
 def _write(path: str, data: bytes) -> None:
@@ -99,7 +108,8 @@ class FakeLauncher:
 class Rig:
     """Temp user folders, a song folder and an Env wired to the fakes."""
 
-    def __init__(self, tmp: str, *, exits_at=None, song_ini=None):
+    def __init__(self, tmp: str, *, exits_at=None, song_ini="[song]\nname = x\n",
+                 length_ms=SONG_LENGTH_MS):
         self.docs = os.path.join(tmp, "docs")
         self.low = os.path.join(tmp, "low")
         self.out_dir = os.path.join(tmp, "out")
@@ -108,8 +118,11 @@ class Rig:
             os.makedirs(d)
         for name, data in ORIGINAL.items():
             _write(self.path(name), data)
-        ini = song_ini if song_ini is not None else f"[song]\nsong_length = {SONG_LENGTH_MS}\n"
-        _write(os.path.join(self.song, G.SONG_INI), ini.encode())
+        _write(os.path.join(self.song, G.SONG_INI), song_ini.encode())
+        # The song's chart, and the song end the fake dump of it holds.
+        self.chart = os.path.join(self.song, I.CHART_FILES[0])
+        _write(self.chart, b"[Song]\n")
+        FAKE.set_end(self.chart, length_ms)
         self.clock = FakeClock()
         self.game = FakeGame(self.clock, exits_at)
         self.launch = FakeLauncher(self.game)
@@ -271,24 +284,34 @@ class BotRunTest(unittest.TestCase):
         self.assertIn("user.bin: restored", buf.getvalue())
         r.assert_all_restored(self)
 
-    def test_the_manifest_sets_the_cap_when_song_ini_has_no_length(self):
-        r = Rig(self.tmp, song_ini="[song]\nname = x\n")
-        with open(os.path.join(r.song, B.MANIFEST), "w", encoding="utf-8") as f:
-            json.dump({"notes": [{"time_ms": 500}, {"time_ms": 1000}]}, f)
+    def test_the_length_is_hydras_end_from_a_dump_of_the_folders_chart(self):
+        # song.ini's own song_length is never read for it.
+        r = Rig(self.tmp, song_ini="[song]\nsong_length = 9999\n", length_ms=193934.0)
         ms, source = B.song_length_ms(r.song)
-        self.assertEqual(ms, probe_songs.song_length_ms(1000))
-        self.assertIn("manifest.json", source)
+        self.assertEqual(ms, 193934.0)
+        self.assertEqual(FAKE.charts[-1], r.chart)
+        self.assertTrue(source.startswith("song_length_ms in "), source)
+        self.assertTrue(source.endswith(f"{probe_songs.WINDOW_MAP}-dump.json"), source)
 
     def test_no_length_anywhere_starts_nothing(self):
-        r = Rig(self.tmp, song_ini="[song]\nname = x\n")
-        with self.assertRaises(B.SongLengthMissing):
+        # A dump whose song_length_ms is null: Hydra names no end.
+        r = Rig(self.tmp, length_ms=None)
+        with self.assertRaises(B.SongLengthMissing) as caught:
             B.run_bot(r.song, r.out_dir, env=r.env)
+        self.assertIn("song_length_ms is null", str(caught.exception))
         self.assertEqual(r.launch.commands, [])
         self.assertFalse(os.path.exists(r.out_dir))
 
+    def test_a_folder_with_no_chart_starts_nothing(self):
+        r = Rig(self.tmp)
+        os.remove(r.chart)
+        with self.assertRaises(B.SongLengthMissing) as caught:
+            B.run_bot(r.song, r.out_dir, env=r.env)
+        self.assertIn("has no notes.chart or notes.mid", str(caught.exception))
+        self.assertEqual(r.launch.commands, [])
+
     def test_pro_drums_chart_with_a_drums_player_prints_a_note(self):
-        r = Rig(self.tmp, exits_at=10,
-                song_ini=f"[song]\nsong_length = {SONG_LENGTH_MS}\npro_drums = True\n")
+        r = Rig(self.tmp, exits_at=10, song_ini="[song]\npro_drums = True\n")
         r.game_writes_stats_at(5)
         B.run_bot(r.song, r.out_dir, env=r.env)
         self.assertTrue(r.lines[0].startswith("note: song.ini says pro_drums = True"))
@@ -330,7 +353,7 @@ class RunStepsTest(unittest.TestCase):
         self.assertEqual(run.launched_at, 0.0)
         self.assertEqual(run.length_ms, SONG_LENGTH_MS)
         self.assertEqual(run.cap_s, 64)
-        self.assertIn("song.ini", run.length_source)
+        self.assertTrue(run.length_source.startswith("song_length_ms in "), run.length_source)
         self.assertEqual(len(r.lines), 3)
         self.assertEqual(r.lines[0], f"backup folder: {r.backup_dir()}")
         self.assertTrue(r.lines[1].startswith("starting: "))
@@ -342,9 +365,12 @@ class RunStepsTest(unittest.TestCase):
         # ch_mcp Star Power plan).
         self.assertEqual(B.run_cap_s(260504), 320.504)
 
-    def test_start_runs_cap_is_run_cap_s_of_the_song_length(self):
-        r = Rig(self.tmp, exits_at=None, song_ini="[song]\nsong_length = 260504\n")
+    def test_bot_run_cap_is_run_cap_s_of_hydras_end(self):
+        # The fake dump's song_length_ms is the Senri chart's 260,504, so the
+        # cap is the one test_run_cap_is_the_song_plus_the_extra_minute pins.
+        r = Rig(self.tmp, exits_at=None, length_ms=260504)
         run = self.start(r, r.song)
+        self.assertEqual(run.length_ms, 260504)
         self.assertEqual(run.cap_s, 320.504)
         self.assertEqual(run.cap_s, B.run_cap_s(run.length_ms))
 
@@ -984,6 +1010,9 @@ class InstallChartTest(unittest.TestCase):
         os.makedirs(self.src)
         _write(os.path.join(self.src, G.SONG_INI), b"[song]\nsong_length = 90000\n")
         _write(os.path.join(self.src, "notes.mid"), b"MThd")
+        # Hydra's song end for the chart, in its fake dump. song.ini's own
+        # song_length lines in these tests are only bytes the copy keeps.
+        FAKE.set_end(os.path.join(self.src, "notes.mid"), 90000)
         self.oggs = []
 
     def tearDown(self):
@@ -1018,15 +1047,61 @@ class InstallChartTest(unittest.TestCase):
         # The next try is not refused as "already exists".
         I.install(self.src, dest_root=self.dest_root, write_ogg=self.fake_ogg)
 
-    def test_refuses_a_folder_without_song_length_or_chart(self):
-        _write(os.path.join(self.src, G.SONG_INI), b"[song]\nname = x\n")
-        with self.assertRaises(I.InstallRefused):
-            I.install(self.src, dest_root=self.dest_root, write_ogg=self.fake_ogg)
+    def test_the_silent_audio_is_hydras_end_not_song_ini(self):
         _write(os.path.join(self.src, G.SONG_INI), b"[song]\nsong_length = 9\n")
-        os.remove(os.path.join(self.src, "notes.mid"))
-        with self.assertRaises(I.InstallRefused):
+        I.install(self.src, dest_root=self.dest_root, write_ogg=self.fake_ogg)
+        self.assertEqual([ms for _path, ms in self.oggs], [90000])
+
+    def test_refuses_a_folder_without_a_song_end_or_chart_or_song_ini(self):
+        chart = os.path.join(self.src, "notes.mid")
+        FAKE.set_end(chart, None)
+        with self.assertRaises(I.InstallRefused) as cm:
             I.install(self.src, dest_root=self.dest_root, write_ogg=self.fake_ogg)
+        self.assertIn("song_length_ms is null", str(cm.exception))
+        os.remove(chart)
+        with self.assertRaises(I.InstallRefused) as cm:
+            I.install(self.src, dest_root=self.dest_root, write_ogg=self.fake_ogg)
+        self.assertIn("has no notes.chart or notes.mid", str(cm.exception))
+        _write(chart, b"MThd")
+        FAKE.set_end(chart, 90000)
+        os.remove(os.path.join(self.src, G.SONG_INI))
+        with self.assertRaises(I.InstallRefused) as cm:
+            I.install(self.src, dest_root=self.dest_root, write_ogg=self.fake_ogg)
+        self.assertIn(f"has no {G.SONG_INI}", str(cm.exception))
         self.assertFalse(os.path.exists(self.dest_root))
+        self.assertEqual(self.oggs, [])
+
+    def test_install_refuses_a_name_that_is_not_a_plain_folder_name(self):
+        outside = os.path.join(self.tmp, "outside")
+        for name in ("..", os.path.join("..", "outside"), "a/b", "a\\b", "", ".",
+                     os.path.join(self.tmp, "outside")):
+            with self.subTest(name=name):
+                with self.assertRaises(I.InstallRefused) as cm:
+                    I.install(self.src, dest_root=self.dest_root, name=name,
+                              write_ogg=self.fake_ogg)
+                self.assertIn("is not a plain folder name", str(cm.exception))
+        self.assertFalse(os.path.exists(self.dest_root))
+        self.assertFalse(os.path.exists(outside))
+        self.assertEqual(self.oggs, [])
+        self.assertEqual(FAKE.charts.count(os.path.join(self.src, "notes.mid")), 0)
+
+    def test_install_refuses_a_name_as_a_refused_line(self):
+        out = io.StringIO()
+        with redirect_stdout(out):
+            code = I.main([self.src, "--dest", self.dest_root, "--name", ".."])
+        self.assertEqual(code, 2)
+        self.assertTrue(out.getvalue().startswith("refused: '..' is not a plain folder name"),
+                        out.getvalue())
+
+    def test_install_copies_no_other_audio(self):
+        for name in ("song.ogg", "drums.ogg", "guitar.opus", "song.mp3", "crowd.wav"):
+            _write(os.path.join(self.src, name), b"audio")
+        I.install(self.src, dest_root=self.dest_root, write_ogg=self.fake_ogg)
+        dest = os.path.join(self.dest_root, "Some Song")
+        # The song.ogg there is the silent one write_ogg makes, which the fake
+        # here does not write; nothing of the source's audio is copied.
+        self.assertEqual(sorted(os.listdir(dest)), sorted([G.SONG_INI, "notes.mid"]))
+        self.assertEqual(self.oggs, [(os.path.join(dest, probe_songs.SONG_OGG), 90000)])
 
     # -- the copy's title -----------------------------------------------------------
 

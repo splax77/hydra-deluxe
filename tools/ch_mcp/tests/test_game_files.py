@@ -423,20 +423,17 @@ class SongIniTest(unittest.TestCase):
         _write(os.path.join(self.tmp, G.SONG_INI), text.encode("utf-8"))
         return self.tmp
 
-    def test_reads_length_and_pro_drums_from_the_song_section(self):
-        d = self._ini("﻿[Song]\nname = X\nSong_Length = 62080\npro_drums = True\n")
-        self.assertEqual(G.song_ini_length_ms(d), 62080)
+    def test_reads_pro_drums_from_the_song_section(self):
+        d = self._ini("﻿[Song]\nname = X\npro_drums = True\n")
         self.assertTrue(G.song_ini_pro_drums(d))
 
     def test_other_sections_do_not_count(self):
-        d = self._ini("[other]\nsong_length = 5\n[song]\npro_drums = False\n")
-        self.assertIsNone(G.song_ini_length_ms(d))
+        d = self._ini("[other]\npro_drums = True\n[song]\npro_drums = False\n")
         self.assertFalse(G.song_ini_pro_drums(d))
 
-    def test_bad_or_missing_length_is_none(self):
-        self.assertIsNone(G.song_ini_length_ms(self.tmp))
-        self.assertIsNone(G.song_ini_length_ms(self._ini("[song]\nsong_length = abc\n")))
-        self.assertIsNone(G.song_ini_length_ms(self._ini("[song]\nsong_length = 0\n")))
+    def test_the_song_ini_length_reader_is_gone(self):
+        # The song's length is Hydra's end, read through hydra_end (D321 item 2).
+        self.assertFalse(hasattr(G, "song_ini_length_ms"))
 
 
 if __name__ == "__main__":

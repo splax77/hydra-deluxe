@@ -161,8 +161,9 @@ def split_keys(keys: str) -> List[str]:
 
 def run_cap_s(song_folder: Optional[str]) -> float:
     """The wall-time cap for a run of the song in `song_folder`:
-    bot_run.run_cap_s of its length, or play_chart.RUN_CAP_S when no folder
-    is given or the folder has no length (bot_run.song_length_ms)."""
+    bot_run.run_cap_s of Hydra's song end for it (bot_run.song_length_ms,
+    which reads it through hydra_end), or play_chart.RUN_CAP_S when no folder
+    is given or Hydra names no end for it."""
     if song_folder is None:
         return play_chart.RUN_CAP_S
     try:

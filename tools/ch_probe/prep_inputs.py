@@ -33,7 +33,8 @@ _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from tools.ch_mcp import game_tools  # noqa: E402
+# game_tools is imported inside main: game_tools reaches this module's runner
+# through hydra_end, so a top-level import here would be a cycle.
 
 # Profile 39's cap and ms settings (Expert Pro Drums, 2x Bass, cap 4, ms 10),
 # as the README of the 2026-11-07 limits-prep folder under
@@ -61,6 +62,33 @@ def file_names(chart: str, out_dir: str):
             os.path.join(out_dir, f"{name}-schedule.json"))
 
 
+class ReplayFailed(Exception):
+    """hydra_replay could not be run, did not finish in REPLAY_CAP_S or
+    failed. The message is the lines that say which."""
+
+
+def dump_command(exe: str, chart: str, dump: str, cap: str = DEFAULT_CAP,
+                 ms: str = DEFAULT_MS) -> list:
+    """The `hydra_replay dump` command line that writes `chart`'s dump to `dump`."""
+    return [exe, "dump", "--chart", chart, "--cap", cap, "--ms", ms, "--out", dump]
+
+
+def run_replay(command: Sequence[str], run: Callable = subprocess.run) -> None:
+    """Run one hydra_replay command, capped at REPLAY_CAP_S. Raises
+    ReplayFailed when it cannot be run, runs past the cap or exits non-zero.
+    `run` stands in for subprocess.run in tests."""
+    try:
+        done = run(list(command), capture_output=True, text=True, timeout=REPLAY_CAP_S)
+    except subprocess.TimeoutExpired:
+        raise ReplayFailed(f"hydra_replay {command[1]} did not finish in {REPLAY_CAP_S:g} s "
+                           f"(REPLAY_CAP_S)") from None
+    except OSError as e:
+        raise ReplayFailed(f"hydra_replay {command[1]} could not be run: {e}") from e
+    if done.returncode != 0:
+        raise ReplayFailed(f"hydra_replay {command[1]} failed with exit code {done.returncode}:\n"
+                           + (done.stderr or done.stdout or "").strip())
+
+
 def _exe_date(exe: str) -> str:
     stamp = datetime.datetime.fromtimestamp(os.path.getmtime(exe))
     return stamp.strftime("%Y-%m-%d %H:%M")
@@ -70,6 +98,7 @@ def main(argv: Optional[Sequence[str]] = None, *, out: Optional[TextIO] = None,
          run: Callable = subprocess.run) -> int:
     """Make the files, load them and print what a run would print. Returns
     the exit code. `run` stands in for subprocess.run in tests."""
+    from tools.ch_mcp import game_tools  # noqa: PLC0415  (a cycle at the top; see above)
     out = sys.stdout if out is None else out
     parser = argparse.ArgumentParser(
         description="Make a chart's hydra_replay dump, score and schedule files and "
@@ -89,8 +118,7 @@ def main(argv: Optional[Sequence[str]] = None, *, out: Optional[TextIO] = None,
     dump, score, schedule = file_names(args.chart, args.out)
 
     commands = [
-        [args.exe, "dump", "--chart", args.chart, "--cap", args.cap, "--ms", args.ms,
-         "--out", dump],
+        dump_command(args.exe, args.chart, dump, args.cap, args.ms),
         [args.exe, "score", "--chart", args.chart, "--path", dump, "--index", "0",
          "--out", score],
         [args.exe, "schedule", "--chart", args.chart, "--path", dump, "--index", "0",
@@ -98,17 +126,9 @@ def main(argv: Optional[Sequence[str]] = None, *, out: Optional[TextIO] = None,
     ]
     for command in commands:
         try:
-            done = run(command, capture_output=True, text=True, timeout=REPLAY_CAP_S)
-        except subprocess.TimeoutExpired:
-            print(f"hydra_replay {command[1]} did not finish in {REPLAY_CAP_S:g} s "
-                  f"(REPLAY_CAP_S)", file=out)
-            return EXIT_REPLAY_FAILED
-        except OSError as e:
-            print(f"hydra_replay {command[1]} could not be run: {e}", file=out)
-            return EXIT_REPLAY_FAILED
-        if done.returncode != 0:
-            print(f"hydra_replay {command[1]} failed with exit code {done.returncode}:", file=out)
-            print((done.stderr or done.stdout or "").strip(), file=out)
+            run_replay(command, run)
+        except ReplayFailed as e:
+            print(e, file=out)
             return EXIT_REPLAY_FAILED
     print(f"dump: {dump}", file=out)
     print(f"score: {score}", file=out)
