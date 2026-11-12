@@ -162,15 +162,16 @@ class EdgeProbeTest(unittest.TestCase):
                 self.assertGreater(read, asked - 1.5)
                 self.assertAlmostEqual(rows[index]["lead_ms"], asked)
 
-    def test_the_probe_row_lines_give_asked_and_pressed_leads_and_the_hit(self):
-        rows = [{"index": 0, "chart_ms": 3000.0, "clock_ms_at_press": 2998.0, "hit": 1},
-                {"index": 1, "chart_ms": 4000.0, "clock_ms_at_press": 3911.5, "hit": 1,
-                 "probe": 88.72},
-                {"index": 3, "chart_ms": 6000.0, "clock_ms_at_press": 6082.0, "hit": 0,
-                 "probe": -82.72}]
+    def test_the_probe_row_lines_give_asked_and_pressed_leads_and_the_score_step(self):
+        rows = [{"index": 0, "chart_ms": 3000.0, "clock_ms_at_press": 2998.0,
+                 "score_before": 0, "score_after": 50, "send": "sent"},
+                {"index": 1, "chart_ms": 4000.0, "clock_ms_at_press": 3911.5,
+                 "score_before": 50, "score_after": 150, "send": "sent", "probe": 88.72},
+                {"index": 3, "chart_ms": 6000.0, "clock_ms_at_press": 6082.0,
+                 "score_before": 150, "score_after": 150, "send": "sent", "probe": -82.72}]
         self.assertEqual(edge_probe.probe_row_lines(rows), [
-            "probe chord 1: asked 88.72 ms early, pressed 88.50 ms early, hit",
-            "probe chord 3: asked 82.72 ms late, pressed 82.00 ms late, miss"])
+            "probe chord 1: asked 88.72 ms early, pressed 88.50 ms early, score step 100",
+            "probe chord 3: asked 82.72 ms late, pressed 82.00 ms late, score step 0"])
 
     def test_the_probes_line_names_each_probe_in_the_files_order(self):
         self.assertEqual(edge_probe.probe_lines([edge_probe.Probe(3, -82.72),

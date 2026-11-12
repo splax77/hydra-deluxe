@@ -60,9 +60,9 @@ CHILD_CAP_S = 30.0
 
 ROWS = [
     {"index": 0, "chart_ms": 1000.0, "clock_ms_at_press": 998.0,
-     "score_before": 0, "score_after": 50, "hit": 1},
+     "score_before": 0, "score_after": 50, "send": play_chart.SENT},
     {"index": 1, "chart_ms": 1500.0, "clock_ms_at_press": 1499.0,
-     "score_before": 50, "score_after": 50, "hit": 0},
+     "score_before": 50, "score_after": 50, "send": play_chart.SENT},
 ]
 SCORE_JSON = {"chords": [
     {"index": 0, "ms": 1000.0,
@@ -237,7 +237,7 @@ class ToolRig:
         self.driver = RecordingDriver()
         self.hwnd = WINDOW
         self.live_play = FakeLivePlay(play_chart.RunResult(
-            sent=2, hit=1, max_streak=1, rows=list(ROWS), stop="stopped"))
+            sent=2, rows=list(ROWS), stop="stopped"))
         self.events = []
         self.watches = []
         self.popen = FakePopen()
@@ -815,7 +815,7 @@ class GameToolsTest(unittest.TestCase):
             for row in ({**ROWS[0], "index": 7, "chart_ms": 5398.0},
                         {**ROWS[1], "index": 8, "chart_ms": 5600.0}):
                 kw["on_press"](row)
-            return play_chart.RunResult(stop="done", sent=2, hit=1)
+            return play_chart.RunResult(stop="done", sent=2)
 
         t = ToolRig(self.tmp, live_play=live_play)
         t.tools.ch_play_chart(self._score_json(), self._schedule_json(),route="keys")
@@ -875,7 +875,7 @@ class GameToolsTest(unittest.TestCase):
         snapshot = t.tools.play_snapshot()
         self.assertEqual(snapshot, {"last_row": ROWS[-1], "press_count": 2, "stop": None,
                                     "message": ""})
-        self.assertIn("running: 2 presses so far, 1 hit", t.tools.ch_play_status())
+        self.assertIn("running: 2 presses so far", t.tools.ch_play_status())
 
         stop_reply = t.tools.ch_play_stop()
         self.assertTrue(t.tools._play.stop.is_set())
@@ -885,11 +885,11 @@ class GameToolsTest(unittest.TestCase):
 
         lines = t.tools.ch_play_status().splitlines()
         self.assertIn("ended: stopped", lines)
-        self.assertIn("sent 2, hit 1, misses 1, best streak 1", lines)
+        self.assertIn("sent 2", lines)
         log = os.path.join(t.tools._scratch, "press.csv")
         self.assertIn(f"press log: {log} (2 rows)", lines)
-        self.assertEqual(lines[-2:], ["  1, 1500.0, 1499.0, 50, 50, 0",
-                                      "  0, 1000.0, 998.0, 0, 50, 1"])
+        self.assertEqual(lines[-2:], ["  1, 1500.0, 1499.0, 50, 50, sent",
+                                      "  0, 1000.0, 998.0, 0, 50, sent"])
         self.assertTrue(os.path.isfile(log))
         self.assertEqual(t.tools.play_snapshot(),
                          {"last_row": ROWS[-1], "press_count": 2, "stop": "stopped",
@@ -1171,35 +1171,35 @@ class GameToolsTest(unittest.TestCase):
 
     def test_the_status_says_presses_and_chords_when_a_chord_is_split(self):
         # Two press rows of chord 740, as press_plan splits it.
-        rows = [{**ROWS[0], "index": 740}, {**ROWS[1], "index": 740, "hit": 1}]
+        rows = [{**ROWS[0], "index": 740}, {**ROWS[1], "index": 740, "send": play_chart.SENT}]
 
         def live_play(chords, *, on_press, **kw):
             for row in rows:
                 on_press(row)
-            return play_chart.RunResult(stop="done", sent=2, hit=2, max_streak=2)
+            return play_chart.RunResult(stop="done", sent=2)
 
         t = ToolRig(self.tmp, live_play=live_play)
         t.tools.ch_play_chart(self._score_json(), self._schedule_json(),route="keys")
         t.tools._play.thread.join(THREAD_CAP_S)
-        self.assertIn("sent 2 presses for 1 chord, hit 2, misses 0, best streak 2",
+        self.assertIn("sent 2 presses for 1 chord",
                       t.tools.ch_play_status().splitlines())
 
     def test_the_status_of_a_chord_sent_as_one_message_is_no_clock_jump(self):
         # play_chords sends a split chord's two order groups as one message:
         # two rows, one `sent`.
-        rows = [{**ROWS[0], "index": 740, "hit": 1}, {**ROWS[1], "index": 740, "hit": 1}]
+        rows = [{**ROWS[0], "index": 740, "send": play_chart.SENT}, {**ROWS[1], "index": 740, "send": play_chart.SENT}]
 
         def live_play(chords, *, on_press, **kw):
             for row in rows:
                 on_press(row)
-            return play_chart.RunResult(stop="done", sent=1, hit=1, max_streak=1,
+            return play_chart.RunResult(stop="done", sent=1,
                                         rows=list(rows))
 
         t = ToolRig(self.tmp, live_play=live_play)
         t.tools.ch_play_chart(self._score_json(), self._schedule_json(),route="keys")
         t.tools._play.thread.join(THREAD_CAP_S)
         lines = t.tools.ch_play_status().splitlines()
-        self.assertIn("sent 1 messages (2 presses) for 1 chord, hit 1, misses 0, best streak 1",
+        self.assertIn("sent 1 messages (2 presses) for 1 chord",
                       lines)
         self.assertFalse([line for line in lines if "jumped back" in line])
 
@@ -1207,18 +1207,18 @@ class GameToolsTest(unittest.TestCase):
         self.assertEqual(set(GT._LANE_WORDS), set(Lane))
 
     def test_the_status_counts_a_declined_chord_apart_from_the_misses(self):
-        row = {**ROWS[1], "hit": play_chart.DECLINED}
+        row = {**ROWS[1], "send": play_chart.DECLINED}
 
         def live_play(chords, *, on_press, **kw):
             on_press(ROWS[0])
             on_press(row)
-            return play_chart.RunResult(stop="done", sent=1, hit=1, declined=1, max_streak=1)
+            return play_chart.RunResult(stop="done", sent=1, declined=1)
 
         t = ToolRig(self.tmp, live_play=live_play)
         t.tools.ch_play_chart(self._score_json(), self._schedule_json(),route="keys")
         t.tools._play.thread.join(THREAD_CAP_S)
         lines = t.tools.ch_play_status().splitlines()
-        self.assertIn("sent 1, hit 1, misses 0, best streak 1, declined 1", lines)
+        self.assertIn("sent 1, declined 1", lines)
         self.assertIn("  1, 1500.0, 1499.0, 50, 50, declined", lines)
         self.assertFalse([line for line in lines if "jumped back" in line])
 
@@ -1226,7 +1226,7 @@ class GameToolsTest(unittest.TestCase):
         release = threading.Event()
 
         def live_play(chords, *, on_press, **kw):
-            on_press({**ROWS[1], "hit": play_chart.DECLINED})
+            on_press({**ROWS[1], "send": play_chart.DECLINED})
             delivered.set()
             release.wait(THREAD_CAP_S)
             return play_chart.RunResult(stop="done")
@@ -1235,7 +1235,7 @@ class GameToolsTest(unittest.TestCase):
         t = ToolRig(self.tmp, live_play=live_play)
         t.tools.ch_play_chart(self._score_json(), self._schedule_json(),route="keys")
         self.assertTrue(delivered.wait(THREAD_CAP_S))
-        self.assertIn("running: 1 presses so far, 0 hit", t.tools.ch_play_status())
+        self.assertIn("running: 1 presses so far", t.tools.ch_play_status())
         release.set()
         t.tools._play.thread.join(THREAD_CAP_S)
 
@@ -1245,7 +1245,7 @@ class GameToolsTest(unittest.TestCase):
         def live_play(chords, *, on_press, **kw):
             for row in rows:
                 on_press(row)
-            return play_chart.RunResult(stop="done", sent=1, hit=1, rows=rows)
+            return play_chart.RunResult(stop="done", sent=1, rows=rows)
 
         t = ToolRig(self.tmp, live_play=live_play)
         t.tools.use_kit_press(lambda: (lambda lanes: {}))
@@ -1254,8 +1254,8 @@ class GameToolsTest(unittest.TestCase):
         lines = t.tools.ch_play_status().splitlines()
         self.assertEqual(lines[-2:], [
             "rows, newest first (index, chart_ms, clock_ms_at_press, score_before, score_after, "
-            "hit, down_frame, up_frame, down_ms, up_ms):",
-            "  0, 1000.0, 998.0, 0, 50, 1, 10, 12, 100, 113"])
+            "send, down_frame, up_frame, down_ms, up_ms):",
+            "  0, 1000.0, 998.0, 0, 50, sent, 10, 12, 100, 113"])
 
     # -- the chained start --------------------------------------------------------------
 
@@ -1419,7 +1419,7 @@ class GameToolsTest(unittest.TestCase):
             for i in range(3):
                 on_press({**ROWS[0], "index": i})
                 seen.append(len(self._log_table(t.tools._play.log_path)) - 1)
-            return play_chart.RunResult(stop="done", sent=3, hit=3)
+            return play_chart.RunResult(stop="done", sent=3)
 
         t, _events, _seen = self._chain_rig(live_play)
         return t
@@ -1456,7 +1456,7 @@ class GameToolsTest(unittest.TestCase):
         def live_play(chords, *, on_press, **kw):
             on_press(ROWS[0])
             release.wait(THREAD_CAP_S)
-            return play_chart.RunResult(stop="done", sent=1, hit=1)
+            return play_chart.RunResult(stop="done", sent=1)
 
         t, _events, _seen = self._chain_rig(live_play)
         t.tools.ch_run_chart(t.r.song, self._score_json(), self._schedule_json(), "System")
@@ -1475,7 +1475,7 @@ class GameToolsTest(unittest.TestCase):
         def live_play(chords, *, on_press, **kw):
             on_press(ROWS[0])
             seen.append(len(self._log_table(path)) - 1)
-            return play_chart.RunResult(stop="done", sent=1, hit=1)
+            return play_chart.RunResult(stop="done", sent=1)
 
         t = ToolRig(self.tmp, live_play=live_play)
         t.tools.ch_play_chart(self._score_json(), self._schedule_json(),log=path, route="keys")
@@ -1486,7 +1486,7 @@ class GameToolsTest(unittest.TestCase):
         def live_play(chords, *, on_press, **kw):
             for row in ROWS:
                 on_press(row)
-            return play_chart.RunResult(stop="done", sent=2, hit=1)
+            return play_chart.RunResult(stop="done", sent=2)
 
         t = ToolRig(self.tmp, live_play=live_play)
         path = os.path.join(self.tmp, "named.csv")
@@ -1510,7 +1510,7 @@ class GameToolsTest(unittest.TestCase):
             for row in ROWS:
                 on_press(row)
             said.append(t.tools.ch_play_status().splitlines()[0])
-            return play_chart.RunResult(stop="done", sent=2, hit=1)
+            return play_chart.RunResult(stop="done", sent=2)
 
         t = ToolRig(self.tmp, live_play=live_play)
         with mock.patch.object(play_chart, "append_press_row",
@@ -1528,14 +1528,14 @@ class GameToolsTest(unittest.TestCase):
 
         def live_play(chords, *, on_press, **kw):
             on_press(ROWS[0])
-            return play_chart.RunResult(stop="done", sent=1, hit=1)
+            return play_chart.RunResult(stop="done", sent=1)
 
         t = ToolRig(self.tmp, live_play=live_play)
         t.tools.ch_play_chart(self._score_json(), self._schedule_json(),log=path, route="keys")
         t.tools._play.thread.join(THREAD_CAP_S)
         lines = t.tools.ch_play_status().splitlines()
         self.assertTrue(lines[0].startswith(f"press log not written to {path}: "), lines[0])
-        self.assertIn("  0, 1000.0, 998.0, 0, 50, 1", lines)
+        self.assertIn("  0, 1000.0, 998.0, 0, 50, sent", lines)
 
     def test_with_no_log_the_status_opens_with_the_session_line(self):
         t = ToolRig(self.tmp, live_play=lambda chords, **kw: play_chart.RunResult(stop="done"))
@@ -2856,19 +2856,19 @@ class PlayerLimitsLinesTest(unittest.TestCase):
     def test_points_between_presses_go_to_the_declined_chord_before_them(self):
         # Bomber's chords 854 (declined) and 855, from press-2.csv of the
         # ls-r2ab-run1 run as the plan reads it, with the column T3 adds.
-        rows = [{"index": 853, "hit": 1, "scored_between": 0},
-                {"index": 854, "hit": play_chart.DECLINED, "scored_between": 0},
-                {"index": 855, "hit": 1, "scored_between": 200},
-                {"index": 856, "hit": 1, "scored_between": "50"}]
+        rows = [{"index": 853, "send": play_chart.SENT, "scored_between": 0},
+                {"index": 854, "send": play_chart.DECLINED, "scored_between": 0},
+                {"index": 855, "send": play_chart.SENT, "scored_between": 200},
+                {"index": 856, "send": play_chart.SENT, "scored_between": "50"}]
         self.assertEqual(GT.scored_between_lines(rows), [
             "scored between presses: chord 854 granted 200 before chord 855, "
             "50 unexplained before chord 856"])
 
     def test_a_split_declined_chord_waits_once(self):
-        rows = [{"index": 801, "hit": play_chart.DECLINED},
-                {"index": 801, "hit": play_chart.DECLINED, "scored_between": 0},
-                {"index": 802, "hit": 1, "scored_between": 200},
-                {"index": 803, "hit": 1, "scored_between": 200}]
+        rows = [{"index": 801, "send": play_chart.DECLINED},
+                {"index": 801, "send": play_chart.DECLINED, "scored_between": 0},
+                {"index": 802, "send": play_chart.SENT, "scored_between": 200},
+                {"index": 803, "send": play_chart.SENT, "scored_between": 200}]
         self.assertEqual(GT.scored_between_lines(rows), [
             "scored between presses: chord 801 granted 200 before chord 802, "
             "200 unexplained before chord 803"])
@@ -2880,7 +2880,7 @@ class PlayerLimitsLinesTest(unittest.TestCase):
         def live_play(chords, *, on_press, **kw):
             for row in rows:
                 on_press(row)
-            return play_chart.RunResult(stop="done", sent=2, hit=1)
+            return play_chart.RunResult(stop="done", sent=2)
 
         t = ToolRig(self.tmp, live_play=live_play)
         # The game's end is read after chord 0, planned at a hand-picked 1000.
@@ -2906,8 +2906,8 @@ class PlayerLimitsLinesTest(unittest.TestCase):
             for press in play_chart.press_plan(chords):
                 on_press({"index": press.index, "chart_ms": press.chart_ms,
                           "clock_ms_at_press": press.at_ms, "lead_ms": press.lead_ms,
-                          "score_before": 0, "score_after": 50, "hit": 1})
-            return play_chart.RunResult(stop="done", sent=2, hit=2)
+                          "score_before": 0, "score_after": 50, "send": play_chart.SENT})
+            return play_chart.RunResult(stop="done", sent=2)
 
         t = ToolRig(self.tmp, live_play=live_play)
         if kit:
@@ -2934,7 +2934,7 @@ class PlayerLimitsLinesTest(unittest.TestCase):
         self.assertNotIn("probe", rows[0])
         # SCHEDULE_JSON's hand-picked aim of 2 ms early (_schedule_of).
         self.assertAlmostEqual(rows[0]["chart_ms"] - rows[0]["clock_ms_at_press"], 2.0)
-        self.assertIn("probe chord 1: asked 60.00 ms late, pressed 60.00 ms late, hit",
+        self.assertIn("probe chord 1: asked 60.00 ms late, pressed 60.00 ms late, score step 50",
                       t.tools.ch_play_status().splitlines())
 
     def test_the_probe_writes_a_press_log_in_the_session_folder(self):
@@ -2993,41 +2993,41 @@ class DroppedStatusTest(unittest.TestCase):
 
     def test_a_dropped_row_is_out_of_the_sent_counts_and_no_clock_jump(self):
         rows = [{**ROWS[0], "index": 152},
-                {**ROWS[1], "index": 153, "score_after": 50, "hit": play_chart.DROPPED}]
+                {**ROWS[1], "index": 153, "score_after": 50, "send": play_chart.DROPPED}]
         lines = self._status(rows, play_chart.RunResult(
-            stop="done", sent=1, hit=1, dropped=1, max_streak=1, rows=list(rows)))
-        self.assertIn("sent 1, hit 1, misses 0, best streak 1", lines)
+            stop="done", sent=1, dropped=1, rows=list(rows)))
+        self.assertIn("sent 1", lines)
         self.assertFalse([line for line in lines if "jumped back" in line])
         self.assertIn("dropped: chords 153", lines)
         # The dropped line comes right after the counts.
-        self.assertEqual(lines[lines.index("sent 1, hit 1, misses 0, best streak 1") + 1],
+        self.assertEqual(lines[lines.index("sent 1") + 1],
                          "dropped: chords 153")
 
     def test_a_result_with_no_rows_of_its_own_counts_the_drop_as_logged(self):
         rows = [{**ROWS[0], "index": 152},
-                {**ROWS[1], "index": 153, "hit": play_chart.DROPPED}]
+                {**ROWS[1], "index": 153, "send": play_chart.DROPPED}]
         lines = self._status(rows, play_chart.RunResult(
-            stop="done", sent=1, hit=1, dropped=1, max_streak=1))
+            stop="done", sent=1, dropped=1))
         self.assertFalse([line for line in lines if "jumped back" in line])
 
     def test_a_split_chord_dropped_is_named_once(self):
         rows = [{**ROWS[0], "index": 152},
-                {**ROWS[1], "index": 153, "hit": play_chart.DROPPED},
-                {**ROWS[1], "index": 153, "hit": play_chart.DROPPED}]
+                {**ROWS[1], "index": 153, "send": play_chart.DROPPED},
+                {**ROWS[1], "index": 153, "send": play_chart.DROPPED}]
         lines = self._status(rows, play_chart.RunResult(
-            stop="done", sent=1, hit=1, dropped=1, max_streak=1, rows=list(rows)))
-        self.assertIn("sent 1, hit 1, misses 0, best streak 1", lines)
+            stop="done", sent=1, dropped=1, rows=list(rows)))
+        self.assertIn("sent 1", lines)
         self.assertIn("dropped: chords 153", lines)
 
     def test_no_dropped_row_says_none(self):
         lines = self._status(list(ROWS), play_chart.RunResult(
-            stop="done", sent=2, hit=1, max_streak=1, rows=list(ROWS)))
+            stop="done", sent=2, rows=list(ROWS)))
         self.assertIn("dropped: none", lines)
 
     def test_the_dropped_line_from_rows(self):
         self.assertEqual(GT.dropped_line(ROWS), "dropped: none")
         self.assertEqual(GT.dropped_line([{**ROWS[0], "index": 153,
-                                           "hit": play_chart.DROPPED}]),
+                                           "send": play_chart.DROPPED}]),
                          "dropped: chords 153")
 
 

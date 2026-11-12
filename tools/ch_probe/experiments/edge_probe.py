@@ -178,16 +178,19 @@ def probe_lines(probes: Sequence[Probe]) -> List[str]:
 def probe_row_lines(rows: Sequence[dict]) -> List[str]:
     """What a probe run's rows say about its probes: one line per probe row,
     with the asked lead, the lead read off the row (chart_ms minus
-    clock_ms_at_press) and whether it hit. Empty when no row is a probe's."""
+    clock_ms_at_press) and the game's score step across the press
+    (score_after minus score_before). The line gives no hit or miss verdict:
+    score_compare judges a chord by its score step against Hydra's points
+    (D319 item 1). Empty when no row is a probe's."""
     lines = []
     for row in rows:
         if row.get(PROBE_COLUMN) in (None, ""):
             continue
         asked = float(row[PROBE_COLUMN])
         read = float(row["chart_ms"]) - float(row["clock_ms_at_press"])
+        step = float(row["score_after"]) - float(row["score_before"])
         lines.append(f"probe chord {row['index']}: asked {_lead_words(asked)}, "
-                     f"pressed {_lead_words(read)}, "
-                     f"{'hit' if row.get('hit') == 1 else 'miss'}")
+                     f"pressed {_lead_words(read)}, score step {step:g}")
     return lines
 
 

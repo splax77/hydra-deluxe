@@ -329,7 +329,10 @@ class PressLogTest(unittest.TestCase):
     def test_one_row_per_press_with_the_press_log_columns(self):
         result, game, _wall = _run({"start_s": 12.0}, misses=(3,))
         self.assertEqual(result.stop, "done")
-        self.assertEqual((result.sent, result.hit, result.max_streak), (8, 7, 5))
+        self.assertEqual(result.sent, 8)
+        # D319 item 1: the player counts no hits or streaks from a score rise.
+        self.assertFalse(hasattr(result, "hit"))
+        self.assertFalse(hasattr(result, "max_streak"))
         self.assertEqual(game.presses, [list(lanes) for _ms, lanes in _load()])
 
         with tempfile.TemporaryDirectory() as d:
@@ -347,11 +350,13 @@ class PressLogTest(unittest.TestCase):
             "13043.48", "13614.132249999999", "14184.7845", "22010.872499999998",
             "22663.046499999997", "22989.133499999996", "78260.88",
             "108586.97099999999"])
-        self.assertEqual([(r[col["score_before"]], r[col["score_after"]], r[col["hit"]])
+        # The third press scored nothing, and its row still says only that it
+        # was sent: the scores are the game's, and no column judges them.
+        self.assertEqual([(r[col["score_before"]], r[col["score_after"]], r[col["send"]])
                           for r in body], [
-            ("0", "100", "1"), ("100", "200", "1"), ("200", "200", "0"),
-            ("200", "300", "1"), ("300", "400", "1"), ("400", "500", "1"),
-            ("500", "600", "1"), ("600", "700", "1")])
+            ("0", "100", "sent"), ("100", "200", "sent"), ("200", "200", "sent"),
+            ("200", "300", "sent"), ("300", "400", "sent"), ("400", "500", "sent"),
+            ("500", "600", "sent"), ("600", "700", "sent")])
         # The clock the wait returned: inside _schedule_of's 2 ms aim, before
         # the chord.
         for r in body:
@@ -815,7 +820,7 @@ class PressReplyRowTest(unittest.TestCase):
         row = result.rows[0]
         self.assertEqual(row, {
             "index": 38, "chart_ms": 13043.48, "clock_ms_at_press": row["clock_ms_at_press"],
-            "lead_ms": 2.0, "score_before": 0, "score_after": 100, "hit": 1,
+            "lead_ms": 2.0, "score_before": 0, "score_after": 100, "send": "sent",
             "scored_between": 0,
             "down_frame": 40, "up_frame": 42, "down_ms": down_ms, "up_ms": down_ms + 12,
             "wall_s_at_read": row["wall_s_at_read"], "wall_s_at_reply": row["wall_s_at_reply"]})
@@ -824,7 +829,7 @@ class PressReplyRowTest(unittest.TestCase):
         result, _game, _wall = _run({"start_s": 12.0})
         self.assertEqual(set(result.rows[0]), {
             "index", "chart_ms", "clock_ms_at_press", "lead_ms", "score_before",
-            "score_after", "hit", "scored_between", "wall_s_at_read", "wall_s_at_reply"})
+            "score_after", "send", "scored_between", "wall_s_at_read", "wall_s_at_reply"})
 
 
 # A wall clock far from the fake `now`, as time.time is from time.perf_counter.
@@ -920,7 +925,7 @@ class AppendPressRowTest(unittest.TestCase):
         self.assertEqual([r[0] for r in _table(self.path)], ["index", "7"])
 
     def test_it_writes_what_write_press_log_writes(self):
-        rows = [{"index": 1, "lead_ms": 2.0, "hit": 1}, {"index": 2, "hit": 0}]
+        rows = [{"index": 1, "lead_ms": 2.0, "send": "sent"}, {"index": 2, "send": "dropped"}]
         for row in rows:
             play_chart.append_press_row(self.path, row)
         whole = self.path + ".whole"
@@ -999,7 +1004,7 @@ class SplitSendTest(unittest.TestCase):
         self.assertEqual(result.stop, "done")
         return result
 
-    def test_a_two_group_reply_gives_two_rows_with_their_own_frames_and_one_hit(self):
+    def test_a_two_group_reply_gives_two_rows_with_their_own_frames_and_one_score(self):
         press = _SplitReplyPress()
         # The start read, the fresh read before the press, the read after it.
         result = self._run(_split_chords(), [0, 0, 250], press)
@@ -1009,13 +1014,13 @@ class SplitSendTest(unittest.TestCase):
                           for r in rows],
                          [(7, 500, 502, 1762600009000, 1762600009006),
                           (7, 503, 505, 1762600009009, 1762600009015)])
-        self.assertEqual([(r["score_before"], r["score_after"], r["hit"]) for r in rows],
-                         [(0, 250, 1), (0, 250, 1)])
+        self.assertEqual([(r["score_before"], r["score_after"], r["send"]) for r in rows],
+                         [(0, 250, "sent"), (0, 250, "sent")])
         self.assertEqual([round(r["lead_ms"], 2) for r in rows], [2.0, -6.0])
         self.assertEqual(rows[0]["clock_ms_at_press"], rows[1]["clock_ms_at_press"])
         self.assertEqual(rows[0]["scored_between"], 0)
         self.assertNotIn("scored_between", rows[1])
-        self.assertEqual((result.sent, result.hit), (1, 1))
+        self.assertEqual(result.sent, 1)
 
     def test_a_chord_of_one_group_is_sent_with_no_then(self):
         press = _SplitReplyPress()
@@ -1077,7 +1082,8 @@ class ScoredBetweenTest(unittest.TestCase):
         result = self._run(declined=True)
         self.assertEqual([(r["index"], r["scored_between"], r["score_before"], r["score_after"])
                           for r in result.rows], [(854, 0, 0, 0), (855, 200, 200, 400)])
-        self.assertEqual(result.rows[1]["hit"], 1)
+        self.assertEqual([r["send"] for r in result.rows],
+                         [play_chart.DECLINED, play_chart.SENT])
 
     def test_the_status_credits_the_pending_declined_chord(self):
         from tools.ch_mcp import game_tools
@@ -1274,7 +1280,7 @@ class FrozenClockDropTest(unittest.TestCase):
             now=wall.now, sleep=wall.sleep, out=io.StringIO())
         return chords, result, game
 
-    def test_the_late_chord_is_dropped_and_the_next_is_pressed_and_hit(self):
+    def test_the_late_chord_is_dropped_and_the_next_is_sent(self):
         chords, result, game = self._run()
         self.assertEqual(result.stop, "done")
         (row,) = _rows_of(result, 41)
@@ -1283,22 +1289,18 @@ class FrozenClockDropTest(unittest.TestCase):
         self.assertLess(late_ms, 110.0)
         # The precondition: the read is past the press's last send.
         self.assertGreater(row["clock_ms_at_press"], chords[1].presses[0].last_send_ms)
-        self.assertEqual(row["hit"], "dropped")
+        self.assertEqual(row["send"], "dropped")
         self.assertEqual(row["score_before"], row["score_after"])
         for column in ("down_frame", "up_frame", "down_ms", "up_ms", "end_read_ms"):
             self.assertNotIn(column, row)
         # Chord 41 is the lone kick: every press but its own was sent.
         expected = [list(lanes) for ms, lanes in _load() if ms != chords[1].ms]
         self.assertEqual(game.presses, expected)
-        self.assertEqual(_rows_of(result, 45)[0]["hit"], 1)
+        self.assertEqual(_rows_of(result, 45)[0]["send"], "sent")
 
-    def test_the_counts_leave_the_drop_out_and_the_streak_starts_over(self):
+    def test_the_counts_leave_the_drop_out(self):
         _chords, result, _game = self._run()
-        self.assertEqual((result.sent, result.hit, result.dropped, result.declined),
-                         (7, 7, 1, 0))
-        # 38 hits, 41 is dropped, the six after it hit: a streak that did not
-        # start over would reach 7.
-        self.assertEqual(result.max_streak, 6)
+        self.assertEqual((result.sent, result.dropped, result.declined), (7, 1, 0))
 
     def test_the_printed_line_says_dropped(self):
         chords = _load_chords()
@@ -1366,14 +1368,14 @@ class DropBoundaryTest(unittest.TestCase):
         press = _SplitReplyPress()
         result = self._run(self._kick(), 0.0, press)
         self.assertEqual(press.calls, [([Lane.KICK], [])])
-        self.assertEqual([r["hit"] for r in result.rows], [1])
+        self.assertEqual([r["send"] for r in result.rows], ["sent"])
         self.assertEqual((result.sent, result.dropped), (1, 0))
 
     def test_read_0_01_ms_past_the_last_send_is_dropped(self):
         press = _SplitReplyPress()
         result = self._run(self._kick(), 0.01, press)
         self.assertEqual(press.calls, [])
-        self.assertEqual([r["hit"] for r in result.rows], ["dropped"])
+        self.assertEqual([r["send"] for r in result.rows], ["dropped"])
         self.assertEqual((result.sent, result.dropped), (0, 1))
 
     def test_a_split_chord_past_its_last_send_sends_nothing_and_drops_every_group(self):
@@ -1383,9 +1385,9 @@ class DropBoundaryTest(unittest.TestCase):
         self.assertEqual(len(later), 1)
         result = self._run(chords, 10.0, press)
         self.assertEqual(press.calls, [])
-        self.assertEqual([(r["index"], r["hit"]) for r in result.rows],
+        self.assertEqual([(r["index"], r["send"]) for r in result.rows],
                          [(7, "dropped"), (7, "dropped")])
-        self.assertEqual((result.sent, result.hit, result.dropped), (0, 0, 1))
+        self.assertEqual((result.sent, result.dropped), (0, 1))
 
 
 def _press_of(chords, index, rule=None):
@@ -1550,9 +1552,9 @@ class FallbackTest(unittest.TestCase):
         # the clock exactly at its last_send_ms, or 0.01 ms past it.
         chords = [c for c in play_chart.load_schedule(_FREAK_SCHEDULE).chords if c.index == 388]
         sent = DropBoundaryTest._run(self, chords, 0.0, _SplitReplyPress())
-        self.assertEqual([r["hit"] for r in sent.rows], [1])
+        self.assertEqual([r["send"] for r in sent.rows], [play_chart.SENT])
         dropped = DropBoundaryTest._run(self, chords, 0.01, _SplitReplyPress())
-        self.assertEqual([r["hit"] for r in dropped.rows], [play_chart.DROPPED])
+        self.assertEqual([r["send"] for r in dropped.rows], [play_chart.DROPPED])
 
     def test_a_block_with_another_action_is_refused(self):
         late = _press_of(play_chart.load_schedule(_FREAK_SCHEDULE).chords, 1144)

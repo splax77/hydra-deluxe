@@ -258,7 +258,7 @@
       ]
     },
     {
-      "question": "Did a press register as a hit?",
+      "question": "Did the score rise between two reads?",
       "owner": "pressed_input_hit in tools/ch_probe/engine.py",
       "owner_file": "tools/ch_probe/engine.py",
       "owner_symbol": "pressed_input_hit",
@@ -275,7 +275,7 @@
         "score_rises = sum(1 for a, b in zip(samples, samples[1:]) if b.score > a.score)"
       ],
       "must_not_match": [
-        "hit = pressed_input_hit(score_before, score_after)"
+        "if pressed_input_hit(a.score, b.score))"
       ],
       "owner_lines": [
         {

@@ -251,7 +251,7 @@ class TestSnapshot(unittest.TestCase):
         self.assertEqual(mem.reads, [(OBJ, engine.SNAPSHOT_SIZE)])
 
 
-# --- tests: did the press hit ------------------------------------------------
+# --- tests: did the score rise -----------------------------------------------
 
 
 class TestPressedInputHit(unittest.TestCase):

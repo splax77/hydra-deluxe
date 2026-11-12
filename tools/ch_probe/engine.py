@@ -44,8 +44,9 @@ def is_precision(flags: int) -> bool:
 
 
 def pressed_input_hit(score_before: int, score_after: int) -> bool:
-    """Whether a press hit its note: the score rises only on a hit, proven
-    by play_chart."""
+    """Whether the score rose from `score_before` to `score_after`. A rise is
+    no verdict on a press: score_compare judges a chord by its score step
+    against Hydra's points (D319 item 1)."""
     return score_after > score_before
 
 
