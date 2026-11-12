@@ -514,6 +514,19 @@ class LiveAgentTest(Workspace):
         self.assertEqual(session.detach_calls, 0)
         self.assertEqual(self.written(), [sent({**STATE, "id": 1})])
 
+    def test_a_payload_with_no_id_goes_to_the_listener_and_the_log(self):
+        agent, session = self.started([STATE])
+        heard = []
+        agent.listen(heard.append)
+        event = {"kind": "sent", "seq": 0}
+        session.script.handlers["message"](sent(event), None)
+        session.script.handlers["message"](sent({**STATE, "id": 99}), None)
+        self.assertEqual(heard, [event])
+        agent.listen(None)
+        session.script.handlers["message"](sent(event), None)
+        self.assertEqual(heard, [event])
+        self.assertIn(sent(event), self.written())
+
     def test_start_on_a_game_that_is_not_running_attaches_nothing(self):
         agent = self.live(FakeFrida(None))
         with self.assertRaises(FA.AttachFailed) as caught:
