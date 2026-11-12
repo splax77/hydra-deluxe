@@ -474,24 +474,24 @@ std::vector<std::string> md5_set_of(const std::vector<ChartLibraryEntry>& rows) 
 
 }  // namespace
 
-TEST_CASE("store: the chart list read as stored returns the rows read by name, in scan order") {
+TEST_CASE("store: the unsorted chart list read returns the rows the read by name does") {
     RecordStore store(":memory:");
     store.rebuild_chart_library({library_row("d", "D"), library_row("b", "B"),
                                  library_row("a", "A"), library_row("c", "C")});
     const std::vector<ChartLibraryEntry> by_name = store.list_chart_library(0, -1);
 
     std::vector<int64_t> reported;
-    const std::vector<ChartLibraryEntry> as_stored = store.list_chart_library(
+    const std::vector<ChartLibraryEntry> unsorted = store.list_chart_library(
         0, -1,
         [&](int64_t rows_read) {
             reported.push_back(rows_read);
             return true;
         },
-        LibraryOrder::AsStored);
+        LibraryOrder::Unsorted);
     CHECK(reported == std::vector<int64_t>{1, 2, 3, 4});
-    CHECK(md5_set_of(as_stored) == md5_set_of(by_name));
+    CHECK(md5_set_of(unsorted) == md5_set_of(by_name));
     // The same rows, field for field, whichever order read them.
-    for (const ChartLibraryEntry& e : as_stored) {
+    for (const ChartLibraryEntry& e : unsorted) {
         CAPTURE(e.md5);
         bool found = false;
         for (const ChartLibraryEntry& n : by_name) {
@@ -508,11 +508,9 @@ TEST_CASE("store: the chart list read as stored returns the rows read by name, i
         }
         CHECK(found);
     }
-    // The order the scan listed them in, not the names'.
-    CHECK(md5s_of(as_stored) == std::vector<std::string>{"d", "b", "a", "c"});
 }
 
-TEST_CASE("store: a chart list read as stored that is told to stop stops") {
+TEST_CASE("store: an unsorted chart list read that is told to stop stops") {
     RecordStore store(":memory:");
     store.rebuild_chart_library({library_row("a", "A"), library_row("b", "B"),
                                  library_row("c", "C"), library_row("d", "D")});
@@ -526,13 +524,13 @@ TEST_CASE("store: a chart list read as stored that is told to stop stops") {
                 reported.push_back(rows_read);
                 return rows_read < 2;
             },
-            LibraryOrder::AsStored);
+            LibraryOrder::Unsorted);
     } catch (const Cancelled& e) {
         cancelled = e.kind() == ErrorKind::Cancelled;
     }
     CHECK(cancelled);
     CHECK(reported == std::vector<int64_t>{1, 2});
-    CHECK(store.list_chart_library(0, -1, {}, LibraryOrder::AsStored).size() == 4);
+    CHECK(store.list_chart_library(0, -1, {}, LibraryOrder::Unsorted).size() == 4);
     CHECK(store.chart_library_count() == 4);
 }
 

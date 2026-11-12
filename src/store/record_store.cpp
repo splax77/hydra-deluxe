@@ -1550,9 +1550,6 @@ static_assert(count_list_names(kLibraryColumnList) == 10,
 // table, so rowid order is scan order. The charts_by_name index holds the rows
 // in this order, so the whole-library read walks it without a sort.
 constexpr const char* kByName = " ORDER BY name, rowid";
-// LibraryOrder::AsStored: the table's own order, which SQLite scans without a
-// sort.
-constexpr const char* kAsStored = " ORDER BY rowid";
 
 }  // namespace
 
@@ -1665,7 +1662,8 @@ std::vector<ChartLibraryEntry> RecordStore::list_chart_library(int offset, int l
     std::lock_guard<std::recursive_mutex> lock(mutex_);
 
     const bool timing_read = chart_meta_current();
-    const char* order_by = order == LibraryOrder::AsStored ? kAsStored : kByName;
+    // Unsorted asks for no order, so SQLite reads the table without a sort.
+    const char* order_by = order == LibraryOrder::Unsorted ? "" : kByName;
     Stmt s = prepare_read(
         db_, (library_entry_select() + order_by + " LIMIT ? OFFSET ?").c_str());
     sqlite3_bind_int(s, 1, limit);
@@ -1685,9 +1683,10 @@ std::vector<ChartLibraryEntry> RecordStore::list_chart_library_copies(const std:
 ChartIndex RecordStore::chart_index() {
     std::lock_guard<std::recursive_mutex> lock(mutex_);
 
-    // The rows in the order the scan listed them (kAsStored).
+    // rebuild_chart_library inserts the rows in the scan's order, so rowid
+    // order is scan order.
     const bool timing_read = chart_meta_current();
-    Stmt s = prepare_read(db_, (library_entry_select() + kAsStored).c_str());
+    Stmt s = prepare_read(db_, (library_entry_select() + " ORDER BY rowid").c_str());
     return ChartIndex::from_rows(read_library_entries(s, timing_read));
 }
 

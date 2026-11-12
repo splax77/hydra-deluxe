@@ -423,11 +423,12 @@ using OpenProgressFn = std::function<bool(const OpenProgress&)>;
 using RowsReadFn = std::function<bool(int64_t rows_read)>;
 
 // The order RecordStore hands library rows over in. ByName is by the stored
-// name; its SQL clause in record_store.cpp (kByName) says exactly how. AsStored
-// is the order the scan wrote the rows, which SQLite reads without a sort: for
-// a reader that sorts the rows itself (ui::read_library, whose LibraryModel
-// sorts on the shown text).
-enum class LibraryOrder { ByName, AsStored };
+// name; its SQL clause in record_store.cpp (kByName) says exactly how.
+// Unsorted promises no order, so SQLite reads the table without a sort: for a
+// reader that sorts the rows itself (ui::read_library, whose LibraryModel
+// sorts on the shown text). Scan order has its own one reader,
+// RecordStore::chart_index.
+enum class LibraryOrder { ByName, Unsorted };
 
 // ---- the store's own statement and row readers ------------------------------
 // RecordStore compiles, steps and reads its rows through these. They are

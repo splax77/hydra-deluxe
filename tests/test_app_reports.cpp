@@ -397,8 +397,9 @@ TEST_CASE("select_chart opens the first copy by name when the search hides every
     // two copies named "Song A". The later "Song A" has the path that sorts
     // first. The user's ruling (docs/agents/rulings/ui-and-display.md, "Keep
     // today's pick") keeps the first copy by name, and of two copies with one
-    // name the one scanned first: the middle copy. The first copy as stored
-    // is "Song B", and the first by path is the last "Song A".
+    // name the one scanned first: the middle copy. The first in the table's
+    // own order (what the unsorted read gives) is "Song B", and the first by
+    // path is the last "Song A".
     std::vector<ChartLibraryEntry> charts;
     for (int i = 0; i < kChartCount; ++i)
         if (i != 7) charts.push_back(library_entry(i));
