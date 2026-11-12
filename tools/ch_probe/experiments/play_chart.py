@@ -760,11 +760,6 @@ def write_press_log(path: str, rows: Sequence[dict]) -> None:
         writer.writerows(rows)
 
 
-# How long the end of a run waits for its PressLogWriter to finish, in
-# seconds: D335 item 1 in docs/audit/2026-10-03-fix-decisions.md.
-LOG_WRITER_CAP_S = 5.0
-
-
 class PressLogWriter:
     """The press log of a run as it is made, written on a thread of its own,
     so a write that Windows holds up costs the player's thread nothing (PS2

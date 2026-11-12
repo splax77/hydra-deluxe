@@ -218,8 +218,7 @@ class LoadScheduleTest(unittest.TestCase):
         numeric = sorted(name for name, value in vars(play_chart).items()
                          if name.isupper() or name.lstrip("_").isupper()
                          if isinstance(value, (int, float)) and not isinstance(value, bool))
-        self.assertEqual(numeric, ["LOG_WRITER_CAP_S", "RUN_CAP_S", "SCORE_READ_DELAY_S",
-                                   "_SAME_MS"])
+        self.assertEqual(numeric, ["RUN_CAP_S", "SCORE_READ_DELAY_S", "_SAME_MS"])
         self.assertEqual([name for name in vars(play_chart) if name.endswith("_MS")],
                          ["_SAME_MS"])
 

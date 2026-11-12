@@ -106,7 +106,7 @@ Acceptance:
 - `test_the_rows_reach_the_file_in_order_and_only_once`: 200 rows in, the file holds them in order, once each.
 - `test_a_failed_write_goes_on_and_the_end_writes_every_row_once`: the existing failed-append test, with the failure raised inside the writer.
 - `test_a_run_reusing_a_log_name_starts_the_file_over`: the existing test still passes.
-- `test_the_end_waits_for_the_writer_and_says_so_when_the_cap_passes`: a writer held past the cap makes the status line say the log may lack rows; a normal end holds every row. The cap is question 5's number, named once in `play_chart`.
+- `test_the_end_waits_for_the_writer_and_says_so_when_the_cap_passes`: a writer held past the cap makes the status line say the log may lack rows; a normal end holds every row. The cap is question 5's number, named once, as `LOG_WRITER_CAP_S` in `tools/ch_probe/constants.py`, which the press-log writer and the kit-log writer both read.
 - `git grep append_press_row` finds nothing outside this plan and the session cards; the reviewer runs it.
 
 ### PS3: each press row says how long each step took (Python and docs; Opus; cut from PS2's tip; after question 1's yes)
@@ -147,7 +147,7 @@ Acceptance:
 
 Owns: `tools/ch_mcp/frida_attach.py` (`LiveAgent._on_message` and `detach`) and `tools/ch_mcp/tests/test_frida_attach.py`. Uses rows P25 and P26.
 
-Today `_on_message` writes and flushes each message to the agent's log with the agent's lock held, and only then hands the reply to the waiting request. The fix: `_on_message` hands the reply over first and puts the message on a queue. One writer thread writes each line and flushes it, in order, so the file keeps its one-JSON-line-per-message form (run reviews read `kit-<n>.jsonl` as a source) and a crash keeps every line written so far. `detach` stops the writer and waits for it up to question 5's cap, then closes the file. A message that arrives after the log is closed is still dropped, as today. A write that fails stops the log, not the reply: the agent's `out` callback says so, and the requests go on.
+Today `_on_message` writes and flushes each message to the agent's log with the agent's lock held, and only then hands the reply to the waiting request. The fix: `_on_message` hands the reply over first and puts the message on a queue. One writer thread writes each line and flushes it, in order, so the file keeps its one-JSON-line-per-message form (run reviews read `kit-<n>.jsonl` as a source) and a crash keeps every line written so far. `detach` stops the writer and waits for it up to question 5's cap (`LOG_WRITER_CAP_S` in `tools/ch_probe/constants.py`), then closes the file. A message that arrives after the log is closed is still dropped, as today. A write that fails stops the log, not the reply: the agent's `out` callback says so, and the requests go on.
 
 Acceptance:
 - `test_a_blocked_log_write_does_not_hold_up_the_reply`: the log file's `write` blocks on an event; a request is answered while it is still blocked. Fails if the write runs before the reply is handed over.

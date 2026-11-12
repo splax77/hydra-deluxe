@@ -1620,7 +1620,7 @@ class GameToolsTest(unittest.TestCase):
 
         t = ToolRig(self.tmp, live_play=live_play)
         with mock.patch.object(play_chart, "_press_log_writer", new=Held), \
-                mock.patch.object(play_chart, "LOG_WRITER_CAP_S", 0.05):
+                mock.patch.object(GT.C, "LOG_WRITER_CAP_S", 0.05):
             t.tools.ch_play_chart(self._score_json(), self._schedule_json(), log=path,
                                   route="keys")
             t.tools._play.thread.join(THREAD_CAP_S)

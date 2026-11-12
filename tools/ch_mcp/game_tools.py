@@ -1624,9 +1624,9 @@ class GameTools:
     @staticmethod
     def _end_press_log(play: _PlaySession) -> str:
         """Stop the run's press-log writer, waiting up to
-        play_chart.LOG_WRITER_CAP_S, and say what became of the log. A
+        C.LOG_WRITER_CAP_S, and say what became of the log. A
         writer that failed leaves the log to one whole write of the rows."""
-        cap_s = play_chart.LOG_WRITER_CAP_S
+        cap_s = C.LOG_WRITER_CAP_S
         rows = list(play.rows)
         if not play.writer.stop(cap_s):
             return (f"press log: {play.log_path} may lack its last rows: its writer "
