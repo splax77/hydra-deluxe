@@ -415,17 +415,17 @@ LibraryQuery parse_library_query(std::string_view text) {
 SearchableRow make_searchable(std::string_view title, std::string_view artist,
                               std::string_view charter, std::string_view folder,
                               std::string_view album, StrippedRow& stripped) {
-    stripped.title = strip_rich_tags(title);
-    stripped.artist = strip_rich_tags(artist);
-    stripped.album = strip_rich_tags(album);
-    stripped.charter = strip_rich_tags(charter);
-    stripped.folder = strip_rich_tags(folder);
+    // One field: its stored text with the tags stripped, kept in `kept`, then folded.
+    auto fold_stripped = [](std::string_view stored, std::string& kept) {
+        kept = strip_rich_tags(stored);
+        return fold_for_search(kept);
+    };
     SearchableRow row;
-    row.title = fold_for_search(stripped.title);
-    row.artist = fold_for_search(stripped.artist);
-    row.album = fold_for_search(stripped.album);
-    row.charter = fold_for_search(stripped.charter);
-    row.folder = fold_for_search(stripped.folder);
+    row.title = fold_stripped(title, stripped.title);
+    row.artist = fold_stripped(artist, stripped.artist);
+    row.album = fold_stripped(album, stripped.album);
+    row.charter = fold_stripped(charter, stripped.charter);
+    row.folder = fold_stripped(folder, stripped.folder);
     return row;
 }
 

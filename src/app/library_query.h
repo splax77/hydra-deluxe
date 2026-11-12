@@ -91,11 +91,9 @@ SearchableRow make_searchable(std::string_view title, std::string_view artist,
                               std::string_view charter, std::string_view folder,
                               std::string_view album = {});
 
-// The text make_searchable folded for each field, before the fold: the stored
-// text with its tags stripped.
-struct StrippedRow {
-    std::string title, artist, album, charter, folder;  // strip_rich_tags(x)
-};
+// SearchableRow's five fields before the fold: each is strip_rich_tags(x)
+// alone, the text make_searchable then folds. Never a query's input.
+using StrippedRow = SearchableRow;
 // make_searchable that also hands back the stripped text it folded. A caller
 // whose own text equals a stripped field can take the matching folded field
 // instead of folding that text again (the library's sort keys do).
