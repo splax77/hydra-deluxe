@@ -663,7 +663,9 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	method	3710	Player.ControllerHelper	AddController	0x1F2D2B0		0x1F2D2B0
 6142	method	3711	Player	GetButton	0x1F3B730		0x1F3B730
 6142	method	3711	Player	GetButtonDown	0x1F39540		0x1F39540
+6142	method	374		ʸʸʲʳʺʲʻˁʵˀʻ	0x90D70		0x90D70
 6142	method	374		ʿʹˀʿʺʺʲʺʸʵʼ	0x92910		0x92910
+6142	method	374		ˁʻʴʽʸʺʷʼʹʹʼ	0x92F80		0x92F80
 6142	method	3740	ReInput.ControllerHelper	CreateCustomController	0x1D6F9C0		0x1D6F9C0
 6142	method	3740	ReInput.ControllerHelper	CreateCustomController	0x1D6FA80		0x1D6FA80
 6142	method	3740	ReInput.ControllerHelper	DestroyCustomController	0x1D6FC70		0x1D6FC70
@@ -769,6 +771,7 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	method	592	ScoreManager	Update	0x1286B0		0x1286B0
 6142	method	592	ScoreManager	Update	0x1286B0		ScoreManager.Update
 6142	method	592	ScoreManager	ˀʻʹʼʽʳʲʾʷʹʲ	0x1285A0		0x1285A0
+6142	method	594	PlayerStatsBox	ʵʿʴʲˀʾʿˁˀʽʶ	0x123240		0x123240
 6142	method	601		ʴʳʲʽˀʵʼʲʿʾʹ	0x84220		0x84220
 6142	method	601		ʷʷʾʽˁʿʸʿʷʺʺ	0x84220		0x84220
 6142	method	605		ʶʸʸʿʻʿʿʹʵˀʲ	0x84220		0x84220
