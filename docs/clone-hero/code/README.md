@@ -293,6 +293,7 @@ The table was generated from the files, not typed. One more file, `code/6142/dru
 | 0x21695E0 | ini parse | [code/6142/ini_parse_21695E0.asm](6142/ini_parse_21695E0.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x1B4F710 | int32 tryparse | [code/6142/int32_tryparse_1B4F710.asm](6142/int32_tryparse_1B4F710.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x214C8A0 | note is kick | [code/6142/note_is_kick_214C8A0.asm](6142/note_is_kick_214C8A0.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x2642C0 | sng bool getter | [code/6142/sng_bool_getter_2642C0.asm](6142/sng_bool_getter_2642C0.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x215D450 | five lane convert | [code/6142/five_lane_convert_215D450.asm](6142/five_lane_convert_215D450.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x214DB20 | chord find type | [code/6142/chord_find_type_214DB20.asm](6142/chord_find_type_214DB20.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x215B8C0 | kick merge | [code/6142/kick_merge_215B8C0.asm](6142/kick_merge_215B8C0.asm) | 6142 | tools/ch_mcp/chdis.py |
