@@ -338,25 +338,25 @@ Found: 2026-10-30, session b02ab3e6 (the reference build), from the docs survey 
 
 ### IN-29 Whether the current song entry is the song being played
 
-Rule: Nothing yet shows that `GlobalVariables.currentSongEntry` holds the playing song during a song; the dump does not say when the game sets it.
+Rule: Proven in the game's code: the song-load method `0x235AD0` sets `GlobalVariables.currentSongEntry` to the song it loads, before it builds the chart. Whether the field still holds that song for the whole song is not known, because ten other stores to it were not read.
 Label: Unknown
-Evidence: looked in `dump.cs` (layout only) and `overlay-spike/il2cpp-fields.md`. One run has read the route: on a command-line start of Window Map, the entry's folder during the song was that song's folder (decision log D316 item 4). That compares the folder, not the checksum `live-checks.md` asks for, and no menu start has been read.
-Game code (6142): `GlobalVariables.currentSongEntry`; no writer read.
+Evidence: looked in `dump.cs` (layout only) and `overlay-spike/il2cpp-fields.md`. The store: `code/6142/globals_set_song_235AD0.asm` line 47 stores the song argument at +0x28 with no test in front of it (`this` from line 18, the song from line 17); the chart builder `0x20D2EA0` is called later, at line 110. A field-write scan for +0x28 over every named method that loads GlobalVariables' type info (`docs/audit/2026-11-08-clone-hero-unknowns/W9a/globals_writes_28_7C.txt`) found 16 stores: this one, two in each of two `SongSelect` methods (`0x891D0` and `0x8D260`), five in `EndOfSong` methods, five in `PauseMenu` methods and one in `0x26A130`. The `PauseMenu` and `EndOfSong` stores were not read, and they are where to read next. The song-load method's direct callers (byte scan of il2cpp and .text, `W9a/callers_235AD0.txt`) are `SongOptions` method `0x297240` and a coroutine at `0x3BD710`; neither was read, so the menu route to it is not shown. One run has read the route: on a command-line start of Window Map, the entry's folder during the song was that song's folder (decision log D316 item 4). That compares the folder, not the checksum `live-checks.md` asks for, and no menu start has been read.
+Game code (6142): `GlobalVariables.currentSongEntry`; song-load method RVA `0x235AD0`.
 Hydra: no owner.
 Ruling: none needed: no Hydra rule reads it.
-Found: 2026-10-30, session b02ab3e6 (the reference build). 2026-11-07, session 28b91640 (the folder read).
+Found: 2026-10-30, session b02ab3e6 (the reference build). 2026-11-07, session 28b91640 (the folder read). The writer, 2026-11-08, session 428cf079 (unknowns audit).
 
 ## The song-select menu
 
 ### IN-30 The song-select classes are located, not read
 
-Rule: The song-select screen's classes are `SongSelect` (TypeDefIndex 347, a BaseMenu), `SongSelectSearch` (237) and `SongSelectPanel` (144). None of their methods was read.
+Rule: The song-select screen's classes are `SongSelect` (TypeDefIndex 347, a BaseMenu), `SongSelectSearch` (237) and `SongSelectPanel` (144). The method that starts a song from the list has not been found.
 Label: Unknown
-Evidence: not checked: it needs a reading of the classes' methods. The class lines are `dump.cs` 20595, 15170 and 9120, checked for this page.
-Game code (6142): class headers only; no method read.
+Evidence: the class lines are `dump.cs` 20595, 15170 and 9120. All 70 method RVAs of `SongSelect` (`dump.cs` lines 20595 to 20904) were disassembled with tools/ch_mcp/chdis.py, with no listing kept, and searched for `LoadScene`, `SceneManager`, `PlayerSelection`, string literals and reads of +0x28; none starts a song. `SongSelect` overrides the BaseMenu slots 10 (`0x8AC20`), 21 (`0x8EA10`), 36, 51 (`0x8A210`), 57 (Green held) and 47 (`Update`, `0x8EE20`, which only jumps to `BaseMenu.Update`); the slot-to-press map is `code/6142/menu_buttons_1D4BC0.md`. It does not override slot 31, the Green press, whose base method `0x1D5620` only sets the menu's +0x28 and calls `0x1A6EF0` (read with chdis, not kept). So a Green press reaches only the base slot 31, and the overrides of the held-Green and other slots were not read for a song start. `SongSelectSearch` and `SongSelectPanel` were not read. The lead for the next read is `SongOptions` method `0x297240`: its Green handler calls the song-load method `0x235AD0` (IN-29), found as a direct caller by byte scan.
+Game code (6142): class headers; `SongSelect` methods read with chdis, no listing kept.
 Hydra: no owner.
 Ruling: none needed: no Hydra rule reads it.
-Found: 2026-10-30, session b02ab3e6 (the reference build).
+Found: 2026-10-30, session b02ab3e6 (the reference build); the method search, 2026-11-08, session 428cf079 (unknowns audit).
 
 ## The player screen
 
@@ -390,35 +390,35 @@ Hydra: no owner: Hydra never reads the running game. The tools read these throug
 Ruling: none needed: no Hydra rule reads it.
 Found: 2026-10-31, session 5cc1cc07 (task LS-K3-menu-fields), checked in the dump.
 
-### IN-59 The player screen's instrument and difficulty are the profile's saved copy
+### IN-59 The player screen's instrument and difficulty start as the profile's saved copy and change on a confirm
 
-Rule: The instrument at +0x240 and the difficulty at +0x241 of `PlayerSelectionMenu` are copies of the profile's saved values, made when the screen opens. They do not follow the cursor while the player picks.
-Label: Unknown
-Evidence: a read-only scout's decompile of build 6142 (session 5cc1cc07, 2026-10-31) reported it; no listing of it is committed. The dump shows only the two fields' types and offsets (`dump.cs` lines 72890 and 72891), not who writes them. Live run LS-K3 run 2 (2026-10-31) read Guitar and Expert in these two fields; that one read neither proves nor rules out a saved copy.
-Game code (6142): `#1429+0x240`, `#1429+0x241`; the writer was not read from a listing.
+Rule: When the screen opens, `PlayerSelectionMenu` copies the profile's instrument into +0x240 and its difficulty into +0x241. Confirming a row on the Instrument or Difficulty page sets the field from the row's text and writes it back into the profile at once, so the screen and the profile stay equal. No cursor move writes either field in the methods read. Two more methods also write +0x241 and were not read.
+Label: Proven in the game's code
+Evidence: `code/6142/player_menu_on_enable_32BF80.asm`: OnEnable, which Unity runs each time the screen opens, copies the profile's byte +0x10 into +0x240 (lines 191 to 198) and +0x11 into +0x241 (lines 199 to 206), after it replaces an instrument of 0xF ("No Part") in the profile (lines 183 to 190). `code/6142/player_menu_confirm_32E190.asm`: on the Difficulty page the confirm sets +0x241 to 3, 2, 1 or 0 for "Expert", "Hard", "Medium" or "Easy" (lines 79, 103, 111 and 119) and copies it into the profile (lines 80 to 87); on the Instrument page it calls `0x32FB60` (line 135), which sets +0x240 from the highlighted row's name and copies it into the profile (`code/6142/player_menu_set_instrument_32FB60.asm` lines 34 to 183 and 184 to 191). A scan of all 51 named methods of `PlayerSelectionMenu` and its nested classes for byte stores to +0x240 and +0x241 (`docs/audit/2026-11-08-clone-hero-unknowns/W9a/player_menu_stores_240_241.txt`) found 27 stores in five methods. The two not read are `0x32C9C0` (writes 5, 8, 0 and 1) and `0x32D000` (writes 3, 2, 1 and 0); no direct caller of either was found (byte scan of il2cpp and .text, `W9a/callers_240_241_writers.txt`). Live run LS-K3 run 2 (2026-10-31) read Guitar and Expert in these two fields.
+Game code (6142): `#1429+0x240`, `#1429+0x241`; OnEnable RVA `0x32BF80`, confirm RVA `0x32E190`, instrument setter RVA `0x32FB60`.
 Hydra: no owner: Hydra never reads the running game.
 Ruling: none needed: no Hydra rule reads it.
-Found: 2026-10-31, session 5cc1cc07, from a decompile of build 6142.
+Found: 2026-10-31, session 5cc1cc07, from a decompile of build 6142; the listings, 2026-11-08, session 428cf079 (unknowns audit).
 
-### IN-60 How the player screen moves, from a decompile
+### IN-60 How the player screen moves
 
-Rule: The pad Green confirms the highlighted row and moves to the next page. Yellow and Blue move the cursor, but only when the profile's controller type (IN-57) is Drums or FiveLaneDrums. The highlighted row is row cursor + scroll (IN-58). On the Instrument page, the highlighted row's instrument id is the instrument Green sets; what the ids mean on the other pages was not found. The code also sets the page field (IN-56) to 5, 6 and 7, which the enum does not name. The bool at +0x1F0 looks like a first-time flag, +0x242 like an is-drums flag, +0x244 like a network flag and +0x246 like a lock on going back; those names are guesses from what the code does with them.
-Label: Unknown
-Evidence: a read-only scout's decompile of build 6142 (session 5cc1cc07, 2026-10-31) reported all of it; no listing is committed, and none of it can be checked in the dump, which gives only names, types and offsets.
-Game code (6142): `#1429+0x120`, `#1429+0x1E8`, `#824+0x40`, `#824+0x3C`, `#1429+0x228`, `#1429+0x1F0`, `#1429+0x242`, `#1429+0x244`, `#1429+0x246`; the input methods were not read from a listing.
-Hydra: no owner: Hydra never reads the running game. The tools print these fields with `menu_lines` in tools/ch_mcp/frida_tools.py.
+Rule: Every menu's update hands each player's presses to one button method, which calls one virtual slot per press. Blue moves the highlight down and Yellow moves it up, but only when the profile's drums test passes: the controller type (IN-57) is Drums or FiveLaneDrums and one global setting is 1, or the player has no profile. The moves change the cursor at +0x40, or the scroll at +0x3C at the scrolling edge, and do nothing on the Ready page. Green does not always go to the next page; it goes where the row or a flag says. On Confirm, the cursor alone picks the row: row 1 opens Instrument, row 2 Difficulty, row 3 Modifiers, and row 0 saves the part and goes to Ready. On Instrument, the row at cursor + scroll sets the instrument from the row's name string at +0x218 (not from the id array at +0x228), then opens Difficulty when +0x1F0 is set, else returns to Confirm. On Difficulty, the cursor alone picks the row, which sets the difficulty by name and goes to Modifiers when +0x1F1 is set, else to Confirm; the row "Change Instrument" sets +0x1F0 and opens Instrument. On Modifiers, row 0 returns to Confirm and any other row toggles one modifier. On Ready, Green does nothing. The bool at +0x242 is "the controller type is Drums or FiveLaneDrums". +0x1F0 means "came here to change the instrument". +0x246 stops Red from leaving the Instrument page, and +0x244 stops Red from leaving the screen from Confirm; whether +0x244 is a network flag is not shown. The code writes the page field (IN-56) as 5 and 6, which the enum does not name; 7 is only compared, and no write of 7 was found in the class's own methods.
+Label: Proven in the game's code
+Evidence: the route of a press: `code/6142/menu_update_1D7060.asm` lines 76 to 153 and `code/6142/menu_player_input_1D6B10.asm` line 16 hand each player to the button method; `code/6142/menu_buttons_1D4BC0.asm` calls slot 31 for Green down (lines 86 to 93 and 318 to 321), slot 51 for Red down (lines 120 to 127 and 298 to 301), and slot 21 for Yellow down and slot 10 for Blue down only when the drums test passes (lines 128 to 135, 160 to 167 and 268 to 296), with no profile counting as a pass (line 80); otherwise Yellow and Blue call slots 20 and 36, which the player screen does not override and BaseMenu leaves empty (`dump.cs` lines 44886 and 44979). The drums test is `code/6142/menu_drums_test_D7F20.asm` lines 9 to 23; which global setting it reads was not found. Two more actions, ids 5 and 14 (names not read), also call slots 10 and 21 for every controller type when Green is not held (`menu_buttons_1D4BC0.asm` lines 322 to 398). The moves: `code/6142/player_screen_down_32E710.asm` and `code/6142/player_screen_up_330F30.asm` lines 9 to 13 (nothing on Ready, else the base move), `code/6142/menu_cursor_down_1D57F0.asm` lines 34 and 36 and `code/6142/menu_cursor_up_1D6820.asm` lines 21 and 35. Green per page: `code/6142/player_screen_green_32E190.asm` lines 9 and 10 (Ready), 24 to 52 (Modifiers), 53 to 132 (Difficulty) and 137 to 211 (Confirm, with `0x32FF70` writing Ready); `code/6142/player_screen_instrument_32FB60.asm` lines 34 to 228 (Instrument), with +0x242 at lines 192 to 206. Red: `code/6142/player_screen_red_32CBE0.asm` lines 44 and 45 (+0x246) and line 60 (+0x244). Page 6 is written by `code/6142/player_screen_page6_32D2D0.asm` line 5; 5 and 6 are passed to the second page setter `0x330350`, found by a search of every method of the class for page writes (`docs/audit/2026-11-08-clone-hero-unknowns/W9b/psm_page_values.sh`). The action ids are from the kit log `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-10-31\ls-d1a-run3\kit-2.jsonl`. A `CHNetManager` bool `0x145FE0` (not read) gates Red on Ready and Confirm and the save on Confirm row 0. A read-only scout's decompile (session 5cc1cc07, 2026-10-31) first reported this screen's moves; this block rests on the listings, which correct it in three places.
+Game code (6142): `#1429+0x120`, `#1429+0x1E8`, `#824+0x40`, `#824+0x3C`, `#1429+0x228`, `#1429+0x1F0`, `#1429+0x242`, `#1429+0x244`, `#1429+0x246`; button method RVA `0x1D4BC0`, Green RVA `0x32E190`, instrument setter RVA `0x32FB60`.
+Hydra: no owner: Hydra never reads the running game. The tools print these fields with `menu_lines` in tools/ch_mcp/frida_tools.py. The tools' `highlighted_row_text` there takes cursor + scroll on every page and prints the id from +0x228; the game reads the cursor alone on Confirm and Difficulty, and the two agree whenever the scroll is 0.
 Ruling: none needed: no Hydra rule reads it.
-Found: 2026-10-31, session 5cc1cc07, from a decompile of build 6142.
+Found: 2026-10-31, session 5cc1cc07, from a decompile of build 6142; the listings, 2026-11-08, session 428cf079 (unknowns audit).
 
-### IN-91 Whether the player screen's method at 0x32F590 runs once a frame
+### IN-91 The player screen's method at 0x32F590 is a Ready-page test that the canvas calls once a frame per active screen
 
-Rule: The tools treat a method of `PlayerSelectionMenu` at RVA 0x32F590 as the player screen's per-frame method, and watch it to tell that the screen is running. That it runs once a frame is not proven.
-Label: Unknown
-Evidence: `dump.cs` lines 73000 and 73001 show the method itself: a public instance method of `PlayerSelectionMenu` that returns bool (its name is obfuscated) (class header at line 72822), at RVA 0x32F590 (line 73000). Its code was not read. The once-a-frame claim is the comment at tools/ch_mcp/agent/menu.ts lines 49 to 54, which says LS-K3's method watch saw it called once a frame while the screen ran; no output of that watch is kept. The lead for a check is that comment and the constant `PLAYER_SCREEN_FRAME_RVA` at line 54.
-Game code (6142): `PlayerSelectionMenu` method RVA 0x32F590 (`dump.cs` lines 73000 and 73001); not read.
+Rule: The method of `PlayerSelectionMenu` at RVA 0x32F590 tests whether the player screen is on its Ready page. `PlayerSelectionCanvas.Update` calls it once a frame on each active player screen, until every active screen is ready or the canvas's bool at +0x48 is set. So with one active screen it runs once a frame, and with two, twice. Five other methods call it too, and they were not read. The tools watch it as the screen's per-frame method, which holds for one player.
+Label: Proven in the game's code
+Evidence: `code/6142/player_menu_on_ready_page_32F590.asm` lines 1 to 3: it compares the page field +0x120 with 4 (Ready, IN-56) and returns the result. `dump.cs` lines 73000 and 73001 give it as a public instance method returning bool (class header at line 72822). Its direct callers (byte scan of il2cpp and .text, `docs/audit/2026-11-08-clone-hero-unknowns/W9a/callers_32F590.txt`) are `PlayerSelectionCanvas.Update` at 0xD0EFF, three unnamed `PlayerSelectionCanvas` methods and two `PlayerProfileMenu` methods. `code/6142/player_canvas_update_D0E20.asm` shows the per-frame call: while the canvas's +0x48 is false and its component is enabled (lines 13 and 18), it calls the test once on every player screen whose GameObject is active (lines 25 to 58 and 97 to 99), and when every active screen is ready it fades to Gameplay and switches itself off (lines 100 to 105 and 130 to 162). The canvas class and its fields are `dump.cs` lines 25710 to 25722. The tools' comment at tools/ch_mcp/agent/menu.ts lines 49 to 54 calls it the screen's per-frame method.
+Game code (6142): `PlayerSelectionMenu` method RVA `0x32F590` (`dump.cs` lines 73000 and 73001); `PlayerSelectionCanvas.Update` RVA `0xD0E20`.
 Hydra: no owner: Hydra never reads the running game. The tools use it as `PLAYER_SCREEN_FRAME_RVA` in tools/ch_mcp/agent/menu.ts line 54.
 Ruling: none needed: no Hydra rule reads it.
-Found: 2026-11-08, session 77057df2 (docs-gaps search), from tool code.
+Found: 2026-11-08, session 77057df2 (docs-gaps search), from tool code; the listings, 2026-11-08, session 428cf079 (unknowns audit).
 
 ## The bot
 
