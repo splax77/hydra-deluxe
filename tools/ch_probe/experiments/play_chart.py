@@ -825,6 +825,232 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
     return result
 
 
+# --- in-game timing -------------------------------------------------------------
+
+# How often play_in_game looks at should_stop and the agent's session while no
+# event comes. It decides no press time: the agent fires every press.
+_EVENT_POLL_S = 0.05
+
+
+def engine_addresses(engine) -> Tuple[int, int]:
+    """The song clock's and the score's addresses on `engine`, which the
+    `play` message hands the kit agent (D339 item 4)."""
+    return engine._addr(C.OFF_SONG_CLOCK), engine._addr(C.OFF_SCORE)
+
+
+def play_in_game(chords: Sequence[Chord], player, *, clock_addr: int, score_addr: int,
+                 now: Callable[[], float] = time.perf_counter,
+                 on_press: Optional[Callable[[dict], object]] = None,
+                 should_stop: Optional[Callable[[], bool]] = None,
+                 out: Optional[TextIO] = None,
+                 cap_s: float = RUN_CAP_S,
+                 read_sp_end: Optional[Callable[[], Optional[float]]] = None) -> RunResult:
+    """Hand press_plan's presses of `chords` to the kit agent in one `play`
+    message and make a press-log row of each event it reports, as
+    play_chords would for the same press (design points 1 to 5 of
+    docs/superpowers/plans/2026-11-12-in-game-press-timing.md). The agent
+    fires every press on the game's frames; nothing here waits for a press
+    time. kit_tools' contract block names every message and event field.
+
+    `player` is a kit_tools.GamePlayer (post, events, alive). A row's
+    `clock_ms_at_press` is the clock of the frame the press went down on,
+    or was dropped on; `score_before` is the score on that frame and
+    `score_after` the agent's read after the release. `wall_s_at_read` and
+    `wall_s_at_reply` are the down and up times the agent stamped, in
+    seconds. The timing columns stay empty; `frame_gap_ms` and `agent_note`
+    hold the event's frame gap and note. `scored_between` is counted as
+    play_chords counts it, on the first row of each message.
+
+    After the event of a press carrying Press.planned_end_ms, `read_sp_end`
+    is read once, and retime_from_end moves the presses not yet reported;
+    the moved ones go to the agent in one `retime` message with new seqs.
+
+    The agent's stop reasons map onto play_chords' stop words: done is
+    STOP_DONE, stop_play "stopped", cap "cap", frozen "frozen", and
+    jumped_back sends the original plan again and starts the counts over. An
+    event this run cannot place (an unknown seq, kind, outcome or reason, or
+    a press event missing a field) ends the run as "reply" after a
+    `stop_play`; so does a lost session, as "lost". `should_stop` is asked
+    while no event comes, and a True sends `stop_play`. A `retime_missed`
+    note is named in the run's message."""
+    from tools.ch_mcp import kit_tools as K
+    out = sys.stdout if out is None else out
+    chord_lanes = {c.index: c.lanes for c in chords}
+    plan = press_plan(chords)
+
+    def entries_for(presses: Sequence[Press], first_seq: int,
+                    known: Optional[Mapping[int, int]] = None,
+                    context: Sequence[Press] = ()) -> Tuple[List[dict], dict]:
+        # Seqs in firing order for the presses `known` (id to seq) does not
+        # hold; a later group's after_seq is its head's, which press_messages
+        # finds among `presses` and `context` (the presses already reported).
+        seq_of = dict(known or {})
+        fresh = []
+        for p in presses:
+            if id(p) not in seq_of:
+                seq_of[id(p)] = first_seq + len(fresh)
+                fresh.append(p)
+        head_of = {id(q): head for head, later in press_messages([*context, *presses])
+                   for q in later}
+        entries = [K.play_entry(seq_of[id(p)], p,
+                                seq_of[id(head_of[id(p)])] if id(p) in head_of else None)
+                   for p in fresh]
+        return entries, {seq_of[id(p)]: p for p in fresh}
+
+    def start() -> Tuple[dict, List[int]]:
+        entries, by_seq = entries_for(plan, 0)
+        player.post(K.play_message(
+            entries, clock_addr=clock_addr, score_addr=score_addr,
+            score_delay_ms=C.s_to_ms(SCORE_READ_DELAY_S), start_lead_ms=live.START_LEAD_MS,
+            cap_s=cap_s))
+        return by_seq, sorted(by_seq)
+
+    by_seq, waiting = start()
+    every_seq = dict(by_seq)
+    result = RunResult()
+    reported: set = set()
+    missed: List[int] = []
+    last_score: Optional[int] = None
+    stopping_since: Optional[float] = None
+    next_seq = len(plan)
+
+    def fail(stop: str, message: str) -> RunResult:
+        try:
+            player.post(K.stop_play_message())
+        except Exception:  # the stop is said in `message` already
+            pass
+        result.stop, result.message = stop, message
+        print(f"\n  Stopped: {message}.", file=out)
+        return result
+
+    while True:
+        try:
+            event = player.events.get(timeout=_EVENT_POLL_S)
+        except queue.Empty:
+            if not player.alive():
+                result.stop, result.message = "lost", "lost the kit agent's session"
+                return result
+            if stopping_since is None and should_stop is not None and should_stop():
+                stopping_since = now()
+                player.post(K.stop_play_message())
+            elif stopping_since is not None and now() - stopping_since > K.KIT_PRESS_CAP_S:
+                result.stop = "stopped"
+                result.message = (f"asked to stop; the agent sent no stop within "
+                                  f"{K.KIT_PRESS_CAP_S:g} s (KIT_PRESS_CAP_S)")
+                return result
+            continue
+        kind = event.get("kind") if isinstance(event, dict) else None
+        if kind == K.EVENT_STARTED:
+            skipped = int(event.get("skipped") or 0)
+            result.skipped = len({by_seq[s].index for s in waiting[:skipped]})
+            reported.update(waiting[:skipped])
+            print(f"  Song clock at {C.ms_to_s(event.get('clock_ms') or 0):.2f}s; "
+                  f"skipped {result.skipped} chords less than {live.START_LEAD_MS:g} ms "
+                  f"ahead of the clock.", file=out)
+            continue
+        if kind == K.EVENT_STOPPED:
+            reason = event.get("reason")
+            if reason == K.STOP_REASON_JUMPED_BACK:
+                print("\n  Song clock jumped back. Re-syncing.", file=out)
+                by_seq, waiting = start()
+                every_seq.update(by_seq)
+                result, reported, missed, last_score = RunResult(), set(), [], None
+                next_seq = len(plan)
+                continue
+            words = {K.STOP_REASON_DONE: STOP_DONE, K.STOP_REASON_STOP_PLAY: "stopped",
+                     K.STOP_REASON_CAP: "cap", K.STOP_REASON_FROZEN: "frozen"}
+            if reason not in words:
+                return fail("reply", f"the kit agent stopped for a reason this run does "
+                                     f"not know: {reason!r}")
+            result.stop = words[reason]
+            if result.stop == STOP_DONE:
+                lost = [s for s in by_seq if s not in reported]
+                if lost:
+                    return fail("reply", f"the kit agent ended with no report for seqs "
+                                         f"{lost}")
+            else:
+                result.message = f"the kit agent stopped: {reason}"
+            if missed:
+                result.message = ((result.message + "; ") if result.message else "") + (
+                    f"{K.NOTE_RETIME_MISSED} on chords "
+                    f"{', '.join(str(every_seq[s].index) for s in missed)}: each fired at "
+                    f"its planned time before its retime arrived")
+            return result
+        if kind != K.EVENT_PRESS:
+            return fail("reply", f"the kit agent sent an event this run does not know: "
+                                 f"{event!r}")
+        lacking = [f for f in K.PRESS_EVENT_FIELDS if f not in event]
+        if lacking:
+            return fail("reply", f"the kit agent's press event lacks {', '.join(lacking)}: "
+                                 f"{event!r}")
+        seq = event["seq"]
+        if seq not in every_seq:
+            return fail("reply", f"the kit agent reported seq {seq!r}, which no entry holds")
+        part = every_seq[seq]
+        outcome = event["outcome"]
+        if outcome not in (K.OUTCOME_SENT, K.OUTCOME_DROPPED):
+            return fail("reply", f"the kit agent reported outcome {outcome!r} for seq {seq}")
+        reported.add(seq)
+        dropped = outcome == K.OUTCOME_DROPPED
+        send = DROPPED if dropped else DECLINED if part.declined else SENT
+        row = {
+            "index": part.index, "chart_ms": part.chart_ms,
+            "clock_ms_at_press": event["clock_ms"], "lead_ms": part.lead_ms,
+            "score_before": event["score_before"],
+            "score_after": event["score_before"] if dropped else event["score_after"],
+            SEND_COLUMN: send,
+            "frame_gap_ms": event["frame_gap_ms"], "agent_note": event["note"] or "",
+        }
+        if not dropped:
+            row.update({key: event[key] for key in ("down_frame", "up_frame",
+                                                    "down_ms", "up_ms")})
+            row["wall_s_at_read"] = C.ms_to_s(event["down_ms"])
+            row["wall_s_at_reply"] = C.ms_to_s(event["up_ms"])
+        if part.retimed is not None:
+            row["retimed"] = part.retimed
+        if part.after_ms is None:
+            # The first row of a message, as play_chords counts it.
+            row["scored_between"] = (0 if last_score is None
+                                     else event["score_before"] - last_score)
+            if dropped:
+                result.dropped += 1
+            elif part.declined:
+                result.declined += 1
+            else:
+                result.sent += 1
+        last_score = row["score_after"]
+        if event["note"] == K.NOTE_RETIME_MISSED:
+            missed.append(seq)
+        if part.planned_end_ms is not None and read_sp_end is not None and not dropped:
+            end_s = read_sp_end()
+            if end_s is None:
+                row["end_read_ms"] = NO_ACTIVATION_READ
+            else:
+                row["end_read_ms"] = C.s_to_ms(end_s)
+                rest = sorted((p for s, p in by_seq.items() if s not in reported),
+                              key=lambda p: p.at_ms)
+                kept = {id(p): s for s, p in every_seq.items()}
+                moved = retime_from_end(rest, part.index, row["end_read_ms"], chord_lanes)
+                entries, fresh = entries_for(
+                    moved, next_seq, kept,
+                    [p for s, p in by_seq.items() if s in reported])
+                next_seq += len(fresh)
+                for s in [s for s, p in by_seq.items()
+                          if s not in reported and p.end_read_after == part.index]:
+                    del by_seq[s]
+                by_seq.update(fresh)
+                every_seq.update(fresh)
+                if entries:
+                    player.post(K.retime_message(part.index, entries))
+        result.rows.append(row)
+        if on_press is not None:
+            on_press(row)
+        if send != SENT or result.sent <= 30 or result.sent % 20 == 0 or row["agent_note"]:
+            print(f"  {result.sent:4d}  {C.ms_to_s(part.chart_ms):7.2f}  "
+                  f"{C.ms_to_s(event['clock_ms']):7.2f}  {send:8} {row['agent_note']}",
+                  file=out)
+
+
 def write_press_log(path: str, rows: Sequence[dict]) -> None:
     """Write the press log: the PRESS_LOG_COLUMNS header, then one row per
     press. A row's other values stay out of the file."""
@@ -986,6 +1212,42 @@ def live_play(chords: Sequence[Chord], *,
         result = play_chords(chords, clock, engine.score, press,
                              on_press=on_press, should_stop=should_stop, out=out,
                              cap_s=cap_s, read_sp_end=engine.sp_end, kit=kit)
+        result.dyn_threshold = threshold
+        return result
+    finally:
+        proc.close()
+
+
+def live_in_game(chords: Sequence[Chord], *, player,
+                 open_proc: Callable = open_process,
+                 find_engine: Optional[Callable[[object], int]] = None,
+                 on_press: Optional[Callable[[dict], object]] = None,
+                 should_stop: Optional[Callable[[], bool]] = None,
+                 out: Optional[TextIO] = None,
+                 cap_s: float = RUN_CAP_S) -> RunResult:
+    """live_play for in-game timing: open the game read-only, find the
+    engine as live_play does, work out the strengths (with_axes), and hand
+    the run to play_in_game on `player` (a kit_tools.GamePlayer), with the
+    engine's clock and score addresses and its Star Power end read.
+    LIVE-ONLY."""
+    out = sys.stdout if out is None else out
+    if find_engine is None:
+        def find_engine(proc) -> int:
+            return find_normal_engine(proc, out=out)
+    proc = open_proc(read_only=True)
+    try:
+        proc.verify_targets()
+        try:
+            engine_ptr = find_engine(proc)
+        except engine_finder.EngineSearchTimeout as e:
+            return RunResult(stop=STOP_NO_ENGINE, message=str(e))
+        engine = EngineModel(proc)
+        engine.use_object(engine_ptr)
+        chords, threshold = with_axes(chords, engine)
+        clock_addr, score_addr = engine_addresses(engine)
+        result = play_in_game(chords, player, clock_addr=clock_addr, score_addr=score_addr,
+                              on_press=on_press, should_stop=should_stop, out=out,
+                              cap_s=cap_s, read_sp_end=engine.sp_end)
         result.dyn_threshold = threshold
         return result
     finally:

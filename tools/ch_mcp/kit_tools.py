@@ -662,6 +662,171 @@ def kit_press(agent: FA.LiveAgent, *, request_lock: Optional[threading.Lock] = N
     return press
 
 
+# --- in-game timing: the contract with the kit agent ---------------------------
+#
+# Design points 1, 3 and 5 of
+# docs/superpowers/plans/2026-11-12-in-game-press-timing.md. This block is the
+# Python home of every name the play messages and the agent's events use;
+# kit.ts and agent/press_schedule.ts must use the same ones.
+#
+# Messages Python posts (each a request: the agent replies at once with the id):
+#   play        entries, hold_frames, clock_addr, score_addr, score_delay_ms,
+#               start_lead_ms, cap_s
+#   retime      read_after, entries   (replaces every entry not yet fired whose
+#               end_read_after is read_after by `entries`, which carry new seqs)
+#   stop_play   (no fields)
+#   frame_probe seconds, clock_addr, elements, hold_frames, cap_s
+# An entry: seq, chord, at_ms, last_send_ms, elements (each id and value, as a
+# press message's), after_ms and after_seq (both null on a first group),
+# end_read_after (null when the entry is timed from no end read).
+#
+# The agent's events, sent with no id: one payload per frame that has any,
+#   {"type": "play_events", "events": [event, ...]}
+# Event kinds (the event's `kind`):
+#   started  clock_ms, skipped   (skipped counts the entries, lowest seqs
+#            first, the start lead passed over)
+#   press    seq, chord, outcome (sent or dropped), clock_ms (the clock of the
+#            fire frame, or of the frame that dropped it), down_frame, up_frame,
+#            down_ms, up_ms, score_before (the score on the fire frame),
+#            score_after (the first frame score_delay_ms after the release),
+#            frame_gap_ms (wall time since the frame before the fire frame),
+#            note ("" or retime_missed)
+#   stopped  reason (done, stop_play, cap, jumped_back or frozen), clock_ms
+PLAY_TYPE = "play"
+RETIME_TYPE = "retime"
+STOP_PLAY_TYPE = "stop_play"
+FRAME_PROBE_TYPE = "frame_probe"
+PLAY_EVENTS_TYPE = "play_events"
+EVENT_STARTED = "started"
+EVENT_PRESS = "press"
+EVENT_STOPPED = "stopped"
+OUTCOME_SENT = "sent"
+OUTCOME_DROPPED = "dropped"
+NOTE_RETIME_MISSED = "retime_missed"
+STOP_REASON_DONE = "done"
+STOP_REASON_STOP_PLAY = "stop_play"
+STOP_REASON_CAP = "cap"
+STOP_REASON_JUMPED_BACK = "jumped_back"
+STOP_REASON_FROZEN = "frozen"
+STOP_REASONS = (STOP_REASON_DONE, STOP_REASON_STOP_PLAY, STOP_REASON_CAP,
+                STOP_REASON_JUMPED_BACK, STOP_REASON_FROZEN)
+# The fields every press event must hold, the row's columns among them.
+PRESS_EVENT_FIELDS = ("seq", "chord", "outcome", "clock_ms", "down_frame", "up_frame",
+                      "down_ms", "up_ms", "score_before", "score_after",
+                      "frame_gap_ms", "note")
+# The pad the frame probe presses once (design point 2's probe, task IG2).
+FRAME_PROBE_ITEM = "green"
+# The longest frame probe ch_kit_frame_probe accepts: the 5 s the user
+# accepted for LS-G1 (D339 item 3).
+FRAME_PROBE_SECONDS = 5.0
+
+
+def play_entry(seq: int, press: Any, after_seq: Optional[int]) -> dict:
+    """One `play` or `retime` entry for a play_chart.Press: its `seq`, its
+    chord, its fire time (Press.at_ms, with no offset: D339 item 5), its
+    last send time, its kit elements at its `axes`, and for a later order
+    group its `after_ms` and the seq of the press it follows."""
+    elements = press_message([lane_element(lane) for lane in press.lanes],
+                             values=press.axes)["elements"]
+    return {"seq": seq, "chord": press.index, "at_ms": press.at_ms,
+            "last_send_ms": press.last_send_ms, "elements": elements,
+            "after_ms": press.after_ms if after_seq is not None else None,
+            "after_seq": after_seq, "end_read_after": press.end_read_after}
+
+
+def play_message(entries: Sequence[dict], *, clock_addr: int, score_addr: int,
+                 score_delay_ms: float, start_lead_ms: float, cap_s: float,
+                 hold_frames: int = KIT_HOLD_FRAMES) -> dict:
+    """The `play` message: the whole schedule, and every number the agent
+    plays it by. The caller passes its own numbers (the score delay, the
+    start lead and the run cap); this module adds the hold."""
+    return {"type": PLAY_TYPE, "entries": list(entries), "hold_frames": hold_frames,
+            "clock_addr": clock_addr, "score_addr": score_addr,
+            "score_delay_ms": score_delay_ms, "start_lead_ms": start_lead_ms,
+            "cap_s": cap_s}
+
+
+def retime_message(read_after: int, entries: Sequence[dict]) -> dict:
+    """The `retime` message: the entries timed from the end read after chord
+    `read_after`, as retime_from_end moved them."""
+    return {"type": RETIME_TYPE, "read_after": read_after, "entries": list(entries)}
+
+
+def stop_play_message() -> dict:
+    return {"type": STOP_PLAY_TYPE}
+
+
+def frame_probe_message(seconds: float, clock_addr: int) -> dict:
+    """The `frame_probe` message for LS-G1: log every frame for `seconds`,
+    pressing FRAME_PROBE_ITEM once for the kit's hold."""
+    return {"type": FRAME_PROBE_TYPE, "seconds": seconds, "clock_addr": clock_addr,
+            "elements": press_message([KIT_ELEMENTS[FRAME_PROBE_ITEM]])["elements"],
+            "hold_frames": KIT_HOLD_FRAMES, "cap_s": watch_cap_s(seconds)}
+
+
+class GamePlayer:
+    """The kit agent as play_chart.play_in_game uses it: post the play
+    messages, and take the agent's events from a queue that Frida's thread
+    fills, so a slow reader loses none. `events` holds each event in the
+    order the agent sent it."""
+
+    def __init__(self, agent: FA.LiveAgent,
+                 request_lock: Optional[threading.Lock] = None) -> None:
+        import queue
+        self._agent = agent
+        self._lock = request_lock if request_lock is not None else threading.Lock()
+        self.events: "queue.Queue[dict]" = queue.Queue()
+        agent.listen(self._take)
+
+    def _take(self, payload: dict) -> None:
+        if payload.get("type") == PLAY_EVENTS_TYPE:
+            for event in payload.get("events") or []:
+                self.events.put(event)
+
+    def alive(self) -> bool:
+        return self._agent.alive
+
+    def post(self, message: dict) -> dict:
+        """Post one play message and return the agent's reply, waiting at
+        most KIT_PRESS_CAP_S. Raises frida_attach.ReadFailed as kit_press
+        does."""
+        with self._lock:
+            return self._agent.request(message, KIT_PRESS_CAP_S)
+
+    def close(self) -> None:
+        self._agent.listen(None)
+
+
+def find_clock_addr() -> int:
+    """The playing song's engine clock address, through the run's engine
+    search (game_tools.find_run_engine) on the game opened read-only.
+    LIVE-ONLY."""
+    from tools.ch_mcp.game_tools import find_run_engine
+    from tools.ch_probe.engine import EngineModel
+    from tools.ch_probe.experiments.play_chart import engine_addresses
+    from tools.ch_probe.process import open_process
+    proc = open_process(read_only=True)
+    try:
+        engine = EngineModel(proc)
+        engine.use_object(find_run_engine(proc))
+        return engine_addresses(engine)[0]
+    finally:
+        proc.close()
+
+
+def frame_probe_lines(reply: dict, clock_addr: int) -> List[str]:
+    """The frame probe's reply as lines: the clock address it read, each
+    value the reply holds, and for a list its length. kit.ts's frame_probe
+    owns what the reply holds."""
+    lines = [f"frame probe on the engine clock at {clock_addr:#x}"]
+    for key, value in reply.items():
+        if isinstance(value, list):
+            lines.append(f"{key}: {len(value)} entries")
+        else:
+            lines.append(f"{key}: {value}")
+    return lines
+
+
 def read_pause_setting(documents_dir: str = game_files.DOCUMENTS_DIR) -> str:
     """The value of settings.ini's pause_on_focus_lost line, through
     game_files' own lookup of a [game] line. Raises
@@ -681,8 +846,9 @@ class KitTools:
     outside seam is an argument so the tests swap each for a fake:
     `agent_dir`, `frida_mod` (None imports frida at the first attach), `wait`
     (how a request waits for its reply), `now` and `sleep` (the clock the
-    frame rate is timed on) and `read_settings` (the live settings.ini's
-    pause_on_focus_lost value)."""
+    frame rate is timed on), `read_settings` (the live settings.ini's
+    pause_on_focus_lost value) and `find_clock` (the playing song's clock
+    address for the frame probe; find_clock_addr)."""
 
     def __init__(self, game, frida, lock, *,
                  agent_dir: str = AGENT_DIR,
@@ -690,8 +856,10 @@ class KitTools:
                  wait: Optional[Callable] = None,
                  now: Callable[[], float] = time.monotonic,
                  sleep: Callable[[float], None] = time.sleep,
-                 read_settings: Callable[[], str] = read_pause_setting):
+                 read_settings: Callable[[], str] = read_pause_setting,
+                 find_clock: Optional[Callable[[], int]] = None):
         self._game = game
+        self._find_clock = find_clock if find_clock is not None else find_clock_addr
         self._frida = frida
         self._lock = lock
         self._agent_dir = agent_dir
@@ -966,6 +1134,47 @@ class KitTools:
             if agent is None:
                 return None
             return kit_press(agent, request_lock=self._request_lock)
+
+    def game_player(self) -> Optional[GamePlayer]:
+        """The kit agent for play_chart.play_in_game, or None when the kit
+        is not set up."""
+        with self._lock:
+            agent = self._ready_agent()
+            if agent is None:
+                return None
+            return GamePlayer(agent, self._request_lock)
+
+    def ch_kit_frame_probe(self, seconds: float = FRAME_PROBE_SECONDS) -> str:
+        """LS-G1's frame probe: find the playing song's engine, then have the
+        kit agent log each frame for `seconds` (the frame number, the engine
+        clock, songTime and the wall time), press FRAME_PROBE_ITEM once and
+        read it back each frame, and print what it sent back. A `seconds`
+        above FRAME_PROBE_SECONDS is refused, and so is a probe while a play
+        session runs."""
+        with self._lock:
+            if (isinstance(seconds, bool) or not isinstance(seconds, (int, float))
+                    or not math.isfinite(seconds) or not seconds > 0):
+                return f"seconds is a number above 0, not {seconds!r}"
+            if seconds > FRAME_PROBE_SECONDS:
+                return (f"seconds is at most {FRAME_PROBE_SECONDS:g} (FRAME_PROBE_SECONDS), "
+                        f"not {seconds!r}")
+            agent = self._ready_agent()
+            if agent is None:
+                return NOT_SET_UP
+            if self._play_running():
+                return PLAY_RUNNING
+            try:
+                clock_addr = self._find_clock()
+            except Exception as e:  # the finder's own words go to the caller
+                return f"frame probe: no engine found: {type(e).__name__}: {e}"
+            message = frame_probe_message(seconds, clock_addr)
+            try:
+                with self._request_lock:
+                    reply = agent.request(message, message["cap_s"])
+            except FA.ReadFailed as e:
+                note = " (seconds plus KIT_PRESS_CAP_S)" if e.reason == FA.END_CAP else ""
+                return self._reply([f"frame probe failed: {e}{note}", *fault_lines(e)])
+            return self._reply(frame_probe_lines(reply, clock_addr))
 
     def agent_attached(self) -> bool:
         """Whether a kit agent is held, alive or not: the one ch_kit_teardown
