@@ -1811,7 +1811,7 @@ std::vector<ChartLibraryEntry> RecordStore::list_chart_library(int offset, int l
     // writes the others would not see.
     const char* file = sqlite3_db_filename(db_, "main");
     if (order == LibraryOrder::Unsorted && offset == 0 && limit < 0 && file && *file &&
-        sqlite3_get_autocommit(db_) != 0) {
+        !transaction_open(db_)) {
         int64_t max_rowid = 0;
         {
             Stmt s = prepare_read(db_, "SELECT max(rowid) FROM charts");
