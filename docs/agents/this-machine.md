@@ -50,6 +50,16 @@ Run scripts with `pwsh`, which is PowerShell 7.6.9 at `C:\Program Files\PowerShe
 
 Clone Hero writes its logs to `C:\Users\Patrick\AppData\locallow\srylain Inc_\Clone Hero\`, which holds `Player.log` and `Player-prev.log`.
 
+## Debugger: WinDbg and cdb
+
+WinDbg is installed from winget as `Microsoft.WinDbg`, a Store-style package, not through the Windows SDK. So `C:\Program Files (x86)\Windows Kits\10\Debuggers` holds nothing, and a look there alone proves nothing. Its command-line debugger, `cdb.exe`, sits in the package folder, whose name carries the version and changes with every update. Find it with this, never from a typed path:
+
+```powershell
+$p = (Get-AppxPackage -Name Microsoft.WinDbg).InstallLocation; Join-Path (Join-Path $p amd64) cdb.exe
+```
+
+`cdb` attaches from this unelevated shell, unlike `wpr`. A non-invasive attach (`-pv`) reads every thread's stack without stopping the process for good. Pass the build's symbol folder with `-y`, not `.sympath` inside `-c`, because `.sympath` takes the rest of the line as its path. For example, `cdb -pv -y <build-cpp\Release> -p <pid> -c "~*kc 40; qd"` prints each thread's call stack and detaches. Each attach pauses the process while it runs, so keep samples short. On 2026-11-11 this showed why a live window started blank: its window thread waited in `AppState::wait_store_open` while eight workers ran `fill_saved_hardest`.
+
 ## The Opus model behind agents
 
 The global `C:\Users\Patrick\.claude\settings.json` sets the ANTHROPIC_DEFAULT_OPUS_MODEL entry of its `env` block to `claude-opus-5-5`. That entry decides which model the `opus` alias runs, so it decides the model of every agent sent out on Opus. The user picks this model by hand. If agents seem worse after a model release, check this entry first. Do not assume the newest model is the one wanted.

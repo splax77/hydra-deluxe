@@ -26,16 +26,15 @@ that script, and adds this session's id.
 """
 
 import atexit
-import ctypes
 import json
 import os
 import shutil
+import sqlite3
 import subprocess
 import sys
 import tempfile
 import threading
 import time
-from ctypes import wintypes
 from datetime import datetime
 from pathlib import Path
 
@@ -67,9 +66,13 @@ WINDOW_LOG = "window.log"
 # The folder in the Windows temp folder that holds the helper's scratch folders.
 SCRATCH_SUBFOLDER = "claude"
 
-# What a snapshot copies, in order. Only hydra.db must exist.
-SNAPSHOT_FILES = ("hydra.db", "hydra.db-wal", "hydra.db-shm", "hydra_settings.ini", "hydra_ui.ini")
-CLOSE_HYDRA_FIRST = "Close Hydra first: a database it has open is not a clean copy."
+# What a snapshot copies, in order. Only hydra.db must exist. The database's
+# -wal and -shm files are not on the list: the database copy already holds
+# what they hold (copy_database).
+SNAPSHOT_FILES = ("hydra.db", "hydra_settings.ini", "hydra_ui.ini")
+# The file SQLite keeps beside a WAL-mode database while a connection has it
+# open, and after one ended without closing it.
+WAL_SUFFIX = "-wal"
 NO_SESSION = "no session; call hydra_start"
 
 # The file in the repo's git common dir that a window session's record goes
@@ -98,100 +101,53 @@ class HydraGone(Exception):
 
 
 # ---------------------------------------------------------------------------
-# The running-Hydra check and the snapshot.
+# The snapshot.
 
 
-def running_processes():
-    """Every running process as (image name, full exe path). The path is None
-    when Windows will not say. Only Hydra.exe's path is looked up, since that
-    is the only one anyone asks about."""
-    k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+def copy_database(src, dest):
+    """Copy the SQLite database `src` to the new file `dest` as one consistent
+    moment, even while another process writes to it. Returns how it was
+    copied, for the report. Raises sqlite3.Error when SQLite cannot read it.
 
-    class PROCESSENTRY32W(ctypes.Structure):
-        _fields_ = [
-            ("dwSize", wintypes.DWORD), ("cntUsage", wintypes.DWORD),
-            ("th32ProcessID", wintypes.DWORD), ("th32DefaultHeapID", ctypes.c_void_p),
-            ("th32ModuleID", wintypes.DWORD), ("cntThreads", wintypes.DWORD),
-            ("th32ParentProcessID", wintypes.DWORD), ("pcPriClassBase", ctypes.c_long),
-            ("dwFlags", wintypes.DWORD), ("szExeFile", ctypes.c_wchar * 260),
-        ]
-
-    k32.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
-    k32.CreateToolhelp32Snapshot.argtypes = [wintypes.DWORD, wintypes.DWORD]
-    k32.Process32FirstW.argtypes = [wintypes.HANDLE, ctypes.POINTER(PROCESSENTRY32W)]
-    k32.Process32NextW.argtypes = [wintypes.HANDLE, ctypes.POINTER(PROCESSENTRY32W)]
-    k32.OpenProcess.restype = wintypes.HANDLE
-    k32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
-    k32.QueryFullProcessImageNameW.argtypes = [
-        wintypes.HANDLE, wintypes.DWORD, wintypes.LPWSTR, ctypes.POINTER(wintypes.DWORD)]
-    k32.CloseHandle.argtypes = [wintypes.HANDLE]
-    TH32CS_SNAPPROCESS = 0x2
-    PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
-
-    snap = k32.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
-    if snap in (None, wintypes.HANDLE(-1).value):
-        raise OSError(ctypes.get_last_error(), "CreateToolhelp32Snapshot failed")
-    out = []
+    With a -wal file beside it, SQLite's online backup reads the database
+    through a read-only connection. The backup sees every committed row,
+    those still in the -wal too, and writes them all into `dest`, so `dest`
+    needs no -wal or -shm of its own."""
+    if not Path(str(src) + WAL_SUFFIX).is_file():
+        # No -wal: no connection has the database open, so nothing is
+        # mid-write and a plain copy is whole. The backup would be wrong
+        # here: a read-only open of a WAL database with no -wal and -shm
+        # beside it creates them, which writes to the library folder, and
+        # fails where that folder is not writable (the "Read-Only Databases"
+        # section of https://www.sqlite.org/wal.html).
+        shutil.copy2(src, dest)
+        return f"copied as a plain file (no {Path(src).name}{WAL_SUFFIX}, so nothing has it open)"
+    source = sqlite3.connect(f"{Path(src).resolve().as_uri()}?mode=ro", uri=True)
     try:
-        entry = PROCESSENTRY32W()
-        entry.dwSize = ctypes.sizeof(PROCESSENTRY32W)
-        more = k32.Process32FirstW(snap, ctypes.byref(entry))
-        while more:
-            name = entry.szExeFile
-            path = None
-            if name.lower() == WINDOW_EXE.lower():
-                h = k32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, entry.th32ProcessID)
-                if h:
-                    buf = ctypes.create_unicode_buffer(32768)
-                    size = wintypes.DWORD(len(buf))
-                    if k32.QueryFullProcessImageNameW(h, 0, buf, ctypes.byref(size)):
-                        path = buf.value
-                    k32.CloseHandle(h)
-            out.append((name, path))
-            more = k32.Process32NextW(snap, ctypes.byref(entry))
+        target = sqlite3.connect(dest)
+        try:
+            source.backup(target)
+        finally:
+            target.close()
     finally:
-        k32.CloseHandle(snap)
-    return out
+        source.close()
+    return "copied with SQLite's backup"
 
 
-def _same_folder(a, b):
-    # realpath first, so a junction, a symbolic link or an 8.3 short name
-    # cannot make one folder look like two.
-    def key(p):
-        return os.path.normcase(os.path.realpath(p))
-    return key(a) == key(b)
-
-
-def hydra_running_from(library_dir, processes):
-    """The Hydra.exe processes in `processes` that run from `library_dir`.
-    A Hydra.exe whose path Windows would not give counts too, because it
-    might be that one."""
-    hits = []
-    for name, path in processes:
-        if name.lower() != WINDOW_EXE.lower():
-            continue
-        if path is None:
-            hits.append(f"{WINDOW_EXE} (Windows did not say which folder it runs from)")
-        elif _same_folder(os.path.dirname(path), library_dir):
-            hits.append(path)
-    return hits
-
-
-def snapshot_library(library_dir, dest, processes):
+def snapshot_library(library_dir, dest):
     """Copy the user's library files into `dest` and return (copied, report).
 
     This is the only place that knows the library folder's path: `library_dir`
     if given, else the HYDRA_LIBRARY_DIR variable, else the installed folder.
-    It only reads that folder. `copied` maps each copied file's name to its
-    path inside `dest`; `report` lists what was copied, with sizes and
-    modification times, for the reply. Raises SnapshotRefused when a Hydra.exe
-    runs from the folder or the database is missing."""
+    It only reads that folder, and Hydra may have it open. `copied` maps each
+    copied file's name to its path inside `dest`; `report` lists what was
+    copied, with sizes and modification times, for the reply. Raises
+    SnapshotRefused when the database is missing, and sqlite3.Error when
+    SQLite cannot read it."""
     lib = Path(library_dir or os.environ.get(LIBRARY_DIR_ENV) or DEFAULT_LIBRARY_DIR)
-    running = hydra_running_from(lib, processes)
-    if running:
-        raise SnapshotRefused(f"{CLOSE_HYDRA_FIRST} Running: {'; '.join(running)}")
-    if not (lib / SNAPSHOT_FILES[0]).is_file():
-        raise SnapshotRefused(f"no {SNAPSHOT_FILES[0]} in {lib}")
+    db = SNAPSHOT_FILES[0]
+    if not (lib / db).is_file():
+        raise SnapshotRefused(f"no {db} in {lib}")
     dest.mkdir(parents=True, exist_ok=True)
     copied = {}
     lines = [f"snapshot of {lib}, taken {datetime.now():%Y-%m-%d %H:%M:%S}:"]
@@ -200,10 +156,13 @@ def snapshot_library(library_dir, dest, processes):
         if not src.is_file():
             lines.append(f"  {name}: not present")
             continue
-        shutil.copy2(src, dest / name)
+        how = copy_database(src, dest / name) if name == db else None
+        if how is None:
+            shutil.copy2(src, dest / name)
         st = src.stat()
         stamp = datetime.fromtimestamp(st.st_mtime)
-        lines.append(f"  {name}: {st.st_size:,} bytes, modified {stamp:%Y-%m-%d %H:%M:%S}")
+        line = f"  {name}: {st.st_size:,} bytes, modified {stamp:%Y-%m-%d %H:%M:%S}"
+        lines.append(line + (f", {how}" if how else ""))
         copied[name] = dest / name
     return copied, "\n".join(lines)
 
@@ -349,16 +308,14 @@ def default_temp_root():
 
 class Helper:
     """Everything the tools do, with the outside world passed in so the tests
-    can swap the exes for the stand-in and the process list for a fake."""
+    can swap the exes for the stand-in."""
 
     def __init__(self, exe_dir=EXE_DIR, launcher=default_launcher, temp_root=None,
-                 process_lister=running_processes, reply_margin_s=REPLY_MARGIN_S,
-                 hello_timeout_s=HELLO_TIMEOUT_S, repo=REPO):
+                 reply_margin_s=REPLY_MARGIN_S, hello_timeout_s=HELLO_TIMEOUT_S, repo=REPO):
         self.exe_dir = Path(exe_dir)
         self.repo = Path(repo)  # the tree a window session's record names
         self.launcher = launcher
         self.temp_root = Path(temp_root) if temp_root else default_temp_root()
-        self.process_lister = process_lister
         self.reply_margin_s = reply_margin_s
         self.hello_timeout_s = hello_timeout_s
         self.session = None
@@ -392,10 +349,10 @@ class Helper:
             args = ["--live", "--pipe", pipe_name]
             if mode == "window":
                 try:
-                    copied, report = snapshot_library(library_dir, scratch, self.process_lister())
-                except (SnapshotRefused, OSError) as e:
-                    # An unreadable process list or a failed copy refuses too:
-                    # no snapshot is better than a half one.
+                    copied, report = snapshot_library(library_dir, scratch)
+                except (SnapshotRefused, OSError, sqlite3.Error) as e:
+                    # A failed copy refuses too: no snapshot is better than a
+                    # half one.
                     shutil.rmtree(scratch, ignore_errors=True)
                     return "\n".join(notes + [f"refused: {e}"])
                 notes.append(report)
