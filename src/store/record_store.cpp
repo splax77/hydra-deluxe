@@ -822,7 +822,7 @@ void RecordStore::set_up_schema(LibraryFileKind kind) {
           "  value TEXT"
           ");")
              .c_str());
-    // The library page sorts by name (list_chart_library's ORDER BY name).
+    // The reads by name (LibraryOrder::ByName) walk this instead of sorting.
     exec("CREATE INDEX IF NOT EXISTS charts_by_name ON charts (name)");
     // The scan's purge and list_chart_library_copies find a chart's library
     // rows by md5 (D76).
@@ -1544,6 +1544,13 @@ static_assert(count_list_names(kLibraryColumnList) == 10,
               "rebuild_chart_library and read_library_entries walk ten slots: grow them "
               "with the list");
 
+// LibraryOrder::ByName. The name compares byte for byte (the column has no
+// COLLATE, so SQLite's BINARY), and copies of one name keep the order the scan
+// wrote them in: rebuild_chart_library inserts in scan order into an emptied
+// table, so rowid order is scan order. The charts_by_name index holds the rows
+// in this order, so the whole-library read walks it without a sort.
+constexpr const char* kByName = " ORDER BY name, rowid";
+
 }  // namespace
 
 // The query read_library_entries reads; callers add a WHERE or an ORDER BY.
@@ -1650,12 +1657,15 @@ bool RecordStore::chart_library_out_of_date() {
 }
 
 std::vector<ChartLibraryEntry> RecordStore::list_chart_library(int offset, int limit,
-                                                               const RowsReadFn& on_row) {
+                                                               const RowsReadFn& on_row,
+                                                               LibraryOrder order) {
     std::lock_guard<std::recursive_mutex> lock(mutex_);
 
     const bool timing_read = chart_meta_current();
+    // Unsorted asks for no order, so SQLite reads the table without a sort.
+    const char* order_by = order == LibraryOrder::Unsorted ? "" : kByName;
     Stmt s = prepare_read(
-        db_, (library_entry_select() + " ORDER BY name LIMIT ? OFFSET ?").c_str());
+        db_, (library_entry_select() + order_by + " LIMIT ? OFFSET ?").c_str());
     sqlite3_bind_int(s, 1, limit);
     sqlite3_bind_int(s, 2, offset);
     return read_library_entries(s, timing_read, on_row);
@@ -1665,7 +1675,7 @@ std::vector<ChartLibraryEntry> RecordStore::list_chart_library_copies(const std:
     std::lock_guard<std::recursive_mutex> lock(mutex_);
 
     const bool timing_read = chart_meta_current();
-    Stmt s = prepare_read(db_, (library_entry_select() + " WHERE md5 = ?").c_str());
+    Stmt s = prepare_read(db_, (library_entry_select() + " WHERE md5 = ?" + kByName).c_str());
     bind_text(s, 1, md5);
     return read_library_entries(s, timing_read);
 }

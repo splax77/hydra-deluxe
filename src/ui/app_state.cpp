@@ -643,9 +643,15 @@ void AppState::select_chart(const std::string& hyhash) {
             return;
         }
     }
-    for (size_t i = 0; i < rows.size(); ++i) {
-        if (is_copy(i)) {
-            select(rows[i].entry, SelectionSource::Elsewhere);
+    // Every copy is hidden: the first copy by name (LibraryOrder::ByName), as
+    // the user ruled (docs/agents/rulings/ui-and-display.md, "Keep today's
+    // pick"). The rows are not kept in that order, so the store lists
+    // this chart's copies in it.
+    std::vector<store::ChartLibraryEntry> copies;
+    if (!read_store([&] { copies = store->list_chart_library_copies(hyhash); })) return;
+    for (const store::ChartLibraryEntry& copy : copies) {
+        if (const LibraryChart* row = library_row_for(row_key(copy))) {
+            select(*row, SelectionSource::Elsewhere);
             return;
         }
     }

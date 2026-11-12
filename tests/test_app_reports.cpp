@@ -390,6 +390,39 @@ TEST_CASE("select_chart selects the first copy in the bar's mode") {
     CHECK(app->selected->notespath == copy.notespath);
 }
 
+TEST_CASE("select_chart opens the first copy by name when the search hides every copy") {
+    ScratchPaths paths("appstate_selecthidden");
+    std::unique_ptr<AppState> app = app_on(paths);
+    // Three copies of chart 7, scanned in this order: "Song B" first, then
+    // two copies named "Song A". The later "Song A" has the path that sorts
+    // first. The user's ruling (docs/agents/rulings/ui-and-display.md, "Keep
+    // today's pick") keeps the first copy by name, and of two copies with one
+    // name the one scanned first: the middle copy. The first in the table's
+    // own order (what the unsorted read gives) is "Song B", and the first by
+    // path is the last "Song A".
+    std::vector<ChartLibraryEntry> charts;
+    for (int i = 0; i < kChartCount; ++i)
+        if (i != 7) charts.push_back(library_entry(i));
+    ChartLibraryEntry b = library_entry(7);
+    b.title = "Song B";
+    b.notespath = "C:\\m\\hash007\\notes.chart";
+    ChartLibraryEntry a = library_entry(7);
+    a.title = "Song A";
+    a.notespath = "C:\\p\\hash007\\notes.chart";
+    ChartLibraryEntry a_later = library_entry(7);
+    a_later.title = "Song A";
+    a_later.notespath = "C:\\a\\hash007\\notes.chart";
+    charts.insert(charts.begin(), {b, a, a_later});
+    app->store->rebuild_chart_library(charts);
+    app->reload_library();
+
+    app->set_search("zzqxj");  // in no row's text
+    REQUIRE(app->library.order().empty());
+    app->select_chart("hash007");
+    REQUIRE(app->selected.has_value());
+    CHECK(app->selected->notespath == a.notespath);
+}
+
 // D310 item 3: a comparison row click opens the song in the bar's mode, even
 // when the comparison was built in another.
 TEST_CASE("a comparison row click selects the chart and keeps the bar's mode") {
