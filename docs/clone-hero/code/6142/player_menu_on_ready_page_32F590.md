@@ -1,6 +1,6 @@
 # player_menu_on_ready_page_32F590.asm (build 6142, RVA `0x32F590`)
 
-Made 2026-11-11 with `py -m tools.ch_mcp.chdis 32F590 200` (4 lines). Starts at the method's first instruction: `PlayerSelectionMenu`'s `public bool ʸʳʼʹʸʽʾˀʴʼʷ()` (`dump.cs` lines 73000 and 73001; class header at line 72822). No other method in `dump.cs` has this RVA.
+Made 2026-11-11 with `py -m tools.ch_mcp.chdis 32F590 200` (4 lines). Starts at the method's first instruction: `PlayerSelectionMenu`'s public bool ʸʳʼʹʸʽʾˀʴʼʷ() (`dump.cs` lines 73000 and 73001; class header at line 72822). No other method in `dump.cs` has this RVA.
 
 Plain words: it answers "is this player screen on its Ready page". It returns true when the page field at +0x120 holds 4, which is the page enum's Ready word (`dump.cs` lines 72794 to 72803, IN-56). It changes nothing.
 

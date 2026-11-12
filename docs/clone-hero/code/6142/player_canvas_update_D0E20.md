@@ -17,7 +17,7 @@ The fields, from `dump.cs` lines 25713 to 25722: +0x30 is `PlayerSelectionMenu[]
 - Lines 106 to 129: walk `playerMenus`; a menu that passes `0x1E1920` must also pass `PlayerProfileMenu` method `0x1E74C0`, or the method returns.
 - Lines 130 to 162: stop a sound through `BassAudioManager` (line 150), fade to `Gameplay` (lines 156 to 158), and set this component's `enabled` to false (line 162).
 - Lines 163 to 169: return.
-- Lines 170 to 218: the +0x48 branch. When a test on type `ʳʷʴʾʾˁʾʻʲʹʺ` passes and player 0's Rewired button 0 is pressed down, it hands a new object to `0x322B0` with the value 2. It does not call `0x32F590`.
+- Lines 170 to 218: the +0x48 branch. When a test on type ʳʷʴʾʾˁʾʻʲʹʺ passes and player 0's Rewired button 0 is pressed down, it hands a new object to `0x322B0` with the value 2. It does not call `0x32F590`.
 - Lines 219 to 222: null-reference and range exits.
 
 Who calls it: Unity, as a MonoBehaviour message. No caller search was run for it.

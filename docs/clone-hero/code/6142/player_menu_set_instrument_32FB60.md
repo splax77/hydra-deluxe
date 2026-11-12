@@ -1,6 +1,6 @@
 # player_menu_set_instrument_32FB60.asm (build 6142, RVA `0x32FB60`)
 
-Made 2026-11-11 with `py -m tools.ch_mcp.chdis 32FB60 3000` (233 lines). Starts at the method's first instruction: `PlayerSelectionMenu`'s `private void ʹʻʽʷˀʿˀʿʸˁʼ()` (`dump.cs` line 73009).
+Made 2026-11-11 with `py -m tools.ch_mcp.chdis 32FB60 3000` (233 lines). Starts at the method's first instruction: `PlayerSelectionMenu`'s private void ʹʻʽʷˀʿˀʿʸˁʼ() (`dump.cs` line 73009).
 
 Plain words: it sets the screen's instrument (+0x240) from the text of the highlighted row, then writes it into the profile.
 

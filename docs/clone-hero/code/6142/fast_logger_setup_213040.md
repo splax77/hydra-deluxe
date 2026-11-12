@@ -4,7 +4,7 @@ Plain version: at start-up the game swaps Unity's logger for its own, makes a `L
 
 The guard. Lines 55 to 63 read the class's first static field; if it is already set, the method returns at once (0x2131ae jumps to the `ret`). So the setup runs once. No setting is read on the way.
 
-Unity's logger. Lines 65 to 138 look up Unity's `Debug` logger and, by name, the internal methods `Internal_LogException` and `Internal_Log`, and keep a delegate to each in the class's two static fields. Lines 166 to 184 make a logger object of class TypeDefIndex 981 (an ILogger, `dump.cs` lines 52193 onward) and set it into Unity's `s_Logger` field by reflection. Line 165 logs `FastLogger: Activated`. Class 981's own Log methods call the stored delegate (for example `0x22e2ca` in the method at 0x22E1D0), so a Unity `Debug.Log` goes on to Unity's own log; they do not call the game's log writer.
+Unity's logger. Lines 65 to 138 look up Unity's `Debug` logger and, by name, the internal methods `Internal_LogException` and `Internal_Log`, and keep a delegate to each in the class's two static fields. Lines 166 to 184 make a logger object of class TypeDefIndex 981 (an ILogger, `dump.cs` lines 52193 onward) and set it into Unity's `s_Logger` field by reflection. Line 165 logs `FastLogger: Activated`. Class 981's own Log methods call the stored delegate (for example 0x22e2ca in the method at 0x22E1D0), so a Unity `Debug.Log` goes on to Unity's own log; they do not call the game's log writer.
 
 The folder and paths. Line 190 gets a base folder from the method at 0x307B40 (not read). Lines 196 to 209 join `Logs` to it and then join each file name to the `Logs` folder. Lines 213 to 218 make the folder if it does not exist.
 

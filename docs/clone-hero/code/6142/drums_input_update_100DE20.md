@@ -8,5 +8,5 @@ Listing: `drums_input_update_100DE20.asm`, build 6142, made 2026-11-08 with `too
 - Lines 21-49: find the input source's interface method and call it with the clock in `xmm1` and +0x2a4 as the place to write (lines 46 to 49).
 - Lines 50-53: virtual slot 25 (offset 0x2c8).
 - Lines 56-62: if slot 25 returned true, call `0x100E6E0`.
-- Lines 63-70: jump to virtual slot 26 (offset 0x2d8), which the drum engine overrides with the input poll `0x20DE070` (`dump.cs` line 527511). The poll reaches the press handler `0x20DEAA0` by the jump at `0x20DE236`.
+- Lines 63-70: jump to virtual slot 26 (offset 0x2d8), which the drum engine overrides with the input poll `0x20DE070` (`dump.cs` line 527511). The poll reaches the press handler `0x20DEAA0` by the jump at 0x20DE236.
 - Lines 71-78: interface slot lookup and the null-reference stop.

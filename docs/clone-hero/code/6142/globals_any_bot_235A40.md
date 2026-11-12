@@ -1,6 +1,6 @@
 # globals_any_bot_235A40.asm (build 6142, RVA `0x235A40`)
 
-Made 2026-11-11 with `py -m tools.ch_mcp.chdis 235A40` (48 lines). Starts at the method's first instruction: `GlobalVariables`' `public bool ʺʳʾʶʿʳʻˁʶˁʿ()` (`dump.cs` line 55963).
+Made 2026-11-11 with `py -m tools.ch_mcp.chdis 235A40` (48 lines). Starts at the method's first instruction: `GlobalVariables`' public bool ʺʳʾʶʿʳʻˁʶˁʿ() (`dump.cs` line 55963).
 
 Plain words: it answers "does any player in the player list play as a bot". It walks `GlobalVariables.playerList` (+0x38, `dump.cs` line 55807) and returns true at the first player that passes two tests: `0x337540`, then the "is_bot" test `0x13F8B0`.
 

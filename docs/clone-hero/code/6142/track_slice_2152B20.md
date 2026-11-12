@@ -1,4 +1,4 @@
-# track_slice_2152B20.asm (build 6142, RVA `0x2152B20`)
+# track_slice_2152B20.asm (build 6142, RVA 0x2152B20)
 
 Made 2026-11-08 with `tools/ch_mcp/chdis.py` (106 lines). Starts at the first instruction; `dump.cs` has no method at this address. Its caller is the `.mid` drum reader at 0x2155836 (`mid_drum_reader_2155050.asm` line 453), which passes the chart (`rcx`), the instrument (`dl`) and a span to fill (`r8`).
 

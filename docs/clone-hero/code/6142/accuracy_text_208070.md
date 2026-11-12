@@ -1,6 +1,6 @@
 # accuracy_text_208070: the on-screen "Accuracy / Average" text (build 6142)
 
-Listing: `accuracy_text_208070.asm` beside this file, made 2026-11-08 (session 77057df2) with `tools/ch_mcp/chdis.py` from `C:\Clone Hero\1.1 june\Clone Hero\GameAssembly.dll`. A protected `BasePlayer` method with no arguments, `dump.cs` lines 48815 and 48816. It was found by a byte scan for references to the string literal "Accuracy: {0:0.0} ms\nAverage: {1:0.0} ms" (slot `0x3C9D928`), which only this method uses (two references, lines 28 and 140).
+Listing: `accuracy_text_208070.asm` beside this file, made 2026-11-08 (session 77057df2) with `tools/ch_mcp/chdis.py` from `C:\Clone Hero\1.1 june\Clone Hero\GameAssembly.dll`. A protected `BasePlayer` method with no arguments, `dump.cs` lines 48815 and 48816. It was found by a byte scan for references to the string literal "Accuracy: {0:0.0} ms\nAverage: {1:0.0} ms" (slot 0x3C9D928), which only this method uses (two references, lines 28 and 140).
 
 The method runs only when a setting read through the player object is on: lines 35 to 45 read `BasePlayer.player` (+0x88), its +0x10, that object's +0x90, and call `0x210BF30`; a false result skips to the end. Which setting that is was not read.
 

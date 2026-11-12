@@ -4,6 +4,6 @@ Lines 11 and 12: do nothing once the done byte `+0x50` is set (the end message i
 Lines 13 and 14: do nothing if the int equals the last one shown, kept at `+0x84`.
 Lines 16 to 30: set the text object `+0x28` to the int followed by `%`.
 Line 33: remember the int at `+0x84`.
-Lines 34 to 36: set the byte `+0x51`, and the two floats at `+0x54` and `+0x58` to 1.15 (`0x3F933333`), which reads as the start of a size pulse.
+Lines 34 to 36: set the byte `+0x51`, and the two floats at `+0x54` and `+0x58` to 1.15 (0x3F933333), which reads as the start of a size pulse.
 
 The int arrives already worked out; this method does no division.

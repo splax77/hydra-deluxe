@@ -1,6 +1,6 @@
 # player_menu_confirm_32E190.asm (build 6142, RVA `0x32E190`)
 
-Made 2026-11-11 with `py -m tools.ch_mcp.chdis 32E190 3000` (316 lines). Starts at the method's first instruction: `PlayerSelectionMenu`'s `public override void ʵˁʺʻʲʹˁʻʹʺʳ()` (`dump.cs` line 72943). It overrides `BaseMenu`'s virtual method of the same name (`dump.cs` line 44958), which it calls first (line 14). `SongOptions` overrides the same method (0x297240). Page 7's IN-60 reads this as the confirm (Green) handler from a decompile; that reading is not checked here.
+Made 2026-11-11 with `py -m tools.ch_mcp.chdis 32E190 3000` (316 lines). Starts at the method's first instruction: `PlayerSelectionMenu`'s public override void ʵˁʺʻʲʹˁʻʹʺʳ() (`dump.cs` line 72943). It overrides `BaseMenu`'s virtual method of the same name (`dump.cs` line 44958), which it calls first (line 14). `SongOptions` overrides the same method (0x297240). Page 7's IN-60 reads this as the confirm (Green) handler from a decompile; that reading is not checked here.
 
 Plain words: it acts on the row the player confirms, by the page the screen is on. On the Difficulty page it sets the difficulty from the row's text and writes it into the profile. On the Instrument page it calls `0x32FB60`, which does the same for the instrument.
 

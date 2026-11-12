@@ -4,7 +4,7 @@ Made with `py -m tools.ch_mcp.chdis 14D0D0 2A0` from the worktree root (session 
 callers are beside it: `baseplayer_spbar_update_208EA0.asm` (`py -m tools.ch_mcp.chdis 208EA0 23`) and
 `baseplayer_spbar_reset_2093D0.asm` (`py -m tools.ch_mcp.chdis 2093D0 80`).
 
-Function: `SPBar.ʸʿʲˁʴʾˁʴʻʳʼ(float value, bool active)`, `dump.cs` line 36569, in class `SPBar` (TypeDefIndex 676,
+Function: SPBar.ʸʿʲˁʴʾˁʴʻʳʼ(float value, bool active), `dump.cs` line 36569, in class `SPBar` (TypeDefIndex 676,
 lines 36527 to 36619). The class's fields are `starPowerBar` (a SpriteRenderer, +0x20), `arrowTopPosition` (+0x28),
 `arrowHalfPosition` (+0x34), `arrowBottomPosition` (+0x40), `topArrow` (+0x50), `bottomArrow` (+0x58) and an unnamed
 float (+0x60).
@@ -36,14 +36,14 @@ Direct callers only (byte scan), from `docs/audit/2026-11-08-clone-hero-unknowns
 0x14BEF0 (0x14C358), and three BasePlayer methods. BasePlayer (TypeDefIndex 901, the base of DrumsPlayer and of the
 guitar players) holds the bar as `protected SPBar spBar` at +0x90 (`dump.cs` line 48742).
 
-`BasePlayer.ʷʽʶʺˀʿʺʽʲʸʶ(float, bool)` at 0x208EA0 (`dump.cs` line 48792, virtual slot 21) is a forwarder: it loads
+BasePlayer.ʷʽʶʺˀʿʺʽʲʸʶ(float, bool) at 0x208EA0 (`dump.cs` line 48792, virtual slot 21) is a forwarder: it loads
 `spBar` (line 2 of its listing), and when it is not null jumps to 0x14D0D0 with the same two arguments (lines 3 to 7);
 when it is null it calls the failure call at line 8.
 
-`BasePlayer.ʺʾʼʵˀʶʲʴʾʿʽ()` at 0x2093D0 (`dump.cs` line 48828, virtual slot 29) resets the HUD pieces: when the player is
+BasePlayer.ʺʾʼʵˀʶʲʴʾʿʽ() at 0x2093D0 (`dump.cs` line 48828, virtual slot 29) resets the HUD pieces: when the player is
 active and enabled (lines 18 to 20) it calls 0x14D0D0 with an amount of 0 and `active` false (lines 21 to 27), then
 jumps to `SpNeckRenderer` at 0x14E3B0 (line 34). A null `spBar` there also goes to the failure call (lines 22, 23 and
 38).
 
-The third BasePlayer site is 0x209C33 in `BasePlayer.ʾʴʸʽʺʵʳʳʳʴʿ` at 0x209A70 (`dump.cs` line 48882), the method that
+The third BasePlayer site is 0x209C33 in BasePlayer.ʾʴʸʽʺʵʳʳʳʴʿ at 0x209A70 (`dump.cs` line 48882), the method that
 takes a saved state object; it was not listed. Who calls 0x208EA0 was not scanned.

@@ -1,6 +1,6 @@
 # gm_score_disabled_4_B5F90.asm (build 6142, RVA `0xB5F90`)
 
-Made 2026-11-11 with `py -m tools.ch_mcp.chdis B5F90` (306 lines). Starts at the method's first instruction: `GameManager`'s `public void ʵʿʲʾʺʵʽʾʼˀʽ(ˁʻʽʷʽʻʾʵʷˀʶ)` (`dump.cs` line 25559; class header at line 25284). It loads `GetComponent<PauseMenu>` (line 12) and hands its player argument to the PauseMenu (lines 156 to 167), so it reads as the method that opens the pause menu; that name is a reading of the code, not the dump's.
+Made 2026-11-11 with `py -m tools.ch_mcp.chdis B5F90` (306 lines). Starts at the method's first instruction: `GameManager`'s public void ʵʿʲʾʺʵʽʾʼˀʽ(ˁʻʽʷʽʻʾʵʷˀʶ) (`dump.cs` line 25559; class header at line 25284). It loads `GetComponent<PauseMenu>` (line 12) and hands its player argument to the PauseMenu (lines 156 to 167), so it reads as the method that opens the pause menu; that name is a reading of the code, not the dump's.
 
 Only lines 126 to 196 were read closely, for the write to `GlobalVariables.scoreDisabled` (+0x7C, `dump.cs` line 55827).
 

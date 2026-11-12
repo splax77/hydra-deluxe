@@ -9,6 +9,6 @@ Plain words: when the game starts, it hands the `poll_rate` setting's whole-numb
 - Lines 5 to 8: skip ahead when either object is null.
 - Line 9: read the dword at +0x10 of the setting object, its value as a whole number.
 - Line 12: `Rewired.ReInput.ConfigHelper.set_joystickRefreshRate(int value)` (`dump.cs` line 307817) with that value.
-- Lines 13 to 14: the next setting, the one at +0x1E8, goes on to `Cursor.set_visible`; outside this note.
+- Lines 13 to 14: the next setting, the one at +0x1E8, goes on to Cursor.set_visible; outside this note.
 
 Who reads the +0xC0 field: `docs/audit/2026-11-08-clone-hero-unknowns/W10a/static_poll_rate_C0.txt`, a pattern scan (load of the class's TypeInfo slot, then +0xB8, then +0xC0) by `static_field_scan.py` beside it. It found this read, two in `GameplaySettingsMenu` (0x1AEE40 in 0x1AE1F0 and 0x1AFD51 in 0x1AF540, not read here), the loader's store, and one false hit on a stack slot in `SongEntry` (0x35C3C8). Who calls `GlobalVariables.Start`: Unity, by name; the byte scan in `xref_settings_methods.txt` found only its method-table pointer (direct callers only, byte scan).

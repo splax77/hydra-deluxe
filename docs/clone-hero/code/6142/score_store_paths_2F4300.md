@@ -2,7 +2,7 @@ Listing: `score_store_paths_2F4300.asm`, build 6142, made 2026-11-11 with `tools
 
 Plain version: it works out the full paths of the three score files once and keeps them in the class's static fields.
 
-Lines 22 to 41 get a base folder from the method at 0x307590 (not read) and join `scoredata.bin` to it with `Path.Combine`; line 41 stores the result in static field 0x0. Lines 45 to 53 do the same for `scores.bin` into field 0x8, and lines 59 to 67 for `scoredata_backup.bin` into field 0x10. Line 76 then jumps on to 0x1564A0 (not read).
+Lines 22 to 41 get a base folder from the method at 0x307590 (not read) and join `scoredata.bin` to it with Path.Combine; line 41 stores the result in static field 0x0. Lines 45 to 53 do the same for `scores.bin` into field 0x8, and lines 59 to 67 for `scoredata_backup.bin` into field 0x10. Line 76 then jumps on to 0x1564A0 (not read).
 
 Who calls it, direct callers only (byte scan with `docs/audit/2026-11-08-clone-hero-unknowns/W8c/xref.py`, output in `xref_IN-55.out.txt` there): one, `SongScan` iterator MoveNext at 0x1BB600 (reference at 0x1bbc0b).
 
