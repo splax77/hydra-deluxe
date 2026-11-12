@@ -143,6 +143,24 @@ void fold_into(std::string_view text, std::string& out, std::vector<SourceRange>
     bool in_space = false;
     size_t i = 0;
     while (i < text.size()) {
+        // With no map to fill, a run of plain ASCII bytes takes only the
+        // whitespace and ASCII steps below, without the look-ahead the other
+        // characters need. The output is the same, byte for byte (the tests
+        // compare it with traced_fold_for_search).
+        if (!map) {
+            while (i < text.size() && static_cast<unsigned char>(text[i]) < 0x80) {
+                const char c = text[i++];
+                if (is_ascii_space(c)) {
+                    if (!in_space) out.push_back(' ');
+                    in_space = true;
+                } else {
+                    out.push_back(lower_ascii(c));
+                    in_space = false;
+                }
+            }
+            if (i == text.size()) break;
+        }
+
         const unsigned char c0 = byte_at(text, i);
         const unsigned char c1 = byte_at(text, i + 1);
         const unsigned char c2 = byte_at(text, i + 2);
@@ -315,6 +333,13 @@ bool term_applies_to(QueryField term_field, QueryField column) {
 std::string fold_for_search(std::string_view text) {
     std::string out;
     fold_into(text, out, nullptr);
+    return out;
+}
+
+std::string traced_fold_for_search(std::string_view text) {
+    std::string out;
+    std::vector<SourceRange> map;
+    fold_into(text, out, &map);
     return out;
 }
 

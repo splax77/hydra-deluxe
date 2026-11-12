@@ -13,8 +13,10 @@
 #include <string_view>
 #include <vector>
 
+#include "app/analysis.h"  // discover_charts
 #include "app/library_query.h"
 #include "core/winstr.h"  // wide_to_utf8
+#include "testdata_dirs.h"  // corpus::root
 
 using namespace hydra::app;
 
@@ -85,6 +87,42 @@ TEST_CASE("library query: a mixed ASCII and non-ASCII string folds to its pinned
     // Separate literals keep a hex escape from running into the next letter.
     CHECK(fold_for_search("  ＴＩＥＲ\t\t4 —  Beyoncé" "\xC2\xA0\xE3\x80\x80" "Café ÷ 東京 ") ==
           " tier 4 — beyonce cafe ÷ 東京 ");
+}
+
+TEST_CASE("library query: the plain fold and the traced fold give the same text") {
+    // fold_for_search may take shortcuts the traced fold (match_spans') does
+    // not, so the two are compared on real and made-up text.
+    std::vector<std::string> texts;
+    // Every name, folder and file path a scan of the corpus reads, as stored
+    // and with its tags stripped.
+    const auto [items, errors] = hydra::app::discover_charts({corpus::root()});
+    REQUIRE(errors.empty());
+    REQUIRE_FALSE(items.empty());
+    for (const hydra::store::ChartLibraryEntry& e : items) {
+        for (const std::string* s :
+             {&e.title, &e.artist, &e.album, &e.charter, &e.rootfolder, &e.notespath}) {
+            texts.push_back(*s);
+            texts.push_back(strip_rich_tags(*s));
+        }
+    }
+    // Non-ASCII text: every character the fold changes, alone and between
+    // ASCII letters and whitespace, then kept characters, whitespace of every
+    // kind and invalid UTF-8 in runs with ASCII. Separate literals keep a hex
+    // escape from running into the next letter.
+    for (const FoldEntry& entry : search_fold_table()) {
+        texts.push_back(entry.from);
+        texts.push_back("Ab " + entry.from + entry.from + "\tCd");
+    }
+    for (const char* s : {"東京事変 Tokyo Jihen", "a × b ÷ c", "  Ｔｉｅｒ　 4  ",
+                          "x" "\xC2\xA0" " \t" "\xE3\x80\x80" "y", " " "\xC2\xA0",
+                          "A" "\xC3" "(B", "\xFF\xFE" "AB", "x" "\xC3", "Q" "\xEF\xBC",
+                          "\xC1\xBF" "ab", "\xF5\x80\x80\x80" "a", "\xF0\x9F\x8E\xB8" " Guitar ",
+                          "", " ", "\t\t", "MiXeD CaSe 123 !?"})
+        texts.push_back(s);
+    for (const std::string& t : texts) {
+        INFO("text: " << t);
+        CHECK(fold_for_search(t) == traced_fold_for_search(t));
+    }
 }
 
 TEST_CASE("library query: invalid UTF-8 passes through byte for byte") {
