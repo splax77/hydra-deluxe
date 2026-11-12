@@ -16,7 +16,8 @@ auto-player run and a run the game's bot played.
 It prints one PASS or FAIL line per check, with the numbers:
 
 - phrase rises: each phrase-end chord is followed by a rise in the SP amount;
-- sp_max stays constant, printed beside Hydra's full meter for the chart;
+- sp_max on every row equals the game's full meter for the chart's
+  resolution (game_full_meter);
 - each activation the game made: the multiplier doubles, an end time ahead of
   the clock is set, and at that end time the flag clears and the multiplier
   halves; and whether it landed on the chord the path activates on;
@@ -27,9 +28,8 @@ The plan behind every check is "Task S" of
 docs/superpowers/plans/2026-10-28-overlay-spike.md (removed; git show 6804353f:docs/superpowers/plans/2026-10-28-overlay-spike.md).
 
 It also owns the row questions the `ch` MCP server asks of a watch in
-progress: find_activations, phrase_rises, flips_between, ready_between,
-at_ready_level and gap_summary. The server prints their answers and asks
-nothing itself.
+progress: find_activations, phrase_rises, flips_between and gap_summary.
+The server prints their answers and asks nothing itself.
 
 Usage:
     py tools\\ch_probe\\experiments\\sp_compare.py <watch.csv> <score.json>
