@@ -50,18 +50,18 @@ A `Found:` line gives the date and the session that found the rule, such as `202
 
 ## How many blocks each page holds
 
-These counts were taken from the pages on 2026-11-08, by counting their `###` headings and `Label:` lines.
+These counts were taken from the pages on 2026-11-11, by counting their `###` headings and `Label:` lines.
 
 | Page | Blocks | Proven in the game's code | Proven in a live run | Hydra assumes it, never checked | Unknown |
 |---|---|---|---|---|---|
-| 01 reading a chart | 53 | 26 | 4 | 8 | 15 |
-| 02 note list | 73 | 47 | 3 | 2 | 21 |
-| 03 timing | 52 | 30 | 7 | 5 | 10 |
-| 04 fills | 45 | 33 | 2 | 4 | 6 |
-| 05 Star Power | 47 | 23 | 4 | 9 | 11 |
-| 06 scoring | 38 | 17 | 13 | 2 | 6 |
-| 07 internals | 92 | 50 | 16 | 0 | 26 |
-| All pages | 400 | 226 | 49 | 30 | 95 |
+| 01 reading a chart | 53 | 34 | 4 | 8 | 7 |
+| 02 note list | 73 | 57 | 3 | 2 | 11 |
+| 03 timing | 52 | 33 | 7 | 5 | 7 |
+| 04 fills | 45 | 36 | 2 | 4 | 3 |
+| 05 Star Power | 47 | 30 | 5 | 9 | 3 |
+| 06 scoring | 38 | 21 | 13 | 2 | 2 |
+| 07 internals | 92 | 63 | 17 | 0 | 12 |
+| All pages | 400 | 274 | 51 | 30 | 45 |
 
 Eleven of page 4's blocks describe build 1.0. The questions page holds 23 open questions, and the live-checks page holds 70 checks covering 75 rows.
 
