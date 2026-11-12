@@ -158,7 +158,7 @@ class VerdictTest(unittest.TestCase):
         self.assertIn("MsMpEng.exe: running", got.lines)
 
     def test_the_decided_numbers(self):
-        self.assertEqual((Q.QUIET_CPU_PCT, Q.QUIET_SAMPLE_S, Q.BUILD_RECENT_S), (15, 5, 60))
+        self.assertEqual((Q.QUIET_CPU_PCT, Q.QUIET_SAMPLE_S, Q.BUILD_RECENT_S), (30, 5, 60))
         self.assertEqual(Q.SCAN_CAP_S, 3.0)
         self.assertEqual(set(Q.COMPILER_NAMES),
                          {"cl", "link", "MSBuild", "cmake", "ninja", "clang-cl", "lld-link",
