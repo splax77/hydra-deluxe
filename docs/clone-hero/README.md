@@ -2,7 +2,7 @@
 
 This folder is the one home of what the project knows about how Clone Hero works.
 It describes build 1.1 (v1.1.0.6142) unless a page says otherwise; the fills page also covers 1.0 (v1.0.0.4045).
-Last write-back: 2026-11-11.
+Last write-back: 2026-11-12.
 
 This page is the index. It says what each page holds and how the pages are kept honest. It states no rule of the game; the rules live on the area pages.
 
@@ -50,18 +50,18 @@ A `Found:` line gives the date and the session that found the rule, such as `202
 
 ## How many blocks each page holds
 
-These counts were taken from the pages on 2026-11-11, by counting their `###` headings and `Label:` lines with docs/audit/2026-11-08-clone-hero-unknowns/main/recount_labels.py (its output is recount_labels_output.txt beside it).
+These counts were taken from the pages on 2026-11-12, by counting their `###` headings and `Label:` lines with docs/audit/2026-11-08-clone-hero-unknowns/main/recount_labels.py, after the five-lane runs moved NL-74 to NL-77 to Proven in a live run. The recount_labels_output.txt beside the script holds its 2026-11-11 output.
 
 | Page | Blocks | Proven in the game's code | Proven in a live run | Hydra assumes it, never checked | Unknown |
 |---|---|---|---|---|---|
 | 01 reading a chart | 53 | 35 | 4 | 8 | 6 |
-| 02 note list | 73 | 55 | 3 | 2 | 13 |
+| 02 note list | 77 | 55 | 7 | 2 | 13 |
 | 03 timing | 52 | 33 | 7 | 5 | 7 |
 | 04 fills | 45 | 36 | 2 | 4 | 3 |
 | 05 Star Power | 47 | 30 | 5 | 9 | 3 |
 | 06 scoring | 38 | 21 | 13 | 2 | 2 |
 | 07 internals | 92 | 63 | 17 | 0 | 12 |
-| All pages | 400 | 273 | 51 | 30 | 46 |
+| All pages | 404 | 273 | 55 | 30 | 46 |
 
 Eleven of page 4's blocks describe build 1.0. The questions page holds 24 open questions and 4 recorded differences, and the live-checks page holds 59 checks covering 63 rows.
 

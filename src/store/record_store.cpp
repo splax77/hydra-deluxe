@@ -56,10 +56,9 @@ Stmt prepare_as(sqlite3* db, const char* sql, bool read) {
 }  // namespace
 
 Stmt prepare_read(sqlite3* db, const char* sql) { return prepare_as(db, sql, true); }
+Stmt prepare_write(sqlite3* db, const char* sql) { return prepare_as(db, sql, false); }
 
 namespace {
-
-Stmt prepare_write(sqlite3* db, const char* sql) { return prepare_as(db, sql, false); }
 
 // A statement borrowed from the store's cache (RecordStore::stmt_cache_). At
 // scope end it is reset and its bindings cleared, so no cursor stays open and
@@ -108,8 +107,6 @@ bool step_row(sqlite3_stmt* s) {
                                                    sqlite3_errmsg(sqlite3_db_handle(s)));
 }
 
-namespace {
-
 // Steps a write to its end. `what` names the write in the raw text: "<what>
 // failed: <sqlite's message>".
 void step_done(sqlite3_stmt* s, const std::string& what) {
@@ -128,6 +125,9 @@ void bind_blob(sqlite3_stmt* s, int i, const std::vector<uint8_t>& v) {
     if (v.empty()) sqlite3_bind_zeroblob(s, i, 0);
     else sqlite3_bind_blob(s, i, v.data(), static_cast<int>(v.size()), SQLITE_TRANSIENT);
 }
+
+namespace {
+
 std::string column_text(sqlite3_stmt* s, int i) {
     const unsigned char* p = sqlite3_column_text(s, i);
     int n = sqlite3_column_bytes(s, i);

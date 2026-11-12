@@ -288,6 +288,8 @@ The table was generated from the files, not typed. One more file, `code/6142/dru
 | 0x20DDDA0 | hit window formula | [code/6142/hit_window_formula_20DDDA0.asm](6142/hit_window_formula_20DDDA0.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x21647A0 | ini int getter | [code/6142/ini_int_getter_21647A0.asm](6142/ini_int_getter_21647A0.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x1EFC60 | ini song reader | [code/6142/ini_song_reader_1EFC60.asm](6142/ini_song_reader_1EFC60.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x215D450 | five lane convert | [code/6142/five_lane_convert_215D450.asm](6142/five_lane_convert_215D450.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x214DB20 | chord find type | [code/6142/chord_find_type_214DB20.asm](6142/chord_find_type_214DB20.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x215B8C0 | kick merge | [code/6142/kick_merge_215B8C0.asm](6142/kick_merge_215B8C0.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x337E10 | lane velocity | [code/6142/lane_velocity_337E10.asm](6142/lane_velocity_337E10.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x2155050 | mid drum reader | [code/6142/mid_drum_reader_2155050.asm](6142/mid_drum_reader_2155050.asm) | 6142 | tools/ch_mcp/chdis.py |
