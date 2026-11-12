@@ -26,7 +26,11 @@ says whether play_chart sent the press, declined its chord or dropped it
 (play_chart.SENT, DECLINED, DROPPED). TIMING_PRESS_COLUMNS say how long each
 step of a message took, in ms, on the first row of each message, so a stall
 names its step (PS3 of docs/superpowers/plans/2026-11-12-player-stall-fixes.md);
-play_chart.play_chords says what each one times.
+play_chart.play_chords says what each one times. IN_GAME_PRESS_COLUMNS are
+what the kit agent reports about a press it timed on the game's frames
+(play_chart.play_in_game says what each holds); they are blank on rows
+play_chords wrote, and the timing columns are blank on rows play_in_game
+wrote (question 3 of docs/superpowers/plans/2026-11-12-in-game-press-timing.md).
 
 Older logs have a `hit` column where SEND_COLUMN is now: the player's own
 verdict from any score rise, which D319 item 1 removed, with the send state
@@ -35,8 +39,9 @@ existed hold only KEYS_PRESS_COLUMNS, logs written before the wall times
 existed hold PRESS_COLUMNS_WITHOUT_WALL, logs written before the player's
 columns existed hold PRESS_COLUMNS_WITHOUT_PLAYER, logs written before the
 retime column existed hold PRESS_COLUMNS_WITHOUT_RETIME, logs written
-before SEND_COLUMN existed hold PRESS_COLUMNS_WITH_HIT, and logs written
-before the timing columns existed hold PRESS_COLUMNS_BEFORE_TIMING.
+before SEND_COLUMN existed hold PRESS_COLUMNS_WITH_HIT, logs written
+before the timing columns existed hold PRESS_COLUMNS_BEFORE_TIMING, and logs
+written before the in-game columns existed hold PRESS_COLUMNS_BEFORE_IN_GAME.
 """
 
 from __future__ import annotations
@@ -131,6 +136,11 @@ TIMING_PRESS_COLUMNS = (
     "prev_handoff_took_ms",
 )
 
+IN_GAME_PRESS_COLUMNS = (
+    "frame_gap_ms",
+    "agent_note",
+)
+
 PRESS_COLUMNS_WITHOUT_WALL = KEYS_PRESS_COLUMNS + KIT_PRESS_COLUMNS
 
 PRESS_COLUMNS_WITHOUT_PLAYER = PRESS_COLUMNS_WITHOUT_WALL + WALL_PRESS_COLUMNS
@@ -142,4 +152,6 @@ PRESS_COLUMNS_WITH_HIT = PRESS_COLUMNS_WITHOUT_RETIME + RETIME_PRESS_COLUMNS
 PRESS_COLUMNS_BEFORE_TIMING = tuple(SEND_COLUMN if c == HIT_COLUMN else c
                                     for c in PRESS_COLUMNS_WITH_HIT)
 
-PRESS_LOG_COLUMNS = PRESS_COLUMNS_BEFORE_TIMING + TIMING_PRESS_COLUMNS
+PRESS_COLUMNS_BEFORE_IN_GAME = PRESS_COLUMNS_BEFORE_TIMING + TIMING_PRESS_COLUMNS
+
+PRESS_LOG_COLUMNS = PRESS_COLUMNS_BEFORE_IN_GAME + IN_GAME_PRESS_COLUMNS

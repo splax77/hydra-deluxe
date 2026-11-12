@@ -223,6 +223,13 @@ class Rig(unittest.TestCase):
         self.events = []
         self.clock = FakeClock()
 
+    # The engine clock address the frame probe tests' finder hands back.
+    CLOCK_ADDR = 0x2_0000_1100
+
+    def find_clock(self):
+        self.events.append("find clock")
+        return self.CLOCK_ADDR
+
     def tools(self, replies=(), attached=True, setting="0"):
         self.game = FakeGame(self.events, self.tmp)
         self.session = ReplySession(list(replies))
@@ -236,7 +243,7 @@ class Rig(unittest.TestCase):
         tools = K.KitTools(self.game, FakeFridaTools(attached), threading.RLock(),
                            agent_dir=self.agent_dir, frida_mod=self.frida,
                            wait=instant_wait, now=self.clock.now, sleep=self.clock.sleep,
-                           read_settings=read_settings)
+                           read_settings=read_settings, find_clock=self.find_clock)
         # Detach before the temp folder goes, so Windows can delete the log.
         self.addCleanup(lambda: tools._agent is not None and tools._agent.detach())
         return tools
@@ -992,6 +999,137 @@ class WatchTest(Rig):
         self.assertEqual(tools.ch_kit_watch(2.5),
                          "watch failed: no reply to the watch request within the cap of 3.5 s "
                          "(seconds plus KIT_PRESS_CAP_S)")
+
+
+class FrameProbeTest(Rig):
+    """ch_kit_frame_probe, LS-G1's probe (task IG3 of
+    docs/superpowers/plans/2026-11-12-in-game-press-timing.md)."""
+
+    PROBE_REPLY = {"frames": [{"frame": 1}, {"frame": 2}, {"frame": 3}], "pressed_frame": 2}
+
+    def test_the_probe_cap_is_the_users_five_seconds(self):
+        # D339 item 3: the frame probe of LS-G1 runs 5 s.
+        self.assertEqual(K.FRAME_PROBE_SECONDS, 5.0)
+
+    def test_the_probe_sends_frame_probe_with_the_engines_clock_address(self):
+        tools = self.set_up([self.PROBE_REPLY])
+        lines = tools.ch_kit_frame_probe(5).splitlines()
+        self.assertEqual(self.posted()[-1], {
+            "type": "frame_probe", "seconds": 5, "clock_addr": self.CLOCK_ADDR,
+            "elements": [{"id": 3, "value": 1.0}], "read": ["Green"], "hold_frames": 2,
+            "cap_s": 6})
+        self.assertEqual(lines, [f"frame probe on the engine clock at {self.CLOCK_ADDR:#x}",
+                                 "frames: 3 entries", "pressed_frame: 2"])
+        self.assertEqual(self.events.count("find clock"), 1)
+
+    def test_more_than_five_seconds_is_refused_before_anything_is_sent(self):
+        tools = self.set_up()
+        sent = len(self.posted())
+        self.assertEqual(tools.ch_kit_frame_probe(5.001),
+                         "seconds is at most 5 (FRAME_PROBE_SECONDS), not 5.001")
+        self.assertEqual(tools.ch_kit_frame_probe(60),
+                         "seconds is at most 5 (FRAME_PROBE_SECONDS), not 60")
+        for bad in (0, -1, True, "5", float("nan")):
+            self.assertEqual(tools.ch_kit_frame_probe(bad),
+                             f"seconds is a number above 0, not {bad!r}")
+        self.assertEqual(len(self.posted()), sent)
+        self.assertNotIn("find clock", self.events)
+
+    def test_refused_before_setup_and_while_a_play_session_runs(self):
+        tools = self.tools()
+        self.assertEqual(tools.ch_kit_frame_probe(5), K.NOT_SET_UP)
+        tools = self.set_up()
+        sent = len(self.posted())
+        self.game.play = {"last_row": None, "press_count": 0, "stop": None}
+        self.assertEqual(tools.ch_kit_frame_probe(5), K.PLAY_RUNNING)
+        self.assertEqual(len(self.posted()), sent)
+        self.assertNotIn("find clock", self.events)
+
+    def test_no_engine_found_is_said_and_nothing_is_sent(self):
+        tools = self.set_up()
+        sent = len(self.posted())
+
+        def no_engine():
+            raise RuntimeError("no song is playing")
+
+        tools._find_clock = no_engine
+        self.assertEqual(tools.ch_kit_frame_probe(5),
+                         "frame probe: no engine found: RuntimeError: no song is playing")
+        self.assertEqual(len(self.posted()), sent)
+
+    def test_a_probe_with_no_reply_ends_at_its_cap(self):
+        tools = self.set_up([None])
+        self.assertEqual(tools.ch_kit_frame_probe(2.5),
+                         "frame probe failed: no reply to the frame_probe request within the "
+                         "cap of 3.5 s (seconds plus KIT_PRESS_CAP_S)")
+
+
+class FakeListenAgent:
+    """The frida_attach.LiveAgent parts GamePlayer uses: listen, alive and
+    request."""
+
+    def __init__(self):
+        self.listener = None
+        self.listened = []
+        self.alive = True
+        self.requests = []
+
+    def listen(self, listener):
+        self.listened.append(listener)
+        self.listener = listener
+
+    def request(self, message, cap_s):
+        self.requests.append((message, cap_s))
+        return {"ok": True}
+
+
+class GamePlayerTest(unittest.TestCase):
+    def test_events_queue_in_the_order_the_agent_sent_them(self):
+        agent = FakeListenAgent()
+        player = K.GamePlayer(agent)
+        first = {"kind": K.EVENT_SKIPPED, "seqs": [], "count": 0, "clock_ms": 0.0}
+        batch = [{"kind": K.EVENT_SENT, "seq": 0}, {"kind": K.EVENT_DROPPED, "seq": 1}]
+        last = {"kind": K.EVENT_STOP, "reason": K.STOP_REASON_DONE}
+        agent.listener(first)
+        agent.listener({"type": K.PLAY_EVENTS_TYPE, "events": batch})
+        agent.listener({"type": "log", "line": "not an event"})
+        agent.listener(last)
+        got = []
+        while not player.events.empty():
+            got.append(player.events.get_nowait())
+        self.assertEqual(got, [first, *batch, last])
+
+    def test_a_batch_with_an_error_queues_the_error_after_its_events(self):
+        agent = FakeListenAgent()
+        player = K.GamePlayer(agent)
+        agent.listener({"type": K.PLAY_EVENTS_TYPE, "events": [],
+                        "error": "the stall check failed: boom"})
+        self.assertEqual(player.events.get_nowait(),
+                         {"kind": K.EVENT_ERROR, "error": "the stall check failed: boom"})
+        self.assertTrue(player.events.empty())
+
+    def test_post_waits_the_press_cap_and_close_stops_the_listener(self):
+        agent = FakeListenAgent()
+        player = K.GamePlayer(agent)
+        message = K.stop_play_message()
+        self.assertEqual(player.post(message), {"ok": True})
+        self.assertEqual(agent.requests, [(message, K.KIT_PRESS_CAP_S)])
+        self.assertTrue(player.alive())
+        agent.alive = False
+        self.assertFalse(player.alive())
+        player.close()
+        self.assertIsNone(agent.listened[-1])
+
+
+class GamePlayerFromKitTest(Rig):
+    def test_the_kit_tools_player_is_none_until_setup_and_then_listens(self):
+        self.assertIsNone(self.tools().game_player())
+        tools = self.set_up()
+        player = tools.game_player()
+        self.assertIsInstance(player, K.GamePlayer)
+        self.assertIsNotNone(tools._agent._listener)
+        player.close()
+        self.assertIsNone(tools._agent._listener)
 
 
 class KitPressTest(Rig):
