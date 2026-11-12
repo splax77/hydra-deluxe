@@ -100,10 +100,6 @@ void read_library_summaries(store::RecordStore& store, const app::Settings& sett
                             LibraryModel& library, const RowsAnsweredFn& on_slice,
                             size_t slice_charts) {
     const std::vector<std::string> hashes = library.hashes();
-    if (!on_slice) {
-        library.set_summaries(store.lookup(hashes, settings.profile()));
-        return;
-    }
     // The slices are cut in hash order, the order the results tables are kept
     // in, so each slice reads one stretch of them and the slices together read
     // each page about once. Slices of rows in stored order would each reach
@@ -123,7 +119,7 @@ void read_library_summaries(store::RecordStore& store, const app::Settings& sett
         std::vector<store::RecordLookup> found = store.lookup(part, settings.profile());
         // lookup gives one answer per id asked, in the order asked.
         for (size_t i = from; i < to; ++i) answers[by_hash[i]] = std::move(found[i - from]);
-        if (!on_slice(static_cast<uint64_t>(to))) throw JobCancelled{};
+        if (on_slice && !on_slice(static_cast<uint64_t>(to))) throw JobCancelled{};
     }
     library.set_summaries(answers);
 }

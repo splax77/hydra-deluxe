@@ -1305,13 +1305,28 @@ class GameToolsTest(unittest.TestCase):
             return {MENU_BLOCK: {"globals": {"found": True, "currentSongFolder": self.loaded,
                                              "gameMode": 0, "playerCount": 1}}}
 
+    class ChainPlayer:
+        """kit_tools.GamePlayer as the play thread sees it: it is closed once
+        the run ends."""
+
+        def __init__(self):
+            self.closed = False
+
+        def close(self):
+            self.closed = True
+
     class ChainKit:
         def __init__(self, events, press):
             self.events, self.press = events, press
+            self.player = GameToolsTest.ChainPlayer()
 
         def setup_for_run(self, player):
             self.events.append(("setup", player))
             return self.press, "setup reply"
+
+        def game_player(self):
+            self.events.append("game player")
+            return self.player
 
         def ch_kit_teardown(self):
             self.events.append("teardown")
@@ -1330,9 +1345,9 @@ class GameToolsTest(unittest.TestCase):
             return "watcher ended: stopped"
 
     def _chain_rig(self, live_play=None, *, attaches=True, press=None, engine=ENGINE,
-                   loaded=None):
+                   loaded=None, **tool_args):
         """A chained-start rig whose game has `loaded` loaded; None means the
-        rig's own song folder."""
+        rig's own song folder. `tool_args` go to GameTools as they are."""
         events = []
         seen = {}
 
@@ -1343,7 +1358,7 @@ class GameToolsTest(unittest.TestCase):
             return play_chart.RunResult(stop="done")
 
         press = press if press is not None else (lambda lanes, axes=None: {})
-        t = ToolRig(self.tmp, live_play=live_play or played)
+        t = ToolRig(self.tmp, live_play=live_play or played, **tool_args)
         t.tools.use_run_parts(GT.RunParts(
             self.ChainFrida(events, attaches, t.r.song if loaded is None else loaded),
             self.ChainKit(events, press if press != "none" else None),
@@ -1865,16 +1880,98 @@ class GameToolsTest(unittest.TestCase):
         # Question 6 (a) of docs/superpowers/plans/2026-11-08-replay-press-
         # schedule.md and D324 item 2: schedule_json replaces dump_json, and
         # no decline mode or lead is an argument. D318 item 4: ch_play_chart
-        # and ch_run_chart take path_index.
+        # and ch_run_chart take path_index. Task IG3 of docs/superpowers/plans/
+        # 2026-11-12-in-game-press-timing.md: both take timing.
         signatures = {name: list(inspect.signature(getattr(GT.GameTools, name)).parameters)
                       for name in ("ch_play_chart", "ch_run_chart", "ch_edge_probe")}
         self.assertEqual(signatures, {
             "ch_play_chart": ["self", "score_json", "schedule_json", "log", "song_folder",
-                              "route", "path_index"],
+                              "route", "path_index", "timing"],
             "ch_run_chart": ["self", "song_folder", "score_json", "schedule_json",
-                             "kit_player", "path_index"],
+                             "kit_player", "path_index", "timing"],
             "ch_edge_probe": ["self", "song_folder", "score_json", "schedule_json",
                               "probes_json"]})
+
+    # -- in-game timing (task IG3 of docs/superpowers/plans/2026-11-12-in-game-press-timing.md)
+
+    def _in_game_rig(self, **kw):
+        """A chained-start rig whose live_in_game records the player it gets
+        and delivers ROWS[0]."""
+        in_game = []
+
+        def live_in_game(chords, *, player, on_press, **_kw):
+            in_game.append(player)
+            on_press(ROWS[0])
+            return play_chart.RunResult(stop="done")
+
+        t, events, seen = self._chain_rig(live_in_game=live_in_game, **kw)
+        return t, events, in_game
+
+    def test_run_chart_with_game_timing_plays_in_game_on_the_setups_kit_agent(self):
+        t, events, in_game = self._in_game_rig()
+        kit = t.tools._run_parts.kit
+        self._run(t, timing=GT.TIMING_GAME)
+        self.assertEqual(in_game, [kit.player])
+        self.assertNotIn("play", events)
+        self.assertTrue(kit.player.closed)
+
+    def _assert_plays_chords(self, **timing):
+        t, events, in_game = self._in_game_rig()
+        self._run(t, **timing)
+        self.assertEqual(in_game, [])
+        self.assertIn("play", events)
+        self.assertNotIn("game player", events)
+
+    def test_run_chart_without_timing_plays_chords_and_asks_for_no_game_player(self):
+        self._assert_plays_chords()
+
+    def test_run_chart_with_python_timing_plays_chords_and_asks_for_no_game_player(self):
+        self._assert_plays_chords(timing=GT.TIMING_PYTHON)
+
+    def test_run_chart_refuses_an_unknown_timing_before_it_attaches(self):
+        t, events, in_game = self._in_game_rig()
+        reply = self._run(t, timing="frames")
+        self.assertEqual(reply, 'unknown timing "frames"; timings: python, game')
+        self.assertEqual((events, in_game), ([], []))
+
+    def test_run_chart_with_game_timing_stops_loudly_when_the_kit_agent_is_not_ready(self):
+        t, events, in_game = self._in_game_rig()
+        t.tools._run_parts.kit.player = None
+        lines = self._run(t, timing=GT.TIMING_GAME).splitlines()
+        self.assertIsNone(t.tools._play)
+        self.assertEqual(in_game, [])
+        self.assertIn('timing "game": the kit agent the setup built is not ready; '
+                      "nothing pressed", lines)
+        self.assertEqual(events[-2:], ["teardown", "watch stop"])
+
+    def test_play_chart_with_game_timing_refuses_the_keys_route(self):
+        t, _events, in_game = self._in_game_rig()
+        reply = t.tools.ch_play_chart(self._score_json(), self._schedule_json(),
+                                      route=GT.ROUTE_KEYS, timing=GT.TIMING_GAME)
+        self.assertEqual(reply, f'timing "game" plays on route "{GT.ROUTE_KIT}" only')
+        self.assertIsNone(t.tools._play)
+
+    def test_the_status_rows_show_frame_gap_ms_and_agent_note(self):
+        # D339 item 2 (question 3): in-game rows carry frame_gap_ms and
+        # agent_note, and ch_play_status prints both where it prints the
+        # timing columns of a Python-loop row.
+        rows = [{**ROWS[0], "frame_gap_ms": 3.0, "agent_note": ""},
+                {**ROWS[1], "frame_gap_ms": 2.9, "agent_note": "retime_missed"}]
+
+        def live_play(chords, *, on_press, **kw):
+            for row in rows:
+                on_press(row)
+            return play_chart.RunResult(stop="done", sent=2, rows=rows)
+
+        t = ToolRig(self.tmp, live_play=live_play)
+        t.tools.ch_play_chart(self._score_json(), self._schedule_json(), route="keys")
+        t.tools._play.thread.join(THREAD_CAP_S)
+        lines = t.tools.ch_play_status().splitlines()
+        self.assertEqual(lines[-3:], [
+            "rows, newest first (index, chart_ms, clock_ms_at_press, score_before, score_after, "
+            "send, frame_gap_ms, agent_note):",
+            "  1, 1500.0, 1499.0, 50, 50, sent, 2.9, retime_missed",
+            "  0, 1000.0, 998.0, 0, 50, sent, 3.0, "])
 
     # -- the right song and path (D318 item 4) --------------------------------------------
 

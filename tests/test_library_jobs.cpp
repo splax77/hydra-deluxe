@@ -759,6 +759,13 @@ void check_same_result(const hydra::ui::LibraryRow& got, const hydra::ui::Librar
     CHECK(got.best_label() == want.best_label());
 }
 
+// Checks that `got` has the rows of `want`, in the same order, each showing
+// the same saved result.
+void check_same_results(const hydra::ui::LibraryModel& got, const hydra::ui::LibraryModel& want) {
+    REQUIRE(got.rows().size() == want.rows().size());
+    for (size_t i = 0; i < want.rows().size(); ++i) check_same_result(got.rows()[i], want.rows()[i]);
+}
+
 // Reads the store's charts, then their results in slices of `slice_charts`,
 // into `sliced`. Returns the rows answered after each slice. `after_slice`, if
 // given, runs after each slice's report with the rows answered so far.
@@ -809,10 +816,11 @@ TEST_CASE("jobs: results read in slices match one read") {
     hydra::test::add_stale_records(store, hydra::test::empty_analysis_under(profile), profile,
                                    "build", "rules", "both");
 
-    // With no callback: one whole lookup, as the settings re-read does it.
+    // The reference: one store lookup for every row, in row order, made here
+    // without read_library_summaries.
     hydra::ui::LibraryModel whole;
     whole.set_charts(store.list_chart_library(0, -1));
-    hydra::ui::read_library_summaries(store, settings, whole);
+    whole.set_summaries(store.lookup(whole.hashes(), profile));
     REQUIRE(whole.rows().size() == 8);
     REQUIRE(whole.rows().front().entry.md5 == "same");
     REQUIRE(whole.rows()[1].entry.md5 == "zzz");
@@ -822,9 +830,7 @@ TEST_CASE("jobs: results read in slices match one read") {
         hydra::ui::LibraryModel sliced;
         const std::vector<uint64_t> answered = read_in_slices(store, settings, sliced, 1);
         CHECK(answered == std::vector<uint64_t>{1, 2, 3, 4, 5, 6, 7, 8});
-        REQUIRE(sliced.rows().size() == whole.rows().size());
-        for (size_t i = 0; i < whole.rows().size(); ++i)
-            check_same_result(sliced.rows()[i], whole.rows()[i]);
+        check_same_results(sliced, whole);
         // The chart in two folders has its result in both rows.
         CHECK(sliced.rows().front().status == hydra::store::RecordStatus::Ready);
         CHECK(sliced.rows().back().status == hydra::store::RecordStatus::Ready);
@@ -834,9 +840,7 @@ TEST_CASE("jobs: results read in slices match one read") {
         const std::vector<uint64_t> answered = read_in_slices(store, settings, sliced, 2);
         // One report per slice, two rows more each time, ending on every row.
         CHECK(answered == std::vector<uint64_t>{2, 4, 6, 8});
-        REQUIRE(sliced.rows().size() == whole.rows().size());
-        for (size_t i = 0; i < whole.rows().size(); ++i)
-            check_same_result(sliced.rows()[i], whole.rows()[i]);
+        check_same_results(sliced, whole);
         // The chart in two folders, read in two different slices, has its
         // result in both rows.
         CHECK(sliced.rows().front().status == hydra::store::RecordStatus::Ready);
@@ -863,9 +867,15 @@ TEST_CASE("jobs: results read in slices match one read") {
         // Eight rows fit in one slice.
         REQUIRE(whole.rows().size() < hydra::ui::kResultsSliceCharts);
         CHECK(answered == std::vector<uint64_t>{8});
-        REQUIRE(sliced.rows().size() == whole.rows().size());
-        for (size_t i = 0; i < whole.rows().size(); ++i)
-            check_same_result(sliced.rows()[i], whole.rows()[i]);
+        check_same_results(sliced, whole);
+    }
+    SUBCASE("no callback, as the reload after a scan reads it") {
+        // Slices of two, so the two rows of the chart in two folders are read
+        // in different slices here too.
+        hydra::ui::LibraryModel reread;
+        reread.set_charts(store.list_chart_library(0, -1));
+        hydra::ui::read_library_summaries(store, settings, reread, {}, 2);
+        check_same_results(reread, whole);
     }
 }
 

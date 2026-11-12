@@ -249,6 +249,9 @@ class LiveAgent:
     run_agent does. A writer thread does the writing, so a slow disk never
     holds up a reply; `detach` waits for it up to LOG_WRITER_CAP_S.
 
+    A payload with no id is no reply: `listen` hands such payloads (the
+    kit agent's play events) to a listener.
+
     `alive` is False once the session has dropped or been detached, and
     `gone_reason` then says why. One LiveAgent attaches once; attach again
     with a new one. With `pid` it attaches to that process id, the game
@@ -280,6 +283,8 @@ class LiveAgent:
         self._writer: threading.Thread | None = None
         self._next_id = 0
         self._pending: _Pending | None = None
+        # Gets each payload that carries no id (listen); None until set.
+        self._listener: Callable[[dict], None] | None = None
         self._detach_called = False
         self.alive = False
         self.gone_reason: str | None = None
@@ -463,6 +468,16 @@ class LiveAgent:
                              f"the agent sent an error: {reply['error']}", reply)
         return reply
 
+    def listen(self, listener: Callable[[dict], None] | None) -> None:
+        """Hand every payload the agent sends without an `id` to `listener`,
+        on Frida's thread, in the order the agent sent them; None stops it.
+        Such a payload is no request's reply, so without a listener it is
+        only logged. The listener runs outside the lock and must return
+        quickly (a queue put), because Frida's thread waits for it. The
+        payload is still written to the log as every message is."""
+        with self._lock:
+            self._listener = listener
+
     def _on_message(self, message: dict, data: Any) -> None:
         # Frida's thread. The reply is handed over first and the line only
         # queued, so no file call stands between a reply and its request.
@@ -473,6 +488,10 @@ class LiveAgent:
                 return
             self._hand_over(message)
             lines.put(json.dumps(message) + "\n")
+            listener = self._listener
+        payload = message.get("payload") if message.get("type") == "send" else None
+        if listener is not None and isinstance(payload, dict) and "id" not in payload:
+            listener(payload)
 
     def _hand_over(self, message: dict) -> None:
         """Give `message` to the waiting request, when it is that request's

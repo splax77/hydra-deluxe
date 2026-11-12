@@ -514,6 +514,19 @@ class LiveAgentTest(Workspace):
         self.assertEqual(session.detach_calls, 0)
         self.assertEqual(self.written(), [sent({**STATE, "id": 1})])
 
+    def test_a_payload_with_no_id_goes_to_the_listener_and_the_log(self):
+        agent, session = self.started([STATE])
+        heard = []
+        agent.listen(heard.append)
+        event = {"kind": "sent", "seq": 0}
+        session.script.handlers["message"](sent(event), None)
+        session.script.handlers["message"](sent({**STATE, "id": 99}), None)
+        self.assertEqual(heard, [event])
+        agent.listen(None)
+        session.script.handlers["message"](sent(event), None)
+        self.assertEqual(heard, [event])
+        self.assertIn(sent(event), self.written())
+
     def test_start_on_a_game_that_is_not_running_attaches_nothing(self):
         agent = self.live(FakeFrida(None))
         with self.assertRaises(FA.AttachFailed) as caught:
@@ -1135,6 +1148,160 @@ class AllowedCallsTest(unittest.TestCase):
         findings = call_findings(texts)
         self.assertEqual(len(findings), 1)
         self.assertTrue(findings[0].endswith(f": calls a game function: {line}"))
+
+
+# ---- kit.ts's play hook -----------------------------------------------------
+# Task IG2 of docs/superpowers/plans/2026-11-12-in-game-press-timing.md: the
+# play messages hook GameManager.Update. These checks read kit.ts as text.
+
+_TIMING_START = "// ---- in-game timing"
+_TIMING_END = "// ---- end of in-game timing"
+_STRING = re.compile(r"([\"'`])(?:\\.|(?!\1).)*\1")
+_NUMBER = re.compile(r"\b\d+(?:\.\d+)?\b")
+# The one number the in-game block may hold, and the line it sits on: the
+# unit change from the clock's seconds to the scheduler's ms. 0 is allowed
+# anywhere, for comparisons and the hook's first argument.
+_UNIT_LINE = "const MS_PER_S = 1000;"
+
+
+def timing_block(kit_text: str) -> str:
+    """kit.ts's in-game timing block, its two marker lines left out."""
+    lines = kit_text.splitlines()
+    start = next(i for i, l in enumerate(lines) if l.startswith(_TIMING_START))
+    end = next(i for i, l in enumerate(lines) if l.startswith(_TIMING_END))
+    return "\n".join(lines[start + 1:end])
+
+
+def own_number_findings(block: str) -> list[str]:
+    """Every number literal in `block`'s code (comments and strings left
+    out) other than 0 and the unit line's own."""
+    found = []
+    for line in block.splitlines():
+        code = _STRING.sub("", line.split("//", 1)[0]).strip()
+        for token in _NUMBER.findall(code):
+            if token != "0" and code != _UNIT_LINE:
+                found.append(f"holds the number {token}: {line.strip()}")
+    return found
+
+
+def top_functions(text: str) -> dict[str, str]:
+    """Each top-level function of an agent, by name, with the lines of its
+    body (its signature line left out), up to the `}` that closes it at
+    column 0."""
+    out = {}
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
+        m = re.match(r"(?:async\s+)?function\s+(\w+)\s*\(", line)
+        if m is None:
+            continue
+        end = next(j for j in range(i + 1, len(lines)) if lines[j] == "}")
+        out[m.group(1)] = "\n".join(lines[i + 1:end])
+    return out
+
+
+def play_waits_findings(kit_text: str) -> list[str]:
+    """Why kit.ts's play case would wait for its schedule before replying:
+    a play case that does not reply with startPlay through settled, or a
+    startPlay that is async, awaits, sleeps or chains a promise."""
+    found = []
+    if 'case "play":\n            return settled(() => startPlay(m));' not in kit_text:
+        found.append('the play case does not reply with settled(() => startPlay(m))')
+    if re.search(r"async\s+function\s+startPlay\b", kit_text):
+        found.append("startPlay is async")
+    body = top_functions(kit_text).get("startPlay")
+    if body is None:
+        found.append("no function startPlay")
+        return found
+    for word in ("await", "sleep(", ".then(", "Promise"):
+        if word in body:
+            found.append(f"startPlay holds {word}")
+    return found
+
+
+def stop_path_findings(kit_text: str) -> list[str]:
+    """Every place a play can stop that does not reach the one function that
+    takes the hook out and lifts every pad (unhook): a function that steps or
+    stops the scheduler without applyStep, an applyStep that does not call
+    endPlay, an endPlay, teardown or frameProbe that does not call unhook, an
+    unhook that does not detach and write the lift, and a detach or a hook
+    placed anywhere else."""
+    fns = top_functions(kit_text)
+    found = []
+    for name, body in sorted(fns.items()):
+        stops = "schedule.step(" in body or "schedule.stop(" in body
+        if stops and name != "applyStep" and "applyStep(" not in body:
+            found.append(f"{name} steps or stops the scheduler without applyStep")
+        if ".detach()" in body and name != "unhook":
+            found.append(f"{name} detaches a hook outside unhook")
+        if "Interceptor.attach(" in body and name != "placeHook":
+            found.append(f"{name} places a hook outside placeHook")
+    for name, needs in (("applyStep", "endPlay("), ("endPlay", "unhook("),
+                        ("teardown", "unhook("), ("frameProbe", "unhook("),
+                        ("unhook", ".detach()"), ("unhook", "write(kit, pads, true)")):
+        if needs not in fns.get(name, ""):
+            found.append(f"{name} does not call {needs}")
+    outside = "\n".join(body for name, body in fns.items())
+    if kit_text.count(".detach()") != outside.count(".detach()"):
+        found.append("a detach sits outside every function")
+    return found
+
+
+class KitPlayHookTest(unittest.TestCase):
+    @staticmethod
+    def kit() -> str:
+        with open(os.path.join(AGENT_DIR, KIT_AGENT), encoding="utf-8") as fh:
+            return fh.read()
+
+    def test_kit_hooks_game_manager_update_once(self):
+        kit = self.kit()
+        self.assertIn('.class(GAME_MANAGER).method("Update", 0)', kit)
+        self.assertIn("Update", allowed_calls(kit))
+        update = [e for e in load_kit_methods()["methods"] if e["name"] == "Update"]
+        self.assertEqual([(e["class"], e["dump_line"]) for e in update], [("GameManager", 25387)])
+        self.assertEqual(kit.count("Interceptor.attach("), 1)
+        self.assertIn('import { PressSchedule } from "./press_schedule.js";', kit)
+
+    def test_kit_play_holds_no_number_of_its_own(self):
+        kit = self.kit()
+        block = timing_block(kit)
+        self.assertEqual(own_number_findings(block), [])
+        self.assertIn(_UNIT_LINE, block)
+        # The schedule takes the play message itself, so every number of
+        # press_schedule.ts's PlayConfig comes from it.
+        self.assertIn("new PressSchedule(m as unknown as PlayConfig,", block)
+        self.assertIn('needAbove0(m, "stall_ms")', block)
+        # A stall is the scheduler's "frozen" stop word, so Python maps it.
+        self.assertIn('`no frame came for ${quiet} ms`, "frozen")', block)
+
+    def test_a_number_of_its_own_fails(self):
+        self.assertEqual(own_number_findings("const HOLD = 2;\nif (a > 0) {}\n// 3 frames\n"),
+                         ["holds the number 2: const HOLD = 2;"])
+
+    def test_kit_play_replies_before_the_schedule_ends(self):
+        self.assertEqual(play_waits_findings(self.kit()), [])
+
+    def test_a_play_that_waits_fails(self):
+        kit = self.kit().replace("function startPlay(", "async function startPlay(", 1)
+        self.assertEqual(play_waits_findings(kit), ["startPlay is async"])
+        kit = self.kit().replace("    play = p;\n", "    play = p;\n    await sleep(1);\n", 1)
+        self.assertEqual(play_waits_findings(kit),
+                         ["startPlay holds await", "startPlay holds sleep("])
+
+    def test_every_play_stop_goes_through_unhook(self):
+        self.assertEqual(stop_path_findings(self.kit()), [])
+
+    def test_a_stop_that_skips_unhook_fails(self):
+        kit = self.kit()
+        bad = kit.replace("    applyStep(p, p.schedule.stop(Date.now()), null);\n"
+                          "    return { stopped: true };",
+                          "    p.schedule.stop(Date.now());\n    return { stopped: true };", 1)
+        self.assertNotEqual(bad, kit)
+        self.assertEqual(stop_path_findings(bad),
+                         ["stopPlay steps or stops the scheduler without applyStep"])
+        bad = kit.replace("    try {\n        unhook(p.kit);\n", "    try {\n        hook?.detach();\n", 1)
+        self.assertNotEqual(bad, kit)
+        self.assertEqual(stop_path_findings(bad), [
+            "endPlay detaches a hook outside unhook", "endPlay does not call unhook("])
 
 
 class DestroyedSkipTest(unittest.TestCase):

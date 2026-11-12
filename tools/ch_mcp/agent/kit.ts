@@ -27,8 +27,18 @@
 // frida_attach.LiveAgent posts each message with an id and takes only the
 // reply carrying the same id. Every message gets exactly one reply: its
 // answer, or an error. Messages are answered one at a time, in order.
+//
+// The play messages (play, retime, stop_play) and frame_probe are task IG2 of
+// docs/superpowers/plans/2026-11-12-in-game-press-timing.md; the block
+// "in-game timing" below holds them. They hook GameManager.Update, the one
+// method this agent hooks rather than calls. D339 item 4 lets that block read
+// the song clock and the score at the addresses the play message gives; every
+// other read here stays by name. Play events go to Python with no id.
 
 import "frida-il2cpp-bridge";
+import { GAME_MANAGER } from "./gamemanager.js";
+import { PressSchedule } from "./press_schedule.js";
+import type { PlayConfig, Step } from "./press_schedule.js";
 
 // The game methods this agent may call, by name. The test above reads this
 // list from this file's text, so it stays one literal list.
@@ -48,12 +58,14 @@ export const ALLOWED_CALLS = [
     "get_Count", "get_Item",
     "get_frameCount", "get_isFocused",
     "GetButton", "GetAnyButton",
+    "Update",
 ];
 
 // The images and classes, as the Il2CppDumper dump of build 6142 names them;
 // kit_methods.json gives each one's dump line.
 const REWIRED = "Rewired_Core";
 const UNITY_CORE = "UnityEngine.CoreModule";
+const GAME = "CloneHero";
 
 // How often the press loop wakes to read the frame count and, when the
 // message asks for it, write the values again: the probe's 2 ms (the plan,
@@ -472,6 +484,12 @@ function button(player: Il2Cpp.Object, action: string): boolean {
         .invoke(Il2Cpp.string(action));
 }
 
+// What one player's GetAnyButton reads: the watch's read, and the frame
+// probe's.
+function anyButton(player: Il2Cpp.Object): boolean {
+    return player.method<boolean>("GetAnyButton", 0).invoke();
+}
+
 // Reads each action named in `names` on `player` at `frame`, and adds a line
 // to `seen` for every action whose value differs from its last read.
 function readBack(player: Il2Cpp.Object, names: string[], frame: number,
@@ -685,7 +703,7 @@ async function watch(m: Message) {
     const readers = await Il2Cpp.perform(() => {
         const out: Reader[] = allPlayers().map((p) => ({
             who: p.name === null ? `player ${p.id}` : p.name,
-            read: () => p.player.method<boolean>("GetAnyButton", 0).invoke(),
+            read: () => anyButton(p.player),
         }));
         const ctl = controllers();
         out.push({
@@ -781,7 +799,8 @@ function placeholdersToDestroy(rec: Recorded | null, tags: string[]): Placeholde
     return [...known, ...found];
 }
 
-// Runs on the main thread. Clears every element a press wrote, takes the kit
+// Runs on the main thread. Ends a running play and takes out the hook, if
+// either is in, through unhook. Clears every element a press wrote, takes the kit
 // from its player, destroys it and every placeholder, gives every player back
 // the keyboard and mouse flags setup recorded, puts Rewired's keyboard and
 // mouse devices and the switch back, and checks each. The check "kit gone"
@@ -792,6 +811,18 @@ function teardown(m: Message) {
     const tag = rec !== null ? rec.tag : (typeof m.tag === "string" ? m.tag : null);
     const placeholderTags = rec !== null ? rec.placeholderTags : stringList(m, "placeholder_tags");
     const kit = rec !== null && rec.kit !== null ? rec.kit : (tag === null ? null : findTagged(tag));
+    // A play or a hook still in ends first, so no frame writes the kit while
+    // it goes. Nothing in: no check line.
+    if (play !== null || hook !== null) {
+        step(checks, "hook out", () => {
+            const p = play;
+            if (p !== null) {
+                applyStep(p, p.schedule.stop(Date.now()), null);
+            }
+            unhook(kit);
+            return p !== null ? "play stopped, its hook out" : "hook out";
+        });
+    }
     if (kit !== null) {
         step(checks, "elements cleared", () => {
             // Only each value's kind matters here: a release writes the rest value.
@@ -924,6 +955,318 @@ function faultOf(e: unknown): object | null {
     };
 }
 
+// ---- in-game timing --------------------------------------------------------
+// The play messages and frame_probe (task IG2 of the in-game timing plan).
+// press_schedule.ts decides every frame; this block reads the clock and the
+// score, does the writes and sends the events. Every number a play runs by
+// comes in its message: press_schedule.ts's header names each one, and
+// kit_tools.py's contract block owns them. tests/test_frida_attach.py reads
+// this block for numbers of its own.
+
+// The song clock is a double in seconds; the scheduler takes ms.
+const MS_PER_S = 1000;
+const PLAY_EVENTS = "play_events";
+
+interface Play {
+    kit: Il2Cpp.Object;
+    schedule: PressSchedule;
+    clock: NativePointer;
+    stallMs: number;
+    lastFrameWall: number;
+    timer: ReturnType<typeof setTimeout> | null;
+}
+
+let play: Play | null = null;
+// The one hook on GameManager.Update, the play's or the frame probe's, and
+// every element its owner may write, with whether it is a button, so unhook
+// can lift them all.
+let hook: InvocationListener | null = null;
+const hookPads = new Map<number, boolean>();
+
+function needAddress(m: Message, key: string): NativePointer {
+    const v = m[key];
+    if (typeof v !== "number" || !Number.isInteger(v) || !(v > 0)) {
+        throw new Error(`${m.type} needs an address "${key}"`);
+    }
+    return ptr(v);
+}
+
+function needAbove0(m: Message, key: string): number {
+    const v = m[key];
+    if (typeof v !== "number" || !(v > 0)) {
+        throw new Error(`${m.type} needs a "${key}" above 0`);
+    }
+    return v;
+}
+
+function addPads(elements: Element[]): void {
+    for (const e of elements) {
+        hookPads.set(e.id, typeof e.value === "boolean");
+        touched.set(e.id, typeof e.value === "boolean");
+    }
+}
+
+// Places the hook. `each` runs as each GameManager.Update returns, on the
+// game's main thread, with the GameManager the call ran on.
+function placeHook(each: (self: NativePointer) => void): void {
+    if (hook !== null) {
+        throw new Error(`a hook on ${GAME_MANAGER}.Update is already in`);
+    }
+    const update = Il2Cpp.domain.assembly(GAME).image.class(GAME_MANAGER).method("Update", 0);
+    if (update.virtualAddress.isNull()) {
+        throw new Error(`${GAME_MANAGER}.Update has no code address`);
+    }
+    hook = Interceptor.attach(update.virtualAddress, {
+        onEnter(args) {
+            // An instance method gets its object first.
+            this.self = args[0];
+        },
+        onLeave() {
+            each(this.self as NativePointer);
+        },
+    });
+}
+
+// The one way the hook comes out: it detaches the hook, then lifts every
+// element its owner may have written. Every play stop, the frame probe's end
+// and teardown come here.
+function unhook(kit: Il2Cpp.Object | null): void {
+    const h = hook;
+    hook = null;
+    try {
+        if (h !== null) {
+            h.detach();
+        }
+    } finally {
+        const pads = [...hookPads].map(([id, isButton]) => ({ id, value: isButton ? true : 0 }));
+        hookPads.clear();
+        if (kit !== null && pads.length !== 0) {
+            write(kit, pads, true);
+        }
+    }
+}
+
+// Starts the play the message gives and returns at once: the hook plays it
+// on the game's frames, and its events reach Python later, with no id.
+function startPlay(m: Message) {
+    if (play !== null) {
+        throw new Error("a play is already running: send stop_play first");
+    }
+    const rec = recorded;
+    if (rec === null || rec.kit === null) {
+        throw new Error("no kit: send setup first");
+    }
+    const kit = rec.kit;
+    const clock = needAddress(m, "clock_addr");
+    const score = needAddress(m, "score_addr");
+    const stallMs = needAbove0(m, "stall_ms");
+    const schedule = new PressSchedule(m as unknown as PlayConfig, () => score.readU32());
+    const p: Play = { kit, schedule, clock, stallMs, lastFrameWall: Date.now(), timer: null };
+    for (const s of schedule.slots.values()) {
+        addPads(s.entry.elements);
+    }
+    placeHook(() => onPlayFrame(p));
+    play = p;
+    armStallTimer(p, stallMs);
+    return { playing: true, entries: schedule.slots.size };
+}
+
+// One frame of the play: one clock read, one step.
+function onPlayFrame(p: Play): void {
+    if (play !== p) {
+        return;
+    }
+    let s: Step;
+    let cause: string | null = null;
+    try {
+        const wall = Date.now();
+        p.lastFrameWall = wall;
+        s = p.schedule.step(frameCount(), p.clock.readDouble() * MS_PER_S, wall);
+    } catch (e) {
+        s = p.schedule.stop(Date.now());
+        cause = `the frame step failed: ${e}`;
+    }
+    applyStep(p, s, cause);
+}
+
+// Does one Step's releases and writes, then sends its events as one batch. A
+// Step that ends the play, and a write that fails, go to endPlay.
+function applyStep(p: Play, s: Step, cause: string | null, reason: string | null = null): void {
+    let why = cause;
+    let events = s.events;
+    try {
+        for (const r of s.release) {
+            write(p.kit, r.elements, true);
+        }
+        for (const w of s.write) {
+            write(p.kit, w.elements, false);
+        }
+    } catch (e) {
+        if (p.schedule.stopReason === null) {
+            events = [...events, ...p.schedule.stop(Date.now()).events];
+        }
+        why = `${why === null ? "" : `${why}; and `}a kit write failed: ${e}`;
+    }
+    if (p.schedule.stopReason !== null) {
+        endPlay(p, events, why, reason);
+    } else if (events.length !== 0) {
+        send({ type: PLAY_EVENTS, events });
+    }
+}
+
+// Ends the play: the hook comes out and every pad is lifted, through unhook,
+// then the last events go, the stop among them. The stop event also carries
+// `cause`, null when the scheduler or stop_play stopped the play, else what
+// stopped it from outside the scheduler, and `lift_error`, null unless
+// unhook failed. `reason`, when given, replaces the stop event's reason: the
+// stall timer's stop is the scheduler's "frozen", not its "stopped".
+function endPlay(p: Play, events: object[], cause: string | null, reason: string | null): void {
+    play = null;
+    if (p.timer !== null) {
+        clearTimeout(p.timer);
+        p.timer = null;
+    }
+    let liftError: string | null = null;
+    try {
+        unhook(p.kit);
+    } catch (e) {
+        liftError = `${e}`;
+    }
+    const out = events.map((e) => {
+        const ev = e as { [key: string]: unknown };
+        return ev.kind === "stop"
+            ? { ...ev, ...(reason === null ? {} : { reason }), cause, lift_error: liftError } : ev;
+    });
+    send({ type: PLAY_EVENTS, events: out });
+}
+
+// The scheduler's cap and frozen checks run only inside step(), so a game
+// that stops calling Update would never stop the play. This timer, on
+// Frida's own thread, stops it once no frame has come for the message's
+// stall_ms.
+function armStallTimer(p: Play, waitMs: number): void {
+    p.timer = setTimeout(() => {
+        p.timer = null;
+        settled(() => {
+            if (play !== p) {
+                return;
+            }
+            const now = Date.now();
+            const quiet = now - p.lastFrameWall;
+            if (quiet >= p.stallMs) {
+                applyStep(p, p.schedule.stop(now), `no frame came for ${quiet} ms`, "frozen");
+            } else {
+                armStallTimer(p, p.stallMs - quiet);
+            }
+        }).catch((e) => {
+            send({ type: PLAY_EVENTS, events: [], error: `the stall check failed: ${e}` });
+        });
+    }, waitMs);
+}
+
+function retimePlay(m: Message) {
+    const p = play;
+    if (p === null) {
+        throw new Error("retime: no play is running");
+    }
+    const done = p.schedule.retime(m.read_after as number, m.entries);
+    for (const s of p.schedule.slots.values()) {
+        addPads(s.entry.elements);
+    }
+    return done;
+}
+
+function stopPlay() {
+    const p = play;
+    if (p === null) {
+        return { stopped: false };
+    }
+    applyStep(p, p.schedule.stop(Date.now()), null);
+    return { stopped: true };
+}
+
+// For the message's seconds, logs every GameManager.Update as it returns: its
+// frame, the engine clock and GameManager.songTime as read (both in
+// seconds), and the wall time. It puts the message's elements down on the
+// first frame and lifts them hold_frames frames later, and after any write
+// reads the kit's player back on every frame: GetAnyButton, and each action
+// of an optional "read" list by name, as press reads them. A row's `wrote`
+// says which write that frame made. The hook comes out through unhook.
+async function frameProbe(m: Message) {
+    const seconds = needAbove0(m, "seconds");
+    const capS = m.cap_s;
+    if (typeof capS !== "number" || !(capS > seconds)) {
+        throw new Error('frame_probe needs a "cap_s" above its "seconds"');
+    }
+    const clock = needAddress(m, "clock_addr");
+    const elements = elementsOf(m);
+    const hold = needInteger(m, "hold_frames");
+    const names = readNames(m);
+    const rec = recorded;
+    if (rec === null || rec.kit === null || rec.target === null) {
+        throw new Error("no kit on a player: send setup first");
+    }
+    if (play !== null) {
+        throw new Error("a play is running: send stop_play first");
+    }
+    const kit = rec.kit;
+    const reader = rec.target.player;
+    const frames: object[] = [];
+    let downFrame: number | null = null;
+    let upFrame: number | null = null;
+    let failure: string | null = null;
+    const managers = new Map<string, Il2Cpp.Object>();
+    const onFrame = (self: NativePointer) => {
+        if (failure !== null) {
+            return;
+        }
+        try {
+            const wall = Date.now();
+            const f = frameCount();
+            let gm = managers.get(self.toString());
+            if (gm === undefined) {
+                gm = new Il2Cpp.Object(self);
+                managers.set(self.toString(), gm);
+            }
+            const row: { [key: string]: unknown } = {
+                frame: f, engine_clock_s: clock.readDouble(),
+                song_time_s: gm.field<number>("songTime").value, wall_ms: wall, wrote: null,
+            };
+            if (downFrame === null) {
+                write(kit, elements, false);
+                downFrame = f;
+                row.wrote = "down";
+            } else if (upFrame === null && f >= downFrame + hold) {
+                write(kit, elements, true);
+                upFrame = f;
+                row.wrote = "up";
+            }
+            row.any_button = anyButton(reader);
+            if (names.length !== 0) {
+                row.read = names.map((a) => button(reader, a));
+            }
+            frames.push(row);
+        } catch (e) {
+            failure = `after ${frames.length} frames: ${e}`;
+        }
+    };
+    addPads(elements);
+    const start = Date.now();
+    try {
+        await settled(() => placeHook(onFrame));
+        await sleep(seconds * MS_PER_S);
+    } finally {
+        await settled(() => unhook(kit));
+    }
+    return {
+        seconds, wall_ms: Date.now() - start, hold_frames: hold, down_frame: downFrame,
+        up_frame: upFrame, read: names, failure, hook_out: hook === null,
+        managers: managers.size, frames,
+    };
+}
+
+// ---- end of in-game timing -------------------------------------------------
+
 // The first message LiveAgent.start posts is a read; the kit answers it with
 // its status.
 function answer(m: Message): Promise<object> {
@@ -939,6 +1282,15 @@ function answer(m: Message): Promise<object> {
             return press(m);
         case "watch":
             return watch(m);
+        // play replies once its hook is in, never at the schedule's end.
+        case "play":
+            return settled(() => startPlay(m));
+        case "retime":
+            return settled(() => retimePlay(m));
+        case "stop_play":
+            return settled(() => stopPlay());
+        case "frame_probe":
+            return frameProbe(m);
         default:
             return Promise.reject(new Error(`unknown message type ${m.type}`));
     }

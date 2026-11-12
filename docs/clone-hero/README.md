@@ -56,12 +56,12 @@ These counts were taken from the pages on 2026-11-12, by counting their `###` he
 |---|---|---|---|---|---|
 | 01 reading a chart | 54 | 36 | 4 | 8 | 6 |
 | 02 note list | 77 | 55 | 7 | 2 | 13 |
-| 03 timing | 52 | 33 | 7 | 5 | 7 |
+| 03 timing | 53 | 33 | 8 | 5 | 7 |
 | 04 fills | 45 | 36 | 2 | 4 | 3 |
-| 05 Star Power | 47 | 30 | 5 | 9 | 3 |
+| 05 Star Power | 48 | 31 | 5 | 9 | 3 |
 | 06 scoring | 38 | 21 | 13 | 2 | 2 |
 | 07 internals | 92 | 63 | 17 | 0 | 12 |
-| All pages | 405 | 274 | 55 | 30 | 46 |
+| All pages | 407 | 275 | 56 | 30 | 46 |
 
 Eleven of page 4's blocks describe build 1.0. The questions page holds 24 open questions and 4 recorded differences, and the live-checks page holds 59 checks covering 63 rows.
 

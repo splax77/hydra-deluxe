@@ -77,6 +77,13 @@ ROUTES = (ROUTE_KIT, ROUTE_KEYS)
 NO_ROUTE_NO_KIT = ("refused: no route given and the kit is not set up; "
                    "call ch_kit_setup first")
 PLAY_ALREADY_RUNNING = "a play session is already running; call ch_play_stop first"
+# Who times the presses (the `timing` argument): the Python loop
+# (play_chart.play_chords), the default until task IG6, or the kit agent on
+# the game's frames (play_chart.play_in_game), which needs the kit route
+# (docs/superpowers/plans/2026-11-12-in-game-press-timing.md, task IG3).
+TIMING_PYTHON = "python"
+TIMING_GAME = "game"
+TIMINGS = (TIMING_PYTHON, TIMING_GAME)
 
 _NOT_RUNNING = f"{C.PROCESS_NAME} is not running"
 
@@ -483,6 +490,13 @@ def schedule_chart_folder(doc: dict, schedule_json: str) -> str:
     return os.path.dirname(chart)
 
 
+def timing_refusal(timing: object) -> Optional[str]:
+    """The refusal of a `timing` that is not None or one of TIMINGS."""
+    if timing is None or timing in TIMINGS:
+        return None
+    return f'unknown timing "{timing}"; timings: {", ".join(TIMINGS)}'
+
+
 def run_agent_paths(launch_agent: Optional[str]) -> List[str]:
     """The built agents a ch_run_chart run loads, for its builds record:
     `launch_agent` (the launch agent of a game the server launched for a
@@ -555,6 +569,9 @@ class _PlaySession:
     # Called on each press row before it is kept: ch_edge_probe's
     # edge_probe.ProbeRun.mark_row. None keeps the rows as they come.
     mark_row: Optional[Callable[[dict], None]] = None
+    # The kit agent for in-game timing (kit_tools.GamePlayer); None plays
+    # through live_play's Python loop.
+    player: Any = None
 
     def running(self) -> bool:
         return self.thread is not None and self.thread.is_alive()
@@ -565,8 +582,8 @@ class GameTools:
 
     Every outside seam is an argument, so the tests swap each for a fake:
     `env` (bot_run.Env: the exe, the user folders, the launch, the clock and
-    the stamp), `driver` (the input driver), `live_play` and `live_press`
-    (play_chart's), `install` (install_chart's), `find_window` (input_driver's),
+    the stamp), `driver` (the input driver), `live_play`, `live_in_game` and
+    `live_press` (play_chart's), `install` (install_chart's), `find_window` (input_driver's),
     `compare` (compare_scorestats'), `wait_thread` (how ch_install_chart waits
     on its worker), `set_setting` (game_files.set_game_setting),
     `make_watch` (builds the foreground.ForegroundWatch ch_start starts; None
@@ -581,6 +598,7 @@ class GameTools:
     def __init__(self, env: bot_run.Env, lock, scratch_root: Optional[str] = None, *,
                  driver: Optional[InputDriver] = None,
                  live_play: Callable = play_chart.live_play,
+                 live_in_game: Callable = play_chart.live_in_game,
                  live_press: Callable = play_chart.live_press,
                  install: Callable = install_chart.install,
                  find_window: Callable[[], int] = find_game_window,
@@ -595,6 +613,7 @@ class GameTools:
         self._scratch_root = scratch_root or tempfile.gettempdir()
         self._driver = driver if driver is not None else InputDriver()
         self._live_play = live_play
+        self._live_in_game = live_in_game
         self._live_press = live_press
         self._install = install
         self._find_window = find_window
@@ -1071,7 +1090,7 @@ class GameTools:
 
     def ch_play_chart(self, score_json: str, schedule_json: str, log: Optional[str] = None,
                       song_folder: Optional[str] = None, route: Optional[str] = None,
-                      path_index: int = 0) -> str:
+                      path_index: int = 0, timing: Optional[str] = None) -> str:
         """Start the auto-player (play_chart.live_play) in a background thread
         on `schedule_json`, the hydra_replay schedule of one path of the chart
         whose score JSON is `score_json`; ch_compare checks a run against that
@@ -1089,10 +1108,15 @@ class GameTools:
         fill's kept gems among them; a schedule load_schedule refuses is
         refused here in its words (chords_to_play). The reply's declined_line,
         squeeze_lines and order_lines say what the path declines, how its
-        squeezes are pressed and which chords are pressed in groups."""
+        squeezes are pressed and which chords are pressed in groups.
+        `timing` is TIMING_PYTHON (None means it) or TIMING_GAME, which
+        needs the kit route (timing_refusal)."""
         with self._lock:
             if self._play is not None and self._play.running():
                 return PLAY_ALREADY_RUNNING
+            refusal = timing_refusal(timing)
+            if refusal is not None:
+                return refusal
             kit_press = self._kit_press_source() if self._kit_press_source is not None else None
             if route is None:
                 if kit_press is None:
@@ -1104,6 +1128,13 @@ class GameTools:
                 return (f"route {ROUTE_KIT}: the kit is not set up; call ch_kit_setup first, "
                         f'or pass route="{ROUTE_KEYS}"')
             press = kit_press if route == ROUTE_KIT else None
+            player = None
+            if timing == TIMING_GAME:
+                if route != ROUTE_KIT:
+                    return f'timing "{TIMING_GAME}" plays on route "{ROUTE_KIT}" only'
+                player = self._game_player()
+                if player is None:
+                    return f'timing "{TIMING_GAME}": the kit is not set up; call ch_kit_setup first'
             try:
                 refusal = path_index_refusal(schedule_doc(schedule_json), schedule_json,
                                              path_index)
@@ -1118,7 +1149,8 @@ class GameTools:
             if log:
                 log_path = log if os.path.isabs(log) else os.path.join(self.session_dir(), log)
             self._start_play(_PlaySession(score_json=score_json, chord_count=len(chords),
-                                          log_path=log_path, cap_s=cap_s, press=press), chords)
+                                          log_path=log_path, cap_s=cap_s, press=press,
+                                          player=player), chords)
             lines.append(f"play session started: {len(chords)} chords from {score_json}")
             lines.append(f"route: {route} ("
                          + ("presses through the virtual kit inside the game"
@@ -1131,7 +1163,8 @@ class GameTools:
             return "\n".join(lines)
 
     def ch_run_chart(self, song_folder: str, score_json: str, schedule_json: str,
-                     kit_player: Optional[str] = None, path_index: int = 0) -> str:
+                     kit_player: Optional[str] = None, path_index: int = 0,
+                     timing: Optional[str] = None) -> str:
         """Start a run in one call: attach, the song check, kit setup on
         `kit_player` (ch_kit_setup's `player`), the Star Power watch and the
         auto-player on the kit, with one engine search that the watch and the
@@ -1156,7 +1189,11 @@ class GameTools:
         press log's line, then first_press_line. A part that fails stops the
         call there: the reply names it and gives its own reply, and a kit that
         part left standing is torn down. A failed attach or song check built
-        no kit, and a failed setup tears down its own."""
+        no kit, and a failed setup tears down its own.
+
+        `timing` is ch_play_chart's: TIMING_GAME plays through
+        play_chart.play_in_game on the kit agent the setup built, and None
+        or TIMING_PYTHON through play_chart.play_chords."""
         # menu_tools imports kit_tools, which imports this module.
         from tools.ch_mcp.menu_tools import loaded_folder, same_folder
         with self._lock:
@@ -1165,6 +1202,9 @@ class GameTools:
                 return "refused: the server did not hand in the run's parts (use_run_parts)"
             if self._play is not None and self._play.running():
                 return PLAY_ALREADY_RUNNING
+            refusal = timing_refusal(timing)
+            if refusal is not None:
+                return refusal
             try:
                 doc = schedule_doc(schedule_json)
                 refusal = path_index_refusal(doc, schedule_json, path_index)
@@ -1229,8 +1269,18 @@ class GameTools:
             began = self._env.now()
             log_path = os.path.join(self.session_dir(),
                                     f"{PRESS_LOG_PREFIX}{self._press_log_count}.csv")
+            player = None
+            if timing == TIMING_GAME:
+                player = parts.kit.game_player()
+                if player is None:
+                    return self._run_stopped(
+                        lines, "play", began,
+                        f'timing "{TIMING_GAME}": the kit agent the setup built is not '
+                        f"ready; nothing pressed",
+                        parts.kit.ch_kit_teardown() + "\n" + parts.sp.ch_sp_watch_stop())
             play = _PlaySession(score_json=score_json, chord_count=len(chords), log_path=log_path,
-                                cap_s=cap_s, press=press, find_engine=lambda _proc: engine)
+                                cap_s=cap_s, press=press, find_engine=lambda _proc: engine,
+                                player=player)
             self._start_play(play, chords)
             first_press_in_time = play.pressed.wait(cap_s)
             rows = list(play.rows)
@@ -1324,6 +1374,12 @@ class GameTools:
             return "\n".join(self._play_lines(play) + ["stopped"])
 
     # -- inside ---------------------------------------------------------------------
+
+    def _game_player(self) -> Any:
+        """The kit agent for in-game timing (kit_tools.KitTools.game_player),
+        or None while the kit is not set up or no run parts were handed in."""
+        parts = self._run_parts
+        return parts.kit.game_player() if parts is not None else None
 
     def _start_play(self, play: _PlaySession, chords: Sequence[play_chart.Chord]) -> None:
         """Make `play` the session and start its thread."""
@@ -1611,10 +1667,19 @@ class GameTools:
             play.writer = play_chart.PressLogWriter(play.log_path)
             play.writer.start()
         try:
-            play.result = self._live_play(chords, **route,
-                                          on_press=on_press,
-                                          should_stop=play.stop.is_set,
-                                          out=io.StringIO(), **cap, **search)
+            if play.player is not None:
+                try:
+                    play.result = self._live_in_game(chords, player=play.player,
+                                                     on_press=on_press,
+                                                     should_stop=play.stop.is_set,
+                                                     out=io.StringIO(), **cap, **search)
+                finally:
+                    play.player.close()
+            else:
+                play.result = self._live_play(chords, **route,
+                                              on_press=on_press,
+                                              should_stop=play.stop.is_set,
+                                              out=io.StringIO(), **cap, **search)
         except Exception as e:  # reported by ch_play_status
             play.error = f"{type(e).__name__}: {e}"
         if play.writer is not None:
