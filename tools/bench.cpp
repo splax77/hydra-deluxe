@@ -899,19 +899,14 @@ AsReadyCounts stamp_as_ready(const std::string& dbpath, const core::RulesStamp& 
     out.profiles = static_cast<int64_t>(ids.size());
     exec_or_throw(db, "BEGIN IMMEDIATE", "starting the rewrite");
     try {
-        store::Stmt s;
-        const char* sql = "UPDATE OR IGNORE profiles SET hyversion = ?, rules_fp = ? WHERE id = ?";
-        if (sqlite3_prepare_v2(db, sql, -1, &s.p, nullptr) != SQLITE_OK)
-            throw std::runtime_error(std::string("preparing the rewrite: ") + sqlite3_errmsg(db));
+        store::Stmt s = store::prepare_write(
+            db, "UPDATE OR IGNORE profiles SET hyversion = ?, rules_fp = ? WHERE id = ?");
         for (const int64_t id : ids) {
             sqlite3_reset(s.p);
-            sqlite3_bind_text(s.p, 1, version.data(), static_cast<int>(version.size()),
-                              SQLITE_TRANSIENT);
-            sqlite3_bind_blob(s.p, 2, fp.data(), static_cast<int>(fp.size()), SQLITE_TRANSIENT);
+            store::bind_text(s, 1, version);
+            store::bind_blob(s, 2, fp);
             sqlite3_bind_int64(s.p, 3, id);
-            if (sqlite3_step(s.p) != SQLITE_DONE)
-                throw std::runtime_error("rewriting profile " + std::to_string(id) + ": " +
-                                         sqlite3_errmsg(db));
+            store::step_done(s, "rewriting profile " + std::to_string(id));
             out.stamped += sqlite3_changes(db);
         }
         sqlite3_reset(s.p);
@@ -1141,7 +1136,6 @@ static int open_runs(const std::string& dbpath, int runs, const std::optional<st
     const std::string k6_make = "pass: make the row objects";
     const std::string k6_names = "pass: shown names (display_title/artist/album/charter)";
     const std::string k6_search = "pass: search text (make_searchable)";
-    const std::string k6_keep = "pass: keep hash, file and folder, free the rest";
     const std::string k6_keys = "pass: sort keys (fold_for_search of each column before Best path)";
     const std::string k6_sorted = "sort + filter (set_sort, title ascending)";
     const std::string k6_filter = "filter alone (set_chip)";
@@ -1351,8 +1345,11 @@ static int open_runs(const std::string& dbpath, int runs, const std::optional<st
             m.set_charts(std::move(copy));
             times.add(k6_whole, ms_since(t));
             // set_charts' own steps, one pass over every row each, with the
-            // functions set_charts calls, in its order.
-            Entries input = today;
+            // functions set_charts calls, in its order. The step that moves
+            // each chart's hash, file and folder into its row has no function
+            // of its own, so it is not timed apart: each row takes those from
+            // set_charts' row instead, untimed, before the sort keys read them.
+            const Entries& input = today;
             std::vector<ui::LibraryRow> rows;
             t = clk::now();
             rows.resize(input.size());
@@ -1371,14 +1368,8 @@ static int open_runs(const std::string& dbpath, int runs, const std::optional<st
                     app::make_searchable(input[i].title, input[i].artist, input[i].charter,
                                          input[i].rootfolder, input[i].album);
             times.add(k6_search, ms_since(t));
-            t = clk::now();
-            for (size_t i = 0; i < input.size(); ++i) {
-                rows[i].entry.md5 = std::move(input[i].md5);
-                rows[i].entry.notespath = std::move(input[i].notespath);
-                rows[i].entry.rootfolder = std::move(input[i].rootfolder);
-                input[i] = {};
-            }
-            times.add(k6_keep, ms_since(t));
+            for (size_t i = 0; i < rows.size() && i < m.rows().size(); ++i)
+                rows[i].entry = m.rows()[i].entry;
             t = clk::now();
             for (ui::LibraryRow& row : rows)
                 for (int c = 0; c < ui::kColumnBestPath; ++c)
@@ -1451,8 +1442,10 @@ static int bench_main() {
         int runs = 7;  // the count the --open request asked for by default
         std::optional<std::string> ini;
         bool as_ready = false;
-        // The options start after argv[1] (--open) and argv[2] (the file).
-        for (int i = 3; i < argc; ++i) {
+        // The options start after argv[0] (the program), argv[1] (--open)
+        // and argv[2] (the file): the index of the first one is that count.
+        const int first_option = 3;
+        for (int i = first_option; i < argc; ++i) {
             if (argv[i] == "--runs" && i + 1 < argc) runs = std::stoi(argv[++i]);
             else if (argv[i] == "--ini" && i + 1 < argc) ini = argv[++i];
             else if (argv[i] == "--as-ready") as_ready = true;

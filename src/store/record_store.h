@@ -425,8 +425,9 @@ using RowsReadFn = std::function<bool(int64_t rows_read)>;
 // ---- the store's own statement and row readers ------------------------------
 // RecordStore compiles, steps and reads its rows through these. They are
 // declared here so hydra_bench's --open mode can build the same row objects
-// from connections of its own (tools/bench.cpp). Their comments in
-// record_store.cpp say what each does.
+// from connections of its own, and write its --as-ready stamp the way the
+// store writes (tools/bench.cpp). Their comments in record_store.cpp say what
+// each does.
 
 // A compiled statement, finalized when it goes. Movable but not copyable: a
 // copy would finalize the same handle twice.
@@ -441,7 +442,11 @@ struct Stmt {
     operator sqlite3_stmt*() const { return p; }
 };
 Stmt prepare_read(sqlite3* db, const char* sql);
+Stmt prepare_write(sqlite3* db, const char* sql);
 bool step_row(sqlite3_stmt* s);
+void step_done(sqlite3_stmt* s, const std::string& what);
+void bind_text(sqlite3_stmt* s, int i, const std::string& v);
+void bind_blob(sqlite3_stmt* s, int i, const std::vector<uint8_t>& v);
 std::string library_entry_select();
 std::vector<ChartLibraryEntry> read_library_entries(sqlite3_stmt* s, bool timing_read,
                                                     const RowsReadFn& on_row = {});
