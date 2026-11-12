@@ -404,11 +404,15 @@ std::vector<uint8_t> rules_fp_bytes(uint64_t fingerprint) {
     return bytes;
 }
 
+}  // namespace
+
 // The fingerprint a row must carry to be Ready in this process, as the
 // rules_fp column holds it: rank_row's `fixed_fp`.
 std::vector<uint8_t> ready_rules_fp(const core::RulesStamp& stamp) {
     return rules_fp_bytes(stamp.fixed);
 }
+
+namespace {
 
 // The facts that decide whether a row is readable and how it places among
 // the candidates for its chart and mode, and why a row that is not ready is

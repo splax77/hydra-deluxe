@@ -515,14 +515,23 @@ static void upgrade_mode(const std::string& dbpath) {
 }
 
 // ---- Open mode ---------------------------------------------------------------
-//   hydra_bench --open <db file> [--runs N] [--ini <settings file>] [--rules <path>]
+//   hydra_bench --open <db file> [--runs N] [--ini <settings file>] [--as-ready]
+//               [--rules <path>]
 // Times what opening the library costs, in Hydra's own code, on the file it is
 // given and no other. It refuses the installed Hydra's folder (installer/
 // hydra.iss installs to {autopf}\Hydra) and the hydra.db beside this exe
-// (app::db_path). Point it at a scratch copy of a real library file (db, -wal
-// and -shm together): the store's open can convert an old layout, as the app's
+// (app::db_path), before anything opens the file, so --as-ready is refused
+// there too. Point it at a scratch copy of a real library file (db, -wal and
+// -shm together): the store's open can convert an old layout, as the app's
 // does. --ini reads that settings file (Settings::load_file) so the lookups ask
-// for the user's profile; without it the defaults are used. Every time is
+// for the user's profile; without it the defaults are used. --as-ready
+// rewrites the copy's profile rows to this build's results stamp and rules
+// fingerprint before anything is timed (stamp_as_ready), so a library saved
+// by an older build times as one the user has re-analysed; it prints how
+// many rows it stamped and how many charts are Ready after it. What counts as
+// Ready is still lookup's own rule. A failure names the step or variant it
+// happened in. Every read on the bench's own connections runs with a
+// RecordStore open on the file, as the app's store is while it reads. Every time is
 // printed as the median and the minimum of N runs, in milliseconds, each run
 // with a fresh RecordStore and LibraryModel. One untimed reference read comes
 // first: it gives the rows each variant is checked against, so the timed runs
@@ -612,7 +621,8 @@ private:
 };
 
 // A connection of the bench's own, opened read-write without create, so a
-// wrong path fails instead of making a file. Nothing here writes through it.
+// wrong path fails instead of making a file. Only --as-ready's rewrite
+// (stamp_as_ready) writes through it.
 class OwnDb {
 public:
     explicit OwnDb(const std::string& path) {
@@ -850,9 +860,80 @@ std::optional<std::string> refused_db(const std::string& dbpath) {
     return std::nullopt;
 }
 
+// What --as-ready's rewrite did: how many profile rows the file holds, and
+// how many of them carry this build's stamp afterwards.
+struct AsReadyCounts {
+    int64_t profiles = 0;
+    int64_t stamped = 0;
+};
+
+// One statement on `db` that returns no rows, or a throw naming `what`.
+void exec_or_throw(sqlite3* db, const char* sql, const std::string& what) {
+    char* err = nullptr;
+    if (sqlite3_exec(db, sql, nullptr, nullptr, &err) != SQLITE_OK) {
+        const std::string msg = err ? err : sqlite3_errmsg(db);
+        sqlite3_free(err);
+        throw std::runtime_error(what + ": " + msg);
+    }
+}
+
+// --as-ready: gives every profile row of the copy at `dbpath` the results
+// stamp and rules fingerprint the store writes for a new record in this build
+// (store::current_record_version and store::ready_rules_fp, which save and
+// lookup read), in one transaction, so lookup finds those rows Ready. The
+// profiles table holds one row per settings and stamp, so where two rows
+// share their settings only the first one rewritten takes the stamp: rows go
+// newest first, and a row that would clash keeps its old stamp (UPDATE OR
+// IGNORE). The caller has already refused the installed library.
+AsReadyCounts stamp_as_ready(const std::string& dbpath, const core::RulesStamp& stamp) {
+    OwnDb conn(dbpath);
+    sqlite3* db = conn.get();
+    const std::string version = store::current_record_version();
+    const std::vector<uint8_t> fp = store::ready_rules_fp(stamp);
+    std::vector<int64_t> ids;
+    {
+        store::Stmt s = store::prepare_read(db, "SELECT id FROM profiles ORDER BY id DESC");
+        while (store::step_row(s)) ids.push_back(sqlite3_column_int64(s, 0));
+    }
+    AsReadyCounts out;
+    out.profiles = static_cast<int64_t>(ids.size());
+    exec_or_throw(db, "BEGIN IMMEDIATE", "starting the rewrite");
+    try {
+        store::Stmt s;
+        const char* sql = "UPDATE OR IGNORE profiles SET hyversion = ?, rules_fp = ? WHERE id = ?";
+        if (sqlite3_prepare_v2(db, sql, -1, &s.p, nullptr) != SQLITE_OK)
+            throw std::runtime_error(std::string("preparing the rewrite: ") + sqlite3_errmsg(db));
+        for (const int64_t id : ids) {
+            sqlite3_reset(s.p);
+            sqlite3_bind_text(s.p, 1, version.data(), static_cast<int>(version.size()),
+                              SQLITE_TRANSIENT);
+            sqlite3_bind_blob(s.p, 2, fp.data(), static_cast<int>(fp.size()), SQLITE_TRANSIENT);
+            sqlite3_bind_int64(s.p, 3, id);
+            if (sqlite3_step(s.p) != SQLITE_DONE)
+                throw std::runtime_error("rewriting profile " + std::to_string(id) + ": " +
+                                         sqlite3_errmsg(db));
+            out.stamped += sqlite3_changes(db);
+        }
+        sqlite3_reset(s.p);
+        exec_or_throw(db, "COMMIT", "committing the rewrite");
+    } catch (...) {
+        sqlite3_exec(db, "ROLLBACK", nullptr, nullptr, nullptr);
+        throw;
+    }
+    return out;
+}
+
 }  // namespace
 
-static int open_mode(const std::string& dbpath, int runs, const std::optional<std::string>& ini) {
+static int open_runs(const std::string& dbpath, int runs, const std::optional<std::string>& ini,
+                     app::Settings settings, bool as_ready, std::string& doing);
+
+// The checks that need no database, then the runs. A failure in the runs
+// names the step or variant it happened in (open_runs keeps `doing` up to
+// date) instead of the tool's generic database line.
+static int open_mode(const std::string& dbpath, int runs, const std::optional<std::string>& ini,
+                     bool as_ready) {
+    // Before anything opens the file, so --as-ready's rewrite is refused too.
     if (const std::optional<std::string> why = refused_db(dbpath)) {
         std::fprintf(stderr, "hydra_bench --open: %s\n", why->c_str());
         return 2;
@@ -874,6 +955,18 @@ static int open_mode(const std::string& dbpath, int runs, const std::optional<st
             return 2;
         }
     }
+    std::string doing = "the first open";
+    try {
+        return open_runs(dbpath, runs, ini, std::move(settings), as_ready, doing);
+    } catch (const std::exception& e) {
+        std::fflush(stdout);
+        std::fprintf(stderr, "\nhydra_bench --open: %s failed: %s\n", doing.c_str(), e.what());
+        return 1;
+    }
+}
+
+static int open_runs(const std::string& dbpath, int runs, const std::optional<std::string>& ini,
+                     app::Settings settings, bool as_ready, std::string& doing) {
     settings.rules = g_rules;
     const store::Profile want = settings.profile();
     const core::RulesStamp stamp = core::RulesStamp::of(g_rules);
@@ -884,7 +977,19 @@ static int open_mode(const std::string& dbpath, int runs, const std::optional<st
     // The counted read's callback, doing nothing but letting the read go on.
     const ui::LibraryReadFn report = [](Step, uint64_t, uint64_t) { return true; };
 
+    // ---- --as-ready's rewrite, before anything is read or timed ----
+    AsReadyCounts stamped;
+    if (as_ready) {
+        // The store's open first: it converts an old layout, whose results
+        // have no profiles table yet, as the app's open would.
+        doing = "--as-ready's open of the store";
+        open_store().reset();  // opened and closed again, so the rewrite has the file alone
+        doing = "--as-ready's rewrite of the profiles";
+        stamped = stamp_as_ready(dbpath, stamp);
+    }
+
     // ---- the untimed reference read ----
+    doing = "the untimed reference read";
     Entries today;
     int64_t count = 0;
     std::vector<std::string> hashes;
@@ -926,6 +1031,7 @@ static int open_mode(const std::string& dbpath, int runs, const std::optional<st
     std::unordered_map<std::string, int64_t> winner;
     std::string winner_problem;
     int64_t rows_today_shape = 0, rows_winner_only = 0;
+    doing = "the search for the winning profile";
     {
         OwnDb conn(dbpath);
         {
@@ -969,6 +1075,20 @@ static int open_mode(const std::string& dbpath, int runs, const std::optional<st
     }
 
     std::printf("Library: %s\n", dbpath.c_str());
+    if (as_ready) {
+        std::printf("--as-ready rewrote this copy before any timing: %s of %s now carry this "
+                    "build's results stamp (%s) and rules fingerprint.\n",
+                    counted(stamped.stamped, "profile row", "profile rows").c_str(),
+                    group_thousands(stamped.profiles).c_str(),
+                    store::current_record_version().c_str());
+        if (stamped.profiles > stamped.stamped)
+            std::printf("  %s kept their old stamp: another profile row with the same settings "
+                        "took this build's stamp first (newest row first), and the profiles "
+                        "table allows one row per settings and stamp.\n",
+                        counted(stamped.profiles - stamped.stamped, "row", "rows").c_str());
+        std::printf("  %s Ready after it.\n",
+                    counted(static_cast<int64_t>(ready.size()), "chart is", "charts are").c_str());
+    }
     std::printf("Settings: %s; profile %s at SP cap %d.\n",
                 ini ? ini->c_str() : "the defaults (no --ini)", want.chartmode.c_str(),
                 want.cap.exact);
@@ -984,6 +1104,8 @@ static int open_mode(const std::string& dbpath, int runs, const std::optional<st
                     counted(rows_today_shape, "path row", "path rows").c_str(),
                     counted(rows_winner_only, "path row", "path rows").c_str(),
                     static_cast<long long>(*winner_profile));
+    std::printf("Every read on the bench's own connections (sections 3 to 5) runs with a "
+                "RecordStore open on the same file, as the app's store is while it reads.\n");
     std::printf("%s, each a median and a minimum in ms.\n",
                 counted(runs, "timed run", "timed runs").c_str());
 
@@ -1026,9 +1148,14 @@ static int open_mode(const std::string& dbpath, int runs, const std::optional<st
 
     for (int run = 0; run < runs; ++run) {
         const bool check = run == 0;
+        // Names the variant under way, for open_mode's failure line.
+        auto at = [&](const std::string& what) {
+            doing = "run " + std::to_string(run + 1) + " of " + std::to_string(runs) + ", " + what;
+        };
 
         // 1. The counted read, part by part, in read_library's order.
         times.heading(h1);
+        at(h1 + ": the parts");
         ui::LibraryModel parts_model;
         {
             double sum = 0.0;
@@ -1075,6 +1202,7 @@ static int open_mode(const std::string& dbpath, int runs, const std::optional<st
             part(k1_sort, t);
             times.add(k1_sum, sum);
         }
+        at(h1 + ": " + k1_real);
         ui::LibraryModel counted_model;
         {
             clk::time_point t = clk::now();
@@ -1094,6 +1222,7 @@ static int open_mode(const std::string& dbpath, int runs, const std::optional<st
 
         // 2. The same read with no callback.
         times.heading(h2);
+        at(h2);
         {
             ui::LibraryModel plain_model;
             clk::time_point t = clk::now();
@@ -1113,6 +1242,7 @@ static int open_mode(const std::string& dbpath, int runs, const std::optional<st
 
         // 3. The chart list on one connection.
         times.heading(h3);
+        at(h3 + ": " + k3_today);
         {
             std::unique_ptr<store::RecordStore> db = open_store();
             const clk::time_point t = clk::now();
@@ -1130,6 +1260,8 @@ static int open_mode(const std::string& dbpath, int runs, const std::optional<st
             "SELECT md5, name, artist, charter, album, path, folder, '', NULL, NULL FROM charts";
         auto own_read = [&](const std::string& label, const std::string& sql, bool timing,
                             const std::vector<int64_t>& binds, bool ordered, bool all_columns) {
+            at(h3 + ": " + label);
+            const std::unique_ptr<store::RecordStore> held = open_store();
             clk::time_point t = clk::now();
             OwnDb conn(dbpath);
             times.add(k3_conn, ms_since(t));
@@ -1150,12 +1282,18 @@ static int open_mode(const std::string& dbpath, int runs, const std::optional<st
         own_read(k3_slim_name, slim_select + " ORDER BY name", false, {}, true, false);
         own_read(k3_slim, slim_select, false, {}, false, false);
 
-        // 4. The chart list on threads.
+        // 4. The chart list on threads. Like every read on the bench's own
+        //    connections, it runs with a RecordStore open (`held`), as the
+        //    app's store is while it reads. With no connection open, the
+        //    threads' first reads race to rebuild the WAL index and all but
+        //    one fail with "database is locked".
         times.heading(h4);
         for (const size_t threads : {size_t{2}, size_t{4}}) {
             for (const bool slim : {false, true}) {
                 const std::string label = std::to_string(threads) + " threads, " +
                                           (slim ? "only set_charts' columns" : "every column");
+                at(h4 + ": " + label);
+                const std::unique_ptr<store::RecordStore> held = open_store();
                 std::vector<std::unique_ptr<OwnDb>> conns;
                 for (size_t i = 0; i < threads; ++i) conns.push_back(std::make_unique<OwnDb>(dbpath));
                 const clk::time_point t = clk::now();
@@ -1173,6 +1311,7 @@ static int open_mode(const std::string& dbpath, int runs, const std::optional<st
 
         // 5. The results lookup.
         times.heading(h5);
+        at(h5 + ": " + k5_lookup);
         {
             std::unique_ptr<store::RecordStore> db = open_store();
             const clk::time_point t = clk::now();
@@ -1187,6 +1326,8 @@ static int open_mode(const std::string& dbpath, int runs, const std::optional<st
         } else {
             for (const bool only : {false, true}) {
                 const std::string& label = only ? k5_winner : k5_paths;
+                at(h5 + ": " + label);
+                const std::unique_ptr<store::RecordStore> held = open_store();
                 OwnDb conn(dbpath);
                 int64_t rows = 0;
                 const clk::time_point t = clk::now();
@@ -1202,6 +1343,7 @@ static int open_mode(const std::string& dbpath, int runs, const std::optional<st
 
         // 6. Inside set_charts.
         times.heading(h6);
+        at(h6);
         {
             ui::LibraryModel m;
             Entries copy = today;
@@ -1308,12 +1450,14 @@ static int bench_main() {
     if (argc > 2 && argv[1] == "--open") {
         int runs = 7;  // the count the --open request asked for by default
         std::optional<std::string> ini;
+        bool as_ready = false;
         // The options start after argv[1] (--open) and argv[2] (the file).
         for (int i = 3; i < argc; ++i) {
             if (argv[i] == "--runs" && i + 1 < argc) runs = std::stoi(argv[++i]);
             else if (argv[i] == "--ini" && i + 1 < argc) ini = argv[++i];
+            else if (argv[i] == "--as-ready") as_ready = true;
         }
-        return open_mode(argv[2], runs, ini);
+        return open_mode(argv[2], runs, ini, as_ready);
     }
     if (argc > 3 && argv[1] == "--dump-db") {
         std::string dumprel;

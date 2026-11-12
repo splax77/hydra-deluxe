@@ -160,6 +160,11 @@ struct Profile {
 // version stamps themselves; ask a lookup for its RecordStatus instead.
 std::string current_record_version();
 
+// The rules fingerprint a profile row must carry, as its rules_fp column holds
+// it, to be Ready under `stamp`. For the store, its tests, and hydra_bench's
+// --as-ready, which stamps a scratch copy with it.
+std::vector<uint8_t> ready_rules_fp(const core::RulesStamp& stamp);
+
 // What a stored-row lookup found. The store is the only place that decides
 // whether a row is usable: NotAnalyzed (no row at all), Stale (a row another
 // Hydra version wrote, or one made under other rules -- its numbers are not
