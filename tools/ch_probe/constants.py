@@ -122,6 +122,11 @@ OFF_SP_AMOUNT = 0x68
 # disassembly; docs/clone-hero/05-star-power.md, SP-09 and SP-11.
 OFF_SP_MAX = 0x1B0
 
+# The game's own half of the full meter, in the same unit, which its
+# can-activate test compares with the amount. From the disassembly;
+# docs/clone-hero/05-star-power.md, SP-10 and SP-16.
+OFF_SP_HALF = 0x1B8
+
 # SP-active flag, set by activation. From the disassembly;
 # docs/clone-hero/05-star-power.md, SP-19.
 OFF_SP_ACTIVE = 0x42

@@ -81,6 +81,7 @@ class Snapshot:
     sp_amount_u64: int
     sp_max_u32: int
     sp_max_u64: int
+    sp_half_u64: int
     sp_active_byte: int
     sp_active_u32: int
     sp_mult_byte: int
@@ -134,6 +135,7 @@ def decode_snapshot(raw: bytes, clock_raw: Optional[bytes] = None) -> Snapshot:
         sp_amount_u64=u64(C.OFF_SP_AMOUNT),
         sp_max_u32=u32(C.OFF_SP_MAX),
         sp_max_u64=u64(C.OFF_SP_MAX),
+        sp_half_u64=u64(C.OFF_SP_HALF),
         sp_active_byte=byte(C.OFF_SP_ACTIVE),
         sp_active_u32=u32(C.OFF_SP_ACTIVE),
         sp_mult_byte=byte(C.OFF_SP_MULTIPLIER),

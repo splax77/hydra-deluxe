@@ -6,8 +6,9 @@ docs/superpowers/plans/2026-10-30-ch-mcp-star-power-and-song-start.md (removed; 
 the Star Power read lives, and who calls it"). engine.decode_snapshot says
 where each field is, EngineModel.snapshot reads it, and sp_watch.watch polls
 it and decides when a run stops. sp_compare owns every question about the
-rows: activations, rises, flips inside a window, the ready level and the gaps
-between samples. This module adds only the watch thread, the rows and latest read it keeps in
+rows: activations, rises, flips inside a window and the gaps between samples.
+The ready test is game_ready here, because D323 item 1 takes it from the
+game's own half and Hydra's schedule. This module adds the watch thread, the rows and latest read it keeps in
 memory, the CSV it writes as it goes, and sp_lines, the one place a Snapshot
 becomes text.
 
@@ -34,13 +35,24 @@ from tools.ch_mcp.frida_tools import READ_CAP_S, find_engine_quietly
 from tools.ch_probe import constants as C
 from tools.ch_probe import engine_finder
 from tools.ch_probe.engine import EngineModel, Snapshot
-from tools.ch_probe.experiments import sp_compare, sp_watch
+from tools.ch_probe.experiments import play_chart, sp_compare, sp_watch
 from tools.ch_probe.experiments.overlay_logs import WATCH_COLUMNS
 from tools.ch_probe.process import open_process
 
 # The amount and maximum columns sp_compare.compare reads at its default
 # width; the server reads the same ones.
 AMOUNT_COL, MAX_COL = sp_compare.column_names()
+
+# The game's own half of the meter, the level its can-activate test reads
+# (SP-16 in docs/clone-hero/05-star-power.md). D323 item 1: whether the meter
+# is ready comes from this field, and when it should be from Hydra's schedule.
+HALF_COL = "sp_half_u64"
+
+
+def game_ready(row: dict) -> bool:
+    """Whether a watch row's meter has reached the game's own half (HALF_COL),
+    the comparison the game's can-activate test makes (SP-16)."""
+    return row[HALF_COL] <= row[AMOUNT_COL]
 
 CSV_PREFIX = "sp_watch-"
 
@@ -67,20 +79,21 @@ def _row(snap: Snapshot) -> dict:
 
 def sp_lines(snap: Snapshot) -> List[str]:
     """One read of the Star Power fields as lines: the engine clock, the
-    amount and the maximum, the amount as a share of the maximum and whether
-    it is at the ready level (sp_compare.at_ready_level), the flag, the end
-    time and how far ahead of the clock it is, the multiplier and the
-    overflow flag."""
+    amount, the maximum and the game's own half, the amount as a share of the
+    maximum and whether it has reached the game's half (game_ready), the
+    flag, the end time and how far ahead of the clock it is, the multiplier
+    and the overflow flag."""
     row = _row(snap)
-    amount, sp_max = row[AMOUNT_COL], row[MAX_COL]
+    amount, sp_max, half = row[AMOUNT_COL], row[MAX_COL], row[HALF_COL]
     lines = [f"engine clock: {_ms_text(snap.clock_s)}",
              f"amount: {amount} ({AMOUNT_COL})",
-             f"max: {sp_max} ({MAX_COL})"]
+             f"max: {sp_max} ({MAX_COL})",
+             f"game's half: {half} ({HALF_COL})"]
     if sp_max > 0:
-        ready = sp_compare.at_ready_level(amount, sp_max)
         lines.append(f"share of max: {amount / sp_max:.3f}")
-        lines.append(f"ready: {'yes, at or over' if ready else 'no, below'} "
-                     f"{sp_compare.READY_FRACTION:g} of max (sp_compare.READY_FRACTION)")
+        lines.append("ready: " + ("yes, the amount is at or over the game's half"
+                                  if game_ready(row) else
+                                  "no, the amount is below the game's half"))
     else:
         lines.append("share of max: none (max is 0)")
         lines.append("ready: unknown (max is 0)")
@@ -199,9 +212,15 @@ class SpTools:
                 except (OSError, ValueError, bot_run.SongLengthMissing) as e:
                     return (f"no watch started: could not pick the run cap for "
                             f"{song_folder}: {type(e).__name__}: {e}")
-                cap_line = f"run cap: {cap_s:g} s (game_tools.run_cap_s for {song_folder})"
+            song_end_ms = self._song_end_ms(song_folder)
+            if song_folder is not None:
+                # run_cap_s falls back to the default cap itself when the
+                # folder has no length, so the line says which one it is.
+                cap_line = (f"run cap: {cap_s:g} s (game_tools.run_cap_s for {song_folder})"
+                            if song_end_ms is not None else
+                            f"run cap: {cap_s:g} s (default; no song length for {song_folder})")
             lines = [line for line in (self._game.ensure_backup(),) if line]
-            w = self._launch(cap_s, out, song_end_ms=self._song_end_ms(song_folder))
+            w = self._launch(cap_s, out, song_end_ms=song_end_ms)
             lines.append("watching: waiting for a moving clock (cap "
                          f"{engine_finder.ENGINE_SEARCH_CAP_S:g} s, "
                          "engine_finder.ENGINE_SEARCH_CAP_S)")
@@ -291,8 +310,19 @@ class SpTools:
         hydra_replay score JSON, with each chord's press times from
         sp_compare.press_reach over `schedule_json`, the same path's
         hydra_replay schedule. A schedule file that press_reach cannot read,
-        or that refuses its path, gets one line naming why."""
+        or that refuses its path, gets one line naming why. `resolution` is
+        the chart's Resolution, which no file here holds, and the run's stop
+        reason is the last play session's (GameTools.play_snapshot). After the
+        report, one line per activation of the schedule sets Hydra's ready
+        point against the first row the game was ready (ready_lines)."""
+        if resolution is None:
+            return ("compare refused: give resolution, the chart's Resolution from its "
+                    "[Song] section; sp_max is checked against the game's full meter for it")
         with self._lock:
+            play = self._game.play_snapshot()
+            if play is not None and play["stop"] is None:
+                return "compare refused: the play session is still running; call ch_play_stop first"
+            stop = play["stop"] if play is not None else None
             try:
                 rows = sp_compare.load_watch_rows(watch_csv)
                 score = sp_compare.load_score(score_json)
@@ -300,25 +330,28 @@ class SpTools:
                 return f"compare failed: {type(e).__name__}: {e}"
             try:
                 reach = sp_compare.press_reach(schedule_json)
+                schedule = play_chart.load_schedule(schedule_json)
             except (OSError, ValueError, KeyError, IndexError, TypeError) as e:
                 return f"could not read {schedule_json}: {type(e).__name__}: {e}"
             try:
                 report = sp_compare.compare(rows, score, resolution=resolution,
                                             sp_bar_ticks=sp_bar_ticks, width=width,
-                                            reach=reach)
+                                            reach=reach, stop=stop)
             except (OSError, ValueError, KeyError, TypeError) as e:
                 return f"compare failed: {type(e).__name__}: {e}"
-            return report.text()
+            return "\n".join([report.text()] + ready_lines(rows, schedule))
 
     def ch_sp_between(self, start_ms: float, end_ms: float) -> str:
         """Over the rows in memory: each activation whose flip lies in the
         window (sp_compare.flips_between), the highest amount read there, and
-        the first ready row with the flag clear (sp_compare.ready_between)."""
+        the first row with the flag clear whose amount has reached the game's
+        half (game_ready)."""
         with self._lock:
             w = self._watch
             if w is None:
                 return NO_WATCH
             rows = list(w.rows)
+            inside = [r for r in rows if start_ms <= C.s_to_ms(r["clock_s"]) <= end_ms]
             lines = [f"window: {sp_compare.format_ms(start_ms)} to {sp_compare.format_ms(end_ms)}, over {len(rows)} rows "
                      f"(watcher {w.ended_line()})"]
             flips = sp_compare.flips_between(rows, start_ms, end_ms)
@@ -327,18 +360,18 @@ class SpTools:
                 lines.extend(_activation_line(rows, a) for a in flips)
             else:
                 lines.append("no activation inside")
-            ready = sp_compare.ready_between(rows, start_ms, end_ms, AMOUNT_COL, MAX_COL)
-            if ready.rows == 0:
+            if not inside:
                 lines.append("no rows inside the window")
                 return "\n".join(lines)
-            lines.append(f"rows inside: {ready.rows}; highest {AMOUNT_COL}: {ready.highest}; "
-                         f"{MAX_COL}: {ready.sp_max}")
-            if ready.ready_row is None:
-                lines.append("no row inside at the ready level with the flag clear")
+            lines.append(f"rows inside: {len(inside)}; highest {AMOUNT_COL}: "
+                         f"{max(r[AMOUNT_COL] for r in inside)}; {MAX_COL}: {inside[0][MAX_COL]}")
+            ready = _first_ready(inside)
+            if ready is None:
+                lines.append("no row inside at the game's half with the flag clear")
             else:
-                lines.append(f"first row at the ready level with the flag clear: "
-                             f"{sp_compare.format_ms(ready.ready_ms)} ({AMOUNT_COL} "
-                             f"{ready.ready_row[AMOUNT_COL]})")
+                lines.append(f"first row at the game's half with the flag clear: "
+                             f"{_ms_text(ready['clock_s'])} ({AMOUNT_COL} {ready[AMOUNT_COL]}, "
+                             f"{HALF_COL} {ready[HALF_COL]})")
             return "\n".join(lines)
 
     # -- inside ---------------------------------------------------------------------
@@ -463,16 +496,50 @@ def _gap_line(rows: list, song_end_ms: Optional[int]) -> str:
     return line
 
 
+def _first_ready(rows: list) -> Optional[dict]:
+    """The first row with the flag clear whose amount has reached the game's
+    half (game_ready), or None."""
+    return next((r for r in rows if not sp_compare.is_active(r) and game_ready(r)), None)
+
+
+def ready_lines(rows: list, schedule: play_chart.Schedule) -> List[str]:
+    """One line per activation of the schedule: when Hydra has the meter
+    ready (the schedule's sp_ready_ms), and the first row the game was ready
+    (_first_ready) between the chord of the activation before it, or the
+    song's start, and the activation's own chord."""
+    ms_of = {chord.index: chord.ms for chord in schedule.chords}
+    lines = []
+    since_ms = 0.0
+    for act in schedule.activations:
+        until_ms = ms_of.get(act.chord)
+        hydra = ("no ready point in the schedule" if act.sp_ready_ms is None else
+                 f"Hydra ready at {sp_compare.format_ms(act.sp_ready_ms)} (the schedule's sp_ready_ms)")
+        if until_ms is None:
+            lines.append(f"ready for activation {act.index}: {hydra}; its chord "
+                         f"{act.chord} is not in the schedule, so no game row was read")
+            continue
+        inside = [r for r in rows if since_ms <= C.s_to_ms(r["clock_s"]) <= until_ms]
+        ready = _first_ready(inside)
+        game = ("the game was not ready before its chord" if ready is None else
+                f"the game first ready at {_ms_text(ready['clock_s'])} "
+                f"({AMOUNT_COL} {ready[AMOUNT_COL]}, {HALF_COL} {ready[HALF_COL]})")
+        lines.append(f"ready for activation {act.index}: {hydra}; {game}")
+        since_ms = until_ms
+    return lines
+
+
 def _activation_line(rows: list, act) -> str:
     """One activation from sp_compare.find_activations, as the rows show it:
     the flip clock, the multiplier on the row before and on the flip row, the
-    end time as the flip row reads it, and when the flag cleared."""
+    end time as the flip row reads it, and when the flag cleared. An
+    activation already on at the first row has no row before it."""
     flip = rows[act.flip_row]
-    before = rows[act.flip_row - 1]
+    before = (f"{rows[act.flip_row - 1]['sp_mult_u32']} before" if act.flip_row > 0
+              else "no row before")
     if act.drop_row is None:
         cleared = "still set at the last row"
     else:
         cleared = f"cleared at {_ms_text(rows[act.drop_row]['clock_s'])}"
     return (f"  activation {act.number} at {_ms_text(flip['clock_s'])}: multiplier "
-            f"{before['sp_mult_u32']} before, {flip['sp_mult_u32']} on the flip row; "
+            f"{before}, {flip['sp_mult_u32']} on the flip row; "
             f"end time at the flip {_ms_text(flip['sp_end_s'])}; flag {cleared}")

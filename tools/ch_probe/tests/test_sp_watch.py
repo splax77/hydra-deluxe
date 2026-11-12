@@ -94,6 +94,17 @@ class DecodeSnapshotTest(unittest.TestCase):
         self.assertEqual(
             [c for c in WATCH_COLUMNS if c not in names], ["wall_s"])
 
+    def test_the_watch_writes_the_half_column(self):
+        # The game's half sits at +0x1B8 (SP-16), written as a literal so the
+        # test also pins constants.OFF_SP_HALF.
+        block = bytearray(sp_block())
+        struct.pack_into("<Q", block, 0x1B8, 7200)
+        snap = engine.decode_snapshot(bytes(block))
+        self.assertEqual(snap.sp_half_u64, 7200)
+        row = dict(zip(WATCH_COLUMNS, sp_watch.watch_row(5.0, snap)))
+        self.assertEqual(row["sp_half_u64"], 7200)
+        self.assertEqual(row["sp_max_u64"], 8589940736)
+
 
 PLAYER = 0x3_0000_2000
 MANAGER = 0x3_0000_3000
@@ -375,7 +386,7 @@ class RunTest(unittest.TestCase):
         self.assertEqual(tuple(table[0]), WATCH_COLUMNS)
         self.assertEqual(len(table), 3)   # header, first row, final row
         self.assertEqual(table[1][1:], ["12.5", "0", "7680", "4294974976",
-                                        "6144", "8589940736", "1", "257", "8",
+                                        "6144", "8589940736", "0", "1", "257", "8",
                                         "520", "61.25", "1", "0.0",
                                         "nan", "nan", "nan"])
         text = out.getvalue()
