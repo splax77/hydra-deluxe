@@ -105,12 +105,11 @@ using RowsAnsweredFn = std::function<bool(uint64_t rows_answered)>;
 
 // Re-reads every row's summary under `settings`: never per row per frame (the
 // batch workers share the store's lock). The rows keep their order
-// (LibraryModel::sort_if_out_of_date). With no `on_slice` it is one store call
-// for the whole library. With one, the store is asked `slice_charts` rows at a
-// time (a slice of 0 reads as 1), the slices cut from the rows sorted by hash,
-// and `on_slice` is told after each. Each answer goes back to its own row, and
-// the answers go to the model in one call, so the table is filtered once
-// either way. Throws when the read fails, and Cancelled when `on_slice`
+// (LibraryModel::sort_if_out_of_date). The store is asked `slice_charts` rows
+// at a time (a slice of 0 reads as 1), the slices cut from the rows sorted by
+// hash, and `on_slice`, when given, is told after each. Each answer goes back
+// to its own row, and the answers go to the model in one call, so the table is
+// filtered once. Throws when the read fails, and Cancelled when `on_slice`
 // returns false.
 void read_library_summaries(store::RecordStore& store, const app::Settings& settings,
                             LibraryModel& library, const RowsAnsweredFn& on_slice = {},
