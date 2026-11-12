@@ -1930,3 +1930,23 @@ The plan's `hydra_replay` flag test stays a real test, so `hydra_tests` also nee
 2. **A chart with both green-pad notes and Pro Drums marks (question 2).** Follow the game. Such a chart takes the game's four-lane branch: each green-pad note becomes a green tom, or a blue tom when an orange note shares its tick.
 3. **Saved results (question 3).** Bump the stamp. `kResultsStamp` in `src/store/stored_versions.h` moves from "2.14.1+coda" to "2.14.1+fivelane", and its accepted list holds the new stamp alone. The stamp is compared as a whole string, so every saved result reads Stale once and asks to be analysed again, four-lane charts included. Release 2.14.1 has not shipped, so the version part stays 2.14.1 and only the suffix changes; a build from main since FL-08 wrote "2.14.1+coda", and those rows must read Stale too.
 4. **A library scan (question 4).** No scan. Nobody counts how many of the user's charts change.
+
+**D338 (session c8b70230), 2026-11-12. The library open reads about three times faster.** Opening the library read the chart list in name order on one thread, built its rows on one thread, and read the saved results in slices that each reached across the whole results tables. The plan was `docs/superpowers/plans/2026-11-12-open-savings.md` (removed; `git show e7211561de46b92f8a2042a962e2fdcdaf3d54f8:docs/superpowers/plans/2026-11-12-open-savings.md`). Its T2 timed each part with `hydra_bench --open`, and T3 to T8 changed the read. What the open does now, task by task:
+
+1. **T3, results in hash order.** `read_library_summaries` in `src/ui/library_jobs.cpp` cuts the 500-chart slices (`kResultsSliceCharts`) after sorting the charts by hash, the order the results tables are kept in, so the slices together read each page about once.
+2. **T4, the chart list unsorted.** `read_library` asks `list_chart_library` for `LibraryOrder::Unsorted`, since `set_charts` sorts the rows itself. When a search or chip hides every copy of a chart and the path report or the dmleaderboards report opens it, `select_chart` still opens the copy that comes first by name, read through `list_chart_library_copies`.
+3. **T5, cheaper sort keys.** `set_charts` takes a column's sort key from the search text where the column shows its stored text with the tags stripped, and folds the shown text otherwise. The fold in `src/app/library_query.cpp` takes a short path through runs of plain ASCII.
+4. **T6, rows on 8 threads.** `set_charts` in `src/ui/library_model.cpp` builds the rows on `store::kLibraryOpenThreads` threads, each a contiguous share.
+5. **T7, the chart list on 8 threads.** The whole Unsorted read runs on the same number of threads, one read-only connection each, split by rowid (`read_chart_library_on_threads` in `src/store/record_store.cpp`). The bar still counts every chart, in order.
+6. **T8, a cold timing.** `hydra_bench --open --cold` times the open again after dropping the library file from the OS cache, as a first open after a restart reads it.
+
+The user's rulings, in their own words, are in `docs/agents/rulings/code-and-engine.md` and `docs/agents/rulings/ui-and-display.md`, all of 2026-11-12. "8 threads" set the thread count for T6, after the bench measured each count; `kLibraryOpenThreads` in `src/store/record_store.h` holds it, and T7 uses it too. "Keep today's pick (Recommended)" kept the copy picked by name in T4. "Keep the error line" kept T4's one unasked visible change: when that report's store read fails, the status line shows the store's error. "why are you trying to convince me to skip something i already approved?" answered whether to skip T7, so T7 ran.
+
+The figures. Every one is a median of `hydra_bench --open --runs 7 --as-ready` on the scratch copy of the user's library, with 18,926 Ready charts in 19,610 rows:
+
+| Line of the bench | Before the plan (T2's run) | After T7 |
+|---|---|---|
+| "read_library as one call, counted" (the startup read, with its bar) | 246.9 ms | 82.3 ms |
+| "read_library as one call, no callback" (`AppState::reload_library`'s read) | 188.2 ms | 98.7 ms |
+
+After T7 the counted read is faster than the read with no callback. The code shows one difference between them: with no callback, `read_library_summaries` asks `lookup` about every chart in one call, in row order, so it does not get T3's hash order. T8's run, from a build of T8's branch made before T4 merged, with `--threads 8 --cold`, gave "open + read_library, no callback" 132.1 ms warm and 396.8 ms cold. So reading the library file from the disk instead of the OS cache added 264.7 ms then.
