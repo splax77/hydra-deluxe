@@ -28,9 +28,9 @@ A quick update shows nothing: the window opens and the library appears. If it ta
 >
 > This happens once. Your charts and results are kept.
 
-Under that, `Updating the results table...` comes with a bar that counts the results converted, like `12,345 / 38,009`. Then `Finishing...` shows while Hydra Deluxe reads your library. When the box goes away, your library is there as before. A result made by an older version reads `Stale` when the new version analyzes charts differently. Click the song or run a batch to refresh it.
+Under that, `Updating the results table...` comes with a bar that counts the results converted, like `12,345 / 38,009`. Then `Reading your charts...` and `Reading your results...` show while Hydra Deluxe reads your library, each with a bar that counts your charts. When the box goes away, your library is there as before. A result made by an older version reads `Stale` when the new version analyzes charts differently. Click the song or run a batch to refresh it.
 
-On any start, if opening your library takes longer than usual, for example while a drive wakes from sleep, the window shows `Opening your library...` until the library appears.
+On any start, if opening your library takes longer than usual, for example while a drive wakes from sleep, the window shows `Opening your library...` while the library file opens. Then `Reading your charts...` and `Reading your results...` follow, each with a bar that counts your charts, until the library appears.
 
 You can close the window during the update. Hydra Deluxe stops and leaves `hydra.db` exactly as it was. The next start runs the update again from the beginning.
 
