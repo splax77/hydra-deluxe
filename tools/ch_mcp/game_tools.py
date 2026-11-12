@@ -544,9 +544,10 @@ class _PlaySession:
     rows: list = dataclasses.field(default_factory=list)
     result: Optional[play_chart.RunResult] = None
     error: Optional[str] = None
-    # What became of the press log: set by a failed write, and when the run
-    # ends. While it holds a failure the rows stop going to the file.
+    # What became of the press log, set when the run ends.
     log_note: Optional[str] = None
+    # The press log's writer while the run makes rows; None with no log.
+    writer: Optional[play_chart.PressLogWriter] = None
     # The end the schedule plans for each chord the game's end is read after
     # (Press.planned_end_ms), by that chord's index, which the status's end
     # lines set against the game's.
@@ -1587,36 +1588,28 @@ class GameTools:
         return True
 
     def _play_body(self, play: _PlaySession, chords) -> None:
-        """The play thread: live_play, with each press row added to the press
-        log as it is made. It never takes the lock, so a tool holding it never
-        waits on the thread. A log that fails stops being written and the run
-        goes on, because an error raised out of on_press would end the run."""
+        """The play thread: live_play, with each press row handed to the press
+        log's writer (play_chart.PressLogWriter) as it is made, so no file
+        call runs on this thread while the song plays. It never takes the
+        lock, so a tool holding it never waits on the thread. A log that fails
+        stops being written and the run goes on; the end writes it whole."""
         cap = {} if play.cap_s is None else {"cap_s": play.cap_s}
         search = {} if play.find_engine is None else {"find_engine": play.find_engine}
         # The kit route hands live_play its press and no driver, so no window
         # is looked up; the keys route keeps the driver.
         route = {"driver": self._driver} if play.press is None else {"press": play.press}
 
-        def log_failed(e: OSError) -> None:
-            play.log_note = f"press log not written to {play.log_path}: {e}"
-
         def on_press(row: dict) -> None:
             if play.mark_row is not None:
                 play.mark_row(row)
             play.rows.append(row)
-            if play.log_path and play.log_note is None:
-                try:
-                    play_chart.append_press_row(play.log_path, row)
-                except OSError as e:
-                    log_failed(e)
+            if play.writer is not None:
+                play.writer.add(row)
             play.pressed.set()
 
         if play.log_path:
-            # Starts the file over, so a reused log name holds this run's rows only.
-            try:
-                play_chart.write_press_log(play.log_path, [])
-            except OSError as e:
-                log_failed(e)
+            play.writer = play_chart.PressLogWriter(play.log_path)
+            play.writer.start()
         try:
             play.result = self._live_play(chords, **route,
                                           on_press=on_press,
@@ -1624,16 +1617,27 @@ class GameTools:
                                           out=io.StringIO(), **cap, **search)
         except Exception as e:  # reported by ch_play_status
             play.error = f"{type(e).__name__}: {e}"
-        if play.log_path:
-            try:
-                # The rows are already in the file unless a write failed; then
-                # the one whole write replaces what it holds.
-                if play.log_note is not None:
-                    play_chart.write_press_log(play.log_path, list(play.rows))
-                play.log_note = f"press log: {play.log_path} ({len(play.rows)} rows)"
-            except OSError as e:
-                log_failed(e)
+        if play.writer is not None:
+            play.log_note = self._end_press_log(play)
         play.pressed.set()
+
+    @staticmethod
+    def _end_press_log(play: _PlaySession) -> str:
+        """Stop the run's press-log writer, waiting up to
+        play_chart.LOG_WRITER_CAP_S, and say what became of the log. A
+        writer that failed leaves the log to one whole write of the rows."""
+        cap_s = play_chart.LOG_WRITER_CAP_S
+        rows = list(play.rows)
+        if not play.writer.stop(cap_s):
+            return (f"press log: {play.log_path} may lack its last rows: its writer "
+                    f"did not finish within {cap_s:g} s; this status holds all "
+                    f"{len(rows)} rows")
+        if play.writer.error is not None:
+            try:
+                play_chart.write_press_log(play.log_path, rows)
+            except OSError as e:
+                return f"press log not written to {play.log_path}: {e}"
+        return f"press log: {play.log_path} ({len(rows)} rows)"
 
     @staticmethod
     def _stop_reason(play: _PlaySession) -> str:
@@ -1643,8 +1647,14 @@ class GameTools:
 
     @staticmethod
     def _press_log_line(play: _PlaySession) -> str:
-        """The press log's line: what became of it, else its path."""
-        return play.log_note or f"press log: {play.log_path}"
+        """The press log's line: what became of it, else a failure its
+        writer has met, else its path."""
+        if play.log_note is not None:
+            return play.log_note
+        error = play.writer.error if play.writer is not None else None
+        if error is not None:
+            return f"press log not written to {play.log_path}: {error}"
+        return f"press log: {play.log_path}"
 
     def _play_lines(self, play: _PlaySession) -> List[str]:
         rows = list(play.rows)

@@ -28,6 +28,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.abspath(os.path.join(_HERE, "..", "..", ".."))
@@ -217,7 +218,8 @@ class LoadScheduleTest(unittest.TestCase):
         numeric = sorted(name for name, value in vars(play_chart).items()
                          if name.isupper() or name.lstrip("_").isupper()
                          if isinstance(value, (int, float)) and not isinstance(value, bool))
-        self.assertEqual(numeric, ["RUN_CAP_S", "SCORE_READ_DELAY_S", "_SAME_MS"])
+        self.assertEqual(numeric, ["LOG_WRITER_CAP_S", "RUN_CAP_S", "SCORE_READ_DELAY_S",
+                                   "_SAME_MS"])
         self.assertEqual([name for name in vars(play_chart) if name.endswith("_MS")],
                          ["_SAME_MS"])
 
@@ -892,55 +894,108 @@ def _table(path):
         return list(csv.reader(f))
 
 
-class AppendPressRowTest(unittest.TestCase):
-    """append_press_row keeps the log on disk row by row, as a run makes it."""
+class PressLogWriterTest(unittest.TestCase):
+    """PressLogWriter keeps the log on disk row by row, as a run makes it,
+    from a thread of its own."""
+
+    # How long a test waits on the writer's thread before it fails instead
+    # of hanging.
+    CAP_S = 5.0
 
     def setUp(self):
         folder = tempfile.TemporaryDirectory()
         self.addCleanup(folder.cleanup)
         self.path = os.path.join(folder.name, "press.csv")
 
-    def test_the_file_grows_with_each_press_of_a_run(self):
-        seen = []
+    def _writer(self):
+        writer = play_chart.PressLogWriter(self.path)
+        writer.start()
+        self.addCleanup(writer.stop, self.CAP_S)
+        return writer
 
-        def on_press(row):
-            play_chart.append_press_row(self.path, row)
-            seen.append(len(_table(self.path)) - 1)
+    def _table_once(self, count):
+        """The log's table once it holds a header and `count` rows, read
+        while the writer is open; fails after CAP_S."""
+        deadline = time.monotonic() + self.CAP_S
+        while True:
+            table = _table(self.path) if os.path.exists(self.path) else []
+            if len(table) >= 1 + count or time.monotonic() > deadline:
+                return table
+            time.sleep(0.005)
 
-        fake = _FakeTime()
-        game = _FakeGame()
-        result = play_chart.play_chords(
-            _load_chords()[:3], _FakeSongClock(fake, start_s=12.0),
-            game.read_score, game.press, now=fake.now, sleep=fake.sleep,
-            on_press=on_press, out=io.StringIO())
-        self.assertEqual(result.stop, "done")
-        self.assertEqual(seen, [1, 2, 3])
-        table = _table(self.path)
-        self.assertEqual(tuple(table[0]), overlay_logs.PRESS_LOG_COLUMNS)
-        self.assertEqual([r[0] for r in table[1:]], ["38", "41", "45"])
-
-    def test_a_file_with_its_header_gets_no_second_one(self):
-        play_chart.write_press_log(self.path, [])
-        play_chart.append_press_row(self.path, {"index": 7})
-        self.assertEqual([r[0] for r in _table(self.path)], ["index", "7"])
-
-    def test_it_writes_what_write_press_log_writes(self):
+    def test_the_writer_builds_its_rows_through_press_log_writer(self):
         rows = [{"index": 1, "lead_ms": 2.0, "send": "sent"}, {"index": 2, "send": "dropped"}]
-        for row in rows:
-            play_chart.append_press_row(self.path, row)
+        real = play_chart._press_log_writer
+        with mock.patch.object(play_chart, "_press_log_writer", side_effect=real) as built:
+            writer = self._writer()
+            for row in rows:
+                writer.add(row)
+            self.assertTrue(writer.stop(self.CAP_S))
+        self.assertEqual(built.call_count, 1)
         whole = self.path + ".whole"
         play_chart.write_press_log(whole, rows)
         self.assertEqual(_table(self.path), _table(whole))
 
-    def test_an_append_costs_less_than_the_score_read_sleep(self):
+    def test_every_row_is_on_disk_before_the_writer_closes(self):
+        fake = _FakeTime()
+        game = _FakeGame()
+        writer = self._writer()
+        result = play_chart.play_chords(
+            _load_chords()[:3], _FakeSongClock(fake, start_s=12.0),
+            game.read_score, game.press, now=fake.now, sleep=fake.sleep,
+            on_press=writer.add, out=io.StringIO())
+        self.assertEqual(result.stop, "done")
+        # A second handle, with the writer still open.
+        table = self._table_once(3)
+        self.assertEqual(tuple(table[0]), overlay_logs.PRESS_LOG_COLUMNS)
+        self.assertEqual([r[0] for r in table[1:]], ["38", "41", "45"])
+        self.assertTrue(writer.stop(self.CAP_S))
+
+    def test_a_start_writes_the_file_over_with_the_header(self):
+        with open(self.path, "w", encoding="utf-8") as f:
+            f.write("an older run's rows\n")
+        writer = self._writer()
+        self.assertTrue(writer.stop(self.CAP_S))
+        self.assertEqual(_table(self.path), [list(overlay_logs.PRESS_LOG_COLUMNS)])
+
+    def test_a_failed_write_is_kept_and_ends_the_writing(self):
+        real = play_chart._press_log_writer
+
+        class Failing:
+            def __init__(self, f):
+                self._real = real(f)
+                self.writeheader = self._real.writeheader
+
+            def writerow(self, row):
+                raise PermissionError("held open")
+
+        with mock.patch.object(play_chart, "_press_log_writer", new=Failing):
+            writer = self._writer()
+            writer.add({"index": 1})
+            writer.add({"index": 2})
+            self.assertTrue(writer.stop(self.CAP_S))
+        self.assertIsInstance(writer.error, PermissionError)
+        self.assertEqual([r[0] for r in _table(self.path)], ["index"])
+
+    def test_a_log_nowhere_writable_is_kept_as_the_error(self):
+        writer = play_chart.PressLogWriter(os.path.join(self.path, "no such folder", "x.csv"))
+        writer.start()
+        writer.add({"index": 1})
+        self.assertTrue(writer.stop(self.CAP_S))
+        self.assertIsInstance(writer.error, OSError)
+
+    def test_a_row_costs_the_adding_thread_less_than_the_score_read_sleep(self):
         # The median, so one scan of the file by another process fails nothing.
         row = {column: 1 for column in overlay_logs.PRESS_LOG_COLUMNS}
+        writer = self._writer()
         took = []
         for _ in range(100):
             began = time.perf_counter()
-            play_chart.append_press_row(self.path, row)
+            writer.add(row)
             took.append(time.perf_counter() - began)
         self.assertLess(statistics.median(took), play_chart.SCORE_READ_DELAY_S)
+        self.assertTrue(writer.stop(self.CAP_S))
+        self.assertEqual(len(_table(self.path)), 101)
 
 
 _MOUTHS_SCHEDULE = os.path.join(_HERE, "mouths_refine_schedule.json")

@@ -1413,26 +1413,83 @@ class GameToolsTest(unittest.TestCase):
         with open(path, encoding="utf-8", newline="") as f:
             return list(csv.reader(f))
 
-    def _three_row_play(self, seen):
-        """A live_play that records how many rows the session's file holds
-        after each press, read while the run goes on."""
+    def _rows_on_disk(self, path, count):
+        """The data rows of the log at `path` once it holds `count` of them,
+        read while the run goes on; fails after THREAD_CAP_S."""
+        deadline = time.monotonic() + THREAD_CAP_S
+        while True:
+            rows = self._log_table(path)[1:] if os.path.exists(path) else []
+            if len(rows) >= count or time.monotonic() > deadline:
+                return rows
+            time.sleep(0.005)
+
+    def test_the_rows_reach_the_file_in_order_and_only_once(self):
         def live_play(chords, *, on_press, **kw):
-            for i in range(3):
+            for i in range(200):
                 on_press({**ROWS[0], "index": i})
-                seen.append(len(self._log_table(t.tools._play.log_path)) - 1)
-            return play_chart.RunResult(stop="done", sent=3)
+            return play_chart.RunResult(stop="done", sent=200)
 
         t, _events, _seen = self._chain_rig(live_play)
-        return t
-
-    def test_the_rows_reach_the_file_as_they_happen_and_only_once(self):
-        seen = []
-        t = self._three_row_play(seen)
         self._run(t)
-        self.assertEqual(seen, [1, 2, 3])
         table = self._log_table(t.tools._play.log_path)
         self.assertEqual(table[0], list(PRESS_LOG_COLUMNS))
-        self.assertEqual([r[0] for r in table[1:]], ["0", "1", "2"])
+        self.assertEqual([r[0] for r in table[1:]], [str(i) for i in range(200)])
+
+    def test_no_file_call_runs_on_the_player_thread(self):
+        calls = []
+        player = {}
+        real_open = open
+        real_writer = play_chart._press_log_writer
+
+        class Recorded:
+            """A file whose write and flush say which thread called them."""
+
+            def __init__(self, f):
+                self._f = f
+
+            def __getattr__(self, name):
+                return getattr(self._f, name)
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                calls.append(("close", threading.get_ident()))
+                return self._f.__exit__(*exc)
+
+            def write(self, text):
+                calls.append(("write", threading.get_ident()))
+                return self._f.write(text)
+
+            def flush(self):
+                calls.append(("flush", threading.get_ident()))
+                return self._f.flush()
+
+        def recorded_open(*args, **kwargs):
+            calls.append(("open", threading.get_ident()))
+            return Recorded(real_open(*args, **kwargs))
+
+        def recorded_writer(f):
+            calls.append(("_press_log_writer", threading.get_ident()))
+            return real_writer(f)
+
+        def live_play(chords, *, on_press, **kw):
+            player["ident"] = threading.get_ident()
+            for row in ROWS:
+                on_press(row)
+            return play_chart.RunResult(stop="done", sent=2)
+
+        t = ToolRig(self.tmp, live_play=live_play)
+        path = os.path.join(self.tmp, "named.csv")
+        with mock.patch.object(play_chart, "open", create=True, new=recorded_open), \
+                mock.patch.object(play_chart, "_press_log_writer", new=recorded_writer):
+            t.tools.ch_play_chart(self._score_json(), self._schedule_json(), log=path,
+                                  route="keys")
+            t.tools._play.thread.join(THREAD_CAP_S)
+        self.assertEqual({name for name, _ident in calls},
+                         {"open", "_press_log_writer", "write", "flush", "close"})
+        self.assertNotIn(player["ident"], {ident for _name, ident in calls})
+        self.assertEqual([r[0] for r in self._log_table(path)[1:]], ["0", "1"])
 
     def test_the_reply_names_the_press_file_under_the_session_folder(self):
         t, _events, _seen = self._chain_rig()
@@ -1475,7 +1532,7 @@ class GameToolsTest(unittest.TestCase):
 
         def live_play(chords, *, on_press, **kw):
             on_press(ROWS[0])
-            seen.append(len(self._log_table(path)) - 1)
+            seen.append(len(self._rows_on_disk(path, 1)))
             return play_chart.RunResult(stop="done", sent=1)
 
         t = ToolRig(self.tmp, live_play=live_play)
@@ -1503,26 +1560,87 @@ class GameToolsTest(unittest.TestCase):
         t.tools._play.thread.join(THREAD_CAP_S)
         self.assertEqual(self._log_table(path), [list(PRESS_LOG_COLUMNS)])
 
-    def test_a_failed_append_goes_on_and_the_end_writes_every_row_once(self):
+    def test_a_failed_write_goes_on_and_the_end_writes_every_row_once(self):
         path = os.path.join(self.tmp, "named.csv")
         said = []
+        tried = []
+        real_writer = play_chart._press_log_writer
+
+        class Failing:
+            """The real writer, whose rows fail as a file held open would."""
+
+            def __init__(self, f):
+                self._real = real_writer(f)
+                self.writeheader, self.writerows = self._real.writeheader, self._real.writerows
+
+            def writerow(self, row):
+                tried.append(row["index"])
+                raise PermissionError("held open")
 
         def live_play(chords, *, on_press, **kw):
             for row in ROWS:
                 on_press(row)
+            deadline = time.monotonic() + THREAD_CAP_S
+            while t.tools._play.writer.error is None and time.monotonic() < deadline:
+                time.sleep(0.005)
             said.append(t.tools.ch_play_status().splitlines()[0])
             return play_chart.RunResult(stop="done", sent=2)
 
         t = ToolRig(self.tmp, live_play=live_play)
-        with mock.patch.object(play_chart, "append_press_row",
-                               side_effect=PermissionError("held open")) as append:
+        with mock.patch.object(play_chart, "_press_log_writer", new=Failing):
             t.tools.ch_play_chart(self._score_json(), self._schedule_json(),log=path, route="keys")
             t.tools._play.thread.join(THREAD_CAP_S)
-        self.assertEqual(append.call_count, 1)
+        self.assertEqual(tried, [0])
         self.assertEqual(said, [f"press log not written to {path}: held open"])
         self.assertEqual([r[0] for r in self._log_table(path)[1:]], ["0", "1"])
         self.assertEqual(t.tools.ch_play_status().splitlines()[0],
                          f"press log: {path} (2 rows)")
+
+    def test_the_end_waits_for_the_writer_and_says_so_when_the_cap_passes(self):
+        path = os.path.join(self.tmp, "named.csv")
+        held = threading.Event()
+        self.addCleanup(held.set)
+        real_writer = play_chart._press_log_writer
+
+        class Held:
+            """The real writer, whose rows wait until `held` is set."""
+
+            def __init__(self, f):
+                self._real = real_writer(f)
+                self.writeheader, self.writerows = self._real.writeheader, self._real.writerows
+
+            def writerow(self, row):
+                held.wait(THREAD_CAP_S)
+                return self._real.writerow(row)
+
+        def live_play(chords, *, on_press, **kw):
+            for row in ROWS:
+                on_press(row)
+            return play_chart.RunResult(stop="done", sent=2)
+
+        t = ToolRig(self.tmp, live_play=live_play)
+        with mock.patch.object(play_chart, "_press_log_writer", new=Held), \
+                mock.patch.object(play_chart, "LOG_WRITER_CAP_S", 0.05):
+            t.tools.ch_play_chart(self._score_json(), self._schedule_json(), log=path,
+                                  route="keys")
+            t.tools._play.thread.join(THREAD_CAP_S)
+            lines = t.tools.ch_play_status().splitlines()
+        self.assertEqual(lines[0], f"press log: {path} may lack its last rows: its writer "
+                                   f"did not finish within 0.05 s; this status holds all "
+                                   f"2 rows")
+        # The rows stay in memory for the status reply.
+        self.assertIn("  0, 1000.0, 998.0, 0, 50, sent", lines)
+
+        # A writer that finishes inside the cap leaves every row in the file.
+        late = t.tools._play.writer
+        held.set()
+        self.assertTrue(late.stop(THREAD_CAP_S))
+        t.tools.ch_play_chart(self._score_json(), self._schedule_json(), log=path,
+                              route="keys")
+        t.tools._play.thread.join(THREAD_CAP_S)
+        self.assertEqual(t.tools.ch_play_status().splitlines()[0],
+                         f"press log: {path} (2 rows)")
+        self.assertEqual([r[0] for r in self._log_table(path)[1:]], ["0", "1"])
 
     def test_a_log_nowhere_writable_is_said_and_the_run_keeps_its_rows(self):
         path = os.path.join(self.tmp, "no such folder", "named.csv")
