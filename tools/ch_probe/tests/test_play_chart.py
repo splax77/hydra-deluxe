@@ -1847,6 +1847,14 @@ class MainExitTest(unittest.TestCase):
         self.assertTrue(text.endswith("Done.\n"), text)
         self.assertNotIn("Stopped", text)
 
+    def test_main_prints_the_notes_of_a_run_that_ends_done(self):
+        note = "a retime was refused after the play ended"
+        code, text = self._main(lambda chords, out: play_chart.RunResult(
+            stop=play_chart.STOP_DONE, message=note))
+        self.assertEqual(code, 0, text)
+        self.assertIn(note, text)
+        self.assertTrue(text.endswith("Done.\n"), text)
+
 
 class StartLineTest(unittest.TestCase):
     """The start line counts the chords the run passes over where it starts

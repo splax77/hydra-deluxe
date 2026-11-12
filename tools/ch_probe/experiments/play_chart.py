@@ -1352,6 +1352,9 @@ def main(argv: Optional[Sequence[str]] = None, *,
     if result.stop != STOP_DONE:
         print(f"Stopped before the song's end ({result.stop}): {result.message}", file=out)
         return 1
+    if result.message:
+        # A run can end "done" and still carry notes, such as a refused retime.
+        print(f"  Notes: {result.message}", file=out)
     print("Done.", file=out)
     return 0
 
