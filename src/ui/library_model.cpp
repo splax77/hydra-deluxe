@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <numeric>
+#include <string_view>
 #include <utility>
 
 #include "core/model.h"  // group_thousands
@@ -132,17 +133,28 @@ std::string best_path_label(store::RecordStatus status, const std::string& bestp
 
 std::string LibraryRow::best_label() const { return best_path_label(status, bestpath, summary); }
 
-std::string library_cell_text(const LibraryRow& row, int column) {
-    if (column < 0 || column >= kLibraryColumnCount) return {};
+namespace {
+
+// The text a column before Best path shows, read in place from the row.
+// Empty for Best path, whose text is made when asked for (best_label).
+std::string_view stored_cell_text(const LibraryRow& row, int column) {
     switch (sort_of(column)) {
         case LibrarySort::Title: return row.title;
         case LibrarySort::Artist: return row.artist;
         case LibrarySort::Album: return row.album;
         case LibrarySort::Charter: return row.charter;
         case LibrarySort::Folder: return row.entry.rootfolder;
-        case LibrarySort::BestPath: return row.best_label();
+        case LibrarySort::BestPath: break;
     }
     return {};
+}
+
+}  // namespace
+
+std::string library_cell_text(const LibraryRow& row, int column) {
+    if (column < 0 || column >= kLibraryColumnCount) return {};
+    if (sort_of(column) == LibrarySort::BestPath) return row.best_label();
+    return std::string(stored_cell_text(row, column));
 }
 
 size_t ChipCounts::of(StatusChip chip) const {
@@ -199,7 +211,7 @@ void LibraryModel::set_charts(std::vector<store::ChartLibraryEntry> charts) {
         // A sort key is the shown text folded. Where the shown text is the
         // search text's stripped text, the search text holds that fold already.
         for (int c = 0; c < kColumnBestPath; ++c) {
-            const std::string shown = library_cell_text(row, c);
+            const std::string_view shown = stored_cell_text(row, c);  // library_cell_text, uncopied
             const SearchField field = search_field_of(stripped, row.searchable, c);
             row.sort_keys[static_cast<size_t>(c)] =
                 shown == field.stripped ? field.folded : app::fold_for_search(shown);
