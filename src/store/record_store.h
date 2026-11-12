@@ -160,6 +160,11 @@ struct Profile {
 // version stamps themselves; ask a lookup for its RecordStatus instead.
 std::string current_record_version();
 
+// The rules fingerprint a profile row must carry, as its rules_fp column holds
+// it, to be Ready under `stamp`. For the store, its tests, and hydra_bench's
+// --as-ready, which stamps a scratch copy with it.
+std::vector<uint8_t> ready_rules_fp(const core::RulesStamp& stamp);
+
 // What a stored-row lookup found. The store is the only place that decides
 // whether a row is usable: NotAnalyzed (no row at all), Stale (a row another
 // Hydra version wrote, or one made under other rules -- its numbers are not
@@ -416,6 +421,37 @@ using OpenProgressFn = std::function<bool(const OpenProgress&)>;
 // rows read so far. A false return stops the read: list_chart_library throws
 // Cancelled (core/error_kind.h) and the store answers later calls as before.
 using RowsReadFn = std::function<bool(int64_t rows_read)>;
+
+// ---- the store's own statement and row readers ------------------------------
+// RecordStore compiles, steps and reads its rows through these. They are
+// declared here so hydra_bench's --open mode can build the same row objects
+// from connections of its own, and write its --as-ready stamp the way the
+// store writes (tools/bench.cpp). Their comments in record_store.cpp say what
+// each does.
+
+// A compiled statement, finalized when it goes. Movable but not copyable: a
+// copy would finalize the same handle twice.
+struct Stmt {
+    sqlite3_stmt* p = nullptr;
+    Stmt() = default;
+    Stmt(Stmt&& other) noexcept;
+    Stmt& operator=(Stmt&& other) noexcept;
+    Stmt(const Stmt&) = delete;
+    Stmt& operator=(const Stmt&) = delete;
+    ~Stmt();
+    operator sqlite3_stmt*() const { return p; }
+};
+Stmt prepare_read(sqlite3* db, const char* sql);
+Stmt prepare_write(sqlite3* db, const char* sql);
+bool step_row(sqlite3_stmt* s);
+void step_done(sqlite3_stmt* s, const std::string& what);
+void bind_text(sqlite3_stmt* s, int i, const std::string& v);
+void bind_blob(sqlite3_stmt* s, int i, const std::vector<uint8_t>& v);
+std::string library_entry_select();
+std::vector<ChartLibraryEntry> read_library_entries(sqlite3_stmt* s, bool timing_read,
+                                                    const RowsReadFn& on_row = {});
+std::string path_row_columns(const char* a);
+std::optional<PathRow> read_path_row(sqlite3_stmt* s, int idx, int rank);
 
 class ChartIndex;  // store/chart_index.h
 
