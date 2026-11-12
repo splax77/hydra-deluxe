@@ -67,8 +67,12 @@ std::string read_library(store::RecordStore& store, const app::Settings& setting
             };
         }
         // The whole scan in one read. Every chart is needed anyway: the chips
-        // count them and the search filters them in memory.
-        library.set_charts(store.list_chart_library(0, -1, on_row));  // -1 = no limit
+        // count them and the search filters them in memory. set_charts sorts
+        // the rows itself, so they come as stored, with no sort in SQL. The
+        // order case in tests/test_library_read_order.cpp proves the shown
+        // order does not depend on it.
+        library.set_charts(store.list_chart_library(0, -1, on_row,  // -1 = no limit
+                                                    store::LibraryOrder::AsStored));
     } catch (const Cancelled&) {
         throw;  // a stop, not a failed read
     } catch (const std::exception& e) {
