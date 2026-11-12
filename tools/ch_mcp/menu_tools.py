@@ -27,7 +27,8 @@ import os
 import time
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
-from tools.ch_mcp.frida_tools import MENU_BLOCK, StateUnread, menu_lines, state_words
+from tools.ch_mcp.bot_run import DEFAULT_PLAYER
+from tools.ch_mcp.frida_tools import MENU_BLOCK, StateUnread, menu_fields, menu_lines, state_words
 from tools.ch_mcp.kit_tools import KIT_PREFIX, KitRefused, parse_items
 from tools.ch_probe.input_driver import MENU_KEY_GAP_S
 
@@ -131,6 +132,60 @@ EXPECT: Dict[str, Callable[[dict, str], bool]] = {
 # The step that waits for this word is the search step: it scrolls with
 # SEARCH_NEXT_ITEM.
 SEARCH_EXPECT = "selected_folder_is_target"
+
+
+# The two player-screen fields the instrument and difficulty check reads, by
+# their menu_fields.json keys.
+INSTRUMENT_KEY = "instrument"
+DIFFICULTY_KEY = "difficulty"
+
+
+def _field_words(key: str) -> Dict[str, str]:
+    """menu_fields.json's word table for the enum field `key`, by number."""
+    for field in menu_fields()["fields"]:
+        if field["key"] == key:
+            return field["values"]
+    raise KeyError(f"menu_fields.json has no {key} field")
+
+
+def player_target(player: str) -> Tuple[str, str]:
+    """The instrument and difficulty words `player` names, in ch_start's
+    "<Instrument>,<Difficulty>" form. Raises ValueError when it is not two
+    words that menu_fields.json's tables hold."""
+    parts = [part.strip() for part in player.split(",")]
+    if len(parts) != 2:
+        raise ValueError(f"player {player!r} is not <Instrument>,<Difficulty>")
+    for key, word in zip((INSTRUMENT_KEY, DIFFICULTY_KEY), parts):
+        words = _field_words(key)
+        if word not in words.values():
+            raise ValueError(f"player {player!r}: {word!r} is not a {key} word in "
+                             f"menu_fields.json ({', '.join(words.values())})")
+    return parts[0], parts[1]
+
+
+def player_screen_refusal(state: dict, instrument: str, difficulty: str) -> Optional[str]:
+    """Why this read does not show every live player screen set to
+    `instrument` and `difficulty`, or None when it does. The numbers are the
+    agent's PlayerSelectionMenu fields, read as words through
+    menu_fields.json's tables."""
+    fields = _class_entry(state, PLAYER_SCREEN).get("fields")
+    if not isinstance(fields, dict):
+        return (f"the read has no {PLAYER_SCREEN} fields, so it cannot show the instrument "
+                "and difficulty")
+    for key, want in ((INSTRUMENT_KEY, instrument), (DIFFICULTY_KEY, difficulty)):
+        reads = fields.get(key)
+        if not isinstance(reads, list) or not reads:
+            return (f"{PLAYER_SCREEN}'s {key} read is {json.dumps(reads)}, so the read "
+                    f"cannot show the {key} is {want}")
+        words = _field_words(key)
+        for i, value in enumerate(reads):
+            word = (words.get(str(value)) if isinstance(value, int)
+                    and not isinstance(value, bool) else None)
+            if word != want:
+                return (f"{PLAYER_SCREEN} object {i} reads {key} {json.dumps(value)}"
+                        + (f" ({word})" if word is not None else "")
+                        + f", not {want}")
+    return None
 
 
 def online_refusal(state: dict) -> Optional[str]:
@@ -239,13 +294,17 @@ class MenuTools:
         # The newest read that came back in this run, for a stop that has none of its own.
         self._last_read: Optional[dict] = None
 
-    def ch_open_song(self, song_folder: str) -> str:
-        """Walk the menus toward the song in `song_folder`: for each step of
+    def ch_open_song(self, song_folder: str, player: str = DEFAULT_PLAYER) -> str:
+        """Walk the menus toward the song in `song_folder`, to play it as
+        `player` (ch_start's "<Instrument>,<Difficulty>"): for each step of
         menu_steps.json, read the game and refuse while the Online menu may
-        be open, press the step's kit items, then read every MENU_POLL_S
-        until its expect word holds or MENU_STEP_CAP_S passes. One line per
-        step and a last line naming the song the game loaded, or the step it
-        stopped on and the last read."""
+        be open or, on the player screen, while player_screen_refusal finds
+        another instrument or difficulty; press the step's kit items, then
+        read every MENU_POLL_S until its expect word holds or MENU_STEP_CAP_S
+        passes. One line per step and a last line naming the song the game
+        loaded, or the step it stopped on and the last read. A walk that ends
+        on another song's folder, or that never read the player screen
+        before a press, is a refusal too (D318 item 4)."""
         with self._lock:
             self._pressed = False
             self._sent = []
@@ -255,9 +314,15 @@ class MenuTools:
                 steps = load_steps(self._steps_path)["steps"]
             except StepsInvalid as e:
                 return f"refused: {e}; nothing pressed"
+            try:
+                instrument, difficulty = player_target(player)
+            except ValueError as e:
+                return f"refused: {e}; nothing pressed"
             if self._kit is None:
                 return NO_KIT
             state: Optional[dict] = None
+            player_checked = False
+            label = ""
             for index, step in enumerate(steps, start=1):
                 label = f"step {index} ({step['name']})"
                 try:
@@ -265,6 +330,11 @@ class MenuTools:
                     refusal = online_refusal(state)
                     if refusal is not None:
                         raise _Stopped(f"refused before its presses: {refusal}", state)
+                    if step["items"] and _class_active(state, PLAYER_SCREEN):
+                        refusal = player_screen_refusal(state, instrument, difficulty)
+                        if refusal is not None:
+                            raise _Stopped(f"refused before its presses: {refusal}", state)
+                        player_checked = True
                     if index == 1:
                         backup = self._game.ensure_backup()
                         if backup:
@@ -272,20 +342,28 @@ class MenuTools:
                     state = self._run_step(label, step, song_folder, state)
                 except _Stopped as e:
                     return self._stopped(label, str(e), e.state)
-            self._lines.append(self._done_line(state or {}, song_folder))
+            refusal = self._end_refusal(state or {}, song_folder, player, player_checked)
+            if refusal is not None:
+                return self._stopped(label, refusal, state)
+            self._lines.append(f"done: {song_folder} is loaded, as {instrument} on {difficulty}")
             return "\n".join(self._lines)
 
     # -- inside -------------------------------------------------------------------
 
     @staticmethod
-    def _done_line(state: dict, target: str) -> str:
-        """The run's last line: the song GlobalVariables says is loaded, and
-        whether it is the target."""
+    def _end_refusal(state: dict, target: str, player: str, player_checked: bool) -> Optional[str]:
+        """Why a walk whose steps all held still did not open the target as
+        `player`: the song GlobalVariables says is loaded is not the target,
+        or no press was made on the player screen after its check. None when
+        neither."""
         loaded = loaded_folder(state)
-        if same_folder(loaded, target):
-            return f"done: {target} is loaded"
-        return (f"done: a song is loaded, but its folder is {json.dumps(loaded)}, not the "
-                f"target {target}")
+        if not same_folder(loaded, target):
+            return (f"refused: a song is loaded, but its folder is {json.dumps(loaded)}, not "
+                    f"the target {target}")
+        if not player_checked:
+            return (f"refused: no step pressed on the player screen, so its instrument and "
+                    f"difficulty were never checked against {player}")
+        return None
 
     def _run_step(self, label: str, step: dict, target: str, before: dict) -> dict:
         """Press one step's items and wait for its expect word; the search

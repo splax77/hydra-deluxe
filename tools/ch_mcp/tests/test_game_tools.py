@@ -11,6 +11,7 @@ import csv
 import inspect
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -34,6 +35,9 @@ from tools.ch_mcp import frida_attach as FA  # noqa: E402
 from tools.ch_mcp import quiet as Q  # noqa: E402
 from tools.ch_mcp import machine_recorder as MR  # noqa: E402
 from tools.ch_mcp import recorder_link as R  # noqa: E402
+from tools.ch_mcp import build_stamp  # noqa: E402
+from tools.ch_mcp import menu_tools  # noqa: E402
+from tools.ch_mcp.frida_tools import MENU_BLOCK, StateUnread  # noqa: E402
 from tools.ch_mcp.tests.test_recorder_link import FakePopen  # noqa: E402
 from tools.ch_mcp.tests.test_bot_run import (  # noqa: E402
     ORIGINAL, PATCHED, FakeLaunchAgent, Rig, StuckGame, _read, _write, wire_human)
@@ -64,9 +68,26 @@ SCORE_JSON = {"chords": [
     {"index": 1, "ms": 1500.0,
      "notes": [{"color": "Kick", "cymbal": False, "dynamic": "none"}]},
 ]}
+# The path_source every hand-built schedule here carries: path 0 of a dump,
+# as hydra_replay schedule writes it.
+PATH_SOURCE = {"file": "dump.json", "index": 0}
+
+
+def schedule_of(score):
+    """test_play_chart._schedule_of's hand-built schedule of `score`, with
+    PATH_SOURCE, so the play tools take it for path 0."""
+    return {**_schedule_of(score), "path_source": dict(PATH_SOURCE)}
+
+
+def for_song(schedule, song_folder):
+    """`schedule` as made from the notes.chart in `song_folder`, the song
+    ch_run_chart checks the game has loaded."""
+    return {**schedule, "chart": os.path.join(song_folder, "notes.chart")}
+
+
 # A hand-built schedule of SCORE_JSON's two chords, one plain press each
 # (test_play_chart._schedule_of).
-SCHEDULE_JSON = _schedule_of(SCORE_JSON)
+SCHEDULE_JSON = schedule_of(SCORE_JSON)
 
 # The schedule fixtures under tools/ch_probe/tests (hydra_replay schedule of
 # each chart, path 0) and the reply lines they give. Every number below is
@@ -770,9 +791,13 @@ class GameToolsTest(unittest.TestCase):
         _write(path, json.dumps(SCORE_JSON).encode())
         return path
 
-    def _schedule_json(self) -> str:
+    def _song(self) -> str:
+        """The song folder of every ToolRig made on self.tmp (test_bot_run's Rig)."""
+        return os.path.join(self.tmp, "songs", probe_songs.WINDOW_MAP)
+
+    def _schedule_json(self, schedule=None) -> str:
         path = os.path.join(self.tmp, "schedule.json")
-        _write(path, json.dumps(SCHEDULE_JSON).encode())
+        _write(path, json.dumps(for_song(schedule or SCHEDULE_JSON, self._song())).encode())
         return path
 
     def test_a_second_ch_play_chart_is_refused_while_one_runs(self):
@@ -921,14 +946,14 @@ class GameToolsTest(unittest.TestCase):
     ]}
 
     def _decline_files(self, kept=(0,)):
-        schedule = _schedule_of(self.DECLINE_SCORE)
+        schedule = schedule_of(self.DECLINE_SCORE)
         if kept is not None:
             schedule["chords"][1].update(declined=True, kept_gems=list(kept))
             schedule["presses"][1]["gems"] = list(kept)
         score = os.path.join(self.tmp, "decline-score.json")
         path = os.path.join(self.tmp, "decline-schedule.json")
         _write(score, json.dumps(self.DECLINE_SCORE).encode())
-        _write(path, json.dumps(schedule).encode())
+        _write(path, json.dumps(for_song(schedule, self._song())).encode())
         return score, path
 
     def _decline_rig(self):
@@ -973,8 +998,7 @@ class GameToolsTest(unittest.TestCase):
         # call that still passes either fails at once.
         t, seen = self._decline_rig()
         score, schedule = self._decline_files()
-        for extra in ({"decline_mode": "nothing"}, {"dump_json": schedule},
-                      {"path_index": 0}):
+        for extra in ({"decline_mode": "nothing"}, {"dump_json": schedule}):
             with self.assertRaises(TypeError):
                 t.tools.ch_play_chart(score, schedule, route="keys", **extra)
         self.assertIsNone(t.tools._play)
@@ -983,7 +1007,7 @@ class GameToolsTest(unittest.TestCase):
     def test_a_schedule_with_a_refusal_is_refused_in_its_words(self):
         t, seen = self._decline_rig()
         score, path = self._decline_files()
-        schedule = _schedule_of(self.DECLINE_SCORE)
+        schedule = schedule_of(self.DECLINE_SCORE)
         schedule["refusals"] = ["chord 1 is two squeezes; no rule times both"]
         _write(path, json.dumps(schedule).encode())
         self.assertEqual(t.tools.ch_play_chart(score, path, route="keys"),
@@ -1039,7 +1063,7 @@ class GameToolsTest(unittest.TestCase):
     def test_a_long_order_line_names_every_split_chord(self):
         # Twelve made-up chords, a second apart, each a green cymbal then a
         # kick 8 ms later: two presses per chord, hand-built.
-        schedule = _schedule_of({"chords": [
+        schedule = schedule_of({"chords": [
             {"index": i, "ms": 1000.0 * (i + 1), "notes": [
                 {"color": "Kick", "cymbal": False, "dynamic": "none"},
                 {"color": "Green", "cymbal": True, "dynamic": "none"}]}
@@ -1057,7 +1081,7 @@ class GameToolsTest(unittest.TestCase):
         self.assertEqual(lines, ["declined: chords none"] + GT.order_lines(chords, schedule))
 
     def test_a_chart_with_no_split_chord_gives_no_order_line(self):
-        schedule = _schedule_of({"chords": [
+        schedule = schedule_of({"chords": [
             {"index": 0, "ms": 1000.0, "notes": [
                 {"color": "Kick", "cymbal": False, "dynamic": "none"},
                 {"color": "Green", "cymbal": True, "dynamic": "none"}]}]})
@@ -1180,8 +1204,11 @@ class GameToolsTest(unittest.TestCase):
     ENGINE = 0x2_0000_1000
 
     class ChainFrida:
-        def __init__(self, events, attaches=True):
-            self.events, self.attaches = events, attaches
+        """`loaded` is the song folder the game's GlobalVariables reads, as
+        agent/menu.ts sends it; a StateUnread is raised by the read instead."""
+
+        def __init__(self, events, attaches=True, loaded=None):
+            self.events, self.attaches, self.loaded = events, attaches, loaded
 
         def ch_attach(self):
             self.events.append("attach")
@@ -1189,6 +1216,12 @@ class GameToolsTest(unittest.TestCase):
 
         def is_attached(self):
             return self.attaches
+
+        def read_state(self):
+            if isinstance(self.loaded, StateUnread):
+                raise self.loaded
+            return {MENU_BLOCK: {"globals": {"found": True, "currentSongFolder": self.loaded,
+                                             "gameMode": 0, "playerCount": 1}}}
 
     class ChainKit:
         def __init__(self, events, press):
@@ -1214,7 +1247,10 @@ class GameToolsTest(unittest.TestCase):
             self.events.append("watch stop")
             return "watcher ended: stopped"
 
-    def _chain_rig(self, live_play=None, *, attaches=True, press=None, engine=ENGINE):
+    def _chain_rig(self, live_play=None, *, attaches=True, press=None, engine=ENGINE,
+                   loaded=None):
+        """A chained-start rig whose game has `loaded` loaded; None means the
+        rig's own song folder."""
         events = []
         seen = {}
 
@@ -1226,14 +1262,28 @@ class GameToolsTest(unittest.TestCase):
 
         press = press if press is not None else (lambda lanes, axes=None: {})
         t = ToolRig(self.tmp, live_play=live_play or played)
-        t.tools.use_run_parts(GT.RunParts(self.ChainFrida(events, attaches),
-                                          self.ChainKit(events, press if press != "none" else None),
-                                          self.ChainSp(events, engine)))
+        t.tools.use_run_parts(GT.RunParts(
+            self.ChainFrida(events, attaches, t.r.song if loaded is None else loaded),
+            self.ChainKit(events, press if press != "none" else None),
+            self.ChainSp(events, engine)))
         return t, events, seen
+
+    def _song_copy(self, schedule_path):
+        """A copy of the schedule file at `schedule_path` made from this
+        test's song, so a fixture schedule passes ch_run_chart's song checks.
+        A path with no file stays as it is."""
+        if not os.path.isfile(schedule_path):
+            return schedule_path
+        with open(schedule_path, encoding="utf-8") as f:
+            schedule = json.load(f)
+        path = os.path.join(self.tmp, "song " + os.path.basename(schedule_path))
+        _write(path, json.dumps(for_song(schedule, self._song())).encode())
+        return path
 
     def _run(self, t, score=None, schedule=None, **kw):
         reply = t.tools.ch_run_chart(t.r.song, score or self._score_json(),
-                                     schedule or self._schedule_json(), "System", **kw)
+                                     self._song_copy(schedule) if schedule else
+                                     self._schedule_json(), "System", **kw)
         if t.tools._play is not None:
             t.tools._play.thread.join(THREAD_CAP_S)
         return reply
@@ -1275,15 +1325,19 @@ class GameToolsTest(unittest.TestCase):
     def test_the_reply_has_a_line_per_part_and_names_the_first_press(self):
         t, _events, _seen = self._chain_rig()
         lines = self._run(t).splitlines()
-        self.assertEqual([line.split(":")[0] for line in lines[:5]],
-                         ["attach", "kit setup", "watch", "machine recorder", "play"])
-        self.assertIn(f"engine {self.ENGINE:#x}, csv: w.csv", lines[2])
+        self.assertEqual([line.split(":")[0] for line in lines[:6]],
+                         ["attach", "song check", "kit setup", "watch", "machine recorder",
+                          "play"])
+        self.assertRegex(lines[1], r"^song check: ok, .* s, " + re.escape(t.r.song) + " is loaded$")
+        self.assertIn(f"engine {self.ENGINE:#x}, csv: w.csv", lines[3])
         self.assertEqual(lines[-1], "first press chord index 0 at 1000.0 ms")
-        # The five parts, the schedule's declined line, the press log's line
-        # and the first press.
-        self.assertEqual(lines[5], "declined: chords none")
-        self.assertEqual(len(lines), 8)
-        self.assertEqual(lines[3], "machine recorder: none; this run is not recorded")
+        # The six parts, the schedule's declined line, the builds record's
+        # line, the press log's line and the first press.
+        self.assertEqual(lines[6], "declined: chords none")
+        self.assertEqual(lines[7], "builds record: "
+                         + os.path.join(t.tools.session_dir(), "builds-1.json"))
+        self.assertEqual(len(lines), 10)
+        self.assertEqual(lines[4], "machine recorder: none; this run is not recorded")
 
     # -- the press log file -------------------------------------------------------------
 
@@ -1468,7 +1522,8 @@ class GameToolsTest(unittest.TestCase):
         lines = self._refine_run_lines("mouths_refine")
         self.assertEqual(lines[:5], [MOUTHS_DECLINED, MOUTHS_SQUEEZES] + MOUTHS_ANCHORS)
         self.assertTrue(lines[5].startswith(MOUTHS_ORDER), lines[5][:200])
-        self.assertTrue(lines[6].startswith("press log: "), lines[6])
+        self.assertTrue(lines[6].startswith("builds record: "), lines[6])
+        self.assertTrue(lines[7].startswith("press log: "), lines[7])
 
     def test_the_freak_run_reply_names_its_anchors(self):
         lines = self._refine_run_lines("freak_limits")
@@ -1478,7 +1533,8 @@ class GameToolsTest(unittest.TestCase):
         lines = self._refine_run_lines("bomber_refine")
         self.assertEqual(lines[:3], [BOMBER_DECLINED, BOMBER_SQUEEZES, BOMBER_ANCHOR])
         self.assertTrue(lines[3].startswith(BOMBER_ORDER), lines[3][:200])
-        self.assertTrue(lines[4].startswith("press log: "), lines[4])
+        self.assertTrue(lines[4].startswith("builds record: "), lines[4])
+        self.assertTrue(lines[5].startswith("press log: "), lines[5])
 
     def test_decline_mode_and_dump_json_are_not_run_arguments(self):
         t, events, _seen = self._chain_rig()
@@ -1505,8 +1561,8 @@ class GameToolsTest(unittest.TestCase):
         t, events, _seen = self._chain_rig(press="none")
         lines = self._run(t).splitlines()
         self.assertEqual(events, ["attach", ("setup", "System")])
-        self.assertRegex(lines[1], r"^kit setup: FAILED after .* s; the run stopped at kit setup$")
-        self.assertEqual(lines[2], "setup reply")
+        self.assertRegex(lines[2], r"^kit setup: FAILED after .* s; the run stopped at kit setup$")
+        self.assertEqual(lines[3], "setup reply")
         self.assertIsNone(t.tools._play)
 
     def test_a_failed_watch_tears_the_kit_down_and_starts_no_player(self):
@@ -1514,8 +1570,8 @@ class GameToolsTest(unittest.TestCase):
         lines = self._run(t).splitlines()
         self.assertEqual(events[-1], "teardown")
         self.assertNotIn("play", events)
-        self.assertRegex(lines[2], r"^watch: FAILED after .* s; the run stopped at watch$")
-        self.assertEqual(lines[3:], ["watcher ended: no song", "kit teardown: all checks ok"])
+        self.assertRegex(lines[3], r"^watch: FAILED after .* s; the run stopped at watch$")
+        self.assertEqual(lines[4:], ["watcher ended: no song", "kit teardown: all checks ok"])
         self.assertIsNone(t.tools._play)
 
     def test_a_player_that_ends_with_no_press_tears_the_kit_down(self):
@@ -1600,16 +1656,110 @@ class GameToolsTest(unittest.TestCase):
     def test_the_tools_take_schedule_json_and_no_dump_json(self):
         # Question 6 (a) of docs/superpowers/plans/2026-11-08-replay-press-
         # schedule.md and D324 item 2: schedule_json replaces dump_json, and
-        # no decline mode, path index or lead is an argument.
+        # no decline mode or lead is an argument. D318 item 4: ch_play_chart
+        # and ch_run_chart take path_index.
         signatures = {name: list(inspect.signature(getattr(GT.GameTools, name)).parameters)
                       for name in ("ch_play_chart", "ch_run_chart", "ch_edge_probe")}
         self.assertEqual(signatures, {
             "ch_play_chart": ["self", "score_json", "schedule_json", "log", "song_folder",
-                              "route"],
+                              "route", "path_index"],
             "ch_run_chart": ["self", "song_folder", "score_json", "schedule_json",
-                             "kit_player"],
+                             "kit_player", "path_index"],
             "ch_edge_probe": ["self", "song_folder", "score_json", "schedule_json",
                               "probes_json"]})
+
+    # -- the right song and path (D318 item 4) --------------------------------------------
+
+    def test_run_chart_refuses_when_the_loaded_folder_is_not_the_schedules_chart(self):
+        other = os.path.join(self.tmp, "songs", "Another Song")
+        t, events, _seen = self._chain_rig(loaded=other)
+        lines = self._run(t).splitlines()
+        # The attach ran; no kit was built, no watch started, nothing pressed.
+        self.assertEqual(events, ["attach"])
+        self.assertIsNone(t.tools._play)
+        self.assertRegex(lines[1], r"^song check: FAILED after .* s; the run stopped at song check$")
+        self.assertEqual(lines[2], f"the game has the song folder {json.dumps(other)} loaded, "
+                                   f"not the schedule's chart folder {t.r.song}; nothing pressed")
+
+    def test_run_chart_refuses_when_no_song_is_loaded_or_the_read_fails(self):
+        t, events, _seen = self._chain_rig()
+        for loaded, said in ((None, "the game has the song folder null loaded"),
+                             (StateUnread("not attached"), "no read came back: not attached")):
+            with self.subTest(loaded=loaded):
+                t.tools._run_parts.frida.loaded = loaded
+                events.clear()
+                lines = self._run(t).splitlines()
+                self.assertEqual(events, ["attach"])
+                self.assertTrue(lines[2].startswith(said), lines[2])
+
+    def test_run_chart_refuses_a_song_folder_that_is_not_the_schedules_before_the_attach(self):
+        t, events, _seen = self._chain_rig()
+        schedule = os.path.join(self.tmp, "x schedule.json")
+        _write(schedule, json.dumps(for_song(SCHEDULE_JSON, os.path.join(self.tmp, "x"))).encode())
+        reply = t.tools.ch_run_chart(t.r.song, self._score_json(), schedule, "System")
+        self.assertEqual(reply, f"refused: song_folder {t.r.song} is not the folder of the "
+                                f"schedule's chart, {os.path.join(self.tmp, 'x')}; nothing started")
+        self.assertEqual(events, [])
+
+    def test_run_chart_refuses_a_schedule_with_no_chart_or_a_relative_one(self):
+        t, events, _seen = self._chain_rig()
+        for chart, said in ((None, "names no chart"),
+                            ("songs/x/notes.chart", "names its chart by the relative path")):
+            with self.subTest(chart=chart):
+                path = os.path.join(self.tmp, "chart schedule.json")
+                doc = dict(SCHEDULE_JSON)
+                if chart is not None:
+                    doc["chart"] = chart
+                _write(path, json.dumps(doc).encode())
+                reply = t.tools.ch_run_chart(t.r.song, self._score_json(), path, "System")
+                self.assertTrue(reply.startswith(f"refused: {path} {said}"), reply)
+                self.assertEqual(events, [])
+
+    def test_path_index_must_match_path_source(self):
+        dump = PATH_SOURCE["file"]
+        cases = (
+            (dict(SCHEDULE_JSON, path_source={"file": dump, "index": 2}), 0,
+             f"was made from path 2 of {dump}, but path_index is 0; nothing started"),
+            ({k: v for k, v in SCHEDULE_JSON.items() if k != "path_source"}, 0,
+             "has no path_source index, so the path it plays is unknown"),
+            (SCHEDULE_JSON, 1, f"was made from path 0 of {dump}, but path_index is 1"))
+        t, events, _seen = self._chain_rig()
+        for doc, index, said in cases:
+            with self.subTest(said=said):
+                path = self._schedule_json(doc)
+                reply = t.tools.ch_run_chart(t.r.song, self._score_json(), path, "System",
+                                             path_index=index)
+                self.assertTrue(reply.startswith(f"refused: {path} {said}"), reply)
+                self.assertTrue(reply.endswith("; nothing started"), reply)
+                self.assertEqual(events, [])
+                reply = t.tools.ch_play_chart(self._score_json(), path, route="keys",
+                                              path_index=index)
+                self.assertTrue(reply.startswith(f"refused: {path} {said}"), reply)
+                self.assertIsNone(t.tools._play)
+        # A schedule made from path 2, asked for path 2, plays.
+        path = self._schedule_json(dict(SCHEDULE_JSON, path_source={"file": dump, "index": 2}))
+        reply = t.tools.ch_run_chart(t.r.song, self._score_json(), path, "System", path_index=2)
+        t.tools._play.thread.join(THREAD_CAP_S)
+        self.assertIn("first press chord index 0", reply)
+
+    def test_builds_json_in_the_run_folder(self):
+        t, _events, _seen = self._chain_rig()
+        path = self._schedule_json(dict(SCHEDULE_JSON, hydra_replay_build="Nov  8 2026 17:56:03"))
+        self._run(t, schedule=path)
+        with open(os.path.join(t.tools.session_dir(), "builds-1.json"), encoding="utf-8") as f:
+            record = json.load(f)
+        # The chained start loads the state agent and the kit agent; the
+        # server did not launch this game for a human player, so no launch agent.
+        self.assertEqual([a["file"] for a in record["agents"]], ["state.js", "kit.js"])
+        self.assertEqual(record["hydra_replay_build"], "Nov  8 2026 17:56:03")
+        # A schedule with no build field says so in the next run's file.
+        self._run(t)
+        with open(os.path.join(t.tools.session_dir(), "builds-2.json"), encoding="utf-8") as f:
+            self.assertEqual(json.load(f)["hydra_replay_build"], build_stamp.NO_REPLAY_BUILD)
+
+    def test_a_human_launch_adds_the_launch_agent_to_the_builds_record(self):
+        self.assertEqual([os.path.basename(p) for p in GT.run_agent_paths("x/launch.js")],
+                         ["launch.js", "state.js", "kit.js"])
 
     def test_with_no_parts_handed_in_it_refuses_and_touches_nothing(self):
         t = ToolRig(self.tmp)
@@ -2268,7 +2418,7 @@ class RecorderTest(unittest.TestCase):
 
         self.t.tools._live_play = played
         self.t.tools.use_run_parts(GT.RunParts(
-            GameToolsTest.ChainFrida(events),
+            GameToolsTest.ChainFrida(events, loaded=self.t.r.song),
             GameToolsTest.ChainKit(events, lambda lanes, axes=None: {}),
             GameToolsTest.ChainSp(events, self.ENGINE)))
         return self.t.tools
@@ -2279,7 +2429,7 @@ class RecorderTest(unittest.TestCase):
             json.dump(SCORE_JSON, f)
         schedule = os.path.join(self._tmp.name, "schedule.json")
         with open(schedule, "w", encoding="utf-8") as f:
-            json.dump(SCHEDULE_JSON, f)
+            json.dump(for_song(SCHEDULE_JSON, self.t.r.song), f)
         reply = self.t.tools.ch_run_chart(self.t.r.song, score, schedule, "System")
         self.t.tools._play.thread.join(THREAD_CAP_S)
         return reply
@@ -2668,7 +2818,7 @@ class PlayerLimitsLinesTest(unittest.TestCase):
 
         t = ToolRig(self.tmp, live_play=live_play)
         # The game's end is read after chord 0, planned at a hand-picked 1000.
-        schedule = _schedule_of(SCORE_JSON)
+        schedule = schedule_of(SCORE_JSON)
         schedule["chords"][0]["reads"] = [{"activation": 0, "planned_end_ms": 1000.0,
                                            "stored_end_ms": 1000.0}]
         t.tools.ch_play_chart(self._json("score.json", SCORE_JSON),
