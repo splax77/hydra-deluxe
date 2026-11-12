@@ -2371,6 +2371,7 @@ Song load_container_srb(const ByteSource& src, const ChartReading& reading,
     else  // Unexpected filename: sniff the payload instead.
         is_mid = is_midi_header(notebytes.data(), notebytes.size());
 
+    // SrbMetadata holds no song.ini drum keys, so both read as unset here.
     if (is_mid) return load_songbytes_mid(notebytes, reading, rules, fills);
     return load_songbytes_chart(notebytes, reading, rules, fills);
 }
