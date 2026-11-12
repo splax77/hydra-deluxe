@@ -161,6 +161,7 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	method	1068		.cctor	0x266340		0x266340
 6142	method	1068		ʲʻʺʹʴʷˁʽʲʷʺ	0x262100		0x262100
 6142	method	1068		ʲʿʿʺʶʻʿʻʵʺʹ	0x262940		0x262940
+6142	method	1068		ʸʺˁʳʹʹˁʶˁʸʵ	0x2642C0		0x2642C0
 6142	method	10690	MethodCallExpression	GetInstance	0x84220		0x84220
 6142	method	10694	MethodCallExpression0	get_ArgumentCount	0x84220		0x84220
 6142	method	10695	MethodCallExpression1	get_ArgumentCount	0x102040		0x102040
@@ -521,6 +522,7 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	method	16020	Unsafe	SizeOf<byte>	0x102040		0x102040
 6142	method	16061	__Il2CppComObject	Finalize	0x2BF4C30		0x2BF4C30
 6142	method	16062	__Il2CppComDelegate	Finalize	0x2BF4C30		0x2BF4C30
+6142	method	1710	Int32	TryParse	0x1B4F710		0x1B4F710
 6142	method	1721	Math	Ceiling	0x1B518E0		0x1B518E0
 6142	method	1721	Math	Ceiling	0x1B518E0		Math.Ceiling
 6142	method	176	SongEntry	ʶʻʻʽʼʲʷˀʾʽʷ	0x358560		0x358560
@@ -1247,6 +1249,8 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	method	8639		ˁˀʻʽʿʸʾʷʻʹʶ	0x2158DF0		0x2158DF0
 6142	method	8646		ʲʿʿʺʶʻʿʻʵʺʹ	0x21647A0		0x21647A0
 6142	method	8646		ʸʷʽʺʼʻʿʾʸʾʸ	0x2165C50		0x2165C50
+6142	method	8646		ʸʺˁʳʹʹˁʶˁʸʵ	0x1D4480		0x1D4480
+6142	method	8646		ˀʷʳʵʸʼˀʷʵʷʶ	0x21695E0		0x21695E0
 6142	method	8661		ʲʲʲʿʴʴʴʷʲʽʳ	0x215B7C0		#8661.AddFillTwin
 6142	method	8661		ʲʲʲʿʴʴʴʷʲʽʳ	0x215B7C0		0x215B7C0
 6142	method	8661		ʲʸˁʽʷʵʼʴˀʶʶ	0x215B8C0		0x215B8C0
