@@ -63,6 +63,14 @@ inline Song load_songpath_reading(const ByteSource& src, const std::string& path
     return load_songpath_reading(src, path, reading, core::default_rules(), kTestFillRule);
 }
 
+// Each chord's code (core/model.h's Chord::code), in song order.
+inline std::vector<std::string> chord_codes(const std::vector<SongTimestamp>& sequence) {
+    std::vector<std::string> out;
+    for (const SongTimestamp& ts : sequence) out.push_back(ts.chord.code());
+    return out;
+}
+inline std::vector<std::string> chord_codes(const Song& song) { return chord_codes(song.sequence); }
+
 }  // namespace hydra
 
 #endif  // HYDRA_TESTS_LOAD_UTIL_H
