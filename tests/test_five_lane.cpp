@@ -226,7 +226,8 @@ TEST_CASE("five-lane .mid: blue, orange and green on one tick load with a green 
     const Song song =
         load_songbytes_mid(drum_mid({on(0, kBlue), on(0, kOrange), on(0, kGreen)}), kPro);
     REQUIRE(song.sequence.size() == 1);
-    const Chord& chord = song.sequence[0].chord;
+    // hydra:: because temp_util.h's <windows.h> also declares the GDI function ::Chord.
+    const hydra::Chord& chord = song.sequence[0].chord;
     REQUIRE(chord.at(NoteColor::Blue).has_value());
     REQUIRE(chord.at(NoteColor::Green).has_value());
     CHECK_FALSE(chord.at(NoteColor::Blue)->is_cymbal());
