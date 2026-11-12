@@ -1,10 +1,11 @@
 """Shared live-game pieces for the hit-window experiments.
 
-watch_window.py, walk_edges.py and active_probe.py read the same engine fields
-and ask the same small questions while a song plays. They share this file so
-the runners agree on the answers. watch_window.py and walk_edges.py also load a
-probe song's manifest here (load_manifest). The questions:
+watch_window.py, play_chart.py and sp_watch.py read the same engine fields and
+ask the same small questions while a song plays. They share this file so the runners agree
+on the answers. watch_window.py also loads a probe song's manifest here
+(load_manifest). The questions:
 
+  * what song time it is between two game frames (SongClock),
   * when the song clock has reached a target time (wait_until),
   * whether the song has stopped: clock frozen or jumped back (StoppedCheck),
   * which note to start at when a run joins mid-song (first_note_index),
@@ -105,6 +106,42 @@ class ReadsSongClock(Protocol):
     def read(self) -> tuple[float, float]:
         """(raw, estimate), both song seconds."""
         ...
+
+
+class SongClock:
+    """The song clock, with the time since the last frame filled in.
+
+    The game writes the clock once per frame. When we see it change right
+    after a read that still showed the old value, we know the new value is
+    fresh, and we add the wall time since then. If the change was not seen
+    promptly, we don't know how stale it is, so we use the raw value until the
+    next fresh change. The fill-in is capped so a pause can't run it away.
+    """
+
+    def __init__(self, read_raw: Callable[[], float],
+                 now: Callable[[], float] = time.perf_counter,
+                 fresh_s: float = C.CLOCK_FRESH_S,
+                 max_fill_s: float = C.CLOCK_MAX_FILL_S) -> None:
+        self._read_raw = read_raw
+        self._now = now
+        self._fresh_s = fresh_s
+        self._max_fill_s = max_fill_s
+        self._last_raw: Optional[float] = None
+        self._last_read_t: Optional[float] = None
+        self._anchor_t: Optional[float] = None
+
+    def read(self) -> tuple[float, float]:
+        """(raw, estimate), both song seconds."""
+        raw = self._read_raw()
+        t = self._now()
+        if raw != self._last_raw:
+            fresh = self._last_read_t is not None and t - self._last_read_t <= self._fresh_s
+            self._anchor_t = t if fresh else None
+            self._last_raw = raw
+        self._last_read_t = t
+        if self._anchor_t is None:
+            return raw, raw
+        return raw, raw + min(t - self._anchor_t, self._max_fill_s)
 
 
 # Sleep while the target is further ahead than this; inside it, spin. Every

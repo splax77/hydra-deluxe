@@ -64,7 +64,7 @@ from tools.ch_probe.input_driver import (
     LANE_NAMES, InputDriver, Lane, find_game_window, focus_window)
 from tools.ch_probe.experiments import live
 from tools.ch_probe.experiments.overlay_logs import PRESS_LOG_COLUMNS
-from tools.ch_probe.experiments.walk_edges import SongClock
+from tools.ch_probe.experiments.live import SongClock
 
 # What a declined chord's press row and printed line say in place of a result.
 DECLINED = "declined"
