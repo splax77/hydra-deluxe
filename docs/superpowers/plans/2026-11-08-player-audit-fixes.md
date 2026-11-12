@@ -422,7 +422,7 @@ Where the waiting work fits: `kit.js` is rebuilt in LS-A1; LS-M2 reruns as LS-A2
 | P24: `sp_compare` has `report.check(True, ...)` lines and the ready copies | code | `sp_compare.py` lines 114 to 122, 288 to 292, 388, 418, 448, 458 | checked 2026-11-08 |
 | P25: `compare_scorestats.compare` reads `accent_notes_hit`/`ghost_notes_hit` and no checksum | code | `tools/ch_mcp/compare_scorestats.py` lines 81, 111 to 113; `git grep checksum` finds no line in it | checked 2026-11-08 |
 | P26: the count report prints `not_hooked` | code | `tools/ch_mcp/trace_hits.py` lines 211 to 212 | checked 2026-11-08 |
-| P27: which agent file reads the watch's Star Power columns (`sp_amount_u64`, `sp_max_u64`) | unchecked | `tools/ch_mcp/sp_tools.py` lines 71 to 83 name the Python side only | F6 |
+| P27: which agent file reads the watch's Star Power columns (`sp_amount_u64`, `sp_max_u64`) | code | none does: a search of `tools/` for `sp_amount`, `sp_max`, `0x1B0` and `0x68` in `.ts`, `.js` and `.py` files finds only Python (`sp_tools.py`, `engine.py`, `constants.py`, `overlay_logs.py`, `sp_compare.py`), so F6 owns no agent file | checked 2026-11-11 |
 | P28: the game stores its half at engine `+0x1B8` (SP-16) | data | `docs/clone-hero/05-star-power.md` lines 107, 169 | checked 2026-11-08 |
 | P29: `sp_tools` calls `at_ready_level` and prints `READY_FRACTION` | code | `tools/ch_mcp/sp_tools.py` lines 71 to 83; `tests/test_sp_tools.py` lines 293, 302 | checked 2026-11-08 |
 | P30: `edge_probe` is imported by `game_tools.py`, not `server.py` (exits.md L84 is wrong on this) | code | `tools/ch_mcp/game_tools.py` line 36; `git grep edge_probe tools/ch_mcp/server.py` finds nothing | checked 2026-11-08 |
