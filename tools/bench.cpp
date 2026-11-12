@@ -1308,6 +1308,7 @@ static int bench_main() {
     if (argc > 2 && argv[1] == "--open") {
         int runs = 7;  // the count the --open request asked for by default
         std::optional<std::string> ini;
+        // The options start after argv[1] (--open) and argv[2] (the file).
         for (int i = 3; i < argc; ++i) {
             if (argv[i] == "--runs" && i + 1 < argc) runs = std::stoi(argv[++i]);
             else if (argv[i] == "--ini" && i + 1 < argc) ini = argv[++i];
