@@ -473,7 +473,7 @@ std::vector<std::string> md5_set_of(const std::vector<ChartLibraryEntry>& rows) 
 }
 
 // Checks two reads of one row gave the same row, field for field.
-void check_same_row(const ChartLibraryEntry& n, const ChartLibraryEntry& e) {
+void check_same_entry(const ChartLibraryEntry& n, const ChartLibraryEntry& e) {
     CHECK(n.title == e.title);
     CHECK(n.artist == e.artist);
     CHECK(n.charter == e.charter);
@@ -509,7 +509,7 @@ TEST_CASE("store: the unsorted chart list read returns the rows the read by name
         for (const ChartLibraryEntry& n : by_name) {
             if (n.md5 != e.md5) continue;
             found = true;
-            check_same_row(n, e);
+            check_same_entry(n, e);
         }
         CHECK(found);
     }
@@ -580,7 +580,7 @@ TEST_CASE("store: the chart list read on threads returns the rows the one-connec
             for (const ChartLibraryEntry& n : one) {
                 if (n.md5 != e.md5) continue;
                 ++found;
-                check_same_row(n, e);
+                check_same_entry(n, e);
             }
             CHECK(found == 1);
         }
