@@ -387,7 +387,7 @@ OpenGate::OpenGate(OpenHold hold, double min_hold_s)
                 // The conversion is where the upgrade's screen has all its
                 // words; the library read is the step every open reaches.
                 const Step at = hold == OpenHold::Conversion ? Step::ConvertingRecords
-                                                             : Step::LoadingLibrary;
+                                                             : Step::ReadingCharts;
                 if (progress.step != at) return;
                 if (g_open_gate_open.load()) return;
                 ++g_open_gate_started;

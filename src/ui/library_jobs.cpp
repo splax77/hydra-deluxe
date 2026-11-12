@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstddef>
 #include <filesystem>
 #include <stdexcept>
 #include <utility>
@@ -25,30 +26,62 @@ StoreOpenGate g_store_open_gate;
 void set_store_open_gate_for_test(StoreOpenGate gate) { g_store_open_gate = std::move(gate); }
 
 std::string StoreOpenProgress::label() const {
-    // A file that needs no conversion reads one line for the open and the
-    // library read alike (D100 item 7).
+    // The library read names its two steps on every file, upgraded or not
+    // (the user's answer of 2026-11-12).
+    if (step == Step::ReadingCharts) return "Reading your charts...";
+    if (step == Step::ReadingResults) return "Reading your results...";
+    // A file that needs no conversion reads one line while it opens.
     if (!upgrading) return "Opening your library...";
     switch (step) {
         case Step::ConvertingRecords: return "Updating the results table...";
         case Step::ReadingSavedPaths: return kReadingSavedPathsLabel;
         case Step::Opening:  // the store reports Opening only before the conversion
-        case Step::LoadingLibrary: return "Finishing...";
+        case Step::ReadingCharts:
+        case Step::ReadingResults: return "Finishing...";
     }
     return "Finishing...";
 }
 
+namespace {
+
+uint64_t row_count(int64_t rows) { return rows > 0 ? static_cast<uint64_t>(rows) : 0; }
+
+}  // namespace
+
 std::string read_library(store::RecordStore& store, const app::Settings& settings,
-                         LibraryModel& library) {
+                         LibraryModel& library, const LibraryReadFn& progress) {
+    using Step = StoreOpenProgress::Step;
+    // Both steps count out of this one number.
+    uint64_t charts_total = 0;
     try {
+        store::RowsReadFn on_row;
+        if (progress) {
+            charts_total = row_count(store.chart_library_count());
+            if (!progress(Step::ReadingCharts, 0, charts_total)) throw JobCancelled{};
+            on_row = [&](int64_t rows_read) {
+                return progress(Step::ReadingCharts, row_count(rows_read), charts_total);
+            };
+        }
         // The whole scan in one read. Every chart is needed anyway: the chips
         // count them and the search filters them in memory.
-        library.set_charts(store.list_chart_library(0, -1));  // -1 = no limit
+        library.set_charts(store.list_chart_library(0, -1, on_row));  // -1 = no limit
+    } catch (const Cancelled&) {
+        throw;  // a stop, not a failed read
     } catch (const std::exception& e) {
         return app::plain_error(e);
     }
     try {
-        read_library_summaries(store, settings, library);
+        RowsAnsweredFn on_slice;
+        if (progress) {
+            if (!progress(Step::ReadingResults, 0, charts_total)) throw JobCancelled{};
+            on_slice = [&](uint64_t rows_answered) {
+                return progress(Step::ReadingResults, rows_answered, charts_total);
+            };
+        }
+        read_library_summaries(store, settings, library, on_slice);
         library.sort_if_out_of_date();
+    } catch (const Cancelled&) {
+        throw;  // a stop, not a failed read
     } catch (const std::exception& e) {
         return app::plain_error(e);
     }
@@ -56,8 +89,25 @@ std::string read_library(store::RecordStore& store, const app::Settings& setting
 }
 
 void read_library_summaries(store::RecordStore& store, const app::Settings& settings,
-                            LibraryModel& library) {
-    library.set_summaries(store.lookup(library.hashes(), settings.profile()));
+                            LibraryModel& library, const RowsAnsweredFn& on_slice,
+                            size_t slice_charts) {
+    const std::vector<std::string> hashes = library.hashes();
+    if (!on_slice) {
+        library.set_summaries(store.lookup(hashes, settings.profile()));
+        return;
+    }
+    const size_t slice = std::max<size_t>(slice_charts, 1);
+    std::vector<store::RecordLookup> answers;
+    answers.reserve(hashes.size());
+    for (size_t from = 0; from < hashes.size(); from += slice) {
+        const size_t to = std::min(hashes.size(), from + slice);
+        const std::vector<std::string> part(hashes.begin() + static_cast<std::ptrdiff_t>(from),
+                                            hashes.begin() + static_cast<std::ptrdiff_t>(to));
+        for (store::RecordLookup& answer : store.lookup(part, settings.profile()))
+            answers.push_back(std::move(answer));
+        if (!on_slice(static_cast<uint64_t>(answers.size()))) throw JobCancelled{};
+    }
+    library.set_summaries(answers);
 }
 
 StoreOpenJob::StoreOpenJob(std::string db_path, core::RulesStamp rules, app::Settings settings)
@@ -118,8 +168,6 @@ StoreOpenProgress::Step screen_step(store::OpenStep step) {
     return Step::Opening;
 }
 
-uint64_t row_count(int64_t rows) { return rows > 0 ? static_cast<uint64_t>(rows) : 0; }
-
 }  // namespace
 
 void StoreOpenJob::run() {
@@ -150,11 +198,13 @@ void StoreOpenJob::run() {
                 fill_problem = app::plain_error(e);
             }
             if (!filled) throw JobCancelled{};
-            // The last counted step's counts stay on the bar while the
-            // library is read.
-            if (!report(Step::LoadingLibrary, rows_done_.load(), rows_total_.load()))
-                throw JobCancelled{};
-            library_problem_ = read_library(*store_, settings_, library_);
+            // The library read counts its own two steps; a stop inside it
+            // comes out as Cancelled, not as the read's problem.
+            library_problem_ = read_library(
+                *store_, settings_, library_,
+                [this](Step step, uint64_t rows_done, uint64_t rows_total) {
+                    return report(step, rows_done, rows_total);
+                });
             // A read that fails here is the status line's problem, as a failed
             // library read is; the app still opens.
             if (library_problem_.empty()) {
