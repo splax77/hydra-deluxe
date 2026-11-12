@@ -213,6 +213,8 @@ Acceptance criteria:
 1. `--cold` prints a cold line beside the warm line. Check: the bench command with `--cold`.
 2. The plan states the outcome either way. Check: this file's diff, with the two medians.
 
+Outcome (2026-11-12, `hydra_bench --open --runs 7 --as-ready --threads 8 --cold` on the scratch copy of the user's library, built from T8's branch before T4 merged): "open + read_library, no callback" median 132.1 ms warm and 396.8 ms cold (min 387.3), so reading the library file uncached adds 264.7 ms. The cold median is above the warm one, so the drop works on this machine and T8 merges.
+
 ### T9: The bench follows the merged read, and the plan leaves
 
 Owned files: `tools/bench.cpp`, `docs/audit/2026-10-03-fix-decisions.md`, `docs/superpowers/plans/2026-11-12-open-savings.md`. Last.
