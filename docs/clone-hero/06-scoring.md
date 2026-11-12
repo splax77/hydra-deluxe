@@ -2,7 +2,7 @@
 
 This page covers note values, the multiplier and combo, accents and ghosts, the solo bonus, star cutoffs and the score breakdown.
 It describes build 1.1 (v1.1.0.6142).
-Last write-back: 2026-11-08.
+Last write-back: 2026-11-11.
 
 The run files named below are of three kinds. The three bot runs of 2026-10-28 are in C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-10-28\l1\bot\ (outside the repo): Window Map, and Trippin SP Spike on Drums and on ProDrums. "Run 1" is the key-press auto-player run on Trippin SP Spike, `run1_cal0_scorestats.json` under tools/ch_probe/experiments/results/overlay-spike/. The virtual kit runs of 2026-11-06 to 2026-11-08 each have a folder under C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\<date>\, named by its run (such as ls-o3-run1), holding the run's scorestats file. With the bot files that makes 16 scorestats files under that folder. Engine fields belong to the base engine class #8288; the drum engine is #8255. `ghidra_decompile_all.txt` is Ghidra's full decompile of build 6142, which `code/README.md` describes; it is not in the repo.
 
@@ -90,15 +90,15 @@ Hydra: `category_scores` in src/core/scoring.cpp line 26
 Ruling: none needed: same rule
 Found: 2026-10-30, session b02ab3e6 (the reference build)
 
-### SC-09 A fourth running total moves on two note flags
+### SC-09 A fourth running total moves on two note flags and is written as squeezed_score
 
-Rule: The adder also changes a fourth total at +0xD0: it takes away (multiplier minus 1) times points outside Star Power when one note flag is set, and adds half times points inside Star Power when another is set. What the total and the flags mean is not known.
-Label: Unknown
-Evidence: The instructions are lines 51 to 54 and 74 to 80 of the adder; the flag getters `0x214BBA0` and `0x214B600` each test one bit of note +0x84. The tie to the file's squeezed_score is a guess (SC-37).
-Game code (6142): RVA `0x20F6EB0`, `code/6142/add_note_score_20F6EB0.asm` lines 51 to 54 and 74 to 80
-Hydra: no owner: not searched
-Ruling: none yet: the meaning is not settled
-Found: 2026-10-30, session b02ab3e6 (the reference build)
+Rule: The adder also changes a fourth total at +0xD0. Outside Star Power it takes away (multiplier minus 1) times the points when bit 0x20 of note +0x84 is set, and inside Star Power it adds half the multiplier times the points, the Star Power share that note earned, when bit 0x10 is set. Only the base hit routine sets the two bits, before the note is scored: bit 0x10 on a note hit during Star Power whose time is at or before the activation time or after the end time, and bit 0x20 on a note hit with Star Power off within the half-window of the last end. The total is what the stats file writes as squeezed_score. That this total and these bits are about squeezing is read from the names the game gives the file's keys and the dump gives the bits, not from what the code does with them.
+Label: Proven in the game's code
+Evidence: The adder `code/6142/add_note_score_20F6EB0.asm` lines 45 to 54 (outside Star Power: the combo share at line 50, the getter `0x214BBA0` at line 51, the take-away at line 54) and 62 to 80 (inside: the halved multiplier at lines 62 to 66, the getter `0x214B600` at line 75, the add at line 79). The two getters test bits 0x20 and 0x10 of note +0x84 (`docs/audit/note-shuffle/scout-flag/note_getters.txt`). The setters `0x214B6E0` (bit 0x10) and `0x214B710` (bit 0x20) are called only in the base hit routine `0x20F63F0` (no direct caller found elsewhere, byte scan of il2cpp and .text; a scan for each setter's mask constant found each mask once): `docs/audit/drum-lanes/play/f20f63f0_base_hit.asm` lines 78 to 103 set bit 0x10 and count `+0xE8`, and lines 104 to 119 set bit 0x20 and count `+0xEC` (page 05, SP-36). The drum hit handler calls the base hit before it scores the note (`code/6142/note_hit_dynamics_20DE770.md` lines 13 and 14). The total reaches the file in three copies: `code/6142/engine_stats_20F3DC0.asm` lines 281 and 282 copy `+0xD0` to the player's `+0x3C`, `code/6142/stats_fill_112490.asm` lines 125 and 126 copy that to the record's `+0x50`, and `code/6142/score_submit.asm` lines 266 to 270 write it under the key squeezed_score. The dump's enum for the word at note +0x84 (#8590, `dump.cs` lines 548224 to 548234; the field's type at line 548388) names 16 `WasSqueezed` and 32 `WasSqueezeLoss`; enum values are not checked by the docs test. Not opened: an `or ax, 0x10` in `0x20F0520` and an `or ax, 0x20` in `0x20DE070`, which may set the same word on another route or touch another field.
+Game code (6142): RVA `0x20F6EB0`, `code/6142/add_note_score_20F6EB0.asm` lines 45 to 80; the base hit routine, RVA `0x20F63F0`, `docs/audit/drum-lanes/play/f20f63f0_base_hit.asm` lines 78 to 119; the stats copies and writer, listings as above
+Hydra: no owner: a case-blind grep of `src/` for "squeezed_score", "squeezed points", "squeezed_points" and "squeeze_points" finds nothing. Hydra keeps no running total of squeezed points; its own squeeze tests are compared in page 05, SP-36.
+Ruling: none needed: no Hydra rule depends on it
+Found: 2026-10-30, session b02ab3e6 (the reference build); the writers 2026-11-08, session 77057df2; checked 2026-11-11, session 428cf079
 
 ### SC-10 Hit order inside a chord at a multiplier step
 
@@ -124,23 +124,23 @@ Found: 2026-11-07, session f3d8ce9f; the rerun, 2026-11-08, session 77057df2 (do
 
 Rule: In album or setlist play the combo may carry from one song to the next, so every note can pay 4x from the first. Hydra starts the combo at 0 on each chart.
 Label: Unknown
-Evidence: not checked: only card 2059d526 says "the album run starts with a combo over 12,000"; its video report was not opened.
+Evidence: not checked in the game: only card 2059d526 says "the album run starts with a combo over 12,000"; its video report was not opened. Public sources were searched on 2026-11-11 and say nothing either way: two web searches (one on a setlist combo or streak carrying to the next song, one on the combo resetting between setlist songs); the official wiki's "How to Play" page (wiki.clonehero.net), which covers the combo only within a song and says of setlists only that the song menu can "view setlist options"; its "Dictionary" page, which defines a full combo as every note "in a song"; and the v1.1.0.6135 release page and changelog (clonehero.net), which say nothing about setlists or the combo. Reddit was not searched, and no Reddit thread came up in the web results. The search is in `docs/audit/2026-11-08-clone-hero-unknowns/W10b.md`, "SC-11". No game code was read and no setlist was played.
 Game code (6142): none read
 Hydra: `chord_score_table` in src/core/scoring.cpp line 99 (one combo counter per chart)
 Ruling: none yet: the game's rule is not settled
-Found: 2026-10-30, session b02ab3e6 (the reference build)
+Found: 2026-10-30, session b02ab3e6 (the reference build); the public-source search 2026-11-11, session 428cf079
 
 ## Accents and ghosts
 
-### SC-12 An accent or ghost pays double only when marked as performed
+### SC-12 An accent or ghost pays double only when its DynamicsHit flag is set
 
-Rule: An accent or ghost gem pays double only when the hit handler has marked it as performed (the flag with value 4 in the word at note +0x84). Otherwise it pays its plain value.
+Rule: An accent or ghost gem pays double only when the hit handler has set the note's DynamicsHit flag (value 4 in the word at note +0x84). The handler sets it when the hit's velocity falls on the accent or ghost side (SC-13); this page calls such a hit a performed dynamic. Otherwise the gem pays its plain value.
 Label: Proven in the game's code
-Evidence: The drum score method calls the flag test and doubles at lines 19 to 24, then tail-calls the adder at line 31. The test (RVA `0x214BB40`) is `test byte [note+0x84], 4`, and the hit handler's setter (RVA `0x214B740`) sets that same flag; the reviewer of this page read both with tools/ch_mcp/chdis.py on the 6142 DLL, 2026-10-30, and neither is a committed listing.
+Evidence: The drum score method calls the flag test and doubles at lines 19 to 24, then tail-calls the adder at line 31. The test (RVA `0x214BB40`) is `test byte [note+0x84], 4`, and the hit handler's setter (RVA `0x214B740`) sets that same flag; the reviewer of this page read both with tools/ch_mcp/chdis.py on the 6142 DLL, 2026-10-30, and neither is a committed listing. The name DynamicsHit is the dump's: the note's word at +0x84 has the enum type #8590 (`dump.cs` line 548388), and that enum names 4 `DynamicsHit` (line 548231; enum values are not checked by the docs test).
 Game code (6142): RVA `0x20DEEC0`, `code/6142/note_score_add_20DEEC0.asm` lines 19 to 31
-Hydra: no owner for a performed mark: Hydra pays every accent and ghost as performed (src/core/scoring.cpp)
+Hydra: no owner for the DynamicsHit flag: Hydra pays every accent and ghost as performed (src/core/scoring.cpp)
 Ruling: open split: see questions page Q-51
-Found: 2026-10-30, session b02ab3e6 (the reference build)
+Found: 2026-10-30, session b02ab3e6 (the reference build); the enum name 2026-11-11, session 428cf079
 
 ### SC-13 The performed mark compares a lane value with a threshold
 
@@ -246,13 +246,13 @@ Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 ### SC-23 The solo box shows a whole percent and a message ladder
 
-Rule: The box appears when the player hits the solo's first note, not at the chart's solo marker, and hitting the last note ends the solo. During a solo the game shows trunc(float(h) / float(N) times 100.0f) percent. After the last note it shows a message for 1.5 s and the bonus for 1.5 s. The messages run 100 Perfect, 95+ Awesome, 90+ Great, 80+ Good, 70+ Solid, 69 "nice", 60+ Okay, else Messy, and N minus 1 gives "Awesome Choke!".
+Rule: Proven in the game's code: the end message comes from a ladder on a whole percent: exactly 100 gives "Perfect Solo!", 95 or more "Awesome Solo!", 90 or more "Great Solo!", 80 or more "Good Solo!", 70 or more "Solid Solo!", exactly 69 "nice", 60 or more "Okay Solo...", and anything lower "Messy Solo...", which also zeroes the bonus the method stores. "Awesome Choke!" is not on the ladder: it replaces the message whenever a flag passed to the method is set. Still Unknown: the box appears when the player hits the solo's first note, not at the chart's solo marker, and hitting the last note ends the solo. During a solo the game shows trunc(float(h) / float(N) times 100.0f) percent. After the last note it shows a message for 1.5 s and the bonus for 1.5 s. N minus 1 sets the choke flag.
 Label: Unknown
-Evidence: listing lost; read 2026-10-16, sessions 1aaf0ac4 and 5b35957b. D251's record gives the percent formula, the message and bonus times of 1.5 s each, and "Perfect Solo!" at 100%. Card 1aaf0ac4 (docs/sessions/2026-10-16-1aaf0ac4.md) says the session checked the message list and percent ladder against the game's disassembly. The first-note start, and the rest of the message ladder, come from those sessions' own records, which are not kept, and are in no repo file. Hydra's own box was checked in the real app (card 5b35957b, docs/sessions/2026-10-16-5b35957b.md: 44% = 53 / 119), which checks Hydra, not the game.
-Game code (6142): not found (as SC-20)
+Evidence: The ladder: the `SoloCounter` end-message method `0x2960B0` compares its first int with 100, 95, 90, 80, 70, 69 and 60 and picks a text from the method's static array (`code/6142/solo_counter_result_2960B0.asm` lines 21 to 82). Line 40 zeroes its other int on the Messy branch, and line 101 stores that int at `+0x80`. Lines 87 to 99 replace the text with slot 7 when the bool argument is set. The array's ten texts, in slot order, are "Perfect Solo!", "Awesome Solo!", "Great Solo!", "Good Solo!", "Solid Solo!", "Okay Solo...", "Messy Solo...", "Awesome Choke!", soloPointsText and "nice" (`code/6142/solo_counter_message_293CF0.asm` lines 42 to 179). On the online route the zeroed int is the solo bonus: `code/6142/player_solo_remote_2096F0.asm` lines 61 to 73 pass one record field to `0x2960B0` and add it to the engine's `+0xA0`. Whether the box's shown bonus reads `+0x80` was not traced. Every other `SoloCounter` method was disassembled and searched for these compares; only `0x2960B0` has them. The rest is not read. The running percent method `code/6142/solo_counter_percent_294C60.asm` lines 11 to 33 writes an int it is given followed by "%" and does no division, so the formula sits in its callers, the two `BasePlayer` virtual methods `0x2085D0` (slot 26) and `0x2086C0` (slot 49). Neither has a direct caller (byte scan of il2cpp and .text), and a scan for calls through slots 26 and 49 in `BasePlayer` code and the engine's range found none; calls from a subclass, from `BasePlayer<TInputs>` or in another register form were not searched. The constructor makes a 1.5 s and a 0.032 s wait (`code/6142/solo_counter_ctor_2962C0.asm` lines 13 to 30), which fits the 1.5 s, but which coroutine uses each was not traced. What sets the choke flag was not reached. The first-note start and the percent formula come from the 2026-10-16 reads of sessions 1aaf0ac4 and 5b35957b, whose listing was lost: D251's record gives the percent formula, the message and bonus times of 1.5 s each, and "Perfect Solo!" at 100%, and card 1aaf0ac4 (docs/sessions/2026-10-16-1aaf0ac4.md) says the session checked the message list and percent ladder against the game's disassembly. Hydra's own box was checked in the real app (card 5b35957b, docs/sessions/2026-10-16-5b35957b.md: 44% = 53 / 119), which checks Hydra, not the game.
+Game code (6142): the `SoloCounter` end-message method, RVA `0x2960B0`, `code/6142/solo_counter_result_2960B0.asm` lines 21 to 101; the text array method, RVA `0x293CF0`; the percent method, RVA `0x294C60`; the percent formula and the start: not found (looked in every `SoloCounter` method and the three `BasePlayer` callers `0x2085D0`, `0x2086C0` and `0x2096F0`)
 Hydra: `solo_percent` in src/app/preview_view.cpp; `kSoloResultMs` in src/app/preview_view.h (Hydra shows the percent during the solo, then "Perfect Solo!", then the bonus; no other message, since a Hydra path hits every note)
 Ruling: D251: "Game's look + count" and "Like the game"
-Found: 2026-10-30, session b02ab3e6 (the reference build)
+Found: 2026-10-30, session b02ab3e6 (the reference build); the ladder 2026-11-08, session 77057df2; checked 2026-11-11, session 428cf079
 
 ## Star cutoffs
 
@@ -279,12 +279,12 @@ Found: 2026-10-30, session b02ab3e6 (the reference build)
 ### SC-26 The cutoff rounds up
 
 Rule: The rounding after the float multiply is Math.Ceiling, so a cutoff moves by one point only when the base score is not a multiple of 5; drum bases always are.
-Label: Unknown
-Evidence: not checked in a listing: the helper has none. Session 9168b711 (2026-09-27) read it as roundsd mode 0xA; that listing is lost and no repo file holds it. An example of where 32-bit floats matter: a base of 786,437 times the 3.6 slot is 2,831,173.0 in 32-bit floats, so 6 stars need 2,831,173 points, where exact arithmetic would need 2,831,174 (worked out with Python's 32-bit float packing on 2026-10-31 from SC-24 and SC-25; it assumes the rounding is Math.Ceiling, which is this block's open question). The reviewer of this page opened the helper once (tools/ch_mcp/chdis.py on the 6142 DLL, 2026-10-30, no listing committed): it tests a stored CPU-feature value and, when it is 2 or more, jumps to `roundsd xmm0, xmm0, 0xa`, which rounds up; below 2 it runs a software routine that was not read. That fits "rounds up" on a machine with that instruction, and the software path is why the block stays Unknown. Multiples of 5 follow from 50, 65, 100 and 130 (SC-01, SC-02).
-Game code (6142): call target in `code/6142/star_count_210DD00.asm` lines 46 to 48, not listed
-Hydra: `star_cutoff` in src/core/stars.cpp line 9
-Ruling: none needed: no drum chart reaches the difference
-Found: 2026-10-30, session b02ab3e6 (the reference build)
+Label: Proven in the game's code
+Evidence: The star counter widens the 32-bit product to a double (`code/6142/star_count_210DD00.asm` line 46), calls the helper `0x3031130` (line 47) and cuts the result to a 32-bit int (line 48); lines 39 to 45 set up the System.Math class just before the call. The helper is Math.Ceiling by its address: System.Math.Ceiling at `0x1B518E0` is a single jump to it (`code/6142/math_ceiling_1B518E0.asm` line 1; `dump.cs` line 90193). Both of the helper's routes round up. It tests a stored CPU-feature value and picks one (`code/6142/ceil_helper_3031130.asm` lines 1 to 3). The fast route is one `roundsd xmm0, xmm0, 0xa`, and mode 0xA rounds toward plus infinity (`code/6142/ceil_sse41_304BA10.asm` line 1). The software route also returns the ceiling (`code/6142/ceil_soft_3031150.asm`): it cuts off the fraction bits (lines 30 to 37) and adds 1.0 when the number is positive and the cut changed it (lines 38 to 42); a positive number below 1 gives 1.0 (lines 19 to 29), and a finite number of 2 to the 52 or more comes back as it is (lines 12 to 16). An example of where 32-bit floats matter: a base of 786,437 times the 3.6 slot is 2,831,173.0 in 32-bit floats, so 6 stars need 2,831,173 points, where exact arithmetic would need 2,831,174 (worked out with Python's 32-bit float packing on 2026-10-31 from SC-24 and SC-25). Multiples of 5 follow from 50, 65, 100 and 130 (SC-01, SC-02).
+Game code (6142): the rounding helper, RVA `0x3031130`, and its two routes, RVAs `0x304BA10` and `0x3031150`, listings as above; System.Math.Ceiling, RVA `0x1B518E0`; the call in `code/6142/star_count_210DD00.asm` lines 46 to 48
+Hydra: `star_cutoff` in src/core/stars.cpp lines 9 to 15 takes the same steps: a 32-bit float product, widened to a double and rounded up. It then keeps a 64-bit int where the game cuts to a 32-bit int; the two part only above 2,147,483,647 points, far beyond any drum chart's cutoff.
+Ruling: none needed: same rule
+Found: 2026-10-30, session b02ab3e6 (the reference build); the listings 2026-11-08, session 77057df2; checked 2026-11-11, session 428cf079
 
 ### SC-27 The star base is worked out once, when the engine is built
 
@@ -306,15 +306,15 @@ Hydra: `star_cutoff` in src/core/stars.cpp line 9
 Ruling: none needed: same rule
 Found: 2026-10-30, session b02ab3e6 (the reference build)
 
-### SC-29 The star count may leave out the solo bonus
+### SC-29 The star count leaves out the solo bonus and the clean-play bonus
 
-Rule: Hydra compares a score without the solo bonus with the cutoffs. Whether the game's count does the same is not read.
-Label: Unknown
-Evidence: not checked: four other callers of the star counter (`0x210E2A0`, `0x210F140`, `0x21104F0`, `0x2110920`, all in #8351) were found and not opened. Session 9168b711 (2026-09-27) read the count's score as leaving out two bonus totals that are added after the stars are counted. The two fields have scrambled names, so which one is the solo bonus came from CHOpt (another optimizer), which names them the solo bonus and the clean-play bonus, and from the game's changelog, which says solos stopped counting toward stars in v0.20; neither came from the code. That reading comes from the session's own record, which is not kept, and no repo file holds the listing; the changelog line was not re-read for this page. The session's card (docs/sessions/2026-09-27-9168b711.md) records only the question the user answered ("Clone Hero counts stars on your score *without* the solo bonus ...") and that the official wiki (wiki.clonehero.net, "How to play") and CHOpt agree with the game's cutoffs for 3 to 7 stars. Four saved runs have a solo bonus (SC-20), but in none of them does the bonus carry the score across a cutoff: their stars are the same with it or without it (worked from SC-24's table on 2026-11-08), so they do not settle the question.
-Game code (6142): callers of RVA `0x210DD00`, not opened
-Hydra: `score_without_solo` in src/core/stars.h line 51; `path_stars` line 59
-Ruling: none yet: the game's rule is not settled
-Found: 2026-10-30, session b02ab3e6 (the reference build); the solo runs, 2026-11-08, session 77057df2 (docs-gaps search)
+Rule: The game counts stars on the score before the solo bonus (engine +0xA0) is added, and before the clean-play bonus (engine +0xA4) is added too. Hydra compares a score without the solo bonus with the cutoffs, so the two agree whenever the clean-play bonus is 0. That bonus has no traced writer, read 0 in every saved stats file (SC-37), and has no Hydra counterpart.
+Label: Proven in the game's code
+Evidence: The star counter `0x210DD00` has four direct callers, all in #8351 (byte scan of il2cpp and .text), and all four take the same three steps. In `code/6142/band_stars_210E2A0.asm`, lines 111 to 118 add each player's `+0x14`, `+0x10`, `+0x18` and `+0x1C` into the band's `+0x18`, `+0x10`, `+0x14` and `+0x1C`. Lines 171 to 175 then call the counter with the band's `+0x18` as the score and `+0x10` as the star base and keep the count at `+0x20`. Only after that do lines 176 to 181 add `+0x14` and then `+0x1C` into the score. `band_stars_210F140.asm`, `band_stars_21104F0.asm` and `band_stars_2110920.asm` show the same steps (their `.md` files give the lines). Which player field is which comes from the engine and the stats file: `code/6142/engine_stats_20F3DC0.asm` lines 219 and 220 copy the engine score `+0x94` into the player's `+0x14`, lines 234 and 235 the solo bonus `+0xA0` into `+0x18`, and lines 236 and 237 `+0xA4` into `+0x1C`. `code/6142/stats_fill_112490.asm` lines 115 and 116 and 127 and 128 copy `+0x18` and `+0x1C` into the record fields that `code/6142/score_submit.asm` lines 262 and 272 write as solo_bonus_total and clean_play_bonus. The file's score is the getter `0x2130490`, `+0x1C` plus `+0x18` plus `+0x14` (`code/6142/player_total_score_2130490.asm`), so the stars are counted on score less solo_bonus_total less clean_play_bonus. The engine's own star count and the HUD star bar (SC-30) also count on the engine score `+0x94`, without `+0xA0` (`code/6142/engine_stats_20F3DC0.asm` lines 199 to 207; `code/6142/score_manager_sum_1285A0.asm` lines 30 to 34). Where the band count at `+0x20` is shown was not traced. Four saved runs have a solo bonus (SC-20); in none of them does it carry the score across a cutoff (worked from SC-24's table on 2026-11-08).
+Game code (6142): the four callers of RVA `0x210DD00` in #8351, RVAs `0x210E2A0`, `0x210F140`, `0x21104F0` and `0x2110920`, `code/6142/band_stars_210E2A0.asm` lines 111 to 181; the engine stats method, RVA `0x20F3DC0`; the total-score getter, RVA `0x2130490`
+Hydra: `score_without_solo` in src/core/stars.h line 51; `path_stars` line 59. Hydra has no clean-play bonus.
+Ruling: none needed: same rule while the clean-play bonus is 0
+Found: 2026-10-30, session b02ab3e6 (the reference build); the solo runs, 2026-11-08, session 77057df2 (docs-gaps search); the four callers 2026-11-08, session 77057df2; checked 2026-11-11, session 428cf079
 
 ### SC-30 The HUD star bar keeps its own cutoffs
 
@@ -392,64 +392,64 @@ Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 ### SC-37 The per-player keys and what writes each
 
-Rule: Each player entry holds 46 keys, one of them a list of sections with 3 keys each. Every key is a string literal in the game, and every run wrote them all. Which engine counter feeds each key is not traced: the per-player serialiser was not opened. The table below gives, per key, the observed values and what writes it.
-Label: Unknown
-Evidence: stringliteral.json holds every key name. All 16 scorestats files under the run folder, and run 1's file, show the same top-level keys, the same 46 per-player keys and the same three section keys (checked with a short Python script on 2026-11-08). The per-player writer is another class: `0x251A70` only adds an object and `0x112490` copies another stats object.
-Game code (6142): per-player serialiser: not found (looked in `0x251A70` and `0x112490`)
+Rule: Each player entry holds 46 keys, one of them a list of sections with 3 keys each. Every key is a string literal in the game, and every run wrote them all. The per-player serialiser `0x1144C0` writes each key from one field of a record, the filler `0x112490` fills that record from the per-player stats object, and the engine's stats method `0x20F3DC0` builds that object, so most keys trace back to one engine field. About a dozen keys stay untraced, because they come from settings and player objects that were not followed: instrument, difficulty, profile_name, modifiers, remote_network_player, lefty_flip, no_fail, video_calibration, audio_calibration, controller_type, versus_winner and is_bot, and the engine byte `+0xA8` inside is_pfc. The table below gives, per key, the observed values and what writes it.
+Label: Proven in the game's code
+Evidence: stringliteral.json holds every key name. All 16 scorestats files under the run folder, and run 1's file, show the same top-level keys, the same 46 per-player keys and the same three section keys (checked with a short Python script on 2026-11-08). The writer is `code/6142/score_submit.asm` lines 130 to 475, the filler `code/6142/stats_fill_112490.asm` lines 13 to 192, and the engine stats method `code/6142/engine_stats_20F3DC0.asm` lines 180 to 300. Each key's three hops (the writer line that names the key, the filler line that sets its record field, and the engine line that sets the stats field) are tabled in `docs/audit/2026-11-08-clone-hero-unknowns/W8.md`, "SC-37". The two getters the filler calls are `code/6142/player_avg_multiplier_2130570.asm` and `code/6142/player_is_pfc_212F4F0.asm`.
+Game code (6142): the per-player serialiser, RVA `0x1144C0`, `code/6142/score_submit.asm` lines 130 to 475; the filler, RVA `0x112490`; the engine stats method, RVA `0x20F3DC0`; listings as above
 Hydra: no owner in src/
-Ruling: none yet: the writers are not traced
-Found: 2026-10-30, session b02ab3e6 (the reference build); the observed values, 2026-11-08, session 77057df2 (docs-gaps search)
+Ruling: none needed: no Hydra rule depends on it
+Found: 2026-10-30, session b02ab3e6 (the reference build); the observed values, 2026-11-08, session 77057df2 (docs-gaps search); the writers 2026-11-08, session 77057df2; checked 2026-11-11, session 428cf079
 
-Per-player keys. "Unknown" means no code was read that writes the key; a named field is a candidate the value matches, never a traced writer. The observed column covers the 16 files under the run folder, read on 2026-11-08: three bot runs and 13 virtual kit runs, each with one player. Run 1's file is named where it differs.
+Per-player keys. In the "what writes it" column an engine field is traced through the writer, the filler and the engine stats method (W8.md gives the lines); "not traced" means the hop stops at a settings or player object that was not followed. Engine fields are on #8288. The observed column covers the 16 files under the run folder, read on 2026-11-08: three bot runs and 13 virtual kit runs, each with one player. Run 1's file is named where it differs.
 
 | key | observed | what writes it |
 |---|---|---|
-| instrument | Drums in five files, ProDrums in eleven | Unknown |
-| difficulty | Expert in every file | Unknown |
-| profile_name | empty in every file; Guest on run 1 | Unknown |
-| modifiers | ["DoubleKick"] in every file | Unknown |
-| remote_network_player | false in every file | Unknown (the engine's player kind at #8288+0x190 is a candidate) |
-| lefty_flip | false in every file | Unknown |
-| no_fail | true in every file | Unknown |
-| video_calibration | 0.03 in every file (written 0.0299999993); 0 on run 1 | Unknown |
-| audio_calibration | 0 in every file | Unknown |
-| controller_type | Drums in every file | Unknown |
-| score | the final score, 9,400 to 1,229,730 | Unknown (equals the engine score at #8288+0x94, SC-03, and band_score) |
-| base_score | the star base, 6,050 to 222,935 | Unknown (equals the star base at #8288+0x1D0, SC-27) |
-| solo_bonus_total | 0 in twelve files; 56,020, 49,700, 58,000 and 12,100 on the four runs of charts with solos (SC-20) | Unknown |
-| squeezed_score | 0 in eight files, 380 to 3,940 in the other eight; 1,385 on run 1 | Unknown (the fourth total at #8288+0xD0, SC-09, is a candidate) |
-| clean_play_bonus | 0 in every file | Unknown (no reader found; Hydra has no such category) |
-| note_score | SC-32 | Unknown |
-| sustain_score | 0 in every file | Unknown (the second adder's total at #8288+0xC4, SC-04, is a candidate) |
-| sp_score | 0 in the eight files with no activation, 96,070 to 283,720 in the other eight; 83,260 on run 1 | Unknown (the Star Power share at #8288+0xCC, SC-08) |
-| combo_score | 4,350 to 665,075; equals Hydra's Combo with no Star Power (SC-07) | Unknown (the Combo share at #8288+0xC8, SC-08) |
-| notes_hit | gems hit, 101 to 3,753 (1,257 on Trippin SP Spike) | Unknown (the hit count at +0x9C, SC-06, is a candidate) |
-| total_notes | gems in the chart, 121 to 3,767 | Unknown |
-| max_streak | the longest streak in gems: the gem count on the nine full-combo files, 38 to 2,985 on the seven with misses | Unknown (the best streak at +0x98, SC-06) |
-| end_streak | the streak at the song's end: equal to max_streak on the full-combo files, 12 to 2,985 on the others | Unknown |
-| excess_hits | 0 in eleven files; 1 on LS-O1 run 1, 4 on LS-E and LS-F1, 11 on LS-O2 and 21 on LS-T3 run b | Unknown |
-| sp_phrases_earned | 0 on the two Trippin SP Spike bot runs (of 11) and on the charts with no phrases; 14 to 30 on the others (15 of 16 on LS-F1, 30 of 31 on LS-M2); 11 on run 1 | Unknown |
-| sp_phrases_total | 0, 11, 14, 16, 25 or 31, by chart | Unknown |
-| sp_activations | 0, 4, 5, 8 or 9; 4 on run 1 | Unknown (the activation counter at +0xB4, page 5 SP-19) |
-| time_in_sp | 0, or 37.81 to 106.66 s; 50.03 s on run 1 | Unknown (the time total at +0xB8, page 5 SP-25) |
-| sp_ticks_accumulated | 0; 20,160 (14 x 1,440) and 23,040 (16 x 1,440) on the 5,760-bar charts; 90,000 (25 x 3,600) and 108,000 (30 x 3,600) on the 14,400-bar charts; 53,925 on LS-F1 run 1 (15 phrases earned, 75 short of 15 x 3,600); 15,840 on run 1 (11 x 1,440) | Unknown (the running gain total at +0x80, page 5 SP-12) |
-| sp_bar_ticks | 5,760 in five files, 14,400 in eleven; the two charts of SC-20, both at resolution 480, read 14,400 | Unknown (equals the full bar at #8288+0x1B0, page 5 SP-11) |
-| stars | 3 to 7 | Unknown (agrees with SC-28) |
-| avg_multiplier | score less solo_bonus_total, over base_score (SC-33), 1.32 to 5.26 | Unknown (SC-33) |
-| squeezed_notes | 0 to 18; 7 on run 1 | Unknown (the squeeze counter at +0xE8, page 5 SP-36, is a candidate) |
-| squeeze_note_losses | 0, 1, 3, 6 or 8; 1 on run 1 | Unknown (the counter at +0xEC, page 5 SP-36, is a candidate) |
-| frets_ghosted | 0 in every file | Unknown |
-| accent_notes_hit | up to 368 of 368 (LS-O3 run 1); 0 of 368 on LS-D2d run 1 and 0 of 9 on run 1 (SC-14) | Unknown (the accent counter at +0xDC, SC-13, is a candidate) |
-| accent_notes_total | 0 to 368, by chart | Unknown |
-| ghost_notes_hit | up to 726 of 726 (LS-O3 run 1); 0 of 726 on LS-D2d run 1 and 0 of 34 on run 1 (SC-14) | Unknown (the ghost counter at +0xD8, SC-13, is a candidate) |
-| ghost_notes_total | 0 to 726, by chart | Unknown |
-| is_fc | true in the nine files that hit every note, false in the seven with misses | Unknown |
-| is_pfc | equal to is_fc in every file | Unknown |
-| versus_winner | true in every file | Unknown |
-| is_bot | true on the three bot runs, false on the 13 virtual kit runs and on run 1 | Unknown (a stats writer writes the key from a record byte at +0xB6, page 7 IN-38; where that byte is set was not traced) |
-| failed_in_run_time | -1 in fourteen files; 5,991 on LS-O1 run 1 and 28,076 on LS-T3 run b, both with no_fail on | Unknown |
-| section_count | 7 to 35; 10 on the charts with no [section] events (Window Map, Edge Walk Pair, Get Ur Freak On), a game fallback of "0% - 10%" sections | Unknown |
-| section_stats | a list of section_name, notes_hit and notes_count | Unknown |
+| instrument | Drums in five files, ProDrums in eleven | not traced (a byte of an object the filler is handed) |
+| difficulty | Expert in every file | not traced (the next byte of that object) |
+| profile_name | empty in every file; Guest on run 1 | not traced (that object's +0x18, then +0x38) |
+| modifiers | ["DoubleKick"] in every file | not traced (a list from `0x116D00`) |
+| remote_network_player | false in every file | not traced (a byte at +0xB1 of the filler's object, not the engine's player kind at #8288+0x190; whether the two agree was not checked) |
+| lefty_flip | false in every file | not traced (a setting getter) |
+| no_fail | true in every file | not traced (a static setting) |
+| video_calibration | 0.03 in every file (written 0.0299999993); 0 on run 1 | not traced (a static setting) |
+| audio_calibration | 0 in every file | not traced (a static setting) |
+| controller_type | Drums in every file | not traced (a value 0 to 3 from `0x337CE0`, mapped one to one) |
+| score | the final score, 9,400 to 1,229,730 | engine +0x94 plus +0xA0 plus +0xA4, through the getter `0x2130490` (SC-29) |
+| base_score | the star base, 6,050 to 222,935 | engine +0x1D0 (SC-27) |
+| solo_bonus_total | 0 in twelve files; 56,020, 49,700, 58,000 and 12,100 on the four runs of charts with solos (SC-20) | engine +0xA0 |
+| squeezed_score | 0 in eight files, 380 to 3,940 in the other eight; 1,385 on run 1 | engine +0xD0 (SC-09) |
+| clean_play_bonus | 0 in every file | engine +0xA4; no writer of +0xA4 traced, and Hydra has no such category |
+| note_score | SC-32 | engine +0xC0 less 50 times (+0xD8 plus +0xDC) |
+| sustain_score | 0 in every file | engine +0xC4 (SC-04) |
+| sp_score | 0 in the eight files with no activation, 96,070 to 283,720 in the other eight; 83,260 on run 1 | engine +0xCC (SC-08) |
+| combo_score | 4,350 to 665,075; equals Hydra's Combo with no Star Power (SC-07) | engine +0xC8 (SC-08) |
+| notes_hit | gems hit, 101 to 3,753 (1,257 on Trippin SP Spike) | engine +0x9C (SC-06) |
+| total_notes | gems in the chart, 121 to 3,767 | a sum the engine stats method's section loop builds (the loop was not read whole) |
+| max_streak | the longest streak in gems: the gem count on the nine full-combo files, 38 to 2,985 on the seven with misses | engine +0x98 (SC-06) |
+| end_streak | the streak at the song's end: equal to max_streak on the full-combo files, 12 to 2,985 on the others | engine +0x88 |
+| excess_hits | 0 in eleven files; 1 on LS-O1 run 1, 4 on LS-E and LS-F1, 11 on LS-O2 and 21 on LS-T3 run b | engine +0xB0 |
+| sp_phrases_earned | 0 on the two Trippin SP Spike bot runs (of 11) and on the charts with no phrases; 14 to 30 on the others (15 of 16 on LS-F1, 30 of 31 on LS-M2); 11 on run 1 | engine +0x4C |
+| sp_phrases_total | 0, 11, 14, 16, 25 or 31, by chart | the count of a list at engine +0x228, then +0x70 |
+| sp_activations | 0, 4, 5, 8 or 9; 4 on run 1 | engine +0xB4 (page 5 SP-19) |
+| time_in_sp | 0, or 37.81 to 106.66 s; 50.03 s on run 1 | engine +0xB8, a double cut to a float (page 5 SP-25) |
+| sp_ticks_accumulated | 0; 20,160 (14 x 1,440) and 23,040 (16 x 1,440) on the 5,760-bar charts; 90,000 (25 x 3,600) and 108,000 (30 x 3,600) on the 14,400-bar charts; 53,925 on LS-F1 run 1 (15 phrases earned, 75 short of 15 x 3,600); 15,840 on run 1 (11 x 1,440) | engine +0x80 (page 5 SP-12) |
+| sp_bar_ticks | 5,760 in five files, 14,400 in eleven; the two charts of SC-20, both at resolution 480, read 14,400 | engine +0x1B0 (page 5 SP-11) |
+| stars | 3 to 7 | the engine's own count on its score +0x94 (agrees with SC-28) |
+| avg_multiplier | score less solo_bonus_total, over base_score (SC-33), 1.32 to 5.26 | engine +0x94 over +0x1D0 in 32-bit floats, 0 when the score is 0 or less, through the getter `0x2130570` (SC-33) |
+| squeezed_notes | 0 to 18; 7 on run 1 | engine +0xE8 (page 5 SP-36) |
+| squeeze_note_losses | 0, 1, 3, 6 or 8; 1 on run 1 | engine +0xEC (page 5 SP-36) |
+| frets_ghosted | 0 in every file | engine +0xD4 |
+| accent_notes_hit | up to 368 of 368 (LS-O3 run 1); 0 of 368 on LS-D2d run 1 and 0 of 9 on run 1 (SC-14) | engine +0xDC (SC-13) |
+| accent_notes_total | 0 to 368, by chart | engine +0xE4 |
+| ghost_notes_hit | up to 726 of 726 (LS-O3 run 1); 0 of 726 on LS-D2d run 1 and 0 of 34 on run 1 (SC-14) | engine +0xD8 (SC-13) |
+| ghost_notes_total | 0 to 726, by chart | engine +0xE0 |
+| is_fc | true in the nine files that hit every note, false in the seven with misses | set when the record's max_streak equals its total_notes |
+| is_pfc | equal to is_fc in every file | the getter `0x212F4F0`: max_streak equals total_notes, above 0, and the engine byte +0xA8 is 0; that byte was not traced |
+| versus_winner | true in every file | not traced (a player byte at +0xA9; the engine stats method does not set it) |
+| is_bot | true on the three bot runs, false on the 13 virtual kit runs and on run 1 | not traced (the return of `0x13F8B0` into the record byte at +0xB6, page 7 IN-38) |
+| failed_in_run_time | -1 in fourteen files; 5,991 on LS-O1 run 1 and 28,076 on LS-T3 run b, both with no_fail on | engine +0xAC |
+| section_count | 7 to 35; 10 on the charts with no [section] events (Window Map, Edge Walk Pair, Get Ur Freak On), a game fallback of "0% - 10%" sections | the count of the section list |
+| section_stats | a list of section_name, notes_hit and notes_count | the list the engine stats method builds in its section loop |
 
 The top-level keys are written by the serialiser of SC-36; where each value comes from is Unknown. Observed in all 16 files: game_version "v1.1.0.6142-final", playback_speed 100, game_mode "Quickplay", player_count 1, band_score equal to the player's score and band_stars equal to stars. The online score record `ScoreData` (dump.cs line 18833) is a different structure, the leaderboard upload.
 

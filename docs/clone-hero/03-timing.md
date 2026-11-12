@@ -2,7 +2,7 @@
 
 This page covers chart Offset and song.ini delay, the song clock, the hit window, calibration and playback speed.
 It describes build 1.1 (v1.1.0.6142).
-Last write-back: 2026-11-08.
+Last write-back: 2026-11-11.
 
 ## Offset and delay
 
@@ -56,15 +56,15 @@ Hydra: `kOffsetDirection` in src/app/preview_source.cpp line 139.
 Ruling: D274 item 6: "Check the game, then honor (Recommended)".
 Found: 2026-10-30, session b02ab3e6 (the reference build); the recording 2026-09-25, session 2a88c065.
 
-### TM-06 A .sng's delay follows the same rule; a .srb has none
+### TM-06 A .sng's delay is stored in the same field, with the same parse, as a song.ini delay
 
-Rule: A `.sng` file's metadata `delay` is read by a second reader and follows the same "delay wins when nonzero" rule. A `.srb` has no delay field, so only the chart Offset counts.
-Label: Unknown
-Evidence: not checked: it needs the body of the reader at `0x1EFF90`, of which only the key string `delay` was seen, at 0x1EFFDD and 0x1F0041, in a call scan of 2026-10-30 whose output was not kept; no listing of `0x1EFF90` is under `code/6142/`. The `.srb` half is Hydra's reading of its own parser: src/parse/srb.h has no delay.
-Game code (6142): not found: the reader `0x1EFF90` and the branch at `0x1F0380` were seen in a call scan only.
-Hydra: `sng_metadata_delay_ms` (src/app/preview_source.cpp line 182) and `chart_audio_offset_ms` (line 358).
+Rule: The `.sng` metadata reader asks for the key `delay` with a default of 0 and stores the whole milliseconds in `#828+0x24`, the field the song.ini reader fills (TM-01). Its getter parses the text the same way: a plain integer without a ".", or seconds times 1000, cut toward zero, with one (TM-02). Two steps are not proven: that TM-03's Offset step runs the same way for a `.sng` chart, and whether the getter's key lookup matches `Delay` as well as `delay`.
+Label: Proven in the game's code
+Evidence: `code/6142/sng_meta_reader_1EFF90.asm` lines 33 to 38 (the `delay` key at line 33, the zero default at line 35, the call to the getter at line 37 and the store at `+0x24` at line 38). `code/6142/sng_int_getter_262940.asm` lines 30 to 46 (the `String.Contains(".")` test and Int32.TryParse) and 47 to 69 (Single.TryParse, the multiply by 1000.0 at line 63 and the truncating convert at line 64). The getter's key comparer was not read. A `.srb` file has no delay field; that is Hydra's reading of its own parser (src/parse/srb.h has no delay), not the game's code.
+Game code (6142): the `.sng` metadata reader of class #828 (scrambled name), RVA `0x1EFF90`, and its int getter (scrambled name), RVA `0x262940`, listings as above.
+Hydra: `sng_metadata_delay_ms` (src/app/preview_source.cpp lines 182 to 188) matches the key case-blind, keeps the last `delay` pair and parses it with `parse_delay_ms`, which reads a decimal as milliseconds (TM-02's split, Q-30); `chart_audio_offset_ms` (line 358). Whether the game also matches `Delay` is not known, so whether the two agree on that key is not known.
 Ruling: D275 item 4: the user chose "Yes, same rule (Recommended)" for `.sng` and `.srb` charts.
-Found: 2026-10-30, session b02ab3e6 (the reference build); the ruling 2026-09-26, session 4908325e.
+Found: 2026-10-30, session b02ab3e6 (the reference build); the ruling 2026-09-26, session 4908325e; the listings 2026-11-08, session 77057df2; checked 2026-11-11, session 428cf079.
 
 ### TM-07 The delay and Offset move only the audio, never the chart's own times
 
@@ -78,13 +78,13 @@ Found: 2026-10-30, session b02ab3e6 (the reference build).
 
 ### TM-08 A second delay getter divides by 1582
 
-Rule: A getter of class #828 at `0x1F0830` divides the delay by 1582.0 instead of 1000.0. It looks unused.
-Label: Unknown
-Evidence: a 4-instruction read of the getter on 2026-10-30, whose output was not kept; no listing of `0x1F0830` is under `code/6142/`. A direct-call scan of the code section found no caller. Virtual and delegate calls were not searched.
-Game code (6142): RVA `0x1F0830` (scrambled name); no committed listing.
+Rule: A getter of class #828 at `0x1F0830` loads the delay at `#828+0x24` and divides it by 1582.0 instead of 1000.0. No caller was found by direct call or jump, pointer-table, slot or address reference, vtable, delegate, string lookup or inlined copy. A reflection walk that calls methods without naming them is not ruled out.
+Label: Proven in the game's code
+Evidence: `code/6142/delay_1582_1F0830.asm` lines 1 to 4 (the load of `+0x24`, the convert to a double, the divide by 1582.0 and the return). No direct caller found (byte scan of il2cpp and .text, for rel32 calls and jumps). `dump.cs` line 45148 declares the getter without `virtual`, and its metadata flags (0x886) hold no virtual bit, so it has no vtable slot. Its 64-bit address appears once, in the method-pointer table the runtime fills each method's code address from: the 19 words around it are #828's 19 methods in `dump.cs` order. None of the 26,183 method slots in the dump's `script.json` names it, so no delegate is built on it. Its scrambled name is not in `stringliteral.json` or the decompile, so no lookup by name finds it. The double 1582.0 has one reference in the image, the getter's own divide at 0x1F083D, so the body is not inlined elsewhere. The scans and the metadata reads are described in `docs/audit/2026-11-08-clone-hero-unknowns/W2.md`, "TM-08, third pass"; their scripts were not kept.
+Game code (6142): the getter of class #828 (scrambled name), RVA `0x1F0830`, `code/6142/delay_1582_1F0830.asm` lines 1 to 4.
 Hydra: no owner
 Ruling: none needed: no Hydra rule depends on it
-Found: 2026-10-30, session b02ab3e6 (the reference build).
+Found: 2026-10-30, session b02ab3e6 (the reference build); the listing and scans 2026-11-08, session 77057df2; checked 2026-11-11, session 428cf079.
 
 ## The song clock
 
@@ -98,15 +98,15 @@ Hydra: no owner: Hydra compares in chart time (TM-24).
 Ruling: none needed: no Hydra rule depends on it
 Found: 2026-10-28, session f756d547; listed 2026-10-30, session b02ab3e6 (the reference build).
 
-### TM-10 GameManager stores both clocks every frame
+### TM-10 GameManager stores both clocks on each Update
 
-Rule: `GameManager.Update` stores the first getter's result as `GameManager.songTime` (+0x70) and the second as `GameManager.songTimeVideoTime` (+0x78) every frame, and the player passes `songTime` to the engine, which writes it to the engine clock.
-Label: Unknown
-Evidence: the `Update` listing was not kept: it was read 2026-10-28 in session f756d547 and re-read from the DLL on 2026-10-30 (the calls at 0xC085B and 0xC0877, the stores at 0xC0867 and 0xC0880). The committed load coroutine, which is not `Update`, makes the same two calls and stores once at song start: `code/6142/gm_load_coroutine_D8D80.asm` line 483 calls `0x16C480` and lines 484 and 485 store the result at `+0x70` and `+0x88` of the manager; line 490 calls `0x16C490` and line 491 stores it at `+0x78`. That shows the fields, not the per-frame store. The player hop was not re-checked.
-Game code (6142): `GameManager.Update`, RVA `0xC05A0`, no listing; the load coroutine, RVA `0xD8D80`, `code/6142/gm_load_coroutine_D8D80.asm` lines 483 to 491; fields from `dump.cs` lines 25298 to 25305.
+Rule: Each `GameManager.Update` call ticks the clock, copies the old `GameManager.songTime` into `GameManager.lastSongTime` (+0x80), then stores the first getter's result as `GameManager.songTime` (+0x70) and the second as `GameManager.songTimeVideoTime` (+0x78). Two cases skip this: the whole body is skipped when the manager's byte at `+0x158` is 0, and the clock block is skipped while paused when a CHNetManager test returns false. How the player hands `songTime` on to the engine is not covered by this block.
+Label: Proven in the game's code
+Evidence: `code/6142/gm_update_C05A0.asm` line 144 calls the clock tick `0x16C650`, lines 146 and 147 copy `+0x70` to `+0x80`, lines 151 and 153 call `0x16C480` and store the result at `+0x70`, and lines 157 and 159 call `0x16C490` and store it at `+0x78`. Lines 17 and 18 are the `+0x158` skip, and lines 68 to 79 are the pause test (`GameManager.isPaused` at `+0x90`, then CHNetManager's test at line 77, jumping past the block at line 79). The load coroutine makes the same two calls once at song start (`code/6142/gm_load_coroutine_D8D80.asm` lines 483 to 491). The player-to-engine hop was not read in this listing; TM-36 says what is known of it.
+Game code (6142): `GameManager.Update`, RVA `0xC05A0`, `code/6142/gm_update_C05A0.asm` lines 17 to 159; the load coroutine, RVA `0xD8D80`, lines 483 to 491; fields from `dump.cs` lines 25298 to 25311.
 Hydra: no owner: the Preview and Paths use chart time and never read the game clock.
 Ruling: none needed: no Hydra rule depends on it
-Found: 2026-10-28, session f756d547; 2026-11-08, session 77057df2 (docs-gaps search).
+Found: 2026-10-28, session f756d547; 2026-11-08, session 77057df2 (docs-gaps search, and the listing); checked 2026-11-11, session 428cf079.
 
 ### TM-11 The raw clock starts at least one second before chart time 0
 
@@ -190,13 +190,13 @@ Found: 2026-10-28, session f756d547.
 
 ### TM-16 About 3 ms of input polling delay
 
-Rule: The game's on-screen average of +2.5 ms, against clock reads of about -0.5 ms, points to about 3 ms of input polling delay.
+Rule: The game's on-screen average of +2.5 ms, against clock reads of about -0.5 ms, points to about 3 ms of input polling delay. What the average is, is proven in the game's code: it is the mean, over the last 256 hits, of the value the hit method stores in the player's float at `+0xC4` (a scrambled `BasePlayer` field, `dump.cs` line 48752), which is the note's time minus `GameManager.songTime`, sign flipped and in ms, so positive means late. Nothing is added to it. How the 3 ms splits between polling and other causes is not in the code.
 Label: Unknown
-Evidence: the +2.5 ms is from a user screenshot that is not in the repo, and the 3 ms is the overlay handoff's own inference.
-Game code (6142): not found: not looked for.
+Evidence: the +2.5 ms is from a user screenshot that is not in the repo, and the 3 ms is the overlay handoff's own inference. The average: `code/6142/accuracy_text_208070.asm` keeps the last 256 values of `+0xC4` in a list (lines 46 to 77), sums them, divides by the count, flips the sign and multiplies by 1000 (lines 81 to 102 and 128 to 132); "Accuracy" is the latest value, sign flipped, times 1000 (lines 120 to 122). The hit method `code/6142/hit_offset_208780.asm` stores the note's `+0x28` time minus the manager's `+0x70` at `+0xC4` (lines 25 to 30) and jumps to the text method (line 34). Other writers of `+0xC4` were not searched. The value holds no press time stamp, so any time between the press and the frame that handles it shows in it. That gap was not measured: a run would need the accuracy text on, presses at known times from the virtual kit, and for each press the kit's time, the stored `+0xC4` and `songTime` in that frame.
+Game code (6142): the accuracy text method of `BasePlayer` (scrambled name), RVA `0x208070`, `code/6142/accuracy_text_208070.asm` lines 46 to 132; the hit method (slot 34), RVA `0x208780`, `code/6142/hit_offset_208780.asm` lines 25 to 34.
 Hydra: no owner
 Ruling: none needed: no Hydra rule depends on it
-Found: 2026-10-28, session f756d547.
+Found: 2026-10-28, session f756d547; the two listings 2026-11-08, session 77057df2; checked 2026-11-11, session 428cf079.
 
 ## The hit window
 
@@ -384,10 +384,10 @@ Found: 2026-10-30, session b02ab3e6 (the reference build).
 
 ### TM-32 Whether the menu's Precision Mode sets that bit, and the window it gives
 
-Rule: Whether the player's Precision Mode option sets bit 0x1000, and whether a live precision-mode window runs from 50.44 to 84.89 ms, is not known.
+Rule: Whether the player's Precision Mode option sets bit 0x1000, and whether a live precision-mode window runs from 50.44 to 84.89 ms, is not known. The bit's path from the player menu to the engine is read in the code: a menu modifier entry ORs its value into the profile's modifiers word, that word is copied into the record the drums engine is built from, and the engine stores it at `#8288+0x198`, the word the window formula tests. Three links are not read, so the bit half is not proven: the leaderboard filter that can drop menu entries, whether the menu's profile is the profile the player uses at run time, and that the menu's "Precision Mode" text is the 4096 entry (tied to it by the enum name only). The window half needs a live run.
 Label: Unknown
-Evidence: the enum name `PrecisionMode = 4096` is in `dump.cs` line 547692, but no code that sets the field from a menu was traced, and `tools/ch_probe/experiments/results/` holds no precision-mode run. constants.py line 245 says "nobody has read precision mode's cap".
-Game code (6142): field `#8288+0x198`; its writer was not read.
+Evidence: `code/6142/psm_mods_list_32CE60.md` (the three arrays the player menu offers, each holding 4096, read from `global-metadata.dat`; the filter at listing lines 36 to 82 was not read); the menu method `0x32D360` passes an entry to the profile's toggle at 0x32D39E to 0x32D3A2; `code/6142/profile_mods_toggle_21236D0.asm` lines 32 to 34 OR the value into the profile's `+0x14` when it is off (lines 25 to 30 first clear the modifiers a helper names as clashing; what it clears was not read); `code/6142/player_kind_11676A0.asm` lines 26 to 33 copy the profile's `+0x14` into the record's `+8`; `code/6142/engine_ctor_20F79E0.asm` lines 83 to 85 store the record's `+8` at `+0x198`; `code/6142/hit_window_formula_20DDDA0.asm` line 11 tests bit 0x1000 of it. The enum name `PrecisionMode = 4096` is in `dump.cs` line 547692. No direct caller of the toggle outside `PlayerSelectionMenu` was found (byte scan of il2cpp and .text: three callers, all in that class). `tools/ch_probe/experiments/results/` holds no precision-mode run, and constants.py line 245 says "nobody has read precision mode's cap". A live run would set the profile's modifiers word to include 0x1000 before `0x33C560` builds the engine, or call the toggle `0x21236D0` with 4096, then read `#8288+0x198` and the half-window `0x20F3A90` returns for a note with no near neighbour.
+Game code (6142): the `PlayerSelectionMenu` list method, RVA `0x32CE60`; the profile toggle (scrambled name), RVA `0x21236D0`; the record builder, RVA `0x11676A0`; the engine base constructor, RVA `0x20F79E0`; field `#8288+0x198`; listings as above.
 Hydra: no owner
 Ruling: open split: see questions page Q-32
 Found: 2026-10-30, session b02ab3e6 (the reference build).
@@ -428,11 +428,11 @@ Found: 2026-10-28, session f756d547; listed 2026-10-30, session b02ab3e6 (the re
 
 Rule: Nothing that judges a hit reads the video time; video calibration moves only what is drawn.
 Label: Unknown
-Evidence: not checked: it needs every reader of the getter at `0x16C490` traced. The overlay handoff's session found two drawing readers, `HighwayScroll.Update` and `DrumsNoteRenderer.Update` (this row is now their only home); about 30 readers were never all traced. A third reader does not draw: the load coroutine calls the getter at `code/6142/gm_load_coroutine_D8D80.asm` line 490 and stores the result in the manager at line 491 (TM-10), so "only drawn" is not shown. TM-15's bot run shows the engine clock does not move, which is consistent.
-Game code (6142): RVA `0x16C490`, readers not all traced; the load coroutine's call, RVA `0xD8D80`, `code/6142/gm_load_coroutine_D8D80.asm` lines 490 and 491.
+Evidence: The getter at `0x16C490` has four direct callers (byte scan of il2cpp and .text), and each stores the video time in one field, `GameManager.songTimeVideoTime` (+0x78): the `GameManager` method `0xBEB50` at `code/6142/gm_video_time_BEB50.asm` line 160, `GameManager.Update` at `code/6142/gm_update_C05A0.asm` line 159, the coroutine `0xD9B90` at `code/6142/gm_coroutine_D9B90.asm` line 150, and the load coroutine at `code/6142/gm_load_coroutine_D8D80.asm` line 491. The two drawing readers read that field, not the getter: `HighwayScroll.Update` through its `GameManager` field at `code/6142/highway_scroll_update_3818E0.asm` line 22, and `DrumsNoteRenderer.Update` reads `+0x78` of the object at its `+0x28` at `code/6142/drums_note_renderer_update_1370A0.asm` line 98 (that `+0x28` is its `GameManager` is likely but not shown). On the judging side, the window method `0x20F3A90`, its clamp `0x20F7210` and the formula `0x20DDDA0` read no clock (`code/6142/note_window_20F3A90.asm`, `code/6142/half_gap_clamp_20F7210.asm`, `code/6142/hit_window_formula_20DDDA0.asm`). The press method reads the engine's own clock at `+0x100` and stores it as the last lane press time (`docs/audit/drum-lanes/play/f20deaa0.asm` lines 135 to 138 and 183 to 186). `BasePlayer.Update` reads `GameManager.songTime` (+0x70) for the times it hands on (`code/6142/baseplayer_update_20A1B0.asm` lines 102 to 105, 114, 125 to 138 and 152 to 164), but not at every call: at the two calls of `0x20F4550` at 0x20A3BD and 0x20A425 the time is a value a player method writes to the stack after it is given `songTime` (a virtual call at 0x20A397, and the `BasePlayer` method at 0x20A400), and what those methods write was not read. A scan of the 321 engine methods from 0x20DD000 to 0x20F8000 found none that names `GameManager` or calls either clock getter; its one double read at `+0x78` of another object, at 0x20E766E, reads the replay record, not the manager. Not shown: what time the nine other direct callers of `0x20F4550` pass (at 0xFEB4C0, 0xFEB580, 0xFEB650, 0xFFC1C0, 0xFFC940, 0xFFD340, 0xFFDAB0, 0x20F5120 and 0x20F6FF0, not listed), and calls through a method table, which the scan cannot find. TM-15's bot run shows the engine clock does not move with the video calibration, which is consistent.
+Game code (6142): RVA `0x16C490` and its four callers, listings as above; `BasePlayer.Update`, RVA `0x20A1B0`; the engine time method `0x20F4550`, its other callers not listed.
 Hydra: no owner
 Ruling: none needed: no Hydra rule depends on it
-Found: 2026-10-28, session f756d547; 2026-11-08, session 77057df2 (docs-gaps search).
+Found: 2026-10-28, session f756d547; 2026-11-08, session 77057df2 (docs-gaps search, and the listings); checked 2026-11-11, session 428cf079.
 
 ### TM-37 The calibration screen classes
 
@@ -470,11 +470,11 @@ Found: 2026-10-30, session b02ab3e6 (the reference build).
 
 Rule: At a ratio other than 1 the clock divides both the audio position and the delay by the ratio. Whether the audio position is in file seconds or in stretched real seconds is not known.
 Label: Unknown
-Evidence: not checked: it needs the unit of the audio manager's position read at `0x365F10`. The division is in `code/6142/clock_tick_16C650.asm` lines 72 to 75 and `code/6142/clock_ctor_16C9A0.asm` lines 22 to 32.
-Game code (6142): RVA `0x365F10` (scrambled `BassAudioManager` member), not read.
+Evidence: The division is in `code/6142/clock_tick_16C650.asm` lines 72 to 75 and `code/6142/clock_ctor_16C9A0.asm` lines 22 to 32. The position getter `0x365F10` returns 0 unless a song is loaded, then asks BASS for the byte position of the channel whose handle is at the audio manager's `+0x58` and converts it to seconds (`code/6142/audio_position_365F10.asm` lines 17 to 45; the externs match BASS's position and bytes-to-seconds calls by shape and error text). Which channel that is: the mixer builder `0x368590` stores `+0x58` (`code/6142/mixer_create_368590.asm` line 31). When its int argument is not -1 it builds a tempo stream over the mixer (lines 21 to 28) and `+0x58` gets the tempo stream; when the argument is -1, `+0x58` gets the mixer. The tempo stream's starting tempo is set to that argument (`code/6142/tempo_create_366FC0.asm` lines 112 to 117). The song-load method passes the song speed's whole percent minus 100, but only when its own byte at `+0x68` is set, and -1 otherwise (`code/6142/audio_load_36B700.asm` lines 112 to 125); what writes that byte was not searched. So once that byte is set, any speed, 100 included, gets a tempo stream, and a speed of 99% gives 99 - 100 = -1, the "no tempo" value, so no tempo stream. One side fact: when a bool setting is on, the tempo builder also sets the pitch to 12 x log2(speed / 100) (`code/6142/tempo_create_366FC0.asm` lines 68 to 106). Not in the game's code: whether BASS reports a tempo stream's position in source seconds or in played seconds. That is the BASS_FX library's behaviour; a run at 50% speed comparing the getter's result with real time would settle it.
+Game code (6142): the position getter (scrambled `BassAudioManager` member), RVA `0x365F10`; the mixer builder, RVA `0x368590`; the tempo builder, RVA `0x366FC0`; the song-load method, RVA `0x36B700`; listings as above.
 Hydra: no owner
 Ruling: none needed: no Hydra rule depends on it
-Found: 2026-10-30, session b02ab3e6 (the reference build).
+Found: 2026-10-30, session b02ab3e6 (the reference build); the listings 2026-11-08, session 77057df2; checked 2026-11-11, session 428cf079.
 
 ### TM-41 The practice speed scales the raw clock
 
@@ -500,11 +500,11 @@ Found: 2026-10-30, session b02ab3e6 (the reference build).
 
 Rule: Whether the hit window and the song clock run in chart time or in real time at a playback speed other than 100% is not known. Separately, at half speed the game time-stretches the audio, so a gameplay video's sound cannot be lined up with the chart by its audio.
 Label: Unknown
-Evidence: the formula and the clamp hold no speed variable, but whether the note times are already scaled by the speed was not traced. The time-stretch half is a card's roadblock with no code or file read; it is not checked and needs a run at half speed.
-Game code (6142): not found: looked in the decompile lines 757 to 782 and 53871 to 53907.
+Evidence: the formula and the clamp hold no speed variable (the decompile lines 757 to 782 and 53871 to 53907), but whether the note times are already scaled by the speed was not traced. Most times the player hands the engine are read from `GameManager.songTime` (TM-36), which comes from a clock that divides the audio position by the speed ratio (TM-40); whether that position is in file seconds is TM-40's open BASS_FX question. The time-stretch half is a card's roadblock with no code or file read; it is not checked and needs a run at half speed. For such a run, the song speed is an int setting (default 100, limits 10 to 5000, TM-34), and its value setter is the generic int setter `0xFE5F50`, which stores the value at the setting's `+0x10` and then calls the setting's changed method (`code/6142/int_setting_set_FE5F50.asm` lines 2 to 4). The run must set it before the song loads, because the song-load method reads it to build the tempo stream (TM-40).
+Game code (6142): not found for the note-time scaling: looked in the decompile lines 757 to 782 and 53871 to 53907; the setter of class #8338 (scrambled name), RVA `0xFE5F50`, `code/6142/int_setting_set_FE5F50.asm` lines 2 to 4.
 Hydra: no owner
 Ruling: none needed: no Hydra rule depends on it
-Found: 2026-10-30, session b02ab3e6 (the reference build).
+Found: 2026-10-30, session b02ab3e6 (the reference build); the setter 2026-11-08, session 77057df2; checked 2026-11-11, session 428cf079.
 
 ### TM-44 Hydra scores every chart at 100 percent
 
@@ -534,11 +534,11 @@ Found: drum-lanes FINDINGS-play-time.md; the limits and the lane-mask test 2026-
 
 Rule: pressing the tom key and the cymbal key of one colour for a single gem counts as an overhit, and the gem is missed.
 Label: Unknown
-Evidence: session 8157f2dc (2026-09-25). Its card (docs/sessions/2026-09-25-8157f2dc.md, the roadblock "Cymbal notes missed from about note 40 on") records that the bot's cymbal notes missed while its parser fired two keys for each such gem, and that they hit once the parser pressed one key per gem. That the session read this as an overhit comes from its own record, which is not kept. No run isolated the two-keys cause, and no result file is in the repo. The overhit path itself is readable: in the press handler, the pressed pads left over after the matching notes are taken go to the overhit method (`docs/audit/drum-lanes/play/f20deaa0.asm` lines 201 to 209), and that method, unless one of its exits applies (the byte at `+0xF0` set, the lane tests, or the `+0x308` test), clears the lane state, makes one virtual call and adds one to the int at `+0xB0` (what that int counts is not settled, IN-13) (`docs/audit/drum-lanes/play/f20de9a0.asm` lines 24 to 44). Whether a tom key and a cymbal key of one colour leave a pad over for one gem is not shown, because which pad bits each key sets was not read, so the block stays Unknown.
-Game code (6142): the press handler, RVA `0x20DEAA0`, `docs/audit/drum-lanes/play/f20deaa0.asm` lines 201 to 209; the overhit method at 0x20DE9A0, `docs/audit/drum-lanes/play/f20de9a0.asm` lines 24 to 44.
+Evidence: session 8157f2dc (2026-09-25). Its card (docs/sessions/2026-09-25-8157f2dc.md, the roadblock "Cymbal notes missed from about note 40 on") records that the bot's cymbal notes missed while its parser fired two keys for each such gem, and that they hit once the parser pressed one key per gem. That the session read this as an overhit comes from its own record, which is not kept. No run isolated the two-keys cause, and no result file is in the repo. The overhit path itself is readable: in the press handler, the pressed pads left over after the matching notes are taken go to the overhit method (`docs/audit/drum-lanes/play/f20deaa0.asm` lines 201 to 209), and that method, unless one of its exits applies (the byte at `+0xF0` set, the lane tests, or the `+0x308` test), clears the lane state, makes one virtual call and adds one to the int at `+0xB0` (what that int counts is not settled, IN-13) (`docs/audit/drum-lanes/play/f20de9a0.asm` lines 24 to 44). The two keys of one colour set two different bits: for yellow, the input source hands Rewired action 2 to a setter that sets bit 2 of the inputs record (`code/6142/drums_input_source.asm` lines 78 to 83, `code/6142/pad_yellow_tom_2176900.asm`), and action 0x26 to one that sets bit 6 (lines 130 to 135, `code/6142/pad_yellow_cymbal_21766F0.asm`). That actions 2 and 0x26 are the yellow tom and the yellow cymbal is inferred from the order of the reads, not from action names. In the press handler a note takes the press when its mask at `+0x80` shares a bit with the pressed pads not yet taken (`docs/audit/drum-lanes/play/f20deaa0.asm` lines 109 to 114), and the pads left over go to the overhit method. So if a yellow cymbal gem's mask holds only the cymbal bit, the tom bit is left over. Three links are not shown: that the record's bits reach the engine's `+0x152` unchanged, what mask a cymbal gem holds at `+0x80`, and the action names. That the gem itself is missed is not shown either: it is taken by its matching bit before the overhit runs, and whether the overhit then breaks it is in the overhit method's virtual call, which was not followed. So the block stays Unknown.
+Game code (6142): the press handler, RVA `0x20DEAA0`, `docs/audit/drum-lanes/play/f20deaa0.asm` lines 109 to 114 and 201 to 209; the overhit method at 0x20DE9A0, `docs/audit/drum-lanes/play/f20de9a0.asm` lines 24 to 44; the two pad setters (scrambled names), RVAs `0x2176900` and `0x21766F0`, listings as above.
 Hydra: none: Hydra's paths press only the notes in the chart.
 Ruling: none needed.
-Found: 2026-09-25, session 8157f2dc; the overhit path 2026-11-08, session 77057df2 (docs-gaps search).
+Found: 2026-09-25, session 8157f2dc; the overhit path 2026-11-08, session 77057df2 (docs-gaps search); the pad setters 2026-11-08, session 77057df2; checked 2026-11-11, session 428cf079.
 
 ## Rows waiting on a live run
 
