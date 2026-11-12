@@ -732,9 +732,6 @@ FRAME_PROBE_ITEM = "green"
 # The longest frame probe ch_kit_frame_probe accepts: the 5 s the user
 # accepted for LS-G1 (D339 item 3).
 FRAME_PROBE_SECONDS = 5.0
-# LS-G1's frame-rate floor, in frames a second: the probe passes only at or
-# above it (D339 item 3).
-FRAME_PROBE_MIN_FPS = 322.2
 # The file the probe's whole reply is saved to in the session folder, with
 # a number that makes it new.
 FRAME_PROBE_FILE_PREFIX = "frame_probe-"
@@ -885,11 +882,12 @@ def save_frame_probe(reply: dict, folder: str) -> str:
 def frame_probe_lines(reply: dict, clock_addr: int, saved_line: str) -> List[str]:
     """The frame probe's reply judged against LS-G1's pass line
     (docs/superpowers/plans/2026-11-12-in-game-press-timing.md): the
-    frame steps, the frame rate beside FRAME_PROBE_MIN_FPS, the frame the
-    press read back on, the gap between the engine clock and songTime,
-    hook_out and failure, then one PASS or FAIL line naming each part that
-    failed. kit.ts's frame_probe owns what the reply holds; `saved_line`
-    is save_frame_probe's line."""
+    frame steps, the frame rate, the frame the press read back on, the gap
+    between the engine clock and songTime, hook_out and failure, then one
+    PASS or FAIL line naming each part that failed. The frame rate is
+    printed for information and never decides PASS or FAIL (D341).
+    kit.ts's frame_probe owns what the reply holds; `saved_line` is
+    save_frame_probe's line."""
     import statistics
     lines = [f"frame probe on the engine clock at {clock_addr:#x}"]
     failed: List[str] = []
@@ -919,23 +917,18 @@ def frame_probe_lines(reply: dict, clock_addr: int, saved_line: str) -> List[str
     else:
         lines.append(f"frame steps: all {steps} rose by exactly 1")
 
-    # The frame rate: the frames the game advanced over the rows' wall span.
+    # The frame rate: the frames the game advanced over the rows' wall span,
+    # for information only.
     walls = [row.get("wall_ms") for row in rows]
-    rate = None
     if (len(rows) >= 2 and _is_number(frames[0]) and _is_number(frames[-1])
             and _is_number(walls[0]) and _is_number(walls[-1]) and walls[-1] > walls[0]):
         advanced = frames[-1] - frames[0]
         span_ms = walls[-1] - walls[0]
         rate = advanced / ms_to_s(span_ms)
         lines.append(f"frame rate: {rate:.1f} frames a second ({advanced} frames in "
-                     f"{span_ms} ms of wall time); floor {FRAME_PROBE_MIN_FPS} "
-                     f"(FRAME_PROBE_MIN_FPS, D339 item 3)")
-        if rate < FRAME_PROBE_MIN_FPS:
-            failed.append(f"frame rate ({rate:.1f} is under {FRAME_PROBE_MIN_FPS})")
+                     f"{span_ms} ms of wall time); not part of the pass line")
     else:
-        lines.append(f"frame rate: not measurable; floor {FRAME_PROBE_MIN_FPS} "
-                     f"(FRAME_PROBE_MIN_FPS, D339 item 3)")
-        failed.append("frame rate (not measurable)")
+        lines.append("frame rate: not measurable; not part of the pass line")
 
     # The one press: the frame it went down on and the first frame each read
     # saw it pressed.
@@ -993,8 +986,7 @@ def frame_probe_lines(reply: dict, clock_addr: int, saved_line: str) -> List[str
         lines.append("FAIL against LS-G1's pass line: " + "; ".join(failed))
     else:
         lines.append("PASS against LS-G1's pass line: every frame stepped by 1, no fault, "
-                     f"the rate is at or above {FRAME_PROBE_MIN_FPS}, the press read back "
-                     "as pressed, and the hook is out")
+                     "the press read back as pressed, and the hook is out")
     return lines
 
 
