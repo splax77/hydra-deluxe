@@ -158,6 +158,20 @@ class PressScheduleTest(unittest.TestCase):
         ])
         self.assertEqual([written(r) for r in out], [[], [1], [], [], [2]])
 
+    def test_a_later_group_due_past_its_last_send_ms_still_goes_with_its_head(self):
+        # The schedule gives a later group its head's last_send_ms. The head
+        # fires at 1004, inside its limit of 1008; the later group falls due at
+        # 1014, past that limit, and goes anyway, as play_chords sends it.
+        out = run(play([entry(1, 1000.0, SNARE, last_send_ms=1008.0),
+                        entry(2, 1010.0, KICK, index=1, last_send_ms=1008.0,
+                              after_ms=10.0, after_seq=1)]), [
+            step(10, 800.0, 5000.0),
+            step(11, 1004.0, 5003.0),
+            step(12, 1014.0, 5006.0),
+        ])
+        self.assertEqual([written(r) for r in out], [[], [1], [2]])
+        self.assertNotIn("dropped", [k for r in out for k in kinds(r)])
+
     def test_a_press_is_released_exactly_hold_frames_frames_after_its_down(self):
         out = run(play([entry(1, 1000.0)], hold_frames=3), [
             step(10, 800.0, 5000.0, score=7),

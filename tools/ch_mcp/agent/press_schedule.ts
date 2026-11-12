@@ -28,7 +28,8 @@
 //   seq             the entry's sequence number, unique in the schedule
 //   index           its chord's index
 //   at_ms           the song clock it fires at (Press.at_ms)
-//   last_send_ms    the latest clock it may still be written at
+//   last_send_ms    the latest clock a head may still be written at; a later
+//                   group is never judged against it, since it goes with its head
 //   elements        the kit elements it writes, each {id, value}, as the
 //                   kit's press message carries them
 //   after_ms        for a later order group, the gap after its head's real
@@ -54,8 +55,8 @@
 //              release; null when play stopped first), frame_gap_ms (wall
 //              time since the frame before its down frame; null on the first
 //              frame), agent_note
-//   "dropped"  one per entry past its last_send_ms when it came due, or whose
-//              head was dropped: the same fields as "sent", with
+//   "dropped"  one per head past its last_send_ms when it came due, and one
+//              per later group whose head was dropped: the same fields as "sent", with
 //              clock_ms_at_press the clock it was dropped at, down_frame,
 //              up_frame, down_ms and up_ms null, and score_after equal to
 //              score_before
@@ -367,7 +368,10 @@ export class PressSchedule {
             }
             const note = e.end_read_after !== null && !this.retimedReads.has(e.end_read_after)
                 ? RETIME_MISSED : "";
-            if (headLost || clockMs > e.last_send_ms) {
+            // A later group goes with its head, as play_chords sends a message's
+            // later groups once its first press went: only a head is judged
+            // against its own last_send_ms.
+            if (headLost || (e.after_seq === null && clockMs > e.last_send_ms)) {
                 s.state = "done";
                 s.outcome = "dropped";
                 s.clockMs = clockMs;
