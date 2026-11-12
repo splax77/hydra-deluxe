@@ -46,7 +46,9 @@ import argparse
 import csv
 import json
 import os
+import queue
 import sys
+import threading
 import time
 from dataclasses import dataclass, field, replace
 from typing import Callable, List, Mapping, Optional, Sequence, TextIO, Tuple
@@ -758,15 +760,54 @@ def write_press_log(path: str, rows: Sequence[dict]) -> None:
         writer.writerows(rows)
 
 
-def append_press_row(path: str, row: dict) -> None:
-    """Add one row to the press log, with the header first when the file is
-    new or empty. The file is closed again, so a worker that dies keeps every
-    row so far."""
-    with open(path, "a", encoding="utf-8", newline="") as f:
-        writer = _press_log_writer(f)
-        if f.tell() == 0:
-            writer.writeheader()
-        writer.writerow(row)
+class PressLogWriter:
+    """The press log of a run as it is made, written on a thread of its own,
+    so a write that Windows holds up costs the player's thread nothing (PS2
+    of docs/superpowers/plans/2026-11-12-player-stall-fixes.md).
+
+    start opens the file, which starts it over, and writes the header; add
+    queues a row and makes no file call. Each row is flushed before the next
+    is taken, so a worker that dies keeps every row so far. A write that
+    fails is kept in `error` and ends the writing; the rows added after it
+    are not written, and the caller writes the whole log at the end."""
+
+    _STOP = object()
+
+    def __init__(self, path: str) -> None:
+        self.path = path
+        self.error: Optional[Exception] = None
+        self._rows: "queue.Queue" = queue.Queue()
+        self._thread = threading.Thread(target=self._body, name="press log writer",
+                                        daemon=True)
+
+    def start(self) -> None:
+        self._thread.start()
+
+    def add(self, row: dict) -> None:
+        # A copy, so the row the file gets is the row as it was added.
+        self._rows.put(dict(row))
+
+    def stop(self, cap_s: float) -> bool:
+        """Ask the writer to finish the rows it holds and close the file,
+        and wait up to `cap_s` for it. False when it was still writing."""
+        self._rows.put(self._STOP)
+        self._thread.join(cap_s)
+        return not self._thread.is_alive()
+
+    def _body(self) -> None:
+        try:
+            with open(self.path, "w", encoding="utf-8", newline="") as f:
+                writer = _press_log_writer(f)
+                writer.writeheader()
+                f.flush()
+                while True:
+                    row = self._rows.get()
+                    if row is self._STOP:
+                        return
+                    writer.writerow(row)
+                    f.flush()
+        except Exception as e:  # said by the caller, which writes the log whole
+            self.error = e
 
 
 def _press_log_writer(f: TextIO) -> csv.DictWriter:
