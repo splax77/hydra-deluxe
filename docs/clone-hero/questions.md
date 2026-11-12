@@ -1,8 +1,8 @@
 # Open questions
 
-This page lists every split between Clone Hero and Hydra that has no ruling yet, each with an id.
+This page lists every split between Clone Hero and Hydra that has no ruling yet, each with an id. Under "Recorded differences" it also keeps the splits the user chose to record without changing Hydra.
 It describes build 1.1 (v1.1.0.6142) unless a question says otherwise.
-Last write-back: 2026-11-08.
+Last write-back: 2026-11-11.
 
 Each question gives the game's real rule, an example from each end, and what Hydra does today with its owner. Every question here is named by the `Ruling:` line of at least one rule block on the area pages, and every `Q-nn` a `Ruling:` line names has its heading here. The docs test checks both directions.
 
@@ -147,21 +147,9 @@ Other end: a chord exactly res/32 + 1 ticks after the end: 1.1 and Hydra land it
 
 Hydra today: `place_authored_fills` (src/parse/song.cpp lines 392 and 393) uses 1.1's +1 under both rules.
 
-### Q-50 Does a hit up to one frame past the Star Power end still score under Star Power in the game (not settled)
-
-Reviewer correction, 2026-10-30. What the listing proves is the call order in the frame update (events step, end check, drain) and that the end check turns Star Power off once clock >= end. It does not prove that a hit is scored inside the first step: `0x20F4950` shows only the event step (slot 8), `0x20F6FF0` and the clock set, with no press handler or score add. The paragraph below states the consequence if hits are scored there; page 5 SP-29 is labelled Unknown for this reason, and live check SP-29 settles it.
-
-The game's real rule. Each frame, the base frame update (RVA 0x20F4550, `code/6142/base_frame_update_20F4550.asm`) handles inputs and notes first (line 17, `call 0x1820f4950`), then runs the end check (line 37, `call qword ptr [rax + 0x228]`, slot 15), then the drain (line 45, slot 12). The end check (RVA 0x20F63B0, `code/6142/sp_end_check_20F63B0.asm` lines 1 to 8) is `comisd clock(+0x100), end(+0x120); jb return`, then `cmp byte [+0x42], 0; je return`, then a jump to the deactivation (slot 23). So Star Power turns off only in the first frame whose clock is at or past the stored end, and every hit handled earlier in that same frame is scored with Star Power still on. The event step also calls a handler with the end time when the end falls inside its step (`code/6142/advance_events_20F6A50.asm` lines 219 to 230), but that handler (slot 16, RVA 0x20F43A0, read by the page reviewer with chdis) only adds the time to a list at +0x180 and never touches the active flag, so it does not end Star Power earlier. Whether a hit can be judged at a sub-step clock between frames is not read (SP-30).
-
-Example from one end: the end is at 10,000.0 ms; the game runs at 60 fps; the previous frame's clock was 9,995 ms and this frame's is 10,011.7 ms. A backend note at 10,005 ms, hit exactly on time, is handled in the 10,011.7 ms frame before the end check and pays doubled.
-
-Example from the other end: at a high frame rate (run 1's poller saw the flag clear 0.9 to 4.8 ms after each end, so frames were a few ms apart) the same note's frame already has Star Power off when the note is handled, and it pays single. The slack is one frame, so it shrinks with the frame rate.
-
-What Hydra does today. Hydra has no frame model. It pays a note by its chart time against one end: `paid_by_sp_walk` (offset at or below 0) in src/core/backend_value.h line 30 owns "inside Star Power", and `counted_without_squeeze` (line 41) adds DragonDelgar's 3 ms counting rule for backend rows only. So the 10,005 ms note above is a backend at +5 ms in Hydra: not paid by the SP walk, and not counted (5 is not below 3). The owner of the SP end is the search graph (`ScoreGraph::add_deact_edge`, src/search/graph.cpp). The user's D269 call 4 ruling ("there should never be two different answers for where star power ends. ever. the 3ms rule is for whether a backend is included in the optimal score or uncounted...") rules that Hydra has one end and that the 3 ms rule is only for counting; it does not name the game's frame slack, so this is asked whole: should Hydra keep pricing by chart time against the bare end (frame-rate independent, today's behaviour), or model the game's frame slack?
-
 ### Q-51 Hydra pays every accent and ghost; the game pays one only when the hit is marked as performed
 
-The game's real rule. The drum score method (RVA 0x20DEEC0, `code/6142/note_score_add_20DEEC0.asm` lines 19 to 24) doubles a gem's value only when bit 4 of note +0x84 is set (`call` the bit test, `lea r8d,[rbx+rbx]`, `cmove`). The hit handler (RVA 0x20DE770, `code/6142/note_hit_dynamics_20DE770.asm` lines 29 to 102) sets that mark by comparing the lane's signed byte (engine +0x309 to +0x310) with the threshold at +0x2C0: a ghost when the byte is at least 0 and below the threshold, an accent when it is at or above it, nothing when it is negative.
+The game's real rule. The drum score method (RVA 0x20DEEC0, `code/6142/note_score_add_20DEEC0.asm` lines 19 to 24) doubles a gem's value only when the DynamicsHit flag (mask 4) of note +0x84 is set (`call` the flag test, `lea r8d,[rbx+rbx]`, `cmove`). The name is the dump's: the word at +0x84 has the enum type whose value 4 is DynamicsHit (`dump.cs` lines 548388 and 548231; page 6, SC-12). The hit handler (RVA 0x20DE770, `code/6142/note_hit_dynamics_20DE770.asm` lines 29 to 102) sets that mark by comparing the lane's signed byte (engine +0x309 to +0x310) with the threshold at +0x2C0: a ghost when the byte is at least 0 and below the threshold, an accent when it is at or above it, nothing when it is negative.
 
 Example from one end: the ProDrums bot on Trippin SP Spike hit all 9 accents and 34 ghosts as performed (scorestats-Trippin_SP_Spike-20261028-212754.json: accent_notes_hit 9, ghost_notes_hit 34), so its score 290,975 equals Hydra's.
 
@@ -221,6 +209,54 @@ The game's real rule: the gain method `0x20F4FA0` sets the byte at +0x130 on eve
 One end: a quarter-meter phrase with no clamp: the flag turns on (run1_cal0 first flip at 5.715 s with 1440 ticks in the meter). Other end: Star Power active: the flag reads 0 in all 11,436 active rows of run1_cal0.
 
 What the tool does today: `OFF_SP_OVERFLOW = 0x130` (constants.py line 140) with the comment at lines 137 to 140 saying it is set only when a phrase overfills the meter. Owner: constants.py (name and comment). Page row IN-27.
+
+## Recorded differences
+
+Each entry below is a difference between the game and Hydra that the user chose to record, not change. It is closed. It keeps its heading because a block's `Ruling:` line names it. Hydra stays as it is.
+
+### Q-50 A hit judged in a frame past the Star Power end pays without Star Power in the game (recorded, closed)
+
+The game's rule (page 5, SP-28 and SP-29). When Star Power's end falls between the last frame's clock and this frame's clock, the event step queues the end time (`code/6142/advance_events_20F6A50.asm` lines 219 to 230). The catch-up then runs a nested frame update at that queued time, with hits off (`code/6142/event_catch_up_20F6FF0.asm` lines 95 to 104, the call at line 103). That nested update's end check ends Star Power (`code/6142/base_frame_update_20F4550.asm` line 37, `code/6142/sp_end_check_20F63B0.asm` lines 1 to 8). Only then does the real frame run its press route and judge its hits, at the frame clock. So a hit judged at a frame clock past the end pays single. Hits come first, with Star Power still on, only when the frame clock equals the end exactly: the end is then not queued, and the press route runs before the frame's own end check.
+
+One end: the end is at 10,000.0 ms and a frame's clock is exactly 10,000.0 ms. A hit judged in that frame pays doubled.
+Other end: the end is at 10,000.0 ms and the frame clock is 10,011.7 ms. The nested update at 10,000.0 ms has already ended Star Power, so a hit judged in that frame pays single.
+
+What Hydra does: Hydra has no frames. It pays a note by its chart time against one end: `paid_by_sp_walk` (offset at or below 0) in src/core/backend_value.h line 28. How far the two can differ depends on the frame rate, which the player sets in the game's settings.
+
+Ruling: the user chose to record this, 2026-11-11 (session 428cf079): "#3 isnt even possible to quantify because framerate is not permanently set, it can be changed in the settings". Page rows SP-28 and SP-29.
+
+### Q-80 The game refuses a .srb whose version is not 20210228; Hydra never checks (recorded, closed)
+
+The game's rule (page 1, CR-51): the .srb reader compares the song-info stream's first four bytes with 0x1346234 (20210228) and stops reading the bundle when they differ.
+
+One end: a bundle with version 20210228. The game and Hydra both read it. None of the 30 shipped bundles is known to have another version.
+Other end: a bundle with any other version. The game stops reading it; Hydra reads it as usual.
+
+What Hydra does: `srb_parse_metadata` in src/parse/srb.cpp line 136 reads up to the checksum and never tests the version.
+
+Ruling: the user chose "Record it only" (2026-11-08, session 77057df2; docs/audit/2026-11-08-clone-hero-unknowns/user-answers.md line 18). Page row CR-51.
+
+### Q-81 The game drops a drum lane whose first pad chord starts too late; Hydra keeps it (recorded, closed)
+
+The game's rule (page 2, NL-58): the game drops a lane whose first chord with a non-kick pad, searched from one tick before the lane's start, lands more than resolution x 12 / 192 ticks after the start, rounded half to even (30 ticks at resolution 480). At exactly the start plus that cut-off the lane is kept.
+
+One end: a lane whose first pad chord is on the lane's start. The game and Hydra both light it.
+Other end: a lane whose first pad chord is 240 ticks in at resolution 480, as the double lane at tick 273,840 in Job for a Cowboy - Embedded is. The game drops the lane; Hydra lights it. The approved search of the library's notes files found 75 such lanes in 50 charts (user-answers.md line 21).
+
+What Hydra does: `light_drum_lanes` in src/parse/song.cpp line 203 applies no cut-off.
+
+Ruling: the user chose "Record it only" (docs/audit/2026-11-08-clone-hero-unknowns/user-answers.md line 21). D112 ("Any note inside the lane (Recommended)") rules on which notes light a lane. Page row NL-58.
+
+### Q-82 Two written fills on one chord: the game's deadline comes from the earlier fill, Hydra's from the later (recorded, closed)
+
+The game's rule (page 4, FL-10): when two written fills pick one chord, the game keeps a record for each, and the chord's activation flag is cleared at the earlier-starting fill's deadline.
+
+One end: two fills that start on the same tick. Both sides agree.
+Other end: at resolution 480, fills from 9600 and from 10080 that both end on a chord at 10560. The game clears the flag at current tick 7680; Hydra prices the deadline at current tick 8160. Two charts in the library have such chords, and keeping only the earlier fill changes neither best score: Pangaea - A Gateway to Nothing stays 722,900 and RAT KING - Open Hands to the Void stays 260,970 (user-answers.md lines 24 and 25).
+
+What Hydra does: `place_authored_fills` in src/parse/song.cpp line 416 keeps the later fill's length through `apply_fill_end` (line 352).
+
+Ruling: the user, 2026-11-08: "Record it only" (docs/audit/2026-11-08-clone-hero-unknowns/user-answers.md line 25). Page row FL-10.
 
 ## Reserved ids settled before write-up
 
