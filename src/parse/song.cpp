@@ -464,7 +464,7 @@ struct DrumChartFlags {
 };
 
 // The five-lane conversion, Clone Hero's track step 0x215D450
-// (docs/clone-hero/code/6142/five_lane_convert_215D450.md, rules NL-74 to
+// (docs/audit/note-shuffle/step0/open2-refute/f215D450.asm, rules NL-74 to
 // NL-76 on docs/clone-hero/02-note-list.md): the one place a chart's raw pads
 // become the chord's four lanes. It runs before the flam step and the disco
 // flip, as the game converts at load and does those two later. Only the lane
