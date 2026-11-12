@@ -19,6 +19,15 @@ names are the stems of overlay_logs.TIMING_PRESS_COLUMNS, plus `loop`
 (play_chords' own code between two steps) and `score_delay` (the sleep
 before the score read after a press, which no column times).
 
+`--timing game` plays each pass with play_chart.play_in_game instead (task
+IG4 of docs/superpowers/plans/2026-11-12-in-game-press-timing.md). Its fake
+Frida script is then a fake game: stall_game.mjs, beside this file, a Node
+process that runs the kit agent's real frame scheduler on a wall-clock frame
+ticker with its own song clock, takes the real `play`, `retime` and
+`stop_play` messages and sends the real event batches. The forced block then
+lands on play_in_game's thread, the one that takes the agent's events.
+play_once runs one pass of either timing and reports what the tests check.
+
 The threshold, the run's length and the hunt's run count default to the
 user's numbers in tools/ch_probe/constants.py. `--load` starts a second
 process that reads this checkout's testdata and .git folders in a loop, and
@@ -28,8 +37,9 @@ stops it on every way out. Everything the run writes goes in its own folder
 Run, from the checkout's root (with -I, `-m` cannot find `tools`, so the
 file is named by its path):
      py -I tools/ch_probe/experiments/stall_harness.py <schedule.json>
-     --sink per-row|writer|none [--load] [--force-stall-ms MS]
-     [--minutes M] [--threshold-ms MS] [--no-cdb] [--hunt-run N] [--out DIR]
+     --sink per-row|writer|none [--timing loop|game] [--load]
+     [--force-stall-ms MS] [--minutes M] [--threshold-ms MS] [--no-cdb]
+     [--hunt-run N] [--out DIR]
 """
 
 from __future__ import annotations
@@ -37,15 +47,19 @@ from __future__ import annotations
 import argparse
 import faulthandler
 import io
+import json
 import os
+import pathlib
 import queue
+import shutil
 import subprocess
 import sys
 import tempfile
 import threading
 import time
 from contextlib import contextmanager
-from typing import Any, Callable, List, Optional, Sequence, Tuple
+from dataclasses import dataclass, field
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 _REPO_ROOT = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..", "..", "..")
@@ -62,6 +76,26 @@ SINK_WRITER = "writer"
 SINK_PER_ROW = "per-row"
 SINK_NONE = "none"
 SINKS = (SINK_WRITER, SINK_PER_ROW, SINK_NONE)
+
+# Which player a pass runs: play_chords' outside loop, or play_in_game with
+# the fake game.
+TIMING_LOOP = "loop"
+TIMING_GAME = "game"
+TIMINGS = (TIMING_LOOP, TIMING_GAME)
+
+# The fake game's frame rate: the 330 frames a second the in-game timing
+# plan gives the game ("about 3 ms at 330 frames a second", question 2 of
+# docs/superpowers/plans/2026-11-12-in-game-press-timing.md), which its task
+# IG4 gives this fake.
+FAKE_GAME_FPS = 330
+_HERE = os.path.dirname(os.path.abspath(__file__))
+GAME_DRIVER = os.path.join(_HERE, "stall_game.mjs")
+SCHEDULER = os.path.join(_REPO_ROOT, "tools", "ch_mcp", "agent", "press_schedule.ts")
+# The fake game's one message of its own, which kit.ts lacks: how many times
+# each seq was written (stall_game.mjs answers it).
+FAKE_STATS_TYPE = "fake_stats"
+# How long the fake game may take to exit once its stdin closes.
+FAKE_GAME_EXIT_CAP_S = 5.0
 
 # The median kit press call of LS-A2 (row P10 of the plan above, and question
 # 2's own text): how long the fake Frida script takes to answer a post.
@@ -296,16 +330,78 @@ class _FakeScript:
             self.handlers["message"]({"type": "send", "payload": self._reply(message)}, None)
 
 
+class _GameScript:
+    """The fake game as a Frida script: stall_game.mjs in a Node process.
+    A post goes to its stdin as one JSON line; each line it prints is a
+    payload, handed to the message handler on a thread of its own, the way
+    Frida calls LiveAgent._on_message. That thread only reads and hands
+    over, so the Node process never waits on a slow Python thread, as a game
+    never waits on Frida's queue. Node's errors go to `err_path`."""
+
+    def __init__(self, command: Sequence[str], err_path: str) -> None:
+        self.command, self.err_path = list(command), err_path
+        self.handlers: dict = {}
+        self._proc: Optional[subprocess.Popen] = None
+        self._err: Any = None
+        self._post_lock = threading.Lock()
+        self._stopping = False
+        self._thread = threading.Thread(target=self._body, name="fake game reader",
+                                        daemon=True)
+
+    def on(self, kind: str, handler: Callable) -> None:
+        self.handlers[kind] = handler
+
+    def load(self) -> None:
+        self._err = open(self.err_path, "w", encoding="utf-8")
+        self._proc = subprocess.Popen(self.command, stdin=subprocess.PIPE,
+                                      stdout=subprocess.PIPE, stderr=self._err,
+                                      text=True, encoding="utf-8", bufsize=1)
+        self._thread.start()
+
+    def post(self, message: dict) -> None:
+        with self._post_lock:
+            self._proc.stdin.write(json.dumps(message) + "\n")
+            self._proc.stdin.flush()
+
+    def stop(self) -> None:
+        if self._proc is None:
+            return
+        self._stopping = True
+        with self._post_lock:
+            try:
+                self._proc.stdin.close()
+            except OSError:
+                pass
+        try:
+            self._proc.wait(FAKE_GAME_EXIT_CAP_S)
+        except subprocess.TimeoutExpired:
+            self._proc.kill()
+            self._proc.wait()
+        self._thread.join(FAKE_GAME_EXIT_CAP_S)
+        self._err.close()
+
+    def _body(self) -> None:
+        for line in self._proc.stdout:
+            if line.strip():
+                self.handlers["message"]({"type": "send", "payload": json.loads(line)}, None)
+        code = self._proc.wait()
+        if not self._stopping:
+            # A request waiting on a game that died fails at once, naming it.
+            self.handlers["message"]({"type": "error", "description":
+                                      f"the fake game exited with code {code}; its "
+                                      f"errors are in {self.err_path}"}, None)
+
+
 class _FakeSession:
-    def __init__(self, reply_s: float) -> None:
-        self.reply_s = reply_s
-        self.script: Optional[_FakeScript] = None
+    def __init__(self, make_script: Callable[[], Any]) -> None:
+        self.make_script = make_script
+        self.script: Any = None
 
     def on(self, kind: str, handler: Callable) -> None:
         pass
 
-    def create_script(self, source: str) -> _FakeScript:
-        self.script = _FakeScript(self.reply_s)
+    def create_script(self, source: str) -> Any:
+        self.script = self.make_script()
         return self.script
 
     def detach(self) -> None:
@@ -324,7 +420,35 @@ class FakeFrida:
         self.reply_s = reply_s
 
     def attach(self, target: Any) -> _FakeSession:
-        return _FakeSession(self.reply_s)
+        return _FakeSession(lambda: _FakeScript(self.reply_s))
+
+
+def node_path() -> Optional[str]:
+    return shutil.which("node")
+
+
+def game_command(clock_start_ms: float, node: Optional[str] = None) -> List[str]:
+    """The fake game's command line: Node on stall_game.mjs, with the real
+    scheduler's file URL, FAKE_GAME_FPS and the song clock's start."""
+    node = node or node_path()
+    if node is None:
+        raise RuntimeError("node is not on PATH, so the fake game cannot run")
+    return [node, GAME_DRIVER, pathlib.Path(SCHEDULER).as_uri(), str(FAKE_GAME_FPS),
+            repr(float(clock_start_ms))]
+
+
+class FakeGameFrida(FakeFrida):
+    """The frida module for a game-timed pass: attach returns a session
+    whose script is the fake game, its song clock begun at
+    `clock_start_ms` when the `play` message arrives."""
+
+    def __init__(self, clock_start_ms: float, err_path: str) -> None:
+        super().__init__()
+        self.clock_start_ms, self.err_path = clock_start_ms, err_path
+
+    def attach(self, target: Any) -> _FakeSession:
+        command = game_command(self.clock_start_ms)
+        return _FakeSession(lambda: _GameScript(command, self.err_path))
 
 
 # --- the sinks ----------------------------------------------------------------
@@ -537,6 +661,154 @@ def _play_pass(n: int, chords, tracker: StepTracker, sink: _Sink, folder: str,
     return result, log_line, kit_line
 
 
+@dataclass
+class GameReport:
+    """What a game-timed pass saw beyond its RunResult. `reported` counts
+    the agent's reports of each seq as play_in_game took them (a sent,
+    dropped or skipped event each), and `fires` the fake game's writes of
+    each seq. `posts` holds each message play_in_game posted, as (type,
+    seconds since the pass began). `end_reads` holds when each end read
+    returned, on the same clock. `latest_take_ms` is the most any sent
+    event waited, from its press's down to play_in_game taking it, both in
+    epoch time: a forced block shows there."""
+    reported: Dict[int, int] = field(default_factory=dict)
+    fires: Dict[int, int] = field(default_factory=dict)
+    posts: List[Tuple[str, float]] = field(default_factory=list)
+    end_reads: List[float] = field(default_factory=list)
+    latest_take_ms: float = 0.0
+
+
+class _TappedPlayer:
+    """A kit_tools.GamePlayer as play_in_game sees it, which also counts
+    each report it hands over and notes each post."""
+
+    def __init__(self, player: kit_tools.GamePlayer, report: GameReport,
+                 since: Callable[[], float]) -> None:
+        self._player, self._report, self._since = player, report, since
+        self.events = self
+
+    def get(self, timeout: float) -> dict:
+        event = self._player.events.get(timeout=timeout)
+        kind = event.get("kind") if isinstance(event, dict) else None
+        seqs = (event.get("seqs") or [] if kind == kit_tools.EVENT_SKIPPED
+                else [event.get("seq")] if kind in (kit_tools.EVENT_SENT,
+                                                    kit_tools.EVENT_DROPPED) else [])
+        for seq in seqs:
+            self._report.reported[seq] = self._report.reported.get(seq, 0) + 1
+        if kind == kit_tools.EVENT_SENT and event.get("down_ms") is not None:
+            waited_ms = C.s_to_ms(time.time()) - event["down_ms"]
+            self._report.latest_take_ms = max(self._report.latest_take_ms, waited_ms)
+        return event
+
+    def post(self, message: dict) -> dict:
+        self._report.posts.append((message["type"], self._since()))
+        return self._player.post(message)
+
+    def alive(self) -> bool:
+        return self._player.alive()
+
+
+def planned_ends(chords) -> List[float]:
+    """The Star Power end each end read of `chords` gets in a game-timed
+    pass, in the order the reads come: the end the schedule planned
+    (Press.planned_end_ms), as if the game stored just that."""
+    return [p.planned_end_ms for p in play_chart.press_plan(chords)
+            if p.planned_end_ms is not None]
+
+
+def _game_pass(n: int, chords, tracker: StepTracker, sink: _Sink, folder: str,
+               cap_s: float, out: Callable[[str], None],
+               end_read_block_s: Optional[float] = None):
+    """One pass of play_chart.play_in_game on the fake game. With
+    `end_read_block_s`, the first end read blocks that long before it
+    returns, on play_in_game's thread, so its retime goes out that much
+    later."""
+    now = time.perf_counter
+    began = now()
+    report = GameReport()
+    agent_path = os.path.join(folder, "fake-agent.js")
+    if not os.path.exists(agent_path):
+        with open(agent_path, "w", encoding="utf-8") as f:
+            f.write("// stall_harness: the fake Frida script answers every post\n")
+    clock_start_ms = C.s_to_ms(_first_press_s(chords))
+    agent = FA.LiveAgent(agent_path, log_path=os.path.join(folder, f"kit-{n}.jsonl"),
+                         frida_mod=FakeGameFrida(clock_start_ms,
+                                                 os.path.join(folder, f"game-{n}.err")),
+                         out=out)
+    agent.start(kit_tools.READ_CAP_S)
+    player = kit_tools.GamePlayer(agent)
+    ends = iter(planned_ends(chords))
+    blocks = [end_read_block_s] if end_read_block_s is not None else []
+
+    def read_sp_end() -> Optional[float]:
+        with tracker.step_of(STEP_END_READ):
+            if blocks:
+                time.sleep(blocks.pop())
+            end_ms = next(ends, None)
+            report.end_reads.append(now() - began)
+            return None if end_ms is None else C.ms_to_s(end_ms)
+
+    def on_press(row: dict) -> None:
+        with tracker.step_of(STEP_HANDOFF):
+            sink.add(row)
+
+    sink.start()
+    printed = io.StringIO()
+    try:
+        result = play_chart.play_in_game(
+            chords, _TappedPlayer(player, report, lambda: now() - began),
+            clock_addr=1, score_addr=1, now=now, on_press=on_press, out=printed,
+            cap_s=cap_s, read_sp_end=read_sp_end)
+        stats = agent.request({"type": FAKE_STATS_TYPE}, kit_tools.READ_CAP_S)
+        report.fires = {int(seq): count for seq, count in stats["fires"].items()}
+    finally:
+        tracker.leave(then=None)
+        player.close()
+        log_line = sink.end()
+        kit_line = agent.detach()
+        with open(os.path.join(folder, f"play-{n}.txt"), "w", encoding="utf-8") as f:
+            f.write(printed.getvalue())
+    return result, log_line, kit_line, report
+
+
+@dataclass
+class PassReport:
+    """One pass of play_once: its RunResult and its press log's line, the
+    retime_missed rows, and for a game-timed pass its GameReport."""
+    result: play_chart.RunResult
+    log_line: str
+    retime_missed: int
+    game: Optional[GameReport] = None
+
+
+def play_once(chords, *, timing: str, sink: str, folder: str, cap_s: float,
+              force_stall_ms: Optional[float] = None,
+              end_read_block_ms: Optional[float] = None,
+              out: Callable[[str], None] = print,
+              reply_s: float = FAKE_KIT_REPLY_S) -> PassReport:
+    """Play `chords` once with `timing`, through `sink`, with the forced
+    block of --force-stall-ms on the first press-log row and, for a
+    game-timed pass, `end_read_block_ms` on the first end read."""
+    os.makedirs(folder, exist_ok=True)
+    tracker = StepTracker()
+    press_log = _Sink(sink, os.path.join(folder, "press-1.csv"))
+    with _forced_block(force_stall_ms):
+        if timing == TIMING_GAME:
+            block_s = None if end_read_block_ms is None else C.ms_to_s(end_read_block_ms)
+            result, log_line, _kit, game = _game_pass(1, chords, tracker, press_log, folder,
+                                                      cap_s, out, block_s)
+        else:
+            if end_read_block_ms is not None:
+                raise ValueError("an end read block needs the game timing, whose end reads "
+                                 "post a retime")
+            result, log_line, _kit = _play_pass(1, chords, tracker, press_log, folder,
+                                                cap_s, reply_s, out)
+            game = None
+    missed = sum(1 for row in result.rows
+                 if row.get("agent_note") == kit_tools.NOTE_RETIME_MISSED)
+    return PassReport(result, log_line, missed, game)
+
+
 def run_harness(chords, *, sink: str, folder: str, threshold_ms: float, minutes: float,
                 force_stall_ms: Optional[float] = None, load: bool = False,
                 cdb: bool = True, hunt_run: Optional[int] = None,
@@ -544,10 +816,10 @@ def run_harness(chords, *, sink: str, folder: str, threshold_ms: float, minutes:
                 popen: Callable[..., Any] = subprocess.Popen,
                 find: Callable[[float], Tuple[Optional[str], str]] = find_cdb,
                 launch: Callable[[str, int, float], str] = launch_cdb,
-                reply_s: float = FAKE_KIT_REPLY_S) -> int:
-    """Play `chords` over and over for `minutes`, through `sink`, and say how
-    the run went. Returns the exit code: 0 when the run reached its cap, 1
-    when a pass ended any other way."""
+                reply_s: float = FAKE_KIT_REPLY_S, timing: str = TIMING_LOOP) -> int:
+    """Play `chords` over and over for `minutes`, through `sink`, with
+    `timing`'s player, and say how the run went. Returns the exit code: 0
+    when the run reached its cap, 1 when a pass ended any other way."""
     now = time.perf_counter
     cap_s = minutes * 60
     began = now()
@@ -577,12 +849,20 @@ def run_harness(chords, *, sink: str, folder: str, threshold_ms: float, minutes:
                     out("cap reached")
                     break
                 n += 1
-                result, log_line, kit_line = _play_pass(
-                    n, chords, tracker, _Sink(sink, os.path.join(folder, f"press-{n}.csv")),
-                    folder, left_s, reply_s, out)
+                press_log = _Sink(sink, os.path.join(folder, f"press-{n}.csv"))
+                missed = ""
+                if timing == TIMING_GAME:
+                    result, log_line, kit_line, _game = _game_pass(
+                        n, chords, tracker, press_log, folder, left_s, out)
+                    missed = (f", {kit_tools.NOTE_RETIME_MISSED} "
+                              + str(sum(1 for row in result.rows if row.get("agent_note")
+                                        == kit_tools.NOTE_RETIME_MISSED)))
+                else:
+                    result, log_line, kit_line = _play_pass(
+                        n, chords, tracker, press_log, folder, left_s, reply_s, out)
                 dropped += result.dropped
-                out(f"pass {n}: {result.stop}, sent {result.sent}, dropped {result.dropped}; "
-                    f"{log_line}; kit log: {kit_line}")
+                out(f"pass {n}: {result.stop}, sent {result.sent}, dropped {result.dropped}"
+                    f"{missed}; {log_line}; kit log: {kit_line}")
                 if result.stop == "cap":
                     out("cap reached")
                     break
@@ -616,6 +896,7 @@ def main(argv: Optional[Sequence[str]] = None, *,
                                              "dump the stacks when a step runs long.")
     ap.add_argument("schedule", help="a hydra_replay schedule JSON")
     ap.add_argument("--sink", required=True, choices=SINKS)
+    ap.add_argument("--timing", choices=TIMINGS, default=TIMING_LOOP)
     ap.add_argument("--minutes", type=float, default=C.STALL_RUN_MINUTES)
     ap.add_argument("--threshold-ms", type=float, default=C.STALL_THRESHOLD_MS)
     ap.add_argument("--force-stall-ms", type=float)
@@ -636,7 +917,7 @@ def main(argv: Optional[Sequence[str]] = None, *,
     return run_harness(chords, sink=args.sink, folder=folder, threshold_ms=args.threshold_ms,
                        minutes=args.minutes, force_stall_ms=args.force_stall_ms,
                        load=args.load, cdb=not args.no_cdb, hunt_run=args.hunt_run,
-                       out=out, **hooks)
+                       out=out, timing=args.timing, **hooks)
 
 
 if __name__ == "__main__":
