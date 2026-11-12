@@ -367,22 +367,36 @@ class LsM2EndTest(unittest.TestCase):
                       report.lines[0])
 
 
+# Freak's sp_max at its resolution, 480: the plan's F5 acceptance
+# (docs/superpowers/plans/2026-11-08-player-audit-fixes.md) and SP-11.
+FREAK_RESOLUTION = 480
+FREAK_SP_MAX = 14400
+# Hydra's own full bar at that resolution, 32 x 480 (SP-11), which the game's
+# meter is not.
+HYDRA_BAR_AT_FREAK_RESOLUTION = 15360
+
+
+def _sp_max_lines(sp_max, resolution):
+    report = sp_compare.Report()
+    sp_compare._check_sp_max(report, [_row(1.0, 0, sp_max=sp_max)], MAX,
+                             resolution, None)
+    return report.lines
+
+
 class SpMaxTest(unittest.TestCase):
     def test_sp_max_is_checked_against_30_times_resolution(self):
-        # Freak's sp_max is 14,400 at resolution 480 (SP-11).
-        self.assertEqual(sp_compare.game_full_meter(480), 14400)
-        report = sp_compare.Report()
-        sp_compare._check_sp_max(report, [_row(1.0, 0, sp_max=14400)], MAX, 480, None)
-        self.assertEqual(report.lines, ["PASS sp_max 14400; the game's full meter "
-                                        "14400 (resolution 480 x 30)"])
-        # Hydra's own bar, 32 x 480, is not the game's.
-        report = sp_compare.Report()
-        sp_compare._check_sp_max(report, [_row(1.0, 0, sp_max=15360)], MAX, 480, None)
-        self.assertEqual(report.lines, ["FAIL sp_max 15360; the game's full meter "
-                                        "14400 (resolution 480 x 30)"])
+        self.assertEqual(sp_compare.game_full_meter(FREAK_RESOLUTION), FREAK_SP_MAX)
+        self.assertEqual(_sp_max_lines(FREAK_SP_MAX, FREAK_RESOLUTION),
+                         ["PASS sp_max 14400; the game's full meter "
+                          "14400 (resolution 480 x 30)"])
+        self.assertEqual(_sp_max_lines(HYDRA_BAR_AT_FREAK_RESOLUTION, FREAK_RESOLUTION),
+                         ["FAIL sp_max 15360; the game's full meter "
+                          "14400 (resolution 480 x 30)"])
 
     def test_changing_sp_max_fails(self):
-        report = run(build_rows(sp_max=lambda t: FULL_METER if t < 2500 else 7000),
+        # The meter's maximum changes at chord 3's ms.
+        changes_ms = SCORE["chords"][3]["ms"]
+        report = run(build_rows(sp_max=lambda t: FULL_METER if t < changes_ms else 7000),
                      sp_bar_ticks=14400)
         self.assertIn("FAIL sp_max 5760, 7000; the game's full meter 5760 "
                       "(resolution 192 x 30); sp_bar_ticks 14400", report.lines)

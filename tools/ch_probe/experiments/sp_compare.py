@@ -106,7 +106,8 @@ def press_reach(schedule_path: str) -> dict:
 SP_MULTIPLIER = 2
 
 # The game's full meter in units per tick of the chart's resolution: SP-11 in
-# docs/clone-hero/05-star-power.md (D319 item 2 checks sp_max against it).
+# docs/clone-hero/05-star-power.md. D319 item 2 checks sp_max against it, and
+# D324 item 4 has the report show it beside sp_max.
 GAME_FULL_METER_PER_RESOLUTION = 30
 
 # Which sp_amount and sp_max columns to read by default. The amount and the
