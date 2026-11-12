@@ -15,11 +15,11 @@ profile's `isBot` setting and nothing else. When it says yes, the gain method do
 sets `isBot` to 1. So in 1.0 the bot never fills its Star Power meter, from phrases or from anything else that goes
 through the gain method.
 
-## B1: the bot test, `PlayerExtensions.IsBot` (whole file, 7 lines)
+## B1: the bot test, PlayerExtensions.IsBot (whole file, 7 lines)
 
-The scrambled static class `ʳʼʽʼˀʴʽʵʵʳʵ` holds one extension method, `ˀʵʲʲʻʸʸʽʹʽˁ`, called here `IsBot`. It takes a
-player slot (class `ˁʻʽʷʽʻʾʵʷˀʶ`) and returns that slot's profile's `isBot` setting (line 5 of the original file). The
-profile field `ʲʼʽʺʿʹʽʻʵʺʶ` holds a `ʹʺʿʻʲʹʻʹʹʵʸ`, which derives from `BasePlayerProfile`; `isBot` is not declared in
+The scrambled static class ʳʼʽʼˀʴʽʵʵʳʵ holds one extension method, ˀʵʲʲʻʸʸʽʹʽˁ, called here `IsBot`. It takes a
+player slot (class ˁʻʽʷʽʻʾʵʷˀʶ) and returns that slot's profile's `isBot` setting (line 5 of the original file). The
+profile field ʲʼʽʺʿʹʽʻʵʺʶ holds a ʹʺʿʻʲʹʻʹʹʵʸ, which derives from `BasePlayerProfile`; `isBot` is not declared in
 Assembly-CSharp, so it comes from that base class, which lives in another assembly that was not decompiled for this page.
 The `(bool)` cast at BasePlayer.cs line 319 and the `CurrentValue = 1` write below show it is a setting with a
 number value that reads as a bool.
@@ -36,7 +36,7 @@ That is the start the tools use for 1.0 bot runs.
 
 ## B4: nothing else adds to the meter
 
-A search of every per-class file for an assignment to the meter field `ʹˀʼʵʳˀʻʼʵʿʵ` (`=`, `+=`, `-=`) found five
+A search of every per-class file for an assignment to the meter field ʹˀʼʵʳˀʻʼʵʿʵ (`=`, `+=`, `-=`) found five
 lines, all in BasePlayer.cs. Only line 759 adds, and it is inside B2's test. Line 283 drains it during Star Power,
 line 533 resets it, line 771 caps it at 1 inside B2, and line 859 copies it back from a saved state whose only write
 (line 596) stored this same meter. The callers of the gain method are BaseGuitarPlayer.cs line 337 (an amount from a method not read here),
@@ -47,5 +47,5 @@ base method, so every path passes B2's test.
 
 BasePlayer.cs lines 636 and 1104, GameManager.cs lines 355 and 359, GlobalVariables.cs lines 436 and 1170,
 PlayerSelectionMenu.cs lines 763 and 768, PlayerStatsBox.cs lines 264, 269, 459 and 464, and the scrambled class file
-`ʹʵʽˁʼʺʷʿʷʲʻ.cs` line 134. They were found by a text search for the method name over the whole decompile and were not
+ʹʵʽˁʼʺʷʿʷʲʻ.cs line 134. They were found by a text search for the method name over the whole decompile and were not
 read for this page, except that the name lines in PlayerSelectionMenu and PlayerStatsBox colour a bot's name cyan.
