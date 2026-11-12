@@ -83,6 +83,31 @@ def fake_process(
     return proc, seen
 
 
+# A moment on the agent's clock: kit.ts stamps down_ms and up_ms with
+# Date.now(), milliseconds since 1970, so a fake reply's times are that big.
+KIT_EPOCH_MS = 1_762_600_000_000
+
+
+def kit_reply(groups: Sequence[Tuple[int, int, int, int]], *,
+              after_ms: Optional[Sequence[float]] = None, hold_frames: int = 2,
+              rewrite: bool = False, on_main: bool = False) -> dict:
+    """A kit press reply in the shape kit.ts's press handler builds its
+    `reply`: the first group's frames and times at the top, the hold,
+    `rewrite` and `on_main`, and, for a press of more than one group, a
+    `groups` list with each group's frames, times and `after_ms` (0 for the
+    first). `groups` gives each group's (down_frame, up_frame, down_ms,
+    up_ms); `after_ms` each group's, 8 ms apart when None. The numbers are
+    the test's inputs."""
+    keys = ("down_frame", "up_frame", "down_ms", "up_ms")
+    reply = {**dict(zip(keys, groups[0])), "hold_frames": hold_frames,
+             "rewrite": rewrite, "on_main": on_main}
+    if len(groups) > 1:
+        after = [8.0 * k for k in range(len(groups))] if after_ms is None else list(after_ms)
+        reply["groups"] = [{**dict(zip(keys, group)), "after_ms": a}
+                           for group, a in zip(groups, after, strict=True)]
+    return reply
+
+
 @contextlib.contextmanager
 def searching_for_no_song(engine_finder):
     """For a test of the default engine search: inside the block, the capped

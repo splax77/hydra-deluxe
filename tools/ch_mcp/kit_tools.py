@@ -41,6 +41,7 @@ from tools.ch_mcp import frida_attach as FA
 from tools.ch_mcp import game_files
 from tools.ch_mcp.frida_tools import AGENT_DIR, ATTACH_CAP_S, NOT_ATTACHED, READ_CAP_S
 from tools.ch_mcp.game_tools import PressResult
+from tools.ch_probe.experiments.overlay_logs import KIT_PRESS_COLUMNS
 from tools.ch_probe.input_driver import Lane
 
 KIT_AGENT_NAME = "kit"
@@ -258,7 +259,10 @@ DYNAMIC_ACCENT = "accent"
 # The strengths copy the game's own bot and MIDI handler, from the Evidence
 # line of SC-13 in docs/clone-hero/06-scoring.md: the bot's velocity for an
 # accent and for a ghost, and the handler's turning of a velocity into an axis
-# value. A plain gem's velocity is never read, so it presses like an accent.
+# value. A plain gem presses at the accent's velocity. By SC-13 the game reads
+# the velocity of every pressed lane and marks a hit at or above the threshold
+# accent, so it marks such a plain gem's hit accent too; whether that mark
+# pays anything is the question SC-13's Ruling line names (Q-51).
 def pad_axis(dynamic: str, threshold: Optional[int] = None) -> float:
     """The axis value that presses a gem of this `dynamic`, on a pad or the
     kick, the one home of the strengths. Only a ghost needs `threshold`, the engine's dynamics
@@ -289,8 +293,8 @@ def press_message(elements: Sequence[KitElement], hold_frames: int = KIT_HOLD_FR
                   values: Optional[Sequence[float]] = None,
                   then: Sequence[Tuple[Sequence[KitElement], Optional[Sequence[float]],
                                        float]] = ()) -> dict:
-    """The press message for `elements`, each once, in order. Every element
-    is written as an axis value. `values` gives each element's value, one per
+    """The press message for `elements`, in order. Every element is written
+    as an axis value. `values` gives each element's value, one per
     element, and an element with a `strength` ignores its own and is written
     at its strength; None presses the pads and the kick as plain gems. `read`
     names the game actions the
@@ -302,18 +306,20 @@ def press_message(elements: Sequence[KitElement], hold_frames: int = KIT_HOLD_FR
     `after_ms` from the first group's down, and holds each group
     `hold_frames` frames from its own down (design point 4 of
     docs/superpowers/plans/2026-11-07-player-limits.md). The message carries
-    `then` only when it holds some. Raises ValueError for an element in two
-    groups, since one group's release would lift the other's, and for an
-    `after_ms` that is not a number above 0."""
+    `then` only when it holds some. Raises ValueError for an element twice
+    in one group, which would send one press for two gems (D321 item 3),
+    for an element in two groups, since one group's release would lift the
+    other's, and for an `after_ms` that is not a number above 0."""
     def element_list(group: Sequence[KitElement],
                      group_values: Optional[Sequence[float]]) -> List[dict]:
         if group_values is None:
             group_values = [pad_axis(DYNAMIC_NONE)] * len(group)
-        seen: Dict[KitElement, float] = {}
-        for e, value in zip(group, group_values, strict=True):
-            seen.setdefault(e, value)
+        twice = sorted({e.name for e in group if list(group).count(e) > 1})
+        if twice:
+            raise ValueError(f"kit element {', '.join(twice)} is twice in one group of a "
+                             f"press; each gem needs its own element")
         return [{"id": e.id, "value": value if e.strength is None else e.strength}
-                for e, value in seen.items()]
+                for e, value in zip(group, group_values, strict=True)]
 
     message = {"type": "press", "elements": element_list(elements, values),
                "hold_frames": hold_frames, "cap_s": KIT_PRESS_CAP_S,
@@ -336,6 +342,32 @@ def press_message(elements: Sequence[KitElement], hold_frames: int = KIT_HOLD_FR
                           "after_ms": float(after_ms)})
         message["then"] = later
     return message
+
+
+def reply_gap(reply: Any, groups: int) -> Optional[str]:
+    """What a kit press's reply lacks, as words that follow "the kit's reply
+    to the press", or None when it holds what a run reads from it: the press
+    log's kit columns (overlay_logs.KIT_PRESS_COLUMNS), and, for a press of
+    more than one group (`groups` counts them), a `groups` list with an entry
+    per group holding the same columns. kit.ts's press handler writes that
+    shape; a reply without it stops the run (D318 item 2)."""
+    if not isinstance(reply, dict):
+        return f"is not an object but {reply!r}"
+    if groups > 1:
+        parts = reply.get("groups")
+        if not isinstance(parts, list):
+            return f"has no `groups` list, though the press sent {groups} groups"
+        if len(parts) != groups:
+            return f"has {len(parts)} `groups` entries for the {groups} groups the press sent"
+        for k, part in enumerate(parts):
+            missing = ([key for key in KIT_PRESS_COLUMNS if key not in part]
+                       if isinstance(part, dict) else list(KIT_PRESS_COLUMNS))
+            if missing:
+                return f"has no {', '.join(missing)} in `groups` entry {k}"
+    missing = [key for key in KIT_PRESS_COLUMNS if key not in reply]
+    if missing:
+        return f"has no {', '.join(missing)}"
+    return None
 
 
 def parse_actions(read: Union[None, str, Sequence[str]]) -> List[str]:
@@ -602,7 +634,7 @@ def kit_press(agent: FA.LiveAgent, *, request_lock: Optional[threading.Lock] = N
               hold_frames: int = KIT_HOLD_FRAMES) -> Callable[..., dict]:
     """The auto-player's press on the kit route: a callable that sends one
     chord's lanes at their `axes` to the kit agent and returns its reply,
-    which play_chords keeps in the press row. Axes of None press every pad as
+    which play_chords checks with reply_gap and keeps in the press row. Axes of None press every pad as
     a plain gem. `then` holds a split chord's later groups as play_chords
     gives them, each (lanes, axes, after_ms), and goes in the same message
     (press_message), so the agent replies once, with a `groups` entry per
@@ -841,9 +873,13 @@ class KitTools:
                 return PressResult(False, self._reply(
                     [f"press failed: {e}{self._cap_note(e, 'KIT_PRESS_CAP_S')}",
                      *fault_lines(e)]))
-            down, up = reply.get("down_frame"), reply.get("up_frame")
+            gap = reply_gap(reply, 1)
+            if gap is not None:
+                return PressResult(False, self._reply(
+                    [f"press failed: the kit's reply to the press {gap}"]))
+            down, up = reply["down_frame"], reply["up_frame"]
             frames = up - down if isinstance(down, int) and isinstance(up, int) else "?"
-            down_ms, up_ms = reply.get("down_ms"), reply.get("up_ms")
+            down_ms, up_ms = reply["down_ms"], reply["up_ms"]
             held = (f"{up_ms - down_ms:g} ms" if isinstance(down_ms, (int, float))
                     and isinstance(up_ms, (int, float)) else "? ms")
             lines = [

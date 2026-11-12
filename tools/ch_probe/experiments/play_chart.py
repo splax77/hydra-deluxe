@@ -28,7 +28,8 @@ time: RUN_CAP_S, unless the caller passes a longer one.
 
 The game is opened read-only and the engine is found with
 engine_finder.find_live_engine_capped; when no song starts inside its cap the
-script prints the finder's message and exits 2.
+script prints the finder's message and exits 2. main's docstring says what
+every other stop exits with.
 
 With --log, the script writes one CSV row per press, with the columns
 overlay_logs.PRESS_LOG_COLUMNS names. score_compare.py reads that file.
@@ -186,10 +187,32 @@ class Activation:
 class Schedule:
     """What load_schedule reads from a schedule file: its chords in order,
     its activations, and `song_length_ms`, Hydra's song end
-    (app::song_length_ms, D255), None when the file wrote null."""
+    (app::song_length_ms, D255)."""
     chords: List[Chord]
     activations: List[Activation]
-    song_length_ms: Optional[float]
+    song_length_ms: float
+
+
+class _Fields:
+    """One object of a schedule file, read by key. A missing key raises
+    ValueError naming the file, the object and the key, so a file without a
+    value the play depends on is refused and never read with a default
+    (D318 item 2). `get` is for the keys the file writes only sometimes."""
+
+    def __init__(self, raw, path: str, where: str) -> None:
+        if not isinstance(raw, dict):
+            raise ValueError(f"{path}: {where} is not an object; make the file again "
+                             f"with hydra_replay schedule")
+        self._raw, self._path, self._where = raw, path, where
+
+    def __getitem__(self, key: str):
+        if key not in self._raw:
+            raise ValueError(f"{self._path}: {self._where} has no `{key}`; make the file "
+                             f"again with hydra_replay schedule")
+        return self._raw[key]
+
+    def get(self, key: str):
+        return self._raw.get(key)
 
 
 def load_schedule(path: str) -> Schedule:
@@ -198,25 +221,60 @@ def load_schedule(path: str) -> Schedule:
     it is not `feasible` (question 5 of
     docs/superpowers/plans/2026-11-08-replay-press-schedule.md), and when a
     chord reads the game's end for more than one activation, which no
-    play_chords read covers."""
+    play_chords read covers.
+
+    It also raises ValueError, naming the key, for a file without a key it
+    reads (D318 item 2), for a null `song_length_ms` (the run's end, D321
+    item 2), for an empty chord list (D323 item 2), for a chord with no gems
+    (D321 item 3), and for a press that names a chord or gem the file does
+    not hold."""
     with open(path, encoding="utf-8") as f:
-        doc = json.load(f)
+        doc = _Fields(json.load(f), path, "the file")
     if doc["refusals"]:
         raise ValueError(f"{path} refuses to play this path: " + "; ".join(doc["refusals"]))
-    infeasible = [f"chord {q['chord']} (activation {act['index']}, {q['kind']}, "
-                  f"anchor room {q['anchor_room_ms']:g} ms, squeeze room "
-                  f"{q['squeeze_room_ms']:g} ms)"
-                  for act in doc["activations"] for q in act["squeezes"]
-                  if not q["feasible"]]
+    song_length_ms = doc["song_length_ms"]
+    if song_length_ms is None:
+        raise ValueError(f"{path}: song_length_ms is null, so the file names no song end; "
+                         f"make the file again with a hydra_replay that writes one")
+    acts = [_Fields(act, path, f"entry {k} of `activations`")
+            for k, act in enumerate(doc["activations"])]
+    infeasible = []
+    for act in acts:
+        for k, raw in enumerate(act["squeezes"]):
+            q = _Fields(raw, path, f"squeeze {k} of activation {act['index']}")
+            if not q["feasible"]:
+                infeasible.append(f"chord {q['chord']} (activation {act['index']}, {q['kind']}, "
+                                  f"anchor room {q['anchor_room_ms']:g} ms, squeeze room "
+                                  f"{q['squeeze_room_ms']:g} ms)")
     if infeasible:
         raise ValueError(f"{path} holds a squeeze the game cannot make at 100% speed: "
                          + "; ".join(infeasible))
-    rows = doc["chords"]
+    rows = [_Fields(row, path, f"entry {k} of `chords`")
+            for k, row in enumerate(doc["chords"])]
+    if not rows:
+        # The words ch_play_chart's chords_to_play refuses an empty list with.
+        raise ValueError(f"{path} has no chords to play")
+    gems_of: dict = {}
+    for row in rows:
+        gems = row["gems"]
+        if not gems:
+            raise ValueError(f"{path}: chord {row['index']} has no gems, so no press can "
+                             f"play it; make the file again with hydra_replay schedule")
+        gems_of[row["index"]] = [_Fields(gem, path, f"gem {g} of chord {row['index']}")
+                                 for g, gem in enumerate(gems)]
     by_index = {row["index"]: row for row in rows}
     presses_of: dict = {row["index"]: [] for row in rows}
-    for entry in doc["presses"]:
+    for k, raw in enumerate(doc["presses"]):
+        entry = _Fields(raw, path, f"entry {k} of `presses`")
+        if entry["chord"] not in by_index:
+            raise ValueError(f"{path}: entry {k} of `presses` names chord {entry['chord']}, "
+                             f"which `chords` does not hold")
         row = by_index[entry["chord"]]
-        gems = [row["gems"][g] for g in entry["gems"]]
+        row_gems = gems_of[row["index"]]
+        if any(not isinstance(g, int) or not 0 <= g < len(row_gems) for g in entry["gems"]):
+            raise ValueError(f"{path}: entry {k} of `presses` names gems {entry['gems']} of "
+                             f"chord {row['index']}, which holds {len(row_gems)}")
+        gems = [row_gems[g] for g in entry["gems"]]
         presses_of[row["index"]].append(Press(
             index=row["index"], chart_ms=row["ms"], aim_ms=entry["aim_ms"],
             lanes=[_KEY_FOR_PAD[(gem["color"], gem["cymbal"])] for gem in gems],
@@ -235,15 +293,17 @@ def load_schedule(path: str) -> Schedule:
                              f"{len(reads)} activations; play_chords reads one")
         if reads and presses:
             first = min(range(len(presses)), key=lambda k: presses[k].at_ms)
-            presses[first] = replace(presses[first], planned_end_ms=reads[0]["planned_end_ms"])
+            read = _Fields(reads[0], path, f"the end read of chord {row['index']}")
+            presses[first] = replace(presses[first], planned_end_ms=read["planned_end_ms"])
+        gems = gems_of[row["index"]]
         chords.append(Chord(
             index=row["index"], tick=row["tick"], ms=row["ms"],
-            lanes=[_KEY_FOR_PAD[(gem["color"], gem["cymbal"])] for gem in row["gems"]],
-            dynamics=[gem["dynamic"] for gem in row["gems"]],
+            lanes=[_KEY_FOR_PAD[(gem["color"], gem["cymbal"])] for gem in gems],
+            dynamics=[gem["dynamic"] for gem in gems],
             declined=row["declined"], ends_sp=row["ends_sp"], presses=tuple(presses)))
     activations = [Activation(act["index"], act["chord"], act["read_end_after"],
-                              act["sp_ready_ms"]) for act in doc["activations"]]
-    return Schedule(chords, activations, doc["song_length_ms"])
+                              act["sp_ready_ms"]) for act in acts]
+    return Schedule(chords, activations, song_length_ms)
 
 
 def press_plan(chords: Sequence[Chord]) -> List[Press]:
@@ -384,6 +444,15 @@ class StopAsked(Exception):
     """The caller's `should_stop` said to end the run."""
 
 
+class ReplyMissing(Exception):
+    """A kit press replied without what the press asked for
+    (kit_tools.reply_gap says what); the text names the chord."""
+
+
+# The `stop` of a run that sent every press: the only stop that reached the
+# song's end.
+STOP_DONE = "done"
+
 # The `stop` of a live run that never found a playing song's engine.
 STOP_NO_ENGINE = "no engine"
 
@@ -398,21 +467,41 @@ class RunResult:
     and `max_streak` count the messages play_chords sends (press_messages:
     a chord's order groups are one) and leave declined chords and dropped
     messages out, so a declined chord is no miss; `declined` and `dropped`
-    count them. `stop` says why the run ended: "done" (every chord
-    pressed), "past_end" (the clock was past the last chord), "frozen",
-    "cap", "interrupted", "lost" (the process went away), "stopped" (the
-    caller's `should_stop` said so) or STOP_NO_ENGINE (live_play found no
-    playing song; `message` holds the finder's words). `dyn_threshold` is the
-    dynamics threshold live_play read, None when it read none."""
+    count them. `skipped` counts the chords the run passed over where it
+    started (start_line says which). `stop` says why the run ended:
+    STOP_DONE (every chord pressed), "past_end" (the clock was past the last
+    chord), "frozen", "cap", "interrupted", "lost" (the process went away),
+    "stopped" (the caller's `should_stop` said so), "reply" (a kit reply
+    lacked what its press asked for) or STOP_NO_ENGINE (live_play found no
+    playing song). For every stop but STOP_DONE, `message` says why in
+    words: the finder's for STOP_NO_ENGINE. `dyn_threshold` is the dynamics
+    threshold live_play read, None when it read none."""
     sent: int = 0
     hit: int = 0
     declined: int = 0
     dropped: int = 0
+    skipped: int = 0
     max_streak: int = 0
     rows: list = field(default_factory=list)
     stop: str = ""
     message: str = ""
     dyn_threshold: Optional[int] = None
+
+
+def start_line(raw_s: float, messages: Sequence[Tuple[Press, List[Press]]],
+               cursor: int) -> Tuple[str, int]:
+    """The line a run prints where it starts, and how many chords it skips:
+    the chords with a press among `messages[:cursor]`, the messages
+    live.first_note_index passed over for the clock read `raw_s`. A chord
+    counts once however many of its presses were passed over."""
+    skipped = len({p.index for head, later in messages[:cursor] for p in [head, *later]})
+    chords = f"{skipped} chord{'' if skipped == 1 else 's'}"
+    if cursor >= len(messages):
+        return (f"  Song clock at {raw_s:.2f}s is past the last note; nothing to play "
+                f"(skipped {chords}).", skipped)
+    return (f"  Song clock at {raw_s:.2f}s; starting at press {cursor + 1}/{len(messages)} "
+            f"(t={C.ms_to_s(messages[cursor][0].chart_ms):.2f}s); skipped {chords} "
+            f"less than {live.START_LEAD_MS:g} ms ahead of the clock.", skipped)
 
 
 def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
@@ -424,7 +513,8 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
                 should_stop: Optional[Callable[[], bool]] = None,
                 out: Optional[TextIO] = None,
                 cap_s: float = RUN_CAP_S,
-                read_sp_end: Optional[Callable[[], Optional[float]]] = None) -> RunResult:
+                read_sp_end: Optional[Callable[[], Optional[float]]] = None,
+                kit: bool = False) -> RunResult:
     """Fire press_plan's presses of `chords` from where the song clock is
     now, in the order they fire, as press_messages groups them, and log a
     row per press.
@@ -443,10 +533,12 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
     engine's score and `press` sends one chord's keys and their `axes`. A
     chord split in order groups is one call, with `then=` a list of
     (lanes, axes, after_ms) for its later groups; every other press is
-    called with the keys and axes alone. When `press` returns a dict (the
-    kit press of tools/ch_mcp/kit_tools.py), each row also keeps its values
-    that PRESS_LOG_COLUMNS names, from the reply's `groups` entry for its
-    group when the reply has them.
+    called with the keys and axes alone. With `kit` True, `press` is the kit
+    press of tools/ch_mcp/kit_tools.py: each reply must hold what
+    kit_tools.reply_gap asks of it, else the run stops at that chord as
+    "reply" (D318 item 2), and each row keeps the reply's values that
+    PRESS_LOG_COLUMNS names, from the reply's `groups` entry for its group
+    when the press sent later groups. A keys press's reply is not read.
 
     Design point 9 of docs/superpowers/plans/2026-11-07-player-limits.md
     says how a row's score is read: the score is read fresh just before each
@@ -469,6 +561,11 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
     the run cap and ends the run as "stopped" when it returns True. `cap_s`
     is the run cap in wall seconds."""
     out = sys.stdout if out is None else out
+    reply_gap = None
+    if kit:
+        # Imported here because kit_tools imports game_tools, which imports
+        # this module.
+        from tools.ch_mcp.kit_tools import reply_gap
     plan = press_messages(press_plan(chords))
     chord_lanes = {c.index: c.lanes for c in chords}
     presses = list(plan)
@@ -487,13 +584,12 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
     raw_s, _est = clock.read()
     stopped = live.StoppedCheck(raw_s, now())
     cursor = live.first_note_index(notes_ms, C.s_to_ms(raw_s))
+    line, result.skipped = start_line(raw_s, presses, cursor)
+    print(line, file=out)
     if cursor >= len(presses):
-        print(f"  Song clock at {raw_s:.2f}s is past the last note; nothing to play.",
-              file=out)
         result.stop = "past_end"
+        result.message = f"the song clock at {raw_s:.2f}s is past the last note"
         return result
-    print(f"  Song clock at {raw_s:.2f}s; starting at press {cursor + 1}/{len(presses)} "
-          f"(t={C.ms_to_s(presses[cursor][0].chart_ms):.2f}s)", file=out)
 
     # The score the last row ended on: what scored_between is counted from.
     last_score = read_score()
@@ -525,8 +621,12 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
                 last_score = read_score()
                 result = RunResult()
                 streak = 0
+                line, result.skipped = start_line(raw_s, presses, cursor)
+                print(line, file=out)
                 if cursor >= len(presses):
                     result.stop = "past_end"
+                    result.message = (f"song {e}, and the clock at {raw_s:.2f}s is past "
+                                      f"the last note")
                     print("\n  Stopped.", file=out)
                     return result
                 continue
@@ -549,6 +649,10 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
             else:
                 pressed = press(chord.lanes, chord.axes)
             wall_s_at_reply = wall()
+            if reply_gap is not None and sends and not dropped:
+                gap = reply_gap(pressed, 1 + len(later))
+                if gap is not None:
+                    raise ReplyMissing(f"the kit's reply to chord {chord.index}'s press {gap}")
 
             end_read = None
             if chord.planned_end_ms is not None and read_sp_end is not None and not dropped:
@@ -587,10 +691,9 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
                 else:
                     streak = 0
             # A kit press replies with what the game's frames did, per group
-            # for a message with later groups.
-            replies = [pressed] if isinstance(pressed, dict) else []
-            if replies and later and isinstance(pressed.get("groups"), list):
-                replies = pressed["groups"]
+            # for a message with later groups; reply_gap checked it holds them.
+            replies = ([] if reply_gap is None or pressed is None
+                       else pressed["groups"] if later else [pressed])
             for k, part in enumerate([chord, *later]):
                 row = {
                     "index": part.index,
@@ -611,7 +714,7 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
                     row["scored_between"] = score_before - last_score
                     if end_read is not None:
                         row["end_read_ms"] = end_read
-                if k < len(replies) and isinstance(replies[k], dict):
+                if k < len(replies):
                     # The row keeps the parts the press log has columns for.
                     row.update((key, replies[k][key]) for key in PRESS_LOG_COLUMNS
                                if key in replies[k] and key not in row)
@@ -631,24 +734,27 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
 
             last_score = score_after
             cursor += 1
-        result.stop = "done"
+        result.stop = STOP_DONE
 
     except live.ClockFrozen as e:
         print(f"  {e}. Song ended or paused?", file=out)
         print("\n  Stopped.", file=out)
-        result.stop = "frozen"
+        result.stop, result.message = "frozen", str(e)
     except RunCapReached as e:
         print(f"\n  Stopped: {e}.", file=out)
-        result.stop = "cap"
+        result.stop, result.message = "cap", str(e)
     except StopAsked as e:
         print(f"\n  Stopped: {e}.", file=out)
-        result.stop = "stopped"
+        result.stop, result.message = "stopped", str(e)
+    except ReplyMissing as e:
+        print(f"\n  Stopped: {e}.", file=out)
+        result.stop, result.message = "reply", str(e)
     except KeyboardInterrupt:
         print("\n  Stopped.", file=out)
-        result.stop = "interrupted"
+        result.stop, result.message = "interrupted", "interrupted from the keyboard"
     except OSError as e:
         print(f"\n  Lost process: {e}", file=out)
-        result.stop = "lost"
+        result.stop, result.message = "lost", f"lost the game process: {e}"
     return result
 
 
@@ -728,7 +834,7 @@ def live_play(chords: Sequence[Chord], *,
     `message` is the finder's. with_axes works out each gem's strength once
     the engine is found, on the press route only, and raises its ValueError
     before any press when no ghost strength is possible. `on_press`, `should_stop` and `cap_s` go to
-    play_chords. `open_proc` and `find_engine` stand in for open_process and
+    play_chords, and a given `press` goes as the kit press (`kit`). `open_proc` and `find_engine` stand in for open_process and
     the capped finder in tests. With no `find_engine` the real search runs
     and its progress dots go to `out`, so a caller that gives `out` a buffer
     (the `ch` MCP server, whose stdout is its protocol channel) gets no
@@ -753,7 +859,8 @@ def live_play(chords: Sequence[Chord], *,
               file=out)
         # A key has no strength, so the keys route reads no threshold.
         threshold = None
-        if press is not None:
+        kit = press is not None
+        if kit:
             chords, threshold = with_axes(chords, engine)
         if threshold is not None:
             print(f"  Dynamics threshold: {threshold}", file=out)
@@ -772,7 +879,7 @@ def live_play(chords: Sequence[Chord], *,
         clock = SongClock(engine.song_clock, max_fill_s=0.0)
         result = play_chords(chords, clock, engine.score, press,
                              on_press=on_press, should_stop=should_stop, out=out,
-                             cap_s=cap_s, read_sp_end=engine.sp_end)
+                             cap_s=cap_s, read_sp_end=engine.sp_end, kit=kit)
         result.dyn_threshold = threshold
         return result
     finally:
@@ -783,7 +890,10 @@ def main(argv: Optional[Sequence[str]] = None, *,
          open_proc: Callable = open_process,
          find_engine: Optional[Callable[[object], int]] = None,
          out: Optional[TextIO] = None) -> int:
-    """Play a schedule JSON against the running game. Returns the exit code.
+    """Play a schedule JSON against the running game. Returns the exit code:
+    0 and "Done." only when the run sent every press (STOP_DONE), 2 when no
+    playing song was found, and 1 for every other stop and for a schedule
+    load_schedule refuses, each printed with its reason.
 
     LIVE-ONLY: the run itself is live_play's. `open_proc` and `find_engine`
     stand in for open_process and the capped finder in tests."""
@@ -794,10 +904,11 @@ def main(argv: Optional[Sequence[str]] = None, *,
     parser.add_argument("--log", help="write one CSV row per press here")
     args = parser.parse_args(argv)
 
-    chords = load_schedule(args.schedule_json).chords
-    if not chords:
-        print(f"  {args.schedule_json} has no chords to play.", file=out)
-        return 0
+    try:
+        chords = load_schedule(args.schedule_json).chords
+    except ValueError as e:
+        print(f"  Refused: {e}", file=out)
+        return 1
     print(f"Read {os.path.basename(args.schedule_json)}: {len(chords)} chords", file=out)
     print(f"  First note at {C.ms_to_s(chords[0].ms):.2f}s, "
           f"last at {C.ms_to_s(chords[-1].ms):.2f}s", file=out)
@@ -815,6 +926,11 @@ def main(argv: Optional[Sequence[str]] = None, *,
           f"Misses: {result.sent - result.hit}", file=out)
     print(f"  Hit rate: {result.hit / max(result.sent, 1) * 100:.1f}%", file=out)
     print(f"  Best streak: {result.max_streak}", file=out)
+    print(f"  Declined: {result.declined}, Dropped: {result.dropped}, "
+          f"Skipped at the start: {result.skipped}", file=out)
+    if result.stop != STOP_DONE:
+        print(f"Stopped before the song's end ({result.stop}): {result.message}", file=out)
+        return 1
     print("Done.", file=out)
     return 0
 
