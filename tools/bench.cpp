@@ -55,6 +55,7 @@
 #include "core/model.h"
 #include "core/replay.h"
 #include "core/strutil.h"
+#include "core/unknown_option.h"
 #include "core/winstr.h"
 #include "corpus_util.h"
 #include "parse/song.h"
@@ -1451,9 +1452,10 @@ static int bench_main() {
             else if (argv[i] == "--as-ready") as_ready = true;
             else {
                 // A misspelt --as-ready would time a library that reads Stale
-                // without saying so, so an option nobody reads is refused.
-                std::fprintf(stderr, "hydra_bench --open: unknown option or missing value: %s\n",
-                             argv[i].c_str());
+                // without saying so, so an option nobody reads is refused. A
+                // known option with no value after it lands here too.
+                std::fprintf(stderr, "hydra_bench --open: %s\n",
+                             hydra::unknown_option_line(argv[i]).c_str());
                 return 2;
             }
         }
