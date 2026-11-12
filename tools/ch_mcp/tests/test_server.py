@@ -118,6 +118,35 @@ class ServerTest(unittest.TestCase):
         self.helper.frida._trace = SimpleNamespace(ended=lambda: True)
         self.assertEqual(self._open_items(), "nothing open")
 
+    def test_open_items_uses_public_checks(self):
+        # A field of another tool read here would be a second copy of the
+        # question its owner answers (audit L76).
+        import inspect
+        source = inspect.getsource(S.Helper.open_items)
+        self.assertNotIn("._", source)
+
+    def test_each_public_check_answers_both_ways(self):
+        alive = SimpleNamespace(is_alive=lambda: True)
+        dead = SimpleNamespace(is_alive=lambda: False)
+        h = self.helper
+        cases = [
+            ("kit.agent_attached", h.kit.agent_attached, h.kit, "_agent", object(), None),
+            ("sp.watch_running", h.sp.watch_running, h.sp, "_watch",
+             SP._Watch("w.csv", 1.0, thread=alive), SP._Watch("w.csv", 1.0, thread=dead)),
+            ("method_watch.running", h.method_watch.running, h.method_watch, "_session",
+             SimpleNamespace(ended=lambda: False), SimpleNamespace(ended=lambda: True)),
+            ("frida.trace_running", h.frida.trace_running, h.frida, "_trace",
+             SimpleNamespace(ended=lambda: False), SimpleNamespace(ended=lambda: True)),
+        ]
+        for name, check, owner, field, on, off in cases:
+            with self.subTest(name):
+                setattr(owner, field, None)
+                self.assertFalse(check())
+                setattr(owner, field, on)
+                self.assertTrue(check())
+                setattr(owner, field, off)
+                self.assertFalse(check())
+
     def test_a_long_reply_is_cut_at_a_line_with_the_clone_hero_closing_line(self):
         long_text = "\n".join(f"call {i}: " + "x" * 90 for i in range(200))
         self.helper.frida.ch_notes = lambda since: long_text

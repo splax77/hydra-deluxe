@@ -414,8 +414,8 @@ def chords_to_play(schedule_json: str) -> Tuple[List[play_chart.Chord], List[str
     declined_line, then squeeze_lines, then order_lines. ch_play_chart,
     ch_run_chart, ch_edge_probe and tools/ch_probe/prep_inputs.py all load
     through here. Raises ChordsRefused saying why no run can start from the
-    file: load_schedule's refusal in its own words, a file that cannot be
-    read, or one with no chords."""
+    file: load_schedule's refusal in its own words, or a file that cannot
+    be read."""
     doc = schedule_doc(schedule_json)
     try:
         chords = play_chart.load_schedule(schedule_json).chords
@@ -423,8 +423,6 @@ def chords_to_play(schedule_json: str) -> Tuple[List[play_chart.Chord], List[str
         raise ChordsRefused(str(e)) from e
     except (OSError, KeyError, IndexError, TypeError) as e:
         raise ChordsRefused(f"could not read {schedule_json}: {type(e).__name__}: {e}") from e
-    if not chords:
-        raise ChordsRefused(f"{schedule_json} has no chords to play")
     try:
         lines = [declined_line(chords, doc)]
         lines.extend(squeeze_lines(chords, doc))

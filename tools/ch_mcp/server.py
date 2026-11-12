@@ -95,23 +95,19 @@ class Helper:
 
     def open_items(self) -> List[str]:
         """One line per thing a restart of this process would lose (the reload
-        plan's design point 2). The Frida, kit, Star Power and method-watch
-        tools have no call that answers this for every case, so their fields
-        are read here, the same fields their stop hooks read."""
+        plan's design point 2). Each tool answers for its own part through a
+        public check."""
         with self.lock:
             lines = self.game.open_lines()
             if self.frida.is_attached():
                 lines.append("frida: state agent attached")
-            if self.kit._agent is not None:
+            if self.kit.agent_attached():
                 lines.append("kit: kit agent attached")
-            watch = self.sp._watch
-            if watch is not None and watch.running():
+            if self.sp.watch_running():
                 lines.append("star power watch: running")
-            session = self.method_watch._session
-            if session is not None and not session.ended():
+            if self.method_watch.running():
                 lines.append("method watch: running")
-            trace = self.frida._trace
-            if trace is not None and not trace.ended():
+            if self.frida.trace_running():
                 lines.append("trace: running")
             return lines
 

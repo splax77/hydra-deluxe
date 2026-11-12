@@ -473,6 +473,12 @@ class FridaTools:
         with self._lock:
             return self._agent is not None and self._agent.alive
 
+    def trace_running(self) -> bool:
+        """Whether a note trace has started and not ended. The server's
+        open_items asks this."""
+        with self._lock:
+            return self._trace is not None and not self._trace.ended()
+
     def read_state(self) -> dict:
         """One fresh read as the raw dict state.ts sent, menu block included,
         for menu_tools. Raises StateUnread with the reason when no read came
