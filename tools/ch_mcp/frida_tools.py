@@ -156,6 +156,15 @@ CURSOR_KEY = "cursor"
 SCROLL_KEY = "scroll"
 ROW_NAMES_KEY = "rowNames"
 ROW_IDS_KEY = "rowInstruments"
+PAGE_KEY = "page"
+# Which row Green acts on, by the page's word in menu_fields.json: the cursor
+# alone on Confirm and Difficulty, cursor + scroll on Instrument and Modifiers
+# (page 07, IN-58: player_screen_green_32E190.asm lines 66 to 72 and 137 to
+# 150, player_screen_instrument_32FB60.asm lines 34 to 46). On Ready, Green
+# and the moves do nothing, so no row is highlighted.
+ROW_ADDS_SCROLL = {"Confirm": False, "Difficulty": False,
+                   "Instrument": True, "Modifiers": True}
+NO_ROW_PAGE = "Ready"
 
 
 def _entry(key: str) -> Optional[dict]:
@@ -228,12 +237,24 @@ def _row_text(key: str, rows: Any, index: int) -> str:
 
 def highlighted_row_text(values: Dict[str, Any]) -> str:
     """The highlighted row of one player screen, from one instance's raw
-    values by key: its index is cursor + scroll, then that row's name and
-    instrument id. The one home of which row is highlighted."""
+    values by key: its index is the cursor alone or cursor + scroll, as the
+    page says (ROW_ADDS_SCROLL), then that row's name and instrument id. The
+    one home of which row is highlighted."""
+    page = values.get(PAGE_KEY)
+    if not _is_number(page):
+        return "not known (page was not read)"
+    word = (_enum_words(PAGE_KEY) or {}).get(str(page))
+    if word == NO_ROW_PAGE:
+        return f"none on the {NO_ROW_PAGE} page"
+    if word not in ROW_ADDS_SCROLL:
+        return f"not known (page {page} has no row rule)"
+    adds_scroll = ROW_ADDS_SCROLL[word]
     cursor, scroll = values.get(CURSOR_KEY), values.get(SCROLL_KEY)
-    if not (_is_number(cursor) and _is_number(scroll)):
-        return "not known (cursor or scroll was not read)"
-    index = cursor + scroll
+    if not _is_number(cursor):
+        return "not known (cursor was not read)"
+    if adds_scroll and not _is_number(scroll):
+        return "not known (scroll was not read)"
+    index = cursor + scroll if adds_scroll else cursor
     return (f"{index}, name {_row_text(ROW_NAMES_KEY, values.get(ROW_NAMES_KEY), index)}, "
             f"id {_row_text(ROW_IDS_KEY, values.get(ROW_IDS_KEY), index)}")
 

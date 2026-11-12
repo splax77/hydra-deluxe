@@ -752,7 +752,41 @@ class MenuTest(Rig):
     def test_player_screen_with_an_unread_cursor(self):
         line = FT.menu_lines(player_screen({**PLAYER_FIELDS, "cursor": ["error: gone"]}))[1]
         self.assertIn("cursor: error: gone; scroll: 1; "
-                      "highlighted row: not known (cursor or scroll was not read); ", line)
+                      "highlighted row: not known (cursor was not read); ", line)
+
+    def highlighted(self, **fields):
+        line = FT.menu_lines(player_screen({**PLAYER_FIELDS, **fields}))[1]
+        return line.split("highlighted row: ")[1].split("; controllerType")[0]
+
+    def test_confirm_and_difficulty_take_the_cursor_alone(self):
+        # Page 0 is Confirm and 2 Difficulty: cursor 1 and scroll 1 give row 1.
+        for page in (0, 2):
+            self.assertEqual(self.highlighted(page=[page]),
+                             "1, name \"Drums\", id 6 (Drums)", page)
+
+    def test_instrument_and_modifiers_add_the_scroll(self):
+        # Page 1 is Instrument and 3 Modifiers: cursor 1 and scroll 1 give row 2.
+        for page in (1, 3):
+            self.assertEqual(self.highlighted(page=[page]),
+                             "2, name \"Pro Drums\", id 9 (ProDrums)", page)
+
+    def test_an_unread_scroll_matters_only_where_the_scroll_is_added(self):
+        self.assertEqual(self.highlighted(page=[0], scroll=["error: gone"]),
+                         "1, name \"Drums\", id 6 (Drums)")
+        self.assertEqual(self.highlighted(page=[3], scroll=["error: gone"]),
+                         "not known (scroll was not read)")
+
+    def test_the_ready_page_highlights_no_row(self):
+        self.assertEqual(self.highlighted(page=[4]), "none on the Ready page")
+
+    def test_a_page_with_no_row_rule_or_no_read(self):
+        self.assertEqual(self.highlighted(page=[6]), "not known (page 6 has no row rule)")
+        self.assertEqual(self.highlighted(page=["error: gone"]),
+                         "not known (page was not read)")
+
+    def test_every_page_word_has_a_row_rule(self):
+        words = set(FT._enum_words(FT.PAGE_KEY).values())
+        self.assertEqual(words, set(FT.ROW_ADDS_SCROLL) | {FT.NO_ROW_PAGE})
 
     def test_two_player_screens_get_a_line_pair_each(self):
         fields = {key: values * 2 for key, values in PLAYER_FIELDS.items()}
