@@ -51,7 +51,7 @@ restate its rule.
 | Filtering text and dump output | C++: the `text` and `dump` verbs |
 | Where Hydra writes its log and crash dump | C++, reported in the hello line |
 | The pipe name | The helper (transport). It passes the name with `--pipe <name>`; Hydra uses it and never builds one |
-| Launch, stop, the snapshot, the running-Hydra check, reply caps, truncation, the tool list | The helper |
+| Launch, stop, the snapshot, reply caps, truncation, the tool list | The helper |
 | Hang, exit, closed pipe, oversized replies (test only) | The stand-in, and nothing else |
 
 ## The wire protocol
