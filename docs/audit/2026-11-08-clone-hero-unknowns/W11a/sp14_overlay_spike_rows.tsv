@@ -1,0 +1,12 @@
+csv	activation	clock_s	meter_before	meter_first_active	sp_max	quarters	remainder	shortfall	gap_ms	drain_ms
+overlay-spike/run1_cal0_sp_watch.csv	1	30.3472	2880	2879	5760	1	1439	1	6.06	3.31
+overlay-spike/run1_cal0_sp_watch.csv	2	66.5177	2880	2880	5760	2	whole	0	6.06	0.00
+overlay-spike/run1_cal0_sp_watch.csv	3	111.7967	2880	2880	5760	2	whole	0	6.06	0.00
+overlay-spike/run1_cal0_sp_watch.csv	4	157.0209	2880	2880	5760	2	whole	0	6.06	0.00
+overlay-spike/run2_cal30_sp_watch.csv	1	30.3470	2880	2879	5760	1	1439	1	6.06	3.30
+overlay-spike/run2_cal30_sp_watch.csv	2	66.5192	2880	2880	5760	2	whole	0	6.06	0.00
+overlay-spike/run2_cal30_sp_watch.csv	3	111.7943	2880	2880	5760	2	whole	0	3.03	0.00
+overlay-spike/run2b_vid30_sp_watch.csv	1	30.3450	2880	2880	5760	2	whole	0	6.06	0.00
+overlay-spike/run2b_vid30_sp_watch.csv	2	66.5212	2880	2879	5760	1	1439	1	6.06	3.21
+overlay-spike/run2b_vid30_sp_watch.csv	3	111.7962	2880	2880	5760	2	whole	0	6.06	0.00
+overlay-spike/run2c_vid30_sp_watch.csv	0	-	-	-	-	-	no activation
