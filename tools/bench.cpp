@@ -1075,7 +1075,7 @@ constexpr const char* cold_open_note =
 void drop_cached_pages(const std::string& dbpath) {
     for (const std::string& file : store::with_side_files(dbpath)) {
         if (!file_exists_utf8(file)) continue;
-        const HANDLE h = CreateFileW(os_path(file).c_str(), GENERIC_READ,
+        const HANDLE h = CreateFileW(win32_path(file).c_str(), GENERIC_READ,
                                      FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
                                      nullptr, OPEN_EXISTING, FILE_FLAG_NO_BUFFERING, nullptr);
         if (h == INVALID_HANDLE_VALUE)
