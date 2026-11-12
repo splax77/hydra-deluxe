@@ -2,7 +2,7 @@
 
 This page lists every split between Clone Hero and Hydra that has no ruling yet, each with an id. Under "Recorded differences" it also keeps the splits the user chose to record without changing Hydra.
 It describes build 1.1 (v1.1.0.6142) unless a question says otherwise.
-Last write-back: 2026-11-11.
+Last write-back: 2026-11-12.
 
 Each question gives the game's real rule, an example from each end, and what Hydra does today with its owner. Every question here is named by the `Ruling:` line of at least one rule block on the area pages, and every `Q-nn` a `Ruling:` line names has its heading here. The docs test checks both directions.
 
@@ -39,12 +39,14 @@ What Hydra does today: `disco_head` in src/parse/song.cpp lines 304 to 307 needs
 
 ### Q-13 The fifth drum pad
 
-The game's real rule: .chart N 5 is a note of type 17 with the Tom flag and raises track flag +0xA1 (code/6142/chart_n_handler_213D620.asm lines 99 to 105); .mid pitches 65, 77, 89 and 101 are that pad (code/6142/pitch_difficulty_map_210D9C0.asm and the type map in docs/audit/note-shuffle/step0/open2/f210d7b0.asm); N 38 and N 44 are its accent and ghost (code/6142/chart_modifier_decode_213D160.asm lines 11 to 80). What the game then does with a type-17 note in four-lane Pro Drums is unread.
+The game's real rule: .chart N 5 and .mid pitches 65, 77, 89 and 101 are a fifth pad (type 17), with N 38 and N 44 as its accent and ghost (NL-04, NL-05). At load the game converts a five-pad chart to four-lane Pro Drums for every player: yellow to the yellow cymbal, blue to the blue tom, the fourth pad to the green cymbal and the fifth pad to the green tom, or the blue tom when the fourth pad shares its tick (NL-75). A chart with fifth-pad notes and Pro Drums marks takes the four-lane branch unless song.ini sets five_lane_drums (NL-74, NL-76). Five bot runs of 2026-11-12 on the Five Lane A to E probe charts confirm the branches, the key and the merge (NL-74 to NL-77).
 
-One end: a chart with only N 0 to 4. Both agree.
-Other end: an Expert section with `N 5 0` lines and `N 38` accents. The game holds one more note on those ticks; Hydra's chord has one gem fewer and no mark.
+One end: a chart with only N 0 to 4 and no five_lane_drums key. Both agree.
+Other end: Tool's Schism (Neversoft chart), with 166 fifth-pad notes on Expert. The game scores Notes 106,125 by the 6142 rule. Before the conversion Hydra dropped the 166 notes, paid blue as a cymbal and gave Notes 100,480; now it gives 106,125.
 
-What Hydra does today: `chart_pad_color` in src/parse/song.cpp lines 1731 to 1739 knows N 1 to 4, and `ChartParser::note_optype` lines 1763 to 1771 knows 34 to 37 and 40 to 43; the .mid reader takes `note <= base_ + 4`. Owner: the two readers in src/parse/song.cpp. No library count (no library run). Page row NL-04.
+What Hydra does today: `convert_drum_pads` in src/parse/song.cpp makes the game's conversion once for both readers, from `DrumChartFlags` and song.ini's two keys (`ChartDrumKeys`). Owner: that function. Page rows NL-04 and NL-74 to NL-77. `hydra_replay score --prodrums 1` matches the bot totals on all five probe charts, Five Lane A to E.
+
+Decided and built: in session c61c1986 (2026-11-12) the user chose "Yes, start it" on "Start the plan with the recommended answers (four-lane only, follow the game, bump the stamp, no scan)?" (D337 in docs/audit/2026-10-03-fix-decisions.md). So Hydra follows the game's conversion for a four-lane player, the FiveLaneDrums kit player stays out of scope, saved results were marked Stale once, and the library is not scanned. Two parts of the game's rule are still not copied or not seen. The game's all-toms tail, for a chart with neither flag up and no five_lane_drums key, makes every pad a tom by its listing (NL-74; no run has played a chart that reaches it); Hydra keeps the reader's own cymbals there, so a .mid with no tom marker pays yellow, blue and the fourth pad as cymbals, and whether to copy the tail is a question for the user. The start of the Pro flag from `pro_drums` in a .mid is read from the game's code (CR-18) and no run has played it.
 
 ### Q-14 Two pads of one colour on one tick
 
@@ -53,7 +55,7 @@ The game's real rule: the track finalizer merges notes with the same tick and th
 One end: a 2x kick and a normal kick on one tick. Hydra merges them too (`Chord::add_kick`, D105), so both agree.
 Other end: a .mid with two red note-ons on one tick under the dynamics tag, velocity 127 then velocity 1. The game keeps one red note carrying both the accent and the ghost bit. Hydra's second `Chord::add_note` throws "Duplicate note." (src/core/model.cpp line 244) before the mark is set, and the per-op catch (src/parse/song.cpp line 1047 for .mid, 1809 for .chart) drops it, so Hydra keeps one red note with only the accent.
 
-What Hydra does today: `Chord::add_note` in src/core/model.cpp line 242. Owner: the chord model in src/core/model.cpp. Page row NL-32.
+What Hydra does today: `Chord::add_note` in src/core/model.cpp line 242. Owner: the chord model in src/core/model.cpp. Page row NL-32. The five-lane conversion's one same-lane case (blue, fourth pad and fifth pad on one tick) is merged in `convert_drum_pads` instead (NL-77).
 
 ### Q-15 A .mid "[sectionX]" with no space
 

@@ -1222,12 +1222,6 @@ namespace {
 const std::string kShuffleSongs =
     (sourcetree::root() / "docs/audit/note-shuffle/game-tests/songs/").u8string();
 
-std::vector<std::string> chord_codes(const Song& song) {
-    std::vector<std::string> out;
-    for (const SongTimestamp& ts : song.sequence) out.push_back(ts.chord.code());
-    return out;
-}
-
 Song load_shuffle_song(const std::string& file, bool pro, bool bass2x, bool noteshuffle) {
     return load_songpath(kShuffleSongs + file,
                          ChartReading{Difficulty::Expert, pro, bass2x, noteshuffle});
