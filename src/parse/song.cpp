@@ -30,9 +30,9 @@ namespace {
 
 // Whether a text event's body marks a practice section, and if so the name it
 // shows. Both questions are answered in parse/section_names.cpp; this is the
-// one door both readers use.
-bool section_name_of(std::string_view body, std::string* name) {
-    if (!is_section_marker(body)) return false;
+// one door both readers use, and each says which reader it is.
+bool section_name_of(std::string_view body, SectionReader reader, std::string* name) {
+    if (!is_section_marker(body, reader)) return false;
     *name = section_display_name(body);
     return true;
 }
@@ -1182,7 +1182,8 @@ Song MidiParser::parse(const MidiFile& mid, bool pro, bool bass2x,
             if (is_end_event(body) && !song.end_event_tick.has_value())
                 song.end_event_tick = elapsed;
             std::string name;
-            if (section_name_of(body, &name)) song.practice_sections.push_back({elapsed, name});
+            if (section_name_of(body, SectionReader::Mid, &name))
+                song.practice_sections.push_back({elapsed, name});
         }
     }
     sort_practice_sections(song.practice_sections);
@@ -1630,7 +1631,8 @@ void ChartParser::load_sections(const std::vector<uint8_t>& data, char mix_digit
                     const ChartLine l = classify_chart_line(lhs, rhs, mix_digit, &event);
                     take_note_end(l);
                     std::string name;
-                    if (l.kind == LineKind::Event && section_name_of(event, &name))
+                    if (l.kind == LineKind::Event &&
+                        section_name_of(event, SectionReader::Chart, &name))
                         events.push_back({l.tick, std::move(name)});
                     // A .chart may write the end event with or without its
                     // brackets; one pair comes off when both are there.

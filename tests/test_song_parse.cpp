@@ -255,6 +255,19 @@ TEST_CASE(".chart: [Events] section markers become practice sections") {
     // A chart with no [Events] section has no sections and still parses.
     Song plain = load_songbytes_chart(multidiff::chart_bytes(), ChartReading{});
     CHECK(plain.practice_sections.empty());
+
+    // The game's .chart reader has no _ENDOFSONG veto, unlike its .mid reader
+    // (block CR-24 on docs/clone-hero/01-reading-a-chart.md), so this line is a
+    // section.
+    const Song endofsong = load_songbytes_chart(
+        testchart::chart_bytes(
+            testchart::section("Events", "  0 = E \"section Intro\"\n"
+                                         "  768 = E \"section _ENDOFSONG\"\n") +
+            testchart::section("ExpertDrums", "  0 = N 0 0\n  192 = N 1 0\n")),
+        ChartReading{});
+    REQUIRE(endofsong.practice_sections.size() == 2);
+    CHECK(endofsong.practice_sections[1].tick == 768);
+    CHECK(endofsong.practice_sections[1].name == " ENDOFSONG");
 }
 
 TEST_CASE(".chart: E \"end\" and E \"[end]\" in [Events] are the end event") {
