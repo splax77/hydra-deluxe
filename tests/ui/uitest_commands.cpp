@@ -265,10 +265,13 @@ ItemRef item_ref(ImGuiTestContext* ctx, Engine& h, const std::string& ref) {
 
 }  // namespace
 
-void start_session(ImGuiTestContext* ctx) {
+DrawnStart start_session(ImGuiTestContext* ctx, bool drawing, double seconds) {
     Engine& e = engine_of(ctx);
-    if (e.hooks.reset) e.hooks.reset();
+    DrawnStart started;
+    if (drawing && e.hooks.reset_drawing) started = e.hooks.reset_drawing(ctx, seconds);
+    else if (e.hooks.reset) e.hooks.reset();
     ctx->SetRef(e.home_ref.c_str());
+    return started;
 }
 
 CommandResult run_command(ImGuiTestContext* ctx, CommandSession& session, const std::string& line) {
@@ -406,7 +409,13 @@ CommandResult run_command(ImGuiTestContext* ctx, CommandSession& session, const 
             return refuse("screenshot failed");
         r.text = "screenshot: " + saved_to + "\n";
     } else if (verb == "reset") {
-        start_session(ctx);
+        // Live, the frames keep coming while the program starts, and the
+        // wait is capped by the timeout in force, like wait-idle's.
+        const DrawnStart started = start_session(ctx, session.live, timeout);
+        if (!started.failure.empty()) return refuse(started.failure);
+        if (started.still_starting)
+            return refuse(message("the library was still opening after %g s; use wait-idle",
+                                  timeout));
     } else if (verb == "quit") {
         session.quit = true;
     } else {

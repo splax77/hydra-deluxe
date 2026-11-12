@@ -241,6 +241,19 @@ bool seed_refused(const Harness& h) {
     return false;
 }
 
+// Start the live session's app, drawing while its library opens, for at most
+// `cap`. Returns why it did not start, or "" when the library is open or the
+// engine is stopping. The hello line goes out only after this, so every
+// command finds the library open.
+std::string start_live_session(ImGuiTestContext* ctx, std::chrono::milliseconds cap) {
+    const DrawnStart started =
+        start_session(ctx, /*drawing=*/true, std::chrono::duration<double>(cap).count());
+    if (!started.failure.empty()) return started.failure;
+    if (started.still_starting && !engine_stopping(ctx))
+        return "the library did not open within " + testwait::cap_text(cap);
+    return "";
+}
+
 void run_live(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     if (seed_refused(h)) {
@@ -263,8 +276,13 @@ void run_live(ImGuiTestContext* ctx) {
     eio.ConfigWatchdogWarning = FLT_MAX;
     eio.ConfigWatchdogKillTest = FLT_MAX;
 
-    start_session(ctx);
-    if (ctx->IsError()) return;
+    // The session's start is capped like the wait for a client below.
+    if (const std::string why = start_live_session(ctx, testwait::kUitestProcessCap);
+        !why.empty()) {
+        IM_ERRORF("%s", why.c_str());
+        return;
+    }
+    if (ctx->IsError() || engine_stopping(ctx)) return;
 
     LivePipe pipe;
     if (!pipe.create(h.pipe_name)) {
@@ -671,6 +689,29 @@ void test_live_reset_open_failed(ImGuiTestContext* ctx) {
     IM_CHECK(script_log.find(sentence) != std::string::npos);
 }
 
+// The checked-in tests' reset still blocks: when it returns the store is open
+// and no frame of the new app has been drawn, so a test can set a gate before
+// the app's first frame. The first reset drops any Preview a test before left
+// open, whose close draws a frame of its own.
+void test_reset_app_blocks(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    reset_app(h);
+    if (ctx->IsError()) return;
+    const int frame_before = ImGui::GetFrameCount();
+    reset_app(h);
+    IM_CHECK(h.app->store_ready());
+    IM_CHECK_EQ(ImGui::GetFrameCount(), frame_before);
+}
+
+// A live session's start gives up at the cap it is given, with a reason.
+// run_live gives it testwait::kUitestProcessCap.
+void test_live_start_gives_up_at_cap(ImGuiTestContext* ctx) {
+    OpenGate gate(OpenHold::LibraryRead);
+    const std::string why = start_live_session(ctx, std::chrono::milliseconds(400));
+    IM_CHECK(why.find("the library did not open within") != std::string::npos);
+    IM_CHECK(!harness(ctx).app->store_ready());
+}
+
 }  // namespace
 
 const std::vector<TestEntry>& command_tests() {
@@ -689,6 +730,8 @@ const std::vector<TestEntry>& command_tests() {
         {"live-reset-draws-while-opening", test_live_reset_draws_while_opening},
         {"live-reset-open-outlasts-timeout", test_live_reset_open_outlasts_timeout},
         {"live-reset-open-failed", test_live_reset_open_failed},
+        {"reset-app-blocks", test_reset_app_blocks},
+        {"live-start-gives-up-at-cap", test_live_start_gives_up_at_cap},
     };
     return entries;
 }

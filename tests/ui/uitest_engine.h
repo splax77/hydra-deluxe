@@ -28,6 +28,16 @@
 
 namespace uitest {
 
+// How a start that keeps drawing ended (EngineHooks::reset_drawing).
+struct DrawnStart {
+    // True when the program was still starting when the wait ended: its cap
+    // ran out, or the engine is stopping.
+    bool still_starting = false;
+    // Why the program failed to start, in the program's own words, or ""
+    // when it did not fail.
+    std::string failure;
+};
+
 // What the engine asks the program it drives. Each hook is one place the
 // command verbs or frame() reach the program; an empty hook answers as a
 // program with nothing of that kind would (see each).
@@ -45,6 +55,10 @@ struct EngineHooks {
     // A fresh program, as a session starts and the reset verb asks.
     // Empty: nothing is reset.
     std::function<void()> reset;
+    // The same fresh program, for a live session: frames keep coming while
+    // it starts, for at most `seconds`, instead of a wait that blocks them.
+    // Empty: reset is used, and the start reads as done.
+    std::function<DrawnStart(ImGuiTestContext* ctx, double seconds)> reset_drawing;
     // True when finding a widget labelled `label` by a wildcard lookup would
     // scroll a long list to reach it (in Hydra: the search box is empty and
     // the label is a library row's title). The item verbs refuse such a

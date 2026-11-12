@@ -82,6 +82,9 @@ Harness::Harness() {
     hooks.jobs_busy = [this] { return uitest::jobs_busy(*this); };
     hooks.state_text = [this] { return uitest::state_text(*this); };
     hooks.reset = [this] { reset_app(*this); };
+    hooks.reset_drawing = [this](ImGuiTestContext* ctx, double seconds) {
+        return reset_app_drawing(ctx, *this, seconds);
+    };
     hooks.is_library_row_title = [this](const std::string& label) {
         return library_row_title(*this, label);
     };
@@ -264,7 +267,11 @@ void reset_app(Harness& h, const std::string& rules_text, bool wait_store,
     if (!wait_store) return;
     // A deliberate block, in the harness only: the tests click at once.
     h.app->wait_store_open();
-    if (!h.app->store_open_failed()) return;
+    if (const std::string why = store_open_failure(h); !why.empty()) IM_ERRORF("%s", why.c_str());
+}
+
+std::string store_open_failure(const Harness& h) {
+    if (!h.app || !h.app->store_open_failed()) return "";
     // The text the startup message box would show (D72 item 1).
     std::string why = "unknown error";
     try {
@@ -273,7 +280,27 @@ void reset_app(Harness& h, const std::string& rules_text, bool wait_store,
         why = hydra::app::plain_error_block(e);
     } catch (...) {
     }
-    IM_ERRORF("The scratch library did not open:\n%s", why.c_str());
+    return "The scratch library did not open:\n" + why;
+}
+
+DrawnStart wait_store_drawing(ImGuiTestContext* ctx, Harness& h, double seconds) {
+    const auto settled = [&] {
+        if (h.app->store_ready() || h.app->store_open_failed()) return true;
+        // The startup screen's words for the open's step now. The text is
+        // last frame's, so after a step change they match a frame later.
+        if (on_screen(h, h.app->store_open_progress().label())) OpenGate::note_startup_drawn();
+        return false;
+    };
+    wait_until(ctx, settled, seconds);
+    DrawnStart out;
+    out.still_starting = !h.app->store_ready() && !h.app->store_open_failed();
+    out.failure = store_open_failure(h);
+    return out;
+}
+
+DrawnStart reset_app_drawing(ImGuiTestContext* ctx, Harness& h, double seconds) {
+    reset_app(h, "", /*wait_store=*/false);
+    return wait_store_drawing(ctx, h, seconds);
 }
 
 bool jobs_busy(Harness& h) { return h.app->any_job_running(); }
