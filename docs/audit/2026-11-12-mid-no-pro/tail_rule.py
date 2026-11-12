@@ -12,11 +12,8 @@ two readings put it in a different place: another branch, or into the tail.
 Only a chart with a yellow, blue or fourth-pad note can show a move, because
 those are the pads the tail turns from cymbals to toms.
 """
-import io
 import re
 import zlib
-
-import mido
 
 # Each difficulty's kick pitch, as kDifficultyChartCodes in src/parse/song.cpp
 # spells it; the pads sit just above it.
@@ -161,14 +158,77 @@ def read_srb(raw):
     return name, notes, is_mid
 
 
-def mid_facts(data):
-    """What the tail asks of a .mid's drum track, or None when it has none."""
-    mid = mido.MidiFile(file=io.BytesIO(data))
-    for track in mid.tracks[1:]:
-        names = [m.name for m in track if m.type == 'track_name']
-        if not any(n.lower() in DRUM_TRACK_NAMES for n in names):
+def _varlen(data, pos, end):
+    value = 0
+    for _ in range(4):
+        if pos >= end:
+            raise EOFError('varlen past the track')
+        b = data[pos]
+        pos += 1
+        value = (value << 7) | (b & 0x7F)
+        if not b & 0x80:
+            return value, pos
+    return value, pos
+
+
+def _scan_tracks(data):
+    """Each MTrk chunk as (track names, note-on pitches with velocity above 0).
+    It is lenient on purpose: an unknown chunk is skipped, running status is
+    followed, and a track cut short keeps what it read. So it may read a damaged
+    file Hydra refuses, which only over-includes a chart in the scout's list."""
+    tracks, pos = [], 0
+    if data[:4] != b'MThd':
+        raise ValueError('no MThd')
+    while pos + 8 <= len(data):
+        tag, length = data[pos:pos + 4], int.from_bytes(data[pos + 4:pos + 8], 'big')
+        start, end = pos + 8, min(pos + 8 + length, len(data))
+        pos = start + length
+        if tag != b'MTrk':
             continue
-        ons = [m.note for m in track if m.type == 'note_on' and m.velocity > 0]
+        names, ons, p, status = [], [], start, 0
+        try:
+            while p < end:
+                _, p = _varlen(data, p, end)
+                if p >= end:
+                    break
+                b = data[p]
+                if b == 0xFF:
+                    mtype = data[p + 1]
+                    n, p = _varlen(data, p + 2, end)
+                    if mtype == 0x03:
+                        names.append(data[p:p + n].decode('latin-1'))
+                    p += n
+                    continue
+                if b in (0xF0, 0xF7):
+                    n, p = _varlen(data, p + 1, end)
+                    p += n
+                    continue
+                if b & 0x80:
+                    status, p = b, p + 1
+                if not status:
+                    raise ValueError('data byte with no status')
+                high = status & 0xF0
+                size = 1 if high in (0xC0, 0xD0) else 2
+                if high == 0x90 and p + 1 < end and data[p + 1] > 0:
+                    ons.append(data[p])
+                p += size
+        except (EOFError, IndexError, ValueError):
+            pass
+        tracks.append((names, ons))
+    return tracks
+
+
+def mid_facts(data):
+    """What the tail asks of a .mid's drum track, or None when it has none.
+    The drum track is the first track after the timing track that carries a
+    drum track name (MidiFile::drums_track)."""
+    for names, ons in _scan_tracks(data)[1:]:
+        # The track's name is its first drum or events name, else its first
+        # name (TrackNamePick in src/parse/midi.cpp).
+        recognized = [n for n in names if n.lower() in DRUM_TRACK_NAMES or n.lower() == 'events']
+        name = recognized[0] if recognized else (names[0] if names else '')
+        if name.lower() not in DRUM_TRACK_NAMES:
+            continue
         return {
             'fifth_pad_note': any(p in FIFTH_PAD_PITCHES for p in ons),
             'pro_mark': any(p in TOM_MARKER_PITCHES for p in ons),
