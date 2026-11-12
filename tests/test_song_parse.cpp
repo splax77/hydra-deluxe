@@ -539,22 +539,68 @@ TEST_CASE("drum lanes: the testdata lanes, with the pads Clone Hero lights") {
     }
 }
 
-TEST_CASE(".chart: a double lane on a three-pad chord lights its lowest and highest") {
-    // Red, yellow cymbal and blue tom. In the game's bit order every cymbal
-    // comes after every tom, so the highest is the yellow cymbal and the
-    // blue tom between them is not lit.
+TEST_CASE(".chart: a double lane on a three-pad chord takes its second pad from the next chord") {
+    // Red, yellow cymbal and blue tom, then a green tom. The first pad is the
+    // three-pad chord's lowest, red. The second comes from the next chord,
+    // as in the game (NL-55), so neither the yellow nor the blue is lit.
     const Song song = lane_chart("  0 = N 1 0\n  0 = N 2 0\n  0 = N 66 0\n  0 = N 3 0\n"
                                  "  0 = S 66 192\n  96 = N 4 0\n");
     REQUIRE(song.drum_lanes.size() == 1);
     CHECK(song.drum_lanes[0].double_lane);
-    CHECK(song.drum_lanes[0].pads == Pads{NoteColor::Red, NoteColor::Yellow});
+    CHECK(song.drum_lanes[0].pads == Pads{NoteColor::Red, NoteColor::Green});
 
-    // With Pro Drums off there are no cymbals, so the blue tom is highest.
+    // With Pro Drums off there are no cymbals; the second pad still comes
+    // from the next chord.
     const Song plain = lane_chart("  0 = N 1 0\n  0 = N 2 0\n  0 = N 66 0\n  0 = N 3 0\n"
                                   "  0 = S 66 192\n  96 = N 4 0\n",
                                   /*pro=*/false);
     REQUIRE(plain.drum_lanes.size() == 1);
-    CHECK(plain.drum_lanes[0].pads == Pads{NoteColor::Red, NoteColor::Blue});
+    CHECK(plain.drum_lanes[0].pads == Pads{NoteColor::Red, NoteColor::Green});
+}
+
+TEST_CASE(".chart: a double lane on a two-pad chord lights the next chord's highest pad") {
+    // NL-55's example: red and yellow cymbal, then a blue tom. The game
+    // lights red and blue.
+    const Song song =
+        lane_chart("  0 = N 1 0\n  0 = N 2 0\n  0 = N 66 0\n  0 = S 66 192\n  96 = N 3 0\n");
+    REQUIRE(song.drum_lanes.size() == 1);
+    CHECK(song.drum_lanes[0].pads == Pads{NoteColor::Red, NoteColor::Blue});
+}
+
+TEST_CASE(".chart: a double lane on a two-pad chord skips a lone kick") {
+    // Red and yellow cymbal, a kick alone, then yellow tom and blue tom. The
+    // kick lights no pad, and the highest of the next chord is blue.
+    const Song song = lane_chart("  0 = N 1 0\n  0 = N 2 0\n  0 = N 66 0\n  0 = S 66 192\n"
+                                 "  48 = N 0 0\n  96 = N 2 0\n  96 = N 3 0\n");
+    REQUIRE(song.drum_lanes.size() == 1);
+    CHECK(song.drum_lanes[0].pads == Pads{NoteColor::Red, NoteColor::Blue});
+}
+
+TEST_CASE(".chart: a double lane takes its second pad from a chord past the lane's end") {
+    // Red and yellow cymbal under a lane from 0 to 96, then a green tom at
+    // 192, after the lane has ended.
+    const Song song =
+        lane_chart("  0 = N 1 0\n  0 = N 2 0\n  0 = N 66 0\n  0 = S 66 96\n  192 = N 4 0\n");
+    REQUIRE(song.drum_lanes.size() == 1);
+    CHECK(song.drum_lanes[0].end_tick == 96);
+    CHECK(song.drum_lanes[0].pads == Pads{NoteColor::Red, NoteColor::Green});
+}
+
+TEST_CASE(".chart: a double lane whose next chord repeats its first pad lights it once") {
+    // Red and yellow cymbal, then a red: the second pad is red again, so the
+    // lane lights red alone.
+    const Song song =
+        lane_chart("  0 = N 1 0\n  0 = N 2 0\n  0 = N 66 0\n  0 = S 66 192\n  96 = N 1 0\n");
+    REQUIRE(song.drum_lanes.size() == 1);
+    CHECK(song.drum_lanes[0].pads == Pads{NoteColor::Red});
+}
+
+TEST_CASE(".chart: a double lane on the song's last chord lights its first pad alone") {
+    // Red and yellow cymbal and nothing after: with no later chord the lane
+    // lights red alone (the user's choice, D333).
+    const Song song = lane_chart("  0 = N 1 0\n  0 = N 2 0\n  0 = N 66 0\n  0 = S 66 192\n");
+    REQUIRE(song.drum_lanes.size() == 1);
+    CHECK(song.drum_lanes[0].pads == Pads{NoteColor::Red});
 }
 
 TEST_CASE(".chart: N 66, 67 and 68 mark the yellow, blue and green cymbals; N 65 marks none") {
