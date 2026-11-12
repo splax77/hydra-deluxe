@@ -19,6 +19,7 @@ import sys
 import tempfile
 import threading
 import unittest
+from unittest import mock
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.abspath(os.path.join(_HERE, "..", "..", ".."))
@@ -29,12 +30,14 @@ from tools.ch_mcp import build_facts as B  # noqa: E402
 from tools.ch_mcp import build_stamp as BS  # noqa: E402
 from tools.ch_mcp import frida_attach as FA  # noqa: E402
 from tools.ch_mcp import frida_tools as FT  # noqa: E402
+from tools.ch_mcp import hydra_end  # noqa: E402
 from tools.ch_mcp import trace_hits as TH  # noqa: E402
 from tools.ch_mcp.kit_tools import pad_axis  # noqa: E402
 from tools.ch_mcp.tests.test_build_facts import REAL_FACTS  # noqa: E402
 from tools.ch_mcp.tests.test_build_stamp import make_built_agent  # noqa: E402
 from tools.ch_mcp.tests.test_frida_attach import (  # noqa: E402
     MENU, MENU_ONE_DESTROYED, STATE, FakeFrida, ReplySession, instant_wait)
+from tools.ch_mcp.tests.test_hydra_end import FAKE  # noqa: E402
 from tools.ch_probe import constants as C  # noqa: E402
 from tools.ch_probe import engine_finder  # noqa: E402
 from tools.ch_probe.engine import SNAPSHOT_SIZE  # noqa: E402
@@ -51,6 +54,16 @@ FACTS = {
     ]}],
 }
 BACKUP_LINE = "backup folder: X (taken now)"
+# The song end the fake dump of the test song's chart names.
+SONG_END_MS = 6000.0
+
+
+def setUpModule():
+    FAKE.start()
+
+
+def tearDownModule():
+    FAKE.stop()
 
 
 class FakeGame:
@@ -180,6 +193,9 @@ class Rig(unittest.TestCase):
         with open(TH.manifest_path(self.song), "w", encoding="utf-8") as f:
             json.dump({"notes": [{"index": i, "time_ms": t}
                                  for i, t in enumerate((1000, 2000, 3000))]}, f)
+        self.chart = os.path.join(self.song, "notes.chart")
+        open(self.chart, "w").close()
+        FAKE.set_end(self.chart, SONG_END_MS)
         self.clock = FakeClock()
         self.loads = 0
         self.traces = []
@@ -341,14 +357,16 @@ class AttachTest(Rig):
             f.write("// an edit after the build\n")
         with self.assertRaises(TH.AgentMissing) as raised:
             TH.TraceSession([{"index": 0, "time_ms": 1000}], "Eng", ["AddPoints"],
-                            os.path.join(self.tmp, "t.jsonl"), agent_path=path)
+                            os.path.join(self.tmp, "t.jsonl"), agent_path=path,
+                            song_end_ms=SONG_END_MS)
         self.assertEqual(str(raised.exception),
                          f"{path} is stale: trace.ts changed since it was built; "
                          "run npm run build:trace in tools/ch_mcp/agent first")
         os.remove(BS.stamp_path(path))
         with self.assertRaises(TH.AgentMissing) as raised:
             TH.TraceSession([{"index": 0, "time_ms": 1000}], "Eng", ["AddPoints"],
-                            os.path.join(self.tmp, "t.jsonl"), agent_path=path)
+                            os.path.join(self.tmp, "t.jsonl"), agent_path=path,
+                            song_end_ms=SONG_END_MS)
         self.assertIn("has no build stamp", str(raised.exception))
         out = []
         self.assertEqual(TH.main(["--song", self.song, "--mode", TH.MODE_COUNT,
@@ -357,7 +375,8 @@ class AttachTest(Rig):
         self.assertEqual(out, [BS.check(path)])
         make_built_agent(self.agent_dir, TH.DEFAULT_AGENT_NAME)
         session = TH.TraceSession([{"index": 0, "time_ms": 1000}], "Eng", ["AddPoints"],
-                                  os.path.join(self.tmp, "t.jsonl"), agent_path=path)
+                                  os.path.join(self.tmp, "t.jsonl"), agent_path=path,
+                            song_end_ms=SONG_END_MS)
         self.assertEqual(session.agent_path, path)
 
 
@@ -837,6 +856,61 @@ class TraceTest(Rig):
         self.assertEqual(trace.methods, ["AddPoints"])
         self.assertEqual(trace.kw["engine_ctor_rva"], C.RVA_DRUMS_ENGINE_CTOR)
         self.assertIn(f"AddPoints (0x{C.RVA_NOTE_SCORE_ADD:X})", out)
+
+    def test_trace_start_caps_at_hydras_end_of_the_folders_chart(self):
+        tools = self.tools([STATE, STATE], attached=True)
+        tools.ch_trace_start(self.song)
+        (trace,) = self.traces
+        self.assertEqual(trace.kw["song_end_ms"], SONG_END_MS)
+        self.assertEqual(FAKE.charts[-1], self.chart)
+
+    def test_a_folder_with_no_chart_starts_no_trace(self):
+        os.remove(self.chart)
+        tools = self.tools([STATE, STATE], attached=True)
+        self.game.backups = 0
+        out = tools.ch_trace_start(self.song)
+        self.assertEqual(out.splitlines()[-1],
+                         f"{self.song} has no notes.chart or notes.mid, so Hydra has no "
+                         "song end to cap the trace at; no trace started")
+        self.assertEqual(self.traces, [])
+        self.assertEqual(self.game.backups, 0)
+
+    def test_a_failed_dump_starts_no_trace(self):
+        # A chart the fake has no dump for fails as hydra_replay would.
+        os.remove(self.chart)
+        open(os.path.join(self.song, "notes.mid"), "w").close()
+        tools = self.tools([STATE, STATE], attached=True)
+        self.game.backups = 0
+        out = tools.ch_trace_start(self.song)
+        self.assertIn("hydra_replay dump failed with exit code 1", out)
+        self.assertTrue(out.endswith("; no trace started"))
+        self.assertEqual(self.traces, [])
+        self.assertEqual(self.game.backups, 0)
+
+    def test_the_dump_runs_outside_the_lock(self):
+        tools = self.tools([STATE, STATE], attached=True)
+        held = []
+        real = hydra_end.make_dump
+
+        def dump(chart, path):
+            # Another thread can take the lock while the dump runs.
+            got = []
+
+            def take():
+                got.append(self.lock.acquire(timeout=1.0))
+                if got[0]:
+                    self.lock.release()
+
+            t = threading.Thread(target=take)
+            t.start()
+            t.join()
+            held.append(not got[0])
+            real(chart, path)
+
+        with mock.patch.object(hydra_end, "make_dump", dump):
+            tools.ch_trace_start(self.song)
+        self.assertEqual(held, [False])
+        self.assertEqual(len(self.traces), 1)
 
     def test_with_dynamics_hooks_both_methods(self):
         tools = self.tools([STATE, STATE], attached=True)

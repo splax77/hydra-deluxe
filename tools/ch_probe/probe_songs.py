@@ -18,6 +18,10 @@ manifest.json lists every note with its time, block and the gap before and
 after it, so a watcher script can line up window changes with notes. It holds
 layout only -- no predicted window values.
 
+The silent song.ogg is exactly as long as Hydra's song end for the chart
+(hydra_end), and song.ini names no length. Finding that end runs hydra_replay
+dump, so only a main session runs this script (agent rule 14).
+
     python -m tools.ch_probe.probe_songs                # installs into CH
     python -m tools.ch_probe.probe_songs --out <dir>    # somewhere else
 """
@@ -29,6 +33,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 from dataclasses import dataclass
 from typing import Callable, Optional
 
@@ -38,6 +43,14 @@ try:
 except ImportError:  # pragma: no cover - top-level import, ch_probe on sys.path
     import constants as C  # type: ignore[no-redef]
     from probe_chart import chart_text as _chart_text, ms_to_ticks  # type: ignore[no-redef]
+
+# hydra_end lives outside ch_probe, so a top-level import of this file still
+# needs the repo root on sys.path for it.
+_REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
+from tools.ch_mcp import hydra_end  # noqa: E402
 
 RESOLUTION = 480
 BPM = 125.0  # 480 ticks per beat at 125 BPM = 1 tick per ms
@@ -142,7 +155,9 @@ def chart_text(name: str, notes: list[Note]) -> str:
                        note=C.PROBE_CHART_NOTE_KICK, music_stream=SONG_OGG)
 
 
-def song_ini(name: str, length_ms: int) -> str:
+def song_ini(name: str) -> str:
+    """The song's song.ini. It names no length: the song's end is Hydra's
+    (write_song_folder), and the silent audio is exactly that long (D331)."""
     return (
         "[song]\n"
         f"name = {name}\n"
@@ -153,7 +168,6 @@ def song_ini(name: str, length_ms: int) -> str:
         "diff_drums = 0\n"
         "pro_drums = False\n"
         "delay = 0\n"
-        f"song_length = {length_ms}\n"
     )
 
 
@@ -181,7 +195,7 @@ def manifest(name: str, notes: list[Note]) -> dict:
     }
 
 
-def write_silent_ogg(path: str, length_ms: int) -> None:
+def write_silent_ogg(path: str, length_ms: float) -> None:
     ffmpeg = shutil.which("ffmpeg")
     if ffmpeg is None:
         raise RuntimeError("ffmpeg not on PATH; needed to write song.ogg")
@@ -198,32 +212,35 @@ def full_name(name: str) -> str:
     return NAME_PREFIX + name
 
 
-def song_length_ms(last_note_ms: int) -> int:
-    """A probe song's length: its last note, then SILENCE_MS of quiet."""
-    return last_note_ms + SILENCE_MS
-
-
-def write_song_folder(root: str, name: str, chart: str, length_ms: int, *,
-                      write_ogg: Callable[[str, int], None] = write_silent_ogg) -> str:
+def write_song_folder(root: str, name: str, chart: str, *,
+                      write_ogg: Callable[[str, float], None] = write_silent_ogg
+                      ) -> tuple[str, float]:
     """Make <root>/<name> and write a playable song there: `chart` as
-    notes.chart, a song.ini and a silent song.ogg of `length_ms`. Returns the
-    folder."""
+    notes.chart, a song.ini, and a silent song.ogg exactly as long as Hydra's
+    song end for that chart (hydra_end.chart_song_length_ms, one hydra_replay
+    dump). Returns the folder and that end in ms. Raises
+    hydra_end.SongEndMissing, before any audio is written, when the dump
+    names no end."""
     folder = os.path.join(root, name)
     os.makedirs(folder, exist_ok=True)
-    with open(os.path.join(folder, "notes.chart"), "w", encoding="utf-8", newline="\n") as f:
+    notes_chart = os.path.join(folder, "notes.chart")
+    with open(notes_chart, "w", encoding="utf-8", newline="\n") as f:
         f.write(chart)
     with open(os.path.join(folder, "song.ini"), "w", encoding="utf-8", newline="\n") as f:
-        f.write(song_ini(full_name(name), length_ms))
+        f.write(song_ini(full_name(name)))
+    length_ms, _source = hydra_end.chart_song_length_ms(notes_chart)
     write_ogg(os.path.join(folder, SONG_OGG), length_ms)
-    return folder
+    return folder, length_ms
 
 
-def write_song(root: str, name: str, t: Timeline) -> tuple[str, int]:
-    """Write one probe song folder plus its manifest.json. Returns the folder
-    and the song's length in ms."""
-    length_ms = song_length_ms(t.notes[-1].time_ms)
+def write_song(root: str, name: str, t: Timeline, *,
+               write_ogg: Callable[[str, float], None] = write_silent_ogg) -> tuple[str, float]:
+    """Write one probe song folder (write_song_folder) plus its manifest.json.
+    Returns the folder and the song's length in ms, Hydra's end of its
+    chart."""
     title = full_name(name)
-    folder = write_song_folder(root, name, chart_text(title, t.notes), length_ms)
+    folder, length_ms = write_song_folder(root, name, chart_text(title, t.notes),
+                                          write_ogg=write_ogg)
     with open(os.path.join(folder, "manifest.json"), "w", encoding="utf-8", newline="\n") as f:
         json.dump(manifest(title, t.notes), f, indent=1)
     return folder, length_ms
