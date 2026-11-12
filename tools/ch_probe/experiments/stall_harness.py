@@ -25,7 +25,9 @@ process that reads this checkout's testdata and .git folders in a loop, and
 stops it on every way out. Everything the run writes goes in its own folder
 (`--out`, else a new one under the system's temp folder).
 
-Run: py -I -m tools.ch_probe.experiments.stall_harness <schedule.json>
+Run, from the checkout's root (with -I, `-m` cannot find `tools`, so the
+file is named by its path):
+     py -I tools/ch_probe/experiments/stall_harness.py <schedule.json>
      --sink per-row|writer|none [--load] [--force-stall-ms MS]
      [--minutes M] [--threshold-ms MS] [--no-cdb] [--hunt-run N] [--out DIR]
 """
