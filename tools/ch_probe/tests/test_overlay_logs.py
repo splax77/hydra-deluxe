@@ -46,6 +46,16 @@ class ColumnListsTest(unittest.TestCase):
             "index", "chart_ms", "clock_ms_at_press", "score_before",
             "score_after", "send", "down_frame", "up_frame", "down_ms", "up_ms",
             "wall_s_at_read", "wall_s_at_reply", "scored_between",
+            "end_read_ms", "probe", "retimed",
+            "wait_read_max_ms", "wait_oversleep_max_ms", "press_took_ms",
+            "reply_check_took_ms", "end_read_took_ms", "score_read_took_ms",
+            "prev_handoff_took_ms"))
+
+    def test_the_press_columns_before_the_timing_columns(self):
+        self.assertEqual(overlay_logs.PRESS_COLUMNS_BEFORE_TIMING, (
+            "index", "chart_ms", "clock_ms_at_press", "score_before",
+            "score_after", "send", "down_frame", "up_frame", "down_ms", "up_ms",
+            "wall_s_at_read", "wall_s_at_reply", "scored_between",
             "end_read_ms", "probe", "retimed"))
 
     def test_the_press_columns_before_the_send_column(self):

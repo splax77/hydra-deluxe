@@ -673,6 +673,18 @@ The build step before the cache took 7 min 17 s (run 40313402500). The cold
 run's coverage report matches the old build's: 158 files, 44,746 coverable lines,
 84%.
 
+The sccache jobs (`asan`, `asan-gui` and `coverage`) keep their cache in
+GitHub's own cache storage, and that storage is sometimes briefly down. Run
+43231044457 failed that way: the storage answered "503 ServerBusy", the
+sccache server would not start, and the build stopped. So each of those jobs
+starts the server with `tools\sccache_start.ps1` before it builds. When
+GitHub's cache does not answer, the script starts the server with a local
+cache instead and puts a warning on the run. The build is then as slow as a
+cold one, but it does not fail. In the same way, the fuzz jobs in
+`.github/workflows/fuzz.yml` fetch their seeds a second time, 30 s later, when
+the first fetch fails (run 42656444749 lost both fuzz jobs to one dropped
+connection).
+
 Another job, `tool-tests`, runs the tool tests above with no C++ build. The main
 job runs the mutation probe's self-test after it builds `hydra_tests`, because
 that self-test needs `hydra_precheck.exe`. The main job and the coverage job
