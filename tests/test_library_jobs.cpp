@@ -759,6 +759,22 @@ void check_same_result(const hydra::ui::LibraryRow& got, const hydra::ui::Librar
     CHECK(got.best_label() == want.best_label());
 }
 
+// Reads the store's charts, then their results in slices of `slice_charts`,
+// into `sliced`. Returns the rows answered after each slice.
+std::vector<uint64_t> read_in_slices(RecordStore& store, const hydra::app::Settings& settings,
+                                     hydra::ui::LibraryModel& sliced, size_t slice_charts) {
+    sliced.set_charts(store.list_chart_library(0, -1));
+    std::vector<uint64_t> answered;
+    hydra::ui::read_library_summaries(
+        store, settings, sliced,
+        [&](uint64_t rows_answered) {
+            answered.push_back(rows_answered);
+            return true;
+        },
+        slice_charts);
+    return answered;
+}
+
 }  // namespace
 
 TEST_CASE("jobs: results read in slices match one read") {
@@ -792,15 +808,7 @@ TEST_CASE("jobs: results read in slices match one read") {
 
     SUBCASE("one chart per slice") {
         hydra::ui::LibraryModel sliced;
-        sliced.set_charts(store.list_chart_library(0, -1));
-        std::vector<uint64_t> answered;
-        hydra::ui::read_library_summaries(
-            store, settings, sliced,
-            [&](uint64_t rows_answered) {
-                answered.push_back(rows_answered);
-                return true;
-            },
-            1);
+        const std::vector<uint64_t> answered = read_in_slices(store, settings, sliced, 1);
         CHECK(answered == std::vector<uint64_t>{1, 2, 3, 4, 5, 6, 7});
         REQUIRE(sliced.rows().size() == whole.rows().size());
         for (size_t i = 0; i < whole.rows().size(); ++i)
@@ -811,15 +819,8 @@ TEST_CASE("jobs: results read in slices match one read") {
     }
     SUBCASE("the real slice size") {
         hydra::ui::LibraryModel sliced;
-        sliced.set_charts(store.list_chart_library(0, -1));
-        std::vector<uint64_t> answered;
-        hydra::ui::read_library_summaries(
-            store, settings, sliced,
-            [&](uint64_t rows_answered) {
-                answered.push_back(rows_answered);
-                return true;
-            },
-            hydra::ui::kResultsSliceCharts);
+        const std::vector<uint64_t> answered =
+            read_in_slices(store, settings, sliced, hydra::ui::kResultsSliceCharts);
         // Seven rows fit in one slice.
         REQUIRE(whole.rows().size() < hydra::ui::kResultsSliceCharts);
         CHECK(answered == std::vector<uint64_t>{7});
