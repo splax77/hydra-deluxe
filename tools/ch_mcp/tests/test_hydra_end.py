@@ -84,11 +84,14 @@ def tearDownModule():
     FAKE.stop()
 
 
-# The five files whose song length used to come from song.ini or the probe
-# formula (the player audit fix plan's task F10).
-READER_FILES = ("bot_run.py", "game_tools.py", "sp_tools.py", "install_chart.py",
-                "game_files.py")
+# The files whose song length used to come from song.ini or the probe formula
+# (the player audit fix plan's task F10, and D331 for the last two).
 _CH_MCP = os.path.join(_REPO_ROOT, "tools", "ch_mcp")
+_CH_PROBE = os.path.join(_REPO_ROOT, "tools", "ch_probe")
+READER_FILES = {name: os.path.join(_CH_MCP, name)
+                for name in ("bot_run.py", "game_tools.py", "sp_tools.py",
+                             "install_chart.py", "game_files.py", "trace_hits.py")}
+READER_FILES["probe_songs.py"] = os.path.join(_CH_PROBE, "probe_songs.py")
 
 
 class HydraEndTest(unittest.TestCase):
@@ -181,19 +184,24 @@ class HydraEndTest(unittest.TestCase):
 
     def test_every_length_reader_calls_hydra_end(self):
         texts = {}
-        for name in READER_FILES:
-            with open(os.path.join(_CH_MCP, name), encoding="utf-8") as f:
+        for name, path in READER_FILES.items():
+            with open(path, encoding="utf-8") as f:
                 texts[name] = f.read()
         for name, text in texts.items():
             with self.subTest(file=name):
                 self.assertNotIn("song_ini_length_ms", text)
                 self.assertNotIn("probe_songs.song_length_ms", text)
-                # A read of song.ini's own length key, quoted.
+                self.assertNotIn("import song_length_ms", text)
+                # A read of song.ini's own length key, quoted, or a song.ini
+                # line that writes it.
                 self.assertIsNone(re.search(r"""["']song_length["']""", text))
-        # The two that read a length themselves read it from hydra_end; the
+                self.assertIsNone(re.search(r"song_length\s*=", text))
+        # The probe formula itself is gone.
+        self.assertNotIn("def song_length_ms", texts["probe_songs.py"])
+        # The four that read a length themselves read it from hydra_end; the
         # other two take it from bot_run.song_length_ms, whose source the
         # behaviour tests in test_bot_run and test_game_tools pin.
-        for name in ("bot_run.py", "install_chart.py"):
+        for name in ("bot_run.py", "install_chart.py", "trace_hits.py", "probe_songs.py"):
             with self.subTest(file=name):
                 self.assertIn("hydra_end.chart_song_length_ms(", texts[name])
         for name in ("game_tools.py", "sp_tools.py"):

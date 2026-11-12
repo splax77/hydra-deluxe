@@ -96,7 +96,7 @@ def install(src: str, *, dest_root: str = probe_songs.DEFAULT_OUT, name: Optiona
     if os.path.exists(dest):
         raise InstallRefused(f"{dest} already exists; not overwritten")
     try:
-        length_ms, _dump = hydra_end.chart_song_length_ms(chart)
+        length_ms, _source = hydra_end.chart_song_length_ms(chart)
     except hydra_end.SongEndMissing as e:
         raise InstallRefused(f"{e}; the silent audio would have no length") from e
     try:

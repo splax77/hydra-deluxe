@@ -23,13 +23,23 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 from tools.ch_mcp import build_stamp as BS  # noqa: E402
+from tools.ch_mcp import hydra_end  # noqa: E402
 from tools.ch_mcp import trace_hits as TH  # noqa: E402
 from tools.ch_mcp import frida_attach as FA  # noqa: E402
 from tools.ch_mcp.tests.test_frida_attach import (  # noqa: E402
     AGENT_DIR, FakeFrida, FakeSession, instant_wait, by_name_only_findings, sent)
 from tools.ch_mcp.tests.test_build_stamp import make_built_agent  # noqa: E402
+from tools.ch_mcp.tests.test_hydra_end import FAKE  # noqa: E402
 from tools.ch_probe import constants as C  # noqa: E402
 from tools.ch_probe.probe_songs import WINDOW_MAP  # noqa: E402
+
+
+def setUpModule():
+    FAKE.start()
+
+
+def tearDownModule():
+    FAKE.stop()
 
 ENGINE = {"name": "Eng", "image": "StrikeCore", "parent": "Base<Inputs>",
           "shape": {"sealed": True, "generic_base": True,
@@ -94,14 +104,46 @@ class LineUpTest(unittest.TestCase):
 
 
 class CapTest(unittest.TestCase):
-    # Window Map's last note is at 59,080 ms (plan 2026-10-28, question 5).
-    WINDOW_MAP = notes_at(3000, 59080)
+    # A song end of 60,080 ms, as a dump of the Window Map chart could name.
+    END_MS = 60080.0
 
-    def test_the_song_cap_is_the_song_length_plus_the_margin(self):
-        self.assertAlmostEqual(TH.trace_cap_s(self.WINDOW_MAP), 92.08)
+    def test_the_song_cap_is_hydras_end_plus_the_margin(self):
+        self.assertAlmostEqual(TH.trace_cap_s(self.END_MS), 90.08)
 
     def test_the_wall_cap_is_the_song_cap_plus_the_pause_room(self):
-        self.assertAlmostEqual(TH.wall_cap_s(self.WINDOW_MAP), 212.08)
+        self.assertAlmostEqual(TH.wall_cap_s(self.END_MS), 210.08)
+
+
+class SongEndTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.song = os.path.join(self.tmp.name, "Song")
+        os.mkdir(self.song)
+
+    def test_the_end_is_hydras_for_the_folders_chart(self):
+        chart = os.path.join(self.song, "notes.mid")
+        open(chart, "w").close()
+        FAKE.set_end(chart, 193934.0)
+        self.assertEqual(TH.song_end_ms(self.song),
+                         (193934.0, hydra_end.chart_source_text(chart)))
+        self.assertEqual(FAKE.charts[-1], chart)
+
+    def test_a_folder_with_no_chart_is_refused_with_no_dump(self):
+        before = len(FAKE.charts)
+        with self.assertRaises(hydra_end.SongEndMissing) as caught:
+            TH.song_end_ms(self.song)
+        self.assertEqual(str(caught.exception),
+                         f"{self.song} has no notes.chart or notes.mid, so Hydra has no "
+                         "song end to cap the trace at")
+        self.assertEqual(len(FAKE.charts), before)
+
+    def test_a_failed_dump_is_refused(self):
+        chart = os.path.join(self.song, "notes.chart")
+        open(chart, "w").close()
+        with self.assertRaises(hydra_end.SongEndMissing) as caught:
+            TH.song_end_ms(self.song)
+        self.assertIn("hydra_replay dump failed with exit code 1", str(caught.exception))
 
 
 class CommandLineTest(unittest.TestCase):
@@ -113,6 +155,9 @@ class CommandLineTest(unittest.TestCase):
         self.manifest = os.path.join(self.song, "manifest.json")
         with open(self.manifest, "w", encoding="utf-8") as fh:
             json.dump({"song": "Song", "notes": notes_at(1000, 2000, 3000)}, fh)
+        self.chart = os.path.join(self.song, "notes.chart")
+        open(self.chart, "w").close()
+        FAKE.set_end(self.chart, 6000.0)
         self.agent = make_built_agent(self.tmp.name, "trace")
         self.out_path = os.path.join(self.tmp.name, "trace.jsonl")
         self.lines = []
@@ -132,8 +177,8 @@ class CommandLineTest(unittest.TestCase):
                                      "no_code": ["base Abs"]}), sent(table)])
         code = self.run_main(["--mode", "count"], session)
         self.assertEqual(code, 0)
-        # Last note 3,000 ms + SILENCE_MS 3,000 ms + 30 s margin = 36 s song
-        # cap; plus 120 s of pause room = 156 s wall-clock cap.
+        # The fake dump's song end of 6,000 ms + 30 s margin = 36 s song cap;
+        # plus 120 s of pause room = 156 s wall-clock cap.
         self.assertEqual(session.script.posted, [{
             "type": "start", "cap_s": 156.0, "song_cap_s": 36.0,
             "mode": "count", "engine_class": "Eng",
@@ -217,12 +262,23 @@ class CommandLineTest(unittest.TestCase):
         self.assertEqual(self.lines, [
             f"{self.manifest} holds no notes, so there is nothing to line calls up with"])
 
+    def test_a_folder_with_no_chart_prints_one_line_and_traces_nothing(self):
+        os.remove(self.chart)
+        session = FakeSession([])
+        code = self.run_main(["--mode", "count"], session)
+        self.assertEqual(code, 1)
+        self.assertEqual(self.lines, [
+            f"{self.song} has no notes.chart or notes.mid, so Hydra has no song end "
+            "to cap the trace at; nothing traced"])
+        self.assertIsNone(session.script)  # no agent was loaded
+
     def test_a_trace_ended_by_the_runner_cap_exits_0_with_no_error(self):
-        # Window Map's last note: 59,080 ms + SILENCE_MS 3,000 ms + 30 s
-        # margin = 92.08 s song cap; plus 120 s of pause room = 212.08 s.
+        # A fake song end of 62,080 ms + 30 s margin = 92.08 s song cap; plus
+        # 120 s of pause room = 212.08 s.
         with open(self.manifest, "w", encoding="utf-8") as fh:
             json.dump({"song": WINDOW_MAP, "notes": notes_at(3000, 59080)},
                       fh)
+        FAKE.set_end(self.chart, 62080.0)
         session = FakeSession([sent({"engine": ENGINE, "hooked": 2,
                                      "no_code": []})])
         code = self.run_main(["--mode", "count"], session)
@@ -373,6 +429,7 @@ THREAD_CAP_S = 5.0
 
 class TraceSessionTest(unittest.TestCase):
     NOTES = notes_at(1000, 2000, 3000)
+    END_MS = 6000.0
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -390,7 +447,7 @@ class TraceSessionTest(unittest.TestCase):
     def session(self, fake_session, **kw):
         kw.setdefault("wait", self.blocking_wait)
         s = TH.TraceSession(self.NOTES, "Eng", ["Hit"], self.out_path,
-                            agent_path=self.agent,
+                            song_end_ms=self.END_MS, agent_path=self.agent,
                             frida_mod=FakeFrida(fake_session), **kw)
         self.addCleanup(s.stop, THREAD_CAP_S)
         return s.start()
@@ -402,8 +459,8 @@ class TraceSessionTest(unittest.TestCase):
         fake = FakeSession([sent({"done": "song over", "calls": 0})])
         s = self.session(fake)
         self.assertTrue(s.stop(THREAD_CAP_S))
-        # Last note 3,000 ms + SILENCE_MS 3,000 ms + 30 s margin = 36 s song
-        # cap; plus 120 s of pause room = 156 s wall-clock cap.
+        # The song end of 6,000 ms + 30 s margin = 36 s song cap; plus 120 s
+        # of pause room = 156 s wall-clock cap.
         self.assertEqual(fake.script.posted, [{
             "type": "start", "cap_s": 156.0, "song_cap_s": 36.0,
             "mode": "args", "engine_class": "Eng",
@@ -465,7 +522,7 @@ class TraceSessionTest(unittest.TestCase):
         # check of the stop event: the run is already over as "done".
         fake = FakeSession([])
         s = TH.TraceSession(self.NOTES, "Eng", ["Hit"], self.out_path,
-                            agent_path=self.agent,
+                            song_end_ms=self.END_MS, agent_path=self.agent,
                             frida_mod=FakeFrida(fake), wait=self.blocking_wait)
         real_is_set = s._stop.is_set
         delivered = []
@@ -515,14 +572,14 @@ class TraceSessionTest(unittest.TestCase):
         os.remove(self.agent)
         with self.assertRaises(TH.AgentMissing) as raised:
             TH.TraceSession(self.NOTES, "Eng", ["Hit"], self.out_path,
-                            agent_path=self.agent)
+                            song_end_ms=self.END_MS, agent_path=self.agent)
         self.assertEqual(str(raised.exception), BS.check(self.agent))
         self.assertTrue(str(raised.exception).startswith(f"{self.agent} not found; "))
 
     def test_a_session_needs_a_method(self):
         with self.assertRaises(ValueError):
             TH.TraceSession(self.NOTES, "Eng", [], self.out_path,
-                            agent_path=self.agent)
+                            song_end_ms=self.END_MS, agent_path=self.agent)
 
 
 if __name__ == "__main__":
