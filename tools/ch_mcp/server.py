@@ -427,7 +427,8 @@ def build_server(helper: Optional[Helper] = None):
         {"index": <chord index>, "lead_ms": <ms>}; a positive lead presses
         early, a negative one late. Each probe's press row is marked in the
         probe column with its asked lead, and ch_play_status adds one line per
-        probe row with the asked lead, the lead the row shows and hit or miss.
+        probe row with the asked lead, the lead the row shows and the game's score
+        step across the press.
         A probe chord not in the schedule, or one timed from a Star Power
         end rather than its own time, is refused before anything runs. The run cap
         comes from the schedule's song end. The press rows go to a
