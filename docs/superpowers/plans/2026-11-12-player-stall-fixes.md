@@ -218,6 +218,12 @@ This is LS-A2 of `docs/superpowers/plans/2026-11-08-player-audit-fixes.md` again
 
 Pass: `press-<n>.csv` has no `dropped` row, every first row of a message carries its timing columns, and `ch_compare` shows `notes_hit` no lower than the 3,753 of LS-M2 run 1 (the `stats:` line of its `replies.txt`; the schedule played here is the LS-A2 one, so the declines can differ). Fail: any dropped row. The report then gives, for each one, the step its timing columns name and the recorder's samples around it, and no further run is asked for in the same message. Cap: 1 run. A second run is a new request to the user.
 
+### Result of LS-P3 (2026-11-12, main at 95dfa6eb)
+
+The run folder is `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-12\ls-p3-run1`. The game's dll MD5 was 106E15E5BF799EA62F916E8CEAF38BC6 before and after. The run ended "done". The game hit 3,766 of 3,767 gems (LS-A2: 3,691; LS-M2 run 1: 3,753), earned 31 of 31 phrases, made 9 of 9 activations and scored 1,139,680 against Hydra's 1,143,035. Every end read came within 2.7 ms of plan, and chord 1426 was sent on time, as row P20 predicted.
+
+It fails its pass line: one row is `dropped`, chord 468 (chart 130,064.92 ms). Its timing columns name the step: `wait_read_max_ms` is 87.3 ms, one read of the game's song clock in the wait, where the other reads in the run take 0.06 to 0.2 ms. The press was read at 130,128.67 ms, 63.7 ms past the chord, beyond its window. The recorder's samples around it (`machine-1`) show the machine idle (no ready threads, 20 ms steps throughout) and the game's clock moving on. In the worker process, the thread with the most CPU over the run (tid 19260, the player by its spin) sat in wait reason 37 (a wait on a lock) for that span, while the thread that wakes most often (tid 37216, the Star Power watch by its 4 ms polls) ran for about 80 ms. So this stall is a lock wait inside the worker, most likely Python's interpreter lock held by the watch thread, not a file call and not a machine-wide pause. Which work the watch did for 80 ms is not traced. Matching each tid to its thread is by behaviour only.
+
 ## Out of scope (needs the user's yes to leave out)
 
 - The LS-A4 Star Power block and its listings (one missed gem inside a phrase strips the phrase's award): still to be written up on `docs/clone-hero/05-star-power.md`.
