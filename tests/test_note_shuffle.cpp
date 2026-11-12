@@ -71,12 +71,6 @@ void check_rows(const std::vector<SongTimestamp>& seq, const Rows& want) {
     }
 }
 
-std::vector<std::string> codes_of(const std::vector<SongTimestamp>& seq) {
-    std::vector<std::string> out;
-    for (const SongTimestamp& ts : seq) out.push_back(ts.chord.code());
-    return out;
-}
-
 const std::string kSongs =
     (sourcetree::root() / "docs/audit/note-shuffle/game-tests/songs/").u8string();
 
@@ -139,9 +133,9 @@ TEST_CASE("Note Shuffle: C1 and D1 freeze the game, and the sequence is left as 
         for (bool pro : {true, false}) {
             INFO(folder << (pro ? ", Pro Drums on" : ", Pro Drums off"));
             Song song = load_game_song(folder, "notes.mid", pro);
-            const std::vector<std::string> before = codes_of(song.sequence);
+            const std::vector<std::string> before = chord_codes(song.sequence);
             CHECK(apply_note_shuffle(song.sequence, pro) == NoteShuffleResult::GameFreezes);
-            CHECK(codes_of(song.sequence) == before);
+            CHECK(chord_codes(song.sequence) == before);
         }
     }
 }
