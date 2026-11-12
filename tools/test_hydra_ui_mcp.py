@@ -21,6 +21,7 @@ import json
 import os
 import re
 import shutil
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -106,16 +107,48 @@ def realapp_lines(repo):
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
 
 
-def make_library(folder, with_wal=True):
-    """A fake library folder with an old, fixed modification time on every file."""
+def make_library(folder):
+    """A fake library folder: a real SQLite database in WAL mode, as Hydra
+    keeps it, holding one row in its table `rows`, and the two ini files.
+    The database is closed, so no -wal or -shm is left beside it. Every file
+    gets an old, fixed modification time."""
     folder.mkdir(parents=True)
-    names = list(hm.SNAPSHOT_FILES) if with_wal else [
-        n for n in hm.SNAPSHOT_FILES if not n.startswith("hydra.db-")]
-    for i, name in enumerate(names):
-        p = folder / name
-        p.write_bytes(f"{name} contents {i}".encode() * 10)
-        os.utime(p, ns=(1_600_000_000_000_000_000, 1_600_000_000_000_000_000 + i))
-    return names
+    con = sqlite3.connect(folder / "hydra.db")
+    try:
+        con.execute("PRAGMA journal_mode=WAL")
+        con.execute("CREATE TABLE rows (name TEXT)")
+        con.execute("INSERT INTO rows VALUES ('closed')")
+        con.commit()
+    finally:
+        con.close()
+    for name in hm.SNAPSHOT_FILES[1:]:
+        (folder / name).write_bytes(f"{name} contents".encode() * 10)
+    for i, name in enumerate(hm.SNAPSHOT_FILES):
+        os.utime(folder / name, ns=(1_600_000_000_000_000_000, 1_600_000_000_000_000_000 + i))
+
+
+def open_writer(folder):
+    """A connection to the library's database that stays open, standing in
+    for a running Hydra, with a row named 'open' committed but not yet
+    checkpointed: it sits in the -wal only. The caller closes it."""
+    con = sqlite3.connect(folder / "hydra.db")
+    con.execute("PRAGMA wal_autocheckpoint=0")
+    con.execute("INSERT INTO rows VALUES ('open')")
+    con.commit()
+    return con
+
+
+def rows_in_db_alone(db, scratch):
+    """The names in `db`'s table, read from a copy of the database file with
+    nothing beside it, so a -wal next to `db` cannot supply a row."""
+    scratch.mkdir(parents=True)
+    alone = scratch / "hydra.db"
+    shutil.copy2(db, alone)
+    con = sqlite3.connect(alone)
+    try:
+        return sorted(r[0] for r in con.execute("SELECT name FROM rows"))
+    finally:
+        con.close()
 
 
 class TransportLayer(unittest.TestCase):
@@ -128,13 +161,12 @@ class TransportLayer(unittest.TestCase):
         self.exe_dir.mkdir()
         for exe in (hm.HEADLESS_EXE, hm.WINDOW_EXE):
             (self.exe_dir / exe).write_bytes(b"")
-        self.processes = []
         self.repo = make_repo(self.root / "repo")
         self.helper = self.new_helper()
 
     def new_helper(self, **kw):
         args = dict(exe_dir=self.exe_dir, launcher=fake_launcher, temp_root=self.root,
-                    process_lister=lambda: self.processes, repo=self.repo)
+                    repo=self.repo)
         args.update(kw)
         return hm.Helper(**args)
 
@@ -308,79 +340,107 @@ class TransportLayer(unittest.TestCase):
 
     # -- the snapshot and window mode ---------------------------------------
 
-    def test_an_unreadable_process_list_refuses_the_snapshot_and_leaves_no_folder(self):
-        lib = self.root / "lib"
-        make_library(lib)
-        helper = self.new_helper(process_lister=lambda: (_ for _ in ()).throw(OSError("no list")))
-        out = helper.start("window", library_dir=str(lib))
-        self.assertTrue(out.startswith("refused: no list"), out)
-        self.assertEqual(list(self.root.glob("hydra_live_*")), [])
+    def originals(self, lib, names):
+        return {n: ((lib / n).read_bytes(), (lib / n).stat().st_mtime_ns) for n in names}
 
-    def test_snapshot_copies_the_five_files_and_leaves_the_originals_alone(self):
+    def test_snapshot_copies_the_three_files_and_leaves_the_originals_alone(self):
         lib = self.root / "Fake Library"
         make_library(lib)
-        before = {n: ((lib / n).read_bytes(), (lib / n).stat().st_mtime_ns) for n in hm.SNAPSHOT_FILES}
+        before = self.originals(lib, hm.SNAPSHOT_FILES)
         dest = self.root / "snap"
-        copied, report = hm.snapshot_library(str(lib), dest, [])
+        copied, report = hm.snapshot_library(str(lib), dest)
         self.assertEqual(sorted(copied), sorted(hm.SNAPSHOT_FILES))
         for n in hm.SNAPSHOT_FILES:
             self.assertEqual((dest / n).read_bytes(), before[n][0])
-            self.assertEqual(((lib / n).read_bytes(), (lib / n).stat().st_mtime_ns), before[n])
             self.assertIn(f"  {n}: ", report)
+        self.assertEqual(self.originals(lib, hm.SNAPSHOT_FILES), before)
+        # Reading the closed database made no -wal or -shm in the library folder.
+        self.assertEqual(sorted(p.name for p in lib.iterdir()), sorted(hm.SNAPSHOT_FILES))
+        self.assertIn("  hydra.db: ", report)
+        self.assertIn("copied as a plain file", report)
 
-    def test_snapshot_without_wal_says_what_was_absent(self):
-        lib = self.root / "lib"
-        make_library(lib, with_wal=False)
-        copied, report = hm.snapshot_library(str(lib), self.root / "snap", [])
-        self.assertNotIn("hydra.db-wal", copied)
-        self.assertIn("  hydra.db-wal: not present", report)
-
-    def test_running_hydra_from_the_folder_refuses_the_snapshot(self):
+    def test_snapshot_without_the_ini_files_says_what_was_absent(self):
         lib = self.root / "lib"
         make_library(lib)
-        self.processes = [("explorer.exe", None), ("Hydra.exe", str(lib / "Hydra.exe"))]
+        (lib / "hydra_ui.ini").unlink()
+        copied, report = hm.snapshot_library(str(lib), self.root / "snap")
+        self.assertNotIn("hydra_ui.ini", copied)
+        self.assertIn("  hydra_ui.ini: not present", report)
+
+    def test_snapshot_holds_a_row_that_is_still_only_in_the_wal(self):
+        lib = self.root / "lib"
+        make_library(lib)
+        writer = open_writer(lib)
+        try:
+            self.assertTrue((lib / "hydra.db-wal").is_file())
+            # The row is not in hydra.db's own bytes yet, only in the -wal.
+            self.assertEqual(rows_in_db_alone(lib / "hydra.db", self.root / "check lib"), ["closed"])
+            dest = self.root / "snap"
+            copied, report = hm.snapshot_library(str(lib), dest)
+        finally:
+            writer.close()
+        self.assertEqual(rows_in_db_alone(copied["hydra.db"], self.root / "check snap"),
+                         ["closed", "open"])
+        self.assertIn("copied with SQLite's backup", report)
+
+    def test_snapshot_while_the_database_is_open_leaves_no_wal_or_shm_in_the_copy(self):
+        lib = self.root / "lib"
+        make_library(lib)
+        writer = open_writer(lib)
+        try:
+            dest = self.root / "snap"
+            hm.snapshot_library(str(lib), dest)
+            self.assertEqual(sorted(p.name for p in dest.iterdir()), sorted(hm.SNAPSHOT_FILES))
+        finally:
+            writer.close()
+
+    def test_snapshot_while_the_database_is_open_leaves_the_originals_alone(self):
+        lib = self.root / "lib"
+        make_library(lib)
+        writer = open_writer(lib)
+        try:
+            # The -shm is left out: it is shared memory every reader writes to.
+            names = list(hm.SNAPSHOT_FILES) + ["hydra.db-wal"]
+            before = self.originals(lib, names)
+            hm.snapshot_library(str(lib), self.root / "snap")
+            self.assertEqual(self.originals(lib, names), before)
+        finally:
+            writer.close()
+
+    def test_a_window_start_while_the_database_is_open_is_not_refused(self):
+        lib = self.root / "lib"
+        make_library(lib)
+        writer = open_writer(lib)
+        try:
+            out = self.helper.start("window", library_dir=str(lib))
+        finally:
+            writer.close()
+        self.assertIn("started a window session", out)
+        self.assertNotIn("refused", out)
+        self.assertIn("copied with SQLite's backup", out)
+        s = self.helper.session
+        db = Path(s.argv[s.argv.index("--db") + 1])
+        self.assertFalse(db.with_name("hydra.db-wal").exists())
+        self.assertFalse(db.with_name("hydra.db-shm").exists())
+        self.assertEqual(rows_in_db_alone(db, self.root / "check"), ["closed", "open"])
+
+    def test_a_database_sqlite_cannot_read_refuses_the_snapshot_and_leaves_no_folder(self):
+        lib = self.root / "lib"
+        make_library(lib)
+        (lib / "hydra.db").write_bytes(b"not a database" * 100)
+        (lib / "hydra.db-wal").write_bytes(b"")
         out = self.helper.start("window", library_dir=str(lib))
-        self.assertTrue(out.startswith("refused: " + hm.CLOSE_HYDRA_FIRST), out)
+        self.assertTrue(out.startswith("refused: "), out)
         self.assertIsNone(self.helper.session)
         self.assertEqual(list(self.root.glob("hydra_live_*")), [])
 
-    def test_hydra_from_another_folder_does_not_count(self):
-        lib = self.root / "lib"
-        procs = [("HYDRA.EXE", str(self.root / "other" / "Hydra.exe")), ("Hydra.exe.bak", None)]
-        self.assertEqual(hm.hydra_running_from(lib, procs), [])
-        self.assertEqual(len(hm.hydra_running_from(lib, [("hydra.exe", None)])), 1)
-
-    def test_a_junction_to_the_folder_counts_as_the_folder(self):
+    def test_a_missing_database_refuses_the_snapshot(self):
         lib = self.root / "lib"
         make_library(lib)
-        link = self.root / "lib junction"
-        r = subprocess.run(["cmd", "/c", "mklink", "/J", str(link), str(lib)],
-                           capture_output=True, text=True)
-        if r.returncode != 0:
-            self.skipTest(f"Windows would not make a junction here: {r.stdout}{r.stderr}")
-        try:
-            # Hydra runs from the real folder; the user named the junction.
-            procs = [("Hydra.exe", str(lib / "Hydra.exe"))]
-            self.assertEqual(hm.hydra_running_from(link, procs), [str(lib / "Hydra.exe")])
-            # And the other way round.
-            procs = [("Hydra.exe", str(link / "Hydra.exe"))]
-            self.assertEqual(len(hm.hydra_running_from(lib, procs)), 1)
-        finally:
-            os.rmdir(link)  # removes the junction only, never what it points at
-
-    def test_a_short_name_for_the_folder_counts_as_the_folder(self):
-        lib = self.root / "Library Folder With A Long Name"
-        make_library(lib)
-        import ctypes
-        buf = ctypes.create_unicode_buffer(32768)
-        n = ctypes.windll.kernel32.GetShortPathNameW(str(lib), buf, len(buf))
-        short = buf.value if n else ""
-        if not short or os.path.basename(short) == lib.name:
-            self.skipTest("this volume gives no 8.3 short name for a folder in temp")
-        procs = [("Hydra.exe", str(lib / "Hydra.exe"))]
-        self.assertEqual(len(hm.hydra_running_from(short, procs)), 1)
-        procs = [("Hydra.exe", os.path.join(short, "Hydra.exe"))]
-        self.assertEqual(len(hm.hydra_running_from(lib, procs)), 1)
+        (lib / "hydra.db").unlink()
+        out = self.helper.start("window", library_dir=str(lib))
+        self.assertTrue(out.startswith(f"refused: no hydra.db in {lib}"), out)
+        self.assertEqual(list(self.root.glob("hydra_live_*")), [])
 
     def test_a_crash_report_quotes_the_window_log_and_never_an_old_one(self):
         lib = self.root / "lib"
@@ -697,7 +757,7 @@ class RealExeLayer(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(prefix="hydra_mcp_real_")
         self.repo = make_repo(Path(self.tmp.name) / "repo")
-        self.helper = hm.Helper(temp_root=self.tmp.name, process_lister=lambda: [], repo=self.repo)
+        self.helper = hm.Helper(temp_root=self.tmp.name, repo=self.repo)
 
     def tearDown(self):
         self.helper.shutdown()
@@ -922,13 +982,13 @@ class RealExeLayer(unittest.TestCase):
         database. hydra_uitest deletes the folder on exit unless told
         --keep-temp, so this session gets it. (tearDown shuts down whichever
         helper self.helper is by then.)"""
-        self.helper = hm.Helper(temp_root=self.tmp.name, process_lister=lambda: [],
-                                launcher=keep_temp_launcher, repo=self.repo)
+        self.helper = hm.Helper(temp_root=self.tmp.name, launcher=keep_temp_launcher,
+                                repo=self.repo)
         self.helper.start("headless")
         self.scan()
         engine = self.helper.session.engine_scratch()
         self.assertEqual(self.helper.stop(), "Hydra exited with code 0")
-        self.helper = hm.Helper(temp_root=self.tmp.name, process_lister=lambda: [], repo=self.repo)
+        self.helper = hm.Helper(temp_root=self.tmp.name, repo=self.repo)
         lib = Path(self.tmp.name) / "seed library"
         lib.mkdir()
         try:
