@@ -29,7 +29,7 @@ Hydra's C++ side owns every command rule. That covers:
 The Python helper is transport only. It launches Hydra and stops it, picks the
 pipe's name, and keeps the tool list. It caps each wait using only numbers
 Hydra reports, and cuts replies that are too long. It also takes the snapshot
-of the user's library and checks that no `Hydra.exe` runs from that folder.
+of the user's library, which may be taken while Hydra is open.
 It sends each line exactly as given and returns Hydra's text as given.
 
 The stand-in owns only transport failures: a hang, an exit, a closed pipe and
@@ -51,7 +51,7 @@ restate its rule.
 | Filtering text and dump output | C++: the `text` and `dump` verbs |
 | Where Hydra writes its log and crash dump | C++, reported in the hello line |
 | The pipe name | The helper (transport). It passes the name with `--pipe <name>`; Hydra uses it and never builds one |
-| Launch, stop, the snapshot, the running-Hydra check, reply caps, truncation, the tool list | The helper |
+| Launch, stop, the snapshot, reply caps, truncation, the tool list | The helper |
 | Hang, exit, closed pipe, oversized replies (test only) | The stand-in, and nothing else |
 
 ## The wire protocol
