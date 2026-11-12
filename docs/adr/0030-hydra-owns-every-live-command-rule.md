@@ -29,7 +29,7 @@ Hydra's C++ side owns every command rule. That covers:
 The Python helper is transport only. It launches Hydra and stops it, picks the
 pipe's name, and keeps the tool list. It caps each wait using only numbers
 Hydra reports, and cuts replies that are too long. It also takes the snapshot
-of the user's library and checks that no `Hydra.exe` runs from that folder.
+of the user's library, which may be taken while Hydra is open.
 It sends each line exactly as given and returns Hydra's text as given.
 
 The stand-in owns only transport failures: a hang, an exit, a closed pipe and
