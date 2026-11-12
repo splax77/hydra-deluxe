@@ -119,6 +119,15 @@ TEST_CASE("library query: the plain fold and the traced fold give the same text"
                           "\xC1\xBF" "ab", "\xF5\x80\x80\x80" "a", "\xF0\x9F\x8E\xB8" " Guitar ",
                           "", " ", "\t\t", "MiXeD CaSe 123 !?"})
         texts.push_back(s);
+    // Every ASCII byte (control bytes, the whitespace kinds, 0x7F) alone, in a
+    // run of itself, and between letters and a non-ASCII character.
+    for (int b = 0; b < 0x80; ++b) {
+        const std::string c(1, static_cast<char>(b));
+        texts.push_back(c);
+        texts.push_back(c + c + c);
+        texts.push_back("Ab" + c + "Cd");
+        texts.push_back(c + "Ｘ" + c + "é" + c);
+    }
     for (const std::string& t : texts) {
         INFO("text: " << t);
         CHECK(fold_for_search(t) == traced_fold_for_search(t));
