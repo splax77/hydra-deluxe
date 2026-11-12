@@ -1,0 +1,9 @@
+Listing: `score_chart_write_2167B0.asm`, build 6142, made 2026-11-11 with `tools/ch_mcp/chdis.py` (`py -m tools.ch_mcp.chdis 2167B0`). Function: the method at RVA 0x2167B0 of the chart record class TypeDefIndex 907 (`dump.cs` lines 49303 to 49355), which takes a `BinaryWriter`. A chart record holds a 16-byte hash at +0x10 (struct TypeDefIndex 8286, `dump.cs` line 529744, length constant 16), a `Dictionary` from instrument (enum TypeDefIndex 8326, `dump.cs` lines 533184 to 533205) to a score entry at +0x20, a ushort at +0x28, bytes at +0x2A and +0x2B, and a bool at +0x2C.
+
+Plain version: it writes one chart's record: the chart's hash, the number of entries, the play count, one more byte, then one entry per instrument. A record with no entries writes nothing.
+
+`BinaryWriter` virtual slots, read from `dump.cs` lines 278969 to 279043: the method pointer of slot N sits at vtable offset 0x138 + 16 x N, so 0x1e8 is slot 11 `Write(ReadOnlySpan<byte>)`, 0x218 slot 14 `Write(byte)`, 0x298 slot 22 `Write(ushort)`.
+
+Lines 29 to 35 return at once if the dictionary is empty. Lines 36 to 54 turn the hash into a 16-byte span and write it raw. Lines 55 to 59 write the byte at +0x2A, which the add method sets to the dictionary's count (`score_chart_add_2161E0.asm` line 78). Lines 60 to 64 write the ushort at +0x28, the play count (`score_chart_add_2161E0.asm` lines 58 to 60). Lines 65 to 69 write the byte at +0x2B, whose meaning was not read. Lines 70 to 104 walk the dictionary's values and call 0x2BAB60 for each entry (`score_entry_write_2BAB60.asm`). The bool at +0x2C is not written.
+
+Who calls it, direct callers only (byte scan with `docs/audit/2026-11-08-clone-hero-unknowns/W8c/xref.py`, output in `xref_IN-55.out.txt` there): the five list writers of class 1205, 0x2F4510, 0x2F57C0, 0x2F5EF0, 0x2F7250 and 0x2F7830. The class has a twin with the same body at 0x216FA0 (`score_chart_write_216FA0.asm`).
