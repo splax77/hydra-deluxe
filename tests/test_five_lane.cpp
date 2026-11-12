@@ -11,7 +11,9 @@
 #include <algorithm>
 #include <cstdint>
 #include <fstream>
+#include <map>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "chart_text.h"    // chart_bytes, section
@@ -19,7 +21,9 @@
 #include "load_util.h"
 #include "midi_util.h"
 #include "parse/song.h"
+#include "sng_util.h"     // make_sng
 #include "song_digest.h"  // chart_parse_hash, digest_settings
+#include "srb_util.h"     // make_srb, make_metadata
 #include "temp_util.h"      // temp_dir, write_bytes
 #include "testdata_dirs.h"  // testdata_root
 
@@ -117,6 +121,30 @@ std::vector<uint8_t> expert_drums_chart(const std::string& drum_lines) {
 // The score with no Star Power anywhere, as `hydra_replay score` gives it
 // with no path.
 int64_t no_sp_total(const Song& song) { return replay_path(song, {}).final.total(); }
+
+// How many notes in the song are cymbals.
+int cymbal_count(const Song& song) {
+    int n = 0;
+    for (const SongTimestamp& ts : song.sequence)
+        for (const ChordNote& note : ts.chord.note_list())
+            if (note.is_cymbal()) ++n;
+    return n;
+}
+
+// A four-pad .mid with no tom marker and no fifth pad: a kick, then one note
+// on each of the first four pads. `extra` adds events to it.
+std::vector<uint8_t> no_pro_mid(std::vector<At> extra = {}) {
+    std::vector<At> ev = {on(0, kKick), on(480, kRed), on(960, kYellow), on(1440, kBlue),
+                          on(1920, kOrange)};
+    ev.insert(ev.end(), extra.begin(), extra.end());
+    return drum_mid(ev);
+}
+
+// no_pro_mid's chords with every pad a tom, and with the reader's own
+// cymbals kept, and as the five-lane branch converts them.
+const std::vector<std::string> kNoProToms = {"n....", ".n...", "..n..", "...n.", "....n"};
+const std::vector<std::string> kNoProCymbals = {"n....", ".n...", "..N..", "...N.", "....N"};
+const std::vector<std::string> kNoProFiveLane = {"n....", ".n...", "..N..", "...n.", "....N"};
 
 }  // namespace
 
@@ -353,4 +381,154 @@ TEST_CASE("five-lane: probes C and E score what Clone Hero 1.1 scored") {
     // songs, each with its song.ini.
     CHECK(no_sp_total(load_songpath(five_lane_path("probe_c/notes.chart"), kPro)) == 7890);
     CHECK(no_sp_total(load_songpath(five_lane_path("probe_e/notes.chart"), kPro)) == 6490);
+}
+
+// ---- neither flag up: every pad a tom --------------------------------------
+//
+// A four-lane chart with no fifth pad and no Pro marks ends Clone Hero's
+// conversion with every pad a tom (NL-74 on docs/clone-hero/02-note-list.md).
+// Hydra's one home for it is convert_drum_pads.
+
+TEST_CASE("five-lane all-toms: a .mid with neither flag up has no cymbal") {
+    const Song song = load_songbytes_mid(no_pro_mid(), kPro);
+    CHECK(chord_codes(song) == kNoProToms);
+    CHECK(cymbal_count(song) == 0);
+}
+
+TEST_CASE("five-lane all-toms: one tom marker keeps the reader's cymbals") {
+    // The marker covers a tick with no note, so it marks no pad; it only
+    // raises the Pro flag.
+    const Song song =
+        load_songbytes_mid(no_pro_mid({on(2400, kYellowTom), off(2410, kYellowTom)}), kPro);
+    CHECK(chord_codes(song) == kNoProCymbals);
+}
+
+TEST_CASE("five-lane all-toms: a fifth pad on Easy alone keeps the five-lane branch's cymbals") {
+    const Song song = load_songbytes_mid(no_pro_mid({on(0, kEasyGreen)}), kPro);
+    CHECK(chord_codes(song) == kNoProFiveLane);
+}
+
+TEST_CASE("five-lane all-toms: five_lane_drums = True keeps the five-lane branch's cymbals") {
+    const std::string path =
+        song_folder("all_toms_five_lane_key", "notes.mid", no_pro_mid(), "five_lane_drums = True\n");
+    CHECK(chord_codes(load_songpath(path, kPro)) == kNoProFiveLane);
+}
+
+TEST_CASE("five-lane all-toms: pro_drums = True or 1 keeps the reader's cymbals") {
+    const std::string path =
+        song_folder("all_toms_pro_key", "notes.mid", no_pro_mid(), "pro_drums = True\n");
+    CHECK(chord_codes(load_songpath(path, kPro)) == kNoProCymbals);
+    song_folder("all_toms_pro_key", "notes.mid", no_pro_mid(), "pro_drums = 1\n");
+    CHECK(chord_codes(load_songpath(path, kPro)) == kNoProCymbals);
+}
+
+TEST_CASE("five-lane all-toms: the two keys read yes or no by the game's bool getter") {
+    // The rows follow Clone Hero's bool getter at 0x1D4480, which reads both
+    // keys. "+1", "1 ", "1.0" and "99999999999" follow .NET's Int32.TryParse,
+    // the getter's number test.
+    struct Row {
+        const char* text;
+        bool set;
+    };
+    const Row rows[] = {
+        {"1", true},      {"2", true},     {"-1", true},          {"true", true},
+        {"TRUE", true},   {"True", true},  {"+1", true},          {"1 ", true},
+        {"0", false},     {"false", false}, {"yes", false},       {"", false},
+        {"1.0", false},   {"99999999999", false},
+    };
+    for (const Row& row : rows) {
+        CAPTURE(std::string(row.text));
+        const ChartDrumKeys keys = chart_drum_keys(std::map<std::string, std::string>{
+            {"five_lane_drums", row.text}, {"pro_drums", row.text}});
+        CHECK(keys.five_lane_drums == row.set);
+        CHECK(keys.pro_drums == row.set);
+    }
+    const ChartDrumKeys missing = chart_drum_keys(std::map<std::string, std::string>{});
+    CHECK_FALSE(missing.five_lane_drums);
+    CHECK_FALSE(missing.pro_drums);
+}
+
+TEST_CASE("five-lane all-toms: a .chart with neither flag up reads as before") {
+    // A .chart pad is a tom unless N 66 to 68 marks it, so this chart was
+    // all toms before the conversion had its tail.
+    const std::vector<uint8_t> chart = expert_drums_chart(
+        "  0 = N 0 0\n  480 = N 1 0\n  960 = N 2 0\n  1440 = N 3 0\n  1920 = N 4 0\n");
+    CHECK(chord_codes(load_songbytes_chart(chart, kPro)) == kNoProToms);
+}
+
+TEST_CASE("five-lane all-toms: a .mid inside a .sng follows its metadata's pro_drums") {
+    // Clone Hero's .sng bool getter (0x2642C0) reads pro_drums = 1 as unset,
+    // where a song.ini's getter reads it as set.
+    const Song bare = load_songbytes_sng(testsng::make_sng({}, {{"notes.mid", no_pro_mid()}}), kPro);
+    CHECK(chord_codes(bare) == kNoProToms);
+    CHECK(cymbal_count(bare) == 0);
+    const Song pro = load_songbytes_sng(
+        testsng::make_sng({{"pro_drums", "True"}}, {{"notes.mid", no_pro_mid()}}), kPro);
+    CHECK(chord_codes(pro) == kNoProCymbals);
+    const Song one = load_songbytes_sng(
+        testsng::make_sng({{"pro_drums", "1"}}, {{"notes.mid", no_pro_mid()}}), kPro);
+    CHECK(chord_codes(one) == kNoProToms);
+    CHECK(cymbal_count(one) == 0);
+}
+
+TEST_CASE("five-lane all-toms: a .sng's two keys read yes or no by the game's .sng bool getter") {
+    // The rows follow Clone Hero's .sng bool getter at 0x2642C0, which reads
+    // both keys through .NET's Boolean.TryParse.
+    struct Row {
+        const char* text;
+        bool set;
+    };
+    const Row rows[] = {
+        {"true", true}, {"TRUE", true}, {" True ", true}, {"1", false},     {"-1", false},
+        {"yes", false}, {"", false},    {"0", false},     {"false", false},
+    };
+    for (const Row& row : rows) {
+        CAPTURE(std::string(row.text));
+        const ChartDrumKeys keys = chart_drum_keys(std::vector<std::pair<std::string, std::string>>{
+            {"five_lane_drums", row.text}, {"pro_drums", row.text}});
+        CHECK(keys.five_lane_drums == row.set);
+        CHECK(keys.pro_drums == row.set);
+    }
+    const ChartDrumKeys missing =
+        chart_drum_keys(std::vector<std::pair<std::string, std::string>>{});
+    CHECK_FALSE(missing.five_lane_drums);
+    CHECK_FALSE(missing.pro_drums);
+}
+
+TEST_CASE("five-lane all-toms: a .mid inside an .srb with no tom marker has no cymbal") {
+    // An .srb carries no song.ini keys, so neither key can raise a flag.
+    const Song song = load_songbytes_srb(
+        testsrb::make_srb(testsrb::make_metadata("notes.mid"), no_pro_mid()), kPro);
+    CHECK(chord_codes(song) == kNoProToms);
+    CHECK(cymbal_count(song) == 0);
+}
+
+TEST_CASE("five-lane all-toms: a disco section still flips red to a yellow cymbal") {
+    // The flip runs after the conversion, as the game's builder does it later
+    // than its load step (NL-22).
+    const Song song = load_songbytes_mid(
+        drum_mid({text(0, "[mix 3 drums0d]"), on(0, kRed), on(480, kYellow)}), kPro);
+    CHECK(chord_codes(song) == std::vector<std::string>{"..N..", ".n..."});
+}
+
+TEST_CASE("five-lane all-toms: with Pro Drums off the chart reads as before") {
+    const Song song = load_songbytes_mid(no_pro_mid(), kPlainDrums);
+    CHECK(chord_codes(song) == kNoProToms);
+    CHECK(cymbal_count(song) == 0);
+}
+
+TEST_CASE("five-lane all-toms: probe F scores what Clone Hero 1.1 scored") {
+    // Probe F's notes (Mid No Pro F): 29 kicks, then 2 red, 3 yellow, 4 blue
+    // and 5 fourth-pad notes, one per tick, with no song.ini key. The total is
+    // the bot run of 2026-11-12 on v1.1.0.6142, ProDrums Expert, every note
+    // hit, no Star Power (hydra-data ch-mcp-runs/2026-11-12/five-lane,
+    // scorestats-Mid_No_Pro_F-20261112-131107.json).
+    std::vector<At> ev;
+    uint32_t tick = 0;
+    for (const auto& [pitch, count] : std::vector<std::pair<uint8_t, int>>{
+             {kKick, 29}, {kRed, 2}, {kYellow, 3}, {kBlue, 4}, {kOrange, 5}})
+        for (int i = 0; i < count; ++i, tick += 480) ev.push_back(on(tick, pitch));
+    const Song song = load_songbytes_mid(drum_mid(ev), kPro);
+    REQUIRE(song.note_count() == 43);
+    CHECK(no_sp_total(song) == 5750);
 }

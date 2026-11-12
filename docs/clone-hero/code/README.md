@@ -228,7 +228,7 @@ The first column is the function start, read from the listing's own first line. 
 
 ## New listings
 
-The 100 listings below were made for the reference on 2026-10-30, in session b02ab3e6 (the reference build), except nineteen: the cli loader, the player kind, the drums input source, the profile save and the score submit were added on 2026-10-31, in session b15bb484, the lane velocity and the create custom controller were added on 2026-11-06, and the midi register, the midi slot check, the midi pump, the note after lookup and the note before lookup were added on 2026-11-08, in session 6341c618, and the chart loader, the events section, the section loop, the fill init, the two fill skips and the mid events coda were added on 2026-11-08, in session 7b39835b. There are 98 `.asm` files under `code/6142/` and 2 `.cs` files under `code/4045/`, and each has a `.md` beside it that explains its branches in plain words.
+The 100 listings below were made for the reference on 2026-10-30, in session b02ab3e6 (the reference build), except nineteen: the cli loader, the player kind, the drums input source, the profile save and the score submit were added on 2026-10-31, in session b15bb484, the lane velocity and the create custom controller were added on 2026-11-06, and the midi register, the midi slot check, the midi pump, the note after lookup and the note before lookup were added on 2026-11-08, in session 6341c618, and the chart loader, the events section, the section loop, the fill init, the two fill skips and the mid events coda were added on 2026-11-08, in session 7b39835b. The ini bool getter, the ini text lookup, the ini parse, the int32 tryparse and the note is kick were added on 2026-11-12, in session c61c1986. There are 98 `.asm` files under `code/6142/` and 2 `.cs` files under `code/4045/`, and each has a `.md` beside it that explains its branches in plain words.
 
 The `.asm` files are from build 1.1.0.6142 (`GameAssembly.dll`), made with tools/ch_mcp/chdis.py. The start is the RVA in the file name, and for every file it matches the address on the listing's first line (or the `; function` line some listings open with). The role is the file name with the RVA taken off. Three file names carry no RVA (the drums input source, the profile save and the score submit, each named for the question it answers); for those the start is the address on the first line.
 
@@ -288,6 +288,12 @@ The table was generated from the files, not typed. One more file, `code/6142/dru
 | 0x20DDDA0 | hit window formula | [code/6142/hit_window_formula_20DDDA0.asm](6142/hit_window_formula_20DDDA0.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x21647A0 | ini int getter | [code/6142/ini_int_getter_21647A0.asm](6142/ini_int_getter_21647A0.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x1EFC60 | ini song reader | [code/6142/ini_song_reader_1EFC60.asm](6142/ini_song_reader_1EFC60.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x1D4480 | ini bool getter | [code/6142/ini_bool_getter_1D4480.asm](6142/ini_bool_getter_1D4480.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x1BD150 | ini text lookup | [code/6142/ini_text_lookup_1BD150.asm](6142/ini_text_lookup_1BD150.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x21695E0 | ini parse | [code/6142/ini_parse_21695E0.asm](6142/ini_parse_21695E0.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x1B4F710 | int32 tryparse | [code/6142/int32_tryparse_1B4F710.asm](6142/int32_tryparse_1B4F710.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x214C8A0 | note is kick | [code/6142/note_is_kick_214C8A0.asm](6142/note_is_kick_214C8A0.asm) | 6142 | tools/ch_mcp/chdis.py |
+| 0x2642C0 | sng bool getter | [code/6142/sng_bool_getter_2642C0.asm](6142/sng_bool_getter_2642C0.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x215D450 | five lane convert | [code/6142/five_lane_convert_215D450.asm](6142/five_lane_convert_215D450.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x214DB20 | chord find type | [code/6142/chord_find_type_214DB20.asm](6142/chord_find_type_214DB20.asm) | 6142 | tools/ch_mcp/chdis.py |
 | 0x215B8C0 | kick merge | [code/6142/kick_merge_215B8C0.asm](6142/kick_merge_215B8C0.asm) | 6142 | tools/ch_mcp/chdis.py |

@@ -193,7 +193,9 @@ struct ChartDrumKeys {
 };
 
 // The two keys from a song.ini already read (read_song_ini_keys), or from a
-// .sng's metadata pairs (sng_read_metadata), which hold the same keys.
+// .sng's metadata pairs (sng_read_metadata), which hold the same keys. Clone
+// Hero reads each source's values by its own rule; song.cpp holds one reader
+// per source, each naming the game getter it follows.
 ChartDrumKeys chart_drum_keys(const std::map<std::string, std::string>& ini);
 ChartDrumKeys chart_drum_keys(const std::vector<std::pair<std::string, std::string>>& sng_metadata);
 

@@ -6,6 +6,8 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <limits>
+#include <optional>
 #include <stdexcept>
 #include <string_view>
 #include <unordered_map>
@@ -477,7 +479,9 @@ struct DrumChartFlags {
 // notes. A cymbal is kept only where cymbal_counts says it counts, so with
 // Pro Drums off a converted chart has none, as any other chart.
 //
-// Left out: the all-toms tail for a chart with neither flag up.
+// The four-lane branch ends with the game's all-toms step (NL-74): on a chart
+// with neither flag up every pad is a tom. A .chart reader's pads are toms
+// already on such a chart, so the step changes only a .mid's.
 Chord convert_drum_pads(const TickPads& raw, const DrumChartFlags& flags, bool pro) {
     Chord chord = raw.four;
     const std::optional<ChordNote>& fifth = raw.fifth.at(NoteColor::Green);
@@ -494,10 +498,14 @@ Chord convert_drum_pads(const TickPads& raw, const DrumChartFlags& flags, bool p
         set_cymbal(NoteColor::Yellow, true);
         set_cymbal(NoteColor::Blue, false);
         set_cymbal(NoteColor::Green, true);
+    } else if (!flags.fifth_pad && !flags.pro_marks) {
+        set_cymbal(NoteColor::Yellow, false);
+        set_cymbal(NoteColor::Blue, false);
+        set_cymbal(NoteColor::Green, false);
     }
-    // The four-lane branch keeps the first four pads as the reader marked
-    // them. In both branches the fifth pad is a tom, on the green lane, or on
-    // the blue lane when the fourth pad shares its tick.
+    // Otherwise the four-lane branch keeps the first four pads as the reader
+    // marked them. In both branches the fifth pad is a tom, on the green lane,
+    // or on the blue lane when the fourth pad shares its tick.
     if (!fifth) return chord;
     ChordNote moved = *fifth;
     moved.cymbaltype = NoteCymbalType::Normal;
@@ -2243,41 +2251,75 @@ std::map<std::string, std::string> read_song_ini_keys(const std::string& path) {
 
 namespace {
 
-// Clone Hero reads both keys through one bool getter (0x1D4480, called from
-// ini_song_reader_1EFC60.asm lines 77 to 89). That getter's own text rule is
-// not read. "True" in any case, with blanks around it, is what the five-lane
-// probes wrote and the game honoured; any other text reads as unset here.
-bool drum_key_is_true(std::string_view value) { return equals_ci(trim_view(value), "true"); }
+// The whole number `text` spells, read the way .NET's Int32.TryParse reads it
+// by default (blanks around it and one leading sign allowed, nothing past 32
+// bits), or nothing.
+std::optional<int32_t> dotnet_int32(std::string_view text) {
+    std::string_view s = trim_view(text);
+    bool negative = false;
+    if (!s.empty() && (s.front() == '+' || s.front() == '-')) {
+        negative = s.front() == '-';
+        s.remove_prefix(1);
+    }
+    if (s.empty()) return std::nullopt;
+    int64_t magnitude = 0;
+    for (const char c : s) {
+        if (c < '0' || c > '9') return std::nullopt;
+        magnitude = magnitude * 10 + (c - '0');
+        if (magnitude > int64_t{std::numeric_limits<int32_t>::max()} + 1) return std::nullopt;
+    }
+    const int64_t value = negative ? -magnitude : magnitude;
+    if (value > std::numeric_limits<int32_t>::max()) return std::nullopt;
+    return static_cast<int32_t>(value);
+}
 
-// The two keys from a key -> value lookup, whatever spells the keys.
+// A song.ini's two drum keys. Clone Hero reads both through one bool getter
+// (0x1D4480, called from ini_song_reader_1EFC60.asm lines 77 to 89, CR-18).
+// This is that getter's text rule. The game's ini parser trims each value
+// before the getter sees it (ini_parse_21695E0.md), so this trims too.
+bool ini_drum_key_is_true(std::string_view value) {
+    if (const std::optional<int32_t> number = dotnet_int32(value)) return *number != 0;
+    return equals_ci(trim_view(value), "true");
+}
+
+// A .sng's two drum keys. Clone Hero reads both through its .sng bool getter
+// (0x2642C0, called from sng_meta_reader_1EFF90.asm lines 46 to 56), which
+// takes .NET's Boolean.TryParse and nothing else. This is that rule.
+bool sng_drum_key_is_true(std::string_view value) { return equals_ci(trim_view(value), "true"); }
+
+// The two keys from a key -> value lookup, whatever spells the keys, each
+// read by `is_true`, the rule of the getter that reads that source.
 template <typename Find>
-ChartDrumKeys drum_keys_from(const Find& find) {
+ChartDrumKeys drum_keys_from(const Find& find, bool (*is_true)(std::string_view)) {
     ChartDrumKeys keys;
     if (const std::optional<std::string_view> v = find("five_lane_drums"))
-        keys.five_lane_drums = drum_key_is_true(*v);
-    if (const std::optional<std::string_view> v = find("pro_drums"))
-        keys.pro_drums = drum_key_is_true(*v);
+        keys.five_lane_drums = is_true(*v);
+    if (const std::optional<std::string_view> v = find("pro_drums")) keys.pro_drums = is_true(*v);
     return keys;
 }
 
 }  // namespace
 
 ChartDrumKeys chart_drum_keys(const std::map<std::string, std::string>& ini) {
-    return drum_keys_from([&](std::string_view key) -> std::optional<std::string_view> {
-        const auto it = ini.find(std::string(key));
-        if (it == ini.end()) return std::nullopt;
-        return std::string_view(it->second);
-    });
+    return drum_keys_from(
+        [&](std::string_view key) -> std::optional<std::string_view> {
+            const auto it = ini.find(std::string(key));
+            if (it == ini.end()) return std::nullopt;
+            return std::string_view(it->second);
+        },
+        ini_drum_key_is_true);
 }
 
 ChartDrumKeys chart_drum_keys(const std::vector<std::pair<std::string, std::string>>& sng_metadata) {
-    return drum_keys_from([&](std::string_view key) -> std::optional<std::string_view> {
-        // The last pair of a key wins, as a song.ini's last line does.
-        std::optional<std::string_view> found;
-        for (const auto& [k, v] : sng_metadata)
-            if (equals_ci(k, key)) found = std::string_view(v);
-        return found;
-    });
+    return drum_keys_from(
+        [&](std::string_view key) -> std::optional<std::string_view> {
+            // The last pair of a key wins, as a song.ini's last line does.
+            std::optional<std::string_view> found;
+            for (const auto& [k, v] : sng_metadata)
+                if (equals_ci(k, key)) found = std::string_view(v);
+            return found;
+        },
+        sng_drum_key_is_true);
 }
 
 ChartDrumKeys chart_drum_keys_beside(const std::string& notespath) {
