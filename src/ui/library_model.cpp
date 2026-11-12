@@ -1,8 +1,10 @@
 #include "ui/library_model.h"
 
 #include <algorithm>
+#include <exception>
 #include <numeric>
 #include <string_view>
+#include <thread>
 #include <utility>
 
 #include "core/model.h"  // group_thousands
@@ -190,33 +192,73 @@ SearchField search_field_of(const app::StrippedRow& stripped, const app::Searcha
     return {stripped.folder, folded.folder};
 }
 
+// The user chose 8 threads after hydra_bench --open measured this fold at 9.5 ms on 8 threads
+// against 47.6 ms on 1 (docs/agents/rulings/code-and-engine.md, 2026-11-12, "8 threads").
+constexpr size_t kRowBuildThreads = 8;
+
+// One scanned chart's row. It touches only `entry` (read, then emptied), `row`
+// and `stripped` (the caller's scratch, reused across rows), so rows build on
+// several threads at once.
+void build_row(store::ChartLibraryEntry& entry, LibraryRow& row, app::StrippedRow& stripped) {
+    row.title = display_title(entry.title);  // "(unknown)" when only tags
+    row.artist = display_artist(entry.artist);  // the same rule as the title
+    row.album = display_album(entry.album);  // blank stays blank
+    row.charter = display_charter(entry.charter);
+    row.searchable = app::make_searchable(entry.title, entry.artist, entry.charter,
+                                          entry.rootfolder, entry.album, stripped);
+    row.entry.md5 = std::move(entry.md5);
+    row.entry.notespath = std::move(entry.notespath);
+    row.entry.rootfolder = std::move(entry.rootfolder);
+    entry = {};  // the rest of the scan's row goes now, not when the load ends
+    // A sort key is the shown text folded. Where the shown text is the
+    // search text's stripped text, the search text holds that fold already.
+    for (int c = 0; c < kColumnBestPath; ++c) {
+        const std::string_view shown = stored_cell_text(row, c);  // library_cell_text, uncopied
+        const SearchField field = search_field_of(stripped, row.searchable, c);
+        row.sort_keys[static_cast<size_t>(c)] =
+            shown == field.stripped ? field.folded : app::fold_for_search(shown);
+    }
+}
+
 }  // namespace
 
 void LibraryModel::set_charts(std::vector<store::ChartLibraryEntry> charts) {
+    const size_t n = charts.size();
     rows_.clear();
-    rows_.reserve(charts.size());
-    app::StrippedRow stripped;
-    for (store::ChartLibraryEntry& entry : charts) {
-        LibraryRow row;
-        row.title = display_title(entry.title);  // "(unknown)" when only tags
-        row.artist = display_artist(entry.artist);  // the same rule as the title
-        row.album = display_album(entry.album);  // blank stays blank
-        row.charter = display_charter(entry.charter);
-        row.searchable = app::make_searchable(entry.title, entry.artist, entry.charter,
-                                              entry.rootfolder, entry.album, stripped);
-        row.entry.md5 = std::move(entry.md5);
-        row.entry.notespath = std::move(entry.notespath);
-        row.entry.rootfolder = std::move(entry.rootfolder);
-        entry = {};  // the rest of the scan's row goes now, not when the load ends
-        // A sort key is the shown text folded. Where the shown text is the
-        // search text's stripped text, the search text holds that fold already.
-        for (int c = 0; c < kColumnBestPath; ++c) {
-            const std::string_view shown = stored_cell_text(row, c);  // library_cell_text, uncopied
-            const SearchField field = search_field_of(stripped, row.searchable, c);
-            row.sort_keys[static_cast<size_t>(c)] =
-                shown == field.stripped ? field.folded : app::fold_for_search(shown);
+    rows_.resize(n);
+    // Each thread builds one contiguous share of the rows and writes only
+    // those rows. The calling thread builds the first share itself.
+    const size_t threads = std::min(kRowBuildThreads, n);
+    auto build_share = [&](size_t t) {
+        app::StrippedRow stripped;
+        const size_t end = n * (t + 1) / threads;
+        for (size_t i = n * t / threads; i < end; ++i) build_row(charts[i], rows_[i], stripped);
+    };
+    if (threads == 1) {
+        build_share(0);
+    } else if (threads > 1) {
+        // A share that throws keeps its exception here; the first is rethrown
+        // once every thread has joined.
+        std::vector<std::exception_ptr> failures(threads);
+        auto run_share = [&](size_t t) {
+            try {
+                build_share(t);
+            } catch (...) {
+                failures[t] = std::current_exception();
+            }
+        };
+        std::vector<std::thread> helpers;
+        helpers.reserve(threads - 1);
+        try {
+            for (size_t t = 1; t < threads; ++t) helpers.emplace_back(run_share, t);
+        } catch (...) {
+            for (std::thread& h : helpers) h.join();
+            throw;
         }
-        rows_.push_back(std::move(row));
+        run_share(0);
+        for (std::thread& h : helpers) h.join();
+        for (const std::exception_ptr& failure : failures)
+            if (failure) std::rethrow_exception(failure);
     }
     ++rows_version_;
     resort();
