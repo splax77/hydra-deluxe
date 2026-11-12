@@ -32,7 +32,7 @@ Rule: N 0 is the kick; N 1 to 4 are red, yellow, blue and the fourth pad (Hydra'
 Label: Proven in the game's code
 Evidence: `code/6142/chart_n_handler_213D620.asm` lines 71 to 109 (the drum table, decoded through the jump table at 0x213DB10) and lines 95 to 107 (N 32); decompile lines 25098 to 25110 agree.
 Game code (6142): the .chart N handler of class #8615, RVA `0x213D620`, the listing above.
-Hydra: `ChartParser::note_optype` in src/parse/song.cpp lines 1744 to 1771; `chart_pad_color` at line 1729.
+Hydra: `ChartParser::note_optype` in src/parse/song.cpp lines 1746 to 1773; `chart_pad_color` at line 1731.
 Ruling: none needed: same rule for N 0 to 4 and N 32.
 Found: 2026-10-03, session cebf3006; listed 2026-10-30 in session b02ab3e6 (the reference build).
 
@@ -42,7 +42,7 @@ Rule: the game reads .chart N 5 and .mid pitches 65, 77, 89 and 101 as a fifth p
 Label: Proven in the game's code
 Evidence: `code/6142/chart_n_handler_213D620.asm` lines 99 to 105 (type 0x11 raises +0xA1); `code/6142/pitch_difficulty_map_210D9C0.asm` lines 1 to 24 with the type map in docs/audit/note-shuffle/step0/open2/f210d7b0.asm; `code/6142/chart_modifier_decode_213D160.asm` lines 11 to 80 (N 38 and N 44 on that lane). How many library charts hold such lines was not counted (no library run).
 Game code (6142): RVAs `0x213D620`, `0x210D9C0`, `0x210D7B0` and `0x213D160`, the listings above.
-Hydra: `chart_pad_color` in src/parse/song.cpp lines 1729 to 1737 (pads 1 to 4) and `ChartParser::note_optype` lines 1761 to 1768 (34 to 37 and 40 to 43 only).
+Hydra: `chart_pad_color` in src/parse/song.cpp lines 1731 to 1739 (pads 1 to 4) and `ChartParser::note_optype` lines 1763 to 1770 (34 to 37 and 40 to 43 only).
 Ruling: open split: see questions page Q-13.
 Found: 2026-10-30, session b02ab3e6 (the reference build).
 
@@ -52,7 +52,7 @@ Rule: N 34 to 38 make an accent and N 40 to 44 a ghost on red, yellow, blue, the
 Label: Proven in the game's code
 Evidence: `code/6142/chart_modifier_decode_213D160.asm` lines 11 to 80; `code/6142/chart_n_handler_213D620.asm` lines 212 to 278 (the call, the cymbal kind raising +0xA2, the record written with the tick twice); decompile lines 24747 to 24840.
 Game code (6142): RVAs `0x213D160` and `0x213D620`, the listings above.
-Hydra: `ChartParser::note_optype` in src/parse/song.cpp lines 1744 to 1770, with `kChartCymbalMarkerBase`; `allows_cymbals` in src/core/model.cpp line 18.
+Hydra: `ChartParser::note_optype` in src/parse/song.cpp lines 1746 to 1772, with `kChartCymbalMarkerBase`; `allows_cymbals` in src/core/model.cpp line 18.
 Ruling: none needed: same rule for the four pads (the fifth is NL-04).
 Found: 2026-10-03, session cebf3006; listed 2026-10-30 in session b02ab3e6 (the reference build).
 
@@ -62,7 +62,7 @@ Rule: the .chart finish step applies the cymbal, tom, flam, ghost and accent mod
 Label: Proven in the game's code
 Evidence: docs/audit/note-shuffle/step0/open2/f215e280.asm lines 23 to 45: five unconditional calls to the apply routine with kinds 7, 6, 8, 10 and 9. That the apply routine itself, docs/audit/note-shuffle/step0/open2/f215dbd0.asm, reads no dynamics flag was read on 2026-10-03 and not re-read since. Three other functions hold the string `ENABLE_CHART_DYNAMICS` (`0x211BAD0`, `0x211C270` and `0x211E4C0`); they take a whole string and look like a writer, not the .chart reader, and nobody has opened them (ch-evidence.md question 320 at commit 5fbe71ae).
 Game code (6142): RVA `0x215E280` calling `0x215DBD0`, the listings above.
-Hydra: the ghost and accent cases of `ChartParser::note_optype` in src/parse/song.cpp lines 1761 to 1768, and the comment at lines 1950 to 1954.
+Hydra: the ghost and accent cases of `ChartParser::note_optype` in src/parse/song.cpp lines 1763 to 1770, and the comment at lines 1952 to 1956.
 Ruling: none needed: same rule.
 Found: 2026-10-03, session cebf3006; re-read 2026-10-30 in session b02ab3e6 (the reference build).
 
@@ -72,7 +72,7 @@ Rule: a cymbal, ghost or accent marker whose tick holds no note is skipped, and 
 Label: Proven in the game's code
 Evidence: docs/audit/note-shuffle/step0/open2/f215dbd0.asm lines 104 to 110: the range lookup returns -1 and jumps to the exit.
 Game code (6142): RVA `0x215DBD0`, lines 104 to 110.
-Hydra: `Chord::apply_cymbal` and the ghost and accent appliers throw `ChartFileError`, which the per-op catch drops (src/core/model.cpp lines 288 to 305; src/parse/song.cpp line 1807).
+Hydra: `Chord::apply_cymbal` and the ghost and accent appliers throw `ChartFileError`, which the per-op catch drops (src/core/model.cpp lines 288 to 305; src/parse/song.cpp line 1809).
 Ruling: none needed: same rule.
 Found: 2026-10-03, session cebf3006; re-read 2026-10-30 in session b02ab3e6 (the reference build).
 
@@ -82,7 +82,7 @@ Rule: a marker on a tick whose notes are all of other colours sets nothing, in t
 Label: Proven in the game's code
 Evidence: a .chart N line makes a one-tick marker: docs/audit/note-shuffle/step0/open2/f213d620_chart_N_line.asm lines 253 and 254 store one register as both ends. The apply routine adds the marker to every note in the range it finds, with no colour test, in docs/audit/note-shuffle/step0/open2/f215dbd0.asm lines 117 to 135. The flag pass is docs/audit/note-shuffle/step0/open2/f214cee0.asm, called from docs/audit/note-shuffle/step0/open2/f215e280.asm line 69. It switches on the marker's kind byte at +0x18 (lines 35 to 45). For kinds 10, 9, 7 and 6 it compares the marker's +0x14 with the note's +0x20 and skips the note when they differ (lines 46 to 48, 53 to 55, 62 to 64 and 69 to 71). Kind 8 sets flag 0x100 with no such test (line 60). Three points stay Unknown. That +0x14 and +0x20 are the colour is inferred, not shown. Which kind number is cymbal, ghost or accent is not shown in this listing. The range bounds come from the helper 0x18213E310 (called at f215dbd0.asm line 86) and the lookup 0x1805FAD90 (line 103), and neither body was read.
 Game code (6142): the apply routine, RVA `0x215DBD0`, and the flag pass at 0x214CEE0, the listings above.
-Hydra: `Chord::apply_cymbal`, `Chord::apply_ghost` and `Chord::apply_accent` in src/core/model.cpp lines 292 to 305 throw `ChartFileError` when the chord has no note of the marker's colour. The .chart parser's per-op catch at src/parse/song.cpp lines 1805 to 1808 drops the marker.
+Hydra: `Chord::apply_cymbal`, `Chord::apply_ghost` and `Chord::apply_accent` in src/core/model.cpp lines 292 to 305 throw `ChartFileError` when the chord has no note of the marker's colour. The .chart parser's per-op catch at src/parse/song.cpp lines 1807 to 1810 drops the marker.
 Ruling: none needed: same rule.
 Found: 2026-10-30, session b02ab3e6 (the reference build); the colour test read 2026-11-08, session 77057df2 (docs-gaps search).
 
@@ -92,7 +92,7 @@ Rule: the .chart modifier map has no case that targets the kick, so a .chart kic
 Label: Proven in the game's code
 Evidence: decompile lines 24750 to 24825 (only note numbers 34 to 38, 40 to 44 and 66 to 68 have cases; every other value returns lane 0); `code/6142/chart_modifier_decode_213D160.asm` lines 11 to 80.
 Game code (6142): RVA `0x213D160`, the listing above.
-Hydra: `ChartParser::note_optype` has no kick modifier case (src/parse/song.cpp lines 1756 to 1770); `op_kick` passes a normal kick at line 1467.
+Hydra: `ChartParser::note_optype` has no kick modifier case (src/parse/song.cpp lines 1758 to 1772); `op_kick` passes a normal kick at line 1468.
 Ruling: none needed: same rule.
 Found: 2026-10-04, session 9f4f8eb5 (ADR 0012); re-read 2026-10-30 in session b02ab3e6 (the reference build).
 
@@ -194,9 +194,9 @@ Found: 2026-10-30, session b02ab3e6 (the reference build).
 
 Rule: a .chart E text that starts with `[mix` or `mix` goes whole to the mix parser, so `E [mix 3 drums0d]` with ordinary spaces is a marker in the game; Hydra reads an E line as a marker only when it is one word.
 Label: Proven in the game's code
-Evidence: `code/6142/chart_e_handler_213CAF0.asm` lines 116 to 168 (the two starts-with tests) and 319 to 330 (the parser call); NL-18 for the parser. Hydra's check is `t.count == 2` in src/parse/song.cpp lines 1304 to 1307. The corpus file testdata/parse_edge/c20_disco.chart holds one spaced form; the library was not searched.
+Evidence: `code/6142/chart_e_handler_213CAF0.asm` lines 116 to 168 (the two starts-with tests) and 319 to 330 (the parser call); NL-18 for the parser. Hydra's check is `t.count == 2` in src/parse/song.cpp lines 1305 to 1308. The corpus file testdata/parse_edge/c20_disco.chart holds one spaced form; the library was not searched.
 Game code (6142): RVA `0x213CAF0`, the listing above.
-Hydra: `classify_chart_line` in src/parse/song.cpp lines 1304 to 1307.
+Hydra: `classify_chart_line` in src/parse/song.cpp lines 1305 to 1308.
 Ruling: open split: see questions page Q-10.
 Found: 2026-10-30, session b02ab3e6 (the reference build).
 
@@ -268,7 +268,7 @@ Rule: every difficulty section that holds an N 32 gets a 2x kick at read time; t
 Label: Proven in the game's code
 Evidence: `code/6142/chart_n_handler_213D620.asm` lines 95 to 109 branch on the lane value only; decompile lines 25098 to 25110.
 Game code (6142): RVA `0x213D620`, the listing above.
-Hydra: `ChartParser::note_optype` case 32 in src/parse/song.cpp line 1760.
+Hydra: `ChartParser::note_optype` case 32 in src/parse/song.cpp line 1762.
 Ruling: D20 (as NL-24).
 Found: 2026-10-03, session cebf3006; listed 2026-10-30 in session b02ab3e6 (the reference build).
 
@@ -278,7 +278,7 @@ Rule: the builder's only gate on 2x kicks is bit 2 of its modifier byte, at ever
 Label: Proven in the game's code
 Evidence: docs/audit/note-shuffle/step0/open2/f20d2ea0_build.asm lines 231 to 236 (the bit test and the call); `code/6142/two_x_kick_drop_20EFF60.asm` lines 37 to 140 (the test call, the unlink at lines 46 to 93, the blanked slot at line 98, the RemoveAll at line 140); `code/6142/double_kick_test_214B850.asm` line 1 tests 0x100000 (DrumsDoubleKick in dump.cs line 548217). That bit 2 is the player's Double Kick setting comes from the live run in NL-28, not a listing.
 Game code (6142): builder RVA `0x20D2EA0`; removal step RVA `0x20EFF60` of class #8278; test RVA `0x214B850`.
-Hydra: `Chord::apply_2x_bass` in src/core/model.cpp line 281, called with `mode_bass2x_` in src/parse/song.cpp lines 875 and 1813.
+Hydra: `Chord::apply_2x_bass` in src/core/model.cpp line 281, called with `mode_bass2x_` in src/parse/song.cpp lines 875 and 1815.
 Ruling: D20 (as NL-24); D105: chose "Match the game, test first (Recommended)" (card 2026-10-09-30beeb6e).
 Found: 2026-10-09, session 30beeb6e; listed 2026-10-30 in session b02ab3e6 (the reference build).
 
@@ -328,7 +328,7 @@ Found: 2026-09-25, session 8157f2dc.
 
 Rule: the merge in NL-29 applies to every note type, so two red notes on one tick become one red note holding both notes' flags; Hydra's second `Chord::add_note` throws "Duplicate note." and the per-op catch drops that note with its marks.
 Label: Proven in the game's code
-Evidence: `code/6142/kick_merge_215B8C0.asm` lines 54 to 128 compare tick and type only, with no kick test; docs/audit/note-shuffle/step0/open2/f215b8c0.asm lines 38 to 128 agree. Hydra: src/core/model.cpp line 244 throws, and the catches in src/parse/song.cpp lines 1047 and 1807 drop the op (checked 2026-10-30).
+Evidence: `code/6142/kick_merge_215B8C0.asm` lines 54 to 128 compare tick and type only, with no kick test; docs/audit/note-shuffle/step0/open2/f215b8c0.asm lines 38 to 128 agree. Hydra: src/core/model.cpp line 244 throws, and the catches in src/parse/song.cpp lines 1047 and 1809 drop the op (checked 2026-10-30).
 Game code (6142): RVA `0x215B8C0`, the listing above.
 Hydra: `Chord::add_note` in src/core/model.cpp line 242.
 Ruling: open split: see questions page Q-14.
@@ -446,7 +446,7 @@ Rule: the shuffle runs only when modifier bit 0x40 is set, after the flam step, 
 Label: Proven in the game's code
 Evidence: docs/audit/note-shuffle/step0/open34/builder_20d2ea0.asm lines 153 to 162 (instruments 6 and 9 take the drum path) and 228 to 259 (the step calls in order, then the 0x40 test and the call at 0x20D3315). The names of the steps before the shuffle come from docs/audit/note-shuffle/step0/open2/README.md lines 9 and 24 (2026-10-09). The disco flip runs before the shuffle on Pro Drums, because it is the Pro step (NL-22). The shuffle is also called for instruments other than drums: in docs/audit/note-shuffle/scout-flag/build_20d2ea0.asm, lines 153 to 156 send instruments 6 and 9 to the drum path, and for any other instrument lines 157 to 162 call the shuffle at 0x20D31B1 when bit 0x40 is set. docs/audit/note-shuffle/step0/open34/callers.txt lines 5 and 6 list both call sites, 0x20D31B1 and 0x20D3315. What the shuffle does to a non-drum chart was not read.
 Game code (6142): builder RVA `0x20D2EA0`, the listing above.
-Hydra: `apply_shuffle_switch` in src/parse/song.cpp lines 1992 to 1996 and `finish_loaded_song` lines 2004 to 2009, after `emit_chord_timestamp` and `Chord::apply_2x_bass`.
+Hydra: `apply_shuffle_switch` in src/parse/song.cpp lines 1994 to 1998 and `finish_loaded_song` lines 2006 to 2011, after `emit_chord_timestamp` and `Chord::apply_2x_bass`.
 Ruling: D104 item 3 (record text): "Pro Drums off gets its own row too."
 Found: 2026-10-09, session 6c19d0ef; the non-drum call added 2026-11-08, session 77057df2 (docs-gaps search).
 
@@ -526,7 +526,7 @@ Rule: the star cutoffs are computed from the shuffled lane masks, so they count 
 Label: Proven in the game's code
 Evidence: docs/audit/note-shuffle/step0/open34/starbase_20f4680.asm line 105 reads the lane mask; engine_ctor_20f79e0.asm line 196 calls it, and baseplayer_208870.asm lines 55 and 103 call the builder before the engine. "Only direct caller" rests on a 2026-10-09 scan not re-run. That scan's output is docs/audit/note-shuffle/step0/open34/callers.txt: lines 1 to 4 list four callers of the builder `0x20D2EA0` (in `0x208870`, in 0x235AD0, and in two generic constructors at 0xFEBB30 and 0xFEBCB0), and line 8 lists one caller of the star base, in the engine constructor `0x20F79E0`. The cymbal bonus inside the star base is page 6's.
 Game code (6142): RVAs `0x20F4680`, `0x20F79E0` and `0x208870`, the listings above.
-Hydra: `finish_loaded_song` in src/parse/song.cpp line 2005; `Path::chart_base_score` in src/core/model.h line 878.
+Hydra: `finish_loaded_song` in src/parse/song.cpp line 2007; `Path::chart_base_score` in src/core/model.h line 878.
 Ruling: none needed: same rule.
 Found: 2026-10-09, session 30beeb6e; the builder's four callers added 2026-11-08, session 77057df2 (docs-gaps search).
 
@@ -558,7 +558,7 @@ Rule: in a .chart, special phrase type 65 gives a single lane and type 66 a doub
 Label: Proven in the game's code
 Evidence: docs/audit/drum-lanes/spec_213e0c0.asm tests the type with a subtract chain, not a compare with 0x41 or 0x42. Line 65 subtracts 0x40, and type 64 goes to a different call (line 66). Type 66 leaves 1 in ecx and passes it as the fourth argument (lines 67 to 69 and 74). Type 65 zeroes that argument at line 89 and jumps at line 91 back to line 76, past line 74, so it passes 0. Both then call 0x20CEEC0 at line 79. That method keeps its fourth argument (`code/6142/lane_add_20CEEC0.asm` line 7) and hands it to the lane constructor 0x2116390 as its fourth argument (lines 31 and 37). The constructor stores it at +0x21 (docs/audit/drum-lanes/lane_ctor_2116390.asm line 6), and the lane builder adds the double flag 0x8000 only when that byte is set (docs/audit/drum-lanes/f20d12c0.asm lines 207, 208 and 215). So S 66 gives a lane with +0x21 = 1 and S 65 one with +0x21 = 0. Direct callers of 0x20CEEC0 (byte scan of il2cpp and .text): the S-line handler at 0x213E205, the .mid drum reader at 0x21553DF and the MIDI reader method at 0x2156ED1. Not shown: that the phrase must sit in a difficulty's section.
 Game code (6142): the S-line handler, RVA `0x213E0C0`, the lane add 0x20CEEC0 and the lane constructor 0x2116390, the listings above.
-Hydra: `kChartSingleLanePhrase` and `kChartDoubleLanePhrase` in src/parse/song.cpp lines 1504 and 1505; the S line case that sets the double flag, lines 1714 to 1716; `op_lane` line 1454 records the lane.
+Hydra: `kChartSingleLanePhrase` and `kChartDoubleLanePhrase` in src/parse/song.cpp lines 1505 and 1506; the S line case that sets the double flag, lines 1716 to 1718; `op_lane` line 1455 records the lane.
 Ruling: D112 (as NL-53).
 Found: 2026-10-10, D112; the type test read 2026-11-08, session 77057df2 (docs-gaps search); the lane add read 2026-11-08, session 77057df2.
 
@@ -588,7 +588,7 @@ Rule: the user saw the game draw only the blue column for a lane on Glide with N
 Label: Unknown
 Evidence: the user's report, and D112's record says "The routine that draws a lane was not read". The listings show the lane stores references: `docs/audit/drum-lanes/f20d12c0.asm` writes the first chord's reference into the lane at +0x20 (line 268) and, for a double lane, the second chord's at +0x28 (line 272; a single lane stores null there), and the shuffle rewrites each note's 16-bit lane word in place (`docs/audit/note-shuffle/step0/open2/f20f0c30_shuffle.asm` line 317). So the lane's notes are recoloured after the lane is built; that the drawn strip follows them is unread (decision log, D112's correction of 2026-10-17, line 539). The two lane objects are read. The lane as parsed is built by docs/audit/drum-lanes/lane_ctor_2116390.asm lines 1 to 7: two references at +0x10 and +0x18, a byte at +0x20 and the double byte at +0x21. The lane the builder makes (f20d12c0.asm lines 262 to 290) holds a float at +0x18, the two chord references at +0x20 and +0x28, the parsed lane's +0x10 value at +0x30 (its start tick: line 284 subtracts it from a chord's tick), a tick length at +0x38 and the double byte, copied from +0x21, at +0x40. When a lane is added to the list, docs/audit/drum-lanes/f215e4f0.asm lines 41 to 86 put a single lane in front of the double lanes that share its +0x10 value, so a single lane goes before a double at one tick. The draw path was followed on 2026-11-08 (docs/audit/2026-11-08-clone-hero-unknowns/W5.md, section "NL-57 (second pass: the lane renderer)"). The lane's slot-3 interface method returns the +0x80 pad word of the note at +0x20, ORed with the word of the note at +0x28 when the lane's +0x40 byte is set (`code/6142/lane_pad_mask_216A440.asm` lines 2 to 15); it stores no colour of its own. The chart build calls the lane builder before Note Shuffle (`code/6142/chart_build_20D2EA0.asm` line 150, then line 259 on the drum branch). DrumsNoteRenderer.Update calls 0x1166890 (`code/6142/drums_note_renderer_update_1370A0.asm` line 267), which takes the engine's lane list (`code/6142/lane_draw_1166890.asm` line 64) and hands it to the sprite loop 0x41BE70 (line 78). For each lane, the loop calls interface slot 3 to get the pad word (`code/6142/lane_sprite_spawn_41BE70.asm` lines 69 to 74), then puts one sprite per pad with alpha 0.75 (lines 78 to 159). Two links are read from use: that 0x2C44210 is the runtime's interface-call helper whose result is the method's return, and that 0x20FE7E0 with 0x20FC610 and 0x20FC5F0 walks the word's set bits. Searched: every dump.cs line and script.json entry that names the lane class #8641; byte scans for direct calls to the lane's two pad-mask methods (none), to the lane builder (one, 0x20D317E), to the engine's lane-list getter 0x20F4E20 (eight, all in BaseNoteRenderer methods) and to the sprite loop 0x41BE70 (10 call sites in 5 methods, by the rescan in docs/audit/2026-11-08-clone-hero-unknowns/checker-verdicts.md; only the draw path above was read) (direct callers only, byte scan).
 Game code (6142): the lane pad word 0x216A440, DrumsNoteRenderer.Update, RVA `0x1370A0`, the lane draw 0x1166890 and the sprite loop 0x41BE70, the listings above. The lane constructor is 0x2116390 and the list insert 0x215E4F0.
-Hydra: `light_drum_lanes` in src/parse/song.cpp lines 203 to 213, called at line 2007; with Note Shuffle on it lights `every_lane_pad` (line 213).
+Hydra: `light_drum_lanes` in src/parse/song.cpp lines 203 to 213, called at line 2009; with Note Shuffle on it lights `every_lane_pad` (line 213).
 Ruling: deliberate difference, D254: "clone hero only draws the blue. this will be an intentional deviation from the game. it looks better with both."; items "Every pad its notes use." and "Only with Note Shuffle on."
 Found: 2026-10-17, session 65b16299; the lane layouts and lane order read 2026-11-08, session 77057df2 (docs-gaps search); the draw path read 2026-11-08, session 77057df2.
 
@@ -630,7 +630,7 @@ Rule: when the instrument is not 9 (Pro Drums) the builder runs the cymbal fold 
 Label: Proven in the game's code
 Evidence: docs/audit/note-shuffle/step0/open2-refute/f20D2EA0.asm lines 245 to 253 (the compare with 9 and the two calls); a caller scan on 2026-10-30 found no other call site for either step; its output was not kept.
 Game code (6142): builder RVA `0x20D2EA0`; fold `0x20F16E0`; clear `0x20EFEE0`; Pro step `0x20F1420`, which is the disco flip (NL-22).
-Hydra: `ChartReading::prodrums` in src/parse/chart_reading.h line 24, read in src/parse/song.cpp lines 2016 and 2025.
+Hydra: `ChartReading::prodrums` in src/parse/chart_reading.h line 24, read in src/parse/song.cpp lines 2018 and 2027.
 Ruling: none needed for the trigger; the clear is NL-62.
 Found: 2026-10-28, session 6a549de0; listed 2026-10-30 in session b02ab3e6 (the reference build).
 

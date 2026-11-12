@@ -513,6 +513,7 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	method	156	DrumsPlayer	ˀʿʸʺʿʲʻʹʼʳʿ	0x33C560		0x33C560
 6142	method	15686	Index	get_Start	0x84220		0x84220
 6142	method	1590	RuntimeThread	GetCurrentProcessorId	0x102040		0x102040
+6142	method	1594	String	Contains	0x197F670		0x197F670
 6142	method	1594	String	op_Equality	0x1981570		String.op_Equality
 6142	method	16020	Unsafe	SizeOf<ByteEnum>	0x102040		0x102040
 6142	method	16020	Unsafe	SizeOf<byte>	0x102040		0x102040
@@ -1181,6 +1182,7 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	method	8538		ʳʽʸʴʷʷʼʵʳʻʾ	0x212BCC0		0x212BCC0
 6142	method	8538		ʴʸˁʳˀʽʼʺʸʾˁ	0x20CFCE0		0x20CFCE0
 6142	method	8538		ʴˁʹˀʵʲʾʺʴʼʵ	0x212C0B0		0x212C0B0
+6142	method	8538		ʵʽˀʸʳʳʶʿˀʳʶ	0x212C350		0x212C350
 6142	method	8538		ʶˁʻʷʼʷʶʻʳʳʿ	0x212C7E0		0x212C7E0
 6142	method	8538		ʿʼʿʿʵʵʲʿʷˁʻ	0x212E130		#8538.LastGemEndTick
 6142	method	8538		ʿʼʿʿʵʵʲʿʷˁʻ	0x212E130		0x212E130

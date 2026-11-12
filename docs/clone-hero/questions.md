@@ -17,7 +17,7 @@ The game's real rule: the .chart E handler tests the trimmed text with "starts w
 One end: `E [mix_3_drums0d]` (one word). Both the game and Hydra read it as Expert disco on.
 Other end: `E [mix 3 drums0d]` (four words). The game flips red and yellow on Expert from that tick; Hydra sees a plain text event and flips nothing.
 
-What Hydra does today: `classify_chart_line` in src/parse/song.cpp lines 1304 to 1307 reads an E line as a disco marker only when the line splits into exactly two words (`t.count == 2`). Owner: the .chart reader in src/parse/song.cpp. The corpus file testdata/parse_edge/c20_disco.chart holds one spaced form and 18 files use underscores; the library was not searched. Page row NL-19.
+What Hydra does today: `classify_chart_line` in src/parse/song.cpp lines 1305 to 1308 reads an E line as a disco marker only when the line splits into exactly two words (`t.count == 2`). Owner: the .chart reader in src/parse/song.cpp. The corpus file testdata/parse_edge/c20_disco.chart holds one spaced form and 18 files use underscores; the library was not searched. Page row NL-19.
 
 ### Q-11 Nested .chart solos: a stack in the game, one flag in Hydra
 
@@ -26,7 +26,7 @@ The game's real rule: `solo` pushes a new solo record and `soloend` pops the mos
 One end: `solo` at 0, `soloend` at 200 (no nesting). Both agree: one solo from 0 to 200.
 Other end: `solo` at 0, `solo` at 100, `soloend` at 200, `soloend` at 300. The game ends the inner solo at 200 and the outer at 300, so ticks 201 to 300 are inside a solo. Hydra turns its flag off at 200, so ticks 201 to 300 are outside any solo. How the score code reads the outer record is unread (CR-35), so the score effect is not yet shown.
 
-What Hydra does today: `flag_solo_` (a plain bool, line 1494 of src/parse/song.cpp), which `op_solo` sets at line 1465. Lines 1704 and 1708 turn the `solo` and `soloend` events into the operations that reach it. Owner: the .chart reader. Page row CR-34.
+What Hydra does today: `flag_solo_` (a plain bool, line 1495 of src/parse/song.cpp), which `op_solo` sets at line 1466. Lines 1706 and 1710 turn the `solo` and `soloend` events into the operations that reach it. Owner: the .chart reader. Page row CR-34.
 
 ### Q-12 Mix-event spellings: separators and digit forms
 
@@ -51,7 +51,7 @@ What Hydra does today: `chart_pad_color` in src/parse/song.cpp lines 1731 to 173
 The game's real rule: the track finalizer merges notes with the same tick and the same note type into the longest one (first on a tie), or-ing every flag bit except the low three (code/6142/kick_merge_215B8C0.asm lines 54 to 128); nothing limits it to kicks.
 
 One end: a 2x kick and a normal kick on one tick. Hydra merges them too (`Chord::add_kick`, D105), so both agree.
-Other end: a .mid with two red note-ons on one tick under the dynamics tag, velocity 127 then velocity 1. The game keeps one red note carrying both the accent and the ghost bit. Hydra's second `Chord::add_note` throws "Duplicate note." (src/core/model.cpp line 244) before the mark is set, and the per-op catch (src/parse/song.cpp line 1047 for .mid, 1807 for .chart) drops it, so Hydra keeps one red note with only the accent.
+Other end: a .mid with two red note-ons on one tick under the dynamics tag, velocity 127 then velocity 1. The game keeps one red note carrying both the accent and the ghost bit. Hydra's second `Chord::add_note` throws "Duplicate note." (src/core/model.cpp line 244) before the mark is set, and the per-op catch (src/parse/song.cpp line 1047 for .mid, 1809 for .chart) drops it, so Hydra keeps one red note with only the accent.
 
 What Hydra does today: `Chord::add_note` in src/core/model.cpp line 242. Owner: the chord model in src/core/model.cpp. Page row NL-32.
 
@@ -62,7 +62,7 @@ The game's real rule: the events reader tests "starts with `[section`" (docs/aud
 One end: `[section Intro]`. Both read a section named Intro.
 Other end: `[sectionX]`. The game would make a section with a short or empty name; Hydra makes none. Not run in the game.
 
-What Hydra does today: `marker_name` in src/parse/section_names.cpp line 13 needs "section " with its space. Owner: src/parse/section_names.cpp. Page row CR-29.
+What Hydra does today: `marker_name` in src/parse/section_names.cpp line 19 needs "section " with its space. Owner: src/parse/section_names.cpp. Page row CR-29.
 
 ### Q-16 A .chart event with text outside its quotes
 
@@ -71,7 +71,7 @@ The game's real rule: the .chart [Events] reader takes the event's text from jus
 One end: `E "section intro"`. The game and Hydra both read the text `section intro`, so both make a section.
 Other end: a hand-edited line with text outside the quotes. For `E "section intro" x` the decompile has the game read `section intro`, which would make a section; Hydra keeps the whole `"section intro" x`, which does not start with "section ", so it makes none. For `E intro "x"` the game reads `x` and Hydra reads `intro "x"`; neither is a section, but the two texts differ. No chart with such a line has been tried in the game.
 
-What Hydra does today: `classify_chart_line` in src/parse/song.cpp lines 1313 to 1315 trims the text after `E` and takes one pair of quotes off only when the trimmed text both starts and ends with a quote; otherwise it keeps the text whole. That text then goes to `section_name_of` (line 1633) and to the end-event test (lines 1637 to 1641). Owner: the .chart reader in src/parse/song.cpp. No library count (no library run), so how many charts hold such a line is not known. The question: should Hydra's .chart reader take the text between the first and last quote, as the game does, or keep its whole-text rule? Page row CR-32.
+What Hydra does today: `classify_chart_line` in src/parse/song.cpp lines 1314 to 1316 trims the text after `E` and takes one pair of quotes off only when the trimmed text both starts and ends with a quote; otherwise it keeps the text whole. That text then goes to `section_name_of` (line 1635) and to the end-event test (lines 1639 to 1643). Owner: the .chart reader in src/parse/song.cpp. No library count (no library run), so how many charts hold such a line is not known. The question: should Hydra's .chart reader take the text between the first and last quote, as the game does, or keep its whole-text rule? Page row CR-32.
 
 ### Q-30 A song.ini delay with a decimal point
 
@@ -209,6 +209,24 @@ The game's real rule: the gain method `0x20F4FA0` sets the byte at +0x130 on eve
 One end: a quarter-meter phrase with no clamp: the flag turns on (run1_cal0 first flip at 5.715 s with 1440 ticks in the meter). Other end: Star Power active: the flag reads 0 in all 11,436 active rows of run1_cal0.
 
 What the tool does today: `OFF_SP_OVERFLOW = 0x130` (constants.py line 140) with the comment at lines 137 to 140 saying it is set only when a phrase overfills the meter. Owner: constants.py (name and comment). Page row IN-27.
+
+### Q-83 Two sections on one tick: one section in the game, two in Hydra
+
+The game's real rule: both chart readers hand each section to the same add-a-section method (RVA `0x212C350`). That method looks at the last section it stored. If the new one has the same tick, it overwrites that section's name and adds nothing (C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-dumps\6142\ghidra\ghidra_decompile_all.txt lines 14575 to 14585, outside the repo). So the last name written on a tick wins, and the tick has one section.
+
+One end: sections on different ticks. Both sides keep every one.
+Other end: a .mid with "[section Intro]" and "[section Verse 1]" both at tick 0. The game has one section, "Verse 1". Hydra has two: the Preview time box says "Section Verse 1" (it takes the last section at or before the playhead), the timeline draws a zero-length "Intro" band, and `hydra_replay score` lists both.
+
+What Hydra does today: `sort_practice_sections` in src/parse/song.cpp line 64 keeps both, in the file's order (a stable sort by tick). Owner: src/parse/song.cpp. No library count (no library run), so how many charts hold two sections on one tick is not known. The question: should the later name replace the earlier one on the same tick, as in the game? Page row CR-24.
+
+### Q-84 A .mid section text with white space round it: a section in the game, plain text in Hydra
+
+The game's real rule: the .mid events reader (RVA `0x21544E0`) trims the white space off both ends of the event text (docs/audit/note-shuffle/step0/open1/midi_events_track_21544E0.asm line 98) before it tests for a start of `[section` (lines 99 to 128). So `[section Intro]` with a space or tab before or after it is a section. Q-75 asks the same question for `[end]`.
+
+One end: a text event `[section Intro]`. Both sides read a section named Intro.
+Other end: a text event `[section Intro] ` (one space after the bracket). The game trims it and makes a section; Hydra sees a plain text event and makes none.
+
+What Hydra does today: the .mid pass at src/parse/song.cpp line 1180 skips any text that does not start with "[" and end with "]", with no trim, before it calls `section_name_of` (line 1185). Owner: src/parse/song.cpp. No library count (no library run), so how many charts hold a padded section text is not known. The question: should Hydra's .mid reader trim the text first, as the game does? Page row CR-24.
 
 ## Recorded differences
 
