@@ -30,6 +30,7 @@ from tools.ch_mcp import compare_scorestats  # noqa: E402
 from tools.ch_mcp import foreground as F  # noqa: E402
 from tools.ch_mcp import game_files as G  # noqa: E402
 from tools.ch_mcp import game_tools as GT  # noqa: E402
+from tools.ch_mcp import hydra_end  # noqa: E402
 from tools.ch_mcp import install_chart as I  # noqa: E402
 from tools.ch_mcp import frida_attach as FA  # noqa: E402
 from tools.ch_mcp import quiet as Q  # noqa: E402
@@ -352,7 +353,10 @@ class GameToolsTest(unittest.TestCase):
             return real_launch(cmd)
 
         t.r.env.launch = launch
+        dumps_before = len(FAKE.charts)
         reply = t.tools.ch_start(t.r.song)
+        # One dump of the song's chart serves the recorder's cap and the run's.
+        self.assertEqual(FAKE.charts[dumps_before:], [t.r.chart])
         backup = t.backup_dir()
         self.assertEqual(seen_at_launch, [[os.path.basename(backup)]])
         self.assertTrue(backup.startswith(t.scratch_root))
@@ -361,9 +365,8 @@ class GameToolsTest(unittest.TestCase):
         self.assertTrue(any(line.startswith("starting: ") and t.r.song in line for line in lines))
         self.assertIn("game process id: 4242", lines)
         # Hydra's end, from the dump made for the song's chart.
-        self.assertTrue(lines[-1].startswith("song length: 4000 ms, from song_length_ms in "),
-                        lines[-1])
-        self.assertTrue(lines[-1].endswith(f"{probe_songs.WINDOW_MAP}-dump.json"), lines[-1])
+        self.assertEqual(lines[-1], "song length: 4000 ms, from "
+                         + hydra_end.chart_source_text(t.r.chart))
         self.assertEqual(t.tools.launched_at(), 0.0)
 
     def test_ch_start_with_no_song_launches_launch_commands_no_song_line(self):
@@ -765,8 +768,9 @@ class GameToolsTest(unittest.TestCase):
         _write(os.path.join(t.r.song, G.SONG_INI), b"[song]\nsong_length = 9999\n")
         FAKE.set_end(t.r.chart, 260504)
         self.assertEqual(GT.run_cap_s(t.r.song), 320.504)
-        self.assertEqual(t.tools.run_cap_s(t.r.song), 320.504)
         self.assertEqual(FAKE.charts[-1], t.r.chart)
+        self.assertEqual(t.tools.cap_for_end(260504), 320.504)
+        self.assertEqual(GT.cap_for_end(None), 240.0)
         FAKE.set_end(t.r.chart, None)
         self.assertEqual(GT.run_cap_s(t.r.song), 240.0)
         no_chart = os.path.join(self.tmp, "no chart")
@@ -774,6 +778,13 @@ class GameToolsTest(unittest.TestCase):
         _write(os.path.join(no_chart, G.SONG_INI), b"[song]\nsong_length = 260504\n")
         self.assertEqual(GT.run_cap_s(no_chart), 240.0)
         self.assertEqual(GT.run_cap_s(None), 240.0)
+
+    def test_the_schedules_run_cap_reads_its_song_end_and_refuses_null(self):
+        schedule = self._schedule_json({**SCHEDULE_JSON, "song_length_ms": 260504})
+        self.assertEqual(GT.schedule_run_cap_s(schedule), (320.504, 260504))
+        null = self._schedule_json({**SCHEDULE_JSON, "song_length_ms": None})
+        with self.assertRaises(hydra_end.SongEndMissing):
+            GT.schedule_run_cap_s(null)
 
     def test_ch_play_chart_with_a_song_folder_passes_the_cap_to_live_play(self):
         seen = []
@@ -783,9 +794,15 @@ class GameToolsTest(unittest.TestCase):
             return play_chart.RunResult(stop="done")
 
         t = ToolRig(self.tmp, live_play=live_play)
-        FAKE.set_end(t.r.chart, 260504)
-        reply = t.tools.ch_play_chart(self._score_json(), self._schedule_json(),song_folder=t.r.song, route="keys")
+        # The schedule's song end sets the cap, not a dump of the folder's
+        # chart, whose fake end differs.
+        FAKE.set_end(t.r.chart, 9999)
+        schedule = self._schedule_json({**SCHEDULE_JSON, "song_length_ms": 260504})
+        dumps_before = len(FAKE.charts)
+        reply = t.tools.ch_play_chart(self._score_json(), schedule, song_folder=t.r.song,
+                                      route="keys")
         t.tools._play.thread.join(THREAD_CAP_S)
+        self.assertEqual(len(FAKE.charts), dumps_before)
         self.assertEqual(seen, [320.504])
         self.assertIn("run cap: 320.504 s", reply.splitlines())
 
@@ -1291,8 +1308,8 @@ class GameToolsTest(unittest.TestCase):
         def __init__(self, events, engine):
             self.events, self.engine = events, engine
 
-        def watch_for_run(self, cap_s, find_engine, song_folder=None):
-            self.events.append(("watch", cap_s, find_engine))
+        def watch_for_run(self, cap_s, find_engine, song_end_ms=None):
+            self.events.append(("watch", cap_s, find_engine, song_end_ms))
             return self.engine, "csv: w.csv" if self.engine else "watcher ended: no song"
 
         def ch_sp_watch_stop(self):
@@ -1364,9 +1381,17 @@ class GameToolsTest(unittest.TestCase):
 
     def test_the_watch_and_the_player_share_the_songs_run_cap(self):
         t, events, seen = self._chain_rig()
-        self._run(t)
-        self.assertEqual(events[2][1], GT.run_cap_s(t.r.song))
-        self.assertEqual(seen["cap_s"], GT.run_cap_s(t.r.song))
+        schedule = self._schedule_json()
+        cap_s, end_ms = GT.schedule_run_cap_s(schedule)
+        dumps_before = len(FAKE.charts)
+        t.tools.ch_run_chart(t.r.song, self._score_json(), schedule, "System")
+        t.tools._play.thread.join(THREAD_CAP_S)
+        # The cap and the watch's song end come from the run's schedule, so
+        # the run makes no dump of its own.
+        self.assertEqual(len(FAKE.charts), dumps_before)
+        self.assertEqual(events[2][1], cap_s)
+        self.assertEqual(events[2][3], end_ms)
+        self.assertEqual(seen["cap_s"], cap_s)
 
     def test_the_search_is_the_auto_players_with_its_dots_kept_off_stdout(self):
         with mock.patch.object(play_chart, "find_normal_engine", return_value=self.ENGINE) as find:
@@ -1653,7 +1678,7 @@ class GameToolsTest(unittest.TestCase):
             return play_chart.RunResult(stop="stopped")
 
         t, events, _seen = self._chain_rig(live_play)
-        with mock.patch.object(GT, "run_cap_s", return_value=0.05):
+        with mock.patch.object(GT, "cap_for_end", return_value=0.05):
             reply = t.tools.ch_run_chart(t.r.song, self._score_json(), self._schedule_json(), "System")
         self.assertIn("no press inside the run cap of 0.05 s; the call stopped the run", reply)
         self.assertEqual(events[-2:], ["teardown", "watch stop"])

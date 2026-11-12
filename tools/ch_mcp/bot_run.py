@@ -394,11 +394,10 @@ def song_length_ms(song_dir: str) -> tuple[float, str]:
             f"{song_dir} has no {' or '.join(install_chart.CHART_FILES)}, so Hydra has no "
             "song end for it; the stats wait has no cap, so nothing was started")
     try:
-        ms, dump = hydra_end.chart_song_length_ms(chart)
+        return hydra_end.chart_song_length_ms(chart)
     except hydra_end.SongEndMissing as e:
         raise SongLengthMissing(
             f"{song_dir}: {e}; the stats wait has no cap, so nothing was started") from e
-    return ms, hydra_end.source_text(dump)
 
 
 def run_cap_s(length_ms: int) -> float:
@@ -733,7 +732,8 @@ def start_run(song_dir: Optional[str], *, player: str = DEFAULT_PLAYER,
               profile: Optional[str] = None, backup_root: str,
               env: Optional[Env] = None,
               before_launch: Optional[Callable[[], None]] = None,
-              human: bool = False) -> Run:
+              human: bool = False,
+              song_end: Optional[tuple[float, str]] = None) -> Run:
     """Back up the user files, then start the game, and return at once. With
     a song folder the game plays it with a bot; a song with no known length
     raises SongLengthMissing before anything is backed up or started. With
@@ -745,7 +745,8 @@ def start_run(song_dir: Optional[str], *, player: str = DEFAULT_PLAYER,
     the backup and before the launch, so a change it makes to the user files
     is undone by the restore. When it or the launch raises, the user files
     are put back before the error goes on, since no run comes back to
-    finish."""
+    finish. `song_end`, when given, is song_length_ms's answer for the
+    folder, already read by the caller, so the chart is not dumped twice."""
     env = env or Env()
     refusal = human_refusal(human, song_dir)
     if refusal is not None:
@@ -755,7 +756,7 @@ def start_run(song_dir: Optional[str], *, player: str = DEFAULT_PLAYER,
         # The game starts in its own folder, so a relative song path would be
         # read from there.
         song_dir = os.path.abspath(song_dir)
-        length_ms, source = song_length_ms(song_dir)
+        length_ms, source = song_end if song_end is not None else song_length_ms(song_dir)
         cap_s = run_cap_s(length_ms)
         if (game_files.song_ini_pro_drums(song_dir)
                 and player.split(",")[0].strip() != PRO_DRUMS_INSTRUMENT):

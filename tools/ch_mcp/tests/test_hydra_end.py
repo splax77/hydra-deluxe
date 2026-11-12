@@ -129,14 +129,49 @@ class HydraEndTest(unittest.TestCase):
         run.assert_called_once_with(prep_inputs.dump_command(
             prep_inputs.DEFAULT_EXE, "C:/songs/x/notes.chart", "C:/out/x-dump.json"))
 
+    def _dump_root(self) -> str:
+        """A fresh, empty folder for chart_song_length_ms's scratch folders."""
+        root = os.path.join(self.tmp, "dumps")
+        os.makedirs(root)
+        patch = mock.patch.object(hydra_end, "DUMP_ROOT", root)
+        patch.start()
+        self.addCleanup(patch.stop)
+        return root
+
     def test_chart_song_length_ms_reads_the_dump_it_made(self):
         chart = os.path.join(self.tmp, "Song", "notes.chart")
         FAKE.set_end(chart, 193934.0)
-        ms, dump = hydra_end.chart_song_length_ms(chart)
+        seen = []
+        real = hydra_end.song_length_ms
+
+        def read(dump):
+            seen.append(dump)
+            return real(dump)
+
+        with mock.patch.object(hydra_end, "song_length_ms", read):
+            ms, source = hydra_end.chart_song_length_ms(chart)
         self.assertEqual(ms, 193934.0)
-        self.assertEqual(os.path.basename(dump), "Song-dump.json")
-        self.assertTrue(os.path.isfile(dump))
-        self.assertEqual(hydra_end.source_text(dump), f"song_length_ms in {os.path.abspath(dump)}")
+        self.assertEqual([os.path.basename(d) for d in seen], ["Song-dump.json"])
+        self.assertEqual(source, hydra_end.chart_source_text(chart))
+        self.assertEqual(source,
+                         f"song_length_ms in a hydra_replay dump of {os.path.abspath(chart)}")
+
+    def test_chart_song_length_ms_leaves_no_scratch_folder_behind(self):
+        root = self._dump_root()
+        chart = os.path.join(self.tmp, "Kept", "notes.chart")
+        FAKE.set_end(chart, 4000.0)
+        hydra_end.chart_song_length_ms(chart)
+        self.assertEqual(os.listdir(root), [])
+        # Nor when the dump fails, or when the dump it made names no end.
+        for name, kwargs in (("Failed", None), ("Null", {"value": None}),
+                             ("Absent", {})):
+            with self.subTest(case=name):
+                failed = os.path.join(self.tmp, name, "notes.chart")
+                if kwargs is not None:
+                    FAKE.set_end(failed, **kwargs)
+                with self.assertRaises(hydra_end.SongEndMissing):
+                    hydra_end.chart_song_length_ms(failed)
+                self.assertEqual(os.listdir(root), [])
 
     def test_a_failed_dump_is_no_song_end_with_hydra_replays_lines(self):
         chart = os.path.join(self.tmp, "Unset", "notes.chart")

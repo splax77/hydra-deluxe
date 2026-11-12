@@ -165,7 +165,7 @@ class SpTools:
     """The six Star Power tools and the watch between them.
 
     `game` is the server's game_tools.GameTools (the tests pass a fake with
-    ensure_backup, session_dir, add_stop_hook and run_cap_s). Every outside
+    ensure_backup, session_dir, add_stop_hook and cap_for_end). Every outside
     seam is an argument, so the tests swap each for a fake: `opener`
     (open_process), `find_engine` (sp_watch's capped engine search), `reader`
     (turns the open process and the engine's address into a snapshot read),
@@ -206,15 +206,17 @@ class SpTools:
             if song_folder is None:
                 cap_s = sp_watch.RUN_CAP_S
                 cap_line = f"run cap: {cap_s:g} s (sp_watch.RUN_CAP_S; no song folder given)"
+                song_end_ms = self._open_run_length_ms()
             else:
+                # One dump of the folder's chart gives the end for both the
+                # cap and the gap line.
                 try:
-                    cap_s = self._game.run_cap_s(song_folder)
-                except (OSError, ValueError, bot_run.SongLengthMissing) as e:
+                    song_end_ms = self._folder_end_ms(song_folder)
+                except (OSError, ValueError) as e:
                     return (f"no watch started: could not pick the run cap for "
                             f"{song_folder}: {type(e).__name__}: {e}")
-            song_end_ms = self._song_end_ms(song_folder)
-            if song_folder is not None:
-                # run_cap_s falls back to the default cap itself when the
+                cap_s = self._game.cap_for_end(song_end_ms)
+                # cap_for_end falls back to the default cap itself when the
                 # folder has no length, so the line says which one it is.
                 cap_line = (f"run cap: {cap_s:g} s (game_tools.run_cap_s for {song_folder})"
                             if song_end_ms is not None else
@@ -230,18 +232,21 @@ class SpTools:
 
     def watch_for_run(self, cap_s: float,
                       find_engine: Callable[[object], int],
-                      song_folder: Optional[str] = None) -> Tuple[Optional[int], str]:
+                      song_end_ms: Optional[float] = None) -> Tuple[Optional[int], str]:
         """Start the watch for game_tools' ch_run_chart with `find_engine` as
         its search, and wait for that search, so the auto-player can use the
         same engine. Returns the engine's address and the CSV's line, or None
         and why the watch failed. The wait ends the moment the search does,
         and the search's own cap ends it; READ_CAP_S covers the scan that
-        cap can run over by. song_folder gives the song's end for the gap line;
-        with none the open run's length is used."""
+        cap can run over by. song_end_ms is the song's end for the gap line,
+        read by the caller from the run's schedule; with none the open run's
+        length is used."""
         with self._lock:
             if self._watch is not None and self._watch.running():
                 return None, WATCH_RUNNING
-            w = self._launch(cap_s, None, find_engine, self._song_end_ms(song_folder))
+            if song_end_ms is None:
+                song_end_ms = self._open_run_length_ms()
+            w = self._launch(cap_s, None, find_engine, song_end_ms)
             cap = engine_finder.ENGINE_SEARCH_CAP_S + READ_CAP_S
             if w.settled.wait(cap) and w.engine is not None and w.error is None:
                 return w.engine, w.csv_line()
@@ -390,15 +395,13 @@ class SpTools:
         (GameTools.song_length_ms)."""
         return self._game.song_length_ms()
 
-    def _song_end_ms(self, song_folder: Optional[str]) -> Optional[float]:
-        """The song's length for a watch given `song_folder`, Hydra's song end
-        through bot_run.song_length_ms, or the open run's with no folder. None when
-        neither says: a watch still runs on a song with no known length."""
-        if song_folder is None:
-            return self._open_run_length_ms()
+    def _folder_end_ms(self, song_folder: str) -> Optional[float]:
+        """Hydra's song end for the song in `song_folder`, through
+        bot_run.song_length_ms (one dump of its chart). None when Hydra names
+        no end: a watch still runs on a song with no known length."""
         try:
             return bot_run.song_length_ms(song_folder)[0]
-        except (OSError, ValueError, bot_run.SongLengthMissing):
+        except bot_run.SongLengthMissing:
             return None
 
     def _launch(self, cap_s: float, out: Optional[str],

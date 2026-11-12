@@ -4,9 +4,10 @@ Hydra has one song end, app::song_length_ms (D255), and hydra_replay writes
 it into every dump and schedule as the top-level `song_length_ms` field
 (tools/replay.cpp). song_length_ms below reads that field and refuses a file
 that lacks it or holds null, so no tool falls back on a length of its own.
-A tool that has a chart and no dump gets one through chart_song_length_ms,
-which runs `hydra_replay dump` through prep_inputs' runner (the player audit
-fix plan's question 3, D324).
+A tool that holds the run's schedule or dump reads the end from that file.
+A tool that has only a chart gets a dump through chart_song_length_ms, which
+runs `hydra_replay dump` through prep_inputs' runner (the player audit fix
+plan's question 3, D324) and removes the dump once the end is read.
 """
 
 from __future__ import annotations
@@ -61,19 +62,21 @@ def make_dump(chart: str, dump: str) -> None:
 
 
 def chart_song_length_ms(chart: str) -> tuple[float, str]:
-    """Hydra's song end for the chart file `chart`, and the dump it was read
-    from: make_dump writes the dump into a new scratch folder, then
-    song_length_ms reads it. Raises SongEndMissing, with hydra_replay's own
-    lines when the dump could not be made."""
-    folder = tempfile.mkdtemp(prefix=DUMP_FOLDER_PREFIX, dir=DUMP_ROOT)
-    dump = prep_inputs.file_names(chart, folder)[0]
-    try:
-        make_dump(chart, dump)
-    except prep_inputs.ReplayFailed as e:
-        raise SongEndMissing(f"no dump of {chart}, so no song end: {e}") from e
-    return song_length_ms(dump), dump
+    """Hydra's song end for the chart file `chart`, and where it came from
+    (chart_source_text): make_dump writes the dump into a new scratch folder,
+    song_length_ms reads it, and the folder is removed, whether or not the
+    read worked. Raises SongEndMissing, with hydra_replay's own lines when
+    the dump could not be made."""
+    with tempfile.TemporaryDirectory(prefix=DUMP_FOLDER_PREFIX, dir=DUMP_ROOT) as folder:
+        dump = prep_inputs.file_names(chart, folder)[0]
+        try:
+            make_dump(chart, dump)
+        except prep_inputs.ReplayFailed as e:
+            raise SongEndMissing(f"no dump of {chart}, so no song end: {e}") from e
+        return song_length_ms(dump), chart_source_text(chart)
 
 
-def source_text(dump: str) -> str:
-    """Where a length read by chart_song_length_ms came from, for a reply line."""
-    return f"{FIELD} in {os.path.abspath(dump)}"
+def chart_source_text(chart: str) -> str:
+    """Where a length read by chart_song_length_ms came from, for a reply
+    line. It names the chart, because the dump is gone by then."""
+    return f"{FIELD} in a hydra_replay dump of {os.path.abspath(chart)}"

@@ -30,6 +30,7 @@ from tools.ch_mcp import bot_run as B  # noqa: E402
 from tools.ch_mcp import build_stamp as BS  # noqa: E402
 from tools.ch_mcp import frida_attach as FA  # noqa: E402
 from tools.ch_mcp import game_files as G  # noqa: E402
+from tools.ch_mcp import hydra_end  # noqa: E402
 from tools.ch_mcp import install_chart as I  # noqa: E402
 from tools.ch_mcp.tests.test_build_stamp import make_built_agent  # noqa: E402
 from tools.ch_mcp.tests.test_game_files import FakeReg  # noqa: E402
@@ -290,8 +291,7 @@ class BotRunTest(unittest.TestCase):
         ms, source = B.song_length_ms(r.song)
         self.assertEqual(ms, 193934.0)
         self.assertEqual(FAKE.charts[-1], r.chart)
-        self.assertTrue(source.startswith("song_length_ms in "), source)
-        self.assertTrue(source.endswith(f"{probe_songs.WINDOW_MAP}-dump.json"), source)
+        self.assertEqual(source, hydra_end.chart_source_text(r.chart))
 
     def test_no_length_anywhere_starts_nothing(self):
         # A dump whose song_length_ms is null: Hydra names no end.
@@ -353,7 +353,7 @@ class RunStepsTest(unittest.TestCase):
         self.assertEqual(run.launched_at, 0.0)
         self.assertEqual(run.length_ms, SONG_LENGTH_MS)
         self.assertEqual(run.cap_s, 64)
-        self.assertTrue(run.length_source.startswith("song_length_ms in "), run.length_source)
+        self.assertEqual(run.length_source, hydra_end.chart_source_text(r.chart))
         self.assertEqual(len(r.lines), 3)
         self.assertEqual(r.lines[0], f"backup folder: {r.backup_dir()}")
         self.assertTrue(r.lines[1].startswith("starting: "))
@@ -373,6 +373,15 @@ class RunStepsTest(unittest.TestCase):
         self.assertEqual(run.length_ms, 260504)
         self.assertEqual(run.cap_s, 320.504)
         self.assertEqual(run.cap_s, B.run_cap_s(run.length_ms))
+
+    def test_start_run_takes_a_song_end_already_read_without_a_dump(self):
+        r = Rig(self.tmp, exits_at=None, length_ms=260504)
+        dumps_before = len(FAKE.charts)
+        run = B.start_run(r.song, backup_root=os.path.join(r.out_dir, "backups"), env=r.env,
+                          song_end=(4000.0, "given"))
+        self.assertEqual(len(FAKE.charts), dumps_before)
+        self.assertEqual((run.length_ms, run.length_source), (4000.0, "given"))
+        self.assertEqual(run.cap_s, B.run_cap_s(4000.0))
 
     def test_start_run_with_no_song_launches_the_bare_exe_after_a_backup(self):
         r = Rig(self.tmp, exits_at=None)

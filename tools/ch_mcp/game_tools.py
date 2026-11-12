@@ -29,8 +29,8 @@ import time
 from typing import Any, Callable, List, Optional, Sequence, Tuple, Union
 
 from tools.ch_mcp import (
-    bot_run, build_stamp, compare_scorestats, foreground, game_files, install_chart, quiet,
-    recorder_link)
+    bot_run, build_stamp, compare_scorestats, foreground, game_files, hydra_end, install_chart,
+    quiet, recorder_link)
 from tools.ch_mcp.frida_tools import AGENT_DIR, READ_CAP_S, STATE_AGENT_FILE, StateUnread
 from tools.ch_probe import constants as C
 from tools.ch_probe import engine_finder
@@ -159,18 +159,37 @@ def split_keys(keys: str) -> List[str]:
     return items
 
 
-def run_cap_s(song_folder: Optional[str]) -> float:
-    """The wall-time cap for a run of the song in `song_folder`:
-    bot_run.run_cap_s of Hydra's song end for it (bot_run.song_length_ms,
-    which reads it through hydra_end), or play_chart.RUN_CAP_S when no folder
-    is given or Hydra names no end for it."""
+def cap_for_end(length_ms: Optional[float]) -> float:
+    """The wall-time cap for a run of a song whose Hydra song end is
+    `length_ms`: bot_run.run_cap_s of it, or play_chart.RUN_CAP_S when no end
+    is known. Every run cap the server picks comes through here."""
+    return play_chart.RUN_CAP_S if length_ms is None else bot_run.run_cap_s(length_ms)
+
+
+def folder_end(song_folder: Optional[str]) -> Optional[Tuple[float, str]]:
+    """bot_run.song_length_ms for `song_folder` (one hydra_replay dump of its
+    chart), or None when no folder is given or Hydra names no end for it."""
     if song_folder is None:
-        return play_chart.RUN_CAP_S
+        return None
     try:
-        length_ms, _source = bot_run.song_length_ms(song_folder)
+        return bot_run.song_length_ms(song_folder)
     except bot_run.SongLengthMissing:
-        return play_chart.RUN_CAP_S
-    return bot_run.run_cap_s(length_ms)
+        return None
+
+
+def run_cap_s(song_folder: Optional[str]) -> float:
+    """cap_for_end of Hydra's song end for the song in `song_folder`
+    (folder_end), for a caller that holds no schedule or dump of the song."""
+    end = folder_end(song_folder)
+    return cap_for_end(None if end is None else end[0])
+
+
+def schedule_run_cap_s(schedule_json: str) -> Tuple[float, float]:
+    """cap_for_end of the song end the run's schedule holds, read through
+    hydra_end.song_length_ms with no new dump, and that end. Raises
+    hydra_end.SongEndMissing (a ValueError) when the schedule names none."""
+    end_ms = hydra_end.song_length_ms(schedule_json)
+    return cap_for_end(end_ms), end_ms
 
 
 def find_run_engine(proc) -> int:
@@ -668,9 +687,9 @@ class GameTools:
         with self._lock:
             return self._scratch if self._scratch is not None else self._new_scratch()
 
-    def run_cap_s(self, song_folder: Optional[str]) -> float:
-        """The module's run_cap_s, for callers that hold only this object."""
-        return run_cap_s(song_folder)
+    def cap_for_end(self, length_ms: Optional[float]) -> float:
+        """The module's cap_for_end, for callers that hold only this object."""
+        return cap_for_end(length_ms)
 
     def open_lines(self) -> List[str]:
         """What the game side holds open, one line each: the run with its
@@ -753,7 +772,17 @@ class GameTools:
             scratch = self._new_scratch()
             in_scratch = set(os.listdir(scratch))
             env = self._env_into(lines)
-            self._start_recorder(scratch, song_folder, lines)
+            # One dump of the song's chart serves the recorder's cap and the
+            # run's; a song with no end is refused by start_run below, in its
+            # own place, so the reply keeps its order.
+            song_end: Union[None, Tuple[float, str], bot_run.SongLengthMissing] = None
+            if song_folder is not None:
+                try:
+                    song_end = bot_run.song_length_ms(os.path.abspath(song_folder))
+                except bot_run.SongLengthMissing as e:
+                    song_end = e
+            self._start_recorder(scratch, cap_for_end(
+                song_end[0] if isinstance(song_end, tuple) else None), lines)
 
             def before_launch() -> None:
                 # start_run takes the backup and launches in one call, so this
@@ -764,9 +793,12 @@ class GameTools:
 
             try:
                 try:
+                    if isinstance(song_end, bot_run.SongLengthMissing):
+                        raise song_end
                     run = bot_run.start_run(song_folder, player=player, profile=profile,
                                             backup_root=scratch, env=env,
-                                            before_launch=before_launch, human=human)
+                                            before_launch=before_launch, human=human,
+                                            song_end=song_end)
                 except BaseException:
                     self._stop_recorder(lines)
                     self._settle_failed_start(lines)
@@ -1062,8 +1094,9 @@ class GameTools:
         whose score JSON is `score_json`; ch_compare checks a run against that
         score. `log`, when given, is where the press log
         is written, row by row as the run goes; a relative path goes in the
-        session folder. `song_folder`, when given, sets the run cap through
-        run_cap_s; with none the run keeps live_play's own cap. `route` is ROUTE_KIT
+        session folder. `song_folder`, when given, sets the run cap from the
+        schedule's song end (schedule_run_cap_s); with none the run keeps
+        live_play's own cap. `route` is ROUTE_KIT
         (presses through the virtual kit inside the game) or ROUTE_KEYS (keys
         to the focused window); None means the kit, and is refused until the
         kit is set up, so no run takes the keyboard unless asked to.
@@ -1094,13 +1127,13 @@ class GameTools:
                 if refusal is not None:
                     return refusal
                 chords, plan_lines = chords_to_play(schedule_json)
-            except ChordsRefused as e:
+                cap_s = None if song_folder is None else schedule_run_cap_s(schedule_json)[0]
+            except (ChordsRefused, hydra_end.SongEndMissing) as e:
                 return str(e)
             lines = [line for line in (self.ensure_backup(),) if line]
             log_path = None
             if log:
                 log_path = log if os.path.isabs(log) else os.path.join(self.session_dir(), log)
-            cap_s = None if song_folder is None else run_cap_s(song_folder)
             self._start_play(_PlaySession(score_json=score_json, chord_count=len(chords),
                                           log_path=log_path, cap_s=cap_s, press=press), chords)
             lines.append(f"play session started: {len(chords)} chords from {score_json}")
@@ -1159,7 +1192,7 @@ class GameTools:
                     return (f"refused: song_folder {song_folder} is not the folder of the "
                             f"schedule's chart, {chart_folder}; nothing started")
                 chords, plan_lines = chords_to_play(schedule_json)
-                cap_s = run_cap_s(song_folder)
+                cap_s, song_end_ms = schedule_run_cap_s(schedule_json)
             except ChordsRefused as e:
                 return str(e)
             except (OSError, ValueError) as e:
@@ -1202,7 +1235,7 @@ class GameTools:
             lines.append(f"kit setup: ok, {self._seconds_since(began)}")
 
             began = self._env.now()
-            engine, text = parts.sp.watch_for_run(cap_s, find_run_engine, song_folder)
+            engine, text = parts.sp.watch_for_run(cap_s, find_run_engine, song_end_ms)
             if engine is None:
                 return self._run_stopped(lines, "watch", began, text,
                                          parts.kit.ch_kit_teardown())
@@ -1246,8 +1279,8 @@ class GameTools:
         `probes_json` names is pressed at the lead it gives (positive early,
         negative late), with no window check, and its press row is marked in
         edge_probe.PROBE_COLUMN. A probe chord edge_probe.probe_chords
-        refuses is refused before anything runs. `song_folder`
-        sets the run cap through run_cap_s. The press rows go to a
+        refuses is refused before anything runs. The run cap comes from
+        the schedule's song end (schedule_run_cap_s). The press rows go to a
         press-<n>.csv in the session folder as they happen. Needs
         ch_kit_setup, as ch_play_chart's kit route does."""
         with self._lock:
@@ -1258,7 +1291,7 @@ class GameTools:
                 return "refused: the kit is not set up; call ch_kit_setup first"
             try:
                 chords, plan_lines = chords_to_play(schedule_json)
-                cap_s = run_cap_s(song_folder)
+                cap_s = schedule_run_cap_s(schedule_json)[0]
             except ChordsRefused as e:
                 return str(e)
             except (OSError, ValueError) as e:
@@ -1348,13 +1381,13 @@ class GameTools:
 
     # -- the machine recorder ---------------------------------------------------------
 
-    def _start_recorder(self, scratch: str, song_folder: Optional[str],
-                        lines: List[str]) -> None:
-        """Start the recorder, with no wait, and name the pids the report needs
-        to find the worker and the py launcher behind it. A recorder that does
-        not start is one line, and the run goes on."""
+    def _start_recorder(self, scratch: str, cap_s: float, lines: List[str]) -> None:
+        """Start the recorder, with no wait, on the run's cap `cap_s`, and name
+        the pids the report needs to find the worker and the py launcher
+        behind it. A recorder that does not start is one line, and the run
+        goes on."""
         try:
-            lines.extend(self._recorder.start(scratch, os.getpid(), run_cap_s(song_folder)))
+            lines.extend(self._recorder.start(scratch, os.getpid(), cap_s))
         except Exception as e:  # a run never fails for its recording
             lines.append(recorder_link.start_failed_line(e))
         lines.append(f"worker pid {os.getpid()}, its parent pid {os.getppid()}")

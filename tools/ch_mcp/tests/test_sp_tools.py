@@ -114,8 +114,8 @@ class FakeGame:
     def add_stop_hook(self, hook):
         self.hooks.append(hook)
 
-    def run_cap_s(self, song_folder):
-        self.cap_calls.append(song_folder)
+    def cap_for_end(self, length_ms):
+        self.cap_calls.append(length_ms)
         return 240.0
 
 
@@ -276,11 +276,15 @@ class SpToolsTest(unittest.TestCase):
         song_with_end(folder, 4000)
         script = Script([snap_at(1.0)])
         tools = self.tools(script)
+        dumps_before = len(FAKE.charts)
         reply = self.started(tools, song_folder=folder)
         self.assertIn(f"run cap: 240 s (game_tools.run_cap_s for {folder})", reply)
         self.assertTrue(script.done.wait(WAIT_S))
         tools.ch_sp_watch_stop()
-        self.assertEqual(self.game.cap_calls, [folder])
+        # One dump of the folder's chart gives both the cap and the gap
+        # line's end.
+        self.assertEqual(len(FAKE.charts), dumps_before + 1)
+        self.assertEqual(self.game.cap_calls, [4000])
         self.assertEqual(self.watch_kw["cap_s"], 240.0)
 
     def test_no_song_folder_takes_the_watcher_cap(self):
@@ -577,14 +581,14 @@ class SpToolsTest(unittest.TestCase):
                          "gaps over 50 ms between samples: 1, longest 60 ms, "
                          "between 3900.0 ms and 3960.0 ms")
 
-    def test_ch_run_charts_watch_takes_the_song_end_from_the_folder_it_was_given(self):
-        # ch_start with no song, then ch_run_chart(song_folder): no open-run length.
-        folder = os.path.join(self.tmp.name, 'song2')
-        os.makedirs(folder)
-        song_with_end(folder, 4000)
+    def test_ch_run_charts_watch_takes_the_song_end_it_was_given(self):
+        # ch_start with no song, then ch_run_chart: no open-run length, and
+        # the end comes from the run's schedule, with no dump.
         script = Script([snap_at(1.0)])
         tools = self.tools(script)
-        engine_ptr, _text = tools.watch_for_run(5.0, lambda proc: ENGINE, folder)
+        dumps_before = len(FAKE.charts)
+        engine_ptr, _text = tools.watch_for_run(5.0, lambda proc: ENGINE, 4000.0)
+        self.assertEqual(len(FAKE.charts), dumps_before)
         self.assertEqual(engine_ptr, ENGINE)
         self.assertTrue(script.done.wait(WAIT_S))
         tools.ch_sp_watch_stop()
