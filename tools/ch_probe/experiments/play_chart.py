@@ -875,7 +875,16 @@ def play_in_game(chords: Sequence[Chord], player, *, clock_addr: int, score_addr
     "lost". A stop event's `cause` and `lift_error` go in the run's message,
     and a "done" that carries either ends as "reply". `should_stop` is asked
     while no event comes, and a True sends `stop_play`. A `retime_missed`
-    note is named in the run's message."""
+    note is named in the run's message.
+
+    A retime the agent refuses after its play has ended (the end read was
+    slow, so the agent's stop is already queued) changes nothing the agent
+    plays: the run reads the queued events as the agent sent them, ends with
+    the stop word their stop gives, and names the refused retime in the
+    run's message. Any other failure of a retime's post ends the run as
+    "reply"."""
+    from collections import deque
+    from tools.ch_mcp import frida_attach as FA
     from tools.ch_mcp import kit_tools as K
     out = sys.stdout if out is None else out
     chord_lanes = {c.index: c.lanes for c in chords}
@@ -905,8 +914,24 @@ def play_in_game(chords: Sequence[Chord], player, *, clock_addr: int, score_addr
     result = RunResult()
     reported: set = set()
     missed: List[int] = []
+    # Why each refused retime of a play that had ended was refused.
+    refused: List[str] = []
+    # Events taken off player.events to look for the agent's stop, read
+    # before any new one.
+    backlog: deque = deque()
     last_score: Optional[int] = None
     stopping_since: Optional[float] = None
+
+    def play_ended() -> bool:
+        # The agent sends its stop before it answers any later message, and
+        # Frida hands both over in that order, so when a retime is refused
+        # because the play ended, its stop is already queued.
+        while True:
+            try:
+                backlog.append(player.events.get_nowait())
+            except queue.Empty:
+                break
+        return any(isinstance(e, dict) and e.get("kind") == K.EVENT_STOP for e in backlog)
 
     def fail(stop: str, message: str) -> RunResult:
         try:
@@ -919,7 +944,8 @@ def play_in_game(chords: Sequence[Chord], player, *, clock_addr: int, score_addr
 
     while True:
         try:
-            event = player.events.get(timeout=K.KIT_EVENT_WAIT_S)
+            event = (backlog.popleft() if backlog
+                     else player.events.get(timeout=K.KIT_EVENT_WAIT_S))
         except queue.Empty:
             if not player.alive():
                 result.stop, result.message = "lost", "lost the kit agent's session"
@@ -953,6 +979,7 @@ def play_in_game(chords: Sequence[Chord], player, *, clock_addr: int, score_addr
                 by_seq = start()
                 every_seq.update(by_seq)
                 result, reported, missed, last_score = RunResult(), set(), [], None
+                refused = []
                 continue
             words = {K.STOP_REASON_DONE: STOP_DONE, K.STOP_REASON_PAST_END: "past_end",
                      K.STOP_REASON_STOPPED: "stopped", K.STOP_REASON_CAP: "cap",
@@ -983,6 +1010,7 @@ def play_in_game(chords: Sequence[Chord], player, *, clock_addr: int, score_addr
                 notes.append(f"{K.NOTE_RETIME_MISSED} on chords "
                              f"{', '.join(str(every_seq[s].index) for s in missed)}: each fired "
                              f"at its planned time before its retime arrived")
+            notes.extend(refused)
             result.message = "; ".join(notes)
             return result
         if kind == K.EVENT_ERROR:
@@ -1035,6 +1063,7 @@ def play_in_game(chords: Sequence[Chord], player, *, clock_addr: int, score_addr
         last_score = row["score_after"]
         if note == K.NOTE_RETIME_MISSED:
             missed.append(seq)
+        post_failure: Optional[str] = None
         if part.planned_end_ms is not None and read_sp_end is not None and not dropped:
             # Every end read posts a retime of every entry not yet reported,
             # even one that moves nothing: the agent replaces its whole set
@@ -1050,13 +1079,29 @@ def play_in_game(chords: Sequence[Chord], player, *, clock_addr: int, score_addr
                 row["end_read_ms"] = C.s_to_ms(end_s)
                 moved = retime_from_end(rest, part.index, row["end_read_ms"], chord_lanes)
             entries = entries_for(moved, [p for s, p in by_seq.items() if s in reported])
+            played_by_seq, played_every_seq = by_seq, dict(every_seq)
             by_seq = {s: p for s, p in by_seq.items() if s in reported}
             by_seq.update({p.seq: p for p in moved})
             every_seq.update({p.seq: p for p in moved})
-            player.post(K.retime_message(part.index, entries))
+            try:
+                player.post(K.retime_message(part.index, entries))
+            except Exception as e:  # each failure is said in the run's message
+                if (isinstance(e, FA.ReadFailed) and e.reason == FA.END_AGENT_ERROR
+                        and play_ended()):
+                    # The agent's play ended on the presses as they were, so
+                    # the rows still queued are made from those.
+                    by_seq, every_seq = played_by_seq, played_every_seq
+                    refused.append(f"the retime after chord {part.index}'s end read was "
+                                   f"refused because the kit agent's play had already "
+                                   f"ended: {e}")
+                else:
+                    post_failure = (f"the retime after chord {part.index}'s end read "
+                                    f"failed: {e}")
         result.rows.append(row)
         if on_press is not None:
             on_press(row)
+        if post_failure is not None:
+            return fail("reply", post_failure)
         if send != SENT or result.sent <= 30 or result.sent % 20 == 0 or row["agent_note"]:
             print(f"  {result.sent:4d}  {C.ms_to_s(part.chart_ms):7.2f}  "
                   f"{C.ms_to_s(row['clock_ms_at_press']):7.2f}  {send:8} {note}",
