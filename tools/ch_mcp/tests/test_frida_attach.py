@@ -1257,6 +1257,8 @@ class KitPlayHookTest(unittest.TestCase):
         # press_schedule.ts's PlayConfig comes from it.
         self.assertIn("new PressSchedule(m as unknown as PlayConfig,", block)
         self.assertIn('needAbove0(m, "stall_ms")', block)
+        # A stall is the scheduler's "frozen" stop word, so Python maps it.
+        self.assertIn('`no frame came for ${quiet} ms`, "frozen")', block)
 
     def test_a_number_of_its_own_fails(self):
         self.assertEqual(own_number_findings("const HOLD = 2;\nif (a > 0) {}\n// 3 frames\n"),

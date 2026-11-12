@@ -1091,7 +1091,7 @@ function onPlayFrame(p: Play): void {
 
 // Does one Step's releases and writes, then sends its events as one batch. A
 // Step that ends the play, and a write that fails, go to endPlay.
-function applyStep(p: Play, s: Step, cause: string | null): void {
+function applyStep(p: Play, s: Step, cause: string | null, reason: string | null = null): void {
     let why = cause;
     let events = s.events;
     try {
@@ -1108,7 +1108,7 @@ function applyStep(p: Play, s: Step, cause: string | null): void {
         why = `${why === null ? "" : `${why}; and `}a kit write failed: ${e}`;
     }
     if (p.schedule.stopReason !== null) {
-        endPlay(p, events, why);
+        endPlay(p, events, why, reason);
     } else if (events.length !== 0) {
         send({ type: PLAY_EVENTS, events });
     }
@@ -1118,8 +1118,9 @@ function applyStep(p: Play, s: Step, cause: string | null): void {
 // then the last events go, the stop among them. The stop event also carries
 // `cause`, null when the scheduler or stop_play stopped the play, else what
 // stopped it from outside the scheduler, and `lift_error`, null unless
-// unhook failed.
-function endPlay(p: Play, events: object[], cause: string | null): void {
+// unhook failed. `reason`, when given, replaces the stop event's reason: the
+// stall timer's stop is the scheduler's "frozen", not its "stopped".
+function endPlay(p: Play, events: object[], cause: string | null, reason: string | null): void {
     play = null;
     if (p.timer !== null) {
         clearTimeout(p.timer);
@@ -1133,7 +1134,8 @@ function endPlay(p: Play, events: object[], cause: string | null): void {
     }
     const out = events.map((e) => {
         const ev = e as { [key: string]: unknown };
-        return ev.kind === "stop" ? { ...ev, cause, lift_error: liftError } : ev;
+        return ev.kind === "stop"
+            ? { ...ev, ...(reason === null ? {} : { reason }), cause, lift_error: liftError } : ev;
     });
     send({ type: PLAY_EVENTS, events: out });
 }
@@ -1152,7 +1154,7 @@ function armStallTimer(p: Play, waitMs: number): void {
             const now = Date.now();
             const quiet = now - p.lastFrameWall;
             if (quiet >= p.stallMs) {
-                applyStep(p, p.schedule.stop(now), `no frame came for ${quiet} ms`);
+                applyStep(p, p.schedule.stop(now), `no frame came for ${quiet} ms`, "frozen");
             } else {
                 armStallTimer(p, p.stallMs - quiet);
             }
