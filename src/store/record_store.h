@@ -26,6 +26,7 @@
 #ifndef HYDRA_STORE_RECORD_STORE_H
 #define HYDRA_STORE_RECORD_STORE_H
 
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <mutex>
@@ -430,6 +431,14 @@ using RowsReadFn = std::function<bool(int64_t rows_read)>;
 // RecordStore::chart_index.
 enum class LibraryOrder { ByName, Unsorted };
 
+// How many threads the library's open works on at once, the calling thread
+// included: it does the first share and 7 helpers do the rest. Both
+// threaded steps of the open use it: RecordStore::list_chart_library's whole
+// unsorted read, and ui::LibraryModel::set_charts' row build. The count is
+// the user's ruling "8 threads" (docs/agents/rulings/code-and-engine.md);
+// hydra_bench --open counts threads the same way.
+inline constexpr size_t kLibraryOpenThreads = 8;
+
 // ---- the store's own statement and row readers ------------------------------
 // RecordStore compiles, steps and reads its rows through these. They are
 // declared here so hydra_bench's --open mode can build the same row objects
@@ -646,10 +655,23 @@ public:
     // scan that read it wrote; rows an older scan wrote carry none. `on_row`,
     // when set, is told each row as it is read (RowsReadFn); empty for a
     // caller with nothing to show.
+    //
+    // The whole library unsorted (offset 0, no limit) from a file reads on
+    // kLibraryOpenThreads threads, one read-only connection each
+    // (read_chart_library_on_threads). on_row is then told from the calling
+    // thread only, with the rows every thread has read so far: the count
+    // only goes up and reaches the row count once. A connection that fails
+    // to open fails the whole read with ErrorKind::DatabaseRead and returns
+    // no rows.
     int64_t chart_library_count();
     std::vector<ChartLibraryEntry> list_chart_library(int offset, int limit,
                                                       const RowsReadFn& on_row = {},
                                                       LibraryOrder order = LibraryOrder::ByName);
+    // Test seam: the next threaded chart list read fails to open its
+    // `nth` reader connection (1 = the first), as an open that fails does.
+    void fail_chart_list_reader_open_for_test(int nth) {
+        fail_chart_list_reader_open_for_test_ = nth;
+    }
     // Whether the library's rows came from a scan whose readers are no longer
     // current, so a new scan would read something the last one did not.
     // kChartMetaStamp owns which stamps count as current. An empty library is
@@ -683,6 +705,16 @@ private:
     // statement is compiled, stepped, reset and finalized with the lock held,
     // because all four are sqlite calls.
     std::recursive_mutex mutex_;
+    // list_chart_library's threaded read of the file at `path`: `shares`
+    // rowid ranges up to `max_rowid`, each on its own read-only connection,
+    // joined in share order. Called with the lock held, so the store's own
+    // connection stays open while the others first read the file.
+    std::vector<ChartLibraryEntry> read_chart_library_on_threads(const std::string& path,
+                                                                 int64_t max_rowid, size_t shares,
+                                                                 bool timing_read,
+                                                                 const RowsReadFn& on_row);
+    // What fail_chart_list_reader_open_for_test set; 0 when nothing is forced.
+    int fail_chart_list_reader_open_for_test_ = 0;
     // Compiled statements kept for reuse, keyed by their SQL, so the save
     // path compiles each statement once per connection. Used and reset under
     // the lock; close() finalizes them before the connection closes.
