@@ -10,10 +10,16 @@
 
 namespace hydra {
 
+// Which chart reader a text event came from. Clone Hero's .mid and .chart
+// readers do not test a section text the same way; section_names.cpp holds
+// the difference.
+enum class SectionReader { Mid, Chart };
+
 // True when a text event's body (the part inside the brackets, or the quoted
-// part of a .chart "E" line) marks a practice section. The two spellings it
-// accepts live in section_names.cpp, beside section_display_name.
-bool is_section_marker(std::string_view marker_body);
+// part of a .chart "E" line) marks a practice section, for the reader that
+// found it. The spellings it accepts live in section_names.cpp, beside
+// section_display_name.
+bool is_section_marker(std::string_view marker_body, SectionReader reader);
 
 // The shown name of a practice-section marker, from the whole marker body
 // (prefix included). This is the one place that answers it; both readers in

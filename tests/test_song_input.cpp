@@ -62,6 +62,24 @@ TEST_CASE(".mid: practice sections come from the first EVENTS track only, and th
     CHECK(app::build_time_box(scene, 2083.4, 3000.0).section_line == "Section Chorus");
 }
 
+// Block CR-24 on docs/clone-hero/01-reading-a-chart.md: the game's .mid reader
+// makes no section from "[section _ENDOFSONG]", so the time box keeps naming
+// the section before it.
+TEST_CASE(".mid: after [section _ENDOFSONG] the time box still names the section before it") {
+    using namespace testmidi;
+    const Song song = load_songbytes_mid(
+        smf_tracks({concat({set_tempo(), end_of_track()}),
+                    concat({track_name("PART DRUMS"), note_on(96, 100), end_of_track()}),
+                    concat({track_name("EVENTS"), text_event("[section Intro]"),
+                            after(1920, text_event("[section _ENDOFSONG]")), end_of_track()})}),
+        ChartReading{});
+    const app::PreviewScene scene = app::build_preview_scene(song, nullptr);
+    REQUIRE(scene.sections.size() == 1);
+    // At 120 BPM and 480 ticks a beat, tick 2000 is 2083.33 ms, past the
+    // vetoed text at tick 1920.
+    CHECK(app::build_time_box(scene, 2083.4, 3000.0).section_line == "Section Intro");
+}
+
 // D252: Clone Hero plays a drum track named "PART DRUM" (is_drums_track_name
 // in parse/midi.h), so Hydra reads it instead of failing with no notes.
 TEST_CASE(".mid: a drum track named PART DRUM reads the same Expert notes as PART DRUMS") {

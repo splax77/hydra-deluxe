@@ -16,7 +16,7 @@
         "*name = body.substr(4);"
       ],
       "must_not_match": [
-        "if (!is_section_marker(body)) return false;",
+        "if (!is_section_marker(body, reader)) return false;",
         "*name = section_display_name(body);",
         "if (section_name_of(std::string_view(s).substr(1, s.size() - 2), &name))",
         "const std::string top = rel.substr(0, rel.find('/'));"
@@ -24,8 +24,13 @@
       "owner_lines": [
         {
           "file": "src/parse/section_names.cpp",
-          "line_text": "if (body.rfind(\"section \", 0) == 0) return body.substr(8);",
-          "why": "marker_name, which section_display_name and is_section_marker call: the Clone Hero spelling"
+          "line_text": "if (body.rfind(\"section \", 0) == 0) {",
+          "why": "marker_name, which section_display_name and is_section_marker call: the Clone Hero spelling's test"
+        },
+        {
+          "file": "src/parse/section_names.cpp",
+          "line_text": "return body.substr(8);",
+          "why": "marker_name, which section_display_name and is_section_marker call: the Clone Hero spelling's name, after the .mid reader's veto"
         },
         {
           "file": "src/parse/section_names.cpp",

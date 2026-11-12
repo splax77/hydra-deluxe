@@ -58,12 +58,31 @@ TEST_CASE("section names: an unlisted marker shows its name with spaces for unde
 }
 
 TEST_CASE("section names: only the two prefixes mark a section") {
-    CHECK(is_section_marker("section Intro"));
-    CHECK(is_section_marker("prc_verse_1"));
-    CHECK(is_section_marker("section "));
-    CHECK(is_section_marker("prc_"));
-    CHECK_FALSE(is_section_marker("Section Intro"));
-    CHECK_FALSE(is_section_marker("sectionIntro"));
-    CHECK_FALSE(is_section_marker("lighting (chase)"));
-    CHECK_FALSE(is_section_marker(""));
+    for (const SectionReader reader : {SectionReader::Mid, SectionReader::Chart}) {
+        INFO("reader " << (reader == SectionReader::Mid ? ".mid" : ".chart"));
+        CHECK(is_section_marker("section Intro", reader));
+        CHECK(is_section_marker("prc_verse_1", reader));
+        CHECK(is_section_marker("section ", reader));
+        CHECK(is_section_marker("prc_", reader));
+        CHECK_FALSE(is_section_marker("Section Intro", reader));
+        CHECK_FALSE(is_section_marker("sectionIntro", reader));
+        CHECK_FALSE(is_section_marker("lighting (chase)", reader));
+        CHECK_FALSE(is_section_marker("", reader));
+    }
+}
+
+// Block CR-24 on docs/clone-hero/01-reading-a-chart.md: the game's .mid reader
+// drops a section text holding _ENDOFSONG, case counting, on its "[section"
+// path only. Its .chart reader has no such test.
+TEST_CASE("section names: the .mid reader drops a section body holding _ENDOFSONG") {
+    CHECK_FALSE(is_section_marker("section _ENDOFSONG", SectionReader::Mid));
+    CHECK_FALSE(is_section_marker("section Outro_ENDOFSONG_x", SectionReader::Mid));
+    // Case counts: the lower-case spelling is an ordinary section.
+    CHECK(is_section_marker("section _endofsong", SectionReader::Mid));
+    // The Rock Band spelling never meets the veto.
+    CHECK(is_section_marker("prc__ENDOFSONG", SectionReader::Mid));
+    // The .chart reader keeps it.
+    CHECK(is_section_marker("section _ENDOFSONG", SectionReader::Chart));
+    // The shown name is the same whichever reader asks.
+    CHECK(section_display_name("section _ENDOFSONG") == " ENDOFSONG");
 }

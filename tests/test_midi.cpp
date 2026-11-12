@@ -661,6 +661,57 @@ TEST_CASE("midi: of two events tracks, only the first one's sections count") {
     CHECK(song.practice_sections[0].name == "First");
 }
 
+// Block CR-24 on docs/clone-hero/01-reading-a-chart.md: the game's .mid reader
+// makes no section from a "[section" text that holds _ENDOFSONG anywhere.
+namespace {
+
+// A .mid whose events track holds "[section Intro]" at tick 0 and `second` at
+// tick 960.
+std::vector<uint8_t> two_section_mid(const std::string& second) {
+    using namespace testmidi;
+    return smf_tracks({
+        concat({set_tempo(), end_of_track()}),
+        concat({track_name("PART DRUMS"), note_on(96, 100), end_of_track()}),
+        concat({track_name("EVENTS"), text_event("[section Intro]"),
+                after(960, text_event(second)), end_of_track()}),
+    });
+}
+
+}  // namespace
+
+TEST_CASE("midi: [section _ENDOFSONG] is not a section") {
+    const hydra::Song song =
+        hydra::load_songbytes_mid(two_section_mid("[section _ENDOFSONG]"), hydra::ChartReading{});
+    REQUIRE(song.practice_sections.size() == 1);
+    CHECK(song.practice_sections[0].tick == 0);
+    CHECK(song.practice_sections[0].name == "Intro");
+}
+
+TEST_CASE("midi: a section text holding _ENDOFSONG in its middle is not a section") {
+    const hydra::Song song = hydra::load_songbytes_mid(two_section_mid("[section Outro_ENDOFSONG_x]"),
+                                                       hydra::ChartReading{});
+    REQUIRE(song.practice_sections.size() == 1);
+    CHECK(song.practice_sections[0].name == "Intro");
+}
+
+TEST_CASE("midi: [section _endofsong] in lower case stays a section") {
+    // The game's search is ordinal, so case counts
+    // (docs/clone-hero/code/6142/string_contains_197F670.md).
+    const hydra::Song song =
+        hydra::load_songbytes_mid(two_section_mid("[section _endofsong]"), hydra::ChartReading{});
+    REQUIRE(song.practice_sections.size() == 2);
+    CHECK(song.practice_sections[1].tick == 960);
+    CHECK(song.practice_sections[1].name == " endofsong");
+}
+
+TEST_CASE("midi: [prc__ENDOFSONG] stays a section") {
+    const hydra::Song song =
+        hydra::load_songbytes_mid(two_section_mid("[prc__ENDOFSONG]"), hydra::ChartReading{});
+    REQUIRE(song.practice_sections.size() == 2);
+    CHECK(song.practice_sections[1].tick == 960);
+    CHECK(song.practice_sections[1].name == " ENDOFSONG");
+}
+
 // ---- the end event (Song::end_event_tick) ---------------------------------
 
 TEST_CASE("midi: [end] on the events track is the end event, first one wins") {
