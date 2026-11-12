@@ -297,7 +297,7 @@ class GameToolsTest(unittest.TestCase):
     def test_a_quiet_machine_puts_the_report_before_the_launch_lines(self):
         t = ToolRig(self.tmp)
         lines = t.tools.ch_start(t.r.song).splitlines()
-        cpu = lines.index("CPU: 3.00 percent averaged over 5 s (limit 15 percent)")
+        cpu = lines.index("CPU: 3.00 percent averaged over 5 s (limit 30 percent)")
         backup = lines.index(f"backup folder: {t.backup_dir()}")
         starting = next(i for i, line in enumerate(lines) if line.startswith("starting: "))
         self.assertEqual(lines[0], "no compiler running")
