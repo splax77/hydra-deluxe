@@ -23,6 +23,7 @@
 // prototypes of faster reads checked against today's rows (open_mode below).
 
 #include <algorithm>
+#include <charconv>
 #include <chrono>
 #include <cstddef>
 #include <cstdio>
@@ -517,7 +518,7 @@ static void upgrade_mode(const std::string& dbpath) {
 
 // ---- Open mode ---------------------------------------------------------------
 //   hydra_bench --open <db file> [--runs N] [--ini <settings file>] [--as-ready]
-//               [--rules <path>]
+//               [--threads N,N,...] [--rules <path>]
 // Times what opening the library costs, in Hydra's own code, on the file it is
 // given and no other. It refuses the installed Hydra's folder (installer/
 // hydra.iss installs to {autopf}\Hydra) and the hydra.db beside this exe
@@ -530,7 +531,10 @@ static void upgrade_mode(const std::string& dbpath) {
 // fingerprint before anything is timed (stamp_as_ready), so a library saved
 // by an older build times as one the user has re-analysed; it prints how
 // many rows it stamped and how many charts are Ready after it. What counts as
-// Ready is still lookup's own rule. A failure names the step or variant it
+// Ready is still lookup's own rule. --threads names the thread counts the
+// threaded lines of sections 4 and 6 run on (kDefaultThreadCounts when it is
+// not given); a count above what std::thread::hardware_concurrency reports
+// still runs, and its line says so. A failure names the step or variant it
 // happened in. Every read on the bench's own connections runs with a
 // RecordStore open on the file, as the app's store is while it reads. Every time is
 // printed as the median and the minimum of N runs, in milliseconds, each run
@@ -548,13 +552,19 @@ static void upgrade_mode(const std::string& dbpath) {
 //   3. The chart list: list_chart_library as today, then prototypes on a
 //      connection of the bench's own: the same query, no ORDER BY, and only
 //      the columns set_charts reads, each through store::read_library_entries.
-//   4. The chart list read by 2 and 4 threads, one connection each, each
+//   4. The chart list read on each --threads count, one connection each, each
 //      reading a share of the rowids, joined at the end.
 //   5. RecordStore::lookup for every chart, then its second read (the Ready
 //      charts' path rows) alone, as today and as a prototype that reads only
-//      the winning profile's rows.
+//      the winning profile's rows. Then the results in kResultsSliceCharts
+//      slices: in the rows' stored order as read_library_summaries asks, the
+//      same loop again on the same store (every statement already compiled),
+//      and with the rows sorted by hash before they are cut into slices.
 //   6. set_charts as a whole, then its steps one pass at a time, then the
-//      sort and the filter it ends with.
+//      sort and the filter it ends with. Then two prototypes: the sort keys
+//      taken from the search text where a column shows its stored text with
+//      the tags stripped, and the search text and sort keys passes on each
+//      --threads count, each thread taking a share of the rows.
 // A prototype's rows are checked against today's before its time counts: the
 // same row count as chart_library_count, the same values, and the same Library
 // on screen once set_charts has them. One that differs prints why instead.
@@ -827,6 +837,124 @@ std::string chart_list_differs(const Entries& got, const Entries& today, int64_t
     return shown.empty() ? "" : "on screen, " + shown;
 }
 
+// The thread counts --open's threaded lines run on when --threads is not
+// given: the sweep the user asked for on 2026-11-12 ("how many threads can we
+// use? give me a real measurement"), from one thread up to the 16 hardware
+// threads of the machine the bench was asked about.
+constexpr const char* kDefaultThreadCounts = "1,2,4,8,12,16";
+
+// The counts in a --threads value, or nothing when one is not a whole number
+// of 1 or more or comes twice (two equal counts would share one line).
+std::optional<std::vector<size_t>> thread_counts_of(const std::string& text) {
+    std::vector<size_t> out;
+    size_t from = 0;
+    while (true) {
+        const size_t comma = std::min(text.find(',', from), text.size());
+        const char* first = text.data() + from;
+        const char* last = text.data() + comma;
+        size_t n = 0;
+        const std::from_chars_result r = std::from_chars(first, last, n);
+        if (first == last || r.ec != std::errc() || r.ptr != last || n < 1) return std::nullopt;
+        if (std::find(out.begin(), out.end(), n) != out.end()) return std::nullopt;
+        out.push_back(n);
+        if (comma == text.size()) return out;
+        from = comma + 1;
+    }
+}
+
+// "N threads", saying so when N is more than the hardware threads this
+// machine reports (std::thread::hardware_concurrency; 0 when it cannot tell).
+std::string threads_label(size_t n) {
+    std::string out = counted(static_cast<int64_t>(n), "thread", "threads");
+    const unsigned hardware = std::thread::hardware_concurrency();
+    if (hardware != 0 && n > hardware)
+        out += " (more than this machine's " + std::to_string(hardware) + " hardware threads)";
+    return out;
+}
+
+// Runs `work(from, to)` on `n` threads at once, each over its share of the
+// row indexes [0, rows), and waits for all of them. A throw on any thread is
+// thrown again here once every thread has finished.
+template <typename Work>
+void on_threads(size_t n, size_t rows, const Work& work) {
+    std::vector<std::exception_ptr> failed(n);
+    std::vector<std::thread> threads;
+    threads.reserve(n);
+    for (size_t k = 0; k < n; ++k) {
+        const size_t from = rows * k / n;
+        const size_t to = rows * (k + 1) / n;
+        threads.emplace_back([&, k, from, to] {
+            try {
+                work(from, to);
+            } catch (...) {
+                failed[k] = std::current_exception();
+            }
+        });
+    }
+    for (std::thread& th : threads) th.join();
+    for (const std::exception_ptr& e : failed)
+        if (e) std::rethrow_exception(e);
+}
+
+// The results for `ids`, asked of `db` in kResultsSliceCharts slices taken in
+// `order` (indexes into `ids`), each answer put back at its own chart's index.
+std::vector<store::RecordLookup> lookup_in_slices(store::RecordStore& db,
+                                                  const std::vector<std::string>& ids,
+                                                  const std::vector<size_t>& order,
+                                                  const store::Profile& want) {
+    std::vector<store::RecordLookup> out(ids.size());
+    std::vector<std::string> slice;
+    for (size_t from = 0; from < order.size(); from += ui::kResultsSliceCharts) {
+        const size_t to = std::min(order.size(), from + ui::kResultsSliceCharts);
+        slice.clear();
+        for (size_t i = from; i < to; ++i) slice.push_back(ids[order[i]]);
+        std::vector<store::RecordLookup> found = db.lookup(slice, want);
+        if (found.size() != slice.size())
+            throw std::runtime_error("lookup gave " + std::to_string(found.size()) +
+                                     " answers for a slice of " + std::to_string(slice.size()));
+        for (size_t i = from; i < to; ++i) out[order[i]] = std::move(found[i - from]);
+    }
+    return out;
+}
+
+// Why sliced results are not the one-call results, or "" when they are: the
+// same answer count, and the same Library once set_summaries has them on
+// today's rows (`want` is today's rows with the one-call answers).
+std::string results_differ(const std::vector<store::RecordLookup>& found,
+                           const std::vector<store::RecordLookup>& one_call, const Entries& today,
+                           const ui::LibraryModel& want) {
+    if (found.size() != one_call.size())
+        return std::to_string(found.size()) + " answers, one call " +
+               std::to_string(one_call.size());
+    ui::LibraryModel m;
+    m.set_charts(today);
+    m.set_summaries(found);
+    m.sort_if_out_of_date();
+    const std::string shown = models_differ(m, want);
+    return shown.empty() ? "" : "on screen, " + shown;
+}
+
+// A sort column's stored text and its search text: the field of the chart's
+// row the column shows, and make_searchable's folded copy of that field.
+// Best path has neither.
+struct ColumnTexts {
+    std::string_view stored;
+    const std::string* folded = nullptr;
+};
+
+ColumnTexts column_texts(const store::ChartLibraryEntry& e, const app::SearchableRow& s,
+                         ui::LibrarySort sort) {
+    switch (sort) {
+        case ui::LibrarySort::Title: return {e.title, &s.title};
+        case ui::LibrarySort::Artist: return {e.artist, &s.artist};
+        case ui::LibrarySort::Album: return {e.album, &s.album};
+        case ui::LibrarySort::Charter: return {e.charter, &s.charter};
+        case ui::LibrarySort::Folder: return {e.rootfolder, &s.folder};
+        case ui::LibrarySort::BestPath: break;
+    }
+    return {};
+}
+
 // The folders an installed Hydra keeps its library in: installer/hydra.iss
 // installs to {autopf}\Hydra, read here from the Program Files variables, plus
 // the path the --open request named in case they are unset.
@@ -922,13 +1050,14 @@ AsReadyCounts stamp_as_ready(const std::string& dbpath, const core::RulesStamp& 
 }  // namespace
 
 static int open_runs(const std::string& dbpath, int runs, const std::optional<std::string>& ini,
-                     app::Settings settings, bool as_ready, std::string& doing);
+                     app::Settings settings, bool as_ready,
+                     const std::vector<size_t>& thread_counts, std::string& doing);
 
 // The checks that need no database, then the runs. A failure in the runs
 // names the step or variant it happened in (open_runs keeps `doing` up to
 // date) instead of the tool's generic database line.
 static int open_mode(const std::string& dbpath, int runs, const std::optional<std::string>& ini,
-                     bool as_ready) {
+                     bool as_ready, const std::string& threads_text) {
     // Before anything opens the file, so --as-ready's rewrite is refused too.
     if (const std::optional<std::string> why = refused_db(dbpath)) {
         std::fprintf(stderr, "hydra_bench --open: %s\n", why->c_str());
@@ -936,6 +1065,14 @@ static int open_mode(const std::string& dbpath, int runs, const std::optional<st
     }
     if (runs < 1) {
         std::fprintf(stderr, "hydra_bench --open: --runs needs 1 or more\n");
+        return 2;
+    }
+    const std::optional<std::vector<size_t>> thread_counts = thread_counts_of(threads_text);
+    if (!thread_counts) {
+        std::fprintf(stderr,
+                     "hydra_bench --open: --threads needs counts of 1 or more, each once, "
+                     "separated by commas (got \"%s\")\n",
+                     threads_text.c_str());
         return 2;
     }
     app::Settings settings;  // the struct defaults are the app's defaults
@@ -953,7 +1090,7 @@ static int open_mode(const std::string& dbpath, int runs, const std::optional<st
     }
     std::string doing = "the first open";
     try {
-        return open_runs(dbpath, runs, ini, std::move(settings), as_ready, doing);
+        return open_runs(dbpath, runs, ini, std::move(settings), as_ready, *thread_counts, doing);
     } catch (const std::exception& e) {
         std::fflush(stdout);
         std::fprintf(stderr, "\nhydra_bench --open: %s failed: %s\n", doing.c_str(), e.what());
@@ -962,7 +1099,8 @@ static int open_mode(const std::string& dbpath, int runs, const std::optional<st
 }
 
 static int open_runs(const std::string& dbpath, int runs, const std::optional<std::string>& ini,
-                     app::Settings settings, bool as_ready, std::string& doing) {
+                     app::Settings settings, bool as_ready,
+                     const std::vector<size_t>& thread_counts, std::string& doing) {
     settings.rules = g_rules;
     const store::Profile want = settings.profile();
     const core::RulesStamp stamp = core::RulesStamp::of(g_rules);
@@ -1001,6 +1139,18 @@ static int open_runs(const std::string& dbpath, int runs, const std::optional<st
     }
     ui::LibraryModel today_model;  // today's rows through set_charts, no results
     today_model.set_charts(today);
+    // Today's rows with the one-call answers, as read_library leaves them:
+    // what the sliced results reads must show.
+    ui::LibraryModel results_model;
+    results_model.set_charts(today);
+    results_model.set_summaries(answers);
+    results_model.sort_if_out_of_date();
+    // The rows' indexes in stored order, and sorted by hash, for the slices.
+    std::vector<size_t> stored_order(hashes.size());
+    for (size_t i = 0; i < stored_order.size(); ++i) stored_order[i] = i;
+    std::vector<size_t> hash_order = stored_order;
+    std::stable_sort(hash_order.begin(), hash_order.end(),
+                     [&](size_t a, size_t b) { return hashes[a] < hashes[b]; });
     // The rows list_chart_library read with their timing, when the store
     // trusts the timing columns; the prototypes ask for the same.
     const bool timing_read = !today.empty() && today.front().timing.has_value();
@@ -1102,6 +1252,10 @@ static int open_runs(const std::string& dbpath, int runs, const std::optional<st
                     static_cast<long long>(*winner_profile));
     std::printf("Every read on the bench's own connections (sections 3 to 5) runs with a "
                 "RecordStore open on the same file, as the app's store is while it reads.\n");
+    std::printf("This machine reports %s (std::thread::hardware_concurrency).\n",
+                counted(static_cast<int64_t>(std::thread::hardware_concurrency()),
+                        "hardware thread", "hardware threads")
+                    .c_str());
     std::printf("%s, each a median and a minimum in ms.\n",
                 counted(runs, "timed run", "timed runs").c_str());
 
@@ -1132,6 +1286,11 @@ static int open_runs(const std::string& dbpath, int runs, const std::optional<st
     const std::string k5_lookup = "today: lookup for every chart in one call";
     const std::string k5_paths = "lookup's path read alone, as today (every profile's rows)";
     const std::string k5_winner = "lookup's path read alone, winner-only prototype";
+    const std::string k5_slices =
+        "results in " + std::to_string(ui::kResultsSliceCharts) + "-chart slices, ";
+    const std::string k5_stored = k5_slices + "stored order";
+    const std::string k5_second = k5_slices + "stored order, second pass on the same store";
+    const std::string k5_hash = k5_slices + "hash order";
     const std::string h6 = "6. Inside set_charts";
     const std::string k6_whole = "set_charts as one call";
     const std::string k6_make = "pass: make the row objects";
@@ -1140,6 +1299,10 @@ static int open_runs(const std::string& dbpath, int runs, const std::optional<st
     const std::string k6_keys = "pass: sort keys (fold_for_search of each column before Best path)";
     const std::string k6_sorted = "sort + filter (set_sort, title ascending)";
     const std::string k6_filter = "filter alone (set_chip)";
+    const std::string k6_reuse = "sort keys reusing the search text";
+    auto k6_threads = [](size_t n) {
+        return "search text and sort keys on " + threads_label(n);
+    };
 
     for (int run = 0; run < runs; ++run) {
         const bool check = run == 0;
@@ -1283,9 +1446,9 @@ static int open_runs(const std::string& dbpath, int runs, const std::optional<st
         //    threads' first reads race to rebuild the WAL index and all but
         //    one fail with "database is locked".
         times.heading(h4);
-        for (const size_t threads : {size_t{2}, size_t{4}}) {
+        for (const size_t threads : thread_counts) {
             for (const bool slim : {false, true}) {
-                const std::string label = std::to_string(threads) + " threads, " +
+                const std::string label = threads_label(threads) + ", " +
                                           (slim ? "only set_charts' columns" : "every column");
                 at(h4 + ": " + label);
                 const std::unique_ptr<store::RecordStore> held = open_store();
@@ -1335,6 +1498,41 @@ static int open_runs(const std::string& dbpath, int runs, const std::optional<st
                 }
             }
         }
+        // The results in slices, each loop on a store of its own except the
+        // second pass, which reuses the first pass's store and so finds every
+        // statement already compiled.
+        {
+            at(h5 + ": " + k5_stored);
+            std::unique_ptr<store::RecordStore> db = open_store();
+            clk::time_point t = clk::now();
+            std::vector<store::RecordLookup> found =
+                lookup_in_slices(*db, hashes, stored_order, want);
+            times.add(k5_stored, ms_since(t));
+            if (check) {
+                const std::string why = results_differ(found, answers, today, results_model);
+                if (!why.empty()) times.differs(k5_stored, why);
+            }
+            at(h5 + ": " + k5_second);
+            t = clk::now();
+            found = lookup_in_slices(*db, hashes, stored_order, want);
+            times.add(k5_second, ms_since(t));
+            if (check) {
+                const std::string why = results_differ(found, answers, today, results_model);
+                if (!why.empty()) times.differs(k5_second, why);
+            }
+        }
+        {
+            at(h5 + ": " + k5_hash);
+            std::unique_ptr<store::RecordStore> db = open_store();
+            const clk::time_point t = clk::now();
+            const std::vector<store::RecordLookup> found =
+                lookup_in_slices(*db, hashes, hash_order, want);
+            times.add(k5_hash, ms_since(t));
+            if (check) {
+                const std::string why = results_differ(found, answers, today, results_model);
+                if (!why.empty()) times.differs(k5_hash, why);
+            }
+        }
 
         // 6. Inside set_charts.
         times.heading(h6);
@@ -1377,12 +1575,71 @@ static int open_runs(const std::string& dbpath, int runs, const std::optional<st
                     row.sort_keys[static_cast<size_t>(c)] =
                         app::fold_for_search(ui::library_cell_text(row, c));
             times.add(k6_keys, ms_since(t));
+            // The first way `got` is not set_charts' rows, or "". set_charts
+            // keeps its rows in the order it was given them.
+            auto rows_differ = [&](const std::vector<ui::LibraryRow>& got) -> std::string {
+                if (got.size() != m.rows().size()) return "a different row count";
+                for (size_t i = 0; i < got.size(); ++i)
+                    if (!same_row(got[i], m.rows()[i])) return "row " + std::to_string(i);
+                return "";
+            };
             if (check) {
-                // set_charts keeps its rows in the order it was given them.
-                std::string why = rows.size() == m.rows().size() ? "" : "a different row count";
-                for (size_t i = 0; why.empty() && i < rows.size(); ++i)
-                    if (!same_row(rows[i], m.rows()[i])) why = "row " + std::to_string(i);
+                const std::string why = rows_differ(rows);
                 if (!why.empty()) times.differs(k6_keys, "the passes' rows are not set_charts': " + why);
+            }
+            // The sort keys taken from the search text: where a column shows
+            // its stored text with the tags stripped (strip_rich_tags, which
+            // make_searchable folds), the search text's field is that text
+            // folded already; any other column folds its shown text as today.
+            at(h6 + ": " + k6_reuse);
+            std::vector<ui::LibraryRow> unkeyed = rows;
+            for (ui::LibraryRow& row : unkeyed) row.sort_keys = {};
+            {
+                std::vector<ui::LibraryRow> reuse = unkeyed;
+                t = clk::now();
+                for (size_t i = 0; i < reuse.size(); ++i) {
+                    ui::LibraryRow& row = reuse[i];
+                    for (int c = 0; c < ui::kColumnBestPath; ++c) {
+                        const std::string shown = ui::library_cell_text(row, c);
+                        const ColumnTexts texts = column_texts(input[i], row.searchable, ui::sort_of(c));
+                        row.sort_keys[static_cast<size_t>(c)] =
+                            texts.folded && shown == strip_rich_tags(texts.stored)
+                                ? *texts.folded
+                                : app::fold_for_search(shown);
+                    }
+                }
+                times.add(k6_reuse, ms_since(t));
+                if (check) {
+                    const std::string why = rows_differ(reuse);
+                    if (!why.empty()) times.differs(k6_reuse, why);
+                }
+            }
+            // The search text and sort keys passes on threads, each thread
+            // making both for its share of the rows, with the functions
+            // set_charts calls. The rows start with their shown names and
+            // entries, as they reach those passes in set_charts.
+            for (ui::LibraryRow& row : unkeyed) row.searchable = {};
+            for (const size_t threads : thread_counts) {
+                const std::string label = k6_threads(threads);
+                at(h6 + ": " + label);
+                std::vector<ui::LibraryRow> work = unkeyed;
+                t = clk::now();
+                on_threads(threads, work.size(), [&](size_t from, size_t to) {
+                    for (size_t i = from; i < to; ++i) {
+                        ui::LibraryRow& row = work[i];
+                        row.searchable =
+                            app::make_searchable(input[i].title, input[i].artist, input[i].charter,
+                                                 input[i].rootfolder, input[i].album);
+                        for (int c = 0; c < ui::kColumnBestPath; ++c)
+                            row.sort_keys[static_cast<size_t>(c)] =
+                                app::fold_for_search(ui::library_cell_text(row, c));
+                    }
+                });
+                times.add(label, ms_since(t));
+                if (check) {
+                    const std::string why = rows_differ(work);
+                    if (!why.empty()) times.differs(label, why);
+                }
             }
             // The sort and the filter set_charts ends with, on its own rows:
             // a sort change re-sorts and re-filters, and a chip change only
@@ -1408,6 +1665,13 @@ static int open_runs(const std::string& dbpath, int runs, const std::optional<st
         std::printf("  lookup with the winner-only path read (lookup - today's path read + "
                     "winner-only path read): %.1f ms\n",
                     times.median(k5_lookup) - times.median(k5_paths) + times.median(k5_winner));
+    if (!times.differed(k5_stored) && !times.differed(k5_second))
+        std::printf("  compiling the slices' statements (stored order minus its second pass): "
+                    "%.1f ms\n",
+                    times.median(k5_stored) - times.median(k5_second));
+    if (!times.differed(k5_stored) && !times.differed(k5_hash))
+        std::printf("  what hash order saves (stored order minus hash order): %.1f ms\n",
+                    times.median(k5_stored) - times.median(k5_hash));
     return 0;
 }
 
@@ -1443,6 +1707,7 @@ static int bench_main() {
         int runs = 7;  // the count the --open request asked for by default
         std::optional<std::string> ini;
         bool as_ready = false;
+        std::string threads = kDefaultThreadCounts;
         // The options start after argv[0] (the program), argv[1] (--open)
         // and argv[2] (the file): the index of the first one is that count.
         const int first_option = 3;
@@ -1450,6 +1715,7 @@ static int bench_main() {
             if (argv[i] == "--runs" && i + 1 < argc) runs = std::stoi(argv[++i]);
             else if (argv[i] == "--ini" && i + 1 < argc) ini = argv[++i];
             else if (argv[i] == "--as-ready") as_ready = true;
+            else if (argv[i] == "--threads" && i + 1 < argc) threads = argv[++i];
             else {
                 // A misspelt --as-ready would time a library that reads Stale
                 // without saying so, so an option nobody reads is refused. A
@@ -1459,7 +1725,7 @@ static int bench_main() {
                 return 2;
             }
         }
-        return open_mode(argv[2], runs, ini, as_ready);
+        return open_mode(argv[2], runs, ini, as_ready, threads);
     }
     if (argc > 3 && argv[1] == "--dump-db") {
         std::string dumprel;
