@@ -392,64 +392,64 @@ Found: 2026-10-30, session b02ab3e6 (the reference build)
 
 ### SC-37 The per-player keys and what writes each
 
-Rule: Each player entry holds 46 keys, one of them a list of sections with 3 keys each. Every key is a string literal in the game, and every run wrote them all. Which engine counter feeds each key is not traced: the per-player serialiser was not opened. The table below gives, per key, the observed values and what writes it.
-Label: Unknown
-Evidence: stringliteral.json holds every key name. All 16 scorestats files under the run folder, and run 1's file, show the same top-level keys, the same 46 per-player keys and the same three section keys (checked with a short Python script on 2026-11-08). The per-player writer is another class: `0x251A70` only adds an object and `0x112490` copies another stats object.
-Game code (6142): per-player serialiser: not found (looked in `0x251A70` and `0x112490`)
+Rule: Each player entry holds 46 keys, one of them a list of sections with 3 keys each. Every key is a string literal in the game, and every run wrote them all. The per-player serialiser `0x1144C0` writes each key from one field of a record, the filler `0x112490` fills that record from the per-player stats object, and the engine's stats method `0x20F3DC0` builds that object, so most keys trace back to one engine field. About a dozen keys stay untraced, because they come from settings and player objects that were not followed: instrument, difficulty, profile_name, modifiers, remote_network_player, lefty_flip, no_fail, video_calibration, audio_calibration, controller_type, versus_winner and is_bot, and the engine byte `+0xA8` inside is_pfc. The table below gives, per key, the observed values and what writes it.
+Label: Proven in the game's code
+Evidence: stringliteral.json holds every key name. All 16 scorestats files under the run folder, and run 1's file, show the same top-level keys, the same 46 per-player keys and the same three section keys (checked with a short Python script on 2026-11-08). The writer is `code/6142/score_submit.asm` lines 130 to 475, the filler `code/6142/stats_fill_112490.asm` lines 13 to 192, and the engine stats method `code/6142/engine_stats_20F3DC0.asm` lines 180 to 300. Each key's three hops (the writer line that names the key, the filler line that sets its record field, and the engine line that sets the stats field) are tabled in `docs/audit/2026-11-08-clone-hero-unknowns/W8.md`, "SC-37". The two getters the filler calls are `code/6142/player_avg_multiplier_2130570.asm` and `code/6142/player_is_pfc_212F4F0.asm`.
+Game code (6142): the per-player serialiser, RVA `0x1144C0`, `code/6142/score_submit.asm` lines 130 to 475; the filler, RVA `0x112490`; the engine stats method, RVA `0x20F3DC0`; listings as above
 Hydra: no owner in src/
-Ruling: none yet: the writers are not traced
-Found: 2026-10-30, session b02ab3e6 (the reference build); the observed values, 2026-11-08, session 77057df2 (docs-gaps search)
+Ruling: none needed: no Hydra rule depends on it
+Found: 2026-10-30, session b02ab3e6 (the reference build); the observed values, 2026-11-08, session 77057df2 (docs-gaps search); the writers 2026-11-08, session 77057df2; checked 2026-11-11, session 428cf079
 
-Per-player keys. "Unknown" means no code was read that writes the key; a named field is a candidate the value matches, never a traced writer. The observed column covers the 16 files under the run folder, read on 2026-11-08: three bot runs and 13 virtual kit runs, each with one player. Run 1's file is named where it differs.
+Per-player keys. In the "what writes it" column an engine field is traced through the writer, the filler and the engine stats method (W8.md gives the lines); "not traced" means the hop stops at a settings or player object that was not followed. Engine fields are on #8288. The observed column covers the 16 files under the run folder, read on 2026-11-08: three bot runs and 13 virtual kit runs, each with one player. Run 1's file is named where it differs.
 
 | key | observed | what writes it |
 |---|---|---|
-| instrument | Drums in five files, ProDrums in eleven | Unknown |
-| difficulty | Expert in every file | Unknown |
-| profile_name | empty in every file; Guest on run 1 | Unknown |
-| modifiers | ["DoubleKick"] in every file | Unknown |
-| remote_network_player | false in every file | Unknown (the engine's player kind at #8288+0x190 is a candidate) |
-| lefty_flip | false in every file | Unknown |
-| no_fail | true in every file | Unknown |
-| video_calibration | 0.03 in every file (written 0.0299999993); 0 on run 1 | Unknown |
-| audio_calibration | 0 in every file | Unknown |
-| controller_type | Drums in every file | Unknown |
-| score | the final score, 9,400 to 1,229,730 | Unknown (equals the engine score at #8288+0x94, SC-03, and band_score) |
-| base_score | the star base, 6,050 to 222,935 | Unknown (equals the star base at #8288+0x1D0, SC-27) |
-| solo_bonus_total | 0 in twelve files; 56,020, 49,700, 58,000 and 12,100 on the four runs of charts with solos (SC-20) | Unknown |
-| squeezed_score | 0 in eight files, 380 to 3,940 in the other eight; 1,385 on run 1 | Unknown (the fourth total at #8288+0xD0, SC-09, is a candidate) |
-| clean_play_bonus | 0 in every file | Unknown (no reader found; Hydra has no such category) |
-| note_score | SC-32 | Unknown |
-| sustain_score | 0 in every file | Unknown (the second adder's total at #8288+0xC4, SC-04, is a candidate) |
-| sp_score | 0 in the eight files with no activation, 96,070 to 283,720 in the other eight; 83,260 on run 1 | Unknown (the Star Power share at #8288+0xCC, SC-08) |
-| combo_score | 4,350 to 665,075; equals Hydra's Combo with no Star Power (SC-07) | Unknown (the Combo share at #8288+0xC8, SC-08) |
-| notes_hit | gems hit, 101 to 3,753 (1,257 on Trippin SP Spike) | Unknown (the hit count at +0x9C, SC-06, is a candidate) |
-| total_notes | gems in the chart, 121 to 3,767 | Unknown |
-| max_streak | the longest streak in gems: the gem count on the nine full-combo files, 38 to 2,985 on the seven with misses | Unknown (the best streak at +0x98, SC-06) |
-| end_streak | the streak at the song's end: equal to max_streak on the full-combo files, 12 to 2,985 on the others | Unknown |
-| excess_hits | 0 in eleven files; 1 on LS-O1 run 1, 4 on LS-E and LS-F1, 11 on LS-O2 and 21 on LS-T3 run b | Unknown |
-| sp_phrases_earned | 0 on the two Trippin SP Spike bot runs (of 11) and on the charts with no phrases; 14 to 30 on the others (15 of 16 on LS-F1, 30 of 31 on LS-M2); 11 on run 1 | Unknown |
-| sp_phrases_total | 0, 11, 14, 16, 25 or 31, by chart | Unknown |
-| sp_activations | 0, 4, 5, 8 or 9; 4 on run 1 | Unknown (the activation counter at +0xB4, page 5 SP-19) |
-| time_in_sp | 0, or 37.81 to 106.66 s; 50.03 s on run 1 | Unknown (the time total at +0xB8, page 5 SP-25) |
-| sp_ticks_accumulated | 0; 20,160 (14 x 1,440) and 23,040 (16 x 1,440) on the 5,760-bar charts; 90,000 (25 x 3,600) and 108,000 (30 x 3,600) on the 14,400-bar charts; 53,925 on LS-F1 run 1 (15 phrases earned, 75 short of 15 x 3,600); 15,840 on run 1 (11 x 1,440) | Unknown (the running gain total at +0x80, page 5 SP-12) |
-| sp_bar_ticks | 5,760 in five files, 14,400 in eleven; the two charts of SC-20, both at resolution 480, read 14,400 | Unknown (equals the full bar at #8288+0x1B0, page 5 SP-11) |
-| stars | 3 to 7 | Unknown (agrees with SC-28) |
-| avg_multiplier | score less solo_bonus_total, over base_score (SC-33), 1.32 to 5.26 | Unknown (SC-33) |
-| squeezed_notes | 0 to 18; 7 on run 1 | Unknown (the squeeze counter at +0xE8, page 5 SP-36, is a candidate) |
-| squeeze_note_losses | 0, 1, 3, 6 or 8; 1 on run 1 | Unknown (the counter at +0xEC, page 5 SP-36, is a candidate) |
-| frets_ghosted | 0 in every file | Unknown |
-| accent_notes_hit | up to 368 of 368 (LS-O3 run 1); 0 of 368 on LS-D2d run 1 and 0 of 9 on run 1 (SC-14) | Unknown (the accent counter at +0xDC, SC-13, is a candidate) |
-| accent_notes_total | 0 to 368, by chart | Unknown |
-| ghost_notes_hit | up to 726 of 726 (LS-O3 run 1); 0 of 726 on LS-D2d run 1 and 0 of 34 on run 1 (SC-14) | Unknown (the ghost counter at +0xD8, SC-13, is a candidate) |
-| ghost_notes_total | 0 to 726, by chart | Unknown |
-| is_fc | true in the nine files that hit every note, false in the seven with misses | Unknown |
-| is_pfc | equal to is_fc in every file | Unknown |
-| versus_winner | true in every file | Unknown |
-| is_bot | true on the three bot runs, false on the 13 virtual kit runs and on run 1 | Unknown (a stats writer writes the key from a record byte at +0xB6, page 7 IN-38; where that byte is set was not traced) |
-| failed_in_run_time | -1 in fourteen files; 5,991 on LS-O1 run 1 and 28,076 on LS-T3 run b, both with no_fail on | Unknown |
-| section_count | 7 to 35; 10 on the charts with no [section] events (Window Map, Edge Walk Pair, Get Ur Freak On), a game fallback of "0% - 10%" sections | Unknown |
-| section_stats | a list of section_name, notes_hit and notes_count | Unknown |
+| instrument | Drums in five files, ProDrums in eleven | not traced (a byte of an object the filler is handed) |
+| difficulty | Expert in every file | not traced (the next byte of that object) |
+| profile_name | empty in every file; Guest on run 1 | not traced (that object's +0x18, then +0x38) |
+| modifiers | ["DoubleKick"] in every file | not traced (a list from `0x116D00`) |
+| remote_network_player | false in every file | not traced (a byte at +0xB1 of the filler's object, not the engine's player kind at #8288+0x190; whether the two agree was not checked) |
+| lefty_flip | false in every file | not traced (a setting getter) |
+| no_fail | true in every file | not traced (a static setting) |
+| video_calibration | 0.03 in every file (written 0.0299999993); 0 on run 1 | not traced (a static setting) |
+| audio_calibration | 0 in every file | not traced (a static setting) |
+| controller_type | Drums in every file | not traced (a value 0 to 3 from `0x337CE0`, mapped one to one) |
+| score | the final score, 9,400 to 1,229,730 | engine +0x94 plus +0xA0 plus +0xA4, through the getter `0x2130490` (SC-29) |
+| base_score | the star base, 6,050 to 222,935 | engine +0x1D0 (SC-27) |
+| solo_bonus_total | 0 in twelve files; 56,020, 49,700, 58,000 and 12,100 on the four runs of charts with solos (SC-20) | engine +0xA0 |
+| squeezed_score | 0 in eight files, 380 to 3,940 in the other eight; 1,385 on run 1 | engine +0xD0 (SC-09) |
+| clean_play_bonus | 0 in every file | engine +0xA4; no writer of +0xA4 traced, and Hydra has no such category |
+| note_score | SC-32 | engine +0xC0 less 50 times (+0xD8 plus +0xDC) |
+| sustain_score | 0 in every file | engine +0xC4 (SC-04) |
+| sp_score | 0 in the eight files with no activation, 96,070 to 283,720 in the other eight; 83,260 on run 1 | engine +0xCC (SC-08) |
+| combo_score | 4,350 to 665,075; equals Hydra's Combo with no Star Power (SC-07) | engine +0xC8 (SC-08) |
+| notes_hit | gems hit, 101 to 3,753 (1,257 on Trippin SP Spike) | engine +0x9C (SC-06) |
+| total_notes | gems in the chart, 121 to 3,767 | a sum the engine stats method's section loop builds (the loop was not read whole) |
+| max_streak | the longest streak in gems: the gem count on the nine full-combo files, 38 to 2,985 on the seven with misses | engine +0x98 (SC-06) |
+| end_streak | the streak at the song's end: equal to max_streak on the full-combo files, 12 to 2,985 on the others | engine +0x88 |
+| excess_hits | 0 in eleven files; 1 on LS-O1 run 1, 4 on LS-E and LS-F1, 11 on LS-O2 and 21 on LS-T3 run b | engine +0xB0 |
+| sp_phrases_earned | 0 on the two Trippin SP Spike bot runs (of 11) and on the charts with no phrases; 14 to 30 on the others (15 of 16 on LS-F1, 30 of 31 on LS-M2); 11 on run 1 | engine +0x4C |
+| sp_phrases_total | 0, 11, 14, 16, 25 or 31, by chart | the count of a list at engine +0x228, then +0x70 |
+| sp_activations | 0, 4, 5, 8 or 9; 4 on run 1 | engine +0xB4 (page 5 SP-19) |
+| time_in_sp | 0, or 37.81 to 106.66 s; 50.03 s on run 1 | engine +0xB8, a double cut to a float (page 5 SP-25) |
+| sp_ticks_accumulated | 0; 20,160 (14 x 1,440) and 23,040 (16 x 1,440) on the 5,760-bar charts; 90,000 (25 x 3,600) and 108,000 (30 x 3,600) on the 14,400-bar charts; 53,925 on LS-F1 run 1 (15 phrases earned, 75 short of 15 x 3,600); 15,840 on run 1 (11 x 1,440) | engine +0x80 (page 5 SP-12) |
+| sp_bar_ticks | 5,760 in five files, 14,400 in eleven; the two charts of SC-20, both at resolution 480, read 14,400 | engine +0x1B0 (page 5 SP-11) |
+| stars | 3 to 7 | the engine's own count on its score +0x94 (agrees with SC-28) |
+| avg_multiplier | score less solo_bonus_total, over base_score (SC-33), 1.32 to 5.26 | engine +0x94 over +0x1D0 in 32-bit floats, 0 when the score is 0 or less, through the getter `0x2130570` (SC-33) |
+| squeezed_notes | 0 to 18; 7 on run 1 | engine +0xE8 (page 5 SP-36) |
+| squeeze_note_losses | 0, 1, 3, 6 or 8; 1 on run 1 | engine +0xEC (page 5 SP-36) |
+| frets_ghosted | 0 in every file | engine +0xD4 |
+| accent_notes_hit | up to 368 of 368 (LS-O3 run 1); 0 of 368 on LS-D2d run 1 and 0 of 9 on run 1 (SC-14) | engine +0xDC (SC-13) |
+| accent_notes_total | 0 to 368, by chart | engine +0xE4 |
+| ghost_notes_hit | up to 726 of 726 (LS-O3 run 1); 0 of 726 on LS-D2d run 1 and 0 of 34 on run 1 (SC-14) | engine +0xD8 (SC-13) |
+| ghost_notes_total | 0 to 726, by chart | engine +0xE0 |
+| is_fc | true in the nine files that hit every note, false in the seven with misses | set when the record's max_streak equals its total_notes |
+| is_pfc | equal to is_fc in every file | the getter `0x212F4F0`: max_streak equals total_notes, above 0, and the engine byte +0xA8 is 0; that byte was not traced |
+| versus_winner | true in every file | not traced (a player byte at +0xA9; the engine stats method does not set it) |
+| is_bot | true on the three bot runs, false on the 13 virtual kit runs and on run 1 | not traced (the return of `0x13F8B0` into the record byte at +0xB6, page 7 IN-38) |
+| failed_in_run_time | -1 in fourteen files; 5,991 on LS-O1 run 1 and 28,076 on LS-T3 run b, both with no_fail on | engine +0xAC |
+| section_count | 7 to 35; 10 on the charts with no [section] events (Window Map, Edge Walk Pair, Get Ur Freak On), a game fallback of "0% - 10%" sections | the count of the section list |
+| section_stats | a list of section_name, notes_hit and notes_count | the list the engine stats method builds in its section loop |
 
 The top-level keys are written by the serialiser of SC-36; where each value comes from is Unknown. Observed in all 16 files: game_version "v1.1.0.6142-final", playback_speed 100, game_mode "Quickplay", player_count 1, band_score equal to the player's score and band_stars equal to stars. The online score record `ScoreData` (dump.cs line 18833) is a different structure, the leaderboard upload.
 
