@@ -721,6 +721,37 @@ class LiveAgentTest(Workspace):
         self.assertEqual(frida.attached_to, [1234])
         self.assertFalse(os.path.exists(self.out_path))
 
+    def blocked_writes(self, agent):
+        """Make every later write to the agent's log wait until the returned
+        event is set. The cleanup sets it, before the detach that `live`
+        registered, so a failed test still lets the writer finish."""
+        release = threading.Event()
+        log = agent._log
+        real_write = log.write
+
+        def blocked_write(text):
+            release.wait(10.0)
+            return real_write(text)
+
+        log.write = blocked_write
+        self.addCleanup(release.set)
+        return release
+
+    def test_a_blocked_log_write_does_not_hold_up_the_reply(self):
+        agent, _ = self.started([STATE, {"pressed": True}])
+        release = self.blocked_writes(agent)
+        replies = []
+        asker = threading.Thread(
+            target=lambda: replies.append(agent.request({"type": "press"}, 5.0)),
+            daemon=True)
+        asker.start()
+        asker.join(2.0)
+        answered = not asker.is_alive()
+        release.set()
+        asker.join(10.0)
+        self.assertTrue(answered, "the reply waited for the blocked log write")
+        self.assertEqual(replies, [{"pressed": True}])
+
     def test_read_before_start_says_nothing_is_attached(self):
         agent = self.live(FakeFrida(ReplySession([STATE])))
         with self.assertRaises(FA.ReadFailed) as caught:
