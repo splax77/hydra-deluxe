@@ -96,6 +96,7 @@ def build_rows(times=DEFAULT_TIMES, *, amount0=0, rise_skip=(), act=(3005, 4100)
             "wall_s": 100 + t / 1000, "clock_s": t / 1000, "score": 0,
             "sp_amount_u32": amount, "sp_amount_u64": amount * u64_scale,
             "sp_max_u32": sp_max(t), "sp_max_u64": sp_max(t) * u64_scale,
+            "sp_half_u64": math.nan,
             "sp_active_byte": int(active), "sp_active_u32": int(active),
             "sp_mult_byte": mult, "sp_mult_u32": mult,
             "sp_end_s": act[1] / 1000 if act is not None and t >= act[0] else 0.0,
@@ -566,7 +567,7 @@ def _row(clock_s, amount, *, active=0, sp_max=FULL_METER):
     return {
         "wall_s": 100.0 + clock_s, "clock_s": clock_s, "score": 0,
         "sp_amount_u32": amount, "sp_amount_u64": amount,
-        "sp_max_u32": sp_max, "sp_max_u64": sp_max,
+        "sp_max_u32": sp_max, "sp_max_u64": sp_max, "sp_half_u64": math.nan,
         "sp_active_byte": active, "sp_active_u32": active,
         "sp_mult_byte": 1, "sp_mult_u32": 1,
         "sp_end_s": 0.0, "sp_overflow_u32": 0, "round_start_s": 0.0,

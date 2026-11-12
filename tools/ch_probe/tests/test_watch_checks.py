@@ -18,7 +18,8 @@ if _REPO_ROOT not in sys.path:
 
 from tools.ch_probe.experiments import watch_checks as W  # noqa: E402
 from tools.ch_probe.experiments.overlay_logs import (  # noqa: E402
-    WATCH_COLUMNS, WATCH_COLUMNS_WITHOUT_CLOCK)
+    WATCH_CLOCK_COLUMNS, WATCH_COLUMNS, WATCH_COLUMNS_WITHOUT_CLOCK,
+    WATCH_HALF_COLUMNS)
 
 
 def row(wall_s, clock_s, **fields):
@@ -138,12 +139,38 @@ class FilesTest(unittest.TestCase):
         return path
 
     def test_rows_load_with_64_bit_values_exact(self):
-        values = [1000.25, 1.0, 0, 7680, 4294974976, 6144, 8589940736, 1,
-                  257, 8, 520, 61.25, 1, 0.995, 1.5, 1.25, 0.125]
+        values = [1000.25, 1.0, 0, 7680, 4294974976, 6144, 8589940736,
+                  4294970368, 1, 257, 8, 520, 61.25, 1, 0.995, 1.5, 1.25, 0.125]
+        self.assertEqual(len(values), len(WATCH_COLUMNS))
         path = self.write_csv(WATCH_COLUMNS, [values])
         got = W.load_watch_rows(path)
         self.assertEqual(got, [dict(zip(WATCH_COLUMNS, values))])
         self.assertIsInstance(got[0]["sp_amount_u64"], int)
+        self.assertEqual(got[0]["sp_half_u64"], 4294970368)
+
+    def test_a_log_written_before_the_half_column_loads_with_it_nan(self):
+        # A log with the clock columns but no sp_half_u64, as sp_watch.py
+        # wrote before the half column existed.
+        old = [c for c in WATCH_COLUMNS if c not in WATCH_HALF_COLUMNS]
+        path = self.write_csv(old, [list(range(len(old)))])
+        got = W.load_watch_rows(path)
+        self.assertEqual(set(got[0]), set(WATCH_COLUMNS))
+        self.assertTrue(math.isnan(got[0]["sp_half_u64"]))
+        self.assertEqual(got[0]["corr_s"], old.index("corr_s"))
+        self.assertEqual(W.pause_check(got), ["pause: no pause in this log"])
+
+    def test_a_log_without_the_clock_or_half_columns_loads(self):
+        path = self.write_csv(WATCH_COLUMNS_WITHOUT_CLOCK,
+                              [[7] * len(WATCH_COLUMNS_WITHOUT_CLOCK)])
+        got = W.load_watch_rows(path)
+        self.assertTrue(all(math.isnan(got[0][c])
+                            for c in WATCH_CLOCK_COLUMNS + WATCH_HALF_COLUMNS))
+
+    def test_a_header_missing_only_part_of_a_group_is_refused(self):
+        path = self.write_csv([c for c in WATCH_COLUMNS if c != "raw_s"],
+                              [[1] * (len(WATCH_COLUMNS) - 1)])
+        with self.assertRaises(ValueError):
+            W.load_watch_rows(path)
 
     def test_a_log_without_the_clock_columns_loads_with_them_nan(self):
         old = [c for c in WATCH_COLUMNS if c not in ("audio_s", "raw_s", "corr_s")]

@@ -41,8 +41,7 @@ if _REPO_ROOT not in sys.path:
 
 from tools.ch_probe import constants as C
 from tools.ch_probe.experiments.overlay_logs import (
-    WATCH_CLOCK_COLUMNS, WATCH_COLUMNS, WATCH_COLUMNS_WITHOUT_CLOCK,
-    watch_header)
+    WATCH_CLOCK_COLUMNS, WATCH_COLUMNS, WATCH_HALF_COLUMNS, watch_header)
 
 # How far from a chord's time (song clock, ms) a row may be and still be
 # searched for that chord's +0x2E0 change (the plan's Task A step 4).
@@ -72,19 +71,33 @@ def same_value(a, b) -> bool:
     return a == b or (a != a and b != b)
 
 
+# The column groups overlay_logs says a log may lack, each one whole.
+_OPTIONAL_GROUPS = (WATCH_CLOCK_COLUMNS, WATCH_HALF_COLUMNS)
+
+
+def accepted_headers() -> tuple:
+    """Every header a watcher log may have: WATCH_COLUMNS with any of the
+    groups in _OPTIONAL_GROUPS left out, in WATCH_COLUMNS order."""
+    headers = []
+    for mask in range(1 << len(_OPTIONAL_GROUPS)):
+        left_out = {c for i, group in enumerate(_OPTIONAL_GROUPS)
+                    if mask >> i & 1 for c in group}
+        headers.append(tuple(c for c in WATCH_COLUMNS if c not in left_out))
+    return tuple(headers)
+
+
 def load_watch_rows(path: str) -> list[dict]:
     """The watcher log's rows, each a dict keyed by WATCH_COLUMNS. A log
-    written before the clock columns existed loads with them NaN, and a saved
-    log's older column names are read through overlay_logs.watch_header.
-    Raises ValueError when the header is neither WATCH_COLUMNS nor that list
-    without the clock columns."""
+    that lacks a group overlay_logs lets it lack (accepted_headers) loads with
+    those columns NaN, and a saved log's older column names are read through
+    overlay_logs.watch_header. Raises ValueError on any other header."""
     with open(path, newline="", encoding="utf-8") as f:
         reader = csv.reader(f)
         header = watch_header(next(reader, ()))
-        if header not in (WATCH_COLUMNS, WATCH_COLUMNS_WITHOUT_CLOCK):
+        if header not in accepted_headers():
             raise ValueError(
                 f"{path}: header {header} is not overlay_logs.WATCH_COLUMNS")
-        blanks = dict.fromkeys(WATCH_CLOCK_COLUMNS, math.nan)
+        blanks = dict.fromkeys(WATCH_COLUMNS, math.nan)
         return [{**blanks, **dict(zip(header, map(parse_value, row)))}
                 for row in reader]
 
