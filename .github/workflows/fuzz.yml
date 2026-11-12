@@ -80,7 +80,23 @@ jobs:
       - name: Build fuzz_${{ matrix.target }}
         run: .\build_cpp.ps1 -Preset fuzz -Target fuzz_${{ matrix.target }}
 
+      # GitHub's artifact service sometimes drops the connection for a moment
+      # ("ECONNRESET"), which would fail the job before it fuzzes. So a failed
+      # fetch waits 30 s and tries once more; a second failure fails the job.
       - name: Fetch the seeds
+        id: fetch-seeds
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: fuzz-seeds
+          path: seeds
+
+      - name: Wait before fetching the seeds again
+        if: steps.fetch-seeds.outcome == 'failure'
+        run: Start-Sleep -Seconds 30
+
+      - name: Fetch the seeds again
+        if: steps.fetch-seeds.outcome == 'failure'
         uses: actions/download-artifact@v4
         with:
           name: fuzz-seeds
