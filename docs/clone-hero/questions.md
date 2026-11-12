@@ -39,12 +39,14 @@ What Hydra does today: `disco_head` in src/parse/song.cpp lines 304 to 307 needs
 
 ### Q-13 The fifth drum pad
 
-The game's real rule: .chart N 5 is a note of type 17 with the Tom flag and raises track flag +0xA1 (code/6142/chart_n_handler_213D620.asm lines 99 to 105); .mid pitches 65, 77, 89 and 101 are that pad (code/6142/pitch_difficulty_map_210D9C0.asm and the type map in docs/audit/note-shuffle/step0/open2/f210d7b0.asm); N 38 and N 44 are its accent and ghost (code/6142/chart_modifier_decode_213D160.asm lines 11 to 80). What the game then does with a type-17 note in four-lane Pro Drums is unread.
+The game's real rule: .chart N 5 and .mid pitches 65, 77, 89 and 101 are a fifth pad (type 17), with N 38 and N 44 as its accent and ghost (NL-04, NL-05). At load the game converts a five-pad chart to four-lane Pro Drums for every player: yellow to the yellow cymbal, blue to the blue tom, the fourth pad to the green cymbal and the fifth pad to the green tom, or the blue tom when the fourth pad shares its tick (NL-75). A chart with fifth-pad notes and Pro Drums marks takes the four-lane branch unless song.ini sets five_lane_drums (NL-74, NL-76).
 
-One end: a chart with only N 0 to 4. Both agree.
-Other end: an Expert section with `N 5 0` lines and `N 38` accents. The game holds one more note on those ticks; Hydra's chord has one gem fewer and no mark.
+One end: a chart with only N 0 to 4 and no five_lane_drums key. Both agree.
+Other end: Tool's Schism (Neversoft chart), with 166 fifth-pad notes on Expert. The game scores Notes 106,125 by the 6142 rule; Hydra drops the 166 notes, pays blue as a cymbal and gives Notes 100,480.
 
-What Hydra does today: `chart_pad_color` in src/parse/song.cpp lines 1731 to 1739 knows N 1 to 4, and `ChartParser::note_optype` lines 1763 to 1771 knows 34 to 37 and 40 to 43; the .mid reader takes `note <= base_ + 4`. Owner: the two readers in src/parse/song.cpp. No library count (no library run). Page row NL-04.
+What Hydra does today: `chart_pad_color` in src/parse/song.cpp lines 1731 to 1739 knows N 1 to 4, and `ChartParser::note_optype` lines 1763 to 1771 knows 34 to 37 and 40 to 43; the .mid reader takes `note <= base_ + 4`. Owner: the two readers in src/parse/song.cpp. Page rows NL-04 and NL-74 to NL-76.
+
+Decided, not yet built: in session c61c1986 (2026-11-12) the user chose "Yes, start it" on "Start the plan with the recommended answers (four-lane only, follow the game, bump the stamp, no scan)?". So Hydra follows the game's conversion for a four-lane player, the FiveLaneDrums kit player stays out of scope, saved results are marked Stale once, and the library is not scanned. The split stays open until Hydra's readers make that conversion.
 
 ### Q-14 Two pads of one colour on one tick
 

@@ -4,6 +4,7 @@
 build	kind	typedef_index	class	member	rva	offset	cited
 6142	class	1721	Math				System.Math
 6142	field	1048	GlobalVariables	currentSongEntry		0x28	GlobalVariables.currentSongEntry
+6142	field	1048	GlobalVariables	currentSongMetadata		0x30	GlobalVariables.currentSongMetadata
 6142	field	1048	GlobalVariables	instance		0x8	GlobalVariables.instance
 6142	field	1048	GlobalVariables	isPracticeEnabled		0x72	GlobalVariables.isPracticeEnabled
 6142	field	1048	GlobalVariables	playerList		0x38	GlobalVariables.playerList
@@ -66,6 +67,7 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	field	8255		ˁʸʴʵʳʾʽʿʹʷʿ		0x42	OFF_SP_ACTIVE
 6142	field	8255		ˁʺʺʷʻʼʷʾʽʴʼ		0x2C0	#8255+0x2C0
 6142	field	8255		ˁʺʺʷʻʼʷʾʽʴʼ		0x2C0	OFF_DYN_THRESHOLD
+6142	field	8267		ʺʺʹʻʵʸʺʺʳʻʶ		0x10	#8267+0x10
 6142	field	828		ʻʴʲʳʴʽʹʸʵʸʼ		0x24	#828+0x24
 6142	field	8288		ʲʲˀʳʵʽʼʵʳʷʴ		0xC4	#8288+0xC4
 6142	field	8288		ʲʾʾʸʶʾʺʺʵʳʼ		0x30	#8288+0x30
@@ -1196,6 +1198,7 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	method	8548		ʼʴʺˁʾʲʳʷʽʾʵ	0x2130570		0x2130570
 6142	method	8559		ʵʺˁʽʿʵʹʳˀʻʹ	0x214F6D0		0x214F6D0
 6142	method	8569		ʺʷʻʲʴʺʷʺʺʶʴ	0x214D240		0x214D240
+6142	method	8569		ˀʸʽʻʹʹʻʲˁʲʲ	0x214DB20		0x214DB20
 6142	method	8597		.ctor	0x214BF10		0x214BF10
 6142	method	8597		ʳʵˁʽʾʶʲʴʵʾʹ	0x214B600		0x214B600
 6142	method	8597		ʴʹˀʿʶʵʷʺʿʸʺ	0x214B620		0x214B620
@@ -1252,6 +1255,7 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	method	8661		ʴʻʳʶʷʷʽʶʼʽʽ	0x215C320		0x215C320
 6142	method	8661		ʴʼʻʹʾʲʼʹʷʸʳ	0x215C750		0x215C750
 6142	method	8661		ʵʲʷʿʺʼˁˀʷʽʵ	0x215CD50		0x215CD50
+6142	method	8661		ʵʻʷʹʾʸʿʿˁʸʶ	0x215D450		0x215D450
 6142	method	8661		ʶʸʼʺʹʻʶʲʺʴʷ	0x215DA70		0x215DA70
 6142	method	8661		ʶʹʵʼʶʳʾʸʷʹʵ	0x215DBD0		0x215DBD0
 6142	method	8661		ʶˀʼˀʶʺʾʹʿʿʴ	0x215E000		0x215E000

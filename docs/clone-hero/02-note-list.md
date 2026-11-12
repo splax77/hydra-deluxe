@@ -2,7 +2,7 @@
 
 This page covers how Clone Hero turns the chart's drum notes into the note list it scores.
 It describes build 1.1 (v1.1.0.6142).
-Last write-back: 2026-11-11.
+Last write-back: 2026-11-12.
 
 ## Cymbals and toms
 
@@ -36,21 +36,61 @@ Hydra: `ChartParser::note_optype` in src/parse/song.cpp lines 1746 to 1773; `cha
 Ruling: none needed: same rule for N 0 to 4 and N 32.
 Found: 2026-10-03, session cebf3006; listed 2026-10-30 in session b02ab3e6 (the reference build).
 
-### NL-04 The game reads a fifth drum pad; Hydra drops it
+### NL-04 The game reads a fifth drum pad and converts it at load; Hydra drops it
 
-Rule: the game reads .chart N 5 and .mid pitches 65, 77, 89 and 101 as a fifth pad (note type 17) and raises track flag +0xA1, and reads N 38 and N 44 as the accent and ghost of that pad; Hydra knows four pads and drops all of these. What the game does with a type-17 note in four-lane Pro Drums is unread.
+Rule: the game reads .chart N 5 and .mid pitches 65, 77, 89 and 101 as a fifth pad (note type 17, the game's GreenDrum) and raises track flag +0xA1, and reads N 38 and N 44 as that pad's accent and ghost. At load a track step rewrites a five-pad chart into four-lane Pro Drums (NL-74 to NL-77): yellow becomes the yellow cymbal, blue the blue tom, the fourth pad the green cymbal and the fifth pad the green tom, or the blue tom when the fourth pad shares its tick. Hydra knows four pads, drops the fifth pad and its marks, and scores blue by the ordinary Pro Drums rule.
 Label: Proven in the game's code
-Evidence: `code/6142/chart_n_handler_213D620.asm` lines 99 to 105 (type 0x11 raises +0xA1); `code/6142/pitch_difficulty_map_210D9C0.asm` lines 1 to 24 with the type map in docs/audit/note-shuffle/step0/open2/f210d7b0.asm; `code/6142/chart_modifier_decode_213D160.asm` lines 11 to 80 (N 38 and N 44 on that lane). How many library charts hold such lines was not counted (no library run).
-Game code (6142): RVAs `0x213D620`, `0x210D9C0`, `0x210D7B0` and `0x213D160`, the listings above.
+Evidence: the fifth pad: `code/6142/chart_n_handler_213D620.asm` lines 99 to 105 (type 0x11 raises +0xA1); `code/6142/pitch_difficulty_map_210D9C0.asm` lines 1 to 24 with the type map in docs/audit/note-shuffle/step0/open2/f210d7b0.asm; `code/6142/chart_modifier_decode_213D160.asm` lines 11 to 80 (N 38 and N 44, NL-05). The conversion: `code/6142/five_lane_convert_215D450.asm` lines 26 to 118, explained in its note. Build 1.0: one results screen agrees with the 6142 rule as a sum. The YouTube video `-IX2HcmP1Ts`, at about 53:08, shows a v1.0.0.4080-final run of Tool's Schism (Neversoft chart, md5 9dd6ea4d589ef140b98b17c545a2b6e1) on Expert at 99%, with score 453,690, Notes 106,075, Combo Bonus 311,775, Star Power 35,840, and Solo Bonus, Accent Notes and Ghost Notes all 0. The chart's Expert track holds 561 kicks, 198 red, 519 yellow, 177 blue, 266 fourth-pad and 166 fifth-pad notes (counted with mido, 2026-11-12, session c61c1986). At 50 for a kick, snare or tom and 65 for a cymbal (SC-01, SC-02), the 6142 rule gives (561 + 198 + 177 + 166) x 50 + (519 + 266) x 65 = 106,125, and the screen's 106,075 is 50 less, which reads as one missed tom or kick; the screen shows no miss count, so that is an inference. The screen cannot tell a green tom from a blue tom, and it is not a reading of 1.0's code: the 1.0 dump on this machine (`C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-dumps\4045\`) holds only facts.json, names and types with no method bodies, so whether 1.0 has the same step was not read. Hydra today, by `hydra_replay dump` from main in session c61c1986, gives Schism path 14 10, total 436,270, Notes 100,480, Combo Bonus 297,990 and Star Power 37,800, the same with `--legacy-fills`. How many library charts hold a fifth pad was not counted (the user answered no library scan).
+Game code (6142): RVAs `0x213D620`, `0x210D9C0`, `0x210D7B0`, `0x213D160` and `0x215D450`, the listings above. Game code (4045): not found: the 1.0 dump holds no code.
 Hydra: `chart_pad_color` in src/parse/song.cpp lines 1731 to 1739 (pads 1 to 4) and `ChartParser::note_optype` lines 1763 to 1770 (34 to 37 and 40 to 43 only).
 Ruling: open split: see questions page Q-13.
-Found: 2026-10-30, session b02ab3e6 (the reference build).
+Found: 2026-10-30, session b02ab3e6 (the reference build); the conversion and the 1.0 screen 2026-11-12, session c61c1986.
+
+### NL-74 Which branch the five-lane conversion takes
+
+Rule: the conversion takes the five-lane branch when the track's +0xA1 flag is up and +0xA2 is down, or else when the song's settings byte `#8267+0x10` is set, and the four-lane branch otherwise. That settings byte is song.ini's five_lane_drums, copied in when the chart is loaded (CR-18). So five_lane_drums = True sends a chart to the five-lane branch even when it has tom or cymbal marks. With both track flags down, either branch ends by making every pad but the kick a tom.
+Label: Proven in the game's code
+Evidence: `code/6142/five_lane_convert_215D450.asm` lines 26 to 37 (the test: +0xA1, +0xA2, then the track's song at +0x50, the song's settings at +0xC8 and that object's +0x10 byte) and lines 187 to 222 (the all-toms tail). The song keeps its settings object at +0xC8: `code/6142/song_ctor_212E990.asm` lines 8 and 209 to 210. The settings object's +0x10 is its constructor's first bool, `code/6142/chart_settings_ctor_20E73E0.asm` line 33, and `code/6142/songentry_load_35C110.asm` lines 128 to 174 pass `GlobalVariables.currentSongMetadata` +0x38 there, which `code/6142/ini_song_reader_1EFC60.asm` lines 77 to 82 fill from five_lane_drums. Not traced: that the metadata object read at load is the one filled from this song's song.ini; live step LS3 of the five-lane plan checks it.
+Game code (6142): a method of the track class #8661, RVA `0x215D450`; the settings constructor RVA `0x20E73E0`; `SongEntry` RVA `0x35C110`; the song.ini reader RVA `0x1EFC60`; the listings above.
+Hydra: no owner: neither reader looks at five_lane_drums, `pro_drums` or whether a chart is five-lane. A case-blind grep of src/ for five_lane, fivelane, five-lane and pro_drums, 2026-11-12, finds only a display parameter named `pro_drums` in src/app/path_view.cpp and src/app/preview_view.cpp, which reads no song.ini.
+Ruling: open split: see questions page Q-13.
+Found: 2026-11-12, session c61c1986.
+
+### NL-75 The five-lane branch
+
+Rule: each note is rewritten by type: red stays red; yellow becomes the yellow cymbal; blue becomes the blue tom; the fourth pad becomes the green cymbal; the fifth pad becomes the green tom, or the blue tom when the fourth pad shares its tick. Only the type and the tom and cymbal bits change, so accent, ghost, Star Power, solo and flam marks stay on the note.
+Label: Proven in the game's code
+Evidence: `code/6142/five_lane_convert_215D450.asm` lines 60 to 70 (the switch), 71 to 90 (the fourth pad), 91 to 108 (the fifth pad), 109 to 112 (yellow) and 114 to 117 (red and blue), with the chord search `code/6142/chord_find_type_214DB20.asm`; the note beside the listing walks both orders of a tick holding the fourth and fifth pads.
+Game code (6142): RVA `0x215D450` and the chord search RVA `0x214DB20`, the listings above.
+Hydra: no owner: the .mid reader takes four pitches above the kick (`MidiParser::optype` in src/parse/song.cpp) and the .chart reader N 1 to 4 (`chart_pad_color`).
+Ruling: open split: see questions page Q-13.
+Found: 2026-11-12, session c61c1986.
+
+### NL-76 The four-lane branch
+
+Rule: the fourth pad is renamed type 17 with its flags kept, which is the ordinary four-pad case. A fifth-pad note on a chart that takes this branch becomes the green tom; when the fourth pad shares its tick it becomes the blue tom instead, and takes the flag word of a blue note already on that tick when there is one.
+Label: Proven in the game's code
+Evidence: `code/6142/five_lane_convert_215D450.asm` lines 130 to 186: line 158 (the rename), lines 160 to 163 (the green tom), 165 to 170 (the fourth-pad search), 172 to 179 (the blue search and flag copy) and 180 (type 16).
+Game code (6142): RVA `0x215D450`, the listing above.
+Hydra: no owner: Hydra drops the fifth pad on every chart.
+Ruling: open split: see questions page Q-13.
+Found: 2026-11-12, session c61c1986.
+
+### NL-77 The same-type merge runs after the conversion
+
+Rule: the track finalizer calls the marker step, which ends with the conversion, before it calls the merge of two notes of one type on one tick. So a tick holding blue, the fourth pad and the fifth pad ends the conversion with two blue toms, and the merge then makes them one blue note carrying both notes' flag bits (NL-32).
+Label: Proven in the game's code
+Evidence: docs/audit/note-shuffle/step0/open2-refute/f215C320.asm lines 38 to 50 (for an instrument byte of 6 or 9, the call to `0x215E280`), 56 (the sort `0x215C040`) and 59 (the merge `0x215B8C0`); `code/6142/note_flags_from_markers_215E280.asm` line 90 calls the conversion. A byte scan of the DLL's call instructions, 2026-11-12, finds one direct caller of `0x215B8C0` (0x215C430 in the finalizer) and one of `0x215D450` (0x215E3F2 in the marker step). No live run has played such a tick.
+Game code (6142): the finalizer RVA `0x215C320`, the marker step RVA `0x215E280`, the merge RVA `0x215B8C0`.
+Hydra: `Chord::add_note` in src/core/model.cpp line 242 throws on a second note on a lane.
+Ruling: open split: see questions page Q-14.
+Found: 2026-11-12, session c61c1986.
 
 ### NL-05 The .chart modifiers: accents, ghosts and cymbals
 
 Rule: N 34 to 38 make an accent and N 40 to 44 a ghost on red, yellow, blue, the fourth and the fifth pad; N 66, 67 and 68 make a cymbal on yellow, blue and the fourth pad and raise track flag +0xA2; N 39, N 45 to 65 and N 69 up give nothing. Each modifier starts and ends at its own tick, and no tag gates it.
 Label: Proven in the game's code
-Evidence: `code/6142/chart_modifier_decode_213D160.asm` lines 11 to 80; `code/6142/chart_n_handler_213D620.asm` lines 212 to 278 (the call, the cymbal kind raising +0xA2, the record written with the tick twice); decompile lines 24747 to 24840.
+Evidence: `code/6142/chart_modifier_decode_213D160.asm` lines 11 to 80. Its jump table at RVA 0x213D29C, decoded from the DLL on 2026-11-12 (session c61c1986), sends N 34 to 38 to lines 22, 25, 28, 31 and 34 (types 14, 15, 16, 18 and 17 with kind 9, Accent) and N 40 to 44 to lines 37, 40, 43, 46 and 49 (the same types with kind 10, Ghost), and N 39 to line 78 (nothing). So N 37 and N 43 are the fourth pad's (type 18) accent and ghost, and N 38 and N 44 the fifth pad's (type 17). `code/6142/chart_n_handler_213D620.asm` lines 212 to 278 (the call, the cymbal kind raising +0xA2, the record written with the tick twice); decompile lines 24747 to 24840.
 Game code (6142): RVAs `0x213D160` and `0x213D620`, the listings above.
 Hydra: `ChartParser::note_optype` in src/parse/song.cpp lines 1746 to 1772, with `kChartCymbalMarkerBase`; `allows_cymbals` in src/core/model.cpp line 18.
 Ruling: none needed: same rule for the four pads (the fifth is NL-04).
