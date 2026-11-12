@@ -42,6 +42,7 @@ from tools.ch_mcp.tests.test_recorder_link import FakePopen  # noqa: E402
 from tools.ch_mcp.tests.test_bot_run import (  # noqa: E402
     ORIGINAL, PATCHED, FakeLaunchAgent, Rig, StuckGame, _read, _write, wire_human)
 from tools.ch_mcp.tests.test_game_files import FakeReg  # noqa: E402
+from tools.ch_mcp.tests.test_hydra_end import FAKE  # noqa: E402
 from tools.ch_probe import probe_songs  # noqa: E402
 from tools.ch_probe import input_driver  # noqa: E402
 from tools.ch_probe.experiments import play_chart  # noqa: E402
@@ -166,9 +167,12 @@ _quiet_patch = mock.patch.object(Q, "LIVE_ENV", FakeQuiet().env())
 def setUpModule():
     # ch_start's check would otherwise read this machine and wait out its sample.
     _quiet_patch.start()
+    # The song ends come from fake dumps, because no test runs hydra_replay.
+    FAKE.start()
 
 
 def tearDownModule():
+    FAKE.stop()
     _quiet_patch.stop()
 
 
@@ -356,8 +360,10 @@ class GameToolsTest(unittest.TestCase):
         self.assertIn(f"backup folder: {backup}", lines)
         self.assertTrue(any(line.startswith("starting: ") and t.r.song in line for line in lines))
         self.assertIn("game process id: 4242", lines)
-        self.assertEqual(lines[-1], f"song length: 4000 ms, from song_length in "
-                                    f"{os.path.join(t.r.song, G.SONG_INI)}")
+        # Hydra's end, from the dump made for the song's chart.
+        self.assertTrue(lines[-1].startswith("song length: 4000 ms, from song_length_ms in "),
+                        lines[-1])
+        self.assertTrue(lines[-1].endswith(f"{probe_songs.WINDOW_MAP}-dump.json"), lines[-1])
         self.assertEqual(t.tools.launched_at(), 0.0)
 
     def test_ch_start_with_no_song_launches_launch_commands_no_song_line(self):
@@ -755,13 +761,18 @@ class GameToolsTest(unittest.TestCase):
 
     def test_run_cap_is_the_song_plus_the_extra_minute_else_240_s(self):
         t = ToolRig(self.tmp)
-        _write(os.path.join(t.r.song, G.SONG_INI), b"[song]\nsong_length = 260504\n")
+        # Hydra's end in the fake dump, not song.ini's own line.
+        _write(os.path.join(t.r.song, G.SONG_INI), b"[song]\nsong_length = 9999\n")
+        FAKE.set_end(t.r.chart, 260504)
         self.assertEqual(GT.run_cap_s(t.r.song), 320.504)
         self.assertEqual(t.tools.run_cap_s(t.r.song), 320.504)
-        no_length = os.path.join(self.tmp, "no length")
-        os.makedirs(no_length)
-        _write(os.path.join(no_length, G.SONG_INI), b"[song]\nname = x\n")
-        self.assertEqual(GT.run_cap_s(no_length), 240.0)
+        self.assertEqual(FAKE.charts[-1], t.r.chart)
+        FAKE.set_end(t.r.chart, None)
+        self.assertEqual(GT.run_cap_s(t.r.song), 240.0)
+        no_chart = os.path.join(self.tmp, "no chart")
+        os.makedirs(no_chart)
+        _write(os.path.join(no_chart, G.SONG_INI), b"[song]\nsong_length = 260504\n")
+        self.assertEqual(GT.run_cap_s(no_chart), 240.0)
         self.assertEqual(GT.run_cap_s(None), 240.0)
 
     def test_ch_play_chart_with_a_song_folder_passes_the_cap_to_live_play(self):
@@ -772,7 +783,7 @@ class GameToolsTest(unittest.TestCase):
             return play_chart.RunResult(stop="done")
 
         t = ToolRig(self.tmp, live_play=live_play)
-        _write(os.path.join(t.r.song, G.SONG_INI), b"[song]\nsong_length = 260504\n")
+        FAKE.set_end(t.r.chart, 260504)
         reply = t.tools.ch_play_chart(self._score_json(), self._schedule_json(),song_folder=t.r.song, route="keys")
         t.tools._play.thread.join(THREAD_CAP_S)
         self.assertEqual(seen, [320.504])
