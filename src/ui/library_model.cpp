@@ -192,8 +192,10 @@ SearchField search_field_of(const app::StrippedRow& stripped, const app::Searcha
     return {stripped.folder, folded.folder};
 }
 
-// The user chose 8 threads after hydra_bench --open measured this fold at 9.5 ms on 8 threads
-// against 47.6 ms on 1 (docs/agents/rulings/code-and-engine.md, 2026-11-12, "8 threads").
+// How many threads build rows at once, the calling thread included: it builds
+// the first share and 7 helpers build the rest. The count is the user's ruling
+// "8 threads" (docs/agents/rulings/code-and-engine.md); hydra_bench --open
+// counts threads the same way.
 constexpr size_t kRowBuildThreads = 8;
 
 // One scanned chart's row. It touches only `entry` (read, then emptied), `row`
