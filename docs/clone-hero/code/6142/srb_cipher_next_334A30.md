@@ -1,0 +1,2 @@
+# srb_cipher_next_334A30 (build 6142, RVA 0x334A30)
+A method of class #1448 that `srb_stem_iv_setup_1F1D50` calls for the later refills, with stored stem bytes as input. It has the same shape as `srb_cipher_first_334340`: it picks the object's expanded key and the class's two static arrays and passes them, with the input and output pointers, to `srb_cipher_rounds_336E50` (line 61). It does no rounds itself, and it returns a constant.

@@ -1,0 +1,3 @@
+# srb_cipher_first_334340 (build 6142, RVA 0x334340)
+A method of class #1448 that the stem's start-of-stem refill `srb_stem_iv_setup_1F1D50` calls with the IV buffer. Like `srb_block_cipher_334620`, it does no rounds itself. Lines 16 to 50 pick the object's expanded key at +0x10 (from its first element), and two static arrays of the class (+0x10 and +0). Lines 52 to 58 pass the input pointer, the output pointer, the key, the first static array and (on the stack) the second to `srb_cipher_rounds_336E50`. Line 60 returns a constant.
+srb_cipher_next_334A30.asm is the same shape for the later refills. That 334620 starts its key at element +0x24 while this one starts at element 0 was not explained.

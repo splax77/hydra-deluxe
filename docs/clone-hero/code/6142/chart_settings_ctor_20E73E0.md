@@ -1,0 +1,3 @@
+# chart_settings_ctor_20E73E0 (build 6142, RVA 0x20E73E0)
+The constructor of class #8267, the settings a chart read is given (the `in` argument of every .mid reader method). Lines 20 to 34 store the nine arguments in order: two bools at +0x10 and +0x11 (the two track flags' starting values), a float at +0x14, an int at +0x18, a bool at +0x1C, three ints at +0x20 to +0x28, and the bool at +0x2C that the .mid reader copies into its thread-local switch. Lines 35 to 52 make a new empty song object and store it at +0x30.
+Direct callers (byte scan of call instructions): `songentry_load_35C110` at 0x35C42E, and four methods of class #8251 (0x20E36F0, 0x20E4E90, 0x20E5130, 0x20E6160).
