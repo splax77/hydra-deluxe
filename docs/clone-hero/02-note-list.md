@@ -599,7 +599,7 @@ Label: Unknown
 Evidence: the test is in the lane builder, docs/audit/drum-lanes/f20d12c0.asm. Lines 70 to 88 load the song's +0xB8 double, multiply it by 12.0 and divide by the static double at +0x68 of the song class #8538. Lines 98 to 103 round the result through 0x2C49A60 and make it a tick count; `code/6142/lane_cutoff_round_2C49A60.asm` lines 8 to 25 round to the nearest whole number with halves to the even neighbour. The class's static constructor stores 192.0 at +0x68 (`code/6142/lane_divisor_cctor_212E3D0.asm` lines 266 to 269), and dump.cs line 543369 declares that field static readonly. The search at lines 126 to 133 starts from the lane's start minus one, with the mask 0xFE, which leaves the kick out; lines 145 to 147 skip the lane only when that chord's +0x40 tick is strictly greater than the start plus the cut-off. Lines 241 to 247 convert the start minus the cut-off to the lane object's start time, and lines 283 to 286 make its tick length the chord's distance from the start plus twice the cut-off. +0xB8 is the resolution the file states: the song's setter writes it (`code/6142/song_resolution_set_212C0B0.asm` lines 1 to 13), the .chart reader calls the setter with its Resolution value (`code/6142/chart_resolution_read_2164100.asm` lines 139 and 201 to 272), and the .mid reader calls it with the header's ticks per quarter note (`code/6142/midi_resolution_read_2155C00.asm` lines 82 to 94, `code/6142/midi_header_read_211AF60.asm` lines 82 to 86). Still not searched, so the label stays Unknown: writers of the public +0xB8 field outside the setter. A read-only search of the user's library on 2026-11-08 found 75 such lanes in 50 charts, for example Job for a Cowboy - Embedded, whose double lane at tick 273,840 has its first pad chord 240 ticks in (docs/audit/2026-11-08-clone-hero-unknowns/user-answers.md line 21).
 Game code (6142): the lane builder, RVA `0x20D12C0`, with the rounding 0x2C49A60, the static constructor 0x212E3D0 and the setter `0x212C0B0`, the listings above.
 Hydra: `light_drum_lanes` in src/parse/song.cpp lines 203 to 213 applies no cut-off; its comment at lines 200 and 201 still calls the game's cut-off unknown.
-Ruling: D112: chose "Any note inside the lane (Recommended)" (card 2026-10-11-14ef4882, 00:34 UTC). For the cut-off found since, the user chose "Record it only" (docs/audit/2026-11-08-clone-hero-unknowns/user-answers.md line 21).
+Ruling: D112: chose "Any note inside the lane (Recommended)" (card 2026-10-11-14ef4882, 00:34 UTC). For the cut-off found since, the user chose "Record it only" (docs/audit/2026-11-08-clone-hero-unknowns/user-answers.md line 21); questions page Q-81 records it.
 Found: 2026-10-10, D112; the listing lines cited 2026-11-08, session 77057df2 (docs-gaps search); the divisor and the resolution read 2026-11-08, session 77057df2.
 
 ### NL-59 A double lane's 0.75-second timer
@@ -762,7 +762,7 @@ Found: 2026-10-31, session b478542c.
 
 ## Rows waiting on a live run
 
-NL-12, NL-13, NL-14, NL-15, NL-16, NL-19, NL-30, NL-32, NL-34, NL-39, NL-42, NL-57, NL-58, NL-65, NL-69. Each is listed on the live-checks page.
+NL-12, NL-13, NL-16, NL-19, NL-30, NL-32, NL-34, NL-39, NL-57, NL-58, NL-65, NL-69. Each is listed on the live-checks page.
 
 ## Open splits
 
