@@ -655,7 +655,7 @@ class SpToolsTest(unittest.TestCase):
             "compare refused: give resolution"))
 
     def test_ch_sp_compare_refuses_while_a_play_runs(self):
-        self.game.play = {"last_row": None, "press_count": 0, "stop": None}
+        self.game.play = {"last_row": None, "press_count": 0, "stop": None, "message": ""}
         missing = os.path.join(self.tmp.name, "none.csv")
         self.assertEqual(self.tools().ch_sp_compare(missing, missing, missing, 192),
                          "compare refused: the play session is still running; "
@@ -663,12 +663,23 @@ class SpToolsTest(unittest.TestCase):
 
     def test_ch_sp_compare_passes_the_last_plays_stop(self):
         watch_csv, score_json = self._mouths_files()
-        self.game.play = {"last_row": None, "press_count": 3, "stop": play_chart.STOP_DONE}
+        self.game.play = {"last_row": None, "press_count": 3, "stop": play_chart.STOP_DONE,
+                          "message": ""}
         reply = self.tools().ch_sp_compare(watch_csv, score_json, _MOUTHS_SCHEDULE, 192)
         self.assertIn("PASS run end: the run reached the song's end", reply)
         self.game.play = None
         reply = self.tools().ch_sp_compare(watch_csv, score_json, _MOUTHS_SCHEDULE, 192)
         self.assertIn("FAIL run end: the run's stop reason was not given", reply)
+
+    def test_ch_sp_compare_prints_the_last_plays_stop_message(self):
+        watch_csv, score_json = self._mouths_files()
+        self.game.play = {"last_row": None, "press_count": 0,
+                          "stop": play_chart.STOP_NO_ENGINE,
+                          "message": "no song started within 120 s"}
+        reply = self.tools().ch_sp_compare(watch_csv, score_json, _MOUTHS_SCHEDULE, 192)
+        self.assertIn(f"FAIL run end: the run stopped before the song's end "
+                      f"({play_chart.STOP_NO_ENGINE}): no song started within 120 s",
+                      reply.splitlines())
 
     def test_ready_when_comes_from_the_schedule_and_whether_from_the_games_half(self):
         self.assertTrue(sp_tools.game_ready(_row(1.0, 7201, sp_half_u64=7200)))

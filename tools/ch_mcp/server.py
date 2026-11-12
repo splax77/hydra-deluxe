@@ -219,10 +219,15 @@ def build_server(helper: Optional[Helper] = None):
         return capped(h.game.ch_stats(path))
 
     @server.tool()
-    def ch_compare(stats_path: str, score_json: str) -> str:
-        """Compare a stats copy with a hydra_replay score JSON: six lines,
-        then pass or fail."""
-        return capped(h.game.ch_compare(stats_path, score_json))
+    def ch_compare(stats_path: str, score_json: str, checksum: str | None = None,
+                   playback_speed: int | None = None, no_fail: bool | None = None,
+                   modifiers: list[str] | None = None) -> str:
+        """Compare a stats copy with a hydra_replay score JSON, one line per
+        check, then pass or fail. checksum, playback_speed, no_fail and
+        modifiers are what the run asked the game for, given all four or none
+        (game_tools.GameTools.ch_compare says why)."""
+        return capped(h.game.ch_compare(stats_path, score_json, checksum, playback_speed,
+                                        no_fail, modifiers))
 
     # -- Frida (frida_tools) --------------------------------------------------------
 

@@ -318,7 +318,8 @@ class SpTools:
         hydra_replay schedule. A schedule file that press_reach cannot read,
         or that refuses its path, gets one line naming why. `resolution` is
         the chart's Resolution, which no file here holds, and the run's stop
-        reason is the last play session's (GameTools.play_snapshot). After the
+        reason and its message are the last play session's
+        (GameTools.play_snapshot). After the
         report, one line per activation of the schedule sets Hydra's ready
         point against the first row the game was ready (ready_lines)."""
         if resolution is None:
@@ -329,6 +330,7 @@ class SpTools:
             if play is not None and play["stop"] is None:
                 return "compare refused: the play session is still running; call ch_play_stop first"
             stop = play["stop"] if play is not None else None
+            stop_message = play["message"] if play is not None else ""
             try:
                 rows = sp_compare.load_watch_rows(watch_csv)
                 score = sp_compare.load_score(score_json)
@@ -342,7 +344,7 @@ class SpTools:
             try:
                 report = sp_compare.compare(rows, score, resolution=resolution,
                                             sp_bar_ticks=sp_bar_ticks, width=width,
-                                            reach=reach, stop=stop)
+                                            reach=reach, stop=stop, stop_message=stop_message)
             except (OSError, ValueError, KeyError, TypeError) as e:
                 return f"compare failed: {type(e).__name__}: {e}"
             return "\n".join([report.text()] + ready_lines(rows, schedule))

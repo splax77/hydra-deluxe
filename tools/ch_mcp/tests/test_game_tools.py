@@ -548,21 +548,59 @@ class GameToolsTest(unittest.TestCase):
             "  instrument: Drums", '  modifiers: ["DoubleKick"]', "  no_fail: true",
             "  score: 10"])
 
-    def test_ch_compare_prints_compares_lines_then_the_verdict(self):
+    # The run's settings the ch_compare tests pass, and the stats file holds.
+    COMPARE_RUN = compare_scorestats.RunSettings(
+        "AF44D5C8D941BB33444D18E7871CDC77", 100, True, ("DoubleKick",))
+
+    def _compare_files(self):
         stats = os.path.join(self.tmp, "stats.json")
         score = os.path.join(self.tmp, "score.json")
-        _write(stats, json.dumps({"players": [{"total_notes": 2, "sp_phrases_total": 0,
-                                               "base_score": 100, "note_score": 100,
-                                               "score": 100, "accent_notes_hit": 0,
-                                               "ghost_notes_hit": 0, "sp_activations": 0}]}).encode())
+        run = self.COMPARE_RUN
+        _write(stats, json.dumps({
+            "checksum": run.checksum, "playback_speed": run.playback_speed,
+            "players": [{"total_notes": 2, "notes_hit": 2, "sp_phrases_total": 0,
+                         "sp_phrases_earned": 0, "base_score": 100, "note_score": 100,
+                         "score": 100, "accent_notes_hit": 0, "ghost_notes_hit": 0,
+                         "sp_activations": 0, "no_fail": run.no_fail,
+                         "modifiers": list(run.modifiers)}]}).encode())
         _write(score, json.dumps({
             "chords": [{"notes": [{"dynamic": "none"}], "is_sp_phrase_end": False}] * 2,
             "final": {"notes": 100, "accent": 0, "ghost": 0, "total": 100},
             "activations": []}).encode())
+        return stats, score
+
+    def test_ch_compare_prints_compares_lines_then_the_verdict(self):
+        stats, score = self._compare_files()
+        run = self.COMPARE_RUN
         expected = []
-        self.assertTrue(compare_scorestats.compare(stats, score, out=expected.append))
+        self.assertTrue(compare_scorestats.compare(stats, score, run=run, out=expected.append))
         t = ToolRig(self.tmp)
-        self.assertEqual(t.tools.ch_compare(stats, score).splitlines(), expected + ["pass"])
+        reply = t.tools.ch_compare(stats, score, run.checksum, run.playback_speed, run.no_fail,
+                                   list(run.modifiers))
+        self.assertEqual(reply.splitlines(), expected + ["pass"])
+
+    def test_ch_compare_without_the_run_settings_fails_on_the_settings_line(self):
+        stats, score = self._compare_files()
+        expected = []
+        self.assertFalse(compare_scorestats.compare(stats, score, out=expected.append))
+        t = ToolRig(self.tmp)
+        self.assertEqual(t.tools.ch_compare(stats, score).splitlines(), expected + ["fail"])
+
+    def test_ch_compare_refuses_some_but_not_all_of_the_run_settings(self):
+        stats, score = self._compare_files()
+        t = ToolRig(self.tmp)
+        self.assertEqual(
+            t.tools.ch_compare(stats, score, checksum=self.COMPARE_RUN.checksum, no_fail=True),
+            "refused: give all four of the run's settings, or none; missing: "
+            "playback_speed, modifiers")
+
+    def test_ch_compare_takes_an_empty_modifier_list_as_given(self):
+        stats, score = self._compare_files()
+        run = self.COMPARE_RUN
+        reply = ToolRig(self.tmp).tools.ch_compare(stats, score, run.checksum,
+                                                   run.playback_speed, run.no_fail, [])
+        self.assertIn("modifiers: FAIL; ", reply)
+        self.assertEqual(reply.splitlines()[-1], "fail")
 
     # -- keys -------------------------------------------------------------------------
 
@@ -818,7 +856,8 @@ class GameToolsTest(unittest.TestCase):
         t.tools.ch_play_chart(self._score_json(), self._schedule_json(),log="press.csv", route="keys")
         self.assertTrue(t.live_play.delivered.wait(THREAD_CAP_S))
         snapshot = t.tools.play_snapshot()
-        self.assertEqual(snapshot, {"last_row": ROWS[-1], "press_count": 2, "stop": None})
+        self.assertEqual(snapshot, {"last_row": ROWS[-1], "press_count": 2, "stop": None,
+                                    "message": ""})
         self.assertIn("running: 2 presses so far, 1 hit", t.tools.ch_play_status())
 
         stop_reply = t.tools.ch_play_stop()
@@ -836,7 +875,8 @@ class GameToolsTest(unittest.TestCase):
                                       "  0, 1000.0, 998.0, 0, 50, 1"])
         self.assertTrue(os.path.isfile(log))
         self.assertEqual(t.tools.play_snapshot(),
-                         {"last_row": ROWS[-1], "press_count": 2, "stop": "stopped"})
+                         {"last_row": ROWS[-1], "press_count": 2, "stop": "stopped",
+                          "message": ""})
 
     def test_play_snapshot_is_none_with_no_play_session(self):
         t = ToolRig(self.tmp)
@@ -851,6 +891,7 @@ class GameToolsTest(unittest.TestCase):
         lines = t.tools.ch_play_status().splitlines()
         self.assertIn(f"ended: {play_chart.STOP_NO_ENGINE}", lines)
         self.assertIn("no song started within 120 s", lines)
+        self.assertEqual(t.tools.play_snapshot()["message"], "no song started within 120 s")
 
     def test_ch_stop_tells_a_running_play_session_to_stop(self):
         t = ToolRig(self.tmp)
