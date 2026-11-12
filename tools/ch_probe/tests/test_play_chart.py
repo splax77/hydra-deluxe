@@ -62,8 +62,9 @@ _DUMP = {"chords": json.loads(r"""[
 def _schedule_of(score):
     """A hand-built schedule file for the chords of a score-shaped dict: one
     plain press per chord at a hand-picked aim of 2 ms early, with a
-    hand-picked last send 50 ms after the chord. These are test inputs, not
-    the schedule's rules; tools/replay_schedule.cpp owns those."""
+    hand-picked last send 50 ms after the chord, and a hand-picked song end
+    of 200,000 ms. These are test inputs, not the schedule's rules;
+    tools/replay_schedule.cpp owns those."""
     chords, presses = [], []
     for chord in score["chords"]:
         gems = [dict(gem, place=k) for k, gem in enumerate(chord["notes"])]
@@ -76,7 +77,7 @@ def _schedule_of(score):
                         "timed_from_end": None, "end_read_after": None,
                         "aim_end_ms": None, "room_ms": 48.0,
                         "last_send_ms": chord["ms"] + 50.0})
-    return {"song_length_ms": None, "activations": [], "chords": chords,
+    return {"song_length_ms": 200000.0, "activations": [], "chords": chords,
             "presses": presses, "refusals": []}
 
 
@@ -626,13 +627,14 @@ class LivePlayTest(unittest.TestCase):
 
         def fake_play_chords(chords, clock, read_score, press, **kwargs):
             seen.append(press)
+            seen.append(kwargs["kit"])
             return play_chart.RunResult(stop="done")
 
         def no_window():
             raise AssertionError("find_game_window was called on the press route")
 
         def kit_press(lanes, _axes):
-            return {}
+            return fakes.kit_reply([(40, 42, fakes.KIT_EPOCH_MS, fakes.KIT_EPOCH_MS + 12)])
 
         with mock.patch.object(play_chart, "EngineModel", _FakeEngine), \
                 mock.patch.object(play_chart, "find_game_window", no_window), \
@@ -640,7 +642,8 @@ class LivePlayTest(unittest.TestCase):
             play_chart.live_play(
                 _load_chords(), open_proc=lambda **kw: _FakeProc(),
                 find_engine=lambda _proc: 0x1000, press=kit_press, out=io.StringIO())
-        self.assertEqual(seen, [kit_press])
+        # A given press is the kit press, so play_chords checks its replies.
+        self.assertEqual(seen, [kit_press, True])
 
 
 def _gem(color, dynamic, cymbal=False):
@@ -792,27 +795,28 @@ class DynamicsTest(unittest.TestCase):
 
 
 class PressReplyRowTest(unittest.TestCase):
-    """A press that returns a dict (the kit press) adds the values the press
-    log has columns for to the row; a press that returns keys adds none."""
+    """A kit press's reply adds the values the press log has columns for to
+    the row; a press that returns keys adds none."""
 
     def test_a_dict_reply_rides_into_the_row(self):
         wall = _FakeTime()
         game = _FakeGame()
+        down_ms = fakes.KIT_EPOCH_MS + 7
 
         def press(lanes, _axes):
             game.press(lanes)
-            return {"down_frame": 40, "up_frame": 42, "down_ms": 7, "up_ms": 19,
-                    "rewrite": True, "hit": "not this"}
+            return fakes.kit_reply([(40, 42, down_ms, down_ms + 12)], rewrite=True)
 
         result = play_chart.play_chords(
             _load_chords()[:1], _FakeSongClock(wall, start_s=12.0),
-            game.read_score, press, now=wall.now, sleep=wall.sleep, out=io.StringIO())
+            game.read_score, press, now=wall.now, sleep=wall.sleep, out=io.StringIO(),
+            kit=True)
         row = result.rows[0]
         self.assertEqual(row, {
             "index": 38, "chart_ms": 13043.48, "clock_ms_at_press": row["clock_ms_at_press"],
             "lead_ms": 2.0, "score_before": 0, "score_after": 100, "hit": 1,
             "scored_between": 0,
-            "down_frame": 40, "up_frame": 42, "down_ms": 7, "up_ms": 19,
+            "down_frame": 40, "up_frame": 42, "down_ms": down_ms, "up_ms": down_ms + 12,
             "wall_s_at_read": row["wall_s_at_read"], "wall_s_at_reply": row["wall_s_at_reply"]})
 
     def test_a_key_press_adds_nothing(self):
@@ -971,12 +975,14 @@ class _SplitReplyPress:
 
     def __call__(self, lanes, axes=None, then=()):
         self.calls.append((list(lanes), list(then)))
-        groups = [{"down_frame": 500 + 3 * k, "up_frame": 502 + 3 * k,
-                   "down_ms": 9000 + 9 * k, "up_ms": 9006 + 9 * k} for k in range(1 + len(then))]
-        reply = {**groups[0], "hold_frames": 2}
-        if then:
-            reply["groups"] = groups
-        return reply
+        return fakes.kit_reply(
+            [(500 + 3 * k, 502 + 3 * k, _SPLIT_DOWN_MS + 9 * k, _SPLIT_DOWN_MS + 6 + 9 * k)
+             for k in range(1 + len(then))],
+            after_ms=[0.0] + [after for _lanes, _axes, after in then])
+
+
+# The first group's down on the agent's clock in _SplitReplyPress's replies.
+_SPLIT_DOWN_MS = fakes.KIT_EPOCH_MS + 9000
 
 
 class SplitSendTest(unittest.TestCase):
@@ -988,7 +994,7 @@ class SplitSendTest(unittest.TestCase):
         reads = iter(scores)
         result = play_chart.play_chords(
             chords, _FakeSongClock(wall, start_s=0.5), lambda: next(reads), press,
-            now=wall.now, sleep=wall.sleep, out=io.StringIO())
+            now=wall.now, sleep=wall.sleep, out=io.StringIO(), kit=True)
         self.assertEqual(result.stop, "done")
         return result
 
@@ -999,7 +1005,9 @@ class SplitSendTest(unittest.TestCase):
         self.assertEqual(press.calls, [([Lane.KICK], [([Lane.GREEN_CYMBAL], None, 8.0)])])
         rows = result.rows
         self.assertEqual([(r["index"], r["down_frame"], r["up_frame"], r["down_ms"], r["up_ms"])
-                          for r in rows], [(7, 500, 502, 9000, 9006), (7, 503, 505, 9009, 9015)])
+                          for r in rows],
+                         [(7, 500, 502, 1762600009000, 1762600009006),
+                          (7, 503, 505, 1762600009009, 1762600009015)])
         self.assertEqual([(r["score_before"], r["score_after"], r["hit"]) for r in rows],
                          [(0, 250, 1), (0, 250, 1)])
         self.assertEqual([round(r["lead_ms"], 2) for r in rows], [2.0, -6.0])
@@ -1345,7 +1353,7 @@ class DropBoundaryTest(unittest.TestCase):
         scores = iter([0, 0, 100])
         result = play_chart.play_chords(
             chords, _ScriptedSongClock(wall, [0.5, raw_s]), lambda: next(scores), press,
-            now=wall.now, sleep=wall.sleep, out=io.StringIO())
+            now=wall.now, sleep=wall.sleep, out=io.StringIO(), kit=True)
         self.assertEqual(result.stop, "done")
         return result
 
@@ -1568,6 +1576,289 @@ class RetimedColumnTest(unittest.TestCase):
     def test_the_words(self):
         self.assertEqual((play_chart.RETIMED_LATE, play_chart.RETIMED_INSIDE,
                           play_chart.RETIMED_PLAIN), ("late", "inside", "plain"))
+
+
+# --- what is missing stops the run (task F4 of
+# docs/superpowers/plans/2026-11-08-player-audit-fixes.md) -------------------------
+
+def _split_then_plain_chords():
+    """Chord 7 split in two order groups as _split_chords has it, then chord
+    8, a lone red a second later. Hand-picked test inputs."""
+    doc = _schedule_of({"chords": [
+        {"index": 7, "ms": 1000.0, "notes": [_gem("Kick", "none"),
+                                             _gem("Green", "none", cymbal=True)]},
+        {"index": 8, "ms": 2000.0, "notes": [_gem("Red", "none")]}]})
+    first = doc["presses"][0]
+    doc["presses"] = [dict(first, gems=[0]), dict(first, gems=[1], aim_ms=6.0, after_ms=8.0),
+                      doc["presses"][1]]
+    return _write_and_load(doc, play_chart.load_schedule).chords
+
+
+class _ReplyPress:
+    """A kit press whose agent sends `reply` to every press; it keeps each
+    call's lanes."""
+
+    def __init__(self, reply) -> None:
+        self.reply, self.calls = reply, []
+
+    def __call__(self, lanes, axes=None, then=()):
+        self.calls.append(list(lanes))
+        return self.reply
+
+
+def _kit_run(chords, press, start_s=0.5):
+    wall = _FakeTime()
+    game = _FakeGame()
+    out = io.StringIO()
+    result = play_chart.play_chords(
+        chords, _FakeSongClock(wall, start_s=start_s), game.read_score, press,
+        now=wall.now, sleep=wall.sleep, out=out, kit=True)
+    return result, out.getvalue()
+
+
+class ReplyStopTest(unittest.TestCase):
+    """A kit reply without what its press asked for stops the run at that
+    chord (D318 item 2)."""
+
+    def test_a_reply_without_groups_stops_the_run_at_that_chord(self):
+        press = _ReplyPress({})
+        result, text = _kit_run(_split_then_plain_chords(), press)
+        self.assertEqual(result.stop, "reply")
+        self.assertIn("chord 7", result.message)
+        self.assertIn("`groups`", result.message)
+        self.assertIn(result.message, text)
+        # Chord 8 is never pressed and the stopped press logs no row.
+        self.assertEqual(press.calls, [[Lane.KICK]])
+        self.assertEqual(result.rows, [])
+        # A first group's frames with no `groups` list stops it the same way.
+        one = fakes.kit_reply([(500, 502, _SPLIT_DOWN_MS, _SPLIT_DOWN_MS + 6)])
+        result, _text = _kit_run(_split_then_plain_chords(), _ReplyPress(one))
+        self.assertEqual((result.stop, result.rows), ("reply", []))
+        self.assertEqual(result.message, "the kit's reply to chord 7's press has no `groups` "
+                                         "list, though the press sent 2 groups")
+
+    def test_a_reply_that_is_not_a_dict_or_lacks_down_up_stops_the_run(self):
+        whole = fakes.kit_reply([(500, 502, _SPLIT_DOWN_MS, _SPLIT_DOWN_MS + 6)])
+        cases = {
+            "None": None,
+            "a list": [Lane.RED],
+            "no down_ms or up_ms": {k: v for k, v in whole.items() if k not in ("down_ms", "up_ms")},
+            "no down_frame": {k: v for k, v in whole.items() if k != "down_frame"},
+        }
+        for what, reply in cases.items():
+            with self.subTest(what):
+                press = _ReplyPress(reply)
+                result, _text = _kit_run(_load_chords()[:2], press, start_s=12.0)
+                self.assertEqual(result.stop, "reply")
+                self.assertTrue(result.message.startswith("the kit's reply to chord 38's press "),
+                                result.message)
+                self.assertEqual(len(press.calls), 1)
+        self.assertEqual(
+            _kit_run(_load_chords()[:2], _ReplyPress(cases["no down_ms or up_ms"]),
+                     start_s=12.0)[0].message,
+            "the kit's reply to chord 38's press has no down_ms, up_ms")
+        # The whole reply plays on.
+        result, _text = _kit_run(_load_chords()[:2], _ReplyPress(whole), start_s=12.0)
+        self.assertEqual((result.stop, len(result.rows)), ("done", 2))
+
+    def test_a_keys_press_reply_is_not_read(self):
+        # The keys route returns the keys it pressed; no kit check applies.
+        result, _game, _wall = _run({"start_s": 12.0})
+        self.assertEqual(result.stop, "done")
+
+
+class LoadRefusalTest(unittest.TestCase):
+    """load_schedule refuses a file without what the play reads (D318 item
+    2, D321 item 3, D323 item 2)."""
+
+    def _refusal(self, doc):
+        with self.assertRaises(ValueError) as caught:
+            _write_and_load(doc, play_chart.load_schedule)
+        return str(caught.exception)
+
+    def test_load_schedule_refuses_a_missing_key(self):
+        # The plan names a chord's `notes`; a schedule chord holds its gems in
+        # `gems` (schedule_json in tools/replay_schedule.cpp), so that is the
+        # key refused here.
+        for key in ("song_length_ms", "chords"):
+            with self.subTest(key):
+                doc = _schedule_of(_DUMP)
+                del doc[key]
+                self.assertIn(f"the file has no `{key}`", self._refusal(doc))
+        for key in ("tick", "gems"):
+            with self.subTest(key):
+                doc = _schedule_of(_DUMP)
+                del doc["chords"][1][key]
+                self.assertIn(f"entry 1 of `chords` has no `{key}`", self._refusal(doc))
+        doc = _schedule_of(_DUMP)
+        doc["song_length_ms"] = None
+        self.assertIn("song_length_ms is null", self._refusal(doc))
+
+    def test_a_chord_with_no_notes_is_refused(self):
+        doc = _schedule_of(_DUMP)
+        doc["chords"][2]["gems"] = []
+        self.assertIn("chord 45 has no gems", self._refusal(doc))
+
+    def test_an_empty_chord_list_is_refused_in_ch_play_charts_words(self):
+        doc = _schedule_of({"chords": []})
+        self.assertTrue(self._refusal(doc).endswith("schedule.json has no chords to play"))
+
+    def test_a_press_naming_a_missing_chord_or_gem_is_refused(self):
+        doc = _schedule_of(_DUMP)
+        doc["presses"][0]["chord"] = 9999
+        self.assertIn("names chord 9999", self._refusal(doc))
+        doc = _schedule_of(_DUMP)
+        doc["presses"][0]["gems"] = [3]
+        self.assertIn("names gems [3] of chord 38, which holds 1", self._refusal(doc))
+
+
+class MainExitTest(unittest.TestCase):
+    """main exits 0 with "Done." only when the run reached the song's end,
+    and 1 with the reason for every other stop (D319 item 1, D323 item 2)."""
+
+    def _main(self, play, doc=None):
+        """main on `doc` (_schedule_of(_DUMP) when None), with live_play
+        replaced by `play(chords, out)`, a real play_chords run on fakes."""
+        from unittest import mock
+        out = io.StringIO()
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "schedule.json")
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(_schedule_of(_DUMP) if doc is None else doc, f)
+            with mock.patch.object(play_chart, "live_play",
+                                   lambda chords, **kw: play(chords, kw["out"])):
+                code = play_chart.main([path], out=out)
+        return code, out.getvalue()
+
+    @staticmethod
+    def _play(clock_of, press=None, **kwargs):
+        def play(chords, out):
+            wall = _FakeTime()
+            game = _FakeGame()
+            return play_chart.play_chords(
+                chords, clock_of(wall), game.read_score, press or game.press,
+                now=wall.now, sleep=wall.sleep, out=out, **kwargs)
+        return play
+
+    def test_main_exits_nonzero_on_every_stop_but_the_song_end(self):
+        def at(start_s, **kw):
+            return lambda wall: _FakeSongClock(wall, start_s=start_s, **kw)
+
+        stops = {
+            # RunCapReached: a 1 s cap before the first chord at 13.04 s.
+            "cap": (self._play(at(12.0), cap_s=1), "run cap of 1 s reached"),
+            # StopAsked.
+            "stopped": (self._play(at(12.0), should_stop=lambda: True), "asked to stop"),
+            # ClockFrozen: the clock holds at 20 s, between chords 45 and 91.
+            "frozen": (self._play(at(12.0, freeze_at_s=20.0)), "clock frozen at 20.00 s"),
+            # ClockJumpedBack: the clock falls from 13.05 s to 11.95 s and the
+            # re-sync reads it past the last chord.
+            "past_end": (self._play(lambda wall: _ScriptedSongClock(
+                wall, [12.0, 13.05, 11.95, 200.0])),
+                "song clock jumped back (13.05 -> 11.95 s), and the clock at 200.00s "
+                "is past the last note"),
+            # The reply stop.
+            "reply": (self._play(at(12.0), press=_ReplyPress({}), kit=True),
+                      "the kit's reply to chord 38's press has no down_frame"),
+        }
+        for stop, (play, reason) in stops.items():
+            with self.subTest(stop):
+                code, text = self._main(play)
+                self.assertEqual(code, 1, text)
+                self.assertIn(f"Stopped before the song's end ({stop}): ", text)
+                self.assertIn(reason, text)
+                self.assertNotIn("Done.", text)
+        # The empty list never reaches the run.
+        code, text = self._main(self._play(at(12.0)), _schedule_of({"chords": []}))
+        self.assertEqual(code, 1)
+        self.assertIn("has no chords to play", text)
+        self.assertNotIn("Done.", text)
+        # The song end.
+        code, text = self._main(self._play(at(12.0)))
+        self.assertEqual(code, 0, text)
+        self.assertTrue(text.endswith("Done.\n"), text)
+        self.assertNotIn("Stopped", text)
+
+
+class StartLineTest(unittest.TestCase):
+    """The start line counts the chords the run passes over where it starts
+    (D321 item 3, L13)."""
+
+    def _text(self, clock_of):
+        wall = _FakeTime()
+        game = _FakeGame()
+        out = io.StringIO()
+        result = play_chart.play_chords(
+            _load_chords(), clock_of(wall), game.read_score, game.press,
+            now=wall.now, sleep=wall.sleep, out=out)
+        return result, out.getvalue().splitlines()
+
+    # Pinned from one run of _DUMP's schedule: chord 38 fires at 13,041.48 ms,
+    # 91.48 ms after a clock read of 12.95 s.
+    SKIP_ONE = ("  Song clock at 12.95s; starting at press 2/8 (t=13.61s); skipped 1 chord "
+                "less than 150 ms ahead of the clock.")
+    SKIP_NONE = ("  Song clock at 12.00s; starting at press 1/8 (t=13.04s); skipped 0 chords "
+                 "less than 150 ms ahead of the clock.")
+
+    def test_the_start_line_counts_skipped_chords(self):
+        result, lines = self._text(lambda wall: _FakeSongClock(wall, start_s=12.95))
+        self.assertEqual(lines[0], self.SKIP_ONE)
+        self.assertEqual(result.skipped, 1)
+        result, lines = self._text(lambda wall: _FakeSongClock(wall, start_s=12.0))
+        self.assertEqual(lines[0], self.SKIP_NONE)
+        self.assertEqual(result.skipped, 0)
+        # The restart form: chord 38 is pressed from 12 s, the clock falls
+        # back to 11.95 s and the re-sync reads 12.95 s, so chord 38 is
+        # passed over again.
+        result, lines = self._text(lambda wall: _ScriptedSongClock(
+            wall, [12.0, 13.05, 11.95, 12.95]))
+        self.assertEqual(lines[0], self.SKIP_NONE)
+        self.assertIn(self.SKIP_ONE, lines)
+        self.assertEqual(result.skipped, 1)
+
+    def test_a_clock_past_the_last_note_counts_every_chord(self):
+        result, lines = self._text(lambda wall: _FakeSongClock(wall, start_s=200.0))
+        self.assertEqual(result.stop, "past_end")
+        self.assertEqual(lines[0], "  Song clock at 200.00s is past the last note; nothing to "
+                                   "play (skipped 8 chords).")
+        self.assertEqual(result.skipped, 8)
+
+
+class FakeReplyShapeTest(unittest.TestCase):
+    """The kit press fakes send the reply kit.ts sends (D318 item 2, L65)."""
+
+    @staticmethod
+    def _kit_ts_reply_keys():
+        """The keys of kit.ts's press reply literal, and of its `groups`
+        entries, read from the source."""
+        path = os.path.join(_REPO_ROOT, "tools", "ch_mcp", "agent", "kit.ts")
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+        start = text.index("const reply: {")
+
+        def keys(opening, closing):
+            # An object literal's keys, `key: value` or the shorthand `key`.
+            begin = text.index(opening, start) + len(opening)
+            body = text[begin:text.index(closing, begin)]
+            return {part.split(":")[0].strip() for part in body.split(",") if part.strip()}
+
+        return keys("} = {", "};"), keys("groups.map((g) => ({", "}));")
+
+    def test_fakes_send_the_real_reply_shape(self):
+        from tools.ch_mcp.kit_tools import reply_gap
+        top, group = self._kit_ts_reply_keys()
+        self.assertTrue(set(overlay_logs.KIT_PRESS_COLUMNS) <= top & group)
+        press = _SplitReplyPress()
+        replies = [(press([Lane.KICK]), 1),
+                   (press([Lane.KICK], None, [([Lane.GREEN_CYMBAL], None, 8.0)]), 2),
+                   (fakes.kit_reply([(1, 3, 10, 20)] * 3), 3)]
+        for reply, groups in replies:
+            with self.subTest(groups=groups):
+                self.assertIsNone(reply_gap(reply, groups))
+                self.assertEqual(set(reply) - {"groups"}, top)
+                self.assertEqual("groups" in reply, groups > 1)
+                for entry in reply.get("groups", []):
+                    self.assertEqual(set(entry), group)
 
 
 if __name__ == "__main__":
