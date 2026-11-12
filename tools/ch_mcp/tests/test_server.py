@@ -118,6 +118,35 @@ class ServerTest(unittest.TestCase):
         self.helper.frida._trace = SimpleNamespace(ended=lambda: True)
         self.assertEqual(self._open_items(), "nothing open")
 
+    def test_open_items_uses_public_checks(self):
+        # A field of another tool read here would be a second copy of the
+        # question its owner answers (audit L76).
+        import inspect
+        source = inspect.getsource(S.Helper.open_items)
+        self.assertNotIn("._", source)
+
+    def test_each_public_check_answers_both_ways(self):
+        alive = SimpleNamespace(is_alive=lambda: True)
+        dead = SimpleNamespace(is_alive=lambda: False)
+        h = self.helper
+        cases = [
+            ("kit.agent_attached", h.kit.agent_attached, h.kit, "_agent", object(), None),
+            ("sp.watch_running", h.sp.watch_running, h.sp, "_watch",
+             SP._Watch("w.csv", 1.0, thread=alive), SP._Watch("w.csv", 1.0, thread=dead)),
+            ("method_watch.running", h.method_watch.running, h.method_watch, "_session",
+             SimpleNamespace(ended=lambda: False), SimpleNamespace(ended=lambda: True)),
+            ("frida.trace_running", h.frida.trace_running, h.frida, "_trace",
+             SimpleNamespace(ended=lambda: False), SimpleNamespace(ended=lambda: True)),
+        ]
+        for name, check, owner, field, on, off in cases:
+            with self.subTest(name):
+                setattr(owner, field, None)
+                self.assertFalse(check())
+                setattr(owner, field, on)
+                self.assertTrue(check())
+                setattr(owner, field, off)
+                self.assertFalse(check())
+
     def test_a_long_reply_is_cut_at_a_line_with_the_clone_hero_closing_line(self):
         long_text = "\n".join(f"call {i}: " + "x" * 90 for i in range(200))
         self.helper.frida.ch_notes = lambda since: long_text
@@ -162,11 +191,17 @@ class ServerTest(unittest.TestCase):
     def test_the_play_tools_take_schedule_json_and_no_dump_json(self):
         # Question 6 (a) of docs/superpowers/plans/2026-11-08-replay-press-
         # schedule.md and D324 item 2: schedule_json replaces dump_json, and
-        # no decline mode, path index or lead is an argument.
+        # no decline mode or lead is an argument. D318 item 4: ch_run_chart
+        # and ch_play_chart take path_index, 0 when left out.
         self.assertEqual(set(self._schema("ch_run_chart")),
-                         {"song_folder", "score_json", "schedule_json", "kit_player"})
+                         {"song_folder", "score_json", "schedule_json", "kit_player",
+                          "path_index"})
         self.assertEqual(set(self._schema("ch_play_chart")),
-                         {"score_json", "schedule_json", "log", "song_folder", "route"})
+                         {"score_json", "schedule_json", "log", "song_folder", "route",
+                          "path_index"})
+        for name in ("ch_run_chart", "ch_play_chart"):
+            self.assertEqual(self._schema(name)["path_index"]["default"], 0)
+            self.assertNotIn("decline_mode", self._schema(name))
         self.assertEqual(set(self._schema("ch_edge_probe")),
                          {"song_folder", "score_json", "schedule_json", "probes_json"})
 
@@ -184,9 +219,9 @@ class ServerTest(unittest.TestCase):
         self.helper.game.ch_run_chart = lambda *a: seen.append(a) or "ran"
         result = asyncio.run(S.build_server(self.helper).call_tool("ch_run_chart", {
             "song_folder": "song", "score_json": "top.json", "schedule_json": "sched.json",
-            "kit_player": "System"}))
+            "kit_player": "System", "path_index": 3}))
         self.assertEqual(result.content[0].text, "ran")
-        self.assertEqual(seen, [("song", "top.json", "sched.json", "System")])
+        self.assertEqual(seen, [("song", "top.json", "sched.json", "System", 3)])
 
     def test_the_helper_hands_ch_run_chart_its_three_parts(self):
         parts = self.helper.game._run_parts
@@ -225,9 +260,20 @@ class ServerTest(unittest.TestCase):
                                                        "schedule_json": "sched.json"}))
         asyncio.run(server.call_tool("ch_play_chart", {
             "score_json": "s.json", "schedule_json": "sched.json", "log": "p.csv",
-            "song_folder": "song", "route": "keys"}))
-        self.assertEqual(seen, [("s.json", "sched.json", None, None, None),
-                                ("s.json", "sched.json", "p.csv", "song", "keys")])
+            "song_folder": "song", "route": "keys", "path_index": 2}))
+        self.assertEqual(seen, [("s.json", "sched.json", None, None, None, 0),
+                                ("s.json", "sched.json", "p.csv", "song", "keys", 2)])
+
+    def test_ch_open_song_takes_the_player_and_passes_it_through(self):
+        self.assertEqual(self._schema("ch_open_song")["player"]["default"],
+                         bot_run.DEFAULT_PLAYER)
+        seen = []
+        self.helper.menu.ch_open_song = lambda *a: seen.append(a) or "opened"
+        server = S.build_server(self.helper)
+        asyncio.run(server.call_tool("ch_open_song", {"song_folder": "song"}))
+        asyncio.run(server.call_tool("ch_open_song", {"song_folder": "song",
+                                                      "player": "ProDrums,Expert"}))
+        self.assertEqual(seen, [("song", bot_run.DEFAULT_PLAYER), ("song", "ProDrums,Expert")])
 
     def test_ch_sp_compare_passes_the_schedule_through_and_takes_no_dump(self):
         schema = self._schema("ch_sp_compare")

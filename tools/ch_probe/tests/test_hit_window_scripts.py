@@ -1,4 +1,4 @@
-"""Tests for the pure parts of watch_window.py, walk_edges.py and live.py.
+"""Tests for the pure parts of watch_window.py and live.py.
 
 No game needed: synthetic samples, fake clocks, and the real probe-song layout
 from probe_songs.py.
@@ -19,7 +19,6 @@ if _REPO_ROOT not in sys.path:
 from tools.ch_probe import constants as C  # noqa: E402
 from tools.ch_probe import probe_songs as P  # noqa: E402
 from tools.ch_probe.experiments import live  # noqa: E402
-from tools.ch_probe.experiments import walk_edges as W  # noqa: E402
 from tools.ch_probe.experiments import watch_window as WW  # noqa: E402
 
 
@@ -75,7 +74,7 @@ class LiveHelpersTest(unittest.TestCase):
                 ms[0] += round(C.s_to_ms(s))
                 t[0] += s
 
-            clock = W.SongClock(read_raw, now=lambda: t[0])
+            clock = live.SongClock(read_raw, now=lambda: t[0])
             raw_ms, est_ms = live.wait_until(clock, 1100.0, lead_ms=lead_ms,
                                              now=lambda: t[0], sleep=sleep)
             self.assertAlmostEqual(est_ms, fires_at_ms)
@@ -87,8 +86,8 @@ class LiveHelpersTest(unittest.TestCase):
         def run(step_s, raws):
             t = [0.0]
             script = list(raws)
-            clock = W.SongClock(lambda: script.pop(0) if len(script) > 1 else script[0],
-                                now=lambda: t[0])
+            clock = live.SongClock(lambda: script.pop(0) if len(script) > 1 else script[0],
+                                   now=lambda: t[0])
             return live.wait_until(clock, 10000.0, now=lambda: t[0],
                                    sleep=lambda s: t.__setitem__(0, t[0] + step_s))
 
@@ -100,8 +99,8 @@ class LiveHelpersTest(unittest.TestCase):
     def test_wait_until_stops_differently_on_a_jump_back(self):
         t = [0.0]
         script = [3 * live.JUMP_BACK_S, 0.0]     # falls by more than the limit
-        clock = W.SongClock(lambda: script.pop(0) if len(script) > 1 else script[0],
-                            now=lambda: t[0])
+        clock = live.SongClock(lambda: script.pop(0) if len(script) > 1 else script[0],
+                               now=lambda: t[0])
         with self.assertRaises(live.ClockJumpedBack) as caught:
             live.wait_until(clock, 10000.0, now=lambda: t[0],
                             sleep=lambda s: t.__setitem__(0, t[0] + s))
@@ -111,10 +110,6 @@ class LiveHelpersTest(unittest.TestCase):
         self.assertEqual(live.START_LEAD_MS, 150.0)
         self.assertEqual(live.first_note_index([100.0, 149.0, 150.0, 200.0], 0.0), 2)
 
-    def test_hit_offset_is_the_send_time_minus_the_note(self):
-        self.assertEqual(live.hit_offset_ms(10000.0, 10004.0), 4.0)
-        self.assertEqual(live.hit_offset_ms(10000.0, 9996.5), -3.5)
-
     def test_window_changed_uses_the_one_tolerance(self):
         self.assertEqual(C.WINDOW_CHANGE_TOLERANCE_MS, 1e-6)
         self.assertTrue(live.window_changed(85.0, 85.0005))
@@ -122,12 +117,11 @@ class LiveHelpersTest(unittest.TestCase):
 
     def test_old_diagnostics_are_gone(self):
         from tools.ch_probe import input_driver
-        from tools.ch_probe.experiments import active_probe
         experiments = os.path.join(_REPO_ROOT, "tools", "ch_probe", "experiments")
         for script in ("hit_detect.py", "find_clock3.py", "poll_windows.py",
                        "find_engine.py", "milestone2.py", "test_attach.py"):
             self.assertFalse(os.path.exists(os.path.join(experiments, script)), script)
-        for module in (W, active_probe, WW, input_driver, input_driver.InputDriver):
+        for module in (WW, input_driver, input_driver.InputDriver):
             for name in ("wait_until", "schedule_hit", "STALL_S"):
                 self.assertFalse(hasattr(module, name), f"{module.__name__}.{name}")
 
@@ -196,31 +190,11 @@ class WatchWindowTest(unittest.TestCase):
                          "note; read the rows above.")
 
 
-class WalkEdgesTest(unittest.TestCase):
-    def test_default_plan_fits_edge_walk(self):
-        plan = W.build_schedule((80, 92), (80, 92), 3, P.EDGE_WALK_NOTES)
-        self.assertEqual(len(plan), 120)
-        self.assertEqual(plan[:3], [0, 0, 0])
-        self.assertEqual(plan[3:6], [80, 80, 80])
-        self.assertEqual(plan[39:42], [92, 92, 92])
-        self.assertEqual(plan[42:45], [-80, -80, -80])
-        self.assertEqual(plan[78:81], [-92, -92, -92])
-        self.assertEqual(set(plan[81:]), {0})
-
-    def test_plan_that_does_not_fit_is_refused(self):
-        with self.assertRaises(ValueError):
-            W.build_schedule((0, 40), (0, 40), 3, 120)
-
-    def test_parse_range(self):
-        self.assertEqual(W.parse_range("68:80"), (68, 80))
-        self.assertIsNone(W.parse_range("none"))
-        with self.assertRaises(ValueError):
-            W.parse_range("92:80")
-
+class SongClockTest(unittest.TestCase):
     def test_song_clock_fills_in_after_a_fresh_change(self):
         t = [0.0]
         raw = [1.000]
-        clock = W.SongClock(lambda: raw[0], now=lambda: t[0])
+        clock = live.SongClock(lambda: raw[0], now=lambda: t[0])
         self.assertEqual(clock.read(), (1.000, 1.000))   # first read: no anchor
         t[0] = 0.001; raw[0] = 1.016                      # change seen 1 ms later
         self.assertEqual(clock.read(), (1.016, 1.016))
@@ -233,56 +207,12 @@ class WalkEdgesTest(unittest.TestCase):
     def test_song_clock_ignores_a_change_seen_late(self):
         t = [0.0]
         raw = [1.0]
-        clock = W.SongClock(lambda: raw[0], now=lambda: t[0])
+        clock = live.SongClock(lambda: raw[0], now=lambda: t[0])
         clock.read()
         t[0] = 0.5; raw[0] = 1.5                          # slept through it
         clock.read()
         t[0] = 0.51
         self.assertEqual(clock.read(), (1.5, 1.5))
-
-    def test_row_keeps_the_0x2e0_reading_but_measures_from_the_send_time(self):
-        before = live.decode_snapshot(bytes(live.SNAPSHOT_SIZE))
-        raw = bytearray(live.SNAPSHOT_SIZE)
-        struct.pack_into("<d", raw, C.OFF_ROUND_START, 10.010)
-        struct.pack_into("<I", raw, C.OFF_SCORE, 100)
-        after = live.decode_snapshot(bytes(raw))
-
-        moved = W.row_for(0, 10000.0, 4, 10003.0, 10004.0, before, after)
-        self.assertAlmostEqual(moved.engine_ms, 10.0)
-        self.assertEqual(moved.measured_ms, 4.0)
-        self.assertTrue(moved.hit)
-
-        still = W.row_for(0, 10000.0, 4, 10003.0, 10004.0, before, before)
-        self.assertIsNone(still.engine_ms)
-        self.assertEqual(still.measured_ms, 4.0)
-
-    def test_summary_rows_carry_no_source_marker(self):
-        rows = [W.Row(0, 0.0, 85, 85.2, 85.2, 90.0, True, 85.2),
-                W.Row(0, 0.0, 85, 85.4, 85.4, None, False, 85.4)]
-        lines = W.summarize(rows)
-        self.assertIn("Late side (planned, hits, measured offsets):", lines)
-        self.assertIn("   +85  1/2    +85.2 HIT   +85.4 miss", lines)
-
-    def test_summary_brackets_the_edge(self):
-        def row(p, m, hit):
-            return W.Row(0, 0.0, p, m, m, m if hit else None, hit, m)
-        rows = [row(0, 0.5, True), row(85, 85.2, True), row(85, 85.4, True),
-                row(86, 86.1, False), row(-85, -85.3, True), row(-86, -86.2, False)]
-        lines = W.summarize(rows)
-        self.assertIn("On-time notes: 1/1 hit.", lines)
-        # The edge analysis.find_window_edge gives for these rows, pinned.
-        self.assertIn("  The late edge is 85.75 ms; 0 of 3 notes fall on the wrong"
-                      " side of it.", lines)
-        self.assertIn("  The early edge is 85.75 ms; 0 of 2 notes fall on the wrong"
-                      " side of it.", lines)
-
-    def test_summary_flags_overlap_and_all_miss(self):
-        def row(p, m, hit):
-            return W.Row(0, 0.0, p, m, m, None, hit, m)
-        lines = W.summarize([row(85, 85.0, False), row(86, 86.0, True),
-                             row(-80, -80.0, False)])
-        self.assertTrue(any("overlap" in l for l in lines))
-        self.assertTrue(any("early edge is below 80 ms" in l for l in lines))
 
 
 if __name__ == "__main__":

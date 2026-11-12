@@ -278,8 +278,8 @@ PROCESS_NAME = "Clone Hero.exe"
 WINDOW_TITLE = "Clone Hero"
 
 # ---- keys of EngineModel.constants() ------------------------------------
-# engine.py writes these and experiments/analysis.py reads them, so both
-# sides spell each key from here. The four window keys are built from their
+# engine.py writes these, and every reader of EngineModel.constants() spells
+# each key from here. The four window keys are built from their
 # mode prefix, so renaming a prefix carries to them.
 CONST_KEY_DIVISOR = "divisor"
 CONST_KEY_EXPONENT = "exponent"
@@ -304,16 +304,17 @@ ENGINE_CLOCK_MOVED_S = 1e-6
 # experiments/watch_window.round_start_report: the furthest the round start
 # (OFF_ROUND_START) may sit from its nearest note for the report's check to pass.
 ROUND_START_MAX_GAP_MS = 10.0
-# experiments/walk_edges.SongClock: a clock change seen within this of the
+# experiments/live.SongClock: a clock change seen within this of the
 # previous read is fresh, so the time since it can be filled in.
 CLOCK_FRESH_S = 0.002
-# experiments/walk_edges.SongClock: the most time it fills in past a fresh
+# experiments/live.SongClock: the most time it fills in past a fresh
 # change, so a pause cannot run the estimate away.
 CLOCK_MAX_FILL_S = 0.05
-# experiments/analysis.clamp_verdict: how close two window values must be to
-# count as equal.
+# clamp_verdict in tools/ch_probe/experiments/analysis.py (removed;
+# `git show a081f660:tools/ch_probe/experiments/analysis.py`): how close two
+# window values must be to count as equal.
 CLAMP_TOLERANCE_MS = 1.0
-# experiments/analysis.clamp_verdict: the share of above-cap notes that must
+# The same removed clamp_verdict: the share of above-cap notes that must
 # agree before the verdict is called.
 CLAMP_DECISIVE_FRACTION = 0.8
 
@@ -324,7 +325,7 @@ INPUT_SETTLE_MS = 250
 # Note-pair spacings the probe chart lays out, and the .chart NOTE number it
 # writes (0 is the kick in a .chart). This is a chart note, not an input lane:
 # input lanes are input_driver.Lane, where the kick is Lane.KICK (4).
-# probe_chart.py and experiments/active_probe.py both read these.
+# probe_chart.py reads both; probe_songs.py and interfaces.py read the kick note.
 PROBE_SPACINGS_MS: tuple[float, ...] = (
     30, 50, 100, 150, 180, 185, 190, 195, 205, 211, 220, 240, 300,
 )

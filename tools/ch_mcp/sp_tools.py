@@ -300,6 +300,12 @@ class SpTools:
                 return NO_WATCH
             return "\n".join(self._stop_lines(w))
 
+    def watch_running(self) -> bool:
+        """Whether a watch thread is running now (_Watch.running). The
+        server's open_items asks this."""
+        with self._lock:
+            return self._watch is not None and self._watch.running()
+
     # -- questions about rows -------------------------------------------------------
 
     def ch_sp_compare(self, watch_csv: str, score_json: str, schedule_json: str,
