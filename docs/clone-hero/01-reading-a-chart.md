@@ -2,7 +2,7 @@
 
 This page covers how Clone Hero finds and reads a chart: the notes file, the song id, tracks, song.ini keys, sections, solos and the song end.
 It describes build 1.1 (v1.1.0.6142).
-Last write-back: 2026-11-08.
+Last write-back: 2026-11-11.
 
 ## Finding the notes file
 
@@ -28,13 +28,13 @@ Found: 2026-10-30, session b02ab3e6 (the reference build).
 
 ### CR-03 A .srb is a 16-byte header, four DEFLATE streams, then encrypted audio
 
-Rule: a .srb (the container of the songs that ship with the game) is a 16-byte header, then four raw-DEFLATE streams back to back (song info, the chart, two JPEG images), then an encrypted audio section to the end of the file; the song-info stream holds the notes file name, eight text fields, 12 difficulty bytes, the preview start, the song length in ms and a 16-byte checksum. The byte layout lives in docs/srb-format.md, which this row does not copy.
-Label: Unknown
-Evidence: decoded from the bytes of all 30 bundles in the game's install folder on 2026-10-30 (every stream inflates in order, streams 3 and 4 start FF D8, Biology's length field reads 196,905 ms); no result file is saved. The game's own .srb opener was read in session 7c71d4dd on 2026-09-29, but no address or listing was recorded, so the game's code for it is lost.
-Game code (6142): not found: listing lost; the game's .srb opener was read 2026-09-29 in session 7c71d4dd with no address recorded.
-Hydra: `srb_inflate_stream` in src/parse/srb.cpp line 100, `srb_parse_metadata` line 136, `srb_read_metadata` line 188, `kSrbHeaderSize` in src/parse/srb.h line 43.
-Ruling: none needed: same rule as far as the bytes show.
-Found: 2026-09-29, session 7c71d4dd; re-derived 2026-10-30 in session b02ab3e6 (the reference build).
+Rule: a .srb (the container of the songs that ship with the game) is a 16-byte header, then the song-info stream and the chart stream as raw DEFLATE, then the two image blobs, then an encrypted audio section cut into one stem after another. The game's reader skips the header, inflates the song info and then the chart, steps over the image bytes by sizes it read from the song info, and cuts the rest into stems. The song-info stream holds the notes file name, eight text fields, 12 difficulty bytes, the preview start, the song length in ms and a 16-byte checksum. That the two image blobs are DEFLATE streams (JPEG inside) is seen only in the bytes, because the game's reader steps over them without inflating them. The byte layout lives in docs/srb-format.md, which this row does not copy.
+Label: Proven in the game's code
+Evidence: `code/6142/srb_reader_2B84A0.asm` lines 88 to 116 read the 16 header bytes and decode the song-info size from them (CR-05). Lines 130 to 182 inflate the song info from offset 16 with a raw DeflateStream through the helper `code/6142/srb_inflate_2E0A10.asm`, and lines 350 to 404 inflate the chart stream after it. Lines 405 to 417 add up the image sizes to step over the images, and lines 418 to 478 cut the audio section into stems, each opening with the 32-byte entry header that `code/6142/srb_stem_ctor_1F2550.asm` reads. The bytes of all 30 bundles in the game's install folder, decoded on 2026-10-30, show the same order (every stream inflates in order, streams 3 and 4 start FF D8, Biology's length field reads 196,905 ms); no result file of that decode is saved.
+Game code (6142): the .srb reader, RVA `0x2B84A0`, `code/6142/srb_reader_2B84A0.asm` lines 88 to 478; the inflate helper RVA `0x2E0A10`; the stem constructor RVA `0x1F2550`.
+Hydra: `srb_inflate_stream` in src/parse/srb.cpp line 100, `srb_parse_metadata` line 136, `srb_read_metadata` line 188, `kSrbHeaderSize` in src/parse/srb.h line 43. The game takes the song-info stream's length from the header; Hydra inflates from offset 16 until the stream ends. On a valid file both read the same bytes.
+Ruling: none needed: same rule.
+Found: 2026-09-29, session 7c71d4dd; re-derived 2026-10-30 in session b02ab3e6 (the reference build); the reader listed 2026-11-08 in session 77057df2 (the Clone Hero unknowns check).
 
 ### CR-04 The game has a header scrambler and its exact inverse
 
@@ -48,13 +48,13 @@ Found: 2026-09-29, session 7c71d4dd; listed 2026-10-30 in session b02ab3e6 (the 
 
 ### CR-05 What the 16 header bytes of a .srb hold
 
-Rule: session 7c71d4dd read bytes 0 to 7 as a per-file key and bytes 8 to 15 as the song-info size scrambled with it (by CR-04's functions); nobody has seen which bytes the game passes in.
-Label: Unknown
-Evidence: not checked: it would need a caller of `0x214EFD0` or `0x214F0A0` read to show which bytes feed them. The session's card (docs/sessions/2026-09-29-7c71d4dd.md) names the header scrambling only as a topic; it says the spec's 80 examples ran against the 30 shipped bundles, and it gives no header values. The session's own record also said each key is a sign-extended 56-bit value in all 30 bundles, and that the key reads big-endian and the scrambled size little-endian. That record is not kept, and no script or result file is in the repo. The byte order fits the older observation in docs/srb-format.md ("The header") that bytes 12 to 15 hold a small number from 1 to 29.
-Game code (6142): not found: no caller of the two functions was read.
-Hydra: `kSrbHeaderSize` in src/parse/srb.h line 43 skips the 16 bytes.
+Rule: the game's .srb reader reads header bytes 0 to 7 as one 64-bit number in big-endian order and bytes 8 to 15 as one in little-endian order. It passes bytes 8 to 15 first and bytes 0 to 7 second to CR-04's decoder, and the result is the stored length of the song-info stream that follows the header. A length larger than the file makes the reader return without reading the song. The decoder's result depends only on the two numbers xored together, so "key" for bytes 0 to 7 and "scrambled size" for bytes 8 to 15 are names for the roles, not two different kinds of field.
+Label: Proven in the game's code
+Evidence: `code/6142/srb_reader_2B84A0.asm` lines 88 to 95 read bytes 0 to 7 and byte-swap each 32-bit half, and lines 107 to 110 put the halves back together swapped, which is a big-endian read. Lines 99 to 102 read bytes 8 to 15. Line 113 calls the decoder with bytes 8 to 15 as its first argument. Lines 114 to 116 compare the result with the file's length and leave when it is larger, and lines 130 and 156 to 160 use it as the song-info stream's byte count. The encoder `0x214F0A0` has no direct caller found (byte scan of il2cpp and .text). The older observation in docs/srb-format.md ("The header") that bytes 12 to 15 hold a small number from 1 to 29 fits this byte order.
+Game code (6142): the .srb reader, RVA `0x2B84A0`, `code/6142/srb_reader_2B84A0.asm` lines 88 to 160; the decoder RVA `0x214EFD0` (CR-04).
+Hydra: no owner: `kSrbHeaderSize` in src/parse/srb.h line 43 skips the 16 bytes, and Hydra never decodes them.
 Ruling: none needed.
-Found: 2026-09-29, session 7c71d4dd; re-read 2026-10-30 in session b02ab3e6 (the reference build).
+Found: 2026-09-29, session 7c71d4dd; re-read 2026-10-30 in session b02ab3e6 (the reference build); the reader listed 2026-11-08 in session 77057df2 (the Clone Hero unknowns check).
 
 ### CR-06 The .srb audio key is built at run time and equals Hydra's
 
@@ -68,13 +68,13 @@ Found: 2026-09-29, session 7c71d4dd; listed 2026-10-30 in session b02ab3e6 (the 
 
 ### CR-07 The .srb audio cipher mode and IV
 
-Rule: each audio blob is AES-128-CFB with that key, and its IV is the blob's 16-byte header with its two halves swapped.
+Rule: each audio blob is AES-128-CFB with that key, and its IV is the blob's 16-byte header with its two halves swapped. One part of this is proven in the game's code: the block cipher the game's managed code holds has the shape of AES-128 encryption (ten rounds on a 16-byte block, driven by lookup tables), and it only encrypts, which is what CFB needs in both directions. The CFB feedback and where each IV half lands are still unknown, and the table contents were not compared with AES's.
 Label: Unknown
-Evidence: not checked: it would need the game's decryptor listed. Session 450488b5 reached the decryptor by hooking BASS and working back from known plaintext; no address, listing or result file is in the repo.
-Game code (6142): not found: listing lost; read 2026-09-15 in session 450488b5, address not recorded.
-Hydra: the decryptor beside `kSrbAesKey` in src/app/preview_source.cpp.
+Evidence: the proven part is `code/6142/srb_cipher_managed_32AA80.asm`: lines 12 to 21 xor the four input words with the first round key, lines 24 to 283 loop four times with the counter stepping by two, lines 285 to 402 run one more round and lines 403 to 491 run the last round from byte lookups, ten rounds in all. `code/6142/srb_cipher_rounds_336E50.asm` line 121 falls back to that managed copy when Unity Burst is off; with Burst on, line 110 jumps to compiled code outside GameAssembly.dll, which was not read. For the mode: the stem entry header holds the two 64-bit IV fields at bytes 8 and 16 (`code/6142/srb_stem_ctor_1F2550.asm`), and the stem's read method xors each stored byte with a byte of a 16-byte block it refills through the cipher (`code/6142/srb_stem_read_1F2260.asm`, `code/6142/srb_stem_iv_1F2060.asm` and `code/6142/srb_stem_iv_setup_1F1D50.asm`). The first refill is built from the field at +0x60 and then +0x58, which fits "halves swapped", and later refills take stored bytes, which fits CFB. Several values in those three listings decode to numbers a 16-byte block would not need, so where each half lands cannot be read from them. Session 450488b5 reached the decryptor by hooking BASS and working back from known plaintext; no address, listing or result file of that is in the repo.
+Game code (6142): the managed block cipher RVA `0x32AA80` and its Burst dispatch RVA `0x336E50`; the stem methods RVAs `0x1F2550`, `0x1F2260`, `0x1F2060` and `0x1F1D50`; the listings above.
+Hydra: the decryptor beside `kSrbAesKey` in src/app/preview_source.cpp (AES-128-CFB). Nothing found in the game's code contradicts it.
 Ruling: none needed.
-Found: 2026-09-15, session 450488b5.
+Found: 2026-09-15, session 450488b5; the cipher listed 2026-11-08 in session 77057df2 (the Clone Hero unknowns check).
 
 ### CR-08 A .srb whose notes entry is neither .mid nor .chart
 
@@ -120,13 +120,13 @@ Found: 2026-09-29, session 7c71d4dd; re-run 2026-10-30 in session b02ab3e6 (the 
 
 ### CR-12 The .sng and folder halves of the id rule
 
-Rule: the checks of 2026-10-09 and 2026-10-10 looked for a chart's 16 id bytes anywhere in the game's song cache, not in a decoded id field. The cache listed 54 .sng songs: the MD5 of the notes file inside was in the cache for all 54, and the whole-file MD5 for none of them. For a sample of 300 folder charts (the first 300 the probe met when walking the user's song folder), the MD5 of the notes file was in the cache for all 300.
+Rule: the checks of 2026-10-09 and 2026-10-10 looked for a chart's 16 id bytes anywhere in the game's song cache, not in a decoded id field. The cache listed 54 .sng songs: the MD5 of the notes file inside was in the cache for all 54, and the whole-file MD5 for none of them. For a sample of 300 folder charts (the first 300 the probe met when walking the user's song folder), the MD5 of the notes file was in the cache for all 300. In the game's code, one part is proven: `SongEntry.checksum` is the MD5 of the first count bytes of a byte array, and that array comes from one function for a folder chart and another for a .sng. Which bytes those two functions return was not read, and neither was the cache writer.
 Label: Unknown
-Evidence: this is the record in ADR 0028 as it stood at commit 5fbe71ae, lines 12 to 45, now cut down to a pointer here. Not checked: it would need the two checks re-run; no tool or result file for either is in the repo (a grep of tools/ for `songcache` finds nothing).
-Game code (6142): not found: data, not code.
-Hydra: `song_id_read` in src/app/analysis.cpp line 274.
+Evidence: the cache record is ADR 0028 as it stood at commit 5fbe71ae, lines 12 to 45, now cut down to a pointer here; it was not re-run, and no tool or result file for either check is in the repo (a grep of tools/ for `songcache` finds nothing). The code part: `code/6142/song_hash_md5_20FA8F0.asm` line 15 makes an MD5 and lines 24 to 27 call ComputeHash(array, 0, count). `code/6142/songentry_hash_chart_35F6E0.asm` line 21 branches on the song's isSng byte; line 32 calls `0x1313F0` for a folder chart and line 53 calls `0x262100` for a .sng, and line 61 hashes the result. `0x1313F0` works through an ArrayPool and a cache; what it fills was not read. Direct callers of the hash method found (byte scan of il2cpp and .text): `SongEntry` methods at 0x35C110, 0x35F6E0 and 0x35F8B0, the song cache's 0x27EE20, and three tail jumps at 0x282C04, 0x285783 and 0x2EFD42; the tail jumps were not read.
+Game code (6142): the checksum's hash method RVA `0x20FA8F0`, `code/6142/song_hash_md5_20FA8F0.asm` lines 15 to 27; `SongEntry`'s chart hash RVA `0x35F6E0`, `code/6142/songentry_hash_chart_35F6E0.asm` lines 21 to 61; the two byte sources RVAs `0x1313F0` and `0x262100`, not read.
+Hydra: `song_id_read` in src/app/analysis.cpp line 274 hashes a folder chart's notes file whole and, for a .sng, the bytes of the notes file `sng_read_notes` picks. The game hashes the array its two byte sources return. Whether those are the same bytes, and whether Hydra's .sng file pick is the file the game hashes, were not compared. The user chose to record this, and Hydra is unchanged (session 428cf079, 2026-11-11).
 Ruling: D170 (as CR-10).
-Found: 2026-10-10, session bc0144a4 (ADR 0028).
+Found: 2026-10-10, session bc0144a4 (ADR 0028); the hash method listed 2026-11-08 in session 77057df2 (the Clone Hero unknowns check).
 
 ## Track names and track 0
 
@@ -172,23 +172,23 @@ Found: 2026-10-05, session d3bdb873.
 
 ### CR-17 The .mid reader has a second path behind a thread-local switch
 
-Rule: when a static thread-local flag on the .mid reader class reads true, the drum reader calls another function instead of reading the drum track; what sets the flag and what that function does are not known.
-Label: Unknown
-Evidence: `code/6142/mid_drum_reader_2155050.asm` lines 77 to 79 (a call to `0x21581E0`, which returns the flag, and a jump to lines 562 to 570 when true). Searched only these functions.
-Game code (6142): RVAs `0x2155050`, `0x21581E0` and `0x2154180`; the switch's setter and `0x2154180` were not read.
-Hydra: no owner: not searched.
-Ruling: none found.
-Found: 2026-10-30, session b02ab3e6 (the reference build).
+Rule: the .mid reader class keeps a static thread-local switch. The main .mid reader sets it at the start of every read from a byte of the chart-read settings, and `SongEntry`'s chart loader fills that byte from its own first argument. When the switch is true, the drum reader runs a light scan in place of a full drum read. The light scan walks the drum track's events, raises the two track flags (CR-18), and adds one placeholder note with every value zero to each difficulty the first time that difficulty has a gem. It then writes the two flags to every track of the instrument. The game's play load passes false and reads the notes. The song cache asks for the light scan, and so does the command-line launcher's `--song` option, which uses it to check the instrument and difficulty.
+Label: Proven in the game's code
+Evidence: `code/6142/mid_drum_reader_2155050.asm` lines 77 to 79 call the getter `0x21581E0` and jump to the other path when it is true. `code/6142/mid_reader_cctor_2158260.asm` builds the switch, and docs/audit/note-shuffle/step0/open1/midi_reader_2155C00.asm lines 74 to 76 set it from settings byte +0x2C, the ninth argument of the settings constructor (`code/6142/chart_settings_ctor_20E73E0.asm`). `code/6142/songentry_load_35C110.asm` lines 163 to 174 pass the loader's first bool argument there. Of the loader's direct callers (byte scan of il2cpp and .text), the call at 0xD92BA in a `GameManager` coroutine passes false, and the five in the song cache (class #1136) and the one at 0x397A79 in `CliGameLauncher` pass true. In `code/6142/mid_alt_path_2154180.asm`, lines 60 to 100 raise the flags, lines 113 to 124 call the note adder `0x20CEC60` with zero arguments for a newly seen difficulty, and lines 158 to 182 write the flags. docs/audit/note-shuffle/step0/open1/midi_sink_20CEC60.asm lines 30 to 41 show that adder builds a note from those arguments. The note beside the alt-path listing says it stores no notes; the listing shows the placeholder note.
+Game code (6142): the drum reader RVA `0x2155050`, the switch getter RVA `0x21581E0`, the main reader RVA `0x2155C00`, the settings constructor RVA `0x20E73E0`, `SongEntry`'s loader RVA `0x35C110`, the light scan RVA `0x2154180`; the listings above.
+Hydra: no owner: Hydra has no light scan, and its .mid reader always reads the drum notes (`MidiFile::drums_track` in src/parse/midi.cpp line 490). The game's play load reads the notes too, so play shows no difference.
+Ruling: none needed.
+Found: 2026-10-30, session b02ab3e6 (the reference build); the switch traced 2026-11-08 in session 77057df2 (the Clone Hero unknowns check).
 
 ### CR-18 Where the two track flags at +0xA1 and +0xA2 come from
 
-Rule: the .mid reader starts the two flags from two bytes of its second argument, raises the first for a note on pitch 65, 77, 89 or 101 and the second for a tom marker, and writes both to every track it fills; the .chart reader raises them only from N 5 and from N 66 to 68. What the flags do downstream (the names five-lane and pro-drums are guesses from what sets them) is unread.
+Rule: the .mid reader starts the two flags from two bytes of its second argument, raises the first for a note on pitch 65, 77, 89 or 101 and the second for a tom marker, and writes both to every track it fills; the .chart reader raises them only from N 5 and from N 66 to 68. One reader of the flags is found: the song cache, for a track whose instrument value is 2, treats "either flag up" the same as the song's two force switches, forceProDrums and forceFiveLane (dump.cs names), and then updates the song's instrument-and-difficulty mask. Which entry that update adds, and so what the flags mean (the names five-lane and pro-drums are guesses from what sets them), is unread.
 Label: Unknown
-Evidence: `code/6142/mid_drum_reader_2155050.asm` lines 87 to 99 (starting bytes), 136 to 147 (the call to `0x210D780`, which tests those four pitches), 270 (the tom marker) and 552 to 557 (the stores).
-Game code (6142): RVAs `0x2155050` and `0x210D780`.
-Hydra: no owner: Hydra takes Pro Drums from the player's setting (`mode_pro_` in src/parse/song.cpp); the flags were not searched for in Hydra.
+Evidence: the writers: `code/6142/mid_drum_reader_2155050.asm` lines 87 to 99 (starting bytes), 136 to 147 (the call to `0x210D780`, which tests those four pitches), 270 (the tom marker) and 552 to 557 (the stores); the light scan of CR-17 tests the tom marker as pitch 110 to 112 (`code/6142/mid_alt_path_2154180.asm` lines 60 to 100). The reader: the track's method `0x215E000` returns "+0xA1 or +0xA2" (`code/6142/track_drum_flags_get_215E000.asm`), and the class has no getter for either flag alone. Its three direct callers (byte scan of il2cpp and .text) are song cache methods 0x27E730, 0x2847C0 and 0x2880E0. In `code/6142/songcache_drum_flags_2847C0.asm`, line 113 tests the track's instrument byte for 2, which the instrument enum (#8326, not checked) names Rhythm, where Drums is 6 and ProDrums 9. Lines 117 to 123 call `0x215E000` and test the song's bytes +0x92 and +0x93, and when any is set, lines 124 to 128 call `0x1F1250` on the mask at +0x20. The other two cache methods use other instrument values, and the mask bit was not worked out. No scan for raw +0xA1 or +0xA2 reads was run, because every class with a field there would match.
+Game code (6142): the drum reader RVA `0x2155050` and the pitch test RVA `0x210D780`; the flags getter RVA `0x215E000`; the song cache method RVA `0x2847C0` and the mask update RVA `0x1F1250`; the listings above.
+Hydra: no owner: Hydra takes Pro Drums from the player's setting (`mode_pro_` in src/parse/song.cpp). A grep of src/ for pro_drums, five_lane, five-lane and forceprodrums (any case) finds only the path view's display switch in src/app/path_view.cpp, not a per-song list of drum modes.
 Ruling: none found.
-Found: 2026-10-30, session b02ab3e6 (the reference build).
+Found: 2026-10-30, session b02ab3e6 (the reference build); the cache reader found 2026-11-08 in session 77057df2 (the Clone Hero unknowns check).
 
 ## The events track
 
@@ -244,13 +244,13 @@ Found: 2026-10-04, D47.
 
 ### CR-24 The .mid events reader also tests [coda], coda and _ENDOFSONG
 
-Rule: the game's .mid events handler tests the texts `coda`, `[coda]` and any text containing _ENDOFSONG. A text of `coda` or `[coda]` (after a trim) makes the chart's coda event, the first one only; Hydra reads that (FL-08 on page 4). What the _ENDOFSONG branch stores is unread, and Hydra reads none of it.
+Rule: the game's .mid events handler trims each events-track text and tests it in this order: starts with `[section`, starts with `[prc`, equals `[end]`, equals `[coda]`, equals `coda`. A `[section` text whose untrimmed text contains _ENDOFSONG is not made a section; it falls through to the later tests. _ENDOFSONG has no branch of its own: that veto is all it does. `[end]` calls the song's method `0x212E310` with the event's tick (what that stores is CR-38's). A `coda` or `[coda]` text stores a coda marker with its tick on the song, the first one only; Hydra reads that (FL-08 on page 4). Hydra has no _ENDOFSONG veto, so a "[section _ENDOFSONG]" text is a section in Hydra and not in the game; Hydra also tests `section ` with the space, where the game tests `[section` without one (CR-29).
 Label: Unknown
-Evidence: the three literals sit in the events-track function (decompile lines 41771 to 42120); docs/audit/note-shuffle/step0/open1/midi_events_track_21544E0.asm lines 130 to 135 show a text holding _ENDOFSONG is sent to the `[prc` test instead of the section test. The coda branches are traced in `code/6142/mid_events_coda_21544E0.asm` lines 245 to 312 (the two compares, the null test on the stored coda, the store); the _ENDOFSONG branch was not traced.
-Game code (6142): RVA `0x21544E0`, the listing above.
-Hydra: `MidiParser::parse` in src/parse/song.cpp reads the first `coda` or `[coda]` text of the events track before the drum pass and hands its tick to `place_authored_fills`; no owner for _ENDOFSONG: a grep of src/ for `ENDOFSONG` finds nothing.
-Ruling: none found.
-Found: 2026-10-30, session b02ab3e6 (the reference build).
+Evidence: docs/audit/note-shuffle/step0/open1/midi_events_track_21544E0.asm lines 99 to 128 (the `[section` test), 129 to 136 (String.Contains with _ENDOFSONG on the untrimmed text, which skips the section step), 190 to 216 (the `[prc` test), 217 to 243 and 319 to 324 (`[end]` and the call), and 244 to 314 (the two coda compares, the empty test on the song's field at +0x100 at lines 300 and 301, and the store of a "coda" record at line 312). Any other text goes to the loop's next step. Who reads the coda record later was not searched. `code/6142/mid_events_coda_21544E0.asm` lines 245 to 312 hold the same coda branches. The block stays Unknown because the user ruled to match the game here, and Hydra's change is planned, not made.
+Game code (6142): the events reader RVA `0x21544E0`, the listings above; the end setter RVA `0x212E310`.
+Hydra: `marker_name`, `is_section_marker` and `section_display_name` in src/parse/section_names.cpp lines 10 to 25 accept a body starting with `section ` or "prc_", with no _ENDOFSONG veto. `MidiParser::parse` in src/parse/song.cpp reads the first `coda` or `[coda]` text of the events track before the drum pass and hands its tick to `place_authored_fills`. A grep of src/ for `ENDOFSONG` finds nothing.
+Ruling: the user chose "Match the game" for the _ENDOFSONG veto, after a search found 31 .mid files with "[section _ENDOFSONG]" (2026-11-08, session 77057df2; docs/audit/2026-11-08-clone-hero-unknowns/user-answers.md line 19). The change to Hydra is planned in its own code plan; until it lands, Hydra shows such a text as a last section named " ENDOFSONG".
+Found: 2026-10-30, session b02ab3e6 (the reference build); the branches traced 2026-11-08 in session 77057df2 (the Clone Hero unknowns check).
 
 ### CR-25 Ticks are the file's own ticks; no reader rescales them
 
@@ -308,13 +308,13 @@ Found: 2026-10-30, session b02ab3e6 (the reference build).
 
 ### CR-30 The game's section-name table holds 2,718 entries, and Hydra ships a copy
 
-Rule: the game maps practice-section keys to shown names through a table of 2,718 entries; Hydra ships a copy as data/clone-hero-1.1.0.6142-section-names.tsv.
-Label: Unknown
-Evidence: the TSV has 2,718 rows. It was copied from hydra-data/ch-fill-evidence-2026-10-11/section_table.tsv, built by a script from a listing of `0x2095040`; that listing sits only in hydra-data, outside the repo, and was not re-extracted.
-Game code (6142): RVA `0x2095040`; listing uncommitted (hydra-data/ch-fill-evidence-2026-10-11/f2095040.asm).
-Hydra: `section_name_table` in src/parse/section_names.h line 35; generator tools/gen_section_names.py.
+Rule: the game maps practice-section keys to shown names through a table of 2,718 entries, filled in its static constructor. Hydra ships a copy as data/clone-hero-1.1.0.6142-section-names.tsv, and its 2,718 rows equal the game's pairs, row for row and in the same order.
+Label: Proven in the game's code
+Evidence: `code/6142/section_table_cctor_2095040.asm` holds the whole static constructor; from line 10876 to its end it makes 2,718 calls to the dictionary Add at 0x182C503E0, each with a key literal and a shown-name literal. Those pairs were read in order and compared with the TSV's 2,718 data rows on 2026-11-08, once by the agent that made the listing and once by a fresh checker, and every row matched; neither script was kept. The name "Breaking 'n' Entering" (listing line 25024) is printed in double quotes because it holds a single quote, and its text matches. Hydra's compiled table, src/parse/section_names_table.cpp, has 2,718 rows with the same keys; its shown names were compared through the TSV, not one by one.
+Game code (6142): the section table's static constructor, RVA `0x2095040`, `code/6142/section_table_cctor_2095040.asm` from line 10876.
+Hydra: `section_name_table` in src/parse/section_names.h line 35, defined in src/parse/section_names_table.cpp; generator tools/gen_section_names.py.
 Ruling: D228: chose "Ship the list" (session 28fad19c, 02:44 UTC).
-Found: 2026-10-12, session 28fad19c.
+Found: 2026-10-12, session 28fad19c; the table listed and compared 2026-11-08 in session 77057df2 (the Clone Hero unknowns check).
 
 ### CR-31 A section key matches exactly, case included
 
@@ -360,13 +360,13 @@ Found: 2026-10-30, session b02ab3e6 (the reference build).
 
 ### CR-35 How the score code reads a solo record
 
-Rule: whether a note on the `soloend` tick is inside the solo, and whether the plus-1 length is the whole reason, is not known from the .chart side.
+Rule: the score code found so far never reads the chart's solo list by tick. A builder step makes a second list of solo records from the note flags of CR-37: it counts from the first note flagged SoloBegin up to and including the first note flagged SoloEnd. The engine copies that count when a solo starts and pays the bonus from it when the solo ends. If that is the only route, a note on the `soloend` tick is in the solo because the plus-1 length of CR-34 puts it before start plus length, and the score side adds no tick test of its own. That it is the only route is not settled: three more methods that refer to the solo types were found and not read.
 Label: Unknown
-Evidence: not checked: it would need the solo list's readers in the score code read. CR-37 reads the note-list side of the same list.
-Game code (6142): not found: looked only in the chart readers whose listings this page cites (CR-17 to CR-22, CR-33 and CR-34); the solo list's readers in the score code were not opened.
+Evidence: a scan for every reference to the metadata slots that name the chart solo type and the built solo type (byte scan of il2cpp and .text). Outside the chart loaders and the track's own methods, its readers are the flag step `0x20D18F0` (CR-37) and the builder `0x20D1ED0`; the rescan of 2026-11-11 also found 0x215E6E0, 0x215C320 and 0x20E8B60, which were not read. In `code/6142/solo_records_20D1ED0.asm`, lines 99 to 124 walk the track's solo list, lines 165 to 176 start the count at the first note whose SoloBegin test `0x214B630` is true, lines 177 to 184 count each note unless `0x214BCC0` is true for it, and lines 195 to 200 stop after the first note whose SoloEnd test `0x214B7D0` is true; lines 185 to 194, a branch taken only when a byte argument is set, were not read. `code/6142/engine_solo_reader_20F62C0.asm` lines 17 to 23 copy the record's count to engine +0x16C; its direct callers are 0x20F36AB and 0x20F6633, the second behind the SoloBegin test. `code/6142/engine_solo_count_20F7610.asm` lines 25 to 50 pay the bonus when engine +0x164 is at least 50, from hit +0x168 and total +0x16C; its direct callers are 0x20F36C9, 0x20F3A59 and 0x20F6738, the last behind the SoloEnd test. The hit counter +0x168 is raised at 0x20F666E to 0x20F685, and +0x164 is 100 times hit over total. No other reader of the built list was found by the metadata-slot scan.
+Game code (6142): the builder RVA `0x20D1ED0`, the solo start RVA `0x20F62C0`, the solo end RVA `0x20F7610`, the note tests RVAs `0x214B630` and `0x214B7D0`; the listings above. Not read: RVAs `0x215E6E0`, `0x215C320` and `0x20E8B60`.
 Hydra: `E soloend` is applied after the tick's notes (src/parse/song.cpp line 1708).
 Ruling: none found.
-Found: 2026-10-30, session b02ab3e6 (the reference build).
+Found: 2026-10-30, session b02ab3e6 (the reference build); the solo readers traced 2026-11-08 in session 77057df2, and the rescan 2026-11-11 in session 428cf079 (the Clone Hero unknowns check).
 
 ### CR-36 MIDI note 103 on the drum track is the solo marker
 
@@ -460,15 +460,15 @@ Hydra: `MidiFile::last_note_end_tick` in src/parse/midi.cpp lines 465 to 488 cou
 Ruling: open split: see questions page Q-74.
 Found: 2026-10-18, session b71e9156 (inferred); read in the decompile 2026-10-30 in session b02ab3e6 (the reference build).
 
-### CR-45 The song ends when the clock reaches the game's song length
+### CR-45 Outside practice mode, the song ends when the clock reaches the game's song length
 
-Rule: the game ends the song when its song clock reaches GameManager's songLength field (+0x50). Nothing read so far shows song.ini `song_length` read on that path, and nothing proves it absent either (CR-48).
-Label: Unknown
-Evidence: the frame update at `0xC05A0` is not in the decompile and no listing survives; dump.cs line 25298 confirms the field at +0x50.
-Game code (6142): GameManager's Update, RVA `0xC05A0`; listing lost; read 2026-10-18 in session b71e9156.
+Rule: GameManager's Update compares songTime (+0x70) with songLength (+0x50), and its end block runs once songTime is at or past songLength. Outside practice mode, that block calls the method that sets isSongOver (+0x91), unless a FadeBehaviour check returns true. In practice mode (GlobalVariables isPracticeEnabled, +0x72) it calls another method, which was not read. Two cases skip the compare: a GameManager byte at +0x158 being 0, and the pause path. song.ini `song_length` does not reach songLength offline (CR-48).
+Label: Proven in the game's code
+Evidence: `code/6142/gm_update_C05A0.asm` lines 178 to 180 compare songTime with songLength and jump past the end block only when songTime is below it, so an equal time runs the end block. Lines 199 to 204 run the FadeBehaviour check and then call `0xBD640`; line 209 calls `0xBF510` in practice mode. `code/6142/gm_song_over_BD640.asm` lines 126 to 128 set isSongOver when it is not already set. Lines 17 and 18 and lines 68 to 79 of the Update listing are the two skips. dump.cs lines 25298 to 25311 name the GameManager fields, and line 55818 names GlobalVariables +0x72 isPracticeEnabled.
+Game code (6142): GameManager's Update, RVA `0xC05A0`, `code/6142/gm_update_C05A0.asm` lines 178 to 209; the song-over method RVA `0xBD640`, `code/6142/gm_song_over_BD640.asm` lines 126 to 128; the practice-mode method RVA `0xBF510`, not read.
 Hydra: `app::song_length_ms` in src/app/song_length.cpp line 28 is the one end.
 Ruling: D255 item 5: "the problem is that we have two different rules. there should one rule that every function uses. we already know how clone hero decides the end of the song, we don't need different places deriving different rules."
-Found: 2026-10-18, session b71e9156; 2026-11-08, session 77057df2 (docs-gaps search).
+Found: 2026-10-18, session b71e9156; 2026-11-08, session 77057df2 (docs-gaps search, and the Update listed in the Clone Hero unknowns check).
 
 ### CR-46 The length is Min(end event, Max(audio length, last note end)) plus 1 second
 
@@ -482,33 +482,33 @@ Found: 2026-10-18, session b71e9156; 2026-11-08, session 77057df2 (docs-gaps sea
 
 ### CR-47 The game's audio length is the longest stem; Hydra uses the stated length
 
-Rule: the game's audio length is the longest loaded audio stem; Hydra never opens audio, so it puts the song's stated length (song.ini or the .srb field, moved into chart time by the delay or Offset) in that seat.
-Label: Unknown
-Evidence: the audio manager method `0x36B700` is not in the decompile and has no listing; Hydra's side is src/app/song_length.h lines 45 to 57.
-Game code (6142): RVA `0x36B700`; listing lost; read 2026-10-18 in session b71e9156.
+Rule: the game's audio length is the length of the longest loaded audio stem; Hydra never opens audio, so it puts the song's stated length (song.ini or the .srb field, moved into chart time by the delay or Offset) in that seat.
+Label: Proven in the game's code
+Evidence: the load coroutine reads the audio length from BassAudioManager+0x40 (`code/6142/gm_load_coroutine_D8D80.asm` line 343), which dump.cs names audioLength. In `code/6142/audio_load_36B700.asm`, line 57 calls `0x369810`, which zeroes audioLength (`code/6142/audio_reset_369810.asm` lines 75 and 76). Lines 213 to 220 pick which stems load, through `0x36DB60`. For each loaded stem, lines 404 to 412 get its length in seconds from `0x36E100`, and lines 413 to 416 store it in audioLength only when it is larger. The .sng and encrypted branches rejoin that same step. Other writers of +0x40 were not searched. Hydra's side is src/app/song_length.h lines 45 to 57.
+Game code (6142): BassAudioManager's audio load, RVA `0x36B700`, `code/6142/audio_load_36B700.asm` lines 57 to 416; the reset RVA `0x369810`; the stem length RVA `0x36E100`.
 Hydra: `stated_length_ms` in src/app/song_length.cpp line 13, used in `app::song_length_ms` line 38.
 Ruling: D255 item 1: "Option C (Recommended)". The record says: "It matches the game whenever the stated length is the game's own record of the audio."
-Found: 2026-10-18, session b71e9156.
+Found: 2026-10-18, session b71e9156; the audio load listed 2026-11-08 in session 77057df2 (the Clone Hero unknowns check).
 
-### CR-48 Whether song_length and [music_end] are read on the song-end path is not settled
+### CR-48 Offline, song.ini song_length and [music_end] are not read on the song-end path
 
-Rule: nothing read so far shows song.ini `song_length` feeding the playing length, or the game reading [music_end]. Neither is proven absent.
-Label: Unknown
-Evidence: music_end and [music_end] are not among the 23,972 string literals of `stringliteral.json` (searched 2026-10-30), which shows only that no code holds it as a literal. The notes `code/6142/gm_load_coroutine_D8D80.md` lines 6 to 10 build the length from the chart, the audio and the end event with no song.ini term, but they leave the listing's lines 101 to 260 and 487 to 700 unread, and the listing was not re-read for this rule.
-Game code (6142): RVA `0xD8D80`, `code/6142/gm_load_coroutine_D8D80.asm` lines 300 to 389; first read 2026-10-18 in session b71e9156.
-Hydra: `is_end_event` in src/parse/song.cpp line 46 accepts only `end`.
-Ruling: none found.
-Found: 2026-10-18, session b71e9156; string search 2026-10-30 in session b02ab3e6 (the reference build).
+Rule: in a game that is not connected online, the load coroutine always builds the playing length itself, from the chart, the audio and the end event (CR-46), with no song.ini term, and hands it through the clock to GameManager's songLength. Nothing on that path reads song.ini `song_length` or an event named [music_end]. The coroutine's other branch, which reads back a stored length, runs only while connected online.
+Label: Proven in the game's code
+Evidence: `code/6142/gm_load_coroutine_D8D80.asm`, read whole. Lines 101 to 113 set the branch flag at +0x30 to 1 when `0x145FE0` returns false, and `code/6142/chnet_connected_145FE0.asm` lines 1 to 3 return true only when CHNetManager's connection state is 2, Connected. When the flag is 1, lines 310 to 389 build the length. Lines 454 to 478 hand it to the clock constructor, which divides it by the speed ratio and stores it at clock +0x10 (`code/6142/clock_ctor_16C9A0.asm` lines 23, 24 and 29), and line 478 copies clock +0x10 to GameManager.songLength (+0x50), the value CR-45's compare reads. Lines 487 to 700 write neither songLength nor a song.ini key. The song.ini [song] reader (`code/6142/ini_song_reader_1EFC60.asm`, CR-26) loads no `song_length` literal; the only listing that holds it is the song.ini writer `0x358850` (CR-27), which writes song_length from `SongEntry` +0x80, or from audioLength when that is missing. music_end and [music_end] are not among the 23,972 string literals of `stringliteral.json` (searched 2026-10-30). The callees on the path were not all read whole.
+Game code (6142): the load coroutine RVA `0xD8D80`, `code/6142/gm_load_coroutine_D8D80.asm` lines 101 to 478; the connection test RVA `0x145FE0`; the clock constructor RVA `0x16C9A0`.
+Hydra: `is_end_event` in src/parse/song.cpp line 46 accepts only `end`, so Hydra reads no [music_end] either. Hydra does read song.ini `song_length`, as its stand-in for the audio length it never measures (`stated_length_ms` in src/app/song_length.cpp line 13; CR-47). Hydra has no online play.
+Ruling: D255 item 1 (as CR-47) covers Hydra's use of the stated length; none needed for [music_end].
+Found: 2026-10-18, session b71e9156; string search 2026-10-30 in session b02ab3e6 (the reference build); the coroutine read whole 2026-11-08 in session 77057df2 (the Clone Hero unknowns check).
 
 ### CR-49 A .srb's stated length can differ from its audio
 
-Rule: a bundle's stated song length can be longer than its real audio (Pressure states 273 s and holds 223 s of audio).
-Label: Unknown
-Evidence: not checked: it would need the audio decoded and measured. The stored length fields of all 30 bundles were re-read on 2026-10-30 and match docs/srb-format.md.
-Game code (6142): not found: data, not code.
-Hydra: `srb_parse_metadata` in src/parse/srb.cpp line 136 (the length at lines 178 to 180).
-Ruling: none needed.
-Found: 2026-09-29, session 7c71d4dd.
+Rule: a bundle's stated song length can be longer than its real audio. Pressure states 273,467 ms, and each of its five audio stems ends at 223.130 s, so the stated length is 50.337 s longer than every stem.
+Label: Proven in the game's code
+Evidence: counted from the game's own file C:\Clone Hero\1.1 june\Clone Hero\Clone Hero_Data\StreamingAssets\songs\Pressure.srb on 2026-11-11 by the kept script docs/audit/2026-11-08-clone-hero-unknowns/W11b/srb_audio_length.py; its output is docs/audit/2026-11-08-clone-hero-unknowns/W11b/srb_audio_length_Pressure.txt. The script reads the stated length by the same field walk as `srb_parse_metadata`, decrypts each audio blob with Hydra's key and IV rule into a scratch folder, and takes each Ogg Opus stem's length as its last granule position less the pre-skip, over 48,000. All five blobs end at granule 10,710,551 with a pre-skip of 312, and the audio section ends exactly at the end of the file, so no blob was missed. The stored length fields of all 30 bundles were re-read on 2026-10-30 and match docs/srb-format.md. The user ruled that a fact counted from the game's own files takes this label: "Proven in code" (2026-11-08, docs/audit/2026-11-08-clone-hero-unknowns/user-answers.md line 4).
+Game code (6142): not found: data, not code; the count above is from the game's own file.
+Hydra: `srb_parse_metadata` in src/parse/srb.cpp line 136 takes the stated value as the song length (line 180), and `app::song_length_ms` in src/app/song_length.cpp lines 37 to 55 uses it. So Hydra's length for Pressure rests on 273,467 ms, while its audio stops at 223,130 ms. The game's song end is Min(end event, Max(audio, last note end)) plus 1 second (CR-46). Whether the game takes that route for a bundle, and where Pressure's last note falls, were not read, so this is not yet a known difference.
+Ruling: none needed yet; the open part belongs with D255's one song end.
+Found: 2026-09-29, session 7c71d4dd; measured 2026-11-11 in session 428cf079 (the Clone Hero unknowns check).
 
 ### CR-50 Timing that makes a beat zero, negative or infinite refuses the chart
 
@@ -524,13 +524,13 @@ Found: 2026-10-03, session cebf3006.
 
 ### CR-51 The rest of a .srb's song info, and its audio table
 
-Rule: the song-info stream's first four bytes ("4b4" and a byte of 1) are a 32-bit version number, 20210228 (0x01346234), which matches a constant in the game's reader class. After the eight text fields come 12 one-byte difficulties in this order: band, guitar, guitar co-op, bass, rhythm, drums, Pro Drums, keys, then the four GHL parts (guitar, bass, rhythm, co-op). Then the preview start in ms, an icon name, the playlist track, the album track, the song length in ms and the 16-byte checksum. Then a table: the chart size, the stem count, an image flag byte (2 means album art, 1 a background), the image count and indices, the image sizes, and each stem's offset and size inside the audio section. Each audio entry is a 32-bit stem type, 4 unused bytes, the two IV halves and a 64-bit size. The stem types are 0 guitar, 1 bass, 2 rhythm, 3 vocals, 4 and 5 the two extra vocals, 6 drums, 7 to 10 the four drum stems, 11 keys, 12 song and 13 crowd. In all 30 bundles the stems are stored in alphabetical order.
+Rule: the song-info stream's first four bytes ("4b4" and a byte of 1) are a 32-bit version number, 20210228 (0x01346234), which matches a constant in the game's reader class. After the eight text fields come 12 one-byte difficulties in this order: band, guitar, guitar co-op, bass, rhythm, drums, Pro Drums, keys, then the four GHL parts (guitar, bass, rhythm, co-op). Then the preview start in ms, an icon name, the playlist track, the album track, the song length in ms and the 16-byte checksum. Then a table: the chart size, the stem count, an image flag byte (2 means album art, 1 a background), the image count and indices, the image sizes, and each stem's offset and size inside the audio section. Each audio entry is a 32-bit stem type, 4 unused bytes, the two IV halves and a 64-bit size. The stem types are 0 guitar, 1 bass, 2 rhythm, 3 vocals, 4 and 5 the two extra vocals, 6 drums, 7 to 10 the four drum stems, 11 keys, 12 song and 13 crowd. In all 30 bundles the stems are stored in alphabetical order. Part of this is proven in the game's code: the reader compares the version with 0x1346234 and stops reading the bundle when it differs, and from the chart size to the audio entry it reads the fields in the order above. Hydra never checks the version, so a bundle with another version is read by Hydra and dropped by the game's reader; the user chose to record this difference only.
 Label: Unknown
-Evidence: session 7c71d4dd (2026-09-29) read the game's reader class and checked the layout on all 30 bundles. Its card (docs/sessions/2026-09-29-7c71d4dd.md) says the session read the game's .srb reader and that the spec's readers and examples ran against the 30 shipped bundles. The field list above, and the match between the version and a constant in the reader class, come from the session's own record, which is not kept. That the game refuses any other version was not read. No listing, script or result file from that session is in the repo, so nothing here can be re-checked from the repo. docs/srb-format.md describes only the part Hydra reads.
-Game code (6142): not found: listing lost; the reader class was read in session 7c71d4dd with no address recorded.
-Hydra: `srb_parse_metadata` in src/parse/srb.cpp line 136 reads up to the checksum and stops.
-Ruling: none needed: Hydra reads no field past the checksum.
-Found: 2026-09-29, session 7c71d4dd.
+Evidence: the proven part is `code/6142/srb_reader_2B84A0.asm`. Lines 176 to 182 compare the first 32-bit word of the song info with 0x1346234 and leave when it differs; where that exit leads was not followed. Lines 190 to 198 read the chart size, lines 201 to 207 the stem count (capped by the length of a BassAudioManager array), lines 208 to 214 the flag byte, and lines 217 to 223 the image count (at most 0x10000). Lines 224 to 241 read one 32-bit word when the flag has bit 2 and another when it has bit 1, lines 242 to 270 one 64-bit size per image, and lines 279 to 349 two arrays of one 64-bit value per stem. The second array is each stem's size (lines 418 to 478); the first array's use was not read. `code/6142/srb_stem_ctor_1F2550.asm` reads each 32-byte audio entry: a 32-bit type at byte 0, four unread bytes, 64-bit values at bytes 8 and 16, and a 64-bit size at byte 24 with its top bit cleared. Still unknown: that the first per-stem array holds offsets, that the two flag-gated words are image indices, that flag 2 means album art and 1 a background, the stem-type names, that the values at bytes 8 and 16 are the IV halves, and the fields from the text fields to the checksum, which the unread call `0x1CF270` reads. The rest of this block comes from session 7c71d4dd (2026-09-29), which read the game's reader class and checked the layout on all 30 bundles. Its card (docs/sessions/2026-09-29-7c71d4dd.md) says the session read the game's .srb reader and that the spec's readers and examples ran against the 30 shipped bundles. The field list above, and the match between the version and a constant in the reader class, come from the session's own record, which is not kept. No listing, script or result file from that session is in the repo. docs/srb-format.md describes only the part Hydra reads.
+Game code (6142): the .srb reader, RVA `0x2B84A0`, `code/6142/srb_reader_2B84A0.asm` lines 176 to 478; the stem constructor RVA `0x1F2550`; the song-info field reader RVA `0x1CF270`, not read.
+Hydra: `srb_parse_metadata` in src/parse/srb.cpp line 136 reads up to the checksum and stops. It never tests the version: src/parse/srb.h line 18 names it only in a comment, and a grep of src/ for 20210228 and 0x1346234 finds nothing else.
+Ruling: the version check: the user chose "Record it only" (2026-11-08, session 77057df2; docs/audit/2026-11-08-clone-hero-unknowns/user-answers.md line 18), so Hydra keeps reading every version. None of the 30 shipped bundles is known to have another version. None needed for the fields past the checksum, which Hydra does not read.
+Found: 2026-09-29, session 7c71d4dd; the reader listed 2026-11-08 in session 77057df2 (the Clone Hero unknowns check).
 
 ### CR-52 A stem typed -1 stops a bundle's audio, and the song freezes the game
 
@@ -556,7 +556,7 @@ Found: 2026-09-25, session 2a88c065.
 
 ## Rows waiting on a live run
 
-CR-01, CR-02, CR-08, CR-16, CR-23, CR-24, CR-29, CR-31, CR-34, CR-44, CR-47. Each is listed on the live-checks page.
+CR-01, CR-02, CR-08, CR-16, CR-23, CR-24, CR-29, CR-31, CR-34, CR-44. Each is listed on the live-checks page.
 
 ## Open splits
 
