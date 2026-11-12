@@ -40,9 +40,9 @@ Pass: no Star Power flip inside the window, although Star Power is ready there w
 
 ## Page 2: building the note list
 
-**NL-12.** The dynamics tag with a trailing space. Pass: ghost_notes_total is 0. Fail: it counts. A bot run on Pro Drums is enough.
+**NL-12.** The code proves the text read does not trim; left open is whether any other writer of the text field edits it. The dynamics tag with a trailing space. Pass: ghost_notes_total is 0. Fail: it counts. A bot run on Pro Drums is enough.
 
-**NL-13.** A note and the dynamics tag on one tick, tag second. Pass: the note scores plain. Fail: it scores its mark. A bot run is enough.
+**NL-13.** The code proves the track reader keeps file order; left open is a sort or insert through an interface call, or a write through a span. A note and the dynamics tag on one tick, tag second. Pass: the note scores plain. Fail: it scores its mark. A bot run is enough.
 
 **NL-16.** A merged kick carrying both a ghost and an accent. Pass: it counts as an accent only. Fail: a ghost, or both. A bot run is enough only with the per-note hook on; the score does not show it.
 
