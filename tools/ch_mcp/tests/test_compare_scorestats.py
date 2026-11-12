@@ -49,20 +49,39 @@ TARGET = {
     "activations": [{"act_tick": t, "deact_tick": t + 10} for t in range(8)],
 }
 
+# The settings LS-M2's stats file names (ch-mcp-runs 2026-11-08 ls-m2-run1,
+# scorestats-The_Who_-_Won_t_Get_Fooled_Again_O-20261108-122918.json).
+LS_M2_CHECKSUM = "AF44D5C8D941BB33444D18E7871CDC77"
+RUN = S.RunSettings(LS_M2_CHECKSUM, 100, True, ("DoubleKick",))
+RUN_ARGS = ["--checksum", LS_M2_CHECKSUM, "--speed", "100", "--no-fail", "on",
+            "--modifier", "DoubleKick"]
 
-def _stats(total_notes=4, sp_phrases_total=1, base_score=215, note_score=200, score=615,
-           accents=1, ghosts=1, activations=1):
-    return {"players": [{"is_bot": True, "total_notes": total_notes,
+
+def _stats(total_notes=4, notes_hit=4, sp_phrases_total=1, sp_phrases_earned=1,
+           base_score=215, note_score=200, score=615, accents=1, ghosts=1,
+           activations=1, checksum=LS_M2_CHECKSUM, playback_speed=100,
+           no_fail=True, modifiers=("DoubleKick",)):
+    return {"checksum": checksum, "playback_speed": playback_speed,
+            "players": [{"is_bot": True, "total_notes": total_notes,
+                         "notes_hit": notes_hit,
                          "sp_phrases_total": sp_phrases_total,
+                         "sp_phrases_earned": sp_phrases_earned,
                          "base_score": base_score, "note_score": note_score,
                          "score": score, "accent_notes_hit": accents,
-                         "ghost_notes_hit": ghosts, "sp_activations": activations}]}
+                         "ghost_notes_hit": ghosts, "sp_activations": activations,
+                         "no_fail": no_fail, "modifiers": list(modifiers)}]}
 
 
 def _target_stats(**changes):
-    values = dict(total_notes=1095, sp_phrases_total=1, base_score=222935, note_score=164565,
+    values = dict(total_notes=1095, notes_hit=1095, sp_phrases_total=1,
+                  sp_phrases_earned=1, base_score=222935, note_score=164565,
                   score=1229730, accents=368, ghosts=726, activations=8)
     return _stats(**{**values, **changes})
+
+
+CHECKED = ("total_notes", "notes_hit", "sp_phrases_total", "sp_phrases_earned",
+           "checksum", "playback_speed", "no_fail", "modifiers", "score",
+           "accent_notes_hit, ghost_notes_hit", "sp_activations")
 
 
 class CompareTest(unittest.TestCase):
@@ -80,18 +99,18 @@ class CompareTest(unittest.TestCase):
             json.dump(data, f)
         return path
 
-    def _run(self, stats):
+    def _run(self, stats, run=RUN):
         path = self._json("stats.json", stats)
         lines = []
-        ok = S.compare(path, self.hydra, out=lines.append)
+        ok = S.compare(path, self.hydra, run=run, out=lines.append)
         return ok, lines, path
 
-    def _main(self, stats):
+    def _main(self, stats, extra=RUN_ARGS):
         """The script's exit code and its printed lines, against TARGET."""
         path = self._json("stats.json", stats)
         printed = io.StringIO()
         with contextlib.redirect_stdout(printed):
-            code = S.main([path, self.target])
+            code = S.main([path, self.target] + list(extra))
         return code, printed.getvalue().splitlines()
 
     def _verdicts(self, lines):
@@ -99,13 +118,19 @@ class CompareTest(unittest.TestCase):
         pairs = [line.split(";")[0].rsplit(": ", 1) for line in lines]
         return {name: word for name, word in pairs if word in ("pass", "FAIL")}
 
-    def test_matching_pair_prints_six_lines(self):
+    def test_matching_pair_prints_every_line(self):
         ok, lines, st = self._run(_stats())
         self.assertTrue(ok)
         g, h = f"({st}, players[0])", f"({self.hydra})"
         self.assertEqual(lines, [
-            f"total_notes: pass; game 4 {g}; Hydra gems 4, chords 3 {h}; matches gems",
+            f"total_notes: pass; game 4 {g}; Hydra gems 4 {h}",
+            f"notes_hit: pass; game 4 {g}; Hydra gems 4 {h}",
             f"sp_phrases_total: pass; game 1 {g}; Hydra chords with is_sp_phrase_end 1 {h}",
+            f"sp_phrases_earned: pass; game 1 {g}; Hydra chords with is_sp_phrase_end 1 {h}",
+            f"checksum: pass; game {LS_M2_CHECKSUM} {g}; run {LS_M2_CHECKSUM}",
+            f"playback_speed: pass; game 100 {g}; run 100",
+            f"no_fail: pass; game True {g}; run True",
+            f"modifiers: pass; game ('DoubleKick',) {g}; run ('DoubleKick',)",
             f"score: pass; game 615 {g}; Hydra final.total 615 {h}",
             f"accent_notes_hit, ghost_notes_hit: pass; game 1 accents, 1 ghosts {g}; "
             f"Hydra gems with dynamic accent 1, ghost 1 {h}",
@@ -116,28 +141,45 @@ class CompareTest(unittest.TestCase):
             "base_score equals final.notes + accent + ghost; note_score equals final.notes",
         ])
 
-    def test_chord_count_match_is_named(self):
+    def test_compare_scorestats_fails_on_notes_hit_phrases_score_checksum_speed_or_modifiers(self):
+        # LS-M2's own misses: notes_hit 3753 of 3767 and 30 of 31 phrases
+        # earned, in the target's shape one short each.
+        cases = {"notes_hit": dict(notes_hit=1094),
+                 "sp_phrases_earned": dict(sp_phrases_earned=0),
+                 "score": dict(score=1229729),
+                 "checksum": dict(checksum="0" * 32),
+                 "playback_speed": dict(playback_speed=90),
+                 "no_fail": dict(no_fail=False),
+                 "modifiers": dict(modifiers=())}
+        for name, change in cases.items():
+            with self.subTest(name=name):
+                self._assert_only_failure(_target_stats(**change), name)
+
+    def test_total_notes_equal_to_the_chord_count_fails(self):
         ok, lines, _ = self._run(_stats(total_notes=3))
-        self.assertTrue(ok)
-        self.assertTrue(lines[0].startswith("total_notes: pass;"))
-        self.assertTrue(lines[0].endswith("matches chords"))
+        self.assertFalse(ok)
+        self.assertTrue(lines[0].startswith("total_notes: FAIL; game 3"))
+
+    def test_no_run_settings_fails_on_one_line(self):
+        ok, lines, _ = self._run(_stats(), run=None)
+        self.assertFalse(ok)
+        self.assertIn("checksum, playback_speed, no_fail, modifiers: FAIL; the run's "
+                      "settings were not given, so the game's cannot be checked "
+                      "against them", lines)
+        code, _ = self._main(_target_stats(), extra=[])
+        self.assertEqual(code, 1)
 
     def test_mismatch_is_flagged(self):
-        ok, lines, _ = self._run(_stats(5, 0, base_score=1, note_score=2))
+        ok, lines, _ = self._run(_stats(5, sp_phrases_total=0, base_score=1, note_score=2))
         self.assertFalse(ok)
         self.assertTrue(lines[0].startswith("total_notes: FAIL; game 5"))
-        self.assertTrue(lines[0].endswith("matches neither"))
-        self.assertTrue(lines[1].startswith("sp_phrases_total: FAIL; game 0"))
-        self.assertTrue(lines[5].endswith("base_score equals none; note_score equals none"))
-
-    def test_one_failing_line_fails_the_run(self):
-        ok, _, _ = self._run(_stats(sp_phrases_total=0))
-        self.assertFalse(ok)
+        self.assertTrue(lines[2].startswith("sp_phrases_total: FAIL; game 0"))
+        self.assertTrue(lines[-1].endswith("base_score equals none; note_score equals none"))
 
     def test_a_missing_player_is_refused(self):
         path = self._json("stats.json", {"players": []})
         with self.assertRaises(ValueError):
-            S.compare(path, self.hydra, out=lambda _l: None)
+            S.compare(path, self.hydra, run=RUN, out=lambda _l: None)
 
     def test_a_stats_file_with_no_score_is_refused(self):
         stats = _stats()
@@ -145,23 +187,18 @@ class CompareTest(unittest.TestCase):
         with self.assertRaises(KeyError):
             self._run(stats)
 
-    def test_the_target_run_passes_all_five_lines_and_exits_0(self):
+    def test_the_target_run_passes_every_line_and_exits_0(self):
         code, lines = self._main(_target_stats())
         self.assertEqual(code, 0)
-        self.assertEqual(self._verdicts(lines), {
-            "total_notes": "pass", "sp_phrases_total": "pass", "score": "pass",
-            "accent_notes_hit, ghost_notes_hit": "pass", "sp_activations": "pass"})
+        self.assertEqual(self._verdicts(lines), {name: "pass" for name in CHECKED})
 
     def _assert_only_failure(self, stats, line_name):
         code, lines = self._main(stats)
         self.assertEqual(code, 1)
         verdicts = self._verdicts(lines)
-        self.assertEqual(len(verdicts), 5)
+        self.assertEqual(len(verdicts), len(CHECKED))
         self.assertEqual([name for name, word in verdicts.items() if word == "FAIL"],
                          [line_name])
-
-    def test_one_point_short_fails_the_score_line_and_exits_1(self):
-        self._assert_only_failure(_target_stats(score=1229729), "score")
 
     def test_one_accent_short_fails_the_accent_line(self):
         self._assert_only_failure(_target_stats(accents=367),

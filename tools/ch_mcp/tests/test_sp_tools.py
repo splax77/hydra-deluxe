@@ -34,8 +34,8 @@ from tools.ch_probe import engine  # noqa: E402
 from tools.ch_probe import engine_finder as F  # noqa: E402
 from tools.ch_probe.experiments import sp_compare, sp_watch  # noqa: E402
 from tools.ch_probe.experiments.overlay_logs import WATCH_COLUMNS  # noqa: E402
+from tools.ch_probe.experiments import play_chart  # noqa: E402
 from tools.ch_probe.tests import fakes  # noqa: E402
-from tools.ch_probe.tests.test_sp_compare import _row  # noqa: E402
 
 _PROBE_TESTS = os.path.join(_REPO_ROOT, "tools", "ch_probe", "tests")
 # Mouths path 0's hydra_replay schedule, beside its score file.
@@ -47,10 +47,21 @@ WAIT_S = 5.0
 NO_SONG = "no playing song found in 120 s; start the song and run again"
 
 
+# The full meter of a chart at resolution 192 (Trippin SP Spike's), from the one
+# place that knows the game's full meter (SP-11), so no test types it again.
+SPIKE_FULL_METER = sp_compare.game_full_meter(192)
+
+
 def snap_at(clock_s, **fields):
     """A snapshot of an all-zero object with its clock and any field set."""
     base = engine.decode_snapshot(bytes(engine.SNAPSHOT_SIZE))
     return dataclasses.replace(base, clock_s=clock_s, **fields)
+
+
+def _row(clock_s, amount, **fields):
+    """A watch row as the watch writes it, from snap_at."""
+    snap = snap_at(clock_s, sp_amount_u64=amount, sp_amount_u32=amount, **fields)
+    return dict(zip(WATCH_COLUMNS, sp_watch.watch_row(100.0 + clock_s, snap)))
 
 
 class FakeGame:
@@ -63,6 +74,11 @@ class FakeGame:
         self.hooks = []
         self.cap_calls = []
         self._run = None
+        # What play_snapshot returns: None when no play session ran.
+        self.play = None
+
+    def play_snapshot(self):
+        return self.play
 
     def song_length_ms(self):
         return self._run.length_ms if self._run is not None else None
@@ -234,13 +250,17 @@ class SpToolsTest(unittest.TestCase):
     # -- the run cap -------------------------------------------------------------------
 
     def test_a_song_folder_takes_its_cap_from_the_game(self):
+        folder = os.path.join(self.tmp.name, "x")
+        os.makedirs(folder)
+        with open(os.path.join(folder, "song.ini"), "w", encoding="utf-8") as f:
+            f.write("[song]\nsong_length = 4000\n")
         script = Script([snap_at(1.0)])
         tools = self.tools(script)
-        reply = self.started(tools, song_folder="C:/songs/x")
-        self.assertIn("run cap: 240 s (game_tools.run_cap_s for C:/songs/x)", reply)
+        reply = self.started(tools, song_folder=folder)
+        self.assertIn(f"run cap: 240 s (game_tools.run_cap_s for {folder})", reply)
         self.assertTrue(script.done.wait(WAIT_S))
         tools.ch_sp_watch_stop()
-        self.assertEqual(self.game.cap_calls, ["C:/songs/x"])
+        self.assertEqual(self.game.cap_calls, [folder])
         self.assertEqual(self.watch_kw["cap_s"], 240.0)
 
     def test_no_song_folder_takes_the_watcher_cap(self):
@@ -279,20 +299,21 @@ class SpToolsTest(unittest.TestCase):
 
     def test_ch_sp_prints_the_latest_read(self):
         script = Script([
-            snap_at(1.0, sp_amount_u64=96, sp_max_u64=5760, sp_mult_u32=4),
-            snap_at(12.5, sp_amount_u64=2880, sp_max_u64=5760, sp_active_byte=1,
-                    sp_mult_u32=8, sp_end_s=61.25, sp_overflow_u32=1)])
+            snap_at(1.0, sp_amount_u64=96, sp_max_u64=SPIKE_FULL_METER, sp_mult_u32=4),
+            snap_at(12.5, sp_amount_u64=2880, sp_max_u64=SPIKE_FULL_METER, sp_half_u64=2880,
+                    sp_active_byte=1, sp_mult_u32=8, sp_end_s=61.25, sp_overflow_u32=1)])
         tools = self.tools(script)
         self.started(tools)
         self.assertTrue(script.done.wait(WAIT_S))
         reply = tools.ch_sp()
         tools.ch_sp_watch_stop()
-        self.assertEqual(reply.splitlines()[:9], [
+        self.assertEqual(reply.splitlines()[:10], [
             "engine clock: 12500.0 ms",
             "amount: 2880 (sp_amount_u64)",
             "max: 5760 (sp_max_u64)",
+            "game's half: 2880 (sp_half_u64)",
             "share of max: 0.500",
-            "ready: yes, at or over 0.5 of max (sp_compare.READY_FRACTION)",
+            "ready: yes, the amount is at or over the game's half",
             "active flag: 1 (on)",
             "end time: 61250.0 ms, 48750.0 ms ahead of the clock",
             "multiplier: 8",
@@ -300,8 +321,9 @@ class SpToolsTest(unittest.TestCase):
         ])
 
     def test_sp_lines_below_the_ready_level_and_with_no_maximum(self):
-        below = sp_tools.sp_lines(snap_at(2.0, sp_amount_u64=2879, sp_max_u64=5760))
-        self.assertIn("ready: no, below 0.5 of max (sp_compare.READY_FRACTION)", below)
+        below = sp_tools.sp_lines(snap_at(2.0, sp_amount_u64=2879,
+                                          sp_max_u64=SPIKE_FULL_METER, sp_half_u64=2880))
+        self.assertIn("ready: no, the amount is below the game's half", below)
         self.assertIn("active flag: 0 (off)", below)
         empty = sp_tools.sp_lines(snap_at(2.0))
         self.assertIn("share of max: none (max is 0)", empty)
@@ -311,9 +333,10 @@ class SpToolsTest(unittest.TestCase):
 
     def flip_script(self):
         return Script([
-            snap_at(1.0, sp_amount_u64=2880, sp_max_u64=5760, sp_mult_u32=4),
-            snap_at(2.0, sp_amount_u64=2880, sp_max_u64=5760, sp_mult_u32=8,
-                    sp_active_byte=1, sp_end_s=10.0)])
+            snap_at(1.0, sp_amount_u64=2880, sp_max_u64=SPIKE_FULL_METER, sp_half_u64=2880,
+                    sp_mult_u32=4),
+            snap_at(2.0, sp_amount_u64=2880, sp_max_u64=SPIKE_FULL_METER, sp_half_u64=2880,
+                    sp_mult_u32=8, sp_active_byte=1, sp_end_s=10.0)])
 
     def test_ch_sp_between_reports_a_flip_inside_the_window(self):
         script = self.flip_script()
@@ -326,7 +349,7 @@ class SpToolsTest(unittest.TestCase):
         self.assertIn("  activation 1 at 2000.0 ms: multiplier 4 before, 8 on the flip "
                       "row; end time at the flip 10000.0 ms; flag still set at the last row",
                       inside)
-        self.assertIn("no row inside at the ready level with the flag clear", inside)
+        self.assertIn("no row inside at the game's half with the flag clear", inside)
 
     def test_the_status_activation_line_reads_end_time_at_the_flip(self):
         script = self.flip_script()
@@ -411,8 +434,8 @@ class SpToolsTest(unittest.TestCase):
         tools.ch_sp_watch_stop()
         before = tools.ch_sp_between(0.0, 1500.0)
         self.assertIn("no activation inside", before)
-        self.assertIn("first row at the ready level with the flag clear: 1000.0 ms "
-                      "(sp_amount_u64 2880)", before)
+        self.assertIn("first row at the game's half with the flag clear: 1000.0 ms "
+                      "(sp_amount_u64 2880, sp_half_u64 2880)", before)
         self.assertIn("no rows inside the window", tools.ch_sp_between(3000.0, 4000.0))
 
     def test_ch_sp_watch_status_lists_activations_and_rises(self):
@@ -628,8 +651,74 @@ class SpToolsTest(unittest.TestCase):
 
     def test_ch_sp_compare_names_a_missing_file(self):
         missing = os.path.join(self.tmp.name, "none.csv")
-        reply = self.tools().ch_sp_compare(missing, missing, missing)
+        reply = self.tools().ch_sp_compare(missing, missing, missing, 192)
         self.assertTrue(reply.startswith("compare failed: FileNotFoundError"))
+
+    def test_ch_sp_compare_refuses_without_a_resolution(self):
+        missing = os.path.join(self.tmp.name, "none.csv")
+        self.assertTrue(self.tools().ch_sp_compare(missing, missing, missing).startswith(
+            "compare refused: give resolution"))
+
+    def test_ch_sp_compare_refuses_while_a_play_runs(self):
+        self.game.play = {"last_row": None, "press_count": 0, "stop": None, "message": ""}
+        missing = os.path.join(self.tmp.name, "none.csv")
+        self.assertEqual(self.tools().ch_sp_compare(missing, missing, missing, 192),
+                         "compare refused: the play session is still running; "
+                         "call ch_play_stop first")
+
+    def test_ch_sp_compare_passes_the_last_plays_stop(self):
+        watch_csv, score_json = self._mouths_files()
+        self.game.play = {"last_row": None, "press_count": 3, "stop": play_chart.STOP_DONE,
+                          "message": ""}
+        reply = self.tools().ch_sp_compare(watch_csv, score_json, _MOUTHS_SCHEDULE, 192)
+        self.assertIn("PASS run end: the run reached the song's end", reply)
+        self.game.play = None
+        reply = self.tools().ch_sp_compare(watch_csv, score_json, _MOUTHS_SCHEDULE, 192)
+        self.assertIn("FAIL run end: the run's stop reason was not given", reply)
+
+    def test_ch_sp_compare_prints_the_last_plays_stop_message(self):
+        watch_csv, score_json = self._mouths_files()
+        self.game.play = {"last_row": None, "press_count": 0,
+                          "stop": play_chart.STOP_NO_ENGINE,
+                          "message": "no song started within 120 s"}
+        reply = self.tools().ch_sp_compare(watch_csv, score_json, _MOUTHS_SCHEDULE, 192)
+        self.assertIn(f"FAIL run end: the run stopped before the song's end "
+                      f"({play_chart.STOP_NO_ENGINE}): no song started within 120 s",
+                      reply.splitlines())
+
+    def test_ready_when_comes_from_the_schedule_and_whether_from_the_games_half(self):
+        self.assertTrue(sp_tools.game_ready(_row(1.0, 7201, sp_half_u64=7200)))
+        self.assertFalse(sp_tools.game_ready(_row(1.0, 7200, sp_half_u64=7201)))
+        schedule = play_chart.Schedule(
+            chords=[play_chart.Chord(index=5, tick=0, ms=3000.0, lanes=[], dynamics=[])],
+            activations=[play_chart.Activation(index=0, chord=5, read_end_after=None,
+                                               sp_ready_ms=1500.0)],
+            song_length_ms=60000.0)
+        ready = sp_tools.ready_lines([_row(1.0, 7200, sp_half_u64=7201),
+                                      _row(2.0, 7201, sp_half_u64=7200)], schedule)
+        self.assertEqual(ready, [
+            "ready for activation 0: Hydra ready at 1500.0 ms (the schedule's sp_ready_ms); "
+            "the game first ready at 2000.0 ms (sp_amount_u64 7201, sp_half_u64 7200)"])
+        not_ready = sp_tools.ready_lines([_row(2.0, 7200, sp_half_u64=7201)], schedule)
+        self.assertEqual(not_ready, [
+            "ready for activation 0: Hydra ready at 1500.0 ms (the schedule's sp_ready_ms); "
+            "the game was not ready before its chord"])
+        # No Python half: sp_tools computes no share of the maximum as a level.
+        with open(sp_tools.__file__, encoding="utf-8") as f:
+            source = f.read()
+        for copy in ("READY_FRACTION", "at_ready_level", "ready_between",
+                     "* sp_max", "sp_max /", "/ 2", "* 0.5"):
+            self.assertNotIn(copy, source)
+
+    def test_run_cap_line_says_default_when_no_song_length(self):
+        folder = os.path.join(self.tmp.name, "no-length")
+        os.makedirs(folder)
+        script = Script([snap_at(1.0)])
+        tools = self.tools(script)
+        reply = self.started(tools, folder)
+        self.assertTrue(script.done.wait(WAIT_S))
+        tools.ch_sp_watch_stop()
+        self.assertIn(f"run cap: 240 s (default; no song length for {folder})", reply)
 
     def _compare_files(self, score, rows):
         """A watcher CSV of `rows` and a copy of the score file `score`."""
@@ -655,15 +744,15 @@ class SpToolsTest(unittest.TestCase):
     def test_ch_sp_compare_on_mouths_reports_as_compare_does(self):
         watch_csv, score_json = self._mouths_files()
         want = sp_compare.compare(sp_compare.load_watch_rows(watch_csv),
-                                  sp_compare.load_score(score_json),
+                                  sp_compare.load_score(score_json), resolution=192,
                                   reach=sp_compare.press_reach(_MOUTHS_SCHEDULE)).text()
-        self.assertTrue(want.startswith("Star Power comparison: 3 watcher rows"), want)
-        self.assertEqual(self.tools().ch_sp_compare(watch_csv, score_json, _MOUTHS_SCHEDULE),
-                         want)
+        self.assertIn("Star Power comparison: 3 watcher rows", want)
+        reply = self.tools().ch_sp_compare(watch_csv, score_json, _MOUTHS_SCHEDULE, 192)
+        self.assertTrue(reply.startswith(want + "\nready for activation "), reply)
 
     def test_ch_sp_compare_reads_the_mouths_schedule(self):
         watch_csv, score_json = self._mouths_files()
-        reply = self.tools().ch_sp_compare(watch_csv, score_json, _MOUTHS_SCHEDULE)
+        reply = self.tools().ch_sp_compare(watch_csv, score_json, _MOUTHS_SCHEDULE, 192)
         self.assertIn("PASS phrase rise after chord 740 (tick 48480, 118426.0 ms): "
                       "+1536 (0 -> 1536) at 118441.0 ms, full", reply)
 
@@ -676,7 +765,7 @@ class SpToolsTest(unittest.TestCase):
         schedule_json = os.path.join(self.tmp.name, "schedule.json")
         with open(schedule_json, "w", encoding="utf-8") as f:
             json.dump(doc, f)
-        reply = self.tools().ch_sp_compare(watch_csv, score_json, schedule_json)
+        reply = self.tools().ch_sp_compare(watch_csv, score_json, schedule_json, 192)
         self.assertEqual(reply, f"could not read {schedule_json}: ValueError: {schedule_json} "
                                 f"refuses to play this path: chord 740 is a squeeze the "
                                 f"schedule could not split, so it is not pressed")

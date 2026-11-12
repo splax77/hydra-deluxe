@@ -699,15 +699,20 @@ class GameTools:
     def play_snapshot(self) -> Optional[dict]:
         """While a play session exists: {"last_row": the last press row or
         None, "press_count": the rows delivered so far, "stop": the run's stop
-        reason, or None while it runs}. None when no play session ever ran."""
+        reason, or None while it runs, "message": the run's RunResult.message,
+        empty while it runs or when it left no result}. None when no play
+        session ever ran."""
         with self._lock:
             play = self._play
             if play is None:
                 return None
             rows = list(play.rows)
+            ended = not play.running()
             return {"last_row": rows[-1] if rows else None,
                     "press_count": len(rows),
-                    "stop": None if play.running() else self._stop_reason(play)}
+                    "stop": self._stop_reason(play) if ended else None,
+                    "message": play.result.message if ended and play.result is not None
+                    else ""}
 
     # -- starting, stopping and status --------------------------------------------
 
@@ -923,13 +928,29 @@ class GameTools:
                 lines.extend(f"  {key}: {_value_text(value)}" for key, value in player.items())
             return "\n".join(lines)
 
-    def ch_compare(self, stats_path: str, score_json: str) -> str:
-        """compare_scorestats.compare's six lines for a stats copy against a
-        hydra_replay score JSON, then pass or fail."""
+    def ch_compare(self, stats_path: str, score_json: str, checksum: Optional[str] = None,
+                   playback_speed: Optional[int] = None, no_fail: Optional[bool] = None,
+                   modifiers: Optional[Sequence[str]] = None) -> str:
+        """compare_scorestats.compare's lines for a stats copy against a
+        hydra_replay score JSON, then pass or fail. The last four arguments
+        are the run's settings (compare_scorestats.RunSettings), given by the
+        caller because no file the tools hold records them for the run. With
+        none of them the settings line fails, as compare says; some but not
+        all of them is refused before anything is read."""
         with self._lock:
+            given = {"checksum": checksum, "playback_speed": playback_speed,
+                     "no_fail": no_fail, "modifiers": modifiers}
+            missing = [name for name, value in given.items() if value is None]
+            if 0 < len(missing) < len(given):
+                return ("refused: give all four of the run's settings, or none; missing: "
+                        + ", ".join(missing))
+            run = None
+            if not missing:
+                run = compare_scorestats.RunSettings(
+                    str(checksum), int(playback_speed), bool(no_fail), tuple(modifiers))
             lines: List[str] = []
             try:
-                ok = self._compare(stats_path, score_json, out=lines.append)
+                ok = self._compare(stats_path, score_json, run=run, out=lines.append)
             except (OSError, ValueError, KeyError, TypeError) as e:
                 lines.append(f"compare failed: {type(e).__name__}: {e}")
                 return "\n".join(lines)

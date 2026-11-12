@@ -38,6 +38,7 @@ WATCH_COLUMNS = (
     "sp_amount_u64",
     "sp_max_u32",
     "sp_max_u64",
+    "sp_half_u64",
     "sp_active_byte",
     "sp_active_u32",
     "sp_mult_byte",
@@ -54,8 +55,14 @@ WATCH_COLUMNS = (
 # lack them, and the two readers (watch_checks.py, sp_compare.py) still load
 # those logs, with these columns read as NaN.
 WATCH_CLOCK_COLUMNS = ("audio_s", "raw_s", "corr_s")
-WATCH_COLUMNS_WITHOUT_CLOCK = tuple(
-    c for c in WATCH_COLUMNS if c not in WATCH_CLOCK_COLUMNS)
+# The game's own half of the meter (constants.OFF_SP_HALF). Every log written
+# before it existed lacks it, the saved ones included, so it is left out of
+# WATCH_COLUMNS_WITHOUT_LATE_GROUPS beside the clock columns.
+WATCH_HALF_COLUMNS = ("sp_half_u64",)
+# WATCH_COLUMNS without the clock and half groups: the columns every watcher
+# log has.
+WATCH_COLUMNS_WITHOUT_LATE_GROUPS = tuple(
+    c for c in WATCH_COLUMNS if c not in WATCH_CLOCK_COLUMNS + WATCH_HALF_COLUMNS)
 
 # Saved logs under experiments/results/ name some columns differently: each key
 # is a name such a log uses, and its value the WATCH_COLUMNS name for the same

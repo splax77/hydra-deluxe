@@ -293,6 +293,23 @@ class ServerTest(unittest.TestCase):
         self.assertEqual(seen, [("w.csv", "s.json", "sched.json", None, None, width),
                                 ("w.csv", "s.json", "sched.json", 192, None, width)])
 
+    def test_ch_compare_takes_the_run_settings_and_passes_them_through(self):
+        schema = self._schema("ch_compare")
+        self.assertEqual(set(schema), {"stats_path", "score_json", "checksum",
+                                       "playback_speed", "no_fail", "modifiers"})
+        for name in ("checksum", "playback_speed", "no_fail", "modifiers"):
+            self.assertIsNone(schema[name]["default"])
+        seen = []
+        self.helper.game.ch_compare = lambda *a: seen.append(a) or "compared"
+        server = S.build_server(self.helper)
+        asyncio.run(server.call_tool("ch_compare", {"stats_path": "st.json",
+                                                    "score_json": "s.json"}))
+        asyncio.run(server.call_tool("ch_compare", {
+            "stats_path": "st.json", "score_json": "s.json", "checksum": "AB",
+            "playback_speed": 100, "no_fail": True, "modifiers": ["DoubleKick"]}))
+        self.assertEqual(seen, [("st.json", "s.json", None, None, None, None),
+                                ("st.json", "s.json", "AB", 100, True, ["DoubleKick"])])
+
     def test_ch_start_human_with_no_song_folder_is_refused_before_any_launch(self):
         result = asyncio.run(S.build_server(self.helper).call_tool("ch_start", {"human": True}))
         self.assertEqual(result.content[0].text, bot_run.HUMAN_NEEDS_SONG)

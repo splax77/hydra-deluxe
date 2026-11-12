@@ -235,7 +235,8 @@ def load_schedule(path: str) -> Schedule:
     rows = [_Fields(row, path, f"entry {k} of `chords`")
             for k, row in enumerate(doc["chords"])]
     if not rows:
-        # The words ch_play_chart's chords_to_play refuses an empty list with.
+        # The one refusal of a schedule with no chords; every reader of a
+        # schedule meets it here, through load_schedule.
         raise ValueError(f"{path} has no chords to play")
     song_length_ms = doc["song_length_ms"]
     if song_length_ms is None:
