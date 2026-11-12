@@ -89,7 +89,7 @@ Acceptance criteria:
 2. The bench reproduces today's output shape. Check: the bench command above prints sections 1 to 6 and no line holds the word "differs".
 3. The docs check passes. Check: `hydra_tests.exe "-tc=docs match code*"`, run by the main session.
 4. The store's tests still pass, since store helpers moved. Check: the list `hydra_precheck.exe --tests` prints for the branch, run by the main session.
-${LINE}
+5. The precheck lists no item for `tools/bench.cpp`. Check: `hydra_precheck.exe` on the reviewed branch.
 
 ### T2: Time the candidates that have no number yet
 
