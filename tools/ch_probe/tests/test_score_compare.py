@@ -270,6 +270,27 @@ class PressLogHeaderTest(unittest.TestCase):
             tuple(c for c in overlay_logs.PRESS_LOG_COLUMNS
                   if c != overlay_logs.SEND_COLUMN))
 
+    def test_a_log_with_the_header_before_timing_still_loads(self):
+        # The header of LS-A2's press-1.csv (2026-11-11\ls-a2-run1), as written.
+        rows = _load_text(
+            "index,chart_ms,clock_ms_at_press,score_before,score_after,send,down_frame,"
+            "up_frame,down_ms,up_ms,wall_s_at_read,wall_s_at_reply,scored_between,"
+            "end_read_ms,probe,retimed\n"
+            "180,32583.33,32624.39,500,600,sent,,,,,1.25,1.5,0,,,inside\n")
+        self.assertEqual([(p.index, p.score_after, p.retimed, p.press_took_ms) for p in rows],
+                         [(180, 600, "inside", "")])
+
+    def test_the_timing_columns_play_chart_writes_read_back(self):
+        rows = [{"index": 180, "chart_ms": 32583.33, "clock_ms_at_press": 32627.39,
+                 "score_before": 500, "score_after": 600, "send": play_chart.SENT,
+                 "wait_read_max_ms": 1.5, "press_took_ms": 212.4}]
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "press.csv")
+            play_chart.write_press_log(path, rows)
+            (press,) = score_compare.load_press_log(path)
+        self.assertEqual((press.wait_read_max_ms, press.press_took_ms, press.end_read_took_ms),
+                         ("1.5", "212.4", ""))
+
     def test_a_log_with_the_hit_column_still_loads(self):
         rows = _load_text(
             ",".join(overlay_logs.PRESS_COLUMNS_WITH_HIT) + "\n"

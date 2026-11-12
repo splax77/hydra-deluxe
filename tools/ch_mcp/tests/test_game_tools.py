@@ -1258,6 +1258,29 @@ class GameToolsTest(unittest.TestCase):
             "send, down_frame, up_frame, down_ms, up_ms):",
             "  0, 1000.0, 998.0, 0, 50, sent, 10, 12, 100, 113"])
 
+    def test_the_status_rows_show_the_timing_columns(self):
+        # D335 item 2: the timing columns go into the status rows as well as
+        # the file. No row reads an end, so end_read_took_ms is left out, as
+        # every column no row carries is.
+        rows = [{**ROWS[0], "wait_read_max_ms": 0.4, "wait_oversleep_max_ms": 1.2,
+                 "press_took_ms": 7.6, "reply_check_took_ms": 0.1,
+                 "score_read_took_ms": 0.3, "prev_handoff_took_ms": 0.05}]
+
+        def live_play(chords, *, on_press, **kw):
+            for row in rows:
+                on_press(row)
+            return play_chart.RunResult(stop="done", sent=1, rows=rows)
+
+        t = ToolRig(self.tmp, live_play=live_play)
+        t.tools.ch_play_chart(self._score_json(), self._schedule_json(), route="keys")
+        t.tools._play.thread.join(THREAD_CAP_S)
+        lines = t.tools.ch_play_status().splitlines()
+        self.assertEqual(lines[-2:], [
+            "rows, newest first (index, chart_ms, clock_ms_at_press, score_before, score_after, "
+            "send, wait_read_max_ms, wait_oversleep_max_ms, press_took_ms, reply_check_took_ms, "
+            "score_read_took_ms, prev_handoff_took_ms):",
+            "  0, 1000.0, 998.0, 0, 50, sent, 0.4, 1.2, 7.6, 0.1, 0.3, 0.05"])
+
     # -- the chained start --------------------------------------------------------------
 
     ENGINE = 0x2_0000_1000
