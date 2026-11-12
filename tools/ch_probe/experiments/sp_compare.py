@@ -13,16 +13,21 @@ Each chord's `ms` in the JSON is taken as the chord's time on the game's song
 clock (`clock_s` in the CSV), so the comparison is the same for an
 auto-player run and a run the game's bot played.
 
-It prints one PASS or FAIL line per check, with the numbers:
+It prints a summary line first, then one PASS or FAIL line per check, with
+the numbers:
 
+- the run's end: whether the run reached the song's end
+  (score_compare.stop_check);
 - phrase rises: each phrase-end chord is followed by a rise in the SP amount;
 - sp_max on every row equals the game's full meter for the chart's
   resolution (game_full_meter);
 - each activation the game made: the multiplier doubles, an end time ahead of
-  the clock is set, and at that end time the flag clears and the multiplier
-  halves; and whether it landed on the chord the path activates on;
+  the clock is set, the flag clears at the path activation's `deact_ms`, and
+  the multiplier halves at the end; whether it landed on the chord the path
+  activates on; and, when it did, whether the last chord the game paid
+  inside it is Hydra's deactivation chord (_check_end_chord);
 - the game's multiplier at each chord against Hydra's, up to the first
-  activation that parts from the path.
+  activation that parts from the path; no chord compared is a FAIL.
 
 The plan behind every check is "Task S" of
 docs/superpowers/plans/2026-10-28-overlay-spike.md (removed; git show 6804353f:docs/superpowers/plans/2026-10-28-overlay-spike.md).
@@ -33,8 +38,8 @@ The server prints their answers and asks nothing itself.
 
 Usage:
     py tools\\ch_probe\\experiments\\sp_compare.py <watch.csv> <score.json>
-        [--resolution 192] [--sp-bar-ticks 14400] [--width 64|32]
-        --schedule <schedule.json>
+        --resolution 192 --schedule <schedule.json> [--stop done]
+        [--stop-message TEXT] [--sp-bar-ticks 14400] [--width 64|32]
 
 Exit code 0 when every check passed, 1 when any printed FAIL.
 """
@@ -462,15 +467,15 @@ def _check_end_chord(report: Report, rows: list, act: _Activation, want: dict,
     deact = hydra[-1]
     if act.drop_row is None:
         report.check(False, f"  activation {n} end chord: the flag never cleared; "
-                     f"Hydra's deactivation chord {_chord_label(deact)}")
+                     f"Hydra's deactivation: {_chord_label(deact)}")
         return
     end_ms = C.s_to_ms(rows[act.drop_row - 1]["sp_end_s"])
     paid = [c for c in chords if reach[c["index"]].earliest_ms <= end_ms]
     game = paid[-1] if paid else None
     game_text = _chord_label(game) if game is not None else "none"
     report.check(game is not None and game["index"] == deact["index"],
-                 f"  activation {n} end chord: game end {format_ms(end_ms)}, last chord "
-                 f"paid inside {game_text}; Hydra's deactivation chord "
+                 f"  activation {n} end chord: game end {format_ms(end_ms)}, the game's "
+                 f"last chord inside: {game_text}; Hydra's deactivation: "
                  f"{_chord_label(deact)}, difference {end_ms - deact['ms']:+.1f} ms")
 
 
