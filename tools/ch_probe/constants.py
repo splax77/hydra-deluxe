@@ -340,3 +340,10 @@ GM_OFF_CLOCK = 0xB0
 CLOCK_OFF_CORR = 0x18
 CLOCK_OFF_AUDIO = 0x20
 CLOCK_OFF_RAW = 0x38
+
+# How long a run's end waits for a log writer thread (the kit log's in
+# LiveAgent.detach, the press log's in the player) before it stops waiting
+# and says the log may lack its last lines. The user's answer to question 5
+# of the player stall fix plan (D335 item 1, "Start them, 5 s cap
+# (Recommended)"): one number for both writers.
+LOG_WRITER_CAP_S = 5.0
