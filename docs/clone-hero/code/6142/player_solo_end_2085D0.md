@@ -1,0 +1,4 @@
+Listing: `player_solo_end_2085D0.asm`, build 6142, made 2026-11-08 with `tools/ch_mcp/chdis.py`. Function: `BasePlayer` virtual method, slot 26, RVA `0x2085D0` (`dump.cs` line 48809), the whole method. It takes an int, an int, a bool and a double. Its first int carries the same scrambled name as the `SoloCounter` field `+0x80`, and its second int the same name as the `SoloCounter` percent parameter (`dump.cs` lines 8017, 8057 and 48810). A byte scan found no direct call to it; it is reached through the class's virtual table, and no call through that slot was found.
+
+Lines 19 to 25: call the `SoloCounter` (`+0x58`) end-message method `0x2960B0` with its own second int as the first argument, the bool as the second, its own first int as the third and the double as the fourth. So the percent goes first and the other int goes third (`solo_counter_result_2960B0.md`).
+Lines 26 to 52: in an online game, pass the same values on through `+0x118`; not traced.

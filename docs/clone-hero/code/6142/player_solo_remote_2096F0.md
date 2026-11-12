@@ -1,0 +1,5 @@
+Listing: `player_solo_remote_2096F0.asm`, build 6142, made 2026-11-08 with `tools/ch_mcp/chdis.py`. Function: `BasePlayer` virtual method, slot 24, RVA `0x2096F0` (`dump.cs` line 48803), the whole method. It takes one record and applies it to the solo box, for a player whose solo state arrives as a record (the online route, from the `CHNetManager` test at lines 13 to 35; not traced further).
+
+Lines 46 to 56: pass the record's byte `+0x11` to the percent method `0x294C60`.
+Lines 52 to 54 and 61 to 66: when the record's byte `+0x12` is set, call the end-message method `0x2960B0` with the byte `+0x11` as the percent, the byte `+0x13` as the bool, the int `+0x14` as the third argument and the double `+0x18` as the fourth.
+Lines 67 to 73: then add the same int `+0x14` into `+0xA0` of the object at `+0x120`, the field the dump names `engine` (`dump.cs` line 48770; `+0x58` is `soloCounter`, line 48732). The engine's `+0xA0` is its solo bonus total (`engine_stats_20F3DC0.md`), so on this route the third argument of `0x2960B0` is the solo bonus.
