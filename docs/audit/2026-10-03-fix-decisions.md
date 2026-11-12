@@ -1950,3 +1950,12 @@ The figures. Every one is a median of `hydra_bench --open --runs 7 --as-ready` o
 | "read_library as one call, no callback" (`AppState::reload_library`'s read) | 188.2 ms | 98.7 ms |
 
 After T7 the counted read is faster than the read with no callback. The code shows one difference between them: with no callback, `read_library_summaries` asks `lookup` about every chart in one call, in row order, so it does not get T3's hash order. T8's run, from a build of T8's branch made before T4 merged, with `--threads 8 --cold`, gave "open + read_library, no callback" 132.1 ms warm and 396.8 ms cold. So reading the library file from the disk instead of the OS cache added 264.7 ms then.
+
+**D339 (session 07d9b035), 2026-11-12. The kit agent times the auto-player's presses on the game's own frames.** Every dropped chord of the LS-A2 series came from the Python loop `play_chords` being late: a slow press-log write, then an 87.3 ms clock read while the Star Power watch's thread held the interpreter (LS-P3, chord 468). The plan is `docs/superpowers/plans/2026-11-12-in-game-press-timing.md`. The user's four answers, asked as four questions in one dialog:
+
+1. "In-game timing (Recommended)": the plan's tasks IG0 to IG4 go ahead, and the fallback (the Python player in its own process) is planned only if LS-G1's hook fails or two live runs fail. Each live step still waits for its own yes.
+2. "Yes, change them (Recommended)": on in-game rows of the press log the seven step-timing columns stay empty, and `frame_gap_ms` and `agent_note` are added to the file and to `ch_play_status`.
+3. "Accept all four (Recommended)": the frame probe runs 5 s, its frame-rate floor is 322.2 frames a second, the agent sends one report batch per frame with no cap, and a gap under 100 ms between a Star Power end read and the first press it moves sends the retime design back to the user.
+4. "Allow the two reads (Recommended)": an exception to D272 ruling 5 ("agents read fields by name, never by raw offset") for the kit agent's song clock read at engine+0x100 and its score read, at addresses Python passes in. Every other agent read stays by name.
+
+The plan's questions 2 (when a press fires, asked again with IG0's number) and 4 (whether IG6 removes the Python loop from the kit route) are still open.
