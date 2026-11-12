@@ -412,6 +412,11 @@ struct OpenProgress {
 // on the thread that builds the store, never after the constructor returns.
 using OpenProgressFn = std::function<bool(const OpenProgress&)>;
 
+// Called by RecordStore::list_chart_library once per row it reads, with the
+// rows read so far. A false return stops the read: list_chart_library throws
+// Cancelled (core/error_kind.h) and the store answers later calls as before.
+using RowsReadFn = std::function<bool(int64_t rows_read)>;
+
 class ChartIndex;  // store/chart_index.h
 
 class RecordStore {
@@ -594,9 +599,12 @@ public:
     // LIMIT convention). Searching is the library view's (query_matches in
     // app/library_query.h), not SQL's. Each entry's timing is set only when
     // the table's kChartMetaStamp is current, the stamp the scan that read it
-    // wrote; rows an older scan wrote carry none.
+    // wrote; rows an older scan wrote carry none. `on_row`, when set, is told
+    // each row as it is read (RowsReadFn); empty for a caller with nothing to
+    // show.
     int64_t chart_library_count();
-    std::vector<ChartLibraryEntry> list_chart_library(int offset, int limit);
+    std::vector<ChartLibraryEntry> list_chart_library(int offset, int limit,
+                                                      const RowsReadFn& on_row = {});
     // Whether the library's rows came from a scan whose readers are no longer
     // current, so a new scan would read something the last one did not.
     // kChartMetaStamp owns which stamps count as current. An empty library is
