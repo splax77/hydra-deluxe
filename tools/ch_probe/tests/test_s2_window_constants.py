@@ -46,8 +46,9 @@ class MeasuredConstantsTest(unittest.TestCase):
 class ProbeSettingsHaveOneHomeTest(unittest.TestCase):
     def test_probe_chart_spacings_and_note_come_from_constants(self):
         self.assertEqual(tuple(probe_chart.DEFAULT_SPACINGS_MS), tuple(C.PROBE_SPACINGS_MS))
-        self.assertEqual(probe_chart.DRUM_NOTE_KICK, C.PROBE_CHART_NOTE_KICK)
-        self.assertEqual(C.PROBE_CHART_NOTE_KICK, 0)   # a .chart note, not an input lane
+        # A .chart note, not an input lane: 0 is the kick in a .chart.
+        self.assertEqual(probe_chart.DRUM_NOTE_KICK, 0)
+        self.assertEqual(C.PROBE_CHART_NOTE_KICK, 0)
 
     def test_normal_back_ms_is_derived_from_the_seconds_value(self):
         # constants.py derives the ms edges from the seconds values the game
