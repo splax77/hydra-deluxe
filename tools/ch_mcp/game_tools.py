@@ -29,8 +29,9 @@ import time
 from typing import Any, Callable, List, Optional, Sequence, Tuple, Union
 
 from tools.ch_mcp import (
-    bot_run, compare_scorestats, foreground, game_files, install_chart, quiet, recorder_link)
-from tools.ch_mcp.frida_tools import READ_CAP_S
+    bot_run, build_stamp, compare_scorestats, foreground, game_files, install_chart, quiet,
+    recorder_link)
+from tools.ch_mcp.frida_tools import AGENT_DIR, READ_CAP_S, STATE_AGENT_FILE, StateUnread
 from tools.ch_probe import constants as C
 from tools.ch_probe import engine_finder
 from tools.ch_probe.experiments import edge_probe, play_chart
@@ -46,6 +47,9 @@ INSTALL_CAP_S = 60.0
 SCRATCH_PREFIX = "ch_live_"
 # ch_run_chart's press logs, numbered in the session folder.
 PRESS_LOG_PREFIX = "press-"
+# ch_run_chart's record of the agent builds and the hydra_replay build a run
+# used (build_stamp.builds_record), with the number of the run's press log.
+BUILDS_PREFIX = "builds-"
 # The file under the temp root that names an open backup and the worker holding
 # it, so a worker killed before its restore leaves the next worker a way back to
 # the user's files (docs/superpowers/plans/2026-11-06-ch-server-reload.md (removed; git show 6804353f:docs/superpowers/plans/2026-11-06-ch-server-reload.md), design
@@ -410,21 +414,15 @@ def chords_to_play(schedule_json: str) -> Tuple[List[play_chart.Chord], List[str
     declined_line, then squeeze_lines, then order_lines. ch_play_chart,
     ch_run_chart, ch_edge_probe and tools/ch_probe/prep_inputs.py all load
     through here. Raises ChordsRefused saying why no run can start from the
-    file: load_schedule's refusal in its own words, a file that cannot be
-    read, or one with no chords."""
-    try:
-        with open(schedule_json, encoding="utf-8") as f:
-            doc = json.load(f)
-    except (OSError, ValueError) as e:
-        raise ChordsRefused(f"could not read {schedule_json}: {type(e).__name__}: {e}") from e
+    file: load_schedule's refusal in its own words, or a file that cannot
+    be read."""
+    doc = schedule_doc(schedule_json)
     try:
         chords = play_chart.load_schedule(schedule_json).chords
     except ValueError as e:
         raise ChordsRefused(str(e)) from e
     except (OSError, KeyError, IndexError, TypeError) as e:
         raise ChordsRefused(f"could not read {schedule_json}: {type(e).__name__}: {e}") from e
-    if not chords:
-        raise ChordsRefused(f"{schedule_json} has no chords to play")
     try:
         lines = [declined_line(chords, doc)]
         lines.extend(squeeze_lines(chords, doc))
@@ -432,6 +430,78 @@ def chords_to_play(schedule_json: str) -> Tuple[List[play_chart.Chord], List[str
     except (KeyError, IndexError, TypeError) as e:
         raise ChordsRefused(f"could not read {schedule_json}: {type(e).__name__}: {e}") from e
     return chords, lines
+
+
+def schedule_doc(schedule_json: str) -> dict:
+    """The schedule file `schedule_json` as JSON, read as written. Raises
+    ChordsRefused when it cannot be read or is not a JSON object."""
+    try:
+        with open(schedule_json, encoding="utf-8") as f:
+            doc = json.load(f)
+    except (OSError, ValueError) as e:
+        raise ChordsRefused(f"could not read {schedule_json}: {type(e).__name__}: {e}") from e
+    if not isinstance(doc, dict):
+        raise ChordsRefused(f"could not read {schedule_json}: it is not a JSON object")
+    return doc
+
+
+def path_index_refusal(doc: dict, schedule_json: str, path_index: object) -> Optional[str]:
+    """Why a run asked for path `path_index` may not play the schedule `doc`
+    (read from `schedule_json`), or None when the schedule says it was made
+    from that path. The schedule's `path_source` is the one record of its
+    path (tools/replay.cpp, cmd_schedule writes it); a schedule without one
+    is refused, because its path is unknown (D318 item 4)."""
+    if not isinstance(path_index, int) or isinstance(path_index, bool):
+        return f"refused: path_index is {path_index!r}, not a whole number; nothing started"
+    source = doc.get("path_source")
+    index = source.get("index") if isinstance(source, dict) else None
+    if not isinstance(index, int) or isinstance(index, bool):
+        return (f"refused: {schedule_json} has no path_source index, so the path it plays "
+                "is unknown; make it again with hydra_replay schedule; nothing started")
+    if index != path_index:
+        return (f"refused: {schedule_json} was made from path {index} of "
+                f"{source.get('file')}, but path_index is {path_index}; nothing started")
+    return None
+
+
+def schedule_chart_folder(doc: dict, schedule_json: str) -> str:
+    """The song folder of the chart the schedule `doc` was made from: the
+    folder of its `chart`, the --chart file hydra_replay schedule read.
+    Raises ChordsRefused when the schedule names no chart, or names it by a
+    relative path, which says nothing about where the chart is."""
+    chart = doc.get("chart")
+    if not isinstance(chart, str) or not chart:
+        raise ChordsRefused(f"refused: {schedule_json} names no chart, so the song it is for "
+                            "is unknown; make it again with hydra_replay schedule; "
+                            "nothing started")
+    if not os.path.isabs(chart):
+        raise ChordsRefused(f"refused: {schedule_json} names its chart by the relative path "
+                            f"{chart}, so the song folder it is for is unknown; make it again "
+                            "with an absolute --chart; nothing started")
+    return os.path.dirname(chart)
+
+
+def run_agent_paths(launch_agent: Optional[str]) -> List[str]:
+    """The built agents a ch_run_chart run loads, for its builds record:
+    `launch_agent` (the launch agent of a game the server launched for a
+    human player; None for any other game), then the state agent ch_attach
+    loads and the kit agent ch_kit_setup loads. Each file name is its
+    loader's own constant."""
+    # kit_tools imports this module, so it is imported here, not at the top.
+    from tools.ch_mcp.kit_tools import KIT_AGENT_FILE
+    paths = [os.path.join(AGENT_DIR, STATE_AGENT_FILE), os.path.join(AGENT_DIR, KIT_AGENT_FILE)]
+    if launch_agent is not None:
+        paths.insert(0, launch_agent)
+    return paths
+
+
+def write_builds_record(path: str, agent_paths: Sequence[str], doc: dict) -> None:
+    """Write build_stamp.builds_record of `agent_paths` and the schedule
+    `doc` to `path` as JSON."""
+    record = build_stamp.builds_record(agent_paths, doc)
+    with open(path, "w", encoding="utf-8", newline="\n") as f:
+        json.dump(record, f, indent=2, sort_keys=True)
+        f.write("\n")
 
 
 @dataclasses.dataclass(frozen=True)
@@ -963,7 +1033,8 @@ class GameTools:
             return self._watch.line() if self._watch is not None else None
 
     def ch_play_chart(self, score_json: str, schedule_json: str, log: Optional[str] = None,
-                      song_folder: Optional[str] = None, route: Optional[str] = None) -> str:
+                      song_folder: Optional[str] = None, route: Optional[str] = None,
+                      path_index: int = 0) -> str:
         """Start the auto-player (play_chart.live_play) in a background thread
         on `schedule_json`, the hydra_replay schedule of one path of the chart
         whose score JSON is `score_json`; ch_compare checks a run against that
@@ -974,6 +1045,8 @@ class GameTools:
         (presses through the virtual kit inside the game) or ROUTE_KEYS (keys
         to the focused window); None means the kit, and is refused until the
         kit is set up, so no run takes the keyboard unless asked to.
+        `path_index` is the path of the dump the caller means to play; a
+        schedule made from another path is refused (path_index_refusal).
         The schedule says which gems each press sends and when, a declined
         fill's kept gems among them; a schedule load_schedule refuses is
         refused here in its words (chords_to_play). The reply's declined_line,
@@ -994,6 +1067,10 @@ class GameTools:
                         f'or pass route="{ROUTE_KEYS}"')
             press = kit_press if route == ROUTE_KIT else None
             try:
+                refusal = path_index_refusal(schedule_doc(schedule_json), schedule_json,
+                                             path_index)
+                if refusal is not None:
+                    return refusal
                 chords, plan_lines = chords_to_play(schedule_json)
             except ChordsRefused as e:
                 return str(e)
@@ -1016,24 +1093,34 @@ class GameTools:
             return "\n".join(lines)
 
     def ch_run_chart(self, song_folder: str, score_json: str, schedule_json: str,
-                     kit_player: Optional[str] = None) -> str:
-        """Start a run in one call: attach, kit setup on `kit_player`
-        (ch_kit_setup's `player`), the Star Power watch and the auto-player on
-        the kit, with one engine search that the watch and the player share.
-        `score_json` and `schedule_json` are ch_play_chart's. Each part keeps
-        its owner, and this adds no wait of its own before the first press:
-        the arguments are read before the attach, and the player starts the
-        moment the search ends. The call returns at the first press. The
-        press rows go to a press-<n>.csv in the session folder as they happen.
+                     kit_player: Optional[str] = None, path_index: int = 0) -> str:
+        """Start a run in one call: attach, the song check, kit setup on
+        `kit_player` (ch_kit_setup's `player`), the Star Power watch and the
+        auto-player on the kit, with one engine search that the watch and the
+        player share. `score_json`, `schedule_json` and `path_index` are
+        ch_play_chart's. Each part keeps its owner, and this adds no wait of
+        its own before the first press: the arguments are read before the
+        attach, and the player starts the moment the search ends. The call
+        returns at the first press. The press rows go to a press-<n>.csv in
+        the session folder as they happen, and builds-<n>.json beside it is
+        written before the attach (write_builds_record).
+
+        The run is for the song the schedule's chart is in
+        (schedule_chart_folder): `song_folder` must name that folder, or
+        nothing starts, and the song check after the attach stops the run
+        before any press unless the game's loaded song (menu_tools.
+        loaded_folder) is that folder too (D318 item 4).
 
         The machine recorder hears the engine's address right after the watch
         step. The reply has one line per part with the time it took, the
         recorder's samples line after the watch's, ch_play_chart's declined
-        and squeeze lines after the play's, the press log's line, then
-        first_press_line. A part that fails stops the call
-        there: the reply names it and gives its own reply, and a kit that part left standing
-        is torn down. A failed attach built no kit, and a failed setup tears
-        down its own."""
+        and squeeze lines after the play's, the builds record's line, the
+        press log's line, then first_press_line. A part that fails stops the
+        call there: the reply names it and gives its own reply, and a kit that
+        part left standing is torn down. A failed attach or song check built
+        no kit, and a failed setup tears down its own."""
+        # menu_tools imports kit_tools, which imports this module.
+        from tools.ch_mcp.menu_tools import loaded_folder, same_folder
         with self._lock:
             parts = self._run_parts
             if parts is None:
@@ -1041,12 +1128,30 @@ class GameTools:
             if self._play is not None and self._play.running():
                 return PLAY_ALREADY_RUNNING
             try:
+                doc = schedule_doc(schedule_json)
+                refusal = path_index_refusal(doc, schedule_json, path_index)
+                if refusal is not None:
+                    return refusal
+                chart_folder = schedule_chart_folder(doc, schedule_json)
+                if not same_folder(song_folder, chart_folder):
+                    return (f"refused: song_folder {song_folder} is not the folder of the "
+                            f"schedule's chart, {chart_folder}; nothing started")
                 chords, plan_lines = chords_to_play(schedule_json)
                 cap_s = run_cap_s(song_folder)
             except ChordsRefused as e:
                 return str(e)
             except (OSError, ValueError) as e:
                 return f"could not pick the run cap for {song_folder}: {type(e).__name__}: {e}"
+            self._press_log_count += 1
+            builds_path = os.path.join(self.session_dir(),
+                                       f"{BUILDS_PREFIX}{self._press_log_count}.json")
+            launch = self._run.launch if self._run is not None else None
+            try:
+                write_builds_record(builds_path, run_agent_paths(
+                    self._env.launch_agent_path if launch is not None else None), doc)
+            except OSError as e:
+                return (f"refused: could not write the run's builds record {builds_path}: "
+                        f"{type(e).__name__}: {e}; nothing started")
             lines: List[str] = []
 
             began = self._env.now()
@@ -1054,6 +1159,19 @@ class GameTools:
             if not parts.frida.is_attached():
                 return self._run_stopped(lines, "attach", began, text)
             lines.append(f"attach: ok, {self._seconds_since(began)}")
+
+            began = self._env.now()
+            try:
+                loaded = loaded_folder(parts.frida.read_state())
+            except StateUnread as e:
+                return self._run_stopped(lines, "song check", began,
+                                         f"no read came back: {e}; nothing pressed")
+            if not same_folder(loaded, chart_folder):
+                return self._run_stopped(
+                    lines, "song check", began,
+                    f"the game has the song folder {json.dumps(loaded)} loaded, not the "
+                    f"schedule's chart folder {chart_folder}; nothing pressed")
+            lines.append(f"song check: ok, {self._seconds_since(began)}, {loaded} is loaded")
 
             began = self._env.now()
             press, text = parts.kit.setup_for_run(kit_player)
@@ -1071,7 +1189,6 @@ class GameTools:
             lines.append(self._recorder.samples_line())
 
             began = self._env.now()
-            self._press_log_count += 1
             log_path = os.path.join(self.session_dir(),
                                     f"{PRESS_LOG_PREFIX}{self._press_log_count}.csv")
             play = _PlaySession(score_json=score_json, chord_count=len(chords), log_path=log_path,
@@ -1094,6 +1211,7 @@ class GameTools:
             lines.append(f"play: ok, {self._seconds_since(began)} to the first press, "
                          f"{len(chords)} chords from {score_json}, run cap {cap_s:g} s")
             lines.extend(plan_lines)
+            lines.append(f"builds record: {builds_path}")
             lines.append(self._press_log_line(play))
             lines.append(first_press_line(rows))
             return "\n".join(lines)

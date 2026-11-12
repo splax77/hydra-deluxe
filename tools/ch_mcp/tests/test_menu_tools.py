@@ -32,16 +32,27 @@ MENUS = ("PlayerProfileMenu", "MainMenu", "SongSelect", "PlayerSelectionMenu")
 ONLINE_HOLDERS = ("MainMenu", "SongSelect")
 
 
+# The player screen's instrument and difficulty numbers the fake sends by
+# default: 6 is Drums and 3 is Expert in menu_fields.json, which is
+# bot_run.DEFAULT_PLAYER.
+DRUMS, EXPERT, PRO_DRUMS, HARD = 6, 3, 9, 2
+
+
 def state(*, screen=None, selected=None, found=False, loaded=False, online=(False,),
-          current=None, live=1):
+          current=None, live=1, player=(DRUMS, EXPERT)):
     """One read in state.ts's shape, with menu.ts's menu block: every menu
-    class has `live` live instances, and only `screen`'s reads active true."""
+    class has `live` live instances, and only `screen`'s reads active true.
+    The player screen's fields read the instrument and difficulty numbers
+    `player` gives, for every live instance."""
     classes = {}
     for name in MENUS:
         entry = {"found": True, "live": live, "destroyed": 0,
                  "active": [name == screen] * live}
         if name in ONLINE_HOLDERS:
             entry["onlineMenuActive"] = list(online) if name == "MainMenu" else [False] * live
+        if name == "PlayerSelectionMenu":
+            entry["fields"] = {"instrument": [player[0]] * live,
+                               "difficulty": [player[1]] * live}
         classes[name] = entry
     return {
         "found": found,
@@ -189,7 +200,8 @@ class OpenSongTest(MenuToolsCase):
         for i, step in enumerate(STEPS, start=1):
             self.assertIn(f"step {i} ({step['name']}): ", reply)
         self.assertIn("  pressed kit:start for 2 frames", reply)
-        self.assertTrue(reply.endswith(f"done: {self.folder} is loaded"), reply)
+        self.assertTrue(reply.endswith(f"done: {self.folder} is loaded, as Drums on Expert"),
+                        reply)
         self.assertEqual(self.kit.presses(), ["kit:start", "kit:green", "kit:green",
                                               "kit:green", "kit:green"])
         # One kit press per item.
@@ -204,7 +216,8 @@ class OpenSongTest(MenuToolsCase):
                 return state(screen="PlayerSelectionMenu", selected=self.other)
             return state(found=True, loaded=True, current=self.folder)
         reply = self.tools(script).ch_open_song(self.folder)
-        self.assertTrue(reply.endswith(f"done: {self.folder} is loaded"), reply)
+        self.assertTrue(reply.endswith(f"done: {self.folder} is loaded, as Drums on Expert"),
+                        reply)
         self.assertEqual(self.events[0], BACKUP)
         self.assertTrue(self.kit.presses())
         for item in self.kit.presses():
@@ -217,13 +230,71 @@ class OpenSongTest(MenuToolsCase):
         self.assertEqual(self.events[0], BACKUP)
         self.assertEqual(self.events.count(BACKUP), 1)
 
-    def test_another_song_loaded_is_named_in_the_last_line(self):
+    def test_open_song_wrong_folder_is_a_refusal(self):
+        # D318 item 4: the walk that loads another song ends refused, naming
+        # both folders, and no line says done.
         tools = self.tools(self.screens(loads=self.other), STEPS)
         self.loaded_after = 0
         reply = tools.ch_open_song(self.folder)
-        self.assertTrue(reply.endswith(
-            f"done: a song is loaded, but its folder is {json.dumps(self.other)}, not the "
-            f"target {self.folder}"), reply)
+        self.assertIn(
+            f"\nstopped at step {len(STEPS)} ({STEPS[-1]['name']}): refused: a song is loaded, "
+            f"but its folder is {json.dumps(self.other)}, not the target {self.folder}\n", reply)
+        self.assertNotIn("done:", reply)
+
+    def _player_script(self, player):
+        """The checked-in walk, with the player screen reading `player`."""
+        def script(presses, reads):
+            if presses < 4:
+                return state(screen=(None, "PlayerProfileMenu", "MainMenu", "SongSelect")[presses],
+                             selected=self.other)
+            if presses == 4:
+                return state(screen="PlayerSelectionMenu", selected=self.other, player=player)
+            return state(found=True, loaded=True, current=self.folder)
+        return script
+
+    def test_open_song_checks_instrument_and_difficulty(self):
+        # The press on the player screen is refused while it reads another
+        # instrument or difficulty than the one asked for; the right one
+        # passes, as ch_start's "<Instrument>,<Difficulty>".
+        for player, asked, said in (
+                ((DRUMS, HARD), MT.DEFAULT_PLAYER,
+                 "PlayerSelectionMenu object 0 reads difficulty 2 (Hard), not Expert"),
+                ((DRUMS, EXPERT), "ProDrums,Expert",
+                 "PlayerSelectionMenu object 0 reads instrument 6 (Drums), not ProDrums"),
+                (("error: boom", EXPERT), MT.DEFAULT_PLAYER,
+                 'PlayerSelectionMenu object 0 reads instrument "error: boom", not Drums')):
+            with self.subTest(asked=asked, player=player):
+                self.kit.calls.clear()
+                reply = self.tools(self._player_script(player)).ch_open_song(self.folder, asked)
+                self.assertIn(f"refused before its presses: {said}\n", reply)
+                self.assertEqual(self.kit.presses(), ["kit:start", "kit:green", "kit:green",
+                                                      "kit:green"])
+
+    def test_open_song_plays_the_instrument_and_difficulty_asked_for(self):
+        reply = self.tools(self._player_script((PRO_DRUMS, EXPERT))).ch_open_song(
+            self.folder, "ProDrums,Expert")
+        self.assertTrue(reply.endswith(f"done: {self.folder} is loaded, as ProDrums on Expert"),
+                        reply)
+
+    def test_open_song_refuses_a_player_word_menu_fields_does_not_hold(self):
+        tools = self.tools(self._player_script((DRUMS, EXPERT)))
+        for asked in ("Drums", "Drums,Brutal", "Drum,Expert"):
+            with self.subTest(asked=asked):
+                reply = tools.ch_open_song(self.folder, asked)
+                self.assertTrue(reply.startswith("refused: player "), reply)
+                self.assertTrue(reply.endswith("; nothing pressed"), reply)
+        self.assertEqual(self.kit.presses(), [])
+
+    def test_open_song_refuses_a_walk_that_never_checked_the_player_screen(self):
+        # A step file whose presses never land on the player screen loads the
+        # song, but the instrument and difficulty went unchecked.
+        steps = [{"name": "load", "items": ["kit:green"], "expect": "song_loaded"}]
+        tools = self.tools(lambda presses, reads: state(found=True, loaded=presses > 0,
+                                                        current=self.folder), steps)
+        reply = tools.ch_open_song(self.folder)
+        self.assertIn("stopped at step 1 (load): refused: no step pressed on the player screen, "
+                      "so its instrument and difficulty were never checked against "
+                      f"{MT.DEFAULT_PLAYER}\n", reply)
 
     def test_a_read_that_never_changes_stops_at_the_cap_naming_the_step(self):
         tools = self.tools(lambda presses, reads: state(), STEPS)

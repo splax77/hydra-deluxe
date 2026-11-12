@@ -967,6 +967,12 @@ class KitTools:
                 return None
             return kit_press(agent, request_lock=self._request_lock)
 
+    def agent_attached(self) -> bool:
+        """Whether a kit agent is held, alive or not: the one ch_kit_teardown
+        detaches. The server's open_items asks this."""
+        with self._lock:
+            return self._agent is not None
+
     # -- inside -----------------------------------------------------------------------
 
     def _ready_agent(self) -> Optional[FA.LiveAgent]:

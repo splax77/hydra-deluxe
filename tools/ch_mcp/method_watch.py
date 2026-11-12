@@ -478,6 +478,12 @@ class MethodWatch:
                 return "no method watch has run; call ch_method_watch_start"
             return "\n".join(self._stop_lines(session))
 
+    def running(self) -> bool:
+        """Whether a method watch has started and not ended. The server's
+        open_items asks this."""
+        with self._lock:
+            return self._session is not None and not self._session.ended()
+
     def _stop_lines(self, session: WatchSession) -> List[str]:
         lines: List[str] = []
         if not session.ended() and not session.stop(FT.READ_CAP_S):
