@@ -21,11 +21,18 @@ Power end the game stored after an activation's press (`end_read_ms`), and the
 lead a probe press asked for (`probe`, edge_probe.py); each is blank on a row
 it does not apply to. RETIME_PRESS_COLUMNS hold what the retime after an
 end read did to a timed press (`retimed`, the Press.retimed word in
-play_chart.py: late, inside or plain), blank on every other row. Logs written before the kit
-press existed hold only KEYS_PRESS_COLUMNS, logs written before the wall times
+play_chart.py: late, inside or plain), blank on every other row. SEND_COLUMN
+says whether play_chart sent the press, declined its chord or dropped it
+(play_chart.SENT, DECLINED, DROPPED).
+
+Older logs have a `hit` column where SEND_COLUMN is now: the player's own
+verdict from any score rise, which D319 item 1 removed, with the send state
+in it for presses that were not sent. Logs written before the kit press
+existed hold only KEYS_PRESS_COLUMNS, logs written before the wall times
 existed hold PRESS_COLUMNS_WITHOUT_WALL, logs written before the player's
-columns existed hold PRESS_COLUMNS_WITHOUT_PLAYER, and logs written before
-the retime column existed hold PRESS_COLUMNS_WITHOUT_RETIME.
+columns existed hold PRESS_COLUMNS_WITHOUT_PLAYER, logs written before the
+retime column existed hold PRESS_COLUMNS_WITHOUT_RETIME, and logs written
+before SEND_COLUMN existed hold PRESS_COLUMNS_WITH_HIT.
 """
 
 from __future__ import annotations
@@ -75,13 +82,17 @@ def watch_header(header) -> tuple:
     its WATCH_COLUMNS name."""
     return tuple(WATCH_OLDER_NAMES.get(c, c) for c in header)
 
+# The older logs' verdict column, and the column that took its place.
+HIT_COLUMN = "hit"
+SEND_COLUMN = "send"
+
 KEYS_PRESS_COLUMNS = (
     "index",
     "chart_ms",
     "clock_ms_at_press",
     "score_before",
     "score_after",
-    "hit",
+    HIT_COLUMN,
 )
 
 KIT_PRESS_COLUMNS = (
@@ -112,4 +123,7 @@ PRESS_COLUMNS_WITHOUT_PLAYER = PRESS_COLUMNS_WITHOUT_WALL + WALL_PRESS_COLUMNS
 
 PRESS_COLUMNS_WITHOUT_RETIME = PRESS_COLUMNS_WITHOUT_PLAYER + PLAYER_PRESS_COLUMNS
 
-PRESS_LOG_COLUMNS = PRESS_COLUMNS_WITHOUT_RETIME + RETIME_PRESS_COLUMNS
+PRESS_COLUMNS_WITH_HIT = PRESS_COLUMNS_WITHOUT_RETIME + RETIME_PRESS_COLUMNS
+
+PRESS_LOG_COLUMNS = tuple(SEND_COLUMN if c == HIT_COLUMN else c
+                          for c in PRESS_COLUMNS_WITH_HIT)

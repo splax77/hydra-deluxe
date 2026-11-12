@@ -58,20 +58,24 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 from tools.ch_probe import constants as C, engine_finder
-from tools.ch_probe.engine import EngineModel, pressed_input_hit
+from tools.ch_probe.engine import EngineModel
 from tools.ch_probe.process import open_process
 from tools.ch_probe.input_driver import (
     LANE_NAMES, InputDriver, Lane, find_game_window, focus_window)
 from tools.ch_probe.experiments import live
-from tools.ch_probe.experiments.overlay_logs import PRESS_LOG_COLUMNS
+from tools.ch_probe.experiments.overlay_logs import PRESS_LOG_COLUMNS, SEND_COLUMN
 from tools.ch_probe.experiments.live import SongClock
 
-# What a declined chord's press row and printed line say in place of a result.
+# What the press row and printed line of a press play_chords sent as its plan
+# gave it say in the send column (overlay_logs.SEND_COLUMN).
+SENT = "sent"
+
+# What a declined chord's press row and printed line say in the send column.
 DECLINED = "declined"
 
 # What the press row and printed line of a press play_chords did not send,
-# because the game would judge it past its chord's window, say in place of a
-# result: question 4 of docs/superpowers/plans/2026-11-08-player-freak-fixes.md.
+# because the game would judge it past its chord's window, say in the send
+# column: question 4 of docs/superpowers/plans/2026-11-08-player-freak-fixes.md.
 DROPPED = "dropped"
 
 # What an activation's press row says in `end_read_ms` when the game's Star
@@ -463,12 +467,13 @@ class RunResult:
     """What one run did. `rows` are the press-log rows, keyed by the names in
     PRESS_LOG_COLUMNS, plus `lead_ms`, the lead the press used, which no log
     column holds. A split chord (press_plan) has a row per press, all with
-    its `index`. A declined chord's row says DECLINED in `hit`, and a message
-    play_chords dropped says DROPPED on each of its rows. `sent`, `hit`
-    and `max_streak` count the messages play_chords sends (press_messages:
-    a chord's order groups are one) and leave declined chords and dropped
-    messages out, so a declined chord is no miss; `declined` and `dropped`
-    count them. `skipped` counts the chords the run passed over where it
+    its `index`. Each row's send column (overlay_logs.SEND_COLUMN) says SENT,
+    DECLINED for a declined chord, or DROPPED on each row of a message
+    play_chords dropped. `sent` counts the messages play_chords sends
+    (press_messages: a chord's order groups are one) and leaves declined
+    chords and dropped messages out; `declined` and `dropped` count those.
+    No count here says whether the game took a press: score_compare judges
+    a chord by the game's score step (D319 item 1). `skipped` counts the chords the run passed over where it
     started (start_line says which). `stop` says why the run ended:
     STOP_DONE (every chord pressed), "past_end" (the clock was past the last
     chord), "frozen", "cap", "interrupted", "lost" (the process went away),
@@ -478,11 +483,9 @@ class RunResult:
     words: the finder's for STOP_NO_ENGINE. `dyn_threshold` is the dynamics
     threshold live_play read, None when it read none."""
     sent: int = 0
-    hit: int = 0
     declined: int = 0
     dropped: int = 0
     skipped: int = 0
-    max_streak: int = 0
     rows: list = field(default_factory=list)
     stop: str = ""
     message: str = ""
@@ -546,13 +549,13 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
     message, its rise since the last row's `score_after` goes in the first
     row's `scored_between`, and that fresh read is every row's
     `score_before`. The score is read once after the reply, so every row of
-    a split chord holds the same `score_after` and the same `hit`.
+    a split chord holds the same `score_after`.
 
     A message read past its first press's Press.last_send_ms is not sent
     (design point 5 of
     docs/superpowers/plans/2026-11-08-player-freak-fixes.md): it reads no end
-    and no score after, its rows say DROPPED in `hit` with the clock it was
-    dropped at, and the streak starts over.
+    and no score after, and its rows say DROPPED in the send column with the
+    clock it was dropped at.
 
     The live script passes the game's; the tests pass fakes. `now` and
     `sleep` are the timer the stop checks and the waits use. `wall` stamps
@@ -594,10 +597,9 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
 
     # The score the last row ended on: what scored_between is counted from.
     last_score = read_score()
-    streak = 0
 
     print(f"\n  {'#':>4}  {'chart_t':>7}  {'clock':>7}  {'diff_ms':>7}  {'lanes':10}  "
-          f"{'result':6}  {'streak':>6}", file=out)
+          f"{'send':8}", file=out)
 
     try:
         while cursor < len(presses):
@@ -621,7 +623,6 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
                 cursor = live.first_note_index(notes_ms, C.s_to_ms(raw_s))
                 last_score = read_score()
                 result = RunResult()
-                streak = 0
                 line, result.skipped = start_line(raw_s, presses, cursor)
                 print(line, file=out)
                 if cursor >= len(presses):
@@ -668,29 +669,19 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
                         rest, chord.index, end_read, chord_lanes))
                     notes_ms = [head.at_ms for head, _later in presses]
 
-            # Check hit through engine.pressed_input_hit. Nothing was sent for
-            # a dropped message, so the fresh read stands.
+            # Nothing was sent for a dropped message, so the fresh read stands.
             if dropped:
                 score_after = score_before
             else:
                 sleep(SCORE_READ_DELAY_S)
                 score_after = read_score()
-            hit = not chord.declined and not dropped and pressed_input_hit(
-                score_before, score_after)
 
             if dropped:
                 result.dropped += 1
-                streak = 0
             elif chord.declined:
                 result.declined += 1
             else:
                 result.sent += 1
-                if hit:
-                    result.hit += 1
-                    streak += 1
-                    result.max_streak = max(result.max_streak, streak)
-                else:
-                    streak = 0
             # A kit press replies with what the game's frames did, per group
             # for a message with later groups; reply_gap checked it holds them.
             replies = ([] if reply_gap is None or pressed is None
@@ -705,7 +696,7 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
                     "lead_ms": part.lead_ms,
                     "score_before": score_before,
                     "score_after": score_after,
-                    "hit": DROPPED if dropped else DECLINED if part.declined else int(hit),
+                    SEND_COLUMN: DROPPED if dropped else DECLINED if part.declined else SENT,
                     "wall_s_at_read": wall_s_at_read,
                     "wall_s_at_reply": wall_s_at_reply,
                 }
@@ -726,12 +717,11 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
             diff_ms = raw_ms - chord.chart_ms
             lane_str = " then ".join("+".join(LANE_NAMES.get(l, "?") for l in part.lanes)
                                      for part in [chord, *later])
-            tag = (DROPPED if dropped else DECLINED if chord.declined
-                   else "HIT" if hit else "MISS")
-            if result.sent <= 30 or result.sent % 20 == 0 or not hit:
+            tag = DROPPED if dropped else DECLINED if chord.declined else SENT
+            if result.sent <= 30 or result.sent % 20 == 0 or tag != SENT:
                 print(f"  {result.sent:4d}  {C.ms_to_s(chord.chart_ms):7.2f}  "
                       f"{C.ms_to_s(raw_ms):7.2f}  {diff_ms:+7.1f}  {lane_str:10}  "
-                      f"{tag:6}  {streak:6}", file=out)
+                      f"{tag:8}", file=out)
 
             last_score = score_after
             cursor += 1
@@ -923,12 +913,8 @@ def main(argv: Optional[Sequence[str]] = None, *,
     if args.log:
         write_press_log(args.log, result.rows)
         print(f"\n  Press log: {args.log} ({len(result.rows)} rows)", file=out)
-    print(f"\n  Notes: {result.sent}, Hits: {result.hit}, "
-          f"Misses: {result.sent - result.hit}", file=out)
-    print(f"  Hit rate: {result.hit / max(result.sent, 1) * 100:.1f}%", file=out)
-    print(f"  Best streak: {result.max_streak}", file=out)
-    print(f"  Declined: {result.declined}, Dropped: {result.dropped}, "
-          f"Skipped at the start: {result.skipped}", file=out)
+    print(f"\n  Sent: {result.sent}, Declined: {result.declined}, "
+          f"Dropped: {result.dropped}, Skipped at the start: {result.skipped}", file=out)
     if result.stop != STOP_DONE:
         print(f"Stopped before the song's end ({result.stop}): {result.message}", file=out)
         return 1

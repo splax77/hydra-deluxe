@@ -35,7 +35,7 @@ from tools.ch_mcp.frida_tools import AGENT_DIR, READ_CAP_S, STATE_AGENT_FILE, St
 from tools.ch_probe import constants as C
 from tools.ch_probe import engine_finder
 from tools.ch_probe.experiments import edge_probe, play_chart
-from tools.ch_probe.experiments.overlay_logs import PRESS_LOG_COLUMNS
+from tools.ch_probe.experiments.overlay_logs import PRESS_LOG_COLUMNS, SEND_COLUMN
 from tools.ch_probe.input_driver import (
     MENU_KEY_GAP_S, MENU_KEYS, InputDriver, Lane, find_game_window)
 
@@ -226,10 +226,10 @@ def declined_line(chords: Sequence[play_chart.Chord], doc: dict) -> str:
 
 
 def dropped_line(rows: Sequence[dict]) -> str:
-    """Which chords play_chart dropped (a row saying DROPPED in `hit`), each
-    once, in the order the rows hold them."""
+    """Which chords play_chart dropped (a row saying DROPPED in the send
+    column), each once, in the order the rows hold them."""
     items = list(dict.fromkeys(str(r["index"]) for r in rows
-                               if r.get("hit") == play_chart.DROPPED))
+                               if r.get(SEND_COLUMN) == play_chart.DROPPED))
     return f"dropped: chords {', '.join(items)}" if items else "dropped: none"
 
 
@@ -338,7 +338,7 @@ def scored_between_lines(rows: Sequence[dict]) -> List[str]:
                              f"{row['index']}")
             else:
                 items.append(f"{amount_text} unexplained before chord {row['index']}")
-        if row.get("hit") == play_chart.DECLINED and row["index"] not in declined:
+        if row.get(SEND_COLUMN) == play_chart.DECLINED and row["index"] not in declined:
             declined.add(row["index"])
             pending.append(row["index"])
     return ["scored between presses: " + ", ".join(items)] if items else []
@@ -1651,8 +1651,7 @@ class GameTools:
         lines = [self._press_log_line(play)] if play.log_path else []
         lines.append(f"play session: {play.chord_count} chords from {play.score_json}")
         if play.running():
-            lines.append(f"running: {len(rows)} presses so far, "
-                         f"{sum(1 for r in rows if r['hit'] == 1)} hit")
+            lines.append(f"running: {len(rows)} presses so far")
         else:
             lines.append(f"ended: {self._stop_reason(play)}")
             result = play.result
@@ -1669,9 +1668,9 @@ class GameTools:
                 logged = (len(result.rows) if result.rows
                           else result.sent + result.declined + result.dropped)
                 jumped = logged != len(rows)
-                unsent = (play_chart.DECLINED, play_chart.DROPPED)
-                presses_sent = sum(1 for r in rows if r["hit"] not in unsent)
-                chords_sent = len({r["index"] for r in rows if r["hit"] not in unsent})
+                sent_rows = [r for r in rows if r[SEND_COLUMN] == play_chart.SENT]
+                presses_sent = len(sent_rows)
+                chords_sent = len({r["index"] for r in sent_rows})
                 chords = f"{chords_sent} chord{'' if chords_sent == 1 else 's'}"
                 if jumped or chords_sent == result.sent == presses_sent:
                     sent = f"sent {result.sent}"
@@ -1679,9 +1678,7 @@ class GameTools:
                     sent = f"sent {result.sent} presses for {chords}"
                 else:
                     sent = f"sent {result.sent} messages ({presses_sent} presses) for {chords}"
-                lines.append(f"{sent}, hit {result.hit}, "
-                             f"misses {result.sent - result.hit}, best streak {result.max_streak}"
-                             + (f", declined {result.declined}" if result.declined else ""))
+                lines.append(sent + (f", declined {result.declined}" if result.declined else ""))
                 lines.append(dropped_line(rows))
                 if jumped:
                     lines.append(f"the song clock jumped back during the run: the counts above "

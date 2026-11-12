@@ -48,7 +48,7 @@ def _presses(game_scores):
     rows, before = [], 0
     for i, after in enumerate(game_scores):
         ms = 1000.0 + 500.0 * i
-        rows.append(score_compare.Press(i, ms, ms - 1.5, before, after, True))
+        rows.append(score_compare.Press(i, ms, ms - 1.5, before, after))
         before = after
     return rows
 
@@ -84,8 +84,9 @@ class ScoreStepTest(unittest.TestCase):
         with open(score_compare.__file__, encoding="utf-8") as f:
             source = f.read()
         self.assertNotIn("MIN_HIT_PERCENT", source)
-        # The any-rise rule read the log's hit column; the judge reads none.
+        # The judge reads neither the log's send column nor an older hit column.
         self.assertNotIn(".hit", source)
+        self.assertNotIn('row["hit"]', source)
 
     def test_a_lagged_read_fails(self):
         # The read after chord 2 lands before the game credits it: its step is 0.
@@ -122,7 +123,7 @@ class ScoreStepTest(unittest.TestCase):
     def test_a_press_not_in_the_score_json_is_an_error(self):
         with self.assertRaises(ValueError):
             score_compare.compare_scores(
-                [score_compare.Press(9, 0.0, 0.0, 0, 0, True)],
+                [score_compare.Press(9, 0.0, 0.0, 0, 0)],
                 score_compare.chords_from_score(_SCORE), KIT)
 
 
@@ -175,7 +176,7 @@ class PressLogFileTest(unittest.TestCase):
             path = os.path.join(d, "press.csv")
             play_chart.write_press_log(path, rows)
             self.assertEqual(score_compare.load_press_log(path), [
-                score_compare.Press(2, 2000.0, 1998.5, 200, 280, True)])
+                score_compare.Press(2, 2000.0, 1998.5, 200, 280)])
 
     def test_a_wrong_header_is_refused(self):
         with tempfile.TemporaryDirectory() as d:
@@ -205,8 +206,8 @@ class PressLogHeaderTest(unittest.TestCase):
             "0,3398.25,3398.75,0,115,1\n"
             "1,4616.5,4617.5,115,115,0\n")
         self.assertEqual(rows, [
-            score_compare.Press(0, 3398.25, 3398.75, 0, 115, True, "", "", "", ""),
-            score_compare.Press(1, 4616.5, 4617.5, 115, 115, False, "", "", "", ""),
+            score_compare.Press(0, 3398.25, 3398.75, 0, 115, "", "", "", ""),
+            score_compare.Press(1, 4616.5, 4617.5, 115, 115, "", "", "", ""),
         ])
 
     def test_a_ten_column_log_loads(self):
@@ -216,9 +217,9 @@ class PressLogHeaderTest(unittest.TestCase):
             "2,2000.0,1998.5,200,280,1,812,813,1998.25,2014.75\n"
             "3,2500.0,2501.0,280,380,1,,,,\n")
         self.assertEqual(rows, [
-            score_compare.Press(2, 2000.0, 1998.5, 200, 280, True,
+            score_compare.Press(2, 2000.0, 1998.5, 200, 280,
                                 "812", "813", "1998.25", "2014.75"),
-            score_compare.Press(3, 2500.0, 2501.0, 280, 380, True, "", "", "", ""),
+            score_compare.Press(3, 2500.0, 2501.0, 280, 380, "", "", "", ""),
         ])
 
     def test_a_twelve_column_log_loads_with_the_wall_times(self):
@@ -227,10 +228,10 @@ class PressLogHeaderTest(unittest.TestCase):
             "2,2000.0,1998.5,200,280,1,812,813,1998.25,2014.75,1762500000.25,1762500000.5\n"
             "3,2500.0,2501.0,280,380,1,,,,,1762500000.75,1762500000.75\n")
         self.assertEqual(rows, [
-            score_compare.Press(2, 2000.0, 1998.5, 200, 280, True,
+            score_compare.Press(2, 2000.0, 1998.5, 200, 280,
                                 "812", "813", "1998.25", "2014.75",
                                 "1762500000.25", "1762500000.5"),
-            score_compare.Press(3, 2500.0, 2501.0, 280, 380, True, "", "", "", "",
+            score_compare.Press(3, 2500.0, 2501.0, 280, 380, "", "", "", "",
                                 "1762500000.75", "1762500000.75"),
         ])
 
@@ -241,7 +242,7 @@ class PressLogHeaderTest(unittest.TestCase):
             "scored_between,end_read_ms,probe\n"
             "180,32583.33,32627.39,500,600,1,,,,,1.25,1.5,0,,\n")
         self.assertEqual(rows, [
-            score_compare.Press(180, 32583.33, 32627.39, 500, 600, True, "", "", "", "",
+            score_compare.Press(180, 32583.33, 32627.39, 500, 600, "", "", "", "",
                                 "1.25", "1.5", "0", "", "", "")])
 
     def test_a_sixteen_column_log_keeps_the_retime_word(self):
@@ -263,10 +264,18 @@ class PressLogHeaderTest(unittest.TestCase):
             (press,) = score_compare.load_press_log(path)
         self.assertEqual(press.retimed, "late")
 
-    def test_press_has_a_field_for_every_log_column(self):
+    def test_press_has_a_field_for_every_log_column_but_the_send_column(self):
         self.assertEqual(
             tuple(f.name for f in dataclasses.fields(score_compare.Press)),
-            overlay_logs.PRESS_LOG_COLUMNS)
+            tuple(c for c in overlay_logs.PRESS_LOG_COLUMNS
+                  if c != overlay_logs.SEND_COLUMN))
+
+    def test_a_log_with_the_hit_column_still_loads(self):
+        rows = _load_text(
+            ",".join(overlay_logs.PRESS_COLUMNS_WITH_HIT) + "\n"
+            "180,32583.33,32624.39,500,600,1,,,,,1.25,1.5,0,,,inside\n")
+        self.assertEqual([(p.index, p.score_after, p.retimed) for p in rows],
+                         [(180, 600, "inside")])
 
     def test_other_headers_are_refused(self):
         for header in (
