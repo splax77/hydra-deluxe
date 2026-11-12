@@ -31,10 +31,11 @@ from tools.hydra_ui_mcp import REPLY_CAP_CHARS  # noqa: E402
 # of the in-game input plan (task K5). The direct-start plan (task D5)
 # registers the changed ch_start and ch_kit_setup and adds no tool. The optimal
 # score run plan (task T4) adds ch_run_chart, the reload plan (task R3)
-# ch_open_items, and the player-limits plan (task T4) ch_edge_probe. The server plan is
+# ch_open_items, the player-limits plan (task T4) ch_edge_probe, and the in-game
+# press timing plan (task IG3) ch_kit_frame_probe. The server plan is
 # docs/superpowers/plans/2026-10-28-ch-mcp-server.md (removed; git show ec91f8d1:docs/superpowers/plans/2026-10-28-ch-mcp-server.md).
 TOOL_NAMES = {
-    "ch_run_chart", "ch_open_items", "ch_edge_probe",
+    "ch_run_chart", "ch_open_items", "ch_edge_probe", "ch_kit_frame_probe",
     "ch_start", "ch_stop", "ch_status", "ch_install_chart", "ch_wait_stats",
     "ch_stats", "ch_compare", "ch_attach", "ch_detach", "ch_state",
     "ch_snapshot", "ch_trace_start", "ch_notes", "ch_trace_stop", "ch_press",
@@ -192,15 +193,18 @@ class ServerTest(unittest.TestCase):
         # Question 6 (a) of docs/superpowers/plans/2026-11-08-replay-press-
         # schedule.md and D324 item 2: schedule_json replaces dump_json, and
         # no decline mode or lead is an argument. D318 item 4: ch_run_chart
-        # and ch_play_chart take path_index, 0 when left out.
+        # and ch_play_chart take path_index, 0 when left out. Task IG3 of
+        # docs/superpowers/plans/2026-11-12-in-game-press-timing.md: both take
+        # timing, None (the Python loop) when left out.
         self.assertEqual(set(self._schema("ch_run_chart")),
                          {"song_folder", "score_json", "schedule_json", "kit_player",
-                          "path_index"})
+                          "path_index", "timing"})
         self.assertEqual(set(self._schema("ch_play_chart")),
                          {"score_json", "schedule_json", "log", "song_folder", "route",
-                          "path_index"})
+                          "path_index", "timing"})
         for name in ("ch_run_chart", "ch_play_chart"):
             self.assertEqual(self._schema(name)["path_index"]["default"], 0)
+            self.assertIsNone(self._schema(name)["timing"]["default"])
             self.assertNotIn("decline_mode", self._schema(name))
         self.assertEqual(set(self._schema("ch_edge_probe")),
                          {"song_folder", "score_json", "schedule_json", "probes_json"})
@@ -219,9 +223,17 @@ class ServerTest(unittest.TestCase):
         self.helper.game.ch_run_chart = lambda *a: seen.append(a) or "ran"
         result = asyncio.run(S.build_server(self.helper).call_tool("ch_run_chart", {
             "song_folder": "song", "score_json": "top.json", "schedule_json": "sched.json",
-            "kit_player": "System", "path_index": 3}))
+            "kit_player": "System", "path_index": 3, "timing": "game"}))
         self.assertEqual(result.content[0].text, "ran")
-        self.assertEqual(seen, [("song", "top.json", "sched.json", "System", 3)])
+        self.assertEqual(seen, [("song", "top.json", "sched.json", "System", 3, "game")])
+
+    def test_ch_kit_frame_probe_passes_its_seconds_through(self):
+        seen = []
+        self.helper.kit.ch_kit_frame_probe = lambda *a: seen.append(a) or "probed"
+        result = asyncio.run(S.build_server(self.helper).call_tool("ch_kit_frame_probe",
+                                                                   {"seconds": 5}))
+        self.assertEqual(result.content[0].text, "probed")
+        self.assertEqual(seen, [(5,)])
 
     def test_the_helper_hands_ch_run_chart_its_three_parts(self):
         parts = self.helper.game._run_parts
@@ -260,9 +272,9 @@ class ServerTest(unittest.TestCase):
                                                        "schedule_json": "sched.json"}))
         asyncio.run(server.call_tool("ch_play_chart", {
             "score_json": "s.json", "schedule_json": "sched.json", "log": "p.csv",
-            "song_folder": "song", "route": "keys", "path_index": 2}))
-        self.assertEqual(seen, [("s.json", "sched.json", None, None, None, 0),
-                                ("s.json", "sched.json", "p.csv", "song", "keys", 2)])
+            "song_folder": "song", "route": "kit", "path_index": 2, "timing": "game"}))
+        self.assertEqual(seen, [("s.json", "sched.json", None, None, None, 0, None),
+                                ("s.json", "sched.json", "p.csv", "song", "kit", 2, "game")])
 
     def test_ch_open_song_takes_the_player_and_passes_it_through(self):
         self.assertEqual(self._schema("ch_open_song")["player"]["default"],
