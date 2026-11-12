@@ -1045,6 +1045,7 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	method	8286		ʽʳʸʿʷʽʼˁʸʻʼ	0x20FA8F0		0x20FA8F0
 6142	method	8288		.ctor	0x20F79E0		0x20F79E0
 6142	method	8288		ʲʹʹʷʶʿʶʸˁʽʷ	0x20F3500		0x20F3500
+6142	method	8288		ʳʶˀˁʶʶʽʽʷʼʼ	0x20F3610		0x20F3610
 6142	method	8288		ʳʻʷʵˁʴʾʻʿʴʺ	0x20F3750		0x20F3750
 6142	method	8288		ʳʼʽʽʸʽʺʲʼʹʻ	0x20F37E0		0x20F37E0
 6142	method	8288		ʴʼʶʿʴʲʶʵʼʳˁ	0x20F3A90		0x20F3A90
@@ -1065,6 +1066,7 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	method	8288		ʹʼʲʷʽʲʲʲʲʾʾ	0x20F5640		0x20F5640
 6142	method	8288		ʹʿʺʺʽʲʿʶˀʸʷ	0x20F57F0		0x20F57F0
 6142	method	8288		ʹˀʲʺʹʿʾʾʽʴʷ	0x20F5810		0x20F5810
+6142	method	8288		ʺʶˀʴʴʼʷʻʲˀʿ	0x20F5D90		0x20F5D90
 6142	method	8288		ʻʴʵʹʷʵˁˀʶˁʽ	0x20F5F70		0x20F5F70
 6142	method	8288		ʻʶʴˁʺʿʳʲˁʽʹ	0x20F5FF0		0x20F5FF0
 6142	method	8288		ʽˀʺʺʺʷʶʸʶʲʺ	0x20F62C0		0x20F62C0
