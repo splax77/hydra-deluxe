@@ -23,7 +23,10 @@ $env:SCCACHE_IDLE_TIMEOUT = '0'
 if ($LASTEXITCODE -eq 0) { exit 0 }
 
 Write-Host "::warning title=sccache::GitHub's cache storage did not answer, so this job builds without the shared compiler cache. The build is slower but not broken."
+# sccache turns the GitHub cache on when SCCACHE_GHA_VERSION is set, whatever
+# SCCACHE_GHA_ENABLED says (the jobs set both), so both must go.
 $env:SCCACHE_GHA_ENABLED = 'false'
+Remove-Item Env:SCCACHE_GHA_VERSION -ErrorAction SilentlyContinue
 & sccache --start-server
 if ($LASTEXITCODE -ne 0) {
     Write-Host "::error title=sccache::sccache did not start even with GitHub's cache off."
