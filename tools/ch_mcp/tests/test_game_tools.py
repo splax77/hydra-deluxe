@@ -48,7 +48,8 @@ from tools.ch_probe import probe_songs  # noqa: E402
 from tools.ch_probe import input_driver  # noqa: E402
 from tools.ch_probe.experiments import play_chart  # noqa: E402
 from tools.ch_probe.experiments.overlay_logs import PRESS_LOG_COLUMNS  # noqa: E402
-from tools.ch_probe.tests.test_play_chart import _schedule_of  # noqa: E402
+from tools.ch_probe.tests.test_play_chart import (  # noqa: E402
+    _FakeGame, _FakeSongClock, _FakeTime, _schedule_of)
 from tools.ch_probe.input_driver import DEFAULT_BINDINGS, InputDriver, Lane  # noqa: E402
 
 WINDOW = 0x1234
@@ -3029,6 +3030,98 @@ class DroppedStatusTest(unittest.TestCase):
         self.assertEqual(GT.dropped_line([{**ROWS[0], "index": 153,
                                            "send": play_chart.DROPPED}]),
                          "dropped: chords 153")
+
+
+# How long the forced press-log write blocks: the over-time of LS-A2 run 1's
+# first stall, before chord 128 (the table in "What was checked" of
+# docs/superpowers/plans/2026-11-12-player-stall-fixes.md).
+BLOCKED_WRITE_S = 0.9
+
+
+class _BlockingRowWriter:
+    """The real press-log writer, whose first row costs BLOCKED_WRITE_S of
+    the fake wall clock when, and only when, the player's thread writes it.
+    That is what a write Windows holds does: it costs the player time only
+    if the player is the one writing."""
+
+    def __init__(self, real, wall: _FakeTime, player: dict):
+        self._real, self._wall, self._player = real, wall, player
+
+    def writeheader(self):
+        return self._real.writeheader()
+
+    def writerow(self, row):
+        first = not self._player.get("blocked")
+        self._player["blocked"] = True
+        if first and threading.get_ident() == self._player.get("ident"):
+            self._wall.t += BLOCKED_WRITE_S
+        return self._real.writerow(row)
+
+    def writerows(self, rows):
+        return self._real.writerows(rows)
+
+
+class BlockedPressLogTest(unittest.TestCase):
+    """PS1 of docs/superpowers/plans/2026-11-12-player-stall-fixes.md: the
+    real _play_body and the real play_chords on a fake song clock, with a
+    press-log write that blocks 900 ms."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = self._tmp.name
+        self.addCleanup(self._tmp.cleanup)
+        self.wall = _FakeTime()
+        self.game = _FakeGame()
+        # The player's thread, once live_play starts on it, and whether the
+        # one blocked row has been written.
+        self.player = {}
+        real = play_chart._press_log_writer
+        patch = mock.patch.object(
+            play_chart, "_press_log_writer",
+            new=lambda f: _BlockingRowWriter(real(f), self.wall, self.player))
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def _play(self, wire_into_on_press: bool = False) -> play_chart.RunResult:
+        blocking = _BlockingRowWriter(mock.Mock(), self.wall, self.player)
+
+        def live_play(chords, *, on_press, should_stop, out, **kw):
+            self.player["ident"] = threading.get_ident()
+            if wire_into_on_press:
+                given = on_press
+
+                def on_press(row):
+                    blocking.writerow(row)
+                    given(row)
+            return play_chart.play_chords(
+                chords, _FakeSongClock(self.wall, start_s=0.5), self.game.read_score,
+                self.game.press, now=self.wall.now, sleep=self.wall.sleep,
+                on_press=on_press, should_stop=should_stop, out=out)
+
+        t = ToolRig(self.tmp, live_play=live_play)
+        score = os.path.join(self.tmp, "score.json")
+        _write(score, json.dumps(SCORE_JSON).encode())
+        schedule = os.path.join(self.tmp, "schedule.json")
+        song = os.path.join(self.tmp, "songs", probe_songs.WINDOW_MAP)
+        _write(schedule, json.dumps(for_song(SCHEDULE_JSON, song)).encode())
+        t.tools.ch_play_chart(score, schedule, log=os.path.join(self.tmp, "press.csv"),
+                              route="keys")
+        t.tools._play.thread.join(THREAD_CAP_S)
+        self.assertFalse(t.tools._play.running())
+        self.assertIsNone(t.tools._play.error)
+        return t.tools._play.result
+
+    def test_a_log_write_that_blocks_900_ms_drops_no_chord(self):
+        result = self._play()
+        self.assertEqual(result.stop, play_chart.STOP_DONE)
+        self.assertEqual(result.dropped, 0)
+        self.assertEqual([r["send"] for r in result.rows],
+                         [play_chart.SENT] * len(SCORE_JSON["chords"]))
+
+    def test_the_same_block_on_the_player_thread_still_drops(self):
+        result = self._play(wire_into_on_press=True)
+        self.assertEqual(result.stop, play_chart.STOP_DONE)
+        self.assertGreater(result.dropped, 0)
 
 
 if __name__ == "__main__":
