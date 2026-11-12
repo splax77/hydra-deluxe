@@ -196,6 +196,20 @@ Uses rows P12 and P13 (unchecked): this step is what checks them. The first run 
 
 Cap: one run of each sink, and 2 tries if a run fails to start.
 
+### Results of LS-P0 to LS-P2 (2026-11-12, main at 9c00e8d3)
+
+Every run folder is under `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-12\`.
+
+LS-P0 (`ls-p0`) caught its forced stall: `stall-1.txt` shows the player's thread inside `per_row_append`, and the row after it has `prev_handoff_took_ms` 900.4. It dropped no chord, so that part of its pass line was wrong: the forced block lands right after the first chord, and the next chord is 2 s later. The load process was gone at the end. The same run also caught one real hand-off of 159.9 ms before chord 257, whose stack was dumped only after it ended.
+
+LS-P0b (`ls-p0b`) passed: with the writer sink the forced 900 ms block cost the player nothing, with no stall file, no dropped chord, and all 292 rows in the log.
+
+LS-P1 (`ls-p1`) failed. `cdb -pv` attached at the first stall and never quit; it was stopped by hand after more than 6 minutes. Every one of the harness's 12 threads stayed suspended after `cdb` was killed, so the harness's own cap could not end the run, and it was stopped too. So, as LS-P1's fail line says, LS-P2 ran with the Python dump alone (`--no-cdb`). The harness's `cdb` attach is not usable until that hang is fixed.
+
+LS-P2 run 1 (`ls-p2-run1`, the `per-row` sink under load) dropped 6 chords (1447, 1451 to 1454, 2007), each right after a long hand-off; 11 hand-offs ran over 40 ms, the longest 427.5 ms. Eight of the 11 stall dumps were taken while the stall was still on, and each shows the player's thread on the `open(path, "a")` line of `per_row_append`, the line that both opens and closes the file. So on this machine the blocking call is the press log's open or close. The same run also had one press call of 763.5 ms and two oversleeps over 50 ms, inside a 25 s burst of stalls, so part of the stalling is machine-wide and not only file calls.
+
+LS-P2 run 2 (`ls-p2-run2`, the `writer` sink under the same load) dropped no chord, and no step passed 40 ms: the longest hand-off was 0.4 ms, the longest press call 9.0 ms and the longest oversleep 1.8 ms. Run 2 saw no machine-wide burst like run 1's, so the two runs are not a perfect pair; what run 2 shows is that the writer took the slow file call off the player's thread.
+
 ### LS-P3: The Who again on the kit route (the game; only on the user's yes)
 
 Calls: `ch_start(<The Who folder>, human=True, player="ProDrums,Expert")` (seen: LS-A2 run 1), `ch_run_chart(<folder>, <score>, kit_player="System", schedule_json=<schedule>, path_index=0)` (seen: LS-A2 run 1), `ch_play_status` (seen: LS-A2 run 1), `ch_wait_stats` (seen: LS-A2 run 1), `ch_compare` (seen: LS-M2 run 1), `ch_stop` (seen: LS-A2 run 1)
