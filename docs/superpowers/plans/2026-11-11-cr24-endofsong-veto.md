@@ -78,6 +78,8 @@ Agents do not build and do not run `hydra_tests.exe`. The main session builds T1
 
 ## Questions
 
+Answered 2026-11-11 (session 428cf079): the user wrote "go with recommended". This plan's default stands for all three: questions 1 and 2 stay out of this plan as open splits, and CR-29 stays with Q-15 and live step LS-U1. The executor of T2 records all three on the Clone Hero pages as open questions, not as rulings.
+
 The user's ruling ("Match the game") covers the veto. These three splits are different: the work found them or touches them. This plan leaves each one out unless the user says otherwise, and the main session asks them before the merge. Each is the game's rule against Hydra's real rule, with a chart example from each side.
 
 1. Two sections on one tick. The game's add-a-section method (RVA 0x212C350, decompile lines 14575 to 14585) looks at the last section it stored. If the new one has the same tick, it overwrites that section's name and adds nothing, so the last one written wins and there is one section. Hydra keeps both, in the file's order (`sort_practice_sections`, `src/parse/song.cpp` line 64). Example: a .mid with "[section Intro]" and "[section Verse 1]" both at tick 0. The game has one section, "Verse 1". Hydra has two: the Preview time box says "Section Verse 1" (it takes the last section at or before the playhead), the timeline draws a zero-length "Intro" band, and `hydra_replay score` lists both. Should Hydra match, so the later name replaces the earlier one on the same tick? Nobody has counted how many of the user's charts do this.
