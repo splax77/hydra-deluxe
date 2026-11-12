@@ -6,8 +6,9 @@ overlay_logs.WATCH_COLUMNS; each one except `wall_s` is a field of
 engine.Snapshot, so engine.decode_snapshot is the one place that says where a
 field lives and how wide it is. The Star Power offsets are not yet confirmed
 live (see constants.py), which is what this log is for. The columns from the
-clock object are blank (nan) when the walk to it finds nothing; a blank never
-ends the run.
+clock object are written as "nan" when the walk to it finds nothing; a "nan"
+never ends the run. `sp_half_u64` is the game's own half of the meter, which
+the `ch` server's ready test reads.
 
 A row is written only on a change, plus one final row when the run ends. So a
 paused game shows as two rows far apart in wall time with the same clock.

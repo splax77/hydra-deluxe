@@ -176,8 +176,46 @@ class CommandLineTest(unittest.TestCase):
             "diff +100.0 ms",
             "calls within 85 ms of their nearest note (EXPECT_NORMAL_BACK_MS): "
             "1 of 2",
+            "notes with no call within 85 ms: 2 of 3",
+            "not hooked: 0",
             f"messages written to {self.out_path}",
         ])
+
+    def test_trace_args_report_prints_not_hooked(self):
+        session = FakeSession([
+            sent({"engine": ENGINE, "hooked": 1, "no_code": []}),
+            sent(call("Hit", 1.0, [7])),
+            sent({"done": "song over", "mode": "args", "calls": 1,
+                  "not_hooked": ["Miss: no such method"]})])
+        self.run_main(["--mode", "args", "--method", "Hit", "--method", "Miss"],
+                      session)
+        at = self.lines.index("not hooked: 1")
+        self.assertEqual(self.lines[at + 1], "  not hooked: Miss: no such method")
+
+    def test_notes_with_no_call_line(self):
+        # Notes at 1,000, 2,000 and 3,000 ms. One call at 1,000 and one 100 ms
+        # past 2,000: the line counts notes, so 2,000 and 3,000 have none.
+        session = FakeSession([
+            sent({"engine": ENGINE, "hooked": 1, "no_code": []}),
+            sent(call("Hit", 1.0)), sent(call("Hit", 2.1)),
+            sent({"done": "song over", "mode": "args", "calls": 2,
+                  "not_hooked": []})])
+        self.run_main(["--mode", "args", "--method", "Hit"], session)
+        self.assertIn("notes with no call within 85 ms: 2 of 3", self.lines)
+        # The 85 ms limit is EXPECT_NORMAL_BACK_MS's, the limit included.
+        limit = C.EXPECT_NORMAL_BACK_MS
+        self.assertEqual(TH.notes_without_call([call("Hit", 1.085)],
+                                               notes_at(1000), limit), 0)
+        self.assertEqual(TH.notes_without_call([call("Hit", 1.0851)],
+                                               notes_at(1000), limit), 1)
+
+    def test_empty_manifest_prints_one_line(self):
+        with open(self.manifest, "w", encoding="utf-8") as fh:
+            json.dump({"song": "Song", "notes": []}, fh)
+        code = self.run_main(["--mode", "count"], FakeSession([]))
+        self.assertEqual(code, 1)
+        self.assertEqual(self.lines, [
+            f"{self.manifest} holds no notes, so there is nothing to line calls up with"])
 
     def test_a_trace_ended_by_the_runner_cap_exits_0_with_no_error(self):
         # Window Map's last note: 59,080 ms + SILENCE_MS 3,000 ms + 30 s

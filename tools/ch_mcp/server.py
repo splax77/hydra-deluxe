@@ -219,10 +219,15 @@ def build_server(helper: Optional[Helper] = None):
         return capped(h.game.ch_stats(path))
 
     @server.tool()
-    def ch_compare(stats_path: str, score_json: str) -> str:
-        """Compare a stats copy with a hydra_replay score JSON: six lines,
-        then pass or fail."""
-        return capped(h.game.ch_compare(stats_path, score_json))
+    def ch_compare(stats_path: str, score_json: str, checksum: str | None = None,
+                   playback_speed: int | None = None, no_fail: bool | None = None,
+                   modifiers: list[str] | None = None) -> str:
+        """Compare a stats copy with a hydra_replay score JSON, one line per
+        check, then pass or fail. checksum, playback_speed, no_fail and
+        modifiers are what the run asked the game for, given all four or none
+        (game_tools.GameTools.ch_compare says why)."""
+        return capped(h.game.ch_compare(stats_path, score_json, checksum, playback_speed,
+                                        no_fail, modifiers))
 
     # -- Frida (frida_tools) --------------------------------------------------------
 
@@ -517,9 +522,12 @@ def build_server(helper: Optional[Helper] = None):
                       sp_bar_ticks: int | None = None,
                       width: int = sp_compare.DEFAULT_WIDTH) -> str:
         """Compare a watcher CSV with a hydra_replay score JSON and print
-        sp_compare's report, one PASS or FAIL line per check. resolution,
-        when given, also prints Hydra's full meter beside the game's.
-        The checks look for each chord where the auto-player pressed it,
+        sp_compare's report, one PASS or FAIL line per check, then one line
+        per activation with Hydra's ready point and the first row the game
+        was ready. resolution, the chart's Resolution from its [Song]
+        section, is needed: without it the compare is refused. The run's
+        stop reason is the last play session's, and a running play is
+        refused. The checks look for each chord where the auto-player pressed it,
         which schedule_json, the same path's hydra_replay schedule (the file
         ch_play_chart plays), says. A schedule that refuses its path is
         refused with the schedule's words."""

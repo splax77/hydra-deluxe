@@ -1,39 +1,26 @@
-"""Compare the game's score in a press log with Hydra's running total.
+"""Compare the game's score in a press log with Hydra's points for each chord.
 
 Inputs: the press log play_chart.py writes with --log (its columns are
 overlay_logs.PRESS_LOG_COLUMNS; load_press_log also reads the older logs
-overlay_logs names) and the `hydra_replay score --path` JSON the run
-played. Pure logic: no process, no game.
+overlay_logs names), the `hydra_replay score --path` JSON the run played, the
+route the run pressed through and the run's stop reason. Pure logic: no
+process, no game.
 
-The score check. For each press, the game's `score_after` is set against
-Hydra's `cum.total` at that chord, through the running difference
-`game score - Hydra total`. The difference starts at 0 when the log starts at
-the chart's first chord. A log that starts later (the run joined mid-song, or
-re-synced after a restart) starts it at the game's score before the first
-press minus Hydra's total before that chord, and the report says so. A press
-whose difference is unchanged is "equal". A press whose score equals the
-previous chord's total plus the running difference is "lagged": the 5 ms read
-landed before the engine credited the press, which is not a fault. A keyboard
-press carries no strike velocity, so the difference may change on a chord with
-a ghost or accent note; it may also change on the chord right after a ghost or
-accent chord whose read lagged, because that is where the change shows. Any
-other change is a FAIL, and the new difference becomes the one later chords
-are held to, so one fault is reported once.
+The score check (D319 item 1) is compare_scores: a chord passes when the
+game's score step for it equals Hydra's points for it. A keyboard press
+carries no strike velocity, so the keys route forgives a ghost or accent
+chord and the kit route does not. A chord of the score JSON with no row in
+the log fails, and so does a run whose stop reason is not the song's end
+(stop_check). The log's own `hit` column is the player's and is not read
+here.
 
-The report prints the running difference after every ghost or accent chord
-(and after the chord where a lagged one showed), the first FAIL with the two
-numbers, the counts, the final totals side by side, the spread of the press
-times against the chart (clock at the press minus the chord's ms), and the hit
-rate, which is a FAIL under MIN_HIT_PERCENT. The log's own `hit` column is
-whether the score rose by the 5 ms read. The hit rate does not count a lagged
-read as a miss: a press whose read lagged is a hit when a later press reads
-"equal" with only lagged ones between, because "equal" means the game's score
-had caught up with every chord before it. Where the lagged presses run to the
-end of the log, or end at a FAIL or a ghost or accent change, a lag cannot be
-told from a real miss and counts as one.
+The report prints the first FAIL with the two numbers, the counts, the final
+totals side by side and the spread of the press times against the chart (the
+clock at the read before the send minus the chord's ms).
 
 Usage:
     python tools\\ch_probe\\experiments\\score_compare.py <press.csv> <score.json>
+        --route kit|keys --stop <RunResult.stop> [--stop-message <text>]
 
 Exits 0 when every check passes, 1 otherwise.
 """
@@ -59,10 +46,13 @@ from tools.ch_probe.experiments.overlay_logs import (
     KEYS_PRESS_COLUMNS, KIT_PRESS_COLUMNS, PLAYER_PRESS_COLUMNS, PRESS_COLUMNS_WITHOUT_PLAYER,
     PRESS_COLUMNS_WITHOUT_RETIME, PRESS_COLUMNS_WITHOUT_WALL, PRESS_LOG_COLUMNS,
     RETIME_PRESS_COLUMNS, WALL_PRESS_COLUMNS)
+from tools.ch_probe.experiments.play_chart import STOP_DONE
 
-# A run that hits fewer than this percent of its presses is a FAIL (the
-# overlay spike plan, Task B step 3).
-MIN_HIT_PERCENT = 98
+# The route words; game_tools.ROUTE_KEYS and ROUTE_KIT own them, and a test
+# pins these to them. Written out because game_tools imports the whole MCP
+# side, which this script never needs.
+ROUTE_KEYS = "keys"
+ROUTE_KIT = "kit"
 
 # The words hydra_replay writes in a note's "dynamic" for a ghost and an
 # accent; dynamic_str in src/core/model.cpp owns them.
@@ -79,7 +69,7 @@ class Press:
     log's text as written; they are blank for a keys-route run (kit fields),
     for a row they do not apply to (player and retime fields) and for a log
     from before the column existed. The score check reads none of the player
-    or retime fields."""
+    or retime fields, and not `hit`."""
     index: int
     chart_ms: float
     clock_ms_at_press: float
@@ -138,72 +128,72 @@ def chords_from_score(score: dict) -> List[HydraChord]:
 
 @dataclass(frozen=True)
 class ChordVerdict:
-    """The score check at one press. `status` is "equal", "lagged",
-    "ghost_accent" (the difference changed where it may) or "FAIL".
-    `difference` is the running difference after this press."""
+    """The score check at one chord. `status` is "equal" (the step equals
+    Hydra's points), "ghost_accent" (it does not, on a keys-route chord with a
+    ghost or accent note) or "FAIL". `game` is the game's step and `hydra`
+    Hydra's points; `score_after` is the game's score after the chord."""
     index: int
     game: int
     hydra: int
-    difference: int
-    previous_difference: int
+    score_after: int
     status: str
     ghost_or_accent: bool
 
 
-def starting_difference(presses: Sequence[Press],
-                        chords: Sequence[HydraChord]) -> tuple:
-    """(the difference the first press is held to, whether the log starts
-    after the chart's first chord). A log that starts at the chart's first
-    chord starts at 0; a later start takes the game's score before the first
-    press minus Hydra's total before that chord. Raises ValueError for a press
-    whose index is not in the score JSON."""
-    position = {c.index: i for i, c in enumerate(chords)}
-    first = presses[0]
-    if first.index not in position:
-        raise ValueError(f"press for chord index {first.index} is not in the score JSON")
-    i = position[first.index]
-    if i == 0:
-        return 0, False
-    return first.score_before - chords[i - 1].total, True
-
-
-def compare_scores(presses: Sequence[Press],
-                   chords: Sequence[HydraChord]) -> List[ChordVerdict]:
-    """One verdict per press, in log order (the rule is in the module
-    docstring). Raises ValueError for a press whose index is not in the
-    score JSON."""
+def compare_scores(presses: Sequence[Press], chords: Sequence[HydraChord],
+                   route: str) -> List[ChordVerdict]:
+    """One verdict per chord the log has rows for, in log order. Consecutive
+    rows with one index are one chord (a split chord has a row per press):
+    the game's step is the score after its last row minus the score before
+    its first, and Hydra's points are its `cum.total` minus the chord's
+    before it in the score JSON. Raises ValueError for a press whose index is
+    not in the score JSON and for a route that is neither ROUTE_KEYS nor
+    ROUTE_KIT."""
+    if route not in (ROUTE_KEYS, ROUTE_KIT):
+        raise ValueError(f"route {route!r} is neither {ROUTE_KEYS!r} nor {ROUTE_KIT!r}")
     position = {c.index: i for i, c in enumerate(chords)}
     verdicts: List[ChordVerdict] = []
-    running = starting_difference(presses, chords)[0] if presses else 0
-    change_may_show = False   # the last press was a ghost/accent chord read lagged
-    for p in presses:
-        if p.index not in position:
-            raise ValueError(f"press for chord index {p.index} is not in the score JSON")
-        i = position[p.index]
+    k = 0
+    while k < len(presses):
+        first = presses[k]
+        if first.index not in position:
+            raise ValueError(f"press for chord index {first.index} is not in the score JSON")
+        last = k
+        while last + 1 < len(presses) and presses[last + 1].index == first.index:
+            last += 1
+        i = position[first.index]
         chord = chords[i]
-        previous_total = chords[i - 1].total if i > 0 else 0
-        difference = p.score_after - chord.total
-        before = running
-        if difference == running:
+        points = chord.total - (chords[i - 1].total if i > 0 else 0)
+        step = presses[last].score_after - first.score_before
+        if step == points:
             status = "equal"
-        elif p.score_after - previous_total == running:
-            status = "lagged"
-        elif chord.ghost_or_accent or change_may_show:
+        elif route == ROUTE_KEYS and chord.ghost_or_accent:
             status = "ghost_accent"
-            running = difference
         else:
             status = "FAIL"
-            running = difference
-        change_may_show = chord.ghost_or_accent and status == "lagged"
-        verdicts.append(ChordVerdict(p.index, p.score_after, chord.total, running,
-                                     before, status, chord.ghost_or_accent))
+        verdicts.append(ChordVerdict(first.index, step, points, presses[last].score_after,
+                                     status, chord.ghost_or_accent))
+        k = last + 1
     return verdicts
 
 
-# --- the press-time spread and the hit rate ---------------------------------------
+def stop_check(stop: Optional[str], message: str = "") -> tuple:
+    """(passed, the PASS or FAIL line for how the run ended). Only STOP_DONE,
+    play_chart's stop for a run that reached the song's end, passes (D319
+    item 1); a stop that was not given fails too. `message` is the run's
+    RunResult.message, printed beside a failing stop."""
+    if stop is None:
+        return False, "FAIL run end: the run's stop reason was not given"
+    if stop == STOP_DONE:
+        return True, "PASS run end: the run reached the song's end"
+    why = f": {message}" if message else ""
+    return False, f"FAIL run end: the run stopped before the song's end ({stop}){why}"
+
+
+# --- the press-time spread ----------------------------------------------------------
 
 def press_offsets_ms(presses: Sequence[Press]) -> List[float]:
-    """Clock at each press minus the chord's chart ms."""
+    """The clock at the read before each send minus the chord's chart ms."""
     return [p.clock_ms_at_press - p.chart_ms for p in presses]
 
 
@@ -216,101 +206,60 @@ def spread(values: Sequence[float]) -> tuple:
     return statistics.median(values), cuts[0], cuts[-1]
 
 
-def credited_hits(presses: Sequence[Press],
-                  verdicts: Sequence[ChordVerdict]) -> List[bool]:
-    """Per press: whether it hit. The log's `hit` column, except that a press
-    whose read lagged counts as a hit when the presses after it, past any
-    further lagged ones, come out "equal" (the module docstring has the
-    rule)."""
-    hits = [False] * len(presses)
-    caught_up = False   # the lagged verdicts after press i end in an "equal"
-    for i in reversed(range(len(presses))):
-        status = verdicts[i].status
-        hits[i] = presses[i].hit or (status == "lagged" and caught_up)
-        if status == "equal":
-            caught_up = True
-        elif status != "lagged":
-            caught_up = False
-    return hits
-
-
-def hit_rate_line(presses: Sequence[Press],
-                  hits: Optional[Sequence[bool]] = None) -> tuple:
-    """(passed, the PASS or FAIL line for the hit rate). `hits` says per press
-    whether it hit (credited_hits); without it the log's `hit` column counts."""
-    if hits is None:
-        hits = [p.hit for p in presses]
-    n = len(presses)
-    n_hit = sum(hits)
-    rate = f"{n_hit / n * 100:.1f}% ({n_hit} of {n}"
-    forgiven = sum(1 for p, h in zip(presses, hits) if h and not p.hit)
-    if forgiven:
-        rate += f"; {forgiven} lagged reads counted as hits"
-    rate += ")"
-    if n_hit * 100 >= MIN_HIT_PERCENT * n:
-        return True, f"PASS hit rate {rate}"
-    first = next(p for p, h in zip(presses, hits) if not h)
-    return False, (f"FAIL hit rate {rate}, under {MIN_HIT_PERCENT}%; first miss: "
-                   f"chord index {first.index} at {first.chart_ms:.1f} ms")
-
-
 # --- the report ---------------------------------------------------------------------
 
-def report(presses: Sequence[Press], score: dict,
-           out: Optional[TextIO] = None) -> bool:
-    """Print every check. True when all pass."""
+def report(presses: Sequence[Press], score: dict, out: Optional[TextIO] = None, *,
+           route: str, stop: Optional[str], stop_message: str = "") -> bool:
+    """Print every check, the run's end first. True when all pass."""
     out = sys.stdout if out is None else out
+    stop_ok, stop_line = stop_check(stop, stop_message)
+    print(stop_line, file=out)
     if not presses:
         print("FAIL the press log has no rows", file=out)
         return False
     chords = chords_from_score(score)
-    verdicts = compare_scores(presses, chords)
+    verdicts = compare_scores(presses, chords, route)
 
-    start, joined_late = starting_difference(presses, chords)
-    if joined_late:
-        print(f"The log starts at chord index {presses[0].index}, not the chart's "
-              f"first chord: the running difference starts at {start:+d} (the "
-              f"game's score before the first press minus Hydra's total before "
-              f"that chord).", file=out)
-    print("Running difference (game - Hydra) after each ghost or accent chord "
-          "(and the chord where a lagged one showed):", file=out)
-    for v in verdicts:
-        shown_late = v.status == "ghost_accent" and not v.ghost_or_accent
-        if v.ghost_or_accent or shown_late:
-            note = ""
-            if v.status == "lagged":
-                note = ", read lagged"
-            elif shown_late:
-                note = ", the chord before was read lagged"
-            print(f"  chord index {v.index}: {v.difference:+d} "
-                  f"(was {v.previous_difference:+d}{note})", file=out)
+    if route == ROUTE_KEYS:
+        print("Step at each ghost or accent chord (keys route: these may differ):",
+              file=out)
+        for v in verdicts:
+            if v.ghost_or_accent:
+                print(f"  chord index {v.index}: game {v.game:+d}, Hydra {v.hydra:+d}",
+                      file=out)
 
     fails = [v for v in verdicts if v.status == "FAIL"]
     counts = {s: sum(1 for v in verdicts if v.status == s)
-              for s in ("equal", "lagged", "ghost_accent", "FAIL")}
-    print(f"\nScore at {len(verdicts)} presses: {counts['equal']} equal, "
-          f"{counts['lagged']} lagged, {counts['ghost_accent']} changed at a ghost "
-          f"or accent chord, {counts['FAIL']} failed", file=out)
+              for s in ("equal", "ghost_accent", "FAIL")}
+    print(f"\nScore step at {len(verdicts)} chords: {counts['equal']} equal to Hydra's "
+          f"points, {counts['ghost_accent']} different at a ghost or accent chord on "
+          f"the keys route, {counts['FAIL']} failed", file=out)
     if fails:
         f = fails[0]
-        print(f"FAIL score at chord index {f.index}: game {f.game}, Hydra {f.hydra} "
-              f"(difference {f.difference:+d}, was {f.previous_difference:+d})", file=out)
+        print(f"FAIL score step at chord index {f.index}: game {f.game:+d}, "
+              f"Hydra {f.hydra:+d}", file=out)
     else:
-        print("PASS score: the difference changed only at ghost or accent chords",
-              file=out)
+        print("PASS score step: every chord's step equals Hydra's points", file=out)
+
+    pressed = {v.index for v in verdicts}
+    unplayed = [c.index for c in chords if c.index not in pressed]
+    if unplayed:
+        shown = ", ".join(str(i) for i in unplayed[:10])
+        more = f" and {len(unplayed) - 10} more" if len(unplayed) > 10 else ""
+        print(f"FAIL chords with no press-log row: {len(unplayed)} of {len(chords)} "
+              f"(chord index {shown}{more})", file=out)
+    else:
+        print(f"PASS every chord has a press-log row ({len(chords)} chords)", file=out)
 
     last = verdicts[-1]
-    print(f"Final: game {last.game}, Hydra {last.hydra} at chord index {last.index}; "
+    print(f"Final: game {last.score_after} after chord index {last.index}; "
           f"Hydra's whole-chart total {score['final']['total']}", file=out)
 
     median, p5, p95 = spread(press_offsets_ms(presses))
-    print(f"\nClock at press minus chart ms: median {median:+.2f}, "
+    print(f"\nClock at the read before the send minus chart ms: median {median:+.2f}, "
           f"5th percentile {p5:+.2f}, 95th percentile {p95:+.2f} "
           f"({len(presses)} presses)", file=out)
-
-    hits_ok, line = hit_rate_line(presses, credited_hits(presses, verdicts))
-    print(line, file=out)
-    return hits_ok and not fails
+    return stop_ok and not fails and not unplayed
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
@@ -318,11 +267,20 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         description="Compare a press log's scores with a hydra_replay score JSON.")
     parser.add_argument("press_log", help="the CSV play_chart.py --log wrote")
     parser.add_argument("score_json", help="the hydra_replay score JSON it played")
+    parser.add_argument("--route", required=True, choices=(ROUTE_KIT, ROUTE_KEYS),
+                        help="the route the run pressed through")
+    parser.add_argument("--stop", default=None,
+                        help="the run's stop reason (play_chart's RunResult.stop); "
+                             "without it the run fails")
+    parser.add_argument("--stop-message", default="",
+                        help="the run's RunResult.message, printed beside the stop")
     args = parser.parse_args(argv)
     presses = load_press_log(args.press_log)
     with open(args.score_json, encoding="utf-8") as f:
         score = json.load(f)
-    return 0 if report(presses, score) else 1
+    ok = report(presses, score, route=args.route, stop=args.stop,
+                stop_message=args.stop_message)
+    return 0 if ok else 1
 
 
 if __name__ == "__main__":

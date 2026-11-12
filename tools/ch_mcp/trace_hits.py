@@ -167,6 +167,15 @@ def count_within(lined: list[LinedUp], limit_ms: float) -> int:
     return sum(1 for x in lined if abs(x.diff_ms) <= limit_ms)
 
 
+def notes_without_call(calls: list[dict], notes: list[dict], limit_ms: float) -> int:
+    """How many notes have no call within `limit_ms` of them, either side, the
+    limit itself included. count_within counts calls; this counts notes, so a
+    note no call came near is not hidden by a call paired with it from afar."""
+    call_ms = [C.s_to_ms(call["songTime"]) for call in calls]
+    return sum(1 for n in notes
+               if not any(abs(t - n["time_ms"]) <= limit_ms for t in call_ms))
+
+
 def _with_key(payloads: list, key: str) -> list[dict]:
     return [p for p in payloads if isinstance(p, dict) and key in p]
 
@@ -242,6 +251,16 @@ def args_report(result: FA.RunResult, manifest_path: str,
     lines.append(f"calls within {limit:g} ms of their nearest note "
                  f"(EXPECT_NORMAL_BACK_MS): {count_within(lined, limit)} "
                  f"of {len(lined)}")
+    lines.append(f"notes with no call within {limit:g} ms: "
+                 f"{notes_without_call(calls, notes, limit)} of {len(notes)}")
+    done = _payloads_with(result, "done")
+    if done and "not_hooked" in done[-1]:
+        failures = done[-1]["not_hooked"]
+        lines.append(f"not hooked: {len(failures)}")
+        for failure in failures:
+            lines.append(f"  not hooked: {failure}")
+    else:
+        lines.append("not hooked: not reported")
     if result.error is not None:
         lines.append(f"error: {result.error}")
     return lines
@@ -429,6 +448,9 @@ def main(argv: list[str] | None = None, *, frida_mod: Any = None,
         return 1
 
     notes_path, notes = load_manifest(args.song)
+    if not notes:
+        out(f"{notes_path} holds no notes, so there is nothing to line calls up with")
+        return 1
     settings = trace_settings(notes, args.mode, args.engine_class,
                               args.engine_ctor_rva, args.method)
     result = FA.run_agent(args.agent, wall_cap_s(notes), FA.ends_run,
