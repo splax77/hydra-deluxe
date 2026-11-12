@@ -18,13 +18,19 @@ A .mid starts the fifth-pad flag from song.ini's `five_lane_drums` and the Pro f
 
 A .chart starts both at zero whatever song.ini says. N 5 raises the first and N 66, 67 or 68 raises the second.
 
+Both starting rules come from Hydra's own comments on the game's listings; the lines were not opened for this plan (premise P6, which T1 settles).
+
+The branch test at the top of the method (lines 26 to 37) sends a chart to the five-lane branch when the fifth-pad flag is up and the Pro flag is down, or when song.ini's `five_lane_drums` reads true. Every other chart takes the four-lane branch (premise P32).
+
 So a .mid reaches the tail only when it has no fifth-pad note, no tom marker, and neither key reads as true. A .chart reaches it when it has no N 5 and no N 66 to 68 and no `five_lane_drums` key (that key picks the five-lane branch on its own).
 
 ### How the game reads the two keys as yes or no
 
-I read the game's getter at 0x1D4480 for this plan. It is short and its rule is plain.
+The game's getter at 0x1D4480 is short and its rule is plain (premise P7; T1 commits its listing).
 
 It asks the ini object for the key's text. A missing key gives the default, which the caller sets to false for both keys. If the text parses as a whole number (Int32.TryParse), the answer is "the number is not zero". Otherwise, if the text equals "true" with case ignored, the answer is true. Otherwise, if it equals "false" with case ignored, the answer is false. Anything else gives the default, false.
+
+The number test is an unsigned compare against zero (`seta`, at 0x1D4566 to 0x1D456B in the listing), so a negative number such as `-1` is also true. Which blanks and signs Int32.TryParse accepts is .NET's rule, not read in the listing: its default style accepts blanks around the digits and a leading plus or minus sign, and refuses a decimal point or a value past 32 bits (premise P31, which T1 reads). Blanks around a number therefore change nothing, and Gap 2 below is only about the words true and false.
 
 So `pro_drums = 1` is true in the game, and `pro_drums = yes` is false. Hydra's `drum_key_is_true` takes only "true", so today it reads `pro_drums = 1` as unset. That matters here: 14 library charts write `pro_drums = 1`, and without this fix the new tail would wrongly turn them all to toms.
 
@@ -52,7 +58,7 @@ Gap 4: the listing of the getter is in a scratch folder today. T1 commits it und
 
 **.srb.** An .srb holds no song.ini keys, so `load_container_srb` reads both as unset. A .mid inside an .srb with no tom marker and no fifth pad will therefore become all toms. That follows from the one rule, and no special case is planned. Whether Clone Hero opens an .srb at all was not checked, so this is question 3.
 
-**The results stamp.** `kResultsStamp` in `src/store/stored_versions.h` is "2.14.1+fivelane". Release 2.14.1 has not shipped (the newest tag is v2.14.0). The header says a chart-reader change that makes a chart read differently needs a bump, and that changes in one release share one bump. D336 moved the suffix inside the unshipped 2.14.1 once already, because builds from main had saved rows. The same is true now for any row a main build saved since the five-lane merge. Whether to move it again is question 2.
+**The results stamp.** `kResultsStamp` in `src/store/stored_versions.h` is "2.14.1+fivelane". Release 2.14.1 has not shipped (the newest tag is v2.14.0). The header says a chart-reader change that makes a chart read differently needs a bump, and that changes in one release share one bump. D337 item 3 moved the suffix inside the unshipped 2.14.1 once already, from "+coda" to "+fivelane", because builds from main had saved rows (the commit that did it, `e6f3b078`, labels it D336 by mistake; D336 is the startup library bar). The same is true now for any row a main build saved since the five-lane merge. Whether to move it again is question 2.
 
 ## What the user will see (agent rule 11)
 
@@ -66,7 +72,7 @@ Every figure below is with Pro Drums on, Expert. With Pro Drums off nothing chan
 | Fortunate Son | Notes / Combo Bonus | 60,820 / 179,085 | 52,000 / 153,150 | same runs |
 | Fortunate Son | cymbal notes | 588 | 0 | same runs |
 
-The before figures for probe F's parts are sums, not a Hydra run: 29 kicks and 2 red at 50, and 12 yellow, blue and green notes at 65, give 2,330; the pads sit at 4x, so the combo share is 1,500 for the kicks plus 3 x 880 = 4,140.
+The before figures for probe F's parts are sums, not a Hydra run. The chart (premise P5) has 29 kicks, then 2 red, 3 yellow, 4 blue and 5 green notes, one note per tick. 29 kicks and 2 red at 50, and 12 yellow, blue and green notes at 65, give 2,330. A note's combo share is its points times the multiplier minus one (`docs/clone-hero/06-scoring.md` SC-05 and SC-08). The multiplier steps up at the 10th, 20th and 30th note, so the 29 kicks earn 10 x 50 x 1 + 10 x 50 x 2 = 1,500 and all 14 pads sit at 4x, where each note earns 3 times its points: 3 x (2 x 50 + 12 x 65) = 3 x 880 = 2,640. 1,500 + 2,640 = 4,140. With every pad at 50 the notes are 2,150 and the combo is 1,500 + 14 x 150 = 3,600, the figures in the game's file.
 
 These screens read the changed values. Their exact text needs a build, so MS4 captures each one before and after and shows the user before merge.
 
@@ -84,9 +90,9 @@ Charts inside .sng files were not scanned. Counting them is not needed to build 
 
 Each is asked before any build starts. None is answered by silence.
 
-1. **Should `five_lane_drums` follow the game's yes-or-no rule too?** The game's real rule, for both keys: the value is true when it parses as a whole number that is not zero, or when it is "true" in any letter case; "false", zero, a missing key and any other text are false. One end: `five_lane_drums = True`. The game and Hydra both say true today. Other end: `five_lane_drums = 1`. The game says true, and sends the chart down the five-lane branch (yellow and the fourth pad become cymbals, blue a tom). Hydra says unset today. For `pro_drums` the fix is needed for the tail to be right, so it is in the plan either way. For `five_lane_drums` it is a visible change your words did not ask for. Recommended: yes, one reader for both keys, as in the game. How many library charts write `five_lane_drums` as a number is not counted; MS5 counts it if you allow the scan.
+1. **Should `five_lane_drums` follow the game's yes-or-no rule too?** The game's real rule, for both keys: the value is true when it parses as a whole number that is not zero, or when it is "true" in any letter case; "false", zero, a missing key and any other text are false. One end: `five_lane_drums = True`. The game and Hydra both say true today. Other end: `five_lane_drums = 1`. The game says true, and sends the chart down the five-lane branch (yellow and the fourth pad become cymbals, blue a tom). Hydra says unset today. Hydra's real predicate today is `drum_key_is_true`: `equals_ci(trim_view(value), "true")`, at `src/parse/song.cpp` line 2250, so only the word true, in any case, with blanks around it. Today's screens for such a chart read the four-lane branch's toms and cymbals; after the change they read the five-lane branch's (the same difference NL-74 to NL-76 describe), and the score changes with them. For `pro_drums` the fix is needed for the tail to be right, so it is in the plan either way. For `five_lane_drums` it is a visible change your words did not ask for. Recommended: yes, one reader for both keys, as in the game. How many library charts write `five_lane_drums` as a number is not counted; MS5 counts it if you allow the scan.
 
-2. **Should every saved result read Stale once more?** The rule in `stored_versions.h`: bump the stamp when a chart reads differently, and changes in one release share one bump. One end: move "2.14.1+fivelane" to "2.14.1+alltoms". Every saved result reads Stale once and asks to be analysed again, as it did after the five-lane merge. Other end: keep the stamp. Nothing reads Stale, but a result saved by a main build since the five-lane merge for one of the changed charts (the six Warriors of Rock charts and any .sng chart like them) keeps its old, too-high score until that chart is analysed again by hand. Recommended: move it, as D336 did.
+2. **Should every saved result read Stale once more?** The rule in `stored_versions.h`: bump the stamp when a chart reads differently, and changes in one release share one bump. One end: move "2.14.1+fivelane" to "2.14.1+alltoms". Every saved result reads Stale once and asks to be analysed again, as it did after the five-lane merge. Other end: keep the stamp. Nothing reads Stale, but a result saved by a main build since the five-lane merge for one of the changed charts (the six Warriors of Rock charts and any .sng chart like them) keeps its old, too-high score until that chart is analysed again by hand. Recommended: move it, as D337 item 3 did.
 
 3. **Should a .mid inside an .srb follow the same rule?** The real predicate in Hydra: an .srb has no song.ini keys, so its .mid reaches the tail whenever it has no tom marker and no fifth pad. One end: an .srb whose .mid has tom markers. Nothing changes. Other end: an .srb whose .mid has none. Its yellow, blue and green notes become toms, and its score drops by 15 points per such note before the multiplier. Whether Clone Hero opens an .srb was not checked, so there may be no game result to match. Recommended: yes, one rule and no special case.
 
@@ -102,15 +108,15 @@ T1, T2, T3 and T4 are independent and launch together. Each is one Opus executor
 
 ### T1: Commit the getter listing and read the trimming rule
 
-Owned files: `docs/clone-hero/code/6142/ini_bool_getter_1D4480.asm` and its `.md`, any new listing it makes for the ini text lookup with its `.md`, the index rows in `docs/clone-hero/code/README.md`, and `docs/clone-hero/code/facts-6142.tsv`.
+Owned files: `docs/clone-hero/code/6142/ini_bool_getter_1D4480.asm` and its `.md`, any new listing it makes for the ini text lookup, Int32.TryParse or 0x214C8A0, each with its `.md`, the index rows in `docs/clone-hero/code/README.md`, `docs/clone-hero/code/facts-6142.tsv`, and the one sentence of `docs/clone-hero/code/6142/five_lane_convert_215D450.md` that cites `getters.asm` for 0x214C8A0 (corrected if the new listing shows the citation is wrong).
 
 The executor makes the listing with `py -m tools.ch_mcp.chdis 1D4480 600` and writes the note beside it. Then it reads the text lookup at 0x1BD150, and whatever fills the ini object, to learn whether a value's trailing blanks are cut before the getter sees them. It refreshes the facts table with `tools/ch_mcp/dump_facts.py --tsv`. No build is needed.
 
 Stop condition: 30 calls on the trimming read. If it is not answered by then, the report says "trimming not found", names where it looked, and LS2 is used instead.
 
-It also opens three places this plan leans on but did not read: the .mid drum reader's lines 80 to 99 and the .chart loader's lines 158 to 214 (where the flags start, premise P6), and the .sng metadata reader's lines for the two keys (premise P13). Its report says, with listing lines, whether each matches what this plan says.
+It also opens three places this plan leans on but did not read: the .mid drum reader's lines 80 to 99 and the .chart loader's lines 158 to 214 (where the flags start, premise P6), and the .sng metadata reader's lines for the two keys (premise P13). Its report says, with listing lines, whether each matches what this plan says. It also lists Int32.TryParse (RVA 0x1B4F710, the call at 0x1D44F9) to read which blanks and signs the game's number test accepts (premise P31), and the tail's one question at 0x214C8A0, which `five_lane_convert_215D450.md` calls the kick test but which is not in the `getters.asm` it cites (premise P3). These two reads share the 30-call cap with the trimming read; if one is not answered, the report says so and the plan's wording stays marked unchecked.
 
-Acceptance: the report confirms or contradicts P6 and P13 with listing lines. The committed listing shows the Int32.TryParse call, the two String.Equals calls with comparison type 5 and the three return paths. The docs check `hydra_tests.exe "-tc=docs match code*"` passes on the branch (main session runs it). The report states the trimming rule with listing lines, or states that it was not found.
+Acceptance: the report confirms or contradicts P3, P6, P13 and P31 with listing lines. The committed listing shows the Int32.TryParse call, the two String.Equals calls with comparison type 5 and the three return paths. The docs check `hydra_tests.exe "-tc=docs match code*"` passes on the branch (main session runs it). The report states the trimming rule with listing lines, or states that it was not found.
 
 ### T2: The tail and the key reader, tests first
 
@@ -125,7 +131,7 @@ Acceptance, each a test in `tests/test_five_lane.cpp` that fails on main today u
 3. The same .mid with a fifth-pad note on Easy only keeps the five-lane branch's cymbals (holds today; fails if the tail ignores the fifth-pad flag).
 4. The same .mid with `five_lane_drums = True` keeps the five-lane branch's cymbals (holds today; fails if the tail runs after the five-lane branch).
 5. The same .mid with `pro_drums = True` keeps its cymbals (holds today), and with `pro_drums = 1` keeps them too (both hold today, because main has no tail; they fail if the tail is added without the key fix, and test 6's "1" row is the red proof of the key read).
-6. The key reader, tested through `chart_drum_keys`: "1", "2", "-1", "true", "TRUE" and "True" read as set; "0", "false", "yes", "" and a missing key read as unset. One row per text, so a broken row names its text.
+6. The key reader, tested through `chart_drum_keys`: "1", "2", "-1", "true", "TRUE" and "True" read as set; "0", "false", "yes", "" and a missing key read as unset. The getter's listing gives these rows. Four more rows follow .NET's number rule (premise P31): "+1" and "1 " read as set, "1.0" and "99999999999" read as unset; if T1 finds the rule different, a fresh executor changes those four rows. One row per text, so a broken row names its text.
 7. A .chart with pads, no N 5 and no N 66 to 68 parses to the same chords before and after (holds today; pinned by its digest).
 8. A .mid inside a .sng built in the test, with no keys in its metadata, has no cymbal; the same .sng with `pro_drums = 1` in its metadata keeps them.
 9. A .mid inside an .srb built in the test, with no tom marker, has no cymbal (only if question 3 is yes; if no, the test pins that it keeps them and T2 adds the exception at the .srb loader).
@@ -137,7 +143,7 @@ Acceptance, each a test in `tests/test_five_lane.cpp` that fails on main today u
 
 Owned files: `src/store/stored_versions.h` and `tests/test_store_records.cpp`.
 
-The stamp moves to "2.14.1+alltoms" and its accepted list holds the new stamp alone. The test that names the stamp is updated, and one test row checks that a row saved under "2.14.1+fivelane" reads Stale.
+The stamp moves to "2.14.1+alltoms" and its accepted list holds the new stamp alone. The test that names the stamp (`tests/test_store_records.cpp` lines 601 to 613) is updated, and the status table at line 630 changes: its "2.14.1+fivelane" row becomes Stale and a "2.14.1+alltoms" row reads Ready.
 
 Acceptance: `test_store_records.cpp` holds a check that `kResultsStamp.is_current("2.14.1+fivelane")` is false and that the written stamp is "2.14.1+alltoms". If question 2 is no, T3 is dropped and the Promise map row moves to Out of scope.
 
@@ -145,17 +151,17 @@ Acceptance: `test_store_records.cpp` holds a check that `kResultsStamp.is_curren
 
 Owned files: a new folder `docs/audit/2026-11-12-mid-no-pro/`.
 
-The executor writes three small Python scripts there. The first makes the probe charts: G (probe F's notes with `pro_drums = 1`), H (`pro_drums = True` with a trailing blank) and J (probe F's notes with a disco section over the two red and three yellow notes). It starts from `make_probe_f.py` in the session's scratch folder, which it copies in because scratch files are not kept. The second lists the charts under `testdata/` that reach the tail, so the main session knows which pinned test values will move. The executor runs it, because it reads only the checked-in corpus, and commits its output. The third is the library scan for MS5: it reads loose charts and .sng files, and counts the charts that reach the tail and the charts that write either key as a number. The executor does not run the third script.
+The executor writes three small Python scripts there. The first makes the probe charts: G (probe F's notes with `pro_drums = 1`), H (`pro_drums = True` with a trailing blank) and J (probe F's notes with a disco section over the two red and three yellow notes). It starts from `C:\Users\Patrick\AppData\Local\Temp\claude\73923404e4ab348b\c61c1986-81b3-4539-9926-15e8e54d6782\scratchpad\make_probe_f.py`, which it copies in because scratch files are not kept. It takes the output folder as an argument and refuses a folder that exists, as probe F's maker does. The executor runs it into its own scratch folder to print each probe's song.ini; it does not write into `C:\Clone Hero\songs`, which it does not own. The main session runs the maker into `C:\Clone Hero\songs\Hydra Probe\` before each live step. The second script lists the charts under `testdata/` that reach the tail, and the tests under `tests/` that build a four-pad .mid or .chart in code with no tom marker and no fifth pad (by test name), so the main session knows which pinned test values will move. The executor runs it, because it reads only the checked-in files, and commits its output. The third is the library scan for MS5: it reads loose charts and .sng files, and counts the charts that reach the tail and the charts that write either key as a number. The executor does not run the third script.
 
-Acceptance: the corpus list is committed with a count on its first line. Each probe's song.ini is printed in the report. The library script refuses to run without an explicit folder argument, and the report says so with the line that enforces it.
+Acceptance: the list of corpus charts and in-test builders is committed with a count on its first line. Each probe's song.ini is printed in the report. The library script refuses to run without an explicit folder argument, and the report says so with the line that enforces it.
 
 ### MS1: Build T2's test commit and run it red
 
-The main session builds T2's first commit and runs `hydra_tests.exe "-tc=five-lane*"`. Tests 1, 6 (its number rows), 8 (its first half) and 12 must fail, and the exact red lines go to the reviewer. A test in that list that passes is reported, not explained away.
+The main session builds T2's first commit and runs `hydra_tests.exe "-tc=five-lane*"`. Tests 1, 6 (its rows "1", "2", "-1", "+1" and "1 "), 8 (its first half), 9 (if question 3 is yes) and 12 must fail, and the exact red lines go to the reviewer. A test in that list that passes is reported, not explained away.
 
 ### MS2: Build the whole change, run green, and collect the moved values
 
-The main session builds the joined branch, gets the test list from `hydra_precheck.exe --tests`, and runs it. Any pinned value that moved because a corpus chart reaches the tail (T4's list) is collected with its test name and its new value. Cap: one build and one run. A failure that is not on T4's list is a real failure and goes to a fresh executor.
+The main session builds the joined branch, gets the test list from `hydra_precheck.exe --tests`, and runs it. Any pinned value that moved because a corpus chart or an in-test chart reaches the tail (T4's list) is collected with its test name and its new value. Cap: one build and one run. A failure that is not on T4's list is a real failure and goes to a fresh executor.
 
 ### T6: Re-pin the moved corpus values
 
@@ -171,7 +177,7 @@ The main session runs `hydra_replay score` on probe F, on probes G and J once th
 
 ### MS4: Capture every screen, before and after
 
-The main session opens Fortunate Son and probe F in Hydra built from main and from the branch, with `hydra_uitest` or the `hydra` MCP server, and copies the text of the Library row, the Paths tab, the Preview's next-activation box and the Dynamics tab. It shows the user the before and after text. The merge waits for the user's yes on what they see (agent rules 11 and 12). This step settles premise P17.
+The main session opens Fortunate Son and probe F in Hydra built from main and from the branch, with `hydra_uitest` or the `hydra` MCP server, and copies the text of the Library row, the Paths tab, the Preview's next-activation box and the Dynamics tab. The before half needs only the build of main that already exists, so the main session may capture it before the user answers the questions, and show it with them (agent rule 11). It shows the user the before and after text. The merge waits for the user's yes on what they see (agent rules 11 and 12). This step settles premise P17.
 
 ### MS5: Count the library charts (only with the user's yes to question 4)
 
@@ -209,7 +215,7 @@ Pass line: 6,470 means the game trims and Hydra's trim stays. 5,750 means it doe
 
 Calls: `ch_start` (never tried), `ch_wait_stats` (seen: probe F run, 2026-11-12 13:11), `ch_stop` (seen: probe F run, 2026-11-12 13:11)
 
-Pass line: 5,870 (note 2,180, combo 3,690) means the two red notes flipped to yellow cymbals, as the code says, and Hydra's order is right. 5,750 means no cymbal survives the tail, and the flip on a tail chart becomes a question for the user before merge. Any other total stops the plan. This step settles premise P12 and Gap 3.
+Pass line: 5,870 (note 2,180, combo 3,690; each of the two red notes that flips to a yellow cymbal adds 15 to the notes and 3 x 15 = 45 to the combo at 4x, premise P33, so 5,750 + 2 x 60) means the two red notes flipped to yellow cymbals, as the code says, and Hydra's order is right. 5,750 means no cymbal survives the tail, and the flip on a tail chart becomes a question for the user before merge. Any other total stops the plan. This step settles premise P12 and Gap 3.
 
 ## Out of scope, for the user to approve
 
@@ -246,9 +252,9 @@ The FiveLaneDrums kit player stays out, as D337 left it. Build 1.0 is not checke
 |---|---|---|---|
 | P1: The tail sits after the four-lane pass, tests +0xA1 then +0xA2, and for each note that answers no to 0x214C8A0 clears bit 0x20 and sets bit 0x10. | code | `docs/clone-hero/code/6142/five_lane_convert_215D450.asm` lines 137 and 187 to 222 | checked 2026-11-12 |
 | P2: The five-lane branch returns without reaching the tail. | code | `docs/clone-hero/code/6142/five_lane_convert_215D450.asm` lines 56, 119 to 122 and 233 | checked 2026-11-12 |
-| P3: The notes the tail leaves alone are the kicks. | run | `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-12\five-lane\scorestats-Mid_No_Pro_F-20261112-131107.json` (score 5,750, note_score 2,150, combo_score 3,600, 43 of 43, v1.1.0.6142-final, ProDrums Expert) | checked 2026-11-12; the function 0x214C8A0 itself was not read |
+| P3: The notes the tail leaves alone are the kicks. | run | `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-12\five-lane\scorestats-Mid_No_Pro_F-20261112-131107.json` (score 5,750, note_score 2,150, combo_score 3,600, 43 of 43, v1.1.0.6142-final, ProDrums Expert) | checked 2026-11-12; the function 0x214C8A0 itself was not read, and the pads' 50-point result is what shows it answers no for yellow, blue and the fourth pad; T1 lists it |
 | P4: Probe F's song.ini holds neither key. | chart | `C:\Clone Hero\songs\Hydra Probe\Mid No Pro F\song.ini` | checked 2026-11-12 |
-| P5: Probe F's notes.mid holds 29 kicks, 2 red, 3 yellow, 4 blue and 5 green notes, no tom marker and no fifth pad. | unchecked | `C:\Clone Hero\songs\Hydra Probe\Mid No Pro F\notes.mid` was not opened; the brief reports its contents | T4 |
+| P5: Probe F's notes.mid holds 29 kicks, 2 red, 3 yellow, 4 blue and 5 green notes, no tom marker and no fifth pad. | chart | `C:\Clone Hero\songs\Hydra Probe\Mid No Pro F\notes.mid`, recounted with mido: PART DRUMS pitches 96 x 29, 97 x 2, 98 x 3, 99 x 4, 100 x 5, one note per tick, no 101 and no 110 to 112 | checked 2026-11-12 |
 | P6: A .mid starts the two flags from song.ini's two keys and a .chart starts both at zero. | unchecked | `docs/clone-hero/01-reading-a-chart.md` block CR-18 says so but is labelled Unknown, and the .mid reader and .chart loader lines it cites were not opened | T1 |
 | P7: The game's bool getter returns "not zero" for a whole number, true for "true" and false for "false" with case ignored, and the caller's default (false) otherwise. | code | the game's DLL at RVA 0x1D4480, listed with `py -m tools.ch_mcp.chdis 1D4480 600`; the listing is in the session scratch folder until T1 commits it | checked 2026-11-12 |
 | P8: Both keys are read through that getter with a default of false. | code | `docs/clone-hero/code/6142/ini_song_reader_1EFC60.asm` lines 76 to 89 | checked 2026-11-12 |
@@ -258,19 +264,22 @@ The FiveLaneDrums kit player stays out, as D337 left it. Build 1.0 is not checke
 | P12: A red disco note on a tail chart still becomes a yellow cymbal under Pro Drums. | unchecked | `docs/clone-hero/02-note-list.md` NL-22 gives the flip by lane in the builder and says no run has checked it; the disco step runs before the conversion per `docs/clone-hero/code/6142/note_flags_from_markers_215E280.md` | LS3 |
 | P13: The game's .sng metadata reader reads both keys the same way as the song.ini reader. | unchecked | `docs/clone-hero/code/6142/sng_meta_reader_1EFF90.md` says those lines were "not read line by line" | T1 |
 | P14: `convert_drum_pads` is the one place raw pads become lanes, both readers reach it through `emit_chord_timestamp`, and its comment says the tail is left out. | code | `src/parse/song.cpp` lines 471 to 541 | checked 2026-11-12 |
-| P15: Hydra on main scores probe F 6,470 with Pro Drums on and 5,750 with it off. | unchecked | the brief reports the main session's `hydra_replay` run; no result file was given | MS3 |
-| P16: Hydra on main scores Fortunate Son 239,905 with Pro on (588 cymbal notes) and 205,150 with Pro off. | unchecked | the brief reports the main session's `hydra_replay` run; no result file was given | MS3 |
+| P15: Hydra on main scores probe F 6,470 with Pro Drums on and 5,750 with it off. | unchecked | the main session's `hydra_replay score` run, as it reported it to the plan's reviewer; no result file was kept. The 6,470 equals the sum in "What the user will see" (2,330 + 4,140), so it is consistent with the chart | MS3 |
+| P16: Hydra on main scores Fortunate Son 239,905 with Pro on (588 cymbal notes) and 205,150 with Pro off. | unchecked | the main session's `hydra_replay score` run, as it reported it to the plan's reviewer; no result file was kept. The two splits agree with each other: 60,820 - 52,000 = 8,820 = 588 x 15 | MS3 |
 | P17: The Library row, the Paths tab, the Preview and the Dynamics tab are the screens that read the changed values. | unchecked | a grep of `src/ui` and `src/app` for the Pro Drums setting found `paths_tab.cpp`, `preview_load_job.cpp`, `dynamics_tab.cpp` and `path_view.cpp`; no screen was opened | MS4 |
 | P18: The loose-file scan found 21 of 15,019 .mid drum charts: seven with no `pro_drums` key (probe F and six Warriors of Rock charts) and fourteen with `pro_drums = 1`. | run | `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-12\five-lane\nopro_library_scan.txt` | checked 2026-11-12; the scan script was not read |
 | P19: The .mid reader starts every yellow, blue and green pad as a cymbal and takes the flags track-wide from `midi_drum_chart_flags`. | code | `src/parse/song.cpp` lines 909 to 922 and 1275 to 1285 | checked 2026-11-12 |
 | P20: The .chart reader takes only `five_lane_drums` from the keys. | code | `src/parse/song.cpp` lines 2055 to 2058 | checked 2026-11-12 |
-| P21: A .chart pad is a tom unless N 66 to 68 marks it, so a .chart with both flags down is already all toms in Hydra. | unchecked | `docs/clone-hero/02-note-list.md` NL-05 states the game's side; Hydra's `ChartParser::note_optype` was not opened | T2 |
+| P21: A .chart pad is a tom unless N 66 to 68 marks it, so a .chart with both flags down is already all toms in Hydra. | code | `src/parse/song.cpp` lines 985 to 994 (a pad takes `flag_cymbals_`, which starts all Normal at line 1034 and is set only by the cymbal marker at line 970), `ChartParser::note_optype` at line 1928 | checked 2026-11-12; test 7 pins it |
 | P22: A .sng's keys reach the readers through `chart_drum_keys`, and an .srb passes none. | code | `src/parse/song.cpp` lines 2341 to 2377 | checked 2026-11-12 |
 | P23: The disco flip runs after the conversion in Hydra, only under Pro Drums, and turns red into a yellow cymbal. | code | `src/parse/song.cpp` lines 531 to 541 and `src/core/model.cpp` lines 212 to 227 | checked 2026-11-12 |
 | P24: `kResultsStamp` is "2.14.1+fivelane", its rule asks for a bump when a chart reads differently, and 2.14.1 has not shipped. | code | `src/store/stored_versions.h` lines 42 to 55; `CMakeLists.txt` line 21 (version 2.14.0); `git tag` (newest v2.14.0) | checked 2026-11-12 |
 | P25: `tests/test_five_lane.cpp` holds the five-lane tests, a pinned-digest test for four-lane charts and a probe C and E score test; `tests/test_store_records.cpp` names the stamp. | code | `tests/test_five_lane.cpp` lines 125 to 349 (test names only); `tests/test_store_records.cpp` | checked 2026-11-12 |
 | P26: Some checked-in corpus charts reach the tail, so pinned test values will move. | unchecked | `testdata/input` was not scanned | T4 |
 | P27: `ch_start` with a song folder and `player="ProDrums,Expert"`, `ch_wait_stats` and `ch_stop` ran today on probe F. | run | `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-12\five-lane\scorestats-Mid_No_Pro_F-20261112-131107.json` shows the run's result; the calls themselves are reported by the brief | checked 2026-11-12 for the result file only |
-| P28: The probe audio is 125 seconds long, so a run takes about 2 minutes. | unchecked | `C:\Clone Hero\songs\Hydra Probe\Mid No Pro F\song.ogg` was not measured; the brief reports it | T4 |
-| P29: The user asked for this plan with the words "Yes, plan it". | unchecked | the brief quotes it; no file under `docs/agents/rulings/` or `docs/sessions/` holds it yet | T5 |
+| P28: The probe audio is 125 seconds long, so a run takes about 2 minutes. | chart | `C:\Clone Hero\songs\Hydra Probe\Mid No Pro F\song.ogg`: last Ogg page position 5,512,500 samples at 44,100 Hz = 125.0 s | checked 2026-11-12 |
+| P29: The user asked for this plan with the words "Yes, plan it", on the question "Should Hydra follow the game on these charts?" | ruling | the user's words as the main session quoted them in the plan reviewer's brief (task RV-MID-NO-PRO-PLAN); `docs/agents/rulings/clone-hero.md` holds the earlier "Yes, plan it" of the five-lane plan, not this one, and T5 writes this one | checked 2026-11-12 for the quote in the brief |
+| P31: The game's number test, Int32.TryParse(string, out int), accepts blanks around the digits and a leading plus or minus sign, and refuses a decimal point and a value past 32 bits. | unchecked | `docs/clone-hero/code/6142/ini_int_getter_21647A0.md` names the same call without its number style; the listing of Int32.TryParse was not opened | T1 |
+| P32: The method's branch test sends a chart to the five-lane branch when +0xA1 is up and +0xA2 is down, or when the song settings byte +0x10 is set; the settings byte starts from song.ini's `five_lane_drums`. | code | `docs/clone-hero/code/6142/five_lane_convert_215D450.asm` lines 26 to 37, `docs/clone-hero/code/6142/chart_settings_ctor_20E73E0.md` line 2 (+0x10 and +0x11 are the two flags' starting values) | checked 2026-11-12 for the jumps; that +0x10 is `five_lane_drums` rests on probes C and E (NL-74, NL-75) and the ctor note |
 | P30: A text event `[mix 3 drums0d]` on a .mid drum track opens an Expert disco section in the game. | data | `docs/clone-hero/02-note-list.md` NL-22 (Proven in the game's code) and `docs/clone-hero/code/6142/disco_apply_215CD50.md`; the .mid text form itself was not opened | checked 2026-11-12 for the span rule; LS3's go request names this row |
+| P33: A gem pays 50, a cymbal gem 65; the multiplier is 2x from the 10th gem, 3x from the 20th and 4x from the 30th; a gem's combo share outside Star Power is its points times the multiplier minus one. The expected totals of probes F, G and J are worked out from these. | data | `docs/clone-hero/06-scoring.md` SC-01, SC-02, SC-05 and SC-08, each labelled "Proven in the game's code" | checked 2026-11-12; probe F's 5,750 = 2,150 + 3,600 matches the sums |
