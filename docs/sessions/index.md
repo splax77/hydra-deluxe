@@ -484,8 +484,9 @@
 - 2026-11-12 428cf079 Clone Hero unknowns REST handoff (2026-11-12) | clone-hero, docs, agents, review, planning, tests | Ended with the audit merged to main, and with CR-24 and the handoff still unmerged on their branches.
 - 2026-11-12 a828b0ca Replay plan handoff (2026-11-12) | clone-hero, agents, review, planning, tests, docs | The session ended when the user stopped all live runs after a regression, and a handoff for the next session was committed on its own handoff branch.
 - 2026-11-12 d35f086a Memory maintenance best practices (2026-11-12) | memory, docs, agents, hooks | The session ended with the memory trim applied: live memories went from 86 to 44, and the index shrank from 88 lines to 46.
-- 2026-11-12 a09f66ea LS A2 regression handoff (2026-11-12) | clone-hero, performance, press-schedule | The session ended while an 8-minute offline repro was still running, so the stall cause is not proven and no fix was made.
+- 2026-11-12 a09f66ea LS A2 regression handoff (2026-11-12) | clone-hero, performance, press-schedule | The session ended while an 8-minute offline repro was still running, so the stall cause is not proven and no fix was made. [stale]
 - 2026-11-12 c8b70230 Blank live window and CR24 handoff (2026-11-12) | clone-hero, chart, performance, library, agents, review | The session ended with the open-savings plan finished and merged to main (b82527ff), after the earlier fixes had each merged.
+- 2026-11-12 ed1a0fd1 Run failures in hydra-deluxe (2026-11-12) | ci, review, hooks, agents, docs | Ended with the CI fix merged into local main and main pushed to GitHub, moving the remote past the commit the failed runs had tested.
 
 ## Proposed tags
 
