@@ -232,6 +232,11 @@ def load_schedule(path: str) -> Schedule:
         doc = _Fields(json.load(f), path, "the file")
     if doc["refusals"]:
         raise ValueError(f"{path} refuses to play this path: " + "; ".join(doc["refusals"]))
+    rows = [_Fields(row, path, f"entry {k} of `chords`")
+            for k, row in enumerate(doc["chords"])]
+    if not rows:
+        # The words ch_play_chart's chords_to_play refuses an empty list with.
+        raise ValueError(f"{path} has no chords to play")
     song_length_ms = doc["song_length_ms"]
     if song_length_ms is None:
         raise ValueError(f"{path}: song_length_ms is null, so the file names no song end; "
@@ -249,11 +254,6 @@ def load_schedule(path: str) -> Schedule:
     if infeasible:
         raise ValueError(f"{path} holds a squeeze the game cannot make at 100% speed: "
                          + "; ".join(infeasible))
-    rows = [_Fields(row, path, f"entry {k} of `chords`")
-            for k, row in enumerate(doc["chords"])]
-    if not rows:
-        # The words ch_play_chart's chords_to_play refuses an empty list with.
-        raise ValueError(f"{path} has no chords to play")
     gems_of: dict = {}
     for row in rows:
         gems = row["gems"]

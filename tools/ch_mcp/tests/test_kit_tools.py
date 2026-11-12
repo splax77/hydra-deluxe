@@ -34,6 +34,7 @@ from tools.ch_mcp.tests.test_frida_attach import (  # noqa: E402
 from tools.ch_mcp.tests.test_build_stamp import make_built_agent  # noqa: E402
 from tools.ch_probe.experiments import play_chart  # noqa: E402
 from tools.ch_probe.input_driver import Lane  # noqa: E402
+from tools.ch_probe.tests import fakes  # noqa: E402
 from tools.ch_probe.tests.test_play_chart import _FakeSongClock, _FakeTime  # noqa: E402
 
 BACKUP_LINE = "backup folder: X (taken now)"
@@ -119,8 +120,14 @@ SETUP_FAULT = {
     },
 }
 
-PRESS_REPLY = {"down_frame": 1200, "up_frame": 1202, "down_ms": 5000, "up_ms": 5013,
-               "hold_frames": 2, "rewrite": False, "on_main": False}
+# Press replies in kit.ts's shape (tools.ch_probe.tests.fakes.kit_reply):
+# one group, and a split press's two.
+PRESS_REPLY = fakes.kit_reply([(1200, 1202, fakes.KIT_EPOCH_MS + 5000,
+                                fakes.KIT_EPOCH_MS + 5013)])
+SPLIT_PRESS_REPLY = fakes.kit_reply([(1200, 1202, fakes.KIT_EPOCH_MS + 5000,
+                                      fakes.KIT_EPOCH_MS + 5013),
+                                     (1203, 1205, fakes.KIT_EPOCH_MS + 5008,
+                                      fakes.KIT_EPOCH_MS + 5021)])
 
 TEARDOWN_OK = {"checks": [
     {"what": "elements cleared", "ok": True, "detail": "2 cleared"},
@@ -851,8 +858,36 @@ class StrengthTest(Rig):
             with self.assertRaisesRegex(ValueError, "after_ms is a number above 0"):
                 K.press_message([red], then=[([K.lane_element(Lane.KICK)], None, bad)])
 
+    def test_the_kit_refuses_a_repeated_element(self):
+        red = K.lane_element(Lane.RED)
+        for message in (lambda: K.press_message([red, K.lane_element(Lane.KICK), red]),
+                        lambda: K.press_message([K.lane_element(Lane.KICK)],
+                                                then=[([red, red], None, 8.0)])):
+            with self.assertRaises(ValueError) as caught:
+                message()
+            self.assertIn("kit element Snare is twice in one group", str(caught.exception))
+        tools = self.set_up([PRESS_REPLY])
+        press = self.game.kit_source()
+        sent = len(self.posted())
+        with self.assertRaises(ValueError):
+            press([Lane.RED, Lane.RED])
+        self.assertEqual(len(self.posted()), sent)
+        self.assertIsNotNone(tools)
+
+    def test_the_fakes_send_the_real_reply_shape(self):
+        # test_play_chart's FakeReplyShapeTest checks kit_reply against kit.ts.
+        self.assertIsNone(K.reply_gap(PRESS_REPLY, 1))
+        self.assertIsNone(K.reply_gap(SPLIT_PRESS_REPLY, 2))
+        self.assertEqual(K.reply_gap(PRESS_REPLY, 2),
+                         "has no `groups` list, though the press sent 2 groups")
+
+    def test_ch_kit_press_fails_on_a_reply_without_its_frames(self):
+        tools = self.set_up([{k: v for k, v in PRESS_REPLY.items() if k != "up_frame"}])
+        self.assertIn("press failed: the kit's reply to the press has no up_frame",
+                      tools.ch_kit_press("red"))
+
     def test_the_kit_press_sends_a_split_chord_in_one_message(self):
-        self.set_up([PRESS_REPLY])
+        self.set_up([SPLIT_PRESS_REPLY])
         press = self.game.kit_source()
         sent = len(self.posted())
         press([Lane.KICK], None, then=[([Lane.GREEN_CYMBAL], None, 8.0)])
@@ -964,24 +999,27 @@ class KitPressTest(Rig):
         tools = self.set_up([PRESS_REPLY])
         press = self.game.kit_source()
         wall = _FakeTime()
-        chords = [play_chart.Chord(7, 1000.0, [Lane.GREEN, Lane.KICK], ["none", "none"])]
+        lanes, dynamics = [Lane.GREEN, Lane.KICK], ["none", "none"]
+        chords = [play_chart.Chord(7, 0, 1000.0, lanes, dynamics, presses=(play_chart.Press(
+            index=7, chart_ms=1000.0, aim_ms=-2.0, lanes=lanes, dynamics=dynamics, axes=None,
+            declined=False, last_send_ms=1050.0, rule="plain"),))]
         # The start read, the fresh read before the press, the read after it.
         score = iter([0, 0, 50])
         result = play_chart.play_chords(
             chords, _FakeSongClock(wall, start_s=0.5), lambda: next(score), press,
-            now=wall.now, sleep=wall.sleep, out=io.StringIO())
+            now=wall.now, sleep=wall.sleep, out=io.StringIO(), kit=True)
         self.assertEqual(result.stop, "done")
         self.assertEqual(self.posted()[-1]["elements"],
                          [{"id": 3, "value": 1.0}, {"id": 7, "value": 1.0}])
         row = result.rows[0]
         self.assertEqual((row["down_frame"], row["up_frame"], row["down_ms"], row["up_ms"]),
-                         (1200, 1202, 5000, 5013))
+                         (1200, 1202, 1762600005000, 1762600005013))
         self.assertNotIn("rewrite", row)
         path = os.path.join(self.tmp, "press.csv")
         play_chart.write_press_log(path, result.rows)
         with open(path, encoding="utf-8", newline="") as f:
             table = list(csv.DictReader(f))
-        self.assertEqual((table[0]["down_frame"], table[0]["up_ms"]), ("1200", "5013"))
+        self.assertEqual((table[0]["down_frame"], table[0]["up_ms"]), ("1200", "1762600005013"))
         self.assertIsNotNone(tools.kit_press())
 
     def test_a_faulted_kit_press_carries_the_fault_in_its_error(self):
