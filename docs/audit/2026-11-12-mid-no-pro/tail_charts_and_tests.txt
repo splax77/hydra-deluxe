@@ -1,0 +1,256 @@
+2 checked-in charts move and 91 in-test .mid builders mention no tom marker, fifth pad or key (of 168 drum charts read under testdata/ and 107 tests that build a .mid in code)
+
+Made by docs/audit/2026-11-12-mid-no-pro/scout_corpus.py. The rule it applies is
+tail_rule.py beside it; the plan is docs/superpowers/plans/2026-11-12-mid-no-pro-toms.md.
+A move shows only with Pro Drums on: with it off no pad is a cymbal.
+
+== Checked-in charts that move
+Each row: why it moves | placement today -> after | yellow, blue and fourth-pad notes
+(all difficulties / Expert) | keys written as a number | path.
+tail | four-lane -> four-lane + tail | 65/37 | - | mid | testdata/fuzz/mid/far-chord-fill-lines.mid
+tail | four-lane -> four-lane + tail | 448/448 | - | mid | testdata/input/test_flammarker/flammarker_expected_regdrums.mid
+
+== .mid charts that reach the tail but have no yellow, blue or fourth-pad note, so nothing moves (1)
+mid | testdata/kick2x_merge/notes.mid
+
+== .chart files with no N 5, no N 66 to 68 and no five_lane_drums (15). Hydra already reads these as all toms, so nothing moves.
+chart | testdata/input/test_fast_tempo/banked_then_next.chart
+chart | testdata/input/test_fast_tempo/early_sqin_twice.chart
+chart | testdata/input/test_fast_tempo/end_on_window_node.chart
+chart | testdata/input/test_fast_tempo/late_sqin_twice.chart
+chart | testdata/input/test_fast_tempo/node_before_phrase.chart
+chart | testdata/input/test_fast_tempo/spent_then_next.chart
+chart | testdata/input/test_fast_tempo/sqin_end_before_phrase.chart
+chart | testdata/input/test_folded_sqin/clamped_sqin_a.chart
+chart | testdata/input/test_folded_sqin/clamped_sqin_b.chart
+chart | testdata/input/test_folded_sqin/folded_sqin.chart
+chart | testdata/input/test_folded_sqin/relabel_case.chart
+chart | testdata/input/test_folded_sqin/twin_end_nodes.chart
+chart | testdata/input/test_path_reduction/test0.chart
+chart | testdata/kick2x_merge/notes.chart
+chart | testdata/squeeze_clamp/twin_end_clamped.chart
+
+== Files not judged (6)
+no drum track | mid | testdata/fuzz/mid/mtrk-tag-at-end.mid
+no drum track | mid | testdata/fuzz/mid/no-tracks-after-long-header.mid
+unreadable here (error) | srb | testdata/fuzz/srb/endless-zeros.srb
+unreadable here (error) | srb | testdata/fuzz/srb/far-chord-fill-lines.srb
+no drum track | srb/mid | testdata/fuzz/srb/mtrk-tag-at-end.srb
+no drum track | mid | testdata/parse_edge/m06_format0.mid
+
+== Tests that name a checked-in chart that moves (0)
+Each row: chart | test file | test name.
+
+== Tests that walk the whole corpus (95). They read the charts that move without naming them. A test that reaches the corpus through another helper is not caught here.
+Each row: test file | test name.
+tests/test_analysis.cpp | run_batch saves a record with its top paths through the one save
+tests/test_best_finish.cpp | best finish: with nothing pinned it is Hydra's best path on every corpus chart
+tests/test_best_finish.cpp | best finish: every window of a corpus best path pinned in full, with no free fill 
+tests/test_dynamics_breakdown.cpp | dynamics_breakdown: the rules never change a chart's Dynamics count
+tests/test_engine_sweeps.cpp | search invariants hold across the corpus and config knobs
+tests/test_engine_sweeps.cpp | the engine's limit walk agrees with Activation::within_ms_limit
+tests/test_engine_sweeps.cpp | note total: the engine, the Song and the Dynamics tab agree on every corpus chart
+tests/test_engine_sweeps.cpp | the graph finds the chart's multiplier squeezes once, in chart order
+tests/test_engine_sweeps.cpp | legacy fill deadline analyzes a chart end to end
+tests/test_engine_sweeps.cpp | stored transfer scales match the display-layer recomputation
+tests/test_engine_sweeps.cpp | no activation keeps backends past its squeezed-out note
+tests/test_engine_sweeps.cpp | search_allzero returns only all-0 paths inside the 0 ms limit
+tests/test_engine_sweeps.cpp | corpus: squeeze-ins at exactly 0 and what they change
+tests/test_engine_sweeps.cpp | score graph: the backend rows are sized once, one per chord
+tests/test_engine_sweeps.cpp | a 4-bar graph built at the song's phrase count stores the same paths
+tests/test_fills_and_skips.cpp | Skipped fills: every corpus root passes over real fills in order
+tests/test_fills_and_skips.cpp | trailing fills: a corpus path lists the fills after its last activation that the meter allows
+tests/test_fills_and_skips.cpp | trailing fills: a path whose last window outlasts the chart lists none
+tests/test_fills_and_skips.cpp | trailing fills: a full pin of a corpus path agrees with the free search
+tests/test_fuzz_regressions.cpp | fuzz seeds: write every target's seed folder when HYDRA_FUZZ_SEED_DIR is set
+tests/test_generated_fills.cpp | generated fills: every corpus chart's generated fills are pinned
+tests/test_midi.cpp | midi: every corpus .mid reads with a sane structure
+tests/test_pathstring_read.cpp | pathstring read: every corpus best path round-trips
+tests/test_pathstring_read.cpp | pathstring read: a token no fill can place is refused with its position
+tests/test_pathstring_read.cpp | pathstring read: every corpus path round-trips from Hydra's long Copy path text
+tests/test_pathstring_read.cpp | pathstring read: a long-text window no fill can place is refused with its position
+tests/test_pathstring_read.cpp | pathstring read: the graph entry point reads the same path as the settings one
+tests/test_pathstring_read.cpp | pathstring read: the graph entry point refuses a token no fill can place
+tests/test_preview_scene.cpp | parser keeps the SP-phrase start on the flagged note
+tests/test_preview_scene.cpp | base + overlay: equals build_preview_scene on every corpus chart and stored path
+tests/test_preview_scene.cpp | preview fills: every stored passed-over fill is a fill in the scene
+tests/test_replay.cpp | replay reproduces the engine's score for every corpus path
+tests/test_replay.cpp | targeted search reproduces every corpus path
+tests/test_replay.cpp | every tied variant stores what a search pricing it alone stores
+tests/test_replay.cpp | targeted search rejects a tick that is not a fill
+tests/test_replay.cpp | windows read from a path JSON match the ones read from the record
+tests/test_replay.cpp | paths_json writes every field the dump readers use
+tests/test_replay.cpp | replay multipliers agree with the combo on every corpus chord
+tests/test_replay.cpp | replay: scores_only leaves chord_code and notes empty and every score the same
+tests/test_replay_schedule.cpp | schedule: paid_by matches in_sp on every corpus path
+tests/test_replay_schedule.cpp | schedule: declined chords are the skipped fill ticks
+tests/test_replay_schedule.cpp | schedule: song_length_ms is app::song_length_ms
+tests/test_replay_schedule.cpp | schedule: sp_ready_tick is the second bank arrival
+tests/test_replay_schedule.cpp | schedule: first_note writes the same schedule as before
+tests/test_replay_schedule.cpp | schedule: every skip writes a refusal and a flag
+tests/test_replay_schedule.cpp | schedule: the first press group is the activation note
+tests/test_replay_windows.cpp | replay: window order does not matter and SP points add up window by window
+tests/test_replay_windows.cpp | replay: window order does not matter and windows add up, shrunk by RapidCheck
+tests/test_replay_windows.cpp | replay: on every corpus path the disc follows SP's payment and windows add up
+tests/test_replay_windows.cpp | replay_path with a table handed in equals replay_path building its own
+tests/test_replay_windows.cpp | replay_path refuses a table of the wrong size or detail
+tests/test_report_rows.cpp | report rows list every stored record (4 bars)
+tests/test_report_rows.cpp | collect_rows: the row list is sized to its rows
+tests/test_report_rows.cpp | path report: a batch's records read back as a fresh analysis's rows
+tests/test_report_rows.cpp | all_paths lists paths best first on every corpus chart
+tests/test_report_rows.cpp | report counts every library copy of a chart, and leaves out a chart the library dropped
+tests/test_report_rows.cpp | path report: the Charts shown tile counts what generate_report counts
+tests/test_report_rows.cpp | generate_report hands over its rows, subtitle and footer
+tests/test_report_rows.cpp | path report coverage: shown + can't analyze + no result is the library count (corpus)
+tests/test_report_rows.cpp | report lists only the wanted cap and names it
+tests/test_report_rows.cpp | generate_report reports a 1.0-fills database under the 1.0 rule
+tests/test_report_rows.cpp | the report names a chart the scan found twice by its first copy
+tests/test_report_rows.cpp | generate_report: one seam frames the report for every entry point
+tests/test_report_rows.cpp | generate_report: \"every path\" is the sentinel's, a huge --paths stays a count
+tests/test_report_rows.cpp | generate_report hands back nothing when its cancel flag is set
+tests/test_report_rows.cpp | a report with no analysis settings is refused
+tests/test_rules.cpp | rules: the leeway changes what the engine counts
+tests/test_rules.cpp | rules: max_tied_paths caps the tied paths the engine keeps
+tests/test_rules.cpp | rules: max_tied_paths is one count per score, inside paths first
+tests/test_rules.cpp | rules: a path over the Path limit stays kept when it ties the optimal score
+tests/test_rules.cpp | rules: a path over the Path limit below the best score is dropped even as a tie
+tests/test_rules.cpp | rules: the engine's tied count matches the recount
+tests/test_saved_figure_fill.cpp | the fill on several workers writes the same figures as on one
+tests/test_scoring.cpp | scoring: sqout_late_notes is what category_scores pays outside
+tests/test_search_target.cpp | search_target: every corpus path pinned in full comes back alone, the same
+tests/test_search_target.cpp | free after: with nothing pinned the search is the plain search
+tests/test_search_target.cpp | free after: a pinned window over the Path limit survives a soft and a hard limit
+tests/test_song_parse.cpp | song parse holds its invariants over the corpus
+tests/test_song_parse.cpp | a parsed song keeps no spare room in its chord list
+tests/test_song_parse.cpp | song parse holds its invariants at Hard too
+tests/test_song_parse.cpp | cymbal_counts: a cymbal marker counts only under Pro Drums
+tests/test_song_parse.cpp | .mid: each difficulty reads its own pitch base
+tests/test_sp_end.cpp | graph: every deactivation edge lists the chords squeeze_window_phrases names
+tests/test_sp_end.cpp | collected phrases: the corpus agrees with the squeezes and the SP end
+tests/test_sp_end.cpp | squeeze-out: one SqOut, last, and its offset is the search's and D's, on every corpus path
+tests/test_sp_end.cpp | SP end history: every corpus activation is consistent
+tests/test_sp_end.cpp | Bank: every corpus path banks in order
+tests/test_sp_meter_curve.cpp | sp meter curve: every corpus gauge starts at its spent bars and empties at its deact node
+tests/test_store_records.cpp | store: every path of one analysis carries the same note count
+tests/test_store_records.cpp | store: path rows measured on the corpus
+tests/test_store_results.cpp | a saved record reads back whole across the corpus and config matrix
+tests/test_tied_variants.cpp | tied variants: Don Broco - Actors at depth 40 shows each tied path's own bank
+tests/test_timing.cpp | timing: corpus conversions are monotone and consistent
+tests/test_track_state.cpp | synthesize at an instant's own time agrees with the sweep that filled it
+tests/test_track_state.cpp | rebuild_overlay_fields: equals a full build on every 8th corpus chart's stored paths
+
+== In-test .mid builders that mention no tom marker, fifth pad or key (91). Their pinned values may move.
+Each row: test file | test name.
+tests/test_analysis.cpp | discover_charts finds a folder whose notes and ini names are capitalized
+tests/test_analysis.cpp | analyze_chart_file reads a drum track whose first name is unrecognized
+tests/test_difficulty_table.cpp | difficulty table: the .mid parser reads each difficulty's kick from it
+tests/test_disco_flip.cpp | .mid: a disco marker flips only the difficulty it names
+tests/test_disco_flip.cpp | disco flip needs Pro Drums, in both formats and at every difficulty
+tests/test_disco_flip.cpp | disco: dnoflip still closes the section (Hydra's rule, not Clone Hero's)
+tests/test_dynamics_tag.cpp | dynamics tag: only Clone Hero's two exact spellings count
+tests/test_dynamics_tag.cpp | dynamics tag: at a shared tick, file order decides
+tests/test_dynamics_tag.cpp | dynamics tag: a late tag keeps its tick and the earlier markings
+tests/test_dynamics_tag.cpp | dynamics tag: a late tag after only plain notes is not stored
+tests/test_dynamics_tag.cpp | dynamics tag: a second tag changes nothing
+tests/test_dynamics_tag.cpp | dynamics tag: a tag in the EVENTS track does nothing
+tests/test_dynamics_tag.cpp | dynamics tag: the breakdown carries the tag's time and the count
+tests/test_fill_landing.cpp | fill landing: .mid window at resolution 480 is 16 ticks (the Thrice case)
+tests/test_fill_landing.cpp | fill landing: a fill is placed even when the next fill starts before its end chord (.mid)
+tests/test_fill_landing.cpp | fill landing: a .mid fill that starts on the coda tick never lands
+tests/test_fill_landing.cpp | fill landing: a .mid fill that starts one tick before the coda lands
+tests/test_fill_landing.cpp | fill landing: a .mid coda is trimmed, then compared whole and case-sensitively
+tests/test_fill_landing.cpp | fill landing: only the first .mid coda counts
+tests/test_fill_landing.cpp | fill landing: in 1.0 mode only a fill on the coda tick is skipped
+tests/test_fill_landing.cpp | fill landing: a chart whose only written fill the coda skipped gets no generated fill
+tests/test_fill_landing.cpp | fill landing: a lone written fill one tick before the coda still lands
+tests/test_fill_landing.cpp | fill landing: the lone-fill shapes with no written fill still generate
+tests/test_kick2x.cpp | .mid: each difficulty reads its own 2x kick pitch, as Clone Hero does
+tests/test_kick2x.cpp | .mid: Expert's 2x kick never swallows a Hard kick on the same tick
+tests/test_kick2x.cpp | .mid: a 2x kick merged with a normal kick keeps a ghost mark from either kick
+tests/test_kick2x.cpp | .mid: a ghost and an accent kick on one tick merge into an accent
+tests/test_kick2x.cpp | .mid: a kick the 2x Bass setting removes leaves no mark before the dynamics tag
+tests/test_midi.cpp | midi: running status and zero-velocity note_on
+tests/test_midi.cpp | midi: running status survives a meta event
+tests/test_midi.cpp | midi: a recognized track_name is not displaced by a later name
+tests/test_midi.cpp | midi: a recognized track_name wins over an earlier unrecognized one
+tests/test_midi.cpp | midi: a recognized track_name after tick 0 still wins
+tests/test_midi.cpp | midi: the first of two recognized track_names wins
+tests/test_midi.cpp | midi: a track with no recognized track_name keeps its first name
+tests/test_midi.cpp | midi: a track named by either drum name, in any case, is the drum track
+tests/test_midi.cpp | midi: of two drum tracks, the first in file order is the drum track
+tests/test_midi.cpp | midi: a drum track name wins over an earlier unrecognized one in any case
+tests/test_midi.cpp | midi: sysex and skipped metas do not lose time
+tests/test_midi.cpp | midi: track_name is not exposed as text
+tests/test_midi.cpp | midi: each text event is decoded on its own, UTF-8 first, else Windows-1252
+tests/test_midi.cpp | midi: each string meta gets its type, mido name and attribute
+tests/test_midi.cpp | midi: SMPTE division is rejected
+tests/test_midi.cpp | midi: a five-byte delta accumulates past 32 bits, as mido does
+tests/test_midi.cpp | midi: a message longer than mido's 1,000,000-byte cap refuses the file, as mido does
+tests/test_midi.cpp | midi: the lean reader keeps only what each track's role reads, at the same ticks
+tests/test_midi.cpp | midi: the lean reader keeps the notes of the first drum track by either name
+tests/test_midi.cpp | midi: the lean reader sizes each track's messages once
+tests/test_midi.cpp | midi: the lean reader refuses a file where the full reader does
+tests/test_midi.cpp | midi: is_midi_header reads the first four bytes only
+tests/test_midi.cpp | midi: a file with no track chunk is refused by both readers
+tests/test_midi.cpp | midi: a track header cut short by the end of the file ends the chunk walk
+tests/test_midi.cpp | midi: a drum track on track 0 is not the drum track, so the chart has no notes
+tests/test_midi.cpp | midi: with drum tracks on track 0 and track 1, track 1 is read
+tests/test_midi.cpp | midi: the events track is named events in any case, and track 0 can be it
+tests/test_midi.cpp | midi: of two events tracks, only the first one's sections count
+tests/test_midi.cpp | midi: [section _ENDOFSONG] is not a section
+tests/test_midi.cpp | midi: a section text holding _ENDOFSONG in its middle is not a section
+tests/test_midi.cpp | midi: [section _endofsong] in lower case stays a section
+tests/test_midi.cpp | midi: [prc__ENDOFSONG] stays a section
+tests/test_midi.cpp | midi: [end] on the events track is the end event, first one wins
+tests/test_midi.cpp | midi: the lean read keeps the end event
+tests/test_midi.cpp | midi: a bass sustain past the last drum note is the last note end; BEAT, VENUE and EVENTS don't count
+tests/test_midi.cpp | mid: a lane's velocity picks the lowest difficulty that shows it
+tests/test_midi.cpp | mid: 126 is a single lane and 127 a double, note-on to note-off
+tests/test_phrase_end.cpp | phrase end: a phrase ending on or between chords flags the last chord inside
+tests/test_phrase_end.cpp | phrase end: a phrase running past the last note flags that note
+tests/test_phrase_end.cpp | phrase end: a zero-length phrase on a chord flags nothing
+tests/test_sng.cpp | sng: the file table and each file decode
+tests/test_sng.cpp | sng: truncated input stops early instead of reading past the end
+tests/test_sng.cpp | sng: the note loader reads the chart through the shared reader
+tests/test_sng.cpp | sng: the note loader reads the header and the notes, not the audio
+tests/test_sng.cpp | sng: a header longer than the first read still loads
+tests/test_sng.cpp | sng: a source shorter than its stated size ends the header read
+tests/test_sng.cpp | sng: ranged reads fail a damaged container the way a whole read does
+tests/test_sng.cpp | sng: a container parses the same from bytes as from its path
+tests/test_sng.cpp | sng: a chart's id is the MD5 of the notes file inside it
+tests/test_sng.cpp | sng: the scan trims each name field before the unknown-name fallback
+tests/test_song_input.cpp | .mid: practice sections come from the first EVENTS track only, and the time box 
+tests/test_song_input.cpp | .mid: after [section _ENDOFSONG] the time box still names the section before it
+tests/test_song_input.cpp | .mid: a drum track named PART DRUM reads the same Expert notes as PART DRUMS
+tests/test_song_input.cpp | a chart with no tempo at tick 0 is a timing refusal in both formats
+tests/test_song_parse.cpp | .mid: the note on the solo marker's note-off tick is outside the solo
+tests/test_song_parse.cpp | song: solo_sections lists each run of solo chords once
+tests/test_song_parse.cpp | .mid: EVENTS text metas become practice sections
+tests/test_song_parse.cpp | .mid: a timing line that can't measure time
+tests/test_song_parse.cpp | a resolution that is 0 or negative is refused in both formats
+tests/test_song_parse.cpp | mid: kick velocity is read as ghost/accent, like a pad's
+tests/test_song_parse.cpp | mid: a stray SP note-off flags nothing
+tests/test_song_parse.cpp | .mid: disco markers match the pinned tables
+tests/test_srb.cpp | srb: the notes entry is found by its exact name, never by its extension
+
+== In-test .mid builders that mention one of them (16). A mention is not proof the test's chart carries it; T6 reads the test.
+Each row: what it mentions | test file | test name.
+fifth pad | tests/test_five_lane.cpp | five-lane .mid: every note is kept
+fifth pad | tests/test_five_lane.cpp | five-lane .mid: yellow is a cymbal, blue a tom, orange a green cymbal, green a green tom
+fifth pad | tests/test_five_lane.cpp | five-lane .mid: orange and green on one tick read as a green cymbal and a blue tom
+fifth pad | tests/test_five_lane.cpp | five-lane .mid: a green pad on Easy alone still converts Expert
+fifth pad | tests/test_five_lane.cpp | five-lane .mid: an accent and a ghost on the green pad survive the conversion
+fifth pad | tests/test_five_lane.cpp | five-lane .mid: Star Power, a solo and a 2x kick read the same beside a green pad
+tom marker,fifth pad | tests/test_five_lane.cpp | five-lane .mid: with a tom marker the four-lane branch makes the green pad a tom
+fifth pad | tests/test_five_lane.cpp | five-lane .mid: with Pro Drums off no converted cymbal counts
+fifth pad | tests/test_five_lane.cpp | five-lane .mid: a disco section flips the converted chord
+fifth pad | tests/test_five_lane.cpp | five-lane .mid: blue, orange and green on one tick load with a green cymbal and a blue tom
+fifth pad | tests/test_five_lane.cpp | five-lane: the .mid reader and the .chart reader give the same chords for fixture A
+tom marker,fifth pad,five_lane_drums | tests/test_five_lane.cpp | five-lane .mid: five_lane_drums takes the five-lane branch despite a tom marker
+five_lane_drums | tests/test_five_lane.cpp | five-lane .mid: five_lane_drums alone makes a four-pad chart's blue a tom
+fifth pad,pro_drums | tests/test_five_lane.cpp | five-lane .mid: pro_drums = True with a fifth pad takes the four-lane branch
+fifth pad | tests/test_five_lane.cpp | five-lane .mid: blue, orange and green on one tick keep the green pad's accent
+fifth pad | tests/test_midi.cpp | midi: the last note end reads each instrument once, from track 1, by instrument name
+
+== Tests whose text writes a key as a number (0). The key reader reads these differently after the plan.
+Each row: keys | test file | test name.
