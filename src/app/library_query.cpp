@@ -389,14 +389,26 @@ LibraryQuery parse_library_query(std::string_view text) {
 
 SearchableRow make_searchable(std::string_view title, std::string_view artist,
                               std::string_view charter, std::string_view folder,
-                              std::string_view album) {
+                              std::string_view album, StrippedRow& stripped) {
+    stripped.title = strip_rich_tags(title);
+    stripped.artist = strip_rich_tags(artist);
+    stripped.album = strip_rich_tags(album);
+    stripped.charter = strip_rich_tags(charter);
+    stripped.folder = strip_rich_tags(folder);
     SearchableRow row;
-    row.title = fold_for_search(strip_rich_tags(title));
-    row.artist = fold_for_search(strip_rich_tags(artist));
-    row.album = fold_for_search(strip_rich_tags(album));
-    row.charter = fold_for_search(strip_rich_tags(charter));
-    row.folder = fold_for_search(strip_rich_tags(folder));
+    row.title = fold_for_search(stripped.title);
+    row.artist = fold_for_search(stripped.artist);
+    row.album = fold_for_search(stripped.album);
+    row.charter = fold_for_search(stripped.charter);
+    row.folder = fold_for_search(stripped.folder);
     return row;
+}
+
+SearchableRow make_searchable(std::string_view title, std::string_view artist,
+                              std::string_view charter, std::string_view folder,
+                              std::string_view album) {
+    StrippedRow stripped;
+    return make_searchable(title, artist, charter, folder, album, stripped);
 }
 
 std::string search_field(std::string_view song, std::string_view artist,

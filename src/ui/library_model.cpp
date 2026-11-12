@@ -156,9 +156,34 @@ size_t ChipCounts::of(StatusChip chip) const {
     return all;
 }
 
+namespace {
+
+// The search text's field for one column before Best path: the stored text
+// make_searchable folded, with its tags stripped, and that text folded.
+struct SearchField {
+    const std::string& stripped;
+    const std::string& folded;
+};
+
+SearchField search_field_of(const app::StrippedRow& stripped, const app::SearchableRow& folded,
+                            int column) {
+    switch (sort_of(column)) {
+        case LibrarySort::Title: return {stripped.title, folded.title};
+        case LibrarySort::Artist: return {stripped.artist, folded.artist};
+        case LibrarySort::Album: return {stripped.album, folded.album};
+        case LibrarySort::Charter: return {stripped.charter, folded.charter};
+        case LibrarySort::Folder: return {stripped.folder, folded.folder};
+        case LibrarySort::BestPath: break;  // set_charts makes no Best path key
+    }
+    return {stripped.folder, folded.folder};
+}
+
+}  // namespace
+
 void LibraryModel::set_charts(std::vector<store::ChartLibraryEntry> charts) {
     rows_.clear();
     rows_.reserve(charts.size());
+    app::StrippedRow stripped;
     for (store::ChartLibraryEntry& entry : charts) {
         LibraryRow row;
         row.title = display_title(entry.title);  // "(unknown)" when only tags
@@ -166,13 +191,19 @@ void LibraryModel::set_charts(std::vector<store::ChartLibraryEntry> charts) {
         row.album = display_album(entry.album);  // blank stays blank
         row.charter = display_charter(entry.charter);
         row.searchable = app::make_searchable(entry.title, entry.artist, entry.charter,
-                                              entry.rootfolder, entry.album);
+                                              entry.rootfolder, entry.album, stripped);
         row.entry.md5 = std::move(entry.md5);
         row.entry.notespath = std::move(entry.notespath);
         row.entry.rootfolder = std::move(entry.rootfolder);
         entry = {};  // the rest of the scan's row goes now, not when the load ends
-        for (int c = 0; c < kColumnBestPath; ++c)
-            row.sort_keys[static_cast<size_t>(c)] = app::fold_for_search(library_cell_text(row, c));
+        // A sort key is the shown text folded. Where the shown text is the
+        // search text's stripped text, the search text holds that fold already.
+        for (int c = 0; c < kColumnBestPath; ++c) {
+            const std::string shown = library_cell_text(row, c);
+            const SearchField field = search_field_of(stripped, row.searchable, c);
+            row.sort_keys[static_cast<size_t>(c)] =
+                shown == field.stripped ? field.folded : app::fold_for_search(shown);
+        }
         rows_.push_back(std::move(row));
     }
     ++rows_version_;
