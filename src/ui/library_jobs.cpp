@@ -28,18 +28,20 @@ void set_store_open_gate_for_test(StoreOpenGate gate) { g_store_open_gate = std:
 std::string StoreOpenProgress::label() const {
     // The library read names its two steps on every file, upgraded or not
     // (the user's answer of 2026-11-12).
-    if (step == Step::ReadingCharts) return "Reading your charts...";
-    if (step == Step::ReadingResults) return "Reading your results...";
-    // A file that needs no conversion reads one line while it opens.
-    if (!upgrading) return "Opening your library...";
+    // The conversion's two steps read as such only on an upgrading file; every
+    // other state reads as the open.
     switch (step) {
-        case Step::ConvertingRecords: return "Updating the results table...";
-        case Step::ReadingSavedPaths: return kReadingSavedPathsLabel;
-        case Step::Opening:  // the store reports Opening only before the conversion
-        case Step::ReadingCharts:
-        case Step::ReadingResults: return "Finishing...";
+        case Step::ReadingCharts: return "Reading your charts...";
+        case Step::ReadingResults: return "Reading your results...";
+        case Step::ConvertingRecords:
+            if (upgrading) return "Updating the results table...";
+            break;
+        case Step::ReadingSavedPaths:
+            if (upgrading) return kReadingSavedPathsLabel;
+            break;
+        case Step::Opening: break;
     }
-    return "Finishing...";
+    return "Opening your library...";
 }
 
 namespace {
