@@ -422,6 +422,14 @@ using OpenProgressFn = std::function<bool(const OpenProgress&)>;
 // Cancelled (core/error_kind.h) and the store answers later calls as before.
 using RowsReadFn = std::function<bool(int64_t rows_read)>;
 
+// The order RecordStore hands library rows over in. ByName is by the stored
+// name; its SQL clause in record_store.cpp (kByName) says exactly how.
+// Unsorted promises no order, so SQLite reads the table without a sort: for a
+// reader that sorts the rows itself (ui::read_library, whose LibraryModel
+// sorts on the shown text). Scan order has its own one reader,
+// RecordStore::chart_index.
+enum class LibraryOrder { ByName, Unsorted };
+
 // ---- the store's own statement and row readers ------------------------------
 // RecordStore compiles, steps and reads its rows through these. They are
 // declared here so hydra_bench's --open mode can build the same row objects
@@ -631,24 +639,26 @@ public:
     // rebuild_chart_library replaces the table.
     ChartLibraryCache chart_library_cache();
 
-    // The whole library, by name. A negative limit means no limit (SQLite's
-    // LIMIT convention). Searching is the library view's (query_matches in
-    // app/library_query.h), not SQL's. Each entry's timing is set only when
-    // the table's kChartMetaStamp is current, the stamp the scan that read it
-    // wrote; rows an older scan wrote carry none. `on_row`, when set, is told
-    // each row as it is read (RowsReadFn); empty for a caller with nothing to
-    // show.
+    // The whole library, in `order` (LibraryOrder). A negative limit means no
+    // limit (SQLite's LIMIT convention). Searching is the library view's
+    // (query_matches in app/library_query.h), not SQL's. Each entry's timing
+    // is set only when the table's kChartMetaStamp is current, the stamp the
+    // scan that read it wrote; rows an older scan wrote carry none. `on_row`,
+    // when set, is told each row as it is read (RowsReadFn); empty for a
+    // caller with nothing to show.
     int64_t chart_library_count();
     std::vector<ChartLibraryEntry> list_chart_library(int offset, int limit,
-                                                      const RowsReadFn& on_row = {});
+                                                      const RowsReadFn& on_row = {},
+                                                      LibraryOrder order = LibraryOrder::ByName);
     // Whether the library's rows came from a scan whose readers are no longer
     // current, so a new scan would read something the last one did not.
     // kChartMetaStamp owns which stamps count as current. An empty library is
     // never out of date.
     bool chart_library_out_of_date();
     // The library's rows for one chart, one per copy the scan listed, read
-    // the way list_chart_library reads them. A click on a library row picks
-    // its copy from these (ui::AppState::select).
+    // the way list_chart_library reads them, in LibraryOrder::ByName. A click
+    // on a library row picks its copy from these (ui::AppState::select), and
+    // so does a chart whose every copy is hidden (ui::AppState::select_chart).
     std::vector<ChartLibraryEntry> list_chart_library_copies(const std::string& md5);
 
     // The library's charts, their copies and naming copies (ChartIndex),

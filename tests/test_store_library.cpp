@@ -1,11 +1,12 @@
 // Tests for the library table in store/record_store.{h,cpp}: a scan rebuilds
 // it whole or not at all, a result takes its names from it, its rescan cache
 // is read only under a current stamp, a chart the scan no longer lists
-// loses its stored rows, and a chart list read reports its rows and can be
-// stopped.
+// loses its stored rows, a chart list read reports its rows and can be
+// stopped, and both read orders (LibraryOrder) give the rows they promise.
 
 #include "doctest.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <map>
@@ -460,4 +461,100 @@ TEST_CASE("store: a chart list read that is told to stop stops") {
     // The stopped read left the store able to answer the next one.
     CHECK(store.list_chart_library(0, -1).size() == 4);
     CHECK(store.chart_library_count() == 4);
+}
+
+namespace {
+
+// The md5s of `rows`, sorted: which rows came, whatever their order.
+std::vector<std::string> md5_set_of(const std::vector<ChartLibraryEntry>& rows) {
+    std::vector<std::string> out = md5s_of(rows);
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
+}  // namespace
+
+TEST_CASE("store: the unsorted chart list read returns the rows the read by name does") {
+    RecordStore store(":memory:");
+    store.rebuild_chart_library({library_row("d", "D"), library_row("b", "B"),
+                                 library_row("a", "A"), library_row("c", "C")});
+    const std::vector<ChartLibraryEntry> by_name = store.list_chart_library(0, -1);
+
+    std::vector<int64_t> reported;
+    const std::vector<ChartLibraryEntry> unsorted = store.list_chart_library(
+        0, -1,
+        [&](int64_t rows_read) {
+            reported.push_back(rows_read);
+            return true;
+        },
+        LibraryOrder::Unsorted);
+    CHECK(reported == std::vector<int64_t>{1, 2, 3, 4});
+    CHECK(md5_set_of(unsorted) == md5_set_of(by_name));
+    // The same rows, field for field, whichever order read them.
+    for (const ChartLibraryEntry& e : unsorted) {
+        CAPTURE(e.md5);
+        bool found = false;
+        for (const ChartLibraryEntry& n : by_name) {
+            if (n.md5 != e.md5) continue;
+            found = true;
+            CHECK(n.title == e.title);
+            CHECK(n.artist == e.artist);
+            CHECK(n.charter == e.charter);
+            CHECK(n.album == e.album);
+            CHECK(n.notespath == e.notespath);
+            CHECK(n.rootfolder == e.rootfolder);
+            CHECK(n.sig == e.sig);
+            CHECK(n.timing == e.timing);
+        }
+        CHECK(found);
+    }
+}
+
+TEST_CASE("store: an unsorted chart list read that is told to stop stops") {
+    RecordStore store(":memory:");
+    store.rebuild_chart_library({library_row("a", "A"), library_row("b", "B"),
+                                 library_row("c", "C"), library_row("d", "D")});
+
+    std::vector<int64_t> reported;
+    bool cancelled = false;
+    try {
+        store.list_chart_library(
+            0, -1,
+            [&](int64_t rows_read) {
+                reported.push_back(rows_read);
+                return rows_read < 2;
+            },
+            LibraryOrder::Unsorted);
+    } catch (const Cancelled& e) {
+        cancelled = e.kind() == ErrorKind::Cancelled;
+    }
+    CHECK(cancelled);
+    CHECK(reported == std::vector<int64_t>{1, 2});
+    CHECK(store.list_chart_library(0, -1, {}, LibraryOrder::Unsorted).size() == 4);
+    CHECK(store.chart_library_count() == 4);
+}
+
+TEST_CASE("store: rows read by name compare byte for byte, and one name keeps scan order") {
+    // Four copies of one chart and one other chart. "Song" twice, scanned
+    // with the later path first; "song" (lowercase sorts after every
+    // uppercase letter byte for byte) and "Alpha".
+    std::vector<ChartLibraryEntry> rows = {library_row("x", "Song"), library_row("x", "song"),
+                                           library_row("x", "Song"), library_row("x", "Alpha"),
+                                           library_row("y", "Other")};
+    const char* paths[] = {"C:\\z\\notes.chart", "C:\\l\\notes.chart", "C:\\a\\notes.chart",
+                           "C:\\q\\notes.chart", "C:\\o\\notes.chart"};
+    for (size_t i = 0; i < rows.size(); ++i) rows[i].notespath = paths[i];
+    RecordStore store(":memory:");
+    store.rebuild_chart_library(rows);
+
+    std::vector<std::string> copies;
+    for (const ChartLibraryEntry& e : store.list_chart_library_copies("x"))
+        copies.push_back(e.notespath);
+    CHECK(copies == std::vector<std::string>{"C:\\q\\notes.chart", "C:\\z\\notes.chart",
+                                             "C:\\a\\notes.chart", "C:\\l\\notes.chart"});
+    std::vector<std::string> listed;
+    for (const ChartLibraryEntry& e : store.list_chart_library(0, -1)) listed.push_back(e.notespath);
+    CHECK(listed == std::vector<std::string>{"C:\\q\\notes.chart", "C:\\o\\notes.chart",
+                                             "C:\\z\\notes.chart", "C:\\a\\notes.chart",
+                                             "C:\\l\\notes.chart"});
 }
