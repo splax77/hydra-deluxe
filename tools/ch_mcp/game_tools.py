@@ -166,24 +166,6 @@ def cap_for_end(length_ms: Optional[float]) -> float:
     return play_chart.RUN_CAP_S if length_ms is None else bot_run.run_cap_s(length_ms)
 
 
-def folder_end(song_folder: Optional[str]) -> Optional[Tuple[float, str]]:
-    """bot_run.song_length_ms for `song_folder` (one hydra_replay dump of its
-    chart), or None when no folder is given or Hydra names no end for it."""
-    if song_folder is None:
-        return None
-    try:
-        return bot_run.song_length_ms(song_folder)
-    except bot_run.SongLengthMissing:
-        return None
-
-
-def run_cap_s(song_folder: Optional[str]) -> float:
-    """cap_for_end of Hydra's song end for the song in `song_folder`
-    (folder_end), for a caller that holds no schedule or dump of the song."""
-    end = folder_end(song_folder)
-    return cap_for_end(None if end is None else end[0])
-
-
 def schedule_run_cap_s(schedule_json: str) -> Tuple[float, float]:
     """cap_for_end of the song end the run's schedule holds, read through
     hydra_end.song_length_ms with no new dump, and that end. Raises
@@ -902,9 +884,9 @@ class GameTools:
     # -- the stats files ----------------------------------------------------------
 
     def ch_install_chart(self, chart_folder: str, name: Optional[str] = None) -> str:
-        """Copy one chart folder into the probe song folder with a silent
-        song.ogg and a marked title (install_chart.install), waiting at most
-        INSTALL_CAP_S."""
+        """Copy one chart folder's song.ini and chart into the probe song
+        folder with a silent song.ogg and a marked title (install_chart.install),
+        waiting at most INSTALL_CAP_S."""
         with self._lock:
             box: dict = {}
 

@@ -218,7 +218,7 @@ class SpTools:
                 cap_s = self._game.cap_for_end(song_end_ms)
                 # cap_for_end falls back to the default cap itself when the
                 # folder has no length, so the line says which one it is.
-                cap_line = (f"run cap: {cap_s:g} s (game_tools.run_cap_s for {song_folder})"
+                cap_line = (f"run cap: {cap_s:g} s (game_tools.cap_for_end of Hydra's end for {song_folder})"
                             if song_end_ms is not None else
                             f"run cap: {cap_s:g} s (default; no song length for {song_folder})")
             lines = [line for line in (self._game.ensure_backup(),) if line]

@@ -278,7 +278,7 @@ class SpToolsTest(unittest.TestCase):
         tools = self.tools(script)
         dumps_before = len(FAKE.charts)
         reply = self.started(tools, song_folder=folder)
-        self.assertIn(f"run cap: 240 s (game_tools.run_cap_s for {folder})", reply)
+        self.assertIn(f"run cap: 240 s (game_tools.cap_for_end of Hydra's end for {folder})", reply)
         self.assertTrue(script.done.wait(WAIT_S))
         tools.ch_sp_watch_stop()
         # One dump of the folder's chart gives both the cap and the gap

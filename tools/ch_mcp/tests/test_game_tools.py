@@ -764,20 +764,9 @@ class GameToolsTest(unittest.TestCase):
 
     def test_run_cap_is_the_song_plus_the_extra_minute_else_240_s(self):
         t = ToolRig(self.tmp)
-        # Hydra's end in the fake dump, not song.ini's own line.
-        _write(os.path.join(t.r.song, G.SONG_INI), b"[song]\nsong_length = 9999\n")
-        FAKE.set_end(t.r.chart, 260504)
-        self.assertEqual(GT.run_cap_s(t.r.song), 320.504)
-        self.assertEqual(FAKE.charts[-1], t.r.chart)
         self.assertEqual(t.tools.cap_for_end(260504), 320.504)
+        self.assertEqual(GT.cap_for_end(260504), 320.504)
         self.assertEqual(GT.cap_for_end(None), 240.0)
-        FAKE.set_end(t.r.chart, None)
-        self.assertEqual(GT.run_cap_s(t.r.song), 240.0)
-        no_chart = os.path.join(self.tmp, "no chart")
-        os.makedirs(no_chart)
-        _write(os.path.join(no_chart, G.SONG_INI), b"[song]\nsong_length = 260504\n")
-        self.assertEqual(GT.run_cap_s(no_chart), 240.0)
-        self.assertEqual(GT.run_cap_s(None), 240.0)
 
     def test_the_schedules_run_cap_reads_its_song_end_and_refuses_null(self):
         schedule = self._schedule_json({**SCHEDULE_JSON, "song_length_ms": 260504})
@@ -2556,7 +2545,7 @@ class RecorderTest(unittest.TestCase):
         self.assertEqual(command[:2], [sys.executable, "-I"])
         self.assertEqual(command[command.index("--parent") + 1], str(os.getpid()))
         self.assertEqual(command[command.index("--run-cap-s") + 1],
-                         str(GT.run_cap_s(self.t.r.song)))
+                         "64.0")
         self.assertEqual(command[command.index("--out") + 1], self.folder())
         self.assertNotIn("--rate", command)
         self.assertNotIn("--cap-s", command)
