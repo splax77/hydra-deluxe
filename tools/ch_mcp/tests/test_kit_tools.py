@@ -29,6 +29,7 @@ from tools.ch_mcp import build_stamp as BS  # noqa: E402
 from tools.ch_mcp import frida_tools as FT  # noqa: E402
 from tools.ch_mcp import game_files as G  # noqa: E402
 from tools.ch_mcp import kit_tools as K  # noqa: E402
+from tools.ch_probe.constants import ms_to_s  # noqa: E402
 from tools.ch_mcp.tests.test_frida_attach import (  # noqa: E402
     FakeFrida, ReplySession, instant_wait)
 from tools.ch_mcp.tests.test_build_stamp import make_built_agent  # noqa: E402
@@ -1019,8 +1020,8 @@ class FrameProbeTest(Rig):
         for i in range(frames):
             if i and i == skip_at:
                 frame += 1
-            song = 10.0 + i * 0.003
-            rows.append({"frame": frame, "engine_clock_s": song + (1 + i % 3) / 1000.0,
+            song = 10.0 + ms_to_s(i * ms_per_frame)
+            rows.append({"frame": frame, "engine_clock_s": song + ms_to_s(1 + i % 3),
                          "song_time_s": song, "wall_ms": 50_000 + i * ms_per_frame,
                          "wrote": "down" if i == 0 else ("up" if i == 2 else None),
                          "any_button": any_button and 1 <= i <= 3,
