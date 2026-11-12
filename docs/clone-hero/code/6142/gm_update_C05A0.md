@@ -7,3 +7,4 @@ Lines 164-170: when songTime is past farthestTimeReached (+0x88), it is stored t
 Lines 178-180: the song-end test. songTime (+0x70) is compared with songLength (+0x50); a smaller songTime jumps past the end block, so the end block runs when songTime >= songLength.
 Lines 181-209: the end block. If the GlobalVariables byte +0x72 is set, line 209 calls the GameManager method 0xBF510 with dl = 1. Otherwise, unless the FadeBehaviour check at line 199 returns true, line 204 calls the GameManager method 0xBD640 (gm_song_over_BD640.md), which sets isSongOver.
 Field names from dump.cs lines 25298 to 25311. Lines 210 to 351 (input and practice handling) were not read line by line.
+Line 157 calls the video-time getter `0x16C490`; line 159 stores the result at +0x78, which is `GameManager.songTimeVideoTime` (`dump.cs` line 25305). (Read in task CH-UNK-W4.)
