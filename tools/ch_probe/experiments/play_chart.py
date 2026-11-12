@@ -510,6 +510,34 @@ def start_line(raw_s: float, messages: Sequence[Tuple[Press, List[Press]]],
             f"less than {live.START_LEAD_MS:g} ms ahead of the clock.", skipped)
 
 
+class _TimedWait:
+    """The clock and the sleep play_chords gives live.wait_until, each timed
+    with `now`, so a row can say how long the wait's slowest clock read took
+    and how far its worst sleep ran past what it asked. reset starts the
+    two over for the next message."""
+
+    def __init__(self, clock, now: Callable[[], float],
+                 sleep: Callable[[float], None]) -> None:
+        self._clock, self._now, self._sleep = clock, now, sleep
+        self.reset()
+
+    def reset(self) -> None:
+        self.read_max_ms = 0.0
+        self.oversleep_max_ms = 0.0
+
+    def read(self):
+        began = self._now()
+        value = self._clock.read()
+        self.read_max_ms = max(self.read_max_ms, C.s_to_ms(self._now() - began))
+        return value
+
+    def sleep(self, seconds: float) -> None:
+        began = self._now()
+        self._sleep(seconds)
+        self.oversleep_max_ms = max(self.oversleep_max_ms,
+                                    C.s_to_ms(self._now() - began - seconds))
+
+
 def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
                 press: Callable[..., object], *,
                 now: Callable[[], float] = time.perf_counter,
@@ -559,6 +587,20 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
     and no score after, and its rows say DROPPED in the send column with the
     clock it was dropped at.
 
+    The first row of each message carries overlay_logs.TIMING_PRESS_COLUMNS,
+    each in ms on the `now` timer, so a stall names the step it happened in
+    (PS3 of docs/superpowers/plans/2026-11-12-player-stall-fixes.md).
+    `wait_read_max_ms` is the slowest single clock read of the wait for the
+    message, and `wait_oversleep_max_ms` the most a sleep of that wait ran
+    past what it asked. `press_took_ms` is the press call, `reply_check_took_ms`
+    the kit reply's check, and `end_read_took_ms` the Star Power end read with
+    its retime; each is left out when its step did not run. `score_read_took_ms`
+    adds up the score read before the press and the one after it, without the
+    SCORE_READ_DELAY_S sleep between them. `prev_handoff_took_ms` is how long
+    `on_press` took for the message before, since a row is handed over before
+    its own hand-off ends; it is left out on the first message and when there
+    is no `on_press`.
+
     The live script passes the game's; the tests pass fakes. `now` and
     `sleep` are the timer the stop checks and the waits use. `wall` stamps
     each row's wall columns: it is the watch's clock, because `now` shares no
@@ -603,16 +645,24 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
     print(f"\n  {'#':>4}  {'chart_t':>7}  {'clock':>7}  {'diff_ms':>7}  {'lanes':10}  "
           f"{'send':8}", file=out)
 
+    def took_ms(began: float) -> float:
+        return C.s_to_ms(now() - began)
+
+    timed_wait = _TimedWait(clock, now, sleep)
+    # How long on_press took for the message before (prev_handoff_took_ms).
+    prev_handoff_ms: Optional[float] = None
+
     try:
         while cursor < len(presses):
             # One message: a chord, with any later order groups of it, or one
             # part of a squeezed-out chord.
             chord, later = presses[cursor]
             lead_ms = chord.lead_ms
+            timed_wait.reset()
             try:
                 raw_ms, _est_ms = live.wait_until(
-                    clock, chord.chart_ms, lead_ms=lead_ms, stopped=stopped,
-                    should_stop=over_cap, now=now, sleep=sleep)
+                    timed_wait, chord.chart_ms, lead_ms=lead_ms, stopped=stopped,
+                    should_stop=over_cap, now=now, sleep=timed_wait.sleep)
             except live.ClockJumpedBack as e:
                 # A restart or seek: rebuild the cursor from the new clock
                 # position rather than assuming the song went back to note 0.
@@ -635,7 +685,9 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
                     return result
                 continue
             wall_s_at_read = wall()
+            began = now()
             score_before = read_score()
+            score_read_ms = took_ms(began)
 
             # A message whose first press the game would judge past its
             # chord's window is not sent, later groups and all: design point 5
@@ -644,22 +696,30 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
             sends = not (chord.declined and not chord.lanes)
             dropped = sends and raw_ms > chord.last_send_ms
 
+            # Each step's time, None while the step has not run.
+            steps_ms: dict = {}
             # A declined chord in a mode that keeps no gem sends no press.
             if not sends or dropped:
                 pressed = None
-            elif later:
-                pressed = press(chord.lanes, chord.axes,
-                                then=[(p.lanes, p.axes, p.after_ms) for p in later])
             else:
-                pressed = press(chord.lanes, chord.axes)
+                began = now()
+                if later:
+                    pressed = press(chord.lanes, chord.axes,
+                                    then=[(p.lanes, p.axes, p.after_ms) for p in later])
+                else:
+                    pressed = press(chord.lanes, chord.axes)
+                steps_ms["press_took_ms"] = took_ms(began)
             wall_s_at_reply = wall()
             if reply_gap is not None and sends and not dropped:
+                began = now()
                 gap = reply_gap(pressed, 1 + len(later))
+                steps_ms["reply_check_took_ms"] = took_ms(began)
                 if gap is not None:
                     raise ReplyMissing(f"the kit's reply to chord {chord.index}'s press {gap}")
 
             end_read = None
             if chord.planned_end_ms is not None and read_sp_end is not None and not dropped:
+                began = now()
                 end_s = read_sp_end()
                 if end_s is None:
                     end_read = NO_ACTIVATION_READ
@@ -670,13 +730,16 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
                     presses[cursor + 1:] = press_messages(retime_from_end(
                         rest, chord.index, end_read, chord_lanes))
                     notes_ms = [head.at_ms for head, _later in presses]
+                steps_ms["end_read_took_ms"] = took_ms(began)
 
             # Nothing was sent for a dropped message, so the fresh read stands.
             if dropped:
                 score_after = score_before
             else:
                 sleep(SCORE_READ_DELAY_S)
+                began = now()
                 score_after = read_score()
+                score_read_ms += took_ms(began)
 
             if dropped:
                 result.dropped += 1
@@ -688,6 +751,7 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
             # for a message with later groups; reply_gap checked it holds them.
             replies = ([] if reply_gap is None or pressed is None
                        else pressed["groups"] if later else [pressed])
+            handoff_ms = 0.0
             for k, part in enumerate([chord, *later]):
                 row = {
                     "index": part.index,
@@ -708,13 +772,23 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
                     row["scored_between"] = score_before - last_score
                     if end_read is not None:
                         row["end_read_ms"] = end_read
+                    row["wait_read_max_ms"] = timed_wait.read_max_ms
+                    row["wait_oversleep_max_ms"] = timed_wait.oversleep_max_ms
+                    row.update(steps_ms)
+                    row["score_read_took_ms"] = score_read_ms
+                    if prev_handoff_ms is not None:
+                        row["prev_handoff_took_ms"] = prev_handoff_ms
                 if k < len(replies):
                     # The row keeps the parts the press log has columns for.
                     row.update((key, replies[k][key]) for key in PRESS_LOG_COLUMNS
                                if key in replies[k] and key not in row)
                 result.rows.append(row)
                 if on_press is not None:
+                    began = now()
                     on_press(row)
+                    handoff_ms += took_ms(began)
+            if on_press is not None:
+                prev_handoff_ms = handoff_ms
 
             diff_ms = raw_ms - chord.chart_ms
             lane_str = " then ".join("+".join(LANE_NAMES.get(l, "?") for l in part.lanes)
