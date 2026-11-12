@@ -778,16 +778,6 @@ std::vector<uint64_t> read_in_slices(RecordStore& store, const hydra::app::Setti
     return answered;
 }
 
-// The row that lists chart `md5` (the test's charts other than "same" sit in
-// one folder each).
-const hydra::ui::LibraryRow& row_of(const hydra::ui::LibraryModel& library,
-                                    const std::string& md5) {
-    for (const hydra::ui::LibraryRow& row : library.rows())
-        if (row.entry.md5 == md5) return row;
-    FAIL("no row lists chart " << md5);
-    return library.rows().front();
-}
-
 }  // namespace
 
 TEST_CASE("jobs: results read in slices match one read") {
@@ -856,14 +846,15 @@ TEST_CASE("jobs: results read in slices match one read") {
         // Chart "zzz" gets a result after the first slice. Asked in hash
         // order, it is in the last slice, so its row reads that result. Asked
         // in row order, it was in the first slice and would read Not analyzed.
-        REQUIRE(row_of(whole, "zzz").status == hydra::store::RecordStatus::NotAnalyzed);
+        REQUIRE(whole.rows()[1].status == hydra::store::RecordStatus::NotAnalyzed);
         hydra::ui::LibraryModel sliced;
         const std::vector<uint64_t> answered =
             read_in_slices(store, settings, sliced, 2, [&](uint64_t rows_answered) {
                 if (rows_answered == 2) hydra::test::save_batch_record(store, "zzz", profile);
             });
         CHECK(answered == std::vector<uint64_t>{2, 4, 6, 8});
-        CHECK(row_of(sliced, "zzz").status == hydra::store::RecordStatus::Ready);
+        REQUIRE(sliced.rows()[1].entry.md5 == "zzz");
+        CHECK(sliced.rows()[1].status == hydra::store::RecordStatus::Ready);
     }
     SUBCASE("the real slice size") {
         hydra::ui::LibraryModel sliced;
