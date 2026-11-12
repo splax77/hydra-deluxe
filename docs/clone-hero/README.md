@@ -50,7 +50,7 @@ A `Found:` line gives the date and the session that found the rule, such as `202
 
 ## How many blocks each page holds
 
-These counts were taken from the pages on 2026-11-12, by counting their `###` headings and `Label:` lines with docs/audit/2026-11-08-clone-hero-unknowns/main/recount_labels.py, after the all-toms work added CR-54. The recount_labels_output.txt beside the script holds its 2026-11-11 output.
+These counts were taken from the pages on 2026-11-12, by counting their `###` headings and `Label:` lines with docs/audit/2026-11-08-clone-hero-unknowns/main/recount_labels.py, after the all-toms work added CR-54, plus IN-93 from LS-G1 added by hand. The recount_labels_output.txt beside the script holds its 2026-11-11 output.
 
 | Page | Blocks | Proven in the game's code | Proven in a live run | Hydra assumes it, never checked | Unknown |
 |---|---|---|---|---|---|
@@ -60,8 +60,8 @@ These counts were taken from the pages on 2026-11-12, by counting their `###` he
 | 04 fills | 45 | 36 | 2 | 4 | 3 |
 | 05 Star Power | 48 | 31 | 5 | 9 | 3 |
 | 06 scoring | 38 | 21 | 13 | 2 | 2 |
-| 07 internals | 92 | 63 | 17 | 0 | 12 |
-| All pages | 407 | 275 | 56 | 30 | 46 |
+| 07 internals | 93 | 63 | 18 | 0 | 12 |
+| All pages | 408 | 275 | 57 | 30 | 46 |
 
 Eleven of page 4's blocks describe build 1.0. The questions page holds 24 open questions and 4 recorded differences, and the live-checks page holds 59 checks covering 63 rows.
 

@@ -2,7 +2,7 @@
 
 This page covers the game's classes and fields that the tools read, the per-note hooks, the bot, the game's MIDI kit, and how the two builds name things.
 It describes build 1.1 (v1.1.0.6142), and says where 1.0 (v1.0.0.4045) differs.
-Last write-back: 2026-11-08.
+Last write-back: 2026-11-12.
 
 Most rows here are about the game's own layout, which no Hydra rule reads. Their Ruling line says so. The rules these fields feed (timing, Star Power, scoring) live on pages 03, 05 and 06. Paths that start `RUNS` mean `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-10-28\`; `GD` means Ghidra's full decompile `ghidra_decompile_all.txt`, which `code/README.md` describes (it is not in the repo); `dump.cs` is `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-dumps\6142\dump.cs`; `overlay-spike` means `tools/ch_probe/experiments/results/overlay-spike/`, whose result files are in the repo.
 
@@ -850,6 +850,15 @@ Hydra: no owner: Hydra never reads the running game. The tools press the kit wit
 Ruling: none needed: no Hydra rule reads it.
 Found: 2026-10-31, session a5f17ca5 (the probe); 2026-10-31, session a379bc75 (LS-K1); 2026-11-06, session 70bfa33d (LS-D1b to LS-D1d, LS-D2d).
 
+### IN-93 Inside a hook on GameManager.Update, a kit write reads one frame later, and the engine clock holds the frame before's songTime
+
+Rule: A hook that runs as `GameManager.Update` returns can write the virtual kit and call the kit player's button reads on every frame without a fault. A press written there reads as pressed on the next frame, and its release reads as off on the frame after the release write. At that point the engine's song clock (TM-13) still holds the `GameManager.songTime` the game stored one frame earlier, so the engine clock trails `songTime` by exactly one frame's step. Which part of the frame copies `songTime` to the engine was not read.
+Label: Proven in a live run
+Evidence: LS-G1 of `docs/superpowers/plans/2026-11-12-in-game-press-timing.md`, 2026-11-12, on The Who - Won't Get Fooled Again (O), ProDrums Expert, the kit on the System Player after a human command-line start; result file `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-12\ls-g1-run1\frame_probe-1.json`. The hook logged 1,649 frames, 2733 to 4381, each one above the last, over 4,997 ms of wall time, with no fault and the hook out afterwards. Green went down on frame 2733 and up on frame 2735; Green and GetAnyButton first read pressed on frame 2734 and read off again on frame 2736. On all 1,648 frame pairs, the engine clock read on a frame equals the `songTime` read on the frame before. The engine clock minus `songTime` had median -3.030 ms and widest -4.373 ms, which is that frame's step. The rate was 329.8 frames a second with no compiler running.
+Game code (6142): `GameManager.Update`, RVA `0xC05A0`, the method hooked; `GameManager.songTime`; field `#8288+0x100`, the engine clock (TM-13). The hop from `songTime` to the engine was not read.
+Hydra: no owner: Hydra never reads the running game. The tools run the probe with `ch_kit_frame_probe` and judge its reply with `frame_probe_lines` in tools/ch_mcp/kit_tools.py.
+Ruling: none needed: no Hydra rule reads it.
+Found: 2026-11-12, session 1ac0d6b4 (LS-G1)
 ### IN-78 The game takes the front just after launch, and keeps running behind other windows
 
 Rule: Asked to start minimized and not in front, the game still comes to the front 0.4 to 0.5 seconds after launch. In LS-K2 it kept the front until the user clicked another window. With `pause_on_focus_lost` at 0, as the tools set it for a run, the game keeps running when it is not in front.
