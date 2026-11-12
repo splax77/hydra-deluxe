@@ -2,7 +2,7 @@
 
 ## The plain version
 
-Opening the library takes 250.9 ms today on a copy of your library. That number, and every other timing here, is a median of 7 warm runs of Hydra's own C++ (`hydra_bench --open`), run by the main session on 2026-11-12. The full output is `open_bench.txt`, named in the Premise map (P1). No number in this plan comes from Python or a SQL shell. Where Hydra's C++ has not timed something yet, the plan says "not measured" and names the task that measures it.
+T2's numbers come from a second run, `open_bench_t2.txt`, on 2026-11-12, built from commit 7795f572, same command, same copy; its section 4 thread sweep gives the chart list 13.8 ms on 1 thread, 8.4 on 2, 5.8 on 4, 5.4 on 8, 5.7 on 12 and 10.4 on 16 (minimum 5.2; that median is noisy). Opening the library takes 250.9 ms today on a copy of your library. That number, and every other timing here, is a median of 7 warm runs of Hydra's own C++ (`hydra_bench --open`), run by the main session on 2026-11-12. The full output is `open_bench.txt`, named in the Premise map (P1). No number in this plan comes from Python or a SQL shell. Where Hydra's C++ has not timed something yet, the plan says "not measured" and names the task that measures it.
 
 Three savings are already measured. The counted bar costs 66.7 ms more than the same read without it. The chart list's `ORDER BY name` costs 33.4 ms that the library's own sort then repeats. Reading the chart list on threads would save a further 4.4 ms (2 threads) or 7.3 ms (4 threads).
 
@@ -16,16 +16,16 @@ Two questions are yours at the end of this plan: threads (question 1) and which 
 
 | What | Available today | Saving | Task |
 |---|---|---|---|
-| The counted bar: results read in 500-chart slices | 66.7 ms (the bench's difference of 250.9 counted and 184.1 uncounted) | not measured; T2 times the fix's prototype, T3 builds it | T2, T3 |
+| The counted bar: results read in 500-chart slices | 66.7 ms (the bench's difference of 250.9 counted and 184.1 uncounted) | 75.8 ms measured by T2 (stored-order slices 137.0 ms, hash-order slices 61.2 ms; one `lookup` call 73.7 ms); T3 builds it | T2, T3 |
 | Chart list read with no `ORDER BY name` | 46.6 ms sorted, on the bench's own connection | 33.4 ms (46.6 minus 13.2) | T4 |
 | Chart list on 2 threads, after T4 | 13.2 ms unsorted on one thread | 4.4 ms (13.2 minus 8.8) | T7, only on your yes (question 1) |
 | Chart list on 4 threads, after T4 | 13.2 ms | 7.3 ms (13.2 minus 5.9) | T7, only on your yes (question 1) |
-| Sort keys reuse the search text | 22.5 ms (sort keys pass) | not measured; T2 times a prototype | T2, T5 |
+| Sort keys reuse the search text | 22.5 ms (sort keys pass) | 16.5 ms measured by T2 (sort keys pass 22.8 ms, reusing the search text 6.3 ms) | T2, T5 |
 | Fold each field without copying it first | part of 22.5 ms | not measured; T5 times it by building it | T5 |
 | A faster path for plain ASCII text in the fold | part of 47.1 ms (24.6 plus 22.5) | not measured; T5 times it by building it | T5 |
-| Fold rows on 2 or 4 threads | 47.1 ms | not measured; T2 times a prototype | T2, T6 only on your yes (question 1) |
+| Fold rows on threads | 47.6 ms on 1 thread (T2) | T2 measured 24.2 ms on 2 threads, 12.8 on 4, 9.5 on 8, 7.4 on 12, 6.1 on 16 | T2, T6 only on your yes (question 1) |
 | Store the folded text in the database at scan time | 47.1 ms | not measured; no task builds it | Out of scope |
-| The results statement compiled again for each slice | part of 66.7 ms | not measured; T2 times it | T2 |
+| The results statement compiled again for each slice | part of 66.7 ms | 1.1 ms measured by T2 (stored order 137.0 ms, second pass 135.9 ms); too small to plan | T2 |
 | A cold start (first open after a reboot) | never timed | not measured; T8 tries to time it | T8 |
 | Read only the columns `set_charts` keeps | 13.2 ms | 0.9 ms (13.2 minus 12.3) | none: too small |
 | Read only the winning profile's path rows | 42.4 ms | 0.3 ms (42.4 minus 42.1) | none: nothing to save |
@@ -285,13 +285,13 @@ The program-load part of a cold start (see T8).
 | P8: The vendored SQLite 3.46.0 defaults to a 2,000 KiB page cache, 4,096-byte pages and no memory map | code | `third_party/sqlite/sqlite3.c:13864`, `:13917` and `:15125` | checked 2026-11-12 |
 | P9: The library copy is 23,216,128 bytes | code | `C:\Users\Patrick\AppData\Local\Temp\claude\b8c40ac9d5b73501\c8b70230-d47d-4a13-ba2e-f4c7048d9ab4\scratchpad\startup-bar\bench\hydra.db`, its size in a directory listing | checked 2026-11-12 |
 | P10: `set_charts` keeps the rows in the order it is given and sorts an index by the chosen column, then title, folder and file path | code | `src/ui/library_model.cpp:159` to `:181` and `:246` to `:293` | checked 2026-11-12 |
-| P11: The slices cost more because each one sweeps both result tables and the 2 MB cache cannot hold a sweep | unchecked | `src/store/record_store.cpp:1273` shows the per-call sort the reasoning rests on; nothing has timed it | T2 |
+| P11: Slices cut in hash order cost far less than slices in stored order, as the cache explanation predicts | run | T2's `hydra_bench --open` run, `open_bench_t2.txt`: stored order 137.0 ms, hash order 61.2 ms, second pass 135.9 ms | checked 2026-11-12 |
 | P12: The store keeps one compiled statement per distinct SQL text, and `lookup`'s text holds one `?` per hash | code | `src/store/record_store.cpp:83` to `:91` and `:1293` to `:1351` | checked 2026-11-12 |
 | P13: `lookup` does not call `ready_profile_ids`; it calls `ready_rules_fp`, which copies one 64-bit value | code | `src/store/record_store.cpp:1264` to `:1365` and `:401` to `:413` | checked 2026-11-12 |
 | P14: The bench branch changes four files and adds seven helpers and `ready_rules_fp` to the store's header | code | `git diff main...claude/exec-open-bench`, read for `src/store/record_store.h` and `CMakeLists.txt` | checked 2026-11-12 |
 | P15: `open_mode` runs a check before the file opens, and section 1 of the bench repeats `read_library`'s steps by hand | code | `tools/bench.cpp:934` to `:940` and `:1156` to `:1204` | checked 2026-11-12; the refusal (`refused_db`, `tools/bench.cpp:846` to `:861`) rejects a file in the installed Hydra's folder or the library beside the exe; T1's reviewer reads it too |
 | P16: Each row is folded ten times: five in `make_searchable` after `strip_rich_tags`, five for the sort keys through `library_cell_text`, which returns a copy | code | `src/app/library_query.cpp:390` to `:400`, `src/ui/library_model.cpp:135` to `:176` and `src/parse/song.cpp:558` to `:596` | checked 2026-11-12 |
-| P17: Reusing the search text for the sort key is faster than folding again | unchecked | `src/ui/library_model.cpp:175` is the fold it would skip; nothing has timed the reuse | T2 |
+| P17: Reusing the search text for the sort key is faster than folding again | run | T2's `hydra_bench --open` run, `open_bench_t2.txt`: sort keys pass 22.8 ms, reusing the search text 6.3 ms | checked 2026-11-12 |
 | P18: `list_chart_library` has three callers in `src` | code | `src/ui/library_jobs.cpp:69`, `src/ui/app_state.cpp:258` and `:905` | checked 2026-11-12 |
 | P19: The `charts` table has no uniqueness rule on `path` | code | `src/store/record_store.cpp:807` to `:829` | checked 2026-11-12 |
 | P20: Three of the four `app_state.cpp` row walks find a row by file path, and the fourth, `select_chart`'s second loop, picks a hidden copy by stored order | code | `src/ui/app_state.cpp:205`, `:214`, `:256` and `:646`, and `src/ui/library_model.h:83` (`row_key` is the notes path) | checked 2026-11-12, all four read |
