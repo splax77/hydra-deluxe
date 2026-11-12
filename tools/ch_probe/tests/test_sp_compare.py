@@ -367,10 +367,10 @@ class LsM2EndTest(unittest.TestCase):
                       report.lines[0])
 
 
-# Freak's sp_max at its resolution, 480: the plan's F5 acceptance
-# (docs/superpowers/plans/2026-11-08-player-audit-fixes.md) and SP-11.
+# Freak's resolution. Its sp_max, 14,400, is pinned in the test below: the
+# plan's F5 acceptance (docs/superpowers/plans/2026-11-08-player-audit-fixes.md)
+# and SP-11.
 FREAK_RESOLUTION = 480
-FREAK_SP_MAX = 14400
 # Hydra's own full bar at that resolution, 32 x 480 (SP-11), which the game's
 # meter is not.
 HYDRA_BAR_AT_FREAK_RESOLUTION = 15360
@@ -385,8 +385,8 @@ def _sp_max_lines(sp_max, resolution):
 
 class SpMaxTest(unittest.TestCase):
     def test_sp_max_is_checked_against_30_times_resolution(self):
-        self.assertEqual(sp_compare.game_full_meter(FREAK_RESOLUTION), FREAK_SP_MAX)
-        self.assertEqual(_sp_max_lines(FREAK_SP_MAX, FREAK_RESOLUTION),
+        self.assertEqual(sp_compare.game_full_meter(FREAK_RESOLUTION), 14400)
+        self.assertEqual(_sp_max_lines(14400, FREAK_RESOLUTION),
                          ["PASS sp_max 14400; the game's full meter "
                           "14400 (resolution 480 x 30)"])
         self.assertEqual(_sp_max_lines(HYDRA_BAR_AT_FREAK_RESOLUTION, FREAK_RESOLUTION),
