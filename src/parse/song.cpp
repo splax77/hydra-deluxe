@@ -453,14 +453,19 @@ struct TickPads {
     int count() const { return four.count() + fifth.count(); }
 };
 
-// The two facts about a whole drum chart that pick the conversion's branch,
-// Clone Hero's track flags +0xA1 and +0xA2 (docs/clone-hero/01-reading-a-chart.md
-// CR-18). Each reader works them out once, before its first chord: the .mid
-// reader in midi_drum_chart_flags, the .chart reader in
+// The facts about a whole drum chart that pick the conversion's branch: Clone
+// Hero's track flags +0xA1 and +0xA2 (docs/clone-hero/01-reading-a-chart.md
+// CR-18), and the song.ini switch that picks the five-lane branch on its own.
+// Each reader works them out once, before its first chord: the .mid reader in
+// midi_drum_chart_flags, the .chart reader in ChartParser::parse and
 // ChartParser::load_sections.
 struct DrumChartFlags {
     bool fifth_pad = false;  // a fifth-pad note on any difficulty
     bool pro_marks = false;  // a Pro Drums tom or cymbal marker
+    // song.ini's five_lane_drums (ChartDrumKeys). Probes C and E on
+    // v1.1.0.6142 (ch-mcp-runs/2026-11-12/five-lane) show the game takes the
+    // five-lane branch whenever it is set, Pro marks or not, in a .chart too.
+    bool five_lane_key = false;
 };
 
 // The five-lane conversion, Clone Hero's track step 0x215D450
@@ -472,10 +477,7 @@ struct DrumChartFlags {
 // notes. A cymbal is kept only where cymbal_counts says it counts, so with
 // Pro Drums off a converted chart has none, as any other chart.
 //
-// Left out: the song.ini byte that also picks the five-lane branch (NL-74),
-// the song.ini bytes the .mid flags start from (CR-18), the all-toms tail for a
-// chart with neither flag up, and the game's merge of two notes on one lane
-// (NL-77).
+// Left out: the all-toms tail for a chart with neither flag up.
 Chord convert_drum_pads(const TickPads& raw, const DrumChartFlags& flags, bool pro) {
     Chord chord = raw.four;
     const std::optional<ChordNote>& fifth = raw.fifth.at(NoteColor::Green);
@@ -486,7 +488,7 @@ Chord convert_drum_pads(const TickPads& raw, const DrumChartFlags& flags, bool p
         note->cymbaltype = cymbal && cymbal_counts(color, pro) ? NoteCymbalType::Cymbal
                                                                : NoteCymbalType::Normal;
     };
-    const bool five_lane = flags.fifth_pad && !flags.pro_marks;
+    const bool five_lane = (flags.fifth_pad && !flags.pro_marks) || flags.five_lane_key;
     if (five_lane) {
         // Yellow and the fourth pad are cymbals, red and blue toms.
         set_cymbal(NoteColor::Yellow, true);
@@ -500,12 +502,21 @@ Chord convert_drum_pads(const TickPads& raw, const DrumChartFlags& flags, bool p
     ChordNote moved = *fifth;
     moved.cymbaltype = NoteCymbalType::Normal;
     moved.colortype = fourth_pad ? NoteColor::Blue : NoteColor::Green;
-    // A tick that also holds a blue note would put two notes on the blue
-    // lane. The chord keeps the chart's own blue note there and drops the
-    // fifth pad, so the chart still loads. In the four-lane branch the game
-    // gives the fifth pad that blue note's marks, so the two are alike; in the
-    // five-lane branch the game keeps both until its merge (NL-77).
-    if (!chord.at(moved.colortype)) chord.insert_note(moved);
+    if (!chord.at(moved.colortype)) {
+        chord.insert_note(moved);
+        return chord;
+    }
+    // A tick that also holds a blue note puts two blue toms on one lane. The
+    // chord keeps the chart's own blue note. In the four-lane branch the game
+    // gives the fifth pad that blue note's marks, so the two are alike. In the
+    // five-lane branch the game keeps both until its track finalizer merges
+    // them into one, or-ing their flags (NL-77, Q-14; probe D's 35 notes), so
+    // the kept note also takes the fifth pad's ghost or accent, through the
+    // chord's one owner of a second mark.
+    if (five_lane) {
+        if (moved.is_accent()) chord.apply_accent(moved.colortype);
+        else if (moved.is_ghost()) chord.apply_ghost(moved.colortype);
+    }
     return chord;
 }
 
@@ -888,8 +899,18 @@ bool midi_note_is_read(int pitch, bool on, int base, int kick2x) {
 // a tom marker the second, as Clone Hero's .mid drum reader raises them
 // (docs/clone-hero/code/6142/mid_drum_reader_2155050.md, lines 124 to 147 and
 // 270 of its listing).
-DrumChartFlags midi_drum_chart_flags(const MidiTrack& track) {
+//
+// The two flags do not start at zero in a .mid: the reader starts them from
+// song.ini's five_lane_drums and pro_drums (`keys`), and the track can only
+// raise them (mid_drum_reader_2155050.asm lines 80 to 99, CR-18 in
+// docs/clone-hero/01-reading-a-chart.md). pro_drums's
+// part in that is read from the game's code and not yet seen in a run: no
+// probe has played a .mid with a fifth pad and pro_drums = True.
+DrumChartFlags midi_drum_chart_flags(const MidiTrack& track, const ChartDrumKeys& keys) {
     DrumChartFlags flags;
+    flags.fifth_pad = keys.five_lane_drums;
+    flags.pro_marks = keys.pro_drums;
+    flags.five_lane_key = keys.five_lane_drums;
     for (const Message& msg : track.messages) {
         if (!msg.is_note_on()) continue;
         if (is_midi_fifth_pad_pitch(msg.note)) flags.fifth_pad = true;
@@ -903,7 +924,8 @@ DrumChartFlags midi_drum_chart_flags(const MidiTrack& track) {
 class MidiParser {
 public:
     MidiParser(const core::Rules& rules, FillDeadlineRule fills) : rules_(rules), fills_rule_(fills) {}
-    Song parse(const MidiFile& mid, bool pro, bool bass2x, Difficulty difficulty);
+    Song parse(const MidiFile& mid, bool pro, bool bass2x, Difficulty difficulty,
+               const ChartDrumKeys& keys);
 
 private:
     const core::Rules& rules_;
@@ -1207,7 +1229,7 @@ bool opens_timestamp(const Message& msg) {
 }
 
 Song MidiParser::parse(const MidiFile& mid, bool pro, bool bass2x,
-                       Difficulty difficulty) {
+                       Difficulty difficulty, const ChartDrumKeys& keys) {
     mode_pro_ = pro;
     mode_bass2x_ = bass2x;
     base_ = difficulty_base_pitch(difficulty);
@@ -1250,7 +1272,7 @@ Song MidiParser::parse(const MidiFile& mid, bool pro, bool bass2x,
     // Pass 2: the drum track.
     if (const MidiTrack* const drums = mid.drums_track()) {
         const MidiTrack& track = *drums;
-        flags_ = midi_drum_chart_flags(track);
+        flags_ = midi_drum_chart_flags(track, keys);
         elapsed = 0;
         msg_buffer_.clear();
         flag_solo_ = false;
@@ -1549,7 +1571,7 @@ class ChartParser {
 public:
     ChartParser(const core::Rules& rules, FillDeadlineRule fills) : rules_(rules), fills_rule_(fills) {}
     Song parse(const std::vector<uint8_t>& data, bool pro, bool bass2x,
-               Difficulty difficulty);
+               Difficulty difficulty, const ChartDrumKeys& keys);
 
 private:
     const core::Rules& rules_;
@@ -2025,11 +2047,15 @@ int64_t chart_resolution(const ChartSection* song_sec) {
 }  // namespace
 
 Song ChartParser::parse(const std::vector<uint8_t>& data, bool pro,
-                        bool bass2x, Difficulty difficulty) {
+                        bool bass2x, Difficulty difficulty, const ChartDrumKeys& keys) {
     // A disco marker counts only in the difficulty it names, so the reader
     // needs this difficulty's digit before it classifies any line.
     load_sections(data, difficulty_chart_codes(difficulty).mix_digit,
                   difficulty_chart_codes(difficulty).chart_section());
+    // A .chart's two flags start at zero whatever song.ini says
+    // (chart_loader_2161a80.asm lines 158 and 159, CR-18), so only
+    // five_lane_drums reaches the branch here, and pro_drums does not.
+    flags_.five_lane_key = keys.five_lane_drums;
     mode_pro_ = pro;
     mode_bass2x_ = bass2x;
 
@@ -2134,7 +2160,8 @@ void trim_parsed_song(Song& song) {
 }
 
 Song parse_mid_lean(const std::vector<uint8_t>& data, bool pro, bool bass2x,
-                    Difficulty difficulty, const core::Rules& rules, FillDeadlineRule fills) {
+                    Difficulty difficulty, const ChartDrumKeys& keys, const core::Rules& rules,
+                    FillDeadlineRule fills) {
     // Only the notes MidiParser reads are decoded (midi_note_is_read).
     const int base = difficulty_base_pitch(difficulty);
     const int kick2x = difficulty_chart_codes(difficulty).kick2x_pitch();
@@ -2144,7 +2171,7 @@ Song parse_mid_lean(const std::vector<uint8_t>& data, bool pro, bool bass2x,
         filter.note_off[pitch] = midi_note_is_read(pitch, false, base, kick2x);
     }
     const MidiFile mid = MidiFile::lean(data.data(), data.size(), filter);
-    return MidiParser(rules, fills).parse(mid, pro, bass2x, difficulty);
+    return MidiParser(rules, fills).parse(mid, pro, bass2x, difficulty, keys);
 }
 
 // The Note Shuffle switch, applied once a parser has finished the song: the
@@ -2172,43 +2199,153 @@ void finish_loaded_song(Song& song, const ChartReading& reading) {
 
 }  // namespace
 
-Song load_songbytes_mid(const std::vector<uint8_t>& data, const ChartReading& reading,
-                        const core::Rules& rules, FillDeadlineRule fills) {
+// The whole file's bytes become text through decode_chart_text
+// (parse/text_decode.h), the one rule for chart text encodings.
+std::map<std::string, std::string> read_song_ini_keys(const std::string& path) {
+    const std::vector<uint8_t> raw = read_file_bytes(path);
+    const std::string text = decode_chart_text(raw.data(), raw.size());
+
+    std::map<std::string, std::string> keys;
+    bool in_song_section = false;
+    size_t pos = 0;
+    while (pos <= text.size()) {
+        size_t eol = text.find('\n', pos);
+        std::string line = text.substr(pos, eol == std::string::npos ? std::string::npos
+                                                                      : eol - pos);
+        pos = (eol == std::string::npos) ? text.size() + 1 : eol + 1;
+
+        while (!line.empty() && (line.back() == '\r' || line.back() == ' ' ||
+                                 line.back() == '\t'))
+            line.pop_back();
+        size_t a = line.find_first_not_of(" \t");
+        if (a == std::string::npos) continue;
+        line = line.substr(a);
+        if (line.empty() || line[0] == ';' || line[0] == '#') continue;
+
+        if (line.front() == '[' && line.back() == ']') {
+            std::string section = to_lower_ascii(line.substr(1, line.size() - 2));
+            in_song_section = (section == "song");
+            continue;
+        }
+        if (!in_song_section) continue;
+
+        size_t eq = line.find('=');
+        if (eq == std::string::npos) continue;
+        std::string key = to_lower_ascii(line.substr(0, eq));
+        while (!key.empty() && (key.back() == ' ' || key.back() == '\t')) key.pop_back();
+        std::string value = line.substr(eq + 1);
+        size_t vb = value.find_first_not_of(" \t");
+        value = (vb == std::string::npos) ? std::string() : value.substr(vb);
+        keys[key] = value;
+    }
+    return keys;
+}
+
+namespace {
+
+// Clone Hero reads both keys through one bool getter (0x1D4480, called from
+// ini_song_reader_1EFC60.asm lines 77 to 89). That getter's own text rule is
+// not read. "True" in any case, with blanks around it, is what the five-lane
+// probes wrote and the game honoured; any other text reads as unset here.
+bool drum_key_is_true(std::string_view value) { return equals_ci(trim_view(value), "true"); }
+
+// The two keys from a key -> value lookup, whatever spells the keys.
+template <typename Find>
+ChartDrumKeys drum_keys_from(const Find& find) {
+    ChartDrumKeys keys;
+    if (const std::optional<std::string_view> v = find("five_lane_drums"))
+        keys.five_lane_drums = drum_key_is_true(*v);
+    if (const std::optional<std::string_view> v = find("pro_drums"))
+        keys.pro_drums = drum_key_is_true(*v);
+    return keys;
+}
+
+}  // namespace
+
+ChartDrumKeys chart_drum_keys(const std::map<std::string, std::string>& ini) {
+    return drum_keys_from([&](std::string_view key) -> std::optional<std::string_view> {
+        const auto it = ini.find(std::string(key));
+        if (it == ini.end()) return std::nullopt;
+        return std::string_view(it->second);
+    });
+}
+
+ChartDrumKeys chart_drum_keys(const std::vector<std::pair<std::string, std::string>>& sng_metadata) {
+    return drum_keys_from([&](std::string_view key) -> std::optional<std::string_view> {
+        // The last pair of a key wins, as a song.ini's last line does.
+        std::optional<std::string_view> found;
+        for (const auto& [k, v] : sng_metadata)
+            if (equals_ci(k, key)) found = std::string_view(v);
+        return found;
+    });
+}
+
+ChartDrumKeys chart_drum_keys_beside(const std::string& notespath) {
+    const std::string ini = find_song_ini(parent_folder(notespath));
+    if (ini.empty()) return {};
+    try {
+        return chart_drum_keys(read_song_ini_keys(ini));
+    } catch (const std::exception&) {
+        return {};  // an unreadable song.ini sets neither key, as a missing one
+    }
+}
+
+Song load_songbytes_mid(const std::vector<uint8_t>& data, const ChartDrumKeys& keys,
+                        const ChartReading& reading, const core::Rules& rules,
+                        FillDeadlineRule fills) {
     // The lean file is gone once parse_mid_lean returns.
-    Song song = parse_mid_lean(data, reading.prodrums, reading.bass2x, reading.difficulty, rules, fills);
+    Song song = parse_mid_lean(data, reading.prodrums, reading.bass2x, reading.difficulty, keys,
+                               rules, fills);
     finish_loaded_song(song, reading);
     return song;
+}
+
+Song load_songbytes_chart(const std::vector<uint8_t>& data, const ChartDrumKeys& keys,
+                          const ChartReading& reading, const core::Rules& rules,
+                          FillDeadlineRule fills) {
+    // The parser and its sections are gone by the end of this statement.
+    Song song = ChartParser(rules, fills)
+                    .parse(data, reading.prodrums, reading.bass2x, reading.difficulty, keys);
+    finish_loaded_song(song, reading);
+    return song;
+}
+
+Song load_songbytes_mid(const std::vector<uint8_t>& data, const ChartReading& reading,
+                        const core::Rules& rules, FillDeadlineRule fills) {
+    return load_songbytes_mid(data, ChartDrumKeys{}, reading, rules, fills);
 }
 
 Song load_songbytes_chart(const std::vector<uint8_t>& data, const ChartReading& reading,
                           const core::Rules& rules, FillDeadlineRule fills) {
-    // The parser and its sections are gone by the end of this statement.
-    Song song =
-        ChartParser(rules, fills).parse(data, reading.prodrums, reading.bass2x, reading.difficulty);
-    finish_loaded_song(song, reading);
-    return song;
+    return load_songbytes_chart(data, ChartDrumKeys{}, reading, rules, fills);
 }
 
 Song load_songpath_mid(const std::string& path, const ChartReading& reading,
                        const core::Rules& rules, FillDeadlineRule fills) {
-    return load_songbytes_mid(read_file_bytes(path), reading, rules, fills);
+    return load_songbytes_mid(read_file_bytes(path), chart_drum_keys_beside(path), reading, rules,
+                              fills);
 }
 
 Song load_songpath_chart(const std::string& path, const ChartReading& reading,
                          const core::Rules& rules, FillDeadlineRule fills) {
-    return load_songbytes_chart(read_file_bytes(path), reading, rules, fills);
+    return load_songbytes_chart(read_file_bytes(path), chart_drum_keys_beside(path), reading,
+                                rules, fills);
 }
 
 namespace {
 
 // The one notes reader for each container kind, whether the bytes come from
 // disk in pieces or from a buffer in memory (the Preview reads the whole file
-// once and shares it; its notes are picked out the same way).
+// once and shares it; its notes are picked out the same way). A .sng carries
+// its song.ini keys in its metadata block, so the drum keys come from there.
 Song load_container_sng(const ByteSource& src, const ChartReading& reading,
                         const core::Rules& rules, FillDeadlineRule fills) {
-    const SngNotes notes = sng_read_notes(src, sng_read_head(src));
-    if (notes.format == ChartFormat::Mid) return load_songbytes_mid(notes.bytes, reading, rules, fills);
-    return load_songbytes_chart(notes.bytes, reading, rules, fills);
+    const std::vector<uint8_t> head = sng_read_head(src);
+    const ChartDrumKeys keys = chart_drum_keys(sng_read_metadata(head));
+    const SngNotes notes = sng_read_notes(src, head);
+    if (notes.format == ChartFormat::Mid)
+        return load_songbytes_mid(notes.bytes, keys, reading, rules, fills);
+    return load_songbytes_chart(notes.bytes, keys, reading, rules, fills);
 }
 
 Song load_container_srb(const ByteSource& src, const ChartReading& reading,

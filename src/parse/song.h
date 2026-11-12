@@ -174,6 +174,36 @@ inline constexpr const char* kNoteShuffleFreezeDetail =
 // Anything that reads SongTimestamp::activation_length passes the real rule.
 inline constexpr FillDeadlineRule kNotesOnlyFills = FillDeadlineRule::Ch11;
 
+// The [song] section of a song.ini as lower-cased key -> value, with the
+// value's leading blanks trimmed. A key seen twice keeps its last value.
+// Section and key names match in any case, and `;` and `#` start comments.
+// The text is decode_chart_text's (parse/text_decode.h), so every key and
+// value is valid UTF-8. Throws std::runtime_error when the file cannot be
+// read. The library scan (app::read_metadata_ini), the Preview (delay) and
+// the chart loaders (chart_drum_keys_beside) all read song.ini through here.
+std::map<std::string, std::string> read_song_ini_keys(const std::string& path);
+
+// The two song.ini keys that change how a drum chart is read: five_lane_drums
+// and pro_drums. The drum reader in song.cpp says what each one does
+// (midi_drum_chart_flags, ChartParser::parse); a .chart reads only the first.
+// Both false is a chart with neither key, or one with no song.ini.
+struct ChartDrumKeys {
+    bool five_lane_drums = false;
+    bool pro_drums = false;
+};
+
+// The two keys from a song.ini already read (read_song_ini_keys), or from a
+// .sng's metadata pairs (sng_read_metadata), which hold the same keys.
+ChartDrumKeys chart_drum_keys(const std::map<std::string, std::string>& ini);
+ChartDrumKeys chart_drum_keys(const std::vector<std::pair<std::string, std::string>>& sng_metadata);
+
+// The two keys from the song.ini in the folder of the notes file at
+// `notespath` (find_song_ini). A folder with no song.ini, or one that cannot
+// be read, gives neither key. Every loader given a .mid or .chart path reads
+// its keys through here, so the GUI's analysis, the Preview and the tools all
+// see the same ones.
+ChartDrumKeys chart_drum_keys_beside(const std::string& notespath);
+
 Song load_songpath_mid(const std::string& path, const ChartReading& reading,
                        const core::Rules& rules, FillDeadlineRule fills);
 Song load_songpath_chart(const std::string& path, const ChartReading& reading,
@@ -183,6 +213,15 @@ Song load_songpath_sng(const std::string& path, const ChartReading& reading,
 Song load_songpath_srb(const std::string& path, const ChartReading& reading,
                        const core::Rules& rules, FillDeadlineRule fills);
 
+// A notes file's bytes and the song.ini keys that go with it. A caller
+// holding bytes with no song.ini beside them, such as a test, uses the
+// overloads below, which read them with neither key set.
+Song load_songbytes_mid(const std::vector<uint8_t>& data, const ChartDrumKeys& keys,
+                        const ChartReading& reading, const core::Rules& rules,
+                        FillDeadlineRule fills);
+Song load_songbytes_chart(const std::vector<uint8_t>& data, const ChartDrumKeys& keys,
+                          const ChartReading& reading, const core::Rules& rules,
+                          FillDeadlineRule fills);
 Song load_songbytes_mid(const std::vector<uint8_t>& data, const ChartReading& reading,
                         const core::Rules& rules, FillDeadlineRule fills);
 Song load_songbytes_chart(const std::vector<uint8_t>& data, const ChartReading& reading,

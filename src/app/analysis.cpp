@@ -323,48 +323,6 @@ std::optional<PendingChart> pending_chart_of(const std::string& dir, const DirEn
 
 }  // namespace
 
-// The whole file's bytes become text through decode_chart_text
-// (parse/text_decode.h), the one rule for chart text encodings.
-std::map<std::string, std::string> read_song_ini_keys(const std::string& path) {
-    const std::vector<uint8_t> raw = read_file_bytes(path);
-    const std::string text = decode_chart_text(raw.data(), raw.size());
-
-    std::map<std::string, std::string> keys;
-    bool in_song_section = false;
-    size_t pos = 0;
-    while (pos <= text.size()) {
-        size_t eol = text.find('\n', pos);
-        std::string line = text.substr(pos, eol == std::string::npos ? std::string::npos
-                                                                      : eol - pos);
-        pos = (eol == std::string::npos) ? text.size() + 1 : eol + 1;
-
-        while (!line.empty() && (line.back() == '\r' || line.back() == ' ' ||
-                                 line.back() == '\t'))
-            line.pop_back();
-        size_t a = line.find_first_not_of(" \t");
-        if (a == std::string::npos) continue;
-        line = line.substr(a);
-        if (line.empty() || line[0] == ';' || line[0] == '#') continue;
-
-        if (line.front() == '[' && line.back() == ']') {
-            std::string section = to_lower_ascii(line.substr(1, line.size() - 2));
-            in_song_section = (section == "song");
-            continue;
-        }
-        if (!in_song_section) continue;
-
-        size_t eq = line.find('=');
-        if (eq == std::string::npos) continue;
-        std::string key = to_lower_ascii(line.substr(0, eq));
-        while (!key.empty() && (key.back() == ' ' || key.back() == '\t')) key.pop_back();
-        std::string value = line.substr(eq + 1);
-        size_t vb = value.find_first_not_of(" \t");
-        value = (vb == std::string::npos) ? std::string() : value.substr(vb);
-        keys[key] = value;
-    }
-    return keys;
-}
-
 // The scan's own reader (song_id_read), so the result here always matches the
 // hyhash already stored in the results/charts rows for that chart.
 std::string hash_chart_file(const std::string& path) {

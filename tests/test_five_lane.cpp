@@ -16,10 +16,12 @@
 #include <string>
 #include <vector>
 
+#include "core/replay.h"  // replay_path
 #include "load_util.h"
 #include "midi_util.h"
 #include "parse/song.h"
 #include "song_digest.h"  // chart_parse_hash, digest_settings
+#include "temp_util.h"      // temp_dir, write_bytes
 #include "testdata_dirs.h"  // testdata_root
 
 using namespace hydra;
@@ -101,6 +103,33 @@ std::string code_at(const Song& song, int64_t tick) {
 // Fixture A's chords once converted, by the plan's five-lane branch table.
 const std::vector<std::string> kAConverted = {".n...", "..N..", "...n.", "....N",
                                                "....n", "...nN", "n...."};
+
+std::vector<uint8_t> bytes_of(const std::string& s) { return {s.begin(), s.end()}; }
+
+// A song folder in the temp folder holding `notes_name` (its bytes) and a
+// song.ini whose [song] section holds `ini_lines`. Returns the notes file's
+// path. Writing it again with other lines changes only the song.ini.
+std::string song_folder(const std::string& tag, const std::string& notes_name,
+                        const std::vector<uint8_t>& notes, const std::string& ini_lines) {
+    const std::string dir = testtemp::temp_dir("five_lane_" + tag);
+    const std::string notes_path = dir + "\\" + notes_name;
+    testtemp::write_bytes(notes_path, notes);
+    testtemp::write_bytes(dir + "\\song.ini", bytes_of("[song]\nname = Five Lane " + tag + "\n" +
+                                                      ini_lines));
+    return notes_path;
+}
+
+// A .chart with `drum_lines` as its ExpertDrums section, at resolution 480.
+std::vector<uint8_t> chart_with(const std::string& drum_lines) {
+    return bytes_of(
+        "[Song]\n{\n  Resolution = 480\n}\n[SyncTrack]\n{\n  0 = TS 4\n  0 = B 120000\n}\n"
+        "[ExpertDrums]\n{\n" +
+        drum_lines + "}\n");
+}
+
+// The score with no Star Power anywhere, as `hydra_replay score` gives it
+// with no path.
+int64_t no_sp_total(const Song& song) { return replay_path(song, {}).final.total(); }
 
 }  // namespace
 
@@ -279,4 +308,89 @@ TEST_CASE("five-lane: four-lane charts parse to their pinned digests") {
         REQUIRE(found);
         CHECK(digest::chart_parse_hash(edge + name, settings) == pinned);
     }
+}
+
+// ---- song.ini's five_lane_drums and pro_drums (task T4) --------------------
+//
+// Each test below loads a chart from a folder with a song.ini beside it, the
+// way every chart path is loaded, so it compiles against the readers before
+// T4 and fails there because the readers did not read the keys.
+
+TEST_CASE("five-lane .chart: five_lane_drums takes the five-lane branch despite a Pro mark") {
+    // Fails before T4: the key is not read, so the N 66 mark keeps the
+    // four-lane branch and N 4 stays a green tom.
+    // Probe C's shape: a fifth pad and a yellow cymbal mark.
+    const std::vector<uint8_t> chart =
+        chart_with("  0 = N 2 0\n  0 = N 66 0\n  480 = N 3 0\n  960 = N 4 0\n  1440 = N 5 0\n");
+    // The same chart read again after its song.ini changes: no key first.
+    const std::string path = song_folder("key_pro_mark", "notes.chart", chart, "");
+    CHECK(codes(load_songpath(path, kPro)) ==
+          std::vector<std::string>{"..N..", "...n.", "....n", "....n"});
+    song_folder("key_pro_mark", "notes.chart", chart, "five_lane_drums = True\n");
+    CHECK(codes(load_songpath(path, kPro)) ==
+          std::vector<std::string>{"..N..", "...n.", "....N", "....n"});
+}
+
+TEST_CASE("five-lane .chart: five_lane_drums alone makes a four-pad chart's yellow and N 4 cymbals") {
+    // Fails before T4: the key is not read, so yellow and N 4 read as toms.
+    // Probe E's shape: no fifth pad and no cymbal mark.
+    const std::string path = song_folder("key_four_pad_chart", "notes.chart",
+                                         chart_with("  0 = N 2 0\n  480 = N 3 0\n  960 = N 4 0\n"),
+                                         "five_lane_drums = True\n");
+    CHECK(codes(load_songpath(path, kPro)) ==
+          std::vector<std::string>{"..N..", "...n.", "....N"});
+}
+
+TEST_CASE("five-lane .mid: five_lane_drums takes the five-lane branch despite a tom marker") {
+    // Fails before T4: the key is not read, so the tom marker keeps the
+    // four-lane branch: yellow a tom, blue a cymbal.
+    const std::string path = song_folder(
+        "key_tom_marker", "notes.mid",
+        drum_mid({on(0, kYellowTom), on(0, kYellow), off(240, kYellowTom), on(480, kBlue),
+                  on(960, kGreen)}),
+        "five_lane_drums = True\n");
+    CHECK(codes(load_songpath(path, kPro)) ==
+          std::vector<std::string>{"..N..", "...n.", "....n"});
+}
+
+TEST_CASE("five-lane .mid: five_lane_drums alone makes a four-pad chart's blue a tom") {
+    // Fails before T4: the key is not read, so with neither flag up blue
+    // keeps the .mid's plain cymbal.
+    const std::string path =
+        song_folder("key_four_pad_mid", "notes.mid",
+                    drum_mid({on(0, kYellow), on(480, kBlue), on(960, kOrange)}),
+                    "five_lane_drums = True\n");
+    CHECK(codes(load_songpath(path, kPro)) ==
+          std::vector<std::string>{"..N..", "...n.", "....N"});
+}
+
+TEST_CASE("five-lane .mid: pro_drums = True with a fifth pad takes the four-lane branch") {
+    // Fails before T4: the key is not read, so the fifth pad alone takes the
+    // five-lane branch and blue reads as a tom.
+    // The game's code starts the Pro flag from pro_drums; no run has shown it.
+    const std::string path = song_folder("pro_drums_key", "notes.mid",
+                                         drum_mid({on(0, kBlue), on(480, kGreen)}),
+                                         "pro_drums = True\n");
+    CHECK(codes(load_songpath(path, kPro)) == std::vector<std::string>{"...N.", "....n"});
+}
+
+TEST_CASE("five-lane .mid: blue, orange and green on one tick keep the green pad's accent") {
+    // Fails before T4: the kept blue tom drops the green pad's accent.
+    // The game merges the two blue toms into one carrying both notes' marks
+    // (NL-77); probe D showed the merge as one note.
+    const Song song = load_songbytes_mid(
+        drum_mid({text(0, "[ENABLE_CHART_DYNAMICS]"), on(480, kBlue), on(480, kOrange),
+                  on(480, kGreen, 127)}),
+        kPro);
+    CHECK(codes(song) == std::vector<std::string>{"...aN"});
+}
+
+TEST_CASE("five-lane: probes C and E score what Clone Hero 1.1 scored") {
+    // Fails before T4: without the key C scores 7,410 and E 5,950.
+    // The totals are the bot runs of 2026-11-12 on v1.1.0.6142, ProDrums
+    // Expert, every note hit, no Star Power (hydra-data
+    // ch-mcp-runs/2026-11-12/five-lane). The folders are copies of the probe
+    // songs, each with its song.ini.
+    CHECK(no_sp_total(load_songpath(fixture("probe_c/notes.chart"), kPro)) == 7890);
+    CHECK(no_sp_total(load_songpath(fixture("probe_e/notes.chart"), kPro)) == 6490);
 }
