@@ -22,6 +22,11 @@
 // --open times opening a library the way the app opens it, part by part, beside
 // prototypes of faster reads checked against today's rows (open_mode below).
 
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+
 #include <algorithm>
 #include <charconv>
 #include <chrono>
@@ -65,6 +70,7 @@
 #include "search/pather.h"
 #include "song_digest.h"
 #include "store/record_store.h"
+#include "store/upgrade_files.h"
 #include "ui/library_jobs.h"
 #include "ui/library_model.h"
 
@@ -518,7 +524,7 @@ static void upgrade_mode(const std::string& dbpath) {
 
 // ---- Open mode ---------------------------------------------------------------
 //   hydra_bench --open <db file> [--runs N] [--ini <settings file>] [--as-ready]
-//               [--threads N,N,...] [--rules <path>]
+//               [--threads N,N,...] [--cold] [--rules <path>]
 // Times what opening the library costs, in Hydra's own code, on the file it is
 // given and no other. It refuses the installed Hydra's folder (installer/
 // hydra.iss installs to {autopf}\Hydra) and the hydra.db beside this exe
@@ -540,7 +546,7 @@ static void upgrade_mode(const std::string& dbpath) {
 // printed as the median and the minimum of N runs, in milliseconds, each run
 // with a fresh RecordStore and LibraryModel. One untimed reference read comes
 // first: it gives the rows each variant is checked against, so the timed runs
-// all start with the file in the OS cache.
+// all start with the file in the OS cache, except --cold's line.
 //
 // What each section times:
 //   1. The app's counted read (ui::read_library with a progress callback that
@@ -548,7 +554,10 @@ static void upgrade_mode(const std::string& dbpath) {
 //      model functions read_library calls, in its order, with the results read
 //      in kResultsSliceCharts slices as read_library_summaries reads them.
 //      Then the real read_library call as a whole.
-//   2. read_library with no callback (AppState::reload_library's read).
+//   2. read_library with no callback (AppState::reload_library's read). With
+//      --cold, the same timing again after drop_cached_pages, with no store
+//      open on the file, so the read may start from the disk (cold_open_note
+//      says what the drop does and when it can fail to empty the cache).
 //   3. The chart list: list_chart_library as today, then prototypes on a
 //      connection of the bench's own: the same query, no ORDER BY, and only
 //      the columns set_charts reads, each through store::read_library_entries.
@@ -1047,17 +1056,46 @@ AsReadyCounts stamp_as_ready(const std::string& dbpath, const core::RulesStamp& 
     return out;
 }
 
+// What --cold's drop does, printed above the runs so the cold line is read
+// with its caveat beside it.
+constexpr const char* cold_open_note =
+    "--cold: before each cold read, with no store open on the file, the bench opens and "
+    "closes the library file and each side file SQLite left beside it once with "
+    "buffering off (FILE_FLAG_NO_BUFFERING). The file system drops a file's cached "
+    "pages on such an open when no other handle has the file open with caching on, "
+    "so the read that follows may come from the disk. If something else holds the "
+    "file open (a virus scanner, another program), the pages stay cached and the "
+    "cold line times a warm read: a cold median no higher than the warm one means "
+    "the drop did not happen.";
+
+// --cold's drop: opens each of `dbpath`'s files that exists
+// (store::with_side_files names them) with buffering off and closes it again,
+// reading nothing. It needs no administrator rights. The caller has closed
+// every store and connection on the file first, or the drop does nothing.
+void drop_cached_pages(const std::string& dbpath) {
+    for (const std::string& file : store::with_side_files(dbpath)) {
+        if (!file_exists_utf8(file)) continue;
+        const HANDLE h = CreateFileW(os_path(file).c_str(), GENERIC_READ,
+                                     FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                                     nullptr, OPEN_EXISTING, FILE_FLAG_NO_BUFFERING, nullptr);
+        if (h == INVALID_HANDLE_VALUE)
+            throw std::runtime_error("opening " + file + " with buffering off failed (error " +
+                                     std::to_string(GetLastError()) + ")");
+        CloseHandle(h);
+    }
+}
+
 }  // namespace
 
 static int open_runs(const std::string& dbpath, int runs, const std::optional<std::string>& ini,
-                     app::Settings settings, bool as_ready,
+                     app::Settings settings, bool as_ready, bool cold,
                      const std::vector<size_t>& thread_counts, std::string& doing);
 
 // The checks that need no database, then the runs. A failure in the runs
 // names the step or variant it happened in (open_runs keeps `doing` up to
 // date) instead of the tool's generic database line.
 static int open_mode(const std::string& dbpath, int runs, const std::optional<std::string>& ini,
-                     bool as_ready, const std::string& threads_text) {
+                     bool as_ready, bool cold, const std::string& threads_text) {
     // Before anything opens the file, so --as-ready's rewrite is refused too.
     if (const std::optional<std::string> why = refused_db(dbpath)) {
         std::fprintf(stderr, "hydra_bench --open: %s\n", why->c_str());
@@ -1090,7 +1128,8 @@ static int open_mode(const std::string& dbpath, int runs, const std::optional<st
     }
     std::string doing = "the first open";
     try {
-        return open_runs(dbpath, runs, ini, std::move(settings), as_ready, *thread_counts, doing);
+        return open_runs(dbpath, runs, ini, std::move(settings), as_ready, cold, *thread_counts,
+                         doing);
     } catch (const std::exception& e) {
         std::fflush(stdout);
         std::fprintf(stderr, "\nhydra_bench --open: %s failed: %s\n", doing.c_str(), e.what());
@@ -1099,7 +1138,7 @@ static int open_mode(const std::string& dbpath, int runs, const std::optional<st
 }
 
 static int open_runs(const std::string& dbpath, int runs, const std::optional<std::string>& ini,
-                     app::Settings settings, bool as_ready,
+                     app::Settings settings, bool as_ready, bool cold,
                      const std::vector<size_t>& thread_counts, std::string& doing) {
     settings.rules = g_rules;
     const store::Profile want = settings.profile();
@@ -1258,6 +1297,7 @@ static int open_runs(const std::string& dbpath, int runs, const std::optional<st
                     .c_str());
     std::printf("%s, each a median and a minimum in ms.\n",
                 counted(runs, "timed run", "timed runs").c_str());
+    if (cold) std::printf("%s\n", cold_open_note);
 
     OpenTimes times;
     const std::string h1 = "1. Today's open, the app's counted read (read_library with a callback)";
@@ -1274,6 +1314,7 @@ static int open_runs(const std::string& dbpath, int runs, const std::optional<st
     const std::string h2 = "2. read_library with no callback (AppState::reload_library's read)";
     const std::string k2_real = "read_library as one call, no callback";
     const std::string k2_real_open = "open + read_library, no callback";
+    const std::string k2_cold_open = "open + read_library, no callback, cold (--cold's drop first)";
     const std::string h3 = "3. The chart list, one connection";
     const std::string k3_today = "today: list_chart_library, ORDER BY name";
     const std::string k3_conn = "own connection: open it";
@@ -1395,6 +1436,26 @@ static int open_runs(const std::string& dbpath, int runs, const std::optional<st
             if (check) {
                 const std::string why = models_differ(plain_model, counted_model);
                 if (!why.empty()) times.differs(k2_real, why);
+            }
+        }
+        if (cold) {
+            // The warm store above is closed, so nothing of the bench's own
+            // holds the file while its pages are dropped.
+            at(h2 + ": --cold's drop");
+            drop_cached_pages(dbpath);
+            at(h2 + ": " + k2_cold_open);
+            ui::LibraryModel cold_model;
+            clk::time_point t = clk::now();
+            std::unique_ptr<store::RecordStore> db = open_store();
+            const double open_ms = ms_since(t);
+            t = clk::now();
+            const std::string problem = ui::read_library(*db, settings, cold_model);
+            const double read_ms = ms_since(t);
+            if (!problem.empty()) throw std::runtime_error("read_library: " + problem);
+            times.add(k2_cold_open, open_ms + read_ms);
+            if (check) {
+                const std::string why = models_differ(cold_model, counted_model);
+                if (!why.empty()) times.differs(k2_cold_open, why);
             }
         }
 
@@ -1661,6 +1722,10 @@ static int open_runs(const std::string& dbpath, int runs, const std::optional<st
     if (!times.differed(k1_real) && !times.differed(k2_real))
         std::printf("  the counted bar's cost (1's read_library minus 2's): %.1f ms\n",
                     times.median(k1_real) - times.median(k2_real));
+    if (cold && !times.differed(k2_real) && !times.differed(k2_cold_open))
+        std::printf("  what the cold read adds (2's cold open + read_library minus its warm "
+                    "one): %.1f ms\n",
+                    times.median(k2_cold_open) - times.median(k2_real_open));
     if (winner_profile && !times.differed(k5_paths) && !times.differed(k5_winner))
         std::printf("  lookup with the winner-only path read (lookup - today's path read + "
                     "winner-only path read): %.1f ms\n",
@@ -1707,6 +1772,7 @@ static int bench_main() {
         int runs = 7;  // the count the --open request asked for by default
         std::optional<std::string> ini;
         bool as_ready = false;
+        bool cold = false;
         std::string threads = kDefaultThreadCounts;
         // The options start after argv[0] (the program), argv[1] (--open)
         // and argv[2] (the file): the index of the first one is that count.
@@ -1715,6 +1781,7 @@ static int bench_main() {
             if (argv[i] == "--runs" && i + 1 < argc) runs = std::stoi(argv[++i]);
             else if (argv[i] == "--ini" && i + 1 < argc) ini = argv[++i];
             else if (argv[i] == "--as-ready") as_ready = true;
+            else if (argv[i] == "--cold") cold = true;
             else if (argv[i] == "--threads" && i + 1 < argc) threads = argv[++i];
             else {
                 // A misspelt --as-ready would time a library that reads Stale
@@ -1725,7 +1792,7 @@ static int bench_main() {
                 return 2;
             }
         }
-        return open_mode(argv[2], runs, ini, as_ready, threads);
+        return open_mode(argv[2], runs, ini, as_ready, cold, threads);
     }
     if (argc > 3 && argv[1] == "--dump-db") {
         std::string dumprel;
