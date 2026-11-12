@@ -1,0 +1,12 @@
+fills moved: common\IB24\T2\Karnivool - Themata\notes.mid: 62 -> 62 fills; only before 1 [(1200, 2400)]; only after 1 [(1680, 2400)]
+fills moved: common\IB24\T2\Stone Temple Pilots - Trippin on a Hole in a Paper Heart\notes.chart: 20 -> 20 fills; only before 1 [(960, 1152)]; only after 1 [(768, 1152)]
+fills moved: common\IB24\T4\A Lot Like Birds - Think Dirty out Loud\notes.mid: 39 -> 39 fills; only before 1 [(204960, 205920)]; only after 1 [(205200, 205920)]
+fills moved: common\IB24\T4\Haken - The Good Doctor\notes.mid: 29 -> 29 fills; only before 10 [(720, 1440), (93900, 94320), (97500, 98160), (100980, 101520)]; only after 10 [(480, 1440), (94020, 94320), (97740, 98160), (100860, 101520)]
+fills moved: common\IB24\T5\Satyr - Whelmed\notes.mid: 48 -> 48 fills; only before 3 [(6480, 7200), (142800, 143520), (155280, 156960)]; only after 3 [(6240, 7200), (141840, 143520), (156240, 156960)]
+fills moved: common\IB24\T5\Sianvar - Omniphobia\notes.mid: 46 -> 46 fills; only before 4 [(32760, 33840), (48120, 48960), (63480, 64560), (94200, 95040)]; only after 4 [(32880, 33840), (48000, 48960), (63600, 64560), (94080, 95040)]
+fills moved: common\IB24\T5\TEXTURES - Laments Of An Icarus\notes.mid: 40 -> 40 fills; only before 40 [(1320, 2760), (12960, 14400), (24480, 25920), (35760, 36960)]; only after 40 [(-480, 960), (11040, 12480), (22560, 24000), (34320, 35520)]
+fills moved: common\IB24\T6\Lockslip - Lockslip - 02 - Bend\notes.mid: 28 -> 28 fills; only before 6 [(2880, 3840), (12960, 14400), (23520, 24960), (36480, 37920)]; only after 6 [(2640, 3840), (13200, 14400), (23400, 24960), (36960, 37920)]
+fills moved: common\IB24\T7\SoundHaven - Snowball Earth [Indistinct]\notes.mid: 35 -> 35 fills; only before 9 [(72000, 72960), (139200, 140640), (156480, 157440), (172800, 173760)]; only after 9 [(71520, 72960), (139680, 140640), (156000, 157440), (172560, 173760)]
+fills moved: common\Summer Blast _25 Setlist\Tier 5\Victoria - Grow\notes.chart: 30 -> 30 fills; only before 4 [(384, 768), (18912, 19200), (61824, 62208), (71136, 71424)]; only after 4 [(480, 768), (18816, 19200), (61920, 62208), (71040, 71424)]
+fills moved: common\Summer Blast _25 Setlist\Tier 8\Travis Orbin - Dr. Jackle_Dr. Jekyll [Miles Davis]\notes.mid: 60 -> 60 fills; only before 1 [(425280, 426240)]; only after 1 [(424200, 426240)]
+charts read 97; 1.0 fills moved on 11; best score or path moved on 0
