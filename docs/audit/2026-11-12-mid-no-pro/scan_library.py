@@ -1,5 +1,5 @@
 """Count the library charts the all-toms tail moves, for the plan's step MS5
-(docs/superpowers/plans/2026-11-12-mid-no-pro-toms.md, question 4).
+(`docs/superpowers/plans/2026-11-12-mid-no-pro-toms.md` (removed; `git show e9fecb6f:docs/superpowers/plans/2026-11-12-mid-no-pro-toms.md`), question 4).
 
 Usage:  py -I scan_library.py <songs folder> <output file>
 

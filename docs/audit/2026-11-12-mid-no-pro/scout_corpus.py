@@ -1,5 +1,6 @@
 """List the checked-in charts and the in-test charts whose pinned values the
-all-toms tail may move (plan docs/superpowers/plans/2026-11-12-mid-no-pro-toms.md,
+all-toms tail may move (plan
+`docs/superpowers/plans/2026-11-12-mid-no-pro-toms.md` (removed; `git show e9fecb6f:docs/superpowers/plans/2026-11-12-mid-no-pro-toms.md`),
 task T4, for MS2 and T6).
 
 Usage:  py -I scout_corpus.py <repo root> [<output file>]
@@ -273,7 +274,7 @@ def main(argv):
         f'that build a .mid in code)',
         '',
         'Made by docs/audit/2026-11-12-mid-no-pro/scout_corpus.py. The rule it applies is',
-        'tail_rule.py beside it; the plan is docs/superpowers/plans/2026-11-12-mid-no-pro-toms.md.',
+        'tail_rule.py beside it; the plan is `docs/superpowers/plans/2026-11-12-mid-no-pro-toms.md` (removed; `git show e9fecb6f:docs/superpowers/plans/2026-11-12-mid-no-pro-toms.md`).',
         'A move shows only with Pro Drums on: with it off no pad is a cymbal.',
         '',
         '== Checked-in charts that move',

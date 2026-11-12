@@ -1,7 +1,7 @@
 2 checked-in charts move and 91 in-test .mid builders mention no tom marker, fifth pad or key (of 168 drum charts read under testdata/ and 107 tests that build a .mid in code)
 
 Made by docs/audit/2026-11-12-mid-no-pro/scout_corpus.py. The rule it applies is
-tail_rule.py beside it; the plan is docs/superpowers/plans/2026-11-12-mid-no-pro-toms.md.
+tail_rule.py beside it; the plan is `docs/superpowers/plans/2026-11-12-mid-no-pro-toms.md` (removed; `git show e9fecb6f:docs/superpowers/plans/2026-11-12-mid-no-pro-toms.md`).
 A move shows only with Pro Drums on: with it off no pad is a cymbal.
 
 == Checked-in charts that move

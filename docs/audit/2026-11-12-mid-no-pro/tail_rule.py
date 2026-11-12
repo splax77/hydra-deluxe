@@ -1,8 +1,8 @@
 """The scout's copy of the all-toms tail, for the two scan scripts beside it.
 
 This is a read-only scout, not Hydra. Hydra's owners are `convert_drum_pads`,
-`midi_drum_chart_flags` and `drum_key_is_true` in src/parse/song.cpp, and the
-plan docs/superpowers/plans/2026-11-12-mid-no-pro-toms.md says what the game
+`midi_drum_chart_flags` and `ini_drum_key_is_true` in src/parse/song.cpp, and the
+plan `docs/superpowers/plans/2026-11-12-mid-no-pro-toms.md` (removed; `git show e9fecb6f:docs/superpowers/plans/2026-11-12-mid-no-pro-toms.md`) says what the game
 does. If the scout and those owners ever disagree, the owners are right and
 this file is stale.
 

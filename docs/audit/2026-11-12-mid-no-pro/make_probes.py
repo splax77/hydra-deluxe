@@ -1,5 +1,5 @@
 """Make probes G, H and J for the plan's live steps LS1, LS2 and LS3
-(docs/superpowers/plans/2026-11-12-mid-no-pro-toms.md).
+(`docs/superpowers/plans/2026-11-12-mid-no-pro-toms.md` (removed; `git show e9fecb6f:docs/superpowers/plans/2026-11-12-mid-no-pro-toms.md`)).
 
 Each probe is probe F's chart: a four-pad .mid with no tom marker and no
 fifth pad, 125 BPM at 480 ticks a beat, so one tick is one millisecond. Each
