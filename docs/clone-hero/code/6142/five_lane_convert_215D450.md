@@ -18,6 +18,8 @@ The within-tick sort has already put type 17 before type 18 (NL-33), so on a tic
 
 Lines 130 to 186 are the four-lane branch, an indexed pass over the same list. Types 13 to 15 and 16 are left alone (lines 147 to 157). The fourth pad (18) becomes type 17 with its flags kept (line 158): this is the ordinary four-pad rename. The fifth pad (17, lines 160 to 180) gets Cymbal cleared and Tom set, then looks for a type-18 note on the chord (line 165). If there is one, it looks for a type-16 note (line 172), copies that note's flag word when one is found (lines 178 and 179), and becomes type 16 (line 180).
 
-Lines 187 to 222 run after either branch, and only when both track flags are down: every note that is not a kick gets Cymbal cleared and Tom set.
+When the five-lane pass ends, line 56 jumps to line 119, which disposes of the list walker, and line 122 jumps to the return at line 233. So the five-lane branch never reaches the tail. Lines 123 to 129 are the walker's cleanup on the exception path; nothing in the method jumps to them. When the four-lane pass ends, line 137 goes on to line 187.
+
+Lines 187 to 222 are the tail, and they run only after the four-lane branch, and only when both track flags are down: every note that is not a kick gets Cymbal cleared and Tom set. The Five Lane E bot run of 2026-11-12 agrees: a .chart with neither flag up and five_lane_drums = True kept its yellow and fourth-pad cymbals (NL-74, NL-75).
 
 Only the type and bits 4 and 5 are written, apart from the flag copy at lines 178 and 179. Accent, ghost, Star Power, solo and flam bits stay on the note.
