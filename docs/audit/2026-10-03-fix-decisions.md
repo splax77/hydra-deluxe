@@ -1907,3 +1907,10 @@ The plan's `hydra_replay` flag test stays a real test, so `hydra_tests` also nee
 1. **Two sections on one tick.** The game keeps one, the last name written; Hydra keeps both. It stays open as Q-83 on `docs/clone-hero/questions.md`.
 2. **A section text with white space round it.** The game trims the text before its `[section` test; Hydra needs the first character to be `[` and the last `]`. It stays open as Q-84.
 3. **`[section` against `section ` (CR-29).** The game needs no space after the word; Hydra does. It stays with Q-15 and live step LS-U1, untouched by this change.
+
+**D335 (session a09f66ea), 2026-11-12. The answers to the player stall fix plan's questions.** `docs/superpowers/plans/2026-11-12-player-stall-fixes.md` asked five questions after LS-A2 dropped 41 chords on The Who. The user answered four of them. Question 3, on the storage optimizer and the quiet check, stays open, and no task in that plan depends on it.
+
+1. **The writer caps (question 5) and the go-ahead for PS1, PS2 and PS5.** "Start them, 5 s cap (Recommended)". The press-log writer and the kit-log writer are each waited for at most 5 s at the run's end.
+2. **The timing columns (question 1).** "File and status". PS3's seven columns go into `press-<n>.csv` and into the `ch_play_status` rows.
+3. **The offline hunt (question 2).** "Yes, those numbers (Recommended)". A step over 40 ms counts as a stall, each run lasts 10 minutes, and there are three runs at most, 30 minutes in all.
+4. **Chord 1426 (question 4).** "Trace it first". Before any rule is chosen for a press retimed past its own chord's window, a read-only trace finds why the schedule's `aim_end_ms` for chord 1426 is 3,546.47 ms earlier than the end the game read, which is also the end the schedule's own `paid_by` implies.
