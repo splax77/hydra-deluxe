@@ -86,10 +86,10 @@ The reviewer looks hardest at three things. First, the store header now shows se
 Acceptance criteria:
 
 1. `hydra_bench` builds. Check: the main session builds the `hydra_bench` target on the reviewed branch.
-5. The precheck lists no item for `tools/bench.cpp`. Check: `hydra_precheck.exe` on the reviewed branch.
 2. The bench reproduces today's output shape. Check: the bench command above prints sections 1 to 6 and no line holds the word "differs".
 3. The docs check passes. Check: `hydra_tests.exe "-tc=docs match code*"`, run by the main session.
 4. The store's tests still pass, since store helpers moved. Check: the list `hydra_precheck.exe --tests` prints for the branch, run by the main session.
+${LINE}
 
 ### T2: Time the candidates that have no number yet
 
@@ -242,6 +242,7 @@ The program-load part of a cold start (see T8).
 | A fix is kept only if its bench line drops | Global constraint 4 | T3, T4, T5, T6, T7 | T3 criterion 4; T4 criterion 6; T5 criterion 4; T6 criterion 3; T7 criterion 5 |
 | The bench builds and its checks pass before anything else uses it | T1 | T1 | T1 criteria 1 to 4 |
 | Each exposed store helper has one definition | T1 | T1 | The reviewer reads the diff; T1 criterion 4 |
+| The five precheck items in the bench are settled | T1 | T1 | T1 criterion 5 |
 | New bench lines copy no rule and check their rows | T2 | T2 | T2 criteria 1 and 3 |
 | T2's numbers replace "not measured" in the table | T2 | T2 | T2 criterion 2 |
 | T3 starts only if hash-order slices measure lower | "Why the slices cost more"; T3 | T2, T3 | T2's two slice lines, written into the plan before T3's branch is cut |
