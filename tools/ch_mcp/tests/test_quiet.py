@@ -68,7 +68,7 @@ class VerdictTest(unittest.TestCase):
         self.assertTrue(got.quiet)
         self.assertEqual(list(got.lines), [
             "no compiler running",
-            "CPU: 3.00 percent averaged over 5 s (limit 15 percent)",
+            "CPU: 3.00 percent averaged over 5 s (limit 30 percent)",
             "no build folder written to in the last 60 s",
             "build folders: 0 read, 40 entries, 0.25 s",
             "free memory: 12.0 GB",
@@ -130,7 +130,7 @@ class VerdictTest(unittest.TestCase):
     def test_cpu_just_above_the_threshold_prints_a_number_above_the_limit(self):
         got = report(cpu=Q.QUIET_CPU_PCT + 0.01)
         self.assertFalse(got.quiet)
-        self.assertEqual(got.lines[1], "CPU: 15.01 percent averaged over 5 s (limit 15 percent)")
+        self.assertEqual(got.lines[1], "CPU: 30.01 percent averaged over 5 s (limit 30 percent)")
 
     def test_a_folder_younger_than_the_limit_stops_it_and_its_line_names_it(self):
         folder = rf"{WORKTREE}\build-cpp"
@@ -158,7 +158,7 @@ class VerdictTest(unittest.TestCase):
         self.assertIn("MsMpEng.exe: running", got.lines)
 
     def test_the_decided_numbers(self):
-        self.assertEqual((Q.QUIET_CPU_PCT, Q.QUIET_SAMPLE_S, Q.BUILD_RECENT_S), (15, 5, 60))
+        self.assertEqual((Q.QUIET_CPU_PCT, Q.QUIET_SAMPLE_S, Q.BUILD_RECENT_S), (30, 5, 60))
         self.assertEqual(Q.SCAN_CAP_S, 3.0)
         self.assertEqual(set(Q.COMPILER_NAMES),
                          {"cl", "link", "MSBuild", "cmake", "ninja", "clang-cl", "lld-link",

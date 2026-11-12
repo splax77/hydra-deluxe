@@ -340,3 +340,19 @@ GM_OFF_CLOCK = 0xB0
 CLOCK_OFF_CORR = 0x18
 CLOCK_OFF_AUDIO = 0x20
 CLOCK_OFF_RAW = 0x38
+
+# How long a run's end waits for a log writer thread (the kit log's in
+# LiveAgent.detach, the press log's in the player) before it stops waiting
+# and says the log may lack its last lines. The user's answer to question 5
+# of the player stall fix plan (D335 item 1, "Start them, 5 s cap
+# (Recommended)"): one number for both writers.
+LOG_WRITER_CAP_S = 5.0
+
+# The offline stall hunt (tools/ch_probe/experiments/stall_harness.py): how
+# long one step of the player may run before it counts as a stall, how long
+# one run lasts, and how many hunt runs there are at most. The user's answer
+# to question 2 of the player stall fix plan (D335 item 3, "Yes, those
+# numbers (Recommended)").
+STALL_THRESHOLD_MS = 40.0
+STALL_RUN_MINUTES = 10.0
+STALL_HUNT_RUNS_MAX = 3

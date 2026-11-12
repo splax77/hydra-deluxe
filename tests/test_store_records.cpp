@@ -607,7 +607,7 @@ TEST_CASE("store: every accepted results stamp reads Ready, others Stale") {
     // the 85 ms early fill (D250), "2.8.0+efill85" predates 1.0 fills on
     // the shared grid, and "2.12.1+ch10grid" predates the coda skip of
     // written fills (FL-08), and "2.14.1+coda" predates the five-lane drum
-    // conversion (D336), so they read Stale,
+    // conversion (D337), so they read Stale,
     // through lookup and the skip list it backs (ready_song_ids).
     CHECK(kResultsStamp.is_current("2.14.1+fivelane"));
     CHECK_FALSE(kResultsStamp.is_current("2.14.1+coda"));

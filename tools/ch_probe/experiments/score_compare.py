@@ -43,9 +43,10 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 from tools.ch_probe.experiments.overlay_logs import (
-    KEYS_PRESS_COLUMNS, KIT_PRESS_COLUMNS, PLAYER_PRESS_COLUMNS, PRESS_COLUMNS_WITH_HIT,
+    KEYS_PRESS_COLUMNS, KIT_PRESS_COLUMNS, PLAYER_PRESS_COLUMNS, PRESS_COLUMNS_BEFORE_TIMING,
+    PRESS_COLUMNS_WITH_HIT,
     PRESS_COLUMNS_WITHOUT_PLAYER, PRESS_COLUMNS_WITHOUT_RETIME, PRESS_COLUMNS_WITHOUT_WALL,
-    PRESS_LOG_COLUMNS, RETIME_PRESS_COLUMNS, WALL_PRESS_COLUMNS)
+    PRESS_LOG_COLUMNS, RETIME_PRESS_COLUMNS, TIMING_PRESS_COLUMNS, WALL_PRESS_COLUMNS)
 from tools.ch_probe.experiments.play_chart import STOP_DONE
 
 # The route words; game_tools.ROUTE_KEYS and ROUTE_KIT own them, and a test
@@ -60,18 +61,18 @@ _DYNAMIC_WORDS = ("ghost", "accent")
 
 # The older press logs overlay_logs names (KEYS_PRESS_COLUMNS,
 # PRESS_COLUMNS_WITHOUT_WALL, PRESS_COLUMNS_WITHOUT_PLAYER,
-# PRESS_COLUMNS_WITHOUT_RETIME, PRESS_COLUMNS_WITH_HIT) load too, with the
-# missing columns blank.
+# PRESS_COLUMNS_WITHOUT_RETIME, PRESS_COLUMNS_WITH_HIT,
+# PRESS_COLUMNS_BEFORE_TIMING) load too, with the missing columns blank.
 
 
 @dataclass(frozen=True)
 class Press:
-    """One press-log row. The kit, wall, player and retime fields keep the
-    log's text as written; they are blank for a keys-route run (kit fields),
-    for a row they do not apply to (player and retime fields) and for a log
-    from before the column existed. The score check reads none of the player
-    or retime fields. The log's send column, and an older log's `hit`, are
-    left out."""
+    """One press-log row. The kit, wall, player, retime and timing fields
+    keep the log's text as written; they are blank for a keys-route run (kit
+    fields), for a row they do not apply to (player, retime and timing
+    fields) and for a log from before the column existed. The score check
+    reads none of the player, retime or timing fields. The log's send
+    column, and an older log's `hit`, are left out."""
     index: int
     chart_ms: float
     clock_ms_at_press: float
@@ -87,6 +88,13 @@ class Press:
     end_read_ms: str = ""
     probe: str = ""
     retimed: str = ""
+    wait_read_max_ms: str = ""
+    wait_oversleep_max_ms: str = ""
+    press_took_ms: str = ""
+    reply_check_took_ms: str = ""
+    end_read_took_ms: str = ""
+    score_read_took_ms: str = ""
+    prev_handoff_took_ms: str = ""
 
 
 @dataclass(frozen=True)
@@ -101,8 +109,9 @@ class HydraChord:
 def load_press_log(path: str) -> List[Press]:
     """The press log's rows. Raises ValueError when the header is not
     PRESS_LOG_COLUMNS or one of the older headers this module names."""
-    accepted = (PRESS_LOG_COLUMNS, PRESS_COLUMNS_WITH_HIT, PRESS_COLUMNS_WITHOUT_RETIME,
-                PRESS_COLUMNS_WITHOUT_PLAYER, PRESS_COLUMNS_WITHOUT_WALL, KEYS_PRESS_COLUMNS)
+    accepted = (PRESS_LOG_COLUMNS, PRESS_COLUMNS_BEFORE_TIMING, PRESS_COLUMNS_WITH_HIT,
+                PRESS_COLUMNS_WITHOUT_RETIME, PRESS_COLUMNS_WITHOUT_PLAYER,
+                PRESS_COLUMNS_WITHOUT_WALL, KEYS_PRESS_COLUMNS)
     with open(path, encoding="utf-8", newline="") as f:
         reader = csv.DictReader(f)
         if tuple(reader.fieldnames or ()) not in accepted:
@@ -114,7 +123,8 @@ def load_press_log(path: str) -> List[Press]:
                       int(row["score_after"]),
                       **{c: row.get(c) or ""
                          for c in KIT_PRESS_COLUMNS + WALL_PRESS_COLUMNS
-                         + PLAYER_PRESS_COLUMNS + RETIME_PRESS_COLUMNS})
+                         + PLAYER_PRESS_COLUMNS + RETIME_PRESS_COLUMNS
+                         + TIMING_PRESS_COLUMNS})
                 for row in reader]
 
 

@@ -82,6 +82,9 @@ Harness::Harness() {
     hooks.jobs_busy = [this] { return uitest::jobs_busy(*this); };
     hooks.state_text = [this] { return uitest::state_text(*this); };
     hooks.reset = [this] { reset_app(*this); };
+    hooks.reset_drawing = [this](ImGuiTestContext* ctx, double seconds) {
+        return reset_app_drawing(ctx, *this, seconds);
+    };
     hooks.is_library_row_title = [this](const std::string& label) {
         return library_row_title(*this, label);
     };
@@ -264,7 +267,11 @@ void reset_app(Harness& h, const std::string& rules_text, bool wait_store,
     if (!wait_store) return;
     // A deliberate block, in the harness only: the tests click at once.
     h.app->wait_store_open();
-    if (!h.app->store_open_failed()) return;
+    if (const std::string why = store_open_failure(h); !why.empty()) IM_ERRORF("%s", why.c_str());
+}
+
+std::string store_open_failure(const Harness& h) {
+    if (!h.app || !h.app->store_open_failed()) return "";
     // The text the startup message box would show (D72 item 1).
     std::string why = "unknown error";
     try {
@@ -273,7 +280,27 @@ void reset_app(Harness& h, const std::string& rules_text, bool wait_store,
         why = hydra::app::plain_error_block(e);
     } catch (...) {
     }
-    IM_ERRORF("The scratch library did not open:\n%s", why.c_str());
+    return "The scratch library did not open:\n" + why;
+}
+
+DrawnStart wait_store_drawing(ImGuiTestContext* ctx, Harness& h, double seconds) {
+    const auto settled = [&] {
+        if (h.app->store_ready() || h.app->store_open_failed()) return true;
+        // The startup screen's words for the open's step now. The text is
+        // last frame's, so after a step change they match a frame later.
+        if (on_screen(h, h.app->store_open_progress().label())) OpenGate::note_startup_drawn();
+        return false;
+    };
+    wait_until(ctx, settled, seconds);
+    DrawnStart out;
+    out.still_starting = !h.app->store_ready() && !h.app->store_open_failed();
+    out.failure = store_open_failure(h);
+    return out;
+}
+
+DrawnStart reset_app_drawing(ImGuiTestContext* ctx, Harness& h, double seconds) {
+    reset_app(h, "", /*wait_store=*/false);
+    return wait_store_drawing(ctx, h, seconds);
 }
 
 bool jobs_busy(Harness& h) { return h.app->any_job_running(); }
@@ -349,23 +376,43 @@ namespace {
 // and can outlive the OpenGate.
 std::atomic<bool> g_open_gate_open{true};
 std::atomic<int> g_open_gate_started{0};
+std::atomic<bool> g_open_gate_startup_drawn{false};
+// Set once a StartupDrawn hold has let go: that hold ends on its own timer,
+// not through open(), so without it every later report would hold again.
+std::atomic<bool> g_open_gate_held_once{false};
 }  // namespace
 
-OpenGate::OpenGate()
+OpenGate::OpenGate(OpenHold hold, double min_hold_s)
     : seam_(hydra::ui::set_store_open_gate_for_test,
-            [](const hydra::ui::StoreOpenProgress& progress,
-               const std::function<bool()>& cancelled) {
-                // Hold at the conversion, where the upgrade's screen has all
-                // its words.
-                if (progress.step != hydra::ui::StoreOpenProgress::Step::ConvertingRecords)
-                    return;
+            [hold, min_hold_s](const hydra::ui::StoreOpenProgress& progress,
+                               const std::function<bool()>& cancelled) {
+                using Step = hydra::ui::StoreOpenProgress::Step;
+                // The conversion is where the upgrade's screen has all its
+                // words; the library read is the step every open reaches.
+                const Step at = hold == OpenHold::Conversion ? Step::ConvertingRecords
+                                                             : Step::ReadingCharts;
+                if (progress.step != at) return;
                 if (g_open_gate_open.load()) return;
+                // The library read reports once per row; a StartupDrawn gate
+                // holds at the first of them (0 of N) and lets the rest through.
+                if (hold == OpenHold::StartupDrawn && g_open_gate_held_once.load()) return;
                 ++g_open_gate_started;
-                testwait::wait_until([&] { return g_open_gate_open.load() || cancelled(); },
-                                     "the test to open the startup open's gate");
+                const auto held_from = std::chrono::steady_clock::now();
+                const auto min_hold = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::duration<double>(hold == OpenHold::StartupDrawn ? min_hold_s : 0));
+                const auto let_go = [&] {
+                    if (g_open_gate_open.load() || cancelled()) return true;
+                    return hold == OpenHold::StartupDrawn && g_open_gate_startup_drawn.load() &&
+                           std::chrono::steady_clock::now() - held_from >= min_hold;
+                };
+                testwait::wait_until(let_go, "the test to open the startup open's gate",
+                                     testwait::kWaitCap + min_hold);
+                if (hold == OpenHold::StartupDrawn) g_open_gate_held_once = true;
             }) {
     g_open_gate_open = false;
     g_open_gate_started = 0;
+    g_open_gate_startup_drawn = false;
+    g_open_gate_held_once = false;
 }
 
 // The gate opens here; seam_ removes the seam after.
@@ -374,6 +421,8 @@ OpenGate::~OpenGate() { g_open_gate_open = true; }
 void OpenGate::open() { g_open_gate_open = true; }
 
 int OpenGate::started() const { return g_open_gate_started.load(); }
+
+void OpenGate::note_startup_drawn() { g_open_gate_startup_drawn = true; }
 
 size_t count_on_screen(Harness& h, const std::string& s) {
     const std::string all = visible_text(h);

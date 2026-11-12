@@ -31,8 +31,18 @@ namespace hydra {
 // previous window ended. Throws KindedError(ErrorKind::PathTextRefused) for
 // empty text, for long text whose section count is not the writer's, and for a
 // window no fill can place, naming its position.
+//
+// The graph every search runs on is search_graph's for `song` and `settings`,
+// built once for the whole read.
 Path paths_from_pathstring(const Song& song, const SearchSettings& settings,
                            const std::string& text);
+
+// The same read on a graph already built for `song` (search_graph), for a
+// caller that reads many texts on one chart. Every search runs on `graph`
+// (search_target's graph form), so `graph` must be the one search_graph builds
+// for `song` under the settings the text was written under.
+Path paths_from_pathstring_on_graph(const Song& song, const ScoreGraph& graph,
+                                    const std::string& text);
 
 }  // namespace hydra
 

@@ -103,12 +103,31 @@ std::string pipe_problem(bool live, const std::string& pipe_name);
 // means no rules file, so every other test runs today's rules.
 // wait_store: the app opens its store on a worker thread. True (the default)
 // blocks in AppState::wait_store_open until the store is ready, so the test
-// can click at once, and fails the test if the open failed. Only a test that
-// looks at the startup screen passes false.
+// can click at once and no frame of the new app has been drawn, and fails the
+// test with store_open_failure's text if the open failed. Checked-in tests
+// and command files wait this way. A test that looks at the startup screen
+// passes false, and a live session waits by drawing instead
+// (reset_app_drawing).
 // settings_text: the scratch hydra_settings.ini's exact bytes. Empty (the
 // default) means the INI described above.
 void reset_app(Harness& h, const std::string& rules_text = "", bool wait_store = true,
                const std::string& settings_text = "");
+
+// Why the app's store did not open, in the words the startup message box
+// would show, or "" when it has not failed. Both waits for the store report
+// a failed open through it.
+std::string store_open_failure(const Harness& h);
+
+// Yields frames until the app's store is ready, its open has failed,
+// `seconds` have passed or the engine is stopping, so the window keeps
+// drawing the startup screen meanwhile. A frame with the startup screen's
+// words on it lets a StartupDrawn OpenGate go (OpenGate::note_startup_drawn).
+// The result's failure is store_open_failure's text.
+DrawnStart wait_store_drawing(ImGuiTestContext* ctx, Harness& h, double seconds);
+
+// reset_app without its block, then wait_store_drawing: how a live session
+// starts and resets (EngineHooks::reset_drawing).
+DrawnStart reset_app_drawing(ImGuiTestContext* ctx, Harness& h, double seconds);
 
 // Register every C++ test (the uitest_<area>.cpp files, in the order
 // uitest_tests.cpp fixes) through register_test (uitest_engine.h). Each
@@ -177,21 +196,45 @@ private:
     ScopedHook seam_;
 };
 
+// Where an OpenGate holds the open, and what lets it go besides open().
+enum class OpenHold {
+    // At the conversion to records, until open(). Only an old library file
+    // reaches that step.
+    Conversion,
+    // At the library read, which every open reaches, until open().
+    LibraryRead,
+    // At the library read, until a frame with the startup screen's words on
+    // it has been drawn (OpenGate::note_startup_drawn) and the gate's
+    // minimum hold has passed. It holds once, at the read's first report;
+    // every later report goes through. Code that blocks while the store
+    // opens draws no such frame, so the open is held until the gate's own
+    // wait gives up.
+    StartupDrawn,
+};
+
 // Holds the app's store open on its worker thread until the test lets it
 // through. A scratch library opens in a blink, so a test that looks at the
 // startup screen would race it. While a gate lives, the open's progress waits
-// at the gate once it reaches the conversion to records, until open(). started()
-// counts the opens that reached it. Make it BEFORE reset_app (the open starts
-// in AppState's constructor) and pass wait_store=false; its destructor opens
+// at the gate once it reaches the step `hold` names, until open() or what
+// `hold` says. `min_hold_s` is for StartupDrawn only: the least time, in
+// seconds, the gate holds before it lets go, counted from when it starts
+// holding. The gate's own wait is testwait::kWaitCap on top of that hold;
+// past it, the open fails. started() counts the opens that reached it. Make
+// it BEFORE reset_app (the open starts in AppState's constructor) and pass
+// wait_store=false, or reset through a wait that draws; its destructor opens
 // it and removes the seam. Only one gate can exist at a time.
 class OpenGate {
 public:
-    OpenGate();
+    explicit OpenGate(OpenHold hold = OpenHold::Conversion, double min_hold_s = 0);
     ~OpenGate();
     OpenGate(const OpenGate&) = delete;
     OpenGate& operator=(const OpenGate&) = delete;
     void open();
     int started() const;
+    // A frame with the startup screen's words on it has been drawn: what
+    // lets a StartupDrawn gate go. The wait that draws while the store opens
+    // calls it; nothing else does.
+    static void note_startup_drawn();
 
 private:
     ScopedHook seam_;

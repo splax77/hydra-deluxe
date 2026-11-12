@@ -1541,8 +1541,10 @@ std::string library_entry_select() {
 
 // Every row `s` (a library_entry_select query) steps to. Rows an older scan
 // wrote never read their timing: none, not "none stated"; `timing_read`
-// (RecordStore::chart_meta_current) says which rows those are.
-std::vector<ChartLibraryEntry> read_library_entries(sqlite3_stmt* s, bool timing_read) {
+// (RecordStore::chart_meta_current) says which rows those are. `on_row`, when
+// set, is told each row as it is read (RowsReadFn).
+std::vector<ChartLibraryEntry> read_library_entries(sqlite3_stmt* s, bool timing_read,
+                                                    const RowsReadFn& on_row = {}) {
     std::vector<ChartLibraryEntry> out;
     while (step_row(s)) {
         ChartLibraryEntry e;
@@ -1556,6 +1558,8 @@ std::vector<ChartLibraryEntry> read_library_entries(sqlite3_stmt* s, bool timing
         e.sig = column_text(s, 7);
         if (timing_read) e.timing = ChartTimingMeta{column_opt_f64(s, 8), column_opt_f64(s, 9)};
         out.push_back(std::move(e));
+        if (on_row && !on_row(static_cast<int64_t>(out.size())))
+            throw Cancelled("reading the chart list was stopped");
     }
     return out;
 }
@@ -1635,7 +1639,8 @@ bool RecordStore::chart_library_out_of_date() {
     return chart_library_count() > 0 && !chart_meta_current();
 }
 
-std::vector<ChartLibraryEntry> RecordStore::list_chart_library(int offset, int limit) {
+std::vector<ChartLibraryEntry> RecordStore::list_chart_library(int offset, int limit,
+                                                               const RowsReadFn& on_row) {
     std::lock_guard<std::recursive_mutex> lock(mutex_);
 
     const bool timing_read = chart_meta_current();
@@ -1643,7 +1648,7 @@ std::vector<ChartLibraryEntry> RecordStore::list_chart_library(int offset, int l
         db_, (library_entry_select() + " ORDER BY name LIMIT ? OFFSET ?").c_str());
     sqlite3_bind_int(s, 1, limit);
     sqlite3_bind_int(s, 2, offset);
-    return read_library_entries(s, timing_read);
+    return read_library_entries(s, timing_read, on_row);
 }
 
 std::vector<ChartLibraryEntry> RecordStore::list_chart_library_copies(const std::string& md5) {

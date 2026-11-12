@@ -170,7 +170,13 @@ missing.
 src/ui/library_jobs.cpp), so the window keeps drawing. A fast open shows an
 empty window. An open still running after 0.15 s shows the startup screen,
 with a bar that counts rows copied out of rows to copy, both counted from the
-file itself (D100 items 2 to 4 and 7). The command-line tools have no window to
+file itself (D100 items 2 to 4). On every file, upgraded or not, the library
+read that ends the open then shows "Reading your charts..." and then "Reading
+your results...", each over a bar that counts charts out of the store's
+`chart_library_count()` (D336, which replaces D100 item 7). Only the open of
+the file itself, before any row can be counted, reads "Opening your
+library..." with no bar. `StoreOpenProgress::label()` in
+src/ui/library_jobs.cpp owns the lines. The command-line tools have no window to
 freeze. They still open the file before doing anything else, and get the
 faster upgrade too.
 
