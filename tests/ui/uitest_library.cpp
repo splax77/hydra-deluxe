@@ -13,6 +13,7 @@
 #include "../db_file_sql.h"          // tests/ is not on the runner's include path
 #include "../old_layout_fixture.h"
 #include "../testdata_dirs.h"  // root
+#include "../wait_util.h"       // kWaitCap
 #include "app/config.h"
 #include "app/user_messages.h"  // old_library_set_aside_notice, library_rescan_notice,
                                 // library_scan_blocked_notice
@@ -1402,6 +1403,63 @@ void test_startup_screen(ImGuiTestContext* ctx) {
                 int64_t{0});
 }
 
+// The startup library read shows a counted bar (ADR 0026). On a file that
+// needs no upgrade, the startup box shows the chart-list step's line over a
+// counted bar. A StartupDrawn OpenGate holds the open at that step's first
+// report, 0 of N, N being the scanned corpus's chart count. The box is read
+// and saved as a picture there. The gate holds once: the open then finishes
+// inside one wait cap, where a gate that held again at every row's report
+// would take the hold once per chart.
+void test_startup_library_read_bar(ImGuiTestContext* ctx) {
+    using Step = hydra::ui::StoreOpenProgress::Step;
+    Harness& h = harness(ctx);
+    reset_app(h);
+    scan_library(ctx);
+    if (ctx->IsError()) return;
+    const int64_t charts = h.app->store->chart_library_count();
+    IM_CHECK_RETV(charts > 1, );
+    // VACUUM INTO copies what the open store holds, its write-ahead log included.
+    const std::string seed = h.temp_dir + "\\startup_read_seed.db";
+    std::error_code ec;
+    fs::remove(fs::u8path(seed), ec);
+    IM_CHECK_RETV(hydra::test::run_sql_on_file(h.db_path, "VACUUM INTO '" + seed + "'"), );
+
+    // Seconds the gate holds once the box is drawn. Over a second per chart
+    // the corpus's charts would far outlast the wait cap below.
+    constexpr double kHoldS = 1.0;
+    const std::string seed_before = h.seed_db;
+    h.seed_db = seed;
+    OpenGate gate(OpenHold::StartupDrawn, kHoldS);  // before reset_app: the open starts there
+    reset_app(h, "", /*wait_store=*/false);
+    h.seed_db = seed_before;
+
+    // The words come from the open's own label and the bar's own format.
+    hydra::ui::StoreOpenProgress reading_charts;
+    reading_charts.step = Step::ReadingCharts;
+    const std::string first_line = reading_charts.label();
+    const std::string count = "0 / " + hydra::group_thousands(charts);
+    // This wait draws frames but never tells the gate a startup frame was
+    // drawn (wait_store_drawing does that), so the open stays held meanwhile.
+    IM_CHECK_RETV(wait_until(ctx, [&] { return on_screen(h, first_line) && on_screen(h, count); },
+                             10), );
+    const hydra::ui::StoreOpenProgress held = h.app->store_open_progress();
+    IM_CHECK(held.step == Step::ReadingCharts);
+    IM_CHECK(!held.upgrading);
+    IM_CHECK_EQ(held.rows_done, uint64_t{0});
+    IM_CHECK_EQ(held.rows_total, static_cast<uint64_t>(charts));
+    IM_CHECK(!on_screen(h, "Updating your library file for this version of Hydra"));
+    IM_CHECK(!h.app->store_ready());
+    IM_CHECK(screenshot(ctx, "startup-library-read.png"));
+
+    // Now the gate learns the box was drawn, and lets go after its hold.
+    const DrawnStart opened = wait_store_drawing(
+        ctx, h, kHoldS + std::chrono::duration<double>(testwait::kWaitCap).count());
+    IM_CHECK_STR_EQ(opened.failure.c_str(), "");
+    IM_CHECK(!opened.still_starting);
+    IM_CHECK_EQ(gate.started(), 1);
+    IM_CHECK_EQ(h.app->library.rows().size(), static_cast<size_t>(charts));
+}
+
 // Removes the set-aside copy of the harness's library file when it goes, so
 // a failed check cannot leave one for startup-screen to find.
 struct SetAsideCleanup {
@@ -1997,6 +2055,7 @@ const std::vector<TestEntry>& library_tests() {
         {"library-columns-at-start", test_library_columns_at_start},
         {"library-twin-rows", test_library_twin_rows},
         {"startup-screen", test_startup_screen},
+        {"startup-library-read-bar", test_startup_library_read_bar},
         {"old-library-set-aside", test_old_library_set_aside},
         {"rescan-on-open", test_rescan_on_open},
         {"rescan-on-open-cancel", test_rescan_on_open_cancel},
