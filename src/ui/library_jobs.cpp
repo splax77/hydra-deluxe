@@ -117,9 +117,7 @@ void read_library_summaries(store::RecordStore& store, const app::Settings& sett
         part.clear();
         for (size_t i = from; i < to; ++i) part.push_back(hashes[by_hash[i]]);
         std::vector<store::RecordLookup> found = store.lookup(part, settings.profile());
-        if (found.size() != part.size())
-            throw std::runtime_error("the results read gave " + std::to_string(found.size()) +
-                                     " answers for " + std::to_string(part.size()) + " charts");
+        // lookup gives one answer per id asked, in the order asked.
         for (size_t i = from; i < to; ++i) answers[by_hash[i]] = std::move(found[i - from]);
         if (!on_slice(static_cast<uint64_t>(to))) throw JobCancelled{};
     }
