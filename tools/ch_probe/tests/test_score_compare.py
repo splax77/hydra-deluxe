@@ -291,6 +291,32 @@ class PressLogHeaderTest(unittest.TestCase):
         self.assertEqual((press.wait_read_max_ms, press.press_took_ms, press.end_read_took_ms),
                          ("1.5", "212.4", ""))
 
+    def test_a_log_with_the_header_before_the_in_game_columns_still_loads(self):
+        # The header play_chords wrote before task IG3 of
+        # docs/superpowers/plans/2026-11-12-in-game-press-timing.md, LS-P3's
+        # press-1.csv among them, as written.
+        rows = _load_text(
+            "index,chart_ms,clock_ms_at_press,score_before,score_after,send,down_frame,"
+            "up_frame,down_ms,up_ms,wall_s_at_read,wall_s_at_reply,scored_between,"
+            "end_read_ms,probe,retimed,wait_read_max_ms,wait_oversleep_max_ms,"
+            "press_took_ms,reply_check_took_ms,end_read_took_ms,score_read_took_ms,"
+            "prev_handoff_took_ms\n"
+            "468,80000.0,80001.0,9000,9000,dropped,,,,,1.25,1.5,0,,,,87.3,,,,,,\n")
+        self.assertEqual([(p.index, p.score_after, p.wait_read_max_ms, p.frame_gap_ms,
+                           p.agent_note) for p in rows],
+                         [(468, 9000, "87.3", "", "")])
+
+    def test_the_in_game_columns_play_in_game_writes_read_back(self):
+        rows = [{"index": 180, "chart_ms": 32583.33, "clock_ms_at_press": 32627.39,
+                 "score_before": 500, "score_after": 600, "send": play_chart.SENT,
+                 "frame_gap_ms": 3.25, "agent_note": "retime_missed"}]
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "press.csv")
+            play_chart.write_press_log(path, rows)
+            (press,) = score_compare.load_press_log(path)
+        self.assertEqual((press.frame_gap_ms, press.agent_note, press.wait_read_max_ms),
+                         ("3.25", "retime_missed", ""))
+
     def test_a_log_with_the_hit_column_still_loads(self):
         rows = _load_text(
             ",".join(overlay_logs.PRESS_COLUMNS_WITH_HIT) + "\n"
