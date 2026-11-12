@@ -1,0 +1,21 @@
+== target 3CAD120 (10 hits)
+  RIPREF at 164240 [8d0d] in 1641D0 GameInit$$PreUnityInit
+  RIPREF at 164409 [8b15] in 1641D0 GameInit$$PreUnityInit
+  RIPREF at 164461 [8b15] in 1641D0 GameInit$$PreUnityInit
+  RIPREF at 1644B8 [8b15] in 1641D0 GameInit$$PreUnityInit
+  RIPREF at 1CD855 [8d0d] in 1CD620 ʽʼʲʴʲˀʸʻʸʲʹ$$ʶʾʳʽʿˀʵʾʳʵʲ
+  RIPREF at 1CDF93 [8b05] in 1CD620 ʽʼʲʴʲˀʸʻʸʲʹ$$ʶʾʳʽʿˀʵʾʳʵʲ
+  RIPREF at 375323 [8d0d] in 374D50 ʹʺʽˁʽˁˀʼʶʷʼ$$ʺʷʻʲʴʺʷʺʺʶʴ
+  RIPREF at 37536A [8b15] in 374D50 ʹʺʽˁʽˁˀʼʶʷʼ$$ʺʷʻʲʴʺʷʺʺʶʴ
+  RIPREF at 377FEA [8d0d] in 377FC0 ʹʺʽˁʽˁˀʼʶʷʼ$$ʾʿʾʻʳʸʹʽʹʴʼ
+  RIPREF at 378031 [8b15] in 377FC0 ʹʺʽˁʽˁˀʼʶʷʼ$$ʾʿʾʻʳʸʹʽʹʴʼ
+== target 3CAD1D8 (4 hits)
+  RIPREF at 164892 [8d0d] in 164810 GameInit$$ʵʳʳʻʺʻˀʾʲʵʹ
+  RIPREF at 164986 [8b15] in 164810 GameInit$$ʵʳʳʻʺʻˀʾʲʵʹ
+  RIPREF at 1EB83D [8d0d] in 1EB800 ʲʴʹʶʻʵʴʸʿʲʶ$$ʸʺʽʽʿˁʶʺʶʲʹ
+  RIPREF at 1EB8B0 [8b05] in 1EB800 ʲʴʹʶʻʵʴʸʿʲʶ$$ʸʺʽʽʿˁʶʺʶʲʹ
+== target 3D0BCA0 (4 hits)
+  RIPREF at 19F9AD [8d0d] in 19F930 ScoringPanel$$ʵˀʺʹʿʴˀʲʽʽʻ
+  RIPREF at 19FAC8 [8b15] in 19F930 ScoringPanel$$ʵˀʺʹʿʴˀʲʽʽʻ
+  RIPREF at 3750CB [8d0d] in 374D50 ʹʺʽˁʽˁˀʼʶʷʼ$$ʺʷʻʲʴʺʷʺʺʶʴ
+  RIPREF at 376FD3 [8b05] in 374D50 ʹʺʽˁʽˁˀʼʶʷʼ$$ʺʷʻʲʴʺʷʺʺʶʴ
