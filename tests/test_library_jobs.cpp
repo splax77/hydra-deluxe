@@ -1,8 +1,9 @@
 // Unit tests for the library and leaderboard jobs: Pause, Stop, the batch
 // clock and time-left estimate, the chart being analyzed, the batch's counts,
-// plain failure lines, quiet cancels, and the startup open's step that reads
-// saved paths. One opt-in case times the startup library read on a library
-// file the caller names.
+// plain failure lines, quiet cancels, the startup open's step that reads
+// saved paths, and its counted read of the library's charts and results. One
+// opt-in case times the startup library read on a library file the caller
+// names.
 // The analyzer and the network are fakes; the counts case, the batch hand-back
 // case and the startup open's cases read one corpus chart each, for a result
 // the store can save.
@@ -34,6 +35,7 @@
 #include "db_file_util.h"  // exec_on_file
 #include "display_fixtures.h"  // kTagOnlyTitle, save_batch_record
 #include "env_util.h"  // read_env
+#include "library_fixtures.h"  // library_row
 #include "net/dmbot_client.h"
 #include "scoped_hook.h"
 #include "store/record_store.h"
@@ -549,8 +551,14 @@ TEST_CASE("jobs: the startup open reads saved paths with its own words, then the
         job.wait();
         REQUIRE(job.ok());
         CHECK(job.library_problem().empty());
-        // One chart to read: reported before it and once it is done.
-        REQUIRE(seen.size() == 4);
+        const std::unique_ptr<RecordStore> store = job.take_store();
+        const hydra::ui::LibraryModel library = job.take_library();
+        // The library lists one chart, and the model holds that one row.
+        REQUIRE(store->chart_library_count() == 1);
+        REQUIRE(library.rows().size() == 1);
+        // One chart to read at each counted step: reported before it and
+        // once it is done.
+        REQUIRE(seen.size() == 7);
         CHECK(seen[0].step == Step::Opening);
         CHECK(seen[1].step == Step::ReadingSavedPaths);
         CHECK(seen[1].label == "Reading saved paths...");
@@ -560,9 +568,21 @@ TEST_CASE("jobs: the startup open reads saved paths with its own words, then the
         CHECK(seen[2].step == Step::ReadingSavedPaths);
         CHECK(seen[2].done == 1);
         CHECK(seen[2].total == 1);
-        CHECK(seen[3].step == Step::LoadingLibrary);
+        CHECK(seen[3].step == Step::ReadingCharts);
+        CHECK(seen[3].label == "Reading your charts...");
         CHECK(seen[3].upgrading);
-        const std::unique_ptr<RecordStore> store = job.take_store();
+        CHECK(seen[3].done == 0);
+        CHECK(seen[4].step == Step::ReadingCharts);
+        CHECK(seen[4].done == 1);
+        CHECK(seen[5].step == Step::ReadingResults);
+        CHECK(seen[5].label == "Reading your results...");
+        CHECK(seen[5].upgrading);
+        CHECK(seen[5].done == 0);
+        CHECK(seen[6].step == Step::ReadingResults);
+        CHECK(seen[6].done == 1);
+        // Both library steps count out of the one chart count, the rows the
+        // model holds.
+        for (size_t i = 3; i < seen.size(); ++i) CHECK(seen[i].total == library.rows().size());
         CHECK(store->hardest_figure_filled(settings.profile()));
     }
 
@@ -574,10 +594,24 @@ TEST_CASE("jobs: the startup open reads saved paths with its own words, then the
         again.start();
         again.wait();
         REQUIRE(again.ok());
-        REQUIRE(seen.size() == 2);
+        const hydra::ui::LibraryModel library = again.take_library();
+        REQUIRE(seen.size() == 5);
         CHECK(seen[0].step == Step::Opening);
-        CHECK(seen[1].step == Step::LoadingLibrary);
-        CHECK_FALSE(seen[1].upgrading);
+        CHECK(seen[0].label == "Opening your library...");
+        CHECK(seen[1].step == Step::ReadingCharts);
+        CHECK(seen[1].label == "Reading your charts...");
+        CHECK(seen[1].done == 0);
+        CHECK(seen[2].step == Step::ReadingCharts);
+        CHECK(seen[2].done == 1);
+        CHECK(seen[3].step == Step::ReadingResults);
+        CHECK(seen[3].label == "Reading your results...");
+        CHECK(seen[3].done == 0);
+        CHECK(seen[4].step == Step::ReadingResults);
+        CHECK(seen[4].done == 1);
+        for (size_t i = 1; i < seen.size(); ++i) {
+            CHECK_FALSE(seen[i].upgrading);
+            CHECK(seen[i].total == library.rows().size());
+        }
     }
     testtemp::remove_dir(dir);
 }
@@ -604,29 +638,31 @@ TEST_CASE("jobs: a fill that fails still opens the library and leaves its senten
         REQUIRE(job.ok());
         CHECK(job.library_problem() ==
               hydra::app::plain_error(hydra::KindedError(hydra::ErrorKind::DatabaseWrite, "x")));
-        // The library was still read, and the marker stays unset so the next
-        // open tries again.
+        // The library was still read to its last step, and the marker stays
+        // unset so the next open tries again.
         REQUIRE_FALSE(seen.empty());
-        CHECK(seen.back().step == Step::LoadingLibrary);
+        CHECK(seen.back().step == Step::ReadingResults);
         const std::unique_ptr<RecordStore> store = job.take_store();
         CHECK_FALSE(store->hardest_figure_filled(settings.profile()));
     }
     testtemp::remove_dir(dir);
 }
 
-TEST_CASE("jobs: a stop while the startup open reads saved paths ends it as a cancel") {
-    using Step = hydra::ui::StoreOpenProgress::Step;
-    const std::string dir = testtemp::temp_dir("open_fill_stop");
-    testtemp::remove_dir(dir);
-    const std::string db = testtemp::temp_dir("open_fill_stop") + "\\library.db";
-    const hydra::app::Settings settings;
-    write_old_build_library(db, settings);
+namespace {
 
+// Runs a startup open of the library file at `db` whose gate cancels it at
+// the first report `stop_here` picks, checks the open ended as a cancel with
+// no message, and returns every report the gate saw.
+std::vector<OpenReport> open_stopped_at(
+    const std::string& db, const hydra::app::Settings& settings,
+    const std::function<bool(const hydra::ui::StoreOpenProgress&)>& stop_here) {
+    std::vector<OpenReport> seen;
     hydra::ui::StoreOpenJob* held = nullptr;
     const ScopedHook gate(
         hydra::ui::set_store_open_gate_for_test,
         [&](const hydra::ui::StoreOpenProgress& p, const std::function<bool()>&) {
-            if (p.step == Step::ReadingSavedPaths && held) held->cancel();
+            seen.push_back({p.step, p.label(), p.upgrading, p.rows_done, p.rows_total});
+            if (held && stop_here(p)) held->cancel();
         });
     {
         hydra::ui::StoreOpenJob job(db, hydra::core::RulesStamp::of(settings.rules), settings);
@@ -638,6 +674,22 @@ TEST_CASE("jobs: a stop while the startup open reads saved paths ends it as a ca
         CHECK(job.message().empty());
         CHECK(job.failure() == nullptr);
     }
+    return seen;
+}
+
+}  // namespace
+
+TEST_CASE("jobs: a stop while the startup open reads saved paths ends it as a cancel") {
+    using Step = hydra::ui::StoreOpenProgress::Step;
+    using hydra::ui::StoreOpenProgress;
+    const std::string dir = testtemp::temp_dir("open_fill_stop");
+    testtemp::remove_dir(dir);
+    const std::string db = testtemp::temp_dir("open_fill_stop") + "\\library.db";
+    const hydra::app::Settings settings;
+    write_old_build_library(db, settings);
+
+    open_stopped_at(db, settings,
+                    [](const StoreOpenProgress& p) { return p.step == Step::ReadingSavedPaths; });
     // The stop came before the chart was read: the marker is unset and the
     // row still empty, so the next open fills it.
     {
@@ -645,7 +697,136 @@ TEST_CASE("jobs: a stop while the startup open reads saved paths ends it as a ca
         CHECK_FALSE(store.hardest_figure_filled(settings.profile()));
         CHECK(store.rows_missing_hardest(settings.profile()).size() == 1);
     }
+
+    // The library read's two steps stop the same way, on a library of four
+    // charts.
+    const std::string read_db = testtemp::temp_dir("open_fill_stop") + "\\read.db";
+    {
+        RecordStore store(read_db);
+        store.rebuild_chart_library({library_row("a", "A"), library_row("b", "B"),
+                                     library_row("c", "C"), library_row("d", "D")});
+    }
+    {
+        // At the chart list's first report, before any row is read.
+        const std::vector<OpenReport> seen =
+            open_stopped_at(read_db, settings, [](const StoreOpenProgress& p) {
+                return p.step == Step::ReadingCharts && p.rows_done == 0;
+            });
+        REQUIRE_FALSE(seen.empty());
+        CHECK(seen.back().step == Step::ReadingCharts);
+        CHECK(seen.back().done == 0);
+    }
+    {
+        // Inside the chart list, at its second row: the store stops its own
+        // read, and the job still ends as a cancel, not as a library problem
+        // for the status line.
+        const std::vector<OpenReport> seen =
+            open_stopped_at(read_db, settings, [](const StoreOpenProgress& p) {
+                return p.step == Step::ReadingCharts && p.rows_done == 2;
+            });
+        REQUIRE_FALSE(seen.empty());
+        CHECK(seen.back().step == Step::ReadingCharts);
+        CHECK(seen.back().done == 2);
+        CHECK(seen.back().total == 4);
+    }
+    {
+        // At the results' first report.
+        const std::vector<OpenReport> seen =
+            open_stopped_at(read_db, settings, [](const StoreOpenProgress& p) {
+                return p.step == Step::ReadingResults && p.rows_done == 0;
+            });
+        REQUIRE_FALSE(seen.empty());
+        CHECK(seen.back().step == Step::ReadingResults);
+        CHECK(seen.back().done == 0);
+    }
     testtemp::remove_dir(dir);
+}
+
+namespace {
+
+// Checks that row `got` is row `want` and shows the same saved result.
+void check_same_result(const hydra::ui::LibraryRow& got, const hydra::ui::LibraryRow& want) {
+    CAPTURE(want.entry.md5);
+    CAPTURE(want.entry.notespath);
+    CHECK(got.entry.md5 == want.entry.md5);
+    CHECK(got.entry.notespath == want.entry.notespath);
+    CHECK(got.status == want.status);
+    CHECK(got.stale_build == want.stale_build);
+    CHECK(got.stale_rules == want.stale_rules);
+    CHECK(got.bestpath == want.bestpath);
+    CHECK(got.failure_kind == want.failure_kind);
+    CHECK(got.failure_text == want.failure_text);
+    CHECK(got.best_label() == want.best_label());
+}
+
+}  // namespace
+
+TEST_CASE("jobs: results read in slices match one read") {
+    const hydra::app::Settings settings;
+    const hydra::store::Profile profile = settings.profile();
+    RecordStore store(":memory:");
+    // One chart in two folders, under names that sort its rows first and
+    // last, so a slice of one chart reads them in different slices.
+    ChartLibraryEntry first = library_row("same", "A First Copy");
+    first.notespath = "C:\\charts\\one\\same\\notes.chart";
+    first.rootfolder = "C:\\charts\\one";
+    ChartLibraryEntry last = library_row("same", "Z Last Copy");
+    last.notespath = "C:\\charts\\two\\same\\notes.chart";
+    last.rootfolder = "C:\\charts\\two";
+    store.rebuild_chart_library({first, library_row("ready", "B Ready"),
+                                 library_row("never", "C Never"), library_row("build", "D Build"),
+                                 library_row("rules", "E Rules"), library_row("both", "F Both"),
+                                 last});
+    hydra::test::save_batch_record(store, "same", profile);
+    hydra::test::save_batch_record(store, "ready", profile);
+    hydra::test::add_stale_records(store, hydra::test::empty_analysis_under(profile), profile,
+                                   "build", "rules", "both");
+
+    // With no callback: one whole lookup, as the settings re-read does it.
+    hydra::ui::LibraryModel whole;
+    whole.set_charts(store.list_chart_library(0, -1));
+    hydra::ui::read_library_summaries(store, settings, whole);
+    REQUIRE(whole.rows().size() == 7);
+    REQUIRE(whole.rows().front().entry.md5 == "same");
+    REQUIRE(whole.rows().back().entry.md5 == "same");
+
+    SUBCASE("one chart per slice") {
+        hydra::ui::LibraryModel sliced;
+        sliced.set_charts(store.list_chart_library(0, -1));
+        std::vector<uint64_t> answered;
+        hydra::ui::read_library_summaries(
+            store, settings, sliced,
+            [&](uint64_t rows_answered) {
+                answered.push_back(rows_answered);
+                return true;
+            },
+            1);
+        CHECK(answered == std::vector<uint64_t>{1, 2, 3, 4, 5, 6, 7});
+        REQUIRE(sliced.rows().size() == whole.rows().size());
+        for (size_t i = 0; i < whole.rows().size(); ++i)
+            check_same_result(sliced.rows()[i], whole.rows()[i]);
+        // The chart in two folders has its result in both rows.
+        CHECK(sliced.rows().front().status == hydra::store::RecordStatus::Ready);
+        CHECK(sliced.rows().back().status == hydra::store::RecordStatus::Ready);
+    }
+    SUBCASE("the real slice size") {
+        hydra::ui::LibraryModel sliced;
+        sliced.set_charts(store.list_chart_library(0, -1));
+        std::vector<uint64_t> answered;
+        hydra::ui::read_library_summaries(
+            store, settings, sliced,
+            [&](uint64_t rows_answered) {
+                answered.push_back(rows_answered);
+                return true;
+            },
+            hydra::ui::kResultsSliceCharts);
+        // Seven rows fit in one slice.
+        REQUIRE(whole.rows().size() < hydra::ui::kResultsSliceCharts);
+        CHECK(answered == std::vector<uint64_t>{7});
+        REQUIRE(sliced.rows().size() == whole.rows().size());
+        for (size_t i = 0; i < whole.rows().size(); ++i)
+            check_same_result(sliced.rows()[i], whole.rows()[i]);
+    }
 }
 
 // ---- timing the startup library read, part by part ----------------------------
