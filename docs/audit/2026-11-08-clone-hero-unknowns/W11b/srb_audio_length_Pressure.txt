@@ -1,0 +1,9 @@
+bundle: Pressure.srb, 19769735 bytes
+stated song length: 273467 ms = 273.467 s
+audio section starts at offset 318885
+blob 0 (song): tag 1, 4175544 bytes, 223.130 s (last granule 10710551, pre-skip 312)
+blob 1 (stem1): tag 6, 3483120 bytes, 223.130 s (last granule 10710551, pre-skip 312)
+blob 2 (stem2): tag 0, 4251833 bytes, 223.130 s (last granule 10710551, pre-skip 312)
+blob 3 (stem3): tag 12, 3796594 bytes, 223.130 s (last granule 10710551, pre-skip 312)
+blob 4 (stem4): tag 3, 3743599 bytes, 223.130 s (last granule 10710551, pre-skip 312)
+audio section ends at offset 19769735; file size 19769735

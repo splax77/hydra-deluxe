@@ -2,7 +2,7 @@
 
 This page lists the rows only a run of the real game can settle.
 It describes build 1.1 (v1.1.0.6142) unless a check names build 1.0.
-Last write-back: 2026-11-08.
+Last write-back: 2026-11-11.
 
 Each check gives its row id, the question in one line, what a pass and a fail look like, and whether a bot run is enough or the run needs Star Power activation and a menu start. The Star Power plan, `docs/superpowers/plans/2026-10-30-ch-mcp-star-power-and-song-start.md` (removed; `git show 6804353f:docs/superpowers/plans/2026-10-30-ch-mcp-star-power-and-song-start.md`), took its live steps from this list. Where one entry covers two or three rows, they share one run.
 
@@ -38,15 +38,11 @@ Pass: no Star Power flip inside the window, although Star Power is ready there w
 
 **CR-44.** Vocals running past the last drum note, no end event, short audio. Pass: songLength follows the drums (the game's code). Fail: it follows the vocals. A bot start is enough.
 
-**CR-47.** Question: is the game's audio length the longest audio stem? CR-46's formula is now read in the game's code, so this check asks only which audio length goes into it. Use a song whose stems differ in length, whose longest stem ends after the last note, whose song.ini length differs from every stem, and which has no end event. Pass: songLength less 1 s equals the longest stem's length. Fail: it equals the song.ini length or a shorter stem. A bot start is enough.
-
 ## Page 2: building the note list
 
-**NL-12.** The dynamics tag with a trailing space. Pass: ghost_notes_total is 0. Fail: it counts. A bot run on Pro Drums is enough.
+**NL-12.** The code proves the text read does not trim; left open is whether any other writer of the text field edits it. The dynamics tag with a trailing space. Pass: ghost_notes_total is 0. Fail: it counts. A bot run on Pro Drums is enough.
 
-**NL-13.** A note and the dynamics tag on one tick, tag second. Pass: the note scores plain. Fail: it scores its mark. A bot run is enough.
-
-**NL-14 and NL-15.** Velocity-1 and velocity-127 kicks under the tag (I Am Ahab has 33 accent kicks). Pass: ghost_notes_total or accent_notes_total counts them and the score equals Hydra's with them priced. Fail: either is missed. A bot run on Pro Drums is enough.
+**NL-13.** The code proves the track reader keeps file order; left open is a sort or insert through an interface call, or a write through a span. A note and the dynamics tag on one tick, tag second. Pass: the note scores plain. Fail: it scores its mark. A bot run is enough.
 
 **NL-16.** A merged kick carrying both a ghost and an accent. Pass: it counts as an accent only. Fail: a ghost, or both. A bot run is enough only with the per-note hook on; the score does not show it.
 
@@ -59,8 +55,6 @@ Pass: no Star Power flip inside the window, although Star Power is ready there w
 **NL-34.** A .chart chord written against colour order, Note Shuffle on. Pass: the shuffled pads match the colour-order row. Fail: the file-order row. Needs a menu start (Note Shuffle is a modifier).
 
 **NL-39.** Can the game flam a .chart note? The .mid flam cases of NL-37 and NL-38 are now read in the game's code, so only the .chart case is left. Pass: a .chart with single-pad chords gives the same total_notes as its note count, so no chord gets a copy. Fail: total_notes is higher. A bot run is enough.
-
-**NL-42.** Does plain Drums draw only red and the toms under Note Shuffle? Pass: shuffled chords of song A1 with Pro Drums off match the "Pro Drums off" rows in docs/audit/note-shuffle/game-tests/predictions.json. Fail: any cymbal. Needs a menu start (Note Shuffle); a bot run once started.
 
 **NL-57.** How the game draws a lane under Note Shuffle (Glide at 1:51.110). Pass or fail is what a human sees: only blue, or both columns. Needs a menu start with the user's song (search to reach it).
 
@@ -104,31 +98,21 @@ FL-27, the Ladies Talk check, is the first entry on this page.
 
 ## Page 5: Star Power
 
-**SP-06.** Question: does a phrase nested inside another (for example 0 to 100 and 20 to 40, notes at 10, 30, 50) award in the game? Pass: the game flags only the outer phrase's last chord, so Hydra's extra award is a difference to raise; fail: both award, as in Hydra. A chart load and a read of note flags is enough; no Star Power activation, no menu start.
-
-**SP-14.** Question: why did run 1's first activation start at 2,879 and not 2,880? Pass: a repeat run shows a whole-bar meter at every activation (noise); fail: the one-tick shortfall repeats on the first activation. Needs Star Power activation and a menu start.
-
-**SP-15.** Question: does a game SP end follow the time signature (a 3/4, 6/8 or 7/4 section, or a change inside an activation)? Pass: the game's end (+0x120) is within one frame of Hydra's end; fail: off by about a beat or the part-measure share. Needs Star Power activation and a menu start.
-
-**SP-18.** Question: can drums activate Star Power without a fill note? Pass: pressing every pad with banked Star Power and no fill never activates; fail: Star Power turns on. Needs Star Power banked and a menu start (key-press run).
+**SP-18.** Question: can a button activate drums Star Power? Eight runs of 2026-11-06 to 2026-11-08 showed that pad hits off a fill never activate, so only the buttons are left. Pass: with Star Power banked, pressing Select, pressing Start, or an empty pad press never activates; fail: Star Power turns on. Needs Star Power banked and a menu start (key-press run).
 
 **SP-24.** Question: when a phrase overfills the meter during Star Power, does the end move to one full bar after the collecting moment? Pass: meter stops at +0x1B0 and the end equals collecting time plus a full bar; fail: the end keeps extending or does not move. Needs Star Power activation with four phrases banked and a fifth collected, and a menu start.
 
-**SP-29.** Question: does a hit just past the SP end, inside the frame that first reaches the end, score doubled? Pass: a backend note a few ms after the end, hit on time, pays doubled while the frame is that long; fail: it pays single. Needs Star Power activation and a menu start, with the clock and score logged per hit.
-
-**SP-30.** Question: is a hit ever judged at a clock between two frame clocks? Pass: a hit trace shows only frame clocks; fail: a hit's clock lies strictly between two frames. A bot run with the hit trace is enough.
+**SP-30.** Question: does a real press ever go through slot 18, the route that can judge a hit at a queued clock between frames? The frame's own press route (slot 21) is read in the game's code and judges at the frame clock. Pass: a hit trace shows every real press judged through slot 21 at a frame clock; fail: a press is judged through slot 18. A bot run with the hit trace is enough.
 
 **SP-31.** Question: does Hydra's end match the game's on more activations and other charts? Pass: game end minus Hydra's end under 5 ms on at least two more activations, one not in 4/4; fail: a larger gap. Needs Star Power activation and a menu start.
 
 **SP-33.** Question: is a note exactly on an SP end, hit exactly on time, doubled? Pass: doubled (Hydra's reading); fail: single. Needs Star Power activation and a menu start.
 
-**SP-35.** Question: which hit credits a phrase, and with which Star Power state? Pass: the meter rises on the hit of the phrase's last chord, using that hit's state; fail: it rises elsewhere. A key-press run (the bot gains no meter); no activation needed.
-
 **SP-36.** Question: do squeezed_notes and squeeze_note_losses count the game's +0xE8 and +0xEC counters, and do they match Hydra's squeezes on the chords hit? Pass: equal counts; fail: they differ. Needs Star Power activation and a menu start.
 
 **SP-37.** Question: do game and Hydra agree on which early or late hits collect a phrase at the SP end? Pass: the meter rises only on the side Hydra's SqIn or SqOut rule says; fail: otherwise. Needs Star Power activation and a menu start.
 
-**SP-46.** Question: during Star Power, is the multiplier disc the only thing on the 1.1 screen that changes, with no Star Power meter drawn? Pass: a screenshot before and during Star Power differs only at the disc (and the highway's colours); fail: a meter or bar shows the Star Power amount. Needs Star Power activation and a menu start.
+**SP-46.** Question: does the 1.1 drums screen show the SPBar sprite, the Star Power meter every player holds in the game's code? Pass or fail is what a screenshot shows: a bar whose fill follows the meter amount, or none. Look at a drums screen before and after a phrase is collected. Needs Star Power gained and a menu start.
 
 ## Page 6: scoring
 
@@ -142,7 +126,7 @@ FL-27, the Ladies Talk check, is the first entry on this page.
 
 **SC-20.** Question: what does the solo bonus pay at its edge cases? Live runs have now shown a full solo, a partly hit solo and one under half, and SC-21's gem count. Three cases are left: a solo hit at exactly half its notes, a hit count whose formula value ends in .5, and a solo whose solo-end note is missed. Pass: solo_bonus_total equals the SC-20 formula in each case. Fail: any other number. Each needs a key-press run that skips chosen notes; no Star Power.
 
-**SC-29.** Question: does band_stars ignore the solo bonus? SC-33's average multiplier is now proven in live runs, so only the star count is left. None of the four saved solo runs has a bonus that carries the score across a star cutoff, so they cannot settle it. Pass: on a run where the score is below a cutoff without the bonus and above it with the bonus, band_stars is the lower count. Fail: it is the higher count. A run on a chart with a solo, scored so the bonus crosses a cutoff; no Star Power.
+**SC-29.** Question: is the clean-play bonus (engine +0xA4) ever non-zero? The star count is read in the game's code: it leaves out the solo bonus and that bonus, so the two agree with Hydra while it is 0. Pass: +0xA4 reads 0 at the end of a run (a full combo and a run with misses). Fail: it holds a value. A bot run read at the results screen, plus a key-press run with misses; no Star Power.
 
 **SC-30.** Question: which HUD star-bar copy runs (slot 0 at 0.1 times base, or slot 1 at 0.5)? Pass: the StarProgress cutoff array's slot 0 is ceil(0.1 x base); fail: slot 0 is 0. A bot run read after the first frame.
 
@@ -156,16 +140,10 @@ FL-27, the Ladies Talk check, is the first entry on this page.
 
 **IN-27.** Question: with Star Power off, does anything clear the flag at +0x130 after a gain sets it? The per-update method clears it only while Star Power is on (GD line 53572); read the other writers and clearers first (xrefs to +0x130). Pass: the flag turns on at every gain and at a clamp, and off where the clearing code says. Fail: it follows some other pattern. A bot never gains meter, so it needs Star Power gains: a key-press run with a phrase that overfills the meter and an activation, from a menu start.
 
-**IN-29.** Question: does `GlobalVariables.currentSongEntry` hold the playing song during a song? Pass: its checksum equals the song's checksum in `scorestats.json`. Fail: null or another song. A bot run is enough; no Star Power.
+**IN-29.** Question: does `GlobalVariables.currentSongEntry` hold the playing song for the whole song? The song-load method sets it to the song it loads, in the game's code; ten other stores to it were not read. Pass: read at the start, during a pause and at the end of a song, its checksum equals the song's checksum in `scorestats.json` each time. Fail: null or another song at any read. Needs a menu start, so the pause menu can be opened; no Star Power.
 
 **IN-36.** Question: does the results screen ignore keys after every command-line bot run, and take them after a menu-started run? Pass: keys work after a menu start and not after a bot run. Fail: keys fail after both, or work after both. Needs one bot run and one menu-started run; no Star Power.
 
-**IN-40.** Question: does the 1.0 bot earn Star Power? Pass: after a 1.0 (build 4045) bot run on a chart with phrases, scorestats or the meter shows phrases earned. Fail: 0 earned. Needs a 1.0 run; a command-line bot start works in 1.0; no activation needed.
-
-**IN-44.** Question: is there a setting or flag that fills the HitDetection logs? Pass: a song writes lines into `HitDetection-Standard.log` or `HitDetection-Validation.log`. Fail: none found. A bot run is enough once the setting is known; no Star Power.
-
-**IN-59.** Question: are the player screen's instrument and difficulty fields the profile's saved copy, unchanged while the cursor moves? Pass: on the Instrument page, `ch_menu` shows the cursor move while the instrument field stays put, and the field changes only after Green confirms a row. Fail: the field follows the cursor. Needs a menu-started run with the kit (LS-K3); no Star Power.
-
-**IN-60.** Question: do Green, Yellow and Blue move the player screen the way the decompile says? Pass: with a Drums or FiveLaneDrums controller type, Blue and Yellow change the cursor by one, and Green on the Instrument page sets the highlighted row's instrument and moves to the next page. Fail: any press does something else. Needs a menu-started run with the kit (LS-K3); no Star Power.
+**IN-44.** Question: do the HitDetection logs stay empty in a real run? The game's code makes both files at start-up with no setting, and writes only entries tagged "GuitarEngine" or "GuitarEngineValidator"; no direct caller of the writers was found. Pass: after a drums song and a guitar song, `HitDetection-Standard.log` and `HitDetection-Validation.log` are still empty. Fail: a song writes lines into either. A bot run is enough; no Star Power.
 
 **IN-80.** Question: does a key sequence through the menus reach a song, with Green and Blue on A and K? Pass: a key-press run from the title screen reaches a loaded song, and its steps are written down. Fail: a step does something else. Needs a menu start with the game in front and the user's typed allow key run; no Star Power. No run presses Space, because the server never opens the control mapper (D272), so the manual's Space line stays unchecked.

@@ -1,0 +1,7 @@
+# mixer_create_368590: the audio manager makes its playback channel (build 6142)
+
+Listing: `mixer_create_368590.asm` beside this file, made 2026-11-08 (session 77057df2) with `tools/ch_mcp/chdis.py` from `C:\Clone Hero\1.1 june\Clone Hero\GameAssembly.dll`. It is a `BassAudioManager` method taking one int that defaults to -1 (`dump.cs` lines 12191 and 12192).
+
+Plain version: it makes a mixer stream at 48000 Hz with 2 channels (line 20, extern `0x34C070`, `dump.cs` line 8838). With the argument -1 the mixer gets flags 0x100; otherwise 0x200100, which adds 0x200000 (lines 13 to 18). When the argument is not -1, it passes the mixer and the argument, as a float, to `0x366FC0`, which makes a tempo stream over it (lines 21 to 28). The handle that results, the tempo stream's when one was made and else the mixer's, is stored at `BassAudioManager`+0x58 (line 31). That is the handle the position getter `0x365F10` reads. A twin method, `0x3687C0` (`dump.cs` line 12281), makes the same store; it has no direct caller (byte scan).
+
+Callers (direct callers only, byte scan): 0x36B95A in the song-load method `0x36B700` (`dump.cs` line 12284) and 0x36E421 in `0x36E2A0`. Both pass the int at +0x10 of the setting at static +0x10 of the settings class (TypeInfo 0x3c98320) minus 100. The load coroutine reads that same setting as the song speed (`gm_load_coroutine_D8D80.asm` lines 444 to 451, and `speed_ratio_210C090.md`). The song-load caller passes -1 instead when the byte at its +0x68 is clear.

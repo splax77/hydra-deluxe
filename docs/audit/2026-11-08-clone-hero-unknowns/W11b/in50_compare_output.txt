@@ -1,0 +1,22 @@
+6142 drums_engine signature: name 'ʺʺʸʶʿʵˀʸʲˀʲ', keys ['base', 'ctor_rva', 'field_count', 'method_count', 'name', 'readable_fields', 'typedef_index']
+4045 facts.json: 1020 classes, 10415 distinct class/field/method names
+engine name as a 4045 class, field or method name: False
+engine name anywhere in 4045 facts.json text: False
+engine name in its JSON-escaped spelling anywhere in 4045 facts.json: False
+6142 GameManager: dump.cs line 25284, 60 fields
+4045 GameManager classes: 1
+4045 GameManager: 63 fields
+field names in both: 13
+  ʼˁʻʺˀʺʸʴʶʴʶ
+  ʾʼʾˁʹʿʻˁʷʴʼ
+  ʻʺʿʴˁʺʶʹʿˁʳ
+  ʻʽʻʳʽʽʴʶʷʼʺ
+  ʵʶʶʵʹʼʷʿʸʸˀ
+  ʿʶʾˁˁʹʺʵʻʳʽ
+  ʺʲʵʲʶʿʷʶʿˀʷ
+  ʿʿʻʴˁʻʳʸˁʽʹ
+  ʻʸʲʼʴʴʾʶʼʴʴ
+  ʵʴʹˁʼˀʴʴʼʶʳ
+  ʴʵʳʻʹʽʵʴʹʼʼ
+  ʲʾʽˁʺˁʸʸʴʶʶ
+  ʳʷʻʴʼʳʵʹʽʳʲ

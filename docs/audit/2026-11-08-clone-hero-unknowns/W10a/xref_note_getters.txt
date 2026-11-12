@@ -1,0 +1,627 @@
+== target 214B5E0 (11 hits)
+  CALL   at 2B0A21 [cce8] in 2B09A0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʳʾʶˀʿʾʴˀʸʶʾ
+  CALL   at 2B13CE [cce8] in 2B09A0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʳʾʶˀʿʾʴˀʸʶʾ
+  CALL   at 2B1521 [cce8] in 2B14A0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʵʳʳʸʸʻˀʸʺʴʸ
+  CALL   at 2B1ECE [cce8] in 2B14A0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʵʳʳʸʸʻˀʸʺʴʸ
+  CALL   at 2B2171 [cce8] in 2B20F0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʶʼʶʻʳˁʴʾʺʽˀ
+  CALL   at 2B2B1E [cce8] in 2B20F0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʶʼʶʻʳˁʴʾʺʽˀ
+  CALL   at 2B2E61 [cce8] in 2B2DE0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʸʾʸʷʴʶʺʺʸʻˁ
+  CALL   at 2B37FE [cce8] in 2B2DE0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʸʾʸʷʴʶʺʺʸʻˁ
+  CALL   at 2B3BE1 [cce8] in 2B3B60 ʳʻˁʾʺʳʽʸʳʽʲ$$ʼʾʹʺʻʴʿʲʲʲʻ
+  CALL   at 2B458E [cce8] in 2B3B60 ʳʻˁʾʺʳʽʸʳʽʲ$$ʼʾʹʺʻʴʿʲʲʲʻ
+  PTR    at 3E8FAF0 [file+3E8DCF0] in 2BF4C30 System.__Il2CppComDelegate$$Finalize
+== target 214B5F0 (3 hits)
+  CALL   at 20F5EA1 [cbe8] in 20F5D90 ʿʶʴˀʴʾʵʵʶʳʲ$$ʺʶˀʴʴʼʷʻʲˀʿ
+  CALL   at 20F6755 [cfe8] in 20F63F0 ʿʶʴˀʴʾʵʵʶʳʲ$$ʾʼʺʻˀʵʶʸʶʻʳ
+  PTR    at 3E8FAB0 [file+3E8DCB0] in 2BF4C30 System.__Il2CppComDelegate$$Finalize
+== target 214B600 (2 hits)
+  CALL   at 20F6FCA [cde8] in 20F6EB0 ʿʶʴˀʴʾʵʵʶʳʲ$$ʿʾʹʲˀʶʷʵʶʶˀ
+  PTR    at 3E8FA40 [file+3E8DC40] in 2BF4C30 System.__Il2CppComDelegate$$Finalize
+== target 214B620 (2 hits)
+  RIPREF at DF3526 [4720] in DF23F0 System.Numerics.Vector<ulong>$$Equals
+  PTR    at 3E8FAE0 [file+3E8DCE0] in 2BF4C30 System.__Il2CppComDelegate$$Finalize
+== target 214B630 (7 hits)
+  CALL   at 20D0707 [cfe8] in 20D03B0 ʲʽʶʳʺʹʳˀʾʴʹ$$ʵʻʼʴʷʾʽʸʵʸʾ
+  CALL   at 20D0785 [cfe8] in 20D03B0 ʲʽʶʳʺʹʳˀʾʴʹ$$ʵʻʼʴʷʾʽʸʵʸʾ
+  CALL   at 20D0832 [cfe8] in 20D03B0 ʲʽʶʳʺʹʳˀʾʴʹ$$ʵʻʼʴʷʾʽʸʵʸʾ
+  CALL   at 20D21EC [cfe8] in 20D1ED0 ʲʽʶʳʺʹʳˀʾʴʹ$$ʸʷʲʵʸʾʾʼʿʼʶ
+  CALL   at 20F3697 [cfe8] in 20F3610 ʿʶʴˀʴʾʵʵʶʳʲ$$ʳʶˀˁʶʶʽʽʷʼʼ
+  CALL   at 20F661F [cfe8] in 20F63F0 ʿʶʴˀʴʾʵʵʶʳʲ$$ʾʼʺʻˀʵʶʸʶʻʳ
+  PTR    at 3E8F9E8 [file+3E8DBE8] in 2BF4C30 System.__Il2CppComDelegate$$Finalize
+== target 214B640 (3 hits)
+  CALL   at 20EF518 [c8e8] in 20EF450 ʽʶʸʽʳʼʵʸʺʸʳ$$ʴʻʷʽʺʹʽʲʲʿʾ
+  PTR    at 3E8F9D0 [file+3E8DBD0] in 2BF4C30 System.__Il2CppComDelegate$$Finalize
+  PTR    at 3E8FA78 [file+3E8DC78] in 2BF4C30 System.__Il2CppComDelegate$$Finalize
+== target 214B6B0 (3 hits)
+  CALL   at 33A284 [e8e8] in 33A160 DrumsPlayer$$ʵˀʼʼʴʻˀʻʹˀʳ
+  CALL   at 33B0AC [e8e8] in 33B040 DrumsPlayer$$ʷʲʽʳʸʷʳʸʸʴʹ
+  PTR    at 3E8FA50 [file+3E8DC50] in 2BF4C30 System.__Il2CppComDelegate$$Finalize
+== target 214B6C0 (31 hits)
+  CALL   at 82B11 [cee8] in 82800 DrumsNeckController$$ʴʷʵʼʶʲʺʿʲʺʺ
+  CALL   at 2B0A4A [cce8] in 2B09A0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʳʾʶˀʿʾʴˀʸʶʾ
+  CALL   at 2B0CA1 [cce8] in 2B09A0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʳʾʶˀʿʾʴˀʸʶʾ
+  CALL   at 2B0E0C [cce8] in 2B09A0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʳʾʶˀʿʾʴˀʸʶʾ
+  CALL   at 2B0F59 [cce8] in 2B09A0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʳʾʶˀʿʾʴˀʸʶʾ
+  CALL   at 2B10E5 [cce8] in 2B09A0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʳʾʶˀʿʾʴˀʸʶʾ
+  CALL   at 2B154A [cce8] in 2B14A0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʵʳʳʸʸʻˀʸʺʴʸ
+  CALL   at 2B17A1 [cce8] in 2B14A0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʵʳʳʸʸʻˀʸʺʴʸ
+  CALL   at 2B190C [cce8] in 2B14A0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʵʳʳʸʸʻˀʸʺʴʸ
+  CALL   at 2B1A59 [cce8] in 2B14A0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʵʳʳʸʸʻˀʸʺʴʸ
+  CALL   at 2B1BE5 [cce8] in 2B14A0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʵʳʳʸʸʻˀʸʺʴʸ
+  CALL   at 2B219A [cce8] in 2B20F0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʶʼʶʻʳˁʴʾʺʽˀ
+  CALL   at 2B23F1 [cce8] in 2B20F0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʶʼʶʻʳˁʴʾʺʽˀ
+  CALL   at 2B255C [cce8] in 2B20F0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʶʼʶʻʳˁʴʾʺʽˀ
+  CALL   at 2B26A9 [cce8] in 2B20F0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʶʼʶʻʳˁʴʾʺʽˀ
+  CALL   at 2B2835 [cce8] in 2B20F0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʶʼʶʻʳˁʴʾʺʽˀ
+  CALL   at 2B2E8A [cce8] in 2B2DE0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʸʾʸʷʴʶʺʺʸʻˁ
+  CALL   at 2B30E1 [cce8] in 2B2DE0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʸʾʸʷʴʶʺʺʸʻˁ
+  CALL   at 2B324C [cce8] in 2B2DE0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʸʾʸʷʴʶʺʺʸʻˁ
+  CALL   at 2B3399 [cce8] in 2B2DE0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʸʾʸʷʴʶʺʺʸʻˁ
+  CALL   at 2B3525 [cce8] in 2B2DE0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʸʾʸʷʴʶʺʺʸʻˁ
+  CALL   at 2B3C0A [cce8] in 2B3B60 ʳʻˁʾʺʳʽʸʳʽʲ$$ʼʾʹʺʻʴʿʲʲʲʻ
+  CALL   at 2B3E61 [cce8] in 2B3B60 ʳʻˁʾʺʳʽʸʳʽʲ$$ʼʾʹʺʻʴʿʲʲʲʻ
+  CALL   at 2B3FCC [cce8] in 2B3B60 ʳʻˁʾʺʳʽʸʳʽʲ$$ʼʾʹʺʻʴʿʲʲʲʻ
+  CALL   at 2B4119 [cce8] in 2B3B60 ʳʻˁʾʺʳʽʸʳʽʲ$$ʼʾʹʺʻʴʿʲʲʲʻ
+  CALL   at 2B42A5 [cce8] in 2B3B60 ʳʻˁʾʺʳʽʸʳʽʲ$$ʼʾʹʺʻʴʿʲʲʲʻ
+  CALL   at 33B633 [cfe8] in 33B520 DrumsPlayer$$ʻʵʲʻʸʾʲʴʿˁʻ
+  CALL   at 20DE89D [cfe8] in 20DE770 ʺʺʸʶʿʵˀʸʲˀʲ$$ʾʼʺʻˀʵʶʸʶʻʳ
+  CALL   at 20F4830 [cfe8] in 20F4680 ʿʶʴˀʴʾʵʵʶʳʲ$$ʶʴˀʴʿʷʵʺʺʽʿ
+  CALL   at 20F7598 [cfe8] in 20F74B0 ʿʶʴˀʴʾʵʵʶʳʲ$$ˁʲʷʹˀʸʷʽʽʷʳ
+  PTR    at 3E8F940 [file+3E8DB40] in 2BF4C30 System.__Il2CppComDelegate$$Finalize
+== target 214B6D0 (22 hits)
+  CALL   at 208F7B [d2e8] in 208F50 BasePlayer$$ʸʾʶʹʲʽʵʿʹʺʽ
+  CALL   at FAED5E [cbe8] in FAE900 ʴˁʶˀʼʸʿʴʸʳʵ<__Il2CppFullySharedGenericStructType>$$ʾʼʺʻˀʵʶʸʶʻʳ
+  CALL   at FAFBFE [cee8] in FAFB00 ʴˁʶˀʼʸʿʴʸʳʵ<__Il2CppFullySharedGenericStructType>$$ʿʶʲʳʲʴʴʵʴʲʷ
+  CALL   at FBDF0E [cbe8] in FBDC30 ʴˁʶˀʼʸʿʴʸʳʵ<ʻʹʻʿʿʺʸʹʽʻʻ>$$ʾʼʺʻˀʵʶʸʶʻʳ
+  CALL   at FBE5EE [cbe8] in FBE310 ʴˁʶˀʼʸʿʴʸʳʵ<ʽʽʲʸʷʼʾʸʿʽʳ>$$ʾʼʺʻˀʵʶʸʶʻʳ
+  CALL   at FBF4DC [cee8] in FBF3F0 ʴˁʶˀʼʸʿʴʸʳʵ<ʽʽʲʸʷʼʾʸʿʽʳ>$$ʿʶʲʳʲʴʴʵʴʲʷ
+  CALL   at FBF7EC [cee8] in FBF700 ʴˁʶˀʼʸʿʴʸʳʵ<ʻʹʻʿʿʺʸʹʽʻʻ>$$ʿʶʲʳʲʴʴʵʴʲʷ
+  CALL   at 115A142 [f6e8] in 1159D60 BaseGuitarNoteRenderer<__Il2CppFullySharedGenericStructType, object, object>$$Update
+  CALL   at 115A6D2 [f6e8] in 115A2F0 BaseGuitarNoteRenderer<ʷʼʾʸʲʴʳʶʶʼʴ, object, object>$$Update
+  CALL   at 115AC62 [f6e8] in 115A880 BaseGuitarNoteRenderer<ʸʵʾʵʳʳʵʷʶʺʽ, object, object>$$Update
+  CALL   at 20DCE72 [cee8] in 20DCC90 ʺʺʸʶʿʵˀʸʲˀʲ$$ʳʹʼʴʸʵʶʻʺʶʺ
+  CALL   at 20DD362 [cee8] in 20DD190 ʺʺʸʶʿʵˀʸʲˀʲ$$ʵʸʲʴʶʵʶʹˁʿʼ
+  CALL   at 20DD8D2 [cee8] in 20DD700 ʺʺʸʶʿʵˀʸʲˀʲ$$ʷʿʺʴʲʴʷʾʹʳʹ
+  CALL   at 20DEC72 [cee8] in 20DEAA0 ʺʺʸʶʿʵˀʸʲˀʲ$$ʿʶʲʳʲʴʴʵʴʲʷ
+  CALL   at 20DF1C2 [cee8] in 20DEFF0 ʺʺʸʶʿʵˀʸʲˀʲ$$ˀʽʶʶʻʹˀʼˁʴʸ
+  CALL   at 20F59D5 [00e8] in 20F5810 ʿʶʴˀʴʾʵʵʶʳʲ$$ʹˀʲʺʹʿʾʾʽʴʷ
+  CALL   at 20F5B82 [d2e8] in 20F5810 ʿʶʴˀʴʾʵʵʶʳʲ$$ʹˀʲʺʹʿʾʾʽʴʷ
+  CALL   at 20F5C03 [cbe8] in 20F5810 ʿʶʴˀʴʾʵʵʶʳʲ$$ʹˀʲʺʹʿʾʾʽʴʷ
+  CALL   at 20F5C33 [51e8] in 20F5810 ʿʶʴˀʴʾʵʵʶʳʲ$$ʹˀʲʺʹʿʾʾʽʴʷ
+  CALL   at 20F5CEE [d2e8] in 20F5810 ʿʶʴˀʴʾʵʵʶʳʲ$$ʹˀʲʺʹʿʾʾʽʴʷ
+  PTR    at 3E8F9F8 [file+3E8DBF8] in 2BF4C30 System.__Il2CppComDelegate$$Finalize
+  PTR    at 3E8FB00 [file+3E8DD00] in 2BF4C30 System.__Il2CppComDelegate$$Finalize
+== target 214B770 (15 hits)
+  CALL   at 13739F [cbe8] in 1370A0 DrumsNoteRenderer$$Update
+  CALL   at 1373C3 [cbe8] in 1370A0 DrumsNoteRenderer$$Update
+  CALL   at 1156169 [cce8] in 1155E90 BaseGuitarNoteRenderer<__Il2CppFullySharedGenericStructType, object, object>$$ʾʿʾˁʼʵʵˁʽˀʼ
+  CALL   at 11563C6 [cce8] in 1155E90 BaseGuitarNoteRenderer<__Il2CppFullySharedGenericStructType, object, object>$$ʾʿʾˁʼʵʵˁʽˀʼ
+  CALL   at 11569C9 [cde8] in 1156710 BaseGuitarNoteRenderer<ʷʼʾʸʲʴʳʶʶʼʴ, object, object>$$ʾʿʾˁʼʵʵˁʽˀʼ
+  CALL   at 1156C3D [cde8] in 1156710 BaseGuitarNoteRenderer<ʷʼʾʸʲʴʳʶʶʼʴ, object, object>$$ʾʿʾˁʼʵʵˁʽˀʼ
+  CALL   at 1157259 [cde8] in 1156FA0 BaseGuitarNoteRenderer<ʸʵʾʵʳʳʵʷʶʺʽ, object, object>$$ʾʿʾˁʼʵʵˁʽˀʼ
+  CALL   at 11574CD [cde8] in 1156FA0 BaseGuitarNoteRenderer<ʸʵʾʵʳʳʵʷʶʺʽ, object, object>$$ʾʿʾˁʼʵʵˁʽˀʼ
+  CALL   at 115A06F [d8e8] in 1159D60 BaseGuitarNoteRenderer<__Il2CppFullySharedGenericStructType, object, object>$$Update
+  CALL   at 115A095 [cee8] in 1159D60 BaseGuitarNoteRenderer<__Il2CppFullySharedGenericStructType, object, object>$$Update
+  CALL   at 115A5FF [d8e8] in 115A2F0 BaseGuitarNoteRenderer<ʷʼʾʸʲʴʳʶʶʼʴ, object, object>$$Update
+  CALL   at 115A625 [cee8] in 115A2F0 BaseGuitarNoteRenderer<ʷʼʾʸʲʴʳʶʶʼʴ, object, object>$$Update
+  CALL   at 115AB8F [d8e8] in 115A880 BaseGuitarNoteRenderer<ʸʵʾʵʳʳʵʷʶʺʽ, object, object>$$Update
+  CALL   at 115ABB5 [cee8] in 115A880 BaseGuitarNoteRenderer<ʸʵʾʵʳʳʵʷʶʺʽ, object, object>$$Update
+  PTR    at 3E8FAD0 [file+3E8DCD0] in 2BF4C30 System.__Il2CppComDelegate$$Finalize
+== target 214B780 (2 hits)
+  CALL   at 20F1498 [c8e8] in 20F1420 ʽʶʸʽʳʼʵʸʺʸʳ$$ʿʳʲʻʴʷʳˀʳʼʷ
+  PTR    at 3E8FA80 [file+3E8DC80] in 2BF4C30 System.__Il2CppComDelegate$$Finalize
+== target 214B7C0 (3 hits)
+  CALL   at 33A277 [00e8] in 33A160 DrumsPlayer$$ʵˀʼʼʴʻˀʻʹˀʳ
+  CALL   at 33B09F [60e8] in 33B040 DrumsPlayer$$ʷʲʽʳʸʷʳʸʸʴʹ
+  PTR    at 3E8FA58 [file+3E8DC58] in 2BF4C30 System.__Il2CppComDelegate$$Finalize
+== target 214B7D0 (7 hits)
+  CALL   at 20D0745 [cfe8] in 20D03B0 ʲʽʶʳʺʹʳˀʾʴʹ$$ʵʻʼʴʷʾʽʸʵʸʾ
+  CALL   at 20D084B [cfe8] in 20D03B0 ʲʽʶʳʺʹʳˀʾʴʹ$$ʵʻʼʴʷʾʽʸʵʸʾ
+  CALL   at 20D224E [cfe8] in 20D1ED0 ʲʽʶʳʺʹʳˀʾʴʹ$$ʸʷʲʵʸʾʾʼʿʼʶ
+  CALL   at 20F36BB [cfe8] in 20F3610 ʿʶʴˀʴʾʵʵʶʳʲ$$ʳʶˀˁʶʶʽʽʷʼʼ
+  CALL   at 20F3A4A [cee8] in 20F3970 ʿʶʴˀʴʾʵʵʶʳʲ$$ʳʽʵʾʼʸʹʲʲʻʻ
+  CALL   at 20F6719 [cfe8] in 20F63F0 ʿʶʴˀʴʾʵʵʶʳʲ$$ʾʼʺʻˀʵʶʸʶʻʳ
+  PTR    at 3E8F9C0 [file+3E8DBC0] in 2BF4C30 System.__Il2CppComDelegate$$Finalize
+== target 214B7E0 (3 hits)
+  CALL   at 33A29A [f0e8] in 33A160 DrumsPlayer$$ʵˀʼʼʴʻˀʻʹˀʳ
+  CALL   at 33B0C2 [f0e8] in 33B040 DrumsPlayer$$ʷʲʽʳʸʷʳʸʸʴʹ
+  PTR    at 3E8FA08 [file+3E8DC08] in 2BF4C30 System.__Il2CppComDelegate$$Finalize
+== target 214B800 (14 hits)
+  CALL   at 370364 [cfe8] in 370280 InGameLeaderboardManager$$ʳʳʺʶʽʷʺʻʽˀˁ
+  CALL   at 3704B4 [cfe8] in 3703D0 InGameLeaderboardManager$$ʳˁʵʶʶʵʷʲʶʽʿ
+  CALL   at 371B64 [cfe8] in 371A80 InGameLeaderboardManager$$ʻʸˁʽʻʴʼʼʴʴʾ
+  CALL   at 3726D4 [cfe8] in 3725F0 InGameLeaderboardManager$$ˀʸʲˀʳʿʸʸʷʺʿ
+  CALL   at 372834 [cfe8] in 372750 InGameLeaderboardManager$$ˀʺʻʸʲʿˁʸʽʽˁ
+  CALL   at 1149773 [cee8] in 11493A0 UnityEngine.UIElements.BaseField<Vector3>$$set_visualInput
+  CALL   at 1149A13 [cee8] in 11493A0 UnityEngine.UIElements.BaseField<Vector3>$$set_visualInput
+  CALL   at 1157B38 [cfe8] in 1157830 BaseGuitarNoteRenderer<__Il2CppFullySharedGenericStructType, object, object>$$ʿʿˁʵʳʴˀʷʻʲʻ
+  CALL   at 1157DC3 [cee8] in 1157B70 BaseGuitarNoteRenderer<ʸʵʾʵʳʳʵʷʶʺʽ, object, object>$$ʿʿˁʵʳʴˀʷʻʲʻ
+  CALL   at 1158063 [cee8] in 1157E10 BaseGuitarNoteRenderer<ʷʼʾʸʲʴʳʶʶʼʴ, object, object>$$ʿʿˁʵʳʴˀʷʻʲʻ
+  CALL   at 20D4FF3 [cee8] in 20D4BE0 ʲʽʶʳʺʹʳˀʾʴʹ$$ʿʹʿʸʹʽʾʻʸʵʵ
+  CALL   at 20EF9D1 [cfe8] in 20EF7C0 ʽʶʸʽʳʼʵʸʺʸʳ$$ʷʴʽʾʲʻʳʺʷʼʷ
+  CALL   at 20F401B [cbe8] in 20F3DC0 ʿʶʴˀʴʾʵʵʶʳʲ$$ʵʲʼʾʾʲʼʽʶʵʳ
+  PTR    at 3E8F920 [file+3E8DB20] in 2BF4C30 System.__Il2CppComDelegate$$Finalize
+== target 214B850 (2 hits)
+  CALL   at 20F000B [c8e8] in 20EFF60 ʽʶʸʽʳʼʵʸʺʸʳ$$ʸʸʶʴʲʳʷʻʿʵʿ
+  PTR    at 3E8F998 [file+3E8DB98] in 2BF4C30 System.__Il2CppComDelegate$$Finalize
+== target 214B860 (1 hits)
+  PTR    at 3E8F950 [file+3E8DB50] in 2BF4C30 System.__Il2CppComDelegate$$Finalize
+== target 214B870 (2 hits)
+  RIPREF at 6C35E1 [0048] in 6C34F0 Cysharp.Threading.Tasks.UniTask.WhenAllPromise.<>c<__Il2CppFullySharedGenericType, __Il2CppFullySharedGenericType, __Il2CppFullySharedGenericType, __Il2CppFullySharedGenericType, __Il2CppFullySharedGenericType, __Il2CppFullySharedGenericType, __Il2CppFullySharedGenericType, __Il2CppFullySharedGenericType, __Il2CppFullySharedGenericType, __Il2CppFullySharedGenericType, __Il2CppFullySharedGenericType, __Il2CppFullySharedGenericType, __Il2CppFullySharedGenericType, __Il2CppFullySharedGenericType, __Il2CppFullySharedGenericType>$$<.ctor>b__17_12
+  PTR    at 3E8FA70 [file+3E8DC70] in 2BF4C30 System.__Il2CppComDelegate$$Finalize
+== target 214B8B0 (3 hits)
+  CALL   at 2111347 [cee8] in 21112D0 ˀʴʴʾʾʼʺʵʿʸˀ$$ʷʿʺʿˁʴʵʽˁʸʶ
+  CALL   at 2152F6D [00e8] in 2152ED0 ʵʽʸʽʾʳʳʿʼʸʻ$$ʷʿʺʿˁʴʵʽˁʸʶ
+  PTR    at 3E8F930 [file+3E8DB30] in 2BF4C30 System.__Il2CppComDelegate$$Finalize
+== target 214BA10 (91 hits)
+  CALL   at D4D6F [00e8] in D4CF0 ʷʼʾʸʲʴʳʶʶʼʴ$$ʲʼʼʶˁʸʽʶʽʴʵ
+  CALL   at D4E95 [cde8] in D4CF0 ʷʼʾʸʲʴʳʶʶʼʴ$$ʲʼʼʶˁʸʽʶʽʴʵ
+  CALL   at D4EC1 [cde8] in D4CF0 ʷʼʾʸʲʴʳʶʶʼʴ$$ʲʼʼʶˁʸʽʶʽʴʵ
+  CALL   at D507F [00e8] in D5000 ʷʼʾʸʲʴʳʶʶʼʴ$$ʳʲʷʴʽˁʴʻʴʶˀ
+  CALL   at D51A5 [cde8] in D5000 ʷʼʾʸʲʴʳʶʶʼʴ$$ʳʲʷʴʽˁʴʻʴʶˀ
+  CALL   at D51D1 [cde8] in D5000 ʷʼʾʸʲʴʳʶʶʼʴ$$ʳʲʷʴʽˁʴʻʴʶˀ
+  CALL   at D5AFF [00e8] in D5A80 ʷʼʾʸʲʴʳʶʶʼʴ$$ʷʻʿʼʿʼʿˁˀʶʳ
+  CALL   at D5C25 [cde8] in D5A80 ʷʼʾʸʲʴʳʶʶʼʴ$$ʷʻʿʼʿʼʿˁˀʶʳ
+  CALL   at D5C51 [cde8] in D5A80 ʷʼʾʸʲʴʳʶʶʼʴ$$ʷʻʿʼʿʼʿˁˀʶʳ
+  CALL   at D5E0F [00e8] in D5D90 ʷʼʾʸʲʴʳʶʶʼʴ$$ʸʸʹʷʾʴʾʼʼʲʸ
+  CALL   at D5F35 [cde8] in D5D90 ʷʼʾʸʲʴʳʶʶʼʴ$$ʸʸʹʷʾʴʾʼʼʲʸ
+  CALL   at D5F61 [cde8] in D5D90 ʷʼʾʸʲʴʳʶʶʼʴ$$ʸʸʹʷʾʴʾʼʼʲʸ
+  CALL   at D611F [00e8] in D60A0 ʷʼʾʸʲʴʳʶʶʼʴ$$ʸʺˀʼʸʵʸˁʷʼˀ
+  CALL   at D6245 [cde8] in D60A0 ʷʼʾʸʲʴʳʶʶʼʴ$$ʸʺˀʼʸʵʸˁʷʼˀ
+  CALL   at D6271 [cde8] in D60A0 ʷʼʾʸʲʴʳʶʶʼʴ$$ʸʺˀʼʸʵʸˁʷʼˀ
+  CALL   at D642F [00e8] in D63B0 ʷʼʾʸʲʴʳʶʶʼʴ$$ʸʾʸʷʴʶʺʺʸʻˁ
+  CALL   at D6555 [cde8] in D63B0 ʷʼʾʸʲʴʳʶʶʼʴ$$ʸʾʸʷʴʶʺʺʸʻˁ
+  CALL   at D6581 [cde8] in D63B0 ʷʼʾʸʲʴʳʶʶʼʴ$$ʸʾʸʷʴʶʺʺʸʻˁ
+  CALL   at D680F [00e8] in D6790 ʷʼʾʸʲʴʳʶʶʼʴ$$ʻˀʽˁʺʵʸˀʾʺˁ
+  CALL   at D6935 [cde8] in D6790 ʷʼʾʸʲʴʳʶʶʼʴ$$ʻˀʽˁʺʵʸˀʾʺˁ
+  CALL   at D6961 [cde8] in D6790 ʷʼʾʸʲʴʳʶʶʼʴ$$ʻˀʽˁʺʵʸˀʾʺˁ
+  CALL   at 2A4077 [cee8] in 2A3F60 ʸʵʾʵʳʳʵʷʶʺʽ$$ʲʵʲʵʿʻʸʻʸʷʷ
+  CALL   at 2A427C [cee8] in 2A3F60 ʸʵʾʵʳʳʵʷʶʺʽ$$ʲʵʲʵʿʻʸʻʸʷʷ
+  CALL   at 2A4415 [cee8] in 2A3F60 ʸʵʾʵʳʳʵʷʶʺʽ$$ʲʵʲʵʿʻʸʻʸʷʷ
+  CALL   at 2A4608 [cee8] in 2A3F60 ʸʵʾʵʳʳʵʷʶʺʽ$$ʲʵʲʵʿʻʸʻʸʷʷ
+  CALL   at 2A4894 [cfe8] in 2A4770 ʸʵʾʵʳʳʵʷʶʺʽ$$ʲʸʸʾʲʳʴʷʹʼʸ
+  CALL   at 2A4A87 [cfe8] in 2A4770 ʸʵʾʵʳʳʵʷʶʺʽ$$ʲʸʸʾʲʳʴʷʹʼʸ
+  CALL   at 2A4C15 [cfe8] in 2A4770 ʸʵʾʵʳʳʵʷʶʺʽ$$ʲʸʸʾʲʳʴʷʹʼʸ
+  CALL   at 2A4DF7 [cfe8] in 2A4770 ʸʵʾʵʳʳʵʷʶʺʽ$$ʲʸʸʾʲʳʴʷʹʼʸ
+  CALL   at 2A4FD9 [cee8] in 2A4F60 ʸʵʾʵʳʳʵʷʶʺʽ$$ʳʵʳʶʻʶʷʼʲʸʵ
+  CALL   at 2A524F [cfe8] in 2A5150 ʸʵʾʵʳʳʵʷʶʺʽ$$ʳʽʼʿʲʼˀʿʲʹʹ
+  CALL   at 2A5457 [cfe8] in 2A5150 ʸʵʾʵʳʳʵʷʶʺʽ$$ʳʽʼʿʲʼˀʿʲʹʹ
+  CALL   at 2A55F4 [cfe8] in 2A5150 ʸʵʾʵʳʳʵʷʶʺʽ$$ʳʽʼʿʲʼˀʿʲʹʹ
+  CALL   at 2A57E5 [cfe8] in 2A5150 ʸʵʾʵʳʳʵʷʶʺʽ$$ʳʽʼʿʲʼˀʿʲʹʹ
+  CALL   at 2A59DE [cfe8] in 2A5950 ʸʵʾʵʳʳʵʷʶʺʽ$$ʵʲʿʾʷʳʹʴʼʻʼ
+  CALL   at 2A5BC1 [d2e8] in 2A5950 ʸʵʾʵʳʳʵʷʶʺʽ$$ʵʲʿʾʷʳʹʴʼʻʼ
+  CALL   at 2A5DB8 [cde8] in 2A5D30 ʸʵʾʵʳʳʵʷʶʺʽ$$ʶʲʴʳʾʲˁˀʵˁʵ
+  CALL   at 2A5F60 [cde8] in 2A5D30 ʸʵʾʵʳʳʵʷʶʺʽ$$ʶʲʴʳʾʲˁˀʵˁʵ
+  CALL   at 2A6148 [cee8] in 2A60C0 ʸʵʾʵʳʳʵʷʶʺʽ$$ʷʸʺʴʹʾˁʼʾʴʽ
+  CALL   at 2A62F0 [cee8] in 2A60C0 ʸʵʾʵʳʳʵʷʶʺʽ$$ʷʸʺʴʹʾˁʼʾʴʽ
+  CALL   at 2A64E5 [cde8] in 2A6450 ʸʵʾʵʳʳʵʷʶʺʽ$$ʸˀʴʹˁʴʷʵʼʷʸ
+  CALL   at 2A66D2 [d2e8] in 2A6450 ʸʵʾʵʳʳʵʷʶʺʽ$$ʸˀʴʹˁʴʷʵʼʷʸ
+  CALL   at 2A694F [cee8] in 2A6840 ʸʵʾʵʳʳʵʷʶʺʽ$$ʹʷʾʶˀʼʹˁʴʳʼ
+  CALL   at 2A6B54 [cee8] in 2A6840 ʸʵʾʵʳʳʵʷʶʺʽ$$ʹʷʾʶˀʼʹˁʴʳʼ
+  CALL   at 2A6CF1 [cee8] in 2A6840 ʸʵʾʵʳʳʵʷʶʺʽ$$ʹʷʾʶˀʼʹˁʴʳʼ
+  CALL   at 2A6ECC [cee8] in 2A6840 ʸʵʾʵʳʳʵʷʶʺʽ$$ʹʷʾʶˀʼʹˁʴʳʼ
+  CALL   at 2A7139 [cfe8] in 2A7030 ʸʵʾʵʳʳʵʷʶʺʽ$$ʹʿʴʹʸʴʽʻʿʻʽ
+  CALL   at 2A7330 [cfe8] in 2A7030 ʸʵʾʵʳʳʵʷʶʺʽ$$ʹʿʴʹʸʴʽʻʿʻʽ
+  CALL   at 2A74CD [cfe8] in 2A7030 ʸʵʾʵʳʳʵʷʶʺʽ$$ʹʿʴʹʸʴʽʻʿʻʽ
+  CALL   at 2A76A6 [cfe8] in 2A7030 ʸʵʾʵʳʳʵʷʶʺʽ$$ʹʿʴʹʸʴʽʻʿʻʽ
+  CALL   at 2A789B [cde8] in 2A7810 ʸʵʾʵʳʳʵʷʶʺʽ$$ʺʻʴʸʴʿʻˁʶʸʷ
+  CALL   at 2A7A82 [d2e8] in 2A7810 ʸʵʾʵʳʳʵʷʶʺʽ$$ʺʻʴʸʴʿʻˁʶʸʷ
+  CALL   at 2A7C88 [cee8] in 2A7BF0 ʸʵʾʵʳʳʵʷʶʺʽ$$ʻʿˁˁʺʸʴʴʼʸʹ
+  CALL   at 2A7E35 [cee8] in 2A7BF0 ʸʵʾʵʳʳʵʷʶʺʽ$$ʻʿˁˁʺʸʴʴʼʸʹ
+  CALL   at 2A802A [cee8] in 2A7FA0 ʸʵʾʵʳʳʵʷʶʺʽ$$ʼˁʸʳʹʸʼʻˁʶʶ
+  CALL   at 2A81D2 [cee8] in 2A7FA0 ʸʵʾʵʳʳʵʷʶʺʽ$$ʼˁʸʳʹʸʼʻˁʶʶ
+  CALL   at 2A846E [cee8] in 2A8340 ʸʵʾʵʳʳʵʷʶʺʽ$$ʽʵˁʶˀʿʿˀʺʿʳ
+  CALL   at 2A8669 [cee8] in 2A8340 ʸʵʾʵʳʳʵʷʶʺʽ$$ʽʵˁʶˀʿʿˀʺʿʳ
+  CALL   at 2A8806 [cee8] in 2A8340 ʸʵʾʵʳʳʵʷʶʺʽ$$ʽʵˁʶˀʿʿˀʺʿʳ
+  CALL   at 2A89F5 [cee8] in 2A8340 ʸʵʾʵʳʳʵʷʶʺʽ$$ʽʵˁʶˀʿʿˀʺʿʳ
+  CALL   at 2A8BCF [cee8] in 2A8B60 ʸʵʾʵʳʳʵʷʶʺʽ$$ʾʴʷˁʽˀˀˀʹʾʲ
+  CALL   at 2A8DB4 [d2e8] in 2A8B60 ʸʵʾʵʳʳʵʷʶʺʽ$$ʾʴʷˁʽˀˀˀʹʾʲ
+  CALL   at 2A901E [cee8] in 2A8F20 ʸʵʾʵʳʳʵʷʶʺʽ$$ˀʻʷʴʹʼʷʵʳʿʿ
+  CALL   at 2A9218 [cee8] in 2A8F20 ʸʵʾʵʳʳʵʷʶʺʽ$$ˀʻʷʴʹʼʷʵʳʿʿ
+  CALL   at 2A9412 [cee8] in 2A8F20 ʸʵʾʵʳʳʵʷʶʺʽ$$ˀʻʷʴʹʼʷʵʳʿʿ
+  CALL   at 2A9611 [cee8] in 2A9580 ʸʵʾʵʳʳʵʷʶʺʽ$$ˀʼʷʺˁʴʾˁʼʳʶ
+  CALL   at 2A97C7 [cee8] in 2A9580 ʸʵʾʵʳʳʵʷʶʺʽ$$ˀʼʷʺˁʴʾˁʼʳʶ
+  CALL   at 2A98E0 [d2e8] in 2A9580 ʸʵʾʵʳʳʵʷʶʺʽ$$ˀʼʷʺˁʴʾˁʼʳʶ
+  CALL   at 2A9B4D [cfe8] in 2A9A40 ʸʵʾʵʳʳʵʷʶʺʽ$$ˁʺˀʼˀʲʾʼʲʸʺ
+  CALL   at 2A9D55 [cfe8] in 2A9A40 ʸʵʾʵʳʳʵʷʶʺʽ$$ˁʺˀʼˀʲʾʼʲʸʺ
+  CALL   at 2A9EEA [cfe8] in 2A9A40 ʸʵʾʵʳʳʵʷʶʺʽ$$ˁʺˀʼˀʲʾʼʲʸʺ
+  CALL   at 2AA0D3 [cfe8] in 2A9A40 ʸʵʾʵʳʳʵʷʶʺʽ$$ˁʺˀʼˀʲʾʼʲʸʺ
+  CALL   at 2AA2CB [cee8] in 2AA240 ʸʵʾʵʳʳʵʷʶʺʽ$$ˁˀʾʾʹʲʾˀʻʳʶ
+  CALL   at 2AA478 [cee8] in 2AA240 ʸʵʾʵʳʳʵʷʶʺʽ$$ˁˀʾʾʹʲʾˀʻʳʶ
+  CALL   at FAF7DF [c8e8] in FAF720 ʴˁʶˀʼʸʿʴʸʳʵ<__Il2CppFullySharedGenericStructType>$$ʾˁʲʿʷʼʽʷˁʶʸ
+  CALL   at FAFC58 [cee8] in FAFB00 ʴˁʶˀʼʸʿʴʸʳʵ<__Il2CppFullySharedGenericStructType>$$ʿʶʲʳʲʴʴʵʴʲʷ
+  CALL   at FB1892 [cee8] in FB17E0 ʴˁʶˀʼʸʿʴʸʳʵ<__Il2CppFullySharedGenericStructType>$$ʿʾʹʲˀʶʷʵʶʶˀ
+  CALL   at FBEED8 [c8e8] in FBEE20 ʴˁʶˀʼʸʿʴʸʳʵ<ʽʽʲʸʷʼʾʸʿʽʳ>$$ʾˁʲʿʷʼʽʷˁʶʸ
+  CALL   at FBF078 [c8e8] in FBEFC0 ʴˁʶˀʼʸʿʴʸʳʵ<ʻʹʻʿʿʺʸʹʽʻʻ>$$ʾˁʲʿʷʼʽʷˁʶʸ
+  CALL   at FBF519 [cee8] in FBF3F0 ʴˁʶˀʼʸʿʴʸʳʵ<ʽʽʲʸʷʼʾʸʿʽʳ>$$ʿʶʲʳʲʴʴʵʴʲʷ
+  CALL   at FBF829 [cee8] in FBF700 ʴˁʶˀʼʸʿʴʸʳʵ<ʻʹʻʿʿʺʸʹʽʻʻ>$$ʿʶʲʳʲʴʴʵʴʲʷ
+  CALL   at FC1673 [c8e8] in FC1150 ʴˁʶˀʼʸʿʴʸʳʵ<ʻʹʻʿʿʺʸʹʽʻʻ>$$ʿʼʶʾʸʻʽʵʷʷʳ
+  CALL   at FC1D83 [c8e8] in FC1860 ʴˁʶˀʼʸʿʴʸʳʵ<ʽʽʲʸʷʼʾʸʿʽʳ>$$ʿʼʶʾʸʻʽʵʷʷʳ
+  CALL   at FC2021 [cee8] in FC1F70 ʴˁʶˀʼʸʿʴʸʳʵ<ʽʽʲʸʷʼʾʸʿʽʳ>$$ʿʾʹʲˀʶʷʵʶʶˀ
+  CALL   at FC21B1 [cee8] in FC2100 ʴˁʶˀʼʸʿʴʸʳʵ<ʻʹʻʿʿʺʸʹʽʻʻ>$$ʿʾʹʲˀʶʷʵʶʶˀ
+  CALL   at 115621D [cce8] in 1155E90 BaseGuitarNoteRenderer<__Il2CppFullySharedGenericStructType, object, object>$$ʾʿʾˁʼʵʵˁʽˀʼ
+  CALL   at 1156A91 [cde8] in 1156710 BaseGuitarNoteRenderer<ʷʼʾʸʲʴʳʶʶʼʴ, object, object>$$ʾʿʾˁʼʵʵˁʽˀʼ
+  CALL   at 1157321 [cde8] in 1156FA0 BaseGuitarNoteRenderer<ʸʵʾʵʳʳʵʷʶʺʽ, object, object>$$ʾʿʾˁʼʵʵˁʽˀʼ
+  CALL   at 20F5AA6 [cbe8] in 20F5810 ʿʶʴˀʴʾʵʵʶʳʲ$$ʹˀʲʺʹʿʾʾʽʴʷ
+  CALL   at 20F5C53 [cbe8] in 20F5810 ʿʶʴˀʴʾʵʵʶʳʲ$$ʹˀʲʺʹʿʾʾʽʴʷ
+  PTR    at 3E8FAD8 [file+3E8DCD8] in 2BF4C30 System.__Il2CppComDelegate$$Finalize
+== target 214BB30 (80 hits)
+  CALL   at D4DCB [cde8] in D4CF0 ʷʼʾʸʲʴʳʶʶʼʴ$$ʲʼʼʶˁʸʽʶʽʴʵ
+  CALL   at D4E87 [00e8] in D4CF0 ʷʼʾʸʲʴʳʶʶʼʴ$$ʲʼʼʶˁʸʽʶʽʴʵ
+  CALL   at D50DB [cde8] in D5000 ʷʼʾʸʲʴʳʶʶʼʴ$$ʳʲʷʴʽˁʴʻʴʶˀ
+  CALL   at D5197 [00e8] in D5000 ʷʼʾʸʲʴʳʶʶʼʴ$$ʳʲʷʴʽˁʴʻʴʶˀ
+  CALL   at D5B5B [cde8] in D5A80 ʷʼʾʸʲʴʳʶʶʼʴ$$ʷʻʿʼʿʼʿˁˀʶʳ
+  CALL   at D5C17 [00e8] in D5A80 ʷʼʾʸʲʴʳʶʶʼʴ$$ʷʻʿʼʿʼʿˁˀʶʳ
+  CALL   at D5E6B [cde8] in D5D90 ʷʼʾʸʲʴʳʶʶʼʴ$$ʸʸʹʷʾʴʾʼʼʲʸ
+  CALL   at D5F27 [00e8] in D5D90 ʷʼʾʸʲʴʳʶʶʼʴ$$ʸʸʹʷʾʴʾʼʼʲʸ
+  CALL   at D617B [cde8] in D60A0 ʷʼʾʸʲʴʳʶʶʼʴ$$ʸʺˀʼʸʵʸˁʷʼˀ
+  CALL   at D6237 [00e8] in D60A0 ʷʼʾʸʲʴʳʶʶʼʴ$$ʸʺˀʼʸʵʸˁʷʼˀ
+  CALL   at D648B [cde8] in D63B0 ʷʼʾʸʲʴʳʶʶʼʴ$$ʸʾʸʷʴʶʺʺʸʻˁ
+  CALL   at D6547 [00e8] in D63B0 ʷʼʾʸʲʴʳʶʶʼʴ$$ʸʾʸʷʴʶʺʺʸʻˁ
+  CALL   at D686B [cde8] in D6790 ʷʼʾʸʲʴʳʶʶʼʴ$$ʻˀʽˁʺʵʸˀʾʺˁ
+  CALL   at D6927 [00e8] in D6790 ʷʼʾʸʲʴʳʶʶʼʴ$$ʻˀʽˁʺʵʸˀʾʺˁ
+  CALL   at 2A4069 [cee8] in 2A3F60 ʸʵʾʵʳʳʵʷʶʺʽ$$ʲʵʲʵʿʻʸʻʸʷʷ
+  CALL   at 2A426E [cee8] in 2A3F60 ʸʵʾʵʳʳʵʷʶʺʽ$$ʲʵʲʵʿʻʸʻʸʷʷ
+  CALL   at 2A4407 [cee8] in 2A3F60 ʸʵʾʵʳʳʵʷʶʺʽ$$ʲʵʲʵʿʻʸʻʸʷʷ
+  CALL   at 2A4616 [cee8] in 2A3F60 ʸʵʾʵʳʳʵʷʶʺʽ$$ʲʵʲʵʿʻʸʻʸʷʷ
+  CALL   at 2A4886 [cfe8] in 2A4770 ʸʵʾʵʳʳʵʷʶʺʽ$$ʲʸʸʾʲʳʴʷʹʼʸ
+  CALL   at 2A4A79 [cfe8] in 2A4770 ʸʵʾʵʳʳʵʷʶʺʽ$$ʲʸʸʾʲʳʴʷʹʼʸ
+  CALL   at 2A4C07 [cfe8] in 2A4770 ʸʵʾʵʳʳʵʷʶʺʽ$$ʲʸʸʾʲʳʴʷʹʼʸ
+  CALL   at 2A4E05 [cfe8] in 2A4770 ʸʵʾʵʳʳʵʷʶʺʽ$$ʲʸʸʾʲʳʴʷʹʼʸ
+  CALL   at 2A4FE7 [cee8] in 2A4F60 ʸʵʾʵʳʳʵʷʶʺʽ$$ʳʵʳʶʻʶʷʼʲʸʵ
+  CALL   at 2A5241 [cfe8] in 2A5150 ʸʵʾʵʳʳʵʷʶʺʽ$$ʳʽʼʿʲʼˀʿʲʹʹ
+  CALL   at 2A5449 [cfe8] in 2A5150 ʸʵʾʵʳʳʵʷʶʺʽ$$ʳʽʼʿʲʼˀʿʲʹʹ
+  CALL   at 2A55E6 [cfe8] in 2A5150 ʸʵʾʵʳʳʵʷʶʺʽ$$ʳʽʼʿʲʼˀʿʲʹʹ
+  CALL   at 2A57F3 [cfe8] in 2A5150 ʸʵʾʵʳʳʵʷʶʺʽ$$ʳʽʼʿʲʼˀʿʲʹʹ
+  CALL   at 2A59CE [d2e8] in 2A5950 ʸʵʾʵʳʳʵʷʶʺʽ$$ʵʲʿʾʷʳʹʴʼʻʼ
+  CALL   at 2A5BD1 [cfe8] in 2A5950 ʸʵʾʵʳʳʵʷʶʺʽ$$ʵʲʿʾʷʳʹʴʼʻʼ
+  CALL   at 2A5DAA [cde8] in 2A5D30 ʸʵʾʵʳʳʵʷʶʺʽ$$ʶʲʴʳʾʲˁˀʵˁʵ
+  CALL   at 2A5F6E [cde8] in 2A5D30 ʸʵʾʵʳʳʵʷʶʺʽ$$ʶʲʴʳʾʲˁˀʵˁʵ
+  CALL   at 2A6138 [cee8] in 2A60C0 ʸʵʾʵʳʳʵʷʶʺʽ$$ʷʸʺʴʹʾˁʼʾʴʽ
+  CALL   at 2A6300 [cee8] in 2A60C0 ʸʵʾʵʳʳʵʷʶʺʽ$$ʷʸʺʴʹʾˁʼʾʴʽ
+  CALL   at 2A64D7 [d2e8] in 2A6450 ʸʵʾʵʳʳʵʷʶʺʽ$$ʸˀʴʹˁʴʷʵʼʷʸ
+  CALL   at 2A66E0 [cde8] in 2A6450 ʸʵʾʵʳʳʵʷʶʺʽ$$ʸˀʴʹˁʴʷʵʼʷʸ
+  CALL   at 2A6941 [cee8] in 2A6840 ʸʵʾʵʳʳʵʷʶʺʽ$$ʹʷʾʶˀʼʹˁʴʳʼ
+  CALL   at 2A6B46 [cee8] in 2A6840 ʸʵʾʵʳʳʵʷʶʺʽ$$ʹʷʾʶˀʼʹˁʴʳʼ
+  CALL   at 2A6CE3 [cee8] in 2A6840 ʸʵʾʵʳʳʵʷʶʺʽ$$ʹʷʾʶˀʼʹˁʴʳʼ
+  CALL   at 2A6EDA [cee8] in 2A6840 ʸʵʾʵʳʳʵʷʶʺʽ$$ʹʷʾʶˀʼʹˁʴʳʼ
+  CALL   at 2A712B [cfe8] in 2A7030 ʸʵʾʵʳʳʵʷʶʺʽ$$ʹʿʴʹʸʴʽʻʿʻʽ
+  CALL   at 2A7322 [cfe8] in 2A7030 ʸʵʾʵʳʳʵʷʶʺʽ$$ʹʿʴʹʸʴʽʻʿʻʽ
+  CALL   at 2A74BF [cfe8] in 2A7030 ʸʵʾʵʳʳʵʷʶʺʽ$$ʹʿʴʹʸʴʽʻʿʻʽ
+  CALL   at 2A76B4 [cfe8] in 2A7030 ʸʵʾʵʳʳʵʷʶʺʽ$$ʹʿʴʹʸʴʽʻʿʻʽ
+  CALL   at 2A788D [d2e8] in 2A7810 ʸʵʾʵʳʳʵʷʶʺʽ$$ʺʻʴʸʴʿʻˁʶʸʷ
+  CALL   at 2A7A90 [cde8] in 2A7810 ʸʵʾʵʳʳʵʷʶʺʽ$$ʺʻʴʸʴʿʻˁʶʸʷ
+  CALL   at 2A7C7A [cee8] in 2A7BF0 ʸʵʾʵʳʳʵʷʶʺʽ$$ʻʿˁˁʺʸʴʴʼʸʹ
+  CALL   at 2A7E43 [cee8] in 2A7BF0 ʸʵʾʵʳʳʵʷʶʺʽ$$ʻʿˁˁʺʸʴʴʼʸʹ
+  CALL   at 2A801A [cee8] in 2A7FA0 ʸʵʾʵʳʳʵʷʶʺʽ$$ʼˁʸʳʹʸʼʻˁʶʶ
+  CALL   at 2A81E2 [cee8] in 2A7FA0 ʸʵʾʵʳʳʵʷʶʺʽ$$ʼˁʸʳʹʸʼʻˁʶʶ
+  CALL   at 2A8460 [cee8] in 2A8340 ʸʵʾʵʳʳʵʷʶʺʽ$$ʽʵˁʶˀʿʿˀʺʿʳ
+  CALL   at 2A865B [cee8] in 2A8340 ʸʵʾʵʳʳʵʷʶʺʽ$$ʽʵˁʶˀʿʿˀʺʿʳ
+  CALL   at 2A87F8 [cee8] in 2A8340 ʸʵʾʵʳʳʵʷʶʺʽ$$ʽʵˁʶˀʿʿˀʺʿʳ
+  CALL   at 2A8A03 [cee8] in 2A8340 ʸʵʾʵʳʳʵʷʶʺʽ$$ʽʵˁʶˀʿʿˀʺʿʳ
+  CALL   at 2A8BC1 [d2e8] in 2A8B60 ʸʵʾʵʳʳʵʷʶʺʽ$$ʾʴʷˁʽˀˀˀʹʾʲ
+  CALL   at 2A8DC2 [cee8] in 2A8B60 ʸʵʾʵʳʳʵʷʶʺʽ$$ʾʴʷˁʽˀˀˀʹʾʲ
+  CALL   at 2A9010 [cee8] in 2A8F20 ʸʵʾʵʳʳʵʷʶʺʽ$$ˀʻʷʴʹʼʷʵʳʿʿ
+  CALL   at 2A920A [cee8] in 2A8F20 ʸʵʾʵʳʳʵʷʶʺʽ$$ˀʻʷʴʹʼʷʵʳʿʿ
+  CALL   at 2A9420 [cee8] in 2A8F20 ʸʵʾʵʳʳʵʷʶʺʽ$$ˀʻʷʴʹʼʷʵʳʿʿ
+  CALL   at 2A9603 [d2e8] in 2A9580 ʸʵʾʵʳʳʵʷʶʺʽ$$ˀʼʷʺˁʴʾˁʼʳʶ
+  CALL   at 2A97B9 [d2e8] in 2A9580 ʸʵʾʵʳʳʵʷʶʺʽ$$ˀʼʷʺˁʴʾˁʼʳʶ
+  CALL   at 2A98EE [cee8] in 2A9580 ʸʵʾʵʳʳʵʷʶʺʽ$$ˀʼʷʺˁʴʾˁʼʳʶ
+  CALL   at 2A9B3F [cfe8] in 2A9A40 ʸʵʾʵʳʳʵʷʶʺʽ$$ˁʺˀʼˀʲʾʼʲʸʺ
+  CALL   at 2A9D47 [cfe8] in 2A9A40 ʸʵʾʵʳʳʵʷʶʺʽ$$ˁʺˀʼˀʲʾʼʲʸʺ
+  CALL   at 2A9EDC [cfe8] in 2A9A40 ʸʵʾʵʳʳʵʷʶʺʽ$$ˁʺˀʼˀʲʾʼʲʸʺ
+  CALL   at 2AA0E1 [cfe8] in 2A9A40 ʸʵʾʵʳʳʵʷʶʺʽ$$ˁʺˀʼˀʲʾʼʲʸʺ
+  CALL   at 2AA2BD [cee8] in 2AA240 ʸʵʾʵʳʳʵʷʶʺʽ$$ˁˀʾʾʹʲʾˀʻʳʶ
+  CALL   at 2AA486 [cee8] in 2AA240 ʸʵʾʵʳʳʵʷʶʺʽ$$ˁˀʾʾʹʲʾˀʻʳʶ
+  CALL   at FAF7ED [cbe8] in FAF720 ʴˁʶˀʼʸʿʴʸʳʵ<__Il2CppFullySharedGenericStructType>$$ʾˁʲʿʷʼʽʷˁʶʸ
+  CALL   at FAFC7D [cee8] in FAFB00 ʴˁʶˀʼʸʿʴʸʳʵ<__Il2CppFullySharedGenericStructType>$$ʿʶʲʳʲʴʴʵʴʲʷ
+  CALL   at FB2B23 [cde8] in FB2A10 ʴˁʶˀʼʸʿʴʸʳʵ<__Il2CppFullySharedGenericStructType>$$ˁʽʿʶʿʹʸʹʳʷʲ
+  CALL   at FBEEE6 [cbe8] in FBEE20 ʴˁʶˀʼʸʿʴʸʳʵ<ʽʽʲʸʷʼʾʸʿʽʳ>$$ʾˁʲʿʷʼʽʷˁʶʸ
+  CALL   at FBF086 [cbe8] in FBEFC0 ʴˁʶˀʼʸʿʴʸʳʵ<ʻʹʻʿʿʺʸʹʽʻʻ>$$ʾˁʲʿʷʼʽʷˁʶʸ
+  CALL   at FBF540 [cee8] in FBF3F0 ʴˁʶˀʼʸʿʴʸʳʵ<ʽʽʲʸʷʼʾʸʿʽʳ>$$ʿʶʲʳʲʴʴʵʴʲʷ
+  CALL   at FBF850 [cee8] in FBF700 ʴˁʶˀʼʸʿʴʸʳʵ<ʻʹʻʿʿʺʸʹʽʻʻ>$$ʿʶʲʳʲʴʴʵʴʲʷ
+  CALL   at FC1681 [cfe8] in FC1150 ʴˁʶˀʼʸʿʴʸʳʵ<ʻʹʻʿʿʺʸʹʽʻʻ>$$ʿʼʶʾʸʻʽʵʷʷʳ
+  CALL   at FC1D91 [cfe8] in FC1860 ʴˁʶˀʼʸʿʴʸʳʵ<ʽʽʲʸʷʼʾʸʿʽʳ>$$ʿʼʶʾʸʻʽʵʷʷʳ
+  CALL   at FC374F [cee8] in FC3640 ʴˁʶˀʼʸʿʴʸʳʵ<ʽʽʲʸʷʼʾʸʿʽʳ>$$ˁʽʿʶʿʹʸʹʳʷʲ
+  CALL   at FC39BF [cee8] in FC38B0 ʴˁʶˀʼʸʿʴʸʳʵ<ʻʹʻʿʿʺʸʹʽʻʻ>$$ˁʽʿʶʿʹʸʹʳʷʲ
+  CALL   at 20F0984 [cfe8] in 20F08A0 ʽʶʸʽʳʼʵʸʺʸʳ$$ʺˁʹʵʵʴʾʽʵʼʼ
+  PTR    at 3E8FAE8 [file+3E8DCE8] in 2BF4C30 System.__Il2CppComDelegate$$Finalize
+== target 214BB40 (5 hits)
+  CALL   at 82A7E [cee8] in 82800 DrumsNeckController$$ʴʷʵʼʶʲʺʿʲʺʺ
+  CALL   at 82B03 [cee8] in 82800 DrumsNeckController$$ʴʷʵʼʶʲʺʿʲʺʺ
+  CALL   at 20DE93B [cfe8] in 20DE770 ʺʺʸʶʿʵˀʸʲˀʲ$$ʾʼʺʻˀʵʶʸʶʻʳ
+  CALL   at 20DEEF9 [cfe8] in 20DEEC0 ʺʺʸʶʿʵˀʸʲˀʲ$$ʿʾʹʲˀʶʷʵʶʶˀ
+  PTR    at 3E8FA38 [file+3E8DC38] in 2BF4C30 System.__Il2CppComDelegate$$Finalize
+== target 214BB50 (12 hits)
+  CALL   at 2B12BE [cce8] in 2B09A0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʳʾʶˀʿʾʴˀʸʶʾ
+  CALL   at 2B1DBE [cce8] in 2B14A0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʵʳʳʸʸʻˀʸʺʴʸ
+  CALL   at 2B2A0E [cce8] in 2B20F0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʶʼʶʻʳˁʴʾʺʽˀ
+  CALL   at 2B36FE [cce8] in 2B2DE0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʸʾʸʷʴʶʺʺʸʻˁ
+  CALL   at 2B447E [cce8] in 2B3B60 ʳʻˁʾʺʳʽʸʳʽʲ$$ʼʾʹʺʻʴʿʲʲʲʻ
+  CALL   at 20DCAF9 [cfe8] in 20DCAD0 ʺʺʸʶʿʵˀʸʲˀʲ$$ʳʶˀˁʶʶʽʽʷʼʼ
+  CALL   at 20DCEC9 [d8e8] in 20DCC90 ʺʺʸʶʿʵˀʸʲˀʲ$$ʳʹʼʴʸʵʶʻʺʶʺ
+  CALL   at 20DD3BB [d8e8] in 20DD190 ʺʺʸʶʿʵˀʸʲˀʲ$$ʵʸʲʴʶʵʶʹˁʿʼ
+  CALL   at 20DD92E [d8e8] in 20DD700 ʺʺʸʶʿʵˀʸʲˀʲ$$ʷʿʺʴʲʴʷʾʹʳʹ
+  CALL   at 20DECCE [d8e8] in 20DEAA0 ʺʺʸʶʿʵˀʸʲˀʲ$$ʿʶʲʳʲʴʴʵʴʲʷ
+  CALL   at 20DF21E [d8e8] in 20DEFF0 ʺʺʸʶʿʵˀʸʲˀʲ$$ˀʽʶʶʻʹˀʼˁʴʸ
+  PTR    at 3E8F928 [file+3E8DB28] in 2BF4C30 System.__Il2CppComDelegate$$Finalize
+== target 214BB90 (2 hits)
+  CALL   at 20DE92D [cfe8] in 20DE770 ʺʺʸʶʿʵˀʸʲˀʲ$$ʾʼʺʻˀʵʶʸʶʻʳ
+  PTR    at 3E8F9B8 [file+3E8DBB8] in 2BF4C30 System.__Il2CppComDelegate$$Finalize
+== target 214BBA0 (2 hits)
+  CALL   at 20F6F7A [00e8] in 20F6EB0 ʿʶʴˀʴʾʵʵʶʳʲ$$ʿʾʹʲˀʶʷʵʶʶˀ
+  PTR    at 3E8FA98 [file+3E8DC98] in 2BF4C30 System.__Il2CppComDelegate$$Finalize
+== target 214BCC0 (11 hits)
+  CALL   at B4BFD [c8e8] in B4AE0 GameManager$$ʲʷʷʶʶʲʷʻʹʾʿ
+  CALL   at 370372 [cfe8] in 370280 InGameLeaderboardManager$$ʳʳʺʶʽʷʺʻʽˀˁ
+  CALL   at 3704C2 [cfe8] in 3703D0 InGameLeaderboardManager$$ʳˁʵʶʶʵʷʲʶʽʿ
+  CALL   at 371B72 [cfe8] in 371A80 InGameLeaderboardManager$$ʻʸˁʽʻʴʼʼʴʴʾ
+  CALL   at 3726E2 [cfe8] in 3725F0 InGameLeaderboardManager$$ˀʸʲˀʳʿʸʸʷʺʿ
+  CALL   at 372842 [cfe8] in 372750 InGameLeaderboardManager$$ˀʺʻʸʲʿˁʸʽʽˁ
+  CALL   at 20D1A2C [cbe8] in 20D18F0 ʲʽʶʳʺʹʳˀʾʴʹ$$ʷʴʹʷʷʶˁʷʷʿʸ
+  CALL   at 20D2213 [cfe8] in 20D1ED0 ʲʽʶʳʺʹʳˀʾʴʹ$$ʸʷʲʵʸʾʾʼʿʼʶ
+  CALL   at 20F3657 [cfe8] in 20F3610 ʿʶʴˀʴʾʵʵʶʳʲ$$ʳʶˀˁʶʶʽʽʷʼʼ
+  CALL   at 20F4029 [cbe8] in 20F3DC0 ʿʶʴˀʴʾʵʵʶʳʲ$$ʵʲʼʾʾʲʼʽʶʵʳ
+  PTR    at 3E8F9A0 [file+3E8DBA0] in 2BF4C30 System.__Il2CppComDelegate$$Finalize
+== target 214BDF0 (1 hits)
+  PTR    at 3E8F9B0 [file+3E8DBB0] in 2BF4C30 System.__Il2CppComDelegate$$Finalize
+== target 214BE00 (4 hits)
+  CALL   at 115A083 [cee8] in 1159D60 BaseGuitarNoteRenderer<__Il2CppFullySharedGenericStructType, object, object>$$Update
+  CALL   at 115A613 [cee8] in 115A2F0 BaseGuitarNoteRenderer<ʷʼʾʸʲʴʳʶʶʼʴ, object, object>$$Update
+  CALL   at 115ABA3 [cee8] in 115A880 BaseGuitarNoteRenderer<ʸʵʾʵʳʳʵʷʶʺʽ, object, object>$$Update
+  PTR    at 3E8FAC0 [file+3E8DCC0] in 2BF4C30 System.__Il2CppComDelegate$$Finalize
+== target 214BE10 (26 hits)
+  CALL   at 82A8C [cee8] in 82800 DrumsNeckController$$ʴʷʵʼʶʲʺʿʲʺʺ
+  CALL   at 2B0BC0 [cce8] in 2B09A0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʳʾʶˀʿʾʴˀʸʶʾ
+  CALL   at 2B0D30 [cce8] in 2B09A0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʳʾʶˀʿʾʴˀʸʶʾ
+  CALL   at 2B0E1A [cce8] in 2B09A0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʳʾʶˀʿʾʴˀʸʶʾ
+  CALL   at 2B0F6B [cce8] in 2B09A0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʳʾʶˀʿʾʴˀʸʶʾ
+  CALL   at 2B16C0 [cce8] in 2B14A0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʵʳʳʸʸʻˀʸʺʴʸ
+  CALL   at 2B1830 [cce8] in 2B14A0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʵʳʳʸʸʻˀʸʺʴʸ
+  CALL   at 2B191A [cce8] in 2B14A0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʵʳʳʸʸʻˀʸʺʴʸ
+  CALL   at 2B1A6B [cce8] in 2B14A0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʵʳʳʸʸʻˀʸʺʴʸ
+  CALL   at 2B2310 [cce8] in 2B20F0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʶʼʶʻʳˁʴʾʺʽˀ
+  CALL   at 2B2480 [cce8] in 2B20F0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʶʼʶʻʳˁʴʾʺʽˀ
+  CALL   at 2B256A [cce8] in 2B20F0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʶʼʶʻʳˁʴʾʺʽˀ
+  CALL   at 2B26BB [cce8] in 2B20F0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʶʼʶʻʳˁʴʾʺʽˀ
+  CALL   at 2B3000 [cce8] in 2B2DE0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʸʾʸʷʴʶʺʺʸʻˁ
+  CALL   at 2B3170 [cce8] in 2B2DE0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʸʾʸʷʴʶʺʺʸʻˁ
+  CALL   at 2B325A [cce8] in 2B2DE0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʸʾʸʷʴʶʺʺʸʻˁ
+  CALL   at 2B33AB [cce8] in 2B2DE0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʸʾʸʷʴʶʺʺʸʻˁ
+  CALL   at 2B3D80 [cce8] in 2B3B60 ʳʻˁʾʺʳʽʸʳʽʲ$$ʼʾʹʺʻʴʿʲʲʲʻ
+  CALL   at 2B3EF0 [cce8] in 2B3B60 ʳʻˁʾʺʳʽʸʳʽʲ$$ʼʾʹʺʻʴʿʲʲʲʻ
+  CALL   at 2B3FDA [cce8] in 2B3B60 ʳʻˁʾʺʳʽʸʳʽʲ$$ʼʾʹʺʻʴʿʲʲʲʻ
+  CALL   at 2B412B [cce8] in 2B3B60 ʳʻˁʾʺʳʽʸʳʽʲ$$ʼʾʹʺʻʴʿʲʲʲʻ
+  CALL   at 33B65D [cfe8] in 33B520 DrumsPlayer$$ʻʵʲʻʸʾʲʴʿˁʻ
+  CALL   at 20DE8AB [cfe8] in 20DE770 ʺʺʸʶʿʵˀʸʲˀʲ$$ʾʼʺʻˀʵʶʸʶʻʳ
+  CALL   at 20F4822 [cfe8] in 20F4680 ʿʶʴˀʴʾʵʵʶʳʲ$$ʶʴˀʴʿʷʵʺʺʽʿ
+  CALL   at 20F7584 [cfe8] in 20F74B0 ʿʶʴˀʴʾʵʵʶʳʲ$$ˁʲʷʹˀʸʷʽʽʷʳ
+  PTR    at 3E8F9E0 [file+3E8DBE0] in 2BF4C30 System.__Il2CppComDelegate$$Finalize
+== target 214BE20 (125 hits)
+  CALL   at D4D5D [cde8] in D4CF0 ʷʼʾʸʲʴʳʶʶʼʴ$$ʲʼʼʶˁʸʽʶʽʴʵ
+  CALL   at D506D [cde8] in D5000 ʷʼʾʸʲʴʳʶʶʼʴ$$ʳʲʷʴʽˁʴʻʴʶˀ
+  CALL   at D543D [d2e8] in D5310 ʷʼʾʸʲʴʳʶʶʼʴ$$ʳʳʸˁʴʸʴʳʷʷʴ
+  CALL   at D56DD [d2e8] in D55B0 ʷʼʾʸʲʴʳʶʶʼʴ$$ʵʿʻʿʻʿˀʶʳʺʸ
+  CALL   at D597D [d2e8] in D5850 ʷʼʾʸʲʴʳʶʶʼʴ$$ʷʸʳʵˀʳʷʶʲʺʽ
+  CALL   at D5AED [cde8] in D5A80 ʷʼʾʸʲʴʳʶʶʼʴ$$ʷʻʿʼʿʼʿˁˀʶʳ
+  CALL   at D5DFD [cde8] in D5D90 ʷʼʾʸʲʴʳʶʶʼʴ$$ʸʸʹʷʾʴʾʼʼʲʸ
+  CALL   at D610D [cde8] in D60A0 ʷʼʾʸʲʴʳʶʶʼʴ$$ʸʺˀʼʸʵʸˁʷʼˀ
+  CALL   at D641D [cde8] in D63B0 ʷʼʾʸʲʴʳʶʶʼʴ$$ʸʾʸʷʴʶʺʺʸʻˁ
+  CALL   at D67FD [cde8] in D6790 ʷʼʾʸʲʴʳʶʶʼʴ$$ʻˀʽˁʺʵʸˀʾʺˁ
+  CALL   at D6C3D [d2e8] in D6B10 ʷʼʾʸʲʴʳʶʶʼʴ$$ʿˀʸʷʿʵʹʻʿˁʺ
+  CALL   at D6E6D [d2e8] in D6D40 ʷʼʾʸʲʴʳʶʶʼʴ$$ˀˀˁˁʽʿʳʲʲʳʾ
+  CALL   at 2A420E [cee8] in 2A3F60 ʸʵʾʵʳʳʵʷʶʺʽ$$ʲʵʲʵʿʻʸʻʸʷʷ
+  CALL   at 2A45CD [cee8] in 2A3F60 ʸʵʾʵʳʳʵʷʶʺʽ$$ʲʵʲʵʿʻʸʻʸʷʷ
+  CALL   at 2A46BD [cee8] in 2A3F60 ʸʵʾʵʳʳʵʷʶʺʽ$$ʲʵʲʵʿʻʸʻʸʷʷ
+  CALL   at 2A46F9 [3ce8] in 2A3F60 ʸʵʾʵʳʳʵʷʶʺʽ$$ʲʵʲʵʿʻʸʻʸʷʷ
+  CALL   at 2A4A23 [cfe8] in 2A4770 ʸʵʾʵʳʳʵʷʶʺʽ$$ʲʸʸʾʲʳʴʷʹʼʸ
+  CALL   at 2A4DBE [cfe8] in 2A4770 ʸʵʾʵʳʳʵʷʶʺʽ$$ʲʸʸʾʲʳʴʷʹʼʸ
+  CALL   at 2A4EAC [cfe8] in 2A4770 ʸʵʾʵʳʳʵʷʶʺʽ$$ʲʸʸʾʲʳʴʷʹʼʸ
+  CALL   at 2A4EE8 [3ce8] in 2A4770 ʸʵʾʵʳʳʵʷʶʺʽ$$ʲʸʸʾʲʳʴʷʹʼʸ
+  CALL   at 2A508A [cee8] in 2A4F60 ʸʵʾʵʳʳʵʷʶʺʽ$$ʳʵʳʶʻʶʷʼʲʸʵ
+  CALL   at 2A50C6 [3ce8] in 2A4F60 ʸʵʾʵʳʳʵʷʶʺʽ$$ʳʵʳʶʻʶʷʼʲʸʵ
+  CALL   at 2A53E6 [cfe8] in 2A5150 ʸʵʾʵʳʳʵʷʶʺʽ$$ʳʽʼʿʲʼˀʿʲʹʹ
+  CALL   at 2A57AC [cfe8] in 2A5150 ʸʵʾʵʳʳʵʷʶʺʽ$$ʳʽʼʿʲʼˀʿʲʹʹ
+  CALL   at 2A589A [cfe8] in 2A5150 ʸʵʾʵʳʳʵʷʶʺʽ$$ʳʽʼʿʲʼˀʿʲʹʹ
+  CALL   at 2A58D6 [3ce8] in 2A5150 ʸʵʾʵʳʳʵʷʶʺʽ$$ʳʽʼʿʲʼˀʿʲʹʹ
+  CALL   at 2A5B5F [cfe8] in 2A5950 ʸʵʾʵʳʳʵʷʶʺʽ$$ʵʲʿʾʷʳʹʴʼʻʼ
+  CALL   at 2A5C75 [cfe8] in 2A5950 ʸʵʾʵʳʳʵʷʶʺʽ$$ʵʲʿʾʷʳʹʴʼʻʼ
+  CALL   at 2A5CB1 [3ce8] in 2A5950 ʸʵʾʵʳʳʵʷʶʺʽ$$ʵʲʿʾʷʳʹʴʼʻʼ
+  CALL   at 2A5F00 [cde8] in 2A5D30 ʸʵʾʵʳʳʵʷʶʺʽ$$ʶʲʴʳʾʲˁˀʵˁʵ
+  CALL   at 2A600E [cde8] in 2A5D30 ʸʵʾʵʳʳʵʷʶʺʽ$$ʶʲʴʳʾʲˁˀʵˁʵ
+  CALL   at 2A604A [3ce8] in 2A5D30 ʸʵʾʵʳʳʵʷʶʺʽ$$ʶʲʴʳʾʲˁˀʵˁʵ
+  CALL   at 2A6290 [cee8] in 2A60C0 ʸʵʾʵʳʳʵʷʶʺʽ$$ʷʸʺʴʹʾˁʼʾʴʽ
+  CALL   at 2A63A0 [cee8] in 2A60C0 ʸʵʾʵʳʳʵʷʶʺʽ$$ʷʸʺʴʹʾˁʼʾʴʽ
+  CALL   at 2A63DC [3ce8] in 2A60C0 ʸʵʾʵʳʳʵʷʶʺʽ$$ʷʸʺʴʹʾˁʼʾʴʽ
+  CALL   at 2A667C [cde8] in 2A6450 ʸʵʾʵʳʳʵʷʶʺʽ$$ʸˀʴʹˁʴʷʵʼʷʸ
+  CALL   at 2A6787 [cde8] in 2A6450 ʸʵʾʵʳʳʵʷʶʺʽ$$ʸˀʴʹˁʴʷʵʼʷʸ
+  CALL   at 2A67C3 [3ce8] in 2A6450 ʸʵʾʵʳʳʵʷʶʺʽ$$ʸˀʴʹˁʴʷʵʼʷʸ
+  CALL   at 2A6AE6 [cee8] in 2A6840 ʸʵʾʵʳʳʵʷʶʺʽ$$ʹʷʾʶˀʼʹˁʴʳʼ
+  CALL   at 2A6E91 [cee8] in 2A6840 ʸʵʾʵʳʳʵʷʶʺʽ$$ʹʷʾʶˀʼʹˁʴʳʼ
+  CALL   at 2A6F81 [cee8] in 2A6840 ʸʵʾʵʳʳʵʷʶʺʽ$$ʹʷʾʶˀʼʹˁʴʳʼ
+  CALL   at 2A6FBD [3ce8] in 2A6840 ʸʵʾʵʳʳʵʷʶʺʽ$$ʹʷʾʶˀʼʹˁʴʳʼ
+  CALL   at 2A72CC [cfe8] in 2A7030 ʸʵʾʵʳʳʵʷʶʺʽ$$ʹʿʴʹʸʴʽʻʿʻʽ
+  CALL   at 2A766D [cfe8] in 2A7030 ʸʵʾʵʳʳʵʷʶʺʽ$$ʹʿʴʹʸʴʽʻʿʻʽ
+  CALL   at 2A775B [cfe8] in 2A7030 ʸʵʾʵʳʳʵʷʶʺʽ$$ʹʿʴʹʸʴʽʻʿʻʽ
+  CALL   at 2A7797 [3ce8] in 2A7030 ʸʵʾʵʳʳʵʷʶʺʽ$$ʹʿʴʹʸʴʽʻʿʻʽ
+  CALL   at 2A7A20 [cde8] in 2A7810 ʸʵʾʵʳʳʵʷʶʺʽ$$ʺʻʴʸʴʿʻˁʶʸʷ
+  CALL   at 2A7B34 [cde8] in 2A7810 ʸʵʾʵʳʳʵʷʶʺʽ$$ʺʻʴʸʴʿʻˁʶʸʷ
+  CALL   at 2A7B70 [3ce8] in 2A7810 ʸʵʾʵʳʳʵʷʶʺʽ$$ʺʻʴʸʴʿʻˁʶʸʷ
+  CALL   at 2A7DDE [cee8] in 2A7BF0 ʸʵʾʵʳʳʵʷʶʺʽ$$ʻʿˁˁʺʸʴʴʼʸʹ
+  CALL   at 2A7EE6 [cee8] in 2A7BF0 ʸʵʾʵʳʳʵʷʶʺʽ$$ʻʿˁˁʺʸʴʴʼʸʹ
+  CALL   at 2A7F22 [3ce8] in 2A7BF0 ʸʵʾʵʳʳʵʷʶʺʽ$$ʻʿˁˁʺʸʴʴʼʸʹ
+  CALL   at 2A8172 [cee8] in 2A7FA0 ʸʵʾʵʳʳʵʷʶʺʽ$$ʼˁʸʳʹʸʼʻˁʶʶ
+  CALL   at 2A8282 [cee8] in 2A7FA0 ʸʵʾʵʳʳʵʷʶʺʽ$$ʼˁʸʳʹʸʼʻˁʶʶ
+  CALL   at 2A82BE [3ce8] in 2A7FA0 ʸʵʾʵʳʳʵʷʶʺʽ$$ʼˁʸʳʹʸʼʻˁʶʶ
+  CALL   at 2A8605 [cee8] in 2A8340 ʸʵʾʵʳʳʵʷʶʺʽ$$ʽʵˁʶˀʿʿˀʺʿʳ
+  CALL   at 2A89BA [cee8] in 2A8340 ʸʵʾʵʳʳʵʷʶʺʽ$$ʽʵˁʶˀʿʿˀʺʿʳ
+  CALL   at 2A8AAA [cee8] in 2A8340 ʸʵʾʵʳʳʵʷʶʺʽ$$ʽʵˁʶˀʿʿˀʺʿʳ
+  CALL   at 2A8AE6 [3ce8] in 2A8340 ʸʵʾʵʳʳʵʷʶʺʽ$$ʽʵˁʶˀʿʿˀʺʿʳ
+  CALL   at 2A8D5E [cee8] in 2A8B60 ʸʵʾʵʳʳʵʷʶʺʽ$$ʾʴʷˁʽˀˀˀʹʾʲ
+  CALL   at 2A8E69 [cee8] in 2A8B60 ʸʵʾʵʳʳʵʷʶʺʽ$$ʾʴʷˁʽˀˀˀʹʾʲ
+  CALL   at 2A8EA5 [3ce8] in 2A8B60 ʸʵʾʵʳʳʵʷʶʺʽ$$ʾʴʷˁʽˀˀˀʹʾʲ
+  CALL   at 2A91B1 [cee8] in 2A8F20 ʸʵʾʵʳʳʵʷʶʺʽ$$ˀʻʷʴʹʼʷʵʳʿʿ
+  CALL   at 2A93C8 [cee8] in 2A8F20 ʸʵʾʵʳʳʵʷʶʺʽ$$ˀʻʷʴʹʼʷʵʳʿʿ
+  CALL   at 2A94C7 [cee8] in 2A8F20 ʸʵʾʵʳʳʵʷʶʺʽ$$ˀʻʷʴʹʼʷʵʳʿʿ
+  CALL   at 2A9503 [3ce8] in 2A8F20 ʸʵʾʵʳʳʵʷʶʺʽ$$ˀʻʷʴʹʼʷʵʳʿʿ
+  CALL   at 2A9759 [cee8] in 2A9580 ʸʵʾʵʳʳʵʷʶʺʽ$$ˀʼʷʺˁʴʾˁʼʳʶ
+  CALL   at 2A9992 [cee8] in 2A9580 ʸʵʾʵʳʳʵʷʶʺʽ$$ˀʼʷʺˁʴʾˁʼʳʶ
+  CALL   at 2A99CE [3ce8] in 2A9580 ʸʵʾʵʳʳʵʷʶʺʽ$$ˀʼʷʺˁʴʾˁʼʳʶ
+  CALL   at 2A9CE4 [cfe8] in 2A9A40 ʸʵʾʵʳʳʵʷʶʺʽ$$ˁʺˀʼˀʲʾʼʲʸʺ
+  CALL   at 2AA09A [cfe8] in 2A9A40 ʸʵʾʵʳʳʵʷʶʺʽ$$ˁʺˀʼˀʲʾʼʲʸʺ
+  CALL   at 2AA188 [cfe8] in 2A9A40 ʸʵʾʵʳʳʵʷʶʺʽ$$ˁʺˀʼˀʲʾʼʲʸʺ
+  CALL   at 2AA1C4 [3ce8] in 2A9A40 ʸʵʾʵʳʳʵʷʶʺʽ$$ˁʺˀʼˀʲʾʼʲʸʺ
+  CALL   at 2AA421 [cee8] in 2AA240 ʸʵʾʵʳʳʵʷʶʺʽ$$ˁˀʾʾʹʲʾˀʻʳʶ
+  CALL   at 2AA529 [cee8] in 2AA240 ʸʵʾʵʳʳʵʷʶʺʽ$$ˁˀʾʾʹʲʾˀʻʳʶ
+  CALL   at 2AA565 [3ce8] in 2AA240 ʸʵʾʵʳʳʵʷʶʺʽ$$ˁˀʾʾʹʲʾˀʻʳʶ
+  CALL   at 2B0A33 [cce8] in 2B09A0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʳʾʶˀʿʾʴˀʸʶʾ
+  CALL   at 2B0C8A [cce8] in 2B09A0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʳʾʶˀʿʾʴˀʸʶʾ
+  CALL   at 2B1042 [cce8] in 2B09A0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʳʾʶˀʿʾʴˀʸʶʾ
+  CALL   at 2B1120 [38e8] in 2B09A0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʳʾʶˀʿʾʴˀʸʶʾ
+  CALL   at 2B1533 [cce8] in 2B14A0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʵʳʳʸʸʻˀʸʺʴʸ
+  CALL   at 2B178A [cce8] in 2B14A0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʵʳʳʸʸʻˀʸʺʴʸ
+  CALL   at 2B1B42 [cce8] in 2B14A0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʵʳʳʸʸʻˀʸʺʴʸ
+  CALL   at 2B1C20 [38e8] in 2B14A0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʵʳʳʸʸʻˀʸʺʴʸ
+  CALL   at 2B2183 [cce8] in 2B20F0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʶʼʶʻʳˁʴʾʺʽˀ
+  CALL   at 2B23DA [cce8] in 2B20F0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʶʼʶʻʳˁʴʾʺʽˀ
+  CALL   at 2B2792 [cce8] in 2B20F0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʶʼʶʻʳˁʴʾʺʽˀ
+  CALL   at 2B2870 [38e8] in 2B20F0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʶʼʶʻʳˁʴʾʺʽˀ
+  CALL   at 2B2CC0 [cee8] in 2B2BF0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʸʸʷʵˀʲʳʹʴʼʹ
+  CALL   at 2B2D21 [cee8] in 2B2BF0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʸʸʷʵˀʲʳʹʴʼʹ
+  CALL   at 2B2E73 [cce8] in 2B2DE0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʸʾʸʷʴʶʺʺʸʻˁ
+  CALL   at 2B30CA [cce8] in 2B2DE0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʸʾʸʷʴʶʺʺʸʻˁ
+  CALL   at 2B3482 [cce8] in 2B2DE0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʸʾʸʷʴʶʺʺʸʻˁ
+  CALL   at 2B3560 [38e8] in 2B2DE0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʸʾʸʷʴʶʺʺʸʻˁ
+  CALL   at 2B3BF3 [cce8] in 2B3B60 ʳʻˁʾʺʳʽʸʳʽʲ$$ʼʾʹʺʻʴʿʲʲʲʻ
+  CALL   at 2B3E4A [cce8] in 2B3B60 ʳʻˁʾʺʳʽʸʳʽʲ$$ʼʾʹʺʻʴʿʲʲʲʻ
+  CALL   at 2B4202 [cce8] in 2B3B60 ʳʻˁʾʺʳʽʸʳʽʲ$$ʼʾʹʺʻʴʿʲʲʲʻ
+  CALL   at 2B42E0 [38e8] in 2B3B60 ʳʻˁʾʺʳʽʸʳʽʲ$$ʼʾʹʺʻʴʿʲʲʲʻ
+  CALL   at 2B4880 [cee8] in 2B47B0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʾʵʻʼʼʹˀʲʺʹʳ
+  CALL   at 2B48E1 [cee8] in 2B47B0 ʳʻˁʾʺʳʽʸʳʽʲ$$ʾʵʻʼʼʹˀʲʺʹʳ
+  CALL   at FAC9C3 [cde8] in FAC710 ʴˁʶˀʼʸʿʴʸʳʵ<__Il2CppFullySharedGenericStructType>$$ʷʹʺʼʽʸʲʼʸʺʿ
+  CALL   at FACB36 [cfe8] in FACAF0 ʴˁʶˀʼʸʿʴʸʳʵ<__Il2CppFullySharedGenericStructType>$$ʸʵʽʸʳʵʲʴʽʻʷ
+  CALL   at FADDC8 [cfe8] in FADCC0 ʴˁʶˀʼʸʿʴʸʳʵ<__Il2CppFullySharedGenericStructType>$$ʺʶˀʴʴʼʷʻʲˀʿ
+  CALL   at FAE1A4 [cde8] in FAE0E0 ʴˁʶˀʼʸʿʴʸʳʵ<__Il2CppFullySharedGenericStructType>$$ʺʾʷʷʷʴʴʹʴʽʹ
+  CALL   at FAFA35 [d2e8] in FAF8F0 ʴˁʶˀʼʸʿʴʸʳʵ<__Il2CppFullySharedGenericStructType>$$ʾˁʹʺʺʽʷˁʼʷʼ
+  CALL   at FBAF3F [cfe8] in FBADA0 ʴˁʶˀʼʸʿʴʸʳʵ<ʽʽʲʸʷʼʾʸʿʽʳ>$$ʷʹʺʼʽʸʲʼʸʺʿ
+  CALL   at FBB19F [cfe8] in FBB000 ʴˁʶˀʼʸʿʴʸʳʵ<ʻʹʻʿʿʺʸʹʽʻʻ>$$ʷʹʺʼʽʸʲʼʸʺʿ
+  CALL   at FBB2A8 [cfe8] in FBB260 ʴˁʶˀʼʸʿʴʸʳʵ<ʽʽʲʸʷʼʾʸʿʽʳ>$$ʸʵʽʸʳʵʲʴʽʻʷ
+  CALL   at FBB3C8 [cfe8] in FBB380 ʴˁʶˀʼʸʿʴʸʳʵ<ʻʹʻʿʿʺʸʹʽʻʻ>$$ʸʵʽʸʳʵʲʴʽʻʷ
+  CALL   at FBCB68 [cfe8] in FBCA90 ʴˁʶˀʼʸʿʴʸʳʵ<ʽʽʲʸʷʼʾʸʿʽʳ>$$ʺʶˀʴʴʼʷʻʲˀʿ
+  CALL   at FBCD88 [cfe8] in FBCCB0 ʴˁʶˀʼʸʿʴʸʳʵ<ʻʹʻʿʿʺʸʹʽʻʻ>$$ʺʶˀʴʴʼʷʻʲˀʿ
+  CALL   at FBD287 [cfe8] in FBD1F0 ʴˁʶˀʼʸʿʴʸʳʵ<ʽʽʲʸʷʼʾʸʿʽʳ>$$ʺʾʷʷʷʴʴʹʴʽʹ
+  CALL   at FBD4F7 [cfe8] in FBD460 ʴˁʶˀʼʸʿʴʸʳʵ<ʻʹʻʿʿʺʸʹʽʻʻ>$$ʺʾʷʷʷʴʴʹʴʽʹ
+  CALL   at FBF231 [d2e8] in FBF160 ʴˁʶˀʼʸʿʴʸʳʵ<ʽʽʲʸʷʼʾʸʿʽʳ>$$ʾˁʹʺʺʽʷˁʼʷʼ
+  CALL   at FBF371 [d2e8] in FBF2A0 ʴˁʶˀʼʸʿʴʸʳʵ<ʻʹʻʿʿʺʸʹʽʻʻ>$$ʾˁʹʺʺʽʷˁʼʷʼ
+  RIPREF at 114BE1B [8035] in 114BB80 UnityEngine.UIElements.BaseField<__Il2CppFullySharedGenericType>$$OnViewDataReady
+  CALL   at 1154504 [cee8] in 11541F0 BaseGuitarNoteRenderer<ʸʵʾʵʳʳʵʷʶʺʽ, object, object>$$ʵʽʲʿʿˀʴʿʹʷʻ
+  CALL   at 1154E44 [cee8] in 1154B20 BaseGuitarNoteRenderer<__Il2CppFullySharedGenericStructType, object, object>$$ʵʽʲʿʿˀʴʿʹʷʻ
+  CALL   at 1155774 [cee8] in 1155460 BaseGuitarNoteRenderer<ʷʼʾʸʲʴʳʶʶʼʴ, object, object>$$ʵʽʲʿʿˀʴʿʹʷʻ
+  CALL   at 20F3669 [cfe8] in 20F3610 ʿʶʴˀʴʾʵʵʶʳʲ$$ʳʶˀˁʶʶʽʽʷʼʼ
+  CALL   at 20F5EAF [cbe8] in 20F5D90 ʿʶʴˀʴʾʵʵʶʳʲ$$ʺʶˀʴʴʼʷʻʲˀʿ
+  CALL   at 20F6748 [cfe8] in 20F63F0 ʿʶʴˀʴʾʵʵʶʳʲ$$ʾʼʺʻˀʵʶʸʶʻʳ
+  CALL   at 2D6D2B8 [cfe8] in 2BF4C30 System.__Il2CppComDelegate$$Finalize
+  CALL   at 2D6D3D8 [cfe8] in 2BF4C30 System.__Il2CppComDelegate$$Finalize
+  PTR    at 3E8F948 [file+3E8DB48] in 2BF4C30 System.__Il2CppComDelegate$$Finalize
+== target 214BE30 (3 hits)
+  CALL   at 20DEEE7 [cfe8] in 20DEEC0 ʺʺʸʶʿʵˀʸʲˀʲ$$ʿʾʹʲˀʶʷʵʶʶˀ
+  CALL   at 20F480F [cfe8] in 20F4680 ʿʶʴˀʴʾʵʵʶʳʲ$$ʶʴˀʴʿʷʵʺʺʽʿ
+  PTR    at 3E8F9F0 [file+3E8DBF0] in 2BF4C30 System.__Il2CppComDelegate$$Finalize
+== target 214BE40 (13 hits)
+  CALL   at FACFBA [cde8] in FACD10 ʴˁʶˀʼʸʿʴʸʳʵ<__Il2CppFullySharedGenericStructType>$$ʸˀʾʾʾʳʽʳʶˁʷ
+  CALL   at FAF13C [cde8] in FAE900 ʴˁʶˀʼʸʿʴʸʳʵ<__Il2CppFullySharedGenericStructType>$$ʾʼʺʻˀʵʶʸʶʻʳ
+  CALL   at FAFD22 [cee8] in FAFB00 ʴˁʶˀʼʸʿʴʸʳʵ<__Il2CppFullySharedGenericStructType>$$ʿʶʲʳʲʴʴʵʴʲʷ
+  CALL   at FB2B11 [c8e8] in FB2A10 ʴˁʶˀʼʸʿʴʸʳʵ<__Il2CppFullySharedGenericStructType>$$ˁʽʿʶʿʹʸʹʳʷʲ
+  CALL   at FBB6D7 [cfe8] in FBB540 ʴˁʶˀʼʸʿʴʸʳʵ<ʽʽʲʸʷʼʾʸʿʽʳ>$$ʸˀʾʾʾʳʽʳʶˁʷ
+  CALL   at FBBA07 [cfe8] in FBB870 ʴˁʶˀʼʸʿʴʸʳʵ<ʻʹʻʿʿʺʸʹʽʻʻ>$$ʸˀʾʾʾʳʽʳʶˁʷ
+  CALL   at FBE104 [cee8] in FBDC30 ʴˁʶˀʼʸʿʴʸʳʵ<ʻʹʻʿʿʺʸʹʽʻʻ>$$ʾʼʺʻˀʵʶʸʶʻʳ
+  CALL   at FBE7E4 [cee8] in FBE310 ʴˁʶˀʼʸʿʴʸʳʵ<ʽʽʲʸʷʼʾʸʿʽʳ>$$ʾʼʺʻˀʵʶʸʶʻʳ
+  CALL   at FBF5C8 [cee8] in FBF3F0 ʴˁʶˀʼʸʿʴʸʳʵ<ʽʽʲʸʷʼʾʸʿʽʳ>$$ʿʶʲʳʲʴʴʵʴʲʷ
+  CALL   at FBF8D8 [cee8] in FBF700 ʴˁʶˀʼʸʿʴʸʳʵ<ʻʹʻʿʿʺʸʹʽʻʻ>$$ʿʶʲʳʲʴʴʵʴʲʷ
+  CALL   at FC373D [c8e8] in FC3640 ʴˁʶˀʼʸʿʴʸʳʵ<ʽʽʲʸʷʼʾʸʿʽʳ>$$ˁʽʿʶʿʹʸʹʳʷʲ
+  CALL   at FC39AD [c8e8] in FC38B0 ʴˁʶˀʼʸʿʴʸʳʵ<ʻʹʻʿʿʺʸʹʽʻʻ>$$ˁʽʿʶʿʹʸʹʳʷʲ
+  PTR    at 3E8FB10 [file+3E8DD10] in 2BF4C30 System.__Il2CppComDelegate$$Finalize
+== target 214BE50 (71 hits)
+  CALL   at D539D [cfe8] in D5310 ʷʼʾʸʲʴʳʶʶʼʴ$$ʳʳʸˁʴʸʴʳʷʷʴ
+  CALL   at D563D [cfe8] in D55B0 ʷʼʾʸʲʴʳʶʶʼʴ$$ʵʿʻʿʻʿˀʶʳʺʸ
+  CALL   at D58DD [cfe8] in D5850 ʷʼʾʸʲʴʳʶʶʼʴ$$ʷʸʳʵˀʳʷʶʲʺʽ
+  CALL   at D6B9D [cfe8] in D6B10 ʷʼʾʸʲʴʳʶʶʼʴ$$ʿˀʸʷʿʵʹʻʿˁʺ
+  CALL   at D6DCD [cfe8] in D6D40 ʷʼʾʸʲʴʳʶʶʼʴ$$ˀˀˁˁʽʿʳʲʲʳʾ
+  CALL   at 2A41CD [cee8] in 2A3F60 ʸʵʾʵʳʳʵʷʶʺʽ$$ʲʵʲʵʿʻʸʻʸʷʷ
+  CALL   at 2A43CE [cee8] in 2A3F60 ʸʵʾʵʳʳʵʷʶʺʽ$$ʲʵʲʵʿʻʸʻʸʷʷ
+  CALL   at 2A459C [cee8] in 2A3F60 ʸʵʾʵʳʳʵʷʶʺʽ$$ʲʵʲʵʿʻʸʻʸʷʷ
+  CALL   at 2A49E2 [cfe8] in 2A4770 ʸʵʾʵʳʳʵʷʶʺʽ$$ʲʸʸʾʲʳʴʷʹʼʸ
+  CALL   at 2A4BCE [cfe8] in 2A4770 ʸʵʾʵʳʳʵʷʶʺʽ$$ʲʸʸʾʲʳʴʷʹʼʸ
+  CALL   at 2A4D8D [cfe8] in 2A4770 ʸʵʾʵʳʳʵʷʶʺʽ$$ʲʸʸʾʲʳʴʷʹʼʸ
+  CALL   at 2A53A5 [cfe8] in 2A5150 ʸʵʾʵʳʳʵʷʶʺʽ$$ʳʽʼʿʲʼˀʿʲʹʹ
+  CALL   at 2A55AD [cfe8] in 2A5150 ʸʵʾʵʳʳʵʷʶʺʽ$$ʳʽʼʿʲʼˀʿʲʹʹ
+  CALL   at 2A577B [cfe8] in 2A5150 ʸʵʾʵʳʳʵʷʶʺʽ$$ʳʽʼʿʲʼˀʿʲʹʹ
+  CALL   at 2A5B1E [cfe8] in 2A5950 ʸʵʾʵʳʳʵʷʶʺʽ$$ʵʲʿʾʷʳʹʴʼʻʼ
+  CALL   at 2A5ECF [cde8] in 2A5D30 ʸʵʾʵʳʳʵʷʶʺʽ$$ʶʲʴʳʾʲˁˀʵˁʵ
+  CALL   at 2A625F [cee8] in 2A60C0 ʸʵʾʵʳʳʵʷʶʺʽ$$ʷʸʺʴʹʾˁʼʾʴʽ
+  CALL   at 2A663B [cde8] in 2A6450 ʸʵʾʵʳʳʵʷʶʺʽ$$ʸˀʴʹˁʴʷʵʼʷʸ
+  CALL   at 2A6AA5 [cee8] in 2A6840 ʸʵʾʵʳʳʵʷʶʺʽ$$ʹʷʾʶˀʼʹˁʴʳʼ
+  CALL   at 2A6CAA [cee8] in 2A6840 ʸʵʾʵʳʳʵʷʶʺʽ$$ʹʷʾʶˀʼʹˁʴʳʼ
+  CALL   at 2A6E60 [cee8] in 2A6840 ʸʵʾʵʳʳʵʷʶʺʽ$$ʹʷʾʶˀʼʹˁʴʳʼ
+  CALL   at 2A728B [cfe8] in 2A7030 ʸʵʾʵʳʳʵʷʶʺʽ$$ʹʿʴʹʸʴʽʻʿʻʽ
+  CALL   at 2A7486 [cfe8] in 2A7030 ʸʵʾʵʳʳʵʷʶʺʽ$$ʹʿʴʹʸʴʽʻʿʻʽ
+  CALL   at 2A763C [cfe8] in 2A7030 ʸʵʾʵʳʳʵʷʶʺʽ$$ʹʿʴʹʸʴʽʻʿʻʽ
+  CALL   at 2A79DF [cde8] in 2A7810 ʸʵʾʵʳʳʵʷʶʺʽ$$ʺʻʴʸʴʿʻˁʶʸʷ
+  CALL   at 2A7DAD [cee8] in 2A7BF0 ʸʵʾʵʳʳʵʷʶʺʽ$$ʻʿˁˁʺʸʴʴʼʸʹ
+  CALL   at 2A8141 [cee8] in 2A7FA0 ʸʵʾʵʳʳʵʷʶʺʽ$$ʼˁʸʳʹʸʼʻˁʶʶ
+  CALL   at 2A85C4 [cee8] in 2A8340 ʸʵʾʵʳʳʵʷʶʺʽ$$ʽʵˁʶˀʿʿˀʺʿʳ
+  CALL   at 2A87BF [cee8] in 2A8340 ʸʵʾʵʳʳʵʷʶʺʽ$$ʽʵˁʶˀʿʿˀʺʿʳ
+  CALL   at 2A8989 [cee8] in 2A8340 ʸʵʾʵʳʳʵʷʶʺʽ$$ʽʵˁʶˀʿʿˀʺʿʳ
+  CALL   at 2A8D1D [cee8] in 2A8B60 ʸʵʾʵʳʳʵʷʶʺʽ$$ʾʴʷˁʽˀˀˀʹʾʲ
+  CALL   at 2A9170 [cee8] in 2A8F20 ʸʵʾʵʳʳʵʷʶʺʽ$$ˀʻʷʴʹʼʷʵʳʿʿ
+  CALL   at 2A9397 [cee8] in 2A8F20 ʸʵʾʵʳʳʵʷʶʺʽ$$ˀʻʷʴʹʼʷʵʳʿʿ
+  CALL   at 2A9728 [cee8] in 2A9580 ʸʵʾʵʳʳʵʷʶʺʽ$$ˀʼʷʺˁʴʾˁʼʳʶ
+  CALL   at 2A9CA3 [cfe8] in 2A9A40 ʸʵʾʵʳʳʵʷʶʺʽ$$ˁʺˀʼˀʲʾʼʲʸʺ
+  CALL   at 2A9EA3 [cfe8] in 2A9A40 ʸʵʾʵʳʳʵʷʶʺʽ$$ˁʺˀʼˀʲʾʼʲʸʺ
+  CALL   at 2AA069 [cfe8] in 2A9A40 ʸʵʾʵʳʳʵʷʶʺʽ$$ˁʺˀʼˀʲʾʼʲʸʺ
+  CALL   at 2AA3F0 [cee8] in 2AA240 ʸʵʾʵʳʳʵʷʶʺʽ$$ˁˀʾʾʹʲʾˀʻʳʶ
+  CALL   at FAC054 [c8e8] in FAC010 ʴˁʶˀʼʸʿʴʸʳʵ<ʽʽʲʸʷʼʾʸʿʽʳ>$$ʵˁʽˁʹʽʻʶʺʳʻ
+  CALL   at FAC616 [d2e8] in FAC3A0 ʴˁʶˀʼʸʿʴʸʳʵ<__Il2CppFullySharedGenericStructType>$$ʶʹʼˀʶʾʴʺʼʻˁ
+  CALL   at FAEF1F [cde8] in FAE900 ʴˁʶˀʼʸʿʴʸʳʵ<__Il2CppFullySharedGenericStructType>$$ʾʼʺʻˀʵʶʸʶʻʳ
+  CALL   at FAF07C [cde8] in FAE900 ʴˁʶˀʼʸʿʴʸʳʵ<__Il2CppFullySharedGenericStructType>$$ʾʼʺʻˀʵʶʸʶʻʳ
+  CALL   at FAF167 [cde8] in FAE900 ʴˁʶˀʼʸʿʴʸʳʵ<__Il2CppFullySharedGenericStructType>$$ʾʼʺʻˀʵʶʸʶʻʳ
+  CALL   at FAF830 [cbe8] in FAF720 ʴˁʶˀʼʸʿʴʸʳʵ<__Il2CppFullySharedGenericStructType>$$ʾˁʲʿʷʼʽʷˁʶʸ
+  CALL   at FAFD30 [cee8] in FAFB00 ʴˁʶˀʼʸʿʴʸʳʵ<__Il2CppFullySharedGenericStructType>$$ʿʶʲʳʲʴʴʵʴʲʷ
+  CALL   at FB1884 [cee8] in FB17E0 ʴˁʶˀʼʸʿʴʸʳʵ<__Il2CppFullySharedGenericStructType>$$ʿʾʹʲˀʶʷʵʶʶˀ
+  CALL   at FBAACC [d2e8] in FBA900 ʴˁʶˀʼʸʿʴʸʳʵ<ʻʹʻʿʿʺʸʹʽʻʻ>$$ʶʹʼˀʶʾʴʺʼʻˁ
+  CALL   at FBAD1C [d2e8] in FBAB50 ʴˁʶˀʼʸʿʴʸʳʵ<ʽʽʲʸʷʼʾʸʿʽʳ>$$ʶʹʼˀʶʾʴʺʼʻˁ
+  CALL   at FBDFC3 [cee8] in FBDC30 ʴˁʶˀʼʸʿʴʸʳʵ<ʻʹʻʿʿʺʸʹʽʻʻ>$$ʾʼʺʻˀʵʶʸʶʻʳ
+  CALL   at FBE09D [cee8] in FBDC30 ʴˁʶˀʼʸʿʴʸʳʵ<ʻʹʻʿʿʺʸʹʽʻʻ>$$ʾʼʺʻˀʵʶʸʶʻʳ
+  CALL   at FBE12D [cee8] in FBDC30 ʴˁʶˀʼʸʿʴʸʳʵ<ʻʹʻʿʿʺʸʹʽʻʻ>$$ʾʼʺʻˀʵʶʸʶʻʳ
+  CALL   at FBE6A3 [cee8] in FBE310 ʴˁʶˀʼʸʿʴʸʳʵ<ʽʽʲʸʷʼʾʸʿʽʳ>$$ʾʼʺʻˀʵʶʸʶʻʳ
+  CALL   at FBE77D [cee8] in FBE310 ʴˁʶˀʼʸʿʴʸʳʵ<ʽʽʲʸʷʼʾʸʿʽʳ>$$ʾʼʺʻˀʵʶʸʶʻʳ
+  CALL   at FBE80D [cee8] in FBE310 ʴˁʶˀʼʸʿʴʸʳʵ<ʽʽʲʸʷʼʾʸʿʽʳ>$$ʾʼʺʻˀʵʶʸʶʻʳ
+  CALL   at FBEF29 [cbe8] in FBEE20 ʴˁʶˀʼʸʿʴʸʳʵ<ʽʽʲʸʷʼʾʸʿʽʳ>$$ʾˁʲʿʷʼʽʷˁʶʸ
+  CALL   at FBF0C9 [cbe8] in FBEFC0 ʴˁʶˀʼʸʿʴʸʳʵ<ʻʹʻʿʿʺʸʹʽʻʻ>$$ʾˁʲʿʷʼʽʷˁʶʸ
+  CALL   at FBF5D6 [cee8] in FBF3F0 ʴˁʶˀʼʸʿʴʸʳʵ<ʽʽʲʸʷʼʾʸʿʽʳ>$$ʿʶʲʳʲʴʴʵʴʲʷ
+  CALL   at FBF8E6 [cee8] in FBF700 ʴˁʶˀʼʸʿʴʸʳʵ<ʻʹʻʿʿʺʸʹʽʻʻ>$$ʿʶʲʳʲʴʴʵʴʲʷ
+  CALL   at FC13E9 [cde8] in FC1150 ʴˁʶˀʼʸʿʴʸʳʵ<ʻʹʻʿʿʺʸʹʽʻʻ>$$ʿʼʶʾʸʻʽʵʷʷʳ
+  CALL   at FC16C4 [cfe8] in FC1150 ʴˁʶˀʼʸʿʴʸʳʵ<ʻʹʻʿʿʺʸʹʽʻʻ>$$ʿʼʶʾʸʻʽʵʷʷʳ
+  CALL   at FC1AF9 [cde8] in FC1860 ʴˁʶˀʼʸʿʴʸʳʵ<ʽʽʲʸʷʼʾʸʿʽʳ>$$ʿʼʶʾʸʻʽʵʷʷʳ
+  CALL   at FC1DD4 [cfe8] in FC1860 ʴˁʶˀʼʸʿʴʸʳʵ<ʽʽʲʸʷʼʾʸʿʽʳ>$$ʿʼʶʾʸʻʽʵʷʷʳ
+  CALL   at FC2013 [cee8] in FC1F70 ʴˁʶˀʼʸʿʴʸʳʵ<ʽʽʲʸʷʼʾʸʿʽʳ>$$ʿʾʹʲˀʶʷʵʶʶˀ
+  CALL   at FC21A3 [cee8] in FC2100 ʴˁʶˀʼʸʿʴʸʳʵ<ʻʹʻʿʿʺʸʹʽʻʻ>$$ʿʾʹʲˀʶʷʵʶʶˀ
+  CALL   at 115DA72 [d2e8] in 115D9C0 BaseGuitarPlayer<ʽʽʲʸʷʼʾʸʿʽʳ>$$ʻʵʲʻʸʾʲʴʿˁʻ
+  CALL   at 115DF56 [d2e8] in 115DBA0 BaseGuitarPlayer<__Il2CppFullySharedGenericStructType>$$ʻʵʲʻʸʾʲʴʿˁʻ
+  CALL   at 115E2C2 [d2e8] in 115E210 BaseGuitarPlayer<ʻʹʻʿʿʺʸʹʽʻʻ>$$ʻʵʲʻʸʾʲʴʿˁʻ
+  CALL   at 20F5A98 [cbe8] in 20F5810 ʿʶʴˀʴʾʵʵʶʳʲ$$ʹˀʲʺʹʿʾʾʽʴʷ
+  CALL   at 20F5C45 [cbe8] in 20F5810 ʿʶʴˀʴʾʵʵʶʳʲ$$ʹˀʲʺʹʿʾʾʽʴʷ
+  CALL   at 2152FC3 [cee8] in 2152ED0 ʵʽʸʽʾʳʳʿʼʸʻ$$ʷʿʺʿˁʴʵʽˁʸʶ
+  PTR    at 3E8F9C8 [file+3E8DBC8] in 2BF4C30 System.__Il2CppComDelegate$$Finalize
+== target 214B610 (11 hits)
+  CALL   at 137391 [cbe8] in 1370A0 DrumsNoteRenderer$$Update
+  CALL   at 1373B1 [cbe8] in 1370A0 DrumsNoteRenderer$$Update
+  CALL   at 115A062 [cee8] in 1159D60 BaseGuitarNoteRenderer<__Il2CppFullySharedGenericStructType, object, object>$$Update
+  CALL   at 115A5F2 [cee8] in 115A2F0 BaseGuitarNoteRenderer<ʷʼʾʸʲʴʳʶʶʼʴ, object, object>$$Update
+  CALL   at 115AB82 [cee8] in 115A880 BaseGuitarNoteRenderer<ʸʵʾʵʳʳʵʷʶʺʽ, object, object>$$Update
+  CALL   at 20DD488 [cee8] in 20DD190 ʺʺʸʶʿʵˀʸʲˀʲ$$ʵʸʲʴʶʵʶʹˁʿʼ
+  CALL   at 20DD9F2 [cee8] in 20DD700 ʺʺʸʶʿʵˀʸʲˀʲ$$ʷʿʺʴʲʴʷʾʹʳʹ
+  CALL   at 20DED91 [cee8] in 20DEAA0 ʺʺʸʶʿʵˀʸʲˀʲ$$ʿʶʲʳʲʴʴʵʴʲʷ
+  CALL   at 20F403A [c4e8] in 20F3DC0 ʿʶʴˀʴʾʵʵʶʳʲ$$ʵʲʼʾʾʲʼʽʶʵʳ
+  CALL   at 20F6502 [d2e8] in 20F63F0 ʿʶʴˀʴʾʵʵʶʳʲ$$ʾʼʺʻˀʵʶʸʶʻʳ
+  PTR    at 3E8F970 [file+3E8DB70] in 2BF4C30 System.__Il2CppComDelegate$$Finalize

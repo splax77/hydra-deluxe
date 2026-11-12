@@ -1,0 +1,7 @@
+# lane_add_20CEEC0: the call that builds a lane object and adds it to the list (build 6142)
+
+Listing: `lane_add_20CEEC0.asm` beside this file, made 2026-11-08 (session 77057df2) with `tools/ch_mcp/chdis.py` from `C:\Clone Hero\1.1 june\Clone Hero\GameAssembly.dll`. It runs from RVA 0x20CEEC0 to the int3 after the function's last jump (0x20CF0AE). The method has a scrambled name; `script.json`'s next method starts at 0x20CF5C0, and the bytes between were not listed.
+
+Plain version: the function keeps its fourth argument (`r9b`) in `ebx` (line 7), takes an object from the pool at `[rcx+0x38]` (lines 23 to 27), and calls the lane constructor `0x2116390` with that byte back in `r9d` (lines 31 and 37), so the constructor gets it as its own fourth argument. The fifth argument (`[rsp+0x80]` here) goes on as the constructor's fifth (lines 30 and 34). The constructor stores its fourth argument at +0x21 (`docs/audit/drum-lanes/lane_ctor_2116390.asm` line 6). Back here, line 41 tests that +0x21 byte: when it is set, the new object is appended to the list at +0x80 (lines 88 to 122); when it is clear, the list is walked back and the object is inserted (lines 43 to 87).
+
+What this proves: the byte the `.chart` S-line handler passes as the fourth argument (`docs/audit/drum-lanes/spec_213e0c0.asm` lines 74 and 89) reaches the lane object's +0x21. It does not say why the two cases are stored differently in the list.

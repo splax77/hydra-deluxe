@@ -1,0 +1,31 @@
+Stated length (ms) and longest audio stem (s) of every .srb under the game's StreamingAssets\songs folder (build 1.1, 'C:\Clone Hero\1.1 june'), made 2026-11-11 with W11b/srb_audio_length.py, one run per bundle. Columns: bundle | stated ms | longest stem s.
+Biology|196905|196.905
+Challenger (feat. Krank_it Critch)|0|226.615
+Chopin Waltz Op64 No.2|211793|211.794
+Coalescence & Segmentation|1200000|1200.000
+Combat Mosh|281966|281.966
+Crumbling Castle|646401|646.401
+Discovery|249177|251.428
+Embrace|201333|201.334
+Enact the Ending (2023 Redux)|269128|267.219
+Flamewall|409200|409.200
+Fool Around|168569|170.356
+Galaxies in Harmony|553000|558.538
+Gone (feat. Rasmus Bom Andersen)|313715|313.714
+Good Grief Retreat|153413|152.358
+Moonhunter|421517|419.622
+No Known Suspects|294184|294.471
+Old Climb|270110|270.114
+Power On (feat. Charlie N Thompson & Nic Zayas)|174413|184.000
+Pressure|273467|223.130
+Resurrection|315125|314.125
+Revenge|122255|122.256
+Saurian King|326368|328.263
+Set You Free|0|338.242
+Stigma|203210|203.211
+Stop Saying We Sound Like Dragonforce|283800|287.427
+The Garden|246193|246.193
+The Palace of the Kantus|307717|335.349
+The Paranoia|234179|232.592
+Troopers of the Stars|304000|303.600
+i ws nvr yr grlfrnd|231027|231.028

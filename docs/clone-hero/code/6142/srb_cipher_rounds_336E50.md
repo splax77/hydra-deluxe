@@ -1,0 +1,3 @@
+# srb_cipher_rounds_336E50 (build 6142, RVA 0x336E50)
+A static method of a class nested in #1448 that does no cipher work itself. It is a Unity Burst dispatch. Line 31 asks `BurstCompiler.get_IsEnabled`. When Burst is on, lines 62 to 91 fetch a compiled function pointer once with `BurstCompiler.GetILPPMethodFunctionPointer2` and keep it in a static slot, and line 110 jumps to it with the same four arguments. When Burst is off, or no pointer was found, line 121 jumps to the managed copy at `0x32AA80` (srb_cipher_managed_32AA80.md).
+So the code the game runs with Burst on lives outside `GameAssembly.dll`, and this DLL holds only the managed copy.

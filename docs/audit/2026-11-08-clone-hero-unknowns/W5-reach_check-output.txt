@@ -1,0 +1,16 @@
+Output of: py -I docs/audit/note-shuffle/probes/reach/reach_check.py
+Run 2026-11-08 by task CH-UNK-W5 from the repo root, Python 3 isolated mode, exit code 0, about 11 seconds.
+
+M^(2^128-1) == I: True (0.2s)
+  M^((2^128-1)/3) != I: True
+  M^((2^128-1)/5) != I: True
+  M^((2^128-1)/17) != I: True
+  M^((2^128-1)/257) != I: True
+  M^((2^128-1)/641) != I: True
+  M^((2^128-1)/65537) != I: True
+  M^((2^128-1)/274177) != I: True
+  M^((2^128-1)/6700417) != I: True
+  M^((2^128-1)/67280421310721) != I: True
+FULL PERIOD (every non-zero state on one cycle): True
+ProDrums (7 pads): seeds=700068 never-all=0 worst draws to see every lane=94 (seed 636251501519)
+Drums (4 toms): seeds=700068 never-all=0 worst draws to see every lane=49 (seed 178159)

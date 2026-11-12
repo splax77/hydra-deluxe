@@ -1,0 +1,29 @@
+dll C:\Clone Hero\1.1 june\Clone Hero\GameAssembly.dll
+14D0D0 <- jmp at 14BA5B in SPBar$$Start (14B600)
+14D0D0 <- jmp at 14C358 in SPBar$$ʲʻʶʵʹʸʲʳʿˁʿ (14BEF0)
+14D0D0 <- jmp at 208EB7 in BasePlayer$$ʷʽʶʺˀʿʺʽʲʸʶ (208EA0)
+14D0D0 <- call at 209427 in BasePlayer$$ʺʾʼʵˀʶʲʴʾʿʽ (2093D0)
+14D0D0 <- call at 209C33 in BasePlayer$$ʾʴʸʽʺʵʳʳʳʴʿ (209A70)
+14D0D0: 5 sites in il2cpp
+14D360 <- jmp at 14BED8 in SPBar$$ʲʻʶʴʾʸʹʲʳʶˁ (14BA70)
+14D360: 1 sites in il2cpp
+14CB70: 0 sites in il2cpp
+14C370: 0 sites in il2cpp
+14C620: 0 sites in il2cpp
+14CE20: 0 sites in il2cpp
+14C8D0: 0 sites in il2cpp
+14D600: 0 sites in il2cpp
+14B600: 0 sites in il2cpp
+14BEF0: 0 sites in il2cpp
+14BA70: 0 sites in il2cpp
+14D0D0: 0 sites in .text
+14D360: 0 sites in .text
+14CB70: 0 sites in .text
+14C370: 0 sites in .text
+14C620: 0 sites in .text
+14CE20: 0 sites in .text
+14C8D0: 0 sites in .text
+14D600: 0 sites in .text
+14B600: 0 sites in .text
+14BEF0: 0 sites in .text
+14BA70: 0 sites in .text

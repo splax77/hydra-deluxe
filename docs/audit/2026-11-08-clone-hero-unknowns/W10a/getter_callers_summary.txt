@@ -1,0 +1,34 @@
+214B5E0: 10 sites in 5 methods; named: none
+214B5F0: 2 sites in 2 methods; named: none
+214B600: 1 sites in 1 methods; named: none
+214B620: 0 sites in 0 methods; named: none
+214B630: 6 sites in 4 methods; named: none
+214B640: 1 sites in 1 methods; named: none
+214B6B0: 2 sites in 2 methods; named: 33A160 DrumsPlayer$$ʵˀʼʼʴʻˀʻʹˀʳ; 33B040 DrumsPlayer$$ʷʲʽʳʸʷʳʸʸʴʹ
+214B6C0: 30 sites in 10 methods; named: 82800 DrumsNeckController$$ʴʷʵʼʶʲʺʿʲʺʺ; 33B520 DrumsPlayer$$ʻʵʲʻʸʾʲʴʿˁʻ
+214B6D0: 20 sites in 16 methods; named: 208F50 BasePlayer$$ʸʾʶʹʲʽʵʿʹʺʽ; FAE900 ʴˁʶˀʼʸʿʴʸʳʵ<__Il2CppFullySharedGenericStructType>$$ʾʼʺʻˀʵʶʸʶʻʳ; FAFB00 ʴˁʶˀʼʸʿʴʸʳʵ<__Il2CppFullySharedGenericStructType>$$ʿʶʲʳʲʴʴʵʴʲʷ; 1159D60 BaseGuitarNoteRenderer<__Il2CppFullySharedGenericStructType, object, object>$$Update; 115A2F0 BaseGuitarNoteRenderer<ʷʼʾʸʲʴʳʶʶʼʴ, object, object>$$Update
+214B770: 14 sites in 7 methods; named: 1370A0 DrumsNoteRenderer$$Update; 1155E90 BaseGuitarNoteRenderer<__Il2CppFullySharedGenericStructType, object, object>$$ʾʿʾˁʼʵʵˁʽˀʼ; 1156710 BaseGuitarNoteRenderer<ʷʼʾʸʲʴʳʶʶʼʴ, object, object>$$ʾʿʾˁʼʵʵˁʽˀʼ; 1156FA0 BaseGuitarNoteRenderer<ʸʵʾʵʳʳʵʷʶʺʽ, object, object>$$ʾʿʾˁʼʵʵˁʽˀʼ; 1159D60 BaseGuitarNoteRenderer<__Il2CppFullySharedGenericStructType, object, object>$$Update
+214B780: 1 sites in 1 methods; named: none
+214B7C0: 2 sites in 2 methods; named: 33A160 DrumsPlayer$$ʵˀʼʼʴʻˀʻʹˀʳ; 33B040 DrumsPlayer$$ʷʲʽʳʸʷʳʸʸʴʹ
+214B7D0: 6 sites in 5 methods; named: none
+214B7E0: 2 sites in 2 methods; named: 33A160 DrumsPlayer$$ʵˀʼʼʴʻˀʻʹˀʳ; 33B040 DrumsPlayer$$ʷʲʽʳʸʷʳʸʸʴʹ
+214B800: 13 sites in 12 methods; named: 370280 InGameLeaderboardManager$$ʳʳʺʶʽʷʺʻʽˀˁ; 3703D0 InGameLeaderboardManager$$ʳˁʵʶʶʵʷʲʶʽʿ; 371A80 InGameLeaderboardManager$$ʻʸˁʽʻʴʼʼʴʴʾ; 3725F0 InGameLeaderboardManager$$ˀʸʲˀʳʿʸʸʷʺʿ; 372750 InGameLeaderboardManager$$ˀʺʻʸʲʿˁʸʽʽˁ
+214B850: 1 sites in 1 methods; named: none
+214B860: 0 sites in 0 methods; named: none
+214B870: 0 sites in 0 methods; named: none
+214B8B0: 2 sites in 2 methods; named: none
+214BA10: 90 sites in 41 methods; named: FAF720 ʴˁʶˀʼʸʿʴʸʳʵ<__Il2CppFullySharedGenericStructType>$$ʾˁʲʿʷʼʽʷˁʶʸ; FAFB00 ʴˁʶˀʼʸʿʴʸʳʵ<__Il2CppFullySharedGenericStructType>$$ʿʶʲʳʲʴʴʵʴʲʷ; FB17E0 ʴˁʶˀʼʸʿʴʸʳʵ<__Il2CppFullySharedGenericStructType>$$ʿʾʹʲˀʶʷʵʶʶˀ; 1155E90 BaseGuitarNoteRenderer<__Il2CppFullySharedGenericStructType, object, object>$$ʾʿʾˁʼʵʵˁʽˀʼ; 1156710 BaseGuitarNoteRenderer<ʷʼʾʸʲʴʳʶʶʼʴ, object, object>$$ʾʿʾˁʼʵʵˁʽˀʼ
+214BB30: 79 sites in 38 methods; named: FAF720 ʴˁʶˀʼʸʿʴʸʳʵ<__Il2CppFullySharedGenericStructType>$$ʾˁʲʿʷʼʽʷˁʶʸ; FAFB00 ʴˁʶˀʼʸʿʴʸʳʵ<__Il2CppFullySharedGenericStructType>$$ʿʶʲʳʲʴʴʵʴʲʷ; FB2A10 ʴˁʶˀʼʸʿʴʸʳʵ<__Il2CppFullySharedGenericStructType>$$ˁʽʿʶʿʹʸʹʳʷʲ
+214BB40: 4 sites in 3 methods; named: 82800 DrumsNeckController$$ʴʷʵʼʶʲʺʿʲʺʺ
+214BB50: 11 sites in 11 methods; named: none
+214BB90: 1 sites in 1 methods; named: none
+214BBA0: 1 sites in 1 methods; named: none
+214BCC0: 10 sites in 10 methods; named: B4AE0 GameManager$$ʲʷʷʶʶʲʷʻʹʾʿ; 370280 InGameLeaderboardManager$$ʳʳʺʶʽʷʺʻʽˀˁ; 3703D0 InGameLeaderboardManager$$ʳˁʵʶʶʵʷʲʶʽʿ; 371A80 InGameLeaderboardManager$$ʻʸˁʽʻʴʼʼʴʴʾ; 3725F0 InGameLeaderboardManager$$ˀʸʲˀʳʿʸʸʷʺʿ
+214BDF0: 0 sites in 0 methods; named: none
+214BE00: 3 sites in 3 methods; named: 1159D60 BaseGuitarNoteRenderer<__Il2CppFullySharedGenericStructType, object, object>$$Update; 115A2F0 BaseGuitarNoteRenderer<ʷʼʾʸʲʴʳʶʶʼʴ, object, object>$$Update; 115A880 BaseGuitarNoteRenderer<ʸʵʾʵʳʳʵʷʶʺʽ, object, object>$$Update
+214BE10: 25 sites in 10 methods; named: 82800 DrumsNeckController$$ʴʷʵʼʶʲʺʿʲʺʺ; 33B520 DrumsPlayer$$ʻʵʲʻʸʾʲʴʿˁʻ
+214BE20: 123 sites in 60 methods; named: FAC710 ʴˁʶˀʼʸʿʴʸʳʵ<__Il2CppFullySharedGenericStructType>$$ʷʹʺʼʽʸʲʼʸʺʿ; FACAF0 ʴˁʶˀʼʸʿʴʸʳʵ<__Il2CppFullySharedGenericStructType>$$ʸʵʽʸʳʵʲʴʽʻʷ; FADCC0 ʴˁʶˀʼʸʿʴʸʳʵ<__Il2CppFullySharedGenericStructType>$$ʺʶˀʴʴʼʷʻʲˀʿ; FAE0E0 ʴˁʶˀʼʸʿʴʸʳʵ<__Il2CppFullySharedGenericStructType>$$ʺʾʷʷʷʴʴʹʴʽʹ; FAF8F0 ʴˁʶˀʼʸʿʴʸʳʵ<__Il2CppFullySharedGenericStructType>$$ʾˁʹʺʺʽʷˁʼʷʼ
+214BE30: 2 sites in 2 methods; named: none
+214BE40: 12 sites in 12 methods; named: FACD10 ʴˁʶˀʼʸʿʴʸʳʵ<__Il2CppFullySharedGenericStructType>$$ʸˀʾʾʾʳʽʳʶˁʷ; FAE900 ʴˁʶˀʼʸʿʴʸʳʵ<__Il2CppFullySharedGenericStructType>$$ʾʼʺʻˀʵʶʸʶʻʳ; FAFB00 ʴˁʶˀʼʸʿʴʸʳʵ<__Il2CppFullySharedGenericStructType>$$ʿʶʲʳʲʴʴʵʴʲʷ; FB2A10 ʴˁʶˀʼʸʿʴʸʳʵ<__Il2CppFullySharedGenericStructType>$$ˁʽʿʶʿʹʸʹʳʷʲ
+214BE50: 70 sites in 46 methods; named: FAC3A0 ʴˁʶˀʼʸʿʴʸʳʵ<__Il2CppFullySharedGenericStructType>$$ʶʹʼˀʶʾʴʺʼʻˁ; FAE900 ʴˁʶˀʼʸʿʴʸʳʵ<__Il2CppFullySharedGenericStructType>$$ʾʼʺʻˀʵʶʸʶʻʳ; FAF720 ʴˁʶˀʼʸʿʴʸʳʵ<__Il2CppFullySharedGenericStructType>$$ʾˁʲʿʷʼʽʷˁʶʸ; FAFB00 ʴˁʶˀʼʸʿʴʸʳʵ<__Il2CppFullySharedGenericStructType>$$ʿʶʲʳʲʴʴʵʴʲʷ; FB17E0 ʴˁʶˀʼʸʿʴʸʳʵ<__Il2CppFullySharedGenericStructType>$$ʿʾʹʲˀʶʷʵʶʶˀ
+214B610: 10 sites in 9 methods; named: 1370A0 DrumsNoteRenderer$$Update; 1159D60 BaseGuitarNoteRenderer<__Il2CppFullySharedGenericStructType, object, object>$$Update; 115A2F0 BaseGuitarNoteRenderer<ʷʼʾʸʲʴʳʶʶʼʴ, object, object>$$Update; 115A880 BaseGuitarNoteRenderer<ʸʵʾʵʳʳʵʷʶʺʽ, object, object>$$Update

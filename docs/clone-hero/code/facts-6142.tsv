@@ -5,6 +5,7 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	class	1721	Math				System.Math
 6142	field	1048	GlobalVariables	currentSongEntry		0x28	GlobalVariables.currentSongEntry
 6142	field	1048	GlobalVariables	instance		0x8	GlobalVariables.instance
+6142	field	1048	GlobalVariables	isPracticeEnabled		0x72	GlobalVariables.isPracticeEnabled
 6142	field	1048	GlobalVariables	playerList		0x38	GlobalVariables.playerList
 6142	field	1048	GlobalVariables	scoreDisabled		0x7C	GlobalVariables.scoreDisabled
 6142	field	1429	PlayerSelectionMenu	playerIndex		0x130	PlayerSelectionMenu.playerIndex
@@ -26,7 +27,9 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	field	3374	Controller	id		0x10	Controller.id
 6142	field	3552	klsJZEbePNFHOElxoemRqoRxlknQ	cwtjUtrzIezHxRjVXouFZmLpzLQK		0xD0	#3552+0xD0
 6142	field	449	GameManager	audioCal		0x6C	GameManager.audioCal
+6142	field	449	GameManager	isPaused		0x90	GameManager.isPaused
 6142	field	449	GameManager	isSongOver		0x91	GameManager.isSongOver
+6142	field	449	GameManager	lastSongTime		0x80	GameManager.lastSongTime
 6142	field	449	GameManager	practiceSpeed		0xD8	GameManager.practiceSpeed
 6142	field	449	GameManager	songLength		0x50	GameManager.songLength
 6142	field	449	GameManager	songTime		0x70	GameManager.songTime
@@ -46,6 +49,7 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	field	8255		ʲʾʾʸʶʾʺʺʵʳʼ		0x30	OFF_BACK_WINDOW
 6142	field	8255		ʴʾˁʾʼʹʲʳʾʿʺ		0x120	OFF_SP_END_TIME
 6142	field	8255		ʵʼʿˁʷʹˀʵˁʼˀ		0x68	OFF_SP_AMOUNT
+6142	field	8255		ʵˀʵʶˀʿʾʿʽʶʸ		0x1B8	OFF_SP_HALF
 6142	field	8255		ʷʷʽʹʷʹʼˁʻʴˁ		0x2E0	#8255+0x2E0
 6142	field	8255		ʷʷʽʹʷʹʼˁʻʴˁ		0x2E0	OFF_ROUND_START
 6142	field	8255		ʸʶʸʵʵʳʾʺʸʷʼ		0x100	OFF_SONG_CLOCK
@@ -89,112 +93,852 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	field	8526		ˀˀʽʾʻʼʷʾˀʹʵ		0x48	#8526+0x48
 6142	field	8611		ʼʲʺʹʹʽʹʽˁʴʽ		0x0	#8611.starThresholds
 6142	field	8661		<ˀʽʸʽʼʿʼʴʸʿʷ>k__BackingField		0x88	#8661+0x88
+6142	field	901	BasePlayer	AccuracyText		0x78	BasePlayer.AccuracyText
 6142	field	901	BasePlayer	engine		0x120	BasePlayer.engine
 6142	field	901	BasePlayer	gameManager		0x20	BasePlayer.gameManager
 6142	field	901	BasePlayer	isRemotePlayerPlaying		0x111	BasePlayer.isRemotePlayerPlaying
 6142	field	901	BasePlayer	player		0x88	#901.player
+6142	field	901	BasePlayer	player		0x88	BasePlayer.player
 6142	field	987		ʷʳʶʶʷʸʸʴʷʸʲ		0x48	#987+0x48
 6142	field	987		ʺʶʼʶʳʿʲʽʷˁʶ		0x30	#987+0x30
 6142	field	987		ʾʵʻʳʷʴʼʲʻʶʷ		0x10	#987+0x10
 6142	field	990	MIDIInputManager	ʿʳʶʻʻʵʵʵˁʷˀ		0x38	#990+0x38
+6142	method	10028	AsyncUniTaskVoidMethodBuilder	Create	0x84220		0x84220
+6142	method	10035		Cysharp.Threading.Tasks.IUniTaskSource.GetStatus	0x84220		0x84220
+6142	method	10035		Cysharp.Threading.Tasks.IUniTaskSource.UnsafeGetStatus	0x84220		0x84220
+6142	method	10035	AsyncUniTaskVoid<CancellationTokenExtensions.<ToCancellationTokenCore>d__6>	Cysharp.Threading.Tasks.IUniTaskSource.GetStatus	0x84220		0x84220
+6142	method	10035	AsyncUniTaskVoid<CancellationTokenExtensions.<ToCancellationTokenCore>d__6>	Cysharp.Threading.Tasks.IUniTaskSource.UnsafeGetStatus	0x84220		0x84220
+6142	method	10035	AsyncUniTaskVoid<UniTaskExtensions.<ForgetCoreWithCatch>d__18>	Cysharp.Threading.Tasks.IUniTaskSource.GetStatus	0x84220		0x84220
+6142	method	10035	AsyncUniTaskVoid<UniTaskExtensions.<ForgetCoreWithCatch>d__18>	Cysharp.Threading.Tasks.IUniTaskSource.UnsafeGetStatus	0x84220		0x84220
+6142	method	10035	AsyncUniTaskVoid<UniTaskExtensions.AttachExternalCancellationSource.<RunTask>d__5>	Cysharp.Threading.Tasks.IUniTaskSource.GetStatus	0x84220		0x84220
+6142	method	10035	AsyncUniTaskVoid<UniTaskExtensions.AttachExternalCancellationSource.<RunTask>d__5>	Cysharp.Threading.Tasks.IUniTaskSource.UnsafeGetStatus	0x84220		0x84220
+6142	method	10035	AsyncUniTaskVoid<UniTaskExtensions.ToCoroutineEnumerator.<RunTask>d__6>	Cysharp.Threading.Tasks.IUniTaskSource.GetStatus	0x84220		0x84220
+6142	method	10035	AsyncUniTaskVoid<UniTaskExtensions.ToCoroutineEnumerator.<RunTask>d__6>	Cysharp.Threading.Tasks.IUniTaskSource.UnsafeGetStatus	0x84220		0x84220
+6142	method	10035	AsyncUniTaskVoid<UniTaskObservableExtensions.<Fire>d__4>	Cysharp.Threading.Tasks.IUniTaskSource.GetStatus	0x84220		0x84220
+6142	method	10035	AsyncUniTaskVoid<UniTaskObservableExtensions.<Fire>d__4>	Cysharp.Threading.Tasks.IUniTaskSource.UnsafeGetStatus	0x84220		0x84220
+6142	method	10035	AsyncUniTaskVoid<UnityBindingExtensions.<BindToCore>d__2>	Cysharp.Threading.Tasks.IUniTaskSource.GetStatus	0x84220		0x84220
+6142	method	10035	AsyncUniTaskVoid<UnityBindingExtensions.<BindToCore>d__2>	Cysharp.Threading.Tasks.IUniTaskSource.UnsafeGetStatus	0x84220		0x84220
+6142	method	10035	AsyncUniTaskVoid<UnityBindingExtensions.<BindToCore>d__9>	Cysharp.Threading.Tasks.IUniTaskSource.GetStatus	0x84220		0x84220
+6142	method	10035	AsyncUniTaskVoid<UnityBindingExtensions.<BindToCore>d__9>	Cysharp.Threading.Tasks.IUniTaskSource.UnsafeGetStatus	0x84220		0x84220
+6142	method	10035	AsyncUniTaskVoid<__Il2CppFullySharedGenericType>	Cysharp.Threading.Tasks.IUniTaskSource.GetStatus	0x84220		0x84220
+6142	method	10035	AsyncUniTaskVoid<__Il2CppFullySharedGenericType>	Cysharp.Threading.Tasks.IUniTaskSource.UnsafeGetStatus	0x84220		0x84220
+6142	method	10065	TextMeshPro	get_textContainer	0x84220		0x84220
+6142	method	10152	TMP_InputField	get_layoutPriority	0x102040		0x102040
 6142	method	10152	TMP_InputField	get_onValidateInput	0x20F4F90		0x20F4F90
+6142	method	10210	TMP_Text	GetMaterial	0x84220		0x84220
+6142	method	10210	TMP_Text	GetMaterials	0x84220		0x84220
+6142	method	10210	TMP_Text	GetSharedMaterials	0x84220		0x84220
+6142	method	10210	TMP_Text	GetTextContainerLocalCorners	0x84220		0x84220
+6142	method	10210	TMP_Text	GetTextInfo	0x84220		0x84220
+6142	method	10210	TMP_Text	SetArraySizes	0x84220		0x84220
 6142	method	10210	TMP_Text	get_styleSheet	0x20F4F90		0x20F4F90
+6142	method	10263	JobThreadPool	Size	0x84220		0x84220
+6142	method	10270	Methods	ZSTD_DCtx_get_bmi2	0x84220		0x84220
+6142	method	10270	Methods	ZSTD_row_matchMaskGroupWidth	0x102040		0x102040
+6142	method	1035	NoteFadeMaterial	ʺʺʷʹʹʵˁˁʲʷʺ	0x102040		0x102040
 6142	method	1037		ʵʲʽʶʲʳʿʸˁʳʲ	0x251A70		0x251A70
 6142	method	1037		ʼʻʺʾʻʹʸʸʺˁʸ	0x252200		0x252200
 6142	method	1037		ʽʻʷʶʸʽʼʽʵˀʵ	0x252630		0x252630
 6142	method	1037		ˁʺʾʾʵʲʲʻˀʿʵ	0x253EF0		0x253EF0
+6142	method	1043		ʷʺʽʲʵʵʹˀʹˁʷ	0x247CB0		0x247CB0
+6142	method	1043		ˀʵʺʼʾʷˀˀʿˁʿ	0x24DC30		0x24DC30
+6142	method	1043		ˁʼʿʶʳˀʼʾʳˁʲ	0x24EDF0		0x24EDF0
+6142	method	1048	GlobalVariables	Start	0x232E90		0x232E90
+6142	method	1048	GlobalVariables	Start	0x232E90		GlobalVariables.Start
+6142	method	1048	GlobalVariables	ʺʳʾʶʿʳʻˁʶˁʿ	0x235A40		0x235A40
+6142	method	1048	GlobalVariables	ʺʵʸʸʽʶʾˀʶʺʺ	0x235AD0		0x235AD0
+6142	method	10592	BinaryExpression	GetConversion	0x84220		0x84220
+6142	method	10592	BinaryExpression	GetMethod	0x84220		0x84220
+6142	method	1061		ʾʻʿʷˀʾʳʽʳˀʴ	0x26A130		0x26A130
+6142	method	10634	Scope1	get_ExpressionCount	0x102040		0x102040
+6142	method	10662	InvocationExpression0	get_ArgumentCount	0x84220		0x84220
+6142	method	10663	InvocationExpression1	get_ArgumentCount	0x102040		0x102040
+6142	method	10670	LambdaExpression	get_NameCore	0x84220		0x84220
+6142	method	10673	Expression0<__Il2CppFullySharedGenericType>	get_ParameterCount	0x84220		0x84220
+6142	method	10674	Expression1<__Il2CppFullySharedGenericType>	get_ParameterCount	0x102040		0x102040
 6142	method	1068		.cctor	0x266340		0x266340
+6142	method	1068		ʲʻʺʹʴʷˁʽʲʷʺ	0x262100		0x262100
+6142	method	1068		ʲʿʿʺʶʻʿʻʵʺʹ	0x262940		0x262940
+6142	method	10690	MethodCallExpression	GetInstance	0x84220		0x84220
+6142	method	10694	MethodCallExpression0	get_ArgumentCount	0x84220		0x84220
+6142	method	10695	MethodCallExpression1	get_ArgumentCount	0x102040		0x102040
+6142	method	10700	InstanceMethodCallExpression0	get_ArgumentCount	0x84220		0x84220
+6142	method	10701	InstanceMethodCallExpression1	get_ArgumentCount	0x102040		0x102040
+6142	method	10731	AddInstruction	get_ProducedStack	0x102040		0x102040
+6142	method	10738	AddOvfInstruction	get_ProducedStack	0x102040		0x102040
+6142	method	10748	AndInstruction	get_ProducedStack	0x102040		0x102040
+6142	method	10749	NewArrayInitInstruction	get_ProducedStack	0x102040		0x102040
+6142	method	10750	NewArrayInstruction	get_ConsumedStack	0x102040		0x102040
+6142	method	10750	NewArrayInstruction	get_ProducedStack	0x102040		0x102040
+6142	method	10751	NewArrayBoundsInstruction	get_ProducedStack	0x102040		0x102040
+6142	method	10752	GetArrayItemInstruction	get_ProducedStack	0x102040		0x102040
+6142	method	10754	ArrayLengthInstruction	get_ConsumedStack	0x102040		0x102040
+6142	method	10754	ArrayLengthInstruction	get_ProducedStack	0x102040		0x102040
+6142	method	10762	BranchFalseInstruction	get_ConsumedStack	0x102040		0x102040
+6142	method	10763	BranchTrueInstruction	get_ConsumedStack	0x102040		0x102040
+6142	method	10764	CoalescingBranchInstruction	get_ConsumedStack	0x102040		0x102040
+6142	method	10764	CoalescingBranchInstruction	get_ProducedStack	0x102040		0x102040
+6142	method	10769	EnterTryFaultInstruction	get_ProducedContinuations	0x102040		0x102040
+6142	method	10770	EnterFinallyInstruction	get_ConsumedContinuations	0x102040		0x102040
+6142	method	10773	LeaveFaultInstruction	get_ConsumedContinuations	0x102040		0x102040
+6142	method	10774	EnterExceptionFilterInstruction	Run	0x102040		0x102040
+6142	method	10774	EnterExceptionFilterInstruction	get_ProducedStack	0x102040		0x102040
+6142	method	10775	LeaveExceptionFilterInstruction	Run	0x102040		0x102040
+6142	method	10776	EnterExceptionHandlerInstruction	Run	0x102040		0x102040
+6142	method	10776	EnterExceptionHandlerInstruction	get_ProducedStack	0x102040		0x102040
+6142	method	10778	ThrowInstruction	get_ConsumedStack	0x102040		0x102040
+6142	method	10779	IntSwitchInstruction<__Il2CppFullySharedGenericType>	get_ConsumedStack	0x102040		0x102040
+6142	method	10779	IntSwitchInstruction<int>	get_ConsumedStack	0x102040		0x102040
+6142	method	10779	IntSwitchInstruction<object>	get_ConsumedStack	0x102040		0x102040
+6142	method	10780	StringSwitchInstruction	get_ConsumedStack	0x102040		0x102040
+6142	method	10789	DecrementInstruction	get_ConsumedStack	0x102040		0x102040
+6142	method	10789	DecrementInstruction	get_ProducedStack	0x102040		0x102040
+6142	method	10790	DefaultValueInstruction	get_ProducedStack	0x102040		0x102040
+6142	method	10799	DivInstruction	get_ProducedStack	0x102040		0x102040
+6142	method	10825	EqualInstruction	get_ProducedStack	0x102040		0x102040
+6142	method	10835	ExclusiveOrInstruction	get_ProducedStack	0x102040		0x102040
+6142	method	10837	LoadStaticFieldInstruction	get_ProducedStack	0x102040		0x102040
+6142	method	10838	LoadFieldInstruction	get_ConsumedStack	0x102040		0x102040
+6142	method	10838	LoadFieldInstruction	get_ProducedStack	0x102040		0x102040
+6142	method	10840	StoreStaticFieldInstruction	get_ConsumedStack	0x102040		0x102040
+6142	method	10852	GreaterThanInstruction	get_ProducedStack	0x102040		0x102040
+6142	method	10864	GreaterThanOrEqualInstruction	get_ProducedStack	0x102040		0x102040
+6142	method	10873	IncrementInstruction	get_ConsumedStack	0x102040		0x102040
+6142	method	10873	IncrementInstruction	get_ProducedStack	0x102040		0x102040
+6142	method	10874	Instruction	get_ConsumedContinuations	0x84220		0x84220
+6142	method	10874	Instruction	get_ConsumedStack	0x84220		0x84220
+6142	method	10874	Instruction	get_ProducedContinuations	0x84220		0x84220
+6142	method	10874	Instruction	get_ProducedStack	0x84220		0x84220
+6142	method	10884	LabelInfo	get_HasDefinitions	0x1E1920		0x1E1920
+6142	method	10895	LeftShiftInstruction	get_ProducedStack	0x102040		0x102040
+6142	method	10907	LessThanInstruction	get_ProducedStack	0x102040		0x102040
+6142	method	10919	LessThanOrEqualInstruction	get_ProducedStack	0x102040		0x102040
+6142	method	10943	LoadLocalInstruction	get_ProducedStack	0x102040		0x102040
+6142	method	10944	LoadLocalBoxedInstruction	get_ProducedStack	0x102040		0x102040
+6142	method	10945	LoadLocalFromClosureInstruction	get_ProducedStack	0x102040		0x102040
+6142	method	10946	LoadLocalFromClosureBoxedInstruction	get_ProducedStack	0x102040		0x102040
+6142	method	10947	AssignLocalInstruction	get_ConsumedStack	0x102040		0x102040
+6142	method	10947	AssignLocalInstruction	get_ProducedStack	0x102040		0x102040
+6142	method	10948	StoreLocalInstruction	get_ConsumedStack	0x102040		0x102040
+6142	method	10949	AssignLocalBoxedInstruction	get_ConsumedStack	0x102040		0x102040
+6142	method	10949	AssignLocalBoxedInstruction	get_ProducedStack	0x102040		0x102040
+6142	method	10950	StoreLocalBoxedInstruction	get_ConsumedStack	0x102040		0x102040
+6142	method	10951	AssignLocalToClosureInstruction	get_ConsumedStack	0x102040		0x102040
+6142	method	10951	AssignLocalToClosureInstruction	get_ProducedStack	0x102040		0x102040
+6142	method	10952	ValueTypeCopyInstruction	get_ConsumedStack	0x102040		0x102040
+6142	method	10952	ValueTypeCopyInstruction	get_ProducedStack	0x102040		0x102040
+6142	method	10958	InitializeLocalInstruction.Parameter	Run	0x102040		0x102040
+6142	method	10962	RuntimeVariablesInstruction	get_ProducedStack	0x102040		0x102040
+6142	method	10975	ModuloInstruction	get_ProducedStack	0x102040		0x102040
+6142	method	10984	MulInstruction	get_ProducedStack	0x102040		0x102040
+6142	method	10991	MulOvfInstruction	get_ProducedStack	0x102040		0x102040
+6142	method	10997	NegateInstruction	get_ConsumedStack	0x102040		0x102040
+6142	method	10997	NegateInstruction	get_ProducedStack	0x102040		0x102040
+6142	method	11001	NegateCheckedInstruction	get_ConsumedStack	0x102040		0x102040
+6142	method	11001	NegateCheckedInstruction	get_ProducedStack	0x102040		0x102040
+6142	method	11002	NewInstruction	get_ProducedStack	0x102040		0x102040
+6142	method	11028	NotEqualInstruction	get_ProducedStack	0x102040		0x102040
+6142	method	11038	NotInstruction	get_ConsumedStack	0x102040		0x102040
+6142	method	11038	NotInstruction	get_ProducedStack	0x102040		0x102040
+6142	method	11039	NullCheckInstruction	get_ConsumedStack	0x102040		0x102040
+6142	method	11039	NullCheckInstruction	get_ProducedStack	0x102040		0x102040
+6142	method	11043	NumericConvertInstruction	get_ConsumedStack	0x102040		0x102040
+6142	method	11043	NumericConvertInstruction	get_ProducedStack	0x102040		0x102040
+6142	method	11053	OrInstruction	get_ProducedStack	0x102040		0x102040
+6142	method	11062	RightShiftInstruction	get_ProducedStack	0x102040		0x102040
+6142	method	11064	LoadObjectInstruction	get_ProducedStack	0x102040		0x102040
+6142	method	11065	LoadCachedObjectInstruction	get_ProducedStack	0x102040		0x102040
+6142	method	11066	PopInstruction	get_ConsumedStack	0x102040		0x102040
+6142	method	11067	DupInstruction	get_ProducedStack	0x102040		0x102040
+6142	method	11076	SubInstruction	get_ProducedStack	0x102040		0x102040
+6142	method	11083	SubOvfInstruction	get_ProducedStack	0x102040		0x102040
+6142	method	11084	CreateDelegateInstruction	get_ProducedStack	0x102040		0x102040
+6142	method	11085	TypeIsInstruction	get_ConsumedStack	0x102040		0x102040
+6142	method	11085	TypeIsInstruction	get_ProducedStack	0x102040		0x102040
+6142	method	11086	TypeAsInstruction	get_ConsumedStack	0x102040		0x102040
+6142	method	11086	TypeAsInstruction	get_ProducedStack	0x102040		0x102040
+6142	method	11087	TypeEqualsInstruction	get_ProducedStack	0x102040		0x102040
+6142	method	11095	NullableMethodCallInstruction	get_ConsumedStack	0x102040		0x102040
+6142	method	11095	NullableMethodCallInstruction	get_ProducedStack	0x102040		0x102040
+6142	method	11100	CastInstruction	get_ConsumedStack	0x102040		0x102040
+6142	method	11100	CastInstruction	get_ProducedStack	0x102040		0x102040
+6142	method	11104	QuoteInstruction	get_ProducedStack	0x102040		0x102040
+6142	method	11116	CallSiteBinder	BindDelegate<object>	0x84220		0x84220
+6142	method	1113	BeatRenderer	ʲʽʻʲʴʵʷʴʲʴʲ	0x84220		0x84220
+6142	method	1114	GuitarPlayer	ʴʿʻʹʾʸʺʾʲˀʳ	0x102040		0x102040
+6142	method	112	SongOptions	ʵˁʺʻʲʹˁʻʹʺʳ	0x297240		0x297240
+6142	method	11222	ProfilerCategory	get_Scripts	0x102040		0x102040
+6142	method	11285	UnsafeUtility	SizeOf<byte>	0x102040		0x102040
+6142	method	113		ʺʺʷʹʹʵˁˁʲʷʺ	0x102040		0x102040
+6142	method	113	BaseNoteRenderer<__Il2CppFullySharedGenericStructType, object, object>	ʺʺʷʹʹʵˁˁʲʷʺ	0x102040		0x102040
+6142	method	1136		ʸʲˁʼʽʾʲʴʴʵʼ	0x2847C0		0x2847C0
 6142	method	1136		ʺʹʵˀʵʹʷʶˀˀˁ	0x285AD0		0x285AD0
+6142	method	11422	PlayerPrefs	Save	0x28812A0		PlayerPrefs.Save
+6142	method	11422	PlayerPrefs	SetString	0x2881360		PlayerPrefs.SetString
+6142	method	1147		.ctor	0x2B84A0		0x2B84A0
+6142	method	1150		ʲʷʵʺʸʹʾˀʻʾʳ	0x2BA4F0		0x2BA4F0
+6142	method	1150		ʾʿʳʽʳʴʴˁʽʸʽ	0x2BAB60		0x2BAB60
+6142	method	1150		ˁʷʲʽʼʾˁʶʴʷʺ	0x2BAB60		0x2BAB60
+6142	method	1161		ʺʼʳʵʻʺʻʿʹʵʻ	0x2E0A10		0x2E0A10
+6142	method	11618	SceneManagerAPI	LoadFirstScene	0x84220		0x84220
 6142	method	1169	StarProgress	.ctor	0x2E0990		0x2E0990
 6142	method	1169	StarProgress	ʶʹʿʸʸʼʳˀʻʴʴ	0x2DF200		0x2DF200
 6142	method	1169	StarProgress	ʺʽʸʺʾˀʲʾʹʲʻ	0x2DF7F0		0x2DF7F0
 6142	method	1169	StarProgress	ʺʿʽʿʶˀʿʹʸˀʼ	0x2DFC20		0x2DFC20
 6142	method	1169	StarProgress	ʾʿʺʷʺʿʸʻʼʿˀ	0x2E0150		0x2E0150
 6142	method	1169	StarProgress	ˀʾʲʹˁˁʽʴʿʵʷ	0x2E0540		0x2E0540
+6142	method	11829	RenderPipelineAsset	get_autodeskInteractiveMaskedShader	0x84220		0x84220
+6142	method	11829	RenderPipelineAsset	get_autodeskInteractiveShader	0x84220		0x84220
+6142	method	11829	RenderPipelineAsset	get_autodeskInteractiveTransparentShader	0x84220		0x84220
+6142	method	11829	RenderPipelineAsset	get_default2DMaskMaterial	0x84220		0x84220
+6142	method	11829	RenderPipelineAsset	get_default2DMaterial	0x84220		0x84220
+6142	method	11829	RenderPipelineAsset	get_defaultLineMaterial	0x84220		0x84220
+6142	method	11829	RenderPipelineAsset	get_defaultMaterial	0x84220		0x84220
+6142	method	11829	RenderPipelineAsset	get_defaultParticleMaterial	0x84220		0x84220
+6142	method	11829	RenderPipelineAsset	get_defaultShader	0x84220		0x84220
+6142	method	11829	RenderPipelineAsset	get_defaultSpeedTree7Shader	0x84220		0x84220
+6142	method	11829	RenderPipelineAsset	get_defaultSpeedTree8Shader	0x84220		0x84220
+6142	method	11829	RenderPipelineAsset	get_defaultTerrainMaterial	0x84220		0x84220
+6142	method	11829	RenderPipelineAsset	get_defaultUIETC1SupportedMaterial	0x84220		0x84220
+6142	method	11829	RenderPipelineAsset	get_defaultUIMaterial	0x84220		0x84220
+6142	method	11829	RenderPipelineAsset	get_defaultUIOverdrawMaterial	0x84220		0x84220
+6142	method	11829	RenderPipelineAsset	get_prefixedRenderingLayerMaskNames	0x84220		0x84220
+6142	method	11829	RenderPipelineAsset	get_renderingLayerMaskNames	0x84220		0x84220
+6142	method	11829	RenderPipelineAsset	get_terrainDetailGrassBillboardShader	0x84220		0x84220
+6142	method	11829	RenderPipelineAsset	get_terrainDetailGrassShader	0x84220		0x84220
+6142	method	11829	RenderPipelineAsset	get_terrainDetailLitShader	0x84220		0x84220
+6142	method	1186	PracticeSectionDisplay	ʸˁʹʼʶʹʳʵʷʿʽ	0x2E98A0		0x2E98A0
+6142	method	12006	JsonConverterAttribute	CreateConverter	0x84220		0x84220
+6142	method	12030	JsonObjectConverter<__Il2CppFullySharedGenericType>	get_ElementType	0x84220		0x84220
+6142	method	12033	JsonConverterFactory	get_ElementType	0x84220		0x84220
+6142	method	12033	JsonConverterFactory	get_KeyType	0x84220		0x84220
+6142	method	12033	JsonConverterFactory	get_TypeToConvert	0x84220		0x84220
+6142	method	12034	JsonConverter<DateTime>	get_ElementType	0x84220		0x84220
+6142	method	12034	JsonConverter<DateTime>	get_KeyType	0x84220		0x84220
+6142	method	12034	JsonConverter<DateTime>	get_SourceConverterForCastingConverter	0x84220		0x84220
+6142	method	12034	JsonConverter<DateTimeOffset>	get_ElementType	0x84220		0x84220
+6142	method	12034	JsonConverter<DateTimeOffset>	get_KeyType	0x84220		0x84220
+6142	method	12034	JsonConverter<DateTimeOffset>	get_SourceConverterForCastingConverter	0x84220		0x84220
+6142	method	12034	JsonConverter<Decimal>	get_ElementType	0x84220		0x84220
+6142	method	12034	JsonConverter<Decimal>	get_KeyType	0x84220		0x84220
+6142	method	12034	JsonConverter<Decimal>	get_SourceConverterForCastingConverter	0x84220		0x84220
+6142	method	12034	JsonConverter<Guid>	get_ElementType	0x84220		0x84220
+6142	method	12034	JsonConverter<Guid>	get_KeyType	0x84220		0x84220
+6142	method	12034	JsonConverter<Guid>	get_SourceConverterForCastingConverter	0x84220		0x84220
+6142	method	12034	JsonConverter<JsonElement>	get_ElementType	0x84220		0x84220
+6142	method	12034	JsonConverter<JsonElement>	get_KeyType	0x84220		0x84220
+6142	method	12034	JsonConverter<JsonElement>	get_SourceConverterForCastingConverter	0x84220		0x84220
+6142	method	12034	JsonConverter<TimeSpan>	get_ElementType	0x84220		0x84220
+6142	method	12034	JsonConverter<TimeSpan>	get_KeyType	0x84220		0x84220
+6142	method	12034	JsonConverter<TimeSpan>	get_SourceConverterForCastingConverter	0x84220		0x84220
+6142	method	12034	JsonConverter<__Il2CppFullySharedGenericType>	get_ElementType	0x84220		0x84220
+6142	method	12034	JsonConverter<__Il2CppFullySharedGenericType>	get_KeyType	0x84220		0x84220
+6142	method	12034	JsonConverter<__Il2CppFullySharedGenericType>	get_SourceConverterForCastingConverter	0x84220		0x84220
+6142	method	12034	JsonConverter<bool>	get_ElementType	0x84220		0x84220
+6142	method	12034	JsonConverter<bool>	get_KeyType	0x84220		0x84220
+6142	method	12034	JsonConverter<bool>	get_SourceConverterForCastingConverter	0x84220		0x84220
+6142	method	12034	JsonConverter<byte>	get_ElementType	0x84220		0x84220
+6142	method	12034	JsonConverter<byte>	get_KeyType	0x84220		0x84220
+6142	method	12034	JsonConverter<byte>	get_SourceConverterForCastingConverter	0x84220		0x84220
+6142	method	12034	JsonConverter<char>	get_ElementType	0x84220		0x84220
+6142	method	12034	JsonConverter<char>	get_KeyType	0x84220		0x84220
+6142	method	12034	JsonConverter<char>	get_SourceConverterForCastingConverter	0x84220		0x84220
+6142	method	12034	JsonConverter<double>	get_ElementType	0x84220		0x84220
+6142	method	12034	JsonConverter<double>	get_KeyType	0x84220		0x84220
+6142	method	12034	JsonConverter<double>	get_SourceConverterForCastingConverter	0x84220		0x84220
+6142	method	12034	JsonConverter<float>	get_ElementType	0x84220		0x84220
+6142	method	12034	JsonConverter<float>	get_KeyType	0x84220		0x84220
+6142	method	12034	JsonConverter<float>	get_SourceConverterForCastingConverter	0x84220		0x84220
+6142	method	12034	JsonConverter<int>	get_ElementType	0x84220		0x84220
+6142	method	12034	JsonConverter<int>	get_KeyType	0x84220		0x84220
+6142	method	12034	JsonConverter<int>	get_SourceConverterForCastingConverter	0x84220		0x84220
+6142	method	12034	JsonConverter<long>	get_ElementType	0x84220		0x84220
+6142	method	12034	JsonConverter<long>	get_KeyType	0x84220		0x84220
+6142	method	12034	JsonConverter<long>	get_SourceConverterForCastingConverter	0x84220		0x84220
+6142	method	12034	JsonConverter<object>	get_ElementType	0x84220		0x84220
+6142	method	12034	JsonConverter<object>	get_KeyType	0x84220		0x84220
+6142	method	12034	JsonConverter<object>	get_SourceConverterForCastingConverter	0x84220		0x84220
+6142	method	12034	JsonConverter<sbyte>	get_ElementType	0x84220		0x84220
+6142	method	12034	JsonConverter<sbyte>	get_KeyType	0x84220		0x84220
+6142	method	12034	JsonConverter<sbyte>	get_SourceConverterForCastingConverter	0x84220		0x84220
+6142	method	12034	JsonConverter<short>	get_ElementType	0x84220		0x84220
+6142	method	12034	JsonConverter<short>	get_KeyType	0x84220		0x84220
+6142	method	12034	JsonConverter<short>	get_SourceConverterForCastingConverter	0x84220		0x84220
+6142	method	12034	JsonConverter<uint>	get_ElementType	0x84220		0x84220
+6142	method	12034	JsonConverter<uint>	get_KeyType	0x84220		0x84220
+6142	method	12034	JsonConverter<uint>	get_SourceConverterForCastingConverter	0x84220		0x84220
+6142	method	12034	JsonConverter<ulong>	get_ElementType	0x84220		0x84220
+6142	method	12034	JsonConverter<ulong>	get_KeyType	0x84220		0x84220
+6142	method	12034	JsonConverter<ulong>	get_SourceConverterForCastingConverter	0x84220		0x84220
+6142	method	12034	JsonConverter<ushort>	get_ElementType	0x84220		0x84220
+6142	method	12034	JsonConverter<ushort>	get_KeyType	0x84220		0x84220
+6142	method	12034	JsonConverter<ushort>	get_SourceConverterForCastingConverter	0x84220		0x84220
+6142	method	1205		ʳʶʿʳʾˁʴʸʷʾʴ	0x2F4300		0x2F4300
+6142	method	1205		ʷʵˁʶʵʵʸʺʳʴʾ	0x2F57C0		0x2F57C0
+6142	method	12069	JsonPropertyInfo<object>	get_DefaultValue	0x84220		0x84220
+6142	method	12298	Nil	GetHashCode	0x84220		0x84220
+6142	method	123	SoloCounter	.ctor	0x2962C0		0x2962C0
 6142	method	123	SoloCounter	Start	0x293A30		0x293A30
+6142	method	123	SoloCounter	ʲʽʼʼʳˁʺʵʷʶʼ	0x293CF0		0x293CF0
 6142	method	123	SoloCounter	ʳʴʹʻʾˀʵʷʺʸʺ	0x294070		0x294070
 6142	method	123	SoloCounter	ʸʲʳʻʾʼʺʵʵʳˀ	0x2946F0		0x2946F0
 6142	method	123	SoloCounter	ʹʼʺʷʻʴʽˁʴʶʵ	0x294880		0x294880
+6142	method	123	SoloCounter	ʺʹʴˁʵʲʿʳʼʿʶ	0x294C60		0x294C60
 6142	method	123	SoloCounter	ʽʲʽʹʻʼʼʸʽʶʻ	0x295190		0x295190
 6142	method	123	SoloCounter	ʿʸʸʶʹʴʻʶʼʺʿ	0x2956C0		0x2956C0
+6142	method	123	SoloCounter	ʿʹʵʷʸʼˁʸʼʾʽ	0x295850		0x295850
+6142	method	123	SoloCounter	ʿˁˀˁʴʻʴʺʿʿˀ	0x295AE0		0x295AE0
+6142	method	123	SoloCounter	ˁʺʸʿʽʼʸʴʺʹˁ	0x2960B0		0x2960B0
+6142	method	1247		MoveNext	0x2EE6A0		0x2EE6A0
+6142	method	12700	BurstCompiler	GetILPPMethodFunctionPointer2	0x2763780		BurstCompiler.GetILPPMethodFunctionPointer2
+6142	method	12700	BurstCompiler	get_IsEnabled	0x2764720		BurstCompiler.get_IsEnabled
+6142	method	12762	X86	BurstIntrinsicGetCSRFromManaged	0x84220		0x84220
 6142	method	1281	Calibrator	Update	0x2FB0B0		0x2FB0B0
 6142	method	1281	Calibrator	Update	0x2FB0B0		Calibrator.Update
+6142	method	1281	Calibrator	ʳʶˁʻʹʾʻʼʼʸʴ	0x2F94F0		0x2F94F0
+6142	method	1281	Calibrator	ʵʿʲʵʼˁʶˁʶˁʺ	0x2F9BC0		0x2F9BC0
+6142	method	1281	Calibrator	ʽʹˁʻʳʲʽˁʲʽʼ	0x2FA910		0x2FA910
+6142	method	1281	Calibrator	ʾʸʷʺʹˁʿʹʽʺʿ	0x2FAA40		0x2FAA40
+6142	method	1281	Calibrator	ˀʷʵʲʷʼˁʽʿˁʺ	0x2FAFD0		0x2FAFD0
+6142	method	12819	Image	get_layoutPriority	0x84220		0x84220
+6142	method	12833	InputField	get_layoutPriority	0x102040		0x102040
+6142	method	12855	LayoutGroup	get_layoutPriority	0x84220		0x84220
+6142	method	12891	StencilMaterial	Add	0x84220		0x84220
+6142	method	12892	Text	get_layoutPriority	0x84220		0x84220
+6142	method	12925	PanelRaycaster	get_eventCamera	0x84220		0x84220
+6142	method	12954	EventSystem	get_lastSelectedGameObject	0x84220		0x84220
+6142	method	12968	StandaloneInputModule	get_inputMode	0x84220		0x84220
+6142	method	12972	BaseRaycaster	get_priority	0x84220		0x84220
+6142	method	1302		ʳʸʿʸʿʻʷʴʷʻʽ	0x307590		0x307590
 6142	method	1302		ʴˁʿʸʷˁʷʳʴʻʷ	0x307B40		0x307B40
+6142	method	1310		ʴʳʲʽˀʵʼʲʿʾʹ	0x84220		0x84220
+6142	method	1310		ʴʾʶˀˁʸʷʴʺʲʴ	0x84220		0x84220
+6142	method	1310		ʵʼʲʹʹʷʼʾʻʾˁ	0x102040		0x102040
+6142	method	1310		ʶʸʸʿʻʿʿʹʵˀʲ	0x102040		0x102040
+6142	method	1310		ʷʲˁʴˀʶʹˁʲʿʷ	0x84220		0x84220
+6142	method	1310		ʷʶʸʽʽʶʽʳʻʲʻ	0x102040		0x102040
+6142	method	1310		ʸʲʴʼʼʻˁʻʵʺʻ	0x84220		0x84220
+6142	method	1310		ʸʹʷʸʷʼʺˀˀʷʿ	0x84220		0x84220
+6142	method	1310		ʸʽʲʽʾʴʿʻʿʲʿ	0x102040		0x102040
+6142	method	1310		ʹʸʷʼʹʽʶʵʼʾʶ	0x102040		0x102040
+6142	method	1310		ʺʽʺʶʾʸʵˀʹʸʵ	0x102040		0x102040
+6142	method	1310		ʾʽʺʸʷʲʲʻʼʳʻ	0x84220		0x84220
+6142	method	1310		ˁʽʽʹʷʽˀʿʼˀʲ	0x84220		0x84220
+6142	method	13291	YamlAliasNode	get_NodeType	0x84220		0x84220
+6142	method	13295	YamlMappingNode	get_NodeType	0x102040		0x102040
+6142	method	13391	DocumentStart	get_NestingIncrease	0x102040		0x102040
+6142	method	13395	MappingStart	get_NestingIncrease	0x102040		0x102040
+6142	method	13398	ParsingEvent	get_NestingIncrease	0x84220		0x84220
+6142	method	13401	SequenceStart	get_NestingIncrease	0x102040		0x102040
+6142	method	13404	StreamStart	get_NestingIncrease	0x102040		0x102040
+6142	method	13404	StreamStart	get_Type	0x102040		0x102040
+6142	method	13500		ˀˁʲʼʽʽʸʺʾʹʺ	0x322B0		0x322B0
+6142	method	136		ʵʼʲʹʹʷʼʾʻʾˁ	0x84220		0x84220
+6142	method	136		ʶʸʸʿʻʿʿʹʵˀʲ	0x102040		0x102040
+6142	method	136		ʷʷʾʽˁʿʸʿʷʺʺ	0x102040		0x102040
+6142	method	136		ʸʲʴʼʼʻˁʻʵʺʻ	0x102040		0x102040
+6142	method	136		ʸʹʷʸʷʼʺˀˀʷʿ	0x102040		0x102040
+6142	method	13872	DFA	SpecialTransition	0x84220		0x84220
+6142	method	13879	BaseTree	get_CharPositionInLine	0x84220		0x84220
+6142	method	13879	BaseTree	get_ChildIndex	0x84220		0x84220
+6142	method	13879	BaseTree	get_Line	0x84220		0x84220
+6142	method	13879	BaseTree	get_Parent	0x84220		0x84220
+6142	method	13886	BaseRecognizer	GetCurrentInputSymbol	0x84220		0x84220
+6142	method	13886	BaseRecognizer	GetMissingSymbol	0x84220		0x84220
+6142	method	13886	BaseRecognizer	get_GrammarFileName	0x84220		0x84220
+6142	method	13886	BaseRecognizer	get_TokenNames	0x84220		0x84220
+6142	method	13902	TreeWizard	FindFirst	0x84220		0x84220
+6142	method	13905	RuleReturnScope	get_Start	0x84220		0x84220
+6142	method	13905	RuleReturnScope	get_Stop	0x84220		0x84220
+6142	method	13905	RuleReturnScope	get_Template	0x84220		0x84220
+6142	method	13905	RuleReturnScope	get_Tree	0x84220		0x84220
+6142	method	13917	ClassicToken	get_InputStream	0x84220		0x84220
+6142	method	13948	ParseTree	DupNode	0x84220		0x84220
+6142	method	13948	ParseTree	get_TokenStartIndex	0x84220		0x84220
+6142	method	13948	ParseTree	get_TokenStopIndex	0x84220		0x84220
+6142	method	13948	ParseTree	get_Type	0x84220		0x84220
+6142	method	13949	CommonErrorNode	get_Type	0x84220		0x84220
+6142	method	141		ʳʶʻʹˀʹˁʿˁʶʴ	0x34C070		0x34C070
+6142	method	1421		ʸʲʴʼʼʻˁʻʵʺʻ	0x102040		0x102040
+6142	method	1421		ʺʽʺʶʾʸʵˀʹʸʵ	0x84220		0x84220
+6142	method	1429	PlayerSelectionMenu	.ctor	0x331630		0x331630
 6142	method	1429	PlayerSelectionMenu	OnEnable	0x32BF80		0x32BF80
 6142	method	1429	PlayerSelectionMenu	Update	0x3314E0		0x3314E0
+6142	method	1429	PlayerSelectionMenu	Update	0x3314E0		PlayerSelectionMenu.Update
+6142	method	1429	PlayerSelectionMenu	ʳʴʾʲʷʾʷʵʹʶʻ	0x32C9C0		0x32C9C0
+6142	method	1429	PlayerSelectionMenu	ʳʼʺˀˀʸʲʴʳˁʸ	0x32CBE0		0x32CBE0
+6142	method	1429	PlayerSelectionMenu	ʳʽˁˁʺʼʸʻʲʷʸ	0x32CD20		0x32CD20
+6142	method	1429	PlayerSelectionMenu	ʳˀʹʵʾʹˀʳʼʸˁ	0x32CE60		0x32CE60
+6142	method	1429	PlayerSelectionMenu	ʳˁʵʽʵˁʻʵˀʿʶ	0x32D000		0x32D000
+6142	method	1429	PlayerSelectionMenu	ʴʲʻˁʽʹˁʶʲʶˀ	0x32D190		0x32D190
+6142	method	1429	PlayerSelectionMenu	ʴʼʵʵʳʶʵʾʿʵʶ	0x32D2D0		0x32D2D0
+6142	method	1429	PlayerSelectionMenu	ʴʿʳʴʸʳʹʲʺʸʾ	0x32D360		0x32D360
+6142	method	1429	PlayerSelectionMenu	ʵʲʴʸʶʿʴʴʹʻʼ	0x32D400		0x32D400
+6142	method	1429	PlayerSelectionMenu	ʵˁʺʻʲʹˁʻʹʺʳ	0x32E190		0x32E190
+6142	method	1429	PlayerSelectionMenu	ʶʹʺʶʻʽˀʿʳʷʴ	0x32E550		0x32E550
+6142	method	1429	PlayerSelectionMenu	ʸʳʼʹʸʽʾˀʴʼʷ	0x32F590		0x32F590
+6142	method	1429	PlayerSelectionMenu	ʹʻʽʷˀʿˀʿʸˁʼ	0x32FB60		0x32FB60
+6142	method	1429	PlayerSelectionMenu	ʺʵʲʿʴˁʼʳʺʸˀ	0x32FF70		0x32FF70
+6142	method	1429	PlayerSelectionMenu	ʺʽʹʷʶʿʸʳˀʼʴ	0x330170		0x330170
+6142	method	1429	PlayerSelectionMenu	ʻʺʵˀʺʵʼʲʼʻʽ	0x330350		0x330350
+6142	method	1429	PlayerSelectionMenu	ʾʷʲʳʵʷʷʹʳʿʼ	0x330820		0x330820
+6142	method	1429	PlayerSelectionMenu	ʾʹʼʺʳʽˁʵʳˁˀ	0x3308D0		0x3308D0
+6142	method	1429	PlayerSelectionMenu	ʿʻʺʻʼˁʼˀʻʿʸ	0x32CE60		0x32CE60
+6142	method	1429	PlayerSelectionMenu	ˀʽˁʼʼˁˀʳʷʸʳ	0x330AB0		0x330AB0
+6142	method	1429	PlayerSelectionMenu	ˁʳʼʶʽʶʿʷʻʵʻ	0x330F30		0x330F30
 6142	method	1435		ʳʷʻʿʻʲʿʾʵʷʶ	0x337540		0x337540
 6142	method	1435		ʴˁʽˁˀʺʵʷʸʳʹ	0x337720		0x337720
+6142	method	1435		ʼʾˁʺʴʻʵʳʾʲʺ	0x337CE0		0x337CE0
+6142	method	1435		ʾˀʴˁʿˁˀʹˀʴʷ	0x337CE0		0x337CE0
 6142	method	1435		ʿʹʲʸʻʻʼʵʸʵˀ	0x337720		0x337720
 6142	method	1435		ˀʶʷʼʻʸʼʽʵʼʹ	0x337D00		0x337D00
+6142	method	14457	OpenedMessage	get_Type	0x84220		0x84220
+6142	method	1447		ʴʳʽʵˀʶˁʶˁʵˀ	0x336E50		0x336E50
+6142	method	1447		ʴʸʹʴʻʸʸˀʼʸʼ	0x32AA80		0x32AA80
+6142	method	1448		ʹʲˀʹʸʵʽʴʺʵʺ	0x334340		0x334340
+6142	method	1448		ʾʳʾʶʽʺʵʴʴʳʽ	0x334A30		0x334A30
+6142	method	14699	DiagnosticSourceEventSource.TransformSpec.PropertySpec.PropertyFetch	Fetch	0x84220		0x84220
+6142	method	15072	UnaryResult	get_CompletedResult	0x84220		0x84220
+6142	method	15172	ArrayPropertyBag<__Il2CppFullySharedGenericType>	get_InstantiationKind	0x102040		0x102040
+6142	method	15174	DictionaryPropertyBag<__Il2CppFullySharedGenericType, __Il2CppFullySharedGenericType>	get_InstantiationKind	0x102040		0x102040
+6142	method	15175	HashSetPropertyBag<__Il2CppFullySharedGenericType>	get_InstantiationKind	0x102040		0x102040
+6142	method	15184	ListPropertyBag<__Il2CppFullySharedGenericType>	get_InstantiationKind	0x102040		0x102040
+6142	method	15186	PropertyBag<Vector2>	Instantiate	0x84220		0x84220
+6142	method	15198	TypeUtility.TypeConstructor<Vector2>	CreateValueTypeInstance	0x84220		0x84220
+6142	method	15289	GeneratedMessagePackResolver.GeneratedMessagePackResolverGetFormatterHelper	GetFormatter	0x84220		0x84220
+6142	method	15330	XElement	System.Xml.Serialization.IXmlSerializable.GetSchema	0x84220		0x84220
+6142	method	15330	XElement	get_NodeType	0x102040		0x102040
+6142	method	15438	LoggerMessage.LogValues	get_Count	0x102040		0x102040
 6142	method	156	DrumsPlayer	ʶʻʻʸʿˀʽˀʾʿʻ	0x33A880		0x33A880
 6142	method	156	DrumsPlayer	ˀʿʸʺʿʲʻʹʼʳʿ	0x33C560		0x33C560
+6142	method	15686	Index	get_Start	0x84220		0x84220
+6142	method	1590	RuntimeThread	GetCurrentProcessorId	0x102040		0x102040
+6142	method	1594	String	op_Equality	0x1981570		String.op_Equality
+6142	method	16020	Unsafe	SizeOf<ByteEnum>	0x102040		0x102040
+6142	method	16020	Unsafe	SizeOf<byte>	0x102040		0x102040
 6142	method	16061	__Il2CppComObject	Finalize	0x2BF4C30		0x2BF4C30
 6142	method	16062	__Il2CppComDelegate	Finalize	0x2BF4C30		0x2BF4C30
+6142	method	1721	Math	Ceiling	0x1B518E0		0x1B518E0
+6142	method	1721	Math	Ceiling	0x1B518E0		Math.Ceiling
+6142	method	176	SongEntry	ʶʻʻʽʼʲʷˀʾʽʷ	0x358560		0x358560
 6142	method	176	SongEntry	ʷʲʿʾʷʿʽʽʷʴʷ	0x358850		0x358850
+6142	method	176	SongEntry	ʿʲʷʹʿʳʾʳʷˀʾ	0x35C110		0x35C110
 6142	method	176	SongEntry	ʿʳʴʾʽʻʴʽʿʵʽ	0x35C980		0x35C980
+6142	method	176	SongEntry	ˀʹʳʸʾʿʺʿʴˀʴ	0x35F6E0		0x35F6E0
+6142	method	1776	Tuple<__Il2CppFullySharedGenericType>	System.Runtime.CompilerServices.ITuple.get_Length	0x102040		0x102040
+6142	method	1784	Type	get_DeclaringMethod	0x84220		0x84220
+6142	method	1784	Type	get_DeclaringType	0x84220		0x84220
+6142	method	1784	Type	get_ReflectedType	0x84220		0x84220
+6142	method	1795	ValueTuple	CompareTo	0x84220		0x84220
+6142	method	1795	ValueTuple	GetHashCode	0x84220		0x84220
+6142	method	1795	ValueTuple	System.Collections.IStructuralEquatable.GetHashCode	0x84220		0x84220
+6142	method	1795	ValueTuple	System.IValueTupleInternal.GetHashCode	0x84220		0x84220
+6142	method	1795	ValueTuple	System.Runtime.CompilerServices.ITuple.get_Length	0x84220		0x84220
+6142	method	1796	ValueTuple<UniTask>	System.Runtime.CompilerServices.ITuple.get_Length	0x102040		0x102040
+6142	method	1796	ValueTuple<__Il2CppFullySharedGenericType>	System.Runtime.CompilerServices.ITuple.get_Length	0x102040		0x102040
+6142	method	1796	ValueTuple<bool>	System.Runtime.CompilerServices.ITuple.get_Length	0x102040		0x102040
 6142	method	182		ʴʵʾˀʾʺˀˁʽʵʹ	0x3738B0		0x3738B0
 6142	method	182		ʴʸʷʵʲʾʺʵˁʹʸ	0x373A40		0x373A40
 6142	method	182		ʷʽʷʵʽʲʾʶʴʵʷ	0x373F30		0x373F30
 6142	method	182		ʿʽʾʹʳʼʸʾʳʻʹ	0x374310		0x374310
+6142	method	1874	AppDomain	InitializeLifetimeService	0x84220		0x84220
 6142	method	190	BassAudioManager	ʴʴʳʶʺʴʾʲʸʶˀ	0x365F10		0x365F10
+6142	method	190	BassAudioManager	ʵˀʸʼʶʸʶʸʹʷʴ	0x366FC0		0x366FC0
+6142	method	190	BassAudioManager	ʸʾʼʶʸʺʿʲʶʴʺ	0x368590		0x368590
+6142	method	190	BassAudioManager	ʸˁʸʵʹʼʴʽʳˁʺ	0x3687C0		0x3687C0
+6142	method	190	BassAudioManager	ʺʴʻʼʴʿʼʿʳˁʷ	0x369810		0x369810
 6142	method	190	BassAudioManager	ʾʳʸʴʻʳʾʴʺˀʺ	0x36B700		0x36B700
+6142	method	190	BassAudioManager	ˀʿʷʾʳʶʲʴʷʸʽ	0x36DB60		0x36DB60
+6142	method	190	BassAudioManager	ˁʷˁʲʷʷʿʶʴʼʼ	0x36E100		0x36E100
+6142	method	190	BassAudioManager	ˁʸʹˁʾʽʲʴʶʹʿ	0x36E2A0		0x36E2A0
 6142	method	193		ʺʷʻʲʴʺʷʺʺʶʴ	0x374D50		0x374D50
+6142	method	193		ʾʿʾʻʳʸʹʽʹʴʼ	0x377FC0		0x377FC0
+6142	method	1977	CancellationToken	get_None	0x84220		0x84220
+6142	method	203		ʸʹʷʸʷʼʺˀˀʷʿ	0x84220		0x84220
+6142	method	203		ʹʸʷʼʹʽʶʵʼʾʶ	0x102040		0x102040
+6142	method	203		ʾʽʺʸʷʲʲʻʼʳʻ	0x84220		0x84220
+6142	method	2137	InternalDecoderBestFitFallback	get_MaxCharCount	0x102040		0x102040
+6142	method	2138	InternalDecoderBestFitFallbackBuffer	InternalFallback	0x102040		0x102040
+6142	method	2139	DecoderExceptionFallback	get_MaxCharCount	0x84220		0x84220
+6142	method	2140	DecoderExceptionFallbackBuffer	GetNextChar	0x84220		0x84220
+6142	method	2140	DecoderExceptionFallbackBuffer	get_Remaining	0x84220		0x84220
+6142	method	2148	InternalEncoderBestFitFallback	get_MaxCharCount	0x102040		0x102040
+6142	method	2150	EncoderExceptionFallback	get_MaxCharCount	0x84220		0x84220
+6142	method	2151	EncoderExceptionFallbackBuffer	GetNextChar	0x84220		0x84220
+6142	method	2151	EncoderExceptionFallbackBuffer	get_Remaining	0x84220		0x84220
+6142	method	2168	UTF7Encoding.DecoderUTF7Fallback	get_MaxCharCount	0x102040		0x102040
+6142	method	2220	HashAlgorithm	get_InputBlockSize	0x102040		0x102040
+6142	method	2220	HashAlgorithm	get_OutputBlockSize	0x102040		0x102040
 6142	method	225	HighwayScroll	Update	0x3818E0		HighwayScroll.Update
+6142	method	225	HighwayScroll	ʵʻʾʶˁʺʷʴʿʼʺ	0x102040		0x102040
+6142	method	2311	ActivatedClientTypeEntry	get_ContextAttributes	0x84220		0x84220
+6142	method	2389	ConstructionLevelActivator	get_NextActivator	0x84220		0x84220
+6142	method	2401	CallContext	SetCurrentCallContext	0x84220		0x84220
+6142	method	2409	AsyncResult	get_NextSink	0x84220		0x84220
+6142	method	2422	ErrorMessage	GetArg	0x84220		0x84220
+6142	method	2422	ErrorMessage	get_ArgCount	0x84220		0x84220
+6142	method	2422	ErrorMessage	get_Args	0x84220		0x84220
+6142	method	2422	ErrorMessage	get_LogicalCallContext	0x84220		0x84220
+6142	method	2422	ErrorMessage	get_MethodBase	0x84220		0x84220
+6142	method	2422	ErrorMessage	get_MethodSignature	0x84220		0x84220
+6142	method	2422	ErrorMessage	get_Properties	0x84220		0x84220
+6142	method	2686	Unsafe	SizeOf<bool>	0x102040		0x102040
+6142	method	2686	Unsafe	SizeOf<byte>	0x102040		0x102040
+6142	method	2686	Unsafe	SizeOf<sbyte>	0x102040		0x102040
+6142	method	2728	ConstructorInfo	get_MemberType	0x102040		0x102040
+6142	method	2747	MethodBase	get_CallingConvention	0x102040		0x102040
+6142	method	2763	SignatureConstructedGenericType	get_ElementType	0x84220		0x84220
+6142	method	2766	SignatureType	get_AssemblyQualifiedName	0x84220		0x84220
+6142	method	2766	SignatureType	get_FullName	0x84220		0x84220
+6142	method	278		ʻʳʸʷʲʺʶʷʹʿʶ	0x3A8520		0x3A8520
+6142	method	2796	RuntimeFieldInfo	get_BindingFlags	0x84220		0x84220
+6142	method	2798	RuntimeMethodInfo	get_BindingFlags	0x84220		0x84220
+6142	method	2798	RuntimeMethodInfo	get_core_clr_security_level	0x102040		0x102040
+6142	method	2799	RuntimeConstructorInfo	get_BindingFlags	0x84220		0x84220
+6142	method	2799	RuntimeConstructorInfo	get_core_clr_security_level	0x102040		0x102040
+6142	method	2807	RuntimePropertyInfo	get_BindingFlags	0x84220		0x84220
+6142	method	282	CliGameLauncher	ʴʶʲʻʳʵʳʽʲʳʿ	0x395C10		0x395C10
 6142	method	282	CliGameLauncher	ʴʾʹʶʺˁʼʳʼʾʹ	0x396110		0x396110
+6142	method	282	CliGameLauncher	ʵˀʾʹʽʶʵʷʲʽʹ	0x3964F0		0x3964F0
 6142	method	282	CliGameLauncher	ʶʷʶʲʽʼʼʾʿʵʵ	0x3968D0		0x3968D0
+6142	method	282	CliGameLauncher	ʽʲˀʲʵʾʴʷʴʷʸ	0x398440		0x398440
+6142	method	2875	GregorianCalendar	GetEra	0x102040		0x102040
+6142	method	2879	HijriCalendar	GetAdvanceHijriDate	0x84220		0x84220
+6142	method	2880	JapaneseCalendar	GetErasFromRegistry	0x84220		0x84220
+6142	method	303		MoveNext	0x3BD710		0x3BD710
+6142	method	310		ʵʲʶʹʹʷʼʷʺʺˁ	0x3B0910		0x3B0910
+6142	method	3151	StreamReader.NullStreamReader	Read	0x84220		0x84220
+6142	method	3151	StreamReader.NullStreamReader	ReadBuffer	0x84220		0x84220
+6142	method	3151	StreamReader.NullStreamReader	ReadLine	0x84220		0x84220
+6142	method	3161	TextReader.NullTextReader	Read	0x84220		0x84220
+6142	method	3161	TextReader.NullTextReader	ReadLine	0x84220		0x84220
+6142	method	3177	File	OpenWrite	0x1B1B6E0		File.OpenWrite
+6142	method	3187	Stream.NullStream	Read	0x84220		0x84220
+6142	method	3187	Stream.NullStream	Seek	0x84220		0x84220
+6142	method	3187	Stream.NullStream	get_Length	0x84220		0x84220
+6142	method	3187	Stream.NullStream	get_Position	0x84220		0x84220
 6142	method	3312	qsdBhRHZOfeRWePeZLKTjSjCmcvV	CjniIjbuHWGWWlHZeoWhtgdSSoHS	0x1D496C0		0x1D496C0
+6142	method	3347	Profiler	GetMonoHeapSizeLong	0x84220		0x84220
+6142	method	3347	Profiler	GetMonoUsedSizeLong	0x84220		0x84220
+6142	method	3347	Profiler	GetRuntimeMemorySizeLong	0x84220		0x84220
+6142	method	3347	Profiler	GetTotalAllocatedMemoryLong	0x84220		0x84220
+6142	method	3347	Profiler	GetTotalReservedMemory	0x84220		0x84220
+6142	method	3347	Profiler	GetTotalReservedMemoryLong	0x84220		0x84220
+6142	method	3347	Profiler	GetTotalUnusedReservedMemory	0x84220		0x84220
+6142	method	3347	Profiler	GetTotalUnusedReservedMemoryLong	0x84220		0x84220
+6142	method	3354	Consts	get_gameCorePlugin_minPluginVersion	0x102040		0x102040
+6142	method	3354	Consts	get_nintendoSwitch2Plugin_minPluginVersion	0x102040		0x102040
+6142	method	3354	Consts	get_ps4Plugin_minPluginVersion	0x102040		0x102040
+6142	method	3354	Consts	get_ps5Plugin_minPluginVersion	0x102040		0x102040
 6142	method	3374	Controller	.ctor	0x1D5B0E0		0x1D5B0E0
 6142	method	3374	Controller	get_enabled	0x1D5C350		0x1D5C350
 6142	method	3374	Controller	set_enabled	0x1D5D1F0		0x1D5D1F0
 6142	method	3378	ControllerWithAxes	.ctor	0x1D55F10		0x1D55F10
 6142	method	3380	CustomController	.ctor	0x1D5E790		0x1D5E790
 6142	method	3380	CustomController	SetAxisValue	0x1D5DF10		0x1D5DF10
+6142	method	3392	ControllerTemplate.gnckexBnDazmbyqSJiaHQDffTkFo	GetElement	0x84220		0x84220
+6142	method	3392	ControllerTemplate.gnckexBnDazmbyqSJiaHQDffTkFo	get_elementCount	0x84220		0x84220
+6142	method	347	SongSelect	Update	0x8EE20		0x8EE20
+6142	method	347	SongSelect	ʲʼˀʸʷʺʾʲʴˁʶ	0x891D0		0x891D0
+6142	method	347	SongSelect	ʳʼʺˀˀʸʲʴʳˁʸ	0x8A210		0x8A210
+6142	method	347	SongSelect	ʷʺˀʸʾʺʽʴʻʳʶ	0x8AC20		0x8AC20
+6142	method	347	SongSelect	ʽʷʲʾʷʽˁʾˁʹʷ	0x8D260		0x8D260
+6142	method	347	SongSelect	ˁʳʼʶʽʶʿʷʻʵʻ	0x8EA10		0x8EA10
+6142	method	3524	LJLHPwDpRmZTjvxOFPpRvggltiKt.bOVySxYNtqjzytvTwsOZQenfcAUn.gJzKkfLaIheKpgcKaafFJLGYdZfy	CompareTo	0x84220		0x84220
+6142	method	3532	UnityUnifiedKeyboardSource	get_controllerExtension	0x84220		0x84220
+6142	method	3535	UnityUnifiedMouseSource	get_controllerExtension	0x84220		0x84220
+6142	method	3537	dWvjTGzFyYdfQilbAbelKZoerJOD.HplzAzTArSurUIJcPgjbhSSAIItC	saCAmzJXBnMegwRTHCCTIAsXdgCo	0x84220		0x84220
 6142	method	3552	klsJZEbePNFHOElxoemRqoRxlknQ	HQgOxvvsYEtMFsCjKomHFlhyfTBK	0x1EE5440		0x1EE5440
 6142	method	3552	klsJZEbePNFHOElxoemRqoRxlknQ	RsQLIVvYuvrPqXXBkNHGsWqCBgKx	0x1EE67B0		0x1EE67B0
 6142	method	3552	klsJZEbePNFHOElxoemRqoRxlknQ	SSVPDrrdHlXhkbGyYpZORexJyieI	0x1EE6D00		0x1EE6D00
 6142	method	3552	klsJZEbePNFHOElxoemRqoRxlknQ	hJrBWRXUUvuNHxSvSUsdatPpYCOE	0x1EE9800		0x1EE9800
 6142	method	3552	klsJZEbePNFHOElxoemRqoRxlknQ	tjPVPVcaqSnNplMNLGtDhsrMuTYmA	0x1EEB3F0		0x1EEB3F0
+6142	method	3553	MkgkwBXULbaSpatfkGDLDzJREsVk.BDFCDvkggdeEXNfOQeKuiFnSGuj	get_extension	0x84220		0x84220
+6142	method	3558	MkgkwBXULbaSpatfkGDLDzJREsVk	get_inputSource	0x84220		0x84220
+6142	method	360	ExternalTools	XboxOneInput_GetControllerId	0x84220		0x84220
+6142	method	360	ExternalTools	XboxOneInput_GetJoystickId	0x84220		0x84220
+6142	method	360	ExternalTools	XboxOneInput_GetUserIdForGamepad	0x84220		0x84220
 6142	method	3686	Player.ControllerHelper.MapHelper	LoadDefaultMaps	0x1F50710		0x1F50710
 6142	method	3686	Player.ControllerHelper.MapHelper	LoadMap	0x1F508C0		0x1F508C0
 6142	method	3710	Player.ControllerHelper	AddController	0x1F2D2B0		0x1F2D2B0
 6142	method	3711	Player	GetButton	0x1F3B730		0x1F3B730
 6142	method	3711	Player	GetButtonDown	0x1F39540		0x1F39540
+6142	method	374		ʸʸʲʳʺʲʻˁʵˀʻ	0x90D70		0x90D70
+6142	method	374		ʿʹˀʿʺʺʲʺʸʵʼ	0x92910		0x92910
+6142	method	374		ˁʻʴʽʸʺʷʼʹʹʼ	0x92F80		0x92F80
 6142	method	3740	ReInput.ControllerHelper	CreateCustomController	0x1D6F9C0		0x1D6F9C0
 6142	method	3740	ReInput.ControllerHelper	CreateCustomController	0x1D6FA80		0x1D6FA80
 6142	method	3740	ReInput.ControllerHelper	DestroyCustomController	0x1D6FC70		0x1D6FC70
+6142	method	3763	CustomInputManager	get_inputSource	0x84220		0x84220
+6142	method	3842	CustomPlatformUnifiedControllerSource	get_controllerExtension	0x84220		0x84220
+6142	method	3852	HardwareJoystickMapCustomPlatformMap	GetVariants	0x84220		0x84220
+6142	method	3954	UserDataStore	LoadControllerMap	0x84220		0x84220
+6142	method	3985	HardwareJoystickMap.Platform	get_controllerNameOverride	0x84220		0x84220
+6142	method	4008	HardwareJoystickMap.Platform_DirectInput_Base	GetVariants	0x84220		0x84220
+6142	method	4008	HardwareJoystickMap.Platform_DirectInput_Base	get_platform	0x102040		0x102040
+6142	method	4017	HardwareJoystickMap.Platform_RawInput_Base	GetVariants	0x84220		0x84220
+6142	method	4019	HardwareJoystickMap.Platform_XInput_Base.MatchingCriteria	GetAlternateElementCount	0x84220		0x84220
+6142	method	4019	HardwareJoystickMap.Platform_XInput_Base.MatchingCriteria	get_alternateElementCount	0x84220		0x84220
+6142	method	4026	HardwareJoystickMap.Platform_XInput_Base	GetVariants	0x84220		0x84220
+6142	method	4038	HardwareJoystickMap.Platform_OSX_Base	GetVariants	0x84220		0x84220
+6142	method	4050	HardwareJoystickMap.Platform_Linux_Base	GetVariants	0x84220		0x84220
+6142	method	4063	HardwareJoystickMap.Platform_WindowsUWP_Base	GetVariants	0x84220		0x84220
+6142	method	4065	HardwareJoystickMap.Platform_Fallback_Base.MatchingCriteria	GetAlternateElementCount	0x84220		0x84220
+6142	method	4065	HardwareJoystickMap.Platform_Fallback_Base.MatchingCriteria	get_alternateElementCount	0x84220		0x84220
+6142	method	4073	HardwareJoystickMap.Platform_Fallback_Base	GetVariants	0x84220		0x84220
+6142	method	4075	HardwareJoystickMap.Platform_Custom.MatchingCriteria	GetAlternateElementCount	0x84220		0x84220
+6142	method	4075	HardwareJoystickMap.Platform_Custom.MatchingCriteria	get_alternateElementCount	0x84220		0x84220
+6142	method	4088	HardwareJoystickMap.Platform_XboxOne_Base	GetVariants	0x84220		0x84220
+6142	method	4096	HardwareJoystickMap.Platform_PS4_Base	GetVariants	0x84220		0x84220
+6142	method	4104	HardwareJoystickMap.Platform_NintendoSwitch_Base	GetVariants	0x84220		0x84220
+6142	method	4115	HardwareJoystickMap.Platform_GameCore_Base	GetVariants	0x84220		0x84220
+6142	method	4123	HardwareJoystickMap.Platform_PS5_Base	GetVariants	0x84220		0x84220
+6142	method	4131	HardwareJoystickMap.Platform_InternalDriver_Base	GetVariants	0x84220		0x84220
+6142	method	4134	HardwareJoystickMap.Platform_SDL2_Base.MatchingCriteria	GetAlternateElementCount	0x84220		0x84220
+6142	method	4134	HardwareJoystickMap.Platform_SDL2_Base.MatchingCriteria	get_alternateElementCount	0x84220		0x84220
+6142	method	4143	HardwareJoystickMap.Platform_SDL2_Base	GetVariants	0x84220		0x84220
+6142	method	4145	HardwareJoystickMap.Platform_Steam_Base.MatchingCriteria	GetAlternateElementCount	0x84220		0x84220
+6142	method	4145	HardwareJoystickMap.Platform_Steam_Base.MatchingCriteria	get_alternateElementCount	0x84220		0x84220
+6142	method	4146	HardwareJoystickMap.Platform_Steam_Base.Elements	get_axisCount	0x84220		0x84220
+6142	method	4146	HardwareJoystickMap.Platform_Steam_Base.Elements	get_buttonCount	0x84220		0x84220
+6142	method	4147	HardwareJoystickMap.Platform_Steam_Base	GetVariants	0x84220		0x84220
+6142	method	4156	HardwareJoystickMap.Platform_WebGL_Base	GetVariants	0x84220		0x84220
+6142	method	4171	HardwareJoystickMap.Platform_AppleGCController_Base	GetVariants	0x84220		0x84220
+6142	method	4180	HardwareJoystickMap.Platform_WindowsWGI_Base	GetVariants	0x84220		0x84220
+6142	method	4232	DualSenseTriggerEffectOff	Rewired.ControllerExtensions.IDualSenseTriggerEffect.get_triggerEffectType	0x84220		0x84220
+6142	method	4233	DualSenseTriggerEffectFeedback	Rewired.ControllerExtensions.IDualSenseTriggerEffect.get_triggerEffectType	0x102040		0x102040
+6142	method	4351	CustomControllerElementTargetSetForBoolean	get_targetCount	0x102040		0x102040
+6142	method	4412	BjrBKepShzXQJfjllDnNanYNMMrI	vzsFcrdvfbsUXgfonMFQhsOgkqXEb	0x84220		0x84220
 6142	method	443		MoveNext	0xD8D80		0xD8D80
+6142	method	446		MoveNext	0xD9B90		0xD9B90
+6142	method	4475	UnityTools	DetermineWebplayerPlatformType	0x84220		0x84220
 6142	method	449	GameManager	Awake	0xB41A0		0xB41A0
 6142	method	449	GameManager	Awake	0xB41A0		GameManager.Awake
 6142	method	449	GameManager	Update	0xC05A0		0xC05A0
 6142	method	449	GameManager	Update	0xC05A0		GameManager.Update
+6142	method	449	GameManager	ʵʿʲʾʺʵʽʾʼˀʽ	0xB5F90		0xB5F90
+6142	method	449	GameManager	ʷʻʶˀʾʵʸˀʳˀʽ	0xB9680		0xB9680
+6142	method	449	GameManager	ʺʹʺʸʽʾʲʽʳʴʺ	0xBC750		0xBC750
+6142	method	449	GameManager	ʼʼʹʿʿˀˁʵʹʾʻ	0xBD640		0xBD640
+6142	method	449	GameManager	ʽʷʲʾʷʽˁʾˁʹʷ	0xBEA90		0xBEA90
+6142	method	449	GameManager	ʽʷʽʿʾʹʶˀʴʷʿ	0xBEB50		0xBEB50
+6142	method	449	GameManager	ʾʽʽʹʽʿʳʾʽʻʼ	0xBF510		0xBF510
 6142	method	451		.ctor	0xD8A90		0xD8A90
+6142	method	451		ʸʴʳʺʿʶʷʾʷʿʿ	0xD7F20		0xD7F20
 6142	method	451		ʽʲʾʸʿʷʲʶʲʻˁ	0xD8470		0xD8470
+6142	method	451		ʾʵʽʳʳˁʼʼʾʶʷ	0xD86D0		0xD86D0
+6142	method	452	PlayerSelectionCanvas	Update	0xD0E20		0xD0E20
+6142	method	452	PlayerSelectionCanvas	Update	0xD0E20		PlayerSelectionCanvas.Update
+6142	method	452	PlayerSelectionCanvas	ˀʵʹʺʳˁʼʸʻʼʶ	0xD09F0		0xD09F0
+6142	method	4592	Float2x	get_Zero	0x84220		0x84220
+6142	method	4661	dcRcAsKcKNPbvWkippkOnFcjxBxF.pdoeUSsrJIpFjyfksbaykuYLSzf	get_unityId	0x84220		0x84220
+6142	method	4674	dcRcAsKcKNPbvWkippkOnFcjxBxF	GetUnifiedKeyboardSource	0x84220		0x84220
+6142	method	4674	dcRcAsKcKNPbvWkippkOnFcjxBxF	GetUnifiedMouseSource	0x84220		0x84220
+6142	method	4674	dcRcAsKcKNPbvWkippkOnFcjxBxF	get_inputSourceType	0x102040		0x102040
+6142	method	4676	psesWFItqOzeBgCDVCsQpYLqlFby.tFwqrwoEcPDBiGwBpxchaeyHGxcB	get_unityId	0x84220		0x84220
+6142	method	4695	ANZRXrATBankdGzInTJercUkerbn.HOeQDZIhtIDxHAUDoFOdoiepLHwG	get_unityId	0x84220		0x84220
+6142	method	4701	ANZRXrATBankdGzInTJercUkerbn	GetUnifiedKeyboardSource	0x84220		0x84220
+6142	method	4701	ANZRXrATBankdGzInTJercUkerbn	GetUnifiedMouseSource	0x84220		0x84220
+6142	method	4701	ANZRXrATBankdGzInTJercUkerbn	Rewired.Platforms.Windows.ISecondaryInputSourceProvider.get_secondaryInputSourceType	0x102040		0x102040
+6142	method	4701	ANZRXrATBankdGzInTJercUkerbn	get_inputSource	0x84220		0x84220
+6142	method	4763	fEjhLrnZVYcZCqrzLBBYJMNaRjW	vEmCAXbHCvlDTFdULkKOHJnTsPoL	0x84220		0x84220
+6142	method	4772	LrrjYPtZvfrRqrFyVCtNgkRgRJHw.UYePjrTjjcIGCPSIFeWmJxwZhgDJ	BuQCahnrTuabOfiadeKJpPeDUBqLA	0x84220		0x84220
+6142	method	4772	LrrjYPtZvfrRqrFyVCtNgkRgRJHw.UYePjrTjjcIGCPSIFeWmJxwZhgDJ	UfqEmGxbEOtMvMzxiImbgDUrptlj	0x84220		0x84220
+6142	method	4772	LrrjYPtZvfrRqrFyVCtNgkRgRJHw.UYePjrTjjcIGCPSIFeWmJxwZhgDJ	VDwKWMNTebrSRAmAvTWNrKBwBxPG	0x84220		0x84220
+6142	method	4772	LrrjYPtZvfrRqrFyVCtNgkRgRJHw.UYePjrTjjcIGCPSIFeWmJxwZhgDJ	ukQiuHTYwjRoFextbuerylNIJyZV	0x84220		0x84220
+6142	method	4787	wbPXenOtAcRRwDAWBEWyErRxLhPtA	get_controllerExtension	0x84220		0x84220
+6142	method	4791	qzyuqtBbxVlBrVATEQFGQonFIdh	get_controllerExtension	0x84220		0x84220
+6142	method	4816	sMFbSoKuaHLeHGFnBSNHtkvOIVnIB.EtmifWaDkPVyFgrFNGlrzWdntuMw	get_unityId	0x84220		0x84220
+6142	method	4822	nsVcrBuoEGyzaHSBKVpsrKNSIpYr	SectjMOyNVaGuIEmKwmhRqrFKQjq	0x84220		0x84220
+6142	method	4822	nsVcrBuoEGyzaHSBKVpsrKNSIpYr	XbOBotJpLcEthAqvAeKxnqISHDkrb	0x84220		0x84220
+6142	method	484		ʴʳʲʽˀʵʼʲʿʾʹ	0x84220		0x84220
+6142	method	484		ʶʸʸʿʻʿʿʹʵˀʲ	0x84220		0x84220
+6142	method	484		ʸʲʴʼʼʻˁʻʵʺʻ	0x102040		0x102040
+6142	method	5347	DuVlPPAuCNtmFiwcKKgqDGbAZiI	SaqycibwFwQFpzMCVrUejNjMcary	0x84220		0x84220
+6142	method	5347	DuVlPPAuCNtmFiwcKKgqDGbAZiI	jeCcObAyibiKLwZnYHPEutGbekSmA	0x84220		0x84220
+6142	method	5355	cVrdXkhYfsDFusOpmOqvYPTeuKYmA	jeCcObAyibiKLwZnYHPEutGbekSmA	0x102040		0x102040
+6142	method	5356	prAfIjCvOrNdjIIohGkYEpyjQCrv.VwwihlAdcHRRfgklUPPnBFFYQInp	get_unityId	0x84220		0x84220
+6142	method	5361	prAfIjCvOrNdjIIohGkYEpyjQCrv	GetUnifiedKeyboardSource	0x84220		0x84220
+6142	method	5361	prAfIjCvOrNdjIIohGkYEpyjQCrv	GetUnifiedMouseSource	0x84220		0x84220
+6142	method	5558	BaseVerticalCollectionView	get_contentContainer	0x84220		0x84220
 6142	method	561		ʺʳʾʺʹʶʵʲʾʲʿ	0x112490		0x112490
 6142	method	561		ʽʻʷʶʸʽʼʽʵˀʵ	0x1144C0		0x1144C0
+6142	method	561		ʿʺʾʹʶˁʻʺʲʹʸ	0x116D00		0x116D00
+6142	method	562		ˁʹʷʼʴʿʶʴʹʽʽ	0x1313F0		0x1313F0
+6142	method	565		ʳʵʻʾˁʷʲˀˀʻʶ	0x12EE30		0x12EE30
+6142	method	5777	DefaultEventSystem.NoInput	get_mouseButtonCount	0x84220		0x84220
+6142	method	5777	DefaultEventSystem.NoInput	get_touchCount	0x84220		0x84220
 6142	method	592	ScoreManager	Update	0x1286B0		0x1286B0
 6142	method	592	ScoreManager	Update	0x1286B0		ScoreManager.Update
+6142	method	592	ScoreManager	ˀʻʹʼʽʳʲʾʷʹʲ	0x1285A0		0x1285A0
+6142	method	594	PlayerStatsBox	ʵʿʴʲˀʾʿˁˀʽʶ	0x123240		0x123240
+6142	method	601		ʴʳʲʽˀʵʼʲʿʾʹ	0x84220		0x84220
+6142	method	601		ʷʷʾʽˁʿʸʿʷʺʺ	0x84220		0x84220
+6142	method	605		ʶʸʸʿʻʿʿʹʵˀʲ	0x84220		0x84220
 6142	method	6054	BaseRuntimePanel	get_screenToPanelSpace	0x20F4F90		0x20F4F90
+6142	method	608	LeaderboardsOnlineManager	ʿʲʳˀʶʿʷʻʵˀʳ	0x139AD0		0x139AD0
 6142	method	612		ˀʵʲʲʻʸʸʽʹʽˁ	0x13F8B0		0x13F8B0
 6142	method	612		ˀʾʻʷʿʿʶʵʻʲʷ	0x13F8E0		0x13F8E0
+6142	method	617	DrumsNoteRenderer	Update	0x1370A0		0x1370A0
 6142	method	617	DrumsNoteRenderer	Update	0x1370A0		DrumsNoteRenderer.Update
+6142	method	649		ʿʺˁʼʿʶʲʻʲˁʶ	0x102040		0x102040
+6142	method	6633	XmlReader	get_DtdInfo	0x84220		0x84220
+6142	method	6633	XmlReader	get_NamespaceManager	0x84220		0x84220
+6142	method	6633	XmlReader	get_Settings	0x84220		0x84220
+6142	method	6633	XmlReader	get_XmlSpace	0x84220		0x84220
+6142	method	6647	XmlTextReaderImpl.NoNamespaceManager	GetEnumerator	0x84220		0x84220
+6142	method	6647	XmlTextReaderImpl.NoNamespaceManager	GetNamespacesInScope	0x84220		0x84220
+6142	method	6647	XmlTextReaderImpl.NoNamespaceManager	LookupPrefix	0x84220		0x84220
+6142	method	6693	DocumentXPathNodeIterator_Empty	get_Count	0x84220		0x84220
+6142	method	6693	DocumentXPathNodeIterator_Empty	get_CurrentPosition	0x84220		0x84220
+6142	method	6704	XmlAttribute	get_ParentNode	0x84220		0x84220
+6142	method	6712	XmlDocument	get_OwnerDocument	0x84220		0x84220
+6142	method	6712	XmlDocument	get_ParentNode	0x84220		0x84220
+6142	method	6712	XmlDocument	get_XPNodeType	0x84220		0x84220
+6142	method	6713	XmlDocumentFragment	get_ParentNode	0x84220		0x84220
+6142	method	6713	XmlDocumentFragment	get_XPNodeType	0x84220		0x84220
+6142	method	6715	XmlElement	get_NodeType	0x102040		0x102040
+6142	method	6715	XmlElement	get_XPNodeType	0x102040		0x102040
+6142	method	6717	XmlEntityReference	get_Value	0x84220		0x84220
+6142	method	672	CHNetManager	ʵʵʸʿʹʷʹʸʺʷʹ	0x145FE0		0x145FE0
+6142	method	6722	XmlName	get_MemberType	0x84220		0x84220
+6142	method	6722	XmlName	get_SchemaAttribute	0x84220		0x84220
+6142	method	6722	XmlName	get_SchemaElement	0x84220		0x84220
+6142	method	6722	XmlName	get_SchemaType	0x84220		0x84220
+6142	method	6722	XmlName	get_Validity	0x84220		0x84220
+6142	method	6727	XmlNode	get_Attributes	0x84220		0x84220
+6142	method	6727	XmlNode	get_LastNode	0x84220		0x84220
+6142	method	6727	XmlNode	get_NextSibling	0x84220		0x84220
+6142	method	6727	XmlNode	get_PreviousSibling	0x84220		0x84220
+6142	method	6727	XmlNode	get_PreviousText	0x84220		0x84220
+6142	method	6727	XmlNode	get_Value	0x84220		0x84220
+6142	method	6744	PositionInfo	get_LineNumber	0x84220		0x84220
+6142	method	6744	PositionInfo	get_LinePosition	0x84220		0x84220
+6142	method	6772	Ucs4Encoding	GetBytes	0x84220		0x84220
+6142	method	6772	Ucs4Encoding	GetEncoder	0x84220		0x84220
+6142	method	6772	Ucs4Encoding	GetMaxByteCount	0x84220		0x84220
+6142	method	6772	Ucs4Encoding	get_CodePage	0x84220		0x84220
+6142	method	6803	XPathNavigator	get_UnderlyingObject	0x84220		0x84220
+6142	method	6907	AutoValidator	FindId	0x84220		0x84220
+6142	method	6909	BaseValidator	FindId	0x84220		0x84220
+6142	method	6936	ContentValidator	ExpectedElements	0x84220		0x84220
+6142	method	6936	ContentValidator	ExpectedParticles	0x84220		0x84220
+6142	method	6949	DatatypeImplementation	CreateValueConverter	0x84220		0x84220
+6142	method	6949	DatatypeImplementation	get_BuiltInWhitespaceFacet	0x84220		0x84220
+6142	method	6949	DatatypeImplementation	get_TypeCode	0x84220		0x84220
+6142	method	6952	Datatype_anySimpleType	get_ValidRestrictionFlags	0x84220		0x84220
+6142	method	6953	Datatype_anyAtomicType	get_BuiltInWhitespaceFacet	0x84220		0x84220
+6142	method	6954	Datatype_untypedAtomicType	get_BuiltInWhitespaceFacet	0x84220		0x84220
+6142	method	6955	Datatype_string	get_BuiltInWhitespaceFacet	0x84220		0x84220
+6142	method	6955	Datatype_string	get_TokenizedType	0x84220		0x84220
+6142	method	6980	Datatype_normalizedString	get_BuiltInWhitespaceFacet	0x102040		0x102040
+6142	method	6988	Datatype_ID	get_TokenizedType	0x102040		0x102040
+6142	method	7009	Datatype_char	get_ValidRestrictionFlags	0x84220		0x84220
+6142	method	7011	Datatype_uuid	get_ValidRestrictionFlags	0x84220		0x84220
+6142	method	7016	FacetsChecker	CheckValueFacets	0x84220		0x84220
 6142	method	707		.ctor	0x16C9A0		0x16C9A0
 6142	method	707		ʵʲʿʾʽʿʹʸʺʻˁ	0x16C480		0x16C480
 6142	method	707		ʵʴʼʴˀˁʾʴʷʾʾ	0x16C490		0x16C490
 6142	method	707		ʵˁʶʹʴʾʸˁʾˀʹ	0x16C480		0x16C480
 6142	method	707		ʷʹʼʵʲʼʾʿʷˁʾ	0x16C480		0x16C480
+6142	method	707		ʹʷˁʴʼˀʿʴʳʷʷ	0x16C550		0x16C550
 6142	method	707		ʻʽʻʵʷʼʴʼʵʶʷ	0x16C480		0x16C480
 6142	method	707		ʿʳʶʿʹˁʴʻʺʶʹ	0x16C490		0x16C490
 6142	method	707		ʿʸʶˁʷˁʼʳʶʴʸ	0x16C650		0x16C650
+6142	method	708	GameInit	PreUnityInit	0x1641D0		GameInit.PreUnityInit
+6142	method	708	GameInit	ʵʳʳʻʺʻˀʾʲʵʹ	0x164810		0x164810
+6142	method	7098	XmlSchemaDatatype	get_TypeCode	0x84220		0x84220
+6142	method	7098	XmlSchemaDatatype	get_Variety	0x84220		0x84220
 6142	method	711	EndOfSong	Start	0x15DC20		0x15DC20
 6142	method	711	EndOfSong	Start	0x15DC20		EndOfSong.Start
 6142	method	711	EndOfSong	ˀʾʲʾˀʵʳʷʲʸʵ	0x161C70		0x161C70
+6142	method	7132	XmlSchemaObject	get_IdAttribute	0x84220		0x84220
+6142	method	7132	XmlSchemaObject	get_NameAttribute	0x84220		0x84220
+6142	method	7203	Axis	get_Type	0x84220		0x84220
+6142	method	7214	ContextQuery	get_Count	0x102040		0x102040
+6142	method	7219	EmptyQuery	Advance	0x84220		0x84220
+6142	method	7219	EmptyQuery	get_Count	0x84220		0x84220
+6142	method	7219	EmptyQuery	get_Current	0x84220		0x84220
+6142	method	7219	EmptyQuery	get_CurrentPosition	0x84220		0x84220
+6142	method	7230	GroupQuery	get_Properties	0x102040		0x102040
+6142	method	7239	NumberFunctions	get_StaticType	0x84220		0x84220
+6142	method	7240	NumericExpr	get_StaticType	0x84220		0x84220
+6142	method	7244	Operator	get_Type	0x102040		0x102040
+6142	method	7266	XPathEmptyIterator	get_Count	0x84220		0x84220
+6142	method	7266	XPathEmptyIterator	get_Current	0x84220		0x84220
+6142	method	7266	XPathEmptyIterator	get_CurrentPosition	0x84220		0x84220
+6142	method	7273	XPathSingletonIterator	get_Count	0x102040		0x102040
+6142	method	729		ʾˁʶʵʺʸʽʾˀʸʸ	0x1A6EF0		0x1A6EF0
+6142	method	7310	X509PalImplMono	Import	0x84220		0x84220
+6142	method	7408	NtlmClient	PreAuthenticate	0x84220		0x84220
+6142	method	7493	Uri	get_IsAbsoluteUri	0x1E1920		0x1E1920
+6142	method	7653	AttributeCollection	System.Collections.ICollection.get_SyncRoot	0x84220		0x84220
+6142	method	7677	EventDescriptorCollection	System.Collections.ICollection.get_SyncRoot	0x84220		0x84220
+6142	method	7697	MultilineStringConverter	GetProperties	0x84220		0x84220
+6142	method	7701	PropertyDescriptorCollection	System.Collections.ICollection.get_SyncRoot	0x84220		0x84220
+6142	method	7728	CollectionConverter	GetProperties	0x84220		0x84220
+6142	method	7737	ReflectTypeDescriptionProvider	GetExtendedDefaultEvent	0x84220		0x84220
+6142	method	7737	ReflectTypeDescriptionProvider	GetExtendedDefaultProperty	0x84220		0x84220
+6142	method	7737	ReflectTypeDescriptionProvider	GetExtendedTypeDescriptor	0x84220		0x84220
+6142	method	7737	ReflectTypeDescriptionProvider	GetTypeDescriptor	0x84220		0x84220
+6142	method	7739	TypeConverter.StandardValuesCollection	System.Collections.ICollection.get_SyncRoot	0x84220		0x84220
+6142	method	7740	TypeConverter	CreateInstance	0x84220		0x84220
+6142	method	7740	TypeConverter	GetProperties	0x84220		0x84220
+6142	method	7740	TypeConverter	GetStandardValues	0x84220		0x84220
+6142	method	776		ʼˀʸʳʵˁʵʽˀʿʴ	0x1CF270		0x1CF270
+6142	method	7777	BitVector32	CreateMask	0x102040		0x102040
+6142	method	7870	CommandStream	BuildCommandsList	0x84220		0x84220
+6142	method	7870	CommandStream	PipelineCallback	0x84220		0x84220
+6142	method	7884	FtpWebRequest	get_Proxy	0x84220		0x84220
 6142	method	792		.ctor	0x1CB350		0x1CB350
 6142	method	792		ʸʶʷʲʶʳʶʽʼʸˀ	0x1C9CA0		0x1C9CA0
 6142	method	792		ˁʹʸʻʸʲʶʲʶˁʳ	0x1CB070		0x1CB070
+6142	method	8006	NtlmClient	PreAuthenticate	0x84220		0x84220
+6142	method	803		ʶʿʿʼʿʴʿʲˀˀʸ	0x84220		0x84220
+6142	method	803		ʸʾʽʹʹʶʺʵʺʸʻ	0x84220		0x84220
+6142	method	803		ʹʽʵʵʷˁˀʶʽʶˁ	0x1F1250		0x1F1250
+6142	method	8100	UnixNetworkInterfaceFactoryPal	Create	0x84220		0x84220
+6142	method	8101	UnixIPGlobalPropertiesFactoryPal	Create	0x84220		0x84220
+6142	method	811		.ctor	0x1F2550		0x1F2550
+6142	method	811		ʵʹʾʹʲʼʵˀʹʶʴ	0x1F1D50		0x1F1D50
+6142	method	811		ʺʶʶʾʿʲˁˀʿˁʻ	0x1F2060		0x1F2060
+6142	method	811		ʾʵʿʴʹʺʶʻʶʲʶ	0x1F2260		0x1F2260
+6142	method	819		ʸʺʽʽʿˁʶʺʶʲʹ	0x1EB800		0x1EB800
+6142	method	819		ˁʳʹʷʹʸʻʸʺʹʴ	0x1ECC50		0x1ECC50
+6142	method	824	BaseMenu	Update	0x1D7060		0x1D7060
+6142	method	824	BaseMenu	Update	0x1D7060		BaseMenu.Update
+6142	method	824	BaseMenu	ʳʺʿʻʾʾʴʷʺʻʶ	0x1D4BC0		0x1D4BC0
+6142	method	824	BaseMenu	ʳʼʺˀˀʸʲʴʳˁʸ	0x1D5250		0x1D5250
+6142	method	824	BaseMenu	ʴʴʳʵʸʲʽʸʻʼʶ	0x1D5290		0x1D5290
+6142	method	824	BaseMenu	ʵˁʺʻʲʹˁʻʹʺʳ	0x1D5620		0x1D5620
+6142	method	824	BaseMenu	ʷʺˀʸʾʺʽʴʻʳʶ	0x1D5290		0x1D5290
+6142	method	824	BaseMenu	ʷˁʺʺʲʵʷʽʼˁʾ	0x1D57F0		0x1D57F0
+6142	method	824	BaseMenu	ʹʴʹˀʲʾʽʲʹˀʴ	0x1D5C00		0x1D5C00
+6142	method	824	BaseMenu	ʾʴʽʶʵʷʻʾʳʵʹ	0x1D6820		0x1D6820
+6142	method	824	BaseMenu	ˁʳʼʶʽʶʿʷʻʵʻ	0x1D6AE0		0x1D6AE0
+6142	method	824	BaseMenu	ˁʴʵˁʴʳʺʲʿʶʽ	0x1D6B10		0x1D6B10
+6142	method	824	BaseMenu	ˁʴʾʲʾʴʺʵʵˀˁ	0x1D6BC0		0x1D6BC0
 6142	method	8246		.cctor	0x2095040		0x2095040
 6142	method	8251		ʸʴʼʳʸʼʶʵʺʷʼ	0x20E49D0		#8251.ReadFills
 6142	method	8251		ʸʴʼʳʸʼʶʵʺʷʼ	0x20E49D0		0x20E49D0
 6142	method	8251		ʽˁʵˁʿʸʴʳʶʵʹ	0x20E5E70		0x20E5E70
+6142	method	8252		ʲˀʺʷʲʸʳʶʴʾʳ	0x20D5E60		0x20D5E60
+6142	method	8252		ʳʴʴʾʴʻʷʸʲʻʺ	0x20D5E60		0x20D5E60
+6142	method	8252		ʵʶʷˁʽʲʼˁʼʽʽ	0x20D5E60		0x20D5E60
+6142	method	8252		ʶʽʴʿʺʲʾʽʾˁʸ	0x20D5E60		0x20D5E60
+6142	method	8252		ʶʾˁʹˀʳʽʹʻʸʸ	0x20D5E60		0x20D5E60
+6142	method	8252		ʸʻʷʿʲʴʿʳʷʷʻ	0x20D5E60		0x20D5E60
+6142	method	8252		ʸʼʼʿʺʾʽʺʴʶʿ	0x20D5E60		0x20D5E60
+6142	method	8252		ʸˁʵʾˀʾʾʳʹˀʴ	0x84220		0x84220
+6142	method	8252		ʹʳʾˁʺʾʹˁʻʹʲ	0x20D5E60		0x20D5E60
+6142	method	8252		ʺʷʻʲʴʺʷʺʺʶʴ	0x20D5E60		0x20D5E60
+6142	method	8252		ʺʹʸʸʿʵʶʵʵʽʺ	0x20D5E60		0x20D5E60
+6142	method	8252		ʼʹʵˀʸʶʲʹʶʿˁ	0x20D5E60		0x20D5E60
+6142	method	8252		ʽʵʳʵʵʺʻʽʿʳʴ	0x102040		0x102040
+6142	method	8252		ʾʵʺʼʳʾʴˀʷʷʳ	0x20D5E60		0x20D5E60
+6142	method	8252		ʿʷʺʴʿʷʾʵʵʿˁ	0x102040		0x102040
+6142	method	8252		ʿʿʿˁʹˁʶʵʸʺʷ	0x84220		0x84220
+6142	method	8252		ˁʼʹʶʲʾʹʼʿʸʵ	0x84220		0x84220
 6142	method	8253		.ctor	0x100E960		0x100E960
 6142	method	8253		.ctor	0x100E960		RVA_BASE_ENGINE_CTOR_DRUMS
 6142	method	8253		.ctor	0x100EAE0		0x100EAE0
@@ -213,20 +957,29 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	method	8255		ʷʿʺʴʲʴʷʾʹʳʹ	0x20DD700		0x20DD700
 6142	method	8255		ʸʸʳʽʲʻʿʸʳʸʽ	0x20DDB70		#8255.AddStarPower
 6142	method	8255		ʸʸʳʽʲʻʿʸʳʸʽ	0x20DDB70		0x20DDB70
+6142	method	8255		ʹʵʾʼʿʲʹʼʷʼʲ	0x20DDC80		0x20DDC80
 6142	method	8255		ʹʹʴˁʹʶʲʺʲʲʿ	0x20DDDA0		0x20DDDA0
 6142	method	8255		ʹʹʴˁʹʶʲʺʲʲʿ	0x20DDDA0		RVA_WINDOW_FORMULA
 6142	method	8255		ʹʻʿʻʲʴʷˀʿʽʿ	0x20DDEC0		0x20DDEC0
+6142	method	8255		ʻʶʿʺʹʺˁʷʽʷʸ	0x20DE070		0x20DE070
+6142	method	8255		ʻʺʵʹʼʷʿʶˀʸʿ	0x20DE240		0x20DE240
+6142	method	8255		ʽʽʾʹʿʺʾʵʴʽʺ	0x20DE4C0		0x20DE4C0
 6142	method	8255		ʾʵʵʷʻʳʻʾʶʺʲ	0x20DE5A0		0x20DE5A0
 6142	method	8255		ʾʹʳʹʲʼʲʵʲʹʷ	0x20DE5B0		0x20DE5B0
+6142	method	8255		ʾʹˀʵˀʿʽʶʻʵʼ	0x20DE680		0x20DE680
 6142	method	8255		ʾʼʺʻˀʵʶʸʶʻʳ	0x20DE770		0x20DE770
 6142	method	8255		ʾʼʺʻˀʵʶʸʶʻʳ	0x20DE770		RVA_NOTE_DYNAMICS
+6142	method	8255		ʾˁʻʽʺʷʵʹʹʽʺ	0x20DE9A0		0x20DE9A0
 6142	method	8255		ʿʶʲʳʲʴʴʵʴʲʷ	0x20DEAA0		0x20DEAA0
 6142	method	8255		ʿʾʹʲˀʶʷʵʶʶˀ	0x20DEEC0		0x20DEEC0
 6142	method	8255		ʿʾʹʲˀʶʷʵʶʶˀ	0x20DEEC0		RVA_NOTE_SCORE_ADD
 6142	method	8255		ˀʽʶʶʻʹˀʼˁʴʸ	0x20DEFF0		0x20DEFF0
+6142	method	8255		ˀˁʶˁʻʼʶʴʻʲʳ	0x20DF3E0		0x20DF3E0
+6142	method	8255		ˁˀʶʲʺʷʵʴʵʼʺ	0x20DF4C0		0x20DF4C0
 6142	method	8257		ʴˀʲʸʷʶˁˀʺʶʲ	0x20DACA0		#8257.BuildLines
 6142	method	8257		ʴˀʲʸʷʶˁˀʺʶʲ	0x20DACA0		0x20DACA0
 6142	method	8263		.ctor	0x20E8D30		0x20E8D30
+6142	method	8263		ˁˀʺʳʼˀʳʴˁʽʷ	0x20E8B60		0x20E8B60
 6142	method	8265		ʳʷˁʸʵʾʼʷˀʲˁ	0x20CFF60		#8265.PlaceWrittenFills
 6142	method	8265		ʳʷˁʸʵʾʼʷˀʲˁ	0x20CFF60		0x20CFF60
 6142	method	8265		ʴˁʽʳʾʿˁʽʼʸʺ	0x20D0330		0x20D0330
@@ -236,21 +989,26 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	method	8265		ʸʷʲʵʸʾʾʼʿʼʶ	0x20D1ED0		0x20D1ED0
 6142	method	8265		ʸʹʵˁʵʼʾʸʾˀʺ	0x20D2440		#8265.AssignStarPowerPhrases
 6142	method	8265		ʸʹʵˁʵʼʾʸʾˀʺ	0x20D2440		0x20D2440
+6142	method	8265		ʸʹʸʴʷˁʿʶʾʽʶ	0x20D26A0		0x20D26A0
 6142	method	8265		ʸʺˁʵʳʴʺʸˀʴʴ	0x20D2930		0x20D2930
 6142	method	8265		ʸˀʽʸʽʳʳʸʼʾʿ	0x20D2B30		#8265.GenerateFills
 6142	method	8265		ʸˀʽʸʽʳʳʸʼʾʿ	0x20D2B30		0x20D2B30
 6142	method	8265		ʹʹʾʴʳʶʼʵʳʼʼ	0x20D2EA0		#8265.BuildPlayData
 6142	method	8265		ʹʹʾʴʳʶʼʵʳʼʼ	0x20D2EA0		0x20D2EA0
 6142	method	8265		ʺʷʸˀʷʴʿʲʵʼʾ	0x20D36A0		0x20D36A0
+6142	method	8265		ʼʴʷʼʻʵʸʷʵʷˀ	0x20D3F30		0x20D3F30
 6142	method	8265		ʼʽʾˁʼʻʹʷʺˁʻ	0x20D4440		0x20D4440
+6142	method	8265		ʽʿʽʹʿʲʹʴʸʹʳ	0x20D4AA0		0x20D4AA0
 6142	method	8265		ʿʹʿʸʹʽʾʻʸʵʵ	0x20D4BE0		0x20D4BE0
 6142	method	8265		ˀʶˀʾʴʳʹʶˁʹʹ	0x20D51D0		0x20D51D0
 6142	method	8265		ˁʻʲʸʼʾʺʳʷʷʶ	0x20D5310		0x20D5310
+6142	method	8267		.ctor	0x20E73E0		0x20E73E0
 6142	method	8278		ʴʻʷʽʺʹʽʲʲʿʾ	0x20EF450		0x20EF450
 6142	method	8278		ʷʽʶʽˁʸʻʵʲʴʶ	0x20EFEE0		#8278.ClearGhostAccentFlags
 6142	method	8278		ʷʽʶʽˁʸʻʵʲʴʶ	0x20EFEE0		0x20EFEE0
 6142	method	8278		ʷʽʶʽˁʸʻʵʲʴʶ	0x20EFEE0		0x20efee0
 6142	method	8278		ʸʸʶʴʲʳʷʻʿʵʿ	0x20EFF60		0x20EFF60
+6142	method	8278		ʸʼʶʹʽʼʼʹʳʹˀ	0x20F0520		0x20F0520
 6142	method	8278		ʹˀʵʸʿˁʸʶʴˀʲ	0x20F06A0		0x20F06A0
 6142	method	8278		ʾʷʳʷʼʵʴʹˀˁʼ	0x20F0B30		0x20F0B30
 6142	method	8278		ʾʿʺʶʼʵʽʽʻʾʹ	0x20F0C30		0x20F0C30
@@ -262,13 +1020,33 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	method	828		ʲʺʾʷʽʻʾʿʳʸʸ	0x1EF1A0		0x1EF1A0
 6142	method	828		ʺʻʸʽʿʵʴʾʵʴʲ	0x1EFC60		0x1EFC60
 6142	method	828		ʺʽʻʸʽˁˀʲʺʻʲ	0x1EFF90		0x1EFF90
-6142	method	828		ʽʴʽʷʹʶʷʳʹʺʵ	0x1F0380		0x1F0380
 6142	method	828		ˀˀʶˁʹʶʻʻʲʴʻ	0x1F0830		0x1F0830
+6142	method	8284		ʵʸʹʹʽʽˁʴˀʿʷ	0x102040		0x102040
+6142	method	8284		ʶʾˁʹˀʳʽʹʻʸʸ	0x20D5E60		0x20D5E60
+6142	method	8284		ʶˀʹʼʶʼʻʵʿʽʹ	0x102040		0x102040
+6142	method	8284		ʸʲʼˀʲʼʿʴʷʾʳ	0x84220		0x84220
+6142	method	8284		ʸʼʼʿʺʾʽʺʴʶʿ	0x20D5E60		0x20D5E60
+6142	method	8284		ʸˁʵʾˀʾʾʳʹˀʴ	0x84220		0x84220
+6142	method	8284		ʹʳʾˁʺʾʹˁʻʹʲ	0x20D5E60		0x20D5E60
+6142	method	8284		ʺʳʷʲʴʲˁˀʵʵʹ	0x84220		0x84220
+6142	method	8284		ʺʷʻʲʴʺʷʺʺʶʴ	0x20D5E60		0x20D5E60
+6142	method	8284		ʺˁʲʳˀʶʻʴʳʽʹ	0x102040		0x102040
+6142	method	8284		ʽʵʳʵʵʺʻʽʿʳʴ	0x102040		0x102040
+6142	method	8284		ʾʵʺʼʳʾʴˀʷʷʳ	0x20D5E60		0x20D5E60
+6142	method	8284		ʾʹʳʳʴʺʴʺʹʴʽ	0x84220		0x84220
+6142	method	8284		ʿʷʺʴʿʷʾʵʵʿˁ	0x102040		0x102040
+6142	method	8284		ʿʿʿˁʹˁʶʵʸʺʷ	0x84220		0x84220
+6142	method	8284		ˀʾˀʳˀʶʶˀʵʳˁ	0x102040		0x102040
+6142	method	8284		ˁʼʹʶʲʾʹʼʿʸʵ	0x102040		0x102040
+6142	method	8286		ʸʶʳʽʺʵˁʷʿʴʻ	0x20FA1E0		0x20FA1E0
+6142	method	8286		ʽʳʸʿʷʽʼˁʸʻʼ	0x20FA8F0		0x20FA8F0
 6142	method	8288		.ctor	0x20F79E0		0x20F79E0
+6142	method	8288		ʲʹʹʷʶʿʶʸˁʽʷ	0x20F3500		0x20F3500
 6142	method	8288		ʳʻʷʵˁʴʾʻʿʴʺ	0x20F3750		0x20F3750
 6142	method	8288		ʳʼʽʽʸʽʺʲʼʹʻ	0x20F37E0		0x20F37E0
 6142	method	8288		ʴʼʶʿʴʲʶʵʼʳˁ	0x20F3A90		0x20F3A90
 6142	method	8288		ʵʲʼʾʾʲʼʽʶʵʳ	0x20F3DC0		0x20F3DC0
+6142	method	8288		ʵʶʾʽʽʴʲʼʷˁʼ	0x20F4310		0x20F4310
 6142	method	8288		ʵʷʾʴʳʲʳʹʸʹˀ	0x20F43A0		0x20F43A0
 6142	method	8288		ʵʺʴʻˀʺˀˁʶʻʷ	0x20F4550		0x20F4550
 6142	method	8288		ʶʴˀʴʿʷʵʺʺʽʿ	0x20F4680		0x20F4680
@@ -278,6 +1056,7 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	method	8288		ʸʸʳʽʲʻʿʸʳʸʽ	0x20F4FA0		#8288.AddStarPower
 6142	method	8288		ʸʸʳʽʲʻʿʸʳʸʽ	0x20F4FA0		0x20F4FA0
 6142	method	8288		ʹʸʾʷʴʼʻʾʶʻˀ	0x20F52E0		0x20F52E0
+6142	method	8288		ʹʺʾʷʸʲʾʷʹʶʾ	0x20F5330		0x20F5330
 6142	method	8288		ʹʻʶʾʶʴʿʲʷˀʹ	0x20F5490		0x20F5490
 6142	method	8288		ʹʻʿʻʲʴʷˀʿʽʿ	0x20F5540		0x20F5540
 6142	method	8288		ʹʼʲʷʽʲʲʲʲʾʾ	0x20F5640		0x20F5640
@@ -285,6 +1064,7 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	method	8288		ʹˀʲʺʹʿʾʾʽʴʷ	0x20F5810		0x20F5810
 6142	method	8288		ʻʴʵʹʷʵˁˀʶˁʽ	0x20F5F70		0x20F5F70
 6142	method	8288		ʻʶʴˁʺʿʳʲˁʽʹ	0x20F5FF0		0x20F5FF0
+6142	method	8288		ʽˀʺʺʺʷʶʸʶʲʺ	0x20F62C0		0x20F62C0
 6142	method	8288		ʾʵʵʷʻʳʻʾʶʺʲ	0x20F63B0		0x20F63B0
 6142	method	8288		ʾʼʺʻˀʵʶʸʶʻʳ	0x20F63F0		0x20F63F0
 6142	method	8288		ʾˀʷʶʲʳʸʽʻʵʳ	0x20F6800		0x20F6800
@@ -293,6 +1073,7 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	method	8288		ʿˁʿʶʴʸʵʶʿʲˁ	0x20F6FF0		0x20F6FF0
 6142	method	8288		ˀʵˁʴʾʶʽʺʼʴʹ	0x20F7210		0x20F7210
 6142	method	8288		ˁʺʸʿʽʼʸʴʺʹˁ	0x20F7610		0x20F7610
+6142	method	8290		ʼʺʻʼˀʸʴʻʼˁʽ	0x2109730		0x2109730
 6142	method	8292		ʲʵʺʷʼʾʴʵʻʲʶ	0x20FB9A0		0x20FB9A0
 6142	method	8292		ʲˀʺʷʲʸʳʶʴʾʳ	0x20FB9A0		0x20FB9A0
 6142	method	8292		ʵʶʷˁʽʲʼˁʼʽʽ	0x20FB9A0		0x20FB9A0
@@ -323,7 +1104,6 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	method	8298		ʸʶʼʵʾʺʹʲˁʴˁ<object>	0x5FB640		0x5FB640
 6142	method	8298		ʿʶʻʾʺʴʴʼʹʸʶ<object>	0x5FBC10		0x5FBC10
 6142	method	8298		ˁʴʲʿʽʻʸʼˀʹʴ<object>	0x5FBC10		0x5FBC10
-6142	method	8300		ʼˁʲʷˁʹʽʸʹʾʵ	0xFEB4C0		0xFEB4C0
 6142	method	8301		ʳʳʷʹʺʸʶʹʹʶʾ	0x20FC5F0		0x20FC5F0
 6142	method	8301		ʶʼʵʲʸʳʻʴʴʹʹ	0x20FC5F0		0x20FC5F0
 6142	method	8301		ʷʸʽʺʻʷʿʸʳʿʿ	0x20FC5F0		0x20FC5F0
@@ -337,6 +1117,7 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	method	8308		ʴˁʺʸʲʶʸʵʹʹʿ	0x210BF30		0x210BF30
 6142	method	8308		ʸʺˀʳˁʽʸʺʲʻˁ	0x210C090		0x210C090
 6142	method	8308		ʽʺʲʴʼʿˁʼʻˁʴ	0x210C1F0		0x210C1F0
+6142	method	8308		ʿˁʻʸʶʼˀʿʴʳʲ	0x210C2F0		0x210C2F0
 6142	method	8316		ʳʺʾʶʷʻʷʴʴʶˀ	0x210D780		0x210D780
 6142	method	8316		ʸʴʶʳʻˁʶˀʻʸˀ	0x210D7B0		0x210D7B0
 6142	method	8316		ʻˁˁʿʶʷʴˀʵʻʺ	0x210D990		0x210D990
@@ -350,47 +1131,94 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	method	8351		ʽʵʲˁʹʶʻʹʷʼʿ	0x21104F0		0x21104F0
 6142	method	8351		ʾʷʵʶʵˁʿʺʷʷˁ	0x2110920		0x2110920
 6142	method	8354		.ctor	0x2116210		0x2116210
+6142	method	838	PlayerProfileMenu	ʳʳʳʿʽʷʳʺʸʽˁ	0x1E1920		0x1E1920
 6142	method	838	PlayerProfileMenu	ʼʼʿʻʴˁʼʲʳʲʽ	0x1E68D0		0x1E68D0
+6142	method	838	PlayerProfileMenu	ʾʶʵʺʴˀʳʳʳʴʸ	0x1E74C0		0x1E74C0
+6142	method	838	PlayerProfileMenu	ˀˁʹʿˀʾʾʾʴʵʷ	0x1E74C0		0x1E74C0
+6142	method	8495		ʲʲʽʹʼʺʿʲʵʹʻ	0x2128770		0x2128770
+6142	method	8495		ʳʶˀʷʵʵʼʳˁʴʸ	0x2128B70		0x2128B70
+6142	method	8495		ʳʶˀʷʵʵʼʳˁʴʸ	0x2128F10		0x2128F10
+6142	method	8495		ʼʴʶʶʵʾʴʹʽˁʳ<__Il2CppFullySharedGenericType, __Il2CppFullySharedGenericType, __Il2CppFullySharedGenericType, __Il2CppFullySharedGenericType, __Il2CppFullySharedGenericType>	0x604210		0x604210
+6142	method	8496		.ctor	0x2117120		0x2117120
 6142	method	8500		.ctor	0x211BA30		0x211BA30
 6142	method	8501		ʲʺʷʼʴˀʳʴʲʵʾ	0x211BAD0		0x211BAD0
 6142	method	8501		ʵʽʼʿʹʹˀʸʻʵʺ	0x211C270		0x211C270
 6142	method	8501		ʼʴˁʼʻʹʾʹʷʹʿ	0x211E4C0		0x211E4C0
 6142	method	8513		ʴˀʺʳʲʺʴʴʽʷʳ	0x2112BF0		0x2112BF0
 6142	method	8513		ʷʶʿʲʾʽʷʺʳʲʵ	0x2112DB0		0x2112DB0
+6142	method	8513		ʷʿʳʽʺʿʲʸʽˀʽ	0x2113300		0x2113300
+6142	method	8513		ʸˀʴʽʺʵʳʲʷʽʻ	0x21134B0		0x21134B0
+6142	method	8513		ʹʲʵʻʸʼˁʼʴʿʺ	0x21135B0		0x21135B0
 6142	method	8513		ʹʹʹʽʲʸʸʿʸʴʴ	0x2113710		0x2113710
 6142	method	8513		ʺʴʶʲʳʷʺʻʷʺʹ	0x2113C60		0x2113C60
+6142	method	8513		ʽʽʵʶʸʹʸʽʼʳʹ	0x2114600		0x2114600
 6142	method	8513		ˀʷʳʵʸʼˀʷʵʷʶ	0x2114A80		0x2114A80
 6142	method	8513		ˀˁʷʶʶʴʾʴʽʵʶ	0x21150E0		0x21150E0
+6142	method	8513		ˁʹʲʵʽʲʲʸʻʳˀ	0x2115760		0x2115760
 6142	method	8513		ˁˀʽʵʶʾʻʸʷʽʾ	0x2115820		0x2115820
+6142	method	8517		ʵʸʹʹʽʽˁʴˀʿʷ	0x84220		0x84220
+6142	method	8517		ʶʺʷʽʿʴˀˀʹʺʽ	0x102040		0x102040
+6142	method	8517		ʷˀʴʿˀʴʼʿˁˀʺ	0x2116390		0x2116390
+6142	method	8517		ʸʲʼˀʲʼʿʴʷʾʳ	0x84220		0x84220
+6142	method	8517		ʸʻʷʿʲʴʿʳʷʷʻ	0x2116390		0x2116390
+6142	method	8517		ʸʼʼʿʺʾʽʺʴʶʿ	0x2116390		0x2116390
+6142	method	8517		ʹʳʾˁʺʾʹˁʻʹʲ	0x2116390		0x2116390
+6142	method	8517		ʹʻˀʷˀʿʳʹʴʳˁ	0x2116390		0x2116390
+6142	method	8517		ʺʳʷʲʴʲˁˀʵʵʹ	0x102040		0x102040
+6142	method	8517		ʺʷʻʲʴʺʷʺʺʶʴ	0x2116390		0x2116390
+6142	method	8517		ʺʹʸʸʿʵʶʵʵʽʺ	0x2116390		0x2116390
+6142	method	8517		ʺˀˀʽʻʶʼʼʼʳˁ	0x2116390		0x2116390
+6142	method	8517		ʽʵʳʵʵʺʻʽʿʳʴ	0x102040		0x102040
+6142	method	8517		ʾʵʺʼʳʾʴˀʷʷʳ	0x2116390		0x2116390
+6142	method	8517		ˁʼʹʶʲʾʹʼʿʸʵ	0x84220		0x84220
 6142	method	8526		.ctor	0x2123890		0x2123890
+6142	method	8526		ʼʴʵʶʹʿʻʲʷʸʻ	0x2122EF0		0x2122EF0
+6142	method	8526		ʼʴʶʾʶˀʺʾʲʸʻ	0x2123150		0x2123150
 6142	method	8526		ʼʾˁʺʴʻʵʳʾʲʺ	0x2123320		0x2123320
+6142	method	8526		ʿʵʹʽˁˀʿʴʼʷʾ	0x21236D0		0x21236D0
+6142	method	8537		ʶʷʹʾʲʳʵʲʻˀʽ	0x2121340		0x2121340
 6142	method	8538		ʳʻʵˁʺʾʹʸʻʸʿ	0x212B9C0		0x212B9C0
+6142	method	8538		ʳʽʸʴʷʷʼʵʳʻʾ	0x212BCC0		0x212BCC0
 6142	method	8538		ʴʸˁʳˀʽʼʺʸʾˁ	0x20CFCE0		0x20CFCE0
 6142	method	8538		ʴˁʹˀʵʲʾʺʴʼʵ	0x212C0B0		0x212C0B0
 6142	method	8538		ʶˁʻʷʼʷʶʻʳʳʿ	0x212C7E0		0x212C7E0
 6142	method	8538		ʿʼʿʿʵʵʲʿʷˁʻ	0x212E130		#8538.LastGemEndTick
 6142	method	8538		ʿʼʿʿʵʵʲʿʷˁʻ	0x212E130		0x212E130
 6142	method	8538		ˁʶʲʾʹʻʿʾˁʾʾ	0x212E310		0x212E310
+6142	method	8540		ʺʹʽʳʵʼʺʾʾʷʿ	0xFE7380		0xFE7380
 6142	method	8544		ʹʿʾʷʹʸʿʻˁʾʷ	0xFBC950		0xFBC950
 6142	method	8544		ʹʿʾʷʹʸʿʻˁʾʷ	0xFBC9C0		0xFBC9C0
+6142	method	8548		ʲʲʽʿʼʴʿʵʶʺʻ	0x212F4F0		0x212F4F0
+6142	method	8548		ʲʴʻʽʵʳˀʿʵʻʲ	0x212F4F0		0x212F4F0
+6142	method	8548		ʴʿʴʽʺˁʽʵʹʳʾ	0x2130490		0x2130490
+6142	method	8548		ʼʴʺˁʾʲʳʷʽʾʵ	0x2130570		0x2130570
 6142	method	8559		ʵʺˁʽʿʵʹʳˀʻʹ	0x214F6D0		0x214F6D0
 6142	method	8569		ʺʷʻʲʴʺʷʺʺʶʴ	0x214D240		0x214D240
 6142	method	8597		.ctor	0x214BF10		0x214BF10
 6142	method	8597		ʳʵˁʽʾʶʲʴʵʾʹ	0x214B600		0x214B600
+6142	method	8597		ʴʹˀʿʶʵʷʺʿʸʺ	0x214B620		0x214B620
+6142	method	8597		ʴʽʻʻʶˁʼʾˀʽʽ	0x214B630		0x214B630
 6142	method	8597		ʵʶʲʵʹʸʺʼʶʵʷ	0x214B6C0		0x214B6C0
 6142	method	8597		ʵʹʶʽʺʽʿʸʶʳʹ	0x214B6D0		0x214B6D0
+6142	method	8597		ʵˁʾˁʻˁʹʷʻʷʿ	0x214B6E0		0x214B6E0
+6142	method	8597		ʵˁˁˀʽʴʹʳʲʴˀ	0x214B710		0x214B710
 6142	method	8597		ʶʽʳʺʸʳʼʲʲʿʵ	0x214B740		0x214B740
+6142	method	8597		ʸʹʲʳʻʾʺʷʲˁʶ	0x214B7D0		0x214B7D0
 6142	method	8597		ʺʸˁʽʹʿˁʶʵʴʽ	0x214B850		0x214B850
+6142	method	8597		ʼʹʿʾˀʴʹʾʷʵˀ	0x214B860		0x214B860
+6142	method	8597		ʼʼʼʻʺˀʺʺˀʲʷ	0x214B870		0x214B870
 6142	method	8597		ʾʽʾʾʵʸʳʶʽˀʻ	0x214BB40		0x214BB40
 6142	method	8597		ʾʿʺʺʿʸʶʴʾʺʶ	0x214BB50		0x214BB50
 6142	method	8597		ʾˁʿʵʶˁʻʺˀʸʿ	0x214BB60		0x214BB60
 6142	method	8597		ʿʹʿʽʸʵʽˁʴˀʿ	0x214BBA0		0x214BBA0
 6142	method	8597		ʿʾʷʼʵʷˀˀʸˁˁ	0x214B6D0		0x214B6D0
 6142	method	8597		ʿˀʼʷʲʸʶʾˀʷʹ	0x214BCC0		0x214BCC0
+6142	method	8597		ˀʹʶʴʻʺʸʼʸʻˀ	0x214BDF0		0x214BDF0
 6142	method	8597		ˁʴˀʽʳʴʹʻʾʴʵ	0x214BE10		0x214BE10
 6142	method	8597		ˁʸʷʽʸʸʼʼʲʾʼ	0x214BE30		0x214BE30
 6142	method	8599		ʷʹʴʳʾʹʳʼˁʴʵ	0x214EFD0		0x214EFD0
 6142	method	8599		ʹʺʽʲʻˁʺʾˁʸʾ	0x214F0A0		0x214F0A0
+6142	method	861	GHLNoteContainer	ʽʿʶʸʻʲʿˀʵʹʼ	0x1F53B0		0x1F53B0
 6142	method	8611		.cctor	0x214C320		0x214C320
 6142	method	8615		ʶʽʽʿʻʾʴˁˀʴʹ	0x213CAF0		0x213CAF0
 6142	method	8615		ʷʷʴʵʲˀʲˀʶʻʳ	0x213D160		0x213D160
@@ -399,6 +1227,7 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	method	8615		ʸʾʺʵˁʳʵʵʺʸʹ	0x213DB70		0x213DB70
 6142	method	8615		ʽʾʳʶˁʶʼʼˀʷʻ	0x213E0C0		0x213E0C0
 6142	method	8616		ˁʶʿʹʲʶʺʴʴʷʹ	0x215AFE0		0x215AFE0
+6142	method	8623		ʿʸʴʾʳʺʷʿʽʼʸ	0x102040		0x102040
 6142	method	8626		ʲʲʴʹʳʹʸʿʴˀʺ	0x2154180		0x2154180
 6142	method	8626		ʲʼʵˁˁʲʳʻˁʷʻ	0x21544E0		0x21544E0
 6142	method	8626		ʵʽʳʷʿʾʴʻʸʿʾ	0x2155050		0x2155050
@@ -408,34 +1237,127 @@ build	kind	typedef_index	class	member	rva	offset	cited
 6142	method	8626		ʿʷʺˁʲʷʴʸʼʽʵ	0x21581E0		0x21581E0
 6142	method	8627		ʵʶʴʷʲʼʷʿʵʿʴ	0x2161A80		0x2161A80
 6142	method	8627		ʽˁʴʾʶˀʿʾʶʿʽ	0x2163170		0x2163170
+6142	method	8639		ˁˀʻʽʿʸʾʷʻʹʶ	0x2158DF0		0x2158DF0
 6142	method	8646		ʲʿʿʺʶʻʿʻʵʺʹ	0x21647A0		0x21647A0
+6142	method	8646		ʸʷʽʺʼʻʿʾʸʾʸ	0x2165C50		0x2165C50
 6142	method	8661		ʲʲʲʿʴʴʴʷʲʽʳ	0x215B7C0		#8661.AddFillTwin
 6142	method	8661		ʲʲʲʿʴʴʴʷʲʽʳ	0x215B7C0		0x215B7C0
 6142	method	8661		ʲʸˁʽʷʵʼʴˀʶʶ	0x215B8C0		0x215B8C0
 6142	method	8661		ʳˁʾʵˀʿʲʲʼʸʽ	0x215BD50		#8661.AddFill
 6142	method	8661		ʳˁʾʵˀʿʲʲʼʸʽ	0x215BD50		0x215BD50
+6142	method	8661		ʴʷʸʽʴʼʶˀʶʲʷ	0x215BE50		0x215BE50
 6142	method	8661		ʴʺʺʹʴʼʻʲʶʹʴ	0x215C040		0x215C040
 6142	method	8661		ʴʻʳʶʷʷʽʶʼʽʽ	0x215C320		0x215C320
 6142	method	8661		ʴʼʻʹʾʲʼʹʷʸʳ	0x215C750		0x215C750
 6142	method	8661		ʵʲʷʿʺʼˁˀʷʽʵ	0x215CD50		0x215CD50
 6142	method	8661		ʶʸʼʺʹʻʶʲʺʴʷ	0x215DA70		0x215DA70
 6142	method	8661		ʶʹʵʼʶʳʾʸʷʹʵ	0x215DBD0		0x215DBD0
+6142	method	8661		ʶˀʼˀʶʺʾʹʿʿʴ	0x215E000		0x215E000
 6142	method	8661		ʷʻʻʷʲʺˀʷˁʴʹ	0x215E020		0x215E020
 6142	method	8661		ʸʸʺʴʻʸʹʺʺʽˁ	0x215E280		0x215E280
+6142	method	8661		ʺʴʽʲʽˁʼʸʾˀʳ<object>	0x5DB0C0		0x5DB0C0
+6142	method	8661		ʺʷʻʲʴʺʷʺʺʶʴ	0x215E6E0		0x215E6E0
 6142	method	8661		ʻʳʷˀʷʾʵʻˀʷʷ<object, object>	0x5DB320		0x5DB320
+6142	method	8661		ʻʺˀʴʿʶʴʳʻʻʿ<object>	0x5DB4C0		0x5DB4C0
+6142	method	8661		ʻʺˁˀʴʶʹʿˀʿʴ	0x215EA80		0x215EA80
 6142	method	8661		ʽˁʴʸʹʾʸʲˀʵʷ	0x215F610		0x215F610
 6142	method	8661		ʿʷˁʹʹʴʵˁʴʸʼ	0x215FE80		0x215FE80
 6142	method	8661		ʿʼʿʿʵʵʲʿʷˁʻ	0x215FED0		0x215FED0
+6142	method	8661		ˀˁʾʾʶʴʷʼʼʿʲ	0x215E000		0x215E000
 6142	method	8663		ʴʻʲʿʳˀʿʽʼʴʾ	0x2176020		0x2176020
+6142	method	8663		ʺʸʷʸʻʹʻˁˀˀʶ	0x21766F0		0x21766F0
+6142	method	8663		ʼʸʴʿʶʹʻʲʶʷʸ	0x2176900		0x2176900
+6142	method	8666		ʲʵʻʶʺʲʳʲʹʳʸ	0x84220		0x84220
+6142	method	8666		ʶʺˀʴʸʽʵʴʷʸʴ	0x102040		0x102040
+6142	method	8666		ʼʿʿʿʲʴʽʾʺʻʺ	0x84220		0x84220
+6142	method	8666		ʿˁʼʴʿʼʺʳʿˀʻ	0x84220		0x84220
 6142	method	8670		ʵʵʹʶʿˀʹʸʸʸˀ<object>	0x5DD8D0		0x5DD8D0
 6142	method	8670		ʶʲˁʿʹʵˀʺʲˁʿ<object>	0x5DDB50		0x5DDB50
 6142	method	8670		ʷʹʲʿʷʿʲˁʴʷʲ<object>	0x5DDED0		0x5DDED0
 6142	method	8670		ʷʾˀʼˀʵʹˁʻʻʷ<object>	0x5DE030		0x5DE030
+6142	method	8686		ʿʸʴʾʳʺʷʿʽʼʸ	0x84220		0x84220
+6142	method	874		ʶʾʹʿʵʴʸʹʼʾʾ	0x84220		0x84220
+6142	method	874		ʸʹʷʸʷʼʺˀˀʷʿ	0x102040		0x102040
+6142	method	8838	AsyncUtils.<>c__6<Nullable<bool>>	<FromCanceled>b__6_0	0x84220		0x84220
+6142	method	8838	AsyncUtils.<>c__6<Nullable<int>>	<FromCanceled>b__6_0	0x84220		0x84220
+6142	method	8838	AsyncUtils.<>c__6<int>	<FromCanceled>b__6_0	0x84220		0x84220
+6142	method	8838	AsyncUtils.<>c__6<object>	<FromCanceled>b__6_0	0x84220		0x84220
+6142	method	894		ʴʳʲʽˀʵʼʲʿʾʹ	0x84220		0x84220
+6142	method	894		ʴʾʶˀˁʸʷʴʺʲʴ	0x84220		0x84220
+6142	method	894		ʵʼʲʹʹʷʼʾʻʾˁ	0x84220		0x84220
+6142	method	894		ʶʸʸʿʻʿʿʹʵˀʲ	0x102040		0x102040
+6142	method	894		ʷʲˁʴˀʶʹˁʲʿʷ	0x84220		0x84220
+6142	method	894		ʷʶʸʽʽʶʽʳʻʲʻ	0x84220		0x84220
+6142	method	894		ʸʲʴʼʼʻˁʻʵʺʻ	0x102040		0x102040
+6142	method	894		ʸʹʷʸʷʼʺˀˀʷʿ	0x102040		0x102040
+6142	method	894		ʸʽʲʽʾʴʿʻʿʲʿ	0x84220		0x84220
+6142	method	894		ʹʸʷʼʹʽʶʵʼʾʶ	0x102040		0x102040
+6142	method	894		ʺʽʺʶʾʸʵˀʹʸʵ	0x102040		0x102040
+6142	method	894		ʽʷʳʹʸʾʷʹʻʽʻ	0x84220		0x84220
+6142	method	894		ʾʽʺʸʷʲʲʻʼʳʻ	0x102040		0x102040
+6142	method	894		ˁʽʽʹʷʽˀʿʼˀʲ	0x102040		0x102040
+6142	method	897		ʹʿʿʸʴʸʺʸʹʶʼ	0x213040		0x213040
+6142	method	8987	JsonSerializerInternalReader.<>c	<PopulateObject>b__42_1	0x84220		0x84220
 6142	method	901	BasePlayer	Update	0x20A1B0		0x20A1B0
 6142	method	901	BasePlayer	Update	0x20A1B0		BasePlayer.Update
+6142	method	901	BasePlayer	ʳʲʷˁʿʶʾʺʺʿʲ	0x208070		0x208070
+6142	method	901	BasePlayer	ʵʺʷʵʼʽʴʹʿʲˁ	0x2085D0		0x2085D0
+6142	method	901	BasePlayer	ʵʻʿʾʴʺʴʼˁʼʴ	0x2086C0		0x2086C0
+6142	method	901	BasePlayer	ʵˀʼʼʴʻˀʻʹˀʳ	0x208780		0x208780
 6142	method	901	BasePlayer	ʶʷʶʲʽʼʼʾʿʵʵ	0x208870		0x208870
 6142	method	901	BasePlayer	ʸʾʶʹʲʽʵʿʹʺʽ	0x208F50		0x208F50
+6142	method	901	BasePlayer	ʻʹˁʾʸʾʺʶʶʹʳ	0x2096F0		0x2096F0
+6142	method	901	BasePlayer	ʾˀʵʾʾʻʷʿʴʾˁ	0x209C70		0x209C70
+6142	method	9052	JContainer	System.ComponentModel.IBindingList.get_SortDirection	0x84220		0x84220
+6142	method	9052	JContainer	System.ComponentModel.IBindingList.get_SortProperty	0x84220		0x84220
+6142	method	9060	JObject	System.ComponentModel.ICustomTypeDescriptor.GetClassName	0x84220		0x84220
+6142	method	9060	JObject	System.ComponentModel.ICustomTypeDescriptor.GetComponentName	0x84220		0x84220
+6142	method	9060	JObject	System.ComponentModel.ICustomTypeDescriptor.GetDefaultEvent	0x84220		0x84220
+6142	method	9060	JObject	System.ComponentModel.ICustomTypeDescriptor.GetDefaultProperty	0x84220		0x84220
+6142	method	9060	JObject	System.ComponentModel.ICustomTypeDescriptor.GetEditor	0x84220		0x84220
+6142	method	9060	JObject	get_Type	0x102040		0x102040
+6142	method	907		ʺʻˀˁʸˀʸʻˀʸʲ	0x2161E0		0x2161E0
+6142	method	907		ʾʿʳʽʳʴʴˁʽʸʽ	0x2167B0		0x2167B0
+6142	method	9154	XObjectWrapper	get_LocalName	0x84220		0x84220
+6142	method	9154	XObjectWrapper	get_NamespaceUri	0x84220		0x84220
+6142	method	9154	XObjectWrapper	get_ParentNode	0x84220		0x84220
+6142	method	9154	XObjectWrapper	get_Value	0x84220		0x84220
+6142	method	9210	DataSet	get_SchemaSerializationMode	0x102040		0x102040
+6142	method	9223	InternalDataCollectionBase	get_List	0x84220		0x84220
+6142	method	9256	DataRowView	System.ComponentModel.ICustomTypeDescriptor.GetClassName	0x84220		0x84220
+6142	method	9256	DataRowView	System.ComponentModel.ICustomTypeDescriptor.GetComponentName	0x84220		0x84220
+6142	method	9256	DataRowView	System.ComponentModel.ICustomTypeDescriptor.GetConverter	0x84220		0x84220
+6142	method	9256	DataRowView	System.ComponentModel.ICustomTypeDescriptor.GetDefaultEvent	0x84220		0x84220
+6142	method	9256	DataRowView	System.ComponentModel.ICustomTypeDescriptor.GetDefaultProperty	0x84220		0x84220
+6142	method	9256	DataRowView	System.ComponentModel.ICustomTypeDescriptor.GetEditor	0x84220		0x84220
+6142	method	9281	DataExpression	get_HasValue	0x1E1920		0x1E1920
+6142	method	9354	SqlBinary	System.Xml.Serialization.IXmlSerializable.GetSchema	0x84220		0x84220
+6142	method	9355	SqlBoolean	System.Xml.Serialization.IXmlSerializable.GetSchema	0x84220		0x84220
+6142	method	9356	SqlByte	System.Xml.Serialization.IXmlSerializable.GetSchema	0x84220		0x84220
+6142	method	9358	SqlBytes	System.Xml.Serialization.IXmlSerializable.GetSchema	0x84220		0x84220
+6142	method	9359	SqlChars	System.Xml.Serialization.IXmlSerializable.GetSchema	0x84220		0x84220
+6142	method	9360	SqlDateTime	System.Xml.Serialization.IXmlSerializable.GetSchema	0x84220		0x84220
+6142	method	9361	SqlDecimal	System.Xml.Serialization.IXmlSerializable.GetSchema	0x84220		0x84220
+6142	method	9362	SqlDouble	System.Xml.Serialization.IXmlSerializable.GetSchema	0x84220		0x84220
+6142	method	9363	SqlGuid	System.Xml.Serialization.IXmlSerializable.GetSchema	0x84220		0x84220
+6142	method	9364	SqlInt16	System.Xml.Serialization.IXmlSerializable.GetSchema	0x84220		0x84220
+6142	method	9365	SqlInt32	System.Xml.Serialization.IXmlSerializable.GetSchema	0x84220		0x84220
+6142	method	9366	SqlInt64	System.Xml.Serialization.IXmlSerializable.GetSchema	0x84220		0x84220
+6142	method	9367	SqlMoney	System.Xml.Serialization.IXmlSerializable.GetSchema	0x84220		0x84220
+6142	method	9368	SqlSingle	System.Xml.Serialization.IXmlSerializable.GetSchema	0x84220		0x84220
+6142	method	9370	SqlString	System.Xml.Serialization.IXmlSerializable.GetSchema	0x84220		0x84220
+6142	method	9376	SqlXml	System.Xml.Serialization.IXmlSerializable.GetSchema	0x84220		0x84220
+6142	method	9399	SqlBytesStorage	Compare	0x84220		0x84220
+6142	method	9399	SqlBytesStorage	CompareValueTo	0x84220		0x84220
+6142	method	9400	SqlCharsStorage	Compare	0x84220		0x84220
+6142	method	9400	SqlCharsStorage	CompareValueTo	0x84220		0x84220
+6142	method	9447	AsyncUnit	GetHashCode	0x84220		0x84220
+6142	method	9725	UniTaskExtensions.ToCoroutineEnumerator	get_Current	0x84220		0x84220
 6142	method	990	MIDIInputManager	ʳʲʾʿʻˀʾʽʹʼʻ	0x21CDE0		0x21CDE0
 6142	method	990	MIDIInputManager	ʸʲˀʸʲʻˀʶʲʲʲ	0x21E420		0x21E420
 6142	method	990	MIDIInputManager	ʺʷʵʾʺʻʷʺʿʽʽ	0x21F790		0x21F790
+6142	method	994		ʴʾʶˀˁʸʷʴʺʲʴ	0x84220		0x84220
+6142	method	994		ʶʸʸʿʻʿʿʹʵˀʲ	0x84220		0x84220
+6142	method	994		ʽʷʳʹʸʾʷʹʻʽʻ	0x84220		0x84220
 6142	method	996		ʷʺʲʿʲʼʽʵʹʳʴ	0x11676A0		0x11676A0
+6142	method	996		ˀʲʹʺˀʹʿˀʳʽˀ	0x1168290		0x1168290

@@ -1,0 +1,43 @@
+sections: il2cpp rva 0x1000 size 0x2C3D4F0 exec, .text rva 0x2C3F000 size 0x423A3C exec, .rdata rva 0x3063000 size 0xB83BF0, .data rva 0x3BE7000 size 0x5E0A4C, .pdata rva 0x41C8000 size 0x27B25C, .fptable rva 0x4444000 size 0x100, .reloc rva 0x4445000 size 0x11706C
+== il2cpp: direct call/jmp rel32 and RIP-relative disp32
+disp32 at 0x1A1C59 -> slot 0x3CACE00 'https://gateway-service.clonehero.net/api/session/request' in 0x1A1C00 (dump.cs line 39525: public void ˁʾʳʴʳʹʶʲʹʿʼ(SongEntry ʺʴʸʺˁʷʿʽʵʾʺ, ˀʵʳʲʺʽʵˁʹʺʼ ʸʾʿʺʶʲʼʴˁʾʻ, ʼˁʿʷʶʸʴʼʹʾʶ ʹʹʺʲʻˁ)
+disp32 at 0x1A205E -> slot 0x3CACE00 'https://gateway-service.clonehero.net/api/session/request' in 0x1A1C00 (dump.cs line 39525: public void ˁʾʳʴʳʹʶʲʹʿʼ(SongEntry ʺʴʸʺˁʷʿʽʵʾʺ, ˀʵʳʲʺʽʵˁʹʺʼ ʸʾʿʺʶʲʼʴˁʾʻ, ʼˁʿʷʶʸʴʼʹʾʶ ʹʹʺʲʻˁ)
+disp32 at 0x1F53D1 -> slot 0x3CACE00 'https://gateway-service.clonehero.net/api/session/request' in 0x1F53B0 (dump.cs line 46841: private void ʽʿʶʸʻʲʿˀʵʹʼ() { })
+disp32 at 0x1F5450 -> slot 0x3CACE00 'https://gateway-service.clonehero.net/api/session/request' in 0x1F53B0 (dump.cs line 46841: private void ʽʿʶʸʻʲʿˀʵʹʼ() { })
+disp32 at 0x1FF53C -> slot 0x3CAC840 'https://analytics.clonehero.net/analytics/api/v1/' in 0x1FF500 (dump.cs line 46701: public void .ctor() { })
+disp32 at 0x1FF54F -> slot 0x3CAC840 'https://analytics.clonehero.net/analytics/api/v1/' in 0x1FF500 (dump.cs line 46701: public void .ctor() { })
+disp32 at 0x1FF55E -> slot 0x3CAC840 'https://analytics.clonehero.net/analytics/api/v1/' in 0x1FF500 (dump.cs line 46701: public void .ctor() { })
+disp32 at 0x25F664 -> slot 0x3CCEC60 'Making session request to gateway: ...' in 0x25F5E0 (dump.cs line 56643: private int ʿʴˀʹʾˁʵʸʿˁʿ() { })
+disp32 at 0x25F80E -> slot 0x3CCEC60 'Making session request to gateway: ...' in 0x25F5E0 (dump.cs line 56643: private int ʿʴˀʹʾˁʵʸʿˁʿ() { })
+disp32 at 0x268BB5 -> slot 0x3CACE00 'https://gateway-service.clonehero.net/api/session/request' in 0x268B70 (dump.cs line 56576: private void ʲˀʳʶˀʿʷʾʶʶʹ() { })
+disp32 at 0x268D36 -> slot 0x3CACE00 'https://gateway-service.clonehero.net/api/session/request' in 0x268B70 (dump.cs line 56576: private void ʲˀʳʶˀʿʷʾʶʶʹ() { })
+disp32 at 0x285BAC -> slot 0x3CCEC60 'Making session request to gateway: ...' in 0x285AD0 (dump.cs line 60156: private void ʺʹʵˀʵʹʷʶˀˀˁ() { })
+disp32 at 0x285E25 -> slot 0x3CCEC60 'Making session request to gateway: ...' in 0x285AD0 (dump.cs line 60156: private void ʺʹʵˀʵʹʷʶˀˀˁ() { })
+disp32 at 0x2EE73D -> slot 0x3CACEB8 'https://gateway-service.clonehero.net/api/session/stats?backendVersion=' in 0x2EE6A0 (dump.cs line 65492: private void MoveNext() { })
+disp32 at 0x2EE749 -> slot 0x3CC9F00 'Fetching gateway stats for version: ' in 0x2EE6A0 (dump.cs line 65492: private void MoveNext() { })
+disp32 at 0x2EE7BC -> slot 0x3CACEB8 'https://gateway-service.clonehero.net/api/session/stats?backendVersion=' in 0x2EE6A0 (dump.cs line 65492: private void MoveNext() { })
+disp32 at 0x2EE7D1 -> slot 0x3CC9F00 'Fetching gateway stats for version: ' in 0x2EE6A0 (dump.cs line 65492: private void MoveNext() { })
+disp32 at 0x2EE9B8 -> slot 0x3CC2640 'Failed to fetch gateway stats: ' in 0x2EE6A0 (dump.cs line 65492: private void MoveNext() { })
+disp32 at 0x2F0E9E -> slot 0x3CACE00 'https://gateway-service.clonehero.net/api/session/request' in 0x2F0D80 (dump.cs line 65517: private void MoveNext() { })
+disp32 at 0x2F0EC2 -> slot 0x3CCEC60 'Making session request to gateway: ...' in 0x2F0D80 (dump.cs line 65517: private void MoveNext() { })
+disp32 at 0x2F0F80 -> slot 0x3CCEC60 'Making session request to gateway: ...' in 0x2F0D80 (dump.cs line 65517: private void MoveNext() { })
+disp32 at 0x2F116D -> slot 0x3CACE00 'https://gateway-service.clonehero.net/api/session/request' in 0x2F0D80 (dump.cs line 65517: private void MoveNext() { })
+disp32 at 0x3B2BA0 -> slot 0x3CAC8F8 'https://api.clonehero.net/v1' in 0x3B2B90 (dump.cs line 19291: public static string ʾʶʲʷʺʷʴʸʻʹʵ() { })
+disp32 at 0x3B2BB3 -> slot 0x3CAC8F8 'https://api.clonehero.net/v1' in 0x3B2B90 (dump.cs line 19291: public static string ʾʶʲʷʺʷʴʸʻʹʵ() { })
+disp32 at 0x3B3E11 -> slot 0x3CAC8F8 'https://api.clonehero.net/v1' in 0x3B3AD0 (dump.cs line 19166: private void MoveNext() { })
+disp32 at 0x3B3E2A -> slot 0x3CAC8F8 'https://api.clonehero.net/v1' in 0x3B3AD0 (dump.cs line 19166: private void MoveNext() { })
+disp32 at 0x3B7F0D -> slot 0x3CAC8F8 'https://api.clonehero.net/v1' in 0x3B7D60 (dump.cs line 19120: private void MoveNext() { })
+disp32 at 0x3B7F2A -> slot 0x3CAC8F8 'https://api.clonehero.net/v1' in 0x3B7D60 (dump.cs line 19120: private void MoveNext() { })
+disp32 at 0x3B8B5E -> slot 0x3CAC8F8 'https://api.clonehero.net/v1' in 0x3B89E0 (dump.cs line 19141: private void MoveNext() { })
+disp32 at 0x3B8B7B -> slot 0x3CAC8F8 'https://api.clonehero.net/v1' in 0x3B89E0 (dump.cs line 19141: private void MoveNext() { })
+disp32 at 0x3BCAD1 -> slot 0x3CAC8F8 'https://api.clonehero.net/v1' in 0x3BC490 (dump.cs line 19199: private void MoveNext() { })
+disp32 at 0x3BCAEA -> slot 0x3CAC8F8 'https://api.clonehero.net/v1' in 0x3BC490 (dump.cs line 19199: private void MoveNext() { })
+== il2cpp: 8-byte pointers to target VAs
+== .text: direct call/jmp rel32 and RIP-relative disp32
+== .text: 8-byte pointers to target VAs
+== .rdata: 8-byte pointers to target VAs
+== .data: 8-byte pointers to target VAs
+pointer at rva 0x3C55C68 -> 0x285AD0
+== .pdata: 8-byte pointers to target VAs
+== .fptable: 8-byte pointers to target VAs
+== .reloc: 8-byte pointers to target VAs

@@ -1,0 +1,8 @@
+01-reading-a-chart.md headings 53 labels 53 | 34 | 4 | 8 | 7 | other 0
+02-note-list.md headings 73 labels 73 | 55 | 3 | 2 | 13 | other 0
+03-timing.md headings 52 labels 52 | 33 | 7 | 5 | 7 | other 0
+04-fills.md headings 45 labels 45 | 36 | 2 | 4 | 3 | other 0
+05-star-power.md headings 47 labels 47 | 30 | 5 | 9 | 3 | other 0
+06-scoring.md headings 38 labels 38 | 21 | 13 | 2 | 2 | other 0
+07-internals.md headings 92 labels 92 | 63 | 17 | 0 | 12 | other 0
+total headings 400 labels 400 | 272 | 51 | 30 | 47

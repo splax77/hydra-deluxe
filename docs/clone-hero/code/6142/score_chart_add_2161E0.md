@@ -1,0 +1,7 @@
+Listing: `score_chart_add_2161E0.asm`, build 6142, made 2026-11-11 with `tools/ch_mcp/chdis.py` (`py -m tools.ch_mcp.chdis 2161E0`). Function: the method at RVA 0x2161E0 of the chart record class TypeDefIndex 907 (`dump.cs` line 49352), which takes a new score entry (struct 1150).
+
+Plain version: it adds a finished run to a chart's record. It looks up the entry for the run's instrument, merges the old entry with the new run, adds one to the chart's play count, stores the merged entry back under that instrument, and updates the entry count.
+
+Lines 20 to 34 test whether the dictionary at +0x20 already holds the new entry's instrument (the byte at entry +0x0) and, if so, fetch that entry. Lines 37 to 39 otherwise use an empty entry whose instrument is 15, None. Lines 41 to 51 call the merge at 0x2BA4F0 with the old entry first and the new run second (`score_entry_merge_2BA4F0.asm`). Lines 55 to 60 add one to the ushort at +0x28 unless it is already 0xFFFF. That count sits on the chart record, not on the entry, so every added run counts, whatever its instrument. Lines 61 to 72 store the merged entry under the instrument with `set_Item`. Lines 73 to 78 store the dictionary's count in the byte at +0x2A.
+
+Who calls it, direct callers only (byte scan with `docs/audit/2026-11-08-clone-hero-unknowns/W8c/xref.py`): one, `SongEntry` method 0x358560 (`song_entry_add_score_358560.asm` line 34).

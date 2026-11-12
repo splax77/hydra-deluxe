@@ -144,11 +144,11 @@ Found: 2026-09-25, session 8157f2dc; the listings, 2026-11-08, session 77057df2 
 
 Rule: The game leaves old engine objects in memory, frozen at their last clock and score; a restarted song makes a new one, so the live engine is the one whose clock changes between two reads.
 Label: Unknown
-Evidence: looked in `overlay-spike/*_stdout.txt`, the results folder and the engine finder's tests; the multi-engine read was printed in session 8157f2dc and its output folder no longer exists. The restart half is also stated in tools/ch_probe/README.md lines 42 to 43 ("A restart makes a new engine object rather than winding the old one back to zero"), which is tool prose, not a run record; it is the lead for a check, not proof.
+Evidence: looked in `overlay-spike/*_stdout.txt`, the results folder and the engine finder's tests; the multi-engine read was printed in session 8157f2dc and its output folder no longer exists. The restart half is also stated in tools/ch_probe/README.md lines 42 to 43 ("A restart makes a new engine object rather than winding the old one back to zero"), which is tool prose, not a run record; it is the lead for a check, not proof. On 2026-11-08 every run folder under `RUNS` (2026-10-28 to 2026-11-08) was grepped for an engine address and for candidate counts. No run output shows two engines. Three files name one engine address each, in three different game processes (`RUNS\2026-10-28\l3\keys\play_chart.txt`, `RUNS\2026-11-07\ls-o2-run1\replies.txt` and `RUNS\2026-11-07\ls-r1-run1\replies.txt`). The engine finder prints no candidate count: it prints a dot per try and returns the first engine whose clock moved (tools/ch_probe/engine_finder.py lines 202 to 231), so its output cannot show a second engine. The `"instances"` field in the run replies counts `GameManager` objects (tools/ch_mcp/agent/clock.ts lines 16 to 49), not engines. No run restarted a song. Proof needs a finder that prints every candidate's clock, run across a restart.
 Game code (6142): not found: no code that frees or keeps engines was read.
 Hydra: no owner. The tool relies on it in `find_live_engine` (tools/ch_probe/engine_finder.py line 169).
 Ruling: none needed: no Hydra rule reads it.
-Found: 2026-09-25, session 8157f2dc; the README lead, 2026-11-08, session 77057df2 (docs-gaps search).
+Found: 2026-09-25, session 8157f2dc; the README lead, 2026-11-08, session 77057df2 (docs-gaps search); the run-folder search, 2026-11-08, session 428cf079 (unknowns audit).
 
 ### IN-15 The hit-threshold constant is a double lane's 0.75 s round timer
 
@@ -180,35 +180,35 @@ Hydra: no owner: Hydra's paths never miss a note.
 Ruling: none needed: no Hydra rule reads it.
 Found: 2026-11-08, session 77057df2 (docs-gaps search).
 
-### IN-88 A flag at +0xF0 marks time inside an item of the +0x1F8 list, and overhits are ignored then
+### IN-88 A flag at +0xF0 marks time inside a flagged fill's window, and overhits are ignored then
 
-Rule: A method the drum update calls walks a list held at +0x1F8 from a saved index, and sets the byte at +0xF0 while the clock in whole milliseconds (+0x108) is inside an item (from its +0x20 to its +0x20 plus +0x28). The overhit path returns at once while that byte is set. What the list's items are is not known.
-Label: Unknown
-Evidence: `docs/audit/drum-lanes/play/f20f5540_slot9_base_and_activate_sp.asm` lines 14 to 57 (the list at +0x1F8, the index at +0x294, the bounds at lines 29 to 35, the old value copied to +0xF1 at line 23, the set at line 56 and the clear at line 53); `docs/audit/drum-lanes/play/f20de9a0.asm` line 3 (the overhit path's test of +0xF0). The code is read; the label is Unknown because the meaning of the list is the rule's point and it was not traced.
-Game code (6142): RVA `0x20F5540`; fields at +0xF0, +0x1F8 and +0x294
+Rule: A method the drum update calls walks a list held at +0x1F8 from a saved index, and sets the byte at +0xF0 while the clock's tick (+0x108) is inside an item (from its +0x20 to its +0x20 plus +0x28). The overhit path returns at once while that byte is set. The list's items are fill windows (class #8323). There is one for each fill of the track whose byte at +0x20 is not zero. Each item holds the fill's start time at +0x10, its length in seconds at +0x18, its start tick at +0x20 and its length in ticks at +0x28. What the fill's +0x20 byte means is page 04's open question.
+Label: Proven in the game's code
+Evidence: `docs/audit/drum-lanes/play/f20f5540_slot9_base_and_activate_sp.asm` lines 14 to 57 (the list at +0x1F8, the index at +0x294, the bounds at lines 29 to 35, the old value copied to +0xF1 at line 23, the set at line 56 and the clear at line 53); `docs/audit/drum-lanes/play/f20de9a0.asm` line 3 (the overhit path's test of +0xF0). The items: `code/6142/fill_windows_build_20D26A0.asm`, explained in `code/6142/fill_windows_build_20D26A0.md`, walks the track's fill list (lines 43 to 58), skips each fill whose +0x20 byte is zero (lines 68 and 69), and fills a new #8323 (lines 86 to 97). The engine's +0x1F8 is field +0x18 of the struct #8263 that the base engine holds at +0x1E0 (`dump.cs` lines 530043 and 528231), a list of #8323. The builder's result is passed as the fifth argument of the struct's constructor `0x20E8D30` (`code/6142/note_builder_20D2EA0.asm` lines 338 and 339, 420 and 421, and 424). The clock at +0x108 is a tick, not whole milliseconds (page 04, FL-22).
+Game code (6142): RVA `0x20F5540`; fields at +0xF0, +0x1F8 and +0x294; window builder RVA `0x20D26A0`
 Hydra: no owner.
 Ruling: none needed: no Hydra rule reads it.
-Found: 2026-11-08, session 77057df2 (docs-gaps search).
+Found: 2026-11-08, session 77057df2 (docs-gaps search); the items, 2026-11-08, session 428cf079 (unknowns audit).
 
 ### IN-89 Thirty-four one-line note getters test bits of three note fields
 
-Rule: The game has 34 one-line getters on the note class that each test bits of one note field. Twenty-three test the flag word at +0x7C (bits 0x1, 0x2, 0x4, 0x10, 0x20, 0x40, 0x80, 0x100, 0x200, 0x400, 0x800, 0x1000, 0x2000, 0x40000, 0x80000, 0x100000, 0x200000, 0x400000 and 0x800000 one at a time, and the masks 0x2A, 0x32 and 0xC0000). Eight test the byte at +0x84 (bits 0x1, 0x2, 0x4, 0x8, 0x10 and 0x20, and the mask 0x3). Three read the type word at +0x80 (the mask 0x1E, the cymbal mask 0xE0, and the value 1). Only the ones the pages name have a known meaning.
-Label: Unknown
-Evidence: `docs/audit/note-shuffle/scout-flag/note_getters.txt` lines 1 to 34, one getter per line with its instructions. Named on other pages: `0x214BB40` (+0x84 bit 4, the performed mark, page 06 SC-12), `0x214BE30` (the cymbal mask, SC-02), `0x214BE10` (+0x7C bit 0x80000, accent) and `0x214B6C0` (bit 0x40000, ghost) (SC-13), and `0x214BB50` (+0x7C bit 0x800, called by the hit routine at `docs/audit/drum-lanes/play/f20deaa0.asm` line 124). The rest have no known meaning.
+Rule: The game has 34 one-line getters on the note class that each test bits of one note field. Twenty-three test the flag word at +0x7C (bits 0x1, 0x2, 0x4, 0x10, 0x20, 0x40, 0x80, 0x100, 0x200, 0x400, 0x800, 0x1000, 0x2000, 0x40000, 0x80000, 0x100000, 0x200000, 0x400000 and 0x800000 one at a time, and the masks 0x2A, 0x32 and 0xC0000). Eight test the byte at +0x84 (bits 0x1, 0x2, 0x4, 0x8, 0x10 and 0x20, and the mask 0x3). Three read the type word at +0x80 (the mask 0x1E, the cymbal mask 0xE0, and the value 1). Hopo (0x10) at +0x7C and IsSustaining (0x8) at +0x84 are each tested by two getters, which is why the counts are larger than the lists of bits. The two flag fields are typed by enums whose member names survive in the dump, so the 31 getters on +0x7C and +0x84 each test a named bit. On +0x7C (enum #8589): Chord 0x1, Disjoint 0x2, Child 0x4, Hopo 0x10, Strum 0x20, Tap 0x40, StarPower 0x80, StarPowerEnd 0x100, SoloBegin 0x200, SoloEnd 0x400, DrumActivation 0x800, DrumsDisco 0x1000, DrumsDiscoNoFlip 0x2000, DrumsGhostHit 0x40000, DrumsAccentHit 0x80000, DrumsDoubleKick 0x100000, DrumsCymbal 0x200000, DrumsTom 0x400000 and DrumsSnare 0x800000. The mask 0x32 is Disjoint, Hopo and Strum (that getter is true when any of the three is set: `and al,0x32; cmp al,1; seta`), 0x2A is Disjoint, ExtendedSustain and Strum, and 0xC0000 is ghost or accent. On +0x84 (enum #8590): Hit 0x1, Missed 0x2, DynamicsHit 0x4, IsSustaining 0x8, WasSqueezed 0x10 and WasSqueezeLoss 0x20, and the mask 0x3 is hit or missed. The word at +0x80 is a plain ushort that no enum names, so what the three getters on it mean is not known, beyond page 06's reading of 0xE0 as the cymbal mask.
+Label: Proven in the game's code
+Evidence: `docs/audit/note-shuffle/scout-flag/note_getters.txt` lines 1 to 34, one getter per line with its instructions, gives each getter's field and bit. The names are the member names of the field's enum in `dump.cs`: the note class #8597 at line 548368, its +0x7C typed #8589 (line 548385), +0x80 a ushort (line 548386) and +0x84 typed #8590 (line 548388), enum #8589 from line 548192 and enum #8590 from line 548224. These are names read from the dumped metadata, not from code that uses them. Every getter's direct callers are in `docs/audit/2026-11-08-clone-hero-unknowns/W10a/xref_note_getters.txt`, summed per getter by `W10a/getter_callers_summary.py` into `W10a/getter_callers_summary.txt` beside it (byte scan of il2cpp and .text). Four getters have no direct caller found (byte scan of il2cpp and .text): `0x214B620` (DrumsDiscoNoFlip), `0x214B860` (the 0x32 mask), `0x214B870` (the 0x2A mask) and `0x214BDF0` (IsSustaining). For the +0x80 word, enum #8591 (Open 1, Green 2, Red 4, Yellow 8, Blue 16, Orange 32, `dump.cs` line 548239) would read 0x1E as the four middle frets and 1 as open, but nothing ties that enum to +0x80. Named on other pages: `0x214BB40` (+0x84 bit 4, DynamicsHit, page 06 SC-12), `0x214BE30` (the cymbal mask, SC-02), `0x214BE10` (+0x7C bit 0x80000, accent) and `0x214B6C0` (bit 0x40000, ghost) (SC-13), and `0x214BB50` (+0x7C bit 0x800, called by the hit routine at `docs/audit/drum-lanes/play/f20deaa0.asm` line 124).
 Game code (6142): the getters listed in `docs/audit/note-shuffle/scout-flag/note_getters.txt`
 Hydra: no owner.
 Ruling: none needed: no Hydra rule reads it.
-Found: 2026-11-08, session 77057df2 (docs-gaps search).
+Found: 2026-11-08, session 77057df2 (docs-gaps search); the names and callers, 2026-11-08, session 428cf079 (unknowns audit).
 
 ### IN-90 The drum engine's constructor sets starting values of fields no page names
 
-Rule: Before the window constants (IN-10), the drum engine's constructor sets +0x2F2 to 1, copies the first value of its set-up argument to +0x318, takes +0x2F6 from the low byte of the argument's +0x18 and the dynamics threshold at +0x2C0 (page 06, SC-13) from the high half of the same 8 bytes, zeroes the round fields (+0x2C4, +0x2C8, +0x2D0, +0x2D8, +0x2E0, +0x2E8, +0x2F0), stores four times a whole number read from +0xB8 of the object at +0x230 into +0x300, and takes +0x308 from a byte of its argument. What most of these fields mean is not known.
+Rule: Before the window constants (IN-10), the drum engine's constructor sets +0x2F2 to 1, copies the first value of its set-up argument to +0x318, takes +0x2F6 from the low byte of the argument's +0x18 and the dynamics threshold at +0x2C0 (page 06, SC-13) from the high half of the same 8 bytes, zeroes the round fields (+0x2C4, +0x2C8, +0x2D0, +0x2D8, +0x2E0, +0x2E8, +0x2F0), stores four times a whole number read from +0xB8 of the object at +0x230 into +0x300, and takes +0x308 from a byte of its argument. Proven in the game's code: +0x300 is four times the chart's +0xB8, and its only readers are the three fill clears, which add it to the clock's tick to make the fill deadline (page 04, FL-23). That +0xB8 is the chart's resolution is not shown, because the tick conversion reads the chart's +0xB0 and that +0xB0 equals +0xB8 was not shown. What the other fields mean is not known.
 Label: Unknown
-Evidence: `code/6142/engine_ctor_20DF680.asm` lines 22 (+0x2F2), 45 to 47 (+0x318), 49 to 53 (+0x2F6 and +0x2C0), 57 to 69 (the zeroes and +0x300) and 70 to 73 (+0x308). The stores are read; the label is Unknown because the fields' meanings are the rule's point. Page 06's SC-27 reads +0xB8 of the chart record as the resolution, which would make +0x300 four times the resolution; that was not checked here.
-Game code (6142): #8255 constructor, RVA `0x20DF680`; `#8255+0x2E0`
-Hydra: no owner.
+Evidence: `code/6142/engine_ctor_20DF680.asm` lines 22 (+0x2F2), 45 to 47 (+0x318), 49 to 53 (+0x2F6 and +0x2C0), 54 to 69 (the zeroes, and +0x300 from the +0x230 object's +0xB8, truncated at line 57 and shifted left by 2 at line 68) and 70 to 73 (+0x308). The readers of +0x300 are the gain override `0x20DDB70` (`code/6142/fill_deadline_20DDB70.asm` line 24) and `0x20DF3E0` and `0x20DE4C0` (line 13 of `code/6142/fill_clear_20DF3E0.asm` and of `code/6142/fill_clear_c1_20DE4C0.asm`), found by a disassembly pass over every method of #8255 that lists each read and write at these offsets (direct reads in #8255's own methods only). The same pass names the readers of the other fields, whose methods were not read: +0x2F2 is read only by slot 18 `0x20DDC80` (`docs/audit/drum-lanes/play/f20ddc80.asm` line 3); +0x318 by `0x20DE240` and `0x20DF4C0`, which pass it to a runtime helper at 0x2EFBCF0, which has no line in `dump.cs` (`code/6142/lane_flag_calls_20DF4C0.asm` lines 14 to 22); +0x2F6 only by the input poll `0x20DE070`; +0x308 by `0x20DE070`, `0x20DE680` and `0x20DE9A0`; +0x2D0 and +0x2E8 only by slot 4 `0x20DCAD0`; +0x2D8 and +0x2E0 by slot 9 `0x20DDEC0` and by `0x20DE5B0`. The base constructor's quarter bar reads +0xB8 of the same object (`code/6142/engine_ctor_20F79E0.asm` lines 120 to 125 and 158 to 166), and a live run read it as 192 on a resolution-192 chart (`code/6142/engine_ctor_20F79E0.md` line 21). `dump.cs` lines 543378 and 543379 give the chart's +0xB0 and +0xB8 as doubles.
+Game code (6142): #8255 constructor, RVA `0x20DF680`; `#8255+0x2E0`; fill clears RVA `0x20DDB70`, RVA `0x20DF3E0` and RVA `0x20DE4C0`
+Hydra: no owner, except +0x300: Hydra's fill lead is `kCh11FillLeadBeats` of 4 beats times the chart's resolution (src/search/graph.h line 71, src/search/graph.cpp lines 66 to 70). How each side uses it is page 04's FL-23.
 Ruling: none needed: no Hydra rule reads it.
-Found: 2026-11-08, session 77057df2 (docs-gaps search).
+Found: 2026-11-08, session 77057df2 (docs-gaps search); the readers, 2026-11-08, session 428cf079 (unknowns audit).
 
 ## The per-note hooks
 
@@ -338,25 +338,25 @@ Found: 2026-10-30, session b02ab3e6 (the reference build), from the docs survey 
 
 ### IN-29 Whether the current song entry is the song being played
 
-Rule: Nothing yet shows that `GlobalVariables.currentSongEntry` holds the playing song during a song; the dump does not say when the game sets it.
+Rule: Proven in the game's code: the song-load method `0x235AD0` sets `GlobalVariables.currentSongEntry` to the song it loads, before it builds the chart. Whether the field still holds that song for the whole song is not known, because ten other stores to it were not read.
 Label: Unknown
-Evidence: looked in `dump.cs` (layout only) and `overlay-spike/il2cpp-fields.md`. One run has read the route: on a command-line start of Window Map, the entry's folder during the song was that song's folder (decision log D316 item 4). That compares the folder, not the checksum `live-checks.md` asks for, and no menu start has been read.
-Game code (6142): `GlobalVariables.currentSongEntry`; no writer read.
+Evidence: looked in `dump.cs` (layout only) and `overlay-spike/il2cpp-fields.md`. The store: `code/6142/globals_set_song_235AD0.asm` line 47 stores the song argument at +0x28 with no test in front of it (`this` from line 18, the song from line 17); the chart builder `0x20D2EA0` is called later, at line 110. A field-write scan for +0x28 over every named method that loads GlobalVariables' type info (`docs/audit/2026-11-08-clone-hero-unknowns/W9a/globals_writes_28_7C.txt`) found 16 stores: this one, two in each of two `SongSelect` methods (`0x891D0` and `0x8D260`), five in `EndOfSong` methods, five in `PauseMenu` methods and one in `0x26A130`. The `PauseMenu` and `EndOfSong` stores were not read, and they are where to read next. The song-load method's direct callers (byte scan of il2cpp and .text, `W9a/callers_235AD0.txt`) are `SongOptions` method `0x297240` and a coroutine at `0x3BD710`; neither was read, so the menu route to it is not shown. One run has read the route: on a command-line start of Window Map, the entry's folder during the song was that song's folder (decision log D316 item 4). That compares the folder, not the checksum `live-checks.md` asks for, and no menu start has been read.
+Game code (6142): `GlobalVariables.currentSongEntry`; song-load method RVA `0x235AD0`.
 Hydra: no owner.
 Ruling: none needed: no Hydra rule reads it.
-Found: 2026-10-30, session b02ab3e6 (the reference build). 2026-11-07, session 28b91640 (the folder read).
+Found: 2026-10-30, session b02ab3e6 (the reference build). 2026-11-07, session 28b91640 (the folder read). The writer, 2026-11-08, session 428cf079 (unknowns audit).
 
 ## The song-select menu
 
 ### IN-30 The song-select classes are located, not read
 
-Rule: The song-select screen's classes are `SongSelect` (TypeDefIndex 347, a BaseMenu), `SongSelectSearch` (237) and `SongSelectPanel` (144). None of their methods was read.
+Rule: The song-select screen's classes are `SongSelect` (TypeDefIndex 347, a BaseMenu), `SongSelectSearch` (237) and `SongSelectPanel` (144). The method that starts a song from the list has not been found.
 Label: Unknown
-Evidence: not checked: it needs a reading of the classes' methods. The class lines are `dump.cs` 20595, 15170 and 9120, checked for this page.
-Game code (6142): class headers only; no method read.
+Evidence: the class lines are `dump.cs` 20595, 15170 and 9120. All 70 method RVAs of `SongSelect` (`dump.cs` lines 20595 to 20904) were disassembled with tools/ch_mcp/chdis.py, with no listing kept, and searched for `LoadScene`, `SceneManager`, `PlayerSelection`, string literals and reads of +0x28; none starts a song. `SongSelect` overrides the BaseMenu slots 10 (`0x8AC20`), 21 (`0x8EA10`), 36, 51 (`0x8A210`), 57 (Green held) and 47 (`Update`, `0x8EE20`, which only jumps to `BaseMenu.Update`); the slot-to-press map is `code/6142/menu_buttons_1D4BC0.md`. It does not override slot 31, the Green press, whose base method `0x1D5620` only sets the menu's +0x28 and calls `0x1A6EF0` (read with chdis, not kept). So a Green press reaches only the base slot 31, and the overrides of the held-Green and other slots were not read for a song start. `SongSelectSearch` and `SongSelectPanel` were not read. The lead for the next read is `SongOptions` method `0x297240`: its Green handler calls the song-load method `0x235AD0` (IN-29), found as a direct caller by byte scan.
+Game code (6142): class headers; `SongSelect` methods read with chdis, no listing kept.
 Hydra: no owner.
 Ruling: none needed: no Hydra rule reads it.
-Found: 2026-10-30, session b02ab3e6 (the reference build).
+Found: 2026-10-30, session b02ab3e6 (the reference build); the method search, 2026-11-08, session 428cf079 (unknowns audit).
 
 ## The player screen
 
@@ -390,35 +390,35 @@ Hydra: no owner: Hydra never reads the running game. The tools read these throug
 Ruling: none needed: no Hydra rule reads it.
 Found: 2026-10-31, session 5cc1cc07 (task LS-K3-menu-fields), checked in the dump.
 
-### IN-59 The player screen's instrument and difficulty are the profile's saved copy
+### IN-59 The player screen's instrument and difficulty start as the profile's saved copy and change on a confirm
 
-Rule: The instrument at +0x240 and the difficulty at +0x241 of `PlayerSelectionMenu` are copies of the profile's saved values, made when the screen opens. They do not follow the cursor while the player picks.
-Label: Unknown
-Evidence: a read-only scout's decompile of build 6142 (session 5cc1cc07, 2026-10-31) reported it; no listing of it is committed. The dump shows only the two fields' types and offsets (`dump.cs` lines 72890 and 72891), not who writes them. Live run LS-K3 run 2 (2026-10-31) read Guitar and Expert in these two fields; that one read neither proves nor rules out a saved copy.
-Game code (6142): `#1429+0x240`, `#1429+0x241`; the writer was not read from a listing.
+Rule: When the screen opens, `PlayerSelectionMenu` copies the profile's instrument into +0x240 and its difficulty into +0x241. Confirming a row on the Instrument or Difficulty page sets the field from the row's text and writes it back into the profile at once, so the screen and the profile stay equal. No cursor move writes either field in the methods read. Two more methods also write +0x241 and were not read.
+Label: Proven in the game's code
+Evidence: `code/6142/player_menu_on_enable_32BF80.asm`: OnEnable, which Unity runs each time the screen opens, copies the profile's byte +0x10 into +0x240 (lines 191 to 198) and +0x11 into +0x241 (lines 199 to 206), after it replaces an instrument of 0xF ("No Part") in the profile (lines 183 to 190). `code/6142/player_menu_confirm_32E190.asm`: on the Difficulty page the confirm sets +0x241 to 3, 2, 1 or 0 for "Expert", "Hard", "Medium" or "Easy" (lines 79, 103, 111 and 119) and copies it into the profile (lines 80 to 87); on the Instrument page it calls `0x32FB60` (line 135), which sets +0x240 from the highlighted row's name and copies it into the profile (`code/6142/player_menu_set_instrument_32FB60.asm` lines 34 to 183 and 184 to 191). A scan of all 51 named methods of `PlayerSelectionMenu` and its nested classes for byte stores to +0x240 and +0x241 (`docs/audit/2026-11-08-clone-hero-unknowns/W9a/player_menu_stores_240_241.txt`) found 27 stores in five methods. The two not read are `0x32C9C0` (writes 5, 8, 0 and 1) and `0x32D000` (writes 3, 2, 1 and 0); no direct caller of either was found (byte scan of il2cpp and .text, `W9a/callers_240_241_writers.txt`). Live run LS-K3 run 2 (2026-10-31) read Guitar and Expert in these two fields.
+Game code (6142): `#1429+0x240`, `#1429+0x241`; OnEnable RVA `0x32BF80`, confirm RVA `0x32E190`, instrument setter RVA `0x32FB60`.
 Hydra: no owner: Hydra never reads the running game.
 Ruling: none needed: no Hydra rule reads it.
-Found: 2026-10-31, session 5cc1cc07, from a decompile of build 6142.
+Found: 2026-10-31, session 5cc1cc07, from a decompile of build 6142; the listings, 2026-11-08, session 428cf079 (unknowns audit).
 
-### IN-60 How the player screen moves, from a decompile
+### IN-60 How the player screen moves
 
-Rule: The pad Green confirms the highlighted row and moves to the next page. Yellow and Blue move the cursor, but only when the profile's controller type (IN-57) is Drums or FiveLaneDrums. The highlighted row is row cursor + scroll (IN-58). On the Instrument page, the highlighted row's instrument id is the instrument Green sets; what the ids mean on the other pages was not found. The code also sets the page field (IN-56) to 5, 6 and 7, which the enum does not name. The bool at +0x1F0 looks like a first-time flag, +0x242 like an is-drums flag, +0x244 like a network flag and +0x246 like a lock on going back; those names are guesses from what the code does with them.
-Label: Unknown
-Evidence: a read-only scout's decompile of build 6142 (session 5cc1cc07, 2026-10-31) reported all of it; no listing is committed, and none of it can be checked in the dump, which gives only names, types and offsets.
-Game code (6142): `#1429+0x120`, `#1429+0x1E8`, `#824+0x40`, `#824+0x3C`, `#1429+0x228`, `#1429+0x1F0`, `#1429+0x242`, `#1429+0x244`, `#1429+0x246`; the input methods were not read from a listing.
-Hydra: no owner: Hydra never reads the running game. The tools print these fields with `menu_lines` in tools/ch_mcp/frida_tools.py.
+Rule: Every menu's update hands each player's presses to one button method, which calls one virtual slot per press. Blue moves the highlight down and Yellow moves it up, but only when the profile's drums test passes: the controller type (IN-57) is Drums or FiveLaneDrums and one global setting is 1, or the player has no profile. The moves change the cursor at +0x40, or the scroll at +0x3C at the scrolling edge, and do nothing on the Ready page. Green does not always go to the next page; it goes where the row or a flag says. On Confirm, the cursor alone picks the row: row 1 opens Instrument, row 2 Difficulty, row 3 Modifiers, and row 0 goes to Ready unless +0x244 is set. Row 0 saves the part first, except when +0x245 is clear and `CHNetManager` method `0x145FE0` returns true. On Instrument, the row at cursor + scroll sets the instrument from the row's name string at +0x218 (not from the id array at +0x228), then opens Difficulty when +0x1F0 is set, else returns to Confirm. On Difficulty, the cursor alone picks the row, which sets the difficulty by name and goes to Modifiers when +0x1F1 is set, else to Confirm; the row "Change Instrument" sets +0x1F0 and opens Instrument. On Modifiers, row 0 returns to Confirm and any other row toggles one modifier. On Ready, Green does nothing. The bool at +0x242 is "the controller type is Drums or FiveLaneDrums". +0x1F0 means "came here to change the instrument". +0x246 stops Red from leaving the Instrument page, and +0x244 stops Red from leaving the screen from Confirm; whether +0x244 is a network flag is not shown. The code writes the page field (IN-56) as 5 and 6, which the enum does not name; 7 is only compared, and no write of 7 was found in the class's own methods.
+Label: Proven in the game's code
+Evidence: the route of a press: `code/6142/menu_update_1D7060.asm` lines 76 to 153 and `code/6142/menu_player_input_1D6B10.asm` line 16 hand each player to the button method; `code/6142/menu_buttons_1D4BC0.asm` calls slot 31 for Green down (lines 86 to 93 and 318 to 321), slot 51 for Red down (lines 120 to 127 and 298 to 301), and slot 21 for Yellow down and slot 10 for Blue down only when the drums test passes (lines 128 to 135, 160 to 167 and 268 to 296), with no profile counting as a pass (line 80); otherwise Yellow and Blue call slots 20 and 36, which the player screen does not override and BaseMenu leaves empty (`dump.cs` lines 44886 and 44979). The drums test is `code/6142/menu_drums_test_D7F20.asm` lines 9 to 23; which global setting it reads was not found. Two more actions, ids 5 and 14 (names not read), also call slots 10 and 21 for every controller type when Green is not held (`menu_buttons_1D4BC0.asm` lines 322 to 398). The moves: `code/6142/player_screen_down_32E710.asm` and `code/6142/player_screen_up_330F30.asm` lines 9 to 13 (nothing on Ready, else the base move), `code/6142/menu_cursor_down_1D57F0.asm` lines 34 and 36 and `code/6142/menu_cursor_up_1D6820.asm` lines 21 and 35. Green per page: `code/6142/player_screen_green_32E190.asm` lines 9 and 10 (Ready), 24 to 52 (Modifiers), 53 to 132 (Difficulty) and 137 to 211 (Confirm; lines 171 to 181 skip the save when +0x245 is clear and `0x145FE0` returns true, and line 211 calls `0x32FF70`). In `code/6142/player_screen_confirm_ready_32FF70.asm`, lines 22 and 23 compare +0x244 with 0 (at 0x32FFD1) and jump past the write of 4, Ready, at line 25 (0x32FFE1) when it is set; `code/6142/player_screen_instrument_32FB60.asm` lines 34 to 228 (Instrument), with +0x242 at lines 192 to 206. Red: `code/6142/player_screen_red_32CBE0.asm` lines 44 and 45 (+0x246) and line 60 (+0x244). Page 6 is written by `code/6142/player_screen_page6_32D2D0.asm` line 5; 5 and 6 are passed to the second page setter `0x330350`, found by a search of every method of the class for page writes (`docs/audit/2026-11-08-clone-hero-unknowns/W9b/psm_page_values.sh`). The action ids are from the kit log `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-10-31\ls-d1a-run3\kit-2.jsonl`. A `CHNetManager` bool `0x145FE0` (not read) gates Red on Ready and Confirm and the save on Confirm row 0. A read-only scout's decompile (session 5cc1cc07, 2026-10-31) first reported this screen's moves; this block rests on the listings, which correct it in three places.
+Game code (6142): `#1429+0x120`, `#1429+0x1E8`, `#824+0x40`, `#824+0x3C`, `#1429+0x228`, `#1429+0x1F0`, `#1429+0x242`, `#1429+0x244`, `#1429+0x246`; button method RVA `0x1D4BC0`, Green RVA `0x32E190`, instrument setter RVA `0x32FB60`.
+Hydra: no owner: Hydra never reads the running game. The tools print these fields with `menu_lines` in tools/ch_mcp/frida_tools.py. The tools' `highlighted_row_text` there takes cursor + scroll on every page and prints the id from +0x228; the game reads the cursor alone on Confirm and Difficulty, and the two agree whenever the scroll is 0.
 Ruling: none needed: no Hydra rule reads it.
-Found: 2026-10-31, session 5cc1cc07, from a decompile of build 6142.
+Found: 2026-10-31, session 5cc1cc07, from a decompile of build 6142; the listings, 2026-11-08, session 428cf079 (unknowns audit).
 
-### IN-91 Whether the player screen's method at 0x32F590 runs once a frame
+### IN-91 The player screen's method at 0x32F590 is a Ready-page test that the canvas calls once a frame per active screen
 
-Rule: The tools treat a method of `PlayerSelectionMenu` at RVA 0x32F590 as the player screen's per-frame method, and watch it to tell that the screen is running. That it runs once a frame is not proven.
-Label: Unknown
-Evidence: `dump.cs` lines 73000 and 73001 show the method itself: a public instance method of `PlayerSelectionMenu` that returns bool (its name is obfuscated) (class header at line 72822), at RVA 0x32F590 (line 73000). Its code was not read. The once-a-frame claim is the comment at tools/ch_mcp/agent/menu.ts lines 49 to 54, which says LS-K3's method watch saw it called once a frame while the screen ran; no output of that watch is kept. The lead for a check is that comment and the constant `PLAYER_SCREEN_FRAME_RVA` at line 54.
-Game code (6142): `PlayerSelectionMenu` method RVA 0x32F590 (`dump.cs` lines 73000 and 73001); not read.
+Rule: The method of `PlayerSelectionMenu` at RVA 0x32F590 tests whether the player screen is on its Ready page. `PlayerSelectionCanvas.Update` calls it once a frame on each active player screen, until every active screen is ready or the canvas's bool at +0x48 is set. So with one active screen it runs once a frame, and with two, twice. Five other methods call it too, and they were not read. The tools watch it as the screen's per-frame method, which holds for one player.
+Label: Proven in the game's code
+Evidence: `code/6142/player_menu_on_ready_page_32F590.asm` lines 1 to 3: it compares the page field +0x120 with 4 (Ready, IN-56) and returns the result. `dump.cs` lines 73000 and 73001 give it as a public instance method returning bool (class header at line 72822). Its direct callers (byte scan of il2cpp and .text, `docs/audit/2026-11-08-clone-hero-unknowns/W9a/callers_32F590.txt`) are `PlayerSelectionCanvas.Update` at 0xD0EFF, three unnamed `PlayerSelectionCanvas` methods and two `PlayerProfileMenu` methods. `code/6142/player_canvas_update_D0E20.asm` shows the per-frame call: while the canvas's +0x48 is false and its component is enabled (lines 13 and 18), it calls the test once on every player screen whose GameObject is active (lines 25 to 58 and 97 to 99), and when every active screen is ready it fades to Gameplay and switches itself off (lines 100 to 105 and 130 to 162). The canvas class and its fields are `dump.cs` lines 25710 to 25722. The tools' comment at tools/ch_mcp/agent/menu.ts lines 49 to 54 calls it the screen's per-frame method.
+Game code (6142): `PlayerSelectionMenu` method RVA `0x32F590` (`dump.cs` lines 73000 and 73001); `PlayerSelectionCanvas.Update` RVA `0xD0E20`.
 Hydra: no owner: Hydra never reads the running game. The tools use it as `PLAYER_SCREEN_FRAME_RVA` in tools/ch_mcp/agent/menu.ts line 54.
 Ruling: none needed: no Hydra rule reads it.
-Found: 2026-11-08, session 77057df2 (docs-gaps search), from tool code.
+Found: 2026-11-08, session 77057df2 (docs-gaps search), from tool code; the listings, 2026-11-08, session 428cf079 (unknowns audit).
 
 ## The bot
 
@@ -504,23 +504,23 @@ Found: 2026-10-30, session b02ab3e6 (the reference build); corrected 2026-10-31,
 
 ### IN-39 Why scores are switched off is kept in GlobalVariables
 
-Rule: `GlobalVariables.scoreDisabled` (+0x7C) is an enum (#727) with the values None 0, Modifier 1, Bot 2, Pause 3; who writes Bot in 1.1 was not traced.
-Label: Unknown
-Evidence: not checked: the enum and field are `dump.cs` lines 39726 to 39733 and 55827 (metadata only); in 1.0 the writes are in the 4045 decompile's GameManager.cs lines 465 and 2252 and EndOfSong.cs line 386, not copied.
-Game code (6142): `GlobalVariables.scoreDisabled`; no writer read.
+Rule: `GlobalVariables.scoreDisabled` (+0x7C) is an enum (#727) with the values None 0, Modifier 1, Bot 2, Pause 3. Two writers of Bot were found: the GameManager load coroutine and `EndOfSong.Start`. Each writes Bot only when the `GlobalVariables` method `0x235A40` returns true, which needs some player in `playerList` to pass both `0x337540` (it has a Rewired player, or its remote byte is set) and the "is_bot" test `0x13F8B0`. The game also writes a fifth value, 4, which the enum does not name: the GameManager pause method writes it when scores are not already off, practice is not on, totalPauses (+0x120) is above 3 and the two GameManager times at +0x70 and +0x118 are less than 1185.0 apart.
+Label: Proven in the game's code
+Evidence: the enum and field are `dump.cs` lines 39726 to 39733 and 55827. The test: `code/6142/globals_any_bot_235A40.asm` lines 19 to 32 (the two tests `0x337540` and `0x13F8B0` were read with tools/ch_mcp/chdis.py and not kept; `code/6142/globals_any_bot_235A40.md` describes them). The first writer: `code/6142/gm_load_coroutine_D8D80.asm` line 547 (the call), line 549 (the false branch) and line 560 (the store of 2). The second: `code/6142/end_of_song_start_15DC20.asm` line 729 (the call) and line 742 (the store of 2). The value 4: `code/6142/gm_score_disabled_4_B5F90.asm` lines 126 to 196. A field-write scan for +0x7C over every named method that loads GlobalVariables' type info (`docs/audit/2026-11-08-clone-hero-unknowns/W9a/globals_writes_28_7C.txt`) found seven stores. The other four were not read: 0 and 1 in `BasePlayer` `0x209C70`, 3 in `GameManager` `0xB9680`, and a register value in `EndOfSong` `0x161C70`, which seems to write 0 when a bot is present (not shown). In 1.0 the writes are in the 4045 decompile's GameManager.cs lines 465 and 2252 and EndOfSong.cs line 386, not copied.
+Game code (6142): `GlobalVariables.scoreDisabled`; test RVA `0x235A40`; load coroutine RVA `0xD8D80`; `EndOfSong.Start` RVA `0x15DC20`; pause method RVA `0xB5F90`.
 Hydra: no owner.
 Ruling: none needed: no Hydra rule reads it.
-Found: 2026-10-30, session b02ab3e6 (the reference build).
+Found: 2026-10-30, session b02ab3e6 (the reference build); the writers, 2026-11-08, session 428cf079 (unknowns audit).
 
-### IN-40 Whether the 1.0 bot earns Star Power
+### IN-40 The 1.0 bot earns no Star Power
 
-Rule: In 1.0 the gain method skips a remote player and any player for which a scrambled test method returns true; what that method tests was not found, so whether the 1.0 bot earns Star Power is not known.
-Label: Unknown
-Evidence: not checked: the test method is called at the 4045 decompile's BasePlayer.cs lines 636, 755 and 1104 and GameManager.cs line 355, and its body was not located.
-Game code (4045): the BasePlayer gain method, `code/4045/fill_deadline.cs` lines 34 to 57 (line 36 is the skip).
+Rule: In 1.0 the gain method skips a remote player and the bot. Its test method returns the profile's `isBot` setting, and a command-line start sets that setting to 1, so the 1.0 bot never earns Star Power. In network play, BasePlayer sets `isBot` to 0.
+Label: Proven in the game's code
+Evidence: `code/4045/bot_test.cs`, explained in `code/4045/bot_test.md`, made with ilspycmd from the 1.0 `Assembly-CSharp.dll`. Section B1 is the whole test method: it returns the profile's `isBot`. Section B2 is the gain method's opening, BasePlayer.cs line 755: its whole body is inside `if (!isRemotePlayer && !IsBot())`. Section B3 is CliGameLauncher.cs line 684, which sets `isBot.CurrentValue = 1` on the profile it makes. Section B4 lists every write to the meter field in BasePlayer.cs: the only add is line 759, inside B2's test, and all three callers of the gain method go through it. The network-play write is BasePlayer.cs line 1108 of the same decompile, not copied into the listing. The test method's other call sites are BasePlayer.cs lines 636 and 1104 and GameManager.cs line 355. `isBot` is declared in `BasePlayerProfile`, outside Assembly-CSharp, which was not decompiled.
+Game code (4045): the BasePlayer gain method, `code/4045/fill_deadline.cs` lines 34 to 57 (line 36 is the skip); the test, `code/4045/bot_test.cs` section B1.
 Hydra: no owner.
 Ruling: none needed: no Hydra rule reads it.
-Found: 2026-10-30, session b02ab3e6 (the reference build).
+Found: 2026-10-30, session b02ab3e6 (the reference build); the test method, 2026-11-08, session 428cf079 (unknowns audit).
 
 ## Input and logs
 
@@ -538,51 +538,51 @@ Found: 2026-09-25, session 8157f2dc; the 857-of-857 run file and the key map's s
 
 Rule: The tools press the kick key for both kicks and assume it scores a 2x kick gem.
 Label: Unknown
-Evidence: not checked: `overlay-spike/run1_cal0_scorestats.json` shows the DoubleKick modifier and 1,257 of 1,257 notes hit, but whether that chart holds any 2x kick gem was not checked.
+Evidence: `overlay-spike/run1_cal0_scorestats.json` shows the DoubleKick modifier and 1,257 of 1,257 notes hit. That run cannot show it, because its chart holds no 2x kick gem: Trippin SP Spike's [ExpertDrums] has 402 notes N 0 (kick) and no N 32 (2x kick), and Hydra's replay output for it counts 402 Kick. A 2x kick would also be counted as Kick there, so the chart itself is the proof. The chart is C:\Clone Hero\songs\Hydra Probe\Trippin SP Spike\notes.chart, outside the repo: its [ExpertDrums] section holds 402 notes of N 0 and none of N 32. The replay output is C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-10-28\l1\trippin.json, outside the repo: its 857 chords hold 402 notes of colour Kick. Both counts were read again on 2026-11-11 (session 428cf079). The checker's verdict is the IN-42 line of `docs/audit/2026-11-08-clone-hero-unknowns/checker-verdicts.md` (line 108). A check needs a run on a chart with 2x kick gems.
 Game code (6142): not found.
 Hydra: the 2x kick read is page 02's.
 Ruling: none needed: no Hydra rule reads it.
-Found: 2026-09-25, session 8157f2dc.
+Found: 2026-09-25, session 8157f2dc; the chart check, 2026-11-11, session 428cf079 (unknowns audit).
 
-### IN-43 A command-line song logs only its loading line at first
+### IN-43 One run's session log held only its loading line while the song played
 
-Rule: A song started from the command line writes only its "Loading Song" line to the session log at first, so waiting for "OnCountdownStart" never works; the tools attach about 5 s after launch.
-Label: Unknown
-Evidence: not checked: no session-log file was kept; the record is the study's Test 2 text and the L1 live run of 2026-10-29 (session e9b04efc), in which the attach waited 4.8 s so that it came 5 s after the launch, then attached in 1.2 s and read the state "playing".
+Rule: In one key-press run, the session log got only the "Loading Song" line and one warning in 300 s while the song played, and no "OnCountdownStart" line appeared in that time; so waiting for "OnCountdownStart" does not work, and the tools wait ATTACH_DELAY_S = 5.0 s instead (tools/ch_mcp/frida_tools.py line 43). That a command-line start is the cause was not checked, because no kept file records that run's launch arguments.
+Label: Proven in a live run
+Evidence: `tools/ch_probe/experiments/results/overlay-spike/run1_cal0_log_tail.txt` (the 2026-10-29 key-press run of `overlay-spike/run1_cal0_play_chart.txt`) watched `Session-2026-10-28_20-34-47.log` from its end for 300 s (lines 2 and 3). It got two lines, both at 20:36:15.244: "[Log] Loading Song: Hydra Probe - Trippin SP Spike" and a missing-text warning (lines 4 and 5), then stopped at the 300 s cap (line 6). The song played meanwhile: `overlay-spike/run1_cal0_sp_watch.csv` reads the clock rising from 2.207 s to 181.160 s. The two Unity `Player.log` files kept from runs (`hydra-data\ch-mcp-runs\2026-11-07\ls-t2-run-a\Player.log` and `hydra-data\ch-mcp-runs\2026-11-07\ls-t3-run-b\Player.log`) show "Loading Song" and no line holding "countdown" over a whole run; they have no time stamps, so they cannot show what came first. The tools' wait is `ATTACH_DELAY_S`, 5.0 s, at tools/ch_mcp/frida_tools.py line 43.
 Game code (6142): not found.
 Hydra: no owner. The tool's delay is `ATTACH_DELAY_S` (tools/ch_mcp/frida_tools.py).
 Ruling: none needed: no Hydra rule reads it.
-Found: 2026-10-28, feasibility study line 139.
+Found: 2026-10-28, feasibility study line 139; the kept log tail, 2026-11-08, session 428cf079 (unknowns audit).
 
-### IN-44 The empty hit-detection logs may have a switch
+### IN-44 The hit-detection logs are made at start-up and keep only tagged entries
 
-Rule: The game ships empty `HitDetection-Standard.log` and `HitDetection-Validation.log` files; a setting or flag that fills them was suspected and never found.
-Label: Unknown
-Evidence: looked in the feasibility study (lines 33 and 109) and docs/handoffs/2026-10-28-ch-mcp-results-handoff.md line 39 (removed; `git show 444631e6:docs/handoffs/2026-10-28-ch-mcp-results-handoff.md`); nothing was tested.
-Game code (6142): not found.
+Rule: The game sets up two file sinks for `HitDetection-Standard.log` and `HitDetection-Validation.log` at start-up; where the file is opened is not shown. Each sink writes only log entries tagged "GuitarEngine" or "GuitarEngineValidator". No setting is read on the way. Whether the shipped build ever makes a tagged entry is not known: no direct caller of the log writers was found by a byte scan of il2cpp and .text, which cannot see calls from generic method instances.
+Label: Proven in the game's code
+Evidence: GameInit.PreUnityInit calls `0x213040` with no test in front of it (the call at 0x1646F0). `code/6142/fast_logger_setup_213040.asm` checks only whether it already ran (lines 55 to 63), makes the `Logs` folder (lines 196 to 218) and adds three log targets at level 4, Trace (lines 239, 259 and 279); two are file sinks, one for `HitDetection-Standard.log` tagged "GuitarEngine" (line 248) and one for `HitDetection-Validation.log` tagged "GuitarEngineValidator" (line 268). The sink's write method writes an entry only when the entry's tag string at +0x40 equals the sink's tag, compared ordinally (`code/6142/log_file_sink_write_2158DF0.asm` lines 27 to 42); the tag is the fifth argument of the logger's writer (`code/6142/log_writer_2128F10.asm` lines 93 and 94). Unity's Debug.Log does not reach these files: the setup's lines 166 to 184 set Unity's logger to class #981, which hands lines to Unity's own log. No direct caller found (byte scan of il2cpp and .text) for the writers `0x2128F10` and `0x2128B70` or the dispatch method `0x2128770`. A byte scan cannot see calls from generic method instances, and the generic Log instances have compiled bodies (for example `0x604210`), so this does not show that no entry is ever made. The empty files are reported in the feasibility study (lines 33 and 109) and docs/handoffs/2026-10-28-ch-mcp-results-handoff.md line 39 (removed; `git show 444631e6:docs/handoffs/2026-10-28-ch-mcp-results-handoff.md`); no run has tested whether play fills them.
+Game code (6142): logger setup RVA `0x213040`; file sink write RVA `0x2158DF0`; logger writer RVA `0x2128F10`.
 Hydra: no owner.
 Ruling: none needed: no Hydra rule reads it.
-Found: 2026-10-28, feasibility study lines 33 and 109.
+Found: 2026-10-28, feasibility study lines 33 and 109; the listings, 2026-11-08, session 77057df2 (unknowns audit).
 
 ### IN-45 The game's text strings are plain
 
-Rule: The game's 23,972 text strings are not encrypted, the metadata lists 776 source file paths, and the "combo: {0}" string is used by a static BasePlayer method at 0x1168290 for drum inputs.
-Label: Unknown
-Evidence: not checked: the counts were not redone and the method was not read. The scan that IN-38 corrects did find code references to the "combo: {0}" string at that method; its script and output were not kept.
-Game code (6142): not read.
+Rule: The game has 23,972 text strings, all distinct, which Il2CppDumper reads as plain text. The metadata holds 1,346 distinct `.cs` source paths, of which 776 start with `\Assets`. The literal "combo: {0}" plus a newline is one line of a player's results summary: the static `BasePlayer<T>` method at 0x1168290, one of four compiled copies, builds such lines with 34 String.Format calls and writes them to Unity's log. That 0x1168290 is the copy for drum inputs is not shown.
+Label: Proven in the game's code
+Evidence: the counts are from `docs/audit/2026-11-08-clone-hero-unknowns/W8c/count_strings_paths.py`, whose output is `W8c/count_strings_paths.out.txt` beside it; it reads `stringliteral.json`, `dump.cs` and the game's `global-metadata.dat`. That the strings are not encrypted rests on Il2CppDumper reading them as plain text; it was not checked another way. The literal is at `stringliteral.json` lines 42695 and 42696. The method: `code/6142/base_player_combo_text_1168290.asm` lines 23 to 94 load the formats (line 43 the combo one), lines 173 to 181 format the combo line and line 591 logs. `dump.cs` lines 53245 to 53258 list the four copies. All four use the string, and so do `PracticeSectionDisplay` `0x2E98A0` and method `0x3B0910`; no direct caller of 0x1168290 was found (byte scan of il2cpp and .text, `W8c/xref_IN-45.out.txt`). Its type argument is struct #8663, whose second field is eight sbytes (struct #8688, `dump.cs` lines 553483 to 553494); no name in `dump.cs` says drums.
+Game code (6142): `BasePlayer<T>` method copy RVA `0x1168290`.
 Hydra: no owner.
 Ruling: none needed: no Hydra rule reads it.
-Found: 2026-10-28, feasibility study lines 56 and 158.
+Found: 2026-10-28, feasibility study lines 56 and 158; the counts and the method, 2026-11-11, session 428cf079 (unknowns audit).
 
-### IN-92 Where the game keeps its key bindings and settings, from tool code and the study
+### IN-92 Where the game keeps its key bindings and settings
 
-Rule: Not settled by the game's code. The tools take it that Rewired saves the game's bindings under the registry key `HKCU\Software\srylain Inc.\Clone Hero`, with a dot in "Inc." unlike the LocalLow folder. The feasibility study says `settings.ini` comes with a `settings_schema.json` that gives every setting's default, minimum and maximum, and that `settings.ini` holds `poll_rate = 656`, the clock the game polls input on.
-Label: Unknown
-Evidence: each part comes from tool code or prose only. The registry key is `REGISTRY_KEY` at tools/ch_mcp/game_files.py line 70, whose comment names it as Rewired's; no game method that writes it was read. The schema file is named at docs/research/2026-10-28-clone-hero-mcp-feasibility.md line 35, and `poll_rate = 656` at line 84 of the same study; neither file is kept in the repo, and no game method that reads `poll_rate`, or what its unit is, was read. These three lines are the leads for a check.
-Game code (6142): not found: no game method was read for any part.
-Hydra: no owner: Hydra never reads the running game. The tools back the registry key up and restore it in tools/ch_mcp/game_files.py.
+Rule: Rewired keeps the game's bindings in Unity's PlayerPrefs, which a Windows player keeps under the registry key `HKCU\Software\srylain Inc.\Clone Hero`, with a dot in "Inc." unlike the LocalLow folder. The game's own code writes PlayerPrefs too, so the key holds more than the bindings. `poll_rate` in `settings.ini` is Rewired's joystick refresh rate: a whole-number setting whose default is four times the screen's refresh rate, with min 60 and max 1000 passed to the setting's constructor 0x210C470 (not read); the schema file gives the same numbers. The game builds the paths of `settings.ini` and `settings_schema.json` at start-up; this machine's `settings_schema.json` gives `poll_rate` the default 656, minimum 60 and maximum 1000, and who writes that file was not read.
+Label: Proven in the game's code
+Evidence: the bindings: Rewired's `UserDataStore_PlayerPrefs` (`dump.cs` line 4278) is the only caller of `PlayerPrefs.SetString` and `PlayerPrefs.Save` inside Rewired's code (direct callers only, byte scan of il2cpp and .text, `docs/audit/2026-11-08-clone-hero-unknowns/W10a/xref_playerprefs.txt`), and the same scan finds callers in `MainMenu`, `News`, `BuildCheck`, `CliGameLauncher` and one scrambled class. Unity's "PlayerPrefs" Scripting API page (https://docs.unity3d.com/ScriptReference/PlayerPrefs.html) gives the registry path from the company and product names, which the game's `Clone Hero_Data\app.info` gives as "srylain Inc." and "Clone Hero"; this machine's key holds Rewired's controller maps. `poll_rate`: `code/6142/settings_load_374D50.asm` lines 1637 to 1671 read Unity's Screen.currentResolution (line 1639), divide its refresh-rate ratio (lines 1644 and 1658 to 1664), truncate and multiply by 4 (lines 1665 and 1666), with minimum 60 (line 1660) and maximum 1000 (line 1657), and store the setting at the settings statics' +0xC0 (line 1671). `code/6142/poll_rate_to_rewired_233198.asm` lines 1 to 12: `GlobalVariables.Start` hands the value to Rewired's `ReInput.ConfigHelper.set_joystickRefreshRate`; the unit is Rewired's, from documentation that was not fetched. Two more readers of `poll_rate` in `GameplaySettingsMenu` were not read. The paths: `code/6142/settings_ini_path_377FC0.asm` lines 12 to 28 and `code/6142/settings_schema_path_164940.asm` lines 4 to 38. The tools' key is `REGISTRY_KEY` at tools/ch_mcp/game_files.py line 70.
+Game code (6142): settings loader RVA `0x374D50`; settings path RVA `0x377FC0`; the schema path, built inside the `GameInit` method RVA `0x164810`; the call in `GlobalVariables.Start`, `code/6142/poll_rate_to_rewired_233198.asm` lines 1 to 12.
+Hydra: no owner: Hydra never reads the running game. The tools back the registry key up and restore it in tools/ch_mcp/game_files.py, so the non-Rewired values in it are backed up too.
 Ruling: none needed: no Hydra rule reads it.
-Found: 2026-11-08, session 77057df2 (docs-gaps search), from tool code and the feasibility study.
+Found: 2026-11-08, session 77057df2 (docs-gaps search), from tool code and the feasibility study; the game's code, 2026-11-08, session 428cf079 (unknowns audit).
 
 ## Naming across the two builds
 
@@ -596,15 +596,15 @@ Hydra: no owner.
 Ruling: none needed: no Hydra rule reads it.
 Found: 2026-10-28, feasibility study lines 41 to 50; recounted 2026-10-30, session b02ab3e6 (the reference build).
 
-### IN-47 The scrambled method counts per assembly were not recounted
+### IN-47 The scrambled method counts per assembly
 
-Rule: The study gives scrambled method counts of 7,941 of 11,926, 3,095 of 3,577, 1,426 of 1,614 and 288 of 303 for the four assemblies.
-Label: Unknown
-Evidence: not checked: it needs a recount of the method lines per image in `dump.cs`.
-Game code (6142): method metadata, not counted.
+Rule: Counting every method line in the dump, the four scrambled assemblies have 9,814 of 14,885 methods scrambled (CloneHero.dll), 3,700 of 4,209 (StrikeCore.dll), 1,701 of 1,906 (CHNet.Core.dll) and 304 of 320 (CHNet.Server.dll). Counting only methods with code of their own, the figures are 9,618 of 14,601, 3,019 of 3,338, 1,560 of 1,730 and 304 of 320. The feasibility study's counts (7,941 of 11,926, 3,095 of 3,577, 1,426 of 1,614 and 288 of 303) are not reproduced by either count.
+Label: Proven in the game's code
+Evidence: `docs/audit/2026-11-08-clone-hero-unknowns/W10b/count_methods.py` counted `dump.cs`, with its output in `W10b/method_counts.txt` beside it. It puts each type in an image by the image list at the top of `dump.cs`, counts each method line of a type's methods block, and calls a method scrambled when its name holds a non-ASCII letter, the same test IN-46 used for types. The second count keeps only methods whose RVA line is not -1. mscorlib.dll, counted as a control, has 0 scrambled. The study (docs/research/2026-10-28-clone-hero-mcp-feasibility.md line 52) says its counts came from a regex and are "close, not exact"; that regex is not kept, so the gap cannot be traced.
+Game code (6142): method metadata, counted.
 Hydra: no owner.
 Ruling: none needed: no Hydra rule reads it.
-Found: 2026-10-28, feasibility study lines 47 to 50.
+Found: 2026-10-28, feasibility study lines 47 to 50; recounted 2026-11-08, session 428cf079 (unknowns audit).
 
 ### IN-48 Only 164 of 1.0's 539 scrambled class names survive into 1.1
 
@@ -628,13 +628,13 @@ Found: 2026-10-28, feasibility study line 164.
 
 ### IN-50 The drum engine's 1.1 name and the shared GameManager field names
 
-Rule: The study says 1.1's drum engine name does not appear in 1.0 at all, and that only 13 GameManager field names appear in both builds.
-Label: Unknown
-Evidence: not checked: it needs a search of the 4045 `facts.json` for the 1.1 engine name and a field-by-field compare of the two GameManager classes. The compare file's line 5 count of 13 is about classes that appear more than once in a file, not about these fields.
-Game code (6142): not checked.
+Rule: 1.1's drum engine name (class #8255) appears nowhere in 1.0's dump of its five assemblies. Of 1.1's 60 GameManager fields and 1.0's 63, exactly 13 field names appear in both, and all 13 are scrambled names; none of 1.1's readable field names is among them. The script compares names only, not types or offsets, so a shared name does not by itself show the same field (IN-48 counts the classes that keep their names).
+Label: Proven in the game's code
+Evidence: `docs/audit/2026-11-08-clone-hero-unknowns/W11b/in50_compare.py`, with its output in `W11b/in50_compare_output.txt` beside it. It reads the 6142 `facts.json` (the drum engine's name, the class at `dump.cs` line 527421), the field lines of 6142's `GameManager` (`dump.cs` line 25284 up to its methods), and the 4045 `facts.json`: every class, field and method name of its 1,020 classes, its one GameManager class and the file's raw text. The engine name is not any of 4045's 10,415 distinct names, and not in that file's text in plain or JSON-escaped spelling. The 4045 `facts.json` covers the five assemblies its `dump_file` names (Assembly-CSharp, Assembly-CSharp-firstpass, StrikeCore, CHNet.Core and CHNet.Server), so "nowhere in 1.0" means nowhere in those five. The compare file's line 5 count of 13 is about classes that appear more than once in a file, not about these fields. The study now holds the claim at docs/research/2026-10-28-clone-hero-mcp-feasibility.md line 139.
+Game code (6142): class #8255 and `GameManager` field metadata, counted against 4045's.
 Hydra: no owner.
 Ruling: none needed: no Hydra rule reads it.
-Found: 2026-10-28, feasibility study line 164.
+Found: 2026-10-28, feasibility study (line 164 at commit f1b568bd); counted 2026-11-08, session 428cf079 (unknowns audit).
 
 ### IN-51 Build 1.0 is a Mono build with plain .NET code
 
@@ -782,13 +782,13 @@ Found: 2026-10-31, session b15bb484 (task D2), from the disassembly.
 
 ### IN-71 Whether the loader's profile clone is ever saved to profiles.ini
 
-Rule: Not settled. The command-line loader works on a clone of the profile (IN-61), and the clone is built with the number -1 and an empty ini name, where a loaded profile gets the ini name "profiles". Whether a profile with an empty ini name is ever written to `profiles.ini` was not traced.
+Rule: Not settled. The command-line loader works on a clone of the profile (IN-61), and the clone is built with the number -1 and an empty ini name, where a loaded profile gets the ini name "profiles". Proven in the game's code: the ini save method `0x2112DB0` skips every key whose ini name is empty, so the clone's settings do not reach `profiles.ini` through it. Whether another writer saves them is not known, because five other ini writers were not read through.
 Label: Unknown
-Evidence: the clone `0xD8470`, called at line 253 of `code/6142/cli_loader_3968D0.asm`, builds its profile with `mov r8` holding the empty string and `mov edx, 0xffffffff` (0xD84C9 to 0xD84DE) through the profile constructor `0xD8A90`, which keeps the ini name and the section "profile{0}" in the profile's +0xC0 (0xD8BE5 to 0xD8C1C, through `0x2115820`). The load passes "profiles", or "" for -1 (`code/6142/profile_save.asm` lines 190 and 191). Looked for the writer and did not read it through: the ini class #8513 has two methods that call File.WriteAllText, `0x2113710` and `0x2113C60`, and a save method `0x2112DB0` that walks a dictionary and compares names. Where we looked is in `code/6142/profile_save.md`.
-Game code (6142): clone RVA `0xD8470`; profile constructor RVA `0xD8A90`; ini key RVA `0x2115820`; ini writers RVA `0x2113710`, RVA `0x2113C60` and RVA `0x2112DB0`.
+Evidence: the clone `0xD8470`, called at line 253 of `code/6142/cli_loader_3968D0.asm`, builds its profile with `mov r8` holding the empty string and `mov edx, 0xffffffff` (0xD84C9 to 0xD84DE) through the profile constructor `0xD8A90`, which keeps the ini name and the section "profile{0}" in the profile's +0xC0 (0xD8BE5 to 0xD8C1C, through `0x2115820`). The load passes "profiles", or "" for -1 (`code/6142/profile_save.asm` lines 190 and 191). The save method: `code/6142/ini_save_2112DB0.asm` lines 100 to 105 compare each key's ini name with "" and jump to the next key, before the method looks at the name it was given (lines 134 to 141) or its path (lines 154 to 168). A file's path comes only from the name-to-path dictionary (`code/6142/ini_path_lookup_2115760.asm` lines 24 to 40), and of the 9 direct registrations found (byte scan of il2cpp and .text) only the one at 0x1CB46E pairs a name with the `profiles.ini` path, and that name is "profiles". Not read through: the two File.WriteAllText methods `0x2113710` and `0x2113C60` (read with tools/ch_mcp/chdis.py, not kept; neither takes an ini name) and the three methods that call the path lookup and then the document writer `0x2165C50` (`0x21134B0`, `0x21135B0` and `0x2114A80`, `code/6142/ini_path_lookup_2115760.md`). The runs: the `ch_stop` restore lines of all 15 human runs under `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\` (2026-10-31 to 2026-11-07), which start through the command-line loader, say `profiles.ini` was unchanged or restored, and 11 say it was absent before and after (for example `2026-10-31\ls-d0-run1\replies.txt` line 36); they cannot tell "skipped" from "nothing to save". The Documents folder today holds no `profiles.ini`, `profiles.bin` or `.ini` other than `settings.ini`. Where we looked first is in `code/6142/profile_save.md`.
+Game code (6142): clone RVA `0xD8470`; profile constructor RVA `0xD8A90`; ini key RVA `0x2115820`; ini writers RVA `0x2113710`, RVA `0x2113C60` and RVA `0x2112DB0`; path lookup RVA `0x2115760`.
 Hydra: no owner: Hydra never reads the running game. The tools back up `profiles.ini` in `DOCUMENTS_FILES` in tools/ch_mcp/game_files.py, the folder IN-70 gives.
 Ruling: none needed: no Hydra rule reads it.
-Found: 2026-10-31, session b15bb484 (task D2), from the disassembly.
+Found: 2026-10-31, session b15bb484 (task D2), from the disassembly; the save method and the runs, 2026-11-08, session 428cf079 (unknowns audit).
 
 ### IN-72 A player's stats record goes into scorestats.json on disk, with is_bot as one of its values
 
@@ -804,11 +804,11 @@ Found: 2026-10-31, session b15bb484 (task D2), from the disassembly.
 
 Rule: Not settled. The stats record reaches only local files through the direct calls found (IN-72). Whether the game also sends a score or stats online after a song, with or without a login, and whether "is_bot" decides it, was not traced.
 Label: Unknown
-Evidence: looked at the callers of the stats writer `0x1144C0` and of its text writers by a scan for direct calls only; calls through method tables, delegates and tasks were not followed, and no network code was read. The DLL does hold an online service: the text "Making session request to gateway: https://gateway-service.clonehero.net/api/session/request" is loaded in the method `0x285AD0`, which has no direct caller. The game's log showing "Unauthorized" for analytics in bot runs is one observation recorded in the direct-start plan (docs/superpowers/plans/2026-10-31-ch-mcp-direct-start.md (removed; git show 6804353f:docs/superpowers/plans/2026-10-31-ch-mcp-direct-start.md), section 3), not a code fact. See `code/6142/score_submit.md`.
+Evidence: looked at the callers of the stats writer `0x1144C0` and of its text writers by a scan for direct calls only; calls through method tables, delegates and tasks were not followed, and no network code was read. The DLL does hold an online service: the text "Making session request to gateway: https://gateway-service.clonehero.net/api/session/request" is loaded in the method `0x285AD0`. No direct caller of it was found (byte scan of il2cpp and .text, `docs/audit/2026-11-08-clone-hero-unknowns/W9b/xref_scan_output.txt`); one 8-byte pointer to it sits in `.data` at RVA 0x3C55C68, most likely the method pointer table, which was not checked. That text rests on the string-slot map, which a rescan found right against the file: all 23,972 slots decode as the game's own init helper does to the text chdis shows. One oddity stays unexplained: the gateway request URL's slot is also loaded in `GHLNoteContainer` method `0x1F53B0` and passed to `UnityEngine.SortingLayer.NameToID` (at 0x1F544D), where a URL cannot fit; a live read of the slot would settle it. The texts that look like the stats feature, "Fetching gateway stats for version: " and the "session/stats?backendVersion=" URL, sit in an async state machine's method `0x2EE6A0` (`dump.cs` line 65492), which was not listed; "Fetching" reads as a download, not a post. The game logs in the run folders were not read. The game's log showing "Unauthorized" for analytics in bot runs is one observation recorded in the direct-start plan (docs/superpowers/plans/2026-10-31-ch-mcp-direct-start.md (removed; git show 6804353f:docs/superpowers/plans/2026-10-31-ch-mcp-direct-start.md), section 3), not a code fact. See `code/6142/score_submit.md`.
 Game code (6142): not found: looked from RVA `0x1144C0` through RVA `0x252630`, RVA `0x253EF0`, RVA `0x15DC20` and RVA `0x161C70`, and at RVA `0x285AD0`.
 Hydra: no owner: Hydra never reads the running game.
 Ruling: none needed: no Hydra rule reads it.
-Found: 2026-10-31, session b15bb484 (task D2), from the disassembly.
+Found: 2026-10-31, session b15bb484 (task D2), from the disassembly; the caller and string scans, 2026-11-08, session 428cf079 (unknowns audit).
 
 ### IN-74 A paused command-line start takes the one-byte patch before the loader runs, and the song plays with no press
 
@@ -944,19 +944,19 @@ Found: 2026-11-08, session 6341c618 (the kick plan).
 
 ## Saved score files
 
-### IN-55 scoredata.bin keeps one best score per chart and instrument
+### IN-55 scoredata.bin keeps one merged entry per chart and instrument, and one play count per chart
 
-Rule: The player's saved score file, `scoredata.bin` in the game's LocalLow\srylain Inc_\Clone Hero folder (`LOCALLOW_DIR` in tools/ch_mcp/game_files.py line 39), holds one best score per chart per instrument and a play count per song. It stores the chart's hash next to each score, with no song title or artist. A human run changes it (and `scoresext.bin`); the tools restore both after a run.
-Label: Unknown
-Evidence: no reader of the file's format is committed and the game's writer was not read. Session c8856afd (2026-10-10) decoded the user's copy with a one-off script that was not kept; its finding that the file "stores only the chart hash next to each score, with no title or artist" comes from the session's own record, which is not kept. Session e8435f64 (2026-10-09) states the one-best-score rule from the dmleaderboards backend, which reads the uploaded file; its card (docs/sessions/2026-10-09-e8435f64.md) says dmleaderboards keeps only the best run per chart and copies play_count from the game's save file. That a human run changes both files is from session 6a549de0's own record, which is not kept. No repo file holds any of these. Whether `play_count` also counts plays on other instruments is not answered by any data: the same card leaves it open (docs/sessions/2026-10-09-e8435f64.md line 22), and no kept file or run tests it.
-Game code (6142): not found: the writer was not looked for.
+Rule: The player's saved score file is `scoredata.bin`; the game joins that name to the folder that 0x307590 returns, which was not read, and the tools use the LocalLow folder (`LOCALLOW_DIR` in tools/ch_mcp/game_files.py line 39). The file starts with the version 20211009 and a record count. Each record is a 16-byte chart hash, an entry count, a 2-byte play count, one more byte, then one 16-byte entry per instrument (instrument, difficulty, a byte, a flag, a short, a byte, the modifier flags and an int). No title or artist is stored. Each finished run adds one to the chart's play count whatever its instrument. It is then merged into that instrument's entry field by field: the larger int at +0x4 wins and brings the difficulty, modifiers and the short at +0xA with it, a tie takes the new run's, the larger bytes at +0xC and +0x14 are kept, and a flag set in either run stays set. That the int at +0x4 is the score was not read from a name.
+Label: Proven in the game's code
+Evidence: `code/6142/score_store_paths_2F4300.asm` lines 22 to 41 set the path. The writer `code/6142/score_store_write_2F57C0.asm` opens it (lines 30 to 46), writes the version (lines 55 to 57) and the record count (lines 63 to 66), then each record (lines 67 to 90). A record is `code/6142/score_chart_write_2167B0.asm`: the hash (lines 36 to 54), the entry count (lines 55 to 59), the play count (lines 60 to 64), one byte of unread meaning (lines 65 to 69) and the entries (lines 70 to 104); a record with no entries writes nothing (lines 29 to 35). An entry is `code/6142/score_entry_write_2BAB60.asm` lines 8 to 50. The entries sit in a dictionary keyed by instrument (`dump.cs` line 49307). Adding a run: `code/6142/score_chart_add_2161E0.asm` adds one to the record's play count, capped at 0xFFFF (lines 55 to 60), and merges with the instrument's old entry (lines 20 to 51) by `code/6142/score_entry_merge_2BA4F0.asm` lines 13 to 92. The end of a song reaches it through `code/6142/song_entry_add_score_358560.asm` (the add at line 34, the save at line 40); its callers (byte scan of il2cpp and .text) are `EndOfSong.Start` and the `EndOfSong` method `0x161C70`. The live file and a backup parse to their last byte in this layout, version 20211009, two records with one Pro Drums Expert entry each (`docs/audit/2026-11-08-clone-hero-unknowns/W8c/read_scoredata.py`, output `W8c/read_scoredata.out.txt`). Every tool backup equals the live file, and no after-run copy is kept, so no kept file shows a run changing it; that a human run changes `scoredata.bin` and `scoresext.bin` is from session 6a549de0's own record, which is not kept, and whether a bot run reaches the save was not read. Session e8435f64's card (docs/sessions/2026-10-09-e8435f64.md) says dmleaderboards keeps only the best run per chart and copies play_count from this file.
+Game code (6142): score store paths RVA `0x2F4300`; writer RVA `0x2F57C0`; record writer RVA `0x2167B0`; entry writer RVA `0x2BAB60`; run add RVA `0x2161E0`; entry merge RVA `0x2BA4F0`; `SongEntry` method RVA `0x358560`.
 Hydra: no owner. The chart hash is Clone Hero's song id (page 01, CR-10); the tools back the file up and restore it in tools/ch_mcp/game_files.py.
 Ruling: none needed: no Hydra rule reads it.
-Found: 2026-10-10, session c8856afd; 2026-10-09, session e8435f64; the open play-count question, 2026-11-08, session 77057df2 (docs-gaps search).
+Found: 2026-10-10, session c8856afd; 2026-10-09, session e8435f64; the open play-count question, 2026-11-08, session 77057df2 (docs-gaps search); the writer, 2026-11-11, session 428cf079 (unknowns audit).
 
 ## Rows waiting on a live run
 
-IN-19, IN-20, IN-21, IN-27, IN-29, IN-36, IN-40, IN-44, IN-59, IN-60, IN-80. See `live-checks.md`.
+IN-19, IN-20, IN-21, IN-27, IN-29, IN-36, IN-44, IN-80. See `live-checks.md`.
 
 ## Open splits
 

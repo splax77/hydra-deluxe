@@ -1,0 +1,2 @@
+# chart_build_20D2EA0.asm
+The static method of class 8265 (dump.cs line 528419) that builds a playable chart and calls the lane builder. Line 150 calls the lane builder 0x20D12C0 and keeps its list. Lines 153 and 155 send instruments 6 and 9 (the drums) to the branch at line 228. In that branch the modifier steps run after the lanes are built: Note Shuffle 0x20F0C30 at line 259 and the mirror 0x20F1900 at line 265. So the lanes hold references to notes that the shuffle then recolours. Page 2's NL-57 cites this listing.

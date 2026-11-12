@@ -1,0 +1,7 @@
+stringliteral.json: 23972 entries, 23972 distinct values
+dump.cs: 0 distinct .cs paths, 0 starting with 'Assets', 0 under 'Assets\Scripts'
+stringliteral.json values: 0 distinct .cs paths, 0 starting with 'Assets', 0 under 'Assets\Scripts'
+global-metadata.dat bytes: 1346 distinct .cs paths, 776 starting with 'Assets', 393 under 'Assets\Scripts'
+    e.g. \Assets\Menus\Menu 2.0\MenuItem.cs
+    e.g. \Assets\Menus\Menu 2.0\MenuRenderer.cs
+    e.g. \Assets\Menus\Menu 2.0\MenuScriptable.cs

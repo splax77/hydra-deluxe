@@ -1,0 +1,2 @@
+# lane_divisor_cctor_212E3D0.asm
+The static constructor of the class whose TypeInfo sits at 0x3CA1070 (TypeDefIndex 8538 in dump.cs, line 543340). The lane builder divides by this class's static double at +0x68 (docs/audit/drum-lanes/f20d12c0.asm lines 80 to 88). Lines 266 to 269 store 0x4068000000000000, the double 192.0, into that static. dump.cs line 543369 declares the field `public static readonly double`, so C# lets only this constructor write it. Page 2's NL-58 cites this listing.
