@@ -47,6 +47,11 @@ WAIT_S = 5.0
 NO_SONG = "no playing song found in 120 s; start the song and run again"
 
 
+# The full meter of a chart at resolution 192 (Trippin SP Spike's), from the one
+# place that knows the game's full meter (SP-11), so no test types it again.
+SPIKE_FULL_METER = sp_compare.game_full_meter(192)
+
+
 def snap_at(clock_s, **fields):
     """A snapshot of an all-zero object with its clock and any field set."""
     base = engine.decode_snapshot(bytes(engine.SNAPSHOT_SIZE))
@@ -294,8 +299,8 @@ class SpToolsTest(unittest.TestCase):
 
     def test_ch_sp_prints_the_latest_read(self):
         script = Script([
-            snap_at(1.0, sp_amount_u64=96, sp_max_u64=5760, sp_mult_u32=4),
-            snap_at(12.5, sp_amount_u64=2880, sp_max_u64=5760, sp_half_u64=2880,
+            snap_at(1.0, sp_amount_u64=96, sp_max_u64=SPIKE_FULL_METER, sp_mult_u32=4),
+            snap_at(12.5, sp_amount_u64=2880, sp_max_u64=SPIKE_FULL_METER, sp_half_u64=2880,
                     sp_active_byte=1, sp_mult_u32=8, sp_end_s=61.25, sp_overflow_u32=1)])
         tools = self.tools(script)
         self.started(tools)
@@ -316,8 +321,8 @@ class SpToolsTest(unittest.TestCase):
         ])
 
     def test_sp_lines_below_the_ready_level_and_with_no_maximum(self):
-        below = sp_tools.sp_lines(snap_at(2.0, sp_amount_u64=2879, sp_max_u64=5760,
-                                          sp_half_u64=2880))
+        below = sp_tools.sp_lines(snap_at(2.0, sp_amount_u64=2879,
+                                          sp_max_u64=SPIKE_FULL_METER, sp_half_u64=2880))
         self.assertIn("ready: no, the amount is below the game's half", below)
         self.assertIn("active flag: 0 (off)", below)
         empty = sp_tools.sp_lines(snap_at(2.0))
@@ -328,9 +333,9 @@ class SpToolsTest(unittest.TestCase):
 
     def flip_script(self):
         return Script([
-            snap_at(1.0, sp_amount_u64=2880, sp_max_u64=5760, sp_half_u64=2880,
+            snap_at(1.0, sp_amount_u64=2880, sp_max_u64=SPIKE_FULL_METER, sp_half_u64=2880,
                     sp_mult_u32=4),
-            snap_at(2.0, sp_amount_u64=2880, sp_max_u64=5760, sp_half_u64=2880,
+            snap_at(2.0, sp_amount_u64=2880, sp_max_u64=SPIKE_FULL_METER, sp_half_u64=2880,
                     sp_mult_u32=8, sp_active_byte=1, sp_end_s=10.0)])
 
     def test_ch_sp_between_reports_a_flip_inside_the_window(self):
