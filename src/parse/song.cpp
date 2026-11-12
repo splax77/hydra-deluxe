@@ -139,7 +139,11 @@ LaneSpan lane_span(const DrumLane& lane, const std::vector<SongTimestamp>& seque
 }
 
 // Clone Hero's pads for one lane (D112): picked from the first chords with a
-// pad. Empty when the span has none.
+// pad. Empty when the span has none. A double lane's second pad is picked the
+// way the game's lane builder picks it, which NL-55 on
+// docs/clone-hero/02-note-list.md records with its listings (D333). The case
+// with no later chord is one the listings do not show, so it follows the
+// user's choice in D333.
 std::vector<NoteColor> game_lane_pads(const DrumLane& lane, const LaneSpan& span,
                                       const std::vector<SongTimestamp>& sequence) {
     auto it = span.first;
@@ -152,15 +156,11 @@ std::vector<NoteColor> game_lane_pads(const DrumLane& lane, const LaneSpan& span
     std::vector<NoteColor> pads = {first.lowest};
     if (lane.double_lane) {
         std::optional<NoteColor> second;
-        if (first.count >= 2) {
-            second = first.highest;
-        } else {
-            for (auto next = it + 1; next != sequence.end(); ++next) {
-                const LanePads p = lane_pads(next->chord);
-                if (p.count > 0) {
-                    second = p.highest;
-                    break;
-                }
+        for (auto next = it + 1; next != sequence.end(); ++next) {
+            const LanePads p = lane_pads(next->chord);
+            if (p.count > 0) {
+                second = p.highest;
+                break;
             }
         }
         if (second && *second != first.lowest) pads.push_back(*second);
