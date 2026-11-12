@@ -23,10 +23,10 @@ from typing import Callable, List, Optional, Sequence, Tuple
 
 from tools.ch_mcp import game_files
 
-# Question 1 of the plan: the CPU share at or under which the machine is quiet,
-# the seconds it is averaged over, and how young a build folder's newest file
-# must be to count as a build at work.
-QUIET_CPU_PCT = 15
+# The CPU share at or under which the machine is quiet, the seconds it is
+# averaged over, and how young a build folder's newest file must be to count as
+# a build at work.
+QUIET_CPU_PCT = 30
 QUIET_SAMPLE_S = 5
 BUILD_RECENT_S = 60
 
