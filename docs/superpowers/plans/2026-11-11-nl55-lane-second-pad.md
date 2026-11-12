@@ -8,13 +8,13 @@ A drum lane is the coloured strip Clone Hero draws down a pad column during a ro
 
 The change is small. One function in `src/parse/song.cpp`, `game_lane_pads`, loses its special case. One existing test pins the old behaviour and is rewritten, and five new cases are added.
 
-Only the Preview's highway reads a lane's pads. The engine never reads them, so no best score and no path can move. I measured the corpus anyway: none of the 10 double lanes in `testdata/input` changes.
+Only the Preview's highway reads a lane's pads. The engine never reads them, so no best score and no path can move. The kept evidence for the charts is the `testdata/input` corpus: none of its 10 double lanes changes. About the user's own library this plan knows nothing (question 2).
 
-Two things need the user. The game's listing does not show what happens when the song has no later chord at all (question 1). And I found no real chart where the Preview changes, so the before and after below come from a test chart (question 2).
+Two things need the user. The game's listing does not show what happens when the song has no later chord at all (question 1). And no kept chart shows the Preview changing, so the before and after below come from a test chart; whether to look in the user's library for a real one is question 2.
 
-## One thing in the brief that the code contradicts
+## Does the engine read a lane's pads?
 
-The brief for this plan said lit pads change what Hydra counts and scores. They do not. `Song::drum_lanes` has one reader outside the loader: `build_preview_scene` in `src/app/preview_view.cpp` lines 345 to 349, which hands the pads to the highway (`src/render/track_state.cpp` line 261, drawn at `src/render/highway_draw.cpp` line 317). Nothing under `src/search` or `src/store` names a drum lane. The decision log says the same: "Hydra's engine does not, and this decision changes no score" (D112, `docs/audit/2026-10-03-fix-decisions.md` line 628). So this plan changes a drawing and nothing else.
+No. `Song::drum_lanes` has one reader outside the loader: `build_preview_scene` in `src/app/preview_view.cpp` lines 345 to 349, which hands the pads to the highway (`src/render/track_state.cpp` line 261, drawn at `src/render/highway_draw.cpp` line 317). Nothing under `src/search` or `src/store` names a drum lane. The decision log says the same: "Hydra's engine does not, and this decision changes no score" (D112, `docs/audit/2026-10-03-fix-decisions.md` line 628). So this plan changes a drawing and nothing else. I also searched `src` and `tools` for the lane type, its list and its fields and found no other reader.
 
 ## The game's rule, checked against the listings
 
@@ -46,7 +46,7 @@ The old rule is also written down in three documents. The decision log's D112 it
 
 One screen reads the changed value: the Preview's highway, in the lane strips. No text anywhere reads it: no table, no tooltip, no report line.
 
-On every real chart I checked, nothing changes. `testdata/input` holds 115 chart files with 10 double lanes in six songs, and each of those lanes starts on a lone green cymbal. The six songs are Trivium - Feast of Fire, DOMi & JD Beck - Zildjian LIVE! Performance 2020 (two lanes), Avenged Sevenfold - Unbound (The Wild Ride), Rush - YYZ, Between the Buried and Me - (B) The Decade Of Statues, and The Agonist - Thank You, Pain (one lane on each of four difficulties). Rows P8 and P9 name the files and ticks.
+In the kept corpus nothing changes. `testdata/input` holds 115 chart files with 10 double lanes in six songs, and each of those lanes starts on a lone green cymbal. The six songs are Trivium - Feast of Fire, DOMi & JD Beck - Zildjian LIVE! Performance 2020 (two lanes), Avenged Sevenfold - Unbound (The Wild Ride), Rush - YYZ, Between the Buried and Me - (B) The Decade Of Statues, and The Agonist - Thank You, Pain (one lane on each of four difficulties). Rows P8 and P9 name the files and ticks.
 
 So the before and after come from the test chart T1 adds, not from a real chart. The chart has a double lane from tick 0 to 192, a chord of red and yellow cymbal at tick 0, and a blue tom at tick 96.
 
@@ -54,21 +54,21 @@ So the before and after come from the test chart T1 adds, not from a real chart.
 |---|---|---|
 | Preview highway, the lane strips under that lane | red column and yellow column lit | red column and blue column lit |
 
-Agent rule 11 asks for a real chart. I do not have one, and question 2 asks how the user wants that settled.
+Agent rule 11 asks for a real chart. No chart the repo keeps shows a change, and the user's own library has not been read for this plan, so question 2 asks how the user wants that settled.
 
 ## Does any score or path move
 
 No. Three facts back that.
 
-The engine does not read lanes (see "One thing in the brief" above, rows P5 and P6).
+The engine does not read lanes (see "Does the engine read a lane's pads?" above, rows P5 and P6).
 
-No corpus chart reads differently. I read every double lane in `testdata/input` and worked out both rules for each: 10 double lanes, none with two or more pads on its first chord, none that changes, none without a later chord, and none whose later chord sits past the lane's end.
+No corpus chart reads differently. A scratch script, not kept, worked out both rules for every double lane in `testdata/input`, and found: 10 double lanes, none with two or more pads on its first chord, none that changes, none without a later chord, and none whose later chord sits past the lane's end.
 
-T1 proves it again after the build. The corpus parse digests hash every lane's pads (`tests/song_digest.h` lines 250 to 256). If any corpus lane changed, "the corpus's parse digest is pinned" would fail. T1 must leave those pins untouched.
+The kept check is T1's, after the build. The corpus parse digests hash every lane's pads (`tests/song_digest.h` lines 250 to 256). If any corpus lane changed, "the corpus's parse digest is pinned" would fail. T1 must leave those pins untouched.
 
 ## The results stamp
 
-`kResultsStamp` in `src/store/stored_versions.h` line 55 stays as it is. Its rule (lines 42 to 54) asks for a bump when "analysis output changes": anything a fresh analysis would compute differently. A lane's pads are not analysis output. No table stores them, and the engine does not read them. A saved result computed before this change is the same result after it.
+`kResultsStamp` in `src/store/stored_versions.h` line 55 stays as it is. Its rule (lines 42 to 54) asks for a bump whenever analysis output changes, and names "the chart readers (src/parse) when a chart reads differently: anything a fresh analysis would compute differently". This change is in `src/parse`, so the clause applies, and the answer is still no, because no analysis result differs. A lane's pads are not analysis output. No table stores them, and the engine does not read them. A saved result computed before this change is the same result after it.
 
 ## Global constraints
 
@@ -84,9 +84,9 @@ Agents do not build or run `hydra_tests.exe`. The main session builds and runs T
 
 ## Questions
 
-1. **A double lane whose first chord is the last chord with a pad in the whole song.** The game's listing does not show what happens. The second search returns -1 and the builder passes it on unchecked (`docs/audit/drum-lanes/f20d12c0.asm` lines 163 to 167); the getter it reaches has no listing. Hydra's real rule today is `if (second && *second != first.lowest) pads.push_back(*second);`, so with no second chord it lights the first chord's lowest pad alone. Example today: a lone green at tick 0 under a double lane, then only kicks, lights green (pinned at `tests/test_song_parse.cpp` line 586). The other end, after this change: red plus yellow cymbal at tick 0 under a double lane, then nothing. Side (a): light red alone, which keeps today's rule for "no second chord" and is what T1 is written to do. Side (b): keep red and yellow for that one case, which keeps a branch the game does not have. Side (c): drop the lane. I recommend (a). No chart I read has this case.
+1. **A double lane whose first chord is the last chord with a pad in the whole song.** The game's listing does not show what happens. The second search returns -1 and the builder passes it on unchecked (`docs/audit/drum-lanes/f20d12c0.asm` lines 163 to 167); the getter it reaches has no listing. Hydra's real rule today is `if (second && *second != first.lowest) pads.push_back(*second);`, so with no second chord it lights the first chord's lowest pad alone. Example today: a lone green at tick 0 under a double lane, then only kicks, lights green (pinned at `tests/test_song_parse.cpp` lines 585 to 588). The other end, after this change: red plus yellow cymbal at tick 0 under a double lane, then nothing. Side (a): light red alone, which keeps today's rule for "no second chord" and is what T1 is written to do. Side (b): keep red and yellow for that one case, which keeps a branch the game does not have. Side (c): drop the lane. I recommend (a). No chart I read has this case.
 
-2. **A real chart for the before and after.** None of the 115 chart files in `testdata/input` changes. I also read the first 200 charts with a double lane named in `docs/audit/drum-lanes/play/library_all_charts_with_lanes.csv` (444 double lanes, read-only, by path), and none changes there either. That list names 1,887 library charts with a double lane. Side (a): accept the test chart as the example, since the case is rare. Side (b): allow a one-time, read-only read of those 1,887 named chart files to find real examples, and show the Preview before and after on one of them before merge. Reading all of them is close to a library scan, so it needs your yes in chat.
+2. **A real chart for the before and after, and the user's library.** No chart in `testdata/input` changes, and that corpus is the only chart evidence this plan keeps. Nobody has read the user's library for this plan, so how often a real chart changes is unknown. A Preview change needs a double lane whose first chord holds two or more pads, which the corpus never has. Side (a): accept the test chart as the example and merge on the corpus evidence alone, since the case looks rare. Side (b): allow a one-time, read-only look at the library charts that have a double lane, to find a real example and show the Preview before and after on one of them before merge. That is a library read, so it needs the user's yes in chat first; the committed list `docs/audit/drum-lanes/play/library_all_charts_with_lanes.csv` names which charts to read.
 
 3. **Out of scope.** The list at the end needs the user's yes.
 
@@ -101,6 +101,8 @@ Uses rows P1 to P4 and P7. The no-later-chord case uses row P12 and waits on que
 **The tests**, in `tests/test_song_parse.cpp`, each built with the file's own `lane_chart` helper:
 
 - Rewrite "`.chart: a double lane on a three-pad chord lights its lowest and highest`". Its chart is red, yellow cymbal and blue tom at tick 0, then a green tom at tick 96. It must now expect red and green, with Pro Drums on and off, and its name and comments must say the second pad comes from the next chord.
+Each added case is its own `TEST_CASE` whose name holds the words "double lane", so the `-tc=*double lane*` run in criterion 1 reaches it.
+
 - Add the block's example: red plus yellow cymbal at tick 0, blue tom at tick 96, double lane 0 to 192. Expect red and blue.
 - Add a kick between them: red plus yellow cymbal at 0, a lone kick at 48, yellow tom plus blue tom at 96. Expect red and blue.
 - Add a later chord past the lane's end: red plus yellow cymbal at 0, double lane 0 to 96, green tom at 192. Expect red and green.
@@ -128,7 +130,7 @@ This plan has no live step. Nothing here runs the game.
 
 Once T1 lands, NL-55 on `docs/clone-hero/02-note-list.md` changes in four lines. The Rule and Label lines stay.
 
-Evidence: add two sentences after the sentence that ends "so the first chord is never taken". "The second search is given no end: the builder passes it the chord list, a tick, the pad mask and a start index (f20d12c0.asm lines 157 to 162), so the second chord may sit after the lane's end. The builder does not test the search's result for -1 before it reads the chord (lines 163 to 167), and the getter it calls has no listing, so what the game does when no later chord exists is Unknown." Then replace the closing sentence about the decision log with: "The decision log's D112 item 3 said the second pad comes from the first chord itself when it has two or more pads; its correction of the merge date withdraws that."
+Evidence: add two sentences after the sentence that ends "so the first chord is never taken". "The second search is given no end: the builder passes it the chord list, a tick, the pad mask and a start index (f20d12c0.asm lines 157 to 162), so the second chord may sit after the lane's end. The builder does not test the search's result for -1 before it reads the chord (lines 163 to 167), and the getter it calls has no listing, so what the game does when no later chord exists is Unknown." Change "Two points stay Unknown" so it names the chord-list question and the no-later-chord question, and drop the decision-log clause from it. Then replace the closing sentence about the decision log with: "The decision log's D112 item 3 said the second pad comes from the first chord itself when it has two or more pads; its correction of the merge date withdraws that."
 
 Hydra: replace the whole line with "`light_drum_lanes` in src/parse/song.cpp and `lights_lane_pad`, with the pick in `game_lane_pads`: a double lane takes the highest pad of the next chord with a pad, anywhere later in the song. When the song has no such chord Hydra lights the first pad alone." The executor adds the line numbers as they stand after the change.
 
@@ -169,12 +171,12 @@ The format's public notes say a double roll lane is for "swells that alternate b
 | P5: the only reader of a lane's pads outside the loader is the Preview scene, which feeds the highway | code | `src/app/preview_view.cpp` lines 345 to 349, `src/render/track_state.cpp` line 261, `src/render/highway_draw.cpp` line 317; a search of `src` and `tools` for the lane type, its list and its fields found no other reader | checked 2026-11-11 |
 | P6: the decision that added lanes says the engine does not read them and no score changes | code | `docs/audit/2026-10-03-fix-decisions.md` line 628 | checked 2026-11-11 |
 | P7: the user chose to match the game for this difference, on top of "go with clone hero" | ruling | `docs/sessions/2026-11-08-77057df2.md` line 19, "Match the game (Recommended)"; `docs/sessions/2026-10-11-14ef4882.md` line 18, "go with clone hero" | checked 2026-11-11 |
-| P8: the .mid double lanes in the corpus each start on a lone green cymbal: Feast of Fire at tick 11520, Zildjian LIVE! at 210480 and 444480, Unbound at 360000, YYZ at 318000, The Decade Of Statues at 315360 | chart | `testdata/input/common/IB24/T3/Trivium - Feast of Fire/notes.mid`, `testdata/input/common/IB24/T7/DOMi & JD Beck - Zildjian LIVE! Performance 2020/notes.mid`, `testdata/input/common/Summer Blast _25 Setlist/Tier 4/Avenged Sevenfold - Unbound (The Wild Ride)/notes.mid`, `testdata/input/common/Summer Blast _25 Setlist/Tier 4/Rush - YYZ/notes.mid`, `testdata/input/common/Summer Blast _25 Setlist/Tier 6/Between the Buried and Me - (B) The Decade Of Statues/notes.mid` | checked 2026-11-11 (read by a script through the parser in docs/audit/drum-lanes/play/lanelib.py; T1's criterion 3 proves it again) |
-| P9: the one .chart double lane in the corpus, at tick 167280 on all four difficulties, starts on a lone green cymbal with a yellow cymbal next | chart | `testdata/input/common/Summer Blast _25 Setlist/Tier 6/The Agonist - Thank You, Pain/notes.chart` | checked 2026-11-11 |
+| P8: the .mid double lanes in the corpus each start on a lone green cymbal: Feast of Fire at tick 11520, Zildjian LIVE! at 210480 and 444480, Unbound at 360000, YYZ at 318000, The Decade Of Statues at 315360 (the test at `tests/test_song_parse.cpp` line 478 pins only YYZ) | chart | `testdata/input/common/IB24/T3/Trivium - Feast of Fire/notes.mid`, `testdata/input/common/IB24/T7/DOMi & JD Beck - Zildjian LIVE! Performance 2020/notes.mid`, `testdata/input/common/Summer Blast _25 Setlist/Tier 4/Avenged Sevenfold - Unbound (The Wild Ride)/notes.mid`, `testdata/input/common/Summer Blast _25 Setlist/Tier 4/Rush - YYZ/notes.mid`, `testdata/input/common/Summer Blast _25 Setlist/Tier 6/Between the Buried and Me - (B) The Decade Of Statues/notes.mid` | checked 2026-11-11 (read by a scratch script, not kept; its parser copy is `docs/audit/drum-lanes/play/lanelib.py`; the kept check is T1's criterion 3) |
+| P9: the one .chart double lane in the corpus, at tick 167280 on all four difficulties, starts on a lone green cymbal with a yellow cymbal next | chart | `testdata/input/common/Summer Blast _25 Setlist/Tier 6/The Agonist - Thank You, Pain/notes.chart` | checked 2026-11-11 (the test at `tests/test_song_parse.cpp` line 478 pins the Expert lane as yellow and green; the other three difficulties came from the same scratch script as P8) |
 | P10: the corpus parse digest hashes every lane's pads, so a changed corpus lane fails its pin | code | `tests/song_digest.h` lines 250 to 256 and `tests/test_perf_digest.cpp` line 149 | checked 2026-11-11 |
 | P11: the results stamp is bumped only when analysis output changes | code | `src/store/stored_versions.h` lines 42 to 55 | checked 2026-11-11 |
 | P12: what the game does when the second search finds no chord | unchecked | `docs/audit/drum-lanes/f20d12c0.asm` lines 163 to 167 pass the result on with no test for -1; the getter they call has no listing in the repo | question 1 |
-| P13: the change is rare in the user's library: none of 444 double lanes in the first 200 double-lane charts named in the committed list changes | unchecked | `docs/audit/drum-lanes/play/library_all_charts_with_lanes.csv` names the charts; the script that read them was not kept | question 2 |
+| P13: whether any chart in the user's library has a double lane whose first chord holds two or more pads | unchecked | no kept source: nobody has read the library for this plan, and the user never allowed it; `docs/audit/drum-lanes/play/library_all_charts_with_lanes.csv` only names which charts have a double lane | question 2 |
 | P14: the existing three-pad test pins the old rule and the one-pad test pins "only the first pad" when no later chord has a pad | code | `tests/test_song_parse.cpp` lines 529 to 545 and 585 to 588 | checked 2026-11-11 |
 
 ## Out of scope (needs the user's yes to leave out)
