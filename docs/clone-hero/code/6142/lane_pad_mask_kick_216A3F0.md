@@ -1,0 +1,2 @@
+# lane_pad_mask_kick_216A3F0.asm
+A second pad-mask method of the lane class, TypeDefIndex 8641 (dump.cs line 551201, vtable slot 18). It matches lane_pad_mask_216A440.asm except on a single lane, where line 14 starts from 1 instead of 0, so the result also holds bit 1. No direct caller was found by a byte scan, and this pass did not find which code reads it through slot 18. Page 2's NL-57 cites this listing.

@@ -1,0 +1,2 @@
+# song_ctor_212E990.asm
+The constructor of the song class, TypeDefIndex 8538 (dump.cs line 543450). Lines 202 to 207 store 0x4068000000000000, the double 192.0, into both +0xB0 and +0xB8, so a new song starts at resolution 192 until a loader sets it. Lines 209 and 210 keep the constructor's settings argument at +0xC8, the object whose +0x14 float the resolution setter (song_resolution_set_212C0B0.asm) multiplies into +0xB0. Page 2's NL-58 cites this listing.

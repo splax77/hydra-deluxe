@@ -1,0 +1,2 @@
+# modifier_step_20F1250.asm
+The modifier step the note builder calls for modifier bit 4 (NL-68). Lines 27 to 59 walk the note list: a note whose +0x80 lane word is exactly 1 (the kick on drums, NL-50) is unlinked from its neighbours through +0x10 and +0x18 (lines 38 to 51) and its list slot is set to null (lines 52 to 56). Line 98 then calls RemoveAll with a cached predicate (lines 60 to 90); the predicate's body was not listed. Page 2's NL-69 cites this listing.
