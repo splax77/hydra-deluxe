@@ -1,7 +1,8 @@
 // Unit tests for the library and leaderboard jobs: Pause, Stop, the batch
 // clock and time-left estimate, the chart being analyzed, the batch's counts,
 // plain failure lines, quiet cancels, and the startup open's step that reads
-// saved paths.
+// saved paths. One opt-in case times the startup library read on a library
+// file the caller names.
 // The analyzer and the network are fakes; the counts case, the batch hand-back
 // case and the startup open's cases read one corpus chart each, for a result
 // the store can save.
@@ -32,6 +33,7 @@
 #include "corpus_util.h"
 #include "db_file_util.h"  // exec_on_file
 #include "display_fixtures.h"  // kTagOnlyTitle, save_batch_record
+#include "env_util.h"  // read_env
 #include "net/dmbot_client.h"
 #include "scoped_hook.h"
 #include "store/record_store.h"
@@ -39,6 +41,7 @@
 #include "temp_util.h"
 #include "ui/dm_jobs.h"
 #include "ui/library_jobs.h"
+#include "ui/library_model.h"
 #include "wait_util.h"
 
 using hydra::app::AnalysisResult;
@@ -643,6 +646,98 @@ TEST_CASE("jobs: a stop while the startup open reads saved paths ends it as a ca
         CHECK(store.rows_missing_hardest(settings.profile()).size() == 1);
     }
     testtemp::remove_dir(dir);
+}
+
+// ---- timing the startup library read, part by part ----------------------------
+
+namespace {
+
+// One run's milliseconds for each part of the startup library read.
+struct StartupReadTimes {
+    double open = 0;
+    double list = 0;
+    double set_charts = 0;
+    double lookup = 0;
+    double set_summaries = 0;
+    double sort = 0;
+    double total = 0;
+};
+
+double ms_between(std::chrono::steady_clock::time_point from,
+                  std::chrono::steady_clock::time_point to) {
+    return std::chrono::duration<double, std::milli>(to - from).count();
+}
+
+// Opens the library file at `db` and reads it the way read_library does, one
+// call at a time so each can be timed. The calls and their order are
+// read_library's and read_library_summaries' (ui/library_jobs.cpp); this
+// holds no step of its own.
+StartupReadTimes time_startup_read(const std::string& db, const hydra::app::Settings& settings) {
+    using Clock = std::chrono::steady_clock;
+    const Clock::time_point start = Clock::now();
+    RecordStore store(db, hydra::core::RulesStamp::of(settings.rules));
+    const Clock::time_point opened = Clock::now();
+    std::vector<ChartLibraryEntry> charts = store.list_chart_library(0, -1);  // -1 = no limit
+    const Clock::time_point listed = Clock::now();
+    const size_t rows_read = charts.size();
+    hydra::ui::LibraryModel library;
+    library.set_charts(std::move(charts));
+    const Clock::time_point charts_set = Clock::now();
+    const std::vector<hydra::store::RecordLookup> lookups =
+        store.lookup(library.hashes(), settings.profile());
+    const Clock::time_point looked_up = Clock::now();
+    library.set_summaries(lookups);
+    const Clock::time_point summaries_set = Clock::now();
+    library.sort_if_out_of_date();
+    const Clock::time_point sorted = Clock::now();
+
+    // Every row of the file was read; counted after the clock stops.
+    CHECK(static_cast<int64_t>(rows_read) == store.chart_library_count());
+
+    StartupReadTimes t;
+    t.open = ms_between(start, opened);
+    t.list = ms_between(opened, listed);
+    t.set_charts = ms_between(listed, charts_set);
+    t.lookup = ms_between(charts_set, looked_up);
+    t.set_summaries = ms_between(looked_up, summaries_set);
+    t.sort = ms_between(summaries_set, sorted);
+    t.total = ms_between(start, sorted);
+    return t;
+}
+
+void print_startup_read(const std::string& run, const StartupReadTimes& t) {
+    MESSAGE(run << " open " << t.open << " ms");
+    MESSAGE(run << " list " << t.list << " ms");
+    MESSAGE(run << " set_charts " << t.set_charts << " ms");
+    MESSAGE(run << " lookup " << t.lookup << " ms");
+    MESSAGE(run << " set_summaries " << t.set_summaries << " ms");
+    MESSAGE(run << " sort " << t.sort << " ms");
+    MESSAGE(run << " total " << t.total << " ms");
+}
+
+}  // namespace
+
+// A measurement, not a check of behaviour: the plan
+// docs/superpowers/plans/2026-11-12-startup-library-read.md (T1) reads its
+// numbers. It runs only when HYDRA_TIMING_DB names a library file, and it
+// opens only that file, so point it at a copy of a library, never the live
+// one. The first run is the nearest to a cold read; the fastest is the warm
+// floor.
+TEST_CASE("timing: the startup library read by part") {
+    const std::optional<std::string> db = read_env("HYDRA_TIMING_DB");
+    if (!db || db->empty()) return;
+    REQUIRE(std::filesystem::is_regular_file(std::filesystem::u8path(*db)));
+
+    const hydra::app::Settings settings;
+    constexpr int kRuns = 5;  // the plan's run count
+    std::vector<StartupReadTimes> runs;
+    for (int i = 0; i < kRuns; ++i) runs.push_back(time_startup_read(*db, settings));
+
+    size_t fastest = 0;
+    for (size_t i = 1; i < runs.size(); ++i)
+        if (runs[i].total < runs[fastest].total) fastest = i;
+    print_startup_read("run 1:", runs[0]);
+    print_startup_read("fastest (run " + std::to_string(fastest + 1) + "):", runs[fastest]);
 }
 
 TEST_CASE("jobs: a cancelled leaderboard fetch is not an error") {
