@@ -756,15 +756,14 @@ TEST_CASE("library model: only the Best path cell reads the row's summary") {
     }
 }
 
-TEST_CASE("library model: each row's search text and sort keys are pinned") {
-    // Rows whose shown text differs from their tag-stripped stored text
-    // (spaces trimmed, a placeholder shown for an empty name, a folder shown
-    // with its tags) and rows where the two are the same (tags, accents,
-    // full-width letters). Every literal is the fold of the text the field
-    // names, written out by hand; a sort key taken from the wrong text fails.
-    // Made-up rows. The ideographic space is U+3000.
-    LibraryModel m;
-    m.set_charts({
+namespace {
+
+// Rows whose shown text differs from their tag-stripped stored text (spaces
+// trimmed, a placeholder shown for an empty name, a folder shown with its
+// tags) and rows where the two are the same (tags, accents, full-width
+// letters). Made-up rows. The ideographic space is U+3000.
+std::vector<ChartLibraryEntry> pinned_charts() {
+    return {
         chart("tags", "<color=#ff0000>Red</color> Song", "<b>The</b> Band", "<i>Hoph2o</i>",
               "common\\<b>Tagged</b>", "<size=20>Big</size> Album"),
         chart("spaces", "  Spaced Out ", " Lead Artist", "Charter\t", "pack", " Album  "),
@@ -772,7 +771,43 @@ TEST_CASE("library model: each row's search text and sort keys are pinned") {
         chart("accents", "Beyoncé Æther", "Motörhead", "Łukasz", "common\\Café", "Straße"),
         chart("wide", "ＢＵＲＮＯＵＴ！", "Ｇｒｅｅｎ" "\xE3\x80\x80" "Ｄａｙ", "東京事変", "ｗｉｄｅ",
               "Ａｌｂｕｍ" "\xE3\x80\x80"),
-    });
+    };
+}
+
+// The row `entry` makes in a library of that one chart. set_charts builds a
+// library of one row on the calling thread, so this is the one-thread build.
+hydra::ui::LibraryRow one_thread_row(const ChartLibraryEntry& entry) {
+    LibraryModel m;
+    m.set_charts({entry});
+    REQUIRE(m.rows().size() == 1);
+    return m.rows()[0];
+}
+
+// Every field set_charts writes: the kept chart, the shown names, the search
+// text and the sort keys.
+void check_same_row(const hydra::ui::LibraryRow& got, const hydra::ui::LibraryRow& want) {
+    CHECK(got.entry.md5 == want.entry.md5);
+    CHECK(got.entry.notespath == want.entry.notespath);
+    CHECK(got.entry.rootfolder == want.entry.rootfolder);
+    CHECK(got.title == want.title);
+    CHECK(got.artist == want.artist);
+    CHECK(got.album == want.album);
+    CHECK(got.charter == want.charter);
+    CHECK(got.searchable.title == want.searchable.title);
+    CHECK(got.searchable.artist == want.searchable.artist);
+    CHECK(got.searchable.album == want.searchable.album);
+    CHECK(got.searchable.charter == want.searchable.charter);
+    CHECK(got.searchable.folder == want.searchable.folder);
+    CHECK(got.sort_keys == want.sort_keys);
+}
+
+}  // namespace
+
+TEST_CASE("library model: each row's search text and sort keys are pinned") {
+    // Every literal is the fold of the text the field names, written out by
+    // hand; a sort key taken from the wrong text fails.
+    LibraryModel m;
+    m.set_charts(pinned_charts());
     struct Want {
         const char* md5;
         // By column: title, artist, album, charter, folder.
@@ -816,6 +851,62 @@ TEST_CASE("library model: each row's search text and sort keys are pinned") {
     // The default sort, Title ascending, on those keys.
     CHECK(titles(m) == std::vector<std::string>{"(unknown)", "Beyoncé Æther", "ＢＵＲＮＯＵＴ！",
                                                 "Red Song", "Spaced Out"});
+}
+
+TEST_CASE("library model: rows built on threads match the one-thread rows, in the same order") {
+    // Seven copies of the pinned rows: 35 rows, more than set_charts has
+    // threads (kRowBuildThreads in library_model.cpp) and not a multiple of
+    // them, so the shares are uneven. Each copy gets its own hash.
+    constexpr int kCopies = 7;
+    std::vector<ChartLibraryEntry> charts;
+    for (int copy = 0; copy < kCopies; ++copy)
+        for (ChartLibraryEntry e : pinned_charts()) {
+            e.md5 += std::to_string(copy);
+            charts.push_back(std::move(e));
+        }
+    const std::vector<ChartLibraryEntry> given = charts;
+
+    LibraryModel m;
+    m.set_charts(std::move(charts));
+    REQUIRE(m.rows().size() == given.size());
+    for (size_t i = 0; i < given.size(); ++i) {
+        // set_charts keeps its rows in the order it was given them.
+        INFO("row " << i << " " << given[i].md5);
+        check_same_row(m.rows()[i], one_thread_row(given[i]));
+    }
+    // The default sort, Title ascending: the pinned order, each title once per copy.
+    std::vector<std::string> want;
+    for (const char* title :
+         {"(unknown)", "Beyoncé Æther", "ＢＵＲＮＯＵＴ！", "Red Song", "Spaced Out"})
+        want.insert(want.end(), static_cast<size_t>(kCopies), std::string(title));
+    CHECK(titles(m) == want);
+}
+
+TEST_CASE("library model: a library of 0, 1 or 3 charts loads, fewer than the threads") {
+    const std::vector<ChartLibraryEntry> pinned = pinned_charts();
+    REQUIRE(pinned.size() >= 3);
+
+    LibraryModel none;
+    none.set_charts({});
+    CHECK(none.rows().empty());
+    CHECK(none.order().empty());
+    CHECK(none.counts().all == 0);
+
+    LibraryModel one;
+    one.set_charts({pinned[0]});
+    REQUIRE(one.rows().size() == 1);
+    CHECK(titles(one) == std::vector<std::string>{"Red Song"});
+    CHECK(one.counts().all == 1);
+
+    LibraryModel three;
+    three.set_charts({pinned[0], pinned[1], pinned[2]});
+    REQUIRE(three.rows().size() == 3);
+    for (size_t i = 0; i < 3; ++i) {
+        INFO("row " << pinned[i].md5);
+        check_same_row(three.rows()[i], one_thread_row(pinned[i]));
+    }
+    CHECK(titles(three) == std::vector<std::string>{"(unknown)", "Red Song", "Spaced Out"});
+    CHECK(three.counts().all == 3);
 }
 
 TEST_CASE("library model: rows_version moves when the rows are replaced and at no other time") {
