@@ -70,7 +70,7 @@ class ProbeSongsTest(unittest.TestCase):
         # The end is read from a dump of the chart the writer wrote, and the
         # silent audio is exactly that long.
         self.assertEqual(FAKE.charts[-1], chart)
-        self.assertEqual(calls, [(os.path.join(root, "x", "song.ogg"), 4000.0)])
+        self.assertEqual(calls, [(os.path.join(root, "x", P.SONG_OGG), 4000.0)])
 
     def test_song_folder_writer_writes_no_audio_when_hydra_names_no_end(self):
         calls = []
