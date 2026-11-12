@@ -1704,11 +1704,13 @@ std::vector<ChartLibraryEntry> RecordStore::read_chart_library_on_threads(
 
     const std::string sql = library_entry_select() + " WHERE rowid > ? AND rowid <= ?";
     const int64_t n = static_cast<int64_t>(shares);
-    // Rows read so far over every share: the one count on_row is told.
+    // Rows read so far over every share, counted only when on_row is set.
     std::atomic<int64_t> rows_read{0};
     // Set by a share that failed or by an on_row that asked to stop; every
     // share checks it before each row and stops.
     std::atomic<bool> stop{false};
+    // Helpers still reading; the calling thread reports until it is 0.
+    std::atomic<size_t> helpers_reading{shares - 1};
     std::vector<std::vector<ChartLibraryEntry>> parts(shares);
     std::vector<std::exception_ptr> failures(shares);
 
@@ -1741,12 +1743,27 @@ std::vector<ChartLibraryEntry> RecordStore::read_chart_library_on_threads(
             failures[k] = std::current_exception();
             stop.store(true);
         }
+        helpers_reading.fetch_sub(1);
     };
 
-    // The calling thread's share, which alone tells on_row the count, so
-    // on_row runs on the thread that called, as the one-connection read's does.
-    // A report is made only past the last one, so the count never goes down.
+    // Only the calling thread tells on_row anything, so on_row runs on the
+    // thread that called, as the one-connection read's does. It tells every
+    // count from the last one told up to `now`, one call each, so on_row sees
+    // the counts it would see from one connection (RowsReadFn). False means
+    // on_row asked to stop: every share is then told to stop.
     int64_t reported = 0;
+    const auto report_up_to = [&](int64_t now) {
+        while (reported < now) {
+            if (!on_row(++reported)) {
+                stop.store(true);
+                return false;
+            }
+        }
+        return true;
+    };
+
+    // The calling thread's share. After each of its rows it reports every
+    // row read so far, its own and the helpers'.
     bool stopped_by_other = false;
     const RowsReadFn caller_row = [&](int64_t) {
         if (stop.load(std::memory_order_relaxed)) {
@@ -1754,12 +1771,8 @@ std::vector<ChartLibraryEntry> RecordStore::read_chart_library_on_threads(
             return false;
         }
         if (!counting) return true;
-        const int64_t now = rows_read.fetch_add(1, std::memory_order_relaxed) + 1;
-        if (now <= reported) return true;
-        reported = now;
-        if (on_row(now)) return true;
-        stop.store(true);
-        return false;
+        rows_read.fetch_add(1, std::memory_order_relaxed);
+        return report_up_to(rows_read.load(std::memory_order_relaxed));
     };
 
     std::vector<std::thread> helpers;
@@ -1774,6 +1787,17 @@ std::vector<ChartLibraryEntry> RecordStore::read_chart_library_on_threads(
     }
     try {
         read_share(0, caller_row);
+        // Its own share done, the calling thread goes on reporting the
+        // helpers' rows while they read, so the count keeps moving and a
+        // stop asked for now still stops them. It yields between looks
+        // rather than sleeping, so it waits no set time.
+        if (counting) {
+            while (helpers_reading.load() > 0 && !stop.load(std::memory_order_relaxed)) {
+                if (!report_up_to(rows_read.load(std::memory_order_relaxed)))
+                    throw Cancelled("reading the chart list was stopped");
+                std::this_thread::yield();
+            }
+        }
     } catch (...) {
         // A stop another share's failure set is that share's failure, below.
         if (!stopped_by_other) failures[0] = std::current_exception();
@@ -1784,10 +1808,8 @@ std::vector<ChartLibraryEntry> RecordStore::read_chart_library_on_threads(
     for (const std::exception_ptr& failure : failures)
         if (failure) std::rethrow_exception(failure);
 
-    // The last report is the whole count, made once: unless the calling
-    // thread's share already made it.
-    const int64_t total = rows_read.load();
-    if (counting && total > reported && !on_row(total))
+    // Every helper has finished: the rows they read since the last look.
+    if (counting && !report_up_to(rows_read.load()))
         throw Cancelled("reading the chart list was stopped");
 
     size_t count = 0;

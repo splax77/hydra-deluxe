@@ -658,11 +658,10 @@ public:
     //
     // The whole library unsorted (offset 0, no limit) from a file reads on
     // kLibraryOpenThreads threads, one read-only connection each
-    // (read_chart_library_on_threads). on_row is then told from the calling
-    // thread only, with the rows every thread has read so far: the count
-    // only goes up and reaches the row count once. A connection that fails
-    // to open fails the whole read with ErrorKind::DatabaseRead and returns
-    // no rows.
+    // (read_chart_library_on_threads). on_row is still told every count, in
+    // order, from the calling thread only, while the other threads read; a
+    // stop it asks for stops every thread. A connection that fails to open
+    // fails the whole read with ErrorKind::DatabaseRead and returns no rows.
     int64_t chart_library_count();
     std::vector<ChartLibraryEntry> list_chart_library(int offset, int limit,
                                                       const RowsReadFn& on_row = {},
