@@ -78,6 +78,15 @@ TEST_CASE("library query: folding collapses whitespace and keeps other scripts")
     CHECK(fold_for_search("") == "");
 }
 
+TEST_CASE("library query: a mixed ASCII and non-ASCII string folds to its pinned text") {
+    // ASCII runs broken by full-width letters, accents, kept characters (the
+    // dash, the sign ÷, Japanese) and whitespace runs of every kind: tabs, a
+    // no-break space beside an ideographic space, and spaces at both ends.
+    // Separate literals keep a hex escape from running into the next letter.
+    CHECK(fold_for_search("  ＴＩＥＲ\t\t4 —  Beyoncé" "\xC2\xA0\xE3\x80\x80" "Café ÷ 東京 ") ==
+          " tier 4 — beyonce cafe ÷ 東京 ");
+}
+
 TEST_CASE("library query: invalid UTF-8 passes through byte for byte") {
     CHECK(fold_for_search("A" "\xC3" "(B") == "a" "\xC3" "(b");  // lead byte, no continuation
     CHECK(fold_for_search("\xFF\xFE") == "\xFF\xFE");

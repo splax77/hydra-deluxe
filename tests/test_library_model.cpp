@@ -5,8 +5,10 @@
 #include "doctest.h"
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cstdio>
+#include <iterator>
 #include <optional>
 #include <string>
 #include <vector>
@@ -752,6 +754,68 @@ TEST_CASE("library model: only the Best path cell reads the row's summary") {
         else
             CHECK(library_cell_text(m.rows()[0], c) == before[static_cast<size_t>(c)]);
     }
+}
+
+TEST_CASE("library model: each row's search text and sort keys are pinned") {
+    // Rows whose shown text differs from their tag-stripped stored text
+    // (spaces trimmed, a placeholder shown for an empty name, a folder shown
+    // with its tags) and rows where the two are the same (tags, accents,
+    // full-width letters). Every literal is the fold of the text the field
+    // names, written out by hand; a sort key taken from the wrong text fails.
+    // Made-up rows. The ideographic space is U+3000.
+    LibraryModel m;
+    m.set_charts({
+        chart("tags", "<color=#ff0000>Red</color> Song", "<b>The</b> Band", "<i>Hoph2o</i>",
+              "common\\<b>Tagged</b>", "<size=20>Big</size> Album"),
+        chart("spaces", "  Spaced Out ", " Lead Artist", "Charter\t", "pack", " Album  "),
+        chart("empty", "", "<unknown artist>", "<unknown charter>", "pack", ""),
+        chart("accents", "Beyoncé Æther", "Motörhead", "Łukasz", "common\\Café", "Straße"),
+        chart("wide", "ＢＵＲＮＯＵＴ！", "Ｇｒｅｅｎ" "\xE3\x80\x80" "Ｄａｙ", "東京事変", "ｗｉｄｅ",
+              "Ａｌｂｕｍ" "\xE3\x80\x80"),
+    });
+    struct Want {
+        const char* md5;
+        // By column: title, artist, album, charter, folder.
+        std::array<const char*, hydra::ui::kColumnBestPath> keys;
+        // make_searchable's fields: title, artist, album, charter, folder.
+        std::array<const char*, 5> search;
+    };
+    const Want want[] = {
+        {"tags",
+         {"red song", "the band", "big album", "hoph2o", "common\\<b>tagged</b>"},
+         {"red song", "the band", "big album", "hoph2o", "common\\tagged"}},
+        {"spaces",
+         {"spaced out", "lead artist", "album", "charter", "pack"},
+         {" spaced out ", " lead artist", " album ", "charter ", "pack"}},
+        {"empty",
+         {"(unknown)", "(unknown)", "", "(unknown)", "pack"},
+         {"", "<unknown artist>", "", "<unknown charter>", "pack"}},
+        {"accents",
+         {"beyonce aether", "motorhead", "strasse", "lukasz", "common\\cafe"},
+         {"beyonce aether", "motorhead", "strasse", "lukasz", "common\\cafe"}},
+        {"wide",
+         {"burnout!", "green day", "album ", "東京事変", "wide"},
+         {"burnout!", "green day", "album ", "東京事変", "wide"}},
+    };
+    REQUIRE(m.rows().size() == std::size(want));
+    for (size_t i = 0; i < std::size(want); ++i) {
+        // set_charts keeps its rows in the order it was given them.
+        const hydra::ui::LibraryRow& row = m.rows()[i];
+        INFO("row " << want[i].md5);
+        REQUIRE(row.entry.md5 == want[i].md5);
+        for (size_t c = 0; c < want[i].keys.size(); ++c) {
+            INFO("column " << c);
+            CHECK(row.sort_keys[c] == want[i].keys[c]);
+        }
+        CHECK(row.searchable.title == want[i].search[0]);
+        CHECK(row.searchable.artist == want[i].search[1]);
+        CHECK(row.searchable.album == want[i].search[2]);
+        CHECK(row.searchable.charter == want[i].search[3]);
+        CHECK(row.searchable.folder == want[i].search[4]);
+    }
+    // The default sort, Title ascending, on those keys.
+    CHECK(titles(m) == std::vector<std::string>{"(unknown)", "Beyoncé Æther", "ＢＵＲＮＯＵＴ！",
+                                                "Red Song", "Spaced Out"});
 }
 
 TEST_CASE("library model: rows_version moves when the rows are replaced and at no other time") {
