@@ -110,10 +110,6 @@ class LiveHelpersTest(unittest.TestCase):
         self.assertEqual(live.START_LEAD_MS, 150.0)
         self.assertEqual(live.first_note_index([100.0, 149.0, 150.0, 200.0], 0.0), 2)
 
-    def test_hit_offset_is_the_send_time_minus_the_note(self):
-        self.assertEqual(live.hit_offset_ms(10000.0, 10004.0), 4.0)
-        self.assertEqual(live.hit_offset_ms(10000.0, 9996.5), -3.5)
-
     def test_window_changed_uses_the_one_tolerance(self):
         self.assertEqual(C.WINDOW_CHANGE_TOLERANCE_MS, 1e-6)
         self.assertTrue(live.window_changed(85.0, 85.0005))

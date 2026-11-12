@@ -9,7 +9,6 @@ on the answers. watch_window.py also loads a probe song's manifest here
   * when the song clock has reached a target time (wait_until),
   * whether the song has stopped: clock frozen or jumped back (StoppedCheck),
   * which note to start at when a run joins mid-song (first_note_index),
-  * how far from the note a hit landed (hit_offset_ms),
   * whether a stored window value changed between two reads (window_changed).
 
 Every offset comes from constants.py. Finding the engine is
@@ -198,15 +197,6 @@ def first_note_index(notes_ms: Sequence[float], clock_ms: float) -> int:
     while i < len(notes_ms) and notes_ms[i] < clock_ms + START_LEAD_MS:
         i += 1
     return i
-
-
-def hit_offset_ms(note_ms: float, sent_ms: float) -> float:
-    """How far from the note a press landed, in ms (+ is late).
-
-    It uses the estimated send time, not the engine's round start
-    (constants.OFF_ROUND_START), which is not a per-hit time.
-    """
-    return sent_ms - note_ms
 
 
 def window_changed(a_ms: float, b_ms: float) -> bool:
