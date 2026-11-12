@@ -796,6 +796,26 @@ class RealExeLayer(unittest.TestCase):
         self.assertEqual(s.crash_dump.name, "crash.dmp")
         self.assertEqual(s.crash_dump.parent, Path(s.hello["scratch"]))
 
+    def test_a_held_open_keeps_drawing_and_the_hello_waits_for_the_library(self):
+        # The hold lets the open go only after a startup frame is drawn, so a
+        # start that blocks while the library opens sends no hello at all.
+        hold_s = 2
+        with mock.patch.dict(os.environ, {"HYDRA_UITEST_HOLD_OPEN_S": str(hold_s)}):
+            launched = time.monotonic()
+            out = self.helper.start("headless")
+            hello_after = time.monotonic() - launched
+        self.assertIn("started a headless session", out)
+        self.assertGreaterEqual(hello_after, hold_s)
+        self.assertIn("store=ready", self.helper.send("state"))
+
+    def test_a_hold_that_is_not_a_plain_number_ends_the_run_naming_it(self):
+        with mock.patch.dict(os.environ, {"HYDRA_UITEST_HOLD_OPEN_S": "abc"}):
+            out = self.helper.start("headless")
+        self.assertIsNone(self.helper.session)
+        self.assertIn("Hydra exited with code", out)
+        self.assertNotIn("Hydra exited with code 0", out)
+        self.assertIn('got "abc"', out)
+
     def test_first_tool_call_starts_headless(self):
         out = self.helper.send("state")
         self.assertIn("started a headless session", out)

@@ -39,8 +39,9 @@ using SavedFigureProgress = std::function<bool(uint64_t charts_done, uint64_t ch
 //
 // Chart by chart, a chart whose files changed since the scan, or are gone
 // (chart_changed_since), keeps its rows as they are. Otherwise the chart is
-// read once under the settings' reading, rules and fill rule, and each row's
-// path text is replayed on it (`replay`, below). A replay is used only
+// read once under the settings' reading, rules and fill rule, its search graph
+// is built once (search_graph), and each row's path text is replayed on that
+// graph (`replay`, below). A replay is used only
 // when its text, score and squeeze counts, read the way the store writes them
 // (store::record_of), equal the row's. The figure written is the replayed
 // path's engine_hardest_ms. A row whose text the reader refuses, or whose
@@ -57,16 +58,17 @@ using SavedFigureProgress = std::function<bool(uint64_t charts_done, uint64_t ch
 // Throws what the store throws, such as a failed write of a figure or of the
 // marker; that stops the fill with the marker unset.
 //
-// `replay` is how a row's path text is replayed on its chart. The app passes
-// none and gets paths_from_pathstring; a test passes one that throws for a
-// chart it picks. It runs on the workers, so it must be safe to call from
-// several threads at once. The app passes no `worker_count` either and gets
-// the batch's own count; a test passes one to compare counts.
+// `replay` is how a row's path text is replayed on its chart's graph. The app
+// passes none and gets paths_from_pathstring_on_graph; a test passes one that
+// throws for a chart it picks, or that notes the graph it is handed. It runs
+// on the workers, so it must be safe to call from several threads at once.
+// The app passes no `worker_count` either and gets the batch's own count; a
+// test passes one to compare counts.
 using PathReplay =
-    std::function<Path(const Song& song, const SearchSettings& settings, const std::string& text)>;
+    std::function<Path(const Song& song, const ScoreGraph& graph, const std::string& text)>;
 bool fill_saved_hardest(store::RecordStore& store, const Settings& settings,
                         const SavedFigureProgress& progress,
-                        const PathReplay& replay = paths_from_pathstring,
+                        const PathReplay& replay = paths_from_pathstring_on_graph,
                         int worker_count = batch_worker_count());
 
 }  // namespace hydra::app

@@ -7,6 +7,7 @@
 
 #include <string>
 
+#include "uitest_engine.h"  // DrawnStart; it puts the Windows headers first
 #include "imgui_te_context.h"
 
 namespace uitest {
@@ -46,9 +47,18 @@ struct CommandResult {
     std::string text;
 };
 
-// A fresh program (EngineHooks::reset) with the ref on the engine's home_ref:
-// how a session starts, and what the reset verb does.
-void start_session(ImGuiTestContext* ctx);
+// A fresh program with the ref on the engine's home_ref: how a session
+// starts, and what the reset verb does. Without `drawing`, through
+// EngineHooks::reset, which may block until the program is ready. With it,
+// through EngineHooks::reset_drawing, which keeps the frames coming for at
+// most `seconds`: how a live session starts and resets. The result says how
+// a drawing start ended; a start without `drawing` reads as done.
+DrawnStart start_session(ImGuiTestContext* ctx, bool drawing = false, double seconds = 0);
+
+// The seconds a timeout or wait argument gives: the number
+// hydra::parse_finite_number reads, 0 or more. False for anything else. The
+// one parse both verbs and the live channel's HYDRA_UITEST_HOLD_OPEN_S share.
+bool parse_seconds(const std::string& text, double& seconds);
 
 // Run one command line ("verb rest"), as command_line hands it over: not
 // blank and not a comment.

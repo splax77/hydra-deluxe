@@ -17,11 +17,14 @@
 #include <cfloat>
 #include <chrono>
 #include <deque>
+#include <fstream>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
 #include <vector>
 
+#include "../env_util.h"
 #include "../temp_util.h"
 #include "../wait_util.h"
 #include "core/winstr.h"
@@ -240,6 +243,23 @@ bool seed_refused(const Harness& h) {
     return false;
 }
 
+// The environment variable that holds a live session's first open
+// (run_live). Dev only; docs/agents/ui-testing.md documents it.
+constexpr const char* kHoldOpenVar = "HYDRA_UITEST_HOLD_OPEN_S";
+
+// Start the live session's app, drawing while its library opens, for at most
+// `cap`. Returns why it did not start, or "" when the library is open or the
+// engine is stopping. The hello line goes out only after this, so every
+// command finds the library open.
+std::string start_live_session(ImGuiTestContext* ctx, std::chrono::milliseconds cap) {
+    const DrawnStart started =
+        start_session(ctx, /*drawing=*/true, std::chrono::duration<double>(cap).count());
+    if (!started.failure.empty()) return started.failure;
+    if (started.still_starting && !engine_stopping(ctx))
+        return "the library did not open within " + testwait::cap_text(cap);
+    return "";
+}
+
 void run_live(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     if (seed_refused(h)) {
@@ -262,8 +282,28 @@ void run_live(ImGuiTestContext* ctx) {
     eio.ConfigWatchdogWarning = FLT_MAX;
     eio.ConfigWatchdogKillTest = FLT_MAX;
 
-    start_session(ctx);
-    if (ctx->IsError()) return;
+    // Dev only: HYDRA_UITEST_HOLD_OPEN_S holds the session's first open at
+    // the library read, after a startup frame is drawn, for at least that many
+    // seconds, so a slow open can be watched and photographed. Its number is
+    // read the way the timeout verb reads one.
+    std::optional<OpenGate> hold;
+    if (const std::optional<std::string> value = read_env(kHoldOpenVar)) {
+        double seconds = 0;
+        if (!parse_seconds(*value, seconds)) {
+            IM_ERRORF("%s needs a number of seconds, 0 or more, and nothing else; got \"%s\"",
+                      kHoldOpenVar, value->c_str());
+            return;
+        }
+        hold.emplace(OpenHold::StartupDrawn, seconds);
+    }
+    // The session's start is capped like the wait for a client below.
+    const std::string why = start_live_session(ctx, testwait::kUitestProcessCap);
+    hold.reset();
+    if (!why.empty()) {
+        IM_ERRORF("%s", why.c_str());
+        return;
+    }
+    if (ctx->IsError() || engine_stopping(ctx)) return;
 
     LivePipe pipe;
     if (!pipe.create(h.pipe_name)) {
@@ -577,6 +617,122 @@ void test_command_wait_text_reply(ImGuiTestContext* ctx) {
     IM_CHECK(!ctx->IsError());
 }
 
+// ---------------------------------------------------------------------------
+// A live reset while the store opens. An OpenGate holds the open on its
+// worker thread, so the tests see what a slow library shows.
+
+// Whether the state verb's text says the store is `word` ("ready",
+// "opening"), in state_text's own line.
+bool store_state_is(ImGuiTestContext* ctx, CommandSession& session, const std::string& word) {
+    const CommandResult r = run_command(ctx, session, "state");
+    return r.ok && r.text.find("store=" + word + "\n") != std::string::npos;
+}
+
+// The frames keep coming while a live reset waits for the store. The gate
+// lets the open go only once a frame with the startup screen's words is drawn
+// (OpenHold::StartupDrawn), so a reset that blocks never gets past it.
+void test_live_reset_draws_while_opening(ImGuiTestContext* ctx) {
+    start_session(ctx);
+    if (ctx->IsError()) return;
+    CommandSession session;
+    session.live = true;
+    OpenGate gate(OpenHold::StartupDrawn);
+    const CommandResult r = run_command(ctx, session, "reset");
+    IM_CHECK_STR_EQ(r.text.c_str(), "");
+    IM_CHECK(r.ok);
+    IM_CHECK(gate.started() > 0);
+    IM_CHECK(store_state_is(ctx, session, "ready"));
+}
+
+// A live reset never outlasts the timeout in force. Past it, the reply says
+// the library is still opening; the open goes on, and wait-idle waits for it.
+void test_live_reset_open_outlasts_timeout(ImGuiTestContext* ctx) {
+    start_session(ctx);
+    if (ctx->IsError()) return;
+    CommandSession session;
+    session.live = true;
+    CommandResult r = run_command(ctx, session, "timeout 0.4");
+    IM_CHECK(r.ok);
+    OpenGate gate(OpenHold::LibraryRead);
+    r = run_command(ctx, session, "reset");
+    IM_CHECK(!r.ok);
+    IM_CHECK_STR_EQ(r.text.c_str(), "the library was still opening after 0.4 s; use wait-idle");
+    IM_CHECK(store_state_is(ctx, session, "opening"));
+
+    gate.open();
+    session.timeout = CommandSession{}.timeout;
+    r = run_command(ctx, session, "wait-idle");
+    IM_CHECK_STR_EQ(r.text.c_str(), "");
+    IM_CHECK(r.ok);
+    IM_CHECK(store_state_is(ctx, session, "ready"));
+}
+
+// A file of junk bytes where the database should be, so the store's open
+// fails. The same bytes as write_junk_db (tests/db_file_util.h), which this
+// runner cannot include: that header needs doctest.
+std::string write_junk_library(const Harness& h) {
+    const std::string path = h.temp_dir + "\\junk_library.db";
+    std::ofstream f(hydra::os_path(path), std::ios::binary | std::ios::trunc);
+    f << std::string(4096, 'x');
+    return f ? path : "";
+}
+
+// A failed open reads the same from the live reset, which waits by drawing,
+// and from the reset a script runs, which blocks: one function words it.
+void test_live_reset_open_failed(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    start_session(ctx);
+    if (ctx->IsError()) return;
+    const std::string junk = write_junk_library(h);
+    IM_CHECK_RETV(!junk.empty(), );
+    const std::string seed_before = h.seed_db;
+    h.seed_db = junk;
+
+    CommandSession live;
+    live.live = true;
+    const CommandResult live_reply = run_command(ctx, live, "reset");
+    // A failure the script's reset records is the expected result here, not
+    // the test's.
+    recover_for_next_command(ctx);
+    const size_t log_start = static_cast<size_t>(ctx->TestOutput->Log.Buffer.size());
+    CommandSession script;
+    const CommandResult script_reply = run_command(ctx, script, "reset");
+    const bool script_failed = ctx->IsError();
+    const std::string script_log = log_since(ctx, log_start);
+    recover_for_next_command(ctx);
+    h.seed_db = seed_before;
+
+    const char* sentence = "The scratch library did not open";
+    IM_CHECK(!live_reply.ok);
+    IM_CHECK(live_reply.text.find(sentence) != std::string::npos);
+    IM_CHECK(!script_reply.ok);
+    IM_CHECK(script_failed);
+    IM_CHECK(script_log.find(sentence) != std::string::npos);
+}
+
+// The checked-in tests' reset still blocks: when it returns the store is open
+// and no frame of the new app has been drawn, so a test can set a gate before
+// the app's first frame. The first reset drops any Preview a test before left
+// open, whose close draws a frame of its own.
+void test_reset_app_blocks(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    reset_app(h);
+    if (ctx->IsError()) return;
+    const int frame_before = ImGui::GetFrameCount();
+    reset_app(h);
+    IM_CHECK(h.app->store_ready());
+    IM_CHECK_EQ(ImGui::GetFrameCount(), frame_before);
+}
+
+// A live session's start gives up at the cap it is given, with a reason.
+// run_live gives it testwait::kUitestProcessCap.
+void test_live_start_gives_up_at_cap(ImGuiTestContext* ctx) {
+    OpenGate gate(OpenHold::LibraryRead);
+    const std::string why = start_live_session(ctx, std::chrono::milliseconds(400));
+    IM_CHECK(why.find("the library did not open within") != std::string::npos);
+    IM_CHECK(!harness(ctx).app->store_ready());
+}
+
 }  // namespace
 
 const std::vector<TestEntry>& command_tests() {
@@ -592,6 +748,11 @@ const std::vector<TestEntry>& command_tests() {
         {"command-bare-ref-missing", test_command_bare_ref_missing},
         {"command-modal-named", test_command_modal_named},
         {"command-wait-text-reply", test_command_wait_text_reply},
+        {"live-reset-draws-while-opening", test_live_reset_draws_while_opening},
+        {"live-reset-open-outlasts-timeout", test_live_reset_open_outlasts_timeout},
+        {"live-reset-open-failed", test_live_reset_open_failed},
+        {"reset-app-blocks", test_reset_app_blocks},
+        {"live-start-gives-up-at-cap", test_live_start_gives_up_at_cap},
     };
     return entries;
 }
