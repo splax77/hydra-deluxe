@@ -666,54 +666,55 @@ def kit_press(agent: FA.LiveAgent, *, request_lock: Optional[threading.Lock] = N
 #
 # Design points 1, 3 and 5 of
 # docs/superpowers/plans/2026-11-12-in-game-press-timing.md. This block is the
-# Python home of every name the play messages and the agent's events use;
-# kit.ts and agent/press_schedule.ts must use the same ones.
+# Python home of every name the play messages and the agent's events use.
+# The names match the contract block at the top of
+# tools/ch_mcp/agent/press_schedule.ts (IG1).
 #
 # Messages Python posts (each a request: the agent replies at once with the id):
-#   play        entries, hold_frames, clock_addr, score_addr, score_delay_ms,
-#               start_lead_ms, cap_s
-#   retime      read_after, entries   (replaces every entry not yet fired whose
-#               end_read_after is read_after by `entries`, which carry new seqs)
+#   play        entries, hold_frames, start_lead_ms, score_delay_ms, cap_ms,
+#               stall_ms, jump_back_ms, and clock_addr and score_addr for
+#               kit.ts alone
+#   retime      read_after, entries   (REPLACES the whole set of entries not
+#               yet fired; one goes after every end read, even one that moves
+#               nothing, because its arrival clears retime_missed for it)
 #   stop_play   (no fields)
 #   frame_probe seconds, clock_addr, elements, hold_frames, cap_s
-# An entry: seq, chord, at_ms, last_send_ms, elements (each id and value, as a
-# press message's), after_ms and after_seq (both null on a first group),
+# An entry: seq, index (the chord), at_ms, last_send_ms, elements (each id and
+# value, as a press message's), after_ms and after_seq (both null on a head),
 # end_read_after (null when the entry is timed from no end read).
 #
-# The agent's events, sent with no id: one payload per frame that has any,
-#   {"type": "play_events", "events": [event, ...]}
-# Event kinds (the event's `kind`):
-#   started  clock_ms, skipped   (skipped counts the entries, lowest seqs
-#            first, the start lead passed over)
-#   press    seq, chord, outcome (sent or dropped), clock_ms (the clock of the
-#            fire frame, or of the frame that dropped it), down_frame, up_frame,
-#            down_ms, up_ms, score_before (the score on the fire frame),
-#            score_after (the first frame score_delay_ms after the release),
-#            frame_gap_ms (wall time since the frame before the fire frame),
-#            note ("" or retime_missed)
-#   stopped  reason (done, stop_play, cap, jumped_back or frozen), clock_ms
+# The agent's events, sent with no id: either one event payload with a
+# `kind`, or {"type": "play_events", "events": [event, ...]} for a frame's batch
+# (kit.ts, task IG2, picks which). Event kinds (the event's `kind`):
+#   skipped  seqs, count, clock_ms   (once, on the first frame)
+#   sent     seq, index, clock_ms_at_press, down_frame, up_frame, down_ms,
+#            up_ms, score_before, score_after (null when play stopped first),
+#            frame_gap_ms (null on the first frame), agent_note
+#   dropped  the same fields, the down and up ones null
+#   stop     reason, frame, clock_ms, wall_ms   (always last)
+# agent_note is "" or retime_missed.
 PLAY_TYPE = "play"
 RETIME_TYPE = "retime"
 STOP_PLAY_TYPE = "stop_play"
 FRAME_PROBE_TYPE = "frame_probe"
 PLAY_EVENTS_TYPE = "play_events"
-EVENT_STARTED = "started"
-EVENT_PRESS = "press"
-EVENT_STOPPED = "stopped"
-OUTCOME_SENT = "sent"
-OUTCOME_DROPPED = "dropped"
+EVENT_SKIPPED = "skipped"
+EVENT_SENT = "sent"
+EVENT_DROPPED = "dropped"
+EVENT_STOP = "stop"
 NOTE_RETIME_MISSED = "retime_missed"
 STOP_REASON_DONE = "done"
-STOP_REASON_STOP_PLAY = "stop_play"
+STOP_REASON_PAST_END = "past_end"
+STOP_REASON_STOPPED = "stopped"
 STOP_REASON_CAP = "cap"
-STOP_REASON_JUMPED_BACK = "jumped_back"
 STOP_REASON_FROZEN = "frozen"
-STOP_REASONS = (STOP_REASON_DONE, STOP_REASON_STOP_PLAY, STOP_REASON_CAP,
-                STOP_REASON_JUMPED_BACK, STOP_REASON_FROZEN)
-# The fields every press event must hold, the row's columns among them.
-PRESS_EVENT_FIELDS = ("seq", "chord", "outcome", "clock_ms", "down_frame", "up_frame",
+STOP_REASON_JUMPED_BACK = "jumped_back"
+STOP_REASONS = (STOP_REASON_DONE, STOP_REASON_PAST_END, STOP_REASON_STOPPED,
+                STOP_REASON_CAP, STOP_REASON_FROZEN, STOP_REASON_JUMPED_BACK)
+# The fields every sent or dropped event must hold.
+PRESS_EVENT_FIELDS = ("seq", "index", "clock_ms_at_press", "down_frame", "up_frame",
                       "down_ms", "up_ms", "score_before", "score_after",
-                      "frame_gap_ms", "note")
+                      "frame_gap_ms", "agent_note")
 # The pad the frame probe presses once (design point 2's probe, task IG2).
 FRAME_PROBE_ITEM = "green"
 # The longest frame probe ch_kit_frame_probe accepts: the 5 s the user
@@ -728,27 +729,30 @@ def play_entry(seq: int, press: Any, after_seq: Optional[int]) -> dict:
     group its `after_ms` and the seq of the press it follows."""
     elements = press_message([lane_element(lane) for lane in press.lanes],
                              values=press.axes)["elements"]
-    return {"seq": seq, "chord": press.index, "at_ms": press.at_ms,
+    return {"seq": seq, "index": press.index, "at_ms": press.at_ms,
             "last_send_ms": press.last_send_ms, "elements": elements,
             "after_ms": press.after_ms if after_seq is not None else None,
             "after_seq": after_seq, "end_read_after": press.end_read_after}
 
 
 def play_message(entries: Sequence[dict], *, clock_addr: int, score_addr: int,
-                 score_delay_ms: float, start_lead_ms: float, cap_s: float,
+                 score_delay_ms: float, start_lead_ms: float, cap_ms: float,
+                 stall_ms: float, jump_back_ms: float,
                  hold_frames: int = KIT_HOLD_FRAMES) -> dict:
     """The `play` message: the whole schedule, and every number the agent
     plays it by. The caller passes its own numbers (the score delay, the
-    start lead and the run cap); this module adds the hold."""
+    start lead, the run cap and the stop checks' stall and jump back);
+    this module adds the hold."""
     return {"type": PLAY_TYPE, "entries": list(entries), "hold_frames": hold_frames,
             "clock_addr": clock_addr, "score_addr": score_addr,
             "score_delay_ms": score_delay_ms, "start_lead_ms": start_lead_ms,
-            "cap_s": cap_s}
+            "cap_ms": cap_ms, "stall_ms": stall_ms, "jump_back_ms": jump_back_ms}
 
 
 def retime_message(read_after: int, entries: Sequence[dict]) -> dict:
-    """The `retime` message: the entries timed from the end read after chord
-    `read_after`, as retime_from_end moved them."""
+    """The `retime` message after the end read after chord `read_after`:
+    every entry not yet reported, as retime_from_end left them, which the
+    agent puts in place of every entry it has not fired."""
     return {"type": RETIME_TYPE, "read_after": read_after, "entries": list(entries)}
 
 
@@ -782,6 +786,8 @@ class GamePlayer:
         if payload.get("type") == PLAY_EVENTS_TYPE:
             for event in payload.get("events") or []:
                 self.events.put(event)
+        elif "kind" in payload:
+            self.events.put(payload)
 
     def alive(self) -> bool:
         return self._agent.alive

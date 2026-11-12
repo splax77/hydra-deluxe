@@ -866,10 +866,10 @@ def play_in_game(chords: Sequence[Chord], player, *, clock_addr: int, score_addr
     the moved ones go to the agent in one `retime` message with new seqs.
 
     The agent's stop reasons map onto play_chords' stop words: done is
-    STOP_DONE, stop_play "stopped", cap "cap", frozen "frozen", and
+    STOP_DONE, and past_end, stopped, cap and frozen keep their own word;
     jumped_back sends the original plan again and starts the counts over. An
-    event this run cannot place (an unknown seq, kind, outcome or reason, or
-    a press event missing a field) ends the run as "reply" after a
+    event this run cannot place (an unknown seq, kind or reason, or a sent
+    or dropped event missing a field) ends the run as "reply" after a
     `stop_play`; so does a lost session, as "lost". `should_stop` is asked
     while no event comes, and a True sends `stop_play`. A `retime_missed`
     note is named in the run's message."""
@@ -894,7 +894,7 @@ def play_in_game(chords: Sequence[Chord], player, *, clock_addr: int, score_addr
                    for q in later}
         entries = [K.play_entry(seq_of[id(p)], p,
                                 seq_of[id(head_of[id(p)])] if id(p) in head_of else None)
-                   for p in fresh]
+                   for p in presses]
         return entries, {seq_of[id(p)]: p for p in fresh}
 
     def start() -> Tuple[dict, List[int]]:
@@ -902,7 +902,8 @@ def play_in_game(chords: Sequence[Chord], player, *, clock_addr: int, score_addr
         player.post(K.play_message(
             entries, clock_addr=clock_addr, score_addr=score_addr,
             score_delay_ms=C.s_to_ms(SCORE_READ_DELAY_S), start_lead_ms=live.START_LEAD_MS,
-            cap_s=cap_s))
+            cap_ms=C.s_to_ms(cap_s), stall_ms=C.s_to_ms(live.STALL_S),
+            jump_back_ms=C.s_to_ms(live.JUMP_BACK_S)))
         return by_seq, sorted(by_seq)
 
     by_seq, waiting = start()
@@ -940,15 +941,19 @@ def play_in_game(chords: Sequence[Chord], player, *, clock_addr: int, score_addr
                 return result
             continue
         kind = event.get("kind") if isinstance(event, dict) else None
-        if kind == K.EVENT_STARTED:
-            skipped = int(event.get("skipped") or 0)
-            result.skipped = len({by_seq[s].index for s in waiting[:skipped]})
-            reported.update(waiting[:skipped])
+        if kind == K.EVENT_SKIPPED:
+            seqs = list(event.get("seqs") or [])
+            unknown = [s for s in seqs if s not in by_seq]
+            if unknown:
+                return fail("reply", f"the kit agent skipped seqs {unknown}, which no entry "
+                                     f"holds")
+            result.skipped = len({by_seq[s].index for s in seqs})
+            reported.update(seqs)
             print(f"  Song clock at {C.ms_to_s(event.get('clock_ms') or 0):.2f}s; "
                   f"skipped {result.skipped} chords less than {live.START_LEAD_MS:g} ms "
                   f"ahead of the clock.", file=out)
             continue
-        if kind == K.EVENT_STOPPED:
+        if kind == K.EVENT_STOP:
             reason = event.get("reason")
             if reason == K.STOP_REASON_JUMPED_BACK:
                 print("\n  Song clock jumped back. Re-syncing.", file=out)
@@ -957,8 +962,9 @@ def play_in_game(chords: Sequence[Chord], player, *, clock_addr: int, score_addr
                 result, reported, missed, last_score = RunResult(), set(), [], None
                 next_seq = len(plan)
                 continue
-            words = {K.STOP_REASON_DONE: STOP_DONE, K.STOP_REASON_STOP_PLAY: "stopped",
-                     K.STOP_REASON_CAP: "cap", K.STOP_REASON_FROZEN: "frozen"}
+            words = {K.STOP_REASON_DONE: STOP_DONE, K.STOP_REASON_PAST_END: "past_end",
+                     K.STOP_REASON_STOPPED: "stopped", K.STOP_REASON_CAP: "cap",
+                     K.STOP_REASON_FROZEN: "frozen"}
             if reason not in words:
                 return fail("reply", f"the kit agent stopped for a reason this run does "
                                      f"not know: {reason!r}")
@@ -976,36 +982,39 @@ def play_in_game(chords: Sequence[Chord], player, *, clock_addr: int, score_addr
                     f"{', '.join(str(every_seq[s].index) for s in missed)}: each fired at "
                     f"its planned time before its retime arrived")
             return result
-        if kind != K.EVENT_PRESS:
+        if kind not in (K.EVENT_SENT, K.EVENT_DROPPED):
             return fail("reply", f"the kit agent sent an event this run does not know: "
                                  f"{event!r}")
         lacking = [f for f in K.PRESS_EVENT_FIELDS if f not in event]
         if lacking:
-            return fail("reply", f"the kit agent's press event lacks {', '.join(lacking)}: "
+            return fail("reply", f"the kit agent's {kind} event lacks {', '.join(lacking)}: "
                                  f"{event!r}")
         seq = event["seq"]
         if seq not in every_seq:
             return fail("reply", f"the kit agent reported seq {seq!r}, which no entry holds")
         part = every_seq[seq]
-        outcome = event["outcome"]
-        if outcome not in (K.OUTCOME_SENT, K.OUTCOME_DROPPED):
-            return fail("reply", f"the kit agent reported outcome {outcome!r} for seq {seq}")
         reported.add(seq)
-        dropped = outcome == K.OUTCOME_DROPPED
+        dropped = kind == K.EVENT_DROPPED
         send = DROPPED if dropped else DECLINED if part.declined else SENT
+        note = event["agent_note"] or ""
         row = {
             "index": part.index, "chart_ms": part.chart_ms,
-            "clock_ms_at_press": event["clock_ms"], "lead_ms": part.lead_ms,
+            "clock_ms_at_press": event["clock_ms_at_press"], "lead_ms": part.lead_ms,
             "score_before": event["score_before"],
-            "score_after": event["score_before"] if dropped else event["score_after"],
-            SEND_COLUMN: send,
-            "frame_gap_ms": event["frame_gap_ms"], "agent_note": event["note"] or "",
+            # A press the agent's stop lifted before its score read has none.
+            "score_after": (event["score_before"] if event["score_after"] is None
+                            else event["score_after"]),
+            SEND_COLUMN: send, "agent_note": note,
         }
+        if event["frame_gap_ms"] is not None:
+            row["frame_gap_ms"] = event["frame_gap_ms"]
         if not dropped:
             row.update({key: event[key] for key in ("down_frame", "up_frame",
-                                                    "down_ms", "up_ms")})
+                                                    "down_ms", "up_ms")
+                        if event[key] is not None})
             row["wall_s_at_read"] = C.ms_to_s(event["down_ms"])
-            row["wall_s_at_reply"] = C.ms_to_s(event["up_ms"])
+            if event["up_ms"] is not None:
+                row["wall_s_at_reply"] = C.ms_to_s(event["up_ms"])
         if part.retimed is not None:
             row["retimed"] = part.retimed
         if part.after_ms is None:
@@ -1019,35 +1028,36 @@ def play_in_game(chords: Sequence[Chord], player, *, clock_addr: int, score_addr
             else:
                 result.sent += 1
         last_score = row["score_after"]
-        if event["note"] == K.NOTE_RETIME_MISSED:
+        if note == K.NOTE_RETIME_MISSED:
             missed.append(seq)
         if part.planned_end_ms is not None and read_sp_end is not None and not dropped:
+            # Every end read posts a retime of every entry not yet reported,
+            # even one that moves nothing: the agent replaces its whole set
+            # of unfired entries, and the retime's arrival is what clears
+            # retime_missed for this read (IG1's contract).
             end_s = read_sp_end()
+            rest = sorted((p for s, p in by_seq.items() if s not in reported),
+                          key=lambda p: p.at_ms)
             if end_s is None:
                 row["end_read_ms"] = NO_ACTIVATION_READ
+                moved = rest
             else:
                 row["end_read_ms"] = C.s_to_ms(end_s)
-                rest = sorted((p for s, p in by_seq.items() if s not in reported),
-                              key=lambda p: p.at_ms)
-                kept = {id(p): s for s, p in every_seq.items()}
                 moved = retime_from_end(rest, part.index, row["end_read_ms"], chord_lanes)
-                entries, fresh = entries_for(
-                    moved, next_seq, kept,
-                    [p for s, p in by_seq.items() if s in reported])
-                next_seq += len(fresh)
-                for s in [s for s, p in by_seq.items()
-                          if s not in reported and p.end_read_after == part.index]:
-                    del by_seq[s]
-                by_seq.update(fresh)
-                every_seq.update(fresh)
-                if entries:
-                    player.post(K.retime_message(part.index, entries))
+            kept = {id(p): s for s, p in every_seq.items()}
+            entries, fresh = entries_for(moved, next_seq, kept,
+                                         [p for s, p in by_seq.items() if s in reported])
+            next_seq += len(fresh)
+            by_seq = {s: p for s, p in by_seq.items() if s in reported}
+            by_seq.update({e["seq"]: p for e, p in zip(entries, moved)})
+            every_seq.update(fresh)
+            player.post(K.retime_message(part.index, entries))
         result.rows.append(row)
         if on_press is not None:
             on_press(row)
         if send != SENT or result.sent <= 30 or result.sent % 20 == 0 or row["agent_note"]:
             print(f"  {result.sent:4d}  {C.ms_to_s(part.chart_ms):7.2f}  "
-                  f"{C.ms_to_s(event['clock_ms']):7.2f}  {send:8} {row['agent_note']}",
+                  f"{C.ms_to_s(row['clock_ms_at_press']):7.2f}  {send:8} {note}",
                   file=out)
 
 
