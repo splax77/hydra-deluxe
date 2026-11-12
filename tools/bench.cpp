@@ -1078,9 +1078,11 @@ void drop_cached_pages(const std::string& dbpath) {
         const HANDLE h = CreateFileW(win32_path(file).c_str(), GENERIC_READ,
                                      FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
                                      nullptr, OPEN_EXISTING, FILE_FLAG_NO_BUFFERING, nullptr);
-        if (h == INVALID_HANDLE_VALUE)
+        if (h == INVALID_HANDLE_VALUE) {
+            const DWORD error = GetLastError();  // before any other call can change it
             throw std::runtime_error("opening " + file + " with buffering off failed (error " +
-                                     std::to_string(GetLastError()) + ")");
+                                     std::to_string(error) + ")");
+        }
         CloseHandle(h);
     }
 }
