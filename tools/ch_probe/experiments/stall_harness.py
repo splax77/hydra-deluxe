@@ -63,9 +63,10 @@ SINK_PER_ROW = "per-row"
 SINK_NONE = "none"
 SINKS = (SINK_WRITER, SINK_PER_ROW, SINK_NONE)
 
-# How long the fake Frida script takes to answer a post: the median kit press
-# call of LS-A2 was 7.6 ms (row P10 of the plan above), and PS4 asks for 7.
-FAKE_KIT_REPLY_S = 0.007
+# The median kit press call of LS-A2 (row P10 of the plan above, and question
+# 2's own text): how long the fake Frida script takes to answer a post.
+KIT_PRESS_CALL_MEDIAN_MS = 7.6
+FAKE_KIT_REPLY_S = C.ms_to_s(KIT_PRESS_CALL_MEDIAN_MS)
 
 # The step names, from the columns that time them.
 STEP_WAIT_READ = "wait_read"

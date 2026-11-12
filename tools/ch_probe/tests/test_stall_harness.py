@@ -15,7 +15,7 @@ from unittest import mock
 
 from tools.ch_mcp import frida_attach as FA
 from tools.ch_probe import constants as C
-from tools.ch_probe.experiments import overlay_logs, play_chart
+from tools.ch_probe.experiments import live, overlay_logs, play_chart
 from tools.ch_probe.experiments import stall_harness as SH
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -23,12 +23,15 @@ _SCHEDULE = os.path.join(_HERE, "edge_walk_pair_schedule.json")
 
 # The tests' own sizes, far from the run's real numbers so a busy machine
 # cannot flip them: a forced block well past a threshold well past noise.
-_THRESHOLD_MS = 150.0
+# The threshold is a multiple of the user's own, so it stays above the real
+# one if that moves.
+_THRESHOLD_MS = 4 * C.STALL_THRESHOLD_MS
 _BLOCK_MS = 400.0
 _CHORDS = 4
 _SPACING_MS = 100.0
-# Long enough for one pass of the chords above, and a little more.
-_MINUTES = 0.02
+# Two passes of the chords above: a pass runs from twice the start lead
+# before its first press to its last chord.
+_MINUTES = 2 * C.ms_to_s(2 * live.START_LEAD_MS + _CHORDS * _SPACING_MS) / 60
 
 
 def _chords():
