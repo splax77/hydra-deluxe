@@ -277,11 +277,15 @@ def placement(fmt, facts, keys, read):
     return five_lane, tail
 
 
-def judge(fmt, facts, keys):
-    """The chart's placement today and after the plan, and why it moves."""
+def judge(fmt, facts, keys, in_sng=False):
+    """The chart's placement today and after the plan, and why it moves.
+
+    A .sng's keys go through the game's .sng getter 0x2642C0, which takes
+    only Boolean.TryParse, so "1" is false there; that is Hydra's
+    sng_drum_key_is_true, the same reading as old_key_read."""
     old = placement(fmt, facts, keys, old_key_read)
     old = (old[0], False)  # main has no tail
-    new = placement(fmt, facts, keys, new_key_read)
+    new = placement(fmt, facts, keys, old_key_read if in_sng else new_key_read)
     reasons = []
     if new[1] and facts['cymbal_pads']:
         reasons.append('tail')

@@ -107,7 +107,7 @@ def main(argv):
         if facts is None:
             counts[(fmt, 'no drum track')] = counts.get((fmt, 'no drum track'), 0) + 1
             continue
-        v = tail_rule.judge(fmt.split('/')[-1], facts, keys)
+        v = tail_rule.judge(fmt.split('/')[-1], facts, keys, in_sng=fmt.startswith('sng'))
         counts[(fmt, 'drum chart')] = counts.get((fmt, 'drum chart'), 0) + 1
         if v['new'][1]:
             counts[(fmt, 'reaches the tail')] = counts.get((fmt, 'reaches the tail'), 0) + 1

@@ -83,7 +83,7 @@ def chart_rows(testdata):
             if facts is None:
                 rows.append((path, fmt, None, None, 'no drum track'))
                 continue
-            verdict = tail_rule.judge(fmt.split('/')[-1], facts, keys)
+            verdict = tail_rule.judge(fmt.split('/')[-1], facts, keys, in_sng=fmt.startswith('sng'))
             rows.append((path, fmt, facts, verdict, keys))
     return rows
 
