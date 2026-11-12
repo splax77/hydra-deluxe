@@ -41,6 +41,7 @@ from tools.ch_mcp import frida_attach as FA
 from tools.ch_mcp import game_files
 from tools.ch_mcp.frida_tools import AGENT_DIR, ATTACH_CAP_S, NOT_ATTACHED, READ_CAP_S
 from tools.ch_mcp.game_tools import PressResult
+from tools.ch_probe.constants import ms_to_s, s_to_ms
 from tools.ch_probe.experiments.overlay_logs import KIT_PRESS_COLUMNS
 from tools.ch_probe.input_driver import Lane
 
@@ -925,7 +926,7 @@ def frame_probe_lines(reply: dict, clock_addr: int, saved_line: str) -> List[str
             and _is_number(walls[0]) and _is_number(walls[-1]) and walls[-1] > walls[0]):
         advanced = frames[-1] - frames[0]
         span_ms = walls[-1] - walls[0]
-        rate = advanced / (span_ms / 1000.0)
+        rate = advanced / ms_to_s(span_ms)
         lines.append(f"frame rate: {rate:.1f} frames a second ({advanced} frames in "
                      f"{span_ms} ms of wall time); floor {FRAME_PROBE_MIN_FPS} "
                      f"(FRAME_PROBE_MIN_FPS, D339 item 3)")
@@ -968,7 +969,7 @@ def frame_probe_lines(reply: dict, clock_addr: int, saved_line: str) -> List[str
             failed.append(f"read-back ({action} never read pressed)")
 
     # The engine clock against songTime, on each frame that holds both.
-    gaps = [(row["engine_clock_s"] - row["song_time_s"]) * 1000.0 for row in rows
+    gaps = [s_to_ms(row["engine_clock_s"] - row["song_time_s"]) for row in rows
             if _is_number(row.get("engine_clock_s")) and _is_number(row.get("song_time_s"))]
     if gaps:
         lines.append(f"engine clock minus songTime over {len(gaps)} frames: smallest "
