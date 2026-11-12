@@ -899,9 +899,8 @@ void print_startup_read(const std::string& run, const StartupReadTimes& t) {
 
 }  // namespace
 
-// A measurement, not a check of behaviour: the plan
-// docs/superpowers/plans/2026-11-12-startup-library-read.md (T1) reads its
-// numbers. It runs only when HYDRA_TIMING_DB names a library file, and it
+// A measurement, not a check of behaviour: D336 records what it measured on
+// the user's library. It runs only when HYDRA_TIMING_DB names a library file, and it
 // opens only that file, so point it at a copy of a library, never the live
 // one. The first run is the nearest to a cold read; the fastest is the warm
 // floor.
