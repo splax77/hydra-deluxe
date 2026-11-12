@@ -14,6 +14,7 @@ from dataclasses import replace
 from unittest import mock
 
 from tools.ch_mcp import frida_attach as FA
+from tools.ch_mcp import kit_tools
 from tools.ch_probe import constants as C
 from tools.ch_probe.experiments import live, overlay_logs, play_chart
 from tools.ch_probe.experiments import stall_harness as SH
@@ -245,6 +246,127 @@ class StallHarnessTest(unittest.TestCase):
                  SH.STEP_REPLY_CHECK, SH.STEP_END_READ, SH.STEP_SCORE_READ, SH.STEP_HANDOFF)
         for step, column in zip(steps, overlay_logs.TIMING_PRESS_COLUMNS):
             self.assertIn(step, column)
+
+
+# --- IG4: a Python stall drops nothing when the game times the presses -------
+#
+# Task IG4 of docs/superpowers/plans/2026-11-12-in-game-press-timing.md. These
+# cases play cuts of the schedule LS-P3 played, on the fake game
+# (stall_game.mjs), and skip when that file or `node` is missing.
+
+_LS_P3_SCHEDULE = os.path.join(
+    r"C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-11\ls-a2-prep",
+    "The Who - Won't Get Fooled Again (O)-schedule.json")
+# The block PS1 forced on the old loop (PS1 of
+# docs/superpowers/plans/2026-11-12-player-stall-fixes.md).
+_PS1_BLOCK_MS = 900.0
+# Chords 285 to 300: about 4 s of chords roughly 220 ms apart, so the old
+# loop's block after the first one outlasts the next chords' last sends. The
+# cut holds chord 292's end read, so its retime goes out too.
+_DENSE_CUT = (285, 300)
+# The end read IG0 found closest to the first press it moves (7.09 s before
+# it), and that press's chord.
+_READ_CHORD, _MOVED_CHORD = 1218, 1261
+# The late-retime case's own construction: the read chord is moved to go
+# down this long before the first press its read moves, well inside the
+# block, since no read on file is closer than 7 s.
+_READ_LEAD_MS = 400.0
+# The chords of the moved chord's neighbourhood the late-retime cut keeps,
+# before and after it. The cut runs on past the block, so the play is still
+# running when the late retime arrives: the agent refuses a retime once its
+# play has ended.
+_AROUND_MS = (1500.0, 1500.0)
+_PASS_CAP_S = 60.0
+
+
+def _ls_p3_chords():
+    return play_chart.load_schedule(_LS_P3_SCHEDULE).chords
+
+
+def _dense_cut():
+    first, last = _DENSE_CUT
+    return [c for c in _ls_p3_chords() if first <= c.index <= last]
+
+
+def _late_retime_cut():
+    """The moved chord with its neighbours, and the read chord moved in
+    time (its chord, presses and last sends together) so its first press
+    goes down _READ_LEAD_MS before the first press its read moves."""
+    chords = _ls_p3_chords()
+    by = {c.index: c for c in chords}
+    moved_at = min(p.at_ms for c in chords for p in c.presses
+                   if p.end_read_after == _READ_CHORD)
+    read = by[_READ_CHORD]
+    shift = moved_at - _READ_LEAD_MS - min(p.at_ms for p in read.presses)
+    read = replace(read, ms=read.ms + shift, presses=tuple(
+        replace(p, chart_ms=p.chart_ms + shift, last_send_ms=p.last_send_ms + shift)
+        for p in read.presses))
+    before, after = _AROUND_MS
+    near = [c for c in chords if c.index != _READ_CHORD
+            and by[_MOVED_CHORD].ms - before <= c.ms <= by[_MOVED_CHORD].ms + after]
+    return sorted([read, *near], key=lambda c: c.ms)
+
+
+@unittest.skipUnless(SH.node_path() is not None, "node is not on PATH, so the fake game "
+                                                 "cannot run")
+@unittest.skipUnless(os.path.isfile(_LS_P3_SCHEDULE), f"LS-P3's schedule is not on this "
+                                                      f"machine: {_LS_P3_SCHEDULE}")
+class InGameStallTest(unittest.TestCase):
+    def play(self, chords, **kw):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        kw.setdefault("sink", SH.SINK_PER_ROW)
+        began = time.perf_counter()
+        report = SH.play_once(chords, folder=tmp.name, cap_s=_PASS_CAP_S,
+                              out=lambda _line: None, **kw)
+        self.took_s = time.perf_counter() - began
+        return report
+
+    def assert_every_seq_once(self, chords, game):
+        seqs = set(range(len(play_chart.press_plan(chords))))
+        self.assertEqual(game.reported, {s: 1 for s in seqs})
+        self.assertEqual(set(game.fires.values()), {1})
+        self.assertLessEqual(set(game.fires), seqs)
+
+    def test_a_900_ms_block_drops_nothing_when_the_game_times_the_presses(self):
+        chords = _dense_cut()
+        run = self.play(chords, timing=SH.TIMING_GAME, force_stall_ms=_PS1_BLOCK_MS)
+        result = run.result
+        self.assertEqual(result.stop, play_chart.STOP_DONE, result.message)
+        self.assertEqual(result.dropped, 0)
+        self.assertEqual([r for r in result.rows
+                          if r[overlay_logs.SEND_COLUMN] == play_chart.DROPPED], [])
+        self.assertEqual(run.retime_missed, 0)
+        self.assertEqual(result.sent, len(chords))
+        self.assert_every_seq_once(chords, run.game)
+        # The block landed while presses were still to come: some press's
+        # report waited most of it.
+        self.assertGreater(run.game.latest_take_ms, _PS1_BLOCK_MS / 2)
+        self.assertIn(kit_tools.RETIME_TYPE, [kind for kind, _t in run.game.posts])
+
+    def test_the_same_900_ms_block_drops_chords_from_the_outside_loop(self):
+        run = self.play(_dense_cut(), timing=SH.TIMING_LOOP, force_stall_ms=_PS1_BLOCK_MS)
+        self.assertEqual(run.result.stop, play_chart.STOP_DONE, run.result.message)
+        self.assertGreaterEqual(run.result.dropped, 1)
+
+    def test_a_retime_900_ms_late_fires_no_press_twice_and_says_retime_missed(self):
+        chords = _late_retime_cut()
+        run = self.play(chords, timing=SH.TIMING_GAME, end_read_block_ms=_PS1_BLOCK_MS)
+        result = run.result
+        self.assertEqual(result.stop, play_chart.STOP_DONE, result.message)
+        self.assertEqual(result.dropped, 0)
+        self.assert_every_seq_once(chords, run.game)
+        missed = sorted({r["index"] for r in result.rows
+                         if r["agent_note"] == kit_tools.NOTE_RETIME_MISSED})
+        self.assertEqual(missed, [_MOVED_CHORD])
+        self.assertEqual(run.retime_missed, sum(
+            1 for p in play_chart.press_plan(chords) if p.end_read_after == _READ_CHORD))
+        self.assertIn(f"{kit_tools.NOTE_RETIME_MISSED} on chords {_MOVED_CHORD}",
+                      result.message)
+        # One end read, and its one retime, which reached the agent only after
+        # the moved press had fired (the retime_missed rows above).
+        self.assertEqual(len(run.game.end_reads), 1)
+        self.assertEqual([kind for kind, _t in run.game.posts].count(kit_tools.RETIME_TYPE), 1)
 
 
 if __name__ == "__main__":

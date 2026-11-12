@@ -18,6 +18,7 @@ _REPO_ROOT = os.path.abspath(os.path.join(_HERE, "..", "..", ".."))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
+from tools.ch_mcp import frida_attach as FA  # noqa: E402
 from tools.ch_mcp import kit_tools as K  # noqa: E402
 from tools.ch_probe.experiments import play_chart as P  # noqa: E402
 from tools.ch_probe.experiments.overlay_logs import SEND_COLUMN  # noqa: E402
@@ -64,13 +65,16 @@ def stopped(reason):
 
 class FakePlayer:
     """kit_tools.GamePlayer's three parts. `script` maps a posted message's
-    type to the events to queue after it, each list used once in order."""
+    type to the events to queue after it, each list used once in order.
+    `refuse` maps a message type to the error its post raises, as
+    GamePlayer.post raises the agent's refusal."""
 
-    def __init__(self, script, late=None):
+    def __init__(self, script, late=None, refuse=None):
         self.events = queue.Queue()
         self.posted = []
         self.script = {k: list(v) for k, v in script.items()}
         self._late = late
+        self._refuse = refuse or {}
 
     def alive(self):
         return True
@@ -83,6 +87,8 @@ class FakePlayer:
                 if self._late is not None:
                     self._late()
                 self.events.put(event)
+        if message["type"] in self._refuse:
+            raise self._refuse[message["type"]]
         return {"ok": True}
 
 
@@ -196,6 +202,59 @@ class PlayInGameTest(unittest.TestCase):
         self.assertEqual(retimes, [K.retime_message(
             0, [K.play_entry(1, P.replace(timed, seq=1), None)])])
         self.assertEqual(result.rows[0]["end_read_ms"], P.NO_ACTIVATION_READ)
+
+    def test_a_retime_refused_after_the_play_ended_keeps_every_row_and_the_stop_word(self):
+        # The end read after chord 0 was slow, so the agent played every
+        # press and sent its stop before the retime reached it.
+        head = press(0, 1000.0, [Lane.RED], planned_end_ms=1500.0)
+        other = press(1, 1500.0, [Lane.RED])
+        timed = press(2, 2000.0, [Lane.BLUE], end_read_after=0, aim_end_ms=1500.0)
+        chords = [chord(0, 1000.0, head), chord(1, 1500.0, other), chord(2, 2000.0, timed)]
+        error = "retime failed: Error: retime: no play is running"
+        refusal = FA.ReadFailed(FA.END_AGENT_ERROR, f"the agent sent an error: {error}",
+                                {"error": error})
+        player = FakePlayer({K.PLAY_TYPE: [[
+            started(), sent_event(0, 0, 1001.0, 0, 50), sent_event(1, 1, 1501.0, 50, 100),
+            sent_event(2, 2, 2001.0, 100, 150), stopped(K.STOP_REASON_DONE)]]},
+            refuse={K.RETIME_TYPE: refusal})
+        rows = []
+        result = run(chords, player, read_sp_end=lambda: 1.52, on_press=rows.append)
+        self.assertEqual(result.stop, P.STOP_DONE, result.message)
+        self.assertEqual([r["index"] for r in result.rows], [0, 1, 2])
+        self.assertEqual(rows, result.rows)
+        self.assertIn("retime after chord 0's end read was refused", result.message)
+        self.assertIn("play had already ended", result.message)
+        self.assertIn("retime: no play is running", result.message)
+        self.assertNotIn(K.stop_play_message(), player.posted)
+
+    def test_a_retime_refused_while_the_play_runs_stops_the_run_as_reply(self):
+        head = press(0, 1000.0, [Lane.RED], planned_end_ms=1500.0)
+        timed = press(1, 2000.0, [Lane.BLUE], end_read_after=0, aim_end_ms=1500.0)
+        chords = [chord(0, 1000.0, head), chord(1, 2000.0, timed)]
+        error = "retime failed: Error: an entry lacks its elements"
+        refusal = FA.ReadFailed(FA.END_AGENT_ERROR, f"the agent sent an error: {error}",
+                                {"error": error})
+        player = FakePlayer({K.PLAY_TYPE: [[started(), sent_event(0, 0, 1001.0, 0, 50)]]},
+                            refuse={K.RETIME_TYPE: refusal})
+        result = run(chords, player, read_sp_end=lambda: 1.52)
+        self.assertEqual(result.stop, "reply")
+        self.assertIn("an entry lacks its elements", result.message)
+        self.assertEqual([r["index"] for r in result.rows], [0])
+        self.assertEqual(player.posted[-1], K.stop_play_message())
+
+    def test_a_retime_post_with_no_reply_stops_the_run_as_reply(self):
+        # Only the agent's own refusal can mean the play ended; a post that
+        # got no reply stops the run even with the agent's stop queued.
+        head = press(0, 1000.0, [Lane.RED], planned_end_ms=1500.0)
+        timed = press(1, 2000.0, [Lane.BLUE], end_read_after=0, aim_end_ms=1500.0)
+        chords = [chord(0, 1000.0, head), chord(1, 2000.0, timed)]
+        player = FakePlayer({K.PLAY_TYPE: [[
+            started(), sent_event(0, 0, 1001.0, 0, 50), sent_event(1, 1, 2001.0, 50, 100),
+            stopped(K.STOP_REASON_DONE)]]},
+            refuse={K.RETIME_TYPE: FA.ReadFailed(FA.END_CAP, "no reply to retime")})
+        result = run(chords, player, read_sp_end=lambda: 1.52)
+        self.assertEqual(result.stop, "reply")
+        self.assertIn("no reply to retime", result.message)
 
     def test_an_unknown_seq_stops_the_run_as_reply(self):
         chords = [chord(0, 1000.0, press(0, 1000.0, [Lane.RED]))]
