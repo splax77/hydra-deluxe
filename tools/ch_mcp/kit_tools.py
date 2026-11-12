@@ -731,6 +731,12 @@ FRAME_PROBE_ITEM = "green"
 # The longest frame probe ch_kit_frame_probe accepts: the 5 s the user
 # accepted for LS-G1 (D339 item 3).
 FRAME_PROBE_SECONDS = 5.0
+# LS-G1's frame-rate floor, in frames a second: the probe passes only at or
+# above it (D339 item 3).
+FRAME_PROBE_MIN_FPS = 322.2
+# The file the probe's whole reply is saved to in the session folder, with
+# a number that makes it new.
+FRAME_PROBE_FILE_PREFIX = "frame_probe-"
 
 
 def play_entry(seq: int, press: Any, after_seq: Optional[int]) -> dict:
@@ -771,6 +777,12 @@ def stop_play_message() -> dict:
     return {"type": STOP_PLAY_TYPE}
 
 
+def frame_probe_action() -> str:
+    """The game action FRAME_PROBE_ITEM's pad is bound to (KIT_BINDINGS):
+    the one the probe reads back each frame."""
+    return KIT_BINDINGS[KIT_ELEMENTS[FRAME_PROBE_ITEM].id][1]
+
+
 def frame_probe_message(seconds: float, clock_addr: int) -> dict:
     """The `frame_probe` message for LS-G1: log every frame for `seconds`,
     pressing FRAME_PROBE_ITEM once for the kit's hold. `read` names that
@@ -779,7 +791,7 @@ def frame_probe_message(seconds: float, clock_addr: int) -> dict:
     element = KIT_ELEMENTS[FRAME_PROBE_ITEM]
     return {"type": FRAME_PROBE_TYPE, "seconds": seconds, "clock_addr": clock_addr,
             "elements": press_message([element])["elements"],
-            "read": [KIT_BINDINGS[element.id][1]],
+            "read": [frame_probe_action()],
             "hold_frames": KIT_HOLD_FRAMES, "cap_s": watch_cap_s(seconds)}
 
 
@@ -837,16 +849,151 @@ def find_clock_addr() -> int:
         proc.close()
 
 
-def frame_probe_lines(reply: dict, clock_addr: int) -> List[str]:
-    """The frame probe's reply as lines: the clock address it read, each
-    value the reply holds, and for a list its length. kit.ts's frame_probe
-    owns what the reply holds."""
+def _is_number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _first_pressed(rows: Sequence[dict], down_frame: int,
+                   pressed: Callable[[dict], bool]) -> Optional[int]:
+    """The frame of the first row at or after `down_frame` that `pressed`
+    says read pressed, or None."""
+    for row in rows:
+        frame = row.get("frame")
+        if _is_number(frame) and frame >= down_frame and pressed(row):
+            return frame
+    return None
+
+
+def save_frame_probe(reply: dict, folder: str) -> str:
+    """Save the probe's whole reply, its rows with it, as JSON to a new
+    FRAME_PROBE_FILE_PREFIX file in `folder`, and return the line that says
+    where it went (or why it was not saved)."""
+    import json
+    n = 1
+    while os.path.exists(os.path.join(folder, f"{FRAME_PROBE_FILE_PREFIX}{n}.json")):
+        n += 1
+    path = os.path.join(folder, f"{FRAME_PROBE_FILE_PREFIX}{n}.json")
+    try:
+        with open(path, "x", encoding="utf-8") as f:
+            json.dump(reply, f)
+    except (OSError, TypeError, ValueError) as e:
+        return f"rows not saved: {type(e).__name__}: {e}"
+    return f"rows saved to {path}"
+
+
+def frame_probe_lines(reply: dict, clock_addr: int, saved_line: str) -> List[str]:
+    """The frame probe's reply judged against LS-G1's pass line
+    (docs/superpowers/plans/2026-11-12-in-game-press-timing.md): the
+    frame steps, the frame rate beside FRAME_PROBE_MIN_FPS, the frame the
+    press read back on, the gap between the engine clock and songTime,
+    hook_out and failure, then one PASS or FAIL line naming each part that
+    failed. kit.ts's frame_probe owns what the reply holds; `saved_line`
+    is save_frame_probe's line."""
+    import statistics
     lines = [f"frame probe on the engine clock at {clock_addr:#x}"]
-    for key, value in reply.items():
-        if isinstance(value, list):
-            lines.append(f"{key}: {len(value)} entries")
+    failed: List[str] = []
+    rows = [row for row in reply.get("frames") or [] if isinstance(row, dict)]
+    frames = [row.get("frame") for row in rows]
+    if rows and all(_is_number(f) for f in frames):
+        lines.append(f"rows: {len(rows)}, frames {frames[0]} to {frames[-1]}; {saved_line}")
+    else:
+        lines.append(f"rows: {len(rows)}; {saved_line}")
+
+    # The hook ran on every frame: each row's frame is one above the last.
+    breaks = [(a, b) for a, b in zip(frames, frames[1:])
+              if not (_is_number(a) and _is_number(b) and b - a == 1)]
+    steps = max(len(frames) - 1, 0)
+    if len(rows) < 2:
+        lines.append(f"frame steps: none to check in {len(rows)} rows")
+        failed.append("too few rows to check the frame steps")
+    elif breaks:
+        if len(breaks) == 1:
+            where = f"frame {breaks[0][0]} to {breaks[0][1]}"
         else:
-            lines.append(f"{key}: {value}")
+            where = (f"first frame {breaks[0][0]} to {breaks[0][1]}, "
+                     f"last frame {breaks[-1][0]} to {breaks[-1][1]}")
+        lines.append(f"frame steps: {len(breaks)} of {steps} did not rise by exactly 1 "
+                     f"({where})")
+        failed.append(f"frame steps ({len(breaks)} of {steps} did not rise by exactly 1)")
+    else:
+        lines.append(f"frame steps: all {steps} rose by exactly 1")
+
+    # The frame rate: the frames the game advanced over the rows' wall span.
+    walls = [row.get("wall_ms") for row in rows]
+    rate = None
+    if (len(rows) >= 2 and _is_number(frames[0]) and _is_number(frames[-1])
+            and _is_number(walls[0]) and _is_number(walls[-1]) and walls[-1] > walls[0]):
+        advanced = frames[-1] - frames[0]
+        span_ms = walls[-1] - walls[0]
+        rate = advanced / (span_ms / 1000.0)
+        lines.append(f"frame rate: {rate:.1f} frames a second ({advanced} frames in "
+                     f"{span_ms} ms of wall time); floor {FRAME_PROBE_MIN_FPS} "
+                     f"(FRAME_PROBE_MIN_FPS, D339 item 3)")
+        if rate < FRAME_PROBE_MIN_FPS:
+            failed.append(f"frame rate ({rate:.1f} is under {FRAME_PROBE_MIN_FPS})")
+    else:
+        lines.append(f"frame rate: not measurable; floor {FRAME_PROBE_MIN_FPS} "
+                     f"(FRAME_PROBE_MIN_FPS, D339 item 3)")
+        failed.append("frame rate (not measurable)")
+
+    # The one press: the frame it went down on and the first frame each read
+    # saw it pressed.
+    down = reply.get("down_frame")
+    action = frame_probe_action()
+    names = reply.get("read") or []
+    if not _is_number(down):
+        lines.append(f"press: never written (down_frame {down}, up_frame "
+                     f"{reply.get('up_frame')})")
+        failed.append("read-back (the press was never written)")
+    else:
+        lines.append(f"press: down on frame {down}, up on frame {reply.get('up_frame')}")
+        if action in names:
+            at = names.index(action)
+
+            def own(row: dict) -> bool:
+                read = row.get("read")
+                return isinstance(read, list) and len(read) > at and read[at] is True
+
+            own_frame = _first_pressed(rows, down, own)
+        else:
+            own_frame = None
+        any_frame = _first_pressed(rows, down, lambda row: row.get("any_button") is True)
+        for label, frame in ((f"{action} read-back", own_frame), ("any_button", any_frame)):
+            if frame is None:
+                lines.append(f"{label}: never read pressed")
+            else:
+                lines.append(f"{label}: first read pressed on frame {frame} "
+                             f"(frames after the down frame: {frame - down})")
+        if own_frame is None:
+            failed.append(f"read-back ({action} never read pressed)")
+
+    # The engine clock against songTime, on each frame that holds both.
+    gaps = [(row["engine_clock_s"] - row["song_time_s"]) * 1000.0 for row in rows
+            if _is_number(row.get("engine_clock_s")) and _is_number(row.get("song_time_s"))]
+    if gaps:
+        lines.append(f"engine clock minus songTime over {len(gaps)} frames: smallest "
+                     f"{min(gaps):.3f} ms, median {statistics.median(gaps):.3f} ms, "
+                     f"largest {max(gaps):.3f} ms")
+    else:
+        lines.append("engine clock minus songTime: no frame holds both")
+
+    hook_out = reply.get("hook_out")
+    lines.append(f"hook_out: {hook_out}")
+    if hook_out is not True:
+        failed.append("hook (still in after the probe)")
+    failure = reply.get("failure")
+    lines.append(f"failure: {'none' if failure is None else failure}")
+    if failure is not None:
+        failed.append(f"fault ({failure})")
+    lines.append(f"managers: {reply.get('managers')}; probe wall time: "
+                 f"{reply.get('wall_ms')} ms")
+
+    if failed:
+        lines.append("FAIL against LS-G1's pass line: " + "; ".join(failed))
+    else:
+        lines.append("PASS against LS-G1's pass line: every frame stepped by 1, no fault, "
+                     f"the rate is at or above {FRAME_PROBE_MIN_FPS}, the press read back "
+                     "as pressed, and the hook is out")
     return lines
 
 
@@ -1171,7 +1318,8 @@ class KitTools:
         """LS-G1's frame probe: find the playing song's engine, then have the
         kit agent log each frame for `seconds` (the frame number, the engine
         clock, songTime and the wall time), press FRAME_PROBE_ITEM once and
-        read it back each frame, and print what it sent back. A `seconds`
+        read it back each frame, save its reply to the session folder
+        (save_frame_probe) and print frame_probe_lines' report. A `seconds`
         above FRAME_PROBE_SECONDS is refused, and so is a probe while a play
         session runs."""
         with self._lock:
@@ -1197,7 +1345,8 @@ class KitTools:
             except FA.ReadFailed as e:
                 note = " (seconds plus KIT_PRESS_CAP_S)" if e.reason == FA.END_CAP else ""
                 return self._reply([f"frame probe failed: {e}{note}", *fault_lines(e)])
-            return self._reply(frame_probe_lines(reply, clock_addr))
+            saved_line = save_frame_probe(reply, self._game.session_dir())
+            return self._reply(frame_probe_lines(reply, clock_addr, saved_line))
 
     def agent_attached(self) -> bool:
         """Whether a kit agent is held, alive or not: the one ch_kit_teardown

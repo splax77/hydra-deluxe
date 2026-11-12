@@ -1005,22 +1005,135 @@ class FrameProbeTest(Rig):
     """ch_kit_frame_probe, LS-G1's probe (task IG3 of
     docs/superpowers/plans/2026-11-12-in-game-press-timing.md)."""
 
-    PROBE_REPLY = {"frames": [{"frame": 1}, {"frame": 2}, {"frame": 3}], "pressed_frame": 2}
+    @staticmethod
+    def probe_reply(frames=11, ms_per_frame=3, skip_at=None, green=True, any_button=True,
+                    hook_out=True, failure=None):
+        """A fake frame_probe reply in kit.ts's shape: `frames` rows from
+        frame 1000, `ms_per_frame` apart on the wall clock, the Green pad
+        down on the first row and up two frames later. Green's read-back
+        and any_button read pressed from the second row on (when `green` and
+        `any_button` say so), and the engine clock runs 1, 2 then 3 ms ahead
+        of songTime in turn. `skip_at` makes that row's frame jump by 2."""
+        rows = []
+        frame = 1000
+        for i in range(frames):
+            if i and i == skip_at:
+                frame += 1
+            song = 10.0 + i * 0.003
+            rows.append({"frame": frame, "engine_clock_s": song + (1 + i % 3) / 1000.0,
+                         "song_time_s": song, "wall_ms": 50_000 + i * ms_per_frame,
+                         "wrote": "down" if i == 0 else ("up" if i == 2 else None),
+                         "any_button": any_button and 1 <= i <= 3,
+                         "read": [green and 1 <= i <= 3]})
+            frame += 1
+        return {"seconds": 5, "wall_ms": 5003, "hold_frames": 2, "down_frame": 1000,
+                "up_frame": 1002, "read": ["Green"], "failure": failure,
+                "hook_out": hook_out, "managers": 1, "frames": rows}
+
+    def probe(self, reply):
+        tools = self.set_up([reply])
+        return tools.ch_kit_frame_probe(5).splitlines()
 
     def test_the_probe_cap_is_the_users_five_seconds(self):
         # D339 item 3: the frame probe of LS-G1 runs 5 s.
         self.assertEqual(K.FRAME_PROBE_SECONDS, 5.0)
 
+    def test_the_frame_rate_floor_is_the_users_322_2(self):
+        # D339 item 3: the frame probe's floor is 322.2 frames a second.
+        self.assertEqual(K.FRAME_PROBE_MIN_FPS, 322.2)
+
     def test_the_probe_sends_frame_probe_with_the_engines_clock_address(self):
-        tools = self.set_up([self.PROBE_REPLY])
-        lines = tools.ch_kit_frame_probe(5).splitlines()
+        tools = self.set_up([self.probe_reply()])
+        tools.ch_kit_frame_probe(5)
         self.assertEqual(self.posted()[-1], {
             "type": "frame_probe", "seconds": 5, "clock_addr": self.CLOCK_ADDR,
             "elements": [{"id": 3, "value": 1.0}], "read": ["Green"], "hold_frames": 2,
             "cap_s": 6})
-        self.assertEqual(lines, [f"frame probe on the engine clock at {self.CLOCK_ADDR:#x}",
-                                 "frames: 3 entries", "pressed_frame: 2"])
         self.assertEqual(self.events.count("find clock"), 1)
+
+    def test_a_clean_probe_prints_each_number_and_passes(self):
+        lines = self.probe(self.probe_reply())
+        path = os.path.join(self.tmp, "frame_probe-1.json")
+        self.assertEqual(lines, [
+            f"frame probe on the engine clock at {self.CLOCK_ADDR:#x}",
+            f"rows: 11, frames 1000 to 1010; rows saved to {path}",
+            "frame steps: all 10 rose by exactly 1",
+            "frame rate: 333.3 frames a second (10 frames in 30 ms of wall time); "
+            "floor 322.2 (FRAME_PROBE_MIN_FPS, D339 item 3)",
+            "press: down on frame 1000, up on frame 1002",
+            "Green read-back: first read pressed on frame 1001 (frames after the down frame: 1)",
+            "any_button: first read pressed on frame 1001 (frames after the down frame: 1)",
+            "engine clock minus songTime over 11 frames: smallest 1.000 ms, "
+            "median 2.000 ms, largest 3.000 ms",
+            "hook_out: True",
+            "failure: none",
+            "managers: 1; probe wall time: 5003 ms",
+            "PASS against LS-G1's pass line: every frame stepped by 1, no fault, the rate "
+            "is at or above 322.2, the press read back as pressed, and the hook is out"])
+
+    def test_the_whole_reply_is_saved_to_a_new_file_each_probe(self):
+        reply = self.probe_reply()
+        tools = self.set_up([reply, reply])
+        tools.ch_kit_frame_probe(5)
+        lines = tools.ch_kit_frame_probe(5).splitlines()
+        second = os.path.join(self.tmp, "frame_probe-2.json")
+        self.assertIn(f"rows saved to {second}", lines[1])
+        with open(os.path.join(self.tmp, "frame_probe-1.json"), encoding="utf-8") as f:
+            self.assertEqual(json.load(f), reply)
+
+    def test_a_skipped_frame_fails_and_says_where(self):
+        lines = self.probe(self.probe_reply(skip_at=5))
+        self.assertEqual(lines[2], "frame steps: 1 of 10 did not rise by exactly 1 "
+                                   "(frame 1004 to 1006)")
+        self.assertEqual(lines[-1], "FAIL against LS-G1's pass line: "
+                                    "frame steps (1 of 10 did not rise by exactly 1)")
+
+    def test_a_rate_under_the_floor_fails(self):
+        # 10 frames in 40 ms is 250 frames a second.
+        lines = self.probe(self.probe_reply(ms_per_frame=4))
+        self.assertTrue(lines[3].startswith("frame rate: 250.0 frames a second"))
+        self.assertEqual(lines[-1], "FAIL against LS-G1's pass line: "
+                                    "frame rate (250.0 is under 322.2)")
+
+    def test_a_read_back_that_never_reads_pressed_fails(self):
+        lines = self.probe(self.probe_reply(green=False))
+        self.assertIn("Green read-back: never read pressed", lines)
+        self.assertEqual(lines[-1], "FAIL against LS-G1's pass line: "
+                                    "read-back (Green never read pressed)")
+
+    def test_any_button_alone_does_not_pass_the_read_back(self):
+        lines = self.probe(self.probe_reply(green=False, any_button=True))
+        self.assertIn("any_button: first read pressed on frame 1001 "
+                      "(frames after the down frame: 1)", lines)
+        self.assertTrue(lines[-1].startswith("FAIL"))
+
+    def test_a_hook_left_in_fails(self):
+        lines = self.probe(self.probe_reply(hook_out=False))
+        self.assertIn("hook_out: False", lines)
+        self.assertEqual(lines[-1], "FAIL against LS-G1's pass line: "
+                                    "hook (still in after the probe)")
+
+    def test_a_failure_fails_and_is_printed(self):
+        lines = self.probe(self.probe_reply(failure="after 7 frames: Error: access violation"))
+        self.assertIn("failure: after 7 frames: Error: access violation", lines)
+        self.assertEqual(lines[-1], "FAIL against LS-G1's pass line: "
+                                    "fault (after 7 frames: Error: access violation)")
+
+    def test_every_failed_part_is_named(self):
+        lines = self.probe(self.probe_reply(skip_at=5, green=False, hook_out=False,
+                                            failure="boom"))
+        self.assertEqual(lines[-1], "FAIL against LS-G1's pass line: "
+                                    "frame steps (1 of 10 did not rise by exactly 1); "
+                                    "read-back (Green never read pressed); "
+                                    "hook (still in after the probe); fault (boom)")
+
+    def test_a_reply_with_no_rows_fails(self):
+        reply = {**self.probe_reply(), "frames": [], "down_frame": None, "up_frame": None}
+        lines = self.probe(reply)
+        self.assertEqual(lines[-1], "FAIL against LS-G1's pass line: "
+                                    "too few rows to check the frame steps; "
+                                    "frame rate (not measurable); "
+                                    "read-back (the press was never written)")
 
     def test_more_than_five_seconds_is_refused_before_anything_is_sent(self):
         tools = self.set_up()
