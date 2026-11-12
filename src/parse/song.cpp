@@ -436,19 +436,94 @@ void close_sp_phrase(Song& song, int64_t start_tick, int64_t end_tick) {
     }
 }
 
-// Emit the buffered chord as a sequence timestamp, shared by both parsers.
+// One tick's drum notes as the chart wrote them, before the five-lane
+// conversion (convert_drum_pads). A chart can write five pads: red, yellow,
+// blue, a fourth pad (the game's OrangeDrum, the pad Hydra's chord calls
+// green) and a fifth pad (the game's GreenDrum). `four` holds the kick and the
+// first four pads, each on its own lane, the fourth pad on the green lane.
+// `fifth` holds the fifth pad alone, also on its green lane. Keeping it apart
+// means a tick holding both the fourth and the fifth pad never puts two notes
+// on one lane before the conversion decides where the fifth pad goes. Each
+// holds its pads' ghost, accent and cymbal marks as the reader read them.
+struct TickPads {
+    Chord four;
+    Chord fifth;
+
+    Chord& pads(bool fifth_pad) { return fifth_pad ? fifth : four; }
+    int count() const { return four.count() + fifth.count(); }
+};
+
+// The two facts about a whole drum chart that pick the conversion's branch,
+// Clone Hero's track flags +0xA1 and +0xA2 (docs/clone-hero/01-reading-a-chart.md
+// CR-18). Each reader works them out once, before its first chord: the .mid
+// reader in midi_drum_chart_flags, the .chart reader in
+// ChartParser::load_sections.
+struct DrumChartFlags {
+    bool fifth_pad = false;  // a fifth-pad note on any difficulty
+    bool pro_marks = false;  // a Pro Drums tom or cymbal marker
+};
+
+// The five-lane conversion, Clone Hero's track step 0x215D450
+// (docs/clone-hero/code/6142/five_lane_convert_215D450.md, rules NL-74 to
+// NL-76 on docs/clone-hero/02-note-list.md): the one place a chart's raw pads
+// become the chord's four lanes. It runs before the flam step and the disco
+// flip, as the game converts at load and does those two later. Only the lane
+// and the tom or cymbal mark change, so ghosts and accents stay on their
+// notes. A cymbal is kept only where cymbal_counts says it counts, so with
+// Pro Drums off a converted chart has none, as any other chart.
+//
+// Left out: the song.ini byte that also picks the five-lane branch (NL-74),
+// the song.ini bytes the .mid flags start from (CR-18), the all-toms tail for a
+// chart with neither flag up, and the game's merge of two notes on one lane
+// (NL-77).
+Chord convert_drum_pads(const TickPads& raw, const DrumChartFlags& flags, bool pro) {
+    Chord chord = raw.four;
+    const std::optional<ChordNote>& fifth = raw.fifth.at(NoteColor::Green);
+    const bool fourth_pad = chord.at(NoteColor::Green).has_value();
+    const auto set_cymbal = [&](NoteColor color, bool cymbal) {
+        std::optional<ChordNote>& note = chord.at(color);
+        if (!note) return;
+        note->cymbaltype = cymbal && cymbal_counts(color, pro) ? NoteCymbalType::Cymbal
+                                                               : NoteCymbalType::Normal;
+    };
+    const bool five_lane = flags.fifth_pad && !flags.pro_marks;
+    if (five_lane) {
+        // Yellow and the fourth pad are cymbals, red and blue toms.
+        set_cymbal(NoteColor::Yellow, true);
+        set_cymbal(NoteColor::Blue, false);
+        set_cymbal(NoteColor::Green, true);
+    }
+    // The four-lane branch keeps the first four pads as the reader marked
+    // them. In both branches the fifth pad is a tom, on the green lane, or on
+    // the blue lane when the fourth pad shares its tick.
+    if (!fifth) return chord;
+    ChordNote moved = *fifth;
+    moved.cymbaltype = NoteCymbalType::Normal;
+    moved.colortype = fourth_pad ? NoteColor::Blue : NoteColor::Green;
+    // A tick that also holds a blue note would put two notes on the blue
+    // lane. The chord keeps the chart's own blue note there and drops the
+    // fifth pad, so the chart still loads. In the four-lane branch the game
+    // gives the fifth pad that blue note's marks, so the two are alike; in the
+    // five-lane branch the game keeps both until its merge (NL-77).
+    if (!chord.at(moved.colortype)) chord.insert_note(moved);
+    return chord;
+}
+
+// Emit the tick's chord as a sequence timestamp, shared by both parsers. The
+// raw pads are converted first (convert_drum_pads), by the chart's `flags`.
 // apply_flam is true only on the .mid path: MIDI charts carry a flam marker
 // that converts the chord, while the .chart format has no such marker, so
 // ChartParser always passes false.
 // A disco section swaps red and yellow only under Pro Drums. That rule lives
 // here, once, for both parsers (finding 250): `pro` is the Pro Drums setting
 // and `in_disco` says whether this difficulty's disco section is open.
-void emit_chord_timestamp(Song& song, Chord& chord, int64_t tick, bool apply_flam,
-                          bool pro, bool in_disco, bool solo) {
+void emit_chord_timestamp(Song& song, const TickPads& raw, const DrumChartFlags& flags,
+                          int64_t tick, bool apply_flam, bool pro, bool in_disco, bool solo) {
+    Chord chord = convert_drum_pads(raw, flags, pro);
     if (apply_flam) chord.apply_flam_conversion();
     if (pro && in_disco) chord.apply_disco_flip();
     SongTimestamp ts;
-    ts.chord = chord;
+    ts.chord = std::move(chord);
     ts.timecode = song.timecode(tick);
     ts.flag_solo = solo;
     song.sequence.push_back(std::move(ts));
@@ -624,6 +699,7 @@ struct MOp {
     NoteDynamicType dyn = NoteDynamicType::Normal;      // Note, Kick
     NoteCymbalType cymbal = NoteCymbalType::Normal;     // Tom
     bool flag = false;     // Kick: is2x; Flam/Solo/Disco: on; LaneStart/LaneEnd: double
+    bool fifth_pad = false;  // Note: the fifth pad (TickPads::fifth)
     int64_t tick = 0;      // FillStart/StoreFillEnd/SpStart/SpEnd/Dynamics/Tempo/TimeSig/Lane*
     uint32_t tempo = 0;    // Tempo
     int num = 0, den = 0;  // TimeSig
@@ -638,10 +714,11 @@ MOp mop(MPhase phase, MAct act) {
     return op;
 }
 
-MOp mop_note(NoteColor color, NoteDynamicType dyn) {
+MOp mop_note(NoteColor color, NoteDynamicType dyn, bool fifth_pad = false) {
     MOp op = mop(MPhase::Notes, MAct::Note);
     op.color = color;
     op.dyn = dyn;
+    op.fifth_pad = fifth_pad;
     return op;
 }
 
@@ -699,6 +776,21 @@ int difficulty_base_pitch(Difficulty difficulty) {
     return difficulty_chart_codes(difficulty).kick_pitch;
 }
 
+// A difficulty's pads sit on the pitches just above its kick: red, yellow,
+// blue, the fourth pad and, this many above the kick, the fifth pad (TickPads
+// names them). Clone Hero's pitch-to-type map says so
+// (docs/audit/note-shuffle/step0/open2/midi_type_table.txt).
+constexpr int kFifthPadAboveKick = 5;
+
+// Whether `pitch` is the fifth pad of any difficulty in kDifficultyChartCodes.
+// One on any difficulty raises the chart's first flag (DrumChartFlags), so it
+// is read whichever difficulty is parsed.
+constexpr bool is_midi_fifth_pad_pitch(int pitch) {
+    for (const auto& d : kDifficultyChartCodes)
+        if (pitch == d.kick_pitch + kFifthPadAboveKick) return true;
+    return false;
+}
+
 // The marker pitches every difficulty shares on the drum track, each named
 // once. kMarkerPitches is the one list of them: is_handled_note reads it, the
 // note-off gate in midi_note_is_read reads it, and both of MidiParser::optype's
@@ -752,7 +844,7 @@ static_assert(lowest_marker_pitch() == kSoloMarkerPitch,
 constexpr int highest_pad_pitch() {
     int highest = 0;
     for (const auto& d : kDifficultyChartCodes)
-        if (d.kick_pitch + 4 > highest) highest = d.kick_pitch + 4;
+        if (d.kick_pitch + kFifthPadAboveKick > highest) highest = d.kick_pitch + kFifthPadAboveKick;
     return highest;
 }
 static_assert(highest_pad_pitch() < kSoloMarkerPitch,
@@ -768,25 +860,44 @@ bool is_midi_marker_pitch(int pitch) {
 namespace {
 
 // `base` is the difficulty's kick pitch and `kick2x` its 2x kick pitch, both
-// from difficulty_chart_codes. The five note pitches follow the kick, and the
-// 2x kick sits one below it. The rest are the shared markers
-// (is_midi_marker_pitch). A pitch outside this set belongs to another
-// difficulty (or to another instrument) and is dropped, so Expert's 95 is
-// never read below Expert: Clone Hero reads each 2x kick only into its own
-// difficulty (D20; 0x2155050 at 0x21555CD).
+// from difficulty_chart_codes. The kick and its pads (kFifthPadAboveKick) are
+// the note pitches, and the 2x kick sits one below the kick. The rest are the
+// shared markers (is_midi_marker_pitch). A pitch outside this set belongs to
+// another difficulty (or to another instrument) and is not read into a chord,
+// so Expert's 95 is never read below Expert: Clone Hero reads each 2x kick
+// only into its own difficulty (D20; 0x2155050 at 0x21555CD).
 bool is_handled_note(int note, int base, int kick2x) {
-    if (note >= base && note <= base + 4) return true;
+    if (note >= base && note <= base + kFifthPadAboveKick) return true;
     if (note == kick2x) return true;
     return is_midi_marker_pitch(note);
 }
 
-// Whether the MIDI parser acts on a note message at this pitch. `on` is
-// Message::is_note_on. A note-on acts on any handled pitch, but only a marker
-// acts on a note-off: a pad or 2x kick note-off is dropped (see the
+// Whether the MIDI parser reads a note message at this pitch. `on` is
+// Message::is_note_on. A note-on is read on any handled pitch, and on any
+// difficulty's fifth pad, which midi_drum_chart_flags looks for; only a marker
+// is read on a note-off: a pad or 2x kick note-off is dropped (see the
 // static_assert beside kMarkerPitches). MidiParser::optype and the lean read's
 // filter (parse_mid_lean) both ask here.
 bool midi_note_is_read(int pitch, bool on, int base, int kick2x) {
+    if (on && is_midi_fifth_pad_pitch(pitch)) return true;
     return on ? is_handled_note(pitch, base, kick2x) : is_midi_marker_pitch(pitch);
+}
+
+// The chart's two flags (DrumChartFlags), from the whole drum track before any
+// chord is read: a note-on of any difficulty's fifth pad raises the first and
+// a tom marker the second, as Clone Hero's .mid drum reader raises them
+// (docs/clone-hero/code/6142/mid_drum_reader_2155050.md, lines 124 to 147 and
+// 270 of its listing).
+DrumChartFlags midi_drum_chart_flags(const MidiTrack& track) {
+    DrumChartFlags flags;
+    for (const Message& msg : track.messages) {
+        if (!msg.is_note_on()) continue;
+        if (is_midi_fifth_pad_pitch(msg.note)) flags.fifth_pad = true;
+        if (msg.note == kYellowTomMarkerPitch || msg.note == kBlueTomMarkerPitch ||
+            msg.note == kGreenTomMarkerPitch)
+            flags.pro_marks = true;
+    }
+    return flags;
 }
 
 class MidiParser {
@@ -848,20 +959,22 @@ private:
         if (start) lanes_.push_back({*start, tick, double_lane, {}});
         start.reset();
     }
-    void op_note(NoteColor color, NoteDynamicType dyn) {
-        ChordNote& note = chord_.add_note(color);  // may throw ChartFileError
+    // A pad note. The fifth pad takes no tom marker: the conversion makes it
+    // a tom whatever the markers say (convert_drum_pads).
+    void op_note(NoteColor color, NoteDynamicType dyn, bool fifth_pad) {
+        ChordNote& note = pads_.pads(fifth_pad).add_note(color);  // may throw ChartFileError
         note.dynamictype = dynamics_enabled_ ? dyn : NoteDynamicType::Normal;
         // A ghost or accent velocity before the tag: Clone Hero prices it as
         // plain, and the Dynamics tab reports how many there were.
         if (!dynamics_enabled_ && dyn != NoteDynamicType::Normal) ++marks_before_tag_;
-        if (cymbal_counts(color, mode_pro_))
+        if (!fifth_pad && cymbal_counts(color, mode_pro_))
             note.cymbaltype = flag_cymbals_[static_cast<int>(color) - 1];
     }
     // A kick, a 2x kick when `is2x`. Chord::add_kick merges a 2x kick and a
     // normal kick on one tick into one kick, so a mark before the tag counts
     // once for it, as for any other note.
     void op_kick(NoteDynamicType dyn, bool is2x) {
-        chord_.add_kick(is2x, dynamics_enabled_ ? dyn : NoteDynamicType::Normal);  // may throw
+        pads_.four.add_kick(is2x, dynamics_enabled_ ? dyn : NoteDynamicType::Normal);  // may throw
         if (!dynamics_enabled_ && dyn != NoteDynamicType::Normal && !kick_mark_before_tag_) {
             ++marks_before_tag_;
             kick_mark_before_tag_ = true;
@@ -872,7 +985,7 @@ private:
     // had before the tag stops counting, and comes out of the tag's count too
     // when the tag was read on this tick after it.
     void apply_2x_bass(int64_t tick) {
-        if (!chord_.apply_2x_bass(mode_bass2x_) || !kick_mark_before_tag_) return;
+        if (!pads_.four.apply_2x_bass(mode_bass2x_) || !kick_mark_before_tag_) return;
         --marks_before_tag_;
         if (song_->dynamics_late_tag_tick != std::optional<int64_t>(tick)) return;
         if (--song_->dynamics_marks_before_tag == 0) song_->dynamics_late_tag_tick.reset();
@@ -888,8 +1001,9 @@ private:
     // difficulty_chart_codes.
     char mix_digit_ = 0;
     Difficulty difficulty_ = Difficulty::Expert;  // set by parse()
+    DrumChartFlags flags_;  // set by parse() from midi_drum_chart_flags
 
-    Chord chord_;
+    TickPads pads_;
     std::vector<const Message*> msg_buffer_;
     // One bucket per phase that push_timestamp runs, reused tick to tick so
     // their storage is allocated once per parse, not once per tick.
@@ -921,8 +1035,9 @@ MOp MidiParser::optype(const Message& msg, int64_t tick) {
 
         if (is_noteon) {
             const int velocity = msg.velocity;
-            // The difficulty's own five pitches come first: base is the kick,
-            // the next four are Red/Yellow/Blue/Green.
+            // The difficulty's own note pitches come first: base is the kick,
+            // the next four are Red/Yellow/Blue/Green (the fourth pad), and
+            // the one after them the fifth pad, held apart in TickPads.
             // Clone Hero reads the kick's velocity exactly as it reads a
             // pad's: 127 is an accent, 1 is a ghost, and both score double.
             const NoteDynamicType vel_dyn =
@@ -930,11 +1045,13 @@ MOp MidiParser::optype(const Message& msg, int64_t tick) {
                 : velocity == 1   ? NoteDynamicType::Ghost
                                   : NoteDynamicType::Normal;
             if (note == base_) return mop_kick(vel_dyn, false);
-            if (note > base_ && note <= base_ + 4) {
+            if (note > base_ && note < base_ + kFifthPadAboveKick) {
                 // base+1 -> Red(2), as 97 -> Red(2) on Expert.
                 NoteColor color = static_cast<NoteColor>(note - base_ + 1);
                 return mop_note(color, vel_dyn);
             }
+            if (note == base_ + kFifthPadAboveKick)
+                return mop_note(NoteColor::Green, vel_dyn, /*fifth_pad=*/true);
             // The difficulty's own 2x kick, read whatever the 2x Bass setting:
             // it can take a normal kick on its tick with it (D105).
             if (note == kick2x_pitch_) return mop_kick(vel_dyn, true);
@@ -1022,7 +1139,7 @@ MOp MidiParser::optype(const Message& msg, int64_t tick) {
 void MidiParser::run(const MOp& op) {
     switch (op.act) {
         case MAct::None: break;
-        case MAct::Note: op_note(op.color, op.dyn); break;
+        case MAct::Note: op_note(op.color, op.dyn, op.fifth_pad); break;
         case MAct::Kick: op_kick(op.dyn, op.flag); break;
         case MAct::FillStart: op_fillstart(op.tick); break;
         case MAct::StoreFillEnd: op_store_fillend(op.tick); break;
@@ -1050,7 +1167,7 @@ void MidiParser::run_ops(const std::vector<MOp>& ops) {
 }
 
 void MidiParser::push_timestamp(int64_t tick) {
-    chord_ = Chord();
+    pads_ = TickPads();
     kick_mark_before_tag_ = false;
 
     pre_.clear();
@@ -1074,8 +1191,8 @@ void MidiParser::push_timestamp(int64_t tick) {
     run_ops(notes_);
     apply_2x_bass(tick);
 
-    if (chord_.count())
-        emit_chord_timestamp(*song_, chord_, tick, flag_flam_, mode_pro_, flag_disco_,
+    if (pads_.count())
+        emit_chord_timestamp(*song_, pads_, flags_, tick, flag_flam_, mode_pro_, flag_disco_,
                              flag_solo_);
 
     run_ops(post_delayed_);
@@ -1133,6 +1250,7 @@ Song MidiParser::parse(const MidiFile& mid, bool pro, bool bass2x,
     // Pass 2: the drum track.
     if (const MidiTrack* const drums = mid.drums_track()) {
         const MidiTrack& track = *drums;
+        flags_ = midi_drum_chart_flags(track);
         elapsed = 0;
         msg_buffer_.clear();
         flag_solo_ = false;
@@ -1384,6 +1502,7 @@ struct COp {
     CAct act = CAct::None;
     NoteColor color = NoteColor::Kick;  // Note, Accent, Ghost, Cymbal
     bool flag = false;                  // Disco, Solo: on; Lane: double
+    bool fifth_pad = false;             // Note, Accent, Ghost: the fifth pad (TickPads::fifth)
     int64_t a = 0;   // Tempo/TimeSig/SpStart/FillStart/Lane: tick; SpEnd: start
     int64_t b = 0;   // SpStart/FillStart/SpEnd/Lane: end tick
     double bpm = 0;  // Tempo
@@ -1399,9 +1518,10 @@ COp cop(CPhase phase, CAct act) {
     return op;
 }
 
-COp cop_color(CPhase phase, CAct act, NoteColor color) {
+COp cop_color(CPhase phase, CAct act, NoteColor color, bool fifth_pad = false) {
     COp op = cop(phase, act);
     op.color = color;
+    op.fifth_pad = fifth_pad;
     return op;
 }
 
@@ -1464,11 +1584,11 @@ private:
         sp_end_tick_.reset();
     }
     void op_solo(bool on) { flag_solo_ = on; }
-    void op_note(NoteColor color) { chord_.add_note(color); }
-    void op_kick(bool is2x) { chord_.add_kick(is2x, NoteDynamicType::Normal); }
-    void op_accent(NoteColor color) { chord_.apply_accent(color); }
-    void op_ghost(NoteColor color) { chord_.apply_ghost(color); }
-    void op_cymbal(NoteColor color) { chord_.apply_cymbal(color); }
+    void op_note(NoteColor color, bool fifth_pad) { pads_.pads(fifth_pad).add_note(color); }
+    void op_kick(bool is2x) { pads_.four.add_kick(is2x, NoteDynamicType::Normal); }
+    void op_accent(NoteColor color, bool fifth_pad) { pads_.pads(fifth_pad).apply_accent(color); }
+    void op_ghost(NoteColor color, bool fifth_pad) { pads_.pads(fifth_pad).apply_ghost(color); }
+    void op_cymbal(NoteColor color) { pads_.four.apply_cymbal(color); }
 
     Song* song_ = nullptr;
     bool mode_pro_ = false;
@@ -1489,8 +1609,10 @@ private:
     std::optional<int64_t> coda_tick_;
     // The latest note end over every section (Song::last_note_end_tick).
     std::optional<int64_t> last_note_end_tick_;
+    // The chart's two flags, from every drum section (load_sections).
+    DrumChartFlags flags_;
 
-    Chord chord_;
+    TickPads pads_;
     std::vector<COp> ops_;  // one tick's handlers, reused tick to tick
     bool flag_solo_ = false;
     bool flag_disco_ = false;
@@ -1499,6 +1621,49 @@ private:
     std::vector<AuthoredFill> fills_;  // every authored fill, placed after the section
     std::vector<DrumLane> lanes_;      // every drum lane, handed on unlit
 };
+
+// A .chart pad: the lane the reader puts it on, and whether it is the fifth
+// pad, which TickPads holds apart from the other four.
+struct ChartPad {
+    NoteColor color;
+    bool fifth_pad = false;
+};
+
+// The pad of a .chart note number, or nullopt for a number that is not a pad.
+// N 4 is the fourth pad and N 5 the fifth (TickPads names them).
+std::optional<ChartPad> chart_pad_color(int value) {
+    switch (value) {
+        case 1: return ChartPad{NoteColor::Red};
+        case 2: return ChartPad{NoteColor::Yellow};
+        case 3: return ChartPad{NoteColor::Blue};
+        case 4: return ChartPad{NoteColor::Green};
+        case 5: return ChartPad{NoteColor::Green, true};
+        default: return std::nullopt;
+    }
+}
+
+// A Pro Drums cymbal marker's note number is its pad's number plus this
+// (N 66 marks pad 2).
+constexpr int kChartCymbalMarkerBase = 64;
+
+// The pad a .chart cymbal marker marks, or nullopt for a number that is not
+// one. Which pads can carry a cymbal is allows_cymbals' rule; the fifth pad
+// carries none. ChartParser::note_optype reads the marker, and
+// ChartParser::load_sections counts it as the chart's Pro Drums mark
+// (DrumChartFlags).
+std::optional<NoteColor> chart_cymbal_marker_pad(int value) {
+    const std::optional<ChartPad> pad = chart_pad_color(value - kChartCymbalMarkerBase);
+    if (!pad || pad->fifth_pad || !allows_cymbals(pad->color)) return std::nullopt;
+    return pad->color;
+}
+
+// Whether a .chart section is a difficulty's drum section, whichever
+// difficulty is parsed.
+bool is_chart_drum_section(std::string_view name) {
+    for (Difficulty d : kAllDifficulties)
+        if (name == difficulty_chart_codes(d).chart_section()) return true;
+    return false;
+}
 
 // The .chart phrase numbers of a single and a double drum lane
 // (Song::drum_lanes), written in the difficulty's own drum section.
@@ -1568,6 +1733,7 @@ void ChartParser::load_sections(const std::vector<uint8_t>& data, char mix_digit
     enum class Keep { Whole, Drums, Events, Nothing };
     bool in_section = false;
     Keep keep = Keep::Nothing;
+    bool in_drum_section = false;  // any difficulty's (is_chart_drum_section)
     std::optional<ChartSection> whole;
     std::vector<ChartLine> drums;
     std::vector<SongSection> events;
@@ -1655,6 +1821,15 @@ void ChartParser::load_sections(const std::vector<uint8_t>& data, char mix_digit
                     const ChartLine l = classify_chart_line(lhs, rhs, mix_digit, nullptr);
                     take_note_end(l);
                     if (keep == Keep::Drums && l.kind != LineKind::Prop) drums.push_back(l);
+                    // The chart's two flags come from every difficulty's drum
+                    // section, as Clone Hero's .chart loader shares them
+                    // across its drum tracks (CR-18): a fifth-pad note raises
+                    // the first and a cymbal marker the second.
+                    if (in_drum_section && l.kind == LineKind::Note) {
+                        const std::optional<ChartPad> pad = chart_pad_color(l.value);
+                        if (pad && pad->fifth_pad) flags_.fifth_pad = true;
+                        if (chart_cymbal_marker_pad(l.value)) flags_.pro_marks = true;
+                    }
                 }
             }
         } else {
@@ -1665,6 +1840,7 @@ void ChartParser::load_sections(const std::vector<uint8_t>& data, char mix_digit
             in_section = true;
             section_name = name;
             section_note_end.reset();
+            in_drum_section = is_chart_drum_section(name);
             if (name == kSongSection || name == kSyncTrackSection) {
                 keep = Keep::Whole;
                 whole.emplace();
@@ -1726,32 +1902,14 @@ COp ChartParser::optype(const ChartLine& e, int64_t tick) {
     return {};
 }
 
-// The colour of a .chart pad's note number, or nullopt for a number that is
-// not a pad.
-std::optional<NoteColor> chart_pad_color(int value) {
-    switch (value) {
-        case 1: return NoteColor::Red;
-        case 2: return NoteColor::Yellow;
-        case 3: return NoteColor::Blue;
-        case 4: return NoteColor::Green;
-        default: return std::nullopt;
-    }
-}
-
-// A Pro Drums cymbal marker's note number is its pad's number plus this
-// (N 66 marks pad 2).
-constexpr int kChartCymbalMarkerBase = 64;
-
 // An N line's op, by its note number.
 COp ChartParser::note_optype(int value) const {
     constexpr CPhase N = CPhase::Notes, M = CPhase::NoteMods;
-    if (const std::optional<NoteColor> pad = chart_pad_color(value))
-        return cop_color(N, CAct::Note, *pad);
-    // Which pads can carry a cymbal is allows_cymbals' rule; whether the
-    // marker counts is cymbal_counts'. A marker that does not count is read
-    // and dropped.
-    if (const std::optional<NoteColor> pad = chart_pad_color(value - kChartCymbalMarkerBase);
-        pad && allows_cymbals(*pad)) {
+    if (const std::optional<ChartPad> pad = chart_pad_color(value))
+        return cop_color(N, CAct::Note, pad->color, pad->fifth_pad);
+    // Whether a cymbal marker counts is cymbal_counts'. A marker that does
+    // not count is read and dropped.
+    if (const std::optional<NoteColor> pad = chart_cymbal_marker_pad(value)) {
         if (cymbal_counts(*pad, mode_pro_)) return cop_color(M, CAct::Cymbal, *pad);
         return {};
     }
@@ -1764,10 +1922,12 @@ COp ChartParser::note_optype(int value) const {
         case 35: return cop_color(M, CAct::Accent, NoteColor::Yellow);
         case 36: return cop_color(M, CAct::Accent, NoteColor::Blue);
         case 37: return cop_color(M, CAct::Accent, NoteColor::Green);
+        case 38: return cop_color(M, CAct::Accent, NoteColor::Green, /*fifth_pad=*/true);
         case 40: return cop_color(M, CAct::Ghost, NoteColor::Red);
         case 41: return cop_color(M, CAct::Ghost, NoteColor::Yellow);
         case 42: return cop_color(M, CAct::Ghost, NoteColor::Blue);
         case 43: return cop_color(M, CAct::Ghost, NoteColor::Green);
+        case 44: return cop_color(M, CAct::Ghost, NoteColor::Green, /*fifth_pad=*/true);
         default: return {};
     }
 }
@@ -1779,10 +1939,10 @@ void ChartParser::run(const COp& op) {
         case CAct::Tempo: op_tempo(op.a, op.bpm); break;
         case CAct::TimeSig: op_timesig(op.a, op.num, op.den); break;
         case CAct::Solo: op_solo(op.flag); break;
-        case CAct::Note: op_note(op.color); break;
+        case CAct::Note: op_note(op.color, op.fifth_pad); break;
         case CAct::Kick: op_kick(op.flag); break;
-        case CAct::Accent: op_accent(op.color); break;
-        case CAct::Ghost: op_ghost(op.color); break;
+        case CAct::Accent: op_accent(op.color, op.fifth_pad); break;
+        case CAct::Ghost: op_ghost(op.color, op.fifth_pad); break;
         case CAct::Cymbal: op_cymbal(op.color); break;
         case CAct::SpStart: op_sp_start(op.a, op.b); break;
         case CAct::SpEnd: op_sp_end(op.a, op.b); break;
@@ -1792,7 +1952,7 @@ void ChartParser::run(const COp& op) {
 }
 
 void ChartParser::push_timestamp(int64_t tick, const ChartLine* first, const ChartLine* last) {
-    chord_ = Chord();
+    pads_ = TickPads();
 
     std::vector<COp>& ops = ops_;
     ops.clear();
@@ -1812,7 +1972,7 @@ void ChartParser::push_timestamp(int64_t tick, const ChartLine* first, const Cha
     };
 
     run_phase(CPhase::Notes);
-    chord_.apply_2x_bass(mode_bass2x_);
+    pads_.four.apply_2x_bass(mode_bass2x_);
     run_phase(CPhase::NoteMods);
 
     // Phrase end: SP.
@@ -1823,8 +1983,8 @@ void ChartParser::push_timestamp(int64_t tick, const ChartLine* first, const Cha
 
     run_phase(CPhase::Pre);
 
-    if (chord_.count())
-        emit_chord_timestamp(*song_, chord_, tick, /*apply_flam=*/false, mode_pro_,
+    if (pads_.count())
+        emit_chord_timestamp(*song_, pads_, flags_, tick, /*apply_flam=*/false, mode_pro_,
                              flag_disco_, flag_solo_);
 
     run_phase(CPhase::Post);
@@ -1975,7 +2135,7 @@ void trim_parsed_song(Song& song) {
 
 Song parse_mid_lean(const std::vector<uint8_t>& data, bool pro, bool bass2x,
                     Difficulty difficulty, const core::Rules& rules, FillDeadlineRule fills) {
-    // Only the notes MidiParser acts on are decoded (midi_note_is_read).
+    // Only the notes MidiParser reads are decoded (midi_note_is_read).
     const int base = difficulty_base_pitch(difficulty);
     const int kick2x = difficulty_chart_codes(difficulty).kick2x_pitch();
     MidiLeanFilter filter;
