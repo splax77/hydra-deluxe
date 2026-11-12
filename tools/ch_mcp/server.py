@@ -508,9 +508,12 @@ def build_server(helper: Optional[Helper] = None):
                       sp_bar_ticks: int | None = None,
                       width: int = sp_compare.DEFAULT_WIDTH) -> str:
         """Compare a watcher CSV with a hydra_replay score JSON and print
-        sp_compare's report, one PASS or FAIL line per check. resolution,
-        when given, also prints Hydra's full meter beside the game's.
-        The checks look for each chord where the auto-player pressed it,
+        sp_compare's report, one PASS or FAIL line per check, then one line
+        per activation with Hydra's ready point and the first row the game
+        was ready. resolution, the chart's Resolution from its [Song]
+        section, is needed: without it the compare is refused. The run's
+        stop reason is the last play session's, and a running play is
+        refused. The checks look for each chord where the auto-player pressed it,
         which schedule_json, the same path's hydra_replay schedule (the file
         ch_play_chart plays), says. A schedule that refuses its path is
         refused with the schedule's words."""

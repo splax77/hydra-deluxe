@@ -23,7 +23,7 @@ class ColumnListsTest(unittest.TestCase):
     def test_watch_columns(self):
         self.assertEqual(overlay_logs.WATCH_COLUMNS, (
             "wall_s", "clock_s", "score", "sp_amount_u32", "sp_amount_u64",
-            "sp_max_u32", "sp_max_u64", "sp_active_byte", "sp_active_u32",
+            "sp_max_u32", "sp_max_u64", "sp_half_u64", "sp_active_byte", "sp_active_u32",
             "sp_mult_byte", "sp_mult_u32", "sp_end_s", "sp_overflow_u32",
             "round_start_s", "audio_s", "raw_s", "corr_s"))
 
