@@ -39,7 +39,7 @@ class ColumnListsTest(unittest.TestCase):
                 header = tuple(f.readline().strip().split(","))
             self.assertIn("hit_time_s", header, name)
             self.assertEqual(overlay_logs.watch_header(header),
-                             overlay_logs.WATCH_COLUMNS_WITHOUT_CLOCK, name)
+                             overlay_logs.WATCH_COLUMNS_WITHOUT_LATE_GROUPS, name)
 
     def test_press_log_columns(self):
         self.assertEqual(overlay_logs.PRESS_LOG_COLUMNS, (

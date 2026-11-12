@@ -57,9 +57,11 @@ WATCH_COLUMNS = (
 WATCH_CLOCK_COLUMNS = ("audio_s", "raw_s", "corr_s")
 # The game's own half of the meter (constants.OFF_SP_HALF). Every log written
 # before it existed lacks it, the saved ones included, so it is left out of
-# WATCH_COLUMNS_WITHOUT_CLOCK beside the clock columns.
+# WATCH_COLUMNS_WITHOUT_LATE_GROUPS beside the clock columns.
 WATCH_HALF_COLUMNS = ("sp_half_u64",)
-WATCH_COLUMNS_WITHOUT_CLOCK = tuple(
+# WATCH_COLUMNS without the clock and half groups: the columns every watcher
+# log has.
+WATCH_COLUMNS_WITHOUT_LATE_GROUPS = tuple(
     c for c in WATCH_COLUMNS if c not in WATCH_CLOCK_COLUMNS + WATCH_HALF_COLUMNS)
 
 # Saved logs under experiments/results/ name some columns differently: each key

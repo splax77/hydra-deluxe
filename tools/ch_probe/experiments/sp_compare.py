@@ -64,7 +64,7 @@ if _REPO_ROOT not in sys.path:
 
 from tools.ch_probe import constants as C
 from tools.ch_probe.experiments.overlay_logs import (
-    WATCH_COLUMNS, WATCH_COLUMNS_WITHOUT_CLOCK, watch_header)
+    WATCH_COLUMNS, WATCH_COLUMNS_WITHOUT_LATE_GROUPS, watch_header)
 from tools.ch_probe.experiments import play_chart
 from tools.ch_probe.experiments.score_compare import stop_check
 
@@ -149,7 +149,7 @@ def load_watch_rows(path: str) -> list:
         reader = csv.DictReader(f)
         have = watch_header(reader.fieldnames or ())
         reader.fieldnames = list(have)
-        missing = [c for c in WATCH_COLUMNS_WITHOUT_CLOCK if c not in have]
+        missing = [c for c in WATCH_COLUMNS_WITHOUT_LATE_GROUPS if c not in have]
         if missing:
             raise ValueError(f"{path} lacks the watcher columns {missing}")
         return [{c: _number(r[c]) if c in have else math.nan

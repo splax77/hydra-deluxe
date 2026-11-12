@@ -18,7 +18,7 @@ if _REPO_ROOT not in sys.path:
 
 from tools.ch_probe.experiments import watch_checks as W  # noqa: E402
 from tools.ch_probe.experiments.overlay_logs import (  # noqa: E402
-    WATCH_CLOCK_COLUMNS, WATCH_COLUMNS, WATCH_COLUMNS_WITHOUT_CLOCK,
+    WATCH_CLOCK_COLUMNS, WATCH_COLUMNS, WATCH_COLUMNS_WITHOUT_LATE_GROUPS,
     WATCH_HALF_COLUMNS)
 
 
@@ -160,8 +160,8 @@ class FilesTest(unittest.TestCase):
         self.assertEqual(W.pause_check(got), ["pause: no pause in this log"])
 
     def test_a_log_without_the_clock_or_half_columns_loads(self):
-        path = self.write_csv(WATCH_COLUMNS_WITHOUT_CLOCK,
-                              [[7] * len(WATCH_COLUMNS_WITHOUT_CLOCK)])
+        path = self.write_csv(WATCH_COLUMNS_WITHOUT_LATE_GROUPS,
+                              [[7] * len(WATCH_COLUMNS_WITHOUT_LATE_GROUPS)])
         got = W.load_watch_rows(path)
         self.assertTrue(all(math.isnan(got[0][c])
                             for c in WATCH_CLOCK_COLUMNS + WATCH_HALF_COLUMNS))
@@ -183,7 +183,7 @@ class FilesTest(unittest.TestCase):
 
     def test_a_saved_log_with_the_older_hit_time_s_header_loads(self):
         old = ["hit_time_s" if c == "round_start_s" else c
-               for c in WATCH_COLUMNS_WITHOUT_CLOCK]
+               for c in WATCH_COLUMNS_WITHOUT_LATE_GROUPS]
         values = list(range(len(old)))
         path = self.write_csv(old, [values])
         got = W.load_watch_rows(path)
