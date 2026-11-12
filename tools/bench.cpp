@@ -1449,6 +1449,13 @@ static int bench_main() {
             if (argv[i] == "--runs" && i + 1 < argc) runs = std::stoi(argv[++i]);
             else if (argv[i] == "--ini" && i + 1 < argc) ini = argv[++i];
             else if (argv[i] == "--as-ready") as_ready = true;
+            else {
+                // A misspelt --as-ready would time a library that reads Stale
+                // without saying so, so an option nobody reads is refused.
+                std::fprintf(stderr, "hydra_bench --open: unknown option or missing value: %s\n",
+                             argv[i].c_str());
+                return 2;
+            }
         }
         return open_mode(argv[2], runs, ini, as_ready);
     }
