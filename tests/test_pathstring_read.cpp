@@ -56,6 +56,26 @@ void check_every_kept_path_round_trips(
     CHECK(paths > 0);
 }
 
+// The two "token no fill can place" cases below, each reading the text
+// through its own entry point (`read`); their comments say what is checked.
+void check_unplaceable_second_window_is_refused(
+    const std::function<Path(const Song&, const app::AnalysisSettings&, const std::string&)>& read) {
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    for (const std::string& chart : corpus::chart_paths()) {
+        const Song& song = corpus::song(chart, cfg.reading());
+        if (song.is_empty()) continue;
+        const Path& best = corpus::analyzed(chart, cfg).best_path();
+        if (best.walk_activations().size() < 2) continue;
+        CAPTURE(chart);
+        const std::string text = best.walk_activations()[0].notationstr() + " 99";
+        CHECK_THROWS_WITH_AS(read(song, cfg, text),
+                             "window 2 (\"99\") matches no fill on this chart",
+                             KindedError);
+        return;
+    }
+    FAIL("no corpus chart's best path has two windows");
+}
+
 }  // namespace
 
 // The writer and the reader agree on Path::pathstring's text.
@@ -68,20 +88,10 @@ TEST_CASE("pathstring read: every corpus best path round-trips") {
 // the text it is (counted from 1). The first corpus chart whose best path has
 // two windows keeps its first window and gets a second no chart offers.
 TEST_CASE("pathstring read: a token no fill can place is refused with its position") {
-    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
-    for (const std::string& chart : corpus::chart_paths()) {
-        const Song& song = corpus::song(chart, cfg.reading());
-        if (song.is_empty()) continue;
-        const Path& best = corpus::analyzed(chart, cfg).best_path();
-        if (best.walk_activations().size() < 2) continue;
-        CAPTURE(chart);
-        const std::string text = best.walk_activations()[0].notationstr() + " 99";
-        CHECK_THROWS_WITH_AS(paths_from_pathstring(song, cfg, text),
-                             "window 2 (\"99\") matches no fill on this chart",
-                             KindedError);
-        return;
-    }
-    FAIL("no corpus chart's best path has two windows");
+    check_unplaceable_second_window_is_refused(
+        [](const Song& song, const app::AnalysisSettings& cfg, const std::string& text) {
+            return paths_from_pathstring(song, cfg, text);
+        });
 }
 
 // Every refusal names its kind, which gives the paste its own sentence
@@ -191,20 +201,10 @@ TEST_CASE("pathstring read: the graph entry point reads the same path as the set
 // text: the first corpus chart whose best path has two windows keeps its
 // first window and gets a second no chart offers.
 TEST_CASE("pathstring read: the graph entry point refuses a token no fill can place") {
-    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
-    for (const std::string& chart : corpus::chart_paths()) {
-        const Song& song = corpus::song(chart, cfg.reading());
-        if (song.is_empty()) continue;
-        const Path& best = corpus::analyzed(chart, cfg).best_path();
-        if (best.walk_activations().size() < 2) continue;
-        CAPTURE(chart);
-        const std::string text = best.walk_activations()[0].notationstr() + " 99";
-        CHECK_THROWS_WITH_AS(paths_from_pathstring_on_graph(song, search_graph(song, cfg), text),
-                             "window 2 (\"99\") matches no fill on this chart",
-                             KindedError);
-        return;
-    }
-    FAIL("no corpus chart's best path has two windows");
+    check_unplaceable_second_window_is_refused(
+        [](const Song& song, const app::AnalysisSettings& cfg, const std::string& text) {
+            return paths_from_pathstring_on_graph(song, search_graph(song, cfg), text);
+        });
 }
 
 // Text holding the long form's section separator but not the writer's number
