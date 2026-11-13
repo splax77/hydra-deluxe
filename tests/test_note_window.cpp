@@ -17,6 +17,7 @@
 #include "core/model.h"
 #include "core/note_window.h"
 #include "core/song.h"
+#include "record_fixtures.h"  // test::build_fixture_song
 #include "source_tree.h"  // for_each_source_file, the shared walk of the repo
 
 using namespace hydra;
@@ -24,18 +25,12 @@ namespace fs = std::filesystem;
 
 namespace {
 
-// A plain chart at 120 BPM, 192 ticks a beat (2.604 ms a tick), with one Red
-// chord on each tick of `ticks`.
-Song plain_song(const std::vector<int64_t>& ticks) {
-    Song song(192);
-    song.bpm_changes[0] = 120.0;
-    song.build_timing();
-    for (int64_t tick : ticks) {
-        SongTimestamp& ts = song.sequence.emplace_back();
-        ts.timecode = song.timecode(tick);
-        ts.chord.add_note(NoteColor::Red);
-    }
-    return song;
+// A chart at 120 BPM, 192 ticks a beat (2.604 ms a tick), with one Red chord
+// on each tick of `ticks` (test::build_fixture_song).
+Song red_chords(const std::vector<int64_t>& ticks) {
+    std::vector<test::FixtureNote> notes;
+    for (int64_t tick : ticks) notes.push_back({tick});
+    return test::build_fixture_song(192, 120.0, notes);
 }
 
 // A side at the floor and at the cap: half of TM-21's whole window at a
@@ -55,7 +50,7 @@ struct TwoSqueezes {
     Activation act;
 };
 TwoSqueezes two_squeezes() {
-    TwoSqueezes t{plain_song({0, 768, 1536, 2304, 3072, 3840}), Activation{}};
+    TwoSqueezes t{red_chords({0, 768, 1536, 2304, 3072, 3840}), Activation{}};
     Activation& a = t.act;
     a.timecode = t.song.timecode(768);
     a.bank_rise_ticks = {0, 768};  // two bars, so the ready point is known
@@ -116,7 +111,7 @@ TEST_CASE("note window: the formula constants live in one file") {
 }
 
 TEST_CASE("note window: chord_times lists the song's chords") {
-    const Song song = plain_song({0, 20, 40, 2000});
+    const Song song = red_chords({0, 20, 40, 2000});
     const ChordTimes chords = chord_times(song);
     REQUIRE(chords.ticks.size() == 4);
     REQUIRE(chords.ms.size() == 4);
@@ -181,7 +176,7 @@ TEST_CASE("note window: each squeeze reads its own side of its own scale") {
 TEST_CASE("note window: a cap-clamped squeeze is anchored on the overfill chord") {
     // The chord on 1536 has a neighbour 20 ticks (52.08 ms) after it, so its
     // side is not the activation chord's.
-    const Song song = plain_song({0, 768, 1536, 1556, 3072});
+    const Song song = red_chords({0, 768, 1536, 1556, 3072});
     const ChordTimes chords = chord_times(song);
     Activation act;
     act.timecode = song.timecode(768);
@@ -214,7 +209,7 @@ TEST_CASE("note window: the early fill row reads the SP-ready note") {
 }
 
 TEST_CASE("note window: a row the record cannot name is left out") {
-    const Song song = plain_song({0, 768, 1536, 2304, 3072, 3840});
+    const Song song = red_chords({0, 768, 1536, 2304, 3072, 3840});
     const ChordTimes chords = chord_times(song);
 
     SUBCASE("an unset scale") {
