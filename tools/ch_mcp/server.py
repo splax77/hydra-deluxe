@@ -406,7 +406,8 @@ def build_server(helper: Optional[Helper] = None):
 
     @server.tool()
     def ch_run_chart(song_folder: str, score_json: str, schedule_json: str,
-                     kit_player: str | None = None, path_index: int = 0) -> str:
+                     kit_player: str | None = None, path_index: int = 0,
+                     probes_json: str | None = None) -> str:
         """Start a run in one call, so the first press can beat the first
         note: ch_attach, a check that the game has the schedule's song
         loaded, ch_kit_setup on kit_player, the Star Power watch and the
@@ -425,9 +426,14 @@ def build_server(helper: Optional[Helper] = None):
         index k at ms". A part that fails stops the call there: the reply
         names it and the kit is taken away; a song the schedule is not for
         stops it before the kit setup. Refused while a play session runs.
-        Read the run with ch_play_status and ch_sp_watch_status."""
+        probes_json, when given, is ch_edge_probe's probes file: each chord it
+        names is pressed at the lead it gives, its press row carries the asked
+        lead in the probe column, and the reply adds the "probes:" line after
+        the play's. A probes file ch_edge_probe would refuse is refused here
+        before the attach, with nothing started. Read the run with
+        ch_play_status and ch_sp_watch_status."""
         return capped(h.game.ch_run_chart(song_folder, score_json, schedule_json, kit_player,
-                                          path_index))
+                                          path_index, probes_json))
 
     @server.tool()
     def ch_edge_probe(song_folder: str, score_json: str, schedule_json: str,

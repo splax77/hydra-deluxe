@@ -1133,7 +1133,8 @@ class GameTools:
             return "\n".join(lines)
 
     def ch_run_chart(self, song_folder: str, score_json: str, schedule_json: str,
-                     kit_player: Optional[str] = None, path_index: int = 0) -> str:
+                     kit_player: Optional[str] = None, path_index: int = 0,
+                     probes_json: Optional[str] = None) -> str:
         """Start a run in one call: attach, the song check, kit setup on
         `kit_player` (ch_kit_setup's `player`), the Star Power watch and the
         auto-player on the kit, with one engine search that the watch and the
@@ -1162,7 +1163,16 @@ class GameTools:
 
         The play goes through play_chart.live_in_game on the kit agent the
         setup built (kit_tools.KitTools.setup_for_run), as ch_play_chart's
-        kit route does."""
+        kit route does.
+
+        `probes_json`, when given, is ch_edge_probe's probes file, and the
+        run presses each chord it names at the lead it gives: the chords are
+        moved by edge_probe.probe_chords and the press rows marked by its
+        ProbeRun.mark_row, as ch_edge_probe does, and the reply carries
+        edge_probe.probe_lines after the play's line. A probes file
+        edge_probe refuses is refused before the builds record and the
+        attach, in edge_probe's words. With none, the chords play as the
+        schedule gives them."""
         # menu_tools imports kit_tools, which imports this module.
         from tools.ch_mcp.menu_tools import loaded_folder, same_folder
         with self._lock:
@@ -1186,6 +1196,15 @@ class GameTools:
                 return str(e)
             except (OSError, ValueError) as e:
                 return f"could not pick the run cap for {song_folder}: {type(e).__name__}: {e}"
+            probes: List[edge_probe.Probe] = []
+            played_chords, mark_row = chords, None
+            if probes_json is not None:
+                try:
+                    probes = edge_probe.load_probes(probes_json)
+                    played_chords, probe_run = edge_probe.probe_chords(chords, probes)
+                except (OSError, ValueError) as e:
+                    return f"refused: {type(e).__name__}: {e}; nothing started"
+                mark_row = probe_run.mark_row
             self._press_log_count += 1
             builds_path = os.path.join(self.session_dir(),
                                        f"{BUILDS_PREFIX}{self._press_log_count}.json")
@@ -1237,8 +1256,8 @@ class GameTools:
                                     f"{PRESS_LOG_PREFIX}{self._press_log_count}.csv")
             play = _PlaySession(score_json=score_json, chord_count=len(chords), log_path=log_path,
                                 cap_s=cap_s, find_engine=lambda _proc: engine,
-                                player=player)
-            self._start_play(play, chords)
+                                player=player, mark_row=mark_row)
+            self._start_play(play, played_chords)
             first_press_in_time = play.pressed.wait(cap_s)
             rows = list(play.rows)
             if not rows:
@@ -1255,6 +1274,8 @@ class GameTools:
                                          + parts.sp.ch_sp_watch_stop())
             lines.append(f"play: ok, {self._seconds_since(began)} to the first press, "
                          f"{len(chords)} chords from {score_json}, run cap {cap_s:g} s")
+            if probes:
+                lines.extend(edge_probe.probe_lines(probes))
             lines.extend(plan_lines)
             lines.append(f"builds record: {builds_path}")
             lines.append(self._press_log_line(play))
