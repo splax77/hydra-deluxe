@@ -101,12 +101,45 @@ def _load():
     return [(chord.ms, chord.lanes) for chord in _load_chords()]
 
 
-_FREAK_SCHEDULE = os.path.join(_HERE, "freak_limits_schedule.json")
-
-
 def _read_json(path):
     with open(path, encoding="utf-8") as f:
         return json.load(f)
+
+
+def _unit_end_fields(aim_end_ms):
+    """play_chart.END_FIELDS for a press whose read end is its own end, as
+    hand-picked test inputs: every end at `aim_end_ms`, conversion 1 on both
+    sides and no range. With these retime_from_end moves a press one for one,
+    as it did before the fields existed."""
+    return {"own_end_ms": aim_end_ms, "read_stored_end_ms": aim_end_ms,
+            "own_stored_end_ms": aim_end_ms, "conversion": {"early": 1.0, "late": 1.0},
+            "read_range_ms": None}
+
+
+# The committed fixtures were written before the schedule wrote
+# play_chart.END_FIELDS, and task T4 of
+# docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md remakes
+# them. Until then the tests read a copy with _unit_end_fields added to each
+# press that has an `end_read_after` and lacks them; a field the file already
+# holds is kept.
+_FIXTURE_COPIES = tempfile.TemporaryDirectory()
+
+
+def _fixture_schedule(name):
+    """The path of a copy of the schedule fixture `name` beside this file,
+    with _unit_end_fields on every press timed from a read that lacks them."""
+    doc = _read_json(os.path.join(_HERE, name))
+    for entry in doc["presses"]:
+        if entry["end_read_after"] is not None:
+            for key, value in _unit_end_fields(entry["aim_end_ms"]).items():
+                entry.setdefault(key, value)
+    path = os.path.join(_FIXTURE_COPIES.name, name)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(doc, f)
+    return path
+
+
+_FREAK_SCHEDULE = _fixture_schedule("freak_limits_schedule.json")
 
 
 class LoadScheduleTest(unittest.TestCase):
@@ -1024,7 +1057,7 @@ class PressLogWriterTest(unittest.TestCase):
         self.assertEqual(len(_table(self.path)), 101)
 
 
-_MOUTHS_SCHEDULE = os.path.join(_HERE, "mouths_refine_schedule.json")
+_MOUTHS_SCHEDULE = _fixture_schedule("mouths_refine_schedule.json")
 
 
 def _play_schedule(chords, read_sp_end=None):
@@ -1247,7 +1280,8 @@ class ReadEndTest(unittest.TestCase):
                 index=index, chart_ms=chart_ms, aim_ms=0.0, lanes=[Lane.RED],
                 dynamics=["none"], axes=None, declined=False, last_send_ms=chart_ms + 50.0,
                 rule="plain", end_read_after=read_after,
-                aim_end_ms=None if read_after is None else 1000.0)
+                aim_end_ms=None if read_after is None else 1000.0,
+                **({} if read_after is None else _unit_end_fields(1000.0)))
         plan = [press(1, 990.0, 7), press(2, 991.0), press(3, 1200.0, 8)]
         moved = play_chart.retime_from_end(plan, 7, 1002.0)
         self.assertEqual([(p.index, p.at_ms, p.aim_end_ms) for p in moved],
@@ -1588,7 +1622,8 @@ class FallbackTest(unittest.TestCase):
         _c, past, _g = self._run(_FREAK_SCHEDULE, {1062: bound + 0.01})
         (row,) = _rows_of(past, 1144)
         self.assertEqual(row["retimed"], play_chart.RETIMED_INSIDE)
-        # With no inside group the gem goes down 15 ms before the read end.
+        # With no inside group the gem goes down 15 ms before its own end,
+        # which here is the read end (conversion 1).
         self.assertAlmostEqual(row["lead_ms"], late.chart_ms - (bound + 0.01 - 15.0), delta=1e-6)
         _c, before, _g = self._run(_FREAK_SCHEDULE, {1062: bound - 0.01})
         (row,) = _rows_of(before, 1144)
@@ -1644,6 +1679,188 @@ class FallbackTest(unittest.TestCase):
         odd = dataclasses.replace(late, fallback={**late.fallback, "action": "drop"})
         with self.assertRaisesRegex(ValueError, "'drop'"):
             play_chart.retime_from_end([odd], 1062, late.aim_end_ms)
+
+
+def _timed_press(index=5, chart_ms=3000.0, aim_ms=-15.0, lanes=(Lane.RED,), read_after=4,
+                 **fields):
+    """A hand-built press timed from the read after chord `read_after`, with
+    hand-picked test inputs. `fields` gives its END_FIELDS, `aim_end_ms` and
+    `fallback`."""
+    return play_chart.Press(
+        index=index, chart_ms=chart_ms, aim_ms=aim_ms, lanes=list(lanes),
+        dynamics=["none"] * len(lanes), axes=None, declined=False,
+        last_send_ms=chart_ms + 50.0, rule="plain", end_read_after=read_after, **fields)
+
+
+class ConversionRetimeTest(unittest.TestCase):
+    """retime_from_end moves a press by how far its own end moved, through
+    the file's conversion, never one for one with the read (design points 3
+    and 5 of docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md)."""
+
+    def test_pitch_dark_chord_644_moves_by_the_conversion(self):
+        # The plan's Pitch Dark numbers: the stored ends of steps 2 and 1,
+        # chord 644's planned own end, its conversion, the read planned after
+        # chord 466, and the game's read in the 2026-11-12 run. The chord's
+        # time and aim are hand-picked.
+        press = _timed_press(index=644, chart_ms=161389.776, aim_ms=-18.316, read_after=466,
+                             aim_end_ms=158262.531, own_end_ms=161386.46,
+                             read_stored_end_ms=158224.757, own_stored_end_ms=161356.443,
+                             conversion={"early": 0.79467, "late": 0.79467},
+                             read_range_ms=None)
+        (moved,) = play_chart.retime_from_end([press], 466, 158268.988)
+        # 5.13 ms later; one for one with the read would be 6.46 against the
+        # planned read, or 14.2 against the read priced at the borrowed ratio.
+        self.assertAlmostEqual(moved.at_ms - press.at_ms, 5.13, delta=0.01)
+        self.assertAlmostEqual(moved.own_end_ms, 161391.59, delta=0.01)
+        self.assertEqual(moved.aim_end_ms, 158268.988)
+        self.assertIsNone(moved.retimed)
+
+    def _sided(self, **more):
+        return _timed_press(aim_end_ms=1000.0, own_end_ms=2000.0, read_stored_end_ms=1000.0,
+                            own_stored_end_ms=2000.0, conversion={"early": 0.5, "late": 2.0},
+                            read_range_ms=None, **more)
+
+    def test_a_read_before_the_stored_end_takes_early_and_after_takes_late(self):
+        press = self._sided()
+        (early,) = play_chart.retime_from_end([press], 4, 990.0)
+        self.assertAlmostEqual(early.at_ms - press.at_ms, -5.0, delta=1e-9)
+        (late,) = play_chart.retime_from_end([press], 4, 1010.0)
+        self.assertAlmostEqual(late.at_ms - press.at_ms, 20.0, delta=1e-9)
+        (at,) = play_chart.retime_from_end([press], 4, 1000.0)
+        self.assertEqual(at.at_ms, press.at_ms)
+
+    def test_the_late_gem_joins_before_the_moved_own_end(self):
+        # Conversion 0.5 and a read 10 ms late: the own end moves 5 ms, so
+        # the gem goes down 15 ms before 2,005, at 1,990, not 1,995.
+        late = _timed_press(chart_ms=1990.0, aim_ms=20.0, aim_end_ms=1000.0,
+                            own_end_ms=2000.0, read_stored_end_ms=1000.0,
+                            own_stored_end_ms=2000.0, conversion={"early": 0.5, "late": 0.5},
+                            read_range_ms=None,
+                            fallback={"action": "join_group", "if_end_after_ms": 1005.0,
+                                      "before_end_ms": 15.0, "join_gems": [],
+                                      "retimed": play_chart.RETIMED_INSIDE})
+        (moved,) = play_chart.retime_from_end([late], 4, 1010.0)
+        self.assertEqual(moved.retimed, play_chart.RETIMED_INSIDE)
+        self.assertAlmostEqual(moved.at_ms, 1990.0, delta=1e-9)
+
+    def test_a_press_missing_a_field_is_refused(self):
+        press = _timed_press(aim_end_ms=1000.0, own_end_ms=1000.0, read_stored_end_ms=1000.0,
+                             conversion={"early": 1.0, "late": 1.0})
+        with self.assertRaisesRegex(ValueError, "own_stored_end_ms"):
+            play_chart.retime_from_end([press], 4, 1001.0)
+
+
+class ReadRangeTest(unittest.TestCase):
+    """A read inside a press's `read_range_ms` moves it by the sum; one
+    outside takes its written fallback, or leaves it where the schedule put
+    it, and says `range` (design point 5 of
+    docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md).
+    Every number is a hand-picked test input."""
+
+    RANGE = (990.0, 1010.0)
+
+    def _press(self, **more):
+        fields = dict(aim_end_ms=1000.0, own_end_ms=1000.0, read_stored_end_ms=1000.0,
+                      own_stored_end_ms=1000.0, conversion={"early": 1.0, "late": 1.0},
+                      read_range_ms=self.RANGE)
+        fields.update(more)
+        return _timed_press(**fields)
+
+    def test_the_word(self):
+        self.assertEqual(play_chart.RETIMED_RANGE, "range")
+
+    def test_a_read_just_inside_moves_by_the_sum(self):
+        press = self._press()
+        for read_ms in self.RANGE:
+            with self.subTest(read_ms):
+                (moved,) = play_chart.retime_from_end([press], 4, read_ms)
+                self.assertAlmostEqual(moved.at_ms - press.at_ms, read_ms - 1000.0, delta=1e-9)
+                self.assertIsNone(moved.retimed)
+
+    def test_a_press_with_no_fallback_stays_unmoved(self):
+        press = self._press()
+        for read_ms in (self.RANGE[0] - 0.01, self.RANGE[1] + 0.01):
+            with self.subTest(read_ms):
+                (kept,) = play_chart.retime_from_end([press], 4, read_ms)
+                self.assertEqual(kept.at_ms, press.at_ms)
+                self.assertEqual(kept.retimed, play_chart.RETIMED_RANGE)
+
+    def test_a_squeeze_in_outside_is_pressed_plain(self):
+        # The threshold is far below the read, so only the range sends it plain.
+        press = self._press(fallback={"action": "plain", "if_end_before_ms": 900.0,
+                                      "aim_ms": -2.0, "retimed": play_chart.RETIMED_PLAIN})
+        (plain,) = play_chart.retime_from_end([press], 4, self.RANGE[1] + 0.01)
+        self.assertEqual((plain.aim_ms, plain.retimed), (-2.0, play_chart.RETIMED_RANGE))
+
+    def test_a_squeeze_outs_late_gem_outside_joins_its_group(self):
+        # The threshold is far above the read, so only the range joins it.
+        group = self._press(aim_ms=-15.0, lanes=(Lane.RED,))
+        late = self._press(aim_ms=20.0, lanes=(Lane.BLUE,),
+                           fallback={"action": "join_group", "if_end_after_ms": 5000.0,
+                                     "before_end_ms": 15.0, "join_gems": [0],
+                                     "retimed": play_chart.RETIMED_INSIDE})
+        (joined,) = play_chart.retime_from_end([group, late], 4, self.RANGE[0] - 0.01,
+                                               {5: [Lane.RED, Lane.BLUE]})
+        self.assertEqual(joined.lanes, [Lane.RED, Lane.BLUE])
+        self.assertEqual(joined.at_ms, group.at_ms)
+        self.assertEqual(joined.retimed, play_chart.RETIMED_RANGE)
+
+
+class EndFieldsLoadTest(unittest.TestCase):
+    """load_schedule refuses a press with an `end_read_after` that lacks a
+    field of play_chart.END_FIELDS, naming it, so a file older than the
+    fields is never played (task T3 of
+    docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md)."""
+
+    def _doc(self):
+        doc = _schedule_of(_DUMP)
+        doc["presses"][1].update({"end_read_after": 38, "aim_end_ms": 13000.0,
+                                  "own_end_ms": 13010.0, "read_stored_end_ms": 12990.0,
+                                  "own_stored_end_ms": 13005.0,
+                                  "conversion": {"early": 0.5, "late": 2.0},
+                                  "read_range_ms": [12900.0, 13100.0]})
+        return doc
+
+    def test_the_fields_are_read(self):
+        chords = _write_and_load(self._doc(), play_chart.load_schedule).chords
+        press = next(p for c in chords for p in c.presses if p.index == 41)
+        self.assertEqual((press.own_end_ms, press.read_stored_end_ms, press.own_stored_end_ms,
+                          press.conversion, press.read_range_ms),
+                         (13010.0, 12990.0, 13005.0, {"early": 0.5, "late": 2.0},
+                          (12900.0, 13100.0)))
+        # A press with no end_read_after carries none of them.
+        plain = next(p for c in chords for p in c.presses if p.index == 38)
+        self.assertIsNone(plain.own_end_ms)
+
+    def test_a_null_range_is_read_as_no_range(self):
+        doc = self._doc()
+        doc["presses"][1]["read_range_ms"] = None
+        chords = _write_and_load(doc, play_chart.load_schedule).chords
+        press = next(p for c in chords for p in c.presses if p.index == 41)
+        self.assertIsNone(press.read_range_ms)
+
+    def test_each_missing_field_is_named(self):
+        for key in play_chart.END_FIELDS:
+            with self.subTest(key):
+                doc = self._doc()
+                del doc["presses"][1][key]
+                with self.assertRaises(ValueError) as caught:
+                    _write_and_load(doc, play_chart.load_schedule)
+                self.assertIn(f"entry 1 of `presses` has no `{key}`", str(caught.exception))
+
+    def test_a_null_number_and_a_one_sided_conversion_are_named(self):
+        for key in ("own_end_ms", "read_stored_end_ms", "own_stored_end_ms", "conversion"):
+            with self.subTest(key):
+                doc = self._doc()
+                doc["presses"][1][key] = None
+                with self.assertRaises(ValueError) as caught:
+                    _write_and_load(doc, play_chart.load_schedule)
+                self.assertIn(f"null `{key}`", str(caught.exception))
+        doc = self._doc()
+        del doc["presses"][1]["conversion"]["late"]
+        with self.assertRaises(ValueError) as caught:
+            _write_and_load(doc, play_chart.load_schedule)
+        self.assertIn("has no `late`", str(caught.exception))
 
 
 class RetimedColumnTest(unittest.TestCase):

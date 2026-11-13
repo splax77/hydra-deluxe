@@ -90,9 +90,20 @@ NO_ACTIVATION_READ = "no activation read"
 # late gem kept after the read end, that gem moved in with its chord's last
 # inside group (the block's `join_group`), or a squeeze-in pressed plain (the
 # block's `plain`). A squeeze-in that keeps its squeeze press leaves it blank.
+# A read outside the press's `read_range_ms` makes it `range` (design point 5
+# of docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md): the
+# press took its fallback, or stayed where the schedule put it.
 RETIMED_LATE = "late"
 RETIMED_INSIDE = "inside"
 RETIMED_PLAIN = "plain"
+RETIMED_RANGE = "range"
+
+# The fields every press with an `end_read_after` carries for retime_from_end
+# (design point 3 of docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md).
+# load_schedule refuses a file whose press lacks one; only `read_range_ms`
+# may be null, which means the file names no range to check.
+END_FIELDS = ("own_end_ms", "read_stored_end_ms", "own_stored_end_ms", "conversion",
+              "read_range_ms")
 
 # The score is read this long after a press: a dense chart's next chord comes
 # sooner than constants.INPUT_SETTLE_MS.
@@ -132,8 +143,10 @@ class Press:
     word), None until it ran on a press with one. `seq` is the number
     play_in_game gives the press in the kit agent's schedule, None
     elsewhere; replace() keeps it, so a press retime_from_end moves keeps
-    its seq and the agent can tell it from one that already fired. The other
-    fields are the entry's own, under the same names."""
+    its seq and the agent can tell it from one that already fired.
+    `conversion` is the entry's `{early, late}` as a dict and
+    `read_range_ms` its `[low, high]` as a tuple. The other fields are the
+    entry's own, under the same names."""
     index: int
     chart_ms: float
     aim_ms: float
@@ -147,6 +160,11 @@ class Press:
     timed_from_end: Optional[int] = None
     end_read_after: Optional[int] = None
     aim_end_ms: Optional[float] = None
+    own_end_ms: Optional[float] = None
+    read_stored_end_ms: Optional[float] = None
+    own_stored_end_ms: Optional[float] = None
+    conversion: Optional[Mapping[str, float]] = None
+    read_range_ms: Optional[Tuple[float, float]] = None
     fallback: Optional[Mapping] = None
     planned_end_ms: Optional[float] = None
     retimed: Optional[str] = None
@@ -294,7 +312,7 @@ def load_schedule(path: str) -> Schedule:
             rule=entry["rule"], after_ms=entry["after_ms"],
             timed_from_end=entry["timed_from_end"],
             end_read_after=entry["end_read_after"], aim_end_ms=entry["aim_end_ms"],
-            fallback=entry.get("fallback")))
+            fallback=entry.get("fallback"), **_end_fields(entry, path, k)))
     chords = []
     for row in rows:
         presses = presses_of[row["index"]]
@@ -317,6 +335,48 @@ def load_schedule(path: str) -> Schedule:
     return Schedule(chords, activations, song_length_ms)
 
 
+def _end_fields(entry: _Fields, path: str, k: int) -> dict:
+    """The END_FIELDS of press entry `k`, as Press keywords: all None for a
+    press with no `end_read_after`, which retime_from_end never moves.
+    Raises ValueError naming the field when a press with one lacks a field,
+    holds null where a number belongs, or has a `conversion` without both
+    sides, so a file older than the fields is never played."""
+    if entry["end_read_after"] is None:
+        return {}
+    where = f"entry {k} of `presses`"
+    fields = {name: entry[name] for name in END_FIELDS}
+    for name in END_FIELDS:
+        if fields[name] is None and name != "read_range_ms":
+            raise ValueError(f"{path}: {where} has a null `{name}`; make the file again "
+                             f"with hydra_replay schedule")
+    conversion = _Fields(fields["conversion"], path, f"the `conversion` of {where}")
+    fields["conversion"] = {side: conversion[side] for side in ("early", "late")}
+    if fields["read_range_ms"] is not None:
+        low, high = fields["read_range_ms"]
+        fields["read_range_ms"] = (low, high)
+    return fields
+
+
+def own_end_now_ms(press: Press, read_end_ms: float) -> float:
+    """Where `press`'s own end is once the game's read end is `read_end_ms`:
+    design point 3 of
+    docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md. Every
+    number in the sum is the file's; the schedule (tools/replay_schedule.cpp)
+    worked out the conversion."""
+    side = "late" if read_end_ms >= press.read_stored_end_ms else "early"
+    return (press.own_stored_end_ms
+            + press.conversion[side] * (read_end_ms - press.read_stored_end_ms))
+
+
+def _in_read_range(press: Press, read_end_ms: float) -> bool:
+    """Whether `read_end_ms` lies inside `press`'s `read_range_ms`, ends
+    included. A press with no range is always inside."""
+    if press.read_range_ms is None:
+        return True
+    low, high = press.read_range_ms
+    return low <= read_end_ms <= high
+
+
 def press_plan(chords: Sequence[Chord]) -> List[Press]:
     """Every press of `chords`, in the order they fire. The schedule worked
     each one out; this only sorts them by the clock they fire at."""
@@ -327,52 +387,77 @@ def retime_from_end(presses: Sequence[Press], read_after: int, read_end_ms: floa
                     chord_lanes: Optional[Mapping[int, Sequence[int]]] = None) -> List[Press]:
     """`presses` in firing order, with every press the schedule times from
     the end read after chord `read_after` (Press.end_read_after) moved by how
-    far the end the game stored, `read_end_ms`, is from that press's own
-    `aim_end_ms`. Design point 1 of
-    docs/superpowers/plans/2026-11-07-player-limits.md says why: the game
-    stamps an activation with the clock of the frame that read the press.
+    far its own end moved: own_end_now_ms of the game's stored end,
+    `read_end_ms`, minus the press's `own_end_ms`. Design point 1 of
+    docs/superpowers/plans/2026-11-07-player-limits.md says why the read
+    moves at all (the game stamps an activation with the clock of the frame
+    that read the press); design point 3 of
+    docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md says
+    why the move goes through the file's conversion. A moved press carries
+    the read as its `aim_end_ms` and its own end now as its `own_end_ms`.
 
     A moved press with a `fallback` then does what the block says (design
     point 5 of docs/superpowers/plans/2026-11-08-replay-press-schedule.md),
-    and Press.retimed says which. A read end past `if_end_after_ms` makes
-    the late gem `join_group`: it goes down `before_end_ms` before the read
-    end, in one press with its chord's group of `join_gems` (indexes into
-    the chord's lanes, from `chord_lanes` by chord index) when that names
-    any. A read end before `if_end_before_ms` makes the press `plain`, at
-    the block's `aim_ms`. A read end equal to a threshold keeps the press.
-    Raises ValueError for a moved press with no `aim_end_ms`, a block with
-    another action, or a `join_gems` group no press holds, each a bug in
-    the schedule."""
-    moved = []
+    and Press.retimed says which. The block's thresholds are in read terms,
+    so the read is compared with them as it is. A read end past
+    `if_end_after_ms` makes the late gem `join_group`: it goes down
+    `before_end_ms` before its own end now, in one press with its chord's
+    group of `join_gems` (indexes into the chord's lanes, from `chord_lanes`
+    by chord index) when that names any. A read end before
+    `if_end_before_ms` makes the press `plain`, at the block's `aim_ms`. A
+    read end equal to a threshold keeps the press.
+
+    A read outside a press's `read_range_ms` (design point 5 of the
+    2026-11-13 plan) moves nothing: the press takes its fallback's action
+    whatever the thresholds say (`plain` at the block's `aim_ms`, or the
+    late gem joining its group), or stays where the schedule put it when it
+    has none, and every such press is RETIMED_RANGE.
+
+    Raises ValueError for a moved press without the END_FIELDS the sum
+    reads, a block with another action, or a `join_gems` group no press
+    holds, each a bug in the schedule."""
+    moved: List[Tuple[Press, Optional[float]]] = []
     for p in presses:
         if p.end_read_after != read_after:
-            moved.append(p)
+            moved.append((p, None))
             continue
-        if p.aim_end_ms is None:
+        missing = [name for name in END_FIELDS
+                   if name != "read_range_ms" and getattr(p, name) is None]
+        if missing:
             raise ValueError(f"chord {p.index} is timed from the end read after chord "
-                             f"{read_after} but has no aim_end_ms")
-        delta_ms = read_end_ms - p.aim_end_ms
-        moved.append(replace(p, aim_ms=p.aim_ms + delta_ms, aim_end_ms=read_end_ms))
+                             f"{read_after} but has no {', '.join(missing)}")
+        block = p.fallback
+        if block is not None and block.get("action") not in ("join_group", "plain"):
+            raise ValueError(f"chord {p.index}'s fallback has action {block.get('action')!r}, "
+                             f"which play_chords does not know")
+        if not _in_read_range(p, read_end_ms):
+            moved.append((replace(p, retimed=RETIMED_RANGE), None))
+            continue
+        own_now_ms = own_end_now_ms(p, read_end_ms)
+        moved.append((replace(p, aim_ms=p.aim_ms + own_now_ms - p.own_end_ms,
+                              aim_end_ms=read_end_ms, own_end_ms=own_now_ms), own_now_ms))
     out: List[Press] = []
     joins: List[Tuple[Press, Mapping]] = []
-    for p in moved:
+    for p, own_now_ms in moved:
         block = p.fallback
         if p.end_read_after != read_after or block is None:
             out.append(p)
-        elif block.get("action") == "join_group":
+        elif own_now_ms is None:
+            # Outside the read's range: the fallback's action, unmoved.
+            if block["action"] == "join_group":
+                joins.append((p, block))
+            else:
+                out.append(replace(p, aim_ms=block["aim_ms"]))
+        elif block["action"] == "join_group":
             if read_end_ms > block["if_end_after_ms"]:
-                joins.append((replace(p, aim_ms=read_end_ms - block["before_end_ms"] - p.chart_ms,
+                joins.append((replace(p, aim_ms=own_now_ms - block["before_end_ms"] - p.chart_ms,
                                       retimed=block["retimed"]), block))
             else:
                 out.append(replace(p, retimed=RETIMED_LATE))
-        elif block.get("action") == "plain":
-            if read_end_ms < block["if_end_before_ms"]:
-                out.append(replace(p, aim_ms=block["aim_ms"], retimed=block["retimed"]))
-            else:
-                out.append(p)
+        elif read_end_ms < block["if_end_before_ms"]:
+            out.append(replace(p, aim_ms=block["aim_ms"], retimed=block["retimed"]))
         else:
-            raise ValueError(f"chord {p.index}'s fallback has action {block.get('action')!r}, "
-                             f"which play_chords does not know")
+            out.append(p)
     for late, block in joins:
         if not block["join_gems"]:
             out.append(late)
