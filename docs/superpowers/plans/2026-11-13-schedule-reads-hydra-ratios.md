@@ -157,13 +157,13 @@ Run rules for all three: the kit route, a human player on System, the game never
 
 ### LS-R1: remake Pitch Dark's three files with the merged build (no game; 1 run)
 
-Calls: `hydra_replay` dump (seen: pitch-dark-prep), `hydra_replay` score (seen: pitch-dark-prep), `hydra_replay` schedule (never tried: its new fields)
+Calls: `hydra_replay` dump (seen: pitch-dark-prep), `hydra_replay` score (seen: pitch-dark-prep), `hydra_replay` schedule (never tried). The schedule is never tried with its new fields.
 
 The main session writes dump, score and schedule into a new prep folder under `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\`. Pass: no refusals; Hydra's total is 393,885 (row P16); the read on chord 466 is planned at 158,262.53; chord 644's conversion is 0.79467. Fail: any other value, or a refusal; stop and report the line. Cap: one run, 10 minutes.
 
 ### LS-R2: Pitch Dark path 0 on the kit from the new schedule (2 runs, 10 minutes each)
 
-Calls: `ch_start` (seen: pitch-dark-run1), `ch_run_chart` (never tried: the schedule's new fields), `ch_play_status` (seen: pitch-dark-run1), `ch_sp_watch_status` (seen: pitch-dark-run1), `ch_stop` (seen: pitch-dark-run1)
+Calls: `ch_start` (seen: pitch-dark-run1), `ch_run_chart` (never tried), `ch_play_status` (seen: pitch-dark-run1), `ch_sp_watch_status` (seen: pitch-dark-run1), `ch_stop` (seen: pitch-dark-run1). `ch_run_chart` is never tried with the schedule's new fields.
 
 Starts only when LS-R1's folder exists; the go request names it. Uses rows P11, P12, P19 and P20. Row P20 is unchecked: before the go request, the main session confirms from its own record of run 1 that the three status and stop calls ran; if it cannot, they are marked never tried and this step is split so each step holds one. Pass lines, read in this order:
 1. The frame-rate line says 330 and the song check names Pitch Dark's folder.
@@ -176,7 +176,7 @@ Fail lines: no read on 466 (stop: the player, not the ratio); line 3 fails (the 
 
 ### LS-R3: the watch log against the score file (no game; 1 run)
 
-Calls: `ch_sp_compare` (never tried on this chart)
+Calls: `ch_sp_compare` (never tried). It has never run on this chart.
 
 Runs on LS-R2's passing folder. Pass: no FAIL line; three activations, each end within the tool's own limit. Fail: quote the FAIL line. Cap: one run.
 
