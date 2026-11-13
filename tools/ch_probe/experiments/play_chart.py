@@ -484,10 +484,10 @@ class RunResult:
     STOP_DONE (every chord pressed), "past_end" (the clock was past the last
     chord), "frozen", "cap", "interrupted", "lost" (the process went away),
     "stopped" (the caller's `should_stop` said so), "reply" (a kit reply
-    lacked what its press asked for) or STOP_NO_ENGINE (live_play found no
+    lacked what its press asked for) or STOP_NO_ENGINE (the run found no
     playing song). For every stop but STOP_DONE, `message` says why in
     words: the finder's for STOP_NO_ENGINE. `dyn_threshold` is the dynamics
-    threshold live_play read, None when it read none."""
+    threshold live_in_game read, None when it read none (the keys route reads none)."""
     sent: int = 0
     declined: int = 0
     dropped: int = 0
