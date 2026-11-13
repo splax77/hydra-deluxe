@@ -1,6 +1,6 @@
 # Session index
 
-6 sessions are kept locally and have no line here.
+7 sessions are kept locally and have no line here.
 
 - 2026-08-09 62055a3c Freeze error diagnosis (2026-08-09) | batch-running, library, path, report-table, performance, tests | Ended with the freeze fixed, the library analyzed to 18,022 records, and a sortable path report with a score column. The conversation shows no commit, so the changes sit in the working tree.
 - 2026-08-10 571ec5d5 Hydra uncapped starpower version (2026-08-10) | sp-cap, path, performance, batch-running | Ended at 12:42 UTC with all six big charts finishing uncapped, the slowest in 98.8 seconds.
@@ -288,7 +288,7 @@
 - 2026-10-10 99992f42 Documentation audit and AI writing review (2026-10-10) | docs, release, review, agents, hooks | The session ended with the rewrite finished and pushed: main moved from the old tip to 9ff1ea31 at 23:03 UTC, after the full suite passed (1,305 of 1,305 test cases).
 - 2026-10-10 6e5bdc1e Doc-review submit gate: accept CRLF review files (2026-10-10) | hooks, review, docs | The session ended after the merge: the fix is on main at 402eaa0, the fix commit is a0ad8b3, and the worktree and branch were removed.
 - 2026-10-10 35360d51 Tooltip style guide audit (2026-10-10) | ui-timings, review, agents, docs, preview | Ended with the approved tooltip wording and the wrap fix merged into local main, pushed to GitHub, and the main checkout rebuilt.
-- 2026-10-11 14ef4882 Lane support in preview (2026-10-11) | lane, preview, chart, release, squeeze | The session ended with Hydra Deluxe 2.6.0 released on GitHub at 03:50 UTC, after the drum lane work was merged to main as 918947c5.
+- 2026-10-11 14ef4882 Lane support in preview (2026-10-11) | lane, preview, chart, release, squeeze | The session ended with Hydra Deluxe 2.6.0 released on GitHub at 03:50 UTC, after the drum lane work was merged to main as 918947c5. [failed]
 - 2026-10-11 27bb17bc How Clone Hero's drum lanes change hitting (2026-10-11) | clone-hero, lane, library, docs | Ended at 04:07 UTC with the findings file complete and committed on main (not pushed), after the user's last table edit.
 - 2026-10-11 5a8caf72 Leftover worktrees and scratchpads cleanup (2026-10-11) | hooks, agents, docs, tests | Ended with the cleanup sweep hook live in the ~\.claude repo as commit 0efc2ba, after the worktree and scratch cleanup and a push of main.
 - 2026-10-11 18665965 Slowest starpower drain sections (2026-10-11) | library, scan, activation, sp-cap, chart-reading | Ended normally at 14:37 UTC with a top-10 list in which each stretch has Star Power running inside it.
@@ -485,8 +485,13 @@
 - 2026-11-12 a828b0ca Replay plan handoff (2026-11-12) | clone-hero, agents, review, planning, tests, docs | The session ended when the user stopped all live runs after a regression, and a handoff for the next session was committed on its own handoff branch.
 - 2026-11-12 d35f086a Memory maintenance best practices (2026-11-12) | memory, docs, agents, hooks | The session ended with the memory trim applied: live memories went from 86 to 44, and the index shrank from 88 lines to 46.
 - 2026-11-12 a09f66ea LS A2 regression handoff (2026-11-12) | clone-hero, performance, press-schedule | The session ended while an 8-minute offline repro was still running, so the stall cause is not proven and no fix was made. [stale]
-- 2026-11-12 c8b70230 Blank live window and CR24 handoff (2026-11-12) | clone-hero, chart, performance, library, agents, review | The session ended with the open-savings plan finished and merged to main (b82527ff), after the earlier fixes had each merged.
+- 2026-11-12 c8b70230 Blank live window and CR24 handoff (2026-11-12) | clone-hero, chart, performance, library, agents, review | The session ended with the open-savings plan finished and merged to main (b82527ff), after the earlier fixes had each merged. [stale]
+- 2026-11-12 c61c1986 Video score analysis vs Hydra (2026-11-12) | clone-hero, drum-track, chart, optimal-path, scan, video | Ended with the all-toms change merged to main as 3a5cba19, after the five-lane change merged as 84086d39; nothing was pushed.
 - 2026-11-12 ed1a0fd1 Run failures in hydra-deluxe (2026-11-12) | ci, review, hooks, agents, docs | Ended with the CI fix merged into local main and main pushed to GitHub, moving the remote past the commit the failed runs had tested.
+- 2026-11-12 07d9b035 In-game press timing handoff (2026-11-12) | clone-hero, planning, agents, performance, review | Ended with the in-game timing code merged to main and the first live probe not run, because the launcher's quiet check refused the launch twice. No game was launched.
+- 2026-11-12 1ac0d6b4 Frame probe handoff (2026-11-12) | clone-hero, agents, planning, review, tests | The session ended with main pushed to origin and the in-game press timing plan finished: its docs and code tasks are merged, and the user asked how to start a run on another song. [write-back]
+- 2026-11-13 375e58cd Dynamic hit window for notes (2026-11-13) | hit-window, squeeze, early-fill-e, path, planning, clone-hero | Ended with the row merged to main and pushed (ac916e0e), shown on every squeeze-in, squeeze-out and early fill badge. [write-back]
+- 2026-11-13 f7baa4ed Early fill live check handoff (2026-11-13) | clone-hero, planning, review, agents, tests | The session ended with LS-F0 passed (the probe chart is installed) and LS-F1 waiting for the user's go; no game run has started.
 
 ## Proposed tags
 
