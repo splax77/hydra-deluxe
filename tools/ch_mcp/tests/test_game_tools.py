@@ -49,7 +49,7 @@ from tools.ch_probe import input_driver  # noqa: E402
 from tools.ch_probe.experiments import edge_probe, play_chart  # noqa: E402
 from tools.ch_probe.experiments.overlay_logs import PRESS_LOG_COLUMNS  # noqa: E402
 from tools.ch_probe.tests.test_play_chart import (  # noqa: E402
-    _FakeGame, _FakeSongClock, _FakeTime, _fixture_schedule, _schedule_of)
+    _FakeGame, _FakeSongClock, _FakeTime, _schedule_of)
 from tools.ch_probe.input_driver import DEFAULT_BINDINGS, InputDriver, Lane  # noqa: E402
 
 WINDOW = 0x1234
@@ -96,11 +96,9 @@ SCHEDULE_JSON = schedule_of(SCORE_JSON)
 # each chart, path 0) and the reply lines they give. Every number below is
 # read off the fixture file: a declined chord's `kept_gems`, a squeeze's
 # `anchor_chord`, `anchor_aim_ms`, `planned_end_ms`, `ratio`, `anchor_room_ms`
-# and `squeeze_room_ms`, and a squeeze press's `aim_ms` against its
-# `own_end_ms` (15 ms either side of the end on every timed squeeze here).
-# The schedule files are test_play_chart._fixture_schedule's copies, whose
-# `own_end_ms` is the fixture's `aim_end_ms` until task T4 of
-# docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md remakes them.
+# and `squeeze_room_ms`, and a squeeze press's firing time (`at_ms`, from its
+# `aim_ms`) against its `own_end_ms` (15 ms either side of the end on every
+# timed squeeze here).
 _PROBE_TESTS = os.path.join(_HERE, "..", "..", "ch_probe", "tests")
 FREAK_DECLINED = ("declined: chords 51 (kick), 103 (kick), 134 (nothing sent), "
                   "162 (kick, blue cymbal), 196 (nothing sent), 548 (kick, blue cymbal), "
@@ -1148,7 +1146,7 @@ class GameToolsTest(unittest.TestCase):
 
     def _refine_play(self, name):
         score = os.path.join(_PROBE_TESTS, f"{name}_score.json")
-        schedule = _fixture_schedule(f"{name}_schedule.json")
+        schedule = os.path.join(_PROBE_TESTS, f"{name}_schedule.json")
         t, seen = self._decline_rig()
         reply = t.tools.ch_play_chart(score, schedule, route="keys")
         if t.tools._play is not None:
@@ -1217,7 +1215,8 @@ class GameToolsTest(unittest.TestCase):
     def test_an_infeasible_squeeze_is_refused_naming_it(self):
         # Freak's schedule with its first squeeze marked not feasible:
         # load_schedule's refusal comes back whole, and no run starts.
-        with open(_fixture_schedule("freak_limits_schedule.json"), encoding="utf-8") as f:
+        with open(os.path.join(_PROBE_TESTS, "freak_limits_schedule.json"),
+                  encoding="utf-8") as f:
             schedule = json.load(f)
         schedule["activations"][0]["squeezes"][0]["feasible"] = False
         path = self._schedule_file(schedule)
@@ -1792,7 +1791,7 @@ class GameToolsTest(unittest.TestCase):
         """The reply lines after the play's line of a chained run of a fixture."""
         t, _events, _seen = self._chain_rig()
         lines = self._run(t, os.path.join(_PROBE_TESTS, f"{name}_score.json"),
-                          _fixture_schedule(f"{name}_schedule.json"))
+                          os.path.join(_PROBE_TESTS, f"{name}_schedule.json"))
         lines = lines.splitlines()
         start = next(i for i, line in enumerate(lines) if line.startswith("play: ok"))
         return lines[start + 1:]
@@ -2095,7 +2094,7 @@ class GameToolsTest(unittest.TestCase):
 
     # -- probes (task T2 of docs/superpowers/plans/2026-11-12-early-fill-live-check.md) ---
 
-    FREAK_SCHEDULE = _fixture_schedule("freak_limits_schedule.json")
+    FREAK_SCHEDULE = os.path.join(_PROBE_TESTS, "freak_limits_schedule.json")
 
     def _probe_chain_rig(self):
         """A chained-start rig whose player gives one row per press, at
@@ -3221,7 +3220,8 @@ class PlayerLimitsLinesTest(unittest.TestCase):
     def test_the_planned_ends_are_the_schedules_on_each_chord_read_after(self):
         # Freak reads its first activation's end after chords 232 and 263
         # (each chord's `reads` in freak_limits_schedule.json).
-        chords, _lines = GT.chords_to_play(_fixture_schedule("freak_limits_schedule.json"))
+        chords, _lines = GT.chords_to_play(os.path.join(_PROBE_TESTS,
+                                                       "freak_limits_schedule.json"))
         t = ToolRig(self.tmp, live_play=lambda chords, **kw: play_chart.RunResult(stop="done"))
         play = GT._PlaySession(score_json="s.json", chord_count=len(chords), log_path=None)
         t.tools._start_play(play, chords)

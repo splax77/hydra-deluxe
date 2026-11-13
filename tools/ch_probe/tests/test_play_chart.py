@@ -116,30 +116,7 @@ def _unit_end_fields(aim_end_ms):
             "read_range_ms": None}
 
 
-# The committed fixtures were written before the schedule wrote
-# play_chart.END_FIELDS, and task T4 of
-# docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md remakes
-# them. Until then the tests read a copy with _unit_end_fields added to each
-# press that has an `end_read_after` and lacks them; a field the file already
-# holds is kept.
-_FIXTURE_COPIES = tempfile.TemporaryDirectory()
-
-
-def _fixture_schedule(name):
-    """The path of a copy of the schedule fixture `name` beside this file,
-    with _unit_end_fields on every press timed from a read that lacks them."""
-    doc = _read_json(os.path.join(_HERE, name))
-    for entry in doc["presses"]:
-        if entry["end_read_after"] is not None:
-            for key, value in _unit_end_fields(entry["aim_end_ms"]).items():
-                entry.setdefault(key, value)
-    path = os.path.join(_FIXTURE_COPIES.name, name)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(doc, f)
-    return path
-
-
-_FREAK_SCHEDULE = _fixture_schedule("freak_limits_schedule.json")
+_FREAK_SCHEDULE = os.path.join(_HERE, "freak_limits_schedule.json")
 
 
 class LoadScheduleTest(unittest.TestCase):
@@ -1057,7 +1034,7 @@ class PressLogWriterTest(unittest.TestCase):
         self.assertEqual(len(_table(self.path)), 101)
 
 
-_MOUTHS_SCHEDULE = _fixture_schedule("mouths_refine_schedule.json")
+_MOUTHS_SCHEDULE = os.path.join(_HERE, "mouths_refine_schedule.json")
 
 
 def _play_schedule(chords, read_sp_end=None):
@@ -1528,9 +1505,12 @@ def _reads(chords, overrides):
 class ReadAfterAnchorTest(unittest.TestCase):
     """play_chords reads the game's end after each chord the schedule's
     `reads` names, the activation's own and its `read_end_after` chord, and
-    retime_from_end moves each press timed from a read by that read minus
-    the press's own `aim_end_ms` (design points 4 and 7 of
-    docs/superpowers/plans/2026-11-08-replay-press-schedule.md). On the Freak
+    retime_from_end moves each press timed from a read by how far its own
+    end moves, own_end_now_ms of that read minus the press's `own_end_ms`
+    (design points 4 and 7 of
+    docs/superpowers/plans/2026-11-08-replay-press-schedule.md and design
+    point 3 of docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md).
+    On the Freak
     fixture, activation 0 starts on chord 232 and is read again after 263;
     387's late press is timed from the read after 263."""
 
@@ -1565,19 +1545,24 @@ class ReadAfterAnchorTest(unittest.TestCase):
         result = self._run({263: late.aim_end_ms})
         self.assertEqual([r["lead_ms"] for r in _rows_of(result, 387)], [-late.aim_ms])
 
-    def test_each_press_moves_by_its_own_aim_end(self):
+    def test_each_press_moves_by_its_own_end(self):
         # Mouths chords 431 (a squeeze-in) and 465 (an sp_end press) are both
-        # timed from the read after 340, against aim_end_ms 68,990.99 and
-        # 68,970.87: one read moves them by different amounts.
+        # timed from the read after 340, each with its own end fields in the
+        # file: one read moves each by how far its own end moves, the
+        # production own_end_now_ms minus the file's own_end_ms (design point
+        # 3 of docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md).
         chords = play_chart.load_schedule(_MOUTHS_SCHEDULE).chords
         squeeze, sp_end = _press_of(chords, 431), _press_of(chords, 465)
         self.assertEqual((squeeze.end_read_after, sp_end.end_read_after), (340, 340))
         read_ms = 68985.0
         moved = {p.index: p for p in play_chart.retime_from_end([squeeze, sp_end], 340, read_ms)}
-        self.assertAlmostEqual(moved[431].aim_ms - squeeze.aim_ms, read_ms - 68990.9918602677,
-                               delta=1e-9)
-        self.assertAlmostEqual(moved[465].aim_ms - sp_end.aim_ms, read_ms - 68970.87353029936,
-                               delta=1e-9)
+        shifts = {}
+        for press in (squeeze, sp_end):
+            shifts[press.index] = play_chart.own_end_now_ms(press, read_ms) - press.own_end_ms
+            self.assertAlmostEqual(moved[press.index].aim_ms - press.aim_ms,
+                                   shifts[press.index], delta=1e-9)
+        # Each press moved by its own end, not the other press's.
+        self.assertNotAlmostEqual(shifts[431], shifts[465], delta=1e-6)
 
     def test_no_activation_read_leaves_the_plan(self):
         result, _game = _play_schedule(self._chords(), lambda: None)
