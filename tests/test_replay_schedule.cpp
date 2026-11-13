@@ -1404,10 +1404,10 @@ TEST_CASE("schedule: the first press group is the activation note") {
 
 namespace {
 
-// Chord 243's own planned end and conversion, pinned from the first green
-// run of this test. The first build fills them; 0.0 until then.
-constexpr double kPitchDark243OwnEndMs = 0.0;
-constexpr double kPitchDark243Conversion = 0.0;
+// Chord 243's own planned end (the prep schedule's planned_end_ms) and its
+// conversion, pinned from one run of this test.
+constexpr double kPitchDark243OwnEndMs = 100949.4546;
+constexpr double kPitchDark243Conversion = 1.0;
 
 // The tolerance T2's acceptance in
 // docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md gives a
