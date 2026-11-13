@@ -1515,6 +1515,12 @@ namespace {
 // the page's own examples are, reads the same as one written plain.
 constexpr const char* kPlansDir = "docs/superpowers/plans/";
 constexpr const char* kPremiseMapSince = "2026-11-01";
+// A row deferred to a live step must say which tasks it blocks, and each of
+// those tasks must say it waits for the step (docs/agents/premise-map.md, "A
+// deferred premise blocks"). Plans dated before this day keep the form they
+// were approved in. The rule was written on this day.
+constexpr const char* kDeferredPremiseSince = "2026-11-12";
+constexpr const char* kWaitsFor = "Waits for:";
 constexpr const char* kPremiseMapHeading = "## Premise map";
 constexpr const char* kQuestionsHeading = "## Questions";
 constexpr const char* kLiveStepsHeading = "## The live steps";
@@ -1524,6 +1530,13 @@ bool is_premise_map_heading(const std::string& line) {
     return line.rfind(kPremiseMapHeading, 0) == 0 && hydra::trim(line) == kPremiseMapHeading;
 }
 
+// The date a plan's file name starts with, or "" when it starts with none.
+std::string plan_date(const Doc& d) {
+    const std::string name = d.rel.substr(d.rel.rfind('/') + 1);
+    static const std::regex dated(R"(^\d{4}-\d{2}-\d{2})");
+    return std::regex_search(name, dated) ? name.substr(0, 10) : std::string();
+}
+
 bool counts_for_premise_map(const Doc& d) {
     if (d.rel.rfind(kPlansDir, 0) != 0) return false;
     bool fenced = false;
@@ -1531,9 +1544,8 @@ bool counts_for_premise_map(const Doc& d) {
         if (is_fence(line)) fenced = !fenced;
         if (!fenced && is_premise_map_heading(line)) return true;
     }
-    const std::string name = d.rel.substr(d.rel.rfind('/') + 1);
-    static const std::regex dated(R"(^\d{4}-\d{2}-\d{2})");
-    return std::regex_search(name, dated) && name.substr(0, 10) >= kPremiseMapSince;
+    const std::string date = plan_date(d);
+    return !date.empty() && date >= kPremiseMapSince;
 }
 
 // The cells of one table row, its outer pipes dropped. A pipe inside
@@ -1564,14 +1576,37 @@ bool is_table_row(const std::string& line) {
     return hydra::trim(line).rfind('|', 0) == 0 || std::count(line.begin(), line.end(), '|') >= 2;
 }
 
-// Whether `text` holds `word` with no letter, digit, '-' or '_' touching it.
-bool names_word(const std::string& text, const std::string& word) {
-    const auto part = [](char c) { return std::isalnum(static_cast<unsigned char>(c)) || c == '-' || c == '_'; };
-    for (size_t at = text.find(word); at != std::string::npos; at = text.find(word, at + 1)) {
+// Whether a character is part of a word: a letter, a digit, '-' or '_'.
+bool word_part(char c) { return std::isalnum(static_cast<unsigned char>(c)) || c == '-' || c == '_'; }
+
+// Where `text` first holds `word` with no word_part character touching it,
+// at or after `from`; npos when it never does.
+size_t find_word(const std::string& text, const std::string& word, size_t from = 0) {
+    for (size_t at = text.find(word, from); at != std::string::npos; at = text.find(word, at + 1)) {
         const size_t end = at + word.size();
-        if ((at == 0 || !part(text[at - 1])) && (end >= text.size() || !part(text[end]))) return true;
+        if ((at == 0 || !word_part(text[at - 1])) && (end >= text.size() || !word_part(text[end]))) return at;
     }
-    return false;
+    return std::string::npos;
+}
+
+bool names_word(const std::string& text, const std::string& word) {
+    return find_word(text, word) != std::string::npos;
+}
+
+// The words of a text, split at every character that is not word_part.
+std::vector<std::string> words_of(const std::string& text) {
+    std::vector<std::string> out;
+    std::string word;
+    for (const char c : text) {
+        if (word_part(c)) {
+            word += c;
+        } else if (!word.empty()) {
+            out.push_back(word);
+            word.clear();
+        }
+    }
+    if (!word.empty()) out.push_back(word);
+    return out;
 }
 
 // A heading's text, less its hashes, cut at its first colon: "PM-2" for
@@ -1582,9 +1617,15 @@ std::string heading_name(const std::string& line) {
     return colon == std::string::npos ? text : hydra::trim(text.substr(0, colon));
 }
 
+// Whether a text starts with a live step's id. The step headings and the
+// Status of a row deferred to a step both read the id through this one test.
+bool is_live_step_id(const std::string& text) {
+    return text.rfind("LS", 0) == 0 && text.size() > 2 &&
+           (text[2] == '-' || std::isdigit(static_cast<unsigned char>(text[2])));
+}
+
 bool is_live_step_heading(const std::string& line) {
-    return heading_level(line) == 3 && line.rfind("### LS", 0) == 0 && line.size() > 6 &&
-           (line[6] == '-' || std::isdigit(static_cast<unsigned char>(line[6])));
+    return heading_level(line) == 3 && is_live_step_id(line.substr(4));
 }
 
 // The entries of a Calls: line, split at the commas outside backticks and
@@ -1631,22 +1672,29 @@ void check_premise_maps(const std::vector<Doc>& docs, std::vector<std::string>& 
     static const std::regex seen_marker(R"(\(seen:\s*[^)\s][^)]*\))");
     for (const Doc& d : docs) {
         if (!counts_for_premise_map(d)) continue;
-        const auto at = [&](size_t i) { return d.rel + ":" + std::to_string(i + 1) + ": "; };
+        const std::string date = plan_date(d);
+        const auto at =[&](size_t i) { return d.rel + ":" + std::to_string(i + 1) + ": "; };
 
-        // The plan's task ids (each "### <id>:" heading) and its question numbers.
+        // The plan's task ids (each "### <id>:" heading), each task's Waits for:
+        // lines, and the plan's question numbers.
         std::set<std::string> tasks;
+        std::map<std::string, std::vector<std::string>> waits;
         std::set<int> questions;
         bool fenced = false;
         bool in_questions = false;
+        std::string task;
         for (const std::string& line : d.lines) {
             if (is_fence(line)) fenced = !fenced;
             if (fenced || is_fence(line)) continue;
             const int level = heading_level(line);
             if (level >= 1 && level <= 2) in_questions = line.rfind(kQuestionsHeading, 0) == 0;
+            if (level >= 1 && level <= 3) task.clear();
             if (level == 3 && line.find(':') != std::string::npos) {
                 const std::string id = heading_name(line);
                 if (!id.empty()) tasks.insert(id);
+                task = id;
             }
+            if (level == 0 && !task.empty() && line.rfind(kWaitsFor, 0) == 0) waits[task].push_back(line);
             std::smatch m;
             if (level == 0 && in_questions && std::regex_search(line, m, question_item))
                 questions.insert(std::stoi(m.str(1)));
@@ -1719,9 +1767,66 @@ void check_premise_maps(const std::vector<Doc>& docs, std::vector<std::string>& 
             }
             const bool names_task = std::any_of(tasks.begin(), tasks.end(),
                                                 [&](const std::string& id) { return names_word(status, id); });
-            if (!bad_question && !names_question && !names_task)
+            // The live steps the Status defers the row to, on a plan the
+            // deferred-premise rule reads.
+            std::vector<std::string> steps;
+            if (date.empty() || date >= kDeferredPremiseSince)
+                for (const std::string& w : words_of(status))
+                    if (is_live_step_id(w) && std::find(steps.begin(), steps.end(), w) == steps.end())
+                        steps.push_back(w);
+            if (!bad_question && !names_question && !names_task && steps.empty())
                 problems.push_back(where + "an unchecked row's Status names neither a task in the plan nor a "
                                            "question N");
+            if (steps.empty()) continue;
+            const size_t blocks = find_word(status, "blocks");
+            if (blocks == std::string::npos) {
+                problems.push_back(where + "Status defers the row to live step " + steps[0] +
+                                   " but holds no \"blocks nothing\" or \"blocks <task ids>\"");
+                continue;
+            }
+            size_t pos = blocks + std::string("blocks").size();
+            const auto skip_spaces = [&]() {
+                while (pos < status.size() && status[pos] == ' ') ++pos;
+            };
+            skip_spaces();
+            if (find_word(status, "nothing", pos) == pos) continue;
+            // The task ids after "blocks", joined by commas or "and"; the
+            // longest id that fits wins, so "Task 20" is never read as "Task 2".
+            std::vector<std::string> blocked;
+            while (true) {
+                std::string id;
+                for (const std::string& t : tasks)
+                    if (t.size() > id.size() && find_word(status, t, pos) == pos) id = t;
+                if (id.empty()) {
+                    std::string got;
+                    for (size_t k = pos; k < status.size() && word_part(status[k]); ++k) got += status[k];
+                    problems.push_back(where + "Status says blocks \"" + got +
+                                       "\", which is neither nothing nor a task in the plan");
+                    break;
+                }
+                blocked.push_back(id);
+                pos += id.size();
+                skip_spaces();
+                const bool comma = pos < status.size() && status[pos] == ',';
+                if (comma) {
+                    ++pos;
+                    skip_spaces();
+                }
+                const bool joined = find_word(status, "and", pos) == pos;
+                if (joined) {
+                    pos += std::string("and").size();
+                    skip_spaces();
+                }
+                if (!comma && !joined) break;
+            }
+            for (const std::string& id : blocked)
+                for (const std::string& s : steps) {
+                    const std::vector<std::string>& lines = waits[id];
+                    if (std::none_of(lines.begin(), lines.end(),
+                                     [&](const std::string& l) { return names_word(l, s); }))
+                        problems.push_back(where + "Status says it blocks " + id + ", but " + id + " has no " +
+                                           kWaitsFor + " line naming " + s);
+                }
         }
         close_map();
         if (!has_map)
@@ -1841,6 +1946,28 @@ TEST_CASE("docs match code: the premise map check catches each form and reads on
              "```",                                                                            // 35
              "### LS-D9: an example in a fence is not a step",                                 // 36
              "```"}},                                                                          // 37
+        // Dated before the deferred-premise rule: a row deferred to a live
+        // step with no blocks is left alone.
+        Doc{"docs/superpowers/plans/2026-11-11-deferred-old.md",
+            {"### PM-1: a task", "## Premise map", "| P1: x | unchecked | `x.md` | PM-1 after LS-K1 |"}},
+        // Dated on the rule's day: each form of a row deferred to a live step.
+        Doc{"docs/superpowers/plans/2026-11-12-deferred.md",
+            {"## Tasks",                                                                       // 1
+             "### RG1: a task that waits",                                                     // 2
+             "Waits for: LS-S2's result folder.",                                              // 3
+             "### RG2: a task with no wait line",                                              // 4
+             "Do it.",                                                                         // 5
+             "## The live steps",                                                              // 6
+             "### LS-S2: the run",                                                             // 7
+             "Calls: `ch_start` (seen: LS-S1 run 1)",                                          // 8
+             "## Premise map",                                                                 // 9
+             "| Premise | Kind | Source | Status |",                                          // 10
+             "|---|---|---|---|",                                                              // 11
+             "| P1: nothing rests | unchecked | `x.md` | LS-S3 settles it; `blocks nothing` |", // 12: passes
+             "| P2: no blocks | unchecked | `x.md` | RG1, after LS-S2 |",                      // 13
+             "| P3: no wait | unchecked | `x.md` | LS-S2; blocks RG1 and RG2 |",               // 14
+             "| P4: no such task | unchecked | `x.md` | LS-S2; blocks RG1, RG9 |",             // 15
+             "| P5: in shape | unchecked | `x.md` | LS-S2 decides it; blocks RG1 |"}},         // 16: passes
         // A plan in the shape: a row written without outer pipes, a Status in
         // backticks, and an unchecked row naming a task whose id holds a space.
         Doc{"docs/superpowers/plans/2026-11-04-good.md",
@@ -1853,6 +1980,7 @@ TEST_CASE("docs match code: the premise map check catches each form and reads on
     std::vector<std::string> problems;
     check_premise_maps(docs, problems);
     const std::string forms = "docs/superpowers/plans/2026-11-02-forms.md:";
+    const std::string deferred = "docs/superpowers/plans/2026-11-12-deferred.md:";
     const std::vector<std::string> where = {
         "docs/superpowers/plans/2026-10-30-old-map.md:2: Premise map row \"P1\": Source holds",
         "docs/superpowers/plans/2026-11-01-new.md:1: has no ## Premise map heading",
@@ -1869,7 +1997,11 @@ TEST_CASE("docs match code: the premise map check catches each form and reads on
         forms + "23: live step LS-D1 has no Calls: line",
         forms + "25: live step LS0 has no Calls: line",
         forms + "30: live step LS-D2: the Calls: entry \"`ch_attach`\" has neither",
-        forms + "31: live step LS-D3 has 2 (never tried) calls"};
+        forms + "31: live step LS-D3 has 2 (never tried) calls",
+        deferred + "13: Premise map row \"P2\": Status defers the row to live step LS-S2 but holds no",
+        deferred + "14: Premise map row \"P3\": Status says it blocks RG2, but RG2 has no Waits for: line naming "
+                   "LS-S2",
+        deferred + "15: Premise map row \"P4\": Status says blocks \"RG9\", which is neither"};
     INFO(report(problems));
     REQUIRE(problems.size() == where.size());
     for (size_t i = 0; i < where.size(); ++i) CHECK(problems[i].rfind(where[i], 0) == 0);
