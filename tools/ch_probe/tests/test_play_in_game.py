@@ -22,13 +22,20 @@ from tools.ch_mcp import kit_tools as K  # noqa: E402
 from tools.ch_probe.experiments import play_chart as P  # noqa: E402
 from tools.ch_probe.experiments.overlay_logs import SEND_COLUMN  # noqa: E402
 from tools.ch_probe.input_driver import Lane  # noqa: E402
+from tools.ch_probe.tests.test_play_chart import _unit_end_fields  # noqa: E402
 
 
 def press(index, chart_ms, lanes, **kw):
+    """A hand-built Press. One timed from an end read gets
+    test_play_chart._unit_end_fields of its aim_end_ms for any end field the
+    keywords leave out, as test_play_chart._fixture_schedule does."""
     fields = dict(index=index, chart_ms=chart_ms, aim_ms=0.0, lanes=list(lanes),
                   dynamics=["none"] * len(lanes), axes=[1.0] * len(lanes), declined=False,
                   last_send_ms=chart_ms + 50.0, rule="plain")
     fields.update(kw)
+    if fields.get("end_read_after") is not None:
+        for key, value in _unit_end_fields(fields["aim_end_ms"]).items():
+            fields.setdefault(key, value)
     return P.Press(**fields)
 
 

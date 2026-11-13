@@ -36,6 +36,7 @@ from tools.ch_probe.experiments import sp_compare, sp_watch  # noqa: E402
 from tools.ch_probe.experiments.overlay_logs import WATCH_COLUMNS  # noqa: E402
 from tools.ch_probe.experiments import play_chart  # noqa: E402
 from tools.ch_probe.tests import fakes  # noqa: E402
+from tools.ch_probe.tests.test_play_chart import _fixture_schedule  # noqa: E402
 from tools.ch_mcp import install_chart  # noqa: E402
 from tools.ch_mcp.tests.test_hydra_end import FAKE  # noqa: E402
 
@@ -59,8 +60,10 @@ def song_with_end(folder: str, length_ms) -> None:
 
 
 _PROBE_TESTS = os.path.join(_REPO_ROOT, "tools", "ch_probe", "tests")
-# Mouths path 0's hydra_replay schedule, beside its score file.
-_MOUTHS_SCHEDULE = os.path.join(_PROBE_TESTS, "mouths_refine_schedule.json")
+# Mouths path 0's hydra_replay schedule, as test_play_chart._fixture_schedule's
+# copy of the file beside its score file, until task T4 remakes the fixture
+# with the end fields.
+_MOUTHS_SCHEDULE = _fixture_schedule("mouths_refine_schedule.json")
 
 BACKUP_LINE = "backup folder: X (taken now)"
 ENGINE = 0x2_0000_1000

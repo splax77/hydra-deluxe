@@ -24,10 +24,13 @@ if _REPO_ROOT not in sys.path:
 
 from tools.ch_mcp import game_tools  # noqa: E402
 from tools.ch_probe import prep_inputs  # noqa: E402
+from tools.ch_probe.tests.test_play_chart import _fixture_schedule  # noqa: E402
 
 BOMBER_DUMP = os.path.join(_HERE, "bomber_refine_dump.json")
 BOMBER_SCORE = os.path.join(_HERE, "bomber_refine_score.json")
-BOMBER_SCHEDULE = os.path.join(_HERE, "bomber_refine_schedule.json")
+# test_play_chart._fixture_schedule's copy, until task T4 remakes the fixture
+# with the end fields.
+BOMBER_SCHEDULE = _fixture_schedule("bomber_refine_schedule.json")
 
 # A schedule with no refusal and no chords, which chords_to_play refuses.
 _EMPTY_SCHEDULE = {"refusals": [], "activations": [], "chords": [], "presses": [],

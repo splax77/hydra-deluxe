@@ -347,8 +347,9 @@ def scored_between_lines(rows: Sequence[dict]) -> List[str]:
 def squeeze_lines(chords: Sequence[play_chart.Chord], doc: dict) -> List[str]:
     """What the reply says about the squeezes of the schedule `doc`: one line
     naming each squeeze chord and when each of its presses fires against the
-    end the schedule timed it from (Press.aim_end_ms), or that it needs no
-    timing, then anchor_lines. `chords` are the same file's, as
+    end it must land before or after (Press.own_end_ms, which is not the
+    end the player reads when the two sit at different ratios), or that it
+    needs no timing, then anchor_lines. `chords` are the same file's, as
     play_chart.load_schedule read them. Nothing is worked out here but the
     gap between a press and its end. Empty when the file has no squeeze."""
     squeezes = _squeezes(doc)
@@ -364,7 +365,7 @@ def squeeze_lines(chords: Sequence[play_chart.Chord], doc: dict) -> List[str]:
             continue
         clauses = []
         for press in by_index[q["chord"]]:
-            gap_ms = press.aim_end_ms - press.at_ms
+            gap_ms = press.own_end_ms - press.at_ms
             when = (f"{_ms_text(abs(gap_ms))} ms {'before' if gap_ms >= 0 else 'after'}"
                     + ("" if clauses else " the end"))
             gems = "" if q["kind"] == "SqIn" else _gem_words(press.lanes) + " "

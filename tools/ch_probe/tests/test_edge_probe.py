@@ -23,9 +23,11 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 from tools.ch_probe.experiments import edge_probe, play_chart  # noqa: E402
-from tools.ch_probe.tests.test_play_chart import _schedule_of  # noqa: E402
+from tools.ch_probe.tests.test_play_chart import _fixture_schedule, _schedule_of  # noqa: E402
 
-_FREAK_SCHEDULE = os.path.join(_HERE, "freak_limits_schedule.json")
+# test_play_chart._fixture_schedule's copy, until task T4 remakes the fixture
+# with the end fields.
+_FREAK_SCHEDULE = _fixture_schedule("freak_limits_schedule.json")
 
 KICK = {"color": "Kick", "cymbal": False, "dynamic": "none"}
 # Chords 0 to 4, a second apart from 3 s.
