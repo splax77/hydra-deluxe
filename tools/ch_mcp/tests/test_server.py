@@ -58,7 +58,6 @@ class ServerTest(unittest.TestCase):
         self.printed = []
         env = bot_run.Env(exe=os.path.join(tmp.name, "game.exe"),
                           documents_dir=os.path.join(tmp.name, "docs"),
-                          locallow_dir=os.path.join(tmp.name, "locallow"),
                           launch=_no_launch, out=self.printed.append)
         self.helper = S.Helper(env=env, scratch_root=tmp.name,
                                game_kw={"driver": object()})

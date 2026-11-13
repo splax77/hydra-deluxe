@@ -1,4 +1,5 @@
-"""Tests for game_files: the user-file backup and restore, and song.ini reads.
+"""Tests for game_files: the backup and restore of what the tools change,
+and song.ini reads.
 
 Every test runs on temp folders and a fake reg.exe; the real game files and
 the real registry key are never read.
@@ -29,6 +30,11 @@ ORIGINAL = {
     "profiles.ini": b"[profile]\nplayer_name = Tester\n",
     "profiles.bin": b"\x06\x07\x08",
 }
+# The files the game saves on its own, by the folder it keeps them in. No
+# backup or restore may touch them.
+GAME_SAVES_IN_DOCUMENTS = ("scorestats.json", "profiles.ini", "profiles.bin")
+GAME_SAVES_IN_LOCALLOW = ("scoredata.bin", "scoresext.bin", "user.bin")
+GAME_SAVES = GAME_SAVES_IN_DOCUMENTS + GAME_SAVES_IN_LOCALLOW
 
 
 def _write(path: str, data: bytes) -> None:
@@ -55,8 +61,39 @@ class Folders:
                 _write(self.path(name), data)
 
     def path(self, name: str) -> str:
-        folder = self.docs if name in G.DOCUMENTS_FILES else self.low
+        folder = self.low if name in GAME_SAVES_IN_LOCALLOW else self.docs
         return os.path.join(folder, name)
+
+    def game_run(self) -> None:
+        """What a run of the game does to its own saves: rewrite some, delete
+        one and create one."""
+        _write(self.path("scorestats.json"), b'{"score": 2}')
+        _write(self.path("profiles.ini"), b"[profile]\nplayer_name = clone\n")
+        _write(self.path("profiles.bin"), b"clone")
+        os.remove(self.path("scoredata.bin"))
+        _write(self.path("scoresext.bin"), b"new ext")
+        _write(self.path("user.bin"), b"new user")
+
+    def game_run_bytes(self) -> dict:
+        return {name: (_read(self.path(name)) if os.path.exists(self.path(name)) else None)
+                for name in GAME_SAVES}
+
+
+def _old_backup(f: Folders) -> str:
+    """A backup in the shape the tools once took: every game save copied and
+    named in the manifest beside settings.ini."""
+    folder = os.path.join(f.root, G.BACKUP_PREFIX + "old")
+    os.makedirs(folder)
+    entries = []
+    for name in ("settings.ini",) + GAME_SAVES:
+        source = os.path.abspath(f.path(name))
+        existed = os.path.isfile(source)
+        if existed:
+            _write(os.path.join(folder, name), _read(source))
+        entries.append({"name": name, "source": source, "existed": existed})
+    with open(os.path.join(folder, G.BACKUP_MANIFEST), "w", encoding="utf-8") as fh:
+        json.dump({"files": entries}, fh)
+    return folder
 
 
 class BackupRestoreTest(unittest.TestCase):
@@ -67,90 +104,79 @@ class BackupRestoreTest(unittest.TestCase):
     def tearDown(self):
         self._tmp.cleanup()
 
-    def test_the_backed_up_files_are_the_safety_rule_list(self):
-        self.assertEqual(sorted(G.DOCUMENTS_FILES + G.LOCALLOW_FILES), sorted(ORIGINAL))
+    def test_only_the_file_the_tools_edit_is_backed_up(self):
+        # The user's ruling of 2026-11-13: the game's own saves stay.
+        self.assertEqual(G.BACKED_UP_FILES, ("settings.ini",))
 
-    def test_restore_with_a_leave_list_skips_those_files_and_says_so(self):
+    def test_backup_copies_settings_ini_and_none_of_the_games_saves(self):
         f = Folders(self.tmp)
-        folder = G.backup(f.docs, f.low, f.root)
-        for name in ORIGINAL:
-            _write(f.path(name), b"changed")
-        lines = G.restore(folder, leave=G.KEPT_FILES)
-        for name in ORIGINAL:
-            self.assertEqual(_read(f.path(name)),
-                             b"changed" if name in G.KEPT_FILES else ORIGINAL[name], name)
-        for name in G.KEPT_FILES:
-            self.assertIn(f"{name}: left as it is, because the backup may be older than "
-                          "your play", lines)
-        self.assertEqual(G.KEPT_FILES, ("profiles.ini", "profiles.bin", "scoredata.bin",
-                                        "scoresext.bin", "user.bin"))
+        backup = G.backup(f.docs, f.root, stamp=lambda: "s")
+        self.assertEqual(sorted(os.listdir(backup)), [G.BACKUP_MANIFEST, "settings.ini"])
+        with open(os.path.join(backup, G.BACKUP_MANIFEST), encoding="utf-8") as fh:
+            names = [e["name"] for e in json.load(fh)["files"]]
+        self.assertEqual(names, ["settings.ini"])
 
-    def test_the_profiles_files_are_backed_up_from_documents(self):
-        # The direct-start plan's question 3, answered 2026-10-31; the game
-        # keeps them in the Documents folder (page 07, IN-70).
-        self.assertEqual(G.DOCUMENTS_FILES,
-                         ("settings.ini", "scorestats.json", "profiles.ini", "profiles.bin"))
-        self.assertEqual(G.LOCALLOW_FILES, ("scoredata.bin", "scoresext.bin", "user.bin"))
-
-    def test_the_profiles_files_are_copied_and_restored_byte_for_byte(self):
-        f = Folders(self.tmp, absent=("profiles.bin",))
-        backup = G.backup(f.docs, f.low, f.root, stamp=lambda: "s")
-        self.assertEqual(_read(os.path.join(backup, "profiles.ini")), ORIGINAL["profiles.ini"])
-        self.assertFalse(os.path.exists(os.path.join(backup, "profiles.bin")))
-
-        # The run: the game saves a cloned profile into both files.
-        _write(f.path("profiles.ini"), b"[profile]\nplayer_name = clone\n")
-        _write(f.path("profiles.bin"), b"clone")
-
-        lines = G.restore(backup, out=lambda _l: None)
-        self.assertEqual(_read(f.path("profiles.ini")), ORIGINAL["profiles.ini"])
-        self.assertFalse(os.path.exists(f.path("profiles.bin")))
-        aside = os.path.join(backup, "profiles.bin" + G.AFTER_RUN_SUFFIX)
-        self.assertEqual(_read(aside), b"clone")
-        self.assertIn("profiles.ini: restored", lines)
-        self.assertIn(f"profiles.bin: absent before the run; the game's new copy moved to {aside}",
-                      lines)
-
-    def test_round_trip_restores_every_file_byte_for_byte(self):
+    def test_restore_leaves_every_game_save_as_the_game_left_it(self):
         f = Folders(self.tmp, absent=("user.bin",))
-        backup = G.backup(f.docs, f.low, f.root, stamp=lambda: "20261028-101500")
-        self.assertEqual(backup, os.path.join(f.root, "backup-20261028-101500"))
-
-        # The run: the game rewrites three files, leaves one, and creates the
-        # one that was absent.
+        backup = G.backup(f.docs, f.root, stamp=lambda: "s")
         _write(f.path("settings.ini"), b"changed")
-        _write(f.path("scorestats.json"), b'{"score": 2}')
-        os.remove(f.path("scoredata.bin"))
-        _write(f.path("user.bin"), b"new")
+        f.game_run()
+        after_run = f.game_run_bytes()
 
         lines = G.restore(backup, out=lambda _l: None)
-        for name in ("settings.ini", "scorestats.json", "scoredata.bin", "scoresext.bin"):
-            self.assertEqual(_read(f.path(name)), ORIGINAL[name], name)
-        self.assertFalse(os.path.exists(f.path("user.bin")))
-        aside = os.path.join(backup, "user.bin" + G.AFTER_RUN_SUFFIX)
+        self.assertEqual(lines, ["settings.ini: restored"])
+        self.assertEqual(_read(f.path("settings.ini")), ORIGINAL["settings.ini"])
+        self.assertEqual(f.game_run_bytes(), after_run)
+        self.assertEqual(sorted(os.listdir(backup)), [G.BACKUP_MANIFEST, "settings.ini"])
+
+    def test_an_older_backup_that_names_the_games_saves_leaves_them_alone(self):
+        f = Folders(self.tmp)
+        backup = _old_backup(f)
+        _write(f.path("settings.ini"), b"changed")
+        f.game_run()
+        after_run = f.game_run_bytes()
+
+        lines = G.restore(backup, out=lambda _l: None)
+        self.assertEqual(lines, ["settings.ini: restored"]
+                         + [f"{name}: left as the game saved it" for name in GAME_SAVES])
+        self.assertEqual(_read(f.path("settings.ini")), ORIGINAL["settings.ini"])
+        self.assertEqual(f.game_run_bytes(), after_run)
+
+    def test_round_trip_restores_settings_ini_byte_for_byte(self):
+        f = Folders(self.tmp)
+        backup = G.backup(f.docs, f.root, stamp=lambda: "20261028-101500")
+        self.assertEqual(backup, os.path.join(f.root, "backup-20261028-101500"))
+        _write(f.path("settings.ini"), b"changed")
+        self.assertEqual(G.restore(backup, out=lambda _l: None), ["settings.ini: restored"])
+        self.assertEqual(_read(f.path("settings.ini")), ORIGINAL["settings.ini"])
+
+    def test_an_unchanged_settings_ini_is_reported_unchanged(self):
+        f = Folders(self.tmp)
+        backup = G.backup(f.docs, f.root, stamp=lambda: "s")
+        self.assertEqual(G.restore(backup, out=lambda _l: None), ["settings.ini: unchanged"])
+
+    def test_a_settings_ini_absent_before_the_run_is_moved_aside(self):
+        f = Folders(self.tmp, absent=("settings.ini",))
+        backup = G.backup(f.docs, f.root, stamp=lambda: "s")
+        _write(f.path("settings.ini"), b"new")
+        lines = G.restore(backup, out=lambda _l: None)
+        aside = os.path.join(backup, "settings.ini" + G.AFTER_RUN_SUFFIX)
+        self.assertEqual(lines, [f"settings.ini: absent before the run; the game's new copy "
+                                 f"moved to {aside}"])
+        self.assertFalse(os.path.exists(f.path("settings.ini")))
         self.assertEqual(_read(aside), b"new")
-        self.assertEqual(lines, [
-            "settings.ini: restored",
-            "scorestats.json: restored",
-            "profiles.ini: unchanged",
-            "profiles.bin: unchanged",
-            "scoredata.bin: restored",
-            "scoresext.bin: unchanged",
-            f"user.bin: absent before the run; the game's new copy moved to {aside}",
-        ])
 
     def test_a_file_absent_before_and_after_is_reported_unchanged(self):
-        f = Folders(self.tmp, absent=("scoresext.bin",))
-        backup = G.backup(f.docs, f.low, f.root, stamp=lambda: "s")
+        f = Folders(self.tmp, absent=("settings.ini",))
+        backup = G.backup(f.docs, f.root, stamp=lambda: "s")
         lines = G.restore(backup, out=lambda _l: None)
-        self.assertIn("scoresext.bin: unchanged (absent before and after the run)", lines)
-        self.assertFalse(os.path.exists(f.path("scoresext.bin")))
+        self.assertEqual(lines, ["settings.ini: unchanged (absent before and after the run)"])
+        self.assertFalse(os.path.exists(f.path("settings.ini")))
 
     def test_a_failed_restore_stops_with_the_file_name(self):
         f = Folders(self.tmp)
-        backup = G.backup(f.docs, f.low, f.root, stamp=lambda: "s")
+        backup = G.backup(f.docs, f.root, stamp=lambda: "s")
         _write(f.path("settings.ini"), b"changed")
-        _write(f.path("user.bin"), b"changed")
         real_copy = G.shutil.copy2
 
         def copy2(src, dst, *a, **k):
@@ -165,15 +191,14 @@ class BackupRestoreTest(unittest.TestCase):
         self.assertEqual(cm.exception.name, "settings.ini")
         self.assertIn("settings.ini", str(cm.exception))
         self.assertIn("locked", str(cm.exception))
-        # It stopped there: nothing was printed and the later file is untouched.
+        # It stopped there: nothing was printed.
         self.assertEqual(seen, [])
-        self.assertEqual(_read(f.path("user.bin")), b"changed")
 
     def test_backup_refuses_an_existing_folder(self):
         f = Folders(self.tmp)
-        G.backup(f.docs, f.low, f.root, stamp=lambda: "same")
+        G.backup(f.docs, f.root, stamp=lambda: "same")
         with self.assertRaises(FileExistsError):
-            G.backup(f.docs, f.low, f.root, stamp=lambda: "same")
+            G.backup(f.docs, f.root, stamp=lambda: "same")
 
 
 class FakeReg:
@@ -219,7 +244,7 @@ class RegistryTest(unittest.TestCase):
         self._tmp.cleanup()
 
     def backup(self):
-        return G.backup(self.f.docs, self.f.low, self.f.root, stamp=lambda: "s", run_reg=self.reg)
+        return G.backup(self.f.docs, self.f.root, stamp=lambda: "s", run_reg=self.reg)
 
     def test_the_key_is_rewireds_save_key(self):
         self.assertEqual(G.REGISTRY_KEY, r"HKCU\Software\srylain Inc.\Clone Hero")
@@ -233,10 +258,10 @@ class RegistryTest(unittest.TestCase):
         with open(os.path.join(backup, G.BACKUP_MANIFEST), encoding="utf-8") as f:
             entries = json.load(f)["files"]
         self.assertEqual(entries[-1], {"name": "rewired.reg", "key": G.REGISTRY_KEY})
-        self.assertEqual(len(entries), 8)
+        self.assertEqual(len(entries), 2)
 
     def test_backup_with_no_runner_leaves_the_key_out(self):
-        backup = G.backup(self.f.docs, self.f.low, self.f.root, stamp=lambda: "s")
+        backup = G.backup(self.f.docs, self.f.root, stamp=lambda: "s")
         self.assertFalse(os.path.exists(os.path.join(backup, "rewired.reg")))
         self.assertEqual(G.restore_registry(backup, run_reg=None, out=lambda _l: None), [])
 
@@ -289,16 +314,13 @@ class RegistryTest(unittest.TestCase):
     def test_the_file_restore_leaves_the_registry_entry_alone(self):
         backup = self.backup()
         lines = G.restore(backup, out=lambda _l: None)
-        self.assertEqual(lines, [f"{name}: unchanged" for name in
-                                 G.DOCUMENTS_FILES + G.LOCALLOW_FILES])
+        self.assertEqual(lines, ["settings.ini: unchanged"])
         self.assertEqual(self.reg.verbs(), ["export"])
 
     def test_restore_all_puts_the_key_back_after_the_files(self):
         backup = self.backup()
         lines = G.restore_all(backup, run_reg=self.reg, out=lambda _l: None)
-        self.assertEqual(lines, [f"{name}: unchanged" for name in
-                                 G.DOCUMENTS_FILES + G.LOCALLOW_FILES]
-                         + ["rewired registry: unchanged"])
+        self.assertEqual(lines, ["settings.ini: unchanged", "rewired registry: unchanged"])
         self.assertEqual(self.reg.verbs(), ["export", "export"])
 
     def test_restore_all_refuses_a_backup_with_the_key_when_given_no_runner(self):
@@ -327,7 +349,7 @@ class RegistryTest(unittest.TestCase):
             raise OSError("reg.exe did not finish in 30 s")
 
         with self.assertRaises(OSError):
-            G.backup(self.f.docs, self.f.low, self.f.root, stamp=lambda: "t", run_reg=timing_out)
+            G.backup(self.f.docs, self.f.root, stamp=lambda: "t", run_reg=timing_out)
         backup = self.backup()
         with self.assertRaises(G.RestoreError) as cm:
             G.restore_all(backup, run_reg=timing_out, out=lambda _l: None)

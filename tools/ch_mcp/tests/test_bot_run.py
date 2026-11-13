@@ -1,6 +1,6 @@
 """Tests for bot_run (the bot launcher) and install_chart.
 
-No game, no real user files and no real registry key: the launch, the clock
+No game, no real game files and no real registry key: the launch, the clock
 and the process check are the fakes below, the user folders are temp
 folders, and Rig's Env has no reg.exe runner unless a test hands it
 test_game_files' FakeReg.
@@ -38,7 +38,11 @@ from tools.ch_mcp.tests.test_hydra_end import FAKE  # noqa: E402
 from tools.ch_probe import probe_songs  # noqa: E402
 from tools.ch_probe.constants import PROCESS_NAME  # noqa: E402
 
-ORIGINAL = {name: f"original {name}".encode() for name in G.DOCUMENTS_FILES + G.LOCALLOW_FILES}
+# The files the game saves on its own, by folder; the run never touches them.
+GAME_SAVES_IN_DOCUMENTS = (G.SCORESTATS,)
+GAME_SAVES_IN_LOCALLOW = ("scoredata.bin", "user.bin")
+ORIGINAL = {name: f"original {name}".encode() for name in
+            G.BACKED_UP_FILES + GAME_SAVES_IN_DOCUMENTS + GAME_SAVES_IN_LOCALLOW}
 NEW_STATS = json.dumps({"players": [{"is_bot": True}]}).encode()
 SONG_LENGTH_MS = 4000  # the fake song's song end in its fake dump; the cap tests pin 64 s
 
@@ -129,12 +133,12 @@ class Rig:
         self.launch = FakeLauncher(self.game)
         self.lines = []
         self.env = B.Env(exe=r"C:\fake\Clone Hero.exe", documents_dir=self.docs,
-                         locallow_dir=self.low, launch=self.launch, now=self.clock.now,
+                         launch=self.launch, now=self.clock.now,
                          sleep=self.clock.sleep, stamp=lambda: "20261028-101500",
                          out=self.lines.append, run_reg=None)
 
     def path(self, name: str) -> str:
-        return os.path.join(self.docs if name in G.DOCUMENTS_FILES else self.low, name)
+        return os.path.join(self.low if name in GAME_SAVES_IN_LOCALLOW else self.docs, name)
 
     def game_writes_stats_at(self, t: float) -> None:
         def write():
@@ -146,8 +150,9 @@ class Rig:
         return os.path.join(self.out_dir, "backups", "backup-20261028-101500")
 
     def assert_all_restored(self, test: unittest.TestCase) -> None:
-        for name, data in ORIGINAL.items():
-            test.assertEqual(_read(self.path(name)), data, name)
+        """Every backed-up file holds its bytes from before the run."""
+        for name in G.BACKED_UP_FILES:
+            test.assertEqual(_read(self.path(name)), ORIGINAL[name], name)
 
 
 class BotRunTest(unittest.TestCase):
@@ -198,6 +203,11 @@ class BotRunTest(unittest.TestCase):
         self.assertIn("game exited after 7 s", r.lines)
         self.assertIn(f"backup folder: {r.backup_dir()}", r.lines)
         r.assert_all_restored(self)
+        # The game's own saves stay as the game left them.
+        self.assertEqual(_read(r.path(G.SCORESTATS)), NEW_STATS)
+        self.assertEqual(_read(r.path("scoredata.bin")), b"game wrote this")
+        self.assertFalse(any(line.startswith((f"{G.SCORESTATS}:", "scoredata.bin:"))
+                             for line in r.lines))
         self.assertFalse(r.game.stopped)
 
     def test_the_exit_check_reports_a_game_that_stays(self):
@@ -233,23 +243,23 @@ class BotRunTest(unittest.TestCase):
         r = Rig(self.tmp, exits_at=None)
         r.game_writes_stats_at(5)
 
-        def fail(backup_dir, out, leave=()):
-            raise G.RestoreError("scoredata.bin", "locked")
+        def fail(backup_dir, out):
+            raise G.RestoreError("settings.ini", "locked")
 
         with mock.patch.object(B.game_files, "restore", fail):
             self.assertEqual(B.run_bot(r.song, r.out_dir, env=r.env), 2)
-        self.assertIn("restore failed on scoredata.bin: locked", r.lines)
+        self.assertIn("restore failed on settings.ini: locked", r.lines)
         self.assertEqual(r.lines[-1], f"stopped; the backup is still in {r.backup_dir()}")
 
     def test_a_restore_failure_on_the_cap_path_runs_no_exit_check(self):
         r = Rig(self.tmp, exits_at=None)
 
-        def fail(backup_dir, out, leave=()):
-            raise G.RestoreError("user.bin", "locked")
+        def fail(backup_dir, out):
+            raise G.RestoreError("settings.ini", "locked")
 
         with mock.patch.object(B.game_files, "restore", fail):
             self.assertEqual(B.run_bot(r.song, r.out_dir, env=r.env), 2)
-        self.assertIn("restore failed on user.bin: locked", r.lines)
+        self.assertIn("restore failed on settings.ini: locked", r.lines)
         self.assertFalse(any("game exited" in line or "still running after" in line
                              for line in r.lines))
 
@@ -265,24 +275,25 @@ class BotRunTest(unittest.TestCase):
                          f'py tools/ch_mcp/bot_run.py --restore "{r.backup_dir()}"')
         self.assertFalse(any(line.startswith("restoring") for line in r.lines))
 
-        # The step: the game rewrites every backed-up file.
+        # The step: the game rewrites every file, its own saves included.
         for name in ORIGINAL:
             _write(r.path(name), b"changed by the game")
         restore_lines = []
         env = B.Env(out=restore_lines.append)
         self.assertEqual(B.restore_only(r.backup_dir(), env=env), 0)
         r.assert_all_restored(self)
-        self.assertEqual(restore_lines[1:], [f"{name}: restored" for name in
-                                             G.DOCUMENTS_FILES + G.LOCALLOW_FILES])
+        self.assertEqual(restore_lines[1:], [f"{name}: restored" for name in G.BACKED_UP_FILES])
+        for name in GAME_SAVES_IN_DOCUMENTS + GAME_SAVES_IN_LOCALLOW:
+            self.assertEqual(_read(r.path(name)), b"changed by the game", name)
 
     def test_restore_command_line_restores(self):
         r = Rig(self.tmp, exits_at=None)
         B.run_bot(r.song, r.out_dir, no_wait=True, env=r.env)
-        _write(r.path("user.bin"), b"changed")
+        _write(r.path("settings.ini"), b"changed")
         buf = io.StringIO()
         with redirect_stdout(buf):
             self.assertEqual(B.main(["--restore", r.backup_dir()]), 0)
-        self.assertIn("user.bin: restored", buf.getvalue())
+        self.assertIn("settings.ini: restored", buf.getvalue())
         r.assert_all_restored(self)
 
     def test_the_length_is_hydras_end_from_a_dump_of_the_folders_chart(self):
@@ -344,7 +355,8 @@ class RunStepsTest(unittest.TestCase):
         run = self.start(r, r.song)
         self.assertEqual(r.clock.t, 0.0)
         self.assertEqual(run.backup_dir, r.backup_dir())
-        self.assertTrue(os.path.isfile(os.path.join(run.backup_dir, G.SCORESTATS)))
+        self.assertTrue(os.path.isfile(os.path.join(run.backup_dir, G.SETTINGS)))
+        self.assertFalse(os.path.exists(os.path.join(run.backup_dir, G.SCORESTATS)))
         self.assertIsNotNone(run.before)
         self.assertEqual(run.before, before)
         self.assertEqual(r.launch.commands, [run.command])
@@ -417,9 +429,12 @@ class RunStepsTest(unittest.TestCase):
         self.assertTrue(B.finish_run(run, stop=True, env=r.env))
         self.assertTrue(r.game.stopped)
         self.assertIn("stopped the game (--stop)", r.lines)
-        for name in G.DOCUMENTS_FILES + G.LOCALLOW_FILES:
+        for name in G.BACKED_UP_FILES:
             self.assertIn(f"{name}: restored", r.lines)
         r.assert_all_restored(self)
+        for name in GAME_SAVES_IN_DOCUMENTS + GAME_SAVES_IN_LOCALLOW:
+            self.assertEqual(_read(r.path(name)), b"changed by the game", name)
+            self.assertFalse(any(line.startswith(f"{name}:") for line in r.lines), name)
         self.assertFalse(any("--restore" in line for line in r.lines))
 
     def test_finish_run_says_a_caller_given_stop_line_instead_of_the_flag_one(self):
@@ -449,12 +464,12 @@ class RunStepsTest(unittest.TestCase):
         r = Rig(self.tmp, exits_at=None)
         run = self.start(r, r.song)
 
-        def fail(backup_dir, out, leave=()):
-            raise G.RestoreError("scoredata.bin", "locked")
+        def fail(backup_dir, out):
+            raise G.RestoreError("settings.ini", "locked")
 
         with mock.patch.object(B.game_files, "restore", fail):
             self.assertFalse(B.finish_run(run, stop=False, env=r.env))
-        self.assertIn("restore failed on scoredata.bin: locked", r.lines)
+        self.assertIn("restore failed on settings.ini: locked", r.lines)
         self.assertEqual(r.lines[-1], f"stopped; the backup is still in {r.backup_dir()}")
 
 
@@ -1006,7 +1021,7 @@ class HumanStartRunTest(unittest.TestCase):
         agent = FakeLaunchAgent(self.events, statuses=[status("refused")])
         with self.assertRaises(B.LaunchFailed):
             self.start(self.r.song, agent)
-        self.assertIn(f"restoring the user files from {self.r.backup_dir()}", self.r.lines)
+        self.assertIn(f"restoring the backup from {self.r.backup_dir()}", self.r.lines)
         self.r.assert_all_restored(self)
 
 
