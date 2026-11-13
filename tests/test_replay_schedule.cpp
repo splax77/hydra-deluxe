@@ -750,15 +750,12 @@ TEST_CASE("schedule: the planned end counts one frame") {
     CHECK(within_cent(schedule::split_squeeze(sqout(48.15, 60545.26, 53.59, 60573.35, 1.0)).planned_end_ms, 60554.525));
 }
 
-TEST_CASE("schedule: the equal-room split of a squeeze-in is the mirror of a squeeze-out's") {
-    // No chart in the corpus has a timed squeeze-in, so this is hand-built: the
-    // anchor (side 60) goes late for a chord (side 50) 40 ms past the end at
-    // 1,000 ms, ratio 1.0 on the late side (the early side, 2.0, is one a
-    // squeeze-in never reads). Worked by hand from the split rule in
-    // replay_schedule.cpp, one frame (3 ms) on each press:
-    // L = (60 - 50 + 40 + 15 - 3 - 3) / 2 = 29.5; the end lands at
-    // 1,000 + 1 x (29.5 + 3) = 1,032.5; the chord is pressed at
-    // 1,032.5 - 15 - 1,040 = -22.5; both rooms are 27.5.
+namespace {
+
+// The hand-built squeeze-in the next test works by hand: an anchor (side 60)
+// late for a chord (side 50) 40 ms past the end at 1,000 ms, ratio 1.0 on the
+// late side. The read-end test further down reuses it.
+schedule::SqueezeGeometry hand_built_squeeze_in() {
     schedule::SqueezeGeometry g;
     g.kind = SqueezeKind::SqIn;
     g.anchor_chord = 1;
@@ -768,6 +765,21 @@ TEST_CASE("schedule: the equal-room split of a squeeze-in is the mirror of a squ
     g.squeeze_side_ms = 50.0;
     g.end_ms = 1000.0;
     g.ratio = TransferScale{2.0, 1.0};
+    return g;
+}
+
+}  // namespace
+
+TEST_CASE("schedule: the equal-room split of a squeeze-in is the mirror of a squeeze-out's") {
+    // No chart in the corpus has a timed squeeze-in, so this is hand-built: the
+    // anchor (side 60) goes late for a chord (side 50) 40 ms past the end at
+    // 1,000 ms, ratio 1.0 on the late side (the early side, 2.0, is one a
+    // squeeze-in never reads). Worked by hand from the split rule in
+    // replay_schedule.cpp, one frame (3 ms) on each press:
+    // L = (60 - 50 + 40 + 15 - 3 - 3) / 2 = 29.5; the end lands at
+    // 1,000 + 1 x (29.5 + 3) = 1,032.5; the chord is pressed at
+    // 1,032.5 - 15 - 1,040 = -22.5; both rooms are 27.5.
+    const schedule::SqueezeGeometry g = hand_built_squeeze_in();
     const schedule::SqueezeSplit s = schedule::split_squeeze(g);
     CHECK(s.anchor_aim_ms == doctest::Approx(29.5));
     CHECK(s.squeeze_aim_ms == doctest::Approx(-22.5));
@@ -1624,15 +1636,7 @@ TEST_CASE("schedule: a lead that moves the read end past a tempo change is refus
     // The hand-built squeeze-in of the mirror case above. Its read end is a
     // step of its own, with a tempo change 10 ms after it; the read end's
     // ratio sets how far the anchor's lead moves it.
-    schedule::SqueezeGeometry g;
-    g.kind = SqueezeKind::SqIn;
-    g.anchor_chord = 1;
-    g.anchor_side_ms = 60.0;
-    g.squeeze_chord = 2;
-    g.squeeze_ms = 1040.0;
-    g.squeeze_side_ms = 50.0;
-    g.end_ms = 1000.0;
-    g.ratio = TransferScale{2.0, 1.0};
+    schedule::SqueezeGeometry g = hand_built_squeeze_in();
     const double lead = schedule::equal_room_lead_ms(g);
     schedule::ReadEnd read;
     read.tick = 900;
