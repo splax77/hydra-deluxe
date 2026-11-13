@@ -1234,7 +1234,7 @@ const AnalysisResult& focus() { return analyzed_like_the_gui("SoundHaven - Focus
 const AnalysisResult& epidermis() { return analyzed_like_the_gui("Venetian Snares - Epidermis"); }
 
 // `path`'s rows as the Paths tab builds them, with `chords` (null for none).
-ActivationsView rows_of(const AnalysisResult& ar, const Path& path, const ChordTimes* chords) {
+ActivationsView window_rows_of(const AnalysisResult& ar, const Path& path, const ChordTimes* chords) {
     const SongTiming& timing = ar.song.timing();
     return build_activations(path, ar.record, &timing, std::nullopt, core::default_rules(),
                              std::nullopt, /*pro_drums=*/true, chords);
@@ -1308,7 +1308,7 @@ TEST_CASE("dynamic hit window: Tapped Out's squeeze out is out of reach") {
     const Path& best = ar.record.best_path();
     const ChordTimes chords = chord_times(ar.song);
     const std::vector<Activation> acts = best.all_activations();
-    const ActivationsView view = rows_of(ar, best, &chords);
+    const ActivationsView view = window_rows_of(ar, best, &chords);
     REQUIRE(view.acts.size() >= 4);
     const WindowRowView row = squeeze_row(acts[3], view.acts[3], SqueezeKind::SqOut);
     CHECK(row.windows == "77.9 ms early   72.0 ms late");
@@ -1322,7 +1322,7 @@ TEST_CASE("dynamic hit window: Burnout's squeeze out has 5.4 ms spare") {
     REQUIRE(best.pathstring() == "3- 1 2");
     const ChordTimes chords = chord_times(ar.song);
     const std::vector<Activation> acts = best.all_activations();
-    const ActivationsView view = rows_of(ar, best, &chords);
+    const ActivationsView view = window_rows_of(ar, best, &chords);
     REQUIRE(view.acts.size() == 3);
     const WindowRowView row = squeeze_row(acts[0], view.acts[0], SqueezeKind::SqOut);
     CHECK(row.windows == "84.5 ms early   84.3 ms late");
@@ -1343,7 +1343,7 @@ TEST_CASE("dynamic hit window: a squeeze in names the anchor late, then the note
         REQUIRE(best.pathstring() == "0 3+ 0 0");
         const ChordTimes chords = chord_times(ar.song);
         const std::vector<Activation> acts = best.all_activations();
-        const ActivationsView view = rows_of(ar, best, &chords);
+        const ActivationsView view = window_rows_of(ar, best, &chords);
         REQUIRE(view.acts.size() >= 2);
         const WindowRowView row = squeeze_row(acts[1], view.acts[1], SqueezeKind::SqIn);
         CHECK(row.windows == "61.9 ms late   48.1 ms early");
@@ -1355,7 +1355,7 @@ TEST_CASE("dynamic hit window: a squeeze in names the anchor late, then the note
         const Path& best = ar.record.best_path();
         const ChordTimes chords = chord_times(ar.song);
         const std::vector<Activation> acts = best.all_activations();
-        const ActivationsView view = rows_of(ar, best, &chords);
+        const ActivationsView view = window_rows_of(ar, best, &chords);
         REQUIRE(view.acts.size() >= 2);
         const WindowRowView row = squeeze_row(acts[1], view.acts[1], SqueezeKind::SqIn);
         CHECK(row.windows == "48.1 ms late   67.8 ms early");
@@ -1368,7 +1368,7 @@ TEST_CASE("dynamic hit window: a required early fill gets one window, an optiona
     const AnalysisResult& ar = tapped_out();
     const Path& best = ar.record.best_path();
     const ChordTimes chords = chord_times(ar.song);
-    const ActivationsView view = rows_of(ar, best, &chords);
+    const ActivationsView view = window_rows_of(ar, best, &chords);
     REQUIRE(view.acts.size() >= 4);
 
     // Activation 3 is E0: its fill is required.
@@ -1398,11 +1398,11 @@ TEST_CASE("dynamic hit window: no row for a timing that needs no hitting, or an 
 
         act.sqinouts[k].offset_ms = 0.0;
         REQUIRE(squeeze_in_window(act, k, chords).has_value());
-        CHECK(rows_of(ar, p, &chords).acts[1].squeeze_windows[k].has_value());
+        CHECK(window_rows_of(ar, p, &chords).acts[1].squeeze_windows[k].has_value());
 
         act.sqinouts[k].offset_ms = -0.1;
         REQUIRE(squeeze_in_window(act, k, chords).has_value());  // the owner has numbers
-        CHECK_FALSE(rows_of(ar, p, &chords).acts[1].squeeze_windows[k].has_value());
+        CHECK_FALSE(window_rows_of(ar, p, &chords).acts[1].squeeze_windows[k].has_value());
     }
     SUBCASE("a required early fill with time to spare gets none") {
         const AnalysisResult& ar = tapped_out();
@@ -1414,7 +1414,7 @@ TEST_CASE("dynamic hit window: no row for a timing that needs no hitting, or an 
         act.e_offset = 20.0;  // Star Power ready 20 ms before the deadline
         REQUIRE(act.is_E0());
         REQUIRE(early_fill_window(act, chords).has_value());  // the owner has numbers
-        const ActivationRowView av = rows_of(ar, p, &chords).acts[2];
+        const ActivationRowView av = window_rows_of(ar, p, &chords).acts[2];
         CHECK(av.early_fill == "Early fill: -20.0 ms (required)");
         CHECK_FALSE(av.early_fill_window.has_value());
     }
@@ -1428,13 +1428,13 @@ TEST_CASE("dynamic hit window: no row for a timing that needs no hitting, or an 
         test::set_skips(act, 1);
         REQUIRE_FALSE(act.is_E0());
         REQUIRE(early_fill_window(act, chords).has_value());  // the owner has numbers
-        CHECK_FALSE(rows_of(ar, p, &chords).acts[2].early_fill_window.has_value());
+        CHECK_FALSE(window_rows_of(ar, p, &chords).acts[2].early_fill_window.has_value());
     }
 }
 
 TEST_CASE("dynamic hit window: no chord times, no row anywhere") {
     for (const AnalysisResult* ar : {&tapped_out(), &burnout(), &focus(), &epidermis()}) {
-        const ActivationsView view = rows_of(*ar, ar->record.best_path(), nullptr);
+        const ActivationsView view = window_rows_of(*ar, ar->record.best_path(), nullptr);
         REQUIRE_FALSE(view.acts.empty());
         for (const ActivationRowView& av : view.acts) {
             CHECK(av.squeeze_windows.size() == av.squeeze_sentences.size());
@@ -1450,8 +1450,8 @@ TEST_CASE("dynamic hit window: the row sits alongside and changes no other field
     for (const AnalysisResult* ar : {&tapped_out(), &burnout(), &focus(), &epidermis()}) {
         const Path& best = ar->record.best_path();
         const ChordTimes chords = chord_times(ar->song);
-        const ActivationsView with = rows_of(*ar, best, &chords);
-        const ActivationsView without = rows_of(*ar, best, nullptr);
+        const ActivationsView with = window_rows_of(*ar, best, &chords);
+        const ActivationsView without = window_rows_of(*ar, best, nullptr);
         CHECK(with.summary == without.summary);
         CHECK(with.timeline_start == without.timeline_start);
         CHECK(with.timeline_end == without.timeline_end);
