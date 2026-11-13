@@ -542,6 +542,7 @@ void AppState::update_view_job() {
             }
             v.state = ViewedSong::State::Ready;
             v.timing = out.analysis->song.timing();
+            v.chords = hydra::chord_times(out.analysis->song);
             v.song_length_ms = out.length.ms;
             v.record = std::move(out.analysis->record);
         }

@@ -17,18 +17,7 @@ namespace {
 
 // ---- the constants ---------------------------------------------------------
 // Each is written into the file's "constants" object, where the tests pin it.
-
-// The game's normal-mode clamps on one half-gap: TM-18 on
-// docs/clone-hero/03-timing.md (0.0375 s and 0.085 s).
-constexpr double kWindowFrontMs = 37.5;
-constexpr double kWindowBackMs = 85.0;
-
-// The normal-mode window formula's constants: TM-21 on
-// docs/clone-hero/03-timing.md.
-constexpr double kFormulaLinear = 0.0110924369747899;
-constexpr double kFormulaSquare = 2.628539e-05;
-constexpr double kFormulaScale = 170.0;
-constexpr double kFormulaOffsetMs = 20.0;
+// The window's clamps and formula constants are core/note_window.h's.
 
 // The game's frame period: one frame at the game's framerate = 330 cap
 // (TM-49 on docs/clone-hero/03-timing.md) and the 2.98 to 3.03 ms the live
@@ -118,42 +107,6 @@ nlohmann::json spans_json(const SteadySpans& s) {
 std::string tick_text(int64_t tick) { return "tick " + std::to_string(tick); }
 
 }  // namespace
-
-// ---- the game's per-note window ------------------------------------------
-
-// TM-19: half the gap, held between the front and the back; a missing
-// neighbour, or one at the same time, gives the back.
-double half_gap_ms(std::optional<double> gap_ms) {
-    if (!gap_ms || *gap_ms == 0.0) return kWindowBackMs;
-    return std::min(std::max(*gap_ms / 2.0, kWindowFrontMs), kWindowBackMs);
-}
-
-// TM-21. The function has no clamp of its own; its input is clamped by
-// half_gap_ms on each side (TM-22).
-double whole_window_ms(double x) {
-    return (x * kFormulaLinear - x * x * kFormulaSquare) * kFormulaScale - kFormulaOffsetMs;
-}
-
-// TM-20: the note gets half the formula's output on each side.
-double window_side_ms(std::optional<double> gap_before_ms, std::optional<double> gap_after_ms) {
-    return whole_window_ms(half_gap_ms(gap_before_ms) + half_gap_ms(gap_after_ms)) / 2.0;
-}
-
-// TM-51: the neighbours are the nearest notes at another tick, so the
-// chords either side.
-std::vector<double> chord_sides_ms(const std::vector<double>& chord_ms) {
-    std::vector<double> sides;
-    sides.reserve(chord_ms.size());
-    for (size_t i = 0; i < chord_ms.size(); ++i) {
-        const std::optional<double> before =
-            i > 0 ? std::optional<double>(chord_ms[i] - chord_ms[i - 1]) : std::nullopt;
-        const std::optional<double> after = i + 1 < chord_ms.size()
-                                                ? std::optional<double>(chord_ms[i + 1] - chord_ms[i])
-                                                : std::nullopt;
-        sides.push_back(window_side_ms(before, after));
-    }
-    return sides;
-}
 
 // ---- a declined chord ------------------------------------------------------
 
@@ -406,20 +359,7 @@ nlohmann::json replay_note_json(const ReplayNote& n) {
                           {"dynamic", dynamic_str(n.dynamic)}};
 }
 
-std::optional<int> ChordIndex::at(int64_t tick) const {
-    const auto it = std::lower_bound(ticks.begin(), ticks.end(), tick);
-    if (it == ticks.end() || *it != tick) return std::nullopt;
-    return static_cast<int>(it - ticks.begin());
-}
-
-ChordIndex chord_index(const Song& song) {
-    ChordIndex idx;
-    idx.ticks.reserve(song.sequence.size());
-    for (const SongTimestamp& ts : song.sequence) idx.ticks.push_back(ts.timecode.ticks());
-    return idx;
-}
-
-nlohmann::json activation_json(const Activation& act, const ChordIndex& chords,
+nlohmann::json activation_json(const Activation& act, const ChordTimes& chords,
                                const SongTiming& timing, std::vector<std::string>& refusals) {
     const int64_t act_tick = act.timecode.ticks();
     const std::string who = "the activation at " + tick_text(act_tick);
@@ -452,18 +392,9 @@ nlohmann::json activation_json(const Activation& act, const ChordIndex& chords,
     for (size_t k = 0; k < act.sqinouts.size(); ++k) {
         const SPSqueeze& q = act.sqinouts[k];
         const bool is_in = q.kind == SqueezeKind::SqIn;
-        const std::optional<size_t> end_step = act.squeeze_end_step(k);
         const std::optional<int64_t> end = act.squeeze_end_tick(k);
         const std::optional<int64_t> anchor = act.squeeze_anchor_tick(k);
-        // A SqIn's chord is the step it set; a SqOut's is the chord the
-        // engine stamped (Activation::sqout_tick).
-        std::optional<int64_t> chord_tick;
-        if (is_in) {
-            if (end_step && *end_step + 1 < act.sp_end_steps.size())
-                chord_tick = act.sp_end_steps[*end_step + 1].tick;
-        } else {
-            chord_tick = act.sqout_tick;
-        }
+        const std::optional<int64_t> chord_tick = act.squeeze_chord_tick(k);
         const std::string what = who + "'s " + q.type_name() + " " + std::to_string(k);
         if (!chord_tick) refusals.push_back(what + " names no chord in the record");
         if (!end || !anchor) refusals.push_back(what + " has no end in the record");
@@ -518,7 +449,7 @@ nlohmann::json song_length_json(const store::ChartTimingMeta& meta, const Song& 
 
 nlohmann::json schedule_json(const Song& song, const std::vector<const Activation*>& acts,
                              const ReplayResult& replay, const core::Rules& rules) {
-    const ChordIndex chords = chord_index(song);
+    const ChordTimes chords = chord_times(song);
     std::vector<std::string> refusals;
     // The chords the schedule writes no press for. Every branch that drops
     // one goes through refuse_chord, so its row says refused and a line

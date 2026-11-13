@@ -20,7 +20,7 @@ The live-checks page already lists both rows. FL-24 asks how far early a hit can
 
 ## Why it matters now
 
-The Dynamic Hit Window plan (`docs/superpowers/plans/2026-11-12-dynamic-hit-window.md`, merged to main) adds a row under the "Early fill" line that shows the game's window for the SP-ready note and how much room it leaves. Its question 1 asks whether that row should ship while FL-24 is unproven. The user asked what is unchecked about early fills, was told the above, and then asked for this handoff. Whether the early fill row waits for this check is the user's call on question 1; at the time of writing it was not yet answered.
+The Dynamic Hit Window plan (`docs/superpowers/plans/2026-11-12-dynamic-hit-window.md` (removed; `git show da1504ec:docs/superpowers/plans/2026-11-12-dynamic-hit-window.md`), merged to main) adds a row under the "Early fill" line that shows the game's window for the SP-ready note and how much room it leaves. Its question 1 asks whether that row should ship while FL-24 is unproven. The user asked what is unchecked about early fills, was told the above, and then asked for this handoff. Whether the early fill row waits for this check is the user's call on question 1; at the time of writing it was not yet answered.
 
 ## What was done
 
@@ -44,7 +44,7 @@ Session 375e58cd, 2026-11-12: "what is unchecked about early fills?" and then "c
 |---|---|---|---|
 | path | `docs/clone-hero/04-fills.md` | holds FL-19 (the deadline, proven in code), FL-24 (Hydra's early fill model, "Hydra assumes it, never checked") and FL-25 (Trippin path 3's fill not offered, proven in a live run) | the checker finds the file; read the three blocks |
 | path | `docs/clone-hero/live-checks.md` | lists the FL-24 and FL-25 live checks with their pass lines | the checker finds the file; grep `FL-24` |
-| path | `docs/superpowers/plans/2026-11-12-dynamic-hit-window.md` | the Dynamic Hit Window plan; its question 1 asks whether the early fill row ships while FL-24 is unproven | the checker finds the file; read its Questions section |
+| path | `docs/superpowers/plans/2026-11-12-dynamic-hit-window.md` (removed; `git show da1504ec:docs/superpowers/plans/2026-11-12-dynamic-hit-window.md`) | the Dynamic Hit Window plan; its question 1 asks whether the early fill row ships while FL-24 is unproven | the file is removed from the tree; read its Questions section with the `git show` command in the value |
 | path | `tools/ch_probe/experiments/results/overlay-spike/run1_cal0_sp_compare.txt` | one of FL-25's three result files; line 34 says activation 3 was not on the path's chord | the checker finds the file |
 | path | `C:\Clone Hero\songs\Hydra Probe\Trippin SP Spike` | the probe chart FL-25 was run on | the folder exists |
 | path | `docs/agents/clone-hero-mcp.md` | how live runs of the game are driven | the checker finds the file |
@@ -62,7 +62,7 @@ Session 375e58cd, 2026-11-12: "what is unchecked about early fills?" and then "c
 ```text
 ok | path | docs/clone-hero/04-fills.md | holds FL-19 (the deadline, proven in code), FL-24 (Hydra's early fill model, "Hydra assumes it, never checked") and FL-25 (Trippin path 3's fill not offered, proven in a live run)
 ok | path | docs/clone-hero/live-checks.md | lists the FL-24 and FL-25 live checks with their pass lines
-ok | path | docs/superpowers/plans/2026-11-12-dynamic-hit-window.md | the Dynamic Hit Window plan; its question 1 asks whether the early fill row ships while FL-24 is unproven
+ok | path | docs/superpowers/plans/2026-11-12-dynamic-hit-window.md (removed since this run; `git show da1504ec:docs/superpowers/plans/2026-11-12-dynamic-hit-window.md`) | the Dynamic Hit Window plan; its question 1 asks whether the early fill row ships while FL-24 is unproven
 ok | path | tools/ch_probe/experiments/results/overlay-spike/run1_cal0_sp_compare.txt | one of FL-25's three result files; line 34 says activation 3 was not on the path's chord
 ok | path | C:\Clone Hero\songs\Hydra Probe\Trippin SP Spike | the probe chart FL-25 was run on
 ok | path | docs/agents/clone-hero-mcp.md | how live runs of the game are driven

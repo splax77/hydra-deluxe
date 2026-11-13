@@ -553,9 +553,10 @@ assumes; which chord's press leads each squeeze and by how much; a fallback,
 written ahead of time, for when the end the game stores crosses a threshold;
 and whether each squeeze can be made at 100% speed. `hydra_replay schedule`
 writes it (docs/development.md). tools/replay_schedule.cpp is the one owner of
-every press's timing and of the hit window the player uses: the game's own
+every press's timing. The hit window the player uses is the game's own
 per-note window, which the chords either side set
-(docs/clone-hero/03-timing.md, TM-18 to TM-22 and TM-51). No screen reads it;
+(docs/clone-hero/03-timing.md, TM-18 to TM-22 and TM-51); the tool reads it
+from src/core/note_window.h, as the Paths tab's Dynamic Hit Window row does.
 Hydra's own judging keeps the fixed Hit window. The player in tools/ch_probe
 is to only send the presses, read the end and pick the written fallback
 (docs/adr/0030; the player tasks of
@@ -694,6 +695,20 @@ each edge belongs to the band below it (`timing_tiers` and `tier_for` in
 src/core/squeeze_rating.cpp; D48, Q3 and Q33). The report's footer and its
 Timing column's tooltip call it "the 85 ms hit window", printed by
 `hit_window_text` (src/app/report.h; D278 item 4).
+
+The game itself gives each note its own window, sized by the gaps to the
+chords either side (docs/clone-hero/03-timing.md, TM-17 to TM-22 and TM-51).
+Each half-gap is held between the front clamp, 37.5 ms (`kWindowFrontMs`), and
+the back clamp, 85 ms (`kWindowBackMs`, a separate number from `kHitWindowMs`).
+The two halves are summed and fed to the window formula, whose linear term is
+0.0110924369747899 (`kFormulaLinear`), whose square term is 2.628539e-05
+(`kFormulaSquare`), and whose scale is 170.0 (`kFormulaScale`), less 20 ms
+(`kFormulaOffsetMs`). The Paths tab's Dynamic Hit Window row shows that
+window beside the 85 for each timing badge, with how much it leaves spare or
+falls short. It is display only: the user ruled "just show it alongside.", so
+the search, badges, Rating words and timing tiers keep the 85. Its one owner
+is src/core/note_window.h (`chord_sides_ms`, `squeeze_out_window`,
+`squeeze_in_window`, `early_fill_window`).
 
 **Transfer scale**:
 How frontend timing error carries to the SP end. SP length is measured in

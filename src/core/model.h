@@ -660,6 +660,9 @@ struct Activation {
     std::optional<int64_t> deact_anchor_tick() const;
     // The note whose timing moves the end squeeze k was measured from.
     std::optional<int64_t> squeeze_anchor_tick(size_t squeeze_index) const;
+    // The chord squeeze k names: a SqIn's is the SP-end step it set, a
+    // SqOut's is sqout_tick. Unset when the record holds neither.
+    std::optional<int64_t> squeeze_chord_tick(size_t squeeze_index) const;
 
     // The frontend transfer scale at the deact node D, measured from
     // deact_anchor_tick() (the activation, or the cap's collecting note).
