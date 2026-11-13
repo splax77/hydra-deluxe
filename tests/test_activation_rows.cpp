@@ -1314,6 +1314,12 @@ TEST_CASE("dynamic hit window: Tapped Out's squeeze out is out of reach") {
     CHECK(row.windows == "77.9 ms early   72.0 ms late");
     CHECK(row.tag == "65.9 ms short");
     CHECK(row.is_short);
+    // The same windows, split for the two colours the drawing uses.
+    REQUIRE(row.figures.size() == 2);
+    CHECK(row.figures[0].figure == "77.9 ms");
+    CHECK(row.figures[0].word == "early");
+    CHECK(row.figures[1].figure == "72.0 ms");
+    CHECK(row.figures[1].word == "late");
 }
 
 TEST_CASE("dynamic hit window: Burnout's squeeze out has 5.4 ms spare") {
@@ -1378,6 +1384,19 @@ TEST_CASE("dynamic hit window: a required early fill gets one window, an optiona
     CHECK(a3.early_fill_window->windows == "82.9 ms early");
     CHECK(a3.early_fill_window->tag == "82.9 ms spare");
     CHECK_FALSE(a3.early_fill_window->is_short);
+    REQUIRE(a3.early_fill_window->figures.size() == 1);
+    CHECK(a3.early_fill_window->figures[0].figure == "82.9 ms");
+    CHECK(a3.early_fill_window->figures[0].word == "early");
+    // The line's warning border reads the early fill entry of badge_timings.
+    const std::vector<Activation> acts = best.all_activations();
+    for (const ActivationRowView& av : view.acts) {
+        const Activation& act = acts[static_cast<size_t>(av.number - 1)];
+        bool fill_difficult = false;
+        for (const ActivationTiming& t : act.badge_timings())
+            if (t.part == TimingPart::EarlyFill) fill_difficult = t.difficult;
+        CHECK(av.early_fill_warn == fill_difficult);
+        if (av.early_fill.empty()) CHECK_FALSE(av.early_fill_warn);
+    }
 
     // Activation 4 skipped a fill before it, so its fill is optional
     // (Activation::is_E0, question 4): the line shows, the row does not.

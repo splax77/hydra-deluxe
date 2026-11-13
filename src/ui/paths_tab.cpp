@@ -329,6 +329,8 @@ void render_activation_row(size_t i, const app::ActivationRowView& a, app::Paths
 // docs/superpowers/specs/2026-11-12-dynamic-hit-window-mockup/index.html).
 constexpr PillRgb kWindowRowDivider{74, 54, 34};
 constexpr float kWindowRowGap = 14.0f;  // unscaled
+constexpr PillRgb kWindowWordInk{201, 179, 155};        // a word, the mockup's #c9b39b
+const ImVec4 kWindowFigureInk(1.0f, 1.0f, 1.0f, 1.0f);  // a figure, the mockup's #fff
 
 // One Dynamic Hit Window row, the bottom line of its timing's box: a divider,
 // the label, the windows in the Figure role, then the tag (badge_pill.h) at
@@ -339,13 +341,18 @@ void window_row(const app::WindowRowView& w) {
     ImGui::PushStyleColor(ImGuiCol_Separator, pill_vec4(kWindowRowDivider));
     ImGui::Separator();
     ImGui::PopStyleColor();
+    ScopedFont font(TextRole::Figure);
     ImGui::TextUnformatted(app::kDynamicHitWindowLabel);
     const float gap = px(kWindowRowGap);
-    ScopedFont font(TextRole::Figure);
-    flow_next(ImGui::CalcTextSize(w.windows.c_str()).x, gap);
-    ImGui::PushTextWrapPos(0.0f);
-    ImGui::TextUnformatted(w.windows.c_str());
-    ImGui::PopTextWrapPos();
+    const float space = ImGui::CalcTextSize(" ").x;
+    for (const app::WindowFigure& f : w.figures) {
+        flow_next(ImGui::CalcTextSize(f.figure.c_str()).x + space +
+                      ImGui::CalcTextSize(f.word.c_str()).x,
+                  gap);
+        ImGui::TextColored(kWindowFigureInk, "%s", f.figure.c_str());
+        ImGui::SameLine(0.0f, space);
+        ImGui::TextColored(pill_vec4(kWindowWordInk), "%s", f.word.c_str());
+    }
     const float tag_w = window_tag_width(ImGui::CalcTextSize(w.tag.c_str()).x, px(1.0f));
     if (fits_on_line(tag_w, gap)) ImGui::SameLine(0.0f, gap);
     place_control_at_right_edge(tag_w);
@@ -382,13 +389,12 @@ void squeeze_box(const app::ActivationRowView& a, size_t k) {
                k < a.squeeze_windows.size() ? a.squeeze_windows[k] : std::nullopt);
 }
 
-// The "Early fill" line's box. Its border follows the fill's badge, which
-// Activation::badge_timings lists first whenever the line shows.
+// The "Early fill" line's box. Its border follows the fill's badge, through
+// early_fill_warn.
 void early_fill_box(const app::ActivationRowView& a) {
     char id[32];
     std::snprintf(id, sizeof(id), "##ef%d", a.number);
-    const bool warn = !a.badges.empty() && a.badges.front().warn;
-    timing_box(id, a.early_fill, warn, a.early_fill_window);
+    timing_box(id, a.early_fill, a.early_fill_warn, a.early_fill_window);
 }
 
 // The role each backend column's cells draw in; the header row is Label.

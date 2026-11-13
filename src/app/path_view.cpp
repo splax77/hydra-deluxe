@@ -204,8 +204,10 @@ namespace {
 WindowRowView window_row_view(const WindowRow& row, const char* first_word,
                               const char* second_word) {
     WindowRowView v;
-    v.windows = format_ms(row.first_side_ms) + " " + first_word;
-    if (row.second_side_ms) v.windows += "   " + format_ms(*row.second_side_ms) + " " + second_word;
+    v.figures.push_back({format_ms(row.first_side_ms), first_word});
+    if (row.second_side_ms) v.figures.push_back({format_ms(*row.second_side_ms), second_word});
+    for (size_t i = 0; i < v.figures.size(); ++i)
+        v.windows += std::string(i ? "   " : "") + v.figures[i].figure + " " + v.figures[i].word;
     v.is_short = row.is_short();
     v.tag = format_ms(std::fabs(row.spare_ms)) + (v.is_short ? " short" : " spare");
     return v;
@@ -274,6 +276,8 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
         if (act.is_e_critical()) {
             // Positive = hit early, the same sign as the report:
             // e_difficulty(true) is -e_offset for every E-critical activation.
+            for (const ActivationTiming& t : act.badge_timings())
+                if (t.part == TimingPart::EarlyFill) av.early_fill_warn = t.difficult;
             av.early_fill = "Early fill: " +
                              format_ms(*act.e_difficulty(/*verbose=*/true)) +
                              (act.is_E0() ? " (required)" : " (optional)");

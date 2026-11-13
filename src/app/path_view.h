@@ -70,8 +70,16 @@ inline constexpr const char* kDynamicHitWindowLabel = "Dynamic Hit Window:";
 // One Dynamic Hit Window row: the game's own windows for the notes a timing
 // involves, beside Hydra's fixed one (core/note_window.h owns the numbers).
 // The view draws kDynamicHitWindowLabel, then `windows`, then `tag` apart.
+struct WindowFigure {
+    std::string figure;  // "77.9 ms"
+    std::string word;    // "early" or "late"
+};
+
 struct WindowRowView {
     std::string windows;  // "77.9 ms early   72.0 ms late"; one window for an early fill
+    // The same windows as `windows`, split so the drawing can colour each
+    // figure apart from its word; `windows` is built from these.
+    std::vector<WindowFigure> figures;
     std::string tag;      // "65.9 ms short" or "5.4 ms spare", never a minus sign
     bool is_short = false;  // WindowRow::is_short: the windows cannot cover the timing
 };
@@ -100,6 +108,9 @@ struct ActivationRowView {
     // entry, or an unset early_fill_window, draws nothing.
     std::vector<std::optional<WindowRowView>> squeeze_windows;
     std::optional<WindowRowView> early_fill_window;
+    // The early fill line's warning border: the early fill entry of
+    // Activation::badge_timings is difficult. False when the line is empty.
+    bool early_fill_warn = false;
     std::string scale_warning;  // the transfer-scale line; empty when the scales are known and no side a row or squeeze reads is scaled
     bool scale_warn = false;    // orange: a shown scale moves a squeeze or backend figure
     std::string overfill_warning;  // cap-clamped anchor prose; empty when not clamped
