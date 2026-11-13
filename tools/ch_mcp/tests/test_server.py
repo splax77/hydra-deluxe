@@ -193,18 +193,18 @@ class ServerTest(unittest.TestCase):
         # Question 6 (a) of docs/superpowers/plans/2026-11-08-replay-press-
         # schedule.md and D324 item 2: schedule_json replaces dump_json, and
         # no decline mode or lead is an argument. D318 item 4: ch_run_chart
-        # and ch_play_chart take path_index, 0 when left out. Task IG3 of
-        # docs/superpowers/plans/2026-11-12-in-game-press-timing.md: both take
-        # timing, None (the Python loop) when left out.
+        # and ch_play_chart take path_index, 0 when left out. Task IG6a of
+        # docs/superpowers/plans/2026-11-12-in-game-press-timing.md: neither
+        # takes timing; the route alone says who times the presses.
         self.assertEqual(set(self._schema("ch_run_chart")),
                          {"song_folder", "score_json", "schedule_json", "kit_player",
-                          "path_index", "timing"})
+                          "path_index"})
         self.assertEqual(set(self._schema("ch_play_chart")),
                          {"score_json", "schedule_json", "log", "song_folder", "route",
-                          "path_index", "timing"})
+                          "path_index"})
         for name in ("ch_run_chart", "ch_play_chart"):
             self.assertEqual(self._schema(name)["path_index"]["default"], 0)
-            self.assertIsNone(self._schema(name)["timing"]["default"])
+            self.assertNotIn("timing", self._schema(name))
             self.assertNotIn("decline_mode", self._schema(name))
         self.assertEqual(set(self._schema("ch_edge_probe")),
                          {"song_folder", "score_json", "schedule_json", "probes_json"})
@@ -223,9 +223,27 @@ class ServerTest(unittest.TestCase):
         self.helper.game.ch_run_chart = lambda *a: seen.append(a) or "ran"
         result = asyncio.run(S.build_server(self.helper).call_tool("ch_run_chart", {
             "song_folder": "song", "score_json": "top.json", "schedule_json": "sched.json",
-            "kit_player": "System", "path_index": 3, "timing": "game"}))
+            "kit_player": "System", "path_index": 3}))
         self.assertEqual(result.content[0].text, "ran")
-        self.assertEqual(seen, [("song", "top.json", "sched.json", "System", 3, "game")])
+        self.assertEqual(seen, [("song", "top.json", "sched.json", "System", 3)])
+
+    def test_a_leftover_timing_argument_is_dropped_without_a_word(self):
+        # Row P33 of docs/superpowers/plans/2026-11-12-in-game-press-timing.md:
+        # the server takes a call that still passes timing, drops the
+        # argument and runs the tool as if it were left out. The MCP page
+        # (docs/agents/clone-hero-mcp.md) says so.
+        seen = []
+        self.helper.game.ch_run_chart = lambda *a: seen.append(a) or "ran"
+        self.helper.game.ch_play_chart = lambda *a: seen.append(a) or "playing"
+        server = S.build_server(self.helper)
+        run = asyncio.run(server.call_tool("ch_run_chart", {
+            "song_folder": "song", "score_json": "top.json", "schedule_json": "sched.json",
+            "timing": "python"}))
+        play = asyncio.run(server.call_tool("ch_play_chart", {
+            "score_json": "s.json", "schedule_json": "sched.json", "timing": "python"}))
+        self.assertEqual((run.content[0].text, play.content[0].text), ("ran", "playing"))
+        self.assertEqual(seen, [("song", "top.json", "sched.json", None, 0),
+                                ("s.json", "sched.json", None, None, None, 0)])
 
     def test_ch_kit_frame_probe_passes_its_seconds_through(self):
         seen = []
@@ -272,9 +290,9 @@ class ServerTest(unittest.TestCase):
                                                        "schedule_json": "sched.json"}))
         asyncio.run(server.call_tool("ch_play_chart", {
             "score_json": "s.json", "schedule_json": "sched.json", "log": "p.csv",
-            "song_folder": "song", "route": "kit", "path_index": 2, "timing": "game"}))
-        self.assertEqual(seen, [("s.json", "sched.json", None, None, None, 0, None),
-                                ("s.json", "sched.json", "p.csv", "song", "kit", 2, "game")])
+            "song_folder": "song", "route": "kit", "path_index": 2}))
+        self.assertEqual(seen, [("s.json", "sched.json", None, None, None, 0),
+                                ("s.json", "sched.json", "p.csv", "song", "kit", 2)])
 
     def test_ch_open_song_takes_the_player_and_passes_it_through(self):
         self.assertEqual(self._schema("ch_open_song")["player"]["default"],

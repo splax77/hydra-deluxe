@@ -168,9 +168,6 @@ class FakeGame:
     def add_stop_hook(self, hook):
         self.hooks.append(hook)
 
-    def use_kit_press(self, source):
-        self.kit_source = source
-
     def ensure_backup(self):
         self.events.append("backup")
         return BACKUP_LINE
@@ -214,6 +211,15 @@ class FakeClock:
         self.t += s
 
 
+def kit_press_of(tools):
+    """The module's kit_press on `tools`' kit agent, or None while the kit
+    is not set up: what the stall harness presses through, built the way it
+    builds it, on the tools' request lock."""
+    with tools._lock:
+        agent = tools._ready_agent()
+        return None if agent is None else K.kit_press(agent, request_lock=tools._request_lock)
+
+
 class Rig(unittest.TestCase):
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
@@ -247,6 +253,7 @@ class Rig(unittest.TestCase):
                            read_settings=read_settings, find_clock=self.find_clock)
         # Detach before the temp folder goes, so Windows can delete the log.
         self.addCleanup(lambda: tools._agent is not None and tools._agent.detach())
+        self.game.kit_source = lambda: kit_press_of(tools)
         return tools
 
     def posted(self):
@@ -515,31 +522,40 @@ class SetupTest(Rig):
 
 
 class SetupForRunTest(Rig):
-    def test_a_setup_that_passes_gives_the_press_and_the_reply(self):
+    def test_a_setup_that_passes_gives_the_game_player_and_the_reply(self):
         tools = self.tools([STATUS, setup_reply()])
-        press, text = tools.setup_for_run("System")
-        self.assertTrue(callable(press))
+        player, text = tools.setup_for_run("System")
+        self.assertIsInstance(player, K.GamePlayer)
+        self.assertIsNotNone(tools._agent._listener)
         self.assertEqual(self.posted()[1]["player"], "System")
         self.assertIn("bindings: all 10 match KIT_BINDINGS", text)
+        player.close()
 
-    def test_a_setup_that_is_refused_gives_no_press(self):
-        press, text = self.tools(attached=False).setup_for_run("System")
-        self.assertIsNone(press)
+    def test_a_setup_that_is_refused_gives_no_player(self):
+        player, text = self.tools(attached=False).setup_for_run("System")
+        self.assertIsNone(player)
         self.assertEqual(text, f'{K.given_player_line("System")}\n{FT.NOT_ATTACHED}')
 
-    def test_a_setup_on_the_wrong_id_is_torn_down_and_gives_no_press(self):
+    def test_a_setup_on_the_wrong_id_is_torn_down_and_gives_no_player(self):
         tools = self.tools([STATUS, setup_reply(kit_id=7), TEARDOWN_OK])
-        press, text = tools.setup_for_run("System")
-        self.assertIsNone(press)
+        player, text = tools.setup_for_run("System")
+        self.assertIsNone(player)
         self.assertIn("refused: the kit is controller 7", text)
         self.assertEqual(self.posted()[-1]["type"], "teardown")
 
-    def test_a_kit_already_set_up_gives_no_press_and_stays(self):
+    def test_a_kit_already_set_up_gives_no_player_and_stays(self):
         tools = self.set_up()
-        press, text = tools.setup_for_run("System")
-        self.assertIsNone(press)
+        player, text = tools.setup_for_run("System")
+        self.assertIsNone(player)
         self.assertIn(K.KIT_ALREADY_SET_UP, text)
-        self.assertIsNotNone(tools.kit_press())
+        self.assertIsNotNone(tools._ready_agent())
+
+    def test_the_kit_tools_lend_no_press_and_the_harness_press_stays(self):
+        # Task IG6a of docs/superpowers/plans/2026-11-12-in-game-press-timing.md:
+        # the auto-player reaches the kit only through the GamePlayer; the
+        # module's kit_press stays for the stall harness (row P32).
+        self.assertFalse(hasattr(K.KitTools, "kit_press"))
+        self.assertTrue(callable(K.kit_press))
 
 
 class MapProblemsTest(Rig):
@@ -1268,7 +1284,7 @@ class KitPressTest(Rig):
         with open(path, encoding="utf-8", newline="") as f:
             table = list(csv.DictReader(f))
         self.assertEqual((table[0]["down_frame"], table[0]["up_ms"]), ("1200", "1762600005013"))
-        self.assertIsNotNone(tools.kit_press())
+        self.assertIsNotNone(self.game.kit_source())
 
     def test_a_faulted_kit_press_carries_the_fault_in_its_error(self):
         self.set_up([{**SETUP_FAULT, "error": "press failed: Error: access violation accessing 0x58"}])

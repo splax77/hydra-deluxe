@@ -75,8 +75,7 @@ class Helper:
         # the clock sp_watch's docstring names, not on env's.
         sp_kw = {"sleep": self.env.sleep, **(sp_kw or {})}
         self.sp = SpTools(self.game, self.lock, **sp_kw)
-        # KitTools hands its press to GameTools itself (use_kit_press). It
-        # reads the pause setting in env's documents folder, the same
+        # KitTools reads the pause setting in env's documents folder, the same
         # settings.ini ch_start writes the run's value into.
         documents_dir = self.env.documents_dir
         kit_kw = {"now": self.env.now, "sleep": self.env.sleep,
@@ -378,7 +377,7 @@ def build_server(helper: Optional[Helper] = None):
     @server.tool()
     def ch_play_chart(score_json: str, schedule_json: str, log: str | None = None,
                       song_folder: str | None = None, route: str | None = None,
-                      path_index: int = 0, timing: str | None = None) -> str:
+                      path_index: int = 0) -> str:
         """Play a hydra_replay schedule JSON (hydra_replay schedule, one path
         of the chart score_json scores) in the background, pressing each
         chord through the virtual kit inside the game. route is "kit" or
@@ -399,25 +398,23 @@ def build_server(helper: Optional[Helper] = None):
         names each declined chord with what it sends, each squeeze chord with
         when its presses fire against the end, each chord pressed early or
         late for a squeeze, and each chord pressed in more than one group, in
-        the order its gems are pressed. timing says who times the presses:
-        "python" (left out means it) is the auto-player's own loop, and
-        "game" hands the whole schedule to the kit agent, which fires each
-        press on the game's frames; "game" needs the kit route."""
+        the order its gems are pressed. On the kit route the kit agent fires
+        each press on the game's frames; on the keys route the auto-player's
+        own loop times them."""
         return capped(h.game.ch_play_chart(score_json, schedule_json, log, song_folder, route,
-                                           path_index, timing))
+                                           path_index))
 
     @server.tool()
     def ch_run_chart(song_folder: str, score_json: str, schedule_json: str,
-                     kit_player: str | None = None, path_index: int = 0,
-                     timing: str | None = None) -> str:
+                     kit_player: str | None = None, path_index: int = 0) -> str:
         """Start a run in one call, so the first press can beat the first
         note: ch_attach, a check that the game has the schedule's song
         loaded, ch_kit_setup on kit_player, the Star Power watch and the
         auto-player on the kit, with one engine search for the watch and the
         player. Call it right after ch_start(song_folder, human=True), with
         kit_player="System" for such a launch. song_folder must be the folder
-        of the schedule's chart. score_json, schedule_json, path_index and
-        timing are ch_play_chart's. Before the attach it writes builds-<n>.json in the
+        of the schedule's chart. score_json, schedule_json and path_index
+        are ch_play_chart's. Before the attach it writes builds-<n>.json in the
         session folder, the agent builds and the hydra_replay build the run
         uses. It writes a press log, a press-<n>.csv beside it, one row at
         each press as the run goes, and its reply names both files. The call
@@ -430,7 +427,7 @@ def build_server(helper: Optional[Helper] = None):
         stops it before the kit setup. Refused while a play session runs.
         Read the run with ch_play_status and ch_sp_watch_status."""
         return capped(h.game.ch_run_chart(song_folder, score_json, schedule_json, kit_player,
-                                          path_index, timing))
+                                          path_index))
 
     @server.tool()
     def ch_edge_probe(song_folder: str, score_json: str, schedule_json: str,

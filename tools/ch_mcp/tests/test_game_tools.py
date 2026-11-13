@@ -197,7 +197,7 @@ class FakeLivePlay:
         self.delivered = threading.Event()
         self.calls = []
 
-    def __call__(self, chords, *, driver, on_press, should_stop, out):
+    def __call__(self, chords, *, on_press, should_stop, out, driver=None):
         self.calls.append((list(chords), driver))
         for row in ROWS:
             on_press(row)
@@ -229,16 +229,62 @@ class FakeWatch:
         return F.count_line(self.count) + ("" if self.stopped else " so far")
 
 
-class ToolRig:
-    """A GameTools wired to test_bot_run's Rig and the fakes above."""
+class FakeGamePlayer:
+    """kit_tools.GamePlayer as the play thread sees it: it is closed once the
+    run ends, or when a refusal leaves it unused."""
 
-    def __init__(self, tmp: str, **tool_args):
+    def __init__(self):
+        self.closed = False
+
+    def close(self):
+        self.closed = True
+
+
+class FakeLiveInGame:
+    """play_chart.live_in_game: records each player it is handed, then plays
+    through `play`, a fake that takes live_play's keywords with no driver."""
+
+    def __init__(self, play):
+        self.play = play
+        self.players = []
+
+    def __call__(self, chords, *, player, **kw):
+        self.players.append(player)
+        return self.play(chords, **kw)
+
+
+def live_play_never(*_args, **_kw):
+    """A live_play for a kit run, which must never reach it."""
+    raise AssertionError("a kit run reached live_play")
+
+
+class FakeKitPart:
+    """The kit part of the run parts, as ch_play_chart and ch_edge_probe
+    read it: game_player hands out `player`, None while no kit is set up."""
+
+    def __init__(self, player):
+        self.player = player
+
+    def game_player(self):
+        return self.player
+
+
+class ToolRig:
+    """A GameTools wired to test_bot_run's Rig and the fakes above. With
+    `kit`, the kit is set up: the rig's play fake (the `live_play` argument,
+    or FakeLivePlay) plays through FakeLiveInGame on `player`, and a
+    live_play that raises stands in for the Python loop."""
+
+    def __init__(self, tmp: str, *, kit: bool = False, **tool_args):
         self.r = Rig(tmp, exits_at=None)
         self.scratch_root = os.path.join(tmp, "scratch")
         self.driver = RecordingDriver()
         self.hwnd = WINDOW
         self.live_play = FakeLivePlay(play_chart.RunResult(
             sent=2, rows=list(ROWS), stop="stopped"))
+        self.player = FakeGamePlayer()
+        self.live_in_game = FakeLiveInGame(tool_args.pop("live_play", self.live_play)
+                                           if kit else self.live_play)
         self.events = []
         self.watches = []
         self.popen = FakePopen()
@@ -247,11 +293,14 @@ class ToolRig:
             self.watches.append(FakeWatch(self.events))
             return self.watches[-1]
 
-        args = dict(driver=self.driver, live_play=self.live_play,
+        args = dict(driver=self.driver, live_play=live_play_never if kit else self.live_play,
+                    live_in_game=self.live_in_game,
                     find_window=lambda: self.hwnd, make_watch=make_watch,
                     make_recorder=self.make_recorder)
         args.update(tool_args)
         self.tools = GT.GameTools(self.r.env, threading.RLock(), self.scratch_root, **args)
+        if kit:
+            self.tools.use_run_parts(GT.RunParts(None, FakeKitPart(self.player), None))
 
     def make_recorder(self) -> R.RecorderLink:
         return R.RecorderLink(popen=self.popen)
@@ -924,43 +973,52 @@ class GameToolsTest(unittest.TestCase):
 
     # -- the kit route ----------------------------------------------------------------------
 
-    def _kit_rig(self, kit_press):
+    def _kit_rig(self, kit: bool):
+        """A rig whose play fake records its keywords; with `kit` the kit is
+        set up (ToolRig's `kit`), and without it no kit agent is there."""
         seen = []
 
         def live_play(chords, **kw):
             seen.append(kw)
             return play_chart.RunResult(stop="done", rows=[])
 
-        t = ToolRig(self.tmp, live_play=live_play)
-        t.tools.use_kit_press(lambda: kit_press)
+        t = ToolRig(self.tmp, kit=kit, live_play=live_play)
+        if not kit:
+            t.tools.use_run_parts(GT.RunParts(None, FakeKitPart(None), None))
         return t, seen
 
-    def test_route_kit_hands_live_play_the_kit_press_and_no_driver(self):
-        def kit_press(lanes):
-            return {}
-
-        t, seen = self._kit_rig(kit_press)
+    def test_play_chart_on_the_kit_route_plays_in_game_on_the_kits_player(self):
+        t, seen = self._kit_rig(True)
         reply = t.tools.ch_play_chart(self._score_json(), self._schedule_json(),route="kit")
         t.tools._play.thread.join(THREAD_CAP_S)
-        self.assertIs(seen[0]["press"], kit_press)
+        self.assertEqual(t.live_in_game.players, [t.player])
         self.assertNotIn("driver", seen[0])
+        self.assertTrue(t.player.closed)
+        self.assertIsNone(t.tools._play.error)
         self.assertIn("route: kit (presses through the virtual kit inside the game)",
                       reply.splitlines())
 
     def test_no_route_picks_the_kit_once_it_is_set_up(self):
-        def kit_press(lanes):
-            return {}
-
-        t, seen = self._kit_rig(kit_press)
+        t, seen = self._kit_rig(True)
         t.tools.ch_play_chart(self._score_json(), self._schedule_json())
         t.tools._play.thread.join(THREAD_CAP_S)
-        self.assertIs(seen[-1]["press"], kit_press)
+        self.assertEqual(t.live_in_game.players, [t.player])
+        self.assertIsNone(t.tools._play.error)
+
+    def test_play_chart_on_the_keys_route_presses_keys_and_leaves_the_kit_alone(self):
+        t = ToolRig(self.tmp)
+        t.tools.use_run_parts(GT.RunParts(None, FakeKitPart(t.player), None))
+        t.tools.ch_play_chart(self._score_json(), self._schedule_json(), route="keys")
+        t.tools._play.thread.join(THREAD_CAP_S)
+        self.assertEqual(t.live_play.calls[0][1], t.driver)
+        self.assertEqual(t.live_in_game.players, [])
+        self.assertFalse(t.player.closed)
 
     NO_ROUTE_REFUSED = ("refused: no route given and the kit is not set up; "
                         "call ch_kit_setup first")
 
     def test_no_route_is_refused_while_the_kit_is_not_set_up(self):
-        t, seen = self._kit_rig(None)
+        t, seen = self._kit_rig(False)
         self.assertEqual(t.tools.ch_play_chart(self._score_json(), self._schedule_json()), self.NO_ROUTE_REFUSED)
         self.assertIsNone(t.tools._play)
         self.assertEqual(seen, [])
@@ -973,7 +1031,7 @@ class GameToolsTest(unittest.TestCase):
         self.assertEqual(t.driver.events, [])
 
     def test_route_keys_presses_keys_through_the_driver(self):
-        t, seen = self._kit_rig(None)
+        t, seen = self._kit_rig(False)
         reply = t.tools.ch_play_chart(self._score_json(), self._schedule_json(),route="keys")
         t.tools._play.thread.join(THREAD_CAP_S)
         self.assertIs(seen[-1]["driver"], t.driver)
@@ -981,7 +1039,7 @@ class GameToolsTest(unittest.TestCase):
         self.assertIn("route: keys (keys to the focused game window)", reply.splitlines())
 
     def test_route_kit_without_a_kit_and_an_unknown_route_are_refused(self):
-        t, seen = self._kit_rig(None)
+        t, seen = self._kit_rig(False)
         self.assertEqual(t.tools.ch_play_chart(self._score_json(), self._schedule_json(),route="kit"),
                          'route kit: the kit is not set up; call ch_kit_setup first, '
                          'or pass route="keys"')
@@ -1248,8 +1306,7 @@ class GameToolsTest(unittest.TestCase):
                 on_press(row)
             return play_chart.RunResult(stop="done", sent=1, rows=rows)
 
-        t = ToolRig(self.tmp, live_play=live_play)
-        t.tools.use_kit_press(lambda: (lambda lanes: {}))
+        t = ToolRig(self.tmp, kit=True, live_play=live_play)
         t.tools.ch_play_chart(self._score_json(), self._schedule_json())
         t.tools._play.thread.join(THREAD_CAP_S)
         lines = t.tools.ch_play_status().splitlines()
@@ -1322,7 +1379,7 @@ class GameToolsTest(unittest.TestCase):
 
         def setup_for_run(self, player):
             self.events.append(("setup", player))
-            return self.press, "setup reply"
+            return (self.player if self.press is not None else None), "setup reply"
 
         def game_player(self):
             self.events.append("game player")
@@ -1358,7 +1415,7 @@ class GameToolsTest(unittest.TestCase):
             return play_chart.RunResult(stop="done")
 
         press = press if press is not None else (lambda lanes, axes=None: {})
-        t = ToolRig(self.tmp, live_play=live_play or played, **tool_args)
+        t = ToolRig(self.tmp, kit=True, live_play=live_play or played, **tool_args)
         t.tools.use_run_parts(GT.RunParts(
             self.ChainFrida(events, attaches, t.r.song if loaded is None else loaded),
             self.ChainKit(events, press if press != "none" else None),
@@ -1398,13 +1455,10 @@ class GameToolsTest(unittest.TestCase):
         self.assertIs(events[2][2], GT.find_run_engine)
         self.assertEqual(seen["engine"], self.ENGINE)
 
-    def test_the_players_press_is_the_kit_press_setup_gave_and_it_has_no_driver(self):
-        def press(lanes, axes=None):
-            return {}
-
-        t, _events, seen = self._chain_rig(press=press)
+    def test_the_run_plays_on_the_player_setup_gave_and_has_no_driver(self):
+        t, _events, seen = self._chain_rig()
         self._run(t)
-        self.assertIs(seen["press"], press)
+        self.assertEqual(t.live_in_game.players, [t.tools._run_parts.kit.player])
         self.assertNotIn("driver", seen)
 
     def test_the_watch_and_the_player_share_the_songs_run_cap(self):
@@ -1880,15 +1934,15 @@ class GameToolsTest(unittest.TestCase):
         # Question 6 (a) of docs/superpowers/plans/2026-11-08-replay-press-
         # schedule.md and D324 item 2: schedule_json replaces dump_json, and
         # no decline mode or lead is an argument. D318 item 4: ch_play_chart
-        # and ch_run_chart take path_index. Task IG3 of docs/superpowers/plans/
-        # 2026-11-12-in-game-press-timing.md: both take timing.
+        # and ch_run_chart take path_index. Task IG6a of docs/superpowers/plans/
+        # 2026-11-12-in-game-press-timing.md: neither takes timing.
         signatures = {name: list(inspect.signature(getattr(GT.GameTools, name)).parameters)
                       for name in ("ch_play_chart", "ch_run_chart", "ch_edge_probe")}
         self.assertEqual(signatures, {
             "ch_play_chart": ["self", "score_json", "schedule_json", "log", "song_folder",
-                              "route", "path_index", "timing"],
+                              "route", "path_index"],
             "ch_run_chart": ["self", "song_folder", "score_json", "schedule_json",
-                             "kit_player", "path_index", "timing"],
+                             "kit_player", "path_index"],
             "ch_edge_probe": ["self", "song_folder", "score_json", "schedule_json",
                               "probes_json"]})
 
@@ -1907,49 +1961,21 @@ class GameToolsTest(unittest.TestCase):
         t, events, seen = self._chain_rig(live_in_game=live_in_game, **kw)
         return t, events, in_game
 
-    def test_run_chart_with_game_timing_plays_in_game_on_the_setups_kit_agent(self):
+    def test_run_chart_plays_in_game_on_the_setups_kit_agent(self):
         t, events, in_game = self._in_game_rig()
         kit = t.tools._run_parts.kit
-        self._run(t, timing=GT.TIMING_GAME)
+        self._run(t)
         self.assertEqual(in_game, [kit.player])
         self.assertNotIn("play", events)
+        self.assertNotIn("game player", events)
         self.assertTrue(kit.player.closed)
 
-    def _assert_plays_chords(self, **timing):
-        t, events, in_game = self._in_game_rig()
-        self._run(t, **timing)
-        self.assertEqual(in_game, [])
-        self.assertIn("play", events)
-        self.assertNotIn("game player", events)
-
-    def test_run_chart_without_timing_plays_chords_and_asks_for_no_game_player(self):
-        self._assert_plays_chords()
-
-    def test_run_chart_with_python_timing_plays_chords_and_asks_for_no_game_player(self):
-        self._assert_plays_chords(timing=GT.TIMING_PYTHON)
-
-    def test_run_chart_refuses_an_unknown_timing_before_it_attaches(self):
-        t, events, in_game = self._in_game_rig()
-        reply = self._run(t, timing="frames")
-        self.assertEqual(reply, 'unknown timing "frames"; timings: python, game')
-        self.assertEqual((events, in_game), ([], []))
-
-    def test_run_chart_with_game_timing_stops_loudly_when_the_kit_agent_is_not_ready(self):
-        t, events, in_game = self._in_game_rig()
-        t.tools._run_parts.kit.player = None
-        lines = self._run(t, timing=GT.TIMING_GAME).splitlines()
-        self.assertIsNone(t.tools._play)
-        self.assertEqual(in_game, [])
-        self.assertIn('timing "game": the kit agent the setup built is not ready; '
-                      "nothing pressed", lines)
-        self.assertEqual(events[-2:], ["teardown", "watch stop"])
-
-    def test_play_chart_with_game_timing_refuses_the_keys_route(self):
-        t, _events, in_game = self._in_game_rig()
-        reply = t.tools.ch_play_chart(self._score_json(), self._schedule_json(),
-                                      route=GT.ROUTE_KEYS, timing=GT.TIMING_GAME)
-        self.assertEqual(reply, f'timing "game" plays on route "{GT.ROUTE_KIT}" only')
-        self.assertIsNone(t.tools._play)
+    def test_game_tools_names_no_kit_press_source_and_no_timing(self):
+        # Task IG6a of docs/superpowers/plans/2026-11-12-in-game-press-timing.md.
+        with open(GT.__file__, encoding="utf-8") as f:
+            source = f.read()
+        for gone in ("use_kit_press", "_kit_press_source", "TIMING_", "timing:", "timing="):
+            self.assertNotIn(gone, source)
 
     def test_the_status_rows_show_frame_gap_ms_and_agent_note(self):
         # D339 item 2 (question 3): in-game rows carry frame_gap_ms and
@@ -2721,7 +2747,8 @@ class RecorderTest(unittest.TestCase):
             on_press(ROWS[0])
             return play_chart.RunResult(stop="done")
 
-        self.t.tools._live_play = played
+        self.t.tools._live_in_game = FakeLiveInGame(played)
+        self.t.tools._live_play = live_play_never
         self.t.tools.use_run_parts(GT.RunParts(
             GameToolsTest.ChainFrida(events, loaded=self.t.r.song),
             GameToolsTest.ChainKit(events, lambda lanes, axes=None: {}),
@@ -3148,9 +3175,7 @@ class PlayerLimitsLinesTest(unittest.TestCase):
                           "score_before": 0, "score_after": 50, "send": play_chart.SENT})
             return play_chart.RunResult(stop="done", sent=2)
 
-        t = ToolRig(self.tmp, live_play=live_play)
-        if kit:
-            t.tools.use_kit_press(lambda: (lambda lanes, axes=None: {}))
+        t = ToolRig(self.tmp, kit=kit, live_play=live_play)
         return t, seen
 
     def _probe(self, t, probes):
@@ -3165,7 +3190,7 @@ class PlayerLimitsLinesTest(unittest.TestCase):
         t, seen = self._probe_rig()
         reply = self._probe(t, [{"index": 1, "lead_ms": -60}])
         self.assertIn("probes: chord 1 60 ms late", reply.splitlines())
-        self.assertIn("press", seen)
+        self.assertEqual(t.live_in_game.players, [t.player])
         rows = {row["index"]: row for row in t.tools._play.rows}
         self.assertEqual(rows[1]["chart_ms"], 1500.0)
         self.assertAlmostEqual(rows[1]["chart_ms"] - rows[1]["clock_ms_at_press"], -60.0)
