@@ -3201,6 +3201,19 @@ class PlayerLimitsLinesTest(unittest.TestCase):
         self.assertIn("probe chord 1: asked 60.00 ms late, pressed 60.00 ms late, score step 50",
                       t.tools.ch_play_status().splitlines())
 
+    def test_the_probe_moved_chords_reach_the_agent_as_play_entries_at_literal_times(self):
+        # live_in_game builds the kit agent's `play` entries from the chords
+        # the probe handed it. Chord 1 is at 1500 ms with an aim of -2 ms, so
+        # unmoved it fires at 1498 and last sends at 1550; a probe 60 ms late
+        # fires it at 1560, and its last send moves by the 62 ms the press moved.
+        from tools.ch_mcp import kit_tools
+        t, seen = self._probe_rig()
+        self._probe(t, [{"index": 1, "lead_ms": -60}])
+        entries = [kit_tools.play_entry(seq, press, None)
+                   for seq, press in enumerate(play_chart.press_plan(seen["chords"]))]
+        self.assertEqual([(e["index"], e["at_ms"], e["last_send_ms"]) for e in entries],
+                         [(0, 998.0, 1050.0), (1, 1560.0, 1612.0)])
+
     def test_the_probe_writes_a_press_log_in_the_session_folder(self):
         t, _seen = self._probe_rig()
         reply = self._probe(t, [{"index": 0, "lead_ms": 80}])
