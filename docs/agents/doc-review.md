@@ -60,6 +60,8 @@ Break the document into single claims, one fact per claim [S18]. On a long docum
 
 **Decision questions.** Before you weigh the author's recommendation, write down which option you would pick from the sources and why [S19][S5]. Then check four things. The predicate the question describes is quoted from the code, and the quote matches the code. Each option has a concrete example from each end. The options and their order do not lean toward one answer. The strongest case against the recommendation is present.
 
+**Plans.** A ruling the plan quotes binds every row of its owner table (the table that says which code owns each question the plan answers). Read every row whose owner is not the owner the ruling names. For each one, ask the arithmetic question of step 10 in `docs/agents/derive-once-review.md`, "How to review": does this row move or convert a quantity the ruling gave to the other owner? A step that moves or converts an engine-owned quantity is not a "live part", whatever language runs it and whenever it runs. Sending a press and reading a value are live parts. Deciding how far a read moves a later press is not. Such a row is a finding. The fix moves the rule to the ruling's owner, or turns it into a question for the user. The plan's Premise map gets its own checks, which "Who checks a map" in `docs/agents/premise-map.md` lists.
+
 Say where you looked for each claim you could not confirm. A search that found nothing proves nothing on its own.
 
 ## Step 3: drift against the sources
