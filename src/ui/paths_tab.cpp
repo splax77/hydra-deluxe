@@ -654,7 +654,8 @@ void render_path_panel(AppState& app, const Path*& selected_path) {
         const app::PathsTabCache::Details& d = cache.details(
             *selected_path, record, generation,
             app.viewed.timing ? &*app.viewed.timing : nullptr, app.settings.backend_limit(),
-            app.settings.rules, app.viewed.song_length_ms, app.settings.view_prodrums);
+            app.settings.rules, app.viewed.song_length_ms, app.settings.view_prodrums,
+            app.viewed.chords ? &*app.viewed.chords : nullptr);
         app::PathsTabUi& ui = cache.ui();
         render_activations(d.activations, ui);
         render_path_footer(app, d, ui);

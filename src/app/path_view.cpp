@@ -195,13 +195,62 @@ const char* const kOverfillHint =
     "the activation. The ms figures are still measured at the SP end. Only the note whose "
     "timing moves them changes.";
 
+namespace {
+
+// One Dynamic Hit Window row's text from the owner's numbers. `first_word`
+// and `second_word` say which way the player presses each note; an early
+// fill has no second note. The tag prints the spare's size; is_short says
+// which side of zero it is on (spare_is_short).
+WindowRowView window_row_view(const WindowRow& row, const char* first_word,
+                              const char* second_word) {
+    WindowRowView v;
+    v.windows = format_ms(row.first_side_ms) + " " + first_word;
+    if (row.second_side_ms) v.windows += "   " + format_ms(*row.second_side_ms) + " " + second_word;
+    v.is_short = row.is_short();
+    v.tag = format_ms(std::fabs(row.spare_ms)) + (v.is_short ? " short" : " spare");
+    return v;
+}
+
+// Squeeze `k`'s row, shown only when the squeeze needs timing
+// (SPSqueeze::needs_no_timing): a squeeze already done needs no window.
+std::optional<WindowRowView> squeeze_window_view(const Activation& act, size_t k,
+                                                 const ChordTimes& chords) {
+    const SPSqueeze& sq = act.sqinouts[k];
+    if (sq.needs_no_timing()) return std::nullopt;
+    // A squeeze out's anchor is hit early and its note late; a squeeze in is
+    // the mirror (core/note_window.h).
+    if (sq.kind == SqueezeKind::SqOut) {
+        if (const std::optional<WindowRow> row = squeeze_out_window(act, k, chords))
+            return window_row_view(*row, "early", "late");
+    } else if (const std::optional<WindowRow> row = squeeze_in_window(act, k, chords)) {
+        return window_row_view(*row, "late", "early");
+    }
+    return std::nullopt;
+}
+
+// The early fill's row, shown only where the "Early fill" line shows, the
+// fill is required (Activation::is_E0) and its figure needs hitting
+// (early_fill_needs_timing). An optional fill, or one with time to spare,
+// has no timing the game's window could fail.
+std::optional<WindowRowView> early_fill_window_view(const Activation& act,
+                                                    const ChordTimes& chords) {
+    if (!act.is_e_critical() || !act.is_E0() || !early_fill_needs_timing(act.e_offset))
+        return std::nullopt;
+    if (const std::optional<WindowRow> row = early_fill_window(act, chords))
+        return window_row_view(*row, "early", nullptr);
+    return std::nullopt;
+}
+
+}  // namespace
+
 // `record` is unused; the parameter stays so the callers keep their shape.
 ActivationsView build_activations(const Path& path, const HydraRecord& /*record*/,
                                   const SongTiming* timing,
                                   std::optional<double> backend_limit_ms,
                                   const core::Rules& rules,
                                   std::optional<double> song_length_ms,
-                                  bool pro_drums) {
+                                  bool pro_drums,
+                                  const ChordTimes* chords) {
     ActivationsView view;
 
     const ActivationWalk acts = path.walk_activations();
@@ -302,6 +351,12 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
             if (br.squeezed_out) squeezed_out = &br;
         av.squeeze_sentences = squeeze_sentences(act, squeezed_out, rules.backend_leeway_ms,
                                                  rate.note_effective_ms);
+        av.squeeze_windows.resize(act.sqinouts.size());
+        if (chords) {
+            for (size_t k = 0; k < act.sqinouts.size(); ++k)
+                av.squeeze_windows[k] = squeeze_window_view(act, k, *chords);
+            av.early_fill_window = early_fill_window_view(act, *chords);
+        }
 
         av.backends.reserve(rate.backends.size());
         // The rows the backend limit hides, by side of the SP end. A hidden
@@ -571,19 +626,22 @@ void PathsTabUi::click_row(size_t i) {
 const PathsTabCache::Details& PathsTabCache::details(
     const Path& path, const HydraRecord& record, int record_generation,
     const SongTiming* timing, std::optional<double> backend_limit_ms,
-    const core::Rules& rules, std::optional<double> song_length_ms, bool pro_drums) {
+    const core::Rules& rules, std::optional<double> song_length_ms, bool pro_drums,
+    const ChordTimes* chords) {
     const bool new_path = record_generation != details_generation_ || &path != details_path_;
     if (new_path || backend_limit_ms != details_backend_limit_ms_ ||
-        song_length_ms != details_song_length_ms_ || pro_drums != details_pro_drums_) {
+        song_length_ms != details_song_length_ms_ || pro_drums != details_pro_drums_ ||
+        chords != details_chords_) {
         details_.squeezes = multsqueeze_views(record, pro_drums);
         details_.activations = build_activations(path, record, timing, backend_limit_ms, rules,
-                                                 song_length_ms, pro_drums);
+                                                 song_length_ms, pro_drums, chords);
         details_.breakdown = build_score_breakdown(path);
         details_generation_ = record_generation;
         details_path_ = &path;
         details_backend_limit_ms_ = backend_limit_ms;
         details_song_length_ms_ = song_length_ms;
         details_pro_drums_ = pro_drums;
+        details_chords_ = chords;
         // What is unfolded belongs to the path; a display setting keeps it.
         if (new_path) ui_.reset(details_.activations.acts.size());
         ++details_builds_;

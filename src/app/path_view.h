@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "core/model.h"
+#include "core/note_window.h"  // ChordTimes
 #include "core/rules.h"
 #include "core/squeeze_rating.h"
 #include "core/timing.h"
@@ -63,6 +64,18 @@ struct ActivationBadge {
     bool warn = false;
 };
 
+// The label every Dynamic Hit Window row starts with.
+inline constexpr const char* kDynamicHitWindowLabel = "Dynamic Hit Window:";
+
+// One Dynamic Hit Window row: the game's own windows for the notes a timing
+// involves, beside Hydra's fixed one (core/note_window.h owns the numbers).
+// The view draws kDynamicHitWindowLabel, then `windows`, then `tag` apart.
+struct WindowRowView {
+    std::string windows;  // "77.9 ms early   72.0 ms late"; one window for an early fill
+    std::string tag;      // "65.9 ms short" or "5.4 ms spare", never a minus sign
+    bool is_short = false;  // WindowRow::is_short: the windows cannot cover the timing
+};
+
 // One activation as the Paths tab lists it: a one-line row, and what the row
 // shows when it is opened.
 struct ActivationRowView {
@@ -82,6 +95,11 @@ struct ActivationRowView {
     std::string chord;           // Chord::rowstr(pro_drums), e.g. "[Kick - Green cymbal]"
     std::string early_fill;      // "Early fill: " + format_ms(positive = early); empty when not E-critical
     std::vector<TextLine> squeeze_sentences;  // one per SqIn/SqOut, see squeeze_sentences()
+    // The Dynamic Hit Window rows, which build_activations decides to show.
+    // squeeze_windows runs entry for entry with squeeze_sentences; an unset
+    // entry, or an unset early_fill_window, draws nothing.
+    std::vector<std::optional<WindowRowView>> squeeze_windows;
+    std::optional<WindowRowView> early_fill_window;
     std::string scale_warning;  // the transfer-scale line; empty when the scales are known and no side a row or squeeze reads is scaled
     bool scale_warn = false;    // orange: a shown scale moves a squeeze or backend figure
     std::string overfill_warning;  // cap-clamped anchor prose; empty when not clamped
@@ -116,12 +134,15 @@ struct ActivationsView {
 // timeline_end. With none there is no timeline.
 // `pro_drums` is the Pro Drums setting the record was analyzed with; the
 // chord rows name their notes in its words (note_label).
+// `chords` is the analysed song's chord_times. It may be null: then no row
+// gets a Dynamic Hit Window row, and every other field is the same.
 ActivationsView build_activations(const Path& path, const HydraRecord& record,
                                   const SongTiming* timing,
                                   std::optional<double> backend_limit_ms = std::nullopt,
                                   const core::Rules& rules = core::default_rules(),
                                   std::optional<double> song_length_ms = std::nullopt,
-                                  bool pro_drums = true);
+                                  bool pro_drums = true,
+                                  const ChordTimes* chords = nullptr);
 
 // The badges on an activation row: one per Activation::badge_timings() entry,
 // in its order, each worded with its ms as format_ms writes it (D265):
@@ -283,7 +304,8 @@ public:
                            const SongTiming* timing, std::optional<double> backend_limit_ms,
                            const core::Rules& rules,
                            std::optional<double> song_length_ms = std::nullopt,
-                           bool pro_drums = true);
+                           bool pro_drums = true,
+                           const ChordTimes* chords = nullptr);
     // The path list as buttons, rebuilt when the record or the score range moves.
     const PathButtonsView& buttons(const HydraRecord& record, int record_generation,
                                    int depth_mode, int depth_value);
@@ -304,6 +326,7 @@ private:
     std::optional<double> details_backend_limit_ms_;
     std::optional<double> details_song_length_ms_;
     bool details_pro_drums_ = true;
+    const ChordTimes* details_chords_ = nullptr;
     Details details_;
     int details_builds_ = 0;
 
