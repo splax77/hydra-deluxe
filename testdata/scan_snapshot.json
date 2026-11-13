@@ -774,5 +774,13 @@
   "md5": "8a569e9835fb4a8ae18372bf17befc98",
   "path": "common/Summer Blast _25 Setlist/Tier 8/Xane60 - Godzilla (Eminem)/notes.chart",
   "title": "Godzilla (Eminem)"
+ },
+ {
+  "artist": "CHON",
+  "charter": "Bloodline",
+  "folder": ".",
+  "md5": "1125c9a5976d58a9ed44b63376147043",
+  "path": "test_pitch_dark_ratio/notes.mid",
+  "title": "Pitch Dark"
  }
 ]

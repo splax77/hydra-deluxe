@@ -126,41 +126,41 @@ void check_parse_digest(const app::Settings& st, uint64_t pinned, size_t pinned_
 // Each of the six digests below is pinned from one run.
 
 TEST_CASE("the corpus's prepared-row digest is pinned") {
-    check_engine_digest(pinned_settings("Expert", true, true), 0xbe3c5149250f3837ULL);
+    check_engine_digest(pinned_settings("Expert", true, true), 0x83492ab9bd48d5c0ULL);
 }
 
 TEST_CASE("the corpus's prepared-row digest is pinned at Hard, Pro Drums off, 2x Bass off") {
-    check_engine_digest(pinned_settings("Hard", false, false), 0x923d253f2dff5a60ULL);
+    check_engine_digest(pinned_settings("Hard", false, false), 0x94bb8e70a3540306ULL);
 }
 
 TEST_CASE("the corpus's prepared-row digest is pinned with the CH 1.0 fill rule") {
     app::Settings s = pinned_settings("Expert", true, true);
     s.legacy_fills = true;
-    check_engine_digest(s, 0x036ebf335a6ab293ULL);
+    check_engine_digest(s, 0x33e61fcedabd0cc2ULL);
 }
 
 TEST_CASE("the corpus's prepared-row digest is pinned with Note Shuffle on and the ms limit off") {
     app::Settings s = pinned_settings("Expert", true, true);
     s.view_noteshuffle = true;
     s.mslimit_enabled = false;
-    check_engine_digest(s, 0x815874f830394eb4ULL);
+    check_engine_digest(s, 0x077d3a4cd00b3425ULL);
 }
 
 TEST_CASE("the corpus's parse digest is pinned") {
     const uint64_t got = parse_digest(pinned_settings("Expert", true, true));
-    CHECK_MESSAGE(got == 0xe1efe092cfa504afULL, "parse digest is now " << hex(got));
+    CHECK_MESSAGE(got == 0x2d2b6ba616fa0df2ULL, "parse digest is now " << hex(got));
 }
 
 TEST_CASE("the corpus's parse digest is pinned at Hard, Pro Drums off, 2x Bass off") {
     const uint64_t got = parse_digest(pinned_settings("Hard", false, false));
-    CHECK_MESSAGE(got == 0x80f7de7a2baccb54ULL, "parse digest is now " << hex(got));
+    CHECK_MESSAGE(got == 0xdbbb09ba79b73c78ULL, "parse digest is now " << hex(got));
 }
 
 // Pinned from one run, with the parsers unchanged.
 TEST_CASE("the corpus's parse digest is pinned at Medium, Pro Drums off, 2x Bass off") {
-    check_parse_digest(pinned_settings("Medium", false, false), 0x4b403ec696f88efeULL, 67);
+    check_parse_digest(pinned_settings("Medium", false, false), 0x1f78ad0ac3f9a90aULL, 68);
 }
 
 TEST_CASE("the corpus's parse digest is pinned at Easy, Pro Drums off, 2x Bass off") {
-    check_parse_digest(pinned_settings("Easy", false, false), 0x4360ee98c2d449b9ULL, 67);
+    check_parse_digest(pinned_settings("Easy", false, false), 0xa5187516819c3195ULL, 68);
 }
