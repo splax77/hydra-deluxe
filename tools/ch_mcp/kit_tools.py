@@ -16,9 +16,11 @@ definition, the tag, the player, the elements, the bindings the game's map must
 give, the hold, the caps and the axis value (the plan's owner table). The
 agent reads the map back and this module refuses to go on when it differs.
 
-`kit_press` is the auto-player's press on the kit route. play_chart.play_chords
-still owns when a chord is pressed; the kit press only delivers it, and its
-reply rides into the press row.
+`GamePlayer` is the auto-player's way onto the kit: play_chart.play_in_game
+hands it the schedule, and the kit agent times each press on the game's
+frames. `kit_press` sends one chord at a time from Python, for
+play_chart.play_chords with kit=True; its one caller outside the tests is the
+offline stall harness (tools/ch_probe/experiments/stall_harness.py).
 
 Every tool returns plain text and never prints: an MCP server's stdout is its
 protocol channel. The server hands in the one RLock it shares with the other
@@ -638,7 +640,7 @@ def fault_lines(error: FA.LiveAgentError) -> List[str]:
 
 def kit_press(agent: FA.LiveAgent, *, request_lock: Optional[threading.Lock] = None,
               hold_frames: int = KIT_HOLD_FRAMES) -> Callable[..., dict]:
-    """The auto-player's press on the kit route: a callable that sends one
+    """The stall harness's kit press: a callable that sends one
     chord's lanes at their `axes` to the kit agent and returns its reply,
     which play_chords checks with reply_gap and keeps in the press row. Axes of None press every pad as
     a plain gem. `then` holds a split chord's later groups as play_chords
@@ -999,12 +1001,12 @@ def read_pause_setting(documents_dir: str = game_files.DOCUMENTS_DIR) -> str:
 
 
 class KitTools:
-    """The five kit tools, press_items for the menu driver, kit_press for the
-    auto-player, and the kit agent between them.
+    """The five kit tools, press_items for the menu driver, game_player for
+    the auto-player, and the kit agent between them.
 
     `game` is the server's game_tools.GameTools: this class takes its backup,
-    session folder, play snapshot and foreground line, registers a stop hook
-    that tears the kit down, and hands it the kit press. `frida` is the
+    session folder, play snapshot and foreground line, and registers a stop
+    hook that tears the kit down. `frida` is the
     server's frida_tools.FridaTools; ch_kit_setup needs its attach. Every
     outside seam is an argument so the tests swap each for a fake:
     `agent_dir`, `frida_mod` (None imports frida at the first attach), `wait`
@@ -1041,7 +1043,6 @@ class KitTools:
         # Lines the live agent says outside a reply (a refused detach).
         self._said: List[str] = []
         game.add_stop_hook(self._stop_hook)
-        game.use_kit_press(self.kit_press)
 
     # -- the tools ------------------------------------------------------------------
 
@@ -1290,14 +1291,6 @@ class KitTools:
                 return "no kit agent attached; nothing to tear down"
             return self._reply(self._teardown_and_detach())
 
-    def kit_press(self) -> Optional[Callable[..., dict]]:
-        """The auto-player's kit press, or None when the kit is not set up."""
-        with self._lock:
-            agent = self._ready_agent()
-            if agent is None:
-                return None
-            return kit_press(agent, request_lock=self._request_lock)
-
     def game_player(self) -> Optional[GamePlayer]:
         """The kit agent for play_chart.play_in_game, or None when the kit
         is not set up."""
@@ -1423,12 +1416,13 @@ class KitTools:
         self._said.clear()
         return "\n".join(lines)
 
-    def setup_for_run(self, player: Optional[str] = None) -> Tuple[Optional[Callable[..., dict]], str]:
+    def setup_for_run(self, player: Optional[str] = None) -> Tuple[Optional[GamePlayer], str]:
         """ch_kit_setup for another tool (game_tools' ch_run_chart): the kit
-        press and the setup's reply. The press is None when this call built no
-        kit, which covers a kit already set up: its refusal leaves that kit as
-        it is, and a failed setup has torn its own kit down."""
+        agent's GamePlayer (game_player) and the setup's reply. The player is
+        None when this call built no kit, which covers a kit already set up:
+        its refusal leaves that kit as it is, and a failed setup has torn its
+        own kit down."""
         with self._lock:
             was_ready = self._ready_agent() is not None
             text = self.ch_kit_setup(player)
-            return (None if was_ready else self.kit_press()), text
+            return (None if was_ready else self.game_player()), text
