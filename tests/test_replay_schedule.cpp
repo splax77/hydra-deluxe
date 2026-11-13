@@ -750,15 +750,12 @@ TEST_CASE("schedule: the planned end counts one frame") {
     CHECK(within_cent(schedule::split_squeeze(sqout(48.15, 60545.26, 53.59, 60573.35, 1.0)).planned_end_ms, 60554.525));
 }
 
-TEST_CASE("schedule: the equal-room split of a squeeze-in is the mirror of a squeeze-out's") {
-    // No chart in the corpus has a timed squeeze-in, so this is hand-built: the
-    // anchor (side 60) goes late for a chord (side 50) 40 ms past the end at
-    // 1,000 ms, ratio 1.0 on the late side (the early side, 2.0, is one a
-    // squeeze-in never reads). Worked by hand from the split rule in
-    // replay_schedule.cpp, one frame (3 ms) on each press:
-    // L = (60 - 50 + 40 + 15 - 3 - 3) / 2 = 29.5; the end lands at
-    // 1,000 + 1 x (29.5 + 3) = 1,032.5; the chord is pressed at
-    // 1,032.5 - 15 - 1,040 = -22.5; both rooms are 27.5.
+namespace {
+
+// The hand-built squeeze-in the next test works by hand: an anchor (side 60)
+// late for a chord (side 50) 40 ms past the end at 1,000 ms, ratio 1.0 on the
+// late side. The read-end test further down reuses it.
+schedule::SqueezeGeometry hand_built_squeeze_in() {
     schedule::SqueezeGeometry g;
     g.kind = SqueezeKind::SqIn;
     g.anchor_chord = 1;
@@ -768,6 +765,21 @@ TEST_CASE("schedule: the equal-room split of a squeeze-in is the mirror of a squ
     g.squeeze_side_ms = 50.0;
     g.end_ms = 1000.0;
     g.ratio = TransferScale{2.0, 1.0};
+    return g;
+}
+
+}  // namespace
+
+TEST_CASE("schedule: the equal-room split of a squeeze-in is the mirror of a squeeze-out's") {
+    // No chart in the corpus has a timed squeeze-in, so this is hand-built: the
+    // anchor (side 60) goes late for a chord (side 50) 40 ms past the end at
+    // 1,000 ms, ratio 1.0 on the late side (the early side, 2.0, is one a
+    // squeeze-in never reads). Worked by hand from the split rule in
+    // replay_schedule.cpp, one frame (3 ms) on each press:
+    // L = (60 - 50 + 40 + 15 - 3 - 3) / 2 = 29.5; the end lands at
+    // 1,000 + 1 x (29.5 + 3) = 1,032.5; the chord is pressed at
+    // 1,032.5 - 15 - 1,040 = -22.5; both rooms are 27.5.
+    const schedule::SqueezeGeometry g = hand_built_squeeze_in();
     const schedule::SqueezeSplit s = schedule::split_squeeze(g);
     CHECK(s.anchor_aim_ms == doctest::Approx(29.5));
     CHECK(s.squeeze_aim_ms == doctest::Approx(-22.5));
@@ -1588,6 +1600,65 @@ TEST_CASE("schedule: Pitch Dark prices each read at its own step's scale") {
         CHECK(p["own_end_ms"].is_null());
         CHECK(p["conversion"].is_null());
     }
+}
+
+TEST_CASE("schedule: Pitch Dark's read range is its read end's steady span") {
+    const PitchDark pd = pitch_dark();
+    const json& sch = pd.sch;
+    INFO(sch["refusals"].dump());
+
+    // Chord 644's read end is step 1's (tick 198570), between the tempo
+    // changes at ticks 197760 and 198720 (design point 5 of
+    // docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md).
+    const std::vector<json> p644 = presses_of(sch, 644, "squeeze_in");
+    REQUIRE(p644.size() == 1);
+    const json& range = p644[0]["read_range_ms"];
+    REQUIRE(range.is_array());
+    REQUIRE(range.size() == 2);
+    REQUIRE(range[0].is_number());
+    REQUIRE(range[1].is_number());
+    // T2b's acceptance gives the range to a tenth of a ms ("within 0.1").
+    constexpr double kRangeToleranceMs = 0.1;
+    CHECK(std::abs(range[0].get<double>() - 157545.2) < kRangeToleranceMs);
+    CHECK(std::abs(range[1].get<double>() - 158350.6) < kRangeToleranceMs);
+
+    // A press timed from an end carries a range; a press with none, null.
+    for (const json& p : sch["presses"]) {
+        INFO("chord " << p["chord"].get<int>() << " " << p["rule"].get<std::string>());
+        if (p["end_read_after"].is_null())
+            CHECK(p["read_range_ms"].is_null());
+        else
+            CHECK(p["read_range_ms"].is_array());
+    }
+}
+
+TEST_CASE("schedule: a lead that moves the read end past a tempo change is refused naming its span") {
+    // The hand-built squeeze-in of the mirror case above. Its read end is a
+    // step of its own, with a tempo change 10 ms after it; the read end's
+    // ratio sets how far the anchor's lead moves it.
+    schedule::SqueezeGeometry g = hand_built_squeeze_in();
+    const double lead = schedule::equal_room_lead_ms(g);
+    schedule::ReadEnd read;
+    read.tick = 900;
+    read.steady.after_end_ms = 10.0;
+
+    // A lead that moves the read end 20 ms is refused, naming the read end's
+    // span.
+    read.ratio = TransferScale{1.0, 20.0 / lead};
+    g.read_end = read;
+    std::vector<std::string> refusals;
+    CHECK_FALSE(schedule::anchor_lead_ms({g}, refusals).has_value());
+    REQUIRE(refusals.size() == 1);
+    CHECK(refusals[0].find("anchor chord 1") != std::string::npos);
+    CHECK(refusals[0].find("the read end at tick 900") != std::string::npos);
+    CHECK(refusals[0].find("the read end's steady span after_end_ms") != std::string::npos);
+
+    // One that moves it 5 ms is not.
+    read.ratio = TransferScale{1.0, 5.0 / lead};
+    g.read_end = read;
+    refusals.clear();
+    CHECK(schedule::anchor_lead_ms({g}, refusals).has_value());
+    CHECK(refusals.empty());
 }
 
 TEST_CASE("schedule: a tempo change on an end splits the conversion's sides") {

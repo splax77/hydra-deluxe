@@ -240,6 +240,23 @@ std::optional<double> anchor_lead_ms(const std::vector<SqueezeGeometry>& on_one_
             return std::nullopt;
         }
     }
+    // The read end moves with the same lead, at its own step's scale, and
+    // the player converts a read only while that end stays steady too (design
+    // point 5 of docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md).
+    for (const SqueezeGeometry& g : on_one_anchor) {
+        if (!g.read_end) continue;
+        const SteadySpans& s = g.read_end->steady;
+        const std::optional<double> span = is_out ? s.before_end_ms : s.after_end_ms;
+        const double moved = lead * moving_side(need->kind, g.read_end->ratio);
+        if (span && moved > *span) {
+            refusals.push_back("anchor chord " + std::to_string(anchor) + " pressed " + std::to_string(lead) +
+                               " ms " + way + " for chord " + std::to_string(g.squeeze_chord) +
+                               " moves the read end at " + tick_text(g.read_end->tick) +
+                               " past a tempo or time signature change: the read end's steady span " + end_name +
+                               " is " + std::to_string(*span) + " ms");
+            return std::nullopt;
+        }
+    }
     return lead;
 }
 
@@ -557,6 +574,14 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
     const SongTiming& timing = song.timing();
     auto ms_of = [&](int64_t tick) { return timing.timecode(tick).ms(); };
     auto valid = [&](int chord) { return chord >= 0 && static_cast<size_t>(chord) < n; };
+    // The step whose end the player reads after the chord at `tick`: the last
+    // step on that chord, the end in force after it. Unset when none is.
+    auto step_on = [](const Activation& act, int64_t tick) -> std::optional<size_t> {
+        std::optional<size_t> step;
+        for (size_t s = 0; s < act.sp_end_steps.size(); ++s)
+            if (act.sp_end_steps[s].tick == tick) step = s;
+        return step;
+    };
 
     // ---- each timed squeeze's geometry, grouped by the chord that leads it
     struct Timed {
@@ -620,6 +645,15 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
             g.end_ms = q["end_ms"].get<double>();
             g.ratio = *ratio;
             g.steady = steady_spans(q["anchor_tick"].get<int64_t>(), q["end_tick"].get<int64_t>(), timing);
+            // The read end, as the reads below find it. Unset here, the read
+            // after the anchor is not planned and its refusal says why.
+            const int64_t anchor_tick = replay.chords[static_cast<size_t>(ca)].tick;
+            if (const std::optional<size_t> rs = step_on(act, anchor_tick)) {
+                if (const std::optional<TransferScale> rr = step_transfer_scale(act, *rs, timing)) {
+                    const int64_t read_tick = act.sp_end_steps[*rs].end_tick;
+                    g.read_end = ReadEnd{read_tick, *rr, steady_spans(anchor_tick, read_tick, timing)};
+                }
+            }
             timed_of[{a, k}] = timed.size();
             by_anchor[ca].push_back(timed.size());
             timed.push_back({a, k, *own_step, g, std::nullopt});
@@ -671,6 +705,7 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
         double stored_ms = 0.0;
         double planned_ms = 0.0;
         TransferScale scale;
+        SteadySpans steady;  // steady_spans(chord, the step's end)
     };
     std::map<std::pair<size_t, int>, ReadPlan> read_plan;  // (activation, chord) -> its read
     // How far the final end moves with its anchor's lead, at the last step's
@@ -696,10 +731,7 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
                 continue;
             }
             const int64_t tick = replay.chords[static_cast<size_t>(x)].tick;
-            // The last step on the chord is the end in force after it.
-            std::optional<size_t> step;
-            for (size_t s = 0; s < act.sp_end_steps.size(); ++s)
-                if (act.sp_end_steps[s].tick == tick) step = s;
+            const std::optional<size_t> step = step_on(act, tick);
             if (!step) {
                 refusals.push_back("the activation at " + tick_text(act.timecode.ticks()) +
                                    " has no SP-end step on chord " + std::to_string(x) +
@@ -721,7 +753,8 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
                 lead_of.count(x) > 0
                     ? anchor_end_shift_ms(way_of[x], moving_side(way_of[x], *scale), lead_of[x], kJudgeEarlyMs)
                     : scale->late * (kJudgeEarlyMs - kPressLeadMs);
-            read_plan[{a, x}] = ReadPlan{stored, stored + shift, *scale};
+            read_plan[{a, x}] = ReadPlan{stored, stored + shift, *scale,
+                                         steady_spans(tick, act.sp_end_steps[*step].end_tick, timing)};
             chord_list[static_cast<size_t>(x)]["reads"].push_back(nlohmann::json{{"activation", a},
                                                                                 {"step", *step},
                                                                                 {"ratio", scale_json(*scale)},
@@ -758,6 +791,9 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
         l.own_stored_end_ms = own_stored_ms;
         l.own_end_ms = own_ms;
         l.conversion = end_conversion(*own, it->second.scale);
+        const SteadySpans& s = it->second.steady;
+        if (s.before_end_ms) l.read_low_ms = it->second.stored_ms - *s.before_end_ms;
+        if (s.after_end_ms) l.read_high_ms = it->second.stored_ms + *s.after_end_ms;
         return l;
     };
     // The final end's link, for a chord aimed at activation `a`'s final end.
@@ -1005,6 +1041,9 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
                            {"own_stored_end_ms",
                             p.link ? nlohmann::json(p.link->own_stored_end_ms) : nlohmann::json(nullptr)},
                            {"conversion", p.link ? scale_json(p.link->conversion) : nlohmann::json(nullptr)},
+                           {"read_range_ms", p.link ? nlohmann::json::array({or_null(p.link->read_low_ms),
+                                                                             or_null(p.link->read_high_ms)})
+                                                    : nlohmann::json(nullptr)},
                            {"room_ms", press_room_ms(p.aim_ms, side)},
                            {"last_send_ms", last_send_ms(c.ms, side)}};
         if (!p.fallback.is_null()) row["fallback"] = p.fallback;

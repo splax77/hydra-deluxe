@@ -471,9 +471,14 @@ which the player reads, and its own end, which the press must land before or
 after. It carries both as stored (`read_stored_end_ms`, `own_stored_end_ms`),
 the read its aim assumed (`aim_end_ms`), its own end as planned
 (`own_end_ms`) and the `conversion` from one to the other, an `early` and a
-`late` side: how many ms the own end moves for each ms the read end moves. A
-press with no end carries null in each. For every squeeze it names
-the chord whose press moves the end, splits the room between the two presses,
+`late` side: how many ms the own end moves for each ms the read end moves. It
+also carries `read_range_ms`, a `[low, high]` pair: the reads over which that
+conversion holds, from the read end's `steady_spans` in
+src/core/squeeze_rating.cpp (a side with no tempo or time signature change
+past it is null). A press with no end carries null in each. The schedule
+refuses an anchor lead that would move the read end out of its steady span,
+as it already refuses one that moves the anchor or the own end out of
+theirs. For every squeeze it names the chord whose press moves the end, splits the room between the two presses,
 says whether the game can make it at 100% speed, and writes what the player
 should do if the end the game really stores crosses a threshold. Each
 threshold is written as a read, the read at which the own end reaches it. A path it

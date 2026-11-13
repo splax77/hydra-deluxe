@@ -52,6 +52,15 @@ KeptGems kept_gems(const Chord& chord, const std::vector<ReplayNote>& notes);
 // plain numbers, so the tests can pin it on the plan's own figures;
 // schedule_json reads the engine's records into these and writes the results.
 
+// The end the player reads after an anchor chord: the end of the SP-end step
+// on that chord (design point 5 of
+// docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md).
+struct ReadEnd {
+    int64_t tick = 0;     // that step's end tick
+    TransferScale ratio;  // step_transfer_scale of that step
+    SteadySpans steady;   // steady_spans(anchor, read end)
+};
+
 // One squeeze that needs timing, as its two presses see it: the anchor chord
 // (Activation::squeeze_anchor_tick, the overfill chord when the cap clamped,
 // else the activation) and the squeeze chord, each with its window side, and
@@ -67,6 +76,9 @@ struct SqueezeGeometry {
     double end_ms = 0.0;
     TransferScale ratio;  // as stored; the side the anchor moves is read off it
     SteadySpans steady;   // steady_spans(anchor, end)
+    // The read end, when the activation has a step on the anchor's chord.
+    // Unset, the read after the anchor is not planned and a refusal says so.
+    std::optional<ReadEnd> read_end;
 };
 
 // The side of `scale` an anchor press for a squeeze of `kind` moves an end
@@ -98,7 +110,8 @@ SqueezeSplit split_squeeze(const SqueezeGeometry& g);  // at equal_room_lead_ms
 // any of them needs, so each other one keeps more room than the split gives
 // it. Unset, with a plain-words line in `refusals`, when the squeezes need it
 // pressed both early and late, when the split would press it the other way
-// than its squeeze needs, or when the lead crosses a steady span.
+// than its squeeze needs, or when the lead moves the anchor, the own end or
+// a squeeze's read end across a steady span.
 std::optional<double> anchor_lead_ms(const std::vector<SqueezeGeometry>& on_one_anchor,
                                      std::vector<std::string>& refusals);
 
@@ -128,6 +141,11 @@ struct EndLink {
     double own_stored_end_ms = 0.0;   // the own end as stored
     double own_end_ms = 0.0;          // the own end the press's aim assumed
     TransferScale conversion;         // end_conversion of the two step scales
+    // The reads over which the conversion holds: the read end as stored, less
+    // its steady span before and plus its span after (steady_spans; design
+    // point 5). A side with no change on it is unset.
+    std::optional<double> read_low_ms;
+    std::optional<double> read_high_ms;
 };
 
 // The own end's scale over the read end's, each side over the same side.
@@ -229,7 +247,8 @@ nlohmann::json activation_json(const Activation& act, const ChordTimes& chords,
 // scale and the end planned there; a press timed from an end names the
 // activation ("timed_from_end"), the read it is retimed from
 // ("end_read_after") and the EndLink fields ("aim_end_ms", "own_end_ms",
-// "read_stored_end_ms", "own_stored_end_ms", "conversion"); its fallback
+// "read_stored_end_ms", "own_stored_end_ms", "conversion", and
+// "read_range_ms" as [read_low_ms, read_high_ms], null on an open side); its fallback
 // thresholds are in read terms. Every chord row carries "refused": true when the
 // schedule writes no press for it, and then a line in "refusals" says why.
 // `replay` is replay_path over the same path's windows. `rules` are the
