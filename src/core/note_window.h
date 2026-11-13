@@ -3,8 +3,8 @@
 //
 // Clone Hero sizes each note's window from the gaps to its two neighbours.
 // The rule is TM-17 to TM-22 and TM-51 on docs/clone-hero/03-timing.md, and it
-// is worked out here only. hydra_replay schedule (tools/replay_schedule.h) and
-// the Paths tab's row both call it.
+// is worked out here only. The hydra_replay schedule tool and the Paths tab's
+// row both call it.
 //
 // The row is display only. Hydra's ratings, tiers, badges and search keep
 // kHitWindowMs (core/model.h), a separate number (D270 call 8): the user
