@@ -1777,6 +1777,16 @@ class ReadRangeTest(unittest.TestCase):
                 self.assertAlmostEqual(moved.at_ms - press.at_ms, read_ms - 1000.0, delta=1e-9)
                 self.assertIsNone(moved.retimed)
 
+    def test_a_null_side_is_open(self):
+        for low, high, read_ms in ((None, 1010.0, -1e9), (990.0, None, 1e9)):
+            with self.subTest(low=low, high=high):
+                press = self._press(read_range_ms=(low, high))
+                (moved,) = play_chart.retime_from_end([press], 4, read_ms)
+                self.assertIsNone(moved.retimed)
+                (kept,) = play_chart.retime_from_end(
+                    [press], 4, 1010.01 if high is not None else 989.99)
+                self.assertEqual(kept.retimed, play_chart.RETIMED_RANGE)
+
     def test_a_press_with_no_fallback_stays_unmoved(self):
         press = self._press()
         for read_ms in (self.RANGE[0] - 0.01, self.RANGE[1] + 0.01):

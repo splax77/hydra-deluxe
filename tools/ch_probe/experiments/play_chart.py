@@ -370,11 +370,14 @@ def own_end_now_ms(press: Press, read_end_ms: float) -> float:
 
 def _in_read_range(press: Press, read_end_ms: float) -> bool:
     """Whether `read_end_ms` lies inside `press`'s `read_range_ms`, ends
-    included. A press with no range is always inside."""
+    included. A press with no range is always inside. A null side means no
+    tempo or time signature change on that side of the read end (the
+    schedule writes `steady_spans`' null), so that side is open."""
     if press.read_range_ms is None:
         return True
     low, high = press.read_range_ms
-    return low <= read_end_ms <= high
+    return ((low is None or low <= read_end_ms)
+            and (high is None or read_end_ms <= high))
 
 
 def press_plan(chords: Sequence[Chord]) -> List[Press]:
