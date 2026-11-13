@@ -324,23 +324,71 @@ void render_activation_row(size_t i, const app::ActivationRowView& a, app::Paths
     end_overlay(top, l.row_h);
 }
 
-// One squeeze sentence in its warm box, in the badge pill's colours
-// (badge_pill.h); the border turns warning-coloured when the squeeze is
-// difficult.
-void squeeze_box(int act_number, size_t k, const app::TextLine& s) {
-    char id[32];
-    std::snprintf(id, sizeof(id), "##sq%d_%zu", act_number, k);
+// The thin line over a Dynamic Hit Window row, and the gap between the row's
+// pieces: the mockup's (.dhw in
+// docs/superpowers/specs/2026-11-12-dynamic-hit-window-mockup/index.html).
+constexpr PillRgb kWindowRowDivider{74, 54, 34};
+constexpr float kWindowRowGap = 14.0f;  // unscaled
+
+// One Dynamic Hit Window row, the bottom line of its timing's box: a divider,
+// the label, the windows in the Figure role, then the tag (badge_pill.h) at
+// the right edge, as the mockup places it. A piece that does not fit beside
+// the last one starts the next line, and the tag keeps to the right edge
+// there too, so nothing is cut off at the narrowest panel.
+void window_row(const app::WindowRowView& w) {
+    ImGui::PushStyleColor(ImGuiCol_Separator, pill_vec4(kWindowRowDivider));
+    ImGui::Separator();
+    ImGui::PopStyleColor();
+    ImGui::TextUnformatted(app::kDynamicHitWindowLabel);
+    const float gap = px(kWindowRowGap);
+    ScopedFont font(TextRole::Figure);
+    flow_next(ImGui::CalcTextSize(w.windows.c_str()).x, gap);
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextUnformatted(w.windows.c_str());
+    ImGui::PopTextWrapPos();
+    const float tag_w = window_tag_width(ImGui::CalcTextSize(w.tag.c_str()).x, px(1.0f));
+    if (fits_on_line(tag_w, gap)) ImGui::SameLine(0.0f, gap);
+    place_control_at_right_edge(tag_w);
+    draw_window_tag(ImGui::GetWindowDrawList(), ImGui::GetCursorScreenPos(), w.tag.c_str(),
+                    w.is_short, px(1.0f));
+}
+
+// One timing in its warm box, in the badge pill's colours (badge_pill.h): a
+// squeeze sentence or the "Early fill" line, then its Dynamic Hit Window row
+// when the view holds one. The border turns warning-coloured when the
+// timing's badge is.
+void timing_box(const char* id, const std::string& text, bool warn,
+                const std::optional<app::WindowRowView>& window) {
     ImGui::PushStyleColor(ImGuiCol_ChildBg, pill_vec4(kPillFill));
-    ImGui::PushStyleColor(ImGuiCol_Border, s.warn ? kWarningColor : pill_vec4(kPillBorder));
+    ImGui::PushStyleColor(ImGuiCol_Border, warn ? kWarningColor : pill_vec4(kPillBorder));
     ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(232 / 255.0f, 214 / 255.0f, 196 / 255.0f, 1.0f));
     ImGui::BeginChild(id, ImVec2(0.0f, 0.0f),
                       ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY |
                           ImGuiChildFlags_AlwaysUseWindowPadding);
     ImGui::PushTextWrapPos(0.0f);
-    ImGui::TextUnformatted(s.text.c_str());
+    ImGui::TextUnformatted(text.c_str());
     ImGui::PopTextWrapPos();
+    if (window) window_row(*window);
     ImGui::EndChild();
     ImGui::PopStyleColor(3);
+}
+
+// One squeeze sentence's box, with the row build_activations gave it.
+void squeeze_box(const app::ActivationRowView& a, size_t k) {
+    char id[32];
+    std::snprintf(id, sizeof(id), "##sq%d_%zu", a.number, k);
+    const app::TextLine& s = a.squeeze_sentences[k];
+    timing_box(id, s.text, s.warn,
+               k < a.squeeze_windows.size() ? a.squeeze_windows[k] : std::nullopt);
+}
+
+// The "Early fill" line's box. Its border follows the fill's badge, which
+// Activation::badge_timings lists first whenever the line shows.
+void early_fill_box(const app::ActivationRowView& a) {
+    char id[32];
+    std::snprintf(id, sizeof(id), "##ef%d", a.number);
+    const bool warn = !a.badges.empty() && a.badges.front().warn;
+    timing_box(id, a.early_fill, warn, a.early_fill_window);
 }
 
 // The role each backend column's cells draw in; the header row is Label.
@@ -443,7 +491,8 @@ void render_backend_table(const app::ActivationRowView& a) {
 }
 
 // What an opened row shows: the chord and "Show in Preview", the early fill
-// line, the squeeze sentences, the scale and overfill notes with their hover
+// line and the squeeze sentences, each in its box with its Dynamic Hit Window
+// row when it has one, the scale and overfill notes with their hover
 // hints, and the backend table under its fold (open or closed as
 // PathsTabUi::backends_open says).
 void render_activation_body(size_t i, const app::ActivationRowView& a, app::PathsTabUi& ui) {
@@ -459,9 +508,8 @@ void render_activation_body(size_t i, const app::ActivationRowView& a, app::Path
     place_control_at_line_end(button_slot_width("Show in Preview >"));
     if (ImGui::SmallButton(show)) ui.preview_jump = i;
 
-    if (!a.early_fill.empty()) ImGui::TextUnformatted(a.early_fill.c_str());
-    for (size_t k = 0; k < a.squeeze_sentences.size(); ++k)
-        squeeze_box(a.number, k, a.squeeze_sentences[k]);
+    if (!a.early_fill.empty()) early_fill_box(a);
+    for (size_t k = 0; k < a.squeeze_sentences.size(); ++k) squeeze_box(a, k);
     if (!a.scale_warning.empty()) {
         // Orange when the scale moves a figure on screen, gray otherwise.
         ImGui::PushStyleColor(ImGuiCol_Text, warn_or_dim(a.scale_warn));
