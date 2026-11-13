@@ -10,12 +10,15 @@
 #include "doctest.h"
 
 #include <map>
+#include <optional>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
 #include "app/analysis.h"
 #include "app/display_format.h"
 #include "app/path_view.h"
+#include "core/note_window.h"
 #include "core/squeeze_rating.h"
 #include "analyzed_chart.h"
 #include "record_fixtures.h"
@@ -1204,4 +1207,263 @@ TEST_CASE("activation rows: the chord names its notes in the Pro Drums setting's
     // With it off the chart has no tom or snare, so the pads are plain colours;
     // a cymbal still says cymbal.
     CHECK(chord_of(false) == "[Kick - Red (Ghost) - Yellow - Green cymbal]");
+}
+
+// ---- the Dynamic Hit Window row ---------------------------------------------
+// The plan is docs/superpowers/plans/2026-11-12-dynamic-hit-window.md, T2. The
+// figures are the ones its T0 step read from hydra_replay schedule.
+
+namespace {
+
+// A corpus chart analyzed the way burnout() analyzes it
+// (song_details_fixtures.h), once per test run.
+const AnalysisResult& analyzed_like_the_gui(const std::string& name) {
+    static std::map<std::string, AnalysisResult> cache;
+    auto it = cache.find(name);
+    if (it == cache.end()) {
+        const std::string path = corpus::chart_named(name);
+        if (path.empty()) throw std::runtime_error(name + " is not in testdata/input");
+        it = cache.emplace(name, analyze_chart_file(path, scratch_settings().to_analysis_settings()))
+                 .first;
+    }
+    return it->second;
+}
+
+const AnalysisResult& tapped_out() { return analyzed_like_the_gui("Mike Orlando - Tapped Out"); }
+const AnalysisResult& focus() { return analyzed_like_the_gui("SoundHaven - Focus [Ariana Grande]"); }
+const AnalysisResult& epidermis() { return analyzed_like_the_gui("Venetian Snares - Epidermis"); }
+
+// `path`'s rows as the Paths tab builds them, with `chords` (null for none).
+ActivationsView rows_of(const AnalysisResult& ar, const Path& path, const ChordTimes* chords) {
+    const SongTiming& timing = ar.song.timing();
+    return build_activations(path, ar.record, &timing, std::nullopt, core::default_rules(),
+                             std::nullopt, /*pro_drums=*/true, chords);
+}
+
+// The place of `act`'s only squeeze of `kind`.
+size_t only_squeeze(const Activation& act, SqueezeKind kind) {
+    std::optional<size_t> found;
+    for (size_t k = 0; k < act.sqinouts.size(); ++k)
+        if (act.sqinouts[k].kind == kind) {
+            REQUIRE_FALSE(found.has_value());
+            found = k;
+        }
+    REQUIRE(found.has_value());
+    return *found;
+}
+
+// The row of `act`'s only squeeze of `kind`, as `av` shows it.
+WindowRowView squeeze_row(const Activation& act, const ActivationRowView& av, SqueezeKind kind) {
+    const size_t k = only_squeeze(act, kind);
+    REQUIRE(av.squeeze_windows.size() == act.sqinouts.size());
+    REQUIRE(av.squeeze_windows[k].has_value());
+    return *av.squeeze_windows[k];
+}
+
+// Every field of two rows but the Dynamic Hit Window rows.
+void check_same_but_windows(const ActivationRowView& a, const ActivationRowView& b) {
+    CHECK(a.number == b.number);
+    CHECK(a.notation == b.notation);
+    CHECK(a.measure == b.measure);
+    CHECK(a.sp_bars == b.sp_bars);
+    CHECK(a.bars == b.bars);
+    REQUIRE(a.badges.size() == b.badges.size());
+    for (size_t i = 0; i < a.badges.size(); ++i) {
+        CHECK(a.badges[i].text == b.badges[i].text);
+        CHECK(a.badges[i].warn == b.badges[i].warn);
+    }
+    CHECK(a.difficult == b.difficult);
+    CHECK(a.song_fraction == b.song_fraction);
+    CHECK(a.chord == b.chord);
+    CHECK(a.early_fill == b.early_fill);
+    REQUIRE(a.squeeze_sentences.size() == b.squeeze_sentences.size());
+    for (size_t i = 0; i < a.squeeze_sentences.size(); ++i) {
+        CHECK(a.squeeze_sentences[i].text == b.squeeze_sentences[i].text);
+        CHECK(a.squeeze_sentences[i].warn == b.squeeze_sentences[i].warn);
+    }
+    CHECK(a.scale_warning == b.scale_warning);
+    CHECK(a.scale_warn == b.scale_warn);
+    CHECK(a.overfill_warning == b.overfill_warning);
+    CHECK(a.backends_label == b.backends_label);
+    REQUIRE(a.backends.size() == b.backends.size());
+    for (size_t i = 0; i < a.backends.size(); ++i) {
+        CHECK(a.backends[i].timing == b.backends[i].timing);
+        CHECK(a.backends[i].tooltip == b.backends[i].tooltip);
+        CHECK(a.backends[i].chord == b.backends[i].chord);
+        CHECK(a.backends[i].points == b.backends[i].points);
+        CHECK(a.backends[i].rating == b.backends[i].rating);
+        CHECK(a.backends[i].warn == b.backends[i].warn);
+    }
+    CHECK(a.backends_hidden_line == b.backends_hidden_line);
+}
+
+}  // namespace
+
+TEST_CASE("dynamic hit window: the label is one constant") {
+    CHECK(std::string(kDynamicHitWindowLabel) == "Dynamic Hit Window:");
+}
+
+TEST_CASE("dynamic hit window: Tapped Out's squeeze out is out of reach") {
+    const AnalysisResult& ar = tapped_out();
+    const Path& best = ar.record.best_path();
+    const ChordTimes chords = chord_times(ar.song);
+    const std::vector<Activation> acts = best.all_activations();
+    const ActivationsView view = rows_of(ar, best, &chords);
+    REQUIRE(view.acts.size() >= 4);
+    const WindowRowView row = squeeze_row(acts[3], view.acts[3], SqueezeKind::SqOut);
+    CHECK(row.windows == "77.9 ms early   72.0 ms late");
+    CHECK(row.tag == "65.9 ms short");
+    CHECK(row.is_short);
+}
+
+TEST_CASE("dynamic hit window: Burnout's squeeze out has 5.4 ms spare") {
+    const AnalysisResult& ar = burnout();
+    const Path& best = ar.record.best_path();
+    REQUIRE(best.pathstring() == "3- 1 2");
+    const ChordTimes chords = chord_times(ar.song);
+    const std::vector<Activation> acts = best.all_activations();
+    const ActivationsView view = rows_of(ar, best, &chords);
+    REQUIRE(view.acts.size() == 3);
+    const WindowRowView row = squeeze_row(acts[0], view.acts[0], SqueezeKind::SqOut);
+    CHECK(row.windows == "84.5 ms early   84.3 ms late");
+    CHECK(row.tag == "5.4 ms spare");
+    CHECK_FALSE(row.is_short);
+    // Activations 2 and 3 have no timing badge, so no row.
+    for (size_t i = 1; i < view.acts.size(); ++i) {
+        for (const std::optional<WindowRowView>& w : view.acts[i].squeeze_windows)
+            CHECK_FALSE(w.has_value());
+        CHECK_FALSE(view.acts[i].early_fill_window.has_value());
+    }
+}
+
+TEST_CASE("dynamic hit window: a squeeze in names the anchor late, then the note early") {
+    SUBCASE("Focus [Ariana Grande], activation 2: room to spare") {
+        const AnalysisResult& ar = focus();
+        const Path& best = ar.record.best_path();
+        REQUIRE(best.pathstring() == "0 3+ 0 0");
+        const ChordTimes chords = chord_times(ar.song);
+        const std::vector<Activation> acts = best.all_activations();
+        const ActivationsView view = rows_of(ar, best, &chords);
+        REQUIRE(view.acts.size() >= 2);
+        const WindowRowView row = squeeze_row(acts[1], view.acts[1], SqueezeKind::SqIn);
+        CHECK(row.windows == "61.9 ms late   48.1 ms early");
+        CHECK(row.tag == "85.1 ms spare");
+        CHECK_FALSE(row.is_short);
+    }
+    SUBCASE("Epidermis, activation 2: out of reach") {
+        const AnalysisResult& ar = epidermis();
+        const Path& best = ar.record.best_path();
+        const ChordTimes chords = chord_times(ar.song);
+        const std::vector<Activation> acts = best.all_activations();
+        const ActivationsView view = rows_of(ar, best, &chords);
+        REQUIRE(view.acts.size() >= 2);
+        const WindowRowView row = squeeze_row(acts[1], view.acts[1], SqueezeKind::SqIn);
+        CHECK(row.windows == "48.1 ms late   67.8 ms early");
+        CHECK(row.tag == "184.1 ms short");
+        CHECK(row.is_short);
+    }
+}
+
+TEST_CASE("dynamic hit window: a required early fill gets one window, an optional one none") {
+    const AnalysisResult& ar = tapped_out();
+    const Path& best = ar.record.best_path();
+    const ChordTimes chords = chord_times(ar.song);
+    const ActivationsView view = rows_of(ar, best, &chords);
+    REQUIRE(view.acts.size() >= 4);
+
+    // Activation 3 is E0: its fill is required.
+    const ActivationRowView& a3 = view.acts[2];
+    CHECK(a3.early_fill == "Early fill: 0.0 ms (required)");
+    REQUIRE(a3.early_fill_window.has_value());
+    CHECK(a3.early_fill_window->windows == "82.9 ms early");
+    CHECK(a3.early_fill_window->tag == "82.9 ms spare");
+    CHECK_FALSE(a3.early_fill_window->is_short);
+
+    // Activation 4 skipped a fill before it, so its fill is optional
+    // (Activation::is_E0, question 4): the line shows, the row does not.
+    const ActivationRowView& a4 = view.acts[3];
+    CHECK(a4.early_fill == "Early fill: 0.0 ms (optional)");
+    CHECK_FALSE(a4.early_fill_window.has_value());
+}
+
+TEST_CASE("dynamic hit window: no row for a timing that needs no hitting, or an optional fill") {
+    SUBCASE("a squeeze in at 0.0 ms gets a row; at -0.1 ms it needs no timing and gets none") {
+        const AnalysisResult& ar = focus();
+        const ChordTimes chords = chord_times(ar.song);
+        Path p;
+        p.activations = ar.record.best_path().all_activations();
+        REQUIRE(p.activations.size() >= 2);
+        Activation& act = p.activations[1];
+        const size_t k = only_squeeze(act, SqueezeKind::SqIn);
+
+        act.sqinouts[k].offset_ms = 0.0;
+        REQUIRE(squeeze_in_window(act, k, chords).has_value());
+        CHECK(rows_of(ar, p, &chords).acts[1].squeeze_windows[k].has_value());
+
+        act.sqinouts[k].offset_ms = -0.1;
+        REQUIRE(squeeze_in_window(act, k, chords).has_value());  // the owner has numbers
+        CHECK_FALSE(rows_of(ar, p, &chords).acts[1].squeeze_windows[k].has_value());
+    }
+    SUBCASE("a required early fill with time to spare gets none") {
+        const AnalysisResult& ar = tapped_out();
+        const ChordTimes chords = chord_times(ar.song);
+        Path p;
+        p.activations = ar.record.best_path().all_activations();
+        REQUIRE(p.activations.size() >= 3);
+        Activation& act = p.activations[2];
+        act.e_offset = 20.0;  // Star Power ready 20 ms before the deadline
+        REQUIRE(act.is_E0());
+        REQUIRE(early_fill_window(act, chords).has_value());  // the owner has numbers
+        const ActivationRowView av = rows_of(ar, p, &chords).acts[2];
+        CHECK(av.early_fill == "Early fill: -20.0 ms (required)");
+        CHECK_FALSE(av.early_fill_window.has_value());
+    }
+    SUBCASE("the same early fill made optional gets none") {
+        const AnalysisResult& ar = tapped_out();
+        const ChordTimes chords = chord_times(ar.song);
+        Path p;
+        p.activations = ar.record.best_path().all_activations();
+        REQUIRE(p.activations.size() >= 3);
+        Activation& act = p.activations[2];
+        test::set_skips(act, 1);
+        REQUIRE_FALSE(act.is_E0());
+        REQUIRE(early_fill_window(act, chords).has_value());  // the owner has numbers
+        CHECK_FALSE(rows_of(ar, p, &chords).acts[2].early_fill_window.has_value());
+    }
+}
+
+TEST_CASE("dynamic hit window: no chord times, no row anywhere") {
+    for (const AnalysisResult* ar : {&tapped_out(), &burnout(), &focus(), &epidermis()}) {
+        const ActivationsView view = rows_of(*ar, ar->record.best_path(), nullptr);
+        REQUIRE_FALSE(view.acts.empty());
+        for (const ActivationRowView& av : view.acts) {
+            CHECK(av.squeeze_windows.size() == av.squeeze_sentences.size());
+            for (const std::optional<WindowRowView>& w : av.squeeze_windows)
+                CHECK_FALSE(w.has_value());
+            CHECK_FALSE(av.early_fill_window.has_value());
+        }
+    }
+}
+
+TEST_CASE("dynamic hit window: the row sits alongside and changes no other field") {
+    int rows_shown = 0;
+    for (const AnalysisResult* ar : {&tapped_out(), &burnout(), &focus(), &epidermis()}) {
+        const Path& best = ar->record.best_path();
+        const ChordTimes chords = chord_times(ar->song);
+        const ActivationsView with = rows_of(*ar, best, &chords);
+        const ActivationsView without = rows_of(*ar, best, nullptr);
+        CHECK(with.summary == without.summary);
+        CHECK(with.timeline_start == without.timeline_start);
+        CHECK(with.timeline_end == without.timeline_end);
+        REQUIRE(with.acts.size() == without.acts.size());
+        for (size_t i = 0; i < with.acts.size(); ++i) {
+            check_same_but_windows(with.acts[i], without.acts[i]);
+            for (const std::optional<WindowRowView>& w : with.acts[i].squeeze_windows)
+                rows_shown += w.has_value() ? 1 : 0;
+            rows_shown += with.acts[i].early_fill_window.has_value() ? 1 : 0;
+        }
+    }
+    // The comparison covers rows that show, not only rows that do not: at
+    // least the five the cases above pin on these charts.
+    CHECK(rows_shown >= 5);
 }
