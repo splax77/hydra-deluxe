@@ -193,12 +193,14 @@ class ServerTest(unittest.TestCase):
         # Question 6 (a) of docs/superpowers/plans/2026-11-08-replay-press-
         # schedule.md and D324 item 2: schedule_json replaces dump_json, and
         # no decline mode or lead is an argument. D318 item 4: ch_run_chart
-        # and ch_play_chart take path_index, 0 when left out. Task IG6a of
-        # docs/superpowers/plans/2026-11-12-in-game-press-timing.md: neither
-        # takes timing; the route alone says who times the presses.
+        # and ch_play_chart take path_index, 0 when left out. D342:
+        # neither takes timing; the route alone says who times the presses.
+        # Task T2 of docs/superpowers/plans/2026-11-12-early-fill-live-check.md:
+        # ch_run_chart takes ch_edge_probe's probes file, None when left out.
         self.assertEqual(set(self._schema("ch_run_chart")),
                          {"song_folder", "score_json", "schedule_json", "kit_player",
-                          "path_index"})
+                          "path_index", "probes_json"})
+        self.assertIsNone(self._schema("ch_run_chart")["probes_json"]["default"])
         self.assertEqual(set(self._schema("ch_play_chart")),
                          {"score_json", "schedule_json", "log", "song_folder", "route",
                           "path_index"})
@@ -223,12 +225,12 @@ class ServerTest(unittest.TestCase):
         self.helper.game.ch_run_chart = lambda *a: seen.append(a) or "ran"
         result = asyncio.run(S.build_server(self.helper).call_tool("ch_run_chart", {
             "song_folder": "song", "score_json": "top.json", "schedule_json": "sched.json",
-            "kit_player": "System", "path_index": 3}))
+            "kit_player": "System", "path_index": 3, "probes_json": "p.json"}))
         self.assertEqual(result.content[0].text, "ran")
-        self.assertEqual(seen, [("song", "top.json", "sched.json", "System", 3)])
+        self.assertEqual(seen, [("song", "top.json", "sched.json", "System", 3, "p.json")])
 
     def test_a_leftover_timing_argument_is_dropped_without_a_word(self):
-        # Row P33 of docs/superpowers/plans/2026-11-12-in-game-press-timing.md:
+        # Row P33 of docs/superpowers/plans/2026-11-12-in-game-press-timing.md (removed; git show b971b235:docs/superpowers/plans/2026-11-12-in-game-press-timing.md):
         # the server takes a call that still passes timing, drops the
         # argument and runs the tool as if it were left out. The MCP page
         # (docs/agents/clone-hero-mcp.md) says so.
@@ -242,7 +244,7 @@ class ServerTest(unittest.TestCase):
         play = asyncio.run(server.call_tool("ch_play_chart", {
             "score_json": "s.json", "schedule_json": "sched.json", "timing": "python"}))
         self.assertEqual((run.content[0].text, play.content[0].text), ("ran", "playing"))
-        self.assertEqual(seen, [("song", "top.json", "sched.json", None, 0),
+        self.assertEqual(seen, [("song", "top.json", "sched.json", None, 0, None),
                                 ("s.json", "sched.json", None, None, None, 0)])
 
     def test_ch_kit_frame_probe_passes_its_seconds_through(self):

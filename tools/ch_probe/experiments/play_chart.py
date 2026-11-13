@@ -484,10 +484,10 @@ class RunResult:
     STOP_DONE (every chord pressed), "past_end" (the clock was past the last
     chord), "frozen", "cap", "interrupted", "lost" (the process went away),
     "stopped" (the caller's `should_stop` said so), "reply" (a kit reply
-    lacked what its press asked for) or STOP_NO_ENGINE (live_play found no
+    lacked what its press asked for) or STOP_NO_ENGINE (the run found no
     playing song). For every stop but STOP_DONE, `message` says why in
     words: the finder's for STOP_NO_ENGINE. `dyn_threshold` is the dynamics
-    threshold live_play read, None when it read none."""
+    threshold live_in_game read, None when it read none (the keys route reads none)."""
     sent: int = 0
     declined: int = 0
     dropped: int = 0
@@ -572,7 +572,9 @@ def play_chords(chords: Sequence[Chord], clock, read_score: Callable[[], int],
     chord split in order groups is one call, with `then=` a list of
     (lanes, axes, after_ms) for its later groups; every other press is
     called with the keys and axes alone. With `kit` True, `press` is the kit
-    press of tools/ch_mcp/kit_tools.py: each reply must hold what
+    press of tools/ch_mcp/kit_tools.py, which only the loop case of
+    stall_harness.py hands in, as its control (a kit run uses live_in_game
+    instead): each reply must hold what
     kit_tools.reply_gap asks of it, else the run stops at that chord as
     "reply" (D318 item 2), and each row keeps the reply's values that
     PRESS_LOG_COLUMNS names, from the reply's `groups` entry for its group
@@ -848,7 +850,8 @@ def play_in_game(chords: Sequence[Chord], player, *, clock_addr: int, score_addr
     """Hand press_plan's presses of `chords` to the kit agent in one `play`
     message and make a press-log row of each event it reports, as
     play_chords would for the same press (design points 1 to 5 of
-    docs/superpowers/plans/2026-11-12-in-game-press-timing.md). The agent
+    docs/superpowers/plans/2026-11-12-in-game-press-timing.md (removed; git show b971b235:docs/superpowers/plans/2026-11-12-in-game-press-timing.md)).
+    The agent
     fires every press on the game's frames; nothing here waits for a press
     time. kit_tools' contract block names every message and event field.
 
@@ -1208,23 +1211,20 @@ def live_play(chords: Sequence[Chord], *,
               open_proc: Callable = open_process,
               find_engine: Optional[Callable[[object], int]] = None,
               driver: Optional[InputDriver] = None,
-              press: Optional[Callable[..., object]] = None,
               on_press: Optional[Callable[[dict], object]] = None,
               should_stop: Optional[Callable[[], bool]] = None,
               out: Optional[TextIO] = None,
               cap_s: float = RUN_CAP_S) -> RunResult:
-    """Play `chords` against the running game and return what the run did.
+    """The keys route: play `chords` against the running game and return
+    what the run did. The kit route is live_in_game.
 
-    LIVE-ONLY: opens the game read-only, finds its engine and presses each
-    chord through `press` when one is given (the kit press, which needs no
-    window, so none is looked up), else sends keys through `driver` (a new
-    InputDriver when None) to the game window. When no song starts
-    inside the finder's cap, the result's `stop` is STOP_NO_ENGINE and its
-    `message` is the finder's. with_axes works out each gem's strength once
-    the engine is found, on the press route only, and raises its ValueError
-    before any press when no ghost strength is possible. `on_press`, `should_stop` and `cap_s` go to
-    play_chords, and a given `press` goes as the kit press (`kit`). `open_proc` and `find_engine` stand in for open_process and
-    the capped finder in tests. With no `find_engine` the real search runs
+    LIVE-ONLY: opens the game read-only, finds its engine, and sends each
+    chord's keys through `driver` (a new InputDriver when None) to the game
+    window. When no song starts inside the finder's cap, the result's
+    `stop` is STOP_NO_ENGINE and its `message` is the finder's. A key has no
+    strength, so no dynamics threshold is read. `on_press`, `should_stop`
+    and `cap_s` go to play_chords. `open_proc` and `find_engine` stand in
+    for open_process and the capped finder in tests. With no `find_engine` the real search runs
     and its progress dots go to `out`, so a caller that gives `out` a buffer
     (the `ch` MCP server, whose stdout is its protocol channel) gets no
     stdout from the search."""
@@ -1246,31 +1246,20 @@ def live_play(chords: Sequence[Chord], *,
         engine.use_object(engine_ptr)
         print(f"  Engine at {engine_ptr:#x}, song clock = {engine.song_clock():.2f}s",
               file=out)
-        # A key has no strength, so the keys route reads no threshold.
-        threshold = None
-        kit = press is not None
-        if kit:
-            chords, threshold = with_axes(chords, engine)
-        if threshold is not None:
-            print(f"  Dynamics threshold: {threshold}", file=out)
-
-        if press is None:
-            ch_hwnd = find_game_window()
-            if ch_hwnd:
-                print(f"  Clone Hero window handle: {ch_hwnd:#x}", file=out)
-            else:
-                print("  WARNING: could not find Clone Hero window", file=out)
-            driver = InputDriver() if driver is None else driver
-            press = live_press(driver, ch_hwnd)
+        ch_hwnd = find_game_window()
+        if ch_hwnd:
+            print(f"  Clone Hero window handle: {ch_hwnd:#x}", file=out)
+        else:
+            print("  WARNING: could not find Clone Hero window", file=out)
+        driver = InputDriver() if driver is None else driver
+        press = live_press(driver, ch_hwnd)
 
         # No fill-in between frames: the estimate is the raw clock, and the
         # presses fire on that.
         clock = SongClock(engine.song_clock, max_fill_s=0.0)
-        result = play_chords(chords, clock, engine.score, press,
-                             on_press=on_press, should_stop=should_stop, out=out,
-                             cap_s=cap_s, read_sp_end=engine.sp_end, kit=kit)
-        result.dyn_threshold = threshold
-        return result
+        return play_chords(chords, clock, engine.score, press,
+                           on_press=on_press, should_stop=should_stop, out=out,
+                           cap_s=cap_s, read_sp_end=engine.sp_end)
     finally:
         proc.close()
 
@@ -1282,11 +1271,11 @@ def live_in_game(chords: Sequence[Chord], *, player,
                  should_stop: Optional[Callable[[], bool]] = None,
                  out: Optional[TextIO] = None,
                  cap_s: float = RUN_CAP_S) -> RunResult:
-    """live_play for in-game timing: open the game read-only, find the
-    engine as live_play does, work out the strengths (with_axes), and hand
-    the run to play_in_game on `player` (a kit_tools.GamePlayer), with the
-    engine's clock and score addresses and its Star Power end read.
-    LIVE-ONLY."""
+    """The kit route: open the game read-only, find the engine, work out the
+    strengths (with_axes), and hand the run to play_in_game on `player` (a
+    kit_tools.GamePlayer), with the engine's clock and score addresses and
+    its Star Power end read, so the game times each press on its own frames.
+    The keys route is live_play. LIVE-ONLY."""
     out = sys.stdout if out is None else out
     if find_engine is None:
         def find_engine(proc) -> int:

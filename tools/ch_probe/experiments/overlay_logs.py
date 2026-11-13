@@ -30,7 +30,8 @@ play_chart.play_chords says what each one times. IN_GAME_PRESS_COLUMNS are
 what the kit agent reports about a press it timed on the game's frames
 (play_chart.play_in_game says what each holds); they are blank on rows
 play_chords wrote, and the timing columns are blank on rows play_in_game
-wrote (question 3 of docs/superpowers/plans/2026-11-12-in-game-press-timing.md).
+wrote (question 3 of
+docs/superpowers/plans/2026-11-12-in-game-press-timing.md (removed; git show b971b235:docs/superpowers/plans/2026-11-12-in-game-press-timing.md)).
 
 Older logs have a `hit` column where SEND_COLUMN is now: the player's own
 verdict from any score rise, which D319 item 1 removed, with the send state

@@ -551,9 +551,9 @@ class SetupForRunTest(Rig):
         self.assertIsNotNone(tools._ready_agent())
 
     def test_the_kit_tools_lend_no_press_and_the_harness_press_stays(self):
-        # Task IG6a of docs/superpowers/plans/2026-11-12-in-game-press-timing.md:
-        # the auto-player reaches the kit only through the GamePlayer; the
-        # module's kit_press stays for the stall harness (row P32).
+        # The auto-player reaches the kit only through the GamePlayer (D342);
+        # the module's kit_press stays for the stall harness (row P32 of
+        # docs/superpowers/plans/2026-11-12-in-game-press-timing.md (removed; git show b971b235:docs/superpowers/plans/2026-11-12-in-game-press-timing.md)).
         self.assertFalse(hasattr(K.KitTools, "kit_press"))
         self.assertTrue(callable(K.kit_press))
 
@@ -1019,8 +1019,8 @@ class WatchTest(Rig):
 
 
 class FrameProbeTest(Rig):
-    """ch_kit_frame_probe, LS-G1's probe (task IG3 of
-    docs/superpowers/plans/2026-11-12-in-game-press-timing.md)."""
+    """ch_kit_frame_probe, the probe of live step LS-G1 in
+    docs/superpowers/plans/2026-11-12-in-game-press-timing.md (removed; git show b971b235:docs/superpowers/plans/2026-11-12-in-game-press-timing.md)."""
 
     @staticmethod
     def probe_reply(frames=11, ms_per_frame=3, skip_at=None, green=True, any_button=True,

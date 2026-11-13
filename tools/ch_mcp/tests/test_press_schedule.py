@@ -1,6 +1,6 @@
 """Tests for agent/press_schedule.ts, the frame scheduler of the in-game press
-timing plan (docs/superpowers/plans/2026-11-12-in-game-press-timing.md, task
-IG1). One test per line of IG1's acceptance list.
+timing plan, one test per line of the acceptance list of its task IG1. The
+plan is docs/superpowers/plans/2026-11-12-in-game-press-timing.md (removed; git show b971b235:docs/superpowers/plans/2026-11-12-in-game-press-timing.md).
 
 No game and no Frida. Plain Node runs press_schedule.ts (Node erases its type
 annotations), as test_launch_core.py runs launch_core.ts: each case is a

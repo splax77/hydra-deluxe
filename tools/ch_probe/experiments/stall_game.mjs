@@ -1,6 +1,5 @@
-// The stall harness's fake game (task IG4 of
-// docs/superpowers/plans/2026-11-12-in-game-press-timing.md). stall_harness.py
-// starts it as the fake Frida script of a game-timed pass.
+// The stall harness's fake game. stall_harness.py starts it as the fake Frida
+// script of a game-timed pass.
 //
 // It runs the real PressSchedule of tools/ch_mcp/agent/press_schedule.ts (Node
 // erases its type annotations) on a wall-clock frame ticker, at the frame rate

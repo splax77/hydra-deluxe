@@ -46,7 +46,7 @@ from tools.ch_mcp.tests.test_game_files import FakeReg  # noqa: E402
 from tools.ch_mcp.tests.test_hydra_end import FAKE  # noqa: E402
 from tools.ch_probe import probe_songs  # noqa: E402
 from tools.ch_probe import input_driver  # noqa: E402
-from tools.ch_probe.experiments import play_chart  # noqa: E402
+from tools.ch_probe.experiments import edge_probe, play_chart  # noqa: E402
 from tools.ch_probe.experiments.overlay_logs import PRESS_LOG_COLUMNS  # noqa: E402
 from tools.ch_probe.tests.test_play_chart import (  # noqa: E402
     _FakeGame, _FakeSongClock, _FakeTime, _schedule_of)
@@ -1934,19 +1934,18 @@ class GameToolsTest(unittest.TestCase):
         # Question 6 (a) of docs/superpowers/plans/2026-11-08-replay-press-
         # schedule.md and D324 item 2: schedule_json replaces dump_json, and
         # no decline mode or lead is an argument. D318 item 4: ch_play_chart
-        # and ch_run_chart take path_index. Task IG6a of docs/superpowers/plans/
-        # 2026-11-12-in-game-press-timing.md: neither takes timing.
+        # and ch_run_chart take path_index. D342: neither takes timing.
         signatures = {name: list(inspect.signature(getattr(GT.GameTools, name)).parameters)
                       for name in ("ch_play_chart", "ch_run_chart", "ch_edge_probe")}
         self.assertEqual(signatures, {
             "ch_play_chart": ["self", "score_json", "schedule_json", "log", "song_folder",
                               "route", "path_index"],
             "ch_run_chart": ["self", "song_folder", "score_json", "schedule_json",
-                             "kit_player", "path_index"],
+                             "kit_player", "path_index", "probes_json"],
             "ch_edge_probe": ["self", "song_folder", "score_json", "schedule_json",
                               "probes_json"]})
 
-    # -- in-game timing (task IG3 of docs/superpowers/plans/2026-11-12-in-game-press-timing.md)
+    # -- in-game timing (D339)
 
     def _in_game_rig(self, **kw):
         """A chained-start rig whose live_in_game records the player it gets
@@ -1971,7 +1970,7 @@ class GameToolsTest(unittest.TestCase):
         self.assertTrue(kit.player.closed)
 
     def test_game_tools_names_no_kit_press_source_and_no_timing(self):
-        # Task IG6a of docs/superpowers/plans/2026-11-12-in-game-press-timing.md.
+        # D342: the kit route is timed by the game only.
         with open(GT.__file__, encoding="utf-8") as f:
             source = f.read()
         for gone in ("use_kit_press", "_kit_press_source", "TIMING_", "timing:", "timing="):
@@ -2091,6 +2090,108 @@ class GameToolsTest(unittest.TestCase):
     def test_a_human_launch_adds_the_launch_agent_to_the_builds_record(self):
         self.assertEqual([os.path.basename(p) for p in GT.run_agent_paths("x/launch.js")],
                          ["launch.js", "state.js", "kit.js"])
+
+    # -- probes (task T2 of docs/superpowers/plans/2026-11-12-early-fill-live-check.md) ---
+
+    FREAK_SCHEDULE = os.path.join(_PROBE_TESTS, "freak_limits_schedule.json")
+
+    def _probe_chain_rig(self):
+        """A chained-start rig whose player gives one row per press, at
+        exactly the time press_plan gives it, and records the chords it got."""
+        seen = {}
+
+        def live_play(chords, *, on_press, **kw):
+            seen["chords"] = list(chords)
+            for press in play_chart.press_plan(chords):
+                on_press({"index": press.index, "chart_ms": press.chart_ms,
+                          "clock_ms_at_press": press.at_ms, "lead_ms": press.lead_ms,
+                          "score_before": 0, "score_after": 50, "send": play_chart.SENT})
+            return play_chart.RunResult(stop="done", sent=len(chords))
+
+        t, events, _seen = self._chain_rig(live_play)
+        return t, events, seen
+
+    def _probes_file(self, probes):
+        path = os.path.join(self.tmp, "probes.json")
+        _write(path, json.dumps(probes).encode())
+        return path
+
+    def _probe_refusal(self, schedule_path, probes):
+        """ch_run_chart's refusal of `probes` on the schedule at
+        `schedule_path`, in edge_probe.probe_chords' own words."""
+        chords, _lines = GT.chords_to_play(schedule_path)
+        with self.assertRaises(ValueError) as caught:
+            edge_probe.probe_chords(chords, [edge_probe.Probe(p["index"], float(p["lead_ms"]))
+                                             for p in probes])
+        return f"refused: ValueError: {caught.exception}; nothing started"
+
+    def _assert_nothing_started(self, t, events):
+        self.assertEqual(events, [])
+        self.assertIsNone(t.tools._play)
+        self.assertEqual(t.tools._press_log_count, 0)
+        self.assertFalse(os.path.exists(os.path.join(t.tools.session_dir(), "builds-1.json")))
+
+    def test_run_chart_presses_a_probe_chord_at_its_asked_lead_and_marks_its_row(self):
+        t, _events, seen = self._probe_chain_rig()
+        probes = self._probes_file([{"index": 1, "lead_ms": 84}])
+        self._run(t, probes_json=probes)
+        # SCORE_JSON's chord 1 is at 1500 ms.
+        at = {p.index: p.at_ms for p in play_chart.press_plan(seen["chords"])}
+        self.assertAlmostEqual(at[1], 1500.0 - 84.0)
+        rows = {row["index"]: row for row in t.tools._play.rows}
+        self.assertEqual(rows[1]["chart_ms"], 1500.0)
+        self.assertEqual(rows[1][edge_probe.PROBE_COLUMN], 84.0)
+        self.assertNotIn(edge_probe.PROBE_COLUMN, rows[0])
+        # Chord 0 keeps the schedule's own press time.
+        plain = {p.index: p.at_ms for p in play_chart.press_plan(
+            GT.chords_to_play(self._schedule_json())[0])}
+        self.assertEqual(at[0], plain[0])
+
+    def test_run_chart_with_probes_says_the_probes_line_after_the_plays(self):
+        t, _events, _seen = self._probe_chain_rig()
+        probes = self._probes_file([{"index": 1, "lead_ms": 84}])
+        lines = self._run(t, probes_json=probes).splitlines()
+        play = [i for i, line in enumerate(lines) if line.startswith("play: ok")][0]
+        self.assertEqual(lines[play + 1:play + 2],
+                         edge_probe.probe_lines(edge_probe.load_probes(probes)))
+
+    def test_run_chart_refuses_a_probe_chord_not_in_the_schedule_before_the_attach(self):
+        t, events, _seen = self._probe_chain_rig()
+        probes = [{"index": 7, "lead_ms": 84}]
+        reply = self._run(t, probes_json=self._probes_file(probes))
+        self.assertEqual(reply, self._probe_refusal(self._schedule_json(), probes))
+        self._assert_nothing_started(t, events)
+
+    def test_run_chart_refuses_a_probe_on_a_chord_timed_from_a_star_power_end(self):
+        # Freak's chord 387 is a squeeze-out timed from activation 0's end
+        # (test_edge_probe's squeeze case).
+        t, events, _seen = self._probe_chain_rig()
+        probes = [{"index": 387, "lead_ms": 84}]
+        reply = self._run(t, os.path.join(_PROBE_TESTS, "freak_limits_score.json"),
+                          self.FREAK_SCHEDULE, probes_json=self._probes_file(probes))
+        self.assertEqual(reply, self._probe_refusal(self.FREAK_SCHEDULE, probes))
+        self._assert_nothing_started(t, events)
+
+    def test_run_chart_refuses_a_probes_file_load_probes_refuses(self):
+        t, events, _seen = self._probe_chain_rig()
+        path = self._probes_file({"index": 1, "lead_ms": 84})
+        with self.assertRaises(ValueError) as caught:
+            edge_probe.load_probes(path)
+        self.assertEqual(self._run(t, probes_json=path),
+                         f"refused: ValueError: {caught.exception}; nothing started")
+        self._assert_nothing_started(t, events)
+
+    def test_run_chart_with_no_probes_plays_the_schedules_own_presses(self):
+        # The chords chords_to_play loads go to the player unmoved, and no row
+        # is marked, so a run with no probes file plans what it did before
+        # ch_run_chart took one. Freak's schedule holds squeezes and end reads.
+        t, _events, seen = self._probe_chain_rig()
+        self._run(t, os.path.join(_PROBE_TESTS, "freak_limits_score.json"), self.FREAK_SCHEDULE)
+        loaded = GT.chords_to_play(self.FREAK_SCHEDULE)[0]
+        self.assertEqual(seen["chords"], loaded)
+        self.assertEqual(play_chart.press_plan(seen["chords"]), play_chart.press_plan(loaded))
+        self.assertIsNone(t.tools._play.mark_row)
+        self.assertFalse([row for row in t.tools._play.rows if edge_probe.PROBE_COLUMN in row])
 
     def test_with_no_parts_handed_in_it_refuses_and_touches_nothing(self):
         t = ToolRig(self.tmp)

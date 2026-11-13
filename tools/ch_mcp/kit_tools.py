@@ -673,8 +673,9 @@ def kit_press(agent: FA.LiveAgent, *, request_lock: Optional[threading.Lock] = N
 # --- in-game timing: the contract with the kit agent ---------------------------
 #
 # Design points 1, 3 and 5 of
-# docs/superpowers/plans/2026-11-12-in-game-press-timing.md. This block is the
-# Python home of every name the play messages and the agent's events use.
+# docs/superpowers/plans/2026-11-12-in-game-press-timing.md (removed; git show b971b235:docs/superpowers/plans/2026-11-12-in-game-press-timing.md).
+# This block is the Python home of every name the play messages and the
+# agent's events use.
 # The names match the contract block at the top of
 # tools/ch_mcp/agent/press_schedule.ts (IG1).
 #
@@ -883,7 +884,7 @@ def save_frame_probe(reply: dict, folder: str) -> str:
 
 def frame_probe_lines(reply: dict, clock_addr: int, saved_line: str) -> List[str]:
     """The frame probe's reply judged against LS-G1's pass line
-    (docs/superpowers/plans/2026-11-12-in-game-press-timing.md): the
+    (docs/superpowers/plans/2026-11-12-in-game-press-timing.md (removed; git show b971b235:docs/superpowers/plans/2026-11-12-in-game-press-timing.md)): the
     frame steps, the frame rate, the frame the press read back on, the gap
     between the engine clock and songTime, hook_out and failure, then one
     PASS or FAIL line naming each part that failed. The frame rate is

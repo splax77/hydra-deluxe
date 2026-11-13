@@ -250,8 +250,7 @@ class StallHarnessTest(unittest.TestCase):
 
 # --- IG4: a Python stall drops nothing when the game times the presses -------
 #
-# Task IG4 of docs/superpowers/plans/2026-11-12-in-game-press-timing.md. These
-# cases play cuts of the schedule LS-P3 played, on the fake game
+# These cases play cuts of the schedule LS-P3 played, on the fake game
 # (stall_game.mjs), and skip when that file or `node` is missing.
 
 _LS_P3_SCHEDULE = os.path.join(

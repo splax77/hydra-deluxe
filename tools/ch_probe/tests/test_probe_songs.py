@@ -3,6 +3,7 @@ hydra_replay: the song end comes from test_hydra_end's fake dumps."""
 
 from __future__ import annotations
 
+import hashlib
 import os
 import sys
 import tempfile
@@ -125,6 +126,27 @@ class ProbeSongsTest(unittest.TestCase):
         rows = P.manifest("x", P.edge_walk().notes)["notes"]
         self.assertEqual(len(rows), P.EDGE_WALK_NOTES)
         self.assertTrue(all(r["gap_before_ms"] in (None, P.EDGE_WALK_GAP_MS) for r in rows))
+
+    def test_window_map_and_edge_walk_charts_are_unchanged(self):
+        # The SHA-256 and length of each song's notes.chart text, taken from
+        # main at commit 95ad096f. Any change to these two charts' bytes
+        # fails here.
+        expected = {
+            P.WINDOW_MAP: (2512, "eb8385ce2aa696ff3bcc481911119fa54413888220473770a9df5c78a9093299"),
+            P.EDGE_WALK: (2201, "3e25cf8b326b474297f95a59f8e6a07db6a503f13661c3f45930f975e1b8c757"),
+        }
+        for name, build in ((P.WINDOW_MAP, P.window_map), (P.EDGE_WALK, P.edge_walk)):
+            t = build()
+            text = P.chart_text(P.full_name(name), t.notes, t.phrases, t.fills)
+            self.assertEqual(
+                (len(text), hashlib.sha256(text.encode("utf-8")).hexdigest()),
+                expected[name], name)
+            self.assertNotIn(" = S ", text)
+
+    def test_window_map_and_edge_walk_manifests_have_no_cases(self):
+        for build in (P.window_map, P.edge_walk):
+            t = build()
+            self.assertNotIn("cases", P.manifest("x", t.notes, t.cases))
 
     def test_song_ini_has_no_delay(self):
         self.assertIn("delay = 0\n", P.song_ini("x"))

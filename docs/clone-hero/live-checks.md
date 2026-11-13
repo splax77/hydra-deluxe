@@ -2,7 +2,7 @@
 
 This page lists the rows only a run of the real game can settle.
 It describes build 1.1 (v1.1.0.6142) unless a check names build 1.0.
-Last write-back: 2026-11-11.
+Last write-back: 2026-11-12.
 
 Each check gives its row id, the question in one line, what a pass and a fail look like, and whether a bot run is enough or the run needs Star Power activation and a menu start. The Star Power plan, `docs/superpowers/plans/2026-10-30-ch-mcp-star-power-and-song-start.md` (removed; `git show 6804353f:docs/superpowers/plans/2026-10-30-ch-mcp-star-power-and-song-start.md`), took its live steps from this list. Where one entry covers two or three rows, they share one run.
 
@@ -88,7 +88,7 @@ FL-27, the Ladies Talk check, is the first entry on this page.
 
 **FL-24.** Question: how far early can a fill-end hit be and still summon the fill when Star Power comes ready just after the deadline? Pass: the fill is offered up to 85 ms. Fail: it stops earlier. Needs Star Power activation and a menu start, key-played.
 
-**FL-25.** Question: why did the game not offer Trippin path 3's E0 fill at tick 34944? Pass: a repeat with the fill watched shows the flag cleared and why. Bot run is enough to watch the flag; activation not needed.
+**FL-25.** Question: did the plain deadline clear Trippin path 3's E0 fill at tick 34944? The three saved watch logs show the meter's first reading at half 4.0 to 6.5 ms after that fill's deadline (in run 2b the rise falls between 0.5 ms before and 5.5 ms after), which fits the deadline (FL-25 on page 4), but no run read the fill's own flag or the game's fill start. Pass: a repeat with the fill watched shows its flag cleared at the hit of the tick-34176 note. Fail: the flag stays set after that hit, or clears at some other moment. Bot run is enough to watch the flag; activation not needed.
 
 **FL-28.** Question: does a chart whose only written fill lands on no chord get generated fills? Pass: none appear (the listing). Fail: generated fills appear. A probe chart, a chart load and a snapshot of the 0x800 flags are enough; no Star Power activation.
 
