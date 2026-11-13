@@ -157,13 +157,13 @@ Run rules for all three: the kit route, a human player on System, the game never
 
 ### LS-R1: remake Pitch Dark's three files with the merged build (no game; 1 run)
 
-Calls: `hydra_replay` dump (seen: pitch-dark-prep), `hydra_replay` score (seen: pitch-dark-prep), `hydra_replay` schedule (never tried: its new fields)
+Calls: `hydra_replay` dump (seen: pitch-dark-prep), `hydra_replay` score (seen: pitch-dark-prep), `hydra_replay` schedule (never tried). The schedule is never tried with its new fields.
 
 The main session writes dump, score and schedule into a new prep folder under `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\`. Pass: no refusals; Hydra's total is 393,885 (row P16); the read on chord 466 is planned at 158,262.53; chord 644's conversion is 0.79467. Fail: any other value, or a refusal; stop and report the line. Cap: one run, 10 minutes.
 
 ### LS-R2: Pitch Dark path 0 on the kit from the new schedule (2 runs, 10 minutes each)
 
-Calls: `ch_start` (seen: pitch-dark-run1), `ch_run_chart` (never tried: the schedule's new fields), `ch_play_status` (seen: pitch-dark-run1), `ch_sp_watch_status` (seen: pitch-dark-run1), `ch_stop` (seen: pitch-dark-run1)
+Calls: `ch_start` (seen: pitch-dark-run1), `ch_run_chart` (never tried), `ch_play_status` (seen: pitch-dark-run1), `ch_sp_watch_status` (seen: pitch-dark-run1), `ch_stop` (seen: pitch-dark-run1). `ch_run_chart` is never tried with the schedule's new fields.
 
 Starts only when LS-R1's folder exists; the go request names it. Uses rows P11, P12, P19 and P20. Row P20 is unchecked: before the go request, the main session confirms from its own record of run 1 that the three status and stop calls ran; if it cannot, they are marked never tried and this step is split so each step holds one. Pass lines, read in this order:
 1. The frame-rate line says 330 and the song check names Pitch Dark's folder.
@@ -176,7 +176,7 @@ Fail lines: no read on 466 (stop: the player, not the ratio); line 3 fails (the 
 
 ### LS-R3: the watch log against the score file (no game; 1 run)
 
-Calls: `ch_sp_compare` (never tried on this chart)
+Calls: `ch_sp_compare` (never tried). It has never run on this chart.
 
 Runs on LS-R2's passing folder. Pass: no FAIL line; three activations, each end within the tool's own limit. Fail: quote the FAIL line. Cap: one run.
 
@@ -236,8 +236,8 @@ CHOpt's author describes the same ground in "how chopt works" (https://genericma
 | P8: the player moves a timed press by the read minus `aim_end_ms`, one for one, and its join-group fallback presses before the read end | code | `tools/ch_probe/experiments/play_chart.py` lines 346 to 365 | checked 2026-11-12 |
 | P9: in the run, the read after chord 466 was 158,268.988, chord 644 was pressed at clock 161,387.796 and chord 676 at 164,371.252 | run | `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-12\pitch-dark-run1\press-1.csv` | checked 2026-11-12 |
 | P10: the game counts Star Power in measures, cuts an overfull meter to a full bar measured from the collecting moment, and stores one end time through the tempo map | data | `docs/clone-hero/05-star-power.md` blocks SP-15, SP-24 and SP-27, each "Proven in the game's code" | checked 2026-11-12, labels read; rule text read for SP-24 and SP-27 |
-| P11: the game's clamp anchor is the note Hydra measures the scale from | unchecked | `docs/clone-hero/05-star-power.md` SP-40 is labelled "Hydra assumes it, never checked"; the Pitch Dark read fits it within 4 ms | LS-R2 |
-| P12: the game judges a press one frame after the clock the player read | unchecked | `docs/clone-hero/05-star-power.md` SP-47 is proven on four activations, but three reads of `pitch-dark-run1` fit two frames | LS-R2 |
+| P11: the game's clamp anchor is the note Hydra measures the scale from | unchecked | `docs/clone-hero/05-star-power.md` SP-40 is labelled "Hydra assumes it, never checked"; the Pitch Dark read fits it within 4 ms | LS-R2; blocks nothing (no task changes this model) |
+| P12: the game judges a press one frame after the clock the player read | unchecked | `docs/clone-hero/05-star-power.md` SP-47 is proven on four activations, but three reads of `pitch-dark-run1` fit two frames | LS-R2; blocks nothing (nothing in this plan builds on it) |
 | P13: the kit agent does no sum on an end and only takes the entries Python made | code | `tools/ch_mcp/agent/press_schedule.ts` lines 425 to 454 (`retime` swaps pending slots for the entries it is given) and `tools/ch_mcp/kit_tools.py` lines 693 to 770 (entries carry `end_read_after` only) | checked 2026-11-12, by the reviewer |
 | P14: a new folder under `testdata/input` changes a folder count and the corpus digests, and the corpus-wide sweeps run on it | code | `tests/test_analysis.cpp` lines 1318 to 1319 (120 folders), `tests/test_perf_digest.cpp` lines 128 to 164 (digests of `corpus::root()`), `tests/corpus_util.h` `chart_paths()` and its callers listed in the fixture section | checked 2026-11-12, by the reviewer |
 | P15: a fresh engine run on Pitch Dark gives, as path 0, the path the run played | unchecked | `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-12\pitch-dark-prep\schedule.json` names `path_source` index 0 of a dump, not a fresh run | T2 |
@@ -245,7 +245,7 @@ CHOpt's author describes the same ground in "how chopt works" (https://genericma
 | P17: adding a field to a stored step changes what a fresh analysis computes, which by the file's rule needs a bump of the analysis stamp, and a stale result asks for re-analysis | code | `src/store/stored_versions.h` lines 38 to 57 (the comment above `kResultsStamp`) | checked 2026-11-12, by the reviewer; how many library charts that touches was not measured |
 | P18: the user allowed human runs of Pitch Dark: "Human run, allowed" | ruling | `docs/agents/rulings/clone-hero.md` line 20, dated 2026-11-12 | checked 2026-11-12, by the reviewer |
 | P19: `ch_start`, `ch_run_chart` and the watch ran on Pitch Dark with a human kit player | run | `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-12\pitch-dark-run1` holds the launch log, `builds-1.json`, `press-1.csv` and `sp_watch-1.csv` | checked 2026-11-12, by the folder's file list |
-| P20: `ch_play_status`, `ch_sp_watch_status` and `ch_stop` ran in that run | unchecked | `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-12\pitch-dark-run1` holds no file that names them | LS-R2 |
+| P20: `ch_play_status`, `ch_sp_watch_status` and `ch_stop` ran in that run | unchecked | `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-12\pitch-dark-run1` holds no file that names them | LS-R2; blocks nothing (it shapes only LS-R2's own call list) |
 | P21: the equal-room split uses the squeeze's own ratio at its own end | code | `tools/replay_schedule.cpp` lines 204 to 235 and 661 to 673 | checked 2026-11-12 |
 | P22: `squeeze_lines` prints the press time against `aim_end_ms` | code | `tools/ch_mcp/game_tools.py` lines 347 to 373 | checked 2026-11-12 |
 | P23: the earlier plan left the clamped end's ratio unchecked as its P15, to be settled by its LS-S2 | code | `docs/superpowers/plans/2026-11-08-replay-press-schedule.md` line 340 | checked 2026-11-12 |
