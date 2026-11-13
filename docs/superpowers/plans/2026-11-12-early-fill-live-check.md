@@ -44,13 +44,15 @@ It holds five cases, one after another, each about 23 s long. Each case has the 
 
 - a lone kick inside its own Star Power phrase, which fills a quarter of the meter;
 - 2,000 ms later, a second lone kick inside its own phrase. This is the SP-ready note: hitting it carries the meter to half;
-- the case's fill, 480 ms long, whose start is placed so that its deadline (start minus 1,920 ms) sits a chosen number of ms before the SP-ready note;
-- a second fill 6,000 ms later, the flush fill, whose deadline is seconds after Star Power is ready, so the game always offers it;
+- the case's fill, 480 ms long, whose start is placed so that its deadline (start minus 1,920 ms) sits a chosen number of ms before the SP-ready note, with a lone kick exactly at the fill's end tick. That kick is the fill's last note. A written fill lands on a chord at or just after its end (FL-03), so the fill needs that chord to exist;
+- a second fill 6,000 ms after the case fill's last note, the flush fill, with its own last-note kick. Its deadline is seconds after Star Power is ready, so the game always offers it;
 - 12,000 ms of rest, so Star Power has run out before the next case.
 
 The chosen distances are -30 ms for case A (Star Power ready 30 ms before the deadline, a control), then 30, 60, 70 and 78 ms after the deadline for cases B, C, D and E. The first note sits at 20,000 ms, so the run's setup finishes before it. The SP-ready note is at least 1,000 ms from both neighbours, so its window side is the 85.72 ms TM-26 measured.
 
 The auto-player hits every note. A correct press on a fill's last note while Star Power is ready and the fill is still flagged activates Star Power (FL-31). So each case has two outcomes. If the game offered the case's fill, Star Power turns on at that fill's last note. If not, it turns on 6 s later at the flush fill.
+
+Star Power lasts 7,680 ms on half a meter here. The bar is eight measures in any signature (SP-15), half is four, and the probe charts write one 4/4 time signature (`tools/ch_probe/probe_chart.py` lines 104 to 117), so four measures are 4 x 1,920 ms. That is shorter than the 12,000 ms rest, so each case starts with an empty meter.
 
 Task T1 builds the chart. The main session then installs it with `ch_install_chart` in live step LS-F0.
 
@@ -84,13 +86,13 @@ The second run (LS-F3) presses the SP-ready notes of B to E 84 ms early. If Hydr
 
 ## The tasks
 
-Tasks T1, T2 and T4 are independent and go to executors at the same time. T3 is the main session's, after T1 and T2 are merged.
+Tasks T1 and T2 are independent and go to executors at the same time. T3 is the main session's, after T1 and T2 are merged. T4 needs one file from T3 (step 6), so its executor starts after T3 has written it.
 
 ### T1: Build the Early Fill Walk chart
 
 An executor adds a third probe song to `tools/ch_probe/probe_songs.py`, named "Early Fill Walk", with the layout in "Which chart" above. The layout's numbers live once, in a small table in that file: the five distances, the 2,000 ms between the two phrase notes, the 480 ms fill length, the 6,000 ms to the flush fill, the 12,000 ms rest and the 20,000 ms lead-in. The song folder comes from `write_song_folder`, like the other two. Its manifest lists, for each case, the SP-ready note's time, the case fill's start, deadline and last-note time, and the flush fill's last-note time.
 
-Whether `tools/ch_probe/probe_chart.py` can already write a Star Power phrase and a drum fill into a chart is not known (premise P14). The executor reads it first and adds what is missing there.
+`tools/ch_probe/probe_chart.py` cannot write a Star Power phrase or a drum fill today: `chart_text` writes only `[ExpertDrums]` note lines (premise P14). The executor adds both there as optional arguments, so Window Map and Edge Walk come out byte for byte as before. A phrase is a line `<tick> = S 2 <length>` and a fill is `<tick> = S 64 <length>` in the same section (SP-01, FL-01).
 
 The executor reads FL-01 onward on `docs/clone-hero/04-fills.md` for how a written fill and its last note are laid out in a `.chart`, and SP-01 to SP-04 on page 05 for the phrase. It cites the blocks it used in the code's comments by id.
 
@@ -124,30 +126,30 @@ The main session does this, because it needs `hydra_replay` and a build. It work
 
 1. Run `py -m tools.ch_probe.probe_songs --out <prep folder>` to write the Early Fill Walk folder there. Nothing is written into the game's song folder in this step.
 2. Run `hydra_replay` dump, score and schedule on that chart. Keep the three files in the prep folder.
-3. Read the dump and check Hydra sees the chart as built: five case fills and five flush fills marked `is_fill`, ten phrase-end chords, and the SP-ready note of each case a phrase end. This settles premises P10 and P11 on Hydra's side.
+3. Read the dump and the score file and check Hydra sees the chart as built: exactly ten chords marked `is_fill` (five case fills, five flush fills) and no other, each with a `fill_start` equal to the manifest's, ten phrase-end chords, and the SP-ready note of each case a phrase end. This settles premise P28 and half of P11 on Hydra's side. It does not show what the game does, which LS-F2 shows.
 4. Pick a path index whose schedule holds no refusal, no `declined` chord and no press timed from a Star Power end on the five SP-ready chords. A declined chord would leave a fill's last note unpressed and make an offered fill look not offered. If no path qualifies, stop and report; do not start a run.
 5. Write `probes.json` in the prep folder: the SP-ready chords of cases B, C, D and E, each with `lead_ms` 84.
-6. Open `replies.txt` in `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-07\ls-e-run1` and in `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-12\ls-g4-run1`. Confirm each call a live step below marks "seen" with one of those runs is in that file (premise P15). A call that is not there becomes "never tried", and its step is split before any go is asked.
+6. Run `hydra_replay score` on the Trippin SP Spike chart (`C:\Clone Hero\songs\Hydra Probe\Trippin SP Spike\notes.chart`) and keep the file in the prep folder as `trippin-score.json`. Its chord at tick 34944 carries `fill_start` (`tools/replay.cpp` lines 136 and 461). T4 reads it from there, because that chart writes no fill of its own.
 
 Acceptance criteria:
 
-- The prep folder holds the chart folder, the dump, the score file, the schedule and `probes.json`.
-- A short `prep-notes.txt` there records the path index, the count of `declined` chords (which must be 0), the five SP-ready chord indexes with their chart times, and the outcome of step 6 call by call.
+- The prep folder holds the chart folder, the dump, the score file, the schedule, `probes.json` and `trippin-score.json`.
+- A short `prep-notes.txt` there records the path index, the count of `declined` chords (which must be 0), the five SP-ready chord indexes with their chart times, and the Trippin fill start tick.
 - If step 3, 4 or 6 fails, the main session stops and tells the user what failed. No live step starts.
 
 ### T4: Read FL-25's saved logs
 
-An executor reads the three saved runs under `tools/ch_probe/experiments/results/overlay-spike/`: `run1_cal0_sp_watch.csv`, `run2_cal30_sp_watch.csv` and `run2b_vid30_sp_watch.csv`. It needs no game and no build.
+An executor reads the three saved runs under `tools/ch_probe/experiments/results/overlay-spike/`: `run1_cal0_sp_watch.csv`, `run2_cal30_sp_watch.csv` and `run2b_vid30_sp_watch.csv`. These hold `clock_s`, `sp_amount_u32`, `sp_max_u32` and `sp_active_byte` (premise P20). It needs no game and no build.
 
-For each run it finds the first row before the activation at tick 38016 where the meter had reached half with Star Power off. It reads the fill that ends at tick 34944 from `C:\Clone Hero\songs\Hydra Probe\Trippin SP Spike\notes.chart`, takes that fill's start tick, and works out the deadline as start minus four times the chart's Resolution, turned into ms with the chart's tempo map. It then says, per run, whether the game's meter reached half before or after that deadline, and by how many ms.
+For each run it finds the first row before the activation at tick 38016 where `sp_amount_u32` had reached half of `sp_max_u32` with `sp_active_byte` 0. It takes the start tick of the fill that ends at tick 34944 from `trippin-score.json` in T3's prep folder (the chord at tick 34944, field `fill_start`). The chart writes no fill itself, so its file in the game's folder cannot give it. It works out the deadline as that start minus four times the chart's Resolution (192), turned into ms with the tempo map in `C:\Clone Hero\songs\Hydra Probe\Trippin SP Spike\notes.chart`. It then says, per run, whether the game's meter reached half before or after that deadline, and by how many ms. The fill's start is Hydra's. Whether the game placed its own fill at the same tick was not read, and the Rule says so (premise P29).
 
 It writes the result onto FL-25's block on `docs/clone-hero/04-fills.md` in the same commit. If the meter reached half after the deadline in all three runs, FL-25's rule says so: the fill was cleared by the plain deadline (FL-19), because the presses were on time and Hydra's path counted on an early one. If the meter reached half before the deadline in any run, the rule says the fill was not offered although Star Power was ready in time, and the cause stays unknown. The FL-25 row on `docs/clone-hero/live-checks.md` is updated to match.
 
 Acceptance criteria:
 
-- FL-25's Evidence line names the three CSV files, the row used in each, the fill's start tick, the deadline in ms, and the three differences.
+- FL-25's Evidence line names the three CSV files, the row used in each, `trippin-score.json`, the fill's start tick, the deadline in ms, and the three differences.
 - The block's Rule states which of the two outcomes was found, and claims no more than the three logs show.
-- If a log lacks the columns needed, or the fill's start cannot be read from the chart, the executor stops and reports which file and what was missing. It does not guess.
+- If a log lacks the columns needed, or `trippin-score.json` is missing or holds no `fill_start` at tick 34944, the executor stops and reports which file and what was missing. It does not guess.
 
 ### T5: Write the result back
 
@@ -181,19 +183,19 @@ Pass: the reply starts "installed" and names the chart file under `C:\Clone Hero
 
 ### LS-F1: The game loads the chart for a human player
 
-Calls: `ch_start` (never tried), `ch_attach` (seen: LS-E run 1), `ch_state` (seen: LS-E run 1), `ch_stop` (seen: LS-E run 1)
+Calls: `ch_start` (never tried), `ch_attach` (seen: LS-E run 1), `ch_state` (seen: LS-D0 run 1), `ch_stop` (seen: LS-E run 1)
 
-The main session starts the song with `human=True`, attaches, reads the state once, and stops. Nothing is pressed. The three seen markers rest on premise P15, which T3 settles before this step's go is asked.
+The main session starts the song with `human=True`, attaches, reads the state once, and stops. Nothing is pressed. The three seen markers were checked against those runs' `replies.txt` files (premise P15).
 
 Pass: `ch_start` says patched, `ch_state` shows a live song with a moving clock, and `ch_stop` restores everything. Fail: anything else. On a fail, stop and report.
 
 ### LS-F2: Everything on time
 
-Calls: `ch_start` (seen: LS-F1's passing run), `ch_run_chart` (never tried), `ch_play_status` (seen: LS-G4 run 1), `ch_sp_watch_status` (seen: LS-G4 run 1), `ch_sp_between` (seen: LS-G4 run 1), `ch_stop` (seen: LS-G4 run 1)
+Calls: `ch_start` (seen: LS-F1's passing run), `ch_run_chart` (never tried), `ch_play_status` (seen: LS-D2d run 1), `ch_sp_watch_status` (seen: LS-D2d run 1), `ch_sp_between` (seen: LS-D2d run 1), `ch_stop` (seen: LS-D2d run 1)
 
 The main session starts the song with `human=True` and calls `ch_run_chart` with the prep folder's score file and schedule and `kit_player="System"`. When the play session has ended, it reads the status, then asks `ch_sp_between` once per case for the stretch from 200 ms before the case fill's last note to 200 ms after it. It copies the session folder to `ch-mcp-runs\<date>\ls-f2-run1` before `ch_stop`.
 
-This step uses premises P10, P11 and P12, which are unchecked until it runs.
+This step uses premise P11, which is unchecked until it runs.
 
 Pass, all of:
 
@@ -210,7 +212,7 @@ Fail, and what each failure means:
 
 ### LS-F3: The SP-ready notes pressed 84 ms early
 
-Calls: `ch_reload` (seen: LS-R2), `ch_start` (seen: LS-F2's passing run), `ch_call` running `ch_run_chart` with `probes_json` (never tried), `ch_play_status` (seen: LS-F2's passing run), `ch_sp_watch_status` (seen: LS-F2's passing run), `ch_sp_between` (seen: LS-F2's passing run), `ch_stop` (seen: LS-F2's passing run)
+Calls: `ch_reload` (seen: LS-E run 1), `ch_start` (seen: LS-F2's passing run), `ch_call` running `ch_run_chart` with `probes_json` (never tried), `ch_play_status` (seen: LS-F2's passing run), `ch_sp_watch_status` (seen: LS-F2's passing run), `ch_sp_between` (seen: LS-F2's passing run), `ch_stop` (seen: LS-F2's passing run)
 
 This step starts only when T2 is merged and LS-F2's passing run folder exists. The main session reloads the worker so T2's code is live, starts the song as in LS-F2, and calls `ch_run_chart` through `ch_call` with the same files plus the prep folder's `probes.json`. `ch_call` is used because this session's tool list does not show a new argument after a reload. It reads the run the same way as LS-F2 and copies the session folder to `ls-f3-run1`.
 
@@ -218,7 +220,7 @@ This step uses premise P13, which is unchecked until it runs.
 
 For each of cases B to E, read two things. The measured lead is the press row's `chart_ms` minus `clock_ms_at_press`, which `ch_play_status` prints on its probe lines. The outcome is where Star Power turned on.
 
-Each case then gets one of three verdicts. The 6 ms below is two frames of 3 ms: one for the press to land and one for the engine to judge it.
+Each case then gets one of three verdicts. The 6 ms below is the planner's own margin, two frames of 3 ms: one for the press to land and one for the engine to judge it. Nobody measured it (premise P27). The offered verdict does not use it. Only the not-offered verdict and the no-verdict line do, and a margin that is too small could only make a false fail, which is reported to the user as a found split and changes no code until they rule.
 
 - Offered: Star Power turned on at the case fill.
 - Not offered: Star Power turned on at the flush fill, the note was hit, and the measured lead was more than the case's distance plus 6 ms.
@@ -276,6 +278,9 @@ These are left out. Each needs the user's approval to stay out.
 | The result goes onto FL-24 in the same commit as the work | T5 | T5 | The docs check passes and the commit holds page 04 and the run evidence lines together |
 | A fail opens a question and changes no Hydra code | T5, Out of scope | T5 | The commit's file list holds no file under `src/` |
 | The plan and the handoff leave the repo when the work is done | T5 | T5 | The docs check, which fails on a line that still points at them |
+| The chart does what it was built to do before any early press is read | "Which early amounts" | LS-F2 | LS-F2's pass list: case A offered, B to E not offered on time |
+| Hydra reads the built chart as ten fills and ten phrase ends with the fill starts the chart intended | T3 step 3 | T3 | `prep-notes.txt` and the dump |
+| FL-25's fill start comes from Hydra's score file, not from a chart that holds no fill | T3 step 6, T4 | T3, T4 | T4's Evidence line names `trippin-score.json` |
 | The early fill row is not reopened | Background | none needed | This plan has no task that touches the Dynamic Hit Window plan |
 
 ## Premise map
@@ -291,20 +296,24 @@ These are left out. Each needs the user's approval to stay out.
 | P7: Hydra refuses a fill only when Star Power is ready more than `kHitWindowMs` after the deadline, and E0 reads `kEarlyFillSlackMs` | code | `src/core/model.h` lines 316 to 324 | checked 2026-11-12 |
 | P8: `ch_edge_probe` moves the named chords by the asked lead and plays them on the kit route with no key press | code | `tools/ch_mcp/game_tools.py` lines 1264 to 1314 and `tools/ch_probe/experiments/edge_probe.py` lines 111 to 162 | checked 2026-11-12 |
 | P9: No tool reads a fill's active byte or the chord's 0x800 flag; the watch's columns hold only the meter, Star Power's own active byte and the clocks | code | `tools/ch_probe/experiments/overlay_logs.py` lines 50 to 69; a grep of `tools/ch_mcp` and `tools/ch_probe` for the fill record, the flag and `20DDB70` found nothing | checked 2026-11-12 |
-| P10: A lone note inside its own phrase earns a quarter of the meter, so two of them reach half | unchecked | `docs/clone-hero/05-star-power.md` headings SP-04 and SP-12 were seen but their blocks were not read | LS-F2 |
-| P11: The game offers the case A fill and every flush fill as the chart writes them, and the auto-player's hit on their last note activates | unchecked | `docs/clone-hero/04-fills.md` blocks before FL-19 were not read for the written fill's layout | LS-F2 |
-| P12: Half a meter runs out within 12,000 ms at 125 BPM, so each case starts with an empty meter | unchecked | `docs/clone-hero/05-star-power.md` drain blocks were not read | LS-F2 |
+| P10: A lone note inside its own phrase earns a quarter of the meter, so two of them reach half | data | `docs/clone-hero/05-star-power.md` blocks SP-04 (the phrase's last chord gets the award), SP-12 (a phrase adds a quarter bar) and the guard in `docs/clone-hero/code/6142/fill_deadline_20DDB70.md` lines 11 to 14 (an addition that reaches half counts) | checked 2026-11-12 |
+| P11: The game offers the case A fill and every flush fill as the chart writes them, and the auto-player's hit on their last note activates | unchecked | `docs/clone-hero/04-fills.md` FL-01 and FL-03 say a written fill lands on a chord at or just after its end, but nothing says the game offers it untouched | LS-F2 |
+| P12: Half a meter lasts 7,680 ms at 125 BPM in 4/4, shorter than the 12,000 ms rest, so each case starts with an empty meter | data | `docs/clone-hero/05-star-power.md` block SP-15 (eight measures per bar in any signature) and `tools/ch_probe/probe_chart.py` lines 104 to 117 (one 4/4 signature) | checked 2026-11-12 |
 | P13: On in-game timing a probe press lands within 3 ms after its asked time and its row holds `clock_ms_at_press` | unchecked | `docs/agents/clone-hero-mcp.md` says the edge probe "has not yet run that way in a live game" | LS-F3 |
-| P14: `tools/ch_probe/probe_chart.py` can write a Star Power phrase and a drum fill | unchecked | `tools/ch_probe/probe_songs.py` line 42 imports its `chart_text`; the file itself was not opened | T1 |
-| P15: LS-E run 1 used `ch_attach`, `ch_state` and `ch_stop` on a human direct start, and LS-G4 run 1 used `ch_play_status`, `ch_sp_watch_status`, `ch_sp_between` and `ch_stop` after `ch_run_chart` on the kit player System | unchecked | the folders `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-07\ls-e-run1` and `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-12\ls-g4-run1` exist; their `replies.txt` files were not opened | T3 |
+| P14: `tools/ch_probe/probe_chart.py` cannot write a Star Power phrase or a drum fill: `chart_text` writes only `N` lines of `[ExpertDrums]` | code | `tools/ch_probe/probe_chart.py` lines 126 to 156 | checked 2026-11-12 |
+| P15: LS-E run 1 used `ch_attach` and `ch_stop` on a human direct start and `ch_reload`; LS-D0 run 1 used `ch_state` on a human direct start; LS-D2d run 1 used `ch_play_status`, `ch_sp_watch_status`, `ch_sp_between` and `ch_stop` on a human direct start with kit player System | run | `ls-e-run1\replies.txt` (2026-11-07), `ls-d0-run1\replies.txt` (2026-10-31) and `ls-d2d-run1\replies.txt` (2026-11-06), each under `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\` | checked 2026-11-12, by opening each file. `ls-g4-run1` holds no `replies.txt`, and LS-E run 1's replies hold no `ch_state`, so the earlier marks were wrong. In LS-D2d `ch_sp_between` ran after `ch_stop`; the plan calls it before |
 | P16: The probe charts use Resolution 480 at 125 BPM, one tick per ms | code | `tools/ch_probe/probe_songs.py` lines 13 to 15 and 55 to 56 | checked 2026-11-12 |
 | P17: `ch_install_chart` copies only song.ini and the chart, adds silent audio as long as Hydra's song end, and never overwrites a folder | code | `tools/ch_mcp/install_chart.py` lines 1 to 18 | checked 2026-11-12 |
 | P18: `ch_run_chart` does the attach, the kit setup, the Star Power watch and the play in one call, and `ch_call` reaches a tool whose schema changed at a reload | code | `docs/agents/clone-hero-mcp.md`, the `ch_run_chart` paragraph and the `ch_call` paragraph | checked 2026-11-12 |
 | P19: The three FL-25 runs' watch logs are saved beside their compare files | code | `tools/ch_probe/experiments/results/overlay-spike/` holds `run1_cal0_sp_watch.csv`, `run2_cal30_sp_watch.csv` and `run2b_vid30_sp_watch.csv` | checked 2026-11-12, by listing the folder; the rows were not read |
-| P20: Those logs hold the meter and the clock in the columns T4 needs, and the fill ending at tick 34944 can be read from Trippin's chart | unchecked | `tools/ch_probe/experiments/results/overlay-spike/run1_cal0_sp_watch.csv` was listed, not opened | T4 |
+| P20: The three saved watch logs hold `clock_s`, `sp_amount_u32`, `sp_max_u32` and `sp_active_byte` | run | the header of `tools/ch_probe/experiments/results/overlay-spike/run1_cal0_sp_watch.csv` (the other two have the same header) | checked 2026-11-12 |
+| P20b: Trippin SP Spike's `notes.chart` writes no fill (no `S 64` line), so the fill ending at tick 34944 is Hydra's, and `hydra_replay score` writes its `fill_start` | chart | `C:\Clone Hero\songs\Hydra Probe\Trippin SP Spike\notes.chart` (only `S 2` lines) and `tools/replay.cpp` lines 136 and 461 | checked 2026-11-12 |
 | P21: Runs must go on while the user uses the machine | ruling | `docs/agents/rulings/clone-hero.md`, 2026-10-30: "yes we need to do autonomous runs. that waws the whole point of this" | checked 2026-11-12 |
 | P22: The key route is locked behind the user's typed "allow key run", and this plan does not use it | code | `docs/agents/clone-hero-mcp.md`, the paragraph "The key route is locked" | checked 2026-11-12 |
 | P23: A frame-timed press fires on the first frame at or past its time and waits up to 3 ms for it | ruling | `docs/agents/rulings/clone-hero.md`, 2026-11-12: "Fire at the schedule time (Recommended)", whose context gives the 3 ms | checked 2026-11-12 |
 | P24: Every kit run is timed by the game since the IG6a merge | code | `docs/agents/clone-hero-mcp.md`, "The route says who times the presses, and there is no switch"; commit `8901af45` is an ancestor of this branch | checked 2026-11-12 |
 | P25: The early fill row ships without waiting for this check | ruling | `docs/agents/rulings/ui-and-display.md` line 5, 2026-11-12: "Yes, ship it now", whose context says "(1) the early fill row ships while FL-24 is unproven" | checked 2026-11-12 |
 | P26: A human run may play only the test chart and the library charts the user named | code | `docs/agents/clone-hero-mcp.md`, the paragraph "Play stays offline" | checked 2026-11-12 |
+| P27: The 6 ms margin in LS-F3's not-offered verdict is two frames of 3 ms and was not measured | unchecked | `docs/agents/rulings/clone-hero.md`, 2026-11-12, gives the 3 ms frame; nothing gives the judge delay | LS-F3 |
+| P28: Hydra's own fill finder adds no fill to the Early Fill Walk beyond the ten written ones | unchecked | `docs/clone-hero/04-fills.md` FL-11 to FL-18 describe the generator; none was applied to this chart | T3 |
+| P29: The game places the Trippin fill at the same start tick as Hydra | unchecked | `tools/replay.cpp` line 461 is Hydra's own `fill_start`; no game read of that fill exists | T4 |
