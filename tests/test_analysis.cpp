@@ -1315,8 +1315,8 @@ TEST_CASE("the scan's folder count is reported while the walk runs, from the cal
     CHECK(all_on_caller);
     REQUIRE(seen.size() > 1);
     CHECK(std::is_sorted(seen.begin(), seen.end()));
-    // testdata/input and its 119 subfolders, counted on 2026-10-06.
-    CHECK(seen.back() == 120);
+    // testdata/input and its 120 subfolders, counted on 2026-11-13.
+    CHECK(seen.back() == 121);
 }
 
 // S1: the read stage hashes the biggest files first, yet the items keep the

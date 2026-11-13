@@ -14,7 +14,9 @@
 #include <optional>
 #include <set>
 #include <sstream>
+#include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "json.hpp"
@@ -1393,4 +1395,250 @@ TEST_CASE("schedule: the first press group is the activation note") {
         }
     });
     CHECK(seen > 0);
+}
+
+// ---- T2: each read at its own step's scale, and the two ends of a press ----
+// docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md, task T2.
+// The literals are the plan's, read from Pitch Dark's chart and the run of
+// 2026-11-12.
+
+namespace {
+
+// Chord 243's own planned end and conversion, pinned from the first green
+// run of this test. The first build fills them; 0.0 until then.
+constexpr double kPitchDark243OwnEndMs = 0.0;
+constexpr double kPitchDark243Conversion = 0.0;
+
+// Pitch Dark (testdata/input/test_pitch_dark_ratio, a copy of the library
+// chart) under the app's default settings: path 0's activations and its
+// schedule, built as the corpus sweeps build theirs.
+struct PitchDark {
+    const Song* song = nullptr;
+    std::vector<const Activation*> acts;
+    json sch;
+};
+PitchDark pitch_dark() {
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    const std::string path = corpus::chart_named("test_pitch_dark_ratio");
+    if (path.empty()) throw std::runtime_error("the corpus has no test_pitch_dark_ratio chart");
+    PitchDark pd;
+    pd.song = &corpus::song(path, cfg.reading(), cfg.rules);
+    const HydraRecord& rec = corpus::analyzed(path, cfg);
+    const std::vector<const Path*> paths = rec.all_paths();
+    if (paths.empty()) throw std::runtime_error("Pitch Dark has no path");
+    for (const Activation& a : paths.front()->walk_activations()) pd.acts.push_back(&a);
+    const PathReplay pr = replay_stored_path(*pd.song, *paths.front(), cfg.rules);
+    pd.sch = schedule::schedule_json(*pd.song, pd.acts, pr.result, cfg.rules);
+    return pd;
+}
+
+// The one read after `chord`.
+const json& read_after(const json& sch, int chord) {
+    const json& reads = sch["chords"][static_cast<size_t>(chord)]["reads"];
+    if (reads.size() != 1) throw std::runtime_error("chord " + std::to_string(chord) + " has no single read");
+    return reads[0];
+}
+
+// The own end the player's sum gives for a read of `read_ms` on press `p`
+// (retime_from_end in tools/ch_probe/experiments/play_chart.py does it live).
+double own_end_at_read(const json& p, double read_ms) {
+    const double stored = p["read_stored_end_ms"].get<double>();
+    const double c = p["conversion"][read_ms >= stored ? "late" : "early"].get<double>();
+    return p["own_stored_end_ms"].get<double>() + c * (read_ms - stored);
+}
+
+// The overfill shape with a third step: the clamp on chord 2 sets an end at
+// tick 2950, chord 3 collects to the final end at tick 3082, and chord 4
+// (Red and Kick) is squeezed out of that final end. So the read after chord
+// 2 sees the clamp's end and the squeeze-out's own end is the final one, a
+// step later. `change_at` puts a tempo change (120 to 150 BPM) on that tick.
+// The stored ratio is what the engine would store, step_transfer_scale of
+// the last step.
+Overfill three_step_overfill(std::optional<int64_t> change_at) {
+    Song song(192);
+    song.bpm_changes[0] = 120.0;
+    if (change_at) song.bpm_changes[*change_at] = 150.0;
+    song.build_timing();
+    for (int64_t tick : {0, 768, 1536, 2304, 3072, 3840}) {
+        SongTimestamp ts;
+        ts.timecode = song.timecode(tick);
+        ts.chord.add_note(NoteColor::Red);
+        song.sequence.push_back(ts);
+    }
+    Overfill o{std::move(song), Activation{}};
+    o.song.sequence[4].chord.add_note(NoteColor::Kick);
+    o.act.timecode = o.song.timecode(768);
+    o.act.bank_rise_ticks = {0, 768};
+    o.act.sp_end_steps = {{768, 2900, SpEndKind::Activation},
+                          {1536, 2950, SpEndKind::Clamped},
+                          {2304, 3082, SpEndKind::Collected}};
+    SPSqueeze out{};
+    out.kind = SqueezeKind::SqOut;
+    out.offset_ms = o.song.timecode(3072).ms() - o.song.timecode(3082).ms();
+    o.act.sqinouts.push_back(out);
+    o.act.sqout_tick = 3072;
+    o.act.transfer_post = step_transfer_scale(o.act, 2, o.song.timing());
+    return o;
+}
+
+}  // namespace
+
+TEST_CASE("schedule: Pitch Dark prices each read at its own step's scale") {
+    const PitchDark pd = pitch_dark();
+    const json& sch = pd.sch;
+    INFO(sch["refusals"].dump());
+
+    // Row P15: path 0 is the path the run played. Activation 1 has the four
+    // steps of row P3; if this fails, the rest of the case does not apply.
+    REQUIRE(pd.acts.size() == 3);
+    const std::vector<SpEndStep>& steps = pd.acts[1]->sp_end_steps;
+    REQUIRE(steps.size() == 4);
+    CHECK(steps[0].tick == 178560);
+    CHECK(steps[1].tick == 182280);
+    CHECK(steps[1].end_tick == 198570);
+    CHECK(steps[2].tick == 194080);
+    CHECK(steps[2].end_tick == 202440);
+    CHECK(steps[3].tick == 202480);
+    CHECK(steps[3].end_tick == 206280);
+    REQUIRE(steps[1].tick == 182280);
+    REQUIRE(steps[3].end_tick == 206280);
+
+    const SongTiming& timing = pd.song->timing();
+    const double plain_judged = sch["constants"]["judge_early_ms"].get<double>() -
+                                sch["constants"]["press_lead_ms"].get<double>();
+
+    // The read after chord 466 sees the clamp's end (step 1), in the 5/4
+    // measure, priced at that step's scale, not the squeeze's.
+    const json& r466 = read_after(sch, 466);
+    CHECK(r466["step"].get<size_t>() == 1);
+    CHECK(within_cent(r466["planned_end_ms"].get<double>(), 158262.53));
+    CHECK_FALSE(within_cent(r466["planned_end_ms"].get<double>(), 158254.77));
+
+    // The reads after the two activation chords, each at its own step 0.
+    struct ActChord {
+        int chord;
+        size_t act;
+    };
+    for (const ActChord ac : {ActChord{437, 1}, ActChord{144, 0}}) {
+        INFO("chord " << ac.chord);
+        const json& r = read_after(sch, ac.chord);
+        CHECK(r["step"].get<size_t>() == 0);
+        const std::optional<TransferScale> own = step_transfer_scale(*pd.acts[ac.act], 0, timing);
+        REQUIRE(own.has_value());
+        CHECK(r["ratio"]["early"].get<double>() == own->early);
+        CHECK(r["ratio"]["late"].get<double>() == own->late);
+        CHECK(r["planned_end_ms"].get<double>() - r["stored_end_ms"].get<double>() ==
+              doctest::Approx(own->late * plain_judged));
+    }
+    CHECK_FALSE(within_cent(read_after(sch, 437)["planned_end_ms"].get<double>(), 154250.379));
+
+    // The anchor and squeeze aims of the two timed squeezes do not change.
+    REQUIRE(presses_of(sch, 466, "anchor").size() == 1);
+    CHECK(within_cent(presses_of(sch, 466, "anchor")[0]["aim_ms"].get<double>(), 24.124));
+    REQUIRE(presses_of(sch, 166, "anchor").size() == 1);
+    CHECK(within_cent(presses_of(sch, 166, "anchor")[0]["aim_ms"].get<double>(), 64.571));
+
+    // Chord 644, the squeeze-in: its own end is step 2's, its read end step
+    // 1's, and the conversion is 1.1067 over 1.3926 on both sides.
+    const std::vector<json> p644 = presses_of(sch, 644, "squeeze_in");
+    REQUIRE(p644.size() == 1);
+    const json& s644 = p644[0];
+    CHECK(within_cent(s644["aim_ms"].get<double>(), -18.316));
+    CHECK(within_cent(s644["own_end_ms"].get<double>(), 161386.46));
+    CHECK(std::abs(s644["conversion"]["early"].get<double>() - 0.79467) < 0.00001);
+    CHECK(std::abs(s644["conversion"]["late"].get<double>() - 0.79467) < 0.00001);
+    CHECK(s644["aim_end_ms"].get<double>() == r466["planned_end_ms"].get<double>());
+    CHECK(std::abs(s644["own_stored_end_ms"].get<double>() - 161356.443) < 0.001);
+    CHECK(std::abs(s644["read_stored_end_ms"].get<double>() - 158224.757) < 0.001);
+    CHECK(s644["end_read_after"].get<int>() == 466);
+    // Its plain fallback's threshold is in read terms: fed back through the
+    // conversion it gives the own-terms threshold.
+    const json& row644 = sch["chords"][644];
+    const double read_threshold = s644["fallback"]["if_end_before_ms"].get<double>();
+    CHECK(own_end_at_read(s644, read_threshold) ==
+          doctest::Approx(schedule::sqin_fallback_before_ms(row644["ms"].get<double>(),
+                                                            row644["side_ms"].get<double>())));
+
+    // Chord 676, on the final end: aimed from chord 466's planned read, at
+    // a final end the late anchor moves later, with the final end's
+    // conversion against the read's step.
+    const std::vector<json> p676 = presses_of(sch, 676, "sp_end");
+    REQUIRE_FALSE(p676.empty());
+    const json& act1 = sch["activations"][1];
+    for (const json& p : p676) {
+        CHECK(p["aim_end_ms"].get<double>() == r466["planned_end_ms"].get<double>());
+        CHECK(within_cent(p["own_stored_end_ms"].get<double>(), 164341.3));
+        CHECK(p["own_end_ms"].get<double>() > 164341.3);
+        for (const char* side : {"early", "late"})
+            CHECK(p["conversion"][side].get<double>() * r466["ratio"][side].get<double>() ==
+                  doctest::Approx(act1["end_ratio"][side].get<double>()));
+    }
+
+    // Chord 243, activation 0's squeeze-in.
+    const std::vector<json> p243 = presses_of(sch, 243, "squeeze_in");
+    REQUIRE(p243.size() == 1);
+    CHECK(within_cent(p243[0]["aim_ms"].get<double>(), -40.919));
+    CHECK(p243[0]["own_end_ms"].get<double>() == doctest::Approx(kPitchDark243OwnEndMs));
+    CHECK(p243[0]["conversion"]["early"].get<double>() == doctest::Approx(kPitchDark243Conversion));
+    CHECK(p243[0]["conversion"]["late"].get<double>() == doctest::Approx(kPitchDark243Conversion));
+
+    // Every press with no end carries none of the end fields.
+    for (const json& p : sch["presses"]) {
+        if (!p["end_read_after"].is_null()) continue;
+        CHECK(p["own_end_ms"].is_null());
+        CHECK(p["conversion"].is_null());
+    }
+}
+
+TEST_CASE("schedule: a tempo change on an end splits the conversion's sides") {
+    // The change on the own end's tick: that end's scale has two sides, the
+    // read end's has one, so the conversion's sides differ, and the file
+    // carries both.
+    {
+        const Overfill o = three_step_overfill(int64_t{3082});
+        const json s = schedule::schedule_json(o.song, {&o.act}, replay_path(o.song, {}), core::default_rules());
+        INFO(s["refusals"].dump());
+        const std::vector<json> late = presses_of(s, 4, "squeeze_out_late");
+        REQUIRE(late.size() == 1);
+        const std::optional<TransferScale> own = step_transfer_scale(o.act, 2, o.song.timing());
+        const std::optional<TransferScale> read = step_transfer_scale(o.act, 1, o.song.timing());
+        REQUIRE(own.has_value());
+        REQUIRE(read.has_value());
+        REQUIRE(own->early != own->late);
+        const json& conv = late[0]["conversion"];
+        CHECK(conv["early"].get<double>() != conv["late"].get<double>());
+        const TransferScale want = schedule::end_conversion(*own, *read);
+        CHECK(conv["early"].get<double>() == want.early);
+        CHECK(conv["late"].get<double>() == want.late);
+        CHECK(late[0]["end_read_after"].get<int>() == 2);
+        CHECK(read_after(s, 2)["step"].get<size_t>() == 1);
+    }
+    // A change on the anchor's tick moves both ends' scales alike, so it
+    // cancels in the conversion; with no change at all the sides are 1.
+    for (const std::optional<int64_t> change : {std::optional<int64_t>{1536}, std::optional<int64_t>{}}) {
+        const Overfill o = three_step_overfill(change);
+        const json s = schedule::schedule_json(o.song, {&o.act}, replay_path(o.song, {}), core::default_rules());
+        INFO(s["refusals"].dump());
+        const std::vector<json> late = presses_of(s, 4, "squeeze_out_late");
+        REQUIRE(late.size() == 1);
+        const json& conv = late[0]["conversion"];
+        CHECK(conv["early"].get<double>() == doctest::Approx(conv["late"].get<double>()));
+    }
+}
+
+TEST_CASE("schedule: read_at_own_ms runs the conversion backwards on its own side") {
+    schedule::EndLink l;
+    l.read_stored_end_ms = 1000.0;
+    l.own_stored_end_ms = 2000.0;
+    l.conversion = TransferScale{0.5, 2.0};
+    // At or after the own stored end: the late side.
+    CHECK(schedule::read_at_own_ms(l, 2010.0) == doctest::Approx(1005.0));
+    CHECK(schedule::read_at_own_ms(l, 2000.0) == doctest::Approx(1000.0));
+    // Before it: the early side.
+    CHECK(schedule::read_at_own_ms(l, 1990.0) == doctest::Approx(980.0));
+    // One step: a conversion of exactly 1 adds the plain offset between the
+    // two ends.
+    const TransferScale one = schedule::end_conversion(TransferScale{1.3, 1.1}, TransferScale{1.3, 1.1});
+    CHECK(one.early == 1.0);
+    CHECK(one.late == 1.0);
 }

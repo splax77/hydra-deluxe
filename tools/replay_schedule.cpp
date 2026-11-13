@@ -124,9 +124,11 @@ KeptGems kept_gems(const Chord& chord, const std::vector<ReplayNote>& notes) {
 
 // ---- the aims ----------------------------------------------------------------
 
-double moving_ratio(const SqueezeGeometry& g) {
-    return g.kind == SqueezeKind::SqOut ? g.ratio.early : g.ratio.late;
+double moving_side(SqueezeKind kind, const TransferScale& scale) {
+    return kind == SqueezeKind::SqOut ? scale.early : scale.late;
 }
+
+double moving_ratio(const SqueezeGeometry& g) { return moving_side(g.kind, g.ratio); }
 
 // How far an anchor press of `lead_ms` moves the end once the game has judged
 // it `judged_ms` after the send: earlier by r(lead - judged) for a squeeze-out,
@@ -241,16 +243,27 @@ std::optional<double> anchor_lead_ms(const std::vector<SqueezeGeometry>& on_one_
     return lead;
 }
 
+TransferScale end_conversion(const TransferScale& own, const TransferScale& read) {
+    return TransferScale{own.early / read.early, own.late / read.late};
+}
+
+// The player's sum (retime_from_end in tools/ch_probe/experiments/
+// play_chart.py), solved for the read.
+double read_at_own_ms(const EndLink& link, double own_ms) {
+    const double c = own_ms >= link.own_stored_end_ms ? link.conversion.late : link.conversion.early;
+    return link.read_stored_end_ms + (own_ms - link.own_stored_end_ms) / c;
+}
+
 double last_send_ms(double chord_ms, double side_ms) { return chord_ms + side_ms - kJudgeEarlyMs; }
 
-// The late press goes kSpOutLagMs after the read end and is judged one frame
+// The late press goes kSpOutLagMs after its own end and is judged one frame
 // later.
 double sqout_fallback_after_ms(double chord_ms, double side_ms) {
     return chord_ms + side_ms - kSpOutLagMs - kJudgeEarlyMs;
 }
 
 // Design point 5's threshold as the plan writes it: the press goes
-// kSpEndLeadMs before the read end, held kJudgeEarlyMs further inside.
+// kSpEndLeadMs before its own end, held kJudgeEarlyMs further inside.
 double sqin_fallback_before_ms(double chord_ms, double side_ms) {
     return chord_ms - side_ms + kSpEndLeadMs + kJudgeEarlyMs;
 }
@@ -549,6 +562,7 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
     struct Timed {
         size_t act;
         size_t k;
+        size_t own_step;  // Activation::squeeze_end_step: the step of its own end
         SqueezeGeometry g;
         std::optional<SqueezeSplit> split;
     };
@@ -592,6 +606,9 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
             const std::optional<TransferScale>& ratio =
                 sq.kind == SqueezeKind::SqIn ? sq.transfer : act.transfer_post;
             if (!ratio) continue;  // activation_json's refusal names it
+            // Set whenever the end is (squeeze_end_tick reads it).
+            const std::optional<size_t> own_step = act.squeeze_end_step(k);
+            if (!own_step) continue;
             SqueezeGeometry g;
             g.kind = sq.kind;
             g.anchor_chord = ca;
@@ -605,14 +622,13 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
             g.steady = steady_spans(q["anchor_tick"].get<int64_t>(), q["end_tick"].get<int64_t>(), timing);
             timed_of[{a, k}] = timed.size();
             by_anchor[ca].push_back(timed.size());
-            timed.push_back({a, k, g, std::nullopt});
+            timed.push_back({a, k, *own_step, g, std::nullopt});
         }
     }
 
     // ---- one lead per anchor, then each squeeze's split at it
     std::map<int, double> lead_of;
     std::map<int, SqueezeKind> way_of;
-    std::map<int, double> ratio_of;
     for (const auto& [anchor, list] : by_anchor) {
         std::vector<SqueezeGeometry> geos;
         for (size_t t : list) geos.push_back(timed[t].g);
@@ -620,7 +636,6 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
         if (!lead) continue;
         lead_of[anchor] = *lead;
         way_of[anchor] = geos.front().kind;
-        ratio_of[anchor] = moving_ratio(geos.front());
         for (size_t t : list) timed[t].split = split_at_lead(timed[t].g, *lead);
     }
     for (size_t a = 0; a < acts.size(); ++a) {
@@ -650,9 +665,18 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
     // final end moves with, and after every chord that leads a squeeze. Each
     // read sees the end in force after that chord's step; its planned value
     // is that end moved by the chord's press judged kJudgeEarlyMs after its
-    // aim (design point 4).
-    std::map<std::pair<size_t, int>, double> read_stored;  // (activation, chord) -> end as stored
+    // aim, at that same step's own scale (step_transfer_scale; design point
+    // 2 of docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md).
+    struct ReadPlan {
+        double stored_ms = 0.0;
+        double planned_ms = 0.0;
+        TransferScale scale;
+    };
+    std::map<std::pair<size_t, int>, ReadPlan> read_plan;  // (activation, chord) -> its read
+    // How far the final end moves with its anchor's lead, at the last step's
+    // own scale, and whether a lead moves it at all.
     std::vector<double> final_shift(acts.size(), 0.0);
+    std::vector<bool> final_led(acts.size(), false);
     std::vector<std::optional<int>> final_anchor(acts.size());
     std::map<int64_t, size_t> end_act;  // final end tick -> activation
     for (size_t a = 0; a < acts.size(); ++a) {
@@ -672,39 +696,78 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
                 continue;
             }
             const int64_t tick = replay.chords[static_cast<size_t>(x)].tick;
-            std::optional<double> stored;
-            for (const SpEndStep& st : act.sp_end_steps)
-                if (st.tick == tick) stored = ms_of(st.end_tick);
-            if (!stored) {
+            // The last step on the chord is the end in force after it.
+            std::optional<size_t> step;
+            for (size_t s = 0; s < act.sp_end_steps.size(); ++s)
+                if (act.sp_end_steps[s].tick == tick) step = s;
+            if (!step) {
                 refusals.push_back("the activation at " + tick_text(act.timecode.ticks()) +
                                    " has no SP-end step on chord " + std::to_string(x) +
                                    ", so the end read after it cannot be planned");
                 continue;
             }
-            double shift = 0.0;
-            if (lead_of.count(x) > 0) {
-                const double l = lead_of[x];
-                shift = anchor_end_shift_ms(way_of[x], ratio_of[x], l, kJudgeEarlyMs);
-            } else if (act.transfer_post) {
-                shift = act.transfer_post->late * (kJudgeEarlyMs - kPressLeadMs);
-            } else {
+            const std::optional<TransferScale> scale = step_transfer_scale(act, *step, timing);
+            if (!scale) {
                 refusals.push_back("the activation at " + tick_text(act.timecode.ticks()) +
-                                   " has no stored ratio (Activation::transfer_post is unset), so the end "
-                                   "read after chord " + std::to_string(x) + " cannot be planned");
+                                   " has no scale for its SP-end step " + std::to_string(*step) +
+                                   " (step_transfer_scale gives none), so the end read after chord " +
+                                   std::to_string(x) + " cannot be planned");
                 continue;
             }
-            read_stored[{a, x}] = *stored;
-            chord_list[static_cast<size_t>(x)]["reads"].push_back(
-                nlohmann::json{{"activation", a}, {"stored_end_ms", *stored}, {"planned_end_ms", *stored + shift}});
+            const double stored = ms_of(act.sp_end_steps[*step].end_tick);
+            // A led chord moves the end as its lead does; a plain press goes
+            // kPressLeadMs early and is judged kJudgeEarlyMs after it.
+            const double shift =
+                lead_of.count(x) > 0
+                    ? anchor_end_shift_ms(way_of[x], moving_side(way_of[x], *scale), lead_of[x], kJudgeEarlyMs)
+                    : scale->late * (kJudgeEarlyMs - kPressLeadMs);
+            read_plan[{a, x}] = ReadPlan{stored, stored + shift, *scale};
+            chord_list[static_cast<size_t>(x)]["reads"].push_back(nlohmann::json{{"activation", a},
+                                                                                {"step", *step},
+                                                                                {"ratio", scale_json(*scale)},
+                                                                                {"stored_end_ms", stored},
+                                                                                {"planned_end_ms", stored + shift}});
         }
-        // An end a lead moves earlier puts the chords before it at risk; one
-        // moved later leaves them inside already (design point 3 of
-        // docs/superpowers/plans/2026-11-07-player-limits.md).
-        if (final_anchor[a] && lead_of.count(*final_anchor[a]) > 0 &&
-            way_of[*final_anchor[a]] == SqueezeKind::SqOut)
-            final_shift[a] = anchor_end_shift_ms(SqueezeKind::SqOut, ratio_of[*final_anchor[a]],
-                                                 lead_of[*final_anchor[a]], kJudgeEarlyMs);
+        // The final end moves with its anchor's lead, early or late, at the
+        // last step's own scale. A plain-pressed anchor leaves it as stored:
+        // the read carries that press's one-frame drift.
+        if (final_anchor[a] && lead_of.count(*final_anchor[a]) > 0 && !act.sp_end_steps.empty()) {
+            const int x = *final_anchor[a];
+            if (const std::optional<TransferScale> own =
+                    step_transfer_scale(act, act.sp_end_steps.size() - 1, timing)) {
+                final_shift[a] = anchor_end_shift_ms(way_of[x], moving_side(way_of[x], *own), lead_of[x], kJudgeEarlyMs);
+                final_led[a] = true;
+            }
+        }
     }
+
+    // A press timed from activation `a`'s read after chord `x`, aimed at its
+    // own end, the end of step `own_step` (stored at `own_stored_ms`, planned
+    // at `own_ms`). With `moved` the press assumed the read as planned; without,
+    // the read as stored, as the own end is. Unset when that read is not
+    // planned or the own step has no scale.
+    auto end_link = [&](size_t a, int x, size_t own_step, double own_stored_ms, double own_ms,
+                        bool moved) -> std::optional<EndLink> {
+        const auto it = read_plan.find({a, x});
+        if (it == read_plan.end()) return std::nullopt;
+        const std::optional<TransferScale> own = step_transfer_scale(*acts[a], own_step, timing);
+        if (!own) return std::nullopt;
+        EndLink l;
+        l.read_stored_end_ms = it->second.stored_ms;
+        l.aim_end_ms = moved ? it->second.planned_ms : it->second.stored_ms;
+        l.own_stored_end_ms = own_stored_ms;
+        l.own_end_ms = own_ms;
+        l.conversion = end_conversion(*own, it->second.scale);
+        return l;
+    };
+    // The final end's link, for a chord aimed at activation `a`'s final end.
+    auto final_link = [&](size_t a) -> std::optional<EndLink> {
+        const std::optional<int64_t> d = acts[a]->deact_tick();
+        if (!final_anchor[a] || !d) return std::nullopt;
+        const double stored = ms_of(*d);
+        return end_link(a, *final_anchor[a], acts[a]->sp_end_steps.size() - 1, stored, stored + final_shift[a],
+                        final_led[a]);
+    };
 
     // ---- the presses, chord by chord
     struct Press {
@@ -715,7 +778,7 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
         const char* rule = "plain";
         std::optional<size_t> act;       // timed_from_end
         std::optional<int> read_after;   // the chord whose read it is retimed from
-        std::optional<double> aim_end_ms;
+        std::optional<EndLink> link;     // the two ends, for a press timed from an end
         nlohmann::json fallback;         // null: none
         bool checked = false;            // the far-press check reads it
     };
@@ -723,7 +786,7 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
     auto add_groups = [&](size_t i, const std::vector<std::vector<size_t>>& groups, double first_aim_ms,
                           bool checked, const char* rule, std::optional<size_t> act = std::nullopt,
                           std::optional<int> read_after = std::nullopt,
-                          std::optional<double> aim_end_ms = std::nullopt) {
+                          std::optional<EndLink> link = std::nullopt) {
         for (size_t g = 0; g < groups.size(); ++g) {
             Press p;
             p.chord = i;
@@ -733,7 +796,7 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
             p.rule = rule;
             p.act = act;
             p.read_after = read_after;
-            p.aim_end_ms = aim_end_ms;
+            p.link = link;
             p.checked = checked || g > 0;
             presses.push_back(std::move(p));
         }
@@ -748,14 +811,6 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
             if (c.notes[k].color == top) return k;
         return std::nullopt;
     };
-    // The end a timed press's aim assumed, in the terms of the read it is
-    // retimed from: that read's stored end moved as the press's own end was.
-    auto in_read_terms = [&](size_t a, int anchor, double moved_ms) -> std::optional<double> {
-        const auto it = read_stored.find({a, anchor});
-        if (it == read_stored.end()) return std::nullopt;
-        return it->second + moved_ms;
-    };
-
     for (size_t i = 0; i < n; ++i) {
         if (refused.count(i) > 0) continue;  // its line is written already
         const ReplayChord& c = replay.chords[i];
@@ -792,14 +847,14 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
             const Timed& t = timed[it->second];
             const SqueezeSplit& s = *t.split;
             const int anchor = t.g.anchor_chord;
-            const std::optional<double> aim_end = in_read_terms(a, anchor, s.aim_end_ms - t.g.end_ms);
-            if (!aim_end) {
+            const std::optional<EndLink> link = end_link(a, anchor, t.own_step, t.g.end_ms, s.aim_end_ms, true);
+            if (!link) {
                 refuse_chord(i, "chord " + std::to_string(ci) + " is a squeeze timed from the end read after chord " +
                                     std::to_string(anchor) + ", and that read is not planned, so it is not pressed");
                 continue;
             }
-            // Thresholds in the same terms as the read.
-            const double terms = *aim_end - s.aim_end_ms;
+            // Each threshold is worked out on the own end; the file writes
+            // it in read terms, where the player compares it (design point 4).
             if (t.g.kind == SqueezeKind::SqOut) {
                 // The late gems are the ones the rules pay outside, by their
                 // place in Chord::note_list(true), the order of
@@ -833,7 +888,7 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
                 const double first_inside_aim =
                     last_inside_aim - static_cast<double>(inside->empty() ? 0 : inside->size() - 1) * kChordOrderGapMs;
                 if (!inside->empty())
-                    add_groups(i, *inside, first_inside_aim, true, "squeeze_out_inside", a, anchor, *aim_end);
+                    add_groups(i, *inside, first_inside_aim, true, "squeeze_out_inside", a, anchor, link);
                 Press late;
                 late.chord = i;
                 late.gems = late_gems;
@@ -841,14 +896,14 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
                 late.rule = "squeeze_out_late";
                 late.act = a;
                 late.read_after = anchor;
-                late.aim_end_ms = *aim_end;
+                late.link = link;
                 late.checked = true;
                 // The freak-fixes plan's question 3 (a): past the threshold
                 // the late gem joins the last inside group, pressed
-                // kSpEndLeadMs before the read end, and the row says
-                // retimed=inside.
+                // before_end_ms before the own end as the read moved it, and
+                // the row says retimed=inside.
                 late.fallback = nlohmann::json{
-                    {"if_end_after_ms", sqout_fallback_after_ms(c.ms, side) + terms},
+                    {"if_end_after_ms", read_at_own_ms(*link, sqout_fallback_after_ms(c.ms, side))},
                     {"action", "join_group"},
                     {"join_gems", inside->empty() ? std::vector<size_t>{} : inside->back()},
                     {"before_end_ms", kSpEndLeadMs},
@@ -857,12 +912,12 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
             } else {
                 const size_t first = presses.size();
                 add_groups(i, press_groups(mults[i], sent[i], std::nullopt), s.squeeze_aim_ms, true, "squeeze_in",
-                           a, anchor, *aim_end);
+                           a, anchor, link);
                 // Question 3 (a): before the threshold the chord is pressed
                 // plain, so it scores and the combo holds.
                 for (size_t p = first; p < presses.size(); ++p)
                     presses[p].fallback = nlohmann::json{
-                        {"if_end_before_ms", sqin_fallback_before_ms(c.ms, side) + terms},
+                        {"if_end_before_ms", read_at_own_ms(*link, sqin_fallback_before_ms(c.ms, side))},
                         {"action", "plain"},
                         {"aim_ms", -kPressLeadMs + presses[p].after_ms.value_or(0.0)},
                         {"retimed", "plain"}};
@@ -871,14 +926,11 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
         }
 
         // A chord on a final end (when its activation does not squeeze out)
-        // goes kSpEndLeadMs before that end, as a lead moved it earlier.
+        // goes kSpEndLeadMs before that end, as its anchor's lead moved it.
         if (on_end && acts[end_act[c.tick]]->sqout_tick == std::nullopt) {
             const size_t a = end_act[c.tick];
-            const double shift = final_shift[a];
-            const std::optional<double> aim_end =
-                final_anchor[a] ? in_read_terms(a, *final_anchor[a], shift) : std::nullopt;
-            if (aim_end) {
-                add_groups(i, groups, shift - kSpEndLeadMs, true, "sp_end", a, *final_anchor[a], *aim_end);
+            if (const std::optional<EndLink> link = final_link(a)) {
+                add_groups(i, groups, final_shift[a] - kSpEndLeadMs, true, "sp_end", a, *final_anchor[a], link);
                 continue;
             }
         }
@@ -896,9 +948,9 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
             if (!d) continue;
             const double aim = ms_of(*d) + final_shift[a] - kSpEndLeadMs - c.ms;
             if (aim >= -kPressLeadMs) continue;
-            const std::optional<double> aim_end = in_read_terms(a, *final_anchor[a], final_shift[a]);
-            if (!aim_end) continue;
-            add_groups(i, groups, aim, true, "inside_moved_end", a, *final_anchor[a], *aim_end);
+            const std::optional<EndLink> link = final_link(a);
+            if (!link) continue;
+            add_groups(i, groups, aim, true, "inside_moved_end", a, *final_anchor[a], link);
             placed = true;
             break;
         }
@@ -946,7 +998,13 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
                            {"rule", p.rule},
                            {"timed_from_end", p.act ? nlohmann::json(*p.act) : nlohmann::json(nullptr)},
                            {"end_read_after", or_null(p.read_after)},
-                           {"aim_end_ms", or_null(p.aim_end_ms)},
+                           {"aim_end_ms", p.link ? nlohmann::json(p.link->aim_end_ms) : nlohmann::json(nullptr)},
+                           {"own_end_ms", p.link ? nlohmann::json(p.link->own_end_ms) : nlohmann::json(nullptr)},
+                           {"read_stored_end_ms",
+                            p.link ? nlohmann::json(p.link->read_stored_end_ms) : nlohmann::json(nullptr)},
+                           {"own_stored_end_ms",
+                            p.link ? nlohmann::json(p.link->own_stored_end_ms) : nlohmann::json(nullptr)},
+                           {"conversion", p.link ? scale_json(p.link->conversion) : nlohmann::json(nullptr)},
                            {"room_ms", press_room_ms(p.aim_ms, side)},
                            {"last_send_ms", last_send_ms(c.ms, side)}};
         if (!p.fallback.is_null()) row["fallback"] = p.fallback;

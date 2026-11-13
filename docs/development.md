@@ -462,10 +462,21 @@ file. For every chord the file gives its window side: the game's own hit window 
 100% speed, which the gaps to the chords either side set
 (docs/clone-hero/03-timing.md, TM-18 to TM-22 and TM-51). For every press it
 gives the aim, how far early or late, the latest song clock at which it may
-still be sent, and the Star Power end it assumes. For every squeeze it names
+still be sent, and the Star Power end it assumes. Each read the player makes
+of the game's end, after a chord the file names, says which SP-end step it
+sees (`step`), that step's ratio (`ratio`, ms of end moved per ms of press,
+from `step_transfer_scale` in src/core/squeeze_rating.cpp) and the end
+planned there. A press timed from an end has two ends in play: the read end,
+which the player reads, and its own end, which the press must land before or
+after. It carries both as stored (`read_stored_end_ms`, `own_stored_end_ms`),
+the read its aim assumed (`aim_end_ms`), its own end as planned
+(`own_end_ms`) and the `conversion` from one to the other, an `early` and a
+`late` side: how many ms the own end moves for each ms the read end moves. A
+press with no end carries null in each. For every squeeze it names
 the chord whose press moves the end, splits the room between the two presses,
 says whether the game can make it at 100% speed, and writes what the player
-should do if the end the game really stores crosses a threshold. A path it
+should do if the end the game really stores crosses a threshold. Each
+threshold is written as a read, the read at which the own end reaches it. A path it
 cannot plan comes back as a list of refusals in the file, each in plain words.
 The window formula and every timing constant the plan uses live once, in
 tools/replay_schedule.cpp. No screen reads that code: Hydra's own judging keeps

@@ -69,8 +69,12 @@ struct SqueezeGeometry {
     SteadySpans steady;   // steady_spans(anchor, end)
 };
 
-// The ratio the anchor's press moves this squeeze's end by: end_scale_early
-// for a squeeze-out (the anchor goes early), end_scale_late for a squeeze-in.
+// The side of `scale` an anchor press for a squeeze of `kind` moves an end
+// by: early for a squeeze-out (the anchor goes early), late for a squeeze-in.
+double moving_side(SqueezeKind kind, const TransferScale& scale);
+
+// The ratio the anchor's press moves this squeeze's end by: moving_side of
+// the squeeze's stored ratio.
 double moving_ratio(const SqueezeGeometry& g);
 
 // The lead the equal-room split gives the anchor of `g` alone, in ms (always
@@ -107,9 +111,38 @@ double press_room_ms(double aim_ms, double side_ms);
 // `side_ms` may still be sent at (TM-27: equal is inside).
 double last_send_ms(double chord_ms, double side_ms);
 
-// The live fallbacks' thresholds (design point 5): the read end past which a
-// squeeze-out's late press leaves its chord's side, and the read end before
-// which a squeeze-in's press before the end lands ahead of it.
+// ---- the two ends of a timed press ----------------------------------------
+// Design points 3 and 4 of
+// docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md. A press
+// timed from an end has two ends in play: the read end, the one the player
+// reads after the anchor chord, and the own end, the one the press must land
+// before or after. Both move with the same anchor, each by its own step's
+// scale (step_transfer_scale, core/squeeze_rating.h), so an error at the read
+// end converts to the own end by the conversion. The player does the one sum
+// with these numbers (retime_from_end in
+// tools/ch_probe/experiments/play_chart.py); the schedule only runs it
+// backwards, in read_at_own_ms.
+struct EndLink {
+    double read_stored_end_ms = 0.0;  // the read end as stored
+    double aim_end_ms = 0.0;          // the read the press's aim assumed
+    double own_stored_end_ms = 0.0;   // the own end as stored
+    double own_end_ms = 0.0;          // the own end the press's aim assumed
+    TransferScale conversion;         // end_conversion of the two step scales
+};
+
+// The own end's scale over the read end's, each side over the same side.
+// When the two ends are one step the conversion is exactly 1 on both sides.
+TransferScale end_conversion(const TransferScale& own, const TransferScale& read);
+
+// The read at which the own end of `link` reaches `own_ms`: the late side of
+// the conversion when `own_ms` is at or after the own stored end, else the
+// early side.
+double read_at_own_ms(const EndLink& link, double own_ms);
+
+// The live fallbacks' thresholds, in own-end terms: the own end past which a
+// squeeze-out's late press leaves its chord's side, and the own end before
+// which a squeeze-in's press before the end lands ahead of it. The file
+// writes each in read terms, through read_at_own_ms.
 double sqout_fallback_after_ms(double chord_ms, double side_ms);
 double sqin_fallback_before_ms(double chord_ms, double side_ms);
 
@@ -192,10 +225,12 @@ nlohmann::json activation_json(const Activation& act, const ChordTimes& chords,
 // The whole schedule for one path: "constants", "activations", "chords",
 // "squeezes" inside each activation (each with its split and "feasible"),
 // "presses" in firing order and "refusals". A chord the player reads the
-// game's end after carries "reads", each with the end planned there; a press
-// timed from an end names the activation ("timed_from_end"), the read it is
-// retimed from ("end_read_after") and the end its aim assumed in that read's
-// terms ("aim_end_ms"). Every chord row carries "refused": true when the
+// game's end after carries "reads", each with the step it sees, that step's
+// scale and the end planned there; a press timed from an end names the
+// activation ("timed_from_end"), the read it is retimed from
+// ("end_read_after") and the EndLink fields ("aim_end_ms", "own_end_ms",
+// "read_stored_end_ms", "own_stored_end_ms", "conversion"); its fallback
+// thresholds are in read terms. Every chord row carries "refused": true when the
 // schedule writes no press for it, and then a line in "refusals" says why.
 // `replay` is replay_path over the same path's windows. `rules` are the
 // rules the path was priced under: a squeeze-out's late press holds the gems
