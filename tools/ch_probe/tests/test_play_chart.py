@@ -1509,7 +1509,8 @@ class ReadAfterAnchorTest(unittest.TestCase):
     end moves, own_end_now_ms of that read minus the press's `own_end_ms`
     (design points 4 and 7 of
     docs/superpowers/plans/2026-11-08-replay-press-schedule.md and design
-    point 3 of docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md).
+    point 3 of
+    `docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md` (removed; `git show 48401572:docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md`)).
     On the Freak
     fixture, activation 0 starts on chord 232 and is read again after 263;
     387's late press is timed from the read after 263."""
@@ -1550,7 +1551,8 @@ class ReadAfterAnchorTest(unittest.TestCase):
         # timed from the read after 340, each with its own end fields in the
         # file: one read moves each by how far its own end moves, the
         # production own_end_now_ms minus the file's own_end_ms (design point
-        # 3 of docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md).
+        # 3 of
+        # `docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md` (removed; `git show 48401572:docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md`)).
         chords = play_chart.load_schedule(_MOUTHS_SCHEDULE).chords
         squeeze, sp_end = _press_of(chords, 431), _press_of(chords, 465)
         self.assertEqual((squeeze.end_read_after, sp_end.end_read_after), (340, 340))
@@ -1680,7 +1682,8 @@ def _timed_press(index=5, chart_ms=3000.0, aim_ms=-15.0, lanes=(Lane.RED,), read
 class ConversionRetimeTest(unittest.TestCase):
     """retime_from_end moves a press by how far its own end moved, through
     the file's conversion, never one for one with the read (design points 3
-    and 5 of docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md)."""
+    and 5 of
+    `docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md` (removed; `git show 48401572:docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md`))."""
 
     def test_pitch_dark_chord_644_moves_by_the_conversion(self):
         # The plan's Pitch Dark numbers: the stored ends of steps 2 and 1,
@@ -1739,7 +1742,7 @@ class ReadRangeTest(unittest.TestCase):
     """A read inside a press's `read_range_ms` moves it by the sum; one
     outside takes its written fallback, or leaves it where the schedule put
     it, and says `range` (design point 5 of
-    docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md).
+    `docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md` (removed; `git show 48401572:docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md`)).
     Every number is a hand-picked test input."""
 
     RANGE = (990.0, 1010.0)
@@ -1805,7 +1808,7 @@ class EndFieldsLoadTest(unittest.TestCase):
     """load_schedule refuses a press with an `end_read_after` that lacks a
     field of play_chart.END_FIELDS, naming it, so a file older than the
     fields is never played (task T3 of
-    docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md)."""
+    `docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md` (removed; `git show 48401572:docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md`))."""
 
     def _doc(self):
         doc = _schedule_of(_DUMP)

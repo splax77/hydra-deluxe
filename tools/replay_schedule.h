@@ -54,7 +54,7 @@ KeptGems kept_gems(const Chord& chord, const std::vector<ReplayNote>& notes);
 
 // The end the player reads after an anchor chord: the end of the SP-end step
 // on that chord (design point 5 of
-// docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md).
+// `docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md` (removed; `git show 48401572:docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md`)).
 struct ReadEnd {
     int64_t tick = 0;     // that step's end tick
     TransferScale ratio;  // step_transfer_scale of that step
@@ -126,8 +126,8 @@ double last_send_ms(double chord_ms, double side_ms);
 
 // ---- the two ends of a timed press ----------------------------------------
 // Design points 3 and 4 of
-// docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md. A press
-// timed from an end has two ends in play: the read end, the one the player
+// `docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md` (removed; `git show 48401572:docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md`).
+// A press timed from an end has two ends in play: the read end, the one the player
 // reads after the anchor chord, and the own end, the one the press must land
 // before or after. Both move with the same anchor, each by its own step's
 // scale (step_transfer_scale, core/squeeze_rating.h), so an error at the read

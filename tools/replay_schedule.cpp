@@ -242,7 +242,8 @@ std::optional<double> anchor_lead_ms(const std::vector<SqueezeGeometry>& on_one_
     }
     // The read end moves with the same lead, at its own step's scale, and
     // the player converts a read only while that end stays steady too (design
-    // point 5 of docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md).
+    // point 5 of
+    // `docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md` (removed; `git show 48401572:docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md`)).
     for (const SqueezeGeometry& g : on_one_anchor) {
         if (!g.read_end) continue;
         const SteadySpans& s = g.read_end->steady;
@@ -700,7 +701,8 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
     // read sees the end in force after that chord's step; its planned value
     // is that end moved by the chord's press judged kJudgeEarlyMs after its
     // aim, at that same step's own scale (step_transfer_scale; design point
-    // 2 of docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md).
+    // 2 of
+    // `docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md` (removed; `git show 48401572:docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md`)).
     struct ReadPlan {
         double stored_ms = 0.0;
         double planned_ms = 0.0;

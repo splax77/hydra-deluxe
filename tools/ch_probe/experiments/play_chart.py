@@ -91,15 +91,16 @@ NO_ACTIVATION_READ = "no activation read"
 # inside group (the block's `join_group`), or a squeeze-in pressed plain (the
 # block's `plain`). A squeeze-in that keeps its squeeze press leaves it blank.
 # A read outside the press's `read_range_ms` makes it `range` (design point 5
-# of docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md): the
-# press took its fallback, or stayed where the schedule put it.
+# of `docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md` (removed; `git show 48401572:docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md`)):
+# the press took its fallback, or stayed where the schedule put it.
 RETIMED_LATE = "late"
 RETIMED_INSIDE = "inside"
 RETIMED_PLAIN = "plain"
 RETIMED_RANGE = "range"
 
 # The fields every press with an `end_read_after` carries for retime_from_end
-# (design point 3 of docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md).
+# (design point 3 of
+# `docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md` (removed; `git show 48401572:docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md`)).
 # load_schedule refuses a file whose press lacks one; only `read_range_ms`
 # may be null, which means the file names no range to check.
 END_FIELDS = ("own_end_ms", "read_stored_end_ms", "own_stored_end_ms", "conversion",
@@ -360,8 +361,8 @@ def _end_fields(entry: _Fields, path: str, k: int) -> dict:
 def own_end_now_ms(press: Press, read_end_ms: float) -> float:
     """Where `press`'s own end is once the game's read end is `read_end_ms`:
     design point 3 of
-    docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md. Every
-    number in the sum is the file's; the schedule (tools/replay_schedule.cpp)
+    `docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md` (removed; `git show 48401572:docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md`).
+    Every number in the sum is the file's; the schedule (tools/replay_schedule.cpp)
     worked out the conversion."""
     side = "late" if read_end_ms >= press.read_stored_end_ms else "early"
     return (press.own_stored_end_ms
@@ -395,8 +396,8 @@ def retime_from_end(presses: Sequence[Press], read_after: int, read_end_ms: floa
     docs/superpowers/plans/2026-11-07-player-limits.md says why the read
     moves at all (the game stamps an activation with the clock of the frame
     that read the press); design point 3 of
-    docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md says
-    why the move goes through the file's conversion. A moved press carries
+    `docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md` (removed; `git show 48401572:docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md`)
+    says why the move goes through the file's conversion. A moved press carries
     the read as its `aim_end_ms` and its own end now as its `own_end_ms`.
 
     A moved press with a `fallback` then does what the block says (design
