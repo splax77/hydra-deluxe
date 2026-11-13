@@ -281,6 +281,8 @@ class ToolRig:
 
     def __init__(self, tmp: str, *, kit: bool = False, **tool_args):
         self.r = Rig(tmp, exits_at=None)
+        # The registry key the backup holds and ch_stop puts back.
+        self.r.env.run_reg = self.reg = FakeReg()
         self.scratch_root = os.path.join(tmp, "scratch")
         self.driver = RecordingDriver()
         self.hwnd = WINDOW
@@ -374,7 +376,7 @@ class GameToolsTest(unittest.TestCase):
         with mock.patch.object(Q, "LIVE_ENV", FakeQuiet(cpu=40.0).env()):
             lines = t.tools.ch_start(t.r.song).splitlines()
         self.assertEqual(lines[0], "a run was open; stopping it first:")
-        self.assertIn(f"{G.SETTINGS}: unchanged", lines)
+        self.assertIn("rewired registry: unchanged", lines)
         self.assertTrue(lines[-1].startswith("refused: the machine is not quiet: "))
         self.assertIsNone(t.tools._run)
         self.assertEqual(t.tools._scratch, scratch)
@@ -442,10 +444,11 @@ class GameToolsTest(unittest.TestCase):
         t = ToolRig(self.tmp)
         t.tools.ch_start(t.r.song)
         first_backup = t.backup_dir()
-        _write(t.r.path(G.SETTINGS), b"changed by the game")
+        original_key = t.reg.text
+        t.reg.text = b"changed by the game"
         lines = t.tools.ch_start(t.r.song).splitlines()
         self.assertEqual(lines[0], "a run was open; stopping it first:")
-        restored = lines.index(f"{G.SETTINGS}: restored")
+        restored = lines.index("rewired registry: restored")
         second_start = [i for i, line in enumerate(lines) if line.startswith("starting: ")]
         self.assertEqual(len(second_start), 1)
         self.assertLess(restored, second_start[0])
@@ -453,25 +456,26 @@ class GameToolsTest(unittest.TestCase):
         self.assertTrue(t.r.game.stopped)
         self.assertEqual(len(t.r.launch.commands), 2)
         self.assertNotEqual(t.backup_dir(), first_backup)
-        t.r.assert_all_restored(self)
+        self.assertEqual(t.reg.text, original_key)
 
     # -- ch_stop and shutdown -----------------------------------------------------
 
-    def test_ch_stop_stops_the_game_restores_settings_and_leaves_the_games_saves(self):
+    def test_ch_stop_stops_the_game_restores_the_key_and_leaves_every_file(self):
         t = ToolRig(self.tmp)
         t.tools.ch_start(t.r.song)
+        original_key = t.reg.text
+        t.reg.text = b"changed by the game"
         for name in ORIGINAL:
             _write(t.r.path(name), b"changed by the game")
         lines = t.tools.ch_stop().splitlines()
-        self.assertIn(f"{G.SETTINGS}: restored", lines)
-        # The game's own saves, scorestats.json among them, stay as it left them.
-        for name in GAME_SAVES:
-            self.assertEqual(_read(t.r.path(name)), b"changed by the game", name)
-            self.assertFalse(any(line.startswith(f"{name}:") for line in lines), name)
+        self.assertIn("rewired registry: restored", lines)
+        self.assertEqual(t.reg.text, original_key)
+        # Every file, settings.ini and scorestats.json among them, stays as
+        # the run left it.
+        t.r.assert_files_hold(self, b"changed by the game")
         self.assertIn("stopped the game", lines)
         self.assertFalse(any("--stop" in line for line in lines))
         self.assertTrue(t.r.game.stopped)
-        t.r.assert_all_restored(self)
         self.assertIsNone(t.tools.launched_at())
 
     def test_ch_stop_runs_the_stop_hooks_first_in_order(self):
@@ -493,52 +497,57 @@ class GameToolsTest(unittest.TestCase):
         reply = t.tools.ch_stop()
         self.assertIn("(pid 4242) was told to stop but was still running after 30 s", reply)
         self.assertNotIn("stopped the game\n", reply)
-        t.r.assert_all_restored(self)
+        self.assertIn("rewired registry: unchanged", reply)
+        t.r.assert_files_hold(self, b"changed by the game")
 
-    def test_a_failed_restore_names_the_file_and_folder_and_nothing_further_runs(self):
+    def test_a_failed_restore_names_it_and_the_folder_and_nothing_further_runs(self):
         t = ToolRig(self.tmp)
         t.tools.ch_start(t.r.song)
         backup = t.backup_dir()
 
-        def fail(backup_dir, out):
-            raise G.RestoreError(G.SETTINGS, "locked")
+        def fail(backup_dir, **_kw):
+            raise G.RestoreError(G.REGISTRY_BACKUP, "locked")
 
-        with mock.patch.object(G, "restore", fail):
+        with mock.patch.object(G, "restore_all", fail):
             lines = t.tools.ch_start(t.r.song).splitlines()
-        self.assertIn(f"restore failed on {G.SETTINGS}: locked", lines)
+        self.assertIn(f"restore failed on {G.REGISTRY_BACKUP}: locked", lines)
         self.assertIn(f"stopped; the backup is still in {backup}", lines)
         self.assertEqual(lines[-1], "the new run was not started")
         self.assertEqual(len(t.r.launch.commands), 1)
         # The run stays open, so the next ch_stop tries the restore again.
         self.assertEqual(t.backup_dir(), backup)
-        self.assertIn(f"{G.SETTINGS}: unchanged", t.tools.ch_stop())
+        self.assertIn("rewired registry: unchanged", t.tools.ch_stop())
 
     def test_shutdown_terminates_a_server_started_game_and_restores(self):
         t = ToolRig(self.tmp)
         t.tools.ch_start(t.r.song)
+        original_key = t.reg.text
+        t.reg.text = b"changed by the game"
         _write(t.r.path(G.SETTINGS), b"changed by the game")
         reply = t.tools.shutdown()
         self.assertTrue(t.r.game.stopped)
-        self.assertIn(f"{G.SETTINGS}: restored", reply)
-        t.r.assert_all_restored(self)
+        self.assertIn("rewired registry: restored", reply)
+        self.assertEqual(t.reg.text, original_key)
+        self.assertEqual(_read(t.r.path(G.SETTINGS)), b"changed by the game")
 
     def test_shutdown_with_an_adopted_game_restores_only(self):
         t = ToolRig(self.tmp)
         t.tools.ensure_backup()
         backup = t.backup_dir()
+        t.reg.text = b"changed by the game"
         _write(t.r.path(G.SETTINGS), b"changed by the game")
         _write(t.r.path("user.bin"), b"changed by the game")
         reply = t.tools.shutdown()
         self.assertEqual(t.r.launch.commands, [])
         self.assertFalse(t.r.game.stopped)
-        self.assertIn(f"{G.SETTINGS}: restored", reply)
+        self.assertIn("rewired registry: restored", reply)
+        self.assertEqual(_read(t.r.path(G.SETTINGS)), b"changed by the game")
         self.assertEqual(_read(t.r.path("user.bin")), b"changed by the game")
         self.assertIn("the server did not start the game, so it does not close it", reply)
         self.assertEqual(reply.splitlines()[-1],
-                         "if the game is still running it may write these files again when it "
-                         "closes; after closing it, run py tools/ch_mcp/bot_run.py --restore "
-                         f'"{backup}"')
-        t.r.assert_all_restored(self)
+                         "if the game is still running it may write the registry key again "
+                         "when it closes; after closing it, run py tools/ch_mcp/bot_run.py "
+                         f'--restore "{backup}"')
 
     # -- ensure_backup and launched_at ----------------------------------------------
 
@@ -978,7 +987,7 @@ class GameToolsTest(unittest.TestCase):
         t.tools._play.thread.join(THREAD_CAP_S)
         self.assertEqual(t.tools.play_snapshot()["stop"], "stopped")
         # The play run took the adopted game's backup, and ch_stop restored it.
-        self.assertIn("settings.ini: unchanged", reply)
+        self.assertIn("rewired registry: unchanged", reply)
 
     # -- the kit route ----------------------------------------------------------------------
 
@@ -2220,8 +2229,8 @@ USER_SETTINGS = b"[audio]\r\nvolume = 1\r\n\r\n[game]\r\npause_on_focus_lost = 1
 
 
 class RunWithoutFocusTest(unittest.TestCase):
-    """ch_start's settings line and foreground watch, and the registry key
-    riding along with the files."""
+    """ch_start's settings line and foreground watch, and the registry key's
+    backup and restore."""
 
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -2247,21 +2256,23 @@ class RunWithoutFocusTest(unittest.TestCase):
         self.assertEqual(t.events, [
             ("setting", t.r.path(G.SETTINGS), "pause_on_focus_lost", "0", 1),
             "launch", "watch start"])
-        said = "settings.ini: pause_on_focus_lost set to 0 for this run (restored by ch_stop)"
+        said = ("settings.ini: pause_on_focus_lost set to 0 for this run (not put back after "
+                "the run)")
         self.assertIn(said, lines)
         self.assertLess(lines.index(f"backup folder: {t.backup_dir()}"), lines.index(said))
         starting = [i for i, line in enumerate(lines) if line.startswith("starting: ")]
         self.assertLess(lines.index(said), starting[0])
 
-    def test_the_users_line_is_set_for_the_run_and_put_back_by_ch_stop(self):
+    def test_the_users_line_is_set_for_the_run_and_stays_after_ch_stop(self):
+        # The user's choice of 2026-11-13: "Leave the line changed".
         t = ToolRig(self.tmp)
         _write(t.r.path(G.SETTINGS), USER_SETTINGS)
         t.tools.ch_start(t.r.song)
-        self.assertEqual(_read(t.r.path(G.SETTINGS)),
-                         USER_SETTINGS.replace(b"pause_on_focus_lost = 1", b"pause_on_focus_lost = 0"))
+        run_value = USER_SETTINGS.replace(b"pause_on_focus_lost = 1", b"pause_on_focus_lost = 0")
+        self.assertEqual(_read(t.r.path(G.SETTINGS)), run_value)
         lines = t.tools.ch_stop().splitlines()
-        self.assertIn("settings.ini: restored", lines)
-        self.assertEqual(_read(t.r.path(G.SETTINGS)), USER_SETTINGS)
+        self.assertFalse(any(line.startswith("settings.ini:") for line in lines))
+        self.assertEqual(_read(t.r.path(G.SETTINGS)), run_value)
 
     def test_a_settings_file_without_the_line_is_left_alone_and_named(self):
         t = ToolRig(self.tmp)
@@ -2407,17 +2418,16 @@ class HumanStartTest(unittest.TestCase):
         self.assertIn(("detach", False), self.events)
         self.assertLess(lines.index("launch agent: detached"), lines.index("stopped the game"))
         self.assertTrue(t.r.game.stopped)
-        t.r.assert_all_restored(self)
+        self.assertIn("rewired registry: unchanged", lines)
 
-    def test_a_failed_human_launch_says_so_and_restores_the_files(self):
+    def test_a_failed_human_launch_says_so_and_restores_the_key(self):
         t, _agent = self.rig(FakeLaunchAgent(self.events, statuses=[{"state": "refused"}]))
         lines = t.tools.ch_start(t.r.song, human=True).splitlines()
         self.assertTrue(lines[-1].startswith("the human launch failed: launch.ts refused the patch"),
                         lines)
-        self.assertIn(f"{G.SETTINGS}: unchanged", lines)
+        self.assertIn("rewired registry: unchanged", lines)
         self.assertIsNone(t.tools._run)
         self.assertEqual(t.watches, [])
-        t.r.assert_all_restored(self)
 
 
 def next_worker(t: ToolRig, running: bool = False, **tool_args) -> GT.GameTools:
@@ -2447,8 +2457,10 @@ class MarkerTest(unittest.TestCase):
         self.assertEqual(GT.read_marker(self.path), (os.getpid(), folder))
 
     def killed_run(self):
-        """A run left open with every user file changed; returns its backup."""
+        """A run left open with the registry key and every game file
+        changed; returns its backup."""
         self.t.tools.ch_start(self.t.r.song)
+        self.t.reg.text = b"changed by the game"
         for name in ORIGINAL:
             _write(self.t.r.path(name), b"changed by the game")
         return self.t.backup_dir()
@@ -2501,10 +2513,10 @@ class MarkerTest(unittest.TestCase):
         self.t.tools.ch_start(self.t.r.song)
         backup = self.t.backup_dir()
 
-        def fail(backup_dir, out):
-            raise G.RestoreError(G.SETTINGS, "locked")
+        def fail(backup_dir, **_kw):
+            raise G.RestoreError(G.REGISTRY_BACKUP, "locked")
 
-        with mock.patch.object(G, "restore", fail):
+        with mock.patch.object(G, "restore_all", fail):
             self.t.tools.ch_stop()
         self.assert_marker_names(backup)
         self.t.tools.ch_stop()
@@ -2565,16 +2577,18 @@ class MarkerTest(unittest.TestCase):
         self.assertFalse(os.path.exists(self.path))
 
     def test_a_failed_start_whose_restore_fails_keeps_the_marker_for_ch_stop(self):
+        original_key = self.t.reg.text
+
         def boom(cmd):
-            _write(self.t.r.path(G.SETTINGS), b"changed before the launch failed")
+            self.t.reg.text = b"changed before the launch failed"
             raise OSError("no such game")
 
         self.t.r.env.launch = boom
 
-        def fail(backup_dir, out):
-            raise G.RestoreError(G.SETTINGS, "locked")
+        def fail(backup_dir, **_kw):
+            raise G.RestoreError(G.REGISTRY_BACKUP, "locked")
 
-        with mock.patch.object(G, "restore", fail):
+        with mock.patch.object(G, "restore_all", fail):
             lines = self.t.tools.ch_start(self.t.r.song).splitlines()
         backup = self.t.backup_dir()
         self.assertIsNotNone(backup)
@@ -2582,7 +2596,7 @@ class MarkerTest(unittest.TestCase):
         self.assertIn(f"the backup may not be back; ch_stop tries again from {backup}", lines)
         self.assertEqual(lines[-1], "could not start the game: no such game")
         self.t.tools.ch_stop()
-        self.t.r.assert_all_restored(self)
+        self.assertEqual(self.t.reg.text, original_key)
         self.assertFalse(os.path.exists(self.path))
 
     # -- the next worker adopts ---------------------------------------------------
@@ -2591,17 +2605,16 @@ class MarkerTest(unittest.TestCase):
         then = time.time() - hours * 3600
         os.utime(folder, (then, then))
 
-    def assert_partly_restored(self):
-        """settings.ini is back; the game's own saves still hold what the
+    def assert_files_left(self):
+        """Every game file, settings.ini among them, still holds what the
         game wrote."""
-        for name, data in ORIGINAL.items():
-            want = b"changed by the game" if name in GAME_SAVES else data
-            self.assertEqual(_read(self.t.r.path(name)), want, name)
+        for name in ORIGINAL:
+            self.assertEqual(_read(self.t.r.path(name)), b"changed by the game", name)
 
-    def test_an_older_marker_backup_that_names_the_games_saves_leaves_them(self):
+    def test_an_older_marker_backup_that_names_the_games_files_leaves_them(self):
         backup = self.killed_run()
-        # The shape of a backup the tools once took: the game's saves in the
-        # manifest beside settings.ini.
+        # The shape of a backup the tools once took: the game's files,
+        # settings.ini among them, in the manifest beside the key.
         manifest = os.path.join(backup, G.BACKUP_MANIFEST)
         with open(manifest, encoding="utf-8") as f:
             entries = json.load(f)["files"]
@@ -2614,7 +2627,7 @@ class MarkerTest(unittest.TestCase):
         lines = next_worker(self.t).ch_stop().splitlines()
         for name in GAME_SAVES:
             self.assertIn(f"{name}: left as the game saved it", lines)
-        self.assert_partly_restored()
+        self.assert_files_left()
 
     def test_a_restore_from_a_marker_keeps_a_score_file_changed_after_the_backup(self):
         self.t.tools.ch_start(self.t.r.song)
@@ -2622,19 +2635,19 @@ class MarkerTest(unittest.TestCase):
         next_worker(self.t).ch_stop()
         self.assertEqual(_read(self.t.r.path("scoredata.bin")), b"the user played after the backup")
 
-    def test_a_live_runs_ch_stop_restores_settings_and_leaves_the_games_saves(self):
+    def test_a_live_runs_ch_stop_leaves_every_file(self):
         self.t.tools.ch_start(self.t.r.song)
         for name in ORIGINAL:
             _write(self.t.r.path(name), b"changed by the game")
         self.t.tools.ch_stop()
-        self.assert_partly_restored()
+        self.assert_files_left()
 
     def test_an_ordinary_adopted_backup_is_restored_at_shutdown(self):
         self.t.tools.ensure_backup()
         for name in ORIGINAL:
             _write(self.t.r.path(name), b"changed by the game")
         self.t.tools.shutdown()
-        self.assert_partly_restored()
+        self.assert_files_left()
         self.assertFalse(os.path.exists(self.path))
 
     def test_the_workers_exit_leaves_a_marker_backup_and_its_marker(self):
@@ -2648,7 +2661,7 @@ class MarkerTest(unittest.TestCase):
         self.assert_marker_names(backup)
         self.assertEqual(tools.open_lines(), [f"adopted backup: {backup}"])
         tools.ch_stop()
-        self.assert_partly_restored()
+        self.assert_files_left()
         self.assertFalse(os.path.exists(self.path))
 
     def test_the_next_worker_adopts_and_ch_stop_restores_and_deletes_the_marker(self):
@@ -2656,16 +2669,17 @@ class MarkerTest(unittest.TestCase):
         self.age_folder(backup, 3)
         tools = next_worker(self.t)
         said = (f"a previous worker (pid {os.getpid()}) left a backup open: {backup}, 3 hours old; "
-                "ch_stop restores settings.ini and the Rewired key from it")
+                "ch_stop restores the Rewired key from it")
         self.assertIn(said, tools.ch_status().splitlines())
         self.assertIn(said, self.t.r.lines)
         self.assertEqual(tools.open_lines(), [f"adopted backup: {backup}"])
         with mock.patch.object(B, "restore_only", wraps=B.restore_only) as restore_only:
             lines = tools.ch_stop().splitlines()
         self.assertEqual(restore_only.call_args.args[0], backup)
-        self.assertIn(f"{G.SETTINGS}: restored", lines)
-        self.assertFalse(any(line.startswith(f"{G.SCORESTATS}:") for line in lines))
-        self.assert_partly_restored()
+        self.assertIn("rewired registry: restored", lines)
+        self.assertFalse(any(line.startswith((f"{G.SETTINGS}:", f"{G.SCORESTATS}:"))
+                             for line in lines))
+        self.assert_files_left()
         self.assertFalse(self.t.r.game.stopped)
         self.assertFalse(os.path.exists(self.path))
         self.assertNotIn(said, tools.ch_status().splitlines())
@@ -2703,17 +2717,17 @@ class MarkerTest(unittest.TestCase):
         backup = self.killed_run()
         tools = next_worker(self.t)
 
-        def fail(backup_dir, out):
-            raise G.RestoreError(G.SETTINGS, "locked")
+        def fail(backup_dir, **_kw):
+            raise G.RestoreError(G.REGISTRY_BACKUP, "locked")
 
-        with mock.patch.object(G, "restore", fail):
+        with mock.patch.object(G, "restore_all", fail):
             lines = tools.ch_stop().splitlines()
-        self.assertIn(f"restore failed on {G.SETTINGS}: locked", lines)
+        self.assertIn(f"restore failed on {G.REGISTRY_BACKUP}: locked", lines)
         self.assert_marker_names(backup)
         self.assertEqual(tools._adopted_backup, backup)
         self.assertIn("refused", tools.ch_start(self.t.r.song))
         tools.ch_stop()
-        self.assert_partly_restored()
+        self.assert_files_left()
         self.assertFalse(os.path.exists(self.path))
 
     def test_a_backup_that_vanishes_after_adoption_fails_the_stop_without_raising(self):
@@ -3071,7 +3085,7 @@ class RecorderTest(unittest.TestCase):
         self.t.tools.ch_stop()
         self.assertLess(self.popen.events.index("stdin closed"), self.popen.events.index("hook"))
 
-    def test_a_stop_that_raises_still_restores_the_files(self):
+    def test_a_stop_that_raises_still_restores_the_key(self):
         self.t.tools.ch_start(self.t.r.song)
 
         def broken():
@@ -3080,7 +3094,7 @@ class RecorderTest(unittest.TestCase):
         self.t.tools._recorder.stop = broken
         reply = self.t.tools.ch_stop()
         self.assertIn("stopping the machine recorder failed: RuntimeError: broken", reply)
-        self.t.r.assert_all_restored(self)
+        self.assertIn("rewired registry: unchanged", reply)
 
     def test_open_lines_list_a_running_recorder_and_not_a_stopped_one(self):
         self.t.tools.ch_start(self.t.r.song)

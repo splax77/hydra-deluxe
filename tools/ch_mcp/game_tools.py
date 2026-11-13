@@ -647,8 +647,7 @@ class GameTools:
                 return ""
             scratch = self._new_scratch()
             self._adopted_backup = game_files.backup(
-                self._env.documents_dir, scratch, stamp=self._env.stamp,
-                run_reg=self._env.run_reg)
+                scratch, stamp=self._env.stamp, run_reg=self._env.run_reg)
             lines = [f"backup folder: {self._adopted_backup} (taken now, because the server "
                      "did not start this game; ch_stop restores it)"]
             self._write_marker(self._adopted_backup, lines)
@@ -723,11 +722,10 @@ class GameTools:
 
     def ch_start(self, song_folder: Optional[str] = None, player: str = bot_run.DEFAULT_PLAYER,
                  profile: Optional[str] = None, human: bool = False) -> str:
-        """Check the machine is quiet (quiet.quiet_report), back up what the
-        tools change (game_files.backup: settings.ini and the Rewired key;
-        the files the game saves on its own are not touched), set
-        settings.ini's pause_on_focus_lost line for the run (the backup puts
-        the user's line back), then start
+        """Check the machine is quiet (quiet.quiet_report), back up the
+        Rewired registry key (game_files.backup; no file is backed up), set
+        settings.ini's pause_on_focus_lost line for the run (nothing puts it
+        back: it stays at the run's value after the run), then start
         the game minimized and start the foreground watch: with a song folder
         the bot plays it from the command line; with none the game opens at
         its menu. With `human` and a song folder a human player plays it
@@ -774,7 +772,7 @@ class GameTools:
             def before_launch() -> None:
                 # start_run takes the backup and launches in one call, so this
                 # is the one moment between them: the backup is whole, and
-                # nothing of the user's has changed yet.
+                # the game has not started yet.
                 self._mark_new_backup(scratch, in_scratch, lines)
                 lines.append(self._pause_setting())
 
@@ -813,10 +811,11 @@ class GameTools:
     def ch_stop(self) -> str:
         """Stop the machine recorder, run the stop hooks, stop the play
         session, then stop the game the server started (bot_run.finish_run)
-        and put the backup back (settings.ini and the Rewired key), one line
-        each. The files the game saves on its own, scorestats.json among
-        them, stay as the game left them. A game the server did not start is
-        left running and only the backup is restored."""
+        and put the Rewired registry key back from the backup. No file in the
+        game's folders is touched: settings.ini keeps the run's
+        pause_on_focus_lost value, and the files the game saves itself stay
+        as the game left them. A game the server did not start is left
+        running and only the key is restored."""
         with self._lock:
             lines: List[str] = []
             self._stop_all(lines)
@@ -824,8 +823,8 @@ class GameTools:
 
     def shutdown(self) -> str:
         """The server's exit (question 3): the same steps as ch_stop. A game
-        the server started is terminated, then the files are restored; for a
-        game it did not start, the files are restored and the game stays. A
+        the server started is terminated, then the key is restored; for a
+        game it did not start, the key is restored and the game stays. A
         backup adopted from a marker is left, with its marker, for a ch_stop."""
         with self._lock:
             lines: List[str] = []
@@ -843,7 +842,8 @@ class GameTools:
         except (game_files.SettingNotFound, OSError) as e:
             return (f"{game_files.SETTINGS}: {key} not set to {value} ({e}); the game may "
                     "pause while it is not in front")
-        return f"{game_files.SETTINGS}: {key} set to {value} for this run (restored by ch_stop)"
+        return (f"{game_files.SETTINGS}: {key} set to {value} for this run (not put back "
+                "after the run)")
 
     def ch_status(self) -> str:
         """The game side of the session: the run, the backup folder, a
@@ -1479,8 +1479,7 @@ class GameTools:
             age = age_text(time.time() - os.path.getmtime(folder))
             self._adoption_line = (
                 f"a previous worker (pid {pid}) left a backup open: {folder}, {age} old; "
-                f"ch_stop restores {', '.join(game_files.BACKED_UP_FILES)} and the Rewired "
-                "key from it")
+                "ch_stop restores the Rewired key from it")
             self._adopted_backup = self._marked = folder
             self._from_marker = True
 

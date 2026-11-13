@@ -1,11 +1,11 @@
 """Launch Clone Hero with a bot on one song and keep the stats file it writes.
 
 The game's command line plays a song folder with bot players. This script
-backs up what the tools change (game_files.BACKED_UP_FILES and the registry
-key) first, starts the game, waits (with a cap) for scorestats.json to
-change, copies the new file out, watches whether the game exits, and then
-puts the backup back. The files the game saves on its own stay as the game
-left them. For the launch, it is the one owner of the rules in
+backs up the Rewired registry key first (game_files.backup), starts the
+game, waits (with a cap) for scorestats.json to change, copies the new file
+out, watches whether the game exits, and then puts the key back. No file in
+the game's folders is backed up or restored: every file stays as the game
+or the run left it. For the launch, it is the one owner of the rules in
 docs/agents/clone-hero-mcp.md, "Safety rules".
 
     py tools/ch_mcp/bot_run.py --song <song folder> --out <folder>
@@ -31,7 +31,7 @@ patched in memory (the direct-start plan,
 docs/superpowers/plans/2026-10-31-ch-mcp-direct-start.md (removed; git show 6804353f:docs/superpowers/plans/2026-10-31-ch-mcp-direct-start.md), "The launch").
 Nothing here writes the game's files on disk.
 
-The file paths and the backup list live in game_files.py; the caps are the
+The file paths and the registry key live in game_files.py; the caps are the
 constants below.
 """
 
@@ -735,8 +735,8 @@ def start_run(song_dir: Optional[str], *, player: str = DEFAULT_PLAYER,
               before_launch: Optional[Callable[[], None]] = None,
               human: bool = False,
               song_end: Optional[tuple[float, str]] = None) -> Run:
-    """Back up what the tools change (game_files.backup), then start the
-    game, and return at once. With
+    """Back up the registry key (game_files.backup), then start the game,
+    and return at once. With
     a song folder the game plays it with a bot; a song with no known length
     raises SongLengthMissing before anything is backed up or started. With
     song_dir None the game starts at its menu and the run has no stats cap.
@@ -744,10 +744,9 @@ def start_run(song_dir: Optional[str], *, player: str = DEFAULT_PLAYER,
     starts the game and returns once the loader's bot byte is patched, and
     a human launch with no song folder raises LaunchFailed(HUMAN_NEEDS_SONG)
     before anything is backed up. `before_launch`, when given, runs after
-    the backup and before the launch, so a change it makes to a backed-up
-    file is undone by the restore. When it or the launch raises, the backup
-    is put back before the error goes on, since no run comes back to
-    finish. `song_end`, when given, is song_length_ms's answer for the
+    the backup and before the launch; a file it changes stays changed. When
+    it or the launch raises, the key is put back before the error goes on,
+    since no run comes back to finish. `song_end`, when given, is song_length_ms's answer for the
     folder, already read by the caller, so the chart is not dumped twice."""
     env = env or Env()
     refusal = human_refusal(human, song_dir)
@@ -765,8 +764,7 @@ def start_run(song_dir: Optional[str], *, player: str = DEFAULT_PLAYER,
             env.out(f"note: song.ini says pro_drums = True but the player is {player}; "
                     f"pass --player {PRO_DRUMS_INSTRUMENT},<difficulty> to play pro drums")
 
-    backup_dir = game_files.backup(env.documents_dir, backup_root,
-                                   stamp=env.stamp, run_reg=env.run_reg)
+    backup_dir = game_files.backup(backup_root, stamp=env.stamp, run_reg=env.run_reg)
     env.out(f"backup folder: {backup_dir}")
     before = _stats_state(env)
 
@@ -783,7 +781,7 @@ def start_run(song_dir: Optional[str], *, player: str = DEFAULT_PLAYER,
         else:
             game = env.launch(cmd)
     except BaseException:
-        # No run comes back to finish, so put back what before_launch changed.
+        # No run comes back to finish, so put the key back now.
         _restore(backup_dir, env)
         raise
     launched_at = env.now()
@@ -821,9 +819,10 @@ def exit_check(run: Run, env: Optional[Env] = None) -> None:
 
 
 def _restore(backup_dir: str, env: Env) -> bool:
-    """Put the backed-up files back, then the registry key when the backup
-    holds it (game_files.restore_all). On a failure, print the file and the
-    error and return False; the caller then stops."""
+    """Put the registry key back when the backup holds it, after a line for
+    each file an older backup names (game_files.restore_all). On a failure,
+    print what failed and the error and return False; the caller then
+    stops."""
     env.out(f"restoring the backup from {backup_dir}")
     try:
         game_files.restore_all(backup_dir, out=env.out, run_reg=env.run_reg)
@@ -840,8 +839,9 @@ def _restore_hint(backup_dir: str) -> str:
 
 def late_write_hint(backup_dir: str) -> str:
     """What a user is told when a game that may still run could rewrite the
-    files that were just restored. The caller says whether the game runs."""
-    return ("may write these files again when it closes; after closing it, run "
+    registry key that was just restored. The caller says whether the game
+    runs."""
+    return ("may write the registry key again when it closes; after closing it, run "
             + _restore_hint(backup_dir))
 
 
@@ -901,7 +901,7 @@ def run_bot(song_dir: str, out_dir: str, *, player: str = DEFAULT_PLAYER,
 
 
 def restore_only(backup_dir: str, env: Optional[Env] = None) -> int:
-    """Restore `backup_dir`: 0 when it worked, 2 when a file failed."""
+    """Restore `backup_dir`: 0 when it worked, 2 when the restore failed."""
     env = env or Env()
     return 0 if _restore(backup_dir, env) else 2
 
@@ -918,7 +918,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                     help="back up and start the game, then return without waiting or restoring")
     ap.add_argument("--backup-root", help="where the dated backup folder goes (default <out>\\backups)")
     ap.add_argument("--restore", metavar="BACKUP_FOLDER",
-                    help="put a backup folder's files and registry key back, then stop")
+                    help="put a backup folder's registry key back, then stop")
     args = ap.parse_args(argv)
 
     if args.restore:
