@@ -3,7 +3,7 @@
 This page covers written fills, the fills the game generates, their deadlines, and when a fill shows up.
 It describes build 1.1 (v1.1.0.6142), and build 1.0 (v1.0.0.4045) under its own heading.
 "The decompile" on this page means Ghidra's full decompile of build 6142, which `code/README.md` describes; it is not in the repo.
-Last write-back: 2026-11-08.
+Last write-back: 2026-11-12.
 
 ## Written fills
 
@@ -245,7 +245,7 @@ Rule: The game's deadline is an exact tick compare with no millisecond allowance
 Label: Hydra assumes it, never checked
 Evidence: the game side has no millisecond term (`code/6142/fill_deadline_20DDB70.asm` lines 24 to 51). Hydra: `fill_refuses` refuses when the offset is below `-kHitWindowMs` and `is_e0` reads `kEarlyFillSlackMs = 60.0` (src/core/model.h lines 318, 322 and 136). The reach is `kHitWindowMs` (D270 item 8). Whether the game's own hit timing reaches that far is TM-27's question.
 Game code (6142): RVA `0x20DDB70`; the fill-end grant in FL-31.
-Hydra: `fill_refuses` and `is_e0` in src/core/model.h lines 318 and 322.
+Hydra: `fill_refuses` and `is_e0` in src/core/model.h lines 318 and 322. The Paths tab's early fill row (Dynamic Hit Window) rests on the same model: `early_fill_window` in src/core/note_window.h takes the game's per-note side of the note that made Star Power ready (`Activation::sp_ready_tick`, TM-22) less the early fill figure (`early_fill_spare_ms`). It is display only and shows only for a required early fill that needs timing.
 Ruling: D250: the user asked to "change the early fill search to allow orange timing up to 85ms", and on the charts that gained an E fill said "Keep them. The extra E fills in the notation are fine." D270 item 8 then made the reach the one hit window number.
 Found: 2026-10-15, session c35a4b7d.
 

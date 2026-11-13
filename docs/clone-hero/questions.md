@@ -102,7 +102,9 @@ The game's rule: each side's half-gap to the neighbour is clamped into [front, b
 One end: a note with both neighbours 170 ms or farther gets 85.72 ms a side, close to Hydra's 85.
 Other end: a note with both neighbours 75 ms or closer gets 48.15 ms a side (in precision mode about 25 ms), against Hydra's 85.
 
-Hydra today: `kHitWindowMs = 85.0` (src/core/model.h line 104) for badges, Ratings, tiers and the early-fill reach. D270 item 8 rules on Hydra's own two numbers only; D28 shelved the edge steps. Whether the hit check enforces the stored window was never measured (TM-27).
+Hydra today: `kHitWindowMs = 85.0` (src/core/model.h line 105) for badges, Ratings, tiers, the squeeze search and the early-fill reach. D270 item 8 rules on Hydra's own two numbers only; D28 shelved the edge steps. Whether the hit check holds a press to the stored window was measured only on notes with the widest side, 85.72 ms; the edge on notes with closer neighbours is not proven (TM-27).
+
+On 2026-11-12 (session 375e58cd) the user ruled twice. First: "just show it alongside. try again with a maximum of 8 words for the new info." So the Paths tab's Dynamic Hit Window row shows the game's per-note window beside the 85 for each squeeze or required early fill that needs timing, with how much it leaves spare or falls short, and nothing else moves. Its owner is src/core/note_window.h. Second: "ok well i am ruling it now: hydra searching for squeezes up to 500 ms is an intentional deviation from the game, not a bug." So the search still finds squeezes the game's windows cannot cover, and the row is where such a squeeze shows as short. The question stays open: neither ruling says whether the ratings, tiers or early-fill reach should ever follow the game's window, and precision mode is not covered.
 
 ### Q-34 The formula tables in constants.py carry each other's names
 
