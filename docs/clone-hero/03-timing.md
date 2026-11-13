@@ -216,7 +216,7 @@ Rule: The drums engine constructor sets the byte at `#8255+0x41` to 1 in both no
 Label: Proven in the game's code
 Evidence: `code/6142/engine_ctor_20DF680.asm` line 78 (`mov byte ptr [rbx + 0x41], 1`) and `code/6142/note_window_20F3A90.asm` lines 4 and 9.
 Game code (6142): the drums engine constructor, RVA `0x20DF680`; the per-note window routine of class #8288 (scrambled name), RVA `0x20F3A90`.
-Hydra: no owner for a per-note window: Hydra holds one fixed number, `kHitWindowMs` in src/core/model.h line 105.
+Hydra: the per-note window is src/core/note_window.h (`window_side_ms`, `chord_sides_ms`), read by the press schedule and by the Paths tab's Dynamic Hit Window row, which is display only. Hydra's own judging holds one fixed number, `kHitWindowMs` in src/core/model.h line 105.
 Ruling: open split: see questions page Q-32
 Found: 2026-10-30, session b02ab3e6 (the reference build).
 
@@ -226,7 +226,7 @@ Rule: With bit 0x1000 of the engine flags at `#8288+0x198` clear, the constructo
 Label: Proven in the game's code
 Evidence: `code/6142/engine_ctor_20DF680.asm` lines 78 to 91 (the four constants read at lines 80, 81, 83 and 84, the stores at lines 85, 87 and 91). The decompile `ghidra_decompile_all.txt` lines 1807 to 1822 agree. The four constants are `RVA_CONST_NORMAL_FRONT`, `RVA_CONST_NORMAL_BACK`, `RVA_CONST_PRECISION_FRONT` and `RVA_CONST_PRECISION_BACK` in tools/ch_probe/constants.py. `dump.cs` line 547692 names the bit `PrecisionMode = 4096`.
 Game code (6142): the drums engine constructor, RVA `0x20DF680`, `code/6142/engine_ctor_20DF680.asm` lines 78 to 91.
-Hydra: no owner. `kHitWindowMs` (src/core/model.h line 105) is a separate number that equals the normal back value.
+Hydra: `kWindowFrontMs` and `kWindowBackMs` in src/core/note_window.h hold the normal-mode front and back; no Hydra code holds the precision-mode pair. `kHitWindowMs` (src/core/model.h line 105) is a separate number that equals the normal back value.
 Ruling: open split: see questions page Q-32
 Found: 2026-09-25, session 8157f2dc; listed 2026-10-30, session b02ab3e6 (the reference build).
 
@@ -236,7 +236,7 @@ Rule: For each side of a note, the game halves the gap to the neighbour and clam
 Label: Proven in the game's code
 Evidence: `code/6142/half_gap_clamp_20F7210.asm` lines 13 to 22 (null or zero gap exit), 23 to 33 (the half-gap), 51 to 62 (min and max) and 72 to 77 (a missing neighbour returns the back); `code/6142/note_window_20F3A90.asm` lines 38 to 53 pass the front as the minimum and the back as the maximum. The decompile lines 53871 to 53907 agree.
 Game code (6142): the clamp of class #8288 (scrambled name), RVA `0x20F7210`, `code/6142/half_gap_clamp_20F7210.asm` lines 13 to 77.
-Hydra: no owner (see TM-17).
+Hydra: `half_gap_ms` in src/core/note_window.h, the same rule, with no neighbour giving the back.
 Ruling: open split: see questions page Q-32
 Found: 2026-10-03, session cebf3006; listed 2026-10-30, session b02ab3e6 (the reference build).
 
@@ -246,7 +246,7 @@ Rule: The per-note window routine finds a note's two neighbours by its tick: the
 Label: Proven in the game's code
 Evidence: `code/6142/note_window_20F3A90.asm` lines 21 to 37 call both lookups on the note list at `this+0x1e0` with the note's tick (`note+0x40`) and its index (`note+0x20`), and line 31 (`xor r9d, r9d`) passes false for the backward lookup's same-tick flag. `code/6142/note_after_lookup_5DD8D0.asm` lines 60 to 65 read each note's tick and keep walking while it is at or before the target (`cmp rax, rsi; jle`), so lines 66 to 72 return the first note strictly later. `code/6142/note_before_lookup_5DDED0.asm` lines 63 to 68 return a note strictly earlier (`jl`), and lines 69 to 77 accept one at the same tick only when the flag byte is set (`cmovle edx, ebp`, with `ebp` the flag from line 9). `dump.cs` lines 552885 and 552894 give the two signatures, the second with its flag defaulting to false. What is inferred, not read: that the first lookup walks up the list and the second walks down it (so each returns the nearest note, not just some note on its side). That rests on the signatures' default start indexes, 0 and 2147483647 (the end of the list), and on the stop tests; the walker builders at RVAs `0x5FBC10` and `0x5FB640` and the walkers' step functions were not listed. The same-tick result does not depend on it: both stop tests exclude a note at the target's own tick whichever way the walk runs. That `note+0x40` is the tick is from `code/6142/sp_phrase_assign_20D2440.md` line 3 and the tick read 0x182C44210 from `code/6142/nearest_chord_5DE030.md` line 16. The 1062 example's times are the `ms` of chords 1061 to 1063 in `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-07\ls-l0\Eric Moore - Get Ur Freak On [Missy Elliot]-score.json` (the same `chart_ms` as rows 1061 to 1063 of `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-07\ls-f1-run1\press-2.csv`), put through TM-19 to TM-21.
 Game code (6142): the two list helpers of class #8670 (scrambled names), RVAs `0x5DD8D0` and `0x5DDED0`, `code/6142/note_after_lookup_5DD8D0.asm` lines 47 to 79 and `code/6142/note_before_lookup_5DDED0.asm` lines 50 to 93; their caller, RVA `0x20F3A90`, lines 21 to 37.
-Hydra: the per-note window of the press schedule (`hydra_replay schedule`) in tools/replay_schedule.cpp takes the chords either side, the same rule; no screen reads it. Hydra's own judging uses no neighbours (see TM-17).
+Hydra: `chord_sides_ms` in src/core/note_window.h takes the chords either side, the same rule, over the chord list `chord_times` builds (`ChordTimes`). The press schedule (`hydra_replay schedule`) and the Paths tab's Dynamic Hit Window row read it. Hydra's own judging uses no neighbours (see TM-17).
 Ruling: none needed: same rule
 Found: 2026-11-08, session 6341c618.
 
@@ -256,7 +256,7 @@ Rule: The per-note routine adds the two clamped half-gaps, passes the sum to the
 Label: Proven in the game's code
 Evidence: `code/6142/note_window_20F3A90.asm` lines 38 to 65; `dump.cs` line 527484 names `0x20DDDA0` as `Slot: 19` of class #8255. An earlier pass of 2026-10-30 labelled this Unknown because the 2026-10-03 listing was lost; the committed listing above replaces it, so the code label holds. The slot-to-offset step (slot 19 at vtable offset 0x268) was not checked in this build, but the live run in TM-23 matches the formula exactly.
 Game code (6142): RVA `0x20F3A90`, `code/6142/note_window_20F3A90.asm` lines 38 to 65.
-Hydra: no owner (see TM-17).
+Hydra: `window_side_ms` in src/core/note_window.h, the same rule.
 Ruling: open split: see questions page Q-32
 Found: 2026-10-03, session cebf3006; listed 2026-10-30, session b02ab3e6 (the reference build).
 
@@ -266,7 +266,7 @@ Rule: With x the summed gap in ms, the whole window in ms is (x x 0.011092436974
 Label: Proven in the game's code
 Evidence: `code/6142/hit_window_formula_20DDDA0.asm` lines 11 and 12 (the bit test and x = gap x 1000.0) and 17 to 35 (the constants, decoded in the listing's comments). The decompile lines 757 to 782 agree. It gives 171.4313075 ms at x = 170, 96.2931672 ms at x = 75 and 102.2586 ms at x = 80.
 Game code (6142): the formula of class #8255 (scrambled name), RVA `0x20DDDA0`, `code/6142/hit_window_formula_20DDDA0.asm` lines 11 to 35.
-Hydra: no owner (see TM-17).
+Hydra: `whole_window_ms` in src/core/note_window.h, with the constants `kFormulaLinear`, `kFormulaSquare`, `kFormulaScale` and `kFormulaOffsetMs`.
 Ruling: open split: see questions page Q-32
 Found: 2026-09-25, session 28e6f29d; listed 2026-10-30, session b02ab3e6 (the reference build).
 
@@ -276,8 +276,8 @@ Rule: In normal mode the formula's input is held between 75 and 170 ms, so the w
 Label: Proven in the game's code
 Evidence: TM-19 to TM-21 by arithmetic. Hydra's side: `kHitWindowMs` (src/core/model.h line 105) is read by the badges, Ratings, timing tiers and the search (TM-29).
 Game code (6142): RVAs `0x20F3A90`, `0x20F7210` and `0x20DDDA0`, the three listings above.
-Hydra: `kHitWindowMs` in src/core/model.h line 105.
-Ruling: open split: see questions page Q-32. D270 item 8 ("yes it should use one nuimbers eerywhere", and "Fixed 85, no setting (Recommended)") rules on Hydra's own two numbers, and D28 records the game's cap and floor with "Steps 4-6 are shelved"; neither names both the game's per-note window and Hydra's fixed 85.
+Hydra: `kHitWindowMs` in src/core/model.h line 105 for judging; the game's per-side window is `window_side_ms` in src/core/note_window.h, shown only on the Paths tab's Dynamic Hit Window row.
+Ruling: open split: see questions page Q-32. D270 item 8 ("yes it should use one nuimbers eerywhere", and "Fixed 85, no setting (Recommended)") rules on Hydra's own two numbers, and D28 records the game's cap and floor with "Steps 4-6 are shelved". On 2026-11-12 (session 375e58cd) the user ruled "just show it alongside. try again with a maximum of 8 words for the new info.", so the Paths tab shows the game's window beside the 85 and nothing else moves, and "ok well i am ruling it now: hydra searching for squeezes up to 500 ms is an intentional deviation from the game, not a bug." Neither says whether the ratings, tiers or early fill reach should ever follow the game's window, so Q-32 stays open.
 Found: 2026-10-03, session cebf3006; re-read 2026-10-30 in session b02ab3e6 (the reference build).
 
 ### TM-23 A running engine's stored window takes exactly the formula's values
@@ -352,7 +352,7 @@ Found: 2026-11-07, session d0a3868c; the code reading 2026-11-08, session 31e4f2
 
 ### TM-28 The formula tables in constants.py carry each other's names
 
-Rule: In tools/ch_probe/constants.py the table named `RVA_FORMULA_NORMAL` holds the constants the game uses when the precision bit is set, and `RVA_FORMULA_PRECISION` holds the ones it uses when the bit is clear. The probe's normal-window prediction was fed from the first, so it predicted the wrong curve; it lived in tools/ch_probe/experiments/analysis.py (removed; `git show a081f660:tools/ch_probe/experiments/analysis.py`). No tool predicts a window now, but EngineModel.constants in tools/ch_probe/engine.py still files each table's values under that table's name.
+Rule: In tools/ch_probe/constants.py the table named `RVA_FORMULA_NORMAL` holds the constants the game uses when the precision bit is set, and `RVA_FORMULA_PRECISION` holds the ones it uses when the bit is clear. The probe's normal-window prediction was fed from the first, so it predicted the wrong curve; it lived in tools/ch_probe/experiments/analysis.py (removed; `git show a081f660:tools/ch_probe/experiments/analysis.py`). No probe tool predicts a window from these tables now (`hydra_replay schedule` and the Paths tab compute the per-note window from src/core/note_window.h, not from constants.py), but EngineModel.constants in tools/ch_probe/engine.py still files each table's values under that table's name.
 Label: Proven in the game's code
 Evidence: the decompile lines 767 to 781 against constants.py lines 170 to 184: the bit-clear branch uses the four addresses that constants.py lines 179 to 184 call precision. With those constants the bit-clear shape gives 171.43 ms at 170 and 96.29 ms at 75, which matches `poll_windows.csv`; the other table gives -242 and -78. The cards for sessions 1ac71f52 and ea0b884c already said "labels are swapped".
 Game code (6142): RVA `0x20DDDA0`, `code/6142/hit_window_formula_20DDDA0.asm` lines 11 to 54.
