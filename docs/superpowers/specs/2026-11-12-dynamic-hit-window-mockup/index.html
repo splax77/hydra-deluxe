@@ -127,8 +127,8 @@ tr.sq { cursor: help; position: relative; }
   </div>
 
   <div class="mocknote">
-    <div><b>Second example:</b> a squeeze the windows can't cover. Tapped Out, activation 4 only, real Hydra text.</div>
-    <span>The two windows add up to 149.9 ms, but the squeeze needs 215.8 ms, so the tag shows how far short it falls instead of a spare.</span>
+    <div><b>Second example:</b> Tapped Out, activations 3 and 4, real Hydra text.</div>
+    <span>Activation 3 is a required early fill: the plan puts the "Early fill" line in the same box as a squeeze sentence, with the row at its bottom (question 2). Activation 4's squeeze needs 215.8 ms but its two windows add up to 149.9 ms, so the tag shows how far short it falls. Its early fill is optional, so it gets a box but no row (question 4).</span>
   </div>
 
   <div class="panel">
@@ -138,8 +138,24 @@ tr.sq { cursor: help; position: relative; }
     </div>
     <div class="score"><span class="big">1,022,800</span><span class="path">1 0 E0 E1- 5 0</span></div>
     <div class="sub">Optimal path · 7 stars · 155 2x kicks (13%)</div>
-    <div class="lbl">Activations 6 · no SP left over (activation 4 shown)</div>
+    <div class="lbl">Activations 6 · no SP left over (activations 3 and 4 shown)</div>
     <div class="acts" id="acts2"></div>
+  </div>
+
+  <div class="mocknote">
+    <div><b>Third example:</b> a squeeze in. Focus [Ariana Grande], activation 2 only, real Hydra text.</div>
+    <span>A squeeze in is the mirror of a squeeze out: the activation side goes late and the phrase note early. Here the anchor is the chord that overfilled the meter.</span>
+  </div>
+
+  <div class="panel">
+    <div>
+      <h1>Focus [Ariana Grande]</h1>
+      <div class="sub">SoundHaven · charted by Bloodline</div>
+    </div>
+    <div class="score"><span class="big">755,530</span><span class="path">0 3+ 0 0</span></div>
+    <div class="sub">Optimal path · 7 stars · 14 2x kicks (4%)</div>
+    <div class="lbl">Activations 4 · no SP left over (activation 2 shown)</div>
+    <div class="acts" id="acts3"></div>
   </div>
 </div>
 
@@ -166,12 +182,26 @@ const ACTS = [
     rows: [["-443.9","[K    ]","200","Normal (eff. 442.8 ms)"],["-295.9","[ R  G]","460","Normal (eff. 295.2 ms)"],["-148.0","[ R   ]","200","Normal (eff. 147.6 ms)"],["-74.0","[ R   ]","200","Normal (eff. 73.8 ms)"],["0.0","[K   G]","460","Normal (eff. 0.0 ms)"],["304.2","[K   G]","0","Beyond (uncounted) (eff. 301.3 ms)"]] },
 ];
 const ACTS2 = [
+  { n: 3, code: "E0", at: "m64.1.0", bars: "2 bars", sq: "early fill 0.0 ms", chord: "[Kick - Green cymbal]",
+    fillHtml: "<div>Early fill: 0.0 ms (required)</div><div class=\"dhw\"><span class=\"k\">Dynamic Hit Window:</span><span><b>82.9 ms</b> early</span><span class=\"spare\"><b>82.9 ms</b> spare</span></div>",
+    fillWarn: true,
+    scale: "Frontend timing scales x1.002 (late) at the SP end.",
+    rows: [["-500.0","[ R   ]","200","Normal"],["-428.6","[ R   ]","200","Normal"],["-321.4","[ R   ]","200","Normal"],["-214.3","[ R   ]","200","Normal"],["-107.1","[ R   ]","200","Normal"],["0.0","[K   G]","460","Normal"],["214.3","[ R   ]","0","Beyond (uncounted) (eff. 214.1 ms)"],["321.4","[  Y  ]","0","Beyond (uncounted) (eff. 321.1 ms)"],["428.6","[  Y  ]","0","Beyond (uncounted) (eff. 428.1 ms)"]],
+    open: true },
   { n: 4, code: "E1-", at: "m90.1.0", bars: "3 bars", sq: "early fill 0.0 ms  squeeze out 215.8 ms", chord: "[Kick - Green cymbal]",
-    pre: "Early fill: 0.0 ms (optional)",
+    fillHtml: "<div>Early fill: 0.0 ms (optional)</div>",
     sentenceHtml: "<div>Hit the [ R B ] note more than 215.8 ms late so it lands after Star Power ends. It scores 200 fewer points, and its SP phrase banks for later.</div><div class=\"dhw\"><span class=\"k\">Dynamic Hit Window:</span><span><b>77.9 ms</b> early</span><span><b>72.0 ms</b> late</span><span class=\"spare short\"><b>65.9 ms</b> short</span></div>",
     diff: true,
     scale: "Frontend timing scales x1.001 (early) at the SP end.",
     rows: [["-431.7","[K  B ]","460","Normal (eff. 431.3 ms)"],["-359.7","[K    ]","200","Normal (eff. 359.5 ms)"],["-287.8","[K    ]","200","Normal (eff. 287.6 ms)"],["-215.8","[ R B ]","260","Beyond (eff. 215.7 ms) <-- squeezed out (-200)", "warn", "Effectively 215.7 ms on the normal 170.0 ms scale:\nfrontend timing scales x1.001 here, so the combined\nsqueeze budget is 170.1 ms, not 170.0 ms."]],
+    open: true },
+];
+const ACTS3 = [
+  { n: 2, code: "3+", at: "m39.1.0", bars: "4 bars", sq: "squeeze in 25.0 ms", chord: "[Kick - Green cymbal]",
+    sentenceHtml: "<div>Hit the SP phrase's last note more than 25.0 ms early so it lands before Star Power ends. The phrase then counts while Star Power runs, which makes Star Power last longer.</div><div class=\"dhw\"><span class=\"k\">Dynamic Hit Window:</span><span><b>61.9 ms</b> late</span><span><b>48.1 ms</b> early</span><span class=\"spare\"><b>85.1 ms</b> spare</span></div>",
+    diff: true,
+    scale: "SP overfilled at m40.4.400",
+    rows: [["-400.0","[ R   ]","400","Normal"],["-300.0","[ R   ]","400","Normal"],["-200.0","[ R   ]","400","Normal"],["-100.0","[ R   ]","400","Normal"],["0.0","[  Y  ]","260","Normal"],["100.0","[K  B ]","0","Insane (uncounted)"],["400.0","[  Y  ]","0","Beyond (uncounted)"]],
     open: true },
 ];
 const TIP = "Effectively 141.5 ms on the normal 170.0 ms scale:\nfrontend timing scales x1.03 here, so the combined\nsqueeze budget is 172.8 ms, not 170.0 ms.";
@@ -202,7 +232,7 @@ function renderActs(list, container, prefix) { list.forEach(a => {
   }).join("");
   body.innerHTML = `
     <div class="chordline"><span>Chord <span class="ch">${esc(a.chord)}</span></span><button class="btn preview">Show in Preview &gt;</button></div>
-    ${a.pre ? `<div>${esc(a.pre)}</div>` : ""}
+    ${a.fillHtml ? `<div class="sentence${a.fillWarn ? " diff" : ""}">${a.fillHtml}</div>` : ""}
     ${sentence ? `<div class="sentence${a.diff ? " diff" : ""}">${sentence}</div>` : ""}
     <div class="scale">${esc(a.scale)}</div>
     <button class="fold" aria-expanded="true">▼ Backend timings · ${a.rows.length} notes near the SP end</button>
@@ -220,6 +250,7 @@ function renderActs(list, container, prefix) { list.forEach(a => {
 }); }
 renderActs(ACTS, acts, "act-");
 renderActs(ACTS2, document.getElementById("acts2"), "act2-");
+renderActs(ACTS3, document.getElementById("acts3"), "act3-");
 
 function setOpen(el, open) {
   const head = el.querySelector(":scope > button"), body = el.querySelector(".body");

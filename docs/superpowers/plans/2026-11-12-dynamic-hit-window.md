@@ -106,7 +106,7 @@ Boxing the existing line is a visible change the user's words did not ask for. S
 
 One screen changes: the opened activation row on the Paths tab. `squeeze_sentences` and the `early_fill` line are read only by `src/ui/paths_tab.cpp`. The Path Builder reads `activation_badges` only, and the reports read their own columns, so neither changes.
 
-The "before" and "after" texts below are from real charts. The two squeeze-out rows are the mockup's. Figures written N are not known yet; T0 reads them from the charts before any executor starts, and they are rows P20 to P22 of the Premise map.
+The "before" and "after" texts below are from real charts. The two squeeze-out rows are the mockup's. The main session ran T0 on 2026-11-12, before the plan went to review: every "before" sentence was read from the Paths tab of Hydra 2.14.0, and every window figure from `hydra_replay schedule` on the main checkout's build. They are rows P21 to P23 of the Premise map.
 
 Dead on Arrival (O), optimal path, activation 4 (squeeze out, room to spare). Before, the box reads: "Hit the [ RY  ] note more than 143.9 ms late so it lands after Star Power ends. It scores 200 fewer points, and its SP phrase banks for later." After, the same sentence, then a divider, then `Dynamic Hit Window:  85.7 ms early   79.4 ms late` and a yellow tag `24.1 ms spare`.
 
@@ -114,11 +114,13 @@ Tapped Out, optimal path, activation 4 (squeeze out, out of reach). Before: "Hit
 
 Dead on Arrival (O), activation 3 (a squeeze in that needs no timing). Before and after are the same: "Hit the SP phrase's last note no more than 444.9 ms late (eff. 443.9 ms) so it lands before Star Power ends. The phrase then counts while Star Power runs, which makes Star Power last longer." No row, under question 3 as recommended.
 
-Burnout, optimal path, activation 1 (squeeze out, in the test corpus). Before: "Hit the [  Y  ] note more than 163.0 ms late so it lands after Star Power ends. It scores 260 fewer points, and its SP phrase banks for later." After, the same sentence, a divider, `Dynamic Hit Window:  N ms early   N ms late` and a tag `N ms spare` or `N ms short`.
+Burnout, optimal path, activation 1 (squeeze out, in the test corpus). Before: "Hit the [  Y  ] note more than 163.0 ms late so it lands after Star Power ends. It scores 260 fewer points, and its SP phrase banks for later." After, the same sentence, a divider, `Dynamic Hit Window:  84.5 ms early   84.3 ms late` and a yellow tag `5.4 ms spare`. The sides are 84.52 and 84.33 ms, the early scale 0.9946 and the offset 163.04 ms: 84.52 x 0.9946 + 84.33 - 163.04 = 5.4.
 
-A squeeze in that needs timing. T0 looks for one in `testdata/input` (the `test_folded_sqin` folder is the first place). Before: "Hit the SP phrase's last note more than N ms early so it lands before Star Power ends. ..." After, the same sentence, a divider, `Dynamic Hit Window:  N ms late   N ms early` and its tag.
+A squeeze in that needs timing: Focus [Ariana Grande] (SoundHaven), optimal path 0 3+ 0 0, activation 2, in `testdata/input`. Its anchor is the chord that overfilled the meter (the row also shows "SP overfilled at m40.4.400"), not the activation chord. Before: "Hit the SP phrase's last note more than 25.0 ms early so it lands before Star Power ends. The phrase then counts while Star Power runs, which makes Star Power last longer." After, the same sentence, a divider, `Dynamic Hit Window:  61.9 ms late   48.1 ms early` and a yellow tag `85.1 ms spare`. The sides are 61.94 and 48.15 ms, the late scale 1.0000 and the offset 25.0 ms.
 
-A required early fill: Tapped Out, activation 3 (E0). Before: a bare line `Early fill: N ms (required)`. After: the same line in a box, a divider, `Dynamic Hit Window:  N ms early` and its tag.
+A squeeze in out of reach: Epidermis (Venetian Snares), activation 2, in `testdata/input`. The sides are 48.15 and 67.79 ms, the late scale 1.0000 and the offset 300.0 ms, so the row reads `Dynamic Hit Window:  48.1 ms late   67.8 ms early` with an orange tag `184.1 ms short`. Its "before" sentence was not read from the screen; T2's test reads it from the code.
+
+A required early fill: Tapped Out, activation 3 (E0). Before: a bare line `Early fill: 0.0 ms (required)`. After: the same line in a box, a divider, `Dynamic Hit Window:  82.9 ms early` and a yellow tag `82.9 ms spare`. The SP-ready note's side is 82.87 ms and the early fill figure 0.0 ms.
 
 ## Stored data
 
@@ -144,7 +146,9 @@ Each question stands alone. The recommended answer comes first. The plan is writ
 
 T0 is the main session's and can start as soon as the plan is approved (`earlyStart`). T1 starts at the same time. T2 and T4 start together from T1's tip. T3 starts from T2's tip, after question 2 is answered. T5 is the main session's and comes last. Executors run on Opus, and each change gets one fresh Sonnet reviewer (agent rules 2 and 5). No executor builds or runs a test that needs a build (agent rule 14).
 
-### T0: read the real numbers from the charts (main session; earlyStart)
+### T0: read the real numbers from the charts (main session; done 2026-11-12, before review)
+
+The main session ran this step before the plan went to its reviewer, so the figures above are filled in. It ran Dead on Arrival (O), Tapped Out, Burnout, Beg, Get Ur Freak On and `testdata/input/test_folded_sqin/folded_sqin.chart`. None of these holds a squeeze in that needs timing, so it took Focus [Ariana Grande] and Epidermis from a `hydra_replay` dump and schedule over the 97 charts of `testdata/input` (the checked-in corpus, not the user's library). Freak's chord 1062 read 73.757 ms, so row P22 holds. The text below is the step as written; it stays as the record of what was checked.
 
 The main session runs `build-cpp\Release\hydra_replay.exe` from the main checkout, dump then `schedule`, on at most six charts: Dead on Arrival (O), Tapped Out, Burnout, Beg, Eric Moore's Get Ur Freak On, and one chart from `testdata/input/test_folded_sqin`. It never runs the whole library.
 
@@ -189,8 +193,8 @@ Acceptance, each a named test in `tests/test_activation_rows.cpp`:
 
 - Tapped Out's optimal path, activation 4, gives windows `77.9 ms early   72.0 ms late` and tag `65.9 ms short`, marked short. The chart is in `testdata/input`.
 - Burnout's activation 1 gives the windows and tag T0 measured.
-- The squeeze-in row reads `N ms late   N ms early` on T0's chart, or on a hand-built activation if T0 found none.
-- The required early fill row on Tapped Out's activation 3 reads `N ms early` and its tag, with T0's figures.
+- The squeeze-in row on Focus [Ariana Grande]'s activation 2 reads `61.9 ms late   48.1 ms early` with tag `85.1 ms spare`, and on Epidermis's activation 2 `48.1 ms late   67.8 ms early` with tag `184.1 ms short`, marked short.
+- The required early fill row on Tapped Out's activation 3 reads `82.9 ms early` with tag `82.9 ms spare`.
 - No row for a squeeze that needs no timing, for an early fill with time to spare, and for an optional early fill (Tapped Out's activation 4), one case each. These follow questions 3 and 4.
 - No row anywhere when the chord times pointer is null.
 - With and without chord times, every other field of every activation row is equal: badges, sentences, early fill line, scale line, backend rows, ratings and tooltips. This is the test that the row is "alongside" and moves nothing.
@@ -306,9 +310,9 @@ This plan has no live steps. Nothing in it starts the game.
 | P18: the game tests the fill deadline at the moment Star Power is added, by an exact tick compare | data | `docs/clone-hero/04-fills.md` block FL-19 | checked 2026-11-12 |
 | P19: an early hit of the ready note makes a late fill appear, as far as that note's window | unchecked | `docs/clone-hero/04-fills.md` block FL-24, labelled "Hydra assumes it, never checked" | question 1 |
 | P20: the hit check holds a press to the note's side on notes with closer neighbours | unchecked | `docs/clone-hero/03-timing.md` block TM-27, which measured only 85.72 ms sides and says the rest is not proven | question 5 |
-| P21: Dead on Arrival's activation 4 has sides 85.72 and 79.41, scale about 1.033, offset 143.88; Tapped Out's has 77.85, 71.97, 1.0014 and 215.8 | unchecked | the main session's figures in this plan's brief; the texts they give are in `docs/superpowers/specs/2026-11-12-dynamic-hit-window-mockup/index.html` lines 159 and 171 | T0 |
-| P22: Hydra's chord list gives the same neighbours as the game's note list | unchecked | `docs/clone-hero/03-timing.md` block TM-51 gives 73.76 ms for Freak's chord 1062; Hydra's figure for it was not read | T0 |
-| P23: Burnout's, Beg's and Tapped Out's activation 3 figures, a squeeze in that needs timing in the corpus, and that the real charts give the sentences the mockup shows (P25) | unchecked | `tests/test_activation_rows.cpp` lines 579 to 606 and `tests/ui/uitest_paths.cpp` lines 326 to 339 hold the sentences and badges, not the windows | T0 |
+| P21: Dead on Arrival's activation 4 has sides 85.72 and 79.41, early scale 1.0331, offset 143.88; Tapped Out's has 77.85, 71.97, 1.0014 and 215.83 | chart | `hydra_replay schedule` (main checkout's build, 2026-11-12) on `C:\Clone Hero\songs\synchotic\Sync Charts\BirdmanExe Drive\Onyxite\Fall Out Boy\Fall Out Boy - Dead on Arrival (O)\notes.mid` and `testdata/input/common/IB24/T5/Mike Orlando - Tapped Out/notes.mid` | checked 2026-11-12 by the main session (T0) |
+| P22: Hydra's chord list gives the same neighbours as the game's note list, at least for the one chord the game's code and a live run pin | chart | `hydra_replay schedule` on `testdata/input/common/Summer Blast _25 Setlist/Tier 8/Eric Moore - Get Ur Freak On [Missy Elliot]/notes.chart` gives chord 1062 a side of 73.757 ms, against 73.76 ms in `docs/clone-hero/03-timing.md` block TM-51 | checked 2026-11-12 by the main session (T0) |
+| P23: Burnout activation 1 (84.52, 84.33, 0.9946, 163.04), Focus activation 2 (61.94, 48.15, 1.0000, 25.0, anchor on the overfill chord), Epidermis activation 2 (48.15, 67.79, 1.0000, 300.0) and Tapped Out activation 3's SP-ready note (82.87, figure 0.0) | chart | `hydra_replay schedule` on `testdata/input/common/Summer Blast _25 Setlist/Tier 4/Green Day - Burnout/notes.mid`, `testdata/input/common/Summer Blast _25 Setlist/Tier 7/SoundHaven - Focus [Ariana Grande]/notes.mid`, `testdata/input/common/Summer Blast _25 Setlist/Tier 8/Venetian Snares - Epidermis/notes.mid` and the Tapped Out chart; the Focus and Tapped Out "before" sentences read from Hydra 2.14.0's Paths tab | checked 2026-11-12 by the main session (T0) |
 | P24: the approved squeeze-out texts and tag colours | code | `docs/superpowers/specs/2026-11-12-dynamic-hit-window-mockup/index.html` lines 73 to 76, 159 and 171 | checked 2026-11-12 |
 | P25: the mockup shows Dead on Arrival's activation 3 as "no more than 444.9 ms late (eff. 443.9 ms)" and Tapped Out's activation 4 as `Early fill: 0.0 ms (optional)` | code | `docs/superpowers/specs/2026-11-12-dynamic-hit-window-mockup/index.html` lines 154 to 155 and 169 to 170 | checked 2026-11-12 |
 | P26: Tapped Out is in the test corpus | chart | `testdata/input/common/IB24/T5/Mike Orlando - Tapped Out/song.ini` | checked 2026-11-12, the folder was found; the notes file was not opened |
