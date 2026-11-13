@@ -266,9 +266,15 @@ An open row shows these, in order:
 
 1. The chord you activate on. On a multi-note chord, do a frontend squeeze: hit the activation note first, so the other notes score with the Star Power multiplier.
 2. `Show in Preview >`, which jumps the Preview tab to this activation.
-3. The early fill timing, when the activation has one (the `E` notation), like `Early fill: 0.0 ms (required)`. A positive number means you must hit that many ms early to make the fill show up. A negative number is slack, so the fill shows up with room to spare.
-4. A plain sentence for each squeeze: which note to hit early or late, by how much, and what it's worth. Notes are named the way the Dynamics tab names them, like `Green tom` or `Yellow cymbal`.
+3. The early fill timing, when the activation has one (the `E` notation), in its own box, like `Early fill: 0.0 ms (required)`. A positive number means you must hit that many ms early to make the fill show up. A negative number is slack, so the fill shows up with room to spare.
+4. A plain sentence for each squeeze, each in its own box: which note to hit early or late, by how much, and what it's worth. Notes are named the way the Dynamics tab names them, like `Green tom` or `Yellow cymbal`.
 5. `Backend timings`, a fold that is already open when you open the row: the notes near the end of Star Power. If you close it, it stays closed until you pick another path.
+
+When a squeeze or a required early fill needs timing, the bottom of its box adds a `Dynamic Hit Window:` row under a thin divider. It shows Clone Hero's own hit window for each note that timing involves. The game sizes each note's window from how close the notes before and after it are, from 48.15 ms a side when both are close to 85.72 ms when both are far. A squeeze row names two notes: first the note whose hit moves the Star Power end, then the squeezed note. The words `early` and `late` say which way you hit each one. An early fill row names one note, the one that makes your Star Power ready.
+
+The tag at the right says how much room those windows leave. A yellow tag like `24.1 ms spare` means the game's windows cover the timing with that much to spare. An orange tag like `65.9 ms short` means they fall that far short, so no hits inside Clone Hero's windows reach that timing, even though Hydra Deluxe still lists it. On Dead on Arrival (O)'s optimal path, activation 4's squeeze out reads `Dynamic Hit Window:  85.7 ms early   79.4 ms late` with `24.1 ms spare`. On Tapped Out's optimal path, activation 4's squeeze out reads `Dynamic Hit Window:  77.9 ms early   72.0 ms late` with `65.9 ms short`. The spare leaves out the few ms between your hit and the game frame that judges it, so a small spare is a thin margin.
+
+A squeeze that needs no timing gets no row, and neither does an early fill with time to spare or an optional one (one the path works without). The row is for reading only: the badges, the `Rating` words and the report's timing tiers all stay on the fixed 85 ms hit window.
 
 ### Backend timings
 
