@@ -1505,9 +1505,12 @@ def _reads(chords, overrides):
 class ReadAfterAnchorTest(unittest.TestCase):
     """play_chords reads the game's end after each chord the schedule's
     `reads` names, the activation's own and its `read_end_after` chord, and
-    retime_from_end moves each press timed from a read by that read minus
-    the press's own `aim_end_ms` (design points 4 and 7 of
-    docs/superpowers/plans/2026-11-08-replay-press-schedule.md). On the Freak
+    retime_from_end moves each press timed from a read by how far its own
+    end moves, own_end_now_ms of that read minus the press's `own_end_ms`
+    (design points 4 and 7 of
+    docs/superpowers/plans/2026-11-08-replay-press-schedule.md and design
+    point 3 of docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md).
+    On the Freak
     fixture, activation 0 starts on chord 232 and is read again after 263;
     387's late press is timed from the read after 263."""
 
@@ -1542,7 +1545,7 @@ class ReadAfterAnchorTest(unittest.TestCase):
         result = self._run({263: late.aim_end_ms})
         self.assertEqual([r["lead_ms"] for r in _rows_of(result, 387)], [-late.aim_ms])
 
-    def test_each_press_moves_by_its_own_aim_end(self):
+    def test_each_press_moves_by_its_own_end(self):
         # Mouths chords 431 (a squeeze-in) and 465 (an sp_end press) are both
         # timed from the read after 340, each with its own end fields in the
         # file: one read moves each by how far its own end moves, the

@@ -96,8 +96,9 @@ SCHEDULE_JSON = schedule_of(SCORE_JSON)
 # each chart, path 0) and the reply lines they give. Every number below is
 # read off the fixture file: a declined chord's `kept_gems`, a squeeze's
 # `anchor_chord`, `anchor_aim_ms`, `planned_end_ms`, `ratio`, `anchor_room_ms`
-# and `squeeze_room_ms`, and a squeeze press's `aim_ms` against its
-# `own_end_ms` (15 ms either side of the end on every timed squeeze here).
+# and `squeeze_room_ms`, and a squeeze press's firing time (`at_ms`, from its
+# `aim_ms`) against its `own_end_ms` (15 ms either side of the end on every
+# timed squeeze here).
 _PROBE_TESTS = os.path.join(_HERE, "..", "..", "ch_probe", "tests")
 FREAK_DECLINED = ("declined: chords 51 (kick), 103 (kick), 134 (nothing sent), "
                   "162 (kick, blue cymbal), 196 (nothing sent), 548 (kick, blue cymbal), "
