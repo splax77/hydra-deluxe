@@ -1518,8 +1518,8 @@ constexpr const char* kPremiseMapSince = "2026-11-01";
 // A row deferred to a live step must say which tasks it blocks, and each of
 // those tasks must say it waits for the step (docs/agents/premise-map.md, "A
 // deferred premise blocks"). Plans dated before this day keep the form they
-// were approved in. The rule was written on this day.
-constexpr const char* kDeferredPremiseSince = "2026-11-12";
+// were approved in.
+constexpr const char* kDeferredPremiseSince = "2026-11-13";
 constexpr const char* kWaitsFor = "Waits for:";
 constexpr const char* kPremiseMapHeading = "## Premise map";
 constexpr const char* kQuestionsHeading = "## Questions";
@@ -1948,10 +1948,10 @@ TEST_CASE("docs match code: the premise map check catches each form and reads on
              "```"}},                                                                          // 37
         // Dated before the deferred-premise rule: a row deferred to a live
         // step with no blocks is left alone.
-        Doc{"docs/superpowers/plans/2026-11-11-deferred-old.md",
+        Doc{"docs/superpowers/plans/2026-11-12-deferred-old.md",
             {"### PM-1: a task", "## Premise map", "| P1: x | unchecked | `x.md` | PM-1 after LS-K1 |"}},
         // Dated on the rule's day: each form of a row deferred to a live step.
-        Doc{"docs/superpowers/plans/2026-11-12-deferred.md",
+        Doc{"docs/superpowers/plans/2026-11-13-deferred.md",
             {"## Tasks",                                                                       // 1
              "### RG1: a task that waits",                                                     // 2
              "Waits for: LS-S2's result folder.",                                              // 3
@@ -1980,7 +1980,7 @@ TEST_CASE("docs match code: the premise map check catches each form and reads on
     std::vector<std::string> problems;
     check_premise_maps(docs, problems);
     const std::string forms = "docs/superpowers/plans/2026-11-02-forms.md:";
-    const std::string deferred = "docs/superpowers/plans/2026-11-12-deferred.md:";
+    const std::string deferred = "docs/superpowers/plans/2026-11-13-deferred.md:";
     const std::vector<std::string> where = {
         "docs/superpowers/plans/2026-10-30-old-map.md:2: Premise map row \"P1\": Source holds",
         "docs/superpowers/plans/2026-11-01-new.md:1: has no ## Premise map heading",
