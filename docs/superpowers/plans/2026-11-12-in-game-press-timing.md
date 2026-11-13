@@ -1,6 +1,6 @@
 # Plan: the game times the auto-player's presses (2026-11-12)
 
-Status: approved 2026-11-12 (D339): questions 1, 2, 3, 5 and 6 are answered, each with its recommended side, and the "Out of scope" list is approved. Question 4 was answered on 2026-11-12, after LS-G4 passed: "Yes, plan IG6" (D342). IG0 is done; its readings are in the Premise map. LS-G1 to LS-G4 all passed on 2026-11-12 (row P29). What is left is IG6, split into IG6a and IG6b, and the "Out of scope for IG6" list, which is not approved yet. The ruling "there will be no more runs until you figure this out" still stands; IG6 holds no live step.
+Status: approved 2026-11-12 (D339): questions 1, 2, 3, 5 and 6 are answered, each with its recommended side, and the "Out of scope" list is approved. Question 4 was answered on 2026-11-12, after LS-G4 passed: "Yes, plan IG6" (D342). IG0 is done; its readings are in the Premise map. LS-G1 to LS-G4 all passed on 2026-11-12 (row P29). What is left is IG6, split into IG6a and IG6b. The "Out of scope for IG6" list is approved (D343): question 7 was answered "Leave all three out (Recommended)", and to "Start IG6a now?" the user answered "Start IG6a (Recommended)". The ruling "there will be no more runs until you figure this out" still stands; IG6 holds no live step.
 
 ## The plain version
 
@@ -68,7 +68,7 @@ The user asked for this: "why are we timing presses separately if using the game
 
 6. **The clock and score reads inside the game.** Answered: "Allow the two reads (Recommended)" (D339). D272 ruling 5 allowed field sets but kept one rule: "agents read fields by name, never by raw offset" (the check in `tools/ch_mcp/tests/test_frida_attach.py` matches only `add(0x`). Design point 2 has the agent read the engine's clock and the score at addresses Python hands it, which is a read at an address, not by field name. The engine's class has a scrambled name in the dump, so a read by name is not available for it (TM-48 names it `#8288+0x100`). The two sides: (a) allow it for these two reads, because the clock is the one every other tool in the player uses (recommended); (b) read `GameManager.songTime` by field name in the hook, which `clock.ts` already does and TM-10 says `GameManager.Update` stores every frame, and leave the score read to Python as today, a little after the report; this changes which clock the schedule is judged on and loses the score at the fire frame, both by amounts nothing here has measured. The case against (a) is that it breaks a rule you kept on purpose. What you will see: nothing different on a screen under either side; under (b) the `clock_ms_at_press` column would read a different clock than every earlier log.
 
-7. **What IG6 leaves out.** Not answered yet. IG6a and IG6b leave three things out, listed under "Out of scope for IG6". The two sides: (a) leave all three out (recommended), so IG6 changes no agent code and needs no game run; (b) take one or more in. Taking in the live edge-probe run adds a live step with one never-tried call. Taking in the agent's `then` code adds a task that edits `kit.ts`, a recompile and a live check of `ch_kit_press`. Taking in the deletion of `play_chords`' `kit` flag removes the harness's loop case, the control that shows the forced stall still drops a chord in the old loop. What you will see: nothing different on a screen under either side.
+7. **What IG6 leaves out.** Answered: "Leave all three out (Recommended)" (D343). IG6a and IG6b leave three things out, listed under "Out of scope for IG6". The two sides: (a) leave all three out (recommended), so IG6 changes no agent code and needs no game run; (b) take one or more in. Taking in the live edge-probe run adds a live step with one never-tried call. Taking in the agent's `then` code adds a task that edits `kit.ts`, a recompile and a live check of `ch_kit_press`. Taking in the deletion of `play_chords`' `kit` flag removes the harness's loop case, the control that shows the forced stall still drops a chord in the old loop. What you will see: nothing different on a screen under either side.
 
 ## Tasks
 
@@ -202,7 +202,7 @@ Result: all four steps passed on 2026-11-12, one run each (row P29). LS-G4's run
 - Writing the kit from Rewired's `InputSourceUpdateEvent` to land on the same frame. It is considered only if LS-G1 shows the one-frame lag costs hits.
 - The keys route. It keeps `play_chords`.
 
-## Out of scope for IG6 (not approved yet)
+## Out of scope for IG6 (approved: "Leave all three out (Recommended)", D343)
 
 These three are left out of IG6a and IG6b. They need the user's yes, like the list above.
 
