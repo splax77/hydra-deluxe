@@ -1934,8 +1934,7 @@ class GameToolsTest(unittest.TestCase):
         # Question 6 (a) of docs/superpowers/plans/2026-11-08-replay-press-
         # schedule.md and D324 item 2: schedule_json replaces dump_json, and
         # no decline mode or lead is an argument. D318 item 4: ch_play_chart
-        # and ch_run_chart take path_index. Task IG6a of docs/superpowers/plans/
-        # 2026-11-12-in-game-press-timing.md: neither takes timing.
+        # and ch_run_chart take path_index. D342: neither takes timing.
         signatures = {name: list(inspect.signature(getattr(GT.GameTools, name)).parameters)
                       for name in ("ch_play_chart", "ch_run_chart", "ch_edge_probe")}
         self.assertEqual(signatures, {
@@ -1946,7 +1945,7 @@ class GameToolsTest(unittest.TestCase):
             "ch_edge_probe": ["self", "song_folder", "score_json", "schedule_json",
                               "probes_json"]})
 
-    # -- in-game timing (task IG3 of docs/superpowers/plans/2026-11-12-in-game-press-timing.md)
+    # -- in-game timing (D339)
 
     def _in_game_rig(self, **kw):
         """A chained-start rig whose live_in_game records the player it gets
@@ -1971,7 +1970,7 @@ class GameToolsTest(unittest.TestCase):
         self.assertTrue(kit.player.closed)
 
     def test_game_tools_names_no_kit_press_source_and_no_timing(self):
-        # Task IG6a of docs/superpowers/plans/2026-11-12-in-game-press-timing.md.
+        # D342: the kit route is timed by the game only.
         with open(GT.__file__, encoding="utf-8") as f:
             source = f.read()
         for gone in ("use_kit_press", "_kit_press_source", "TIMING_", "timing:", "timing="):

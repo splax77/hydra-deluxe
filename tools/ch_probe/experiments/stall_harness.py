@@ -6,7 +6,9 @@ It runs the real play_chart.play_chords on a real schedule file. The song
 clock is the wall clock. Each press goes through the checkout's real
 LiveAgent and kit_tools.kit_press, to a fake Frida script that answers on a
 thread of its own, as Frida does, so the kit log's writing is in the loop.
-Each row goes to one of three sinks: `writer` (play_chart.PressLogWriter),
+This loop case (`--timing loop`, the default) is the control: play_chords is
+the keys route's code (play_chart.live_play), and no kit run uses it, since a
+kit run is timed by the game (play_chart.live_in_game, D342). Each row goes to one of three sinks: `writer` (play_chart.PressLogWriter),
 `per-row` (open, append one row and close, on the player's thread) or
 `none`. The song is played over and over until the run's cap.
 
@@ -19,8 +21,8 @@ names are the stems of overlay_logs.TIMING_PRESS_COLUMNS, plus `loop`
 (play_chords' own code between two steps) and `score_delay` (the sleep
 before the score read after a press, which no column times).
 
-`--timing game` plays each pass with play_chart.play_in_game instead (task
-IG4 of docs/superpowers/plans/2026-11-12-in-game-press-timing.md). Its fake
+`--timing game` plays each pass with play_chart.play_in_game instead, the
+player a kit run uses (D339). Its fake
 Frida script is then a fake game: stall_game.mjs, beside this file, a Node
 process that runs the kit agent's real frame scheduler on a wall-clock frame
 ticker with its own song clock, takes the real `play`, `retime` and
@@ -84,9 +86,9 @@ TIMING_GAME = "game"
 TIMINGS = (TIMING_LOOP, TIMING_GAME)
 
 # The fake game's frame rate: the 330 frames a second the in-game timing
-# plan gives the game ("about 3 ms at 330 frames a second", question 2 of
-# docs/superpowers/plans/2026-11-12-in-game-press-timing.md), which its task
-# IG4 gives this fake.
+# plan gives the game ("about 3 ms at 330 frames a second", its question 2),
+# which its task IG4 gives this fake. The plan is
+# docs/superpowers/plans/2026-11-12-in-game-press-timing.md (removed; git show b971b235:docs/superpowers/plans/2026-11-12-in-game-press-timing.md).
 FAKE_GAME_FPS = 330
 _HERE = os.path.dirname(os.path.abspath(__file__))
 GAME_DRIVER = os.path.join(_HERE, "stall_game.mjs")

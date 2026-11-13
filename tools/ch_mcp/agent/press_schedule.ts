@@ -1,7 +1,7 @@
 // The frame scheduler: given the whole press schedule once, it is called once
 // per game frame and says which kit elements to put down, which to lift, and
 // what to report. It holds design points 2 and 5 of
-// docs/superpowers/plans/2026-11-12-in-game-press-timing.md (task IG1); D339
+// docs/superpowers/plans/2026-11-12-in-game-press-timing.md (removed; git show b971b235:docs/superpowers/plans/2026-11-12-in-game-press-timing.md); D339
 // in docs/audit/2026-10-03-fix-decisions.md holds the user's answers it follows.
 //
 // It is plain code with no game in it: no Frida, no il2cpp, no reads of its

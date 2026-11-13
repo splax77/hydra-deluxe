@@ -193,9 +193,8 @@ class ServerTest(unittest.TestCase):
         # Question 6 (a) of docs/superpowers/plans/2026-11-08-replay-press-
         # schedule.md and D324 item 2: schedule_json replaces dump_json, and
         # no decline mode or lead is an argument. D318 item 4: ch_run_chart
-        # and ch_play_chart take path_index, 0 when left out. Task IG6a of
-        # docs/superpowers/plans/2026-11-12-in-game-press-timing.md: neither
-        # takes timing; the route alone says who times the presses.
+        # and ch_play_chart take path_index, 0 when left out. D342:
+        # neither takes timing; the route alone says who times the presses.
         self.assertEqual(set(self._schema("ch_run_chart")),
                          {"song_folder", "score_json", "schedule_json", "kit_player",
                           "path_index"})
@@ -228,7 +227,7 @@ class ServerTest(unittest.TestCase):
         self.assertEqual(seen, [("song", "top.json", "sched.json", "System", 3)])
 
     def test_a_leftover_timing_argument_is_dropped_without_a_word(self):
-        # Row P33 of docs/superpowers/plans/2026-11-12-in-game-press-timing.md:
+        # Row P33 of docs/superpowers/plans/2026-11-12-in-game-press-timing.md (removed; git show b971b235:docs/superpowers/plans/2026-11-12-in-game-press-timing.md):
         # the server takes a call that still passes timing, drops the
         # argument and runs the tool as if it were left out. The MCP page
         # (docs/agents/clone-hero-mcp.md) says so.

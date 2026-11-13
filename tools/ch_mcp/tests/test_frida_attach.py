@@ -1151,8 +1151,7 @@ class AllowedCallsTest(unittest.TestCase):
 
 
 # ---- kit.ts's play hook -----------------------------------------------------
-# Task IG2 of docs/superpowers/plans/2026-11-12-in-game-press-timing.md: the
-# play messages hook GameManager.Update. These checks read kit.ts as text.
+# The play messages hook GameManager.Update. These checks read kit.ts as text.
 
 _TIMING_START = "// ---- in-game timing"
 _TIMING_END = "// ---- end of in-game timing"

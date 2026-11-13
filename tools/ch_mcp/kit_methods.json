@@ -42,7 +42,7 @@
         {"name": "get_isFocused", "image": "UnityEngine.CoreModule", "class": "UnityEngine.Application", "dump_line": 687296, "signature": "public static bool get_isFocused()"},
         {"name": "GetButton", "image": "Rewired_Core", "class": "Rewired.Player", "dump_line": 306988, "signature": "public bool GetButton(string actionName)", "overload": ["System.String"]},
         {"name": "GetAnyButton", "image": "Rewired_Core", "class": "Rewired.Player", "dump_line": 307138, "signature": "public bool GetAnyButton()", "also": [{"class": "Rewired.ReInput.ControllerHelper", "dump_line": 310008, "signature": "public bool GetAnyButton()"}], "note": "kit.ts calls this name on two classes, each with no argument: on every Player and on ReInput's ControllerHelper. A name is listed once (tests/test_frida_attach.py refuses a name listed twice), so the second class sits under also."},
-        {"name": "Update", "image": "CloneHero", "class": "GameManager", "dump_line": 25387, "signature": "private void Update()", "rva": "0xC05A0", "note": "Hooked with Interceptor.attach for the play messages and frame_probe (task IG2 of docs/superpowers/plans/2026-11-12-in-game-press-timing.md), never called. kit.ts looks it up by this name only for its code address."}
+        {"name": "Update", "image": "CloneHero", "class": "GameManager", "dump_line": 25387, "signature": "private void Update()", "rva": "0xC05A0", "note": "Hooked with Interceptor.attach for the play messages and frame_probe, never called. kit.ts looks it up by this name only for its code address."}
     ],
     "fields": [
         {"name": "controllers", "image": "Rewired_Core", "class": "Rewired.Player", "dump_line": 306914, "signature": "public readonly Player.ControllerHelper controllers"},
