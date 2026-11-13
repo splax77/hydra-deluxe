@@ -935,6 +935,91 @@ void test_paths_length_from_click(ImGuiTestContext* ctx) {
     IM_CHECK(app.viewed.song_length_ms == 130087.87999999993);
 }
 
+// The pieces of Tapped Out (Mike Orlando)'s optimal path, activation 4: its
+// squeeze out, which the game's windows cannot cover. Literals from T0's run;
+// tests/test_activation_rows.cpp pins the same row's text.
+constexpr const char* kTappedOutWindowPieces[] = {"Dynamic Hit Window:", "77.9 ms early",
+                                                  "72.0 ms late", "65.9 ms short"};
+
+// Opens Tapped Out in the app already running and waits for its Paths tab.
+bool open_tapped_out(ImGuiTestContext* ctx) {
+    open_titled(ctx, "tapped out", "Tapped Out");
+    if (ctx->IsError()) return false;
+    wait_song_analyzed(ctx);
+    if (ctx->IsError()) return false;
+    ctx->Yield(2);
+    return true;
+}
+
+// Tapped Out's activation 4 row fits inside its box: the box's content is
+// no wider than the box (the box's ##sq<act>_<k> child, its one squeeze).
+void check_tapped_out_box_fits() {
+    ImGuiWindow* box = window_named("##sq4_0");
+    IM_CHECK(box != nullptr);
+    if (!box) return;
+    IM_CHECK_LE(box->ContentSize.x, box->ContentRegionRect.GetWidth() + 0.5f);
+}
+
+// The Dynamic Hit Window row: on Burnout's squeeze out (room to spare), on no
+// activation without a timing badge, and on Tapped Out's squeeze out (out of
+// reach) and both its early fills, optional and required, each in a box.
+void test_paths_hit_window(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    if (!open_burnout(ctx)) return;
+    IM_CHECK(!on_screen(h, "Dynamic Hit Window:"));  // every row starts closed
+
+    // Burnout's activation 1: literals from T0's run.
+    ctx->ItemClick("**/##act1");
+    ctx->Yield(2);
+    IM_CHECK(on_screen(h, "Dynamic Hit Window:"));
+    IM_CHECK(on_screen(h, "84.5 ms early"));
+    IM_CHECK(on_screen(h, "84.3 ms late"));
+    IM_CHECK(on_screen(h, "5.4 ms spare"));
+
+    // Activation 2 has no timing badge, so no row.
+    ctx->ItemClick("**/##act2");  // opens row 2, closes row 1
+    ctx->Yield(2);
+    IM_CHECK(h.app->details_ui.paths_tab.ui().act_open == std::vector<char>({0, 1, 0}));
+    IM_CHECK(!on_screen(h, "Dynamic Hit Window:"));
+
+    if (!open_tapped_out(ctx)) return;
+    ctx->ItemClick("**/##act4");
+    ctx->Yield(2);
+    for (const char* piece : kTappedOutWindowPieces) IM_CHECK(on_screen(h, piece));
+    // Its optional early fill is boxed, with its own row (the user's ruling
+    // of 2026-11-12); tests/test_activation_rows.cpp pins the same text.
+    IM_CHECK(on_screen(h, "Early fill: 0.0 ms (optional)"));
+    IM_CHECK(window_named("##ef4") != nullptr);
+    IM_CHECK(on_screen(h, "85.7 ms early"));
+    IM_CHECK(on_screen(h, "85.7 ms spare"));
+    check_tapped_out_box_fits();
+    if (ctx->IsError()) return;
+
+    // Activation 3's required early fill: its box holds one window.
+    ctx->ItemClick("**/##act3");  // opens row 3, closes row 4
+    ctx->Yield(2);
+    IM_CHECK(on_screen(h, "Early fill: 0.0 ms (required)"));
+    IM_CHECK(window_named("##ef3") != nullptr);
+    IM_CHECK(on_screen(h, "Dynamic Hit Window:"));
+    IM_CHECK(on_screen(h, "82.9 ms early"));
+    IM_CHECK(on_screen(h, "82.9 ms spare"));
+}
+
+// At the narrowest panel, all four pieces of Tapped Out's activation 4 row
+// are still on screen, and the row stays inside its box.
+void test_paths_hit_window_narrow(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    reset_app(h);
+    scan_library(ctx);
+    if (ctx->IsError()) return;
+    if (!open_tapped_out(ctx)) return;
+    if (!narrowest_panel(ctx)) return;
+    ctx->ItemClick("**/##act4");
+    ctx->Yield(3);
+    for (const char* piece : kTappedOutWindowPieces) IM_CHECK(on_screen(h, piece));
+    check_tapped_out_box_fits();
+}
+
 }  // namespace
 
 // Registers this file's tests; register_tests() (uitest_tests.cpp) calls it.
@@ -954,6 +1039,8 @@ void register_paths_tests(Harness& h) {
         {"paths-backend-fit", test_paths_backend_fit},
         {"paths-row-layout", test_paths_row_layout},
         {"paths-length-from-click", test_paths_length_from_click},
+        {"paths-hit-window", test_paths_hit_window},
+        {"paths-hit-window-narrow", test_paths_hit_window_narrow},
     };
     for (const Entry& e : entries) {
         ImGuiTest* t = IM_REGISTER_TEST(h.engine, "hydra", e.name);

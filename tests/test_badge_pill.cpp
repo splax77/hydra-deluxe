@@ -1,7 +1,7 @@
 // The badge pill's size and text place (ui/badge_pill.h) as the
 // activation-row layout uses them (ui/activation_row_layout.h): every pill on
 // every row is sized for the longest badge, side by side and stacked, and its
-// text sits centred in it (D262).
+// text sits centred in it (D262). Also the Dynamic Hit Window tag's colours.
 //
 // Widths are in the GUI harness's mono font, 9.6 px a character, on a 16 px
 // text line, as in test_activation_row_layout.cpp.
@@ -127,6 +127,29 @@ TEST_CASE("badge pill: stacked pills share both edges") {
         CHECK(p[k].x1 == doctest::Approx(p[0].x1));
         CHECK(p[k].y0 > p[k - 1].y1);
     }
+}
+
+namespace {
+
+// `c` is the 8-bit colour (r, g, b), opaque.
+void check_rgb(const ImVec4& c, int r, int g, int b) {
+    CHECK(c.x * 255.0f == doctest::Approx(r));
+    CHECK(c.y * 255.0f == doctest::Approx(g));
+    CHECK(c.z * 255.0f == doctest::Approx(b));
+    CHECK(c.w == doctest::Approx(1.0f));
+}
+
+}  // namespace
+
+TEST_CASE("window tag: spare and short take the mockup's colours") {
+    // The four values of the approved mockup's .dhw .spare rules
+    // (docs/superpowers/specs/2026-11-12-dynamic-hit-window-mockup/index.html).
+    const hydra::ui::WindowTagColors spare = hydra::ui::window_tag_colors(false);
+    check_rgb(spare.ink, 0xf2, 0xc3, 0x00);
+    check_rgb(spare.fill, 0x2a, 0x24, 0x10);
+    const hydra::ui::WindowTagColors short_tag = hydra::ui::window_tag_colors(true);
+    check_rgb(short_tag.ink, 0xff, 0x7f, 0x00);
+    check_rgb(short_tag.fill, 0x2e, 0x1a, 0x08);
 }
 
 TEST_CASE("badge pill: one badge alone sits flush right") {

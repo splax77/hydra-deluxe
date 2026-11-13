@@ -23,6 +23,7 @@
 #include "app/config.h"
 #include "app/song_length.h"
 #include "core/model.h"
+#include "core/note_window.h"
 #include "core/replay.h"
 #include "core/rules.h"
 #include "core/scoring.h"
@@ -102,7 +103,7 @@ void for_each_corpus_schedule(const app::AnalysisSettings& cfg, const ScheduleCh
 
 TEST_CASE("schedule: every end step names its anchor") {
     const Song song = plain_song({0, 768, 1536, 2304, 3072, 3840});
-    const schedule::ChordIndex chords = schedule::chord_index(song);
+    const ChordTimes chords = chord_times(song);
 
     Activation act;
     act.timecode = song.timecode(768);
@@ -149,7 +150,7 @@ TEST_CASE("schedule: every end step names its anchor") {
 
 TEST_CASE("schedule: a squeeze carries its own end, anchor and stored ratio") {
     const Song song = plain_song({0, 768, 1536, 2304, 3072, 3840, 4000});
-    const schedule::ChordIndex chords = schedule::chord_index(song);
+    const ChordTimes chords = chord_times(song);
 
     // A SqIn on the step at 3072 and a SqOut of the chord at 4000. Each
     // ratio is a value no recompute would give, so a recompute shows.
@@ -261,22 +262,8 @@ TEST_CASE("schedule: declined chords are the skipped fill ticks") {
     CHECK(declined_rows > 0);
 }
 
-TEST_CASE("schedule: the window formula and clamps are pinned") {
-    // TM-21's three worked values.
-    CHECK(schedule::whole_window_ms(170.0) == doctest::Approx(171.4313).epsilon(1e-6));
-    CHECK(schedule::whole_window_ms(75.0) == doctest::Approx(96.2932).epsilon(1e-6));
-    CHECK(schedule::whole_window_ms(80.0) == doctest::Approx(102.2586).epsilon(1e-6));
-    // TM-22: the floor and the cap of a side.
-    CHECK(schedule::window_side_ms(1.0, 1.0) == kFloorSide);
-    CHECK(schedule::window_side_ms(10000.0, 10000.0) == kCapSide);
-    // TM-19: a missing neighbour, or one at the same time, gives the back.
-    CHECK(schedule::half_gap_ms(std::nullopt) == 85.0);
-    CHECK(schedule::half_gap_ms(0.0) == 85.0);
-    CHECK(schedule::half_gap_ms(10.0) == 37.5);
-    CHECK(schedule::half_gap_ms(100.0) == 50.0);
-    // Freak's chord 263: 56.18 ms from both neighbours.
-    CHECK(schedule::window_side_ms(56.18, 56.18) == kFloorSide);
-
+TEST_CASE("schedule: the window constants are written") {
+    // The formula's own values are pinned in tests/test_note_window.cpp.
     const Song song = plain_song({0, 768});
     const ReplayResult r = replay_path(song, {});
     const json c = schedule::schedule_json(song, {}, r, core::default_rules())["constants"];
@@ -664,7 +651,7 @@ TEST_CASE("schedule: a lead across a steady span is refused naming the span") {
 TEST_CASE("schedule: a press that reaches a neighbour on its pad is refused naming both chords") {
     // The Edge Walk Pair shape: two kicks 100 ms apart, chords 10 and 11,
     // each side 76.57 ms (TM-50's run).
-    const std::vector<double> sides = schedule::chord_sides_ms({1000.0, 1100.0});
+    const std::vector<double> sides = chord_sides_ms({1000.0, 1100.0});
     std::vector<schedule::PadChord> pair(2);
     const schedule::Pad kick_pad{NoteColor::Kick, false};
     for (size_t i = 0; i < 2; ++i) {
@@ -838,7 +825,7 @@ TEST_CASE("schedule: sp_ready_tick is the second bank arrival") {
     // phrases shows. kSpActivationBars is 2 (core/timing.h), so the second
     // arrival, tick 384, is the ready point.
     const Song song = plain_song({0, 192, 384, 768, 1536});
-    const schedule::ChordIndex chords = schedule::chord_index(song);
+    const ChordTimes chords = chord_times(song);
     Activation act;
     act.timecode = song.timecode(768);
     act.bank_rise_ticks = {192, 384, 576};
@@ -1030,7 +1017,7 @@ bool has_press(const json& s, int chord) {
 // One chord of `count` single-pad chords on one pad, at `ms[i]`, for the
 // far-press check; indexes start at `first_index`.
 std::vector<schedule::PadChord> pad_row(const std::vector<double>& ms, const schedule::Pad& pad, int first_index) {
-    const std::vector<double> sides = schedule::chord_sides_ms(ms);
+    const std::vector<double> sides = chord_sides_ms(ms);
     std::vector<schedule::PadChord> out(ms.size());
     for (size_t i = 0; i < ms.size(); ++i) {
         out[i].index = first_index + static_cast<int>(i);

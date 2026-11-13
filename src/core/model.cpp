@@ -783,6 +783,15 @@ std::optional<int64_t> Activation::squeeze_anchor_tick(size_t squeeze_index) con
     return end_anchor_tick(*s);
 }
 
+std::optional<int64_t> Activation::squeeze_chord_tick(size_t squeeze_index) const {
+    if (squeeze_index >= sqinouts.size()) return std::nullopt;
+    if (sqinouts[squeeze_index].kind == SqueezeKind::SqOut) return sqout_tick;
+    // squeeze_end_step is the step before the one the SqIn set.
+    const std::optional<size_t> s = squeeze_end_step(squeeze_index);
+    if (!s || *s + 1 >= sp_end_steps.size()) return std::nullopt;
+    return sp_end_steps[*s + 1].tick;
+}
+
 // The engine stamps the squeezed-out chord's tick at copy-out (since path
 // format 4, ADR 0014). A record without it is Stale and is never guessed at.
 bool Activation::is_sqout_backend(const BackendSqueeze& bsq) const {

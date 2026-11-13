@@ -24,6 +24,7 @@
 #include "app/dynamics_breakdown.h"
 #include "app/path_view.h"
 #include "app/user_messages.h"  // ScanAsker
+#include "core/note_window.h"  // ChordTimes
 #include "core/rules.h"
 #include "store/record_store.h"
 #include "ui/column_widths.h"
@@ -179,6 +180,7 @@ struct ViewedSong {
     State state = State::None;
     std::optional<HydraRecord> record;     // set only when Ready
     std::optional<SongTiming> timing;      // the analyzed song's, when Ready
+    std::optional<ChordTimes> chords;      // the analyzed song's chord_times, when Ready
     // The song's length in chart time (app::analysis_song_length), when
     // Ready; empty when the owner gave none.
     std::optional<double> song_length_ms;
