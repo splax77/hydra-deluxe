@@ -5,8 +5,10 @@
 
 #include "doctest.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <filesystem>
 #include <map>
 #include <optional>
 #include <string>
@@ -15,11 +17,13 @@
 #include "core/squeeze_rating.h"
 #include "core/rules.h"
 #include "corpus_util.h"
+#include "parse/chart_files.h"
 #include "parse/song.h"
 #include "record_fixtures.h"
 #include "search/pather.h"
 
 using namespace hydra;
+namespace fs = std::filesystem;
 
 TEST_CASE("frontend_transfer_scales: measure-rate ratio, both directions") {
     // The Tom Sawyer (Onyxite) shape: ten 7/8 measures at 87.35 BPM, then
@@ -155,9 +159,19 @@ TEST_CASE("step_transfer_scale: equals every stored scale on the squeeze corpus 
 
     for (const std::string folder : {"test_folded_sqin", "test_fast_tempo"}) {
         CAPTURE(folder);
+        // Library discovery (corpus::chart_paths) does not list these fixture
+        // folders, so every chart file in the folder is loaded by path, the
+        // way test_fast_tempo.cpp and test_tied_variants.cpp load them.
+        std::vector<std::string> paths;
+        for (const fs::directory_entry& e :
+             fs::directory_iterator(fs::u8path(corpus::root() + "/" + folder))) {
+            const std::string p = e.path().u8string();
+            if (e.is_regular_file() && chart_format_of(p) != ChartFormat::None)
+                paths.push_back(p);
+        }
+        std::sort(paths.begin(), paths.end());
         int charts = 0, acts = 0, sqins = 0;
-        for (const std::string& path : corpus::chart_paths()) {
-            if (path.find(folder) == std::string::npos) continue;
+        for (const std::string& path : paths) {
             CAPTURE(path);
             ++charts;
             const Song& song = corpus::song(path, ChartReading{});
