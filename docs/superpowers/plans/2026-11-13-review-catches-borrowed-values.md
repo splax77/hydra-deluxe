@@ -26,9 +26,9 @@ Every line here was read today in the worktree or in the run folder. The Premise
 
 On Pitch Dark these are two different ends. The schedule file from the 2026-11-12 run shows activation 1 with four end steps. After chord 466 the end is at tick 198570 (158,224.76 ms). The squeeze-in at chord 644 is measured against the end at tick 202440 (161,356.44 ms), with ratio 1.1067. The tool priced the read of the first end with the second end's ratio: 158,224.76 + 1.1067 × (24.12 + 3.00) = 158,254.77 ms. Here 24.12 ms is the anchor's planned lead and 3.00 ms is the one frame of judging the plan counts (plan line 101). The press log's row 466 shows the game stored 158,268.99 ms.
 
-**The hidden rule.** `retime_from_end` in `tools/ch_probe/experiments/play_chart.py` (lines 326 to 355) moves each later press by `read_end_ms - p.aim_end_ms`. The plan's owner table gives that row to Python (plan line 138: "Shifting the later presses by read minus planned | Python | `retime_from_end` (one subtraction per press)"). The same plan quotes your ruling at line 29 and says "The owner table has one C++ owner for every Star Power question".
+**The hidden rule.** `retime_from_end` in `tools/ch_probe/experiments/play_chart.py` (lines 326 to 355) moves each later press by `read_end_ms - p.aim_end_ms`. The plan's owner table gives that row to Python (old plan line 138 on main, line 137 at the tip 4f6aa52b: "Shifting the later presses by read minus planned | Python | `retime_from_end` (one subtraction per press)"). The same plan quotes your ruling at line 29 and says "The owner table has one C++ owner for every Star Power question".
 
-**The deferred premise.** The plan's row P15 (line 340) is marked `unchecked`, with Status "LS-S2 second read". Its Source names SP-24 on the Star Power page. SP-24 is labelled "Proven in the game's code", and `transfer_scale_between` (`src/core/squeeze_rating.cpp`, lines 12 to 22) takes an anchor tick and an end tick. A read of those two would have shown that a ratio belongs to one end. It would not have settled how the game moves a clamped end when a press is early; that part did need the live run.
+**The deferred premise.** The old plan's row P15 (line 340 on main) is marked `unchecked`, with Status "LS-S2 second read". Its Source names SP-24 on the Star Power page. SP-24 is labelled "Proven in the game's code", and `transfer_scale_between` (`src/core/squeeze_rating.cpp`, lines 12 to 22) takes an anchor tick and an end tick. A read of those two would have shown that a ratio belongs to one end. It would not have settled how the game moves a clamped end when a press is early; that part did need the live run.
 
 **The three reviews.** The plan review (commit 413e396c, reviewer adae7fe267bcdb8b0) fixed a 3 ms double count inside the shift and added a premise row for `retime_from_end`. The TC2 code review (commit 05d243ae, reviewer aeee01a9b3e942e14) folded the end's shift into one function, `anchor_end_shift_ms`. That is a correct "derived twice" fix on the exact line that holds the borrowed ratio. The player audit's L12 (`docs/audit/2026-11-08-player-audit/ledger.md`, lines 134 to 142) is titled "retime_from_end moves presses by any delta and never rechecks the window", and its "Ruling quotes found" line says "none found specific to retiming". Each one was doing what its page asked.
 
@@ -91,7 +91,7 @@ In "Developer tools: wording is a note", add that a kind H finding and a kind D 
 
 A source must be for the exact thing. A `code` row that says "the ratio this end moves by" names code that works the ratio out for that end. Code that works it out for another end, chord or tick is not a source for the row.
 
-Settle what a read can settle. Before a plan is shown, the planner tries each `unchecked` row against the code and the Clone Hero pages. A row a read can settle is settled. If a read settles part of it, the row is split, as the page already requires. What is left names a task, a question or a live step.
+Settle what a read can settle. Before a plan is shown, the planner tries each `unchecked` row against the code and the Clone Hero pages. A row a read can settle is settled. If a read settles part of it, the row is split, as the page already requires. What is left names a task, a question or a live step. The page's Status sentence, which today allows only a task or a question number, gains the live step as a third allowed name.
 
 A deferred premise blocks. When an `unchecked` row's Status names a live step, the Status also says which tasks rest on the row, as `blocks RG1, RG2` or `blocks nothing`. Each named task holds a line that starts `Waits for:` and names the step. The main session does not dispatch such a task until the step's result folder exists.
 
@@ -105,8 +105,8 @@ Acceptance criteria:
 
 - The derive-once page lists kind H and holds step 10. Proven by RG4's replays B and C.
 - The page no longer tells the reviewer to quote the precheck for kind D and stop. Proven by a grep for "Quote its lines for B to E" that finds nothing, and by replay C.
-- The doc review page holds the owner-table check. Proven by replay A flagging plan line 138.
-- The premise map page holds the three rules. Proven by replay A flagging row P15, and by RG3's test for the Status shape.
+- The doc review page holds the owner-table check. Proven by replay A flagging the owner table's "Shifting the later presses" row (line 137 at the replayed tip).
+- The premise map page holds the three rules. Proven by replay A flagging the old plan's row P15, and by RG3's test for the Status shape.
 - The worked example's numbers match this plan's. Proven by the reviewer recomputing 158,224.76 + 1.1067 × 27.12 = 158,254.77 and opening rows P4 and P5.
 - No page states a rule another page owns. Proven by the reviewer's kind D read, and by the docs check `hydra_tests.exe "-tc=docs match code*"`, which the main session runs at the merge.
 
@@ -125,7 +125,7 @@ Acceptance criteria:
 
 ### RG3: the docs check reads the new Status shape (C++ test; branch `claude/review-gap-docs-test`)
 
-File: `tests/test_docs_match_code.cpp`. The check `check_premise_maps` gains one rule. An `unchecked` row whose Status names a live step must also hold `blocks` followed by `nothing` or by task ids the plan has. Each task named must hold a `Waits for:` line that names that step. A plan dated before the rule's own start date is left alone, the same way `kPremiseMapSince` leaves older plans alone. The start date is the day the executor writes the change, and the comment beside it says so. The existing self-test case ("the premise map check catches each form") gains one failing example per new problem line and one passing example.
+File: `tests/test_docs_match_code.cpp`. The check `check_premise_maps` gains one rule. An `unchecked` row whose Status holds a live step's id (a token starting `LS-` or `LS` and a digit, the same shape the live-step heading check already reads) must also hold `blocks` followed by `nothing` or by task ids the plan has. Each task named must hold a `Waits for:` line that names that step. A plan dated before the rule's own start date is left alone, the same way `kPremiseMapSince` leaves older plans alone. The start date is the day the executor writes the change, and the comment beside it says so. The existing self-test case ("the premise map check catches each form") gains one failing example per new problem line and one passing example.
 
 The executor does not build. The main session builds the branch and runs `hydra_tests.exe "-tc=docs match code*"`.
 
@@ -145,13 +145,13 @@ The scouts are read-only and are not dispatched as reviewers. The reviewer dispa
 - Replay B, the TC2 code review: the range `c026e8cb4267d3d0e9302ffadcc865efbba37c4f...753ec20a8ac139fac1ef734969a2a70a14aa8033`.
 - Replay C, the TP2 code review: commit ea4d247e31d20cc117c678b3d098f1c20d09f78b against its parent.
 
-Whether a scout dispatch with a historic range passes every hook, and whether the precheck runs on a historic range, has never been tried (row P25). If a hook refuses a scout, or the precheck refuses the range, the main session stops and reports the exact message. It does not route around it.
+The gates README says the dispatch hook checks only `reviewer` dispatches (row P25), so a scout passes, but no scout has been sent a historic range. The precheck on a historic range has never been tried (row P26), and the scouts do not need it. If a hook refuses a scout, or the precheck refuses the range, the main session stops and reports the exact message. It does not route around it.
 
 Cap: one run per replay. If a replay misses its item, a fresh executor rewords the step on RG1's branch once, and that one replay runs once more with a fresh scout. A second miss stops the work, and the main session brings you the design and its alternatives.
 
 Acceptance criteria:
 
-- Replay A reports the owner table's "Shifting the later presses" row as a rule outside the ruling's owner. It also reports row P15 as a premise a read could have settled in part, or as one that blocks tasks built before its step.
+- Replay A reports the owner table's "Shifting the later presses" row as a rule outside the ruling's owner. It also reports the old plan's row P15 (line 341 at that tip) as a premise a read could have settled in part, or as one that blocks tasks built before its step.
 - Replay B reports that the end read after an anchor chord is priced with a ratio the engine worked out for another end, as kind H.
 - Replay C reports the one-for-one shift in `retime_from_end` as a rule with no ruling, as kind D.
 - Each is proven by the scout's report quoting the file and line. The main session pastes those sentences into RG1's reviewer brief as the author's report.
@@ -177,8 +177,8 @@ The replays do not measure false alarms. If step 10 makes reviewers flag harmles
 |---|---|---|---|
 | A review asks, for each value read across a boundary, whether it is the owner's value for this exact thing | RG1, derive-once page, step 10 | RG1 | Replay B reports the ratio as kind H, quoting file and line |
 | Kind D is no longer left wholly to the precheck; arithmetic across a boundary is judged as a possible rule | RG1, derive-once page | RG1 | The grep for "Quote its lines for B to E" finds nothing; replay C reports the shift as kind D |
-| A ruling quoted in a plan binds every row of its owner table, and moving or converting an engine-owned quantity is never a live part | RG1, doc review page; RG2 | RG1, RG2 | Replay A reports plan line 138; the hooks repo's reviewer reads `planner.md` against the page |
-| An unchecked premise a read can settle is settled before the plan is shown | RG1, premise map page; RG2 | RG1, RG2 | Replay A reports row P15 |
+| A ruling quoted in a plan binds every row of its owner table, and moving or converting an engine-owned quantity is never a live part | RG1, doc review page; RG2 | RG1, RG2 | Replay A reports the owner table's "Shifting the later presses" row; the hooks repo's reviewer reads `planner.md` against the page |
+| An unchecked premise a read can settle is settled before the plan is shown | RG1, premise map page; RG2 | RG1, RG2 | Replay A reports the old plan's row P15 |
 | A premise deferred to a live step blocks every task that rests on it | RG1, premise map page; RG3 | RG1, RG3 | RG3's three failing self-test examples; the docs check on every plan in the repo |
 | The worked example is the Pitch Dark case, with only sourced numbers | RG1 | RG1 | The reviewer recomputes 158,254.77 and opens rows P4 and P5; rows P21 to P24 stay out |
 | The replay briefs give no hint of the known problems | RG4 | RG4 | RG1's reviewer reads the three scout briefs and the cut pages in the scratch folder |
@@ -201,7 +201,7 @@ The replays do not measure false alarms. If step 10 makes reviewers flag harmles
 | P4: on Pitch Dark, activation 1's end after chord 466 is tick 198570 at 158,224.76 ms, the squeeze at chord 644 is measured at tick 202440 with ratio 1.1067 and anchor lead 24.12 ms, and the read is planned at 158,254.77 ms | run | `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-12\pitch-dark-prep` (`schedule.json`) | checked 2026-11-12 |
 | P5: the game's end read after chord 466 was 158,268.99 ms, chord 466's press went out at clock 143,250.17 ms against a chart time of 143,224.27 ms, and chord 644's row shows the score going from 283,065 to 283,265 | run | `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-12\pitch-dark-run1` (`press-1.csv`, rows 466 and 644) | checked 2026-11-12 |
 | P6: `retime_from_end` moves each later press by the read end minus the press's aimed end | code | `tools/ch_probe/experiments/play_chart.py` lines 326 to 355 | checked 2026-11-12 |
-| P7: the old plan quotes the ruling at line 29, gives the shift to Python at line 138, and marks P15 `unchecked` with Status "LS-S2 second read" at line 340 | code | `docs/superpowers/plans/2026-11-08-replay-press-schedule.md` lines 29, 138 and 340 | checked 2026-11-12 |
+| P7: the old plan quotes the ruling at line 29, gives the shift to Python at line 138, and marks P15 `unchecked` with Status "LS-S2 second read" at line 340 | code | `docs/superpowers/plans/2026-11-08-replay-press-schedule.md` lines 29, 138 and 340 on main (29, 137 and 341 at commit 4f6aa52b, where the old P15 sits one line below P14) | checked 2026-11-12 |
 | P8: the engine measures a squeeze-in's ratio at that squeeze's own end, with a function that takes an anchor tick and an end tick | code | `src/core/squeeze_rating.cpp` lines 12 to 22 and 34 to 42 | checked 2026-11-12 |
 | P9: SP-24 is labelled "Proven in the game's code" | data | `docs/clone-hero/05-star-power.md` lines 247 to 250 | checked 2026-11-12 |
 | P10: the plan review fixed a 3 ms double count and added a row for `retime_from_end`; the TC2 review folded the shift into `anchor_end_shift_ms` | code | commits `413e396c` and `05d243ae` (their messages and trailers) | checked 2026-11-12 |
@@ -219,4 +219,5 @@ The replays do not measure false alarms. If step 10 makes reviewers flag harmles
 | P22: the read end sits in a 5/4 measure and the squeeze end in 4/4 | unchecked | this plan's brief only; `schedule.json` in the prep folder holds ticks and times but no time signatures | RG1 |
 | P23: the squeeze-in at chord 644 failed | unchecked | this plan's brief; `press-1.csv` row 644 shows 200 points, which was not compared with a Star Power hit | RG1 |
 | P24: live step LS-S2 of the old plan never ran | unchecked | no folder named `ls-s*` under `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs`; the folder name is a guess | RG1 |
-| P25: a scout dispatch on a historic range passes every hook, and the precheck runs on a historic range | unchecked | never tried; `docs/agents/derive-once-review.md` line 24 gives the precheck's command for a live range only | RG4 |
+| P25: a scout dispatch on a historic range passes the dispatch hook | code | `C:\Users\Patrick\.claude\gates\README.md` line 37: the hook checks an `Agent` call with `subagent_type: reviewer`, so a read-only scout is not checked | checked 2026-11-12, the README's statement, not the hook's code |
+| P26: the precheck runs on a historic range written as `<base>...<tip>` | unchecked | `tools/precheck/range.cpp` line 31 takes a merge-base of the two names; never run on these commits. The scouts do not need it, so only a main session that wants the lines tries it | RG4 |
