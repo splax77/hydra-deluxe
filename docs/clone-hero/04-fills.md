@@ -3,7 +3,7 @@
 This page covers written fills, the fills the game generates, their deadlines, and when a fill shows up.
 It describes build 1.1 (v1.1.0.6142), and build 1.0 (v1.0.0.4045) under its own heading.
 "The decompile" on this page means Ghidra's full decompile of build 6142, which `code/README.md` describes; it is not in the repo.
-Last write-back: 2026-11-08.
+Last write-back: 2026-11-12.
 
 ## Written fills
 
@@ -251,13 +251,13 @@ Found: 2026-10-15, session c35a4b7d.
 
 ### FL-25 The game did not offer an early fill on Trippin path 3
 
-Rule: On Trippin SP Spike, the game did not offer path 3's E0 fill at tick 34944 in three bot runs; it activated at the next fill, tick 38016, each time. Why is not known.
+Rule: On Trippin SP Spike, the game did not offer path 3's E0 fill at tick 34944 in three bot runs; it activated at the next fill, tick 38016, each time. The saved watch logs fit the plain deadline (FL-19): the note that fills the meter to half sits on the deadline tick itself, the bot hits notes about on time (a median 0.42 ms early), and the meter's first reading at half came after the deadline in every run, 4.0 and 6.5 ms after in runs 1 and 2 and 5.5 ms after in run 2b, where the rise itself falls between 0.5 ms before and 5.5 ms after; Hydra's path counted on an early hit. The fill's own flag, the engine's tick at the hit and the game's own fill start were not read, so the deadline is the reading that fits the logs, not a proven cause.
 Label: Proven in a live run
-Evidence: `tools/ch_probe/experiments/results/overlay-spike/run1_cal0_sp_compare.txt` line 34, `run2_cal30_sp_compare.txt` line 34 and `run2b_vid30_sp_compare.txt` line 32 each say "FAIL activation 3 not on the path's chord: game tick 38016, path act_tick 34944". The bot hit notes a median 0.42 ms early, not 85 ms early. The cause is not known; the observation itself is the live result.
-Game code (6142): not found: no function decides this one alone.
-Hydra: `is_e0` and `fill_refuses` in src/core/model.h lines 322 and 318.
+Evidence: `tools/ch_probe/experiments/results/overlay-spike/run1_cal0_sp_compare.txt` line 34, `run2_cal30_sp_compare.txt` line 34 and `run2b_vid30_sp_compare.txt` line 32 each say "FAIL activation 3 not on the path's chord: game tick 38016, path act_tick 34944". The bot hit notes a median 0.42 ms early, not 85 ms early. The deadline: Hydra's score file of the chart, C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-12\efl-prep\trippin-score.json (outside the repo, written with hydra_replay score and no path, 2026-11-12), has the chord at tick 34944 with is_fill true and fill_start 34944. The chart (C:\Clone Hero\songs\Hydra Probe\Trippin SP Spike\notes.chart) has Resolution 192 and Offset 0, so the deadline tick is 34944 - 4 x 192 = 34176, which is 100,484.870 ms by its 194 tempo entries; the compare files' line 8 gives the same chord, "chord 497 (tick 34176, 100484.9 ms)", as the phrase-end chord whose rise took the meter from 1440 to 2880, half of sp_max 5760. The game's start of that fill: the chart writes no fill (no S 64 line), so the fill is generated; FL-16 starts a generated fill on its measure line, and FL-26's grid puts this chart's lines at 0, 768, 1152 and every 768 ticks after (TS 4 at 0, TS 2 at 768, TS 4 at 1152, no other change), so 34944 = 1152 + 44 x 768 is a line and the page gives the game the same start as Hydra; no game read of that fill exists. The clocks: each watch row's clock_s times 1000 is compared directly with chart ms, as sp_compare.py does (its lines 12 to 14), because TM-15 shows a 30 ms audio or video calibration does not move the engine clock against the chart; the three activation rows read 111,796.734, 111,794.260 and 111,796.234 ms, 1.5 to 4.0 ms after tick 38016's 111,792.710 ms. The rows, each the last change from below half to half with sp_active_byte 0 before activation 3 (file line numbers, header is line 1): `run1_cal0_sp_watch.csv` line 22505 reads 2880 at 100,488.899 ms, +4.029 ms after the deadline, and line 22504 reads 1440 at 100,485.869 ms (+0.999 ms); `run2_cal30_sp_watch.csv` line 22637 reads 2880 at 100,491.381 ms, +6.511 ms, and line 22636 reads 1440 at 100,485.321 ms (+0.450 ms); `run2b_vid30_sp_watch.csv` line 22673 reads 1440 at 100,484.342 ms (-0.528 ms), and line 22674 reads 2880 at 100,490.402 ms, +5.532 ms. So runs 1 and 2 show the rise after the deadline, and run 2b places it between 0.528 ms before and 5.532 ms after. By FL-23 a fill whose start equals the current tick plus 768 is cleared, so an on-time hit of the tick-34176 note clears it; which tick the engine held at that hit was not read. A scratch script outside the repo read these numbers, on 2026-11-12.
+Game code (6142): the deadline method, RVA `0x20DDB70` (FL-19); no function decides this one alone, and the fill's flag was not read in these runs.
+Hydra: `is_e0` and `fill_refuses` in src/core/model.h lines 322 and 318; `activation_fill_deadline_ms` in src/search/graph.cpp line 62.
 Ruling: none found
-Found: 2026-10-28, session f756d547.
+Found: 2026-10-28, session f756d547; the deadline read from the saved logs 2026-11-12, session f7baa4ed.
 
 ## The grid restart at a meter change
 
