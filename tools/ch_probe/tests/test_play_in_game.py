@@ -28,7 +28,7 @@ from tools.ch_probe.tests.test_play_chart import _unit_end_fields  # noqa: E402
 def press(index, chart_ms, lanes, **kw):
     """A hand-built Press. One timed from an end read gets
     test_play_chart._unit_end_fields of its aim_end_ms for any end field the
-    keywords leave out, as test_play_chart._fixture_schedule does."""
+    keywords leave out."""
     fields = dict(index=index, chart_ms=chart_ms, aim_ms=0.0, lanes=list(lanes),
                   dynamics=["none"] * len(lanes), axes=[1.0] * len(lanes), declined=False,
                   last_send_ms=chart_ms + 50.0, rule="plain")

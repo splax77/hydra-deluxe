@@ -32,7 +32,7 @@ if _REPO_ROOT not in sys.path:
 
 from tools.ch_probe.experiments import play_chart, sp_compare  # noqa: E402
 from tools.ch_probe.experiments.overlay_logs import WATCH_COLUMNS  # noqa: E402
-from tools.ch_probe.tests.test_play_chart import _fixture_schedule, _schedule_of  # noqa: E402
+from tools.ch_probe.tests.test_play_chart import _schedule_of  # noqa: E402
 
 
 def _chord(index, tick, ms, multiplier, *, in_sp=False, phrase_end=False, fill=False):
@@ -640,13 +640,11 @@ def _fixture(name):
     return os.path.join(_HERE, name)
 
 
-# Each path's score file and its hydra_replay schedule file. The schedules
-# are test_play_chart._fixture_schedule's copies, until task T4 remakes the
-# fixtures with the end fields.
+# Each path's score file and its hydra_replay schedule file.
 _MOUTHS = (_fixture("mouths_refine_score.json"),
-           _fixture_schedule("mouths_refine_schedule.json"))
+           _fixture("mouths_refine_schedule.json"))
 _BOMBER = (_fixture("bomber_refine_score.json"),
-           _fixture_schedule("bomber_refine_schedule.json"))
+           _fixture("bomber_refine_schedule.json"))
 
 
 def _rounded(reach):
@@ -714,7 +712,7 @@ class PressReachTest(unittest.TestCase):
         # Chord 268 (31860.680000000004 ms) ends an activation and is aimed
         # -15.0 ms (sp_end); chord 267 (31759.329000000005 ms) is aimed
         # -2.0 ms (plain). Each has one press.
-        reach = sp_compare.press_reach(_fixture_schedule("senri_schedule.json"))
+        reach = sp_compare.press_reach(_fixture("senri_schedule.json"))
         self.assertEqual(_rounded(reach[268]), (31845.68, 31845.68))
         self.assertEqual(_rounded(reach[267]), (31757.33, 31757.33))
 
