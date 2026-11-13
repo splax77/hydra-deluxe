@@ -1,6 +1,5 @@
 // The game's per-note hit window and the Dynamic Hit Window row
-// (core/note_window.h). The plan is
-// docs/superpowers/plans/2026-11-12-dynamic-hit-window.md, task T1.
+// (core/note_window.h).
 
 #include "doctest.h"
 

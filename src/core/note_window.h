@@ -8,8 +8,7 @@
 //
 // The row is display only. Hydra's ratings, tiers, badges and search keep
 // kHitWindowMs (core/model.h), a separate number (D270 call 8): the user
-// ruled "just show it alongside." The plan is
-// docs/superpowers/plans/2026-11-12-dynamic-hit-window.md.
+// ruled "just show it alongside."
 
 #ifndef HYDRA_CORE_NOTE_WINDOW_H
 #define HYDRA_CORE_NOTE_WINDOW_H
