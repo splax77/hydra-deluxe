@@ -164,7 +164,7 @@ class Press:
     read_stored_end_ms: Optional[float] = None
     own_stored_end_ms: Optional[float] = None
     conversion: Optional[Mapping[str, float]] = None
-    read_range_ms: Optional[Tuple[float, float]] = None
+    read_range_ms: Optional[Tuple[Optional[float], Optional[float]]] = None
     fallback: Optional[Mapping] = None
     planned_end_ms: Optional[float] = None
     retimed: Optional[str] = None

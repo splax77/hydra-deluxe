@@ -477,8 +477,8 @@ conversion holds, from the read end's `steady_spans` in
 src/core/squeeze_rating.cpp (a side with no tempo or time signature change
 past it is null). A press with no end carries null in each. The schedule
 refuses an anchor lead that would move the read end out of its steady span,
-as it already refuses one that moves the anchor or the own end out of theirs. For every squeeze it names
-the chord whose press moves the end, splits the room between the two presses,
+as it already refuses one that moves the anchor or the own end out of
+theirs. For every squeeze it names the chord whose press moves the end, splits the room between the two presses,
 says whether the game can make it at 100% speed, and writes what the player
 should do if the end the game really stores crosses a threshold. Each
 threshold is written as a read, the read at which the own end reaches it. A path it
