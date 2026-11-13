@@ -8,7 +8,8 @@ with a long silence around them so nothing else can interfere.
 The output is the classic Moonscraper text .chart format -- the same one the
 existing notes.chart files in this repo use. It has a [Song] header, a
 [SyncTrack] that sets the tempo, an empty [Events] block, and an [ExpertDrums]
-section holding the notes. chart_text writes every probe chart, including
+section holding the notes, and any Star Power phrases and drum fills a probe
+song asks for. chart_text writes every probe chart, including
 probe_songs' named songs.
 
 Everything here is pure text generation. No game and no debugger is involved,
@@ -123,15 +124,39 @@ def _events_section() -> str:
     return "[Events]\n{\n}\n"
 
 
-def _expert_drums_section(note_ticks: Sequence[int], note: int) -> str:
-    """The [ExpertDrums] section. One line per note: `<tick> = N <note> 0`.
+# The special-phrase codes of a .chart `S` line. A Star Power phrase is
+# `<tick> = S 2 <length>` (docs/clone-hero/05-star-power.md, SP-01 to SP-04)
+# and a written drum fill is `<tick> = S 64 <length>`
+# (docs/clone-hero/04-fills.md, FL-01).
+SP_PHRASE_CODE = 2
+FILL_CODE = 64
+
+
+def _expert_drums_section(
+    note_ticks: Sequence[int],
+    note: int,
+    phrases: Sequence[tuple[int, int]] = (),
+    fills: Sequence[tuple[int, int]] = (),
+) -> str:
+    """The [ExpertDrums] section. One line per note: `<tick> = N <note> 0`,
+    plus one `S` line per Star Power phrase and per fill, each given as
+    (start tick, length in ticks).
 
     The trailing 0 is the sustain length; drum notes are instantaneous, so it is
-    always zero. Lines are sorted by tick, which the loader expects.
+    always zero. Lines are sorted by tick, which the loader expects. On a shared
+    tick the `S` lines come before the note, the order the corpus charts use
+    (testdata/input/test_folded_sqin/clamped_sqin_a.chart).
     """
+    events: list[tuple[int, int, str]] = []
+    for start, length in phrases:
+        events.append((start, 0, f"S {SP_PHRASE_CODE} {length}"))
+    for start, length in fills:
+        events.append((start, 0, f"S {FILL_CODE} {length}"))
+    for tick in note_ticks:
+        events.append((tick, 1, f"N {note} 0"))
     lines = ["[ExpertDrums]", "{"]
-    for tick in sorted(note_ticks):
-        lines.append(f"  {tick} = N {note} 0")
+    for tick, _order, body in sorted(events):
+        lines.append(f"  {tick} = {body}")
     lines.append("}")
     return "\n".join(lines) + "\n"
 
@@ -144,15 +169,20 @@ def chart_text(
     bpm: float,
     note: int,
     music_stream: Optional[str],
+    phrases: Sequence[tuple[int, int]] = (),
+    fills: Sequence[tuple[int, int]] = (),
 ) -> str:
     """The whole .chart text: [Song], [SyncTrack], [Events] and [ExpertDrums],
-    in that order, one `note` at each tick. Every probe chart is written here:
-    probe_songs' named songs and the active probe's pairs chart."""
+    in that order, one `note` at each tick. `phrases` and `fills` are optional
+    (start tick, length) pairs written as Star Power phrases and drum fills in
+    [ExpertDrums]; with neither, the section holds only note lines. Every
+    probe chart is written here: probe_songs' named songs and the active
+    probe's pairs chart."""
     return (
         _song_section(name, resolution, music_stream)
         + _sync_track_section(bpm)
         + _events_section()
-        + _expert_drums_section(note_ticks, note)
+        + _expert_drums_section(note_ticks, note, phrases, fills)
     )
 
 

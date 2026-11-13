@@ -1,6 +1,6 @@
-"""Write the hit-window probe songs as ready-to-play Clone Hero song folders.
+"""Write the probe songs as ready-to-play Clone Hero song folders.
 
-Two songs, each a folder with notes.chart, song.ini, a silent song.ogg and a
+Three songs, each a folder with notes.chart, song.ini, a silent song.ogg and a
 manifest.json:
 
   * Window Map  -- no inputs needed. Runs of evenly spaced notes at chosen gaps,
@@ -9,6 +9,9 @@ manifest.json:
     floor, and which gap (before, after, or both) sets a note's window.
   * Edge Walk   -- isolated notes one second apart, for the input test that
     walks hits later/earlier in 1 ms steps until they turn into misses.
+  * Early Fill Walk -- cases where Star Power comes ready a set number of ms
+    around a drum fill's deadline, for the FL-24 live check. The layout is
+    the EFW_ table below; its manifest also lists each case's times.
 
 The chart uses Resolution 480 at 125 BPM, which makes one tick exactly one
 millisecond. Every gap in the file is then the literal number of milliseconds,
@@ -35,14 +38,14 @@ import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
-from typing import Callable, Optional
+from typing import Callable, Optional, Sequence
 
 try:
     from . import constants as C
-    from .probe_chart import chart_text as _chart_text, ms_to_ticks
+    from .probe_chart import chart_text as _chart_text, ms_to_ticks, ticks_to_ms
 except ImportError:  # pragma: no cover - top-level import, ch_probe on sys.path
     import constants as C  # type: ignore[no-redef]
-    from probe_chart import chart_text as _chart_text, ms_to_ticks  # type: ignore[no-redef]
+    from probe_chart import chart_text as _chart_text, ms_to_ticks, ticks_to_ms  # type: ignore[no-redef]
 
 # hydra_end lives outside ch_probe, so a top-level import of this file still
 # needs the repo root on sys.path for it.
@@ -55,12 +58,13 @@ from tools.ch_mcp import hydra_end  # noqa: E402
 RESOLUTION = 480
 BPM = 125.0  # 480 ticks per beat at 125 BPM = 1 tick per ms
 
-# Where the probe songs are installed, the two songs' folder names, and the
+# Where the probe songs are installed, the songs' folder names, and the
 # prefix that turns a folder name into the name the game lists. The runners
 # read these; every probe song folder is written by write_song_folder.
 DEFAULT_OUT = r"C:\Clone Hero\songs\Hydra Probe"
 WINDOW_MAP = "Window Map"
 EDGE_WALK = "Edge Walk"
+EARLY_FILL_WALK = "Early Fill Walk"
 NAME_PREFIX = "Hydra Probe - "
 SONG_OGG = "song.ogg"
 
@@ -86,21 +90,50 @@ UNEVEN_GAPS_MS = ((60, 140), (140, 60), (90, 130), (130, 90))
 EDGE_WALK_NOTES = 120
 EDGE_WALK_GAP_MS = 1000
 
+# The Early Fill Walk's layout table, in ms (one tick each). The plan that
+# asked for this song gives every number here: "Which chart" in
+# docs/superpowers/plans/2026-11-12-early-fill-live-check.md. Each case is a
+# phrase note, the SP-ready note, the case fill ending on its last note, and
+# the flush fill ending on its last note, then the rest.
+#
+# A case's distance is how many ms the SP-ready note comes after its fill's
+# deadline; a negative distance puts the SP-ready note before the deadline.
+EFW_CASES = (("A", -30), ("B", 30), ("C", 60), ("D", 70), ("E", 78))
+EFW_LEAD_IN_MS = 20000      # the first case's phrase note
+EFW_PHRASE_GAP_MS = 2000    # phrase note to SP-ready note
+EFW_FILL_LENGTH_MS = 480    # the case fill and the flush fill
+EFW_FLUSH_AFTER_MS = 6000   # case fill's last note to flush fill's last note
+EFW_REST_MS = 12000         # flush fill's last note to the next case
+# The fill deadline reaches four quarter notes past the tick at which Star
+# Power comes ready (docs/clone-hero/04-fills.md, FL-19 and FL-22).
+EFW_DEADLINE_BEATS = 4
+# A phrase holds a note when start <= tick < start + length, and a phrase of
+# length 0 pays nothing (docs/clone-hero/05-star-power.md, SP-01 and SP-02).
+# So each phrase starts on its one note and is one tick long; that note is
+# the phrase's last chord and carries the award (SP-04).
+EFW_PHRASE_LENGTH_TICKS = 1
+
 
 @dataclass
 class Note:
     time_ms: int
     block: str
-    role: str  # "marker", "run", "first", "middle", "last", "isolated"
+    # "marker", "run", "first", "middle", "last", "isolated", or an Early
+    # Fill Walk role: "phrase", "sp_ready", "fill_last", "flush_last"
+    role: str
 
 
 class Timeline:
     """Lays notes down left to right, in ms. At RESOLUTION and BPM a tick is
     one ms, so the chart's ticks equal these times; chart_text still turns
-    each through probe_chart.ms_to_ticks."""
+    each through probe_chart.ms_to_ticks. `phrases` and `fills` hold
+    (start ms, length ms) pairs, empty for the songs that write none."""
 
     def __init__(self) -> None:
         self.notes: list[Note] = []
+        self.phrases: list[tuple[int, int]] = []
+        self.fills: list[tuple[int, int]] = []
+        self.cases: list[dict] = []  # the Early Fill Walk's manifest rows
         self.cursor = LEAD_IN_MS  # where the next note goes
 
     def add(self, block: str, role: str) -> None:
@@ -146,13 +179,61 @@ def edge_walk() -> Timeline:
     return t
 
 
-def chart_text(name: str, notes: list[Note]) -> str:
+def early_fill_walk() -> Timeline:
+    """The Early Fill Walk: one case per EFW_CASES row, laid out from the
+    EFW_ table above. Two lone phrase notes each add a quarter of the meter
+    (docs/clone-hero/05-star-power.md, SP-12), so hitting the second, the
+    SP-ready note, makes Star Power ready. Each fill is written to end
+    exactly on a lone kick, which is the chord the fill lands on
+    (docs/clone-hero/04-fills.md, FL-03 and FL-05)."""
+    t = Timeline()
+    deadline_ms = int(ticks_to_ms(EFW_DEADLINE_BEATS * RESOLUTION, RESOLUTION, BPM))
+    phrase_ms = int(ticks_to_ms(EFW_PHRASE_LENGTH_TICKS, RESOLUTION, BPM))
+    t.cursor = EFW_LEAD_IN_MS
+    for label, distance_ms in EFW_CASES:
+        block = f"case_{label}"
+        phrase_note_ms = t.cursor
+        sp_ready_ms = phrase_note_ms + EFW_PHRASE_GAP_MS
+        fill_deadline_ms = sp_ready_ms - distance_ms
+        fill_start_ms = fill_deadline_ms + deadline_ms
+        fill_last_ms = fill_start_ms + EFW_FILL_LENGTH_MS
+        flush_last_ms = fill_last_ms + EFW_FLUSH_AFTER_MS
+        flush_start_ms = flush_last_ms - EFW_FILL_LENGTH_MS
+        for time_ms, role in ((phrase_note_ms, "phrase"), (sp_ready_ms, "sp_ready"),
+                              (fill_last_ms, "fill_last"), (flush_last_ms, "flush_last")):
+            t.notes.append(Note(time_ms, block, role))
+        t.phrases.append((phrase_note_ms, phrase_ms))
+        t.phrases.append((sp_ready_ms, phrase_ms))
+        t.fills.append((fill_start_ms, EFW_FILL_LENGTH_MS))
+        t.fills.append((flush_start_ms, EFW_FILL_LENGTH_MS))
+        t.cases.append({
+            "case": label,
+            "distance_ms": distance_ms,
+            "sp_ready_ms": sp_ready_ms,
+            "fill_start_ms": fill_start_ms,
+            "fill_deadline_ms": fill_deadline_ms,
+            "fill_last_note_ms": fill_last_ms,
+            "flush_last_note_ms": flush_last_ms,
+        })
+        t.cursor = flush_last_ms + EFW_REST_MS
+    return t
+
+
+def chart_text(name: str, notes: list[Note],
+               phrases: Sequence[tuple[int, int]] = (),
+               fills: Sequence[tuple[int, int]] = ()) -> str:
     """The song's notes.chart: every note a kick, through probe_chart's one
     writer, each note's ms turned into its tick at this song's resolution and
-    tempo."""
-    ticks = [ms_to_ticks(n.time_ms, RESOLUTION, BPM) for n in notes]
-    return _chart_text(name, ticks, resolution=RESOLUTION, bpm=BPM,
-                       note=C.PROBE_CHART_NOTE_KICK, music_stream=SONG_OGG)
+    tempo. `phrases` and `fills` are (start ms, length ms) pairs, turned into
+    ticks the same way."""
+    def ticks(ms: float) -> int:
+        return ms_to_ticks(ms, RESOLUTION, BPM)
+
+    return _chart_text(name, [ticks(n.time_ms) for n in notes],
+                       resolution=RESOLUTION, bpm=BPM,
+                       note=C.PROBE_CHART_NOTE_KICK, music_stream=SONG_OGG,
+                       phrases=[(ticks(s), ticks(n)) for s, n in phrases],
+                       fills=[(ticks(s), ticks(n)) for s, n in fills])
 
 
 def song_ini(name: str) -> str:
@@ -171,7 +252,9 @@ def song_ini(name: str) -> str:
     )
 
 
-def manifest(name: str, notes: list[Note]) -> dict:
+def manifest(name: str, notes: list[Note], cases: Sequence[dict] = ()) -> dict:
+    """The song's manifest.json: every note's row, and a `cases` list when the
+    song has one (the Early Fill Walk's per-case times)."""
     rows = []
     for i, n in enumerate(notes):
         before: Optional[int] = n.time_ms - notes[i - 1].time_ms if i else None
@@ -186,13 +269,16 @@ def manifest(name: str, notes: list[Note]) -> dict:
             "gap_before_ms": before,
             "gap_after_ms": after,
         })
-    return {
+    out = {
         "song": name,
         "resolution": RESOLUTION,
         "bpm": BPM,
         "note": "1 tick = 1 ms; chart Offset 0, song.ini delay 0; all kick",
         "notes": rows,
     }
+    if cases:
+        out["cases"] = [dict(c) for c in cases]
+    return out
 
 
 def write_silent_ogg(path: str, length_ms: float) -> None:
@@ -239,18 +325,23 @@ def write_song(root: str, name: str, t: Timeline, *,
     Returns the folder and the song's length in ms, Hydra's end of its
     chart."""
     title = full_name(name)
-    folder, length_ms = write_song_folder(root, name, chart_text(title, t.notes),
-                                          write_ogg=write_ogg)
+    folder, length_ms = write_song_folder(
+        root, name, chart_text(title, t.notes, t.phrases, t.fills), write_ogg=write_ogg)
     with open(os.path.join(folder, "manifest.json"), "w", encoding="utf-8", newline="\n") as f:
-        json.dump(manifest(title, t.notes), f, indent=1)
+        json.dump(manifest(title, t.notes, t.cases), f, indent=1)
     return folder, length_ms
+
+
+# Every probe song, by folder name, with the builder of its layout.
+SONGS = ((WINDOW_MAP, window_map), (EDGE_WALK, edge_walk),
+         (EARLY_FILL_WALK, early_fill_walk))
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--out", default=DEFAULT_OUT)
     args = ap.parse_args()
-    for name, build in ((WINDOW_MAP, window_map), (EDGE_WALK, edge_walk)):
+    for name, build in SONGS:
         t = build()
         folder, length_ms = write_song(args.out, name, t)
         print(f"{folder}: {len(t.notes)} notes, {C.ms_to_s(length_ms):.1f} s")
