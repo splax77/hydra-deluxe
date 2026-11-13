@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dynamic Hit Window Mockup</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one column, Hydra's song panel (Paths tab) as it looks in the app, with a slim mockup note above it. Single dark look on purpose: it copies Hydra's own window. */
+:root {
+  --bg: #1b1b1c;
+  --panel: #232324;
+  --line: #3a3a3c;
+  --fg: #e9e9ea;
+  --dim: #a3a3a6;
+  --teal: #0e7a78;
+  --teal-row: #08403f;
+  --blue: #2f5f9e;
+  --yellow: #f2c300;
+  --orange: #f08a24;
+  --note-bg: #2b2a20;
+  --sans: "Inter", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", Consolas, "Courier New", monospace;
+  color-scheme: dark;
+}
+html, body { background: var(--bg); color: var(--fg); }
+body {
+  font-family: var(--sans); font-size: 13px; line-height: 1.45;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 16px 40px;
+}
+.wrap { max-width: 860px; margin: 0 auto; display: grid; gap: 14px; }
+.mocknote {
+  background: var(--note-bg); border: 1px solid #5a5328; border-radius: 4px;
+  padding: 10px 12px; color: var(--fg); display: grid; gap: 4px;
+}
+.mocknote b { color: var(--yellow); font-weight: 600; }
+.mocknote span { color: var(--dim); }
+.panel { background: var(--panel); border: 1px solid var(--line); padding: 14px; display: grid; gap: 10px; min-width: 0; }
+h1 { font-size: 17px; font-weight: 500; margin: 0; letter-spacing: .01em; }
+.sub { color: var(--dim); }
+.score { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+.score .big { font-size: 26px; color: var(--yellow); font-weight: 500; font-variant-numeric: tabular-nums; }
+.score .path { font-family: var(--mono); color: var(--yellow); font-size: 15px; white-space: pre; }
+.tabs { display: flex; gap: 4px; flex-wrap: wrap; border-bottom: 1px solid var(--blue); padding-bottom: 0; }
+.tab { background: var(--blue); color: #fff; border: 0; padding: 4px 8px; font: inherit; cursor: pointer; }
+.tab[aria-selected="false"] { background: #2a3f5c; color: #c9d4e4; }
+.lbl { color: var(--dim); font-size: 12px; }
+.optrow { background: var(--teal-row); font-family: var(--mono); color: var(--yellow); padding: 6px 10px; white-space: pre; overflow-x: auto; }
+.optrow .ms { color: var(--orange); }
+.acthead { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.btn { background: var(--teal); color: #fff; border: 0; padding: 4px 9px; font: inherit; cursor: pointer; }
+.btn:focus-visible, .tab:focus-visible, .act > button:focus-visible, .fold:focus-visible, tr.sq:focus-visible { outline: 2px solid var(--yellow); outline-offset: 1px; }
+.timeline { display: flex; justify-content: space-between; color: var(--dim); font-size: 11px; border-top: 1px solid var(--line); padding-top: 3px; }
+.acts { display: grid; gap: 2px; }
+.act > button {
+  width: 100%; text-align: left; background: transparent; color: var(--fg); border: 0;
+  padding: 5px 4px; font: inherit; cursor: pointer; display: grid;
+  grid-template-columns: 16px 22px 34px 90px 1fr; gap: 6px; align-items: baseline;
+}
+.act > button:hover { background: #2c2c2e; }
+.act .num, .act .code { font-family: var(--mono); }
+.act .code { color: var(--yellow); }
+.act .bars { color: var(--dim); }
+.act .sq { color: var(--orange); }
+.body { padding: 4px 4px 10px 26px; display: grid; gap: 6px; min-width: 0; }
+.chordline { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.chordline .ch { font-family: var(--mono); font-size: 12px; }
+.sentence { background: #33261a; border: 1px solid #6a4520; border-radius: 4px; color: #e8d6c4; padding: 7px 10px; display: grid; gap: 5px; max-width: 78ch; }
+.sentence.diff { border-color: #ff7f00; }
+.dhw { font-family: var(--mono); font-size: 12px; color: #c9b39b; border-top: 1px solid #4a3622; padding-top: 5px; display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.dhw .k { color: #e8d6c4; }
+.dhw b { font-weight: 500; color: #fff; }
+.dhw .spare { margin-left: auto; border: 1px solid #f2c300; border-radius: 3px; padding: 0 7px; color: #f2c300; background: #2a2410; }
+.dhw .spare b { color: #f2c300; }
+.dhw .spare.short { border-color: #ff7f00; color: #ff7f00; background: #2e1a08; }
+.dhw .spare.short b { color: #ff7f00; }
+.scale { color: var(--dim); font-size: 12px; }
+.fold { background: none; border: 0; color: var(--fg); font: inherit; cursor: pointer; padding: 2px 0; text-align: left; }
+.tablewrap { overflow-x: auto; }
+table { border-collapse: collapse; font-family: var(--mono); font-size: 12px; font-variant-numeric: tabular-nums; }
+th { text-align: left; font-family: var(--sans); font-weight: 500; color: var(--dim); padding: 3px 14px 3px 0; border-bottom: 1px solid var(--line); }
+td { padding: 2px 14px 2px 0; white-space: pre; }
+td.r { text-align: right; }
+tr.warn td { color: var(--orange); }
+tr.sq { cursor: help; position: relative; }
+.tip {
+  position: absolute; z-index: 5; background: #111; border: 1px solid #555; color: var(--fg);
+  padding: 6px 8px; font-family: var(--sans); font-size: 12px; white-space: pre; pointer-events: none;
+  max-width: calc(100vw - 40px);
+}
+.toast { color: var(--dim); font-size: 12px; min-height: 1em; }
+[hidden] { display: none !important; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style></head><body>
+
+<div class="wrap">
+  <div class="mocknote">
+    <div><b>Mockup</b> of Hydra's Paths tab for Dead on Arrival (O). Everything is the real text from Hydra 2.14.0 except one new line.</div>
+    <span>The new line is the bottom row of activation 4's squeeze box: "Dynamic Hit Window: 85.7 ms early, 79.4 ms late, 24.1 ms spare." Click activations to open and close them; hover or tap the squeezed-out row for its tooltip.</span>
+  </div>
+
+  <div class="panel">
+    <div>
+      <h1>Dead on Arrival (O)</h1>
+      <div class="sub">Fall Out Boy · charted by Harmonix, Onyxite, Espher</div>
+    </div>
+    <div class="score"><span class="big">436,300</span><span class="path">1 1 3+ 2- 2</span></div>
+    <div class="sub">Optimal path · 7 stars</div>
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" aria-selected="true" id="tab-paths">Paths</button>
+      <button class="tab" role="tab" aria-selected="false" data-msg="The Preview tab is not part of this mockup.">Preview</button>
+      <button class="tab" role="tab" aria-selected="false" data-msg="The Dynamics tab is not part of this mockup.">Dynamics</button>
+      <button class="tab" role="tab" aria-selected="false" data-msg="The Stars tab is not part of this mockup.">Stars</button>
+    </div>
+    <div class="toast" id="toast" aria-live="polite"></div>
+
+    <div class="lbl">Optimal</div>
+    <div class="optrow">▼ 436,300  <span class="lbl">1 path</span>
+  1 1 3+ 2- 2  <span class="ms">143.9 ms</span></div>
+
+    <div class="acthead">
+      <div>Activations 5 · no SP left over</div>
+      <button class="btn" id="toggleAll">Expand all</button>
+    </div>
+    <div class="timeline"><span>m1</span><span>m167</span></div>
+    <div class="acts" id="acts"></div>
+  </div>
+
+  <div class="mocknote">
+    <div><b>Second example:</b> Tapped Out, activations 3 and 4, real Hydra text.</div>
+    <span>Activation 3 is a required early fill: the plan puts the "Early fill" line in the same box as a squeeze sentence, with the row at its bottom (question 2). Activation 4's squeeze needs 215.8 ms but its two windows reach only 149.9 ms once the x1.001 scale is counted, so the tag shows how far short it falls. Its early fill is optional, so it gets a box but no row (question 4).</span>
+  </div>
+
+  <div class="panel">
+    <div>
+      <h1>Tapped Out</h1>
+      <div class="sub">Mike Orlando · charted by CyclopsDragon, Onyxite</div>
+    </div>
+    <div class="score"><span class="big">1,022,800</span><span class="path">1 0 E0 E1- 5 0</span></div>
+    <div class="sub">Optimal path · 7 stars · 155 2x kicks (13%)</div>
+    <div class="lbl">Activations 6 · no SP left over (activations 3 and 4 shown)</div>
+    <div class="acts" id="acts2"></div>
+  </div>
+
+  <div class="mocknote">
+    <div><b>Third example:</b> a squeeze in. Focus [Ariana Grande], activation 2 only, real Hydra text.</div>
+    <span>A squeeze in is the mirror of a squeeze out: the activation side goes late and the phrase note early. Here the anchor is the chord that overfilled the meter.</span>
+  </div>
+
+  <div class="panel">
+    <div>
+      <h1>Focus [Ariana Grande]</h1>
+      <div class="sub">SoundHaven · charted by Bloodline</div>
+    </div>
+    <div class="score"><span class="big">755,530</span><span class="path">0 3+ 0 0</span></div>
+    <div class="sub">Optimal path · 7 stars · 14 2x kicks (4%)</div>
+    <div class="lbl">Activations 4 · no SP left over (activation 2 shown)</div>
+    <div class="acts" id="acts3"></div>
+  </div>
+</div>
+
+<script>
+const ACTS = [
+  { n: 1, code: "1", at: "m28.1.0", bars: "2 bars", chord: "[Kick - Yellow cymbal - Green cymbal]",
+    scale: "Frontend timing scales x1.01 (early) / x1.002 (late) at the SP end.",
+    rows: [["-448.4","[K  B ]","460","Normal (eff. 446.6 ms)"],["-299.0","[ R B ]","460","Normal (eff. 297.8 ms)"],["-149.5","[K   G]","460","Normal (eff. 148.9 ms)"],["0.0","[K Y  ]","460","Normal (eff. 0.0 ms)"],["297.2","[ R B ]","0","Beyond (uncounted) (eff. 296.9 ms)"],["445.8","[   B ]","0","Beyond (uncounted) (eff. 445.3 ms)"]] },
+  { n: 2, code: "1", at: "m48.1.0", bars: "2 bars", chord: "[Kick - Green cymbal]",
+    scale: "Frontend timing scales x1.01 (early) / x1.02 (late) at the SP end.",
+    rows: [["-444.0","[  Y  ]","200","Normal (eff. 442.7 ms)"],["-370.0","[ R   ]","200","Normal (eff. 368.9 ms)"],["-296.0","[ R   ]","200","Normal (eff. 295.1 ms)"],["-148.0","[ R   ]","200","Normal (eff. 147.6 ms)"],["-74.0","[ R   ]","200","Normal (eff. 73.8 ms)"],["0.0","[K   G]","460","Normal (eff. 0.0 ms)"],["148.7","[K    ]","0","Insane+ (uncounted) (eff. 147.5 ms)"],["297.3","[ R  G]","0","Beyond (uncounted) (eff. 294.9 ms)"]] },
+  { n: 3, code: "3+", at: "m88.1.0", bars: "3 bars", sq: "squeeze in -444.9 ms", chord: "[Kick - Yellow cymbal]",
+    sentence: "Hit the SP phrase's last note no more than 444.9 ms late (eff. 443.9 ms) so it lands before Star Power ends. The phrase then counts while Star Power runs, which makes Star Power last longer.",
+    scale: "Frontend timing scales x0.97 (early) / x0.99 (late) at the SP end; x1.004 (early) at the SqIn's SP end.",
+    rows: [["-427.6","[K    ]","200","Normal (eff. 435.1 ms)"],["-356.3","[ R   ]","200","Normal (eff. 362.6 ms)"],["-285.0","[ R   ]","200","Normal (eff. 290.1 ms)"],["-142.5","[ R   ]","200","Normal (eff. 145.0 ms)"],["0.0","[K   G]","460","Normal (eff. 0.0 ms)"],["295.4","[K   G]","0","Beyond (uncounted) (eff. 297.6 ms)"]] },
+  { n: 4, code: "2-", at: "m124.1.0", bars: "4 bars", sq: "squeeze out 143.9 ms", chord: "[Kick - Yellow cymbal - Green cymbal]",
+    sentenceHtml: "<div>Hit the [ RY  ] note more than 143.9 ms late so it lands after Star Power ends. It scores 200 fewer points, and its SP phrase banks for later.</div><div class=\"dhw\"><span class=\"k\">Dynamic Hit Window:</span><span><b>85.7 ms</b> early</span><span><b>79.4 ms</b> late</span><span class=\"spare\"><b>24.1 ms</b> spare</span></div>",
+    diff: true,
+    scale: "Frontend timing scales x1.03 (early) at the SP end.",
+    rows: [["-431.7","[ RY  ]","460","Normal (eff. 424.6 ms)"],["-287.8","[KRY  ]","660","Normal (eff. 283.1 ms)"],["-143.9","[ RY  ]","260","Insane+ (eff. 141.5 ms) <-- squeezed out (-200)", "warn"]],
+    open: true },
+  { n: 5, code: "2", at: "m148.1.0", bars: "2 bars", chord: "[Kick - Green cymbal]",
+    scale: "Frontend timing scales x1.005 (early) / x1.02 (late) at the SP end.",
+    rows: [["-443.9","[K    ]","200","Normal (eff. 442.8 ms)"],["-295.9","[ R  G]","460","Normal (eff. 295.2 ms)"],["-148.0","[ R   ]","200","Normal (eff. 147.6 ms)"],["-74.0","[ R   ]","200","Normal (eff. 73.8 ms)"],["0.0","[K   G]","460","Normal (eff. 0.0 ms)"],["304.2","[K   G]","0","Beyond (uncounted) (eff. 301.3 ms)"]] },
+];
+const ACTS2 = [
+  { n: 3, code: "E0", at: "m64.1.0", bars: "2 bars", sq: "early fill 0.0 ms", chord: "[Kick - Green cymbal]",
+    fillHtml: "<div>Early fill: 0.0 ms (required)</div><div class=\"dhw\"><span class=\"k\">Dynamic Hit Window:</span><span><b>82.9 ms</b> early</span><span class=\"spare\"><b>82.9 ms</b> spare</span></div>",
+    fillWarn: true,
+    scale: "Frontend timing scales x1.002 (late) at the SP end.",
+    rows: [["-500.0","[ R   ]","200","Normal"],["-428.6","[ R   ]","200","Normal"],["-321.4","[ R   ]","200","Normal"],["-214.3","[ R   ]","200","Normal"],["-107.1","[ R   ]","200","Normal"],["0.0","[K   G]","460","Normal"],["214.3","[ R   ]","0","Beyond (uncounted) (eff. 214.1 ms)"],["321.4","[  Y  ]","0","Beyond (uncounted) (eff. 321.1 ms)"],["428.6","[  Y  ]","0","Beyond (uncounted) (eff. 428.1 ms)"]],
+    open: true },
+  { n: 4, code: "E1-", at: "m90.1.0", bars: "3 bars", sq: "early fill 0.0 ms  squeeze out 215.8 ms", chord: "[Kick - Green cymbal]",
+    fillHtml: "<div>Early fill: 0.0 ms (optional)</div>",
+    sentenceHtml: "<div>Hit the [ R B ] note more than 215.8 ms late so it lands after Star Power ends. It scores 200 fewer points, and its SP phrase banks for later.</div><div class=\"dhw\"><span class=\"k\">Dynamic Hit Window:</span><span><b>77.9 ms</b> early</span><span><b>72.0 ms</b> late</span><span class=\"spare short\"><b>65.9 ms</b> short</span></div>",
+    diff: true,
+    scale: "Frontend timing scales x1.001 (early) at the SP end.",
+    rows: [["-431.7","[K  B ]","460","Normal (eff. 431.3 ms)"],["-359.7","[K    ]","200","Normal (eff. 359.5 ms)"],["-287.8","[K    ]","200","Normal (eff. 287.6 ms)"],["-215.8","[ R B ]","260","Beyond (eff. 215.7 ms) <-- squeezed out (-200)", "warn", "Effectively 215.7 ms on the normal 170.0 ms scale:\nfrontend timing scales x1.001 here, so the combined\nsqueeze budget is 170.1 ms, not 170.0 ms."]],
+    open: true },
+];
+const ACTS3 = [
+  { n: 2, code: "3+", at: "m39.1.0", bars: "4 bars", sq: "squeeze in 25.0 ms", chord: "[Kick - Green cymbal]",
+    sentenceHtml: "<div>Hit the SP phrase's last note more than 25.0 ms early so it lands before Star Power ends. The phrase then counts while Star Power runs, which makes Star Power last longer.</div><div class=\"dhw\"><span class=\"k\">Dynamic Hit Window:</span><span><b>61.9 ms</b> late</span><span><b>48.1 ms</b> early</span><span class=\"spare\"><b>85.1 ms</b> spare</span></div>",
+    diff: true,
+    scale: "SP overfilled at m40.4.400",
+    rows: [["-400.0","[ R   ]","400","Normal"],["-300.0","[ R   ]","400","Normal"],["-200.0","[ R   ]","400","Normal"],["-100.0","[ R   ]","400","Normal"],["0.0","[  Y  ]","260","Normal"],["100.0","[K  B ]","0","Insane (uncounted)"],["400.0","[  Y  ]","0","Beyond (uncounted)"]],
+    open: true },
+];
+const TIP = "Effectively 141.5 ms on the normal 170.0 ms scale:\nfrontend timing scales x1.03 here, so the combined\nsqueeze budget is 172.8 ms, not 170.0 ms.";
+
+const acts = document.getElementById("acts");
+const toast = document.getElementById("toast");
+let toastTimer;
+function say(msg) { toast.textContent = msg; clearTimeout(toastTimer); toastTimer = setTimeout(() => toast.textContent = "", 2600); }
+document.querySelectorAll("[data-msg]").forEach(b => b.addEventListener("click", () => say(b.dataset.msg)));
+
+function esc(s) { return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+function renderActs(list, container, prefix) { list.forEach(a => {
+  const el = document.createElement("div");
+  el.className = "act";
+  const head = document.createElement("button");
+  head.id = prefix + a.n;
+  head.setAttribute("aria-expanded", a.open ? "true" : "false");
+  head.innerHTML = `<span class="arrow">${a.open ? "▼" : "▶"}</span><span class="num">${a.n}</span><span class="code">${a.code}</span><span>${a.at}</span><span><span class="bars">${a.bars}</span>${a.sq ? `  <span class="sq">${a.sq}</span>` : ""}</span>`;
+  const body = document.createElement("div");
+  body.className = "body";
+  body.hidden = !a.open;
+  const sentence = a.sentenceHtml ? a.sentenceHtml : (a.sentence ? esc(a.sentence) : "");
+  const rows = a.rows.map((r, i) => {
+    const sqRow = r[4] === "warn";
+    const tip = esc(r[5] || TIP).replace(/"/g, "&quot;");
+    return `<tr class="${sqRow ? "warn sq" : ""}" ${sqRow ? `tabindex="0" data-tip="${tip}"` : ""}><td class="r">${esc(r[0])}</td><td>${esc(r[1])}</td><td class="r">${esc(r[2])}</td><td>${esc(r[3])}</td></tr>`;
+  }).join("");
+  body.innerHTML = `
+    <div class="chordline"><span>Chord <span class="ch">${esc(a.chord)}</span></span><button class="btn preview">Show in Preview &gt;</button></div>
+    ${a.fillHtml ? `<div class="sentence${a.fillWarn ? " diff" : ""}">${a.fillHtml}</div>` : ""}
+    ${sentence ? `<div class="sentence${a.diff ? " diff" : ""}">${sentence}</div>` : ""}
+    <div class="scale">${esc(a.scale)}</div>
+    <button class="fold" aria-expanded="true">▼ Backend timings · ${a.rows.length} notes near the SP end</button>
+    <div class="tablewrap"><table><thead><tr><th>Timing</th><th>Chord</th><th>Points</th><th>Rating</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  head.addEventListener("click", () => setOpen(el, body.hidden));
+  body.querySelector(".preview").addEventListener("click", () => say(`In Hydra this opens the Preview at activation ${a.n}. Not part of this mockup.`));
+  const fold = body.querySelector(".fold"), tw = body.querySelector(".tablewrap");
+  fold.addEventListener("click", () => {
+    const open = tw.hidden; tw.hidden = !open;
+    fold.setAttribute("aria-expanded", String(open));
+    fold.textContent = (open ? "▼" : "▶") + fold.textContent.slice(1);
+  });
+  el.append(head, body);
+  container.append(el);
+}); }
+renderActs(ACTS, acts, "act-");
+renderActs(ACTS2, document.getElementById("acts2"), "act2-");
+renderActs(ACTS3, document.getElementById("acts3"), "act3-");
+
+function setOpen(el, open) {
+  const head = el.querySelector(":scope > button"), body = el.querySelector(".body");
+  body.hidden = !open;
+  head.setAttribute("aria-expanded", String(open));
+  head.querySelector(".arrow").textContent = open ? "▼" : "▶";
+  syncAll();
+}
+const toggleAll = document.getElementById("toggleAll");
+function syncAll() {
+  const allOpen = [...acts.children].every(e => !e.querySelector(".body").hidden);
+  toggleAll.textContent = allOpen ? "Collapse all" : "Expand all";
+}
+toggleAll.addEventListener("click", () => {
+  const open = toggleAll.textContent === "Expand all";
+  [...acts.children].forEach(e => setOpen(e, open));
+});
+syncAll();
+
+// The squeezed-out row's tooltip, as Hydra shows it on hover.
+let tipEl;
+function showTip(row) {
+  hideTip();
+  tipEl = document.createElement("div");
+  tipEl.className = "tip";
+  tipEl.textContent = row.dataset.tip;
+  document.body.append(tipEl);
+  const r = row.getBoundingClientRect();
+  const left = Math.min(r.left + window.scrollX + 40, window.scrollX + document.documentElement.clientWidth - tipEl.offsetWidth - 16);
+  tipEl.style.left = Math.max(16, left) + "px";
+  tipEl.style.top = (r.bottom + window.scrollY + 4) + "px";
+}
+function hideTip() { if (tipEl) { tipEl.remove(); tipEl = null; } }
+document.querySelectorAll("tr[data-tip]").forEach(row => {
+  row.addEventListener("mouseenter", () => showTip(row));
+  row.addEventListener("mouseleave", hideTip);
+  row.addEventListener("focus", () => showTip(row));
+  row.addEventListener("blur", hideTip);
+  row.addEventListener("click", () => tipEl ? hideTip() : showTip(row));
+});
+</script>
+
+</body></html>
