@@ -54,11 +54,22 @@ std::optional<TransferScale> transfer_scale_between(int64_t anchor_tick,
                                                     int64_t end_tick,
                                                     const SongTiming& timing);
 
-// The activation's transfer scales, from the stored SP-end steps only:
-// `post` from deact_anchor_tick() to deact_tick(), each SqIn from
-// squeeze_anchor_tick(k) to squeeze_end_tick(k). The engine stamps the
-// stored scales through this function at copy-out. nullopt when a tick is
-// missing or a measure length is not a positive finite number.
+// The step scale: the transfer scale of one step of act.sp_end_steps,
+// transfer_scale_between from the note that moves that step's end
+// (Activation::end_anchor_tick) to that end. The one owner of a step's
+// ratio; frontend_transfer_scales reads every stored scale through it.
+// nullopt for a step index past the list's end, or when
+// transfer_scale_between gives none.
+std::optional<TransferScale> step_transfer_scale(const Activation& act,
+                                                 size_t step_index,
+                                                 const SongTiming& timing);
+
+// The activation's transfer scales, from the stored SP-end steps only, each
+// through step_transfer_scale: `post` for the last step, each SqIn for the
+// step Activation::squeeze_end_step(k) names. The engine stamps the stored
+// scales through this function at copy-out. nullopt when the steps are
+// empty, a SqIn has no step, or a measure length is not a positive finite
+// number.
 std::optional<ActTransferScales> frontend_transfer_scales(const Activation& act,
                                                           const SongTiming& timing);
 

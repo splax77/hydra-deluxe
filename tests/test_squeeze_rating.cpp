@@ -5,17 +5,25 @@
 
 #include "doctest.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <filesystem>
 #include <map>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "core/squeeze_rating.h"
 #include "core/rules.h"
+#include "corpus_util.h"
+#include "parse/chart_files.h"
+#include "parse/song.h"
 #include "record_fixtures.h"
+#include "search/pather.h"
 
 using namespace hydra;
+namespace fs = std::filesystem;
 
 TEST_CASE("frontend_transfer_scales: measure-rate ratio, both directions") {
     // The Tom Sawyer (Onyxite) shape: ten 7/8 measures at 87.35 BPM, then
@@ -130,6 +138,87 @@ TEST_CASE("frontend_transfer_scales: a clamp moves the front anchor") {
     REQUIRE(clamped.has_value());
     CHECK(clamped->post.late == doctest::Approx(1.0).epsilon(1e-12));
     CHECK(clamped->post.early == doctest::Approx(1.0).epsilon(1e-12));
+}
+
+// The stored scales and the step scale come from one line of code: the
+// engine stamps transfer_post and each SqIn's transfer through
+// frontend_transfer_scales, which reads step_transfer_scale. So on every
+// activation of these corpus charts, the step scale of the last step is the
+// stored transfer_post, and the step scale of the step squeeze_end_step(k)
+// names is SqIn k's stored transfer, bit for bit.
+TEST_CASE("step_transfer_scale: equals every stored scale on the squeeze corpus charts") {
+    SearchSettings cfg;
+    cfg.sp_cap = 4;
+    cfg.depth_mode = DepthMode::Scores;
+    cfg.depth_value = 4;
+    cfg.ms_filter = std::nullopt;
+
+    auto same = [](const TransferScale& a, const TransferScale& b) {
+        return a.early == b.early && a.late == b.late;
+    };
+
+    for (const std::string folder : {"test_folded_sqin", "test_fast_tempo"}) {
+        CAPTURE(folder);
+        // Library discovery (corpus::chart_paths) does not list these fixture
+        // folders, so every chart file in the folder is loaded by path, the
+        // way test_fast_tempo.cpp and test_tied_variants.cpp load them.
+        std::vector<std::string> paths;
+        for (const fs::directory_entry& e :
+             fs::directory_iterator(fs::u8path(corpus::root() + "/" + folder))) {
+            const std::string p = e.path().u8string();
+            if (e.is_regular_file() && chart_format_of(p) != ChartFormat::None)
+                paths.push_back(p);
+        }
+        std::sort(paths.begin(), paths.end());
+        int charts = 0, acts = 0, sqins = 0;
+        for (const std::string& path : paths) {
+            CAPTURE(path);
+            ++charts;
+            const Song& song = corpus::song(path, ChartReading{});
+            const HydraRecord& record = corpus::analyzed(path, cfg);
+            for (const Path* p : record.all_paths()) {
+                for (const Activation& act : p->all_activations()) {
+                    ++acts;
+                    REQUIRE_FALSE(act.sp_end_steps.empty());
+                    const size_t last = act.sp_end_steps.size() - 1;
+                    REQUIRE(act.transfer_post.has_value());
+                    const std::optional<TransferScale> post =
+                        step_transfer_scale(act, last, song.timing());
+                    REQUIRE(post.has_value());
+                    CHECK(same(*post, *act.transfer_post));
+
+                    for (size_t k = 0; k < act.sqinouts.size(); ++k) {
+                        if (act.sqinouts[k].kind != SqueezeKind::SqIn) continue;
+                        ++sqins;
+                        const std::optional<size_t> step = act.squeeze_end_step(k);
+                        REQUIRE(step.has_value());
+                        REQUIRE(act.sqinouts[k].transfer.has_value());
+                        const std::optional<TransferScale> s =
+                            step_transfer_scale(act, *step, song.timing());
+                        REQUIRE(s.has_value());
+                        CHECK(same(*s, *act.sqinouts[k].transfer));
+                    }
+
+                    // A step past the list's end is unset, never a number.
+                    CHECK_FALSE(step_transfer_scale(act, last + 1, song.timing()).has_value());
+                    CHECK_FALSE(step_transfer_scale(act, act.sp_end_steps.size() + 7,
+                                                    song.timing()).has_value());
+                }
+            }
+        }
+        // The walk saw charts, activations and SqIns, so the checks above ran.
+        CHECK(charts > 0);
+        CHECK(acts > 0);
+        CHECK(sqins > 0);
+    }
+
+    // A hand-built activation with no steps has no step scale at all.
+    std::map<int64_t, int64_t> tpm{{0, 1920}};
+    std::map<int64_t, double> bpm{{0, 120.0}};
+    SongTiming st(480, tpm, bpm, {{0, {4, 4}}});
+    Activation empty;
+    empty.timecode = st.timecode(0);
+    CHECK_FALSE(step_transfer_scale(empty, 0, st).has_value());
 }
 
 TEST_CASE("transfer_scale_between: a measure that is not a positive finite length is refused") {
