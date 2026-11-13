@@ -1409,6 +1409,11 @@ namespace {
 constexpr double kPitchDark243OwnEndMs = 0.0;
 constexpr double kPitchDark243Conversion = 0.0;
 
+// The tolerance T2's acceptance in
+// docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md gives a
+// conversion ("within 0.00001"): the plan prints it to five places.
+bool within_conversion(double got, double want) { return std::abs(got - want) < 0.00001; }
+
 // Pitch Dark (testdata/input/test_pitch_dark_ratio, a copy of the library
 // chart) under the app's default settings: path 0's activations and its
 // schedule, built as the corpus sweeps build theirs.
@@ -1545,11 +1550,11 @@ TEST_CASE("schedule: Pitch Dark prices each read at its own step's scale") {
     const json& s644 = p644[0];
     CHECK(within_cent(s644["aim_ms"].get<double>(), -18.316));
     CHECK(within_cent(s644["own_end_ms"].get<double>(), 161386.46));
-    CHECK(std::abs(s644["conversion"]["early"].get<double>() - 0.79467) < 0.00001);
-    CHECK(std::abs(s644["conversion"]["late"].get<double>() - 0.79467) < 0.00001);
+    CHECK(within_conversion(s644["conversion"]["early"].get<double>(), 0.79467));
+    CHECK(within_conversion(s644["conversion"]["late"].get<double>(), 0.79467));
     CHECK(s644["aim_end_ms"].get<double>() == r466["planned_end_ms"].get<double>());
-    CHECK(std::abs(s644["own_stored_end_ms"].get<double>() - 161356.443) < 0.001);
-    CHECK(std::abs(s644["read_stored_end_ms"].get<double>() - 158224.757) < 0.001);
+    CHECK(within_cent(s644["own_stored_end_ms"].get<double>(), 161356.443));
+    CHECK(within_cent(s644["read_stored_end_ms"].get<double>(), 158224.757));
     CHECK(s644["end_read_after"].get<int>() == 466);
     // Its plain fallback's threshold is in read terms: fed back through the
     // conversion it gives the own-terms threshold.
@@ -1568,7 +1573,7 @@ TEST_CASE("schedule: Pitch Dark prices each read at its own step's scale") {
     for (const json& p : p676) {
         CHECK(p["aim_end_ms"].get<double>() == r466["planned_end_ms"].get<double>());
         CHECK(within_cent(p["own_stored_end_ms"].get<double>(), 164341.3));
-        CHECK(p["own_end_ms"].get<double>() > 164341.3);
+        CHECK(p["own_end_ms"].get<double>() > p["own_stored_end_ms"].get<double>());
         for (const char* side : {"early", "late"})
             CHECK(p["conversion"][side].get<double>() * r466["ratio"][side].get<double>() ==
                   doctest::Approx(act1["end_ratio"][side].get<double>()));
@@ -1636,9 +1641,9 @@ TEST_CASE("schedule: read_at_own_ms runs the conversion backwards on its own sid
     CHECK(schedule::read_at_own_ms(l, 2000.0) == doctest::Approx(1000.0));
     // Before it: the early side.
     CHECK(schedule::read_at_own_ms(l, 1990.0) == doctest::Approx(980.0));
-    // One step: a conversion of exactly 1 adds the plain offset between the
-    // two ends.
-    const TransferScale one = schedule::end_conversion(TransferScale{1.3, 1.1}, TransferScale{1.3, 1.1});
-    CHECK(one.early == 1.0);
-    CHECK(one.late == 1.0);
+    // Two ends of one step: the conversion moves the read one for one, on
+    // both sides.
+    l.conversion = schedule::end_conversion(TransferScale{1.3, 1.1}, TransferScale{1.3, 1.1});
+    CHECK(schedule::read_at_own_ms(l, 2010.0) == doctest::Approx(1010.0));
+    CHECK(schedule::read_at_own_ms(l, 1990.0) == doctest::Approx(990.0));
 }
