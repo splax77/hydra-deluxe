@@ -1,10 +1,12 @@
 """Launch Clone Hero with a bot on one song and keep the stats file it writes.
 
 The game's command line plays a song folder with bot players. This script
-backs up the user files first, starts the game, waits (with a cap) for
-scorestats.json to change, copies the new file out, watches whether the game
-exits, and then puts the user files back. For the launch, it is the one owner
-of the rules in docs/agents/clone-hero-mcp.md, "Safety rules".
+backs up the Rewired registry key first (game_files.backup), starts the
+game, waits (with a cap) for scorestats.json to change, copies the new file
+out, watches whether the game exits, and then puts the key back. No file in
+the game's folders is backed up or restored: every file stays as the game
+or the run left it. For the launch, it is the one owner of the rules in
+docs/agents/clone-hero-mcp.md, "Safety rules".
 
     py tools/ch_mcp/bot_run.py --song <song folder> --out <folder>
         [--player Drums,Expert] [--profile <name>] [--stop] [--backup-root <folder>]
@@ -29,7 +31,7 @@ patched in memory (the direct-start plan,
 docs/superpowers/plans/2026-10-31-ch-mcp-direct-start.md (removed; git show 6804353f:docs/superpowers/plans/2026-10-31-ch-mcp-direct-start.md), "The launch").
 Nothing here writes the game's files on disk.
 
-The file paths and the backup list live in game_files.py; the caps are the
+The file paths and the registry key live in game_files.py; the caps are the
 constants below.
 """
 
@@ -46,7 +48,7 @@ import sys
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Any, Callable, List, Optional, Protocol, Sequence
+from typing import Any, Callable, List, Optional, Protocol
 
 if __package__ in (None, ""):
     # Run as a script (py -I leaves the repo off sys.path).
@@ -358,7 +360,6 @@ class Env:
     each piece for a fake."""
     exe: str = game_files.GAME_EXE
     documents_dir: str = game_files.DOCUMENTS_DIR
-    locallow_dir: str = game_files.LOCALLOW_DIR
     launch: Callable[[list[str]], Game] = _real_launch
     now: Callable[[], float] = time.monotonic
     sleep: Callable[[float], None] = time.sleep
@@ -734,7 +735,8 @@ def start_run(song_dir: Optional[str], *, player: str = DEFAULT_PLAYER,
               before_launch: Optional[Callable[[], None]] = None,
               human: bool = False,
               song_end: Optional[tuple[float, str]] = None) -> Run:
-    """Back up the user files, then start the game, and return at once. With
+    """Back up the registry key (game_files.backup), then start the game,
+    and return at once. With
     a song folder the game plays it with a bot; a song with no known length
     raises SongLengthMissing before anything is backed up or started. With
     song_dir None the game starts at its menu and the run has no stats cap.
@@ -742,10 +744,9 @@ def start_run(song_dir: Optional[str], *, player: str = DEFAULT_PLAYER,
     starts the game and returns once the loader's bot byte is patched, and
     a human launch with no song folder raises LaunchFailed(HUMAN_NEEDS_SONG)
     before anything is backed up. `before_launch`, when given, runs after
-    the backup and before the launch, so a change it makes to the user files
-    is undone by the restore. When it or the launch raises, the user files
-    are put back before the error goes on, since no run comes back to
-    finish. `song_end`, when given, is song_length_ms's answer for the
+    the backup and before the launch; a file it changes stays changed. When
+    it or the launch raises, the key is put back before the error goes on,
+    since no run comes back to finish. `song_end`, when given, is song_length_ms's answer for the
     folder, already read by the caller, so the chart is not dumped twice."""
     env = env or Env()
     refusal = human_refusal(human, song_dir)
@@ -763,8 +764,7 @@ def start_run(song_dir: Optional[str], *, player: str = DEFAULT_PLAYER,
             env.out(f"note: song.ini says pro_drums = True but the player is {player}; "
                     f"pass --player {PRO_DRUMS_INSTRUMENT},<difficulty> to play pro drums")
 
-    backup_dir = game_files.backup(env.documents_dir, env.locallow_dir, backup_root,
-                                   stamp=env.stamp, run_reg=env.run_reg)
+    backup_dir = game_files.backup(backup_root, stamp=env.stamp, run_reg=env.run_reg)
     env.out(f"backup folder: {backup_dir}")
     before = _stats_state(env)
 
@@ -781,7 +781,7 @@ def start_run(song_dir: Optional[str], *, player: str = DEFAULT_PLAYER,
         else:
             game = env.launch(cmd)
     except BaseException:
-        # No run comes back to finish, so put back what before_launch changed.
+        # No run comes back to finish, so put the key back now.
         _restore(backup_dir, env)
         raise
     launched_at = env.now()
@@ -818,13 +818,14 @@ def exit_check(run: Run, env: Optional[Env] = None) -> None:
     env.out(f"game exited after {env.now() - start:.0f} s")
 
 
-def _restore(backup_dir: str, env: Env, leave: Sequence[str] = ()) -> bool:
-    """Put the user files back, then the registry key when the backup holds
-    it; a file named in `leave` stays as it is. On a failure, print the file
-    and the error and return False; the caller then stops."""
-    env.out(f"restoring the user files from {backup_dir}")
+def _restore(backup_dir: str, env: Env) -> bool:
+    """Put the registry key back when the backup holds it, after a line for
+    each file an older backup names (game_files.restore_all). On a failure,
+    print what failed and the error and return False; the caller then
+    stops."""
+    env.out(f"restoring the backup from {backup_dir}")
     try:
-        game_files.restore_all(backup_dir, out=env.out, run_reg=env.run_reg, leave=leave)
+        game_files.restore_all(backup_dir, out=env.out, run_reg=env.run_reg)
     except game_files.RestoreError as e:
         env.out(f"restore failed on {e.name}: {e.error}")
         env.out(f"stopped; the backup is still in {backup_dir}")
@@ -838,14 +839,15 @@ def _restore_hint(backup_dir: str) -> str:
 
 def late_write_hint(backup_dir: str) -> str:
     """What a user is told when a game that may still run could rewrite the
-    files that were just restored. The caller says whether the game runs."""
-    return ("may write these files again when it closes; after closing it, run "
+    registry key that was just restored. The caller says whether the game
+    runs."""
+    return ("may write the registry key again when it closes; after closing it, run "
             + _restore_hint(backup_dir))
 
 
 def finish_run(run: Run, *, stop: bool, env: Optional[Env] = None,
                stop_line: str = STOPPED_BY_FLAG_LINE) -> bool:
-    """Stop the game when asked, then put the user files back. A game that
+    """Stop the game when asked, then put the backup back. A game that
     is still running after the stop's wait is reported and the restore still
     runs. A stop that worked prints `stop_line`. Returns False when the
     restore failed."""
@@ -898,12 +900,10 @@ def run_bot(song_dir: str, out_dir: str, *, player: str = DEFAULT_PLAYER,
     return 0 if copied is not None else 1
 
 
-def restore_only(backup_dir: str, env: Optional[Env] = None,
-                 leave: Sequence[str] = ()) -> int:
-    """Restore `backup_dir`: 0 when it worked, 2 when a file failed. `leave`
-    is game_files.restore's list of files to skip."""
+def restore_only(backup_dir: str, env: Optional[Env] = None) -> int:
+    """Restore `backup_dir`: 0 when it worked, 2 when the restore failed."""
     env = env or Env()
-    return 0 if _restore(backup_dir, env, leave) else 2
+    return 0 if _restore(backup_dir, env) else 2
 
 
 def main(argv: Optional[list[str]] = None) -> int:
@@ -918,7 +918,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                     help="back up and start the game, then return without waiting or restoring")
     ap.add_argument("--backup-root", help="where the dated backup folder goes (default <out>\\backups)")
     ap.add_argument("--restore", metavar="BACKUP_FOLDER",
-                    help="put the user files back from a backup folder, then stop")
+                    help="put a backup folder's registry key back, then stop")
     args = ap.parse_args(argv)
 
     if args.restore:

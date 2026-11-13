@@ -9,7 +9,7 @@ The game-side tools live in game_tools.py, the Frida tools in frida_tools.py,
 the Star Power tools in sp_tools.py, the virtual kit in kit_tools.py, the menu
 driver in menu_tools.py and the method watch in method_watch.py; this file only
 builds them around one shared lock, registers the tools, cuts each reply and
-puts the user's files back at exit. build_server() is the one list of the
+puts the run's backup back at exit. build_server() is the one list of the
 tools.
 
 Run it as:  py tools/ch_mcp/server.py
@@ -126,11 +126,14 @@ def build_server(helper: Optional[Helper] = None):
         instructions=(
             "Drive Clone Hero as text, with nobody at the keyboard and the game window"
             " never brought to the front. ch_start checks the machine is quiet (about 6 s,"
-            " and it can refuse), starts a machine recorder beside the run, backs up the user's files and the"
-            " Rewired registry key, then launches the game minimized (with a song folder"
+            " and it can refuse), starts a machine recorder beside the run, backs up the"
+            " Rewired registry key, sets settings.ini's pause_on_focus_lost line for the"
+            " run, then launches the game minimized (with a song folder"
             " the bot plays it, or with human=True a human player on the virtual kit;"
             " with none the game opens at its menu); ch_stop closes it"
-            " and puts them back. ch_attach, ch_state, ch_snapshot and ch_menu read the"
+            " and puts the key back. No file in the game's folders is backed up or"
+            " restored: settings.ini keeps the run's line, and scorestats.json and the"
+            " game's other saves stay as the game left them. ch_attach, ch_state, ch_snapshot and ch_menu read the"
             " game through Frida; ch_trace_start, ch_notes and ch_trace_stop trace each"
             " note the player hits. Presses and menus go through the virtual kit inside"
             " the game. ch_kit_setup builds the kit after ch_attach and switches Rewired's"
@@ -153,9 +156,9 @@ def build_server(helper: Optional[Helper] = None):
     def ch_start(song_folder: str | None = None, player: str = bot_run.DEFAULT_PLAYER,
                  profile: str | None = None, human: bool = False) -> str:
         """Check the machine is quiet (about 6 s; a machine that is not quiet
-        refuses the launch and the reply says why). Back up the user's game
-        files and the Rewired registry key, set settings.ini's
-        pause_on_focus_lost line for the run, then start Clone
+        refuses the launch and the reply says why). Back up the Rewired
+        registry key, set settings.ini's pause_on_focus_lost line for the run
+        (no tool puts it back afterwards), then start Clone
         Hero minimized and watch whether its window ever comes to the front.
         With a song folder the game plays it with a bot from the command line;
         with none it opens at its menu. human=True with a song folder starts
@@ -175,10 +178,12 @@ def build_server(helper: Optional[Helper] = None):
     def ch_stop() -> str:
         """Stop the machine recorder and any trace, Frida session, kit and
         play session, then close the game the server started and restore the
-        user's files and the registry key, one line each, after the recorder's
-        line, the kit teardown's checks and the count of times the game came
-        to the front. A game the server did not start stays open; its files
-        are restored."""
+        Rewired registry key, after the recorder's line, the kit teardown's
+        checks and the count of times the game came to the front. No file in
+        the game's folders is touched: settings.ini keeps the run's
+        pause_on_focus_lost value, and scorestats.json, the profiles and the
+        score store stay as the game left them. A game the server did not
+        start stays open; the key is still restored."""
         return capped(h.game.ch_stop())
 
     @server.tool()
@@ -511,7 +516,8 @@ def build_server(helper: Optional[Helper] = None):
 
     @server.tool()
     def ch_sp_watch_start(song_folder: str | None = None, out: str | None = None) -> str:
-        """Back up the user's files, then watch the engine's Star Power fields
+        """Back up the Rewired key (as ch_start does) when
+        no run holds a backup yet, then watch the engine's Star Power fields
         in the background: wait for a moving clock, then log every change to
         a CSV until the song stops, the run cap or ch_sp_watch_stop.
         song_folder, when given, sets the run cap from the song's length. out

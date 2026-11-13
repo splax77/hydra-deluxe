@@ -1,17 +1,18 @@
 """Clone Hero's files on this machine: where the game and its user files are,
-how to back the user files up before a live step and put them back after it,
-and how to read a song folder's song.ini and change its title.
+how to back up the registry key a live step's tools change and put it back
+after the step, and how to read a song folder's song.ini and change its
+title.
 
-This module is the one home of those paths, of the list of files a live
-step backs up (the server plan's "Safety rules for every live step"), of the
-registry key the game's input library saves its bindings under, and of the
-settings.ini line a run changes (set_game_setting). The server plan is
+This module is the one home of those paths, of the registry key the game's
+input library saves its bindings under, and of the settings.ini line a run
+changes (set_game_setting). No file in the game's folders is backed up,
+restored, moved or deleted: the user's rulings of 2026-11-13 in
+docs/agents/rulings/clone-hero.md. The server plan is
 `docs/superpowers/plans/2026-10-28-ch-mcp-server.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-10-28-ch-mcp-server.md`).
 
-backup(), restore(), restore_all() and restore_registry() take their folders
-as arguments, and all but restore() take their reg.exe runner too, so the
-tests run on temp folders and a fake runner and never touch the real files or
-the real key.
+backup(), restore_all() and restore_registry() take their folders and their
+reg.exe runner as arguments, so the tests run on temp folders and a fake
+runner and never touch the real key.
 """
 
 from __future__ import annotations
@@ -19,10 +20,8 @@ from __future__ import annotations
 import json
 import os
 import re
-import shutil
 import subprocess
 import time
-from dataclasses import dataclass
 from typing import Callable, Iterator, Optional, Sequence
 
 from tools.ch_probe.constants import PROCESS_NAME
@@ -40,24 +39,14 @@ LOCALLOW_DIR = os.path.join(_HOME, "AppData", "LocalLow", "srylain Inc_", "Clone
 
 SCORESTATS = "scorestats.json"
 SETTINGS = "settings.ini"
-# The files a live step backs up, by the folder they live in. The two
-# profiles files are there because a human run's loader clones a profile, and
-# whether the game saves that clone is not yet known (the direct-start plan's
-# question 3). The game keeps them in the Documents folder; its LocalLow
-# copies are only read (page 07, IN-70), so they are not backed up.
-PROFILE_FILES = ("profiles.ini", "profiles.bin")
-DOCUMENTS_FILES = (SETTINGS, SCORESTATS) + PROFILE_FILES
-LOCALLOW_FILES = ("scoredata.bin", "scoresext.bin", "user.bin")
-# The files a restore of an abandoned run's backup leaves as they are, because
-# the backup may be older than the user's play (the user's ruling on the reload
-# plan's question 9, "Leave score files"). The only home of this set: the
-# restore's lines and game_tools' adoption line both read it.
-KEPT_FILES = PROFILE_FILES + LOCALLOW_FILES
+# What a restore line says for a file an older backup's manifest names: the
+# game's copy is not touched.
+LEFT_AS_SAVED = "left as the game saved it"
 
 BACKUP_PREFIX = "backup-"
 BACKUP_MANIFEST = "backup.json"
-# The name a file that did not exist before the run gets when restore() moves
-# the game's new copy aside instead of deleting it.
+# The name of the key's export restore_registry takes before it puts the
+# saved one back, so the game's version is kept.
 AFTER_RUN_SUFFIX = ".after-run"
 
 SONG_INI = "song.ini"
@@ -112,19 +101,13 @@ class SettingNotFound(Exception):
 
 
 class RestoreError(Exception):
-    """A file could not be put back. Carries the file's name and the error."""
+    """The registry key could not be put back. Carries the name of its
+    backup entry and the error."""
 
     def __init__(self, name: str, error: object):
         super().__init__(f"restore failed for {name}: {error}")
         self.name = name
         self.error = error
-
-
-@dataclass(frozen=True)
-class _Entry:
-    name: str
-    source: str
-    existed: bool
 
 
 def _stamp() -> str:
@@ -142,28 +125,17 @@ def _export_registry(key: str, path: str, run_reg: RegRunner) -> None:
         raise OSError(f"reg.exe export of {key} wrote no file at {path}")
 
 
-def backup(documents_dir: str, locallow_dir: str, backup_root: str, *,
+def backup(backup_root: str, *,
            stamp: Callable[[], str] = _stamp,
            run_reg: Optional[RegRunner] = None) -> str:
-    """Copy the user files (DOCUMENTS_FILES and LOCALLOW_FILES) into a new
-    dated folder under `backup_root`
-    and return that folder. A file that does not exist is recorded as absent,
-    so restore() can put that state back too. With a `run_reg`, REGISTRY_KEY
-    is exported beside them as REGISTRY_BACKUP and recorded in the manifest
-    for restore_registry(); with none the key is left out. Any copy or export
-    error propagates, so a failed backup stops the step before the game
-    starts."""
+    """Make a new dated folder under `backup_root` and return it. With a
+    `run_reg`, REGISTRY_KEY is exported into it as REGISTRY_BACKUP and
+    recorded in the manifest for restore_registry(); with none the manifest
+    is empty. No file is copied. Any export error propagates, so a failed
+    backup stops the step before the game starts."""
     folder = os.path.join(backup_root, BACKUP_PREFIX + stamp())
     os.makedirs(folder, exist_ok=False)
     entries = []
-    for src_dir, names in ((documents_dir, DOCUMENTS_FILES),
-                           (locallow_dir, LOCALLOW_FILES)):
-        for name in names:
-            source = os.path.abspath(os.path.join(src_dir, name))
-            existed = os.path.isfile(source)
-            if existed:
-                shutil.copy2(source, os.path.join(folder, name))
-            entries.append({"name": name, "source": source, "existed": existed})
     if run_reg is not None:
         _export_registry(REGISTRY_KEY, os.path.join(folder, REGISTRY_BACKUP), run_reg)
         entries.append({"name": REGISTRY_BACKUP, "key": REGISTRY_KEY})
@@ -177,60 +149,28 @@ def _manifest_entries(backup_dir: str) -> list[dict]:
         return json.load(f)["files"]
 
 
-def _read_manifest(backup_dir: str) -> list[_Entry]:
-    """The manifest's file entries; the registry entry is restore_registry's."""
-    return [_Entry(e["name"], e["source"], bool(e["existed"]))
-            for e in _manifest_entries(backup_dir) if "key" not in e]
-
-
-def _restore_one(backup_dir: str, e: _Entry) -> str:
-    saved = os.path.join(backup_dir, e.name)
-    if e.existed:
-        if os.path.isfile(e.source) and _same_bytes(saved, e.source):
-            return f"{e.name}: unchanged"
-        shutil.copy2(saved, e.source)
-        if not _same_bytes(saved, e.source):
-            raise OSError(f"{e.source} differs from the backup after the copy")
-        return f"{e.name}: restored"
-    if not os.path.exists(e.source):
-        return f"{e.name}: unchanged (absent before and after the run)"
-    aside = os.path.join(backup_dir, e.name + AFTER_RUN_SUFFIX)
-    shutil.move(e.source, aside)
-    return f"{e.name}: absent before the run; the game's new copy moved to {aside}"
-
-
-def restore(backup_dir: str, *, out: Callable[[str], None] = print,
-            leave: Sequence[str] = ()) -> list[str]:
-    """Put every file named in `backup_dir`'s manifest back where it came
-    from, byte for byte, printing one line per file. A file named in `leave`
-    is not touched and gets a line saying why. Stops at the first file
-    that fails, raising RestoreError with its name; the files after it are
-    left as they are. The registry entry is not a file: restore_all() puts
-    it back too, and bot_run's restore is its only caller."""
+def left_as_saved(backup_dir: str, *, out: Callable[[str], None] = print) -> list[str]:
+    """One LEFT_AS_SAVED line for each file an older backup's manifest
+    names. Touches no file: backups taken before the user's rulings of
+    2026-11-13 hold copies of the game's files, and those copies are never
+    put back."""
     lines = []
-    for e in _read_manifest(backup_dir):
-        if e.name in leave:
-            line = f"{e.name}: left as it is, because the backup may be older than your play"
-            out(line)
-            lines.append(line)
+    for e in _manifest_entries(backup_dir):
+        if "key" in e:
             continue
-        try:
-            line = _restore_one(backup_dir, e)
-        except OSError as err:
-            raise RestoreError(e.name, err) from err
+        line = f"{e['name']}: {LEFT_AS_SAVED}"
         out(line)
         lines.append(line)
     return lines
 
 
 def restore_all(backup_dir: str, *, run_reg: Optional[RegRunner],
-                out: Callable[[str], None] = print,
-                leave: Sequence[str] = ()) -> list[str]:
-    """restore(), then restore_registry(), for a backup that may hold the
-    key. With the key in the manifest and no `run_reg` this raises
-    RestoreError, so the key is never left out without a word. Stops at the
-    first failure. `leave` is restore()'s."""
-    lines = restore(backup_dir, out=out, leave=leave)
+                out: Callable[[str], None] = print) -> list[str]:
+    """left_as_saved(), then restore_registry(), for a backup that may hold
+    the key. With the key in the manifest and no `run_reg` this raises
+    RestoreError, so the key is never left out without a word. bot_run's
+    restore is its only caller."""
+    lines = left_as_saved(backup_dir, out=out)
     return lines + restore_registry(backup_dir, run_reg=run_reg, out=out)
 
 

@@ -51,8 +51,8 @@ PRESS_LOG_PREFIX = "press-"
 # used (build_stamp.builds_record), with the number of the run's press log.
 BUILDS_PREFIX = "builds-"
 # The file under the temp root that names an open backup and the worker holding
-# it, so a worker killed before its restore leaves the next worker a way back to
-# the user's files (docs/superpowers/plans/2026-11-06-ch-server-reload.md (removed; git show 6804353f:docs/superpowers/plans/2026-11-06-ch-server-reload.md), design
+# it, so a worker killed before its restore leaves the next worker a way to put
+# the backup back (docs/superpowers/plans/2026-11-06-ch-server-reload.md (removed; git show 6804353f:docs/superpowers/plans/2026-11-06-ch-server-reload.md), design
 # point 3). read_marker reads it, _write_marker writes it.
 OPEN_RUN_MARKER = "ch_open_run.json"
 
@@ -647,8 +647,7 @@ class GameTools:
                 return ""
             scratch = self._new_scratch()
             self._adopted_backup = game_files.backup(
-                self._env.documents_dir, self._env.locallow_dir, scratch, stamp=self._env.stamp,
-                run_reg=self._env.run_reg)
+                scratch, stamp=self._env.stamp, run_reg=self._env.run_reg)
             lines = [f"backup folder: {self._adopted_backup} (taken now, because the server "
                      "did not start this game; ch_stop restores it)"]
             self._write_marker(self._adopted_backup, lines)
@@ -723,9 +722,10 @@ class GameTools:
 
     def ch_start(self, song_folder: Optional[str] = None, player: str = bot_run.DEFAULT_PLAYER,
                  profile: Optional[str] = None, human: bool = False) -> str:
-        """Check the machine is quiet (quiet.quiet_report), back up the user
-        files, set settings.ini's pause_on_focus_lost
-        line for the run (the backup puts the user's line back), then start
+        """Check the machine is quiet (quiet.quiet_report), back up the
+        Rewired registry key (game_files.backup; no file is backed up), set
+        settings.ini's pause_on_focus_lost line for the run (nothing puts it
+        back: it stays at the run's value after the run), then start
         the game minimized and start the foreground watch: with a song folder
         the bot plays it from the command line; with none the game opens at
         its menu. With `human` and a song folder a human player plays it
@@ -772,7 +772,7 @@ class GameTools:
             def before_launch() -> None:
                 # start_run takes the backup and launches in one call, so this
                 # is the one moment between them: the backup is whole, and
-                # nothing of the user's has changed yet.
+                # the game has not started yet.
                 self._mark_new_backup(scratch, in_scratch, lines)
                 lines.append(self._pause_setting())
 
@@ -811,8 +811,11 @@ class GameTools:
     def ch_stop(self) -> str:
         """Stop the machine recorder, run the stop hooks, stop the play
         session, then stop the game the server started (bot_run.finish_run)
-        and put the user files back, one line per file. A game the server did
-        not start is left running and only the files are restored."""
+        and put the Rewired registry key back from the backup. No file in the
+        game's folders is touched: settings.ini keeps the run's
+        pause_on_focus_lost value, and the files the game saves itself stay
+        as the game left them. A game the server did not start is left
+        running and only the key is restored."""
         with self._lock:
             lines: List[str] = []
             self._stop_all(lines)
@@ -820,8 +823,8 @@ class GameTools:
 
     def shutdown(self) -> str:
         """The server's exit (question 3): the same steps as ch_stop. A game
-        the server started is terminated, then the files are restored; for a
-        game it did not start, the files are restored and the game stays. A
+        the server started is terminated, then the key is restored; for a
+        game it did not start, the key is restored and the game stays. A
         backup adopted from a marker is left, with its marker, for a ch_stop."""
         with self._lock:
             lines: List[str] = []
@@ -839,7 +842,8 @@ class GameTools:
         except (game_files.SettingNotFound, OSError) as e:
             return (f"{game_files.SETTINGS}: {key} not set to {value} ({e}); the game may "
                     "pause while it is not in front")
-        return f"{game_files.SETTINGS}: {key} set to {value} for this run (restored by ch_stop)"
+        return (f"{game_files.SETTINGS}: {key} set to {value} for this run (not put back "
+                "after the run)")
 
     def ch_status(self) -> str:
         """The game side of the session: the run, the backup folder, a
@@ -1473,12 +1477,9 @@ class GameTools:
                                  f"and {path} was left in place")
         else:
             age = age_text(time.time() - os.path.getmtime(folder))
-            restored = [n for n in game_files.DOCUMENTS_FILES + game_files.LOCALLOW_FILES
-                        if n not in game_files.KEPT_FILES]
             self._adoption_line = (
                 f"a previous worker (pid {pid}) left a backup open: {folder}, {age} old; "
-                f"ch_stop restores {', '.join(restored)} and the Rewired key from it and "
-                f"leaves {', '.join(game_files.KEPT_FILES)} as they are")
+                "ch_stop restores the Rewired key from it")
             self._adopted_backup = self._marked = folder
             self._from_marker = True
 
@@ -1558,7 +1559,7 @@ class GameTools:
             return
         self._adopted_backup = folder
         lines.extend(said)
-        lines.append(f"the user files may not be back; ch_stop tries again from {folder}")
+        lines.append(f"the backup may not be back; ch_stop tries again from {folder}")
 
     def _stop_all(self, lines: List[str], at_exit: bool = False) -> bool:
         """The recorder's stop, the stop hooks, the play stop, the foreground
@@ -1610,9 +1611,8 @@ class GameTools:
                              "stay, and ch_stop in the next session restores it")
                 return True
             lines.append("the server did not start the game, so it does not close it")
-            leave = game_files.KEPT_FILES if self._from_marker else ()
             try:
-                if bot_run.restore_only(self._adopted_backup, env, leave) != 0:
+                if bot_run.restore_only(self._adopted_backup, env) != 0:
                     return False
             except Exception as e:
                 lines.append(f"restoring failed: {type(e).__name__}: {e}; "
