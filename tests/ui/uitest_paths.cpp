@@ -962,7 +962,7 @@ void check_tapped_out_box_fits() {
 
 // The Dynamic Hit Window row: on Burnout's squeeze out (room to spare), on no
 // activation without a timing badge, and on Tapped Out's squeeze out (out of
-// reach) and its required early fill, whose line now sits in a box.
+// reach) and both its early fills, optional and required, each in a box.
 void test_paths_hit_window(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     if (!open_burnout(ctx)) return;
@@ -986,9 +986,12 @@ void test_paths_hit_window(ImGuiTestContext* ctx) {
     ctx->ItemClick("**/##act4");
     ctx->Yield(2);
     for (const char* piece : kTappedOutWindowPieces) IM_CHECK(on_screen(h, piece));
-    // Its optional early fill is boxed, with no row (question 4).
+    // Its optional early fill is boxed, with its own row (the user's ruling
+    // of 2026-11-12); tests/test_activation_rows.cpp pins the same text.
     IM_CHECK(on_screen(h, "Early fill: 0.0 ms (optional)"));
     IM_CHECK(window_named("##ef4") != nullptr);
+    IM_CHECK(on_screen(h, "85.7 ms early"));
+    IM_CHECK(on_screen(h, "85.7 ms spare"));
     check_tapped_out_box_fits();
     if (ctx->IsError()) return;
 

@@ -213,12 +213,11 @@ WindowRowView window_row_view(const WindowRow& row, const char* first_word,
     return v;
 }
 
-// Squeeze `k`'s row, shown only when the squeeze needs timing
-// (SPSqueeze::needs_no_timing): a squeeze already done needs no window.
+// Squeeze `k`'s row. Every squeeze badge gets one (the user's ruling of
+// 2026-11-12); it is left out only when the owner has no row.
 std::optional<WindowRowView> squeeze_window_view(const Activation& act, size_t k,
                                                  const ChordTimes& chords) {
     const SPSqueeze& sq = act.sqinouts[k];
-    if (sq.needs_no_timing()) return std::nullopt;
     // A squeeze out's anchor is hit early and its note late; a squeeze in is
     // the mirror (core/note_window.h).
     if (sq.kind == SqueezeKind::SqOut) {
@@ -230,14 +229,12 @@ std::optional<WindowRowView> squeeze_window_view(const Activation& act, size_t k
     return std::nullopt;
 }
 
-// The early fill's row, shown only where the "Early fill" line shows, the
-// fill is required (Activation::is_E0) and its figure needs hitting
-// (early_fill_needs_timing). An optional fill, or one with time to spare,
-// has no timing the game's window could fail.
+// The early fill's row, on every activation that shows the early fill
+// badge and the "Early fill" line (Activation::is_e_critical, the test
+// badge_timings uses), required, optional or with time to spare alike.
 std::optional<WindowRowView> early_fill_window_view(const Activation& act,
                                                     const ChordTimes& chords) {
-    if (!act.is_e_critical() || !act.is_E0() || !early_fill_needs_timing(act.e_offset))
-        return std::nullopt;
+    if (!act.is_e_critical()) return std::nullopt;
     if (const std::optional<WindowRow> row = early_fill_window(act, chords))
         return window_row_view(*row, "early", nullptr);
     return std::nullopt;

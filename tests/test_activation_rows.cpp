@@ -1370,7 +1370,7 @@ TEST_CASE("dynamic hit window: a squeeze in names the anchor late, then the note
     }
 }
 
-TEST_CASE("dynamic hit window: a required early fill gets one window, an optional one none") {
+TEST_CASE("dynamic hit window: an early fill gets one window, required or optional") {
     const AnalysisResult& ar = tapped_out();
     const Path& best = ar.record.best_path();
     const ChordTimes chords = chord_times(ar.song);
@@ -1399,14 +1399,39 @@ TEST_CASE("dynamic hit window: a required early fill gets one window, an optiona
     }
 
     // Activation 4 skipped a fill before it, so its fill is optional
-    // (Activation::is_E0, question 4): the line shows, the row does not.
+    // (Activation::is_E0, question 4). Its badge shows, so its row does too
+    // (the user's ruling of 2026-11-12). The figures are hydra_replay
+    // schedule's: the SP-ready note's side is 85.72 ms and the figure 0.0.
     const ActivationRowView& a4 = view.acts[3];
     CHECK(a4.early_fill == "Early fill: 0.0 ms (optional)");
-    CHECK_FALSE(a4.early_fill_window.has_value());
+    REQUIRE(a4.early_fill_window.has_value());
+    CHECK(a4.early_fill_window->windows == "85.7 ms early");
+    CHECK(a4.early_fill_window->tag == "85.7 ms spare");
+    CHECK_FALSE(a4.early_fill_window->is_short);
 }
 
-TEST_CASE("dynamic hit window: no row for a timing that needs no hitting, or an optional fill") {
-    SUBCASE("a squeeze in at 0.0 ms gets a row; at -0.1 ms it needs no timing and gets none") {
+TEST_CASE("dynamic hit window: a squeeze in that needs no timing still gets its row") {
+    // Get Ur Freak On, activation 2: the squeeze in sits at -84.27 ms, so it
+    // needs no timing, and its badge shows. The figures are hydra_replay
+    // schedule's: anchor side 73.757 ms, note side 53.59 ms, late scale 1.0.
+    const AnalysisResult& ar = analyzed_like_the_gui("Eric Moore - Get Ur Freak On");
+    const Path& best = ar.record.best_path();
+    REQUIRE(best.pathstring() == "5- 2+ 2- 0 0");
+    const ChordTimes chords = chord_times(ar.song);
+    const std::vector<Activation> acts = best.all_activations();
+    const ActivationsView view = window_rows_of(ar, best, &chords);
+    REQUIRE(view.acts.size() >= 2);
+    REQUIRE(acts[1].sqinouts[only_squeeze(acts[1], SqueezeKind::SqIn)].needs_no_timing());
+    const WindowRowView row = squeeze_row(acts[1], view.acts[1], SqueezeKind::SqIn);
+    CHECK(row.windows == "73.8 ms late   53.6 ms early");
+    CHECK(row.tag == "211.6 ms spare");
+    CHECK_FALSE(row.is_short);
+}
+
+// Every timing badge gets its row (the user's ruling of 2026-11-12), so
+// edited figures on either side of the needs-hitting line all get one.
+TEST_CASE("dynamic hit window: a row for every timing badge, edited figures too") {
+    SUBCASE("a squeeze in at 0.0 ms and at -0.1 ms each gets a row") {
         const AnalysisResult& ar = focus();
         const ChordTimes chords = chord_times(ar.song);
         Path p;
@@ -1415,15 +1440,19 @@ TEST_CASE("dynamic hit window: no row for a timing that needs no hitting, or an 
         Activation& act = p.activations[1];
         const size_t k = only_squeeze(act, SqueezeKind::SqIn);
 
-        act.sqinouts[k].offset_ms = 0.0;
-        REQUIRE(squeeze_in_window(act, k, chords).has_value());
-        CHECK(window_rows_of(ar, p, &chords).acts[1].squeeze_windows[k].has_value());
-
-        act.sqinouts[k].offset_ms = -0.1;
-        REQUIRE(squeeze_in_window(act, k, chords).has_value());  // the owner has numbers
-        CHECK_FALSE(window_rows_of(ar, p, &chords).acts[1].squeeze_windows[k].has_value());
+        // The windows are the Focus case's above; the offset moves only the
+        // tag, and no literal in this file gives that tag at these offsets.
+        for (const double offset : {0.0, -0.1}) {
+            CAPTURE(offset);
+            act.sqinouts[k].offset_ms = offset;
+            REQUIRE(squeeze_in_window(act, k, chords).has_value());  // the owner has numbers
+            const std::optional<WindowRowView> row =
+                window_rows_of(ar, p, &chords).acts[1].squeeze_windows[k];
+            REQUIRE(row.has_value());
+            CHECK(row->windows == "61.9 ms late   48.1 ms early");
+        }
     }
-    SUBCASE("a required early fill with time to spare gets none") {
+    SUBCASE("a required early fill with time to spare gets a row") {
         const AnalysisResult& ar = tapped_out();
         const ChordTimes chords = chord_times(ar.song);
         Path p;
@@ -1435,9 +1464,14 @@ TEST_CASE("dynamic hit window: no row for a timing that needs no hitting, or an 
         REQUIRE(early_fill_window(act, chords).has_value());  // the owner has numbers
         const ActivationRowView av = window_rows_of(ar, p, &chords).acts[2];
         CHECK(av.early_fill == "Early fill: -20.0 ms (required)");
-        CHECK_FALSE(av.early_fill_window.has_value());
+        // The SP-ready note is activation 3's above (82.9 ms); the 20 ms
+        // to spare adds to it.
+        REQUIRE(av.early_fill_window.has_value());
+        CHECK(av.early_fill_window->windows == "82.9 ms early");
+        CHECK(av.early_fill_window->tag == "102.9 ms spare");
+        CHECK_FALSE(av.early_fill_window->is_short);
     }
-    SUBCASE("the same early fill made optional gets none") {
+    SUBCASE("the same early fill made optional gets a row") {
         const AnalysisResult& ar = tapped_out();
         const ChordTimes chords = chord_times(ar.song);
         Path p;
@@ -1447,7 +1481,13 @@ TEST_CASE("dynamic hit window: no row for a timing that needs no hitting, or an 
         test::set_skips(act, 1);
         REQUIRE_FALSE(act.is_E0());
         REQUIRE(early_fill_window(act, chords).has_value());  // the owner has numbers
-        CHECK_FALSE(window_rows_of(ar, p, &chords).acts[2].early_fill_window.has_value());
+        // A skip changes neither the SP-ready note nor the figure, so the row
+        // is activation 3's above.
+        const ActivationRowView av = window_rows_of(ar, p, &chords).acts[2];
+        CHECK(av.early_fill == "Early fill: 0.0 ms (optional)");
+        REQUIRE(av.early_fill_window.has_value());
+        CHECK(av.early_fill_window->windows == "82.9 ms early");
+        CHECK(av.early_fill_window->tag == "82.9 ms spare");
     }
 }
 
