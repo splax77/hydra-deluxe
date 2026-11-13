@@ -612,46 +612,63 @@ class LivePlayTest(unittest.TestCase):
         self.assertEqual(self._cap_seen_by_play_chords(cap_s=320.504), 320.504)
         self.assertEqual(self._cap_seen_by_play_chords(), play_chart.RUN_CAP_S)
 
-    def test_a_given_press_is_used_and_no_window_is_looked_up(self):
-        from unittest import mock
+    def test_live_play_takes_no_press_and_passes_no_kit(self):
+        # live_play is the keys route only (D342): no kit press goes in, and
+        # play_chords gets no `kit`.
+        self.assertNotIn("press", inspect.signature(play_chart.live_play).parameters)
+        seen = {}
 
-        class _FakeEngine:
-            def __init__(self, _proc):
-                pass
-
-            def use_object(self, _ptr):
-                pass
-
-            def song_clock(self):
-                return 0.0
-
-            def score(self):
-                return 0
-
-            def sp_end(self):
-                return None
-
-        seen = []
-
-        def fake_play_chords(chords, clock, read_score, press, **kwargs):
-            seen.append(press)
-            seen.append(kwargs["kit"])
+        def fake_play_chords(*args, **kwargs):
+            seen.update(kwargs)
             return play_chart.RunResult(stop="done")
 
-        def no_window():
-            raise AssertionError("find_game_window was called on the press route")
-
-        def kit_press(lanes, _axes):
-            return fakes.kit_reply([(40, 42, fakes.KIT_EPOCH_MS, fakes.KIT_EPOCH_MS + 12)])
-
-        with mock.patch.object(play_chart, "EngineModel", _FakeEngine), \
-                mock.patch.object(play_chart, "find_game_window", no_window), \
+        with mock.patch.object(play_chart, "EngineModel", _ThresholdEngine), \
+                mock.patch.object(play_chart, "find_game_window", lambda: 0), \
                 mock.patch.object(play_chart, "play_chords", fake_play_chords):
             play_chart.live_play(
                 _load_chords(), open_proc=lambda **kw: _FakeProc(),
-                find_engine=lambda _proc: 0x1000, press=kit_press, out=io.StringIO())
-        # A given press is the kit press, so play_chords checks its replies.
-        self.assertEqual(seen, [kit_press, True])
+                find_engine=lambda _proc: 0x1000, driver=_FakeDriver([]),
+                out=io.StringIO())
+        self.assertIn("cap_s", seen)
+        self.assertNotIn("kit", seen)
+
+    def test_live_play_sends_each_chords_keys_through_the_driver(self):
+        chords = _load_chords()
+        events, windows = [], []
+
+        def fake_play_chords(chords, clock, read_score, press, **kwargs):
+            for chord in chords:
+                press(chord.lanes)
+            return play_chart.RunResult(stop="done")
+
+        with mock.patch.object(play_chart, "EngineModel", _ThresholdEngine), \
+                mock.patch.object(play_chart, "find_game_window", lambda: 0x77), \
+                mock.patch.object(play_chart, "focus_window", windows.append), \
+                mock.patch.object(play_chart, "play_chords", fake_play_chords):
+            result = play_chart.live_play(
+                chords, open_proc=lambda **kw: _FakeProc(),
+                find_engine=lambda _proc: 0x1000, driver=_FakeDriver(events),
+                out=io.StringIO())
+        self.assertEqual(result.stop, "done")
+        self.assertEqual(events, [("press", list(c.lanes)) for c in chords])
+        self.assertEqual(windows, [0x77] * len(chords))
+
+    def test_only_the_harness_calls_play_chords_with_a_kit(self):
+        # The stall harness's loop case is the one caller that hands
+        # play_chords a kit press (its control); neither the player module nor
+        # the ch MCP server's game tools does.
+        import ast
+        from tools.ch_mcp import game_tools
+        for module in (play_chart, game_tools):
+            with open(module.__file__, encoding="utf-8") as f:
+                tree = ast.parse(f.read())
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Call):
+                    continue
+                name = getattr(node.func, "id", None) or getattr(node.func, "attr", None)
+                if name == "play_chords":
+                    self.assertNotIn("kit", [k.arg for k in node.keywords],
+                                     f"{module.__name__} line {node.lineno}")
 
 
 def _gem(color, dynamic, cymbal=False):
@@ -698,30 +715,31 @@ class _ThresholdEngine:
 
 
 class DynamicsTest(unittest.TestCase):
-    """Each gem keeps its dynamic, and live_play reads the threshold for the
-    ghosts it must press."""
+    """Each gem keeps its dynamic, and the kit route (live_in_game) reads the
+    threshold for the ghosts it must press."""
 
     def setUp(self):
         _ThresholdEngine.reads = 0
 
-    def _live_play(self, chords, threshold):
+    def _live_in_game(self, chords, threshold):
         from unittest import mock
         _ThresholdEngine.threshold = threshold
-        seen, proc, out = [], _FakeProc(), io.StringIO()
+        seen, proc = [], _FakeProc()
 
-        def fake_play_chords(chords, clock, read_score, press, **kwargs):
+        def fake_play_in_game(chords, player, **kwargs):
             seen.extend(chords)
             return play_chart.RunResult(stop="done")
 
         with mock.patch.object(play_chart, "EngineModel", _ThresholdEngine), \
-                mock.patch.object(play_chart, "play_chords", fake_play_chords):
+                mock.patch.object(play_chart, "engine_addresses", lambda _engine: (0, 0)), \
+                mock.patch.object(play_chart, "play_in_game", fake_play_in_game):
             try:
-                result = play_chart.live_play(
-                    chords, open_proc=lambda **kw: proc, find_engine=lambda _proc: 0x1000,
-                    press=lambda lanes, axes: {}, out=out)
+                result = play_chart.live_in_game(
+                    chords, player=object(), open_proc=lambda **kw: proc,
+                    find_engine=lambda _proc: 0x1000, out=io.StringIO())
             finally:
                 self.assertTrue(proc.closed)
-        return result, seen, out.getvalue()
+        return result, seen
 
     def test_chords_carry_each_gems_dynamic_beside_its_lane(self):
         chords = _load_dump(_DYNAMICS_DUMP)
@@ -729,19 +747,18 @@ class DynamicsTest(unittest.TestCase):
         self.assertEqual(chords[0].dynamics, ["ghost", "accent", "none"])
         self.assertEqual(chords[1].dynamics, ["none"])
 
-    def test_a_ghost_chart_reads_the_threshold_once_and_prints_it(self):
+    def test_a_ghost_chart_reads_the_threshold_once_and_returns_it(self):
         from tools.ch_mcp.kit_tools import pad_axis
-        result, seen, text = self._live_play(_load_dump(_DYNAMICS_DUMP), 64)
+        result, seen = self._live_in_game(_load_dump(_DYNAMICS_DUMP), 64)
         self.assertEqual(_ThresholdEngine.reads, 1)
         self.assertEqual(result.dyn_threshold, 64)
-        self.assertIn("  Dynamics threshold: 64\n", text)
         self.assertEqual(seen[0].presses[0].axes, [pad_axis("ghost", 64),
                                                    pad_axis("accent", 64), pad_axis("none", 64)])
         self.assertEqual(seen[1].presses[0].axes, [pad_axis("none", 64)])
 
     def test_a_ghost_chart_with_a_threshold_of_0_raises_naming_the_field(self):
         with self.assertRaises(ValueError) as caught:
-            self._live_play(_load_dump(_DYNAMICS_DUMP), 0)
+            self._live_in_game(_load_dump(_DYNAMICS_DUMP), 0)
         self.assertIn("OFF_DYN_THRESHOLD", str(caught.exception))
 
     def test_the_keys_route_reads_no_threshold_even_for_a_ghost_chart(self):
@@ -758,11 +775,10 @@ class DynamicsTest(unittest.TestCase):
         self.assertIsNone(result.dyn_threshold)
 
     def test_a_chart_with_no_ghost_never_reads_the_threshold(self):
-        result, seen, text = self._live_play(_load_chords(), 0)
+        result, seen = self._live_in_game(_load_chords(), 0)
         self.assertEqual(result.stop, "done")
         self.assertEqual(_ThresholdEngine.reads, 0)
         self.assertIsNone(result.dyn_threshold)
-        self.assertNotIn("threshold", text)
         self.assertEqual(seen[-1].dynamics, ["accent"])
         self.assertEqual(len(seen), 8)
 
@@ -1270,10 +1286,11 @@ class SpEndTest(unittest.TestCase):
             return play_chart.RunResult(stop="done")
 
         with mock.patch.object(play_chart, "EngineModel", _ThresholdEngine), \
+                mock.patch.object(play_chart, "find_game_window", lambda: 0), \
                 mock.patch.object(play_chart, "play_chords", fake_play_chords):
             play_chart.live_play(
                 _load_chords(), open_proc=lambda **kw: _FakeProc(),
-                find_engine=lambda _proc: 0x1000, press=lambda lanes, axes: {},
+                find_engine=lambda _proc: 0x1000, driver=_FakeDriver([]),
                 out=io.StringIO())
         self.assertEqual(seen["read_sp_end"].__func__, _ThresholdEngine.sp_end)
 

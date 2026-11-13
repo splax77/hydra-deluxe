@@ -1,5 +1,4 @@
-"""play_chart.play_in_game against a fake kit agent (task IG3 of
-docs/superpowers/plans/2026-11-12-in-game-press-timing.md).
+"""play_chart.play_in_game against a fake kit agent.
 
 Run from the repo root with:
     py -m pytest -q -p no:cacheprovider tools/ch_probe/tests/test_play_in_game.py

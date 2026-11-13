@@ -292,9 +292,8 @@ class PressLogHeaderTest(unittest.TestCase):
                          ("1.5", "212.4", ""))
 
     def test_a_log_with_the_header_before_the_in_game_columns_still_loads(self):
-        # The header play_chords wrote before task IG3 of
-        # docs/superpowers/plans/2026-11-12-in-game-press-timing.md, LS-P3's
-        # press-1.csv among them, as written.
+        # The header play_chords wrote before the in-game columns (D339),
+        # LS-P3's press-1.csv among them, as written.
         rows = _load_text(
             "index,chart_ms,clock_ms_at_press,score_before,score_after,send,down_frame,"
             "up_frame,down_ms,up_ms,wall_s_at_read,wall_s_at_reply,scored_between,"

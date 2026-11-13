@@ -28,9 +28,8 @@
 // reply carrying the same id. Every message gets exactly one reply: its
 // answer, or an error. Messages are answered one at a time, in order.
 //
-// The play messages (play, retime, stop_play) and frame_probe are task IG2 of
-// docs/superpowers/plans/2026-11-12-in-game-press-timing.md; the block
-// "in-game timing" below holds them. They hook GameManager.Update, the one
+// The block "in-game timing" below holds the play messages (play, retime,
+// stop_play) and frame_probe. They hook GameManager.Update, the one
 // method this agent hooks rather than calls. D339 item 4 lets that block read
 // the song clock and the score at the addresses the play message gives; every
 // other read here stays by name. Play events go to Python with no id.
