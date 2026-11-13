@@ -1409,11 +1409,6 @@ namespace {
 constexpr double kPitchDark243OwnEndMs = 100949.4546;
 constexpr double kPitchDark243Conversion = 1.0;
 
-// The tolerance T2's acceptance in
-// docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md gives a
-// conversion ("within 0.00001"): the plan prints it to five places.
-bool within_conversion(double got, double want) { return std::abs(got - want) < 0.00001; }
-
 // Pitch Dark (testdata/input/test_pitch_dark_ratio, a copy of the library
 // chart) under the app's default settings: path 0's activations and its
 // schedule, built as the corpus sweeps build theirs.
@@ -1550,8 +1545,8 @@ TEST_CASE("schedule: Pitch Dark prices each read at its own step's scale") {
     const json& s644 = p644[0];
     CHECK(within_cent(s644["aim_ms"].get<double>(), -18.316));
     CHECK(within_cent(s644["own_end_ms"].get<double>(), 161386.46));
-    CHECK(within_conversion(s644["conversion"]["early"].get<double>(), 0.79467));
-    CHECK(within_conversion(s644["conversion"]["late"].get<double>(), 0.79467));
+    CHECK(s644["conversion"]["early"].get<double>() == doctest::Approx(0.79467));
+    CHECK(s644["conversion"]["late"].get<double>() == doctest::Approx(0.79467));
     CHECK(s644["aim_end_ms"].get<double>() == r466["planned_end_ms"].get<double>());
     CHECK(within_cent(s644["own_stored_end_ms"].get<double>(), 161356.443));
     CHECK(within_cent(s644["read_stored_end_ms"].get<double>(), 158224.757));
