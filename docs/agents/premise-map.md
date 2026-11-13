@@ -6,7 +6,7 @@ This page is the one home of the map's shape, and of the shape of a live step's 
 
 ## The rule
 
-A fact either names its source or it is marked `unchecked`. An unchecked premise never carries into a task or a live step as settled. It becomes a task that checks it, or a question for the user. A task or live step that uses an unchecked premise names its row.
+A fact either names its source or it is marked `unchecked`. An unchecked premise never carries into a task or a live step as settled. It becomes a task that checks it, a question for the user, or a live step that settles it. A task or live step that uses an unchecked premise names its row.
 
 ## The shape
 
@@ -14,7 +14,7 @@ A plan holds one table, under a heading that is exactly `## Premise map`. Every 
 
 | Premise | Kind | Source | Status |
 |---|---|---|---|
-| one fact the plan depends on, in one sentence | exactly one of the six Kind words below | the exact place the fact was read, in backticks | `checked` and a date, or for an `unchecked` row the task or question that settles it |
+| one fact the plan depends on, in one sentence | exactly one of the six Kind words below | the exact place the fact was read, in backticks | `checked` and a date, or for an `unchecked` row the task, question or live step that settles it |
 
 Start each premise with a short id, such as `P1:`. The rule above has a task or step name the row it uses, and the id is how it does.
 
@@ -26,7 +26,13 @@ A row is either checked or unchecked. There is no half-checked status. If part o
 
 **Source.** The Source cell names the exact place: a repo path with a line number or a block id, a game file path, a chart path, or a run's result folder. It holds at least one backticked token, because a cell with none is a shape error. It may hold several backticked tokens, with plain words around them. An `unchecked` row's Source holds one too: the file that only reports the fact, or the place where the search for a source found nothing.
 
-**Status.** A row of any Kind but `unchecked` has a Status that starts with `checked` and a date, such as `checked 2026-10-31`. Words after the date may say what was opened. An `unchecked` row's Status names how it gets settled: either the id of a task in the plan (one with a `### <id>:` heading), or `question N`, where N is the number of an item under the plan's heading that starts `## Questions`.
+**A source must be for the exact thing.** A source backs a row only when it works the fact out for the thing the row names. A `code` row that says "the ratio this end moves by" names code that works the ratio out for that end. Code that works it out for another end, chord or tick is not a source for the row, even when it is the right function.
+
+**Status.** A row of any Kind but `unchecked` has a Status that starts with `checked` and a date, such as `checked 2026-10-31`. Words after the date may say what was opened. An `unchecked` row's Status names how it gets settled, in one of three ways: the id of a task in the plan (one with a `### <id>:` heading); `question N`, where N is the number of an item under the plan's heading that starts `## Questions`; or the id of a live step (see "The call list of a live step").
+
+**Settle what a read can settle.** Before a plan is shown, the planner tries each `unchecked` row against the code and the Clone Hero pages. A row a read can settle is settled, and becomes `checked`. If a read settles part of it, the row is split, as "A row is either checked or unchecked" above requires. What is left names a task, a question or a live step.
+
+**A deferred premise blocks.** When an `unchecked` row's Status names a live step, the Status also says which tasks rest on the row, as `blocks RG1, RG2` or `blocks nothing`. Each task it names holds a line that starts `Waits for:` and names the step. The main session does not dispatch such a task until the step's result folder exists.
 
 ## The six Kind words
 
@@ -43,7 +49,7 @@ Each word says what kind of thing the fact was read from.
 
 A premise about a file's own content is sourced by that file. "The planner's instructions say nothing about premises" is sourced by the planner's instruction file.
 
-A premise about the world (the game, the code, a past run) is sourced by the thing itself. A file that only reports on it does not count. That means a handoff, another plan, a session card, a memory note, or a Clone Hero block with no proof label. A session card counts only as the place a `ruling`'s quoted words sit. A row whose only source is one of those, or nothing, is `unchecked`, and its Status must name a task in the plan or a question number.
+A premise about the world (the game, the code, a past run) is sourced by the thing itself. A file that only reports on it does not count. That means a handoff, another plan, a session card, a memory note, or a Clone Hero block with no proof label. A session card counts only as the place a `ruling`'s quoted words sit. A row whose only source is one of those, or nothing, is `unchecked`, and its Status must name a task in the plan, a question number or a live step.
 
 ## The call list of a live step
 
@@ -65,7 +71,7 @@ A step holds at most one `(never tried)` call. A step with two or more is a shap
 
 The planner writes the map and the call lists as it writes the plan.
 
-The plan reviewer checks the facts twice. First it opens each `checked` row's source and confirms the fact is there; a row whose source does not say what the row says is a finding. Then, with the map closed, it reads each live step and each task cold and writes down every fact it depends on. A fact with no row is a finding, fixed by adding the row, as `unchecked` when the reviewer cannot source it.
+The plan reviewer checks the facts three times. First it opens each `checked` row's source and confirms the fact is there; a row whose source does not say what the row says is a finding. Then, with the map closed, it reads each live step and each task cold and writes down every fact it depends on. A fact with no row is a finding, fixed by adding the row, as `unchecked` when the reviewer cannot source it. Last, it tries each `unchecked` row against the code and the Clone Hero pages, the way "Settle what a read can settle" asks the planner to. A row a read could have settled, in whole or in part, is a finding.
 
 A test can tell that a file exists but not what a line in it means, so whether a source says what its row says is the reviewer's job. The shape is also held by the docs test, `tests/test_docs_match_code.cpp`. That check reads the shape only, and the comment above it says which plans count.
 
