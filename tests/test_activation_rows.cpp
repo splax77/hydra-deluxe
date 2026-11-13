@@ -1210,8 +1210,7 @@ TEST_CASE("activation rows: the chord names its notes in the Pro Drums setting's
 }
 
 // ---- the Dynamic Hit Window row ---------------------------------------------
-// The plan is docs/superpowers/plans/2026-11-12-dynamic-hit-window.md, T2. The
-// figures are the ones its T0 step read from hydra_replay schedule.
+// The figures are the ones hydra_replay schedule prints.
 
 namespace {
 
