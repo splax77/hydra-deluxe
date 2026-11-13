@@ -21,23 +21,29 @@ std::optional<TransferScale> transfer_scale_between(int64_t anchor_tick,
     return TransferScale{end_early / front_early, end_late / front_late};
 }
 
+std::optional<TransferScale> step_transfer_scale(const Activation& act,
+                                                 size_t step_index,
+                                                 const SongTiming& timing) {
+    if (step_index >= act.sp_end_steps.size()) return std::nullopt;
+    return transfer_scale_between(act.end_anchor_tick(step_index),
+                                  act.sp_end_steps[step_index].end_tick, timing);
+}
+
 std::optional<ActTransferScales> frontend_transfer_scales(const Activation& act,
                                                           const SongTiming& timing) {
-    // D and the note whose timing moves it, from the stored steps.
-    const std::optional<int64_t> d = act.deact_tick();
-    const std::optional<int64_t> d_anchor = act.deact_anchor_tick();
-    if (!d || !d_anchor) return std::nullopt;
-    const std::optional<TransferScale> post = transfer_scale_between(*d_anchor, *d, timing);
+    // D is the last step's end.
+    if (act.sp_end_steps.empty()) return std::nullopt;
+    const std::optional<TransferScale> post =
+        step_transfer_scale(act, act.sp_end_steps.size() - 1, timing);
     if (!post) return std::nullopt;
     ActTransferScales out;
     out.post = *post;
-    // Each SqIn at the end its own offset was measured from.
+    // Each SqIn at the step its own offset was measured from.
     for (size_t k = 0; k < act.sqinouts.size(); ++k) {
         if (act.sqinouts[k].kind != SqueezeKind::SqIn) continue;
-        const std::optional<int64_t> end = act.squeeze_end_tick(k);
-        const std::optional<int64_t> anchor = act.squeeze_anchor_tick(k);
-        if (!end || !anchor) return std::nullopt;
-        const std::optional<TransferScale> s = transfer_scale_between(*anchor, *end, timing);
+        const std::optional<size_t> step = act.squeeze_end_step(k);
+        if (!step) return std::nullopt;
+        const std::optional<TransferScale> s = step_transfer_scale(act, *step, timing);
         if (!s) return std::nullopt;
         out.sqins.push_back(*s);
     }
