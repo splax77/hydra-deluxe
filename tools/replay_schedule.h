@@ -5,13 +5,13 @@
 // SP-end steps and their anchors (Activation, core/model.h), each squeeze's
 // stored end, anchor and ratios, the steady spans (core/squeeze_rating.h),
 // and which windows paid each chord (ReplayChord::paid_by, core/replay.h).
-// The game's per-note hit window at 100% speed and the player's timing
-// constants live in replay_schedule.cpp, each with its source.
+// The game's per-note hit window at 100% speed is core/note_window.h's; the
+// player's timing constants live in replay_schedule.cpp, each with its
+// source.
 //
 // Only hydra_replay and its tests read this. Nothing under src/ includes it,
-// so no Hydra screen reads the per-note window or the constants: the screens
-// keep kHitWindowMs and kSqueezeWindowMs (core/model.h). The plan that set
-// this up is docs/superpowers/plans/2026-11-08-replay-press-schedule.md.
+// so no Hydra screen reads the player's constants. The plan that set this up
+// is docs/superpowers/plans/2026-11-08-replay-press-schedule.md.
 
 #ifndef HYDRA_TOOLS_REPLAY_SCHEDULE_H
 #define HYDRA_TOOLS_REPLAY_SCHEDULE_H
@@ -26,6 +26,7 @@
 #include "json.hpp"
 
 #include "core/model.h"
+#include "core/note_window.h"  // the per-note window, ChordTimes
 #include "core/replay.h"
 #include "core/rules.h"
 #include "store/record_store.h"  // ChartTimingMeta
@@ -34,24 +35,6 @@
 #include "search/pather.h"
 
 namespace hydra::schedule {
-
-// ---- the game's per-note window ------------------------------------------
-
-// One side's clamped half-gap to a neighbour `gap_ms` away; unset means no
-// neighbour.
-double half_gap_ms(std::optional<double> gap_ms);
-
-// The whole window the formula gives for a summed gap of `summed_gap_ms`.
-double whole_window_ms(double summed_gap_ms);
-
-// How far the window reaches on each side of a note, given the gaps to the
-// notes before and after it (unset where there is none).
-double window_side_ms(std::optional<double> gap_before_ms, std::optional<double> gap_after_ms);
-
-// Each chord's side, from the chords' times in chart order. A chord's
-// neighbours are the chords either side of it; its own gems are never each
-// other's neighbours.
-std::vector<double> chord_sides_ms(const std::vector<double>& chord_ms);
 
 // ---- a declined chord ------------------------------------------------------
 
@@ -184,14 +167,6 @@ std::optional<std::string> far_press_refusal(const std::vector<PadChord>& chords
 // One gem as the schedule and `hydra_replay score` both write it.
 nlohmann::json replay_note_json(const ReplayNote& note);
 
-// The chart's chord index on each tick, for naming chords in the file.
-struct ChordIndex {
-    std::vector<int64_t> ticks;  // song.sequence's ticks, in order
-    // The chord on `tick`, or unset when no chord sits there.
-    std::optional<int> at(int64_t tick) const;
-};
-ChordIndex chord_index(const Song& song);
-
 // The build of the code that writes these files: the compile date and time of
 // replay_schedule.cpp. CMake stamps no git hash today, so there is none to add.
 // A build that changed only replay.cpp or replay_json.cpp keeps the older
@@ -209,8 +184,9 @@ nlohmann::json song_length_json(const store::ChartTimingMeta& meta, const Song& 
 // player reads the end after (read_end_after, the final end's anchor) and
 // every squeeze with its own end, anchor, stored ratios and steady spans.
 // A fact the record does not hold is written null and its refusal line is
-// added to `refusals`; nothing is worked out again.
-nlohmann::json activation_json(const Activation& act, const ChordIndex& chords,
+// added to `refusals`; nothing is worked out again. `chords` names each
+// chord in the file by its place (chord_times).
+nlohmann::json activation_json(const Activation& act, const ChordTimes& chords,
                                const SongTiming& timing, std::vector<std::string>& refusals);
 
 // The whole schedule for one path: "constants", "activations", "chords",

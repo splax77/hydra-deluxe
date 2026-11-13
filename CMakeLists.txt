@@ -304,6 +304,7 @@ add_library(hydra_core STATIC
     src/core/timing.cpp
     src/core/song.cpp
     src/core/model.cpp
+    src/core/note_window.cpp
     src/core/scoring.cpp
     src/core/rules.cpp
     src/core/squeeze_rating.cpp
