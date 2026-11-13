@@ -74,9 +74,9 @@ class EarlyFillWalkTest(unittest.TestCase):
         for start, length in self.phrases:
             inside = [n for n in self.notes if start <= n < start + length]
             self.assertEqual(inside, [start])
-            self.assertEqual(length, 1)
+            self.assertEqual(length, 10)
         # The phrase line comes before the note on their shared tick.
-        self.assertIn("[ExpertDrums]\n{\n  20000 = S 2 1\n  20000 = N 0 0\n", self.text)
+        self.assertIn("[ExpertDrums]\n{\n  20000 = S 2 10\n  20000 = N 0 0\n", self.text)
 
     def test_each_fill_ends_on_a_lone_kick(self):
         # FL-03 and FL-05: a kick exactly at the fill's end is its chord.

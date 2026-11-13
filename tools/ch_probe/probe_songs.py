@@ -109,9 +109,11 @@ EFW_REST_MS = 12000         # flush fill's last note to the next case
 EFW_DEADLINE_BEATS = 4
 # A phrase holds a note when start <= tick < start + length, and a phrase of
 # length 0 pays nothing (docs/clone-hero/05-star-power.md, SP-01 and SP-02).
-# So each phrase starts on its one note and is one tick long; that note is
-# the phrase's last chord and carries the award (SP-04).
-EFW_PHRASE_LENGTH_TICKS = 1
+# Each phrase starts on its one note and is 10 ticks long, the length the
+# corpus charts use most; every other note is over 1,000 ticks away, so the
+# phrase holds only that note, which is its last chord and carries the award
+# (SP-04).
+EFW_PHRASE_LENGTH_TICKS = 10
 
 
 @dataclass
