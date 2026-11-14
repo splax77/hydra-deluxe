@@ -2,6 +2,12 @@
 
 What the user sees in Hydra: layouts, defaults, wording on screen, and how a UI change is checked. The line format is in README.md beside this file. Newest first.
 
+Under Confirmed are the user's exact words, filed with the user's approval or through the backfill route; under Unconfirmed are older lines written by sessions, which guide sessions as working rules but are never cited as the user's ruling.
+
+## Confirmed
+
+## Unconfirmed
+
 - **2026-11-13** "the frontend and backend are wrong, they are switched." (session 04fbfbab)
 - **2026-11-13** "No word" To which word the Dynamic Hit Window row gives the early fill's single "SP ready" note. (session 04fbfbab)
 - **2026-11-13** "Short table form", "Row only", "Keep frontend/backend" and "Follow the anchor's end (Recommended)" To the Dynamic Hit Window rework's four questions: how each end names its chord, whether the squeeze sentence and the early fill line also switch to frontend and backend, whether "backend" may sit beside the Backend timings table, and which scale side counts the anchor's window. So each end prints its chord in the Backend timings table's short form (`[K  B ]`), only the row says frontend and backend, the words stay as ruled. (session 7d28ae9a; note: none; backs: `docs/superpowers/plans/2026-11-13-dhw-derive-once.md` (removed; `git show 45dd7799:docs/superpowers/plans/2026-11-13-dhw-derive-once.md`))

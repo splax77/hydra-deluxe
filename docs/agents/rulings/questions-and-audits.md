@@ -2,6 +2,12 @@
 
 How a question goes to the user, what to do when Hydra answers one question two ways, and when an audit finding may close. The line format is in README.md beside this file. Newest first.
 
+Under Confirmed are the user's exact words, filed with the user's approval or through the backfill route; under Unconfirmed are older lines written by sessions, which guide sessions as working rules but are never cited as the user's ruling.
+
+## Confirmed
+
+## Unconfirmed
+
 - **2026-10-31** "Yes, add it (Recommended)", to: "Proposal 4. Should the reviewer check "was this asked for?" ..." (session a7d95f1c-a1ce-46e9-bf4d-2e7cfbd98d1e; note: no-silent-functionality-changes; backs: docs/agents/derive-once-review.md step 9)
 - **2026-10-31** "Yes, add it (Recommended)", to: "Proposal 5. Should a commit or release never include edits nobody in that session made or was asked to make? ..." (session a7d95f1c-a1ce-46e9-bf4d-2e7cfbd98d1e; note: no-silent-functionality-changes; backs: docs/agents/agent-rules.md rule 13)
 - **2026-10-31** "i think this would cause more trouble than it would fix. agents are very very bad at remembering to update things and im sure there are tons of stale comments throughout the project that no longer accurately describe their code", declining a test that pins on-screen text (proposal 3 of the silent-changes finding). (session a7d95f1c-a1ce-46e9-bf4d-2e7cfbd98d1e; note: none; backs: docs/audit/2026-10-31-silent-changes.md)
