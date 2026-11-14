@@ -4,9 +4,9 @@
 
 The Dynamic Hit Window row on the Paths tab stops contradicting the sentence above it. The row shows the window on the frontend and the window on the backend, each followed by the note or chord on that end, and then the small tag at the right edge. The tag keeps today's figure and gets a plain definition and new words: "xx ms safe" at 0.0 or more, "xx ms short" below 0.
 
-On the user's own screen (Satellites, activation 3) the sentence says "no more than 83.3 ms late" and the row under it says `73.6 ms late   53.1 ms early` with a `210.0 ms spare` tag. After this plan the row reads `frontend 73.6 ms [Kick - Yellow cymbal]   backend 53.1 ms [Red snare]` with a `210.0 ms safe` tag.
+On the user's own screen (Satellites, activation 3) the sentence says "no more than 83.3 ms late" and the row under it says `73.6 ms late   53.1 ms early` with a `210.0 ms spare` tag. After this plan the row reads `frontend 73.6 ms [K Y  ]   backend 53.1 ms [ R   ]` with a `210.0 ms safe` tag.
 
-The cause of the contradiction is that three pieces of code each decide "which end is each note on" by themselves. This plan gives that question one owner in the core. The same owner also picks which side of the transfer scale the anchor's window counts through, which is the one place the tag's figure can change (Dead on Arrival, activation 3: 608.7 today, 609.3 after; question 4).
+The cause of the contradiction is that three pieces of code each decide "which end is each note on" by themselves. This plan gives that question one owner in the core. The same owner also picks which side of the transfer scale the anchor's window counts through, which is the one place the tag's figure can change (Dead on Arrival, activation 3: 608.7 today, 609.3 after; the user chose this, question 4).
 
 Nothing is built until the user says yes. The mockup is at `docs/superpowers/specs/2026-11-13-dhw-derive-mockup/index.html`. Four questions for the user are at the end.
 
@@ -50,7 +50,7 @@ The badge figure and the schedule file use opposite signs for a squeeze out. The
 | What is the tag's sum? | `squeeze_safe_ms` and `early_fill_safe_ms` (`src/core/note_window.h`) | exist as `squeeze_spare_ms` and `early_fill_spare_ms`; renamed, same sum |
 | Is the tag "safe" or "short"? | `safe_is_short` (`src/core/note_window.h`) | exists as `spare_is_short`; renamed |
 | How wide is a note's window? | `chord_sides_ms` (`src/core/note_window.h`) | exists; unchanged |
-| What is a chord called? | `Chord::rowstr` (`src/core/model.cpp`) | exists; unchanged |
+| What is a chord called? | `Chord::notationstr` (`src/core/model.cpp`), the form the Backend timings table and the squeeze-out sentence print | exists; unchanged |
 
 The rulings this plan quotes are about what the row shows. They bind every row of this table. Every row feeds the screen a window side, an end word, a chord name or the tag's sum. The sum already exists in the core and the plan only renames it. The one row that touches an engine-owned quantity is the scale side. The plan does not convert the scale or move any press with it: it only reads the stored scale's early or late side, as today, from the one owner of the anchor's end instead of from the squeeze kind. Every figure is read from the chart's chord times and the record's stored scales.
 
@@ -66,7 +66,7 @@ The squeezed note's end is always the word its sentence prints: "late" is the ba
 
 The row reads: `Dynamic Hit Window:`, then `frontend`, its window and its chord, then `backend`, its window and its chord, then the tag at the right edge, as `draw_window_tag` places it today. Frontend always comes first; that is the fixed order, and the words themselves show it. An early fill has one end.
 
-Each window is that note's own window side from the game's rule, as today (`chord_sides_ms`). Each chord is `Chord::rowstr` in the record's Pro Drums setting, the way the "Chord" line above it is (P19). With Pro Drums on, a red note reads "Red snare" and a non-cymbal blue note "Blue tom".
+Each window is that note's own window side from the game's rule, as today (`chord_sides_ms`). Each chord is `Chord::notationstr`, the short form the Backend timings table prints: five slots in K R Y B G order, a letter where the chord has that note and a space where it does not, so kick and blue read `[K  B ]` (P19). The user chose this form on 2026-11-13 (question 1, "Short table form"). It reads the same with Pro Drums on or off.
 
 ### The tag
 
@@ -90,7 +90,7 @@ The tests that pin the old names and wording are edited to the new ones, never l
 
 ### What each caller changes
 
-The squeeze sentence (`squeeze_sentences` in `src/app/path_view.cpp`) asks `squeeze_ends` for the squeezed note's end and prints "early" or "late" from it. Its text does not change on any chart (question 2 asks whether it should).
+The squeeze sentence (`squeeze_sentences` in `src/app/path_view.cpp`) asks `squeeze_ends` for the squeezed note's end and prints "early" or "late" from it. Its text does not change on any chart; the user chose "Row only" (question 2).
 
 The row view reads `squeeze_window_ends` and `early_fill_window_end`. It holds no direction word of its own. It names each note from the chord at that tick; `ChordTimes` gains the chord at each place, so one lookup gives the window and the name.
 
@@ -106,32 +106,32 @@ Each panel is in the mockup. "Today" is what Hydra 3.0.0's code computes. The wi
 
 **Satellites, activation 2** (`squeeze out 83.3 ms`; sentence: "more than 83.3 ms late"; scale 1.0 both sides)
 - Today: `85.7 ms early   53.1 ms late` · tag `55.4 ms spare` (85.7 + 53.1 - 83.3)
-- After: `frontend 85.7 ms [Kick - Blue cymbal]   backend 53.1 ms [Red snare]` · tag `55.4 ms safe`
+- After: `frontend 85.7 ms [K  B ]   backend 53.1 ms [ R   ]` · tag `55.4 ms safe`
 
 **Satellites, activation 3** (`squeeze in -83.3 ms`; sentence: "no more than 83.3 ms late"; scale 1.0 both sides)
 - Today: `73.6 ms late   53.1 ms early` · tag `210.0 ms spare` (73.6 + 53.1 + 83.3)
-- After: `frontend 73.6 ms [Kick - Yellow cymbal]   backend 53.1 ms [Red snare]` · tag `210.0 ms safe`
+- After: `frontend 73.6 ms [K Y  ]   backend 53.1 ms [ R   ]` · tag `210.0 ms safe`
 
 **Satellites, activation 5** (`squeeze in 166.7 ms`; sentence: "more than 166.7 ms early"; scale 1.0 both sides)
 - Today: `85.7 ms late   53.1 ms early` · tag `27.9 ms short` (85.7 + 53.1 - 166.7 = -27.9)
-- After: `frontend 53.1 ms [Red snare]   backend 85.7 ms [Kick - Yellow cymbal]` · tag `27.9 ms short`
+- After: `frontend 53.1 ms [ R   ]   backend 85.7 ms [K Y  ]` · tag `27.9 ms short`
 
 **Dead on Arrival (O), activation 3** (`squeeze in -444.9 ms`; sentence: "no more than 444.9 ms late"; scale early 1.0044, late 0.9970)
 - Today: `83.4 ms late   80.7 ms early` · tag `608.7 ms spare`: 83.4 x 0.9970 (the late side, picked by squeeze in) + 80.7 + 444.9
-- After: `frontend 83.4 ms [Kick - Yellow cymbal]   backend 80.7 ms [Kick]` · tag `609.3 ms safe`: 83.4 x 1.0044 (the early side, because the anchor is on the frontend) + 80.7 + 444.9
-- Keeping today's late side would print `608.7 ms safe`. Question 4 asks which.
+- After: `frontend 83.4 ms [K Y  ]   backend 80.7 ms [K    ]` · tag `609.3 ms safe`: 83.4 x 1.0044 (the early side, because the anchor is on the frontend) + 80.7 + 444.9
+- Keeping today's late side would print `608.7 ms safe`. The user chose the anchor's end (question 4).
 
 **Burnout, activation 1** (`squeeze out 163.0 ms`; sentence: "more than 163.0 ms late"; scale early 0.9946, late 1.0224)
 - Today: `84.5 ms early   84.3 ms late` · tag `5.4 ms spare` (84.5 x 0.9946 + 84.3 - 163.0)
-- After: `frontend 84.5 ms [Kick - Green cymbal]   backend 84.3 ms [Yellow cymbal]` · tag `5.4 ms safe`
+- After: `frontend 84.5 ms [K   G]   backend 84.3 ms [  Y  ]` · tag `5.4 ms safe`
 
 **Focus, activation 2** (`squeeze in 25.0 ms`; sentence: "more than 25.0 ms early"; scale 1.0 both sides)
 - Today: `61.9 ms late   48.1 ms early` · tag `85.1 ms spare` (61.9 + 48.1 - 25.0)
-- After: `frontend 48.1 ms [Blue tom]   backend 61.9 ms [Kick]` · tag `85.1 ms safe`
+- After: `frontend 48.1 ms [   B ]   backend 61.9 ms [K    ]` · tag `85.1 ms safe`
 
 **Tapped Out, activation 3** (`early fill 0.0 ms`, required; P14)
 - Today: `82.9 ms early` · tag `82.9 ms spare` (82.9 - 0.0)
-- After: `frontend 82.9 ms [Kick - Green cymbal]` · tag `82.9 ms safe`
+- After: `frontend 82.9 ms [K   G]` · tag `82.9 ms safe`
 
 I worked each "Today" value out from the figures file with today's rule, and each "After" value from the same file with the rule above. Only Dead on Arrival's differs. The one visible word change on every tag is "spare" to "safe"; "short" is unchanged. T5 reads the real screens to confirm (P13).
 
@@ -167,7 +167,7 @@ First list, by name, every test case in the four test files that mentions the ta
 Acceptance criteria. The main session runs `hydra_tests.exe "-tc=note window*"`, the activation-row and badge-pill cases, and the Paths uitest; the executor gives the exact case names in its report.
 
 - The sentence text of every corpus activation is the same before and after. The existing sentence tests pin this, and none is edited.
-- Burnout activation 1 and Focus activation 2 (both in the corpus) print the "After" rows and tags above, pinned as literals. The test names the Pro Drums setting it reads, and pins that setting's chord words ("Blue tom" with it on, "Blue" with it off).
+- Burnout activation 1 and Focus activation 2 (both in the corpus) print the "After" rows and tags above, pinned as literals. The chords are pinned in the `Chord::notationstr` form, which does not depend on the Pro Drums setting.
 - Every corpus tag reads its size without a minus sign, then " ms short" exactly when the sum is below 0.0 and " ms safe" otherwise. A test reads every corpus tag for this.
 - On every corpus squeeze, the row's end for the squeezed note matches its sentence: `backend` where the sentence says "late", `frontend` where it says "early". The test reads both from the built view and fails if either is picked by kind.
 - Every row lists the frontend end first, and an early fill row has one end.
@@ -225,7 +225,7 @@ These are left out on purpose and need the user's nod.
 | The sentence reads the owner and its text does not change | What each caller changes | T2 | existing sentence tests, unedited |
 | The squeezed note's end is the word its sentence prints | Which end each note is on | T2 | the corpus row-against-sentence test |
 | The row is label, frontend end, backend end; frontend first; one end for an early fill | The row | T2 | the pinned Burnout and Focus rows; the order test |
-| Each end names its chord in `Chord::rowstr` words | The row | T2 | the pinned Burnout and Focus rows |
+| Each end names its chord in `Chord::notationstr` form | The row | T2 | the pinned Burnout and Focus rows |
 | The kind-based row functions and the word "spare" are gone | What goes and what is renamed | T2 | the grep |
 | No row text outside the tag says "early" or "late" | Background | T2 | the corpus row-text test |
 | Every badge keeps its row | One owner | T2 | rows equal badges on every corpus path |
@@ -256,10 +256,10 @@ These are left out on purpose and need the user's nod.
 | P16: the User Guide describes the row, its yellow `spare` tag and orange `short` tag | code | `docs/UserGuide.md:273` to `:277` | checked 2026-11-13 |
 | P17: one test pins four squeeze-outs' aims and rooms to the cent | code | `tests/test_replay_schedule.cpp:473` | checked 2026-11-13 |
 | P18: which test cases in the four test files pin the tag, the spare or a removed function | unchecked | `tests/test_note_window.cpp`, `tests/test_activation_rows.cpp`, `tests/test_badge_pill.cpp`, `tests/ui/uitest_paths.cpp`; mentions counted, cases not read | T2 |
-| P19: `Chord::rowstr` joins each note's label with " - " in brackets; a note's label is "Kick" (or "2x kick"), "Red snare" with Pro Drums on and "Red" off, "Blue tom" with it on and "Blue" off for a non-cymbal gem, and "Blue cymbal" or "Yellow cymbal" either way | code | `src/core/model.cpp:192` to `:200` and `src/core/model.cpp:61` to `:67` | checked 2026-11-13 |
+| P19: `Chord::notationstr` prints five slots in K R Y B G order, a letter for each note the chord has and a space for each it lacks, with no Pro Drums words | code | `src/core/model.cpp:202` to `:210` | checked 2026-11-13 |
 | P20: every chord in a song carries its `Chord` | code | `src/core/song.h:30` | checked 2026-11-13 |
-| P21: the user's screen has Pro Drums on, so the panels' chords use the Pro Drums-on words: the user's Chord lines read "[Kick - Yellow cymbal]" and "[Kick - Blue cymbal]", and `note_label` gives "Red snare" and "Blue tom" with it on | code | `src/core/model.cpp:61` to `:67`; the user's screen as the 2026-11-13 review brief reports it | checked 2026-11-13 |
-| P21b: the panels' kicks are plain, not "2x kick" | unchecked | `dhw_figures.json` holds each gem's colour and cymbal flag only | T5 |
+| P21: the panels' chords are `Chord::notationstr` of each chord's gems in the figures file, so they do not depend on the Pro Drums setting | code | `src/core/model.cpp:202` to `:210`; the figures file | checked 2026-11-13 |
+| P21b: a 2x kick prints as "K" like a plain kick in this form | code | `color_notationstr`, `src/core/model.cpp:50` to `:59` | checked 2026-11-13 |
 | P22: the three commits exist with the dates the background gives | code | `git show -s c68982cf 9d5bc5d5 970cb916` | checked 2026-11-13 |
 | P23: "i think early and late are the issue here causing confusion. change the display text to frontend and backend" | ruling | the user's message of 2026-11-13 as the main session quoted it to the planner (session `7d28ae9a`); the main session records it in `docs/agents/rulings/` | checked 2026-11-13 |
 | P24: "helps? hurts? why do you keep inventing your own metrics i never asked for?" and "you're STILL inventing your own metrics. why do you keep lying? squeeze 3 has a timing." | ruling | the user's messages of 2026-11-13 as the main session quoted them to the planner (session `7d28ae9a`) | checked 2026-11-13 |
@@ -268,15 +268,11 @@ These are left out on purpose and need the user's nod.
 | P28: `SPSqueeze::difficulty()` has the badge's sign for both kinds, and `Activation::e_difficulty(true)` is positive when the fill is hit early | code | `src/core/model.h:271`, `src/core/model.h:397` and `src/core/model.h:994` | checked 2026-11-13 |
 | P26: `CONTEXT.md` already defines Frontend squeeze, Backend squeeze and Backend row (D115) | code | `CONTEXT.md:570` to `:583` | checked 2026-11-13 |
 
-## Questions
+## Questions, answered
 
-1. **The new row is longer than 8 words on most panels. Is that all right?** Your ruling of 2026-11-12 was "a maximum of 8 words for the new info". I count every word after the label, with the " - " between a chord's notes not counted as a word. Without the tag: Tapped Out 6 (`frontend 82.9 ms [Kick - Green cymbal]`), Focus 9 (`frontend 48.1 ms [Blue tom]   backend 61.9 ms [Kick]`), Dead on Arrival 10, the three Satellites rows 11 each (`frontend 85.7 ms [Kick - Blue cymbal]   backend 53.1 ms [Red snare]`), Burnout 11. The tag (`55.4 ms safe`) adds 3 to each. A three-note chord with two cymbals on each end would give 16 without the tag. Today's row is 6 words plus the 3-word tag (9) on a two-end row, 3 plus 3 on an early fill. The length comes from the chord names your 2026-11-13 ruling asks for. The choices: (a) the row as mocked, which wraps in a narrow panel; (b) the Backend table's short chord form, `[K  B ]`, counted as one word, which makes every two-note row 8 words without the tag and 11 with it. Neither reaches 8 with the tag.
+The user answered all four on 2026-11-13. Each answer is the label the user picked.
 
-2. **Do the squeeze sentence and the early fill text switch to frontend and backend too, or only the row?** Your words were "change the display text to frontend and backend". The plan changes the row only, which may be narrower than you meant. Examples, Satellites activation 2 and activation 5:
-   - (a) Row only. The sentences stay "Hit the [ R   ] note more than 83.3 ms late so it lands after Star Power ends." and "Hit the SP phrase's last note more than 166.7 ms early so it lands before Star Power ends." The rows under them read `backend 53.1 ms [Red snare]` and `frontend 53.1 ms [Red snare]` for that note.
-   - (b) The row and the squeeze sentences. With the words swapped one for one they would read "Hit the [ R   ] note more than 83.3 ms backend so it lands after Star Power ends." and "Hit the SP phrase's last note more than 166.7 ms frontend so it lands before Star Power ends." The exact sentence wording would be mocked up for you first.
-   - (c) Everything, including the name "early fill". Today the badge reads `early fill 0.0 ms` and the line `Early fill: 0.0 ms (required)`. The line holds no direction word, only the name. A new name would need to come from you.
-
-3. **Is `backend` on the row all right next to the "Backend timings" table?** Hydra's glossary already uses the word. `CONTEXT.md` says a **Backend squeeze** is "Hitting a note near the SP end early, so it lands inside Star Power", a **Frontend squeeze** is "Hitting the activation chord's activation note first, so the chord's other notes score under Star Power", and a **Backend row** is "A chord within the squeeze window of an SP end, as the Backend timings table lists it". The row sits just above that table. Examples from both ends: on Satellites activation 2 the note at the SP end reads `backend 53.1 ms [Red snare]`, which happens to fit the table's sense. On Satellites activation 5 the note at the SP end reads `frontend 53.1 ms [Red snare]` and the activation chord reads `backend 85.7 ms [Kick - Yellow cymbal]`, the reverse of the glossary's sense. The choices: (a) use the words as ruled, and the User Guide says what they mean on this row; (b) you pick other words.
-
-4. **Should the tag's figure follow the anchor's end, which moves one number by 0.6 ms?** You ruled the tag keeps today's definition. Today the anchor's window counts through the scale's early side for a squeeze out and its late side for a squeeze in. The plan makes it follow the anchor's end: frontend uses the early side, backend the late side. That is the same side on every squeeze that has a timing to hit. It differs on a squeeze whose sentence says "no more than", and only when the scale is not 1.0 on both sides. Examples from both ends: Satellites activation 3 has scale 1.0 on both sides, so it reads `210.0 ms safe` either way. Dead on Arrival activation 3 (early 1.0044, late 0.9970) reads `609.3 ms safe` if the figure follows the anchor's end, and `608.7 ms safe` if it keeps today's side. The choices: (a) follow the anchor's end, so the sentence, the row and the tag agree on which end each note is on (recommended); (b) keep today's pick by squeeze kind, which leaves one rule in the tag that disagrees with the sentence.
+1. **Row length.** "Short table form". Each chord prints as `Chord::notationstr`, the Backend timings table's form (`[K  B ]`). A two-end row is 8 words without the tag and 11 with it.
+2. **Sentences.** "Row only". The squeeze sentences and the "Early fill:" line keep "early" and "late". Only the Dynamic Hit Window row says frontend and backend.
+3. **The word "backend".** "Keep frontend/backend". The row uses the words as ruled, and the User Guide says what they mean on this row.
+4. **Scale side.** "Follow the anchor's end (Recommended)". The anchor's window counts through the scale's early side when it is on the frontend and its late side on the backend. Dead on Arrival activation 3 reads `609.3 ms safe`.
