@@ -326,7 +326,7 @@ void render_activation_row(size_t i, const app::ActivationRowView& a, app::Paths
 
 // The thin line over a Dynamic Hit Window row, and the gap between the row's
 // pieces: the mockup's (.dhw in
-// docs/superpowers/specs/2026-11-12-dynamic-hit-window-mockup/index.html).
+// docs/superpowers/specs/2026-11-12-dynamic-hit-window-mockup/index.html (removed; git show 45dd7799:docs/superpowers/specs/2026-11-12-dynamic-hit-window-mockup/index.html)).
 constexpr PillRgb kWindowRowDivider{74, 54, 34};
 constexpr float kWindowRowGap = 14.0f;  // unscaled
 constexpr PillRgb kWindowWordInk{201, 179, 155};        // a word, the mockup's #c9b39b

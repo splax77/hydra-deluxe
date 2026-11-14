@@ -77,7 +77,7 @@ inline void draw_badge(ImDrawList* dl, float pill_x, float text_y, float pill_w,
 //
 // The outlined tag at the right end of a Dynamic Hit Window row ("5.4 ms
 // safe", "65.9 ms short"). Its look is the mockup the user approved,
-// docs/superpowers/specs/2026-11-12-dynamic-hit-window-mockup/index.html
+// docs/superpowers/specs/2026-11-12-dynamic-hit-window-mockup/index.html (removed; git show 45dd7799:docs/superpowers/specs/2026-11-12-dynamic-hit-window-mockup/index.html)
 // (the .dhw .spare rules). Whether a tag is short is app::WindowRowView's.
 
 // Unscaled (multiply by px(1)), from the mockup.
