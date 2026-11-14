@@ -88,21 +88,17 @@ double early_fill_safe_ms(double ready_side_ms, double early_fill_ms);
 // 2026-11-13 sets the edge: "xx ms safe >=0 ms, xx ms short <0ms".
 bool safe_is_short(double safe_ms);
 
-// The old names of the three above, kept only until T2 of the Dynamic Hit
-// Window plan moves their callers over and removes them.
-inline double squeeze_spare_ms(double anchor_side_ms, double ratio, double squeeze_side_ms, double needed_ms) {
-    return squeeze_safe_ms(anchor_side_ms, ratio, squeeze_side_ms, needed_ms);
-}
+// The early fill sum's old name, kept only because docs/clone-hero/04-fills.md
+// still names it and the docs check reads that page. The Dynamic Hit Window
+// plan's T2 and T4 remove it and the page's mention.
 inline double early_fill_spare_ms(double ready_side_ms, double early_fill_ms) {
     return early_fill_safe_ms(ready_side_ms, early_fill_ms);
 }
-inline bool spare_is_short(double spare_ms) { return safe_is_short(spare_ms); }
 
 // ---- which end each note is on ---------------------------------------------
 // The Dynamic Hit Window row names each note's end with the user's words:
 // the frontend or the backend (the ruling of 2026-11-13). These are the one
-// owner of that question; the Paths tab's squeeze sentence, the row and the
-// schedule tool read them.
+// owner of that question.
 
 enum class NoteEnd { Frontend, Backend };
 
