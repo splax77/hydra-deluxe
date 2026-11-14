@@ -941,8 +941,7 @@ Measure).
 **Active SP window**:
 The stretch of the note highway from an activation to its deact node, where
 Star Power is being spent. Comes from the path, not the chart; drawn as a
-tinted floor, with a bright edge and a triangle beside each rail where it
-ends (D81).
+tinted floor, with the railings beside it in the Star Power colour.
 
 **Path overlay**:
 Hydra's own analysis drawn on the note highway: the active SP windows and the
