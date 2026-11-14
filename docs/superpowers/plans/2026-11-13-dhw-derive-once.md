@@ -102,7 +102,7 @@ Prior art, from one web search whose result pages I did not open: rhythm-game to
 
 Only the Paths tab's Dynamic Hit Window row changes: its direction words, its chords, the tag's word and, on one panel, the tag's last digit. Badges, sentences, ratings, tiers, eff. figures and the Backend timings table stay as they are.
 
-Each panel is in the mockup. "Today" is what Hydra 3.0.0's code computes. The windows, gems and scales come from the figures file (P13). The tag's value on each panel is the figures file's window sides and scales put through the sum above, worked out again for this plan (the sum: anchor window times scale side, plus squeezed window, minus the badge figure). Chord words are the Pro Drums-on words, as on the user's screen (P21).
+Each panel is in the mockup. "Today" is what Hydra 3.0.0's code computes. The windows, gems and scales come from the figures file (P13). The tag's value on each panel is the figures file's window sides and scales put through the sum above, worked out again for this plan (the sum: anchor window times scale side, plus squeezed window, minus the badge figure). Chords are in the `Chord::notationstr` form (P19, P21).
 
 **Satellites, activation 2** (`squeeze out 83.3 ms`; sentence: "more than 83.3 ms late"; scale 1.0 both sides)
 - Today: `85.7 ms early   53.1 ms late` · tag `55.4 ms spare` (85.7 + 53.1 - 83.3)
