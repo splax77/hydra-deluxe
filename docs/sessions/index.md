@@ -497,6 +497,11 @@
 - 2026-11-14 6c7771c3 Release 3.0 (2026-11-14) | release, installer, docs, agents | Ended at 00:36 UTC with Hydra Deluxe 3.0.0 published as the latest GitHub release, after the user's yes to publish.
 - 2026-11-14 43fddb24 Clone Hero 1.1 changes for Hydra (2026-11-14) | clone-hero, release, planning, agents | Ended at 01:03 UTC with the plan settled and waiting for the user's go before seven executors start on it. [write-back]
 - 2026-11-14 938c53df Hydra performance issues (2026-11-14) | performance, analysis, library | Ended at 01:08 UTC with the cause not found, and the agent waiting on the user's answer about catching a slow run live on the real Hydra.
+- 2026-11-14 7d28ae9a Meaning of 85 and 53 numbers (2026-11-14) | squeeze, hit-window, backend-squeeze, agents, release, hooks | The session ended with release 3.0.1 published on GitHub, and one docs commit left unpushed.
+- 2026-11-14 958b1d85 Fix corpus squeeze-in test after new corpus chart (2026-11-14) | tests, library, docs, review | The session ended with the corpus-count fix merged to main as 944e627a, and the test passing on main's own build.
+- 2026-11-14 04fbfbab Frontend/backend switched (2026-11-14) | backend-squeeze, frontend-squeeze, agents, review, docs, release | The session ended with the label fix merged on main and release 3.0.2 published on GitHub.
+- 2026-11-14 ca29fda5 Ruling gate plan handoff (2026-11-14) | hooks, agents, docs, planning, review | The session ended with the ruling-gate plan approved on its branch, with nothing built and nothing merged.
+- 2026-11-14 a9505e36 Starpower end clarity design (2026-11-14) | note-highway, sp-bar, active-sp-window, preview, planning | The session ended with a handoff for option B, committed on its own branch and not merged into main.
 
 ## Proposed tags
 
