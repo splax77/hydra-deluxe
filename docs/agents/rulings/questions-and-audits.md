@@ -6,6 +6,8 @@ Under Confirmed are the user's exact words, filed with the user's approval or th
 
 ## Confirmed
 
+- **2026-11-14** "i dont understand why you always try to invent insane edge cases, this one isnt even possible in clone hero. you cant just activate arbitrarily whenever you want" (session ae1c19f5)
+
 ## Unconfirmed
 
 - **2026-10-31** "Yes, add it (Recommended)", to: "Proposal 4. Should the reviewer check "was this asked for?" ..." (session a7d95f1c-a1ce-46e9-bf4d-2e7cfbd98d1e; note: no-silent-functionality-changes; backs: docs/agents/derive-once-review.md step 9)

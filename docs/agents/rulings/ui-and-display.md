@@ -6,6 +6,9 @@ Under Confirmed are the user's exact words, filed with the user's approval or th
 
 ## Confirmed
 
+- **2026-11-14** "yes i approved the mockup and asked for option B. so why are you offering what we have today as an option?" (session ae1c19f5)
+- **2026-11-13** "i like knowing exactly where starpower ends, but the current design is too easy to confuse with a kick. suggest alternate approaches" (session a9505e36)
+
 ## Unconfirmed
 
 - **2026-11-13** "the frontend and backend are wrong, they are switched." (session 04fbfbab)
