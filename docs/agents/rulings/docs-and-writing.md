@@ -13,6 +13,7 @@ Under Confirmed are the user's exact words, filed with the user's approval or th
 - **2026-08-23** "can we use hooks to enforce this?" (session 5de6fc16)
 
 
+
 ## Unconfirmed
 
 - **2026-09-03** As the note records it: On 2026-09-03 the user rejected a finished plan twice: first to require a search of GitHub and Stack Overflow for existing solutions before finalizing, then to demand that two items I had filed under "left alone on purpose, pre-existing" be addressed and fixed in the same plan. And: the user wants the plan grounded in how others solved the problem (cite sources), and treats a "pre-existing, out of scope" list as a to-do list, not a disclaimer. (session 2026-09-03-8332edcf, by date; note: search-web-before-finalizing-plans; backs: no page yet)
