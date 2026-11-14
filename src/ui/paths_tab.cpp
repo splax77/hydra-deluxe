@@ -333,8 +333,9 @@ constexpr PillRgb kWindowWordInk{201, 179, 155};        // a word, the mockup's 
 const ImVec4 kWindowFigureInk(1.0f, 1.0f, 1.0f, 1.0f);  // a figure, the mockup's #fff
 
 // One Dynamic Hit Window row, the bottom line of its timing's box: a divider,
-// the label, each end in the Figure role (its word, its window, its chord),
-// then the tag (badge_pill.h) at the right edge, as the mockup places it.
+// the label, each end in the Figure role (its word when it has one, its
+// window, its chord), then the tag (badge_pill.h) at the right edge, as the
+// mockup places it.
 // An end that does not fit beside the last piece starts the next line whole,
 // and the tag keeps to the right edge there too, so nothing is cut off at the
 // narrowest panel. The chord draws in the box's text colour (timing_box),
@@ -348,12 +349,14 @@ void window_row(const app::WindowRowView& w) {
     const float gap = px(kWindowRowGap);
     const float space = ImGui::CalcTextSize(" ").x;
     for (const app::WindowFigure& f : w.figures) {
-        flow_next(ImGui::CalcTextSize(f.word.c_str()).x + space +
-                      ImGui::CalcTextSize(f.figure.c_str()).x + space +
+        const float word_w = f.word.empty() ? 0.0f : ImGui::CalcTextSize(f.word.c_str()).x + space;
+        flow_next(word_w + ImGui::CalcTextSize(f.figure.c_str()).x + space +
                       ImGui::CalcTextSize(f.chord.c_str()).x,
                   gap);
-        ImGui::TextColored(pill_vec4(kWindowWordInk), "%s", f.word.c_str());
-        ImGui::SameLine(0.0f, space);
+        if (!f.word.empty()) {
+            ImGui::TextColored(pill_vec4(kWindowWordInk), "%s", f.word.c_str());
+            ImGui::SameLine(0.0f, space);
+        }
         ImGui::TextColored(kWindowFigureInk, "%s", f.figure.c_str());
         ImGui::SameLine(0.0f, space);
         ImGui::TextUnformatted(f.chord.c_str());

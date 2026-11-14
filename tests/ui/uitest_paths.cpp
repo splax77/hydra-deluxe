@@ -990,7 +990,10 @@ void test_paths_hit_window(ImGuiTestContext* ctx) {
     // of 2026-11-12); tests/test_activation_rows.cpp pins the same text.
     IM_CHECK(on_screen(h, "Early fill: 0.0 ms (optional)"));
     IM_CHECK(window_named("##ef4") != nullptr);
-    IM_CHECK(on_screen(h, "frontend 85.7 ms [K  B ]"));
+    // An early fill row's note carries no word (the user's ruling: "No word").
+    IM_CHECK(on_screen(h, "85.7 ms [K  B ]"));
+    IM_CHECK(!on_screen(h, "frontend 85.7 ms"));
+    IM_CHECK(!on_screen(h, "backend 85.7 ms"));
     IM_CHECK(on_screen(h, "85.7 ms safe"));
     check_tapped_out_box_fits();
     if (ctx->IsError()) return;
@@ -1001,7 +1004,9 @@ void test_paths_hit_window(ImGuiTestContext* ctx) {
     IM_CHECK(on_screen(h, "Early fill: 0.0 ms (required)"));
     IM_CHECK(window_named("##ef3") != nullptr);
     IM_CHECK(on_screen(h, "Dynamic Hit Window:"));
-    IM_CHECK(on_screen(h, "frontend 82.9 ms [K   G]"));
+    IM_CHECK(on_screen(h, "82.9 ms [K   G]"));
+    IM_CHECK(!on_screen(h, "frontend 82.9 ms"));
+    IM_CHECK(!on_screen(h, "backend 82.9 ms"));
     IM_CHECK(on_screen(h, "82.9 ms safe"));
 }
 
