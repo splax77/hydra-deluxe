@@ -63,6 +63,7 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 from tools.ch_probe import constants as C
+from tools.ch_probe.engine import pressed_input_hit
 from tools.ch_probe.experiments.overlay_logs import (
     WATCH_COLUMNS, WATCH_COLUMNS_WITHOUT_LATE_GROUPS, watch_header)
 from tools.ch_probe.experiments import play_chart
@@ -533,10 +534,25 @@ def _expected_multipliers(chord: dict) -> set:
     return {chord["multiplier"] * factor, chord["multiplier_after"] * factor}
 
 
+def _points_landed_row(rows: list, clocks: list, chord: dict) -> int | None:
+    """The first row at or after `chord`'s ms whose score rose
+    (engine.pressed_input_hit) from the last row before that ms, or None when
+    there is no row before it or the score never rises after it."""
+    start = bisect.bisect_left(clocks, chord["ms"])
+    if start == 0:
+        return None
+    before = rows[start - 1]["score"]
+    return next((k for k in range(start, len(rows))
+                 if pressed_input_hit(before, rows[k]["score"])), None)
+
+
 def _check_multipliers(report: Report, rows: list, chords: list,
                        parted_ms, reach: dict) -> None:
     """The game's multiplier after each chord is credited, read on the last
-    row before the next chord, against Hydra's for that chord. One chord of
+    row before the next chord, against Hydra's for that chord. The song's last
+    chord has no next chord, so it is read on the row _points_landed_row
+    finds, or, when that finds none, on the last row before the watcher's
+    final row. One chord of
     lag either way is allowed, because a 4 ms poll can land on either side of
     a credit. A chord with no row from its first press (press_reach) on is
     not compared."""
@@ -547,11 +563,17 @@ def _check_multipliers(report: Report, rows: list, chords: list,
     skipped_before = 0
     stopped_at = None
     for i, chord in enumerate(chords):
-        sample_ms = chords[i + 1]["ms"] if i + 1 < len(chords) else clocks[-1]
+        landed = _points_landed_row(rows, clocks, chord) if i + 1 == len(chords) else None
+        if i + 1 < len(chords):
+            sample_ms = chords[i + 1]["ms"]
+        elif landed is not None:
+            sample_ms = clocks[landed]
+        else:
+            sample_ms = clocks[-1]
         if parted_ms is not None and sample_ms >= parted_ms:
             stopped_at = chord
             break
-        j = bisect.bisect_left(clocks, sample_ms) - 1
+        j = landed if landed is not None else bisect.bisect_left(clocks, sample_ms) - 1
         if j < 0 or clocks[j] < reach[chord["index"]].earliest_ms:
             skipped_before += 1
             continue
