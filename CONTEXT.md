@@ -572,7 +572,8 @@ Hitting the activation chord's activation note first, so the chord's other
 notes score under Star Power.
 
 **Backend squeeze**:
-Hitting a note near the SP end early, so it lands inside Star Power.
+Hitting a note near the SP end early to land it inside Star Power (a squeeze
+in), or late to push it outside (a squeeze out).
 
 **Backend row**:
 A chord within the squeeze window of an SP end, as the Backend timings table
