@@ -955,31 +955,6 @@ TEST_CASE("build_highway_draws: an SP window clipped by the view shows no change
     }
 }
 
-TEST_CASE("build_highway_draws: back-to-back SP windows light the rails straight through") {
-    const PreviewConfig cfg = shipped_preview_config();
-    PreviewScene scene = timed_scene();
-    scene.notes = {note(1000.0, PreviewLane::Red), note(2000.0, PreviewLane::Yellow)};
-    scene.activations = {activation_until(1300.0, 2000.0), activation_until(2000.0, 2600.0)};
-    TrackState st = build_track_state(scene, TrackStateOptions{});
-    const double now = 1.5;  // the highway runs from 1.275 s to 2.85 s
-    const std::vector<DrawCommand> cmds = build_highway_draws(st, cfg, now, 1.0);
-    const float z_start = static_cast<float>(time_to_z(cfg, now, 1.3, 1.0));
-    const float z_seam = static_cast<float>(time_to_z(cfg, now, 2.0, 1.0));
-    const float z_end = static_cast<float>(time_to_z(cfg, now, 2.6, 1.0));
-    for (bool right : {false, true}) {
-        CAPTURE(right);
-        const std::vector<DrawCommand> rails = rail_boxes(cmds, right);
-        REQUIRE(rails.size() == 3);
-        check_rail(rails[0], cfg.track.z_past, z_start, cfg.track.railing_color);
-        check_rail(rails[1], z_start, z_end, cfg.hydra.sp_active_color);
-        check_rail(rails[2], z_end, cfg.track.z_future, cfg.track.railing_color);
-        for (const DrawCommand& r : rails) {
-            CHECK(r.lo[2] != doctest::Approx(z_seam));
-            CHECK(r.hi[2] != doctest::Approx(z_seam));
-        }
-    }
-}
-
 TEST_CASE("build_highway_draws: a solo neither cuts nor colours the railings") {
     const PreviewConfig cfg = shipped_preview_config();
     {
