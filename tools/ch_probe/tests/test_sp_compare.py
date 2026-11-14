@@ -448,6 +448,62 @@ class TolerancesTest(unittest.TestCase):
         self.assertEqual(report.fails, 0)
 
 
+def _mult_rows(points):
+    """Hand-written watcher rows from (clock_s, score, sp_mult_u32) triples;
+    only the fields the multiplier check reads vary."""
+    rows = []
+    for clock_s, score, mult in points:
+        row = _row(clock_s, 0)
+        row.update(score=score, sp_mult_byte=mult, sp_mult_u32=mult)
+        rows.append(row)
+    return rows
+
+
+def _last_chord_check(last_in_sp, points):
+    """_check_multipliers over three chords whose last one (2500 ms) is in
+    Star Power or not, each pressed at its own ms; the report's lines."""
+    chords = [_chord(0, 0, 1000.0, 4), _chord(1, 480, 2000.0, 4, in_sp=True),
+              _chord(2, 720, 2500.0, 4, in_sp=last_in_sp)]
+    reach = {c["index"]: sp_compare.PressReach(c["ms"], c["ms"]) for c in chords}
+    report = sp_compare.Report()
+    sp_compare._check_multipliers(report, _mult_rows(points), chords, None, reach)
+    return report.lines
+
+
+class LastChordMultiplierTest(unittest.TestCase):
+    """The song's last chord has no next chord to read before, so the check
+    reads it on the row its points land on, not on the watcher's final row."""
+
+    def test_last_chord_paid_in_star_power_before_it_ends_passes(self):
+        # Star Power doubles 4 to 8 at 1.8 s; the last chord's points land at
+        # 2.505 s at 8x; Star Power ends at 3.0 s and the watch runs on to
+        # 3.5 s, so the final row shows 4.
+        lines = _last_chord_check(True, [
+            (0.9, 0, 4), (1.005, 100, 4), (1.8, 100, 8), (2.005, 300, 8),
+            (2.505, 500, 8), (3.0, 500, 4), (3.5, 500, 4)])
+        self.assertEqual(lines, ["PASS multiplier at each chord: 3 of 3 chords "
+                                 "match (one chord of lag allowed)"])
+
+    def test_last_chord_out_of_star_power_passes(self):
+        # Star Power ends at 2.2 s, before the last chord; its points land at
+        # 2.505 s at 4x, and the rows after the song show 1.
+        lines = _last_chord_check(False, [
+            (0.9, 0, 4), (1.005, 100, 4), (1.8, 100, 8), (2.005, 300, 8),
+            (2.2, 300, 4), (2.505, 400, 4), (3.0, 400, 1), (3.5, 400, 1)])
+        self.assertEqual(lines, ["PASS multiplier at each chord: 3 of 3 chords "
+                                 "match (one chord of lag allowed)"])
+
+    def test_last_chord_with_no_score_rise_is_read_on_the_final_row(self):
+        # The score never rises after 2500 ms, so the check falls back to the
+        # row before the final one, which shows 4 after Star Power ended.
+        lines = _last_chord_check(True, [
+            (0.9, 0, 4), (1.005, 100, 4), (1.8, 100, 8), (2.005, 300, 8),
+            (2.505, 300, 8), (3.0, 300, 4), (3.5, 300, 4)])
+        self.assertEqual(lines, ["FAIL multiplier at each chord: first mismatch at "
+                                 "chord 2 (tick 720, 2500.0 ms): game 4, expected 8 "
+                                 "(multiplier 4, in Star Power); 2 of 3 chords match"])
+
+
 class FilesTest(unittest.TestCase):
     def test_a_log_without_the_clock_columns_loads_with_them_nan(self):
         old = [c for c in WATCH_COLUMNS if c not in ("audio_s", "raw_s", "corr_s")]
