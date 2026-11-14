@@ -7,18 +7,23 @@ Under Confirmed are the user's exact words, filed with the user's approval or th
 ## Confirmed
 
 - **2026-11-14** "i dont understand why you always try to invent insane edge cases, this one isnt even possible in clone hero. you cant just activate arbitrarily whenever you want" (session ae1c19f5)
+- **2026-10-31** "i think this would cause more trouble than it would fix. agents are very very bad at remembering to update things and im sure there are tons of stale comments throughout the project that no longer accurately describe their code" (session a7d95f1c)
+- **2026-10-29** "when did they diverge and why? did i ever ask for it?" (session caca5d75)
+- **2026-10-29** "why are we even using two different systems? why are you still trying to convince me of more convoluted bullshit?" (session 61cee421)
+- **2026-10-29** "yes everything should use one rule." (session 61cee421)
+- **2026-10-29** "so what went wrong here, and how can i trust the results of any audit when this keeps happening?" (session b4409ae9)
+- **2026-10-29** "what are we already doing and why are you asking me to re derive it" (session caca5d75)
+- **2026-10-19** "when did I tell you it was acceptable to remove activations?? why is hydra activating on nothing? i never approved this design" (session 7bd3ac91)
+- **2026-10-19** "Bring back the old look: light the lanes for the half measure before the chord, display only, engine timing unchanged." (session 7bd3ac91)
+
 
 ## Unconfirmed
 
 - **2026-10-31** "Yes, add it (Recommended)", to: "Proposal 4. Should the reviewer check "was this asked for?" ..." (session a7d95f1c-a1ce-46e9-bf4d-2e7cfbd98d1e; note: no-silent-functionality-changes; backs: docs/agents/derive-once-review.md step 9)
 - **2026-10-31** "Yes, add it (Recommended)", to: "Proposal 5. Should a commit or release never include edits nobody in that session made or was asked to make? ..." (session a7d95f1c-a1ce-46e9-bf4d-2e7cfbd98d1e; note: no-silent-functionality-changes; backs: docs/agents/agent-rules.md rule 13)
-- **2026-10-31** "i think this would cause more trouble than it would fix. agents are very very bad at remembering to update things and im sure there are tons of stale comments throughout the project that no longer accurately describe their code", declining a test that pins on-screen text (proposal 3 of the silent-changes finding). (session a7d95f1c-a1ce-46e9-bf4d-2e7cfbd98d1e; note: none; backs: docs/audit/2026-10-31-silent-changes.md)
 - **2026-10-31** "Yes, ban them (Recommended)", to: "Proposal 2. Should opt-out lines be banned? ..." (session a7d95f1c-a1ce-46e9-bf4d-2e7cfbd98d1e; note: no-silent-functionality-changes; backs: docs/agents/agent-rules.md rule 12)
 - **2026-10-31** "Yes, require it", to: "Should every rule question list each screen's before and after text?" (session a7d95f1c-a1ce-46e9-bf4d-2e7cfbd98d1e; note: questions-describe-the-real-rule; backs: docs/agents/agent-rules.md rule 11)
-- **2026-10-29** "when did they diverge and why? did i ever ask for it?" (session 2026-10-29-caca5d75, by date; note: never-keep-a-split-quietly; backs: docs/agents/audit-method.md)
 - **2026-10-29** "why are we even using two different systems? why are you still trying to convince me of more convoluted bullshit?" and ruled "yes everything should use one rule" for the Backend timings rows (M39/306/33). (session 2026-10-29-caca5d75, by date; note: never-keep-a-split-quietly; backs: docs/agents/audit-method.md)
 - **2026-10-29** As the note records it: It closes only on the user's words that name both sides. The five rules the user approved on 2026-10-29 ("yes both"): a split is a question by default; "already decided" must quote the ruling, and the quote must name both values. And: The user asked "how can i trust the results of any audit when this keeps happening?" (session: not stated; note: audit-closures-need-quoted-ruling; backs: docs/agents/audit-method.md)
-- **2026-10-19** "when did I tell you it was acceptable to remove activations??" Ruling: "Bring back the old look: light the lanes for the half measure before the chord, display only, engine timing unchanged." (session: not stated; note: questions-describe-the-real-rule; backs: no page yet)
 - **2026-10-07** As the note records it: The user approved wording ("Click Scan library first") that would have been false there. (session: not stated; note: questions-describe-the-real-rule; backs: no page yet)
 - **2026-10-05** As the note records it: The user approved it in a bulk "all recommended", and E3 shipped the wider rule. (session: not stated; note: questions-describe-the-real-rule; backs: no page yet)
-- **not stated** "what are we already doing and why are you asking me to re derive it" (session: not stated; note: never-keep-a-split-quietly; backs: docs/agents/audit-method.md)
