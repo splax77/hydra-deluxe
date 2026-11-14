@@ -42,6 +42,8 @@ h1 { font-size: 17px; font-weight: 500; margin: 0; }
 .dhw .k { color: #e8d6c4; }
 .dhw b { font-weight: 500; color: #fff; }
 .dhw .note { color: #e8d6c4; }
+.dhw .tag { margin-left: auto; font-size: 12px; padding: 0 6px; border-radius: 3px; border: 1px solid var(--yellow); color: var(--yellow); background: #2a2410; }
+.dhw .tag.short { border-color: #ff7f00; color: #ff7f00; background: #2e1a08; }
 .today { color: var(--dim); font-family: var(--mono); font-size: 12px; }
 [hidden] { display: none !important; }
 </style></head><body>
@@ -50,8 +52,8 @@ h1 { font-size: 17px; font-weight: 500; margin: 0; }
   <div class="mocknote">
     <div><b>Mockup.</b> The Dynamic Hit Window row on seven real activations, as the plan would draw it.</div>
     <span>Click an activation to open or close it. "Collapse all" closes every one in its panel. Each opened activation shows its sentence (today's text, unchanged), the new row under it, and a grey line with the row Hydra 3.0.0 draws today.</span>
-    <span>The new row is the label, then the frontend end, then the backend end. Each end is the word, that note's window, then that note's chord. An early fill has one end. There is no tag.</span>
-    <span>Not real here: the points figure in a squeeze-out sentence is left as "…" because the figures file does not hold it. Chord words are written as Hydra prints them with Pro Drums off, and assume a plain (not 2x) kick.</span>
+    <span>The new row is the label, then the frontend end, then the backend end, then the tag at the right edge. Each end is the word, that note's window, then that note's chord. An early fill has one end. The tag reads "xx ms safe" at 0.0 or more and "xx ms short" below 0, and its value is the same sum Hydra 3.0.0 draws, with "spare" renamed "safe".</span>
+    <span>Not real here: the points figure in a squeeze-out sentence is left as "…" because the figures file does not hold it. Chord words are written as Hydra prints them with Pro Drums on, as on the user's screen, and assume a plain (not 2x) kick.</span>
   </div>
 
   <div id="panels"></div>
@@ -65,39 +67,40 @@ const PANELS = [
   { title: "Periphery - Satellites (B)", sub: "the user's screen · 857,525 · 0 1- 1+ 3 3+ 1 0 4", acts: [
     { n: 2, code: "1-", badge: "squeeze out 83.3 ms", warn: true,
       sentence: "Hit the [ R   ] note more than 83.3 ms late so it lands after Star Power ends. It scores … fewer points, and its SP phrase banks for later.",
-      f: ["85.7 ms", "[Kick - Blue cymbal]"], b: ["53.1 ms", "[Red]"],
+      f: ["85.7 ms", "[Kick - Blue cymbal]"], b: ["53.1 ms", "[Red snare]"], t: "55.4 ms safe",
       today: "85.7 ms early   53.1 ms late   [55.4 ms spare]" },
     { n: 3, code: "1+", badge: "squeeze in -83.3 ms", warn: false,
       sentence: "Hit the SP phrase's last note no more than 83.3 ms late so it lands before Star Power ends. The phrase then counts while Star Power runs, which makes Star Power last longer.",
-      f: ["73.6 ms", "[Kick - Yellow cymbal]"], b: ["53.1 ms", "[Red]"],
+      f: ["73.6 ms", "[Kick - Yellow cymbal]"], b: ["53.1 ms", "[Red snare]"], t: "210.0 ms safe",
       today: "73.6 ms late   53.1 ms early   [210.0 ms spare]" },
     { n: 5, code: "3+", badge: "squeeze in 166.7 ms", warn: true,
       sentence: "Hit the SP phrase's last note more than 166.7 ms early so it lands before Star Power ends. The phrase then counts while Star Power runs, which makes Star Power last longer.",
-      f: ["53.1 ms", "[Red]"], b: ["85.7 ms", "[Kick - Yellow cymbal]"],
+      f: ["53.1 ms", "[Red snare]"], b: ["85.7 ms", "[Kick - Yellow cymbal]"], t: "27.9 ms short", short: true,
       today: "85.7 ms late   53.1 ms early   [27.9 ms short]" },
   ]},
   { title: "Dead on Arrival (O)", sub: "Fall Out Boy", acts: [
     { n: 3, code: "3+", badge: "squeeze in -444.9 ms", warn: false,
       sentence: "Hit the SP phrase's last note no more than 444.9 ms late (eff. 443.9 ms) so it lands before Star Power ends. The phrase then counts while Star Power runs, which makes Star Power last longer.",
-      f: ["83.4 ms", "[Kick - Yellow cymbal]"], b: ["80.7 ms", "[Kick]"],
-      today: "83.4 ms late   80.7 ms early   [608.7 ms spare]" },
+      f: ["83.4 ms", "[Kick - Yellow cymbal]"], b: ["80.7 ms", "[Kick]"], t: "609.3 ms safe",
+      today: "83.4 ms late   80.7 ms early   [608.7 ms spare]",
+      note: "The tag is 609.3 here because the anchor's window now counts through the scale's early side (1.0044), which is the side of its frontend end. Today's code used the late side (0.9970) and gave 608.7. Keeping today's side would print 608.7 ms safe." },
   ]},
   { title: "Burnout", sub: "Green Day", acts: [
     { n: 1, code: "", badge: "squeeze out 163.0 ms", warn: true,
       sentence: "Hit the [  Y  ] note more than 163.0 ms late so it lands after Star Power ends. It scores … fewer points, and its SP phrase banks for later.",
-      f: ["84.5 ms", "[Kick - Green cymbal]"], b: ["84.3 ms", "[Yellow cymbal]"],
+      f: ["84.5 ms", "[Kick - Green cymbal]"], b: ["84.3 ms", "[Yellow cymbal]"], t: "5.4 ms safe",
       today: "84.5 ms early   84.3 ms late   [5.4 ms spare]" },
   ]},
   { title: "Focus [Ariana Grande]", sub: "SoundHaven · the [Kick] here is the chord that overfilled the meter", acts: [
     { n: 2, code: "3+", badge: "squeeze in 25.0 ms", warn: true,
       sentence: "Hit the SP phrase's last note more than 25.0 ms early so it lands before Star Power ends. The phrase then counts while Star Power runs, which makes Star Power last longer.",
-      f: ["48.1 ms", "[Blue]"], b: ["61.9 ms", "[Kick]"],
+      f: ["48.1 ms", "[Blue tom]"], b: ["61.9 ms", "[Kick]"], t: "85.1 ms safe",
       today: "61.9 ms late   48.1 ms early   [85.1 ms spare]" },
   ]},
   { title: "Tapped Out", sub: "Mike Orlando · an early fill has one end", acts: [
     { n: 3, code: "E0", badge: "early fill 0.0 ms", warn: false,
       sentence: "Early fill: 0.0 ms (required)",
-      f: ["82.9 ms", "[Kick - Green cymbal]"], b: null,
+      f: ["82.9 ms", "[Kick - Green cymbal]"], b: null, t: "82.9 ms safe",
       today: "82.9 ms early   [82.9 ms spare]" },
   ]},
 ];
@@ -132,9 +135,9 @@ PANELS.forEach((p, pi) => {
       <div class="body">
         <div class="sentence${a.warn ? " diff" : ""}">
           <div>${esc(a.sentence)}</div>
-          <div class="dhw"><span class="k">Dynamic Hit Window:</span>${end("frontend", a.f)}${end("backend", a.b)}</div>
+          <div class="dhw"><span class="k">Dynamic Hit Window:</span>${end("frontend", a.f)}${end("backend", a.b)}<span class="tag${a.short ? " short" : ""}">${esc(a.t)}</span></div>
         </div>
-        <div class="today">Today (3.0.0): Dynamic Hit Window: ${esc(a.today)}</div>
+        <div class="today">Today (3.0.0): Dynamic Hit Window: ${esc(a.today)}</div>${a.note ? `<div class="today">${esc(a.note)}</div>` : ""}
       </div>`;
     el.querySelector(":scope > button").addEventListener("click", () => setOpen(el, el.querySelector(".body").hidden));
     list.append(el);

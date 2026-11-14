@@ -2,13 +2,13 @@
 
 ## The short version
 
-The Dynamic Hit Window row on the Paths tab gets simpler and stops contradicting the sentence above it. The new row shows two things only: the window on the frontend and the window on the backend, each followed by the note or chord on that end. The spare tag and all its arithmetic go.
+The Dynamic Hit Window row on the Paths tab stops contradicting the sentence above it. The row shows the window on the frontend and the window on the backend, each followed by the note or chord on that end, and then the small tag at the right edge. The tag keeps today's figure and gets a plain definition and new words: "xx ms safe" at 0.0 or more, "xx ms short" below 0.
 
-On the user's own screen (Satellites, activation 3) the sentence says "no more than 83.3 ms late" and the row under it says `73.6 ms late   53.1 ms early` with a `210.0 ms spare` tag. After this plan the row reads `frontend 73.6 ms [Kick - Yellow cymbal]   backend 53.1 ms [Red]`.
+On the user's own screen (Satellites, activation 3) the sentence says "no more than 83.3 ms late" and the row under it says `73.6 ms late   53.1 ms early` with a `210.0 ms spare` tag. After this plan the row reads `frontend 73.6 ms [Kick - Yellow cymbal]   backend 53.1 ms [Red snare]` with a `210.0 ms safe` tag.
 
-The cause of the contradiction is that three pieces of code each decide "which end is each note on" by themselves. This plan gives that question one owner in the core.
+The cause of the contradiction is that three pieces of code each decide "which end is each note on" by themselves. This plan gives that question one owner in the core. The same owner also picks which side of the transfer scale the anchor's window counts through, which is the one place the tag's figure can change (Dead on Arrival, activation 3: 608.7 today, 609.3 after; question 4).
 
-Nothing is built until the user says yes. The mockup is at `docs/superpowers/specs/2026-11-13-dhw-derive-mockup/index.html`. Three questions for the user are at the end.
+Nothing is built until the user says yes. The mockup is at `docs/superpowers/specs/2026-11-13-dhw-derive-mockup/index.html`. Four questions for the user are at the end.
 
 ## Background
 
@@ -20,17 +20,22 @@ The user's rulings of 2026-11-13, in their own words (P23 to P25):
 - "helps? hurts? why do you keep inventing your own metrics i never asked for?" and "you're STILL inventing your own metrics. why do you keep lying? squeeze 3 has a timing."
 - "just show what the window is for the frontend and the backend and what the note or chord is on each end. dont invent your own labls or metrics."
 
-So the row holds the label, the frontend end and the backend end. Each end is the word, that note's window, then that note's chord. Nothing else is on the row. The earlier draft of this plan added lead words and new tag wordings; they are gone.
+And, later the same day, on the little badge showing the timing leeway (P27): "the little badge showing the timing leeway is fine, but it needs to have a solid definition, not something you invented. i say keep it simple: xx ms safe >=0 ms, xx ms short <0ms".
+
+So the row holds the label, the frontend end, the backend end and the tag. Each end is the word, that note's window, then that note's chord. The tag is the one figure Hydra ships today, under its new words. Nothing else is on the row. The earlier draft of this plan added lead words and new tag wordings; they are gone.
+
+The tag's definition, in one sentence: the windows on the row's two ends added together, with the anchor's window counted through the stored transfer scale, minus the badge's own timing figure (`SPSqueeze::difficulty()` for a squeeze, `Activation::e_difficulty(true)` for an early fill). This is today's "spare" sum, renamed "safe". Its owner is `squeeze_safe_ms` and `early_fill_safe_ms` in `src/core/note_window.h`, the two functions that are called `..._spare_ms` today. The tag prints the size without a minus sign, "safe" where the sum is 0.0 or more and "short" where it is below 0. There is no other formula and no separate wording for negative figures.
 
 How three owners came about. The squeeze sentence has picked "early" or "late" from one core test since commit c68982cf (2026-10-03). The schedule tool, written later (9d5bc5d5, 2026-11-08), picks direction by squeeze kind alone; that is safe there because the tool skips the squeezes where the two rules differ (P6). The row (970cb916, 2026-11-12) picks by kind alone too, but it shows on every badge, including the ones the tool skips. The brief says the row copied the tool's rule through the old plan's premise P10; that plan is removed and I did not open it.
 
 What is wrong today, each checked in the code:
 
 1. The row's direction words are fixed by squeeze kind (P4). The sentence's word follows a different test (P3). On Satellites activation 3 they contradict each other.
-2. The spare tag is always "windows minus the badge figure" (P5). A negative figure makes it bigger: 73.6 + 53.1 + 83.3 = 210.0. The user did not ask for this figure, and it goes.
+2. The tag's sum is "windows minus the badge figure" (P5). A negative figure makes it bigger: 73.6 + 53.1 + 83.3 = 210.0. The user ruled the tag stays, with the plain definition above and the words "safe" and "short" (P27).
 3. The row never says which note a figure is for. The anchor is named nowhere on screen.
+4. The scale side the anchor's window counts through is picked by squeeze kind (P5), a copy of the tool's rule. For a squeeze whose timing the sentence says "no more than" the anchor is on the other end than its kind implies, so the kind-based pick reads the scale side of the other end.
 
-The badge figure and the schedule file use opposite signs for a squeeze out. The badge shows `offset_ms` for a squeeze in and `offset_ms` negated for a squeeze out (P2). Satellites activation 2 has `offset_ms` -83.3 in the file and `squeeze out 83.3 ms` on the badge. The new row prints neither; it prints window sides only.
+The badge figure and the schedule file use opposite signs for a squeeze out. The badge shows `offset_ms` for a squeeze in and `offset_ms` negated for a squeeze out (P2). Satellites activation 2 has `offset_ms` -83.3 in the file and `squeeze out 83.3 ms` on the badge. The tag reads the badge's own figure through `SPSqueeze::difficulty()`, which has the badge's sign for both kinds, so the file's sign never reaches the screen.
 
 ## The design
 
@@ -40,11 +45,14 @@ The badge figure and the schedule file use opposite signs for a squeeze out. The
 |---|---|---|
 | Which end (frontend or backend) is each note of a squeeze on? | new `squeeze_ends(const SPSqueeze&)` in `src/core/note_window.h` | new |
 | Which end is an early fill's note on? | new `early_fill_end(double e_offset)` in `src/core/note_window.h` | new |
-| What is each end's window and chord? | new `squeeze_window_ends(act, k, chords)` and `early_fill_window_end(act, chords)`, replacing `squeeze_out_window`, `squeeze_in_window`, `early_fill_window` | new |
+| What is each end's window, chord and the tag's sum? | new `squeeze_window_ends(act, k, chords)` and `early_fill_window_end(act, chords)`, replacing `squeeze_out_window`, `squeeze_in_window`, `early_fill_window` | new |
+| Which side of the transfer scale does the anchor's window count through? | `squeeze_window_ends`, reading the anchor's end from `squeeze_ends`: frontend takes the scale's early side, backend its late side | new; replaces the pick by squeeze kind |
+| What is the tag's sum? | `squeeze_safe_ms` and `early_fill_safe_ms` (`src/core/note_window.h`) | exist as `squeeze_spare_ms` and `early_fill_spare_ms`; renamed, same sum |
+| Is the tag "safe" or "short"? | `safe_is_short` (`src/core/note_window.h`) | exists as `spare_is_short`; renamed |
 | How wide is a note's window? | `chord_sides_ms` (`src/core/note_window.h`) | exists; unchanged |
 | What is a chord called? | `Chord::rowstr` (`src/core/model.cpp`) | exists; unchanged |
 
-The rulings this plan quotes are about what the row shows. They bind every row of this table: each one feeds the screen only a window side, an end word or a chord name. No row moves or converts a quantity the engine owns. Every figure is read from the chart's chord times.
+The rulings this plan quotes are about what the row shows. They bind every row of this table. Every row feeds the screen a window side, an end word, a chord name or the tag's sum. The sum already exists in the core and the plan only renames it. The one row that touches an engine-owned quantity is the scale side. The plan does not convert the scale or move any press with it: it only reads the stored scale's early or late side, as today, from the one owner of the anchor's end instead of from the squeeze kind. Every figure is read from the chart's chord times and the record's stored scales.
 
 ### Which end each note is on
 
@@ -56,23 +64,29 @@ The squeezed note's end is always the word its sentence prints: "late" is the ba
 
 ### The row
 
-The row reads: `Dynamic Hit Window:`, then `frontend`, its window and its chord, then `backend`, its window and its chord. Frontend always comes first; that is the fixed order, and the words themselves show it. An early fill has one end.
+The row reads: `Dynamic Hit Window:`, then `frontend`, its window and its chord, then `backend`, its window and its chord, then the tag at the right edge, as `draw_window_tag` places it today. Frontend always comes first; that is the fixed order, and the words themselves show it. An early fill has one end.
 
-Each window is that note's own window side from the game's rule, as today (`chord_sides_ms`). Each chord is `Chord::rowstr` in the record's Pro Drums setting, the way the "Chord" line above it is (P19).
+Each window is that note's own window side from the game's rule, as today (`chord_sides_ms`). Each chord is `Chord::rowstr` in the record's Pro Drums setting, the way the "Chord" line above it is (P19). With Pro Drums on, a red note reads "Red snare" and a non-cymbal blue note "Blue tom".
 
-### The scale side is out of scope
+### The tag
 
-The earlier draft fixed which side of the transfer scale the anchor uses. That only ever fed the spare. The new row prints two unscaled window sides and nothing else, so no figure on it reads a scale. The fix is dropped. `squeeze_spare_ms` was the only reader of the scale in the row's code, and it is removed.
+The tag's text is the size of the sum without a minus sign, then " ms safe" where the sum is 0.0 or more and " ms short" where it is below 0. A sum of exactly 0.0 reads "0.0 ms safe". The test is on the unrounded sum, so a sum of -0.04 reads "0.0 ms short".
 
-### What goes
+The sum is `squeeze_safe_ms` for a squeeze: the anchor's window times the scale side (below), plus the squeezed note's window, minus `SPSqueeze::difficulty()`. For an early fill it is `early_fill_safe_ms`: the window of the note that makes Star Power ready, minus `Activation::e_difficulty(true)`. Both are today's code (`src/core/note_window.cpp`, lines 65 to 69); the plan changes their names and the scale side, and nothing in the arithmetic.
 
-These are removed, with every test that pins them:
+### The scale side
 
-- `squeeze_spare_ms`, `early_fill_spare_ms`, `spare_is_short`, `WindowRow::spare_ms` and `WindowRow::is_short` in `src/core/note_window.h` and `.cpp`.
-- `WindowRowView::tag` and `WindowRowView::is_short` in `src/app/path_view.h`, and the tag text in `window_row_view`.
-- The tag drawing: `draw_window_tag` and `window_tag_width` in `src/ui/badge_pill.h`, and their calls in `window_row` in `src/ui/paths_tab.cpp`.
-- In `tests/test_note_window.cpp`: "note window: the squeeze-out sums from the mockup" and "note window: exactly 0 is spare, anything below is short" whole, and the `spare_ms` checks inside "note window: each squeeze reads its own side of its own scale" and "note window: the early fill row reads the SP-ready note".
-- The tag's checks in `tests/test_activation_rows.cpp`, `tests/test_badge_pill.cpp` and `tests/ui/uitest_paths.cpp`. I counted the mentions in those files but did not read the cases (P18); T2 lists each one by name before it deletes any.
+Today the anchor's window counts through the stored scale's early side for a squeeze out and its late side for a squeeze in (`squeeze_out_window`, `squeeze_in_window`). That is the kind-based direction rule the sentence does not use. After the plan the owner reads the anchor's end from `squeeze_ends`: an anchor on the frontend counts through the scale's early side, an anchor on the backend through its late side.
+
+Which stored scale it is stays as today: a squeeze out's is `Activation::transfer_post` and a squeeze in's is `SPSqueeze::transfer`. Those say where the record keeps the scale, not which way a note is hit. The figure changes only when the anchor's end differs from today's pick and the scale's two sides differ. That is a squeeze whose timing the sentence says "no more than", on a chart whose scale is not 1.0 on both sides. Of the six squeeze panels below, only Dead on Arrival activation 3 changes: its early side is 1.0044 and its late side 0.9970.
+
+### What goes and what is renamed
+
+Renamed, with the arithmetic untouched: `squeeze_spare_ms` to `squeeze_safe_ms`, `early_fill_spare_ms` to `early_fill_safe_ms`, `spare_is_short` to `safe_is_short`, `WindowRow::spare_ms` to `safe_ms`. In `src/ui/badge_pill.h` the tag drawing stays, and its comment says "safe" where it says "spare". `WindowRowView::tag` and `is_short` stay.
+
+Removed: `squeeze_out_window` and `squeeze_in_window` (one function, `squeeze_window_ends`, replaces both) and `early_fill_window` (replaced by `early_fill_window_end`). The tag's wording in `window_row_view` moves from " spare" to " safe". The direction words `"early"` and `"late"` leave `window_row_view`.
+
+The tests that pin the old names and wording are edited to the new ones, never loosened. T2 lists by name every test case in `tests/test_note_window.cpp`, `tests/test_activation_rows.cpp`, `tests/test_badge_pill.cpp` and `tests/ui/uitest_paths.cpp` that mentions the spare, the tag or the removed functions (P18; I counted the mentions but did not read the cases).
 
 ### What each caller changes
 
@@ -80,43 +94,46 @@ The squeeze sentence (`squeeze_sentences` in `src/app/path_view.cpp`) asks `sque
 
 The row view reads `squeeze_window_ends` and `early_fill_window_end`. It holds no direction word of its own. It names each note from the chord at that tick; `ChordTimes` gains the chord at each place, so one lookup gives the window and the name.
 
-The schedule tool (`tools/replay_schedule.cpp`) reads the anchor's end from `squeeze_ends` where it picks by kind today: the aim's sign, the "early" or "late" word in its refusals, its choice of steady span, and the argument of `moving_side`. It still skips the squeezes it skips today, so on every squeeze it times the answer is the one it has now. Its output must not change by a digit. "schedule: Freak 1144, Rescued 561 and 931, Ghost 756" pins the aims and rooms of four squeeze-outs to the cent (P17).
+The schedule tool (`tools/replay_schedule.cpp`) reads the anchor's end from `squeeze_ends` where it picks a direction by kind today: the aim's sign, the "early" or "late" word in its refusals, its choice of steady span, and the scale side. `moving_side` stops taking the squeeze kind: it takes the anchor's end and returns the scale's early side for the frontend and its late side for the backend, the same rule as the row's tag. `SqueezeGeometry` gains the anchor's end, filled once where the geometry is built from the `SPSqueeze`. The tool builds a geometry only for squeezes whose timing needs hitting (it does not time the others), and for those the anchor's end is the one its kind gives today, so the tool's answers do not change. Its output must not change by a digit. Where the tool picks by kind for a reason that is not direction, such as which scoring rule pays a squeeze out's late gems, it keeps the kind. "schedule: Freak 1144, Rescued 561 and 931, Ghost 756" pins the aims and rooms of four squeeze-outs to the cent (P17).
 
 Prior art, from one web search whose result pages I did not open: rhythm-game tools commonly show timing per note, and a write-up warns that players confuse the sign of an offset with early or late ([DEV Community](https://dev.to/skywalker_2de7de5f97df567/building-fair-rhythm-game-judgement-windows-in-javascript-1og9)). I found no tool that shows two notes' windows for one timing.
 
 ## What the user will see
 
-Only the Paths tab's Dynamic Hit Window row changes. Badges, sentences, ratings, tiers, eff. figures and the Backend timings table stay as they are.
+Only the Paths tab's Dynamic Hit Window row changes: its direction words, its chords, the tag's word and, on one panel, the tag's last digit. Badges, sentences, ratings, tiers, eff. figures and the Backend timings table stay as they are.
 
-Each panel is in the mockup. "Today" is what Hydra 3.0.0's code computes. The windows and gems come from the figures file (P13). Chord words are written as with Pro Drums off (P21).
+Each panel is in the mockup. "Today" is what Hydra 3.0.0's code computes. The windows, gems and scales come from the figures file (P13). The tag's value on each panel is the figures file's window sides and scales put through the sum above, worked out again for this plan (the sum: anchor window times scale side, plus squeezed window, minus the badge figure). Chord words are the Pro Drums-on words, as on the user's screen (P21).
 
-**Satellites, activation 2** (`squeeze out 83.3 ms`; sentence: "more than 83.3 ms late")
-- Today: `85.7 ms early   53.1 ms late` · tag `55.4 ms spare`
-- After: `frontend 85.7 ms [Kick - Blue cymbal]   backend 53.1 ms [Red]`
+**Satellites, activation 2** (`squeeze out 83.3 ms`; sentence: "more than 83.3 ms late"; scale 1.0 both sides)
+- Today: `85.7 ms early   53.1 ms late` · tag `55.4 ms spare` (85.7 + 53.1 - 83.3)
+- After: `frontend 85.7 ms [Kick - Blue cymbal]   backend 53.1 ms [Red snare]` · tag `55.4 ms safe`
 
-**Satellites, activation 3** (`squeeze in -83.3 ms`; sentence: "no more than 83.3 ms late")
-- Today: `73.6 ms late   53.1 ms early` · tag `210.0 ms spare`
-- After: `frontend 73.6 ms [Kick - Yellow cymbal]   backend 53.1 ms [Red]`
+**Satellites, activation 3** (`squeeze in -83.3 ms`; sentence: "no more than 83.3 ms late"; scale 1.0 both sides)
+- Today: `73.6 ms late   53.1 ms early` · tag `210.0 ms spare` (73.6 + 53.1 + 83.3)
+- After: `frontend 73.6 ms [Kick - Yellow cymbal]   backend 53.1 ms [Red snare]` · tag `210.0 ms safe`
 
-**Satellites, activation 5** (`squeeze in 166.7 ms`; sentence: "more than 166.7 ms early")
-- Today: `85.7 ms late   53.1 ms early` · tag `27.9 ms short`
-- After: `frontend 53.1 ms [Red]   backend 85.7 ms [Kick - Yellow cymbal]`
+**Satellites, activation 5** (`squeeze in 166.7 ms`; sentence: "more than 166.7 ms early"; scale 1.0 both sides)
+- Today: `85.7 ms late   53.1 ms early` · tag `27.9 ms short` (85.7 + 53.1 - 166.7 = -27.9)
+- After: `frontend 53.1 ms [Red snare]   backend 85.7 ms [Kick - Yellow cymbal]` · tag `27.9 ms short`
 
-**Dead on Arrival (O), activation 3** (`squeeze in -444.9 ms`; sentence: "no more than 444.9 ms late")
-- Today: `83.4 ms late   80.7 ms early` · tag `608.7 ms spare`
-- After: `frontend 83.4 ms [Kick - Yellow cymbal]   backend 80.7 ms [Kick]`
+**Dead on Arrival (O), activation 3** (`squeeze in -444.9 ms`; sentence: "no more than 444.9 ms late"; scale early 1.0044, late 0.9970)
+- Today: `83.4 ms late   80.7 ms early` · tag `608.7 ms spare`: 83.4 x 0.9970 (the late side, picked by squeeze in) + 80.7 + 444.9
+- After: `frontend 83.4 ms [Kick - Yellow cymbal]   backend 80.7 ms [Kick]` · tag `609.3 ms safe`: 83.4 x 1.0044 (the early side, because the anchor is on the frontend) + 80.7 + 444.9
+- Keeping today's late side would print `608.7 ms safe`. Question 4 asks which.
 
-**Burnout, activation 1** (`squeeze out 163.0 ms`; sentence: "more than 163.0 ms late")
-- Today: `84.5 ms early   84.3 ms late` · tag `5.4 ms spare`
-- After: `frontend 84.5 ms [Kick - Green cymbal]   backend 84.3 ms [Yellow cymbal]`
+**Burnout, activation 1** (`squeeze out 163.0 ms`; sentence: "more than 163.0 ms late"; scale early 0.9946, late 1.0224)
+- Today: `84.5 ms early   84.3 ms late` · tag `5.4 ms spare` (84.5 x 0.9946 + 84.3 - 163.0)
+- After: `frontend 84.5 ms [Kick - Green cymbal]   backend 84.3 ms [Yellow cymbal]` · tag `5.4 ms safe`
 
-**Focus, activation 2** (`squeeze in 25.0 ms`; sentence: "more than 25.0 ms early")
-- Today: `61.9 ms late   48.1 ms early` · tag `85.1 ms spare`
-- After: `frontend 48.1 ms [Blue]   backend 61.9 ms [Kick]`
+**Focus, activation 2** (`squeeze in 25.0 ms`; sentence: "more than 25.0 ms early"; scale 1.0 both sides)
+- Today: `61.9 ms late   48.1 ms early` · tag `85.1 ms spare` (61.9 + 48.1 - 25.0)
+- After: `frontend 48.1 ms [Blue tom]   backend 61.9 ms [Kick]` · tag `85.1 ms safe`
 
-**Tapped Out, activation 3** (`early fill 0.0 ms`, required). The 0.0 is from the old mockup, not from the figures file (P14).
-- Today: `82.9 ms early` · tag `82.9 ms spare`
-- After: `frontend 82.9 ms [Kick - Green cymbal]`
+**Tapped Out, activation 3** (`early fill 0.0 ms`, required; P14)
+- Today: `82.9 ms early` · tag `82.9 ms spare` (82.9 - 0.0)
+- After: `frontend 82.9 ms [Kick - Green cymbal]` · tag `82.9 ms safe`
+
+I worked each "Today" value out from the figures file with today's rule, and each "After" value from the same file with the rule above. Only Dead on Arrival's differs. The one visible word change on every tag is "spare" to "safe"; "short" is unchanged. T5 reads the real screens to confirm (P13).
 
 I could not click the mockup in a browser myself: headless Edge returned nothing on two tries. The main session clicks it before the user sees it (T5).
 
@@ -135,25 +152,28 @@ Acceptance criteria, each a test in `tests/test_note_window.cpp` that the main s
 - For a squeeze in and a squeeze out, each at an offset of +0.001, 0.0 and -0.001, the squeezed note's end is the one the design names and the anchor's is the other. The test fails if the function picks by kind alone.
 - For an early fill at an `e_offset` of +0.001, 0.0 and -0.001, the end follows the sign of `e_difficulty`.
 - `squeeze_window_ends` returns each end's window side and tick, with the frontend first, on a fixture whose two notes have different sides.
-- The new functions return no spare, no scale and no figure but the two window sides. The reviewer reads the header for this.
+- The anchor's scale side follows its end. On a fixture whose scale reads early 1.0044 and late 0.9970, a squeeze out with a timing and a squeeze in with a timing use the early side for a squeeze out and the late side for a squeeze in. A squeeze in and a squeeze out whose timing needs no hitting use the early side for the squeeze in and the late side for the squeeze out. The test fails if the side is picked by kind.
+- The safe sum is today's, renamed: the existing sum checks (the squeeze-out sums, the early fill row) pass with only the names changed and no expected value edited. Exactly 0.0 is not short and any sum below 0.0 is short (`safe_is_short`).
+- The new functions return no figure but the two window sides and the sum. The reviewer reads the header for this.
 
-### T2: the sentence, the row and the tag's removal
+### T2: the sentence, the row and the tag's new words
 
 Waits for: T1 merged.
 
-Owned files: `src/app/path_view.h`, `src/app/path_view.cpp`, `src/ui/paths_tab.cpp`, `src/ui/badge_pill.h`, `tests/test_activation_rows.cpp`, `tests/test_badge_pill.cpp`, `tests/ui/uitest_paths.cpp`, and the removals from `src/core/note_window.h`, `src/core/note_window.cpp` and `tests/test_note_window.cpp`.
+Owned files: `src/app/path_view.h`, `src/app/path_view.cpp`, `src/ui/paths_tab.cpp`, `src/ui/badge_pill.h`, `tests/test_activation_rows.cpp`, `tests/test_badge_pill.cpp`, `tests/ui/uitest_paths.cpp`, and the renames and removals in `src/core/note_window.h`, `src/core/note_window.cpp` and `tests/test_note_window.cpp`.
 
-First list, by name, every test case in the three test files that mentions the tag or the spare, and put the list in the report. Then make the changes in "What each caller changes" and "What goes".
+First list, by name, every test case in the four test files that mentions the tag, the spare or a removed function, and put the list in the report. Then make the changes in "What each caller changes" and "What goes and what is renamed".
 
 Acceptance criteria. The main session runs `hydra_tests.exe "-tc=note window*"`, the activation-row and badge-pill cases, and the Paths uitest; the executor gives the exact case names in its report.
 
 - The sentence text of every corpus activation is the same before and after. The existing sentence tests pin this, and none is edited.
-- Burnout activation 1 and Focus activation 2 (both in the corpus) print the "After" rows above, pinned as literals.
+- Burnout activation 1 and Focus activation 2 (both in the corpus) print the "After" rows and tags above, pinned as literals. The test names the Pro Drums setting it reads, and pins that setting's chord words ("Blue tom" with it on, "Blue" with it off).
+- Every corpus tag reads its size without a minus sign, then " ms short" exactly when the sum is below 0.0 and " ms safe" otherwise. A test reads every corpus tag for this.
 - On every corpus squeeze, the row's end for the squeezed note matches its sentence: `backend` where the sentence says "late", `frontend` where it says "early". The test reads both from the built view and fails if either is picked by kind.
 - Every row lists the frontend end first, and an early fill row has one end.
 - Every squeeze in, squeeze out and early fill badge still has a row (P12): rows equal badges on every corpus path.
-- A grep of `src/`, `tools/` and `tests/` finds none of `squeeze_spare_ms`, `early_fill_spare_ms`, `spare_is_short`, `spare_ms`, `draw_window_tag`, `window_tag_width`, `" spare"` or `" short"`.
-- No row text holds "early", "late", "spare" or "short". A test reads every corpus row for this.
+- A grep of `src/`, `tools/` and `tests/` finds none of `squeeze_spare_ms`, `early_fill_spare_ms`, `spare_is_short`, `spare_ms`, `squeeze_out_window`, `squeeze_in_window`, `early_fill_window(` or `" spare"`.
+- No row text outside the tag holds "early", "late", "spare" or "short". A test reads every corpus row for this.
 - Ratings, tiers and eff. figures are unchanged: their existing tests pass unedited.
 
 ### T3: the schedule tool
@@ -162,12 +182,13 @@ Waits for: T1 merged.
 
 Owned files: `tools/replay_schedule.h`, `tools/replay_schedule.cpp`, `tests/test_replay_schedule.cpp`.
 
-Route the tool's by-kind direction choices through `squeeze_ends`, as "What each caller changes" says.
+Route the tool's by-kind direction choices through `squeeze_ends`, as "What each caller changes" says, including `moving_side` taking the anchor's end. First list every place in `tools/replay_schedule.cpp` that reads `SqueezeKind` (lines 127, 139, 161, 177, 182, 199, 216, 633, 673, 867 and 896 today), say for each whether it picks a direction or a scoring rule, and put the list in the report.
 
 Acceptance criteria, run by the main session with `hydra_tests.exe "-tc=schedule:*"`:
 
 - Every existing schedule test passes with no expected value edited. That includes "schedule: Freak 1144, Rescued 561 and 931, Ghost 756" and "schedule: the equal-room split of a squeeze-in is the mirror of a squeeze-out's".
-- A grep of `tools/replay_schedule.cpp` finds no direction picked from `SqueezeKind` alone.
+- A grep of `tools/replay_schedule.cpp` finds no direction picked from `SqueezeKind` alone. A use that picks a scoring rule by kind (the squeeze-out late-gem rule) may stay, and the report names it.
+- `moving_side` takes the anchor's end, not the kind, and a test calls it for both ends.
 
 ### T4: the pages
 
@@ -187,7 +208,6 @@ Before the user sees the mockup, open it and click every activation header and e
 
 These are left out on purpose and need the user's nod.
 
-- **The scale side.** No figure on the new row reads a scale (see "The scale side is out of scope").
 - **An anchor shared by two timings.** Each row treats its timing alone.
 - **Judge lag.** The game judges a press about one frame after it is sent. The tool counts that; the row does not.
 - **The 3.0.0 release notes.** They are not rewritten.
@@ -198,13 +218,16 @@ These are left out on purpose and need the user's nod.
 |---|---|---|---|
 | One core function owns which end each note is on | One owner | T1 | the +0.001 / 0.0 / -0.001 cases in `note window*` |
 | The early fill's end follows the sign the "Early fill:" line reads | Which end each note is on | T1 | the three `e_offset` cases |
-| The new functions carry no spare, scale or other metric | The row; What goes | T1 | the reviewer's read of the header; T2's grep |
+| The new functions carry no figure but the two window sides and today's sum | The row; The tag | T1 | the reviewer's read of the header |
+| The tag is today's sum under the words "safe" (0.0 or more) and "short" (below 0), size without a minus sign | The tag | T1, T2 | the renamed sum tests with no expected value edited; the corpus tag test |
+| The anchor's scale side follows its end from the one owner | The scale side | T1 | the fixture with early 1.0044 and late 0.9970 |
+| The tool's `moving_side` takes the anchor's end | What each caller changes | T3 | the `moving_side` test for both ends |
 | The sentence reads the owner and its text does not change | What each caller changes | T2 | existing sentence tests, unedited |
 | The squeezed note's end is the word its sentence prints | Which end each note is on | T2 | the corpus row-against-sentence test |
 | The row is label, frontend end, backend end; frontend first; one end for an early fill | The row | T2 | the pinned Burnout and Focus rows; the order test |
 | Each end names its chord in `Chord::rowstr` words | The row | T2 | the pinned Burnout and Focus rows |
-| The tag, the spare functions and their tests are removed | What goes | T2 | the grep; the corpus test for "spare" and "short" |
-| No row says "early" or "late" | Background | T2 | the corpus row-text test |
+| The kind-based row functions and the word "spare" are gone | What goes and what is renamed | T2 | the grep |
+| No row text outside the tag says "early" or "late" | Background | T2 | the corpus row-text test |
 | Every badge keeps its row | One owner | T2 | rows equal badges on every corpus path |
 | Ratings, tiers and eff. figures do not change | What the user will see | T2 | their existing tests, unedited |
 | The tool's output does not change | What each caller changes | T3 | every `schedule:*` test, no expected value edited |
@@ -222,33 +245,38 @@ These are left out on purpose and need the user's nod.
 | P2: the badge figure is `offset_ms` for a squeeze in and its negation for a squeeze out | code | `src/core/model.h:271` and `src/core/model.cpp:494` | checked 2026-11-13 |
 | P3: the sentence picks "early" or "late" for the squeezed note from the kind and `needs_no_timing` | code | `src/app/path_view.cpp:113` and `src/app/path_view.cpp:135` | checked 2026-11-13 |
 | P4: the row's direction words are fixed by kind, and the early fill's is fixed "early" | code | `src/app/path_view.cpp:223` to `:227` and `:239` | checked 2026-11-13 |
-| P5: the row's spare is windows minus the figure, and only the spare reads a scale | code | `src/core/note_window.cpp:65`, `:98` and `:104` to `:116` | checked 2026-11-13 |
-| P6: the tool picks side, aim sign and word by kind, and skips squeezes where `needs_no_timing` is true | code | `tools/replay_schedule.cpp:127`, `:177`, `:216`, `:631` | checked 2026-11-13 |
+| P5: the row's spare is the anchor's window times a scale side, plus the squeezed window, minus `difficulty()`; the scale side is picked by squeeze kind (early for a squeeze out, late for a squeeze in); only the spare reads a scale; the early fill's is its window minus `e_difficulty(true)` | code | `src/core/note_window.cpp:65` to `:71`, `:98`, `:104` to `:116` and `:123` | checked 2026-11-13 |
+| P6: the tool picks side, aim sign and word by kind, and builds no timed geometry for a squeeze where `needs_no_timing` is true (it presses that squeeze's note at a fixed early lead) | code | `tools/replay_schedule.cpp:127`, `:177`, `:216`, `:631`, `:679` and `:874` to `:875` | checked 2026-11-13 |
 | P8: a squeeze's anchor is the latest overfill at or before its step, else the activation; its squeezed note is the squeeze-out chord or the squeeze-in step's chord | code | `src/core/model.cpp:758` and `src/core/model.cpp:786` | checked 2026-11-13 |
 | P10: the early fill's note is the second bar arrival; the "Early fill:" line prints `e_difficulty(true)`, the negated `e_offset`, positive when early | code | `src/core/model.cpp:695`, `src/core/model.cpp:477`, `src/app/path_view.cpp:274` to `:279` | checked 2026-11-13 |
-| P12: every squeeze in, squeeze out and early fill badge gets the row; "a maximum of 8 words for the new info" | ruling | `docs/agents/rulings/ui-and-display.md` lines 5 and 7 | checked 2026-11-13 |
-| P13: the window sides and gems of the seven panels | unchecked | `dhw_figures.json` in the session scratchpad, a tool's report read by the main session | T2 pins Burnout and Focus; T5 reads the others |
-| P14: Tapped Out activation 3 is a required early fill of 0.0 ms | unchecked | `docs/superpowers/specs/2026-11-12-dynamic-hit-window-mockup/index.html` line 185, another agent's mockup | T5 |
-| P15: the fills page names the early fill's spare function | code | `docs/clone-hero/04-fills.md:248` | checked 2026-11-13 |
-| P16: the User Guide mentions the row | code | `docs/UserGuide.md:273` to `:277`; the label is there, the passage itself was not read | checked 2026-11-13 |
+| P12: every squeeze in, squeeze out and early fill badge gets the row; "a maximum of 8 words for the new info" | ruling | `docs/agents/rulings/ui-and-display.md` lines 7 and 9 | checked 2026-11-13 |
+| P13: the window sides, gems and transfer scales of the seven panels, and the tag values worked from them | unchecked | `dhw_figures.json` in the session scratchpad, a tool's report read by the main session; the sums were worked again by a reviewer from that file | T2 pins Burnout and Focus; T5 reads the others |
+| P14: Tapped Out activation 3's badge reads `early fill 0.0 ms` and the activation is a required (E0) early fill | run | the main session's headless read of Tapped Out on `testdata/input` with the `hydra` tools, as the 2026-11-13 review brief states it; no result folder was kept | checked 2026-11-13 |
+| P15: the fills page names the early fill's spare function and `early_fill_window` | code | `docs/clone-hero/04-fills.md:248` | checked 2026-11-13 |
+| P16: the User Guide describes the row, its yellow `spare` tag and orange `short` tag | code | `docs/UserGuide.md:273` to `:277` | checked 2026-11-13 |
 | P17: one test pins four squeeze-outs' aims and rooms to the cent | code | `tests/test_replay_schedule.cpp:473` | checked 2026-11-13 |
-| P18: which test cases in the three app and UI test files pin the tag | unchecked | `tests/test_activation_rows.cpp`, `tests/test_badge_pill.cpp`, `tests/ui/uitest_paths.cpp`; mentions counted, cases not read | T2 |
-| P19: `Chord::rowstr` joins each note's label with " - " in brackets; a label is "Kick", "Red", "Blue" or "Yellow cymbal" with Pro Drums off, and "Red snare" or "Blue tom" with it on | code | `src/core/model.cpp:192` and `src/core/model.cpp:61` | checked 2026-11-13 |
+| P18: which test cases in the four test files pin the tag, the spare or a removed function | unchecked | `tests/test_note_window.cpp`, `tests/test_activation_rows.cpp`, `tests/test_badge_pill.cpp`, `tests/ui/uitest_paths.cpp`; mentions counted, cases not read | T2 |
+| P19: `Chord::rowstr` joins each note's label with " - " in brackets; a note's label is "Kick" (or "2x kick"), "Red snare" with Pro Drums on and "Red" off, "Blue tom" with it on and "Blue" off for a non-cymbal gem, and "Blue cymbal" or "Yellow cymbal" either way | code | `src/core/model.cpp:192` to `:200` and `src/core/model.cpp:61` to `:67` | checked 2026-11-13 |
 | P20: every chord in a song carries its `Chord` | code | `src/core/song.h:30` | checked 2026-11-13 |
-| P21: the mockup's songs print their chords in the Pro Drums-off words and their kicks are not 2x | unchecked | `dhw_figures.json` holds each gem's colour and cymbal flag only | T5 |
+| P21: the user's screen has Pro Drums on, so the panels' chords use the Pro Drums-on words: the user's Chord lines read "[Kick - Yellow cymbal]" and "[Kick - Blue cymbal]", and `note_label` gives "Red snare" and "Blue tom" with it on | code | `src/core/model.cpp:61` to `:67`; the user's screen as the 2026-11-13 review brief reports it | checked 2026-11-13 |
+| P21b: the panels' kicks are plain, not "2x kick" | unchecked | `dhw_figures.json` holds each gem's colour and cymbal flag only | T5 |
 | P22: the three commits exist with the dates the background gives | code | `git show -s c68982cf 9d5bc5d5 970cb916` | checked 2026-11-13 |
 | P23: "i think early and late are the issue here causing confusion. change the display text to frontend and backend" | ruling | the user's message of 2026-11-13 as the main session quoted it to the planner (session `7d28ae9a`); the main session records it in `docs/agents/rulings/` | checked 2026-11-13 |
 | P24: "helps? hurts? why do you keep inventing your own metrics i never asked for?" and "you're STILL inventing your own metrics. why do you keep lying? squeeze 3 has a timing." | ruling | the user's messages of 2026-11-13 as the main session quoted them to the planner (session `7d28ae9a`) | checked 2026-11-13 |
 | P25: "just show what the window is for the frontend and the backend and what the note or chord is on each end. dont invent your own labls or metrics." | ruling | the user's message of 2026-11-13 as the main session quoted it to the planner (session `7d28ae9a`) | checked 2026-11-13 |
+| P27: "the little badge showing the timing leeway is fine, but it needs to have a solid definition, not something you invented. i say keep it simple: xx ms safe >=0 ms, xx ms short <0ms" | ruling | the user's message of 2026-11-13 as the main session quoted it in the reviewer's brief (session `7d28ae9a`); the main session adds the line to `docs/agents/rulings/ui-and-display.md` after the review | checked 2026-11-13 |
+| P28: `SPSqueeze::difficulty()` has the badge's sign for both kinds, and `Activation::e_difficulty(true)` is positive when the fill is hit early | code | `src/core/model.h:271`, `src/core/model.h:397` and `src/core/model.h:994` | checked 2026-11-13 |
 | P26: `CONTEXT.md` already defines Frontend squeeze, Backend squeeze and Backend row (D115) | code | `CONTEXT.md:570` to `:583` | checked 2026-11-13 |
 
 ## Questions
 
-1. **The new row is longer than 8 words on most panels. Is that all right?** Your ruling of 2026-11-12 was "a maximum of 8 words for the new info". Counting every word after the label: Tapped Out 6 (`frontend 82.9 ms [Kick - Green cymbal]`), Focus 8 (`frontend 48.1 ms [Blue]   backend 61.9 ms [Kick]`), the three Satellites rows and Dead on Arrival 10 each, Burnout 11 (`frontend 84.5 ms [Kick - Green cymbal]   backend 84.3 ms [Yellow cymbal]`). A three-note chord on each end would give 14. Today's row is 6 words plus a 3-word tag, and the tag goes. The length comes only from the chord names your 2026-11-13 ruling asks for. The choices: (a) the row as mocked, which wraps in a narrow panel; (b) the Backend table's short chord form, `[K  B ]`, which makes every two-note row 8 words.
+1. **The new row is longer than 8 words on most panels. Is that all right?** Your ruling of 2026-11-12 was "a maximum of 8 words for the new info". I count every word after the label, with the " - " between a chord's notes not counted as a word. Without the tag: Tapped Out 6 (`frontend 82.9 ms [Kick - Green cymbal]`), Focus 9 (`frontend 48.1 ms [Blue tom]   backend 61.9 ms [Kick]`), Dead on Arrival 10, the three Satellites rows 11 each (`frontend 85.7 ms [Kick - Blue cymbal]   backend 53.1 ms [Red snare]`), Burnout 11. The tag (`55.4 ms safe`) adds 3 to each. A three-note chord with two cymbals on each end would give 16 without the tag. Today's row is 6 words plus the 3-word tag (9) on a two-end row, 3 plus 3 on an early fill. The length comes from the chord names your 2026-11-13 ruling asks for. The choices: (a) the row as mocked, which wraps in a narrow panel; (b) the Backend table's short chord form, `[K  B ]`, counted as one word, which makes every two-note row 8 words without the tag and 11 with it. Neither reaches 8 with the tag.
 
 2. **Do the squeeze sentence and the early fill text switch to frontend and backend too, or only the row?** Your words were "change the display text to frontend and backend". The plan changes the row only, which may be narrower than you meant. Examples, Satellites activation 2 and activation 5:
-   - (a) Row only. The sentences stay "Hit the [ R   ] note more than 83.3 ms late so it lands after Star Power ends." and "Hit the SP phrase's last note more than 166.7 ms early so it lands before Star Power ends." The rows under them read `backend 53.1 ms [Red]` and `frontend 53.1 ms [Red]` for that note.
+   - (a) Row only. The sentences stay "Hit the [ R   ] note more than 83.3 ms late so it lands after Star Power ends." and "Hit the SP phrase's last note more than 166.7 ms early so it lands before Star Power ends." The rows under them read `backend 53.1 ms [Red snare]` and `frontend 53.1 ms [Red snare]` for that note.
    - (b) The row and the squeeze sentences. With the words swapped one for one they would read "Hit the [ R   ] note more than 83.3 ms backend so it lands after Star Power ends." and "Hit the SP phrase's last note more than 166.7 ms frontend so it lands before Star Power ends." The exact sentence wording would be mocked up for you first.
    - (c) Everything, including the name "early fill". Today the badge reads `early fill 0.0 ms` and the line `Early fill: 0.0 ms (required)`. The line holds no direction word, only the name. A new name would need to come from you.
 
-3. **Is `backend` on the row all right next to the "Backend timings" table?** Hydra's glossary already uses the word. `CONTEXT.md` says a **Backend squeeze** is "Hitting a note near the SP end early, so it lands inside Star Power", a **Frontend squeeze** is "Hitting the activation chord's activation note first, so the chord's other notes score under Star Power", and a **Backend row** is "A chord within the squeeze window of an SP end, as the Backend timings table lists it". The row sits just above that table. Examples from both ends: on Satellites activation 2 the note at the SP end reads `backend 53.1 ms [Red]`, which happens to fit the table's sense. On Satellites activation 5 the note at the SP end reads `frontend 53.1 ms [Red]` and the activation chord reads `backend 85.7 ms [Kick - Yellow cymbal]`, the reverse of the glossary's sense. The choices: (a) use the words as ruled, and the User Guide says what they mean on this row; (b) you pick other words.
+3. **Is `backend` on the row all right next to the "Backend timings" table?** Hydra's glossary already uses the word. `CONTEXT.md` says a **Backend squeeze** is "Hitting a note near the SP end early, so it lands inside Star Power", a **Frontend squeeze** is "Hitting the activation chord's activation note first, so the chord's other notes score under Star Power", and a **Backend row** is "A chord within the squeeze window of an SP end, as the Backend timings table lists it". The row sits just above that table. Examples from both ends: on Satellites activation 2 the note at the SP end reads `backend 53.1 ms [Red snare]`, which happens to fit the table's sense. On Satellites activation 5 the note at the SP end reads `frontend 53.1 ms [Red snare]` and the activation chord reads `backend 85.7 ms [Kick - Yellow cymbal]`, the reverse of the glossary's sense. The choices: (a) use the words as ruled, and the User Guide says what they mean on this row; (b) you pick other words.
+
+4. **Should the tag's figure follow the anchor's end, which moves one number by 0.6 ms?** You ruled the tag keeps today's definition. Today the anchor's window counts through the scale's early side for a squeeze out and its late side for a squeeze in. The plan makes it follow the anchor's end: frontend uses the early side, backend the late side. That is the same side on every squeeze that has a timing to hit. It differs on a squeeze whose sentence says "no more than", and only when the scale is not 1.0 on both sides. Examples from both ends: Satellites activation 3 has scale 1.0 on both sides, so it reads `210.0 ms safe` either way. Dead on Arrival activation 3 (early 1.0044, late 0.9970) reads `609.3 ms safe` if the figure follows the anchor's end, and `608.7 ms safe` if it keeps today's side. The choices: (a) follow the anchor's end, so the sentence, the row and the tag agree on which end each note is on (recommended); (b) keep today's pick by squeeze kind, which leaves one rule in the tag that disagrees with the sentence.
