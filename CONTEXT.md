@@ -705,10 +705,16 @@ The two halves are summed and fed to the window formula, whose linear term is
 (`kFormulaSquare`), and whose scale is 170.0 (`kFormulaScale`), less 20 ms
 (`kFormulaOffsetMs`). The Paths tab's Dynamic Hit Window row shows that
 window beside the 85 for each timing badge: the frontend note's window and
-chord, then the backend note's, then a tag that reads safe or short. It is
+chord, then the backend note's, then a tag that reads safe or short. On a
+squeeze row, frontend and backend are the two sides of a **Frontend squeeze**
+and a **Backend squeeze**: the frontend note is the anchor (the activation
+note, or the note the cap clamped on) and the backend note is the squeezed
+SP-end note, for a squeeze in and a squeeze out alike. The words never follow
+which way a note is pressed. An early fill row shows one note, the one that
+made Star Power ready, with no word before it. It is
 display only: the user ruled "just show it alongside.", so the search,
 badges, Rating words and timing tiers keep the 85. Its one owner is
-src/core/note_window.h (`chord_sides_ms`, `squeeze_ends`,
+src/core/note_window.h (`chord_sides_ms`, `role_word`, `squeeze_presses`,
 `squeeze_window_ends`, `early_fill_window_end`).
 
 **Transfer scale**:

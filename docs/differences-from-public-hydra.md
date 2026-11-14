@@ -162,5 +162,6 @@ This version doesn't read `records.json`, so your old results don't carry over. 
 | 2.14.0 | The song header and the Dynamics tab show how many 2x kicks a chart has, in gold; with `2x Bass` off, the Dynamics tab says in orange that they are not counted |
 | 3.0.0 | The Path Builder, a second program, lets you build your own path and shows what each activation costs; the Paths tab shows Clone Hero's own hit window on every squeeze and early fill; some drum charts read the way Clone Hero reads them, so every saved result reads `Stale` |
 | 3.0.1 | The Paths tab's `Dynamic Hit Window:` row names each note `frontend` or `backend` with its chord, matches the squeeze sentence above it, and its tag reads `safe` instead of `spare` |
+| 3.0.2 | On a squeeze, the `Dynamic Hit Window:` row names the activation note `frontend` and the SP-end note `backend`, for a squeeze in and a squeeze out alike; an early fill row shows its note with no word |
 
 Each release's full notes are on the [releases page](https://github.com/splax77/hydra-deluxe/releases).
