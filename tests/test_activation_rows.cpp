@@ -1586,7 +1586,7 @@ TEST_CASE("dynamic hit window: every corpus row") {
     int short_tags = 0;
     int safe_tags = 0;
     // Squeezes whose note is not on the end its kind alone would give (a
-    // squeeze out's note on the frontend, a squeeze in's on the backend): the
+    // squeeze out's note on the backend, a squeeze in's on the frontend): the
     // ones that needing no timing moves.
     int moved_from_kind = 0;
     for (const std::string& chart : corpus::chart_paths()) {

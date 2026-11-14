@@ -154,6 +154,8 @@ TEST_CASE("note window: exactly 0 is safe, anything below is short") {
     WindowEnds row;
     row.safe_ms = 0.0;
     CHECK_FALSE(row.is_short());
+    row.safe_ms = -0.04;
+    CHECK(row.is_short());
 }
 
 TEST_CASE("note window: each squeeze reads its own side of its own scale") {
@@ -210,17 +212,6 @@ TEST_CASE("note window: a cap-clamped squeeze is anchored on the overfill chord"
     CHECK(row->ends[0].end == NoteEnd::Frontend);
     CHECK(row->ends[0].tick == 1536);
     CHECK(row->ends[0].side_ms == overfill_side);
-}
-
-TEST_CASE("note window: the early fill row reads the SP-ready note") {
-    TwoSqueezes t = two_squeezes();
-    const ChordTimes chords = chord_times(t.song);
-    t.act.e_offset = -10.0;  // Star Power ready 10 ms after the deadline
-    const std::optional<WindowEnds> row = early_fill_window_end(t.act, chords);
-    REQUIRE(row.has_value());
-    REQUIRE(row->ends.size() == 1);
-    CHECK(row->ends[0].side_ms == kCapSide);
-    CHECK(row->safe_ms == pinned(75.71565375071405));
 }
 
 TEST_CASE("note window: a row the record cannot name is left out") {
@@ -380,20 +371,6 @@ TEST_CASE("note window: the anchor's scale side follows its end") {
     }
 }
 
-TEST_CASE("note window: squeeze_window_ends keeps today's stored scale") {
-    // two_squeezes' scales: transfer_post {2.0, 4.0}, the squeeze in's own
-    // {3.0, 1.5}. Both squeezes have a timing, so the sums equal the old
-    // rows' (each squeeze reads its own side of its own scale).
-    const TwoSqueezes t = two_squeezes();
-    const ChordTimes chords = chord_times(t.song);
-    const std::optional<WindowEnds> out = squeeze_window_ends(t.act, 1, chords);
-    REQUIRE(out.has_value());
-    CHECK(out->safe_ms == pinned(157.14696125214215));
-    const std::optional<WindowEnds> in = squeeze_window_ends(t.act, 0, chords);
-    REQUIRE(in.has_value());
-    CHECK(in->safe_ms == pinned(194.2891343767851));
-}
-
 TEST_CASE("note window: the early fill end reads the SP-ready note") {
     TwoSqueezes t = two_squeezes();
     const ChordTimes chords = chord_times(t.song);
@@ -413,12 +390,4 @@ TEST_CASE("note window: the early fill end reads the SP-ready note") {
     REQUIRE(row->ends.size() == 1);
     CHECK(row->ends[0].end == NoteEnd::Backend);
     CHECK(row->safe_ms == pinned(95.71565375071405));
-}
-
-TEST_CASE("note window: a safe sum of exactly 0 is not short") {
-    WindowEnds row;
-    row.safe_ms = 0.0;
-    CHECK_FALSE(row.is_short());
-    row.safe_ms = -0.04;
-    CHECK(row.is_short());
 }
