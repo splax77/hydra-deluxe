@@ -48,7 +48,7 @@ No agent can approve a line, because the gate reads only main-session transcript
 
 ## The backfill route for old lines
 
-An old Unconfirmed line can be replaced by the user's original words without a click, through one narrow route. The user approved it on 2026-11-13 ("Yes, no click"). Scouts search the transcripts for the words behind the old line. A new line built from what they find passes the gate only when three things hold. Its quote passes the words test. Its date is before 2026-11-14, the day the gate was installed. The same commit deletes an old line under `## Unconfirmed` in the same file. Any line dated on or after the install day needs the click.
+An old Unconfirmed line can be replaced by the user's original words without a click, through one narrow route. The user approved it on 2026-11-13 ("Yes, no click"). Scouts search the transcripts for the words behind the old line. A new line built from what they find passes the gate only when three things hold. Its quote passes the words test. Its date is before the day the gate was installed (`INSTALL_DATE` in `ruling_rules.py`, 2026-11-14). The same commit deletes an old line under `## Unconfirmed` in the same file. Any line dated on or after the install day needs the click.
 
 ## How an Unconfirmed line reads
 
