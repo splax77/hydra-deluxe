@@ -386,7 +386,7 @@ void test_batch_confirm(ImGuiTestContext* ctx) {
     ctx->Yield(2);
     IM_CHECK(h.app->batch_confirm_pending);
     std::string text = visible_text(h);
-    IM_CHECK(text.find("Analyze 97 charts that have no result yet?") != std::string::npos);
+    IM_CHECK(text.find("Analyze 98 charts that have no result yet?") != std::string::npos);
     IM_CHECK(text.find("Expert \xC2\xB7 Pro Drums \xC2\xB7 2x Bass") != std::string::npos);
     IM_CHECK(text.find("4 bars (Clone Hero's rule)") != std::string::npos);
     IM_CHECK(text.find("2 scores") != std::string::npos);

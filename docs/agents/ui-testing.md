@@ -45,7 +45,7 @@ Output is `[PASS]`/`[FAIL]` per test. A failed test prints the engine's log. The
 
 The 97 test charts analyze in a blink: a whole-library batch can start and finish between two frames. So a test that looks at a running batch (the strip, Pause, Stop, the settings lock) makes a `BatchGate` before it starts the batch. The gate holds each chart until the test lets it through with `allow(n)`, and `started()` says how many charts have reached it. The run is then provably still going when the test looks, however busy the machine is. The gate runs the batch on one worker unless given a count: `BatchGate gate(3)` runs three, so three charts sit at the gate at once (`batch-strip-workers` tests the strip that way).
 
-Each test starts from scratch: a temp folder with a settings INI (song folder = `testdata/input`, 97 charts; "open report automatically" off; search depth 2) and an empty DB. No sound card is touched, and the dmleaderboards API is canned (one user, `alice`, id `111`, whose one score is the first library chart). The reports live in memory and write no file. The seams are `audio::set_headless`, `net::set_fetcher`, and `app::set_path_overrides`.
+Each test starts from scratch: a temp folder with a settings INI (song folder = `testdata/input`, 98 charts; "open report automatically" off; search depth 2) and an empty DB. No sound card is touched, and the dmleaderboards API is canned (one user, `alice`, id `111`, whose one score is the first library chart). The reports live in memory and write no file. The seams are `audio::set_headless`, `net::set_fetcher`, and `app::set_path_overrides`.
 
 ## Command files (no rebuild)
 
