@@ -316,7 +316,7 @@ The Preview plays the chart as a 3D note highway, in time with the song's audio.
 
 *The Preview stopped at Burnout's first activation. The next activation box shows `3- (163.0 ms)`, and the SP meter runs up the right edge.*
 
-Where Star Power runs out, a bright teal line crosses the floor and a small teal triangle sits just outside each railing, level with the line. A note just before the end can cover the line, but the triangles stay in view, so you can always see exactly where SP stops.
+Where Star Power runs out, the railings change colour. Both railings are teal while Star Power is running and grey everywhere else, so the point where they turn grey is exactly where SP stops. The teal floor ends at the same point. The railings sit outside the lanes, so a note just before the end never covers them. A solo doesn't change the railings.
 
 Where the chart marks a drum roll or trill, the highway lights a lane under it, in the pad's colour. With Note Shuffle off, Hydra Deluxe picks the pads the way Clone Hero does, from the first notes under the lane. A roll lights one pad's lane, and a trill lights up to two, the pads it moves between. When a roll's first chord holds a crash and a drum, the drum's lane lights, not the crash's. With Note Shuffle on, Hydra Deluxe lights every pad the lane's notes land on instead, so one shuffled roll can light up to four pads. Clone Hero still lights only the pad or pads it picks from the first notes. A lane shows on the same difficulties as in Clone Hero. Clone Hero drops a lane whose first note comes late, but nobody has read how late, so Hydra Deluxe draws every lane. In Clone Hero a lane also makes its notes easier to hit. Hydra Deluxe only draws the lanes: its scores and timings don't include that help.
 
