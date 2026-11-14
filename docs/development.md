@@ -834,12 +834,20 @@ signed with; that key must match `src/app/update_key.h`.
 
 ### Every release: upload as a draft, then publish
 
-Create the release as a draft with both files, then publish it:
+Create the release as a draft with both files, then publish it. Under Claude
+Code both steps go through `C:\Users\Patrick\.claude\gates\publish.ps1`, from
+the PowerShell tool; raw `gh release create` and `gh release edit` are
+refused, and the gates README (`C:\Users\Patrick\.claude\gates\README.md`)
+says why. `<notes>` is the reviewed `docs\releases\release-<version>-notes.md`.
 
 ```
-gh release create v<version> --draft build-cpp\installer\HydraDeluxe-<version>-setup.exe build-cpp\installer\HydraDeluxe-<version>-setup.exe.sig --notes-file <notes>
-gh release edit v<version> --draft=false
+& C:\Users\Patrick\.claude\gates\publish.ps1 -Kind release -Target v<version> -Title v<version> -BodyFile <notes> -GhArgs '--draft','--target','main','build-cpp\installer\HydraDeluxe-<version>-setup.exe','build-cpp\installer\HydraDeluxe-<version>-setup.exe.sig'
+& C:\Users\Patrick\.claude\gates\publish.ps1 -Kind release-edit -Target v<version> -BodyFile <notes> -GhArgs '--draft=false'
 ```
+
+From your own terminal, outside Claude Code, the plain `gh` commands do the
+same: `gh release create v<version> --draft <setup.exe> <setup.exe.sig>
+--notes-file <notes>`, then `gh release edit v<version> --draft=false`.
 
 The draft step matters. Hydra asks GitHub for the latest published release,
 and a draft is never that. Publishing only after both files are attached means
