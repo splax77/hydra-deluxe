@@ -492,6 +492,11 @@
 - 2026-11-12 1ac0d6b4 Frame probe handoff (2026-11-12) | clone-hero, agents, planning, review, tests | The session ended with main pushed to origin and the in-game press timing plan finished: its docs and code tasks are merged, and the user asked how to start a run on another song. [write-back]
 - 2026-11-13 375e58cd Dynamic hit window for notes (2026-11-13) | hit-window, squeeze, early-fill-e, path, planning, clone-hero | Ended with the row merged to main and pushed (ac916e0e), shown on every squeeze-in, squeeze-out and early fill badge. [write-back]
 - 2026-11-13 f7baa4ed Early fill live check handoff (2026-11-13) | clone-hero, planning, review, agents, tests | The session ended with LS-F0 passed (the probe chart is installed) and LS-F1 waiting for the user's go; no game run has started.
+- 2026-11-13 bed936f0 Pitch Dark in-game test (2026-11-13) | clone-hero, squeeze, review, planning, agents | Ended at 05:19 UTC when the user asked for a stop and a handoff; the handoff is committed on branch claude/handoff-schedule-ratios as 17118821d492f2775616f7d22d005c3ce23201b4 and not merged or pushed. [write-back]
+- 2026-11-13 e14f7e34 Schedule ratios and review gap handoff (2026-11-13) | clone-hero, squeeze, review, agents, hooks | Ended at 00:22 UTC after the user approved pushing the pointer fix; origin/main is at 73404b67, the same as local main, and nothing is left unpushed. [write-back]
+- 2026-11-14 6c7771c3 Release 3.0 (2026-11-14) | release, installer, docs, agents | Ended at 00:36 UTC with Hydra Deluxe 3.0.0 published as the latest GitHub release, after the user's yes to publish.
+- 2026-11-14 43fddb24 Clone Hero 1.1 changes for Hydra (2026-11-14) | clone-hero, release, planning, agents | Ended at 01:03 UTC with the plan settled and waiting for the user's go before seven executors start on it. [write-back]
+- 2026-11-14 938c53df Hydra performance issues (2026-11-14) | performance, analysis, library | Ended at 01:08 UTC with the cause not found, and the agent waiting on the user's answer about catching a slow run live on the real Hydra.
 
 ## Proposed tags
 
