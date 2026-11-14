@@ -38,7 +38,7 @@ Which check a GUI change needs is the first section of `docs/agents/ui-testing.m
 
 ### Rulings and this machine
 
-The user's rulings, in their own words, are in `docs/agents/rulings/`, indexed by its `README.md`. This machine's tools and paths are in `docs/agents/this-machine.md`.
+The user's rulings, in their own words, are in `docs/agents/rulings/`, indexed by its `README.md`. A ruling is filed only when the user clicks "File it" for that exact line in a question box, and git refuses any other; its `README.md` gives the steps. Only a line under `## Confirmed` may be cited as the user's ruling. Only the user changes what a `CONTEXT.md` term means; the full rule is in `docs/agents/agent-rules.md`, "Rulings and definitions". This machine's tools and paths are in `docs/agents/this-machine.md`.
 
 ### Public doc style
 

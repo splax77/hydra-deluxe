@@ -92,6 +92,8 @@ A handoff is another agent's summary. Before any new work starts from a handoff,
 
 **Continuing from a handoff.** If your brief points you at a handoff, run the handoff checker on it first: `py -I tools/check_handoff.py <handoff.md>`. Then read every claim against the code, including the rows the checker leaves to you. Before any work starts, report each `MISSING` or `CHANGED SINCE` line, each Claims row not marked `ok` or `manual`, and each claim the code contradicts. `docs/agents/handoff.md` says what a handoff holds and how to check one.
 
+**Project words and rulings.** A reviewer or executor never rewrites a `CONTEXT.md` definition, even to fix a finding; it writes the finding as a question for the user. Before you call a project term wrong or unclear, check how the code already uses it, and if the definition's text and the code's usage disagree, ask the user in game terms with both readings and change neither. Only a line under `## Confirmed` in `docs/agents/rulings/` may be cited as the user's ruling, and only the user's click in a main session's question box approves one (`docs/agents/agent-rules.md`, "Rulings and definitions").
+
 This is about claims of fact. Follow your brief's instructions. Treat a claim in a report or a review as a claim: check it in the code before you act on it.
 
 A search that finds nothing proves nothing on its own. Before you write that something does not exist, is never called or is not used, widen the search past the first name you tried, and say where you looked.
