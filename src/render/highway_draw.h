@@ -114,8 +114,8 @@ void pad_x(const PreviewConfig& cfg, Pad pad, float& x1, float& x2);
 // themselves by it.
 void railing_x(const PreviewConfig& cfg, bool right, float& x1, float& x2);
 
-// The X of a railing's outer edge, the one away from the lanes. The SP end
-// markers and the overlay's highway_span_at ask it.
+// The X of a railing's outer edge, the one away from the lanes. The
+// overlay's highway_span_at asks it.
 float railing_outer_x(const PreviewConfig& cfg, bool right);
 
 // The model matrix for a DrawCommand's box (row-major, DirectXMath row vectors).
@@ -126,9 +126,9 @@ DirectX::XMMATRIX stretch_matrix(const DrawCommand& cmd);
 // which the object shader turns into the material colour unchanged.
 LightConfig light_for(const PreviewConfig& cfg, const DrawCommand& cmd);
 
-// One frame's draw list in Onyx's order: floor spans, railings, beat lines,
-// lane strips, strike-line targets and their glows, Hydra's SP end marks
-// (D81), then gems (far first).
+// One frame's draw list in Onyx's order: floor spans, railings (cut where
+// active SP starts and stops), beat lines, lane strips, strike-line targets
+// and their glows, then gems (far first).
 std::vector<DrawCommand> build_highway_draws(const TrackState& state,
                                              const PreviewConfig& cfg,
                                              double now_s, double speed);

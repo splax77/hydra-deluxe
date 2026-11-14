@@ -4,7 +4,9 @@
 
 #include "doctest.h"
 
+#include <algorithm>
 #include <string>
+#include <vector>
 
 #include "json.hpp"
 #include "render/preview_config.h"
@@ -80,25 +82,19 @@ TEST_CASE("the shipped 3d-config.json loads to the Onyx values") {
     check_is_onyx(c);
     CHECK(c.hydra.msaa == 4);
     check_color(c.hydra.sp_active_color, 0x6c / 255.0f, 0xf7 / 255.0f, 0xc6 / 255.0f);
-    CHECK(c.hydra.sp_active_darken == doctest::Approx(0.2));
+    // The floor inside an active SP window, as the user chose with option B
+    // of the SP end mocks.
+    CHECK(c.hydra.sp_active_darken == doctest::Approx(0.45));
     CHECK(c.hydra.fill_offered_alpha == doctest::Approx(0.35));
-    // The SP end mark's look, as the user approved it (D81), in its own
-    // magenta (D84) so it never reads as an SP gem.
-    check_color(c.hydra.sp_end_color, 0xff / 255.0f, 0x4f / 255.0f, 0xd8 / 255.0f);
-    CHECK(c.hydra.sp_end_edge_depth == doctest::Approx(0.1));
-    CHECK(c.hydra.sp_end_marker_width == doctest::Approx(0.07));
-    CHECK(c.hydra.sp_end_marker_height == doctest::Approx(0.07));
-}
 
-TEST_CASE("load_preview_config refuses a missing SP end mark key and names it") {
-    for (const char* key :
-         {"sp_end_color", "sp_end_edge_depth", "sp_end_marker_width", "sp_end_marker_height"}) {
-        nlohmann::json j = nlohmann::json::parse(shipped_preview_config_text());
-        j["hydra"].erase(key);
-        const std::string expected = std::string("3d-config.json: missing key hydra.") + key;
-        CHECK_THROWS_WITH_AS(load_preview_config(j.dump()), doctest::Contains(expected.c_str()),
-                             std::runtime_error);
-    }
+    // The hydra section holds these keys and no others, so the old SP end
+    // mark's keys are gone from the shipped file.
+    const nlohmann::json shipped = nlohmann::json::parse(text);
+    std::vector<std::string> keys;
+    for (const auto& kv : shipped.at("hydra").items()) keys.push_back(kv.key());
+    std::sort(keys.begin(), keys.end());
+    CHECK(keys == std::vector<std::string>{"_comment", "fill_offered_alpha", "msaa",
+                                           "sp_active_color", "sp_active_darken"});
 }
 
 TEST_CASE("load_preview_config refuses a missing key and names it") {

@@ -246,12 +246,16 @@ std::vector<DrawCommand> build_highway_draws(const TrackState& state, const Prev
     // there (D48, Q27). The highway works in seconds; convert at the call.
     auto struck = [now_s](double t_s) { return app::struck_at(now_s * 1000.0, t_s * 1000.0); };
 
+    // Where active SP is on across the visible highway. The floor tint and
+    // the railings both read this one list, so they change at the same depths.
+    const std::vector<ToggleSpan> sps =
+        state.make_toggle_bounds(win, near_t, far_t, &TrackInstant::sp_active);
+
     // 1. Floor: one flat per stretch of (solo, active SP) state. Onyx tints
     //    the floor for solos only; the active SP window is Hydra's addition,
-    //    drawn the same way in the energy colour darkened to floor brightness.
+    //    drawn the same way in the energy colour darkened by sp_active_darken.
     {
         std::vector<ToggleSpan> solos = state.make_toggle_bounds(win, near_t, far_t, &TrackInstant::solo);
-        std::vector<ToggleSpan> sps = state.make_toggle_bounds(win, near_t, far_t, &TrackInstant::sp_active);
         std::vector<double> cuts{near_t, far_t};
         for (const ToggleSpan& s : solos) { cuts.push_back(s.t1); cuts.push_back(s.t2); }
         for (const ToggleSpan& s : sps) { cuts.push_back(s.t1); cuts.push_back(s.t2); }
@@ -276,15 +280,29 @@ std::vector<DrawCommand> build_highway_draws(const TrackState& state, const Prev
         }
     }
 
-    // 2. Railings: two boxes along the whole visible depth.
-    for (bool right : {false, true}) {
-        DrawCommand rail;
-        rail.mesh = MeshId::Box;
-        railing_x(cfg, right, rail.lo[0], rail.hi[0]);
-        rail.lo[1] = T.railing_y_top;    rail.lo[2] = T.z_past;
-        rail.hi[1] = T.railing_y_bottom; rail.hi[2] = T.z_future;
-        rail.material = color_mat(T.railing_color);
-        out.push_back(rail);
+    // 2. Railings (Hydra): one box per side for each stretch of `sps`, in the
+    //    SP colour as given while active SP is on and in the railing colour
+    //    otherwise, so the rails turn grey where SP runs out. The first box
+    //    starts at z_past and the last ends at z_future. An empty window has
+    //    no stretches; it gets one grey stretch, the whole depth. Each stretch
+    //    draws its left rail, then its right.
+    {
+        const std::vector<ToggleSpan> rail_spans =
+            sps.empty() ? std::vector<ToggleSpan>{{near_t, far_t, false}} : sps;
+        for (size_t i = 0; i < rail_spans.size(); ++i) {
+            const ToggleSpan& s = rail_spans[i];
+            const float z1 = i == 0 ? T.z_past : z_of(s.t1);
+            const float z2 = i + 1 == rail_spans.size() ? T.z_future : z_of(s.t2);
+            for (bool right : {false, true}) {
+                DrawCommand rail;
+                rail.mesh = MeshId::Box;
+                railing_x(cfg, right, rail.lo[0], rail.hi[0]);
+                rail.lo[1] = T.railing_y_top;    rail.lo[2] = z1;
+                rail.hi[1] = T.railing_y_bottom; rail.hi[2] = z2;
+                rail.material = color_mat(s.on ? cfg.hydra.sp_active_color : T.railing_color);
+                out.push_back(rail);
+            }
+        }
     }
 
     // 3. Beat lines (depth test off): measure / beat / half flats.
@@ -396,49 +414,7 @@ std::vector<DrawCommand> build_highway_draws(const TrackState& state, const Prev
         }
     }
 
-    // 6. SP end marks (Hydra, D81), depth off: a gem centred near an active
-    //    window's end hides the tint's edge, so each end visible on the
-    //    highway gets a bright edge across the floor and a triangle beside
-    //    each railing, where no gem sits. They draw before the gems, so a gem
-    //    still covers the edge. The ends are TrackState::sp_active_ends.
-    //    Edge and triangles are unlit, so both show the mark's own colour
-    //    (sp_end_color, D84) as given and match. The triangles stand upright
-    //    facing the camera. Each one's base rests on its railing's outer
-    //    edge and its apex points away from the lanes, as in the approved
-    //    mock; it sits at floor height at the end's depth, so on screen it is
-    //    level with the edge.
-    {
-        const Material mark = color_mat(cfg.hydra.sp_end_color);
-        const float half_edge = cfg.hydra.sp_end_edge_depth * 0.5f;
-        const float marker_w = cfg.hydra.sp_end_marker_width;
-        const float half_marker_h = cfg.hydra.sp_end_marker_height * 0.5f;
-        for (double t_end : state.sp_active_ends(win)) {
-            const float z = z_of(t_end);
-            DrawCommand edge = flat(T.x_left, T.y, z + half_edge, T.x_right, z - half_edge, mark,
-                                    1.0f, DepthMode::Always);
-            edge.light = LightKind::Unlit;
-            out.push_back(edge);
-            for (bool right : {false, true}) {
-                const float outer = railing_outer_x(cfg, right);
-                DrawCommand n;
-                n.mesh = right ? MeshId::TriangleRight : MeshId::TriangleLeft;
-                n.lo[0] = right ? outer : outer - marker_w;
-                n.hi[0] = right ? outer + marker_w : outer;
-                n.lo[1] = T.y - half_marker_h;
-                n.hi[1] = T.y + half_marker_h;
-                // The mesh is flat at its own z = 0, so this depth only keeps
-                // the model matrix invertible for the normal matrix.
-                n.lo[2] = z + half_edge;
-                n.hi[2] = z - half_edge;
-                n.material = mark;
-                n.light = LightKind::Unlit;
-                n.depth = DepthMode::Always;
-                out.push_back(n);
-            }
-        }
-    }
-
-    // 7. Gems, latest (farthest) first. A struck note (on or past the strike
+    // 6. Gems, latest (farthest) first. A struck note (on or past the strike
     //    line) flashes white there and fades over secs_fade.
     for (auto it = win.rbegin(); it != win.rend(); ++it) {
         const bool od = toggle_on_after(it->overdrive);

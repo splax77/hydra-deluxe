@@ -9,8 +9,6 @@
 
 #include "app/preview_view.h"
 #include "render/highway_draw.h"
-#include "render/obj_loader.h"
-#include "render/overlay_layout.h"
 #include "render/track_state.h"
 #include "preview_config_util.h"
 #include "preview_scene_fixtures.h"
@@ -802,18 +800,49 @@ TEST_CASE("build_highway_draws: a chord one tick after a phrase ends draws plain
     CHECK(plain_blue == 1);  // the blue one tick later
 }
 
-// D81: where an active SP window ends, a bright edge across the floor and a
-// triangle beside each railing, in the mark's own colour (sp_end_color).
+// Option B of the SP end mocks: the railings draw in the SP colour while
+// active SP is on, so they change colour where it runs out, and nothing marks
+// the end on the lanes.
 namespace {
 
-bool is_sp_end_mark(const DrawCommand& c, const PreviewConfig& cfg) {
-    const Color& mark = cfg.hydra.sp_end_color;
-    return c.material.kind == MaterialKind::Color && c.material.color.r == mark.r &&
-           c.material.color.g == mark.g && c.material.color.b == mark.b;
+bool same_color(const Color& a, const Color& b) {
+    return a.r == b.r && a.g == b.g && a.b == b.b && a.a == b.a;
 }
 
-bool is_gem(const DrawCommand& c) {
-    return c.mesh == MeshId::Tom || c.mesh == MeshId::Cymbal || c.mesh == MeshId::Kick;
+// One side's railing boxes, in draw order (near to far).
+std::vector<DrawCommand> rail_boxes(const std::vector<DrawCommand>& cmds, bool right) {
+    std::vector<DrawCommand> out;
+    for (const DrawCommand& c : cmds)
+        if (c.mesh == MeshId::Box && (c.lo[0] > 0.0f) == right) out.push_back(c);
+    return out;
+}
+
+// The floor's coloured flats, in draw order (near to far).
+std::vector<DrawCommand> floor_flats(const std::vector<DrawCommand>& cmds) {
+    std::vector<DrawCommand> out;
+    for (const DrawCommand& c : cmds)
+        if (c.mesh == MeshId::Flat && c.depth == DepthMode::Less &&
+            c.material.kind == MaterialKind::Color)
+            out.push_back(c);
+    return out;
+}
+
+// The depths where a run of boxes or flats changes colour from one to the
+// next.
+std::vector<float> color_cuts(const std::vector<DrawCommand>& run) {
+    std::vector<float> cuts;
+    for (size_t i = 0; i + 1 < run.size(); ++i)
+        if (!same_color(run[i].material.color, run[i + 1].material.color))
+            cuts.push_back(run[i].hi[2]);
+    return cuts;
+}
+
+// Checks one railing box runs from depth z1 to z2 in colour `col`.
+void check_rail(const DrawCommand& c, float z1, float z2, const Color& col) {
+    CHECK(c.lo[2] == doctest::Approx(z1));
+    CHECK(c.hi[2] == doctest::Approx(z2));
+    CHECK(c.material.kind == MaterialKind::Color);
+    CHECK(same_color(c.material.color, col));
 }
 
 PreviewActivation activation_until(double ms, double sp_end_ms) {
@@ -839,153 +868,189 @@ PreviewScene sp_end_scene() {
 
 }  // namespace
 
-TEST_CASE("sp_active_ends: each window's end inside the window, back-to-back ones apart") {
-    PreviewScene scene = timed_scene();
-    scene.notes = {note(1000.0, PreviewLane::Red)};
-    scene.activations = {activation_until(1300.0, 2000.0), activation_until(2000.0, 2600.0)};
-    TrackState st = build_track_state(scene, TrackStateOptions{});
-    CHECK(st.sp_active_ends(st.window(1.0, 3.0)) == std::vector<double>{2.0, 2.6});
-    CHECK(st.sp_active_ends(st.window(2.1, 3.0)) == std::vector<double>{2.6});
-    // An end on either edge is outside the window, so it is not listed.
-    CHECK(st.sp_active_ends(st.window(2.0, 2.6)).empty());
-    CHECK(st.sp_active_ends(st.window(0.0, 1.9)).empty());
-    // Overlapping windows run SP on to the later end; only that one counts.
-    scene.activations = {activation_until(1300.0, 2000.0), activation_until(1800.0, 2600.0)};
-    TrackState overlap = build_track_state(scene, TrackStateOptions{});
-    CHECK(overlap.sp_active_ends(overlap.window(1.0, 3.0)) == std::vector<double>{2.6});
-}
-
-TEST_CASE("build_highway_draws: an SP end gets a floor edge and two rail triangles, depth off") {
+TEST_CASE("build_highway_draws: the railings turn the SP colour inside an active window") {
     const PreviewConfig cfg = shipped_preview_config();
     TrackState st = build_track_state(sp_end_scene(), TrackStateOptions{});
-    const double now = 1.0;  // far edge at 2.35 s, so the 2.0 s end is in view
-    std::vector<DrawCommand> cmds = build_highway_draws(st, cfg, now, 1.0);
+    const double now = 1.0;  // the highway runs from 0.775 s to 2.35 s
+    const std::vector<DrawCommand> cmds = build_highway_draws(st, cfg, now, 1.0);
+    const float z_start = static_cast<float>(time_to_z(cfg, now, 1.3, 1.0));
     const float z_end = static_cast<float>(time_to_z(cfg, now, 2.0, 1.0));
+    const std::vector<float> floor_cuts = color_cuts(floor_flats(cmds));
+    for (bool right : {false, true}) {
+        CAPTURE(right);
+        const std::vector<DrawCommand> rails = rail_boxes(cmds, right);
+        REQUIRE(rails.size() == 3);
+        check_rail(rails[0], cfg.track.z_past, z_start, cfg.track.railing_color);
+        check_rail(rails[1], z_start, z_end, cfg.hydra.sp_active_color);
+        check_rail(rails[2], z_end, cfg.track.z_future, cfg.track.railing_color);
 
-    std::vector<size_t> marks;
-    size_t last_floor = 0, first_gem = cmds.size();
-    for (size_t i = 0; i < cmds.size(); ++i) {
-        if (is_sp_end_mark(cmds[i], cfg)) marks.push_back(i);
-        if (cmds[i].mesh == MeshId::Flat && cmds[i].depth == DepthMode::Less) last_floor = i;
-        if (is_gem(cmds[i]) && first_gem == cmds.size()) first_gem = i;
+        // The rails and the floor change colour at the same depths (the scene
+        // has no solo, so only active SP cuts the floor).
+        const std::vector<float> rail_cuts = color_cuts(rails);
+        REQUIRE(rail_cuts.size() == floor_cuts.size());
+        for (size_t k = 0; k < rail_cuts.size(); ++k)
+            CHECK(rail_cuts[k] == doctest::Approx(floor_cuts[k]));
+
+        // A lit rail is a grey rail in another colour: same size, mesh, depth
+        // test, light and alpha.
+        const DrawCommand& lit = rails[1];
+        const DrawCommand& grey = rails[0];
+        CHECK(lit.mesh == grey.mesh);
+        CHECK(lit.lo[0] == grey.lo[0]);
+        CHECK(lit.hi[0] == grey.hi[0]);
+        CHECK(lit.lo[1] == grey.lo[1]);
+        CHECK(lit.hi[1] == grey.hi[1]);
+        CHECK(lit.depth == grey.depth);
+        CHECK(lit.light == grey.light);
+        CHECK(lit.alpha == grey.alpha);
     }
-    REQUIRE(marks.size() == 3);
-    REQUIRE(first_gem < cmds.size());
-    int edges = 0, lefts = 0, rights = 0;
-    for (size_t i : marks) {
-        const DrawCommand& c = cmds[i];
-        CHECK(i > last_floor);
-        CHECK(i < first_gem);
-        CHECK(c.depth == DepthMode::Always);
-        CHECK((c.lo[2] + c.hi[2]) * 0.5f == doctest::Approx(z_end));
-        // Unlit, so the edge and the triangles show the same colour.
-        CHECK(c.light == LightKind::Unlit);
-        if (c.mesh == MeshId::Flat) {
-            ++edges;
-            CHECK(c.lo[0] == doctest::Approx(-1.0f));  // the whole floor width
-            CHECK(c.hi[0] == doctest::Approx(1.0f));
-            CHECK(c.lo[1] == doctest::Approx(-1.0f));  // on the floor
-            CHECK(c.hi[1] == doctest::Approx(-1.0f));
-            CHECK(c.lo[2] - c.hi[2] == doctest::Approx(0.1f));  // sp_end_edge_depth
-        } else {
-            // Its base rests on the railing's outer edge (x -1.09 or 1.09)
-            // and it reaches 0.07 further out, 0.07 tall and centred on the
-            // floor's height.
-            CHECK(std::fmin(c.lo[1], c.hi[1]) == doctest::Approx(-1.035f));
-            CHECK(std::fmax(c.lo[1], c.hi[1]) == doctest::Approx(-0.965f));
-            if (c.mesh == MeshId::TriangleLeft) {
-                ++lefts;
-                CHECK(c.lo[0] == doctest::Approx(-1.16f));
-                CHECK(c.hi[0] == doctest::Approx(-1.09f));
-            } else {
-                REQUIRE(c.mesh == MeshId::TriangleRight);
-                ++rights;
-                CHECK(c.lo[0] == doctest::Approx(1.09f));
-                CHECK(c.hi[0] == doctest::Approx(1.16f));
-            }
-        }
-    }
-    CHECK(edges == 1);
-    CHECK(lefts == 1);
-    CHECK(rights == 1);
+    // The first two boxes are still the left rail, then the right.
+    const std::vector<const DrawCommand*> boxes = of_mesh(cmds, MeshId::Box);
+    REQUIRE(boxes.size() == 6);
+    CHECK(boxes[0]->lo[0] < 0.0f);
+    CHECK(boxes[1]->lo[0] > 0.0f);
 }
 
-// The triangles stand facing the camera with their front side, so back-face
-// culling keeps them, and on screen each apex points away from the lanes.
-TEST_CASE("build_highway_draws: the SP end triangles face the camera and point outward") {
+TEST_CASE("build_highway_draws: no SP window in view leaves two grey railings") {
+    const PreviewConfig cfg = shipped_preview_config();
+    PreviewScene scene = timed_scene();
+    scene.notes = {note(1000.0, PreviewLane::Red), note(1500.0, PreviewLane::Yellow)};
+    TrackState st = build_track_state(scene, TrackStateOptions{});
+    const std::vector<DrawCommand> cmds = build_highway_draws(st, cfg, 1.0, 1.0);
+    const std::vector<const DrawCommand*> boxes = of_mesh(cmds, MeshId::Box);
+    REQUIRE(boxes.size() == 2);
+    CHECK(boxes[0]->lo[0] < 0.0f);
+    CHECK(boxes[1]->lo[0] > 0.0f);
+    for (const DrawCommand* b : boxes)
+        check_rail(*b, cfg.track.z_past, cfg.track.z_future, cfg.track.railing_color);
+}
+
+TEST_CASE("build_highway_draws: an SP window clipped by the view shows no change at the clip") {
     const PreviewConfig cfg = shipped_preview_config();
     TrackState st = build_track_state(sp_end_scene(), TrackStateOptions{});
-    const double now = 1.0;
-    const int w = 1200, h = 400;
-    int seen = 0;
-    for (const DrawCommand& c : build_highway_draws(st, cfg, now, 1.0)) {
-        if (c.mesh != MeshId::TriangleLeft && c.mesh != MeshId::TriangleRight) continue;
-        ++seen;
-        const bool right = c.mesh == MeshId::TriangleRight;
-        const ObjMesh mesh = make_triangle(right);
-        REQUIRE(mesh.triangle_count() == 1);
-        float sx[3], sy[3];
-        for (int k = 0; k < 3; ++k) {
-            const ObjVertex& v = mesh.vertices[k];
-            const XMVECTOR wp = XMVector3TransformCoord(
-                XMVectorSet(v.pos[0], v.pos[1], v.pos[2], 1.0f), stretch_matrix(c));
-            const ImagePoint p = project_to_image(
-                cfg, w, h, Vec3{XMVectorGetX(wp), XMVectorGetY(wp), XMVectorGetZ(wp)});
-            sx[k] = p.x;
-            sy[k] = p.y;
-        }
-        // Image pixels run y down, so a negative signed area here is
-        // counter-clockwise as the viewer sees it: the front face the
-        // renderer keeps.
-        const float area2 = (sx[1] - sx[0]) * (sy[2] - sy[0]) - (sx[2] - sx[0]) * (sy[1] - sy[0]);
-        CHECK(area2 < 0.0f);
-        // The apex is the vertex at the side away from the base.
-        size_t apex = 0;
-        for (size_t k = 0; k < 3; ++k)
-            if (mesh.vertices[k].pos[1] == 0.0f) apex = k;
-        for (size_t k = 0; k < 3; ++k) {
-            if (k == apex) continue;
-            if (right)
-                CHECK(sx[apex] > sx[k]);
-            else
-                CHECK(sx[apex] < sx[k]);
+    {
+        // now 0.5 s: the far edge is 1.85 s, short of the 2.0 s end, so the
+        // rails are lit from the window's start to the far edge.
+        const double now = 0.5;
+        const std::vector<DrawCommand> cmds = build_highway_draws(st, cfg, now, 1.0);
+        const float z_start = static_cast<float>(time_to_z(cfg, now, 1.3, 1.0));
+        for (bool right : {false, true}) {
+            CAPTURE(right);
+            const std::vector<DrawCommand> rails = rail_boxes(cmds, right);
+            REQUIRE(rails.size() == 2);
+            check_rail(rails[0], cfg.track.z_past, z_start, cfg.track.railing_color);
+            check_rail(rails[1], z_start, cfg.track.z_future, cfg.hydra.sp_active_color);
         }
     }
-    CHECK(seen == 2);
-}
-
-TEST_CASE("build_highway_draws: no SP end mark past the far edge or behind the near edge") {
-    const PreviewConfig cfg = shipped_preview_config();
-    TrackState st = build_track_state(sp_end_scene(), TrackStateOptions{});
-    // now 0.5 s: the far edge is 1.85 s, short of the 2.0 s end, so the window
-    // is only clipped there. now 2.3 s: the near edge is 2.075 s, past it.
-    for (double now : {0.5, 2.3}) {
-        CAPTURE(now);
-        int marks = 0;
-        for (const DrawCommand& c : build_highway_draws(st, cfg, now, 1.0))
-            if (is_sp_end_mark(c, cfg)) ++marks;
-        CHECK(marks == 0);
+    {
+        // now 2.3 s: the near edge is 2.075 s, past the end, so both rails
+        // are one grey box.
+        const std::vector<DrawCommand> cmds = build_highway_draws(st, cfg, 2.3, 1.0);
+        for (bool right : {false, true}) {
+            CAPTURE(right);
+            const std::vector<DrawCommand> rails = rail_boxes(cmds, right);
+            REQUIRE(rails.size() == 1);
+            check_rail(rails[0], cfg.track.z_past, cfg.track.z_future, cfg.track.railing_color);
+        }
     }
 }
 
-TEST_CASE("build_highway_draws: two back-to-back SP windows give two edges") {
+TEST_CASE("build_highway_draws: back-to-back SP windows light the rails straight through") {
     const PreviewConfig cfg = shipped_preview_config();
     PreviewScene scene = timed_scene();
     scene.notes = {note(1000.0, PreviewLane::Red), note(2000.0, PreviewLane::Yellow)};
     scene.activations = {activation_until(1300.0, 2000.0), activation_until(2000.0, 2600.0)};
     TrackState st = build_track_state(scene, TrackStateOptions{});
-    const double now = 1.5;  // the window runs from 1.275 s to 2.85 s
-    std::vector<float> edge_z;
-    int triangles = 0;
-    for (const DrawCommand& c : build_highway_draws(st, cfg, now, 1.0)) {
-        if (!is_sp_end_mark(c, cfg)) continue;
-        if (c.mesh == MeshId::Flat)
-            edge_z.push_back((c.lo[2] + c.hi[2]) * 0.5f);
-        else
-            ++triangles;
+    const double now = 1.5;  // the highway runs from 1.275 s to 2.85 s
+    const std::vector<DrawCommand> cmds = build_highway_draws(st, cfg, now, 1.0);
+    const float z_start = static_cast<float>(time_to_z(cfg, now, 1.3, 1.0));
+    const float z_seam = static_cast<float>(time_to_z(cfg, now, 2.0, 1.0));
+    const float z_end = static_cast<float>(time_to_z(cfg, now, 2.6, 1.0));
+    for (bool right : {false, true}) {
+        CAPTURE(right);
+        const std::vector<DrawCommand> rails = rail_boxes(cmds, right);
+        REQUIRE(rails.size() == 3);
+        check_rail(rails[0], cfg.track.z_past, z_start, cfg.track.railing_color);
+        check_rail(rails[1], z_start, z_end, cfg.hydra.sp_active_color);
+        check_rail(rails[2], z_end, cfg.track.z_future, cfg.track.railing_color);
+        for (const DrawCommand& r : rails) {
+            CHECK(r.lo[2] != doctest::Approx(z_seam));
+            CHECK(r.hi[2] != doctest::Approx(z_seam));
+        }
     }
-    REQUIRE(edge_z.size() == 2);
-    CHECK(edge_z[0] == doctest::Approx(time_to_z(cfg, now, 2.0, 1.0)));
-    CHECK(edge_z[1] == doctest::Approx(time_to_z(cfg, now, 2.6, 1.0)));
-    CHECK(triangles == 4);
+}
+
+TEST_CASE("build_highway_draws: a solo neither cuts nor colours the railings") {
+    const PreviewConfig cfg = shipped_preview_config();
+    {
+        // A solo with no SP: two grey rails, while the floor shows the solo.
+        PreviewScene scene = timed_scene();
+        scene.notes = {note(1000.0, PreviewLane::Red), note(1500.0, PreviewLane::Yellow)};
+        scene.solos = {span(1100.0, 1600.0)};
+        TrackState st = build_track_state(scene, TrackStateOptions{});
+        const std::vector<DrawCommand> cmds = build_highway_draws(st, cfg, 1.0, 1.0);
+        bool saw_solo = false;
+        for (const DrawCommand& f : floor_flats(cmds))
+            if (same_color(f.material.color, cfg.track.color_solo)) saw_solo = true;
+        CHECK(saw_solo);
+        const std::vector<const DrawCommand*> boxes = of_mesh(cmds, MeshId::Box);
+        REQUIRE(boxes.size() == 2);
+        for (const DrawCommand* b : boxes)
+            check_rail(*b, cfg.track.z_past, cfg.track.z_future, cfg.track.railing_color);
+    }
+    {
+        // A solo over part of an SP window: the rails match the same scene
+        // without the solo, box for box.
+        PreviewScene with_solo = sp_end_scene();
+        with_solo.solos = {span(1100.0, 1600.0)};
+        const std::vector<DrawCommand> solo_cmds = build_highway_draws(
+            build_track_state(with_solo, TrackStateOptions{}), cfg, 1.0, 1.0);
+        const std::vector<DrawCommand> plain_cmds = build_highway_draws(
+            build_track_state(sp_end_scene(), TrackStateOptions{}), cfg, 1.0, 1.0);
+        const std::vector<const DrawCommand*> solo_rails = of_mesh(solo_cmds, MeshId::Box);
+        const std::vector<const DrawCommand*> plain_rails = of_mesh(plain_cmds, MeshId::Box);
+        REQUIRE(solo_rails.size() == plain_rails.size());
+        for (size_t i = 0; i < solo_rails.size(); ++i) {
+            CAPTURE(i);
+            const DrawCommand& a = *solo_rails[i];
+            const DrawCommand& b = *plain_rails[i];
+            for (int k = 0; k < 3; ++k) {
+                CHECK(a.lo[k] == b.lo[k]);
+                CHECK(a.hi[k] == b.hi[k]);
+            }
+            CHECK(same_color(a.material.color, b.material.color));
+            CHECK(a.depth == b.depth);
+            CHECK(a.light == b.light);
+        }
+    }
+}
+
+TEST_CASE("build_highway_draws: a ghost path's SP windows do not reach the highway") {
+    const PreviewConfig cfg = shipped_preview_config();
+    PreviewScene scene = timed_scene();
+    scene.notes = {note(1000.0, PreviewLane::Red), note(1500.0, PreviewLane::Yellow)};
+    scene.ghost_windows.push_back({1300.0, 2000.0});
+    TrackState st = build_track_state(scene, TrackStateOptions{});
+    const std::vector<DrawCommand> cmds = build_highway_draws(st, cfg, 1.0, 1.0);
+    const std::vector<const DrawCommand*> boxes = of_mesh(cmds, MeshId::Box);
+    REQUIRE(boxes.size() == 2);
+    for (const DrawCommand* b : boxes)
+        check_rail(*b, cfg.track.z_past, cfg.track.z_future, cfg.track.railing_color);
+    const std::vector<DrawCommand> floor = floor_flats(cmds);
+    REQUIRE(!floor.empty());
+    for (const DrawCommand& f : floor) CHECK(same_color(f.material.color, cfg.track.color_normal));
+}
+
+TEST_CASE("build_highway_draws: nothing marks the SP end on the lanes") {
+    const PreviewConfig cfg = shipped_preview_config();
+    TrackState st = build_track_state(sp_end_scene(), TrackStateOptions{});
+    // now 1.0 s: the 2.0 s end is in view.
+    int colored = 0;
+    for (const DrawCommand& c : build_highway_draws(st, cfg, 1.0, 1.0)) {
+        if (c.material.kind != MaterialKind::Color) continue;
+        ++colored;
+        const bool floor = c.mesh == MeshId::Flat && c.depth == DepthMode::Less;
+        CHECK((floor || c.mesh == MeshId::Box));
+    }
+    CHECK(colored > 0);
 }
