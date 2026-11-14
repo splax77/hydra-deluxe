@@ -151,8 +151,8 @@ TEST_CASE("note window: the squeeze-out sums from the mockup") {
 TEST_CASE("note window: exactly 0 is safe, anything below is short") {
     CHECK_FALSE(safe_is_short(0.0));
     CHECK(safe_is_short(std::nextafter(0.0, -1.0)));
-    WindowRow row;
-    row.spare_ms = 0.0;
+    WindowEnds row;
+    row.safe_ms = 0.0;
     CHECK_FALSE(row.is_short());
 }
 
@@ -163,26 +163,25 @@ TEST_CASE("note window: each squeeze reads its own side of its own scale") {
     CHECK(t.act.squeeze_chord_tick(1) == std::optional<int64_t>(3840));
     CHECK_FALSE(t.act.squeeze_chord_tick(2).has_value());
 
-    // The SqOut: the early side of transfer_post (2.0, not 4.0).
-    const std::optional<WindowRow> out = squeeze_out_window(t.act, 1, chords);
+    // The SqOut, anchor on the frontend: the early side of transfer_post
+    // (2.0, not 4.0).
+    const std::optional<WindowEnds> out = squeeze_window_ends(t.act, 1, chords);
     REQUIRE(out.has_value());
-    CHECK(out->first_side_ms == kCapSide);
-    REQUIRE(out->second_side_ms.has_value());
-    CHECK(*out->second_side_ms == kCapSide);
-    CHECK(out->spare_ms == pinned(157.14696125214215));
+    REQUIRE(out->ends.size() == 2);
+    CHECK(out->ends[0].side_ms == kCapSide);
+    CHECK(out->ends[1].side_ms == kCapSide);
+    CHECK(out->safe_ms == pinned(157.14696125214215));
 
-    // The SqIn: the late side of its own transfer (1.5, not 3.0), never
-    // transfer_post's.
-    const std::optional<WindowRow> in = squeeze_in_window(t.act, 0, chords);
+    // The SqIn, anchor on the backend: the late side of its own transfer
+    // (1.5, not 3.0), never transfer_post's.
+    const std::optional<WindowEnds> in = squeeze_window_ends(t.act, 0, chords);
     REQUIRE(in.has_value());
-    CHECK(in->first_side_ms == kCapSide);
-    REQUIRE(in->second_side_ms.has_value());
-    CHECK(in->spare_ms == pinned(194.2891343767851));
+    REQUIRE(in->ends.size() == 2);
+    CHECK(in->ends[1].side_ms == kCapSide);
+    CHECK(in->safe_ms == pinned(194.2891343767851));
 
-    // Each function answers only for its own kind.
-    CHECK_FALSE(squeeze_out_window(t.act, 0, chords).has_value());
-    CHECK_FALSE(squeeze_in_window(t.act, 1, chords).has_value());
-    CHECK_FALSE(squeeze_out_window(t.act, 2, chords).has_value());
+    // A place past the activation's squeezes has no row.
+    CHECK_FALSE(squeeze_window_ends(t.act, 2, chords).has_value());
 }
 
 TEST_CASE("note window: a cap-clamped squeeze is anchored on the overfill chord") {
@@ -204,20 +203,24 @@ TEST_CASE("note window: a cap-clamped squeeze is anchored on the overfill chord"
     const double overfill_side = chords.sides_ms[static_cast<size_t>(*chords.at(1536))];
     const double activation_side = chords.sides_ms[static_cast<size_t>(*chords.at(768))];
     REQUIRE(overfill_side != activation_side);
-    const std::optional<WindowRow> row = squeeze_out_window(act, 0, chords);
+    // The squeeze out has a timing, so its anchor is the frontend end.
+    const std::optional<WindowEnds> row = squeeze_window_ends(act, 0, chords);
     REQUIRE(row.has_value());
-    CHECK(row->first_side_ms == overfill_side);
+    REQUIRE(row->ends.size() == 2);
+    CHECK(row->ends[0].end == NoteEnd::Frontend);
+    CHECK(row->ends[0].tick == 1536);
+    CHECK(row->ends[0].side_ms == overfill_side);
 }
 
 TEST_CASE("note window: the early fill row reads the SP-ready note") {
     TwoSqueezes t = two_squeezes();
     const ChordTimes chords = chord_times(t.song);
     t.act.e_offset = -10.0;  // Star Power ready 10 ms after the deadline
-    const std::optional<WindowRow> row = early_fill_window(t.act, chords);
+    const std::optional<WindowEnds> row = early_fill_window_end(t.act, chords);
     REQUIRE(row.has_value());
-    CHECK(row->first_side_ms == kCapSide);
-    CHECK_FALSE(row->second_side_ms.has_value());
-    CHECK(row->spare_ms == pinned(75.71565375071405));
+    REQUIRE(row->ends.size() == 1);
+    CHECK(row->ends[0].side_ms == kCapSide);
+    CHECK(row->safe_ms == pinned(75.71565375071405));
 }
 
 TEST_CASE("note window: a row the record cannot name is left out") {
@@ -227,32 +230,32 @@ TEST_CASE("note window: a row the record cannot name is left out") {
     SUBCASE("an unset scale") {
         TwoSqueezes t = two_squeezes();
         t.act.transfer_post.reset();
-        CHECK_FALSE(squeeze_out_window(t.act, 1, chords).has_value());
+        CHECK_FALSE(squeeze_window_ends(t.act, 1, chords).has_value());
         t.act.sqinouts[0].transfer.reset();
-        CHECK_FALSE(squeeze_in_window(t.act, 0, chords).has_value());
+        CHECK_FALSE(squeeze_window_ends(t.act, 0, chords).has_value());
     }
     SUBCASE("a squeeze that names no chord") {
         TwoSqueezes t = two_squeezes();
         t.act.sqout_tick.reset();
-        CHECK_FALSE(squeeze_out_window(t.act, 1, chords).has_value());
+        CHECK_FALSE(squeeze_window_ends(t.act, 1, chords).has_value());
     }
     SUBCASE("a squeeze with no end in the record") {
         TwoSqueezes t = two_squeezes();
         t.act.sp_end_steps.clear();
-        CHECK_FALSE(squeeze_out_window(t.act, 1, chords).has_value());
-        CHECK_FALSE(squeeze_in_window(t.act, 0, chords).has_value());
+        CHECK_FALSE(squeeze_window_ends(t.act, 1, chords).has_value());
+        CHECK_FALSE(squeeze_window_ends(t.act, 0, chords).has_value());
     }
     SUBCASE("a tick with no chord on it") {
         TwoSqueezes t = two_squeezes();
         t.act.sqout_tick = 3000;
-        CHECK_FALSE(squeeze_out_window(t.act, 1, chords).has_value());
+        CHECK_FALSE(squeeze_window_ends(t.act, 1, chords).has_value());
         t.act.bank_rise_ticks = {0, 3000};  // the bar arrived where no chord sits
-        CHECK_FALSE(early_fill_window(t.act, chords).has_value());
+        CHECK_FALSE(early_fill_window_end(t.act, chords).has_value());
     }
     SUBCASE("fewer stored bar arrivals than the activation level") {
         TwoSqueezes t = two_squeezes();
         t.act.bank_rise_ticks = {0};
-        CHECK_FALSE(early_fill_window(t.act, chords).has_value());
+        CHECK_FALSE(early_fill_window_end(t.act, chords).has_value());
     }
 }
 

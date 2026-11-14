@@ -88,13 +88,6 @@ double early_fill_safe_ms(double ready_side_ms, double early_fill_ms);
 // 2026-11-13 sets the edge: "xx ms safe >=0 ms, xx ms short <0ms".
 bool safe_is_short(double safe_ms);
 
-// The early fill sum's old name, kept only because docs/clone-hero/04-fills.md
-// still names it and the docs check reads that page. The Dynamic Hit Window
-// plan's T2 and T4 remove it and the page's mention.
-inline double early_fill_spare_ms(double ready_side_ms, double early_fill_ms) {
-    return early_fill_safe_ms(ready_side_ms, early_fill_ms);
-}
-
 // ---- which end each note is on ---------------------------------------------
 // The Dynamic Hit Window row names each note's end with the user's words:
 // the frontend or the backend (the ruling of 2026-11-13). These are the one
@@ -157,42 +150,6 @@ std::optional<WindowEnds> squeeze_window_ends(const Activation& act, size_t k, c
 // chord sits on its tick (a bar that arrived at the previous SP end). Whether
 // the row shows at all is the caller's question.
 std::optional<WindowEnds> early_fill_window_end(const Activation& act, const ChordTimes& chords);
-
-// ---- the old row functions ------------------------------------------------
-// Kept only until T2 of the Dynamic Hit Window plan moves the Paths tab to the
-// functions above and removes these.
-
-// One row's numbers: the first window side, the second when the timing has
-// two notes, and the safe sum. Its field keeps the old name until T2,
-// because the Paths tab reads it and a data member cannot forward to a new
-// name.
-struct WindowRow {
-    double first_side_ms = 0.0;
-    std::optional<double> second_side_ms;
-    double spare_ms = 0.0;
-    bool is_short() const { return safe_is_short(spare_ms); }
-};
-
-// Squeeze `k` of `act`, when it is a squeeze out: the anchor's side first
-// (Activation::squeeze_anchor_tick, hit early), then the squeezed note's
-// (Activation::squeeze_chord_tick, hit late), at the early side of
-// Activation::transfer_post. Unset when squeeze `k` is not a squeeze out, the
-// scale is unset, the record names no chord or no end for it, or no chord in
-// `chords` sits on either tick.
-std::optional<WindowRow> squeeze_out_window(const Activation& act, size_t k, const ChordTimes& chords);
-
-// Squeeze `k` of `act`, when it is a squeeze in: the anchor's side first (hit
-// late), then the squeezed note's (hit early), at the late side of the
-// squeeze's own SPSqueeze::transfer. Unset on the same gaps as
-// squeeze_out_window.
-std::optional<WindowRow> squeeze_in_window(const Activation& act, size_t k, const ChordTimes& chords);
-
-// The early fill of `act`: the side of the note that made Star Power ready
-// (Activation::sp_ready_tick), with no second side. Unset when the record
-// holds too few bar arrivals to name that note, or no chord sits on its tick
-// (a bar that arrived at the previous SP end). Whether the row shows at all
-// is the caller's question.
-std::optional<WindowRow> early_fill_window(const Activation& act, const ChordTimes& chords);
 
 }  // namespace hydra
 
