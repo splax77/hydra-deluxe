@@ -124,20 +124,23 @@ KeptGems kept_gems(const Chord& chord, const std::vector<ReplayNote>& notes) {
 
 // ---- the aims ----------------------------------------------------------------
 
-double moving_side(SqueezeKind kind, const TransferScale& scale) {
-    return kind == SqueezeKind::SqOut ? scale.early : scale.late;
-}
+double moving_side(NoteEnd anchor_end, const TransferScale& scale) { return transfer_side(scale, anchor_end); }
 
-double moving_ratio(const SqueezeGeometry& g) { return moving_side(g.kind, g.ratio); }
+double moving_ratio(const SqueezeGeometry& g) { return moving_side(g.anchor_end, g.ratio); }
+
+namespace {
+// Whether an anchor on `anchor_end` is pressed early: a frontend anchor goes
+// early, a backend anchor late. The one place the tool turns the anchor's
+// end into a way to press.
+bool anchor_goes_early(NoteEnd anchor_end) { return anchor_end == NoteEnd::Frontend; }
 
 // How far an anchor press of `lead_ms` moves the end once the game has judged
-// it `judged_ms` after the send: earlier by r(lead - judged) for a squeeze-out,
-// later by r(lead + judged) for a squeeze-in (design point 4). The one place
-// the end's shift is worked out; the splits, the reads and the final-end
-// chord's lead all call it.
-namespace {
-double anchor_end_shift_ms(SqueezeKind kind, double ratio, double lead_ms, double judged_ms) {
-    return kind == SqueezeKind::SqOut ? -ratio * (lead_ms - judged_ms) : ratio * (lead_ms + judged_ms);
+// it `judged_ms` after the send: earlier by r(lead - judged) for an anchor
+// pressed early, later by r(lead + judged) for one pressed late (design
+// point 4). The one place the end's shift is worked out; the splits, the
+// reads and the final-end chord's lead all call it.
+double anchor_end_shift_ms(NoteEnd anchor_end, double ratio, double lead_ms, double judged_ms) {
+    return anchor_goes_early(anchor_end) ? -ratio * (lead_ms - judged_ms) : ratio * (lead_ms + judged_ms);
 }
 }  // namespace
 
@@ -158,7 +161,7 @@ double anchor_end_shift_ms(SqueezeKind kind, double ratio, double lead_ms, doubl
 // the chord sits past the end.
 double equal_room_lead_ms(const SqueezeGeometry& g) {
     const double r = moving_ratio(g);
-    if (g.kind == SqueezeKind::SqOut) {
+    if (anchor_goes_early(g.anchor_end)) {
         const double gap = g.end_ms - g.squeeze_ms;
         return (g.anchor_side_ms - g.squeeze_side_ms + gap + kSpOutLagMs) / (1.0 + r) + kJudgeEarlyMs;
     }
@@ -174,12 +177,13 @@ double press_room_ms(double aim_ms, double side_ms) {
 SqueezeSplit split_at_lead(const SqueezeGeometry& g, double lead_ms) {
     const double r = moving_ratio(g);
     SqueezeSplit s;
-    s.anchor_aim_ms = g.kind == SqueezeKind::SqOut ? -lead_ms : lead_ms;
+    const bool early = anchor_goes_early(g.anchor_end);
+    s.anchor_aim_ms = early ? -lead_ms : lead_ms;
     // The end once the anchor is judged one frame after its aim; the squeeze
     // press's aim assumes that same end.
-    s.planned_end_ms = g.end_ms + anchor_end_shift_ms(g.kind, r, lead_ms, kJudgeEarlyMs);
+    s.planned_end_ms = g.end_ms + anchor_end_shift_ms(g.anchor_end, r, lead_ms, kJudgeEarlyMs);
     s.aim_end_ms = s.planned_end_ms;
-    if (g.kind == SqueezeKind::SqOut)
+    if (early)
         s.squeeze_aim_ms = s.aim_end_ms + kSpOutLagMs - g.squeeze_ms;
     else
         s.squeeze_aim_ms = s.aim_end_ms - kSpEndLeadMs - g.squeeze_ms;
@@ -196,7 +200,7 @@ std::optional<double> anchor_lead_ms(const std::vector<SqueezeGeometry>& on_one_
     if (on_one_anchor.empty()) return std::nullopt;
     const SqueezeGeometry* early = nullptr;
     const SqueezeGeometry* late = nullptr;
-    for (const SqueezeGeometry& g : on_one_anchor) (g.kind == SqueezeKind::SqOut ? early : late) = &g;
+    for (const SqueezeGeometry& g : on_one_anchor) (anchor_goes_early(g.anchor_end) ? early : late) = &g;
     const int anchor = on_one_anchor.front().anchor_chord;
     if (early && late) {
         refusals.push_back("anchor chord " + std::to_string(anchor) + " would have to be pressed early for chord " +
@@ -213,7 +217,7 @@ std::optional<double> anchor_lead_ms(const std::vector<SqueezeGeometry>& on_one_
             lead = l;
         }
     }
-    const bool is_out = need->kind == SqueezeKind::SqOut;
+    const bool is_out = anchor_goes_early(need->anchor_end);
     const char* way = is_out ? "early" : "late";
     // Below the plain press's own lead the split would press the anchor the
     // other way, where the ratio and the frame model it rests on do not hold.
@@ -248,7 +252,7 @@ std::optional<double> anchor_lead_ms(const std::vector<SqueezeGeometry>& on_one_
         if (!g.read_end) continue;
         const SteadySpans& s = g.read_end->steady;
         const std::optional<double> span = is_out ? s.before_end_ms : s.after_end_ms;
-        const double moved = lead * moving_side(need->kind, g.read_end->ratio);
+        const double moved = lead * moving_side(need->anchor_end, g.read_end->ratio);
         if (span && moved > *span) {
             refusals.push_back("anchor chord " + std::to_string(anchor) + " pressed " + std::to_string(lead) +
                                " ms " + way + " for chord " + std::to_string(g.squeeze_chord) +
@@ -636,7 +640,7 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
             const std::optional<size_t> own_step = act.squeeze_end_step(k);
             if (!own_step) continue;
             SqueezeGeometry g;
-            g.kind = sq.kind;
+            g.anchor_end = squeeze_ends(sq).anchor;
             g.anchor_chord = ca;
             g.anchor_ms = replay.chords[static_cast<size_t>(ca)].ms;
             g.anchor_side_ms = sides[static_cast<size_t>(ca)];
@@ -663,14 +667,14 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
 
     // ---- one lead per anchor, then each squeeze's split at it
     std::map<int, double> lead_of;
-    std::map<int, SqueezeKind> way_of;
+    std::map<int, NoteEnd> way_of;  // anchor chord -> the anchor's end
     for (const auto& [anchor, list] : by_anchor) {
         std::vector<SqueezeGeometry> geos;
         for (size_t t : list) geos.push_back(timed[t].g);
         const std::optional<double> lead = anchor_lead_ms(geos, refusals);
         if (!lead) continue;
         lead_of[anchor] = *lead;
-        way_of[anchor] = geos.front().kind;
+        way_of[anchor] = geos.front().anchor_end;
         for (size_t t : list) timed[t].split = split_at_lead(timed[t].g, *lead);
     }
     for (size_t a = 0; a < acts.size(); ++a) {
@@ -864,7 +868,7 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
                 continue;
             }
             const double l = lead_of[ci];
-            add_groups(i, groups, way_of[ci] == SqueezeKind::SqOut ? -l : l, true, "anchor");
+            add_groups(i, groups, anchor_goes_early(way_of[ci]) ? -l : l, true, "anchor");
             continue;
         }
 
@@ -893,7 +897,9 @@ nlohmann::json schedule_json(const Song& song, const std::vector<const Activatio
             }
             // Each threshold is worked out on the own end; the file writes
             // it in read terms, where the player compares it (design point 4).
-            if (t.g.kind == SqueezeKind::SqOut) {
+            // The squeeze's kind picks the scoring rule here: a squeeze-out's
+            // late gems are the ones the rules pay outside (sqout_late_notes).
+            if (acts[a]->sqinouts[k].kind == SqueezeKind::SqOut) {
                 // The late gems are the ones the rules pay outside, by their
                 // place in Chord::note_list(true), the order of
                 // ReplayChord::notes.
