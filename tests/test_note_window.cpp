@@ -271,9 +271,6 @@ SPSqueeze squeeze_at(SqueezeKind kind, double offset_ms) {
 // the plan's figures give them.
 const TransferScale kDoaScale{1.0044, 0.9970};
 
-// The cap side at full precision (kCapSide's value).
-constexpr double kCap = 85.71565375071405;
-
 }  // namespace
 
 TEST_CASE("note window: squeeze_ends follows the sentence, not the kind") {
@@ -329,7 +326,7 @@ TEST_CASE("note window: squeeze_window_ends lists each end, frontend first") {
     REQUIRE(out->ends.size() == 2);
     CHECK(out->ends[0].end == NoteEnd::Frontend);
     CHECK(out->ends[0].tick == 768);
-    CHECK(out->ends[0].side_ms == pinned(kCap));
+    CHECK(out->ends[0].side_ms == kCapSide);
     CHECK(out->ends[1].end == NoteEnd::Backend);
     CHECK(out->ends[1].tick == 3840);
     CHECK(out->ends[1].side_ms == pinned(71.97216363656233));
@@ -404,7 +401,7 @@ TEST_CASE("note window: the early fill end reads the SP-ready note") {
     REQUIRE(row->ends.size() == 1);
     CHECK(row->ends[0].end == NoteEnd::Frontend);
     CHECK(row->ends[0].tick == 768);
-    CHECK(row->ends[0].side_ms == pinned(kCap));
+    CHECK(row->ends[0].side_ms == kCapSide);
     CHECK(row->safe_ms == pinned(75.71565375071405));
 
     t.act.e_offset = 10.0;  // time to spare: figure -10.0
