@@ -2,6 +2,12 @@
 
 How agents are run: status lines, parallel work, budgets, approvals, and how far an agent's word is trusted. The line format is in README.md beside this file. Newest first.
 
+Under Confirmed are the user's exact words, filed with the user's approval or through the backfill route; under Unconfirmed are older lines written by sessions, which guide sessions as working rules but are never cited as the user's ruling.
+
+## Confirmed
+
+## Unconfirmed
+
 - **2026-11-07** "i want a limit of three builds at once, strictly enforced. agents are never allowed to start their own builds, only the main session, with a limit of one build per session." (session e3e9069c; note: none; backs: CLAUDE.md rule 14)
 - **2026-11-07** "any tests that require a build are done by the main session, not agents." (session e3e9069c; note: none; backs: CLAUDE.md rule 14)
 - **2026-11-07** "Yes, merge", to: five recommendations. Merge now; agents do not use the `hydra` MCP server; a reviewer's fix that fails a test goes the way of one that fails the build; a fix-review fix that fails too stops for the user; and four tool numbers stand. D314 lists them. (session e3e9069c; note: none; backs: CLAUDE.md rules 5 and 14)

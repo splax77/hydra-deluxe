@@ -2,6 +2,12 @@
 
 Which tests run when, how big a run may be, and when the whole song library may be touched. The line format is in README.md beside this file. Newest first.
 
+Under Confirmed are the user's exact words, filed with the user's approval or through the backfill route; under Unconfirmed are older lines written by sessions, which guide sessions as working rules but are never cited as the user's ruling.
+
+## Confirmed
+
+## Unconfirmed
+
 - **2026-10-24** As the note records it: Exception (user, 2026-10-24): every merge to Hydra's main, docs-only included, also runs the three repo-wide tests: docs-vs-code, the single-owner scan and the precheck self-test (commands in CLAUDE.md rule 1). (session: not stated; note: merge-tests-touch-changed-files; backs: CLAUDE.md rule 1)
 - **2026-10-24** As the note records it: the user was rightly angry ("this was supposed to be faster and now you're making it slower???"). (session: not stated; note: ci-yaml-unparsed-here; backs: CLAUDE.md rule 10)
 - **2026-10-14** "all the parts you didnt change will remain the same" As the note records it: RULE (user, 2026-10-14): a merge runs only the tests that touch the changed files; the whole suite only when shared code changed. (session: not stated; note: merge-tests-touch-changed-files; backs: CLAUDE.md rule 1)

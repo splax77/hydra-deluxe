@@ -2,6 +2,12 @@
 
 Where Hydra follows the game and where it does not, and how live runs of the game are allowed to work. The game facts themselves live on the pages under docs/clone-hero/. The line format is in README.md beside this file. Newest first.
 
+Under Confirmed are the user's exact words, filed with the user's approval or through the backfill route; under Unconfirmed are older lines written by sessions, which guide sessions as working rules but are never cited as the user's ruling.
+
+## Confirmed
+
+## Unconfirmed
+
 - **2026-11-13** "Leave the line changed" Context: they were asked "During a run, the tools change one line of Clone Hero's settings.ini (pause_on_focus_lost ..." and how ch_stop should undo that edit, with the other choices putting back only that line or restoring the whole file. So no tool backs up, restores, moves or deletes settings.ini: ch_start still sets pause_on_focus_lost for the run, and the line stays at the run's value after it. (session: e14f7e34; note: none; backs: `_pause_setting` in tools/ch_mcp/game_tools.py)
 - **2026-11-13** "stop messing with the game's save file. just let it stay." Context: they asked "why are you overwriting the game's score file, why are you not backing anything up, and when did i approve this design?", because the backup and restore of the game's files was an agent's design they never approved, and ch_stop's restore had thrown away a run's scorestats.json. So the Clone Hero tools never back up, restore, move or delete a file the game saves itself (scorestats.json, profiles.ini, profiles.bin, scoredata.bin, scoresext.bin, user.bin); only the Rewired registry key is still backed up and put back, and the line above settles settings.ini. This replaces the agent-written "backup/restore undo the files" wording on the 2026-10-30 line below. (session: e14f7e34; note: none; backs: `backup` in tools/ch_mcp/game_files.py)
 - **2026-11-12** "Leave all three out (Recommended)" Context: they were asked what IG6 of the in-game press timing plan takes in of its three left-out items (a live edge-probe run, the agent's old `then` code, and `play_chords`' `kit` flag with the harness's loop case), and in the same dialog answered "Start IG6a (Recommended)" to "Start IG6a now?". So IG6 changes no agent code and needs no game run, and IG6a starts. (session: 1ac0d6b4; note: none; backs: D343 in docs/audit/2026-10-03-fix-decisions.md)

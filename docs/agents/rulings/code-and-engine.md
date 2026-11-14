@@ -2,6 +2,12 @@
 
 How Hydra's code works out its answers: derive once, one owner per question, Star Power, scoring, stored data and errors. The line format is in README.md beside this file. Newest first.
 
+Under Confirmed are the user's exact words, filed with the user's approval or through the backfill route; under Unconfirmed are older lines written by sessions, which guide sessions as working rules but are never cited as the user's ruling.
+
+## Confirmed
+
+## Unconfirmed
+
 - **2026-11-12** "why are you trying to convince me to skip something i already approved?" When asked whether to skip T7 (reading the chart list on 8 threads, measured at 5.4 ms against 13.8 on 1) because the plan had recommended no. So T7 runs on 8 threads, and an approved task is not put back to the user. (session c8b70230; note: approved-work-is-not-reasked; backs: no page yet)
 - **2026-11-12** "8 threads" To how many threads the library open folds each row's search text and sort keys on (the open-savings plan's T6), after `hydra_bench --open` measured 47.6 ms on 1 thread, 24.2 on 2, 12.8 on 4, 9.5 on 8, 7.4 on 12 and 6.1 on 16 on a copy of the user's library. Earlier the same day: "how many threads can we use? give me a real measurement", and of Python timings "python? why are you testing python code against a c++ app? i need real numbers if you want me to choose something, not guesses". (session c8b70230; note: time-the-real-code; backs: no page yet)
 - **2026-11-12** "Keep it, make it cheaper" and "Yes, build once (Recommended)" To the saved-figure fill plan's questions: whether to remove `fill_saved_hardest`, which the 2026-11-08 stamp bump left no row to fill, or keep it and make it cheaper; and whether the path-text reader builds its search graph once even if the fill goes. So the fill stays, and the reader and the fill build one graph per chart. (session c8b70230; note: none; backs: no page yet)
