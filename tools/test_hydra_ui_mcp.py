@@ -771,7 +771,7 @@ class RealExeLayer(unittest.TestCase):
         upto = [ln.strip() for ln in lines].index("expect-text Burnout") + 1
         out = self.helper.run("\n".join(lines[:upto]))
         self.assertNotIn("stopped at line", out)
-        self.assertIn("charts=97", self.helper.send("state"))
+        self.assertIn("charts=98", self.helper.send("state"))
 
     def burnout_row(self, text):
         # The library row for the smoke script's Burnout, read from Hydra's own
@@ -1067,7 +1067,7 @@ class RealExeLayer(unittest.TestCase):
         self.assertEqual(Path(s.hello["log"]), s.scratch / hm.WINDOW_LOG)
         self.assertEqual(s.hello["crash_dump"], "")
         self.assertIsNone(s.crash_dump)
-        self.assertIn("charts=97", self.helper.send("state"))
+        self.assertIn("charts=98", self.helper.send("state"))
         window_engine = s.engine_scratch()
         self.assertTrue(window_engine.is_dir())
         self.assertEqual(self.helper.stop().splitlines()[0], "Hydra exited with code 0")

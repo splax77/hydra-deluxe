@@ -386,7 +386,7 @@ void test_batch_confirm(ImGuiTestContext* ctx) {
     ctx->Yield(2);
     IM_CHECK(h.app->batch_confirm_pending);
     std::string text = visible_text(h);
-    IM_CHECK(text.find("Analyze 97 charts that have no result yet?") != std::string::npos);
+    IM_CHECK(text.find("Analyze 98 charts that have no result yet?") != std::string::npos);
     IM_CHECK(text.find("Expert \xC2\xB7 Pro Drums \xC2\xB7 2x Bass") != std::string::npos);
     IM_CHECK(text.find("4 bars (Clone Hero's rule)") != std::string::npos);
     IM_CHECK(text.find("2 scores") != std::string::npos);
@@ -478,7 +478,7 @@ void test_batch_strip_workers(ImGuiTestContext* ctx) {
     IM_CHECK_EQ(gate.started(), kWorkers);
     IM_CHECK(wait_until(ctx, [&] { return child_window(ctx, "//Hydra/##batchstrip") != nullptr; }, 5));
     ctx->Yield(2);
-    IM_CHECK(has("Analyzing...  0 of 97"));
+    IM_CHECK(has("Analyzing...  0 of 98"));
     IM_CHECK(has("Now: "));
     ImGuiWindow* strip = child_window(ctx, "//Hydra/##batchstrip");
     IM_CHECK(strip != nullptr);
@@ -491,7 +491,7 @@ void test_batch_strip_workers(ImGuiTestContext* ctx) {
     IM_CHECK(wait_until(ctx, [&] {
         return h.app->batch_job->snapshot().completed == 2 && gate.started() == 2 + kWorkers;
     }, 60));
-    IM_CHECK(has("Analyzing...  2 of 97"));
+    IM_CHECK(has("Analyzing...  2 of 98"));
     const ImRect stop1 = ctx->ItemInfo("Stop").RectFull;
     IM_CHECK_FLOAT_NEAR_EQ(stop1.Min.x, stop0.Min.x, 0.01f);
     IM_CHECK_FLOAT_NEAR_EQ(stop1.Min.y, stop0.Min.y, 0.01f);
@@ -504,14 +504,14 @@ void test_batch_strip_workers(ImGuiTestContext* ctx) {
     IM_CHECK(wait_until(ctx, [&] { return h.app->batch_job->snapshot().completed == 2 + kWorkers; }, 60));
     settle();
     IM_CHECK_EQ(gate.started(), 2 + kWorkers);
-    IM_CHECK(has("Paused  5 of 97"));
+    IM_CHECK(has("Paused  5 of 98"));
     IM_CHECK(!has("Now: "));
     IM_CHECK(ctx->ItemExists("Resume"));
 
     // Resume fills every worker again.
     ctx->ItemClick("Resume");
     IM_CHECK(wait_until(ctx, [&] { return gate.started() == 2 + 2 * kWorkers; }, 30));
-    IM_CHECK(has("Analyzing...  5 of 97"));
+    IM_CHECK(has("Analyzing...  5 of 98"));
     IM_CHECK(has("Now: "));
 
     // Stop: the three held charts are dropped, not counted and not failed.

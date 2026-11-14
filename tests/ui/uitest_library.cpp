@@ -481,7 +481,7 @@ void test_view_settings(ImGuiTestContext* ctx) {
 ImGuiTable* library_table();  // below, beside the column tests
 
 // The search box, the chips, the second line and the empty state, on the
-// scratch library (97 charts in testdata\input).
+// scratch library (98 charts in testdata\input).
 void test_library_search(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     reset_app(h);
@@ -490,10 +490,10 @@ void test_library_search(ImGuiTestContext* ctx) {
     ctx->SetRef("//Hydra");
     const auto shown = [&] { return h.app->library_shown_count(); };
 
-    IM_CHECK_EQ(shown(), (size_t)97);
-    IM_CHECK(visible_text(h).find("97 charts") != std::string::npos);
-    IM_CHECK(ctx->ItemExists("**/All (97)##chipall"));
-    IM_CHECK(ctx->ItemExists("**/Not analyzed (97)##chipnew"));
+    IM_CHECK_EQ(shown(), (size_t)98);
+    IM_CHECK(visible_text(h).find("98 charts") != std::string::npos);
+    IM_CHECK(ctx->ItemExists("**/All (98)##chipall"));
+    IM_CHECK(ctx->ItemExists("**/Not analyzed (98)##chipnew"));
     IM_CHECK((ctx->ItemInfo("**/Stale (0)##chipstale").ItemFlags & ImGuiItemFlags_Disabled) != 0);
 
     // A quoted phrase: the five charts under "...\Tier 4".
@@ -501,7 +501,7 @@ void test_library_search(ImGuiTestContext* ctx) {
     IM_CHECK(wait_until(ctx, [&] { return shown() == 5; }, 5));
     IM_CHECK(ctx->ItemExists("**/All (5)##chipall"));
     std::string text = visible_text(h);
-    IM_CHECK(text.find("5 of 97 charts") != std::string::npos);
+    IM_CHECK(text.find("5 of 98 charts") != std::string::npos);
     for (const char* title : {"Burnout", "Chair", "Limb From Limb", "Unbound (The Wild Ride)", "YYZ"})
         IM_CHECK(text.find(title) != std::string::npos);
 
@@ -530,7 +530,7 @@ void test_library_search(ImGuiTestContext* ctx) {
     // The user's case: the song stays open and the search box is emptied.
     // Every row still shows its album under the artist.
     ctx->ItemInputValue("**/##search", "");
-    IM_CHECK(wait_until(ctx, [&] { return h.app->search.empty() && shown() == 97; }, 5));
+    IM_CHECK(wait_until(ctx, [&] { return h.app->search.empty() && shown() == 98; }, 5));
     ctx->Yield(2);
     IM_CHECK(!ctx->ItemExists("**/Album"));
     IM_CHECK(on_screen(h, "Vector"));
@@ -625,7 +625,7 @@ void test_library_search(ImGuiTestContext* ctx) {
     IM_CHECK(visible_text(h).find("Nothing matches.") != std::string::npos);
     IM_CHECK(!ctx->ItemExists("**/Clear search"));
     ctx->ItemClick("**/X##clearsearch");
-    IM_CHECK(wait_until(ctx, [&] { return shown() == 97 && h.app->search.empty(); }, 5));
+    IM_CHECK(wait_until(ctx, [&] { return shown() == 98 && h.app->search.empty(); }, 5));
 
     // Escape in the box clears it; a second Escape leaves the box.
     ctx->ItemInputValue("**/##search", "chair");

@@ -653,18 +653,18 @@ TEST_CASE("corpus: squeeze-ins at exactly 0 and what they change") {
     }
 
     for (const std::string& d : shown_differs) CHECK_MESSAGE(false, "shown differs: " << d);
-    CHECK(charts == 97);
+    CHECK(charts == 98);
     CHECK(sqin_at_zero_acts == 56);
     CHECK(sqin_at_zero_timed == 56);
     CHECK(best_timed_by_sqin == 5);
-    CHECK(saved_rows == 369);
+    CHECK(saved_rows == 374);
     // A fresh row shows what Path::difficulty() shows: the check that saving
     // the engine's figure changed nothing on screen.
     CHECK(shown_differs.size() == 0);
-    CHECK(saved_negative == 86);
-    CHECK(still_empty_with_sqin == 75);
-    CHECK(allzero_charts == 68);
-    CHECK(allzero_paths == 69);
+    CHECK(saved_negative == 90);
+    CHECK(still_empty_with_sqin == 79);
+    CHECK(allzero_charts == 69);
+    CHECK(allzero_paths == 70);
 }
 
 TEST_CASE("score graph: the backend rows are sized once, one per chord") {
