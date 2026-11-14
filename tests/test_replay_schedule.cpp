@@ -1410,7 +1410,8 @@ TEST_CASE("schedule: the first press group is the activation note") {
 }
 
 // ---- T2: each read at its own step's scale, and the two ends of a press ----
-// docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md, task T2.
+// `docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md` (removed; `git show 48401572:docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md`),
+// task T2.
 // The literals are the plan's, read from Pitch Dark's chart and the run of
 // 2026-11-12.
 
@@ -1609,7 +1610,7 @@ TEST_CASE("schedule: Pitch Dark's read range is its read end's steady span") {
 
     // Chord 644's read end is step 1's (tick 198570), between the tempo
     // changes at ticks 197760 and 198720 (design point 5 of
-    // docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md).
+    // `docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md` (removed; `git show 48401572:docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md`)).
     const std::vector<json> p644 = presses_of(sch, 644, "squeeze_in");
     REQUIRE(p644.size() == 1);
     const json& range = p644[0]["read_range_ms"];
