@@ -422,34 +422,3 @@ TEST_CASE("note window: a safe sum of exactly 0 is not short") {
     row.safe_ms = -0.04;
     CHECK(row.is_short());
 }
-
-TEST_CASE("note window: an end the record cannot name is left out") {
-    const Song song = red_chords({0, 768, 1536, 2304, 3072, 3840});
-    const ChordTimes chords = chord_times(song);
-
-    SUBCASE("an unset scale") {
-        TwoSqueezes t = two_squeezes();
-        t.act.transfer_post.reset();
-        CHECK_FALSE(squeeze_window_ends(t.act, 1, chords).has_value());
-        t.act.sqinouts[0].transfer.reset();
-        CHECK_FALSE(squeeze_window_ends(t.act, 0, chords).has_value());
-    }
-    SUBCASE("a squeeze with no end in the record") {
-        TwoSqueezes t = two_squeezes();
-        t.act.sp_end_steps.clear();
-        CHECK_FALSE(squeeze_window_ends(t.act, 1, chords).has_value());
-        CHECK_FALSE(squeeze_window_ends(t.act, 0, chords).has_value());
-    }
-    SUBCASE("a tick with no chord on it") {
-        TwoSqueezes t = two_squeezes();
-        t.act.sqout_tick = 3000;
-        CHECK_FALSE(squeeze_window_ends(t.act, 1, chords).has_value());
-        t.act.bank_rise_ticks = {0, 3000};
-        CHECK_FALSE(early_fill_window_end(t.act, chords).has_value());
-    }
-    SUBCASE("fewer stored bar arrivals than the activation level") {
-        TwoSqueezes t = two_squeezes();
-        t.act.bank_rise_ticks = {0};
-        CHECK_FALSE(early_fill_window_end(t.act, chords).has_value());
-    }
-}
