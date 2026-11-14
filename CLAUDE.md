@@ -22,7 +22,7 @@ Single-context: `CONTEXT.md` and `docs/adr/` at the repo root. See `docs/agents/
 
 ### Past sessions
 
-Every past session of this project has a short card: its goal, what went wrong and why, the user's rulings in their exact words, and how it ended. The cards live in the repo at `docs/sessions/`, one file per session, with one line per card in `docs/sessions/index.md`. The cards are the record. A card keeps the user's typed words, the label they chose and the start of each question, not the full question text. The condensed transcripts the cards are written from are local working files, not a reference, and no doc cites them.
+Every past session of this project has a short card: its goal, what went wrong and why, the user's words quoted exactly (a section headed "The user's words" in new cards, "Rulings" in older ones; a card quote is not a filed ruling), and how it ended. The cards live in the repo at `docs/sessions/`, one file per session, with one line per card in `docs/sessions/index.md`. The cards are the record. A card keeps the user's typed words, the label they chose and the start of each question, not the full question text. The condensed transcripts the cards are written from are local working files, not a reference, and no doc cites them.
 
 Look there when the user mentions an earlier session or a past decision, asks to continue or redo something, or before you propose an approach that may have been tried and dropped. The index is too big to read whole: grep the index and the cards by keyword, tag, D-number or session id, and open the matching card. Memory files end with a `Sessions:` line that names their cards. A card is a pointer, not proof: check what it says against the code before you act on it (agent rule 9).
 
