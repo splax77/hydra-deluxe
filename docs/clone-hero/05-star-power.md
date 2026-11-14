@@ -2,7 +2,7 @@
 
 This page covers Star Power phrases, the meter, activation, drain, the Star Power end and squeezes.
 It describes build 1.1 (v1.1.0.6142).
-Last write-back: 2026-11-12.
+Last write-back: 2026-11-13.
 
 The live-run files named below are the `run1_cal0_*` files under tools/ch_probe/experiments/results/overlay-spike/. "Run 1" is the key-press auto-player run on the probe chart Trippin SP Spike (resolution 192), stamped 2026-10-29 00:39 UTC. The engine fields are those of the base engine class #8288, which the drum engine #8255 inherits. `ghidra_decompile_all.txt` and "the decompile" mean Ghidra's full decompile of build 6142, which `code/README.md` describes; it is not in the repo.
 
