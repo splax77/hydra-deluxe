@@ -143,7 +143,7 @@ void check_rgb(const ImVec4& c, int r, int g, int b) {
 
 TEST_CASE("window tag: safe and short take the mockup's colours") {
     // The four values of the approved mockup's .dhw .spare rules
-    // (docs/superpowers/specs/2026-11-12-dynamic-hit-window-mockup/index.html).
+    // (docs/superpowers/specs/2026-11-12-dynamic-hit-window-mockup/index.html (removed; git show 45dd7799:docs/superpowers/specs/2026-11-12-dynamic-hit-window-mockup/index.html)).
     const hydra::ui::WindowTagColors safe = hydra::ui::window_tag_colors(false);
     check_rgb(safe.ink, 0xf2, 0xc3, 0x00);
     check_rgb(safe.fill, 0x2a, 0x24, 0x10);
