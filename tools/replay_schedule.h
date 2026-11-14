@@ -66,7 +66,10 @@ struct ReadEnd {
 // else the activation) and the squeeze chord, each with its window side, and
 // the end the squeeze is measured against as the engine stored it.
 struct SqueezeGeometry {
-    SqueezeKind kind = SqueezeKind::SqOut;
+    // The anchor's end, squeeze_ends(SPSqueeze).anchor (core/note_window.h).
+    // Every way the presses go (early or late, before or after the end) is
+    // read off it, never off the squeeze's kind.
+    NoteEnd anchor_end = NoteEnd::Frontend;
     int anchor_chord = 0;
     double anchor_ms = 0.0;
     double anchor_side_ms = 0.0;
@@ -81,16 +84,17 @@ struct SqueezeGeometry {
     std::optional<ReadEnd> read_end;
 };
 
-// The side of `scale` an anchor press for a squeeze of `kind` moves an end
-// by: early for a squeeze-out (the anchor goes early), late for a squeeze-in.
-double moving_side(SqueezeKind kind, const TransferScale& scale);
+// The side of `scale` an anchor press on `anchor_end` moves an end by:
+// transfer_side (core/note_window.h), the same side the Dynamic Hit Window
+// row's tag reads.
+double moving_side(NoteEnd anchor_end, const TransferScale& scale);
 
 // The ratio the anchor's press moves this squeeze's end by: moving_side of
 // the squeeze's stored ratio.
 double moving_ratio(const SqueezeGeometry& g);
 
 // The lead the equal-room split gives the anchor of `g` alone, in ms (always
-// how far from the chord's time; the direction is the squeeze's).
+// how far from the chord's time; the direction is the anchor's end).
 double equal_room_lead_ms(const SqueezeGeometry& g);
 
 // One squeeze's two presses at an anchor lead of `lead_ms`.
