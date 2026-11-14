@@ -384,15 +384,12 @@ PreviewRenderer::PreviewRenderer(ID3D11Device* device, ID3D11DeviceContext* cont
     smp.MaxLOD = 0.0f;
     check(device->CreateSamplerState(&smp, &d.sampler), "sampler");
 
-    // The verbatim Onyx drum models, Onyx's two built-in shapes and Hydra's
-    // SP end marker triangles.
+    // The verbatim Onyx drum models and Onyx's two built-in shapes.
     d.meshes[static_cast<size_t>(MeshId::Tom)] = d.load_model("drum-tom.obj");
     d.meshes[static_cast<size_t>(MeshId::Cymbal)] = d.load_model("drum-cymbal.obj");
     d.meshes[static_cast<size_t>(MeshId::Kick)] = d.load_model("drum-kick.obj");
     d.meshes[static_cast<size_t>(MeshId::Flat)] = d.upload(make_flat_quad());
     d.meshes[static_cast<size_t>(MeshId::Box)] = d.upload(make_box());
-    d.meshes[static_cast<size_t>(MeshId::TriangleLeft)] = d.upload(make_triangle(false));
-    d.meshes[static_cast<size_t>(MeshId::TriangleRight)] = d.upload(make_triangle(true));
 
     for (int i = 1; i < static_cast<int>(TextureId::Count); ++i)
         d.textures[static_cast<size_t>(i)] = d.load_texture(texture_file(static_cast<TextureId>(i)));

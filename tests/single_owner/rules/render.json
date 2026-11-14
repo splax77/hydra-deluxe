@@ -290,7 +290,7 @@
           "why": "railing_outer_x, the owner"
         }
       ],
-      "note": "Which end of a railing's X extent is its outer edge. railing_x owns the extent; railing_outer_x picks the outer end, and the SP end markers and highway_span_at ask it. A railing_x call with a literal side is how a caller picked an end by hand."
+      "note": "Which end of a railing's X extent is its outer edge. railing_x owns the extent; railing_outer_x picks the outer end, and highway_span_at asks it. A railing_x call with a literal side is how a caller picked an end by hand."
     },
     {
       "question": "Where may a line break fall in a Preview text box?",

@@ -23,8 +23,8 @@
 
 namespace hydra::render {
 
-// TriangleLeft / TriangleRight: make_triangle with its apex toward -X / +X.
-enum class MeshId { Tom, Cymbal, Kick, Flat, Box, TriangleLeft, TriangleRight, Count };
+// The meshes a DrawCommand can name; PreviewRenderer uploads one of each.
+enum class MeshId { Tom, Cymbal, Kick, Flat, Box, Count };
 
 enum class TextureId {
     None,
@@ -53,7 +53,7 @@ struct Material {
 
 // Which light a draw uses: the highway's fixed light, the per-gem light
 // offset from the gem's top centre (Onyx LightOffset), or none, so the
-// material's colour shows exactly as given (Hydra's SP end marks, D81).
+// material's colour shows exactly as given. light_for turns each into a light.
 enum class LightKind { Global, GemOffset, Unlit };
 
 enum class DepthMode { Less, Always };
@@ -109,9 +109,8 @@ double z_to_time(const PreviewConfig& cfg, double now_s, double z, double speed)
 // The X extent of a pad's lane: the note area split into four, left to right.
 void pad_x(const PreviewConfig& cfg, Pad pad, float& x1, float& x2);
 
-// The X extent of the left (right = false) or right railing. The railings,
-// their SP end markers and the overlay's highway_span_at all place
-// themselves by it.
+// The X extent of the left (right = false) or right railing. The railing
+// boxes in build_highway_draws and railing_outer_x place themselves by it.
 void railing_x(const PreviewConfig& cfg, bool right, float& x1, float& x2);
 
 // The X of a railing's outer edge, the one away from the lanes. The

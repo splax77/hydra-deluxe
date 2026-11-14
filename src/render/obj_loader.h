@@ -1,5 +1,5 @@
 // Wavefront .obj reader for the Preview's gem models, plus Onyx's two built-in
-// shapes and Hydra's own triangle. The reader is a port of how Onyx loads its
+// shapes. The reader is a port of how Onyx loads its
 // models (Codec.Wavefront + its own triangulation and vertex sort), so the
 // verbatim-copied .obj files in assets/preview/models draw with the same
 // triangles in the same order.
@@ -52,14 +52,6 @@ ObjMesh make_flat_quad();
 // see. Per-face normals, counter-clockwise seen from outside. Used for the
 // railings, which draw in a flat colour, so the UVs are a plain 0..1 per face.
 ObjMesh make_box();
-
-// Hydra's upright triangle for the SP end marker (D81): one triangle in the
-// X-Y plane at Z = 0, facing the camera (+Z normal, counter-clockwise seen
-// from +Z), filling x and y in [-0.5, 0.5]. Its apex is the middle of the
-// +X side when `apex_right`, else the middle of the -X side; the opposite
-// side is its base. Two meshes, not one mirrored, because stretch_matrix
-// never flips an axis and a flip would turn the face away and cull it.
-ObjMesh make_triangle(bool apex_right);
 
 // Axis-aligned bounds of the mesh positions (both zero for an empty mesh).
 void mesh_bounds(const ObjMesh& mesh, float min[3], float max[3]);
