@@ -57,13 +57,14 @@ std::vector<double> chord_sides_ms(const std::vector<double>& chord_ms);
 
 // ---- a song's chords -------------------------------------------------------
 
-// A song's chords in chart order (Song::sequence): each one's tick, time and
-// window side. Built once from the song by chord_times, so every reader sees
-// the same list.
+// A song's chords in chart order (Song::sequence): each one's tick, time,
+// window side and chord. Built once from the song by chord_times, so every
+// reader sees the same list.
 struct ChordTimes {
     std::vector<int64_t> ticks;
     std::vector<double> ms;
     std::vector<double> sides_ms;  // chord_sides_ms over `ms`
+    std::vector<Chord> chords;     // SongTimestamp::chord at each place
     // The chord on `tick`, by its place in the lists, or unset when no chord
     // sits there.
     std::optional<int> at(int64_t tick) const;
@@ -73,27 +74,103 @@ ChordTimes chord_times(const Song& song);
 // ---- the Dynamic Hit Window row --------------------------------------------
 // Each sum is "what the game's windows give, minus what the timing needs".
 
-// A squeeze's spare: the anchor's side moves the SP end by `ratio` per ms, and
-// the squeezed note's side covers the rest of the `needed_ms` it must cross
-// (SPSqueeze::difficulty). Squeeze in and squeeze out share it; only which
-// side of which scale `ratio` is differs, and the row functions below pick it.
-double squeeze_spare_ms(double anchor_side_ms, double ratio, double squeeze_side_ms, double needed_ms);
+// A squeeze's safe sum: the anchor's side moves the SP end by `ratio` per ms,
+// and the squeezed note's side covers the rest of the `needed_ms` it must
+// cross (SPSqueeze::difficulty). Squeeze in and squeeze out share it;
+// squeeze_window_ends picks `ratio` (transfer_side).
+double squeeze_safe_ms(double anchor_side_ms, double ratio, double squeeze_side_ms, double needed_ms);
 
-// An early fill's spare: the side of the note that makes Star Power ready,
+// An early fill's safe sum: the side of the note that makes Star Power ready,
 // less the early fill figure (early_fill_difficulty).
-double early_fill_spare_ms(double ready_side_ms, double early_fill_ms);
+double early_fill_safe_ms(double ready_side_ms, double early_fill_ms);
 
-// Whether a spare reads "short". Exactly 0 reads "spare"; that edge is a
-// wording choice, not a game fact.
-bool spare_is_short(double spare_ms);
+// Whether a safe sum reads "short" rather than "safe". The user's ruling of
+// 2026-11-13 sets the edge: "xx ms safe >=0 ms, xx ms short <0ms".
+bool safe_is_short(double safe_ms);
+
+// The early fill sum's old name, kept only because docs/clone-hero/04-fills.md
+// still names it and the docs check reads that page. The Dynamic Hit Window
+// plan's T2 and T4 remove it and the page's mention.
+inline double early_fill_spare_ms(double ready_side_ms, double early_fill_ms) {
+    return early_fill_safe_ms(ready_side_ms, early_fill_ms);
+}
+
+// ---- which end each note is on ---------------------------------------------
+// The Dynamic Hit Window row names each note's end with the user's words:
+// the frontend or the backend (the ruling of 2026-11-13). These are the one
+// owner of that question.
+
+enum class NoteEnd { Frontend, Backend };
+
+// The end of a squeeze each of its two notes is on: the squeezed note (the SP
+// phrase's last note, Activation::squeeze_chord_tick) and the anchor (the
+// note whose timing moves that SP end, Activation::squeeze_anchor_tick). The
+// anchor is always on the other end from the squeezed note.
+struct SqueezeEnds {
+    NoteEnd squeezed;
+    NoteEnd anchor;
+};
+
+// The squeezed note's end is the word the squeeze sentence prints for it:
+// "late" is the backend, "early" the frontend. It follows the squeeze's kind
+// and SPSqueeze::needs_no_timing together, never the kind alone.
+SqueezeEnds squeeze_ends(const SPSqueeze& q);
+
+// The end of the note that makes Star Power ready, from the sign the "Early
+// fill:" line prints (early_fill_difficulty of `e_offset`, the same figure as
+// Activation::e_difficulty): 0 or more is the frontend, below 0 the backend.
+NoteEnd early_fill_end(double e_offset);
+
+// Which side of a stored transfer scale a note on `end` counts through: the
+// early side for the frontend, the late side for the backend. Which stored
+// scale it is (Activation::transfer_post or SPSqueeze::transfer) is the
+// caller's.
+double transfer_side(const TransferScale& scale, NoteEnd end);
+
+// One end of a row: which end it is, the tick of its note (a place in
+// ChordTimes, which also names the chord there) and that note's window side.
+struct WindowEnd {
+    NoteEnd end = NoteEnd::Frontend;
+    int64_t tick = 0;
+    double side_ms = 0.0;
+};
+
+// A row's ends, frontend first (one end for an early fill, two for a
+// squeeze), and the safe sum.
+struct WindowEnds {
+    std::vector<WindowEnd> ends;
+    double safe_ms = 0.0;
+    bool is_short() const { return safe_is_short(safe_ms); }
+};
+
+// Squeeze `k` of `act`, of either kind. Each note's end is squeeze_ends'. The
+// anchor's side counts through transfer_side of the squeeze's stored scale at
+// the anchor's end; the stored scale is Activation::transfer_post for a
+// squeeze out and the squeeze's own SPSqueeze::transfer for a squeeze in.
+// Unset when `act` has no squeeze `k`, that scale is unset, the record names
+// no chord or no end for it, or no chord in `chords` sits on either tick.
+std::optional<WindowEnds> squeeze_window_ends(const Activation& act, size_t k, const ChordTimes& chords);
+
+// The early fill of `act`: the note that made Star Power ready
+// (Activation::sp_ready_tick), at early_fill_end of Activation::e_offset.
+// Unset when the record holds too few bar arrivals to name that note, or no
+// chord sits on its tick (a bar that arrived at the previous SP end). Whether
+// the row shows at all is the caller's question.
+std::optional<WindowEnds> early_fill_window_end(const Activation& act, const ChordTimes& chords);
+
+// ---- the old row functions ------------------------------------------------
+// Kept only until T2 of the Dynamic Hit Window plan moves the Paths tab to the
+// functions above and removes these.
 
 // One row's numbers: the first window side, the second when the timing has
-// two notes, and the spare.
+// two notes, and the safe sum. Its field keeps the old name until T2,
+// because the Paths tab reads it and a data member cannot forward to a new
+// name.
 struct WindowRow {
     double first_side_ms = 0.0;
     std::optional<double> second_side_ms;
     double spare_ms = 0.0;
-    bool is_short() const { return spare_is_short(spare_ms); }
+    bool is_short() const { return safe_is_short(spare_ms); }
 };
 
 // Squeeze `k` of `act`, when it is a squeeze out: the anchor's side first

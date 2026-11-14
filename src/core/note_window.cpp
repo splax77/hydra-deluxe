@@ -1,6 +1,7 @@
 #include "core/note_window.h"
 
 #include <algorithm>
+#include <utility>
 
 namespace hydra {
 
@@ -52,9 +53,11 @@ ChordTimes chord_times(const Song& song) {
     ChordTimes out;
     out.ticks.reserve(song.sequence.size());
     out.ms.reserve(song.sequence.size());
+    out.chords.reserve(song.sequence.size());
     for (const SongTimestamp& ts : song.sequence) {
         out.ticks.push_back(ts.timecode.ticks());
         out.ms.push_back(ts.timecode.ms());
+        out.chords.push_back(ts.chord);
     }
     out.sides_ms = chord_sides_ms(out.ms);
     return out;
@@ -62,13 +65,35 @@ ChordTimes chord_times(const Song& song) {
 
 // ---- the Dynamic Hit Window row --------------------------------------------
 
-double squeeze_spare_ms(double anchor_side_ms, double ratio, double squeeze_side_ms, double needed_ms) {
+double squeeze_safe_ms(double anchor_side_ms, double ratio, double squeeze_side_ms, double needed_ms) {
     return anchor_side_ms * ratio + squeeze_side_ms - needed_ms;
 }
 
-double early_fill_spare_ms(double ready_side_ms, double early_fill_ms) { return ready_side_ms - early_fill_ms; }
+double early_fill_safe_ms(double ready_side_ms, double early_fill_ms) { return ready_side_ms - early_fill_ms; }
 
-bool spare_is_short(double spare_ms) { return spare_ms < 0.0; }
+bool safe_is_short(double safe_ms) { return safe_ms < 0.0; }
+
+// ---- which end each note is on ---------------------------------------------
+
+// The squeeze sentence (app::squeeze_sentences) says a squeeze out's note is
+// hit "late", or "no more than ... early" when it needs no timing; a squeeze
+// in's is the mirror. "Late" is the backend.
+SqueezeEnds squeeze_ends(const SPSqueeze& q) {
+    const bool squeezed_late = (q.kind == SqueezeKind::SqOut) != q.needs_no_timing();
+    const NoteEnd squeezed = squeezed_late ? NoteEnd::Backend : NoteEnd::Frontend;
+    const NoteEnd anchor = squeezed_late ? NoteEnd::Frontend : NoteEnd::Backend;
+    return {squeezed, anchor};
+}
+
+// early_fill_needs_timing is the >= 0 test on the "Early fill:" line's figure
+// (timing_needs_hitting, D302).
+NoteEnd early_fill_end(double e_offset) {
+    return early_fill_needs_timing(e_offset) ? NoteEnd::Frontend : NoteEnd::Backend;
+}
+
+double transfer_side(const TransferScale& scale, NoteEnd end) {
+    return end == NoteEnd::Frontend ? scale.early : scale.late;
+}
 
 namespace {
 
@@ -79,6 +104,47 @@ std::optional<double> side_at(const ChordTimes& chords, std::optional<int64_t> t
     if (!c) return std::nullopt;
     return chords.sides_ms[static_cast<size_t>(*c)];
 }
+
+// Puts a squeeze's two ends in row order: the frontend first.
+void frontend_first(std::vector<WindowEnd>& ends) {
+    if (ends.size() == 2 && ends[0].end == NoteEnd::Backend) std::swap(ends[0], ends[1]);
+}
+
+}  // namespace
+
+std::optional<WindowEnds> squeeze_window_ends(const Activation& act, size_t k, const ChordTimes& chords) {
+    if (k >= act.sqinouts.size()) return std::nullopt;
+    const SPSqueeze& q = act.sqinouts[k];
+    const std::optional<TransferScale>& scale =
+        q.kind == SqueezeKind::SqOut ? act.transfer_post : q.transfer;
+    if (!scale || !act.squeeze_end_tick(k)) return std::nullopt;
+    const std::optional<int64_t> anchor_tick = act.squeeze_anchor_tick(k);
+    const std::optional<int64_t> squeezed_tick = act.squeeze_chord_tick(k);
+    const std::optional<double> anchor = side_at(chords, anchor_tick);
+    const std::optional<double> squeezed = side_at(chords, squeezed_tick);
+    if (!anchor || !squeezed) return std::nullopt;
+    const SqueezeEnds e = squeeze_ends(q);
+    WindowEnds out;
+    out.ends.push_back(WindowEnd{e.anchor, *anchor_tick, *anchor});
+    out.ends.push_back(WindowEnd{e.squeezed, *squeezed_tick, *squeezed});
+    frontend_first(out.ends);
+    out.safe_ms = squeeze_safe_ms(*anchor, transfer_side(*scale, e.anchor), *squeezed, q.difficulty());
+    return out;
+}
+
+std::optional<WindowEnds> early_fill_window_end(const Activation& act, const ChordTimes& chords) {
+    const std::optional<int64_t> tick = act.sp_ready_tick();
+    const std::optional<double> ready = side_at(chords, tick);
+    if (!ready) return std::nullopt;
+    WindowEnds out;
+    out.ends.push_back(WindowEnd{early_fill_end(act.e_offset), *tick, *ready});
+    out.safe_ms = early_fill_safe_ms(*ready, *act.e_difficulty(/*verbose=*/true));
+    return out;
+}
+
+// ---- the old row functions ------------------------------------------------
+
+namespace {
 
 // Squeeze `k`'s row at the stored scale side `ratio` picks, when the squeeze
 // is of `kind`.
@@ -95,7 +161,7 @@ std::optional<WindowRow> squeeze_window(const Activation& act, size_t k, const C
     WindowRow row;
     row.first_side_ms = *anchor;
     row.second_side_ms = *squeezed;
-    row.spare_ms = squeeze_spare_ms(*anchor, *ratio, *squeezed, q.difficulty());
+    row.spare_ms = squeeze_safe_ms(*anchor, *ratio, *squeezed, q.difficulty());
     return row;
 }
 
@@ -120,7 +186,7 @@ std::optional<WindowRow> early_fill_window(const Activation& act, const ChordTim
     if (!ready) return std::nullopt;
     WindowRow row;
     row.first_side_ms = *ready;
-    row.spare_ms = early_fill_spare_ms(*ready, *act.e_difficulty(/*verbose=*/true));
+    row.spare_ms = early_fill_safe_ms(*ready, *act.e_difficulty(/*verbose=*/true));
     return row;
 }
 

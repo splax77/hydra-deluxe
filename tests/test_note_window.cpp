@@ -124,20 +124,33 @@ TEST_CASE("note window: chord_times lists the song's chords") {
     CHECK_FALSE(chords.at(5000).has_value());
 }
 
-TEST_CASE("note window: the squeeze-out sums from the mockup") {
-    // Dead on Arrival (O), activation 4: room to spare. Prints as 24.1.
-    const double doa = squeeze_spare_ms(85.72, 1.033, 79.41, 143.88);
-    CHECK(doa == pinned(24.07876));
-    CHECK_FALSE(spare_is_short(doa));
-    // Tapped Out, activation 4: out of reach. Prints as 65.9 short.
-    const double tapped = squeeze_spare_ms(77.85, 1.0014, 71.97, 215.8);
-    CHECK(tapped == pinned(-65.87101));
-    CHECK(spare_is_short(tapped));
+TEST_CASE("note window: chord_times carries the chord at each place") {
+    Song song = red_chords({0, 20, 40});
+    song.sequence[1].chord.add_note(NoteColor::Kick);
+    const ChordTimes chords = chord_times(song);
+    REQUIRE(chords.chords.size() == 3);
+    CHECK(chords.chords[0].notationstr() == "[ R   ]");
+    CHECK(chords.chords[1].notationstr() == "[KR   ]");
+    // One lookup by tick gives both the side and the chord.
+    const std::optional<int> c = chords.at(20);
+    REQUIRE(c.has_value());
+    CHECK(chords.chords[static_cast<size_t>(*c)].notationstr() == "[KR   ]");
 }
 
-TEST_CASE("note window: exactly 0 is spare, anything below is short") {
-    CHECK_FALSE(spare_is_short(0.0));
-    CHECK(spare_is_short(std::nextafter(0.0, -1.0)));
+TEST_CASE("note window: the squeeze-out sums from the mockup") {
+    // Dead on Arrival (O), activation 4: room to spare. Prints as 24.1.
+    const double doa = squeeze_safe_ms(85.72, 1.033, 79.41, 143.88);
+    CHECK(doa == pinned(24.07876));
+    CHECK_FALSE(safe_is_short(doa));
+    // Tapped Out, activation 4: out of reach. Prints as 65.9 short.
+    const double tapped = squeeze_safe_ms(77.85, 1.0014, 71.97, 215.8);
+    CHECK(tapped == pinned(-65.87101));
+    CHECK(safe_is_short(tapped));
+}
+
+TEST_CASE("note window: exactly 0 is safe, anything below is short") {
+    CHECK_FALSE(safe_is_short(0.0));
+    CHECK(safe_is_short(std::nextafter(0.0, -1.0)));
     WindowRow row;
     row.spare_ms = 0.0;
     CHECK_FALSE(row.is_short());
@@ -240,5 +253,200 @@ TEST_CASE("note window: a row the record cannot name is left out") {
         TwoSqueezes t = two_squeezes();
         t.act.bank_rise_ticks = {0};
         CHECK_FALSE(early_fill_window(t.act, chords).has_value());
+    }
+}
+
+// ---- the one owner of which end each note is on ---------------------------
+
+namespace {
+
+SPSqueeze squeeze_at(SqueezeKind kind, double offset_ms) {
+    SPSqueeze q{};
+    q.kind = kind;
+    q.offset_ms = offset_ms;
+    return q;
+}
+
+// The early and late sides of Dead on Arrival (O) activation 3's scale, as
+// the plan's figures give them.
+const TransferScale kDoaScale{1.0044, 0.9970};
+
+}  // namespace
+
+TEST_CASE("note window: squeeze_ends follows the sentence, not the kind") {
+    // Each line is (kind, offset_ms) -> the squeezed note's end, the end
+    // whose word the squeeze sentence prints ("late" is the backend). Each
+    // kind lands on both ends, so a pick by kind alone fails.
+    struct Case {
+        SqueezeKind kind;
+        double offset_ms;
+        NoteEnd squeezed;
+    };
+    const Case cases[] = {
+        // A squeeze in: "more than ... early" while its figure is 0 or more.
+        {SqueezeKind::SqIn, 0.001, NoteEnd::Frontend},
+        {SqueezeKind::SqIn, 0.0, NoteEnd::Frontend},
+        {SqueezeKind::SqIn, -0.001, NoteEnd::Backend},
+        // A squeeze out: its figure is the offset negated.
+        {SqueezeKind::SqOut, 0.001, NoteEnd::Frontend},
+        {SqueezeKind::SqOut, 0.0, NoteEnd::Backend},
+        {SqueezeKind::SqOut, -0.001, NoteEnd::Backend},
+    };
+    for (const Case& c : cases) {
+        CAPTURE(c.offset_ms);
+        CAPTURE(static_cast<int>(c.kind));
+        const SqueezeEnds e = squeeze_ends(squeeze_at(c.kind, c.offset_ms));
+        CHECK(e.squeezed == c.squeezed);
+        CHECK(e.anchor != e.squeezed);
+    }
+}
+
+TEST_CASE("note window: early_fill_end follows the Early fill line's sign") {
+    // e_offset is the figure negated: +0.001 prints -0.001 (backend).
+    CHECK(early_fill_end(0.001) == NoteEnd::Backend);
+    CHECK(early_fill_end(0.0) == NoteEnd::Frontend);
+    CHECK(early_fill_end(-0.001) == NoteEnd::Frontend);
+}
+
+TEST_CASE("note window: transfer_side reads the early side for the frontend") {
+    CHECK(transfer_side(kDoaScale, NoteEnd::Frontend) == 1.0044);
+    CHECK(transfer_side(kDoaScale, NoteEnd::Backend) == 0.9970);
+}
+
+TEST_CASE("note window: squeeze_window_ends lists each end, frontend first") {
+    // two_squeezes' activation, on a song whose squeezed-out chord (3840) has
+    // a neighbour 20 ticks (52.08 ms) after it, so its side is not the cap.
+    const TwoSqueezes t = two_squeezes();
+    const ChordTimes chords = chord_times(red_chords({0, 768, 1536, 2304, 3072, 3840, 3860}));
+
+    // The squeeze out has a timing: the anchor (768) is on the frontend and
+    // the squeezed chord (3840) on the backend.
+    const std::optional<WindowEnds> out = squeeze_window_ends(t.act, 1, chords);
+    REQUIRE(out.has_value());
+    REQUIRE(out->ends.size() == 2);
+    CHECK(out->ends[0].end == NoteEnd::Frontend);
+    CHECK(out->ends[0].tick == 768);
+    CHECK(out->ends[0].side_ms == kCapSide);
+    CHECK(out->ends[1].end == NoteEnd::Backend);
+    CHECK(out->ends[1].tick == 3840);
+    CHECK(out->ends[1].side_ms == pinned(71.97216363656233));
+
+    // The squeeze in has a timing: its squeezed chord (2304) is on the
+    // frontend, so it comes first and the anchor (768) second.
+    const std::optional<WindowEnds> in = squeeze_window_ends(t.act, 0, chords);
+    REQUIRE(in.has_value());
+    REQUIRE(in->ends.size() == 2);
+    CHECK(in->ends[0].end == NoteEnd::Frontend);
+    CHECK(in->ends[0].tick == 2304);
+    CHECK(in->ends[1].end == NoteEnd::Backend);
+    CHECK(in->ends[1].tick == 768);
+
+    CHECK_FALSE(squeeze_window_ends(t.act, 2, chords).has_value());
+}
+
+TEST_CASE("note window: the anchor's scale side follows its end") {
+    // Every side here is the cap; only the scale side and the figure move
+    // the sum. A pick by kind gives the other side in the two cases without
+    // a timing.
+    TwoSqueezes t = two_squeezes();
+    const ChordTimes chords = chord_times(t.song);
+    t.act.transfer_post = kDoaScale;
+    t.act.sqinouts[0].transfer = kDoaScale;
+
+    SUBCASE("with a timing: early for a squeeze out, late for a squeeze in") {
+        const std::optional<WindowEnds> out = squeeze_window_ends(t.act, 1, chords);  // offset -100
+        REQUIRE(out.has_value());
+        CHECK(out->safe_ms == pinned(71.80845637793124));
+        const std::optional<WindowEnds> in = squeeze_window_ends(t.act, 0, chords);  // offset 20
+        REQUIRE(in.has_value());
+        CHECK(in->safe_ms == pinned(151.17416054017596));
+    }
+    SUBCASE("needing no timing: early for a squeeze in, late for a squeeze out") {
+        t.act.sqinouts[0].offset_ms = -20.0;
+        t.act.sqinouts[1].offset_ms = 10.0;
+        const std::optional<WindowEnds> in = squeeze_window_ends(t.act, 0, chords);
+        REQUIRE(in.has_value());
+        CHECK(in->ends[0].end == NoteEnd::Frontend);
+        CHECK(in->ends[0].tick == 768);  // the anchor
+        CHECK(in->safe_ms == pinned(191.80845637793124));
+        const std::optional<WindowEnds> out = squeeze_window_ends(t.act, 1, chords);
+        REQUIRE(out.has_value());
+        CHECK(out->ends[1].end == NoteEnd::Backend);
+        CHECK(out->ends[1].tick == 768);  // the anchor
+        CHECK(out->safe_ms == pinned(181.17416054017596));
+    }
+}
+
+TEST_CASE("note window: squeeze_window_ends keeps today's stored scale") {
+    // two_squeezes' scales: transfer_post {2.0, 4.0}, the squeeze in's own
+    // {3.0, 1.5}. Both squeezes have a timing, so the sums equal the old
+    // rows' (each squeeze reads its own side of its own scale).
+    const TwoSqueezes t = two_squeezes();
+    const ChordTimes chords = chord_times(t.song);
+    const std::optional<WindowEnds> out = squeeze_window_ends(t.act, 1, chords);
+    REQUIRE(out.has_value());
+    CHECK(out->safe_ms == pinned(157.14696125214215));
+    const std::optional<WindowEnds> in = squeeze_window_ends(t.act, 0, chords);
+    REQUIRE(in.has_value());
+    CHECK(in->safe_ms == pinned(194.2891343767851));
+}
+
+TEST_CASE("note window: the early fill end reads the SP-ready note") {
+    TwoSqueezes t = two_squeezes();
+    const ChordTimes chords = chord_times(t.song);
+
+    t.act.e_offset = -10.0;  // ready 10 ms after the deadline: figure +10.0
+    std::optional<WindowEnds> row = early_fill_window_end(t.act, chords);
+    REQUIRE(row.has_value());
+    REQUIRE(row->ends.size() == 1);
+    CHECK(row->ends[0].end == NoteEnd::Frontend);
+    CHECK(row->ends[0].tick == 768);
+    CHECK(row->ends[0].side_ms == kCapSide);
+    CHECK(row->safe_ms == pinned(75.71565375071405));
+
+    t.act.e_offset = 10.0;  // time to spare: figure -10.0
+    row = early_fill_window_end(t.act, chords);
+    REQUIRE(row.has_value());
+    REQUIRE(row->ends.size() == 1);
+    CHECK(row->ends[0].end == NoteEnd::Backend);
+    CHECK(row->safe_ms == pinned(95.71565375071405));
+}
+
+TEST_CASE("note window: a safe sum of exactly 0 is not short") {
+    WindowEnds row;
+    row.safe_ms = 0.0;
+    CHECK_FALSE(row.is_short());
+    row.safe_ms = -0.04;
+    CHECK(row.is_short());
+}
+
+TEST_CASE("note window: an end the record cannot name is left out") {
+    const Song song = red_chords({0, 768, 1536, 2304, 3072, 3840});
+    const ChordTimes chords = chord_times(song);
+
+    SUBCASE("an unset scale") {
+        TwoSqueezes t = two_squeezes();
+        t.act.transfer_post.reset();
+        CHECK_FALSE(squeeze_window_ends(t.act, 1, chords).has_value());
+        t.act.sqinouts[0].transfer.reset();
+        CHECK_FALSE(squeeze_window_ends(t.act, 0, chords).has_value());
+    }
+    SUBCASE("a squeeze with no end in the record") {
+        TwoSqueezes t = two_squeezes();
+        t.act.sp_end_steps.clear();
+        CHECK_FALSE(squeeze_window_ends(t.act, 1, chords).has_value());
+        CHECK_FALSE(squeeze_window_ends(t.act, 0, chords).has_value());
+    }
+    SUBCASE("a tick with no chord on it") {
+        TwoSqueezes t = two_squeezes();
+        t.act.sqout_tick = 3000;
+        CHECK_FALSE(squeeze_window_ends(t.act, 1, chords).has_value());
+        t.act.bank_rise_ticks = {0, 3000};
+        CHECK_FALSE(early_fill_window_end(t.act, chords).has_value());
+    }
+    SUBCASE("fewer stored bar arrivals than the activation level") {
+        TwoSqueezes t = two_squeezes();
+        t.act.bank_rise_ticks = {0};
+        CHECK_FALSE(early_fill_window_end(t.act, chords).has_value());
     }
 }
