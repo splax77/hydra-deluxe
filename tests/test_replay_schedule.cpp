@@ -366,7 +366,7 @@ namespace {
 schedule::SqueezeGeometry sqout(double anchor_side, double squeeze_ms, double squeeze_side, double end_ms,
                                 double early_ratio) {
     schedule::SqueezeGeometry g;
-    g.anchor_end = NoteEnd::Frontend;  // a timed squeeze-out's anchor
+    g.anchor_press = Press::Early;  // a timed squeeze-out's anchor
     g.anchor_chord = 1;
     g.anchor_side_ms = anchor_side;
     g.squeeze_chord = 2;
@@ -622,7 +622,7 @@ TEST_CASE("schedule: an activation that needs both directions is refused naming 
     out.anchor_chord = 5;
     out.squeeze_chord = 17;
     schedule::SqueezeGeometry in = out;
-    in.anchor_end = NoteEnd::Backend;  // a timed squeeze-in's anchor
+    in.anchor_press = Press::Late;  // a timed squeeze-in's anchor
     in.squeeze_chord = 23;
     in.squeeze_ms = 1040.0;
     std::vector<std::string> refusals;
@@ -757,7 +757,7 @@ namespace {
 // late side. The read-end test further down reuses it.
 schedule::SqueezeGeometry hand_built_squeeze_in() {
     schedule::SqueezeGeometry g;
-    g.anchor_end = NoteEnd::Backend;  // a timed squeeze-in's anchor
+    g.anchor_press = Press::Late;  // a timed squeeze-in's anchor
     g.anchor_chord = 1;
     g.anchor_side_ms = 60.0;
     g.squeeze_chord = 2;
@@ -790,18 +790,18 @@ TEST_CASE("schedule: the equal-room split of a squeeze-in is the mirror of a squ
     CHECK(s.feasible);
 }
 
-TEST_CASE("schedule: moving_side reads the anchor's end, not the squeeze's kind") {
+TEST_CASE("schedule: moving_side reads the anchor's press, not the squeeze's kind") {
     // Dead on Arrival activation 3's stored scale (the Dynamic Hit Window
     // plan's figures): early 1.0044, late 0.9970. The two sides differ, so a
     // wrong pick shows.
     const TransferScale scale{1.0044, 0.9970};
-    CHECK(schedule::moving_side(NoteEnd::Frontend, scale) == 1.0044);
-    CHECK(schedule::moving_side(NoteEnd::Backend, scale) == 0.9970);
-    // A geometry's ratio follows its anchor's end the same way.
+    CHECK(schedule::moving_side(Press::Early, scale) == 1.0044);
+    CHECK(schedule::moving_side(Press::Late, scale) == 0.9970);
+    // A geometry's ratio follows its anchor's press the same way.
     schedule::SqueezeGeometry g = hand_built_squeeze_in();
     g.ratio = scale;
     CHECK(schedule::moving_ratio(g) == 0.9970);
-    g.anchor_end = NoteEnd::Frontend;
+    g.anchor_press = Press::Early;
     CHECK(schedule::moving_ratio(g) == 1.0044);
 }
 

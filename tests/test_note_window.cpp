@@ -165,7 +165,7 @@ TEST_CASE("note window: each squeeze reads its own side of its own scale") {
     CHECK(t.act.squeeze_chord_tick(1) == std::optional<int64_t>(3840));
     CHECK_FALSE(t.act.squeeze_chord_tick(2).has_value());
 
-    // The SqOut, anchor on the frontend: the early side of transfer_post
+    // The SqOut, anchor pressed early: the early side of transfer_post
     // (2.0, not 4.0).
     const std::optional<WindowEnds> out = squeeze_window_ends(t.act, 1, chords);
     REQUIRE(out.has_value());
@@ -174,7 +174,7 @@ TEST_CASE("note window: each squeeze reads its own side of its own scale") {
     CHECK(out->ends[1].side_ms == kCapSide);
     CHECK(out->safe_ms == pinned(157.14696125214215));
 
-    // The SqIn, anchor on the backend: the late side of its own transfer
+    // The SqIn, anchor pressed late: the late side of its own transfer
     // (1.5, not 3.0), never transfer_post's.
     const std::optional<WindowEnds> in = squeeze_window_ends(t.act, 0, chords);
     REQUIRE(in.has_value());
@@ -205,11 +205,11 @@ TEST_CASE("note window: a cap-clamped squeeze is anchored on the overfill chord"
     const double overfill_side = chords.sides_ms[static_cast<size_t>(*chords.at(1536))];
     const double activation_side = chords.sides_ms[static_cast<size_t>(*chords.at(768))];
     REQUIRE(overfill_side != activation_side);
-    // The squeeze out has a timing, so its anchor is the frontend end.
+    // The anchor is always the frontend end.
     const std::optional<WindowEnds> row = squeeze_window_ends(act, 0, chords);
     REQUIRE(row.has_value());
     REQUIRE(row->ends.size() == 2);
-    CHECK(row->ends[0].end == NoteEnd::Frontend);
+    CHECK(row->ends[0].role == EndRole::Frontend);
     CHECK(row->ends[0].tick == 1536);
     CHECK(row->ends[0].side_ms == overfill_side);
 }
@@ -250,7 +250,7 @@ TEST_CASE("note window: a row the record cannot name is left out") {
     }
 }
 
-// ---- the one owner of which end each note is on ---------------------------
+// ---- the one owners of each note's press and each note's word --------------
 
 namespace {
 
@@ -267,78 +267,79 @@ const TransferScale kDoaScale{1.0044, 0.9970};
 
 }  // namespace
 
-TEST_CASE("note window: squeeze_ends follows the sentence, not the kind") {
-    // Each line is (kind, offset_ms) -> the squeezed note's end, the end
-    // whose word the squeeze sentence prints ("late" is the backend). Each
-    // kind lands on both ends, so a pick by kind alone fails.
+TEST_CASE("note window: squeeze_presses follows the sentence, not the kind") {
+    // Each line is (kind, offset_ms) -> the way the squeezed note is pressed,
+    // the word the squeeze sentence prints. Each kind is pressed both ways,
+    // so a pick by kind alone fails.
     struct Case {
         SqueezeKind kind;
         double offset_ms;
-        NoteEnd squeezed;
+        Press squeezed;
     };
     const Case cases[] = {
         // A squeeze in: "more than ... early" while its figure is 0 or more.
-        {SqueezeKind::SqIn, 0.001, NoteEnd::Frontend},
-        {SqueezeKind::SqIn, 0.0, NoteEnd::Frontend},
-        {SqueezeKind::SqIn, -0.001, NoteEnd::Backend},
+        {SqueezeKind::SqIn, 0.001, Press::Early},
+        {SqueezeKind::SqIn, 0.0, Press::Early},
+        {SqueezeKind::SqIn, -0.001, Press::Late},
         // A squeeze out: its figure is the offset negated.
-        {SqueezeKind::SqOut, 0.001, NoteEnd::Frontend},
-        {SqueezeKind::SqOut, 0.0, NoteEnd::Backend},
-        {SqueezeKind::SqOut, -0.001, NoteEnd::Backend},
+        {SqueezeKind::SqOut, 0.001, Press::Early},
+        {SqueezeKind::SqOut, 0.0, Press::Late},
+        {SqueezeKind::SqOut, -0.001, Press::Late},
     };
     for (const Case& c : cases) {
         CAPTURE(c.offset_ms);
         CAPTURE(static_cast<int>(c.kind));
-        const SqueezeEnds e = squeeze_ends(squeeze_at(c.kind, c.offset_ms));
-        CHECK(e.squeezed == c.squeezed);
-        CHECK(e.anchor != e.squeezed);
+        const SqueezePresses p = squeeze_presses(squeeze_at(c.kind, c.offset_ms));
+        CHECK(p.squeezed == c.squeezed);
+        CHECK(p.anchor != p.squeezed);
     }
 }
 
-TEST_CASE("note window: early_fill_end follows the Early fill line's sign") {
-    // e_offset is the figure negated: +0.001 prints -0.001 (backend).
-    CHECK(early_fill_end(0.001) == NoteEnd::Backend);
-    CHECK(early_fill_end(0.0) == NoteEnd::Frontend);
-    CHECK(early_fill_end(-0.001) == NoteEnd::Frontend);
+TEST_CASE("note window: transfer_side reads the early side for an early press") {
+    CHECK(transfer_side(kDoaScale, Press::Early) == 1.0044);
+    CHECK(transfer_side(kDoaScale, Press::Late) == 0.9970);
 }
 
-TEST_CASE("note window: transfer_side reads the early side for the frontend") {
-    CHECK(transfer_side(kDoaScale, NoteEnd::Frontend) == 1.0044);
-    CHECK(transfer_side(kDoaScale, NoteEnd::Backend) == 0.9970);
+TEST_CASE("note window: role_word gives the row's words") {
+    CHECK(std::string(role_word(EndRole::Frontend)) == "frontend");
+    CHECK(std::string(role_word(EndRole::Backend)) == "backend");
+    CHECK(std::string(role_word(EndRole::SpReady)).empty());  // the user's ruling: "No word"
 }
 
-TEST_CASE("note window: squeeze_window_ends lists each end, frontend first") {
+TEST_CASE("note window: squeeze_window_ends lists the anchor, then the squeezed note") {
     // two_squeezes' activation, on a song whose squeezed-out chord (3840) has
     // a neighbour 20 ticks (52.08 ms) after it, so its side is not the cap.
     const TwoSqueezes t = two_squeezes();
     const ChordTimes chords = chord_times(red_chords({0, 768, 1536, 2304, 3072, 3840, 3860}));
 
-    // The squeeze out has a timing: the anchor (768) is on the frontend and
-    // the squeezed chord (3840) on the backend.
+    // The squeeze out: the anchor (768) is the frontend and the squeezed
+    // chord (3840) the backend.
     const std::optional<WindowEnds> out = squeeze_window_ends(t.act, 1, chords);
     REQUIRE(out.has_value());
     REQUIRE(out->ends.size() == 2);
-    CHECK(out->ends[0].end == NoteEnd::Frontend);
+    CHECK(out->ends[0].role == EndRole::Frontend);
     CHECK(out->ends[0].tick == 768);
     CHECK(out->ends[0].side_ms == kCapSide);
-    CHECK(out->ends[1].end == NoteEnd::Backend);
+    CHECK(out->ends[1].role == EndRole::Backend);
     CHECK(out->ends[1].tick == 3840);
     CHECK(out->ends[1].side_ms == pinned(71.97216363656233));
 
-    // The squeeze in has a timing: its squeezed chord (2304) is on the
-    // frontend, so it comes first and the anchor (768) second.
+    // The squeeze in has a timing, so its squeezed chord (2304) is pressed
+    // early. It is still the backend: the row names the anchor (768) the
+    // frontend whatever way either note is pressed.
+    REQUIRE(squeeze_presses(t.act.sqinouts[0]).squeezed == Press::Early);
     const std::optional<WindowEnds> in = squeeze_window_ends(t.act, 0, chords);
     REQUIRE(in.has_value());
     REQUIRE(in->ends.size() == 2);
-    CHECK(in->ends[0].end == NoteEnd::Frontend);
-    CHECK(in->ends[0].tick == 2304);
-    CHECK(in->ends[1].end == NoteEnd::Backend);
-    CHECK(in->ends[1].tick == 768);
+    CHECK(in->ends[0].role == EndRole::Frontend);
+    CHECK(in->ends[0].tick == 768);
+    CHECK(in->ends[1].role == EndRole::Backend);
+    CHECK(in->ends[1].tick == 2304);
 
     CHECK_FALSE(squeeze_window_ends(t.act, 2, chords).has_value());
 }
 
-TEST_CASE("note window: the anchor's scale side follows its end") {
+TEST_CASE("note window: the anchor's scale side follows its press") {
     // Every side here is the cap; only the scale side and the figure move
     // the sum. A pick by kind gives the other side in the two cases without
     // a timing.
@@ -360,13 +361,13 @@ TEST_CASE("note window: the anchor's scale side follows its end") {
         t.act.sqinouts[1].offset_ms = 10.0;
         const std::optional<WindowEnds> in = squeeze_window_ends(t.act, 0, chords);
         REQUIRE(in.has_value());
-        CHECK(in->ends[0].end == NoteEnd::Frontend);
+        CHECK(in->ends[0].role == EndRole::Frontend);
         CHECK(in->ends[0].tick == 768);  // the anchor
         CHECK(in->safe_ms == pinned(191.80845637793124));
         const std::optional<WindowEnds> out = squeeze_window_ends(t.act, 1, chords);
         REQUIRE(out.has_value());
-        CHECK(out->ends[1].end == NoteEnd::Backend);
-        CHECK(out->ends[1].tick == 768);  // the anchor
+        CHECK(out->ends[0].role == EndRole::Frontend);
+        CHECK(out->ends[0].tick == 768);  // the anchor
         CHECK(out->safe_ms == pinned(181.17416054017596));
     }
 }
@@ -379,7 +380,7 @@ TEST_CASE("note window: the early fill end reads the SP-ready note") {
     std::optional<WindowEnds> row = early_fill_window_end(t.act, chords);
     REQUIRE(row.has_value());
     REQUIRE(row->ends.size() == 1);
-    CHECK(row->ends[0].end == NoteEnd::Frontend);
+    CHECK(row->ends[0].role == EndRole::SpReady);
     CHECK(row->ends[0].tick == 768);
     CHECK(row->ends[0].side_ms == kCapSide);
     CHECK(row->safe_ms == pinned(75.71565375071405));
@@ -388,6 +389,6 @@ TEST_CASE("note window: the early fill end reads the SP-ready note") {
     row = early_fill_window_end(t.act, chords);
     REQUIRE(row.has_value());
     REQUIRE(row->ends.size() == 1);
-    CHECK(row->ends[0].end == NoteEnd::Backend);
+    CHECK(row->ends[0].role == EndRole::SpReady);  // whichever sign the figure has
     CHECK(row->safe_ms == pinned(95.71565375071405));
 }

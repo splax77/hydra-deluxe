@@ -101,14 +101,13 @@ std::vector<TextLine> squeeze_sentences(const Activation& act,
         const SPSqueeze& sq = act.sqinouts[i];
         // timing() is the edge the sentence below prints. Whether it is a
         // "no more than" limit follows SPSqueeze::needs_no_timing (D302).
-        // The note's "early" or "late" is the end squeeze_ends puts it on,
-        // the same answer the Dynamic Hit Window row prints. The eff.
-        // figure's scale side is the rating's, a different question.
+        // The note's "early" or "late" is the way squeeze_presses presses
+        // it. The eff. figure's scale side is the rating's, a different
+        // question.
         const double t = sq.timing();
         const std::string edge = format_ms(std::fabs(t));
         const std::string bound = sq.needs_no_timing() ? "no more than " : "more than ";
-        const std::string side =
-            squeeze_ends(sq).squeezed == NoteEnd::Backend ? " late" : " early";
+        const std::string side = squeeze_presses(sq).squeezed == Press::Late ? " late" : " early";
         std::string when = bound + edge + side;
         std::string text;
         if (sq.kind == SqueezeKind::SqOut) {
@@ -198,24 +197,22 @@ const char* const kOverfillHint =
 
 namespace {
 
-// The row's word for each end, in the user's words (the ruling of
-// 2026-11-13: "change the display text to frontend and backend").
-const char* end_word(NoteEnd end) { return end == NoteEnd::Frontend ? "frontend" : "backend"; }
-
 // One Dynamic Hit Window row's text from the owner's ends, in the owner's
-// order. Each end names its note by the chord on its tick. The tag prints
-// the safe sum's size; is_short says which side of zero it is on
+// order. Each end's word is role_word's, and each end names its note by the
+// chord on its tick. An end with no word starts at its window. The tag
+// prints the safe sum's size; is_short says which side of zero it is on
 // (safe_is_short).
 WindowRowView window_row_view(const WindowEnds& row, const ChordTimes& chords) {
     WindowRowView v;
     for (const WindowEnd& e : row.ends) {
         // The owner returns an end only where a chord sits on its tick.
         const size_t c = static_cast<size_t>(*chords.at(e.tick));
-        v.figures.push_back({end_word(e.end), format_ms(e.side_ms), chords.chords[c].notationstr()});
+        v.figures.push_back({role_word(e.role), format_ms(e.side_ms), chords.chords[c].notationstr()});
     }
-    for (size_t i = 0; i < v.figures.size(); ++i)
-        v.windows += std::string(i ? "   " : "") + v.figures[i].word + " " + v.figures[i].figure +
-                     " " + v.figures[i].chord;
+    for (size_t i = 0; i < v.figures.size(); ++i) {
+        const WindowFigure& f = v.figures[i];
+        v.windows += std::string(i ? "   " : "") + (f.word.empty() ? "" : f.word + " ") + f.figure + " " + f.chord;
+    }
     v.is_short = row.is_short();
     v.tag = format_ms(std::fabs(row.safe_ms)) + (v.is_short ? " short" : " safe");
     return v;

@@ -88,42 +88,50 @@ double early_fill_safe_ms(double ready_side_ms, double early_fill_ms);
 // 2026-11-13 sets the edge: "xx ms safe >=0 ms, xx ms short <0ms".
 bool safe_is_short(double safe_ms);
 
-// ---- which end each note is on ---------------------------------------------
-// The Dynamic Hit Window row names each note's end with the user's words:
-// the frontend or the backend (the ruling of 2026-11-13). These are the one
-// owner of that question.
+// ---- which way each squeeze note is pressed ---------------------------------
+// A squeeze's two notes are each pressed off their chart time, one early and
+// one late. This is the one owner of which way each goes.
 
-enum class NoteEnd { Frontend, Backend };
+enum class Press { Early, Late };
 
-// The end of a squeeze each of its two notes is on: the squeezed note (the SP
+// The way each of a squeeze's two notes is pressed: the squeezed note (the SP
 // phrase's last note, Activation::squeeze_chord_tick) and the anchor (the
 // note whose timing moves that SP end, Activation::squeeze_anchor_tick). The
-// anchor is always on the other end from the squeezed note.
-struct SqueezeEnds {
-    NoteEnd squeezed;
-    NoteEnd anchor;
+// anchor is always pressed the other way from the squeezed note.
+struct SqueezePresses {
+    Press squeezed;
+    Press anchor;
 };
 
-// The squeezed note's end is the word the squeeze sentence prints for it:
-// "late" is the backend, "early" the frontend. It follows the squeeze's kind
-// and SPSqueeze::needs_no_timing together, never the kind alone.
-SqueezeEnds squeeze_ends(const SPSqueeze& q);
+// The squeezed note's way is the word the squeeze sentence prints for it,
+// "early" or "late". It follows the squeeze's kind and
+// SPSqueeze::needs_no_timing together, never the kind alone.
+SqueezePresses squeeze_presses(const SPSqueeze& q);
 
-// The end of the note that makes Star Power ready, from the sign the "Early
-// fill:" line prints (early_fill_difficulty of `e_offset`, the same figure as
-// Activation::e_difficulty): 0 or more is the frontend, below 0 the backend.
-NoteEnd early_fill_end(double e_offset);
+// Which side of a stored transfer scale a note pressed `press` counts
+// through: the early side for an early press, the late side for a late one.
+// Which stored scale it is (Activation::transfer_post or SPSqueeze::transfer)
+// is the caller's.
+double transfer_side(const TransferScale& scale, Press press);
 
-// Which side of a stored transfer scale a note on `end` counts through: the
-// early side for the frontend, the late side for the backend. Which stored
-// scale it is (Activation::transfer_post or SPSqueeze::transfer) is the
-// caller's.
-double transfer_side(const TransferScale& scale, NoteEnd end);
+// ---- the row's word for each note ------------------------------------------
+// The Dynamic Hit Window row names a squeeze's notes by the user's words,
+// frontend and backend, in the sense CONTEXT.md's "Frontend squeeze" and
+// "Backend squeeze" give them: the activation side and the SP-end side. An
+// early fill row's one note gets no word (the user's ruling: "No word").
 
-// One end of a row: which end it is, the tick of its note (a place in
+// The part a row's note plays: a squeeze's anchor (the frontend), its
+// squeezed note (the backend), or an early fill's SP-ready note.
+enum class EndRole { Frontend, Backend, SpReady };
+
+// The word the row prints before a note's window: "frontend", "backend", or
+// empty for the SP-ready note.
+const char* role_word(EndRole role);
+
+// One end of a row: the part its note plays, the tick of its note (a place in
 // ChordTimes, which also names the chord there) and that note's window side.
 struct WindowEnd {
-    NoteEnd end = NoteEnd::Frontend;
+    EndRole role = EndRole::Frontend;
     int64_t tick = 0;
     double side_ms = 0.0;
 };
@@ -136,16 +144,17 @@ struct WindowEnds {
     bool is_short() const { return safe_is_short(safe_ms); }
 };
 
-// Squeeze `k` of `act`, of either kind. Each note's end is squeeze_ends'. The
-// anchor's side counts through transfer_side of the squeeze's stored scale at
-// the anchor's end; the stored scale is Activation::transfer_post for a
+// Squeeze `k` of `act`, of either kind: the anchor as the frontend, then the
+// squeezed note as the backend. The anchor's side counts through
+// transfer_side of the squeeze's stored scale, on the side of the anchor's
+// press (squeeze_presses); the stored scale is Activation::transfer_post for a
 // squeeze out and the squeeze's own SPSqueeze::transfer for a squeeze in.
 // Unset when `act` has no squeeze `k`, that scale is unset, the record names
 // no chord or no end for it, or no chord in `chords` sits on either tick.
 std::optional<WindowEnds> squeeze_window_ends(const Activation& act, size_t k, const ChordTimes& chords);
 
 // The early fill of `act`: the note that made Star Power ready
-// (Activation::sp_ready_tick), at early_fill_end of Activation::e_offset.
+// (Activation::sp_ready_tick), as the SpReady end.
 // Unset when the record holds too few bar arrivals to name that note, or no
 // chord sits on its tick (a bar that arrived at the previous SP end). Whether
 // the row shows at all is the caller's question.

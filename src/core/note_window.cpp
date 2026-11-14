@@ -1,7 +1,6 @@
 #include "core/note_window.h"
 
 #include <algorithm>
-#include <utility>
 
 namespace hydra {
 
@@ -73,26 +72,30 @@ double early_fill_safe_ms(double ready_side_ms, double early_fill_ms) { return r
 
 bool safe_is_short(double safe_ms) { return safe_ms < 0.0; }
 
-// ---- which end each note is on ---------------------------------------------
+// ---- which way each squeeze note is pressed ---------------------------------
 
 // The squeeze sentence (app::squeeze_sentences) prints its "early" or "late"
-// from this answer, so the sentence and the row cannot disagree. "Late" is the
-// backend.
-SqueezeEnds squeeze_ends(const SPSqueeze& q) {
+// from this answer, and replay_schedule presses the anchor from it.
+SqueezePresses squeeze_presses(const SPSqueeze& q) {
     const bool squeezed_late = (q.kind == SqueezeKind::SqOut) != q.needs_no_timing();
-    const NoteEnd squeezed = squeezed_late ? NoteEnd::Backend : NoteEnd::Frontend;
-    const NoteEnd anchor = squeezed_late ? NoteEnd::Frontend : NoteEnd::Backend;
+    const Press squeezed = squeezed_late ? Press::Late : Press::Early;
+    const Press anchor = squeezed_late ? Press::Early : Press::Late;
     return {squeezed, anchor};
 }
 
-// early_fill_needs_timing is the >= 0 test on the "Early fill:" line's figure
-// (timing_needs_hitting, D302).
-NoteEnd early_fill_end(double e_offset) {
-    return early_fill_needs_timing(e_offset) ? NoteEnd::Frontend : NoteEnd::Backend;
+double transfer_side(const TransferScale& scale, Press press) {
+    return press == Press::Early ? scale.early : scale.late;
 }
 
-double transfer_side(const TransferScale& scale, NoteEnd end) {
-    return end == NoteEnd::Frontend ? scale.early : scale.late;
+// ---- the row's word for each note ------------------------------------------
+
+const char* role_word(EndRole role) {
+    switch (role) {
+        case EndRole::Frontend: return "frontend";
+        case EndRole::Backend: return "backend";
+        case EndRole::SpReady: return "";
+    }
+    return "";
 }
 
 namespace {
@@ -103,11 +106,6 @@ std::optional<double> side_at(const ChordTimes& chords, std::optional<int64_t> t
     const std::optional<int> c = chords.at(*tick);
     if (!c) return std::nullopt;
     return chords.sides_ms[static_cast<size_t>(*c)];
-}
-
-// Puts a squeeze's two ends in row order: the frontend first.
-void frontend_first(std::vector<WindowEnd>& ends) {
-    if (ends.size() == 2 && ends[0].end == NoteEnd::Backend) std::swap(ends[0], ends[1]);
 }
 
 }  // namespace
@@ -123,12 +121,11 @@ std::optional<WindowEnds> squeeze_window_ends(const Activation& act, size_t k, c
     const std::optional<double> anchor = side_at(chords, anchor_tick);
     const std::optional<double> squeezed = side_at(chords, squeezed_tick);
     if (!anchor || !squeezed) return std::nullopt;
-    const SqueezeEnds e = squeeze_ends(q);
     WindowEnds out;
-    out.ends.push_back(WindowEnd{e.anchor, *anchor_tick, *anchor});
-    out.ends.push_back(WindowEnd{e.squeezed, *squeezed_tick, *squeezed});
-    frontend_first(out.ends);
-    out.safe_ms = squeeze_safe_ms(*anchor, transfer_side(*scale, e.anchor), *squeezed, q.difficulty());
+    out.ends.push_back(WindowEnd{EndRole::Frontend, *anchor_tick, *anchor});
+    out.ends.push_back(WindowEnd{EndRole::Backend, *squeezed_tick, *squeezed});
+    out.safe_ms =
+        squeeze_safe_ms(*anchor, transfer_side(*scale, squeeze_presses(q).anchor), *squeezed, q.difficulty());
     return out;
 }
 
@@ -137,7 +134,7 @@ std::optional<WindowEnds> early_fill_window_end(const Activation& act, const Cho
     const std::optional<double> ready = side_at(chords, tick);
     if (!ready) return std::nullopt;
     WindowEnds out;
-    out.ends.push_back(WindowEnd{early_fill_end(act.e_offset), *tick, *ready});
+    out.ends.push_back(WindowEnd{EndRole::SpReady, *tick, *ready});
     out.safe_ms = early_fill_safe_ms(*ready, *act.e_difficulty(/*verbose=*/true));
     return out;
 }

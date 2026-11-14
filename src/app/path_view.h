@@ -69,17 +69,18 @@ inline constexpr const char* kDynamicHitWindowLabel = "Dynamic Hit Window:";
 
 // One Dynamic Hit Window row: the game's own windows for the notes a timing
 // involves, beside Hydra's fixed one (core/note_window.h owns the numbers and
-// which end each note is on). The view draws kDynamicHitWindowLabel, then
+// each note's word, role_word). The view draws kDynamicHitWindowLabel, then
 // each end, then `tag` apart.
 struct WindowFigure {
-    std::string word;    // the end: "frontend" or "backend"
+    std::string word;    // role_word of the end; empty on an early fill's one end
     std::string figure;  // that note's window side: "77.9 ms"
     std::string chord;   // that note's chord, Chord::notationstr: "[K   G]"
 };
 
 struct WindowRowView {
-    // "frontend 77.9 ms [K   G]   backend 72.0 ms [ R B ]"; one end for an
-    // early fill. Built from `figures`.
+    // "frontend 77.9 ms [K   G]   backend 72.0 ms [ R B ]" for a squeeze;
+    // "82.9 ms [K   G]", one end with no word, for an early fill. Built from
+    // `figures`.
     std::string windows;
     // The ends in WindowEnds' order (the frontend first), split so the
     // drawing can colour each word, figure and chord apart.
