@@ -42,7 +42,7 @@ Each word says what kind of thing the fact was read from.
 - `data` is a game data file, or a block on a Clone Hero page under `docs/clone-hero/` whose Label is "Proven in the game's code" or "Proven in a live run". A block labelled "Hydra assumes it, never checked" or "Unknown" is not a source. `docs/clone-hero/README.md` says what each label means.
 - `chart` is a chart file.
 - `run` is the result folder of a live run, kept under `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\`.
-- `ruling` is the user's own words, quoted exactly. The quote must sit in a file under `docs/agents/rulings/`, in a session card's quoted words under `docs/sessions/`, or in the user's message as the main session quotes it in the reviewer's brief and confirms. A paraphrase of what the user wanted is not a ruling; a fact that rests on one is `unchecked`.
+- `ruling` is the user's own words, quoted exactly. The quote must sit in a line under `## Confirmed` in a file under `docs/agents/rulings/`, in a session card's quoted words under `docs/sessions/`, or in the user's message as the main session quotes it in the reviewer's brief and confirms. A paraphrase of what the user wanted is not a ruling; a fact that rests on one is `unchecked`. Neither is a line under `## Unconfirmed`, a memory note, a handoff or a plan's "as ruled".
 - `unchecked` is a fact with none of the sources above.
 
 ## What counts as a source
