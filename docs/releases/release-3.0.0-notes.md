@@ -44,6 +44,8 @@ If a song folder can't be read, `Scan library` scans nothing and keeps your song
 
 While a batch runs, rows keep their order under the `Best path` sort and re-sort once when it ends. The song you clicked keeps its place when the song panel opens.
 
+The batch strip's time left comes from how fast the last songs finished and shows once the batch has done twice as many songs as it analyzes at once, 16 songs on 8 workers. Before, it showed after 3.
+
 The start box reads `Opening your library...`, then `Reading your charts...` and `Reading your results...`, each with a bar.
 
 ## Path report and dmleaderboards
