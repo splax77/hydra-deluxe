@@ -704,11 +704,12 @@ The two halves are summed and fed to the window formula, whose linear term is
 0.0110924369747899 (`kFormulaLinear`), whose square term is 2.628539e-05
 (`kFormulaSquare`), and whose scale is 170.0 (`kFormulaScale`), less 20 ms
 (`kFormulaOffsetMs`). The Paths tab's Dynamic Hit Window row shows that
-window beside the 85 for each timing badge, with how much it leaves spare or
-falls short. It is display only: the user ruled "just show it alongside.", so
-the search, badges, Rating words and timing tiers keep the 85. Its one owner
-is src/core/note_window.h (`chord_sides_ms`, `squeeze_out_window`,
-`squeeze_in_window`, `early_fill_window`).
+window beside the 85 for each timing badge: the frontend note's window and
+chord, then the backend note's, then a tag that reads safe or short. It is
+display only: the user ruled "just show it alongside.", so the search,
+badges, Rating words and timing tiers keep the 85. Its one owner is
+src/core/note_window.h (`chord_sides_ms`, `squeeze_ends`,
+`squeeze_window_ends`, `early_fill_window_end`).
 
 **Transfer scale**:
 How frontend timing error carries to the SP end. SP length is measured in
