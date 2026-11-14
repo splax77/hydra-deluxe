@@ -68,20 +68,24 @@ struct ActivationBadge {
 inline constexpr const char* kDynamicHitWindowLabel = "Dynamic Hit Window:";
 
 // One Dynamic Hit Window row: the game's own windows for the notes a timing
-// involves, beside Hydra's fixed one (core/note_window.h owns the numbers).
-// The view draws kDynamicHitWindowLabel, then `windows`, then `tag` apart.
+// involves, beside Hydra's fixed one (core/note_window.h owns the numbers and
+// which end each note is on). The view draws kDynamicHitWindowLabel, then
+// each end, then `tag` apart.
 struct WindowFigure {
-    std::string figure;  // "77.9 ms"
-    std::string word;    // "early" or "late"
+    std::string word;    // the end: "frontend" or "backend"
+    std::string figure;  // that note's window side: "77.9 ms"
+    std::string chord;   // that note's chord, Chord::notationstr: "[K   G]"
 };
 
 struct WindowRowView {
-    std::string windows;  // "77.9 ms early   72.0 ms late"; one window for an early fill
-    // The same windows as `windows`, split so the drawing can colour each
-    // figure apart from its word; `windows` is built from these.
+    // "frontend 77.9 ms [K   G]   backend 72.0 ms [ R B ]"; one end for an
+    // early fill. Built from `figures`.
+    std::string windows;
+    // The ends in WindowEnds' order (the frontend first), split so the
+    // drawing can colour each word, figure and chord apart.
     std::vector<WindowFigure> figures;
-    std::string tag;      // "65.9 ms short" or "5.4 ms spare", never a minus sign
-    bool is_short = false;  // WindowRow::is_short: the windows cannot cover the timing
+    std::string tag;      // "65.9 ms short" or "5.4 ms safe", never a minus sign
+    bool is_short = false;  // WindowEnds::is_short: the windows cannot cover the timing
 };
 
 // One activation as the Paths tab lists it: a one-line row, and what the row

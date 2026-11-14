@@ -99,19 +99,22 @@ std::vector<TextLine> squeeze_sentences(const Activation& act,
     std::vector<TextLine> out;
     for (size_t i = 0; i < act.sqinouts.size(); ++i) {
         const SPSqueeze& sq = act.sqinouts[i];
-        // timing() is the edge the sentence below prints: a SqOut must be hit
-        // later than it, a SqIn earlier than it. Which wording applies
-        // follows the one owner, SPSqueeze::needs_no_timing (D302); the
-        // eff. figure's scale side is the rating's, a different question.
+        // timing() is the edge the sentence below prints. Whether it is a
+        // "no more than" limit follows SPSqueeze::needs_no_timing (D302).
+        // The note's "early" or "late" is the end squeeze_ends puts it on,
+        // the same answer the Dynamic Hit Window row prints. The eff.
+        // figure's scale side is the rating's, a different question.
         const double t = sq.timing();
         const std::string edge = format_ms(std::fabs(t));
+        const std::string bound = sq.needs_no_timing() ? "no more than " : "more than ";
+        const std::string side =
+            squeeze_ends(sq).squeezed == NoteEnd::Backend ? " late" : " early";
+        std::string when = bound + edge + side;
         std::string text;
         if (sq.kind == SqueezeKind::SqOut) {
             const std::string note =
                 squeezed_out ? "the " + squeezed_out->row.chord.notationstr() + " note"
                              : std::string("the SP phrase's last note");
-            const std::string when = sq.needs_no_timing() ? "no more than " + edge + " early"
-                                                          : "more than " + edge + " late";
             text = "Hit " + note + " " + when + " so it lands after Star Power ends.";
             if (squeezed_out) {
                 // What the squeeze-out costs: core::sqout_cost, which the
@@ -132,8 +135,6 @@ std::vector<TextLine> squeeze_sentences(const Activation& act,
                 text += " Its SP phrase banks for later.";
             }
         } else {
-            std::string when = sq.needs_no_timing() ? "no more than " + edge + " late"
-                                                    : "more than " + edge + " early";
             // A SqIn has no backend row to carry its eff. figure (a SqOut's
             // sits on its squeezed-out row), so the sentence carries it.
             if (i < note_effective_ms.size() && note_effective_ms[i])
@@ -197,19 +198,26 @@ const char* const kOverfillHint =
 
 namespace {
 
-// One Dynamic Hit Window row's text from the owner's numbers. `first_word`
-// and `second_word` say which way the player presses each note; an early
-// fill has no second note. The tag prints the spare's size; is_short says
-// which side of zero it is on (spare_is_short).
-WindowRowView window_row_view(const WindowRow& row, const char* first_word,
-                              const char* second_word) {
+// The row's word for each end, in the user's words (the ruling of
+// 2026-11-13: "change the display text to frontend and backend").
+const char* end_word(NoteEnd end) { return end == NoteEnd::Frontend ? "frontend" : "backend"; }
+
+// One Dynamic Hit Window row's text from the owner's ends, in the owner's
+// order. Each end names its note by the chord on its tick. The tag prints
+// the safe sum's size; is_short says which side of zero it is on
+// (safe_is_short).
+WindowRowView window_row_view(const WindowEnds& row, const ChordTimes& chords) {
     WindowRowView v;
-    v.figures.push_back({format_ms(row.first_side_ms), first_word});
-    if (row.second_side_ms) v.figures.push_back({format_ms(*row.second_side_ms), second_word});
+    for (const WindowEnd& e : row.ends) {
+        // The owner returns an end only where a chord sits on its tick.
+        const size_t c = static_cast<size_t>(*chords.at(e.tick));
+        v.figures.push_back({end_word(e.end), format_ms(e.side_ms), chords.chords[c].notationstr()});
+    }
     for (size_t i = 0; i < v.figures.size(); ++i)
-        v.windows += std::string(i ? "   " : "") + v.figures[i].figure + " " + v.figures[i].word;
+        v.windows += std::string(i ? "   " : "") + v.figures[i].word + " " + v.figures[i].figure +
+                     " " + v.figures[i].chord;
     v.is_short = row.is_short();
-    v.tag = format_ms(std::fabs(row.spare_ms)) + (v.is_short ? " short" : " spare");
+    v.tag = format_ms(std::fabs(row.safe_ms)) + (v.is_short ? " short" : " safe");
     return v;
 }
 
@@ -217,15 +225,8 @@ WindowRowView window_row_view(const WindowRow& row, const char* first_word,
 // 2026-11-12); it is left out only when the owner has no row.
 std::optional<WindowRowView> squeeze_window_view(const Activation& act, size_t k,
                                                  const ChordTimes& chords) {
-    const SPSqueeze& sq = act.sqinouts[k];
-    // A squeeze out's anchor is hit early and its note late; a squeeze in is
-    // the mirror (core/note_window.h).
-    if (sq.kind == SqueezeKind::SqOut) {
-        if (const std::optional<WindowRow> row = squeeze_out_window(act, k, chords))
-            return window_row_view(*row, "early", "late");
-    } else if (const std::optional<WindowRow> row = squeeze_in_window(act, k, chords)) {
-        return window_row_view(*row, "late", "early");
-    }
+    if (const std::optional<WindowEnds> row = squeeze_window_ends(act, k, chords))
+        return window_row_view(*row, chords);
     return std::nullopt;
 }
 
@@ -235,8 +236,8 @@ std::optional<WindowRowView> squeeze_window_view(const Activation& act, size_t k
 std::optional<WindowRowView> early_fill_window_view(const Activation& act,
                                                     const ChordTimes& chords) {
     if (!act.is_e_critical()) return std::nullopt;
-    if (const std::optional<WindowRow> row = early_fill_window(act, chords))
-        return window_row_view(*row, "early", nullptr);
+    if (const std::optional<WindowEnds> row = early_fill_window_end(act, chords))
+        return window_row_view(*row, chords);
     return std::nullopt;
 }
 

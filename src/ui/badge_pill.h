@@ -76,7 +76,7 @@ inline void draw_badge(ImDrawList* dl, float pill_x, float text_y, float pill_w,
 // ---- the Dynamic Hit Window tag ---------------------------------------------
 //
 // The outlined tag at the right end of a Dynamic Hit Window row ("5.4 ms
-// spare", "65.9 ms short"). Its look is the mockup the user approved,
+// safe", "65.9 ms short"). Its look is the mockup the user approved,
 // docs/superpowers/specs/2026-11-12-dynamic-hit-window-mockup/index.html
 // (the .dhw .spare rules). Whether a tag is short is app::WindowRowView's.
 
@@ -91,7 +91,7 @@ struct WindowTagColors {
     ImVec4 fill;
 };
 
-// The tag's colours. Spare is the mockup's yellow on dark gold; short is the
+// The tag's colours. Safe is the mockup's yellow on dark gold; short is the
 // theme's warning orange (kWarningColor, the mockup's #ff7f00) on dark brown.
 inline WindowTagColors window_tag_colors(bool is_short) {
     if (is_short) return {kWarningColor, pill_vec4(PillRgb{46, 26, 8})};

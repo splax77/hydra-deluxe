@@ -938,8 +938,8 @@ void test_paths_length_from_click(ImGuiTestContext* ctx) {
 // The pieces of Tapped Out (Mike Orlando)'s optimal path, activation 4: its
 // squeeze out, which the game's windows cannot cover. Literals from T0's run;
 // tests/test_activation_rows.cpp pins the same row's text.
-constexpr const char* kTappedOutWindowPieces[] = {"Dynamic Hit Window:", "77.9 ms early",
-                                                  "72.0 ms late", "65.9 ms short"};
+constexpr const char* kTappedOutWindowPieces[] = {"Dynamic Hit Window:", "frontend 77.9 ms [K   G]",
+                                                  "backend 72.0 ms [ R B ]", "65.9 ms short"};
 
 // Opens Tapped Out in the app already running and waits for its Paths tab.
 bool open_tapped_out(ImGuiTestContext* ctx) {
@@ -960,7 +960,7 @@ void check_tapped_out_box_fits() {
     IM_CHECK_LE(box->ContentSize.x, box->ContentRegionRect.GetWidth() + 0.5f);
 }
 
-// The Dynamic Hit Window row: on Burnout's squeeze out (room to spare), on no
+// The Dynamic Hit Window row: on Burnout's squeeze out (safe), on no
 // activation without a timing badge, and on Tapped Out's squeeze out (out of
 // reach) and both its early fills, optional and required, each in a box.
 void test_paths_hit_window(ImGuiTestContext* ctx) {
@@ -972,9 +972,9 @@ void test_paths_hit_window(ImGuiTestContext* ctx) {
     ctx->ItemClick("**/##act1");
     ctx->Yield(2);
     IM_CHECK(on_screen(h, "Dynamic Hit Window:"));
-    IM_CHECK(on_screen(h, "84.5 ms early"));
-    IM_CHECK(on_screen(h, "84.3 ms late"));
-    IM_CHECK(on_screen(h, "5.4 ms spare"));
+    IM_CHECK(on_screen(h, "frontend 84.5 ms [K   G]"));
+    IM_CHECK(on_screen(h, "backend 84.3 ms [  Y  ]"));
+    IM_CHECK(on_screen(h, "5.4 ms safe"));
 
     // Activation 2 has no timing badge, so no row.
     ctx->ItemClick("**/##act2");  // opens row 2, closes row 1
@@ -990,8 +990,8 @@ void test_paths_hit_window(ImGuiTestContext* ctx) {
     // of 2026-11-12); tests/test_activation_rows.cpp pins the same text.
     IM_CHECK(on_screen(h, "Early fill: 0.0 ms (optional)"));
     IM_CHECK(window_named("##ef4") != nullptr);
-    IM_CHECK(on_screen(h, "85.7 ms early"));
-    IM_CHECK(on_screen(h, "85.7 ms spare"));
+    IM_CHECK(on_screen(h, "frontend 85.7 ms [K  B ]"));
+    IM_CHECK(on_screen(h, "85.7 ms safe"));
     check_tapped_out_box_fits();
     if (ctx->IsError()) return;
 
@@ -1001,8 +1001,8 @@ void test_paths_hit_window(ImGuiTestContext* ctx) {
     IM_CHECK(on_screen(h, "Early fill: 0.0 ms (required)"));
     IM_CHECK(window_named("##ef3") != nullptr);
     IM_CHECK(on_screen(h, "Dynamic Hit Window:"));
-    IM_CHECK(on_screen(h, "82.9 ms early"));
-    IM_CHECK(on_screen(h, "82.9 ms spare"));
+    IM_CHECK(on_screen(h, "frontend 82.9 ms [K   G]"));
+    IM_CHECK(on_screen(h, "82.9 ms safe"));
 }
 
 // At the narrowest panel, all four pieces of Tapped Out's activation 4 row

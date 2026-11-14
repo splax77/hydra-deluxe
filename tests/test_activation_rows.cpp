@@ -1310,18 +1310,22 @@ TEST_CASE("dynamic hit window: Tapped Out's squeeze out is out of reach") {
     const ActivationsView view = window_rows_of(ar, best, &chords);
     REQUIRE(view.acts.size() >= 4);
     const WindowRowView row = squeeze_row(acts[3], view.acts[3], SqueezeKind::SqOut);
-    CHECK(row.windows == "77.9 ms early   72.0 ms late");
+    // The squeeze out has a timing: the anchor (Kick and Green) is on the
+    // frontend and the squeezed note (Red and Blue) on the backend.
+    CHECK(row.windows == "frontend 77.9 ms [K   G]   backend 72.0 ms [ R B ]");
     CHECK(row.tag == "65.9 ms short");
     CHECK(row.is_short);
-    // The same windows, split for the two colours the drawing uses.
+    // The same ends, split for the colours the drawing uses.
     REQUIRE(row.figures.size() == 2);
+    CHECK(row.figures[0].word == "frontend");
     CHECK(row.figures[0].figure == "77.9 ms");
-    CHECK(row.figures[0].word == "early");
+    CHECK(row.figures[0].chord == "[K   G]");
+    CHECK(row.figures[1].word == "backend");
     CHECK(row.figures[1].figure == "72.0 ms");
-    CHECK(row.figures[1].word == "late");
+    CHECK(row.figures[1].chord == "[ R B ]");
 }
 
-TEST_CASE("dynamic hit window: Burnout's squeeze out has 5.4 ms spare") {
+TEST_CASE("dynamic hit window: Burnout's squeeze out has 5.4 ms safe") {
     const AnalysisResult& ar = burnout();
     const Path& best = ar.record.best_path();
     REQUIRE(best.pathstring() == "3- 1 2");
@@ -1330,8 +1334,8 @@ TEST_CASE("dynamic hit window: Burnout's squeeze out has 5.4 ms spare") {
     const ActivationsView view = window_rows_of(ar, best, &chords);
     REQUIRE(view.acts.size() == 3);
     const WindowRowView row = squeeze_row(acts[0], view.acts[0], SqueezeKind::SqOut);
-    CHECK(row.windows == "84.5 ms early   84.3 ms late");
-    CHECK(row.tag == "5.4 ms spare");
+    CHECK(row.windows == "frontend 84.5 ms [K   G]   backend 84.3 ms [  Y  ]");
+    CHECK(row.tag == "5.4 ms safe");
     CHECK_FALSE(row.is_short);
     // Activations 2 and 3 have no timing badge, so no row.
     for (size_t i = 1; i < view.acts.size(); ++i) {
@@ -1341,8 +1345,8 @@ TEST_CASE("dynamic hit window: Burnout's squeeze out has 5.4 ms spare") {
     }
 }
 
-TEST_CASE("dynamic hit window: a squeeze in names the anchor late, then the note early") {
-    SUBCASE("Focus [Ariana Grande], activation 2: room to spare") {
+TEST_CASE("dynamic hit window: a squeeze in with a timing puts its note on the frontend") {
+    SUBCASE("Focus [Ariana Grande], activation 2: safe") {
         const AnalysisResult& ar = focus();
         const Path& best = ar.record.best_path();
         REQUIRE(best.pathstring() == "0 3+ 0 0");
@@ -1351,8 +1355,8 @@ TEST_CASE("dynamic hit window: a squeeze in names the anchor late, then the note
         const ActivationsView view = window_rows_of(ar, best, &chords);
         REQUIRE(view.acts.size() >= 2);
         const WindowRowView row = squeeze_row(acts[1], view.acts[1], SqueezeKind::SqIn);
-        CHECK(row.windows == "61.9 ms late   48.1 ms early");
-        CHECK(row.tag == "85.1 ms spare");
+        CHECK(row.windows == "frontend 48.1 ms [   B ]   backend 61.9 ms [K    ]");
+        CHECK(row.tag == "85.1 ms safe");
         CHECK_FALSE(row.is_short);
     }
     SUBCASE("Epidermis, activation 2: out of reach") {
@@ -1363,7 +1367,9 @@ TEST_CASE("dynamic hit window: a squeeze in names the anchor late, then the note
         const ActivationsView view = window_rows_of(ar, best, &chords);
         REQUIRE(view.acts.size() >= 2);
         const WindowRowView row = squeeze_row(acts[1], view.acts[1], SqueezeKind::SqIn);
-        CHECK(row.windows == "48.1 ms late   67.8 ms early");
+        // The squeeze in has a timing: the squeezed note (Red) is on the
+        // frontend and the anchor (Kick and Yellow) on the backend.
+        CHECK(row.windows == "frontend 67.8 ms [ R   ]   backend 48.1 ms [K Y  ]");
         CHECK(row.tag == "184.1 ms short");
         CHECK(row.is_short);
     }
@@ -1380,12 +1386,13 @@ TEST_CASE("dynamic hit window: an early fill gets one window, required or option
     const ActivationRowView& a3 = view.acts[2];
     CHECK(a3.early_fill == "Early fill: 0.0 ms (required)");
     REQUIRE(a3.early_fill_window.has_value());
-    CHECK(a3.early_fill_window->windows == "82.9 ms early");
-    CHECK(a3.early_fill_window->tag == "82.9 ms spare");
+    CHECK(a3.early_fill_window->windows == "frontend 82.9 ms [K   G]");
+    CHECK(a3.early_fill_window->tag == "82.9 ms safe");
     CHECK_FALSE(a3.early_fill_window->is_short);
     REQUIRE(a3.early_fill_window->figures.size() == 1);
+    CHECK(a3.early_fill_window->figures[0].word == "frontend");
     CHECK(a3.early_fill_window->figures[0].figure == "82.9 ms");
-    CHECK(a3.early_fill_window->figures[0].word == "early");
+    CHECK(a3.early_fill_window->figures[0].chord == "[K   G]");
     // The line's warning border reads the early fill entry of badge_timings.
     const std::vector<Activation> acts = best.all_activations();
     for (const ActivationRowView& av : view.acts) {
@@ -1404,8 +1411,8 @@ TEST_CASE("dynamic hit window: an early fill gets one window, required or option
     const ActivationRowView& a4 = view.acts[3];
     CHECK(a4.early_fill == "Early fill: 0.0 ms (optional)");
     REQUIRE(a4.early_fill_window.has_value());
-    CHECK(a4.early_fill_window->windows == "85.7 ms early");
-    CHECK(a4.early_fill_window->tag == "85.7 ms spare");
+    CHECK(a4.early_fill_window->windows == "frontend 85.7 ms [K  B ]");
+    CHECK(a4.early_fill_window->tag == "85.7 ms safe");
     CHECK_FALSE(a4.early_fill_window->is_short);
 }
 
@@ -1413,6 +1420,8 @@ TEST_CASE("dynamic hit window: a squeeze in that needs no timing still gets its 
     // Get Ur Freak On, activation 2: the squeeze in sits at -84.27 ms, so it
     // needs no timing, and its badge shows. The figures are hydra_replay
     // schedule's: anchor side 73.757 ms, note side 53.59 ms, late scale 1.0.
+    // Needing no timing puts the squeezed note on the backend and the anchor
+    // on the frontend, so the anchor counts through the scale's early side.
     const AnalysisResult& ar = analyzed_like_the_gui("Eric Moore - Get Ur Freak On");
     const Path& best = ar.record.best_path();
     REQUIRE(best.pathstring() == "5- 2+ 2- 0 0");
@@ -1422,8 +1431,12 @@ TEST_CASE("dynamic hit window: a squeeze in that needs no timing still gets its 
     REQUIRE(view.acts.size() >= 2);
     REQUIRE(acts[1].sqinouts[only_squeeze(acts[1], SqueezeKind::SqIn)].needs_no_timing());
     const WindowRowView row = squeeze_row(acts[1], view.acts[1], SqueezeKind::SqIn);
-    CHECK(row.windows == "73.8 ms late   53.6 ms early");
-    CHECK(row.tag == "211.6 ms spare");
+    REQUIRE(row.figures.size() == 2);
+    CHECK(row.figures[0].word == "frontend");
+    CHECK(row.figures[0].figure == "73.8 ms");
+    CHECK(row.figures[1].word == "backend");
+    CHECK(row.figures[1].figure == "53.6 ms");
+    CHECK(row.tag == "211.6 ms safe");
     CHECK_FALSE(row.is_short);
 }
 
@@ -1439,16 +1452,27 @@ TEST_CASE("dynamic hit window: a row for every timing badge, edited figures too"
         Activation& act = p.activations[1];
         const size_t k = only_squeeze(act, SqueezeKind::SqIn);
 
-        // The windows are the Focus case's above; the offset moves only the
-        // tag, and no literal in this file gives that tag at these offsets.
-        for (const double offset : {0.0, -0.1}) {
-            CAPTURE(offset);
-            act.sqinouts[k].offset_ms = offset;
-            REQUIRE(squeeze_in_window(act, k, chords).has_value());  // the owner has numbers
+        // The windows and chords are the Focus case's above. At 0.0 the
+        // squeeze still has a timing, so its note stays on the frontend; at
+        // -0.1 it needs none, so its note moves to the backend and the anchor
+        // to the frontend (squeeze_ends). No literal in this file gives the
+        // tag at these offsets.
+        struct Case {
+            double offset;
+            const char* windows;
+        };
+        const Case cases[] = {
+            {0.0, "frontend 48.1 ms [   B ]   backend 61.9 ms [K    ]"},
+            {-0.1, "frontend 61.9 ms [K    ]   backend 48.1 ms [   B ]"},
+        };
+        for (const Case& c : cases) {
+            CAPTURE(c.offset);
+            act.sqinouts[k].offset_ms = c.offset;
+            REQUIRE(squeeze_window_ends(act, k, chords).has_value());  // the owner has numbers
             const std::optional<WindowRowView> row =
                 window_rows_of(ar, p, &chords).acts[1].squeeze_windows[k];
             REQUIRE(row.has_value());
-            CHECK(row->windows == "61.9 ms late   48.1 ms early");
+            CHECK(row->windows == c.windows);
         }
     }
     SUBCASE("a required early fill with time to spare gets a row") {
@@ -1460,14 +1484,15 @@ TEST_CASE("dynamic hit window: a row for every timing badge, edited figures too"
         Activation& act = p.activations[2];
         act.e_offset = 20.0;  // Star Power ready 20 ms before the deadline
         REQUIRE(act.is_E0());
-        REQUIRE(early_fill_window(act, chords).has_value());  // the owner has numbers
+        REQUIRE(early_fill_window_end(act, chords).has_value());  // the owner has numbers
         const ActivationRowView av = window_rows_of(ar, p, &chords).acts[2];
         CHECK(av.early_fill == "Early fill: -20.0 ms (required)");
         // The SP-ready note is activation 3's above (82.9 ms); the 20 ms
-        // to spare adds to it.
+        // to spare adds to it. A figure below 0 puts the note on the backend
+        // (early_fill_end).
         REQUIRE(av.early_fill_window.has_value());
-        CHECK(av.early_fill_window->windows == "82.9 ms early");
-        CHECK(av.early_fill_window->tag == "102.9 ms spare");
+        CHECK(av.early_fill_window->windows == "backend 82.9 ms [K   G]");
+        CHECK(av.early_fill_window->tag == "102.9 ms safe");
         CHECK_FALSE(av.early_fill_window->is_short);
     }
     SUBCASE("the same early fill made optional gets a row") {
@@ -1479,14 +1504,14 @@ TEST_CASE("dynamic hit window: a row for every timing badge, edited figures too"
         Activation& act = p.activations[2];
         test::set_skips(act, 1);
         REQUIRE_FALSE(act.is_E0());
-        REQUIRE(early_fill_window(act, chords).has_value());  // the owner has numbers
+        REQUIRE(early_fill_window_end(act, chords).has_value());  // the owner has numbers
         // A skip changes neither the SP-ready note nor the figure, so the row
         // is activation 3's above.
         const ActivationRowView av = window_rows_of(ar, p, &chords).acts[2];
         CHECK(av.early_fill == "Early fill: 0.0 ms (optional)");
         REQUIRE(av.early_fill_window.has_value());
-        CHECK(av.early_fill_window->windows == "82.9 ms early");
-        CHECK(av.early_fill_window->tag == "82.9 ms spare");
+        CHECK(av.early_fill_window->windows == "frontend 82.9 ms [K   G]");
+        CHECK(av.early_fill_window->tag == "82.9 ms safe");
     }
 }
 
@@ -1524,4 +1549,131 @@ TEST_CASE("dynamic hit window: the row sits alongside and changes no other field
     // The comparison covers rows that show, not only rows that do not: at
     // least the five the cases above pin on these charts.
     CHECK(rows_shown >= 5);
+}
+
+namespace {
+
+// What every corpus row is checked for, whatever its kind. `safe_ms` is the
+// owner's sum for the row. The tag is its size with no minus sign, then
+// " ms short" exactly when the sum is below 0.0 and " ms safe" otherwise
+// (the user's ruling of 2026-11-13: "xx ms safe >=0 ms, xx ms short <0ms").
+// The ends hold no direction word and no tag word.
+void check_any_row(const WindowRowView& row, double safe_ms, int& short_tags, int& safe_tags) {
+    CAPTURE(row.windows);
+    CAPTURE(row.tag);
+    CHECK(row.tag.find('-') == std::string::npos);
+    const bool below_zero = safe_ms < 0.0;
+    CHECK(row.is_short == below_zero);
+    const std::string word = below_zero ? " ms short" : " ms safe";
+    REQUIRE(row.tag.size() > word.size());
+    CHECK(row.tag.compare(row.tag.size() - word.size(), word.size(), word) == 0);
+    ++(below_zero ? short_tags : safe_tags);
+    for (const char* banned : {"early", "late", "spare", "short", "safe"})
+        CHECK(row.windows.find(banned) == std::string::npos);
+    REQUIRE_FALSE(row.figures.empty());
+}
+
+}  // namespace
+
+// Every row on every kept path of every corpus chart: rows equal badges, the
+// frontend comes first, an early fill row has one end, the tag's word follows
+// the sum's sign, and a squeezed note's end is the word its sentence prints.
+TEST_CASE("dynamic hit window: every corpus row") {
+    const AnalysisSettings cfg = Settings().to_analysis_settings();
+    int charts = 0;
+    int squeeze_rows = 0;
+    int fill_rows = 0;
+    int short_tags = 0;
+    int safe_tags = 0;
+    // Squeezes whose note is not on the end its kind alone would give (a
+    // squeeze out's note on the backend, a squeeze in's on the frontend): the
+    // ones that needing no timing moves.
+    int moved_from_kind = 0;
+    for (const std::string& chart : corpus::chart_paths()) {
+        CAPTURE(chart);
+        const Song& song = corpus::song(chart, cfg.reading(), cfg.rules);
+        if (song.is_empty()) continue;
+        const HydraRecord* rec = nullptr;
+        try {
+            rec = &corpus::analyzed(chart, cfg);
+        } catch (const std::exception&) {
+            continue;
+        }
+        ++charts;
+        const ChordTimes chords = chord_times(song);
+        const SongTiming& timing = song.timing();
+        for (const Path& path : rec->paths) {
+            const std::vector<Activation> acts = path.all_activations();
+            const ActivationsView view = build_activations(path, *rec, &timing, std::nullopt,
+                                                           core::default_rules(), std::nullopt,
+                                                           /*pro_drums=*/true, &chords);
+            REQUIRE(view.acts.size() == acts.size());
+            for (size_t i = 0; i < acts.size(); ++i) {
+                const Activation& act = acts[i];
+                const ActivationRowView& av = view.acts[i];
+                CAPTURE(path.pathstring());
+                CAPTURE(av.number);
+
+                // Every timing badge has its row (the user's ruling of
+                // 2026-11-12).
+                size_t shown = av.early_fill_window ? 1 : 0;
+                for (const std::optional<WindowRowView>& w : av.squeeze_windows)
+                    shown += w ? 1 : 0;
+                CHECK(shown == av.badges.size());
+
+                if (av.early_fill_window) {
+                    const std::optional<WindowEnds> ends = early_fill_window_end(act, chords);
+                    REQUIRE(ends.has_value());
+                    check_any_row(*av.early_fill_window, ends->safe_ms, short_tags, safe_tags);
+                    REQUIRE(av.early_fill_window->figures.size() == 1);
+                    const std::string& end = av.early_fill_window->figures[0].word;
+                    CHECK((end == "frontend" || end == "backend"));
+                    ++fill_rows;
+                }
+
+                REQUIRE(av.squeeze_windows.size() == act.sqinouts.size());
+                REQUIRE(av.squeeze_sentences.size() == act.sqinouts.size());
+                for (size_t k = 0; k < act.sqinouts.size(); ++k) {
+                    if (!av.squeeze_windows[k]) continue;
+                    const WindowRowView& row = *av.squeeze_windows[k];
+                    const std::optional<WindowEnds> ends = squeeze_window_ends(act, k, chords);
+                    REQUIRE(ends.has_value());
+                    check_any_row(row, ends->safe_ms, short_tags, safe_tags);
+                    REQUIRE(row.figures.size() == 2);
+                    CHECK(row.figures[0].word == "frontend");
+                    CHECK(row.figures[1].word == "backend");
+                    ++squeeze_rows;
+
+                    // The sentence's word for the squeezed note, read from
+                    // the built view.
+                    const std::string& sentence = av.squeeze_sentences[k].text;
+                    CAPTURE(sentence);
+                    const bool says_late = sentence.find(" ms late") != std::string::npos;
+                    const bool says_early = sentence.find(" ms early") != std::string::npos;
+                    REQUIRE(says_late != says_early);
+                    // Which of the row's ends is the squeezed note: the view
+                    // keeps the owner's order, and the owner names each end's
+                    // tick.
+                    const std::optional<int64_t> squeezed_tick = act.squeeze_chord_tick(k);
+                    REQUIRE(squeezed_tick.has_value());
+                    REQUIRE(ends->ends.size() == 2);
+                    REQUIRE(ends->ends[0].tick != ends->ends[1].tick);
+                    const size_t s = ends->ends[0].tick == *squeezed_tick ? 0 : 1;
+                    REQUIRE(ends->ends[s].tick == *squeezed_tick);
+                    CHECK(row.figures[s].word == (says_late ? "backend" : "frontend"));
+                    const bool kind_says_backend = act.sqinouts[k].kind == SqueezeKind::SqOut;
+                    if ((row.figures[s].word == "backend") != kind_says_backend) ++moved_from_kind;
+                }
+            }
+        }
+    }
+    CHECK(charts > 0);
+    CHECK(squeeze_rows > 0);
+    CHECK(fill_rows > 0);
+    // Both tag words occur (Tapped Out's squeeze out is short, Burnout's safe).
+    CHECK(short_tags > 0);
+    CHECK(safe_tags > 0);
+    // At least one squeeze (Get Ur Freak On's, above) sits on the end its
+    // kind would not give, so a row that picked its ends by kind fails here.
+    CHECK(moved_from_kind > 0);
 }

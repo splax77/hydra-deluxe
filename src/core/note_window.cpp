@@ -75,9 +75,9 @@ bool safe_is_short(double safe_ms) { return safe_ms < 0.0; }
 
 // ---- which end each note is on ---------------------------------------------
 
-// The squeeze sentence (app::squeeze_sentences) says a squeeze out's note is
-// hit "late", or "no more than ... early" when it needs no timing; a squeeze
-// in's is the mirror. "Late" is the backend.
+// The squeeze sentence (app::squeeze_sentences) prints its "early" or "late"
+// from this answer, so the sentence and the row cannot disagree. "Late" is the
+// backend.
 SqueezeEnds squeeze_ends(const SPSqueeze& q) {
     const bool squeezed_late = (q.kind == SqueezeKind::SqOut) != q.needs_no_timing();
     const NoteEnd squeezed = squeezed_late ? NoteEnd::Backend : NoteEnd::Frontend;
@@ -140,54 +140,6 @@ std::optional<WindowEnds> early_fill_window_end(const Activation& act, const Cho
     out.ends.push_back(WindowEnd{early_fill_end(act.e_offset), *tick, *ready});
     out.safe_ms = early_fill_safe_ms(*ready, *act.e_difficulty(/*verbose=*/true));
     return out;
-}
-
-// ---- the old row functions ------------------------------------------------
-
-namespace {
-
-// Squeeze `k`'s row at the stored scale side `ratio` picks, when the squeeze
-// is of `kind`.
-template <class PickRatio>
-std::optional<WindowRow> squeeze_window(const Activation& act, size_t k, const ChordTimes& chords,
-                                        SqueezeKind kind, PickRatio pick_ratio) {
-    if (k >= act.sqinouts.size() || act.sqinouts[k].kind != kind) return std::nullopt;
-    const SPSqueeze& q = act.sqinouts[k];
-    const std::optional<double> ratio = pick_ratio(q);
-    if (!ratio || !act.squeeze_end_tick(k)) return std::nullopt;
-    const std::optional<double> anchor = side_at(chords, act.squeeze_anchor_tick(k));
-    const std::optional<double> squeezed = side_at(chords, act.squeeze_chord_tick(k));
-    if (!anchor || !squeezed) return std::nullopt;
-    WindowRow row;
-    row.first_side_ms = *anchor;
-    row.second_side_ms = *squeezed;
-    row.spare_ms = squeeze_safe_ms(*anchor, *ratio, *squeezed, q.difficulty());
-    return row;
-}
-
-}  // namespace
-
-std::optional<WindowRow> squeeze_out_window(const Activation& act, size_t k, const ChordTimes& chords) {
-    return squeeze_window(act, k, chords, SqueezeKind::SqOut, [&](const SPSqueeze&) -> std::optional<double> {
-        if (!act.transfer_post) return std::nullopt;
-        return act.transfer_post->early;
-    });
-}
-
-std::optional<WindowRow> squeeze_in_window(const Activation& act, size_t k, const ChordTimes& chords) {
-    return squeeze_window(act, k, chords, SqueezeKind::SqIn, [](const SPSqueeze& q) -> std::optional<double> {
-        if (!q.transfer) return std::nullopt;
-        return q.transfer->late;
-    });
-}
-
-std::optional<WindowRow> early_fill_window(const Activation& act, const ChordTimes& chords) {
-    const std::optional<double> ready = side_at(chords, act.sp_ready_tick());
-    if (!ready) return std::nullopt;
-    WindowRow row;
-    row.first_side_ms = *ready;
-    row.spare_ms = early_fill_safe_ms(*ready, *act.e_difficulty(/*verbose=*/true));
-    return row;
 }
 
 }  // namespace hydra
