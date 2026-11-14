@@ -104,7 +104,7 @@ When something stops you, stop and report. Give the exact command and the exact 
 
 ## If you write code
 
-Before you commit, do the reviewer's first step yourself. List each question your change answers in plain words ("is this note inside the SP window"). For each one, grep for the inputs it reads, not just for similar names, and check nothing else already answers it. Call the owner if one exists.
+Before you commit, do the reviewer's first step yourself. List each question your change answers in plain words ("is this note inside the SP window"). For each one, grep for the inputs it reads, not just for similar names, and check nothing else already answers it. Call the owner if one exists. Search `src/core`, `src/app`, `src/ui` and `tools`, and count an answer hidden in text or in a sign as an owner. A planner does the same search before it writes a plan step, and a rule copied from a tool, a test or a comment is never a source (agent rule 15).
 
 Every rule in Hydra is worked out in one place. A test pins a literal from one run or calls the production function; it never computes the expected value again. A new number (a threshold, depth, floor or tolerance) needs a user decision your brief names; if it has none, stop and ask.
 
