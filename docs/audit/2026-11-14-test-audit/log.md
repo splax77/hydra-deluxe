@@ -111,4 +111,13 @@ Round 4 ran as one workflow (wf_29e1beb8-eac): auditors for A13 to A16 and verif
 
 A14's "input only" Rewrites show a third reading gap: a sound test whose only fault is an unchecked claim was being given Rewrite, which would put a test change to the user that nobody needs. From round 5 on, such a test is Investigate, marked "claim not checked only", with the capture it needs; Rewrite is for a fault in the test itself. Records from earlier rounds that gave Rewrite for that reason alone (A9 and A14 at least) are swept once after the last find round, before T8 picks exits.
 
-Round 5 ran as one workflow: auditors for A17 to A20 and verifiers for A13 to A16 (`briefs/T5-verify-R4a.md`, `T5-verify-R4b.md`), launched together.
+Round 5 ran as one workflow (wf_9f326d56-f28): auditors for A17 to A20 and verifiers for A13 to A16 (`briefs/T5-verify-R4a.md`, `T5-verify-R4b.md`), launched together. About 8 minutes, 259 tool calls; every slice finished.
+
+- A17 (3ba6111f): 40 records (31, 8, and one for `test_main.cpp`). Keep 2, Rewrite 7, Remove 1, Investigate 30.
+- A18 (09be1613, ae86f090, 49f78cdd): 54 records. Rewrite 7, Remove 3, Investigate 44. Its auditor ran short of time, so records 19 to 54 are shorter and leave reads undone; its verifier's brief says so.
+- A19 (a84f34b2): 30 records. Keep 1, Rewrite 20, Investigate 8 (plus one it counts both ways). `tests/test_precheck.cpp` holds 5 real test cases, not 7: the `TEST_CASE` lines at 208 and 224 are inside fixture text.
+- A20 (837e314e): 33 records. Rewrite 15, Remove 1, Investigate 17.
+- verify A13 and A14 (79500919): A13 24 agreed, 1 disputed (record 13 Remove should be Rewrite); A14 29 agreed, 13 disputed, among them its only Keep (record 41) and 12 "input only" Rewrites that should be Investigate, "claim not checked only".
+- verify A15 and A16 (364943a0): A15 28 agreed, 2 disputed (records 20 and 21 should be Rewrite); A16 21 agreed, 4 disputed, all Keeps (records 7, 15, 21, 25). It also found that records 11 and 13 of A15 name `pitch_dark_preview_1_act.png` as chord 437; the capture is at 85963 ms, chord 144.
+
+Round 6 ran as one workflow: auditors for A21 to A24 and verifiers for A17 to A20, launched together.
