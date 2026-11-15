@@ -348,7 +348,7 @@ void test_settings_early_fill(ImGuiTestContext* ctx) {
 
     ImGuiWindow* panel = open_settings_panel(ctx);
     if (ctx->IsError()) return;
-    IM_CHECK(on_screen(h, "Early fill window"));
+    IM_CHECK(on_screen(h, hydra::ui::detail::kEarlyFillWindowName));
     const ImGuiTestItemInfo box = ctx->ItemInfo("**/##earlyfillwindow");
     if (ctx->IsError()) return;
     IM_CHECK((box.ItemFlags & ImGuiItemFlags_Disabled) == 0);
@@ -358,7 +358,8 @@ void test_settings_early_fill(ImGuiTestContext* ctx) {
     // table has no outer padding).
     const ImGuiStyle& style = ImGui::GetStyle();
     const float marker_x = panel->ContentRegionRect.Min.x +
-                           ImGui::CalcTextSize("Early fill window").x + style.ItemInnerSpacing.x +
+                           ImGui::CalcTextSize(hydra::ui::detail::kEarlyFillWindowName).x +
+                           style.ItemInnerSpacing.x +
                            ImGui::CalcTextSize("(?)").x * 0.5f;
     ctx->MouseMoveToPos(ImVec2(marker_x, box.RectFull.GetCenter().y));
     IM_CHECK(wait_until(ctx, [&] { return on_screen(h, help); }, 5));

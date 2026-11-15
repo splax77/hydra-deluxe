@@ -45,6 +45,9 @@ void render_settings_button(AppState& app, float room_after);
 // The help text beside the "1.0 fills" checkbox. Each rule's deadline is
 // fill_rule_description's sentence.
 std::string legacy_fills_help_text();
+// The early-fill window's name, as the panel row, the settings button's
+// phrase and the batch confirm's line all print it.
+inline constexpr const char* kEarlyFillWindowName = "Early fill window";
 // The help text beside the "Early fill window" box. Its top edge is the hit
 // window, as report::hit_window_text prints it.
 std::string early_fill_window_help_text();

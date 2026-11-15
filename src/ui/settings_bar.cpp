@@ -153,7 +153,7 @@ void render_rules_group(AppState& app, bool locked) {
     if (setting_checkbox("##legacyfills", &app.settings.legacy_fills, locked))
         app.commit_settings();
 
-    begin_row("Early fill window", early_fill_window_help_text().c_str());
+    begin_row(kEarlyFillWindowName, early_fill_window_help_text().c_str());
     ImGui::SetNextItemWidth(px(100));
     begin_disabled_input(locked);
     int window = app.settings.early_fill_window_ms;

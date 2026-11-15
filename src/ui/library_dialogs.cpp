@@ -97,7 +97,7 @@ std::string change_phrase(const app::Settings& s, const app::SettingsText& value
         return s.view_noteshuffle ? "Note Shuffle" : "Note Shuffle off";
     case AnalysisSetting::SpCap: return "SP cap " + values.cap;
     case AnalysisSetting::Fills: return s.legacy_fills ? "1.0 fills" : "1.0 fills off";
-    case AnalysisSetting::EarlyFillWindow: return "Early fill window " + values.early_fill;
+    case AnalysisSetting::EarlyFillWindow: return std::string(kEarlyFillWindowName) + " " + values.early_fill;
     case AnalysisSetting::ScoreRange: return "Score range " + values.depth;
     case AnalysisSetting::PathLimit: return "Path limit " + values.timing;
     }
@@ -360,7 +360,7 @@ void render_batch_confirm(AppState& app) {
         row("Difficulty", d.difficulty);
         row("SP cap", d.sp_cap);
         row("Fills", d.fills);
-        row("Early fill window", d.early_fill);
+        row(kEarlyFillWindowName, d.early_fill);
         row("Score range", d.score_range);
         row("Path limit", d.path_limit);
         ImGui::EndTable();
